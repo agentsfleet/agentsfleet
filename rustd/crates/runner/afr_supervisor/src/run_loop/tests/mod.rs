@@ -22,7 +22,7 @@ use crate::test_support::{
     position, reported,
 };
 use crate::turns::FleetTurns;
-use af_core::timing::RENEWAL_TICK;
+use af_core::timing::HEARTBEAT_INTERVAL;
 
 /// The metered fields a renewal and a report carry, by their wire names.
 const TOKENS: &str = "tokens";

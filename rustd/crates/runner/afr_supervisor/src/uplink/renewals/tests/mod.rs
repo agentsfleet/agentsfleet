@@ -10,7 +10,7 @@ const LINES_PER_RUN: usize = 513;
 mod recovery;
 
 #[tokio::test(start_paused = true)]
-async fn configured_host_renewal_interval_reaches_the_native_queue() -> crate::Result<()> {
+async fn a_held_run_renews_once_per_heartbeat_interval() -> crate::Result<()> {
     let registry = Arc::new(Renewals::default());
     let (handle, mut peer) = RenewalPeer::new();
     let run = Uuid7::parse(crate::test_util::RUN_ID)?;
@@ -20,18 +20,10 @@ async fn configured_host_renewal_interval_reaches_the_native_queue() -> crate::R
         Arc::new(afr_agent::Meter::default()),
         started + Duration::from_secs(28),
     )?;
-    let settings = garde::Unvalidated::new(crate::config::RuntimeSettings {
-        renewal_interval_ms: 1000,
-        ..crate::config::RuntimeSettings::default()
-    })
-    .validate()?;
-    let policy = crate::config::RuntimePolicy::new(&settings);
+    // The daemon advertised a 1 s interval on its last heartbeat answer.
+    registry.advertised(Duration::from_secs(1));
     let stop = tokio_util::sync::CancellationToken::new();
-    let running = registry.run_with_interval(
-        &handle,
-        stop.clone(),
-        Duration::from_millis(policy.settings().renewal_interval_ms),
-    );
+    let running = registry.run(&handle, stop.clone());
     let observed = async {
         let message = peer
             .outgoing

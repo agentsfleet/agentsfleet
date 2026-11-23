@@ -24,7 +24,7 @@ use crate::test_support::{
     PROCESSED, RENEWAL_TERMINATE, RUN_ID, Rig, assigned, bounded, daemon, payload, position,
     reported,
 };
-use af_core::timing::RENEWAL_TICK;
+use af_core::timing::HEARTBEAT_INTERVAL;
 
 /// The fleet's second run, after the one that left its sandbox held.
 pub(super) const NEXT_RUN_ID: &str = "01890a5d-ac96-774b-bcce-b302099a805a";
@@ -134,7 +134,7 @@ async fn test_processed_run_parks_its_sandbox_frozen() {
     rig.run(&payload(RUN_ID, FLEET_ID)).await.unwrap();
     let calls = rig.calls();
     assert_eq!(reports.load(Ordering::SeqCst), 3);
-    tokio::time::sleep(RENEWAL_TICK * 2).await;
+    tokio::time::sleep(HEARTBEAT_INTERVAL * 2).await;
     assert!(
         rig.calls().iter().all(|call| call.verb != Verb::Renew),
         "a hold never renews after acknowledgement"

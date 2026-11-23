@@ -1,6 +1,6 @@
 //! Host liveness, pushed assignments and held-sandbox releases share one policy owner.
 
-use std::{borrow::Cow, time::Duration};
+use std::{borrow::Cow, sync::Arc, time::Duration};
 
 use af_core::{id::Uuid7, limits::WorkerCount, timing::HEARTBEAT_INTERVAL};
 use af_wire::{
@@ -122,7 +122,10 @@ impl<'a> Heartbeat<'a> {
     ) {
         let mut updates = self.plane.stream.policies.clone();
         let mut retries = self.plane.runtime.endless();
-        let mut pause = Duration::ZERO;
+        let rounds = Arc::clone(&self.plane.stream.renewing);
+        // The first beat goes at once; after it the runner's clock wakes each beat, and a
+        // failed beat retries on its own backoff.
+        let mut backoff = Some(Duration::ZERO);
         loop {
             tokio::select! {
                 biased;
@@ -149,7 +152,8 @@ impl<'a> Heartbeat<'a> {
                     continue;
                 }
                 () = self.holds.saturated().notified() => {}
-                () = tokio::time::sleep(pause) => {}
+                () = rounds.beats().notified() => {}
+                () = tokio::time::sleep(backoff.unwrap_or_default()), if backoff.is_some() => {}
             }
             let beaten = tokio::select! {
                 biased;
@@ -159,7 +163,8 @@ impl<'a> Heartbeat<'a> {
             match beaten {
                 Ok(policy) => {
                     retries = self.plane.runtime.endless();
-                    pause = policy.interval;
+                    backoff = None;
+                    rounds.advertised(policy.interval);
                     publish(assignment, policy, halt);
                 }
                 Err(error) if halt.stops_on(&error) => return self.close(),
@@ -172,8 +177,8 @@ impl<'a> Heartbeat<'a> {
                 Err(error) => {
                     let error_code = error.code().as_str();
                     tracing::warn!(event = "heartbeat_failed", error_code);
-                    pause = if let Some(pause) = retries.next() {
-                        pause.min(self.last.interval)
+                    backoff = if let Some(pause) = retries.next() {
+                        Some(pause.min(self.last.interval))
                     } else {
                         halt.stop();
                         return;

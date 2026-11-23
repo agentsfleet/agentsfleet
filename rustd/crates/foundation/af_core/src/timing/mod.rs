@@ -16,7 +16,10 @@
 use std::time::Duration;
 
 mod run;
-pub use run::{MAX_RUN_SECONDS, MIN_RUN_SECONDS, RunClock, RunSettings};
+pub use run::{
+    MAX_RUN_SECONDS, MIN_HEARTBEAT_SECONDS, MIN_RUN_SECONDS, RENEWAL_MARGIN_SECONDS, RunClock,
+    RunSettings,
+};
 
 /// How long an issued run or thread assignment stays valid before the thread
 /// becomes reassignable, and the increment each renewal adds.
@@ -24,7 +27,7 @@ pub use run::{MAX_RUN_SECONDS, MIN_RUN_SECONDS, RunClock, RunSettings};
 /// Deliberately short: it is the backstop
 /// against a runner that dies silently, and a live runner extends it through
 /// the renew verb rather than being handed a long run up front.
-pub const RUN_TTL: Duration = Duration::from_secs(35);
+pub const RUN_TTL: Duration = Duration::from_secs(38);
 
 /// The renewal slack preserved by the run and connection-recovery relationship.
 ///
@@ -32,12 +35,6 @@ pub const RUN_TTL: Duration = Duration::from_secs(35);
 /// has room to retry before the deadline.
 /// Kept: without it a live runner's run lapses and is handed to another runner.
 pub const RENEWAL_WINDOW: Duration = Duration::from_secs(15);
-
-/// How often a runner's supervision loop wakes to consider a renewal.
-///
-/// Strictly below [`RENEWAL_WINDOW`] so at least one tick lands inside the
-/// window.
-pub const RENEWAL_TICK: Duration = Duration::from_secs(5);
 
 /// How long a stopped engine may close calls and return measured work.
 pub const ENGINE_STOP_GRACE: Duration = Duration::from_secs(5);
@@ -50,7 +47,8 @@ pub const ENGINE_STOP_GRACE: Duration = Duration::from_secs(5);
 /// stops beating is never mistaken for a dead host.
 pub const RUNNER_OFFLINE_AFTER: Duration = RUN_TTL.saturating_mul(3);
 
-/// How often a runner's control loop emits a host heartbeat.
+/// How often a runner's one clock fires a round: a host heartbeat and, for the runs it
+/// holds, their renewal batch.
 ///
 /// Served to the runner on every beat, so a host never holds its own copy.
 /// Strictly below [`RUNNER_OFFLINE_AFTER`], which is what guarantees an idle
@@ -76,8 +74,9 @@ pub const READY_WAKE_DEADLINE: Duration = Duration::from_millis(100);
 
 /// Maximum time to answer an application request or finish a partial stream frame.
 pub const STREAM_ANSWER_TIMEOUT: Duration = Duration::from_secs(5);
-/// Idle interval between application pings; a silent idle path is detected within twenty seconds.
-pub const STREAM_PING_INTERVAL: Duration = Duration::from_secs(15);
+/// How long the runner stream's transport keeps an idle connection open: both carriers
+/// close a session that carried nothing for this long, with no keep-alive.
+pub const STREAM_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 /// Preferred transport gets this much of the bounded reconnect attempt.
 /// Kept: a network that drops UDP would otherwise never reach the TCP fallback.
 pub const STREAM_HTTP3_CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
@@ -97,18 +96,24 @@ pub const STREAM_RECOVERY_BUDGET: Duration = Duration::from_secs(7);
 pub const STREAM_STABLE_RESET_AFTER: Duration = Duration::from_secs(60);
 /// The shortest idle timeout a proxy or load balancer on the runner's path is assumed to apply.
 ///
-/// Nothing reads it at run time. It is the floor [`STREAM_PING_INTERVAL`] is held under, so an
-/// idle stream pings before a common 60-second middlebox timeout closes it.
+/// Nothing reads it at run time. It is the floor [`HEARTBEAT_INTERVAL`] is held under, so an
+/// idle stream carries a beat before a common 60-second middlebox timeout closes it.
 pub const PROXY_IDLE_FLOOR: Duration = Duration::from_secs(60);
 
 const _: () = assert!(
-    STREAM_PING_INTERVAL.as_nanos() + STREAM_ANSWER_TIMEOUT.as_nanos() < RUN_TTL.as_nanos(),
-    "a silent stream must be detected before an unrenewed run lapses"
+    HEARTBEAT_INTERVAL.as_nanos() + STREAM_ANSWER_TIMEOUT.as_nanos() < RUN_TTL.as_nanos(),
+    "a held run's round must find a silent stream before an unrenewed run lapses"
 );
 
 const _: () = assert!(
-    STREAM_PING_INTERVAL.as_nanos() < PROXY_IDLE_FLOOR.as_nanos(),
-    "an idle stream must ping before a proxy's idle timeout closes it"
+    HEARTBEAT_INTERVAL.as_nanos() < PROXY_IDLE_FLOOR.as_nanos(),
+    "an idle stream must carry a beat before a proxy's idle timeout closes it"
+);
+
+const _: () = assert!(
+    HEARTBEAT_INTERVAL.as_nanos() + STREAM_ANSWER_TIMEOUT.as_nanos()
+        < STREAM_IDLE_TIMEOUT.as_nanos(),
+    "an idle session's beat and its answer must land before the transport closes it"
 );
 
 const _: () = assert!(
@@ -117,7 +122,7 @@ const _: () = assert!(
 );
 
 const _: () = assert!(
-    RENEWAL_TICK.as_nanos()
+    HEARTBEAT_INTERVAL.as_nanos()
         + STREAM_ANSWER_TIMEOUT.as_nanos()
         + STREAM_RECOVERY_BUDGET.as_nanos()
         + RENEWAL_WINDOW.as_nanos()
@@ -148,8 +153,21 @@ const _: () = assert!(
     "a renewal must be attempted with slack left to retry before the deadline"
 );
 const _: () = assert!(
-    RENEWAL_TICK.as_nanos() < RENEWAL_WINDOW.as_nanos(),
-    "at least one supervision tick must land inside the renewal window"
+    STREAM_ANSWER_TIMEOUT.as_nanos() < RENEWAL_WINDOW.as_nanos(),
+    "a retry round, one answer bound after a refused one, must land inside the renewal window"
+);
+
+/// How many renewal frames pass between funds checks of one payer.
+///
+/// A two-round chat then pays two thirds of a check instead of four statements,
+/// and a run overruns its payer's balance by at most this many slices.
+pub const FUNDS_CHECK_TICKS: u64 = 3;
+
+// A cadence of zero would check once per session and never again, and one as
+// long as a run lives would let a run pass its balance unchecked.
+const _: () = assert!(
+    FUNDS_CHECK_TICKS >= 1 && FUNDS_CHECK_TICKS * HEARTBEAT_INTERVAL.as_secs() < RUN_TTL.as_secs(),
+    "funds are checked at least once, and well inside a run's life"
 );
 const _: () = assert!(
     HEARTBEAT_INTERVAL.as_nanos() < RUNNER_OFFLINE_AFTER.as_nanos(),

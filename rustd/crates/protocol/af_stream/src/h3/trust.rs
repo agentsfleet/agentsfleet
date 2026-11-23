@@ -14,7 +14,9 @@ pub(super) fn client(trust: &Trust) -> Result<quiche::Config> {
     config.set_initial_max_streams_uni(3);
     config.set_max_stream_window(u64::from(crate::STREAM_WINDOW));
     config.set_max_connection_window(u64::from(crate::CONNECTION_WINDOW));
-    config.set_max_idle_timeout(30_000);
+    config.set_max_idle_timeout(
+        u64::try_from(af_core::timing::STREAM_IDLE_TIMEOUT.as_millis()).unwrap_or(u64::MAX),
+    );
     // The daemon sends no more than the smaller of its own limit and this one. quiche applies the
     // peer's limit to the connection's first path only, so a new path starts at the daemon's own.
     config.set_max_recv_udp_payload_size(trust.receive_limit());
@@ -35,7 +37,7 @@ pub(super) fn server(datagram: usize) -> QuicSettings {
     settings.initial_max_streams_uni = 3;
     settings.max_connection_window = u64::from(crate::CONNECTION_WINDOW);
     settings.max_stream_window = u64::from(crate::STREAM_WINDOW);
-    settings.max_idle_timeout = Some(std::time::Duration::from_secs(30));
+    settings.max_idle_timeout = Some(af_core::timing::STREAM_IDLE_TIMEOUT);
     settings.handshake_timeout = Some(std::time::Duration::from_secs(5));
     settings.listen_backlog = 128;
     settings

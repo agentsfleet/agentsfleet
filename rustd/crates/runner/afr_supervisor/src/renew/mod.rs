@@ -64,7 +64,7 @@ impl<'a> Renewal<'a> {
         }
     }
 
-    /// Renews every [`RENEWAL_TICK`] and returns why the run ended.
+    /// Renews on each round of the runner's clock and returns why the run ended.
     ///
     /// A transport failure or a 5xx keeps the run: the daemon may be briefly
     /// unwell and the next tick may land. A 4xx ends it — revoked, lapsed, out

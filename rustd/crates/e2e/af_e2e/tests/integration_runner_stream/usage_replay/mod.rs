@@ -8,7 +8,7 @@ mod relay;
 
 use super::recovery::proxy::FaultProxy;
 use crate::{e2e::scenario, wire};
-use af_core::timing::{RENEWAL_TICK, STREAM_ANSWER_TIMEOUT, STREAM_RECOVERY_BUDGET};
+use af_core::timing::{HEARTBEAT_INTERVAL, STREAM_ANSWER_TIMEOUT, STREAM_RECOVERY_BUDGET};
 use af_stream::Transport;
 use af_wire::usage::RequestLines;
 use afr_agent::Meter;
@@ -125,7 +125,7 @@ async fn final_reports(session: &Session, held: &[fixture::Held; 2], meters: &[A
 
 async fn acknowledged(meters: &[Arc<Meter>; 2]) {
     tokio::time::timeout(
-        STREAM_ANSWER_TIMEOUT + STREAM_RECOVERY_BUDGET + RENEWAL_TICK,
+        STREAM_ANSWER_TIMEOUT + STREAM_RECOVERY_BUDGET + HEARTBEAT_INTERVAL,
         async {
             loop {
                 if [meters[0].backlog(), meters[1].backlog()] == [0, 0] {

@@ -5,7 +5,7 @@ use super::fixture::Held;
 use crate::{e2e::Scenario, e2e_seed::DEEP_POOL};
 use af_core::{
     id::Uuid7,
-    timing::{RENEWAL_TICK, STREAM_ANSWER_TIMEOUT, STREAM_RECOVERY_BUDGET},
+    timing::{HEARTBEAT_INTERVAL, STREAM_ANSWER_TIMEOUT, STREAM_RECOVERY_BUDGET},
 };
 
 const LINES: &str = "SELECT work_id, seq, input_token_count, output_token_count, charged_nanos, kind FROM billing.usage_lines WHERE work_id = ANY($1) ORDER BY work_id, kind, seq";
@@ -69,7 +69,7 @@ fn counts(rows: &[Line], held: &[Held; 2]) -> [usize; 2] {
 }
 
 pub(super) async fn wait_lines(scene: &Scenario, held: &[Held; 2], expected: [usize; 2]) {
-    tokio::time::timeout(RENEWAL_TICK + STREAM_ANSWER_TIMEOUT, async {
+    tokio::time::timeout(HEARTBEAT_INTERVAL + STREAM_ANSWER_TIMEOUT, async {
         loop {
             if counts(&lines(scene, held).await, held) == expected {
                 return;

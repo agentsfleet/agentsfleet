@@ -1,4 +1,5 @@
-//! One host tick snapshots live meters without retaining map guards across work.
+//! The runner's one clock: each round wakes the host heartbeat and renews the runs held,
+//! snapshotting live meters without retaining map guards across work.
 
 use std::sync::Arc;
 
@@ -11,9 +12,11 @@ use afr_agent::Meter;
 use dashmap::{DashMap, mapref::entry::Entry};
 use futures_util::{StreamExt as _, stream::FuturesUnordered};
 use parking_lot::Mutex;
+use std::time::Duration;
+
 use tokio::{
-    sync::{OwnedSemaphorePermit, Semaphore, watch},
-    time::{Instant, MissedTickBehavior},
+    sync::{Notify, OwnedSemaphorePermit, Semaphore, watch},
+    time::Instant,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -37,6 +40,12 @@ struct Run {
 pub(crate) struct Renewals {
     runs: DashMap<Uuid7, Arc<Run>>,
     slots: Arc<Semaphore>,
+    /// Each round's wake for the heartbeat loop: one stored permit, so a round that lands
+    /// while a beat is in flight or backing off is kept for its next turn, and a session
+    /// with no heartbeat loop loses nothing.
+    beat: Notify,
+    /// The interval the daemon last advertised on a heartbeat answer.
+    interval: watch::Sender<Duration>,
 }
 
 impl Default for Renewals {
@@ -44,6 +53,8 @@ impl Default for Renewals {
         Self {
             runs: DashMap::new(),
             slots: Arc::new(Semaphore::new(RUNS_MAX)),
+            beat: Notify::new(),
+            interval: watch::Sender::new(af_core::timing::HEARTBEAT_INTERVAL),
         }
     }
 }
@@ -114,22 +125,29 @@ impl Renewals {
             .map_or(budget, |deadline| budget.min(deadline))
     }
 
-    #[cfg(test)]
-    pub(crate) async fn run(&self, handle: &StreamHandle, stop: CancellationToken) -> Result<()> {
-        self.run_with_interval(handle, stop, af_core::timing::RENEWAL_TICK)
-            .await
+    /// The wake a round leaves for the heartbeat loop.
+    pub(crate) const fn beats(&self) -> &Notify {
+        &self.beat
     }
 
-    pub(crate) async fn run_with_interval(
-        &self,
-        handle: &StreamHandle,
-        stop: CancellationToken,
-        interval: std::time::Duration,
-    ) -> Result<()> {
-        let mut ticks = tokio::time::interval_at(Instant::now() + interval, interval);
-        ticks.set_missed_tick_behavior(MissedTickBehavior::Delay);
+    /// Takes the interval a heartbeat answer advertised for the rounds after it.
+    pub(crate) fn advertised(&self, interval: Duration) {
+        self.interval.send_replace(interval);
+    }
+
+    fn interval(&self) -> Duration {
+        *self.interval.borrow()
+    }
+
+    /// The runner's one clock. A round is due one heartbeat interval after the previous
+    /// round was sent, and never before that round's answers are in. Each round wakes the
+    /// heartbeat loop and renews the runs held. A round that failed, or in which a run was
+    /// refused for now, is followed by another one answer bound after it was sent, or one
+    /// interval when that is shorter. A new connected session starts a round at once.
+    pub(crate) async fn run(&self, handle: &StreamHandle, stop: CancellationToken) -> Result<()> {
         let mut sessions = handle.session.clone();
         let mut previous = sessions.borrow_and_update().clone();
+        let mut due = Instant::now() + self.interval();
         loop {
             tokio::select! {
                 biased;
@@ -141,29 +159,33 @@ impl Renewals {
                         .is_some_and(|(current, previous)| Arc::ptr_eq(current, previous));
                     let connected = current.as_ref().is_some_and(|session| !session.stop.is_cancelled());
                     previous = current;
-                    if unchanged { continue; }
-                    if !connected { continue; }
-                    // Recovery must not spend another tick waiting to renew live work.
-                    ticks.reset();
+                    if unchanged || !connected { continue; }
+                    // Recovery must not spend another round waiting to renew live work.
                 }
-                _ = ticks.tick() => {}
+                () = tokio::time::sleep_until(due) => {}
             }
+            let sent = Instant::now();
+            self.beat.notify_one();
             let renewed = tokio::select! {
                 () = stop.cancelled() => return Ok(()),
                 result = self.batch(handle) => result,
             };
-            match renewed {
-                Ok(()) => {}
+            let interval = self.interval();
+            let retry = interval.min(af_core::timing::STREAM_ANSWER_TIMEOUT);
+            due = match renewed {
+                Ok(Settled::All) => sent + interval,
+                Ok(Settled::RetryLater) => sent + retry,
                 Err(error) if error.is_retryable() => {
                     let error_code = error.code().as_str();
                     tracing::warn!(event = "renew_failed_retry", error_code);
+                    sent + retry
                 }
                 Err(error) => return Err(error),
-            }
+            };
         }
     }
 
-    async fn batch(&self, handle: &StreamHandle) -> Result<()> {
+    async fn batch(&self, handle: &StreamHandle) -> Result<Settled> {
         let deadline = Instant::now() + af_core::timing::STREAM_ANSWER_TIMEOUT;
         let mut active = FuturesUnordered::new();
         for batch in batches::split(self.snapshot())? {
@@ -171,10 +193,13 @@ impl Renewals {
         }
         // At most RUNS_MAX partitions share the existing queue and request bounds.
         // Concurrent answers preserve one tick's budget and each run's own cursor.
+        let mut settled = Settled::All;
         while let Some(answer) = active.next().await {
-            self.record(answer?);
+            if self.record(answer?) {
+                settled = Settled::RetryLater;
+            }
         }
-        Ok(())
+        Ok(settled)
     }
 
     fn snapshot(&self) -> Vec<(Uuid7, Renewal<'static>)> {
@@ -198,7 +223,9 @@ impl Renewals {
             .collect()
     }
 
-    fn record(&self, runs: Vec<(Uuid7, Outcome<RenewResponse>)>) {
+    /// Hands each run its answer; whether any run was refused for now.
+    fn record(&self, runs: Vec<(Uuid7, Outcome<RenewResponse>)>) -> bool {
+        let mut retry = false;
         for (id, answer) in runs {
             let run = self.runs.get(&id).map(|entry| Arc::clone(entry.value()));
             let Some(run) = run else {
@@ -222,10 +249,20 @@ impl Renewals {
                 } => {
                     let error_code = code.as_str();
                     tracing::debug!(event = "runner_stream_renewal_retry", error_code);
+                    retry = true;
                 }
             }
         }
+        retry
     }
+}
+
+/// How a round's renewals ended.
+enum Settled {
+    /// Every run held was answered for good.
+    All,
+    /// A run was refused for now, so the next round comes sooner.
+    RetryLater,
 }
 
 pub(crate) struct Registration {

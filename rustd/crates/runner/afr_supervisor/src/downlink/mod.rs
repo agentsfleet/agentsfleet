@@ -90,11 +90,7 @@ impl Downlink {
 
     pub(crate) async fn run(self, halt: &Halt) -> Result<()> {
         let stop = CancellationToken::new();
-        let renewing = self.handle.renewing.run_with_interval(
-            &self.handle,
-            stop.clone(),
-            std::time::Duration::from_millis(self.runtime.settings().renewal_interval_ms),
-        );
+        let renewing = self.handle.renewing.run(&self.handle, stop.clone());
         let sessions = self.sessions(halt);
         tokio::pin!(renewing, sessions);
         tokio::select! {
@@ -240,7 +236,6 @@ impl Downlink {
             &mut workers,
         );
         self.current.send_replace(Some(Arc::clone(&sender)));
-        io::track(&mut workers, io::ping(self.handle.clone(), stop.clone()));
         let mut dispatch = Dispatch {
             requests: &requests,
             running: &self.running,

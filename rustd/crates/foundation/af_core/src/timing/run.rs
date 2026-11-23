@@ -5,13 +5,27 @@ use std::time::Duration;
 use garde::Validate;
 use serde::Deserialize;
 
-/// Integer-second run lifetime strictly above the complete renewal budget.
-pub const MIN_RUN_SECONDS: u64 = super::RENEWAL_TICK
-    .saturating_add(super::STREAM_ANSWER_TIMEOUT)
+/// The shortest heartbeat interval a deployment may set, and so the shortest round.
+pub const MIN_HEARTBEAT_SECONDS: u64 = 1;
+
+/// What a run's expiry must leave beyond one round: the answer bound, the reconnect
+/// budget and the renewal window, plus the strict second.
+pub const RENEWAL_MARGIN_SECONDS: u64 = super::STREAM_ANSWER_TIMEOUT
     .saturating_add(super::STREAM_RECOVERY_BUDGET)
     .saturating_add(super::RENEWAL_WINDOW)
     .as_secs()
     + 1;
+
+/// Integer-second run lifetime strictly above the complete renewal budget at the
+/// shortest round.
+pub const MIN_RUN_SECONDS: u64 = MIN_HEARTBEAT_SECONDS + RENEWAL_MARGIN_SECONDS;
+
+/// The longest heartbeat whose beat and answer still land before the transport closes
+/// an idle session.
+const IDLE_HEARTBEAT_SECONDS: u64 = super::STREAM_IDLE_TIMEOUT
+    .saturating_sub(super::STREAM_ANSWER_TIMEOUT)
+    .as_secs()
+    - 1;
 
 /// Longest run lifetime a deployment may configure: one hour per grant.
 ///
@@ -26,8 +40,10 @@ pub struct RunSettings {
     /// Every renewal leaves the complete connection-recovery safety budget.
     #[garde(range(min = MIN_RUN_SECONDS, max = MAX_RUN_SECONDS))]
     pub ttl_seconds: u64,
-    /// The daemon advertises this cadence and uses it for connection silence.
-    #[garde(range(min = 1, max = self.offline_seconds().saturating_sub(1) / 2))]
+    /// The daemon advertises this cadence and uses it for connection silence. The
+    /// runner's renewal round rides it, so it is also bounded by the run's expiry, and by
+    /// three rounds, the funds-check cadence, inside one expiry.
+    #[garde(range(min = MIN_HEARTBEAT_SECONDS, max = self.heartbeat_ceiling()))]
     pub heartbeat_interval_seconds: u64,
     /// Omission retains three run lifetimes; an explicit threshold is at most
     /// three of the longest.
@@ -45,6 +61,15 @@ impl RunSettings {
     fn offline_seconds(self) -> u64 {
         self.offline_after_seconds
             .unwrap_or_else(|| self.ttl_seconds.saturating_mul(3))
+    }
+
+    /// The least of the offline bound, the idle bound, the expiry's margin and three
+    /// rounds inside one expiry.
+    fn heartbeat_ceiling(self) -> u64 {
+        (self.offline_seconds().saturating_sub(1) / 2)
+            .min(IDLE_HEARTBEAT_SECONDS)
+            .min(self.ttl_seconds.saturating_sub(RENEWAL_MARGIN_SECONDS))
+            .min(self.ttl_seconds.saturating_sub(1) / super::FUNDS_CHECK_TICKS)
     }
 }
 

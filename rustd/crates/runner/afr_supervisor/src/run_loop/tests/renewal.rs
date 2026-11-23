@@ -23,7 +23,7 @@ async fn renewal_keeps_the_run_through_a_slow_settle_and_stops_once_answered() {
         3,
         "the same report survives two lost acknowledgements"
     );
-    tokio::time::sleep(RENEWAL_TICK * 4).await;
+    tokio::time::sleep(HEARTBEAT_INTERVAL * 4).await;
     assert!(
         rig.calls().iter().all(|call| call.verb != Verb::Renew),
         "no renewal after acknowledgement"

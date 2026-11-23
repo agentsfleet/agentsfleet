@@ -10,7 +10,7 @@ use af_core::{
     clock::FixedClock,
     env::MapEnv,
     id::Uuid7,
-    timing::{RENEWAL_TICK, RUN_TTL, STREAM_ANSWER_TIMEOUT},
+    timing::{HEARTBEAT_INTERVAL, RUN_TTL, STREAM_ANSWER_TIMEOUT},
 };
 use af_wire::protocol::Up;
 use futures_util::poll;
@@ -43,7 +43,7 @@ async fn republishing_the_same_connection_does_not_start_an_extra_renewal() -> c
         peer.outgoing.priority.try_recv(),
         Err(tokio::sync::mpsc::error::TryRecvError::Empty)
     ));
-    tokio::time::advance(RENEWAL_TICK).await;
+    tokio::time::advance(HEARTBEAT_INTERVAL).await;
     assert!(poll!(&mut renewing).is_pending());
     assert!(
         peer.outgoing.priority.try_recv().is_ok(),
@@ -55,7 +55,8 @@ async fn republishing_the_same_connection_does_not_start_an_extra_renewal() -> c
 
 #[tokio::test(start_paused = true)]
 async fn the_full_recovery_and_answer_budgets_preserve_running_work() -> crate::Result<()> {
-    let connected = RENEWAL_TICK + STREAM_ANSWER_TIMEOUT + af_core::timing::STREAM_RECOVERY_BUDGET;
+    let connected =
+        HEARTBEAT_INTERVAL + STREAM_ANSWER_TIMEOUT + af_core::timing::STREAM_RECOVERY_BUDGET;
     recovered(connected, STREAM_ANSWER_TIMEOUT).await
 }
 
@@ -113,7 +114,7 @@ async fn lose_first_renewal(
     mut renewing: Pin<&mut impl Future<Output = crate::Result<()>>>,
     old: &mut RenewalPeer,
 ) -> crate::Result<()> {
-    tokio::time::advance(RENEWAL_TICK).await;
+    tokio::time::advance(HEARTBEAT_INTERVAL).await;
     assert!(poll!(&mut renewing).is_pending());
     let unanswered = old
         .outgoing
