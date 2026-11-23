@@ -68,6 +68,9 @@ impl Creations {
         )
         .await?;
         link_draft(connection, row, captured).await?;
+        if let Some(draft) = &captured.draft {
+            announcement.draft_changed(&draft.id);
+        }
         Ok(announcement)
     }
 }

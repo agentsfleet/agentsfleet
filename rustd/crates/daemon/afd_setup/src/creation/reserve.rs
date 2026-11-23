@@ -191,6 +191,10 @@ impl Creations {
         };
         let mut announcement = write_revision(connection, id, captured, head).await?;
         announcement.fleet_set(&captured.context.workspace_id);
+        if let Some(draft) = &captured.draft {
+            // Linked as `saving` below.
+            announcement.draft_changed(&draft.id);
+        }
         announcement.append(
             self.replace_schedules(
                 connection,

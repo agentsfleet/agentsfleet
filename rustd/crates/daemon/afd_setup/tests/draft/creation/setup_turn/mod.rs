@@ -147,7 +147,7 @@ async fn take(f: &Fixture, draft: &Uuid7) -> SetupTurn {
         .expect("the claim answers");
     assert_eq!(claimed, SetupClaim::Taken, "the message starts");
     tx.commit().await.expect("the assignment commits");
-    owed.settle(&f.drafts);
+    owed.settle(&f.drafts).await;
     turn
 }
 

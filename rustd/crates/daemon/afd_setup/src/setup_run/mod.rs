@@ -106,15 +106,31 @@ pub enum SetupClaim {
     Moved,
 }
 
-/// Funnel steps an assignment or report owes once its transaction commits.
+/// Funnel steps and page notices an assignment or report owes once its
+/// transaction commits.
 #[derive(Debug, Default)]
 #[must_use = "owed steps are reported only by `settle`, after the commit"]
-pub struct SetupOwed(Owed);
+pub struct SetupOwed {
+    steps: Owed,
+    /// Drafts whose durable state the transaction changed.
+    drafts: Vec<Uuid7>,
+}
 
 impl SetupOwed {
-    /// Reports every owed step. Call only after the transaction committed.
-    pub fn settle(self, drafts: &Drafts) {
-        self.0.settle(&drafts.analytics);
+    /// Owes `draft`'s open page a notice that its durable state changed.
+    pub fn changed(&mut self, draft: &Uuid7) {
+        self.drafts.push(draft.clone());
+    }
+
+    /// Reports every owed step and notice. Call only after the transaction
+    /// committed.
+    pub async fn settle(mut self, drafts: &Drafts) {
+        self.steps.settle(&drafts.analytics);
+        self.drafts.sort_unstable();
+        self.drafts.dedup();
+        for draft in &self.drafts {
+            drafts.changed(draft).await;
+        }
     }
 }
 
@@ -178,7 +194,9 @@ impl Drafts {
             tenant_id: &hint.tenant_id,
             user_id: &hint.user_id,
         };
-        if !creator::holds(connection, &creator, &mut owed.0).await? {
+        if !creator::holds(connection, &creator, &mut owed.steps).await? {
+            // A creator who lost the workspace had their queued work cancelled.
+            owed.changed(&hint.draft_id);
             return Ok(SetupAssignment::Passed);
         }
         let Some(head) = head(connection, hint).await? else {

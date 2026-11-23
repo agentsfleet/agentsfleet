@@ -51,6 +51,8 @@ pub struct Announcement {
     fleets: Vec<Uuid7>,
     /// Workspaces whose set of fleets this transaction changed.
     workspaces: Vec<Uuid7>,
+    /// Setup drafts whose durable state this transaction changed.
+    drafts: Vec<Uuid7>,
 }
 
 impl Announcement {
@@ -58,6 +60,13 @@ impl Announcement {
     pub fn append(&mut self, other: Self) {
         self.fleets.extend(other.fleets);
         self.workspaces.extend(other.workspaces);
+        self.drafts.extend(other.drafts);
+    }
+
+    /// Announces after the commit that `draft`'s durable state changed, so its open
+    /// setup page reads it again.
+    pub fn draft_changed(&mut self, draft: &Uuid7) {
+        self.drafts.push(draft.clone());
     }
 
     /// Announces after the commit that `workspace` gained or lost a fleet, so its
@@ -81,9 +90,14 @@ pub async fn commit(
     announcement.fleets.dedup();
     announcement.workspaces.sort_unstable();
     announcement.workspaces.dedup();
+    announcement.drafts.sort_unstable();
+    announcement.drafts.dedup();
     if let Some(notices) = notices {
         for workspace in &announcement.workspaces {
             fleets_changed(notices.streams(), workspace).await;
+        }
+        for draft in &announcement.drafts {
+            draft_changed(notices.streams(), draft).await;
         }
         let streams = notices.streams();
         futures_util::stream::iter(announcement.fleets)
@@ -124,6 +138,7 @@ pub async fn record_on(
     Ok(Announcement {
         fleets: vec![fleet.clone()],
         workspaces: Vec::new(),
+        drafts: Vec::new(),
     })
 }
 
@@ -150,6 +165,7 @@ pub async fn record_access_on(
     Ok(Announcement {
         fleets,
         workspaces: Vec::new(),
+        drafts: Vec::new(),
     })
 }
 
@@ -158,6 +174,26 @@ pub async fn record_access_on(
 pub async fn fleets_changed(streams: &Handle, workspace: &Uuid7) {
     let subject = afd_bus::Subject::Fleets(workspace.clone());
     let publication = streams.publish(&subject, "").await;
+    afd_bus::observe_notification(&subject, publication);
+}
+
+/// A setup draft's durable state changed: its open page reads it again. Carries the
+/// draft's id and nothing else, on the draft's own items subject.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DraftChanged {
+    /// The draft whose state changed.
+    pub changed: Uuid7,
+}
+
+/// Tells `draft`'s open setup page, after the commit that changed it, to read it
+/// again. A lost notice is owed as a gap, which re-reads every page.
+pub async fn draft_changed(streams: &Handle, draft: &Uuid7) {
+    let subject = afd_bus::Subject::ThreadItems(draft.clone());
+    let notice = DraftChanged {
+        changed: draft.clone(),
+    };
+    let publication = streams.publish_frame(&subject, &notice).await;
     afd_bus::observe_notification(&subject, publication);
 }
 

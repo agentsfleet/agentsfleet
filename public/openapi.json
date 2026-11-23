@@ -13599,7 +13599,7 @@
           "Drafts"
         ],
         "summary": "Stream your private setup progress",
-        "description": "Streams private setup progress, partial replies and `context.progress` summary status. After reconnecting, reload the draft and messages; `Last-Event-ID` is only a temporary hint. Access is checked before each message and at least every ten seconds while idle.",
+        "description": "Streams private setup progress, partial replies and `context.progress` summary status. After reconnecting, reload the draft and messages; `Last-Event-ID` is only a temporary hint. Access is checked before each message.",
         "operationId": "stream_workspace_draft",
         "parameters": [
           {

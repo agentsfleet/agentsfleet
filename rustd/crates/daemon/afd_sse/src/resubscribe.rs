@@ -179,6 +179,15 @@ impl Link {
         }
     }
 
+    /// When a lost subscription is next retried; `None` while open or once closed.
+    #[must_use]
+    pub const fn retry_at(&self) -> Option<Instant> {
+        match self.state {
+            State::Retrying { at, .. } => Some(at),
+            State::Open(_) | State::Closed => None,
+        }
+    }
+
     /// When the pending retry is due; `None` when none is pending. Answers
     /// the instant rather than waiting on it, so the wait borrows no link.
     fn retry_due(&self) -> Option<Instant> {

@@ -44,6 +44,9 @@ impl Drafts {
             .await
             .map_err(query(CONTEXT))?;
         tx.commit().await.map_err(query(CONTEXT))?;
+        if stopped.is_some() {
+            self.changed(id).await;
+        }
         if let Some(Stopped {
             stop: Stop::Cancelled { runs, .. },
             ..

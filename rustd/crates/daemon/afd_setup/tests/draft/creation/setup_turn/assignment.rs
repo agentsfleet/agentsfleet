@@ -173,7 +173,7 @@ async fn a_head_this_build_cannot_read_fails_its_message_and_passes() {
         .expect("the assignment answers");
     assert!(matches!(found, SetupAssignment::Passed), "{found:?}");
     tx.commit().await.expect("the assignment commits");
-    owed.settle(&c.base.drafts);
+    owed.settle(&c.base.drafts).await;
     let (status, reason): (String, Option<String>) = sqlx::query_as(
         "SELECT status, failure_reason FROM thread.turns WHERE thread_id=$1 AND sequence=1",
     )
@@ -210,7 +210,7 @@ async fn a_payer_with_no_wallet_fails_the_message_for_its_balance() {
         .expect("the assignment answers");
     assert!(matches!(found, SetupAssignment::Passed), "{found:?}");
     tx.commit().await.expect("the assignment commits");
-    owed.settle(&c.base.drafts);
+    owed.settle(&c.base.drafts).await;
     let (status, reason): (String, Option<String>) = sqlx::query_as(
         "SELECT status, failure_reason FROM thread.turns WHERE thread_id=$1 AND sequence=1",
     )

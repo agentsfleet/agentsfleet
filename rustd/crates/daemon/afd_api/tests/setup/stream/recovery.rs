@@ -60,39 +60,31 @@ async fn subscription_gap_and_lag_request_resync_without_private_text() {
     live.cleanup().await;
 }
 
+/// A bus that shut down never announces again, so the stream ends — after at
+/// most a resync — and the client reconnects to a replica that is serving. No
+/// timer keeps reading Postgres for it.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn draft_stream_resyncs_when_its_subscription_ends() {
+async fn draft_stream_ends_when_its_bus_shuts_down() {
     let live = Live::create(1).await;
     let mut body = live.open().await;
     live.bus.shutdown().await.expect("the bus shuts down");
-    let resync = tokio::time::timeout(super::DELIVERY, body.next())
-        .await
-        .expect("a lost subscription is announced")
-        .expect("the running draft stays open")
-        .expect("infallible body");
-    assert_eq!(resync.as_ref(), b"event: draft.resync\ndata: {}\n\n");
-    let heartbeat =
-        tokio::time::timeout(afd_sse::HEARTBEAT_INTERVAL + super::DELIVERY, body.next())
+    loop {
+        let next = tokio::time::timeout(super::DELIVERY, body.next())
             .await
-            .expect("a stopped bus retains periodic durable reads")
-            .expect("the running draft stays open")
-            .expect("infallible body");
-    assert_eq!(
-        heartbeat.as_ref(),
-        b"event: heartbeat\ndata: {\"kind\":\"heartbeat\"}\n\n"
-    );
-    live.mutate("UPDATE thread.turns SET status='completed' WHERE thread_id=$1")
-        .await;
-    live.mutate("UPDATE setup.drafts SET status='closed',closed_at=now(),expires_at=now()+interval '1 day' WHERE id=$1").await;
-    assert!(
-        frame(&mut body)
-            .await
-            .contains("event: message.completed\n")
-    );
-    assert!(frame(&mut body).await.contains("event: draft.closed\n"));
-    closed(&mut body).await;
+            .expect("a shut bus ends the stream promptly");
+        let Some(chunk) = next else {
+            break;
+        };
+        let chunk = chunk.expect("infallible body");
+        assert_eq!(
+            chunk.as_ref(),
+            b"event: draft.resync\ndata: {}\n\n",
+            "only a resync precedes the end"
+        );
+    }
     drop(body);
+    assert_eq!(live.readers(), 0);
     live.cleanup().await;
 }
 

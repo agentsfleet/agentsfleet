@@ -96,6 +96,14 @@ impl Drafts {
         }
     }
 
+    /// Tells `draft`'s open setup page, after the commit that changed its durable
+    /// state, to read it again.
+    pub(crate) async fn changed(&self, draft: &Uuid7) {
+        if let Some(bus) = &self.bus {
+            afd_turns::view::activity::draft_changed(bus, draft).await;
+        }
+    }
+
     /// Sends Cancel to each runner whose draft run a commit just killed or
     /// deleted. A hint: the durable mark or the missing row refuses the
     /// runner's next renewal either way.

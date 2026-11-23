@@ -57,6 +57,12 @@ pub(super) async fn open_runtime(
     let kek = Arc::new(config.kek().clone());
     let broker = open_broker(config, &database, &kek, clients.broker).await;
     let bus = afd_bus::nats::connect(config.bus()).await?;
+    // A daemon that died between a commit and its publish took that notice with it.
+    // Every replica's readers re-read once when one boots, so none waits on it.
+    afd_bus::observe_notification(
+        &afd_bus::Subject::Gap,
+        bus.publish(&afd_bus::Subject::Gap, "").await,
+    );
     let live = live_over(&bus, config.sse_max_streams());
     let observed = live.clone();
     let plane = plane::build(plane::Inputs {
