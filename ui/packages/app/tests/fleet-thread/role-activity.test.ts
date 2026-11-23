@@ -1,7 +1,7 @@
 import { ev, mockStream, renderThread } from "./harness";
 import { describe, expect, it } from "vitest";
 import { act, fireEvent, screen, within } from "@testing-library/react";
-import { OUTCOME, RUNNER_REFUSAL_SENTENCE } from "@/lib/events/event-summary";
+import { OUTCOME, RUNNER_REFUSAL_SENTENCE } from "@/lib/turns/turn-summary";
 import { FleetThread } from "@/components/domain/conversation/thread/FleetThread";
 
 describe("FleetThread — role rendering: activity groups and traces", () => {
@@ -35,7 +35,7 @@ describe("FleetThread — role rendering: activity groups and traces", () => {
     mockStream([ev({role: "system", actor: "slack:member", text: "Message received", reply: "", status: "received", custom: {requestJson: "{}"}})]);
     renderThread();
     expect(screen.getByText("Message received")).toBeTruthy();
-    expect(screen.queryByRole("button", {name: "View event"})).toBeNull();
+    expect(screen.queryByRole("button", {name: "View turn"})).toBeNull();
   });
   it("collapses a run of identical deliveries into one row that opens on demand", async () => {
     const burst = Array.from({ length: 15 }, (_, i) =>
@@ -96,11 +96,11 @@ describe("FleetThread — role rendering: activity groups and traces", () => {
     await act(async () => {
       fireEvent.click(within(screen.getByRole("log", { name: "Chat" })).getByRole("button", { expanded: false }));
     });
-    expect(screen.getAllByText("View event")).toHaveLength(2);
+    expect(screen.getAllByText("View turn")).toHaveLength(2);
   });
 
   it("keeps reply-bearing activity as separate conversation turns", async () => {
-    // Reply-bearing events are not grouped: each trigger and response needs
+    // Reply-bearing turns are not grouped: each trigger and response needs
     // its own assistant-ui root, even when the trigger text is identical.
     const member = (id: string, reply: string, requestJson?: string) =>
       ev({
@@ -125,7 +125,7 @@ describe("FleetThread — role rendering: activity groups and traces", () => {
     expect(container.querySelectorAll('[data-role="assistant"]')).toHaveLength(
       2,
     );
-    fireEvent.click(screen.getByRole("button", { name: "View event" }));
+    fireEvent.click(screen.getByRole("button", { name: "View turn" }));
     expect(screen.getByText(/"repo":\s*"o\/r"/)).toBeTruthy();
   });
 
@@ -247,7 +247,7 @@ describe("FleetThread — role rendering: activity groups and traces", () => {
       /text-muted-foreground/,
     );
     // Disclosure remains reachable beside the source evidence.
-    expect(screen.getByText("View event")).toBeTruthy();
+    expect(screen.getByText("View turn")).toBeTruthy();
   });
 
   it("keeps conversation rows distinct without sender chrome", () => {

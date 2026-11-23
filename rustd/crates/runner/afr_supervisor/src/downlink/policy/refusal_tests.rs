@@ -20,7 +20,7 @@ async fn closed_or_invalid_assignment_stream_never_advertises_a_worker() -> crat
         let capture = Capture::install();
         let (mut plane, mut calls) = plane(|_| Answer::Stall);
         let (updates, receiver) = watch::channel(None);
-        plane.stream.assignments = receiver;
+        plane.stream.policies = receiver;
         if fault != "closed" {
             updates.send_replace(Some(Arc::new(assignment_frame(fault).await?)));
         }

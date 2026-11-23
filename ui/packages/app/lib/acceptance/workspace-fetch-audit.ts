@@ -12,18 +12,18 @@ const STATE_KEY = "__agentsfleetWorkspaceFetchAudit";
 export const WORKSPACE_LIST_PATH = "/v1/tenants/me/workspaces";
 
 // Audited GETs, keyed by their id-free route template so assertions never
-// depend on seeded identifiers. `fleetMessages` vs `fleetEventDetail` is the
+// depend on seeded identifiers. `fleetMessages` vs `fleetTurnDetail` is the
 // chat view's request-count acceptance: one thread read, zero per-turn reads.
 export const AUDITED_PATH = {
   workspaceList: WORKSPACE_LIST_PATH,
   fleetMessages: "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/messages",
-  fleetEventDetail: "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/{event_id}",
+  fleetTurnDetail: "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/turns/{turn_id}",
 } as const;
 
 const FLEET_MESSAGES_PATTERN = /^\/v1\/workspaces\/[^/]+\/fleets\/[^/]+\/messages$/;
 // The trailing segment excludes `stream` so the live tail (which never rides
 // this client anyway) can't be mistaken for a per-turn detail read.
-const FLEET_EVENT_DETAIL_PATTERN = /^\/v1\/workspaces\/[^/]+\/fleets\/[^/]+\/events\/(?!stream$)[^/]+$/;
+const FLEET_TURN_DETAIL_PATTERN = /^\/v1\/workspaces\/[^/]+\/fleets\/[^/]+\/turns\/(?!stream$)[^/]+$/;
 const QUERY_SEPARATOR = "?";
 
 type GlobalWithAudit = typeof globalThis & {
@@ -51,7 +51,7 @@ function auditedKeyFor(path: string): string | null {
   const bare = separator === -1 ? path : path.slice(0, separator);
   if (bare === WORKSPACE_LIST_PATH) return AUDITED_PATH.workspaceList;
   if (FLEET_MESSAGES_PATTERN.test(bare)) return AUDITED_PATH.fleetMessages;
-  if (FLEET_EVENT_DETAIL_PATTERN.test(bare)) return AUDITED_PATH.fleetEventDetail;
+  if (FLEET_TURN_DETAIL_PATTERN.test(bare)) return AUDITED_PATH.fleetTurnDetail;
   return null;
 }
 

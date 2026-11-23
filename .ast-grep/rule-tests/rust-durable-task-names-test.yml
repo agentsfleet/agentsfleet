@@ -1,0 +1,32 @@
+id: rust-durable-task-names
+valid:
+  - |
+    fn path(route: FleetRoute) -> &'static str { match route { FleetRoute::DurableTasks => fleet_path!("/durable_tasks"), _ => "" } }
+  - |
+    pub const RUN_DURABLE_TASK_INPUTS: &str = concatcp!(RUN, "durable_tasks/inputs");
+  - |
+    const ONE: &str = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/durable_tasks/{durable_task_id}";
+  - |
+    const SECTION: &str = "[durable_tasks]\nslice_seconds=60\n[fleet.durable_tasks.defaults]\nmax_runs=1";
+  - |
+    pub struct DecisionDurableTaskVersion { pub durable_task_id: Uuid7, pub generation: u64 }
+  # A supervised tokio task is another word.
+  - |
+    fn f() { let task_id = NEXT_TASK_ID.fetch_add(1, Ordering::Relaxed); handle.await.expect("tasks joined"); }
+invalid:
+  - |
+    fn path() -> &'static str { fleet_path!("/tasks") }
+  - |
+    fn path() -> &'static str { fleet_path!("/durable_tasks/{task_id}") }
+  - |
+    pub const RUN_TASK_INPUTS: &str = concatcp!(RUN, "tasks/inputs");
+  - |
+    fn f(id: &str) -> String { format!("/v1/runners/me/runs/{id}/tasks/decisions") }
+  - |
+    const SECTION: &str = "[tasks]\nslice_seconds=60";
+  - |
+    const SECTION: &str = "[fleet.tasks.defaults]\nmax_runs=1";
+  - |
+    pub struct DecisionTaskVersion { pub task_id: Uuid7, pub generation: u64 }
+  - |
+    fn f() { let body = json!({"task_id": ID}); }

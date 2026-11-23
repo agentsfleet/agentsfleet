@@ -1,7 +1,7 @@
 //! The host-local storage root, and what lives under it.
 //!
 //! ```text
-//!   <home>/sandboxes/<lease_id>/  each lease's sandbox; the engine's base
+//!   <home>/sandboxes/<run_id>/  each run's sandbox; the engine's base
 //!   <home>/git/<workspace>/<owner>/<name>.git
 //!                                 a bare mirror per bound repository
 //!   <home>/toolbox/incoming/      the release a deploy staged: image, manifest
@@ -46,7 +46,7 @@ impl StorageHome {
         Ok(home)
     }
 
-    /// Where lease sandboxes live: the base every engine is built with, so its
+    /// Where run sandboxes live: the base every engine is built with, so its
     /// boot sweep finds what a crashed runner left there.
     #[must_use]
     pub fn sandboxes(&self) -> PathBuf {

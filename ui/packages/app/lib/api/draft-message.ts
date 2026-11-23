@@ -12,5 +12,5 @@ export async function admitDraftMessage(base: string, input: Input, operation: s
     return undefined;
   }
   return setupRequest({path: `${base}/drafts`, method: REQUEST_METHOD.post,
-    body: {...body, source: input.source, authoring_model_ref: input.model}}, CreatedMessageSchema, signal);
+    body: {...body, source: input.source, setup_model_ref: input.model}}, CreatedMessageSchema, signal);
 }

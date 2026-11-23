@@ -41,8 +41,8 @@ pub(crate) fn host_not_allowed(host: &str) -> Error {
 }
 
 /// `host` is, or resolves to, an address this runner never reaches.
-pub(crate) fn address_not_allowed(host: &str) -> Error {
-    Error::from(ErrorKind::AddressNotAllowed {
+pub(crate) fn egress_denied(host: &str) -> Error {
+    Error::from(ErrorKind::EgressDenied {
         host: host.to_owned(),
     })
 }
@@ -120,7 +120,7 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         ("https required", https_required()),
         ("method not allowed", method_not_allowed("TRACE")),
         ("host not allowed", host_not_allowed("h.example")),
-        ("address not allowed", address_not_allowed("10.0.0.1")),
+        ("egress denied", egress_denied("10.0.0.1")),
         ("placement not allowed", placement_not_allowed("w")),
         (
             "credential host not allowed",

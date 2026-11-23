@@ -8,12 +8,12 @@
  * A second session opened Edit setup while the fleet was on revision 1. When
  * that session tries to save a policy edit after revision 2 has landed, the app
  * refuses the stale save, and the fleet keeps revision 2. Both proposals come from
- * the live authoring model, so each request is complete and asks no questions.
+ * the live setup model, so each request is complete and asks no questions.
  */
 import { expect, test } from "@playwright/test";
 import { CHAT_PLACEHOLDER } from "@/components/domain/setup/chat-defaults";
 import { DraftSchema } from "@/lib/api/draft-types";
-import { SAVED_SETUP_LABEL } from "@/lib/events/fleet-activity";
+import { SAVED_SETUP_LABEL } from "@/lib/turns/fleet-activity";
 import { clientFor } from "./fixtures/api-client";
 import { signedInContext, signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
@@ -79,10 +79,6 @@ test.describe("setup revisions", () => {
       await (await editSetupAction(stale)).click();
       await expect(stale).toHaveURL(new RegExp(`/fleets/new\\?fleet=${saved}&setup_revision=1$`));
       await expect(stale.getByLabel(CHAT_COPY.composer)).toBeVisible();
-      const packages = stale.getByRole("switch", {name: "Enable package manager domains"});
-      await expect(packages).toBeEnabled();
-      await packages.click();
-      await expect(packages).toBeChecked();
 
       // Revision 2: the same chat, with the first request still in it, takes one change.
       await (await editSetupAction(page)).click();
@@ -94,6 +90,13 @@ test.describe("setup revisions", () => {
       const response = await created;
       expect(response.status()).toBe(201);
       const draftId = DraftSchema.shape.id.parse((await response.headerValue("location"))?.split("/").at(-1));
+      // The stale edit lands after this chat's draft exists: an editing draft opened earlier
+      // on revision 1 is the creator's to continue (draft-editor.ts editorPatch), so it would
+      // have been this chat's draft rather than a superseded one.
+      const packages = stale.getByRole("switch", {name: "Enable package manager domains"});
+      await expect(packages).toBeEnabled();
+      await packages.click();
+      await expect(packages).toBeChecked();
       await expect.poll(async () => DraftSchema.parse(await clientFor(FIXTURE_KEY.regular)
         .get<unknown>(`/v1/workspaces/${workspaceId}/drafts/${draftId}`)).candidate?.definition.instructions_md ?? "",
       { timeout: PROPOSAL_TIMEOUT_MS }).toContain(SECOND_WORD);
@@ -107,7 +110,7 @@ test.describe("setup revisions", () => {
       expect(second.definition?.instructions_md).toContain(SECOND_WORD);
 
       // The session still on revision 1 cannot save over revision 2.
-      await stale.getByRole("button", {name: "Save and publish", exact: true}).click();
+      await stale.getByRole("button", {name: "Save", exact: true}).click();
       await expect(stale.getByRole("status", {name: "Setup status"})).toContainText("Setup needs attention");
       await expect(stale.getByRole("button", {name: "Retry", exact: true})).toBeVisible();
       const after = await readFixtureFleet(FIXTURE_KEY.regular, workspaceId, saved);

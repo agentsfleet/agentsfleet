@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 pub enum Command {
     /// The next renewal also observes the durable cancellation marker.
     Cancel {
-        /// Lease whose task must stop.
-        lease_id: Uuid7,
+        /// Run whose task must stop.
+        run_id: Uuid7,
     },
     /// Reload the runner's status, connection owner and credential digest.
     Recheck,

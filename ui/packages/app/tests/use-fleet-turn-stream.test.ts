@@ -1,0 +1,304 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
+import { CONNECTION_STATUS, useFleetTurnStream } from "../components/domain/conversation/stream/useFleetTurnStream";
+import { __resetRegistryForTests } from "@/tests/helpers/fleet-streams";
+import { OUTCOME } from "@/lib/turns/turn-summary";
+import { FRAME_KIND } from "@/lib/api/turns-types";
+import { FakeEventSource } from "./helpers/fake-event-source";
+import { row, mount, WS, ZID } from "./helpers/fleet-stream-hook-fixtures";
+import { streamWrapper } from "./helpers/fleet-streams";
+
+describe("useFleetTurnStream", () => {
+  beforeEach(() => {
+    FakeEventSource.install();
+    __resetRegistryForTests();
+  });
+
+  afterEach(() => {
+    cleanup();
+    __resetRegistryForTests();
+    FakeEventSource.uninstall();
+  });
+
+  it("opens an EventSource against the same-origin stream URL on mount", () => {
+    mount();
+    expect(FakeEventSource.instances.length).toBe(1);
+    expect(FakeEventSource.instances[0]!.url).toBe(
+      "/live/v1/workspaces/ws_1/fleets/zomb_1/turns/stream",
+    );
+  });
+
+  it("the stream URL carries no client token — cookie-authed, no bearer", () => {
+    mount([row()]);
+    const url = FakeEventSource.instances[0]!.url;
+    expect(url).not.toMatch(/token/i);
+    expect(url).not.toMatch(/authorization/i);
+  });
+
+  it("starts in CONNECTING and flips to LIVE only after a heartbeat", async () => {
+    const { result } = mount();
+    expect(result.current.connectionStatus).toBe(CONNECTION_STATUS.CONNECTING);
+    act(() => FakeEventSource.instances[0]!.open());
+    expect(result.current.connectionStatus).toBe(CONNECTION_STATUS.CONNECTING);
+    act(() => FakeEventSource.instances[0]!.heartbeat());
+    await waitFor(() => {
+      expect(result.current.connectionStatus).toBe(CONNECTION_STATUS.LIVE);
+    });
+  });
+
+  it("lets the operator retry the connection immediately", () => {
+    const { result } = mount();
+    const first = FakeEventSource.instances[0]!;
+    act(() => result.current.retryConnection());
+    expect(first.closed).toBe(true);
+    expect(result.current.connectionStatus).toBe(CONNECTION_STATUS.CONNECTING);
+    expect(FakeEventSource.instances).toHaveLength(2);
+  });
+
+  it("deduplicates a double error into one reconnect", async () => {
+    vi.useFakeTimers();
+    try {
+      mount();
+      expect(FakeEventSource.instances.length).toBe(1);
+      // Repeated error callbacks from one source share the already-scheduled
+      // reconnect, so only one replacement EventSource is created.
+      act(() => FakeEventSource.instances[0]!.fail());
+      act(() => FakeEventSource.instances[0]!.fail());
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(20_000);
+      });
+      expect(FakeEventSource.instances.length).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("seeds from the server-rendered initial rows and sorts by createdAt ascending", async () => {
+    const t0 = Date.UTC(2026, 4, 15, 18, 0, 0);
+    const t1 = Date.UTC(2026, 4, 15, 18, 30, 0);
+    const { result } = mount([
+      row({ turn_id: "evt_newer", created_at: new Date(t1).toISOString(), response_text: "second" }),
+      row({ turn_id: "evt_older", created_at: new Date(t0).toISOString(), response_text: "first" }),
+    ]);
+    await waitFor(() => expect(result.current.turns).toHaveLength(2));
+    expect(result.current.turns.map((e) => e.id)).toEqual(["evt_older", "evt_newer"]);
+  });
+
+  it("reconciles a refreshed terminal row without reopening the live stream", async () => {
+    const received = row({ status: "received", response_text: null });
+    const view = renderHook(
+      ({ initial }) => useFleetTurnStream(WS, ZID, initial),
+      { initialProps: { initial: [received] }, wrapper: streamWrapper },
+    );
+    await waitFor(() => expect(view.result.current.turns).toHaveLength(1));
+    const source = FakeEventSource.instances[0];
+
+    view.rerender({
+      initial: [row({
+        status: "fleet_error",
+        response_text: null,
+        failure_label: "startup_posture",
+      })],
+    });
+
+    await waitFor(() => expect(view.result.current.turns[0]).toMatchObject({
+      status: "fleet_error",
+      outcome: "Failed a startup safety check",
+    }));
+    expect(FakeEventSource.instances).toHaveLength(1);
+    expect(FakeEventSource.instances[0]).toBe(source);
+  });
+
+  it("applies a saved row the page holds, such as the turn a Stop answered with", async () => {
+    const { result } = mount([row({ status: "received", response_text: null })]);
+    await waitFor(() => expect(result.current.turns).toHaveLength(1));
+    act(() => result.current.reconcileRows([row({ status: "cancelled", response_text: null })]));
+    await waitFor(() => expect(result.current.turns[0]).toMatchObject({ status: "cancelled" }));
+  });
+
+  it("maps actor → role: steer:* → user, webhook:* → system, fleet → assistant", async () => {
+    const { result } = mount([
+      row({ turn_id: "u", actor: "steer:alice@example.com" }),
+      row({ turn_id: "w", actor: "webhook:github" }),
+      row({ turn_id: "a", actor: "fleet" }),
+      row({ turn_id: "c", actor: "cron" }),
+    ]);
+    await waitFor(() => expect(result.current.turns).toHaveLength(4));
+    const byId = new Map(result.current.turns.map((e) => [e.id, e]));
+    expect(byId.get("u")!.role).toBe("user");
+    expect(byId.get("w")!.role).toBe("system");
+    expect(byId.get("a")!.role).toBe("assistant");
+    expect(byId.get("c")!.role).toBe("system");
+  });
+
+  it("appends new live-stream TURN_RECEIVED frames after the seed", async () => {
+    const { result } = mount([row({ turn_id: "evt_seed" })]);
+    await waitFor(() => expect(result.current.turns).toHaveLength(1));
+    act(() => {
+      FakeEventSource.instances[0]!.emit({
+        kind: FRAME_KIND.TURN_RECEIVED,
+        turn_id: "evt_live",
+        actor: "webhook:github",
+      });
+    });
+    await waitFor(() => expect(result.current.turns).toHaveLength(2));
+    expect(result.current.turns[1]!.id).toBe("evt_live");
+    expect(result.current.turns[1]!.role).toBe("system");
+    expect(result.current.turns[1]!.status).toBe("received");
+  });
+
+  it("CHUNK frames concatenate text on the assistant message for that turn_id", async () => {
+    const { result } = mount();
+    act(() => {
+      FakeEventSource.instances[0]!.emit({
+        kind: FRAME_KIND.TURN_RECEIVED,
+        turn_id: "evt_run",
+        actor: "fleet",
+      });
+    });
+    act(() => {
+      FakeEventSource.instances[0]!.emit({
+        kind: FRAME_KIND.CHUNK,
+        turn_id: "evt_run",
+        text: "Hello, ",
+        text_kind: "answer",
+        stream_seq: 0,
+        stream_start: true,
+        stream_contiguous: true,
+      });
+    });
+    act(() => {
+      FakeEventSource.instances[0]!.emit({
+        kind: FRAME_KIND.CHUNK,
+        turn_id: "evt_run",
+        text: "world.",
+        text_kind: "answer",
+        stream_seq: 1,
+        stream_contiguous: true,
+      });
+    });
+    await waitFor(() => expect(result.current.turns[0]?.reply).toBe("Hello, world."));
+    expect(result.current.turns[0]!.role).toBe("assistant");
+  });
+
+  it("TURN_COMPLETE updates the turn status to processed", async () => {
+    const { result } = mount();
+    act(() => {
+      FakeEventSource.instances[0]!.emit({
+        kind: FRAME_KIND.TURN_RECEIVED,
+        turn_id: "evt_done",
+        actor: "fleet",
+      });
+    });
+    await waitFor(() => expect(result.current.turns).toHaveLength(1));
+    // Work is reported on the turn itself, not as a thread-wide flag: an
+    // aggregate "something is running" was true forever once any run stranded.
+    expect(result.current.turns[0]!.status).toBe("received");
+    expect(result.current.turns[0]!.outcome).toBe(OUTCOME.WORKING);
+    act(() => {
+      FakeEventSource.instances[0]!.emit({
+        kind: FRAME_KIND.TURN_COMPLETE,
+        turn_id: "evt_done",
+        status: "processed",
+      });
+    });
+    await waitFor(() => expect(result.current.turns[0]!.status).toBe("processed"));
+    // The outcome follows the status — a finished turn stops saying it works.
+    expect(result.current.turns[0]!.outcome).toBe(OUTCOME.COMPLETED);
+  });
+
+  it("a stranded turn cannot report the whole fleet as working", () => {
+    // The hook exposes no aggregate running flag at all. That flag was read by
+    // the composer's old hold, so one run that never completed silently turned
+    // the console read-only.
+    const { result } = mount();
+    expect("isRunning" in result.current).toBe(false);
+  });
+
+  it("appendOptimistic + reconcileOptimistic swaps the temp id for the real one", async () => {
+    const { result } = mount();
+    let tempId = "";
+    act(() => {
+      tempId = result.current.appendOptimistic("howdy", "steer:alice@example.com");
+    });
+    await waitFor(() => expect(result.current.turns).toHaveLength(1));
+    expect(result.current.turns[0]!.id).toBe(tempId);
+    expect(result.current.turns[0]!.status).toBe("optimistic");
+    expect(result.current.turns[0]!.text).toBe("howdy");
+    expect(result.current.turns[0]!.role).toBe("user");
+    expect(result.current.convertTurn(result.current.turns[0]!).metadata?.custom?.["queued"]).toBe(true);
+
+    act(() => {
+      result.current.reconcileOptimistic(tempId, "evt_real", false);
+    });
+    await waitFor(() => expect(result.current.turns[0]!.id).toBe("evt_real"));
+    expect(result.current.turns[0]!.status).toBe("received");
+    expect(result.current.convertTurn(result.current.turns[0]!).metadata?.custom?.["queued"]).toBe(true);
+    act(() => FakeEventSource.instances[0]!.emit({
+      kind: FRAME_KIND.TURN_RECEIVED,
+      turn_id: "evt_real",
+      actor: "steer:alice@example.com",
+      created_at: new Date().toISOString(),
+    }));
+    expect(result.current.convertTurn(result.current.turns[0]!).metadata?.custom?.["queued"]).toBe(false);
+  });
+
+  it("keeps a later steer queued while the first run streams, then starts it without mixing replies", async () => {
+    const { result } = mount();
+    let first = "";
+    let second = "";
+    act(() => {
+      first = result.current.appendOptimistic("remember me", "steer:alice@example.com");
+      second = result.current.appendOptimistic("what did I say?", "steer:alice@example.com");
+      result.current.reconcileOptimistic(first, "evt_first", false);
+      result.current.reconcileOptimistic(second, "evt_second", false);
+    });
+    const source = FakeEventSource.instances[0]!;
+    act(() => {
+      source.emit({ kind: FRAME_KIND.TURN_RECEIVED, turn_id: "evt_first", actor: "steer:alice@example.com", created_at: "1970-01-01T00:00:00.001Z" });
+      source.emit({ kind: FRAME_KIND.CHUNK, turn_id: "evt_first", text: "Saved.", text_kind: "answer", stream_seq: 0, stream_start: true, stream_contiguous: true });
+    });
+    await waitFor(() => expect(result.current.turns.map((turn) => turn.reply)).toEqual(["Saved.", ""]));
+    expect(result.current.convertTurn(result.current.turns[1]!).metadata?.custom?.["queued"]).toBe(true);
+
+    act(() => {
+      source.emit({ kind: FRAME_KIND.TURN_COMPLETE, turn_id: "evt_first", status: "processed", final_reply: "Saved." });
+      source.emit({ kind: FRAME_KIND.TURN_RECEIVED, turn_id: "evt_second", actor: "steer:alice@example.com", created_at: "1970-01-01T00:00:00.002Z" });
+      source.emit({ kind: FRAME_KIND.CHUNK, turn_id: "evt_second", text: "You said remember me.", text_kind: "answer", stream_seq: 0, stream_start: true, stream_contiguous: true });
+    });
+    await waitFor(() => expect(result.current.turns.map((turn) => turn.reply)).toEqual(["Saved.", "You said remember me."]));
+    expect(result.current.convertTurn(result.current.turns[1]!).metadata?.custom?.["queued"]).toBe(false);
+  });
+
+  it("discardOptimistic removes a refused send's row from the thread", async () => {
+    const { result } = mount();
+    let tempId = "";
+    act(() => {
+      tempId = result.current.appendOptimistic("send that fails", "steer:pending");
+    });
+    await waitFor(() => expect(result.current.turns).toHaveLength(1));
+    act(() => result.current.discardOptimistic(tempId));
+    await waitFor(() => expect(result.current.turns).toHaveLength(0));
+  });
+
+  it("flips to RECONNECTING on onerror and reopens via backoff", async () => {
+    vi.useFakeTimers();
+    const { result } = mount();
+    act(() => FakeEventSource.instances[0]!.open());
+    expect(result.current.connectionStatus).toBe(CONNECTION_STATUS.CONNECTING);
+    act(() => FakeEventSource.instances[0]!.heartbeat());
+    await vi.waitFor(() => {
+      expect(result.current.connectionStatus).toBe(CONNECTION_STATUS.LIVE);
+    });
+    act(() => FakeEventSource.instances[0]!.fail());
+    expect(result.current.connectionStatus).toBe(CONNECTION_STATUS.RECONNECTING);
+    expect(FakeEventSource.instances[0]!.closed).toBe(true);
+    expect(FakeEventSource.instances).toHaveLength(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
+    expect(FakeEventSource.instances).toHaveLength(2);
+    vi.useRealTimers();
+  });
+
+});

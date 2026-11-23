@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { MAX_LIST_WALK_REQUESTS, walkList } from "./list-walk";
+import { walkList } from "./list-walk";
 
 describe("walkList", () => {
   it("accumulates items across pages and stops on a null cursor", async () => {
@@ -23,9 +23,9 @@ describe("walkList", () => {
     expect(res.total).toBe(2);
   });
 
-  it("refuses a runaway cursor after the request bound", async () => {
+  it("fails when the server repeats a cursor it already followed", async () => {
     const fetchPage = vi.fn().mockResolvedValue({ items: ["x"], total: null, next_cursor: "same" });
-    await expect(walkList<string>("test list", fetchPage)).rejects.toThrow(/did not end/);
-    expect(fetchPage).toHaveBeenCalledTimes(MAX_LIST_WALK_REQUESTS);
+    await expect(walkList<string>("test list", fetchPage)).rejects.toThrow(/repeated page cursor same/);
+    expect(fetchPage).toHaveBeenCalledTimes(2);
   });
 });

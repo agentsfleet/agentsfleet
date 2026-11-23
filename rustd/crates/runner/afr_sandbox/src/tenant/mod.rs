@@ -22,7 +22,6 @@ use std::os::fd::{FromRawFd as _, OwnedFd, RawFd};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 
-use clap::Parser as _;
 use rustix::io::FdFlags;
 
 use crate::error::{Result, not_inherited};
@@ -68,23 +67,7 @@ pub struct Inherited {
     pub executor: RawFd,
 }
 
-/// The sandbox entry's command line, for a caller with no parser of its own.
-#[derive(Debug, clap::Parser)]
-struct Entry {
-    #[command(flatten)]
-    inherited: Inherited,
-}
-
 impl Inherited {
-    /// The descriptors `args` names, its first item being the entry's own
-    /// name.
-    ///
-    /// # Errors
-    /// A flag is missing or does not name a number.
-    pub fn parse_from(args: impl IntoIterator<Item = OsString>) -> Result<Self, clap::Error> {
-        Entry::try_parse_from(args).map(|entry| entry.inherited)
-    }
-
     /// The sandbox entry's flags naming all three.
     #[must_use]
     pub fn arguments(self) -> [OsString; 6] {

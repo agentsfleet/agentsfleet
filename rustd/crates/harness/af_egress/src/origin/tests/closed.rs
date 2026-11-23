@@ -1,4 +1,4 @@
-//! Closed rules: a rule that lists its permitted fields admits no other key
+//! Closed rules: a rule that lists its permitted fields allows no other key
 //! and no query, and says which it refused.
 
 use af_wire::policy::{
@@ -6,7 +6,7 @@ use af_wire::policy::{
 };
 use reqwest::Method;
 
-use super::super::{KEY_ECHO_MAX, QUERY_REFUSED, admits, closed_refusal};
+use super::super::{QUERY_REFUSED, allows, closed_refusal};
 use super::{origin, rule, url};
 
 /// The rule `afd_gate` compiles for a Pull Request: three locked fields and
@@ -46,10 +46,10 @@ fn draft_pull_request() -> HttpOriginPolicy<'static> {
 const DRAFT_PULL: &str = r#"{"head":"agentsfleet-repair/run-1","base":"dev","draft":true,"title":"fix","body":"why","maintainer_can_modify":true}"#;
 
 #[test]
-fn should_admit_the_draft_pull_request_a_binding_authorises() {
+fn should_allow_the_draft_pull_request_a_binding_authorises() {
     let at = url("https://api.github.com/repos/acme/widgets/pulls");
 
-    assert!(admits(
+    assert!(allows(
         &draft_pull_request(),
         &Method::POST,
         &at,
@@ -69,14 +69,14 @@ fn should_refuse_an_unlisted_key_or_a_query_under_a_locked_rule() {
         r#"{"head":"agentsfleet-repair/run-1","base":"dev","draft":true,"issue":7}"#,
         r#"{"head":"agentsfleet-repair/run-1","base":"dev","draft":true,"head_repo":"else/where"}"#,
     ] {
-        assert!(!admits(&pulls, &Method::POST, &at, Some(body)), "{body}");
+        assert!(!allows(&pulls, &Method::POST, &at, Some(body)), "{body}");
     }
     for query in ["?draft=false", "?", "?base=main"] {
         let queried = url(&format!(
             "https://api.github.com/repos/acme/widgets/pulls{query}"
         ));
         assert!(
-            !admits(&pulls, &Method::POST, &queried, Some(DRAFT_PULL)),
+            !allows(&pulls, &Method::POST, &queried, Some(DRAFT_PULL)),
             "{query}"
         );
     }
@@ -99,14 +99,14 @@ fn should_check_only_the_locked_fields_of_an_open_rule() {
     let refs = origin(vec![refs]);
     let at = url("https://api.github.com/repos/acme/widgets/git/refs");
 
-    assert!(admits(
+    assert!(allows(
         &refs,
         &Method::POST,
         &at,
         Some(r#"{"ref":"refs/heads/agentsfleet-repair/run-1","sha":"abc"}"#)
     ));
     // Its locked value still binds.
-    assert!(!admits(
+    assert!(!allows(
         &refs,
         &Method::POST,
         &at,
@@ -125,7 +125,7 @@ fn should_refuse_a_commit_that_names_its_own_identity() {
     let commits = origin(vec![commits]);
     let at = url("https://api.github.com/repos/acme/widgets/git/commits");
 
-    assert!(admits(
+    assert!(allows(
         &commits,
         &Method::POST,
         &at,
@@ -137,17 +137,17 @@ fn should_refuse_a_commit_that_names_its_own_identity() {
         r#""signature":"-----BEGIN PGP SIGNATURE-----""#,
     ] {
         let body = format!(r#"{{"message":"fix","tree":"abc","parents":["def"],{identity}}}"#);
-        assert!(!admits(&commits, &Method::POST, &at, Some(&body)), "{body}");
+        assert!(!allows(&commits, &Method::POST, &at, Some(&body)), "{body}");
     }
     // A body whose keys cannot be listed is refused under a closed rule, even
     // one that locks none.
     for body in ["not json", "[]", r#"{"message":"a","message":"b"}"#] {
-        assert!(!admits(&commits, &Method::POST, &at, Some(body)), "{body}");
+        assert!(!allows(&commits, &Method::POST, &at, Some(body)), "{body}");
     }
 }
 
 #[test]
-fn should_admit_a_bodyless_request_under_a_closed_rule_and_still_refuse_its_query() {
+fn should_allow_a_bodyless_request_under_a_closed_rule_and_still_refuse_its_query() {
     // No body carries no key, so a closed rule that locks none has nothing to
     // refuse; the query is refused whether or not a body came with it.
     let mut commits = rule(
@@ -160,8 +160,8 @@ fn should_admit_a_bodyless_request_under_a_closed_rule_and_still_refuse_its_quer
     let at = url("https://api.github.com/repos/acme/widgets/git/commits");
     let queried = url("https://api.github.com/repos/acme/widgets/git/commits?tree=abc");
 
-    assert!(admits(&commits, &Method::POST, &at, None));
-    assert!(!admits(&commits, &Method::POST, &queried, None));
+    assert!(allows(&commits, &Method::POST, &at, None));
+    assert!(!allows(&commits, &Method::POST, &queried, None));
 }
 
 #[test]
@@ -188,17 +188,17 @@ fn should_say_which_key_or_query_a_closed_rule_refused() {
 }
 
 #[test]
-fn should_echo_a_refused_key_escaped_and_cut_to_its_cap() {
+fn should_echo_a_refused_key_whole_and_escaped() {
     let pulls = draft_pull_request();
     let at = url("https://api.github.com/repos/acme/widgets/pulls");
-    let long = "k".repeat(KEY_ECHO_MAX + 36);
+    let long = "k".repeat(100);
     let body =
         format!(r#"{{"head":"agentsfleet-repair/run-1","base":"dev","draft":true,"{long}":1}}"#);
     assert_eq!(
         closed_refusal(&pulls, &Method::POST, &at, Some(&body)),
         Some(format!(
             "it sends \"{}\", which this rule does not list",
-            "k".repeat(KEY_ECHO_MAX)
+            "k".repeat(100)
         ))
     );
 
@@ -211,20 +211,20 @@ fn should_echo_a_refused_key_escaped_and_cut_to_its_cap() {
 }
 
 #[test]
-fn should_not_blame_a_key_for_a_path_admits_refuses_before_any_rule() {
+fn should_not_blame_a_key_for_a_path_allows_refuses_before_any_rule() {
     let pulls = draft_pull_request();
     let issue = r#"{"head":"agentsfleet-repair/run-1","base":"dev","draft":true,"issue":7}"#;
     // The closed rule's path, on a port `trusted_path` refuses: the request
-    // was never a rule's to admit, so no key is the reason.
+    // was never a rule's to allow, so no key is the reason.
     let off_port = url("https://api.github.com:8443/repos/acme/widgets/pulls");
-    assert!(!admits(&pulls, &Method::POST, &off_port, Some(issue)));
+    assert!(!allows(&pulls, &Method::POST, &off_port, Some(issue)));
     assert_eq!(
         closed_refusal(&pulls, &Method::POST, &off_port, Some(issue)),
         None
     );
 }
 
-/// One `POST /repos/acme/widgets/git/refs` rule as a lease carries it, locking
+/// One `POST /repos/acme/widgets/git/refs` rule as a run carries it, locking
 /// `ref`, with `permitted` spliced in as written on the wire.
 #[expect(
     clippy::expect_used,
@@ -252,18 +252,18 @@ fn should_read_an_absent_list_as_open_and_an_empty_one_as_closed() {
         open.requests.first().map(|rule| &rule.permitted_fields),
         Some(&None)
     );
-    assert!(admits(&open, &Method::POST, &at, Some(with_sha)));
+    assert!(allows(&open, &Method::POST, &at, Some(with_sha)));
 
-    // Present but empty: the rule admits its locked field alone, and no query.
+    // Present but empty: the rule allows its locked field alone, and no query.
     let shut = decoded_ref_rule(r#","permitted_fields":[]"#);
     assert_eq!(
         shut.requests.first().map(|rule| &rule.permitted_fields),
         Some(&Some(Vec::new()))
     );
-    assert!(admits(&shut, &Method::POST, &at, Some(locked_only)));
-    assert!(!admits(&shut, &Method::POST, &at, Some(with_sha)));
+    assert!(allows(&shut, &Method::POST, &at, Some(locked_only)));
+    assert!(!allows(&shut, &Method::POST, &at, Some(with_sha)));
     let queried = url("https://api.github.com/repos/acme/widgets/git/refs?x=1");
-    assert!(!admits(&shut, &Method::POST, &queried, Some(locked_only)));
+    assert!(!allows(&shut, &Method::POST, &queried, Some(locked_only)));
     assert_eq!(
         closed_refusal(&shut, &Method::POST, &at, Some(with_sha)).as_deref(),
         Some(r#"it sends "sha", which this rule does not list"#)

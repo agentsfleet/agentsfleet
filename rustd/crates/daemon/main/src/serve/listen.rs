@@ -51,6 +51,7 @@ pub async fn dual_stack_listener(port: u16) -> std::io::Result<TcpListener> {
 pub(super) async fn listen(
     port: u16,
     router: axum::Router,
+    read_timeout: std::time::Duration,
     supervisor: &mut Supervisor,
     drain: Drain,
 ) -> Result<SocketAddr, BootFailure> {
@@ -59,7 +60,7 @@ pub(super) async fn listen(
     // `token` is the supervisor's: the loop passes it to each connection as the
     // ABORT signal, which fires only after the drain's bound has expired.
     supervisor.spawn(ACCEPT_LOOP, move |token| {
-        accept_loop(listener, router, drain, token)
+        accept_loop(listener, router, read_timeout, drain, token)
     });
     Ok(address)
 }

@@ -37,15 +37,15 @@
 //! `afd_fleet::error::detail` already draws: WHAT WENT WRONG is this
 //! type, rich and structured, for the daemon's own reasoning and its logs; WHAT
 //! THE CALLER IS TOLD is a code and a sentence chosen by the handler. Keeping
-//! them apart is what lets this crate say `budget.daily_nanos is above the
-//! cap` internally while the caller still reads one stable code.
+//! them apart is what lets this crate say `budget.daily_nanos must be greater
+//! than zero` internally while the caller still reads one stable code.
 //!
 //! One code for the whole crate is deliberate. An author fixes a configuration
 //! document the same way whichever rule they broke, so a caller has no branch
 //! to write on a finer code — and the detail they need is in the message, which
 //! is where the structure below goes.
 //!
-//! # Four verdicts a reader might guess wrong
+//! # Two verdicts a reader might guess wrong
 //!
 //! 1. A wrong-typed `name`, `triggers`, `tools`, `network` or `budget` answers
 //!    [`InvalidFieldType`](Error::InvalidFieldType), never
@@ -54,12 +54,6 @@
 //!    rather than being dropped, so a fleet never silently runs on a model its
 //!    author did not name. A non-string `description` answers the same shape
 //!    error for the identical input.
-//! 3. A gate rule's failure keeps its own class: a `threshold_count` of zero
-//!    answers [`InvalidThreshold`](Error::InvalidThreshold), not a missing field.
-//! 4. An out-of-range anomaly threshold answers
-//!    [`InvalidThreshold`](Error::InvalidThreshold), not `InvalidBudget`. It
-//!    bounds a COUNT OF ACTIONS, so it borrows neither a constant nor an error
-//!    named for dollars (RULE UFS).
 
 use af_core::error_code::{self, ErrorCode};
 
@@ -183,18 +177,6 @@ pub(crate) enum ErrorKind {
         reason: &'static str,
     },
 
-    /// An anomaly rule's threshold is outside its bound.
-    ///
-    /// Separate from [`InvalidBudget`](Error::InvalidBudget) because these
-    /// bound a count of actions and a span of seconds, not money.
-    #[error("`{field}` is not a threshold: {reason}")]
-    InvalidThreshold {
-        /// Which threshold.
-        field: &'static str,
-        /// Which rule it broke.
-        reason: &'static str,
-    },
-
     /// The trigger set is over its cap, holds a duplicate, or names a channel
     /// or source its kind cannot use.
     ///
@@ -280,9 +262,9 @@ impl Error {
     #[must_use]
     pub fn field(&self) -> Option<&'static str> {
         match self.kind() {
-            ErrorKind::MissingRequiredField { field }
-            | ErrorKind::InvalidBudget { field, .. }
-            | ErrorKind::InvalidThreshold { field, .. } => Some(*field),
+            ErrorKind::MissingRequiredField { field } | ErrorKind::InvalidBudget { field, .. } => {
+                Some(*field)
+            }
             ErrorKind::RuntimeKeyOutsideBlock { field } => crate::config::runtime_key(field),
             ErrorKind::UnsupportedKey { setting, .. } => *setting,
             ErrorKind::UnknownRuntimeKey { .. } | ErrorKind::RuntimeBlockRequired => {

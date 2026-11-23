@@ -1,6 +1,6 @@
 //! `/v1/tenants/me/models` — the many models a tenant may choose between.
 //!
-//! [`super::selection`] holds the ONE row a tenant's runs resolve through.
+//! [`super::selection`] reads the ONE row a tenant's runs resolve through.
 //! This is the registry it is chosen from: many rows per tenant, each pairing a
 //! model with a stored credential, each rendered with what the vault says about
 //! that credential and what the catalogue charges for that model.
@@ -125,9 +125,9 @@ pub struct RegistryRow {
     pub rate: Option<CatalogueRate>,
     /// Whether this entry IS the tenant's current self-managed selection.
     ///
-    /// Computed by comparing the selection's pointer with the entry's id,
-    /// because no `active` column exists — the registry records what a tenant
-    /// may run on, and the selection records what it does run on.
+    /// Computed by comparing the selected entry's id with this entry's: the
+    /// page reads the selection once rather than each row's `selected` flag,
+    /// the same read every run resolves through.
     pub active: bool,
 }
 
@@ -217,11 +217,11 @@ pub enum Removed {
 
 /// Whether `entry` is the row `selection` currently runs on.
 ///
-/// The selection is a pointer at one entry, so this is identity, not a match
-/// on the pair the entry carries. A platform-mode selection points at nothing,
-/// so nothing on the page is active under it.
-fn is_active(entry: &Entry, selection: Option<&Selection>) -> bool {
-    matches!(selection, Some(Selection::SelfManaged(own)) if own.tenant_model_id == entry.id)
+/// The selection is one selected entry, so this is identity, not a match on
+/// the pair the entry carries. Under the platform default no entry is
+/// selected, so nothing on the page is active under it.
+fn is_active(entry: &Entry, selection: &Selection) -> bool {
+    matches!(selection, Selection::SelfManaged(own) if own.tenant_model_id == entry.id)
 }
 
 #[cfg(test)]
@@ -271,14 +271,14 @@ mod tests {
 
     #[test]
     fn the_active_row_is_the_one_the_selection_points_at() {
-        assert!(is_active(&entry(ENTRY_ID), Some(&pointing_at(ENTRY_ID))));
+        assert!(is_active(&entry(ENTRY_ID), &pointing_at(ENTRY_ID)));
     }
 
     #[test]
     fn the_same_pair_on_another_row_is_not_the_active_one() {
         // Identity, not the pair: an entry carrying the same model and
         // credential under another id is a different row.
-        assert!(!is_active(&entry(OTHER_ID), Some(&pointing_at(ENTRY_ID))));
+        assert!(!is_active(&entry(OTHER_ID), &pointing_at(ENTRY_ID)));
     }
 
     #[test]
@@ -286,8 +286,6 @@ mod tests {
         // A platform selection points at nothing, so nothing on the page is
         // active. The page still renders — the Default row carries the
         // highlight.
-        let row = entry(ENTRY_ID);
-        assert!(!is_active(&row, Some(&Selection::Platform)));
-        assert!(!is_active(&row, None));
+        assert!(!is_active(&entry(ENTRY_ID), &Selection::Platform));
     }
 }

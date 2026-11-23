@@ -7,7 +7,7 @@
 //!
 //! The crate under test does not depend on the runner plane, so neither does
 //! its suite. Seeding a tenant, a workspace and a fleet is three statements;
-//! borrowing them from `afd_fleet::tests` would put leases, money and policy
+//! borrowing them from `afd_fleet::tests` would put runs, money and policy
 //! behind a test about a person answering a question.
 //!
 //! # One tenant, and a workspace and fleet per test
@@ -25,20 +25,10 @@
 //! `cleanup` here would be a call every test makes that does nothing, implying
 //! an isolation boundary that is not there.
 //!
-//! # The sweeper is global, so its tests take a lock
-//!
-//! `Inbox::expire` is a system-wide statement by design — `WHERE resolved_at
-//! IS NULL AND expires_at <= now()`, no workspace or fleet in it — which is what
-//! a sweeper must be in production and what no amount of identifier minting can
-//! isolate. A test that sweeps therefore expires every OTHER test's lapsed
-//! gate, and a test whose premise is a gate past its window finds it already
-//! resolved. Those two groups take [`sweeper_exclusive`] and run one at a time;
-//! everything else still runs concurrently.
-//!
 //! Each lane's connection to the integration lane's NATS carries activity
 //! frames and wake notifications, and a test subscribes through the same
 //! handle the inbox publishes on.
-//! Continuations commit to the admissions ledger; notification failure cannot
+//! Continuations commit to the turn ledger; notification failure cannot
 //! undo them.
 #![expect(
     clippy::expect_used,
@@ -66,21 +56,6 @@ mod seed;
 
 pub(crate) use self::seed::Window;
 
-/// Serialises the tests the global sweeper cannot be isolated from.
-///
-/// Held for the whole test body by anything that calls `Inbox::expire`, and by
-/// anything that seeds a gate already past its window and expects to find it
-/// PENDING. Both sides are needed: the lock exists to keep those two groups
-/// apart, and a lock only one side takes keeps nothing apart at all.
-///
-/// A `tokio` mutex rather than the standard library's, because the guard is
-/// held across `await` points, and it does not poison — one failing test leaves
-/// the rest runnable rather than turning a single red into a suite of them.
-pub(crate) async fn sweeper_exclusive() -> tokio::sync::MutexGuard<'static, ()> {
-    static SWEEPER: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
-    SWEEPER.lock().await
-}
-
 /// The instant a fixture row is raised at, and identifiers are minted at.
 ///
 /// Raised-at only: whether a gate has LAPSED is the database's clock against
@@ -100,7 +75,7 @@ pub(crate) struct Lane {
     /// provenance unreadable.
     _database: TestDatabase,
     pub(crate) pool: Db,
-    /// The bus the lane's inbox and admissions publish on, and the one its
+    /// The bus the lane's inbox and turns publish on, and the one its
     /// tests subscribe through.
     pub(crate) bus: Handle,
     pub(crate) inbox: Inbox,
@@ -137,7 +112,7 @@ impl Lane {
             inbox: Inbox::new(
                 pool.clone(),
                 bus.clone(),
-                afd_admission::Admissions::for_tests(pool.clone(), bus.clone()),
+                afd_turns::Turns::for_tests(pool.clone(), bus.clone()),
             ),
             _database: database,
             pool,
@@ -165,8 +140,8 @@ impl Lane {
         // `TenantSeed`, whose insert refuses a duplicate: whichever lane runs
         // first writes it, and every later one finds it there.
         sqlx::query(
-            "INSERT INTO identity.tenants (id, name, created_at, updated_at)
-             VALUES ($1, 'fixture', now(), now())
+            "INSERT INTO identity.tenants (id, name, created_at)
+             VALUES ($1, 'fixture', now())
              ON CONFLICT (id) DO NOTHING",
         )
         .bind(&self.tenant)

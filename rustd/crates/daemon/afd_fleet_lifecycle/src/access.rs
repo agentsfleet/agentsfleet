@@ -1,6 +1,6 @@
-//! Which fleets may read each workspace secret, from the policy a lease enforces.
+//! Which fleets may read each workspace secret, from the policy a run enforces.
 //!
-//! A fleet reads a secret only by declaring its name in the revision a lease
+//! A fleet reads a secret only by declaring its name in the revision a run
 //! runs: `afd_credential::secrets::declared` resolves that list and nothing
 //! else. This read projects the same list, so "available to" is never inferred
 //! from a reference, a trigger or a name that merely looks related.

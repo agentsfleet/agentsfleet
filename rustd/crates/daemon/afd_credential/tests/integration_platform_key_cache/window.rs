@@ -40,16 +40,16 @@ async fn platform_key_cache_ends_with_its_price_window() {
     );
 
     let window = Window::open(&lane.owner).await;
-    assert_eq!(lane.lease(PLATFORM_MODEL_REF).await, "sk-key-a");
+    assert_eq!(lane.run(PLATFORM_MODEL_REF).await, "sk-key-a");
     lane.clock.advance(Duration::from_secs(60));
     assert_eq!(
-        lane.lease(PLATFORM_MODEL_REF).await,
+        lane.run(PLATFORM_MODEL_REF).await,
         "sk-key-a",
         "inside the window the held entry answers"
     );
     lane.clock.advance(Duration::from_secs(190));
     assert_eq!(
-        lane.lease(PLATFORM_MODEL_REF).await,
+        lane.run(PLATFORM_MODEL_REF).await,
         "sk-key-a",
         "past the window, though inside the time limit, the entry is read again"
     );
@@ -58,7 +58,7 @@ async fn platform_key_cache_ends_with_its_price_window() {
     assert_eq!(
         secret_reads(&ran),
         2,
-        "read for lease one and again once the window had closed: {:?}",
+        "read for run one and again once the window had closed: {:?}",
         ran.statements()
     );
     lane.cleanup().await;
@@ -76,18 +76,18 @@ async fn platform_key_cache_ends_at_the_time_limit() {
     lane.activate_default().await;
 
     let window = Window::open(&lane.owner).await;
-    assert_eq!(lane.lease(PLATFORM_MODEL_REF).await, "sk-key-a");
+    assert_eq!(lane.run(PLATFORM_MODEL_REF).await, "sk-key-a");
     lane.clock
         .advance(PLATFORM_KEY_TTL.saturating_sub(Duration::from_millis(1)));
-    assert_eq!(lane.lease(PLATFORM_MODEL_REF).await, "sk-key-a");
+    assert_eq!(lane.run(PLATFORM_MODEL_REF).await, "sk-key-a");
     lane.clock.advance(Duration::from_millis(1));
-    assert_eq!(lane.lease(PLATFORM_MODEL_REF).await, "sk-key-a");
+    assert_eq!(lane.run(PLATFORM_MODEL_REF).await, "sk-key-a");
     let ran = window.close().await;
 
     assert_eq!(
         secret_reads(&ran),
         2,
-        "read for lease one and again at the limit: {:?}",
+        "read for run one and again at the limit: {:?}",
         ran.statements()
     );
     lane.cleanup().await;

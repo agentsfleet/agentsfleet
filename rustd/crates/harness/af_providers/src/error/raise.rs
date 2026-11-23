@@ -2,27 +2,28 @@
 //! raisers for the kinds that carry data.
 
 use garde::Validate as _;
-use std::error::Error as StdError;
+use guffbolt_ai::Failure;
 
-use rig_core::message::EmptyToolName;
-use rig_core::{ProviderError, ProviderResponseError};
-
+use super::kind::Cause;
 use super::{Error, ErrorKind};
 
-/// The longest provider code a report carries; a longer one is a message.
-const CODE_CAP: usize = 64;
 /// The early end of a provider that named no code for it.
 const UNNAMED_END: &str = "provider_error";
 
 // The one lift: a body that will not encode, or an event that will not parse,
 // is an unreadable turn wherever `?` meets it (`docs/RUST_ERROR_STANDARD.md`
 // rule 2).
+// Saved settings that fail their declared bounds or name no URL are refused
+// as such wherever `?` meets them; the decision preflight names its own
+// endpoint's parse failure by hand.
 af_core::error_lifts!(Error, ErrorKind:
     serde_json::Error => Unreadable,
+    garde::Report => Bounds,
+    url::ParseError => Url,
 );
 
 /// The provider ended the turn with its own error, named `reason`.
-pub(crate) fn ended(reason: &str, source: ProviderError) -> Error {
+pub(crate) fn ended(reason: &str, source: Cause) -> Error {
     Error::from(ErrorKind::Ended {
         reason: reason.to_owned(),
         source,
@@ -50,89 +51,53 @@ pub(crate) fn client(source: reqwest::Error) -> Error {
 }
 
 /// Persisted model settings could not be admitted; preserve the typed cause.
-pub(crate) fn configuration(source: af_inference::Error) -> Error {
+pub(crate) fn configuration(source: Error) -> Error {
     Error::from(ErrorKind::Configuration { source })
 }
 
-/// The conversation cannot be sent: the result for `call_id` answers no call
-/// before it.
-pub(crate) fn unsendable(call_id: &str) -> Error {
-    Error::from(ErrorKind::Unsendable {
-        call_id: call_id.to_owned(),
-    })
+/// A wire failure that is not the provider's: the conversation cannot be
+/// sent as it stands, or the route cannot carry the turn.
+pub(crate) fn wire(source: guffbolt_ai::Error) -> Error {
+    if source.is_unsendable() {
+        Error::from(ErrorKind::Conversation { source })
+    } else {
+        Error::from(ErrorKind::Route { source })
+    }
 }
 
-/// The conversation cannot be sent: call `call_id` names no tool, for
-/// `source`.
-pub(crate) fn unnamed(call_id: &str, source: EmptyToolName) -> Error {
-    Error::from(ErrorKind::Unnamed {
-        call_id: call_id.to_owned(),
-        source,
-    })
-}
-
-/// `failure`, as rig reported it, as the kind a report names: a status the
-/// provider answered is a refusal under the provider's own code, a reply cut
-/// short or a connection that dropped is lost, a provider's error after its
-/// reply began ended the turn, a reply past the transport's cap is oversized,
-/// and anything else is the wire's.
-pub(crate) fn provider(failure: ProviderError) -> Error {
+/// `failure` as the kind a report names: a status the provider answered is a
+/// refusal under the provider's own code, a reply past the transport's cap is
+/// oversized, a reply cut short or a connection that dropped is lost, a
+/// provider's error after its reply began ended the turn, and anything else
+/// is the wire's. A failure that is not the provider's is [`wire`]'s.
+pub(crate) fn provider(failure: guffbolt_ai::Error) -> Error {
+    let Some(kind) = failure.failure() else {
+        return wire(failure);
+    };
     let named = code(&failure);
-    if let Some(status) = failure
-        .provider_response_status()
-        .filter(|status| !status.is_success())
-    {
-        let status = status.as_u16();
-        return Error::from(ErrorKind::Refused {
+    let oversize = failure.is_reply_too_large();
+    let source = failure.into_cause().unwrap_or_else(Into::into);
+    match kind {
+        Failure::Refused { status } => Error::from(ErrorKind::Refused {
             status,
             code: named,
-            source: Some(failure),
-        });
-    }
-    match failure {
-        _ if oversize(&failure) => Error::from(ErrorKind::Oversize {
-            source: failure,
-            limit: af_inference::transport::REPLY_MAX_BYTES,
+            source: Some(source),
         }),
-        ProviderError::Http(_) | ProviderError::Truncated => Error::lost(failure),
-        ProviderError::Provider(_) => ended(UNNAMED_END, failure),
-        _ if failure.provider_response().is_some() => {
-            ended(named.as_deref().unwrap_or(UNNAMED_END), failure)
-        }
-        source => Error::from(ErrorKind::Wire { source }),
+        _ if oversize => Error::from(ErrorKind::Oversize {
+            source,
+            limit: crate::transport::REPLY_MAX_BYTES,
+        }),
+        Failure::Lost => Error::lost(source),
+        Failure::Ended => ended(named.as_deref().unwrap_or(UNNAMED_END), source),
+        // `Unread`, and any kind a later guffbolt-ai names.
+        _ => Error::from(ErrorKind::Wire { source }),
     }
-}
-
-/// Whether the client's guard refused `failure`'s endpoint: its name resolves
-/// to an address this runner never reaches, which no second send changes.
-pub(crate) fn blocked(failure: &ProviderError) -> bool {
-    let ProviderError::Http(transport) = failure else {
-        return false;
-    };
-    let first: &(dyn StdError + 'static) = &**transport;
-    af_egress::blocked_address(first)
-}
-
-/// Whether the transport ended `failure`'s read for passing its cap. rig
-/// keeps the transport's error behind its own and names no source for it, so
-/// the walk starts there.
-pub(crate) fn oversize(failure: &ProviderError) -> bool {
-    let ProviderError::Http(transport) = failure else {
-        return false;
-    };
-    let first: &(dyn StdError + 'static) = &**transport;
-    std::iter::successors(Some(first), |&error| error.source())
-        .filter_map(|error| error.downcast_ref::<af_inference::Error>())
-        .any(af_inference::Error::is_oversize)
 }
 
 /// The provider's own name for `failure`, when it gave one that reads as a
 /// name: the one spelling a report or a log line may carry.
-pub(crate) fn code(failure: &ProviderError) -> Option<String> {
-    failure
-        .provider_response()
-        .and_then(ProviderResponseError::machine_code)
-        .filter(|code| is_code(code))
+pub(crate) fn code(failure: &guffbolt_ai::Error) -> Option<String> {
+    failure.provider_code().filter(|code| is_code(code))
 }
 
 /// Whether `code` reads as a provider's name for a failure rather than its
@@ -143,6 +108,6 @@ fn is_code(code: &str) -> bool {
 
 #[derive(garde::Validate)]
 struct ProviderCode<'a> {
-    #[garde(length(bytes, min = 1, max = CODE_CAP), pattern(r"^[A-Za-z0-9_.:-]+$"))]
+    #[garde(length(bytes, min = 1), pattern(r"^[A-Za-z0-9_.:-]+$"))]
     value: &'a str,
 }

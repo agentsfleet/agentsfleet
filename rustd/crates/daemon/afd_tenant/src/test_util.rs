@@ -56,12 +56,12 @@ pub async fn sign_up(database: &Db, person: &Signup<'_>) {
     let mut connection = database.acquire().await.expect(NO_CONNECTION);
     sqlx::query(
         "WITH tenant AS ( \
-           INSERT INTO identity.tenants (id, name, created_at, updated_at) \
-           VALUES ($1, $2, $10, $10) \
+           INSERT INTO identity.tenants (id, name, created_at) \
+           VALUES ($1, $2, $10) \
          ), person AS ( \
            INSERT INTO identity.users \
-             (id, tenant_id, oidc_subject, email, display_name, created_at, updated_at) \
-           VALUES ($3, $1, $4, $5, $6, $10, $10) \
+             (id, tenant_id, oidc_subject, email, display_name, created_at) \
+           VALUES ($3, $1, $4, $5, $6, $10) \
          ), membership AS ( \
            INSERT INTO identity.memberships (id, tenant_id, user_id, role, created_at) \
            VALUES ($7, $1, $3, $8, $10) \

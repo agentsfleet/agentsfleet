@@ -6,8 +6,6 @@ import { CONTEXT_STATE, ContextProgressSchema, advancesContext } from "../contex
 import { DraftReplies } from "./draft-replies";
 import { isRunning, MESSAGE_ROLE } from "./draft-types";
 
-const MAX_STATUS_CHARACTERS = 2_048;
-const MAX_STREAMS_PER_MESSAGE = 32;
 const NoticeSchema = z.object({
   draft_id: z.uuidv7(), sequence: z.string().regex(/^[1-9][0-9]{0,18}$/), stream_id: z.uuidv7(),
   progress: ContextProgressSchema,
@@ -38,30 +36,28 @@ export class DraftLive {
 
   gap(): void { this.#replies.gap(); this.#hide(); }
 
-  reconcile(messages: readonly Message[], cutoff: string): void {
-    this.#replies.reconcile(messages, cutoff);
-    if (BigInt(this.#sequence) <= BigInt(cutoff) || !messages.some(message => message.sequence === this.#sequence && isRunning(message))) {
+  reconcile(messages: readonly Message[]): void {
+    this.#replies.reconcile(messages);
+    if (!messages.some(message => message.sequence === this.#sequence && isRunning(message))) {
       this.#seen.clear(); this.#hide();
     }
   }
 
-  accept(data: string, draft: string, cutoff: string, messages: readonly Message[]): boolean {
-    return this.#replies.accept(data, draft, cutoff, messages);
+  accept(data: string, draft: string, messages: readonly Message[]): boolean {
+    return this.#replies.accept(data, draft, messages);
   }
 
-  context(data: string, draft: string, cutoff: string, messages: readonly Message[]): boolean {
-    if (data.length > MAX_STATUS_CHARACTERS) return false;
+  context(data: string, draft: string, messages: readonly Message[]): boolean {
     let value: unknown;
     try { value = JSON.parse(data); } catch { return false; }
     const parsed = NoticeSchema.safeParse(value);
     if (!parsed.success) return false;
     const frame = parsed.data;
-    if (frame.draft_id !== draft || BigInt(frame.sequence) <= BigInt(cutoff) || BigInt(frame.sequence) < BigInt(this.#sequence)
+    if (frame.draft_id !== draft || BigInt(frame.sequence) < BigInt(this.#sequence)
       || !messages.some(message => message.sequence === frame.sequence && message.role === MESSAGE_ROLE.user && isRunning(message))) return false;
     if (frame.sequence !== this.#sequence) { this.#seen.clear(); this.#sequence = frame.sequence; this.#generation = 0; this.#completedGeneration = 0; }
     const previous = this.#seen.get(frame.stream_id);
-    if (frame.progress.generation <= this.#completedGeneration || frame.progress.generation < this.#generation || !advancesContext(previous, frame.progress)
-      || (!previous && this.#seen.size >= MAX_STREAMS_PER_MESSAGE)) return false;
+    if (frame.progress.generation <= this.#completedGeneration || frame.progress.generation < this.#generation || !advancesContext(previous, frame.progress)) return false;
     this.#generation = frame.progress.generation;
     if (frame.progress.state === CONTEXT_STATE.resuming) this.#completedGeneration = frame.progress.generation;
     this.#seen.set(frame.stream_id, frame.progress);

@@ -41,10 +41,8 @@ interface DiscoveryInput {
   readonly stdout: WritableStreamLike;
   readonly stderr: WritableStreamLike;
   readonly logLevel: LogLevel | undefined;
-  readonly timeoutMs: number;
+  readonly timeoutMs?: number | undefined;
 }
-
-export const DISCOVERY_TIMEOUT_MS = 2_000;
 
 const END_OF_FLAGS = "--" as const;
 const FLAG_COMPLETIONS = "--completions" as const;
@@ -56,7 +54,6 @@ const RUNNERS = "runners" as const;
 // Built-ins the tree does not declare, so the walk would otherwise read them
 // as flags that swallow the next token.
 const BUILT_IN_BOOLEANS = ["help", "version"] as const;
-const SINGLE_ATTEMPT = { maxAttempts: 1 } as const;
 // Strict on purpose: a list with one non-string member is not a list this CLI
 // can reason about, so it is Unknown rather than "the strings that were there".
 const ScopesBody = Schema.Struct({ scopes: Schema.Array(Schema.String) });
@@ -130,8 +127,7 @@ const readScopes = (input: DiscoveryInput): Effect.Effect<Visibility, never, Cre
     const body = yield* http.request<unknown>({
       path: USERS_ME_PATH,
       token: token.value,
-      retry: SINGLE_ATTEMPT,
-      timeoutMs: input.timeoutMs,
+      ...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),
     });
     const decoded = yield* Schema.decodeUnknownEffect(ScopesBody)(body);
     return knownVisibility(decoded.scopes);

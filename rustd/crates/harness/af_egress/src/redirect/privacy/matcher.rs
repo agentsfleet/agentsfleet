@@ -11,24 +11,23 @@ use regex_automata::{Input, MatchKind};
 use super::{Stop, encoded_pattern};
 use crate::Result;
 
-const CONSTRUCTION_MAX_BYTES: usize = 10 * 1024 * 1024;
-
 pub(super) struct Matcher {
     dfa: dense::DFA<Vec<u32>>,
     widths: Vec<usize>,
 }
 
 impl Matcher {
-    pub(super) fn new(values: &[String]) -> Result<Self, Stop> {
+    /// Every spelling of `values`, built within `budget_bytes` of automaton.
+    pub(super) fn new(values: &[String], budget_bytes: usize) -> Result<Self, Stop> {
         let patterns: Vec<_> = values.iter().map(|value| encoded_pattern(value)).collect();
         let dfa = dense::Builder::new()
             .configure(
                 dense::Config::new()
                     .match_kind(MatchKind::All)
-                    .dfa_size_limit(Some(CONSTRUCTION_MAX_BYTES))
-                    .determinize_size_limit(Some(CONSTRUCTION_MAX_BYTES)),
+                    .dfa_size_limit(Some(budget_bytes))
+                    .determinize_size_limit(Some(budget_bytes)),
             )
-            .thompson(thompson::Config::new().nfa_size_limit(Some(CONSTRUCTION_MAX_BYTES)))
+            .thompson(thompson::Config::new().nfa_size_limit(Some(budget_bytes)))
             .build_many(&patterns)
             .map_err(|_unavailable| Stop::Privacy)?;
         // Every spelling is nonempty; only fixed-width ASCII hex classes vary.

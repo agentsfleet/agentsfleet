@@ -13,7 +13,7 @@ const MODELS = "/models";
 const DRAFTS = "/drafts";
 const CURSOR = "cursor-one";
 const CARD = (id: string): DraftCard => ({id, title: `Chat ${id.slice(-1)}`, state: DRAFT_STATE.editing, etag: '"card"',
-  linked_fleet_id: null, updated_at: "1970-01-01T00:00:00Z", expires_at: null, candidate_revision: null, setup_revision: null, publication_revision: null});
+  linked_fleet_id: null, updated_at: "1970-01-01T00:00:00Z", expires_at: null, candidate_revision: null, setup_revision: null});
 const FIRST_CARD = CARD(DRAFT_ID);
 const SECOND_CARD = CARD("0199a801-1000-7000-8000-00000000000a");
 const urls: URL[] = [];
@@ -48,7 +48,7 @@ const deferred = () => { let resolve: (value: Response) => void = () => undefine
 
 it("private chat lists > parses mixed configured and unconfigured API rows and selects the usable model", async () => {
   const unconfigured = {...MODEL, ref: "unconfigured", max_output_tokens: undefined,
-    eligibility: {authoring: false, runtime: false}};
+    eligibility: {setup: false, runtime: false}};
   models = () => page([unconfigured, MODEL], null);
   expect((await opened()).getSnapshot()).toMatchObject({
     models: [expect.objectContaining({ref: unconfigured.ref, eligibility: unconfigured.eligibility}), MODEL],
@@ -116,21 +116,12 @@ it("private chat lists > preserves model eligibility on every configured model p
 });
 
 it("private chat lists > selects the first eligible configured model beyond runtime-only pages", async () => {
-  const runtime = {...MODEL, ref: "runtime-only", eligibility: {authoring: false, runtime: true}};
+  const runtime = {...MODEL, ref: "runtime-only", eligibility: {setup: false, runtime: true}};
   const configured = {...MODEL, ref: "configured-fireworks", provider: "fireworks", model: "accounts/fireworks/models/glm-5p3-flash"};
   models = (url) => url.searchParams.has("starting_after") ? page([configured], null) : page([runtime], CURSOR);
   const client = await opened();
   expect(client.getSnapshot()).toMatchObject({model: configured.ref, models: [runtime, configured], moreModels: false});
   expect(requests(MODELS)).toHaveLength(2);
-});
-
-it("private chat lists > selects a newly loaded eligible model after the initial bounded search finds none", async () => {
-  models = () => page([], CURSOR);
-  const client = await opened();
-  expect(client.getSnapshot().model).toBe("");
-  models = () => page([MODEL], null);
-  await client.loadMore(DRAFT_LIST.models);
-  expect(client.getSnapshot()).toMatchObject({model: MODEL_REF, moreModels: false});
 });
 
 it("private chat lists > keeps the person's eligible selection when refresh changes catalogue order", async () => {
@@ -145,15 +136,24 @@ it("private chat lists > keeps the person's eligible selection when refresh chan
   expect(client.getSnapshot().model).toBe(MODEL_REF);
 });
 
-it("private chat lists > skips filtered-out model pages to the first choice, within a fixed bound", async () => {
+it("private chat lists > skips filtered-out model pages to the first choice, past the four it once stopped at", async () => {
   let served = 0;
-  models = () => { served += 1; return served < 3 ? page([], `${CURSOR}-${served}`) : page([MODEL], null); };
+  models = () => { served += 1; return served < 6 ? page([], `${CURSOR}-${served}`) : page([MODEL], null); };
   expect((await opened()).getSnapshot()).toMatchObject({model: MODEL_REF, moreModels: false});
-  expect(requests(MODELS)).toHaveLength(3);
-  urls.length = 0; models = () => page([], CURSOR);
+  expect(requests(MODELS)).toHaveLength(6);
+  urls.length = 0; models = () => page([], null);
   const empty = await opened();
-  expect(requests(MODELS)).toHaveLength(4);
-  expect(empty.getSnapshot()).toMatchObject({models: [], model: "", moreModels: true});
+  expect(requests(MODELS)).toHaveLength(1);
+  expect(empty.getSnapshot()).toMatchObject({models: [], model: "", moreModels: false});
+});
+
+it("private chat lists > stops a model search whose cursor repeats", async () => {
+  const client = await opened();
+  urls.length = 0; models = () => page([], CURSOR);
+  await expect(client.initialize()).rejects.toMatchObject({status: 502});
+  expect(requests(MODELS)).toHaveLength(2);
+  // The model list carries its own status since main split it from the chat list's.
+  expect(client.getSnapshot()).toMatchObject({modelListStatus: "unavailable"});
 });
 
 it("private chat lists > shares one request between concurrent loads of the same list", async () => {

@@ -88,7 +88,7 @@ mod tests {
         "check-runs/789/annotations",
     ];
 
-    /// Dimension 2.1 — the read rule admits the CI evidence of the bound
+    /// The read rule admits the CI evidence of the bound
     /// repository and the same paths in no other: not a repository whose name
     /// extends it, and not another owner's.
     #[test]

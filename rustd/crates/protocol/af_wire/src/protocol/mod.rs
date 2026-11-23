@@ -6,37 +6,60 @@ mod up;
 pub use down::{Answer, Down, RenewalAnswer};
 pub use up::{Renewal, Up};
 
-/// Negotiated before the server accepts a runner session.
-pub const VERSION: &str = "agentsfleet.runner.v2";
+/// The one revision this build speaks, negotiated before the server accepts
+/// a runner session; a runner sending any other is refused at hello.
+///
+/// It runs setup on the common run path: a runner may be assigned a
+/// [`crate::run::RunPayload`] whose `owner` names a setup draft, and it reads
+/// and saves that draft's compacted context with [`Up::ContextLoad`] and
+/// [`Up::ContextSave`].
+pub const VERSION: &str = "agentsfleet.runner.v4";
 /// Application version; independent of the negotiated HTTP version.
 pub const VERSION_HEADER: &str = "agentsfleet-runner-protocol";
 /// Which independently flow-controlled request this stream serves.
 pub const STREAM_KIND_HEADER: &str = "agentsfleet-runner-kind";
 /// Previous owner on a reconnecting control stream; current owner on secondary streams.
-pub const SESSION_HEADER: &str = "agentsfleet-runner-session";
-/// Maximum JSON payload, excluding its four-byte length prefix.
-pub const MESSAGE_BYTES_MAX: usize = 2 * 1024 * 1024;
-/// The host worker bound also limits running leases and renewal entries.
-pub const LEASES_MAX: usize = crate::runner::HOLDS_MAX;
+pub const CONNECTION_HEADER: &str = "agentsfleet-runner-connection";
+/// Maximum JSON payload on the work, reports and progress streams.
+///
+/// It excludes the four-byte length prefix. Both directions share one data
+/// budget, so its 64 MiB default holds one frame this large each way. A run
+/// carrying instructions, a setup candidate and a message, each at the text
+/// ceiling and at its widest escape, fits.
+pub const MESSAGE_BYTES_MAX: usize = 32 * 1024 * 1024;
+/// Maximum JSON payload on the control stream. Control carries no text a
+/// person wrote, and its memory pool is sized for frames this large.
+pub const CONTROL_MESSAGE_BYTES_MAX: usize = 2 * 1024 * 1024;
+/// The host worker bound also limits running runs and renewal entries.
+pub const RUNS_MAX: usize = crate::runner::HOLDS_MAX;
 /// Pending request identifiers retained by one session.
 pub const PENDING_MAX: usize = 256;
 
 /// Independent HTTP request streams within one authenticated connection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum StreamKind {
-    /// Offers, cancellation, renewals and small request/answer exchanges.
+    /// Assignments, cancellation, renewals and small request/answer exchanges.
     Control,
-    /// Offers and folded inputs, independently flow-controlled from control.
+    /// Assignments and folded inputs, independently flow-controlled from control.
     Work,
     /// Durable terminal reports and their acknowledgements.
     Reports,
     /// Bounded, expendable live progress.
-    Activity,
+    Progress,
 }
 
 impl StreamKind {
     /// Every kind required before the session can accept work.
-    pub const ALL: [Self; 4] = [Self::Control, Self::Work, Self::Reports, Self::Activity];
+    pub const ALL: [Self; 4] = [Self::Control, Self::Work, Self::Reports, Self::Progress];
+
+    /// The largest payload a frame of this kind may carry.
+    #[must_use]
+    pub const fn message_bytes_max(self) -> usize {
+        match self {
+            Self::Control => CONTROL_MESSAGE_BYTES_MAX,
+            Self::Work | Self::Reports | Self::Progress => MESSAGE_BYTES_MAX,
+        }
+    }
 
     /// Header spelling, shared by both carriers and the server.
     #[must_use]
@@ -45,7 +68,7 @@ impl StreamKind {
             Self::Control => "control",
             Self::Work => "work",
             Self::Reports => "reports",
-            Self::Activity => "activity",
+            Self::Progress => "progress",
         }
     }
 
@@ -56,7 +79,7 @@ impl StreamKind {
             "control" => Some(Self::Control),
             "work" => Some(Self::Work),
             "reports" => Some(Self::Reports),
-            "activity" => Some(Self::Activity),
+            "progress" => Some(Self::Progress),
             _ => None,
         }
     }

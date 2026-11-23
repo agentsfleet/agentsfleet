@@ -46,7 +46,7 @@ const NEVER_OPENED: i32 = 1_000_000;
 /// What an entry refused at adoption says: the descriptor's number, never a
 /// confinement step, since nothing was hardened yet.
 fn refusal(inherited: crate::Inherited) -> Option<String> {
-    super::serve_sandboxed(inherited)
+    super::serve_sandboxed(super::Entry::new(inherited, afr_executor::Sizes::DEFAULT))
         .err()
         .map(|error| error.to_string())
 }
@@ -130,7 +130,8 @@ fn test_an_entry_handed_its_descriptors_goes_on_to_harden() {
     let refused = std::thread::scope(|scope| {
         let (hold, wait) = mpsc::channel::<()>();
         scope.spawn(move || wait.recv());
-        let refused = super::serve_sandboxed(inherited).err();
+        let entry = super::Entry::new(inherited, afr_executor::Sizes::DEFAULT);
+        let refused = super::serve_sandboxed(entry).err();
         drop(hold);
         refused
     });

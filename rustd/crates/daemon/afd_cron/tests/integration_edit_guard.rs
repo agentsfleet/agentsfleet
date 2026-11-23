@@ -92,8 +92,8 @@ async fn an_edit_to_a_schedule_being_removed_is_refused() {
         .await
         .expect("the lane's Postgres must answer")
         .expect("the schedule is claimable for deletion");
-    // The remover stalled: its lease lapsed, so only the intent still says no.
-    lane.expire_lease(&deleting.schedule_id).await;
+    // The remover stalled: its run lapsed, so only the intent still says no.
+    lane.expire_run(&deleting.schedule_id).await;
     let deleting = reread(&lane, &deleting).await;
 
     let refused = edit(&lane, &deleting, "0 4 * * *")
@@ -101,6 +101,7 @@ async fn an_edit_to_a_schedule_being_removed_is_refused() {
         .expect_err("a schedule on its way out must not be edited back to life");
 
     assert_eq!(refused.detail(), DELETING);
+    assert_eq!(refused.current_state(), Some("deleting"));
     let stored = reread(&lane, &deleting).await;
     assert_eq!(stored.desired_status, DesiredStatus::Deleting);
     assert_eq!(stored.cron, "0 3 * * *");

@@ -1,22 +1,23 @@
-import type { ToolArgs } from "@/lib/streaming/fleet-stream-tool-trace";
+import type { FileChange, ToolArgs } from "@/lib/streaming/fleet-stream-tool-trace";
 import { lazy, memo, Suspense, useMemo, useState } from "react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, ListItem, SignalSpinner, cn } from "@agentsfleet/design-system";
 import { useFleetScope } from "../../conversation/stream/FleetScope";
 import { readToolResult } from "../replies/fleetReplyMessage";
-import { CELL_STATE, toolCopy } from "./copy/tool-call-copy";
+import { CELL_STATE, cellDiff, toolCopy } from "./copy/tool-call-copy";
 import { ToolCallHeader } from "./FleetToolCallHeader";
 import { ToolCallDetails } from "./FleetToolCallDetails";
 import { TRIGGER_CLASS } from "./presentation/tool-call-presentation";
 import { TOOL_BODY, TOOL_NAME } from "./presentation/tool-call-shape";
-import { DiffRows } from "./FleetToolCallBody";
+import { ChangedFiles, DiffRows, changeTotals } from "./FleetToolCallBody";
 import { recordedToolState } from "./presentation/tool-call-activity";
 import { recordedPatchTotals } from "../../conversation/summary/recorded-patch-changes";
 import { FleetCommandResult } from "./FleetCommandResult";
 
 const COMMAND = "command";
 const CARD_TOOLS: ReadonlySet<string> = new Set([
-  TOOL_NAME.EXEC_COMMAND, TOOL_NAME.SHELL, TOOL_NAME.FILE_EDIT, TOOL_NAME.FILE_EDIT_HASHED, TOOL_NAME.APPLY_PATCH,
+  TOOL_NAME.EXEC_COMMAND, TOOL_NAME.SHELL, TOOL_NAME.FILE_EDIT, TOOL_NAME.APPLY_PATCH,
 ]);
+const NO_CHANGES: readonly FileChange[] = [];
 const FleetToolOutputDialog = lazy(() => import("./FleetToolOutputDialog").then(module => ({default: module.FleetToolOutputDialog})));
 const FULL_OUTPUT_LOADING = <output className="inline-flex items-center gap-xs text-label text-muted-foreground"><SignalSpinner className="text-pulse" aria-hidden="true" />Loading full command output…</output>;
 
@@ -27,26 +28,29 @@ export type ToolCallRowProps = {
   result: unknown;
   running: boolean;
   settled: boolean;
-  eventId: string;
+  turnId: string;
 };
 
-export const ToolCallRow = memo(function ToolCallRow({name, args, argsText, result, running, settled, eventId}: ToolCallRowProps) {
+export const ToolCallRow = memo(function ToolCallRow({name, args, argsText, result, running, settled, turnId}: ToolCallRowProps) {
   const named = Object.keys(args).length > 0 ? args : undefined;
   const outcome = readToolResult(result);
   const command = name === TOOL_NAME.EXEC_COMMAND || name === TOOL_NAME.SHELL;
   const state = recordedToolState(name, outcome, running);
   // These bounded cards mount with the work group. Other tools keep their body behind the action disclosure.
-  const card = useMemo(() => CARD_TOOLS.has(name) ? toolCopy(name, named) : undefined, [name, named]);
+  const changes = outcome?.changes ?? NO_CHANGES;
+  const card = useMemo(() => CARD_TOOLS.has(name) ? toolCopy(name, named, changes) : undefined, [name, named, changes]);
+  // Recorded changes name an edit's files and counts; until there are some, the cell shows the lines it asked for.
+  const rows = useMemo(() => CARD_TOOLS.has(name) ? cellDiff(name, named) : null, [name, named]);
   const [shown, setShown] = useState(false);
   const scope = useFleetScope();
   const callId = outcome?.callId;
   const canShowAll = scope !== null && callId !== undefined && settled;
   if (shown && !canShowAll) setShown(false);
   const showAll = canShowAll ? () => setShown(true) : undefined;
-  const diff = card?.body.kind === TOOL_BODY.DIFF ? card.body.diff : undefined;
   const commandBody = card?.body.kind === TOOL_BODY.COMMAND ? card.body : undefined;
   const confirmed = state === CELL_STATE.SUCCEEDED;
-  const counts = confirmed && name === TOOL_NAME.APPLY_PATCH ? recordedPatchTotals({args, ...outcome}) : confirmed ? diff : undefined;
+  const counts = !confirmed ? undefined : changes.length > 0 ? changeTotals(changes)
+    : name === TOOL_NAME.APPLY_PATCH ? recordedPatchTotals({args, ...outcome}) : undefined;
   const showSuccess = command && confirmed;
   return <ListItem data-tool={name} data-done={outcome !== undefined || undefined} data-state={state}
     className="flex min-w-0 flex-col gap-xs text-body-sm text-muted-foreground">
@@ -54,14 +58,13 @@ export const ToolCallRow = memo(function ToolCallRow({name, args, argsText, resu
       <AccordionItem value={COMMAND} className="border-0">
         <AccordionTrigger className={cn(TRIGGER_CLASS, (counts || showSuccess) && "[&>svg:last-child]:ml-0")}>
           <ToolCallHeader name={name} args={named} state={state} />
-          {counts ? <span className="ml-auto shrink-0 font-mono text-label tabular-nums" title={name === TOOL_NAME.APPLY_PATCH ? "Recorded patch totals" : "Lines in the displayed edit"} aria-label={`${counts.added} ${counts.added === 1 ? "addition" : "additions"}, ${counts.removed} ${counts.removed === 1 ? "deletion" : "deletions"}`}>
+          {counts ? <span className="ml-auto shrink-0 font-mono text-label tabular-nums" title={name === TOOL_NAME.APPLY_PATCH ? "Recorded patch totals" : "Recorded edit totals"} aria-label={`${counts.added} ${counts.added === 1 ? "addition" : "additions"}, ${counts.removed} ${counts.removed === 1 ? "deletion" : "deletions"}`}>
             <span className="text-success">+{counts.added}</span>{" "}<span className="text-destructive">−{counts.removed}</span>
           </span> : null}
           {showSuccess ? <span className="ml-auto text-label text-success" aria-hidden="true">Succeeded</span> : null}
         </AccordionTrigger>
-        {diff ? <div className="mb-md px-md">
-          <DiffRows diff={diff} filename={card?.target} confirmed={confirmed} />
-        </div> : null}
+        {card?.body.kind === TOOL_BODY.CHANGES ? <div className="mb-md px-md"><ChangedFiles changes={card.body.changes} /></div>
+          : rows ? <div className="mb-md px-md"><DiffRows rows={rows} changes={changes} filename={card?.target} confirmed={confirmed} /></div> : null}
         {command ? <div className="mb-md px-md">
           <FleetCommandResult command={commandBody ? [card?.target, ...commandBody.rail].join("\n") : ""} commandLinesHidden={commandBody?.hiddenLines ?? 0}
             outcome={outcome} state={state} onShowAll={showAll} />
@@ -72,7 +75,7 @@ export const ToolCallRow = memo(function ToolCallRow({name, args, argsText, resu
         </AccordionContent>
       </AccordionItem>
     </Accordion>
-    {shown && canShowAll ? <Suspense fallback={FULL_OUTPUT_LOADING}><FleetToolOutputDialog scope={scope} eventId={eventId} callId={callId} name={name}
+    {shown && canShowAll ? <Suspense fallback={FULL_OUTPUT_LOADING}><FleetToolOutputDialog scope={scope} turnId={turnId} callId={callId} name={name}
       verb={name} target="" outcome={outcome} onClose={() => setShown(false)} /></Suspense> : null}
   </ListItem>;
 });

@@ -20,18 +20,21 @@ use rustix::io::Errno;
 
 use crate::api::{DirEntry, EntryKind, Listing};
 use crate::error::{self, Error, Result};
-use crate::protocol::{MAX_FRAME_BYTES, MAX_READ_BYTES, ReadResult};
+use crate::protocol::{MAX_FRAME_BYTES, ReadResult};
 
 /// The workspace itself, named relative to itself.
 const CURRENT_DIRECTORY: &str = ".";
 /// The most entries one listing carries.
+/// Kept: a listing past one executor frame would fail the whole call.
 pub(crate) const MAX_LIST_ENTRIES: usize = 4_096;
 /// The longest one listed entry can serialize to: a 255-byte name of control
 /// characters, each escaped to six, and the entry's other fields.
 const MAX_ENTRY_JSON_BYTES: usize = 255 * 6 + 128;
-// A full listing must fit the frame the client reads, or the answer would
-// end the connection instead of arriving.
-const _: () = assert!(MAX_LIST_ENTRIES * MAX_ENTRY_JSON_BYTES < MAX_FRAME_BYTES);
+/// The longest a full listing can serialize to. It must fit the frame the
+/// client reads, or the answer would end the connection instead of arriving:
+/// a starter choosing a frame keeps it longer than this.
+pub(crate) const MAX_LISTING_BYTES: usize = MAX_LIST_ENTRIES * MAX_ENTRY_JSON_BYTES;
+const _: () = assert!(MAX_LISTING_BYTES < MAX_FRAME_BYTES);
 /// Open without waiting: a pipe with no writer must not hold the call.
 const NONBLOCK: i32 = OFlags::NONBLOCK.bits().cast_signed();
 
@@ -67,9 +70,10 @@ impl Workspace {
         Ok(self.root.join(inside))
     }
 
-    /// Reads a regular file, at most `max_bytes` of it.
+    /// Reads a regular file, at most `max_bytes` of it; the session clamps
+    /// `max_bytes` to the read size its starter chose.
     pub(super) fn read(&self, path: &str, max_bytes: u64) -> Result<ReadResult> {
-        let limit = max_bytes.min(MAX_READ_BYTES);
+        let limit = max_bytes;
         let mut content = Vec::new();
         self.regular(path, OpenOptions::new().read(true), Parents::Keep)?
             .take(limit.saturating_add(1))
@@ -88,16 +92,6 @@ impl Workspace {
     pub(super) fn write(&self, path: &str, content: &[u8]) -> Result<()> {
         let mut options = OpenOptions::new();
         options.write(true).create(true).truncate(true);
-        Ok(self
-            .regular(path, &mut options, Parents::Make)?
-            .write_all(content)?)
-    }
-
-    /// Adds to the end of a regular file, making it and any missing parent
-    /// directories when absent, all inside the workspace.
-    pub(super) fn append(&self, path: &str, content: &[u8]) -> Result<()> {
-        let mut options = OpenOptions::new();
-        options.append(true).create(true);
         Ok(self
             .regular(path, &mut options, Parents::Make)?
             .write_all(content)?)
@@ -142,13 +136,25 @@ impl Workspace {
     /// missing makes the directories and tries once more. The open is always
     /// tried first, so an escape is refused as one before anything is made.
     fn regular(&self, path: &str, options: &mut OpenOptions, parents: Parents) -> Result<File> {
-        let inside = self.inside(path)?;
+        self.regular_at(self.inside(path)?, options, parents)
+    }
+
+    /// [`Workspace::regular`] for a path already held inside the workspace.
+    fn regular_at(
+        &self,
+        inside: &Path,
+        options: &mut OpenOptions,
+        parents: Parents,
+    ) -> Result<File> {
         options.custom_flags(NONBLOCK);
         let file = match (self.dir.open_with(inside, options), parents) {
             (Err(missing), Parents::Make) if missing.kind() == io::ErrorKind::NotFound => {
-                if let Some(parent) = inside.parent() {
-                    self.dir.create_dir_all(parent).map_err(confined)?;
-                }
+                // `inside` is never empty (the workspace itself reads as `.`),
+                // so it always has a parent to make.
+                inside
+                    .parent()
+                    .map_or(Ok(()), |parent| self.dir.create_dir_all(parent))
+                    .map_err(confined)?;
                 self.dir.open_with(inside, options)
             }
             (opened, _either) => opened,
@@ -226,7 +232,9 @@ fn confined(failure: io::Error) -> Error {
     }
 }
 
+mod search;
+
 #[cfg(test)]
-mod append_delete_tests;
+mod delete_tests;
 #[cfg(test)]
 mod tests;

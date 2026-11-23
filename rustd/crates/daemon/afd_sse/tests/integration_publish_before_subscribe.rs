@@ -32,7 +32,7 @@ const ATTEMPTS: u32 = 50;
 /// How long a published frame may take to arrive before it counts as missed.
 const PATIENCE: Duration = Duration::from_millis(500);
 /// The frame each attempt publishes.
-const FRAME: &str = r#"{"kind":"event_admitted"}"#;
+const FRAME: &str = r#"{"kind":"turn_admitted"}"#;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "needs live NATS: make test-integration-rustd"]
@@ -60,7 +60,7 @@ async fn frame_before_interest_is_covered_by_backfill() -> Fallible {
         let fleet = Uuid7::parse(&format!("0195b4ba-8d3a-7f13-8abc-{attempt:012x}"))?;
         let mut tail = live.tail_of(&fleet).await;
         publisher
-            .publish(&Subject::FleetTail(fleet.clone()), FRAME)
+            .publish(&Subject::ThreadItems(fleet.clone()), FRAME)
             .await?;
         let hello = tail.next().await.ok_or("the tail opens")?;
         let catching_up = tail.next().await.ok_or("the tail announces the backfill")?;
@@ -73,7 +73,7 @@ async fn frame_before_interest_is_covered_by_backfill() -> Fallible {
         // came first, and a frame that does arrive is the published one.
         if let Ok(Some(frame)) = tokio::time::timeout(PATIENCE, tail.next()).await {
             assert_eq!(
-                frame.kind, "event_admitted",
+                frame.kind, "turn_admitted",
                 "the published frame, unchanged"
             );
         }

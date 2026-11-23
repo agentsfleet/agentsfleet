@@ -13,7 +13,7 @@
 //! # Concurrency is the point, not an edge case
 //!
 //! Two daemons behind one load balancer can receive the same retry at the same
-//! moment. The claim and the write are one admission statement over a unique
+//! moment. The claim and the write are one intake statement over a unique
 //! key, so the second loses the claim rather than writing — there is no window
 //! between "check" and "write" for two to pass through. The concurrent case
 //! below is the one that fails if the statement is split in two, which is why
@@ -64,7 +64,7 @@ fn target(lane: &CronLane) -> FireTarget {
 #[ignore = "needs the lane's Postgres and NATS"]
 async fn a_verified_fire_reaches_the_stream_once() {
     let lane = CronLane::open().await;
-    let fire = Fire::new(lane.admissions());
+    let fire = Fire::new(lane.turns());
     let schedule = CronLane::token();
 
     let fired = fire
@@ -77,7 +77,7 @@ async fn a_verified_fire_reaches_the_stream_once() {
         "the first delivery of a fire is not a replay"
     );
     assert!(
-        !fired.event_id.is_empty(),
+        !fired.turn_id.is_empty(),
         "the entry id is what the caller answers with"
     );
 }
@@ -87,7 +87,7 @@ async fn a_verified_fire_reaches_the_stream_once() {
 #[ignore = "needs the lane's Postgres and NATS"]
 async fn the_schedulers_retry_is_claimed_by_the_first_attempt() {
     let lane = CronLane::open().await;
-    let fire = Fire::new(lane.admissions());
+    let fire = Fire::new(lane.turns());
     let schedule = CronLane::token();
 
     let first = fire
@@ -102,7 +102,7 @@ async fn the_schedulers_retry_is_claimed_by_the_first_attempt() {
     assert!(!first.replayed);
     assert!(retry.replayed, "a repeated message id is the same fire");
     assert_eq!(
-        retry.event_id, first.event_id,
+        retry.turn_id, first.turn_id,
         "the retry must be told the id the FIRST attempt wrote, or the caller \
          answers the scheduler with an entry that does not exist"
     );
@@ -126,7 +126,7 @@ async fn many_daemons_receiving_one_retry_together_append_once() {
     let mut callers = Vec::with_capacity(CALLERS);
     for _ in 0..CALLERS {
         // One ledger per caller, as separate processes would hold.
-        let fire = Fire::new(lane.admissions());
+        let fire = Fire::new(lane.turns());
         let (target, schedule) = (Arc::clone(&target), Arc::clone(&schedule));
         let (barrier, in_flight, peak) = (
             Arc::clone(&barrier),
@@ -162,22 +162,22 @@ async fn many_daemons_receiving_one_retry_together_append_once() {
         "exactly one caller claimed the fire and every other found it taken; \
          more than one claim means the check and the write came apart"
     );
-    let first = &outcomes.first().expect("a hundred outcomes").event_id;
+    let first = &outcomes.first().expect("a hundred outcomes").turn_id;
     assert!(
-        outcomes.iter().all(|fired| &fired.event_id == first),
+        outcomes.iter().all(|fired| &fired.turn_id == first),
         "every daemon must answer with the one entry that exists"
     );
-    assert_eq!(admissions(&lane).await, 1, "the fleet holds one admission");
+    assert_eq!(turns(&lane).await, 1, "the fleet holds one turn");
 }
 
-/// The admissions this lane's fleet holds.
-async fn admissions(lane: &CronLane) -> i64 {
+/// The turns this lane's fleet holds.
+async fn turns(lane: &CronLane) -> i64 {
     let mut connection = lane.connection().await;
-    sqlx::query_scalar("SELECT count(*) FROM fleet.admissions WHERE fleet_id = $1")
+    sqlx::query_scalar("SELECT count(*) FROM thread.turns WHERE thread_id = $1")
         .bind(lane.fleet_id())
         .fetch_one(&mut *connection)
         .await
-        .expect("counting this fleet's admissions")
+        .expect("counting this fleet's turns")
 }
 
 /// The claim is scoped by SCHEDULE as well as by fleet.
@@ -190,7 +190,7 @@ async fn admissions(lane: &CronLane) -> i64 {
 #[ignore = "needs the lane's Postgres and NATS"]
 async fn two_schedules_firing_on_one_tick_do_not_silence_each_other() {
     let lane = CronLane::open().await;
-    let fire = Fire::new(lane.admissions());
+    let fire = Fire::new(lane.turns());
     let target = target(&lane);
     let nightly = CronLane::token();
     let hourly = CronLane::token();
@@ -209,7 +209,7 @@ async fn two_schedules_firing_on_one_tick_do_not_silence_each_other() {
         !second.replayed,
         "a different schedule is a different fire, even under the same message id"
     );
-    assert_ne!(first.event_id, second.event_id, "two fires, two entries");
+    assert_ne!(first.turn_id, second.turn_id, "two fires, two entries");
 }
 
 /// A second delivery of the same schedule under a new id is a new fire.
@@ -220,7 +220,7 @@ async fn two_schedules_firing_on_one_tick_do_not_silence_each_other() {
 #[ignore = "needs the lane's Postgres and NATS"]
 async fn the_next_tick_of_one_schedule_is_a_new_fire() {
     let lane = CronLane::open().await;
-    let fire = Fire::new(lane.admissions());
+    let fire = Fire::new(lane.turns());
     let target = target(&lane);
     let schedule = CronLane::token();
 
@@ -238,7 +238,7 @@ async fn the_next_tick_of_one_schedule_is_a_new_fire() {
         !tomorrow.replayed,
         "suppressing this would skip a run the operator asked for"
     );
-    assert_ne!(tonight.event_id, tomorrow.event_id);
+    assert_ne!(tonight.turn_id, tomorrow.turn_id);
 }
 
 /// A one-off fires once, whichever path asks: the scheduler's callback and a
@@ -247,7 +247,7 @@ async fn the_next_tick_of_one_schedule_is_a_new_fire() {
 #[ignore = "needs the lane's Postgres and NATS"]
 async fn a_once_schedule_fires_once_whichever_path_asks() {
     let lane = CronLane::open().await;
-    let fire = Fire::new(lane.admissions());
+    let fire = Fire::new(lane.turns());
     let once = FireTarget {
         once: true,
         ..target(&lane)
@@ -268,7 +268,7 @@ async fn a_once_schedule_fires_once_whichever_path_asks() {
         run_now.replayed,
         "a one-off's second fire is its first's replay"
     );
-    assert_eq!(run_now.event_id, scheduled.event_id);
+    assert_eq!(run_now.turn_id, scheduled.turn_id);
 }
 
 /// Two fleets cannot claim over each other, even on one schedule id.
@@ -277,7 +277,7 @@ async fn a_once_schedule_fires_once_whichever_path_asks() {
 async fn one_fleets_fire_does_not_claim_anothers() {
     let lane = CronLane::open().await;
     let other = CronLane::open().await;
-    let fire = Fire::new(lane.admissions());
+    let fire = Fire::new(lane.turns());
     let schedule = CronLane::token();
 
     let mine = fire
@@ -302,7 +302,7 @@ async fn one_fleets_fire_does_not_claim_anothers() {
 #[ignore = "needs the lane's Postgres and NATS"]
 async fn a_fire_logs_the_workspace_and_event_it_appended() {
     let lane = CronLane::open().await;
-    let fire = Fire::new(lane.admissions());
+    let fire = Fire::new(lane.turns());
     let schedule = CronLane::token();
     let capture = Capture::install();
     let fired = fire
@@ -315,7 +315,7 @@ async fn a_fire_logs_the_workspace_and_event_it_appended() {
         appended.field("workspace_id"),
         Some(lane.workspace.as_str())
     );
-    assert_eq!(appended.field("event_id"), Some(fired.event_id.as_str()));
+    assert_eq!(appended.field("turn_id"), Some(fired.turn_id.as_str()));
 }
 
 /// The event a fire logs once its append lands.

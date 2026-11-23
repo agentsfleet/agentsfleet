@@ -12,10 +12,10 @@ pub(crate) mod write;
 use crate::handler::Refusal;
 use crate::{
     auth::{Owned, PersonIdentity},
-    services::Services,
+    services::TenantPlane,
 };
 use af_core::id::Uuid7;
-use afd_authoring::Access;
+use afd_setup::Access;
 use axum::{response::Response, routing::MethodRouter};
 use http::{HeaderValue, header};
 use serde::Deserialize;
@@ -43,7 +43,7 @@ fn access<'a>(owned: &'a Owned, person: &'a PersonIdentity) -> Access<'a> {
 }
 
 /// Keeps private text and resource versions out of shared response caches.
-pub(crate) fn private<D: Services>(router: MethodRouter<Arc<D>>) -> MethodRouter<Arc<D>> {
+pub(crate) fn private<D: TenantPlane>(router: MethodRouter<Arc<D>>) -> MethodRouter<Arc<D>> {
     router.layer(axum::middleware::map_response(mark_private))
 }
 
@@ -55,15 +55,7 @@ async fn mark_private(mut response: Response) -> Response {
     response
 }
 
-fn attach(response: &mut Response, tag: &str) {
-    if let Ok(tag) = HeaderValue::from_str(tag) {
-        response.headers_mut().insert(header::ETAG, tag);
-    }
-}
-
-fn location(response: &mut Response, workspace: &Uuid7, draft: &Uuid7, suffix: &str) {
-    let path = format!("/v1/workspaces/{workspace}/drafts/{draft}{suffix}");
-    if let Ok(path) = HeaderValue::from_str(&path) {
-        response.headers_mut().insert(header::LOCATION, path);
-    }
+/// The draft's own path, which a create or a send answers as its `Location`.
+fn location(workspace: &Uuid7, draft: &Uuid7, suffix: &str) -> String {
+    format!("/v1/workspaces/{workspace}/drafts/{draft}{suffix}")
 }

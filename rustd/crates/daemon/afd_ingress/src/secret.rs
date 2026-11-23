@@ -210,11 +210,9 @@ mod tests {
             Arc::new(Kek::from_bytes([0x2a; 32])),
             Entropy::new(),
         );
-        let admissions = afd_admission::Admissions::for_tests(
-            database.clone(),
-            afd_bus::test_util::unreachable(),
-        );
-        let ingress = Ingress::new(database, vault, admissions);
+        let turns =
+            afd_turns::Turns::for_tests(database.clone(), afd_bus::test_util::unreachable());
+        let ingress = Ingress::new(database, vault, turns);
         let workspace =
             Uuid7::parse("0195b4ba-8d3a-7f13-8abc-2b3e1e0c1011").expect("a fixture identifier");
 

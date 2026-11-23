@@ -5,7 +5,6 @@ use super::notice::owed;
 use super::*;
 use af_core::id::Uuid7;
 use afd_db::test_util::mint_id;
-use afd_ingress::slack::KIND_NOTICE_OWNER;
 
 pub(super) fn owner_document() -> String {
     document("notice-carrier", CHANNEL, None)
@@ -13,9 +12,9 @@ pub(super) fn owner_document() -> String {
 
 pub(super) async fn bind(fixture: &Fixture, fleet: &Uuid7) {
     let mut connection = fixture.database().acquire().await.expect("connection");
-    sqlx::query("INSERT INTO connector.channels (id, provider, external_account_id, external_channel_id, fleet_id, binding_type, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,now(),now())")
+    sqlx::query("INSERT INTO connector.channels (id, provider, external_account_id, external_channel_id, fleet_id, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,now(),now())")
         .bind(mint_id()).bind(PROVIDER.id()).bind(&fixture.team).bind(CHANNEL)
-        .bind(fleet).bind(KIND_NOTICE_OWNER)
+        .bind(fleet)
         .execute(&mut *connection).await.expect("binding seeds");
 }
 
@@ -61,7 +60,7 @@ async fn a_moved_team_uses_its_current_workspaces_notice_carrier() {
         bound(&fixture).await,
         (first.clone(), fixture.workspace().clone())
     );
-    assert_eq!(fixture.admissions().await, 0);
+    assert_eq!(fixture.turns().await, 0);
     let notices = owed(&fixture).await;
     assert_eq!(notices.len(), 1);
     assert_eq!(notices[0].owner, "responder");
@@ -70,7 +69,7 @@ async fn a_moved_team_uses_its_current_workspaces_notice_carrier() {
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn an_archived_subscriber_owes_the_archived_notice_without_admission() {
+async fn an_archived_subscriber_owes_the_archived_notice_without_a_turn() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
     let carrier = fixture
@@ -93,7 +92,7 @@ async fn an_archived_subscriber_owes_the_archived_notice_without_admission() {
         deliver(&fixture.router(), &body).await.status(),
         StatusCode::OK
     );
-    assert_eq!(fixture.admissions().await, 0);
+    assert_eq!(fixture.turns().await, 0);
     let notices = owed(&fixture).await;
     assert_eq!(notices.len(), 1);
     assert_eq!(notices[0].owner, "responder");
@@ -126,7 +125,7 @@ async fn an_archived_bound_carrier_drops_notices_even_with_active_subscribers() 
         answer.get("ignored").and_then(Value::as_str),
         Some("no_active_notice_carrier")
     );
-    assert_eq!(fixture.admissions().await, 0);
+    assert_eq!(fixture.turns().await, 0);
     assert!(owed(&fixture).await.is_empty());
     assert_eq!(bound(&fixture).await.0, archived.as_str());
     fixture.cleanup().await;

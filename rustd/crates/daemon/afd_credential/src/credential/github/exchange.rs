@@ -23,7 +23,7 @@ const INSTALLATIONS_ROUTE: &str = "/app/installations";
 /// Bounded locally rather than read from the response's `expires_at`, which is
 /// what the runner has always been told. A shorter vendor lifetime would require
 /// changing this policy so the broker never caches a dead token.
-const INSTALLATION_TOKEN_TTL: Duration = Duration::from_hours(1);
+pub const INSTALLATION_TOKEN_TTL: Duration = Duration::from_hours(1);
 
 /// Everything one GitHub mint needs.
 #[derive(Debug, Clone, Copy)]
@@ -40,6 +40,8 @@ pub struct Exchange<'a> {
     /// The instant the App JWT is signed at and the token's expiry is measured
     /// from.
     pub now: Timestamp,
+    /// How long the minted token is used; see [`INSTALLATION_TOKEN_TTL`].
+    pub token_ttl: Duration,
 }
 
 /// Where GitHub's REST API lives; [`mint_at`] takes it so a test can point the
@@ -76,7 +78,14 @@ pub(super) async fn mint_at(exchange: Exchange<'_>, base: &str) -> Outcome {
         return Outcome::MintFailed(Retry::Permanent);
     };
 
-    request_token(&api, installation_id, binding, exchange.now).await
+    request_token(
+        &api,
+        installation_id,
+        binding,
+        exchange.now,
+        exchange.token_ttl,
+    )
+    .await
 }
 
 /// Reads the installation, then posts the narrowed request, through a
@@ -86,6 +95,7 @@ pub(super) async fn request_token(
     installation_id: u64,
     binding: &RepositoryBinding,
     now: Timestamp,
+    token_ttl: Duration,
 ) -> Outcome {
     let (granted, request) = match scoped_token(api, installation_id, binding).await {
         Ok(answered) => answered,
@@ -112,7 +122,7 @@ pub(super) async fn request_token(
 
     Outcome::Ok(Minted {
         token: granted.token.into(),
-        expires_at: af_core::clock::after(now, INSTALLATION_TOKEN_TTL),
+        expires_at: af_core::clock::after(now, token_ttl),
         rotated_refresh_token: None,
     })
 }

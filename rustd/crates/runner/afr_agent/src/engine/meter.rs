@@ -1,8 +1,8 @@
-//! Usage belongs to the current lease and never enters recovered private state.
+//! Usage belongs to the current run and never enters recovered private state.
 
 use af_core::clock::{Clock, SystemClock};
-use af_providers::Usage;
-use af_wire::usage::{LINES_MAX, RequestLines, RequestUsage};
+use af_wire::usage::{RequestLines, RequestUsage};
+use guffbolt::Usage;
 use std::sync::{
     Arc, Mutex, MutexGuard, PoisonError,
     atomic::{AtomicU64, Ordering},
@@ -12,7 +12,7 @@ use std::sync::{
 /// provider request the daemon has not yet recorded.
 ///
 /// The engine adds each turn's usage. The supervisor sends the unrecorded lines
-/// with every lease renewal and forgets the ones the daemon says it recorded;
+/// with every run renewal and forgets the ones the daemon says it recorded;
 /// before the report it renews until one body holds the rest, and the report
 /// carries those, so the daemon prices every request on its own and a lost
 /// response never loses a line. Each total is its own
@@ -114,16 +114,14 @@ impl Meter {
         self.totals.read()
     }
 
-    /// The oldest request lines the daemon has not recorded, at most one
-    /// request body's worth.
+    /// Every request line the daemon has not recorded, oldest first.
     #[must_use]
     pub fn unrecorded(&self) -> RequestLines {
         let lines = self.lines();
-        RequestLines(lines.unrecorded.iter().take(LINES_MAX).copied().collect())
+        RequestLines(lines.unrecorded.clone())
     }
 
-    /// How many request lines the daemon has not recorded, which may be more
-    /// than one body carries.
+    /// How many request lines the daemon has not recorded.
     #[must_use]
     pub fn backlog(&self) -> usize {
         self.lines().unrecorded.len()
@@ -139,7 +137,19 @@ impl Meter {
     }
 }
 
+/// A model call's spend reaches the meter as each usage chunk arrives, so a
+/// turn that fails or is dropped afterwards still has its request line.
+impl guffbolt::Listen for Meter {
+    fn usage(&self, usage: Usage) {
+        self.add(usage);
+    }
+}
+
 /// A count the wire carries in 32 bits, saturated rather than wrapped.
 fn narrow(count: u64) -> u32 {
     u32::try_from(count).unwrap_or(u32::MAX)
 }
+
+#[cfg(test)]
+#[path = "meter_tests.rs"]
+mod tests;

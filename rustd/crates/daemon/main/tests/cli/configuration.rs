@@ -6,7 +6,7 @@ use super::{DEAD_DATABASE, FAILURE, MapEnv, SUCCESS, parse, parses_but_dead, run
 fn test_no_subcommand_validates_the_selected_toml_file() {
     use std::io::Write as _;
     let mut file = tempfile::NamedTempFile::new().expect("temporary config");
-    writeln!(file, "[runner.lease]\nttl_seconds = 32").expect("write unsafe clock");
+    writeln!(file, "[runner.run]\nttl_seconds = 32").expect("write unsafe clock");
     let path = file.path().to_str().expect("UTF-8 fixture path");
     assert_eq!(
         status(&["agentsfleetd", "--config", path], &parses_but_dead()),
@@ -16,7 +16,7 @@ fn test_no_subcommand_validates_the_selected_toml_file() {
         .set_len(0)
         .expect("truncate configuration");
     std::io::Seek::rewind(file.as_file_mut()).expect("rewind configuration");
-    writeln!(file, "[runner.lease]\nttl_seconds = 40").expect("write valid clock");
+    writeln!(file, "[runner.run]\nttl_seconds = 40").expect("write valid clock");
     let path = file.path().to_str().expect("UTF-8 fixture path");
     assert_eq!(
         status(&["agentsfleetd", "--config", path], &parses_but_dead()),
@@ -50,7 +50,7 @@ fn migration_refuses_invalid_configuration_before_building_its_runtime() {
     }
     let environment = MapEnv::from_pairs([("DATABASE_URL_MIGRATOR", DEAD_DATABASE)]);
     for contents in [
-        "[runner.lease]\nttl_seconds = 32",
+        "[runner.run]\nttl_seconds = 32",
         "[runner.stream.control]\nmax_buffered_bytes = 1",
         "[server",
     ] {

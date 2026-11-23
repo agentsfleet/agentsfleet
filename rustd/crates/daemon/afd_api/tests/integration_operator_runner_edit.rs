@@ -31,7 +31,7 @@ const STORED_LABELS: &str = "SELECT labels::text FROM runner.runners WHERE id = 
 const WHOLE_ROW: &str = "SELECT to_jsonb(r)::text FROM runner.runners r WHERE r.id = $1";
 
 /// How many events the runner's history holds, for the no-event repeat.
-const EVENT_COUNT: &str = "SELECT count(*)::text FROM runner.events WHERE runner_id = $1";
+const EVENT_COUNT: &str = "SELECT count(*)::text FROM runner.history WHERE runner_id = $1";
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -216,12 +216,11 @@ async fn assert_revoked_runner_refuses_the_whole_save(
         "a refused save wrote half of itself"
     );
 
-    let past_cap: Vec<String> = (0..=af_wire::runner::LABELS_MAX)
-        .map(|index| format!("l{index}"))
-        .collect();
-    let invalid = json!({ "labels": past_cap }).to_string();
+    // A label past the text ceiling makes a body past `[server]
+    // max_request_body_mib`, which the body limit refuses before the handler.
+    let invalid = json!({ "labels": ["l".repeat(af_validate::TEXT_MAX_CHARS + 1)] }).to_string();
     let refused = patch(router, &fixture.token, path, &invalid).await;
-    assert_eq!(refused.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(refused.status(), StatusCode::PAYLOAD_TOO_LARGE);
     assert_eq!(
         column(fixture, WHOLE_ROW).await,
         before,

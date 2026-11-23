@@ -25,8 +25,8 @@
     reason = "test target: a bad index should fail the test loudly, not be handled"
 )]
 
-use afd_api::auth::{ClassPolicy, DashboardClass, FreshSessionClass, HumanClass};
 use afd_auth::principal::PersonCredential;
+use afd_http::auth::{ClassPolicy, DashboardClass, FreshSessionClass, HumanClass};
 
 /// A session token with no workspace ceiling.
 const SESSION: PersonCredential = PersonCredential::SessionToken {

@@ -11,7 +11,7 @@ pub(crate) struct Checkpoints {
 }
 
 impl Checkpoints {
-    /// The cadence a lease's policy sets.
+    /// The cadence a run's policy sets.
     pub(crate) const fn new(budget: &ContextBudget<'_>) -> Self {
         Self {
             every: budget.memory_checkpoint_every,

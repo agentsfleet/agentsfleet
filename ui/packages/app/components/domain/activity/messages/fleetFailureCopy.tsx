@@ -1,7 +1,7 @@
 "use client";
 
 import type { MessageState } from "@assistant-ui/react";
-import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
+import type { FleetTurn } from "@/lib/streaming/fleet-stream-row";
 import {
   readFailureDetail,
   readFailureLabel,
@@ -11,15 +11,15 @@ import {
   failureSentenceFor,
   outcomeFor,
   RUNNER_REFUSAL_SENTENCE,
-} from "@/lib/events/event-summary";
+} from "@/lib/turns/turn-summary";
 
-// The runner is the only writer of startup_posture: it ends a lease under that
+// The runner is the only writer of startup_posture: it ends a run under that
 // class when it refuses the run before the fleet starts, and its cause line
 // says why. So every startup failure reads as the runner's refusal.
 const STARTUP_FAILURE_TAG = "startup_posture";
 
 // Failure copy for the chat surface. Startup-posture failures get concise
-// chat-specific wording; every other tag reuses the event-summary sentence.
+// chat-specific wording; every other tag reuses the turn-summary sentence.
 
 export function messageOutcome(message: MessageState): string {
   const failureLabel = readFailureLabel(message);
@@ -29,12 +29,12 @@ export function messageOutcome(message: MessageState): string {
   return formatFailureOutcome(failureLabel, rawOutcome, failureDetail);
 }
 
-export function eventOutcome(event: Pick<FleetEvent, "failureLabel" | "outcome" | "failureDetail">): string {
-  if (!event.failureLabel) return event.outcome;
+export function turnOutcome(turn: Pick<FleetTurn, "failureLabel" | "outcome" | "failureDetail">): string {
+  if (!turn.failureLabel) return turn.outcome;
   return formatFailureOutcome(
-    event.failureLabel,
-    event.outcome,
-    event.failureDetail,
+    turn.failureLabel,
+    turn.outcome,
+    turn.failureDetail,
   );
 }
 

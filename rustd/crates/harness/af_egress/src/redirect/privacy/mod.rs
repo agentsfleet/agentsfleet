@@ -23,12 +23,20 @@ const CREDENTIAL_KEYS: [&str; 11] = [
     "session",
 ];
 
-#[derive(Default)]
 pub(super) struct Privacy {
     units: Vec<String>,
+    /// Memory the masking automaton may build; past it the response is refused.
+    matcher_bytes: usize,
 }
 
 impl Privacy {
+    pub(super) const fn new(matcher_bytes: usize) -> Self {
+        Self {
+            units: Vec::new(),
+            matcher_bytes,
+        }
+    }
+
     pub(super) fn add(&mut self, target: &Target) {
         // Pure navigation carries no private path; its resolved URL stays protected.
         if target
@@ -82,7 +90,7 @@ impl Privacy {
         }
         values.sort_unstable();
         values.dedup();
-        let matcher = Matcher::new(&values)?;
+        let matcher = Matcher::new(&values, self.matcher_bytes)?;
         let (body, truncated) = mask_bounded(&matcher, &response.body)?;
         response.body = body;
         response.truncated |= truncated;

@@ -25,9 +25,30 @@
 //! so bodies are read in chunks no larger than this too. That costs a syscall
 //! per 16 KiB on a large upload and changes nothing about what is accepted:
 //! bodies stream, and their own limit is a separate concern from this one.
+//!
+//! # The read timeout: how long a client gets to send a request
+//!
+//! `[server] read_timeout_seconds` bounds the request, never the response.
+//! hyper's `header_read_timeout` closes an HTTP/1 connection whose head has not
+//! arrived in time, and tower-http's `RequestBodyDeadline` fails a body still
+//! arriving when the same time has passed since its head, after which hyper
+//! closes the connection rather than drain the rest. Neither runs while a
+//! response is being written, so a live stream stays open for as long as it
+//! sends. tower-http's `TimeoutLayer` is the wrong tool: it times the whole
+//! response future and would cut a stream.
+//!
+//! An idle HTTP/1 keep-alive connection waits on its next head, so it is
+//! closed after the same time; the client opens another.
 
-use hyper_util::rt::TokioExecutor;
+use std::time::Duration;
+
+use hyper_util::rt::{TokioExecutor, TokioTimer};
 use hyper_util::server::conn::auto;
+use tower_http::timeout::RequestBodyDeadline;
+
+/// How long a client gets to send a request's head, and then its body, when
+/// the daemon's file names no `[server] read_timeout_seconds`.
+pub const DEFAULT_READ_TIMEOUT: Duration = Duration::from_secs(300);
 
 /// Room for a request's status line and headers.
 ///
@@ -74,10 +95,17 @@ const _: () = assert!(MAX_FRAME_BYTES as usize == MAX_REQUEST_HEADER_BYTES);
 /// every runbook, the stock runner, the Node proxy — and a browser that offers
 /// h2 gets it. Prior-knowledge h2c, which is what a proxy terminating TLS in
 /// front of this server forwards.
+///
+/// `read_timeout` is the time an HTTP/1 client gets to send a request's head;
+/// past it hyper closes the connection.
 #[must_use]
-pub fn connection_builder() -> auto::Builder<TokioExecutor> {
+pub fn connection_builder(read_timeout: Duration) -> auto::Builder<TokioExecutor> {
     let mut builder = auto::Builder::new(TokioExecutor::new());
-    builder.http1().max_buf_size(MAX_REQUEST_HEADER_BYTES);
+    builder
+        .http1()
+        .max_buf_size(MAX_REQUEST_HEADER_BYTES)
+        .timer(TokioTimer::new())
+        .header_read_timeout(read_timeout);
     builder
         .http2()
         .max_header_list_size(MAX_FRAME_BYTES)
@@ -86,13 +114,31 @@ pub fn connection_builder() -> auto::Builder<TokioExecutor> {
     // a bound this important is worth one line an operator can grep for when a
     // client starts getting 431s.
     {
+        let read_timeout_seconds = read_timeout.as_secs();
         let (max_request_header_bytes, max_frame_bytes, event, message) = (
             &MAX_REQUEST_HEADER_BYTES,
             &MAX_FRAME_BYTES,
             &"http_connection_policy_set",
             format_args!("connection policy set for both protocol versions"),
         );
-        tracing::debug!(message, max_request_header_bytes, max_frame_bytes, event);
+        tracing::debug!(
+            message,
+            max_request_header_bytes,
+            max_frame_bytes,
+            read_timeout_seconds,
+            event
+        );
     };
     builder
+}
+
+/// `service` with every request body bounded by `read_timeout`, counted from
+/// the moment its head arrived.
+///
+/// A body still arriving past it fails, the handler reading it answers, and
+/// hyper closes the connection instead of draining the rest. Only the request
+/// body is wrapped; the response is never timed.
+#[must_use]
+pub fn read_bounded<S>(service: S, read_timeout: Duration) -> RequestBodyDeadline<S> {
+    RequestBodyDeadline::new(service, read_timeout)
 }

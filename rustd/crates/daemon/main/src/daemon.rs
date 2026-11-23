@@ -35,6 +35,8 @@
 //! That closes the half-dead-node window with no shared mutable state to keep
 //! consistent.
 
+use std::time::Duration;
+
 use crate::serve::drain::{DRAIN_TIMEOUT, Drain, Settled};
 use crate::supervisor::{ShutdownReport, Supervisor};
 
@@ -84,6 +86,8 @@ pub struct Daemon {
     /// shapes the tests build — where draining nothing is the correct no-op
     /// rather than a special case every caller has to remember.
     drain: Option<Drain>,
+    /// How long in-flight requests get to finish once accepting stops.
+    drain_timeout: Duration,
 }
 
 impl Daemon {
@@ -93,7 +97,15 @@ impl Daemon {
         Self {
             supervisor,
             drain: None,
+            drain_timeout: DRAIN_TIMEOUT,
         }
+    }
+
+    /// Gives in-flight requests `timeout` to finish, in place of [`DRAIN_TIMEOUT`].
+    #[must_use]
+    pub const fn with_drain_timeout(mut self, timeout: Duration) -> Self {
+        self.drain_timeout = timeout;
+        self
     }
 
     /// Drain `drain`'s in-flight requests before cancelling anything.
@@ -155,7 +167,7 @@ impl Daemon {
         // Before the supervisor, never after: its token is what cuts a
         // connection, so anything still in flight when it fires is lost.
         let settled = match self.drain.as_ref() {
-            Some(drain) => drain.settle(DRAIN_TIMEOUT).await,
+            Some(drain) => drain.settle(self.drain_timeout).await,
             None => Settled::EMPTY,
         };
 

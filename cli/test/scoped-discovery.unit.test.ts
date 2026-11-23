@@ -16,11 +16,11 @@ const MATRIX: ReadonlyArray<{ readonly scopes: ReadonlyArray<string>; readonly f
   { scopes: ["platform-key:admin", "platform-key:read"], families: { keys: ["list", "use", "delete"] } },
   { scopes: ["model:read"], families: { models: ["list", "show"] } },
   { scopes: ["model:admin", "model:read"], families: { models: ["list", "show", "create", "update", "delete"] } },
-  { scopes: ["runner:read"], families: { runners: ["list", "show", "events", "leases"] } },
+  { scopes: ["runner:read"], families: { runners: ["list", "show", "history", "runs"] } },
   { scopes: ["runner:register"], families: { runners: ["register"] } },
   {
     scopes: ["runner:write", "runner:read"],
-    families: { runners: ["list", "show", "update", "rotate-token", "delete", "events", "leases", "cordon", "drain", "revoke", "self-test"] },
+    families: { runners: ["list", "show", "update", "rotate-token", "delete", "history", "runs", "cordon", "drain", "revoke", "self-test"] },
   },
   { scopes: ["workspace:any"], families: {} },
 ];
@@ -88,8 +88,8 @@ describe("discovery_refuses_malformed_expired_and_unavailable_identity", () => {
       const baseline = await signedOut();
       const started = performance.now();
       const help = await run({ argv: ["--help"], env: { AGENTSFLEET_API_KEY: ENV_KEY }, ...setup });
-      // Under the 2000 ms default timeout, so a read that ignores the timeout
-      // seam still fails; the room above 1000 ms is for coverage runs.
+      // A read that ignores the timeout seam would never answer; the room
+      // above 1000 ms is for coverage runs.
       expect(performance.now() - started).toBeLessThan(1_900);
       expect(help.code).toBe(EXIT_OK);
       expect(rows(help.out)).not.toContain("platform");

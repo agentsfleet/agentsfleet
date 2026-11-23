@@ -1,4 +1,4 @@
-//! `/v1/workspaces/{id}/fleets/{fleet_id}/schedules` — the CRUD half of §3.
+//! `/v1/workspaces/{id}/fleets/{fleet_id}/schedules` — the CRUD half of schedules.
 //!
 //! # A create answers 201 even when the scheduler refused
 //!

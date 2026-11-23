@@ -1,4 +1,4 @@
-//! How a repository binding becomes lease rules, and what those rules cannot reach.
+//! How a repository binding becomes run rules, and what those rules cannot reach.
 
 #![expect(
     clippy::expect_used,
@@ -105,7 +105,7 @@ fn a_read_binding_admits_only_reads_of_its_own_repositories() {
 }
 
 #[test]
-fn a_write_binding_locks_the_ref_to_the_branch_this_lease_authorised() {
+fn a_write_binding_locks_the_ref_to_the_branch_this_run_authorised() {
     // The forgery that matters: a run that talks its model into creating
     // `refs/heads/main` produces a request no rule admits, because the ONE
     // ref rule pins the exact value.

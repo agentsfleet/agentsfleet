@@ -173,8 +173,8 @@ impl Fixtures {
         let mut connection = self.connection().await;
         sqlx::query(
             "INSERT INTO identity.users \
-             (id, tenant_id, oidc_subject, email, created_at, updated_at) \
-             VALUES ($1, $2, $3, $1 || '@example.test', now(), now())",
+             (id, tenant_id, oidc_subject, email, created_at) \
+             VALUES ($1, $2, $3, $1 || '@example.test', now())",
         )
         .bind(id)
         .bind(tenant)
@@ -200,9 +200,9 @@ impl Fixtures {
         let mut connection = self.connection().await;
         sqlx::query(AssertSqlSafe(format!(
             "INSERT INTO identity.api_keys \
-                 (id, tenant_id, name, description, key_hash, created_by_subject, \
+                 (id, tenant_id, name, key_hash, created_by_subject, \
                   revoked_at, created_at, updated_at) \
-                 VALUES ($4, $1, $2, '', $2, $3, {revoked_at}, now(), now())"
+                 VALUES ($4, $1, $2, $2, $3, {revoked_at}, now(), now())"
         )))
         .bind(tenant)
         .bind(digest.as_str())
@@ -250,8 +250,8 @@ impl Fixtures {
             "INSERT INTO runner.runners \
                  (id, host_id, token_hash, sandbox_tier, status, labels, network_policy, \
                   registry_allowlist, worker_count, degraded_reason, last_seen_at, \
-                  lease_version, created_at, updated_at, platform_owned) \
-                 VALUES ($1, 'fixture-host', $2, 'standard', $3, jsonb_build_array(), \
+                  run_version, created_at, updated_at, platform_owned) \
+                 VALUES ($1, $5, $2, 'standard', $3, jsonb_build_array(), \
                          'deny_all_egress', jsonb_build_array(), 1, $4, clock_timestamp(), 0, \
                          clock_timestamp(), clock_timestamp(), true)",
         )
@@ -259,6 +259,8 @@ impl Fixtures {
         .bind(digest.as_str())
         .bind(status)
         .bind(degraded.then_some("fixture-degraded"))
+        // A host of its own: the platform registers each host once.
+        .bind(format!("fixture-host-{id}"))
         .execute(&mut *connection)
         .await
         .expect("the native runner fixture must insert");

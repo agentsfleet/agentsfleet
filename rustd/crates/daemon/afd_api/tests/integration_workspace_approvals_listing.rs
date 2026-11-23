@@ -163,7 +163,7 @@ async fn assert_the_page_resumes(
     expected: &[String],
 ) {
     let mut seen: Vec<String> = Vec::new();
-    let mut query = "?limit=1&fleet_id=".to_owned() + fixture.fleet.as_str();
+    let mut query = format!("?limit=1&fleet_id={}", fixture.fleet.as_str());
     for _page in 0..expected.len() {
         let page = read(router, &fixture.token, collection, &query).await;
         let gate = page

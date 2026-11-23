@@ -1,5 +1,5 @@
 // Shared by browser controls and server-side decoding. Keep transport imports
-// in billing_report.ts so filter values cannot pull retry policy into clients.
+// in billing_report.ts so filter values cannot pull the transport into clients.
 export const BILLING_PERIOD_MONTH = "month";
 export const BILLING_PERIOD_TODAY = "today";
 export const BILLING_PERIOD_WEEK = "week";

@@ -35,6 +35,8 @@ impl Executor for Idle {
 #[derive(Debug)]
 pub(super) struct Named {
     pub(super) panics: bool,
+    /// Whether its teardown is refused, leaving it behind.
+    pub(super) leaks: bool,
     pub(super) dead: bool,
     #[expect(
         dead_code,
@@ -69,6 +71,9 @@ impl Sandbox for Named {
     async fn destroy(self: Box<Self>) -> Result<()> {
         assert!(!self.panics, "a teardown that panics");
         self.destroyed.fetch_add(1, Ordering::SeqCst);
+        if self.leaks {
+            return Err(crate::error::refused("cgroup"));
+        }
         Ok(())
     }
 }
@@ -86,6 +91,8 @@ pub(super) struct Counting {
     pub(super) delay: Duration,
     /// Whether each sandbox it starts fails loudly when destroyed.
     pub(super) panics: bool,
+    /// Whether each sandbox it starts refuses its teardown.
+    pub(super) leaks: bool,
 }
 
 #[async_trait::async_trait]
@@ -106,9 +113,10 @@ impl Engine for Counting {
             tokio::time::sleep(self.delay).await;
         }
         Ok(Box::new(Named {
-            name: request.lease_id.to_owned(),
+            name: request.run_id.to_owned(),
             destroyed: Arc::clone(&self.destroyed),
             panics: self.panics,
+            leaks: self.leaks,
             dead: self.dead,
             executor: Idle,
         }))

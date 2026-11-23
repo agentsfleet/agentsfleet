@@ -133,7 +133,7 @@ async fn simultaneous_identical_creates_commit_one_model_and_one_generation() {
 
 async fn version(lane: &Lane) -> i64 {
     let mut connection = lane.database.acquire().await.expect("connection");
-    sqlx::query_scalar("SELECT resource_version FROM model.catalogue_version WHERE id = 1")
+    sqlx::query_scalar("SELECT number FROM model.revision WHERE id = 1")
         .fetch_one(&mut *connection)
         .await
         .expect("generation")

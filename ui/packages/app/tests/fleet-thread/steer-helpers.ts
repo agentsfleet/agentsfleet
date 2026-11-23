@@ -13,8 +13,8 @@ export const OPERATION_ID = expect.stringMatching(UUID_V7);
 export const REFUSED = { ok: false, error: "Fleet is not active", status: 409, errorCode: "UZ-AGT-012" } as const;
 // An answer that settles nothing: the daemon may hold the message.
 export const UNAVAILABLE = { ok: false, error: "Provider unavailable", status: 503, errorCode: "UZ-API-002" } as const;
-// The 202 as the daemon answers a fresh admission.
-export const ACCEPTED = (eventId: string) => ({ ok: true, data: { status: "accepted", event_id: eventId, replayed: false } });
+// The 202 as the daemon answers a fresh turn.
+export const ACCEPTED = (turnId: string) => ({ ok: true, data: { status: "accepted", turn_id: turnId, replayed: false } });
 
 export function composerInput(): HTMLTextAreaElement {
   return screen.getByRole("textbox", { name: COMPOSER_NAME }) as HTMLTextAreaElement;

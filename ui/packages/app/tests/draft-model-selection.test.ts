@@ -18,7 +18,7 @@ beforeEach(() => {
     if (path.endsWith("/models")) return response({items: [MODEL], next_cursor: "more-models"});
     if (path.endsWith("/drafts")) return response({items: [], next_cursor: "more-chats"});
     if (path.endsWith("/messages")) return response({items: [MESSAGE], next_cursor: null});
-    if (path.endsWith(`/drafts/${DRAFT_ID}`)) return response({...DRAFT, authoring_model_ref: savedModel});
+    if (path.endsWith(`/drafts/${DRAFT_ID}`)) return response({...DRAFT, setup_model_ref: savedModel});
     throw new Error(`Unexpected fixture request ${path}`);
   }));
 });
@@ -35,6 +35,6 @@ it.each(["models", "chats", "refresh"] as const)("preserves the persisted model 
   await client.resume(DRAFT_ID);
   expect(client.getSnapshot().model).toBe(savedModel);
   if (list === "refresh") await client.initialize(); else await client.loadMore(list);
-  expect(client.getSnapshot()).toMatchObject({model: savedModel, draft: {authoring_model_ref: savedModel}});
+  expect(client.getSnapshot()).toMatchObject({model: savedModel, draft: {setup_model_ref: savedModel}});
   expect(methods.every(method => method === "GET")).toBe(true);
 });

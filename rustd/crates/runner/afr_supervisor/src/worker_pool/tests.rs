@@ -1,4 +1,4 @@
-//! Pushed offers use available workers without polling, including during another report retry.
+//! Pushed assignments use available workers without polling, including during another report retry.
 
 use std::sync::{
     Arc,
@@ -9,8 +9,8 @@ use std::time::Duration;
 use af_core::id::Uuid7;
 use af_stream::{Budget, MemoryLimits};
 use af_wire::{
-    lease::TaggedLease,
-    protocol::{Down, LEASES_MAX, StreamKind},
+    protocol::{Down, RUNS_MAX, StreamKind},
+    run::TaggedRun,
 };
 use tokio::{
     sync::{mpsc, watch},
@@ -21,9 +21,9 @@ use tokio_util::sync::CancellationToken;
 use super::serve;
 use crate::{
     client::Verb,
-    downlink::{Offered, policy::Assignment},
+    downlink::{Assigned, policy::Assignment},
     test_support::{
-        Answer, Behaviour, FLEET_ID, FakeAgent, FakeEngine, Rig, bounded, daemon, lease,
+        Answer, Behaviour, FLEET_ID, FakeAgent, FakeEngine, Rig, bounded, daemon, payload,
     },
 };
 
@@ -48,11 +48,11 @@ fn rig() -> Rig {
     )
 }
 
-async fn offer(rig: &Rig, id: &str, fleet: &str) -> TestResult<Offered> {
+async fn assign(rig: &Rig, id: &str, fleet: &str) -> TestResult<Assigned> {
     let (budget, _) = Budget::duplex(MemoryLimits::default());
     let session = CancellationToken::new();
-    let message: Down<'_> = Down::Offer {
-        lease: TaggedLease::<serde_json::Value>::Fleet(Box::new(lease(id, fleet))),
+    let message: Down<'_> = Down::Run {
+        run: TaggedRun::Fleet(Box::new(payload(id, fleet))),
     };
     let frame = af_stream::encode(
         &message,
@@ -67,8 +67,8 @@ async fn offer(rig: &Rig, id: &str, fleet: &str) -> TestResult<Offered> {
         .plane
         .stream
         .running
-        .offer(Uuid7::parse(id)?, false)?;
-    Ok(Offered {
+        .assign(Uuid7::parse(id)?, false)?;
+    Ok(Assigned {
         frame,
         registration,
         session,
@@ -88,8 +88,8 @@ async fn until(count: &AtomicUsize, minimum: usize) {
 async fn idle_workers_make_no_requests() -> TestResult {
     let mut rig = rig();
     let (_assignment, watching) = watch::channel(assigned(4));
-    let (_offers, offered) = mpsc::channel(LEASES_MAX);
-    let pool = tokio::spawn(serve(Arc::clone(&rig.lessee), watching, offered));
+    let (_assignments, assigned) = mpsc::channel(RUNS_MAX);
+    let pool = tokio::spawn(serve(Arc::clone(&rig.lessee), watching, assigned));
     tokio::time::sleep(Duration::from_millis(20)).await;
     rig.shutdown.cancel();
     bounded("idle pool shutdown", pool).await?;
@@ -102,10 +102,14 @@ async fn idle_workers_make_no_requests() -> TestResult {
 async fn two_free_workers_start_distinct_fleets() -> TestResult {
     let rig = rig();
     let (_assignment, watching) = watch::channel(assigned(2));
-    let (offers, offered) = mpsc::channel(LEASES_MAX);
-    offers.send(offer(&rig, FIRST, FLEET_ID).await?).await?;
-    offers.send(offer(&rig, SECOND, OTHER_FLEET).await?).await?;
-    let pool = tokio::spawn(serve(Arc::clone(&rig.lessee), watching, offered));
+    let (assignments, assigned) = mpsc::channel(RUNS_MAX);
+    assignments
+        .send(assign(&rig, FIRST, FLEET_ID).await?)
+        .await?;
+    assignments
+        .send(assign(&rig, SECOND, OTHER_FLEET).await?)
+        .await?;
+    let pool = tokio::spawn(serve(Arc::clone(&rig.lessee), watching, assigned));
     until(&rig.runs, 2).await;
     rig.shutdown.cancel();
     bounded("two-worker pool shutdown", pool).await?;
@@ -132,18 +136,22 @@ async fn a_free_worker_takes_b_while_a_waits_for_its_report_acknowledgement() ->
                     return Some(Answer::Fail(crate::error::malformed(Verb::Report)(source)));
                 }
             };
-            (report.get("lease_id").and_then(serde_json::Value::as_str) == Some(FIRST))
+            (report.get("run_id").and_then(serde_json::Value::as_str) == Some(FIRST))
                 .then_some(Answer::Stall)
         }),
         FakeEngine::default(),
         FakeAgent::new(Behaviour::Answer),
     );
     let (_assignment, watching) = watch::channel(assigned(2));
-    let (offers, offered) = mpsc::channel(LEASES_MAX);
-    offers.send(offer(&rig, FIRST, FLEET_ID).await?).await?;
-    let pool = tokio::spawn(serve(Arc::clone(&rig.lessee), watching, offered));
+    let (assignments, assigned) = mpsc::channel(RUNS_MAX);
+    assignments
+        .send(assign(&rig, FIRST, FLEET_ID).await?)
+        .await?;
+    let pool = tokio::spawn(serve(Arc::clone(&rig.lessee), watching, assigned));
     wait_for_report(&mut rig.calls).await?;
-    offers.send(offer(&rig, SECOND, OTHER_FLEET).await?).await?;
+    assignments
+        .send(assign(&rig, SECOND, OTHER_FLEET).await?)
+        .await?;
     until(&rig.runs, 2).await;
     assert!(
         rig.lessee
@@ -160,13 +168,17 @@ async fn a_free_worker_takes_b_while_a_waits_for_its_report_acknowledgement() ->
 }
 
 #[tokio::test]
-async fn offers_for_one_fleet_keep_the_existing_turn_order() -> TestResult {
+async fn assignments_for_one_fleet_keep_the_existing_turn_order() -> TestResult {
     let rig = rig();
     let (_assignment, watching) = watch::channel(assigned(2));
-    let (offers, offered) = mpsc::channel(LEASES_MAX);
-    offers.send(offer(&rig, FIRST, FLEET_ID).await?).await?;
-    offers.send(offer(&rig, SECOND, FLEET_ID).await?).await?;
-    let pool = tokio::spawn(serve(Arc::clone(&rig.lessee), watching, offered));
+    let (assignments, assigned) = mpsc::channel(RUNS_MAX);
+    assignments
+        .send(assign(&rig, FIRST, FLEET_ID).await?)
+        .await?;
+    assignments
+        .send(assign(&rig, SECOND, FLEET_ID).await?)
+        .await?;
+    let pool = tokio::spawn(serve(Arc::clone(&rig.lessee), watching, assigned));
     until(&rig.runs, 2).await;
     rig.shutdown.cancel();
     bounded("ordered pool shutdown", pool).await?;
@@ -178,13 +190,13 @@ async fn offers_for_one_fleet_keep_the_existing_turn_order() -> TestResult {
 async fn cancellation_before_execution_releases_the_registration_without_running() -> TestResult {
     let rig = rig();
     let (_assignment, watching) = watch::channel(assigned(1));
-    let (offers, offered) = mpsc::channel(LEASES_MAX);
-    let cancelled = offer(&rig, FIRST, FLEET_ID).await?;
+    let (assignments, assigned) = mpsc::channel(RUNS_MAX);
+    let cancelled = assign(&rig, FIRST, FLEET_ID).await?;
     cancelled.registration.stop.cancel();
-    offers.send(cancelled).await?;
-    drop(offers);
-    let pool = tokio::spawn(serve(Arc::clone(&rig.lessee), watching, offered));
-    bounded("cancelled offer removal", async {
+    assignments.send(cancelled).await?;
+    drop(assignments);
+    let pool = tokio::spawn(serve(Arc::clone(&rig.lessee), watching, assigned));
+    bounded("cancelled assignment removal", async {
         while !rig.lessee.plane.stream.running.snapshot().is_empty() {
             tokio::task::yield_now().await;
         }
@@ -197,16 +209,16 @@ async fn cancellation_before_execution_releases_the_registration_without_running
 }
 
 #[tokio::test]
-async fn unread_offers_from_a_disconnected_session_are_not_executed() -> TestResult {
+async fn unread_assignments_from_a_disconnected_session_are_not_executed() -> TestResult {
     let rig = rig();
     let (_assignment, watching) = watch::channel(assigned(1));
-    let (offers, offered) = mpsc::channel(LEASES_MAX);
-    let stale = offer(&rig, FIRST, FLEET_ID).await?;
+    let (assignments, assigned) = mpsc::channel(RUNS_MAX);
+    let stale = assign(&rig, FIRST, FLEET_ID).await?;
     stale.session.cancel();
-    offers.send(stale).await?;
-    drop(offers);
-    let pool = tokio::spawn(serve(Arc::clone(&rig.lessee), watching, offered));
-    bounded("stale offer removal", async {
+    assignments.send(stale).await?;
+    drop(assignments);
+    let pool = tokio::spawn(serve(Arc::clone(&rig.lessee), watching, assigned));
+    bounded("stale assignment removal", async {
         while !rig.lessee.plane.stream.running.snapshot().is_empty() {
             tokio::task::yield_now().await;
         }

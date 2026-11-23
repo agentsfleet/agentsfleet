@@ -1,14 +1,14 @@
-import { addTaskActivity, readTaskActivity } from "../task-activity";
-import type { FleetEvent } from "./fleet-stream-row";
+import { addDurableTaskActivity, readDurableTaskActivity } from "../task-activity";
+import type { FleetTurn } from "./fleet-stream-row";
 
-export function applyTaskActivity(previous: FleetEvent[], frame: {event_id: string; kind: string; progress: unknown}): FleetEvent[] {
-  const activity = readTaskActivity(frame);
-  const index = previous.findIndex(event => event.id === frame.event_id);
-  const event = previous[index];
-  if (!activity || !event) return previous;
-  const taskActivity = addTaskActivity(event.taskActivity, activity);
-  if (taskActivity === event.taskActivity) return previous;
+export function applyDurableTaskActivity(previous: FleetTurn[], frame: {turn_id: string; kind: string; progress: unknown}): FleetTurn[] {
+  const activity = readDurableTaskActivity(frame);
+  const index = previous.findIndex(turn => turn.id === frame.turn_id);
+  const turn = previous[index];
+  if (!activity || !turn) return previous;
+  const durableTaskActivity = addDurableTaskActivity(turn.durableTaskActivity, activity);
+  if (durableTaskActivity === turn.durableTaskActivity) return previous;
   const next = [...previous];
-  next[index] = {...event, taskActivity};
+  next[index] = {...turn, durableTaskActivity};
   return next;
 }

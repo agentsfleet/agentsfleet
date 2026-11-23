@@ -3,12 +3,43 @@ import { ActivityPrinter, activityText } from "../src/commands/fleet/task-activi
 import { ToolActivityPrinter } from "../src/commands/fleet/tool-activity.ts";
 import { fileActivity } from "../src/commands/fleet/file-activity.ts";
 
-test("local edit previews distinguish requested changes from confirmed edits", () => {
-  const args = {path: "src/app.ts", old_text: "before", new_text: "after"};
-  expect(fileActivity("file_edit", args, "succeeded")).toBe("Confirmed local edit: src/app.ts · not a publication\n- before\n+ after");
-  expect(fileActivity("file_edit", args, "failed")).toStartWith("Requested local edit:");
-  expect(fileActivity("file_edit", {...args, old_text: null}, "succeeded")).toBeUndefined();
-  expect(fileActivity("shell", args, "succeeded")).toBeUndefined();
+test("a confirmed edit prints the files and counts the runner recorded", () => {
+  const changes = [{path: "src/a.rs", added: 24, removed: 8}, {path: "README.md", added: 1, removed: 0}];
+  expect(fileActivity("apply_patch", changes, "succeeded"))
+    .toBe("Confirmed local edit · not a publication\nsrc/a.rs +24 −8\nREADME.md +1 −0");
+  for (const tool of ["file_write", "file_edit"]) {
+    expect(fileActivity(tool, changes, "succeeded")).toStartWith("Confirmed local edit");
+  }
+});
+
+test("an edit with no change the CLI can vouch for prints none", () => {
+  const changes = [{path: "src/a.rs", added: 24, removed: 8}];
+  // Not succeeded, not an edit, or nothing recorded.
+  expect(fileActivity("file_edit", changes, "failed")).toBeUndefined();
+  expect(fileActivity("shell", changes, "succeeded")).toBeUndefined();
+  expect(fileActivity("file_edit", undefined, "succeeded")).toBeUndefined();
+  expect(fileActivity("file_edit", [], "succeeded")).toBeUndefined();
+  // One entry the CLI cannot read drops the list rather than printing part of it.
+  for (const broken of [
+    [{path: "", added: 1, removed: 0}],
+    [{path: "a.rs", added: -1, removed: 0}],
+    [{path: "a.rs", added: 1.5, removed: 0}],
+    [{path: "a.rs", added: 1}],
+    [...changes, "a.rs +1 -0"],
+    {path: "a.rs", added: 1, removed: 0},
+  ]) expect(fileActivity("file_edit", broken, "succeeded")).toBeUndefined();
+});
+
+test("an edit's arguments are never diffed into a preview", () => {
+  const lines: string[] = [];
+  const printer = new ToolActivityPrinter(line => lines.push(line));
+  printer.frame("tool_call_completed", {name: "file_edit", status: "succeeded", call_id: "1",
+    args_redacted: {path: "x", edits: [{old_text: "before", new_text: "after"}]}});
+  expect(lines[0]).not.toContain("- before");
+  expect(lines[0]).toContain('"old_text": "before"');
+  printer.history({calls: [{call_id: "9:2", name: "file_edit", arguments: {path: "x"}, status: "succeeded", duration_ms: 3,
+    changes: [{path: "x", added: 2, removed: 1}]}]});
+  expect(lines[1]).toContain("x +2 −1");
 });
 
 test("byte progress labels distinguish acknowledged, missing and reused ciphertext", () => {
@@ -16,17 +47,17 @@ test("byte progress labels distinguish acknowledged, missing and reused cipherte
   const printer = new ActivityPrinter(line => lines.push(line));
   const payload = {progress: {activity_id: "019f0000-0000-7000-8000-000000000001", operation: "capture", phase: "uploading",
     provider: null, model: null, completed: 2, total: 3, bytes: {acknowledged: 128, missing: 64, reused: 256}}};
-  printer.frame("task_transfer_progress", payload);
-  printer.frame("task_transfer_progress", payload);
+  printer.frame("durable_task_transfer_progress", payload);
+  printer.frame("durable_task_transfer_progress", payload);
   expect(lines).toEqual(["Saving encrypted files · capture · 2/3 objects · 128 bytes acknowledged · 64 known missing bytes · 256 bytes reused"]);
-  printer.frame("task_transfer_progress", {...payload, progress: {...payload.progress, bytes: {...payload.progress.bytes, missing: -1}}});
+  printer.frame("durable_task_transfer_progress", {...payload, progress: {...payload.progress, bytes: {...payload.progress.bytes, missing: -1}}});
   expect(lines).toHaveLength(1);
 });
 
 test("replayed decisions and recovery steps remain bounded public observations", () => {
   const lines: string[] = [];
   const printer = new ActivityPrinter(line => lines.push(line));
-  const item = {kind: "task_decision_completed", progress: {activity_id: "019f0000-0000-7000-8000-000000000001",
+  const item = {kind: "durable_task_decision_completed", progress: {activity_id: "019f0000-0000-7000-8000-000000000001",
     operation: "goal", phase: "unavailable", provider: "openai", model: "selected-model", completed: 0, total: null}};
   expect(printer.frame(item.kind, item)).toBe(true);
   printer.history({items: [item], truncated: true});
@@ -42,24 +73,24 @@ test("command output preserves failures, exit codes and bounded terminal-safe pr
   const printer = new ToolActivityPrinter(line => lines.push(line));
   const call = {call_id: "9:1", name: "shell", arguments: {command: "make check"}, status: "failed",
     output_head: "first failure", output_tail: "last failure", exit_code: 2, duration_ms: 18};
-  printer.history({calls: [call], omitted_call_count: 3});
+  printer.history({calls: [call]});
   expect(lines[0]).toContain("shell failed 18ms");
   expect(lines[0]).toContain("make check");
   expect(lines[0]).toContain("last failure\nExit 2");
-  expect(lines[1]).toContain("3 earlier tool calls");
   printer.frame("tool_call_completed", {...call, args_redacted: call.arguments, ms: call.duration_ms});
-  expect(lines).toHaveLength(2);
+  expect(lines).toHaveLength(1);
   expect(activityText("\u001b]8;;evil\u0007spoof\u202e")).not.toMatch(/[\u001b\u0007\u202e]/u);
-  expect(activityText("x".repeat(9000))).toEndWith("… output truncated");
+  // 8,192 characters was the retired client cut; longer output is shown whole.
+  expect(activityText("x".repeat(9000))).toBe("x".repeat(9000));
   expect(printer.frame("tool_call_completed", {name: "shell"})).toBe(true);
   expect(lines.at(-1)).toContain("outcome unavailable");
   expect(printer.frame("other", {})).toBe(false);
 });
 
 
-test("file previews retain unchanged context and strip complete terminal sequences", () => {
-  const preview = fileActivity("file_edit", {path: "x", old_text: "same\nbefore\nend", new_text: "same\nafter\nend"}, "succeeded");
-  expect(preview).toContain("  same\n- before\n+ after\n  end");
+test("recorded paths and activity text strip complete terminal sequences", () => {
+  const changes = [{path: "x\u001b[31m.rs", added: 1, removed: 0}];
+  expect(fileActivity("file_edit", changes, "succeeded")).toContain("x.rs +1 −0");
   expect(activityText("\u001b[31mred\u001b[0m\u001b]8;;https://evil.example\u0007link\u001b]8;;\u0007")).toBe("redlink");
 });
 
@@ -69,32 +100,28 @@ test("older server observations cannot repeat changed missing-byte estimates", (
   const progress = {activity_id: "019f0000-0000-7000-8000-000000000001", sequence: 3,
     operation: "capture", phase: "uploading", provider: null, model: null, completed: 1, total: 2,
     bytes: {acknowledged: 128, missing: 128, reused: 0}};
-  printer.frame("task_transfer_progress", {progress});
-  printer.frame("task_transfer_progress", {progress: {...progress, sequence: 2, bytes: {...progress.bytes, missing: 256}}});
+  printer.frame("durable_task_transfer_progress", {progress});
+  printer.frame("durable_task_transfer_progress", {progress: {...progress, sequence: 2, bytes: {...progress.bytes, missing: 256}}});
   expect(lines).toHaveLength(1);
 });
 
-test("patch previews stay local and expensive diffs fall back to a bounded replacement", () => {
-  expect(fileActivity("apply_patch", {patch: "*** Update File: x\n-old\n+new\u001b[31m"}, "succeeded"))
-    .toBe("Confirmed local edit · not a publication\n*** Update File: x\n-old\n+new");
-  const before = Array.from({length: 501}, (_, index) => `a${index}`).join("\n");
-  const after = Array.from({length: 501}, (_, index) => `b${index}`).join("\n");
-  const preview = fileActivity("file_edit", {path: "large", old_text: before, new_text: after}, "succeeded");
-  expect(preview).toContain("- a0\n- a1");
-  expect(preview).toContain("- a500\n+ b0");
-  expect(preview).toEndWith("+ b500");
+test("a patch prints its recorded files, never its text", () => {
+  expect(fileActivity("apply_patch", {patch: "*** Update File: x\n-old\n+new"}, "succeeded")).toBeUndefined();
+  expect(fileActivity("apply_patch", [{path: "x", added: 1, removed: 1}], "succeeded"))
+    .toBe("Confirmed local edit · not a publication\nx +1 −1");
 });
 
-test("long event streams bound replay memory while retaining recent stage deduplication", () => {
+test("values past the retired caps print, and the safe-integer check stays", () => {
   const lines: string[] = [];
   const printer = new ActivityPrinter(line => lines.push(line));
-  const stage = (index: number) => ({progress: {activity_id: `019f0000-0000-7000-8000-${index.toString(16).padStart(12, "0")}`,
-    operation: "capture", phase: "saved", provider: null, model: null, completed: 1, total: 1}});
-  for (let index = 0; index < 257; index++) printer.frame("task_transfer_progress", stage(index));
-  printer.frame("task_transfer_progress", stage(256));
-  expect(lines).toHaveLength(257);
-  printer.frame("task_transfer_progress", stage(0));
-  expect(lines).toHaveLength(258);
+  const progress = {activity_id: "019f0000-0000-7000-8000-000000000001", operation: "capture", phase: "uploading",
+    provider: "p".repeat(257), model: "m".repeat(257), completed: 200_001, total: 200_002,
+    bytes: {acknowledged: 68_719_476_737, missing: 0, reused: 0}};
+  printer.frame("durable_task_transfer_progress", {progress});
+  expect(lines).toHaveLength(1);
+  expect(lines[0]).toContain("200001/200002 objects · 68719476737 bytes acknowledged");
+  printer.frame("durable_task_transfer_progress", {progress: {...progress, completed: 2 ** 53}});
+  expect(lines).toHaveLength(1);
 });
 
 test("long tool streams retain bounded replay history without losing new command outcomes", () => {

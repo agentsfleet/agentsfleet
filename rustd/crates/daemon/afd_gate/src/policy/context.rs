@@ -1,4 +1,4 @@
-//! How much context a run gets, resolved per lease from three sources.
+//! How much context a run gets, resolved per run from three sources.
 //!
 //! The saved provider model supplies execution identity. Authored context knobs
 //! may reduce the operating window without changing that identity or the saved
@@ -21,22 +21,50 @@
 use af_fleet_runtime::config::ContextBudget as Authored;
 use af_wire::policy::ContextBudget;
 
-/// The window when the cap is unknown, and for every cap between the tiers.
+/// The window when the cap is unknown, and for every cap between the tiers,
+/// when `[context] default_tool_window_count` names nothing else.
 ///
 /// Sized for a 200k–300k-class model.
 pub const DEFAULT_TOOL_WINDOW: u32 = 20;
 
-/// The window for a cap at or above [`CAP_LARGE_TOKENS`].
-const TOOL_WINDOW_LARGE: u32 = 30;
+/// The window for a cap at or above the large tier, by default.
+pub const TOOL_WINDOW_LARGE: u32 = 30;
 
-/// The window for a cap at or below [`CAP_SMALL_TOKENS`].
-const TOOL_WINDOW_SMALL: u32 = 10;
+/// The window for a cap at or below the small tier, by default.
+pub const TOOL_WINDOW_SMALL: u32 = 10;
 
-/// The cap at which the large tier begins.
-const CAP_LARGE_TOKENS: u32 = 1_000_000;
+/// The cap at which the large tier begins, by default.
+pub const CAP_LARGE_TOKENS: u32 = 1_000_000;
 
-/// The cap at or below which the small tier applies.
-const CAP_SMALL_TOKENS: u32 = 200_000;
+/// The cap at or below which the small tier applies, by default.
+pub const CAP_SMALL_TOKENS: u32 = 200_000;
+
+/// The deployment's tool-window tiers: `[context]` in the daemon's file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ToolWindows {
+    /// A model with a window at or below this uses the small tool window.
+    pub small_model_max_tokens: u32,
+    /// A model with a window at or above this uses the large tool window.
+    pub large_model_min_tokens: u32,
+    /// Recent tool calls kept for a small model.
+    pub small: u32,
+    /// Recent tool calls kept for a model in between, or of unknown size.
+    pub default: u32,
+    /// Recent tool calls kept for a large model.
+    pub large: u32,
+}
+
+impl Default for ToolWindows {
+    fn default() -> Self {
+        Self {
+            small_model_max_tokens: CAP_SMALL_TOKENS,
+            large_model_min_tokens: CAP_LARGE_TOKENS,
+            small: TOOL_WINDOW_SMALL,
+            default: DEFAULT_TOOL_WINDOW,
+            large: TOOL_WINDOW_LARGE,
+        }
+    }
+}
 
 /// How often a run checkpoints its memory when it does not say.
 pub const DEFAULT_MEMORY_CHECKPOINT_EVERY: u32 = 5;
@@ -55,9 +83,11 @@ pub struct Overlay<'a> {
     pub cap_tokens: u32,
     /// The resolved model, or empty when nothing resolved.
     pub model: &'a str,
+    /// The deployment's tool-window tiers.
+    pub windows: ToolWindows,
 }
 
-/// The budget this lease runs under.
+/// The budget this run runs under.
 ///
 /// `authored` supplies operating overrides. `overlay` carries the resolved
 /// provider model and the defaults for knobs the fleet left unset.
@@ -75,7 +105,7 @@ pub fn resolve(authored: Option<Authored>, overlay: Overlay<'_>) -> ContextBudge
 
     ContextBudget {
         // Derived from the cap, and only when the fleet authored no window.
-        tool_window: sentinel(declared.tool_window, auto_tool_window(cap)),
+        tool_window: sentinel(declared.tool_window, overlay.windows.for_cap(cap)),
         memory_checkpoint_every: sentinel(
             declared.memory_checkpoint_every,
             DEFAULT_MEMORY_CHECKPOINT_EVERY,
@@ -95,18 +125,21 @@ const fn sentinel(declared: u32, fallback: u32) -> u32 {
     if declared == 0 { fallback } else { declared }
 }
 
-/// The window a context cap implies.
-///
-/// The tiers are `capabilities.md` §4's. An unresolved cap takes the MIDDLE
-/// tier rather than the smallest — the cap is unknown, not known to be small,
-/// and shrinking the window on a model that turns out to be large would waste
-/// most of it.
-const fn auto_tool_window(cap_tokens: u32) -> u32 {
-    match cap_tokens {
-        0 => DEFAULT_TOOL_WINDOW,
-        large if large >= CAP_LARGE_TOKENS => TOOL_WINDOW_LARGE,
-        small if small <= CAP_SMALL_TOKENS => TOOL_WINDOW_SMALL,
-        _mid => DEFAULT_TOOL_WINDOW,
+impl ToolWindows {
+    /// The window a context cap implies.
+    ///
+    /// The tiers are `capabilities.md`'s. An unresolved cap takes the MIDDLE
+    /// tier rather than the smallest — the cap is unknown, not known to be
+    /// small, and shrinking the window on a model that turns out to be large
+    /// would waste most of it.
+    #[must_use]
+    pub const fn for_cap(&self, cap_tokens: u32) -> u32 {
+        match cap_tokens {
+            0 => self.default,
+            large if large >= self.large_model_min_tokens => self.large,
+            small if small <= self.small_model_max_tokens => self.small,
+            _mid => self.default,
+        }
     }
 }
 
@@ -136,7 +169,11 @@ mod tests {
             budget.memory_checkpoint_every,
             DEFAULT_MEMORY_CHECKPOINT_EVERY
         );
-        assert_eq!(budget.stage_chunk_threshold, DEFAULT_STAGE_CHUNK_THRESHOLD);
+        // The default is copied through untouched, so the bits match exactly.
+        assert_eq!(
+            budget.stage_chunk_threshold.to_bits(),
+            DEFAULT_STAGE_CHUNK_THRESHOLD.to_bits()
+        );
         assert_eq!(budget.context_cap_tokens, 0);
         assert_eq!(budget.model, "");
     }
@@ -177,6 +214,7 @@ mod tests {
             Overlay {
                 cap_tokens: CAP_LARGE_TOKENS,
                 model: "accounts/fireworks/models/kimi-k2.6",
+                ..Overlay::default()
             },
         );
 
@@ -198,6 +236,7 @@ mod tests {
                 Overlay {
                     cap_tokens: 256_000,
                     model: "provider-model",
+                    ..Overlay::default()
                 },
             );
             assert_eq!(budget.context_cap_tokens, cap);
@@ -246,6 +285,29 @@ mod tests {
                     ..NOTHING
                 }),
                 Overlay::default(),
+            );
+            assert_eq!(budget.tool_window, window, "cap {cap}");
+        }
+    }
+
+    /// `[context]` in the deployment file moves every tier and its window.
+    #[test]
+    fn configured_tiers_decide_the_window() {
+        let windows = super::ToolWindows {
+            small_model_max_tokens: 100,
+            large_model_min_tokens: 1_000,
+            small: 3,
+            default: 4,
+            large: 5,
+        };
+        for (cap, window) in [(0, 4), (100, 3), (101, 4), (999, 4), (1_000, 5)] {
+            let budget = resolve(
+                None,
+                Overlay {
+                    cap_tokens: cap,
+                    model: "",
+                    windows,
+                },
             );
             assert_eq!(budget.tool_window, window, "cap {cap}");
         }

@@ -14,7 +14,7 @@ const built = await Bun.build({
     build.onResolve({filter: /^@\/lib\/auth\/credential$/},
       () => ({path: path.join(import.meta.dirname, "visual-auth-fixture.tsx")}));
     build.onResolve({filter: /^\.\.\/\.\.\/actions$|^@\/app\/\(dashboard\)\/w\/\[workspaceId\]\/fleets\/actions$/},
-      () => ({path: path.join(import.meta.dirname, "event-detail-browser-action.ts")}));
+      () => ({path: path.join(import.meta.dirname, "turn-detail-browser-action.ts")}));
   }}],
 });
 if (!built.success) throw new AggregateError(built.logs, "Chat fixture build failed");

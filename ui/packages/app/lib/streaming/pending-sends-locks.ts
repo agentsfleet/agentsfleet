@@ -9,7 +9,7 @@
 // The owner requests its lock before it writes the `sending` entry that makes
 // other tabs look, so its request is queued first. A watcher granted early
 // anyway shows Resend over a live send, which is safe: the Resend carries the
-// same operation id and the daemon answers the first admission.
+// same operation id and the daemon answers the first turn.
 //
 // Without `navigator.locks` every method does nothing and `supported()` says
 // so: a foreign `sending` then stays hidden until a reload or its expiry. A

@@ -13,8 +13,9 @@ use opentelemetry::metrics::{Counter, Histogram};
 
 /// Four metadata series per model stay below the SDK's 2,000-series ceiling.
 pub const MAX_MODELS: u32 = 256;
-/// A stalled sampler cannot leave an indefinitely live catalogue claim.
-const MAX_AGE: Duration = Duration::from_secs(120);
+/// A stalled sampler cannot leave an indefinitely live catalogue claim; the
+/// age past which a snapshot publishes nothing, when nothing configures it.
+pub const MAX_AGE: Duration = Duration::from_secs(120);
 
 /// Non-secret facts supplied by the canonical model catalogue and route resolver.
 #[derive(Debug, Clone)]
@@ -70,7 +71,7 @@ impl Handles {
     ///
     /// # Errors
     /// Refuses a census/instrument disagreement.
-    pub(super) fn claim(instruments: &Instruments) -> Result<Self> {
+    pub(super) fn claim(instruments: &Instruments, max_age: Duration) -> Result<Self> {
         let snapshot: Arc<Mutex<Option<Snapshot>>> = Arc::new(Mutex::new(None));
         for (family, field) in [
             (&declared::LIMITS, Field::Limits),
@@ -86,7 +87,7 @@ impl Handles {
                     .and_then(|guard| {
                         guard
                             .as_ref()
-                            .map(|snapshot| readings(snapshot, field, Instant::now()))
+                            .map(|snapshot| readings(snapshot, field, Instant::now(), max_age))
                     })
                     .unwrap_or_default()
             })?;
@@ -110,14 +111,14 @@ fn attributes(model: &str, provider: &str) -> Vec<KeyValue> {
     values
 }
 
-fn readings(snapshot: &Snapshot, field: Field, now: Instant) -> Vec<Reading> {
+fn readings(snapshot: &Snapshot, field: Field, now: Instant, max_age: Duration) -> Vec<Reading> {
     let age = now.saturating_duration_since(snapshot.at);
     match field {
         Field::Age => return vec![Reading::unlabelled(age.as_secs())],
         Field::Clipped => return vec![Reading::unlabelled(u64::from(snapshot.clipped))],
         Field::Limits | Field::Routes => {}
     }
-    if age >= MAX_AGE {
+    if age >= max_age {
         return Vec::new();
     }
     snapshot
@@ -239,26 +240,41 @@ mod tests {
         assert!(debug.contains("models: 1"));
         assert!(!debug.contains("fixture"));
         assert!(!debug.contains("openai"));
-        assert_eq!(readings(&snapshot, Field::Limits, snapshot.at).len(), 1);
         assert_eq!(
-            readings(&snapshot, Field::Routes, snapshot.at)
+            readings(&snapshot, Field::Limits, snapshot.at, MAX_AGE).len(),
+            1
+        );
+        assert_eq!(
+            readings(&snapshot, Field::Routes, snapshot.at, MAX_AGE)
                 .first()
                 .map(|reading| reading.value),
             Some(0)
         );
         assert_eq!(
-            readings(&snapshot, Field::Limits, snapshot.at + MAX_AGE).len(),
+            readings(&snapshot, Field::Limits, snapshot.at + MAX_AGE, MAX_AGE).len(),
             0
         );
         assert_eq!(
-            readings(&snapshot, Field::Routes, snapshot.at + MAX_AGE).len(),
+            readings(&snapshot, Field::Routes, snapshot.at + MAX_AGE, MAX_AGE).len(),
             0
         );
         assert_eq!(
-            readings(&snapshot, Field::Age, snapshot.at + MAX_AGE)
+            readings(&snapshot, Field::Age, snapshot.at + MAX_AGE, MAX_AGE)
                 .first()
                 .map(|reading| reading.value),
             Some(MAX_AGE.as_secs())
+        );
+        // A configured age, not the default, is where a snapshot goes quiet.
+        let configured = Duration::from_secs(5);
+        assert_eq!(
+            readings(
+                &snapshot,
+                Field::Limits,
+                snapshot.at + configured,
+                configured
+            )
+            .len(),
+            0
         );
     }
 }

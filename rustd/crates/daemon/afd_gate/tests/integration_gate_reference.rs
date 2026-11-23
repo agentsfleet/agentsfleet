@@ -9,7 +9,7 @@ mod fixture;
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use afd_db::test_util::mint_id;
-use afd_gate::gate::{Gates, Refused, Verdict, Waiting};
+use afd_gate::gate::{Gates, Verdict, Waiting};
 
 use fixture::{Fixture, NOW, bus, config, config_gates};
 
@@ -42,7 +42,7 @@ async fn assert_deadline_and_answer(fixture: &Fixture, gates: &Gates, event: &Uu
     fixture.lapse(event).await;
     assert_eq!(
         gates.check(fixture.check(event, &config(false)), NOW).await,
-        Verdict::Refuse(Refused::Expired)
+        Verdict::Await(Waiting::Pending)
     );
     fixture
         .resolve(event, afd_api_wire::approval::status::APPROVED)

@@ -10,12 +10,8 @@
 //     doctor UZ surfaces. It never drives `list`, never asserts a
 //     bounded call-count from the MockCall ledger, and never covers a
 //     request timeout or an ECONNREFUSED-vs-auth message disambiguation.
-//   - http-retry.{unit,integration}.test.ts pin apiRequestWithRetry in
-//     isolation (classifier, jitter math, Retry-After floor, idempotency
-//     gate). They call the retry function directly — NOT through runCli, NOT
-//     with seeded creds, and NOT through the Effect ServerError/NetworkError
-//     exit-code mapping. This file proves the wired read path inherits the
-//     same boundedness and renders the right exit codes.
+//   This file proves the wired read path sends each request once and
+//   renders the right exit codes.
 //
 // Real UZ codes used here — declared in rustd/crates/foundation/af_core/src/error_code/,
 // with the status each answers in rustd/crates/foundation/af_core/src/problem/. The
@@ -24,12 +20,8 @@
 //   UZ-API-002       (503, "Event-stream capacity …")   SSE_STREAM_CAP
 //   UZ-API-001       (429, "Too many in-flight …")      API_BACKPRESSURE
 //
-// Boundedness anchor: the GET read path runs through apiRequestWithRetry
-// with the default maxAttempts of 3. A retryable status (503/429/TIMEOUT)
-// is replayed at most twice → exactly 3 round-trips; a non-retryable 500 is
-// surfaced on the first round-trip. "Does not retry forever" is asserted
-// directly off the MockCall ledger (or the injected-fetch counter), never
-// inferred.
+// Boundedness anchor: the CLI sends a request once, so every failure below
+// surfaces on the first round-trip, asserted directly off the MockCall ledger.
 
 import { describe, test, expect } from "bun:test";
 
@@ -47,19 +39,9 @@ const READ_ROUTE = `GET ${READ_PATH}` as const;
 const EXIT_SERVER_ERROR = 3 as const;
 const EXIT_NETWORK_ERROR = 2 as const;
 
-// apiRequestWithRetry's DEFAULT_MAX_ATTEMPTS. A retryable GET is replayed
-// twice → exactly this many round-trips. Mirrored locally so the bound is
-// asserted against a named constant, not a magic 3.
-const DEFAULT_MAX_ATTEMPTS = 3 as const;
 const SINGLE_ROUND_TRIP = 1 as const;
 
 const REQUEST_ID = "req_read_path_test" as const;
-
-// Note on backoff: the bounded-retry cases keep retries ON (we do NOT set
-// AGENTSFLEET_NO_RETRY) precisely so the cap is exercised. The retry-delay
-// knobs aren't exposed to the CLI path, so each retrying case pays the real
-// ~750ms exponential backoff once. That's acceptable for an integration
-// suite and keeps the transport honest end-to-end.
 
 const authedRead = <T>(fn: (stateDir: string) => Promise<T>): Promise<T> =>
   withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_read" }, fn);
@@ -97,7 +79,7 @@ describe("read-path failures — server 5xx boundedness", () => {
     });
   });
 
-  test("503 UZ-API-002 is retried but BOUNDED — the mock sees exactly maxAttempts round-trips, then the code surfaces", async () => {
+  test("503 UZ-API-002 surfaces on the first round-trip", async () => {
     await authedRead(async () => {
       const routes: MockRoutes = {
         [READ_ROUTE]: () =>
@@ -115,9 +97,7 @@ describe("read-path failures — server 5xx boundedness", () => {
         const text = err.read();
         expect(text).toContain("UZ-API-002");
         expect(text).toContain("Event-stream capacity reached");
-        // The headline assertion: retries are bounded. A persistently failing
-        // 503 stops at maxAttempts — it does NOT hammer the server forever.
-        expect(calls).toHaveLength(DEFAULT_MAX_ATTEMPTS);
+        expect(calls).toHaveLength(SINGLE_ROUND_TRIP);
         // Every recorded call hit the read path (no stray routes).
         expect(calls.every((c) => c.method === "GET" && c.path === READ_PATH)).toBe(true);
       });
@@ -126,7 +106,7 @@ describe("read-path failures — server 5xx boundedness", () => {
 });
 
 describe("read-path failures — 429 rate limit boundedness", () => {
-  test("429 UZ-API-001 surfaces, exits non-zero, and is retried at most maxAttempts times", async () => {
+  test("429 UZ-API-001 surfaces on the first round-trip and exits non-zero", async () => {
     await authedRead(async () => {
       const routes: MockRoutes = {
         [READ_ROUTE]: () =>
@@ -144,48 +124,8 @@ describe("read-path failures — 429 rate limit boundedness", () => {
         const text = err.read();
         expect(text).toContain("UZ-API-001");
         expect(text).toContain("Too many in-flight requests");
-        // 429 is retryable (the request was shed, not processed) but still
-        // bounded — a rate-limited client must not self-amplify the storm.
-        expect(calls).toHaveLength(DEFAULT_MAX_ATTEMPTS);
+        expect(calls).toHaveLength(SINGLE_ROUND_TRIP);
       });
-    });
-  });
-});
-
-describe("read-path failures — request timeout boundedness", () => {
-  test("a fetch that aborts surfaces a clean TIMEOUT message, exits non-zero, and the transport stops at maxAttempts", async () => {
-    await authedRead(async () => {
-      // The real production timeout fires an AbortController whose abort
-      // surfaces from fetch as an AbortError; apiRequest rewraps that as
-      // ApiError(code:"TIMEOUT"). Simulating the AbortError here exercises
-      // that exact rewrap + the retry layer's timeout classification without
-      // paying the 15s wall-clock timeout. We count fetch invocations to
-      // prove the timeout path is bounded, not infinite.
-      let fetchCalls = 0;
-      const abortingFetch = (async (_url: string, _init?: RequestInit) => {
-        fetchCalls += 1;
-        const abortError = Object.assign(new Error("The operation was aborted"), {
-          name: "AbortError",
-        });
-        throw abortError;
-      }) as unknown as typeof fetch;
-
-      const out = bufferStream();
-      const err = bufferStream();
-      const code = await runCli(["fleet", "list"], {
-        stdout: out.stream,
-        stderr: err.stream,
-        // apiUrl is irrelevant — abortingFetch never reaches the network.
-        env: cliEnv({ AGENTSFLEET_API_URL: "http://127.0.0.1:1/v1" }),
-        fetchImpl: abortingFetch,
-      });
-      expect(code).toBe(EXIT_SERVER_ERROR);
-      const text = err.read();
-      // The operator must see a recognizable timeout, not a raw stack/abort.
-      expect(text).toMatch(/timed out/i);
-      expect(text).toContain("TIMEOUT");
-      // Bounded: the timeout class is retryable but capped at maxAttempts.
-      expect(fetchCalls).toBe(DEFAULT_MAX_ATTEMPTS);
     });
   });
 });

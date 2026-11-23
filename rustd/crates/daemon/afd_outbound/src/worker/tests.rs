@@ -14,9 +14,9 @@ use super::{
     EVENT_CLAIM_COMPLETED, EVENT_CLAIM_FAILED, EVENT_CLAIM_STARTED, EVENT_WAKE_CLOSED,
     EVENT_WAKE_SUBSCRIBE_FAILED, Via, Worker, claim_once, pinged, report,
 };
+use crate::delivery::Outgoing;
 use crate::error::query;
 use crate::lanes::Lanes;
-use crate::obligation::Outgoing;
 use crate::poster::{Deliver, Posters, Verdict};
 
 type TestResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
@@ -73,7 +73,7 @@ fn a_logged_failure_reason_carries_no_code_prefix() {
 }
 
 /// A worker whose bus refuses the subscription says so once and runs on its
-/// pass alone.
+/// finished deliveries alone.
 #[tokio::test]
 async fn a_wake_that_cannot_subscribe_is_logged() -> TestResult {
     let capture = Capture::install();
@@ -106,7 +106,7 @@ async fn a_wake_that_cannot_subscribe_is_logged() -> TestResult {
 async fn a_closed_wake_is_logged_and_dropped() -> TestResult {
     let capture = Capture::install();
     let (bus, _server) = afd_bus::test_util::detached()?;
-    let subscription = bus.subscribe(&Subject::OutboundWake).await?;
+    let subscription = bus.subscribe(&Subject::DeliveryWake).await?;
     bus.shutdown().await?;
     let mut wake = Some(subscription);
 
@@ -191,7 +191,7 @@ async fn a_refused_draw_claims_nothing() -> TestResult {
 }
 
 /// The loop logs a failed claim once at `warn`, under the failure's own code,
-/// and claims again on its next ping or pass.
+/// and claims again on its next ping or finished delivery.
 #[tokio::test]
 async fn a_failed_claim_is_logged_by_the_loop() -> TestResult {
     let capture = Capture::install();
@@ -235,4 +235,16 @@ async fn a_refused_draw_is_logged_by_the_loop() -> TestResult {
     );
     failed.assert_uncoded_reason();
     Ok(())
+}
+
+/// A worker that never got a wake subscription waits on its scans alone: the
+/// ping it would have listened for never arrives.
+#[tokio::test]
+async fn a_worker_with_no_wake_never_reports_a_ping() {
+    let mut wake = None;
+
+    let waited = tokio::time::timeout(Duration::from_millis(50), pinged(&mut wake)).await;
+
+    assert!(waited.is_err(), "no subscription, no ping");
+    assert!(wake.is_none());
 }

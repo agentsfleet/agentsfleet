@@ -4,7 +4,7 @@
 import { expect, test } from "bun:test";
 import { composeEnv, runFleetctl } from "./acceptance/fixtures/cli.js";
 import { jsonResponse, withMockApi, type MockCall } from "./helpers-mock-api.ts";
-import { authedScope, EVENT_ID, FLEET_ID, POST, WS_ID } from "./helpers-fleet-steer.ts";
+import { authedScope, TURN_ID, FLEET_ID, POST, WS_ID } from "./helpers-fleet-steer.ts";
 
 const FLEETS = `/v1/workspaces/${WS_ID}/fleets`;
 const VALIDATION_EXIT_CODE = 4;
@@ -12,7 +12,7 @@ const ROW = {
   id: FLEET_ID, name: "agentbob", description: null, status: "active", created_at: "2026-11-19T00:00:00Z",
   events_processed: "0", budget_used_nanos: "0",
 };
-const COMPLETE_FRAME = `event: event_complete\ndata: ${JSON.stringify({ event_id: EVENT_ID, status: "processed" })}\n\n`;
+const COMPLETE_FRAME = `event: turn_complete\ndata: ${JSON.stringify({ turn_id: TURN_ID, status: "processed" })}\n\n`;
 
 const requested = (calls: ReadonlyArray<MockCall>): ReadonlyArray<string> =>
   calls.map((call) => `${call.method} ${call.path}${call.search}`);
@@ -21,9 +21,9 @@ test("fleet_steer_binary_reaches_a_fleet_by_name", async () => {
   await authedScope((stateDir) => withMockApi({
     [`GET ${FLEETS}`]: (_req, url) =>
       jsonResponse(200, { items: url.searchParams.get("name") === ROW.name ? [ROW] : [], total: null, next_cursor: null }),
-    [`GET ${FLEETS}/${FLEET_ID}/events/stream`]: () =>
+    [`GET ${FLEETS}/${FLEET_ID}/turns/stream`]: () =>
       new Response(COMPLETE_FRAME, { headers: { "content-type": "text/event-stream" } }),
-    [`POST ${FLEETS}/${FLEET_ID}/messages`]: () => jsonResponse(202, { event_id: EVENT_ID, disposition: "started" }),
+    [`POST ${FLEETS}/${FLEET_ID}/messages`]: () => jsonResponse(202, { turn_id: TURN_ID, disposition: "started" }),
   }, async (apiUrl, calls) => {
     const env = composeEnv({ AGENTSFLEET_API_URL: apiUrl, AGENTSFLEET_STATE_DIR: stateDir, NO_COLOR: "1" });
 
@@ -39,13 +39,13 @@ test("fleet_steer_binary_reaches_a_fleet_by_name", async () => {
     expect(sent.code).toBe(0);
     expect(requested(calls)).toEqual([
       `GET ${FLEETS}?name=agentbob`,
-      `GET ${FLEETS}/${FLEET_ID}/events/stream`,
+      `GET ${FLEETS}/${FLEET_ID}/turns/stream`,
       `POST ${FLEETS}/${FLEET_ID}/messages`,
     ]);
     expect(calls.filter((call) => call.method === POST).map((call) => JSON.parse(call.body ?? "null")))
       .toEqual([{ message: "retry" }]);
     expect(JSON.parse(sent.stdout)).toEqual({
-      event_id: EVENT_ID, disposition: "started", kind: "complete", status: "processed",
+      turn_id: TURN_ID, disposition: "started", kind: "complete", status: "processed",
     });
   }));
 });

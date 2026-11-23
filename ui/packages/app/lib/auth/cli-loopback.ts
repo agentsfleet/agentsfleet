@@ -2,8 +2,6 @@ export const CALLBACK_PATH = "/cli-auth/callback";
 export const LOOPBACK_VERSION = "1";
 export const LOOPBACK_FLOW = "loopback";
 export const LOOPBACK_FLOW_PARAM = "flow";
-export const LOOPBACK_MAX_AGE_MS = 5 * 60 * 1_000;
-export const LOOPBACK_RECORD_BYTES = 2_048;
 export const LOOPBACK_KIND = { manual: "manual", invalid: "invalid", automatic: "automatic" } as const;
 export const LOOPBACK_FAILURE = "This local sign-in could not be restored. Restart login in your terminal, or use --no-open for another device.";
 
@@ -53,7 +51,7 @@ function validPublicKey(value: string): boolean {
 }
 
 export function parseLoopbackFragment(hash: string): LoopbackHandoff | null {
-  if (hash.length > LOOPBACK_RECORD_BYTES || /%(?![0-9a-f]{2})/i.test(hash)) return null;
+  if (/%(?![0-9a-f]{2})/i.test(hash)) return null;
   const params = new URLSearchParams(hash.replace(/^#/, ""));
   if (params.get(FIELD.version) !== LOOPBACK_VERSION) return null;
   const sessionId = params.get(FIELD.session);

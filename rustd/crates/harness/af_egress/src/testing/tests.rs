@@ -3,8 +3,8 @@
 
 use super::{CountingMint, RecordingTransport};
 use crate::{
-    admission::{Draft, Placement},
     egress::Egress,
+    policy::{Draft, Placement},
     transport::Transport as _,
 };
 use af_core::clock::FixedClock;
@@ -18,7 +18,7 @@ async fn fixed_replies_record_the_exact_prepared_request() {
     let policy = crate::fixture::policy(true);
     let mint = CountingMint::never();
     let clock = FixedClock::at(jiff::Timestamp::UNIX_EPOCH);
-    let mut egress = Egress::new("lease-proof", &policy, &mint, &clock);
+    let mut egress = Egress::new("run-proof", &policy, &mint, &clock);
     let draft = Draft {
         method: "GET".into(),
         url: "https://demo-grafana.internal/api/health".into(),

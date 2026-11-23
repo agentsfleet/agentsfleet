@@ -1,0 +1,137 @@
+[package]
+name = "guffbolt-ai"
+description = "The provider side of the guffbolt agent harness: what a model call is asked, the chunks it streams back, and the Model trait a provider implements."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme = "README.md"
+# What crates.io lists it under; the workspace's keywords name agentsfleet.
+keywords = ["agent", "llm", "ai", "provider", "streaming"]
+categories = ["asynchronous"]
+
+[lints]
+workspace = true
+
+[features]
+# The wires: a route over rig's codecs, the transport seam, retries, the
+# streamed turn and a `Model` over all of it. Off by default, so a provider
+# crate or a loop that brings its own wire links none of it.
+wire = [
+    "dep:backon",
+    "dep:base64",
+    "dep:hex",
+    "dep:http",
+    "dep:httpdate",
+    "dep:rig-core",
+    "dep:sha2",
+    "dep:thiserror",
+    "dep:tiktoken-rs",
+    "dep:tokio",
+    "dep:tokio-util",
+    "dep:url",
+]
+# The default transport: a `reqwest` client that follows no redirect.
+reqwest = ["wire", "dep:reqwest"]
+# One feature per provider: its factory and its catalogue rows. A provider
+# connects over the default transport, so each turns on `wire` and `reqwest`.
+anthropic = ["wire", "reqwest"]
+openai = ["wire", "reqwest"]
+gemini = ["wire", "reqwest"]
+ollama = ["wire", "reqwest"]
+openrouter = ["wire", "reqwest"]
+fireworks = ["wire", "reqwest"]
+minimax = ["wire", "reqwest"]
+deepseek = ["wire", "reqwest"]
+groq = ["wire", "reqwest"]
+mistral = ["wire", "reqwest"]
+xai = ["wire", "reqwest"]
+together = ["wire", "reqwest"]
+# Every provider.
+all = [
+    "anthropic",
+    "openai",
+    "gemini",
+    "ollama",
+    "openrouter",
+    "fireworks",
+    "minimax",
+    "deepseek",
+    "groq",
+    "mistral",
+    "xai",
+    "together",
+]
+# What a process driving the wires logs of rig's own lines.
+log-filter = ["dep:tracing-subscriber"]
+# A fake provider's TLS listener and a client trusting it, for an embedder's
+# suites.
+test-util = ["reqwest", "dep:rcgen", "dep:rustls", "dep:tokio-rustls"]
+
+# The default build is the types alone: a provider crate or a loop links
+# nothing else from here.
+[dependencies]
+# An image a call read, serialized with the conversation that carries it.
+bytes = { workspace = true, features = ["serde"] }
+# A model step streams as a `futures` stream of chunks.
+futures-util.workspace = true
+# A conversation is saved and resumed through these.
+serde = { workspace = true, features = ["derive"] }
+# A call's arguments, a tool's parameters and a provider's replay record are
+# JSON.
+serde_json.workspace = true
+
+# The bounded retry of one send, honouring `Retry-After`.
+backon = { workspace = true, optional = true }
+# A tool result's image rides the wire as base64.
+base64 = { workspace = true, optional = true }
+# A route's and a model's digest in the input-count record.
+hex = { workspace = true, optional = true }
+# The request a send takes and the response it answers: the transport seam
+# speaks `http`, never rig's own types.
+http = { workspace = true, optional = true }
+# `Retry-After` in its HTTP-date form.
+httpdate = { workspace = true, optional = true }
+# Every wire: the request rig builds, the stream it decodes, the calls it
+# assembles and the reasoning it carries back. Pinned exactly in the
+# workspace: rig's minors break their API.
+rig-core = { workspace = true, optional = true }
+# The digest that binds an input count to the request it measured.
+sha2 = { workspace = true, optional = true }
+# The wire failures' kinds.
+thiserror = { workspace = true, optional = true }
+# Input token counts that bound each call against its context window.
+tiktoken-rs = { workspace = true, optional = true }
+# The idle and count deadlines a turn is read under.
+tokio = { workspace = true, optional = true, features = ["time"] }
+# The token a turn's reader is cancelled by.
+tokio-util = { workspace = true, optional = true }
+# A route's base URL, and the host it names.
+url = { workspace = true, optional = true }
+
+reqwest = { workspace = true, optional = true }
+tracing-subscriber = { workspace = true, optional = true }
+
+# The TLS listener `testing::tls` serves a fake provider on.
+rcgen = { workspace = true, optional = true }
+rustls = { workspace = true, optional = true }
+tokio-rustls = { workspace = true, optional = true }
+
+[dev-dependencies]
+# The fake provider: a real listener, so a status, a header and a streamed
+# body are proven on the socket rather than assumed by a mock.
+axum.workspace = true
+# Rig's scripted stream exercises unmodeled items and retained terminal failures.
+rig-core = { workspace = true, features = ["test-utils"] }
+# The levels the log filter's suite asks it about.
+tracing.workspace = true
+# `start_paused`, the sockets the fake providers listen on, and the reply a
+# TLS fake writes.
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "net", "time", "sync", "test-util", "io-util"] }
+
+# A MiniMax turn through the public API, against a fake provider over TLS.
+[[test]]
+name = "minimax"
+required-features = ["minimax", "test-util"]

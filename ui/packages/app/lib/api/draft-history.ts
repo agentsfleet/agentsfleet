@@ -3,24 +3,20 @@
 import type { Draft, Message } from "./draft-types";
 import { DraftSchema, isRunning, MESSAGE_ROLE, MessagesSchema, PAGE_LIMIT } from "./draft-types";
 import { setupRequest, SetupUnavailable } from "./draft-request";
-import { isStopped } from "./draft-recovery";
 
 type DraftRead = {draft: Draft; messages: readonly Message[]};
 
-const MAX_WALK_PAGES = 200;
 const RETAINED_MESSAGES = 500;
 const ROLE_ORDER = {[MESSAGE_ROLE.user]: 0, [MESSAGE_ROLE.assistant]: 1};
 
 export class DraftHistory {
   readonly #rows = new Map<string, Message>();
   #cursor: string | undefined;
-  #highest = "0";
   #truncated = false;
   #reading: Promise<DraftRead> | undefined;
 
-  get highest(): string { return this.#highest; }
   get truncated(): boolean { return this.#truncated; }
-  clear(): void { this.#rows.clear(); this.#cursor = undefined; this.#highest = "0"; this.#truncated = false; this.#reading = undefined; }
+  clear(): void { this.#rows.clear(); this.#cursor = undefined; this.#truncated = false; this.#reading = undefined; }
 
   seed(messages: readonly Message[], cursor: string | undefined, truncated: boolean): void {
     this.clear(); this.#cursor = cursor; this.#truncated = truncated;
@@ -37,9 +33,8 @@ export class DraftHistory {
     }
     const read = (async () => {
       signal.throwIfAborted();
-      const current = opened ? Promise.resolve(opened) : setupRequest({path}, DraftSchema, signal);
       const [messages, draft] = await Promise.all([
-        this.read(path, signal, current), current,
+        this.read(path, signal), opened ? Promise.resolve(opened) : setupRequest({path}, DraftSchema, signal),
       ]);
       signal.throwIfAborted();
       return {messages, draft};
@@ -48,27 +43,27 @@ export class DraftHistory {
     try { return await read; } finally { if (this.#reading === read) this.#reading = undefined; }
   }
 
-  async read(path: string, signal: AbortSignal, current?: Promise<Draft>): Promise<readonly Message[]> {
+  async read(path: string, signal: AbortSignal): Promise<readonly Message[]> {
     let cursor = this.#cursor;
     let canAdvance = true;
-    for (let page = 0; page < MAX_WALK_PAGES; page += 1) {
+    // The walk ends when the server reports no next page; a cursor it already
+    // followed would replay the same pages forever.
+    const followed = new Set<string>();
+    for (;;) {
       const query = new URLSearchParams({limit: String(PAGE_LIMIT)});
       if (cursor) query.set("starting_after", cursor);
-      const [result, draft] = await Promise.all([
-        setupRequest({path: `${path}/messages?${query}`}, MessagesSchema, signal), current,
-      ]);
+      const result = await setupRequest({path: `${path}/messages?${query}`}, MessagesSchema, signal);
       for (const message of result.items) this.#remember(message);
-      const cutoff = draft?.cancelled_through ?? "0";
-      if (result.items.some((message) => !isStopped(message, cutoff) && isRunning(message))) canAdvance = false;
+      if (result.items.some(isRunning)) canAdvance = false;
       if (!result.next_cursor) return [...this.#rows.values()].sort(ordered);
+      if (followed.has(result.next_cursor)) throw new SetupUnavailable("Conversation history repeated a page. Refresh to continue from the last confirmed page.", 502);
+      followed.add(result.next_cursor);
       if (canAdvance) this.#cursor = result.next_cursor;
       cursor = result.next_cursor;
     }
-    throw new SetupUnavailable("Conversation history is still loading. Refresh to continue from the last confirmed page.", 503);
   }
 
   #remember(message: Message): void {
-    if (BigInt(message.sequence) > BigInt(this.#highest)) this.#highest = message.sequence;
     this.#rows.set(`${message.sequence}:${message.role}`, message);
     if (this.#rows.size > RETAINED_MESSAGES) {
       const excess = [...this.#rows.values()].sort(ordered).slice(0, this.#rows.size - RETAINED_MESSAGES);

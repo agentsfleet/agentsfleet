@@ -1,13 +1,13 @@
-//! A fleet's durable memory: read at lease start, searched past the window
+//! A fleet's durable memory: read at run start, searched past the window
 //! when a recall falls short, and written back fenced.
 
 use std::borrow::Cow;
 
 use af_core::id::Uuid7;
-use af_wire::lease::LeasePayload;
 use af_wire::memory::{
     MemoryDelta, MemoryPushRequest, MemoryRecallRequest, MemoryRecallResponse, SharedMemory,
 };
+use af_wire::run::RunPayload;
 use afr_agent::Checkpoint;
 use afr_telemetry::record;
 
@@ -20,8 +20,8 @@ use crate::error::Result;
 ///
 /// # Errors
 /// A refusal, or a retryable failure that outlasted its attempts.
-pub(crate) async fn hydrate(plane: &ControlPlane, fleet_id: &Uuid7) -> Result<Body> {
-    plane.retrying(|| plane.hydrate(fleet_id)).await
+pub(crate) async fn load(plane: &ControlPlane, fleet_id: &Uuid7) -> Result<Body> {
+    plane.retrying(|| plane.load(fleet_id)).await
 }
 
 /// Counts a memory push that did not land, by why.
@@ -29,14 +29,14 @@ fn counted(failure: &crate::Error) {
     record::push_failed(failure.push_failure());
 }
 
-/// `memory`, fenced by `lease`'s token.
+/// `memory`, fenced by `run`'s token.
 fn push_request<'a>(
-    lease: &'a LeasePayload<'_>,
+    run: &'a RunPayload<'_>,
     memory: Vec<MemoryDelta<'a>>,
 ) -> MemoryPushRequest<'a> {
     MemoryPushRequest {
-        lease_id: Cow::Borrowed(&lease.lease_id),
-        fencing_token: lease.fencing_token,
+        run_id: Cow::Borrowed(&run.run_id),
+        fencing_token: run.fencing_token,
         memory,
     }
 }
@@ -103,62 +103,62 @@ impl Drop for CapturedMemory {
     }
 }
 
-/// Writes one lease's memory back mid-run, through the same fenced push.
+/// Writes one run's memory back mid-run, through the same fenced push.
 #[derive(Debug)]
-pub(crate) struct LeaseCheckpoint<'a> {
+pub(crate) struct RunCheckpoint<'a> {
     plane: &'a ControlPlane,
     fleet_id: &'a Uuid7,
-    lease: &'a LeasePayload<'a>,
+    run: &'a RunPayload<'a>,
 }
 
-impl<'a> LeaseCheckpoint<'a> {
-    /// The checkpoint of `lease`, for `fleet_id`, pushing through `plane`.
+impl<'a> RunCheckpoint<'a> {
+    /// The checkpoint of `run`, for `fleet_id`, pushing through `plane`.
     pub(crate) const fn new(
         plane: &'a ControlPlane,
         fleet_id: &'a Uuid7,
-        lease: &'a LeasePayload<'a>,
+        run: &'a RunPayload<'a>,
     ) -> Self {
         Self {
             plane,
             fleet_id,
-            lease,
+            run,
         }
     }
 }
 
 #[async_trait::async_trait]
-impl Checkpoint for LeaseCheckpoint<'_> {
+impl Checkpoint for RunCheckpoint<'_> {
     /// One attempt, no retry: the push before the report retries, and carries
     /// every entry again.
     async fn push(&self, memory: Vec<MemoryDelta<'static>>) -> afr_agent::Result<()> {
-        let request = push_request(self.lease, memory);
+        let request = push_request(self.run, memory);
         (self.plane.capture(self.fleet_id, &request).await)
             .inspect_err(counted)
             .map_err(afr_agent::Error::checkpoint)
     }
 }
 
-/// Asks the daemon for memory a run's window missed, fenced by the lease's
+/// Asks the daemon for memory a run's window missed, fenced by the run's
 /// token. Never retried: a recall that gets no answer answers from the
 /// window, and a retry would only make the model wait longer for the same.
 #[derive(Debug)]
 pub(crate) struct Recaller<'a> {
     plane: &'a ControlPlane,
     fleet_id: &'a Uuid7,
-    lease: &'a LeasePayload<'a>,
+    run: &'a RunPayload<'a>,
 }
 
 impl<'a> Recaller<'a> {
-    /// Recalls for `fleet_id` under `lease`.
+    /// Recalls for `fleet_id` under `run`.
     pub(crate) const fn new(
         plane: &'a ControlPlane,
         fleet_id: &'a Uuid7,
-        lease: &'a LeasePayload<'a>,
+        run: &'a RunPayload<'a>,
     ) -> Self {
         Self {
             plane,
             fleet_id,
-            lease,
+            run,
         }
     }
 }
@@ -171,8 +171,8 @@ impl afr_memory::Recall for Recaller<'_> {
         limit: usize,
     ) -> afr_memory::Result<MemoryRecallResponse<'static>> {
         let request = MemoryRecallRequest {
-            lease_id: Cow::Borrowed(&self.lease.lease_id),
-            fencing_token: self.lease.fencing_token,
+            run_id: Cow::Borrowed(&self.run.run_id),
+            fencing_token: self.run.fencing_token,
             query: Cow::Borrowed(query),
             limit,
         };

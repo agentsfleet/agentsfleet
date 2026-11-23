@@ -20,16 +20,13 @@ use crate::support::Fixtures;
 /// A well-formed runner row. `$3` is its tenant, NULL for a platform runner; `$4` to
 /// `$7` are the spellings the application stores, bound from its own constants so
 /// this fixture cannot drift from them: the schema holds no list to refuse a stale one.
+/// `$9` is a host of its own, because each owner registers a host once.
 const INSERT_RUNNER: &str = "INSERT INTO runner.runners \
     (id, host_id, token_hash, sandbox_tier, status, labels, network_policy, \
-     registry_allowlist, worker_count, last_seen_at, lease_version, created_at, \
+     registry_allowlist, worker_count, last_seen_at, run_version, created_at, \
      updated_at, tenant_id, platform_owned) \
-    VALUES ($1, 'tenant-box', $2, $4, $5, '[]'::jsonb, $6, '[]'::jsonb, 1, $7, 0, \
+    VALUES ($1, $9, $2, $4, $5, '[]'::jsonb, $6, '[]'::jsonb, 1, $7, 0, \
             now(), now(), $3, $8)";
-
-const INSERT_RECEIPT: &str = "INSERT INTO runner.registration_receipts \
-    (id, tenant_id, operation_id, request_digest, runner_id, created_at) \
-    VALUES ($1, $2, $3, 'digest', $4, now())";
 
 impl Fixtures {
     /// A tenant row named after its own id.
@@ -67,10 +64,11 @@ impl Fixtures {
             .bind(runner.as_str())
             .bind(tenant)
             .bind(tier_wire(SandboxTier::LandlockFull))
-            .bind(afd_fleet::lease::sql::RUNNER_STATUS_ACTIVE)
+            .bind(afd_state::sql::RUNNER_STATUS_ACTIVE)
             .bind(policy_wire(NetworkPolicy::AllowAll))
             .bind(afd_runner::sql::NEVER_SEEN.to_sqlx())
             .bind(platform_owned)
+            .bind(format!("tenant-box-{runner}"))
             .execute(&mut *connection)
             .await?;
         Ok(runner)
@@ -115,13 +113,27 @@ impl Fixtures {
 
     /// Renames a runner's host, an update that leaves its tenant alone.
     pub(crate) async fn rename_runner_host(&self, runner: &Uuid7, host: &str) {
+        self.set_runner_host(runner, host)
+            .await
+            .expect("an update that leaves the tenant alone must succeed");
+    }
+
+    /// Sets a runner's host, answering what the database said.
+    ///
+    /// # Errors
+    /// The database's own refusal, as [`Fixtures::set_runner_tenant`].
+    pub(crate) async fn set_runner_host(
+        &self,
+        runner: &Uuid7,
+        host: &str,
+    ) -> Result<(), sqlx::Error> {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
         sqlx::query("UPDATE runner.runners SET host_id = $2 WHERE id = $1")
             .bind(runner)
             .bind(host)
             .execute(&mut *connection)
             .await
-            .expect("an update that leaves the tenant alone must succeed");
+            .map(|_| ())
     }
 
     /// Assigns a runner a platform decision model, answering what the database said.
@@ -159,29 +171,6 @@ impl Fixtures {
         ModelSeed::remove(&mut *connection, model)
             .await
             .expect("the seeded platform model must remove");
-    }
-
-    /// A registration receipt for `tenant` that names `runner`.
-    pub(crate) async fn insert_registration_receipt(&self, tenant: &Uuid7, runner: &Uuid7) {
-        let mut connection = self.database.acquire().await.expect("a pooled connection");
-        sqlx::query(INSERT_RECEIPT)
-            .bind(mint_id())
-            .bind(tenant)
-            .bind(mint_id())
-            .bind(runner)
-            .execute(&mut *connection)
-            .await
-            .expect("the receipt must insert");
-    }
-
-    /// How many registration receipts `tenant` holds.
-    pub(crate) async fn registration_receipts(&self, tenant: &Uuid7) -> i64 {
-        let mut connection = self.database.acquire().await.expect("a pooled connection");
-        sqlx::query_scalar("SELECT count(*) FROM runner.registration_receipts WHERE tenant_id = $1")
-            .bind(tenant)
-            .fetch_one(&mut *connection)
-            .await
-            .expect("the receipt count must read")
     }
 
     /// The runners among `runners` that still have a row, in id order.

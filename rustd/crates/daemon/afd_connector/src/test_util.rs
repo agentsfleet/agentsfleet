@@ -45,7 +45,9 @@ use serde_json::Value;
 use tokio::sync::Notify;
 use tokio::task::JoinHandle;
 
-use crate::slack::READ_DEADLINE;
+/// How long a stalled reply waits: longer than any read or post deadline a
+/// suite sets, so the caller's own deadline is what ends it.
+const STALL: std::time::Duration = std::time::Duration::from_secs(6);
 
 /// The path Slack serves thread reads on — the vendor's own, which a pinned
 /// exchange keeps.
@@ -289,7 +291,7 @@ async fn read(shared: &Shared, headers: &HeaderMap, fields: HashMap<String, Stri
         Some(Reply::Answers(status, body)) => json(status, body),
         Some(Reply::Stalls) => {
             shared.stalled.notify_one();
-            tokio::time::sleep(READ_DEADLINE * 4).await;
+            tokio::time::sleep(STALL).await;
             StatusCode::GATEWAY_TIMEOUT.into_response()
         }
         None => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
@@ -307,7 +309,7 @@ async fn posted(shared: &Shared, headers: &HeaderMap, sent: &str) -> Response {
         .collect();
     record(shared, POST_MESSAGE_PATH, headers, fields, body);
     if shared.post_stalls.load(Ordering::SeqCst) {
-        tokio::time::sleep(READ_DEADLINE * 4).await;
+        tokio::time::sleep(STALL).await;
     }
     let (status, body) = locked(&shared.post).clone();
     json(status, body)

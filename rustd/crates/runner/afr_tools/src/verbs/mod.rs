@@ -3,19 +3,23 @@
 //! fleets.
 //!
 //! ```text
-//!   cron_* / schedule ──┐
-//!   message ────────────┤
-//!   fleet_steer ────────┼──► LeaseVerbs ──► agentsfleetd, fenced by the lease
-//!   fleet_activity ─────┘        ▲
-//!                                └── the supervisor's control plane
+//!   cron_* / schedule ─► Scheduler ─┐
+//!   message ───────────► Channel ───┴─► Fenced ─┐
+//!   fleet_steer ────────────────────────────────┼──► RunVerbs ──► agentsfleetd,
+//!   fleet_activity ─────────────────────────────┘        ▲         fenced by the run
+//!                                                        └── the supervisor's control plane
 //! ```
+//!
+//! The cron tools, `schedule` and `message` are `guffbolt`'s, built over
+//! [`Fenced`], the run's verbs as their scheduler and channel; `fleet_steer`
+//! and `fleet_activity` are this crate's own.
 //!
 //! # The runner keeps no clock and no channel credential
 //!
 //! A schedule lives in `agentsfleetd` and fires through `QStash`; a line is
 //! posted by `agentsfleetd`, which holds the Slack token. The tools here only
-//! say what to do. [`LeaseVerbs`] is the seam the supervisor implements over
-//! its control plane, carrying the lease's id and fencing token itself, so a
+//! say what to do. [`RunVerbs`] is the seam the supervisor implements over
+//! its control plane, carrying the run's id and fencing token itself, so a
 //! tool never holds the token and a fake answers every call in a suite.
 //!
 //! # A refusal reaches the model with its code
@@ -33,23 +37,20 @@ use af_core::error_code::{self, ErrorCode};
 use af_core::id::Uuid7;
 use af_core::problem::Problem;
 use af_wire::steer_verb::FleetSteerAccepted;
+use guffbolt::ToolOutput;
 
-use crate::runtime::{ToolErrorCode, ToolOutput};
+use crate::runtime::ToolErrorCode;
 
+mod durable_task;
+mod fenced;
 mod fleet_steer;
 mod fleets;
-mod message;
-mod once;
-mod schedules;
-mod task;
 
-pub use task::DecisionEvaluation;
+pub use durable_task::DecisionEvaluation;
 
+pub use self::fenced::Fenced;
 pub(crate) use self::fleet_steer::FleetSteer;
 pub(crate) use self::fleets::FleetActivity;
-pub(crate) use self::message::Message;
-pub(crate) use self::once::ScheduleOnce;
-pub(crate) use self::schedules::{CronAdd, CronList, CronRemove, CronRun, CronRuns, CronUpdate};
 
 /// What the model reads when `agentsfleetd` could not be reached.
 const DETAIL_UNREACHABLE: &str = "agentsfleetd did not answer; try again shortly";
@@ -61,12 +62,14 @@ const DETAIL_REFUSED: &str = "agentsfleetd refused the request";
 /// schedule removed outright.
 const DONE: &str = "done";
 
-/// One schedules call, as a tool asks it: the fleet is the lease's, so none
+/// One schedules call, as a tool asks it: the fleet is the run's, so none
 /// names one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScheduleCall<'a> {
     /// Create a schedule for the fleet.
     Create {
+        /// The call's number in its run, which names its item.
+        call_number: u64,
         /// A five-field cron expression.
         cron: &'a str,
         /// The zone it is read in; UTC when absent.
@@ -80,6 +83,8 @@ pub enum ScheduleCall<'a> {
     List,
     /// Change the named fields of a schedule the fleet made.
     Update {
+        /// The call's number in its run, which names its item.
+        call_number: u64,
         /// The schedule.
         schedule: &'a Uuid7,
         /// A new expression.
@@ -98,6 +103,8 @@ pub enum ScheduleCall<'a> {
     },
     /// Fire a schedule now.
     Run {
+        /// The call's number in its run, which names its item.
+        call_number: u64,
         /// The schedule.
         schedule: &'a Uuid7,
     },
@@ -112,7 +119,7 @@ pub enum ScheduleCall<'a> {
     },
 }
 
-/// One fleets read, as `fleet_activity` asks it: the workspace is the lease's,
+/// One fleets read, as `fleet_activity` asks it: the workspace is the run's,
 /// so none names one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FleetsCall<'a> {
@@ -164,9 +171,6 @@ impl Unanswered {
             Self::Refused(Some(code)) if code == error_code::MESSAGE_NO_CHANNEL => {
                 ToolErrorCode::MessageNoChannel
             }
-            Self::Refused(Some(code)) if code == error_code::MESSAGE_LIMIT_REACHED => {
-                ToolErrorCode::MessageLimitReached
-            }
             Self::Refused(_other) => ToolErrorCode::AgentsfleetdRefused,
         }
     }
@@ -207,17 +211,18 @@ pub(crate) fn answered_with<T>(
     }
 }
 
-/// The `agentsfleetd` verbs one lease's tools send through.
+/// The `agentsfleetd` verbs one run's tools send through.
 ///
 /// Implemented by the supervisor over its control plane, which adds the
-/// lease's id and fencing token to every call.
+/// run's id and fencing token to every call.
 #[async_trait::async_trait]
-pub trait LeaseVerbs: Send + Sync + fmt::Debug {
+pub trait RunVerbs: Send + Sync + fmt::Debug {
     /// Sends one schedules call and answers the reply body of a success.
     async fn schedules(&self, call: ScheduleCall<'_>) -> Result<String, Unanswered>;
 
-    /// Posts one line to the event's thread and answers whether it landed.
-    async fn message(&self, text: &str) -> Result<bool, Unanswered>;
+    /// Posts one line to the event's thread for the run's call
+    /// `call_number`, and answers whether it landed.
+    async fn message(&self, call_number: u64, text: &str) -> Result<bool, Unanswered>;
 
     /// Reads the workspace's fleets, or one fleet's events, and answers the
     /// reply body as it came.
@@ -236,62 +241,82 @@ pub trait LeaseVerbs: Send + Sync + fmt::Debug {
     }
 
     /// Read complete native input and accepted recovery meaning at a safe boundary.
-    async fn task_inputs(
+    async fn durable_task_inputs(
         &self,
-        _query: af_wire::task::TaskInputsQuery,
-    ) -> Result<af_wire::task::TaskInputsResponse<'static>, Unanswered> {
+        _query: af_wire::durable_task::DurableTaskInputsQuery,
+    ) -> Result<af_wire::durable_task::DurableTaskInputsResponse<'static>, Unanswered> {
         Err(Unanswered::Refused(None))
     }
 
     /// Freeze the complete interpretation once, with native decision proofs.
-    async fn task_bindings(
+    async fn durable_task_bindings(
         &self,
-        _input: af_wire::task::TaskBindingsInput,
-    ) -> Result<af_wire::task::TaskBindingsResponse<'static>, Unanswered> {
+        _input: af_wire::durable_task::DurableTaskBindingsInput,
+    ) -> Result<af_wire::durable_task::DurableTaskBindingsResponse<'static>, Unanswered> {
         Err(Unanswered::Refused(None))
     }
 
     /// Acknowledge an accepted input or answer without replaying its meaning.
-    async fn task_input_receipt(
+    async fn durable_task_input_receipt(
         &self,
-        _input: af_wire::task::TaskInputReceiptInput,
-    ) -> Result<af_wire::task::TaskInputReceiptResult, Unanswered> {
+        _input: af_wire::durable_task::DurableTaskInputReceiptInput,
+    ) -> Result<af_wire::durable_task::DurableTaskInputReceiptResult, Unanswered> {
         Err(Unanswered::Refused(None))
     }
 
     /// Reserve, evaluate and account one decision outside model/sandbox custody.
-    async fn task_decision(
+    async fn durable_task_decision(
         &self,
-        _input: af_wire::task::DecisionReservationInput,
+        _input: af_wire::durable_task::DecisionReservationInput,
     ) -> Result<DecisionEvaluation, Unanswered> {
         Err(Unanswered::Refused(None))
     }
 
     /// Publish a tested tree through the native exact-head effect owner.
-    async fn task_publish(
+    async fn durable_task_publish(
         &self,
-        _input: af_wire::task::TaskEffectInput,
-    ) -> Result<af_wire::task::TaskEffect, Unanswered> {
+        _input: af_wire::durable_task::DurableTaskEffectInput,
+    ) -> Result<af_wire::durable_task::DurableTaskEffect, Unanswered> {
         Err(Unanswered::Refused(None))
     }
 
     /// Read back one original publication; this never authorizes a new write.
-    async fn task_effect(&self, _effect_id: &str) -> Result<af_wire::task::TaskEffect, Unanswered> {
+    async fn durable_task_effect(
+        &self,
+        _effect_id: &str,
+    ) -> Result<af_wire::durable_task::DurableTaskEffect, Unanswered> {
         Err(Unanswered::Refused(None))
     }
 
     /// Recover all effects beyond a checkpoint's confirmed watermark.
-    async fn task_effects(
+    async fn durable_task_effects(
         &self,
-        _query: af_wire::task::TaskEffectsQuery,
-    ) -> Result<af_wire::task::TaskEffectsPage, Unanswered> {
+        _query: af_wire::durable_task::DurableTaskEffectsQuery,
+    ) -> Result<af_wire::durable_task::DurableTaskEffectsPage, Unanswered> {
+        Err(Unanswered::Refused(None))
+    }
+
+    /// Reads the compacted context of the conversation the run continues,
+    /// under the run's fence: its scope, the stored version and the saved
+    /// checkpoint. A refusal leaves the run on its earlier turns alone.
+    async fn context_load(&self) -> Result<af_wire::context::ContextLoadResponse, Unanswered> {
+        Err(Unanswered::Refused(None))
+    }
+
+    /// Saves a compaction's checkpoint over the version `request` expects,
+    /// under the run's fence, whatever fence `request` names; a superseded
+    /// run's save is refused.
+    async fn context_save(
+        &self,
+        _request: af_wire::context::ContextSaveRequest,
+    ) -> Result<af_wire::context::ContextSaveResponse, Unanswered> {
         Err(Unanswered::Refused(None))
     }
 }
 
 /// Verbs with nothing behind them: every call is unanswered.
 ///
-/// For a lease that runs with no control plane, in a suite, so a tool that
+/// For a run that runs with no control plane, in a suite, so a tool that
 /// reaches for one says so rather than pretending it worked. Test-only, as
 /// `af_egress::testing::closed` is: production always has a plane.
 #[cfg(any(test, feature = "test-util"))]
@@ -304,12 +329,12 @@ pub static CLOSED: Closed = Closed;
 
 #[cfg(any(test, feature = "test-util"))]
 #[async_trait::async_trait]
-impl LeaseVerbs for Closed {
+impl RunVerbs for Closed {
     async fn schedules(&self, _call: ScheduleCall<'_>) -> Result<String, Unanswered> {
         Err(Unanswered::Unreachable)
     }
 
-    async fn message(&self, _text: &str) -> Result<bool, Unanswered> {
+    async fn message(&self, _call_number: u64, _text: &str) -> Result<bool, Unanswered> {
         Err(Unanswered::Unreachable)
     }
 }

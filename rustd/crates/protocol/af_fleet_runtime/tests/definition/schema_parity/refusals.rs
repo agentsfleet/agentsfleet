@@ -4,8 +4,8 @@
 use af_fleet_runtime::Definition;
 use af_fleet_runtime::definition::{
     ConfigOp, InstructionEdit, MAX_DESCRIPTION_CHARS, MAX_INSTRUCTION_OFFSET,
-    MAX_INSTRUCTIONS_CHARS,
 };
+use af_validate::TEXT_MAX_CHARS;
 use garde::Validate as _;
 use serde_json::{Value, json};
 use utoipa::ToSchema as _;
@@ -107,7 +107,7 @@ fn shape_refusals() -> Vec<(&'static str, Change)> {
             "instructions one character over their cap",
             Set(
                 "/instructions_md".into(),
-                json!(TWO_BYTE.repeat(MAX_INSTRUCTIONS_CHARS + 1)),
+                json!(TWO_BYTE.repeat(TEXT_MAX_CHARS + 1)),
             ),
         ),
         ("no config name", Remove("/config/name".into())),
@@ -221,21 +221,6 @@ fn gate_refusals() -> Vec<(&'static str, Change)> {
             "a gate rule with no tool",
             Remove(runtime("/gates/rules/0/tool")),
         ),
-        (
-            "a zero anomaly threshold",
-            Set(runtime("/gates/anomaly_rules/0/threshold_count"), json!(0)),
-        ),
-        (
-            "an anomaly threshold above its cap",
-            Set(
-                runtime("/gates/anomaly_rules/0/threshold_count"),
-                json!(u32::MAX),
-            ),
-        ),
-        (
-            "an unknown anomaly rule key",
-            Insert(runtime("/gates/anomaly_rules/0"), "scope", json!("run")),
-        ),
     ]
 }
 
@@ -311,7 +296,7 @@ fn every_refused_instruction_edit_is_outside_the_schema() {
         json!({"start_byte": 0, "end_byte": 0, "text": "x", "note": "y"}),
         json!({"start_byte": past_the_end, "end_byte": past_the_end, "text": ""}),
         json!({"start_byte": 0, "end_byte": 0, "text": null}),
-        json!({"start_byte": 0, "end_byte": 0, "text": TWO_BYTE.repeat(MAX_INSTRUCTIONS_CHARS + 1)}),
+        json!({"start_byte": 0, "end_byte": 0, "text": TWO_BYTE.repeat(TEXT_MAX_CHARS + 1)}),
     ];
     for edit in refused {
         let parsed = serde_json::from_value::<InstructionEdit>(edit.clone());

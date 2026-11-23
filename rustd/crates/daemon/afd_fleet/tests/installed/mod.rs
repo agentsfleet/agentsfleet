@@ -1,9 +1,9 @@
-//! Claims use immutable native setup and refuse missing or stale policy.
+//! Assignments use immutable native setup and refuse missing or stale policy.
 
 #![cfg(feature = "test-util")]
 #![expect(clippy::expect_used, reason = "integration preconditions fail loudly")]
 
-mod claim;
+mod assignment;
 mod refusals;
 
 use af_core::money::NANOS_PER_USD;

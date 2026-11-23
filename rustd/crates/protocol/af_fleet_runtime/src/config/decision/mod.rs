@@ -10,10 +10,6 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 
-/// Most accepted semantic completion statements in a task goal.
-pub const MAX_COMPLETION_STATEMENTS: usize = 6;
-/// The existing typed decision protocol's UTF-8 text ceiling.
-pub const MAX_QUESTION_TEXT_BYTES: usize = 512;
 /// Stable statement-key ceiling; the key's character set is ASCII.
 pub const MAX_STATEMENT_ID_BYTES: usize = 64;
 #[cfg(feature = "openapi")]
@@ -28,7 +24,7 @@ pub const INTENT_OPTIONS: [&str; 6] = [
     "clarify",
 ];
 /// Association criteria apply to native candidate aliases supplied at dispatch.
-pub const ASSOCIATION_CRITERIA: [&str; 3] = ["matching_task", "new_work", "unclear"];
+pub const ASSOCIATION_CRITERIA: [&str; 3] = ["matching_durable_task", "new_work", "unclear"];
 /// Probability-of-yes criteria; no separate confidence or progress value.
 pub const NOUL_CRITERIA: [&str; 2] = ["true", "false"];
 /// Fixed goal transitions remain proposals subject to native evidence checks.

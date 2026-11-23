@@ -7,7 +7,7 @@
 //! fleet in its predicate, and no other test can name them.
 //!
 //! The wallet and the usage lines are written here directly, because their
-//! production writers live in `afd_tenant` (signup) and the lease and setup
+//! production writers live in `afd_tenant` (signup) and the run and setup
 //! chat paths, which depend on this crate rather than the other way round.
 #![expect(
     clippy::expect_used,
@@ -41,12 +41,12 @@ VALUES ($1, $2, $3, now(), $4)";
 /// have accumulated it.
 const INSERT_LINE: &str = "\
 INSERT INTO billing.usage_lines
-  (id, work_type, work_id, seq, kind, tenant_id, workspace_id, fleet_id, fleet_name, event_id,
+  (id, work_type, work_id, seq, kind, tenant_id, workspace_id, fleet_id, fleet_name, turn_id,
    provider, model, posture, requested_at, input_token_count, cached_input_token_count,
    cache_write_token_count, cache_write_5m_token_count, cache_write_1h_token_count,
-   output_token_count, runtime_ms, unpriced_token_count, charged_nanos, created_at, updated_at)
+   output_token_count, runtime_ms, unpriced_token_count, charged_nanos, created_at)
 VALUES ($1, $2, $3, 0, 'model', $4, $5, $6, $7, $8, $9, $9, $10, $11,
-        0, 0, 0, 0, 0, 0, 0, 0, $12, $11, $11)";
+        0, 0, 0, 0, 0, 0, 0, 0, $12, $11)";
 
 /// The context window a seeded catalogue row declares; nothing here reads it.
 const CONTEXT_CAP_TOKENS: i32 = 200_000;
@@ -159,7 +159,7 @@ impl Lane {
         let id = mint_id();
         sqlx::query(INSERT_LINE)
             .bind(&id)
-            .bind(afd_billing::sql::work::FLEET_LEASE)
+            .bind(afd_billing::sql::work::FLEET_RUN)
             .bind(mint_id())
             .bind(&self.tenant)
             .bind(&self.workspace)

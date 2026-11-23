@@ -14,7 +14,7 @@ use super::{Error, ErrorKind};
 af_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
     af_crypto::error::Error => Entropy,
-    afd_admission::Error => Admission,
+    afd_turns::Error => TurnWrite,
 );
 
 /// Reports a statement that would not run, naming what it was doing.
@@ -54,7 +54,7 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
     let datastore = afd_db::error::invalid_bool_knob("MIGRATE_ON_START");
     let entropy =
         af_crypto::secret::Kek::from_hex("not-hex").expect_err("a non-hex key is refused");
-    let admission = afd_admission::error::one_of_each_kind()
+    let turn = afd_turns::error::one_of_each_kind()
         .into_iter()
         .find(|(label, _error)| *label == "datastore")
         .expect("the ledger declares an unavailable kind")
@@ -71,9 +71,6 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             row_malformed("status")(sqlx::Error::ColumnNotFound("status".into())),
         ),
         ("entropy", ErrorKind::Entropy { source: entropy }.into()),
-        (
-            "admission",
-            ErrorKind::Admission { source: admission }.into(),
-        ),
+        ("turn write", ErrorKind::TurnWrite { source: turn }.into()),
     ]
 }

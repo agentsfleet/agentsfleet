@@ -1,5 +1,5 @@
 //! The executor a run's sandbox-side calls use, handed over once by the
-//! lease's build.
+//! run's build.
 //!
 //! ```text
 //!   build ─► prepare ─► checkout ─► fill(Ok(executor)) ─┐
@@ -9,7 +9,7 @@
 //!
 //! The run starts before its sandbox is ready, so a call that needs the
 //! sandbox waits here for it, and a call that does not never touches the slot.
-//! The slot holds a borrow: the lease owns the sandbox, and outlives both the
+//! The slot holds a borrow: the run owns the sandbox, and outlives both the
 //! build that fills the slot and the run that reads it. A build that fails
 //! fills the slot with why, so every waiter, and every call after, answers at
 //! once instead of waiting for a sandbox that will never come.
@@ -31,13 +31,13 @@ pub type Outcome<'a> = Result<&'a dyn Executor, Unavailable>;
 /// address or path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Unavailable {
-    /// The lease runs no sandbox: every tool it offers runs in the supervisor.
+    /// The run runs no sandbox: every tool it offers runs in the supervisor.
     NoSandbox,
     /// The sandbox could not be built.
     Prepare,
     /// A bound repository would not check out into the sandbox.
     Checkout,
-    /// The lease ended before its sandbox was ready.
+    /// The run ended before its sandbox was ready.
     Stopped,
 }
 
@@ -62,9 +62,7 @@ impl Unavailable {
             Self::Checkout => {
                 "runs in the sandbox, and this run's repositories could not be checked out into it"
             }
-            Self::Stopped => {
-                "runs in the sandbox, and the lease ended before its sandbox was ready"
-            }
+            Self::Stopped => "runs in the sandbox, and the run ended before its sandbox was ready",
         }
     }
 }
@@ -80,7 +78,7 @@ struct State<'a> {
     held: Option<Duration>,
 }
 
-/// A run's executor, filled once by the lease's build and read by every
+/// A run's executor, filled once by the run's build and read by every
 /// sandbox-side call.
 #[derive(Debug, Default)]
 pub struct ExecutorSlot<'a> {

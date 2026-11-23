@@ -1,10 +1,10 @@
-//! Sandboxes started before their lease, so a lease start skips the wait.
+//! Sandboxes started before their run, so a run start skips the wait.
 //!
 //! [`WarmSlots`] wraps any [`Engine`] and is one itself. A single task owns the
-//! ready sandboxes; a lease claims one through a channel and the task starts a
+//! ready sandboxes; a run claims one through a channel and the task starts a
 //! replacement, so no lock guards the pool and no sandbox is handed out twice.
-//! A claimed sandbox is destroyed with its lease and never returns. Slots are
-//! built with no network beyond loopback, so only a lease asking for that
+//! A claimed sandbox is destroyed with its run and never returns. Slots are
+//! built with no network beyond loopback, so only a run asking for that
 //! gets one.
 
 use std::pin::Pin;
@@ -22,9 +22,9 @@ use crate::engine::{Engine, Limits, Sandbox, SandboxRequest};
 use crate::error::Result;
 use crate::network::Network;
 
-/// What every warm sandbox is named, before its lease is known.
+/// What every warm sandbox is named, before its run is known.
 const SLOT_PREFIX: &str = "warm-";
-/// The event every lease start is logged under, warm or cold.
+/// The event every run start is logged under, warm or cold.
 const EVENT_START: &str = "sandbox_start_completed";
 /// The event a slot that failed to start is logged under.
 const EVENT_SLOT_FAILED: &str = "sandbox_warm_slot_failed";
@@ -48,18 +48,18 @@ const COLD: &str = "cold";
 /// A failed start: the slot's name, and why.
 type Failed = (String, crate::Error);
 
-/// A lease's request for a ready slot; `None` when none is ready.
+/// A run's request for a ready slot; `None` when none is ready.
 type Claim = oneshot::Sender<Option<Slot>>;
 
-/// A sandbox started ahead of its lease, and the name it was started under:
-/// its cgroup and its directory carry that name, so a lease served from it
+/// A sandbox started ahead of its run, and the name it was started under:
+/// its cgroup and its directory carry that name, so a run served from it
 /// logs it.
 struct Slot {
     name: String,
     sandbox: Box<dyn Sandbox>,
 }
 
-/// An engine that keeps `slots` sandboxes started ahead of their leases.
+/// An engine that keeps `slots` sandboxes started ahead of their runs.
 #[derive(Debug)]
 pub struct WarmSlots {
     inner: Arc<dyn Engine>,
@@ -83,7 +83,7 @@ impl WarmSlots {
     }
 
     /// Stops refilling, waits for every start in flight, and destroys every
-    /// slot no lease claimed.
+    /// slot no run claimed.
     pub async fn shutdown(self) {
         drop(self.claims);
         if let Err(stopped) = self.keeper.await {
@@ -119,10 +119,10 @@ impl Engine for WarmSlots {
             Some(Slot { name, sandbox }) => (sandbox, WARM, Some(name)),
             None => (self.inner.prepare(request).await?, COLD, None),
         };
-        let lease_id = request.lease_id;
+        let run_id = request.run_id;
         let duration_ms = saturating_millis(started.elapsed());
         let event = EVENT_START;
-        tracing::info!(lease_id, slot, start, duration_ms, event);
+        tracing::info!(run_id, slot, start, duration_ms, event);
         Ok(sandbox)
     }
 }
@@ -148,7 +148,7 @@ async fn keep(
         while work.try_join_next().is_some() {}
         let slot = live_slot(&mut waiting, &mut work, refill);
         if let Err(Some(unclaimed)) = reply.send(slot) {
-            // The lease stopped waiting; this slot is still unused but no
+            // The run stopped waiting; this slot is still unused but no
             // longer counted, so it goes the way every slot goes.
             work.spawn(retire(unclaimed));
         }
@@ -164,7 +164,7 @@ async fn keep(
 
 /// The next ready slot whose sandbox is still up. Every slot taken is
 /// replaced, the one handed out and each one that died while it waited, which
-/// is retired and never handed to a lease; so the pool keeps its size.
+/// is retired and never handed to a run; so the pool keeps its size.
 fn live_slot(
     waiting: &mut mpsc::Receiver<Slot>,
     work: &mut JoinSet<()>,
@@ -197,7 +197,7 @@ async fn fill(inner: Arc<dyn Engine>, ready: mpsc::Sender<Slot>, limits: Limits)
     let attempt = || {
         let inner = Arc::clone(&inner);
         async move {
-            // Named like a lease, so a slot never meets a leftover of a
+            // Named like a run, so a slot never meets a leftover of a
             // previous run under the same name.
             let name = format!("{SLOT_PREFIX}{}", uuid::Uuid::now_v7());
             match inner.prepare(SandboxRequest::new(&name, limits)).await {
@@ -247,7 +247,7 @@ impl Sleeper for UntilClosed {
     }
 }
 
-/// Destroys a slot no lease will use.
+/// Destroys a slot no run will use.
 async fn retire(Slot { name, sandbox }: Slot) {
     if let Err(error) = sandbox.destroy().await {
         let Logged { error_code, reason } = error.logged();

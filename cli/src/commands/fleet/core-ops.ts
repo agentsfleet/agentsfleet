@@ -34,8 +34,6 @@ const SERVER_ERROR_TAG = "ServerError";
 // Surfaced on the doctor JSON envelope's error.code field.
 const REQUEST_FAILED = "REQUEST_FAILED";
 
-const PER_CHECK_TIMEOUT_MS = 5000;
-
 interface DoctorCheckResult {
   readonly name: string;
   readonly ok: boolean;
@@ -58,7 +56,6 @@ const runHealthzCheck: Effect.Effect<
   return yield* http
     .request<{ status?: string }>({
       path: HEALTHZ_PATH,
-      timeoutMs: PER_CHECK_TIMEOUT_MS,
     })
     .pipe(
       Effect.match({
@@ -107,7 +104,6 @@ const runBindingCheck = (
       .request<unknown>({
         path: wsFleetsPath(wsId),
         token: tokenResult.token,
-        timeoutMs: PER_CHECK_TIMEOUT_MS,
       })
       .pipe(
         Effect.match({

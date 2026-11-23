@@ -98,7 +98,7 @@ async fn the_platform_reference_resolves_the_platform_default() {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn an_undeclared_connector_is_never_injected() {
     // The workspace holds TWO connector handles; the fleet declares one. The
-    // lease's declared set must carry exactly the one, in both halves — the
+    // run's declared set must carry exactly the one, in both halves — the
     // static map and the mintable list — and nothing of the other. The
     // positive case beside this proves what declared names resolve to; this is
     // the negative it was missing: an undeclared name is not merely absent
@@ -142,7 +142,7 @@ async fn an_undeclared_connector_is_never_injected() {
     let rendered = format!("{:?}", declared.secrets_map());
     assert!(
         !rendered.contains("xoxb-never-injected"),
-        "the undeclared token reaches nothing the lease is built from"
+        "the undeclared token reaches nothing the run is built from"
     );
     fixture.cleanup().await;
 }
@@ -193,7 +193,7 @@ async fn declared_credentials_batch_static_and_mintable_rows_without_leaking_han
         &connectors,
     )
     .await
-    .expect_err("a declared but absent credential ends the lease");
+    .expect_err("a declared but absent credential ends the run");
     assert!(missing.is_credential_missing());
 
     fixture.seed("invalid", br#""not-an-object""#).await;

@@ -22,7 +22,7 @@
 //!   scheduler ──► verifier    HS256 over two keys, body bound into the token
 //!                   │
 //!                   ▼
-//!                 fire        admission ledger row, at most once
+//!                 fire        turn ledger row, at most once
 //! ```
 //!
 //! # The two halves never share a decision
@@ -65,9 +65,7 @@ pub use self::qstash::{Attempts, QStash};
 pub use self::recipe::{Inherited, Recipe, RecipeSet};
 pub use self::scheduler::Scheduler;
 pub use self::service::{Reconciled, Schedules as ScheduleService};
-pub use self::store::{
-    Change, EditRequest, FireTarget, NewSchedule, Refused, SYNC_LEASE, Schedules,
-};
+pub use self::store::{Change, EditRequest, FireTarget, NewSchedule, Refused, SYNC_RUN, Schedules};
 pub use self::upstream::{HEADER_SCHEDULE_ID, schedule_of, upstream_id};
 
 pub use self::validate::Invalid;

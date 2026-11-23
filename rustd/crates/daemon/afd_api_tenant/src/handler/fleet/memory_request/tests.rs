@@ -13,21 +13,15 @@
 
 use af_core::id::Uuid7;
 use af_core::paging::Cursor;
-use af_wire::memory::MAX_KEY_LEN;
+use af_wire::memory::INDEXED_TEXT_MAX_BYTES;
 use afd_memory::page::View;
 
-use super::{
-    LIMIT_MAX, LIST_LIMIT_DEFAULT, RECALL_LIMIT_DEFAULT, Read, form_decode, memory_key, row_id,
-};
+use af_core::paging::CEILING;
+
+use super::{Read, form_decode, memory_key, row_id};
 
 /// The fleet that wrote a cursor's boundary row.
 const WRITER: &str = "01990000-0000-7000-8000-0000000000d1";
-
-/// A page size far past what any page will serve.
-///
-/// Derived from the ceiling rather than spelled, so it stays over it however
-/// the ceiling moves — a literal would silently become a valid ask.
-const OVER_THE_CEILING: i64 = LIMIT_MAX * 1_000;
 
 /// A path under the memories item template, as the router hands it over.
 fn item(key: &str) -> String {
@@ -37,9 +31,9 @@ fn item(key: &str) -> String {
 /// A caller who names nothing gets the whole list, newest first.
 #[test]
 fn should_read_the_recent_list_when_nothing_is_named() {
-    let read = Read::parse("").expect("an empty query names nothing");
+    let read = Read::parse("", CEILING).expect("an empty query names nothing");
     assert_eq!(read.view(), View::Recent);
-    assert_eq!(read.limit, LIST_LIMIT_DEFAULT);
+    assert_eq!(read.limit, i64::from(CEILING.default_rows()));
     assert_eq!(read.after, None);
 }
 
@@ -53,9 +47,9 @@ fn should_read_an_empty_value_as_absent() {
         "limit=",
         "starting_after=",
     ] {
-        let read = Read::parse(query).expect("an empty value is not a malformed one");
+        let read = Read::parse(query, CEILING).expect("an empty value is not a malformed one");
         assert_eq!(read.view(), View::Recent, "{query}");
-        assert_eq!(read.limit, LIST_LIMIT_DEFAULT, "{query}");
+        assert_eq!(read.limit, i64::from(CEILING.default_rows()), "{query}");
         assert_eq!(read.after, None, "{query}");
     }
 }
@@ -64,42 +58,39 @@ fn should_read_an_empty_value_as_absent() {
 #[test]
 fn should_resolve_one_view_per_request() {
     assert_eq!(
-        Read::parse("query=monday").unwrap().view(),
+        Read::parse("query=monday", CEILING).unwrap().view(),
         View::Search("monday")
     );
     assert_eq!(
-        Read::parse("category=core").unwrap().view(),
+        Read::parse("category=core", CEILING).unwrap().view(),
         View::Category("core")
     );
     // Both named: the search wins and the category is ignored, never
     // intersected — `parseListParams`' own precedence.
     assert_eq!(
-        Read::parse("query=monday&category=core").unwrap().view(),
+        Read::parse("query=monday&category=core", CEILING)
+            .unwrap()
+            .view(),
         View::Search("monday")
     );
 }
 
-/// A search's first page is smaller than a list's, and both are defaults.
+/// A search and a list both default to the deployment's page.
 #[test]
-fn should_size_a_search_page_differently_from_a_list_page() {
-    assert_eq!(Read::parse("query=x").unwrap().limit, RECALL_LIMIT_DEFAULT);
+fn should_size_a_search_page_like_a_list_page() {
+    let default = i64::from(CEILING.default_rows());
+    assert_eq!(Read::parse("query=x", CEILING).unwrap().limit, default);
     assert_eq!(
-        Read::parse("category=core").unwrap().limit,
-        LIST_LIMIT_DEFAULT
+        Read::parse("category=core", CEILING).unwrap().limit,
+        default
     );
-    assert_ne!(RECALL_LIMIT_DEFAULT, LIST_LIMIT_DEFAULT);
 }
 
-/// A limit is taken as asked, up to the ceiling.
+/// A limit is taken as asked.
 #[test]
-fn should_take_the_limit_asked_for_up_to_the_ceiling() {
-    assert_eq!(Read::parse("limit=25").unwrap().limit, 25);
-    assert_eq!(Read::parse("limit=1").unwrap().limit, 1);
-    assert_eq!(Read::parse("limit=100").unwrap().limit, LIMIT_MAX);
-    // Over the ceiling CLAMPS rather than refusing — this surface's own
-    // vocabulary, kept so a client sitting on it does not change class.
-    let asked = format!("limit={OVER_THE_CEILING}");
-    assert_eq!(Read::parse(&asked).unwrap().limit, LIMIT_MAX);
+fn should_take_the_limit_asked_for() {
+    assert_eq!(Read::parse("limit=25", CEILING).unwrap().limit, 25);
+    assert_eq!(Read::parse("limit=1", CEILING).unwrap().limit, 1);
 }
 
 /// A limit that is not a positive integer is refused, never coerced.
@@ -112,16 +103,20 @@ fn should_refuse_a_limit_that_is_not_a_positive_integer() {
         "limit=1.5",
         "limit=99999999999999999999",
     ] {
-        assert!(Read::parse(query).is_err(), "{query} is not a page size");
+        assert!(
+            Read::parse(query, CEILING).is_err(),
+            "{query} is not a page size"
+        );
     }
 }
 
 /// A cursor this daemon issued resumes the walk; anything else is refused.
 #[test]
 fn should_resume_only_from_a_cursor_this_daemon_issued() {
-    let read = Read::parse(&format!(
-        "starting_after=2023-11-14T22:13:20Z:{WRITER}:goal:current"
-    ))
+    let read = Read::parse(
+        &format!("starting_after=2023-11-14T22:13:20Z:{WRITER}:goal:current"),
+        CEILING,
+    )
     .expect("a timestamp cursor is this walk's own");
     let after = read.after.expect("the boundary was parsed");
     assert_eq!(
@@ -144,7 +139,7 @@ fn should_read_back_the_writer_and_key_a_cursor_was_issued_for() {
         at: jiff::Timestamp::constant(1_700_000_000, 0),
         id: row_id(&writer, "deploy:target"),
     };
-    let read = Read::parse(&format!("starting_after={issued}")).unwrap();
+    let read = Read::parse(&format!("starting_after={issued}"), CEILING).unwrap();
     let after = read.after.expect("the boundary was parsed");
     assert_eq!(after.fleet, writer);
     assert_eq!(after.key, "deploy:target");
@@ -167,7 +162,7 @@ fn should_refuse_a_continuation_this_walk_did_not_issue() {
     ] {
         let query = format!("starting_after={token}");
         assert!(
-            Read::parse(&query).is_err(),
+            Read::parse(&query, CEILING).is_err(),
             "{token} is not this walk's cursor"
         );
     }
@@ -183,15 +178,18 @@ fn should_refuse_a_continuation_this_walk_did_not_issue() {
 /// where the body is readable.
 #[test]
 fn should_refuse_a_request_wrong_in_either_half() {
-    Read::parse("limit=0&starting_after=not-a-cursor").unwrap_err();
-    Read::parse("limit=0").unwrap_err();
+    Read::parse("limit=0&starting_after=not-a-cursor", CEILING).unwrap_err();
+    Read::parse("limit=0", CEILING).unwrap_err();
 }
 
 /// A query string this daemon cannot decode fails the whole request.
 #[test]
 fn should_refuse_a_query_string_with_a_malformed_escape() {
     for query in ["query=100%", "query=a%2", "query=a%zz", "limit=10&junk=%2"] {
-        assert!(Read::parse(query).is_err(), "{query} does not decode");
+        assert!(
+            Read::parse(query, CEILING).is_err(),
+            "{query} does not decode"
+        );
     }
 }
 
@@ -199,17 +197,17 @@ fn should_refuse_a_query_string_with_a_malformed_escape() {
 #[test]
 fn should_form_decode_a_query_value() {
     assert_eq!(
-        Read::parse("query=hello%20world").unwrap().view(),
+        Read::parse("query=hello%20world", CEILING).unwrap().view(),
         View::Search("hello world")
     );
     assert_eq!(
-        Read::parse("query=hello+world").unwrap().view(),
+        Read::parse("query=hello+world", CEILING).unwrap().view(),
         View::Search("hello world")
     );
     // An ENCODED plus stays a plus — the substitution runs before the escape
     // reader, so `%2B` never becomes a space.
     assert_eq!(
-        Read::parse("query=a%2Bb").unwrap().view(),
+        Read::parse("query=a%2Bb", CEILING).unwrap().view(),
         View::Search("a+b")
     );
     assert_eq!(form_decode("plain").as_deref(), Some("plain"));
@@ -218,9 +216,11 @@ fn should_form_decode_a_query_value() {
 /// A repeated parameter takes its first occurrence.
 #[test]
 fn should_take_the_first_occurrence_of_a_repeated_parameter() {
-    assert_eq!(Read::parse("limit=1&limit=2").unwrap().limit, 1);
+    assert_eq!(Read::parse("limit=1&limit=2", CEILING).unwrap().limit, 1);
     assert_eq!(
-        Read::parse("query=first&query=second").unwrap().view(),
+        Read::parse("query=first&query=second", CEILING)
+            .unwrap()
+            .view(),
         View::Search("first")
     );
 }
@@ -228,7 +228,8 @@ fn should_take_the_first_occurrence_of_a_repeated_parameter() {
 /// A parameter this read does not serve is ignored, not refused.
 #[test]
 fn should_ignore_a_parameter_this_read_does_not_serve() {
-    let read = Read::parse("sort=name&page=2&limit=5").expect("unread parameters are not errors");
+    let read =
+        Read::parse("sort=name&page=2&limit=5", CEILING).expect("unread parameters are not errors");
     assert_eq!(read.limit, 5);
     assert_eq!(read.view(), View::Recent);
 }
@@ -270,23 +271,29 @@ fn should_decode_an_encoded_percent_in_a_key() {
     assert_eq!(memory_key(&item("100%25")).unwrap(), "100%");
 }
 
-/// A key outside 1..=255 decoded bytes is refused before a statement.
+/// A key outside 1..=2,668 decoded bytes is refused before a statement.
 #[test]
 fn should_bound_a_key_by_its_decoded_length() {
-    let at_cap = "k".repeat(MAX_KEY_LEN);
-    assert_eq!(memory_key(&item(&at_cap)).unwrap().len(), MAX_KEY_LEN);
-
-    let over = "k".repeat(MAX_KEY_LEN + 1);
-    assert!(
-        memory_key(&item(&over)).is_err(),
-        "256 bytes is over the cap"
+    let at_cap = "k".repeat(INDEXED_TEXT_MAX_BYTES);
+    assert_eq!(
+        memory_key(&item(&at_cap)).unwrap().len(),
+        INDEXED_TEXT_MAX_BYTES
     );
 
-    // The bound is on the DECODED bytes: 255 three-character escapes are 765
-    // characters of path and exactly one stored key's worth of bytes.
-    let encoded = "%41".repeat(MAX_KEY_LEN);
-    assert_eq!(memory_key(&item(&encoded)).unwrap().len(), MAX_KEY_LEN);
-    let encoded_over = "%41".repeat(MAX_KEY_LEN + 1);
+    let over = "k".repeat(INDEXED_TEXT_MAX_BYTES + 1);
+    assert!(
+        memory_key(&item(&over)).is_err(),
+        "one byte past the index row is over the bound"
+    );
+
+    // The bound is on the DECODED bytes: one three-character escape per byte
+    // is three times the path and exactly one stored key's worth of bytes.
+    let encoded = "%41".repeat(INDEXED_TEXT_MAX_BYTES);
+    assert_eq!(
+        memory_key(&item(&encoded)).unwrap().len(),
+        INDEXED_TEXT_MAX_BYTES
+    );
+    let encoded_over = "%41".repeat(INDEXED_TEXT_MAX_BYTES + 1);
     memory_key(&item(&encoded_over)).unwrap_err();
 }
 

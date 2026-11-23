@@ -90,7 +90,7 @@
           "links": [
             {
               "title": "Run traces",
-              "url": "/explore?left={%22datasource%22%3A%22${tempo}%22%2C%22queries%22%3A%5B{%22refId%22%3A%22A%22%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22{%20name%20%3D%20%5C%22runner.lease%5C%22%20}%22}%5D%2C%22range%22%3A{%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22}}",
+              "url": "/explore?left={%22datasource%22%3A%22${tempo}%22%2C%22queries%22%3A%5B{%22refId%22%3A%22A%22%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22{%20name%20%3D%20%5C%22runner.run%5C%22%20}%22}%5D%2C%22range%22%3A{%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22}}",
               "targetBlank": true
             }
           ]
@@ -142,7 +142,7 @@
           "links": [
             {
               "title": "Run traces",
-              "url": "/explore?left={%22datasource%22%3A%22${tempo}%22%2C%22queries%22%3A%5B{%22refId%22%3A%22A%22%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22{%20name%20%3D%20%5C%22runner.lease%5C%22%20}%22}%5D%2C%22range%22%3A{%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22}}",
+              "url": "/explore?left={%22datasource%22%3A%22${tempo}%22%2C%22queries%22%3A%5B{%22refId%22%3A%22A%22%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22{%20name%20%3D%20%5C%22runner.run%5C%22%20}%22}%5D%2C%22range%22%3A{%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22}}",
               "targetBlank": true
             }
           ]
@@ -194,7 +194,7 @@
           "links": [
             {
               "title": "Run traces",
-              "url": "/explore?left={%22datasource%22%3A%22${tempo}%22%2C%22queries%22%3A%5B{%22refId%22%3A%22A%22%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22{%20name%20%3D%20%5C%22runner.lease%5C%22%20}%22}%5D%2C%22range%22%3A{%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22}}",
+              "url": "/explore?left={%22datasource%22%3A%22${tempo}%22%2C%22queries%22%3A%5B{%22refId%22%3A%22A%22%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22{%20name%20%3D%20%5C%22runner.run%5C%22%20}%22}%5D%2C%22range%22%3A{%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22}}",
               "targetBlank": true
             }
           ]
@@ -246,7 +246,7 @@
           "links": [
             {
               "title": "Run traces",
-              "url": "/explore?left={%22datasource%22%3A%22${tempo}%22%2C%22queries%22%3A%5B{%22refId%22%3A%22A%22%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22{%20name%20%3D%20%5C%22runner.lease%5C%22%20}%22}%5D%2C%22range%22%3A{%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22}}",
+              "url": "/explore?left={%22datasource%22%3A%22${tempo}%22%2C%22queries%22%3A%5B{%22refId%22%3A%22A%22%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22{%20name%20%3D%20%5C%22runner.run%5C%22%20}%22}%5D%2C%22range%22%3A{%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22}}",
               "targetBlank": true
             }
           ]
@@ -298,7 +298,7 @@
           "links": [
             {
               "title": "Run traces",
-              "url": "/explore?left={%22datasource%22%3A%22${tempo}%22%2C%22queries%22%3A%5B{%22refId%22%3A%22A%22%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22{%20name%20%3D%20%5C%22runner.lease%5C%22%20}%22}%5D%2C%22range%22%3A{%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22}}",
+              "url": "/explore?left={%22datasource%22%3A%22${tempo}%22%2C%22queries%22%3A%5B{%22refId%22%3A%22A%22%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22{%20name%20%3D%20%5C%22runner.run%5C%22%20}%22}%5D%2C%22range%22%3A{%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22}}",
               "targetBlank": true
             }
           ]
@@ -350,7 +350,7 @@
           "links": [
             {
               "title": "Run traces",
-              "url": "/explore?left={%22datasource%22%3A%22${tempo}%22%2C%22queries%22%3A%5B{%22refId%22%3A%22A%22%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22{%20name%20%3D%20%5C%22runner.lease%5C%22%20}%22}%5D%2C%22range%22%3A{%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22}}",
+              "url": "/explore?left={%22datasource%22%3A%22${tempo}%22%2C%22queries%22%3A%5B{%22refId%22%3A%22A%22%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22{%20name%20%3D%20%5C%22runner.run%5C%22%20}%22}%5D%2C%22range%22%3A{%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22}}",
               "targetBlank": true
             }
           ]
@@ -402,7 +402,7 @@
           "links": [
             {
               "title": "Run traces",
-              "url": "/explore?left={%22datasource%22%3A%22${tempo}%22%2C%22queries%22%3A%5B{%22refId%22%3A%22A%22%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22{%20name%20%3D%20%5C%22runner.lease%5C%22%20}%22}%5D%2C%22range%22%3A{%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22}}",
+              "url": "/explore?left={%22datasource%22%3A%22${tempo}%22%2C%22queries%22%3A%5B{%22refId%22%3A%22A%22%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22{%20name%20%3D%20%5C%22runner.run%5C%22%20}%22}%5D%2C%22range%22%3A{%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22}}",
               "targetBlank": true
             }
           ]
@@ -454,7 +454,7 @@
           "links": [
             {
               "title": "Run traces",
-              "url": "/explore?left={%22datasource%22%3A%22${tempo}%22%2C%22queries%22%3A%5B{%22refId%22%3A%22A%22%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22{%20name%20%3D%20%5C%22runner.lease%5C%22%20}%22}%5D%2C%22range%22%3A{%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22}}",
+              "url": "/explore?left={%22datasource%22%3A%22${tempo}%22%2C%22queries%22%3A%5B{%22refId%22%3A%22A%22%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22{%20name%20%3D%20%5C%22runner.run%5C%22%20}%22}%5D%2C%22range%22%3A{%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22}}",
               "targetBlank": true
             }
           ]

@@ -10,12 +10,10 @@
 use super::{Body, Delivery, RunAction};
 
 /// A failed run as an App sends it: the installation rides in the envelope.
-const RUN_FAILURE_APP: &str =
-    include_str!("../../../../../../../../../tests/fixtures/webhooks/github_run_failure_app.json");
+const RUN_FAILURE_APP: &str = crate::test_util::GITHUB_RUN_FAILURE_APP;
 
 /// A pull-request delivery as github.com sends one, its action a placeholder.
-const PULL_REQUEST_DELIVERY: &str =
-    include_str!("../../../../../../../../../tests/fixtures/webhooks/github_pull_request.json");
+const PULL_REQUEST_DELIVERY: &str = crate::test_util::GITHUB_PULL_REQUEST;
 
 /// The installation [`RUN_FAILURE_APP`] was sent for.
 const FIXTURE_INSTALLATION: u64 = 48_765_123;

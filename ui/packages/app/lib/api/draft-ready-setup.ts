@@ -22,7 +22,7 @@ export async function targetFleetSetup(base: string, draft: Draft, review: Revie
   return fleet;
 }
 
-/** Refresh a source preview independently of any unfinished authoring conversation. */
+/** Refresh a source preview independently of any unfinished setup conversation. */
 export async function editableSetup(base: string, source: Source, displayed: Draft | null, signal: AbortSignal,
   read: () => Promise<Draft>, target: (draft: Draft, review: Review) => Promise<void>): Promise<{preview: DraftView["preview"]; edit: DrawerEdit}> {
   if (!displayed) {

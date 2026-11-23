@@ -4,7 +4,7 @@
 //! # Why the statements select the document and stop
 //!
 //! A fleet's document is its head revision's `definition->'config'`.
-//! [`af_fleet_runtime::FleetConfig::stored`] already parses it on the claim
+//! [`af_fleet_runtime::FleetConfig::stored`] already parses it on the assignment
 //! path, applies the schema bounds, and completes a trigger's signature block
 //! from the provider registry — so the statement here selects the document and
 //! stops, instead of walking the trigger array in SQL with
@@ -61,11 +61,9 @@ pub const SELECT_INSTALL_WORKSPACE: &str = include_str!("select_install_workspac
 ///
 /// The candidate rows crossing the wire are not pre-filtered by repository, so
 /// a workspace pays for its active granted fleets rather than its subscribed
-/// ones. The set is bounded by the same ceiling the fan-out is — a workspace
-/// with more matching fleets than [`crate::MAX_FANOUT`] has a delivery this
-/// daemon refuses either way.
+/// ones.
 ///
-/// Ordered by id so a truncated fan-out is the same set every replica sees.
+/// Ordered by id so every replica fans out in the same order.
 pub const SELECT_APP_SUBSCRIBERS: &str = include_str!("select_app_subscribers.sql");
 
 /// The fleets in a workspace a chat mention could reach, for
@@ -81,7 +79,7 @@ pub const SELECT_APP_SUBSCRIBERS: &str = include_str!("select_app_subscribers.sq
 /// `$1` workspace, `$2` the statuses a subscriber can be read in.
 pub const SELECT_MENTION_CANDIDATES: &str = include_str!("select_mention_candidates.sql");
 
-/// Existing channel notice carrier, scoped to the resolved workspace regardless of binding kind.
+/// Existing channel notice carrier, scoped to the resolved workspace.
 /// `$1` provider, `$2` team, `$3` channel, `$4` workspace.
 pub const SELECT_NOTICE_OWNER: &str = include_str!("select_notice_owner.sql");
 
@@ -89,5 +87,5 @@ pub const SELECT_NOTICE_OWNER: &str = include_str!("select_notice_owner.sql");
 ///
 /// A moved team's prior-workspace binding is repointed, never reused.
 ///
-/// `$1` id, `$2` provider, `$3` team, `$4` channel, `$5` fleet, `$6` kind, `$7` workspace.
+/// `$1` id, `$2` provider, `$3` team, `$4` channel, `$5` fleet, `$6` workspace.
 pub const INSERT_NOTICE_OWNER: &str = include_str!("insert_notice_owner.sql");

@@ -3,9 +3,6 @@ use af_crypto::entropy::Entropy;
 use af_observability::producers::{models, scheduler};
 use afd_admin::Models;
 use afd_db::Db;
-use std::time::Duration;
-
-const BUDGET: Duration = Duration::from_secs(2);
 
 struct Snapshot {
     catalogue: Option<(Vec<models::ModelInfo>, bool)>,
@@ -20,16 +17,15 @@ pub(super) async fn refresh(database: &Db) {
 
 async fn sample(database: &Db) -> Snapshot {
     let catalogue = Models::new(database.clone(), Entropy::new());
-    let sampled = tokio::time::timeout(BUDGET, catalogue.bounded(models::MAX_MODELS)).await;
-    let catalogue = sampled
+    let catalogue = catalogue
+        .bounded(models::MAX_MODELS)
+        .await
         .ok()
-        .and_then(Result::ok)
         .map(|(rows, clipped)| (rows.into_iter().filter_map(model_info).collect(), clipped));
     let schedules = afd_cron::Schedules::new(database.clone(), Entropy::new());
-    let sampled = tokio::time::timeout(BUDGET, schedules.health(jiff::Timestamp::now())).await;
     Snapshot {
         catalogue,
-        schedules: sampled.ok().and_then(Result::ok),
+        schedules: schedules.health(jiff::Timestamp::now()).await.ok(),
     }
 }
 
@@ -38,16 +34,13 @@ fn model_info(model: afd_admin::Model) -> Option<models::ModelInfo> {
         .ok()
         .filter(|value| *value > 0)?;
     let route = model.details.inference.as_ref().and_then(|settings| {
-        af_inference::Configured::new(settings, u32::try_from(context_tokens).ok()?).ok()
+        af_providers::settings::Configured::new(settings, u32::try_from(context_tokens).ok()?).ok()
     });
     Some(models::ModelInfo {
         tools: route
             .as_ref()
             .map(|route| route.supports_tools(&model.model_name)),
-        image_transport: route
-            .as_ref()
-            .and(model.details.inference.as_ref())
-            .map(|settings| settings.api.carries_images()),
+        image_transport: route.as_ref().map(|route| route.api().carries_images()),
         output_tokens: model
             .details
             .inference

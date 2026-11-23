@@ -1,20 +1,20 @@
 "use client";
 
-import { latestTaskActivity, readTaskActivityHistory, taskActivityLabel } from "@/lib/task-activity";
+import { latestDurableTaskActivity, readDurableTaskActivityHistory, durableTaskActivityLabel } from "@/lib/task-activity";
 
 /** Public progress stays separate from private model reasoning and native task status. */
-export function TaskActivityTimeline({value, running, attentionOnly = false}: {value: unknown; running: boolean; attentionOnly?: boolean}) {
-  const history = readTaskActivityHistory(value);
+export function DurableTaskActivityTimeline({value, running, attentionOnly = false}: {value: unknown; running: boolean; attentionOnly?: boolean}) {
+  const history = readDurableTaskActivityHistory(value);
   if (!history) return null;
-  const latest = latestTaskActivity(history).at(-1);
+  const latest = latestDurableTaskActivity(history).at(-1);
   if (!latest) return null;
   const pending = ["starting", "preparing", "scanning", "uploading", "verifying", "restoring"].includes(latest.progress.phase);
   if (attentionOnly && !running && !pending && latest.progress.phase !== "failed" && latest.progress.phase !== "unavailable") return null;
   return <details className="rounded-lg border border-border px-md py-sm text-body-sm text-muted-foreground">
-    <summary className="cursor-pointer break-words">{taskActivityLabel(latest)}{pending && !running ? " · no confirmed completion recorded" : ""}</summary>
-    <ol className="mt-sm space-y-sm" aria-label="Task activity">
+    <summary className="cursor-pointer break-words">{durableTaskActivityLabel(latest)}{pending && !running ? " · no confirmed completion recorded" : ""}</summary>
+    <ol className="mt-sm space-y-sm" aria-label="Durable task activity">
       {history.items.map(item => <li key={`${item.kind}:${item.progress.activity_id}:${item.progress.operation}:${item.progress.phase}`}>
-        <p>{taskActivityLabel(item)}</p>
+        <p>{durableTaskActivityLabel(item)}</p>
         {item.progress.total === null ? null : <p className="text-eyebrow">{item.progress.completed} of {item.progress.total} objects</p>}
         {item.progress.bytes ? <p className="text-eyebrow">
           {item.progress.bytes.acknowledged} bytes acknowledged · {item.progress.bytes.missing} known missing bytes · {item.progress.bytes.reused} bytes reused

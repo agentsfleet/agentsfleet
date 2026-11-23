@@ -46,7 +46,7 @@ pub(super) fn network(config: &FleetConfig) -> NetworkPolicy<'_> {
     )
 }
 
-/// The binding a lease is TOLD, from the one a fleet AUTHORED.
+/// The binding a run is TOLD, from the one a fleet AUTHORED.
 ///
 /// The `match` is exhaustive, so a new authored access level is a compile error
 /// here rather than a value silently dropped on the way to the runner — which
@@ -121,7 +121,7 @@ mod tests {
     }
 
     #[test]
-    fn an_authored_binding_reaches_the_lease_unchanged() {
+    fn an_authored_binding_reaches_the_run_unchanged() {
         let authored = config(
             r#","repositories":["acme/payments","acme/ledger"],
                "repository_access":"write","repository_base":"main""#,

@@ -29,7 +29,6 @@ use sha2::{Digest as _, Sha256};
 
 use crate::error::{Result, query};
 use crate::provider::Provider;
-use crate::registry::STATE_TTL_SECONDS;
 use crate::sql;
 
 /// Bytes of entropy behind a nonce, rendered as twice as many hex characters.
@@ -56,7 +55,7 @@ fn digest(nonce: &str) -> Vec<u8> {
     Sha256::digest(nonce.as_bytes()).to_vec()
 }
 
-/// Remembers `nonce` for as long as a connect round-trip may take.
+/// Remembers `nonce` for `ttl`, as long as a connect round-trip may take.
 ///
 /// # Errors
 /// Reports a store that would not answer. A connect whose nonce was not
@@ -68,13 +67,14 @@ pub async fn remember(
     provider: Provider,
     nonce: &str,
     now: Timestamp,
+    ttl: Duration,
 ) -> Result<()> {
     let mut connection = database.acquire().await?;
     sqlx::query(sql::INSERT_OAUTH_NONCE)
         .bind(entropy.uuid7(now)?)
         .bind(provider.id())
         .bind(digest(nonce))
-        .bind(Duration::from_secs(u64::from(STATE_TTL_SECONDS)))
+        .bind(ttl)
         .execute(&mut *connection)
         .await
         .map_err(query(CONTEXT_REMEMBER))?;

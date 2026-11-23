@@ -13,7 +13,7 @@
 //! that service, which is exactly what makes them provable with no datastore:
 //! the store is left unreachable, so a refusal that leaked through would fail
 //! as a connection error rather than passing quietly. The resolution half of
-//! Dimension 2.2 needs a live Postgres and lives in the integration lane.
+//! The approval wall's store half needs a live Postgres and lives in the integration lane.
 //!
 //! # The stale case is the only one Slack's scheme can answer
 //!

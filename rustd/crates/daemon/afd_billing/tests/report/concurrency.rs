@@ -22,7 +22,7 @@ async fn simultaneous_report_clients_overlap_and_return_every_connection() {
     Migrator::new().run(&admin).await.unwrap();
     admin.close().await;
     let f = Fixture::open(&database).await;
-    fixture::record(&f, &[Line::setup(&f.tenant, 17)]).await;
+    fixture::seed(&f.admin, &[Line::setup(&f.tenant, 17)]).await;
     let before = fixture::written(&f.admin, &f.tenant).await;
     let api = database
         .open(
@@ -33,7 +33,7 @@ async fn simultaneous_report_clients_overlap_and_return_every_connection() {
             ],
         )
         .await;
-    assert_eq!(api.warm(DEADLINE).await as usize, CONNECTIONS);
+    assert_eq!(api.warm().await as usize, CONNECTIONS);
     for round in 0..ROUNDS {
         run_round(&f, &api, round).await;
     }
@@ -48,7 +48,7 @@ async fn simultaneous_report_clients_overlap_and_return_every_connection() {
     }
     assert_eq!(returned.len(), CONNECTIONS);
     drop(returned);
-    assert_eq!(before.ledger, (1, 17, 1));
+    assert_eq!(before.ledger, (1, 17));
     assert_eq!(fixture::written(&f.admin, &f.tenant).await, before);
     api.close().await;
     f.close().await;

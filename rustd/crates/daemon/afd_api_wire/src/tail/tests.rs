@@ -11,7 +11,7 @@ use std::borrow::Cow;
 use serde_json::{Value, json};
 
 use super::{FleetCounters, TailFrame, TailRow};
-use af_wire::event::EventSummary;
+use af_wire::turn::TurnSummary;
 
 /// The two columns the channel names and the completion leaves off.
 const SCOPE_KEYS: [&str; 2] = ["fleet_id", "workspace_id"];
@@ -25,10 +25,10 @@ const STEER_ACTOR: &str = "steer:user_1";
 /// A steer's event type.
 const CHAT: &str = "chat";
 
-fn row() -> EventSummary<'static> {
-    EventSummary {
+fn row() -> TurnSummary<'static> {
+    TurnSummary {
         fleet_id: Cow::Borrowed("fleet-1"),
-        event_id: Cow::Borrowed("1725000000000-0"),
+        turn_id: Cow::Borrowed("1725000000000-0"),
         workspace_id: Cow::Borrowed("ws-1"),
         actor: Cow::Borrowed(STEER_ACTOR),
         event_type: Cow::Borrowed(CHAT),
@@ -37,7 +37,7 @@ fn row() -> EventSummary<'static> {
         wall_ms: Some(12_000),
         failure_label: None,
         failure_detail: None,
-        resumes_event_id: None,
+        resumes_turn_id: None,
         created_at: jiff::Timestamp::constant(1_725_000_000, 0),
         updated_at: jiff::Timestamp::constant(1_725_000_012, 0),
         cost_nanos: Some(40_000_000),
@@ -56,13 +56,14 @@ fn rendered(frame: &TailFrame<'_>) -> (String, Value) {
     (text, value)
 }
 
-/// A steer's admission, as the route publishes it.
+/// A steer's turn, as the route publishes it.
 fn admitted() -> TailFrame<'static> {
-    TailFrame::EventAdmitted {
-        event_id: Cow::Borrowed("1725000000000-3"),
+    TailFrame::TurnAdmitted {
+        turn_id: Cow::Borrowed("1725000000000-3"),
         actor: Cow::Borrowed(STEER_ACTOR),
         event_type: Cow::Borrowed(CHAT),
         message: Cow::Borrowed("check the tests"),
+        message_trimmed: false,
         created_at: jiff::Timestamp::constant(1_725_000_000, 0),
     }
 }
@@ -73,15 +74,16 @@ fn admitted() -> TailFrame<'static> {
 fn should_lead_every_frame_with_its_kind() {
     let frames = [
         admitted(),
-        TailFrame::EventReceived {
-            event_id: Cow::Borrowed("e"),
+        TailFrame::TurnReceived {
+            turn_id: Cow::Borrowed("e"),
             actor: Cow::Borrowed("cron"),
             event_type: Cow::Borrowed("cron"),
             created_at: jiff::Timestamp::constant(1, 0),
             message: None,
+            message_trimmed: false,
             counters: Some(COUNTERS),
         },
-        TailFrame::EventComplete {
+        TailFrame::TurnComplete {
             event: Box::new(TailRow::from(row())),
             final_reply: None,
             fleet_status: Cow::Borrowed("active"),
@@ -90,13 +92,13 @@ fn should_lead_every_frame_with_its_kind() {
         },
         TailFrame::GateOpened {
             gate_id: Cow::Borrowed("g"),
-            event_id: Cow::Borrowed("e"),
+            turn_id: Cow::Borrowed("e"),
             pending_approvals: 1,
             counters: Some(COUNTERS),
         },
         TailFrame::GateResolved {
             gate_id: Cow::Borrowed("g"),
-            event_id: Some(Cow::Borrowed("e")),
+            turn_id: Some(Cow::Borrowed("e")),
             status: Cow::Borrowed("approved"),
             resolved_by: Cow::Borrowed("human:x"),
             pending_approvals: 0,
@@ -104,9 +106,9 @@ fn should_lead_every_frame_with_its_kind() {
         },
     ];
     let expected = [
-        "event_admitted",
-        "event_received",
-        "event_complete",
+        "turn_admitted",
+        "turn_received",
+        "turn_complete",
         "gate_opened",
         "gate_resolved",
     ];
@@ -117,7 +119,7 @@ fn should_lead_every_frame_with_its_kind() {
             "{kind} must lead its payload: {text}"
         );
         assert_eq!(value["kind"], json!(kind));
-        if kind == "event_complete" {
+        if kind == "turn_complete" {
             assert!(
                 value.get("final_reply").is_none(),
                 "absent replies use detail fallback"
@@ -133,7 +135,7 @@ fn should_lead_every_frame_with_its_kind() {
 /// its one leading `fleet_id`.
 #[test]
 fn should_carry_the_whole_terminal_row_on_a_completion() {
-    let (text, value) = rendered(&TailFrame::EventComplete {
+    let (text, value) = rendered(&TailFrame::TurnComplete {
         event: Box::new(TailRow::from(row())),
         final_reply: Some(Cow::Borrowed("Done.")),
         fleet_status: Cow::Borrowed("archived"),
@@ -164,38 +166,39 @@ fn should_carry_the_whole_terminal_row_on_a_completion() {
 fn should_spell_a_runless_gates_event_as_null() {
     let (text, value) = rendered(&TailFrame::GateResolved {
         gate_id: Cow::Borrowed("g"),
-        event_id: None,
+        turn_id: None,
         status: Cow::Borrowed("timed_out"),
         resolved_by: Cow::Borrowed("sweeper"),
         pending_approvals: 0,
         counters: None,
     });
-    assert_eq!(value["event_id"], Value::Null, "{text}");
+    assert_eq!(value["turn_id"], Value::Null, "{text}");
 }
 
 /// Every frame that follows a counter's move carries the counters, not only
 /// the completion.
 ///
 /// This is the defect the snapshot exists to close. `events_processed` moves
-/// `AFTER INSERT ON fleet.events` — at receive — but a gate park returns
+/// when a turn's event opens — at receive — but a gate park returns
 /// before the completion is published, so a client hearing counters only on
-/// `event_complete` reads short by exactly the events awaiting a human. A
+/// `turn_complete` reads short by exactly the events awaiting a human. A
 /// frame-by-frame assertion is what keeps a later variant from being added
-/// without them. `event_admitted` is the one frame left out, and on purpose:
-/// no counter moves at admission, and reading them would put a query on every
+/// without them. `turn_admitted` is the one frame left out, and on purpose:
+/// no counter moves at intake, and reading them would put a query on every
 /// steer's path to its 202.
 #[test]
 fn should_carry_the_counters_on_every_frame_kind() {
     let frames = [
-        TailFrame::EventReceived {
-            event_id: Cow::Borrowed("e"),
+        TailFrame::TurnReceived {
+            turn_id: Cow::Borrowed("e"),
             actor: Cow::Borrowed("cron"),
             event_type: Cow::Borrowed("cron"),
             created_at: jiff::Timestamp::constant(1, 0),
             message: None,
+            message_trimmed: false,
             counters: Some(COUNTERS),
         },
-        TailFrame::EventComplete {
+        TailFrame::TurnComplete {
             event: Box::new(TailRow::from(row())),
             final_reply: None,
             fleet_status: Cow::Borrowed("active"),
@@ -204,13 +207,13 @@ fn should_carry_the_counters_on_every_frame_kind() {
         },
         TailFrame::GateOpened {
             gate_id: Cow::Borrowed("g"),
-            event_id: Cow::Borrowed("e"),
+            turn_id: Cow::Borrowed("e"),
             pending_approvals: 1,
             counters: Some(COUNTERS),
         },
         TailFrame::GateResolved {
             gate_id: Cow::Borrowed("g"),
-            event_id: Some(Cow::Borrowed("e")),
+            turn_id: Some(Cow::Borrowed("e")),
             status: Cow::Borrowed("approved"),
             resolved_by: Cow::Borrowed("human:x"),
             pending_approvals: 0,
@@ -243,7 +246,7 @@ fn should_carry_the_counters_on_every_frame_kind() {
 fn should_write_the_counters_flat_beside_the_approvals_count() {
     let (text, value) = rendered(&TailFrame::GateOpened {
         gate_id: Cow::Borrowed("g"),
-        event_id: Cow::Borrowed("e"),
+        turn_id: Cow::Borrowed("e"),
         pending_approvals: 1,
         counters: Some(COUNTERS),
     });
@@ -266,12 +269,13 @@ fn should_write_the_counters_flat_beside_the_approvals_count() {
 /// holds. Absent keys are what let the client leave its own values standing.
 #[test]
 fn should_omit_the_counters_entirely_when_none_were_read() {
-    let (text, value) = rendered(&TailFrame::EventReceived {
-        event_id: Cow::Borrowed("e"),
+    let (text, value) = rendered(&TailFrame::TurnReceived {
+        turn_id: Cow::Borrowed("e"),
         actor: Cow::Borrowed("cron"),
         event_type: Cow::Borrowed("cron"),
         created_at: jiff::Timestamp::constant(1, 0),
         message: None,
+        message_trimmed: false,
         counters: None,
     });
     let object = value.as_object().expect("a frame is an object");
@@ -285,7 +289,7 @@ fn should_omit_the_counters_entirely_when_none_were_read() {
     );
     // The frame still arrives and still names itself: an absent snapshot
     // costs the tail its figures, never the marker.
-    assert_eq!(value["kind"], json!("event_received"));
+    assert_eq!(value["kind"], json!("turn_received"));
 }
 
 /// The admitted frame carries what a screen needs to draw the turn, and no
@@ -293,7 +297,7 @@ fn should_omit_the_counters_entirely_when_none_were_read() {
 #[test]
 fn should_carry_the_typed_message_on_an_admitted_frame() {
     let (text, value) = rendered(&admitted());
-    assert_eq!(value["event_id"], json!("1725000000000-3"), "{text}");
+    assert_eq!(value["turn_id"], json!("1725000000000-3"), "{text}");
     assert_eq!(value["actor"], json!(STEER_ACTOR), "{text}");
     assert_eq!(value["message"], json!("check the tests"), "{text}");
     assert_eq!(value["created_at"], json!("2024-08-30T06:40:00Z"), "{text}");
@@ -304,12 +308,13 @@ fn should_carry_the_typed_message_on_an_admitted_frame() {
 /// webhook's frame carries no `message` key at all, never an empty string.
 #[test]
 fn should_carry_a_message_on_a_received_frame_only_when_given() {
-    let frame = |message: Option<&'static str>| TailFrame::EventReceived {
-        event_id: Cow::Borrowed("e"),
+    let frame = |message: Option<&'static str>| TailFrame::TurnReceived {
+        turn_id: Cow::Borrowed("e"),
         actor: Cow::Borrowed(STEER_ACTOR),
         event_type: Cow::Borrowed(CHAT),
         created_at: jiff::Timestamp::constant(1, 0),
         message: message.map(Cow::Borrowed),
+        message_trimmed: false,
         counters: None,
     };
     let (text, value) = rendered(&frame(Some("hi")));

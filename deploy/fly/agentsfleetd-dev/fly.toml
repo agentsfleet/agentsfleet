@@ -42,7 +42,7 @@ primary_region = "iad"
 # vCPU's baseline is 5 ms per 80 ms period (6.25%), pooled across a machine's
 # vCPUs, and a machine whose burst balance is spent is frozen for the rest of
 # each period. At rest this daemon uses about 7-8% of one core (user + system
-# + softirq, Oct 26, 2026, mostly the runner fleet's lease polls), so on
+# + softirq, Oct 26, 2026, mostly the runner fleet's run polls), so on
 # shared-cpu-1x it sat throttled with an empty balance and every request
 # stalled in ~75 ms slices. Two vCPUs give a 12.5% baseline: the balance
 # refills at rest and bursts run unthrottled. Watch fly_instance_cpu_throttle

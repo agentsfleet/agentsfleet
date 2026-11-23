@@ -1,9 +1,9 @@
 //! A report owes its answer only to the destination its event was admitted
-//! with, and never to the lease's model provider.
+//! with, and never to the run's model provider.
 //!
-//! Driven end to end through the real verbs: `Admissions::admit` records the
-//! event and its destination, the lease path takes it, and `commit_report`
-//! settles it. What is read back is `fleet.obligations` for this test's
+//! Driven end to end through the real verbs: `Turns::admit` records the
+//! event and its destination, the run path takes it, and `commit_report`
+//! settles it. What is read back is `thread.deliveries` for this test's
 //! own fleet (ISO-1). No suite drove a report into that table before this one,
 //! which is how every non-empty answer came to be owed to `anthropic` unseen.
 //!
@@ -16,16 +16,16 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_admission::{Producer, Reply};
 use afd_connector::Provider;
-use afd_fleet::lease::Committed;
+use afd_fleet::run::Committed;
+use afd_turns::{Producer, Reply};
 
 use crate::report_commit::{RESPONSE_ACCEPTED, RESPONSE_POSTGRES_REFUSES};
 use crate::seed::PROVIDER;
 
 pub(crate) mod stage;
 
-use self::stage::{Obligation, obligations, owed_by, stage};
+use self::stage::{Delivery, deliveries, owed_by, stage};
 
 /// The thread the asking event was admitted with.
 const THREAD: &str =
@@ -53,9 +53,9 @@ async fn answers_without_a_destination_owe_nothing() {
         );
     }
     assert_eq!(
-        obligations(&stage.fixtures, &stage.fleet).await,
+        deliveries(&stage.fixtures, &stage.fleet).await,
         Vec::new(),
-        "three non-empty answers, no destination, no obligation"
+        "three non-empty answers, no destination, no delivery"
     );
 
     stage.fixtures.cleanup().await;
@@ -67,7 +67,7 @@ async fn answers_without_a_destination_owe_nothing() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn answer_is_owed_to_the_recorded_destination() {
     let stage = stage().await;
-    let event_id = stage
+    let turn_id = stage
         .admit(
             Producer::Webhook,
             "asked-in-a-thread",
@@ -80,11 +80,11 @@ async fn answer_is_owed_to_the_recorded_destination() {
 
     owed_by(stage.run_next(0).await).expect("an answer asked from a thread is owed");
     assert_eq!(
-        obligations(&stage.fixtures, &stage.fleet).await,
-        vec![Obligation {
+        deliveries(&stage.fixtures, &stage.fleet).await,
+        vec![Delivery {
             provider: Provider::Slack.id().to_owned(),
             destination: Some(THREAD.to_owned()),
-            event_id,
+            turn_id,
             answer: RESPONSE_ACCEPTED.to_owned(),
         }],
         "one row, owed to the thread the question came from"
@@ -93,7 +93,7 @@ async fn answer_is_owed_to_the_recorded_destination() {
     stage.fixtures.cleanup().await;
 }
 
-/// with every lease resolved to a model provider, no ledger
+/// with every run resolved to a model provider, no ledger
 /// row names it, whichever producer asked.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -117,7 +117,7 @@ async fn the_model_provider_never_reaches_the_ledger() {
     for run in 0..3 {
         stage.run_next(run).await;
     }
-    let owed = obligations(&stage.fixtures, &stage.fleet).await;
+    let owed = deliveries(&stage.fixtures, &stage.fleet).await;
     assert_eq!(
         owed.len(),
         1,
@@ -125,7 +125,7 @@ async fn the_model_provider_never_reaches_the_ledger() {
     );
     assert!(
         owed.iter().all(|row| row.provider != PROVIDER),
-        "the lease's model provider ({PROVIDER}) reached the delivery ledger: {owed:?}"
+        "the run's model provider ({PROVIDER}) reached the delivery ledger: {owed:?}"
     );
 
     stage.fixtures.cleanup().await;
@@ -139,23 +139,23 @@ async fn a_replayed_or_rolled_back_report_owes_at_most_once() {
     let stage = stage().await;
     stage.admit_thread("asked-once").await;
     let now = stage.fixtures.enrolled_at();
-    let (lease_id, lease) = stage.lease_next(now).await;
+    let (run_id, run) = stage.assign_next(now).await;
 
     let refused = stage
-        .report(&lease_id, &lease, RESPONSE_POSTGRES_REFUSES, now)
+        .report(&run_id, &run, RESPONSE_POSTGRES_REFUSES, now)
         .await;
     assert!(
         refused.is_err(),
         "an answer Postgres will not store fails the report"
     );
     assert_eq!(
-        obligations(&stage.fixtures, &stage.fleet).await,
+        deliveries(&stage.fixtures, &stage.fleet).await,
         Vec::new(),
-        "the refused report rolled back, and the obligation with it"
+        "the refused report rolled back, and the delivery with it"
     );
 
     let settled = stage
-        .report(&lease_id, &lease, RESPONSE_ACCEPTED, now)
+        .report(&run_id, &run, RESPONSE_ACCEPTED, now)
         .await
         .expect("the retry must reach the datastore");
     assert!(
@@ -163,15 +163,15 @@ async fn a_replayed_or_rolled_back_report_owes_at_most_once() {
         "the retry that settled owes the answer"
     );
     let repeated = stage
-        .report(&lease_id, &lease, RESPONSE_ACCEPTED, now)
+        .report(&run_id, &run, RESPONSE_ACCEPTED, now)
         .await
         .expect("a repeated report is an answer, not a fault");
     assert!(
         matches!(repeated, Committed::AlreadySettled),
-        "the lease is settled, so the repeat writes nothing"
+        "the run is settled, so the repeat writes nothing"
     );
     assert_eq!(
-        obligations(&stage.fixtures, &stage.fleet).await.len(),
+        deliveries(&stage.fixtures, &stage.fleet).await.len(),
         1,
         "a refused, a settled and a repeated report owe one delivery between them"
     );
@@ -184,7 +184,7 @@ async fn a_replayed_or_rolled_back_report_owes_at_most_once() {
 const UNKNOWN_CONNECTOR: &str = "carrier-pigeon";
 
 /// A recorded connector no connector answers to owes nothing: the report reads
-/// it, cannot parse it, and settles without an obligation.
+/// it, cannot parse it, and settles without an delivery.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn an_unknown_recorded_connector_owes_nothing() {
@@ -205,7 +205,7 @@ async fn an_unknown_recorded_connector_owes_nothing() {
         None,
         "a destination no poster can take is owed nothing"
     );
-    assert_eq!(obligations(&stage.fixtures, &stage.fleet).await, Vec::new());
+    assert_eq!(deliveries(&stage.fixtures, &stage.fleet).await, Vec::new());
 
     stage.fixtures.cleanup().await;
 }
@@ -216,13 +216,13 @@ async fn an_unknown_recorded_connector_owes_nothing() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn the_plane_appends_and_receipts_what_it_owed() {
     let stage = stage().await;
-    let event_id = stage.admit_thread("asked-and-answered").await;
+    let turn_id = stage.admit_thread("asked-and-answered").await;
     let now = stage.fixtures.enrolled_at();
-    let (lease_id, lease) = stage.lease_next(now).await;
+    let (run_id, run) = stage.assign_next(now).await;
 
-    stage.report_through_plane(&lease_id, &lease, now).await;
+    stage.report_through_plane(&run_id, &run, now).await;
 
-    let receipt = stage.receipt(&event_id).await;
+    let receipt = stage.receipt(&turn_id).await;
     assert!(
         receipt.is_some(),
         "the plane appended the owed answer and recorded the entry it landed on"

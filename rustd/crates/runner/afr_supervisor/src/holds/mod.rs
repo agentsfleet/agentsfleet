@@ -1,17 +1,17 @@
-//! Sandboxes held between a fleet's leases, so its next lease continues where
+//! Sandboxes held between a fleet's runs, so its next run continues where
 //! the last one stopped instead of in an empty workspace.
 //!
-//! A lease that ends processed parks its sandbox here, frozen, for the fleet's
-//! next lease: the files it wrote, the processes it left running and whatever
-//! it cached all stay. One task owns every hold and a lease reaches it through
+//! A run that ends processed parks its sandbox here, frozen, for the fleet's
+//! next run: the files it wrote, the processes it left running and whatever
+//! it cached all stay. One task owns every hold and a run reaches it through
 //! a channel, the shape `afr_sandbox::WarmSlots` uses, so no lock guards the
-//! holds and a sandbox moves by value from the lease that used it to the one
+//! holds and a sandbox moves by value from the run that used it to the one
 //! that takes it.
 //!
 //! A hold ends when its idle window runs out, when the runner's last free
 //! worker would be consumed, when fewer workers leave room for it, when the daemon names its fleet, when it no longer
 //! carries the fleet's latest run ([`Release::Superseded`]), and once the
-//! runner takes no new lease. Expiry is checked on every message, and the
+//! runner takes no new run. Expiry is checked on every message, and the
 //! heartbeat asks for the list every tick, so no timer runs here and a test
 //! moves time through the clock alone.
 
@@ -34,7 +34,7 @@ pub(crate) use occupancy::Occupant;
 pub(crate) use self::built_under::BuiltUnder;
 use self::keeper::Keeper;
 
-/// What a held sandbox must match to serve a lease. A lease that differs in
+/// What a held sandbox must match to serve a run. A run that differs in
 /// any of these gets a fresh sandbox, and the hold is destroyed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct HoldKey {
@@ -49,30 +49,30 @@ pub(crate) struct HoldKey {
     pub(crate) policy: BuiltUnder,
 }
 
-/// Why a hold ended without its fleet's next lease taking it.
+/// Why a hold ended without its fleet's next run taking it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Release {
     /// Its idle window ran out.
     Expired,
-    /// The runner's last free worker took a lease for another fleet.
+    /// The runner's last free worker took a run for another fleet.
     Saturated,
     /// The runner held as many as it has workers, and this was the oldest.
     Capped,
-    /// The next lease wanted another size or policy.
+    /// The next run wanted another size or policy.
     Mismatch,
-    /// The daemon named its fleet: halted, deleted, or leased by another
+    /// The daemon named its fleet: halted, deleted, or held by another
     /// runner since.
     Inactive,
-    /// The runner takes no new lease, so no lease could take it: leasing
+    /// The runner takes no new run, so no run could take it: running
     /// stopped, or the runner is shutting down or stopped.
     Shutdown,
-    /// It would not take its next lease's addresses, would not thaw, or its
+    /// It would not take its next run's addresses, would not thaw, or its
     /// executor did not answer once thawed.
     ThawFailed,
     /// It no longer carries the fleet's latest run: the daemon refused the
-    /// report of the lease that left it, as settled without it or for good,
-    /// or never received it; the fleet's next lease was not told to resume
-    /// it; a newer park of the same fleet replaced it; or the lease that
+    /// report of the run that left it, as settled without it or for good,
+    /// or never received it; the fleet's next run was not told to resume
+    /// it; a newer park of the same fleet replaced it; or the run that
     /// asked for it stopped waiting before taking it.
     Superseded,
 }
@@ -93,7 +93,7 @@ impl Release {
     }
 }
 
-/// A sandbox its fleet's next lease took, still frozen, and how long it was
+/// A sandbox its fleet's next run took, still frozen, and how long it was
 /// held.
 #[derive(Debug)]
 pub(crate) struct Taken {
@@ -103,7 +103,7 @@ pub(crate) struct Taken {
     pub(crate) held: Duration,
 }
 
-/// What a lease asks the task that owns the holds.
+/// What a run asks the task that owns the holds.
 #[derive(Debug)]
 enum Request {
     Take {
@@ -112,7 +112,7 @@ enum Request {
     },
     Park {
         key: HoldKey,
-        lease: Uuid7,
+        run: Uuid7,
         sandbox: Box<dyn Sandbox>,
         reply: oneshot::Sender<Parked>,
     },
@@ -121,10 +121,10 @@ enum Request {
         reason: Release,
     },
     Supersede {
-        lease: Uuid7,
+        run: Uuid7,
     },
     Accepted {
-        lease: Uuid7,
+        run: Uuid7,
         until: Timestamp,
     },
     Discard {
@@ -136,7 +136,7 @@ enum Request {
         occupant: Occupant,
     },
     Vacate {
-        lease: Uuid7,
+        run: Uuid7,
     },
     Resize {
         workers: usize,
@@ -161,10 +161,10 @@ pub(crate) struct Holds {
 #[derive(Debug)]
 #[must_use]
 pub(crate) enum Parked {
-    /// Held for the fleet's next lease until then.
+    /// Held for the fleet's next run until then.
     Held(Timestamp),
     /// Not held: the keeper is closed or has no room. The release is
-    /// already counted; the sandbox, still frozen, is the lease's to end.
+    /// already counted; the sandbox, still frozen, is the run's to end.
     Refused(Box<dyn Sandbox>),
     /// The keeper stopped with the request, and the sandbox went with it.
     Gone,
@@ -201,15 +201,15 @@ impl Holds {
     }
 
     /// Ends every hold and holds nothing more, for a runner that takes no new
-    /// lease: no lease could take one. A later park hands its sandbox back to
-    /// its lease, which kills it and releases it, and the next list asked for
+    /// run: no run could take one. A later park hands its sandbox back to
+    /// its run, which kills it and releases it, and the next list asked for
     /// is empty.
     pub(crate) fn close(&self) {
         let _stopped = self.requests.send(Request::Close);
     }
 
     /// The fleet's held sandbox when `key` matches it whole, still frozen. A
-    /// hold that differs is destroyed, and the lease builds a fresh one.
+    /// hold that differs is destroyed, and the run builds a fresh one.
     pub(crate) async fn take(&self, key: &HoldKey) -> Option<Taken> {
         let (reply, answer) = oneshot::channel();
         let key = key.clone();
@@ -219,18 +219,13 @@ impl Holds {
 
     /// Holds `sandbox`, already frozen, for `key`'s fleet, and answers when
     /// the hold lapses. A sandbox the keeper will not hold comes back, its
-    /// release logged and counted, for the lease to kill now and release
+    /// release logged and counted, for the run to kill now and release
     /// after its report.
-    pub(crate) async fn park(
-        &self,
-        key: HoldKey,
-        lease: Uuid7,
-        sandbox: Box<dyn Sandbox>,
-    ) -> Parked {
+    pub(crate) async fn park(&self, key: HoldKey, run: Uuid7, sandbox: Box<dyn Sandbox>) -> Parked {
         let (reply, answer) = oneshot::channel();
         let parked = Request::Park {
             key,
-            lease,
+            run,
             sandbox,
             reply,
         };
@@ -250,16 +245,16 @@ impl Holds {
         let _stopped = self.requests.send(Request::Release { fleet, reason });
     }
 
-    /// Ends the hold `lease` parked, if it is still held, because the daemon
-    /// settled `lease` without its report. A later lease's hold of the same
-    /// fleet stays: that lease took the sandbox and parked it again.
-    pub(crate) fn supersede(&self, lease: Uuid7) {
-        let _stopped = self.requests.send(Request::Supersede { lease });
+    /// Ends the hold `run` parked, if it is still held, because the daemon
+    /// settled `run` without its report. A later run's hold of the same
+    /// fleet stays: that run took the sandbox and parked it again.
+    pub(crate) fn supersede(&self, run: Uuid7) {
+        let _stopped = self.requests.send(Request::Supersede { run });
     }
 
     /// Narrows the exact parked attempt to the daemon's committed deadline.
-    pub(crate) fn accept(&self, lease: Uuid7, until: Timestamp) {
-        let _stopped = self.requests.send(Request::Accepted { lease, until });
+    pub(crate) fn accept(&self, run: Uuid7, until: Timestamp) {
+        let _stopped = self.requests.send(Request::Accepted { run, until });
     }
 
     /// Destroys `sandbox`, which was `fleet`'s hold, for `reason`: logged and

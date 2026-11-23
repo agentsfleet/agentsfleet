@@ -26,13 +26,13 @@ pub struct NetworkStats {
 }
 
 pub(super) struct Sampler {
-    pub(super) sender: tokio::sync::watch::Sender<NetworkStats>,
+    pub(super) sender: watch::Sender<NetworkStats>,
     next: Instant,
 }
 
 impl Sampler {
-    pub(super) fn new() -> (Self, tokio::sync::watch::Receiver<NetworkStats>) {
-        let (sender, receiver) = tokio::sync::watch::channel(NetworkStats::default());
+    pub(super) fn new() -> (Self, watch::Receiver<NetworkStats>) {
+        let (sender, receiver) = watch::channel(NetworkStats::default());
         (
             Self {
                 sender,
@@ -51,7 +51,7 @@ impl Sampler {
         self.finish(connection);
     }
 
-    pub(super) fn finish(&mut self, connection: &tokio_quiche::quic::QuicheConnection) {
+    pub(super) fn finish(&self, connection: &tokio_quiche::quic::QuicheConnection) {
         let counters = connection.stats();
         let (rtt, probe_timeouts) =
             connection

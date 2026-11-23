@@ -25,9 +25,10 @@ use super::{
     SANDBOX_BUILDS, SANDBOX_HOLDS, SANDBOX_RELEASE_DURATION, SANDBOX_START_DURATION,
     SANDBOX_WAIT_DURATION, SPANS_SUPPRESSED, TOOL_CALL_DURATION, TOOL_OUT_OF_MEMORY, registry,
 };
+use af_observability::metrics::label::models::CallOutcome;
 use af_providers::observe::Observer;
 use af_providers::observe::labels::{
-    CallOutcome, DecisionOutcome, DecisionProvider, DecisionPurpose, Provider, RetryReason,
+    DecisionOutcome, DecisionProvider, DecisionPurpose, Provider, RetryReason,
 };
 
 use crate::labels::{
@@ -332,4 +333,54 @@ fn model_families_use_the_shared_cost_ceiling() {
         .map(|family| family.name.as_ref())
         .collect();
     assert_eq!(actual, expected);
+}
+
+/// A workspace's own provider keeps no provider attribute, and a request that
+/// observed no usage and no first text writes no token, cache or first-token
+/// series at all.
+#[test]
+fn a_workspace_provider_with_no_observed_usage_writes_only_its_call() {
+    let (instruments, provider, exported) = instruments();
+    let families = Families::claim(&instruments).expect("the census is claimed");
+    let model = "workspace-model";
+    let own = Provider::of("a-workspace-gateway");
+    families.model_call(
+        model,
+        own,
+        CallOutcome::Completed,
+        Duration::from_millis(5),
+        None,
+    );
+    families.model_tokens(
+        model,
+        own,
+        af_wire::usage::ObservedTokens {
+            input: None,
+            output: None,
+            cache_read: None,
+            cache_write: None,
+        },
+    );
+    provider.force_flush().expect("the reader collects");
+
+    let exported: BTreeMap<String, Attributes> = exported.try_iter().collect();
+    let call = exported
+        .get(super::MODEL_CALL_DURATION.wire_name())
+        .expect("the call is exported");
+    assert!(call.contains(&("gen_ai.request.model".into(), model.into())));
+    assert!(
+        call.iter().all(|(key, _)| key != "gen_ai.provider.name"),
+        "a workspace's own provider is never named: {call:?}"
+    );
+    for absent in [
+        super::MODEL_FIRST_TOKEN.wire_name(),
+        super::MODEL_TOKENS.wire_name(),
+        super::MODEL_CACHE_READ.wire_name(),
+        super::MODEL_CACHE_WRITE.wire_name(),
+    ] {
+        assert!(
+            exported.get(absent).is_none_or(BTreeSet::is_empty),
+            "`{absent}` has no observation to write: {exported:?}"
+        );
+    }
 }

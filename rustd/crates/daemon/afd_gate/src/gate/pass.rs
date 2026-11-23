@@ -11,23 +11,15 @@
 //! carries that ordering as a pure function; this module is the I/O it composes.
 //!
 //! Cost: one lookup per event, ungated fleets included. It is bought on the
-//! path that issues a lease — a whole model run — so it does not register.
-//!
-//! # The anomaly counter is reached only on a FIRST encounter
-//!
-//! It is an increment. Re-polling a parked event through it would count one
-//! waiting human as N runaway attempts and eventually stop the fleet for being
-//! patient. The ordering above is what prevents that, which is why
-//! [`Gates::anomaly`] takes no [`RefState`]: by the time it is called, the
-//! question is settled.
+//! path that issues a run — a whole model run — so it does not register.
 //!
 //! # What the pass never does
 //!
-//! It writes no `fleet.events` row. Every outcome below is a decision the
-//! CALLER applies once — the same discipline [`Admission`](crate::lease::Admission)
-//! states for the money gates, and for the same reason: a refusal that forgot
-//! its row and one that wrote it twice are both unrepresentable when the value
-//! is the only thing that decides.
+//! It writes no `thread.turns` row. Every outcome below is a decision the
+//! CALLER applies once — the same discipline the run plane's money gates
+//! follow, for the same reason: a refusal that forgot its row and one that
+//! wrote it twice are both unrepresentable when the value is the only thing
+//! that decides.
 
 use af_core::error_code::{Coded as _, Logged};
 use af_core::id::Uuid7;
@@ -72,13 +64,12 @@ impl Waiting {
     }
 }
 
-/// Why the pass ended the event.
+/// Why the pass ended the event. A lapsed deadline is not one: an unanswered
+/// gate stays answerable, and its event waits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Refused {
     /// A human said no.
     Denied,
-    /// The deadline passed with no answer.
-    Expired,
 }
 
 /// What the gate pass decided about one event.
@@ -89,12 +80,8 @@ pub enum Verdict {
     /// A human owes an answer. Answer no-work and write nothing — the delivery
     /// stays leasable and the next poll re-reads the recorded gate.
     Await(Waiting),
-    /// End the event; a human refused it or the question lapsed.
+    /// End the event; a human refused it.
     Refuse(Refused),
-    /// The fleet ran away: one action repeated past an anomaly threshold, and
-    /// the fleet is archived. Archive is terminal, so the event that tripped
-    /// it ends too; nothing would ever run it.
-    Archived,
     /// A datastore would not answer. Nothing was decided and nothing written.
     Unavailable,
 }
@@ -107,14 +94,14 @@ pub struct Check<'a> {
     /// The workspace it belongs to.
     pub workspace_id: &'a Uuid7,
     /// The event being judged.
-    pub event_id: &'a Uuid7,
+    pub turn_id: &'a Uuid7,
     /// Its type, which the rules match as the TOOL.
     pub event_type: &'a str,
     /// Who raised it, which the rules match as the ACTION.
     pub actor: &'a str,
     /// Its body, as stored — the conditions' context when it parses.
     pub request_json: &'a str,
-    /// The config resolved for this lease.
+    /// The config resolved for this run.
     pub config: &'a FleetConfig,
 }
 
@@ -125,13 +112,12 @@ impl Gates {
     /// note gives: every fault reachable here has one correct response, and the
     /// caller has no decision left to make about it.
     ///
-    /// `now` mints the identifiers a first encounter's card is written under;
-    /// whether a recorded gate has lapsed is the database's call.
+    /// `now` mints the identifiers a first encounter's card is written under.
     pub async fn check(&self, request: Check<'_>, now: Timestamp) -> Verdict {
         // ONE lookup, and all three states come out of it. `Unreadable` stays
         // distinct from `Absent` because collapsing them is unsafe in both
         // directions — see [`RefState`].
-        match self.recorded(request.fleet_id, request.event_id).await {
+        match self.recorded(request.fleet_id, request.turn_id).await {
             // A recorded gate decides, whatever the policy now says.
             Ok(Some(reference)) => self.resolve_recorded(&request, &reference).await,
             Ok(None) => {
@@ -142,13 +128,13 @@ impl Gates {
                 let fleet = request.fleet_id.as_str();
                 let Logged { error_code, reason } = fault.logged();
                 {
-                    let (event, fleet_id, agentsfleet_event_id, message) = (
+                    let (event, fleet_id, agentsfleet_turn_id, message) = (
                         &EVENT_LOOKUP_UNREADABLE,
                         &fleet,
-                        &request.event_id,
+                        &request.turn_id,
                         format_args!("whether this event already holds a gate could not be read"),
                     );
-                    tracing::warn!(message, error_code, %event, %fleet_id, %agentsfleet_event_id, reason);
+                    tracing::warn!(message, error_code, %event, %fleet_id, %agentsfleet_turn_id, reason);
                 };
                 self.judge_first_encounter(&request, RefState::Unreadable, now)
                     .await
@@ -172,13 +158,13 @@ impl Gates {
             Recorded::Unreadable(Logged { error_code, reason }) => {
                 let fleet = request.fleet_id.as_str();
                 {
-                    let (event, fleet_id, agentsfleet_event_id, message) = (
+                    let (event, fleet_id, agentsfleet_turn_id, message) = (
                         &EVENT_LOOKUP_UNREADABLE,
                         &fleet,
-                        &request.event_id,
+                        &request.turn_id,
                         format_args!("whether this event already holds a gate could not be read"),
                     );
-                    tracing::warn!(message, error_code, %event, %fleet_id, %agentsfleet_event_id, reason);
+                    tracing::warn!(message, error_code, %event, %fleet_id, %agentsfleet_turn_id, reason);
                 };
                 self.judge_first_encounter(&request, RefState::Unreadable, now)
                     .await
@@ -198,7 +184,7 @@ impl Gates {
                     error_code,
                     event = %EVENT_DECISION_UNREADABLE,
                     fleet_id = %fleet,
-                    agentsfleet_event_id = %request.event_id,
+                    agentsfleet_turn_id = %request.turn_id,
                     reason,
                     "a recorded gate's decision could not be read; the event waits"
                 );
@@ -213,7 +199,6 @@ const fn decided(evaluation: Evaluation) -> Verdict {
     match evaluation {
         Evaluation::Approved => Verdict::Pass,
         Evaluation::Denied => Verdict::Refuse(Refused::Denied),
-        Evaluation::Expired => Verdict::Refuse(Refused::Expired),
         Evaluation::Pending => Verdict::Await(Waiting::Pending),
     }
 }

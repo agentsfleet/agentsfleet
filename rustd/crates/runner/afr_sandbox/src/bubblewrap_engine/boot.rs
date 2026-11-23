@@ -1,4 +1,4 @@
-//! Bubblewrap's startup requirements, toolbox admission and resource lifetime.
+//! Bubblewrap's startup requirements, toolbox verification and resource lifetime.
 
 use std::path::PathBuf;
 
@@ -16,12 +16,14 @@ use crate::{Backend, HostPaths, Resources, Started};
 pub struct BubblewrapBackend<'a, E: EnvSource> {
     /// Binary started inside each sandbox.
     pub entry: PathBuf,
-    /// Identity that admits the staged toolbox.
+    /// Identity that verifies the staged toolbox.
     pub release: &'a Release,
     /// Images and mount locations supplied by the storage home.
     pub home: &'a ToolboxHome,
     /// Host settings the backend passes into its sandbox.
     pub env: &'a E,
+    /// How every sandbox is started and paced.
+    pub tuning: crate::EngineTuning,
 }
 
 impl<E: EnvSource> Backend for BubblewrapBackend<'_, E> {
@@ -34,13 +36,13 @@ impl<E: EnvSource> Backend for BubblewrapBackend<'_, E> {
     fn start(self, paths: &HostPaths, host: &HostProbe) -> Result<Started<Self::Engine>> {
         let toolboxes =
             Toolboxes::open(self.home.images(), KernelMounter::new(self.home.mounts()))?;
-        let toolbox = toolboxes.admit_incoming(self.release, &self.home.incoming())?;
+        let toolbox = toolboxes.verify_incoming(self.release, &self.home.incoming())?;
         let resources = MountedToolboxes::from(toolboxes);
         let config = BubblewrapConfig::for_host(
             toolbox,
-            paths.cgroup_root.clone(),
-            paths.state_dir.clone(),
+            (paths.cgroup_root.clone(), paths.state_dir.clone()),
             self.entry,
+            self.tuning,
             self.env,
         );
         Ok(Started {

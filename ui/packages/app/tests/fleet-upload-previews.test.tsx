@@ -39,7 +39,7 @@ it("discards receipts and late completions when the account changes", async () =
   expect(postSteerMock).not.toHaveBeenCalled();
 });
 
-it("keeps a preview before later sends, reconciled replies and incoming events", async () => {
+it("keeps a preview before later sends, reconciled replies and incoming turns", async () => {
   const earlier = ev({id: "earlier", role: "user", actor: `steer:${SUBJECT}`, text: "Earlier question", reply: "Earlier answer"});
   mockStream([earlier]);
   const view = renderThread();
@@ -60,7 +60,7 @@ it("keeps a preview before later sends, reconciled replies and incoming events",
   expect(postSteerMock).toHaveBeenCalledOnce();
 });
 
-it("retains a preview's position when its preceding optimistic event receives a server id", async () => {
+it("retains a preview's position when its preceding optimistic turn receives a server id", async () => {
   const earlier = ev({id: "optimistic-earlier", role: "user", actor: `steer:${SUBJECT}`, text: "Earlier question", status: "optimistic", submittedAtMs: 100});
   mockStream([earlier]);
   const view = renderThread();
@@ -74,7 +74,7 @@ it("retains a preview's position when its preceding optimistic event receives a 
   assertBefore(screen.getByText("notes.txt"), screen.getByText("Later question"));
 });
 
-it("does not group identical integration events across an intervening upload preview", async () => {
+it("does not group identical integration turns across an intervening upload preview", async () => {
   const first = ev({id: "hook-one", role: "system", actor: "github", text: "Issue webhook", reply: ""});
   mockStream([first]);
   const view = renderThread();
@@ -86,7 +86,7 @@ it("does not group identical integration events across an intervening upload pre
   expect(screen.queryByTestId("group-count")).toBeNull();
 });
 
-it("inserts a receipt after an existing activity group and keeps it when a newer event arrives", async () => {
+it("inserts a receipt after an existing activity group and keeps it when a newer turn arrives", async () => {
   const first = ev({id: "hook-one", role: "system", actor: "github", text: "Issue webhook", reply: ""});
   const second = {...first, id: "hook-two"}; mockStream([first, second]);
   const view = renderThread(); const onNew = capturedOnNew.current;
@@ -115,21 +115,20 @@ it("keeps preview ownership usable through React StrictMode setup and cleanup", 
   expect(screen.getByText("notes.txt")).toBeTruthy();
 });
 
-it("retains only the latest four temporary uploads without losing durable conversation", async () => {
+it("keeps every temporary upload, past the four it once dropped, without losing durable conversation", async () => {
   mockStream([ev({id: "durable", role: "user", actor: `steer:${SUBJECT}`, text: "Keep this message", reply: "Durable answer"})]);
   renderThread(); const onNew = capturedOnNew.current;
   if (!onNew) throw new Error("The runtime must receive its send handler");
   for (const index of [1, 2, 3, 4, 5]) {
     await act(() => onNew({...appendMessage(`Preview ${index}`), attachments: [{...attachment, id: `file-${index}`, name: `notes-${index}.txt`}]}));
   }
-  expect(screen.queryByText("notes-1.txt")).toBeNull();
-  for (const index of [2, 3, 4, 5]) expect(screen.getByText(`notes-${index}.txt`)).toBeTruthy();
+  for (const index of [1, 2, 3, 4, 5]) expect(screen.getByText(`notes-${index}.txt`)).toBeTruthy();
   expect(screen.getByText("Keep this message")).toBeTruthy();
   expect(screen.getByText("Durable answer")).toBeTruthy();
   expect(postSteerMock).not.toHaveBeenCalled();
 });
 
-it("keeps a receipt at the oldest visible boundary when every saved event anchor leaves the stream window", async () => {
+it("keeps a receipt at the oldest visible boundary when every saved turn anchor leaves the stream window", async () => {
   mockStream([ev({id: "older", role: "user", actor: `steer:${SUBJECT}`, text: "Earlier question"})]);
   const view = renderThread(); const onNew = capturedOnNew.current;
   if (!onNew) throw new Error("The runtime must receive its send handler");
@@ -143,7 +142,7 @@ it("keeps a receipt at the oldest visible boundary when every saved event anchor
 
 it("isolates the upload hook's own account state and reads only text from native rich parts", async () => {
   const onNew = vi.fn();
-  const hook = renderHook(({subject}) => useFleetUploadPreviews({workspaceId: WS, fleetId: ZID, subject, events: [], onNew}), {initialProps: {subject: "first-person"}});
+  const hook = renderHook(({subject}) => useFleetUploadPreviews({workspaceId: WS, fleetId: ZID, subject, turns: [], onNew}), {initialProps: {subject: "first-person"}});
   const first = hook.result.current.onNew;
   await act(() => first({...appendMessage("Visible caption"), content: [{type: "text", text: "Visible caption"}, {type: "image", image: "https://example.test/private-image"}],
     attachments: [{...attachment, content: [...attachment.content, {type: "file", filename: "private.txt", mimeType: "text/plain", data: "encoded-body"}]}]}));

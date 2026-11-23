@@ -18,7 +18,7 @@ async fn a_native_session_records_its_attempt_owner_and_codec_parent()
     let mut daemon = crate::test_util::NativeDaemon::serve(
         crate::test_support::healthy(),
         serde_json::Value::Null,
-        |_| async {},
+        async |_| {},
     )
     .await?;
     let root = daemon.root();
@@ -32,7 +32,7 @@ async fn a_native_session_records_its_attempt_owner_and_codec_parent()
         (ENV_RUNNER_TOKEN, "agt_r_fixture_tracing"),
     ]);
     let config = Config::from_env(&env)?;
-    let (handle, downlink, _offers) = Downlink::new(&config)?;
+    let (handle, downlink, _assignments) = Downlink::new(&config)?;
     let shutdown = CancellationToken::new();
     let halt = Halt::new(shutdown.clone());
     let exercise = exercise(&handle, &shutdown);
@@ -50,7 +50,7 @@ async fn a_native_session_records_its_attempt_owner_and_codec_parent()
 async fn exercise(
     handle: &crate::uplink::StreamHandle,
     shutdown: &CancellationToken,
-) -> crate::Result<()> {
+) -> Result<()> {
     handle
         .wait_connected(tokio::time::Instant::now() + std::time::Duration::from_secs(5))
         .await?;

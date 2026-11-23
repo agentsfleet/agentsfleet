@@ -1,8 +1,8 @@
 //! The sandboxes a runner says it holds, proved and reconciled on each beat.
 //!
 //! A runner lists every fleet whose sandbox it holds frozen. Any hold its
-//! slots still record that the list leaves out is cleared, so that fleet is
-//! claimable everywhere again, and the reply names the listed fleets the
+//! threads still record that the list leaves out is cleared, so that fleet is
+//! assignable everywhere again, and the reply names the listed fleets the
 //! runner should let go of. A closing runner's list is final, so even a hold
 //! reported inside the last beat interval is cleared at once. A list that is unreadable, out of bounds or empty
 //! holds nothing: a standing hold keeps the fleet from every other runner,
@@ -38,9 +38,9 @@ pub fn fleets(holds: &Valid<HeldFleets<'_>>) -> Vec<Uuid7> {
         .collect()
 }
 
-/// Clears every hold `runner`'s slots record that `holds` leaves out, and
+/// Clears every hold `runner`'s threads record that `holds` leaves out, and
 /// answers which listed fleets the runner should release: any that is no
-/// longer active, or that another runner has leased since. No proved list
+/// longer active, or that another runner has held since. No proved list
 /// holds nothing. A `closing` runner's list is final: a hold written inside
 /// the last beat interval is cleared too, rather than left to a next beat.
 pub(super) async fn reconcile(

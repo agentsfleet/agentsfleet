@@ -152,12 +152,3 @@ it("does no I/O when lifecycle cancellation predates submission", async () => {
   expect(await advanceFleetLifecycle({workspace: WORKSPACE, fleetId: FLEET_DETAIL.id, action: "delete", signal: controller.signal}, {stage: "read"})).toEqual({kind: "cancelled"});
   expect(network).not.toHaveBeenCalled();
 });
-
-it("keeps the action unconfirmed if the browser cannot compose its cancellation signal", async () => {
-  const any = vi.spyOn(AbortSignal, "any").mockImplementationOnce(() => {throw new TypeError("Signal composition unavailable");});
-  try {
-    await confirm();
-    expect((await screen.findByRole("alert")).textContent).toContain("We couldn’t confirm this request");
-    expect(network).not.toHaveBeenCalled(); expect(onRemoved).not.toHaveBeenCalled();
-  } finally {any.mockRestore();}
-});

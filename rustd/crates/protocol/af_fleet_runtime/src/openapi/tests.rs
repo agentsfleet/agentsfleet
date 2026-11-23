@@ -130,7 +130,7 @@ fn a_bound_of_the_wrong_kind_changes_nothing() {
                 TEXT,
                 Bound::List {
                     min: 1,
-                    max: 2,
+                    max: Some(2),
                     entry: None,
                 },
             ),

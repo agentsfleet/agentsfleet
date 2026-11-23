@@ -1,7 +1,7 @@
 use super::Receipt;
 use af_wire::{
     decision::{DecisionResult, DecisionUsage},
-    task::{DecisionReceipt, DecisionReceiptInput},
+    durable_task::{DecisionReceipt, DecisionReceiptInput},
 };
 
 #[test]

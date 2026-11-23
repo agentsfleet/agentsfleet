@@ -1,5 +1,6 @@
 //! An interim line goes out through the answer's poster, under its own marker
-//! part, and a repeat of it looks for that part rather than for the answer.
+//! part, and every attempt at it, the first too, looks for that part rather
+//! than for the answer.
 
 use af_core::id::Uuid7;
 use afd_connector::Provider;
@@ -10,19 +11,19 @@ use super::*;
 /// The line a run says before it answers.
 const LINE: &str = "fix pushed as a draft";
 
-/// The lease the fixture line was said under.
-const LEASE: &str = "0195b4ba-8d3a-7a11-8abc-0000000000aa";
+/// The run the fixture line was said under.
+const RUN: &str = "0195b4ba-8d3a-7a11-8abc-0000000000aa";
 
-/// The line the fixture job's thread is owed, numbered `part`.
-fn interim(fixture: &Fixture, part: u32) -> Interim {
+/// The line the fixture job's thread is owed, said by call `part`.
+fn interim(fixture: &Fixture, part: u64) -> Interim {
     let job = fixture.job();
     Interim {
         provider: Provider::Slack,
         destination: job.destination,
         workspace_id: job.workspace_id,
         fleet_id: job.fleet_id,
-        event_id: job.event_id,
-        lease_id: Uuid7::parse(LEASE).expect("the fixture lease is canonical"),
+        turn_id: job.turn_id,
+        run_id: Uuid7::parse(RUN).expect("the fixture run is canonical"),
         text: LINE.to_owned(),
         part,
     }
@@ -41,7 +42,9 @@ async fn an_interim_line_posts_under_its_own_part() {
         .await;
 
     assert!(delivered, "a Slack that accepted has the line");
-    let sent = received(&slack);
+    let sent = (slack.requests().into_iter())
+        .find(Request::is_post)
+        .expect("the interjection posted after its thread read");
     assert_eq!(sent.field("text"), Some(LINE));
     assert_eq!(sent.field("thread_ts"), Some(THREAD));
     let stamped = |pointer: &str| sent.body.pointer(pointer).cloned();
@@ -51,9 +54,13 @@ async fn an_interim_line_posts_under_its_own_part() {
     );
     assert_eq!(
         stamped("/metadata/event_payload/part"),
-        Some(serde_json::json!({"lease_id": LEASE, "line": 2}))
+        Some(serde_json::json!({"run_id": RUN, "line": 2}))
     );
-    assert_eq!(slack.reads(), 0, "a first attempt reads no thread");
+    assert_eq!(
+        slack.reads(),
+        1,
+        "the first attempt looks for its part: the call may be a retry"
+    );
     fixture.cleanup().await;
 }
 
@@ -70,11 +77,11 @@ async fn a_refused_line_is_undelivered_without_a_retry() {
         .await;
 
     assert!(!delivered);
-    assert_eq!(
-        slack.requests().len(),
-        1,
-        "a refusal is permanent: one post"
-    );
+    let posts = (slack.requests().into_iter())
+        .filter(Request::is_post)
+        .count();
+    assert_eq!(posts, 1, "a refusal is permanent: one post");
+    assert_eq!(slack.reads(), 1, "the one attempt read its thread first");
     fixture.cleanup().await;
 }
 
@@ -109,22 +116,24 @@ async fn a_retried_line_checks_the_thread_for_its_own_part() {
     fixture.cleanup().await;
 }
 
-/// Slack took the line and the acknowledgement was lost: the retry finds the
-/// line by its own part in the thread and posts nothing more, so the thread
-/// holds it exactly once.
+/// The call posted its line, then its record was lost, so the runner calls
+/// again with the same call number: the second interjection finds the line by
+/// its part in the thread and posts nothing, so the thread holds it once.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn a_line_whose_acknowledgement_was_lost_is_not_posted_twice() {
+async fn a_line_reposted_after_its_record_was_lost_is_not_posted_twice() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
     fixture.seal_grant(BOT_TOKEN).await;
-    let slack = slack_answering(503, r#"{"ok":false}"#).await;
+    let slack = slack_answering(200, r#"{"ok":true}"#).await;
+    let interjector = Interjector::new(fixture.poster(&slack.api_base()));
+    let first = interjector.interject(interim(&fixture, 4)).await;
     let landed = interim(&fixture, 4);
     let marker = afd_connector::slack::AnswerMarker {
         fleet_id: landed.fleet_id.clone().into(),
-        event_id: landed.event_id.clone().into(),
+        turn_id: landed.turn_id.clone().into(),
         part: Some(afd_connector::slack::Part {
-            lease_id: LEASE.to_owned(),
+            run_id: RUN.to_owned(),
             line: 4,
         }),
     };
@@ -138,17 +147,16 @@ async fn a_line_whose_acknowledgement_was_lost_is_not_posted_twice() {
         ),
     );
 
-    let delivered = Interjector::new(fixture.poster(&slack.api_base()))
-        .interject(landed)
-        .await;
+    let retried = interjector.interject(landed).await;
 
-    assert!(delivered, "the thread already holds the line");
+    assert!(first && retried, "the thread holds the line both times");
     let posts = slack
         .requests()
         .into_iter()
         .filter(Request::is_post)
         .count();
-    assert_eq!(posts, 1, "only the attempt whose answer was lost posted");
+    assert_eq!(posts, 1, "only the call's first interjection posted");
+    assert_eq!(slack.reads(), 2, "each interjection looked first");
     fixture.cleanup().await;
 }
 
@@ -171,9 +179,9 @@ async fn an_interim_line_naming_the_channel_posts_as_text() {
         .await;
 
     assert!(delivered);
-    assert_eq!(
-        received(&slack).field("text"),
-        Some("&lt;!channel&gt; look")
-    );
+    let sent = (slack.requests().into_iter())
+        .find(Request::is_post)
+        .expect("the interjection posted after its thread read");
+    assert_eq!(sent.field("text"), Some("&lt;!channel&gt; look"));
     fixture.cleanup().await;
 }

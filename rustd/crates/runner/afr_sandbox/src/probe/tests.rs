@@ -173,7 +173,7 @@ fn test_default_paths_are_the_kernels_own() {
 
 /// A kernel that lists Landlock but is older than the interface the sandbox's
 /// ruleset needs builds no sandbox: the ruleset would be refused at every
-/// lease.
+/// run.
 #[test]
 fn test_a_kernel_too_old_for_the_ruleset_reads_as_without_landlock() {
     let dir = tempfile::tempdir().unwrap();

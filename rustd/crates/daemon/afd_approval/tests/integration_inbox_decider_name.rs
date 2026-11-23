@@ -40,8 +40,8 @@ const KNOWN_NAME: &str = "Ada Lovelace";
 
 /// A subject with no user row — a person who never signed up here.
 ///
-/// Distinct from [`FOREIGN_SUBJECT`] on purpose. `seed_person` upserts
-/// `ON CONFLICT (oidc_subject) DO UPDATE`, the suite shares one database, and
+/// Distinct from [`FOREIGN_SUBJECT`] on purpose. `seed_person` keeps the first
+/// row a subject gets (`ON CONFLICT (oidc_subject) DO NOTHING`), the suite shares one database, and
 /// `approval_suite.rs` runs these concurrently — so one subject across both
 /// tests would let the no-row assertion pass through the tenant predicate
 /// instead of through the absence it names.
@@ -228,10 +228,9 @@ async fn a_decider_with_no_display_name_reads_as_their_address() {
 async fn seed_nameless_person(lane: &Lane, subject: &str, email: &str) {
     sqlx::query(
         "INSERT INTO identity.users
-           (id, tenant_id, oidc_subject, email, display_name, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, NULL, now(), now())
-         ON CONFLICT (oidc_subject) DO UPDATE
-           SET tenant_id = EXCLUDED.tenant_id, display_name = NULL",
+           (id, tenant_id, oidc_subject, email, display_name, created_at)
+         VALUES ($1, $2, $3, $4, NULL, now())
+         ON CONFLICT (oidc_subject) DO NOTHING",
     )
     .bind(afd_db::test_util::mint_id())
     .bind(&lane.tenant)
@@ -258,14 +257,14 @@ async fn resolve_as(lane: &Lane, action: &Uuid7, subject: &str) {
 /// One user row under `tenant`, idempotent across a shared database.
 ///
 /// `ON CONFLICT (oidc_subject)` rather than on the primary key: the subject is
-/// what the join reads and what a re-run collides on.
+/// what the join reads and what a re-run collides on. `DO NOTHING`, because a
+/// user row never changes: every caller seeds a subject with one shape.
 async fn seed_person(lane: &Lane, tenant: &Uuid7, subject: &str, name: &str) {
     sqlx::query(
         "INSERT INTO identity.users
-           (id, tenant_id, oidc_subject, email, display_name, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, now(), now())
-         ON CONFLICT (oidc_subject) DO UPDATE
-           SET tenant_id = EXCLUDED.tenant_id, display_name = EXCLUDED.display_name",
+           (id, tenant_id, oidc_subject, email, display_name, created_at)
+         VALUES ($1, $2, $3, $4, $5, now())
+         ON CONFLICT (oidc_subject) DO NOTHING",
     )
     .bind(afd_db::test_util::mint_id())
     .bind(tenant)

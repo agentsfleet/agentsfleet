@@ -225,7 +225,7 @@ async fn test_warming_a_pool_whose_datastore_went_away_reports_the_shortfall() {
         .expect("the proxy relays, so the connect must succeed");
     proxy.swallow();
 
-    let warmed = db.warm(std::time::Duration::from_secs(1)).await;
+    let warmed = db.warm().await;
 
     assert_eq!(
         warmed, 0,

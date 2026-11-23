@@ -6,14 +6,14 @@ mod fixture;
 
 use af_crypto::entropy::Entropy;
 use afd_db::test_util::mint_id;
-use afd_gate::gate::{Gates, Refused, Verdict, Waiting};
+use afd_gate::gate::{Gates, Verdict, Waiting};
 
-use self::fixture::{Fixture, NOW, RUNAWAY_AT_TWO, bus, config, config_gates};
+use self::fixture::{Fixture, NOW, bus, config, config_gates};
 
 /// The rule a gate rules fleet is parked by, and the only one this suite parks on.
 const APPROVE_EVERY_CHAT: &str = r#"{"rules":[{"tool":"chat","action":"user:fixture","gate_kind":"deploy","blast_radius":"production"}]}"#;
 
-/// Dimensions 2.1 and 2.2 — a write fleet runs every event, and every
+/// A write fleet runs every event, and every
 /// continuation of one, without a card.
 ///
 /// This suite used to assert the opposite, and the assertion was the defect.
@@ -35,7 +35,7 @@ async fn test_m202_001_write_fleet_and_its_continuations_pass_without_a_card() {
         Verdict::Pass
     );
     // 2.2 — the turns after it. Each carries its own event identifier, which is
-    // exactly why the retired park re-asked: it read no `resumes_event_id` and
+    // exactly why the retired park re-asked: it read no `resumes_turn_id` and
     // saw every turn as a first encounter.
     for turn in [mint_id(), mint_id(), mint_id()] {
         assert_eq!(
@@ -53,7 +53,7 @@ async fn test_m202_001_write_fleet_and_its_continuations_pass_without_a_card() {
     fixture.cleanup().await;
 }
 
-/// Dimension 2.3 — deleting the write park did not delete the rules path.
+/// Deleting the write park did not delete the rules path.
 ///
 /// The boundary that survives. A workspace that asks to be consulted still is,
 /// and that is the one thing this milestone must not destabilize.
@@ -83,16 +83,11 @@ async fn test_m202_001_rule_gated_fleet_still_parks() {
     fixture.cleanup().await;
 }
 
-/// A pending gate lapses on the database's clock, and the poll that reads it
-/// ends the event.
-///
-/// The deadline is the row's `expires_at`, stamped `now()` plus the rule's
-/// timeout when the gate was raised; the poll compares it against
-/// `statement_timestamp()`. Moving the deadline behind that clock is what a
-/// day passing would do, and the very next poll answers Expired.
+/// A pending gate past its deadline keeps its event waiting: nothing expires
+/// a gate, and a late answer still decides it (`M253_003` §2).
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn a_pending_gate_past_its_deadline_on_the_database_clock_expires() {
+async fn a_pending_gate_past_its_deadline_keeps_its_event_waiting() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
     let gates = Gates::new(fixture.database.clone(), bus().await, Entropy::new());
@@ -111,14 +106,14 @@ async fn a_pending_gate_past_its_deadline_on_the_database_clock_expires() {
     fixture.lapse(event).await;
     assert_eq!(
         gates.check(fixture.check(event, &ruled), NOW).await,
-        Verdict::Refuse(Refused::Expired),
-        "past its deadline on the database's clock, the event ends"
+        Verdict::Await(Waiting::Pending),
+        "past its deadline the event still waits for a person"
     );
 
     fixture.cleanup().await;
 }
 
-/// Dimension 2.4 — a recorded gate decides an in-flight event after the
+/// A recorded gate decides an in-flight event after the
 /// fleet's config stops asking for one.
 ///
 /// A recorded gate outranks policy, so the run stays parked until its answer
@@ -154,7 +149,7 @@ async fn recorded_gate_decides_after_the_config_stops_asking() {
 
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn authored_rules_and_anomaly_thresholds_drive_each_first_encounter_route() {
+async fn an_authored_rule_parks_its_first_encounter() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
     let gates = Gates::new(fixture.database.clone(), bus().await, Entropy::new());
@@ -165,16 +160,6 @@ async fn authored_rules_and_anomaly_thresholds_drive_each_first_encounter_route(
     assert_eq!(
         gates.check(fixture.check(&mint_id(), &approval), NOW).await,
         Verdict::Await(Waiting::Parked)
-    );
-
-    let anomaly = config_gates(RUNAWAY_AT_TWO);
-    assert_eq!(
-        gates.check(fixture.check(&mint_id(), &anomaly), NOW).await,
-        Verdict::Pass
-    );
-    assert_eq!(
-        gates.check(fixture.check(&mint_id(), &anomaly), NOW).await,
-        Verdict::Archived
     );
 
     fixture.cleanup().await;
@@ -199,26 +184,5 @@ async fn a_gate_that_cannot_mint_its_identity_fails_closed() {
         Verdict::Unavailable,
         "a gate with no durable identity cannot release the event"
     );
-    fixture.cleanup().await;
-}
-
-/// A runaway trip archives the fleet: archive is terminal, so nothing returns
-/// it to `active`, and a runaway cannot restart itself. It is the only way the
-/// gate archives a fleet; a matching rule only ever asks a person.
-#[tokio::test]
-#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn gate_trip_archives_the_fleet() {
-    let fixture = Fixture::create().await;
-    fixture.seed().await;
-    let gates = Gates::new(fixture.database.clone(), bus().await, Entropy::new());
-    let archived = afd_fleet_lifecycle::FleetStatus::Archived.as_str();
-
-    let anomaly = config_gates(RUNAWAY_AT_TWO);
-    gates.check(fixture.check(&mint_id(), &anomaly), NOW).await;
-    assert_eq!(
-        gates.check(fixture.check(&mint_id(), &anomaly), NOW).await,
-        Verdict::Archived
-    );
-    assert_eq!(fixture.status().await, archived, "a runaway trip archives");
     fixture.cleanup().await;
 }

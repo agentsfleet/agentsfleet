@@ -1,7 +1,7 @@
 //! The declared metric families, deserialized from the contract that declares
 //! them.
 //!
-//! `docs/metrics.census.tsv` is the single source of truth for the export, and
+//! `af_observability/src/metrics/census.tsv` is the single source of truth for the export, and
 //! this module turns it into the typed set the instrument layer builds from.
 //!
 //! # Why there is no parser here
@@ -35,7 +35,7 @@ mod tests;
 
 /// The contract itself, compiled in. Read at build time so a daemon can never
 /// disagree with the file the parity test grades it against.
-pub const CENSUS: &str = include_str!("../../../../../../../docs/metrics.census.tsv");
+pub const CENSUS: &str = include_str!("../census.tsv");
 
 /// One declared family: everything the wire needs and nothing it does not.
 ///

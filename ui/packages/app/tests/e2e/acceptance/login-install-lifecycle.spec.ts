@@ -27,9 +27,9 @@ import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
 const FLOW_TIMEOUT_MS = 120_000;
-// One stable template per spec: the install names the fleet after it and the
-// server suffixes a repeat (`login-lifecycle-001`), so the sweep's prefix still
-// reaches every row this spec made while the plugin row converges on one.
+// One stable name per spec: the save names the fleet after it and the server
+// suffixes a repeat (`login-lifecycle-001`), so the sweep's prefix still
+// reaches every row this spec made.
 const FLEET_PREFIX = "login-lifecycle";
 
 test.describe("login → install → lifecycle", () => {
@@ -40,7 +40,7 @@ test.describe("login → install → lifecycle", () => {
     await cleanWorkspaceFleets(FIXTURE_KEY.regular, ws, FLEET_PREFIX);
   });
 
-  test("test_user_installs_platform_plugin_fleet", async ({ page }) => {
+  test("test_user_saves_a_fleet_from_chat", async ({ page }) => {
     // Cookie-mount via signInAs — no form-drive needed.
     await signInAs(page, FIXTURE_KEY.regular);
 

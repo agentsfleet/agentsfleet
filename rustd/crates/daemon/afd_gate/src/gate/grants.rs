@@ -4,7 +4,7 @@
 //! different kind of standing decision: `fleet.approval_gates` records a
 //! human answering about ONE event, and `connector.integration_grants` records a
 //! human answering about a fleet's relationship with a third party, once, for
-//! every event after it. They travel together on the lease path and are not
+//! every event after it. They travel together on the run path and are not
 //! the same question.
 
 use af_core::id::Uuid7;
@@ -41,7 +41,7 @@ impl Gates {
 
     /// Every integration `fleet_id` holds a standing grant for.
     ///
-    /// One batch read per lease, not one per declared credential: a fleet
+    /// One batch read per run, not one per declared credential: a fleet
     /// declaring six would otherwise pay six round trips for a question the
     /// whole set shares.
     ///

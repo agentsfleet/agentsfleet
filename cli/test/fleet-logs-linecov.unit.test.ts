@@ -15,7 +15,7 @@ import { Output, OUTPUT_FORMAT, type OutputFormat } from "../src/services/output
 import { outputDouble } from "./helpers-output-double.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
 import { Credentials } from "../src/services/credentials.ts";
-import { wsFleetEventsPath } from "../src/lib/api-paths.ts";
+import { wsFleetTurnsPath } from "../src/lib/api-paths.ts";
 import { ValidationError, type CliError } from "../src/errors/index.ts";
 
 // A real uuidv7 (version nibble = 7) so validateRequiredId returns ok and the
@@ -201,7 +201,7 @@ describe("logsEffectFromFlags — cursor pagination", () => {
       },
     );
     expect(Exit.isSuccess(exit)).toBe(true);
-    const base = wsFleetEventsPath(WORKSPACE_ID, VALID_FLEET_ID);
+    const base = wsFleetTurnsPath(WORKSPACE_ID, VALID_FLEET_ID);
     expect(httpSpy.requestedPath).not.toBeNull();
     expect(httpSpy.requestedPath).toStartWith(`${base}?`);
     expect(httpSpy.requestedPath).toContain(`cursor=${CURSOR_TOKEN}`);

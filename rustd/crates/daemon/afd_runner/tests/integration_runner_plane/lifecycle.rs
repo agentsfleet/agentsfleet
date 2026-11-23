@@ -80,7 +80,7 @@ async fn test_enrolment_and_first_beat_each_write_one_event() {
     fixture.cleanup().await;
 }
 
-/// Dimension 4.8 — a beat that waited on the runner row past the offline
+/// A beat that waited on the runner row past the offline
 /// threshold is judged at the instant it got the row: the runner had gone
 /// stale while it waited, so the beat records the transition.
 #[tokio::test(flavor = "multi_thread")]

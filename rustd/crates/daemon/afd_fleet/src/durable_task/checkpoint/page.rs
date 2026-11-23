@@ -1,0 +1,225 @@
+//! Fixed page identities, exact replay and native object/path validation.
+
+use super::{
+    guard,
+    row::{Pin, Plan},
+};
+use crate::{
+    Result,
+    durable_task::{
+        DurableTaskRefusal, DurableTaskRun, DurableTasks, execution, guard as durable_task_guard,
+        transaction,
+    },
+    error::query,
+};
+use af_core::id::Uuid7;
+use af_wire::durable_task::{
+    CheckpointEntry, CheckpointMode, CheckpointPage, CheckpointPageInput, CheckpointReadQuery,
+    CheckpointTransferPurpose,
+};
+use sqlx::PgConnection;
+use std::collections::{BTreeMap, BTreeSet};
+
+#[derive(sqlx::FromRow)]
+pub(super) struct Page {
+    pub id: Uuid7,
+    #[sqlx(rename = "page_number")]
+    pub number: i32,
+    pub digest: Option<String>,
+    pub body: Option<Vec<u8>>,
+}
+
+pub(in crate::durable_task) async fn write(
+    tasks: &DurableTasks,
+    run: DurableTaskRun<'_>,
+    checkpoint: &Uuid7,
+    page: &Uuid7,
+    input: &garde::Valid<CheckpointPageInput>,
+) -> Result<CheckpointPage> {
+    let body = serde_json::to_vec(&input.contents).map_err(af_core::json::Unreadable::from)?;
+    if af_core::etag::sha256_hex(&body) != input.digest {
+        return Err(DurableTaskRefusal::CheckpointIncompatible.into());
+    }
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
+    let mut tx = transaction::begin(&mut connection).await?;
+    let (_owned, plan, pin) = guard::owned(
+        &mut tx,
+        run,
+        &input.durable_task,
+        checkpoint,
+        &durable_task_guard::id(&input.pin_id, "pin_id")?,
+        CheckpointTransferPurpose::Upload,
+    )
+    .await?;
+    let position = plan.page_ids.iter().position(|id| id == page);
+    if position.and_then(|position| u32::try_from(position).ok())
+        != Some(input.contents.page_number)
+    {
+        return Err(DurableTaskRefusal::ReplayConflict.into());
+    }
+    let objects = validate(&mut tx, &plan, &input.contents).await?;
+    super::transfer::protect(&mut tx, &objects, &pin, tasks.times().orphan_seconds()).await?;
+    let existing = selected(&mut tx, &plan, page).await?;
+    if let Some(saved) = &existing.body {
+        if saved != &body || existing.digest.as_deref() != Some(input.digest.as_str()) {
+            return Err(DurableTaskRefusal::ReplayConflict.into());
+        }
+    } else {
+        // An overlay page and a base page share one table; the plan proved the
+        // page is its own above.
+        sqlx::query(include_str!("sql/page_write.sql"))
+            .bind(page)
+            .bind(&input.digest)
+            .bind(&body)
+            .execute(&mut *tx)
+            .await
+            .map_err(query("freeze complete manifest page"))?;
+    }
+    tx.commit()
+        .await
+        .map_err(query("commit immutable manifest page"))?;
+    transaction::recycle(connection);
+    Ok(input.contents.clone())
+}
+
+pub(in crate::durable_task) async fn read(
+    tasks: &DurableTasks,
+    run: DurableTaskRun<'_>,
+    checkpoint: &Uuid7,
+    page: &Uuid7,
+    input: &garde::Valid<CheckpointReadQuery>,
+) -> Result<CheckpointPage> {
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
+    let mut tx = transaction::begin(&mut connection).await?;
+    let (_owned, plan, _pin) = read_authority(&mut tx, run, checkpoint, &input.pin_id).await?;
+    let page = selected(&mut tx, &plan, page).await?;
+    let body = page
+        .body
+        .ok_or(DurableTaskRefusal::CheckpointIncompatible)?;
+    if page.digest.as_deref() != Some(af_core::etag::sha256_hex(&body).as_str()) {
+        return Err(DurableTaskRefusal::CheckpointIncompatible.into());
+    }
+    let contents = serde_json::from_slice(&body).map_err(af_core::json::Unreadable::from)?;
+    tx.commit()
+        .await
+        .map_err(query("finish bounded immutable manifest page read"))?;
+    transaction::recycle(connection);
+    Ok(contents)
+}
+
+pub(super) async fn read_authority(
+    connection: &mut PgConnection,
+    run: DurableTaskRun<'_>,
+    checkpoint: &Uuid7,
+    pin: &str,
+) -> Result<(execution::Owned, Plan, Pin)> {
+    let current = durable_task_guard::run(connection, run).await?;
+    let owned = execution::attached(connection, current).await?;
+    guard::with_execution(
+        connection,
+        run,
+        owned,
+        checkpoint,
+        &durable_task_guard::id(pin, "pin_id")?,
+        CheckpointTransferPurpose::Restore,
+    )
+    .await
+}
+
+pub(super) async fn selected(
+    connection: &mut PgConnection,
+    plan: &Plan,
+    page: &Uuid7,
+) -> Result<Page> {
+    sqlx::query_as(include_str!("sql/page_read.sql"))
+        .bind(page)
+        .bind(&plan.id)
+        .bind(&plan.base_id)
+        .fetch_optional(connection)
+        .await
+        .map_err(query("read one scoped manifest page"))?
+        .ok_or_else(|| DurableTaskRefusal::NotFound.into())
+}
+
+pub(super) async fn validate(
+    connection: &mut PgConnection,
+    plan: &Plan,
+    page: &CheckpointPage,
+) -> Result<Vec<Uuid7>> {
+    if plan.mode()? == CheckpointMode::RetainBase && !page.history_objects.is_empty() {
+        return Err(DurableTaskRefusal::CheckpointIncompatible.into());
+    }
+    let mut previous = None;
+    // Object ids arrive as page text; one that is not a UUIDv7 names no object.
+    let object = |text: &String| {
+        Uuid7::parse(text)
+            .map_err(|_text| crate::Error::from(DurableTaskRefusal::CheckpointIncompatible))
+    };
+    let mut ids: BTreeSet<Uuid7> = page
+        .history_objects
+        .iter()
+        .map(object)
+        .collect::<Result<_>>()?;
+    for entry in &page.entries {
+        if previous.is_some_and(|previous: &str| previous >= entry.path()) {
+            return Err(DurableTaskRefusal::CheckpointIncompatible.into());
+        }
+        previous = Some(entry.path());
+        match entry {
+            CheckpointEntry::File(file) => {
+                for id in &file.objects {
+                    ids.insert(object(id)?);
+                }
+            }
+            CheckpointEntry::Symlink { path, target } => link(path, target)?,
+            CheckpointEntry::Remove { .. } if plan.mode()? == CheckpointMode::RetainBase => {
+                return Err(DurableTaskRefusal::CheckpointIncompatible.into());
+            }
+            CheckpointEntry::Directory { .. } | CheckpointEntry::Remove { .. } => {}
+        }
+    }
+    // One set read covers every file/history object in this bounded page.
+    let ids: Vec<_> = ids.into_iter().collect();
+    let objects = super::transfer::scoped(connection, plan, &ids).await?;
+    super::objects::attach(connection, plan, &ids).await?;
+    let lengths: BTreeMap<_, _> = objects
+        .into_iter()
+        .map(|object| (String::from(object.id), object.plaintext_size))
+        .collect();
+    for entry in &page.entries {
+        if let CheckpointEntry::File(file) = entry {
+            let bytes = file
+                .objects
+                .iter()
+                .try_fold(0_u64, |sum, id| {
+                    let size = lengths.get(id).and_then(|size| u64::try_from(*size).ok())?;
+                    sum.checked_add(size)
+                })
+                .ok_or(DurableTaskRefusal::CheckpointIncompatible)?;
+            if bytes != file.size {
+                return Err(DurableTaskRefusal::CheckpointIncompatible.into());
+            }
+        }
+    }
+    Ok(ids)
+}
+
+fn link(path: &str, target: &str) -> Result<()> {
+    let mut depth = path.split('/').count().saturating_sub(1);
+    for part in target.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                depth = depth
+                    .checked_sub(1)
+                    .ok_or(DurableTaskRefusal::CheckpointIncompatible)?;
+            }
+            _ => depth += 1,
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+#[path = "page_tests.rs"]
+mod tests;

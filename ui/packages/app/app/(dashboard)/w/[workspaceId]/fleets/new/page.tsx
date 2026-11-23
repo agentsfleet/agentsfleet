@@ -5,15 +5,10 @@ import { requireCredential } from "@/lib/auth/credential";
 import { listTenantWorkspacesCached } from "@/lib/workspace";
 import { WorkspaceChat } from "@/components/domain/setup/conversation/WorkspaceChat";
 import { SOURCE_KIND } from "@/lib/api/draft-vocabulary";
-import { PLUGIN_CREATE_PROMPT } from "@/components/domain/setup/chat-defaults";
-import type { AuthoringIntent } from "@/components/domain/setup/AuthoringIntent";
-import {pluginsUiEnabled} from "@/lib/plugin-ui";
 
 export const dynamic = "force-dynamic";
 const SearchSchema = z.union([
   z.object({draft: z.uuidv7()}).strict(),
-  z.object({plugin: z.uuidv7(), revision: z.uuidv7(), intent: z.enum(["edit", "new"]).optional()}).strict(),
-  z.object({starter: z.literal("plugin")}).strict(),
   z.object({fleet: z.uuidv7(), setup_revision: z.string().regex(/^[1-9][0-9]*$/)}).strict(),
   z.object({}).strict(),
 ]);
@@ -28,19 +23,8 @@ export default async function NewFleetPage({params, searchParams}: {
   if (!workspace) notFound();
   const query = SearchSchema.safeParse(await searchParams);
   if (!query.success) notFound();
-  if (("plugin" in query.data || "starter" in query.data) && !pluginsUiEnabled()) notFound();
-  const source = "plugin" in query.data ? {kind: SOURCE_KIND.plugin, plugin_id: query.data.plugin, revision_id: query.data.revision} : "fleet" in query.data ? {kind: SOURCE_KIND.fleet, fleet_id: query.data.fleet, setup_revision: query.data.setup_revision} : undefined;
-  const intent = authoringIntent(query.data);
+  const source = "fleet" in query.data ? {kind: SOURCE_KIND.fleet, fleet_id: query.data.fleet, setup_revision: query.data.setup_revision} : undefined;
   return <PageLayout fullHeight className="flex min-h-0 flex-1 flex-col">
-    <WorkspaceChat account={workspace.account.tenant_id} workspace={workspaceId} draft={"draft" in query.data ? query.data.draft : undefined} source={source}
-      {...intent} />
+    <WorkspaceChat account={workspace.account.tenant_id} workspace={workspaceId} draft={"draft" in query.data ? query.data.draft : undefined} source={source} />
   </PageLayout>;
-}
-
-function authoringIntent(query: z.infer<typeof SearchSchema>): AuthoringIntent {
-  if ("plugin" in query) {
-    return query.intent === "edit" ? {prompt: "Update this plugin’s setup.", publicationTarget: query.plugin}
-      : {prompt: "Start a new fleet from this plugin. I want to review and adapt its setup."};
-  }
-  return "starter" in query ? {prompt: PLUGIN_CREATE_PROMPT} : {};
 }

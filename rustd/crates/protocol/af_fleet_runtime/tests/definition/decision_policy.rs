@@ -13,8 +13,10 @@ const POLICY_PATH: &str = "/config/x-agentsfleet/decision_policy";
 
 pub(super) fn document() -> Value {
     let mut document = value();
-    let policy = serde_json::from_str(&crate::support::fixture("goal-repair/decision-policy.json"))
-        .expect("shared owner-reviewed question fixture");
+    let policy = serde_json::from_str(&crate::support::fixture(
+        "fleets/ci-repairer/decision-policy.json",
+    ))
+    .expect("shared owner-reviewed question fixture");
     document
         .pointer_mut("/config/x-agentsfleet")
         .and_then(Value::as_object_mut)
@@ -123,7 +125,6 @@ fn question_edits_change_the_next_content_identity_and_leave_the_accepted_setup_
     assert_eq!(invalid.code(), error_code::AGENTSFLEET_INVALID_CONFIG);
     assert_eq!(original, parse(&document()));
     renamed_role_edits_preserve_the_accepted_definition(&changed);
-    combined_question_edits_preserve_the_accepted_definition(&changed);
 }
 
 fn renamed_role_edits_preserve_the_accepted_definition(accepted: &Definition) {
@@ -160,47 +161,6 @@ fn renamed_role_edits_preserve_the_accepted_definition(accepted: &Definition) {
     }
 }
 
-fn combined_question_edits_preserve_the_accepted_definition(accepted: &Definition) {
-    let statement = json!({"id":"defect-fixed", "question":"q".repeat(400),
-        "criteria":{"true":"t".repeat(400),"false":"f".repeat(155)}});
-    assert_eq!(
-        serde_json::to_vec(&statement)
-            .expect("complete authored question")
-            .len(),
-        1024
-    );
-    let revision = accepted
-        .edit(EditBatch {
-            config_ops: vec![ConfigOp::Replace {
-                path: format!("{POLICY_PATH}/completion/statements/0"),
-                value: statement,
-            }],
-            ..EditBatch::default()
-        })
-        .expect("exact combined byte boundary remains editable");
-    let before = serde_json::to_value(&revision).expect("new accepted setup");
-    let digest = canonical_digest(&revision).expect("new revision digest");
-    assert_ne!(digest, canonical_digest(accepted).expect("previous digest"));
-    let fault = revision
-        .edit(EditBatch {
-            config_ops: vec![ConfigOp::Replace {
-                path: format!("{POLICY_PATH}/completion/statements/0/criteria/false"),
-                value: json!("f".repeat(156)),
-            }],
-            ..EditBatch::default()
-        })
-        .expect_err("individually bounded text cannot exceed the combined authored limit");
-    assert_eq!(fault.code(), error_code::AGENTSFLEET_INVALID_CONFIG);
-    assert_eq!(
-        serde_json::to_value(&revision).expect("retained complete setup"),
-        before
-    );
-    assert_eq!(
-        canonical_digest(&revision).expect("retained revision digest"),
-        digest
-    );
-}
-
 #[test]
 fn incomplete_wrong_shaped_and_unknown_policies_never_become_runtime_defaults() {
     for replacement in [
@@ -222,7 +182,7 @@ fn incomplete_wrong_shaped_and_unknown_policies_never_become_runtime_defaults() 
         ("/routing/intent/question", Value::Null),
         (
             "/routing/association/criteria",
-            json!({"matching_task":"Yes", "new_work":"New", "publish":"Unbounded"}),
+            json!({"matching_durable_task":"Yes", "new_work":"New", "publish":"Unbounded"}),
         ),
         ("/routing/multiple_requests/criteria", json!({"true":"Yes"})),
         (
@@ -250,12 +210,10 @@ fn incomplete_wrong_shaped_and_unknown_policies_never_become_runtime_defaults() 
 }
 
 #[test]
-fn full_question_and_statement_limits_reject_ambiguous_or_unusable_policy_without_truncation() {
+fn blank_nul_and_duplicate_questions_reject_the_policy_without_truncation() {
     for (pointer, replacement) in [
         ("/routing/intent/question", json!(" \n\t")),
         ("/routing/intent/question", json!("private\0question")),
-        ("/routing/intent/question", json!("界".repeat(200))),
-        ("/routing/intent/question", json!("界".repeat(512))),
         ("/completion/statements/0/criteria/true", json!("   ")),
         (
             "/completion/statements/0/criteria/false",
@@ -271,36 +229,10 @@ fn full_question_and_statement_limits_reject_ambiguous_or_unusable_policy_withou
             .expect("fixture field") = replacement;
         refused(&candidate);
     }
-    let mut full = document();
-    let first = full
-        .pointer(&format!("{POLICY_PATH}/completion/statements/0"))
-        .expect("first statement")
-        .clone();
-    let statements = full
-        .pointer_mut(&format!("{POLICY_PATH}/completion/statements"))
-        .and_then(Value::as_array_mut)
-        .expect("statement array");
-    statements.clear();
-    for index in 0..6 {
-        let mut statement = first.clone();
-        statement
-            .as_object_mut()
-            .expect("statement object")
-            .insert("id".into(), json!(format!("statement-{index}")));
-        statements.push(statement);
-    }
-    parse(&full)
-        .validate_for_save()
-        .expect("six complete statements are usable");
-    full.pointer_mut(&format!("{POLICY_PATH}/completion/statements"))
-        .and_then(Value::as_array_mut)
-        .expect("array")
-        .push(first);
-    refused(&full);
 }
 
 #[test]
-fn unicode_question_text_is_preserved_at_the_wire_byte_limit() {
+fn unicode_question_text_is_preserved() {
     for text in ["界".repeat(160), "🙂".repeat(120), "A".repeat(512)] {
         let mut candidate = document();
         *candidate
@@ -331,4 +263,40 @@ fn refused(candidate: &Value) {
         !failure.to_string().contains("private\0question"),
         "refusal never echoes private question values"
     );
+}
+
+#[test]
+fn an_omitted_question_criteria_or_statement_id_is_refused_by_name() {
+    for (parent, key, field) in [
+        (
+            "/routing/intent",
+            "question",
+            "decision_policy.question.question",
+        ),
+        (
+            "/routing/intent",
+            "criteria",
+            "decision_policy.question.criteria",
+        ),
+        (
+            "/completion/statements/0",
+            "id",
+            "decision_policy.completion.statement.id",
+        ),
+    ] {
+        let mut candidate = document();
+        candidate
+            .pointer_mut(&format!("{POLICY_PATH}{parent}"))
+            .and_then(Value::as_object_mut)
+            .expect("fixture object")
+            .remove(key)
+            .expect("fixture field");
+        let failure = Definition::parse(&candidate.to_string())
+            .expect_err("an omitted required member is refused");
+        assert_eq!(failure.code(), error_code::AGENTSFLEET_INVALID_CONFIG);
+        assert!(
+            failure.to_string().contains(field),
+            "the refusal names {field}: {failure}"
+        );
+    }
 }

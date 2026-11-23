@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
+import type { ToolArgs } from "@/lib/streaming/fleet-stream-tool-trace";
 import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
 import {
   CELL_STATE,
   EMPTY_OUTPUT,
   OUTPUT_UNAVAILABLE,
+  cellDiff,
   cellState,
   fullDiff,
   moreLinesLabel,
@@ -22,7 +24,7 @@ const KEY = "deploy_window";
 const EIGHT_LINES = "1\n2\n3\n4\n5\n6\n7\n8\n";
 const CLIPPED = "x".repeat(ARGS_LEAF_MAX_BYTES);
 
-function headerOf(name: string, args: Record<string, string> | undefined, state: (typeof CELL_STATE)[keyof typeof CELL_STATE]) {
+function headerOf(name: string, args: ToolArgs | undefined, state: (typeof CELL_STATE)[keyof typeof CELL_STATE]) {
   const copy = toolCopy(name, args);
   return `${(state === CELL_STATE.INTERRUPTED ? "Interrupted" : state === CELL_STATE.RUNNING ? copy.verbs.running : copy.verbs.done)} ${copy.target}`;
 }
@@ -31,9 +33,7 @@ describe("toolCopy", () => {
   it("names each hosted tool's verb and target, running and done", () => {
     const cases = [
       [TOOL_NAME.FILE_WRITE, { path: PATH, content: "a\nb\n" }, "Writing deploy.yaml", "Wrote deploy.yaml"],
-      [TOOL_NAME.FILE_APPEND, { path: PATH, content: "a" }, "Appending deploy.yaml", "Appended deploy.yaml"],
-      [TOOL_NAME.FILE_DELETE, { path: PATH }, "Deleting deploy.yaml", "Deleted deploy.yaml"],
-      [TOOL_NAME.FILE_EDIT, { path: PATH, old_text: "a", new_text: "b" }, "Editing deploy.yaml", "Edited deploy.yaml"],
+      [TOOL_NAME.FILE_EDIT, { path: PATH, edits: [{ old_text: "a", new_text: "b" }] }, "Editing deploy.yaml", "Edited deploy.yaml"],
       [TOOL_NAME.HTTP_REQUEST, { url: URL, method: "POST" }, `Requesting POST ${URL}`, `Requested POST ${URL}`],
       [TOOL_NAME.MEMORY_STORE, { key: KEY }, `Remembering ${KEY}`, `Remembered ${KEY}`],
       [TOOL_NAME.MEMORY_FORGET, { key: KEY }, `Forgetting ${KEY}`, `Forgot ${KEY}`],
@@ -52,7 +52,7 @@ describe("toolCopy", () => {
     expect(toolCopy(TOOL_NAME.MEMORY_STORE, undefined).target).toBe(ARGS_NOT_RECORDED);
     expect(toolCopy(TOOL_NAME.HTTP_REQUEST, undefined)).toMatchObject({ target: ARGS_NOT_RECORDED, verbs: { done: "Requested" } });
     expect(toolCopy(TOOL_NAME.MEMORY_FORGET, {}).target).toBe("");
-    expect(toolCopy(TOOL_NAME.FILE_DELETE, { path: 7 }).target).toBe("");
+    expect(toolCopy(TOOL_NAME.FILE_WRITE, { path: 7 }).target).toBe("");
   });
 
   it("calls an unknown tool by name, its arguments compact and bounded", () => {
@@ -66,7 +66,7 @@ describe("toolCopy", () => {
   it("test_clipped_targets_marked", () => {
     const long = "x".repeat(ARGS_LEAF_MAX_BYTES);
     expect(toolCopy(TOOL_NAME.HTTP_REQUEST, { url: long }).target).toBe(`GET ${long}${CLIP_MARK}`);
-    expect(toolCopy(TOOL_NAME.FILE_DELETE, { path: long }).target).toBe(`${long}${CLIP_MARK}`);
+    expect(toolCopy(TOOL_NAME.FILE_WRITE, { path: long }).target).toBe(`${long}${CLIP_MARK}`);
     expect(toolCopy(TOOL_NAME.MEMORY_FORGET, { key: long }).target).toBe(`${long}${CLIP_MARK}`);
     // A cut command marks its last line shown, unless "+N lines" already says more follows.
     expect(toolCopy(TOOL_NAME.EXEC_COMMAND, { cmd: long }).target).toBe(`${long}${CLIP_MARK}`);
@@ -77,42 +77,74 @@ describe("toolCopy", () => {
     expect(outputPreview("a\nb\nc\nd", 9, TOOL_CALL_STATUS.SUCCEEDED, "z").cut).toBe(false);
   });
 
-  it("diffs an edit or a patch whole for a full read, and nothing it cannot compare", () => {
-    expect(fullDiff(TOOL_NAME.FILE_EDIT_HASHED, { old_text: CLIPPED, new_text: "b" })?.removed).toBe(1);
-    expect(fullDiff(TOOL_NAME.APPLY_PATCH, { patch: "*** Update File: a.md\n-x\n+y\n+z" })).toMatchObject({ added: 2, removed: 1 });
-    // Not kept, tagged by line rather than old text, or not an edit: no diff.
+  it("draws an edit or a patch whole for a full read, and nothing it cannot compare", () => {
+    expect(fullDiff(TOOL_NAME.FILE_EDIT, { edits: [{ old_text: CLIPPED, new_text: "b" }] })?.[0]).toEqual({ kind: DIFF_ROW.REMOVED, text: CLIPPED });
+    // Each replacement's rows, in the order the call listed them.
+    expect(fullDiff(TOOL_NAME.FILE_EDIT, { edits: [{ old_text: "a", new_text: "b" }, { old_text: "c", new_text: "d" }] })).toEqual([
+      { kind: DIFF_ROW.REMOVED, text: "a" }, { kind: DIFF_ROW.ADDED, text: "b" },
+      { kind: DIFF_ROW.REMOVED, text: "c" }, { kind: DIFF_ROW.ADDED, text: "d" },
+    ]);
+    expect(fullDiff(TOOL_NAME.APPLY_PATCH, { patch: "*** Update File: a.md\n-x\n+y\n+z" })).toEqual([
+      { kind: DIFF_ROW.REMOVED, text: "x" }, { kind: DIFF_ROW.ADDED, text: "y" }, { kind: DIFF_ROW.ADDED, text: "z" },
+    ]);
+    // Not kept, no replacements, a replacement with no old text, or not an edit: no rows.
     expect(fullDiff(TOOL_NAME.FILE_EDIT, undefined)).toBeNull();
-    expect(fullDiff(TOOL_NAME.FILE_EDIT_HASHED, { path: "a.md", target: "L10:abc", new_text: "b" })).toBeNull();
-    expect(fullDiff(TOOL_NAME.FILE_WRITE, { old_text: "a" })).toBeNull();
-    // A patch argument that is missing reads as an empty patch; an edit with no new text removes.
-    expect(fullDiff(TOOL_NAME.APPLY_PATCH, {})).toEqual({ rows: [], added: 0, removed: 0 });
-    expect(fullDiff(TOOL_NAME.FILE_EDIT, { old_text: "gone" })).toMatchObject({ added: 0, removed: 1 });
+    expect(fullDiff(TOOL_NAME.FILE_EDIT, { path: "a.md", old_text: "a", new_text: "b" })).toBeNull();
+    expect(fullDiff(TOOL_NAME.FILE_EDIT, { path: "a.md", edits: "a" })).toBeNull();
+    expect(fullDiff(TOOL_NAME.FILE_EDIT, { path: "a.md", edits: [] })).toBeNull();
+    expect(fullDiff(TOOL_NAME.FILE_EDIT, { path: "a.md", edits: ["a"] })).toBeNull();
+    expect(fullDiff(TOOL_NAME.FILE_EDIT, { path: "a.md", edits: [{ old_text: "a", new_text: "b" }, { new_text: "c" }] })).toBeNull();
+    expect(fullDiff(TOOL_NAME.FILE_WRITE, { edits: [{ old_text: "a", new_text: "b" }] })).toBeNull();
+    // A patch argument that is missing reads as an empty patch; a replacement with no new text removes.
+    expect(fullDiff(TOOL_NAME.APPLY_PATCH, {})).toEqual([]);
+    expect(fullDiff(TOOL_NAME.FILE_EDIT, { edits: [{ old_text: "gone" }] })).toEqual([{ kind: DIFF_ROW.REMOVED, text: "gone" }]);
   });
 
-  it("names a hashed edit's line when it carries no old text to diff", () => {
-    expect(toolCopy(TOOL_NAME.FILE_EDIT_HASHED, { path: "/workspace/a.md", target: "L10:abc", new_text: "b" }))
-      .toEqual({ verbs: { running: "Editing", done: "Edited" }, target: "a.md at L10:abc", body: { kind: TOOL_BODY.OUTPUT } });
-    expect(toolCopy(TOOL_NAME.FILE_EDIT_HASHED, { path: "a.md", target: "L10:abc", end_target: "L12:def", new_text: "b" }).target)
-      .toBe("a.md at L10:abc–L12:def");
-    expect(toolCopy(TOOL_NAME.FILE_EDIT, { path: "a.md", new_text: "b" }).target).toBe("a.md");
+  it("draws an edit or a patch in its cell only while no text it comes from may have been cut", () => {
+    expect(cellDiff(TOOL_NAME.FILE_EDIT, { edits: [{ old_text: "a", new_text: "b" }] })).toEqual([
+      { kind: DIFF_ROW.REMOVED, text: "a" }, { kind: DIFF_ROW.ADDED, text: "b" },
+    ]);
+    expect(cellDiff(TOOL_NAME.FILE_EDIT, { edits: [{ old_text: "gone" }] })).toEqual([{ kind: DIFF_ROW.REMOVED, text: "gone" }]);
+    expect(cellDiff(TOOL_NAME.APPLY_PATCH, { patch: "*** Update File: a.md\n-x\n+y" })).toEqual([
+      { kind: DIFF_ROW.REMOVED, text: "x" }, { kind: DIFF_ROW.ADDED, text: "y" },
+    ]);
+    // A cut old text, new text or patch would draw a change the call never asked for.
+    expect(cellDiff(TOOL_NAME.FILE_EDIT, { edits: [{ old_text: CLIPPED, new_text: "b" }] })).toBeNull();
+    expect(cellDiff(TOOL_NAME.FILE_EDIT, { edits: [{ old_text: "a", new_text: CLIPPED }] })).toBeNull();
+    expect(cellDiff(TOOL_NAME.APPLY_PATCH, { patch: `*** Update File: a.md\n+${CLIPPED}` })).toBeNull();
+    // Nothing to draw at all: not kept, not a list of replacements, or not an edit.
+    expect(cellDiff(TOOL_NAME.FILE_EDIT, undefined)).toBeNull();
+    expect(cellDiff(TOOL_NAME.FILE_EDIT, { edits: "a" })).toBeNull();
+    expect(cellDiff(TOOL_NAME.FILE_WRITE, { edits: [{ old_text: "a", new_text: "b" }] })).toBeNull();
   });
 
   it("replaces the verb with Interrupted, whatever the tool", () => {
     expect(headerOf(TOOL_NAME.FILE_WRITE, { path: PATH }, CELL_STATE.INTERRUPTED)).toBe(`Interrupted ${SHOWN_PATH}`);
   });
 
-  it("counts a write's lines only when its content arrived whole", () => {
-    expect(toolCopy(TOOL_NAME.FILE_WRITE, { path: PATH, content: "a\nb\n" }).addedLines).toBe(2);
-    expect(toolCopy(TOOL_NAME.FILE_WRITE, { path: PATH, content: CLIPPED }).addedLines).toBeUndefined();
-    expect(toolCopy(TOOL_NAME.FILE_WRITE, { path: PATH }).addedLines).toBeUndefined();
+  it("names an edit's files and counts as the runner recorded them", () => {
+    const changes = [{ path: "src/a.rs", added: 24, removed: 8 }, { path: "README.md", added: 1, removed: 0 }];
+    for (const name of [TOOL_NAME.FILE_WRITE, TOOL_NAME.FILE_EDIT, TOOL_NAME.APPLY_PATCH]) {
+      expect(toolCopy(name, { path: PATH, content: "a\nb\n" }, changes)).toMatchObject({
+        target: "src/a.rs, README.md", body: { kind: TOOL_BODY.CHANGES, changes },
+      });
+    }
+    // The arguments' own path never stands in for a recorded one.
+    expect(toolCopy(TOOL_NAME.FILE_EDIT, { path: "other.md", edits: [{ old_text: "a", new_text: "b" }] }, changes).target).toBe("src/a.rs, README.md");
   });
 
-  it("diffs an edit whole, and refuses to diff one the runner may have cut", () => {
-    expect(toolCopy(TOOL_NAME.FILE_EDIT_HASHED, { path: PATH, old_text: "a", new_text: "b" }).body)
-      .toEqual({ kind: TOOL_BODY.DIFF, diff: { rows: [{ kind: DIFF_ROW.REMOVED, text: "a" }, { kind: DIFF_ROW.ADDED, text: "b" }], added: 1, removed: 1 } });
-    expect(toolCopy(TOOL_NAME.FILE_EDIT, { path: PATH, old_text: CLIPPED, new_text: "b" }).body).toEqual({ kind: TOOL_BODY.CLIPPED_EDIT });
-    // No old text: nothing to diff against, so no diff drawn as all-new lines.
-    expect(toolCopy(TOOL_NAME.FILE_EDIT, { path: PATH }).body).toEqual({ kind: TOOL_BODY.OUTPUT });
+  it("counts nothing from an edit's arguments when the runner recorded no change", () => {
+    // Running, failed, or recorded before the runner counted: the path asked for, no counts.
+    expect(toolCopy(TOOL_NAME.FILE_WRITE, { path: PATH, content: "a\nb\n" })).toEqual({
+      verbs: { running: "Writing", done: "Wrote" }, target: SHOWN_PATH, body: { kind: TOOL_BODY.OUTPUT },
+    });
+    expect(toolCopy(TOOL_NAME.FILE_EDIT, { path: PATH, edits: [{ old_text: "a", new_text: "b" }] }, []).body).toEqual({ kind: TOOL_BODY.OUTPUT });
+    expect(toolCopy(TOOL_NAME.FILE_EDIT, { path: PATH, edits: [{ old_text: CLIPPED, new_text: "b" }] }).body).toEqual({ kind: TOOL_BODY.OUTPUT });
+    // A patch's files would be read out of its text: none is named.
+    expect(toolCopy(TOOL_NAME.APPLY_PATCH, { patch: "*** Update File: a.md\n-x\n+y" })).toEqual({
+      verbs: { running: "Editing", done: "Edited" }, target: "", body: { kind: TOOL_BODY.OUTPUT },
+    });
+    expect(toolCopy(TOOL_NAME.APPLY_PATCH, undefined).target).toBe(ARGS_NOT_RECORDED);
   });
 
   it("puts a command's first line on the header, two more on the rail, and counts the rest", () => {

@@ -6,28 +6,25 @@
 //! for. Lengthening it, or swapping it for a UUID, would break that use before
 //! it broke any code.
 //!
-//! # Why an id is minted per response, not stamped per request
+//! # One id per request
 //!
-//! Because that is where the daemon's ids come from, and pretending otherwise
-//! was a real bug in this module's first draft: it read the id out of a
-//! [`tower_http`]-stamped request extension, so an id was present only if a
-//! layer nobody had written yet was mounted, and its absence degraded silently
-//! to the sentinel. That made [`UNKNOWN_REQUEST_ID`] mean three different
-//! things — nothing stamped, non-ASCII stamped, or the layer simply missing —
-//! and coupled the refusal path to a foreign crate's newtype over a value this
-//! product defines.
-//!
-//! Minting here restores the sentinel's single meaning: entropy failed. If a
-//! request-scoped id is later wanted — echoed in a response header, threaded
-//! through a span — that is a deliberate change with one minter, and this is
-//! the minter.
-//!
-//! [`tower_http`]: https://docs.rs/tower-http
+//! [`drop_incoming`] removes any `x-request-id` a caller sent, `tower-http`'s
+//! `SetRequestIdLayer` then stamps one minted through [`Mint`], and
+//! `PropagateRequestIdLayer`
+//! echoes it on the response. [`scope`] makes that id the one every refusal
+//! built while the request is served reads through [`RequestId::current`], so
+//! the header, the problem body and the log line name one request. Outside a
+//! request — a spawned task, a suite calling a handler directly — `current`
+//! mints a fresh id, as every refusal did before the header existed.
 
 use std::fmt::{self, Display, Formatter};
 
 use af_core::error_code;
 use af_crypto::entropy::Entropy;
+use axum::extract::Request;
+use axum::middleware::Next;
+use axum::response::Response;
+use http::HeaderValue;
 
 /// The prefix that makes an id recognisable in a log line or a ticket.
 const PREFIX: &str = "req_";
@@ -44,11 +41,26 @@ const ENTROPY_BYTES: usize = 6;
 /// then fail to find.
 pub const UNKNOWN_REQUEST_ID: &str = "req_unknown";
 
+tokio::task_local! {
+    /// The id of the request this task is serving, set by [`scope`].
+    static CURRENT: RequestId;
+}
+
 /// One request's correlation token.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RequestId(String);
 
 impl RequestId {
+    /// The id of the request being served: the one its `x-request-id` carries.
+    ///
+    /// A fresh id where no request is in scope.
+    #[must_use]
+    pub fn current() -> Self {
+        CURRENT
+            .try_with(Self::clone)
+            .unwrap_or_else(|_| Self::mint())
+    }
+
     /// A fresh id, drawing from the operating system.
     #[must_use]
     pub fn mint() -> Self {
@@ -102,6 +114,47 @@ impl From<RequestId> for String {
     fn from(id: RequestId) -> Self {
         id.0
     }
+}
+
+/// The [`tower_http::request_id::MakeRequestId`] that mints this product's id.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Mint;
+
+impl tower_http::request_id::MakeRequestId for Mint {
+    fn make_request_id<B>(
+        &mut self,
+        _request: &http::Request<B>,
+    ) -> Option<tower_http::request_id::RequestId> {
+        HeaderValue::from_str(RequestId::mint().as_str())
+            .ok()
+            .map(tower_http::request_id::RequestId::new)
+    }
+}
+
+/// Removes a caller's `x-request-id`: this daemon never accepts one.
+///
+/// Mounted in front of `SetRequestIdLayer`, which then always mints ours, so
+/// every id a log line, a body or a support ticket carries is one we issued.
+pub fn drop_incoming(mut request: Request) -> Request {
+    request.headers_mut().remove(X_REQUEST_ID);
+    request
+}
+
+/// The header a request id travels in.
+const X_REQUEST_ID: &str = "x-request-id";
+
+/// Serves `request` with its stamped id as [`RequestId::current`].
+///
+/// Mounted inside `SetRequestIdLayer`, which put the id in the extensions. An
+/// id that is not visible ASCII cannot be written into a body, so the
+/// refusals under it carry a fresh one instead.
+pub async fn scope(request: Request, next: Next) -> Response {
+    let id = request
+        .extensions()
+        .get::<tower_http::request_id::RequestId>()
+        .and_then(|stamped| stamped.header_value().to_str().ok())
+        .map_or_else(RequestId::mint, |stamped| RequestId(stamped.to_owned()));
+    CURRENT.scope(id, next.run(request)).await
 }
 
 #[cfg(test)]

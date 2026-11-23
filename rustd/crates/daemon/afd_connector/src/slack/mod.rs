@@ -1,7 +1,7 @@
 //! Where in a Slack thread an answer belongs.
 //!
 //! One type for both ends of the round trip: the mention producer writes it
-//! into the admission as the reply destination, and the outbound poster reads
+//! into the turn as the reply destination, and the outbound poster reads
 //! it back off the delivery job. A shared type is what keeps the two from
 //! spelling a key differently and stranding every answer owed under the old
 //! spelling. The same address is what [`replies`] reads the thread back from.
@@ -12,10 +12,10 @@ mod answered;
 mod replies;
 
 pub use self::answered::{
-    ANSWER_CHECK_DEADLINE, ANSWER_EVENT_TYPE, AnswerMarker, INTERIM_EVENT_TYPE, Part, Stamp,
+    ANSWER_CHECK_DEADLINE, ANSWER_EVENT_TYPE, AnswerMarker, Check, INTERIM_EVENT_TYPE, Part, Stamp,
     holds_answer,
 };
-pub use self::replies::{MAX_MESSAGES, Message, READ_DEADLINE, Replies, Unavailable, replies};
+pub use self::replies::{Message, READ_DEADLINE, Replies, Unavailable, replies};
 
 /// The Slack Web API root, which every Slack method this daemon calls hangs
 /// off.

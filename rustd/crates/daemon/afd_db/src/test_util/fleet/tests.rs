@@ -88,3 +88,19 @@ fn the_seeded_fixture_setup_is_the_runtimes() {
     assert_eq!(setup.digest, super::FIXTURE_SETUP_DIGEST);
     assert_eq!(setup.semantics(), super::FIXTURE_SETUP_SEMANTICS);
 }
+
+/// A native setup on a seed that named no tags takes the unplaced tag, so no
+/// other suite's runner is handed it; one that named its own keeps them.
+#[test]
+fn a_native_setup_keeps_named_tags_and_otherwise_takes_the_unplaced_one()
+-> af_core::error::Result<()> {
+    let (id, workspace, tenant) = ids()?;
+    let untagged = FleetSeed::new(&id, &workspace, &tenant, STATUS).native_setup();
+    assert_eq!(untagged.required_tags, ["fixture-unplaced"]);
+
+    let tagged = FleetSeed::new(&id, &workspace, &tenant, STATUS)
+        .tags(&["linux-runner"])
+        .native_setup();
+    assert_eq!(tagged.required_tags, ["linux-runner"]);
+    Ok(())
+}

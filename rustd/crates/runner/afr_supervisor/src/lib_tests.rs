@@ -103,3 +103,88 @@ async fn shutdown_during_a_blackholed_handshake_finishes_cleanly() {
     )
     .await;
 }
+
+/// A daemon that refuses this runner's token at the opening stops the whole
+/// runner: the refusal is returned, not retried, and nothing is left serving.
+#[cfg(feature = "test-util")]
+#[tokio::test]
+async fn a_daemon_refusing_the_runner_token_stops_the_runner_with_its_refusal() {
+    bounded(
+        "a refused opening",
+        Box::pin(async {
+            let identity =
+                af_stream::test_util::IdentityFixture::new(vec!["localhost".to_owned()]).unwrap();
+            let listener =
+                af_stream::Listener::bind("[::1]:0".parse().unwrap(), identity.identity())
+                    .await
+                    .unwrap();
+            let origin = format!(
+                "https://localhost:{}",
+                listener.local_addr().unwrap().port()
+            );
+            let stop = CancellationToken::new();
+            let _stop_on_exit = stop.clone().drop_guard();
+            let payload = bytes::Bytes::from(
+                serde_json::to_vec(&serde_json::json!({
+                    "error_code": af_core::error_code::RUN_INVALID_RUNNER_TOKEN.as_str()
+                }))
+                .unwrap(),
+            );
+            let serving = tokio::spawn(listener.serve(
+                move |_connection| {
+                    let payload = payload.clone();
+                    tower::service_fn(move |request: http::Request<af_stream::Incoming>| {
+                        let body = http_body_util::Full::new(payload.clone());
+                        // The unread hello stays open until the refusal body is delivered.
+                        let body = http_body_util::BodyExt::map_frame(body, move |frame| {
+                            let _request = &request;
+                            frame
+                        });
+                        let mut response = http::Response::new(af_stream::Outgoing::new(body));
+                        *response.status_mut() = http::StatusCode::UNAUTHORIZED;
+                        async move { Ok::<_, std::convert::Infallible>(response) }
+                    })
+                },
+                stop.clone(),
+                stop.clone(),
+            ));
+            let _serving = tokio_util::task::AbortOnDropHandle::new(serving);
+            let root = tempfile::tempdir().unwrap();
+            let ca = identity.root();
+            let env = af_core::env::MapEnv::from_pairs([
+                (crate::config::ENV_API_URL, "http://127.0.0.1:1"),
+                (crate::config::ENV_STREAM_URL, origin.as_str()),
+                (crate::config::ENV_STREAM_CA, ca.to_str().unwrap()),
+                (crate::config::ENV_RUNNER_TOKEN, "agt_r_refused"),
+                (
+                    crate::config::ENV_STORAGE_HOME,
+                    root.path().to_str().unwrap(),
+                ),
+            ]);
+            let (config, home) = crate::boot(&env).unwrap();
+            let shutdown = CancellationToken::new();
+
+            let served = run(
+                &config,
+                home,
+                Box::new(FakeEngine::default()),
+                Box::new(FakeAgent::new(Behaviour::Answer)),
+                probe(),
+                shutdown.clone(),
+            )
+            .await;
+
+            let failure = served.unwrap_err();
+            assert_eq!(
+                failure.code(),
+                af_core::error_code::RUN_INVALID_RUNNER_TOKEN
+            );
+            assert!(!failure.is_retryable());
+            assert!(
+                shutdown.is_cancelled(),
+                "a refused token stops everything under the caller's shutdown"
+            );
+        }),
+    )
+    .await;
+}

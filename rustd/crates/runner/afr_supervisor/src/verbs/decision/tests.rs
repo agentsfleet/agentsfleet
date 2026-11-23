@@ -51,7 +51,7 @@ type StatusCase = (
     Option<Duration>,
 );
 
-fn statuses() -> [StatusCase; 5] {
+fn statuses() -> [StatusCase; 6] {
     [
         (
             429,
@@ -71,7 +71,22 @@ fn statuses() -> [StatusCase; 5] {
             DecisionRetryDelay::WithinBudget { milliseconds: 0 },
             Some(Duration::ZERO),
         ),
-        (529, Some("3"), DecisionRetryDelay::TooLong, None),
+        (
+            429,
+            Some("60"),
+            DecisionRetryDelay::WithinBudget {
+                milliseconds: 60_000,
+            },
+            Some(Duration::from_secs(60)),
+        ),
+        (
+            529,
+            Some("61"),
+            DecisionRetryDelay::WithinBudget {
+                milliseconds: 61_000,
+            },
+            Some(Duration::from_secs(61)),
+        ),
         (500, Some("1"), DecisionRetryDelay::Unspecified, None),
     ]
 }
@@ -135,4 +150,13 @@ async fn an_unusable_success_reply_is_unknown_and_never_qualifies_for_a_status_r
     assert_eq!(retry_delay(&DecisionReceipt::Unknown { cause }), None);
     server.finish().await?;
     Ok(())
+}
+
+#[test]
+fn a_provider_delay_past_the_budget_buys_no_retry() {
+    let cause = DecisionUnavailableCause::ProviderStatus {
+        status: 429,
+        retry_delay: DecisionRetryDelay::TooLong,
+    };
+    assert_eq!(retry_delay(&DecisionReceipt::Unknown { cause }), None);
 }

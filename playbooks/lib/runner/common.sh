@@ -22,7 +22,7 @@ readonly REQUIRED_CGROUP_CONTROLLERS="cpu io memory pids"
 # reads the setting and reports egress unenforced without it.
 readonly IPV4_FORWARD_PROC="/proc/sys/net/ipv4/ip_forward"
 readonly IPV4_FORWARD_SYSCTL_FILE="/etc/sysctl.d/60-agentsfleet-runner.conf"
-# What a runner host must have on PATH: bubblewrap for each lease's sandbox, nft
+# What a runner host must have on PATH: bubblewrap for each run's sandbox, nft
 # and ip for its egress boundary, and the curl and jq the checks in this
 # directory run on the host. Host preparation installs them.
 readonly RUNNER_HOST_TOOLS="bwrap nft ip curl jq"

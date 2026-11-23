@@ -15,7 +15,7 @@ import {
   Label,
   Spinner,
 } from "@agentsfleet/design-system";
-import { hasWorkspaceNameContent, isWorkspaceNameSafe, trimWorkspaceName, WORKSPACE_NAME_MAX_CODEPOINTS } from "@/lib/api/workspaces-types";
+import { hasWorkspaceNameContent, isWorkspaceNameSafe, trimWorkspaceName } from "@/lib/api/workspaces-types";
 
 type Props = {
   open: boolean;
@@ -29,7 +29,6 @@ type Props = {
 const WORKSPACE_DESCRIPTION =
   "Use workspaces to organize fleets, teammates, and credentials within your organization.";
 const WORKSPACE_NAME_FIELD = "workspace-name";
-const WORKSPACE_NAME_TOO_LONG = `Use ${WORKSPACE_NAME_MAX_CODEPOINTS} characters or fewer.`;
 const WORKSPACE_NAME_UNSAFE =
   "Remove control or directional formatting characters.";
 const CREATE_FORM_TEST_ID = "workspace-create-form";
@@ -54,11 +53,6 @@ export default function CreateWorkspaceDialog({
     ) as HTMLInputElement;
     const trimmed = trimWorkspaceName(input.value);
     const name = hasWorkspaceNameContent(trimmed) ? trimmed : "";
-    if ([...name].length > WORKSPACE_NAME_MAX_CODEPOINTS) {
-      input.setCustomValidity(WORKSPACE_NAME_TOO_LONG);
-      input.reportValidity();
-      return;
-    }
     if (!isWorkspaceNameSafe(name)) {
       input.setCustomValidity(WORKSPACE_NAME_UNSAFE);
       input.reportValidity();

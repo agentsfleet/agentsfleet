@@ -40,7 +40,7 @@ fn main() -> ExitCode {
 
 async fn serve(arguments: Arguments) -> Result<()> {
     let (config, home) = checked(afr_supervisor::boot(&ProcessEnv))?;
-    let client = checked(af_providers::testing::tls::client_from_file(
+    let client = checked(guffbolt_ai::testing::tls::client_from_file(
         &arguments.model_root,
         arguments.model_address,
     ))?;

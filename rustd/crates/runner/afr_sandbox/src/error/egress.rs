@@ -1,10 +1,8 @@
-//! Why a lease's egress was refused, and which netlink step the kernel
+//! Why a run's egress was refused, and which netlink step the kernel
 //! refused: one value each, so a log line and a test tell them apart while
 //! the sentence an operator reads stays the one each has always been.
 
 use std::fmt;
-
-use crate::network::ALLOWLIST_ADDRESSES_MAX;
 
 /// What [`EgressRefusal::ForwardingOff`] says.
 const FORWARDING_OFF: &str = "the host does not forward IPv4 (net.ipv4.ip_forward is not 1)";
@@ -20,7 +18,7 @@ const HELD_ELSEWHERE: &str = "another runner process owns this host's egress tab
 /// What [`EgressRefusal::NoScope`] says.
 const NO_SCOPE: &str = "the sandbox was built to no allowlist, so it has no addresses to replace";
 
-/// Why a lease's egress cannot be held to what its policy allows.
+/// Why a run's egress cannot be held to what its policy allows.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EgressRefusal {
     /// The host does not forward IPv4, so no allowlisted packet would leave.
@@ -34,9 +32,6 @@ pub enum EgressRefusal {
     NoSlot,
     /// Another runner process owns the host's egress objects.
     HeldElsewhere,
-    /// The allowlist resolved to this many distinct addresses, past
-    /// [`ALLOWLIST_ADDRESSES_MAX`].
-    TooManyAddresses(usize),
     /// A sandbox built to no allowlist was asked to replace its addresses.
     NoScope,
 }
@@ -51,7 +46,6 @@ impl EgressRefusal {
             Self::NoNamespace => "no_namespace",
             Self::NoSlot => "no_slot",
             Self::HeldElsewhere => "held_elsewhere",
-            Self::TooManyAddresses(_) => "too_many_addresses",
             Self::NoScope => "no_scope",
         }
     }
@@ -65,10 +59,6 @@ impl fmt::Display for EgressRefusal {
             Self::NoNamespace => f.write_str(NO_NAMESPACE),
             Self::NoSlot => f.write_str(NO_SLOT),
             Self::HeldElsewhere => f.write_str(HELD_ELSEWHERE),
-            Self::TooManyAddresses(addresses) => write!(
-                f,
-                "{addresses} addresses, past the {ALLOWLIST_ADDRESSES_MAX} a lease may reach"
-            ),
             Self::NoScope => f.write_str(NO_SCOPE),
         }
     }

@@ -138,14 +138,14 @@ where
 {
     async fn activity(
         &self,
-        _lease: &af_core::id::Uuid7,
+        _run: &af_core::id::Uuid7,
         request: &af_wire::activity::ActivityRequest<'_>,
     ) -> crate::Result<()> {
         self.0
             .send(Call {
-                verb: crate::client::Verb::Activity,
+                verb: crate::client::Verb::Progress,
                 path: std::borrow::Cow::Borrowed(af_wire::paths::RUNNER_STREAM),
-                body: Some(bytes::Bytes::from(
+                body: Some(Bytes::from(
                     serde_json::to_vec(request).map_err(error::encode)?,
                 )),
             })

@@ -71,7 +71,7 @@ const getStartedSteps = [
     body: (
       <>
         Stream the run over Server-Sent Events at{" "}
-        <code className={mono}>GET …/fleets/:fleet_id/events/stream</code>.
+        <code className={mono}>GET …/fleets/:fleet_id/turns/stream</code>.
       </>
     ),
   },

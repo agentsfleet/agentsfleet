@@ -21,8 +21,8 @@
 use af_core::id::Uuid7;
 use afd_vault::Vault;
 
-pub use self::destination::{INGRESS_PATH, MAX_DESTINATION_BYTES, destination_url};
-pub use self::retry::Attempts;
+pub use self::destination::{INGRESS_PATH, destination_url};
+pub use self::retry::{ATTEMPT_TIMEOUT, ATTEMPTS, Attempts, CALL_BUDGET, MAX_DELAY, RetryPolicy};
 use self::source::Source;
 
 use crate::credentials::Credentials;
@@ -77,6 +77,8 @@ pub struct QStash {
     credentials: Source,
     /// Where a fire should arrive back.
     destination: String,
+    /// How often and how long each call is tried.
+    retries: RetryPolicy,
 }
 
 impl QStash {
@@ -95,7 +97,15 @@ impl QStash {
             client,
             credentials: Source::Vault { vault, admin },
             destination,
+            retries: RetryPolicy::DEFAULT,
         }
+    }
+
+    /// This client trying each call under `retries`.
+    #[must_use]
+    pub const fn with_retries(mut self, retries: RetryPolicy) -> Self {
+        self.retries = retries;
+        self
     }
 
     /// A client over fixed credentials, for a suite with no vault behind it.
@@ -121,6 +131,7 @@ impl QStash {
                 },
             }),
             destination,
+            retries: RetryPolicy::DEFAULT,
         }
     }
 
@@ -178,7 +189,7 @@ impl QStash {
     ) -> Result<Registered> {
         let id = upstream_id(schedule);
         let credentials = self.credentials().await?;
-        retry::send(attempts, &id, || {
+        retry::send(attempts, self.retries, &id, || {
             self.upsert_once(&credentials, &id, cron, timezone, message)
         })
         .await
@@ -199,7 +210,7 @@ impl QStash {
                 "{}{SCHEDULES_PATH}{}",
                 credentials.api_base, self.destination
             ))
-            .timeout(retry::ATTEMPT_TIMEOUT)
+            .timeout(self.retries.attempt_timeout())
             .bearer_auth(credentials.token.expose())
             .header(HEADER_SCHEDULE_ID, id)
             .header(HEADER_CRON, cron)
@@ -233,7 +244,7 @@ impl QStash {
     /// As [`Self::upsert`].
     pub async fn remove(&self, provider_schedule_id: &str, attempts: Attempts) -> Result<()> {
         let credentials = self.credentials().await?;
-        retry::send(attempts, provider_schedule_id, || {
+        retry::send(attempts, self.retries, provider_schedule_id, || {
             self.remove_once(&credentials, provider_schedule_id)
         })
         .await
@@ -251,7 +262,7 @@ impl QStash {
                 "{}{SCHEDULES_PATH}{provider_schedule_id}",
                 credentials.api_base
             ))
-            .timeout(retry::ATTEMPT_TIMEOUT)
+            .timeout(self.retries.attempt_timeout())
             .bearer_auth(credentials.token.expose())
             .send()
             .await?;

@@ -1,0 +1,17 @@
+id: vocab-retired-identifiers-yaml
+valid:
+  - |
+      run: cargo test -p afd_turns
+  - |
+      name: afd_events_v2
+invalid:
+  - |
+      run: cargo test -p afd_authoring
+  - |
+      name: "SessionHandle"
+  - |
+      # afd_events
+      a: 1
+  - |
+      run: |
+        cargo test -p afd_admission

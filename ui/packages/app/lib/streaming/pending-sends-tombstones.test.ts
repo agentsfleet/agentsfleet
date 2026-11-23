@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  MAX_PENDING_SENDS,
   PENDING_SEND_STATE,
   __resetPendingSendsForTests,
   beginPendingSend,
@@ -86,19 +85,11 @@ describe("a dismissed send", () => {
     expect(states()).toEqual([[OP, SENDING]]);
   });
 
-  it("test_tombstones_outlast_the_cap: outlasts every other ended send when the ledger is capped, so a late ending cannot bring it back", () => {
+  it("test_tombstones_hold: a dismissed send stays dismissed, so a late ending cannot bring it back", () => {
     beginPendingSend(SCOPE, send(OP, "deploy"));
     dismissPendingSend(SCOPE, OP);
-    for (let index = 0; index < MAX_PENDING_SENDS; index += 1) {
-      beginPendingSend(SCOPE, send(`op-later-${index}`, `unconfirmed ${index}`));
-      failPendingSend(SCOPE, `op-later-${index}`, UNKNOWN);
-    }
-    const ids = getPendingSends(SCOPE).map((held) => held.operationId);
-    expect(ids).toHaveLength(MAX_PENDING_SENDS);
-    expect(ids).toContain(OP);
-    expect(ids).not.toContain("op-later-0");
     // The tab that resent it writes its ending late.
-    otherTabStored([...getPendingSends(SCOPE).filter((held) => held.operationId !== OP), entry(UNKNOWN, NOW_MS)]);
+    otherTabStored([entry(UNKNOWN, NOW_MS)]);
     expect(findPendingSend(SCOPE, OP)).toBeUndefined();
   });
 

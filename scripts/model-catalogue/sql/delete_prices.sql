@@ -1,6 +1,7 @@
 DELETE FROM model.platform_model_prices AS p
 USING model.platform_models AS m
 WHERE p.platform_model_id = m.id
+  AND p.decision_revision_id IS NULL
   AND NOT EXISTS (
       SELECT 1
       FROM jsonb_to_recordset($1::jsonb) AS wanted(

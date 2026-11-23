@@ -1,3 +1,3 @@
-SELECT resource_version
-  FROM model.catalogue_version
+SELECT number
+  FROM model.revision
    FOR SHARE

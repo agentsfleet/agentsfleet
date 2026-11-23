@@ -3,7 +3,7 @@
  * request and ZERO per-turn detail requests.
  *
  * This is the request-count acceptance for the thread read: the chat used to
- * issue an events-list read and then one `GET …/events/{event_id}` per turn
+ * issue a turns-list read and then one `GET …/turns/{turn_id}` per turn
  * (a 20-wide fan-out). The server-side fetch audit counts both templates, so
  * the assertion is a number, not a latency eyeball — re-runnable against any
  * deployment with the audit enabled.
@@ -63,7 +63,7 @@ test.describe("chat view request profile", () => {
 
     const snapshot = await readAudit(page);
     const threadFetches = snapshot.byPath[AUDITED_PATH.fleetMessages] ?? 0;
-    const detailFetches = snapshot.byPath[AUDITED_PATH.fleetEventDetail] ?? 0;
+    const detailFetches = snapshot.byPath[AUDITED_PATH.fleetTurnDetail] ?? 0;
     expect(threadFetches, "thread reads for one chat render").toBe(EXPECTED_THREAD_FETCHES);
     expect(detailFetches, "per-turn detail reads for one chat render").toBe(EXPECTED_DETAIL_FETCHES);
   });

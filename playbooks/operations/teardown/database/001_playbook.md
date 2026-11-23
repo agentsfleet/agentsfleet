@@ -39,7 +39,7 @@ Never use a production teardown in a routine deployment.
 
    The gate checks the credential, asks you to type `DEVELOPMENT` or `PRODUCTION`, runs `teardown.sql`, and verifies.
    🤠 Indy runs it in a terminal and types the word; the gate reads standard input, so never pipe the word in.
-   It runs `psql` in `postgres:18-alpine` with `PGSSLROOTCERT=system` and passes the URL by environment name, never in process arguments.
+   It runs `psql` in `postgres:19-alpine` with `PGSSLROOTCERT=system` and passes the URL by environment name, never in process arguments.
 
    ```text
    ✅ DEVELOPMENT teardown completed successfully

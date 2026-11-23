@@ -51,15 +51,17 @@ fn assert_every_named_code_is_registered() {
         error_code::APIKEY_REVOKED,
         error_code::RUN_INVALID_RUNNER_TOKEN,
         error_code::RUN_STALE_FENCING_TOKEN,
-        error_code::RUN_LEASE_NOT_FOUND,
+        error_code::RUN_NOT_FOUND,
         error_code::RUN_ADMIN_STATE_BLOCKED,
-        error_code::RUN_LEASE_EXCEEDED_MAX_RUNTIME,
-        error_code::RUN_LEASE_LOST,
+        error_code::RUN_LOST,
         error_code::RUN_CHECKPOINT_INCOMPATIBLE,
         error_code::RUN_CHECKPOINT_CONFLICT,
         error_code::RUN_CHECKPOINT_UNAVAILABLE,
         error_code::RUN_CHECKPOINT_LIMIT,
-        error_code::RUN_LEASE_RENEWAL_NO_CREDITS,
+        error_code::RUN_FRAME_TOO_LARGE,
+        error_code::RUNNER_HOST_REGISTERED,
+        error_code::INPUT_TOO_LONG,
+        error_code::RUN_RENEWAL_NO_CREDITS,
         error_code::RUN_RENEW_BODY_MALFORMED,
         error_code::RUN_BUDGET_EXCEEDED,
         // Was omitted when it was declared, which is the exact gap this list
@@ -133,7 +135,7 @@ macro_rules! rejects {
         #[test]
         #[should_panic(expected = "UZ-<FAMILY>-<NNN>")]
         fn $name() {
-            let _ = ErrorCode::declare($code);
+            let _rejected = ErrorCode::declare($code);
         }
     };
 }
@@ -161,10 +163,7 @@ fn test_lookup_finds_declared_codes_only() {
         assert_eq!(ErrorCode::lookup(code.as_str()), Some(*code));
     }
 
-    assert_eq!(
-        ErrorCode::lookup("UZ-RUN-011"),
-        Some(error_code::RUN_LEASE_LOST)
-    );
+    assert_eq!(ErrorCode::lookup("UZ-RUN-011"), Some(error_code::RUN_LOST));
     for unknown in ["UZ-NOPE-999", "uz-run-011", "UZ-RUN-11", ""] {
         assert_eq!(ErrorCode::lookup(unknown), None, "{unknown:?}");
     }

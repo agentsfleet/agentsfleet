@@ -1,0 +1,27 @@
+# A crate embeds and reads only its own files, so it builds from what its own
+# folder holds and a move elsewhere in the repository cannot break it. A file
+# another crate or a top-level directory owns moves into the crate that reads
+# it; a path the make lane owns arrives as an argument or environment variable.
+#
+# A crate sits four folders below the repository root
+# (`rustd/crates/<layer>/<crate>`), so a path that reaches a top-level folder
+# climbs at least four `../`. Shorter climbs stay inside the crate:
+# `afd_db`'s `../schema/`, `afd_fleet`'s `../../task/` and guffbolt's
+# `../../../vendor/`.
+#
+# Every string literal counts, which covers `include_str!`, `include_bytes!`
+# and `include!` arguments, `#[path = …]` values, the pieces `concat!` joins
+# and a literal joined onto `env!("CARGO_MANIFEST_DIR")`.
+id: rust-read-outside-crate
+language: Rust
+severity: error
+message: a crate embeds only its own files; move the file into the crate that owns it
+files:
+  - rustd/**/*.rs
+ignores:
+  - "**/target/**"
+rule:
+  any:
+    - kind: string_literal
+    - kind: raw_string_literal
+  regex: '(\.\./){4,}(schema|docs|scripts|tests|deploy|bench|playbooks|cli|ui|public|make)/'

@@ -1,6 +1,6 @@
 [package]
 name = "af_providers"
-description = "The runner's model providers: one trait, the turn it streams, and the wires behind it."
+description = "The runner's model providers over guffbolt-ai's wires, and what a saved model setting means to daemon and runner."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -17,7 +17,6 @@ workspace = true
 [dependencies]
 # `error_shell!` and the registry code a provider failure is logged under.
 af_core.workspace = true
-af_inference.workspace = true
 # The label vocabulary and closed-set macro a provider measurement is declared in.
 af_observability.workspace = true
 af_crypto.workspace = true
@@ -28,57 +27,55 @@ af_wire.workspace = true
 # private address, no proxy, no redirect. A tenant's custom: endpoint meets it,
 # and the same blocked ranges judge an address literal it names.
 af_egress.workspace = true
-# The bounded retry of a turn's send, the crate the supervisor's daemon calls
-# retry through.
-backon.workspace = true
-# A turn's request body, shared by every retry without a copy.
-# A tool result's image rides the wire as base64.
-base64.workspace = true
-bytes = { workspace = true, features = ["serde"] }
 # A turn streams as a `futures` stream of chunks.
 futures-util.workspace = true
-# The request and response types rig's HTTP seam speaks.
-http.workspace = true
-# `Retry-After` in its HTTP-date form.
-httpdate.workspace = true
+# The harness's model seam: the request a turn is asked, and the chunks it
+# answers with.
+guffbolt.workspace = true
+# The wires: the connected model, its transport seam and retry, and the
+# observer a run's lines are written through; `reqwest` is the default
+# transport the guarded client rides, and `log-filter` the filter that keeps
+# rig's own lines quiet in daemon and runner.
+guffbolt-ai = { workspace = true, features = ["wire", "reqwest", "log-filter"] }
+# The bounds saved settings and startup settings are proved against.
 garde.workspace = true
-# The one HTTP client every wire posts through, behind rig's HTTP seam.
+# The one HTTP client every wire posts through, behind guffbolt-ai's
+# transport seam.
 reqwest.workspace = true
-# Each wire: the request rig builds, the stream it decodes, the calls it
-# assembles and the reasoning it carries back.
-rig-core.workspace = true
 # Each wire's request body and streamed events, narrowed at the parse.
 serde.workspace = true
 # A tool call's arguments.
 serde_json.workspace = true
 thiserror.workspace = true
-# Parse the exact reviewed decision endpoint and retain its typed parse error.
+# Parse the exact reviewed decision endpoint and a saved provider endpoint,
+# and retain the typed parse error.
 url.workspace = true
 # The retry log line, and the level rig's own lines are held to.
 tracing.workspace = true
-
-# The TLS listener `testing::tls` serves a fake provider on.
-rcgen = { workspace = true, optional = true }
-rustls = { workspace = true, optional = true }
-tokio-rustls = { workspace = true, optional = true }
+# The filter type `settings::log_filter` answers.
+tracing-subscriber.workspace = true
 
 [features]
-# M-TEST-UTIL: an observer a suite reads back, and the fake provider's TLS
-# listener, for this crate's suites and the runner's.
-test-util = ["dep:rcgen", "dep:rustls", "dep:tokio-rustls"]
+# M-TEST-UTIL: an observer a suite reads back and a scripted model, for this
+# crate's suites and the runner's. The fake provider's TLS listener is
+# guffbolt-ai's own `test-util`.
+test-util = []
 
 [dev-dependencies]
-# Scoped channel-based logging proof avoids process-wide capture locks.
-tracing-subscriber.workspace = true
-# Rig's scripted stream exercises unmodeled items and retained terminal failures.
-rig-core = { workspace = true, features = ["test-utils"] }
+# The request and the body bytes a fake transport answers with.
+bytes.workspace = true
+http.workspace = true
+# The vendors rig registers, every one of which a provider label names, and
+# the provider failure a report keeps as its cause, read back by type.
+rig-core.workspace = true
 # The log capture the retry and key suites read their lines through.
 af_core = { workspace = true, features = ["test-util"] }
 # The fake provider: a real listener, so a status, a header and a streamed
-# body are proven on the socket rather than assumed by a mock.
+# body are proven on the socket rather than assumed by a mock; its TLS comes
+# from guffbolt-ai's `testing::tls`, and a failed turn a report names from
+# its `testing::failure`.
 axum.workspace = true
-rcgen.workspace = true
-rustls.workspace = true
+guffbolt-ai = { workspace = true, features = ["test-util"] }
 tokio-rustls.workspace = true
 # The connect-refused send the retry suite classifies, and the fake provider
 # servers the wire suites stream from.
@@ -89,5 +86,5 @@ tokio-util.workspace = true
 [[test]]
 name = "decisions"
 path = "tests/decisions/main.rs"
-# The suite reads its measurements and serves its TLS through `testing`.
+# The suite reads its measurements through `testing`.
 required-features = ["test-util"]

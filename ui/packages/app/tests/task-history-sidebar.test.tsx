@@ -1,24 +1,24 @@
-import type { TaskActivity } from "@/lib/task-activity";
+import type { DurableTaskActivity } from "@/lib/task-activity";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
-import {FleetTaskProvider} from "@/components/domain/tasks/FleetTaskProvider";
-import {TaskDetailView} from "@/components/domain/tasks/TaskDetail";
-import { TaskPanel } from "@/components/domain/tasks/TaskPanel";
-import { recentTaskIds } from "@/components/domain/tasks/task-references";
-import { loadTaskDetails } from "@/components/domain/tasks/task-detail-reader";
+import {FleetDurableTaskProvider} from "@/components/domain/tasks/FleetTaskProvider";
+import {DurableTaskDetailView} from "@/components/domain/tasks/TaskDetail";
+import { DurableTaskPanel } from "@/components/domain/tasks/TaskPanel";
+import { recentDurableTaskIds } from "@/components/domain/tasks/task-references";
+import { loadDurableTaskDetails } from "@/components/domain/tasks/task-detail-reader";
 import { evt } from "./helpers/fleet-stream-fixtures";
-import { detail, summary, TASK_IDS } from "./helpers/task-reads";
+import { detail, summary, DURABLE_TASK_IDS } from "./helpers/task-reads";
 const SCOPE = {workspaceId: "workspace", fleetId: "fleet", subject: "indy", revision: 0};
 const SOURCES = {repositories: ["a/b"], access: "write" as const, publication: "existing_pr" as const};
 const TARGET = {kind: "existing_pr" as const, repository: "a/b", number: 123, branch: "repair", head: "a".repeat(40), tree: "b".repeat(40), url: "https://github.com/a/b/pull/123", workflows: []};
 afterEach(() => {cleanup(); vi.unstubAllGlobals();});
-function activity(id: string | null): TaskActivity {
-  return {kind: "task_transfer_progress", progress: {activity_id: TASK_IDS[0], task_id: id, source_admission_id: null,
+function activity(id: string | null): DurableTaskActivity {
+  return {kind: "durable_task_transfer_progress", progress: {activity_id: DURABLE_TASK_IDS[0], durable_task_id: id, source_turn_id: null,
     operation: "capture", phase: "saved", provider: null, model: null, completed: 1, total: 1}};
 }
 function history(...ids: (string | null)[]) {
-  return [evt({taskActivity: {items: ids.map(activity), truncated: false}})];
+  return [evt({durableTaskActivity: {items: ids.map(activity), truncated: false}})];
 }
 function path(input: RequestInfo | URL): string {return typeof input === "string" ? input : input instanceof URL ? input.href : input.url;}
 
@@ -26,26 +26,26 @@ it("retains Outputs when current work finishes and recovers them after reload fr
   let unfinished = true;
   const network = vi.fn<typeof fetch>().mockImplementation(async input => {
     if (path(input).includes("?limit=")) return Response.json({items: unfinished ? [summary()] : [], next_cursor: null});
-    const saved = detail(summary(TASK_IDS[0], unfinished ? "running" : "done"));
+    const saved = detail(summary(DURABLE_TASK_IDS[0], unfinished ? "running" : "done"));
     return Response.json({...saved, context: {...saved.context, target: TARGET}});
   });
   vi.stubGlobal("fetch", network);
-  const events = history(TASK_IDS[0]);
-  const view = render(<TaskPanel {...SCOPE} events={events} />);
+  const turns = history(DURABLE_TASK_IDS[0]);
+  const view = render(<DurableTaskPanel {...SCOPE} turns={turns} />);
   await screen.findByRole("region", {name: "Pull requests"});
   const outputs = () => within(screen.getByRole("region", {name: "Pull requests"}));
   await screen.findByRole("region", {name: "Pull requests"});
   expect(await outputs().findByRole("link")).toHaveProperty("href", TARGET.url);
   expect(network).toHaveBeenCalledTimes(2);
-  view.rerender(<TaskPanel {...SCOPE} events={events.map(event => ({...event, reply: "More streamed words"}))} />);
+  view.rerender(<DurableTaskPanel {...SCOPE} turns={turns.map(turn => ({...turn, reply: "More streamed words"}))} />);
   expect(network).toHaveBeenCalledTimes(2);
   unfinished = false;
-  view.rerender(<TaskPanel {...SCOPE} revision={1} events={events} />);
+  view.rerender(<DurableTaskPanel {...SCOPE} revision={1} turns={turns} />);
   await waitFor(() => expect(network).toHaveBeenCalledTimes(4));
   expect(screen.queryByRole("button", {name: /^Tasks/})).toBeNull();
   expect(outputs().getByRole("link")).toHaveProperty("href", TARGET.url);
   view.unmount();
-  render(<TaskPanel {...SCOPE} events={events} />);
+  render(<DurableTaskPanel {...SCOPE} turns={turns} />);
   await waitFor(() => expect(network).toHaveBeenCalledTimes(6));
   expect(screen.queryByRole("button", {name: /^Tasks/})).toBeNull();
   await screen.findByRole("region", {name: "Pull requests"});
@@ -60,8 +60,8 @@ it("hides all metadata until list authorization, including loading after access 
   const network = vi.fn<typeof fetch>().mockReturnValueOnce(first.promise)
     .mockResolvedValueOnce(new Response(null, {status: 403})).mockReturnValueOnce(retry.promise);
   vi.stubGlobal("fetch", network);
-  const events = history(TASK_IDS[0]);
-  const view = render(<TaskPanel {...SCOPE} events={events} sources={SOURCES} />);
+  const turns = history(DURABLE_TASK_IDS[0]);
+  const view = render(<DurableTaskPanel {...SCOPE} turns={turns} sources={SOURCES} />);
   expect(screen.queryByRole("region", {name: "Sources"})).toBeNull();
   expect(screen.queryByRole("region", {name: "Tasks"})).toBeNull();
   expect(network).toHaveBeenCalledTimes(1);
@@ -69,7 +69,7 @@ it("hides all metadata until list authorization, including loading after access 
   await screen.findByRole("region", {name: "Sources"});
   // The historical detail request receives 403; a new list authorization then fails too.
   await waitFor(() => expect(network).toHaveBeenCalledTimes(2));
-  view.rerender(<TaskPanel {...SCOPE} revision={1} events={events} sources={SOURCES} />);
+  view.rerender(<DurableTaskPanel {...SCOPE} revision={1} turns={turns} sources={SOURCES} />);
   retry.resolve(new Response(null, {status: 403}));
   await screen.findByText("Current work is unavailable.");
   const pending = Promise.withResolvers<Response>(); network.mockReturnValue(pending.promise);
@@ -80,40 +80,40 @@ it("hides all metadata until list authorization, including loading after access 
   view.unmount();
 });
 
-it("bounds recent native history, ignores unowned or prose IDs and excludes current duplicates", () => {
+it("lists every recent native task past the sixteen it once kept, ignores unowned or prose IDs and excludes current duplicates", () => {
   const ids = Array.from({length: 20}, (_, i) => `019a42b0-0000-7000-8000-${String(i).padStart(12, "0")}`);
-  const events = [evt({reply: TASK_IDS[1]}), ...history(...ids, null, TASK_IDS[0], ids[0]!)];
-  const recent = recentTaskIds(events, [summary()]);
-  expect(recent).toHaveLength(16);
+  const turns = [evt({reply: DURABLE_TASK_IDS[1]}), ...history(...ids, null, DURABLE_TASK_IDS[0], ids[0]!)];
+  const recent = recentDurableTaskIds(turns, [summary()]);
+  expect(recent).toHaveLength(20);
   expect(recent[0]).toBe(ids[0]);
-  expect(recent).not.toContain(TASK_IDS[0]);
-  expect(recent).not.toContain(TASK_IDS[1]);
-  expect(recent).not.toContain(ids[1]);
+  expect(recent.at(-1)).toBe(ids[1]);
+  expect(recent).not.toContain(DURABLE_TASK_IDS[0]);
+  expect(recent).not.toContain(DURABLE_TASK_IDS[1]);
 });
 
 it("validates historical task identity without inventing a minimum resource version", async () => {
   const network = vi.fn<typeof fetch>().mockResolvedValue(Response.json(detail()));
   vi.stubGlobal("fetch", network);
   const observe = vi.fn();
-  await loadTaskDetails("workspace", "fleet", [{kind: "historical", id: TASK_IDS[0]}], new AbortController().signal, observe);
-  expect(observe).toHaveBeenLastCalledWith({kind: "historical", id: TASK_IDS[0]}, {kind: "ready", value: detail()});
+  await loadDurableTaskDetails("workspace", "fleet", [{kind: "historical", id: DURABLE_TASK_IDS[0]}], new AbortController().signal, observe);
+  expect(observe).toHaveBeenLastCalledWith({kind: "historical", id: DURABLE_TASK_IDS[0]}, {kind: "ready", value: detail()});
 });
 
 it("keeps archived task history readable without stale approval or task mutation controls", async () => {
-  const task = summary(TASK_IDS[0], "running");
+  const task = summary(DURABLE_TASK_IDS[0], "running");
   const saved = detail(task);
   const network = vi.fn<typeof fetch>().mockImplementation(async input =>
     Response.json(path(input).includes("?limit=") ? {items: [task], next_cursor: null} : saved));
   vi.stubGlobal("fetch", network);
-  render(<FleetTaskProvider {...SCOPE} readOnly approvals={{count: 1, href: "/old-approvals"}}>
-    <TaskPanel {...SCOPE} />
-    <TaskDetailView workspaceId={SCOPE.workspaceId} fleetId={SCOPE.fleetId} task={task}
+  render(<FleetDurableTaskProvider {...SCOPE} readOnly approvals={{count: 1, href: "/old-approvals"}}>
+    <DurableTaskPanel {...SCOPE} />
+    <DurableTaskDetailView workspaceId={SCOPE.workspaceId} fleetId={SCOPE.fleetId} task={task}
       resource={{kind: "ready", value: saved}} retry={vi.fn()} onChanged={vi.fn()} />
-  </FleetTaskProvider>);
+  </FleetDurableTaskProvider>);
   await screen.findByRole("button", {name: /^Tasks/});
   expect(screen.getByText("What counts as done?")).toBeTruthy();
   expect(screen.getByText(saved.context.objective)).toBeTruthy();
   for (const name of ["Approve", "Deny", "Pause", "Resume", "Stop", "Review latest saved criteria"])
     expect(screen.queryByRole("button", {name})).toBeNull();
-  expect(network.mock.calls.every(([input]) => path(input).includes("/tasks"))).toBe(true);
+  expect(network.mock.calls.every(([input]) => path(input).includes("/durable_tasks"))).toBe(true);
 });

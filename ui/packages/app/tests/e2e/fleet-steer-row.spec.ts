@@ -1,5 +1,5 @@
-import chief from "../../../../../tests/fixtures/fleets/chief-of-staff/definition.json";
-import specialist from "../../../../../tests/fixtures/fleets/runner-link-watch/definition.json";
+import chief from "../../../../../rustd/crates/protocol/af_fleet_runtime/tests/fixtures/fleets/chief-of-staff/definition.json";
+import specialist from "../../../../../rustd/crates/protocol/af_fleet_runtime/tests/fixtures/fleets/runner-link-watch/definition.json";
 import { expect } from "@playwright/test";
 import { test } from "./fixtures/chat-probe";
 

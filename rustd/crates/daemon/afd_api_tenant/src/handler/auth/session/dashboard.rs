@@ -24,7 +24,7 @@ use crate::auth::DashboardIdentity;
 use crate::client::Origin;
 use crate::handler::{malformed, refuse};
 use crate::request_id::RequestId;
-use crate::services::{DeviceFlow as _, Services};
+use crate::services::{DeviceFlow as _, TenantPlane};
 
 use super::{DETAIL_APPROVE_BODY, DETAIL_VERIFY_BODY, EVENT_APPROVE, EVENT_VERIFY};
 
@@ -62,7 +62,7 @@ use super::{DETAIL_APPROVE_BODY, DETAIL_VERIFY_BODY, EVENT_APPROVE, EVENT_VERIFY
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
-pub(crate) async fn approve<D: Services>(
+pub(crate) async fn approve<D: TenantPlane>(
     State(services): State<Arc<D>>,
     dashboard: DashboardIdentity,
     Path(session_id): Path<String>,
@@ -87,7 +87,7 @@ pub(crate) async fn approve<D: Services>(
         .await
     {
         Ok(()) => {
-            let request_id = RequestId::mint();
+            let request_id = RequestId::current();
             // The moment a person completes a sign-in. Reported HERE rather
             // than at the verify beside it: the verify is the terminal
             // collecting its credential and knows no subject, and attributing
@@ -139,7 +139,7 @@ pub(crate) async fn approve<D: Services>(
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
-pub(crate) async fn verify<D: Services>(
+pub(crate) async fn verify<D: TenantPlane>(
     State(services): State<Arc<D>>,
     origin: Origin,
     Path(session_id): Path<String>,

@@ -1,6 +1,6 @@
 //! What a gate looks like coming out of the table, and what a decision reports.
 //!
-//! Split from [`super`] along the seam `afd_events::history::row` already
+//! Split from [`super`] along the seam `afd_turns::view::history::row` already
 //! draws: the types and their decoders here, the verbs that run statements
 //! there. The two change for different reasons — a column added moves this
 //! file, a verb added moves that one — and holding them apart is what keeps
@@ -109,6 +109,9 @@ pub enum Resolution {
     Resolved(Resolved),
     /// An earlier writer had already terminated the row.
     AlreadyResolved(Resolved),
+    /// The gate is unanswered and its fleet is archived, so it takes no
+    /// answer.
+    FleetArchived,
     /// No gate for that action, in that scope.
     NotFound,
 }
@@ -137,13 +140,13 @@ pub struct Resolved {
     /// `None` for a gate that held no run: the column is nullable for gates
     /// raised outside an event (an install-time integration grant), and a
     /// resolve of one must decode rather than fail after the row moved.
-    pub event_id: Option<Uuid7>,
+    pub turn_id: Option<Uuid7>,
     /// The continuation this decision landed, when it landed one.
     ///
     /// `Some` only for an approval THIS caller won: a denial continues
     /// nothing, and a caller who lost the race did not write the row the
     /// winner already did.
-    pub continuation_event_id: Option<Uuid7>,
+    pub continuation_turn_id: Option<Uuid7>,
 }
 
 /// One inbox row as the page and the by-id read return it.
@@ -208,7 +211,7 @@ pub(super) struct StoredResolution {
     resolved_at: Timestamp,
     resolved_by: String,
     detail: String,
-    event_id: Option<Uuid7>,
+    turn_id: Option<Uuid7>,
 }
 
 impl From<StoredResolution> for Resolved {
@@ -222,10 +225,19 @@ impl From<StoredResolution> for Resolved {
             resolved_at: stored.resolved_at,
             resolved_by: stored.resolved_by,
             detail: stored.detail,
-            event_id: stored.event_id,
-            continuation_event_id: None,
+            turn_id: stored.turn_id,
+            continuation_turn_id: None,
         }
     }
+}
+
+/// What the losing resolve reads: the attribution, and whether the gate is
+/// still unanswered, which only an archived fleet leaves it.
+#[derive(Debug, sqlx::FromRow)]
+pub(super) struct StoredLoss {
+    #[sqlx(flatten)]
+    pub(super) resolution: StoredResolution,
+    pub(super) unanswered: bool,
 }
 
 /// What the winning resolve returns: the attribution, and how many of the

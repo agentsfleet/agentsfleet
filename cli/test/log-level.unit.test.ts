@@ -39,11 +39,11 @@ const runAt = async (level: ReadonlyArray<string>): Promise<string> => {
 };
 
 describe("the level governs records that exist", () => {
-  test("debug reports the request, its attempt and how long it took", async () => {
+  test("debug reports the request, its status and how long it took", async () => {
     const text = await runAt(["--log-level", "debug"]);
     expect(text).toContain(TRACE_MARKER);
     expect(text).toContain("method=GET");
-    expect(text).toContain("attempt=1");
+    expect(text).toContain("status=200");
     expect(text).toContain("duration_ms=");
   });
 

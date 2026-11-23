@@ -2,10 +2,6 @@ import { request } from "./client";
 import { isNonEmptyString, isRecord, isInstant } from "./decode";
 import { ACCOUNT_ROLE, type AccountRole } from "./workspaces-types";
 
-const CREATE_WORKSPACE_TIMEOUT_MS = 15_000;
-
-export const WORKSPACE_LIST_PAGE_LIMIT = 100;
-
 const TENANT_WORKSPACES_PATH = "/v1/tenants/me/workspaces";
 
 /** The account a workspace belongs to, which is how the switcher groups. */
@@ -83,10 +79,7 @@ const decodeWorkspacePage = (value: unknown): TenantWorkspacePageResponse => {
   if (!isNonEmptyString(value.tenant_id)) {
     throw new Error("workspace response omitted tenant_id");
   }
-  if (
-    !Array.isArray(value.items) ||
-    value.items.length > WORKSPACE_LIST_PAGE_LIMIT
-  ) {
+  if (!Array.isArray(value.items)) {
     throw new Error("workspace response omitted items");
   }
   if (value.total !== null) {
@@ -146,12 +139,10 @@ async function walkTenantWorkspacePages(
   let done = false;
 
   do {
-    const query = new URLSearchParams({
-      limit: String(WORKSPACE_LIST_PAGE_LIMIT),
-    });
+    const query = new URLSearchParams();
     if (startingAfter) query.set("starting_after", startingAfter);
     const response = await request<unknown>(
-      `${TENANT_WORKSPACES_PATH}?${query.toString()}`,
+      query.size > 0 ? `${TENANT_WORKSPACES_PATH}?${query.toString()}` : TENANT_WORKSPACES_PATH,
       { method: "GET" },
       token,
     );
@@ -222,7 +213,6 @@ export async function createTenantWorkspace(
     {
       method: "POST",
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(CREATE_WORKSPACE_TIMEOUT_MS),
     },
     token,
   );

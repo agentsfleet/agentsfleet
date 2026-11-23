@@ -31,6 +31,6 @@ by hand; a baseline that moves takes that row with it in the same commit.
 No baseline exists for the `prod` profile and none should: that profile is
 built as a refusal and never runs.
 
-Every file is a core NATS run: `tail.rig.json` and `lease.rig.json` re-measured at `6b0caea35` with the wake ladder and the streamed drain, the rest at `2bea47c3d`.
-`outbound.rig.json` and `cardinality.rig.json` are the median of three runs; the lease shapes and `steer.rig.json` ran once.
+Every file is a core NATS run: `stream.rig.json` and `runs.rig.json` re-measured at `6b0caea35` with the wake ladder and the streamed drain, the rest at `2bea47c3d`.
+`delivery.rig.json` and `idle.rig.json` are the median of three runs; the runs shapes and `intake.rig.json` ran once.
 [Scaling](../../docs/architecture/scaling.md#core-nats-baselines-m244) lists what moved.

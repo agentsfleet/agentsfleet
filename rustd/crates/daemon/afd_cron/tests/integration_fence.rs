@@ -15,9 +15,9 @@
 //! reading the row afterwards. Releasing the fence lives in
 //! `integration_fence_release.rs`.
 //!
-//! # Why the lease is moved rather than waited out
+//! # Why the run is moved rather than waited out
 //!
-//! `SYNC_LEASE` is thirty seconds. A suite that waited it out would be the
+//! `SYNC_RUN` is thirty seconds. A suite that waited it out would be the
 //! slowest in the lane and would prove only that the clock advances. Moving the
 //! stored deadline into the past is the same state an abandoned syncer leaves
 //! behind, reached in one statement.
@@ -33,12 +33,12 @@ mod support;
 use std::time::Duration;
 
 use af_core::clock;
-use afd_cron::{Change, DesiredStatus, SYNC_LEASE, SyncStatus};
+use afd_cron::{Change, DesiredStatus, SYNC_RUN, SyncStatus};
 
 use self::support::CronLane;
 
 /// How long a claim statement may take between stamping `updated_at` with
-/// `now()` and reading `clock_timestamp()` for the lease.
+/// `now()` and reading `clock_timestamp()` for the run.
 const STATEMENT_SLACK: Duration = Duration::from_secs(5);
 
 /// A change that alters nothing, for the cases about the FENCE rather than the
@@ -107,7 +107,7 @@ async fn a_second_syncer_cannot_take_a_schedule_the_first_still_holds() {
 /// A syncer that died must not hold the row forever.
 #[tokio::test]
 #[ignore = "needs the lane's Postgres and NATS"]
-async fn a_lease_that_ran_out_releases_the_row_to_the_next_syncer() {
+async fn a_run_that_ran_out_releases_the_row_to_the_next_syncer() {
     let lane = CronLane::open().await;
     let created = lane.settled("key-expired", "0 3 * * *").await;
     let fleet = lane.fleet_id();
@@ -118,7 +118,7 @@ async fn a_lease_that_ran_out_releases_the_row_to_the_next_syncer() {
         .await
         .expect("the lane answers")
         .expect("the first claim takes an unheld row");
-    lane.expire_lease(&created.schedule_id).await;
+    lane.expire_run(&created.schedule_id).await;
 
     let successor = CronLane::token();
     let taken = lane
@@ -126,7 +126,7 @@ async fn a_lease_that_ran_out_releases_the_row_to_the_next_syncer() {
         .claim_current(&fleet, &created.schedule_id, &successor)
         .await
         .expect("the lane answers")
-        .expect("an expired lease is not a hold");
+        .expect("an expired run is not a hold");
 
     assert_eq!(
         taken.sync_token.as_ref(),
@@ -135,14 +135,14 @@ async fn a_lease_that_ran_out_releases_the_row_to_the_next_syncer() {
     );
 }
 
-/// A lease is set on the database's clock: the deadline is the claim's own
-/// stamp plus `SYNC_LEASE`, give or take the statement's run time, so a
+/// A run is set on the database's clock: the deadline is the claim's own
+/// stamp plus `SYNC_RUN`, give or take the statement's run time, so a
 /// syncer's wall clock cannot widen or shorten it.
 #[tokio::test]
 #[ignore = "needs the lane's Postgres and NATS"]
-async fn a_lease_is_set_on_the_database_clock() {
+async fn a_run_is_set_on_the_database_clock() {
     let lane = CronLane::open().await;
-    let created = lane.settled("key-lease-clock", "0 3 * * *").await;
+    let created = lane.settled("key-run-clock", "0 3 * * *").await;
     let held = lane
         .store
         .claim_current(&lane.fleet_id(), &created.schedule_id, &CronLane::token())
@@ -150,11 +150,11 @@ async fn a_lease_is_set_on_the_database_clock() {
         .expect("the lane answers")
         .expect("an unheld schedule is claimable");
 
-    let deadline = held.sync_lease_expires_at.expect("a claim sets a lease");
-    let earliest = clock::after(held.updated_at, SYNC_LEASE);
+    let deadline = held.sync_run_expires_at.expect("a claim sets a run");
+    let earliest = clock::after(held.updated_at, SYNC_RUN);
     assert!(
         deadline >= earliest && deadline <= clock::after(earliest, STATEMENT_SLACK),
-        "{deadline} is the claim's stamp {} plus the lease",
+        "{deadline} is the claim's stamp {} plus the run",
         held.updated_at
     );
 }

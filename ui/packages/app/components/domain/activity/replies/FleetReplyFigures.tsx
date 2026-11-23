@@ -6,10 +6,10 @@ import {
 } from "@agentsfleet/design-system";
 
 import { formatDollars } from "@/lib/money";
-import { formatCompactCount, formatRunDuration, runFigure } from "@/lib/events/run-figures-format";
+import { formatCompactCount, formatRunDuration, runFigure } from "@/lib/turns/run-figures-format";
 import type { ReplyFigures } from "../messages/fleetMessageReaders";
-import { readTaskActivityHistory } from "@/lib/task-activity";
-import { TaskActivityTimeline } from "../../tasks/TaskActivityTimeline";
+import { readDurableTaskActivityHistory } from "@/lib/task-activity";
+import { DurableTaskActivityTimeline } from "../../tasks/TaskActivityTimeline";
 import {CheckCircleIcon} from "@phosphor-icons/react/ssr";
 import { ChatProgressLabel, QUEUED_PROGRESS_LABEL } from "../../shared/chat/ChatProgressLabel";
 
@@ -27,7 +27,7 @@ export function FleetReplyFigures({ figures, activity, summary = false }: { figu
     { label: "Tokens", value: runFigure(figures.tokens, formatCompactCount) },
     { label: "Reported cost", value: runFigure(figures.costNanos, formatDollars) },
   ].filter(row => row.value !== null);
-  const hasActivity = !!readTaskActivityHistory(activity)?.items.length;
+  const hasActivity = !!readDurableTaskActivityHistory(activity)?.items.length;
   if (rows.length === 0 && !hasActivity) return null;
   return <Popover>
     <PopoverTrigger asChild>
@@ -40,7 +40,7 @@ export function FleetReplyFigures({ figures, activity, summary = false }: { figu
       <DescriptionList className="tabular-nums">
         {rows.map(row => <div key={row.label}><DescriptionTerm>{row.label}</DescriptionTerm><DescriptionDetails>{row.value}</DescriptionDetails></div>)}
       </DescriptionList>
-      {hasActivity ? <TaskActivityTimeline value={activity} running={false} /> : null}
+      {hasActivity ? <DurableTaskActivityTimeline value={activity} running={false} /> : null}
     </PopoverContent>
   </Popover>;
 }

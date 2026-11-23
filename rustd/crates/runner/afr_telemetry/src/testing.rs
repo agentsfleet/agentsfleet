@@ -15,9 +15,10 @@ use std::time::Duration;
 
 use af_observability::metrics::label::http::{DiscardReason, Signal};
 
+use af_observability::metrics::label::models::CallOutcome;
 use af_providers::observe::Observer;
 use af_providers::observe::labels::{
-    CallOutcome, DecisionOutcome, DecisionProvider, DecisionPurpose, Provider, RetryReason,
+    DecisionOutcome, DecisionProvider, DecisionPurpose, Provider, RetryReason,
 };
 
 use crate::labels::{

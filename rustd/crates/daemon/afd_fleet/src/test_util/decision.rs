@@ -3,7 +3,7 @@
 
 use af_wire::{
     decision::{DecisionRequest, DecisionResult},
-    task::DecisionReceipt,
+    durable_task::DecisionReceipt,
 };
 
 /// A provider receipt answering every question in `request` with its first
@@ -62,3 +62,7 @@ pub fn known_result(request: &DecisionRequest) -> DecisionResult {
         result: DecisionOutcome::Answered { answers },
     }
 }
+
+#[cfg(test)]
+#[path = "decision_tests.rs"]
+mod tests;

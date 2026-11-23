@@ -7,7 +7,7 @@
 //! requests crossed a tier, and a price can change at a date mid-run. The
 //! runner reports one [`RequestUsage`] per provider request; the daemon turns
 //! each into a [`UsageLine`] and adds its own runtime-only line, measured on
-//! its own clock, for the time the run held its lease.
+//! its own clock, for the time the run held its run.
 //!
 //! Every line says what it bills, as its [`LineKind`], and is stored once per
 //! `(work, kind, seq)`, so a retried renewal or report re-sends lines
@@ -16,40 +16,9 @@
 //! its call. No kind's numbers can claim another's, and none is capped below
 //! the `u32` the wire carries.
 
-use std::time::Duration;
-
 use garde::Validate;
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
-
-/// The most request lines one renewal or report may carry.
-///
-/// A renewal is sent every few minutes and a run makes far fewer provider
-/// requests than this in that time; the cap bounds what one request body can
-/// make the daemon price.
-pub const LINES_MAX: usize = 512;
-
-/// The longest runtime one line may claim: one hour.
-///
-/// The daemon cuts a runtime line at every renewal, so a longer claim is a
-/// malformed line rather than a long run.
-pub const RUNTIME_MAX: Duration = Duration::from_hours(1);
-
-/// [`RUNTIME_MAX`] as the bound on `runtime_ms`, the wire's span field: the one
-/// place it becomes milliseconds, because `garde` takes an integer.
-#[expect(
-    clippy::cast_possible_truncation,
-    reason = "the const assertion inside this block proves the value sits \
-              inside u32 before the cast runs, so a bound edited past the \
-              wire's range fails the build rather than truncating"
-)]
-pub const RUNTIME_MS_MAX: u32 = {
-    const _: () = assert!(
-        RUNTIME_MAX.as_millis() <= u32::MAX as u128,
-        "the runtime bound must be a span the wire can carry"
-    );
-    RUNTIME_MAX.as_millis() as u32
-};
 
 /// What one usage line bills.
 ///
@@ -156,13 +125,13 @@ impl RequestUsage {
     }
 }
 
-/// Usage records for this renewal or final report, up to 512. An empty list still records
-/// server-measured runtime.
+/// Usage records for this renewal or final report, every one not yet recorded; the frame bounds
+/// how many. An empty list still records server-measured runtime.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(transparent)]
 #[garde(transparent)]
-pub struct RequestLines(#[garde(length(max = LINES_MAX), dive)] pub Vec<RequestUsage>);
+pub struct RequestLines(#[garde(dive)] pub Vec<RequestUsage>);
 
 /// One priced unit of work: a provider request, or a runtime-only slice.
 ///
@@ -200,7 +169,7 @@ pub struct UsageLine {
     #[garde(skip)]
     pub output_tokens: u32,
     /// Run time this line accounts for, in milliseconds.
-    #[garde(range(max = RUNTIME_MS_MAX))]
+    #[garde(skip)]
     pub runtime_ms: u32,
 }
 

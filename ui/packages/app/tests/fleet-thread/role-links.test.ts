@@ -1,7 +1,7 @@
 import { ev, mockStream, renderThread } from "./harness";
 import { describe, expect, it } from "vitest";
 import { act, screen } from "@testing-library/react";
-import { OUTCOME, outcomeFor } from "@/lib/events/event-summary";
+import { OUTCOME, outcomeFor } from "@/lib/turns/turn-summary";
 import { FleetThread } from "@/components/domain/conversation/thread/FleetThread";
 
 describe("FleetThread — role rendering: links and guidance", () => {

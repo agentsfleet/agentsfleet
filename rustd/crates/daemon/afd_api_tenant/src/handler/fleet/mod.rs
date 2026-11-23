@@ -13,13 +13,13 @@
 //! never a handler deciding whether it may.
 
 pub mod detail;
+pub(crate) mod durable_tasks;
 pub mod memory;
 pub mod memory_access;
 mod memory_request;
 pub mod message;
 pub mod message_steer;
 pub(crate) mod native;
-pub(crate) mod tasks;
 
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -37,19 +37,11 @@ use af_fleet_runtime::FleetName;
 
 use crate::auth::WorkspaceContext;
 use crate::handler::{Refusal, decoded_parameter, parameter};
-use crate::services::{Services, WorkspaceFleets as _};
+use crate::services::{TenantPlane, WorkspaceFleets as _};
+use af_validate::Ceiling;
 
 /// The scoped events each verb's failures are logged under.
 const EVENT_LIST: &str = "fleet_list_failed";
-
-/// The page a caller naming no `limit` gets.
-///
-/// Twenty where the workspace directory serves fifty — each surface publishes
-/// its own default, kept apart on purpose.
-const LIST_LIMIT_DEFAULT: u32 = 20;
-
-/// The most rows one list page may carry.
-const LIST_LIMIT_MAX: u32 = 100;
 
 /// The `starting_after` parameter's name.
 const QUERY_STARTING_AFTER: &str = "starting_after";
@@ -83,7 +75,7 @@ pub const DETAIL_INVALID_CURSOR: &str = "Invalid cursor format";
         afd_http::openapi::path::Workspace,
         ("name" = Option<String>, Query, description = "A fleet's saved name, matched exactly: 1 to 64 lower-case letters, digits or hyphens."),
         ("starting_after" = Option<String>, Query, description = "Use the previous response's `next_cursor` unchanged. Omit for the first page."),
-        ("limit" = Option<String>, Query, description = "Page size. Defaults to 20. Clamped to a maximum of 100."),
+        ("limit" = Option<String>, Query, description = "Page size. Defaults to the deployment's default page size and is clamped to its maximum page size."),
     ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = FleetsResponse<'_>),
@@ -92,7 +84,7 @@ pub const DETAIL_INVALID_CURSOR: &str = "Invalid cursor format";
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn list<D: Services>(
+pub(crate) async fn list<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     RawQuery(query): RawQuery,
@@ -101,7 +93,7 @@ pub(crate) async fn list<D: Services>(
     if let Some(name) = requested_name(&query)? {
         return named(&*services, &owned.workspace, &name).await;
     }
-    let limit = limit_or_default(parameter(&query, QUERY_LIMIT));
+    let limit = limit_or_default(parameter(&query, QUERY_LIMIT), services.pages().list);
     let after = parse_cursor(parameter(&query, QUERY_STARTING_AFTER))?;
 
     let page = services
@@ -113,7 +105,7 @@ pub(crate) async fn list<D: Services>(
 }
 
 /// The one fleet saved under `name`, in the list's own envelope.
-async fn named<D: Services>(
+async fn named<D: TenantPlane>(
     services: &D,
     workspace: &Uuid7,
     name: &FleetName,
@@ -144,16 +136,17 @@ fn requested_name(query: &str) -> Result<Option<FleetName>, Refusal> {
         .map_err(|_outside| Refusal::malformed(DETAIL_NAME))
 }
 
-/// The page size asked for, clamped, or the default.
+/// The page size asked for, clamped to the deployment's `[api]` list page, or
+/// its default.
 ///
 /// Total rather than fallible: a limit that will not parse reads as the default
 /// here, where the workspace directory answers a 400. Each is its own surface's
 /// published behaviour — making them agree would move a client sitting on
 /// either into a different status class.
-fn limit_or_default(raw: Option<&str>) -> u32 {
+fn limit_or_default(raw: Option<&str>, ceiling: Ceiling) -> u32 {
     raw.and_then(|value| value.parse::<u32>().ok())
         .filter(|asked| *asked > 0)
-        .map_or(LIST_LIMIT_DEFAULT, |asked| asked.min(LIST_LIMIT_MAX))
+        .map_or_else(|| ceiling.default_rows(), |asked| asked.min(ceiling.max()))
 }
 
 /// The decoded boundary, or the refusal a foreign token earns.

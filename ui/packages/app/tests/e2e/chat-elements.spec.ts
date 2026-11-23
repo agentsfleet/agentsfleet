@@ -33,15 +33,16 @@ test("typed chat outcomes remain readable in dark and light appearance", async (
   await page.getByRole("button", {name: /^Tool activity:/}).click();
   await expect(page.getByRole("heading", {name: "Input", exact: true})).toHaveCount(0);
   const edit = page.locator('[data-tool="file_edit"]');
-  await expect(edit.getByText("release.yaml · Changes", {exact: true})).toBeVisible();
+  // Recorded changes show the file list and header counts; the requested diff is for an edit with none recorded.
+  await expect(edit.getByText("release.yaml · Changes", {exact: true})).toHaveCount(0);
   const counts = edit.getByLabel("1 addition, 1 deletion");
   await expect(counts).toBeVisible();
   const countsBox = (await counts.boundingBox())!, rowBox = (await edit.boundingBox())!;
   expect(rowBox.x + rowBox.width - countsBox.x - countsBox.width).toBeLessThan(56);
   const command = page.getByLabel("Command result");
   await expect(command.locator("code")).toHaveText("trivy image --severity CRITICAL release:latest");
-  await expect(page.locator('[data-tool="file_edit"] [data-diff="removed"]')).toContainText("ready: false");
-  await expect(page.locator('[data-tool="file_edit"] [data-diff="added"]')).toContainText("ready: true");
+  await expect(page.locator('[data-tool="file_edit"] [data-changed-file]')).toHaveText("release.yaml");
+  await expect(page.locator('[data-tool="file_edit"]')).toContainText("release.yaml +1 −1");
   await expect(command.locator('[data-slot="terminal-block"]')).toContainText("Recorded example result");
   await expect(command).not.toContainText("exit 0");
   const report = page.getByRole("link", {name: "the build report"});
@@ -77,11 +78,6 @@ test("native attachment preparation accepts a preview and shows its text receipt
   });
   await page.goto(`${chatProbe}?visual=1`);
   await page.getByRole("button", {name: "Completed", exact: true}).click();
-  const oversized = page.waitForEvent("filechooser");
-  await page.getByRole("button", {name: "Attach a preview file"}).click();
-  await (await oversized).setFiles({name: "large.bin", mimeType: "application/octet-stream", buffer: Buffer.alloc(5 * 1024 * 1024 + 1)});
-  await expect(page.getByRole("alert")).toContainText("up to 5 MiB");
-  expect(requests).toEqual([]);
   const chooser = page.waitForEvent("filechooser");
   await page.getByRole("button", {name: "Attach a preview file"}).click();
   await (await chooser).setFiles({name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("demo")});

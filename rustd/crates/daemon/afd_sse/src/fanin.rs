@@ -8,7 +8,7 @@
 //!
 //! Only the fleets the caller may read are ever subscribed, so a frame from
 //! another workspace is not delivered and then discarded — it never arrives.
-//! There is deliberately no wildcard subscribe: `af.fleet.*.tail` would put
+//! There is deliberately no items wildcard: `af.thread.*.items` would put
 //! every tenant's frames on one firehose and make tenant isolation a matter of
 //! discipline rather than of what is attached.
 //!
@@ -164,7 +164,7 @@ impl FanIn {
             let Ok(fleet) = Uuid7::parse(fleet_id) else {
                 continue;
             };
-            let subscription = match hub.subscribe(&afd_bus::Subject::FleetTail(fleet)).await {
+            let subscription = match hub.subscribe(&afd_bus::Subject::ThreadItems(fleet)).await {
                 Ok(subscription) => subscription,
                 Err(error) => {
                     let error_code = error.code().as_str();
@@ -293,7 +293,7 @@ mod tests {
                 .attached,
             1
         );
-        let channel = Subject::FleetTail(Uuid7::parse(FLEET).expect("canonical fleet"));
+        let channel = Subject::ThreadItems(Uuid7::parse(FLEET).expect("canonical fleet"));
         server.gap(&channel);
 
         let frame = fan_in.next_frame().await;
@@ -311,7 +311,7 @@ mod tests {
         fan_in.sync_to(&BTreeSet::from([FLEET.to_owned()])).await;
         bus.shutdown().await.expect("fixture shutdown");
         server.publish(
-            &Subject::FleetTail(Uuid7::parse(FLEET).expect("canonical fleet")),
+            &Subject::ThreadItems(Uuid7::parse(FLEET).expect("canonical fleet")),
             r#"{"kind":"chunk"}"#,
         );
         tokio::time::timeout(std::time::Duration::from_millis(20), fan_in.next_frame())
@@ -340,7 +340,7 @@ mod tests {
 
         assert_eq!(delta.attached, 1);
         assert_eq!(fan_in.fleets(), [FLEET]);
-        let channel = Subject::FleetTail(Uuid7::parse(FLEET).expect("canonical fleet"));
+        let channel = Subject::ThreadItems(Uuid7::parse(FLEET).expect("canonical fleet"));
         assert_eq!(server.readers(&channel), 1);
     }
 

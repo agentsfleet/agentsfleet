@@ -1,4 +1,4 @@
-//! §1 against a live datastore — what a BEAT moves.
+//! What a BEAT moves.
 //!
 //! The sibling of `integration_runner_row.rs`, which proves what enrolment
 //! WRITES. The two were one file until it outgrew RULE FLL's cap, and the seam
@@ -177,15 +177,15 @@ async fn test_an_out_of_bounds_report_does_not_fail_the_beat() {
         .expect("enrolment must succeed");
     let runner = enrolled.runner_id.clone();
 
-    // Past `MAX_REPORT_CONTROLLERS`, which is a persistence-amplification
-    // attempt rather than a capability claim.
-    let flooded = CapabilityReport {
+    // An empty controller name is outside the report's bounds: no claim a
+    // host could make.
+    let unreadable = CapabilityReport {
         durable_tasks_v1: false,
-        cgroup_controllers: vec![Cow::Borrowed("cpu"); 64],
+        cgroup_controllers: vec![Cow::Borrowed("")],
         ..capable()
     };
     let beat = HeartbeatRequest {
-        capability_report: Some(flooded),
+        capability_report: Some(unreadable),
         selftest: None,
         holds: af_wire::runner::HeldFleets::default(),
         closing: false,

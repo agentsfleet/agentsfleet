@@ -202,7 +202,7 @@ async fn a_verified_fire_lands_on_the_stream_and_answers_the_event_it_wrote() {
         "the first attempt is not a replay: {accepted}"
     );
     let event = accepted
-        .get("event_id")
+        .get("turn_id")
         .and_then(Value::as_str)
         .expect("an accepted fire names the entry it appended");
     assert!(
@@ -240,8 +240,8 @@ async fn a_retried_fire_answers_the_first_attempts_event_rather_than_a_second() 
         "the second attempt under one message id is a replay: {retry}"
     );
     assert_eq!(
-        retry.get("event_id"),
-        first.get("event_id"),
+        retry.get("turn_id"),
+        first.get("turn_id"),
         "the retry is answered with the entry the first attempt wrote, not a \
          second one the fleet would run twice"
     );
@@ -270,8 +270,8 @@ async fn two_fires_of_one_schedule_are_two_events() {
         "a different tick is a different fire: {tuesday}"
     );
     assert_ne!(
-        monday.get("event_id"),
-        tuesday.get("event_id"),
+        monday.get("turn_id"),
+        tuesday.get("turn_id"),
         "two ticks of one schedule are two runs"
     );
     fixture.cleanup().await;

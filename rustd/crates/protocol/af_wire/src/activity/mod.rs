@@ -6,25 +6,17 @@
 
 use std::borrow::Cow;
 
+use af_validate::TEXT_MAX_CHARS;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-use crate::tool_trace::{ToolCallStatus, edge_fits};
+use crate::tool_trace::{FileChange, ToolCallStatus, changes_fit, edge_fits};
 
-mod task;
-pub use task::{
-    TaskActivity, TaskActivityHistory, TaskActivityOperation, TaskActivityPhase,
-    TaskActivityRecord, TaskTransferBytes,
+mod durable_task;
+pub use durable_task::{
+    DurableTaskActivity, DurableTaskActivityHistory, DurableTaskActivityOperation,
+    DurableTaskActivityPhase, DurableTaskActivityRecord, DurableTaskTransferBytes,
 };
-
-/// The longest call identity a tool frame may carry.
-///
-/// A runner's own counter needs a few bytes. The bound leaves room for a
-/// provider's call id, should a runner forward one, and keeps one frame from
-/// deciding how much of every subscriber's buffer an identity takes. The three
-/// `call_id` descriptions spell this number out, because they are published
-/// and a constant's name means nothing to a runner's author.
-pub const CALL_ID_MAX_BYTES: usize = 64;
 
 /// A tool call started. `args_redacted` contains JSON text with secret values masked, never
 /// the resolved secrets.
@@ -40,10 +32,10 @@ pub struct ToolCallStarted<'a> {
     #[serde(borrow)]
     #[garde(skip)]
     pub args_redacted: Cow<'a, str>,
-    /// Which call of the run this frame belongs to, 1 to 64 bytes: every frame
+    /// Which call of the run this frame belongs to, never empty: every frame
     /// of one call carries the same value.
     #[serde(borrow)]
-    #[garde(length(bytes, min = 1, max = CALL_ID_MAX_BYTES))]
+    #[garde(length(chars, min = 1, max = TEXT_MAX_CHARS))]
     pub call_id: Cow<'a, str>,
 }
 
@@ -95,10 +87,10 @@ pub struct ToolCallCompleted<'a> {
     /// How long it took, in milliseconds.
     #[garde(skip)]
     pub ms: i64,
-    /// Which call of the run this frame belongs to, 1 to 64 bytes: every frame
+    /// Which call of the run this frame belongs to, never empty: every frame
     /// of one call carries the same value.
     #[serde(borrow)]
-    #[garde(length(bytes, min = 1, max = CALL_ID_MAX_BYTES))]
+    #[garde(length(chars, min = 1, max = TEXT_MAX_CHARS))]
     pub call_id: Cow<'a, str>,
     /// How the call ended.
     #[garde(skip)]
@@ -121,6 +113,12 @@ pub struct ToolCallCompleted<'a> {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[garde(skip)]
     pub exit_code: Option<i32>,
+    /// For an edit: each file it changed and the lines it added and removed,
+    /// at most 64. Absent for any other call, and for an edit that failed.
+    // Judged by `ActivityFrame::outcome_usable`, beside the edges.
+    #[serde(borrow, default, skip_serializing_if = "Vec::is_empty")]
+    #[garde(skip)]
+    pub changes: Vec<FileChange<'a>>,
 }
 
 /// A long-running tool is still working, so a reader's spinner survives it.
@@ -135,10 +133,10 @@ pub struct ToolCallProgress<'a> {
     /// How long it has been running, in milliseconds.
     #[garde(skip)]
     pub elapsed_ms: i64,
-    /// Which call of the run this frame belongs to, 1 to 64 bytes: every frame
+    /// Which call of the run this frame belongs to, never empty: every frame
     /// of one call carries the same value.
     #[serde(borrow)]
-    #[garde(length(bytes, min = 1, max = CALL_ID_MAX_BYTES))]
+    #[garde(length(chars, min = 1, max = TEXT_MAX_CHARS))]
     pub call_id: Cow<'a, str>,
 }
 
@@ -154,11 +152,11 @@ pub struct ToolCallProgress<'a> {
 #[serde(rename_all = "snake_case")]
 pub enum ActivityFrame<'a> {
     /// A physical intent/goal decision has started.
-    TaskDecisionStarted(#[garde(dive)] TaskActivity),
+    DurableTaskDecisionStarted(#[garde(dive)] DurableTaskActivity),
     /// Its original-owner receipt is recorded or unavailable.
-    TaskDecisionCompleted(#[garde(dive)] TaskActivity),
+    DurableTaskDecisionCompleted(#[garde(dive)] DurableTaskActivity),
     /// Encrypted recovery is preparing, transferring or committed.
-    TaskTransferProgress(#[garde(dive)] TaskActivity),
+    DurableTaskTransferProgress(#[garde(dive)] DurableTaskActivity),
     /// The root conversation is summarizing or continuing after a checkpoint.
     ContextProgress(#[garde(dive)] crate::context::ContextProgress),
     /// A tool call began.
@@ -178,17 +176,17 @@ pub enum ActivityFrame<'a> {
 impl ActivityFrame<'_> {
     /// The small public task fact retained alongside the existing event.
     #[must_use]
-    pub fn task_activity(&self) -> Option<TaskActivityRecord> {
+    pub fn durable_task_activity(&self) -> Option<DurableTaskActivityRecord> {
         match self {
-            Self::TaskDecisionStarted(progress) => {
-                Some(TaskActivityRecord::TaskDecisionStarted(progress.clone()))
-            }
-            Self::TaskDecisionCompleted(progress) => {
-                Some(TaskActivityRecord::TaskDecisionCompleted(progress.clone()))
-            }
-            Self::TaskTransferProgress(progress) => {
-                Some(TaskActivityRecord::TaskTransferProgress(progress.clone()))
-            }
+            Self::DurableTaskDecisionStarted(progress) => Some(
+                DurableTaskActivityRecord::DurableTaskDecisionStarted(progress.clone()),
+            ),
+            Self::DurableTaskDecisionCompleted(progress) => Some(
+                DurableTaskActivityRecord::DurableTaskDecisionCompleted(progress.clone()),
+            ),
+            Self::DurableTaskTransferProgress(progress) => Some(
+                DurableTaskActivityRecord::DurableTaskTransferProgress(progress.clone()),
+            ),
             Self::ContextProgress(_)
             | Self::ToolCallStarted(_)
             | Self::FleetResponseChunk(_)
@@ -206,30 +204,29 @@ impl ActivityFrame<'_> {
             Self::ToolCallCompleted(body) => Some(&body.call_id),
             Self::FleetResponseChunk(_)
             | Self::ContextProgress(_)
-            | Self::TaskDecisionStarted(_)
-            | Self::TaskDecisionCompleted(_)
-            | Self::TaskTransferProgress(_) => None,
+            | Self::DurableTaskDecisionStarted(_)
+            | Self::DurableTaskDecisionCompleted(_)
+            | Self::DurableTaskTransferProgress(_) => None,
         }
     }
 
     /// Whether the call this frame names, if any, is 1 to
-    /// [`CALL_ID_MAX_BYTES`] bytes: the one bound the frame types declare.
+    /// [`TEXT_MAX_CHARS`] characters: the one bound the frame types declare.
     #[must_use]
     pub fn call_id_usable(&self) -> bool {
         self.validate().is_ok()
     }
 
-    /// Whether a completion's output edges, if any, fit the bounds a stored
-    /// trace holds them to. Every other frame carries no edges.
+    /// Whether a completion's output edges and changes, if any, fit the
+    /// bounds a stored trace holds them to. Every other frame carries
+    /// neither.
     #[must_use]
     pub fn outcome_usable(&self) -> bool {
         let Self::ToolCallCompleted(body) = self else {
             return true;
         };
-        [body.output_head.as_deref(), body.output_tail.as_deref()]
-            .into_iter()
-            .flatten()
-            .all(edge_fits)
+        let edges = [body.output_head.as_deref(), body.output_tail.as_deref()];
+        edges.into_iter().flatten().all(edge_fits) && changes_fit(&body.changes)
     }
 }
 

@@ -14,7 +14,6 @@ const TEMP_DIR_PREFIX = "agentsfleet-cli-adversarial-";
 const WORKSPACE_NAME = "cli-adversarial";
 const CORRUPT_CREDENTIALS = "{";
 const UNREACHABLE_API_URL = "http://127.0.0.1:1";
-const NO_RETRY = "1";
 const WELL_SHAPED_INACTIVE_CREDENTIAL = `afc_${"a".repeat(64)}`;
 
 function encodeJwtPart(value: unknown): string {
@@ -55,7 +54,6 @@ test.describe("command line adversarial reads", () => {
         cliEnv({
           AGENTSFLEET_STATE_DIR: stateDir,
           AGENTSFLEET_API_URL: apiUrl,
-          AGENTSFLEET_NO_RETRY: NO_RETRY,
         }),
       );
       const expiredOutput = combinedOutput(expiredResult);
@@ -92,7 +90,6 @@ test.describe("command line adversarial reads", () => {
         cliEnv({
           AGENTSFLEET_STATE_DIR: stateDir,
           AGENTSFLEET_API_URL: UNREACHABLE_API_URL,
-          AGENTSFLEET_NO_RETRY: NO_RETRY,
         }),
       );
       const unreachableOutput = combinedOutput(unreachable);

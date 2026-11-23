@@ -6,21 +6,21 @@
 
 use af_core::test_util::trace::{Capture, CapturedSpan};
 use af_observability::semconv::{
-    ATTR_AGENT_ID, ATTR_LEASE_ID, ATTR_RUNNER_HOST, ATTR_RUNNER_ID, RUNNER_SCOPE_NAME,
-    SPAN_RUNNER_LEASE,
+    ATTR_AGENT_ID, ATTR_RUN_ID, ATTR_RUNNER_HOST, ATTR_RUNNER_ID, RUNNER_SCOPE_NAME,
+    SPAN_RUNNER_RUN,
 };
-use af_wire::lease::LeasePayload;
+use af_wire::run::RunPayload;
 
 use super::EVENT_IDENTITY_FAILED;
 use crate::client::{Call, Verb};
 use crate::error;
 use crate::test_support::{
-    Answer, Behaviour, FLEET_ID, FakeAgent, FakeEngine, LEASE_ID, OUTCOME, PROCESSED, RUNNER_HOST,
-    RUNNER_ID, Rig, daemon, lease, reported,
+    Answer, Behaviour, FLEET_ID, FakeAgent, FakeEngine, OUTCOME, PROCESSED, RUN_ID, RUNNER_HOST,
+    RUNNER_ID, Rig, daemon, payload, reported,
 };
 
-/// The second lease every repeat suite runs.
-const SECOND_LEASE: &str = "01890a5d-ac96-774b-bcce-b302099a805a";
+/// The second run every repeat suite runs.
+const SECOND_RUN: &str = "01890a5d-ac96-774b-bcce-b302099a805a";
 
 fn rig(special: fn(&Call) -> Option<Answer>) -> Rig {
     Rig::new(
@@ -30,28 +30,26 @@ fn rig(special: fn(&Call) -> Option<Answer>) -> Rig {
     )
 }
 
-/// The lease spans a capture saw.
-fn lease_spans(capture: &Capture) -> Vec<CapturedSpan> {
+/// The run spans a capture saw.
+fn run_spans(capture: &Capture) -> Vec<CapturedSpan> {
     let spans = capture.spans().into_iter();
-    spans
-        .filter(|span| span.name == SPAN_RUNNER_LEASE)
-        .collect()
+    spans.filter(|span| span.name == SPAN_RUNNER_RUN).collect()
 }
 
-fn offered() -> LeasePayload<'static> {
-    let mut leased = lease(LEASE_ID, FLEET_ID);
-    leased.policy.tools = Vec::new();
-    leased
+fn assigned() -> RunPayload<'static> {
+    let mut held = payload(RUN_ID, FLEET_ID);
+    held.policy.tools = Vec::new();
+    held
 }
 
 #[tokio::test(start_paused = true)]
-async fn every_lease_runs_inside_a_span_naming_this_runner() {
+async fn every_runs_inside_a_span_naming_this_runner() {
     let capture = Capture::install();
     let mut rig = rig(|_| None);
 
-    rig.run(&offered()).await.unwrap();
+    rig.run(&assigned()).await.unwrap();
 
-    let spans = lease_spans(&capture);
+    let spans = run_spans(&capture);
     assert_eq!(spans.len(), 1, "{spans:?}");
     let span = &spans[0];
     assert_eq!(
@@ -60,18 +58,18 @@ async fn every_lease_runs_inside_a_span_naming_this_runner() {
     );
     assert_eq!(span.field(ATTR_RUNNER_ID), Some(RUNNER_ID));
     assert_eq!(span.field(ATTR_RUNNER_HOST), Some(RUNNER_HOST));
-    assert_eq!(span.field(ATTR_LEASE_ID), Some(LEASE_ID));
+    assert_eq!(span.field(ATTR_RUN_ID), Some(RUN_ID));
     assert_eq!(span.field(ATTR_AGENT_ID), Some(FLEET_ID));
     assert_eq!(reported(&rig.calls())[OUTCOME], PROCESSED);
 }
 
 #[tokio::test(start_paused = true)]
-async fn the_daemon_is_asked_once_whatever_the_leases() {
+async fn the_daemon_is_asked_once_whatever_the_runs() {
     let mut rig = rig(|_| None);
-    let mut second = offered();
-    second.lease_id = SECOND_LEASE.into();
+    let mut second = assigned();
+    second.run_id = SECOND_RUN.into();
 
-    rig.run(&offered()).await.unwrap();
+    rig.run(&assigned()).await.unwrap();
     rig.run(&second).await.unwrap();
 
     let asked = rig
@@ -89,12 +87,12 @@ async fn a_daemon_that_cannot_say_costs_the_span_its_runner_and_nothing_else() {
         (call.verb == Verb::Me).then(|| Answer::Fail(error::unavailable(Verb::Me, 503)))
     });
 
-    rig.run(&offered()).await.unwrap();
+    rig.run(&assigned()).await.unwrap();
 
-    let spans = lease_spans(&capture);
+    let spans = run_spans(&capture);
     assert_eq!(spans[0].field(ATTR_RUNNER_ID), None);
-    assert_eq!(spans[0].field(ATTR_LEASE_ID), Some(LEASE_ID));
-    assert_eq!(reported(&rig.calls())[OUTCOME], PROCESSED, "the lease ran");
+    assert_eq!(spans[0].field(ATTR_RUN_ID), Some(RUN_ID));
+    assert_eq!(reported(&rig.calls())[OUTCOME], PROCESSED, "the run ran");
     let failed = capture.only(EVENT_IDENTITY_FAILED);
     assert_eq!(failed.level, tracing::Level::WARN);
     assert!(failed.field("error_code").is_some());

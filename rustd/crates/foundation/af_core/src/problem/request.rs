@@ -49,6 +49,13 @@ pub(super) const REQUEST: &[Problem] = &[
         user_message: None,
     },
     Problem {
+        code: error_code::INPUT_TOO_LONG,
+        status: 400,
+        title: "Input too long",
+        hint: "Shorten the text to at most 1,048,576 characters.",
+        user_message: Some("Input exceeds the maximum length of 1,048,576 characters."),
+    },
+    Problem {
         code: error_code::VAULT_DATA_INVALID,
         status: 400,
         title: "Secret data must be a non-empty JSON object",
@@ -152,13 +159,6 @@ pub(super) const REQUEST: &[Problem] = &[
         user_message: None,
     },
     Problem {
-        code: error_code::WEBHOOK_PAYLOAD_TOO_LARGE,
-        status: 413,
-        title: "Webhook payload too large",
-        hint: "The webhook body exceeds the 1 MiB limit. Reduce the payload size.",
-        user_message: None,
-    },
-    Problem {
         code: error_code::SCHEDULE_NOT_FOUND,
         status: 404,
         title: "Schedule not found",
@@ -186,7 +186,7 @@ pub(super) const REQUEST: &[Problem] = &[
         code: error_code::SCHEDULE_SYNCING,
         status: 409,
         title: "Schedule update busy",
-        hint: "Another schedule mutation holds the synchronization lease. Retry after the reported delay.",
+        hint: "Another schedule mutation holds the synchronization run. Retry after the reported delay.",
         user_message: None,
     },
     Problem {
@@ -227,20 +227,6 @@ pub(super) const REQUEST: &[Problem] = &[
         user_message: Some(
             "Someone already resolved this. Refresh to see the outcome and who resolved it.",
         ),
-    },
-    Problem {
-        code: error_code::PREF_KEY_UNKNOWN,
-        status: 400,
-        title: "Unknown preference key",
-        hint: "The path names a key outside the writable preference registry. Only the keys the dashboard declares can be written; anything else is refused here rather than stored.",
-        user_message: Some("That setting doesn't exist. Reload the page and try again."),
-    },
-    Problem {
-        code: error_code::PREF_VALUE_TOO_LARGE,
-        status: 400,
-        title: "Preference value too large",
-        hint: "A preference value exceeds 1 KiB. A preference holds one small toggle, not a document; store larger state where it belongs.",
-        user_message: Some("That setting is too large to save. Reload the page and try again."),
     },
     Problem {
         code: error_code::WORKSPACE_NAME_EXISTS,

@@ -88,12 +88,14 @@ async fn serve_once(status: u16) -> (String, tokio::task::JoinHandle<String>) {
             .unwrap_or(0);
         let mut body = vec![0_u8; declared];
         if declared > 0 {
-            let _ = socket.read_exact(&mut body).await;
+            // A short body shows in the returned request the test asserts on.
+            drop(socket.read_exact(&mut body).await);
         }
         let response =
             format!("HTTP/1.1 {status} X\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
-        let _ = socket.write_all(response.as_bytes()).await;
-        let _ = socket.shutdown().await;
+        // The client may hang up first; its own assertions judge what it read.
+        drop(socket.write_all(response.as_bytes()).await);
+        drop(socket.shutdown().await);
         format!("{head}{}", String::from_utf8_lossy(&body))
     });
 
@@ -192,7 +194,7 @@ fn test_a_refused_credential_is_not_reported_as_an_outage() {
                 Err(MetadataUnwritten::Unauthorized),
                 "{status} should name the credential"
             );
-            let _ = server.await;
+            server.await.expect("the provider fake finishes");
         });
     }
 }
@@ -208,7 +210,7 @@ fn test_an_unknown_subject_is_distinguishable_from_an_outage() {
             writer.write_signup(&subject(), TENANT, SCOPES).await,
             Err(MetadataUnwritten::UnknownSubject)
         );
-        let _ = server.await;
+        server.await.expect("the provider fake finishes");
     });
 }
 
@@ -223,7 +225,7 @@ fn test_a_provider_error_reads_as_unreachable() {
             writer.write_signup(&subject(), TENANT, SCOPES).await,
             Err(MetadataUnwritten::Unreachable)
         );
-        let _ = server.await;
+        server.await.expect("the provider fake finishes");
     });
 }
 

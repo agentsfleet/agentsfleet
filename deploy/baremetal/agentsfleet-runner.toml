@@ -1,8 +1,38 @@
 # Runner-local settings. Runner work slots and tenant policy are assigned by agentsfleetd.
 # Secrets and API/private-stream bootstrap addresses remain in /etc/default/agentsfleet-runner.
 [inference]
+# Raise it when model calls fail to connect over a slow network; lower it to fail over sooner.
 connect_timeout_seconds = 10
+# Raise it when long model replies fail mid-stream after a silence; lower it to give up on a stuck provider sooner.
 stream_idle_timeout_seconds = 300
+
+# Performance knobs: what each run's sandbox may use. Values are today's compiled defaults.
+[sandbox]
+# Raise it when runs die out of memory; lower it to fit more runs on this host.
+memory_mib = 2_048
+# Raise it when runs fail with a full disk; lower it to fit more runs on this host's disk.
+disk_mib = 4_096
+# Raise it when builds and installs inside runs are slow on disk; lower it when one run starves the others.
+io_mib_per_second = 200
+
+# Performance knobs: what one file read and one command's output may hold. Values are today's compiled defaults.
+[tools]
+# Raise it when file tools refuse files the model needs whole; lower it to hold less memory per read.
+max_file_read_mib = 8
+# Raise it when command output loses the middle the model needs; lower it to hold less memory per running command.
+output_edge_kib = 512
+
+# Performance knobs: the runner's link to each sandbox's executor. Values are today's compiled defaults.
+[executor]
+# Raise it when file writes are refused as too long, or after raising max_file_read_mib past three quarters of it; lower it to cap what a sandbox can make the runner buffer. At least 7.
+max_frame_mib = 64
+
+# Performance knobs: decision calls to model providers. Values are today's compiled defaults.
+[provider]
+# Raise it when decision calls fail to connect over a slow network; lower it to fail over sooner.
+decision_connect_timeout_seconds = 3
+# Raise it when decision calls time out on a slow model; lower it to free a stuck run sooner.
+decision_call_timeout_seconds = 12
 
 # Independent limits: at most 3 generation sends per opening and 3 eligible openings.
 # Native token counting is a separate single-send request for an eligible opening.
@@ -20,9 +50,7 @@ daemon_max_attempts = 5
 # cancellation or their deadline, without a count limit.
 daemon_initial_backoff_ms = 250
 daemon_max_backoff_ms = 30_000
-# Batched lease renewal cadence; the daemon advertises the heartbeat interval.
+# Batched run renewal cadence; the daemon advertises the heartbeat interval.
 renewal_interval_ms = 5000
-authoring_renewal_interval_ms = 10_000
-authoring_renewal_retry_ms = 250
 # One shared admission pool per runner; optional captures skip when both slots are busy.
 max_concurrent_file_operations = 2

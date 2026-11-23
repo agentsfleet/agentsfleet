@@ -74,7 +74,7 @@ impl EnvSource for LaneEnv<'_> {
 pub struct Datastores {
     /// The pool the candidate query runs on.
     pub database: Db,
-    /// The NATS Bus: live tail frames, wakes and notifications.
+    /// The NATS Bus: live item frames, wakes and notifications.
     pub bus: afd_bus::Handle,
     /// What `bus` was connected from, so a lane can open another replica's
     /// connection the same way; `None` when the caller brought its own Bus.

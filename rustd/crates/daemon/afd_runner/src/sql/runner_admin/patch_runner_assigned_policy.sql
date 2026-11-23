@@ -14,7 +14,7 @@ WITH updated AS (
       OR durable_tasks_enabled IS DISTINCT FROM $16::boolean)
   RETURNING id
 ), event AS (
-  INSERT INTO runner.events (id, runner_id, event_type, metadata, last_seen_at, created_at)
+  INSERT INTO runner.history (id, runner_id, event_type, metadata, last_seen_at, created_at)
   SELECT $6, id, $7::text,
          jsonb_build_object($8::text, $2::text, $9::text, $3::text,
                             $10::text, $4::jsonb, $11::text, $5::int,

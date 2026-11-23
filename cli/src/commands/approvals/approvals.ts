@@ -21,13 +21,11 @@ import {
   resolveAuthToken,
 } from "../workspace/guards.ts";
 import { wsApprovalsPath, wsApprovalPath } from "../../lib/api-paths.ts";
-import { ValidationError, type CliError } from "../../errors/index.ts";
+import { ServerError, ValidationError, type CliError } from "../../errors/index.ts";
 import { ui, AGE_KEY, EMPTY_CELL, instantCell } from "../../output/index.ts";
 import {
   GATE_COLUMN,
   GATE_FIELD,
-  GATE_MAX_PAGES,
-  GATE_PAGE_LIMIT,
   GATE_QUERY,
   GATE_STATUS,
 } from "../../constants/approvals.ts";
@@ -60,6 +58,8 @@ export interface ApprovalListResponse {
 
 /** One approvals page, with the daemon doing the narrowing.
  *
+ *  No `limit`: the page size is the daemon's, whose ceiling a deployment
+ *  sets, and the cursor walk reads every page whatever its size.
  *  `status` and `fleet_id` are the route's own query parameters. Filtering
  *  here rather than over a returned page is not a style choice: a client-side
  *  filter sees only what the first page happened to contain, so a workspace
@@ -71,14 +71,16 @@ export const approvalsQuery = (filters: {
   readonly status?: string | undefined;
   readonly cursor?: string | undefined;
 }): string => {
-  const params = new URLSearchParams({ [GATE_QUERY.limit]: String(GATE_PAGE_LIMIT) });
+  const params = new URLSearchParams();
   if (filters.fleetId) params.set(GATE_QUERY.fleetId, filters.fleetId);
   if (filters.status) params.set(GATE_QUERY.status, filters.status);
   if (filters.cursor) params.set(GATE_QUERY.cursor, filters.cursor);
   return params.toString();
 };
 
-/** Every gate the filters match, following `next_cursor` to exhaustion. */
+/** Every gate the filters match, following `next_cursor` until the server
+ *  reports no next page. A cursor already followed fails the walk, because
+ *  following it again would replay the same pages forever. */
 export const fetchGates = (
   wsId: string,
   token: Redacted.Redacted<string>,
@@ -88,24 +90,27 @@ export const fetchGates = (
   Effect.gen(function* () {
     const http = yield* HttpClient;
     const gates: ApprovalGate[] = [];
+    const cursors = new Set<string>();
     let cursor: string | undefined;
-    for (let page = 0; page < GATE_MAX_PAGES; page += 1) {
+    for (;;) {
       const res: ApprovalListResponse = yield* http.request<ApprovalListResponse>({
         path: `${wsApprovalsPath(wsId)}?${approvalsQuery({ ...filters, cursor })}`,
         token,
         ...(signal ? {signal} : {}),
       });
       gates.push(...(res.items ?? []));
-      cursor = res.next_cursor ?? undefined;
-      if (!cursor) break;
+      const next = res.next_cursor ?? undefined;
+      if (!next) return gates;
+      if (cursors.has(next)) {
+        return yield* Effect.fail(new ServerError({
+          detail: `the approval list repeated page cursor ${next}`,
+          suggestion: "retry; if it persists, report the server's repeating next_cursor",
+          code: "APPROVAL_LIST_CURSOR_REPEATED", status: 502, requestId: null,
+        }));
+      }
+      cursors.add(next);
+      cursor = next;
     }
-    if (cursor) {
-      return yield* Effect.fail(new ValidationError({
-        detail: `approval list is incomplete after ${GATE_MAX_PAGES} pages`,
-        suggestion: "filter by fleet with --fleet <fleet_id> and retry",
-      }));
-    }
-    return gates;
   });
 
 const EMPTY_INBOX = "No approval gates in this workspace." as const;

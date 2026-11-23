@@ -1,9 +1,12 @@
-//! Idle workers await pushed offers; only an available worker advertises a credit.
+//! Idle workers await pushed assignments; only an available worker advertises a credit.
 
 use std::{panic::AssertUnwindSafe, sync::Arc};
 
 use af_core::error_code;
-use af_wire::{lease::TaggedLease, protocol::Down};
+use af_wire::{
+    protocol::Down,
+    run::{Owner, TaggedRun},
+};
 use futures_util::FutureExt as _;
 use tokio::{
     sync::{Mutex, mpsc, watch},
@@ -12,19 +15,19 @@ use tokio::{
 
 use crate::{
     Result,
-    downlink::{Offered, policy::Assignment},
-    lease_loop::Lessee,
+    downlink::{Assigned, policy::Assignment},
+    run_loop::Lessee,
     turns::FleetTurns,
 };
 
 pub(crate) async fn serve(
     lessee: Arc<Lessee>,
     mut assignment: watch::Receiver<Assignment>,
-    offers: mpsc::Receiver<Offered>,
+    assignments: mpsc::Receiver<Assigned>,
 ) {
     let (turns, coordinator) = FleetTurns::start();
     let coordinator = tokio::spawn(coordinator);
-    let offers = Arc::new(Mutex::new(offers));
+    let assignments = Arc::new(Mutex::new(assignments));
     let mut workers = JoinSet::new();
     let mut spawned = 0;
     loop {
@@ -53,14 +56,14 @@ pub(crate) async fn serve(
                     lessee: Arc::clone(&lessee),
                     turns: turns.clone(),
                     assignment: assignment.clone(),
-                    offers: Arc::clone(&offers),
+                    assignments: Arc::clone(&assignments),
                 }
                 .run(),
             );
         }
         spawned = spawned.max(workers_wanted);
         tokio::select! {
-            () = lessee.halt.leasing().cancelled() => break,
+            () = lessee.halt.taking_runs().cancelled() => break,
             changed = assignment.changed() => if changed.is_err() { break; },
         }
     }
@@ -72,20 +75,20 @@ struct Worker {
     lessee: Arc<Lessee>,
     turns: FleetTurns,
     assignment: watch::Receiver<Assignment>,
-    offers: Arc<Mutex<mpsc::Receiver<Offered>>>,
+    assignments: Arc<Mutex<mpsc::Receiver<Assigned>>>,
 }
 
 impl Worker {
     async fn run(mut self) {
         let worker = self.number;
         tracing::info!(event = "worker_started", worker);
-        while !self.lessee.halt.leasing().is_cancelled() {
+        while !self.lessee.halt.taking_runs().is_cancelled() {
             match AssertUnwindSafe(self.next()).catch_unwind().await {
                 Ok(Ok(true)) => {}
                 Ok(Ok(false)) => break,
                 Ok(Err(error)) => {
                     let error_code = error.code().as_str();
-                    tracing::warn!(event = "lease_write_failed", worker, error_code);
+                    tracing::warn!(event = "run_write_failed", worker, error_code);
                     if self.lessee.halt.stops_on(&error) {
                         break;
                     }
@@ -101,42 +104,43 @@ impl Worker {
 
     async fn next(&mut self) -> Result<bool> {
         let number = self.number;
-        let leasing = self.lessee.halt.leasing().clone();
+        let taking_runs = self.lessee.halt.taking_runs().clone();
         while !self.assignment.borrow_and_update().takes_work(number) {
             tokio::select! {
-                () = leasing.cancelled() => return Ok(false),
+                () = taking_runs.cancelled() => return Ok(false),
                 changed = self.assignment.changed() => if changed.is_err() { return Ok(false); },
             }
         }
-        let offer = tokio::select! {
-            () = leasing.cancelled() => return Ok(false),
+        let assigned = tokio::select! {
+            () = taking_runs.cancelled() => return Ok(false),
             changed = self.assignment.changed() => return Ok(changed.is_ok()),
-            offer = async { self.offers.lock().await.recv().await } => offer,
+            assigned = async { self.assignments.lock().await.recv().await } => assigned,
         };
-        let Some(offer) = offer else {
+        let Some(assigned) = assigned else {
             return Ok(false);
         };
-        if offer.session.is_cancelled() || offer.registration.stop.is_cancelled() {
+        if assigned.session.is_cancelled() || assigned.registration.stop.is_cancelled() {
             return Ok(true);
         }
         let egress = self.assignment.borrow().egress.clone();
-        let Down::Offer { lease } = offer.frame.decode::<Down<'_>>()? else {
+        let Down::Run { run } = assigned.frame.decode::<Down<'_>>()? else {
             return Err(crate::error::ErrorKind::StreamProtocol.into());
         };
-        match lease {
-            TaggedLease::Fleet(lease) => {
+        match run {
+            // A setup draft's turn rides the common run path with no sandbox.
+            TaggedRun::Fleet(run) if matches!(run.owner, Owner::Draft { .. }) => {
+                self.lessee
+                    .setup(&run, assigned.registration.stop.clone())
+                    .await?;
+            }
+            TaggedRun::Fleet(run) => {
                 self.lessee
                     .run(
                         &self.turns,
-                        &lease,
+                        &run,
                         &egress,
-                        offer.registration.stop.clone(),
+                        assigned.registration.stop.clone(),
                     )
-                    .await?;
-            }
-            TaggedLease::Authoring(lease) => {
-                self.lessee
-                    .author(&lease, offer.registration.stop.clone())
                     .await?;
             }
         }

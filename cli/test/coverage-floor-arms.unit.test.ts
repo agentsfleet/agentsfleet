@@ -89,7 +89,7 @@ describe("api_key floor arms", () => {
     const http = httpLayerReturning({ id: VALID_ID, items: [] }, paths);
 
     for (const effect of [
-      apiKeyCreateEffectFromArgs({ name: "ci-key", description: undefined }),
+      apiKeyCreateEffectFromArgs({ name: "ci-key" }),
       apiKeyListEffectFromArgs({ sort: undefined }),
       apiKeyRevokeEffectFromId(VALID_ID),
       apiKeyDeleteEffectFromId(VALID_ID),

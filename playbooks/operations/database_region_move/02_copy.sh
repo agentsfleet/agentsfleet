@@ -23,7 +23,7 @@ playbooks_require_vault_read_approval
 playbooks_require_op_auth
 playbooks_require_tool docker
 
-readonly POSTGRES_IMAGE="postgres:18-alpine"
+readonly POSTGRES_IMAGE="postgres:19-alpine"
 readonly LEDGER_TABLES=("audit._sqlx_migrations")
 
 echo ""

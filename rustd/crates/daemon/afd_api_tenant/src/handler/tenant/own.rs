@@ -14,7 +14,7 @@ use http::request::Parts;
 
 use crate::auth::PersonIdentity;
 use crate::handler::Refusal;
-use crate::services::Services;
+use crate::services::TenantPlane;
 
 use super::{DETAIL_TENANT_REQUIRED, tenant_of};
 
@@ -46,7 +46,7 @@ impl OwnTenant {
     }
 }
 
-impl<D: Services> FromRequestParts<Arc<D>> for OwnTenant {
+impl<D: TenantPlane> FromRequestParts<Arc<D>> for OwnTenant {
     type Rejection = Response;
 
     async fn from_request_parts(parts: &mut Parts, state: &Arc<D>) -> Result<Self, Response> {
@@ -62,7 +62,7 @@ impl<D: Services> FromRequestParts<Arc<D>> for OwnTenant {
 ///
 /// The extractor's resolution, for the one team verb that runs it beside
 /// another read rather than before its handler.
-pub(super) async fn own_tenant<D: Services>(
+pub(super) async fn own_tenant<D: TenantPlane>(
     services: &Arc<D>,
     person: &Person,
 ) -> Result<Uuid7, Refusal> {

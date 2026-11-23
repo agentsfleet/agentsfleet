@@ -8,7 +8,7 @@
 //! those has a witness a statement can read without opening anything:
 //!
 //! - the catalogue: every model, price and platform-default write advances
-//!   `model.catalogue_version` in its own transaction;
+//!   `model.revision.number` in its own transaction;
 //! - the key and its endpoint: a digest of the stored ciphertext and the
 //!   endpoint beside it. A writer cannot skip it, because it is a function of
 //!   the bytes: every write re-seals the envelope under a fresh nonce, so even
@@ -17,8 +17,8 @@
 //! - a delete and recreate: the new row has a new id.
 //!
 //! So an entry keyed by the catalogue version, the secret's id and that digest
-//! answers for exactly one resolution, and the claim statement reads all three
-//! beside the slot it takes. No lookup by provider or tenant compiles: a
+//! answers for exactly one resolution, and the assignment statement reads all three
+//! beside the thread it takes. No lookup by provider or tenant compiles: a
 //! [`PlatformKeyKey`] is built only from a statement's row.
 //!
 //! # What no write announces
@@ -48,7 +48,7 @@ use std::time::Duration;
 
 use af_core::clock::{Clock, SystemClock, after};
 use af_core::id::Uuid7;
-use af_observability::metrics::label::fleet::{CacheOutcome, LeaseCache};
+use af_observability::metrics::label::fleet::{CacheOutcome, RunCache};
 use af_observability::producers::fleet::cache::looked_up;
 use jiff::Timestamp;
 use moka::Expiry;
@@ -85,7 +85,7 @@ pub struct PlatformKeyKey {
 impl PlatformKeyKey {
     /// The key for the witnesses the caller's statement returned in this pass.
     ///
-    /// Only a statement row's decoder calls this: the lease claim and the
+    /// Only a statement row's decoder calls this: the run assignment and the
     /// platform resolution's own read.
     #[must_use]
     pub fn observed(
@@ -154,6 +154,9 @@ impl Expiry<PlatformKeyKey, Held> for PerEntry {
 pub struct PlatformKeys {
     entries: Cache<PlatformKeyKey, Held>,
     clock: Arc<dyn Clock>,
+    /// The longest an entry is held, whatever its window; see
+    /// [`PLATFORM_KEY_TTL`].
+    ceiling: Duration,
 }
 
 impl Default for PlatformKeys {
@@ -172,7 +175,15 @@ impl PlatformKeys {
                 .expire_after(PerEntry)
                 .build(),
             clock,
+            ceiling: PLATFORM_KEY_TTL,
         }
+    }
+
+    /// This cache holding no entry longer than `ceiling`.
+    #[must_use]
+    pub const fn with_ceiling(mut self, ceiling: Duration) -> Self {
+        self.ceiling = ceiling;
+        self
     }
 
     /// The instant now, by the clock the entries are judged against.
@@ -208,7 +219,7 @@ impl PlatformKeys {
         } else {
             CacheOutcome::Miss
         };
-        looked_up(LeaseCache::PlatformKey, outcome);
+        looked_up(RunCache::PlatformKey, outcome);
         held
     }
 
@@ -217,7 +228,7 @@ impl PlatformKeys {
     /// `started` is the instant the read began: the window's span was measured
     /// after it, so adding the span to it can only end the entry early.
     pub(crate) async fn insert(&self, observed: Observed, started: Timestamp, resolved: Resolved) {
-        let lifetime = lifetime(observed.window);
+        let lifetime = lifetime(observed.window, self.ceiling);
         let held = Held {
             resolved,
             open_until: after(started, lifetime),
@@ -228,9 +239,9 @@ impl PlatformKeys {
 }
 
 /// How long an entry may be held: the price window the read matched, and never
-/// more than [`PLATFORM_KEY_TTL`].
-fn lifetime(window: Option<Duration>) -> Duration {
-    window.map_or(PLATFORM_KEY_TTL, |span| span.min(PLATFORM_KEY_TTL))
+/// more than `ceiling`.
+fn lifetime(window: Option<Duration>, ceiling: Duration) -> Duration {
+    window.map_or(ceiling, |span| span.min(ceiling))
 }
 
 #[cfg(test)]

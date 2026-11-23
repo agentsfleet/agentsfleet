@@ -8,10 +8,7 @@ export async function listApiKeysAction(sort?: ApiKeySort): Promise<ActionResult
   return withToken((t) => listApiKeys(t, sort));
 }
 
-export async function createApiKeyAction(body: {
-  key_name: string;
-  description?: string;
-}): Promise<ActionResult<CreatedApiKey>> {
+export async function createApiKeyAction(body: { key_name: string }): Promise<ActionResult<CreatedApiKey>> {
   return withToken((t) => createApiKey(t, body));
 }
 

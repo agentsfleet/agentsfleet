@@ -1,6 +1,6 @@
 //! The capacity handoff is serialized before an expiring report decides its hold.
 
-use super::{report::processed, slot};
+use super::{report::processed, thread};
 use crate::{
     report_seed::{DEEP_POOL, Held, held_in},
     seed::{self, ACTOR, MODEL, POSTURE, PROVIDER, REQUEST_JSON},
@@ -8,7 +8,7 @@ use crate::{
 };
 use af_core::id::Uuid7;
 use afd_db::config::DbRole;
-use afd_fleet::lease::{Acquired, Billed, Issued};
+use afd_fleet::run::{Acquired, Billed, Issued};
 use jiff_sqlx::ToSqlx as _;
 use sqlx::{Connection as _, Postgres, Transaction};
 use std::time::Duration;
@@ -27,7 +27,7 @@ BEGIN
     PERFORM pg_advisory_xact_lock(hashtextextended(NEW.fleet_id::text, 0));
     RETURN NEW;
 END $$;
-CREATE TRIGGER pause_hold_fixture BEFORE UPDATE OF hold_expires_at ON runner.slots
+CREATE TRIGGER pause_hold_fixture BEFORE UPDATE OF hold_expires_at ON thread.threads
 FOR EACH ROW WHEN (NEW.hold_expires_at IS NOT NULL)
 EXECUTE FUNCTION runner.pause_hold_fixture()";
 
@@ -35,7 +35,7 @@ EXECUTE FUNCTION runner.pause_hold_fixture()";
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_hold_decided_before_expiry_keeps_the_worker_until_the_report_commits() -> Checked {
     let held = held_in(Fixtures::create_isolated().await).await;
-    let next = next_admission(&held).await?;
+    let next = next_turn(&held).await?;
     let migrator = held.fixtures.open(DbRole::Migrator).await;
     let mut connection = migrator.acquire().await?;
     sqlx::raw_sql(HOLD_TRIGGER)
@@ -43,7 +43,7 @@ async fn a_hold_decided_before_expiry_keeps_the_worker_until_the_report_commits(
         .await?;
     let mut blocker = connection.begin().await?;
     let pid = pause_hold(&held, &mut blocker).await?;
-    let expiry = shorten_lease(&held).await?;
+    let expiry = shorten_run(&held).await?;
     let plane = held.fixtures.plane();
     let request = processed(&held, Some(held.fixtures.after(Duration::from_mins(5))));
     let mut clock = af_observability::verb_span::VerbClock::untimed();
@@ -60,7 +60,7 @@ async fn a_hold_decided_before_expiry_keeps_the_worker_until_the_report_commits(
     );
     let report = reported?;
     let (waited, issued) = attempted?;
-    let recorded = slot(&held.fixtures, &held.fleet).await.0;
+    let recorded = thread(&held.fixtures, &held.fleet).await.0;
     drop(connection);
     migrator.close().await;
     held.fixtures.cleanup().await;
@@ -82,11 +82,11 @@ async fn a_hold_decided_before_expiry_keeps_the_worker_until_the_report_commits(
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn an_expired_report_can_settle_after_another_fleet_takes_the_worker() -> Checked {
     let held = held_in(Fixtures::create_isolated().await).await;
-    let next = next_admission(&held).await?;
-    let expiry = shorten_lease(&held).await?;
+    let next = next_turn(&held).await?;
+    let expiry = shorten_run(&held).await?;
     wait_for_expiry(&held, expiry).await?;
     let issued = issue(&held, &next).await?;
-    assert!(issued.is_some(), "expired lease frees the only worker");
+    assert!(issued.is_some(), "expired run frees the only worker");
     let plane = held.fixtures.plane();
     let request = processed(&held, Some(held.fixtures.after(Duration::from_mins(5))));
     let report = plane
@@ -99,12 +99,12 @@ async fn an_expired_report_can_settle_after_another_fleet_takes_the_worker() -> 
         )
         .await?;
     assert!(report.hold.is_none(), "late settlement cannot add a hold");
-    assert_eq!(slot(&held.fixtures, &held.fleet).await.0, None);
+    assert_eq!(thread(&held.fixtures, &held.fleet).await.0, None);
     held.fixtures.cleanup().await;
     Ok(())
 }
 
-async fn next_admission(held: &Held) -> Checked<Next> {
+async fn next_turn(held: &Held) -> Checked<Next> {
     let fixtures = &held.fixtures;
     let seeded = seed::seeded_for::<0>(fixtures, ACTOR, REQUEST_JSON).await;
     let mut connection = fixtures.database.acquire().await?;
@@ -122,9 +122,9 @@ async fn next_admission(held: &Held) -> Checked<Next> {
         .await?;
     drop(connection);
     fixtures.seed_wallet(&seeded.tenant, DEEP_POOL).await;
-    let acquired = seed::select_fleet(&held.leases, &held.runner, &seeded.fleet)
+    let acquired = seed::select_fleet(&held.runs, &held.runner, &seeded.fleet)
         .await
-        .ok_or("second fleet is not provisionally claimable")?;
+        .ok_or("second fleet is not provisionally assignable")?;
     Ok(Next {
         acquired,
         tenant: seeded.tenant,
@@ -141,16 +141,16 @@ async fn pause_hold(held: &Held, blocker: &mut Transaction<'_, Postgres>) -> Che
         .await?)
 }
 
-async fn shorten_lease(held: &Held) -> Checked<jiff_sqlx::Timestamp> {
+async fn shorten_run(held: &Held) -> Checked<jiff_sqlx::Timestamp> {
     let mut connection = held.fixtures.database.acquire().await?;
     let expires: jiff_sqlx::Timestamp = sqlx::query_scalar(
-        "UPDATE runner.leases SET lease_expires_at=clock_timestamp()+interval '1400 milliseconds'
-         WHERE id=$1 RETURNING lease_expires_at",
+        "UPDATE thread.runs SET run_expires_at=clock_timestamp()+interval '1400 milliseconds'
+         WHERE id=$1 RETURNING run_expires_at",
     )
-    .bind(&held.issued.lease_id)
+    .bind(&held.issued.run_id)
     .fetch_one(&mut *connection)
     .await?;
-    sqlx::query("UPDATE runner.slots SET lease_expires_at=$2 WHERE fleet_id=$1")
+    sqlx::query("UPDATE thread.threads SET run_expires_at=$2 WHERE fleet_id=$1")
         .bind(&held.fleet)
         .bind(expires.to_jiff().to_sqlx())
         .execute(&mut *connection)
@@ -185,7 +185,7 @@ async fn issue_during_report(
 
 async fn issue(held: &Held, next: &Next) -> Checked<Option<Issued>> {
     Ok(held
-        .leases
+        .runs
         .issue(
             &held.runner,
             &next.acquired,

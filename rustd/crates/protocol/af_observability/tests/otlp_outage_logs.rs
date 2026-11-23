@@ -1,4 +1,4 @@
-//! Dimension 3.3 — the log half of the same outage.
+//! The log half of the same outage.
 //!
 //! The third sibling of the span and metric halves, and the one that closes
 //! the gap the review found: `Signal::Logs` sat in the label set with nothing

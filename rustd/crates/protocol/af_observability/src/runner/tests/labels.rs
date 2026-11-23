@@ -6,14 +6,14 @@
 use crate::runner::{MAX_SERIES, OVERFLOW_RUNNER, RunnerMetrics, SDK_OVERFLOW_MARKER};
 
 // ---------------------------------------------------------------------------
-// Dimension 3.2 — the spelling admission produces.
+// The spelling admission produces.
 // ---------------------------------------------------------------------------
 
 /// A runner with a series of its own is attributed to itself.
 #[test]
-fn test_an_admitted_runner_is_labelled_with_its_own_id() {
+fn test_a_tracked_runner_is_labelled_with_its_own_id() {
     let metrics = RunnerMetrics::new();
-    let _label = metrics.admit("runner-1");
+    let _label = metrics.track("runner-1");
     assert_eq!(metrics.label_for("runner-1"), "runner-1");
 }
 
@@ -31,10 +31,10 @@ fn test_a_runner_with_room_is_labelled_with_its_own_id() {
 /// this label matches on it — a renamed overflow bucket is a panel that
 /// silently stops matching.
 #[test]
-fn test_runner_admission_other_spelling() {
+fn test_runner_tracking_other_spelling() {
     let metrics = RunnerMetrics::new();
     for index in 0..MAX_SERIES {
-        let _admitted = metrics.admit(&format!("runner-{index}"));
+        let _tracked = metrics.track(&format!("runner-{index}"));
     }
     assert_eq!(metrics.series_count(), MAX_SERIES);
 
@@ -55,7 +55,7 @@ fn test_runner_admission_other_spelling() {
 fn test_a_full_table_does_not_relabel_its_existing_runners() {
     let metrics = RunnerMetrics::new();
     for index in 0..MAX_SERIES {
-        let _admitted = metrics.admit(&format!("runner-{index}"));
+        let _tracked = metrics.track(&format!("runner-{index}"));
     }
     assert_eq!(metrics.label_for("runner-0"), "runner-0");
 }

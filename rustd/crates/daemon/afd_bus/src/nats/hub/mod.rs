@@ -1,4 +1,6 @@
-//! One native subscription per subject, fanned out to every local reader.
+//! One native subscription per subject, fanned out to every local reader. The
+//! thread-wake wildcard is one more subject here, and each of its messages
+//! names the thread it arrived for.
 //!
 //! The first reader of a subject subscribes natively and starts its pump; every
 //! later reader gets a broadcast receiver on the same channel, and waits until
@@ -19,6 +21,7 @@ use tokio::{
     task::JoinHandle,
 };
 
+use super::Reads;
 use crate::{Message, Received, Result, Subject, Subscription};
 
 /// The header that turns an empty message into a gap.
@@ -47,7 +50,7 @@ impl From<Delivery> for Received {
 /// Read one native message: the gap header wins over any payload, and a
 /// payload that is not UTF-8 was not published by this system.
 #[must_use]
-pub(super) fn classify(subject: &Subject, native: &async_nats::Message) -> Option<Delivery> {
+pub(super) fn classify(subject: Subject, native: &async_nats::Message) -> Option<Delivery> {
     let marked = native
         .headers
         .as_ref()
@@ -58,7 +61,7 @@ pub(super) fn classify(subject: &Subject, native: &async_nats::Message) -> Optio
     }
     let payload = String::from_utf8(native.payload.to_vec()).ok()?;
     Some(Delivery::Message(Arc::new(Message {
-        subject: subject.clone(),
+        subject,
         payload: Arc::new(payload),
     })))
 }
@@ -286,20 +289,24 @@ impl Drop for Reader {
 pub(super) async fn pump(
     mut native: Subscriber,
     sender: broadcast::Sender<Delivery>,
-    subject: Subject,
+    reads: Reads,
     channels: Arc<Channels>,
     physical: String,
     generation: u64,
 ) {
     while let Some(message) = native.next().await {
-        let Some(delivery) = classify(&subject, &message) else {
-            let subject_kind = subject.kind();
-            let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
+        let subject_kind = reads.kind();
+        let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
+        let Some(subject) = reads.subject(&message.subject) else {
+            tracing::warn!(event = "bus_subject_unknown", subject_kind, error_code);
+            continue;
+        };
+        let Some(delivery) = classify(subject, &message) else {
             tracing::warn!(event = "bus_message_not_utf8", subject_kind, error_code);
             continue;
         };
         // No receiver means every reader left between the message and now.
-        let _ = sender.send(delivery);
+        drop(sender.send(delivery));
     }
     channels.ended(&physical, generation);
 }

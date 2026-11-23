@@ -7,7 +7,7 @@ use zeroize::Zeroizing;
 /// What every secret prints as.
 const REDACTED: &str = "[redacted]";
 
-/// A token this runner holds: the runner's own, or one minted for a lease.
+/// A token this runner holds: the runner's own, or one minted for a run.
 ///
 /// `Debug` never prints it, and its bytes are overwritten when it drops, so a
 /// token does not linger in memory the allocator hands out again.

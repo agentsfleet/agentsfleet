@@ -25,7 +25,7 @@ pub(crate) mod workspace;
 pub(crate) use self::api_key::{delete, list, mint, revoke};
 pub(crate) use self::billing::{charges as billing_charges, snapshot as billing_snapshot};
 // The refusal sentences, for the router suite to assert by identity.
-pub use self::billing::{DETAIL_LIMIT_NOT_NUMERIC, DETAIL_LIMIT_RANGE};
+pub use self::billing::DETAIL_LIMIT_NOT_NUMERIC;
 pub use self::billing_report::{DETAIL_CHARGES_REMOVED, DETAIL_MODEL};
 pub(crate) use self::identity::current as current_user;
 pub(crate) use self::model_entry::list as list_model_entries;
@@ -40,8 +40,8 @@ pub use self::model_entry::{
 };
 pub(crate) use self::models::catalogue;
 pub use self::models::{
-    DETAIL_CATALOGUE_LIMIT, DETAIL_CURSOR_MALFORMED, DETAIL_CURSOR_MISMATCH,
-    DETAIL_PROVIDER_BOUNDS, DETAIL_QUERY_UNREADABLE,
+    DETAIL_CURSOR_MALFORMED, DETAIL_CURSOR_MISMATCH, DETAIL_PROVIDER_BOUNDS,
+    DETAIL_QUERY_UNREADABLE,
 };
 pub(crate) use self::provider::view as provider_view;
 pub(crate) use self::provider::write::{apply as provider_apply, reset as provider_reset};
@@ -51,8 +51,8 @@ pub use self::provider::{
     DETAIL_SECRET_REF_REQUIRED,
 };
 pub use self::workspace::{
-    DETAIL_CREATE_BODY, DETAIL_CREATE_NO_TENANT, DETAIL_INVALID_CURSOR, DETAIL_INVALID_LIMIT,
-    DETAIL_INVALID_NAME, DETAIL_MALFORMED_QUERY,
+    DETAIL_CREATE_BODY, DETAIL_CREATE_NO_TENANT, DETAIL_INVALID_CURSOR, DETAIL_INVALID_NAME,
+    DETAIL_MALFORMED_QUERY,
 };
 // Renamed at the re-export: both families mint and both revoke, and the router
 // names them side by side. The prefix belongs to the collision, so it lives
@@ -72,7 +72,7 @@ use std::sync::Arc;
 use af_core::id::Uuid7;
 
 use crate::handler::{Refusal, parameter};
-use crate::services::{Services, WorkspaceOwnership as _};
+use crate::services::{TenantPlane, WorkspaceOwnership as _};
 
 /// A whole list as its one page: every row, the count of them, no cursor.
 ///
@@ -97,7 +97,7 @@ fn one_page<'a, T>(items: Vec<T>) -> afd_api_wire::tenant::PageResponse<'a, T> {
 /// credential earns names what it cannot do HERE, so the api-key verbs and the
 /// billing reads each hand in their sentence rather than sharing one that is
 /// wrong for somebody.
-async fn tenant_of<D: Services>(
+async fn tenant_of<D: TenantPlane>(
     services: &Arc<D>,
     person: &afd_auth::principal::Person,
     detail: &'static str,

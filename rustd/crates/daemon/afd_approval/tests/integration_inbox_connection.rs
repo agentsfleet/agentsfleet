@@ -1,8 +1,8 @@
 //! Approval continuation and retry release their outer connection.
 #![expect(clippy::expect_used, reason = "test preconditions fail loudly")]
 use crate::lane::{Lane, Window};
-use afd_admission::Admissions;
 use afd_approval::{Decision, Inbox, Resolution};
+use afd_turns::Turns;
 const OPERATOR: &str = "human:fixture";
 const NOTE: &str = "approved";
 
@@ -23,7 +23,7 @@ async fn a_single_connection_pool_resolves_and_retries_continuations() {
     let inbox = Inbox::new(
         pool.clone(),
         lane.bus.clone(),
-        Admissions::for_tests(pool.clone(), lane.bus.clone()),
+        Turns::for_tests(pool.clone(), lane.bus.clone()),
     );
     let action = lane.seed_gate(Window::Open).await;
     let first = tokio::time::timeout(
@@ -34,7 +34,7 @@ async fn a_single_connection_pool_resolves_and_retries_continuations() {
     .expect("one pooled connection suffices")
     .expect("resolution");
     let resumed = match first {
-        Resolution::Resolved(row) => row.continuation_event_id,
+        Resolution::Resolved(row) => row.continuation_turn_id,
         _ => None,
     }
     .expect("the winning decision records its continuation");
@@ -46,7 +46,7 @@ async fn a_single_connection_pool_resolves_and_retries_continuations() {
     .expect("retry releases its read connection")
     .expect("retry");
     let retried = match retry {
-        Resolution::AlreadyResolved(row) => row.continuation_event_id,
+        Resolution::AlreadyResolved(row) => row.continuation_turn_id,
         _ => None,
     }
     .expect("the retry observes the committed continuation");

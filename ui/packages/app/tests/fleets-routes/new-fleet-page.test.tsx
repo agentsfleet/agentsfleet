@@ -1,8 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
-const {credential, workspaces, chat, feature} = vi.hoisted(() => ({credential: vi.fn(), workspaces: vi.fn(), chat: vi.fn(), feature: {enabled: true}}));
-vi.mock("@/lib/plugin-ui", () => ({pluginsUiEnabled: () => feature.enabled}));
+const {credential, workspaces, chat} = vi.hoisted(() => ({credential: vi.fn(), workspaces: vi.fn(), chat: vi.fn()}));
 vi.mock("@/lib/auth/platform", () => ({hasScope: () => Promise.resolve(false)}));
 vi.mock("@/lib/auth/credential", () => ({requireCredential: credential}));
 vi.mock("@/lib/workspace", () => ({listTenantWorkspacesCached: workspaces}));
@@ -12,11 +11,10 @@ import Page from "../../app/(dashboard)/w/[workspaceId]/fleets/new/page";
 
 const WORKSPACE = "0199a801-1000-7000-8000-000000000001";
 const DRAFT = "0199a801-1000-7000-8000-000000000002";
-const PLUGIN = "0199a801-1000-7000-8000-000000000006";
 const ACCOUNT = "account-owner";
 
 beforeEach(() => {
-  vi.resetAllMocks();feature.enabled = true;
+  vi.resetAllMocks();
   credential.mockResolvedValue("synthetic-session");
   workspaces.mockResolvedValue({items: [{id: WORKSPACE, account: {tenant_id: ACCOUNT}}]});
   chat.mockReturnValue(<p>Private chat</p>);
@@ -42,28 +40,11 @@ describe("native fleet chat entry", () => {
     renderToStaticMarkup(await page({draft: DRAFT}));
     expect(chat.mock.calls[0]?.[0]).toMatchObject({draft: DRAFT});
   });
-  it("starts from the selected published revision, using a UUIDv7 Plugin", async () => {
-    renderToStaticMarkup(await page({plugin: PLUGIN, revision: DRAFT}));
-    expect(chat.mock.calls[0]?.[0]).toMatchObject({source: {kind: "plugin", plugin_id: PLUGIN, revision_id: DRAFT}});
-  });
   it("pins improvement to the selected fleet and setup revision", async () => {
     renderToStaticMarkup(await page({fleet: DRAFT, setup_revision: "2"}));
     expect(chat.mock.calls[0]?.[0]).toMatchObject({source: {kind: "fleet", fleet_id: DRAFT, setup_revision: "2"}});
   });
-  it("requires explicit edit intent before setting a plugin publication destination", async () => {
-    renderToStaticMarkup(await page({plugin: PLUGIN, revision: DRAFT, intent: "edit"}));
-    expect(chat.mock.calls[0]?.[0]).toMatchObject({publicationTarget: PLUGIN, prompt: "Update this plugin’s setup."});
-    chat.mockClear();
-    renderToStaticMarkup(await page({plugin: PLUGIN, revision: DRAFT, intent: "new"}));
-    expect(chat.mock.calls[0]?.[0].publicationTarget).toBeUndefined();
-    expect(chat.mock.calls[0]?.[0].prompt).toContain("Start a new fleet from this plugin");
-  });
-  it("prefills the plugin starter without allocating a publication destination", async () => {
-    renderToStaticMarkup(await page({starter: "plugin"}));
-    expect(chat.mock.calls[0]?.[0].prompt).toMatch(/plugin/i);
-    expect(chat.mock.calls[0]?.[0].publicationTarget).toBeUndefined();
-  });
-  it.each([{library: PLUGIN, revision: DRAFT}, {plugin: "checkout-watch", revision: DRAFT}, {plugin: PLUGIN}, {plugin: "", revision: DRAFT}, {plugin: PLUGIN, revision: "bad"}, {plugin: PLUGIN, revision: DRAFT, draft: DRAFT}])("refuses incomplete or mixed plugin selections", async (query) => {
+  it.each([{revision: DRAFT}, {fleet: DRAFT}, {fleet: "checkout-watch", setup_revision: "2"}, {fleet: DRAFT, setup_revision: "0"}, {fleet: DRAFT, setup_revision: "2", draft: DRAFT}])("refuses unknown, incomplete or mixed fleet selections", async (query) => {
     await expect(page(query)).rejects.toThrow("not-found");
     expect(chat).not.toHaveBeenCalled();
   });
@@ -79,9 +60,4 @@ describe("native fleet chat entry", () => {
     await expect(page()).rejects.toThrow("workspace dependency unavailable");
     expect(chat).not.toHaveBeenCalled();
   });
-});
-
-it.each([{plugin: PLUGIN, revision: DRAFT}, {starter: "plugin"}])("refuses retained Plugin entry points while the UI tree is paused", async query => {
-  feature.enabled = false;
-  await expect(page(query)).rejects.toThrow("not-found");expect(chat).not.toHaveBeenCalled();
 });

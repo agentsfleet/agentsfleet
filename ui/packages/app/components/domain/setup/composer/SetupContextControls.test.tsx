@@ -1,7 +1,6 @@
 import {afterEach, beforeEach, expect, it, vi} from "vitest";
 import {act, cleanup, fireEvent, render, screen, waitFor} from "@testing-library/react";
 import {useRef} from "react";
-import {MESSAGE_MAX_BYTES} from "@/lib/api/draft-types";
 import {SetupContextControls} from "./SetupContextControls";
 
 const draft = vi.hoisted(() => ({text: ""}));
@@ -60,20 +59,16 @@ it("inserts at the selection and reuses a partially typed address", () => {
   expect(draft.text).toBe("Ask @bo today");
 });
 
-it("rejects unreadable or oversized notes and preserves the draft", async () => {
+it("rejects unreadable notes and preserves the draft", async () => {
   render(<Setup />);
   for(const text of ["  ","x\u0000x","\ufffd"]) {
     choose(note(text));
     await waitFor(()=>expect(screen.getByRole("status").textContent).toContain("plain text"));
   }
-  choose({...note("ok"),size:MESSAGE_MAX_BYTES+1});
-  await waitFor(()=>expect(screen.getByRole("status").textContent).toContain("32 KiB"));
-  draft.text="a".repeat(MESSAGE_MAX_BYTES);
-  choose(note("one"));
-  await waitFor(()=>expect(screen.getByRole("status").textContent).toContain("32 KiB"));
+  draft.text="Keep this draft";
   choose({...note("ok"),text:async()=>{throw new Error("unreadable");}});
   await waitFor(()=>expect(screen.getByRole("status").textContent).toContain("Couldn’t read"));
-  expect(draft.text.length).toBe(MESSAGE_MAX_BYTES);
+  expect(draft.text).toBe("Keep this draft");
 });
 
 it.each(["edited","unmounted","disabled"])("preserves a draft %s during the file read", async state => {

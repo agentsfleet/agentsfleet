@@ -35,12 +35,12 @@ enum ErrorKind {
     #[error("model decision settings are invalid")]
     DecisionSettings {
         #[source]
-        source: af_inference::Error,
+        source: af_providers::Error,
     },
     #[error("model inference settings are invalid")]
     Inference {
         #[source]
-        source: af_inference::Error,
+        source: af_providers::Error,
     },
     #[error("the datastore backing platform administration would not answer")]
     Datastore {
@@ -86,7 +86,7 @@ impl Error {
     pub const fn detail(&self) -> &'static str {
         match *self.kind() {
             ErrorKind::Page => {
-                "Use a limit between 1 and 100 and a cursor from the same catalogue generation and page size; restart listing after catalogue edits"
+                "Use a positive limit and a cursor from the same catalogue generation and page size; restart listing after catalogue edits"
             }
             ErrorKind::DecisionRevision => {
                 "Changed decision settings require a new profile revision"
@@ -118,7 +118,7 @@ impl Error {
 }
 
 af_core::error_lifts!(Error, ErrorKind:
-    af_inference::Error => Inference,
+    af_providers::Error => Inference,
     afd_db::Error => Datastore,
     af_crypto::error::Error => Entropy,
 );
@@ -131,7 +131,7 @@ pub(super) fn coding_prices() -> Error {
     ErrorKind::CodingPrices.into()
 }
 
-pub(super) fn decision_settings(source: af_inference::Error) -> Error {
+pub(super) fn decision_settings(source: af_providers::Error) -> Error {
     ErrorKind::DecisionSettings { source }.into()
 }
 

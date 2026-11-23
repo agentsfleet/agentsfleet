@@ -1,49 +1,26 @@
-//! The trigger set as a whole: its size, its uniqueness, and which route can
+//! The trigger set as a whole: its uniqueness, and which route can
 //! deliver to each webhook in it.
 
-use garde::{Unvalidated, Valid};
-
-use super::{MAX_TRIGGERS, Trigger};
+use super::Trigger;
 use crate::config::raw;
 use crate::error::{Error, ErrorKind, Result};
 
 /// Why a trigger set was refused.
-pub(super) const REASON_SET_TOO_LARGE: &str = "it holds more triggers than the limit";
-/// See [`REASON_SET_TOO_LARGE`].
 const REASON_DUPLICATE_SOURCE: &str = "two webhook triggers share one source";
-/// See [`REASON_SET_TOO_LARGE`].
+/// See [`REASON_DUPLICATE_SOURCE`].
 const REASON_DUPLICATE_CRON: &str = "a fleet may hold only one cron trigger";
-/// See [`REASON_SET_TOO_LARGE`].
+/// See [`REASON_DUPLICATE_SOURCE`].
 const REASON_DUPLICATE_MENTION: &str = "a fleet may attach to only one channel";
-/// The authored trigger set, bounded in count before any entry is read.
-#[derive(Debug, garde::Validate)]
-struct Set {
-    #[garde(length(max = MAX_TRIGGERS))]
-    authored: Vec<raw::Trigger>,
-}
-
 /// Builds the whole trigger set and proves it is coherent.
 ///
 /// An empty set is a fleet woken only by the messages sent to it.
 ///
 /// # Errors
-/// [`Error::InvalidTriggerSet`] for a count or uniqueness failure, or
-/// whichever rule an individual trigger broke.
+/// [`Error::InvalidTriggerSet`] for a uniqueness failure, or whichever rule
+/// an individual trigger broke. Uniqueness is what bounds the count: one cron,
+/// one channel, and one webhook per verified source.
 pub(crate) fn parse_set(authored: Vec<raw::Trigger>) -> Result<Box<[Trigger]>> {
-    let refuse = |reason| Error::from(ErrorKind::InvalidTriggerSet { reason });
-
-    let set = Unvalidated::new(Set { authored })
-        .validate()
-        .map_err(|_too_many| refuse(REASON_SET_TOO_LARGE))?;
-    read_set(set)
-}
-
-/// Reads each entry of a set whose count is proved, then proves the whole is
-/// coherent.
-fn read_set(set: Valid<Set>) -> Result<Box<[Trigger]>> {
-    let triggers = set
-        .into_inner()
-        .authored
+    let triggers = authored
         .into_iter()
         .map(Trigger::parse)
         .collect::<Result<Box<[Trigger]>>>()?;

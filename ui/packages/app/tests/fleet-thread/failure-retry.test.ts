@@ -4,7 +4,7 @@ import {createElement} from "react";
 import { ACCEPTED, OPERATION_ID } from "./steer-helpers";
 import { expect, it } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { OUTCOME } from "@/lib/events/event-summary";
+import { OUTCOME } from "@/lib/turns/turn-summary";
 import { MS_PER_SECOND } from "@/lib/utils";
 
 const RETRY = "Try again";
@@ -12,10 +12,10 @@ const REQUEST = "Check the nightly build";
 const ACTOR = `steer:${SUBJECT}`;
 const REPORTED_COST_NANOS = "1000000";
 function failed(actor = ACTOR, requestJson: string | null = JSON.stringify({message: REQUEST}), running = false) {
-  const events = [ev({actor, role: "user", text: REQUEST, status: "fleet_error", outcome: OUTCOME.FAILED,
+  const turns = [ev({actor, role: "user", text: REQUEST, status: "fleet_error", outcome: OUTCOME.FAILED,
     reply: "I started checking.", custom: {requestJson}, tokens: null, costNanos: null, wallMs: null})];
-  if (running) events.push(ev({actor: ACTOR, role: "user", text: "Another request", status: "received", submittedAtMs: Date.now()}));
-  mockStream(events);
+  if (running) turns.push(ev({actor: ACTOR, role: "user", text: "Another request", status: "received", submittedAtMs: Date.now()}));
+  mockStream(turns);
   return renderThread();
 }
 

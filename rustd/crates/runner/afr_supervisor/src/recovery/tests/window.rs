@@ -4,7 +4,7 @@
 use crate::recovery::window::{self, Chunk};
 use crate::test_support;
 use af_crypto::secret::SecretBytes;
-use af_wire::task::{CheckpointEntry, CheckpointFile};
+use af_wire::durable_task::{CheckpointEntry, CheckpointFile};
 use std::{collections::BTreeMap, path::Path, sync::Arc};
 
 /// What the downloader was asked for, and whether it drops the last chunk.

@@ -64,7 +64,7 @@ async fn stalling_daemon() -> crate::test_util::NativeDaemon {
     crate::test_util::NativeDaemon::serve(
         crate::test_support::healthy(),
         serde_json::Value::Null,
-        |frame| async move {
+        async |frame| {
             if frame.get("type").and_then(serde_json::Value::as_str) == Some("hello") {
                 std::future::pending::<()>().await;
             }

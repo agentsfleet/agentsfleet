@@ -117,7 +117,7 @@ export function mockFetchBilling(billing: BillingSnapshot, {missingStatus = 404,
     if (url.endsWith("/v1/tenants/me/billing")) {
       return response(billing);
     }
-    if (url.includes("/approvals") || url.includes("/events")) {
+    if (url.includes("/approvals") || url.includes("/turns")) {
       return response({items: [], next_cursor: null});
     }
     if (url.includes("/memories")) {

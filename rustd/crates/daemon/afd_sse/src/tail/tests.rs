@@ -29,7 +29,7 @@ async fn next(stream: &mut (impl futures_util::Stream<Item = Frame> + Unpin)) ->
 #[tokio::test]
 async fn a_gap_is_catching_up_with_nothing_counted_and_no_sequence_spent() -> TestResult {
     let (bus, server) = test_util::detached()?;
-    let subject = Subject::FleetTail(Uuid7::parse(FLEET)?);
+    let subject = Subject::ThreadItems(Uuid7::parse(FLEET)?);
     let mut frames = Box::pin(tail(bus.subscribe(&subject).await?));
     server.publish(&subject, CHUNK);
     assert_eq!(next(&mut frames).await.seq, 0);
@@ -49,7 +49,7 @@ async fn a_gap_is_catching_up_with_nothing_counted_and_no_sequence_spent() -> Te
 #[tokio::test]
 async fn a_lag_is_catching_up_with_the_count_it_lost() -> TestResult {
     let (bus, server) = test_util::detached()?;
-    let subject = Subject::FleetTail(Uuid7::parse(FLEET)?);
+    let subject = Subject::ThreadItems(Uuid7::parse(FLEET)?);
     let mut frames = Box::pin(tail(bus.subscribe(&subject).await?));
     for _ in 0..(256 + OVERFLOW) {
         server.publish(&subject, CHUNK);
@@ -68,7 +68,7 @@ async fn a_lag_is_catching_up_with_the_count_it_lost() -> TestResult {
 #[tokio::test]
 async fn a_closed_hub_ends_the_tail() -> TestResult {
     let (bus, _server) = test_util::detached()?;
-    let subject = Subject::FleetTail(Uuid7::parse(FLEET)?);
+    let subject = Subject::ThreadItems(Uuid7::parse(FLEET)?);
     let mut frames = Box::pin(tail(bus.subscribe(&subject).await?));
     bus.shutdown().await?;
     assert!(frames.next().await.is_none());
@@ -81,7 +81,7 @@ async fn a_closed_hub_ends_the_tail() -> TestResult {
 async fn a_closed_tail_reason_carries_no_code_prefix() -> TestResult {
     let capture = af_core::test_util::trace::Capture::install();
     let (bus, _server) = test_util::detached()?;
-    let subject = Subject::FleetTail(Uuid7::parse(FLEET)?);
+    let subject = Subject::ThreadItems(Uuid7::parse(FLEET)?);
     let mut frames = Box::pin(tail(bus.subscribe(&subject).await?));
     bus.shutdown().await?;
     assert!(frames.next().await.is_none());

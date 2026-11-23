@@ -1,7 +1,3 @@
-# =============================================================================
-# DEV — local development
-# =============================================================================
-
 # The URL is derived without starting infrastructure or reading credentials.
 LOCAL_DAEMON_URL := $(shell bash scripts/local-dev.sh url)
 
@@ -20,12 +16,8 @@ status:  ## List shared development stacks, registered worktrees and container s
 _ensure-local-daemon:
 	@if [ -n "$${LOCAL_DEV_BINARY:-}" ]; then bash scripts/local-dev.sh ensure; else FOLLOW_LOGS=0 $(MAKE) --no-print-directory up; fi
 
-# One target for both the first fill and the monthly refresh — an empty catalogue
-# emits INSERTs, a populated one emits UPSERTs for drift only, so the refresh path
-# is exercised from day one instead of rotting as a rarely-run branch.
-#
-# Emit-and-review by default: rates are billing data, so nothing reaches the
-# database until the diff has been read and APPLY=1 passed. Reads DATABASE_URL to
-# diff against the live catalogue; unset means fresh-install mode.
+# One target for first fill and refresh, so the refresh path is always exercised.
+# Rates are billing data: it prints a diff until APPLY=1. DATABASE_URL unset
+# means fresh-install mode.
 seed-models:  ## Review or replace model identities and price rows (APPLY=1 to write)
 	@bun scripts/seed-models.mjs $(if $(filter 1,$(APPLY)),--apply,)

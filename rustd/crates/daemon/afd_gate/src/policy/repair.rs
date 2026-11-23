@@ -6,9 +6,9 @@
 //! never whose.
 //!
 //! The identifier is TEXT, and that is not an encoding detail to route around.
-//! `fleet.events` names a delivery by `(fleet_id, event_id)`; its `id UUID` is a
-//! row key Postgres mints for tool calls and leases to point at, never the
-//! event's identifier. Admission mints the key as `<millis>-<sequence>`, because
+//! `thread.turns` names a delivery by `(thread_id, id)`; its `id UUID` is a
+//! row key Postgres mints for tool calls and runs to point at, never the
+//! event's identifier. Turn intake mints the key as `<millis>-<sequence>`, because
 //! every surface that renders, sorts or
 //! pages on event ids was written against it. So there is no `Uuid7` in the
 //! system that identifies a fleet event, and a version of this function that
@@ -50,7 +50,7 @@ pub const PREFIX: &str = "agentsfleet-repair/";
 /// characters sixteen raw bytes produced.
 pub const MIN_REFERENCE_LEN: usize = 2;
 
-/// The branch a lease authorises for `event_id`.
+/// The branch a run authorises for `turn_id`.
 ///
 /// Infallible, and total over any identifier the events table can hold: the
 /// encoding is applied to the bytes it is given rather than to a shape it
@@ -62,8 +62,8 @@ pub const MIN_REFERENCE_LEN: usize = 2;
 /// guessed or empty name here would hand the egress rules a ref the run cannot
 /// push to.
 #[must_use]
-pub fn branch_for(event_id: &str) -> String {
-    format!("{PREFIX}{}", URL_SAFE_NO_PAD.encode(event_id.as_bytes()))
+pub fn branch_for(turn_id: &str) -> String {
+    format!("{PREFIX}{}", URL_SAFE_NO_PAD.encode(turn_id.as_bytes()))
 }
 
 #[cfg(test)]
@@ -74,8 +74,8 @@ mod tests {
     )]
     use super::{MIN_REFERENCE_LEN, PREFIX, branch_for};
 
-    /// An event identifier in the shape admission actually mints: the admission
-    /// instant and the sequence, which is what `fleet.events` stores.
+    /// An event identifier in the shape turn intake actually mints: the intake
+    /// instant and the sequence, which is what the event id carries.
     const LEDGER_EVENT: &str = "1900000000000-1";
 
     #[test]
@@ -107,7 +107,7 @@ mod tests {
     #[test]
     fn one_event_always_names_the_same_branch() {
         // `policy::egress` locks this exact string as the only ref the run may
-        // create, and the lease is assembled once per delivery. A name that
+        // create, and the run is assembled once per delivery. A name that
         // varied between two assemblies of one event would lock a branch the
         // run could not push to.
         assert_eq!(branch_for(LEDGER_EVENT), branch_for(LEDGER_EVENT));
@@ -118,7 +118,7 @@ mod tests {
         // The regression. This took `&Uuid7`, so the call site parsed the event
         // id as one and dropped the branch when that failed — which it always
         // did, because the id is `<millis>-<sequence>` text and never a v7.
-        // `fleet.events` holds other shapes too: an approval's
+        // `thread.turns` holds other shapes too: an approval's
         // continuation, and every event predating the ledger. Each must get its
         // own branch rather than none.
         for id in [

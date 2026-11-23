@@ -8,13 +8,15 @@ use crate::{
 };
 use af_core::{clock, id::Uuid7};
 use af_wire::{
-    lease::{
-        TurnCheckpointAction as Action, TurnCheckpointCommand, TurnCheckpointRef,
-        TurnCheckpointResponse as Response, TurnId, TurnScope, TurnWorkspace,
-    },
-    task::{
+    durable_task::{
         CheckpointEntry, CheckpointFile, CheckpointObject, CheckpointObjectStatus, CheckpointPage,
         CheckpointPin, CheckpointPlaintext, CheckpointTransfer,
+    },
+    run::{
+        CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointAuthorize,
+        TurnCheckpointCommand, TurnCheckpointCommit, TurnCheckpointObjects, TurnCheckpointPageRead,
+        TurnCheckpointPageWrite, TurnCheckpointPinRenew, TurnCheckpointRef,
+        TurnCheckpointResponse as Response, TurnCheckpointUploads, TurnScope, TurnWorkspace,
     },
 };
 use base64::{Engine as _, prelude::BASE64_STANDARD};
@@ -118,10 +120,10 @@ fn page(entries: Vec<CheckpointEntry>) -> CheckpointPage {
 
 fn scope() -> TurnScope {
     TurnScope {
-        workspace_id: TurnId(ID.to_owned()),
-        fleet_id: TurnId(ID.to_owned()),
-        event_id: TurnId(ID.to_owned()),
-        setup_revision_id: TurnId(ID.to_owned()),
+        workspace_id: CheckpointOperationId(ID.to_owned()),
+        fleet_id: CheckpointOperationId(ID.to_owned()),
+        turn_id: CheckpointOperationId(ID.to_owned()),
+        setup_revision_id: CheckpointOperationId(ID.to_owned()),
         workspace: TurnWorkspace::Files {
             toolbox_digest: "a".repeat(64),
         },
@@ -140,13 +142,13 @@ async fn restore(
     let stop = cancel_after_read.clone().unwrap_or_default();
     let (plane, _calls) = fixture_plane(page, objects, cancel_after_read);
 
-    let lease = Uuid7::parse(ID)?;
+    let run = Uuid7::parse(ID)?;
     let default_transfers = Transfers::new()?;
-    let native = NativeTurn::new(&plane, &lease, 1, &default_transfers);
+    let native = NativeTurn::new(&plane, &run, 1, &default_transfers);
     let scope = scope();
     let reference = TurnCheckpointRef {
-        checkpoint_id: TurnId(ID.to_owned()),
-        pin_id: TurnId(PAGE.to_owned()),
+        checkpoint_id: CheckpointOperationId(ID.to_owned()),
+        pin_id: CheckpointOperationId(PAGE.to_owned()),
     };
     let mut session = TurnSession::new(&native, &scope, reference, pin(), &stop)?;
     if let Some(transfers) = transfers {
@@ -154,7 +156,7 @@ async fn restore(
     }
     session
         .restore_files(
-            &[TurnId(PAGE.to_owned())],
+            &[CheckpointOperationId(PAGE.to_owned())],
             &manifest,
             (
                 root.to_owned(),
@@ -182,13 +184,13 @@ fn fixture_plane(
             let request: TurnCheckpointCommand =
                 serde_json::from_slice(body).map_err(error::malformed(call.verb))?;
             match request.action {
-                Action::PageRead { .. } => {
+                Action::PageRead(_) => {
                     if let Some(stop) = &cancel_after_read {
                         stop.cancel();
                     }
                     Ok(Response::PageRead(page.clone()))
                 }
-                Action::Authorize { .. } => Ok(Response::Authorized(objects.clone())),
+                Action::Authorize(_) => Ok(Response::Authorized(objects.clone())),
                 _ => Err(error::config("unexpected ordinary file request")),
             }
         })();

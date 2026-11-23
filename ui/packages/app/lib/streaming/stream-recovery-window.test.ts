@@ -88,7 +88,7 @@ it("should time out a connection attempt that never opens or errors", () => {
   const window = new StreamRecoveryWindow();
   const timeout = vi.fn();
   window.connecting(timeout);
-  vi.advanceTimersByTime(STABLE_MS - 1);
+  vi.advanceTimersByTime(SILENCE_MS - 1);
   expect(timeout).not.toHaveBeenCalled();
   vi.advanceTimersByTime(1);
   expect(timeout).toHaveBeenCalledTimes(1);
@@ -100,10 +100,12 @@ it.each(["opened", "dispose", "reportLoss"] as const)("should cancel an attempt 
   const window = new StreamRecoveryWindow();
   const timeout = vi.fn();
   window.connecting(timeout);
-  window[action](vi.fn());
-  vi.advanceTimersByTime(STABLE_MS);
+  const next = vi.fn();
+  window[action](next);
+  vi.advanceTimersByTime(SILENCE_MS);
   expect(timeout).not.toHaveBeenCalled();
-  expect(vi.getTimerCount()).toBe(action === "opened" ? 1 : 0);
+  // An open arms its own silence window; an unstable loss reports at once.
+  expect(next).toHaveBeenCalledTimes(action === "dispose" ? 0 : 1);
 });
 
 it("should replace an attempt timeout without retaining its callback", () => {
@@ -113,7 +115,7 @@ it("should replace an attempt timeout without retaining its callback", () => {
   window.connecting(abandoned);
   window.connecting(current);
   expect(vi.getTimerCount()).toBe(1);
-  vi.advanceTimersByTime(STABLE_MS);
+  vi.advanceTimersByTime(SILENCE_MS);
   expect(abandoned).not.toHaveBeenCalled();
   expect(current).toHaveBeenCalledTimes(1);
 });

@@ -12,13 +12,11 @@ import { DraftCache } from "@/lib/api/draft-cache";
 import { chatRecovery } from "@/lib/api/draft-recovery";
 import { SOURCE_KIND } from "@/lib/api/draft-vocabulary";
 import { appliedNotice, isRunning } from "@/lib/api/draft-types";
-import { PUBLISHED_NOTICE } from "@/lib/api/draft-publication";
 import { useCurrentUser } from "@/lib/auth/client";
 import { useDraftSidebarBridge } from "@/components/layout/use-draft-sidebar-bridge";
 import { DraftChatHeading } from "./DraftChatHeading";
-import { AuthoringIntentContext, type AuthoringIntent } from "../AuthoringIntent";
 
-type Props = AuthoringIntent & {account: string; workspace: string; draft?: string; source?: Source; fleetPage?: boolean; menuItems?: ReactNode};
+type Props = {account: string; workspace: string; draft?: string; source?: Source; fleetPage?: boolean; menuItems?: ReactNode};
 type OwnedSession = {readonly kind: "starting"} | {readonly kind: "loading" | "ready"; readonly client: DraftClient; readonly reload: () => Promise<void>};
 const ignore = (): void => undefined;
 const LOADING_ROLE = "status";
@@ -35,16 +33,14 @@ export function WorkspaceChat(props: Props) {
   if (!isLoaded) return <Skeleton className="h-80 w-full" role={LOADING_ROLE} aria-label="Loading your setup chat" />;
   if (!isSignedIn || !userId) return <Alert variant="warning">Sign in again to open fleet setup chat.</Alert>;
   const identity = {account: props.account, workspace: props.workspace, subject: userId};
-  return <AuthoringIntentContext value={{prompt: props.prompt, publicationTarget: props.publicationTarget}}>
-    <ChatSession key={JSON.stringify(identity)} {...props} identity={identity} />
-  </AuthoringIntentContext>;
+  return <ChatSession key={JSON.stringify(identity)} {...props} identity={identity} />;
 }
 
 function ChatSession(props: Props & {identity: DraftIdentity}) {
   const [cache] = useState(() => new DraftCache());
   useEffect(() => () => cache.clear(), [cache]);
   const sourceKey = props.source?.kind === SOURCE_KIND.fleet ? {kind: props.source.kind, fleet_id: props.source.fleet_id} : props.source;
-  return <OwnedChat key={JSON.stringify([props.draft, sourceKey, props.prompt, props.publicationTarget])} {...props} cache={cache} />;
+  return <OwnedChat key={JSON.stringify([props.draft, sourceKey])} {...props} cache={cache} />;
 }
 
 function OwnedChat({identity, draft, source, fleetPage, menuItems, cache}: Props & {identity: DraftIdentity; cache: DraftCache}) {
@@ -100,12 +96,12 @@ function ChatSurface({client, source, draftId, initialSourceRevision, workspace,
     else if (source?.kind === SOURCE_KIND.fleet) await client.refreshFleetSetup(false, true);
     else await reload();
   };
-  return <div className="ph-no-capture ph-no-record flex min-h-0 flex-1 flex-col" data-fleet-authoring>
+  return <div className="ph-no-capture ph-no-record flex min-h-0 flex-1 flex-col" data-fleet-setup>
     {unavailable && !opening && view.error ? <div role="alert" aria-label="Chat recovery" className="flex flex-wrap items-center gap-md px-xl py-md text-label">
       <p className="text-destructive">{view.error}</p>
       <Button size="compact" variant="link" disabled={view.busy} onClick={() => {void retry().catch(ignore);}}>{view.inaccessible ? "Reload" : "Retry"}</Button>
     </div> : null}
-    {view.notice && view.notice !== appliedNotice([]) && view.notice !== PUBLISHED_NOTICE ? <Alert>{view.notice}</Alert> : null}
+    {view.notice && view.notice !== appliedNotice([]) ? <Alert>{view.notice}</Alert> : null}
     {opening ? <Skeleton className="min-h-0 w-full flex-1" role={LOADING_ROLE} aria-label={LOADING_SETUP_CHAT} /> : unavailable ? null : <>
     <DraftChatHeading client={client} view={view} workspace={workspace} fleetPage={fleetPage} returnToFleet={source?.kind === SOURCE_KIND.fleet ? source.fleet_id : undefined} menuItems={menuItems} />
     <DraftConversation client={client} view={view} workspace={workspace} subject={subject} modelsHref={`/w/${workspace}/settings/models`} onOpenFleet={fleetPage ? openFleet : undefined} onRequestRetry={retry} unfinished={<UnfinishedSetups workspace={workspace} onReload={() => client.initialize()} />}>

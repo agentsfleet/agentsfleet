@@ -100,7 +100,11 @@ fn goal_wording_changes_do_not_authorize_execution_policy_changes() {
         json!("The requested regression has current passing evidence."),
     );
     let changed = parse(&wording);
-    assert!(original.runtime().same_task_authority(changed.runtime()));
+    assert!(
+        original
+            .runtime()
+            .same_durable_task_authority(changed.runtime())
+    );
     for (path, replacement) in [
         ("/config/x-agentsfleet/repository_base", json!("release")),
         ("/config/x-agentsfleet/repositories", json!(["acme/other"])),
@@ -119,7 +123,7 @@ fn goal_wording_changes_do_not_authorize_execution_policy_changes() {
         assert!(
             !original
                 .runtime()
-                .same_task_authority(parse(&widened).runtime()),
+                .same_durable_task_authority(parse(&widened).runtime()),
             "accepted authority change at {path}"
         );
     }

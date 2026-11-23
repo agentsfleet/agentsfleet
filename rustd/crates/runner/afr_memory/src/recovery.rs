@@ -1,23 +1,21 @@
 //! The bounded local overlay; shared reads and permissions always come from a new seed.
 
-use af_wire::memory::{MAX_ENTRIES_PER_FLEET, MAX_KEY_LEN, MAX_PUSH_BYTES, MemoryDelta};
+use af_wire::memory::{INDEXED_TEXT_MAX_BYTES, MemoryDelta};
 use garde::Validate;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::RECALL_MISS_CAP;
 use crate::error::Result;
-
-/// Maximum keys hidden by a running turn, including keys outside hydration.
-const MAX_HIDDEN_KEYS: usize = 4 * MAX_ENTRIES_PER_FLEET;
+use crate::loaded::{PUSH_BUDGET_BYTES, push_bytes};
 
 /// Private memory changes captured with the root conversation.
 #[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct MemoryRecovery {
     #[serde(deserialize_with = "owned_entries")]
-    #[garde(length(max = MAX_ENTRIES_PER_FLEET), dive, custom(push_budget))]
+    #[garde(dive, custom(push_budget))]
     pub(crate) pending: Vec<MemoryDelta<'static>>,
-    #[garde(length(max = MAX_HIDDEN_KEYS), inner(length(bytes, min = 1, max = MAX_KEY_LEN), pattern(r"^[^\x00]+$")))]
+    #[garde(inner(length(bytes, min = 1, max = INDEXED_TEXT_MAX_BYTES), pattern(r"^[^\x00]+$")))]
     pub(crate) superseded: Vec<String>,
     #[garde(range(max = RECALL_MISS_CAP))]
     pub(crate) misses: usize,
@@ -57,7 +55,12 @@ fn owned_entries<'de, D: Deserializer<'de>>(
 }
 
 fn push_budget<C: ?Sized>(entries: &[MemoryDelta<'_>], _context: &C) -> garde::Result {
-    if entries.iter().map(MemoryDelta::bytes).sum::<usize>() > MAX_PUSH_BYTES {
+    if entries
+        .iter()
+        .map(push_bytes)
+        .fold(0_usize, usize::saturating_add)
+        > PUSH_BUDGET_BYTES
+    {
         return Err(garde::Error::new("the memory overlay exceeds one push"));
     }
     Ok(())

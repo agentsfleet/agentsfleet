@@ -9,7 +9,7 @@ const STAGES = [
   { target: "model.platform_model_prices", operation: "insert" },
   { target: "model.platform_model_prices", operation: "delete" },
   { target: "model.platform_models", operation: "delete" },
-  { target: "model.catalogue_version", operation: "update" },
+  { target: "model.revision", operation: "update" },
   { target: "model.platform_model_prices", operation: "commit" },
 ] as const;
 const CHANGE_AT = "2026-12-01T00:00:00Z";

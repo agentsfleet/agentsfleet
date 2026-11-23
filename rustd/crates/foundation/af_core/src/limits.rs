@@ -19,13 +19,14 @@ pub const MIN_WORKERS: u32 = 1;
 /// Most workers an assignment may carry, bounding concurrent children per host.
 pub const MAX_WORKERS: u32 = 64;
 
-/// Most leases one event is issued before the daemon ends it as failed.
+/// Most runs one turn is issued before the daemon ends it as failed, when the
+/// deployment's `[turns] max_runs_per_turn` names no other number.
 ///
-/// A lease that lapses is reclaimed and its event runs again from the start.
-/// An event that outlived this many holders will not finish on another one,
+/// A run that lapses is reassigned and its turn runs again from the start.
+/// A turn that outlived this many holders will not finish on another one,
 /// and while it heads its fleet's queue nothing behind it runs. A durable
-/// task's event is bounded by the task's own lease allowance instead.
-pub const EVENT_LEASES_MAX: u32 = 3;
+/// task's turn is bounded by the task's own run allowance instead.
+pub const DEFAULT_MAX_RUNS_PER_TURN: u32 = 3;
 
 /// How many workers a runner is assigned, guaranteed within `MIN..=MAX`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]

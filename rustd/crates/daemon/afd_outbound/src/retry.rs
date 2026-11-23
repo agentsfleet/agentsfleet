@@ -15,17 +15,17 @@
 //! Under a flat `200ms << attempt`, every worker that saw the same vendor
 //! outage retries in the same millisecond, and the recovering vendor is hit by
 //! the whole deployment at once — the retry storm that keeps it down. `backon`
-//! adds a random offset inside each delay, which is what Dimension 5.1's
+//! adds a random offset inside each delay, which is what the retry tests'
 //! "jittered" means.
 //!
 //! # The budget is small on purpose
 //!
-//! Three attempts, two sleeps, under a second of waiting. A longer budget does
-//! not buy reliability here, because the claim already provides it: a row this
-//! worker stops renewing lapses, and the next claim pass retakes it. What
-//! the inline retry covers is the narrow case that budget suits — a 429, a
-//! brief 5xx — and holding the worker on one job for a minute would stall every
-//! answer behind it, because delivery is serial.
+//! Three attempts, two sleeps, under a second of waiting. These attempts are
+//! the only retries an answer gets: once they all end retryably the delivery
+//! is marked failed and nothing reschedules it (Indy, Nov 21, 2026). They
+//! cover the narrow case that budget suits — a 429, a brief 5xx — and holding
+//! the worker on one job for a minute would stall every answer behind it,
+//! because delivery is serial.
 
 use std::time::Duration;
 
@@ -33,7 +33,7 @@ use backon::ExponentialBuilder;
 use garde::Validate;
 use serde::Deserialize;
 
-/// Inline delivery attempts; a durable obligation remains claimable after exhaustion.
+/// Inline delivery attempts; a delivery that exhausts them is marked failed.
 #[derive(Debug, Clone, Copy, Deserialize, Validate)]
 #[serde(default, deny_unknown_fields)]
 pub struct RetrySettings {
@@ -58,7 +58,7 @@ impl Default for RetrySettings {
     }
 }
 
-/// Checked inline retry policy, independent of the durable claim scan cadence.
+/// Checked inline retry policy.
 #[derive(Debug, Clone, Copy)]
 pub struct RetryPolicy {
     attempts: usize,
@@ -109,15 +109,3 @@ const FIRST_DELAY: Duration = Duration::from_millis(200);
 /// Two sleeps come to 600ms before jitter and under a second with it. Delivery
 /// is serial, so this wait is paid by every answer queued behind this one.
 const MAX_DELAY: Duration = Duration::from_millis(800);
-
-/// The schedule one delivery's attempts are spread over.
-///
-/// `max_times` is the number of RETRIES, so it is one fewer than the attempts:
-/// the first try is not a retry. Deriving it from [`DELIVERY_ATTEMPTS`] rather
-/// than writing `2` is what keeps the two from drifting — a count written down
-/// separately from the attempts can leave the last delay unreachable while a
-/// comment beside it promises one more try.
-#[must_use]
-pub const fn delivery_schedule() -> ExponentialBuilder {
-    RetryPolicy::DEFAULT.schedule()
-}

@@ -6,20 +6,20 @@ import type { SetupNetworkChange } from "@/lib/setup-requirements";
 import { useId, useState } from "react";
 import Link from "next/link";
 import { Button, Section, SectionLabel, Time, cn, sameCalendarDay } from "@agentsfleet/design-system";
-import { GitBranchIcon, KeyIcon, PuzzlePieceIcon } from "@phosphor-icons/react/ssr";
+import { GitBranchIcon, KeyIcon } from "@phosphor-icons/react/ssr";
 import { hasProposedWakeup, setupRequirements } from "@/lib/setup-requirements";
 import { SetupNetworkPolicy } from "./SetupNetworkPolicy";
 import { formatDollars } from "@/lib/money";
 import { nextFleetWakeup } from "@/lib/api/schedule-status";
 
-type Props = {definition?: Definition; requirements?: Review["requirements"]; modelLabel?: string; sourceLabel?: string; schedules?: readonly Schedule[];
+type Props = {definition?: Definition; requirements?: Review["requirements"]; modelLabel?: string; schedules?: readonly Schedule[];
   ready?: boolean; scheduleRecovery?: ReactNode; disabled?: boolean; secretEditor?: ReactNode; editHref?: string;
   onNetworkChange?: (change: SetupNetworkChange) => void; onManage?: (kind: "repositories" | "credentials", trigger: HTMLButtonElement) => void};
 
 const SHELL_TOOLS = new Set(["shell", "exec_command", "write_stdin"]);
 const FILE_TOOLS = new Set(["apply_patch", "file_read", "file_read_hashed", "file_write", "file_edit", "file_edit_hashed", "file_append", "file_delete"]);
 
-export function SetupSummary({definition, requirements, modelLabel, sourceLabel, schedules = [], ready, scheduleRecovery, disabled, secretEditor, editHref, onNetworkChange, onManage}: Props) {
+export function SetupSummary({definition, requirements, modelLabel, schedules = [], ready, scheduleRecovery, disabled, secretEditor, editHref, onNetworkChange, onManage}: Props) {
   const id = useId();
   const [today] = useState(() => new Date());
   if (!definition && !requirements && !ready) return <p className="text-label leading-label text-muted-foreground">Your setup will appear here as you chat.</p>;
@@ -33,7 +33,6 @@ export function SetupSummary({definition, requirements, modelLabel, sourceLabel,
       <Meta label="Spending limit" emphasize>{setup ? <>{formatDollars(setup.budget.daily_nanos, 9)} / day{setup.budget.monthly_nanos ? <span className="block">{formatDollars(setup.budget.monthly_nanos, 9)} / month</span> : null}</> : "Not reviewed"}</Meta>
       <Meta label="Next wake-up" emphasize>{nextWakeup ? <Time value={nextWakeup} format={sameCalendarDay(nextWakeup, today) ? "minute" : "compact"} /> : wakeupStatus(schedules, definition, Boolean(setup))}</Meta>
     </dl>
-    {sourceLabel ? <p className="mt-lg flex items-center gap-sm text-eyebrow leading-eyebrow text-text-dim"><PuzzlePieceIcon size={14} className="shrink-0" aria-hidden="true" />From {sourceLabel}</p> : null}
     {scheduleRecovery ? <div className="mt-lg">{scheduleRecovery}</div> : null}
     <SummarySection title="Repositories" className="mt-lg" action={<Manage kind="repositories" href={editHref} disabled={disabled} onClick={onManage && (trigger => onManage("repositories", trigger))} />}>
       <SummaryResources items={setup?.repositories} kind="repositories" />

@@ -10,6 +10,7 @@ import {
   MISSED_AT_MS,
   OUTAGE_NEWEST_MS,
   pageWith,
+  queryOf,
   reconnect,
   SEED_AT_MS,
   setupBackfillTests,
@@ -45,13 +46,13 @@ describe("the recovery walk hands its rows over once", () => {
   it("test_backfill_walk_notifies_once: a three-page walk merges every page and notifies its thread once", async () => {
     threePages();
     const listener = vi.fn();
-    const release = subscribe(WS, Z_A, [row({ event_id: SEED, created_at: new Date(SEED_AT_MS).toISOString() })], listener);
+    const release = subscribe(WS, Z_A, [row({ turn_id: SEED, created_at: new Date(SEED_AT_MS).toISOString() })], listener);
     reconnect();
     const heardBefore = listener.mock.calls.length;
     await flushBackfill();
     expect(fetchSpy).toHaveBeenCalledTimes(3);
     expect(listener.mock.calls.length - heardBefore).toBe(1);
-    expect(getSnapshot(Z_A).events.map((event) => event.id)).toEqual([SEED, OLDEST, MIDDLE, NEWEST]);
+    expect(getSnapshot(Z_A).turns.map((turn) => turn.id)).toEqual([SEED, OLDEST, MIDDLE, NEWEST]);
     release();
   });
 
@@ -60,7 +61,7 @@ describe("the recovery walk hands its rows over once", () => {
     const { onPage, outcome } = walk();
     await expect(outcome).resolves.toEqual({ ok: true, watermark: OUTAGE_NEWEST_MS });
     expect(onPage).toHaveBeenCalledTimes(1);
-    expect(onPage.mock.calls[0]?.[0].map((r: { event_id: string }) => r.event_id)).toEqual([NEWEST, MIDDLE, OLDEST]);
+    expect(onPage.mock.calls[0]?.[0].map((r: { turn_id: string }) => r.turn_id)).toEqual([NEWEST, MIDDLE, OLDEST]);
   });
 
   it("still lands the rows before a page that failed, and leaves the window unrecovered", async () => {
@@ -97,5 +98,15 @@ describe("the recovery walk hands its rows over once", () => {
     const { onPage, outcome } = walk();
     await expect(outcome).resolves.toEqual({ ok: true, watermark: SEED_AT_MS });
     expect(onPage).not.toHaveBeenCalled();
+  });
+});
+
+describe("the recovery walk's page size", () => {
+  it("names no limit on any page, so the server's ceiling decides", async () => {
+    threePages();
+    const { outcome } = walk();
+    await expect(outcome).resolves.toEqual({ ok: true, watermark: OUTAGE_NEWEST_MS });
+    expect([0, 1, 2].map((call) => queryOf(call).has("limit"))).toEqual([false, false, false]);
+    expect([0, 1, 2].map((call) => queryOf(call).get("cursor"))).toEqual([null, PAGE_TWO, PAGE_THREE]);
   });
 });

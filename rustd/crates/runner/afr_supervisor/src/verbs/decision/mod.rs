@@ -7,8 +7,8 @@ use super::FencedVerbs;
 use crate::{Result, error};
 use af_core::id::Uuid7;
 use af_crypto::secret::SecretString;
-use af_providers::decision::{DecisionClient, DecisionEvaluator as _};
-use af_wire::task::{
+use af_providers::decision::{DecisionClient, DecisionEvaluator as _, DecisionTimeouts};
+use af_wire::durable_task::{
     DecisionCallState, DecisionDispatch, DecisionNotSentCause, DecisionReceipt, DecisionRecorded,
     DecisionReservationInput, DecisionReservationResult, DecisionRetryDelay,
     DecisionUnavailableCause,
@@ -26,7 +26,7 @@ impl FencedVerbs<'_> {
         for attempt in 0..2 {
             let body = self
                 .plane
-                .task_decision_reserve(self.lease_id, &input)
+                .durable_task_decision_reserve(self.run_id, &input)
                 .await?;
             let (evaluated, retry) = match body.decode::<DecisionReservationResult<'_>>()? {
                 DecisionReservationResult::Existing {
@@ -70,14 +70,14 @@ impl FencedVerbs<'_> {
         Err(error::config("decision retry bound exceeded"))
     }
 
-    async fn task_activity(&self, frame: af_wire::activity::ActivityFrame<'static>) {
+    async fn durable_task_activity(&self, frame: af_wire::activity::ActivityFrame<'static>) {
         let request = af_wire::activity::ActivityRequest {
             frames: vec![frame],
         };
         // Progress cannot lengthen the decision's physical/logical deadline.
         let _sent = tokio::time::timeout(
             std::time::Duration::from_millis(500),
-            self.plane.activity(self.lease_id, &request),
+            self.plane.activity(self.run_id, &request),
         )
         .await;
     }
@@ -100,13 +100,13 @@ impl FencedVerbs<'_> {
         // the reservation returns Existing, never permission for another physical call.
         let request = dispatch.request.clone();
         let mut progress = progress_of(&call_id, &dispatch);
-        self.task_activity(af_wire::activity::ActivityFrame::TaskDecisionStarted(
-            progress.clone(),
-        ))
+        self.durable_task_activity(
+            af_wire::activity::ActivityFrame::DurableTaskDecisionStarted(progress.clone()),
+        )
         .await;
         let expires_at = dispatch.expires_at;
         let attempt = dispatch.attempt;
-        let receipt = physical(dispatch, self.stop).await;
+        let receipt = physical(dispatch, self.plane.tuning.decision, self.stop).await;
         let retry = retry_delay(&receipt)
             .filter(|_| attempt == 0)
             .map(|delay| (delay, expires_at));
@@ -114,7 +114,7 @@ impl FencedVerbs<'_> {
             DecisionReceipt::Provider { result } => Some(result.clone()),
             DecisionReceipt::Unknown { .. } | DecisionReceipt::NotSent { .. } => None,
         };
-        let input = garde::Unvalidated::new(af_wire::task::DecisionReceiptInput {
+        let input = garde::Unvalidated::new(af_wire::durable_task::DecisionReceiptInput {
             fencing_token: self.fencing_token,
             receipt,
         })
@@ -123,16 +123,16 @@ impl FencedVerbs<'_> {
         let input = self.decisions.retain(call.clone(), input)?;
         let result = self
             .decisions
-            .record(self.plane, self.halt, self.lease_id, &call, &input)
+            .record(self.plane, self.halt, self.run_id, &call, &input)
             .await?;
         progress.phase = if result.state == DecisionCallState::Known {
-            af_wire::activity::TaskActivityPhase::Recorded
+            af_wire::activity::DurableTaskActivityPhase::Recorded
         } else {
-            af_wire::activity::TaskActivityPhase::Unavailable
+            af_wire::activity::DurableTaskActivityPhase::Unavailable
         };
-        self.task_activity(af_wire::activity::ActivityFrame::TaskDecisionCompleted(
-            progress,
-        ))
+        self.durable_task_activity(
+            af_wire::activity::ActivityFrame::DurableTaskDecisionCompleted(progress),
+        )
         .await;
         let retry = retry.filter(|_| result.state == DecisionCallState::Unknown);
         Ok((
@@ -154,27 +154,30 @@ impl FencedVerbs<'_> {
     }
 }
 
-fn progress_of(call_id: &str, dispatch: &DecisionDispatch<'_>) -> af_wire::activity::TaskActivity {
+fn progress_of(
+    call_id: &str,
+    dispatch: &DecisionDispatch<'_>,
+) -> af_wire::activity::DurableTaskActivity {
     let request = &dispatch.request;
-    af_wire::activity::TaskActivity {
+    af_wire::activity::DurableTaskActivity {
         activity_id: call_id.to_owned(),
-        task_id: request
+        durable_task_id: request
             .state
-            .get("task")
-            .and_then(|task| task.get("task_id"))
+            .get("durable_task")
+            .and_then(|task| task.get("durable_task_id"))
             .and_then(serde_json::Value::as_str)
             .map(str::to_owned),
-        source_admission_id: request
+        source_turn_id: request
             .state
-            .get("source_admission_id")
+            .get("source_turn_id")
             .and_then(serde_json::Value::as_str)
             .map(str::to_owned),
         operation: if request.purpose == af_wire::decision::DecisionPurpose::Goal {
-            af_wire::activity::TaskActivityOperation::Goal
+            af_wire::activity::DurableTaskActivityOperation::Goal
         } else {
-            af_wire::activity::TaskActivityOperation::Intent
+            af_wire::activity::DurableTaskActivityOperation::Intent
         },
-        phase: af_wire::activity::TaskActivityPhase::Starting,
+        phase: af_wire::activity::DurableTaskActivityPhase::Starting,
         provider: Some(
             match dispatch.assignment.profile.api {
                 af_wire::decision::DecisionApi::Typesafe => "typesafe",
@@ -194,6 +197,7 @@ fn progress_of(call_id: &str, dispatch: &DecisionDispatch<'_>) -> af_wire::activ
 
 async fn physical(
     dispatch: DecisionDispatch<'_>,
+    timeouts: DecisionTimeouts,
     stop: &tokio_util::sync::CancellationToken,
 ) -> DecisionReceipt {
     let credential = SecretString::new(dispatch.api_key.into_owned());
@@ -213,7 +217,7 @@ async fn physical(
             cause: DecisionNotSentCause::Preflight,
         };
     };
-    let Ok(client) = DecisionClient::new(profile, credential) else {
+    let Ok(client) = DecisionClient::new(profile, credential, timeouts) else {
         return DecisionReceipt::NotSent {
             cause: DecisionNotSentCause::Build,
         };
@@ -247,15 +251,15 @@ fn unavailable(failure: &af_providers::Error) -> DecisionUnavailableCause {
     failure
         .decision_status()
         .map_or(DecisionUnavailableCause::Transport, |status| {
-            let retry_delay = match failure.decision_retry_after() {
-                None => DecisionRetryDelay::Unspecified,
-                Some(delay) if delay <= std::time::Duration::from_secs(2) => {
-                    DecisionRetryDelay::WithinBudget {
-                        milliseconds: u16::try_from(delay.as_millis()).unwrap_or(2000),
-                    }
-                }
-                Some(_) => DecisionRetryDelay::TooLong,
-            };
+            let retry_delay =
+                failure
+                    .decision_retry_after()
+                    .map_or(DecisionRetryDelay::Unspecified, |delay| {
+                        u32::try_from(delay.as_millis())
+                            .map_or(DecisionRetryDelay::TooLong, |milliseconds| {
+                                DecisionRetryDelay::WithinBudget { milliseconds }
+                            })
+                    });
             DecisionUnavailableCause::ProviderStatus {
                 status,
                 retry_delay,

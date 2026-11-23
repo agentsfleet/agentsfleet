@@ -2,7 +2,7 @@ export function truncate(str: string, max: number): string {
   return str.length > max ? `${str.slice(0, max)}…` : str;
 }
 
-// One spelling of the ms→display rule for durations (event wall time, tool
+// One spelling of the ms→display rule for durations (turn wall time, tool
 // calls, the chat's clocks). Two surfaces grew identical private
 // copies in one branch — this is the single home so the next tweak cannot
 // drift them apart, and the platform's unit formatter does the spelling.

@@ -1,6 +1,6 @@
 //! What the money pass decides, over the rows it actually reads.
 //!
-//! `admit/fault.rs` proves each gate's POSTURE — what a fault at it means — and
+//! `start_check/fault.rs` proves each gate's POSTURE — what a fault at it means — and
 //! `verdict_matrix.rs` proves the gate verdicts. Neither runs the pass, so the
 //! order the pass runs in read no covered lines: the payer lookup that ends an
 //! event, the ceiling that refuses one, and the receipt that is not charged
@@ -22,14 +22,11 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use std::sync::Arc;
-
 use af_core::id::Uuid7;
-use af_crypto::entropy::Entropy;
 use af_fleet_runtime::config::FleetConfig;
 use afd_billing::ledger::LedgerBiller;
 use afd_billing::{Accounts, Posture};
-use afd_fleet::lease::admit::{Admission, Request, money_gates};
+use afd_fleet::run::start_check::{Request, StartCheck, money_gates};
 
 use afd_db::test_util::mint_id;
 
@@ -41,7 +38,7 @@ const PROVIDER: &str = "anthropic";
 
 /// A model no catalogue row prices.
 ///
-/// Deliberate: an unpriceable model estimates zero, which ADMITS at the balance
+/// Deliberate: an unpriceable model estimates zero, which PASSES the balance
 /// gate and lets each test below reach the gate it is actually about. The
 /// balance gate's own refusal has its own coverage elsewhere.
 const MODEL: &str = "fixture-model-no-rate";
@@ -50,7 +47,7 @@ const MODEL: &str = "fixture-model-no-rate";
 ///
 /// Authored as a document rather than constructed: `Budget` is built by the
 /// same parser that accepted the fleet's config at ingest, and there is no
-/// other way to make one — which is the point, since a ceiling that admits a
+/// other way to make one — which is the point, since a ceiling that starts a
 /// run and a ceiling that stops one must never be read two ways.
 const TINY_DAILY_NANOS: &str = "1000";
 
@@ -91,7 +88,7 @@ pub(crate) const fn request<'a>(
     Request {
         workspace_id: workspace,
         fleet_id: fleet,
-        event_id: event,
+        turn_id: event,
         budget: config.budget(),
         posture: Posture::Platform,
         provider: PROVIDER,
@@ -101,11 +98,7 @@ pub(crate) const fn request<'a>(
 
 /// The built-in biller over the fixture database.
 pub(crate) fn biller(fixtures: &Fixtures) -> LedgerBiller {
-    LedgerBiller::new(
-        fixtures.database.clone(),
-        Entropy::new(),
-        Arc::new(af_core::clock::SystemClock),
-    )
+    LedgerBiller::new(fixtures.database.clone())
 }
 
 /// A workspace that resolves to no tenant ends the event, and is not charged.
@@ -135,10 +128,10 @@ async fn a_workspace_naming_no_tenant_ends_the_event() {
     .await
     .expect("a missing payer is a decision, not a fault the caller sees");
 
-    let Admission::Refuse(refusal) = decided else {
+    let StartCheck::Refuse(refusal) = decided else {
         panic!("an unowned workspace must be refused, got {decided:?}");
     };
-    assert_eq!(refusal.label, af_core::event::label::TENANT_RESOLVE_FAILED);
+    assert_eq!(refusal.label, af_core::turn::label::TENANT_RESOLVE_FAILED);
 
     fixtures.cleanup().await;
 }
@@ -148,7 +141,7 @@ async fn a_workspace_naming_no_tenant_ends_the_event() {
 /// The ceiling is the fleet author's own, read live from its head revision's `config`. What
 /// this proves that `budget::covers` alone cannot is that the pass READS the
 /// spend for the right fleet and window and acts on it — a query filtered
-/// wrongly would answer zero and admit every run past every ceiling.
+/// wrongly would answer zero and start every run past every ceiling.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_fleet_past_its_daily_ceiling_is_refused() {
@@ -173,22 +166,22 @@ async fn a_fleet_past_its_daily_ceiling_is_refused() {
     .await
     .expect("a breached ceiling is a decision, not a fault");
 
-    let Admission::Refuse(refusal) = decided else {
+    let StartCheck::Refuse(refusal) = decided else {
         panic!("a fleet past its ceiling must be refused, got {decided:?}");
     };
-    assert_eq!(refusal.label, af_core::event::label::BUDGET_BREACH);
+    assert_eq!(refusal.label, af_core::turn::label::BUDGET_BREACH);
 
     fixtures.cleanup().await;
 }
 
-/// The same fleet under a ceiling it has not reached is admitted and billed.
+/// The same fleet under a ceiling it has not reached is started and billed.
 ///
 /// The other side of the assertion above, and the reason it is not enough to
 /// test the refusal alone: a pass that refused everything would satisfy the
 /// budget test and stop the platform.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn a_fleet_inside_its_ceiling_is_admitted_and_billed() {
+async fn a_fleet_inside_its_ceiling_is_started_and_billed() {
     let fixtures = Fixtures::create().await;
     let accounts = Accounts::new(fixtures.database.clone());
     let biller = biller(&fixtures);
@@ -208,25 +201,25 @@ async fn a_fleet_inside_its_ceiling_is_admitted_and_billed() {
         fixtures.enrolled_at(),
     )
     .await
-    .expect("an admitted run is not a fault");
+    .expect("a started run is not a fault");
 
-    let Admission::Admit(admitted) = decided else {
-        panic!("a fleet inside its ceiling must be admitted, got {decided:?}");
+    let StartCheck::Start(started) = decided else {
+        panic!("a fleet inside its ceiling must be started, got {decided:?}");
     };
     assert_eq!(
-        admitted.tenant_id, tenant,
+        started.tenant_id, tenant,
         "the run is billed to the tenant the workspace resolves to"
     );
-    assert_eq!(&*admitted.model, MODEL, "and against the model it will run");
+    assert_eq!(&*started.model, MODEL, "and against the model it will run");
 
     fixtures.cleanup().await;
 }
 
-/// Admission moves no money: the gates read, and the lease's usage is the
-/// relay's to charge once the lease runs.
+/// The start check moves no money: the gates read, and the run's usage is charged
+/// as its lines are logged once the run runs.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn an_admitted_run_is_charged_nothing_at_admission() {
+async fn a_started_run_is_charged_nothing_at_the_start_check() {
     let fixtures = Fixtures::create().await;
     let accounts = Accounts::new(fixtures.database.clone());
     let biller = biller(&fixtures);
@@ -245,22 +238,22 @@ async fn an_admitted_run_is_charged_nothing_at_admission() {
         fixtures.enrolled_at(),
     )
     .await
-    .expect("an admitted run is not a fault");
+    .expect("a started run is not a fault");
 
     assert!(
-        matches!(decided, Admission::Admit(_)),
-        "an inside-budget run is admitted: {decided:?}"
+        matches!(decided, StartCheck::Start(_)),
+        "an inside-budget run is started: {decided:?}"
     );
     assert_eq!(
         usage_lines(&fixtures, &fleet).await,
         0,
-        "admission writes no usage line; a run is charged for what it uses"
+        "the start check writes no usage line; a run is charged for what it uses"
     );
 
     fixtures.cleanup().await;
 }
 
-/// Seeds one settled ledger row draining `nanos` for `fleet`.
+/// Seeds one ledger row draining `nanos` for `fleet`, debited as it is written.
 async fn seed_spend(
     fixtures: &Fixtures,
     tenant: &Uuid7,
@@ -275,16 +268,15 @@ async fn seed_spend(
         .expect("a pooled connection");
     sqlx::query(
         "INSERT INTO billing.usage_lines \
-           (id, work_type, work_id, seq, kind, tenant_id, workspace_id, fleet_id, fleet_name, event_id, \
+           (id, work_type, work_id, seq, kind, tenant_id, workspace_id, fleet_id, fleet_name, turn_id, \
             provider, model, posture, requested_at, input_token_count, cached_input_token_count, \
             cache_write_token_count, cache_write_5m_token_count, cache_write_1h_token_count, \
-            output_token_count, runtime_ms, unpriced_token_count, charged_nanos, created_at, \
-            updated_at) \
+            output_token_count, runtime_ms, unpriced_token_count, charged_nanos, created_at) \
          VALUES ($1, $2, $1, 0, $10::text, $3, $4, $5, $5, $6, $7, $8, \
-                 'platform', now(), 0, 0, 0, 0, 0, 0, 0, 0, $9, now(), now())",
+                 'platform', now(), 0, 0, 0, 0, 0, 0, 0, 0, $9, now())",
     )
     .bind(mint_id())
-    .bind(afd_billing::sql::work::FLEET_LEASE)
+    .bind(afd_billing::sql::work::FLEET_RUN)
     .bind(tenant)
     .bind(workspace)
     .bind(fleet)

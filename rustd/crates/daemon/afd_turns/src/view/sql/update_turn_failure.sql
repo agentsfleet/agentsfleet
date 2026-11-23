@@ -1,0 +1,26 @@
+WITH closed AS (
+  UPDATE thread.turns
+  SET status = $3, failure_reason = $4, updated_at = now(),
+      failure_detail = NULLIF($6, '')
+  WHERE thread_id = $1 AND id = $2 AND status = $5
+  RETURNING thread_id AS fleet_id, id AS turn_id, workspace_id, actor, kind AS event_type,
+            status, token_count, wall_ms, failure_reason, failure_detail,
+            resumes_turn_id, created_at, updated_at
+)
+SELECT c.fleet_id AS fleet_id, c.turn_id AS turn_id, c.workspace_id AS workspace_id,
+       c.actor, c.event_type, c.status, c.token_count, c.wall_ms,
+       c.failure_reason, c.failure_detail, c.resumes_turn_id AS resumes_turn_id,
+       c.created_at, c.updated_at,
+       (SELECT SUM(charge.charged_nanos)::bigint
+          FROM billing.usage_lines charge
+         WHERE charge.turn_id = c.turn_id
+           AND charge.fleet_id = c.fleet_id) AS cost_nanos,
+       f.status AS fleet_status,
+       (SELECT COUNT(*) FROM fleet.approval_gates g
+         WHERE g.fleet_id = c.fleet_id AND g.status = $7) AS pending_approvals,
+       COALESCE((SELECT k.event_count FROM fleet.activity_counters k
+                  WHERE k.fleet_id = c.fleet_id), 0) AS event_count,
+       COALESCE((SELECT k.budget_used_nanos FROM fleet.activity_counters k
+                  WHERE k.fleet_id = c.fleet_id), 0) AS budget_used_nanos
+FROM closed c
+JOIN fleet.fleets f ON f.id = c.fleet_id

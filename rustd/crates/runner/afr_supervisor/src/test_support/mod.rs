@@ -11,11 +11,11 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use af_providers::{Connect as _, Connector, Usage};
+use af_providers::{Connect as _, Connector};
 use af_wire::activity::{ActivityFrame, FleetResponseChunk};
 use af_wire::memory::MemoryDelta;
 use af_wire::policy::ExecutionPolicy;
-use af_wire::tool_detail::ToolCallRecord;
+use af_wire::tool_detail::{ItemKind, ItemStatus, ToolCallRecord};
 use af_wire::tool_trace::{ToolCallStatus, ToolTrace, ToolTraceCall};
 use afr_agent::{AgentEngine, AgentRun, Needs, RunOutput};
 use afr_agent::{Completed, ExecutionResult, ResultOutcome};
@@ -24,6 +24,7 @@ use afr_tools::Catalog;
 use afr_tools::catalog::{FILE_READ, GIT, HTTP_REQUEST, UPDATE_PLAN};
 use afr_tools::stub::Stub;
 use bytes::Bytes;
+use guffbolt::Usage;
 use serde::Serialize;
 use tokio::sync::mpsc;
 use tokio::time::Instant;
@@ -35,7 +36,7 @@ mod rig;
 mod sandbox;
 
 pub(crate) use self::daemon::{Calls, activities, bounded, drain, plane, plane_with_http};
-pub(crate) use self::fixtures::{healthy, lease, report_body};
+pub(crate) use self::fixtures::{healthy, payload, report_body};
 pub(crate) use self::git_fixture::{FIRST_README, FIXTURE_BRANCH, commit, git, head, repository};
 pub(crate) use self::resolver::{Stalled, assigned};
 pub(crate) use self::rig::{Rig, daemon, position, reported};
@@ -44,15 +45,15 @@ pub(crate) use self::sandbox::{
 };
 pub(crate) use af_egress::testing::FakeResolver;
 
-pub(crate) use crate::test_util::{FENCING, FLEET_ID, LEASE_ID, RUNNER_HOST, RUNNER_ID};
-/// When every fake lease is granted until: thirty seconds after the fixed
+pub(crate) use crate::test_util::{FENCING, FLEET_ID, RUN_ID, RUNNER_HOST, RUNNER_ID};
+/// When every fake run is granted until: thirty seconds after the fixed
 /// clock's zero.
 pub(crate) const GRANTED_UNTIL: jiff::Timestamp = jiff::Timestamp::constant(30, 0);
 
 /// The cadence and retry delay the fake daemon answers with, in milliseconds.
 pub(crate) const INTERVAL_MS: u32 = 1000;
 
-/// The report fields, and the spellings, the lease tests read back.
+/// The report fields, and the spellings, the run tests read back.
 pub(crate) const FAILURE_REASON: &str = "failure_reason";
 pub(crate) const OUTCOME: &str = "outcome";
 pub(crate) const PROCESSED: &str = "processed";
@@ -60,10 +61,10 @@ pub(crate) const RENEWAL_TERMINATE: &str = "renewal_terminate";
 pub(crate) const STARTUP_POSTURE: &str = "startup_posture";
 pub(crate) const RUNNER_CRASH: &str = "runner_crash";
 
-/// The wall clock every lease test reads: fixed at zero, so a lease's deadline
+/// The wall clock every run test reads: fixed at zero, so a run's deadline
 /// is measured in the paused tokio time the tests advance.
-pub(crate) fn clock() -> std::sync::Arc<dyn af_core::clock::Clock> {
-    std::sync::Arc::new(af_core::clock::FixedClock::at(jiff::Timestamp::UNIX_EPOCH))
+pub(crate) fn clock() -> Arc<dyn af_core::clock::Clock> {
+    Arc::new(af_core::clock::FixedClock::at(jiff::Timestamp::UNIX_EPOCH))
 }
 
 /// What the fake daemon does with one call.
@@ -229,7 +230,7 @@ async fn exercise(executor: &dyn Executor) {
     assert!(entries.is_empty(), "{entries:?}");
 }
 
-/// What [`Behaviour::Stops`] and [`Behaviour::Spends`] spend before the lease
+/// What [`Behaviour::Stops`] and [`Behaviour::Spends`] spend before the run
 /// ends them: [`answer`]'s counts.
 pub(crate) const SPENT: Usage = Usage {
     input: 3,
@@ -269,6 +270,9 @@ pub(crate) fn answer() -> RunOutput {
 /// What every call in [`with_calls`] returned.
 const CALL_OUTPUT: &str = "ok";
 
+/// The turn every call in [`with_calls`] names.
+const CALL_TURN: &str = "019f0000-0000-7000-8000-000000000001";
+
 /// [`answer`], having made `calls` calls: their records and their trace.
 pub(crate) fn with_calls(calls: u64) -> RunOutput {
     let mut output = answer();
@@ -280,6 +284,11 @@ pub(crate) fn with_calls(calls: u64) -> RunOutput {
             output: CALL_OUTPUT.into(),
             output_line_count: 1,
             truncated: false,
+            turn_id: CALL_TURN.into(),
+            kind: ItemKind::ToolCall,
+            tool: "update_plan".into(),
+            status: ItemStatus::Succeeded,
+            changes: Vec::new(),
         })
         .collect();
     output.trace = Some(ToolTrace {
@@ -294,9 +303,9 @@ pub(crate) fn with_calls(calls: u64) -> RunOutput {
                 output_line_count: Some(1),
                 exit_code: None,
                 duration_ms: 1,
+                changes: Vec::new(),
             })
             .collect(),
-        omitted_call_count: 0,
     });
     output
 }

@@ -55,8 +55,8 @@ struct ScheduleRow {
     resource_version: i64,
     /// The fence's holder, as text.
     sync_token: Option<Uuid7>,
-    /// When the fence's lease runs out.
-    sync_lease_expires_at: Option<jiff_sqlx::Timestamp>,
+    /// When the fence's run runs out.
+    sync_run_expires_at: Option<jiff_sqlx::Timestamp>,
     /// Why the last push failed.
     last_error: Option<String>,
     /// When the row was written.
@@ -101,9 +101,7 @@ impl ScheduleRow {
                 .ok_or_else(|| unreadable(COL_SYNC_STATUS))?,
             resource_version: self.resource_version,
             sync_token: self.sync_token,
-            sync_lease_expires_at: self
-                .sync_lease_expires_at
-                .map(jiff_sqlx::Timestamp::to_jiff),
+            sync_run_expires_at: self.sync_run_expires_at.map(jiff_sqlx::Timestamp::to_jiff),
             last_error: self.last_error,
             created_at: self.created_at,
             updated_at: self.updated_at,

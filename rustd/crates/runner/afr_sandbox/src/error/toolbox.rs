@@ -1,20 +1,20 @@
-//! Why a toolbox release was not admitted.
+//! Why a toolbox release was not verified.
 
 use std::fmt;
 
-/// Why a toolbox release was not admitted: one value per check, so a log line,
+/// Why a toolbox release was not verified: one value per check, so a log line,
 /// the capability report and a test tell them apart.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ToolboxRefusal {
     /// The manifest's signature is not the release key's over its exact bytes.
     Signature,
-    /// The manifest is not one admission can read.
+    /// The manifest is not one verification can read.
     Manifest,
     /// The release is built for another architecture.
     Architecture,
     /// The release does not serve this runner's version.
     RunnerVersion,
-    /// The release uses an EROFS feature this runner does not admit.
+    /// The release uses an EROFS feature this runner does not accept.
     Features,
     /// The image is not the length the manifest names.
     Length,

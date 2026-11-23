@@ -33,7 +33,7 @@ use axum::response::{IntoResponse as _, Response};
 
 use crate::auth::PersonIdentity;
 use crate::handler::Refusal;
-use crate::services::{Services, TerminalCredentials as _};
+use crate::services::{TenantPlane, TerminalCredentials as _};
 
 /// The scoped event this read's failures are logged under.
 const EVENT_PROFILE: &str = "caller_profile_unresolved";
@@ -62,7 +62,7 @@ const EVENT_PROFILE: &str = "caller_profile_unresolved";
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
-pub(crate) async fn current<D: Services>(
+pub(crate) async fn current<D: TenantPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
 ) -> Result<Response, Refusal> {

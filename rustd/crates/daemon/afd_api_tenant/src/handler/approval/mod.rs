@@ -37,7 +37,7 @@ use serde_json::value::RawValue;
 use self::query::{Listing, Resume};
 use crate::auth::WorkspaceContext;
 use crate::handler::Refusal;
-use crate::services::{Services, WorkspaceApprovals as _};
+use crate::services::{TenantPlane, WorkspaceApprovals as _};
 
 mod query;
 pub(crate) mod resolve;
@@ -107,12 +107,12 @@ pub(crate) struct ResolvePath {
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn list<D: Services>(
+pub(crate) async fn list<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     RawQuery(query): RawQuery,
 ) -> Result<Response, Refusal> {
-    let asked = Listing::parse(&query.unwrap_or_default())?;
+    let asked = Listing::parse(&query.unwrap_or_default(), services.pages().list)?;
     let resume = asked.cursor.as_ref().map(Resume::borrowed);
     let gates = services
         .approvals()
@@ -172,7 +172,7 @@ fn next_cursor(gates: &[GateRow], limit: i64) -> Option<String> {
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn detail<D: Services>(
+pub(crate) async fn detail<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     Path(ApprovalPath { gate_id }): Path<ApprovalPath>,
@@ -182,7 +182,7 @@ pub(crate) async fn detail<D: Services>(
 }
 
 /// One gate inside this workspace, or the refusal for none.
-pub(super) async fn read_gate<D: Services>(
+pub(super) async fn read_gate<D: TenantPlane>(
     services: &Arc<D>,
     workspace: &Uuid7,
     gate_id: &str,

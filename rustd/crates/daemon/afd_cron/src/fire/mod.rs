@@ -23,9 +23,9 @@
 //! replaces, the row does not expire and does not live in the queue.
 
 use af_core::id::Uuid7;
-use af_wire::event::EventType;
-use afd_admission::{Admission, Admissions, Key, Producer, Reply};
+use af_wire::turn::TurnKind;
 use afd_api_wire::activity::{ScheduleFire, ScheduleFireDescription};
+use afd_turns::{IncomingTurn, Key, Producer, Reply, Turns};
 
 use crate::error::Result;
 use crate::store::FireTarget;
@@ -58,10 +58,10 @@ const ONCE_FIRE: &str = "once";
 
 /// The event body a fire of a schedule whose message is `message` stores.
 ///
-/// The schedule's message is the author's plain text, and the lease records
-/// every event's body into a `jsonb` column (`afd_events::sql`). Stored as it
+/// The schedule's message is the author's plain text, and the run records
+/// every event's body into a `jsonb` column (`afd_turns::view::sql`). Stored as it
 /// was, a message that is not itself JSON failed that cast, so the fired run
-/// was admitted and could never be leased. Wrapped as `{"message": …}`, the
+/// was admitted and could never be held. Wrapped as `{"message": …}`, the
 /// shape a steer and a mention store, the runner reads the schedule's words as
 /// the run's first turn.
 pub(crate) fn body(schedule: &Uuid7, target: &FireTarget) -> Result<String> {
@@ -78,25 +78,25 @@ pub(crate) fn body(schedule: &Uuid7, target: &FireTarget) -> Result<String> {
 #[derive(Debug, Clone)]
 pub struct Fired {
     /// The event's id — this fire's, or the attempt that beat it.
-    pub event_id: String,
+    pub turn_id: String,
     /// Whether an earlier attempt already wrote it.
     pub replayed: bool,
 }
 
 /// The ledger a verified fire is admitted through.
 ///
-/// Cheap to clone: [`Admissions`] is a pair of handles over shared pools.
+/// Cheap to clone: [`Turns`] is a pair of handles over shared pools.
 #[derive(Debug, Clone)]
 pub struct Fire {
     /// Where the fire is accepted, before anything is queued.
-    admissions: Admissions,
+    turns: Turns,
 }
 
 impl Fire {
     /// Binds the appender to an already-connected ledger.
     #[must_use]
-    pub const fn new(admissions: Admissions) -> Self {
-        Self { admissions }
+    pub const fn new(turns: Turns) -> Self {
+        Self { turns }
     }
 
     /// Admits one verified fire, at most once however often it arrives. A
@@ -122,14 +122,14 @@ impl Fire {
         let request_json = body(schedule, target)?;
 
         let admitted = self
-            .admissions
-            .admit(Admission {
+            .turns
+            .admit(IncomingTurn {
                 producer: Producer::ScheduleFire,
                 key: Key::Repeated(&key),
                 fleet,
                 workspace: &target.workspace,
                 actor: &actor,
-                event_type: EventType::Cron,
+                event_type: TurnKind::Cron,
                 request_json: &request_json,
                 // A schedule has no one to answer.
                 reply: Reply::None,
@@ -146,20 +146,20 @@ impl Fire {
                 admitted.stored.created_at,
             );
         }
-        let event_id = admitted.stored.id.as_str();
+        let turn_id = admitted.stored.id.as_str();
         let replayed = admitted.replayed;
         let schedule_id = schedule.as_str();
         let workspace_id = target.workspace.as_str();
         if !replayed {
-            afd_events::activity::announce(&self.admissions.streams(), fleet).await;
+            afd_turns::view::activity::announce(&self.turns.streams(), fleet).await;
         }
         {
             let (fleet_id, event) = (&fleet, &"schedule_fire_appended");
-            tracing::info!(%fleet_id, %workspace_id, %schedule_id, %event_id, replayed, event);
+            tracing::info!(%fleet_id, %workspace_id, %schedule_id, %turn_id, replayed, event);
         };
 
         Ok(Fired {
-            event_id: admitted.stored.id.into(),
+            turn_id: admitted.stored.id.into(),
             replayed,
         })
     }

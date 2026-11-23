@@ -18,11 +18,10 @@ import { ChatComposer } from "../composer/ChatComposer";
 import { ChatThread } from "../../shared/chat/ChatThread";
 import { createDraftThreadProjection } from "@/lib/api/draft-thread-messages";
 import { setupActivity } from "@/lib/api/draft-activity";
-import { ACTIVITY_KIND } from "@/lib/events/fleet-activity";
+import { ACTIVITY_KIND } from "@/lib/turns/fleet-activity";
 import { DraftMessage } from "./DraftMessage";
 import { chatMessageText } from "@/lib/chat-message-text";
 import { SetupApprovalSummary } from "../../approvals/SetupApprovalSummary";
-import { AuthoringPrompt } from "../composer/AuthoringPrompt";
 
 const SetupReview = nextDynamic(() => import("../summary/SetupReview").then(module => module.SetupReview), {ssr: false});
 const asThreadMessage = (message: ThreadMessageLike): ThreadMessageLike => message;
@@ -42,7 +41,6 @@ export function DraftConversation({client, view, workspace, subject, children, u
   } : undefined;
   return (
     <DraftRuntime client={client} view={view} pending={recovery.pending}>
-      <AuthoringPrompt hasMessages={hasMessages} />
       <SetupConversationLayout client={client} view={view} workspace={workspace} subject={subject}><ChatThread label="Fleet setup conversation" centered={empty}
         footer={<>{view.error && !failedTurn ? <p role="alert" className="mx-auto mb-sm text-label text-destructive">Couldn’t complete this request</p> : null}
           <ChatComposer empty={empty} client={client} view={view} workspace={workspace} onOpenFleet={onOpenFleet} modelsHref={modelsHref} canStop={recovery.canStop} onRetry={retry} />
@@ -105,7 +103,7 @@ function setupAnchor(view: DraftView): string | null {
     return activity && (activity.kind === ACTIVITY_KIND.setupSaved || activity.kind === ACTIVITY_KIND.setupReady)
       && activity.revision === view.fleet?.setup_revision;
   });
-  if (saved) return `activity:${saved.event_id}`;
+  if (saved) return `activity:${saved.turn_id}`;
   const previous = view.previousDrafts?.at(-1);
   if (view.fleet && previous) {
     const origin = previous.messages.findLast(message => message.role === MESSAGE_ROLE.assistant);

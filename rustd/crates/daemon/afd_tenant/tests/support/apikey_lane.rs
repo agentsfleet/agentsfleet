@@ -1,9 +1,9 @@
 //! A tenant with keys of its own, over the lane's migrated database.
 //!
-//! Sibling of `preference_lane.rs` and deliberately not an extension of it: a
-//! preference hangs from a `(user, workspace)` pair and a key hangs from a
-//! tenant, so the two fixtures seed different rows and sharing one would make
-//! each suite carry the other's scaffolding.
+//! Sibling of `onboarding_lane.rs` and deliberately not an extension of it: a
+//! checklist reads a workspace's rows and a key hangs from a tenant, so the two
+//! fixtures seed different rows and sharing one would make each suite carry the
+//! other's scaffolding.
 //!
 //! # Every identifier is minted
 //!
@@ -27,7 +27,7 @@ use af_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TenantSeed, TestDatabase};
-use afd_tenant::apikey::{ApiKeySort, ApiKeys, Description, KeyName, Listing, MintRequest};
+use afd_tenant::apikey::{ApiKeySort, ApiKeys, KeyName, Listing, MintRequest};
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 
@@ -81,7 +81,6 @@ impl ApiKeyLane {
         let request = MintRequest {
             tenant: &self.tenant,
             name: KeyName::parse(name).expect("the fixture names are well formed"),
-            description: Description::parse(None).expect("an absent description is legal"),
             created_by: MINTED_BY,
         };
         let minted = self

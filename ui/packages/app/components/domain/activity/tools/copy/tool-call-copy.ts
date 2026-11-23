@@ -1,17 +1,18 @@
-import type { ToolArgs, ToolCallStatus } from "@/lib/streaming/fleet-stream-tool-trace";
+import type { FileChange, JsonValue, ToolArgs, ToolCallStatus } from "@/lib/streaming/fleet-stream-tool-trace";
 import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
-import { RUNNER_COPY, TAKES_NO_ARGS, patchDiff } from "./tool-call-copy-runner";
-import { lineDiff, type LineDiff } from "../diff/tool-call-diff";
-import { ARGS_NOT_RECORDED, TOOL_BODY, TOOL_NAME, plainCopy, type ToolBody, type ToolCopy, type Verbs } from "../presentation/tool-call-shape";
+import { RUNNER_COPY, TAKES_NO_ARGS, patchRows } from "./tool-call-copy-runner";
+import { lineRows, type DiffRow } from "../diff/tool-call-diff";
+import { ARGS_NOT_RECORDED, TOOL_BODY, TOOL_NAME, plainCopy, type ToolCopy, type Verbs } from "../presentation/tool-call-shape";
 import { CLIP_MARK, clipMarked, compactArgs, linesOf, mayBeClipped, outputLines, pathArg, stringArg } from "../presentation/tool-call-text";
 
-// What a tool call says in the thread, the way Codex's transcript says it: a
+// What a tool call says in the thread: a
 // verb that is `-ing` while the call runs and past tense once it returns, the
 // thing it touched, and what came back. Verbs come from the tool's name
-// because hosted tools take structured arguments; Codex parses a shell line.
+// because hosted tools take structured arguments, not a shell line.
 // Pure: a call's name, arguments and outcome in, words out. Files, requests,
 // memory and commands are here; every other runner tool reads in
-// `tool-call-copy-runner`.
+// `tool-call-copy-runner`. An edit's files and line counts are the ones the
+// runner's file tool recorded, never worked out from its arguments.
 
 /** How a cell reads. `SETTLED` is a call that returned without saying how,
  * as an older runner's does: no colour claims it succeeded. */
@@ -34,8 +35,6 @@ export const OUTPUT_UNAVAILABLE = "(output unavailable)";
 
 const VERBS = {
   WRITE: { running: "Writing", done: "Wrote" },
-  APPEND: { running: "Appending", done: "Appended" },
-  DELETE: { running: "Deleting", done: "Deleted" },
   EDIT: { running: "Editing", done: "Edited" },
   REQUEST: { running: "Requesting", done: "Requested" },
   REMEMBER: { running: "Remembering", done: "Remembered" },
@@ -45,12 +44,9 @@ const VERBS = {
 } as const satisfies Record<string, Verbs>;
 
 const ARG = {
-  CONTENT: "content",
+  EDITS: "edits",
   OLD: "old_text",
   NEW: "new_text",
-  // A hashed edit names the line it changes by its Hashline tag (`L10:abc`).
-  ANCHOR: "target",
-  ANCHOR_END: "end_target",
   URL: "url",
   METHOD: "method",
   KEY: "key",
@@ -59,13 +55,16 @@ const ARG = {
   PATCH: "patch",
 } as const;
 
+// The tools whose answer the runner reads an edit's changes from, and the
+// words each says them in. A Map, so a tool named `toString` reads as unknown.
+const EDITS: ReadonlyMap<string, Verbs> = new Map<string, Verbs>([
+  [TOOL_NAME.FILE_WRITE, VERBS.WRITE],
+  [TOOL_NAME.FILE_EDIT, VERBS.EDIT],
+  [TOOL_NAME.APPLY_PATCH, VERBS.EDIT],
+]);
+
 // A Map, not an object literal: a tool named `toString` must read as unknown.
 const COPY: ReadonlyMap<string, (args: ToolArgs) => ToolCopy> = new Map([
-  [TOOL_NAME.FILE_WRITE, (args) => writeCopy(VERBS.WRITE, args)],
-  [TOOL_NAME.FILE_APPEND, (args) => writeCopy(VERBS.APPEND, args)],
-  [TOOL_NAME.FILE_DELETE, (args) => plainCopy(VERBS.DELETE, pathArg(args))],
-  [TOOL_NAME.FILE_EDIT, editCopy],
-  [TOOL_NAME.FILE_EDIT_HASHED, editCopy],
   [TOOL_NAME.HTTP_REQUEST, requestCopy],
   [TOOL_NAME.MEMORY_STORE, (args) => plainCopy(VERBS.REMEMBER, clipMarked(stringArg(args, ARG.KEY) ?? ""))],
   [TOOL_NAME.MEMORY_FORGET, (args) => plainCopy(VERBS.FORGET, clipMarked(stringArg(args, ARG.KEY) ?? ""))],
@@ -74,9 +73,12 @@ const COPY: ReadonlyMap<string, (args: ToolArgs) => ToolCopy> = new Map([
   ...RUNNER_COPY,
 ]);
 
-/** A call's verbs, target and body. A tool this map does not know reads as
- * Codex reads any dynamic tool: `Called name(arguments)`. */
-export function toolCopy(name: string, args: ToolArgs | undefined): ToolCopy {
+/** A call's verbs, target and body. An edit names the `changes` the runner
+ * recorded for it. A tool this map does not know reads as
+ * `Called name(arguments)`. */
+export function toolCopy(name: string, args: ToolArgs | undefined, changes: readonly FileChange[] = []): ToolCopy {
+  const edit = EDITS.get(name);
+  if (edit !== undefined) return editCopy(edit, name, args, changes);
   const known = COPY.get(name);
   if (known !== undefined) {
     if (args !== undefined || TAKES_NO_ARGS.has(name)) return known(args ?? {});
@@ -96,7 +98,7 @@ export function cellState(hasResult: boolean, status: ToolCallStatus | undefined
  * the rows show even when no line was left out (a long single line). */
 export type OutputPreview = { rows: readonly string[]; hiddenLines: number; note: string | null; cut: boolean };
 
-/** Codex's preview: the first rows of output, then how many lines it left
+/** The preview: the first rows of output, then how many lines it left
  * out. With no rows, a note says whether there was nothing or nothing kept:
  * only a call that returned and said how can claim it printed nothing. */
 export function outputPreview(
@@ -120,44 +122,74 @@ export function moreLinesLabel(hidden: number): string {
   return `+${hidden} ${hidden === 1 ? "line" : "lines"}`;
 }
 
-/** An edit's or a patch's whole diff, for a full read, which no leaf cap has
- * clipped; null for any other tool, or one whose arguments were not kept or
- * name no text to compare (a hashed edit by line tag). */
-export function fullDiff(name: string, args: ToolArgs | undefined): LineDiff | null {
+/** An edit's or a patch's whole text as rows, for a full read, which no leaf
+ * cap has clipped; null for any other tool, or one whose arguments were not
+ * kept or name no text to compare. An edit's replacements each match the
+ * original file once and never overlap, so their rows follow one another in
+ * the order the call listed them. The rows are what the call asked for; its
+ * counts are the recorded changes'. */
+export function fullDiff(name: string, args: ToolArgs | undefined): DiffRow[] | null {
   if (args === undefined) return null;
-  if (name === TOOL_NAME.APPLY_PATCH) return patchDiff(stringArg(args, ARG.PATCH) ?? "").diff;
-  if (name !== TOOL_NAME.FILE_EDIT && name !== TOOL_NAME.FILE_EDIT_HASHED) return null;
-  const before = stringArg(args, ARG.OLD);
-  return before === undefined ? null : lineDiff(before, stringArg(args, ARG.NEW) ?? "");
+  if (name === TOOL_NAME.APPLY_PATCH) return patchRows(stringArg(args, ARG.PATCH) ?? "");
+  if (name !== TOOL_NAME.FILE_EDIT) return null;
+  const edits = editsOf(args);
+  // The runner refuses an edit with no replacements: it has nothing to draw.
+  if (edits.length === 0) return null;
+  const rows: DiffRow[] = [];
+  for (const edit of edits) {
+    const before = editArg(edit, ARG.OLD);
+    if (before === undefined) return null;
+    rows.push(...lineRows(before, editArg(edit, ARG.NEW) ?? ""));
+  }
+  return rows;
+}
+
+/** An edit's or a patch's rows for its cell, which draws them from the
+ * call's own, possibly leaf-capped, arguments: null when any text the rows
+ * come from may have been cut, since a cut text would draw a change the call
+ * never asked for. */
+export function cellDiff(name: string, args: ToolArgs | undefined): DiffRow[] | null {
+  const rows = fullDiff(name, args);
+  if (rows === null || args === undefined) return null;
+  const texts = name === TOOL_NAME.APPLY_PATCH ? [stringArg(args, ARG.PATCH)]
+    : editsOf(args).flatMap((edit) => [editArg(edit, ARG.OLD), editArg(edit, ARG.NEW)]);
+  return texts.some((text) => text !== undefined && mayBeClipped(text)) ? null : rows;
+}
+
+/** An edit's replacements, or none when its `edits` argument is absent or
+ * not a list. */
+function editsOf(args: ToolArgs): readonly JsonValue[] {
+  const edits: JsonValue | undefined = args[ARG.EDITS];
+  return Array.isArray(edits) ? edits : [];
+}
+
+/** One replacement's string argument, or undefined when the replacement is
+ * not an object or the argument is absent or not a string. */
+function editArg(edit: JsonValue, key: string): string | undefined {
+  return isArgs(edit) ? stringArg(edit, key) : undefined;
+}
+
+/** `Array.isArray` does not narrow a readonly array out of a union, so the
+ * object check is a predicate rather than a cast. */
+function isArgs(value: JsonValue): value is ToolArgs {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function requestCopy(args: ToolArgs): ToolCopy {
   return plainCopy(VERBS.REQUEST, `${stringArg(args, ARG.METHOD) ?? DEFAULT_METHOD} ${clipMarked(stringArg(args, ARG.URL) ?? "")}`.trim());
 }
 
-function writeCopy(verbs: Verbs, args: ToolArgs): ToolCopy {
-  const content = stringArg(args, ARG.CONTENT);
-  const copy = plainCopy(verbs, pathArg(args));
-  return content === undefined || mayBeClipped(content) ? copy : { ...copy, addedLines: linesOf(content).length };
-}
-
-function editCopy(args: ToolArgs): ToolCopy {
-  const before = stringArg(args, ARG.OLD);
-  const after = stringArg(args, ARG.NEW) ?? "";
-  // A hashed edit names its line by tag and carries no old text: there is
-  // nothing to diff against, so the cell names the line instead.
-  if (before === undefined) return plainCopy(VERBS.EDIT, `${pathArg(args)}${anchorOf(args)}`);
-  const body: ToolBody = mayBeClipped(before) || mayBeClipped(after)
-    ? { kind: TOOL_BODY.CLIPPED_EDIT }
-    : { kind: TOOL_BODY.DIFF, diff: lineDiff(before, after) };
-  return { verbs: VERBS.EDIT, target: pathArg(args), body };
-}
-
-function anchorOf(args: ToolArgs): string {
-  const from = stringArg(args, ARG.ANCHOR);
-  if (from === undefined) return "";
-  const to = stringArg(args, ARG.ANCHOR_END);
-  return to === undefined ? ` at ${from}` : ` at ${from}–${to}`;
+/** An edit names the files it changed and the lines each gained and lost,
+ * as the runner recorded them. Until it has (still running, failed, or
+ * recorded nothing), it names the file it was asked to change, and nothing
+ * for a patch, whose files would be read out of its text. */
+function editCopy(verbs: Verbs, name: string, args: ToolArgs | undefined, changes: readonly FileChange[]): ToolCopy {
+  if (changes.length > 0) {
+    return { verbs, target: changes.map((change) => change.path).join(", "), body: { kind: TOOL_BODY.CHANGES, changes } };
+  }
+  if (args === undefined) return plainCopy(verbs, ARGS_NOT_RECORDED);
+  if (name === TOOL_NAME.APPLY_PATCH) return plainCopy(verbs, "");
+  return plainCopy(verbs, pathArg(args));
 }
 
 function commandCopy(command: string | undefined): ToolCopy {

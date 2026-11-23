@@ -57,12 +57,13 @@ pub(super) async fn catalogue(fixture: &Fixture, provider: &str, model: &str, ca
 /// How many rows each side of the activation wrote.
 pub(super) async fn written(fixture: &Fixture) -> (i64, i64) {
     let mut connection = fixture.database.acquire().await.expect("an API connection");
-    let selections: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM model.tenant_selections WHERE tenant_id = $1")
-            .bind(&fixture.tenant)
-            .fetch_one(&mut *connection)
-            .await
-            .expect("the selection count reads");
+    let selections: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM model.tenant_models WHERE tenant_id = $1 AND selected",
+    )
+    .bind(&fixture.tenant)
+    .fetch_one(&mut *connection)
+    .await
+    .expect("the selection count reads");
     let entries: i64 =
         sqlx::query_scalar("SELECT count(*) FROM model.tenant_models WHERE tenant_id = $1")
             .bind(&fixture.tenant)

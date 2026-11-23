@@ -34,7 +34,7 @@ use crate::provider::sql as provider_sql;
 use crate::provider::store::Providers;
 
 /// The entry's domain key, `(tenant, model, secret_ref)`: the one unique
-/// constraint a retarget can collide with (`schema/20261108121500_model_tenant_models.sql`).
+/// constraint a retarget can collide with (`afd_db/schema/20261108121500_model_tenant_models.sql`).
 const UQ_ENTRY_DOMAIN_KEY: &str = "uq_tenant_models_tenant_workspace_model_secret";
 
 /// The context a failed registry write reports under.
@@ -170,9 +170,9 @@ impl Providers {
 
         // The active check is SKIPPED when the credential is already gone, and
         // that is deliberate rather than an omission. What the check protects is
-        // a tenant silently falling back to the platform default — the
-        // selection's foreign key sets the pointer NULL when its entry goes —
-        // and a selection naming a credential nobody holds cannot run anyway.
+        // a tenant silently falling back to the platform default — deleting the
+        // selected entry leaves no row selected — and a selection naming a
+        // credential nobody holds cannot run anyway.
         // Refusing here would strand a row the tenant cannot remove and cannot
         // activate: the entry is an orphan, and removing it is the cleanup.
         if held.is_some()
@@ -209,7 +209,7 @@ impl Providers {
             .map(EntryRow::into_entry))
     }
 
-    /// Whether the tenant's selection points at `entry`, read under the lock.
+    /// Whether `entry` is the tenant's selected row, read under the lock.
     ///
     /// The check and the DELETE must be one act. They were once two
     /// unsynchronized statements, which let an activation commit in the gap:

@@ -14,8 +14,7 @@
 //! route that answered 4xx for a paused schedule could get the WHOLE
 //! deployment's schedules throttled.
 //!
-//! Only two things earn a refusal: a body past the cap, and a callback that did
-//! not prove itself.
+//! Only one thing earns a refusal: a callback that did not prove itself.
 
 use std::sync::Arc;
 
@@ -30,7 +29,7 @@ use axum::{Json, body::Bytes};
 use http::{HeaderMap, StatusCode};
 
 use crate::handler::{Refusal, webhook};
-use crate::services::{FleetSchedules as _, Services};
+use crate::services::{FleetSchedules as _, IngressPlane};
 
 use super::text;
 /// What an accepted fire is answered with. Public wire.
@@ -75,8 +74,7 @@ const MAX_LOGGED_ID_BYTES: usize = 96;
 /// `POST /v1/ingress/qstash/schedules`.
 ///
 /// # Errors
-/// `UZ-WH-030` for a body past the cap, and `UZ-WH-010` for a callback that did
-/// not prove itself.
+/// `UZ-WH-010` for a callback that did not prove itself.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
     path = "/v1/ingress/qstash/schedules",
@@ -105,12 +103,11 @@ const MAX_LOGGED_ID_BYTES: usize = 96;
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
-pub(crate) async fn receive<D: Services>(
+pub(crate) async fn receive<D: IngressPlane>(
     State(services): State<Arc<D>>,
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<Response, Refusal> {
-    webhook::within_cap(&body)?;
     let proven = prove(services.as_ref(), &headers, &body).await?;
     let mut observed = af_observability::producers::scheduler::Callback::begin();
 
@@ -121,7 +118,7 @@ pub(crate) async fn receive<D: Services>(
     result
 }
 
-async fn dispatch<D: Services>(
+async fn dispatch<D: IngressPlane>(
     services: Arc<D>,
     headers: HeaderMap,
     proven: VerifiedFire,
@@ -163,7 +160,7 @@ async fn dispatch<D: Services>(
     Ok((
         StatusCode::ACCEPTED,
         Json(Fired {
-            event_id: fired.event_id.as_str().into(),
+            turn_id: fired.turn_id.as_str().into(),
             replayed: fired.replayed,
         }),
     )
@@ -172,7 +169,7 @@ async fn dispatch<D: Services>(
 
 /// The callback's signature, checked against this deployment's keys and
 /// destination before the body is read as anything but bytes.
-async fn prove<D: Services>(
+async fn prove<D: IngressPlane>(
     services: &D,
     headers: &HeaderMap,
     body: &Bytes,
@@ -209,7 +206,7 @@ async fn prove<D: Services>(
 /// Both halves can stop a fire and they are different facts: the schedule
 /// being paused is the scheduler not yet knowing, and the fleet not being
 /// active means it is still installing or was archived.
-async fn held<D: Services>(
+async fn held<D: IngressPlane>(
     services: &D,
     schedule: &Uuid7,
     target: &FireTarget,

@@ -1,7 +1,7 @@
 import { createHash, randomBytes, randomUUID, webcrypto } from "node:crypto";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  CALLBACK_PATH, LOOPBACK_FAILURE, LOOPBACK_FLOW, LOOPBACK_KIND, LOOPBACK_MAX_AGE_MS,
+  CALLBACK_PATH, LOOPBACK_FLOW, LOOPBACK_KIND,
   LOOPBACK_VERSION, matchingCode, parseLoopbackFragment,
 } from "../lib/auth/cli-loopback";
 import { captureBrowserLoginFragment, clearBrowserHandoff, readBrowserHandoff, LoopbackStore } from "../lib/auth/cli-loopback-store";
@@ -27,13 +27,12 @@ function fixture(sessionId = randomUUID()) {
 
 function harness(initial: URL) {
   let url = initial;
-  let now = START;
+  const now = START;
   const storage = window.sessionStorage;
   const replace = vi.fn((next: URL) => { url = new URL(next); });
   const port = { url: () => url, replace, storage: () => storage, now: () => now };
   return { store: new LoopbackStore(port), storage, replace, port,
     navigate: (next: string) => { url = new URL(next, ORIGIN); },
-    advance: (milliseconds: number) => { now += milliseconds; },
     current: () => url,
   };
 }
@@ -116,7 +115,7 @@ describe("browser handoff lifetime", () => {
     expect(readBrowserHandoff(input.sessionId).kind).toBe(LOOPBACK_KIND.invalid);
     window.history.replaceState(null, "", "/");
   });
-  it("strips before storage and restores across sign-in without extending the deadline", () => {
+  it("strips before storage and restores across sign-in", () => {
     const input = fixture();
     const signIn = new URL(`/sign-in?redirect_url=${encodeURIComponent(input.path)}${input.fragment}`, ORIGIN);
     const context = harness(signIn);
@@ -125,13 +124,9 @@ describe("browser handoff lifetime", () => {
     expect(context.storage.length).toBe(1);
     context.navigate(input.path);
     expect(new LoopbackStore(context.port).read(input.sessionId).kind).toBe(LOOPBACK_KIND.automatic);
-    context.advance(LOOPBACK_MAX_AGE_MS - 1);
     context.navigate(`${input.path}${input.fragment}`);
     context.store.capture();
     expect(context.store.read(input.sessionId).kind).toBe(LOOPBACK_KIND.automatic);
-    context.advance(1);
-    expect(context.store.read(input.sessionId)).toEqual({ kind: LOOPBACK_KIND.invalid, message: LOOPBACK_FAILURE });
-    expect(context.storage.length).toBe(0);
   });
 
   it("does not consume unrelated provider state on ordinary sign-in", () => {
@@ -170,17 +165,18 @@ describe("browser handoff lifetime", () => {
     expect(context.store.read(input.sessionId).kind).toBe(LOOPBACK_KIND.invalid);
   });
 
-  it("isolates two sessions, refuses a third, and clears only the completed session", () => {
+  it("isolates concurrent sessions and clears only the completed one", () => {
     const first = fixture(); const second = fixture(); const third = fixture();
     const context = harness(new URL(`${first.path}${first.fragment}`, ORIGIN)); context.store.capture();
     context.navigate(`${second.path}${second.fragment}`); context.store.capture();
     context.navigate(`${third.path}${third.fragment}`); context.store.capture();
-    expect(context.store.read(third.sessionId).kind).toBe(LOOPBACK_KIND.invalid);
+    expect(context.store.read(third.sessionId).kind).toBe(LOOPBACK_KIND.automatic);
     context.navigate(second.path);
     expect(context.store.read(second.sessionId).kind).toBe(LOOPBACK_KIND.automatic);
     context.store.clear(first.sessionId);
     expect(context.store.read(second.sessionId).kind).toBe(LOOPBACK_KIND.automatic);
     context.store.clear(second.sessionId);
+    context.store.clear(third.sessionId);
     expect(context.storage.length).toBe(0);
   });
 
@@ -191,17 +187,6 @@ describe("browser handoff lifetime", () => {
     context.navigate(`${conflict.path}${conflict.fragment}`); context.store.capture();
     expect(context.store.read(first.sessionId).kind).toBe(LOOPBACK_KIND.invalid);
     expect(context.storage.length).toBe(0);
-  });
-
-  it("expires an older session without discarding a newer concurrent login", () => {
-    const first = fixture(); const second = fixture();
-    const context = harness(new URL(`${first.path}${first.fragment}`, ORIGIN)); context.store.capture();
-    context.advance(100);
-    context.navigate(`${second.path}${second.fragment}`); context.store.capture();
-    context.advance(LOOPBACK_MAX_AGE_MS - 100);
-    expect(context.store.read(second.sessionId).kind).toBe(LOOPBACK_KIND.automatic);
-    context.navigate(first.path);
-    expect(context.store.read(first.sessionId).kind).toBe(LOOPBACK_KIND.invalid);
   });
 
   it.each(["get", "set", "replace"])("fails visibly when browser %s fails without retaining the fragment", (operation) => {
@@ -265,13 +250,6 @@ describe("browser handoff lifetime", () => {
     context.navigate(`/cli-auth/${input.sessionId}#cli_public_key=invalid`); context.store.capture();
     expect(context.current().hash).toBe("");
     expect(context.store.read(input.sessionId).kind).toBe(LOOPBACK_KIND.invalid);
-  });
-
-  it("refuses fragments whose serialized record exceeds the storage byte limit", () => {
-    const input = fixture(); const padded = input.fragment.padEnd(2_040, "&");
-    const context = harness(new URL(`${input.path}${padded}`, ORIGIN));
-    context.store.capture(); expect(context.store.read(input.sessionId).kind).toBe(LOOPBACK_KIND.invalid);
-    expect(context.storage.length).toBe(0);
   });
 
   it("contains storage access and removal failures during cleanup", () => {

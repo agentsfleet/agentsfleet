@@ -1,0 +1,18 @@
+id: vocab-retired-identifiers-tsx
+valid:
+  - |
+      const subject = "af.thread.items";
+  - |
+      const word = "afd_events_v2";
+invalid:
+  - |
+      import { FleetTail } from "./tail";
+  - |
+      type T = { lease: LeasePayload };
+  - |
+      const name = "OutboundWake";
+  - |
+      // from afd_events
+      const a = 1;
+  - |
+      const o = { DraftEvents: 1 };

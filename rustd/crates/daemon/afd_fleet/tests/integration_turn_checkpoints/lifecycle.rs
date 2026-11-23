@@ -4,15 +4,17 @@ use super::{Case, Checked, manifest::Pending, publication::command, storage::Fil
 use crate::support::Fixtures;
 use af_core::{error_code, id::Uuid7};
 use af_wire::{
-    lease::{
-        TurnCheckpointAction as Action, TurnCheckpointRef, TurnCheckpointResponse as Response,
-        TurnId, TurnResume, TurnWorkspace,
+    durable_task::CheckpointEntry,
+    run::{
+        CheckpointOperationId, TurnCheckpointAbandon, TurnCheckpointAction as Action,
+        TurnCheckpointAdopt, TurnCheckpointCommit, TurnCheckpointPinRelease,
+        TurnCheckpointPinRenew, TurnCheckpointRead, TurnCheckpointRef,
+        TurnCheckpointResponse as Response, TurnResume, TurnWorkspace,
     },
-    task::CheckpointEntry,
 };
 use afd_fleet::{
-    lease::turn_checkpoint::TurnLease,
-    task::{CheckpointMaintenanceCursor, TaskLifecycle as _},
+    durable_task::{CheckpointMaintenanceCursor, DurableTaskLifecycle as _},
+    run::turn_checkpoint::TurnRun,
 };
 
 fn modes() -> [TurnWorkspace; 2] {
@@ -31,7 +33,7 @@ pub(super) async fn isolated() -> Checked<Files> {
 async fn generation(
     files: &Files,
     workspace: TurnWorkspace,
-    expected: Option<TurnId>,
+    expected: Option<CheckpointOperationId>,
 ) -> Checked<(Pending, Vec<(String, String)>)> {
     let pages: Vec<Vec<CheckpointEntry>> = match &workspace {
         TurnWorkspace::ApiOnly => Vec::new(),
@@ -52,7 +54,7 @@ async fn generation(
 async fn publish(
     files: &Files,
     workspace: TurnWorkspace,
-    expected: Option<TurnId>,
+    expected: Option<CheckpointOperationId>,
 ) -> Checked<(Pending, Box<TurnResume>)> {
     let (pending, digests) = generation(files, workspace, expected).await?;
     let Response::Committed(saved) = pending.commit(files, &digests).await? else {
@@ -61,7 +63,7 @@ async fn publish(
     Ok((pending, saved))
 }
 
-fn refused(result: Checked<Response>, code: af_core::error_code::ErrorCode) -> Checked {
+fn refused(result: Checked<Response>, code: error_code::ErrorCode) -> Checked {
     let Err(failure) = result else {
         return Err("custody or authority must refuse".into());
     };
@@ -84,18 +86,18 @@ async fn both_workspace_modes_bound_writer_custody_and_preserve_retired_allocati
         renew(&files, &pending.reference, &pending.plan.pin).await?;
         assert!(matches!(
             files
-                .execute(Action::PinRelease {
+                .execute(Action::PinRelease(TurnCheckpointPinRelease {
                     checkpoint: pending.reference.clone()
-                })
+                }))
                 .await?,
             Response::PinReleased
         ));
         for _ in 0..2 {
             assert!(matches!(
                 files
-                    .execute(Action::Abandon {
+                    .execute(Action::Abandon(TurnCheckpointAbandon {
                         checkpoint: pending.reference.clone()
-                    })
+                    }))
                     .await?,
                 Response::Abandoned
             ));
@@ -104,10 +106,10 @@ async fn both_workspace_modes_bound_writer_custody_and_preserve_retired_allocati
         expire_pending(&files, &expired).await?;
         refused(
             files
-                .execute(Action::PinRenew {
+                .execute(Action::PinRenew(TurnCheckpointPinRenew {
                     checkpoint: expired.reference,
                     resource_version: expired.plan.pin.resource_version,
-                })
+                }))
                 .await,
             error_code::RUN_CHECKPOINT_CONFLICT,
         )?;
@@ -128,12 +130,12 @@ async fn both_workspace_modes_bound_writer_custody_and_preserve_retired_allocati
 async fn renew(
     files: &Files,
     reference: &TurnCheckpointRef,
-    original: &af_wire::task::CheckpointPin,
+    original: &af_wire::durable_task::CheckpointPin,
 ) -> Checked {
-    let action = Action::PinRenew {
+    let action = Action::PinRenew(TurnCheckpointPinRenew {
         checkpoint: reference.clone(),
         resource_version: original.resource_version,
-    };
+    });
     let Response::PinRenewed(pin) = files.execute(action.clone()).await? else {
         return Err("renewed pin".into());
     };
@@ -151,9 +153,9 @@ async fn renew(
 
 async fn expire_pending(files: &Files, pending: &Pending) -> Checked {
     let mut connection = files.case.fixtures.database.acquire().await?;
-    sqlx::query("UPDATE runner.turn_checkpoint_pins SET expires_at=clock_timestamp()-interval '1 second',operation_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1")
+    sqlx::query("UPDATE runner.checkpoint_pins SET expires_at=clock_timestamp()-interval '1 second',operation_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1")
         .bind(Uuid7::parse(&pending.plan.pin.id)?).execute(&mut *connection).await?;
-    sqlx::query("UPDATE runner.turn_checkpoints SET expires_at=clock_timestamp()-interval '1 second' WHERE id=$1")
+    sqlx::query("UPDATE runner.checkpoints SET expires_at=clock_timestamp()-interval '1 second' WHERE id=$1")
         .bind(Uuid7::parse(&pending.plan.checkpoint_id.0)?).execute(&mut *connection).await?;
     Ok(())
 }
@@ -173,16 +175,16 @@ async fn reader_retention(workspace: TurnWorkspace, expire: bool) -> Checked {
     let files = isolated().await?;
     let (_, first) = publish(&files, workspace.clone(), None).await?;
     let Response::Read(read) = files
-        .execute(Action::Read {
+        .execute(Action::Read(TurnCheckpointRead {
             descriptor: first.clone(),
-        })
+        }))
         .await?
     else {
         return Err("pinned read".into());
     };
     let reference = TurnCheckpointRef {
         checkpoint_id: first.checkpoint_id.clone(),
-        pin_id: TurnId(read.pin.id.clone()),
+        pin_id: CheckpointOperationId(read.pin.id.clone()),
     };
     renew(&files, &reference, &read.pin).await?;
     let (_, second) = publish(&files, workspace.clone(), Some(first.checkpoint_id.clone())).await?;
@@ -206,7 +208,9 @@ async fn reader_retention(workspace: TurnWorkspace, expire: bool) -> Checked {
         Some(Uuid7::parse(&third.checkpoint_id.0)?)
     );
     refused(
-        files.execute(Action::Read { descriptor: first }).await,
+        files
+            .execute(Action::Read(TurnCheckpointRead { descriptor: first }))
+            .await,
         error_code::RUN_CHECKPOINT_CONFLICT,
     )?;
     files.finish().await;
@@ -216,20 +220,20 @@ async fn reader_retention(workspace: TurnWorkspace, expire: bool) -> Checked {
 async fn end_reader(
     files: &Files,
     reference: TurnCheckpointRef,
-    original: &af_wire::task::CheckpointPin,
+    original: &af_wire::durable_task::CheckpointPin,
     expire: bool,
 ) -> Checked {
     if expire {
         let mut connection = files.case.fixtures.database.acquire().await?;
-        sqlx::query("UPDATE runner.turn_checkpoint_pins SET expires_at=clock_timestamp()-interval '1 second' WHERE id=$1")
+        sqlx::query("UPDATE runner.checkpoint_pins SET expires_at=clock_timestamp()-interval '1 second' WHERE id=$1")
             .bind(Uuid7::parse(&original.id)?).execute(&mut *connection).await?;
         drop(connection);
         refused(
             files
-                .execute(Action::PinRenew {
+                .execute(Action::PinRenew(TurnCheckpointPinRenew {
                     checkpoint: reference,
                     resource_version: original.resource_version + 1,
-                })
+                }))
                 .await,
             error_code::RUN_CHECKPOINT_CONFLICT,
         )?;
@@ -237,9 +241,9 @@ async fn end_reader(
         for _ in 0..2 {
             assert!(matches!(
                 files
-                    .execute(Action::PinRelease {
+                    .execute(Action::PinRelease(TurnCheckpointPinRelease {
                         checkpoint: reference.clone()
-                    })
+                    }))
                     .await?,
                 Response::PinReleased
             ));
@@ -250,44 +254,44 @@ async fn end_reader(
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn commit_read_and_adopt_refuse_foreign_fences_and_expired_leases() -> Checked {
+async fn commit_read_and_adopt_refuse_foreign_fences_and_expired_runs() -> Checked {
     for workspace in modes() {
         let files = isolated().await?;
         let (pending, saved) = publish(&files, workspace, None).await?;
         let Response::Read(read) = files
-            .execute(Action::Read {
+            .execute(Action::Read(TurnCheckpointRead {
                 descriptor: saved.clone(),
-            })
+            }))
             .await?
         else {
             return Err("read pin".into());
         };
         let actions = [
-            Action::Commit {
+            Action::Commit(TurnCheckpointCommit {
                 checkpoint: pending.reference,
                 root: pending.root,
                 manifest_root: saved.manifest_root.clone(),
                 folds: Vec::new(),
-            },
-            Action::Read {
+            }),
+            Action::Read(TurnCheckpointRead {
                 descriptor: saved.clone(),
-            },
-            Action::Adopt {
+            }),
+            Action::Adopt(TurnCheckpointAdopt {
                 checkpoint: TurnCheckpointRef {
                     checkpoint_id: saved.checkpoint_id.clone(),
-                    pin_id: TurnId(read.pin.id),
+                    pin_id: CheckpointOperationId(read.pin.id),
                 },
-            },
+            }),
         ];
         for action in &actions {
             foreign(&files, action.clone()).await?;
         }
         let mut connection = files.case.fixtures.database.acquire().await?;
-        sqlx::query("UPDATE runner.leases SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1")
-            .bind(&files.case.issued.lease_id).execute(&mut *connection).await?;
+        sqlx::query("UPDATE thread.runs SET run_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1")
+            .bind(&files.case.issued.run_id).execute(&mut *connection).await?;
         drop(connection);
         for action in actions {
-            refused(files.execute(action).await, error_code::RUN_LEASE_LOST)?;
+            refused(files.execute(action).await, error_code::RUN_LOST)?;
         }
         assert_eq!(
             files.case.counts().await?.3,
@@ -300,25 +304,25 @@ async fn commit_read_and_adopt_refuse_foreign_fences_and_expired_leases() -> Che
 
 async fn foreign(files: &Files, action: Action) -> Checked {
     let request = valid(command(&files.case, action.clone()))?;
-    let presented = TurnLease {
+    let presented = TurnRun {
         runner_id: &files.case.foreign,
-        ..files.case.lease()
+        ..files.case.run()
     };
     let result = files
         .store
-        .execute(&files.case.leases, presented, &request)
+        .execute(&files.case.runs, presented, &request)
         .await
         .map_err(Into::into);
-    refused(result, error_code::RUN_LEASE_NOT_FOUND)?;
+    refused(result, error_code::RUN_NOT_FOUND)?;
     let mut request = command(&files.case, action);
     request.fencing_token += 1;
-    let presented = TurnLease {
+    let presented = TurnRun {
         fencing_token: request.fencing_token,
-        ..files.case.lease()
+        ..files.case.run()
     };
     let result = files
         .store
-        .execute(&files.case.leases, presented, &valid(request)?)
+        .execute(&files.case.runs, presented, &valid(request)?)
         .await
         .map_err(Into::into);
     refused(result, error_code::RUN_STALE_FENCING_TOKEN)

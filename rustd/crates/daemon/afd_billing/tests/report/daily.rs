@@ -20,12 +20,12 @@ async fn daily_spend_reconciles_filtered_snapshot() {
             ..Filter::default()
         },
         Filter {
-            work_type: Some(work::AUTHORING_ATTEMPT),
+            work_type: Some(work::SETUP_RUN),
             ..Filter::default()
         },
         Filter {
             fleet: Some(f.fleet.clone()),
-            work_type: Some(work::FLEET_LEASE),
+            work_type: Some(work::FLEET_RUN),
         },
     ] {
         request.filter = filter;
@@ -69,7 +69,7 @@ async fn usage_keeps_deleted_fleet_models() {
     assert_eq!(fleet.label.as_deref(), Some(fixture::FLEET_NAME));
     // The runtime-only slice has no model, so it names none.
     assert_eq!(fleet.models, [fixture::MODEL_A, fixture::MODEL_B]);
-    request.filter.work_type = Some(work::AUTHORING_ATTEMPT);
+    request.filter.work_type = Some(work::SETUP_RUN);
     let filtered = f.billing.report(&f.tenant, &request).await.unwrap();
     let fleet = fixture::group(&filtered, dimension::FLEET, Some(f.fleet.as_str()));
     assert_eq!(fleet.label.as_deref(), Some(fixture::FLEET_NAME));
@@ -77,8 +77,8 @@ async fn usage_keeps_deleted_fleet_models() {
     f.close().await;
 }
 
-/// One run crossing UTC midnight, with a runtime-only slice, a setup attempt
-/// and a line still unsettled; the fleet identifier has no live fleet row.
+/// One run crossing UTC midnight, with a runtime-only slice, and a setup run;
+/// the fleet identifier has no live fleet row.
 async fn seed_days(f: &Fixture) {
     let mut first = Line::runtime(&f.tenant, &f.fleet, 17);
     first.at = BEFORE_MIDNIGHT;
@@ -91,9 +91,7 @@ async fn seed_days(f: &Fixture) {
     let mut setup = Line::setup(&f.tenant, 29);
     setup.at = MIDNIGHT;
     setup.unpriced = 5;
-    let pending = Line::runtime(&f.tenant, &f.fleet, 999);
-    fixture::seed(&f.admin, std::slice::from_ref(&pending)).await;
-    fixture::record(f, &[first, second, runtime, setup]).await;
+    fixture::seed(&f.admin, &[first, second, runtime, setup]).await;
 }
 
 fn days(report: &Report) -> impl Iterator<Item = &Aggregate> {

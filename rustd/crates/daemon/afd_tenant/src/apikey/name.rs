@@ -9,9 +9,6 @@ use crate::error::{self, ApiKeyField};
 /// The longest name a key may carry.
 const NAME_MAX: usize = 64;
 
-/// The longest description a key may carry.
-const DESCRIPTION_MAX: usize = 256;
-
 /// A key name that passed its bound and its character set.
 ///
 /// A newtype rather than a checked `&str`, for the reason
@@ -59,31 +56,6 @@ fn proved<T: Validate<Context = ()>>(field: T, named: ApiKeyField) -> Result<T> 
         .validate()
         .map(Valid::into_inner)
         .map_err(|_report| error::apikey_field(named))
-}
-
-/// A description that passed its bound.
-///
-/// Absent and empty are the same thing on the wire and in the column: the
-/// statement binds `''` for a key with no description. So this holds a `&str`
-/// rather than an `Option`, and the absence is resolved at the edge.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Validate)]
-#[garde(transparent)]
-pub struct Description<'a>(#[garde(length(bytes, max = DESCRIPTION_MAX))] &'a str);
-
-impl<'a> Description<'a> {
-    /// The description, for the statement.
-    #[must_use]
-    pub const fn as_str(self) -> &'a str {
-        self.0
-    }
-
-    /// Accepts a description within its bound, treating absence as empty.
-    ///
-    /// # Errors
-    /// Refuses one past 256 characters.
-    pub fn parse(raw: Option<&'a str>) -> Result<Self> {
-        proved(Self(raw.unwrap_or_default()), ApiKeyField::Description)
-    }
 }
 
 /// The one mutation this surface accepts, as a value that proves it was asked.
@@ -148,34 +120,11 @@ mod tests {
     }
 
     #[test]
-    fn an_absent_description_is_the_empty_one() {
-        assert_eq!(
-            Description::parse(None).map(Description::as_str).ok(),
-            Some("")
-        );
-        assert_eq!(
-            Description::parse(Some("")).map(Description::as_str).ok(),
-            Some("")
-        );
-    }
-
-    #[test]
     fn the_only_accepted_mutation_is_deactivation() {
         assert_eq!(refusal(Deactivation::parse(false)), None);
         assert_eq!(
             refusal(Deactivation::parse(true)),
             Some(error_code::APIKEY_READONLY_FIELD)
         );
-    }
-
-    #[test]
-    fn a_description_past_its_bound_is_refused() {
-        let long = "d".repeat(DESCRIPTION_MAX + 1);
-        assert_eq!(
-            refusal(Description::parse(Some(&long))),
-            Some(error_code::INVALID_REQUEST)
-        );
-        let at_bound = "d".repeat(DESCRIPTION_MAX);
-        assert_eq!(refusal(Description::parse(Some(&at_bound))), None);
     }
 }

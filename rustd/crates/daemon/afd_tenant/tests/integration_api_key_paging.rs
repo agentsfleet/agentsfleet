@@ -1,4 +1,4 @@
-//! Dimension 2.3 — the keyset walks a crafted corpus without skipping or
+//! The keyset walks a crafted corpus without skipping or
 //! repeating a row.
 //!
 //! The paging VOCABULARY — how a `?sort=`/`?cursor=`/`?limit=` query becomes a
@@ -27,7 +27,7 @@
 
 use af_core::error_code;
 use af_core::paging::Cursor;
-use afd_tenant::apikey::{ApiKeySort, Description, KeyName, KeyRow, MintRequest};
+use afd_tenant::apikey::{ApiKeySort, KeyName, KeyRow, MintRequest};
 use jiff::{SignedDuration, Timestamp};
 
 /// How far apart the corpus spaces two keys that must NOT tie.
@@ -45,7 +45,7 @@ fn step(steps: i32) -> Timestamp {
         .expect("the corpus instants are in range")
 }
 
-/// Dimension 2.3 — a page boundary lands exactly between two rows, ties
+/// A page boundary lands exactly between two rows, ties
 /// included, and the total does not move while a client walks.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -135,7 +135,7 @@ async fn test_list_keyset_pagination() {
     lane.cleanup().await;
 }
 
-/// Dimension 2.3 — the name sort walks on the text comparator, not the clock.
+/// The name sort walks on the text comparator, not the clock.
 ///
 /// The sibling case, and it is not redundant: `Cursor::Text` binds a different
 /// slot in the statement than `Cursor::Timestamp`, so a keyset that worked on
@@ -191,7 +191,6 @@ async fn should_refuse_duplicate_name_when_index_rejects_insert() {
     let request = MintRequest {
         tenant: &lane.tenant,
         name: KeyName::parse("alpha").expect("a well-formed name"),
-        description: Description::parse(None).expect("an absent description is legal"),
         created_by: "fixture|apikey-collision",
     };
     let taken = lane
@@ -232,7 +231,6 @@ async fn a_mint_for_an_account_with_no_row_is_a_statement_failure() {
     let request = MintRequest {
         tenant: &absent,
         name: KeyName::parse("alpha").expect("a well-formed name"),
-        description: Description::parse(None).expect("an absent description is legal"),
         created_by: "fixture|apikey-orphan",
     };
 

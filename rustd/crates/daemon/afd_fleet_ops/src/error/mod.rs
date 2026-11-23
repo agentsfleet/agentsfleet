@@ -30,7 +30,7 @@ enum ErrorKind {
     },
     #[error("no runner matches the operator-supplied id")]
     RunnerNotFound,
-    #[error("the lease cursor is outside the filtered runner history")]
+    #[error("the run cursor is outside the filtered runner history")]
     CursorInvalid,
 }
 
@@ -53,7 +53,7 @@ impl Error {
             ErrorKind::Datastore { .. } => DETAIL_DATABASE_UNAVAILABLE,
             ErrorKind::Query { .. } => DETAIL_DATABASE_ERROR,
             ErrorKind::RunnerNotFound => "Runner not found",
-            ErrorKind::CursorInvalid => super::runner_leases::DETAIL_BAD_CURSOR,
+            ErrorKind::CursorInvalid => super::runner_runs::DETAIL_BAD_CURSOR,
         }
     }
 

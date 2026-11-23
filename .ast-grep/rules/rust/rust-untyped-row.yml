@@ -11,9 +11,12 @@ severity: error
 message: a column read by position or name; decode the row into a `#[derive(sqlx::FromRow)]` struct through `query_as`, or one column through `query_scalar`
 files:
   - rustd/crates/*/*/src/**/*.rs
+  - rustd/guffbolt/src/**/*.rs
 ignores:
   - rustd/crates/*/*/src/**/{tests,test_util,test_support,testing,fixture,examples,benches}/**
   - rustd/crates/*/*/src/**/{test,tests,*_test,*_tests,test_util,test_support,testing,fixture}.rs
+  - rustd/guffbolt/src/**/{tests,test_util,test_support,testing,fixture,examples,benches}/**
+  - rustd/guffbolt/src/**/{test,tests,*_test,*_tests,test_util,test_support,testing,fixture}.rs
 utils:
   try-get:
     regex: ^try_get(_unchecked)?$

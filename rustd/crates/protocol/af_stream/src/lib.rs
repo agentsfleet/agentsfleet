@@ -25,9 +25,10 @@ pub use endpoint::Endpoint;
 pub use error::{Error, Reason, Result, Stage};
 pub use framing::{
     Budget, CONTROL_BUFFER_BYTES_ENV, DATA_BUFFER_BYTES_ENV, Encoder, MemoryLimits, MemorySettings,
-    OwnedFrame, Reader, encode, write,
+    OwnedFrame, Reader, encode, encode_within, write,
 };
 pub use h3::NetworkStats;
+pub use limits::Ceilings;
 pub use mtu::DatagramLimit;
 pub use server::{ConnectionInfo, Listener};
 

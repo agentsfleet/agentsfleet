@@ -1,9 +1,9 @@
-//! Reading the daemon's own lease counters back, in the bench process.
+//! Reading the daemon's own run counters back, in the bench process.
 //!
 //! # What it reads, and what it leaves to Postgres
 //!
 //! `afd_fleet`'s `select` publishes how many fleets each poll examined through
-//! `producers::fleet::lease_polled`, so fan-out per poll is the number the
+//! `producers::fleet::run_polled`, so fan-out per poll is the number the
 //! daemon reports about itself. Statements are NOT read here: a poll's
 //! statements run in several crates, and a hand-kept tally missed most of them.
 //! `crate::statements` reads them from `pg_stat_statements`.
@@ -47,16 +47,16 @@ use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider, Temporality};
 
 use crate::error::{ErrorKind, Result};
 
-/// Total polls the lease path has made.
-const POLLS: &str = "agentsfleet_lease_polls_total";
+/// Total polls the run path has made.
+const POLLS: &str = "agentsfleet_run_polls_total";
 
 /// Total fleets those polls examined.
-const CANDIDATES: &str = "agentsfleet_lease_poll_candidates_scanned_total";
+const CANDIDATES: &str = "agentsfleet_run_poll_candidates_scanned_total";
 
 /// What a poisoned capture lock reports, rather than panicking a bench run.
 const POISONED: &str = "the captured counters lock was poisoned";
 
-/// What the lease path has cost since the process started.
+/// What the run path has cost since the process started.
 ///
 /// Cumulative, because the underlying instruments are counters. A lane reads
 /// once before its window and once after, and reports the difference.
@@ -79,7 +79,7 @@ impl PollCounters {
     }
 }
 
-/// Keeps the last export's lease counters, and nothing else.
+/// Keeps the last export's run counters, and nothing else.
 ///
 /// Every other family the daemon declares passes through untouched: this is a
 /// sink, not a store, and the three names below are the only ones it reads.
@@ -119,7 +119,7 @@ impl PushMetricExporter for CapturingExporter {
 }
 
 impl CapturingExporter {
-    /// Take the three lease sums out of one export batch.
+    /// Take the three run sums out of one export batch.
     fn capture(&self, metrics: &ResourceMetrics) -> OTelSdkResult {
         let mut captured = PollCounters::default();
         for scope in metrics.scope_metrics() {
@@ -146,13 +146,13 @@ impl CapturingExporter {
 
 /// The installed instrument set, and the sink its exports land in.
 #[derive(Debug, Clone)]
-pub struct LeaseInstrument {
+pub struct RunInstrument {
     captured: Arc<CapturedCounters>,
     provider: SdkMeterProvider,
 }
 
 /// The one instrument this process has, once anything has installed it.
-static INSTALLED: OnceLock<LeaseInstrument> = OnceLock::new();
+static INSTALLED: OnceLock<RunInstrument> = OnceLock::new();
 
 /// Serialises the first build.
 ///
@@ -163,7 +163,7 @@ static INSTALLED: OnceLock<LeaseInstrument> = OnceLock::new();
 /// bound.
 static BUILDING: Mutex<()> = Mutex::new(());
 
-impl LeaseInstrument {
+impl RunInstrument {
     /// Install the process-wide producer set over an in-memory reader.
     ///
     /// # Errors

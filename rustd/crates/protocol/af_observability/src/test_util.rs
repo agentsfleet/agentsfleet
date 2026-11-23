@@ -188,12 +188,7 @@ impl Capture {
         if let Some(installed) = INSTALLED.get() {
             return installed.clone();
         }
-        let built = Self::build(sources);
-        let _ = INSTALLED.set(built);
-        INSTALLED
-            .get()
-            .cloned()
-            .expect("the capture was set a line above")
+        INSTALLED.get_or_init(|| Self::build(sources)).clone()
     }
 
     /// Build the provider and bind the producers to it.

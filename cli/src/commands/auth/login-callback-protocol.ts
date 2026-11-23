@@ -5,20 +5,17 @@ export const LOOPBACK_VERSION = "1";
 export const LOOPBACK_FLOW = "loopback";
 export const LOOPBACK_FLOW_PARAM = "flow";
 export const LOOPBACK_HOST = "127.0.0.1";
-export const MAX_CALLBACK_BODY_BYTES = 1_024;
 export const MAX_CALLBACK_HEADER_BYTES = 4_096;
-export const CALLBACK_READ_TIMEOUT_MS = 5_000;
 export const CALLBACK_IDLE_TIMEOUT_SECONDS = 5;
-export const MAX_LOGIN_WAIT_MS = 300_000;
 export const CALLBACK_FORM_TYPE = "application/x-www-form-urlencoded";
 export const CALLBACK_STATUS = { approved: "approved", denied: "denied" } as const;
-export const CALLBACK_DECISION = { canceled: "canceled", expired: "expired" } as const;
+export const CALLBACK_DECISION = { canceled: "canceled" } as const;
 
 export type CallbackSubmission =
   | { readonly status: typeof CALLBACK_STATUS.approved; readonly verificationCode: string }
   | { readonly status: typeof CALLBACK_STATUS.denied };
 export type CallbackDecision = CallbackSubmission
-  | { readonly status: typeof CALLBACK_DECISION.canceled | typeof CALLBACK_DECISION.expired };
+  | { readonly status: typeof CALLBACK_DECISION.canceled };
 
 const FINGERPRINT_DIGITS = 8;
 const FINGERPRINT_GROUP = 4;

@@ -8,9 +8,9 @@
 //!
 //! # Why hyper directly rather than `axum::serve`
 //!
-//! `axum::serve` exposes no way to bound the header buffer, and Dimension 5.3
-//! is a bound on the header buffer. So the accept loop is ours and
-//! [`afd_api::connection_builder`] carries the limit — the same builder §5's
+//! `axum::serve` exposes no way to bound the header buffer, and the daemon
+//! bounds the header buffer. So the accept loop is ours and
+//! [`afd_api::connection_builder`] carries the limit — the same builder `afd_api`'s
 //! oversize-head test drives.
 //!
 //! # Every connection is a supervised child of the accept loop
@@ -18,12 +18,13 @@
 //! A connection task is spawned per accepted socket and given the same
 //! cancellation token. The alternative would be `tokio::spawn`, which detaches
 //! — and a detached connection can outlive the pools it reads through. That is
-//! the unsupervised spawn path Dimension 7.5 says does not exist.
+//! the unsupervised spawn path the supervisor tests say does not exist.
 
 mod accept;
 mod clients;
 pub mod drain;
 mod exporting;
+mod guarded;
 mod listen;
 mod observations;
 mod optional;
@@ -34,13 +35,12 @@ mod runtime;
 #[cfg(feature = "test-util")]
 mod test_util;
 #[cfg(feature = "test-util")]
-pub use test_util::{boot_with_authoring_boundary, boot_with_connector_boundary};
+pub use test_util::boot_with_connector_boundary;
 
 use std::net::SocketAddr;
 
 use af_core::env::EnvSource;
 use af_observability::{Analytics, Telemetry};
-use afd_api::Admission;
 use afd_db::Db;
 
 pub use self::accept::Acceptor;
@@ -49,7 +49,9 @@ pub use self::accept::serve_accepts;
 pub use self::drain::{DRAIN_TIMEOUT, Drain, Settled};
 
 use self::exporting::gauge_sources;
-pub(crate) use self::exporting::{attach_exports, flush_unsupervised, open_telemetry};
+pub(crate) use self::exporting::{
+    FLUSH_BUDGET, attach_exports, flush_unsupervised, open_telemetry,
+};
 use self::listen::listen;
 pub use self::listen::{ACCEPT_LOOP, dual_stack_listener};
 use self::optional::open_analytics;
@@ -192,13 +194,9 @@ async fn open(
             return Err(failure);
         }
     };
-    let admission = Admission::new(config.runtime.requests);
-    // Before the router takes them: both are the state a gauge reads, and the
-    // clones are handles onto the same semaphore and the same ceiling rather
-    // than second copies that could disagree with what admission decides.
-    let sources = gauge_sources(&admission, &runtime.live, &runtime.database);
+    let sources = gauge_sources(&runtime.live, &runtime.database);
     open_telemetry(prepared, supervisor, &sources, &runtime.database)?;
-    serve_plane(runtime, &admission, &config, analytics, port, supervisor).await
+    serve_plane(runtime, &config, analytics, port, supervisor).await
 }
 
 /// Routes the plane, starts every background worker, then binds the port.
@@ -209,7 +207,6 @@ async fn open(
 /// workers are spawned.
 async fn serve_plane(
     runtime: Runtime,
-    admission: &Admission,
     config: &BootConfig,
     analytics: Analytics,
     port: u16,
@@ -220,7 +217,11 @@ async fn serve_plane(
     let gateway = runtime.plane.runner_streams().clone();
     let native = runner_stream::Signals::default();
     let serving_failed = tokio_util::sync::CancellationToken::new();
-    let router = afd_api::router::build(std::sync::Arc::clone(&runtime.plane), admission);
+    let router = afd_api::router::build(
+        std::sync::Arc::clone(&runtime.plane),
+        config.runtime.requests,
+        config.runtime.operations.tuning.server.max_request_body,
+    );
     start_workers(supervisor, config, &analytics, &runtime).await;
     let drain = runner_drain(&gateway, &native);
     serve_runner(
@@ -234,7 +235,8 @@ async fn serve_plane(
     );
     let stream_port = runner_stream_address.port();
     tracing::info!(event = "runner_stream_listener_started", port = stream_port);
-    let address = listen(port, router, supervisor, drain.clone()).await?;
+    let read_timeout = config.runtime.operations.tuning.server.read_timeout;
+    let address = listen(port, router, read_timeout, supervisor, drain.clone()).await?;
     announce_started(supervisor, analytics, address);
     Ok(Booted {
         address,
@@ -270,20 +272,14 @@ fn serve_runner(
     );
 }
 
-/// Start maintenance before either listener can answer through the assembled router.
+/// Start the event-driven workers before either listener can answer through
+/// the assembled router.
 async fn start_workers(
     supervisor: &mut Supervisor,
     config: &BootConfig,
     analytics: &Analytics,
     runtime: &Runtime,
 ) {
-    crate::sweepers::spawn(
-        supervisor,
-        &runtime.database,
-        analytics,
-        runtime.plane.task_owner(),
-        &config.runtime,
-    );
     spawn_background(
         supervisor,
         config,

@@ -1,0 +1,21 @@
+//! Funds checks retain unmeasured physical calls without charging logged usage twice.
+
+use af_core::id::Uuid7;
+use afd_billing::Nanos;
+use sqlx::PgConnection;
+
+use crate::{Result, error::query};
+
+pub(super) async fn required_on(
+    connection: &mut PgConnection,
+    run: &Uuid7,
+    coding_headroom: Nanos,
+) -> Result<Nanos> {
+    let unresolved: i64 = sqlx::query_scalar(include_str!("sql/required_credit.sql"))
+        .bind(run)
+        .fetch_one(connection)
+        .await
+        .map_err(query("read unresolved physical decision credit"))?;
+    // The wallet already holds every logged line's debit.
+    Ok(Nanos::from_i64(unresolved).saturating_add(coding_headroom))
+}

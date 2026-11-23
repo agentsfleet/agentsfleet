@@ -1,0 +1,31 @@
+//! No per-fleet cap: a fleet admits however much it holds, and only the
+//! deployment ceiling refuses.
+
+use super::{
+    Fallible,
+    lane::Lane,
+    ledger::{admit, steer},
+    queue::over_lane,
+};
+use afd_db::test_util::mint_id;
+use afd_turns::Reply as ReplyTo;
+
+/// The per-fleet cap the ledger once enforced, now gone.
+const OLD_FLEET_CAP: usize = 10_000;
+
+#[tokio::test]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn a_fleet_admits_past_ten_thousand_unsettled() -> Fallible {
+    let lane = Lane::seed().await?;
+    let turns = over_lane(&lane).await?;
+    let first = admit(&turns, steer(&lane, lane.fleet.as_str(), ReplyTo::None)).await?;
+    let ids: Vec<_> = (1..OLD_FLEET_CAP).map(|_| mint_id()).collect();
+    sqlx::query("INSERT INTO thread.turns (id, thread_id, workspace_id, producer, producer_key, payload_digest, actor, kind, status, request_json, created_at, updated_at) SELECT seed.id::uuid, a.thread_id, a.workspace_id, a.producer, seed.id, a.payload_digest, a.actor, a.kind, a.status, a.request_json, now(), now() FROM thread.turns a CROSS JOIN unnest($2::text[]) AS seed(id) WHERE a.id=$1")
+        .bind(&first.stored.id).bind(&ids)
+        .execute(&mut *lane.database.acquire().await?)
+        .await?;
+    let next = admit(&turns, steer(&lane, mint_id().as_str(), ReplyTo::None)).await?;
+    assert!(!next.replayed, "the next message is admitted, not refused");
+    lane.cleanup().await;
+    Ok(())
+}

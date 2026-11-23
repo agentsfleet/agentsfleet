@@ -1,27 +1,25 @@
-//! Live authoring services share their existing pools, keys and provider boundary with the gateway.
+//! Live setup services share their existing pools and keys with the gateway.
 
 use super::super::*;
-use afd_fleet::lease::{LeaseService, Leases};
+use afd_fleet::run::{RunService, Runs};
 use afd_gateway::{Gateway, GatewayDependencies};
 
 impl Fleet {
-    pub(crate) fn with_native_authoring(mut self, database: Db) -> Self {
+    pub(crate) fn with_native_setup(mut self, database: Db) -> Self {
         self.native = Some(database);
         self
     }
 
-    fn authoring_gateway(&self, database: Db) -> Gateway {
+    fn setup_gateway(&self, database: Db) -> Gateway {
         let bus = self.runner_commands.clone();
-        let biller = Arc::new(afd_billing::ledger::LedgerBiller::on_system_clock(
-            database.clone(),
-        ));
+        let biller = Arc::new(afd_billing::ledger::LedgerBiller::new(database.clone()));
         let key = Arc::new(Kek::from_bytes(FIXTURE_KEK));
-        let leases = LeaseService {
-            task_reports: None,
-            turn_checkpoints: afd_fleet::lease::turn_checkpoint::TurnCheckpoints::new(Arc::clone(
+        let runs = RunService {
+            durable_task_reports: None,
+            turn_checkpoints: afd_fleet::run::turn_checkpoint::TurnCheckpoints::new(Arc::clone(
                 &key,
             )),
-            leases: Leases::new(database.clone(), bus.clone(), Entropy::new()),
+            runs: Runs::new(database.clone(), bus.clone(), Entropy::new()),
             gates: afd_gate::gate::Gates::new(database.clone(), bus.clone(), Entropy::new()),
             accounts: afd_billing::Accounts::new(database.clone()),
             biller,
@@ -38,15 +36,16 @@ impl Fleet {
                 )),
             )),
             grants: IntegrationGrants::new(database.clone(), Entropy::new()),
-            thread: Arc::new(self.events.clone()),
+            thread: Arc::new(afd_fleet::run::history::Conversations::new(
+                database.clone(),
+            )),
         };
         Gateway::new(GatewayDependencies {
             recovery: afd_gateway::RecoverySettings::default(),
             database,
             runners: self.runners.clone(),
-            leases,
-            drafts: self.authoring.clone(),
-            models: self.authoring_models.clone(),
+            runs,
+            drafts: self.drafts.clone(),
             creations: self.creations.clone(),
             bus,
             stream_limit: self.live.stream_limit().clone(),
@@ -54,24 +53,25 @@ impl Fleet {
             frame_memory: af_stream::MemoryLimits::default(),
             wall_clock: Arc::new(af_core::clock::SystemClock),
             analytics: self.analytics.clone(),
+            frames: afd_gateway::FrameCeilings::default(),
         })
     }
 }
 
-impl afd_api::services::RunnerStreams for Fleet {
+impl afd_http::services::RunnerStreams for Fleet {
     async fn open(
         &self,
         runner: afd_auth::principal::Runner,
         request: axum::extract::Request,
     ) -> axum::response::Response {
-        use afd_api::services::RunnerStreams as _;
+        use afd_http::services::RunnerStreams as _;
         match &self.native {
             Some(database) => {
-                self.authoring_gateway(database.clone())
+                self.setup_gateway(database.clone())
                     .open(runner, request)
                     .await
             }
-            None => self.leases.open(runner, request).await,
+            None => self.runs.open(runner, request).await,
         }
     }
 }

@@ -16,12 +16,12 @@ import {
 } from "../../commands/fleet/fleet.ts";
 import { listEffectFromFlags } from "../../commands/fleet/list.ts";
 import { logsEffectFromFlags } from "../../commands/fleet/logs.ts";
-import { eventsEffectFromFlags } from "../../commands/fleet/events.ts";
+import { turnsEffectFromFlags } from "../../commands/fleet/turns.ts";
 import { steerEffectFromArgs } from "../../commands/fleet/steer.ts";
 import { approvalsCommand, grantsCommand } from "./access.command.ts";
 import { scheduleCommand } from "./schedule.command.ts";
 import { memoryCommand } from "./memory.command.ts";
-import { actorFlag, cursorFlag, eventsLimitFlag, fleetFlag, fleetIdArgument, fleetIdOptionalArgument, fleetIdOrNameArgument, listLimitFlag, messageArgument, opt, optNum, sinceFlag, startingAfterFlag, VERB, workspaceFlag } from "./flags.ts";
+import { actorFlag, cursorFlag, fleetFlag, fleetIdArgument, fleetIdOptionalArgument, fleetIdOrNameArgument, listLimitFlag, messageArgument, opt, optNum, sinceFlag, startingAfterFlag, VERB, workspaceFlag } from "./flags.ts";
 
 
 const fleetShowCommand = Command.make(VERB.show, { fleetId: fleetIdArgument }).pipe(
@@ -69,7 +69,7 @@ const deleteCommand = Command.make(VERB.delete, { fleetId: fleetIdArgument }).pi
 const logsCommand = Command.make("logs", {
   fleetId: fleetIdOptionalArgument,
   fleet: fleetFlag,
-  limit: eventsLimitFlag,
+  limit: listLimitFlag,
   cursor: cursorFlag,
 }).pipe(
   Command.withDescription("Tail fleet activity"),
@@ -82,16 +82,16 @@ const logsCommand = Command.make("logs", {
   ),
 );
 
-const eventsCommand = Command.make("events", {
+const turnsCommand = Command.make("turns", {
   fleetId: fleetIdArgument,
   actor: actorFlag,
   since: sinceFlag,
   cursor: cursorFlag,
-  limit: eventsLimitFlag,
+  limit: listLimitFlag,
 }).pipe(
-  Command.withDescription("Page through historical events"),
+  Command.withDescription("Page through historical turns"),
   guardedHandler(({ fleetId, actor, since, cursor, limit }) =>
-    eventsEffectFromFlags({
+    turnsEffectFromFlags({
       fleetId,
       actor: opt(actor),
       since: opt(since),
@@ -138,7 +138,7 @@ export const fleetCommand = () => Command.make("fleet").pipe(
     deleteCommand,
     steerCommand,
     logsCommand,
-    eventsCommand,
+    turnsCommand,
     approvalsCommand(),
     scheduleCommand(),
     memoryCommand(),

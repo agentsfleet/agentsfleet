@@ -32,9 +32,7 @@ use crate::identity::{Capabilities, Sessions, SignupWriteback};
 pub struct PlaneParts {
     /// Validated deployment clocks and recovery budgets.
     pub runtime: crate::preflight::RuntimeSettings,
-    /// Fixed-origin authoring transport, built before opening datastores.
-    pub authoring_transport: afd_authoring::Network,
-    /// Storage and GitHub share a guarded pool independent of inference timeouts.
+    /// Storage and GitHub share a guarded pool of their own.
     pub storage_client: reqwest::Client,
     /// The API role's Postgres pool, open and proven.
     pub database: Db,
@@ -79,7 +77,8 @@ pub struct PlaneParts {
     /// and a second reader could disagree with the first.
     pub platform_admin_workspace: Option<Uuid7>,
     /// Platform-owned R2 endpoint/bucket and vault reference, never a fleet option.
-    pub checkpoint_storage: Option<garde::Valid<afd_fleet::task::storage::CheckpointStorageConfig>>,
+    pub checkpoint_storage:
+        Option<garde::Valid<afd_fleet::durable_task::storage::CheckpointStorageConfig>>,
     /// What a signup event from the identity provider is verified against.
     ///
     /// Threaded through rather than re-read, for the reason
@@ -111,6 +110,8 @@ pub struct ScheduleConfig {
     /// This deployment's own base URL; the scheduler adapter derives the
     /// callback a fire returns to from it.
     pub api_url: Box<str>,
+    /// How often and how long each scheduler call is tried.
+    pub retries: afd_cron::qstash::RetryPolicy,
 }
 
 /// What the device-flow login surface needs from configuration.
@@ -136,19 +137,19 @@ pub struct LoginConfig {
 }
 
 /// The schedule plane over `scheduler`: the management service and its
-/// scheduler client, and the fire verb over the shared admissions ledger.
+/// scheduler client, and the fire verb over the shared turns ledger.
 pub(super) fn schedule_plane(
     database: &Db,
     scheduler: Arc<dyn afd_cron::Scheduler>,
-    admissions: afd_admission::Admissions,
-) -> afd_api::SchedulePlane {
-    afd_api::SchedulePlane::new(
+    turns: afd_turns::Turns,
+) -> afd_http::services::SchedulePlane {
+    afd_http::services::SchedulePlane::new(
         afd_cron::ScheduleService::new(
             afd_cron::Schedules::new(database.clone(), Entropy::new())
-                .with_activity_streams(admissions.streams()),
+                .with_activity_notices(turns.notices()),
             scheduler,
         ),
-        afd_cron::Fire::new(admissions),
+        afd_cron::Fire::new(turns),
         Entropy::new(),
     )
 }

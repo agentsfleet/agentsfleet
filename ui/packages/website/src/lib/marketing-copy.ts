@@ -62,7 +62,7 @@ export const SOURCE_CATEGORIES: readonly SourceCategory[] = [
 
 // Machine-readable explanation of the same incident example shown on the homepage.
 export const LOOP_STEPS = [
-  { number: "01", title: "Configure the job once", description: "Describe a job in workspace chat, review its trigger, tools, resources, credentials, and access, then Save to create a fleet. Publish a Plugin separately when you want to reuse a version." },
+  { number: "01", title: "Configure the job once", description: "Describe a job in workspace chat, review its trigger, tools, resources, credentials, and access, then Save to create a fleet." },
   { number: "02", title: "Watch the investigation", description: "A scheduled sweep wakes the incident responder. It reads Grafana Loki and GitHub evidence and returns a diagnosis with references." },
   { number: "03", title: "Act on the report", description: "The investigator can report to configured Slack and Jira destinations. It cannot write repository code. A separately configured repairer with an approved write grant can open a draft pull request; a human reviews and merges." },
 ] as const;

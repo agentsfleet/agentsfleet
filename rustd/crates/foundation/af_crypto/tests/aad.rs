@@ -1,4 +1,4 @@
-//! Dimension 1.2 — the associated data is byte-identical to what stored rows bind.
+//! The associated data is byte-identical to what stored rows bind.
 //!
 //! This is the one place the envelope can silently break. The primitive is a
 //! standard covered by published vectors; the layout is six fixed-width

@@ -33,7 +33,6 @@ struct Installation {
 /// The repository a delivery is about.
 #[derive(Debug, Deserialize)]
 struct Repository {
-    id: Option<u64>,
     full_name: Option<String>,
 }
 
@@ -104,10 +103,6 @@ pub(super) enum RunAction {
 #[derive(Debug, Default, Deserialize)]
 pub(super) struct WorkflowRun {
     #[serde(default)]
-    pub(super) workflow_id: Option<u64>,
-    #[serde(default)]
-    pub(super) run_number: Option<u64>,
-    #[serde(default)]
     pub(super) html_url: String,
     #[serde(default)]
     pub(super) head_sha: String,
@@ -176,30 +171,6 @@ impl Delivery {
             _ => Body::Other,
         };
         Ok(Self { envelope, body })
-    }
-
-    /// Completion matching is separate from ordinary investigation classification.
-    pub(crate) fn completion(
-        &self,
-        scope: afd_fleet::task::CompletionScope,
-    ) -> Option<afd_fleet::task::VerifiedCompletion> {
-        let Body::WorkflowRun(event) = &self.body else {
-            return None;
-        };
-        if event.action != RunAction::Completed {
-            return None;
-        }
-        let run = &event.workflow_run;
-        Some(afd_fleet::task::VerifiedCompletion {
-            scope,
-            installation_id: self.installation()?,
-            repository_id: self.envelope.repository.as_ref()?.id?,
-            head: run.head_sha.clone(),
-            workflow_id: run.workflow_id?,
-            run_number: run.run_number?,
-            run_id: u64::try_from(run.id).ok()?,
-            run_attempt: u32::try_from(run.run_attempt).ok()?,
-        })
     }
 
     /// The installation an App delivery was sent for.

@@ -9,11 +9,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{Result, file_calls_unsupported};
 use crate::events::Events;
+use crate::sizes::Sizes;
 
 mod ending;
+mod search;
 
 pub use self::ending::Ending;
 pub(crate) use self::ending::{SHELL_KILLED_EXIT, SIGKILL};
+pub use self::search::{Found, Hit, Pattern, Search};
 
 /// A process the executor started, unique for the life of one executor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -257,6 +260,13 @@ pub trait Executor: Send + Sync + fmt::Debug {
         Err(file_calls_unsupported())
     }
 
+    /// What this executor's link holds to: its read size, the output its
+    /// events keep at each edge and its frame. A stand-in keeps the
+    /// defaults.
+    fn sizes(&self) -> Sizes {
+        Sizes::DEFAULT
+    }
+
     /// Starts a process and returns the channel its events arrive on.
     async fn spawn(&self, spawn: &Spawn) -> Result<Process>;
 
@@ -284,11 +294,6 @@ pub trait Executor: Send + Sync + fmt::Debug {
         Err(file_calls_unsupported())
     }
 
-    /// Adds to the end of a regular file, making it when absent.
-    async fn append_file(&self, _path: &str, _data: Bytes) -> Result<()> {
-        Err(file_calls_unsupported())
-    }
-
     /// Removes a regular file; a link, a directory or a device is refused.
     async fn delete_file(&self, _path: &str) -> Result<()> {
         Err(file_calls_unsupported())
@@ -296,6 +301,14 @@ pub trait Executor: Send + Sync + fmt::Debug {
 
     /// Lists a directory, up to the most one answer carries.
     async fn list_dir(&self, _path: &str) -> Result<Listing> {
+        Err(file_calls_unsupported())
+    }
+
+    /// Walks below `search.path` once, on the sandbox's own disk, skipping
+    /// `.git` and what `.gitignore` names and following no link, and answers
+    /// its files, or the lines in them that hold its pattern, in path order,
+    /// cut to one frame.
+    async fn search(&self, _search: &Search) -> Result<Found> {
         Err(file_calls_unsupported())
     }
 }

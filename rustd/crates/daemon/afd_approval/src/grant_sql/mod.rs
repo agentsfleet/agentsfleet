@@ -20,9 +20,9 @@
 /// [`REQUEST_GRANT`] deliberately does NOT run it, and the reason is the caller
 /// rather than the statement: both of its callers derive the workspace and the
 /// fleet from ONE trusted row — the install from the fleet it just wrote into
-/// the authenticated workspace, the park from the `Acquired` lease it is
+/// the authenticated workspace, the park from the `Acquired` run it is
 /// serving — so there is no untrusted pair to reject, and the park path would
-/// pay the round trip once per second to re-answer a question its own lease
+/// pay the round trip once per second to re-answer a question its own run
 /// row already settled. No endpoint takes a caller-supplied `(workspace,
 /// fleet)` pair into that statement; the precondition on
 /// `IntegrationGrants::request` is what keeps that true, and a third caller
@@ -62,7 +62,7 @@ pub(crate) const ENSURE_GRANT: &str = include_str!("ensure_grant.sql");
 /// Raises a card using the existing grant's identity, including when a
 /// concurrent insert won. Locking the grant serializes requests with its
 /// approval/revocation; the unique active reference arbitrates cards without a
-/// status-dependent index. A NULL `event_id` prevents approval from enqueueing
+/// status-dependent index. A NULL `turn_id` prevents approval from enqueueing
 /// duplicate delivery work. The card lapses `$13` after the database clock.
 ///
 /// `$1` fleet, `$2` service, `$3` grant status, `$4` card, `$5` workspace,

@@ -1,7 +1,7 @@
 //! The abort rail, proven wired into a lane rather than only into itself.
 //!
 //! `abort/tests.rs` proves the monitor fires past its threshold. This proves
-//! a LANE'S loop feeds it and stops when it does: a lease driver over
+//! a LANE'S loop feeds it and stops when it does: a run driver over
 //! datastores nobody listens on refuses every poll, and after the minimum
 //! sample the run ends with the abort recorded rather than spinning until its
 //! deadline.
@@ -19,15 +19,15 @@ use std::time::Instant;
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use afd_bench::abort::{Abort, MINIMUM_SAMPLE};
-use afd_bench::lane::lease::drive::{Shared, poll_until};
-use afd_fleet::lease::Leases;
+use afd_bench::lane::runs::drive::{Shared, poll_until};
+use afd_fleet::run::Runs;
 
 /// Any v7-shaped runner id; the pass never reaches the row it would name.
 const RUNNER: &str = "0195b4ba-8d3a-7001-8abc-000000000001";
 
 #[tokio::test]
 async fn test_a_run_aborts_when_the_target_starts_failing() {
-    let leases = Leases::new(
+    let runs = Runs::new(
         afd_db::test_util::unreachable_db(),
         afd_bus::test_util::unreachable(),
         Entropy::new(),
@@ -36,13 +36,13 @@ async fn test_a_run_aborts_when_the_target_starts_failing() {
     let abort = Arc::new(Abort::new(0.5));
     let shared = Shared {
         deadline: Instant::now() + Duration::from_secs(30),
-        leased: AtomicU64::new(0),
+        held: AtomicU64::new(0),
         stop_after: None,
         abort: Arc::clone(&abort),
     };
 
     let started = Instant::now();
-    let (outcomes, last_lease) = poll_until(&leases, &runner, &shared)
+    let (outcomes, last_run) = poll_until(&runs, &runner, &shared)
         .await
         .expect("a refusing target is counted, never propagated");
 
@@ -56,7 +56,7 @@ async fn test_a_run_aborts_when_the_target_starts_failing() {
         0,
         "nothing was measured off a target that refused"
     );
-    assert!(last_lease.is_none(), "no lease was ever issued");
+    assert!(last_run.is_none(), "no run was ever issued");
     assert!(
         started.elapsed() < Duration::from_secs(25),
         "the run stopped on the abort, not on its deadline"

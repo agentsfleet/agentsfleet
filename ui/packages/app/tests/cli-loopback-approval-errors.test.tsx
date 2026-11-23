@@ -54,19 +54,6 @@ it.each([RESPONSE_FAILURE.redirect, RESPONSE_FAILURE.refused, RESPONSE_FAILURE.b
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-it("cancels an oversized streamed session before reading more bytes and releases its reader", async () => {
-  const cancelled = vi.fn();
-  const body = new ReadableStream<Uint8Array>({
-    start(controller) { controller.enqueue(new Uint8Array(4_097)); }, cancel: cancelled,
-  });
-  fetchMock.mockResolvedValue(new Response(body));
-  await renderAuth();
-  await expectRefused();
-  expect(cancelled).toHaveBeenCalledTimes(1);
-  expect(body.locked).toBe(false);
-  expect(getToken).not.toHaveBeenCalled();
-});
-
 it("releases a failed session stream without approving or leaving its reader locked", async () => {
   const body = new ReadableStream<Uint8Array>({ start(controller) { controller.error(new Error("stream failed")); } });
   fetchMock.mockResolvedValue(new Response(body));

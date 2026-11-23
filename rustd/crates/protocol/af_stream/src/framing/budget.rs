@@ -26,10 +26,12 @@ struct Pools {
 }
 
 impl Default for Budget {
+    /// One pool pair holding the whole default deployment budget.
     fn default() -> Self {
+        let limits = super::MemoryLimits::default();
         Self {
-            control: Arc::new(Semaphore::new(16 * 1024 * 1024)),
-            data: Arc::new(Semaphore::new(48 * 1024 * 1024)),
+            control: Arc::new(Semaphore::new(limits.control_bytes)),
+            data: Arc::new(Semaphore::new(limits.data_bytes)),
         }
     }
 }
@@ -71,7 +73,7 @@ impl Budget {
     fn pool(&self, kind: StreamKind) -> &Arc<Semaphore> {
         match kind {
             StreamKind::Control => &self.control,
-            StreamKind::Work | StreamKind::Reports | StreamKind::Activity => &self.data,
+            StreamKind::Work | StreamKind::Reports | StreamKind::Progress => &self.data,
         }
     }
 

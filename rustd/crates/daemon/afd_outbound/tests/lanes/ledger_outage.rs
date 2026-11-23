@@ -2,7 +2,7 @@
 
 use af_core::error_code::INTERNAL_DB_UNAVAILABLE;
 use af_core::test_util::trace::Capture;
-use afd_outbound::obligation::{CLAIM_RENEW, CLAIM_TTL};
+use afd_outbound::delivery::{CLAIM_RENEW, CLAIM_TTL};
 
 use super::*;
 
@@ -71,7 +71,7 @@ async fn unanswered_renewals_end_the_cycle_before_the_claim_can_lapse() {
         poster.delivered().is_empty(),
         "the held delivery was abandoned"
     );
-    assert_eq!(named(&capture, "outbound_obligation_stamp_failed"), 0);
+    assert_eq!(named(&capture, "outbound_delivery_stamp_failed"), 0);
 
     token.cancel();
     lanes.drain().await;
@@ -93,7 +93,7 @@ async fn an_abandonment_the_ledger_cannot_record_is_reported_not_announced() {
         .await
         .expect("the cycle ends");
 
-    let failed = capture.only("outbound_obligation_abandon_failed");
+    let failed = capture.only("outbound_delivery_abandon_failed");
     assert_eq!(
         failed.field("error_code"),
         Some(INTERNAL_DB_UNAVAILABLE.as_str())
@@ -101,7 +101,7 @@ async fn an_abandonment_the_ledger_cannot_record_is_reported_not_announced() {
     failed.assert_uncoded_reason();
     assert_eq!(named(&capture, "outbound_delivery_abandoned"), 0);
     assert_eq!(
-        named(&capture, "outbound_obligation_attempt_failed"),
+        named(&capture, "outbound_delivery_attempt_failed"),
         0,
         "a row nobody can deliver counts no cycle"
     );

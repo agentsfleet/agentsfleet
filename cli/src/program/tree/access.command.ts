@@ -30,20 +30,15 @@ import {
   grantDeleteEffectFromArgs,
   grantListEffectFromArgs,
 } from "../../commands/grant/grant.ts";
-import { apiKeyIdArgument, descriptionFlag, fleetFlag, gateIdArgument, grantIdArgument, keyNameFlag, opt, providerArgument, sortFlag, VERB, workspaceFlag } from "./flags.ts";
+import { apiKeyIdArgument, fleetFlag, gateIdArgument, grantIdArgument, keyNameFlag, opt, providerArgument, sortFlag, VERB, workspaceFlag } from "./flags.ts";
 
 /** An optional flag as the command Effects spell it. */
 
 // ── api-keys ────────────────────────────────────────────────────────
 
-const apiKeyCreateCommand = Command.make(VERB.create, {
-  name: keyNameFlag,
-  description: descriptionFlag,
-}).pipe(
+const apiKeyCreateCommand = Command.make(VERB.create, { name: keyNameFlag }).pipe(
   Command.withDescription("Create a tenant API key"),
-  guardedHandler(({ name, description }) =>
-    apiKeyCreateEffectFromArgs({ name: opt(name), description: opt(description) }),
-  ),
+  guardedHandler(({ name }) => apiKeyCreateEffectFromArgs({ name: opt(name) })),
 );
 
 const apiKeyListCommand = Command.make(VERB.list, { sort: sortFlag }).pipe(

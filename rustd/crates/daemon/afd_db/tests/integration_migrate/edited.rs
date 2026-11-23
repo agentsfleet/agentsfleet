@@ -1,4 +1,4 @@
-//! Dimension 2.5 — an applied slot whose file changed is refused by checksum,
+//! An applied slot whose file changed is refused by checksum,
 //! naming its version, and the run applies nothing after it.
 
 use std::sync::LazyLock;

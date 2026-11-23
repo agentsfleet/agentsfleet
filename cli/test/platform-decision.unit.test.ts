@@ -35,7 +35,7 @@ test.each([
   {...decision, prices: []},
   {...decision, prices: [MODEL.prices[0], MODEL.prices[0]]},
   {...decision, profile: {...profile, api: "unknown"}},
-  {...decision, profile: {...profile, input_max_bytes: 24577}},
+  {...decision, profile: {...profile, input_max_bytes: 0}},
   {...decision, profile: {...profile, accepted_models: []}},
   {...decision, profile: {...profile, goal: undefined}},
   {...decision, profile: {...profile, evaluation_digest: "invalid"}},

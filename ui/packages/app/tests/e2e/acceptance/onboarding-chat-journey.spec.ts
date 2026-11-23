@@ -4,7 +4,7 @@
  * The path a new user actually takes, typed rather than seeded: open New
  * fleet, see which model is drafting, describe the work, review the proposal
  * the setup chat returns, save it, and find the active fleet in sidebar history. The
- * description is complete and asks for no questions, so a live authoring
+ * description is complete and asks for no questions, so a live setup
  * model has what it needs to propose in one turn.
  */
 import { expect, test } from "@playwright/test";
@@ -42,7 +42,7 @@ test.describe("onboarding chat", () => {
     await page.goto(workspaceHref(workspaceId, "fleets/new"));
 
     // The drafting model is named before the first word is typed.
-    const model = page.getByRole("combobox", { name: "Authoring model" });
+    const model = page.getByRole("combobox", { name: "Setup model" });
     await expect(model).toBeVisible();
     await expect(model).not.toHaveText(/^\s*(Choose model)?\s*$/);
 
@@ -53,7 +53,9 @@ test.describe("onboarding chat", () => {
     // The proposed name heads the page (DraftChatHeading); the setup region holds its checks.
     await expect(page.getByRole("heading", { level: 1, name: FLEET_NAME, exact: true })).toBeVisible({ timeout: PROPOSAL_TIMEOUT_MS });
     const summary = setupSummary(page);
-    await expect(summary).toContainText("Model");
+    // The region lists only checks that are not ready (SetupChecks issuesOnly), so a ready
+    // runtime model shows as no readiness list at all, not as a "Model" row.
+    await expect(summary.getByRole("list", { name: "Configuration readiness" })).toHaveCount(0);
     await expect(summary).not.toContainText("Not reviewed");
     await expect(summary).not.toContainText("Not resolved");
 

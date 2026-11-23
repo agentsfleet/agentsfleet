@@ -3,12 +3,12 @@
 //!
 //! No model runs. Each kind is fixed text naming the fleets it is about and the
 //! next step a person can take. It is owed through the ledger an answer is owed
-//! through (`afd_outbound::obligation`), by a stable channel notice owner, under
+//! through (`afd_outbound::delivery`), by a stable channel notice owner, under
 //! its own minted id. A provider's retry of the same mention owes it again.
 
 use af_core::id::Uuid7;
 use afd_connector::Provider;
-use afd_outbound::obligation::{self, Delivery};
+use afd_outbound::delivery::{self, Delivery};
 use jiff::Timestamp;
 
 use super::{Notice, Subscriber};
@@ -82,7 +82,7 @@ impl Ingress {
         // pass takes it within one pass.
         let token = self.entropy.uuid7(now)?;
         let mut connection = self.database.acquire().await?;
-        obligation::owe(
+        delivery::owe(
             connection.as_mut(),
             &row,
             &token,
@@ -91,7 +91,7 @@ impl Ingress {
                 workspace_id: owed.workspace,
                 provider: owed.provider,
                 destination: owed.address,
-                event_id: &row,
+                turn_id: &row,
                 answer: owed.text,
             },
         )

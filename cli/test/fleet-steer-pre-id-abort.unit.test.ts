@@ -5,19 +5,19 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Exit } from "effect";
 
 import { steerEffectFromArgs } from "../src/commands/fleet/steer.ts";
-import { KIND_CHUNK, KIND_EVENT_COMPLETE } from "../src/commands/fleet/steer-events.ts";
-import { EVENT_STATUS } from "../src/constants/event-status.ts";
+import { KIND_CHUNK, KIND_TURN_COMPLETE } from "../src/commands/fleet/steer-turns.ts";
+import { TURN_STATUS } from "../src/constants/turn-status.ts";
 import { SIGINT } from "../src/constants/signals.ts";
 import type { HttpRequestInput } from "../src/services/http-client.ts";
 import { ReplSignalEmitter } from "../src/lib/repl.ts";
 import {
-  EVENT_ID,
+  TURN_ID,
   FLEET_ID,
   eventStream,
   makeLayer,
   makeRecorder,
   nullOutput,
-  postedEvent,
+  postedTurn,
   streamFrom,
 } from "./helpers-fleet-steer.ts";
 
@@ -26,12 +26,12 @@ type SteerFrame = Parameters<typeof eventStream>[0][number];
 const chunkFrame = (text: string): SteerFrame => ({
   id: null,
   type: KIND_CHUNK,
-  data: { event_id: EVENT_ID, text },
+  data: { turn_id: TURN_ID, text },
 });
 const completeFrame = (): SteerFrame => ({
   id: null,
-  type: KIND_EVENT_COMPLETE,
-  data: { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED },
+  type: KIND_TURN_COMPLETE,
+  data: { turn_id: TURN_ID, status: TURN_STATUS.PROCESSED },
 });
 
 describe("steer — abort inside the pre-id window", () => {
@@ -45,7 +45,7 @@ describe("steer — abort inside the pre-id window", () => {
     };
     const httpReply = <T>(_input: HttpRequestInput): T => {
       signalSource.emit(SIGINT);
-      return postedEvent<T>();
+      return postedTurn<T>();
     };
     const exit = await Effect.runPromiseExit(
       steerEffectFromArgs(FLEET_ID, undefined, { forceTty: true }, {

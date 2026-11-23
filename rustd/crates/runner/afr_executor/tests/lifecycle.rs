@@ -119,7 +119,7 @@ fn test_a_socket_pair_is_taken_with_no_runtime_and_served_once_one_runs() {
         .unwrap();
     let ended = runtime.block_on(async {
         let serving = tokio::spawn(async move { executor.serve(&root).await });
-        let client = afr_executor::Client::connected(ours).unwrap();
+        let client = afr_executor::Client::connected(ours, afr_executor::Sizes::DEFAULT).unwrap();
         let echoed = finish(
             client
                 .spawn(&Spawn::program("echo").arg("paired"))
@@ -146,9 +146,10 @@ async fn a_client_waits_for_an_executor_that_binds_late() {
         })
     };
 
-    let client = afr_executor::Client::connect_within(&socket, PATIENCE)
-        .await
-        .unwrap();
+    let client =
+        afr_executor::Client::connect_within(&socket, PATIENCE, afr_executor::Sizes::DEFAULT)
+            .await
+            .unwrap();
 
     drop(client);
     tokio::time::timeout(PATIENCE, late)
@@ -163,9 +164,13 @@ async fn a_client_gives_up_on_a_socket_that_never_listens() {
     let (_scratch, socket, _root) = scratch();
     let started = std::time::Instant::now();
 
-    let refused = afr_executor::Client::connect_within(&socket, Duration::from_millis(100))
-        .await
-        .unwrap_err();
+    let refused = afr_executor::Client::connect_within(
+        &socket,
+        Duration::from_millis(100),
+        afr_executor::Sizes::DEFAULT,
+    )
+    .await
+    .unwrap_err();
 
     assert!(
         started.elapsed() < Duration::from_secs(5),
@@ -210,9 +215,13 @@ async fn a_client_retries_a_socket_left_behind_with_no_one_listening() {
         "the socket file was left behind"
     );
 
-    let refused = afr_executor::Client::connect_within(&socket, Duration::from_millis(100))
-        .await
-        .unwrap_err();
+    let refused = afr_executor::Client::connect_within(
+        &socket,
+        Duration::from_millis(100),
+        afr_executor::Sizes::DEFAULT,
+    )
+    .await
+    .unwrap_err();
 
     assert!(refused.to_string().contains("input/output"), "{refused}");
 }
@@ -229,9 +238,13 @@ async fn a_client_does_not_wait_out_a_failure_that_waiting_cannot_fix() {
     }
     let started = std::time::Instant::now();
 
-    let refused = afr_executor::Client::connect_within(&locked.join("executor.sock"), PATIENCE)
-        .await
-        .unwrap_err();
+    let refused = afr_executor::Client::connect_within(
+        &locked.join("executor.sock"),
+        PATIENCE,
+        afr_executor::Sizes::DEFAULT,
+    )
+    .await
+    .unwrap_err();
 
     assert!(
         started.elapsed() < Duration::from_secs(5),

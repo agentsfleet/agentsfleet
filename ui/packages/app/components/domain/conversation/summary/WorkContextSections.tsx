@@ -1,6 +1,6 @@
 import type { FleetSources } from "@/lib/fleet-sources";
-import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
-import type { TaskDetails } from "../../tasks/use-task-details";
+import type { FleetTurn } from "@/lib/streaming/fleet-stream-row";
+import type { DurableTaskDetails } from "../../tasks/use-task-details";
 import Link from "next/link";
 import { Button } from "@agentsfleet/design-system";
 import { ArrowUpRightIcon, CaretDownIcon, CaretRightIcon, GitBranchIcon, GitDiffIcon, GitPullRequestIcon } from "@phosphor-icons/react/ssr";
@@ -13,7 +13,7 @@ import { RecordedChangeCounts, RecordedChangesDialog } from "./RecordedChangesDi
 import { groupRecordedChanges, recordedChanges } from "./recorded-changes";
 
 
-export function WorkOutputs({details, expectedDetails = details.size, hideEmpty = false, previews = []}: {previews?: readonly string[]; details: TaskDetails; expectedDetails?: number; hideEmpty?: boolean}) {
+export function WorkOutputs({details, expectedDetails = details.size, hideEmpty = false, previews = []}: {previews?: readonly string[]; details: DurableTaskDetails; expectedDetails?: number; hideEmpty?: boolean}) {
   const published = new Map<string, PullRequestRecord>();
   const related = new Map<string, PullRequestRecord>();
   let loading = details.size < expectedDetails;
@@ -56,8 +56,8 @@ function PullRequestRows({records}: {records: PullRequestRecord[]}) {
   </li>)}</ul>;
 }
 
-export function WorkChanges({events, repositories}: {events: readonly FleetEvent[]; repositories?: readonly RecordedChangeRepository[]}) {
-  return <ChangesSummary changes={recordedChanges(events, {repositories})} />;
+export function WorkChanges({turns, repositories}: {turns: readonly FleetTurn[]; repositories?: readonly RecordedChangeRepository[]}) {
+  return <ChangesSummary changes={recordedChanges(turns, {repositories})} />;
 }
 
 /** Explicit repository metadata is required for repository labels. */

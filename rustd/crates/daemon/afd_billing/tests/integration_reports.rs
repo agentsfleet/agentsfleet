@@ -1,5 +1,5 @@
-//! Real settled-report reads over the daily rollup the settle transaction
-//! writes: full-period sums, stable attribution and the rollup's guarantees.
+//! Real report reads over the daily rollup the usage lines' insert writes:
+//! full-period sums, stable attribution and the rollup's guarantees.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::unwrap_used,
@@ -34,22 +34,20 @@ mod plans;
 mod reconcile;
 #[path = "report/rollup.rs"]
 mod rollup;
-#[path = "report/settle_races.rs"]
-mod settle_races;
-#[path = "report/settle_rollup.rs"]
-mod settle_rollup;
+#[path = "report/writes.rs"]
+mod writes;
 use fixture::{Fixture, Line};
 
 #[tokio::test]
 #[ignore = "requires live Postgres: make test-integration-rustd"]
-async fn settled_report_totals_cover_the_whole_period() {
+async fn report_totals_cover_the_whole_period() {
     let f = Fixture::shared().await;
     let mut rows: Vec<_> = (0..31)
         .map(|_| Line::runtime(&f.tenant, &f.fleet, 17))
         .collect();
     rows.push(Line::setup(&f.tenant, 29));
     rows.push(Line::runtime(&f.foreign, &f.fleet, 999));
-    fixture::record(&f, &rows).await;
+    fixture::seed(&f.admin, &rows).await;
     let before = fixture::ledger(&f.admin, &f.tenant).await;
     let report = f
         .billing
@@ -62,21 +60,21 @@ async fn settled_report_totals_cover_the_whole_period() {
     assert_eq!((total.activity_count, total.line_count), (Some(31), 32));
     assert_eq!(total.input_tokens, 32 * fixture::INPUT);
     assert_eq!(total.output_tokens, 32 * fixture::OUTPUT);
-    assert_eq!(total.runtime_ms, 32 * fixture::RUNTIME);
+    // Only the runtime slices carry run time; the setup line is a model call.
+    assert_eq!(total.runtime_ms, 31 * fixture::RUNTIME);
     assert_eq!(
         fixture::balance(&f.admin, &f.tenant).await,
         fixture::BALANCE - (31 * 17 + 29)
     );
-    assert_eq!(before, (32, 31 * 17 + 29, 32));
+    assert_eq!(before, (32, 31 * 17 + 29));
     assert_eq!(fixture::ledger(&f.admin, &f.tenant).await, before);
     f.close().await;
 }
 
 #[tokio::test]
 #[ignore = "requires live Postgres: make test-integration-rustd"]
-async fn pending_and_out_of_period_lines_are_excluded() {
+async fn out_of_period_lines_are_excluded() {
     let f = Fixture::shared().await;
-    let pending = Line::setup(&f.tenant, 999);
     let mut old = Line::setup(&f.tenant, 888);
     old.at = fixture::BEFORE;
     let mut next_day = Line::setup(&f.tenant, 777);
@@ -87,8 +85,7 @@ async fn pending_and_out_of_period_lines_are_excluded() {
     let mut unknown = Line::setup(&f.tenant, 0);
     unknown.posture = posture::SELF_MANAGED;
     unknown.unpriced = 5;
-    fixture::seed(&f.admin, std::slice::from_ref(&pending)).await;
-    fixture::record(&f, &[old, next_day, same_day, unknown]).await;
+    fixture::seed(&f.admin, &[old, next_day, same_day, unknown]).await;
     let report = f
         .billing
         .report(&f.tenant, &fixture::request())
@@ -110,7 +107,10 @@ async fn pending_and_out_of_period_lines_are_excluded() {
         .map(|row| row.day.unwrap().to_string())
         .collect();
     assert_eq!(days, ["2026-10-25"]);
-    assert_eq!(fixture::ledger(&f.admin, &f.tenant).await, (5, 3330, 4));
+    assert_eq!(
+        fixture::ledger(&f.admin, &f.tenant).await,
+        (4, 888 + 777 + 666)
+    );
     assert_eq!(
         fixture::balance(&f.admin, &f.tenant).await,
         fixture::BALANCE - (888 + 777 + 666)
@@ -128,7 +128,7 @@ async fn exact_filters_preserve_unfiltered_choices_and_deleted_fleet_labels() {
     second.name = Some("Release notes".to_owned());
     let first = Line::runtime(&f.tenant, &f.fleet, 17);
     let call = first.next(LineKind::Model, 0, 3);
-    fixture::record(&f, &[first, call, second, Line::setup(&f.tenant, 29)]).await;
+    fixture::seed(&f.admin, &[first, call, second, Line::setup(&f.tenant, 29)]).await;
     let mut request = fixture::request();
     request.filter.fleet = Some(f.fleet.clone());
     let report = f.billing.report(&f.tenant, &request).await.unwrap();
@@ -175,7 +175,7 @@ async fn exact_filters_preserve_unfiltered_choices_and_deleted_fleet_labels() {
         ])
     );
     request.filter.fleet = None;
-    request.filter.work_type = Some(work::AUTHORING_ATTEMPT);
+    request.filter.work_type = Some(work::SETUP_RUN);
     let setup = f.billing.report(&f.tenant, &request).await.unwrap();
     let summary = fixture::summary(&setup);
     assert_eq!(

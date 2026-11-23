@@ -9,9 +9,9 @@ const MESSAGE = "deploy the canary";
 const OPERATION_ID = "0190a3b4-0000-7000-8000-000000000001";
 // pin test: literal is the contract — the route the browser POSTs to, ids encoded.
 const ROUTE = "/live/v1/workspaces/ws%2F1/fleets/fleet%201/messages";
-const ACCEPTED = { status: "accepted", event_id: "1790573387481-566", replayed: false, disposition: "started" };
+const ACCEPTED = { status: "accepted", turn_id: "1790573387481-566", replayed: false, disposition: "started" };
 // What the parse hands back for a send that joined no run.
-const PARSED = { ...ACCEPTED, folded_into_event_id: null };
+const PARSED = { ...ACCEPTED, folded_into_turn_id: null };
 const HTTP_ACCEPTED = 202;
 const HTTP_CONFLICT = 409;
 const HTTP_BAD_GATEWAY = 502;
@@ -77,7 +77,7 @@ describe("postSteer", () => {
   });
 
   it("reads where a folded send went, and the run it joined", async () => {
-    const folded = { ...ACCEPTED, disposition: "folded", folded_into_event_id: "0190d5c2-7e1a-7000-8000-00000000e00f" };
+    const folded = { ...ACCEPTED, disposition: "folded", folded_into_turn_id: "0190d5c2-7e1a-7000-8000-00000000e00f" };
     fetchMock.mockResolvedValueOnce(answer(HTTP_ACCEPTED, folded));
     expect(await steer()).toEqual({ ok: true, data: folded });
   });
@@ -94,7 +94,7 @@ describe("postSteer", () => {
   it("reads a folded send's absent or null run as no run", async () => {
     fetchMock.mockResolvedValueOnce(answer(HTTP_ACCEPTED, { ...ACCEPTED, disposition: "folded" }));
     expect(await steer()).toEqual({ ok: true, data: { ...PARSED, disposition: "folded" } });
-    fetchMock.mockResolvedValueOnce(answer(HTTP_ACCEPTED, { ...ACCEPTED, folded_into_event_id: null }));
+    fetchMock.mockResolvedValueOnce(answer(HTTP_ACCEPTED, { ...ACCEPTED, folded_into_turn_id: null }));
     expect(await steer()).toEqual({ ok: true, data: PARSED });
   });
 

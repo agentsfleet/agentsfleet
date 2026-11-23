@@ -50,7 +50,7 @@ pub mod statement;
 #[cfg(feature = "test-util")]
 pub mod test_util;
 
-pub use af_core::env::EnvSource;
+pub(crate) use af_core::env::EnvSource;
 
 pub use crate::config::{DbRole, PoolConfig};
 pub use crate::error::{Error, Result};
@@ -62,7 +62,7 @@ pub use crate::precondition::Precondition;
 /// The knob that decides whether `serve` migrates before it listens.
 ///
 /// Read here rather than in the boot path so the spelling lives beside the
-/// migrator it governs; §7 is what calls it.
+/// migrator it governs; the daemon's boot is what calls it.
 pub const MIGRATE_ON_START_KNOB: &str = "MIGRATE_ON_START";
 
 /// Whether this deployment migrates at boot.

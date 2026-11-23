@@ -11,9 +11,9 @@ use afd_auth::scope::{Scope, ScopeSet, TENANT_OWNER_GRANT};
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};
-use afd_events::ACTOR_PREFIX;
 use afd_tenant::test_util::{Signup, delete_accounts, sign_up};
 use afd_tenant::workspace::access::ROLE_MEMBER;
+use afd_turns::view::ACTOR_PREFIX;
 use axum::Router;
 
 use crate::harness::{self, Fleet};
@@ -150,11 +150,13 @@ impl Members {
     /// The actor of every message admitted to John's fleet.
     pub(crate) async fn admitted_actors(&self) -> Vec<String> {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query_scalar("SELECT actor FROM fleet.admissions WHERE fleet_id = $1")
-            .bind(&self.fleet)
-            .fetch_all(&mut *connection)
-            .await
-            .expect("John's fleet's admissions read")
+        sqlx::query_scalar(
+            "SELECT actor FROM thread.turns WHERE thread_id = $1 AND producer IS NOT NULL",
+        )
+        .bind(&self.fleet)
+        .fetch_all(&mut *connection)
+        .await
+        .expect("John's fleet's turns read")
     }
 
     /// How many sends `invite` has counted, read from its row.
@@ -210,7 +212,7 @@ impl Members {
 
     /// The live tail of John's fleet.
     pub(crate) fn tail(&self) -> String {
-        format!("{}/{}/events/stream", self.fleets(), self.fleet.as_str())
+        format!("{}/{}/turns/stream", self.fleets(), self.fleet.as_str())
     }
 
     pub(crate) async fn cleanup(self) {

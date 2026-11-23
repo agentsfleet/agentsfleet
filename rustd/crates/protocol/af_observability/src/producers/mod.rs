@@ -34,6 +34,7 @@ pub mod billing;
 pub mod bus;
 pub mod cost;
 pub mod database;
+pub mod durable_task;
 pub mod fleet;
 pub mod http;
 pub mod library;
@@ -41,7 +42,6 @@ pub mod memory;
 pub mod models;
 pub mod outbound;
 pub mod scheduler;
-pub mod task;
 
 #[cfg(test)]
 mod tests;
@@ -63,7 +63,7 @@ pub struct Producers {
     pub(crate) memory: memory::Handles,
     pub(crate) cost: cost::Handles,
     pub(crate) billing: billing::Handles,
-    pub(crate) task: task::Handles,
+    pub(crate) task: durable_task::Handles,
     pub(crate) bus: bus::Handles,
     pub(crate) outbound: outbound::Handles,
 }
@@ -79,20 +79,53 @@ impl Producers {
     ///
     /// Whatever [`Instruments`] refuses — see [`install`].
     pub fn claim(instruments: &Instruments, sources: &GaugeSources) -> Result<Self> {
+        Self::claim_within(instruments, sources, Limits::default())
+    }
+
+    /// [`Self::claim`] under a deployment's own table bounds.
+    ///
+    /// # Errors
+    ///
+    /// Whatever [`Instruments`] refuses — see [`install`].
+    pub fn claim_within(
+        instruments: &Instruments,
+        sources: &GaugeSources,
+        limits: Limits,
+    ) -> Result<Self> {
         Ok(Self {
             scheduler: scheduler::Handles::claim(instruments)?,
-            models: models::Handles::claim(instruments)?,
+            models: models::Handles::claim(instruments, limits.model_snapshot_max_age)?,
             database: database::Handles::claim(instruments, sources)?,
             http: http::Handles::claim(instruments, sources)?,
-            fleet: fleet::Handles::claim(instruments)?,
+            fleet: fleet::Handles::claim(instruments, limits.max_runner_series)?,
             library: library::Handles::claim(instruments)?,
             memory: memory::Handles::claim(instruments)?,
             cost: cost::Handles::claim(instruments)?,
             billing: billing::Handles::claim(instruments)?,
-            task: task::Handles::claim(instruments)?,
+            task: durable_task::Handles::claim(instruments)?,
             bus: bus::Handles::claim(instruments)?,
             outbound: outbound::Handles::claim(instruments)?,
         })
+    }
+}
+
+/// How large the per-runner table grows and how long a catalogue snapshot
+/// publishes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Limits {
+    /// Runners given a series of their own; see [`crate::runner::MAX_SERIES`].
+    pub max_runner_series: usize,
+    /// Age past which a model catalogue snapshot publishes nothing; see
+    /// [`models::MAX_AGE`].
+    pub model_snapshot_max_age: std::time::Duration,
+}
+
+impl Default for Limits {
+    fn default() -> Self {
+        Self {
+            max_runner_series: crate::runner::MAX_SERIES,
+            model_snapshot_max_age: models::MAX_AGE,
+        }
     }
 }
 
@@ -105,24 +138,21 @@ pub type Reader = Arc<dyn Fn() -> Option<u64> + Send + Sync>;
 
 /// What a gauge reads that only BOOT can answer.
 ///
-/// Three, and the shortness is the design. A gauge whose value a producer
+/// Two, and the shortness is the design. A gauge whose value a producer
 /// computes publishes it into a cell beside that producer — the readiness
-/// depth a lease poll saw, the entries a hydration window carried, the backlog
+/// depth a run poll saw, the entries a load window carried, the backlog
 /// a repair pass found — because the producer is where the number exists and
 /// threading it out to boot and back would be two hops for no reader.
 ///
-/// What is left are the three readings that live in values boot owns and
-/// nothing else can see: the admission semaphore, the stream ceiling, and the
-/// process's own resident set. All three are lock-free loads, which is what
-/// makes them safe to take inside a collection callback.
+/// What is left are the readings that live in values boot owns and nothing
+/// else can see: the role pools and the stream ceiling. Both are lock-free
+/// loads, which is what makes them safe to take inside a collection callback.
 ///
 /// Every field answers `None` for "no reading to publish", which the SDK turns
 /// into no data point at all. That is the rule [`crate::metrics::observed`]
 /// states: a failed or absent read leaves a gap, never a zero somebody could
 /// mistake for an empty queue.
 pub struct GaugeSources {
-    /// Requests in flight against the admission ceiling.
-    pub requests_in_flight: Reader,
     /// Lock-free role-pool readings supplied by boot.
     pub database_pools: Arc<dyn Fn() -> Vec<crate::metrics::instrument::Reading> + Send + Sync>,
     /// Event streams this instance is carrying.
@@ -139,7 +169,6 @@ impl GaugeSources {
     #[must_use]
     pub fn silent() -> Self {
         Self {
-            requests_in_flight: Arc::new(|| None),
             database_pools: Arc::new(Vec::new),
             streams_in_flight: Arc::new(|| None),
         }
@@ -171,8 +200,21 @@ static INSTALLED: OnceLock<Producers> = OnceLock::new();
 /// disagreement between this file and the contract, which is a defect to fix
 /// rather than a condition to serve through — so boot fails on it.
 pub fn install(instruments: &Instruments, sources: &GaugeSources) -> Result<bool> {
+    install_within(instruments, sources, Limits::default())
+}
+
+/// [`install`] under a deployment's own table bounds.
+///
+/// # Errors
+///
+/// As [`install`].
+pub fn install_within(
+    instruments: &Instruments,
+    sources: &GaugeSources,
+    limits: Limits,
+) -> Result<bool> {
     Ok(INSTALLED
-        .set(Producers::claim(instruments, sources)?)
+        .set(Producers::claim_within(instruments, sources, limits)?)
         .is_ok())
 }
 

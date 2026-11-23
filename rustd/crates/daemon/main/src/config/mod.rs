@@ -1,21 +1,21 @@
 //! Deployment files feed the same validators as environment-based startup.
 
-pub(crate) mod maintenance;
 mod origins;
 mod policies;
 mod settings;
 mod timing;
+pub(crate) mod tuning;
 mod urls;
 mod values;
 
 #[cfg(test)]
-mod maintenance_tests;
+mod durable_task_tests;
 #[cfg(test)]
 mod origin_tests;
 #[cfg(test)]
-mod task_tests;
-#[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tuning_tests;
 
 use std::{collections::BTreeMap, path::Path};
 
@@ -130,16 +130,19 @@ impl<'a, E: EnvSource + ?Sized> Config<'a, E> {
             environment,
             values: values::collect(settings),
         };
-        let api_pool = afd_db::config::PoolSettings::resolve(
+        let pool_defaults = settings.database.pool_defaults();
+        let api_pool = afd_db::config::PoolSettings::resolve_with(
             environment,
             afd_db::config::DbRole::Api,
             settings.database.api,
+            &pool_defaults,
         )
         .map_err(|error| budget_invalid("database.api", &error))?;
-        let migrator_pool = afd_db::config::PoolSettings::resolve(
+        let migrator_pool = afd_db::config::PoolSettings::resolve_with(
             environment,
             afd_db::config::DbRole::Migrator,
             settings.database.migrator,
+            &pool_defaults,
         )
         .map_err(|error| budget_invalid("database.migrator", &error))?;
         let runtime = crate::preflight::runtime::configured(

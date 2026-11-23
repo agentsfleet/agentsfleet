@@ -4,15 +4,26 @@ use reqwest::Url;
 
 use super::{Chain, Stop};
 use crate::testing::{inbound, redirected};
+
+/// Redirects every chain here follows.
+const HOPS: crate::Limits = crate::Limits {
+    max_redirects: 3,
+    ..crate::Limits::DEFAULT
+};
 use crate::{Inbound, Result};
 
 fn read_response(raw: &str, response: &mut Inbound) -> Result<(), Stop> {
-    let base = Url::parse("https://api.github.com/folder/start").expect("URL");
-    let mut chain = Chain::new(&base, Vec::new());
+    let base = base();
+    let mut chain = Chain::new(&base, Vec::new(), HOPS);
     assert!(chain.next(&mut redirected(302, &base, raw))?.is_some());
     assert!(chain.next(response)?.is_none());
     chain.finish();
     Ok(())
+}
+
+/// Where every redirect in these tests starts.
+fn base() -> Url {
+    Url::parse("https://api.github.com/folder/start").expect("URL")
 }
 
 #[test]
@@ -128,7 +139,7 @@ fn should_mask_form_and_uri_component_signature_spellings() {
 #[test]
 fn should_mask_shared_prefix_redirect_targets_completely() {
     let base = Url::parse("https://api.github.com/logs").expect("URL");
-    let mut chain = Chain::new(&base, Vec::new());
+    let mut chain = Chain::new(&base, Vec::new(), HOPS);
     let first = "https://storage.example/download";
     let second = "https://storage.example/download/private?job=202";
     for target in [first, second] {
@@ -232,7 +243,7 @@ fn should_bound_overlapping_redactions_without_partial_markers() {
 #[test]
 fn should_refuse_when_legal_targets_exceed_masker_construction_limits() {
     let base = Url::parse("https://api.github.com/logs").expect("URL");
-    let mut chain = Chain::new(&base, Vec::new());
+    let mut chain = Chain::new(&base, Vec::new(), HOPS);
     for suffix in ["a", "b", "c"] {
         let target = format!(
             "https://storage.example/{suffix}?sig={}{suffix}",
@@ -290,6 +301,7 @@ fn should_expose_only_safe_chain_state_when_debugged() {
     let mut chain = Chain::new(
         &base,
         vec![("Authorization".to_owned(), "private".to_owned())],
+        HOPS,
     );
     chain
         .next(&mut redirected(

@@ -1,4 +1,4 @@
-//! Dimension 4.4 — what the capability gate allows, refuses, and says.
+//! What the capability gate allows, refuses, and says.
 //!
 //! The gate is the whole of authorization's capability axis, so its failure
 //! modes are the ones worth spending tests on: a refusal that does not fail
@@ -238,7 +238,7 @@ fn test_a_blank_subject_is_refused_at_construction() {
 ///
 /// The accessors are the whole read surface the middleware and the ownership
 /// check see, so an accessor that reports the wrong field is a principal acting
-/// as somebody else. Asserted here rather than left for §5 to discover: an
+/// as somebody else. Asserted here rather than left for the router suites to discover: an
 /// untested accessor is dead code that looks like coverage.
 #[test]
 fn test_a_principal_reports_the_identity_it_was_built_from() {

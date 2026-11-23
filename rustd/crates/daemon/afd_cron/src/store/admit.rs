@@ -2,8 +2,9 @@
 //!
 //! Split from [`super`] so the create reads as its three steps — admit, insert,
 //! commit — and so each refusal sits beside the statement that decides it.
-//! Every check runs on the create's own transaction, after the fleet's row is
-//! taken, so no concurrent create can slip between a count and the insert.
+//! Every check runs on the create's own transaction, after the fleet's turn
+//! among its schedule writers is taken ([`sql::LOCK_FLEET`]), so no concurrent
+//! create can slip between a count and the insert.
 
 use af_core::id::Uuid7;
 use sqlx::PgConnection;

@@ -1,5 +1,5 @@
-// AiTool service — declares the detected agent (Claude Code, Cursor,
-// Cline, Aider, etc.) attached to every analytics event. Mirrors
+// AiTool service — declares the detected coding agent attached to every
+// analytics event. Mirrors
 // supabase apps/cli/src/shared/telemetry/ai-tool.service.ts.
 
 import { Context, type Option } from "effect";

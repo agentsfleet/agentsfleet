@@ -14,7 +14,7 @@ const ignore = (): void => undefined;
 export function ChatToolbar({ client, view, inputRef }: { client: DraftClient; view: DraftView; inputRef: RefObject<HTMLTextAreaElement | null> }) {
   "use memo";
   const locked = view.busy || view.pending || view.inaccessible || view.messages.some(isRunning);
-  const models = view.models.filter((model) => model.eligibility.authoring);
+  const models = view.models.filter((model) => model.eligibility.setup);
   const hasChoices = models.length > 0;
   const retrying = view.modelListStatus === MODEL_LIST_RETRYING;
   const retry = (): void => {
@@ -23,7 +23,7 @@ export function ChatToolbar({ client, view, inputRef }: { client: DraftClient; v
   };
   return <div className="flex min-w-0 flex-wrap items-center gap-sm">
     <Select value={hasChoices ? view.model : ""} disabled={locked || !hasChoices} onValueChange={(model) => { void client.selectModel(model).catch(ignore); }}>
-      <ChatComposerModel select aria-label="Authoring model" title="Model for this setup conversation"><SelectValue placeholder="Choose model" /></ChatComposerModel>
+      <ChatComposerModel select aria-label="Setup model" title="Model for this setup conversation"><SelectValue placeholder="Choose model" /></ChatComposerModel>
       <SelectContent>{models.map((model) => <SelectItem key={model.ref} value={model.ref}>{model.label}</SelectItem>)}</SelectContent>
     </Select>
     {retrying || view.modelListStatus === DRAFT_LIST_STATUS.unavailable ? <>

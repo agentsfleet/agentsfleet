@@ -2,7 +2,7 @@ import { afterEach, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { ContextProgressStatus } from "@/components/domain/usage/ContextProgressStatus";
 import { CONTEXT_STATE } from "@/lib/context-progress";
-import { FRAME_KIND } from "@/lib/api/events-types";
+import { FRAME_KIND } from "@/lib/api/turns-types";
 import { applyLiveFrame, parseLiveFrame } from "@/lib/streaming/fleet-stream-frames";
 import { hideContextProgress } from "@/lib/streaming/fleet-stream-context";
 import { applyReplyDelta, applyReplyRecovery } from "@/lib/streaming/fleet-stream-reply-frames";
@@ -14,8 +14,8 @@ import { evt } from "./helpers/fleet-stream-fixtures";
 afterEach(cleanup);
 const start = {generation: 1, state: CONTEXT_STATE.summarizing};
 const end = {generation: 1, state: CONTEXT_STATE.resuming};
-function status(progress: unknown = start, event = "e0") {
-  const parsed = parseLiveFrame(JSON.stringify({kind: FRAME_KIND.CONTEXT_PROGRESS, event_id: event, ...Object(progress)}));
+function status(progress: unknown = start, turn = "e0") {
+  const parsed = parseLiveFrame(JSON.stringify({kind: FRAME_KIND.CONTEXT_PROGRESS, turn_id: turn, ...Object(progress)}));
   if (!parsed) throw new Error("Expected JSON status frame");
   return parsed;
 }
@@ -83,6 +83,6 @@ it("projects setup status only onto the matching running answer and preserves se
   expect(after[0]).toBe(before[0]);
   expect(after[1]).not.toBe(before[1]);
   expect(after[1]?.metadata?.custom?.contextProgress).toEqual(start);
-  expect(draftThreadMessages({...view, contextProgress, draft: {...DRAFT, cancelled_through: "2"}})[1]?.metadata?.custom?.contextProgress).toBeUndefined();
+  expect(draftThreadMessages({...view, contextProgress, messages: [MESSAGE, {...messages[1]!, state: "cancelled"}]})[1]?.metadata?.custom?.contextProgress).toBeUndefined();
   expect(draftThreadMessages({...view, contextProgress, messages: [{...messages[1]!, state: "completed"} ]})[0]?.metadata?.custom?.contextProgress).toBeUndefined();
 });

@@ -1,7 +1,7 @@
 "use server";
 
 import { cookies } from "next/headers";
-import { CONNECTOR_RETURN_COOKIE, CONNECTOR_RETURN_MAX_AGE_SECONDS, connectorReturnPath } from "@/lib/connectors/completion";
+import { CONNECTOR_RETURN_COOKIE, connectorReturnPath } from "@/lib/connectors/completion";
 import { withToken, type ActionResult } from "@/lib/actions/with-token";
 import {
   disconnectConnector,
@@ -48,7 +48,7 @@ export async function startConnectAction(
     if (destination) {
       (await cookies()).set(`${CONNECTOR_RETURN_COOKIE}${provider}`, destination, {
         httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax",
-        path: "/", maxAge: CONNECTOR_RETURN_MAX_AGE_SECONDS,
+        path: "/",
       });
     }
     return result;

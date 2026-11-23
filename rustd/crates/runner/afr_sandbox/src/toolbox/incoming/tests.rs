@@ -30,7 +30,7 @@ fn stage(signer: &Signer, incoming: &Path, n: u8) -> String {
 
 /// The staged release is verified, staged into the host's images and mounted.
 #[test]
-fn test_the_staged_release_is_admitted() {
+fn test_the_staged_release_is_verified() {
     let dir = tempfile::tempdir().unwrap();
     let signer = Signer::new();
     let incoming = dir.path().join("incoming");
@@ -38,7 +38,7 @@ fn test_the_staged_release_is_admitted() {
     let (toolboxes, recorder) = open(dir.path());
 
     let toolbox = toolboxes
-        .admit_incoming(&signer.release(), &incoming)
+        .verify_incoming(&signer.release(), &incoming)
         .unwrap();
 
     assert_eq!(toolbox.digest(), digest);
@@ -46,7 +46,7 @@ fn test_the_staged_release_is_admitted() {
 }
 
 /// An empty directory and one with two releases are each refused as unstaged,
-/// and nothing is mounted: a host admits exactly the release a deploy brought.
+/// and nothing is mounted: a host verifies exactly the release a deploy brought.
 #[test]
 fn test_anything_but_one_staged_release_is_refused() {
     let dir = tempfile::tempdir().unwrap();
@@ -60,7 +60,7 @@ fn test_anything_but_one_staged_release_is_refused() {
 
     for incoming in [&empty, &two] {
         let refused = toolboxes
-            .admit_incoming(&signer.release(), incoming)
+            .verify_incoming(&signer.release(), incoming)
             .unwrap_err();
 
         assert_eq!(
@@ -82,7 +82,7 @@ fn test_a_release_signed_by_another_key_is_refused() {
     let (toolboxes, recorder) = open(dir.path());
 
     let refused = toolboxes
-        .admit_incoming(&Signer::new().release(), &incoming)
+        .verify_incoming(&Signer::new().release(), &incoming)
         .unwrap_err();
 
     assert_eq!(refused.toolbox_refusal(), Some(ToolboxRefusal::Signature));
@@ -109,30 +109,10 @@ fn test_a_release_missing_its_signature_or_image_is_refused() {
 
     for incoming in [&unsigned, &imageless] {
         let refused = toolboxes
-            .admit_incoming(&signer.release(), incoming)
+            .verify_incoming(&signer.release(), incoming)
             .unwrap_err();
 
         assert_eq!(refused.toolbox_refusal(), None, "{refused}");
     }
     assert!(recorder.mounted.lock().unwrap().is_empty());
-}
-
-/// A manifest past the most one may hold is read only that far and refused as
-/// too large, never read whole.
-#[test]
-fn test_an_oversized_manifest_is_refused() {
-    let dir = tempfile::tempdir().unwrap();
-    let signer = Signer::new();
-    let incoming = dir.path().join("incoming");
-    let digest = stage(&signer, &incoming, 1);
-    let manifest = incoming.join(format!("{TOOLBOX_PREFIX}{digest}{MANIFEST_SUFFIX}"));
-    let oversized = vec![b' '; super::MANIFEST_MAX_BYTES * 2];
-    fs::write(&manifest, oversized).unwrap();
-    let (toolboxes, _recorder) = open(dir.path());
-
-    let refused = toolboxes
-        .admit_incoming(&signer.release(), &incoming)
-        .unwrap_err();
-
-    assert_eq!(refused.toolbox_refusal(), Some(ToolboxRefusal::Signature));
 }

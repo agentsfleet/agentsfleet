@@ -12,14 +12,14 @@ use afr_tools::Catalog;
 
 use super::ANSWER;
 use super::support::wires::Wire;
-use super::support::{Fake, Reply, engine, lease, run};
+use super::support::{Fake, Reply, engine, payload, run};
 
 #[tokio::test]
 async fn a_redirect_is_never_followed_so_the_key_reaches_one_host() {
     let mut fake = Fake::serve(vec![Reply::Redirect("/elsewhere".to_owned())]).await;
-    let leased = lease(&Wire::Messages.provider(), &[], "hello");
+    let held = payload(&Wire::Messages.provider(), &[], "hello");
 
-    let (output, _frames) = run(&engine(&fake), &leased).await;
+    let (output, _frames) = run(&engine(&fake), &held).await;
 
     let ResultOutcome::Failed(failure) = output.result.outcome else {
         panic!("a redirected turn is no answer");
@@ -46,8 +46,8 @@ async fn should_refuse_a_custom_endpoint_whose_name_resolves_to_loopback() {
         panic!("the fake's base names its port: {}", fake.base);
     };
     let endpoint = format!("https://localhost:{port}/v1");
-    let mut leased = lease("configured-localhost", &[], "hello");
-    leased.policy.inference = Some(ModelInference {
+    let mut held = payload("configured-localhost", &[], "hello");
+    held.policy.inference = Some(ModelInference {
         api: InferenceApi::Chat,
         base_url: endpoint,
         dialect: None,
@@ -55,7 +55,7 @@ async fn should_refuse_a_custom_endpoint_whose_name_resolves_to_loopback() {
     });
 
     let guarded = Loop::new(Catalog::new(vec![]), Connector::new().unwrap());
-    let (output, _frames) = run(&guarded, &leased).await;
+    let (output, _frames) = run(&guarded, &held).await;
 
     let ResultOutcome::Failed(failure) = output.result.outcome else {
         panic!("an endpoint the resolver refuses is no answer");

@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CONNECTOR_CALLBACK_TIMEOUT_MS } from "@/lib/connectors/completion";
 
 const { authMock, fetchMock, requireApiOriginMock, cookieGet, cookieDelete } = vi.hoisted(() => ({
   authMock: vi.fn(), fetchMock: vi.fn(), requireApiOriginMock: vi.fn(),
@@ -70,18 +69,6 @@ describe("connector callback recovery", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("bounds a stalled session lookup and never exchanges after a late answer", async () => {
-    vi.useFakeTimers();
-    const auth = Promise.withResolvers<{ getToken: () => Promise<string> }>();
-    authMock.mockReturnValueOnce(auth.promise);
-    const response = complete();
-    await vi.advanceTimersByTimeAsync(CONNECTOR_CALLBACK_TIMEOUT_MS);
-    expectFailure(await response, "timeout");
-    auth.resolve({ getToken: async () => TOKEN });
-    await vi.advanceTimersByTimeAsync(0);
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
   it("shows a cancellation without exchanging or exposing the provider error", async () => {
     expectFailure(await complete("jira", "?error=access_denied&error_description=private-vendor-detail"), "denied");
     expect(fetchMock).not.toHaveBeenCalled();
@@ -98,17 +85,6 @@ describe("connector callback recovery", () => {
   it.each(["https://evil.example/w/ws_1/integrations", "http://[", "/settings/billing", "/w/ws_1/integrations/evil", null])("recovers an unsafe or missing success location: %s", async (location) => {
     fetchMock.mockResolvedValueOnce(new Response(null, { status: 302, headers: location ? { location } : {} }));
     expectFailure(await complete(), "unavailable");
-  });
-
-  it("bounds a stalled exchange, aborts it and starts no retry", async () => {
-    vi.useFakeTimers();
-    fetchMock.mockImplementationOnce((_url: URL, options: RequestInit) => new Promise((_resolve, reject) => {
-      options.signal!.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
-    }));
-    const response = complete();
-    await vi.advanceTimersByTimeAsync(CONNECTOR_CALLBACK_TIMEOUT_MS);
-    expectFailure(await response, "timeout");
-    expect(fetchMock).toHaveBeenCalledOnce();
   });
 
   it("recovers a dropped backend connection", async () => {

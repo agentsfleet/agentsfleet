@@ -13,8 +13,6 @@ import { PageShell, VerificationCodeDisplay } from "./cli-auth-ui";
 
 const JSON_CONTENT_TYPE = "application/json";
 const FORM_CONTENT_TYPE = "application/x-www-form-urlencoded";
-const REQUEST_TIMEOUT_MS = 15_000;
-const MAX_SESSION_BYTES = 4_096;
 const RESTART_MESSAGE = "Start a new sign-in from your terminal. No code was sent to it.";
 const VIEW = { loading: "loading", ready: "ready", working: "working", failed: "failed" } as const;
 const DECISION = { approved: "approved", denied: "denied" } as const;
@@ -27,14 +25,11 @@ async function readSession(response: Response): Promise<unknown> {
   if (!response.ok || response.redirected || !response.body) throw new Error(RESTART_MESSAGE);
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
-  let size = 0;
   let text = "";
   try {
     for (;;) {
       const part = await reader.read();
       if (part.done) break;
-      size += part.value.byteLength;
-      if (size > MAX_SESSION_BYTES) throw new Error(RESTART_MESSAGE);
       text += decoder.decode(part.value, { stream: true });
     }
     return JSON.parse(text + decoder.decode()) as unknown;
@@ -133,8 +128,7 @@ function useComparison(handoff: LoopbackHandoff) {
   useEffect(() => {
     const controller = new AbortController();
     lifetime.current = controller;
-    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]);
-    void loadComparison(handoff, signal).then(
+    void loadComparison(handoff, controller.signal).then(
       code => { if (!controller.signal.aborted) setView({ kind: VIEW.ready, code }); },
       () => {
         if (!controller.signal.aborted) {

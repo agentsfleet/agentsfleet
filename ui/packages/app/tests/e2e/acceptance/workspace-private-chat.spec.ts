@@ -4,10 +4,10 @@
  * person's account then finds their own chat again.
  *
  * The candidate comes from a definition-source draft created as the signed-in
- * person, because an authoring-model reply is not deterministic
+ * person, because a setup-model reply is not deterministic
  * (`fixtures/install-ui.ts` makes the same trade). Everything after that runs
  * through the shipped chat: the history entry, a reload, Save from the
- * keyboard, the saved fleet's full authoring page, Save and publish, and a
+ * keyboard, the saved fleet's full setup page, Save, and a
  * phone-width reread. Signs up a fresh teammate, so DEV only, like every
  * signup spec.
  */
@@ -111,7 +111,7 @@ async function improveTheSavedFleet(page: Page, workspaceId: string, fleetId: st
   const draftId = DraftSchema.shape.id.parse(location?.split("/").at(-1));
   expect(location).toBe(`/v1/workspaces/${workspaceId}/drafts/${draftId}`);
   await expect(packages).toBeChecked({timeout: SETUP_TIMEOUT_MS});
-  await page.getByRole("button", {name: "Save and publish", exact: true}).click();
+  await page.getByRole("button", {name: "Save", exact: true}).click();
   await openSavedFleet(page, {handle: FIXTURE_KEY.regular, workspaceId, revision: String(BigInt(before.setup_revision) + 1n)});
   const after = await readFixtureFleet(FIXTURE_KEY.regular, workspaceId, fleetId);
   expect(after.setup_revision).toBe(String(BigInt(before.setup_revision) + 1n));
@@ -119,7 +119,7 @@ async function improveTheSavedFleet(page: Page, workspaceId: string, fleetId: st
   return draftId;
 }
 
-// A saved chat's address retains authoring at phone width and can open its fleet.
+// A saved chat's address retains setup at phone width and can open its fleet.
 async function rereadAtPhoneWidth(browser: Browser, workspaceId: string, draftId: string, fleetId: string): Promise<void> {
   const context = await browser.newContext({
     viewport: PHONE, isMobile: true, hasTouch: true,

@@ -5,52 +5,85 @@
 )]
 
 use garde::Validate as _;
-use serde_json::json;
+use serde_json::{Value, json};
 
 use super::{
-    DETAIL_FIELD_MAX_BYTES, DETAIL_RECORD_MIN_BYTES, DetailRejection, RawToolCallRecord,
-    ToolCallDetail, ToolCallRecord, ToolCallRecordsRequest, ToolCallRecordsStored,
+    DetailRejection, ItemKind, ItemStatus, RawToolCallRecord, ToolCallDetail, ToolCallRecord,
+    ToolCallRecordsRequest, ToolCallRecordsStored,
 };
+use crate::tool_trace::FileChange;
 
-/// A record as a runner posts it, with `output` and an empty argument object.
-fn record(call_number: u64, output: &str) -> String {
+/// A turn id as a runner names one.
+const TURN: &str = "019f0000-0000-7000-8000-000000000001";
+
+/// A record as a runner posts it: a `file_read` call of the run's turn,
+/// with `output` and an empty argument object.
+fn fields(call_number: u64, output: &str) -> Value {
     json!({"call_number": call_number, "arguments": {}, "truncated_arguments": false,
-           "output": output, "output_line_count": 1, "truncated": false})
-    .to_string()
+           "output": output, "output_line_count": 1, "truncated": false,
+           "turn_id": TURN, "kind": "tool_call", "tool": "file_read", "status": "succeeded"})
 }
 
-/// What narrowing `sent` keeps: its byte count, or why it kept nothing.
+/// [`fields`], encoded.
+fn record(call_number: u64, output: &str) -> String {
+    fields(call_number, output).to_string()
+}
+
+/// Call 1's record with `key` set to `value`.
+fn with(key: &str, value: Value) -> String {
+    let mut sent = fields(1, "x");
+    sent[key] = value;
+    sent.to_string()
+}
+
+/// Call 1's record without `key`.
+fn without(key: &str) -> String {
+    let mut sent = fields(1, "x");
+    if let Some(fields) = sent.as_object_mut() {
+        fields.remove(key);
+    }
+    sent.to_string()
+}
+
+/// An edit's record changing `changes`.
+fn edit(changes: Value) -> String {
+    let mut sent = fields(1, "Wrote 4 bytes to src/a.rs");
+    sent["kind"] = json!("edit");
+    sent["tool"] = json!("file_write");
+    sent["changes"] = changes;
+    sent.to_string()
+}
+
+/// What narrowing `sent` keeps: its output's length, or why it kept nothing.
 fn narrowed(sent: &str) -> Result<usize, DetailRejection> {
-    let raw: RawToolCallRecord<'_> = serde_json::from_str(sent).expect("any JSON is carried");
-    raw.narrow().map(|kept| kept.byte_count())
+    carried(sent).narrow().map(|kept| kept.output.len())
+}
+
+/// The raw record `sent` reads as; any JSON is carried.
+fn carried(sent: &str) -> RawToolCallRecord<'_> {
+    serde_json::from_str(sent).expect("any JSON is carried")
 }
 
 #[test]
-fn a_record_within_its_bounds_is_kept_and_counted() {
-    assert_eq!(
-        narrowed(&record(3, "hello")),
-        Ok(DETAIL_RECORD_MIN_BYTES),
-        "a tiny record still spends the per-row minimum"
-    );
-    // `{}` is two bytes of arguments beside the output.
-    let at_cap = "a".repeat(DETAIL_FIELD_MAX_BYTES);
-    assert_eq!(
-        narrowed(&record(1, &at_cap)),
-        Ok(DETAIL_FIELD_MAX_BYTES + 2)
-    );
+fn a_record_is_kept_with_its_whole_output() {
+    assert_eq!(narrowed(&record(3, "hello")), Ok(5));
 }
 
+/// No field cap: the record holds everything the call returned, and every
+/// argument it was made with, however large.
 #[test]
-fn a_record_past_a_field_bound_is_too_large() {
-    let over = "a".repeat(DETAIL_FIELD_MAX_BYTES + 1);
-    assert_eq!(narrowed(&record(1, &over)), Err(DetailRejection::TooLarge));
-    let arguments = json!({"blob": "a".repeat(DETAIL_FIELD_MAX_BYTES)});
-    let sent = json!({"call_number": 1, "arguments": arguments, "truncated_arguments": false,
-                      "output": "", "output_line_count": 0, "truncated": false});
+fn a_200_kib_output_is_kept_whole_in_its_item_record() {
+    let output = "line\n".repeat(200 * 1024 / 5);
+    let mut sent = fields(1, &output);
+    sent["arguments"] = json!({"body": "a".repeat(200 * 1024)});
+    let sent = sent.to_string();
+    let kept = carried(&sent)
+        .narrow()
+        .expect("no bound refuses a large record");
+    assert_eq!(kept.output, output);
     assert_eq!(
-        narrowed(&sent.to_string()),
-        Err(DetailRejection::TooLarge),
-        "the arguments are bounded too"
+        kept.arguments["body"].as_str().map(str::len),
+        Some(200 * 1024)
     );
 }
 
@@ -97,15 +130,11 @@ fn a_post_carries_each_record_unread_until_it_is_narrowed() {
 
 #[test]
 fn every_rejection_has_its_own_spelling() {
-    let spelled: Vec<_> = [
-        DetailRejection::Malformed,
-        DetailRejection::TooLarge,
-        DetailRejection::OverBudget,
-    ]
-    .iter()
-    .map(|reason| reason.as_str())
-    .collect();
-    assert_eq!(spelled, ["malformed", "too_large", "over_budget"]);
+    let spelled: Vec<_> = [DetailRejection::Malformed, DetailRejection::UnservedTurn]
+        .iter()
+        .map(|reason| reason.as_str())
+        .collect();
+    assert_eq!(spelled, ["malformed", "unserved_turn"]);
 }
 
 #[test]
@@ -119,11 +148,19 @@ fn the_answers_round_trip() {
 
     let detail = ToolCallDetail {
         call_id: "7:3".into(),
+        kind: ItemKind::Edit,
+        tool: Some("file_edit".into()),
+        status: ItemStatus::Succeeded,
         arguments: serde_json::Map::new(),
         truncated_arguments: false,
         output: "all of it".into(),
         output_line_count: 224,
         truncated: false,
+        changes: vec![FileChange {
+            path: "src/a.rs".into(),
+            added: 24,
+            removed: 8,
+        }],
     };
     let text = serde_json::to_string(&detail).expect("encodes");
     let back: ToolCallDetail<'_> = serde_json::from_str(&text).expect("decodes");
@@ -140,24 +177,18 @@ fn the_answers_round_trip() {
 /// the bounds moved onto the types, so an operator's query still finds it.
 #[test]
 fn test_trace_and_detail_rejections_keep_their_reasons() {
-    use crate::tool_trace::{RawToolTrace, TRACE_MAX_CALLS, TraceRejection};
+    use crate::tool_trace::{RawToolTrace, TraceRejection};
 
-    let calls: Vec<_> = (1..=TRACE_MAX_CALLS + 1)
-        .map(|number| {
-            json!({"call_id": number.to_string(), "name": "file_read", "arguments": {},
-                   "status": "succeeded", "duration_ms": 1})
-        })
-        .collect();
-    let sent = json!({"calls": calls, "omitted_call_count": 0}).to_string();
+    let calls = [json!({"call_id": "0", "name": "file_read", "arguments": {},
+                        "status": "succeeded", "duration_ms": 1})];
+    let sent = json!({ "calls": calls }).to_string();
     let raw: RawToolTrace<'_> = serde_json::from_str(&sent).expect("any JSON is carried");
     assert_eq!(
         raw.narrow().map(|_kept| ()).map_err(TraceRejection::as_str),
-        Err("too_many_calls")
+        Err("call_id_unusable")
     );
 
     let reason = |sent: &str| narrowed(sent).map_err(DetailRejection::as_str);
-    let over = "a".repeat(DETAIL_FIELD_MAX_BYTES + 1);
-    assert_eq!(reason(&record(1, &over)), Err("too_large"));
     assert_eq!(reason(&record(0, "x")), Err("malformed"));
 }
 
@@ -172,12 +203,111 @@ fn a_record_holding_a_nul_is_skipped_not_fatal() {
         json!({"k\u{0}": 1}),
         json!({"k": ["\u{0}"]}),
     ] {
-        let sent = json!({"call_number": 1, "arguments": arguments, "truncated_arguments": false,
-                          "output": "", "output_line_count": 0, "truncated": false});
-        assert_eq!(
-            narrowed(&sent.to_string()),
-            Err(DetailRejection::Malformed),
-            "{sent}"
-        );
+        let sent = with("arguments", arguments);
+        assert_eq!(narrowed(&sent), Err(DetailRejection::Malformed), "{sent}");
     }
+    assert_eq!(
+        narrowed(&with("tool", json!("file\u{0}read"))),
+        Err(DetailRejection::Malformed),
+        "the tool's name is a stored string too"
+    );
+    assert_eq!(
+        narrowed(&edit(
+            json!([{"path": "a\u{0}.rs", "added": 1, "removed": 0}])
+        )),
+        Err(DetailRejection::Malformed),
+        "so is a changed file's path"
+    );
+}
+
+#[test]
+fn an_edit_record_keeps_each_files_counts() {
+    let sent = edit(json!([{"path": "src/a.rs", "added": 24, "removed": 8},
+                           {"path": "docs/naïve.md", "added": 0, "removed": 3}]));
+    let kept = carried(&sent).narrow().expect("an edit within its bounds");
+    assert_eq!(kept.kind, ItemKind::Edit);
+    assert_eq!(kept.tool, "file_write");
+    assert_eq!(kept.status, ItemStatus::Succeeded);
+    assert_eq!(kept.turn_id, TURN);
+    assert_eq!(
+        kept.changes,
+        [
+            FileChange {
+                path: "src/a.rs".into(),
+                added: 24,
+                removed: 8
+            },
+            FileChange {
+                path: "docs/naïve.md".into(),
+                added: 0,
+                removed: 3
+            },
+        ]
+    );
+    let text = serde_json::to_string(&kept).expect("encodes");
+    assert!(
+        !serde_json::to_string(&carried(&record(1, "x")).narrow().expect("kept"))
+            .expect("encodes")
+            .contains("changes"),
+        "a call that changed nothing carries no changes field"
+    );
+    assert!(text.contains(r#""changes":[{"path":"src/a.rs","added":24,"removed":8}"#));
+}
+
+#[test]
+fn a_record_naming_no_turn_or_an_unusable_one_is_malformed() {
+    for sent in [
+        without("turn_id"),
+        with("turn_id", json!("")),
+        with("turn_id", json!("not-a-turn")),
+        with("turn_id", json!(TURN.to_uppercase())),
+        // A version 4 UUID: not one this system mints.
+        with("turn_id", json!("019f0000-0000-4000-8000-000000000001")),
+        with("turn_id", json!(format!("{TURN}0"))),
+    ] {
+        assert_eq!(narrowed(&sent), Err(DetailRejection::Malformed), "{sent}");
+    }
+}
+
+#[test]
+fn a_record_without_its_kind_tool_or_status_is_malformed() {
+    for sent in [
+        without("kind"),
+        with("kind", json!("approval")),
+        without("tool"),
+        with("tool", json!("")),
+        without("status"),
+        with("status", json!("interrupted")),
+        with("status", json!("running")),
+    ] {
+        assert_eq!(narrowed(&sent), Err(DetailRejection::Malformed), "{sent}");
+    }
+    assert!(
+        narrowed(&with("tool", json!("t".repeat(4096)))).is_ok_and(|bytes| bytes > 0),
+        "no length caps a tool name"
+    );
+}
+
+#[test]
+fn a_malformed_change_is_malformed_and_no_count_caps_them() {
+    let one = |path: String| json!({"path": path, "added": 1, "removed": 1});
+    for changes in [
+        json!([one(String::new())]),
+        json!([{"path": "a.rs", "added": -1, "removed": 0}]),
+        json!([{"path": "a.rs", "added": 1}]),
+        json!([{"path": "a.rs", "added": 1, "removed": 0, "renamed": true}]),
+        json!({"path": "a.rs", "added": 1, "removed": 0}),
+    ] {
+        let sent = edit(changes);
+        assert_eq!(narrowed(&sent), Err(DetailRejection::Malformed), "{sent}");
+    }
+    let many: Vec<Value> = (1..=100).map(|file| one(format!("f{file}"))).collect();
+    assert!(
+        narrowed(&edit(json!(many))).is_ok_and(|bytes| bytes > 0),
+        "100 files are kept"
+    );
+    assert!(
+        narrowed(&edit(json!([one("p".repeat(4096))]))).is_ok_and(|bytes| bytes > 0),
+        "no length caps a path"
+    );
 }

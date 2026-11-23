@@ -1,134 +1,45 @@
+//! The startup settings build the wire's retry, and the defaults are the
+//! existing provider behaviour. The retry's own suite is guffbolt-ai's
+//! (`guffbolt_ai::wire::retry`).
+
 #![expect(
     clippy::unwrap_used,
     reason = "test module: a failed precondition should fail the test loudly"
 )]
-#![expect(
-    clippy::disallowed_methods,
-    reason = "tests build a SystemTime-based HTTP date for retry_after and a plain client to provoke a refused connect; neither is a knob or a credentialed call"
-)]
 
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 
-use reqwest::StatusCode;
-use reqwest::header::{HeaderMap, HeaderValue, RETRY_AFTER};
+use guffbolt_ai::wire::Retry;
 
-use super::{Unanswered, retry_after};
-const WAIT_CEILING: Duration = super::RetryPolicy::DEFAULT.wait_ceiling;
-
-const BACKOFF: Option<Duration> = Some(Duration::from_secs(1));
-
-/// An answer with `code` and an empty body, asking for `retry_after`.
-fn status(code: StatusCode, retry_after: Option<Duration>) -> Unanswered {
-    let answer = http::Response::builder().status(code).body("").unwrap();
-    Unanswered::Status {
-        response: Box::new(reqwest::Response::from(answer)),
-        retry_after,
-    }
-}
-
-fn header(value: &str) -> HeaderMap {
-    let mut headers = HeaderMap::new();
-    headers.insert(RETRY_AFTER, HeaderValue::from_str(value).unwrap());
-    headers
-}
-
-#[test]
-fn should_retry_a_rate_limit_and_a_server_fault_and_nothing_else_answered() {
-    assert!(status(StatusCode::TOO_MANY_REQUESTS, None).retryable());
-    assert!(status(StatusCode::SERVICE_UNAVAILABLE, None).retryable());
-    assert!(!status(StatusCode::UNAUTHORIZED, None).retryable());
-    assert!(!status(StatusCode::BAD_REQUEST, None).retryable());
-}
-
-#[tokio::test]
-async fn should_retry_a_send_that_could_not_connect() {
-    // Port 1 is reserved and nothing listens on it, so the connect is refused.
-    let refused = reqwest::Client::new()
-        .get("http://127.0.0.1:1/")
-        .send()
-        .await
-        .unwrap_err();
-
-    let unanswered = Unanswered::Transport(refused);
-
-    assert!(unanswered.retryable());
-    assert_eq!(unanswered.status(), None);
-    assert_eq!(
-        unanswered.wait(BACKOFF, WAIT_CEILING),
-        BACKOFF,
-        "a send that never got a status waits the backoff"
-    );
-    assert!(
-        unanswered.into_answer().unwrap_err().is_connect(),
-        "the transport's own failure, for rig to read"
-    );
-}
-
-#[test]
-fn should_wait_what_the_provider_asks_and_else_the_backoff() {
-    let asked = status(StatusCode::TOO_MANY_REQUESTS, Some(Duration::from_secs(3)));
-    let unasked = status(StatusCode::BAD_GATEWAY, None);
-
-    assert_eq!(
-        asked.wait(BACKOFF, WAIT_CEILING),
-        Some(Duration::from_secs(3))
-    );
-    assert_eq!(unasked.wait(BACKOFF, WAIT_CEILING), BACKOFF);
-}
-
-#[test]
-fn should_stop_once_the_attempts_are_spent_or_the_wait_passes_the_ceiling() {
-    let asked = status(StatusCode::TOO_MANY_REQUESTS, Some(Duration::from_secs(3)));
-    let too_long = status(
-        StatusCode::TOO_MANY_REQUESTS,
-        Some(WAIT_CEILING + Duration::from_secs(1)),
-    );
-    let at_ceiling = status(StatusCode::TOO_MANY_REQUESTS, Some(WAIT_CEILING));
-
-    assert_eq!(
-        asked.wait(None, WAIT_CEILING),
-        None,
-        "no attempts left, whatever was asked"
-    );
-    assert_eq!(too_long.wait(BACKOFF, WAIT_CEILING), None);
-    assert_eq!(at_ceiling.wait(BACKOFF, WAIT_CEILING), Some(WAIT_CEILING));
-}
-
-// rig reads the refusal itself, so the last answer goes back as it arrived:
-// its status, and with it the provider's own code in the body.
-#[test]
-fn should_hand_back_an_unanswered_turns_last_answer_as_it_arrived() {
-    let refused = status(StatusCode::TOO_MANY_REQUESTS, None)
-        .into_answer()
-        .unwrap();
-
-    assert_eq!(refused.status(), StatusCode::TOO_MANY_REQUESTS);
-}
-
-#[test]
-fn should_read_retry_after_as_seconds_or_as_a_date() {
-    let past = httpdate::fmt_http_date(SystemTime::UNIX_EPOCH);
-
-    assert_eq!(retry_after(&header("1")), Some(Duration::from_secs(1)));
-    assert_eq!(retry_after(&header(" 7 ")), Some(Duration::from_secs(7)));
-    assert_eq!(retry_after(&header(&past)), Some(Duration::ZERO));
-    assert_eq!(retry_after(&header("soon")), None);
-    assert_eq!(retry_after(&HeaderMap::new()), None);
-}
-
-#[test]
-fn should_read_a_future_date_as_the_wait_until_it() {
-    let later = SystemTime::now() + Duration::from_secs(30);
-
-    let wait = retry_after(&header(&httpdate::fmt_http_date(later))).unwrap();
-
-    assert!(
-        wait > Duration::from_secs(25) && wait <= Duration::from_secs(30),
-        "{wait:?}"
-    );
-}
+use super::settings::{RetryPolicy, RetrySettings};
 
 #[test]
 fn the_default_retry_policy_is_the_existing_provider_behavior() {
-    assert_eq!(super::RetryPolicy::default(), super::RetryPolicy::DEFAULT);
+    assert_eq!(RetryPolicy::default(), RetryPolicy::DEFAULT);
+    assert_eq!(RetryPolicy::DEFAULT.wire(), Retry::DEFAULT);
+    let settings = garde::Unvalidated::new(RetrySettings::default())
+        .validate()
+        .unwrap();
+    assert_eq!(RetryPolicy::new(&settings), RetryPolicy::DEFAULT);
+}
+
+#[test]
+fn checked_settings_name_every_limit_of_the_wire_retry() {
+    let settings = garde::Unvalidated::new(RetrySettings {
+        max_attempts: 4,
+        max_stream_open_attempts: 2,
+        initial_backoff_ms: 5,
+        max_retry_after_seconds: 7,
+    })
+    .validate()
+    .unwrap();
+
+    assert_eq!(
+        RetryPolicy::new(&settings).wire(),
+        Retry::DEFAULT
+            .with_attempts(4)
+            .with_openings(2)
+            .with_backoff(Duration::from_millis(5))
+            .with_wait_ceiling(Duration::from_secs(7))
+    );
 }

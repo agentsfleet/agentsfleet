@@ -12,7 +12,6 @@
 
 use std::borrow::Cow;
 
-use af_wire::authoring::{ContextMessage, ContextRole, ModelCall, ModelMessage, ModelRequest};
 use af_wire::credentials::MintCredentialResponse;
 use af_wire::policy::{ContextBudget, ExecutionPolicy, NetworkPolicy};
 use af_wire::runner::{
@@ -88,7 +87,7 @@ fn should_not_leak_the_runner_token_through_debug() {
         runner_id: Cow::Borrowed("runner"),
         runner_token: Cow::Borrowed(SECRET),
         assigned_policy: AssignedPolicy {
-            durable_tasks_enabled: af_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
+            durable_tasks_enabled: true,
             decision_model_id: None,
             sandbox_tier: SandboxTier::LandlockFull,
             network_policy: EgressPolicy::AllowAll,
@@ -127,7 +126,7 @@ fn should_not_leak_a_minted_credential_through_debug() {
     assert!(serde_json::to_string(&response).unwrap().contains(SECRET));
 }
 
-/// A lease embeds the policy, so a derived `Debug` anywhere up the tree would
+/// A run embeds the policy, so a derived `Debug` anywhere up the tree would
 /// re-expose what the leaf redacts. This is the assertion that catches it.
 #[test]
 fn should_not_leak_a_secret_through_an_enclosing_type() {
@@ -158,78 +157,22 @@ fn should_redact_a_secrets_map_that_is_not_an_object() {
     }
 }
 
-// Value: protects=private authoring context stays out of logs while role and wire text remain intact;
-// fails_when=ContextMessage derives Debug over private text or serialization loses that text;
-// why_new=existing policy and credential redaction tests do not format authoring context;
-// seam=none; no_claim=live authoring dispatch (public wire serialization only).
 #[test]
-fn should_redact_both_authoring_context_roles_without_changing_the_wire() {
-    for (role, wire_role, diagnostic_role) in [
-        (ContextRole::User, "user", "User"),
-        (ContextRole::Assistant, "assistant", "Assistant"),
-    ] {
-        let message = ContextMessage {
-            role,
-            text: SECRET.to_owned(),
-        };
-        for rendered in [format!("{message:?}"), format!("{message:#?}")] {
-            assert!(
-                !rendered.contains(SECRET),
-                "private context leaked: {rendered}"
-            );
-            assert!(rendered.contains("<redacted>"), "{rendered}");
-            assert!(rendered.contains(diagnostic_role), "{rendered}");
-        }
-        assert_eq!(
-            serde_json::to_value(&message).unwrap(),
-            serde_json::json!({"role": wire_role, "text": SECRET})
-        );
-    }
-}
-
-// Value: protects=lease capability and private call context cannot leak through ModelCall diagnostics;
-// fails_when=Debug formats the capability or request, or redaction removes required wire data;
-// why_new=existing redaction tests cover policies and tokens but not a complete authoring model call;
-// seam=none; no_claim=capability authorization or provider acceptance (wire type only).
-#[test]
-fn should_redact_authoring_call_capability_and_context_but_keep_dispatch_diagnostics() {
-    let call: ModelCall = ModelCall {
-        capability_token: "c".repeat(43),
-        attempt_id: "01924f4e-0000-7000-8000-00000000fee7".into(),
-        dispatch_id: "01924f4e-0000-7000-8000-00000000fee8".into(),
-        fence: "7".into(),
-        call_index: 2,
-        request: ModelRequest {
-            messages: vec![ModelMessage::User {
-                text: SECRET.into(),
-            }],
-            max_output_tokens: 37,
-        },
+fn should_not_leak_a_draft_context_checkpoint_through_debug() {
+    let note = "the person's private conversation note";
+    let loaded = af_wire::context::ContextLoadResponse {
+        scope: "setup-draft-scope".to_owned(),
+        resource_version: 3,
+        checkpoint: Some(serde_json::json!({ "notes": [note] })),
     };
-    for rendered in [format!("{call:?}"), format!("{call:#?}")] {
-        assert!(
-            !rendered.contains(&call.capability_token),
-            "capability leaked: {rendered}"
-        );
-        assert!(
-            !rendered.contains(SECRET),
-            "private call context leaked: {rendered}"
-        );
-        assert!(rendered.contains(&call.attempt_id), "{rendered}");
-        assert!(rendered.contains(&call.dispatch_id), "{rendered}");
-        assert!(rendered.contains("call_index: 2"), "{rendered}");
-    }
-    let wire = serde_json::to_value(&call).unwrap();
+    let rendered = format!("{loaded:?}");
     assert_eq!(
-        wire.get("capability_token"),
-        Some(&serde_json::json!(call.capability_token))
+        rendered,
+        "ContextLoadResponse { resource_version: 3, checkpoint: true, .. }"
     );
-    assert_eq!(
-        wire.pointer("/request/messages"),
-        Some(&serde_json::json!([{"role": "user", "text": SECRET}]))
-    );
-    assert_eq!(
-        wire.pointer("/request/max_output_tokens"),
-        Some(&serde_json::json!(37))
+    let wire = serde_json::to_string(&loaded).unwrap();
+    assert!(
+        wire.contains(note),
+        "the run still receives its notes: {wire}"
     );
 }

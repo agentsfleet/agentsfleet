@@ -122,7 +122,7 @@ export const expectFailure = <E extends CliError>(
 };
 
 export const RECEIVE_ROW = {
-  event_id: "evt_1",
+  turn_id: "evt_1",
   charge_type: CHARGE_TYPE.receive,
   posture: PROVIDER_MODE.platform,
   model: "kimi-k2.6",
@@ -132,7 +132,7 @@ export const RECEIVE_ROW = {
   recorded_at: new Date(TEST_RECORDED_AT_MS).toISOString(),
 };
 export const STAGE_ROW = {
-  event_id: "evt_1",
+  turn_id: "evt_1",
   charge_type: CHARGE_TYPE.stage,
   posture: PROVIDER_MODE.platform,
   model: "kimi-k2.6",

@@ -6,13 +6,14 @@ use af_crypto::{
     secret::SecretBytes,
 };
 use af_wire::{
-    lease::{
-        LeasePayload, TurnCheckpointAction as Action, TurnCheckpointCommand, TurnCheckpointRead,
-        TurnCheckpointResponse as Response, TurnId, TurnPrivateRoot, TurnResume, TurnScope,
-    },
-    task::{
+    durable_task::{
         CheckpointObject, CheckpointObjectStatus, CheckpointPage, CheckpointPin,
         CheckpointPlaintext,
+    },
+    run::{
+        CheckpointOperationId, RunPayload, TurnCheckpointAction as Action, TurnCheckpointCommand,
+        TurnCheckpointResponse as Response, TurnCheckpointSaved, TurnPrivateRoot, TurnResume,
+        TurnScope,
     },
 };
 use base64::{Engine as _, prelude::BASE64_STANDARD};
@@ -30,25 +31,25 @@ const OBJECT: &str = "019f0000-0000-7000-8000-000000000013";
 pub(super) const FILE: &str = "progress.txt";
 pub(super) const CONTENT: &[u8] = b"saved workspace contents\n";
 pub(super) const PREFIX: &str = "conversation saved before the interruption";
-pub(super) type Checked<T = ()> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
+pub(super) type Checked<T = ()> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 pub(super) fn checkpoint(
-    lease: &LeasePayload<'_>,
+    run: &RunPayload<'_>,
     scope: TurnScope,
     expiry: jiff::Timestamp,
     page: &CheckpointPage,
-) -> Checked<TurnCheckpointRead> {
+) -> Checked<TurnCheckpointSaved> {
     let private = json!({
-        "format":1,"scope":scope,"model":lease.policy.context.model,"provider":lease.policy.provider,
-        "root":{"messages":[{"User":PREFIX}],"driver":{"answers":[],"completed_turns":0},
-        "children":{"next":0,"started":0,"children":[]},
+        "format":1,"scope":scope,"model":run.policy.context.model,"provider":run.policy.provider,
+        "root":{"messages":[{"User":PREFIX}],"driver":{"answers":[],"completed_steps":0},
         "memory":{"pending":[],"superseded":[],"misses":0},"pinned":0,"folds":[]}
-    }).to_string();
+    })
+    .to_string();
     let root = TurnPrivateRoot { history: private };
     let page_digest = sha256_hex(&serde_json::to_vec(page)?);
-    Ok(TurnCheckpointRead {
+    Ok(TurnCheckpointSaved {
         descriptor: TurnResume {
-            checkpoint_id: TurnId(ID.to_owned()),
+            checkpoint_id: CheckpointOperationId(ID.to_owned()),
             generation: 1,
             format_version: 1,
             scope,
@@ -61,7 +62,7 @@ pub(super) fn checkpoint(
             operation_deadline: expiry,
             resource_version: 1,
         },
-        page_ids: vec![TurnId(PAGE.to_owned())],
+        page_ids: vec![CheckpointOperationId(PAGE.to_owned())],
         root,
         folds: Vec::new(),
     })
@@ -69,7 +70,7 @@ pub(super) fn checkpoint(
 
 pub(super) fn answer(
     call: &Call,
-    saved: &TurnCheckpointRead,
+    saved: &TurnCheckpointSaved,
     page: &CheckpointPage,
     object: &CheckpointObject,
 ) -> Option<Answer> {
@@ -94,11 +95,11 @@ pub(super) fn answer(
         )));
     }
     let response = match command.action {
-        Action::Read { .. } => Response::Read(Box::new(saved.clone())),
-        Action::PageRead { .. } => Response::PageRead(page.clone()),
-        Action::Authorize { .. } => Response::Authorized(vec![object.clone()]),
-        Action::Adopt { .. } => Response::Adopted(Vec::new()),
-        Action::PinRelease { .. } => Response::PinReleased,
+        Action::Read(_) => Response::Read(Box::new(saved.clone())),
+        Action::PageRead(_) => Response::PageRead(page.clone()),
+        Action::Authorize(_) => Response::Authorized(vec![object.clone()]),
+        Action::Adopt(_) => Response::Adopted(Vec::new()),
+        Action::PinRelease(_) => Response::PinReleased,
         _ => {
             return Some(Answer::Fail(crate::error::config(
                 "unexpected checkpoint fixture action",
@@ -109,7 +110,7 @@ pub(super) fn answer(
 }
 
 pub(super) fn encrypted(scope: &TurnScope) -> Checked<(CheckpointObject, Vec<u8>)> {
-    let namespace = format!("turn:{}", scope.event_id.0);
+    let namespace = format!("turn:{}", scope.turn_id.0);
     let nonce = [7; af_crypto::NONCE_LEN];
     let key = [17; af_crypto::KEY_LEN];
     let encrypted = EncryptedCheckpointObject::seal(

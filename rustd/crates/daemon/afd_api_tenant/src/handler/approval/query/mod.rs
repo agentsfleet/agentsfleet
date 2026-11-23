@@ -28,13 +28,12 @@
 use af_core::id::Uuid7;
 use std::borrow::Cow;
 
-use af_core::paging::{Ceiling, Cursor as CoreCursor, InvalidCursor};
+use af_core::paging::{Cursor as CoreCursor, InvalidCursor};
 use af_core::spelling::from_spelling;
+use af_validate::Ceiling;
 use af_validate::Limit;
 use afd_api_wire::approval::GateStatus;
 use afd_http::handler::parse_id;
-use const_format::concatcp;
-use garde::Validate as _;
 
 use crate::handler::{Refusal, decoded_parameter, parameter};
 
@@ -44,30 +43,6 @@ const QUERY_FLEET_ID: &str = "fleet_id";
 const QUERY_GATE_TYPE: &str = "gate_type";
 const QUERY_LIMIT: &str = "limit";
 const QUERY_CURSOR: &str = "cursor";
-
-/// The page size when the caller names none.
-const DEFAULT_LIMIT: u32 = 50;
-
-/// The largest page any caller may ask for.
-const MAX_LIMIT: u32 = 200;
-
-/// The inbox's bound on `?limit`.
-const CEILING: Ceiling = Ceiling::new(MAX_LIMIT, DEFAULT_LIMIT);
-
-/// The longest `gate_type` filter, decoded.
-///
-/// A gate kind is a short family name a gate is filed under (`spend`,
-/// `tool_call`); a filter longer than any family is not a filter.
-const MAX_GATE_TYPE_BYTES: usize = 64;
-
-/// The refusal an over-long `gate_type` filter earns.
-const DETAIL_GATE_TYPE: &str =
-    concatcp!("gate_type must be at most ", MAX_GATE_TYPE_BYTES, " bytes");
-
-/// The refusal a page size outside the served band earns.
-///
-/// Kept verbatim: it is already on the wire.
-const DETAIL_LIMIT: &str = "limit must be between 1 and 200";
 
 /// The refusal a cursor this daemon did not mint earns.
 const DETAIL_CURSOR: &str = "invalid cursor";
@@ -117,7 +92,7 @@ pub(super) struct Listing {
     /// The status the page is narrowed to; every state when absent.
     pub(super) status: Option<GateStatus>,
     /// The fleet the page is narrowed to.
-    pub(super) fleet_id: Option<af_core::id::Uuid7>,
+    pub(super) fleet_id: Option<Uuid7>,
     /// The gate family the page is narrowed to.
     pub(super) gate_type: Option<String>,
     /// Where the page resumes, absent on the first one.
@@ -127,7 +102,8 @@ pub(super) struct Listing {
 }
 
 impl Listing {
-    /// The listing's parameters, or the first refusal they earn.
+    /// The listing's parameters, or the first refusal they earn. `ceiling` is
+    /// the deployment's `[api]` list page.
     ///
     /// The order is `limit`, then `cursor`, then the three filters.
     ///
@@ -143,13 +119,13 @@ impl Listing {
     ///
     /// # Errors
     /// A [`Refusal`] naming the parameter that refused.
-    pub(super) fn parse(query: &str) -> Result<Self, Refusal> {
+    pub(super) fn parse(query: &str, ceiling: Ceiling) -> Result<Self, Refusal> {
         Ok(Self {
-            limit: requested_limit(parameter(query, QUERY_LIMIT))?,
+            limit: requested_limit(parameter(query, QUERY_LIMIT), ceiling)?,
             cursor: parse_cursor(decoded(query, QUERY_CURSOR)?.as_deref())?,
             status: parse_status(parameter(query, QUERY_STATUS))?,
             fleet_id: parse_fleet_id(parameter(query, QUERY_FLEET_ID))?,
-            gate_type: parse_gate_type(decoded(query, QUERY_GATE_TYPE)?)?,
+            gate_type: decoded(query, QUERY_GATE_TYPE)?.map(Cow::into_owned),
         })
     }
 }
@@ -159,29 +135,10 @@ impl Listing {
 /// Zero is refused rather than clamped, for the reason the event listing gives:
 /// a caller asking for no rows has made a mistake, and an empty page would read
 /// as an empty inbox.
-fn requested_limit(raw: Option<&str>) -> Result<i64, Refusal> {
-    Limit::parse(raw, CEILING)
-        .map(i64::from)
-        .map_err(|_break| Refusal::malformed(DETAIL_LIMIT))
-}
-
-/// A `gate_type` filter as the caller sent it, decoded.
-#[derive(Debug, garde::Validate)]
-struct GateKindFilter<'q> {
-    #[garde(length(bytes, max = MAX_GATE_TYPE_BYTES))]
-    gate_type: Cow<'q, str>,
-}
-
-/// The gate family the page is narrowed to, inside its bound.
-fn parse_gate_type(raw: Option<Cow<'_, str>>) -> Result<Option<String>, Refusal> {
-    raw.map(|gate_type| {
-        let filter = GateKindFilter { gate_type };
-        filter
-            .validate()
-            .map_err(|_report| Refusal::malformed(DETAIL_GATE_TYPE))?;
-        Ok(filter.gate_type.into_owned())
+fn requested_limit(raw: Option<&str>, ceiling: Ceiling) -> Result<i64, Refusal> {
+    Limit::parse(raw, ceiling).map(i64::from).map_err(|_break| {
+        Refusal::malformed_sentence(afd_http::paging::limit_sentence("limit must be", ceiling))
     })
-    .transpose()
 }
 
 /// The boundary a page resumes strictly after.
@@ -217,7 +174,7 @@ fn decoded<'q>(query: &'q str, name: &str) -> Result<Option<Cow<'q, str>>, Refus
 }
 
 /// The fleet the page is narrowed to, checked before it reaches the statement.
-fn parse_fleet_id(raw: Option<&str>) -> Result<Option<af_core::id::Uuid7>, Refusal> {
+fn parse_fleet_id(raw: Option<&str>) -> Result<Option<Uuid7>, Refusal> {
     let Some(raw) = raw else {
         return Ok(None);
     };

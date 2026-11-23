@@ -7,8 +7,8 @@ use std::os::unix::fs::symlink;
 
 use serde_json::{Value, json};
 
-use crate::catalog::{Entry, FILE_APPEND, FILE_DELETE, FILE_EDIT, FILE_READ, FILE_WRITE};
-use crate::lease::Lease;
+use crate::catalog::{Entry, FILE_EDIT, FILE_READ, FILE_WRITE};
+use crate::run::Run;
 use crate::runtime::ToolErrorCode;
 use crate::sandbox::ScriptedExecutor;
 use crate::testing::{Live, call_in, hosted, offered};
@@ -16,35 +16,31 @@ use crate::testing::{Live, call_in, hosted, offered};
 /// The argument names the calls spell.
 pub(super) const PATH: &str = "path";
 const CONTENT: &str = "content";
-pub(super) const OLD_TEXT: &str = "old_text";
-pub(super) const NEW_TEXT: &str = "new_text";
+const EDITS: &str = "edits";
+const OLD_TEXT: &str = "old_text";
+const NEW_TEXT: &str = "new_text";
 
 /// The file the round trip works on, and what lands in it.
 const TODO: &str = "notes/todo.txt";
 const ONE: &str = "one\n";
 const TWO: &str = "two\n";
-/// What the five tools answer when their call lands.
-const PATH_LEAVES: &str = "leaves the workspace";
+/// What the three tools answer when their path leaves the workspace.
+const PATH_LEAVES: &str = "leaves the working directory";
 
-/// The five plain file tools' names.
-pub(super) const FILE_TOOLS: [&Entry; 5] = [
-    &FILE_READ,
-    &FILE_WRITE,
-    &FILE_APPEND,
-    &FILE_DELETE,
-    &FILE_EDIT,
-];
+/// The three plain file tools' names.
+pub(super) const FILE_TOOLS: [&Entry; 3] = [&FILE_READ, &FILE_WRITE, &FILE_EDIT];
+
+/// `file_edit`'s arguments on `path`: one edit replacing `old` with `new`.
+pub(super) fn edit(path: &str, old: &str, new: &str) -> Value {
+    json!({PATH: path, EDITS: [{OLD_TEXT: old, NEW_TEXT: new}]})
+}
 
 /// Arguments for `entry` on `path`, with whatever else it takes.
 pub(super) fn on(entry: &Entry, path: &str) -> Value {
     match entry.name() {
-        name if name == FILE_WRITE.name() || name == FILE_APPEND.name() => {
-            json!({PATH: path, CONTENT: "x"})
-        }
-        name if name == FILE_EDIT.name() => {
-            json!({PATH: path, OLD_TEXT: "x", NEW_TEXT: "y"})
-        }
-        _read_or_delete => json!({PATH: path}),
+        name if name == FILE_WRITE.name() => json!({PATH: path, CONTENT: "x"}),
+        name if name == FILE_EDIT.name() => edit(path, "x", "y"),
+        _read => json!({PATH: path}),
     }
 }
 
@@ -54,30 +50,29 @@ async fn test_file_tools_operate_under_workspace() {
     let (catalog, _sent) = hosted();
     let names: Vec<&str> = FILE_TOOLS.iter().map(|entry| entry.name()).collect();
     let selection = catalog.select(&names).unwrap();
-    let lease = Lease::default();
-    let mut answers = Vec::with_capacity(6);
+    let run = Run::default();
+    let mut answers = Vec::with_capacity(4);
     for (entry, arguments) in [
-        (&FILE_WRITE, json!({PATH: TODO, CONTENT: ONE})),
-        (&FILE_APPEND, json!({PATH: TODO, CONTENT: TWO})),
-        (&FILE_READ, json!({PATH: TODO})),
         (
-            &FILE_EDIT,
-            json!({PATH: TODO, OLD_TEXT: "two", NEW_TEXT: "three"}),
+            &FILE_WRITE,
+            json!({PATH: TODO, CONTENT: format!("{ONE}{TWO}")}),
         ),
-        (&FILE_DELETE, json!({PATH: TODO})),
+        (&FILE_READ, json!({PATH: TODO})),
+        (&FILE_EDIT, edit(TODO, "two", "three")),
+        (&FILE_WRITE, json!({PATH: TODO, CONTENT: ONE})),
     ] {
         let tool = offered(&selection, entry);
-        answers.push(call_in(tool, &live.client, &lease, arguments).await);
+        answers.push(call_in(tool, &live.client, &run, arguments).await);
         if entry.name() == FILE_EDIT.name() {
             let on_disk = std::fs::read_to_string(live.root.join(TODO)).unwrap();
             assert_eq!(on_disk, "one\nthree\n", "the edit landed on disk");
         }
     }
     let absolute = format!("/workspace/{TODO}");
-    let gone = call_in(
+    let reread = call_in(
         offered(&selection, &FILE_READ),
         &live.client,
-        &lease,
+        &run,
         json!({PATH: absolute}),
     )
     .await;
@@ -86,11 +81,10 @@ async fn test_file_tools_operate_under_workspace() {
     assert_eq!(
         texts,
         [
-            "Wrote 4 bytes to notes/todo.txt",
-            "Appended 4 bytes to notes/todo.txt",
+            "Wrote 8 bytes to notes/todo.txt\nLines changed:\n\"notes/todo.txt\" +2 -0",
             "one\ntwo\n",
-            "Replaced 3 bytes with 5 bytes in notes/todo.txt",
-            "Deleted notes/todo.txt",
+            "Applied 1 edit to notes/todo.txt\nLines changed:\n\"notes/todo.txt\" +1 -1",
+            "Wrote 4 bytes to notes/todo.txt\nLines changed:\n\"notes/todo.txt\" +0 -1",
         ]
     );
     for answer in &answers {
@@ -98,11 +92,10 @@ async fn test_file_tools_operate_under_workspace() {
         assert_eq!(answer.exit_code, None, "{answer:?}");
     }
     assert_eq!(
-        gone.error_code,
-        Some(ToolErrorCode::FileNotFound),
-        "{gone:?}"
+        reread.text, ONE,
+        "an absolute path under /workspace names the file"
     );
-    assert!(!live.root.join(TODO).exists());
+    assert_eq!(reread.error_code, None, "{reread:?}");
     live.stop().await;
 }
 
@@ -114,7 +107,7 @@ async fn test_file_tools_refuse_path_escape() {
     let (catalog, _sent) = hosted();
     let names: Vec<&str> = FILE_TOOLS.iter().map(|entry| entry.name()).collect();
     let selection = catalog.select(&names).unwrap();
-    let lease = Lease::default();
+    let run = Run::default();
 
     for entry in FILE_TOOLS {
         for path in [
@@ -123,17 +116,12 @@ async fn test_file_tools_refuse_path_escape() {
             "a/../../b",
             "/workspace/../x",
         ] {
-            let refused = call_in(
-                offered(&selection, entry),
-                &executor,
-                &lease,
-                on(entry, path),
-            )
-            .await;
+            let refused =
+                call_in(offered(&selection, entry), &executor, &run, on(entry, path)).await;
 
             assert_eq!(
                 refused.error_code,
-                Some(ToolErrorCode::PathNotAllowed),
+                Some(ToolErrorCode::PathNotAllowed.into()),
                 "{refused:?}"
             );
             assert!(refused.text.contains(PATH_LEAVES), "{}", refused.text);
@@ -153,20 +141,14 @@ async fn a_sandbox_that_cannot_serve_a_file_call_reads_back_as_unavailable() {
     let (catalog, _sent) = hosted();
     let names: Vec<&str> = FILE_TOOLS.iter().map(|entry| entry.name()).collect();
     let selection = catalog.select(&names).unwrap();
-    let lease = Lease::default();
+    let run = Run::default();
 
     for entry in FILE_TOOLS {
-        let failed = call_in(
-            offered(&selection, entry),
-            &executor,
-            &lease,
-            on(entry, TODO),
-        )
-        .await;
+        let failed = call_in(offered(&selection, entry), &executor, &run, on(entry, TODO)).await;
 
         assert_eq!(
             failed.error_code,
-            Some(ToolErrorCode::SandboxUnavailable),
+            Some(ToolErrorCode::SandboxUnavailable.into()),
             "{}: {failed:?}",
             entry.name()
         );
@@ -188,18 +170,18 @@ async fn a_link_out_of_the_workspace_is_refused_by_the_executor_under_the_same_c
     let (catalog, _sent) = hosted();
     let names: Vec<&str> = FILE_TOOLS.iter().map(|entry| entry.name()).collect();
     let selection = catalog.select(&names).unwrap();
-    let lease = Lease::default();
+    let run = Run::default();
 
     let mut refusals = Vec::with_capacity(FILE_TOOLS.len());
     for entry in FILE_TOOLS {
         let tool = offered(&selection, entry);
-        refusals.push(call_in(tool, &live.client, &lease, on(entry, "link/secret")).await);
+        refusals.push(call_in(tool, &live.client, &run, on(entry, "link/secret")).await);
     }
 
     for refused in &refusals {
         assert_eq!(
             refused.error_code,
-            Some(ToolErrorCode::PathNotAllowed),
+            Some(ToolErrorCode::PathNotAllowed.into()),
             "{refused:?}"
         );
         assert!(
@@ -217,20 +199,20 @@ async fn a_name_the_workspace_does_not_have_reads_file_not_found() {
     let live = Live::start().await;
     let (catalog, _sent) = hosted();
     let selection = catalog
-        .select(&[FILE_READ.name(), FILE_EDIT.name(), FILE_DELETE.name()])
+        .select(&[FILE_READ.name(), FILE_EDIT.name()])
         .unwrap();
-    let lease = Lease::default();
+    let run = Run::default();
 
-    let mut refusals = Vec::with_capacity(3);
-    for entry in [&FILE_READ, &FILE_EDIT, &FILE_DELETE] {
+    let mut refusals = Vec::with_capacity(2);
+    for entry in [&FILE_READ, &FILE_EDIT] {
         let tool = offered(&selection, entry);
-        refusals.push(call_in(tool, &live.client, &lease, on(entry, "absent.txt")).await);
+        refusals.push(call_in(tool, &live.client, &run, on(entry, "absent.txt")).await);
     }
 
     for refused in &refusals {
         assert_eq!(
             refused.error_code,
-            Some(ToolErrorCode::FileNotFound),
+            Some(ToolErrorCode::FileNotFound.into()),
             "{refused:?}"
         );
         assert!(refused.text.contains("no such file"), "{}", refused.text);
@@ -245,31 +227,19 @@ async fn an_edit_needs_old_text_and_finds_it_or_changes_nothing() {
     let (catalog, _sent) = hosted();
     let selection = catalog.select(&[FILE_EDIT.name()]).unwrap();
     let tool = offered(&selection, &FILE_EDIT);
-    let lease = Lease::default();
+    let run = Run::default();
 
-    let empty = call_in(
-        tool,
-        &live.client,
-        &lease,
-        json!({PATH: "a.txt", OLD_TEXT: "", NEW_TEXT: "x"}),
-    )
-    .await;
-    let absent = call_in(
-        tool,
-        &live.client,
-        &lease,
-        json!({PATH: "a.txt", OLD_TEXT: "omega", NEW_TEXT: "x"}),
-    )
-    .await;
+    let empty = call_in(tool, &live.client, &run, edit("a.txt", "", "x")).await;
+    let absent = call_in(tool, &live.client, &run, edit("a.txt", "omega", "x")).await;
 
     assert_eq!(
         empty.error_code,
-        Some(ToolErrorCode::InvalidArguments),
+        Some(ToolErrorCode::InvalidArguments.into()),
         "{empty:?}"
     );
     assert_eq!(
         absent.error_code,
-        Some(ToolErrorCode::TextNotFound),
+        Some(ToolErrorCode::TextNotFound.into()),
         "{absent:?}"
     );
     assert_eq!(
@@ -279,27 +249,31 @@ async fn an_edit_needs_old_text_and_finds_it_or_changes_nothing() {
     live.stop().await;
 }
 
-/// An edit replaces the first occurrence and leaves any later one alone.
+/// Text the file holds twice is refused, and neither place is changed.
 #[tokio::test]
-async fn an_edit_replaces_the_first_occurrence_only() {
+async fn an_edit_refuses_text_the_file_holds_twice() {
     let live = Live::start().await;
     std::fs::write(live.root.join("a.txt"), "x y x\n").unwrap();
     let (catalog, _sent) = hosted();
     let selection = catalog.select(&[FILE_EDIT.name()]).unwrap();
-    let lease = Lease::default();
+    let run = Run::default();
 
-    let edited = call_in(
+    let refused = call_in(
         offered(&selection, &FILE_EDIT),
         &live.client,
-        &lease,
-        json!({PATH: "a.txt", OLD_TEXT: "x", NEW_TEXT: "z"}),
+        &run,
+        edit("a.txt", "x", "z"),
     )
     .await;
 
-    assert_eq!(edited.text, "Replaced 1 bytes with 1 bytes in a.txt");
+    assert_eq!(
+        refused.error_code,
+        Some(ToolErrorCode::TextNotUnique.into()),
+        "{refused:?}"
+    );
     assert_eq!(
         std::fs::read_to_string(live.root.join("a.txt")).unwrap(),
-        "z y x\n"
+        "x y x\n"
     );
     live.stop().await;
 }
@@ -312,19 +286,19 @@ async fn a_directory_given_as_a_file_reads_the_executors_own_sentence() {
     std::fs::create_dir(live.root.join("dir")).unwrap();
     let (catalog, _sent) = hosted();
     let selection = catalog.select(&[FILE_READ.name()]).unwrap();
-    let lease = Lease::default();
+    let run = Run::default();
 
     let refused = call_in(
         offered(&selection, &FILE_READ),
         &live.client,
-        &lease,
+        &run,
         json!({PATH: "dir"}),
     )
     .await;
 
     assert_eq!(
         refused.error_code,
-        Some(ToolErrorCode::SandboxUnavailable),
+        Some(ToolErrorCode::SandboxUnavailable.into()),
         "{refused:?}"
     );
     assert!(

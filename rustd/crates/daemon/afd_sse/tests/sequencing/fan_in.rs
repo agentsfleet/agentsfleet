@@ -46,7 +46,7 @@ async fn test_workspace_fan_in_tracks_authorised_fleets_and_valid_frames() {
 }
 
 async fn assert_fan_in_delivery(bus: &Handle, fan_in: &mut FanIn) {
-    let beta_channel = Subject::FleetTail(fleet(BETA));
+    let beta_channel = Subject::ThreadItems(fleet(BETA));
     bus.publish(&beta_channel, &payload(3))
         .await
         .expect("a valid fan-in frame reaches the bus");
@@ -59,7 +59,7 @@ async fn assert_fan_in_delivery(bus: &Handle, fan_in: &mut FanIn) {
         "the frame is tagged by its fleet"
     );
 
-    let alpha_channel = Subject::FleetTail(fleet(ALPHA));
+    let alpha_channel = Subject::ThreadItems(fleet(ALPHA));
     bus.publish(&alpha_channel, "not-json")
         .await
         .expect("the malformed payload still reaches the channel");

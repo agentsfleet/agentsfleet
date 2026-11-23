@@ -110,6 +110,7 @@ fn state_for(provider: Provider, subject: &str) -> String {
         subject,
         NONCE,
         NOW,
+        afd_connector::Timing::default().state_ttl,
     )
 }
 
@@ -163,6 +164,7 @@ async fn a_state_signed_under_a_secret_this_deployment_does_not_hold_is_a_bad_si
         STARTER,
         NONCE,
         NOW,
+        afd_connector::Timing::default().state_ttl,
     );
 
     assert_eq!(
@@ -209,9 +211,9 @@ async fn nothing_that_is_not_a_state_verifies_as_one() {
     for candidate in ["", "not-a-state", "a.b", "....", "%%%"] {
         let rejected = connectors()
             .verify(Provider::Slack, &secret(), candidate, STARTER, NOW)
-            .expect_err("`{candidate}` is not a state");
+            .err();
         assert!(
-            matches!(rejected, Rejected::Malformed | Rejected::BadSignature),
+            matches!(rejected, Some(Rejected::Malformed | Rejected::BadSignature)),
             "`{candidate}` earned {rejected:?}"
         );
     }

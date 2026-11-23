@@ -5,7 +5,8 @@
 
 use std::time::Instant;
 
-use af_wire::activity::{ActivityFrame, StreamTextKind};
+use af_wire::activity::ActivityFrame;
+use guffbolt::{Listen as _, TextKind};
 
 use super::Live;
 use crate::fixture::{Frames, GITHUB_TOKEN, scrub};
@@ -28,13 +29,13 @@ fn should_hold_a_secret_split_across_chunks_and_drop_its_head_at_the_end() {
     let scrub = scrub();
     let frames = Frames::default();
     let sink = frames.sink();
-    let mut live = Live::new(&sink, &scrub, Instant::now());
+    let live = Live::new(&sink, &scrub, Instant::now());
     let (head, tail) = GITHUB_TOKEN.split_at(4);
 
-    live.text(StreamTextKind::Answer, &format!("a {head}"));
-    live.text(StreamTextKind::Answer, &format!("{tail} b {head}"));
-    live.end_pass();
-    live.text(StreamTextKind::Answer, "c");
+    live.text(TextKind::Answer, &format!("a {head}"));
+    live.text(TextKind::Answer, &format!("{tail} b {head}"));
+    live.end();
+    live.text(TextKind::Answer, "c");
 
     assert_eq!(
         chunks(&frames.taken()),
@@ -47,13 +48,27 @@ fn should_hold_a_secret_split_across_chunks_and_drop_its_head_at_the_end() {
 }
 
 #[test]
-fn should_send_nothing_for_a_chunk_held_whole() {
+fn should_stream_no_reasoning_once_it_is_hidden_and_still_stream_the_answer() {
     let scrub = scrub();
     let frames = Frames::default();
     let sink = frames.sink();
     let mut live = Live::new(&sink, &scrub, Instant::now());
+    live.hide_reasoning();
 
-    live.text(StreamTextKind::Reasoning, &GITHUB_TOKEN[..3]);
+    live.text(TextKind::Reasoning, "private thought ");
+    live.text(TextKind::Answer, "answer ");
+
+    assert_eq!(chunks(&frames.taken()), [("answer ".to_owned(), 0)]);
+}
+
+#[test]
+fn should_send_nothing_for_a_chunk_held_whole() {
+    let scrub = scrub();
+    let frames = Frames::default();
+    let sink = frames.sink();
+    let live = Live::new(&sink, &scrub, Instant::now());
+
+    live.text(TextKind::Reasoning, &GITHUB_TOKEN[..3]);
 
     assert!(frames.taken().is_empty(), "no frame and no sequence spent");
 }
@@ -64,9 +79,9 @@ fn the_frame_guard_fails_a_test_that_leaves_a_frame_unread() {
     let scrub = scrub();
     let frames = Frames::default();
     let sink = frames.sink();
-    let mut live = Live::new(&sink, &scrub, Instant::now());
+    let live = Live::new(&sink, &scrub, Instant::now());
 
-    live.text(StreamTextKind::Answer, "said and never asserted");
+    live.text(TextKind::Answer, "said and never asserted");
 }
 
 /// What a test failing for its own reason panics with.
@@ -80,8 +95,8 @@ fn the_frame_guard_stands_down_while_a_test_is_already_failing() {
     let scrub = scrub();
     let frames = Frames::default();
     let sink = frames.sink();
-    let mut live = Live::new(&sink, &scrub, Instant::now());
+    let live = Live::new(&sink, &scrub, Instant::now());
 
-    live.text(StreamTextKind::Answer, "said and never asserted");
+    live.text(TextKind::Answer, "said and never asserted");
     std::panic::panic_any(OWN_FAILURE);
 }

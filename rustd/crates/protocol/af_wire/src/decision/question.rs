@@ -5,9 +5,7 @@ use std::collections::BTreeSet;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-use super::{
-    DecisionPurpose, QUESTION_MAX_BYTES, QUESTIONS_MAX, STATE_MAX_BYTES, serialized_within,
-};
+use super::DecisionPurpose;
 
 /// Accepted meanings of a true and false assessment.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -16,11 +14,11 @@ use super::{
 pub struct NoulCriteria {
     /// Evidence supporting yes.
     #[serde(rename = "true")]
-    #[garde(length(bytes, min = 1, max = 512))]
+    #[garde(length(chars, min = 1, max = af_validate::TEXT_MAX_CHARS))]
     pub yes: String,
     /// Evidence supporting no.
     #[serde(rename = "false")]
-    #[garde(length(bytes, min = 1, max = 512))]
+    #[garde(length(chars, min = 1, max = af_validate::TEXT_MAX_CHARS))]
     pub no: String,
 }
 
@@ -30,10 +28,10 @@ pub struct NoulCriteria {
 #[serde(deny_unknown_fields)]
 pub struct ChoiceOption {
     /// Stable option identity, including native task identities when associating.
-    #[garde(length(bytes, min = 1, max = 100))]
+    #[garde(length(chars, min = 1, max = af_validate::TEXT_MAX_CHARS))]
     pub value: String,
     /// Reviewed semantic meaning, never an authority grant.
-    #[garde(length(bytes, min = 1, max = 512))]
+    #[garde(length(chars, min = 1, max = af_validate::TEXT_MAX_CHARS))]
     pub description: String,
 }
 
@@ -45,7 +43,7 @@ pub enum DecisionQuestion {
     /// True/false assessment with explicit criteria.
     Noul {
         /// The question to evaluate.
-        #[garde(length(bytes, min = 1, max = 512))]
+        #[garde(length(chars, min = 1, max = af_validate::TEXT_MAX_CHARS))]
         instructions: String,
         /// Reviewed criteria for both answers.
         #[garde(dive)]
@@ -54,19 +52,19 @@ pub enum DecisionQuestion {
     /// Choice among a complete fixed option set.
     Choice {
         /// The question to evaluate.
-        #[garde(length(bytes, min = 1, max = 512))]
+        #[garde(length(chars, min = 1, max = af_validate::TEXT_MAX_CHARS))]
         instructions: String,
-        /// Sixteen eligible tasks plus new-work and unclear fit without truncation.
-        #[garde(length(min = 2, max = 18), dive, custom(unique_options))]
+        /// Every eligible task plus new-work and unclear fit, without truncation.
+        #[garde(length(min = 2), dive, custom(unique_options))]
         options: Vec<ChoiceOption>,
     },
     /// Probability-weighted rating over an ordered rubric.
     Score {
         /// The question to evaluate.
-        #[garde(length(bytes, min = 1, max = 512))]
+        #[garde(length(chars, min = 1, max = af_validate::TEXT_MAX_CHARS))]
         instructions: String,
         /// Rubric from lowest to highest, with zero-based numeric levels.
-        #[garde(length(min = 2, max = 10), inner(length(bytes, min = 1, max = 512)))]
+        #[garde(length(min = 2), inner(length(chars, min = 1, max = af_validate::TEXT_MAX_CHARS)))]
         levels: Vec<String>,
     },
 }
@@ -77,7 +75,7 @@ pub enum DecisionQuestion {
 #[serde(deny_unknown_fields)]
 pub struct NamedQuestion {
     /// Native question identity echoed by every adapter.
-    #[garde(length(bytes, min = 1, max = 100), pattern(r"^[A-Za-z0-9_.-]+$"))]
+    #[garde(length(chars, min = 1, max = af_validate::TEXT_MAX_CHARS), pattern(r"^[A-Za-z0-9_.-]+$"))]
     pub name: String,
     /// Reviewed question representation.
     #[garde(dive)]
@@ -99,7 +97,7 @@ pub struct DecisionRequest {
     #[garde(custom(state_bound))]
     pub state: serde_json::Value,
     /// Complete reviewed question set; partial delivery is forbidden.
-    #[garde(length(min = 1, max = QUESTIONS_MAX), dive, custom(question_bounds))]
+    #[garde(length(min = 1), dive, custom(question_bounds))]
     pub questions: Vec<NamedQuestion>,
 }
 
@@ -109,13 +107,8 @@ pub(crate) fn state_bound<C: ?Sized>(state: &serde_json::Value, _context: &C) ->
             "state must be text, an object or an array",
         ));
     }
-    if serialized_within(state, STATE_MAX_BYTES) {
-        Ok(())
-    } else {
-        Err(garde::Error::new(
-            "serialized decision state exceeds its byte bound",
-        ))
-    }
+    // Its size is the decision model's to judge (its profile's input_max_bytes).
+    Ok(())
 }
 
 fn question_bounds<C: ?Sized>(questions: &[NamedQuestion], _context: &C) -> garde::Result {
@@ -123,11 +116,6 @@ fn question_bounds<C: ?Sized>(questions: &[NamedQuestion], _context: &C) -> gard
     for question in questions {
         if !names.insert(&question.name) {
             return Err(garde::Error::new("decision question names must be unique"));
-        }
-        if !serialized_within(question, QUESTION_MAX_BYTES) {
-            return Err(garde::Error::new(
-                "serialized decision question exceeds its byte bound",
-            ));
         }
     }
     Ok(())

@@ -23,8 +23,8 @@
 //! is the record of that — a test asserts on the `event_id` the route composed,
 //! which is the route's own output.
 //!
-//! It does not prove the at-most-once claim. That is the admission ledger's
-//! unique producer key in Postgres ([`afd_admission::Admissions`]), and a claim
+//! It does not prove the at-most-once claim. That is the turns ledger's
+//! unique producer key in Postgres ([`afd_turns::Turns`]), and a claim
 //! re-implemented here would agree with the suite whatever the ledger did. The
 //! claim below exists only so a redelivery reaches the route's replay-rendering
 //! branch; the guarantee itself is the integration lane's, under `#[ignore]`.
@@ -34,7 +34,7 @@ use std::sync::{Arc, Mutex};
 
 use af_core::id::Uuid7;
 use af_crypto::secret::SecretBytes;
-use afd_api::services::WebhookIngress;
+use afd_http::services::WebhookIngress;
 use afd_ingress::{Binding, Ingress, Surface};
 
 /// Which ingress a suite is driving.
@@ -91,12 +91,6 @@ pub(crate) struct Scripted {
     installation: Option<Uuid7>,
     /// The fleets [`WebhookIngress::subscribers`] fans out to.
     subscribers: Vec<Binding>,
-    /// A matched count above the ceiling, when the test is about the ceiling.
-    ///
-    /// Separate from [`Self::subscribers`] because `Fanout::TooMany` carries a
-    /// COUNT and no bindings — building a hundred and one real bindings to
-    /// reach a branch that discards them would be arranging the wrong thing.
-    over_ceiling: Option<usize>,
     /// Every append, in the order the route made them.
     log: Mutex<Vec<Recorded>>,
     /// The source each binding read named, in order — `None` for the routes
@@ -145,13 +139,6 @@ impl Scripted {
     #[must_use]
     pub(crate) fn subscribed(mut self, fleets: Vec<Binding>) -> Self {
         self.subscribers = fleets;
-        self
-    }
-
-    /// A matched set larger than one delivery may wake.
-    #[must_use]
-    pub(crate) const fn matching(mut self, count: usize) -> Self {
-        self.over_ceiling = Some(count);
         self
     }
 

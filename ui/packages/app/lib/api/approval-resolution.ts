@@ -5,7 +5,7 @@ import { APPROVAL_DECISION } from "./approvals-types";
 
 const Receipt = z.object({
   gate_id: z.string().min(1), action_id: z.string().min(1),
-  outcome: z.enum(["approved", "denied", "timed_out", "archived"]),
+  outcome: z.enum(["approved", "denied", "answered", "timed_out", "archived"]),
   resolved_at: z.iso.datetime({offset: true}), resolved_by: z.string().min(1),
 });
 const Outcome = z.discriminatedUnion("kind", [
@@ -13,11 +13,13 @@ const Outcome = z.discriminatedUnion("kind", [
   z.object({kind: z.literal("already_resolved"), data: Receipt.extend({error_code: z.literal("UZ-APPROVAL-006"), detail: z.string()})}),
 ]);
 
+const EXPECTED = {[APPROVAL_DECISION.APPROVE]: "approved", [APPROVAL_DECISION.DENY]: "denied", [APPROVAL_DECISION.ANSWER]: "answered"} as const;
+
 /** A successful transport alone cannot confirm which request was decided. */
 export function confirmedApprovalResolution(value: unknown, gateId: string, decision: ApprovalDecision): ResolveOutcome | null {
   const parsed = Outcome.safeParse(value);
   if (!parsed.success || parsed.data.data.gate_id !== gateId) return null;
-  const expected = decision === APPROVAL_DECISION.APPROVE ? "approved" : "denied";
+  const expected = EXPECTED[decision];
   if (parsed.data.kind === "resolved" && parsed.data.data.outcome !== expected) return null;
   return parsed.data;
 }

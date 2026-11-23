@@ -1,14 +1,15 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { matchSetupRoute } from "@/lib/api/setup-proxy/path";
-import { SETUP_BODY_LIMIT_BYTES } from "@/lib/api/setup-proxy/body";
+import { SETUP_BODY_LIMIT_BYTES } from "@/lib/api/body-limits";
 import { SETUP_PROXY_DETAIL, SETUP_REQUEST_ID_HEADER } from "@/lib/api/setup-proxy/response";
-import { APP_ORIGIN, DRAFT_ID, FLEET_ID, PLUGIN_ID, REVISION_ID, WORKSPACE, response } from "./helpers/draft-fixtures";
+import { APP_ORIGIN, DRAFT_ID, FLEET_ID, REVISION_ID, WORKSPACE, response } from "./helpers/draft-fixtures";
 
 const {credential} = vi.hoisted(() => ({credential: vi.fn()}));
 vi.mock("@/lib/auth/credential", () => ({credential}));
 import { proxySetup } from "@/lib/api/setup-proxy";
 import * as handlers from "@/app/live/v1/workspaces/[workspaceId]/[...setupPath]/route";
+import { PATCH as stopTurnRoute } from "@/app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/turns/[turnId]/route";
 
 const BASE = `/live/v1/workspaces/${WORKSPACE}`;
 const METHOD = {get: "GET", post: "POST", patch: "PATCH", delete: "DELETE"} as const;
@@ -61,6 +62,17 @@ describe("private setup proxy", () => {
     const forwarded = upstream.mock.calls[0]?.[1];
     expect(forwarded.body).toBeUndefined(); expect(forwarded.headers.get("Content-Type")).toBeNull();
   });
+  it("forwards a turn's Stop as the PATCH it is, to the fleet's turn", async () => {
+    upstream.mockResolvedValue(response({turn_id: REVISION_ID, status: "cancelled"}));
+    const body = JSON.stringify({status: "cancelled"});
+    const request = new Request(`${APP_ORIGIN}${BASE}/fleets/${FLEET_ID}/turns/${REVISION_ID}`, {method: METHOD.patch, body,
+      headers: {Origin: APP_ORIGIN, "Content-Type": "application/json"}});
+    const result = await stopTurnRoute(request, {params: Promise.resolve({workspaceId: WORKSPACE, fleetId: FLEET_ID, turnId: REVISION_ID})});
+    expect(result.status).toBe(200);
+    const [url, init] = upstream.mock.calls[0] ?? [];
+    expect(String(url)).toMatch(new RegExp(`/v1/workspaces/${WORKSPACE}/fleets/${FLEET_ID}/turns/${REVISION_ID}$`));
+    expect(init.method).toBe(METHOD.patch); expect(new TextDecoder().decode(init.body)).toBe(body);
+  });
   it("returns private unauthorized state without forwarding when the session expired", async () => {
     credential.mockResolvedValue(null);
     const result = await proxy(["models"]);
@@ -82,10 +94,10 @@ describe("private setup proxy", () => {
   });
   it("whitelists list parameters and omits arbitrary upstream queries", async () => {
     upstream.mockResolvedValue(response({items: []}));
-    await proxy(["models"], {}, "?purpose=authoring&limit=10&starting_after=cursor&credential=secret");
+    await proxy(["models"], {}, "?purpose=setup&limit=10&starting_after=cursor&credential=secret");
     const target = new URL(upstream.mock.calls[0]?.[0]);
     expect(target.pathname).toBe(`/v1/workspaces/${WORKSPACE}/models`);
-    expect(target.search).toBe("?limit=10&starting_after=cursor&purpose=authoring");
+    expect(target.search).toBe("?limit=10&starting_after=cursor&purpose=setup");
     await proxy(["models"]);
     expect(new URL(upstream.mock.calls.at(-1)?.[0]).search).toBe("");
   });
@@ -99,7 +111,7 @@ describe("private setup proxy", () => {
     expect(new URL(upstream.mock.calls[2]?.[0]).search).toBe("");
     // The shared page keys are not widened for the other lists.
     expect(matchSetupRoute(WORKSPACE, ["fleets"], METHOD.get)?.query).toEqual(["limit", "starting_after", "name"]);
-    expect(matchSetupRoute(WORKSPACE, ["plugins"], METHOD.get)?.query).toEqual(["limit", "starting_after"]);
+    expect(matchSetupRoute(WORKSPACE, ["drafts", DRAFT_ID, "messages"], METHOD.get)?.query).toEqual(["limit", "starting_after"]);
   });
   it("preserves the literal private-chat query together with its bound cursor", async () => {
     upstream.mockResolvedValue(response({items: [], next_cursor: null}));
@@ -115,27 +127,27 @@ describe("private setup proxy", () => {
     const editor = {fleet: {id: FLEET_ID}, conversations: {items: [], next_cursor: null}};
     upstream.mockResolvedValue(response(editor));
     const query = new URLSearchParams({starting_after: "opaque+cursor", limit: "100", credential: "discard"});
-    const result = await proxy(["fleets", FLEET_ID, "authoring-context"], {}, `?${query}`);
+    const result = await proxy(["fleets", FLEET_ID, "setup-context"], {}, `?${query}`);
     expect(result.status).toBe(200); expect(await result.json()).toEqual(editor);
     expect(result.headers.get("cache-control")).toBe("private, no-store");
     const [url, request] = upstream.mock.calls[0]!;
     const target = new URL(url);
-    expect(target.pathname).toBe(`/v1/workspaces/${WORKSPACE}/fleets/${FLEET_ID}/authoring-context`);
+    expect(target.pathname).toBe(`/v1/workspaces/${WORKSPACE}/fleets/${FLEET_ID}/setup-context`);
     expect([...target.searchParams]).toEqual([["starting_after", "opaque+cursor"]]);
     expect(request.headers.get("Authorization")).toBe("Bearer synthetic-session");
   });
   it("refuses a signed-out editor read without calling the backend", async () => {
     credential.mockResolvedValue(null);
-    const result = await proxy(["fleets", FLEET_ID, "authoring-context"]);
+    const result = await proxy(["fleets", FLEET_ID, "setup-context"]);
     expect(result.status).toBe(401); expect(upstream).not.toHaveBeenCalled();
   });
   it.each([METHOD.post, METHOD.patch, METHOD.delete])("refuses an editor mutation (%s) before credential access", async method => {
-    expect((await proxy(["fleets", FLEET_ID, "authoring-context"], {method})).status).toBe(404);
+    expect((await proxy(["fleets", FLEET_ID, "setup-context"], {method})).status).toBe(404);
     expect(credential).not.toHaveBeenCalled(); expect(upstream).not.toHaveBeenCalled();
   });
   it("streams progress without buffering and strips content types outside the allowed set", async () => {
     upstream.mockResolvedValueOnce(new Response("event: message.running\ndata: {}\n\n", {headers: {"Content-Type": "text/event-stream"}}));
-    const stream = await proxy(["drafts", DRAFT_ID, "events", "stream"]);
+    const stream = await proxy(["drafts", DRAFT_ID, "turns", "stream"]);
     expect(stream.headers.get("x-accel-buffering")).toBe("no"); expect(stream.headers.get("vary")).toBe("Cookie");
     expect(await stream.text()).toContain("message.running");
     upstream.mockResolvedValueOnce(new Response("unexpected", {headers: {"Content-Type": "text/html"}}));
@@ -151,7 +163,7 @@ describe("private setup proxy", () => {
     vi.useFakeTimers();
     const owner = new AbortController();
     upstream.mockResolvedValue(new Response("event: message.running\ndata: {}\n\n", {headers: {"Content-Type": "text/event-stream"}}));
-    const stream = await proxy(["drafts", DRAFT_ID, "events", "stream"], {signal: owner.signal});
+    const stream = await proxy(["drafts", DRAFT_ID, "turns", "stream"], {signal: owner.signal});
     const signal: AbortSignal = upstream.mock.calls[0]?.[1].signal;
     await vi.advanceTimersByTimeAsync(31_000);
     expect(signal.aborted).toBe(false); expect(await stream.text()).toContain("message.running");
@@ -165,7 +177,7 @@ describe("private setup proxy", () => {
     upstream.mockResolvedValueOnce(new Response(new ReadableStream({
       start(controller) { controller.enqueue(bytes); }, cancel,
     }), {headers: {"Content-Type": "text/event-stream"}}));
-    const stream = await proxy(["drafts", DRAFT_ID, "events", "stream"]);
+    const stream = await proxy(["drafts", DRAFT_ID, "turns", "stream"]);
     const signal: AbortSignal = upstream.mock.calls[0]?.[1].signal;
     const reader = stream.body!.getReader();
     expect(await reader.read()).toEqual({done: false, value: bytes});
@@ -180,7 +192,7 @@ describe("private setup proxy", () => {
     upstream.mockImplementation((_target: string, init: RequestInit) => new Promise((_resolve, reject) => {
       init.signal?.addEventListener("abort", () => reject(init.signal?.reason), {once: true});
     }));
-    const pending = proxy(["drafts", DRAFT_ID, "events", "stream"]);
+    const pending = proxy(["drafts", DRAFT_ID, "turns", "stream"]);
     await vi.advanceTimersByTimeAsync(30_000);
     expect((await pending).status).toBe(502); expect(vi.getTimerCount()).toBe(0);
   });
@@ -191,25 +203,17 @@ describe("setup route whitelist", () => {
     [["models"], METHOD.get], [["drafts"], METHOD.get], [["drafts"], METHOD.post],
     [["drafts", DRAFT_ID], METHOD.get], [["drafts", DRAFT_ID], METHOD.patch], [["drafts", DRAFT_ID], METHOD.delete],
     [["drafts", DRAFT_ID, "messages"], METHOD.get], [["drafts", DRAFT_ID, "messages"], METHOD.post],
-    [["drafts", DRAFT_ID, "cancellations"], METHOD.post], [["drafts", DRAFT_ID, "events", "stream"], METHOD.get],
+    [["drafts", DRAFT_ID, "turns", "stream"], METHOD.get], [["drafts", DRAFT_ID, "turns", REVISION_ID], METHOD.patch],
     [["fleets"], METHOD.get], [["fleets"], METHOD.post], [["fleets", FLEET_ID], METHOD.get], [["fleets", FLEET_ID], METHOD.patch], [["fleets", FLEET_ID, "revisions"], METHOD.post],
-    [["fleets", FLEET_ID, "authoring-context"], METHOD.get],
+    [["fleets", FLEET_ID, "setup-context"], METHOD.get], [["fleets", FLEET_ID, "turns", REVISION_ID], METHOD.patch],
     [["fleets", FLEET_ID, "schedules", REVISION_ID], METHOD.get], [["fleets", FLEET_ID, "schedules", REVISION_ID], METHOD.patch],
     [["fleets", FLEET_ID, "schedules", REVISION_ID], METHOD.delete],
     [["fleets", FLEET_ID, "schedules", REVISION_ID, "sync"], METHOD.post],
-    [["plugins"], METHOD.get], [["plugins"], METHOD.post],
-    [["plugins", PLUGIN_ID], METHOD.get], [["plugins", PLUGIN_ID], METHOD.delete],
-    [["plugins", PLUGIN_ID, "revisions"], METHOD.get], [["plugins", PLUGIN_ID, "revisions"], METHOD.post], [["plugins", PLUGIN_ID, "revisions", REVISION_ID], METHOD.get],
   ] as const;
   it.each(allowed)("matches %s %s", (path, method) => {expect(matchSetupRoute(WORKSPACE, path, method)).toBeDefined();});
   it.each([
     ["models", DRAFT_ID], ["drafts", ".."], ["drafts", DRAFT_ID, "messages", "extra"], ["fleets", FLEET_ID, "secrets"],
-    ["fleets", FLEET_ID, "authoring-context", "extra"],
-    ["plugins", "owned"], ["plugins", "platform-recipe"],
-    ["fleet-libraries"], ["fleet-libraries", "owned"], ["fleet-libraries", PLUGIN_ID],
-    ["fleet-libraries", PLUGIN_ID, "revisions"], ["fleet-libraries", PLUGIN_ID, "revisions", REVISION_ID],
-    ["plugins", "owned", "revisions"], ["plugins", ".."], ["plugins", "x".repeat(129)],
-    ["plugins", PLUGIN_ID, "revisions", "invalid"], ["plugins", PLUGIN_ID, "other"],
+    ["fleets", FLEET_ID, "setup-context", "extra"], ["secrets"],
   ])("rejects unsupported path %s", (...path) => {expect(matchSetupRoute(WORKSPACE, path, METHOD.get)).toBeUndefined();});
   it("rejects a malformed workspace", () => {expect(matchSetupRoute("..", ["models"], METHOD.get)).toBeUndefined();});
   it.each([
@@ -219,9 +223,10 @@ describe("setup route whitelist", () => {
     [["fleets", FLEET_ID, "schedules", "invalid", "sync"], METHOD.post],
     [["fleets", FLEET_ID, "schedules", REVISION_ID, "other"], METHOD.post],
     [["drafts", DRAFT_ID, "messages"], METHOD.patch],
-    [["plugins"], METHOD.patch], [["plugins", PLUGIN_ID], METHOD.patch],
-    [["plugins", ""], METHOD.get], [["plugins", PLUGIN_ID, "revisions"], METHOD.patch],
-    [["plugins", PLUGIN_ID, "revisions", REVISION_ID], METHOD.post],
+    // Only Stop crosses this proxy for a turn: its read keeps the JSON read route.
+    [["fleets", FLEET_ID, "turns", REVISION_ID], METHOD.get], [["fleets", FLEET_ID, "turns", "invalid"], METHOD.patch],
+    [["drafts", DRAFT_ID, "turns", REVISION_ID], METHOD.get], [["drafts", DRAFT_ID, "turns", "invalid"], METHOD.patch],
+    [["drafts", DRAFT_ID, "cancellations"], METHOD.post],
   ] as const)("rejects an unsupported method/path pair %s %s", (path, method) => {
     expect(matchSetupRoute(WORKSPACE, path, method)).toBeUndefined();
   });

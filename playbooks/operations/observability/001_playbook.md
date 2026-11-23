@@ -86,7 +86,7 @@ Run each command for `dev`, then repeat with `prod`.
 - No token appears in process arguments or logs.
 
 A missing series is not zero, and a zero does not prove the export path healthy.
-A family with no activity has no series; check a real lease first.
+A family with no activity has no series; check a real run first.
 An unmapped provider omits `gen_ai.provider.name`, not the whole span.
 Check collector logs for downstream and metrics-ingest refusals, plus SDK export-loss counters.
 

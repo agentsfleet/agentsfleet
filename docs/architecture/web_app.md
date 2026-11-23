@@ -19,13 +19,13 @@ Stack facts this page assumes:
 
 ## Chat workspace
 
-The [chat workspace design](../designs/chat-within-a-workspace.md) applies these server/client boundaries to one authoring-and-runtime conversation.
+The [chat workspace design](../designs/chat-within-a-workspace.md) applies these server/client boundaries to one setup-and-runtime conversation.
 It retains assistant-ui, keys private draft/shared fleet adapters by account/workspace/subject, and loads configuration details on intent.
 
 Private chat **Save** and editor **Save changes** follow the [single resource reference](api_resources.md).
-The **Save and publish** flap publishes the reviewed setup directly, with elapsed progress and native retry.
+The **Save** flap saves the reviewed setup directly, with elapsed progress and native retry.
 
-The authoring API and workspace chat adapters are implemented. The [original API proposal](../reviews/workspace-setup/api.md) records design history; [API resources](api_resources.md) describes the current routes.
+The setup API and workspace chat adapters are implemented. The [original API proposal](../reviews/workspace-setup/api.md) records design history; [API resources](api_resources.md) describes the current routes.
 
 ## The five statements
 
@@ -48,20 +48,10 @@ It is the documented exception
 ([`../AUTH.md`](../AUTH.md) §"Why the dashboard rides one token"), and it is
 separate from the setup proxy.
 
-Every server fetch runs under one policy, `lib/api/retry.ts`. The policy is a
-declared schedule: a 20 s deadline, a 10 s `Retry-After` cap and full jitter.
-A replay gate is read from where the failure happened.
-
-A write the server may hold is never sent twice on a gateway error or a client
-timeout. A socket the transport reported dropping is sent again whatever the method. A reply nobody saw is usually a request that never ran.
-
-The price is named rather than hidden. A reset arriving after the server
-accepted a write can double it, and an idempotency key is what would retire
-that.
-
-The policy's dependency, `effect`, is server-only.
-A client component reads status facts from `lib/api/errors.ts`, and
-`.size-limit.mjs` fails the build if the runtime reaches a client chunk.
+Every server fetch makes one attempt and sets no deadline of its own: a
+caller that wants one passes its own signal. A failed request surfaces to the
+caller, who decides whether to send it again; a send carries its operation id,
+so a resend is answered with the first turn.
 
 **2 · `"use client"` marks a leaf, never a branch.**
 
@@ -237,17 +227,17 @@ The private setup, workspace activity and fleet activity proxies bound stream ha
 `StreamLifetime` forwards bytes on demand, ends rotation cleanly, and aborts the upstream request.
 Browser cancellation, request cancellation, upstream failure and ordinary completion release timers and the upstream reader.
 
-The proxies forward `Last-Event-ID` unchanged. Private setup reconnects retain the authorized subject and recover durable messages through the existing client. Runtime event streams use connection-local counters; the daemon ignores the header and the client recovers gaps through the durable events list.
+The proxies forward `Last-Event-ID` unchanged. Private setup reconnects retain the authorized subject and recover durable messages through the existing client. Runtime turn streams use connection-local counters; the daemon ignores the header and the client recovers gaps through the durable turns list.
 
-A shared Definition powers instruction edits, model proposals and checked saves. Save retains one fleet identity with visible setup checks and keeps authoring open. When an initial run is requested, Pending remains until its committed admission is confirmed with its expected event identity.
+A shared Definition powers instruction edits, model proposals and checked saves. Save retains one fleet identity with visible setup checks and keeps setup open. When an initial run is requested, Pending remains until its committed turn is confirmed with its expected turn identity.
 
-Save does not publish a Plugin. Models and billing resolve from the workspace owner's account; joined members receive authorized owner-facing actions. Edit fleet starts a private draft against a pinned setup revision.
+Models and billing resolve from the workspace owner's account; joined members receive authorized owner-facing actions. Edit fleet starts a private draft against a pinned setup revision.
 
 Runtime controls and shared fleet history retain their existing authority. See [fleet_definitions.md](fleet_definitions.md#validated-definition), [data_flow.md](data_flow.md#fleet-creation-and-setup-recovery), and [API resources](api_resources.md).
 
-The **Instructions** dialog edits the current instructions before Save. Opening it requests no run and creates no fleet. Publication remains an explicit action in the chat menu.
+The **Instructions** dialog edits the current instructions before Save. Opening it requests no run and creates no fleet.
 
-The saved view separates setup readiness from first-run admission; an accepted run can still be running.
+The saved view separates setup readiness from the first run's acceptance; an accepted run can still be running.
 The inline receipt shows `Save done vN`; readiness remains separate from the saved version.
 
 The saved response supplies the Definition when present; otherwise the view retains the reviewed candidate's Definition. Unknown trigger or access data stays unconfirmed.
@@ -257,18 +247,18 @@ The saved response supplies the Definition when present; otherwise the view reta
 New fleet keeps the private setup conversation open across multiple messages.
 The header shows the reviewed fleet name and the **Edit instructions** pencil.
 
-The **Save and publish** flap publishes a reusable Plugin. Sending **Save** in chat saves the private fleet and opens its conversation.
+The **Save** flap saves the fleet. Sending **Save** in chat also saves it and opens its conversation.
 
 The sidebar's **Fleets** list shows authorized saved fleets.
 Private drafts appear under **Unfinished setups** on **New fleet**.
 
 Active fleet dots use the brand color; hover or keyboard focus reveals the delete control.
 
-Fleet **Edit setup** opens the authoring page at its latest saved revision. **Archive** and permanent **Delete** live in **Fleet actions**.
+Fleet **Edit setup** opens the setup page at its latest saved revision. **Archive** and permanent **Delete** live in **Fleet actions**.
 
 The **Edit instructions** pencil opens the tall instruction editor. Its **Save changes** action applies the reviewed edit.
 
-Saving a revision keeps authoring open. An explicit chat Save shows `Saving setup...` through model finalization and the checked write, then `Save done vN`.
+Saving a revision keeps setup open. An explicit chat Save shows `Saving setup...` through model finalization and the checked write, then `Save done vN`.
 
 Existing runs keep their pinned revision; new runs use the saved version.
 Fleet messages, setup receipts and integration activity share one chronological conversation. **Saved memories** opens from **Fleet actions**; **Your fleets** opens the listing.
@@ -279,11 +269,11 @@ Both purposes use `ChatConnection`, `ReplyStream`, `ChatThread`, `ChatMessageRow
 Effects own connections and cleanup; render stays pure and Hooks remain static.
 Private history loading does not wait for model or sidebar lists.
 
-Fleet chat also renders `TaskPanel` inline above its composer through `FleetThreadViewport`.
-Its scoped reads load compact unfinished work; expanding a row loads accepted criteria through `TaskDetail`.
+Fleet chat also renders `DurableTaskPanel` inline above its composer through `FleetThreadViewport`.
+Its scoped reads load compact unfinished work; expanding a row loads accepted criteria through `DurableTaskDetail`.
 The [DT owner](durable_tasks.md#status-and-ownership) distinguishes these implemented reads from pending task attempts and recovery.
 
-The existing fleet stream supplies `task_changed` read hints through `tasksSeq`; its initial hello and gap recovery also invalidate task reads.
+The existing fleet stream supplies `durable_task_changed` read hints through `durableTasksSeq`; its initial hello and gap recovery also invalidate task reads.
 Account or workspace changes abort old requests, and access loss clears private rows.
 Transient failures retain labelled confirmed data and expose retry without claiming fresh progress.
 

@@ -22,7 +22,6 @@ fn checkpoint_identity_cannot_be_rebound_to_another_owner_or_format() {
         Aad::checkpoint_identity(&owner, &identity, "github:repo:124", 1, 2),
         Aad::checkpoint_identity(&owner, &identity, "github:repo:123", 2, 2),
         Aad::checkpoint_identity(&owner, &identity, "github:repo:123", 1, 3),
-        Aad::effect_recovery(&owner, &identity),
         Aad::new(owner.as_str(), identity.as_str()),
     ] {
         let failure = sealed.open(&key, &wrong_scope).unwrap_err();

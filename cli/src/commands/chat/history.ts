@@ -8,17 +8,16 @@ import { Output, OUTPUT_FORMAT } from "../../services/output.ts";
 import { EMPTY_CELL, ago } from "../../output/index.ts";
 import { requireValidId, resolveAuthToken, resolveWorkspaceId, WORKSPACE_FLAG } from "../workspace/guards.ts";
 import { createTransport, IF_MATCH } from "./transport.ts";
-import { CHAT_TEXT_KIND, CHAT_PAGE_MAX, chatStatus, chatText, chatVersions, decodeChatPage, decodeChatTitle } from "./history-schema.ts";
+import { CHAT_TEXT_KIND, chatStatus, chatText, chatVersions, decodeChatPage, decodeChatTitle } from "./history-schema.ts";
 
 type WorkspaceOptions = {readonly workspace?: string | undefined};
 export type ChatListOptions = WorkspaceOptions & {
   readonly search?: string | undefined; readonly cursor?: string | undefined; readonly limit?: string | undefined;
   readonly state?: string | undefined; readonly fleet?: string | undefined;
 };
-const DEFAULT_LIMIT = 50;
 const DRAFT_ID_FIELD = "draft_id";
 const LIST_USAGE = "agentsfleet chat list --help";
-const BUSY_CODE = "UZ-AUTHOR-002";
+const BUSY_CODE = "UZ-SETUP-002";
 const object = Schema.Record(Schema.String, Schema.Unknown);
 
 const historyTransport = Effect.fn("chat.history.transport")(function* (options: WorkspaceOptions) {
@@ -28,11 +27,14 @@ const historyTransport = Effect.fn("chat.history.transport")(function* (options:
 });
 
 const listQuery = Effect.fn("chat.history.query")(function* (options: ChatListOptions) {
-  const limit = options.limit ?? String(DEFAULT_LIMIT);
-  if (!/^\d+$/u.test(limit) || Number(limit) < 1 || Number(limit) > CHAT_PAGE_MAX) return yield* Effect.fail(new ValidationError({
-    detail: `--limit must be an integer between 1 and ${CHAT_PAGE_MAX}`, suggestion: LIST_USAGE,
-  }));
-  const query = new URLSearchParams({limit});
+  const query = new URLSearchParams();
+  // No --limit: the server's own default page size applies.
+  if (options.limit !== undefined) {
+    if (!/^\d+$/u.test(options.limit) || Number(options.limit) < 1) return yield* Effect.fail(new ValidationError({
+      detail: "--limit must be a positive integer", suggestion: LIST_USAGE,
+    }));
+    query.set("limit", options.limit);
+  }
   if (options.search !== undefined) query.set("q", yield* chatText(options.search, CHAT_TEXT_KIND.search));
   if (options.cursor !== undefined) {
     if (!options.cursor) return yield* Effect.fail(new ValidationError({detail: "--cursor must not be empty", suggestion: LIST_USAGE}));
@@ -68,7 +70,7 @@ export const chatRenameEffect = Effect.fn("chat.rename")(function* (draftId: str
   const before = yield* transport.call({path}, object);
   const current = yield* decodeChatTitle(id, before);
   const body = yield* transport.call({path, method: HTTP_METHOD.patch, headers: {[IF_MATCH]: current.etag},
-    body: {title: name}, retry: null}, object).pipe(Effect.mapError(error =>
+    body: {title: name}}, object).pipe(Effect.mapError(error =>
     error._tag === CLI_ERROR_TAG.server && error.code === BUSY_CODE ? new ServerError({
       code: error.code, status: error.status, requestId: error.requestId,
       detail: "This setup chat is busy or closed and cannot be renamed",
@@ -84,6 +86,6 @@ export const chatDeleteEffect = Effect.fn("chat.delete")(function* (draftId: str
   const id = yield* requireValidId(draftId, DRAFT_ID_FIELD, "agentsfleet chat delete <id>");
   const output = yield* Output;
   const transport = yield* historyTransport(options);
-  yield* transport.empty({path: `${transport.drafts}/${encodeURIComponent(id)}`, method: HTTP_METHOD.delete, retry: null});
+  yield* transport.empty({path: `${transport.drafts}/${encodeURIComponent(id)}`, method: HTTP_METHOD.delete});
   yield* output.success(`Deleted setup chat ${id}. Saved fleets keep running.`, {draft_id: id, deleted: true});
 });

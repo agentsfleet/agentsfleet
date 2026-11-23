@@ -38,14 +38,12 @@ mod workspace_credentials;
 const NOW: Timestamp = Timestamp::constant(1_760_000_000, 0);
 const KEY_NAME: &str = "provider-handle";
 
-/// Points a tenant's selection at one entry, as a raw row.
+/// Selects one of a tenant's entries and clears the rest, as a raw write.
 ///
 /// `$1` tenant · `$2` entry.
 const POINT_SELECTION: &str = "\
-INSERT INTO model.tenant_selections (tenant_id, tenant_model_id, created_at, updated_at)
-VALUES ($1, $2, now(), now())
-ON CONFLICT (tenant_id) DO UPDATE SET tenant_model_id = EXCLUDED.tenant_model_id,
-                                      updated_at = now()";
+UPDATE model.tenant_models SET selected = (id = $2), updated_at = now()
+ WHERE tenant_id = $1";
 
 struct Fixture {
     lane: TestDatabase,
@@ -198,12 +196,11 @@ impl Fixture {
         .await
     }
 
-    /// Points `tenant`'s selection straight at one of its registry entries.
+    /// Selects one of `tenant`'s registry entries straight on its row.
     ///
     /// Written as the row rather than through `activate`, so a test about the
-    /// page or the pointer does not also depend on the catalogue gate and a
-    /// decrypt. The composite foreign key still checks the entry is the
-    /// tenant's own.
+    /// page or the selection does not also depend on the catalogue gate and a
+    /// decrypt. Only the tenant's own rows are written.
     async fn point_selection_at(&self, tenant: &Uuid7, entry: &Uuid7) {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query(POINT_SELECTION)

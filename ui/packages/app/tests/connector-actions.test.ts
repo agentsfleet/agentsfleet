@@ -72,7 +72,7 @@ describe("startConnectAction (OAuth connect)", () => {
     // The token is injected by withToken, not the caller.
     expect(startConnectMock).toHaveBeenCalledWith("github", "ws_1", "tok");
     expect(cookieSet).toHaveBeenCalledWith("connector_return_github", "/w/ws_1/integrations",
-      expect.objectContaining({ httpOnly: true, sameSite: "lax", path: "/", maxAge: 600 }));
+      expect.objectContaining({ httpOnly: true, sameSite: "lax", path: "/" }));
   });
 
   it("forwards a provider that is NOT github/slack — registry-driven, no allowlist", async () => {

@@ -5,10 +5,10 @@
 //! a wire fact rather than prose this crate is free to improve.
 
 /// The sentence for a datastore that cannot be reached, shared by every plane.
-pub use af_core::error::DETAIL_DATABASE_UNAVAILABLE as DATABASE_UNAVAILABLE;
+pub(crate) use af_core::error::DETAIL_DATABASE_UNAVAILABLE as DATABASE_UNAVAILABLE;
 
 /// The sentence for a statement that reached the datastore and would not run.
-pub use af_core::error::DETAIL_DATABASE_ERROR as DATABASE_ERROR;
+pub(crate) use af_core::error::DETAIL_DATABASE_ERROR as DATABASE_ERROR;
 
 /// The sentence for an internal failure on a sealed row.
 ///

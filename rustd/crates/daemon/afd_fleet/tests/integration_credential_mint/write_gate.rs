@@ -24,7 +24,7 @@ use crate::requests;
 use af_core::error_code::ErrorCode;
 
 /// A stored document declaring a write reach over `acme/payments`, which is
-/// what puts a binding on the lease's mint scope.
+/// what puts a binding on the run's mint scope.
 const WRITE_BOUND_CONFIG: &str = r#"{"name":"probe","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"},"repositories":["acme/payments"],"repository_access":"write","repository_base":"main"}}"#;
 
 /// A write-bound fleet whose `github` grant is approved, ready to mint.
@@ -40,7 +40,7 @@ async fn refusal_code(fixtures: &Fixtures, owner: &Bound) -> ErrorCode {
         .plane()
         .mint(
             &owner.runner,
-            &requests::mint(owner.lease.as_str(), CONNECTOR_GITHUB),
+            &requests::mint(owner.run.as_str(), CONNECTOR_GITHUB),
             fixtures.enrolled_at(),
         )
         .await

@@ -14,11 +14,12 @@ use af_otlp::Encoding;
 
 use crate::inventory::OTLP_EXPORT;
 use crate::preflight::{
-    OTEL_ENDPOINT_KNOB, OTEL_HEADERS_KNOB, OTEL_PROTOCOL_KNOB, OTEL_TIMEOUT_KNOB, preflight,
+    preflight,
     runner_listener::{TLS_CERT_FILE, TLS_KEY_FILE},
 };
 use crate::serve::{attach_exports, open_telemetry};
 use crate::supervisor::Supervisor;
+use af_otlp::{OTEL_ENDPOINT_KNOB, OTEL_HEADERS_KNOB, OTEL_PROTOCOL_KNOB, OTEL_TIMEOUT_KNOB};
 
 /// A collector nothing is listening on.
 ///

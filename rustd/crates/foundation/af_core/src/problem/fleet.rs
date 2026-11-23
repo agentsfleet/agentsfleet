@@ -19,21 +19,21 @@ pub(super) const FLEET: &[Problem] = &[
     },
     Problem {
         code: error_code::RUN_STALE_FENCING_TOKEN,
-        // 409, and the word is exact: two runners each hold a lease they
+        // 409, and the word is exact: two runners each hold a run they
         // believe is live, and the fence is what settles which one is. Not a
         // 403 — nothing about the credential is wrong — and not a 410, because
         // the resource is very much still there, owned by somebody else.
         status: 409,
         title: "Stale fencing token",
-        hint: "The lease was reclaimed by a newer holder, or the token is not the lease's own. This request is refused; the current holder's work wins.",
+        hint: "The run was reassigned to a newer holder, or the token is not the run's own. This request is refused; the current holder's work wins.",
         // Not dashboard-facing: this rides the runner-to-control-plane wire.
         user_message: None,
     },
     Problem {
-        code: error_code::RUN_LEASE_NOT_FOUND,
+        code: error_code::RUN_NOT_FOUND,
         status: 404,
-        title: "Lease not found",
-        hint: "No active lease matches this lease_id for the presenting runner; it may have expired, been reclaimed, or never existed.",
+        title: "Run not found",
+        hint: "No active run matches this run_id for the presenting runner; it may have expired, been reassigned, or never existed.",
         user_message: None,
     },
     Problem {
@@ -44,41 +44,31 @@ pub(super) const FLEET: &[Problem] = &[
         user_message: None,
     },
     Problem {
-        code: error_code::RUN_LEASE_EXCEEDED_MAX_RUNTIME,
-        // 409 like the lost verdict beside it, and the pair is the reason both
-        // codes exist: the STATUS cannot tell a runner whether its result is
-        // still wanted, so the code has to.
+        code: error_code::RUN_LOST,
         status: 409,
-        title: "Lease exceeded max runtime",
-        hint: "The lease reached its maximum runtime and cannot renew. The runner stops the child and reports any result.",
+        title: "Run lost",
+        hint: "The run moved to another runner before renewal. The former runner must stop its child.",
         user_message: None,
     },
     Problem {
-        code: error_code::RUN_LEASE_LOST,
-        status: 409,
-        title: "Lease lost",
-        hint: "The lease moved to another runner before renewal. The former runner must stop its child.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::RUN_LEASE_RENEWAL_NO_CREDITS,
+        code: error_code::RUN_RENEWAL_NO_CREDITS,
         // 402, and load-bearing for the reason the entry below it is: the stock
         // runner classifies a renew refusal by status AND code. Both 402s stop
         // the run; the code is what says which pool ran dry, and therefore
         // whether an operator tops up a balance or edits a ceiling.
         status: 402,
-        title: "Lease renewal blocked: no credits",
-        hint: "The tenant balance cannot cover another run slice. The lease does not renew, and the run stops cleanly.",
+        title: "Run renewal blocked: no credits",
+        hint: "The tenant balance cannot cover another run slice. The run does not renew, and the run stops cleanly.",
         user_message: None,
     },
     Problem {
         code: error_code::RUN_RENEW_BODY_MALFORMED,
-        // 400, and terminal to the runner, which ends a lease on any 4xx. That
+        // 400, and terminal to the runner, which ends a run on any 4xx. That
         // is the intent: the one body answered with it is the retired
         // cumulative shape, whose usage this daemon can never record.
         status: 400,
         title: "Renew body malformed",
-        hint: "The renew body carries cumulative token totals this daemon no longer reads, so the lease does not renew. Upgrade the runner; it reports one line per provider request in `requests`.",
+        hint: "The renew body carries cumulative token totals this daemon no longer reads, so the run does not renew. Upgrade the runner; it reports one line per provider request in `requests`.",
         // Not dashboard-facing: this rides the runner-to-control-plane wire.
         user_message: None,
     },
@@ -106,7 +96,7 @@ pub(super) const FLEET: &[Problem] = &[
         // breach to it. A 403 here would leave the runner treating an
         // exhausted ceiling as an auth failure.
         status: 402,
-        title: "Lease renewal blocked: fleet budget exhausted",
+        title: "Run renewal blocked: fleet budget exhausted",
         hint: "The fleet reached its daily_nanos or monthly_nanos limit from its reviewed setup, so the run stops. The tenant balance is fine; this is the fleet's own budget.",
         // Not dashboard-facing: this rides the runner-to-control-plane wire
         // protocol.
@@ -129,11 +119,13 @@ pub(super) const FLEET: &[Problem] = &[
         user_message: None,
     },
     Problem {
-        code: error_code::MESSAGE_LIMIT_REACHED,
-        status: 409,
-        title: "Run message limit reached",
-        hint: "A run can post at most 8 messages before it answers. Put the rest in the run's answer.",
-        user_message: None,
+        code: error_code::RUN_FRAME_TOO_LARGE,
+        status: 413,
+        title: "Run too large to send",
+        hint: "The run's message, instructions and history pass the runner's 32 MiB frame. Shorten the message or start a new conversation.",
+        user_message: Some(
+            "This message is too large for a run to carry. Shorten it or start a new conversation, then try again.",
+        ),
     },
     Problem {
         code: error_code::RUN_STREAM_SUPERSEDED,
@@ -143,10 +135,10 @@ pub(super) const FLEET: &[Problem] = &[
         user_message: None,
     },
     Problem {
-        code: error_code::RUN_LEASE_CANCELLED,
+        code: error_code::RUN_CANCELLED,
         status: 409,
-        title: "Lease cancelled",
-        hint: "The fleet was archived. Stop this lease and report its final result.",
+        title: "Run cancelled",
+        hint: "The fleet was archived. Stop this run and report its final result.",
         user_message: None,
     },
     Problem {
@@ -164,13 +156,6 @@ pub(super) const FLEET: &[Problem] = &[
         user_message: None,
     },
     Problem {
-        code: error_code::RUNNER_REGISTRATION_KEY_REUSED,
-        status: 409,
-        title: "Registration key reused",
-        hint: "This Idempotency-Key already registered a runner with a different request. Send a new UUIDv7 key for a new runner.",
-        user_message: None,
-    },
-    Problem {
         code: error_code::RUNNER_TENANT_MANAGED,
         status: 409,
         title: "Tenant-managed runner",
@@ -181,13 +166,20 @@ pub(super) const FLEET: &[Problem] = &[
         code: error_code::RUNNER_PLACEMENT_REFUSED,
         status: 500,
         title: "Runner placement refused",
-        hint: "Issue refused work the claim should have filtered for this runner. Report it: the placement filter has a hole.",
+        hint: "Issue refused work the assignment should have filtered for this runner. Report it: the placement filter has a hole.",
         user_message: None,
     },
     super::checkpoint::INCOMPATIBLE,
     super::checkpoint::CONFLICT,
     super::checkpoint::UNAVAILABLE,
     super::checkpoint::LIMIT,
+    Problem {
+        code: error_code::RUNNER_HOST_REGISTERED,
+        status: 409,
+        title: "Host already registered",
+        hint: "Its owner already registered a runner for this host_id; the Location header names it. Rotate its token with a `PATCH` of that runner carrying `{\"action\":\"rotate\"}`, or revoke and delete it before registering the host again.",
+        user_message: None,
+    },
     Problem {
         code: error_code::AGENTSFLEET_CREDENTIAL_MISSING,
         // 424: the fleet's own request is well-formed; what is missing is a
@@ -197,7 +189,7 @@ pub(super) const FLEET: &[Problem] = &[
         title: "Fleet credential missing",
         hint: "A required credential is not in the vault. Add it with: `agentsfleet secrets create <NAME>`",
         // Not dashboard-facing: this is a CLI and API-key surface, and on the
-        // lease path it is logged rather than rendered at all.
+        // run path it is logged rather than rendered at all.
         user_message: None,
     },
     Problem {
@@ -232,19 +224,6 @@ pub(super) const FLEET: &[Problem] = &[
         ),
     },
     Problem {
-        code: error_code::AGENTSFLEET_INSTALL_ROLLED_BACK,
-        // 500 rather than 503, and the difference is what the caller is being
-        // promised. A 503 says "come back later"; this says "nothing was kept,
-        // so retrying is safe" — which is the fact the rollback earned and the
-        // only one the caller can act on.
-        status: 500,
-        title: "Fleet install rolled back",
-        hint: "Event-stream setup failed during create. Nothing was kept, so retry. If it continues, check queue connectivity.",
-        user_message: Some(
-            "We couldn't finish setting up your fleet. Nothing was created — try again.",
-        ),
-    },
-    Problem {
         code: error_code::AGENTSFLEET_SOURCE_STALE,
         status: 412,
         title: "Fleet source is stale",
@@ -261,7 +240,7 @@ pub(super) const FLEET: &[Problem] = &[
         user_message: Some("This Fleet isn't active, so it can't take new work."),
     },
     Problem {
-        code: error_code::EVENT_NOT_FOUND,
+        code: error_code::TURN_NOT_FOUND,
         status: 404,
         title: "Event not found",
         hint: "This fleet has no event with that identifier in this workspace. An event in another workspace answers the same.",
@@ -286,6 +265,13 @@ pub(super) const FLEET: &[Problem] = &[
         user_message: Some(
             "This Fleet is archived and can't change. Delete it, or set up a new Fleet.",
         ),
+    },
+    Problem {
+        code: error_code::TURN_FINISHED,
+        status: 409,
+        title: "Turn already finished",
+        hint: "This turn finished before Stop reached it, so its answer or failure stands. `current_state` names its status. Read the turn for its answer.",
+        user_message: Some("This turn already finished. Its answer is in the conversation."),
     },
     Problem {
         code: error_code::AGENTSFLEET_OPERATION_CONFLICT,

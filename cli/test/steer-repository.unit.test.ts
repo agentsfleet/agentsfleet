@@ -2,10 +2,10 @@ import { expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 import { renderRepository } from "../src/commands/fleet/tasks.ts";
 import { Output } from "../src/services/output.ts";
-import type { TaskDetail } from "../src/commands/fleet/task-read.ts";
+import type { DurableTaskDetail } from "../src/commands/fleet/task-read.ts";
 import { outputDouble } from "./helpers-output-double.ts";
-import { taskDetail, HEAD, COMMIT, TASK, INSTANT } from "./helpers-steered-work.ts";
-async function render(task: TaskDetail): Promise<string[]> {
+import { durableTaskDetail, HEAD, COMMIT, TASK, INSTANT } from "./helpers-steered-work.ts";
+async function render(task: DurableTaskDetail): Promise<string[]> {
   const lines: string[] = [];
   await Effect.runPromise(renderRepository(task).pipe(Effect.provide(Layer.succeed(Output,
     {...outputDouble(), info: (line: string) => Effect.sync(() => {lines.push(line);})}))));
@@ -13,7 +13,7 @@ async function render(task: TaskDetail): Promise<string[]> {
 }
 
 test("saved publications distinguish confirmed heads from unknown effects and local edits", async () => {
-  const detail = taskDetail();
+  const detail = durableTaskDetail();
   const receipt = {effect_id: TASK, ordinal: 1, state: "unknown" as const, expected_head: HEAD,
     tested_tree: HEAD, commit: COMMIT, pull_request_url: "https://github.com/agentsfleet/agentsfleet/pull/803"};
   const unknown = await render({...detail, publication: receipt});
@@ -26,7 +26,7 @@ test("saved publications distinguish confirmed heads from unknown effects and lo
 });
 
 test("check results carry saved-head provenance, missing run evidence, and terminal-safe labels", async () => {
-  const detail = taskDetail();
+  const detail = durableTaskDetail();
   const dependency = {active: true, head: HEAD, updated_at: INSTANT, checks: [
     {workflow_id: 1, run_id: 10, run_number: 3, run_attempt: 2, status: "completed", conclusion: "success"},
     {workflow_id: 2, run_id: null, run_number: null, run_attempt: null, status: "queued", conclusion: null},
@@ -43,7 +43,7 @@ test("check results carry saved-head provenance, missing run evidence, and termi
 });
 
 test("API-only and older tasks produce no invented repository progress", async () => {
-  const detail = taskDetail();
+  const detail = durableTaskDetail();
   expect(await render({...detail, context: {...detail.context, target: {kind: "api_only"}}})).toEqual([]);
   const {target: _target, ...context} = detail.context;
   expect(await render({...detail, context})).toEqual([]);

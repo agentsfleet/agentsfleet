@@ -1,7 +1,7 @@
 //! A native setup a fixture fleet can select, built the way Save builds one.
 //!
 //! Admission refuses a fleet that selects no setup revision written under the
-//! current policy semantics, and the lease path reads its definition. So every
+//! current policy semantics, and the run path reads its definition. So every
 //! suite that seeds a fleet those paths reach seeds one of these beside it.
 //! The definition is parsed and digested by the production code here, never
 //! typed out as JSON a suite could get subtly wrong (M-TEST-UTIL).
@@ -66,6 +66,54 @@ impl Default for FixtureSetup {
     }
 }
 
+/// The owner criteria the `ci-repairer` corpus fleet declares, which the
+/// decision suites of `afd_fleet` and `afd_api` seed.
+pub const DECISION_POLICY: &str =
+    include_str!("../tests/fixtures/fleets/ci-repairer/decision-policy.json");
+
+/// The corpus fleets a sibling crate's suite installs, each with its native
+/// setup exactly as it sits in `tests/fixtures/fleets/<name>/definition.json`.
+const DEFINITIONS: [(&str, &str); 7] = [
+    (
+        "ci-repairer",
+        include_str!("../tests/fixtures/fleets/ci-repairer/definition.json"),
+    ),
+    (
+        "ci-responder",
+        include_str!("../tests/fixtures/fleets/ci-responder/definition.json"),
+    ),
+    (
+        "delegating-triager",
+        include_str!("../tests/fixtures/fleets/delegating-triager/definition.json"),
+    ),
+    (
+        "github-log-reader",
+        include_str!("../tests/fixtures/fleets/github-log-reader/definition.json"),
+    ),
+    (
+        "github-pr-reviewer",
+        include_str!("../tests/fixtures/fleets/github-pr-reviewer/definition.json"),
+    ),
+    (
+        "incident-repairer",
+        include_str!("../tests/fixtures/fleets/incident-repairer/definition.json"),
+    ),
+    (
+        "test-fixer",
+        include_str!("../tests/fixtures/fleets/test-fixer/definition.json"),
+    ),
+];
+
+/// The native setup of the corpus fleet `name`, or `None` for a fleet no
+/// sibling suite installs.
+#[must_use]
+pub fn corpus_definition(name: &str) -> Option<&'static str> {
+    DEFINITIONS
+        .iter()
+        .find(|(fleet, _)| *fleet == name)
+        .map(|(_, text)| *text)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -77,5 +125,19 @@ mod tests {
         assert_eq!(canonical_digest(&parsed).expect("digest"), setup.digest);
         assert_eq!(setup.semantics(), POLICY_SEMANTICS);
         assert!(setup.config.contains("\"fixture\""), "{}", setup.config);
+    }
+
+    #[test]
+    fn every_embedded_corpus_setup_parses_under_its_own_name() {
+        for (name, _) in DEFINITIONS {
+            let text = corpus_definition(name).expect("a listed fleet");
+            let definition = Definition::parse(text).expect("a valid corpus setup");
+            assert_eq!(definition.runtime().name().as_str(), name);
+        }
+        assert_eq!(corpus_definition("no-such-fleet"), None);
+        assert!(
+            DECISION_POLICY.trim_start().starts_with('{'),
+            "{DECISION_POLICY}"
+        );
     }
 }

@@ -51,7 +51,7 @@ fn a_persons_mention_parses_with_its_thread() {
     );
 }
 
-/// Dimension 1.3 — bot, edited, user-less and field-missing mentions are each
+/// Bot, edited, user-less and field-missing mentions are each
 /// dropped with their reason; a direct message and another event are not
 /// mentions this route answers.
 #[test]

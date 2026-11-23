@@ -12,7 +12,7 @@
 //! # What is not here yet
 //!
 //! The OTLP transport. It is constructed from configuration at boot, which is
-//! §7's, and an exporter this crate built for nobody would be a dependency and
+//! the daemon's, and an exporter this crate built for nobody would be a dependency and
 //! a code path with no caller. What IS here is everything the transport plugs
 //! into — so the piece boot adds is the endpoint, not the design.
 #![forbid(unsafe_code)]
@@ -39,9 +39,9 @@ pub mod semconv;
 pub mod test_util;
 pub mod verb_span;
 
-pub use self::delivery::{Delivery, MAX_RUN, Segments};
+pub use self::delivery::{Delivery, Segments};
 pub use self::error::{Error, Result};
 pub use self::export::{CountingExporter, CountingLogExporter, LogDrops, SpanDrops};
 #[cfg(feature = "test-util")]
 pub use self::product::Recorded;
-pub use self::product::{Analytics, AuthoringStep, InviteEmailOutcome, Telemetry};
+pub use self::product::{Analytics, InviteEmailOutcome, SetupStep, Telemetry};

@@ -4,12 +4,14 @@ use af_observability::{metrics::label::fleet::ReadyWake, producers};
 use crate::{Handle, Subject};
 
 /// Publish only after commit; failure cannot reject work already accepted.
-pub async fn publish(bus: &Handle, fleet: Uuid7) {
-    let payload = fleet.to_string();
-    let shard = crc16::State::<crc16::XMODEM>::calculate(payload.as_bytes()) % super::SHARDS;
+///
+/// `owner` is the waiting work's thread, a fleet or a setup draft, named by
+/// its own id: one wake subject serves both kinds.
+pub async fn publish(bus: &Handle, owner: Uuid7) {
+    let payload = owner.to_string();
     let outcome = tokio::time::timeout(
         READY_WAKE_DEADLINE,
-        bus.publish(&Subject::Wake(shard), &payload),
+        bus.publish(&Subject::ThreadWake(owner), &payload),
     )
     .await;
     let failure = match outcome {
@@ -19,14 +21,14 @@ pub async fn publish(bus: &Handle, fleet: Uuid7) {
     };
     producers::fleet::ready_wake_failed(ReadyWake::Ring);
     let logged = failure.logged();
-    let fleet_id = payload.as_str();
+    let thread_id = payload.as_str();
     {
         let (event, error_code, reason, message) = (
-            &"admission_wake_ring_failed",
+            &"turn_wake_ring_failed",
             &logged.error_code,
             &logged.reason,
-            format_args!("notification was lost; the next Postgres probe finds the admission"),
+            format_args!("notification was lost; the next Postgres probe finds the turn"),
         );
-        tracing::warn!(message, event, error_code, reason, fleet_id, shard);
+        tracing::warn!(message, event, error_code, reason, thread_id);
     };
 }

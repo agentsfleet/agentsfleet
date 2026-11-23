@@ -5,7 +5,7 @@ use std::borrow::Cow;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-use super::{CONTROLLER_NAME_MAX_BYTES, REPORT_CONTROLLERS_MAX};
+use af_validate::TEXT_MAX_CHARS;
 
 /// What this host can actually enforce.
 //
@@ -38,13 +38,10 @@ pub struct CapabilityReport<'a> {
     #[garde(skip)]
     pub seccomp: bool,
     /// Controllers present in the delegated cgroup's subtree control.
-    // Stored and re-read by the runner page, so bounded: past either cap the
-    // whole report reads as "nothing reported this beat".
+    // Past the text ceiling, or empty, the whole report reads as "nothing
+    // reported this beat".
     #[serde(borrow)]
-    #[garde(
-        length(max = REPORT_CONTROLLERS_MAX),
-        inner(length(bytes, min = 1, max = CONTROLLER_NAME_MAX_BYTES))
-    )]
+    #[garde(inner(length(chars, min = 1, max = TEXT_MAX_CHARS)))]
     pub cgroup_controllers: Vec<Cow<'a, str>>,
     /// The sandbox launcher is available.
     #[garde(skip)]

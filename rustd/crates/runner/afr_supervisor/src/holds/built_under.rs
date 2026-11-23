@@ -1,5 +1,5 @@
 //! The network policy, repository binding and resolved egress a held sandbox
-//! was built under, as part of its key: a lease asking under any other gets a
+//! was built under, as part of its key: a run asking under any other gets a
 //! fresh sandbox.
 
 use std::borrow::Cow;
@@ -8,13 +8,13 @@ use af_wire::policy::{ExecutionPolicy, NetworkPolicy, RepositoryBinding};
 
 use crate::egress::{Bound, Reach};
 
-/// What a sandbox was built under, owned, so a hold outlives the lease that
+/// What a sandbox was built under, owned, so a hold outlives the run that
 /// parked it and a changed policy never runs in a sandbox built for the old
 /// one. Compared field by field, as the wire types are.
 ///
 /// The egress is what the runner's assignment reaches, by name: a sandbox
 /// built to share the host's network, or to reach other names, never serves a
-/// lease the runner now assigns otherwise. The addresses are left out, so a
+/// run the runner now assigns otherwise. The addresses are left out, so a
 /// name that resolves elsewhere since keeps its hold, and the resumed sandbox
 /// takes the new addresses in place.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -25,7 +25,7 @@ pub(crate) struct BuiltUnder {
 }
 
 impl BuiltUnder {
-    /// What a lease under `policy`, reaching what `egress` admits, builds its
+    /// What a run under `policy`, reaching what `egress` admits, builds its
     /// sandbox under.
     pub(crate) fn of(policy: &ExecutionPolicy<'_>, egress: &Bound) -> Self {
         let network = &policy.network_policy;

@@ -2,7 +2,7 @@
 //!
 //! This crate is deliberately smaller than the runner execution plane. It owns
 //! cross-table views an operator reads, while `afd_fleet` retains enrolment,
-//! heartbeats, lease execution, settlement, and mutations. Keeping the read
+//! heartbeats, run execution, settlement, and mutations. Keeping the read
 //! projection separate prevents each dashboard join from enlarging the crate
 //! on the latency-critical runner path.
 
@@ -11,8 +11,8 @@
 #![deny(clippy::self_named_module_files)]
 
 mod error;
-mod runner_leases;
+mod runner_runs;
 mod sql;
 
 pub use self::error::{Error, Result};
-pub use self::runner_leases::RunnerLeaseHistory;
+pub use self::runner_runs::RunnerRunHistory;

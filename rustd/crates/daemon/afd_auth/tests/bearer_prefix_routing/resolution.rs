@@ -4,11 +4,10 @@
 //! Split from the parent for length; the fixtures every class shares stay
 //! there.
 
+use af_wire::paths::RUNNER_TOKEN_PREFIX;
 use afd_auth::authenticate::Registry;
 use afd_auth::capability::NoCapabilitySource;
-use afd_auth::credential::{
-    CLI_CREDENTIAL_PREFIX, CredentialKind, RUNNER_TOKEN_PREFIX, TENANT_API_KEY_PREFIX,
-};
+use afd_auth::credential::{CLI_CREDENTIAL_PREFIX, CredentialKind, TENANT_API_KEY_PREFIX};
 use afd_auth::directory::{CredentialRecord, Liveness};
 use afd_auth::error::Error;
 use afd_auth::mock::{MockCapabilities, MockDirectory};

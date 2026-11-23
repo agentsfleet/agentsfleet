@@ -5,7 +5,7 @@
  * to the fleet's improve conversation, a review that shows the new schedule in
  * the effective setup, an explicit apply that moves the fleet to its next
  * setup revision, and the schedule list that now carries the wake-up. No step
- * edits the draft through the API; the authoring model writes the change.
+ * edits the draft through the API; the setup model writes the change.
  *
  * Live-only: registers real tests only when `AGENTSFLEET_ACCEPTANCE_TARGET` is
  * an https URL, matching every other live spec in this lane.
@@ -27,7 +27,7 @@ import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { readAuthContext } from "./fixtures/native-api.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
 import { deleteFixtureFleet } from "./fixtures/teardown.ts";
-import { authoringModel, commandValues, fixtureDefinition, inspectDraft, saveNativeFleet } from "./fixtures/native-setup.ts";
+import { setupModel, commandValues, fixtureDefinition, inspectDraft, saveNativeFleet } from "./fixtures/native-setup.ts";
 import { AppliedSchema } from "../../src/commands/chat/protocol.ts";
 
 const target = process.env[ACCEPTANCE_TARGET_ENV] ?? "";
@@ -85,8 +85,8 @@ if (!isLive) {
       const fleet = await saveNativeFleet(env, fixtureDefinition(FLEET_NAME));
       fleetId = fleet.id;
       savedRevision = fleet.setup_revision;
-      // An improve chat names its authoring model, as every new chat does.
-      model = await authoringModel(await readAuthContext(env));
+      // An improve chat names its setup model, as every new chat does.
+      model = await setupModel(await readAuthContext(env));
     }, SETUP_TIMEOUT_MS);
 
     afterAll(async () => {

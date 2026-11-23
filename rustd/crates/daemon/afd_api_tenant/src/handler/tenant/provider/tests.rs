@@ -9,9 +9,11 @@
 //!
 //! The header of [`super`] names the composition these three implement:
 //!
-//!   own entry           → the entry, rendered as self-managed
-//!   platform + default  → the live default, rendered as platform mode
-//!   platform, no default → the empty view — "not configured", never a 404
+//! ```text
+//! own entry            → the entry, rendered as self-managed
+//! platform + default   → the live default, rendered as platform mode
+//! platform, no default → the empty view — "not configured", never a 404
+//! ```
 //!
 //! One test per rung, so a rung that started rendering as another is a named
 //! failure rather than a diff in a larger assertion.

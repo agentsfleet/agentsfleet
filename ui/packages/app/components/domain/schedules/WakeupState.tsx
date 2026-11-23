@@ -6,6 +6,7 @@ import type {Schedule} from "@/lib/api/draft-types";
 import {SCHEDULE_RUN_STATE, SCHEDULE_SYNC} from "@/lib/api/draft-vocabulary";
 import {scheduleStateText} from "@/lib/api/schedule-status";
 
+// setTimeout holds its delay in a signed 32-bit integer; a longer one fires at once.
 const MAX_TIMER_MS = 2_147_483_647;
 
 export function WakeupState({schedule, onRefresh}: {schedule: Schedule; onRefresh: () => void}) {

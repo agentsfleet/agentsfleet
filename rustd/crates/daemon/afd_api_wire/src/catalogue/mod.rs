@@ -17,12 +17,6 @@ use crate::admin_catalogue::CONTEXT_CAP_MIN;
 
 /// The longest label a model shows.
 pub const DISPLAY_NAME_MAX_BYTES: usize = 128;
-/// The longest evidence URL a model or price records.
-pub const EVIDENCE_URL_MAX_BYTES: usize = 2048;
-/// The longest pricing-conditions note.
-pub const CONDITIONS_MAX_BYTES: usize = 1024;
-/// The most prices one model carries: every tier across every date range.
-pub const PRICES_MAX: usize = 64;
 /// The base tier's threshold: it applies from the first prompt token.
 pub const BASE_TIER: i32 = 0;
 
@@ -44,7 +38,7 @@ pub struct CatalogueMetadata<'a> {
     /// Provider limit source: models API for coding, published limits for a
     /// decision API whose model metadata omits context.
     #[serde(borrow)]
-    #[garde(length(bytes, min = 1, max = EVIDENCE_URL_MAX_BYTES), custom(af_validate::rules::nul_free))]
+    #[garde(length(chars, min = 1, max = af_validate::TEXT_MAX_CHARS), custom(af_validate::rules::nul_free))]
     pub context_source_url: Cow<'a, str>,
     /// When that response was verified.
     #[serde(with = "af_wire::instant")]
@@ -104,7 +98,7 @@ pub struct CataloguePrice<'a> {
     pub output_nanos_per_mtok: i64,
     /// The provider's pricing page or response the quote came from.
     #[serde(borrow)]
-    #[garde(length(bytes, min = 1, max = EVIDENCE_URL_MAX_BYTES), custom(af_validate::rules::nul_free))]
+    #[garde(length(chars, min = 1, max = af_validate::TEXT_MAX_CHARS), custom(af_validate::rules::nul_free))]
     pub source_url: Cow<'a, str>,
     /// When the quote was verified.
     #[serde(with = "af_wire::instant")]
@@ -112,7 +106,7 @@ pub struct CataloguePrice<'a> {
     pub verified_at: jiff::Timestamp,
     /// Scope, exclusions and provider-specific conditions; may be empty.
     #[serde(borrow)]
-    #[garde(length(bytes, max = CONDITIONS_MAX_BYTES), custom(af_validate::rules::nul_free))]
+    #[garde(length(chars, max = af_validate::TEXT_MAX_CHARS), custom(af_validate::rules::nul_free))]
     pub conditions: Cow<'a, str>,
 }
 

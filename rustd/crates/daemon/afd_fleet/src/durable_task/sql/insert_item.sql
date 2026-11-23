@@ -1,0 +1,4 @@
+INSERT INTO fleet.durable_task_items
+  (id, fleet_id, workspace_id, turn_id, ordinal, plan_digest, action,
+   source_start, source_end, durable_task_id, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now(), now())

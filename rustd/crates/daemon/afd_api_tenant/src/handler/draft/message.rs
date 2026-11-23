@@ -1,23 +1,21 @@
-//! Durable private message acceptance, role paging, and monotone Stop.
+//! Durable private message acceptance and role paging.
 
 use super::{DraftPath, access, id, input, location, render};
 use crate::{
     auth::{PersonIdentity, WorkspaceContext},
-    services::Services,
+    services::TenantPlane,
 };
 #[cfg(feature = "openapi")]
-use afd_api_wire::authoring::{
-    Accepted, Cancellation, CancellationRequest, CursorPage, Message, MessageRequest,
-};
-use afd_authoring::types::MessageQuery;
-use afd_http::handler::{Refusal, authoring_refusal};
+use afd_api_wire::setup::{Accepted, CursorPage, Message, MessageRequest};
+use afd_http::handler::{Refusal, setup_refusal};
+use afd_setup::types::MessageQuery;
 use axum::{
     Json,
     body::Bytes,
     extract::{Path, Query, State, rejection::QueryRejection},
     response::{IntoResponse as _, Response},
 };
-use http::{HeaderMap, StatusCode};
+use http::{HeaderMap, StatusCode, header};
 use std::sync::Arc;
 
 /// Accepts a user request; execution and terminal answers happen separately.
@@ -38,7 +36,7 @@ use std::sync::Arc;
         afd_http::openapi::GuardedFailures,
     )
 ))]
-pub(crate) async fn send<D: Services>(
+pub(crate) async fn send<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     person: PersonIdentity,
@@ -49,7 +47,7 @@ pub(crate) async fn send<D: Services>(
     input::body_key(&headers)?;
     let id = id(&path)?;
     let accepted = services
-        .authoring()
+        .drafts()
         .send(
             access(&owned, &person),
             &id,
@@ -57,10 +55,14 @@ pub(crate) async fn send<D: Services>(
             services.now(),
         )
         .await
-        .map_err(authoring_refusal)?;
-    let mut response = (StatusCode::ACCEPTED, Json(render::accepted(accepted))).into_response();
-    location(&mut response, &owned.workspace, &id, "/messages");
-    Ok(response)
+        .map_err(setup_refusal)?;
+    let location = location(&owned.workspace, &id, "/messages");
+    Ok((
+        StatusCode::ACCEPTED,
+        [(header::LOCATION, location)],
+        Json(render::accepted(accepted)),
+    )
+        .into_response())
 }
 
 /// Reads a bounded role-ordered conversation after current creator authorization.
@@ -75,7 +77,7 @@ pub(crate) async fn send<D: Services>(
         afd_http::openapi::GuardedFailures,
     )
 ))]
-pub(crate) async fn list<D: Services>(
+pub(crate) async fn list<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     person: PersonIdentity,
@@ -85,36 +87,9 @@ pub(crate) async fn list<D: Services>(
     let Query(query) =
         query.map_err(|_invalid| Refusal::malformed("Invalid private message query"))?;
     let messages = services
-        .authoring()
+        .drafts()
         .messages(access(&owned, &person), &id(&path)?, query)
         .await
-        .map_err(authoring_refusal)?;
+        .map_err(setup_refusal)?;
     Ok(Json(render::page(messages, render::message)).into_response())
-}
-
-/// Advances the cutoff while leaving later accepted messages queued.
-#[cfg_attr(feature = "openapi", utoipa::path(
-    post, path = "/v1/workspaces/{workspace_id}/drafts/{draft_id}/cancellations", operation_id = "cancel_workspace_draft_messages",
-    tag = afd_http::openapi::tag::DRAFTS, summary = "Stop private setup through a message",
-    params(afd_http::openapi::path::Draft),
-    request_body = CancellationRequest,
-    responses((status = 200, body = Cancellation, description = "Standing cutoff and newly cancelled requests"),
-        (status = 400, description = "Invalid or future cutoff"), (status = 404, description = super::DRAFT_UNAVAILABLE),
-        (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
-        afd_http::openapi::GuardedFailures,
-    )
-))]
-pub(crate) async fn cancel<D: Services>(
-    State(services): State<Arc<D>>,
-    WorkspaceContext(owned): WorkspaceContext,
-    person: PersonIdentity,
-    Path(path): Path<DraftPath>,
-    body: Bytes,
-) -> Result<Response, Refusal> {
-    let cancellation = services
-        .authoring()
-        .cancel(access(&owned, &person), &id(&path)?, input::cutoff(&body)?)
-        .await
-        .map_err(authoring_refusal)?;
-    Ok(Json(render::cancellation(cancellation)).into_response())
 }

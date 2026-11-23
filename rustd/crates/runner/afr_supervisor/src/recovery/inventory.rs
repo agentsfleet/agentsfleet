@@ -6,10 +6,6 @@ use cap_std::fs::Dir;
 use std::{collections::BTreeMap, os::unix::fs::MetadataExt as _};
 use tokio_util::sync::CancellationToken;
 
-const MAX_BYTES: u64 = 24 * 1024 * 1024 * 1024;
-const MAX_ENTRIES: usize = 200_000;
-const MAX_NAMES: usize = 64 * 1024 * 1024;
-
 pub(super) fn scan(
     workspace: &Workspace,
     stop: &CancellationToken,
@@ -20,7 +16,6 @@ pub(super) fn scan(
         entries: BTreeMap::new(),
         pending: vec![String::new()],
         total: 0,
-        names: 0,
     };
     while let Some(path) = inventory.pending.pop() {
         inventory.directory(&path)?;
@@ -43,7 +38,6 @@ struct Inventory<'a> {
     entries: BTreeMap<String, Entry>,
     pending: Vec<String>,
     total: u64,
-    names: usize,
 }
 
 impl Inventory<'_> {
@@ -63,10 +57,6 @@ impl Inventory<'_> {
                 format!("{path}/{name}")
             };
             files::valid_path(&relative)?;
-            self.charge_name(relative.len() + 128)?;
-            if self.entries.len() >= MAX_ENTRIES {
-                return Err(error::capture_limit("checkpoint entry allowance exceeded"));
-            }
             let kind = self.entry(&directory, &name, &relative)?;
             if self.entries.insert(relative, kind).is_some() {
                 return Err(error::config("checkpoint path repeated"));
@@ -88,7 +78,6 @@ impl Inventory<'_> {
                 .map(str::to_owned)
                 .ok_or_else(|| error::config("checkpoint link is not UTF-8"))?;
             files::valid_link(path, &target)?;
-            self.charge_name(target.len())?;
             Ok(Entry::Symlink { target })
         } else if metadata.is_file() {
             let stat = files::regular(directory, name)?.metadata()?;
@@ -96,11 +85,6 @@ impl Inventory<'_> {
                 .total
                 .checked_add(stat.len())
                 .ok_or_else(|| error::capture_limit("checkpoint size overflow"))?;
-            if self.total > MAX_BYTES {
-                return Err(error::capture_limit(
-                    "checkpoint expanded allowance exceeded",
-                ));
-            }
             Ok(Entry::File {
                 identity: Identity::of(&stat),
                 executable: stat.mode() & 0o111 != 0,
@@ -108,17 +92,6 @@ impl Inventory<'_> {
         } else {
             Err(error::config("checkpoint contains a special file"))
         }
-    }
-
-    fn charge_name(&mut self, bytes: usize) -> Result<()> {
-        self.names = self
-            .names
-            .checked_add(bytes)
-            .ok_or_else(|| error::capture_limit("checkpoint path budget overflow"))?;
-        if self.names > MAX_NAMES {
-            return Err(error::capture_limit("checkpoint path budget exceeded"));
-        }
-        Ok(())
     }
 
     fn check_stop(&self) -> Result<()> {

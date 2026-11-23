@@ -17,9 +17,10 @@ const APPLICATION_JSON: HeaderValue = HeaderValue::from_static("application/json
 /// What precedes the token in `Authorization`.
 const BEARER: &str = "Bearer ";
 /// How long one call may take, end to end, before it counts as a transport
-/// failure. It must outlast the daemon's message deadline (asserted below);
-/// renewal races its own deadline rather than relying on this.
-const CALL_TIMEOUT: Duration = Duration::from_secs(20);
+/// failure, unless the runner's file chooses another. It must outlast the
+/// daemon's message deadline (asserted below, and checked against a chosen
+/// one at boot); renewal races its own deadline rather than relying on this.
+pub(crate) const CALL_TIMEOUT: Duration = Duration::from_secs(20);
 
 // The daemon bounds a message post by its own deadline and answers
 // `delivered: false` past it; a call timeout shorter than that would read a
@@ -53,7 +54,7 @@ impl HttpRunnerApi {
             reason = "the runner's client to its own daemon; afd_identity::direct is a daemon crate the runner does not depend on, and its no_proxy would change how this client routes on a host with an environment proxy"
         )]
         let client = reqwest::Client::builder()
-            .timeout(CALL_TIMEOUT)
+            .timeout(config.tuning().call_timeout)
             .redirect(reqwest::redirect::Policy::none())
             .retry(reqwest::retry::never())
             .default_headers(HeaderMap::from_iter([(AUTHORIZATION, authorization)]))
@@ -73,15 +74,11 @@ impl RunnerApi for HttpRunnerApi {
             call.verb,
             super::Verb::Heartbeat
                 | super::Verb::Renew
-                | super::Verb::Activity
+                | super::Verb::Progress
                 | super::Verb::Report
                 | super::Verb::Folds
-                | super::Verb::AuthoringModel
-                | super::Verb::AuthoringActivity
-                | super::Verb::AuthoringRenew
-                | super::Verb::AuthoringReport
         ) {
-            return Err(crate::error::ErrorKind::StreamProtocol.into());
+            return Err(error::ErrorKind::StreamProtocol.into());
         }
         // Relative, so a base carrying a path prefix keeps it.
         let url = self.base.join(call.path.trim_start_matches('/'))?;

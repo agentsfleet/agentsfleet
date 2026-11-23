@@ -1,23 +1,23 @@
-import type { TaskSummary } from "@/lib/api/tasks";
-import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
+import type { DurableTaskSummary } from "@/lib/api/tasks";
+import type { FleetTurn } from "@/lib/streaming/fleet-stream-row";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { TaskPanel } from "./TaskPanel";
-import { useFleetEventStream } from "../conversation/stream/useFleetEventStream";
-import { FRAME_KIND } from "@/lib/api/events-types";
+import { DurableTaskPanel } from "./TaskPanel";
+import { useFleetTurnStream } from "../conversation/stream/useFleetTurnStream";
+import { FRAME_KIND } from "@/lib/api/turns-types";
 import { FakeEventSource } from "@/tests/helpers/fake-event-source";
 import { __resetRegistryForTests, streamWrapper } from "@/tests/helpers/fleet-streams";
-import { TASK_IDS, detail, summary } from "@/tests/helpers/task-reads";
+import { DURABLE_TASK_IDS, detail, summary } from "@/tests/helpers/task-reads";
 vi.mock("@/lib/actions/fleet-approvals", () => ({listApprovalsAction: async () => ({ok: false, status: 503, error: "Unavailable"})}));
 const SCOPE = {workspaceId: "workspace", fleetId: "linkwarden", subject: "indy", revision: 0};
 beforeEach(() => {FakeEventSource.install(); __resetRegistryForTests();});
 afterEach(() => {cleanup(); __resetRegistryForTests(); FakeEventSource.uninstall(); vi.unstubAllGlobals();});
 function LiveWork() {
-  const stream = useFleetEventStream(SCOPE.workspaceId, SCOPE.fleetId, []);
-  return <TaskPanel {...SCOPE} revision={stream.tasksSeq} events={stream.events} />;
+  const stream = useFleetTurnStream(SCOPE.workspaceId, SCOPE.fleetId, []);
+  return <DurableTaskPanel {...SCOPE} revision={stream.durableTasksSeq} turns={stream.turns} />;
 }
-function page(items: TaskSummary[]): Response {return Response.json({items, next_cursor: null});}
+function page(items: DurableTaskSummary[]): Response {return Response.json({items, next_cursor: null});}
 function requestPath(input: RequestInfo | URL): string {
   return typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
 }
@@ -40,7 +40,7 @@ it("reconciles stream readiness and keeps saved details closed until requested",
 });
 
 it("keeps work keyboard-expandable and rereads the shared evidence on native changes", async () => {
-  const tasks = [summary(), summary(TASK_IDS[1], "running"), summary(TASK_IDS[2], "ready")];
+  const tasks = [summary(), summary(DURABLE_TASK_IDS[1], "running"), summary(DURABLE_TASK_IDS[2], "ready")];
   const network = vi.fn<typeof fetch>().mockImplementation(async input => {
     const task = tasks.find(task => requestPath(input).endsWith(task.id));
     return task ? Response.json(detail(task)) : page(tasks);
@@ -54,16 +54,16 @@ it("keeps work keyboard-expandable and rereads the shared evidence on native cha
   expect(screen.queryByText("What counts as done?")).toBeNull();
   const waiting = screen.getByRole("button", {name: /PR #123 repair/});
   waiting.focus(); await userEvent.keyboard("{Enter}");
-  await waitFor(() => expect(network.mock.calls.some(([path]) => requestPath(path).endsWith(TASK_IDS[0]))).toBe(true));
+  await waitFor(() => expect(network.mock.calls.some(([path]) => requestPath(path).endsWith(DURABLE_TASK_IDS[0]))).toBe(true));
   const before = network.mock.calls.length;
   act(() => {
-    for (const malformed of [{task_id: "invalid", resource_version: 2}, {task_id: tasks[0]!.id, resource_version: -1}]) {
-      FakeEventSource.instances[0]!.emitNamed(FRAME_KIND.TASK_CHANGED, JSON.stringify({kind: FRAME_KIND.TASK_CHANGED, ...malformed}));
+    for (const malformed of [{durable_task_id: "invalid", resource_version: 2}, {durable_task_id: tasks[0]!.id, resource_version: -1}]) {
+      FakeEventSource.instances[0]!.emitNamed(FRAME_KIND.DURABLE_TASK_CHANGED, JSON.stringify({kind: FRAME_KIND.DURABLE_TASK_CHANGED, ...malformed}));
     }
   });
   expect(network).toHaveBeenCalledTimes(before);
-  tasks[0] = summary(TASK_IDS[0], "running", 2);
-  act(() => FakeEventSource.instances[0]!.emit({kind: FRAME_KIND.TASK_CHANGED, task_id: tasks[0]!.id, resource_version: 2}));
+  tasks[0] = summary(DURABLE_TASK_IDS[0], "running", 2);
+  act(() => FakeEventSource.instances[0]!.emit({kind: FRAME_KIND.DURABLE_TASK_CHANGED, durable_task_id: tasks[0]!.id, resource_version: 2}));
   await waitFor(() => expect(network).toHaveBeenCalledTimes(before + 4));
   expect(screen.getAllByRole("button", {expanded: false})).toHaveLength(2);
 });
@@ -72,12 +72,12 @@ it("retains confirmed work during a failed read, then clears it on access loss",
   let list: Response = page([summary()]);
   const network = vi.fn<typeof fetch>().mockImplementation(async input => requestPath(input).includes("?limit=") ? list.clone() : Response.json(detail()));
   vi.stubGlobal("fetch", network);
-  const view = render(<TaskPanel {...SCOPE} />);
+  const view = render(<DurableTaskPanel {...SCOPE} />);
   await userEvent.click(await screen.findByRole("button", {name: /^Tasks/}));
   await userEvent.click(await screen.findByRole("button", {name: /PR #123 repair/}));
   await screen.findByText("What counts as done?");
   list = new Response(null, {status: 503});
-  view.rerender(<TaskPanel {...SCOPE} revision={1} />);
+  view.rerender(<DurableTaskPanel {...SCOPE} revision={1} />);
   expect(await screen.findByText(/Last confirmed progress is shown/)).toBeTruthy();
   expect(within(screen.getByLabelText("PR #123 repair details")).getByText(detail().context.objective)).toBeTruthy();
   list = new Response(null, {status: 403});
@@ -85,14 +85,14 @@ it("retains confirmed work during a failed read, then clears it on access loss",
   expect(await screen.findByText("Current work is unavailable.")).toBeTruthy();
   expect(screen.queryByText("PR #123 repair")).toBeNull();
   list = page([]);
-  view.rerender(<TaskPanel {...SCOPE} revision={2} />);
+  view.rerender(<DurableTaskPanel {...SCOPE} revision={2} />);
   await screen.findByText("No outputs yet.");
 });
 
 it("shows attached files without duplicating the setup's repositories", async () => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(page([])));
   const sources = {repositories: ["agentsfleet/docs"], access: "read", publication: "existing_pr"} as const;
-  render(<TaskPanel {...SCOPE} showRepositories={false} sources={sources} files={[{id: "file", name: "release.txt"}]} />);
+  render(<DurableTaskPanel {...SCOPE} showRepositories={false} sources={sources} files={[{id: "file", name: "release.txt"}]} />);
   const section = await screen.findByRole("region", {name: "Sources"});
   await userEvent.click(section.querySelector("summary")!);
   expect(within(section).getByText("release.txt")).toBeTruthy();
@@ -103,12 +103,12 @@ it.each([[1, "Request details unavailable."], [2, "Request details unavailable."
   const network = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, {status: 503}));
   vi.stubGlobal("fetch", network);
   const approvals = {count, href: "/w/workspace/fleets/fleet#fleet-approvals"};
-  const view = render(<TaskPanel {...SCOPE} approvals={approvals} />);
+  const view = render(<DurableTaskPanel {...SCOPE} approvals={approvals} />);
   expect(await screen.findByText(label)).toBeTruthy();
   await screen.findByText("Current work is unavailable.");
   expect(screen.getByText(label)).toBeTruthy();
   network.mockResolvedValue(new Response(null, {status: 403}));
-  view.rerender(<TaskPanel {...SCOPE} revision={1} approvals={approvals} />);
+  view.rerender(<DurableTaskPanel {...SCOPE} revision={1} approvals={approvals} />);
   await waitFor(() => expect(screen.queryByText(label)).toBeNull());
   const pending = Promise.withResolvers<Response>(); network.mockReturnValue(pending.promise);
   await userEvent.click(screen.getByRole("button", {name: "Retry connection"}));
@@ -118,14 +118,14 @@ it.each([[1, "Request details unavailable."], [2, "Request details unavailable."
   network.mockResolvedValue(page([]));
   await userEvent.click(screen.getByRole("button", {name: "Retry connection"}));
   expect(await screen.findByText(label)).toBeTruthy();
-  view.rerender(<TaskPanel {...SCOPE} subject={null} approvals={approvals} />);
+  view.rerender(<DurableTaskPanel {...SCOPE} subject={null} approvals={approvals} />);
   expect(screen.queryByText(label)).toBeNull();
 });
 
 it("recovers failed details and preserves previous evidence until a missing response removes it", async () => {
   let response = new Response(null, {status: 503});
   vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockImplementation(async input => requestPath(input).includes("?limit=") ? page([summary()]) : response.clone()));
-  const view = render(<TaskPanel {...SCOPE} />);
+  const view = render(<DurableTaskPanel {...SCOPE} />);
   await userEvent.click(await screen.findByRole("button", {name: /^Tasks/}));
   await userEvent.click(await screen.findByRole("button", {name: /PR #123 repair/}));
   expect(await screen.findByText("Saved progress is unavailable.")).toBeTruthy();
@@ -133,10 +133,10 @@ it("recovers failed details and preserves previous evidence until a missing resp
   await userEvent.click(screen.getByRole("button", {name: "Retry details"}));
   expect(await screen.findByText("What counts as done?")).toBeTruthy();
   response = new Response(null, {status: 503});
-  view.rerender(<TaskPanel {...SCOPE} revision={1} />);
+  view.rerender(<DurableTaskPanel {...SCOPE} revision={1} />);
   expect(await screen.findByText(/Last confirmed details are shown/)).toBeTruthy();
   response = new Response(null, {status: 404});
-  view.rerender(<TaskPanel {...SCOPE} revision={2} />);
+  view.rerender(<DurableTaskPanel {...SCOPE} revision={2} />);
   expect(await screen.findByText("Saved progress is unavailable.")).toBeTruthy();
   expect(screen.queryByText("What counts as done?")).toBeNull();
 });
@@ -147,17 +147,17 @@ it("aborts stale account/fleet reads and ignores late replies", async () => {
     .mockResolvedValueOnce(page([summary()])).mockReturnValueOnce(pending.promise)
     .mockResolvedValueOnce(page([]));
   vi.stubGlobal("fetch", network);
-  const view = render(<TaskPanel {...SCOPE} subject={null} />);
+  const view = render(<DurableTaskPanel {...SCOPE} subject={null} />);
   expect(network).not.toHaveBeenCalled();
-  view.rerender(<TaskPanel {...SCOPE} />);
+  view.rerender(<DurableTaskPanel {...SCOPE} />);
   const listSignal = network.mock.calls[0]?.[1]?.signal;
-  view.rerender(<TaskPanel {...SCOPE} fleetId="other" />);
+  view.rerender(<DurableTaskPanel {...SCOPE} fleetId="other" />);
   expect(listSignal?.aborted).toBe(true);
   await waitFor(() => expect(network).toHaveBeenCalledTimes(3));
   const detailSignal = network.mock.calls[2]?.[1]?.signal;
-  view.rerender(<TaskPanel {...SCOPE} subject="other-owner" />);
+  view.rerender(<DurableTaskPanel {...SCOPE} subject="other-owner" />);
   expect(detailSignal?.aborted).toBe(true);
-  await act(async () => pending.resolve(page([summary(TASK_IDS[1])])));
+  await act(async () => pending.resolve(page([summary(DURABLE_TASK_IDS[1])])));
   expect(screen.queryByText("PR #124 repair")).toBeNull();
 });
 
@@ -168,7 +168,7 @@ it("shares exact native target and wait evidence between closed rows and outputs
   let saved = {...value, context: {...value.context, target}, dependency};
   const network = vi.fn<typeof fetch>().mockImplementation(async input => requestPath(input).includes("?limit=") ? page([summary()]) : Response.json(saved));
   vi.stubGlobal("fetch", network);
-  const view = render(<TaskPanel {...SCOPE} />);
+  const view = render(<DurableTaskPanel {...SCOPE} />);
   await userEvent.click(await screen.findByRole("button", {name: /^Tasks/}));
   const row = await screen.findByRole("button", {name: /Waiting for CI run #42 on aaaaaaa/});
   expect(row.getAttribute("aria-expanded")).toBe("false");
@@ -177,21 +177,21 @@ it("shares exact native target and wait evidence between closed rows and outputs
   expect(await screen.findByText("What counts as done?")).toBeTruthy();
   expect(network).toHaveBeenCalledTimes(2);
   saved = {...saved, dependency: {...dependency, checks: []}};
-  view.rerender(<TaskPanel {...SCOPE} revision={1} />);
+  view.rerender(<DurableTaskPanel {...SCOPE} revision={1} />);
   expect(await screen.findByRole("button", {name: /Recorded check wait is still active/})).toBeTruthy();
   saved = {...saved, dependency: {...dependency, checks: [{...dependency.checks[0]!, run_number: 0}]}};
-  view.rerender(<TaskPanel {...SCOPE} revision={2} />);
+  view.rerender(<DurableTaskPanel {...SCOPE} revision={2} />);
   expect(await screen.findByRole("button", {name: /Waiting for recorded checks/})).toBeTruthy();
 });
 
 it("distinguishes paused and attention-needed work while retaining a confirmed recovery point", async () => {
-  const tasks = [summary(TASK_IDS[0], "paused"), summary(TASK_IDS[1], "blocked"), summary(TASK_IDS[2], "exhausted")];
+  const tasks = [summary(DURABLE_TASK_IDS[0], "paused"), summary(DURABLE_TASK_IDS[1], "blocked"), summary(DURABLE_TASK_IDS[2], "exhausted")];
   const network = vi.fn<typeof fetch>().mockImplementation(async input => {
     const task = tasks.find(task => requestPath(input).endsWith(task.id));
-    return task ? Response.json(detail(task, TASK_IDS[0])) : page(tasks);
+    return task ? Response.json(detail(task, DURABLE_TASK_IDS[0])) : page(tasks);
   });
   vi.stubGlobal("fetch", network);
-  render(<TaskPanel {...SCOPE} />);
+  render(<DurableTaskPanel {...SCOPE} />);
   const disclosure = await screen.findByRole("button", {name: /^Tasks/});
   expect(disclosure.querySelector('[aria-label="Needs attention"]')).toBeTruthy();
   await userEvent.click(disclosure);
@@ -207,10 +207,10 @@ it("distinguishes paused and attention-needed work while retaining a confirmed r
 
 
 it("promotes a blocked task and opens its existing saved detail without another reader", async () => {
-  const task = summary(TASK_IDS[0], "blocked");
+  const task = summary(DURABLE_TASK_IDS[0], "blocked");
   const network = vi.fn<typeof fetch>().mockImplementation(async input => requestPath(input).includes("?limit=") ? page([task]) : Response.json(detail(task)));
   vi.stubGlobal("fetch", network);
-  render(<TaskPanel {...SCOPE} />);
+  render(<DurableTaskPanel {...SCOPE} />);
   const attention = await screen.findByRole("region", {name: "Needs attention"});
   await waitFor(() => expect(network).toHaveBeenCalledTimes(2));
   await userEvent.click(within(attention).getByRole("button", {name: /Blocked/}));
@@ -225,18 +225,18 @@ it("keeps open work details usable when another queued task arrives before its d
   const network = vi.fn<typeof fetch>().mockImplementation(async input => {
     const path = requestPath(input);
     if (path.includes("?limit=")) return page(tasks);
-    return path.endsWith(TASK_IDS[1]) ? second.promise : Response.json(detail(tasks[0]!));
+    return path.endsWith(DURABLE_TASK_IDS[1]) ? second.promise : Response.json(detail(tasks[0]!));
   });
   vi.stubGlobal("fetch", network);
-  const events: FleetEvent[] = [{id: "assessment", role: "assistant", actor: "fleet", text: "", reply: "", outcome: "", failureLabel: null, failureDetail: null,
-    createdAt: new Date(), status: "processed", taskActivity: {truncated: false, items: [{kind: "task_decision_completed" as const, progress: {
-      activity_id: TASK_IDS[0], task_id: TASK_IDS[0], source_admission_id: null, operation: "goal" as const,
+  const turns: FleetTurn[] = [{id: "assessment", role: "assistant", actor: "fleet", text: "", reply: "", outcome: "", failureLabel: null, failureDetail: null,
+    createdAt: new Date(), status: "processed", durableTaskActivity: {truncated: false, items: [{kind: "durable_task_decision_completed" as const, progress: {
+      activity_id: DURABLE_TASK_IDS[0], durable_task_id: DURABLE_TASK_IDS[0], source_turn_id: null, operation: "goal" as const,
       phase: "recorded" as const, provider: null, model: null, completed: 1, total: 1}}]}}];
-  const view = render(<TaskPanel {...SCOPE} events={events} />);
+  const view = render(<DurableTaskPanel {...SCOPE} turns={turns} />);
   await userEvent.click(await screen.findByRole("button", {name: /^Tasks/}));
   expect(await screen.findByText("Assessment recorded · goal progress")).toBeTruthy();
-  tasks = [...tasks, summary(TASK_IDS[1], "ready")];
-  view.rerender(<TaskPanel {...SCOPE} events={events} revision={1} />);
+  tasks = [...tasks, summary(DURABLE_TASK_IDS[1], "ready")];
+  view.rerender(<DurableTaskPanel {...SCOPE} turns={turns} revision={1} />);
   const queued = await screen.findByRole("button", {name: /PR #124 repair.*Reading saved progress/});
   expect(queued.getAttribute("aria-expanded")).toBe("false");
   await userEvent.click(queued);

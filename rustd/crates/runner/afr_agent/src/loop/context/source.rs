@@ -1,7 +1,7 @@
 //! Atomic source groups retain each assistant together with all of its tool results.
 use super::index::Entry;
 use af_context::{Group, HistorySource, Page, PortFuture};
-use af_providers::Message;
+use guffbolt::Message;
 use std::ops::Range;
 
 pub(super) struct Source<'a> {
@@ -70,7 +70,7 @@ impl<'a> Source<'a> {
                 && let Message::Assistant { replay, .. } = &mut message
             {
                 // Only native state created before the prefix changed is invalidated.
-                *replay = af_providers::Replay::default();
+                *replay = guffbolt::Replay::default();
             }
             target.push(message);
         }

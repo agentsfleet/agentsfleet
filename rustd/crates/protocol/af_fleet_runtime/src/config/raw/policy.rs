@@ -5,8 +5,8 @@ use garde::Validate;
 use serde::Deserialize;
 use serde_json::{Map, Value};
 
+use super::MAX_ALLOW_LEN;
 use super::predicate::is_token;
-use super::{MAX_ALLOW_ENTRIES, MAX_ALLOW_LEN};
 
 /// Where a fleet may reach on the network.
 #[derive(Debug, Deserialize, Validate)]
@@ -19,19 +19,13 @@ pub(crate) struct Network {
     #[garde(skip)]
     pub(crate) package_manager_domains: Option<bool>,
     /// Additional exact hosts the fleet may reach.
-    #[garde(inner(
-        length(max = MAX_ALLOW_ENTRIES),
-        inner(length(chars, min = 1, max = MAX_ALLOW_LEN), custom(is_token))
-    ))]
+    #[garde(inner(inner(length(chars, min = 1, max = MAX_ALLOW_LEN), custom(is_token))))]
     pub(crate) allow: Option<Vec<String>>,
     /// Whether outbound requests are limited to reads.
     #[garde(skip)]
     pub(crate) read_only: Option<bool>,
     /// The request paths that may still send `POST` when `read_only` is true.
-    #[garde(inner(
-        length(max = MAX_ALLOW_ENTRIES),
-        inner(length(chars, min = 1, max = MAX_ALLOW_LEN), custom(is_token))
-    ))]
+    #[garde(inner(inner(length(chars, min = 1, max = MAX_ALLOW_LEN), custom(is_token))))]
     pub(crate) read_post_paths: Option<Vec<String>>,
 }
 

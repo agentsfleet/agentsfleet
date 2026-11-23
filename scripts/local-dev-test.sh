@@ -274,6 +274,18 @@ class LauncherTests(unittest.TestCase):
         self.assertIn("AGENTSFLEET_API_URL=", a)
         self.assertIn("RUNNER_STORAGE_HOME=", a)
         self.assertNotIn("TOKEN", a)
+    def test_runner_environment_defaults_to_the_lan_origin(self):
+        env = {key: value for key, value in self.env.items() if key != "AGENTSFLEET_API_URL"}
+        out = self.run_dev("runner-env", env=env).stdout
+        self.assertEqual(len(out.splitlines()), 2, out)
+        url = next(line.split("=", 1)[1] for line in out.splitlines() if line.startswith("AGENTSFLEET_API_URL="))
+        # The default interface's IPv4 (the seam's) on this worktree's daemon port, never loopback.
+        self.assertEqual(url, self.run_dev("url", env=env).stdout.strip().replace("127.0.0.1", "192.0.2.10"))
+        self.assertNotIn("TOKEN", out)
+    def test_runner_environment_override_is_printed_unchanged(self):
+        out = self.run_dev("runner-env", env=dict(self.env, AGENTSFLEET_API_URL="http://example.test")).stdout
+        self.assertIn("AGENTSFLEET_API_URL=http://example.test\n", out)
+        self.assertNotIn("TOKEN", out)
     def test_exit_during_ownership_read_or_termination_cleans_record(self):
         seams = [
             'ps() { if [ "${!#}" = command= ]; then builtin kill -TERM "$3"; sleep 0.1; printf "<defunct>\\n"; else command ps "$@"; fi; }; export -f ps',

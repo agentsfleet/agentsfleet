@@ -60,6 +60,7 @@ async fn signed_mint(app: &GithubApp, base: &str) -> Outcome {
             binding: Some(&binding),
             http: &loopback_client(),
             now: NOW,
+            token_ttl: crate::credential::github::INSTALLATION_TOKEN_TTL,
         },
         base,
     )

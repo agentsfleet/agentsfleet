@@ -1,10 +1,7 @@
 // Walk-to-exhaustion for client list reads that expose no paging controls:
 // follow next_cursor until the server reports the end, so the caller renders
-// the complete collection. The request bound stops a runaway cursor (a server
-// bug echoing the same continuation forever) from spinning the walk — at the
-// servers' default pages it covers thousands of rows, far past any real
-// collection these callers read.
-export const MAX_LIST_WALK_REQUESTS = 40;
+// the complete collection. The walk counts no pages; it fails only when the
+// server repeats a cursor it already followed, which would replay forever.
 
 export type ListPage<T> = {
   items: T[];
@@ -21,12 +18,14 @@ export async function walkList<T>(
   const items: T[] = [];
   let total: number | null = null;
   let cursor: string | null = null;
-  for (let requests = 0; requests < MAX_LIST_WALK_REQUESTS; requests += 1) {
+  const followed = new Set<string>();
+  for (;;) {
     const page = await fetchPage(cursor);
     items.push(...page.items);
     total = page.total ?? total;
     if (page.next_cursor === null) return { items, total };
+    if (followed.has(page.next_cursor)) throw new Error(`the ${what} repeated page cursor ${page.next_cursor}`);
+    followed.add(page.next_cursor);
     cursor = page.next_cursor;
   }
-  throw new Error(`the ${what} did not end after ${MAX_LIST_WALK_REQUESTS} pages`);
 }

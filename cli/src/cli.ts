@@ -38,7 +38,7 @@ import { makeCommandExitCode } from "./runtime/exit-code.service.ts";
 import { CommandGuard, GuardRefused } from "./runtime/guard.service.ts";
 import { withCommandInstrumentation } from "./services/telemetry/command-instrumentation.ts";
 import { detectJsonMode, helpArgv, maybePrintVersion, resolveGlobalApiUrl, scanLogLevel } from "./program/entry/argv-scan.ts";
-import { DISCOVERY_TIMEOUT_MS, discoverVisibility } from "./program/entry/discovery.ts";
+import { discoverVisibility } from "./program/entry/discovery.ts";
 import { completionsFlag } from "./program/tree/global-flags.ts";
 import { UNKNOWN_VISIBILITY } from "./program/tree/visibility.ts";
 import { consoleForStreams } from "./program/entry/console-bridge.ts";
@@ -213,7 +213,7 @@ async function scopedTree(
     stdout: invocation.stdout,
     stderr: invocation.stderr,
     logLevel: scanLogLevel(invocation.argv),
-    timeoutMs: invocation.io.discoveryTimeoutMs ?? DISCOVERY_TIMEOUT_MS,
+    timeoutMs: invocation.io.discoveryTimeoutMs,
   }));
   return visibility._tag === "Unknown" ? unknownTree : buildCommandTree(visibility);
 }

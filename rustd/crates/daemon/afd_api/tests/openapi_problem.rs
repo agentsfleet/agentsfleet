@@ -20,8 +20,8 @@
 use std::collections::BTreeSet;
 
 use af_core::error_code;
-use afd_api::{CONTENT_TYPE_PROBLEM_JSON, ProblemResponse};
 use afd_http::envelope::Resolution;
+use afd_http::envelope::{CONTENT_TYPE_PROBLEM_JSON, ProblemResponse};
 use afd_http::openapi::problem::ProblemBody;
 use axum::body::to_bytes;
 use axum::response::IntoResponse;

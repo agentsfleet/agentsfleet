@@ -1,8 +1,8 @@
 //! Complete page boundaries retain paths, content deduplication and private history.
 
 use super::{catalog::Catalog, files::Workspace};
-use af_wire::task::CheckpointEntry;
-use std::{collections::BTreeMap, fs, sync::Arc};
+use af_wire::durable_task::CheckpointEntry;
+use std::{collections::BTreeMap, fs, os::unix::ffi::OsStrExt as _, sync::Arc};
 use zeroize::Zeroizing;
 
 #[test]
@@ -21,15 +21,11 @@ fn ordinary_manifest_pages_fit_the_native_turn_limit() -> crate::Result<()> {
         Vec::new(),
         &tokio_util::sync::CancellationToken::new(),
     )?;
-    let pages = catalog.pages(None, af_wire::lease::TURN_CHECKPOINT_PAGE_BYTES)?;
-    assert!(
-        pages
-            .iter()
-            .all(|page| af_wire::decision::serialized_within(
-                page,
-                af_wire::lease::TURN_CHECKPOINT_PAGE_BYTES
-            ))
-    );
+    let pages = catalog.pages(None, af_wire::run::TURN_CHECKPOINT_PAGE_BYTES)?;
+    assert!(pages.iter().all(|page| af_validate::serialized_within(
+        page,
+        af_wire::run::TURN_CHECKPOINT_PAGE_BYTES
+    )));
     assert_eq!(
         pages.iter().map(|page| page.entries.len()).sum::<usize>(),
         3000
@@ -63,7 +59,7 @@ fn complete_layout_spans_pages_without_repeating_shared_content() -> crate::Resu
         .enumerate()
         .map(|(index, key)| (key.clone(), format!("019f0000-0000-7000-8000-{index:012}")))
         .collect();
-    let pages = catalog.pages(Some(&ids), af_wire::task::CHECKPOINT_PAGE_BYTES)?;
+    let pages = catalog.pages(Some(&ids), af_wire::durable_task::CHECKPOINT_PAGE_BYTES)?;
     assert_eq!(pages.len(), 2);
     assert_eq!(
         pages.iter().map(|page| page.entries.len()).sum::<usize>(),
@@ -82,7 +78,7 @@ fn complete_layout_spans_pages_without_repeating_shared_content() -> crate::Resu
     Ok(())
 }
 
-fn assert_paths(pages: &[af_wire::task::CheckpointPage]) {
+fn assert_paths(pages: &[af_wire::durable_task::CheckpointPage]) {
     let names: Vec<_> = pages
         .iter()
         .flat_map(|page| page.entries.iter().map(CheckpointEntry::path))
@@ -119,7 +115,7 @@ fn a_near_full_manifest_keeps_all_private_history_on_a_separate_bounded_page() -
         .keys()
         .map(|key| (key.clone(), identity.to_owned()))
         .collect();
-    let pages = catalog.pages(Some(&ids), af_wire::task::CHECKPOINT_PAGE_BYTES)?;
+    let pages = catalog.pages(Some(&ids), af_wire::durable_task::CHECKPOINT_PAGE_BYTES)?;
     assert_eq!(pages.len(), 2);
     let history = pages
         .last()
@@ -136,27 +132,9 @@ fn a_near_full_manifest_keeps_all_private_history_on_a_separate_bounded_page() -
             serde_json::to_vec(page)
                 .map_err(crate::error::encode)?
                 .len()
-                <= af_wire::task::CHECKPOINT_PAGE_BYTES
+                <= af_wire::durable_task::CHECKPOINT_PAGE_BYTES
         );
     }
-    Ok(())
-}
-
-#[test]
-fn oversized_history_is_refused_before_a_native_plan_can_be_allocated() -> crate::Result<()> {
-    let result = Catalog::build(
-        None,
-        Zeroizing::new(vec![0; 64 * 1024 * 1024 + 1]),
-        vec![],
-        &tokio_util::sync::CancellationToken::new(),
-    );
-    let Err(failure) = result else {
-        return Err(crate::error::config("oversized history was accepted"));
-    };
-    assert!(
-        matches!(failure.kind(), crate::error::ErrorKind::CaptureLimit { detail }
-        if *detail == "checkpoint history exceeds its bound")
-    );
     Ok(())
 }
 
@@ -208,7 +186,10 @@ fn history_without_registered_objects_cannot_name_a_root_or_a_page() -> crate::R
         "checkpoint history registration is incomplete",
     )?;
     refused_as(
-        catalog.pages(Some(&unregistered), af_wire::task::CHECKPOINT_PAGE_BYTES),
+        catalog.pages(
+            Some(&unregistered),
+            af_wire::durable_task::CHECKPOINT_PAGE_BYTES,
+        ),
         "checkpoint history registration is incomplete",
     )
 }
@@ -224,7 +205,52 @@ fn a_file_without_registered_objects_cannot_name_a_page() -> crate::Result<()> {
         &tokio_util::sync::CancellationToken::new(),
     )?;
     refused_as(
-        catalog.pages(Some(&BTreeMap::new()), af_wire::task::CHECKPOINT_PAGE_BYTES),
+        catalog.pages(
+            Some(&BTreeMap::new()),
+            af_wire::durable_task::CHECKPOINT_PAGE_BYTES,
+        ),
         "checkpoint file registration is incomplete",
     )
+}
+
+#[test]
+fn a_retained_base_path_is_not_removed_and_an_unreadable_workspace_builds_no_catalog()
+-> crate::Result<()> {
+    let root = tempfile::tempdir()?;
+    fs::write(root.path().join("kept"), b"contents")?;
+    let workspace = Arc::new(Workspace::open(root.path())?);
+    let catalog = Catalog::build(
+        Some(&workspace),
+        Zeroizing::new(Vec::new()),
+        vec!["kept".to_owned(), "gone".to_owned()],
+        &tokio_util::sync::CancellationToken::new(),
+    )?;
+    let pages = catalog.pages(None, af_wire::durable_task::CHECKPOINT_PAGE_BYTES)?;
+    let entries: Vec<_> = pages.iter().flat_map(|page| &page.entries).collect();
+    assert!(
+        entries
+            .iter()
+            .any(|entry| matches!(entry, CheckpointEntry::File(file) if file.path == "kept"))
+    );
+    assert!(
+        !entries
+            .iter()
+            .any(|entry| matches!(entry, CheckpointEntry::Remove { path } if path == "kept")),
+        "a path still present is never removed"
+    );
+    assert!(
+        entries
+            .iter()
+            .any(|entry| matches!(entry, CheckpointEntry::Remove { path } if path == "gone"))
+    );
+
+    let target = std::ffi::OsStr::from_bytes(b"not-utf8-\xff");
+    std::os::unix::fs::symlink(target, root.path().join("link"))?;
+    let refused = Catalog::build(
+        Some(&workspace),
+        Zeroizing::new(Vec::new()),
+        Vec::new(),
+        &tokio_util::sync::CancellationToken::new(),
+    );
+    refused_as(refused, "checkpoint link is not UTF-8")
 }

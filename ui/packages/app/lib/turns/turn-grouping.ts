@@ -1,0 +1,144 @@
+// Consecutive identical activity collapses into one expandable row.
+//
+// Pure and total: a function of the already-ordered turn array and nothing
+// else. The stream registry keeps sole ownership of order and identity — this
+// derives a VIEW of that array and never reorders, dedupes, or drops a turn.
+// Expanding a group must therefore be able to hand back exactly the turns it
+// swallowed, in their original order, which is why a group carries them rather
+// than a count.
+//
+// Because it is a pure function of the array, a live frame needs no special
+// case: when a matching delivery lands, the next render simply sees a longer
+// run and the group's count grows.
+
+import type { FleetTurn } from "@/lib/streaming/fleet-stream-row";
+
+/**
+ * The smallest run that earns collapsing. Two identical deliveries already
+ * read as a stuck record; one is just a turn.
+ */
+export const MIN_GROUP_RUN = 2;
+const NO_BREAKS: ReadonlySet<string> = new Set();
+
+/** The two shapes a rendered thread entry takes — a lone row, or a collapsed
+ * run. Named so the discriminant is written once, not spelled at each site. */
+export const ENTRY_KIND = {
+  SINGLE: "single",
+  GROUP: "group",
+} as const;
+
+export type ThreadEntry =
+  | { kind: typeof ENTRY_KIND.SINGLE; key: string; turn: FleetTurn }
+  | { kind: typeof ENTRY_KIND.GROUP; key: string; turns: FleetTurn[] };
+
+/**
+ * Only bare integration activity ever coalesces. An operator's message and the
+ * fleet's reply are the conversation the thread exists to show — collapsing
+ * either would hide a person's own words, and a pending optimistic send would
+ * vanish into a count (Invariant 1). An integration turn that reasoned or
+ * called a tool has a reply row of its own, and a group renders members as
+ * activity ticks with no parts, so grouping it would hide what the fleet did.
+ */
+function groupable(turn: FleetTurn): boolean {
+  return turn.role === "system"
+    && turn.runRestarted !== true
+    && turn.reply.trim().length === 0
+    && (turn.reasoning?.length ?? 0) === 0
+    && (turn.tools?.length ?? 0) === 0;
+}
+
+/**
+ * Whether two deliveries are "the same delivery again": the same actor saying
+ * the same thing and ending the same way. The outcome is compared on purpose —
+ * it already carries the failure cause, so two failures of the same CLASS but
+ * different CAUSE stay separate rows rather than merging into a count that
+ * would misreport what happened.
+ *
+ * Compared field by field rather than through a joined key string. The thread
+ * regroups on every streaming frame, so a throwaway string per comparison
+ * would allocate on the hot path for no benefit, and the first differing
+ * field exits early.
+ */
+function sameRun(a: FleetTurn, b: FleetTurn): boolean {
+  return a.actor === b.actor
+    && a.text === b.text
+    && a.status === b.status
+    && a.outcome === b.outcome;
+}
+
+/**
+ * Collapse each run of ≥`MIN_GROUP_RUN` identical consecutive activity turns
+ * into one group entry, leaving everything else untouched and in place.
+ *
+ * `previous` is the last result, and passing it is a performance guarantee, not
+ * a convenience: a streaming reply regroups the whole thread on every frame,
+ * and returning fresh objects for runs that did not change would make every
+ * row a new reference, so React re-renders the entire list per chunk. Entries
+ * whose members are identical are handed back by reference instead, letting
+ * the rows above the active one bail out.
+ */
+export function groupThreadTurns(
+  turns: FleetTurn[],
+  previous?: readonly ThreadEntry[],
+  breakBefore: ReadonlySet<string> = NO_BREAKS,
+): ThreadEntry[] {
+  const entries: ThreadEntry[] = [];
+  const reusable = new Map<string, ThreadEntry>();
+  for (const entry of previous ?? []) reusable.set(entry.key, entry);
+
+  // Accumulate the current run and flush it when the next turn breaks it. A
+  // single `for…of` pass, so there is no by-index access and no undefined
+  // element to guard — the lookahead lives in the accumulator, not the array.
+  const flush = (run: FleetTurn[]): void => {
+    const lead = run[0];
+    if (lead === undefined) return;
+    const isGroup = run.length >= MIN_GROUP_RUN;
+    const key = isGroup ? `group:${lead.id}` : lead.id;
+    const built: ThreadEntry = isGroup
+      ? { kind: ENTRY_KIND.GROUP, key, turns: run }
+      : { kind: ENTRY_KIND.SINGLE, key, turn: lead };
+    const prior = reusable.get(key);
+    entries.push(prior !== undefined && sameEntry(prior, built) ? prior : built);
+  };
+
+  let run: FleetTurn[] = [];
+  for (const turn of turns) {
+    const lead = run[0];
+    // Extend only a groupable run of the same delivery; anything else — a
+    // non-groupable lead, a role change, a differing outcome — starts fresh.
+    if (lead !== undefined && !breakBefore.has(turn.id) && groupable(lead) && groupable(turn) && sameRun(lead, turn)) {
+      run.push(turn);
+    } else {
+      flush(run);
+      run = [turn];
+    }
+  }
+  flush(run);
+  return entries;
+}
+
+// Identity by members, not by deep equality: the turns themselves are already
+// replaced by reference whenever the stream changes one, so comparing the
+// references is both cheaper and exactly as strict.
+//
+// LOAD-BEARING INVARIANT (enforced in `fleet-stream-registry.ts` /
+// `fleet-stream-frames.ts`): a FleetTurn is replaced with a fresh object on
+// any change — `applyChunk`/`applyTurnComplete` spread `{ ...existing, … }`,
+// `mergeBackfill` rebuilds changed rows and keeps unchanged ones by reference.
+// This reference comparison is only sound while that holds. An in-place
+// mutation of a FleetTurn (e.g. `turn.reply += chunk`) would strand a stale
+// entry here and freeze a row's render. Keep those merges copy-on-write.
+function sameEntry(before: ThreadEntry, after: ThreadEntry): boolean {
+  // Compared only for entries at the SAME key, and a key encodes its kind
+  // (`group:` prefix vs the bare turn id), so both sides are always the same
+  // kind — no kind comparison, and thus no dead branch. A single's member
+  // list is just its one turn; a group's is its run.
+  const beforeMembers = entryMembers(before);
+  const afterMembers = entryMembers(after);
+  return beforeMembers.length === afterMembers.length
+    && beforeMembers.every((turn, i) => turn === afterMembers[i]);
+}
+
+function entryMembers(entry: ThreadEntry): readonly FleetTurn[] {
+  return entry.kind === ENTRY_KIND.GROUP ? entry.turns : [entry.turn];
+}

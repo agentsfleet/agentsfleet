@@ -29,7 +29,7 @@ use crate::harness;
 use std::convert::Infallible;
 use std::time::Duration;
 
-use afd_api::connection_builder;
+use afd_api::{DEFAULT_READ_TIMEOUT, connection_builder};
 use http::{Request, StatusCode};
 use hyper::body::Incoming;
 use hyper_util::rt::{TokioExecutor, TokioIo};
@@ -72,7 +72,7 @@ async fn listening() -> (std::net::SocketAddr, tokio::task::JoinHandle<()>) {
             tokio::spawn(async move {
                 // The production builder, not a test one: the whole claim is
                 // about what THIS function does with a connection.
-                let builder = connection_builder();
+                let builder = connection_builder(DEFAULT_READ_TIMEOUT);
                 let served = builder.serve_connection(
                     TokioIo::new(stream),
                     hyper::service::service_fn(move |request: Request<Incoming>| {

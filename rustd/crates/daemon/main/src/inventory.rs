@@ -32,7 +32,7 @@ pub const ANALYTICS_FLUSH: &str = "analytics_flush";
 /// The task that delivers a fleet's answer back through the connector the
 /// question arrived on.
 ///
-/// It claims rows of `fleet.obligations`; see [`crate::outbound`].
+/// It claims rows of `thread.deliveries`; see [`crate::outbound`].
 pub const OUTBOUND_WORKER: &str = crate::outbound::OUTBOUND_WORKER;
 
 /// Every long-lived task a fully booted daemon supervises, in spawn order.

@@ -14,9 +14,10 @@ use af_wire::policy::{HttpEgress, HttpMethod, HttpPathMatch, HttpRequestRule, Ne
 #[cfg(feature = "openapi")]
 #[test]
 fn test_the_published_stage_chunk_threshold_is_a_unit_fraction() {
-    let schema =
-        serde_json::to_value(<af_wire::policy::ContextBudget as utoipa::PartialSchema>::schema())
-            .expect("the derived schema serializes");
+    let schema = serde_json::to_value(
+        <af_wire::policy::ContextBudget<'_> as utoipa::PartialSchema>::schema(),
+    )
+    .expect("the derived schema serializes");
     let bound = |name: &str| {
         schema
             .pointer(&format!("/properties/stage_chunk_threshold/{name}"))

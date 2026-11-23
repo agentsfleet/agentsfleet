@@ -1,4 +1,4 @@
-import type { StreamTextKind } from "@/lib/api/events";
+import type { StreamTextKind } from "@/lib/api/turns";
 
 const RENDER_INTERVAL_MS = 50;
 export const MAX_PENDING_CHARS = 64 * 1024;

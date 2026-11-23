@@ -2,7 +2,7 @@
 //!
 //! Split from the route cases beside it. The router holds a live fleet queue,
 //! and existing subscribers carry notices without a separate fleet install.
-//! What is read back is the obligation ledger.
+//! What is read back is the delivery ledger.
 
 #![cfg(feature = "test-util")]
 
@@ -17,13 +17,13 @@ pub(super) struct Owed {
     pub(super) answer: String,
 }
 
-/// Every obligation the fixture's workspace owes, with the name of the fleet
+/// Every delivery the fixture's workspace owes, with the name of the fleet
 /// owing it.
 pub(super) async fn owed(fixture: &Fixture) -> Vec<Owed> {
     let mut connection = fixture.database().acquire().await.expect("a connection");
     sqlx::query_as::<_, (String, String, Option<String>, String)>(
         "SELECT f.name, o.provider, o.destination, o.answer \
-         FROM fleet.obligations o JOIN fleet.fleets f ON f.id = o.fleet_id \
+         FROM thread.deliveries o JOIN fleet.fleets f ON f.id = o.fleet_id \
          WHERE o.workspace_id = $1",
     )
     .bind(&fixture.workspace)
@@ -40,7 +40,7 @@ pub(super) async fn owed(fixture: &Fixture) -> Vec<Owed> {
     .collect()
 }
 
-/// Dimension 6.2 — an unaddressed mention two fleets could answer is owed one
+/// An unaddressed mention two fleets could answer is owed one
 /// notice naming both, by the first subscriber, in the thread it was asked
 /// in, and no event is admitted. Slack's retry of it owes it again: notices
 /// carry no dedupe key (Indy, Nov 08, 2026).
@@ -107,7 +107,7 @@ async fn a_retried_notice_is_owed_again() {
         "the notice names the fleets to choose from: {}",
         notice.answer
     );
-    assert_eq!(fixture.admissions().await, 0, "a notice admits no event");
+    assert_eq!(fixture.turns().await, 0, "a notice admits no event");
 
     fixture.cleanup().await;
 }

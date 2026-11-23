@@ -22,7 +22,7 @@ use http::StatusCode;
 
 use crate::auth::PersonIdentity;
 use crate::handler::Refusal;
-use crate::services::{Services, TenantTeam as _, TerminalCredentials as _};
+use crate::services::{TenantPlane, TenantTeam as _, TerminalCredentials as _};
 
 use super::invite_email::email_new_invite;
 use super::invite_view::{invite_link, summary};
@@ -88,7 +88,7 @@ const STATE_MEMBER: &str = "member";
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn create<D: Services>(
+pub(crate) async fn create<D: TenantPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
     body: Bytes,
@@ -132,7 +132,7 @@ pub(crate) async fn create<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn list<D: Services>(
+pub(crate) async fn list<D: TenantPlane>(
     State(services): State<Arc<D>>,
     owner: OwnTenant,
 ) -> Result<Response, Refusal> {
@@ -169,7 +169,7 @@ pub(crate) async fn list<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn revoke<D: Services>(
+pub(crate) async fn revoke<D: TenantPlane>(
     State(services): State<Arc<D>>,
     invite: InvitePath,
     owner: OwnTenant,
@@ -202,7 +202,7 @@ pub(crate) async fn revoke<D: Services>(
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
-pub(crate) async fn waiting<D: Services>(
+pub(crate) async fn waiting<D: TenantPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
 ) -> Result<Response, Refusal> {
@@ -237,7 +237,7 @@ pub(crate) async fn waiting<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn accept<D: Services>(
+pub(crate) async fn accept<D: TenantPlane>(
     State(services): State<Arc<D>>,
     invite: InvitePath,
     identity: PersonIdentity,
@@ -264,7 +264,7 @@ pub(crate) async fn accept<D: Services>(
 }
 
 /// The user row behind `person`, or the refusal a subject with none earns.
-async fn me<D: Services>(services: &D, person: &Person) -> Result<UserIdentity, Refusal> {
+async fn me<D: TenantPlane>(services: &D, person: &Person) -> Result<UserIdentity, Refusal> {
     services
         .cli_credentials()
         .user_of(person.subject().as_str())

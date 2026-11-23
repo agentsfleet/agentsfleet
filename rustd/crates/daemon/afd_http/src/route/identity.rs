@@ -18,7 +18,7 @@ pub enum Route {
     Admin(AdminRoute),
     /// Inbound deliveries authenticated by signature rather than bearer.
     Webhook(WebhookRoute),
-    /// A workspace's own surface: secrets, events, approvals, preferences.
+    /// A workspace's own surface: secrets, events, approvals, onboarding.
     Workspace(WorkspaceRoute),
     /// Everything addressed by a fleet id as well as a workspace id.
     Fleet(FleetRoute),

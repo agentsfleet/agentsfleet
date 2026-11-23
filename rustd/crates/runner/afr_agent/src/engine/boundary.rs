@@ -1,8 +1,8 @@
 //! Capture has a committed receipt or a typed skip; absence never means success.
 
 use super::TurnSnapshot;
-use crate::{Result, TaskRecovery};
-use af_wire::lease::{TurnResume, TurnScope, TurnWorkspace};
+use crate::{DurableTaskRecovery, Result};
+use af_wire::run::{TurnResume, TurnScope, TurnWorkspace};
 use garde::Validate as _;
 use std::sync::Arc;
 
@@ -13,7 +13,7 @@ pub type FileRecoveryPermit = Arc<tokio::sync::OwnedSemaphorePermit>;
 #[derive(Debug)]
 pub enum RecoveryState {
     /// Existing task checkpoint resources and native input/effect cursors.
-    Task(TaskRecovery),
+    DurableTask(DurableTaskRecovery),
     /// Event-owned private state and exact incorporated fold membership.
     Turn(TurnSnapshot),
 }
@@ -22,9 +22,9 @@ pub enum RecoveryState {
 #[derive(Debug)]
 pub struct RecoverySnapshot {
     /// Current attempt, retained in the native request's authority proof.
-    pub lease_id: String,
+    pub run_id: String,
     /// Stable event whose root was captured.
-    pub event_id: String,
+    pub turn_id: String,
     /// Current attempt's database fence.
     pub fencing_token: u64,
     /// Exact private state for the selected durable owner.
@@ -37,7 +37,7 @@ pub struct RecoverySnapshot {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CommittedRecovery {
     /// Native task publication already verified the matching file manifest.
-    Task {
+    DurableTask {
         /// Committed checkpoint identity.
         checkpoint_id: String,
         /// Monotonic checkpoint ordering.
@@ -53,9 +53,9 @@ pub enum CommittedRecovery {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecoveryReceipt {
     /// Attempt that authorized publication.
-    pub lease_id: String,
+    pub run_id: String,
     /// Stable event owner.
-    pub event_id: String,
+    pub turn_id: String,
     /// Fence proved by publication.
     pub fencing_token: u64,
     /// Committed identity and compatibility facts for the selected family.
@@ -120,9 +120,9 @@ pub trait RecoveryBoundarySink: Send + Sync + std::fmt::Debug {
 
 /// Correlation witness retained while the capture owner owns the private bytes.
 pub(crate) struct RecoveryWitness {
-    lease_id: String,
-    event_id: String,
-    fence: u64,
+    run_id: String,
+    turn_id: String,
+    fencing_token: u64,
     generation: u64,
     digest: String,
     previous_id: Option<String>,
@@ -132,7 +132,7 @@ pub(crate) struct RecoveryWitness {
 impl RecoverySnapshot {
     pub(crate) fn witness(&self) -> RecoveryWitness {
         let (generation, digest, previous_id, scope) = match &self.state {
-            RecoveryState::Task(task) => (
+            RecoveryState::DurableTask(task) => (
                 task.task.checkpoint_generation.unwrap_or(0),
                 af_core::etag::sha256_hex(&task.history),
                 task.task.checkpoint_id.as_ref().map(ToString::to_string),
@@ -150,9 +150,9 @@ impl RecoverySnapshot {
             ),
         };
         RecoveryWitness {
-            lease_id: self.lease_id.clone(),
-            event_id: self.event_id.clone(),
-            fence: self.fencing_token,
+            run_id: self.run_id.clone(),
+            turn_id: self.turn_id.clone(),
+            fencing_token: self.fencing_token,
             generation,
             digest,
             previous_id,
@@ -163,15 +163,15 @@ impl RecoverySnapshot {
 
 impl RecoveryReceipt {
     pub(crate) fn matches(&self, expected: &RecoveryWitness) -> bool {
-        self.lease_id == expected.lease_id
-            && self.event_id == expected.event_id
-            && self.fencing_token == expected.fence
+        self.run_id == expected.run_id
+            && self.turn_id == expected.turn_id
+            && self.fencing_token == expected.fencing_token
             && self.checkpoint.generation() > expected.generation
             && af_core::id::Uuid7::parse(self.checkpoint.id()).is_ok()
             && expected.previous_id.as_deref() != Some(self.checkpoint.id())
             && self.checkpoint.digest() == expected.digest
             && match (&self.checkpoint, &expected.scope) {
-                (CommittedRecovery::Task { .. }, None) => true,
+                (CommittedRecovery::DurableTask { .. }, None) => true,
                 (CommittedRecovery::Turn(descriptor), Some(scope)) => {
                     descriptor.scope == *scope && descriptor.validate().is_ok()
                 }
@@ -183,21 +183,21 @@ impl RecoveryReceipt {
 impl CommittedRecovery {
     pub(crate) fn id(&self) -> &str {
         match self {
-            Self::Task { checkpoint_id, .. } => checkpoint_id,
+            Self::DurableTask { checkpoint_id, .. } => checkpoint_id,
             Self::Turn(descriptor) => &descriptor.checkpoint_id.0,
         }
     }
 
     pub(crate) const fn generation(&self) -> u64 {
         match self {
-            Self::Task { generation, .. } => *generation,
+            Self::DurableTask { generation, .. } => *generation,
             Self::Turn(descriptor) => descriptor.generation,
         }
     }
 
     fn digest(&self) -> &str {
         match self {
-            Self::Task { history_digest, .. } => history_digest,
+            Self::DurableTask { history_digest, .. } => history_digest,
             Self::Turn(descriptor) => &descriptor.history_digest,
         }
     }

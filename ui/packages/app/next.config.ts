@@ -40,6 +40,12 @@ const nextConfig: NextConfig = {
   // retired JavaScript compiler API (vercel/next.js#95831, stable in 16.2.12).
   experimental: {
     useTypeScriptCli: true,
+    // `proxy.ts` matches the setup and message routes, so Next buffers their
+    // bodies, and past its 10 MiB default it truncates them silently. The
+    // number is lib/api/body-limits.ts's PROXY_BODY_LIMIT_BYTES, written out
+    // because a local import breaks `next start <dir>` under Bun from another
+    // directory; tests/body-limits.test.ts pins the two equal.
+    proxyClientMaxBodySize: 25_640_960,
     optimizePackageImports: ["@phosphor-icons/react", "@phosphor-icons/react/ssr"],
   },
 

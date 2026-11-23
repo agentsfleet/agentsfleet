@@ -1,6 +1,6 @@
-// Fleet CLI top-level command Effects — status / activate / archive / delete. Creation and improvement use terminal chat; list/logs/events/
+// Fleet CLI top-level command Effects — status / activate / archive / delete. Creation and improvement use terminal chat; list/logs/turns/
 // steer/secret leaves live in sibling files (fleet_list.ts,
-// fleet_logs.ts, fleet_events.ts, fleet_steer.ts, fleet_secret.ts).
+// fleet_logs.ts, fleet_turns.ts, fleet_steer.ts, fleet_secret.ts).
 //
 // Each command yields services from the MainLayer (CliConfig, Output,
 // HttpClient, Credentials, Workspaces, Analytics) and emits one of the
@@ -51,7 +51,7 @@ const printFleetRows = (
     yield* output.printKeyValue({
       Name: z.name,
       Status: z.status,
-      Events: z.events_processed,
+      Turns: z.events_processed,
       Budget: formatDollars(z.budget_used_nanos),
       Waiting: waiting,
     });
@@ -132,7 +132,6 @@ const setStatusEffect = (
       body: { status },
       headers: {[IF_MATCH]: observed.etag},
       token,
-      retry: null,
     }).pipe(Effect.flatMap((body) => decode(FleetSchema, body)));
     const line = res.status === AGENTSFLEET_STATUS.INSTALLING
       ? `${id} ${res.status}; setup is still waiting. See what it needs with: agentsfleet fleet show ${id}`
@@ -174,7 +173,6 @@ export const deleteEffectFromId = (
       method: "DELETE",
       headers: {[IF_MATCH]: observed.etag},
       token,
-      retry: null,
     });
 
     yield* output.success(`${id} deleted.`, { fleet_id: id, deleted: true });

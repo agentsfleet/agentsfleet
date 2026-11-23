@@ -27,7 +27,7 @@ use http::HeaderMap;
 use super::text;
 use super::verify::{ProvenApp, wall};
 use crate::handler::Refusal;
-use crate::services::{Services, WebhookIngress as _, WorkspaceConnectors as _};
+use crate::services::{IngressPlane, WebhookIngress as _, WorkspaceConnectors as _};
 
 /// The scoped event a failed platform-secret read is logged under.
 const EVENT_PLATFORM: &str = "webhook_platform_secret_failed";
@@ -58,7 +58,7 @@ pub(crate) const APPROVAL_IDENTITY: &str = "approval-signing";
 /// # Errors
 /// `UZ-WH-020` for a deployment with no usable secret, `UZ-WH-010` for a
 /// signature that did not match and `UZ-WH-011` for one outside its window.
-async fn proven<D: Services>(
+async fn proven<D: IngressPlane>(
     services: &Arc<D>,
     scheme: Scheme,
     secret_key: &str,
@@ -98,7 +98,7 @@ async fn proven<D: Services>(
 /// connector seam's `<provider>-app` bag for Slack — and nothing else. Keeping
 /// the header read and the verdict mapping in one place is what stops the two
 /// from drifting into answering the same forged signature differently.
-fn checked<D: Services>(
+fn checked<D: IngressPlane>(
     services: &Arc<D>,
     scheme: Scheme,
     secret: &SecretBytes,
@@ -148,7 +148,7 @@ fn checked<D: Services>(
 /// `UZ-WH-020` for a deployment with no admin workspace, no app for this
 /// connector, or an app carrying no signing secret; `UZ-WH-010` for a
 /// signature that did not match and `UZ-WH-011` for one outside its window.
-pub(crate) async fn verified_connector_events<D: Services>(
+pub(crate) async fn verified_connector_events<D: IngressPlane>(
     services: &Arc<D>,
     provider: Provider,
     scheme: Scheme,
@@ -184,7 +184,7 @@ pub(crate) async fn verified_connector_events<D: Services>(
 ///
 /// # Errors
 /// As [`proven`].
-pub(crate) async fn verified_app<D: Services>(
+pub(crate) async fn verified_app<D: IngressPlane>(
     services: &Arc<D>,
     scheme: Scheme,
     secret_key: &str,
@@ -217,7 +217,7 @@ pub(crate) async fn verified_app<D: Services>(
 ///
 /// # Errors
 /// As [`proven`].
-pub(crate) async fn verified_approval<D: Services>(
+pub(crate) async fn verified_approval<D: IngressPlane>(
     services: &Arc<D>,
     headers: &HeaderMap,
     body: Bytes,

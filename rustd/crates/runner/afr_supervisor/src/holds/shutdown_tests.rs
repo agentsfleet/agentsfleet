@@ -35,7 +35,7 @@ async fn test_shutdown_destroys_every_hold_and_waits() {
     );
 }
 
-/// A park after the keeper stopped hands the sandbox back to the lease, which
+/// A park after the keeper stopped hands the sandbox back to the run, which
 /// kills it, reports, and only then releases it; the keeper destroys
 /// nothing itself.
 #[tokio::test]

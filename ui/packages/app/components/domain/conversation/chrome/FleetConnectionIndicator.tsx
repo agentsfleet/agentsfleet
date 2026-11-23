@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { WakePulse, cn } from "@agentsfleet/design-system";
 
-import { CONNECTION_STATUS, type ConnectionStatus } from "../stream/useFleetEventStream";
+import { CONNECTION_STATUS, type ConnectionStatus } from "../stream/useFleetTurnStream";
 
 // The connection, said in one place: a dot, a word, and motion that matches
 // what is actually happening.

@@ -1,7 +1,7 @@
 //! Parent scope precedes child writes and receipt foreign-key checks.
 
 use af_core::id::Uuid7;
-use afd_events::activity::Announcement;
+use afd_turns::view::activity::Announcement;
 use sqlx::{Postgres, Transaction};
 
 use super::super::{CONTEXT_WRITE, Schedules};
@@ -39,7 +39,7 @@ impl Schedules {
         transaction: Transaction<'static, Postgres>,
         announcement: Announcement,
     ) -> Result<()> {
-        afd_events::activity::commit(transaction, announcement, self.streams.as_ref())
+        afd_turns::view::activity::commit(transaction, announcement, self.streams.as_ref())
             .await
             .map_err(error::query(CONTEXT_WRITE))
     }

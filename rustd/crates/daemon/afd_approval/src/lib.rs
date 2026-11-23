@@ -17,7 +17,7 @@
 //! rows they must be authorised for.
 //!
 //! Keeping them apart is what lets the API's approval surface compile without
-//! the runner plane behind it: `afd_fleet` carries leases, money, policy,
+//! the runner plane behind it: `afd_fleet` carries runs, money, policy,
 //! bundles, sweepers and the vault reader, and none of that is on the path of
 //! showing a person what a fleet wants to do.
 //!
@@ -47,8 +47,6 @@ mod sql;
 pub use self::decision::Decision;
 pub use self::error::{Error, Result};
 pub use self::grant::{GrantRow, IntegrationGrants, Revocation};
-#[cfg(feature = "test-util")]
-pub use self::inbox::SweptParts;
 pub use self::inbox::{Cursor, Filter, GateRow, Inbox, Resolution, Resolved};
 pub use self::request::{
     KIND_INTEGRATION_GRANT, Origin, REASON_DECLARED_AT_INSTALL, Requested, Wanted,

@@ -57,7 +57,7 @@ impl<'a> TenantSeed<'a> {
         self
     }
 
-    /// Stamps both `created_at` and `updated_at` with `instant`.
+    /// Stamps `created_at` with `instant`.
     pub const fn at(mut self, instant: Timestamp) -> Self {
         self.created_at = Some(instant);
         self
@@ -236,7 +236,7 @@ impl<'a> UserSeed<'a> {
         self
     }
 
-    /// Stamps both `created_at` and `updated_at` with `instant`.
+    /// Stamps `created_at` with `instant`.
     pub const fn at(mut self, instant: Timestamp) -> Self {
         self.created_at = Some(instant);
         self

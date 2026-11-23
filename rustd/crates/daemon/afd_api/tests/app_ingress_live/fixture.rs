@@ -36,9 +36,6 @@ use jiff::Timestamp;
 
 use super::harness;
 
-#[path = "completion.rs"]
-mod completion;
-
 /// The field a stored credential carries its shared secret in.
 const WEBHOOK_SECRET_FIELD: &str = "webhook_secret";
 
@@ -233,11 +230,12 @@ impl Fixture {
     ///
     /// The negative that makes a drop mean something: a status code cannot show
     /// that nothing was acted on.
-    pub(super) async fn fleet_events(&self) -> i64 {
+    pub(super) async fn fleet_turns(&self) -> i64 {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query_scalar(
-            "SELECT COUNT(*) FROM fleet.events e \
-             JOIN fleet.fleets f ON f.id = e.fleet_id WHERE f.tenant_id = $1",
+            "SELECT COUNT(*) FROM thread.turns e \
+             JOIN fleet.fleets f ON f.id = e.thread_id \
+             WHERE f.tenant_id = $1 AND e.opened_at IS NOT NULL",
         )
         .bind(&self.tenant)
         .fetch_one(&mut *connection)

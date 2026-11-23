@@ -11,7 +11,7 @@
 use af_core::error_code::{self, Coded, ErrorCode};
 
 mod raise;
-pub(crate) use raise::{recovery_invalid, recovery_source};
+pub(crate) use raise::{recovery_invalid, recovery_source, setup_assignment};
 
 af_core::error_shell!(
     /// An agent-engine failure, with the backtrace of where it was raised.
@@ -45,34 +45,34 @@ pub(crate) enum ErrorKind {
     },
     /// No authoritative, bounded task decision is available at this boundary.
     #[error("durable task preparation could not establish current authority")]
-    TaskDecision,
+    DurableTaskDecision,
     /// A bounded task operation failed with its original cause retained.
     #[error("durable task boundary failed: {context}")]
-    TaskBoundary {
+    DurableTaskBoundary {
         context: &'static str,
         #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
     },
     /// The existing native verb already retains its refusal code.
     #[error("native task request was not answered: {reason:?}")]
-    TaskNative {
+    DurableTaskNative {
         reason: afr_tools::verbs::Unanswered,
     },
     /// A private bounded task document could not be encoded or decoded.
     #[error("private task document is unreadable")]
-    TaskJson {
+    DurableTaskJson {
         #[from]
         source: serde_json::Error,
     },
     /// Native operation identity could not be generated.
     #[error("task cryptographic operation failed")]
-    TaskCrypto {
+    DurableTaskCrypto {
         #[from]
         source: af_crypto::error::Error,
     },
     /// The existing context owner could not prepare complete evidence.
     #[error("task evidence context is unavailable")]
-    TaskContext {
+    DurableTaskContext {
         #[from]
         source: af_context::Error,
     },
@@ -113,13 +113,28 @@ pub(crate) enum ErrorKind {
         source: af_secrets::Error,
     },
 
-    /// The catalog refused the lease's tools.
-    #[error("the lease's tools were refused")]
+    /// The catalog refused the run's tools.
+    #[error("the run's tools were refused")]
     Tools {
         /// The catalog's refusal, naming the tool.
         #[from]
         source: afr_tools::Error,
     },
+
+    /// A setup run's draft context could not be read or saved through the
+    /// daemon's fenced context verb.
+    #[error("the setup run's draft context could not be read or saved")]
+    SetupContext {
+        /// The verb's registry code, kept from its own failure.
+        code: ErrorCode,
+        /// The verb's failure.
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    /// A setup run's assignment lacks what a setup run is built from.
+    #[error("the setup run's assignment is unusable: {reason}")]
+    SetupAssignment { reason: &'static str },
 }
 
 /// The one alias every signature in this crate spells.
@@ -136,6 +151,16 @@ impl Error {
         })
     }
 
+    /// A setup run's context verb that failed, for `failure`, which keeps
+    /// its own registry code.
+    #[must_use]
+    pub fn setup_context(failure: impl Coded + Send + Sync + 'static) -> Self {
+        Self::from(ErrorKind::SetupContext {
+            code: failure.code(),
+            source: Box::new(failure),
+        })
+    }
+
     /// The registry code this failure is logged under.
     #[must_use]
     pub const fn code(&self) -> ErrorCode {
@@ -144,27 +169,28 @@ impl Error {
             | ErrorKind::RecoveryInvalid { .. }
             | ErrorKind::RecoveryBounds { .. }
             | ErrorKind::RecoveryMemory { .. } => error_code::RUN_CHECKPOINT_INCOMPATIBLE,
-            ErrorKind::TaskDecision | ErrorKind::TaskBoundary { .. } => {
+            ErrorKind::DurableTaskDecision | ErrorKind::DurableTaskBoundary { .. } => {
                 error_code::INTERNAL_OPERATION_FAILED
             }
-            ErrorKind::TaskNative {
+            ErrorKind::DurableTaskNative {
                 reason: afr_tools::verbs::Unanswered::Refused(Some(code)),
             } => *code,
-            ErrorKind::TaskNative { .. } | ErrorKind::TaskJson { .. } => {
+            ErrorKind::DurableTaskNative { .. } | ErrorKind::DurableTaskJson { .. } => {
                 error_code::INTERNAL_OPERATION_FAILED
             }
-            ErrorKind::TaskCrypto { source } => source.code(),
-            ErrorKind::TaskContext { source } => source.code(),
+            ErrorKind::DurableTaskCrypto { source } => source.code(),
+            ErrorKind::DurableTaskContext { source } => source.code(),
             ErrorKind::Scrub { .. } => error_code::INTERNAL_OPERATION_FAILED,
             #[cfg(feature = "test-util")]
             ErrorKind::Executor { .. } => error_code::INTERNAL_OPERATION_FAILED,
-            ErrorKind::Checkpoint { code, .. } => *code,
+            ErrorKind::Checkpoint { code, .. } | ErrorKind::SetupContext { code, .. } => *code,
+            ErrorKind::SetupAssignment { .. } => error_code::INTERNAL_OPERATION_FAILED,
             ErrorKind::Provider { source } => source.code(),
             ErrorKind::Tools { source } => source.code(),
         }
     }
 
-    /// What a refused lease named that this engine cannot host, for its log
+    /// What a refused run named that this engine cannot host, for its log
     /// line; none for a failure that refused nothing.
     #[must_use]
     pub fn unhosted(&self) -> Option<Unhosted<'_>> {
@@ -173,21 +199,24 @@ impl Error {
             | ErrorKind::RecoveryInvalid { .. }
             | ErrorKind::RecoveryBounds { .. }
             | ErrorKind::RecoveryMemory { .. } => None,
-            ErrorKind::TaskDecision | ErrorKind::TaskBoundary { .. } => None,
-            ErrorKind::TaskNative { .. }
-            | ErrorKind::TaskJson { .. }
-            | ErrorKind::TaskCrypto { .. }
-            | ErrorKind::TaskContext { .. } => None,
+            ErrorKind::DurableTaskDecision | ErrorKind::DurableTaskBoundary { .. } => None,
+            ErrorKind::DurableTaskNative { .. }
+            | ErrorKind::DurableTaskJson { .. }
+            | ErrorKind::DurableTaskCrypto { .. }
+            | ErrorKind::DurableTaskContext { .. } => None,
             ErrorKind::Tools { source } => source.unhosted_tool().map(Unhosted::Tool),
             ErrorKind::Provider { source } => source.unhosted_provider().map(Unhosted::Provider),
-            ErrorKind::Checkpoint { .. } | ErrorKind::Scrub { .. } => None,
+            ErrorKind::Checkpoint { .. }
+            | ErrorKind::Scrub { .. }
+            | ErrorKind::SetupContext { .. }
+            | ErrorKind::SetupAssignment { .. } => None,
             #[cfg(feature = "test-util")]
             ErrorKind::Executor { .. } => None,
         }
     }
 }
 
-/// What a refused lease named that the engine cannot host.
+/// What a refused run named that the engine cannot host.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Unhosted<'a> {
     /// A tool with no handler in the catalog.

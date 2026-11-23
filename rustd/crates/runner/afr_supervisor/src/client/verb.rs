@@ -44,35 +44,27 @@ pub(crate) enum Verb {
     Open,
     /// Liveness, capability, assignment.
     Heartbeat,
-    /// Scoped private model invocation; never automatically redispatched.
-    AuthoringModel,
-    /// Native proposal receipt for a private authoring attempt.
-    AuthoringActivity,
-    /// Retain an unexpired authoring slot.
-    AuthoringRenew,
-    /// Independent authoring accounting and optional answer.
-    AuthoringReport,
-    /// More time on a held lease.
+    /// More time on a held run.
     Renew,
-    /// Live-tail frames for a held lease.
-    Activity,
-    /// A lease's terminal result.
+    /// Live-tail frames for a held run.
+    Progress,
+    /// A run's terminal result.
     Report,
-    /// A fleet's memory at lease start.
-    Hydrate,
+    /// A fleet's memory at run start.
+    Load,
     /// A fleet's memory written back.
     Capture,
     /// A search of a fleet's memory past the window.
     Recall,
-    /// A scoped credential for a held lease.
+    /// A scoped credential for a held run.
     Mint,
-    /// Finished calls' full records for a held lease.
-    Records,
+    /// Finished calls' full records for a held run.
+    Items,
     /// The runner's own row: which runner this is, as the daemon names it.
     Me,
-    /// A schedule created for the leased fleet.
+    /// A schedule created for the held fleet.
     ScheduleCreate,
-    /// The leased fleet's schedules.
+    /// The held fleet's schedules.
     ScheduleList,
     /// A change to a schedule the fleet made.
     ScheduleUpdate,
@@ -82,71 +74,71 @@ pub(crate) enum Verb {
     ScheduleRun,
     /// A schedule's runs.
     ScheduleRuns,
-    /// A line said to the leased event's thread.
+    /// A line said to the held turn's thread.
     Message,
-    /// The leased fleet's workspace's fleets.
+    /// The held fleet's workspace's fleets.
     FleetList,
-    /// One fleet's recent events, as the leased fleet reads them.
-    FleetEvents,
-    /// Work the leased fleet puts on another fleet.
+    /// One fleet's recent turns, as the held fleet reads them.
+    FleetTurns,
+    /// Work the held fleet puts on another fleet.
     FleetSteer,
-    /// The messages a person sent while the run works, claimed for it.
+    /// The messages a person sent while the run works, assigned to it.
     Folds,
     /// Native event-owned recovery command.
     TurnCheckpoint,
+    /// A setup run's read of its draft's compacted context.
+    ContextLoad,
+    /// A setup run's fenced save of its draft's compacted context.
+    ContextSave,
     /// Complete native human input and recovered meaning.
-    TaskInputs,
+    DurableTaskInputs,
     /// One complete immutable human interpretation.
-    TaskBindings,
+    DurableTaskBindings,
     /// Accepted input application or original reply.
-    TaskInputReceipt,
+    DurableTaskInputReceipt,
     /// One native physical decision reservation.
-    TaskDecisionReserve,
+    DurableTaskDecisionReserve,
     /// Original-owner physical decision accounting.
-    TaskDecisionRecord,
+    DurableTaskDecisionRecord,
     /// One exact-head native publication.
-    TaskEffectPublish,
+    DurableTaskEffectPublish,
     /// Recovery effects beyond a confirmed watermark.
-    TaskEffects,
+    DurableTaskEffects,
     /// One retained publication receipt.
-    TaskEffect,
+    DurableTaskEffect,
     /// An immutable capture plan and writer pin.
-    TaskCheckpointPlan,
+    DurableTaskCheckpointPlan,
     /// A complete verified manifest publication.
-    TaskCheckpointCommit,
+    DurableTaskCheckpointCommit,
     /// An immutable manifest page.
-    TaskCheckpointPageWrite,
+    DurableTaskCheckpointPageWrite,
     /// One authorized recovery page.
-    TaskCheckpointPage,
+    DurableTaskCheckpointPage,
     /// Bounded native plaintext object registration.
-    TaskCheckpointObjectsRegister,
+    DurableTaskCheckpointObjectsRegister,
     /// Immutable ciphertext and create-only transfers.
-    TaskCheckpointUploads,
+    DurableTaskCheckpointUploads,
     /// Native restore custody and transfer refresh.
-    TaskCheckpointAuthorizations,
+    DurableTaskCheckpointAuthorizations,
     /// Versioned native reader or writer pin renewal.
-    TaskCheckpointPin,
+    DurableTaskCheckpointPin,
 }
 
 impl Verb {
     /// Every verb, so a suite walks the whole vocabulary rather than a
     /// hand-kept list that a new verb can miss.
     #[cfg(test)]
-    pub(crate) const ALL: [Self; 43] = [
+    pub(crate) const ALL: [Self; 41] = [
         Self::Open,
         Self::Heartbeat,
-        Self::AuthoringModel,
-        Self::AuthoringActivity,
-        Self::AuthoringRenew,
-        Self::AuthoringReport,
         Self::Renew,
-        Self::Activity,
+        Self::Progress,
         Self::Report,
-        Self::Hydrate,
+        Self::Load,
         Self::Capture,
         Self::Recall,
         Self::Mint,
-        Self::Records,
+        Self::Items,
         Self::Me,
         Self::ScheduleCreate,
         Self::ScheduleList,
@@ -156,74 +148,74 @@ impl Verb {
         Self::ScheduleRuns,
         Self::Message,
         Self::FleetList,
-        Self::FleetEvents,
+        Self::FleetTurns,
         Self::FleetSteer,
         Self::Folds,
         Self::TurnCheckpoint,
-        Self::TaskInputs,
-        Self::TaskBindings,
-        Self::TaskInputReceipt,
-        Self::TaskDecisionReserve,
-        Self::TaskDecisionRecord,
-        Self::TaskEffectPublish,
-        Self::TaskEffects,
-        Self::TaskEffect,
-        Self::TaskCheckpointPlan,
-        Self::TaskCheckpointCommit,
-        Self::TaskCheckpointPageWrite,
-        Self::TaskCheckpointPage,
-        Self::TaskCheckpointObjectsRegister,
-        Self::TaskCheckpointUploads,
-        Self::TaskCheckpointAuthorizations,
-        Self::TaskCheckpointPin,
+        Self::ContextLoad,
+        Self::ContextSave,
+        Self::DurableTaskInputs,
+        Self::DurableTaskBindings,
+        Self::DurableTaskInputReceipt,
+        Self::DurableTaskDecisionReserve,
+        Self::DurableTaskDecisionRecord,
+        Self::DurableTaskEffectPublish,
+        Self::DurableTaskEffects,
+        Self::DurableTaskEffect,
+        Self::DurableTaskCheckpointPlan,
+        Self::DurableTaskCheckpointCommit,
+        Self::DurableTaskCheckpointPageWrite,
+        Self::DurableTaskCheckpointPage,
+        Self::DurableTaskCheckpointObjectsRegister,
+        Self::DurableTaskCheckpointUploads,
+        Self::DurableTaskCheckpointAuthorizations,
+        Self::DurableTaskCheckpointPin,
     ];
 
     /// The method this verb is sent with.
     pub(crate) const fn method(self) -> Method {
         match self {
-            Self::Hydrate
+            Self::Load
             | Self::Me
             | Self::ScheduleList
             | Self::ScheduleRuns
             | Self::FleetList
-            | Self::FleetEvents
-            | Self::TaskInputs
-            | Self::TaskEffects
-            | Self::TaskEffect
-            | Self::TaskCheckpointPage => Method::Get,
-            Self::TaskCheckpointPageWrite => Method::Put,
+            | Self::FleetTurns
+            | Self::DurableTaskInputs
+            | Self::DurableTaskEffects
+            | Self::DurableTaskEffect
+            | Self::DurableTaskCheckpointPage => Method::Get,
+            Self::DurableTaskCheckpointPageWrite => Method::Put,
             Self::ScheduleUpdate
-            | Self::TaskDecisionRecord
-            | Self::TaskCheckpointCommit
-            | Self::TaskCheckpointPin => Method::Patch,
+            | Self::DurableTaskDecisionRecord
+            | Self::DurableTaskCheckpointCommit
+            | Self::DurableTaskCheckpointPin => Method::Patch,
             Self::ScheduleDelete => Method::Delete,
             Self::Open
             | Self::Heartbeat
-            | Self::AuthoringModel
-            | Self::AuthoringActivity
-            | Self::AuthoringRenew
-            | Self::AuthoringReport
             | Self::Renew
-            | Self::Activity
+            | Self::Progress
             | Self::Report
             | Self::Capture
             | Self::Recall
             | Self::Mint
-            | Self::Records
+            | Self::Items
             | Self::ScheduleCreate
             | Self::ScheduleRun
             | Self::Message
             | Self::FleetSteer
             | Self::Folds
             | Self::TurnCheckpoint
-            | Self::TaskBindings
-            | Self::TaskInputReceipt
-            | Self::TaskDecisionReserve
-            | Self::TaskEffectPublish
-            | Self::TaskCheckpointPlan
-            | Self::TaskCheckpointObjectsRegister
-            | Self::TaskCheckpointUploads
-            | Self::TaskCheckpointAuthorizations => Method::Post,
+            | Self::ContextLoad
+            | Self::ContextSave
+            | Self::DurableTaskBindings
+            | Self::DurableTaskInputReceipt
+            | Self::DurableTaskDecisionReserve
+            | Self::DurableTaskEffectPublish
+            | Self::DurableTaskCheckpointPlan
+            | Self::DurableTaskCheckpointObjectsRegister
+            | Self::DurableTaskCheckpointUploads
+            | Self::DurableTaskCheckpointAuthorizations => Method::Post,
         }
     }
 
@@ -232,18 +224,14 @@ impl Verb {
         match self {
             Self::Open => "stream_open",
             Self::Heartbeat => "heartbeat",
-            Self::AuthoringModel => "authoring_model",
-            Self::AuthoringActivity => "authoring_activity",
-            Self::AuthoringRenew => "authoring_renew",
-            Self::AuthoringReport => "authoring_report",
             Self::Renew => "renew",
-            Self::Activity => "activity",
+            Self::Progress => "progress",
             Self::Report => "report",
-            Self::Hydrate => "hydrate",
+            Self::Load => "load",
             Self::Capture => "capture",
             Self::Recall => "recall",
             Self::Mint => "mint",
-            Self::Records => "records",
+            Self::Items => "items",
             Self::Me => "me",
             Self::ScheduleCreate => "schedule_create",
             Self::ScheduleList => "schedule_list",
@@ -253,44 +241,44 @@ impl Verb {
             Self::ScheduleRuns => "schedule_runs",
             Self::Message => "message",
             Self::FleetList => "fleet_list",
-            Self::FleetEvents => "fleet_events",
+            Self::FleetTurns => "fleet_turns",
             Self::FleetSteer => "fleet_steer",
             Self::Folds => "folds",
             Self::TurnCheckpoint => "turn_checkpoint",
-            Self::TaskInputs => "task_inputs",
-            Self::TaskBindings => "task_bindings",
-            Self::TaskInputReceipt => "task_input_receipt",
-            Self::TaskDecisionReserve => "task_decision_reserve",
-            Self::TaskDecisionRecord => "task_decision_record",
-            Self::TaskEffectPublish => "task_effect_publish",
-            Self::TaskEffects => "task_effects",
-            Self::TaskEffect => "task_effect",
-            Self::TaskCheckpointPlan => "task_checkpoint_plan",
-            Self::TaskCheckpointCommit => "task_checkpoint_commit",
-            Self::TaskCheckpointPageWrite => "task_checkpoint_page_write",
-            Self::TaskCheckpointPage => "task_checkpoint_page",
-            Self::TaskCheckpointObjectsRegister => "task_checkpoint_objects_register",
-            Self::TaskCheckpointUploads => "task_checkpoint_uploads",
-            Self::TaskCheckpointAuthorizations => "task_checkpoint_authorizations",
-            Self::TaskCheckpointPin => "task_checkpoint_pin",
+            Self::ContextLoad => "context_load",
+            Self::ContextSave => "context_save",
+            Self::DurableTaskInputs => "durable_task_inputs",
+            Self::DurableTaskBindings => "durable_task_bindings",
+            Self::DurableTaskInputReceipt => "task_input_receipt",
+            Self::DurableTaskDecisionReserve => "task_decision_reserve",
+            Self::DurableTaskDecisionRecord => "task_decision_record",
+            Self::DurableTaskEffectPublish => "task_effect_publish",
+            Self::DurableTaskEffects => "durable_task_effects",
+            Self::DurableTaskEffect => "durable_task_effect",
+            Self::DurableTaskCheckpointPlan => "task_checkpoint_plan",
+            Self::DurableTaskCheckpointCommit => "task_checkpoint_commit",
+            Self::DurableTaskCheckpointPageWrite => "durable_task_checkpoint_page_write",
+            Self::DurableTaskCheckpointPage => "task_checkpoint_page",
+            Self::DurableTaskCheckpointObjectsRegister => {
+                "durable_task_checkpoint_objects_register"
+            }
+            Self::DurableTaskCheckpointUploads => "durable_task_checkpoint_uploads",
+            Self::DurableTaskCheckpointAuthorizations => "durable_task_checkpoint_authorizations",
+            Self::DurableTaskCheckpointPin => "task_checkpoint_pin",
         }
     }
 
     /// The registry code a failure of this verb is logged under.
     pub(crate) const fn code(self) -> ErrorCode {
         match self {
-            Self::Hydrate | Self::Capture | Self::Recall => error_code::MEM_UNAVAILABLE,
+            Self::Load | Self::Capture | Self::Recall => error_code::MEM_UNAVAILABLE,
             Self::Open
             | Self::Heartbeat
-            | Self::AuthoringModel
-            | Self::AuthoringActivity
-            | Self::AuthoringRenew
-            | Self::AuthoringReport
             | Self::Renew
-            | Self::Activity
+            | Self::Progress
             | Self::Report
             | Self::Mint
-            | Self::Records
+            | Self::Items
             | Self::Me
             | Self::ScheduleCreate
             | Self::ScheduleList
@@ -300,26 +288,28 @@ impl Verb {
             | Self::ScheduleRuns
             | Self::Message
             | Self::FleetList
-            | Self::FleetEvents
+            | Self::FleetTurns
             | Self::FleetSteer
             | Self::Folds
             | Self::TurnCheckpoint
-            | Self::TaskInputs
-            | Self::TaskBindings
-            | Self::TaskInputReceipt
-            | Self::TaskDecisionReserve
-            | Self::TaskDecisionRecord
-            | Self::TaskEffectPublish
-            | Self::TaskEffects
-            | Self::TaskEffect
-            | Self::TaskCheckpointPlan
-            | Self::TaskCheckpointCommit
-            | Self::TaskCheckpointPageWrite
-            | Self::TaskCheckpointPage
-            | Self::TaskCheckpointObjectsRegister
-            | Self::TaskCheckpointUploads
-            | Self::TaskCheckpointAuthorizations
-            | Self::TaskCheckpointPin => error_code::INTERNAL_OPERATION_FAILED,
+            | Self::ContextLoad
+            | Self::ContextSave
+            | Self::DurableTaskInputs
+            | Self::DurableTaskBindings
+            | Self::DurableTaskInputReceipt
+            | Self::DurableTaskDecisionReserve
+            | Self::DurableTaskDecisionRecord
+            | Self::DurableTaskEffectPublish
+            | Self::DurableTaskEffects
+            | Self::DurableTaskEffect
+            | Self::DurableTaskCheckpointPlan
+            | Self::DurableTaskCheckpointCommit
+            | Self::DurableTaskCheckpointPageWrite
+            | Self::DurableTaskCheckpointPage
+            | Self::DurableTaskCheckpointObjectsRegister
+            | Self::DurableTaskCheckpointUploads
+            | Self::DurableTaskCheckpointAuthorizations
+            | Self::DurableTaskCheckpointPin => error_code::INTERNAL_OPERATION_FAILED,
         }
     }
 }

@@ -24,12 +24,13 @@ use afd_vault::bag::BagFault;
 use crate::relay::{Relay, SMTP_RELAY_BAG, Server, TlsCache};
 use crate::{InviteLetter, render_invite};
 
-/// How long one invite send may take: the relay read and both tries.
+/// How long one invite send may take, when nothing configures it: the relay
+/// read and both tries.
 ///
 /// Creating an invite waits for it, so this bounds what a slow relay costs the
 /// owner's click; past it the invite records `failed` and the owner can send
 /// again.
-pub(crate) const MAIL_SEND_DEADLINE: Duration = Duration::from_secs(10);
+pub const MAIL_SEND_DEADLINE: Duration = Duration::from_secs(10);
 
 const EVENT_STARTED: &str = "invite_email_started";
 const EVENT_COMPLETED: &str = "invite_email_completed";
@@ -81,8 +82,7 @@ impl InviteMailer {
         }
     }
 
-    /// The same mailer under another deadline, for a suite proving the stall.
-    #[cfg(any(test, feature = "test-util"))]
+    /// The same mailer under a deployment's own deadline.
     #[must_use]
     pub const fn with_deadline(mut self, deadline: Duration) -> Self {
         self.deadline = deadline;

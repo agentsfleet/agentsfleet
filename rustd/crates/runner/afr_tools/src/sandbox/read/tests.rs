@@ -5,14 +5,16 @@
 
 use std::fmt::Write as _;
 
+use guffbolt::ToolOutput;
 use serde_json::{Value, json};
 
-use super::{LINES_DEFAULT, Page};
+use super::Page;
 use crate::catalog::FILE_READ;
-use crate::lease::Lease;
-use crate::runtime::{ToolErrorCode, ToolOutput};
-use crate::sandbox::output;
+use crate::run::Run;
+use crate::runtime::ToolErrorCode;
 use crate::testing::{Live, call_in, hosted, offered};
+use guffbolt::tools::Limits;
+use guffbolt::tools::process::output;
 
 /// The file the live reads page through.
 const NUMBERS: &str = "numbers.txt";
@@ -33,7 +35,7 @@ async fn read(live: &Live, arguments: Value) -> ToolOutput {
     call_in(
         offered(&selection, &FILE_READ),
         &live.client,
-        &Lease::default(),
+        &Run::default(),
         arguments,
     )
     .await
@@ -41,11 +43,11 @@ async fn read(live: &Live, arguments: Value) -> ToolOutput {
 
 #[test]
 fn a_file_that_fits_is_read_whole_and_says_nothing_more() {
-    let page = Page::of("a\nb\n", 1, LINES_DEFAULT, 100).unwrap();
+    let page = Page::of("a\nb\n", 1, Limits::DEFAULT.default_read_lines, 100).unwrap();
 
     assert_eq!(page.text, "a\nb\n");
     assert_eq!(page.next, None);
-    assert_eq!(page.read_back(false), "a\nb\n");
+    assert_eq!(page.read_back(None), "a\nb\n");
 }
 
 #[test]
@@ -54,7 +56,7 @@ fn a_window_starts_at_its_offset_and_stops_at_its_limit() {
 
     assert_eq!(page.text, "line 2\nline 3\n");
     assert_eq!(
-        page.read_back(false),
+        page.read_back(None),
         "line 2\nline 3\n... the file continues at line 4; read on with offset 4"
     );
 }
@@ -66,8 +68,13 @@ fn paging_from_where_each_page_says_reads_the_whole_file_once() {
     let file = numbered(300);
     // Every line fits the smallest budget, so none is cut; under the real
     // one, the limit is what stops each page.
-    let in_use = output::budget(None);
-    for (budget, limit) in [(64, LINES_DEFAULT), (in_use, 7), (9, 3), (4096, 1)] {
+    let in_use = output::budget(None, guffbolt::tools::env::EDGE_BYTES);
+    for (budget, limit) in [
+        (64, Limits::DEFAULT.default_read_lines),
+        (in_use, 7),
+        (9, 3),
+        (4096, 1),
+    ] {
         let mut read = String::new();
         let mut first = 1;
         loop {
@@ -92,12 +99,12 @@ fn paging_from_where_each_page_says_reads_the_whole_file_once() {
 fn a_line_longer_than_the_budget_is_cut_and_says_so() {
     let wide = format!("{}é\nnext\n", "x".repeat(9));
 
-    let page = Page::of(&wide, 1, LINES_DEFAULT, 10).unwrap();
+    let page = Page::of(&wide, 1, Limits::DEFAULT.default_read_lines, 10).unwrap();
 
     assert_eq!(page.text, "x".repeat(9), "é would cross the budget");
     assert_eq!(page.next, Some(2));
     assert_eq!(
-        page.read_back(false),
+        page.read_back(None),
         format!(
             "{}\n... line 1 was cut at 9 of its 12 bytes\n... the file continues at line 2; read on with offset 2",
             "x".repeat(9)
@@ -111,7 +118,7 @@ fn a_line_longer_than_the_budget_is_cut_and_says_so() {
 fn a_line_exactly_the_budget_is_kept_whole_and_says_nothing_of_a_cut() {
     let exact = format!("{}\nnext\n", "x".repeat(9));
 
-    let page = Page::of(&exact, 1, LINES_DEFAULT, 10).unwrap();
+    let page = Page::of(&exact, 1, Limits::DEFAULT.default_read_lines, 10).unwrap();
 
     assert_eq!(page.text, format!("{}\n", "x".repeat(9)));
     assert_eq!(page.cut, None);
@@ -126,7 +133,7 @@ fn a_line_exactly_the_budget_is_kept_whole_and_says_nothing_of_a_cut() {
 fn a_cut_line_is_alone_on_its_page() {
     let wide = format!("{}😀\n}}\nnext\n", "x".repeat(7));
 
-    let page = Page::of(&wide, 1, LINES_DEFAULT, 10).unwrap();
+    let page = Page::of(&wide, 1, Limits::DEFAULT.default_read_lines, 10).unwrap();
 
     assert_eq!(page.text, "x".repeat(7));
     assert_eq!(page.cut, Some((1, 7, 12)));
@@ -137,7 +144,7 @@ fn a_cut_line_is_alone_on_its_page() {
 fn an_offset_past_the_last_line_is_none_and_an_empty_file_reads_empty() {
     assert_eq!(Page::of("a\n", 2, 1, 100), None);
     assert_eq!(Page::of("", 2, 1, 100), None);
-    assert_eq!(Page::of("", 1, 1, 100).unwrap().read_back(false), "");
+    assert_eq!(Page::of("", 1, 1, 100).unwrap().read_back(None), "");
 }
 
 #[tokio::test]
@@ -182,7 +189,7 @@ async fn an_offset_or_limit_that_is_zero_or_past_the_end_is_refused() {
     for refused in [&zero_offset, &zero_limit] {
         assert_eq!(
             refused.error_code,
-            Some(ToolErrorCode::InvalidArguments),
+            Some(ToolErrorCode::InvalidArguments.into()),
             "{refused:?}"
         );
     }

@@ -20,7 +20,7 @@ workspace = true
 # through: both ends treat the other as untrusted.
 af_core.workspace = true
 # The executor seam is `dyn`: the agent loop holds whichever engine's executor
-# the lease got, so the trait needs object-safe async methods.
+# the run got, so the trait needs object-safe async methods.
 async-trait.workspace = true
 # Output and file bytes ride the JSON-RPC lines as base64.
 base64.workspace = true
@@ -31,6 +31,13 @@ backon.workspace = true
 bytes.workspace = true
 cap-std.workspace = true
 futures-util = { workspace = true, features = ["sink"] }
+# `fs/search` walks the sandbox's own disk once: ripgrep's walker, which
+# skips what `.gitignore` names, its glob matcher, and its line searcher over
+# its regex matcher.
+globset.workspace = true
+grep-regex.workspace = true
+grep-searcher.workspace = true
+ignore.workspace = true
 jsonrpsee-types.workspace = true
 # The terminal launcher opens its pair here (`pty`, `termios`), so a terminal
 # process takes the same pre-exec placement hook a process on pipes does.

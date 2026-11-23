@@ -1,4 +1,4 @@
-//! One admitted GET chain; admission and transport remain owned by the caller.
+//! One allowed GET chain; the policy check and transport remain owned by the caller.
 
 use std::collections::BTreeSet;
 use std::time::Instant;
@@ -11,8 +11,13 @@ mod privacy;
 mod target;
 pub use target::Target;
 
-/// The largest number of continuations for a single tool call.
+/// The largest number of continuations for a single tool call when the
+/// runner's `[egress] max_redirects` names nothing else.
 pub const MAX_REDIRECTS: u8 = 3;
+
+/// The memory the automaton masking a redirect's secrets in its response may
+/// build when the runner's `[egress] max_secret_mask_mib` names nothing else.
+pub const MASK_MATCHER_BYTES: usize = 10 * 1024 * 1024;
 
 /// Closed stopping reasons; none holds private target data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,6 +58,7 @@ pub struct Chain {
     seen: BTreeSet<String>,
     privacy: privacy::Privacy,
     hops: u8,
+    max_hops: u8,
     stripped: bool,
     started: bool,
     ending: &'static str,
@@ -103,15 +109,18 @@ impl Chain {
         };
     }
 
-    /// Begin after the first request's admission, retaining only modeled headers.
+    /// Begin after the first request's policy check, retaining only modeled
+    /// headers, following at most `limits.max_redirects` before giving up and
+    /// masking within `limits.mask_matcher_bytes`.
     #[must_use]
-    pub fn new(current: &Url, headers: Vec<(String, String)>) -> Self {
+    pub fn new(current: &Url, headers: Vec<(String, String)>, limits: crate::Limits) -> Self {
         Self {
             current: current.clone(),
             headers,
             seen: BTreeSet::from([identity(current)]),
-            privacy: privacy::Privacy::default(),
+            privacy: privacy::Privacy::new(limits.mask_matcher_bytes),
             hops: 0,
+            max_hops: limits.max_redirects,
             stripped: false,
             started: false,
             ending: "interrupted",
@@ -120,7 +129,7 @@ impl Chain {
         }
     }
 
-    /// Draft a continuation, which must pass the same lease's admission before send.
+    /// Draft a continuation, which must pass the same run's egress policy before send.
     ///
     /// # Errors
     /// Returns a safe stopping reason for an invalid target, loop, exhausted
@@ -151,7 +160,7 @@ impl Chain {
         if self.seen.contains(&identity(&target.resolved)) {
             return Err(Stop::Loop);
         }
-        if self.hops == MAX_REDIRECTS {
+        if self.hops >= self.max_hops {
             return Err(Stop::HopLimit);
         }
         if self.current.origin() != target.resolved.origin() {

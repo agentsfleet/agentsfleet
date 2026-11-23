@@ -6,9 +6,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use af_core::env::{EnvSource, LOG_LEVEL_VAR};
+use afr_executor::Sizes;
 
-use super::{READY_TIMEOUT, SANDBOX_HOST_IDS};
+use super::SANDBOX_HOST_IDS;
 use crate::bubblewrap::SANDBOX_SUBCOMMAND;
+use crate::engine::EngineTuning;
 use crate::host::HostTools;
 use crate::probe::ProbePaths;
 use crate::toolbox::Toolbox;
@@ -21,9 +23,9 @@ pub struct BubblewrapConfig {
     /// The mounted, verified toolbox, shared by every clone of the
     /// configuration and unmounted by its one owner.
     pub toolbox: Arc<Toolbox>,
-    /// The delegated cgroup each lease's cgroup is made under.
+    /// The delegated cgroup each run's cgroup is made under.
     pub cgroup_root: PathBuf,
-    /// Where each lease's directory is made. Swept when the engine is built.
+    /// Where each run's directory is made. Swept when the engine is built.
     pub state_dir: PathBuf,
     /// The binary that hardens and serves inside; `agentsfleet-runner`.
     pub entry: PathBuf,
@@ -33,21 +35,26 @@ pub struct BubblewrapConfig {
     pub sandbox_ids: (u32, u32),
     /// The log level passed to the process inside, when one is set.
     pub log_level: Option<OsString>,
-    /// How long a sandbox may take to answer before the lease is refused.
+    /// How long a sandbox may take to answer before the run is refused.
     pub ready_timeout: Duration,
+    /// Disk bytes each run's sandbox may read, and write, per second.
+    pub io_bytes_per_second: u64,
+    /// What each sandbox's executor is started with and its client connects
+    /// with.
+    pub sizes: Sizes,
 }
 
 impl BubblewrapConfig {
-    /// What a runner host builds sandboxes from: its admitted `toolbox`, the
-    /// cgroup delegated to it, `state_dir` for each lease's directory, and
-    /// `entry`, the runner binary every sandbox starts. The log level is the
-    /// one `env` names.
+    /// What a runner host builds sandboxes from: its verified `toolbox`, the
+    /// cgroup delegated to it, `state_dir` for each run's directory, and
+    /// `entry`, the runner binary every sandbox starts, paced as `tuning`
+    /// says. The log level is the one `env` names.
     #[must_use]
     pub fn for_host(
         toolbox: Arc<Toolbox>,
-        cgroup_root: PathBuf,
-        state_dir: PathBuf,
+        (cgroup_root, state_dir): (PathBuf, PathBuf),
         entry: PathBuf,
+        tuning: EngineTuning,
         env: &impl EnvSource,
     ) -> Self {
         Self {
@@ -59,7 +66,9 @@ impl BubblewrapConfig {
             entry_args: vec![OsString::from(SANDBOX_SUBCOMMAND)],
             sandbox_ids: SANDBOX_HOST_IDS,
             log_level: env.get(LOG_LEVEL_VAR).map(OsString::from),
-            ready_timeout: READY_TIMEOUT,
+            ready_timeout: tuning.ready_timeout,
+            io_bytes_per_second: tuning.io_bytes_per_second,
+            sizes: tuning.sizes,
         }
     }
 

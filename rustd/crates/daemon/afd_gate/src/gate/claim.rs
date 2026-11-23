@@ -25,26 +25,15 @@
 //! Both checks iterate `char`s: the UTF-8 decoding belongs to the iterator, the
 //! ranges are written as the code points they are, and "what if a multi-byte
 //! sequence straddles the cap" is unrepresentable rather than defended against.
+//! The cap is [`TEXT_MAX_CHARS`], the one ceiling every stored text takes.
 //!
 //! # What never appears here
 //!
 //! Diff bytes and secret material. An approval authorises a bounded RUN, not
 //! specific bytes; the draft Pull Request is where a diff is reviewed.
 
+use af_validate::TEXT_MAX_CHARS;
 use serde_json::Value;
-
-/// Model-authored prose is bounded before it reaches a card or a gate row.
-///
-/// Generous enough for "revert `<sha>` in `<owner/repo>` because `<reason>`"
-/// and far below any message ceiling, so a fleet cannot push a wall of text in
-/// front of the approve button.
-pub const MAX_PROPOSED_ACTION_BYTES: usize = 512;
-
-/// Evidence is identifiers and links, never file contents.
-///
-/// A workspace is destroyed per lease, so fleets cannot hand each other bytes
-/// anyway — what this bounds is one fleet's own payload.
-pub const MAX_EVIDENCE_BYTES: usize = 1024;
 
 /// The `evidence` column's "nothing was offered".
 ///
@@ -115,7 +104,7 @@ impl Claim {
             .unwrap_or_default();
 
         Self {
-            proposed_action: card_safe(bounded(prose, MAX_PROPOSED_ACTION_BYTES)).into(),
+            proposed_action: card_safe(bounded(prose)).into(),
             evidence: object
                 .and_then(|body| body.get(FIELD_EVIDENCE))
                 .and_then(evidence)
@@ -137,17 +126,15 @@ impl Claim {
 fn evidence(offered: &Value) -> Option<String> {
     serde_json::to_string(offered)
         .ok()
-        .filter(|json| json.len() <= MAX_EVIDENCE_BYTES)
+        .filter(|json| json.chars().count() <= TEXT_MAX_CHARS)
 }
 
-/// The longest prefix of `prose` within `cap` bytes, on a character boundary.
-///
-/// A prefix of valid UTF-8 cut at a character boundary is itself valid UTF-8,
-/// so this cannot produce the mangled tail a byte-count truncation can.
-const fn bounded(prose: &str, cap: usize) -> &str {
-    // The last boundary at or below the cap, so a multi-byte character
-    // straddling it is dropped whole; the whole string when it already fits.
-    prose.split_at(prose.floor_char_boundary(cap)).0
+/// The first [`TEXT_MAX_CHARS`] characters of `prose`; all of it when it fits.
+fn bounded(prose: &str) -> &str {
+    prose
+        .char_indices()
+        .nth(TEXT_MAX_CHARS)
+        .map_or(prose, |(end, _)| prose.split_at(end).0)
 }
 
 /// `prose` with every character a renderer could be fooled by replaced.
@@ -183,7 +170,7 @@ mod tests {
         clippy::expect_used,
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
-    use super::{Claim, MAX_EVIDENCE_BYTES, MAX_PROPOSED_ACTION_BYTES, NO_EVIDENCE, bounded};
+    use super::{Claim, NO_EVIDENCE};
     use serde_json::json;
 
     #[test]
@@ -296,40 +283,5 @@ mod tests {
             let claim = Claim::of(Some(&json!({"proposed_action": kept})));
             assert_eq!(claim.proposed_action(), kept);
         }
-    }
-
-    #[test]
-    fn oversized_prose_is_capped_and_oversized_evidence_is_dropped() {
-        let wall = "x".repeat(4_000);
-        let claim = Claim::of(Some(&json!({
-            "proposed_action": wall,
-            "evidence": {"blob": wall},
-        })));
-
-        assert!(claim.proposed_action().len() <= MAX_PROPOSED_ACTION_BYTES);
-        // Dropped, so the card's JSON stays valid — a truncated object would
-        // not be, and an unparseable card is worse than one missing its links.
-        assert_eq!(claim.evidence(), NO_EVIDENCE);
-        assert!(claim.evidence().len() <= MAX_EVIDENCE_BYTES);
-    }
-
-    #[test]
-    fn a_cap_never_lands_inside_a_character() {
-        // The hazard a byte-count truncation carries and this one cannot: a
-        // slice cut off a character boundary would panic here rather than
-        // mangle silently.
-        let multibyte = "é".repeat(MAX_PROPOSED_ACTION_BYTES);
-
-        // Every cap from "nothing fits" through several whole characters,
-        // including the odd ones that fall INSIDE a two-byte character.
-        for cap in 0..8 {
-            let kept = bounded(&multibyte, cap);
-            assert!(kept.len() <= cap, "cap {cap}: kept {} bytes", kept.len());
-            assert!(multibyte.starts_with(kept), "cap {cap}");
-        }
-        // An odd cap keeps only the characters wholly inside it — never a
-        // trailing half, which is what would panic the slice above.
-        assert_eq!(bounded(&multibyte, 3), "é");
-        assert_eq!(bounded(&multibyte, 1), "");
     }
 }

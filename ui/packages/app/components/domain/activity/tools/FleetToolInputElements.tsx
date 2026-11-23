@@ -1,6 +1,6 @@
 import type { PlanStatus, PlanStep, ToolCopy } from "./presentation/tool-call-shape";
 import { PLAN_STATUS, TOOL_BODY } from "./presentation/tool-call-shape";
-import { RailRow, ShowAll, CLIPPED_EDIT_NOTE, OUTPUT_RAIL } from "./FleetToolCallBody";
+import { ChangedFiles, RailRow, OUTPUT_RAIL } from "./FleetToolCallBody";
 
 const PLAN_GLYPH: Record<PlanStatus, string> = {
   [PLAN_STATUS.PENDING]: "□", [PLAN_STATUS.IN_PROGRESS]: "◐", [PLAN_STATUS.COMPLETED]: "✔",
@@ -11,10 +11,11 @@ const PLAN_SPOKEN: Record<PlanStatus, string> = {
 const PLAN_TONE: Record<PlanStatus, string> = {
   [PLAN_STATUS.PENDING]: "", [PLAN_STATUS.IN_PROGRESS]: "text-foreground", [PLAN_STATUS.COMPLETED]: "line-through",
 };
-/** Supplement the recorded JSON where a clipped edit or a plan has its own presentation. */
-export function ToolCallInputPreview({copy, onShowAll}: {copy: ToolCopy; onShowAll: (() => void) | undefined}) {
+/** Supplement the recorded JSON where an edit's recorded changes or a plan has its own presentation.
+ * Input describes the requested action; its renderer never establishes success. */
+export function ToolCallInputPreview({copy}: {copy: ToolCopy}) {
   const body = copy.body;
-  if (body.kind === TOOL_BODY.CLIPPED_EDIT) return <RailRow glyph={OUTPUT_RAIL}>{CLIPPED_EDIT_NOTE}<ShowAll onShowAll={onShowAll} /></RailRow>;
+  if (body.kind === TOOL_BODY.CHANGES) return <ChangedFiles changes={body.changes} />;
   if (body.kind === TOOL_BODY.PLAN) return <PlanSteps explanation={body.explanation} steps={body.steps} />;
   return null;
 }

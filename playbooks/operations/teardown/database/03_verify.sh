@@ -153,7 +153,7 @@ SQLEOF
 		-e DATABASE_URL \
 		-e PGSSLROOTCERT=system \
 		-v "$tmp_sql:/verify.sql:ro" \
-		postgres:18-alpine \
+		postgres:19-alpine \
 		sh -c 'psql "$DATABASE_URL" -f /verify.sql -t' \
 		2>&1 | grep -v "^psql:" | grep -v "^SSL connection" | grep -v "^NOTICE:"
 

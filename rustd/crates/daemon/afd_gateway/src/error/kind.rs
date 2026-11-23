@@ -1,11 +1,11 @@
-//! Typed session failures retain their service and transport causes.
+//! Typed connection failures retain their service and transport causes.
 
 use crate::Operation;
 use afd_runner::capacity::authority::Refusal;
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ErrorKind {
-    #[error("The message is not valid for this runner stream or session state.")]
+    #[error("The message is not valid for this runner stream or connection state.")]
     Protocol,
     #[error("The runner stream value could not be represented.")]
     Conversion {
@@ -28,10 +28,10 @@ pub(crate) enum ErrorKind {
     UnknownStream,
     #[error("Authenticate the control kind before attaching the remaining streams.")]
     ControlBearerMissing,
-    #[error("Send the bearer only on control; secondary streams use the authenticated session.")]
+    #[error("Send the bearer only on control; secondary streams use the authenticated connection.")]
     UnexpectedBearer,
-    #[error("The runner session header must contain a valid UUIDv7 identifier.")]
-    SessionIdentifier {
+    #[error("The runner connection header must contain a valid UUIDv7 identifier.")]
+    ConnectionIdentifier {
         #[source]
         source: af_core::error::Error,
     },
@@ -106,10 +106,10 @@ pub(crate) enum ErrorKind {
         #[source]
         source: afd_fleet::Error,
     },
-    #[error("The authoring service could not complete the operation.")]
-    Authoring {
+    #[error("The setup service could not complete the operation.")]
+    Setup {
         #[source]
-        source: afd_authoring::Error,
+        source: afd_setup::Error,
     },
     #[error("The runner stream worker stopped before completing its work.")]
     Worker {

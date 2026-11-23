@@ -1,53 +1,37 @@
-//! `pushover`: a push notification through Pushover's one endpoint.
+//! Pushover as the run's notifier: `guffbolt`'s `notify`, sent through
+//! Pushover's one endpoint and the run's egress guard.
 //!
-//! The model writes the message; the handler reads the `pushover` secret's
-//! `token` and `user` from `secrets_map` itself and puts them in the body,
+//! The model writes the message; the backend asks the guard for the
+//! `pushover` secret's `token` and `user` itself and puts them in the body,
 //! because Pushover takes them there rather than in a header. The model never
-//! names a credential, and an argument naming one is refused by the schema.
-//! The request still passes the lease's guard, so a fleet whose allowlist
-//! lacks Pushover's host cannot notify.
+//! names a credential. The request still passes the guard, so a run whose
+//! policy lacks Pushover's host cannot notify.
 
-use std::ops::RangeInclusive;
+use guffbolt::CallRef;
+use guffbolt::tools::Refusal;
+use guffbolt::tools::code;
+use guffbolt::tools::notify::{Notification, Notifier, NotifyFuture, Priority};
+use guffbolt::tools::outbound::{Outbound as _, Placement, Redirects, Request};
+use serde::Serialize;
 
-use af_egress::{Draft, Error, Placement};
-use af_secrets::FIELD_TOKEN;
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
-
-use crate::catalog::{Entry, PUSHOVER};
-use crate::egress::{self, SharedTransport};
-use crate::handler::Handler;
-use crate::runtime::{ToolContext, ToolErrorCode, ToolOutput};
+use crate::egress::Egressed;
 
 /// Pushover's message endpoint.
-const MESSAGES_URL: &str = "https://api.pushover.net/1/messages.json";
+pub(crate) const MESSAGES_URL: &str = "https://api.pushover.net/1/messages.json";
 /// The method it takes.
 const METHOD: &str = "POST";
 /// The body's media type.
 const JSON: (&str, &str) = ("Content-Type", "application/json");
-/// The secret the handler reads its credentials from.
+/// The secret the backend reads its credentials from.
 const CREDENTIAL: &str = "pushover";
+/// The application token's field.
+const FIELD_TOKEN: &str = "token";
 /// The recipient's field.
 const FIELD_USER: &str = "user";
-/// The priorities Pushover accepts.
-const PRIORITIES: RangeInclusive<i8> = -2..=2;
-/// What an out-of-range priority reads back.
-const PRIORITY_OUT_OF_RANGE: &str = "priority runs from -2 to 2";
-
-/// `pushover`'s arguments.
-#[derive(Debug, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct Notify {
-    /// The notification's text.
-    message: String,
-    /// A title above it.
-    title: Option<String>,
-    /// From -2 (no alert) to 2 (emergency); 0 when absent.
-    #[schemars(range(min = -2, max = 2))]
-    priority: Option<i8>,
-    /// One of Pushover's sound names.
-    sound: Option<String>,
-}
+/// What a send is logged as.
+const TOOL: &str = "notify";
+/// The statuses Pushover answers a sent notification with.
+const SUCCESS: std::ops::Range<u16> = 200..300;
 
 /// The body Pushover reads.
 #[derive(Serialize)]
@@ -59,80 +43,79 @@ struct Body<'a> {
     title: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     priority: Option<i8>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    sound: Option<&'a str>,
 }
 
-/// Sends one notification through the lease's guard.
-#[derive(Debug)]
-pub(crate) struct Pushover {
-    transport: SharedTransport,
-}
-
-impl Pushover {
-    /// A handler sending through `transport`.
-    pub(crate) fn new(transport: SharedTransport) -> Self {
-        Self { transport }
+/// Pushover's priority for `priority`: quiet, the recipient's default, or
+/// past their quiet hours. `None` leaves Pushover's own default.
+const fn pushover_priority(priority: Priority) -> Option<i8> {
+    match priority {
+        Priority::Low => Some(-1),
+        Priority::Normal => None,
+        Priority::High => Some(1),
     }
 }
 
-#[async_trait::async_trait]
-impl Handler for Pushover {
-    const ENTRY: &'static Entry = &PUSHOVER;
-    const DESCRIPTION: &'static str = "Send a push notification through Pushover to \
-        the recipient this fleet's pushover secret names.";
-    type Arguments = Notify;
+/// Sends a run's notifications through Pushover, behind the run's guard.
+#[derive(Debug)]
+pub(crate) struct Pushover<'b, 'run> {
+    outbound: Egressed<'b, 'run>,
+}
 
-    async fn run(&self, arguments: Notify, context: ToolContext<'_, '_>) -> ToolOutput {
-        if arguments
-            .priority
-            .is_some_and(|priority| !PRIORITIES.contains(&priority))
-        {
-            return ToolOutput::failed(ToolErrorCode::InvalidArguments, PRIORITY_OUT_OF_RANGE);
-        }
-        let statics = context.lease.egress.lock().await.statics();
-        let credential = |field: &str| {
-            statics
-                .field(CREDENTIAL, field)
-                .ok_or_else(|| Error::secret_not_found(CREDENTIAL, field))
-        };
-        let (token, user) = match (credential(FIELD_TOKEN), credential(FIELD_USER)) {
-            (Ok(token), Ok(user)) => (token, user),
-            (Err(missing), _) | (_, Err(missing)) => {
-                return egress::refused(Self::ENTRY, context.lease.lease_id, &missing);
-            }
-        };
+impl<'b, 'run> Pushover<'b, 'run> {
+    /// The notifier sending through `outbound`, the run's guard.
+    pub(crate) const fn new(outbound: Egressed<'b, 'run>) -> Self {
+        Self { outbound }
+    }
+
+    /// Sends `note` and answers what the model reads of Pushover's reply.
+    async fn send(&self, note: Notification<'_>) -> Result<String, Refusal> {
+        let token = self.secret(FIELD_TOKEN).await?;
+        let user = self.secret(FIELD_USER).await?;
         let body = Body {
-            token,
-            user,
-            message: &arguments.message,
-            title: arguments.title.as_deref(),
-            priority: arguments.priority,
-            sound: arguments.sound.as_deref(),
+            token: &token,
+            user: &user,
+            message: note.message,
+            title: note.title,
+            priority: pushover_priority(note.priority),
         };
-        let written = match serde_json::to_string(&body) {
-            Ok(written) => written,
-            Err(unwritten) => {
-                return ToolOutput::failed(ToolErrorCode::InvalidArguments, &unwritten.to_string());
-            }
-        };
-        let draft = Draft {
+        let written = serde_json::to_string(&body)
+            .map_err(|unwritten| Refusal::new(code::INVALID_ARGUMENTS, unwritten.to_string()))?;
+        let draft = Request {
             method: METHOD.to_owned(),
             url: MESSAGES_URL.to_owned(),
             headers: vec![(JSON.0.to_owned(), JSON.1.to_owned())],
             body: Some(written),
             placement: Placement::Nowhere,
+            redirects: Redirects::Stop,
         };
-        match egress::send(Self::ENTRY, self.transport.as_ref(), context.lease, draft).await {
-            Ok(inbound) => egress::answered(
-                inbound.status,
-                format!(
-                    "Status: {}\n\nResponse Body:\n{}",
-                    inbound.status, inbound.body
-                ),
-            ),
-            Err(refused) => refused,
+        let inbound = self
+            .outbound
+            .send(TOOL, draft)
+            .await
+            .map_err(|refused| Refusal::new(refused.code, refused.detail))?;
+        let text = format!(
+            "Status: {}\n\nResponse Body:\n{}",
+            inbound.status, inbound.body
+        );
+        if SUCCESS.contains(&inbound.status) {
+            Ok(text)
+        } else {
+            Err(Refusal::new(code::UPSTREAM_STATUS, text))
         }
+    }
+
+    /// The `field` of the run's `pushover` secret.
+    async fn secret(&self, field: &str) -> Result<String, Refusal> {
+        self.outbound
+            .secret(TOOL, CREDENTIAL, field)
+            .await
+            .map_err(|refused| Refusal::new(refused.code, refused.detail))
+    }
+}
+
+impl Notifier for Pushover<'_, '_> {
+    fn notify<'a>(&'a self, _call: &'a CallRef, note: Notification<'a>) -> NotifyFuture<'a> {
+        Box::pin(self.send(note))
     }
 }
 

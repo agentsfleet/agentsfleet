@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use af_wire::memory::{MemoryDelta, MemoryRecallResponse, Visibility};
 
-use crate::{Hydrated, MemoryBackend, MemoryRecovery, RECALL_MISS_CAP, Recall, Seed};
+use crate::{Loaded, MemoryRecovery, RECALL_MISS_CAP, Recall, Seed};
 
 type TestResult = crate::Result<(), Box<dyn std::error::Error>>;
 
@@ -42,22 +42,20 @@ async fn recovery_preserves_local_memory_changes_and_recall_budget() -> TestResu
         entry("updated", "old value"),
     ];
     let remote = Remote::default();
-    let mut original = Hydrated::new(Seed {
+    let mut original = Loaded::new(Seed {
         recall: Some(&remote),
         ..Seed::window(&window)
     });
-    original.forget("forgotten").await?;
-    original
-        .store(entry("updated", "new private value"))
-        .await?;
-    original.store(entry("added", "new entry")).await?;
+    original.forget("forgotten");
+    original.store(entry("updated", "new private value"))?;
+    original.store(entry("added", "new entry"))?;
     for _miss in 0..RECALL_MISS_CAP {
         original.recall("missing", 50).await?;
     }
     let encoded = serde_json::to_vec(&original.snapshot()?)?;
     let saved: MemoryRecovery = serde_json::from_slice(&encoded)?;
     let scrub = af_secrets::Scrub::of([("current-secret".to_owned(), "private")])?;
-    let recovered = Hydrated::recover(
+    let recovered = Loaded::recover(
         Seed {
             recall: Some(&remote),
             ..Seed::window(&window)
@@ -65,7 +63,7 @@ async fn recovery_preserves_local_memory_changes_and_recall_budget() -> TestResu
         saved,
         &scrub,
     )?;
-    let listed = recovered.list(None).await?;
+    let listed = recovered.list(None);
     let keys: Vec<_> = listed.iter().map(|found| found.key.as_ref()).collect();
     assert_eq!(keys, ["added", "updated"]);
     assert!(
@@ -80,17 +78,17 @@ async fn recovery_preserves_local_memory_changes_and_recall_budget() -> TestResu
     Ok(())
 }
 
-#[tokio::test]
-async fn recovery_refuses_a_revoked_shared_publish_grant() -> TestResult {
-    let mut original = Hydrated::new(Seed {
+#[test]
+fn recovery_refuses_a_revoked_shared_publish_grant() -> TestResult {
+    let mut original = Loaded::new(Seed {
         publish: true,
         ..Seed::default()
     });
     let mut shared = entry("release_note", "confirmed outcome");
     shared.visibility = Visibility::Workspace;
-    original.store(shared).await?;
+    original.store(shared)?;
     let scrub = af_secrets::Scrub::of([])?;
-    let refused = Hydrated::recover(Seed::default(), original.snapshot()?, &scrub);
+    let refused = Loaded::recover(Seed::default(), original.snapshot()?, &scrub);
     assert!(refused.is_err_and(|failure| failure.is_not_granted()));
     Ok(())
 }
@@ -109,7 +107,7 @@ fn inconsistent_keys_and_unbounded_recall_state_cannot_restore() -> TestResult {
         MemoryRecovery::new(vec![], vec![], RECALL_MISS_CAP + 1),
     ] {
         assert!(
-            Hydrated::recover(Seed::default(), invalid, &scrub)
+            Loaded::recover(Seed::default(), invalid, &scrub)
                 .is_err_and(|failure| failure.code() == af_core::error_code::INVALID_REQUEST)
         );
     }
@@ -119,12 +117,14 @@ fn inconsistent_keys_and_unbounded_recall_state_cannot_restore() -> TestResult {
 #[test]
 fn an_overlay_larger_than_one_push_is_refused_by_its_bound() -> TestResult {
     use garde::Validate as _;
-    let content = "a".repeat(af_wire::memory::MAX_CONTENT_LEN);
-    let pending = (0..17)
+    let content = "a".repeat(af_validate::TEXT_MAX_CHARS);
+    let one = crate::loaded::push_bytes(&entry("k00", &content));
+    let past = crate::loaded::PUSH_BUDGET_BYTES / one + 1;
+    let pending = (0..past)
         .map(|index| entry(&format!("k{index:02}"), &content))
         .collect();
     let Err(report) = MemoryRecovery::new(pending, vec![], 0).validate() else {
-        return Err("seventeen full entries fit one push".into());
+        return Err("one entry past the push frame still fit".into());
     };
     assert!(
         report
@@ -146,4 +146,25 @@ fn the_debug_view_counts_the_overlay_without_printing_it() {
         format!("{recovery:?}"),
         "MemoryRecovery { pending_count: 1, hidden_count: 1, recall_misses: 2 }"
     );
+}
+
+/// Two hidden keys the current scrub masks to one key are one key twice, and
+/// recovery refuses them rather than keep either.
+#[test]
+fn hidden_keys_that_scrub_to_one_key_cannot_restore() -> TestResult {
+    let scrub = af_secrets::Scrub::of([
+        ("rotated".to_owned(), "first-value"),
+        ("rotated".to_owned(), "second-value"),
+    ])?;
+    let saved = MemoryRecovery::new(
+        vec![],
+        vec![
+            "token_first-value".to_owned(),
+            "token_second-value".to_owned(),
+        ],
+        0,
+    );
+    let refused = Loaded::recover(Seed::default(), saved, &scrub);
+    assert!(refused.is_err_and(|failure| failure.code() == af_core::error_code::INVALID_REQUEST));
+    Ok(())
 }

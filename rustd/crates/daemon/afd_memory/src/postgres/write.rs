@@ -1,7 +1,7 @@
-//! The Postgres store's writes: a push's upsert with its sweep and cap, and
-//! the operator's forget.
+//! The Postgres store's writes: a push's upsert with its sweep, and the
+//! operator's forget.
 
-use af_wire::memory::{MAX_ENTRIES_PER_FLEET, MemoryDelta, PINNED_CATEGORY};
+use af_wire::memory::MemoryDelta;
 use jiff::Timestamp;
 use sqlx::{Acquire as _, PgConnection};
 
@@ -14,17 +14,11 @@ use crate::window::{DAILY_CATEGORY, DAILY_RETENTION};
 
 /// Statement names, for the context a query failure carries.
 const CONTEXT_UPSERT: &str = "memory upsert";
-const CONTEXT_EVICT: &str = "memory cap evict";
 const CONTEXT_SWEEP: &str = "memory daily sweep";
 
 impl PgStore {
     /// Writes each entry under `owner.fleet` at `now`, replacing what its key
-    /// held, then sweeps expired scratch notes and evicts past the cap, in one
-    /// transaction.
-    ///
-    /// The sweep runs BEFORE the cap deliberately: an already-expired `daily` row
-    /// must not occupy a cap slot during victim selection, or eviction deletes a
-    /// durable row in the doomed row's place.
+    /// held, then sweeps expired scratch notes, in one transaction.
     ///
     /// # Errors
     /// The database cannot take the write; none of it lands.
@@ -89,19 +83,11 @@ impl PgStore {
             .await
             .map_err(|source| Failure::Runner(CONTEXT_SWEEP).raise(source))?
             .rows_affected();
-        let evicted = sqlx::query(sql::EVICT_PAST_CAP)
-            .bind(owner.fleet)
-            .bind(i64::try_from(MAX_ENTRIES_PER_FLEET).unwrap_or(i64::MAX))
-            .bind(PINNED_CATEGORY)
-            .execute(&mut *connection)
-            .await
-            .map_err(|source| Failure::Runner(CONTEXT_EVICT).raise(source))?
-            .rows_affected();
         sqlx::query(include_str!("../sql/restore_api_role.sql"))
             .execute(connection)
             .await
             .map_err(|source| Failure::Runner(CONTEXT_UPSERT).role(source))?;
-        Ok(Housekept { swept, evicted })
+        Ok(Housekept { swept })
     }
 
     /// Removes the fleet's own entry under `key`; whether there was one.

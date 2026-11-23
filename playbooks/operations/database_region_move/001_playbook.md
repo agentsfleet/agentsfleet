@@ -36,7 +36,7 @@ Writes stay stopped from step 3 to step 8.
    ALTER ROLE <LOGIN> SET statement_timeout = '5000ms';
    ```
 
-6. Check memberships against `schema/20261108120100_roles_and_privileges.sql`.
+6. Check memberships against `rustd/crates/daemon/afd_db/schema/20261108120100_roles_and_privileges.sql`.
    Never grant `pg_read_all_data` or `pg_write_all_data`; they bypass the `memory` schema boundary.
 7. In item `planetscale-<ENV>` of the vault `VAULT_DEV` or `VAULT_PROD` names, stage beside the live fields:
    `next-api-connection-string` on port `6432` (PgBouncer) and `next-migrator-connection-string` on `5432`.
@@ -102,7 +102,7 @@ Production uses `ENV=prod`, `agentsfleetd-prod`, image `agentsfleetd:latest`, th
 ## How the copy behaves
 
 - `02_copy.sh` refuses unless both `audit._sqlx_migrations` versions match; after an incompatible rebuild, use clean-database priming.
-- It dumps data only, as plain SQL in `postgres:18-alpine`, excluding the ledger table.
+- It dumps data only, as plain SQL in `postgres:19-alpine`, excluding the ledger table.
 - The load truncates catalog-discovered tables under `session_replication_role = 'replica'`, which the target role must be allowed to set.
 - Truncate and restore share one `psql --single-transaction`, so a failure leaves the target unchanged.
   Fix the blocker and retry; never exclude more tables to dodge duplicate rows.

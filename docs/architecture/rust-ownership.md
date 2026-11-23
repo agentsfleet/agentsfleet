@@ -81,7 +81,7 @@ Replacements the verifiers refused, kept here so they are not proposed again wit
 |---|---|
 | `url::Url` for the connector token pin, the vault projection guard and the runner allowlist | Each hand guard is stricter exactly where its comment says it must be: WHATWG (Web Hypertext Application Technology Working Group) URL parsing reads `\` as `/`, collapses `///`, accepts `scheme:host` with no `//`, accepts an empty userinfo before `@`, and reads `host:443` as a scheme. Keeping every refusal means keeping the hand split. |
 | `backon` for regenerating a workspace or signup name on collision | Not a retry: no transient fault and no wait. Each pass draws a new name because the last was taken, inside one held connection. |
-| `headers::IfMatch` / `IfNoneMatch` for the fleet and entity-tag preconditions | Both directions change: `*` and tag lists would pass where they answer 412 today, a malformed member would be skipped where the header is refused today, and a quoted tag with a space trips a debug assertion. |
+| `headers::IfMatch` for the fleet and entity-tag write preconditions | `*` and tag lists would pass where they answer 412 today, a malformed member would be skipped where the header is refused today, and a quoted tag with a space trips a debug assertion. The conditional reads took `headers::IfNoneMatch` in M253_003: the task read and the model list answer 304 through `precondition_passes` (`afd_api_tenant`'s `fleet/durable_tasks/read.rs` and `tenant/models/mod.rs`). |
 | garde, or `af_validate::Limit`, for a raw body byte cap or a clamping `?limit` | A byte cap is checked before parsing, with its own code and order; `Limit` refuses where these routes clamp. |
 | A shared trimming reader for the runner's token | See configuration knobs above. |
 

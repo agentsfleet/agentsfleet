@@ -1,27 +1,30 @@
-//! Runtime routes come from the selected model's persisted lease settings.
+//! Runtime routes come from the selected model's persisted run settings.
 
 use std::fmt;
+use std::sync::Arc;
 
-use af_wire::lease::LeasePayload;
 use af_wire::policy::ExecutionPolicy;
+use af_wire::run::RunPayload;
+use guffbolt_ai::wire::Connected;
 
 use crate::error::{Result, raise};
 use crate::provider::Provider;
-use crate::transport::Transport;
+use crate::settings::{Configured, RetryPolicy, Timeouts};
+use crate::transport::{REPLY_MAX_BYTES, guarded};
 use crate::turn::Turns;
-use af_inference::Configured;
+use crate::turn::observer::RunObserver;
 
-/// What reaches the model a lease names.
+/// What reaches the model a run names.
 ///
-/// One lease's life against it, in order:
+/// One run's life against it, in order:
 ///
 /// ```text
-/// LEASE ::= admit [connect TURN*]
-/// TURN  ::= Provider::stream (Chunk)* [failure]
+/// RUN ::= admit [connect TURN*]
+/// TURN  ::= Model::stream (Chunk)* [failure]
 /// ```
 ///
-/// `admit` runs before anything is prepared for the lease, so a refusal costs
-/// no sandbox and no bundle. `connect` runs once per lease.
+/// `admit` runs before anything is prepared for the run, so a refusal costs
+/// no sandbox and no bundle. `connect` runs once per run.
 pub trait Connect: Send + Sync + fmt::Debug {
     /// Refuses missing or invalid saved inference settings.
     ///
@@ -29,23 +32,24 @@ pub trait Connect: Send + Sync + fmt::Debug {
     /// The selected model's saved inference settings are missing or invalid.
     fn admit(&self, policy: &ExecutionPolicy<'_>) -> Result<()>;
 
-    /// The provider `lease` drives.
+    /// The provider `run` drives.
     ///
     /// # Errors
     /// The selected model's saved inference settings are missing or invalid.
-    fn connect(&self, lease: &LeasePayload<'_>) -> Result<Box<dyn Provider>>;
+    fn connect(&self, run: &RunPayload<'_>) -> Result<Box<Provider>>;
 }
 
-/// The production [`Connect`]: one HTTP client every lease's provider shares.
+/// The production [`Connect`]: one HTTP client every run's provider shares.
 ///
 /// A cheap handle: cloning it shares the client's connection pool. The client
 /// follows no redirect, so a turn reaches the host its route names and no
-/// other, with the key on it.
+/// other, with the key on it. A reply is bounded by the runner frame
+/// (`af_wire::protocol::MESSAGE_BYTES_MAX`).
 #[derive(Debug, Clone)]
 pub struct Connector {
     client: reqwest::Client,
-    timeouts: af_inference::Timeouts,
-    retries: crate::RetryPolicy,
+    timeouts: Timeouts,
+    retries: RetryPolicy,
 }
 
 impl Connector {
@@ -54,17 +58,14 @@ impl Connector {
     /// # Errors
     /// The HTTP client could not be built.
     pub fn new() -> Result<Self> {
-        Self::configured(af_inference::Timeouts::DEFAULT, crate::RetryPolicy::DEFAULT)
+        Self::configured(Timeouts::DEFAULT, RetryPolicy::DEFAULT)
     }
 
     /// Builds one guarded pool with checked timeout and retry settings.
     ///
     /// # Errors
     /// The HTTP client could not be built.
-    pub fn configured(
-        timeouts: af_inference::Timeouts,
-        retries: crate::RetryPolicy,
-    ) -> Result<Self> {
+    pub fn configured(timeouts: Timeouts, retries: RetryPolicy) -> Result<Self> {
         #[expect(
             clippy::disallowed_methods,
             reason = "af_egress::guarded wraps this builder to pin DNS to the sandbox allowlist; afd_identity::direct is a daemon crate the runner does not depend on, and swapping to it would drop the egress guard"
@@ -86,13 +87,13 @@ impl Connector {
     pub const fn with_client(client: reqwest::Client) -> Self {
         Self {
             client,
-            timeouts: af_inference::Timeouts::DEFAULT,
-            retries: crate::RetryPolicy::DEFAULT,
+            timeouts: Timeouts::DEFAULT,
+            retries: RetryPolicy::DEFAULT,
         }
     }
 }
 
-fn configured<'a>(policy: &'a ExecutionPolicy<'_>) -> Result<Configured<'a>> {
+fn configured(policy: &ExecutionPolicy<'_>) -> Result<Configured> {
     let settings = policy
         .inference
         .as_ref()
@@ -105,22 +106,22 @@ impl Connect for Connector {
         configured(policy).map(drop)
     }
 
-    fn connect(&self, lease: &LeasePayload<'_>) -> Result<Box<dyn Provider>> {
-        let policy = &lease.policy;
-        let route = configured(policy)?;
-        let settings = policy
-            .inference
-            .as_ref()
-            .ok_or_else(|| raise::unhosted(&policy.provider))?;
-        let lease_id = lease.lease_id.as_ref();
-        let transport = Transport::new(self.client.clone(), lease_id, &policy.provider)
-            .with_retry(self.retries);
-        let counting_transport = transport.clone().once().http();
-        let model = route.model(&policy.context.model, &policy.api_key, transport.http());
-        Ok(Box::new(
-            Turns::new(model, settings, policy, lease_id, counting_transport)
-                .with_settings(self.timeouts, self.retries),
-        ))
+    fn connect(&self, run: &RunPayload<'_>) -> Result<Box<Provider>> {
+        let policy = &run.policy;
+        let route = configured(policy)?.into_route();
+        let run_id = run.run_id.as_ref();
+        let observer = RunObserver::new(run_id, &policy.provider);
+        let connected = Connected::new(
+            route,
+            &policy.context.model,
+            &policy.api_key,
+            guarded(self.client.clone()),
+        )
+        .with_retry(self.retries.wire())
+        .with_timeouts(self.timeouts.wire())
+        .with_reply_bound(REPLY_MAX_BYTES)
+        .with_observer(Arc::new(observer));
+        Ok(Box::new(Turns::new(connected, run_id, &policy.provider)))
     }
 }
 

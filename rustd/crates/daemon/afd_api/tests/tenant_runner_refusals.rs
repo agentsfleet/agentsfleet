@@ -3,7 +3,7 @@
 
 use crate::harness;
 use afd_auth::scope::{Scope, ScopeSet};
-use http::{HeaderName, Method, StatusCode};
+use http::{Method, StatusCode};
 
 use self::harness::Fleet;
 
@@ -48,17 +48,62 @@ async fn a_tenant_registration_whose_body_is_not_one_is_refused() {
     let router = Fleet::new()
         .with_dashboard_holding(SUBJECT, RUNNER_TENANT)
         .router();
-    let response = harness::send_with_headers(
+    let response = harness::send(
         &router,
         Method::POST,
         RUNNERS,
         Some("session"),
         "{not a registration",
-        &[(
-            HeaderName::from_static("idempotency-key"),
-            "0199a801-1000-7000-8000-0000000000ff",
-        )],
     )
     .await;
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+/// An empty registration is told the body is required, a sentence apart from
+/// the one a body that does not parse earns.
+#[tokio::test]
+async fn an_empty_tenant_registration_is_told_its_body_is_required() {
+    let router = Fleet::new()
+        .with_dashboard_holding(SUBJECT, RUNNER_TENANT)
+        .router();
+    let empty = harness::send(&router, Method::POST, RUNNERS, Some("session"), "").await;
+    assert_eq!(empty.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(harness::detail_of(empty).await, "Request body required");
+    let unreadable = harness::send(&router, Method::POST, RUNNERS, Some("session"), "{").await;
+    assert_eq!(unreadable.status(), StatusCode::BAD_REQUEST);
+    assert_ne!(
+        harness::detail_of(unreadable).await,
+        "Request body required"
+    );
+}
+
+/// A caller whose credential resolves to no tenant is refused on every tenant
+/// runner route, as a 403 that says why, before any runner is read.
+#[tokio::test]
+async fn a_caller_with_no_tenant_is_refused_on_every_tenant_runner_route() {
+    let fleet = Fleet::new().with_dashboard_holding(SUBJECT, RUNNER_TENANT);
+    fleet.ownership().revoke();
+    let router = fleet.router();
+    for (method, path, body) in [
+        (Method::GET, RUNNERS, ""),
+        (Method::GET, RUNNER, ""),
+        (Method::DELETE, RUNNER, ""),
+    ] {
+        let response = harness::send(&router, method.clone(), path, Some("session"), body).await;
+        assert_eq!(response.status(), StatusCode::FORBIDDEN, "{method} {path}");
+        let problem = harness::json_body(response).await;
+        assert_eq!(
+            harness::error_code(&problem),
+            Some(af_core::error_code::AUTH_FORBIDDEN.as_str()),
+            "{method} {path}"
+        );
+        assert_eq!(
+            harness::text(&problem, "detail"),
+            Some(
+                "This account isn't part of a tenant, so it has no runners to manage. \
+                 Sign in with your tenant account."
+            ),
+            "{method} {path}"
+        );
+    }
 }

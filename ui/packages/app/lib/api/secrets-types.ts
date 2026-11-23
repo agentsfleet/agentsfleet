@@ -1,7 +1,7 @@
 import type {Secret, SecretFleet} from "./secrets";
 
 // The secret kinds the vault classifies by. No runtime dependencies: client components read these
-// without pulling the transport, whose retry policy is server-only.
+// without pulling the transport.
 
 // Secret kinds, keyed off the server's `kind` discriminator. The string
 // values are verbatim with `Kind::as_str` in afd_vault/src/projection/mod.rs

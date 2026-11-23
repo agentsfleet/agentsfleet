@@ -32,10 +32,8 @@ const runApiKey = <E extends CliError>(
     ),
   );
 
-describe("api-key effect validation", () => {
-  test("refuses a runaway next_cursor instead of walking forever", async () => {
-    // A server that never returns a null cursor must trip the walk bound,
-    // not spin the CLI indefinitely.
+describe("api-key list walk", () => {
+  test("refuses a cursor the walk already followed instead of walking forever", async () => {
     const cap = newCapture();
     const paths: string[] = [];
     const exit = await runApiKey(
@@ -47,7 +45,8 @@ describe("api-key effect validation", () => {
     expect(Exit.isFailure(exit)).toBe(true);
     const err = failureOf(exit);
     expect(err).toBeInstanceOf(UnexpectedError);
-    expect(err?.detail).toContain("did not end");
-    expect(paths.length).toBeGreaterThan(1);
+    expect(err?.detail).toBe("the API key list repeated page cursor same");
+    expect(paths).toHaveLength(2);
   });
+
 });

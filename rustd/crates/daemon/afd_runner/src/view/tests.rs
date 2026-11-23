@@ -7,7 +7,7 @@ use jiff::Timestamp;
 
 use super::decode::derive_liveness;
 use crate::sql::NEVER_SEEN;
-use af_core::timing::LeaseClock;
+use af_core::timing::RunClock;
 
 /// The database clock every case is judged at.
 const CHECKED_AT: Timestamp = Timestamp::constant(1_760_000_000, 0);
@@ -20,19 +20,19 @@ fn liveness_keeps_never_seen_busy_fresh_and_stale_states_distinct() {
     let fresh = clock::before(CHECKED_AT, RUNNER_OFFLINE_AFTER);
     let stale = clock::before(fresh, ONE_MILLISECOND);
     assert_eq!(
-        derive_liveness(NEVER_SEEN, false, CHECKED_AT, LeaseClock::default()),
+        derive_liveness(NEVER_SEEN, false, CHECKED_AT, RunClock::default()),
         RunnerLiveness::Registered
     );
     assert_eq!(
-        derive_liveness(stale, true, CHECKED_AT, LeaseClock::default()),
+        derive_liveness(stale, true, CHECKED_AT, RunClock::default()),
         RunnerLiveness::Busy
     );
     assert_eq!(
-        derive_liveness(fresh, false, CHECKED_AT, LeaseClock::default()),
+        derive_liveness(fresh, false, CHECKED_AT, RunClock::default()),
         RunnerLiveness::Online
     );
     assert_eq!(
-        derive_liveness(stale, false, CHECKED_AT, LeaseClock::default()),
+        derive_liveness(stale, false, CHECKED_AT, RunClock::default()),
         RunnerLiveness::Offline
     );
 }
@@ -40,17 +40,17 @@ fn liveness_keeps_never_seen_busy_fresh_and_stale_states_distinct() {
 #[test]
 fn a_future_heartbeat_is_fresh() {
     assert_eq!(
-        derive_liveness(Timestamp::MAX, false, CHECKED_AT, LeaseClock::default()),
+        derive_liveness(Timestamp::MAX, false, CHECKED_AT, RunClock::default()),
         RunnerLiveness::Online
     );
 }
 
 #[test]
-fn a_never_seen_runner_is_registered_even_while_leased() {
-    // The sentinel outranks a lease: a runner that never beat cannot be
+fn a_never_seen_runner_is_registered_even_while_assigned() {
+    // The sentinel outranks a run: a runner that never beat cannot be
     // running anything, so "busy" there would describe a row nothing can make.
     assert_eq!(
-        derive_liveness(NEVER_SEEN, true, CHECKED_AT, LeaseClock::default()),
+        derive_liveness(NEVER_SEEN, true, CHECKED_AT, RunClock::default()),
         RunnerLiveness::Registered
     );
 }

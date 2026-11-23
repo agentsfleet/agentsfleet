@@ -3,7 +3,7 @@
 use af_core::id::Uuid7;
 use af_wire::{
     decision::DecisionRequest,
-    task::{DecisionReceipt, DecisionReceiptInput},
+    durable_task::{DecisionReceipt, DecisionReceiptInput},
     usage::LineKind,
 };
 use serde::Deserialize as _;
@@ -56,7 +56,7 @@ pub(super) fn saved(
     response: &Value,
     request: &DecisionRequest,
     receipt: &DecisionReceiptInput,
-    disposition: af_wire::task::DecisionRecordDisposition,
+    disposition: af_wire::durable_task::DecisionRecordDisposition,
 ) {
     let result = match &receipt.receipt {
         DecisionReceipt::Provider { result } => Some(result),
@@ -81,8 +81,8 @@ pub(super) async fn unallocated(fixture: &Fixture) {
 }
 
 pub(super) async fn retained(fixture: &Fixture) -> (Value, Value) {
-    sqlx::query_as("SELECT to_jsonb(c),to_jsonb(p) FROM runner.decision_calls c JOIN runner.decision_payloads p ON p.decision_call_id=c.id WHERE c.original_lease_id=$1")
-        .bind(&fixture.lease.id)
+    sqlx::query_as("SELECT to_jsonb(c),to_jsonb(p) FROM runner.decision_calls c JOIN runner.decision_payloads p ON p.decision_call_id=c.id WHERE c.original_run_id=$1")
+        .bind(&fixture.run.id)
         .fetch_one(&mut *fixture.database.acquire().await.expect("complete native decision observer"))
         .await.expect("retained call and payload")
 }
@@ -91,8 +91,8 @@ pub(super) async fn one_charge(fixture: &Fixture) {
     assert_eq!(counts(fixture).await, (1, 1, 1));
     assert_eq!(balance(fixture).await, BALANCE - 3);
     let row: (i64,i64,i64,i64,i64,String,String,Uuid7,Uuid7,Uuid7,Uuid7) = sqlx::query_as(
-        "SELECT seq,input_token_count,cached_input_token_count,output_token_count,charged_nanos,provider,model,tenant_id,workspace_id,work_id,event_id FROM billing.usage_lines WHERE work_id=$1 AND kind = $2")
-        .bind(&fixture.lease.id).bind(LineKind::Decision.as_str())
+        "SELECT seq,input_token_count,cached_input_token_count,output_token_count,charged_nanos,provider,model,tenant_id,workspace_id,work_id,turn_id FROM billing.usage_lines WHERE work_id=$1 AND kind = $2")
+        .bind(&fixture.run.id).bind(LineKind::Decision.as_str())
         .fetch_one(&mut *fixture.database.acquire().await.expect("canonical charge observer")).await.expect("one original-owner line");
     assert_eq!(
         row,
@@ -106,65 +106,15 @@ pub(super) async fn one_charge(fixture: &Fixture) {
             fixture.model.model.model_name.clone(),
             fixture.owner.tenant.clone(),
             fixture.owner.workspace.clone(),
-            fixture.lease.id.clone(),
-            fixture.lease.source.clone()
+            fixture.run.id.clone(),
+            fixture.run.source.clone()
         )
     );
 }
 
-pub(super) async fn logged_before_relay(fixture: &Fixture) {
-    assert_eq!(counts(fixture).await, (1, 1, 1));
-    assert_eq!(balance(fixture).await, BALANCE);
-    let settled: bool = sqlx::query_scalar(
-        "SELECT settled_at IS NOT NULL FROM billing.usage_lines WHERE work_id=$1 AND kind = $2",
-    )
-    .bind(&fixture.lease.id)
-    .bind(LineKind::Decision.as_str())
-    .fetch_one(
-        &mut *fixture
-            .database
-            .acquire()
-            .await
-            .expect("relay boundary observer"),
-    )
-    .await
-    .expect("the retained decision usage line");
-    assert!(
-        !settled,
-        "HTTP receipt records usage without charging inline"
-    );
-}
-
-pub(super) async fn relay_once(fixture: &Fixture) {
-    use afd_billing::biller::{Biller as _, WorkKey};
-    let work = WorkKey::FleetLease(fixture.lease.id.clone());
-    let groups = afd_billing::ledger::unsettled_work(
-        &mut *fixture.database.acquire().await.expect("owned relay read"),
-        &work,
-    )
-    .await
-    .expect("relay reads only this lease's committed usage");
-    assert_eq!(groups.len(), 1, "one retained decision pricing header");
-    let ledger = afd_billing::ledger::LedgerBiller::on_system_clock(fixture.database.clone());
-    for group in groups {
-        let first = ledger
-            .settle(&group)
-            .await
-            .expect("native relay settlement");
-        assert_eq!(first.settled_lines, 1);
-        assert_eq!(first.charged.as_i64(), 3);
-        assert_eq!(first.taken.as_i64(), 3);
-        let replay = ledger
-            .settle(&group)
-            .await
-            .expect("lost relay acknowledgement replay");
-        assert_eq!(replay, afd_billing::biller::Receipt::default());
-    }
-}
-
 async fn counts(fixture: &Fixture) -> (i64, i64, i64) {
-    sqlx::query_as("SELECT (SELECT count(*) FROM runner.decision_calls WHERE original_lease_id=$1),(SELECT count(*) FROM runner.decision_payloads p JOIN runner.decision_calls c ON c.id=p.decision_call_id WHERE c.original_lease_id=$1),(SELECT count(*) FROM billing.usage_lines WHERE work_id=$1 AND kind = $2)")
-        .bind(&fixture.lease.id).bind(LineKind::Decision.as_str())
+    sqlx::query_as("SELECT (SELECT count(*) FROM runner.decision_calls WHERE original_run_id=$1),(SELECT count(*) FROM runner.decision_payloads p JOIN runner.decision_calls c ON c.id=p.decision_call_id WHERE c.original_run_id=$1),(SELECT count(*) FROM billing.usage_lines WHERE work_id=$1 AND kind = $2)")
+        .bind(&fixture.run.id).bind(LineKind::Decision.as_str())
         .fetch_one(&mut *fixture.database.acquire().await.expect("physical call and receipt observer")).await.expect("complete retained state counts")
 }
 

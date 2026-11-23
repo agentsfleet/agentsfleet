@@ -33,7 +33,7 @@ afd_http::plane_collector! {
         crate::handler::admin::platform_keys::list,
         crate::handler::admin::platform_keys::set,
         crate::handler::operator::events::list,
-        crate::handler::operator::leases::list,
+        crate::handler::operator::runs::list,
         crate::handler::operator::runner_delete::handle,
         crate::handler::operator::runner_patch::handle,
         crate::handler::operator::runners::detail,

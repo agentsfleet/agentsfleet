@@ -8,14 +8,19 @@ import { FLEET_CHAT_CONFIG } from "@/components/domain/activity/tools/FleetToolR
 import { useMessageDelivery } from "@/components/domain/conversation/delivery/useFleetMessageDelivery";
 import { useFleetPendingSends } from "@/components/domain/conversation/delivery/useFleetPendingSends";
 import { useFleetSteerQueue } from "@/components/domain/conversation/delivery/useFleetSteerQueue";
-import { CONNECTION_STATUS, convertEvent } from "@/components/domain/conversation/stream/useFleetEventStream";
+import { CONNECTION_STATUS, convertTurn } from "@/components/domain/conversation/stream/useFleetTurnStream";
 import { RENDER_KIND, RENDER_KIND_KEY, useFleetThreadEntries } from "@/components/domain/conversation/thread/useFleetThreadEntries";
 import { FleetThreadViewport } from "@/components/domain/conversation/thread/FleetThreadViewport";
 import { SenderNamesProvider } from "@/components/domain/shared/identity/SenderNames";
-import { ACTOR } from "@/lib/events/event-summary";
-import { senderNamesFrom } from "@/lib/events/sender-names";
-import { rowToEvent } from "@/lib/streaming/fleet-stream-row";
-import { SCHEDULE_EVENT } from "@/tests/helpers/schedule-activity";
+import { ACTOR } from "@/lib/turns/turn-summary";
+import { senderNamesFrom } from "@/lib/turns/sender-names";
+import { rowToTurn, type FleetTurn } from "@/lib/streaming/fleet-stream-row";
+import { readTurnDetailRoute } from "@/lib/streaming/fleet-stream-detail-reader";
+import { isReplyInFlight } from "@/components/domain/activity/replies/fleetReplyMessage";
+import { useTurnStop } from "@/components/domain/conversation/composer/useTurnStop";
+import type { TurnRow } from "@/lib/api/turns";
+import { STOP_TURNS } from "./fleet-stop-data";
+import { SCHEDULE_TURN } from "@/tests/helpers/schedule-activity";
 import { FLEET_ID, WORKSPACE } from "@/tests/helpers/draft-fixtures";
 
 const VIEWER = "fixture-owner";
@@ -56,7 +61,7 @@ export function ChatAddressFixture({workspaceId = WORKSPACE, fleetId = FLEET_ID,
   return <FixtureShell workspaceId={workspaceId} fleetId={fleetId} fleetName={fleetName}>
     <output aria-label="Opened fleet" className="px-xl py-sm text-eyebrow text-muted-foreground">{opened}</output>
     <AssistantRuntimeProvider runtime={runtime}>
-      <FleetThreadViewport modelLabel="MiniMax M3" eventsCount={painted.length} connectionStatus={CONNECTION_STATUS.LIVE} pending={ledger.pending}
+      <FleetThreadViewport modelLabel="MiniMax M3" turnsCount={painted.length} connectionStatus={CONNECTION_STATUS.LIVE} pending={ledger.pending}
         onRetry={ignore} onResend={delivery.resend} onDismiss={ledger.writers.dismiss} onRestored={delivery.noteRestored} onDraft={delivery.noteDraft} />
     </AssistantRuntimeProvider>
   </FixtureShell>;
@@ -69,38 +74,78 @@ export function FleetSteerRowFixture({report}: {report: boolean}) {
   const senderId = report ? FLEET_ID : CHIEF_ID;
   const sender = report ? WATCH : CHIEF;
   const words = report ? WATCH_REPORT : STEER_TEXT;
-  const [events] = useState(() => {
-    const handoff = rowToEvent({...SCHEDULE_EVENT, fleet_id: recipientId,
-      event_id: "0199a801-1000-7000-8000-0000000000e1", actor: `fleet:${senderId}`, event_type: "chat",
+  const [turns] = useState(() => {
+    const handoff = rowToTurn({...SCHEDULE_TURN, fleet_id: recipientId,
+      turn_id: "0199a801-1000-7000-8000-0000000000e1", actor: `fleet:${senderId}`, event_type: "chat",
       status: report ? "processed" : "queued", created_at: "2026-11-04T03:32:00Z", updated_at: "2026-11-04T03:33:00Z",
       request_json: JSON.stringify({message: `[from fleet ${sender}, fleet_id ${senderId}; answer with fleet_steer to that id]\n${words}`,
-        text: words, sender_fleet_id: senderId, sender_fleet_name: sender, sender_event_id: "0199a801-1000-7000-8000-0000000000e0"}),
-      ...(report ? {wall_ms: 2000, tool_calls: {omitted_call_count: 0, calls: [{call_id: "2:1", name: "fleet_activity",
+        sender_fleet_id: senderId, sender_fleet_name: sender, sender_event_id: "0199a801-1000-7000-8000-0000000000e0"}),
+      ...(report ? {wall_ms: 2000, tool_calls: {calls: [{call_id: "2:1", name: "fleet_activity",
         status: "succeeded", arguments: {fleet_id: senderId}, duration_ms: 53, output_head: "Check completed", output_line_count: 1}]}} : {}),
       response_text: report ? "Runner Link Watch found no interruptions. No action is needed." : null});
     if (!report) return [handoff];
-    const request = rowToEvent({...SCHEDULE_EVENT, fleet_id: CHIEF_ID,
-      event_id: "0199a801-1000-7000-8000-0000000000cf", actor: `steer:${VIEWER}`, event_type: "chat",
+    const request = rowToTurn({...SCHEDULE_TURN, fleet_id: CHIEF_ID,
+      turn_id: "0199a801-1000-7000-8000-0000000000cf", actor: `steer:${VIEWER}`, event_type: "chat",
       request_json: JSON.stringify({message: "Have runner-link-watch run its check and tell me the result."}),
-      wall_ms: 3000, tool_calls: {omitted_call_count: 0, calls: [{call_id: "1:1", name: "fleet_steer", status: "succeeded",
+      wall_ms: 3000, tool_calls: {calls: [{call_id: "1:1", name: "fleet_steer", status: "succeeded",
         arguments: {fleet_id: FLEET_ID, text: STEER_TEXT}, duration_ms: 70, output_head: "Request accepted", output_line_count: 1}]},
       response_text: "I asked @runner-link-watch to check the connection. It will report back here."});
     return [request, handoff];
   });
-  return <RecordedFleetThread events={events} fleetId={recipientId} fleetName={recipient} />;
+  return <RecordedFleetThread turns={turns} fleetId={recipientId} fleetName={recipient} />;
 }
 
-export function RecordedFleetThread({events, fleetId, fleetName, workspaceId = WORKSPACE}:
-  {events: ReturnType<typeof rowToEvent>[]; fleetId: string; fleetName: string; workspaceId?: string}) {
-  const grouped = useFleetThreadEntries(events, convertEvent);
+export function RecordedFleetThread({turns, fleetId, fleetName, workspaceId = WORKSPACE}:
+  {turns: ReturnType<typeof rowToTurn>[]; fleetId: string; fleetName: string; workspaceId?: string}) {
+  const grouped = useFleetThreadEntries(turns, convertTurn);
   const messages = useMemo(() => grouped.entries.map(grouped.convertEntry), [grouped]);
   const runtime = useExternalStoreRuntime({messages, convertMessage: (row: ThreadMessageLike) => row, onNew: async () => {}});
   return <FixtureShell fleetName={fleetName} fleetId={fleetId} workspaceId={workspaceId}>
     <AssistantRuntimeProvider runtime={runtime} config={FLEET_CHAT_CONFIG}>
-      <FleetThreadViewport modelLabel="MiniMax M3" eventsCount={events.length} connectionStatus={CONNECTION_STATUS.LIVE} pending={[]}
+      <FleetThreadViewport modelLabel="MiniMax M3" turnsCount={turns.length} connectionStatus={CONNECTION_STATUS.LIVE} pending={[]}
         onRetry={ignore} onResend={ignore} onDismiss={ignore} onRestored={ignore} onDraft={ignore} />
     </AssistantRuntimeProvider>
   </FixtureShell>;
+}
+
+const STOP_READ_MS = 200;
+
+/** Two of a person's turns, one running and one queued behind it, under the
+ * production thread, composer and Stop. The probe has no stream: it reads each
+ * unsettled turn's saved row from the same-origin route the chat reads when a
+ * reply's ending never reached it, so the spec decides when an answer lands. */
+export function FleetStopFixture() {
+  const [turns, setTurns] = useState<FleetTurn[]>(() => [
+    stopRow(STOP_TURNS.running, "received", "Rotate the staging deploy key."),
+    stopRow(STOP_TURNS.queued, "queued", "Then post the new key's fingerprint."),
+  ].map(rowToTurn));
+  const reconcile = useCallback((rows: TurnRow[]) => setTurns(current => current.map(turn => {
+    const saved = rows.find(row => row.turn_id === turn.id);
+    return saved === undefined ? turn : rowToTurn(saved);
+  })), []);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      for (const turn of turns.filter(isReplyInFlight)) {
+        void readTurnDetailRoute(WORKSPACE, FLEET_ID, turn.id).then(read => { if (read.ok) reconcile([read.data]); });
+      }
+    }, STOP_READ_MS);
+    return () => clearInterval(timer);
+  }, [turns, reconcile]);
+  const turnStop = useTurnStop(WORKSPACE, FLEET_ID, turns, reconcile);
+  const grouped = useFleetThreadEntries(turns, convertTurn);
+  const messages = useMemo(() => grouped.entries.map(grouped.convertEntry), [grouped]);
+  const runtime = useExternalStoreRuntime({messages, convertMessage: (row: ThreadMessageLike) => row, onNew: async () => {}});
+  return <FixtureShell fleetName={OPEN_FLEET}>
+    <AssistantRuntimeProvider runtime={runtime} config={FLEET_CHAT_CONFIG}>
+      <FleetThreadViewport modelLabel="MiniMax M3" turnsCount={turns.length} connectionStatus={CONNECTION_STATUS.LIVE} pending={[]}
+        onRetry={ignore} onResend={ignore} onDismiss={ignore} onRestored={ignore} onDraft={ignore} turnStop={turnStop} />
+    </AssistantRuntimeProvider>
+  </FixtureShell>;
+}
+
+function stopRow(turn_id: string, status: string, message: string) {
+  return {...SCHEDULE_TURN, workspace_id: WORKSPACE, fleet_id: FLEET_ID, turn_id, actor: `${ACTOR.STEER_PREFIX}${VIEWER}`,
+    event_type: "chat", status, request_json: JSON.stringify({message}), created_at: new Date().toISOString(), updated_at: new Date().toISOString()};
 }
 
 function FixtureShell({fleetName, fleetId = FLEET_ID, workspaceId = WORKSPACE, children}: FleetLocation & {fleetName: string; children: ReactNode}) {

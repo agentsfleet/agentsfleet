@@ -19,7 +19,7 @@
 //! # Three helpers that were all called `support`
 //!
 //! Each suite declared its own helper under the name `support`, and they were
-//! three DIFFERENT files — `apikey_lane`, `session_harness`, `preference_lane`.
+//! three DIFFERENT files — `apikey_lane`, `session_harness`, `onboarding_lane`.
 //! One binary means one namespace, so each is declared here under the name of
 //! the file it actually is. That is the only edit the suites needed.
 
@@ -52,13 +52,13 @@ mod session_harness;
 // declared it, so it needs no allowance here.
 #[path = "support/device_flow_lane.rs"]
 mod device_flow_lane;
-#[path = "support/preference_lane.rs"]
+#[path = "support/onboarding_lane.rs"]
 #[allow(
     clippy::expect_used,
     clippy::panic,
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
-mod preference_lane;
+mod onboarding_lane;
 #[path = "support/team_lane.rs"]
 mod team_lane;
 
@@ -80,8 +80,8 @@ mod integration_identity;
 mod integration_invite_resolved_once;
 #[path = "integration_model_catalogue.rs"]
 mod integration_model_catalogue;
-#[path = "integration_preferences.rs"]
-mod integration_preferences;
+#[path = "integration_onboarding.rs"]
+mod integration_onboarding;
 #[path = "integration_signup.rs"]
 mod integration_signup;
 #[path = "integration_team.rs"]

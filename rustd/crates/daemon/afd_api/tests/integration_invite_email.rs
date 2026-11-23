@@ -113,7 +113,7 @@ fn reported(recorded: &Recorded, invite: &str) -> Vec<(i32, InviteEmailOutcome)>
         .collect()
 }
 
-/// Dimension 2.2: a connection dropped after the message is retried once,
+/// A connection dropped after the message is retried once,
 /// carrying the same idempotency key.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -133,7 +133,7 @@ async fn test_send_retry_reuses_idempotency_key() {
     members.cleanup().await;
 }
 
-/// Dimension 3.1: with no relay the invite still issues, reads
+/// With no relay the invite still issues, reads
 /// `unconfigured`, and stays pending.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -153,7 +153,7 @@ async fn test_unconfigured_email_keeps_invite() {
     members.cleanup().await;
 }
 
-/// Dimension 3.2: a refused login, a refused recipient either way, and a
+/// A refused login, a refused recipient either way, and a
 /// relay that never answers each leave a pending invite reading `failed`.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]

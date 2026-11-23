@@ -22,7 +22,7 @@ import { NANOS_PER_USD } from "@/lib/types";
 
 const FLEET_NAME = "morning-check";
 const EVERY_MINUTE = "* * * * *";
-// One scheduler minute, the lease and one model round trip, with headroom that is not a retry.
+// One scheduler minute, the run and one model round trip, with headroom that is not a retry.
 const WAKE_TIMEOUT_MS = 240_000;
 const REPLY_TIMEOUT_MS = 180_000;
 const JOURNEY_TIMEOUT_MS = 600_000;

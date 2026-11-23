@@ -1,13 +1,14 @@
 //! What a holder does with its claim while it delivers: renew it, give it
-//! back due later, or give it up when another holder has it.
+//! back at shutdown, mark a failed delivery, or give it up when another holder
+//! has it.
 
 use std::time::Duration;
 
 use super::{
-    CYCLE_BACKOFF, EVENT_CLAIM_LAPSED, EVENT_DELIVERY_EXHAUSTED, EVENT_RELEASE_FAILED,
-    EVENT_RENEW_FAILED, EVENT_REQUEUED_AT_SHUTDOWN, Inner, MAX_DELIVERY_CYCLES,
+    EVENT_CLAIM_LAPSED, EVENT_DELIVERY_EXHAUSTED, EVENT_RELEASE_FAILED, EVENT_RENEW_FAILED,
+    EVENT_REQUEUED_AT_SHUTDOWN, Inner,
 };
-use crate::obligation::{self, AbandonReason, CLAIM_TTL, Claimed};
+use crate::delivery::{self, AbandonReason, CLAIM_TTL, Claimed};
 use crate::poster::Deliver;
 
 impl<S: Deliver + 'static> Inner<S> {
@@ -16,12 +17,13 @@ impl<S: Deliver + 'static> Inner<S> {
     /// landed for so long that the claim may lapse before the next one.
     /// Never returns while the claim is known to hold.
     pub(super) async fn renewing(&self, job: &Claimed) -> &'static str {
-        hold_claim(self.renew, || obligation::renew(&self.database, job)).await
+        hold_claim(self.renew, || delivery::renew(&self.database, job)).await
     }
 
-    /// A retryable cycle: give the claim back, due again later, or abandon it
-    /// once its cycles are spent. A shutdown gives it back due at once.
-    pub(super) async fn retry_later(&self, job: &Claimed, attempts: Option<i64>) {
+    /// A cycle whose every inline attempt ended retryably: the delivery is
+    /// marked failed and never offered again. A shutdown instead gives the
+    /// claim back, so the interrupted delivery is not counted as failed.
+    pub(super) async fn fail(&self, job: &Claimed, attempts: Option<i64>) {
         let provider = job.outgoing.provider.as_str();
         let fleet_id = job.outgoing.fleet_id.as_str();
         if self.token.is_cancelled() {
@@ -29,7 +31,7 @@ impl<S: Deliver + 'static> Inner<S> {
                 let event = &EVENT_REQUEUED_AT_SHUTDOWN;
                 tracing::info!(provider, fleet_id, attempts, event);
             };
-            self.release(job, Duration::ZERO).await;
+            self.release(job).await;
             return;
         }
         let error_code = af_core::error_code::CONNECTOR_VENDOR_DEADLINE.as_str();
@@ -37,15 +39,12 @@ impl<S: Deliver + 'static> Inner<S> {
             let event = &EVENT_DELIVERY_EXHAUSTED;
             tracing::warn!(error_code, provider, fleet_id, attempts, event);
         };
-        if attempts.is_some_and(|cycles| cycles >= MAX_DELIVERY_CYCLES) {
-            crate::abandon::delivery(&self.database, job, AbandonReason::CyclesExhausted).await;
-            return;
-        }
-        self.release(job, CYCLE_BACKOFF).await;
+        crate::abandon::delivery(&self.database, job, AbandonReason::AttemptsExhausted).await;
     }
 
-    pub(super) async fn release(&self, job: &Claimed, after: Duration) {
-        match obligation::release(&self.database, job, after).await {
+    /// Gives `job`'s claim back, claimable at once.
+    pub(super) async fn release(&self, job: &Claimed) {
+        match delivery::release(&self.database, job).await {
             Ok(true) => {}
             Ok(false) => Self::lapsed(job, "release"),
             Err(failure) => crate::worker::report(EVENT_RELEASE_FAILED, &failure),

@@ -46,7 +46,7 @@ const COLUMN_REGISTRY_ALLOWLIST: &str = "registry_allowlist";
 /// documents.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AssignmentColumns {
-    /// Whether this runner accepts new durable task leases.
+    /// Whether this runner accepts new durable task runs.
     pub durable_tasks_enabled: bool,
     /// Optional reviewed catalogue identity selected by the operator.
     pub decision_model_id: Option<String>,
@@ -172,6 +172,15 @@ impl StoredVerdict {
     #[must_use]
     pub fn differs_from(&self, fresh: Verdict) -> bool {
         self.reason.as_deref() != fresh.reason()
+    }
+
+    /// Whether `fresh` clears a degradation the row still holds.
+    ///
+    /// The assignment issue reads the row, so work it refused while the row
+    /// read degraded waits for exactly this transition; no timer retries it.
+    #[must_use]
+    pub const fn cleared_by(&self, fresh: Verdict) -> bool {
+        self.is_degraded() && !fresh.is_degraded()
     }
 }
 

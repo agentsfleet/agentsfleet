@@ -1,13 +1,13 @@
-import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
+import type { FleetTurn } from "@/lib/streaming/fleet-stream-row";
 import { recordedWorkspacePath } from "./recorded-patch-changes";
 import { RecordedToolWrites } from "./recorded-tool-writes";
 
 export type ChangeTotals = {kind: "unknown"} | {kind: "complete" | "partial"; added: number; removed: number};
 export type ChangeRepository = {id: string; label: string; fullName: string};
-/** Explicit repository-index evidence for one event and path, never a directory-name guess. */
+/** Explicit repository-index evidence for one turn and path, never a directory-name guess. */
 export type RecordedChangeRepository = {
-  eventId: string; path: string; repository: ChangeRepository;
-  /** A complete per-file receipt for this event, independent of clipped tool arguments. */
+  turnId: string; path: string; repository: ChangeRepository;
+  /** A complete per-file receipt for this turn, independent of clipped tool arguments. */
   lines?: {added: number; removed: number};
 };
 export type RecordedChange = {path: string; running: boolean; lines: ChangeTotals; repository?: ChangeRepository};
@@ -16,14 +16,14 @@ export type ChangeGroup = {repository: ChangeRepository | undefined; label: stri
 
 const UNKNOWN: ChangeTotals = {kind: "unknown"};
 const EMPTY_REPOSITORIES: readonly RecordedChangeRepository[] = [];
-const bindingKey = (event: string, path: string) => JSON.stringify([event, path]);
+const bindingKey = (turn: string, path: string) => JSON.stringify([turn, path]);
 const recordings = new RecordedToolWrites();
 
 /** Counts describe recorded operations, rather than a net diff against a repository revision. */
-export function recordedChanges(events: readonly FleetEvent[], {includeRunning = true, repositories = EMPTY_REPOSITORIES}: Options = {}): RecordedChange[] {
-  const bindings = new Map(repositories.map(binding => [bindingKey(binding.eventId, recordedWorkspacePath(binding.path)), binding]));
+export function recordedChanges(turns: readonly FleetTurn[], {includeRunning = true, repositories = EMPTY_REPOSITORIES}: Options = {}): RecordedChange[] {
+  const bindings = new Map(repositories.map(binding => [bindingKey(binding.turnId, recordedWorkspacePath(binding.path)), binding]));
   const paths = new Map<string, RecordedChange>();
-  for (const event of events) for (const change of changesInEvent(event, includeRunning, bindings)) {
+  for (const turn of turns) for (const change of changesInTurn(turn, includeRunning, bindings)) {
     const key = JSON.stringify([change.repository?.id, change.path]);
     const previous = paths.get(key);
     paths.delete(key);
@@ -56,9 +56,9 @@ export function groupRecordedChanges(changes: readonly RecordedChange[]): Change
   return rows;
 }
 
-function changesInEvent(event: FleetEvent, includeRunning: boolean, bindings: ReadonlyMap<string, RecordedChangeRepository>): RecordedChange[] {
+function changesInTurn(turn: FleetTurn, includeRunning: boolean, bindings: ReadonlyMap<string, RecordedChangeRepository>): RecordedChange[] {
   const paths = new Map<string, RecordedChange>();
-  for (const tool of event.tools ?? []) for (const write of recordings.read(tool)) {
+  for (const tool of turn.tools ?? []) for (const write of recordings.read(tool)) {
     const {path, running} = write;
     if (running && !includeRunning) continue;
     const totals = write.lines;
@@ -68,7 +68,7 @@ function changesInEvent(event: FleetEvent, includeRunning: boolean, bindings: Re
     paths.set(path, {path, running, lines: previous ? mergeTotals(previous.lines, lines) : lines});
   }
   return [...paths.values()].map<RecordedChange>(change => {
-    const binding = bindings.get(bindingKey(event.id, change.path));
+    const binding = bindings.get(bindingKey(turn.id, change.path));
     if (!binding) return change;
     return {...change, repository: binding.repository,
       lines: !change.running && binding.lines ? {kind: "complete", ...binding.lines} : change.lines};

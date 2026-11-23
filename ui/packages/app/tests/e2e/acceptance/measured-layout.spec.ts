@@ -10,25 +10,21 @@
  * dialog itself is bounded to the viewport and scrolls.
  *
  * A paginating table fills the page it sits on only when two halves agree: the
- * page gives it a definite height and the table claims it. Events once shipped
- * a min-height shell that left its table short, so Events is measured against
+ * page gives it a definite height and the table claims it. Turns once shipped
+ * a min-height shell that left its table short, so Turns is measured against
  * its page. Secrets ends at its
  * rows by design, so it is measured for that instead: no empty band inside the
  * table, in a window that holds a full page of rows.
  */
 import { expect, type Page, test } from "@playwright/test";
-import { pluginsUiEnabled } from "@/lib/plugin-ui";
 import { v7 } from "uuid";
 import { signInAs } from "./fixtures/auth";
-import { FIXTURE_KEY, PLUGIN_LAYOUT_WORKSPACE_NAME } from "./fixtures/constants";
+import { FIXTURE_KEY } from "./fixtures/constants";
 import { clientFor } from "./fixtures/api-client";
-import { ensureSecondWorkspace, getDefaultWorkspaceId, seedFleet, waitForFleetActive } from "./fixtures/seed";
+import { getDefaultWorkspaceId, seedFleet, waitForFleetActive } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
-import { fixtureDefinition } from "./fixtures/definition";
-import { publishFixturePlugin } from "./fixtures/native-setup";
 import { workspaceHref } from "./fixtures/nav";
 
-const PHONE_WINDOW = { width: 390, height: 844 };
 const RENDER_TIMEOUT_MS = 15_000;
 // Sub-pixel rounding between a line box and its element's height.
 const LINE_TOLERANCE_PX = 1;
@@ -40,14 +36,9 @@ const TABLE_VIEWPORT = `${DATA_TABLE} > [role="region"]`;
 // Section padding between the table's frame and the page's bottom edge. A
 // table that collapsed to its rows stops hundreds of pixels short in this window.
 const FILL_GAP_PX = 48;
-// The workspace Plugin page the inspection test opens.
-const WORKSPACE_PLUGIN = "plugins";
-// Each test seeds the plugin entry it reads: on a fresh deployment no other
-// project is guaranteed to have created one before this suite runs.
-const GALLERY_TEMPLATE = "e2e-measured-gallery";
-// Events lists a row only once a fleet has admitted one: one steered fleet gives it.
+// Turns lists a row only once a fleet has admitted one: one steered fleet gives it.
 const TABLE_FILL_FLEET_PREFIX = "e2e-table-fill-";
-const TABLE_FILL_MESSAGE = "measure the events table";
+const TABLE_FILL_MESSAGE = "measure the turns table";
 
 async function expectTableFillsPage(page: Page, path: string): Promise<void> {
   await page.goto(path);
@@ -86,47 +77,12 @@ async function expectTableEndsAtRows(page: Page, path: string): Promise<void> {
   expect(measured.slack, `${path} stretches its table past its rows`).toBeLessThanOrEqual(LINE_TOLERANCE_PX);
 }
 
-// The workspace no other spec clears plugin entries from.
-async function layoutWorkspaceId(): Promise<string> {
-  return (await ensureSecondWorkspace(FIXTURE_KEY.regular, PLUGIN_LAYOUT_WORKSPACE_NAME)).id;
-}
-
-// Onboards `name` into `workspaceId`'s own Fleet plugin.
-async function seedPluginEntry(workspaceId: string, name: string): Promise<void> {
-  await publishFixturePlugin(FIXTURE_KEY.regular, workspaceId, fixtureDefinition(name));
-}
-
-test.describe("measured placement", () => {
-  test("Plugin inspection stays inside a phone viewport", async ({ page }) => {
-    await page.setViewportSize(PHONE_WINDOW);
-    const workspaceId = await layoutWorkspaceId();
-    const name = `${GALLERY_TEMPLATE}-${crypto.randomUUID()}`;
-    await seedPluginEntry(workspaceId, name);
-    await signInAs(page, FIXTURE_KEY.regular);
-    await page.goto(workspaceHref(workspaceId, WORKSPACE_PLUGIN));
-    if (!pluginsUiEnabled()) {
-      // Paused Plugin pages stream the not-found page; it still fits the phone.
-      await expect(page.getByRole("heading", {name: "Page not found", exact: true})).toBeVisible();
-      const sideways = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-      expect(sideways).toBeLessThanOrEqual(LINE_TOLERANCE_PX);
-      return;
-    }
-    const row = page.getByRole("listitem").filter({hasText: name});
-    await row.getByRole("button", {name: `Manage ${name}`, exact: true}).click();
-    const start = page.getByRole("button", {name: "Use for new fleet", exact: true});
-    await expect(start).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
-    expect(await start.evaluate((element) => element.getBoundingClientRect().right)).toBeLessThanOrEqual(PHONE_WINDOW.width);
-    const sideways = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-    expect(sideways).toBeLessThanOrEqual(LINE_TOLERANCE_PX);
-  });
-});
-
 test.describe("a paginating table fills the page it sits on", () => {
   test.beforeEach(async ({ page }) => {
     await page.setViewportSize(TALL_WINDOW);
   });
 
-  test("Secrets ends at its rows while Events fills its page", async ({ page }) => {
+  test("Secrets ends at its rows while Turns fills its page", async ({ page }) => {
     const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
     const client = clientFor(FIXTURE_KEY.regular);
     // Secrets shows an empty state instead of a table until it holds a row.
@@ -142,7 +98,7 @@ test.describe("a paginating table fills the page it sits on", () => {
       });
       await signInAs(page, FIXTURE_KEY.regular);
       await expectTableEndsAtRows(page, workspaceHref(workspaceId, "secrets"));
-      await expectTableFillsPage(page, workspaceHref(workspaceId, "events"));
+      await expectTableFillsPage(page, workspaceHref(workspaceId, "turns"));
     } finally {
       await client.delete(`${secrets}/${encodeURIComponent(secret)}`);
       await cleanWorkspaceFleets(FIXTURE_KEY.regular, workspaceId, TABLE_FILL_FLEET_PREFIX);

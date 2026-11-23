@@ -54,20 +54,20 @@ See the [CLI install guide](https://docs.agentsfleet.net/cli/install) for instal
 
 | Directory | What |
 |---|---|
-| `rustd/` | Rust workspace in five layer folders under `crates/`: `foundation/` and `protocol/` (shared `af_*` crates), `harness/` (`guffbolt` and the shared model, secret and egress crates), `runner/` (the `agentsfleet-runner` execution daemon, `afr_*` crates) and `daemon/` (the `agentsfleetd` control plane, `afd_*` crates). |
+| `rustd/` | Rust workspace in five layer folders under `crates/`: `foundation/` and `protocol/` (shared `af_*` crates), `harness/` (the shared model, secret and egress crates), `runner/` (the `agentsfleet-runner` execution daemon, `afr_*` crates) and `daemon/` (the `agentsfleetd` control plane, `afd_*` crates); beside them, `guffbolt/`, the standalone agent harness. |
 | `ui/packages/app/` | Dashboard — Next.js, Clerk auth |
 | `ui/packages/website/` | Marketing site — [agentsfleet.net](https://agentsfleet.net) |
 | `ui/packages/design-system/` | Shared UI components |
 | `cli/` | Command-line interface (CLI) — install, manage agents, tail runs |
 | `public/openapi.json` | OpenAPI reference generated from the daemon's route and schema definitions |
-| `schema/` | Postgres migrations |
+| `rustd/crates/daemon/afd_db/schema/` | Postgres migrations |
 | `playbooks/` | First setup, deployment, verification, and operations |
 
 ---
 
 ## Built with
 
-- [`guffbolt`](rustd/crates/harness/guffbolt), the agent harness that runs every agent loop in `agentsfleet-runner`.
+- [`guffbolt`](rustd/guffbolt), the agent harness that runs every agent loop in `agentsfleet-runner`.
 
 ---
 

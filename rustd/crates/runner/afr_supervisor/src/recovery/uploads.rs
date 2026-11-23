@@ -7,7 +7,7 @@ use super::{
 };
 use crate::{Result, error};
 use af_core::id::Uuid7;
-use af_wire::task::{CHECKPOINT_BATCH, CheckpointObjectStatus, CheckpointUpload};
+use af_wire::durable_task::{CHECKPOINT_BATCH, CheckpointObjectStatus, CheckpointUpload};
 use futures_util::{StreamExt as _, stream};
 use std::collections::BTreeMap;
 
@@ -61,7 +61,7 @@ impl UploadBatch {
 
     pub(super) async fn put(
         &mut self,
-        objects: Vec<af_wire::task::CheckpointObject>,
+        objects: Vec<af_wire::durable_task::CheckpointObject>,
         namespace: &str,
         transfers: &Transfers,
     ) -> Result<Vec<Result<()>>> {

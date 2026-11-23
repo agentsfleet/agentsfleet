@@ -24,17 +24,18 @@
 //! agree (RULE PSR).
 
 use af_core::id::Uuid7;
+use af_fleet_runtime::config::ChannelId;
 use afd_api_wire::ingress::Accepted;
 use afd_connector::Provider;
 use afd_connector::grant::BotIdentity;
 use afd_connector::slack::Thread;
-use afd_ingress::slack::{ChannelId, Route, route};
+use afd_ingress::slack::{Route, route};
 use serde::Deserialize;
 
 use super::events::REASON_UNREADABLE;
 use super::webhook::REASON_UNSUPPORTED_EVENT;
 use crate::handler::Refusal;
-use crate::services::{Services, WebhookIngress as _, WorkspaceConnectors as _};
+use crate::services::{IngressPlane, WebhookIngress as _, WorkspaceConnectors as _};
 
 mod admit;
 mod notice;
@@ -50,7 +51,7 @@ pub(super) const REASON_TEAM_NOT_MAPPED: &str = "team_not_mapped";
 /// No saved fleet is configured for this channel.
 pub(super) const REASON_CHANNEL_NOT_CONFIGURED: &str = "channel_not_configured";
 /// No active fleet in the channel can carry a notice: an archived fleet
-/// cannot acquire another outbound obligation, so it is never a carrier.
+/// cannot acquire another outbound delivery, so it is never a carrier.
 pub(super) const REASON_NO_ACTIVE_CARRIER: &str = "no_active_notice_carrier";
 
 /// The event a datastore failure on this path is refused under.
@@ -143,7 +144,7 @@ fn unserialisable() -> Refusal {
     )
 }
 
-/// `thread` as the obligation row records it, which both the admitted mention
+/// `thread` as the delivery row records it, which both the admitted mention
 /// and an owed notice write.
 fn address(thread: &Thread) -> Result<String, Refusal> {
     thread.address().map_err(|_unserialisable| unserialisable())
@@ -224,7 +225,7 @@ pub(super) fn without_bot_mention(text: &str) -> &str {
 /// # Errors
 /// A datastore that would not answer at any step, as the 503 a provider
 /// retries.
-pub(super) async fn admit<D: Services>(
+pub(super) async fn admit<D: IngressPlane>(
     services: &D,
     provider: Provider,
     asked: &Asked,
@@ -270,7 +271,7 @@ pub(super) async fn admit<D: Services>(
 ///
 /// A mapped team whose grant holds no bot cannot answer as itself, which is
 /// the same fact as an unmapped one for the person waiting.
-async fn answerer<D: Services>(
+async fn answerer<D: IngressPlane>(
     services: &D,
     provider: Provider,
     team: &str,

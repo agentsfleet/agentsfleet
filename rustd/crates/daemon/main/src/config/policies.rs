@@ -6,30 +6,27 @@ use crate::preflight::runtime::OperationalSettings;
 pub(super) fn read(
     settings: &garde::Valid<ConfigToml>,
 ) -> Result<OperationalSettings, crate::preflight::Refusal> {
-    let tasks = garde::Unvalidated::new(settings.fleet.tasks)
+    let tasks = garde::Unvalidated::new(settings.fleet.durable_tasks)
         .validate()
-        .map_err(|report| invalid(format!("fleet.tasks: {report}")))?;
-    let authoring = garde::Unvalidated::new(settings.authoring.turn)
-        .validate()
-        .map_err(|report| invalid(format!("authoring.turn: {report}")))?;
+        .map_err(|report| invalid(format!("fleet.durable_tasks: {report}")))?;
     Ok(OperationalSettings {
         outbound_retries: afd_outbound::retry::RetryPolicy::new(
             &garde::Unvalidated::new(settings.outbound.retries)
                 .validate()
                 .map_err(|report| invalid(format!("outbound.retries: {report}")))?,
         ),
-        inference: af_inference::Timeouts::new(
-            &garde::Unvalidated::new(settings.inference)
-                .validate()
-                .map_err(|report| invalid(format!("inference: {report}")))?,
-        ),
-        tasks: afd_fleet::task::policy::TaskPolicy::new(&tasks),
-        authoring: afd_authoring::turn_policy::TurnPolicy::new(&authoring),
-        maintenance: super::maintenance::MaintenancePolicy::resolve(settings.maintenance)
-            .map_err(|report| invalid(format!("maintenance: {report}")))?,
+        tasks: afd_fleet::durable_task::policy::DurableTaskPolicy::new(&tasks),
         telemetry: garde::Unvalidated::new(settings.telemetry.otlp)
             .validate()
             .map_err(|report| invalid(format!("telemetry.otlp: {report}")))?,
+        tuning: super::tuning::Tuning::from(&**settings),
+        scheduler_retries: settings.connectors.qstash.policy().ok_or_else(|| {
+            invalid(
+                "connectors.qstash: every attempt and wait must end inside call_budget_seconds, \
+                 the budget under 30 seconds, and max_retry_delay_ms at least 200"
+                    .to_owned(),
+            )
+        })?,
     })
 }
 
@@ -39,67 +36,76 @@ mod tests {
     use af_core::env::MapEnv;
     use std::io::Write as _;
 
-    type Checked = Result<(), Box<dyn std::error::Error>>;
-
+    /// The setup runtime is a constant: a file still naming the retired
+    /// `[inference]` or `[authoring.turn]` section is refused, not ignored.
     #[test]
-    fn inference_timeouts_reach_the_effective_policy() -> Checked {
-        let mut file = tempfile::NamedTempFile::new()?;
-        write!(
-            file,
-            "[inference]\nconnect_timeout_seconds=2\nstream_idle_timeout_seconds=7"
-        )?;
-        let environment = MapEnv::default();
-        let config = ConfigBuilder::new(&environment)
-            .file(Some(file.path()))
-            .build()?;
-        assert_eq!(config.runtime.operations.inference.connect().as_secs(), 2);
-        assert_eq!(
-            config.runtime.operations.inference.stream_idle().as_secs(),
-            7
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn authoring_file_values_reach_the_effective_policy() -> Checked {
-        let mut file = tempfile::NamedTempFile::new()?;
-        write!(
-            file,
-            "[authoring.turn]\nmax_model_calls=1\nmax_wall_seconds=60\n\
-            max_proposal_corrections=0\nprovider_timeout_seconds=30"
-        )?;
-        let environment = MapEnv::default();
-        let config = ConfigBuilder::new(&environment)
-            .file(Some(file.path()))
-            .build()?;
-        let settings = config.runtime.operations.authoring.settings();
-        assert_eq!(settings.max_model_calls, 1);
-        assert_eq!(settings.max_wall_seconds, 60);
-        assert_eq!(settings.max_proposal_corrections, 0);
-        assert_eq!(settings.provider_timeout_seconds, 30);
-        Ok(())
-    }
-
-    #[test]
-    fn authoring_policy_rejects_invalid_calls_corrections_and_deadlines() -> Checked {
-        for setting in [
-            "max_model_calls=0",
-            "max_model_calls=9",
-            "max_wall_seconds=0",
-            "max_wall_seconds=301",
-            "max_proposal_corrections=2",
-            "provider_timeout_seconds=0",
-            "provider_timeout_seconds=301",
+    fn a_retired_setup_section_refuses_startup() -> Result<(), Box<dyn std::error::Error>> {
+        for section in [
+            "[inference]\nconnect_timeout_seconds=2",
+            "[authoring.turn]\nmax_wall_seconds=60",
         ] {
             let mut file = tempfile::NamedTempFile::new()?;
-            write!(file, "[authoring.turn]\n{setting}")?;
+            write!(file, "{section}")?;
             let environment = MapEnv::default();
-            let failure = ConfigBuilder::new(&environment)
+            let refused = ConfigBuilder::new(&environment)
+                .file(Some(file.path()))
+                .build();
+            assert!(refused.is_err(), "{section} was accepted");
+        }
+        Ok(())
+    }
+
+    /// The daemon runs no timed loop (Indy, Nov 21, 2026), so a file still
+    /// tuning one is refused rather than silently ignored.
+    #[test]
+    fn a_timed_loop_setting_refuses_startup() -> Result<(), Box<dyn std::error::Error>> {
+        for section in [
+            "[maintenance]\nstartup_spread_ms = 5000",
+            "[maintenance.runner_liveness]\ninterval_seconds = 10",
+            "[maintenance.outbound_delivery]\ninterval_seconds = 30",
+            "[maintenance.runner_history]\nkeep_days = 30",
+            "[runner.scheduling]\nmissed_wake_probe_seconds = 2",
+        ] {
+            let mut file = tempfile::NamedTempFile::new()?;
+            write!(file, "{section}")?;
+            let environment = MapEnv::default();
+            let refused = ConfigBuilder::new(&environment)
+                .file(Some(file.path()))
+                .build();
+            assert!(refused.is_err(), "{section} was accepted");
+        }
+        Ok(())
+    }
+
+    /// Out-of-range retry and export settings refuse startup, naming their section.
+    #[test]
+    fn out_of_range_retry_and_export_settings_refuse_startup_by_section()
+    -> Result<(), Box<dyn std::error::Error>> {
+        for (contents, section) in [
+            ("[outbound.retries]\nmax_attempts = 11", "outbound.retries"),
+            ("[outbound.retries]\nmax_attempts = 0", "outbound.retries"),
+            (
+                "[telemetry.otlp]\nmetrics_export_interval_seconds = 0",
+                "telemetry.otlp",
+            ),
+            (
+                "[telemetry.otlp]\ntrace_queue_capacity = 8\ntrace_batch_size = 9",
+                "telemetry.otlp",
+            ),
+        ] {
+            let mut file = tempfile::NamedTempFile::new()?;
+            write!(file, "{contents}")?;
+            let environment = MapEnv::default();
+            let refusal = ConfigBuilder::new(&environment)
                 .file(Some(file.path()))
                 .build()
                 .err()
-                .ok_or("invalid authoring policy must refuse startup")?;
-            assert!(failure.to_string().contains("authoring.turn"));
+                .ok_or("an out-of-range setting was accepted")?;
+            assert_eq!(refusal.knobs(), [super::super::FILE_KNOB], "{contents}");
+            assert!(
+                refusal.to_string().contains(&format!("{section}: ")),
+                "{contents}: {refusal}"
+            );
         }
         Ok(())
     }

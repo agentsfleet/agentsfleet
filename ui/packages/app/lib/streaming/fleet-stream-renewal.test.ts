@@ -1,7 +1,8 @@
 // Vitest is the app's coverage runner; approved for this change.
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { FakeEventSource } from "@/tests/helpers/fake-event-source";
-import { FRAME_KIND } from "@/lib/api/events-types";
+import { FRAME_KIND } from "@/lib/api/turns-types";
+import { STREAM_SILENCE_TIMEOUT_MS } from "@/lib/streaming/stream-recovery-window";
 import { __resetRegistryForTests, CONNECTION_STATUS, getSnapshot, retryConnection, subscribe } from "@/tests/helpers/fleet-streams";
 
 const WORKSPACE = "renewal-workspace";
@@ -74,11 +75,11 @@ it("should ignore stale errors, opens and messages after manual replacement", ()
   old.fail();
   old.open();
   old.heartbeat();
-  old.emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "stale", actor: "fleet" });
-  old.emitRaw(JSON.stringify({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "stale", actor: "fleet" }));
+  old.emit({ kind: FRAME_KIND.TURN_RECEIVED, turn_id: "stale", actor: "fleet" });
+  old.emitRaw(JSON.stringify({ kind: FRAME_KIND.TURN_RECEIVED, turn_id: "stale", actor: "fleet" }));
   expect(current().closed).toBe(false);
   expect(getSnapshot(FLEET).connectionStatus).toBe(CONNECTION_STATUS.LIVE);
-  expect(getSnapshot(FLEET).events).toEqual([]);
+  expect(getSnapshot(FLEET).turns).toEqual([]);
   expect(fetch).not.toHaveBeenCalled();
 });
 
@@ -166,7 +167,7 @@ it("should reject every callback from a torn-down entry after the fleet is resub
   old.open();
   old.fail();
   old.heartbeat();
-  old.emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "stale", actor: "fleet" });
+  old.emit({ kind: FRAME_KIND.TURN_RECEIVED, turn_id: "stale", actor: "fleet" });
   expect(listener).not.toHaveBeenCalled();
   expect(current().closed).toBe(false);
   expect(fetch).not.toHaveBeenCalled();
@@ -177,7 +178,7 @@ it("should retry blackholed connection attempts and eventually offer manual reco
   subscribe(WORKSPACE, FLEET, [], () => {});
   for (let attempt = 0; attempt < 6; attempt += 1) {
     const source = current();
-    await vi.advanceTimersByTimeAsync(SLOW_RETRY_MS);
+    await vi.advanceTimersByTimeAsync(STREAM_SILENCE_TIMEOUT_MS);
     expect(source.closed).toBe(true);
     await vi.advanceTimersToNextTimerAsync();
     expect(current()).not.toBe(source);

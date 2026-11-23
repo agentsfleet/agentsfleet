@@ -4,7 +4,7 @@ use std::sync::LazyLock;
 
 use super::*;
 
-/// Dimension 2.2 — two migrators on one fresh database: one applies, the other
+/// Two migrators on one fresh database: one applies, the other
 /// waits and finds nothing to do. Never both.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]

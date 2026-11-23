@@ -31,9 +31,10 @@ async fn serve(head_length: usize, body: &'static [u8]) -> String {
             }
         }
         let head = format!("HTTP/1.1 200 OK\r\nContent-Length: {head_length}\r\n\r\n");
-        let _ = socket.write_all(head.as_bytes()).await;
-        let _ = socket.write_all(body).await;
-        let _ = socket.shutdown().await;
+        // The client may hang up first; its own assertions judge what it read.
+        drop(socket.write_all(head.as_bytes()).await);
+        drop(socket.write_all(body).await);
+        drop(socket.shutdown().await);
     });
     base
 }

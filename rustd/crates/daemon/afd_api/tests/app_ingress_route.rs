@@ -21,10 +21,7 @@
 //!
 //! # No datastore, and that is a property of the seam
 //!
-//! Pull-request fanout uses the scripted installation and subscription answers.
-//! Workflow completions also write through the native task owner: the outage
-//! case keeps that store unreachable, while `integration_app_ingress_live.rs`
-//! proves completion retention and replay against the runtime database role.
+//! Fanout uses the scripted installation and subscription answers.
 
 #![cfg(feature = "test-util")]
 
@@ -36,19 +33,18 @@ use self::harness::webhook as signed;
 use self::harness::{Fleet, Scripted, json_body, send_with_headers};
 use af_core::error_code;
 use af_webhook::Scheme;
-use afd_ingress::{MAX_FANOUT, Surface};
+use afd_ingress::Surface;
 use http::{Method, StatusCode};
 use serde_json::Value;
 
 /// A delivery an App sends for an installation, carrying its own id.
 ///
-/// Its `installation.id` is [`signed::INSTALLATION`], which lets the scripted
-/// lookup reach the native completion owner after signature verification.
-pub(crate) const APP_RUN_FAILURE: &str =
-    include_str!("../../../../../tests/fixtures/webhooks/github_run_failure_app.json");
+/// Its `installation.id` is [`signed::INSTALLATION`], the one the scripted
+/// lookup answers for after signature verification.
+pub(crate) const APP_RUN_FAILURE: &str = afd_api_ingress::test_util::GITHUB_RUN_FAILURE_APP;
 
 /// What an App sends to prove the endpoint answers.
-const PING: &str = include_str!("../../../../../tests/fixtures/webhooks/github_ping.json");
+const PING: &str = afd_api_ingress::test_util::GITHUB_PING;
 
 /// The delivery kind both run fixtures are.
 pub(crate) const EVENT_WORKFLOW_RUN: &str = "workflow_run";
@@ -93,10 +89,8 @@ pub(crate) fn deployment(subscribers: Vec<afd_ingress::Binding>) -> Arc<Scripted
 /// A pull-request event exercises routing without a durable completion write.
 #[expect(clippy::expect_used, reason = "captured fixture must be a JSON object")]
 pub(crate) fn app_pull_request() -> String {
-    let mut body: Value = serde_json::from_str(include_str!(
-        "../../../../../tests/fixtures/webhooks/github_pull_request.json"
-    ))
-    .expect("captured pull request parses");
+    let mut body: Value = serde_json::from_str(afd_api_ingress::test_util::GITHUB_PULL_REQUEST)
+        .expect("captured pull request parses");
     let fields = body
         .as_object_mut()
         .expect("delivery envelope is an object");
@@ -250,39 +244,6 @@ async fn a_ping_is_answered_only_on_the_far_side_of_the_signature() {
 }
 
 #[tokio::test]
-async fn a_matched_set_past_the_ceiling_is_refused_rather_than_truncated() {
-    // Waking the first hundred of a hundred and one is a silent,
-    // order-dependent choice about whose fleet runs. The operator who wired it
-    // that way is the one who has to know.
-    let ingress = Arc::new(
-        Scripted::new()
-            .app_signing(APP_SECRET)
-            .installed_in(signed::id(signed::WORKSPACE))
-            .matching(MAX_FANOUT + 1),
-    );
-    let refused = deliver(
-        &ingress,
-        SHIPPED,
-        EVENT_PULL_REQUEST,
-        APP_SECRET,
-        &app_pull_request(),
-    )
-    .await;
-
-    let status = refused.status();
-    let document = json_body(refused).await;
-    assert!(status.is_client_error(), "{status} {document}");
-    assert_eq!(
-        harness::error_code(&document),
-        Some(error_code::WEBHOOK_SUBSCRIPTION_NOT_FOUND.as_str())
-    );
-    assert!(
-        ingress.deliveries().is_empty(),
-        "none of them, not the first hundred"
-    );
-}
-
-#[tokio::test]
 async fn a_path_naming_no_served_app_is_refused_before_anything_is_read() {
     let ingress = deployment(vec![subscriber(signed::FLEET)]);
     let refused = deliver(
@@ -322,5 +283,43 @@ async fn a_delivery_that_is_not_the_event_its_header_claims_is_malformed() {
         ingress.deliveries().is_empty(),
         "{:?}",
         ingress.deliveries()
+    );
+}
+
+#[tokio::test]
+async fn a_delivery_with_no_event_header_is_malformed_and_wakes_nobody() {
+    // The header names the body's kind, and the body is never read without it:
+    // a signed delivery missing it is a sender's fault, refused before the wall.
+    let ingress = deployment(vec![subscriber(signed::FLEET)]);
+    let router = Fleet::new()
+        .with_ingress(&ingress)
+        .with_platform_admin(signed::id(signed::WORKSPACE))
+        .router();
+    let proof = signed::signature(Scheme::BodyHex, APP_SECRET, APP_RUN_FAILURE.as_bytes());
+    let headers: Vec<_> = signed::github_headers(EVENT_WORKFLOW_RUN, signed::DELIVERY_ID, &proof)
+        .into_iter()
+        .filter(|(header, _)| header.as_str() != signed::HEADER_EVENT)
+        .collect();
+    let refused = send_with_headers(
+        &router,
+        Method::POST,
+        &path(SHIPPED),
+        None,
+        APP_RUN_FAILURE,
+        &headers,
+    )
+    .await;
+
+    let status = refused.status();
+    let document = json_body(refused).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{document}");
+    assert_eq!(
+        harness::error_code(&document),
+        Some(error_code::WEBHOOK_MALFORMED.as_str())
+    );
+    assert_eq!(
+        ingress.deliveries().len(),
+        0,
+        "a refused delivery wakes nobody"
     );
 }

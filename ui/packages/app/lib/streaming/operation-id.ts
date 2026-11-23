@@ -1,7 +1,7 @@
 import { v7 } from "uuid";
 
 // A steer's operation id: the caller's own name for one send, repeated on every
-// retry so the daemon admits it once (`af_wire::event::SteerRequest`). Minted
+// retry so the daemon admits it once (`af_wire::turn::SteerRequest`). Minted
 // here, in the browser, because only the sender can tell a retried POST from a
 // person pressing Send twice — the bytes on the wire are identical.
 //

@@ -11,7 +11,7 @@
 //!
 //! [`crate::price::PriceBook::load`] is one indexed lookup on the model's
 //! `(provider, model_name)` and its price rows. `Accounts` reads it every time.
-//! The lease path holds the book instead, in a cache keyed by the catalogue
+//! The run path holds the book instead, in a cache keyed by the catalogue
 //! version, so an edit to a rate moves the key and the next lookup loads the new
 //! book; [`Accounts::estimate_from`] prices against a book the caller already
 //! holds.

@@ -59,6 +59,7 @@ fn the_right_code_redeems_and_writes_the_consume() -> TestResult {
         &row(SessionStatus::VerificationPending),
         &code("123456"),
         &fingerprint("afc/1"),
+        MAX_VERIFY_ATTEMPTS,
     )?;
     let VerifyOutcome::Success(payload) = outcome else {
         return Err("the right code redeems".into());
@@ -73,7 +74,12 @@ fn wrong_codes_count_then_abort_at_the_cap() -> TestResult {
     let mut locked = row(SessionStatus::VerificationPending);
     for attempt in 1..MAX_VERIFY_ATTEMPTS {
         locked.verification_attempt_count = i16::from(attempt - 1);
-        let (outcome, write) = classify(&locked, &code("000000"), &fingerprint("afc/1"))?;
+        let (outcome, write) = classify(
+            &locked,
+            &code("000000"),
+            &fingerprint("afc/1"),
+            MAX_VERIFY_ATTEMPTS,
+        )?;
         assert_eq!(outcome, VerifyOutcome::InvalidCode(attempt));
         assert_eq!(
             write,
@@ -85,7 +91,12 @@ fn wrong_codes_count_then_abort_at_the_cap() -> TestResult {
         );
     }
     locked.verification_attempt_count = i16::from(MAX_VERIFY_ATTEMPTS - 1);
-    let (outcome, write) = classify(&locked, &code("000000"), &fingerprint("afc/1"))?;
+    let (outcome, write) = classify(
+        &locked,
+        &code("000000"),
+        &fingerprint("afc/1"),
+        MAX_VERIFY_ATTEMPTS,
+    )?;
     assert_eq!(
         outcome,
         VerifyOutcome::RateLimited,
@@ -107,12 +118,22 @@ fn an_approved_row_without_a_whole_digest_is_unreadable() -> TestResult {
     let mut locked = row(SessionStatus::VerificationPending);
     locked.verification_code_hmac = None;
     assert_unreadable(
-        classify(&locked, &code("123456"), &fingerprint("afc/1")),
+        classify(
+            &locked,
+            &code("123456"),
+            &fingerprint("afc/1"),
+            MAX_VERIFY_ATTEMPTS,
+        ),
         "an approved row without its digest is unreadable",
     )?;
     locked.verification_code_hmac = Some(vec![1, 2, 3]);
     assert_unreadable(
-        classify(&locked, &code("123456"), &fingerprint("afc/1")),
+        classify(
+            &locked,
+            &code("123456"),
+            &fingerprint("afc/1"),
+            MAX_VERIFY_ATTEMPTS,
+        ),
         "a short digest is unreadable, not a wrong code",
     )
 }
@@ -123,7 +144,12 @@ fn an_attempt_count_a_verify_never_writes_is_unreadable() -> TestResult {
         let mut locked = row(SessionStatus::VerificationPending);
         locked.verification_attempt_count = count;
         assert_unreadable(
-            classify(&locked, &code("000000"), &fingerprint("afc/1")),
+            classify(
+                &locked,
+                &code("000000"),
+                &fingerprint("afc/1"),
+                MAX_VERIFY_ATTEMPTS,
+            ),
             &format!("a count of {count} on a pending row is unreadable"),
         )?;
     }
@@ -135,17 +161,32 @@ fn replay_answers_only_the_same_request_inside_the_window() -> TestResult {
     let mut locked = row(SessionStatus::Consumed);
     locked.consumed_client_fingerprint = Some(fingerprint("afc/1").as_bytes().to_vec());
     locked.replay_expires_at = Some((NOW + SignedDuration::from_secs(60)).into());
-    let (outcome, write) = classify(&locked, &code("123456"), &fingerprint("afc/1"))?;
+    let (outcome, write) = classify(
+        &locked,
+        &code("123456"),
+        &fingerprint("afc/1"),
+        MAX_VERIFY_ATTEMPTS,
+    )?;
     assert!(matches!(outcome, VerifyOutcome::Replay(_)));
     assert_eq!(write, None, "a replay writes nothing");
-    let (outcome, _) = classify(&locked, &code("123456"), &fingerprint("afc/2"))?;
+    let (outcome, _) = classify(
+        &locked,
+        &code("123456"),
+        &fingerprint("afc/2"),
+        MAX_VERIFY_ATTEMPTS,
+    )?;
     assert_eq!(
         outcome,
         VerifyOutcome::Consumed,
         "another fingerprint is refused"
     );
     locked.replay_expires_at = Some(NOW.into());
-    let (outcome, _) = classify(&locked, &code("123456"), &fingerprint("afc/1"))?;
+    let (outcome, _) = classify(
+        &locked,
+        &code("123456"),
+        &fingerprint("afc/1"),
+        MAX_VERIFY_ATTEMPTS,
+    )?;
     assert_eq!(
         outcome,
         VerifyOutcome::Consumed,
@@ -159,7 +200,12 @@ fn a_session_past_its_deadline_is_expired_whatever_its_status() -> TestResult {
     for status in SessionStatus::ALL {
         let mut locked = row(status);
         locked.expires_at = NOW;
-        let (outcome, write) = classify(&locked, &code("123456"), &fingerprint("afc/1"))?;
+        let (outcome, write) = classify(
+            &locked,
+            &code("123456"),
+            &fingerprint("afc/1"),
+            MAX_VERIFY_ATTEMPTS,
+        )?;
         assert_eq!(outcome, VerifyOutcome::Expired, "{status:?}");
         assert_eq!(write, None);
     }
@@ -180,7 +226,12 @@ fn terminal_and_unapproved_sessions_answer_without_writing() -> TestResult {
         (row(SessionStatus::Aborted), VerifyOutcome::Aborted(None)),
     ];
     for (locked, expected) in cases {
-        let (outcome, write) = classify(&locked, &code("123456"), &fingerprint("afc/1"))?;
+        let (outcome, write) = classify(
+            &locked,
+            &code("123456"),
+            &fingerprint("afc/1"),
+            MAX_VERIFY_ATTEMPTS,
+        )?;
         assert_eq!(outcome, expected);
         assert_eq!(write, None);
     }
@@ -192,13 +243,41 @@ fn a_row_this_daemon_never_writes_is_refused() -> TestResult {
     let mut unknown = row(SessionStatus::Pending);
     unknown.status = "verified".to_owned();
     assert_unreadable(
-        classify(&unknown, &code("123456"), &fingerprint("afc/1")),
+        classify(
+            &unknown,
+            &code("123456"),
+            &fingerprint("afc/1"),
+            MAX_VERIFY_ATTEMPTS,
+        ),
         "an unknown status is unreadable",
     )?;
     let mut hollow = row(SessionStatus::VerificationPending);
     hollow.ciphertext = None;
     assert_unreadable(
-        classify(&hollow, &code("123456"), &fingerprint("afc/1")),
+        classify(
+            &hollow,
+            &code("123456"),
+            &fingerprint("afc/1"),
+            MAX_VERIFY_ATTEMPTS,
+        ),
         "an approved row without its payload is unreadable",
     )
+}
+
+/// A configured allowance, not the default, decides when a wrong code aborts.
+#[test]
+fn a_configured_allowance_aborts_at_its_own_count() -> TestResult {
+    let mut locked = row(SessionStatus::VerificationPending);
+    locked.verification_attempt_count = 1;
+    let (outcome, write) = classify(&locked, &code("000000"), &fingerprint("afc/1"), 2)?;
+    assert_eq!(outcome, VerifyOutcome::RateLimited);
+    assert!(matches!(
+        write,
+        Some(Write::Attempt {
+            attempts: 2,
+            status: SessionStatus::Aborted,
+            ..
+        })
+    ));
+    Ok(())
 }

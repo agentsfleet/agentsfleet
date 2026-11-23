@@ -1,17 +1,16 @@
-//! How a delivery cycle ends: refused, retried, spent, renewed or lapsed,
+//! How a delivery cycle ends: refused, failed, renewed or lapsed,
 //! each matched to the holder's token so a lapsed holder writes nothing.
 
 use std::time::Duration;
 
 use af_core::test_util::trace::Capture;
 use afd_db::test_util::mint_id;
-use afd_outbound::lanes::MAX_DELIVERY_CYCLES;
-use afd_outbound::obligation;
+use afd_outbound::delivery;
 use afd_outbound::{Lanes, Posters};
 use tokio_util::sync::CancellationToken;
 
 use crate::poster::Recorder;
-use crate::{Ledger, POLL, until};
+use crate::{Ledger, until};
 
 /// Every attempt a ladder makes before its cycle ends retryably.
 const LADDER: usize = 3;
@@ -31,7 +30,7 @@ async fn a_refused_answer_is_abandoned_once() {
     let event = ledger.owe(&lane, "refused").await;
     let poster = Recorder::refusing(event.clone());
     let token = CancellationToken::new();
-    let worker = tokio::spawn(ledger.worker(&poster, POLL).await.run(token.clone()));
+    let worker = tokio::spawn(ledger.worker(&poster).await.run(token.clone()));
 
     let row = ledger.until(&event, |row| row.abandoned).await;
     token.cancel();
@@ -50,13 +49,13 @@ async fn an_unknown_connector_is_abandoned_unaddressable() {
     let event = ledger.owe(&lane, "nowhere").await;
     crate::sql(
         &ledger.database,
-        "UPDATE fleet.obligations SET provider = 'retired' WHERE event_id = $1",
+        "UPDATE thread.deliveries SET provider = 'retired' WHERE turn_id = $1",
         &[&event],
     )
     .await;
     let poster = Recorder::default();
     let token = CancellationToken::new();
-    let worker = tokio::spawn(ledger.worker(&poster, POLL).await.run(token.clone()));
+    let worker = tokio::spawn(ledger.worker(&poster).await.run(token.clone()));
 
     ledger.until(&event, |row| row.abandoned).await;
     token.cancel();
@@ -66,48 +65,35 @@ async fn an_unknown_connector_is_abandoned_unaddressable() {
     ledger.cleanup().await;
 }
 
+/// A delivery whose every inline attempt ends retryably is marked failed, and
+/// a claim that runs after it never offers it again: no retry (Indy, Nov 21,
+/// 2026).
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn a_retryable_cycle_is_released_due_later() {
+async fn a_failed_delivery_is_marked_failed_and_not_retried() {
     let ledger = Ledger::create().await;
     let lane = ledger.lane().await;
-    let event = ledger.owe(&lane, "retried").await;
+    let event = ledger.owe(&lane, "failed").await;
+    let (bus, server) = afd_bus::test_util::detached().expect("a detached bus");
     let poster = Recorder::failing(event.clone());
     let token = CancellationToken::new();
-    let worker = tokio::spawn(ledger.worker(&poster, POLL).await.run(token.clone()));
+    let worker = tokio::spawn(ledger.worker_on(bus, &poster).run(token.clone()));
 
-    let row = ledger.until(&event, |row| row.due_later).await;
+    let row = ledger.until(&event, |row| row.abandoned).await;
+    // A later answer and its ping make the worker claim again.
+    let later_lane = ledger.lane().await;
+    let later = ledger.owe(&later_lane, "later").await;
+    server.publish(&afd_bus::Subject::DeliveryWake, "");
+    ledger.until(&later, |row| row.delivered).await;
     token.cancel();
     worker.await.expect("the worker stops");
 
     assert_eq!(row.attempt_count, 1, "one cycle counted");
-    assert!(!row.delivered && !row.abandoned, "the row stays owed");
-    assert_eq!(poster.attempts_of(&event), LADDER, "the ladder ran in full");
-    ledger.cleanup().await;
-}
-
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn spent_cycles_abandon_the_answer() {
-    const _: () = assert!(MAX_DELIVERY_CYCLES == 12, "the fixture seeds one short");
-    let ledger = Ledger::create().await;
-    let lane = ledger.lane().await;
-    let event = ledger.owe(&lane, "spent").await;
-    crate::sql(
-        &ledger.database,
-        "UPDATE fleet.obligations SET attempt_count = 11 WHERE event_id = $1",
-        &[&event],
-    )
-    .await;
-    let poster = Recorder::failing(event.clone());
-    let token = CancellationToken::new();
-    let worker = tokio::spawn(ledger.worker(&poster, POLL).await.run(token.clone()));
-
-    let row = ledger.until(&event, |row| row.abandoned).await;
-    token.cancel();
-    worker.await.expect("the worker stops");
-
-    assert_eq!(row.attempt_count, MAX_DELIVERY_CYCLES);
+    assert!(!row.delivered, "a failed answer is not delivered");
+    assert_eq!(poster.attempts_of(&event), LADDER, "the ladder ran once");
+    let after = ledger.row(&event).await;
+    assert_eq!(after.attempt_count, 1, "no second cycle was counted");
+    assert!(after.abandoned && !after.delivered, "it stays failed");
     ledger.cleanup().await;
 }
 
@@ -121,7 +107,7 @@ async fn a_slow_delivery_renews_its_claim() {
     let token = CancellationToken::new();
     let worker = tokio::spawn(
         ledger
-            .worker(&poster, POLL)
+            .worker(&poster)
             .await
             .with_claim_renew(FAST_RENEW)
             .run(token.clone()),
@@ -159,7 +145,7 @@ async fn a_renewal_that_finds_the_row_taken_ends_the_cycle() {
     let token = CancellationToken::new();
     let worker = tokio::spawn(
         ledger
-            .worker(&poster, POLL)
+            .worker(&poster)
             .await
             .with_claim_renew(FAST_RENEW)
             .run(token.clone()),
@@ -183,21 +169,22 @@ async fn a_renewal_that_finds_the_row_taken_ends_the_cycle() {
 
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn a_lapsed_holder_neither_stamps_nor_releases() {
+async fn a_lapsed_holder_neither_stamps_nor_marks_failed() {
     let capture = Capture::install();
     let ledger = Ledger::create().await;
     let (a, b) = (ledger.lane().await, ledger.lane().await);
     let delivered = ledger.owe(&a, "stamped late").await;
-    let retried = ledger.owe(&b, "released late").await;
-    let poster = Recorder::failing(retried.clone()).with_slow(Duration::from_millis(300));
+    let failed = ledger.owe(&b, "failed late").await;
+    let poster = Recorder::failing(failed.clone()).with_slow(Duration::from_millis(300));
     let token = CancellationToken::new();
-    let worker = tokio::spawn(ledger.worker(&poster, POLL).await.run(token.clone()));
+    let worker = tokio::spawn(ledger.worker(&poster).await.run(token.clone()));
 
-    until(|| poster.attempts_of(&delivered) == 1 && poster.attempts_of(&retried) == 1).await;
+    until(|| poster.attempts_of(&delivered) == 1 && poster.attempts_of(&failed) == 1).await;
     ledger.steal(&delivered).await;
-    ledger.steal(&retried).await;
-    until(|| lapsed(&capture, "stamp") && lapsed(&capture, "release")).await;
+    ledger.steal(&failed).await;
+    until(|| lapsed(&capture, "stamp") && poster.attempts_of(&failed) == LADDER).await;
     token.cancel();
+    // Draining waits for the failed cycle's last write.
     worker.await.expect("the worker stops");
 
     assert!(
@@ -205,8 +192,8 @@ async fn a_lapsed_holder_neither_stamps_nor_releases() {
         "the late stamp changed nothing"
     );
     assert!(
-        !ledger.row(&retried).await.due_later,
-        "the late release changed nothing"
+        !ledger.row(&failed).await.abandoned,
+        "the late failure mark changed nothing"
     );
     ledger.cleanup().await;
 }
@@ -221,7 +208,7 @@ async fn a_refusal_for_a_row_another_holder_took_is_neither_stamped_nor_announce
     let ledger = Ledger::create().await;
     let lane = ledger.lane().await;
     let event = ledger.owe(&lane, "taken before refused").await;
-    let claimed = obligation::claim(&ledger.database, 8, &mint_id())
+    let claimed = delivery::claim(&ledger.database, 8, &mint_id())
         .await
         .expect("the claim");
     assert_eq!(claimed.len(), 1, "one row is claimed");
@@ -270,10 +257,6 @@ async fn a_refusal_for_a_row_another_holder_took_is_neither_stamped_nor_announce
         0,
         "nothing to announce"
     );
-    assert_eq!(
-        said("outbound_obligation_abandon_failed"),
-        0,
-        "the write ran"
-    );
+    assert_eq!(said("outbound_delivery_abandon_failed"), 0, "the write ran");
     ledger.cleanup().await;
 }

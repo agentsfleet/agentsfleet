@@ -24,7 +24,7 @@ use crate::harness;
 
 use self::harness::Fleet;
 use af_core::error_code;
-use afd_api_ingress::BUFFER_CEILING;
+use afd_http::body::DEFAULT_MAX_REQUEST_BODY_BYTES;
 use http::{Method, StatusCode};
 
 /// A provider that delivers events to this daemon.
@@ -60,44 +60,16 @@ async fn a_connector_with_no_inbound_surface_is_refused_before_the_vault() {
     );
 }
 
-/// The two caps are two different refusals, and the GAP between them is why.
-///
-/// `BUFFER_CEILING` is the transport limit: the most this daemon will buffer
-/// before an unauthenticated request can make it hold arbitrary memory.
-/// `MAX_BODY_SIZE` is the semantic cap, half of it, and a body past THAT earns
-/// `UZ-WH-030` with a sentence naming the limit. The doubling exists so the
-/// coded answer is the one a real sender meets.
-///
-/// Nothing asserted the gap, and the file that documents it names exactly what
-/// its loss would look like: *"Setting them equal would collapse the second
-/// into the first — every over-cap delivery would earn `axum`'s bare 413
-/// instead of `UZ-WH-030`, and a sender reading its delivery log would see a
-/// status with no registry code to search."* A body of exactly `BUFFER_CEILING`
-/// bytes is the probe for that: the layer admits it, and the handler must still
-/// refuse it in the daemon's own voice. Collapse the gap and this body falls
-/// under the semantic cap instead, and the case fails.
+/// A body past `[server] max_request_body_mib` is refused 413 before the
+/// handler buffers it, so an unauthenticated sender cannot make this daemon
+/// hold or hash more than the deployment allows.
 #[tokio::test]
-async fn a_body_inside_the_buffer_but_past_the_cap_is_refused_in_this_daemons_voice() {
-    let over_the_cap = "x".repeat(BUFFER_CEILING);
-
-    assert_eq!(
-        harness::refusal_code(deliver(DELIVERING, &over_the_cap).await).await,
-        error_code::WEBHOOK_PAYLOAD_TOO_LARGE.as_str(),
-        "a sender reading its delivery log needs a registry code to search for"
-    );
-}
-
-#[tokio::test]
-async fn a_body_past_the_buffer_is_stopped_by_the_transport_before_the_handler() {
-    let absurd = "x".repeat(BUFFER_CEILING + 1);
+async fn a_body_past_the_request_body_bound_is_refused_before_the_handler() {
+    let absurd = "x".repeat(DEFAULT_MAX_REQUEST_BODY_BYTES + 1);
     let router = Fleet::new().router();
     let response = harness::send(&router, Method::POST, &path(DELIVERING), None, &absurd).await;
 
-    assert_eq!(
-        response.status(),
-        StatusCode::PAYLOAD_TOO_LARGE,
-        "past the buffer there is no coded answer to give, because giving one          would mean holding the body to answer about it — which is the thing          the transport limit exists to refuse"
-    );
+    assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
 }
 
 #[tokio::test]

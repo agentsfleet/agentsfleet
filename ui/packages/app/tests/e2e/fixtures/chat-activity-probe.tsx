@@ -16,7 +16,7 @@ export function ActivityFixture() {
   const runtime = useExternalStoreRuntime({messages, isRunning: state === "running",
     convertMessage: (message: ThreadMessageLike) => message, onNew: async () => {}});
   return <main className="flex min-h-dvh flex-col bg-background text-foreground">
-    <p className="px-xl py-sm text-eyebrow text-muted-foreground">Activity fixture · deterministic recorded events</p>
+    <p className="px-xl py-sm text-eyebrow text-muted-foreground">Activity fixture · deterministic recorded turns</p>
     <div className="flex flex-wrap gap-sm px-xl py-sm">{STATES.map(value => <Button key={value} size="sm" variant="outline"
       onClick={() => setState(value)}>Show {value}</Button>)}</div>
     <AssistantRuntimeProvider runtime={runtime}>

@@ -2,7 +2,7 @@
 
 use super::transfer;
 use af_core::id::Uuid7;
-use af_wire::task::{CheckpointObject, CheckpointObjectStatus, CheckpointPlaintext};
+use af_wire::durable_task::{CheckpointObject, CheckpointObjectStatus, CheckpointPlaintext};
 use base64::Engine as _;
 use zeroize::Zeroizing;
 
@@ -97,5 +97,45 @@ fn plaintext_and_transport_descriptors_cannot_be_substituted() -> crate::Result<
     transfer::open(&workspace, &mut wrong_plaintext, bytes)
         .err()
         .ok_or_else(|| crate::error::config("unsafe operation was accepted"))?;
+    Ok(())
+}
+
+/// What a malformed descriptor names, and how it is malformed.
+type Mutation = (&'static str, fn(&mut CheckpointObject));
+
+#[test]
+fn a_short_ciphertext_or_missing_or_malformed_key_material_never_opens() -> crate::Result<()> {
+    let workspace = Uuid7::parse(ID)?;
+    let short = vec![0; af_crypto::TAG_LEN - 1];
+    let refused = transfer::open(&workspace, &mut registered(&short), short.clone())
+        .err()
+        .ok_or_else(|| crate::error::config("a tagless ciphertext was accepted"))?;
+    assert!(
+        refused.to_string().contains("authentication tag is absent"),
+        "{refused}"
+    );
+
+    let bytes = transfer::seal(&workspace, &mut object(), Zeroizing::new(CONTENT.to_vec()))?;
+    let mutations: [Mutation; 5] = [
+        ("data key is absent", |object| object.data_key = None),
+        ("data key encoding is invalid", |object| {
+            object.data_key = Some("not base64!".to_owned());
+        }),
+        ("nonce is absent", |object| object.nonce = None),
+        ("nonce encoding is invalid", |object| {
+            object.nonce = Some("not base64!".to_owned());
+        }),
+        ("nonce length is invalid", |object| {
+            object.nonce = Some(base64::prelude::BASE64_STANDARD.encode([4; 3]));
+        }),
+    ];
+    for (reason, mutate) in mutations {
+        let mut descriptor = registered(&bytes);
+        mutate(&mut descriptor);
+        let refused = transfer::open(&workspace, &mut descriptor, bytes.clone())
+            .err()
+            .ok_or_else(|| crate::error::config("unusable key material was accepted"))?;
+        assert!(refused.to_string().contains(reason), "{reason}: {refused}");
+    }
     Ok(())
 }

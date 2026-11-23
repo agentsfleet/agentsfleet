@@ -1,12 +1,14 @@
-// Piped JSON and credentials use bounded reads with caller-owned cancellation.
-// Injecting the stream keeps tests away from the test runner's own stdin.
+// Piped JSON and credentials are read to the end with caller-owned
+// cancellation. No size cap: the server bounds what it accepts and names the
+// bound when it refuses. Injecting the stream keeps tests away from the test
+// runner's own stdin.
 
 import { Context, Effect, Layer } from "effect";
-import { UnexpectedError, ValidationError } from "../errors/index.ts";
+import { UnexpectedError } from "../errors/index.ts";
 
 export interface StdinShape {
   readonly isTTY: boolean;
-  readonly readBounded: (maximumBytes: number) => Effect.Effect<string, ValidationError | UnexpectedError>;
+  readonly readAll: () => Effect.Effect<string, UnexpectedError>;
 }
 
 export type Stdin = StdinShape;
@@ -18,10 +20,9 @@ export const Stdin = Context.Service<Stdin>("agentsfleet/runtime/Stdin");
 
 export const makeLive = (stream: NodeJS.ReadableStream = process.stdin): StdinShape => ({
   isTTY: Boolean((stream as { isTTY?: boolean }).isTTY),
-  readBounded: (maximumBytes) => Effect.tryPromise({
-    try: signal => readStreamToEnd(stream, maximumBytes, signal),
-    catch: cause => cause instanceof ValidationError ? cause
-      : new UnexpectedError({detail: "Could not read standard input", suggestion: "check the input pipe and try again"}),
+  readAll: () => Effect.tryPromise({
+    try: signal => readStreamToEnd(stream, signal),
+    catch: () => new UnexpectedError({detail: "Could not read standard input", suggestion: "check the input pipe and try again"}),
   }),
 });
 export const stdinLayer: Layer.Layer<Stdin> = Layer.succeed(Stdin, Stdin.of(makeLive()));
@@ -29,19 +30,11 @@ export const stdinLayer: Layer.Layer<Stdin> = Layer.succeed(Stdin, Stdin.of(make
 export const stdinFromStreamLayer = (stream: NodeJS.ReadableStream): Layer.Layer<Stdin> =>
   Layer.succeed(Stdin, Stdin.of(makeLive(stream)));
 
-const readStreamToEnd = (stream: NodeJS.ReadableStream, maximumBytes: number, signal: AbortSignal): Promise<string> =>
+const readStreamToEnd = (stream: NodeJS.ReadableStream, signal: AbortSignal): Promise<string> =>
   new Promise<string>((resolve, reject) => {
     const chunks: Buffer[] = [];
-    let bytes = 0;
     const onData = (chunk: Buffer | string): void => {
-      const buffer = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
-      bytes += buffer.byteLength;
-      if (bytes > maximumBytes) {
-        cleanup(); stream.pause();
-        reject(new ValidationError({detail: `Standard input exceeds ${maximumBytes} bytes`, suggestion: "pipe a smaller input"}));
-        return;
-      }
-      chunks.push(buffer);
+      chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
     };
     // Remove every listener on settle. `data` is registered with `on`, and
     // the `once` end/error pair only self-removes the handler that fires —

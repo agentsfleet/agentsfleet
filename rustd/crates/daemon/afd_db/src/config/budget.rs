@@ -1,6 +1,6 @@
 //! Pool budgets resolve without a connection URL, before a command opens sockets.
 
-use std::{num::ParseIntError, str::FromStr};
+use std::{num::ParseIntError, str::FromStr, time::Duration};
 
 use af_core::env::EnvSource;
 use garde::Validate;
@@ -27,6 +27,42 @@ pub struct PoolOverrides {
     pub max_lifetime_seconds: Option<u64>,
     /// Idle interval before checkout tests a session; zero tests every checkout.
     pub ping_after_idle_ms: Option<u64>,
+}
+
+/// The values a role takes when neither its file overrides nor the
+/// environment name one: the deployment file's `[database]` section, or the
+/// compiled defaults below.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PoolDefaults {
+    /// Maximum open sessions for this process and database role.
+    pub max_connections: u32,
+    /// Sessions warmed before traffic; `None` warms a quarter of whatever
+    /// ceiling the role resolves to.
+    pub min_connections: Option<u32>,
+    /// Deadline for obtaining a pooled session, including a new handshake.
+    pub acquire_timeout: Duration,
+    /// Deadline for the direct startup connection probe.
+    pub connect_timeout: Duration,
+    /// Unused lifetime before the pool closes a session.
+    pub idle_timeout: Duration,
+    /// Total lifetime before the pool replaces a session.
+    pub max_lifetime: Duration,
+    /// Idle interval before checkout tests a session.
+    pub ping_after_idle: Duration,
+}
+
+impl Default for PoolDefaults {
+    fn default() -> Self {
+        Self {
+            max_connections: super::pool_size_default(),
+            min_connections: None,
+            acquire_timeout: super::ACQUIRE_TIMEOUT_DEFAULT,
+            connect_timeout: super::CONNECT_TIMEOUT_DEFAULT,
+            idle_timeout: crate::pool::IDLE_TIMEOUT,
+            max_lifetime: crate::pool::MAX_LIFETIME,
+            ping_after_idle: crate::pool::PING_AFTER_IDLE,
+        }
+    }
 }
 
 /// Checked together after file and environment precedence has been applied.
@@ -65,26 +101,50 @@ impl PoolSettings {
         role: DbRole,
         file: PoolOverrides,
     ) -> Result<garde::Valid<Self>> {
+        Self::resolve_with(env, role, file, &PoolDefaults::default())
+    }
+
+    /// [`Self::resolve`] over a deployment's own defaults.
+    ///
+    /// Precedence, highest first: the role's file override, the role-scoped
+    /// then the shared environment knob (`DATABASE_POOL_SIZE`,
+    /// `DATABASE_MIN_POOL_SIZE`, `DATABASE_ACQUIRE_TIMEOUT_MS`), then
+    /// `defaults`. With no warm floor named anywhere, a quarter of the
+    /// resolved ceiling is warmed, so a deployment that only set
+    /// `DATABASE_POOL_SIZE` keeps today's floor; a named default floor above
+    /// that ceiling follows it down.
+    ///
+    /// # Errors
+    /// Preserves numeric parsing and Garde field failures without retaining input values.
+    pub fn resolve_with(
+        env: &(impl EnvSource + ?Sized),
+        role: DbRole,
+        file: PoolOverrides,
+        defaults: &PoolDefaults,
+    ) -> Result<garde::Valid<Self>> {
         let max_connections = read(
             env,
             role,
             super::POOL_SIZE_KNOB,
             file.max_connections,
-            super::pool_size_default(),
+            defaults.max_connections,
         )?;
         let min_connections = read(
             env,
             role,
             super::MIN_POOL_SIZE_KNOB,
             file.min_connections,
-            super::min_connections_default(max_connections),
+            defaults.min_connections.map_or_else(
+                || super::min_connections_default(max_connections),
+                |floor| floor.min(max_connections),
+            ),
         )?;
         let acquire_timeout_ms = read(
             env,
             role,
             super::ACQUIRE_TIMEOUT_KNOB,
             file.acquire_timeout_ms,
-            super::ACQUIRE_TIMEOUT_DEFAULT.as_secs() * 1000,
+            millis(defaults.acquire_timeout),
         )?;
         Ok(garde::Unvalidated::new(Self {
             max_connections,
@@ -92,20 +152,24 @@ impl PoolSettings {
             acquire_timeout_ms,
             connect_timeout_ms: file
                 .connect_timeout_ms
-                .unwrap_or(super::CONNECT_TIMEOUT_DEFAULT.as_secs() * 1000),
+                .unwrap_or_else(|| millis(defaults.connect_timeout)),
             idle_timeout_seconds: file
                 .idle_timeout_seconds
-                .unwrap_or(crate::pool::IDLE_TIMEOUT.as_secs()),
+                .unwrap_or(defaults.idle_timeout.as_secs()),
             max_lifetime_seconds: file
                 .max_lifetime_seconds
-                .unwrap_or(crate::pool::MAX_LIFETIME.as_secs()),
+                .unwrap_or(defaults.max_lifetime.as_secs()),
             ping_after_idle_ms: file
                 .ping_after_idle_ms
-                .unwrap_or(crate::pool::PING_AFTER_IDLE.as_secs() * 1000),
+                .unwrap_or_else(|| millis(defaults.ping_after_idle)),
         })
         .validate()
         .map_err(|source| ErrorKind::InvalidPoolBudget { source })?)
     }
+}
+
+fn millis(duration: Duration) -> u64 {
+    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
 }
 
 fn read<T: FromStr<Err = ParseIntError>>(

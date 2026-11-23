@@ -6,11 +6,10 @@
 // named `process.env` or `Bun.env` read anywhere else under `src/`. Reads on
 // an injected env object are not covered.
 //
-// Four names are deliberately absent because they are only ever read as dotted
+// Three names are deliberately absent because they are only ever read as dotted
 // properties, never spelled as a string: `AGENTSFLEET_TELEMETRY_DISABLED` and
-// `DO_NOT_TRACK` (`services/telemetry/consent.ts`), `AGENTSFLEET_TELEMETRY_DEBUG`
-// (`services/telemetry/runtime.layer.ts`) and `AGENTSFLEET_NO_RETRY`
-// (`lib/http-retry.ts`).
+// `DO_NOT_TRACK` (`services/telemetry/consent.ts`) and `AGENTSFLEET_TELEMETRY_DEBUG`
+// (`services/telemetry/runtime.layer.ts`).
 
 // The API base the CLI talks to. Read by `argv-scan` after `--api`, so the
 // flag wins and this is the fallback.

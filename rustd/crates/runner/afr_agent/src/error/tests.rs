@@ -9,21 +9,26 @@ use af_core::error_code;
 use af_providers::Connect as _;
 use af_wire::inference::{InferenceApi, ModelInference};
 use afr_tools::Catalog;
+use afr_tools::catalog::FLEET_STEER;
 
 use super::{Error, Unhosted};
 
 #[test]
-fn should_carry_the_catalogs_code_and_tool_when_a_lease_is_refused() {
-    let refusal = Catalog::new(Vec::new()).select(&["browser"]).unwrap_err();
+fn should_carry_the_catalogs_code_and_tool_when_a_run_is_refused() {
+    // The fleet tools run over the runner's verbs, so a catalog hosting no
+    // handler has nothing to serve one with; every other tool a run builds.
+    let refusal = Catalog::new(Vec::new())
+        .select(&[FLEET_STEER.name()])
+        .unwrap_err();
 
     let failure = Error::from(refusal);
 
     assert_eq!(failure.code(), error_code::AGENTSFLEET_INVALID_CONFIG);
-    assert_eq!(failure.unhosted(), Some(Unhosted::Tool("browser")));
+    assert_eq!(failure.unhosted(), Some(Unhosted::Tool(FLEET_STEER.name())));
     assert!(failure.to_string().starts_with("[UZ-AGT-008] "));
     let cause = failure.source().unwrap().to_string();
     assert!(
-        cause.contains("browser"),
+        cause.contains(FLEET_STEER.name()),
         "the cause is the catalog's refusal: {cause}"
     );
 }
@@ -90,7 +95,7 @@ fn should_refuse_a_private_persisted_endpoint_without_mistaking_it_for_an_unhost
 }
 
 /// An executor failure under the scripted engine is the engine's own fault:
-/// logged as an internal failure, and naming nothing the lease asked for.
+/// logged as an internal failure, and naming nothing the run asked for.
 #[cfg(feature = "test-util")]
 #[test]
 fn should_log_an_executor_failure_as_internal_and_name_nothing_unhosted() {
@@ -100,4 +105,34 @@ fn should_log_an_executor_failure_as_internal_and_name_nothing_unhosted() {
 
     assert_eq!(failure.code(), error_code::INTERNAL_OPERATION_FAILED);
     assert_eq!(failure.unhosted(), None);
+}
+
+#[test]
+fn should_keep_the_identity_and_context_codes_and_name_nothing_unhosted() {
+    let minted = af_crypto::entropy::Entropy::new()
+        .uuid7(jiff::Timestamp::MIN)
+        .unwrap_err();
+    let minted_code = minted.code();
+    let stale = af_context::Error::stale();
+    let stale_code = stale.code();
+
+    let identity = Error::from(minted);
+    let context = Error::from(stale);
+
+    assert_eq!(identity.code(), minted_code);
+    assert_eq!(context.code(), stale_code);
+    for failure in [identity, context] {
+        assert_eq!(failure.unhosted(), None, "{failure}");
+    }
+}
+
+#[test]
+fn should_name_nothing_unhosted_for_a_recovery_or_durable_task_refusal() {
+    let recovery = super::recovery_invalid("assigned recovery has no restore owner");
+    let decision = crate::decision::unavailable();
+
+    assert_eq!(recovery.code(), error_code::RUN_CHECKPOINT_INCOMPATIBLE);
+    assert_eq!(decision.code(), error_code::INTERNAL_OPERATION_FAILED);
+    assert_eq!(recovery.unhosted(), None);
+    assert_eq!(decision.unhosted(), None);
 }

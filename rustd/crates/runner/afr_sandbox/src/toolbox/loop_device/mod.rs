@@ -143,9 +143,9 @@ pub(crate) struct Backing {
 /// Whether a loop device may write its image.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Access {
-    /// The toolbox: every lease reads it, none writes it.
+    /// The toolbox: every run reads it, none writes it.
     ReadOnly,
-    /// A lease's own workspace disk.
+    /// A run's own workspace disk.
     ReadWrite,
 }
 

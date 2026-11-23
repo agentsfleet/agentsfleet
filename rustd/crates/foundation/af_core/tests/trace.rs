@@ -52,7 +52,7 @@ fn trace_capture_records_fields() {
 fn trace_capture_only_refuses_an_event_nobody_raised() {
     let capture = Capture::install();
     tracing::info!(event = FLEET);
-    let _ = capture.only(EVENT);
+    drop(capture.only(EVENT));
 }
 
 #[test]
@@ -61,7 +61,7 @@ fn trace_capture_only_refuses_an_event_raised_twice() {
     let capture = Capture::install();
     tracing::info!(event = EVENT);
     tracing::info!(event = EVENT);
-    let _ = capture.only(EVENT);
+    drop(capture.only(EVENT));
 }
 
 // The race the global subscriber closes (a first registration straddling a

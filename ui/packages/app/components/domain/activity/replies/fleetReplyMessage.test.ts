@@ -4,8 +4,8 @@ import type { MessageState, ThreadMessageLike } from "@assistant-ui/react";
 import { REASONING_SPAN, REPLY_FIGURE, readToolResult, replyParts, reportsOwnRun, toReplyMessage } from "./fleetReplyMessage";
 import { readOmittedCallCount, readReasoningSpan, readReplyFigures } from "../messages/fleetMessageReaders";
 import { evt } from "@/tests/helpers/fleet-stream-fixtures";
-import { ACTOR } from "@/lib/events/event-summary";
-import { AGENTSFLEET_EVENT_STATUS, type FleetEvent, type FleetEventStatus } from "@/lib/streaming/fleet-stream-row";
+import { ACTOR } from "@/lib/turns/turn-summary";
+import { AGENTSFLEET_TURN_STATUS, type FleetTurn, type FleetTurnStatus } from "@/lib/streaming/fleet-stream-row";
 import { TOOL_CALL_STATUS, type ToolCallStatus } from "@/lib/streaming/fleet-stream-tool-trace";
 import { TOOL_NAME } from "../tools/presentation/tool-call-shape";
 
@@ -77,10 +77,10 @@ describe("toReplyMessage", () => {
   });
 
   it("test_streamed_word_keeps_a_finished_call_s_part_fields", () => {
-    // A streamed word replaces the reply's event but not its calls: each
+    // A streamed word replaces the reply's turn but not its calls: each
     // finished cell must get the same result and timing, or its memo misses.
     const tools = [{ name: "shell", callId: CALL_ID, startedAtMs: STARTED, ms: DONE_AFTER_MS, done: true, status: SUCCEEDED }];
-    const callOf = (event: FleetEvent) => replyParts(event).find((part) => part.type === "tool-call");
+    const callOf = (turn: FleetTurn) => replyParts(turn).find((part) => part.type === "tool-call");
     const first = callOf(evt({ id: "e1:reply", reply: "Step 1", tools }));
     const next = callOf(evt({ id: "e1:reply", reply: "Step 1 and 2", tools }));
     expect(next?.type === "tool-call" && first?.type === "tool-call" && next.result === first.result && next.timing === first.timing).toBe(true);
@@ -92,7 +92,7 @@ describe("toReplyMessage", () => {
   it("should hand every call that named no arguments one empty object", () => {
     // Left off, the library mints a fresh `{}` per conversion, and a fresh
     // object misses the memo of every cell and fold that holds it.
-    const argsOf = (event: FleetEvent) => replyParts(event).flatMap((part) => (part.type === "tool-call" ? [part.args] : []));
+    const argsOf = (turn: FleetTurn) => replyParts(turn).flatMap((part) => (part.type === "tool-call" ? [part.args] : []));
     const tools = [
       { name: "cron_list", startedAtMs: STARTED, ms: null, done: false },
       { name: "fly_apps", startedAtMs: STARTED, ms: null, done: false },
@@ -178,11 +178,11 @@ const SUBJECT = "user_viewer";
 const OWN = `${ACTOR.STEER_PREFIX}${SUBJECT}`;
 const TEAMMATE = `${ACTOR.STEER_PREFIX}user_teammate`;
 const SUBMITTED_AT_MS = 5_000;
-const { OPTIMISTIC, RECEIVED, PROCESSED } = AGENTSFLEET_EVENT_STATUS;
+const { OPTIMISTIC, RECEIVED, PROCESSED } = AGENTSFLEET_TURN_STATUS;
 
 // A turn this tab sent carries its submit clock; one that reached the tab by
 // frame alone carries none.
-function steer(id: string, actor: string, status: FleetEventStatus, submittedAtMs?: number): FleetEvent {
+function steer(id: string, actor: string, status: FleetTurnStatus, submittedAtMs?: number): FleetTurn {
   return evt({ id, role: "user", actor, status, submittedAtMs });
 }
 

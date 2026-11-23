@@ -78,7 +78,7 @@ pub(crate) async fn until(
     let mut before = Vec::new();
     loop {
         // A publish during an outage may fail; the loop retries until it lands.
-        let _ = publisher.publish(subject, payload).await;
+        drop(publisher.publish(subject, payload).await);
         while let Ok(Ok(received)) =
             tokio::time::timeout(Duration::from_millis(100), subscription.recv()).await
         {

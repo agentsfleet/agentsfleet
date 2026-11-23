@@ -2,7 +2,6 @@ import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
 import { getDefaultWorkspaceId } from "./fixtures/seed";
 import { expectAccessible, expectNoPageOverflow } from "./fixtures/accessibility";
-import {pluginsUiEnabled} from "@/lib/plugin-ui";
 import {expectWorkspaceEntry} from "./fixtures/nav";
 
 const WIDTHS = [1440, 390, 320];
@@ -57,10 +56,10 @@ for (const width of [390, 320]) {
     await expectWorkspaceEntry(page, workspaceId);
     const rail = page.getByRole("navigation", {name: "Primary", exact: true});
     await expect(rail).toBeVisible();
-    for (const name of ["New fleet", "Plugins", "Secrets", "Connected apps"].filter(name => name !== "Plugins" || pluginsUiEnabled())) {
+    for (const name of ["New fleet", "Secrets", "Connected apps"]) {
       await expect(rail.getByRole("link", {name, exact: true})).toBeVisible();
     }
-    if (!pluginsUiEnabled()) await expect(rail.getByRole("link", {name: "Plugins", exact: true})).toHaveCount(0);
+    await expect(rail.getByRole("link", {name: "Plugins", exact: true})).toHaveCount(0);
     const fleets = rail.locator("summary").filter({hasText: "Your Fleets"});
     const before = page.url();
     await fleets.focus();

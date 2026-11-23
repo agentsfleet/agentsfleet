@@ -1,6 +1,6 @@
 //! A conversation owns its encoded history; only its unfinished tail may change.
 use af_context::Group;
-use af_providers::Message;
+use guffbolt::Message;
 use std::ops::Range;
 
 pub(super) type Entry = (Group, Range<usize>);

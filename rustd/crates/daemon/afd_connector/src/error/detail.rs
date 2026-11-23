@@ -7,13 +7,13 @@
 //! page.
 
 /// The detail every plane answers a datastore it cannot reach with.
-pub use af_core::error::DETAIL_DATABASE_UNAVAILABLE as DATABASE_UNAVAILABLE;
+pub(crate) use af_core::error::DETAIL_DATABASE_UNAVAILABLE as DATABASE_UNAVAILABLE;
 
 /// The detail every plane answers a datastore that refused a query with.
-pub use af_core::error::DETAIL_DATABASE_ERROR as DATABASE_ERROR;
+pub(crate) use af_core::error::DETAIL_DATABASE_ERROR as DATABASE_ERROR;
 
 /// The detail every plane answers an operation that did not complete with.
-pub use af_core::error::DETAIL_OPERATION_FAILED as OPERATION_FAILED;
+pub(crate) use af_core::error::DETAIL_OPERATION_FAILED as OPERATION_FAILED;
 
 /// What a person is told when the provider could not be reached at all.
 ///

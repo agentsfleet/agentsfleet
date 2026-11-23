@@ -1,4 +1,4 @@
-//! What the toolbox suites sign and admit with: a release key made per test,
+//! What the toolbox suites sign and verify with: a release key made per test,
 //! signatures written the way `cosign` writes them, and a manifest naming any
 //! bytes.
 #![expect(
@@ -35,7 +35,7 @@ impl Signer {
         Self(EcdsaKeyPair::generate(&ECDSA_P256_SHA256_ASN1_SIGNING).unwrap())
     }
 
-    /// The check admission makes on [`ARCH`] for [`RUNNER`], against this key.
+    /// The check verification makes on [`ARCH`] for [`RUNNER`], against this key.
     pub(crate) fn release(&self) -> Release {
         let key = self.0.public_key().as_der().unwrap();
         Release::signed_by(key.as_ref(), RUNNER).on(ARCH)
@@ -49,7 +49,7 @@ impl Signer {
             .into_bytes()
     }
 
-    /// The manifest naming `image`, verified as admission verifies it.
+    /// The manifest naming `image`, verified the way the runner verifies it.
     pub(crate) fn manifest(&self, image: &[u8]) -> Manifest {
         let bytes = manifest_bytes(&facts(image));
         self.release().verify(&bytes, &self.sign(&bytes)).unwrap()
@@ -80,7 +80,7 @@ pub(crate) fn manifest_bytes(facts: &Value) -> Vec<u8> {
     serde_json::to_vec_pretty(facts).unwrap()
 }
 
-/// Mounts nothing; checks the image's length and digest as admission does,
+/// Mounts nothing; checks the image's length and digest as verification does,
 /// records what it was asked to mount and unmount, and refuses unmounts while
 /// told to.
 #[derive(Debug, Default)]
@@ -93,10 +93,14 @@ pub(crate) struct Recorder {
 impl Mounter for Arc<Recorder> {
     fn mount(&self, manifest: &Manifest, image: &Path) -> Result<Toolbox> {
         let bytes = fs::read(image)?;
-        manifest.check_length(u64::try_from(bytes.len()).unwrap())?;
+        // No file read into memory is longer than `u64` can count.
+        manifest.check_length(u64::try_from(bytes.len()).unwrap_or(u64::MAX))?;
         manifest.check_digest(&sha256(&bytes))?;
         let digest = manifest.sha256().to_owned();
-        self.mounted.lock().unwrap().push(digest.clone());
+        self.mounted
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(digest.clone());
         Ok(Toolbox::at(image.with_extension("mnt"), digest))
     }
 
@@ -106,7 +110,7 @@ impl Mounter for Arc<Recorder> {
         }
         self.unmounted
             .lock()
-            .unwrap()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .push(toolbox.digest().to_owned());
         Ok(())
     }

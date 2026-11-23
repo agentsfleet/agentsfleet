@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { mockAuthOnce as mockAuth } from "./helpers/dashboard-mocks";
 import {
   resetDashboardMocks,
-  listWorkspaceEventsMock,
+  listWorkspaceTurnsMock,
 } from "./helpers/dashboard-app-mocks";
 
 // Common dashboard mock harness — see tests/helpers/dashboard-mocks.tsx.
@@ -50,8 +50,8 @@ vi.mock("@/lib/api/tenant_billing", async () =>
 vi.mock("@/lib/api/tenant_provider", async () =>
   (await import("./helpers/dashboard-app-mocks")).tenantProviderMock(),
 );
-vi.mock("@/lib/api/events", async () =>
-  (await import("./helpers/dashboard-app-mocks")).eventsMock(),
+vi.mock("@/lib/api/turns", async () =>
+  (await import("./helpers/dashboard-app-mocks")).turnsMock(),
 );
 vi.mock("@/app/(dashboard)/actions", async () =>
   (await import("./helpers/dashboard-app-mocks")).dashboardActionsMock(),
@@ -101,19 +101,19 @@ describe("placeholder pages", () => {
     ).rejects.toThrow("redirect:/sign-in");
   });
 
-  it("events page redirects to /sign-in when no token", async () => {
+  it("turns page redirects to /sign-in when no token", async () => {
     mockAuth({ token: null });
     const { default: Page } =
-      await import("../app/(dashboard)/w/[workspaceId]/events/page");
+      await import("../app/(dashboard)/w/[workspaceId]/turns/page");
     await expect(
       Page({ params: Promise.resolve({ workspaceId: "ws_1" }) }),
     ).rejects.toThrow("redirect:/sign-in");
   });
 
-  it("events page shows the shared loader before data", async () => {
+  it("turns page shows the shared loader before data", async () => {
     mockAuth({ token: "token_abc" });
     const { default: Page } =
-      await import("../app/(dashboard)/w/[workspaceId]/events/page");
+      await import("../app/(dashboard)/w/[workspaceId]/turns/page");
     const m = renderToStaticMarkup(
       await Page({ params: Promise.resolve({ workspaceId: "ws_1" }) }),
     );
@@ -122,42 +122,42 @@ describe("placeholder pages", () => {
     expect(m).not.toContain("No activity yet"); // data not yet resolved
   });
 
-  it("EventsData returns null when the token is missing", async () => {
+  it("TurnsData returns null when the token is missing", async () => {
     mockAuth({ token: null });
-    const { EventsData } =
-      await import("../app/(dashboard)/w/[workspaceId]/events/page");
-    expect(await EventsData({ workspaceId: "ws_1" })).toBeNull();
+    const { TurnsData } =
+      await import("../app/(dashboard)/w/[workspaceId]/turns/page");
+    expect(await TurnsData({ workspaceId: "ws_1" })).toBeNull();
   });
 
-  it("events page renders Workspace activity section with EventsList", async () => {
-    // M118: EventsData reads `workspaceId` from the route param (its prop); the
+  it("turns page renders Workspace activity section with TurnsList", async () => {
+    // M118: TurnsData reads `workspaceId` from the route param (its prop); the
     // no-workspace `notFound()` is gone (the `[workspaceId]` layout guards it).
     mockAuth({ token: "token_abc" });
-    listWorkspaceEventsMock.mockResolvedValue({ items: [], next_cursor: null });
-    const { EventsData } =
-      await import("../app/(dashboard)/w/[workspaceId]/events/page");
-    const { WORKSPACE_EVENTS_LABEL } =
-      await import("../components/domain/events/EventsList");
-    const m = renderToStaticMarkup(await EventsData({ workspaceId: "ws_1" }));
-    // The page's landmark region and the events table caption share one name —
+    listWorkspaceTurnsMock.mockResolvedValue({ items: [], next_cursor: null });
+    const { TurnsData } =
+      await import("../app/(dashboard)/w/[workspaceId]/turns/page");
+    const { WORKSPACE_TURNS_LABEL } =
+      await import("../components/domain/turns/TurnsList");
+    const m = renderToStaticMarkup(await TurnsData({ workspaceId: "ws_1" }));
+    // The page's landmark region and the turns table caption share one name —
     // this pin keeps the page's aria-label from drifting off the constant.
-    expect(m).toContain(`aria-label="${WORKSPACE_EVENTS_LABEL}"`);
+    expect(m).toContain(`aria-label="${WORKSPACE_TURNS_LABEL}"`);
   });
 
-  it("events page preserves failed reads instead of reporting no activity", async () => {
+  it("turns page preserves failed reads instead of reporting no activity", async () => {
     mockAuth({ token: "token_abc" });
-    listWorkspaceEventsMock.mockRejectedValue(new Error("boom"));
-    const { EventsData } =
-      await import("../app/(dashboard)/w/[workspaceId]/events/page");
-    await expect(EventsData({ workspaceId: "ws_1" })).rejects.toThrow("boom");
+    listWorkspaceTurnsMock.mockRejectedValue(new Error("boom"));
+    const { TurnsData } =
+      await import("../app/(dashboard)/w/[workspaceId]/turns/page");
+    await expect(TurnsData({ workspaceId: "ws_1" })).rejects.toThrow("boom");
   });
 
-  it("events page reads the cursor and page size from the URL", async () => {
+  it("turns page reads the cursor and page size from the URL", async () => {
     mockAuth({ token: "token_abc" });
-    listWorkspaceEventsMock.mockResolvedValue({ items: [], next_cursor: null });
-    const mod = await import("../app/(dashboard)/w/[workspaceId]/events/page");
+    listWorkspaceTurnsMock.mockResolvedValue({ items: [], next_cursor: null });
+    const mod = await import("../app/(dashboard)/w/[workspaceId]/turns/page");
     // The default page awaits searchParams and derives the cursor (the URL
-    // branch); EventsData receives it and asks the API for that page.
+    // branch); TurnsData receives it and asks the API for that page.
     renderToStaticMarkup(
       await mod.default({
         params: Promise.resolve({ workspaceId: "ws_1" }),
@@ -165,13 +165,13 @@ describe("placeholder pages", () => {
       }),
     );
     renderToStaticMarkup(
-      await mod.EventsData({
+      await mod.TurnsData({
         workspaceId: "ws_1",
         cursor: "tok_1",
         pageSize: 50,
       }),
     );
-    expect(listWorkspaceEventsMock).toHaveBeenLastCalledWith(
+    expect(listWorkspaceTurnsMock).toHaveBeenLastCalledWith(
       "ws_1",
       "token_abc",
       expect.objectContaining({ cursor: "tok_1", limit: 50 }),

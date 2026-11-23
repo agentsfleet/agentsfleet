@@ -1,27 +1,29 @@
 import { instantMs } from "@/lib/api/decode";
-import type { LiveFrame } from "@/lib/api/events";
-import type { FRAME_KIND } from "@/lib/api/events-types";
-import { outcomeForStatus, roleFor } from "@/lib/events/event-summary";
-import { AGENTSFLEET_EVENT_STATUS, text, type FleetEvent } from "./fleet-stream-row";
+import type { LiveFrame } from "@/lib/api/turns";
+import type { FRAME_KIND } from "@/lib/api/turns-types";
+import { outcomeForStatus, roleFor } from "@/lib/turns/turn-summary";
+import { AGENTSFLEET_TURN_STATUS, frameMessage, type FleetTurn } from "./fleet-stream-row";
 
 // How a message waiting for a runner reaches the timeline, beside
-// `fleet-stream-frames.ts`: `event_admitted` opens a waiting row the moment the
-// daemon accepts a message, and `event_received` for the same event starts it.
-// The two can arrive in either order — a runner can lease a send and announce
+// `fleet-stream-frames.ts`: `turn_admitted` opens a waiting row the moment the
+// daemon accepts a message, and `turn_received` for the same turn starts it.
+// The two can arrive in either order — a runner can run a send and announce
 // it before the route publishes — so an admitted frame for a row already held
-// fills only an empty text and never moves the row back to waiting.
+// fills only an empty text and never moves the row back to waiting. A frame
+// carries a long message's head only; the row is marked so its saved row is
+// read for the whole (`readMissingBodies`).
 
-type AdmittedFrame = Extract<LiveFrame, { kind: typeof FRAME_KIND.EVENT_ADMITTED }>;
-type ReceivedFrame = Extract<LiveFrame, { kind: typeof FRAME_KIND.EVENT_RECEIVED }>;
+type AdmittedFrame = Extract<LiveFrame, { kind: typeof FRAME_KIND.TURN_ADMITTED }>;
+type ReceivedFrame = Extract<LiveFrame, { kind: typeof FRAME_KIND.TURN_RECEIVED }>;
 
-export function applyEventAdmitted(prev: FleetEvent[], frame: AdmittedFrame): FleetEvent[] {
-  const message = text(frame.message);
-  const index = prev.findIndex((event) => event.id === frame.event_id);
+export function applyTurnAdmitted(prev: FleetTurn[], frame: AdmittedFrame): FleetTurn[] {
+  const message = frameMessage(frame.message, frame.message_trimmed);
+  const index = prev.findIndex((turn) => turn.id === frame.turn_id);
   const existing = prev[index];
   if (existing === undefined) return [...prev, waitingRow(frame, message)];
-  if (existing.text.length > 0 || message.length === 0) return prev;
+  if (existing.text.length > 0 || message.text.length === 0) return prev;
   const updated = [...prev];
-  updated[index] = { ...existing, text: message };
+  updated[index] = { ...existing, ...message };
   return updated;
 }
 
@@ -30,18 +32,18 @@ export function applyEventAdmitted(prev: FleetEvent[], frame: AdmittedFrame): Fl
  * waiting row starts, and an empty text takes the frame's message. `null` when
  * the frame changes neither.
  */
-export function receivedUpdate(existing: FleetEvent, frame: ReceivedFrame): FleetEvent | null {
-  const message = text(frame.message);
-  const fillsText = existing.text.length === 0 && message.length > 0;
+export function receivedUpdate(existing: FleetTurn, frame: ReceivedFrame): FleetTurn | null {
+  const message = frameMessage(frame.message, frame.message_trimmed);
+  const fillsText = existing.text.length === 0 && message.text.length > 0;
   const starts = awaitsOwnRun(existing);
   if (!fillsText && !starts) return null;
   return {
     ...existing,
-    ...(fillsText ? { text: message } : {}),
+    ...(fillsText ? message : {}),
     ...(starts
       ? {
-          status: AGENTSFLEET_EVENT_STATUS.RECEIVED,
-          outcome: outcomeForStatus(AGENTSFLEET_EVENT_STATUS.RECEIVED),
+          status: AGENTSFLEET_TURN_STATUS.RECEIVED,
+          outcome: outcomeForStatus(AGENTSFLEET_TURN_STATUS.RECEIVED),
         }
       : {}),
   };
@@ -49,49 +51,49 @@ export function receivedUpdate(existing: FleetEvent, frame: ReceivedFrame): Flee
 
 /** A waiting row a recovered "received" history row starts: the received frame
  * fell in a gap. Any other row is returned as it is. */
-export function startWaiting(event: FleetEvent): FleetEvent {
-  if (!awaitsOwnRun(event)) return event;
+export function startWaiting(turn: FleetTurn): FleetTurn {
+  if (!awaitsOwnRun(turn)) return turn;
   return {
-    ...event,
-    status: AGENTSFLEET_EVENT_STATUS.RECEIVED,
-    outcome: outcomeForStatus(AGENTSFLEET_EVENT_STATUS.RECEIVED),
+    ...turn,
+    status: AGENTSFLEET_TURN_STATUS.RECEIVED,
+    outcome: outcomeForStatus(AGENTSFLEET_TURN_STATUS.RECEIVED),
   };
 }
 
 // ── internals ────────────────────────────────────────────────────────────
 
 // A row that has not begun its own run: queued, or labelled folded by a 202
-// whose live run then ended without claiming it. The daemon runs such a
+// whose live run then ended without being assigned it. The daemon runs such a
 // message like any queued one, so its received frame must start it; left
 // labelled, the row would read "Added to the current run" through its own run.
-function awaitsOwnRun(event: FleetEvent): boolean {
-  return event.status === AGENTSFLEET_EVENT_STATUS.QUEUED || event.status === AGENTSFLEET_EVENT_STATUS.FOLDED;
+function awaitsOwnRun(turn: FleetTurn): boolean {
+  return turn.status === AGENTSFLEET_TURN_STATUS.QUEUED || turn.status === AGENTSFLEET_TURN_STATUS.FOLDED;
 }
 
-function waitingRow(frame: AdmittedFrame, message: string): FleetEvent {
+function waitingRow(frame: AdmittedFrame, message: Pick<FleetTurn, "text" | "textTrimmed">): FleetTurn {
   const createdAt = instantMs(frame.created_at);
   return {
-    id: frame.event_id,
+    id: frame.turn_id,
     role: roleFor(frame.actor),
     actor: frame.actor,
-    text: message,
+    ...message,
     reply: "",
-    outcome: outcomeForStatus(AGENTSFLEET_EVENT_STATUS.QUEUED),
+    outcome: outcomeForStatus(AGENTSFLEET_TURN_STATUS.QUEUED),
     failureLabel: null,
     failureDetail: null,
     createdAt: createdAt === null ? new Date() : new Date(createdAt),
-    status: AGENTSFLEET_EVENT_STATUS.QUEUED,
+    status: AGENTSFLEET_TURN_STATUS.QUEUED,
   };
 }
 
 // The row at `index` re-stamped with the daemon's instant, or `prev` itself
 // when the frame carried none or the row already has it.
 export function adoptInstant(
-  prev: FleetEvent[],
+  prev: FleetTurn[],
   index: number,
-  existing: FleetEvent,
+  existing: FleetTurn,
   createdAt: number | null,
-): FleetEvent[] {
+): FleetTurn[] {
   if (createdAt === null) return prev;
   if (existing.createdAt.getTime() === createdAt && !existing.clientTimestamp) return prev;
   const updated = [...prev];

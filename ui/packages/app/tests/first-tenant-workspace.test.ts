@@ -6,7 +6,7 @@ vi.mock("@/lib/api/client", () => ({
   requestWithEtag: vi.fn(),
 }));
 
-import { WORKSPACE_LIST_PAGE_LIMIT, firstTenantWorkspace } from "@/lib/api/workspaces";
+import { firstTenantWorkspace } from "@/lib/api/workspaces";
 import { ACCOUNT_ROLE } from "@/lib/api/workspaces-types";
 
 const TOKEN = "tok";
@@ -48,7 +48,7 @@ describe("firstTenantWorkspace", () => {
 
     expect(requestMock).toHaveBeenCalledTimes(1);
     expect(requestMock).toHaveBeenCalledWith(
-      `/v1/tenants/me/workspaces?limit=${WORKSPACE_LIST_PAGE_LIMIT}`,
+      "/v1/tenants/me/workspaces",
       { method: "GET" },
       TOKEN,
     );
@@ -70,7 +70,7 @@ describe("firstTenantWorkspace", () => {
     await expect(firstTenantWorkspace(TOKEN)).resolves.toMatchObject({ id: WORKSPACE.id });
     expect(requestMock).toHaveBeenCalledTimes(2);
     expect(requestMock).toHaveBeenLastCalledWith(
-      `/v1/tenants/me/workspaces?limit=${WORKSPACE_LIST_PAGE_LIMIT}&starting_after=${CURSOR}`,
+      `/v1/tenants/me/workspaces?starting_after=${CURSOR}`,
       { method: "GET" },
       TOKEN,
     );

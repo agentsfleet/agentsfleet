@@ -1,0 +1,144 @@
+//! One measurement per native operation, with no raw proposal in diagnostics.
+
+use std::time::Instant;
+
+use af_core::error_code;
+use af_observability::{
+    metrics::label::durable_task::{DurableTaskOperation, DurableTaskOutcome},
+    producers,
+};
+
+use crate::{Error, Result};
+
+pub(super) async fn measure<T>(
+    operation: DurableTaskOperation,
+    work: impl Future<Output = Result<T>>,
+    success: impl FnOnce(&T) -> DurableTaskOutcome,
+) -> Result<T> {
+    let started = Instant::now();
+    let operation_label = operation.as_str();
+    let interrupted = scopeguard::guard(started, |started| {
+        producers::durable_task::operation_completed(
+            operation,
+            DurableTaskOutcome::Cancelled,
+            started.elapsed(),
+        );
+        {
+            let (event, operation, reason) = (
+                &"dt_operation_cancelled",
+                &operation_label,
+                &"operation_dropped",
+            );
+            tracing::info!(event, operation, reason);
+        };
+    });
+    let result = work.await;
+    let started = scopeguard::ScopeGuard::into_inner(interrupted);
+    let outcome = match &result {
+        Ok(value) => success(value),
+        Err(error) => failure(error),
+    };
+    producers::durable_task::operation_completed(operation, outcome, started.elapsed());
+    if let Err(error) = &result {
+        let outcome_label = outcome.as_str();
+        let error_code = error.code();
+        let reason = error
+            .durable_task_timeout_reason()
+            .or_else(|| error.decision_failure_reason())
+            .unwrap_or("operation_failed");
+        {
+            let (event, operation, outcome) =
+                (&"dt_operation_failed", &operation_label, &outcome_label);
+            tracing::warn!(event, operation, outcome, %error_code, reason);
+        };
+    }
+    result
+}
+
+fn failure(error: &Error) -> DurableTaskOutcome {
+    if error.durable_task_timeout_reason().is_some()
+        || error.decision_failure_reason() == Some("decision_deadline")
+    {
+        return DurableTaskOutcome::Timeout;
+    }
+    match error.code() {
+        error_code::DURABLE_TASK_NOT_FOUND | error_code::RUN_NOT_FOUND => {
+            DurableTaskOutcome::NotFound
+        }
+        error_code::DURABLE_TASK_STALE_STATE
+        | error_code::DURABLE_TASK_PRECONDITION_FAILED
+        | error_code::RUN_STALE_FENCING_TOKEN
+        | error_code::RUN_LOST => DurableTaskOutcome::Stale,
+        error_code::DURABLE_TASK_INVALID_TARGET
+        | error_code::DURABLE_TASK_INPUT_AMBIGUOUS
+        | error_code::DURABLE_TASK_CHECKPOINT_INCOMPATIBLE
+        | error_code::PAYLOAD_TOO_LARGE => DurableTaskOutcome::Invalid,
+        error_code::DURABLE_TASK_LIMIT_EXHAUSTED => DurableTaskOutcome::Limit,
+        error_code::DURABLE_TASK_DECISION_UNAVAILABLE
+        | error_code::DURABLE_TASK_STORAGE_UNAVAILABLE => DurableTaskOutcome::Unavailable,
+        error_code::DURABLE_TASK_EFFECT_UNCERTAIN if error.remote_cooldown().is_some() => {
+            DurableTaskOutcome::Unavailable
+        }
+        error_code::DURABLE_TASK_REPLAY_CONFLICT | error_code::DURABLE_TASK_EFFECT_UNCERTAIN => {
+            DurableTaskOutcome::Conflict
+        }
+        _ if error.is_datastore_unavailable() => DurableTaskOutcome::Unavailable,
+        _ => DurableTaskOutcome::Failed,
+    }
+}
+
+/// Box the measured operation at the lifecycle boundary, where object-safe dispatch requires it.
+pub(super) fn call<'a, T: 'a>(
+    operation: DurableTaskOperation,
+    work: impl Future<Output = Result<T>> + Send + 'a,
+) -> super::DurableTaskFuture<'a, T> {
+    Box::pin(measure(operation, work, |_| DurableTaskOutcome::Accepted))
+}
+
+/// Keep the operation's span attached for every poll, including cancellation and completion.
+pub(super) fn traced<'a, T: 'a>(
+    operation: DurableTaskOperation,
+    work: impl Future<Output = Result<T>> + Send + 'a,
+    success: impl FnOnce(&T) -> DurableTaskOutcome + Send + 'a,
+    span: tracing::Span,
+) -> super::DurableTaskFuture<'a, T> {
+    use tracing::Instrument as _;
+    Box::pin(measure(operation, work, success).instrument(span))
+}
+
+/// Record an accepted successful result while retaining its original operation span.
+pub(super) fn trace<'a, T: 'a>(
+    operation: DurableTaskOperation,
+    work: impl Future<Output = Result<T>> + Send + 'a,
+    span: tracing::Span,
+) -> super::DurableTaskFuture<'a, T> {
+    traced(operation, work, |_| DurableTaskOutcome::Accepted, span)
+}
+
+#[cfg(test)]
+#[expect(
+    clippy::expect_used,
+    reason = "test: an unmet precondition should fail the test loudly"
+)]
+mod tests {
+    use super::failure;
+    use crate::{Error, error::ErrorKind};
+
+    // Value: protects=a GitHub cooldown is measured as an unavailable dependency,
+    // and an effect left uncertain without one as a conflict; fails_when=the
+    // cooldown guard is dropped and a rate limit reads as a conflict, or every
+    // uncertain effect reads as unavailable; why_new=the cooldown arm of the
+    // outcome had no case; seam=the classifier every measured operation uses.
+    #[test]
+    fn a_remote_cooldown_is_unavailable_and_an_uncertain_effect_a_conflict() {
+        let until = jiff::Timestamp::from_second(1_800_000_000).expect("a representable instant");
+        let cooldown = Error::from(ErrorKind::DurableTaskRemoteCooldown { status: 429, until });
+        assert_eq!(failure(&cooldown).as_str(), "unavailable");
+        let uncertain = Error::from(ErrorKind::DurableTaskRemoteStatus { status: 502 });
+        assert_eq!(
+            uncertain.code(),
+            af_core::error_code::DURABLE_TASK_EFFECT_UNCERTAIN
+        );
+        assert_eq!(failure(&uncertain).as_str(), "conflict");
+    }
+}

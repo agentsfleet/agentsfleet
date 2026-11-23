@@ -14,9 +14,9 @@ beforeEach(async () => {
 });
 afterEach(() => {fixture.dispose();});
 
-it.each(["save", "publish", "apply"] as const)("refuses %s if a fresh read changes the displayed candidate", async (action) => {
+it.each(["save", "apply"] as const)("refuses %s if a fresh read changes the displayed candidate", async (action) => {
   fixture.current = {...DRAFT, candidate: DRAFT.candidate ? {...DRAFT.candidate, id: OTHER_DRAFT_ID} : undefined};
-  const pending = action === "save" ? client.save() : action === "apply" ? client.apply() : client.publish("Recipe", false);
+  const pending = action === "save" ? client.save() : client.apply();
   await expect(pending).rejects.toMatchObject({status: 409, message: expect.stringContaining("setup changed")});
   expect(fixture.mutations()).toHaveLength(0);
   expect(client.getSnapshot().draft?.candidate?.id).toBe(fixture.current.candidate?.id);
@@ -28,7 +28,7 @@ it.each(["candidate", "review"] as const)("refuses Save if the latest %s disappe
   expect(fixture.mutations()).toHaveLength(0);
 });
 
-it("refuses to save while a newly observed authoring request is running", async () => {
+it("refuses to save while a newly observed setup request is running", async () => {
   fixture.override = ({path}) => path.endsWith("/messages") ? response({items: [{...MESSAGE, state: "running"}], next_cursor: null}) : undefined;
   await expect(client.save()).rejects.toMatchObject({status: 409});
   expect(fixture.mutations()).toHaveLength(0);

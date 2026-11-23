@@ -4,7 +4,7 @@ import { Suspense, type ReactNode } from "react";
 import { DashboardPanel, Section, SectionHeader, TimeRange } from "@agentsfleet/design-system";
 import { RouteLoading } from "@/components/layout/RouteLoading";
 import type { BillingReport } from "@/lib/api/billing_report";
-import { formatCompactCount, formatCount } from "@/lib/events/run-figures-format";
+import { formatCompactCount, formatCount } from "@/lib/turns/run-figures-format";
 import { formatBalance } from "@/lib/money";
 import { BillingDailySpend } from "./BillingDailySpend";
 import { BillingFilters } from "./BillingFilters";

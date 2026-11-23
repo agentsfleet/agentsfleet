@@ -1,0 +1,29 @@
+id: rust-daemon-no-connector
+valid:
+  # The settings a daemon validates through.
+  - |
+    let route = af_providers::settings::Configured::new(settings, context)?;
+  - |
+    use af_providers::settings::{Configured, validate_decision};
+  - |
+    use af_providers::{Error, settings};
+  # A comment naming the connector is not a call.
+  - |
+    // the runner's af_providers::Connector reaches the provider
+    fn f() {}
+  # Another crate's item of the same name.
+  - |
+    use afd_bus::Connector;
+invalid:
+  - |
+    use af_providers::Connector;
+  - |
+    use ::af_providers::Connect;
+  - |
+    fn f() { let connector = af_providers::Connector::new()?; }
+  - |
+    struct Held { reach: Box<dyn af_providers::Connect> }
+  - |
+    use af_providers::{settings, Connect as _};
+  - |
+    use af_providers::{Error, Connector};

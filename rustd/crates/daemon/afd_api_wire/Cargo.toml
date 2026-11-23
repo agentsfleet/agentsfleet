@@ -16,7 +16,7 @@ categories.workspace = true
 [dependencies]
 # The shared protocol: the runner-facing types these API shapes embed
 # (`AssignedPolicy`, `CapabilityReport`, `RunnerLiveness`, `SelftestReport`,
-# `EventSummary`). `af_wire` never names this crate, so a daemon-only edit
+# `TurnSummary`). `af_wire` never names this crate, so a daemon-only edit
 # here rebuilds no runner crate.
 af_wire.workspace = true
 af_validate.workspace = true

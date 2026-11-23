@@ -3,7 +3,7 @@ import type { readReasoningSpan, ReplyFigures } from "../messages/fleetMessageRe
 import { z } from "zod";
 
 export type ReplyContext = {
-  errored: boolean; running: boolean; queued: boolean; eventId: string; reasoning: string;
+  errored: boolean; running: boolean; queued: boolean; turnId: string; reasoning: string;
   span: ReturnType<typeof readReasoningSpan>;
   content: MessageState["content"];
   startedAtMs: number;

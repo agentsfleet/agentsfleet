@@ -1,7 +1,7 @@
-import type { TaskDetail } from "@/lib/api/tasks";
+import type { DurableTaskDetail } from "@/lib/api/tasks";
 
 /** Explain only a recorded dependency; task status alone cannot name the next action. */
-export function TaskNextStep({detail}: {detail: TaskDetail}) {
+export function DurableTaskNextStep({detail}: {detail: DurableTaskDetail}) {
   const dependency = detail.dependency;
   const target = detail.context.target;
   const outstanding = dependency?.checks.filter(check => check.status !== "completed") ?? [];

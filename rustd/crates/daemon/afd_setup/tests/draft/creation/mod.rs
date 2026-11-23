@@ -1,0 +1,29 @@
+//! Retained setup, atomic activation and cancellation use the live stores.
+
+#![expect(
+    clippy::indexing_slicing,
+    reason = "a proof indexes the rows it has just asserted the count of"
+)]
+
+mod activation;
+mod cancellation;
+mod confirmation;
+mod contention;
+mod delete;
+mod fixture;
+mod funnel;
+mod grants;
+mod grants_resume;
+mod identity;
+mod improvement;
+mod interleaving;
+mod race;
+mod reads;
+mod refusals;
+mod retries;
+mod rollback;
+mod running_cancellation;
+mod setup_turn;
+mod stages;
+mod stored;
+mod turn_faults;

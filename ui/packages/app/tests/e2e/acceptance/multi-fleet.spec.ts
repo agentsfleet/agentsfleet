@@ -15,7 +15,7 @@ test("saved fleets remain selectable on desktop and mobile without opening backg
   const streams = new Set<string>();
   page.on("request", request => {
     const path = new URL(request.url()).pathname;
-    if (path.endsWith("/events/stream")) streams.add(path);
+    if (path.endsWith("/turns/stream")) streams.add(path);
   });
   try {
     for (const purpose of PURPOSES) {
@@ -30,7 +30,7 @@ test("saved fleets remain selectable on desktop and mobile without opening backg
     await expect(page).toHaveURL(workspaceHref(workspace, `fleets/${newest.id}`));
     await expect(page.getByLabel("Fleet chat", {exact: true})).toBeVisible();
     await expect.poll(() => [...streams]).toEqual([
-      `/live/v1/workspaces/${workspace}/fleets/${newest.id}/events/stream`,
+      `/live/v1/workspaces/${workspace}/fleets/${newest.id}/turns/stream`,
     ]);
     for (const viewport of VIEWPORTS) {
       await page.setViewportSize(viewport);
@@ -49,8 +49,8 @@ test("saved fleets remain selectable on desktop and mobile without opening backg
     const first = fleets[0];
     if (!first) throw new Error("First conversation fixture was not created");
     await expect.poll(() => [...streams].sort()).toEqual([
-      `/live/v1/workspaces/${workspace}/fleets/${newest.id}/events/stream`,
-      `/live/v1/workspaces/${workspace}/fleets/${first.id}/events/stream`,
+      `/live/v1/workspaces/${workspace}/fleets/${newest.id}/turns/stream`,
+      `/live/v1/workspaces/${workspace}/fleets/${first.id}/turns/stream`,
     ].sort());
   } finally {
     await page.goto("about:blank");

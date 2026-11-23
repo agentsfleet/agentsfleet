@@ -3,12 +3,12 @@ import { parseSseFrame } from "../src/lib/sse.ts";
 
 describe("parseSseFrame", () => {
   it("parses a typical M42 chunk frame", () => {
-    const frame = "id: 7\nevent: chunk\ndata: {\"event_id\":\"x\",\"text\":\"hello\"}";
+    const frame = "id: 7\nevent: chunk\ndata: {\"turn_id\":\"x\",\"text\":\"hello\"}";
     const ev = parseSseFrame(frame);
     expect(ev).toEqual({
       id: "7",
       type: "chunk",
-      data: { event_id: "x", text: "hello" },
+      data: { turn_id: "x", text: "hello" },
     });
   });
 
@@ -17,8 +17,8 @@ describe("parseSseFrame", () => {
   });
 
   it("ignores comment lines", () => {
-    const ev = parseSseFrame(": heartbeat\nid: 0\nevent: event_complete\ndata: {\"event_id\":\"a\",\"status\":\"processed\"}");
-    expect(ev?.type).toBe("event_complete");
+    const ev = parseSseFrame(": heartbeat\nid: 0\nevent: turn_complete\ndata: {\"turn_id\":\"a\",\"status\":\"processed\"}");
+    expect(ev?.type).toBe("turn_complete");
     const data = ev?.data as { status?: string } | undefined;
     expect(data?.status).toBe("processed");
   });
@@ -38,11 +38,11 @@ describe("parseSseFrame", () => {
   });
 
   it("strips a trailing CR before parsing (handles CRLF event streams)", () => {
-    const frame = "id: 5\r\nevent: chunk\r\ndata: {\"event_id\":\"x\"}";
+    const frame = "id: 5\r\nevent: chunk\r\ndata: {\"turn_id\":\"x\"}";
     const ev = parseSseFrame(frame);
     expect(ev?.type).toBe("chunk");
-    const data = ev?.data as { event_id?: string } | undefined;
-    expect(data?.event_id).toBe("x");
+    const data = ev?.data as { turn_id?: string } | undefined;
+    expect(data?.turn_id).toBe("x");
   });
 
   it("handles a `data:` line with no space after the colon", () => {
@@ -60,10 +60,10 @@ describe("parseSseFrame", () => {
   });
 
   it("parses JSON delivered through the spaceless `data:` branch", () => {
-    const ev = parseSseFrame("event: chunk\ndata:{\"event_id\":\"z\",\"text\":\"q\"}");
+    const ev = parseSseFrame("event: chunk\ndata:{\"turn_id\":\"z\",\"text\":\"q\"}");
     expect(ev?.type).toBe("chunk");
-    const data = ev?.data as { event_id?: string; text?: string } | undefined;
-    expect(data?.event_id).toBe("z");
+    const data = ev?.data as { turn_id?: string; text?: string } | undefined;
+    expect(data?.turn_id).toBe("z");
     expect(data?.text).toBe("q");
   });
 

@@ -1,4 +1,4 @@
-//! Dimension 2.1 — every declared family is fed.
+//! Every declared family is fed.
 
 #![expect(
     clippy::expect_used,
@@ -93,5 +93,29 @@ fn the_gauge_sources_render_without_unfolding_their_readers() {
     assert!(
         rendered.contains(".."),
         "and marks itself non-exhaustive rather than looking complete: {rendered}"
+    );
+}
+
+/// A producer called before boot installs the handles records nothing and
+/// installs nothing.
+///
+/// A deployment with no exporter never installs, and its paths still call
+/// every producer; one that panicked or installed itself on first use would
+/// take the deployment down or claim instruments boot never asked for. The
+/// unit suite never installs, so these calls take the no-op path.
+#[test]
+fn a_producer_before_install_is_a_no_op() {
+    use crate::metrics::label::cost::ChargeClass;
+    use crate::metrics::label::fleet::{HeldAssignment, HistoryCut};
+
+    super::billing::unpriced_tokens("provider", "model", 1_250);
+    super::cost::credits_consumed("model", "posture", ChargeClass::Settle, 1_000);
+    super::fleet::history::cut(HistoryCut::Frame);
+    super::fleet::history::read_failed();
+    super::fleet::hold::assigned(HeldAssignment::Holder);
+
+    assert!(
+        super::installed().is_none(),
+        "a producer installed the handles on first use"
     );
 }

@@ -1,0 +1,169 @@
+//! New overlay objects authenticate, restore exactly and retire without erasing a live base.
+
+use super::{
+    Case, CheckpointMode, CheckpointObject, CheckpointObjectsInput, CheckpointPlaintext,
+    CheckpointPlan, DecisionDurableTaskVersion, Decisions, DurableTasks, Server, allocate,
+    configured, confirm, encrypt, exercise, id, input, publish, sha256_hex, upload, valid,
+};
+use af_wire::durable_task::CheckpointPlanInput;
+use afd_fleet::durable_task::DurableTaskLifecycle as _;
+mod cleanup;
+mod restore;
+use cleanup::collect;
+use restore::restore;
+
+const BASE: &[u8] = b"base repair state";
+const DELTA: &[u8] = b"new incremental repair state";
+const ORPHAN: &[u8] = b"uncommitted incremental scratch";
+
+struct Capture {
+    plan: CheckpointPlan,
+    object: CheckpointObject,
+    ciphertext: Vec<u8>,
+}
+
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn new_incremental_objects_restore_and_collect_without_retiring_the_live_base() {
+    exercise(roundtrip).await;
+}
+
+#[expect(
+    clippy::future_not_send,
+    reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
+)]
+async fn roundtrip(case: &Case) {
+    let server = Server::start().await;
+    let fixture = Decisions::create(case).await;
+    let task = fixture.bind_goal().await;
+    let tasks = configured(&fixture, &server).await;
+    let (plan, object) = allocate(case, &tasks, &task, BASE).await;
+    let base = Capture {
+        ciphertext: encrypt(case, &object, BASE),
+        plan,
+        object,
+    };
+    verified(case, &tasks, &task, &base, &server).await;
+    publish(
+        case,
+        &tasks,
+        &task,
+        &base.plan,
+        &base.object.object_id,
+        BASE.len() as u64,
+    )
+    .await;
+    let delta = incremental(case, &tasks, &task, &base.plan, DELTA).await;
+    assert_eq!(delta.plan.mode, CheckpointMode::Incremental);
+    assert_eq!(delta.plan.base_id, base.plan.base_id);
+    verified(case, &tasks, &task, &delta, &server).await;
+    publish(
+        case,
+        &tasks,
+        &task,
+        &delta.plan,
+        &delta.object.object_id,
+        DELTA.len() as u64,
+    )
+    .await;
+    restore(case, &tasks, &task, &base, &delta, &server).await;
+    let orphan = incremental(case, &tasks, &task, &base.plan, ORPHAN).await;
+    verified(case, &tasks, &task, &orphan, &server).await;
+    collect(case, &tasks, &task, &orphan).await;
+    restore(case, &tasks, &task, &base, &delta, &server).await;
+    assert_eq!(server.objects.lock().expect("remote state").len(), 2);
+    fixture.model.finish().await.expect("model cleanup");
+    server.finish().await;
+}
+
+async fn incremental(
+    case: &Case,
+    tasks: &DurableTasks,
+    task: &DecisionDurableTaskVersion,
+    base: &CheckpointPlan,
+    bytes: &[u8],
+) -> Capture {
+    let request = CheckpointPlanInput {
+        upload_budget_bytes: (bytes.len() + af_crypto::TAG_LEN) as u64,
+        logical_bytes: bytes.len() as u64,
+        entry_count: 1,
+        ..input(
+            task,
+            case,
+            CheckpointMode::Incremental,
+            base.base_id.clone(),
+            &"0".repeat(40),
+        )
+    };
+    let plan = tasks
+        .plan_checkpoint(case.run(), &valid(request))
+        .await
+        .expect("incremental plan");
+    let registered = tasks
+        .register_checkpoint_objects(
+            case.run(),
+            &id(&plan.checkpoint_id),
+            &valid(object_input(case, task, &plan, bytes)),
+        )
+        .await
+        .expect("new incremental object");
+    assert_eq!(registered.items.len(), 1);
+    let object = registered
+        .items
+        .into_iter()
+        .next()
+        .expect("one overlay object");
+    assert!(matches!(
+        object.status,
+        af_wire::durable_task::CheckpointObjectStatus::Missing
+    ));
+    Capture {
+        ciphertext: encrypt(case, &object, bytes),
+        object,
+        plan,
+    }
+}
+
+fn object_input(
+    case: &Case,
+    task: &DecisionDurableTaskVersion,
+    plan: &CheckpointPlan,
+    bytes: &[u8],
+) -> CheckpointObjectsInput {
+    CheckpointObjectsInput {
+        fencing_token: case.run().fencing_token,
+        durable_task: task.clone(),
+        pin_id: plan.pin.id.clone(),
+        objects: vec![CheckpointPlaintext {
+            sha256: sha256_hex(bytes),
+            size: bytes.len() as u64,
+            kind: "file".to_owned(),
+        }],
+    }
+}
+
+#[expect(
+    clippy::future_not_send,
+    reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
+)]
+async fn verified(
+    case: &Case,
+    tasks: &DurableTasks,
+    task: &DecisionDurableTaskVersion,
+    saved: &Capture,
+    server: &Server,
+) {
+    upload(
+        case,
+        tasks,
+        task,
+        &saved.plan,
+        &saved.object,
+        &saved.ciphertext,
+        server,
+    )
+    .await;
+    confirm(case, tasks, task, &saved.plan, &saved.object).await;
+    // A repeated physical verification cannot account the object twice.
+    confirm(case, tasks, task, &saved.plan, &saved.object).await;
+}

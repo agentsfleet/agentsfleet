@@ -18,7 +18,7 @@ fn expected(name: &str) -> (Option<Refusal>, ErrorCode) {
         "https required" => refused(Refusal::HttpsRequired),
         "method not allowed" => refused(Refusal::MethodNotAllowed),
         "host not allowed" => refused(Refusal::HostNotAllowed),
-        "address not allowed" => refused(Refusal::AddressNotAllowed),
+        "egress denied" => refused(Refusal::EgressDenied),
         "placement not allowed" => refused(Refusal::PlacementNotAllowed),
         "credential host not allowed" => refused(Refusal::CredentialHostNotAllowed),
         "request policy not allowed" => refused(Refusal::RequestPolicyNotAllowed),

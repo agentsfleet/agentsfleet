@@ -2,7 +2,7 @@
 //! each enforces.
 //!
 //! ```text
-//!   lease plane ─┐
+//!   run plane ─┐
 //!   runner route ├─► Memories ─► grants ─► PgStore
 //!   tenant route ┘   (fleet.fleets)
 //! ```
@@ -30,12 +30,12 @@ const EVENT_ACCESS_CHANGED: &str = "memory_access_changed";
 
 /// Every memory verb `agentsfleetd` serves.
 ///
-/// Cheap to clone: one `Arc` (`M-SERVICES-CLONE`), so the lease plane and both
+/// Cheap to clone: one `Arc` (`M-SERVICES-CLONE`), so the run plane and both
 /// route families share one store and one grant directory.
 #[derive(Debug, Clone)]
 pub struct Memories {
     inner: Arc<Inner>,
-    activity_streams: Option<afd_bus::Handle>,
+    activity_streams: Option<afd_turns::view::activity::Notices>,
 }
 
 #[derive(Debug)]
@@ -51,14 +51,10 @@ pub struct Captured {
     pub stored: usize,
     /// Entries refused for shape, and shares from a fleet that may not publish.
     pub skipped: usize,
-    /// Entries beyond the push byte cap, which end the batch.
-    pub truncated: usize,
     /// Of `skipped`, the shares refused for want of the publish grant.
     pub unpublished: usize,
     /// Rows the retention sweep removed.
     pub swept: u64,
-    /// Rows evicted to bring the fleet back under its cap.
-    pub evicted: u64,
 }
 
 impl Captured {
@@ -67,8 +63,6 @@ impl Captured {
         let count = |size: usize| u64::try_from(size).unwrap_or(u64::MAX);
         memory::captured(count(self.stored));
         memory::capture_skipped(count(self.skipped));
-        memory::capture_truncated(count(self.truncated));
-        memory::cap_evicted(self.evicted);
     }
 }
 
@@ -87,8 +81,8 @@ impl Memories {
 
     /// Enables best-effort history notifications after changed grants commit.
     #[must_use]
-    pub fn with_activity_streams(mut self, streams: afd_bus::Handle) -> Self {
-        self.activity_streams = Some(streams);
+    pub fn with_activity_notices(mut self, notices: afd_turns::view::activity::Notices) -> Self {
+        self.activity_streams = Some(notices);
         self
     }
 
@@ -116,7 +110,7 @@ impl Memories {
             .ok_or_else(fleet_not_found)
     }
 
-    /// Persist what one run learned, and sweep and cap the fleet.
+    /// Persist what one run learned, and sweep the fleet's expired notes.
     ///
     /// # Errors
     /// Refuses a fleet that is gone and reports a store that would not take
@@ -181,10 +175,8 @@ impl Memories {
         Ok(Captured {
             stored: entries.len(),
             skipped: admitted.skipped + admitted.unpublished,
-            truncated: admitted.truncated,
             unpublished: admitted.unpublished,
             swept: housekept.swept,
-            evicted: housekept.evicted,
         })
     }
 

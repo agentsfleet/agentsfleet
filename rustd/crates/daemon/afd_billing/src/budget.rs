@@ -13,7 +13,7 @@
 //! datastore answers, an admitted run overshoots by at most one renewal window
 //! before its next `/renew` refuses it. During an outage the check fails open
 //! (below), so every renewal in that outage is admitted and the overshoot grows
-//! with its length; settlement still charges each line in full.
+//! with its length; each line is still charged in full as it is logged.
 //!
 //! # Two failures that look alike and point opposite ways
 //!
@@ -125,16 +125,17 @@ mod tests {
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
     use super::{Spend, Verdict, covers};
-    use crate::{NANOS_PER_USD, Nanos};
+    use crate::Nanos;
+    use af_core::money::NANOS_PER_USD;
     use af_fleet_runtime::config::Budget;
 
     /// A ceiling built the only way one can be: through the parser that bounds
     /// it.
     ///
     /// There is no `Budget` constructor, deliberately — a ceiling that did not
-    /// come through validation could be negative, infinite, or above the cap,
-    /// and every rule in this file assumes it is none of those. So even a unit
-    /// test goes the long way round, which is the type doing its job.
+    /// come through validation could be zero or negative, and every rule in
+    /// this file assumes it is neither. So even a unit test goes the long way
+    /// round, which is the type doing its job.
     fn ceiling(daily: i64, monthly: Option<i64>) -> Budget {
         let monthly = monthly.map_or(String::new(), |m| format!(r#","monthly_nanos":"{m}""#));
         let document = format!(

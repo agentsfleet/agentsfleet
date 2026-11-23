@@ -30,10 +30,10 @@ pub const MECHANISM_SECCOMP: &str = "seccomp";
 pub const MECHANISM_BUBBLEWRAP: &str = "bubblewrap";
 /// See [`MECHANISM_LANDLOCK`]; the toolbox's file system is EROFS.
 pub const MECHANISM_TOOLBOX_FILESYSTEM: &str = "erofs";
-/// The cgroup controllers every lease's limits are written through.
+/// The cgroup controllers every run's limits are written through.
 ///
-/// `io` is among them: a host that cannot cap a lease's disk throughput cannot
-/// keep one lease from starving the others, so it builds no sandbox.
+/// `io` is among them: a host that cannot cap a run's disk throughput cannot
+/// keep one run from starving the others, so it builds no sandbox.
 pub const REQUIRED_CONTROLLERS: [&str; 4] = ["cpu", "io", "memory", "pids"];
 
 /// The seccomp action every refused system call answers with.
@@ -92,11 +92,11 @@ pub struct ProbePaths {
     pub lsm: PathBuf,
     /// The kernel's seccomp action list.
     pub seccomp_actions: PathBuf,
-    /// The delegated cgroup every lease's cgroup is made under.
+    /// The delegated cgroup every run's cgroup is made under.
     pub cgroup_root: PathBuf,
     /// The bubblewrap launcher.
     pub bwrap: PathBuf,
-    /// Where each lease's workspace image is made; `None` when no engine is
+    /// Where each run's workspace image is made; `None` when no engine is
     /// configured, and then the probe says nothing about direct I/O.
     pub state_dir: Option<PathBuf>,
 }
@@ -215,7 +215,7 @@ fn kvm(path: &Path) -> Kvm {
 }
 
 impl HostProbe {
-    /// Whether every controller a lease's limits need is delegated here.
+    /// Whether every controller a run's limits need is delegated here.
     #[must_use]
     pub fn has_required_controllers(&self) -> bool {
         self.missing_controller().is_none()

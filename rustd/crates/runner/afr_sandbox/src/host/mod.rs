@@ -3,7 +3,7 @@
 //! Two steps have no library a runner should link: launching bubblewrap, and
 //! formatting an ext4 image. Attaching an image to a loop device and mounting
 //! it run in-process (`crate::toolbox::loop_device`), so no `mount` program
-//! starts for a lease.
+//! starts for a run.
 
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
@@ -25,8 +25,6 @@ const EVENT_PROGRAM_STARTED: &str = "sandbox_host_program_started";
 const EVENT_PROGRAM_COMPLETED: &str = "sandbox_host_program_completed";
 /// The event a host program that failed is logged under.
 const EVENT_PROGRAM_FAILED: &str = "sandbox_host_program_failed";
-/// How much of a failed program's error stream a report keeps.
-const STDERR_TAIL_BYTES: usize = 2_048;
 /// The file system every workspace disk is formatted with.
 pub(crate) const EXT4: &str = "ext4";
 /// The flag `mke2fs` takes a file-system type after.
@@ -68,7 +66,7 @@ impl Default for HostTools {
 /// Runs `path` with `args` to completion, refusing on a non-zero exit with the
 /// tail of what it wrote to standard error.
 ///
-/// The program is killed if the caller stops waiting: a cancelled lease start
+/// The program is killed if the caller stops waiting: a cancelled run start
 /// leaves no `mke2fs` running behind it.
 pub(crate) async fn run<I, S>(name: &'static str, path: &Path, args: I) -> Result<()>
 where
@@ -133,13 +131,9 @@ pub(crate) fn format_arguments(image: &Path, owner: (u32, u32)) -> Vec<OsString>
     .collect()
 }
 
-/// The last [`STDERR_TAIL_BYTES`] of `bytes`, as text, cut on a character
-/// boundary.
+/// `bytes` as text, its trailing blank lines and spaces dropped.
 pub(crate) fn tail(bytes: &[u8]) -> String {
-    let text = String::from_utf8_lossy(bytes);
-    let trimmed = text.trim_end();
-    let start = trimmed.ceil_char_boundary(trimmed.len().saturating_sub(STDERR_TAIL_BYTES));
-    trimmed.get(start..).unwrap_or_default().to_owned()
+    String::from_utf8_lossy(bytes).trim_end().to_owned()
 }
 
 #[cfg(test)]

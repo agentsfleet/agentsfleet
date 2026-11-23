@@ -21,7 +21,7 @@ const LARGER_POPULATION: u64 = 1_000;
 
 /// A report with one rate and one tail, for comparing against another.
 fn report_of(rate: f64, p95: f64) -> Report {
-    let mut report = Report::new(Lane::Lease, Profile::Rig, Provenance::for_test());
+    let mut report = Report::new(Lane::Runs, Profile::Rig, Provenance::for_test());
     report.measurement(RATE_PER_SECOND, rate);
     report.measurement(P95_MS, p95);
     report
@@ -48,7 +48,7 @@ fn scratch(label: &str) -> PathBuf {
 #[test]
 fn test_the_comparison_reports_a_delta_without_gating() {
     let directory = scratch("delta");
-    let result = directory.join("lease.rig.json");
+    let result = directory.join("runs.rig.json");
     let baseline = directory.join("baseline.json");
     report_of(500.0, 40.0).write(&result).expect("writable");
     report_of(BASELINE_RATE, 20.0)
@@ -66,13 +66,13 @@ fn test_the_comparison_reports_a_delta_without_gating() {
         rendered.contains(RATE_PER_SECOND) && rendered.contains(P95_MS),
         "every shared measurement is compared, said:\n{rendered}"
     );
-    let _ = fs::remove_dir_all(&directory);
+    fs::remove_dir_all(&directory).expect("scratch is removable");
 }
 
 #[test]
 fn test_a_missing_baseline_reports_absence_rather_than_inventing_one() {
     let directory = scratch("absent");
-    let result = directory.join("lease.rig.json");
+    let result = directory.join("runs.rig.json");
     report_of(500.0, 40.0).write(&result).expect("writable");
 
     let rendered = against_baseline(&result, &directory.join("nothing-here.json"))
@@ -82,20 +82,20 @@ fn test_a_missing_baseline_reports_absence_rather_than_inventing_one() {
         rendered.contains(NO_BASELINE),
         "absence is its own outcome, said:\n{rendered}"
     );
-    let _ = fs::remove_dir_all(&directory);
+    fs::remove_dir_all(&directory).expect("scratch is removable");
 }
 
 #[test]
 fn test_an_unparseable_result_is_the_one_thing_the_comparison_refuses() {
     let directory = scratch("truncated");
-    let result = directory.join("lease.rig.json");
+    let result = directory.join("runs.rig.json");
     fs::write(&result, "not a report at all").expect("writable");
 
     let refused = against_baseline(&result, &directory.join("nothing-here.json"))
         .expect_err("a file that is not a result cannot be compared");
 
-    assert!(refused.to_string().contains("lease.rig.json"));
-    let _ = fs::remove_dir_all(&directory);
+    assert!(refused.to_string().contains("runs.rig.json"));
+    fs::remove_dir_all(&directory).expect("scratch is removable");
 }
 
 #[test]
@@ -103,12 +103,15 @@ fn test_a_measurement_only_one_side_carries_is_named_rather_than_dropped() {
     let mut current = report_of(500.0, 40.0);
     current.measurement("candidates_per_poll", 3.0);
     let mut baseline = report_of(500.0, 40.0);
-    baseline.measurement("wasted_claim_rate", 0.1);
+    baseline.measurement("wasted_assignment_rate", 0.1);
 
     let comparison = Comparison::of(&current, &baseline);
 
     assert_eq!(comparison.added, vec!["candidates_per_poll".to_owned()]);
-    assert_eq!(comparison.missing, vec!["wasted_claim_rate".to_owned()]);
+    assert_eq!(
+        comparison.missing,
+        vec!["wasted_assignment_rate".to_owned()]
+    );
     assert_eq!(comparison.deltas.len(), 2);
 }
 
@@ -135,7 +138,7 @@ fn test_a_small_move_is_not_flagged_and_a_large_one_is() {
 #[test]
 fn test_a_baseline_of_zero_reports_no_percentage_instead_of_infinity() {
     let from_nothing = Delta {
-        name: "wasted_claim_rate".to_owned(),
+        name: "wasted_assignment_rate".to_owned(),
         baseline: 0.0,
         current: 0.25,
     };
@@ -154,10 +157,10 @@ fn test_a_baseline_of_zero_reports_no_percentage_instead_of_infinity() {
 fn test_the_rendering_names_what_only_one_side_carries_and_a_zero_baseline() {
     let mut current = report_of(500.0, 40.0);
     current.measurement("candidates_per_poll", 3.0);
-    current.measurement("wasted_claim_rate", 0.25);
+    current.measurement("wasted_assignment_rate", 0.25);
     let mut baseline = report_of(500.0, 40.0);
     baseline.measurement("idle_polls", 12.0);
-    baseline.measurement("wasted_claim_rate", 0.0);
+    baseline.measurement("wasted_assignment_rate", 0.0);
 
     let rendered = Comparison::of(&current, &baseline).render();
 

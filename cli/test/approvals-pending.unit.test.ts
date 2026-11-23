@@ -1,11 +1,10 @@
-// Unit coverage for src/commands/approvals/pending.ts — the lookup that turns a
-// steer timeout into a next step, and the per-Fleet counts `status` renders.
+// Unit coverage for src/commands/approvals/pending.ts — the per-Fleet counts
+// `status` renders.
 
 import { describe, test, expect } from "bun:test";
 import { Effect, Exit, Layer, Redacted } from "effect";
 
 import {
-  parkedGateHint,
   pendingGateCounts,
 } from "../src/commands/approvals/pending.ts";
 import { requireGateId } from "../src/commands/approvals/approvals.ts";
@@ -49,63 +48,6 @@ const httpLayer = (
       return Effect.sync(() => ({ items, next_cursor: null }) as T) as Effect.Effect<T, never, never>;
     },
   });
-
-const runHint = (response: unknown, requests: HttpRequestInput[] = []) =>
-  Effect.runPromise(
-    parkedGateHint(WS_ID, FLEET_ID, TOKEN).pipe(
-      Effect.provide(httpLayer(requests, response)),
-    ),
-  );
-
-describe("parkedGateHint", () => {
-  test("names the single gate and the command that clears it", async () => {
-    const hint = await runHint({ items: [gate()] });
-    expect(hint).toContain(GATE_ID);
-    expect(hint).toContain("agentsfleet fleet approvals approve");
-  });
-
-  test("points at the list when more than one gate is waiting", async () => {
-    const hint = await runHint({
-      items: [gate(), gate({ gate_id: "01900000-0000-7000-8000-000000099a02" })],
-    });
-    expect(hint).toContain("2 approval gates");
-    expect(hint).toContain("agentsfleet fleet approvals list --fleet");
-  });
-
-  test("returns null when nothing is holding this Fleet", async () => {
-    expect(await runHint({ items: [] })).toBeNull();
-  });
-
-  test("ignores gates belonging to another Fleet", async () => {
-    expect(await runHint({ items: [gate({ fleet_id: OTHER_FLEET_ID })] })).toBeNull();
-  });
-
-  test("ignores gates that are already decided", async () => {
-    expect(await runHint({ items: [gate({ status: "approved" })] })).toBeNull();
-  });
-
-  test("asks the daemon for pending gates rather than filtering a page itself", async () => {
-    // A client-side filter over one returned page reports "nothing waiting"
-    // for a workspace whose pending gate sits behind a page of decided ones.
-    const requests: HttpRequestInput[] = [];
-    await runHint({ items: [] }, requests);
-    const path = requests[0]?.path ?? "";
-    expect(path).toContain(`/v1/workspaces/${WS_ID}/approvals`);
-    expect(path).toContain("status=pending");
-    expect(path).toContain("limit=200");
-  });
-
-  test("an unreachable inbox yields no hint instead of a second failure", async () => {
-    // The diagnosis must never replace the failure being diagnosed: a steer
-    // that timed out still reports its timeout, with its ordinary suggestion.
-    const hint = await Effect.runPromise(
-      parkedGateHint(WS_ID, FLEET_ID, TOKEN).pipe(
-        Effect.provide(httpLayer([], null, true)),
-      ),
-    );
-    expect(hint).toBeNull();
-  });
-});
 
 describe("pendingGateCounts", () => {
   test("counts pending gates per Fleet and omits decided ones", async () => {
@@ -160,18 +102,5 @@ describe("requireGateId", () => {
     const exit = await Effect.runPromiseExit(requireGateId(undefined));
     expect(Exit.isFailure(exit)).toBe(true);
     expect(JSON.stringify(exit)).toContain("agentsfleet fleet approvals show");
-  });
-});
-
-describe("parkedGateHint — an inbox that cannot be read", () => {
-  test("returns null rather than claiming nothing is waiting", async () => {
-    // The steer keeps the timeout it already has and its ordinary suggestion.
-    // Silence is honest; "nothing is holding this Fleet" would not be.
-    const hint = await Effect.runPromise(
-      parkedGateHint(WS_ID, FLEET_ID, TOKEN).pipe(
-        Effect.provide(httpLayer([], null, true)),
-      ),
-    );
-    expect(hint).toBeNull();
   });
 });

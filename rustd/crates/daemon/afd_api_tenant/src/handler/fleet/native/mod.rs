@@ -1,7 +1,6 @@
 //! Browser and terminal Save share retained setup, live checks and strong versions.
 
 pub(crate) mod context;
-mod context_budget;
 pub(crate) mod create;
 mod input;
 pub(crate) mod patch;
@@ -11,7 +10,7 @@ pub(crate) mod revision;
 pub(crate) mod schedules;
 
 use crate::auth::{Owned, PersonIdentity};
-use afd_authoring::Access;
+use afd_setup::Access;
 
 fn access<'a>(owned: &'a Owned, person: &'a PersonIdentity) -> Access<'a> {
     Access {

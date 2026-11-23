@@ -1,9 +1,9 @@
 //! Which toolbox images a host keeps: the current and previous releases, and
-//! any image a lease or warm slot still holds.
+//! any image a run or warm slot still holds.
 //!
 //! A sandbox holds the toolbox it runs on by keeping a clone of its `Arc`, so
 //! a hold is a strong count, and an image whose only `Arc` is this registry's
-//! is held by nothing. Retention runs at every admission and whenever the host
+//! is held by nothing. Retention runs at every verification and whenever the host
 //! calls [`Toolboxes::retain`]; an image held past its release goes at the
 //! first of those after its last sandbox does.
 
@@ -27,7 +27,7 @@ const EVENT_RELEASED: &str = "sandbox_toolbox_released";
 const EVENT_RELEASE_FAILED: &str = "sandbox_toolbox_release_failed";
 /// The event a published image staged again is logged under.
 const EVENT_RESTAGED: &str = "sandbox_toolbox_restaged";
-/// The event a published image no admitted release names is removed under.
+/// The event a published image no verified release names is removed under.
 const EVENT_PRUNED: &str = "sandbox_toolbox_pruned";
 /// The event an image still mounted when its host stops is logged under.
 const EVENT_UNMOUNT_FAILED: &str = "sandbox_toolbox_unmount_failed";
@@ -39,7 +39,7 @@ const REFUSALS_OF_THE_FILE: [ToolboxRefusal; 3] = [
     ToolboxRefusal::NotAFile,
 ];
 
-/// Mounts an admitted image and unmounts one: the kernel on a host, a
+/// Mounts an verified image and unmounts one: the kernel on a host, a
 /// recorder in the unit suites.
 pub trait Mounter: fmt::Debug + Send + Sync {
     /// Mounts `image`, the published file `manifest` names.
@@ -55,12 +55,12 @@ pub trait Mounter: fmt::Debug + Send + Sync {
     fn unmount(&self, toolbox: &Toolbox) -> Result<()>;
 }
 
-/// The images one host has admitted, oldest first, under one directory.
+/// The images one host has verified, oldest first, under one directory.
 #[derive(Debug)]
 pub struct Toolboxes<M> {
     dir: PathBuf,
     mounter: M,
-    admitted: Mutex<Vec<Arc<Toolbox>>>,
+    verified: Mutex<Vec<Arc<Toolbox>>>,
 }
 
 impl<M: Mounter> Toolboxes<M> {
@@ -74,38 +74,38 @@ impl<M: Mounter> Toolboxes<M> {
         Ok(Self {
             dir,
             mounter,
-            admitted: Mutex::new(Vec::new()),
+            verified: Mutex::new(Vec::new()),
         })
     }
 
-    /// Admits the image `manifest` names as the current release, staging it
+    /// Verifies the image `manifest` names as the current release, staging it
     /// from `source` first when it is not yet published, then lets go of what
     /// retention no longer keeps. An old image retention cannot let go of is
-    /// logged and stays admitted for the next pass: it does not refuse the new
+    /// logged and stays verified for the next pass: it does not refuse the new
     /// release. Blocks: it reads the whole image.
     ///
     /// # Errors
-    /// The image cannot be staged or admitted; the releases already admitted
+    /// The image cannot be staged or verified; the releases already verified
     /// stay as they were.
-    pub fn admit(&self, manifest: &Manifest, source: &Path) -> Result<Arc<Toolbox>> {
+    pub fn verify(&self, manifest: &Manifest, source: &Path) -> Result<Arc<Toolbox>> {
         let image = stage::published(&self.dir, manifest);
         let fresh = !image.exists();
         if fresh {
             stage::stage(manifest, source, &self.dir)?;
         }
-        let mut admitted = self.admitted();
-        let existing = admitted
+        let mut verified = self.verified();
+        let existing = verified
             .iter()
             .position(|toolbox| toolbox.digest() == manifest.sha256());
         let toolbox = match existing {
-            Some(index) => admitted.remove(index),
+            Some(index) => verified.remove(index),
             None => Arc::new(self.mount(manifest, source, &image, fresh)?),
         };
-        admitted.push(Arc::clone(&toolbox));
+        verified.push(Arc::clone(&toolbox));
         let kept = self
-            .retain_in(&mut admitted)
-            .and_then(|_released| self.prune(&admitted));
-        drop(admitted);
+            .retain_in(&mut verified)
+            .and_then(|_released| self.prune(&verified));
+        drop(verified);
         if let Err(stuck) = kept {
             let Logged { error_code, reason } = stuck.logged();
             let event = EVENT_RELEASE_FAILED;
@@ -118,40 +118,40 @@ impl<M: Mounter> Toolboxes<M> {
     /// [`TOOLBOX_KEEP_RELEASES`] that no sandbox holds; how many went.
     ///
     /// # Errors
-    /// An unmount was refused; that image stays admitted.
+    /// An unmount was refused; that image stays verified.
     pub fn retain(&self) -> Result<usize> {
-        self.retain_in(&mut self.admitted())
+        self.retain_in(&mut self.verified())
     }
 
-    /// The digests admitted, oldest first.
+    /// The digests verified, oldest first.
     #[must_use]
     pub fn digests(&self) -> Vec<String> {
-        self.admitted()
+        self.verified()
             .iter()
             .map(|toolbox| toolbox.digest().to_owned())
             .collect()
     }
 
-    /// Unmounts every admitted image and keeps its published file: the next
+    /// Unmounts every verified image and keeps its published file: the next
     /// start of the same release mounts that file in place, its digest checked
     /// again, rather than copying the download a second time. A file no
-    /// admitted release names goes at the next admission.
+    /// verified release names goes at the next verification.
     ///
     /// # Errors
-    /// An unmount was refused; the images not yet unmounted stay admitted.
+    /// An unmount was refused; the images not yet unmounted stay verified.
     pub fn close(&self) -> Result<()> {
-        let mut admitted = self.admitted();
-        while let Some(toolbox) = admitted.pop() {
+        let mut verified = self.verified();
+        while let Some(toolbox) = verified.pop() {
             if let Err(refused) = self.mounter.unmount(&toolbox) {
-                admitted.push(toolbox);
+                verified.push(toolbox);
                 return Err(refused);
             }
         }
-        drop(admitted);
+        drop(verified);
         Ok(())
     }
 
-    /// Mounts the published `image`. One published before this admission
+    /// Mounts the published `image`. One published before this verification
     /// that is no longer the manifest's image, rotted, edited in place or
     /// swapped for a link, is removed and staged again from `source`, once.
     fn mount(
@@ -180,20 +180,20 @@ impl<M: Mounter> Toolboxes<M> {
         }
     }
 
-    fn retain_in(&self, admitted: &mut Vec<Arc<Toolbox>>) -> Result<usize> {
+    fn retain_in(&self, verified: &mut Vec<Arc<Toolbox>>) -> Result<usize> {
         let mut released = 0;
         let mut index = 0;
-        while index < admitted.len().saturating_sub(TOOLBOX_KEEP_RELEASES) {
-            let held = admitted
+        while index < verified.len().saturating_sub(TOOLBOX_KEEP_RELEASES) {
+            let held = verified
                 .get(index)
                 .is_some_and(|toolbox| Arc::strong_count(toolbox) > 1);
             if held {
                 index += 1;
                 continue;
             }
-            let toolbox = admitted.remove(index);
+            let toolbox = verified.remove(index);
             if let Err(refused) = self.release(&toolbox) {
-                admitted.insert(index, toolbox);
+                verified.insert(index, toolbox);
                 return Err(refused);
             }
             released += 1;
@@ -218,11 +218,11 @@ impl<M: Mounter> Toolboxes<M> {
         Ok(())
     }
 
-    /// Removes every published image under the directory that `admitted`
+    /// Removes every published image under the directory that `verified`
     /// does not name: one an earlier start kept for a release this one no
-    /// longer admits.
-    fn prune(&self, admitted: &[Arc<Toolbox>]) -> Result<()> {
-        let kept: Vec<String> = admitted
+    /// longer verifies.
+    fn prune(&self, verified: &[Arc<Toolbox>]) -> Result<()> {
+        let kept: Vec<String> = verified
             .iter()
             .map(|toolbox| super::image_name(toolbox.digest()))
             .collect();
@@ -232,7 +232,7 @@ impl<M: Mounter> Toolboxes<M> {
             // A name that is not UTF-8 is no image's.
             if let Some(image) = name.to_str()
                 && super::is_image_name(image)
-                && entry.file_type()?.is_file()
+                && !entry.file_type()?.is_dir()
                 && !kept.iter().any(|keep| keep == image)
             {
                 fs::remove_file(entry.path())?;
@@ -243,15 +243,15 @@ impl<M: Mounter> Toolboxes<M> {
         Ok(())
     }
 
-    /// The admitted images, whoever last held the lock: the list stays whole
+    /// The verified images, whoever last held the lock: the list stays whole
     /// even if a holder panicked, because every change to it is one push,
     /// remove or insert.
-    fn admitted(&self) -> MutexGuard<'_, Vec<Arc<Toolbox>>> {
-        self.admitted.lock().unwrap_or_else(PoisonError::into_inner)
+    fn verified(&self) -> MutexGuard<'_, Vec<Arc<Toolbox>>> {
+        self.verified.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
 
-/// A host's admitted images for the life of its engine.
+/// A host's verified images for the life of its engine.
 ///
 /// They are unmounted when this drops, however that life ends. A refused
 /// unmount is logged and left: the process is ending either way, and the next

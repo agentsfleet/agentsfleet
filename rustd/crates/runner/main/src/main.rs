@@ -2,7 +2,7 @@
 //!
 //! Three entries, each only composing library crates:
 //!
-//! - `run` supervises this host's leases, as the systemd unit: each lease's
+//! - `run` supervises this host's runs, as the systemd unit: each run's
 //!   turn runs on the agent loop, its tools in a bubblewrap sandbox of its own
 //!   (`host`). It exports its spans and its own metric families to the runner
 //!   collector when `OTEL_EXPORTER_OTLP_ENDPOINT` names one, and holds no
@@ -54,22 +54,23 @@ struct Cli {
 /// The binary's entries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Subcommand)]
 enum Command {
-    /// Supervise this host's leases.
+    /// Supervise this host's runs.
     Run(RunArgs),
     /// Print what this host's kernel can enforce.
     Probe,
     /// Harden this process and serve the executor; started inside each sandbox,
-    /// told the descriptors it inherited: the tenant leaf's and its link's.
-    Sandbox(afr_sandbox::Inherited),
+    /// told the descriptors it inherited, the tenant leaf's and its link's,
+    /// and the sizes its executor serves with.
+    Sandbox(afr_sandbox::Entry),
 }
 
-/// How `run` builds each lease's sandbox.
+/// How `run` builds each run's sandbox.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, clap::Args)]
 struct RunArgs {
-    /// Sandbox engine used for every lease on this host.
+    /// Sandbox engine used for every run on this host.
     #[arg(long, value_enum, default_value_t)]
     engine: engine::EngineChoice,
-    /// Build no sandbox: every lease's tools run unconfined in a scratch
+    /// Build no sandbox: every run's tools run unconfined in a scratch
     /// directory under the storage home. A debug build alone has the flag, so
     /// a suite can drive this binary end to end on a host without bubblewrap.
     #[cfg(debug_assertions)]
@@ -81,15 +82,15 @@ fn main() -> ExitCode {
     match Cli::parse().command {
         // First and alone: hardening refuses once a second thread exists, so
         // nothing may start one before it.
-        Command::Sandbox(inherited) => sandbox(inherited),
+        Command::Sandbox(entry) => sandbox(entry),
         Command::Probe => probe(),
         Command::Run(args) => run(args),
     }
 }
 
 /// Hardens and serves; any refusal goes to stderr, which the engine reads.
-fn sandbox(inherited: afr_sandbox::Inherited) -> ExitCode {
-    exited(afr_sandbox::serve_sandboxed(inherited))
+fn sandbox(entry: afr_sandbox::Entry) -> ExitCode {
+    exited(afr_sandbox::serve_sandboxed(entry))
 }
 
 /// SUCCESS for an entry that ended cleanly, otherwise its refusal.
@@ -135,15 +136,22 @@ fn answer(host: &afr_sandbox::HostProbe, out: &mut impl std::io::Write) -> ExitC
     }
 }
 
-/// Starts the export when an endpoint is configured, serves leases until the
+/// Starts the export when an endpoint is configured, serves runs until the
 /// process is asked to stop, and delivers what the export holds on the way
 /// out.
+///
+/// The runner's file is read first, so a refused value stops the start before
+/// anything is exported.
 fn run(args: RunArgs) -> ExitCode {
-    let telemetry = match exporting(&ProcessEnv) {
+    let settings = match config::read(&ProcessEnv) {
+        Ok(settings) => settings,
+        Err(refused) => return refused,
+    };
+    let telemetry = match exporting(&ProcessEnv, settings.max_run_spans) {
         Ok(telemetry) => telemetry,
         Err(refused) => return refused,
     };
-    let ended = supervise(args).unwrap_or_else(|failed| failed);
+    let ended = supervise(args, &settings).unwrap_or_else(|failed| failed);
     if let Some(telemetry) = telemetry {
         telemetry.close();
     }
@@ -154,12 +162,16 @@ fn run(args: RunArgs) -> ExitCode {
 /// collector, and says which.
 ///
 /// Read before boot so a misconfigured export refuses the start rather than a
-/// lease, and before the subscriber so the subscriber carries the export's
+/// run, and before the subscriber so the subscriber carries the export's
 /// layer from its first record. A refusal is logged through a subscriber
 /// without it, naming the knob and never its value.
-fn exporting(env: &impl EnvSource) -> Result<Option<Telemetry>, ExitCode> {
-    let resolved = Endpoint::from_env(env)
-        .and_then(|endpoint| endpoint.as_ref().map(Telemetry::install).transpose());
+fn exporting(env: &impl EnvSource, max_run_spans: u32) -> Result<Option<Telemetry>, ExitCode> {
+    let resolved = Endpoint::from_env(env).and_then(|endpoint| {
+        endpoint
+            .as_ref()
+            .map(|endpoint| Telemetry::install_capped(endpoint, max_run_spans))
+            .transpose()
+    });
     let telemetry = match resolved {
         Ok(telemetry) => telemetry,
         Err(refused) => {
@@ -179,7 +191,7 @@ fn exporting(env: &impl EnvSource) -> Result<Option<Telemetry>, ExitCode> {
     Ok(telemetry)
 }
 
-/// Boots, builds this host's engine and the agent loop, and serves leases
+/// Boots, builds this host's engine and the agent loop, and serves runs
 /// until the process is asked to stop or the daemon says stop.
 ///
 /// Every check a start makes runs before the daemon is dialled — the
@@ -189,17 +201,18 @@ fn exporting(env: &impl EnvSource) -> Result<Option<Telemetry>, ExitCode> {
 ///
 /// # Errors
 /// The failure, already logged under `run_failed`, as the exit status.
-fn supervise(args: RunArgs) -> Result<ExitCode, ExitCode> {
-    let settings = config::read(&ProcessEnv)?;
+fn supervise(args: RunArgs, settings: &config::Settings) -> Result<ExitCode, ExitCode> {
     let (config, home) = afr_supervisor::boot(&ProcessEnv).or_exit()?;
-    let config = config.with_runtime(settings.supervisor);
+    let config = config
+        .with_runtime(settings.supervisor)
+        .with_tuning(settings.tuning);
     // `resources` outlives the runtime and the engine it is moved into: every
     // sandbox is gone before its toolbox is unmounted.
-    let host = args.host(&home)?;
+    let host = args.host(&home, settings.engine)?;
     let _resources = host.resources;
     let engine = host.engine;
     let probe = host.probe;
-    let agent = host::agent(settings.inference, settings.provider_retries)?;
+    let agent = host::agent(settings)?;
     let runtime = tokio::runtime::Runtime::new().map_err(|error| host::io_failed(&error))?;
     runtime
         .block_on(serve(&config, home, engine, agent, probe))
@@ -208,21 +221,21 @@ fn supervise(args: RunArgs) -> Result<ExitCode, ExitCode> {
 }
 
 impl RunArgs {
-    /// The host `run` leases on: no sandbox when a debug build is told so,
+    /// The host `run` runs on: no sandbox when a debug build is told so,
     /// bubblewrap otherwise.
     ///
     /// # Errors
     /// The failure, already logged, as the exit status.
-    fn host(self, home: &StorageHome) -> Result<Host, ExitCode> {
+    fn host(self, home: &StorageHome, tuning: afr_sandbox::EngineTuning) -> Result<Host, ExitCode> {
         #[cfg(debug_assertions)]
         if self.unsandboxed {
-            return Host::unsandboxed(home);
+            return Host::unsandboxed(home, tuning.sizes);
         }
-        self.engine.boot(home)
+        self.engine.boot(home, tuning)
     }
 }
 
-/// Serves leases until SIGTERM or SIGINT, or until the daemon says stop.
+/// Serves runs until SIGTERM or SIGINT, or until the daemon says stop.
 async fn serve(
     config: &afr_supervisor::Config,
     home: StorageHome,
@@ -259,9 +272,9 @@ async fn serve(
 }
 
 /// Resolves on a second SIGINT or SIGTERM, once the first has begun a drain:
-/// the operator will not wait for the leases in flight. The first signal's
+/// the operator will not wait for the runs in flight. The first signal's
 /// handler stays installed for the process's life, so without this a second
-/// one would be swallowed until a lease ended. Dropping the run unwinds
+/// one would be swallowed until a run ended. Dropping the run unwinds
 /// through `main`, so the toolbox is still unmounted on the way out.
 async fn forced(shutdown: &CancellationToken) {
     shutdown.cancelled().await;
@@ -296,7 +309,7 @@ where
 /// The level the environment names, with the model library's own lines held
 /// to its warnings, so no level puts a model's raw reply in the journal.
 fn log_filter(env: &impl EnvSource) -> Targets {
-    af_providers::log_filter(af_core::env::log_level(env, DEFAULT_LEVEL))
+    af_providers::settings::log_filter(af_core::env::log_level(env, DEFAULT_LEVEL))
 }
 
 #[cfg(test)]

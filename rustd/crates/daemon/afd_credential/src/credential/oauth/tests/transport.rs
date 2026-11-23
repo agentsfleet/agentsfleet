@@ -89,6 +89,7 @@ async fn exchange(endpoint: Endpoint) -> Outcome {
         token_url: &endpoint.url,
         http: &reqwest::Client::new(),
         now: NOW,
+        assumed_ttl: crate::credential::oauth::DEFAULT_ACCESS_TTL,
     })
     .await;
     endpoint

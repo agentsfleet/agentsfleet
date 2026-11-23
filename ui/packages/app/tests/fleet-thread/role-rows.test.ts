@@ -3,7 +3,7 @@ import React from "react";
 import { describe, expect, it } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { FleetThread } from "@/components/domain/conversation/thread/FleetThread";
-import { RUNNER_REFUSAL_SENTENCE } from "@/lib/events/event-summary";
+import { RUNNER_REFUSAL_SENTENCE } from "@/lib/turns/turn-summary";
 
 describe("FleetThread — role rendering: row kinds and badges", () => {
   it("identifies the sending fleet on an incoming handoff", () => {
@@ -108,7 +108,7 @@ describe("FleetThread — role rendering: row kinds and badges", () => {
     renderThread();
     expect(screen.getByText("GitHub App")).toBeTruthy();
     expect(screen.getByText(/opened · owner\/repo#7/)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "View event" }));
+    fireEvent.click(screen.getByRole("button", { name: "View turn" }));
     expect(screen.getByText(/"repo":\s*"owner\/repo"/)).toBeTruthy();
   });
 
@@ -124,7 +124,7 @@ describe("FleetThread — role rendering: row kinds and badges", () => {
     renderThread();
     expect(screen.getByText("GitHub App")).toBeTruthy();
     expect(screen.getByText(/workflow_run · main · success/)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "View event" }));
+    fireEvent.click(screen.getByRole("button", { name: "View turn" }));
     expect(screen.getByText(/"action":\s*"completed"/)).toBeTruthy();
   });
 

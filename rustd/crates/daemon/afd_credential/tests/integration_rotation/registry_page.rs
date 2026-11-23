@@ -3,7 +3,7 @@
 //! Its siblings next door grade the write verbs, each of which answers from one
 //! row. This grades the composition instead: six independent reads folded into
 //! one page, where every interesting property is a relationship BETWEEN them.
-//! Which row is active is the selection's pointer naming it; what a row costs is
+//! Which row is active is the tenant's selected row; what a row costs is
 //! a catalogue row reached through the credential's provider; whether a later
 //! page exists is a row fetched and deliberately not served. None of those is
 //! visible from any single read, and none is reachable over an unreachable pool,
@@ -106,9 +106,9 @@ fn row_for<'page>(page: &'page RegistryPage, entry: &Entry) -> &'page RegistryRo
 /// verdict on whether the tenant is running on it.
 ///
 /// The three come from three different reads, and the row is the only place
-/// they meet. `active` is the sharpest of them: there is no `active` column, so
-/// a page that got it right did so by comparing the selection's pointer with
-/// each row's id — and the second entry, on the SAME credential, proves it
+/// they meet. `active` is the sharpest of them: the page reads the selection
+/// once and compares its entry with each row's id — and the second entry, on
+/// the SAME credential, proves it
 /// discriminates rather than flagging everything it finds.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -137,7 +137,7 @@ async fn a_row_carries_its_credential_its_rate_and_the_selection_verdict() {
     let flagged = row_for(&page, &active);
     let unflagged = row_for(&page, &idle);
 
-    assert!(flagged.active, "the selection points at this entry");
+    assert!(flagged.active, "this entry is the selected one");
     assert!(
         !unflagged.active,
         "a second entry on the SAME credential is not what the tenant runs on"

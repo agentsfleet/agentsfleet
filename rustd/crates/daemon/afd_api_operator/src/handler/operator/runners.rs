@@ -11,8 +11,8 @@ use axum::extract::{Path, Query, State};
 use axum::response::{IntoResponse as _, Response};
 
 use super::query;
-use crate::handler::{malformed, parse_id, refuse};
-use crate::services::Services;
+use crate::OperatorPlane;
+use crate::handler::{parse_id, refuse};
 
 const EVENT_LIST: &str = "runner_list_failed";
 const EVENT_DETAIL: &str = "runner_detail_failed";
@@ -38,18 +38,32 @@ const EVENT_DETAIL: &str = "runner_detail_failed";
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn list<D: Services>(
+pub(crate) async fn list<D: OperatorPlane>(
     State(services): State<Arc<D>>,
     Query(params): Query<HashMap<String, String>>,
 ) -> Response {
-    page(services.runners().platform(), &params).await
+    page(
+        services.runners().platform(),
+        &params,
+        services.pages().list,
+    )
+    .await
 }
 
 /// One page of the runners `scope` covers, newest first.
-pub(super) async fn page(scope: RunnerScope<'_>, params: &HashMap<String, String>) -> Response {
-    let page = match query::page(params) {
+pub(super) async fn page(
+    scope: RunnerScope<'_>,
+    params: &HashMap<String, String>,
+    ceiling: af_validate::Ceiling,
+) -> Response {
+    let page = match query::page(params, ceiling) {
         Ok(page) => page,
-        Err(detail) => return malformed(detail),
+        Err(bad) => {
+            return afd_http::handler::Refusal::malformed_sentence(
+                bad.sentence(ceiling).into_owned(),
+            )
+            .into_response();
+        }
     };
     match scope.list_runners(page.cursor.as_ref(), page.limit).await {
         Ok(rows) => Json(RunnersResponse {
@@ -71,8 +85,8 @@ pub(super) async fn page(scope: RunnerScope<'_>, params: &HashMap<String, String
     operation_id = "get_platform_runner",
     summary = "Read a platform runner",
     description = concat!(
-        "Returns a runner's details, current work, and lifetime counters. Requires platform ",
-        "administrator access.",
+        "Returns a runner's details and current work. Requires platform administrator ",
+        "access.",
     ),
     params(
         afd_http::openapi::path::Runner,
@@ -84,7 +98,7 @@ pub(super) async fn page(scope: RunnerScope<'_>, params: &HashMap<String, String
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn detail<D: Services>(
+pub(crate) async fn detail<D: OperatorPlane>(
     State(services): State<Arc<D>>,
     Path(raw): Path<String>,
 ) -> Response {
@@ -105,7 +119,7 @@ pub(super) async fn read(scope: RunnerScope<'_>, raw: &str) -> Response {
 
 fn item(row: &StoredItem) -> RunnerItem<'static> {
     RunnerItem {
-        cordon: row.cordon().cloned(),
+        cordon: row.cordon().copied(),
         id: Cow::Owned(row.id().to_string()),
         tenant_id: row.tenant_id().map(|tenant| Cow::Owned(tenant.to_string())),
         host_id: Cow::Owned(row.host_id().to_owned()),
@@ -127,12 +141,8 @@ fn item(row: &StoredItem) -> RunnerItem<'static> {
 fn detail_payload(row: &StoredDetail) -> RunnerDetail<'static> {
     RunnerDetail {
         item: item(row.item()),
-        active_lease_count: row.active_lease_count(),
+        active_run_count: row.active_run_count(),
         active_fleet_count: row.active_fleet_count(),
-        leases_acquired: row.leases_acquired(),
-        leases_succeeded: row.leases_succeeded(),
-        leases_failed: row.leases_failed(),
-        leases_expired: row.leases_expired(),
         selftest_requested_at: row.selftest_requested_at(),
         selftest_completed_at: row.selftest_completed_at(),
         selftest: row.selftest().cloned(),

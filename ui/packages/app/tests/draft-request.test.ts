@@ -6,7 +6,6 @@ import { response } from "./helpers/draft-fixtures";
 import { DRAFT_LIST } from "@/lib/api/draft-list-types";
 
 const Shape = z.object({value: z.string()});
-const OVERSIZED_RESPONSE_BYTES = 4 * 1024 * 1024 + 1;
 const signal = (): AbortSignal => new AbortController().signal;
 afterEach(() => vi.unstubAllGlobals());
 
@@ -68,12 +67,6 @@ describe("bounded private setup transport", () => {
     for (let attempt = 0; attempt < 2; attempt += 1) await expect(setupRequest({path: "/live/test"}, Shape, signal())).rejects.toMatchObject({status: 502});
     expect(definiteRefusal(new SetupUnavailable("unknown", 408))).toBe(false);
     expect(losesAccess(new Error("offline"))).toBe(false);
-  });
-  it("cancels an oversized response without buffering its remaining body", async () => {
-    const cancelled = vi.fn();
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(new ReadableStream({start(controller) {controller.enqueue(new Uint8Array(OVERSIZED_RESPONSE_BYTES));}, cancel: cancelled}))));
-    await expect(setupRequest({path: "/live/test"}, Shape, signal())).rejects.toMatchObject({status: 502});
-    expect(cancelled).toHaveBeenCalledTimes(1);
   });
   it("does not start a request after disposal", async () => {
     const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);

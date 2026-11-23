@@ -7,10 +7,9 @@ use af_egress::testing::{RecordingTransport, inbound, redirected};
 use af_egress::{Outbound, Transport};
 use serde_json::json;
 
-use super::HttpRequest;
-use crate::handler::Typed;
+use crate::catalog::HTTP_REQUEST;
 use crate::runtime::ToolErrorCode;
-use crate::testing::{Run, call};
+use crate::testing::{RunFixture, call, sending};
 
 const INITIAL: &str = "https://api.github.com/repos/acme/widgets/actions/jobs/7/logs";
 const AUTH: &str = "Bearer ${secrets.github.token}";
@@ -19,7 +18,7 @@ const LOG: &str = "2026-10-30T08:34:00Z assertion failed: decoded title";
 #[tokio::test]
 async fn should_expose_incomplete_source_reads_before_the_body() {
     for lossy in [false, true] {
-        let run = Run::new(true);
+        let run = RunFixture::new(true);
         let (transport, _sent) = RecordingTransport::answering(move |request| {
             if request.url().path().ends_with("/logs") {
                 Ok(redirected(
@@ -34,8 +33,8 @@ async fn should_expose_incomplete_source_reads_before_the_body() {
                 Ok(response)
             }
         });
-        let tool = Typed::boxed(HttpRequest::new(Arc::new(transport)));
-        let output = call(tool.as_ref(), &run.lease(), json!({"url": INITIAL})).await;
+        let tool = sending(&HTTP_REQUEST, Arc::new(transport));
+        let output = call(&tool, &run.run(), json!({"url": INITIAL})).await;
         let (notices, body) = output
             .text
             .split_once("Response Body:")
@@ -49,7 +48,7 @@ async fn should_expose_incomplete_source_reads_before_the_body() {
 #[tokio::test]
 async fn should_read_text_through_admitted_redirects() {
     for status in [301, 302, 303, 307, 308] {
-        let run = Run::new(true);
+        let run = RunFixture::new(true);
         let (transport, sent) = RecordingTransport::answering(move |request| {
             if request.url().path().ends_with("/logs") {
                 Ok(redirected(
@@ -61,10 +60,10 @@ async fn should_read_text_through_admitted_redirects() {
                 Ok(inbound(200, LOG))
             }
         });
-        let tool = Typed::boxed(HttpRequest::new(Arc::new(transport)));
+        let tool = sending(&HTTP_REQUEST, Arc::new(transport));
         let output = call(
-            tool.as_ref(),
-            &run.lease(),
+            &tool,
+            &run.run(),
             json!({"url": INITIAL, "headers": {"Authorization": AUTH}}),
         )
         .await;
@@ -79,7 +78,7 @@ async fn should_read_text_through_admitted_redirects() {
 
 #[tokio::test]
 async fn should_strip_headers_across_redirect_origins() {
-    let run = Run::new(true);
+    let run = RunFixture::new(true);
     let (transport, sent) = RecordingTransport::answering(|request| {
         let target = match (request.host(), request.url().path()) {
             (GITHUB, path) if path.ends_with("/logs") => {
@@ -93,10 +92,10 @@ async fn should_strip_headers_across_redirect_origins() {
             |target| redirected(302, request.url(), &target),
         ))
     });
-    let tool = Typed::boxed(HttpRequest::new(Arc::new(transport)));
+    let tool = sending(&HTTP_REQUEST, Arc::new(transport));
     let output = call(
-        tool.as_ref(),
-        &run.lease(),
+        &tool,
+        &run.run(),
         json!({"url": INITIAL,
         "headers": {"Authorization": AUTH, "X-Caller": "drop me", "Accept": "application/json"}}),
     )
@@ -128,22 +127,19 @@ async fn should_refuse_redirect_before_transmission() {
             "http://api.github.com/download",
             ToolErrorCode::HttpsRequired,
         ),
-        (
-            "https://127.0.0.1/private",
-            ToolErrorCode::AddressNotAllowed,
-        ),
+        ("https://127.0.0.1/private", ToolErrorCode::EgressDenied),
         (
             "https://user:password@api.github.com/private",
             ToolErrorCode::CredentialPlacementNotAllowed,
         ),
     ] {
-        let run = Run::new(true);
+        let run = RunFixture::new(true);
         let (transport, sent) = RecordingTransport::answering(move |request| {
             Ok(redirected(302, request.url(), target))
         });
-        let tool = Typed::boxed(HttpRequest::new(Arc::new(transport)));
-        let output = call(tool.as_ref(), &run.lease(), json!({"url": INITIAL})).await;
-        assert_eq!(output.error_code, Some(expected));
+        let tool = sending(&HTTP_REQUEST, Arc::new(transport));
+        let output = call(&tool, &run.run(), json!({"url": INITIAL})).await;
+        assert_eq!(output.error_code, Some(expected.into()));
         assert!(
             output.text.contains("Status: 302")
                 && output.text.contains("Redirect request did not complete")
@@ -162,10 +158,10 @@ async fn should_keep_unaffected_clients_single_hop() {
         ("GET", Some("body")),
         ("POST", Some("body")),
     ] {
-        let run = Run::new(false);
+        let run = RunFixture::new(false);
         let (transport, sent) =
             RecordingTransport::answering(|request| Ok(redirected(302, request.url(), "/another")));
-        let tool = Typed::boxed(HttpRequest::new(Arc::new(transport)));
+        let tool = sending(&HTTP_REQUEST, Arc::new(transport));
         let mut arguments = json!({"url": format!("https://{GRAFANA}/logs"), "method": method});
         if let Some(body) = body {
             arguments
@@ -173,8 +169,11 @@ async fn should_keep_unaffected_clients_single_hop() {
                 .expect("request arguments are an object")
                 .insert("body".to_owned(), json!(body));
         }
-        let output = call(tool.as_ref(), &run.lease(), arguments).await;
-        assert_eq!(output.error_code, Some(ToolErrorCode::UpstreamStatus));
+        let output = call(&tool, &run.run(), arguments).await;
+        assert_eq!(
+            output.error_code,
+            Some(ToolErrorCode::UpstreamStatus.into())
+        );
         assert_eq!(sent.try_iter().count(), 1);
     }
 }
@@ -192,17 +191,20 @@ impl Transport for Never {
 #[tokio::test(start_paused = true)]
 async fn should_bound_the_whole_http_read_deadline() {
     let capture = af_core::test_util::trace::Capture::install();
-    let run = Run::new(true);
-    let tool = Typed::boxed(HttpRequest::new(Arc::new(Never)));
-    let lease = run.lease();
-    let output = call(tool.as_ref(), &lease, json!({"url": INITIAL})).await;
-    assert_eq!(output.error_code, Some(ToolErrorCode::UpstreamUnreachable));
+    let run = RunFixture::new(true);
+    let tool = sending(&HTTP_REQUEST, Arc::new(Never));
+    let run = run.run();
+    let output = call(&tool, &run, json!({"url": INITIAL})).await;
+    assert_eq!(
+        output.error_code,
+        Some(ToolErrorCode::UpstreamUnreachable.into())
+    );
     assert!(output.text.contains("deadline exceeded"));
-    drop(lease.egress.try_lock().expect("guard released during send"));
+    drop(run.egress.try_lock().expect("guard released during send"));
     let failed = capture.only("http_read_deadline_exceeded");
     assert_eq!(failed.level, tracing::Level::WARN);
     assert_eq!(failed.field("tool"), Some("http_request"));
-    assert_eq!(failed.field("lease_id"), Some(lease.lease_id));
+    assert_eq!(failed.field("run_id"), Some(run.run_id));
     assert_eq!(
         failed.field("error_code"),
         Some(af_core::error_code::INTERNAL_OPERATION_FAILED.as_str())
@@ -214,7 +216,7 @@ async fn should_follow_mixed_case_get_and_mask_success_and_error_echoes() {
     const TARGET: &str = "https://demo-grafana.internal/download?sig=a*b~c&job=9";
     for (method, status) in [("get", 200), ("Get", 403), ("GET", 500)] {
         let capture = af_core::test_util::trace::Capture::install();
-        let run = Run::new(true);
+        let run = RunFixture::new(true);
         let (transport, sent) = RecordingTransport::answering(move |request| {
             if request.host() == GITHUB {
                 Ok(redirected(302, request.url(), TARGET))
@@ -230,16 +232,11 @@ async fn should_follow_mixed_case_get_and_mask_success_and_error_echoes() {
                 Ok(response)
             }
         });
-        let tool = Typed::boxed(HttpRequest::new(Arc::new(transport)));
-        let output = call(
-            tool.as_ref(),
-            &run.lease(),
-            json!({"url":INITIAL,"method":method}),
-        )
-        .await;
+        let tool = sending(&HTTP_REQUEST, Arc::new(transport));
+        let output = call(&tool, &run.run(), json!({"url":INITIAL,"method":method})).await;
         assert_eq!(
             output.error_code,
-            (status != 200).then_some(ToolErrorCode::UpstreamStatus)
+            (status != 200).then_some(ToolErrorCode::UpstreamStatus.into())
         );
         assert!(output.text.contains(LOG) && output.text.contains("job=9"));
         for private in [TARGET, "a*b~c", "a%2Ab~c", "a%2ab~c", "/download?sig="] {
@@ -264,7 +261,7 @@ async fn should_retain_safe_context_when_redirects_stop() {
         (1, "loop refused", 1),
         (2, "limit exceeded", 4),
     ] {
-        let run = Run::new(true);
+        let run = RunFixture::new(true);
         let (transport, sent) = RecordingTransport::answering(move |request| {
             if case == 0 {
                 return Ok(inbound(302, ""));
@@ -279,14 +276,14 @@ async fn should_retain_safe_context_when_redirects_stop() {
             };
             Ok(redirected(302, request.url(), &target))
         });
-        let tool = Typed::boxed(HttpRequest::new(Arc::new(transport)));
-        let output = call(tool.as_ref(), &run.lease(), json!({"url": INITIAL})).await;
+        let tool = sending(&HTTP_REQUEST, Arc::new(transport));
+        let output = call(&tool, &run.run(), json!({"url": INITIAL})).await;
         let code = if case == 0 {
             ToolErrorCode::InvalidArguments
         } else {
             ToolErrorCode::UpstreamUnreachable
         };
-        assert_eq!(output.error_code, Some(code));
+        assert_eq!(output.error_code, Some(code.into()));
         assert!(output.text.contains("Status: 302") && output.text.contains(reason));
         assert!(output.text.contains("Redirects followed:"));
         assert!(!output.text.contains("private-signature"));
@@ -311,11 +308,14 @@ impl Transport for SlowHops {
 
 #[tokio::test(start_paused = true)]
 async fn should_share_one_deadline_across_redirect_hops() {
-    let run = Run::new(true);
-    let tool = Typed::boxed(HttpRequest::new(Arc::new(SlowHops)));
+    let run = RunFixture::new(true);
+    let tool = sending(&HTTP_REQUEST, Arc::new(SlowHops));
     let began = tokio::time::Instant::now();
-    let output = call(tool.as_ref(), &run.lease(), json!({"url": INITIAL})).await;
-    assert_eq!(output.error_code, Some(ToolErrorCode::UpstreamUnreachable));
+    let output = call(&tool, &run.run(), json!({"url": INITIAL})).await;
+    assert_eq!(
+        output.error_code,
+        Some(ToolErrorCode::UpstreamUnreachable.into())
+    );
     assert!(output.text.contains("deadline exceeded"));
     assert_eq!(began.elapsed(), af_egress::REQUEST_TIMEOUT);
 }

@@ -16,7 +16,7 @@
  *     LAST via `output.printJson`. So the envelope is the trailing
  *     balanced `{…}` object in stdout — parsing the *whole* stdout as
  *     JSON would throw on any turn that streamed prose. Acceptance:
- *       - exit 0 → `{event_id, kind: "complete", status: "processed"}`
+ *       - exit 0 → `{turn_id, kind: "complete", status: "processed"}`
  *       - every timeout, cancellation, and non-processed result fails.
  *
  * Negative paths (no network residue beyond the already-installed fleet):
@@ -64,7 +64,7 @@ const isLive = target.startsWith("https://");
 // Wire/output literals (RULE UFS — each crosses a boundary or repeats).
 const STEER_COMMAND = ["fleet", "steer"] as const;
 const JSON_FLAG = "--json" as const;
-const ENVELOPE_EVENT_ID_KEY = "event_id" as const;
+const ENVELOPE_TURN_ID_KEY = "turn_id" as const;
 const ENVELOPE_KIND_KEY = "kind" as const;
 const ENVELOPE_STATUS_KEY = "status" as const;
 const KIND_COMPLETE = "complete" as const;
@@ -84,7 +84,7 @@ const NO_COLOR = "1" as const;
 const STEER_TIMEOUT_MS = 180_000;
 
 interface SteerEnvelope {
-  readonly [ENVELOPE_EVENT_ID_KEY]?: unknown;
+  readonly [ENVELOPE_TURN_ID_KEY]?: unknown;
   readonly [ENVELOPE_KIND_KEY]?: unknown;
   readonly [ENVELOPE_STATUS_KEY]?: unknown;
 }
@@ -101,9 +101,9 @@ function assertSteerProcessed(result: RunResult, diagnostics = ""): void {
   assert.equal(result.code, 0,
     `live steer must exit 0 with a processed result; stdout=${result.stdout} stderr=${result.stderr}${diagnostics}`);
   const envelope = parseSteerEnvelope(result.stdout);
-  const eventId = envelope[ENVELOPE_EVENT_ID_KEY];
-  assert.equal(typeof eventId, "string", `steer envelope missing ${ENVELOPE_EVENT_ID_KEY}: ${result.stdout}`);
-  assert.ok((eventId as string).length > 0, `steer ${ENVELOPE_EVENT_ID_KEY} is empty`);
+  const turnId = envelope[ENVELOPE_TURN_ID_KEY];
+  assert.equal(typeof turnId, "string", `steer envelope missing ${ENVELOPE_TURN_ID_KEY}: ${result.stdout}`);
+  assert.ok((turnId as string).length > 0, `steer ${ENVELOPE_TURN_ID_KEY} is empty`);
   assert.equal(envelope[ENVELOPE_KIND_KEY], KIND_COMPLETE,
     `live steer must carry kind=${KIND_COMPLETE}; got ${JSON.stringify(envelope)}`);
   assert.equal(envelope[ENVELOPE_STATUS_KEY], STATUS_PROCESSED,
@@ -165,7 +165,7 @@ if (!isLive) {
       const result = await runWithEnv([...STEER_COMMAND, fleetId, ONE_SHOT_MESSAGE, JSON_FLAG]);
       const diagnostics = result.code === 0
         ? ""
-        : ` events=${JSON.stringify(await runWithEnv(["fleet", "events", fleetId, JSON_FLAG]))}`;
+        : ` events=${JSON.stringify(await runWithEnv(["fleet", "turns", fleetId, JSON_FLAG]))}`;
       assertSteerProcessed(result, diagnostics);
     }, STEER_TIMEOUT_MS);
 
@@ -175,7 +175,7 @@ if (!isLive) {
       assert.equal(result.code, 0, `conversation failed: stdout=${result.stdout} stderr=${result.stderr}`);
       assert.match(result.stdout, /Final reply:\s*\S/u, "the terminal must show the fleet's answer");
       assert.match(result.stdout, /event [\da-f-]+ processed/u, "the terminal must confirm the completed turn");
-      assert.doesNotMatch(result.stdout, /"event_id"\s*:/u, "ordinary conversation must not print the machine envelope");
+      assert.doesNotMatch(result.stdout, /"turn_id"\s*:/u, "ordinary conversation must not print the machine envelope");
     }, STEER_TIMEOUT_MS);
 
     it("fleet steer <id> with a whitespace-only message is rejected client-side", async () => {
@@ -196,7 +196,7 @@ if (!isLive) {
       assert.equal(check.subject, NONEXISTENT_MODEL);
       assert.equal(check.state, MODEL_CHECK.state);
       assert.equal(check.next_action?.kind, MODEL_CHECK.action);
-      assert.equal(blocked.start.event_id, undefined, "incomplete setup must not start an execution");
+      assert.equal(blocked.start.turn_id, undefined, "incomplete setup must not start an execution");
     }, STEER_TIMEOUT_MS);
 
     it("fleet steer with no <fleet_id> exits non-zero with a usage stem", async () => {

@@ -1,4 +1,4 @@
-//! Dimension 5.5 — a datastore that cannot answer is `Unavailable`, never `Ok(None)`.
+//! A datastore that cannot answer is `Unavailable`, never `Ok(None)`.
 //!
 //! The assertion the credential directory exists for. `Ok(None)` becomes a 401
 //! the holder is told to fix and `Unavailable` a 503 it is told to retry; the

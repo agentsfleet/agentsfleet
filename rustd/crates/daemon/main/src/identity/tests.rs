@@ -3,16 +3,20 @@
     reason = "validated identity values are test fixture preconditions"
 )]
 
-use afd_api::services::SignupMetadata as _;
+use afd_api_ingress::services::SignupMetadata as _;
 use afd_auth::capability::{CapabilitySource as _, NoCapabilitySource};
 use afd_auth::credential::Presented;
 use afd_auth::principal::Subject;
 use afd_auth::verifier::{NoVerifier, TokenVerifier as _, VerifyError};
-use afd_identity::{ClaimUnavailable, MetadataUnwritten, ProviderSecret};
+use std::time::Duration;
+
+use afd_identity::{
+    ClaimUnavailable, MetadataUnwritten, ProviderClaims, ProviderMetadata, ProviderSecret,
+};
 
 use super::{
-    Capabilities, NoWriteback, Sessions, SignupWriteback, build_claims, build_key_set,
-    build_metadata, resolve, resolve_with,
+    Capabilities, NoWriteback, PROVIDER_TIMEOUT, Sessions, SignupWriteback, Timing, build_claims,
+    build_key_set, build_metadata, resolve, resolve_with,
 };
 use crate::preflight::IdentityConfig;
 
@@ -29,10 +33,41 @@ fn configured() -> IdentityConfig {
 
 #[test]
 fn complete_configuration_constructs_both_identity_seams() {
-    let (capabilities, sessions, writeback) = resolve(&configured());
+    let (capabilities, sessions, writeback) = resolve(&configured(), Timing::default());
     assert!(matches!(capabilities, Capabilities::Provider(_)));
     assert!(matches!(sessions, Sessions::Jwks(_)));
     assert!(matches!(writeback, SignupWriteback::Provider(_)));
+}
+
+fn claims(identity: &IdentityConfig) -> Result<ProviderClaims, ClaimUnavailable> {
+    build_claims(identity, PROVIDER_TIMEOUT)
+}
+
+fn metadata(identity: &IdentityConfig) -> Result<ProviderMetadata, MetadataUnwritten> {
+    build_metadata(identity, PROVIDER_TIMEOUT)
+}
+
+/// The configured key-set timeout, not the default, is what the key-set
+/// client is built with.
+#[test]
+fn the_configured_key_set_timeout_reaches_its_client() {
+    let timing = Timing {
+        key_set_timeout: Duration::from_secs(2),
+        ..Timing::default()
+    };
+    let mut seen = None;
+    let (_capabilities, sessions, _writeback) = resolve_with(
+        &configured(),
+        timing,
+        claims,
+        |identity, url, timeout| {
+            seen = Some(timeout);
+            build_key_set(identity, url, timeout)
+        },
+        metadata,
+    );
+    assert!(matches!(sessions, Sessions::Jwks(_)));
+    assert_eq!(seen, Some(Duration::from_secs(2)));
 }
 
 #[test]
@@ -40,9 +75,10 @@ fn each_unbuildable_client_degrades_only_its_own_seam() {
     let identity = configured();
     let (capabilities, sessions, writeback) = resolve_with(
         &identity,
+        Timing::default(),
         |_identity| Err(ClaimUnavailable::Unreachable),
         build_key_set,
-        build_metadata,
+        metadata,
     );
     assert!(matches!(capabilities, Capabilities::Unconfigured(_)));
     assert!(matches!(sessions, Sessions::Jwks(_)));
@@ -50,9 +86,10 @@ fn each_unbuildable_client_degrades_only_its_own_seam() {
 
     let (capabilities, sessions, writeback) = resolve_with(
         &identity,
-        build_claims,
+        Timing::default(),
+        claims,
         |_identity, _url, _timeout| Err(VerifyError::KeySetUnavailable),
-        build_metadata,
+        metadata,
     );
     assert!(matches!(capabilities, Capabilities::Provider(_)));
     assert!(matches!(sessions, Sessions::Unconfigured(_)));
@@ -60,10 +97,13 @@ fn each_unbuildable_client_degrades_only_its_own_seam() {
 
     // The writeback degrades on its own too: a client it cannot build leaves
     // the capability read and the session verifier untouched.
-    let (capabilities, sessions, writeback) =
-        resolve_with(&identity, build_claims, build_key_set, |_identity| {
-            Err(MetadataUnwritten::Unreachable)
-        });
+    let (capabilities, sessions, writeback) = resolve_with(
+        &identity,
+        Timing::default(),
+        claims,
+        build_key_set,
+        |_identity| Err(MetadataUnwritten::Unreachable),
+    );
     assert!(matches!(capabilities, Capabilities::Provider(_)));
     assert!(matches!(sessions, Sessions::Jwks(_)));
     assert!(matches!(writeback, SignupWriteback::Unconfigured(_)));
@@ -88,7 +128,7 @@ async fn unconfigured_dispatch_never_disguises_an_outage_as_empty_authority() {
 
 #[tokio::test]
 async fn configured_session_dispatch_still_refuses_malformed_tokens_locally() {
-    let (_capabilities, sessions, _writeback) = resolve(&configured());
+    let (_capabilities, sessions, _writeback) = resolve(&configured(), Timing::default());
     let presented = Presented::new("not-a-jwt").expect("fixture token is nonblank");
     assert_eq!(
         sessions.verify(&presented).await,
@@ -127,7 +167,7 @@ async fn a_configured_writeback_reports_the_outage_instead_of_swallowing_it() {
         api_base: api_base.into(),
         ..configured()
     };
-    let (_capabilities, _sessions, writeback) = resolve(&identity);
+    let (_capabilities, _sessions, writeback) = resolve(&identity, Timing::default());
     assert!(matches!(writeback, SignupWriteback::Provider(_)));
 
     let subject = Subject::new("user_fixture").expect("fixture subject is valid");
@@ -150,7 +190,7 @@ fn an_issuer_that_derives_no_key_set_url_leaves_only_the_session_seam_unconfigur
         issuer: "/".into(),
         ..configured()
     };
-    let (capabilities, sessions, writeback) = resolve(&identity);
+    let (capabilities, sessions, writeback) = resolve(&identity, Timing::default());
     assert!(matches!(sessions, Sessions::Unconfigured(_)));
     assert!(matches!(capabilities, Capabilities::Provider(_)));
     assert!(matches!(writeback, SignupWriteback::Provider(_)));

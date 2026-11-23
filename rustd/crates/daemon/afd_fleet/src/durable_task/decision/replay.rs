@@ -1,0 +1,51 @@
+//! Saved physical calls never reissue their credential or rerender questions.
+
+use af_wire::durable_task::{
+    DecisionCallState, DecisionReceipt, DecisionRecorded, DecisionReservationResult,
+};
+use sqlx::types::Json;
+use zeroize::Zeroizing;
+
+use super::{
+    ReservedDecision,
+    row::{self, Call},
+    semantic,
+};
+use crate::{Result, durable_task::DurableTasks};
+
+pub(super) async fn response(tasks: &DurableTasks, call: Call) -> Result<ReservedDecision> {
+    let state = call.state()?;
+    let recorded = if state == DecisionCallState::Known {
+        recorded(tasks, &call).await?
+    } else {
+        None
+    };
+    let packet = DecisionReservationResult::Existing {
+        call_id: call.id.into(),
+        state,
+        recorded,
+    };
+    let body =
+        Zeroizing::new(serde_json::to_string(&packet).map_err(af_core::json::Unreadable::from)?);
+    Ok(ReservedDecision {
+        body,
+        issued: false,
+    })
+}
+
+async fn recorded(tasks: &DurableTasks, call: &Call) -> Result<Option<Box<DecisionRecorded>>> {
+    // A known call's receipt is its provider's; an erased payload has none.
+    let Some(row::Payload {
+        request,
+        result: Some(Json(DecisionReceipt::Provider { result })),
+    }) = row::saved_payload(tasks.runs.pool(), &call.id).await?
+    else {
+        return Ok(None);
+    };
+    let disposition = semantic::disposition(tasks, call, &request.0, &result).await;
+    Ok(Some(Box::new(DecisionRecorded {
+        request: request.0,
+        result,
+        disposition,
+    })))
+}

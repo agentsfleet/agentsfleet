@@ -83,7 +83,7 @@ pub(crate) fn serve(socket: &Path, root: &Path) -> JoinHandle<afr_executor::Resu
 
 /// Connects once the executor is listening.
 pub(crate) async fn connect(socket: &Path) -> Client {
-    Client::connect_within(socket, PATIENCE)
+    Client::connect_within(socket, PATIENCE, afr_executor::Sizes::DEFAULT)
         .await
         .expect("the executor listened in time")
 }

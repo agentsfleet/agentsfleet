@@ -13,7 +13,7 @@ test("should wait on the draft's own event stream while a sent message is queued
   await withApi((request) => {
     const path = new URL(request.url).pathname;
     if (request.method === "POST") return Response.json({...DRAFT, accepted: ACCEPTED}, {status: 201});
-    if (path.endsWith("/events/stream")) {
+    if (path.endsWith("/turns/stream")) {
       streams.push({path, accept: request.headers.get("Accept"),
         bearer: (request.headers.get("Authorization") ?? "").startsWith("Bearer ")});
       return new Response(COMPLETED_NOTICE, {headers: {"Content-Type": "text/event-stream"}});
@@ -35,7 +35,7 @@ test("should wait on the draft's own event stream while a sent message is queued
     expect(result.code).toBe(0);
     expect(result.out).toContain("Assistant: the answer");
   });
-  expect(streams).toEqual([{path: `${DRAFT_PATH}/events/stream`, accept: "text/event-stream", bearer: true}]);
+  expect(streams).toEqual([{path: `${DRAFT_PATH}/turns/stream`, accept: "text/event-stream", bearer: true}]);
   expect(reads).toBe(2);
 });
 

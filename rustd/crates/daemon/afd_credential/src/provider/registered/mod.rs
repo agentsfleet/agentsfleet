@@ -6,6 +6,8 @@
 mod key;
 mod sql;
 
+pub use key::RegisteredRoute;
+
 use std::time::Duration;
 
 use af_core::id::Uuid7;
@@ -180,7 +182,7 @@ pub(super) async fn read(
         return Ok(None);
     };
     let context = u32::try_from(model.context_window_tokens).unwrap_or_default();
-    let route = match af_inference::Configured::new(inference, context) {
+    let route = match af_providers::settings::Configured::new(inference, context) {
         Ok(route) if route.accepts_endpoint(model.base_url.as_deref()) => route,
         _ => return Ok(None),
     };

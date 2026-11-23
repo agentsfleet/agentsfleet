@@ -12,6 +12,12 @@
 
 pub(crate) mod credential;
 pub(crate) mod decisions;
+pub(crate) mod durable_task_bindings;
+pub(crate) mod durable_task_checkpoints;
+pub(crate) mod durable_task_effects;
+pub(crate) mod durable_task_input_receipts;
+pub(crate) mod durable_task_inputs;
+mod effect;
 pub(crate) mod fleet_steer;
 pub(crate) mod fleets;
 pub(crate) mod memory;
@@ -21,9 +27,4 @@ pub(crate) mod schedule_edit;
 pub(crate) mod schedule_run;
 pub(crate) mod self_record;
 pub(crate) mod stream;
-pub(crate) mod task_bindings;
-pub(crate) mod task_checkpoints;
-pub(crate) mod task_effects;
-pub(crate) mod task_input_receipts;
-pub(crate) mod task_inputs;
 pub(crate) mod tool_call;

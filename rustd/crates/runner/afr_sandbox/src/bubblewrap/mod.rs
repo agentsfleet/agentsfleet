@@ -1,9 +1,8 @@
-//! The bubblewrap command line one lease's sandbox starts with.
+//! The bubblewrap command line one run's sandbox starts with.
 //!
 //! Pure: what is mounted where, which namespaces are new, and what the process
-//! inside may not keep. Codex's `linux-sandbox` launches bubblewrap the same
-//! way; this one adds `--disable-userns` and `--clearenv`, and hardens further
-//! from the inside (`crate::harden`).
+//! inside may not keep. It passes `--disable-userns` and `--clearenv`, and
+//! hardens further from the inside (`crate::harden`).
 //!
 //! # What the binds allow
 //!
@@ -19,8 +18,10 @@ use std::ffi::{OsStr, OsString};
 use std::path::Path;
 
 use af_core::env::LOG_LEVEL_VAR;
+use afr_executor::Sizes;
 
 use crate::network::{SANDBOX_HOSTS, SANDBOX_RESOLV_CONF};
+use crate::serve::Entry;
 use crate::tenant::Inherited;
 
 /// Where the workspace disk appears inside the sandbox: the root the executor
@@ -41,20 +42,20 @@ const PROC: &str = "/proc";
 const DEV: &str = "/dev";
 /// Where POSIX shared memory lives: a private `tmpfs` per sandbox, which
 /// Python's `multiprocessing` and Chromium need. Its pages are charged to the
-/// lease's cgroup, so the memory limit covers it.
+/// run's cgroup, so the memory limit covers it.
 pub(crate) const DEV_SHM: &str = "/dev/shm";
 /// Shared memory's mode: every user writes, and only an owner removes.
 const SHARED_MEMORY_MODE: &str = "1777";
 /// Where the workspace disk's `tmp/` is bound: scratch space that shares the
 /// disk's limit, so filling it answers `ENOSPC` rather than taking the
-/// lease's memory.
+/// run's memory.
 pub(crate) const SANDBOX_TMP: &str = "/tmp";
 /// Where a private runtime directory is mounted.
 const RUN: &str = "/run";
 
 /// A fresh namespace of every kind a tool call could share with the host, the
 /// network aside ([`NetworkLayout`]). The cgroup one hides the host's cgroup
-/// tree, and with it the lease's path.
+/// tree, and with it the run's path.
 const NAMESPACES: [&str; 5] = [
     "--unshare-user",
     "--unshare-pid",
@@ -144,6 +145,9 @@ pub struct Layout<'a> {
     /// Every descriptor the entry inherits, named to it after its own
     /// arguments.
     pub inherited: Inherited,
+    /// The read size and frame its executor serves with, named after the
+    /// descriptors: the runner's client holds the link to the same.
+    pub sizes: Sizes,
     /// What `/dev/shm` may hold, in bytes (`Limits::shared_memory_bytes`).
     pub shared_memory_bytes: u64,
     /// The log level the process inside logs at, passed through the cleared
@@ -153,8 +157,8 @@ pub struct Layout<'a> {
     pub network: NetworkLayout<'a>,
 }
 
-/// Bubblewrap's arguments for `layout`, ending with the entry, its own, and
-/// the descriptors it inherits.
+/// Bubblewrap's arguments for `layout`, ending with the entry, its own, the
+/// descriptors it inherits and its executor's sizes.
 #[must_use]
 pub fn arguments(layout: &Layout<'_>) -> Vec<OsString> {
     let mut argv: Vec<OsString> = NAMESPACES
@@ -192,7 +196,7 @@ pub fn arguments(layout: &Layout<'_>) -> Vec<OsString> {
         &[END_OF_OPTIONS.as_ref(), SANDBOX_ENTRY.as_ref()],
     );
     argv.extend(layout.entry_args.iter().cloned());
-    argv.extend(layout.inherited.arguments());
+    argv.extend(Entry::new(layout.inherited, layout.sizes).arguments());
     argv
 }
 

@@ -15,10 +15,10 @@ const {
   deleteFleetMock,
   forgetMemoryMock,
   setMemoryAccessMock,
-  getFleetEventMock,
+  getFleetTurnMock,
 } =
   vi.hoisted(() => ({
-    getFleetEventMock: vi.fn(),
+    getFleetTurnMock: vi.fn(),
     withTokenMock: vi.fn(),
     listFleetsMock: vi.fn(),
     setFleetStatusMock: vi.fn(),
@@ -37,8 +37,8 @@ vi.mock("@/lib/api/memory", () => ({
   forgetMemory: forgetMemoryMock,
   setMemoryAccess: setMemoryAccessMock,
 }));
-vi.mock("@/lib/api/events", () => ({
-  getFleetEvent: getFleetEventMock,
+vi.mock("@/lib/api/turns", () => ({
+  getFleetTurn: getFleetTurnMock,
 }));
 
 import {
@@ -47,7 +47,7 @@ import {
   deleteFleetAction,
   forgetMemoryAction,
   setMemoryAccessAction,
-  getFleetEventAction,
+  getFleetTurnAction,
 } from "@/app/(dashboard)/w/[workspaceId]/fleets/actions";
 
 beforeEach(() => {
@@ -79,15 +79,15 @@ describe("fleet server actions — thin token-forwarders", () => {
     expect(listFleetsMock).toHaveBeenCalledWith("ws1", "tok", undefined);
   });
 
-  // The detail read the events list no longer carries. The identifier is the
+  // The detail read the turns list no longer carries. The identifier is the
   // only argument the row supplies, so its position is what a regression here
   // would scramble; the body it returns is the payload the list dropped.
-  it("getFleetEventAction forwards ws, fleet and event with token last", async () => {
-    const detail = { event_id: "e1", request_json: "{}", response_text: "done" };
-    getFleetEventMock.mockResolvedValueOnce(detail);
-    const r = await getFleetEventAction("ws1", "z1", "e1");
+  it("getFleetTurnAction forwards ws, fleet and turn with token last", async () => {
+    const detail = { turn_id: "e1", request_json: "{}", response_text: "done" };
+    getFleetTurnMock.mockResolvedValueOnce(detail);
+    const r = await getFleetTurnAction("ws1", "z1", "e1");
     expect(r).toEqual({ ok: true, data: detail });
-    expect(getFleetEventMock).toHaveBeenCalledWith("ws1", "z1", "e1", "tok");
+    expect(getFleetTurnMock).toHaveBeenCalledWith("ws1", "z1", "e1", "tok");
   });
 
   it("setFleetStatusAction forwards ws, id, status with token last", async () => {

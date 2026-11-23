@@ -6,27 +6,27 @@
 
 use std::borrow::Cow;
 
-use af_providers::{ImageInput, ImageKind, Message};
 use af_wire::activity::ActivityFrame;
-use afr_tools::NoArguments;
 use afr_tools::catalog::{MEMORY_RECALL, UPDATE_PLAN};
-use afr_tools::sandbox::{ImageAttachment, ImageKind as Attached};
-use afr_tools::{Entry, Schema, Tool, ToolContext, ToolOutput};
+use afr_tools::{CatalogTool, ToolContext};
 use bytes::Bytes;
+use guffbolt::Message;
+use guffbolt::tools::{NoArguments, Schema};
+use guffbolt::{Describe, Image, ImageKind, Tool, ToolFuture, ToolOutput, ToolSpec};
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
 use super::tests::{drive, engine};
-use crate::fixture::{Canned, Script, call, lease, say, unbounded};
+use crate::fixture::{Canned, Script, call, payload, say, unbounded};
 
 /// A PNG's first bytes: all the image the seam needs.
 const PNG: &[u8] = b"\x89PNG\r\n\x1a\n";
 /// What the attaching tool answers.
 const ATTACHED: &str = "attached";
-/// How the seeing tool spells what the lease told it.
+/// How the seeing tool spells what the run told it.
 const IMAGES: &str = "images:";
 
-/// A tool that attaches a PNG to the lease and says so, as `image` does. It
+/// A tool that attaches a PNG to the run and says so, as `image` does. It
 /// serves a supervisor-side entry, because the router hands a sandbox-side
 /// tool no call on a run with no executor, and this suite drives none.
 #[derive(Debug)]
@@ -35,65 +35,70 @@ struct Attaches {
 }
 
 impl Attaches {
-    fn boxed() -> Box<dyn Tool> {
+    fn boxed() -> Box<CatalogTool> {
         Box::new(Self {
             schema: Schema::of::<NoArguments>(MEMORY_RECALL.name()),
         })
     }
 }
 
-#[async_trait::async_trait]
-impl Tool for Attaches {
-    fn entry(&self) -> &'static Entry {
-        &MEMORY_RECALL
-    }
-
-    fn schema(&self) -> &Schema {
-        &self.schema
-    }
-
-    async fn call(
-        &self,
-        _arguments: &serde_json::Value,
-        _context: ToolContext<'_, '_>,
-    ) -> ToolOutput {
-        ToolOutput::succeeded(ATTACHED).with_image(ImageAttachment {
-            kind: Attached::Png,
-            bytes: Bytes::from_static(PNG),
-        })
+impl Describe for Attaches {
+    fn spec(&self) -> ToolSpec<'_> {
+        self.schema.spec(MEMORY_RECALL.name())
     }
 }
 
-/// A tool that says whether the lease's wire takes images.
+impl<'call, 'run> Tool<ToolContext<'call, 'run>> for Attaches {
+    fn call<'a>(
+        &'a self,
+        _arguments: &'a serde_json::Value,
+        _cx: ToolContext<'call, 'run>,
+    ) -> ToolFuture<'a>
+    where
+        ToolContext<'call, 'run>: 'a,
+    {
+        Box::pin(std::future::ready(
+            ToolOutput::succeeded(ATTACHED).with_image(Image {
+                kind: ImageKind::Png,
+                data: Bytes::from_static(PNG),
+            }),
+        ))
+    }
+}
+
+/// A tool that says whether the run's wire takes images.
 #[derive(Debug)]
 struct Sees {
     schema: Schema,
 }
 
 impl Sees {
-    fn boxed() -> Box<dyn Tool> {
+    fn boxed() -> Box<CatalogTool> {
         Box::new(Self {
             schema: Schema::of::<NoArguments>(UPDATE_PLAN.name()),
         })
     }
 }
 
-#[async_trait::async_trait]
-impl Tool for Sees {
-    fn entry(&self) -> &'static Entry {
-        &UPDATE_PLAN
+impl Describe for Sees {
+    fn spec(&self) -> ToolSpec<'_> {
+        self.schema.spec(UPDATE_PLAN.name())
     }
+}
 
-    fn schema(&self) -> &Schema {
-        &self.schema
-    }
-
-    async fn call(
-        &self,
-        _arguments: &serde_json::Value,
-        context: ToolContext<'_, '_>,
-    ) -> ToolOutput {
-        ToolOutput::succeeded(format!("{IMAGES}{}", context.lease.image_input))
+impl<'call, 'run> Tool<ToolContext<'call, 'run>> for Sees {
+    fn call<'a>(
+        &'a self,
+        _arguments: &'a serde_json::Value,
+        cx: ToolContext<'call, 'run>,
+    ) -> ToolFuture<'a>
+    where
+        ToolContext<'call, 'run>: 'a,
+    {
+        Box::pin(std::future::ready(ToolOutput::succeeded(format!(
+            "{IMAGES}{}",
+            cx.run.image_input
+        ))))
     }
 }
 
@@ -112,9 +117,9 @@ async fn an_attachment_rides_its_calls_result_alone() {
         vec![Attaches::boxed(), Canned::boxed(&UPDATE_PLAN, "4")],
         &script,
     );
-    let leased = lease(&[MEMORY_RECALL.name(), UPDATE_PLAN.name()], unbounded());
+    let held = payload(&[MEMORY_RECALL.name(), UPDATE_PLAN.name()], unbounded());
 
-    let (output, frames) = drive(&engine, &leased, &CancellationToken::new()).await;
+    let (output, frames) = drive(&engine, &held, &CancellationToken::new()).await;
 
     let sent = script.sent();
     assert_eq!(
@@ -123,7 +128,7 @@ async fn an_attachment_rides_its_calls_result_alone() {
             Message::ToolResult {
                 call_id: "p1".to_owned(),
                 output: ATTACHED.to_owned(),
-                image: Some(ImageInput {
+                image: Some(Image {
                     kind: ImageKind::Png,
                     data: Bytes::from_static(PNG),
                 }),
@@ -147,7 +152,7 @@ async fn an_attachment_rides_its_calls_result_alone() {
 }
 
 #[tokio::test]
-async fn the_wire_tells_the_lease_whether_it_takes_images() {
+async fn the_wire_tells_the_run_whether_it_takes_images() {
     let turns = || {
         [
             vec![call("p1", UPDATE_PLAN.name(), json!({}))],
@@ -159,9 +164,9 @@ async fn the_wire_tells_the_lease_whether_it_takes_images() {
         (Script::new(turns()).text_only(), "images:false"),
     ] {
         let engine = engine(vec![Sees::boxed()], &script);
-        let leased = lease(&[UPDATE_PLAN.name()], unbounded());
+        let held = payload(&[UPDATE_PLAN.name()], unbounded());
 
-        drive(&engine, &leased, &CancellationToken::new()).await;
+        drive(&engine, &held, &CancellationToken::new()).await;
 
         let sent = script.sent();
         let Message::ToolResult { output, .. } = &sent[1].messages[2] else {
@@ -169,31 +174,4 @@ async fn the_wire_tells_the_lease_whether_it_takes_images() {
         };
         assert_eq!(output, expected);
     }
-}
-
-/// Each kind the tool crate names crosses the seam as the provider crate's
-/// own, bytes untouched.
-#[test]
-fn every_kind_crosses_the_seam_unchanged() {
-    let crossed: Vec<(ImageKind, &[u8])> =
-        [Attached::Png, Attached::Jpeg, Attached::Gif, Attached::Webp]
-            .into_iter()
-            .map(|kind| {
-                super::attach::image_input(ImageAttachment {
-                    kind,
-                    bytes: Bytes::from_static(PNG),
-                })
-            })
-            .map(|input| (input.kind, PNG))
-            .collect();
-
-    assert_eq!(
-        crossed,
-        [
-            (ImageKind::Png, PNG),
-            (ImageKind::Jpeg, PNG),
-            (ImageKind::Gif, PNG),
-            (ImageKind::Webp, PNG),
-        ]
-    );
 }

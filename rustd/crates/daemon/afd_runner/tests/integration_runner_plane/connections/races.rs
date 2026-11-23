@@ -8,7 +8,7 @@ use afd_db::Db;
 use afd_runner::capacity::authority::{Decision, Refusal};
 use sqlx::Connection as _;
 
-use super::{Fixture, TestResult, acquire, can_claim, enrol};
+use super::{Fixture, TestResult, acquire, can_assign, enrol};
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -35,7 +35,7 @@ async fn rotation_during_a_host_lock_wait_cannot_authorize_old_credentials() -> 
                     .await?;
                 assert_eq!(decision, Decision::Refused(Refusal::Credential));
             } else {
-                assert!(!can_claim(&fixture, &authority).await?);
+                assert!(!can_assign(&fixture, &authority).await?);
             }
             Ok::<_, Box<dyn std::error::Error + Send + Sync>>(())
         };
@@ -55,7 +55,7 @@ async fn rotation_during_a_host_lock_wait_cannot_authorize_old_credentials() -> 
             Decision::Refused(Refusal::Credential)
         );
         let current = acquire(&fixture, &runner, &replacement, None).await?;
-        assert!(can_claim(&fixture, &current).await?);
+        assert!(can_assign(&fixture, &current).await?);
         drop(writer);
         fixture.cleanup().await;
     }

@@ -11,13 +11,13 @@ use std::collections::BTreeSet;
 use af_core::error_code;
 use af_core::id::Uuid7;
 use af_core::test_util::trace::Capture;
-use afd_events::FleetSteered;
-use afd_fleet::lease::Standing;
+use afd_fleet::run::Standing;
+use afd_turns::view::FleetSteered;
 
 use super::{EVENT_ADMITTED, EVENT_REFUSED, log_admitted, log_refused};
 
-/// A lease, the fleet it runs, the fleet steered, and the event it became.
-const LEASE: &str = "0190d5c2-7e1a-7000-8000-000000000001";
+/// A run, the fleet it runs, the fleet steered, and the event it became.
+const RUN: &str = "0190d5c2-7e1a-7000-8000-000000000001";
 const SENDER: &str = "0190d5c2-7e1a-7000-8000-000000000002";
 const TARGET: &str = "0190d5c2-7e1a-7000-8000-000000000003";
 const EVENT: &str = "0190d5c2-7e1a-7000-8000-000000000004";
@@ -28,10 +28,10 @@ fn id(text: &str) -> Uuid7 {
 
 fn standing() -> Standing {
     Standing {
-        lease_id: id(LEASE),
+        run_id: id(RUN),
         fleet_id: id(SENDER),
-        workspace_id: id(LEASE),
-        event_id: id(EVENT),
+        workspace_id: id(RUN),
+        turn_id: id(EVENT),
         actor: "fixture:operator".to_owned(),
     }
 }
@@ -41,13 +41,13 @@ fn keys(event: &af_core::test_util::trace::CapturedEvent) -> BTreeSet<&str> {
 }
 
 #[test]
-fn fleet_steer_logs_its_refusal_and_its_admission() {
+fn fleet_steer_logs_its_refusal_and_its_turn() {
     let capture = Capture::install();
     let standing = standing();
     let target = id(TARGET);
     log_refused(&standing, &target, error_code::FLEET_STEER_SELF);
     let steered = FleetSteered {
-        event_id: EVENT.to_owned(),
+        turn_id: EVENT.to_owned(),
         admitted_at: None,
     };
     log_admitted(&standing, &target, &steered);
@@ -58,7 +58,7 @@ fn fleet_steer_logs_its_refusal_and_its_admission() {
         BTreeSet::from([
             "error_code",
             "event",
-            "lease_id",
+            "run_id",
             "sender_fleet_id",
             "target_fleet_id"
         ])
@@ -72,12 +72,12 @@ fn fleet_steer_logs_its_refusal_and_its_admission() {
         keys(&admitted),
         BTreeSet::from([
             "event",
-            "event_id",
+            "turn_id",
             "replayed",
             "sender_fleet_id",
             "target_fleet_id"
         ])
     );
-    assert_eq!(admitted.field("event_id"), Some(EVENT));
+    assert_eq!(admitted.field("turn_id"), Some(EVENT));
     assert_eq!(admitted.field("replayed"), Some("true"));
 }

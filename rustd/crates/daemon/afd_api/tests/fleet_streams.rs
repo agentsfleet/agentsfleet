@@ -10,9 +10,9 @@
 //!
 //! # The routing case is why this file exists
 //!
-//! `/events/stream` and `/events/{event_id}` are siblings under one prefix. For
-//! as long as the stream route was unmounted, a `GET …/events/stream` matched
-//! the ITEM template and answered "Event not found" — a live defect with a
+//! `/turns/stream` and `/turns/{turn_id}` are siblings under one prefix. For
+//! as long as the stream route was unmounted, a `GET …/turns/stream` matched
+//! the ITEM template and answered "Turn not found" — a live defect with a
 //! registry code, on a path a dashboard opens. The fix is that `matchit` ranks a
 //! literal segment above a parameter; the test is here because that ranking is a
 //! property of a library, not of this code, and a library's behaviour is exactly
@@ -42,12 +42,12 @@ const FLEET_READ: ScopeSet = ScopeSet::from_scopes(&[Scope::FleetRead]);
 
 /// One fleet's live tail.
 fn fleet_stream() -> String {
-    format!("/v1/workspaces/{OWNED_WORKSPACE}/fleets/{FLEET}/events/stream")
+    format!("/v1/workspaces/{OWNED_WORKSPACE}/fleets/{FLEET}/turns/stream")
 }
 
 /// The whole workspace's.
 fn workspace_stream() -> String {
-    format!("/v1/workspaces/{OWNED_WORKSPACE}/events/stream")
+    format!("/v1/workspaces/{OWNED_WORKSPACE}/turns/stream")
 }
 
 /// One request at a fresh router carrying at most `streams` at once.
@@ -74,7 +74,7 @@ fn both_streams() -> [String; 2] {
     [workspace_stream(), fleet_stream()]
 }
 
-/// `/events/stream` is the STREAM route, not an event whose id is "stream".
+/// `/turns/stream` is the STREAM route, not an event whose id is "stream".
 ///
 /// The live defect this file was written for. Both templates live under one
 /// prefix and `matchit` ranks the literal above the parameter — so a stream
@@ -93,7 +93,7 @@ async fn the_stream_path_is_not_read_as_an_event_identifier() {
     // And the item route still serves its own template, so the win is the
     // ranking rather than the parameter route having stopped matching.
     let item = format!(
-        "/v1/workspaces/{OWNED_WORKSPACE}/fleets/{FLEET}/events/01924f4e-0000-7000-8000-000000000abc"
+        "/v1/workspaces/{OWNED_WORKSPACE}/fleets/{FLEET}/turns/01924f4e-0000-7000-8000-000000000abc"
     );
     let detail = send(FLEET_READ, &item, Some(TENANT_KEY)).await;
     assert_eq!(

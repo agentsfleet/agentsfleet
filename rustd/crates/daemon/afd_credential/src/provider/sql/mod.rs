@@ -5,13 +5,13 @@
 //! Collected here so REVIEW can read every statement side by side with the
 //! schema it touches, which a statement sitting in a function body hides.
 //!
-//! # A selection is a pointer
+//! # A selection is a flag
 //!
-//! `model.tenant_selections.tenant_model_id` is NULL for the platform default
-//! and otherwise names one of the tenant's own `model.tenant_models` rows,
-//! through a composite foreign key that also carries `tenant_id` — so a
-//! pointer at another tenant's model is refused by the database itself. The
-//! provider a self-managed selection runs on is the CREDENTIAL's
+//! `model.tenant_models.selected` marks at most one of the tenant's own rows,
+//! held to one by a deferrable exclusion constraint, and no selected row is the
+//! platform default. The flag lives on the tenant's row, so a selection of
+//! another tenant's model cannot be written at all. The provider a
+//! self-managed selection runs on is the CREDENTIAL's
 //! (`vault.secrets.meta_provider`), and its context ceiling is the catalogue's,
 //! both read live rather than copied onto the selection.
 //!
@@ -20,16 +20,14 @@
 //! Model selections and credential writes use explicit workspace references.
 //! Workspace/account ownership is proved in the credential-lock statements.
 
-/// The tenant's selection, with what it points at, or nothing.
+/// The tenant's selected model, or nothing.
 ///
-/// Absence is not a failure and not a default row — it is the tenant who has
-/// never configured a provider, and it resolves to the platform default the
-/// same way a row with a NULL pointer does. That collapse is in
-/// [`crate::provider`], not here.
+/// Absence is not a failure: it is the platform default, whether the tenant
+/// never chose a model or reset to the default. [`crate::provider`] reads it
+/// as [`crate::provider::Selection::Platform`].
 ///
-/// Every join is LEFT, so a selection row always comes back: a NULL pointer
-/// reads as the platform posture, and a credential deleted out of band reads
-/// as a NULL provider rather than as no selection at all.
+/// The credential join is LEFT, so a credential deleted out of band reads as a
+/// NULL provider rather than as no selection at all.
 ///
 /// The ceiling is the smallest the catalogue publishes for the model under the
 /// credential's own provider. `COALESCE` supplies the unknown/auto sentinel when
@@ -41,10 +39,10 @@
 /// `$1` tenant.
 pub const SELECT_TENANT_SELECTION: &str = include_str!("select_tenant_selection.sql");
 
-/// Whether the tenant's selection points at one registry entry.
+/// Whether one registry entry is the tenant's selected model.
 ///
-/// No row is a tenant that never chose, and a NULL pointer compares false, so
-/// both answer "not the active one".
+/// No row is an entry that is already gone, which answers "not the active
+/// one" as an unselected row does.
 ///
 /// `$1` tenant · `$2` entry.
 pub const SELECT_SELECTION_HOLDS: &str = include_str!("select_selection_holds.sql");
@@ -61,32 +59,45 @@ pub const SELECT_SELECTION_HOLDS: &str = include_str!("select_selection_holds.sq
 /// still comes back, to be refused as corrupt rather than read as absent.
 ///
 /// Read LIVE on every resolution, never from the tenant's own row. That is
-/// what makes an admin repointing the default take effect on the next lease for
+/// what makes an admin repointing the default take effect on the next run for
 /// every platform-mode tenant, with no redeploy and no per-tenant write.
 pub const SELECT_ACTIVE_PLATFORM_DEFAULT: &str = include_str!("select_active_platform_default.sql");
 
 /// Whether the account has any workspace; used only to classify a refusal.
 pub const SELECT_WORKSPACE_EXISTS: &str = include_str!("select_workspace_exists.sql");
 
-/// Points the tenant back at the platform default: a NULL pointer.
+/// Points the tenant back at the platform default: no row stays selected.
 ///
-/// An explicit row rather than a deleted one, so the dashboard can tell "never
-/// configured" from "explicitly reset". `created_at` is preserved on conflict,
-/// so the row answers "configured since" rather than "last touched".
+/// Runs under [`LOCK_TENANT_FOR_SELECTION`], so it cannot miss a row a
+/// concurrent activation is selecting.
 ///
 /// `$1` tenant.
 pub const RESET_TENANT_SELECTION: &str = include_str!("reset_tenant_selection.sql");
+
+/// The tenant row, locked so selection writes run one at a time.
+///
+/// An activation's UPDATE reads the tenant's rows from its own snapshot, so
+/// without this lock it could miss an entry a concurrent activation just
+/// selected and leave two rows selected, which the exclusion constraint then
+/// refuses. `FOR NO KEY UPDATE`, taken in `identity.lock_tenant` because the
+/// tenant row is immutable and `api_runtime` holds no UPDATE on it, leaves the
+/// foreign-key share locks other writers take on the tenant free.
+///
+/// `$1` tenant.
+pub const LOCK_TENANT_FOR_SELECTION: &str = include_str!("lock_tenant_for_selection.sql");
 
 // ── Activation: the write ladder's statements ───────────────────────────────
 //
 // The lock order these participate in is the one `afd_vault`'s delete path
 // spells at `afd_vault/src/sql/mod.rs`: the credential row, then the entries
-// that name it, then the tenant's selection. Activation is the PRODUCER side of
+// that name it, then the tenant's selected row. Activation is the PRODUCER side of
 // that protocol and the delete is the destroyer. Both take the credential lock
 // FIRST, and THAT is the serialization point — not the later writes, whose
 // lock behaviour differs by `ON CONFLICT` arm and is not the guarantee. With
 // the credential row held, the remaining tables are reached in that order and
-// no second participant is inside them.
+// no second participant is inside them. Activation then takes the tenant row
+// ([`LOCK_TENANT_FOR_SELECTION`]), which the delete never takes, so the two
+// orders cannot cross.
 //
 // The protocol exists only because `model.tenant_models.secret_ref` is TEXT
 // naming a `(workspace_id, key_name)` pair rather than a foreign key, so the
@@ -130,13 +141,13 @@ pub const LOCK_CREDENTIAL_FOR_ACTIVATION: &str = include_str!("lock_credential_f
 /// `$1` tenant · `$2` key name.
 pub const LOCK_CREDENTIAL_FOR_REFERENCE: &str = include_str!("lock_credential_for_reference.sql");
 
-/// The registry entry an activation points the selection at.
+/// The registry entry an activation selects, written unselected.
 ///
 /// `DO NOTHING` because re-activating an unchanged pair is not an error and
 /// must not bump anything.
 ///
 /// The table carries three unique indexes — the `id` primary key, the
-/// `(id, tenant_id)` pair the selection's foreign key targets, and the
+/// `(id, tenant_id)` pair setup drafts' foreign key targets, and the
 /// `(tenant_id, model_name, secret_ref)` domain key — and `ON CONFLICT` across
 /// several unique indexes is where Postgres's unprincipled deadlocks live. This
 /// is safe from that class for a reason worth stating rather than leaving to
@@ -147,21 +158,24 @@ pub const LOCK_CREDENTIAL_FOR_REFERENCE: &str = include_str!("lock_credential_fo
 /// `$1` id · `$2` tenant · `$3` model · `$4` secret ref.
 pub const INSERT_TENANT_MODEL_IF_ABSENT: &str = include_str!("insert_tenant_model_if_absent.sql");
 
-/// Points the selection at the entry, gated on the catalogue in one snapshot.
+/// Selects the entry and clears the tenant's other selected row in one UPDATE,
+/// gated on the catalogue in one snapshot.
 ///
 /// The gate and the write are ONE statement, so nothing can delete the model
-/// between checking it and pointing at it. No row back IS the "not catalogued"
-/// refusal; a separate `SELECT` first would be a race.
+/// between checking it and selecting it. No row back IS the "not catalogued"
+/// refusal; a separate `SELECT` first would be a race. The exclusion
+/// constraint is checked at the statement's end, so the order the UPDATE meets
+/// the two rows in cannot refuse the swap.
 ///
 /// Every provider, the compatible one included, must be catalogued for its own
 /// provider: resolution joins the same row, so a credential whose model the
 /// catalogue does not carry would activate and then fail every run. The `WHERE`
 /// requires that exact row, so a miss writes nothing.
 ///
-/// `RETURNING` echoes the pointer and the ceiling
+/// The statement answers the selected row and the ceiling
 /// [`SELECT_TENANT_SELECTION`] would compute for it, so the response reports
 /// the write instead of re-reading it — a re-read can observe a racing
 /// writer's row.
 ///
-/// `$1` tenant · `$2` provider · `$3` model · `$4` secret ref.
+/// `$1` tenant · `$2` provider · `$3` model · `$4` secret ref · `$5` workspace.
 pub const ACTIVATE_TENANT_MODEL: &str = include_str!("activate_tenant_model.sql");

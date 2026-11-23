@@ -64,7 +64,7 @@ export const modelsEffectFromFlags = Effect.fn("models.list")(function* (
     yield* output.info(
       provider
         ? `No models for provider '${provider}'. Run \`agentsfleet models list\` for the full catalogue.`
-        : "This server's model catalogue is empty — a platform admin primes it from scripts/model-library-allowlist.json.",
+        : "This server's model catalogue is empty — a platform admin primes it from rustd/crates/protocol/af_observability/src/semconv/model-library-allowlist.json.",
     );
     return;
   }

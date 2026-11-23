@@ -13,7 +13,7 @@ type Props = {
   wallMs?: number | null;
   figures?: ReplyFigures;
   activity?: unknown;
-  eventId: string;
+  turnId: string;
   children: ReactNode;
 };
 
@@ -30,7 +30,7 @@ export const FleetToolGroup = memo(function FleetToolGroup(props: Props) {
 function sameToolGroup(previous: Props, next: Props): boolean {
   const was = ownership(previous), now = ownership(next);
   return was.wholeRun === now.wholeRun && was.footer === now.footer &&
-    previous.eventId === next.eventId && previous.running === next.running && previous.wallMs === next.wallMs && previous.activity === next.activity && previous.figures?.tokens === next.figures?.tokens && previous.figures?.costNanos === next.figures?.costNanos && previous.indices.length === next.indices.length &&
+    previous.turnId === next.turnId && previous.running === next.running && previous.wallMs === next.wallMs && previous.activity === next.activity && previous.figures?.tokens === next.figures?.tokens && previous.figures?.costNanos === next.figures?.costNanos && previous.indices.length === next.indices.length &&
     previous.indices.every((index, position) => {
       const before = previous.content[index], after = next.content[index];
       return index === next.indices[position] && before?.type === "tool-call" && after?.type === "tool-call" &&

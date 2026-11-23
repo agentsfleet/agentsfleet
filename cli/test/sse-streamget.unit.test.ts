@@ -93,11 +93,11 @@ test("streamGet falls back from RFC 7807 detail to title", async () => {
     ok: false,
     status: 424,
     statusText: "Failed Dependency",
-    text: async () => JSON.stringify({ error_code: "UZ-AUTHOR-006", title: "Draft is no longer editable" }),
+    text: async () => JSON.stringify({ error_code: "UZ-SETUP-006", title: "Draft is no longer editable" }),
   }));
   await expect(
     streamGet("https://example/x", {}, () => {}, { fetchImpl, timeoutMs: 0 }),
-  ).rejects.toMatchObject({ code: "UZ-AUTHOR-006", message: "Draft is no longer editable" });
+  ).rejects.toMatchObject({ code: "UZ-SETUP-006", message: "Draft is no longer editable" });
 });
 
 test("streamGet non-JSON error bodies fall back to status text and raw body", async () => {

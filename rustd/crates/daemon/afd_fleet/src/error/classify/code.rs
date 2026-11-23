@@ -12,7 +12,7 @@ impl Error {
     /// each family's reason is written here rather than between the arms, so
     /// the table reads as one table:
     ///
-    /// - **Delegated** — billing, runner, authoring, credential,
+    /// - **Delegated** — billing, runner, setup, credential,
     ///   gate, events, outbound and memory each already decide which of their
     ///   failures is an outage and which is their own fault. A second copy of
     ///   that mapping here is the drift this crate's module header warns about.
@@ -27,8 +27,8 @@ impl Error {
     ///   own, and the parser's own error survives in the source chain.
     /// - **Vault body** — a body that will not parse answers its own code,
     ///   because its SHAPE is a fact the operator who stored it can act on.
-    /// - **Lease lifecycle** — six refusals, six codes. They are one fact (this
-    ///   runner may not do this to this lease) observed at six moments, and the
+    /// - **Run lifecycle** — six refusals, six codes. They are one fact (this
+    ///   runner may not do this to this run) observed at six moments, and the
     ///   runner acts differently on every one.
     /// - **Messages** — no thread, or the run has spoken its fill. Neither is a
     ///   fault, and the model acts on each differently.
@@ -42,26 +42,30 @@ impl Error {
     #[must_use]
     pub fn code(&self) -> ErrorCode {
         match self.inner.kind {
-            ErrorKind::TaskStorage { .. }
-            | ErrorKind::TaskStorageSigning { .. }
-            | ErrorKind::TaskStorageSigningParameters { .. }
-            | ErrorKind::TaskStorageRequest { .. }
-            | ErrorKind::TaskStorageDeadline { .. } => error_code::TASK_STORAGE_UNAVAILABLE,
-            ErrorKind::TaskRemote { .. }
-            | ErrorKind::TaskRemoteStatus { .. }
-            | ErrorKind::TaskRemoteDeadline { .. }
-            | ErrorKind::TaskRemoteCooldown { .. } => error_code::TASK_EFFECT_UNCERTAIN,
+            ErrorKind::DurableTaskStorage { .. }
+            | ErrorKind::DurableTaskStorageSigning { .. }
+            | ErrorKind::DurableTaskStorageSigningParameters { .. }
+            | ErrorKind::DurableTaskStorageRequest { .. } => {
+                error_code::DURABLE_TASK_STORAGE_UNAVAILABLE
+            }
+            ErrorKind::DurableTaskRemote { .. }
+            | ErrorKind::DurableTaskRemoteStatus { .. }
+            | ErrorKind::DurableTaskRemoteCooldown { .. } => {
+                error_code::DURABLE_TASK_EFFECT_UNCERTAIN
+            }
             ErrorKind::DecisionRequest { .. } | ErrorKind::DecisionDeadline { .. } => {
-                error_code::TASK_DECISION_UNAVAILABLE
+                error_code::DURABLE_TASK_DECISION_UNAVAILABLE
             }
             ErrorKind::Datastore { .. }
-            | ErrorKind::TaskReadTimeout { .. }
-            | ErrorKind::TaskStatementCancelled { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
+            | ErrorKind::DurableTaskReadTimeout { .. }
+            | ErrorKind::DurableTaskStatementCancelled { .. } => {
+                error_code::INTERNAL_DB_UNAVAILABLE
+            }
             ErrorKind::Billing { ref source } => source.code(),
             ErrorKind::Runner { ref source } => source.code(),
-            ErrorKind::Authoring { ref source } => source.code(),
-            ErrorKind::Admission { ref source }
-            | ErrorKind::TaskControlAdmission { ref source, .. } => source.code(),
+            ErrorKind::Setup { ref source } => source.code(),
+            ErrorKind::TurnWrite { ref source }
+            | ErrorKind::DurableTaskControlTurn { ref source, .. } => source.code(),
             ErrorKind::Context { ref source } => source.code(),
             ErrorKind::Credential { ref source } => source.code(),
             ErrorKind::Gate { ref source } => source.code(),
@@ -71,34 +75,33 @@ impl Error {
             ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
             | ErrorKind::UsageCount { .. }
-            | ErrorKind::TaskCounter { .. }
-            | ErrorKind::TaskState { .. }
-            | ErrorKind::TaskDocument { .. }
+            | ErrorKind::DurableTaskCounter { .. }
+            | ErrorKind::DurableTaskState { .. }
+            | ErrorKind::DurableTaskDocument { .. }
             | ErrorKind::SequenceCorrupt
             | ErrorKind::PostureCorrupt => error_code::INTERNAL_DB_QUERY,
             ErrorKind::Rejected { .. } => error_code::INVALID_REQUEST,
-            ErrorKind::TaskPrecondition { .. } => error_code::TASK_PRECONDITION_FAILED,
-            ErrorKind::TaskMutation { ref source, .. } => source.code(),
-            ErrorKind::TaskControlConflict { .. } => error_code::TASK_STALE_STATE,
-            ErrorKind::TaskRefused { reason } => reason.code(),
+            ErrorKind::DurableTaskPrecondition { .. } => {
+                error_code::DURABLE_TASK_PRECONDITION_FAILED
+            }
+            ErrorKind::DurableTaskMutation { ref source, .. } => source.code(),
+            ErrorKind::DurableTaskControlConflict { .. } => error_code::DURABLE_TASK_STALE_STATE,
+            ErrorKind::DurableTaskRefused { reason } => reason.code(),
             ErrorKind::TurnCheckpointRefused { reason }
             | ErrorKind::TurnCheckpointFailure { reason, .. } => reason.code(),
-            ErrorKind::TaskTargetCounter { .. } => error_code::TASK_INVALID_TARGET,
-            ErrorKind::SetupUnavailable => error_code::AUTHORING_POLICY,
+            ErrorKind::SetupUnavailable => error_code::SETUP_POLICY,
             ErrorKind::Mint { .. }
             | ErrorKind::Entropy { .. }
             | ErrorKind::ConfigUnreadable { .. }
             | ErrorKind::Scrub { .. } => error_code::INTERNAL_OPERATION_FAILED,
             ErrorKind::VaultDataInvalid => error_code::VAULT_DATA_INVALID,
             ErrorKind::StaleFence => error_code::RUN_STALE_FENCING_TOKEN,
-            ErrorKind::LeaseNotFound => error_code::RUN_LEASE_NOT_FOUND,
-            ErrorKind::LeaseLost => error_code::RUN_LEASE_LOST,
-            ErrorKind::LeaseCancelled => error_code::RUN_LEASE_CANCELLED,
-            ErrorKind::LeaseMaxRuntime => error_code::RUN_LEASE_EXCEEDED_MAX_RUNTIME,
-            ErrorKind::RenewalNoCredits => error_code::RUN_LEASE_RENEWAL_NO_CREDITS,
+            ErrorKind::RunNotFound => error_code::RUN_NOT_FOUND,
+            ErrorKind::RunLost => error_code::RUN_LOST,
+            ErrorKind::RunCancelled => error_code::RUN_CANCELLED,
+            ErrorKind::RenewalNoCredits => error_code::RUN_RENEWAL_NO_CREDITS,
             ErrorKind::BudgetExhausted => error_code::RUN_BUDGET_EXCEEDED,
             ErrorKind::MessageNoChannel => error_code::MESSAGE_NO_CHANNEL,
-            ErrorKind::MessageLimitReached => error_code::MESSAGE_LIMIT_REACHED,
             ErrorKind::IntegrationNotConnected => error_code::CRED_INTEGRATION_NOT_CONNECTED,
             ErrorKind::MintUnconfigured => error_code::CRED_BROKER_NOT_CONFIGURED,
             ErrorKind::GithubReconnectRequired => error_code::GH_RECONNECT_REQUIRED,

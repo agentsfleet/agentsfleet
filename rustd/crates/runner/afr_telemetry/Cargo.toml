@@ -21,7 +21,7 @@ test-util = ["af_providers/test-util"]
 
 [dependencies]
 # The environment seam, the error hull, the registry codes, the worker clamp
-# the lease table is sized from.
+# the run table is sized from.
 af_core.workspace = true
 # The census reader, the instrument set, the family kinds, the span and label
 # vocabulary, and the closed-set macro the label enums are declared with.

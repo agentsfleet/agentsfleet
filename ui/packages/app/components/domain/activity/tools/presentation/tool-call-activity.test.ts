@@ -14,12 +14,8 @@ describe("recorded tool activity", () => {
     [TOOL_NAME.FLEET_ACTIVITY, {}, "Reading fleet activity", "Read fleet activity", ""],
     [TOOL_NAME.FLEET_STEER, {fleet_id: "bob-id"}, "Sending fleet message", "Sent fleet message", ""],
     [TOOL_NAME.FILE_READ, {path: "/workspace/a.ts"}, "Reading file", "Read file", "a.ts"],
-    [TOOL_NAME.FILE_READ_HASHED, {path: "a.ts"}, "Reading file", "Read file", "a.ts"],
     [TOOL_NAME.FILE_WRITE, {path: "a.ts"}, "Writing", "Wrote", "a.ts"],
-    [TOOL_NAME.FILE_APPEND, {path: "a.ts"}, "Appending", "Appended", "a.ts"],
     [TOOL_NAME.FILE_EDIT, {path: "a.ts"}, "Editing", "Edited", "a.ts"],
-    [TOOL_NAME.FILE_EDIT_HASHED, {path: "a.ts"}, "Editing", "Edited", "a.ts"],
-    [TOOL_NAME.FILE_DELETE, {path: "a.ts"}, "Deleting", "Deleted", "a.ts"],
     [TOOL_NAME.APPLY_PATCH, {}, "Editing files", "Edited files", ""],
     [TOOL_NAME.EXEC_COMMAND, {cmd: "bun run test\necho later"}, "Running command", "Ran command", "bun run test"],
     [TOOL_NAME.SHELL, {command: "ls"}, "Running command", "Ran command", "ls"],
@@ -71,7 +67,7 @@ describe("recorded tool activity", () => {
 
   it("does not inspect full file contents or diffs to label a collapsed action", () => {
     const args = Object.defineProperties({path: "large.ts"}, {
-      content: {get() {throw new Error("large content was read");}}, old_text: {get() {throw new Error("diff was parsed");}},
+      content: {get() {throw new Error("large content was read");}}, edits: {get() {throw new Error("diff was parsed");}},
     });
     expect(toolActivity(TOOL_NAME.FILE_WRITE, args, RUNNING).target).toBe("large.ts");
     expect(toolActivity(TOOL_NAME.FILE_EDIT, args, SUCCESS).label).toBe("Edited");

@@ -1,4 +1,4 @@
-// The invite email vocabulary, dependency-free on purpose: client components read it without pulling the transport, whose retry policy is server-only.
+// The invite email vocabulary, dependency-free on purpose: client components read it without pulling the transport.
 
 /** What became of an invite's most recent email. Mirrors `EMAIL_STATUS_SENT`,
  * `EMAIL_STATUS_FAILED` and `EMAIL_STATUS_UNCONFIGURED` in

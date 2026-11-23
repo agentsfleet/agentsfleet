@@ -2,12 +2,12 @@ use af_core::clock::FixedClock;
 use reqwest::header::AUTHORIZATION;
 
 use super::Egress;
-use crate::admission::{Draft, Placement};
 use crate::error::raise;
 use crate::fixture::{
-    BASE, BRANCH, GITHUB, GRAFANA_TOKEN, LEASE_ID, PUSHOVER_TOKEN, PUSHOVER_USER, START, Shown,
+    BASE, BRANCH, GITHUB, GRAFANA_TOKEN, PUSHOVER_TOKEN, PUSHOVER_USER, RUN_ID, START, Shown,
     TOKEN_LIFETIME, policy, shown,
 };
+use crate::policy::{Draft, Placement};
 use crate::testing::CountingMint;
 
 const MINTED: &str = "ghs_minted_token";
@@ -34,7 +34,7 @@ async fn prepare(draft: Draft) -> Result<String, Shown> {
     let policy = policy(false);
     let clock = FixedClock::at(START);
     let mint = CountingMint::answering(MINTED, TOKEN_LIFETIME, clock.clone());
-    let mut egress = Egress::new(LEASE_ID, &policy, &mint, &clock);
+    let mut egress = Egress::new(RUN_ID, &policy, &mint, &clock);
     egress
         .prepare(draft)
         .await
@@ -59,7 +59,7 @@ fn refused_post(url: &str) -> Shown {
 }
 
 #[tokio::test]
-async fn test_write_rules_admit_only_repair_branch() {
+async fn test_write_rules_allow_only_repair_branch() {
     let named = format!(r#"{{"ref":"refs/heads/{BRANCH}","sha":"abc"}}"#);
 
     assert_eq!(
@@ -113,7 +113,7 @@ async fn should_refuse_a_header_http_cannot_carry() {
 }
 
 #[tokio::test]
-async fn should_admit_nothing_through_a_closed_guard() {
+async fn should_allow_nothing_through_a_closed_guard() {
     let mut closed = crate::testing::closed();
 
     let refused = closed
@@ -131,7 +131,7 @@ async fn should_print_no_secret_in_its_debug_after_a_mint() {
     let policy = policy(false);
     let clock = FixedClock::at(START);
     let mint = CountingMint::answering(MINTED, TOKEN_LIFETIME, clock.clone());
-    let mut egress = Egress::new(LEASE_ID, &policy, &mint, &clock);
+    let mut egress = Egress::new(RUN_ID, &policy, &mint, &clock);
     let named = format!(r#"{{"ref":"refs/heads/{BRANCH}","sha":"abc"}}"#);
     let prepared = egress.prepare(post(REFS, &named)).await;
 

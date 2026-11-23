@@ -193,8 +193,8 @@ impl Fixture {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query(
             "WITH tenants AS ( \
-               INSERT INTO identity.tenants (id, name, created_at, updated_at) \
-               VALUES ($1, 'own', now(), now()), ($2, 'other', now(), now()) \
+               INSERT INTO identity.tenants (id, name, created_at) \
+               VALUES ($1, 'own', now()), ($2, 'other', now()) \
              ), own_workspace AS ( \
                INSERT INTO identity.workspaces (id, tenant_id, name, created_at) \
                VALUES ($3, $1, 'own', now()) \
@@ -203,8 +203,8 @@ impl Fixture {
                VALUES ($4, $2, 'other', now()) \
              ) \
              INSERT INTO identity.users \
-               (id, tenant_id, oidc_subject, email, display_name, created_at, updated_at) \
-             VALUES ($6, $1, $5, 'fixture@example.test', NULL, now(), now())",
+               (id, tenant_id, oidc_subject, email, display_name, created_at) \
+             VALUES ($6, $1, $5, 'fixture@example.test', NULL, now())",
         )
         .bind(&self.own_tenant)
         .bind(&self.other_tenant)

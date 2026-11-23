@@ -3,9 +3,9 @@ import React from "react";
 import { describe, expect, it } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import { FleetThread } from "@/components/domain/conversation/thread/FleetThread";
-import { ACTOR } from "@/lib/events/event-summary";
-import { OWN_SENDER } from "@/lib/events/sender-names";
-import { AGENTSFLEET_EVENT_STATUS } from "@/lib/streaming/fleet-stream-row";
+import { ACTOR } from "@/lib/turns/turn-summary";
+import { OWN_SENDER } from "@/lib/turns/sender-names";
+import { AGENTSFLEET_TURN_STATUS } from "@/lib/streaming/fleet-stream-row";
 
 // The harness signs in as this subject, and a signed-in user outranks the
 // server-rendered viewer.
@@ -57,7 +57,7 @@ describe("FleetThread — who sent each turn in a shared thread", () => {
   // The server says a turn waits for a runner with its status alone; no
   // client-side flag marks a teammate's turn as queued.
   it("should name a teammate below their bubble and show the reply as queued when their turn waits for a runner", () => {
-    mockStream([ev({ id: "e1", role: PERSON, actor: BOB, text: QUEUED_SAYS, status: AGENTSFLEET_EVENT_STATUS.QUEUED })]);
+    mockStream([ev({ id: "e1", role: PERSON, actor: BOB, text: QUEUED_SAYS, status: AGENTSFLEET_TURN_STATUS.QUEUED })]);
     const { container } = renderShared();
     const row = container.querySelector<HTMLElement>(USER_ROW);
     const sender = row?.querySelector(SENDER_LINE) ?? null;

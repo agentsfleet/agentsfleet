@@ -17,7 +17,7 @@
 
 use afd_auth::verifier::VerifyError;
 use afd_identity::HttpKeySet;
-use afd_identity::jwks::source::{KeySetSource, MAX_RESPONSE_BYTES};
+use afd_identity::jwks::source::KeySetSource;
 
 const DIRECT: &afd_identity::Transport = &afd_identity::Transport::Direct;
 
@@ -34,7 +34,12 @@ enum Serve {
     Response { status: u16, body: Vec<u8> },
     /// Accept the connection and drop it without writing anything.
     Hangup,
+    /// Answer 200 declaring more bytes than this body, then close.
+    Cut { body: Vec<u8> },
 }
+
+/// How many bytes a [`Serve::Cut`] declares past the body it writes.
+const CUT_SHORT_BY: usize = 64;
 
 /// Serves exactly one request on a loopback port, then stops.
 ///
@@ -55,35 +60,44 @@ async fn serve_once(what: Serve) -> (String, tokio::task::JoinHandle<()>) {
         let Ok((mut socket, _peer)) = listener.accept().await else {
             return;
         };
-        match what {
-            Serve::Hangup => drop(socket),
+        let (status, body, declared) = match what {
+            Serve::Hangup => {
+                drop(socket);
+                return;
+            }
             Serve::Response { status, body } => {
-                // Drain the request before answering. Closing a socket whose
-                // receive buffer still holds unread bytes makes the kernel send
-                // RST rather than FIN, and an RST discards whatever the server
-                // wrote but the client has not yet taken — so a large body
-                // arrives truncated while a small one, already delivered before
-                // the close, does not. That is a property of sockets, not of
-                // the code under test, and reading first is how a real server
-                // avoids it.
-                let mut request = Vec::with_capacity(REQUEST_BUFFER_BYTES);
-                let mut byte = [0_u8; 1];
-                while socket.read_exact(&mut byte).await.is_ok() {
-                    request.push(byte[0]);
-                    if request.ends_with(b"\r\n\r\n") {
-                        break;
-                    }
-                }
-
-                let head = format!(
-                    "HTTP/1.1 {status} X\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-                    body.len()
-                );
-                let _ = socket.write_all(head.as_bytes()).await;
-                let _ = socket.write_all(&body).await;
-                let _ = socket.shutdown().await;
+                let declared = body.len();
+                (status, body, declared)
+            }
+            Serve::Cut { body } => {
+                let declared = body.len() + CUT_SHORT_BY;
+                (200, body, declared)
+            }
+        };
+        // Drain the request before answering. Closing a socket whose
+        // receive buffer still holds unread bytes makes the kernel send
+        // RST rather than FIN, and an RST discards whatever the server
+        // wrote but the client has not yet taken — so a large body
+        // arrives truncated while a small one, already delivered before
+        // the close, does not. That is a property of sockets, not of
+        // the code under test, and reading first is how a real server
+        // avoids it.
+        let mut request = Vec::with_capacity(REQUEST_BUFFER_BYTES);
+        let mut byte = [0_u8; 1];
+        while socket.read_exact(&mut byte).await.is_ok() {
+            request.push(byte[0]);
+            if request.ends_with(b"\r\n\r\n") {
+                break;
             }
         }
+
+        let head = format!(
+            "HTTP/1.1 {status} X\r\nContent-Length: {declared}\r\nConnection: close\r\n\r\n"
+        );
+        // The client may hang up first; its own assertions judge what it read.
+        drop(socket.write_all(head.as_bytes()).await);
+        drop(socket.write_all(&body).await);
+        drop(socket.shutdown().await);
     });
 
     (url, handle)
@@ -130,58 +144,6 @@ fn test_the_fetcher_reports_the_endpoint_it_reads() {
     )
     .expect("a client");
     assert_eq!(source.url(), "https://issuer.example/.well-known/jwks.json");
-}
-
-/// A body past the cap is refused rather than accumulated.
-///
-/// `JWKS_MAX_RESPONSE_BYTES` is not a comment: the endpoint is
-/// config-controlled rather than trusted, so a response that claims to be a key
-/// set and is a hundred megabytes must stop being read.
-#[test]
-fn test_a_body_past_the_cap_is_refused() {
-    af_core::test_util::trace::install_subscriber();
-    block_on(async {
-        let (url, server) = serve_once(Serve::Response {
-            status: 200,
-            body: vec![b'x'; MAX_RESPONSE_BYTES + 1],
-        })
-        .await;
-
-        let refused = HttpKeySet::new(&url, TIMEOUT, DIRECT)
-            .expect("a client")
-            .fetch()
-            .await
-            .expect_err("past the cap");
-
-        assert_eq!(refused, VerifyError::KeySetUnavailable);
-        server.await.expect("the server task");
-    });
-}
-
-/// A body exactly at the cap is accepted — the bound is inclusive.
-///
-/// Worth pinning beside the refusal: an off-by-one here would refuse a
-/// legitimate key set that happened to sit on the boundary, and that failure
-/// would look like a provider outage rather than a limit.
-#[test]
-fn test_a_body_exactly_at_the_cap_is_accepted() {
-    af_core::test_util::trace::install_subscriber();
-    block_on(async {
-        let (url, server) = serve_once(Serve::Response {
-            status: 200,
-            body: vec![b'x'; MAX_RESPONSE_BYTES],
-        })
-        .await;
-
-        let fetched = HttpKeySet::new(&url, TIMEOUT, DIRECT)
-            .expect("a client")
-            .fetch()
-            .await
-            .expect("exactly at the cap is within it");
-
-        assert_eq!(fetched.len(), MAX_RESPONSE_BYTES);
-        server.await.expect("the server task");
-    });
 }
 
 /// A non-success status is refused, whatever body came with it.
@@ -257,5 +219,31 @@ fn test_a_refused_connection_is_the_same_refusal() {
         .expect_err("nothing is listening");
 
         assert_eq!(refused, VerifyError::KeySetUnavailable);
+    });
+}
+
+/// A body that ends before its declared length is a transport failure, logged
+/// with the endpoint it came from, never a short key set handed to the parser.
+#[test]
+fn test_a_body_cut_before_its_length_is_a_transport_failure() {
+    let capture = af_core::test_util::trace::Capture::install();
+    block_on(async {
+        let (url, server) = serve_once(Serve::Cut {
+            body: b"{\"keys\":[".to_vec(),
+        })
+        .await;
+
+        let refused = HttpKeySet::new(&url, TIMEOUT, DIRECT)
+            .expect("a client")
+            .fetch()
+            .await
+            .expect_err("the body ended early");
+
+        assert_eq!(refused, VerifyError::KeySetUnavailable);
+        assert_eq!(
+            capture.only("jwks_fetch_failed").field("url"),
+            Some(url.as_str())
+        );
+        server.await.expect("the server task");
     });
 }

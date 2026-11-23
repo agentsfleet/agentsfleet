@@ -14,7 +14,8 @@ import { CELL_COPY } from "./presentation/tool-call-presentation";
 export function ToolCallDetails({name, args, argsText, outcome, state, card, command, onShowAll}: {
   command: boolean; card: ToolCopy | undefined; name: string; args: ToolArgs | undefined; argsText: string | undefined; outcome: ToolResult | undefined; state: CellState; onShowAll: (() => void) | undefined;
 }) {
-  const copy = useMemo(() => card ?? toolCopy(name, args), [card, name, args]);
+  const changes = outcome?.changes;
+  const copy = useMemo(() => card ?? toolCopy(name, args, changes), [card, name, args, changes]);
   const status = CELL_COPY[state];
   return <DashboardPanel padding="none" className="overflow-hidden rounded-lg bg-card">
       <div className="flex items-center justify-between gap-sm border-b border-border px-lg py-sm text-label text-muted-foreground"><span>Action · {name}</span>{argsText === undefined ? null : <CopyButton value={argsText} label="Copy input" />}</div>
@@ -23,7 +24,7 @@ export function ToolCallDetails({name, args, argsText, outcome, state, card, com
         <h4 className="font-sans text-muted-foreground">Input</h4>
         {argsText === undefined ? ARGS_NOT_RECORDED : <>
           <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words">{argsText}</pre>
-          <ToolCallInputPreview copy={copy} onShowAll={onShowAll} />
+          {card ? null : <ToolCallInputPreview copy={copy} />}
         </>}
         {command || state === CELL_STATE.RUNNING ? null : <><h4 className="font-sans text-muted-foreground">{state === CELL_STATE.FAILED ? "Error" : "Output"}</h4><ToolCallBody outcome={outcome} onShowAll={onShowAll} /></>}
       </div>

@@ -48,7 +48,7 @@
 //! job's answer as the fleet wrote it, so an answer that names the channel
 //! shows the name and pages nobody.
 
-use crate::obligation::Outgoing;
+use crate::delivery::Outgoing;
 use af_crypto::secret::SecretString;
 use afd_connector::slack::{AnswerMarker, Part, Stamp, Thread};
 use afd_connector::{Grants, Provider};
@@ -71,7 +71,7 @@ const METHOD_POST_MESSAGE: &str = "/chat.postMessage";
 /// supervisor's join waits out a repeat in the worst case — the thread check's
 /// `afd_connector::slack::ANSWER_CHECK_DEADLINE` and then this — and the pair
 /// has to leave room inside `JOIN_TIMEOUT`.
-const POST_DEADLINE: std::time::Duration = std::time::Duration::from_secs(5);
+pub const POST_DEADLINE: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// What a JSON request body is sent as.
 ///
@@ -140,6 +140,26 @@ pub struct SlackPoster {
     grants: Grants,
     http: reqwest::Client,
     api_base: String,
+    deadlines: Deadlines,
+}
+
+/// How long a post and a thread check may take.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Deadlines {
+    /// One post; see [`POST_DEADLINE`].
+    pub post: std::time::Duration,
+    /// One already-answered check; see
+    /// [`afd_connector::slack::ANSWER_CHECK_DEADLINE`].
+    pub answer_check: std::time::Duration,
+}
+
+impl Default for Deadlines {
+    fn default() -> Self {
+        Self {
+            post: POST_DEADLINE,
+            answer_check: afd_connector::slack::ANSWER_CHECK_DEADLINE,
+        }
+    }
 }
 
 impl SlackPoster {
@@ -151,12 +171,20 @@ impl SlackPoster {
     /// workspace rather than built here, so a connector adds no second HTTP
     /// stack.
     #[must_use]
-    pub const fn new(grants: Grants, http: reqwest::Client, api_base: String) -> Self {
+    pub fn new(grants: Grants, http: reqwest::Client, api_base: String) -> Self {
         Self {
             grants,
             http,
             api_base,
+            deadlines: Deadlines::default(),
         }
+    }
+
+    /// This poster under a deployment's own deadlines.
+    #[must_use]
+    pub const fn with_deadlines(mut self, deadlines: Deadlines) -> Self {
+        self.deadlines = deadlines;
+        self
     }
 
     /// Both inputs, the address first and from the job alone, and the marker
@@ -177,7 +205,7 @@ impl SlackPoster {
 
         let marker = AnswerMarker {
             fleet_id: job.fleet_id.clone().into(),
-            event_id: job.event_id.clone().into(),
+            turn_id: job.turn_id.clone().into(),
             part: part.cloned(),
         };
         Ok(Inputs {
@@ -206,7 +234,7 @@ impl SlackPoster {
             .post(format!("{}{METHOD_POST_MESSAGE}", self.api_base))
             .bearer_auth(inputs.token.expose())
             .header(http::header::CONTENT_TYPE, CONTENT_TYPE_JSON)
-            .timeout(POST_DEADLINE)
+            .timeout(self.deadlines.post)
             .body(body)
             .send()
             .await;
@@ -240,12 +268,15 @@ impl SlackPoster {
         };
         let held = match inputs.author.as_deref() {
             Some(author) => afd_connector::slack::holds_answer(
-                &self.http,
-                &self.api_base,
-                &inputs.token,
-                &inputs.destination,
+                afd_connector::slack::Check {
+                    client: &self.http,
+                    api_base: &self.api_base,
+                    token: &inputs.token,
+                    thread: &inputs.destination,
+                },
                 &inputs.marker,
                 author,
+                self.deadlines.answer_check,
             )
             .await
             .map_err(afd_connector::slack::Unavailable::as_str),

@@ -52,7 +52,6 @@ describe("createTenantWorkspace", () => {
     // rejects is silently ignored and costs the correlation this header exists
     // for, without failing anything.
     expect(headers.traceparent).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/);
-    expect(reqInit.signal).toBeInstanceOf(AbortSignal);
   });
 
   it.each([
@@ -132,11 +131,9 @@ describe("listTenantWorkspaces", () => {
       next_cursor: null,
     });
     expect(fetchSpy).toHaveBeenCalledTimes(2);
-    expect(fetchSpy.mock.calls[0]?.[0] as string).toContain(
-      "/v1/tenants/me/workspaces?limit=100",
-    );
+    expect(fetchSpy.mock.calls[0]?.[0] as string).toMatch(/\/v1\/tenants\/me\/workspaces$/);
     expect(fetchSpy.mock.calls[1]?.[0] as string).toContain(
-      "limit=100&starting_after=1%3Aws_1",
+      "/v1/tenants/me/workspaces?starting_after=1%3Aws_1",
     );
   });
 

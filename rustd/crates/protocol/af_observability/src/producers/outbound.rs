@@ -22,7 +22,7 @@ impl Handles {
     }
 }
 
-/// Records `rows` obligation rows one claim took.
+/// Records `rows` delivery rows one claim took.
 pub fn claims(via: ClaimVia, rows: u64) {
     if let Some(producers) = installed() {
         producers

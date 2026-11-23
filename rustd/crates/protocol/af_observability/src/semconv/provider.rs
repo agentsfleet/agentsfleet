@@ -39,7 +39,7 @@ const ALIASES: &[(&str, &str)] = &[
     ("xai", "x_ai"),
 ];
 
-const CATALOGUE: &str = include_str!("../../../../../../scripts/model-library-allowlist.json");
+const CATALOGUE: &str = include_str!("model-library-allowlist.json");
 
 #[derive(Deserialize)]
 struct Catalogue<'a> {

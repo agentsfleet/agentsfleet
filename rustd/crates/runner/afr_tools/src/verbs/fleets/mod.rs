@@ -13,7 +13,8 @@ use super::fleet_steer::DETAIL_FLEET_ID;
 use super::{FleetsCall, answered};
 use crate::catalog::{Entry, FLEET_ACTIVITY};
 use crate::handler::Handler;
-use crate::runtime::{ToolContext, ToolErrorCode, ToolOutput};
+use crate::runtime::{ToolContext, ToolErrorCode};
+use guffbolt::ToolOutput;
 
 /// `fleet_activity`'s arguments.
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -47,7 +48,7 @@ impl Handler for FleetActivity {
                 limit: arguments.limit,
                 starting_after,
             };
-            return answered(context.lease.verbs.fleets(call).await);
+            return answered(context.run.verbs.fleets(call).await);
         };
         let Ok(fleet) = Uuid7::parse(raw) else {
             return ToolOutput::failed(ToolErrorCode::InvalidArguments, DETAIL_FLEET_ID);
@@ -57,7 +58,7 @@ impl Handler for FleetActivity {
             limit: arguments.limit,
             starting_after,
         };
-        answered(context.lease.verbs.fleets(call).await)
+        answered(context.run.verbs.fleets(call).await)
     }
 }
 

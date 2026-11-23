@@ -1,7 +1,7 @@
-//! Where an admission's answer goes: recorded by its producer, copied by a
+//! Where a turn's answer goes: recorded by its producer, copied by a
 //! continuation, and never half-written.
 //!
-//! Driven through `Admissions::admit` and read back with the shipped
+//! Driven through `Turns::admit` and read back with the shipped
 //! `SELECT_REPLY_DESTINATION`, so a predicate added to the real lookup fails
 //! here instead of passing against a copy. Each test mints its own fleet and
 //! reads only that fleet's rows (ISO-1); none takes `RECOVERY_LANE`, because
@@ -17,11 +17,11 @@
 )]
 
 use af_core::id::Uuid7;
-use af_wire::event::EventType;
-use afd_admission::{Admission, Admitted, Key, Producer, Reply, sql};
+use af_wire::turn::TurnKind;
 use afd_db::test_util::mint_id;
+use afd_turns::{Admitted, IncomingTurn, Key, Producer, Reply, sql};
 
-use crate::recovery_seed::{admission, ledger, producer_key};
+use crate::recovery_seed::{incoming_turn, ledger, producer_key};
 use crate::seed::seeded_parts;
 use crate::support::Fixtures;
 
@@ -35,7 +35,7 @@ const THREAD_B: &str =
     r#"{"team_id":"T024BE7LD","channel_id":"C0123456789","thread_ts":"1700000000.000200"}"#;
 
 /// The check slot 918 names.
-const BOTH_OR_NEITHER: &str = "ck_admissions_reply_both_or_neither";
+const BOTH_OR_NEITHER: &str = "ck_turns_reply_both_or_neither";
 
 /// Every producer that owns no reply surface, which is every one but the
 /// continuation.
@@ -46,16 +46,16 @@ const NO_SURFACE: [Producer; 4] = [
     Producer::ScheduleFire,
 ];
 
-/// A webhook admission that states `reply`.
+/// A webhook turn that states `reply`.
 fn replying<'a>(
     fleet: &'a Uuid7,
     workspace: &'a Uuid7,
     key: &'a str,
     reply: Reply<'a>,
-) -> Admission<'a> {
-    Admission {
+) -> IncomingTurn<'a> {
+    IncomingTurn {
         reply,
-        ..admission(fleet, workspace, key)
+        ..incoming_turn(fleet, workspace, key)
     }
 }
 
@@ -63,7 +63,7 @@ fn replying<'a>(
 async fn destination(
     fixtures: &Fixtures,
     fleet: &Uuid7,
-    event_id: &Uuid7,
+    turn_id: &Uuid7,
 ) -> Option<(String, String)> {
     let mut connection = fixtures
         .database
@@ -72,21 +72,21 @@ async fn destination(
         .expect("a pooled connection");
     sqlx::query_as(sql::SELECT_REPLY_DESTINATION)
         .bind(fleet)
-        .bind(event_id)
+        .bind(turn_id)
         .fetch_optional(&mut *connection)
         .await
         .expect("the lookup runs")
 }
 
 /// Admits and answers the ledger's reply, failing loudly on a refusal.
-async fn admit(fixtures: &Fixtures, admission: Admission<'_>) -> Admitted {
+async fn admit(fixtures: &Fixtures, turn: IncomingTurn<'_>) -> Admitted {
     ledger(fixtures)
-        .admit(admission)
+        .admit(turn)
         .await
         .expect("the ledger admits")
 }
 
-/// Dimension 1.1 — a producer that owns no reply surface records none.
+/// A producer that owns no reply surface records none.
 ///
 /// Every production call site states its `Reply` because the field has no
 /// default; this proves what the ledger does with the answer they all give.
@@ -100,10 +100,10 @@ async fn existing_producers_record_no_reply_destination() {
         let key = producer_key(&fleet, producer.as_str());
         let admitted = admit(
             &fixtures,
-            Admission {
+            IncomingTurn {
                 producer,
                 key: Key::Repeated(&key),
-                ..admission(&fleet, &workspace, &key)
+                ..incoming_turn(&fleet, &workspace, &key)
             },
         )
         .await;
@@ -117,7 +117,7 @@ async fn existing_producers_record_no_reply_destination() {
     fixtures.cleanup().await;
 }
 
-/// Dimension 1.2 — a stated destination round-trips whole; half of one is
+/// A stated destination round-trips whole; half of one is
 /// refused by the check.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -142,7 +142,7 @@ async fn reply_destination_is_both_or_neither() {
         .acquire()
         .await
         .expect("a pooled connection");
-    let refused = sqlx::query("UPDATE fleet.admissions SET reply_address = NULL WHERE id = $1")
+    let refused = sqlx::query("UPDATE thread.turns SET reply_address = NULL WHERE id = $1")
         .bind(&admitted.stored.id)
         .execute(&mut *connection)
         .await
@@ -158,7 +158,7 @@ async fn reply_destination_is_both_or_neither() {
     fixtures.cleanup().await;
 }
 
-/// Dimension 1.3 — a continuation copies the destination of the event it
+/// A continuation copies the destination of the event it
 /// resumes, and copies nothing from an event that had none or that the ledger
 /// never minted.
 #[tokio::test(flavor = "multi_thread")]
@@ -182,7 +182,7 @@ async fn continuation_inherits_the_resumed_destination() {
     )
     .await;
     let silent_key = producer_key(&fleet, "asked-nowhere");
-    let silent = admit(&fixtures, admission(&fleet, &workspace, &silent_key)).await;
+    let silent = admit(&fixtures, incoming_turn(&fleet, &workspace, &silent_key)).await;
 
     // An id this ledger never minted.
     let foreign = mint_id();
@@ -194,31 +194,31 @@ async fn continuation_inherits_the_resumed_destination() {
         (&silent.stored.id, None),
         (&foreign, None),
     ];
-    for (event_id, expected) in resumed {
-        let key = producer_key(&fleet, &format!("continues:{event_id}"));
+    for (turn_id, expected) in resumed {
+        let key = producer_key(&fleet, &format!("continues:{turn_id}"));
         let continuation = admit(
             &fixtures,
-            Admission {
+            IncomingTurn {
                 producer: Producer::GateContinuation,
                 key: Key::Repeated(&key),
-                event_type: EventType::Continuation,
-                reply: Reply::Inherit { event_id },
-                ..admission(&fleet, &workspace, &key)
+                event_type: TurnKind::Continuation,
+                reply: Reply::Inherit { turn_id },
+                ..incoming_turn(&fleet, &workspace, &key)
             },
         )
         .await;
         assert_eq!(
             destination(&fixtures, &fleet, &continuation.stored.id).await,
             expected,
-            "a continuation of {event_id} answers where it would have"
+            "a continuation of {turn_id} answers where it would have"
         );
     }
 
     fixtures.cleanup().await;
 }
 
-/// Dimension 1.4 — a retried key naming another thread keeps the first
-/// admission's, and is seen as drift.
+/// A retried key naming another thread keeps the first
+/// turn's, and is seen as drift.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn retried_key_with_a_new_destination_keeps_the_first() {
@@ -258,7 +258,7 @@ async fn retried_key_with_a_new_destination_keeps_the_first() {
         .await
         .expect("a pooled connection");
     let stored: String =
-        sqlx::query_scalar("SELECT payload_digest FROM fleet.admissions WHERE id = $1")
+        sqlx::query_scalar("SELECT payload_digest FROM thread.turns WHERE id = $1")
             .bind(&first.stored.id)
             .fetch_one(&mut *connection)
             .await

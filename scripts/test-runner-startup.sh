@@ -2,7 +2,7 @@
 # Exercise the shipping binary under a copy of the deployed systemd unit.
 # No release signing key enters this suite: reaching release_unstaged proves
 # host startup succeeded and that admission still refuses an absent toolbox.
-# Successful signed admission and lease enforcement belong to the kernel lane;
+# Successful signed admission and run enforcement belong to the kernel lane;
 # a healthy service with the release key is proved by deployment acceptance.
 set -euo pipefail
 

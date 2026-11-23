@@ -1,7 +1,3 @@
-# =============================================================================
-# TEST — aggregate orchestrator
-# =============================================================================
-
 include make/test-unit.mk
 include make/test-infra.mk
 include make/test-integration-rustd.mk

@@ -8,18 +8,16 @@
 //! later edit could forget to check. Once a turn says the access is gone, the
 //! state that produced it is dropped and no further turn can run.
 //!
-//! # An unanswered re-check keeps the stream, up to a ceiling
+//! # An unanswered re-check ends the stream
 //!
-//! A re-check that cannot reach the datastore, or overruns [`RECHECK_BUDGET`],
-//! keeps the stream. Ending every stream on a blip aims a reconnect storm at
-//! the thing that is already down. [`MAX_DEFERRED_RECHECKS`] in a row end the
-//! stream without `access_revoked`, because an outage is not a revocation. The
-//! client reconnects, and the route authorizes it again at open.
+//! A re-check that cannot reach the datastore ends the stream without
+//! `access_revoked`, because an outage is not a revocation. The client
+//! reconnects, and the route authorizes it again at open, so a removed member
+//! never reads on through an outage.
 
 use std::sync::Arc;
-use std::time::Duration;
 
-use af_core::error_code::{self, ErrorCode};
+use af_core::error_code::ErrorCode;
 use af_core::id::Uuid7;
 use afd_auth::principal::Principal;
 use afd_http::handler::Refusable;
@@ -27,27 +25,9 @@ use afd_sse::Frame;
 use futures_util::StreamExt as _;
 use futures_util::stream::{self, BoxStream};
 
-use crate::services::{Services, WorkspaceOwnership as _};
+use crate::services::{TenantPlane, WorkspaceOwnership as _};
 
-/// How long a re-check may hold the stream's frames.
-///
-/// Frames wait while the check runs. Past this budget the check counts as
-/// unanswered and asks again on the next beat, so a slow pool delays a
-/// revocation by one beat rather than every viewer's frames by the pool's
-/// acquire timeout.
-pub(super) const RECHECK_BUDGET: Duration = Duration::from_millis(500);
-
-/// How many re-checks in a row may go unanswered before the stream ends.
-///
-/// A minute of the fleet stream's 15-second beat, 40 seconds of the wall's
-/// tick. Without a ceiling, a removed member reads on for as long as the
-/// datastore stays slow.
-pub(super) const MAX_DEFERRED_RECHECKS: u32 = 4;
-
-/// The event a re-check that could not answer is logged under.
-pub(super) const EVENT_RECHECK_DEFERRED: &str = "stream_recheck_deferred";
-
-/// The event a stream ended by [`MAX_DEFERRED_RECHECKS`] is logged under.
+/// The event a stream ended by an unanswered re-check is logged under.
 pub(super) const EVENT_STREAM_UNVERIFIED: &str = "stream_closed_unverified";
 
 /// The event a refused re-check is logged under.
@@ -58,9 +38,6 @@ pub(super) const STREAM_FLEET: &str = "fleet";
 
 /// The `stream` field of a workspace wall's re-check records.
 pub(super) const STREAM_WALL: &str = "wall";
-
-/// The reason a re-check past [`RECHECK_BUDGET`] is logged with.
-pub(super) const REASON_BUDGET: &str = "recheck exceeded its budget";
 
 /// The question a live stream re-asks on each beat.
 pub(super) trait Recheck: Send + Sync + 'static {
@@ -97,7 +74,7 @@ impl<D> Membership<D> {
     }
 }
 
-impl<D: Services> Recheck for Membership<D> {
+impl<D: TenantPlane> Recheck for Membership<D> {
     type Error = afd_tenant::Error;
 
     async fn admitted(&self) -> afd_tenant::Result<bool> {
@@ -121,17 +98,13 @@ pub(super) enum Verdict {
     Admitted,
     /// The caller may not: the stream sends `access_revoked` and closes.
     Revoked,
-    /// No answer this beat: the stream goes on and asks again on the next.
-    Deferred,
-    /// No answer for [`MAX_DEFERRED_RECHECKS`] beats running: the stream
-    /// closes without `access_revoked`.
+    /// No answer: the stream closes without `access_revoked`.
     Unverified,
 }
 
-/// A stream's re-check, and how many beats running it has gone unanswered.
+/// A stream's re-check.
 pub(super) struct Watch<R> {
     question: R,
-    unanswered: u32,
     /// Which stream the records name: [`STREAM_FLEET`] or [`STREAM_WALL`].
     stream: &'static str,
 }
@@ -139,11 +112,7 @@ pub(super) struct Watch<R> {
 impl<R: Recheck> Watch<R> {
     /// A watch for `stream` that has asked nothing yet.
     pub(super) const fn new(question: R, stream: &'static str) -> Self {
-        Self {
-            question,
-            unanswered: 0,
-            stream,
-        }
+        Self { question, stream }
     }
 
     /// The question this watch puts.
@@ -151,24 +120,16 @@ impl<R: Recheck> Watch<R> {
         &self.question
     }
 
-    /// Asks once, within [`RECHECK_BUDGET`]. An answer of either kind
-    /// starts the unanswered count again.
-    pub(super) async fn verdict(&mut self) -> Verdict {
-        let budgeted = tokio::time::timeout(RECHECK_BUDGET, self.question.admitted()).await;
-        let (code, reason) = match budgeted {
-            Ok(Ok(admitted)) => return self.on_answer(admitted),
-            Ok(Err(error)) => (error.code(), error.reason()),
-            Err(_elapsed) => (
-                error_code::INTERNAL_DB_UNAVAILABLE,
-                REASON_BUDGET.to_owned(),
-            ),
-        };
-        self.on_silence(code, &reason)
+    /// Asks once.
+    pub(super) async fn verdict(&self) -> Verdict {
+        match self.question.admitted().await {
+            Ok(admitted) => self.on_answer(admitted),
+            Err(error) => self.on_silence(error.code(), &error.reason()),
+        }
     }
 
     /// The datastore answered `admitted`.
-    fn on_answer(&mut self, admitted: bool) -> Verdict {
-        self.unanswered = 0;
+    fn on_answer(&self, admitted: bool) -> Verdict {
         if admitted {
             return Verdict::Admitted;
         }
@@ -178,20 +139,20 @@ impl<R: Recheck> Watch<R> {
         Verdict::Revoked
     }
 
-    /// The datastore did not answer, for `reason`: logged at `warn` either
-    /// way, so a revocation that lands late, or a stream that closed, says why.
-    fn on_silence(&mut self, code: ErrorCode, reason: &str) -> Verdict {
-        self.unanswered = self.unanswered.saturating_add(1);
-        let (verdict, event) = if self.unanswered < MAX_DEFERRED_RECHECKS {
-            (Verdict::Deferred, EVENT_RECHECK_DEFERRED)
-        } else {
-            (Verdict::Unverified, EVENT_STREAM_UNVERIFIED)
-        };
+    /// The datastore did not answer, for `reason`: logged at `warn`, so a
+    /// stream that closed says why.
+    fn on_silence(&self, code: ErrorCode, reason: &str) -> Verdict {
         let error_code = code.as_str();
         let workspace_id = self.question.workspace().as_str();
         let stream = self.stream;
-        tracing::warn!(error_code, workspace_id, stream, reason, event);
-        verdict
+        tracing::warn!(
+            error_code,
+            workspace_id,
+            stream,
+            reason,
+            event = EVENT_STREAM_UNVERIFIED
+        );
+        Verdict::Unverified
     }
 }
 

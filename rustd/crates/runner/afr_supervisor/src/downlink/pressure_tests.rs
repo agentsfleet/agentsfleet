@@ -1,20 +1,20 @@
-//! Retained worker offers cannot occupy the receive capacity needed to settle those workers.
+//! Retained worker assignments cannot occupy the receive capacity needed to settle those workers.
 
 use super::{
-    Offered,
+    Assigned,
     dispatch::{Dispatch, Progress},
     pending::{Expected, Requests},
     running::Running,
 };
 use crate::{
     Result,
-    test_support::{FLEET_ID, LEASE_ID, lease},
+    test_support::{FLEET_ID, RUN_ID, payload},
 };
 use af_core::id::Uuid7;
 use af_stream::{Budget, OwnedFrame, Reader};
 use af_wire::{
-    lease::TaggedLease,
-    protocol::{Down, LEASES_MAX, MESSAGE_BYTES_MAX, StreamKind},
+    protocol::{Down, MESSAGE_BYTES_MAX, RUNS_MAX, StreamKind},
+    run::TaggedRun,
 };
 use serde_json::json;
 use std::{collections::HashSet, sync::Arc, task::Poll, time::Duration};
@@ -31,23 +31,23 @@ const THIRD: &str = "019f0000-0000-7000-8000-000000000003";
 struct Pressure {
     requests: Arc<Requests>,
     running: Arc<Running>,
-    offers: mpsc::Sender<Offered>,
-    offered: mpsc::Receiver<Offered>,
-    assignments: watch::Sender<Option<Arc<OwnedFrame>>>,
+    assignments: mpsc::Sender<Assigned>,
+    assigned: mpsc::Receiver<Assigned>,
+    policies: watch::Sender<Option<Arc<OwnedFrame>>>,
     retained: Budget,
     stop: CancellationToken,
 }
 
 impl Pressure {
     fn new(retained: Budget) -> Self {
-        let (offers, offered) = mpsc::channel(LEASES_MAX);
-        let (assignments, _) = watch::channel(None);
+        let (assignments, assigned) = mpsc::channel(RUNS_MAX);
+        let (policies, _) = watch::channel(None);
         Self {
             requests: Requests::new(),
             running: Arc::new(Running::default()),
-            offers,
-            offered,
             assignments,
+            assigned,
+            policies,
             retained,
             stop: CancellationToken::new(),
         }
@@ -57,9 +57,9 @@ impl Pressure {
         let mut dispatch = Dispatch {
             requests: &self.requests,
             running: &self.running,
-            offers: &self.offers,
-            offer_budget: &self.retained,
             assignments: &self.assignments,
+            assignment_budget: &self.retained,
+            policies: &self.policies,
             stop: &self.stop,
             early_cancel: HashSet::new(),
         };
@@ -105,24 +105,24 @@ impl Channel {
     }
 }
 
-fn offer(id: &str) -> Proof<Vec<u8>> {
-    let message: Down<'_> = Down::Offer {
-        lease: TaggedLease::<serde_json::Value>::Fleet(Box::new(lease(id, FLEET_ID))),
+fn assign(id: &str) -> Proof<Vec<u8>> {
+    let message: Down<'_> = Down::Run {
+        run: TaggedRun::Fleet(Box::new(payload(id, FLEET_ID))),
     };
     Ok(serde_json::to_vec(&message)?)
 }
 
 #[tokio::test(start_paused = true)]
-async fn retained_offers_and_a_waiting_work_reader_do_not_block_report_acknowledgements()
+async fn retained_assignments_and_a_waiting_work_reader_do_not_block_report_acknowledgements()
 -> Proof<()> {
-    let [first, second, third] = [offer(LEASE_ID)?, offer(SECOND)?, offer(THIRD)?];
-    let pressure = Pressure::new(Budget::new(0, LEASES_MAX * MESSAGE_BYTES_MAX)?);
+    let [first, second, third] = [assign(RUN_ID)?, assign(SECOND)?, assign(THIRD)?];
+    let pressure = Pressure::new(Budget::new(0, RUNS_MAX * MESSAGE_BYTES_MAX)?);
     let mut report = pressure
         .requests
-        .register(Expected::Report(Uuid7::parse(LEASE_ID)?))
+        .register(Expected::Report(Uuid7::parse(RUN_ID)?))
         .await?;
     let answer = serde_json::to_vec(&json!({"type":"report_ack", "request_id":report.id,
-        "lease_id":LEASE_ID, "answer":{"status":"ok","response":{"ok":true}}}))?;
+        "run_id":RUN_ID, "answer":{"status":"ok","response":{"ok":true}}}))?;
     let input = Budget::new(0, first.len() + second.len() + answer.len())?;
     let mut work = Channel::new(&input, StreamKind::Work);
     let mut reports = Channel::new(&input, StreamKind::Reports);
@@ -138,32 +138,33 @@ async fn retained_offers_and_a_waiting_work_reader_do_not_block_report_acknowled
     let delivered = reports.dispatch(&pressure).await;
     assert!(
         delivered.is_ok(),
-        "retained offers blocked their report acknowledgement: {delivered:?}"
+        "retained assignments blocked their report acknowledgement: {delivered:?}"
     );
     delivered?;
     let acknowledged = tokio::time::timeout(Duration::from_secs(1), report.receive()).await??;
     assert_eq!(acknowledged.as_bytes(), answer);
-    assert_eq!(pressure.offered.len(), 2);
+    assert_eq!(pressure.assigned.len(), 2);
     assert_eq!(pressure.running.snapshot().len(), 2);
     Ok(())
 }
 
 #[tokio::test(start_paused = true)]
-async fn folded_input_and_reconnected_offers_share_a_bounded_retention_allowance() -> Proof<()> {
-    let retained = Budget::new(0, LEASES_MAX * MESSAGE_BYTES_MAX)?;
+async fn folded_input_and_reconnected_assignments_share_a_bounded_retention_allowance() -> Proof<()>
+{
+    let retained = Budget::new(0, RUNS_MAX * MESSAGE_BYTES_MAX)?;
     let available = retained.available(StreamKind::Work);
     let pressure = Pressure::new(retained.clone());
     let input = Budget::new(0, 16 * 1024)?;
     let mut work = Channel::new(&input, StreamKind::Work);
-    work.send(&offer(LEASE_ID)?).await?;
+    work.send(&assign(RUN_ID)?).await?;
     work.dispatch(&pressure).await?;
-    let held = pressure.offered.len();
+    let held = pressure.assigned.len();
     let mut folded = pressure
         .requests
-        .register(Expected::Folds(Uuid7::parse(LEASE_ID)?))
+        .register(Expected::Folds(Uuid7::parse(RUN_ID)?))
         .await?;
     let answer = serde_json::to_vec(&json!({"type":"folded", "request_id":folded.id,
-        "lease_id":LEASE_ID, "answer":{"status":"ok","response":{"inputs":[]}}}))?;
+        "run_id":RUN_ID, "answer":{"status":"ok","response":{"inputs":[]}}}))?;
     work.send(&answer).await?;
     work.dispatch(&pressure).await?;
     let response = tokio::time::timeout(Duration::from_secs(1), folded.receive()).await??;
@@ -171,12 +172,12 @@ async fn folded_input_and_reconnected_offers_share_a_bounded_retention_allowance
         response.decode::<Down<'_>>()?,
         Down::Folded { .. }
     ));
-    assert_eq!(pressure.offered.len(), held);
+    assert_eq!(pressure.assigned.len(), held);
     pressure.running.new_session();
     let mut reconnected = Channel::new(&input, StreamKind::Work);
-    reconnected.send(&offer(SECOND)?).await?;
+    reconnected.send(&assign(SECOND)?).await?;
     reconnected.dispatch(&pressure).await?;
-    assert_eq!(pressure.offered.len(), 2);
+    assert_eq!(pressure.assigned.len(), 2);
     assert_eq!(pressure.running.snapshot().len(), 2);
     assert!(retained.available(StreamKind::Work) < available);
     drop(response);
@@ -187,17 +188,17 @@ async fn folded_input_and_reconnected_offers_share_a_bounded_retention_allowance
 }
 
 #[tokio::test]
-async fn an_offer_without_retention_capacity_releases_its_registration_and_input_charge()
+async fn an_assignment_without_retention_capacity_releases_its_registration_and_input_charge()
 -> Proof<()> {
     let pressure = Pressure::new(Budget::new(0, 0)?);
     let input = Budget::new(0, 16 * 1024)?;
     let mut work = Channel::new(&input, StreamKind::Work);
-    work.send(&offer(LEASE_ID)?).await?;
+    work.send(&assign(RUN_ID)?).await?;
     let failure = work
         .dispatch(&pressure)
         .await
         .err()
-        .ok_or("offer unexpectedly admitted")?;
+        .ok_or("assignment unexpectedly admitted")?;
     let failure = failure.downcast::<crate::Error>()?;
     assert_eq!(
         failure.code(),
@@ -209,7 +210,7 @@ async fn an_offer_without_retention_capacity_releases_its_registration_and_input
             .is_some_and(|source| source.reason() == af_stream::Reason::Protocol)
     );
     assert_eq!(pressure.running.snapshot(), [] as [Uuid7; 0]);
-    assert!(pressure.offered.is_empty());
+    assert!(pressure.assigned.is_empty());
     assert_eq!(input.available(StreamKind::Work), 16 * 1024);
     Ok(())
 }

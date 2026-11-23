@@ -3,7 +3,7 @@
  *
  * Drives the Secrets page the way an operator does: add a secret through the
  * dialog, see that no fleet uses it, save a fleet whose setup declares it, and
- * see "Available to" name that fleet — the list a lease resolves, never a
+ * see "Available to" name that fleet — the list a run resolves, never a
  * guess from a name. Then replace the value and delete the secret. Cleanup
  * runs against the API whatever step fails.
  */

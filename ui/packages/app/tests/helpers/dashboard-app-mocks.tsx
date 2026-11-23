@@ -20,7 +20,7 @@ export const createWorkspaceActionMock = vi.fn().mockResolvedValue({ ok: true, d
 export const setFleetStatusMock = vi.fn();
 export const listFleetsMock = vi.fn();
 export const getTenantBillingMock = vi.fn();
-export const listWorkspaceEventsMock = vi.fn();
+export const listWorkspaceTurnsMock = vi.fn();
 export const getTenantProviderMock = vi.fn();
 export const setTenantProviderSelfManagedMock = vi.fn();
 export const resetTenantProviderMock = vi.fn();
@@ -93,8 +93,8 @@ export function tenantProviderMock() {
 }
 
 
-export function eventsMock() {
-  return { listWorkspaceEvents: listWorkspaceEventsMock };
+export function turnsMock() {
+  return { listWorkspaceTurns: listWorkspaceTurnsMock };
 }
 
 export function secretsApiMock() {
@@ -145,7 +145,7 @@ export function resetDashboardMocks() {
     cursor: null,
   });
   getTenantBillingMock.mockResolvedValue({ balance_nanos: String(5 * NANOS_PER_USD), is_exhausted: false, exhausted_at: null });
-  listWorkspaceEventsMock.mockResolvedValue({ items: [], next_cursor: null });
+  listWorkspaceTurnsMock.mockResolvedValue({ items: [], next_cursor: null });
   setFleetStatusMock.mockResolvedValue(undefined);
 
 }

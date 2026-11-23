@@ -10,11 +10,11 @@ use super::NativeTurn;
 use crate::{Result, error};
 use af_core::{clock, id::Uuid7};
 use af_wire::{
-    lease::{
-        TurnCheckpointAction as Action, TurnCheckpointRef, TurnCheckpointResponse as Response,
-        TurnId, TurnScope,
+    durable_task::{CheckpointPin, CheckpointPlaintext, CheckpointTransferPurpose},
+    run::{
+        CheckpointOperationId, TurnCheckpointAuthorize, TurnCheckpointObjects,
+        TurnCheckpointPinRenew, TurnCheckpointRef, TurnCheckpointUploads, TurnScope,
     },
-    task::{CheckpointPin, CheckpointPlaintext, CheckpointTransferPurpose},
 };
 use garde::Validate as _;
 use tokio_util::sync::CancellationToken;
@@ -42,7 +42,7 @@ impl<'a, 'native> TurnSession<'a, 'native> {
             reference,
             pin,
             workspace: Uuid7::parse(&scope.workspace_id.0)?,
-            namespace: format!("turn:{}", scope.event_id.0),
+            namespace: format!("turn:{}", scope.turn_id.0),
             transfers: native.transfers.clone(),
             stop,
         })
@@ -55,18 +55,13 @@ impl<'a, 'native> TurnSession<'a, 'native> {
         if clock::elapsed(clock::now(), self.pin.expires_at) > std::time::Duration::from_secs(90) {
             return Ok(());
         }
-        let Response::PinRenewed(pin) = self
+        let pin = self
             .native
-            .command(Action::PinRenew {
+            .command(TurnCheckpointPinRenew {
                 checkpoint: self.reference.clone(),
                 resource_version: self.pin.resource_version,
             })
-            .await?
-        else {
-            return Err(error::config(
-                "turn pin renewal returned another command's response",
-            ));
-        };
+            .await?;
         pin.validate()?;
         if pin.id != self.pin.id
             || pin.operation_deadline != self.pin.operation_deadline
@@ -86,18 +81,13 @@ impl<'a, 'native> TurnSession<'a, 'native> {
         descriptors: Vec<CheckpointPlaintext>,
     ) -> Result<Vec<Object>> {
         self.renew().await?;
-        let Response::Objects(objects) = self
+        let objects = self
             .native
-            .command(Action::Objects {
+            .command(TurnCheckpointObjects {
                 checkpoint: self.reference.clone(),
                 objects: descriptors.clone(),
             })
-            .await?
-        else {
-            return Err(error::config(
-                "turn registration returned another command's response",
-            ));
-        };
+            .await?;
         let objects: Vec<_> = objects.into_iter().map(Object::from).collect();
         if objects.len() != descriptors.len()
             || objects.iter().zip(&descriptors).any(|(object, expected)| {
@@ -118,19 +108,14 @@ impl<'a, 'native> TurnSession<'a, 'native> {
         purpose: CheckpointTransferPurpose,
     ) -> Result<Vec<Object>> {
         self.renew().await?;
-        let Response::Authorized(objects) = self
+        let objects = self
             .native
-            .command(Action::Authorize {
+            .command(TurnCheckpointAuthorize {
                 checkpoint: self.reference.clone(),
                 purpose,
-                object_ids: ids.iter().cloned().map(TurnId).collect(),
+                object_ids: ids.iter().cloned().map(CheckpointOperationId).collect(),
             })
-            .await?
-        else {
-            return Err(error::config(
-                "turn authorization returned another command's response",
-            ));
-        };
+            .await?;
         let objects: Vec<_> = objects.into_iter().map(Object::from).collect();
         let unique: std::collections::BTreeSet<_> = objects
             .iter()
@@ -156,18 +141,13 @@ impl<'a, 'native> TurnSession<'a, 'native> {
         let mut batch =
             tokio::task::spawn_blocking(move || UploadBatch::seal(&workspace, pending)).await??;
         self.renew().await?;
-        let Response::Uploads(objects) = self
+        let objects = self
             .native
-            .command(Action::Uploads {
+            .command(TurnCheckpointUploads {
                 checkpoint: self.reference.clone(),
                 objects: batch.descriptors.clone(),
             })
-            .await?
-        else {
-            return Err(error::config(
-                "turn upload returned another command's response",
-            ));
-        };
+            .await?;
         let outcomes = batch.put(objects, &self.namespace, &self.transfers).await?;
         let ids: Vec<_> = batch
             .descriptors

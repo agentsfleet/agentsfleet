@@ -20,7 +20,7 @@ use afd_auth::principal::Subject;
 use afd_auth::verifier::{TokenVerifier, VerifiedClaims, VerifyError};
 
 use crate::error::Result;
-use crate::jwks::cache::{DEFAULT_TTL, KeyCache};
+use crate::jwks::cache::{DEFAULT_TTL, KeyCache, REFRESH_MIN_INTERVAL, STALE_GRACE};
 use crate::jwks::claims::{CLAIM_TENANT_ID, Claims};
 use crate::jwks::key_set::SigningKey;
 use crate::jwks::source::KeySetSource;
@@ -41,6 +41,10 @@ pub struct VerifierConfig {
     pub audience: Box<str>,
     /// How long a fetched key set is served without asking again.
     pub ttl: std::time::Duration,
+    /// How long past `ttl` a set is still served after a failed refetch.
+    pub stale_grace: std::time::Duration,
+    /// The shortest gap between two fetches.
+    pub refresh_min_interval: std::time::Duration,
 }
 
 impl VerifierConfig {
@@ -51,6 +55,8 @@ impl VerifierConfig {
             issuer: issuer.into(),
             audience: audience.into(),
             ttl: DEFAULT_TTL,
+            stale_grace: STALE_GRACE,
+            refresh_min_interval: REFRESH_MIN_INTERVAL,
         }
     }
 }
@@ -69,7 +75,7 @@ impl<S: KeySetSource> JwksVerifier<S> {
     #[must_use]
     pub fn new(source: S, config: VerifierConfig, clock: Arc<dyn Clock>) -> Self {
         Self {
-            cache: KeyCache::new(source, Arc::clone(&clock), config.ttl),
+            cache: KeyCache::new(source, Arc::clone(&clock), &config),
             clock,
             issuer: config.issuer,
             audience: config.audience,

@@ -209,7 +209,7 @@ async fn a_scheduler_that_never_answers_is_given_up_on_inside_the_sync_fence() {
     // Takes every connection and never replies. Under the paused clock the
     // attempts' bounds fire before the accept loop runs, so this proves the
     // bound, not a connection count: without it the call would wait forever
-    // and the outer lease timeout below would fail the test.
+    // and the outer run timeout below would fail the test.
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .expect("bind a loopback port");
@@ -228,7 +228,7 @@ async fn a_scheduler_that_never_answers_is_given_up_on_inside_the_sync_fence() {
     });
     let started = tokio::time::Instant::now();
 
-    let hung = tokio::time::timeout(afd_cron::SYNC_LEASE, remove(&client_at(base)))
+    let hung = tokio::time::timeout(afd_cron::SYNC_RUN, remove(&client_at(base)))
         .await
         .expect("every attempt carries its own bound, so the call ends inside the fence")
         .expect_err("no answer ever comes");
@@ -239,7 +239,7 @@ async fn a_scheduler_that_never_answers_is_given_up_on_inside_the_sync_fence() {
     );
     assert_eq!(hung.detail(), UPSTREAM_UNAVAILABLE);
     assert!(
-        started.elapsed() < afd_cron::SYNC_LEASE,
+        started.elapsed() < afd_cron::SYNC_RUN,
         "{:?}",
         started.elapsed()
     );

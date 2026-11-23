@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 
 use af_core::clock;
+use af_core::id::Uuid7;
 use af_core::test_util::trace::Capture;
 use af_wire::runner::{BindMode, ExtraBind, RunnerLiveness};
 use afd_api_wire::admin::{AdminState, RunnerAdminAction, RunnerEventType};
@@ -11,7 +12,7 @@ use afd_runner::{DETAIL_SELFTEST_REFUSED, KeysetCursor, RunnerEdit};
 use serde_json::Value;
 
 use super::{Fixture, enrolment};
-use crate::rows::{self, AttemptRow};
+use crate::rows::{self, SetupRunRow};
 use af_crypto::entropy::Entropy;
 use afd_db::Migrator;
 use afd_db::config::DbRole;
@@ -22,13 +23,8 @@ use afd_runner::Runners;
 /// Who the operator transitions are recorded as.
 const ACTOR: &str = "user_operator";
 
-/// What the retired runner's attempt held against the wallet.
-const RESERVED_NANOS: i64 = 4_200;
-
-/// Whether an attempt still names a runner, and what it reserved.
-const READ_ATTEMPT: &str = "\
-SELECT runner_id IS NULL AS runner_gone, reserved_nanos
-FROM authoring.attempts WHERE id = $1";
+/// How many runs still name a runner.
+const COUNT_RUNS: &str = "SELECT count(*) FROM thread.runs WHERE runner_id = $1";
 
 /// A bind the sandbox validator accepts.
 const BIND_PATH: &str = "/srv/models";
@@ -130,7 +126,7 @@ async fn test_the_operator_reads_derive_liveness_and_page_by_creation() {
     assert_eq!(item.status(), AdminState::Active);
     assert_eq!(item.liveness(), RunnerLiveness::Registered);
     assert_eq!(item.last_seen_at(), NEVER_SEEN);
-    assert_eq!(detail.active_lease_count(), 0);
+    assert_eq!(detail.active_run_count(), 0);
     let registered = fixture.history(&newer).await;
     let enrolment_event = registered.first().expect("the enrolment is recorded");
     assert_eq!(
@@ -218,21 +214,21 @@ async fn test_an_edit_stores_its_binds_in_the_sandbox_configuration() {
     fixture.cleanup().await;
 }
 
-/// The deletion matrix: a revoked runner's record retires, and the attempts it
-/// ran stay with their money, naming no runner.
+/// The deletion matrix: a revoked runner's record retires even after it ran a
+/// setup run, and that run stays as history naming no runner. A setup run holds
+/// no money: its usage lines name the run and outlive it.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn test_retiring_a_runner_keeps_the_attempts_it_ran_and_their_reservations() {
+async fn test_retiring_a_runner_that_ran_a_setup_run_keeps_its_runs() {
     let mut fixture = Fixture::create().await;
     let runner = fixture.enrol().await;
     let mut connection = fixture.owner.acquire().await.expect("a seed connection");
-    let attempt = rows::attempt(
+    let run = rows::setup_run(
         &mut connection,
         (&runner, &mint_id(), &mint_id()),
-        AttemptRow {
-            status: afd_runner::sql::LEASE_STATUS_EXPIRED,
-            lease_expires_at: clock::now(),
-            reserved_nanos: RESERVED_NANOS,
+        SetupRunRow {
+            status: afd_state::sql::RUN_STATUS_EXPIRED,
+            run_expires_at: clock::now(),
         },
     )
     .await;
@@ -248,20 +244,26 @@ async fn test_retiring_a_runner_keeps_the_attempts_it_ran_and_their_reservations
         .platform()
         .delete_revoked(&runner)
         .await
-        .expect("a runner that ran an attempt still retires");
+        .expect("a runner that ran a setup run still retires");
 
-    let (runner_gone, reserved): (bool, i64) = sqlx::query_as(READ_ATTEMPT)
-        .bind(&attempt)
+    let left: i64 = sqlx::query_scalar(COUNT_RUNS)
+        .bind(&runner)
         .fetch_one(&mut *connection)
         .await
-        .expect("the attempt outlives its runner");
-    assert!(runner_gone, "the attempt names no runner once it retires");
-    assert_eq!(reserved, RESERVED_NANOS, "its reservation is untouched");
-    sqlx::query("DELETE FROM authoring.attempts WHERE id = $1")
-        .bind(&attempt)
+        .expect("the retired runner's runs read");
+    assert_eq!(left, 0, "no run names the retired runner");
+    let kept: Vec<Option<Uuid7>> =
+        sqlx::query_scalar("SELECT runner_id FROM thread.runs WHERE id = $1")
+            .bind(&run)
+            .fetch_all(&mut *connection)
+            .await
+            .expect("the setup run reads");
+    assert_eq!(kept, vec![None], "the setup run stays, naming no runner");
+    sqlx::query("DELETE FROM thread.runs WHERE id = $1")
+        .bind(&run)
         .execute(&mut *connection)
         .await
-        .expect("the seeded attempt cleans up");
+        .expect("the kept run cleans up");
     drop(connection);
     fixture.cleanup().await;
 }
@@ -370,25 +372,18 @@ async fn a_runner_page_and_its_total_read_one_moment_while_runners_register() {
     let register = || {
         let (runners, tenant) = (&runners, &tenant);
         async move {
-            let (operation, request) = (mint_id(), enrolment());
             runners
-                .register_tenant(
-                    tenant,
-                    &operation,
-                    &request,
-                    "user_tenant_owner",
-                    clock::now(),
-                )
+                .register_tenant(tenant, &enrolment(), "user_tenant_owner", clock::now())
                 .await
         }
     };
     register().await.expect("the first runner registers");
 
-    // The page's rows join `runner.leases` and its total does not, so holding
+    // The page's rows join `thread.runs` and its total does not, so holding
     // that table parks the page after its total and before its rows.
     let mut holder = owner.acquire().await.expect("a holding connection");
     let mut hold = sqlx::Acquire::begin(&mut *holder).await.expect("a hold");
-    sqlx::query("LOCK TABLE runner.leases IN ACCESS EXCLUSIVE MODE")
+    sqlx::query("LOCK TABLE thread.runs IN ACCESS EXCLUSIVE MODE")
         .execute(&mut *hold)
         .await
         .expect("the lock");
@@ -398,7 +393,7 @@ async fn a_runner_page_and_its_total_read_one_moment_while_runners_register() {
         async move { runners.tenant(&tenant).list_runners(None, 200).await }
     });
     let waiting = "SELECT count(*) FROM pg_locks \
-                   WHERE NOT granted AND relation = 'runner.leases'::regclass";
+                   WHERE NOT granted AND relation = 'thread.runs'::regclass";
     tokio::time::timeout(std::time::Duration::from_secs(10), async {
         loop {
             let parked: i64 = sqlx::query_scalar(waiting)
@@ -455,25 +450,12 @@ async fn a_registration_event_names_who_registered_the_runner() {
         .insert(&mut *fixture.owner.acquire().await.expect("an owner connection"))
         .await
         .expect("the tenant seeds");
-    let registered = fixture
+    let tenant_runner = fixture
         .runners
-        .register_tenant(
-            &tenant,
-            &mint_id(),
-            &enrolment(),
-            "user_tenant_owner",
-            clock::now(),
-        )
+        .register_tenant(&tenant, &enrolment(), "user_tenant_owner", clock::now())
         .await
-        .expect("the tenant registers");
-    assert!(
-        matches!(registered, afd_runner::Registered::Created(_)),
-        "a fresh key registers a new runner"
-    );
-    let tenant_runner = match registered {
-        afd_runner::Registered::Created(enrolled) => enrolled.runner_id,
-        afd_runner::Registered::Replayed { runner_id, .. } => runner_id,
-    };
+        .expect("the tenant registers")
+        .runner_id;
     fixture.enrolled.push(tenant_runner.clone());
 
     for (runner, actor) in [

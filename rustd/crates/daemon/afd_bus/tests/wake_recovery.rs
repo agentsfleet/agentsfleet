@@ -14,7 +14,7 @@ const FAILURES: &str = "agentsfleet_fleet_ready_wake_failures_total";
 const LABELS: [(&str, &str); 1] = [("kind", "gap")];
 
 #[tokio::test]
-async fn listener_recovers_from_malformed_gap_and_lag_and_releases_every_subscription() -> TestResult
+async fn listener_recovers_from_malformed_gap_and_lag_and_releases_its_subscription() -> TestResult
 {
     let capture = Capture::install();
     let before = capture.sum(FAILURES, &LABELS);
@@ -23,9 +23,8 @@ async fn listener_recovers_from_malformed_gap_and_lag_and_releases_every_subscri
     let stop = CancellationToken::new();
     let _stop_on_drop = stop.clone().drop_guard();
     let mut listeners = wake.listen(&bus, &stop).await?;
-    for shard in 0..afd_bus::wake::SHARDS {
-        assert_eq!(server.readers(&Subject::Wake(shard)), 1);
-    }
+    let thread = Subject::ThreadWake(Uuid7::parse("0195b4ba-8d3a-7000-8abc-00000000f000")?);
+    assert_eq!(server.readers(&thread), 1, "one wildcard reader");
 
     prove_recovery(&wake, &server, &capture, before).await?;
 
@@ -37,9 +36,7 @@ async fn listener_recovers_from_malformed_gap_and_lag_and_releases_every_subscri
         TestResult::Ok(())
     })
     .await??;
-    for shard in 0..afd_bus::wake::SHARDS {
-        assert_eq!(server.readers(&Subject::Wake(shard)), 0);
-    }
+    assert_eq!(server.readers(&thread), 0);
     assert_eq!(capture.sum(FAILURES, &LABELS), before + 3);
     bus.shutdown().await?;
     Ok(())
@@ -51,8 +48,8 @@ async fn prove_recovery(
     capture: &Capture,
     before: u64,
 ) -> TestResult {
-    let subject = Subject::Wake(0);
     let fleet = Uuid7::parse("0195b4ba-8d3a-7000-8abc-00000000f001")?;
+    let subject = Subject::ThreadWake(fleet.clone());
     assert!(wake.recovery().is_none());
     server.publish(&subject, "malformed fleet");
     server.publish(&subject, fleet.as_str());

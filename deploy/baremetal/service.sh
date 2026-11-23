@@ -8,7 +8,7 @@
 # passes the production values, and service_test.sh passes ones that do not
 # wait. `log` comes from log.sh.
 
-# Bounded graceful stop. Lease reclaim (lease_expires_at + fencing_token) is
+# Bounded graceful stop. Run reclaim (run_expires_at + fencing_token) is
 # the safety net for a forced stop, so the timeout only gives an in-flight
 # child a chance to finish before SIGKILL.
 drain_runner() {

@@ -13,7 +13,7 @@ vi.mock("@/lib/api/client", () => ({
   API_ORIGIN: "https://api.example.test",
 }));
 
-import { GET } from "../app/live/v1/workspaces/[workspaceId]/events/route";
+import { GET } from "../app/live/v1/workspaces/[workspaceId]/turns/route";
 
 const WORKSPACE_ID = "ws_1";
 const TOKEN = "session_token";
@@ -62,7 +62,7 @@ describe("workspace backfill route", () => {
 
     const [url, init] = fetchSpy.mock.calls[0]!;
     expect(url).toBe(
-      `https://api.example.test/v1/workspaces/ws%2F..%2Fadmin/events?cursor=next&since=12&limit=${PAGE_LIMIT}&fleet_id=fleet_a`,
+      `https://api.example.test/v1/workspaces/ws%2F..%2Fadmin/turns?cursor=next&since=12&limit=${PAGE_LIMIT}&fleet_id=fleet_a`,
     );
     expect((init as RequestInit).headers).toEqual({
       Authorization: `Bearer ${TOKEN}`,
@@ -80,7 +80,7 @@ describe("workspace backfill route", () => {
     await GET(makeReq("?ignored=x"), paramsOf());
 
     expect(fetchSpy.mock.calls[0]?.[0]).toBe(
-      `https://api.example.test/v1/workspaces/${WORKSPACE_ID}/events`,
+      `https://api.example.test/v1/workspaces/${WORKSPACE_ID}/turns`,
     );
   });
 

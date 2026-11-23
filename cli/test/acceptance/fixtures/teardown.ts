@@ -10,9 +10,6 @@
  * regardless of global tenant state.
  */
 
-import { Schema } from "effect";
-import { nativeRequest, readAuthContext, type AuthContext } from "./native-api.ts";
-
 import { ACCEPTANCE_RUN_PREFIX } from "./constants.ts";
 import { runFleetctl } from "./cli.js";
 import type { FleetRow } from "./lifecycle.ts";
@@ -66,42 +63,4 @@ export async function deleteFixtureFleet(env: Env, fleetId: string): Promise<voi
   if (removed.code !== 0 && !/not.*found/i.test(removed.stderr)) {
     throw new Error(`teardown delete ${fleetId} exited ${removed.code}: ${removed.stderr.trim()}`);
   }
-}
-
-/** Deletes only this run's explicitly published, workspace-owned entries. */
-export async function cleanWorkspacePluginEntries(
-  env: Env,
-  options: TeardownOptions = {},
-): Promise<number> {
-  const ctx = await readAuthContext(env);
-  if (options.workspaceId && options.workspaceId !== ctx.workspaceId) {
-    throw new Error("Plugin cleanup workspace differs from the terminal session");
-  }
-  const prefix = options.runPrefix ?? ACCEPTANCE_RUN_PREFIX;
-  const entries = await ownedPluginEntries(ctx);
-  const mine = entries.filter((entry) => entry.name.startsWith(prefix));
-  for (const entry of mine) await nativeRequest(ctx, `/plugins/${encodeURIComponent(entry.id)}`, "DELETE");
-  return mine.length;
-}
-
-const pluginPage = Schema.Struct({
-  items: Schema.Array(Schema.Struct({id: Schema.String, name: Schema.String})),
-  next_cursor: Schema.NullOr(Schema.String),
-});
-const CLEANUP_PAGES_MAX = 100;
-
-async function ownedPluginEntries(ctx: AuthContext): Promise<Array<{id: string; name: string}>> {
-  const entries: Array<{id: string; name: string}> = [];
-  const seen = new Set<string>();
-  let cursor: string | null = null;
-  for (let page = 0; page < CLEANUP_PAGES_MAX; page++) {
-    const suffix = `/plugins?limit=100${cursor ? `&starting_after=${encodeURIComponent(cursor)}` : ""}`;
-    const result = Schema.decodeUnknownSync(pluginPage)(await nativeRequest(ctx, suffix));
-    entries.push(...result.items);
-    cursor = result.next_cursor;
-    if (cursor === null) return entries;
-    if (seen.has(cursor)) throw new Error("Plugin cleanup cursor did not advance");
-    seen.add(cursor);
-  }
-  throw new Error("Plugin cleanup exceeded its page bound");
 }

@@ -181,7 +181,7 @@ pub(super) const INTEGRATION: &[Problem] = &[
         status: 403,
         title: "No integration grant for service",
         hint: "This fleet has no approved grant for the target service. Check it with `GET /v1/workspaces/{ws}/fleets/{id}/integration-grants` and resolve its approval.",
-        // Runner-only mint and lease gate.
+        // Runner-only mint and run gate.
         user_message: None,
     },
     Problem {

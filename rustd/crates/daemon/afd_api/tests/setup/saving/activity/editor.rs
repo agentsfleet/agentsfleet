@@ -1,0 +1,271 @@
+//! One creator-private editor read includes shared readiness and filtered receipts.
+
+use super::fixture::Saved;
+use af_core::id::Uuid7;
+use serde_json::json;
+
+#[tokio::test]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn editor_context_requires_the_private_draft_write_scope() {
+    use crate::setup::send;
+    use afd_auth::Scope;
+    use http::{Method, StatusCode};
+    let saved = Saved::create(json!({})).await;
+    let path = format!("{}/setup-context", saved.item);
+    for (scope, expected) in [
+        (Scope::FleetRead, StatusCode::FORBIDDEN),
+        (Scope::FleetWrite, StatusCode::OK),
+    ] {
+        let router = saved.case.base.services(&[scope]).router();
+        let response = send(
+            &router,
+            Method::GET,
+            &path,
+            Some(&saved.case.base.token),
+            "",
+        )
+        .await;
+        assert_eq!(response.status(), expected, "private draft authorization");
+    }
+    saved.case.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn editor_context_combines_fleet_private_draft_and_receipts() {
+    let saved = Saved::create(json!({})).await;
+    let view = saved.get("/setup-context").await;
+    assert_eq!(view["fleet"]["id"], saved.fleet.as_str());
+    assert_eq!(view["fleet"]["setup_revision"], "1");
+    let chats = view["conversations"]
+        .as_array()
+        .expect("creator conversations");
+    assert_eq!(chats.len(), 1);
+    assert_eq!(chats[0]["draft"]["linked_fleet_id"], saved.fleet.as_str());
+    assert_eq!(
+        view["activities"]["items"]
+            .as_array()
+            .expect("receipts")
+            .len(),
+        2
+    );
+    assert!(view["next_cursor"].is_null());
+    saved.case.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn editor_history_pages_bind_creator_and_never_expose_another_members_chat() {
+    use crate::setup::{privacy, send};
+    use http::{Method, StatusCode};
+    let mut saved = Saved::create(json!({})).await;
+    let member = privacy::member(&mut saved.case.base).await;
+    let router = privacy::router(&saved.case.base, &member);
+    seed_conversations(&saved, &router, &member.token).await;
+    let path = format!("{}/setup-context", saved.item);
+    let first = read_context(&router, &path, &saved.case.base.token).await;
+    assert_eq!(
+        first["conversations"].as_array().expect("first page").len(),
+        3
+    );
+    let cursor = first["next_cursor"]
+        .as_str()
+        .expect("two older owner conversations");
+    let continued = format!("{path}?starting_after={cursor}");
+    let second = read_context(&router, &continued, &saved.case.base.token).await;
+    assert_eq!(
+        second["conversations"]
+            .as_array()
+            .expect("second page")
+            .len(),
+        2
+    );
+    assert!(second["next_cursor"].is_null());
+    let refused = send(&router, Method::GET, &continued, Some(&member.token), "").await;
+    assert_eq!(
+        refused.status(),
+        StatusCode::BAD_REQUEST,
+        "a cursor cannot cross creators"
+    );
+    let own = read_context(&router, &path, &member.token).await;
+    assert_private_conversations(&first, &second, &own);
+    saved.case.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn editor_returns_a_recent_window_with_a_reusable_message_boundary() {
+    use crate::setup::{json_body, send};
+    use http::{Method, StatusCode};
+    let saved = Saved::create(json!({})).await;
+    let context = saved.get("/setup-context").await;
+    let id = crate::setup::id_field(&context["conversations"][0]["draft"]["id"]);
+    seed_recent_history(&saved, &id).await;
+    let context = saved.get("/setup-context").await;
+    let chat = &context["conversations"][0];
+    assert_eq!(chat["truncated"], true);
+    let rows = chat["messages"].as_array().expect("recent messages");
+    assert_eq!(
+        rows.len(),
+        24,
+        "both roles from the twelve most recent turns"
+    );
+    assert_eq!(rows[0]["sequence"], "4");
+    assert_eq!(rows[23]["sequence"], "15");
+    let cursor = chat["messages_starting_after"]
+        .as_str()
+        .expect("recent boundary");
+    let path = format!(
+        "{}/{id}/messages?limit=25&starting_after={cursor}",
+        saved.case.base.collection()
+    );
+    let response = send(
+        &saved.case.router,
+        Method::GET,
+        &path,
+        Some(&saved.case.base.token),
+        "",
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(json_body(response).await["items"], chat["messages"]);
+    saved.case.cleanup().await;
+}
+
+pub(super) async fn seed_conversations(saved: &Saved, router: &axum::Router, member_token: &str) {
+    use crate::setup::{json_body, mint, send};
+    use http::{Method, StatusCode};
+    for token in [saved.case.base.token.as_str(), member_token] {
+        for _ in 0..4 {
+            let mut request = saved.case.base.request(&mint());
+            request.as_object_mut().expect("request").remove("message");
+            request["source"] =
+                json!({"kind":"fleet", "fleet_id":saved.fleet, "setup_revision":"1"});
+            let response = send(
+                router,
+                Method::POST,
+                &saved.case.base.collection(),
+                Some(token),
+                &request.to_string(),
+            )
+            .await;
+            assert_eq!(
+                response.status(),
+                StatusCode::CREATED,
+                "{}",
+                json_body(response).await
+            );
+        }
+    }
+}
+
+async fn read_context(router: &axum::Router, path: &str, token: &str) -> serde_json::Value {
+    use crate::setup::{json_body, send};
+    use http::{Method, StatusCode, header};
+    let response = send(router, Method::GET, path, Some(token), "").await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers()[header::CACHE_CONTROL],
+        "private, no-store"
+    );
+    json_body(response).await
+}
+
+fn assert_private_conversations(
+    first: &serde_json::Value,
+    second: &serde_json::Value,
+    own: &serde_json::Value,
+) {
+    let owner_ids = first["conversations"]
+        .as_array()
+        .expect("first")
+        .iter()
+        .chain(second["conversations"].as_array().expect("second"))
+        .map(|item| item["draft"]["id"].clone())
+        .collect::<Vec<_>>();
+    for item in own["conversations"]
+        .as_array()
+        .expect("member conversations")
+    {
+        assert!(!owner_ids.contains(&item["draft"]["id"]));
+    }
+}
+
+async fn seed_recent_history(saved: &Saved, id: &Uuid7) {
+    use crate::setup::mint;
+    let mut connection = saved.case.base.db.acquire().await.expect("seed history");
+    for sequence in 1..=15_i64 {
+        sqlx::query("INSERT INTO thread.turns(id,thread_id,workspace_id,sequence,operation_id,kind,actor,status,request_json,answer_text,created_at,updated_at,settled_at)
+            SELECT $1,d.id,d.workspace_id,$3,$4,'chat',u.oidc_subject,'completed',jsonb_build_object('message','Earlier private request'),'Durable answer',now(),now(),now()
+            FROM setup.drafts d JOIN identity.users u ON u.id=d.user_id WHERE d.id=$2")
+            .bind(mint()).bind(id).bind(sequence).bind(mint())
+            .execute(&mut *connection).await.expect("settled history");
+    }
+    drop(connection);
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn editor_receipts_past_one_page_continue_through_the_activity_cursor() {
+    use af_core::paging::DEFAULT_LIMIT;
+    use http::StatusCode;
+    let saved = Saved::create(json!({})).await;
+    // Saving left a saved/ready pair; each memory change adds one receipt.
+    let page = usize::try_from(DEFAULT_LIMIT).expect("a page fits usize");
+    for index in 0..page {
+        assert_eq!(
+            saved.memory(index % 2 == 0, false).await.status(),
+            StatusCode::OK
+        );
+    }
+    let context = saved.get("/setup-context").await;
+    let first = context["activities"]["items"]
+        .as_array()
+        .expect("receipt page");
+    assert_eq!(first.len(), page, "the deployment's default page");
+    let cursor = context["activities"]["next_cursor"]
+        .as_str()
+        .expect("two older receipts");
+    let rest = saved
+        .get(&format!(
+            "/messages?event_type=activity&limit=25&starting_after={cursor}"
+        ))
+        .await;
+    let rest = rest["items"].as_array().expect("older receipts");
+    assert_eq!(rest.len(), 2, "the saved/ready pair, oldest of all");
+    assert!(
+        rest.iter()
+            .all(|older| first.iter().all(|row| row["turn_id"] != older["turn_id"])),
+        "the cursor resumes after the page's last receipt"
+    );
+    saved.case.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn editor_context_refuses_an_empty_or_oversized_conversation_cursor() {
+    use crate::setup::{json_body, send};
+    use http::{Method, StatusCode};
+    let saved = Saved::create(json!({})).await;
+    for cursor in [String::new(), "c".repeat(4097)] {
+        let path = format!("{}/setup-context?starting_after={cursor}", saved.item);
+        let response = send(
+            &saved.case.router,
+            Method::GET,
+            &path,
+            Some(&saved.case.base.token),
+            "",
+        )
+        .await;
+        assert_eq!(
+            response.status(),
+            StatusCode::BAD_REQUEST,
+            "{}",
+            cursor.len()
+        );
+        let problem = json_body(response).await;
+        assert_eq!(problem["error_code"], "UZ-REQ-001", "{problem}");
+        assert_eq!(problem["detail"], "Invalid setup context query");
+    }
+    saved.case.cleanup().await;
+}

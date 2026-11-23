@@ -12,7 +12,7 @@
 //!
 //! Both are single-pass predicates over ASCII. A regex crate would be a
 //! dependency, a compile step and an allocation for what one `chars().all(…)`
-//! answers — and the daemon parses a config on every claim.
+//! answers — and the daemon parses a config on every assignment.
 
 use std::fmt;
 

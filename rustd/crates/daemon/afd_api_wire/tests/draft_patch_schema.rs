@@ -3,7 +3,7 @@
 //!
 //! The wire parser reads any number of edits; the batch validator refuses one
 //! over either cap; the published schema must refuse exactly the same batch.
-//! The daemon's own validator, `afd_authoring::DraftPatch`, declares the same
+//! The daemon's own validator, `afd_setup::DraftPatch`, declares the same
 //! two garde bounds over the same constants as `EditBatch` read here.
 
 #![expect(
@@ -12,10 +12,8 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use af_fleet_runtime::definition::{
-    ConfigOp, EditBatch, InstructionEdit, MAX_CONFIG_OPS, MAX_INSTRUCTION_EDITS,
-};
-use afd_api_wire::authoring::DraftPatchRequest;
+use af_fleet_runtime::definition::{ConfigOp, EditBatch, InstructionEdit};
+use afd_api_wire::setup::DraftPatchRequest;
 use garde::Validate as _;
 use serde_json::{Value, json};
 use utoipa::{PartialSchema, ToSchema};
@@ -28,13 +26,13 @@ fn published() -> Value {
     serde_json::to_value(<Request as PartialSchema>::schema()).expect("a schema serializes")
 }
 
-/// The published `maxItems` on one of the request's lists.
-fn published_cap(schema: &Value, key: &str) -> usize {
-    schema
-        .pointer(&format!("/properties/{key}/maxItems"))
-        .and_then(Value::as_u64)
-        .and_then(|cap| usize::try_from(cap).ok())
-        .unwrap_or_else(|| panic!("`{key}` publishes no maxItems"))
+/// The published `maxItems` on one of the request's lists; none when the
+/// list is not capped.
+fn published_cap(schema: &Value, key: &str) -> Option<usize> {
+    let cap = schema
+        .pointer(&format!("/properties/{key}/maxItems"))?
+        .as_u64()?;
+    usize::try_from(cap).ok()
 }
 
 /// What the parser, the validator and the schema each say about one body.
@@ -54,32 +52,26 @@ fn verdicts(key: &str, entry: &Value, count: usize) -> Verdicts {
     };
     Verdicts {
         validator: batch.validate().is_ok(),
-        schema: count <= published_cap(&published(), key),
+        schema: published_cap(&published(), key).is_none_or(|cap| count <= cap),
     }
 }
 
 #[test]
-fn one_edit_over_either_cap_is_refused_by_the_validator_and_the_schema() {
+fn no_count_caps_either_edit_list() {
     let cases = [
         (
             "config_ops",
             json!({"op": "remove", "path": "/config/x-agentsfleet/model"}),
-            MAX_CONFIG_OPS,
         ),
         (
             "instruction_edits",
             json!({"start_byte": 0, "end_byte": 0, "text": ""}),
-            MAX_INSTRUCTION_EDITS,
         ),
     ];
-    for (key, entry, cap) in cases {
-        let at_cap = verdicts(key, &entry, cap);
-        assert!(at_cap.validator, "the validator refuses {cap} `{key}`");
-        assert!(at_cap.schema, "the schema refuses {cap} `{key}`");
-
-        let over = verdicts(key, &entry, cap + 1);
-        assert!(!over.validator, "the validator accepts {} `{key}`", cap + 1);
-        assert!(!over.schema, "the schema admits {} `{key}`", cap + 1);
+    for (key, entry) in cases {
+        let many = verdicts(key, &entry, 200);
+        assert!(many.validator, "the validator takes 200 `{key}`");
+        assert!(many.schema, "the schema takes 200 `{key}`");
     }
 }
 
@@ -90,13 +82,13 @@ fn the_schema_lists_exactly_the_requests_fields() {
     let DraftPatchRequest::<Value, Value> {
         instance_name,
         title,
-        authoring_model_ref,
+        setup_model_ref,
         runtime_model_ref,
         config_ops,
         instruction_edits,
     } = serde_json::from_value(json!({})).expect("an empty patch parses");
     assert!(
-        [instance_name, title, authoring_model_ref, runtime_model_ref]
+        [instance_name, title, setup_model_ref, runtime_model_ref]
             .iter()
             .all(Option::is_none)
             && config_ops.is_empty()
@@ -106,7 +98,7 @@ fn the_schema_lists_exactly_the_requests_fields() {
     let fields = [
         "instance_name",
         "title",
-        "authoring_model_ref",
+        "setup_model_ref",
         "runtime_model_ref",
         "config_ops",
         "instruction_edits",

@@ -71,7 +71,7 @@ async fn a_cursor_this_daemon_never_issued_is_refused() {
         assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{token}");
         assert_eq!(
             detail_of(response).await,
-            afd_api::handler::fleet::DETAIL_INVALID_CURSOR,
+            afd_api_tenant::fleet::DETAIL_INVALID_CURSOR,
             "{token}"
         );
     }
@@ -113,13 +113,58 @@ async fn a_patch_may_not_forge_a_status_the_platform_owns() {
     }
 }
 
+/// A rename is bounded to 1..=64 bytes, checked on the body before the
+/// resource tag is asked for: outside the bound the patch is malformed, and at
+/// either edge it passes on to the tag.
+#[tokio::test]
+async fn a_rename_outside_its_bounds_is_refused_before_the_resource_tag() {
+    for name in [String::new(), "x".repeat(65), "界".repeat(22)] {
+        let body = serde_json::json!({ "name": name }).to_string();
+        let response = authorised(Method::PATCH, &item(), &body).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{name}");
+        assert_eq!(
+            detail_of(response).await,
+            "Fleet setup input violates the supported shape or bounds",
+            "{name}"
+        );
+    }
+    for name in ["x".to_owned(), "x".repeat(64), "界".repeat(21)] {
+        let body = serde_json::json!({ "name": name }).to_string();
+        let response = authorised(Method::PATCH, &item(), &body).await;
+        assert_eq!(
+            response.status(),
+            StatusCode::PRECONDITION_REQUIRED,
+            "{name}"
+        );
+    }
+}
+
+/// A memory-access change is read strictly: a body that does not parse, a
+/// grant that is not a boolean and a field the route does not know are each
+/// refused as malformed before the store; a readable change reaches it.
+#[tokio::test]
+async fn an_unreadable_memory_access_change_is_refused_before_the_store() {
+    let path = format!("{}/memory-access", item());
+    for body in ["{not json", r#"{"read":"yes"}"#, r#"{"write":true}"#, ""] {
+        let response = authorised(Method::PATCH, &path, body).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{body}");
+        assert_eq!(
+            detail_of(response).await,
+            "Malformed memory access body",
+            "{body}"
+        );
+    }
+    let response = authorised(Method::PATCH, &path, r#"{"read":true}"#).await;
+    assert_reached_the_verb(response, "a readable change reaches the store").await;
+}
+
 #[tokio::test]
 async fn a_status_patch_requires_the_resource_tag_before_reaching_the_store() {
     let response = authorised(Method::PATCH, &item(), r#"{"status":"archived"}"#).await;
     assert_eq!(response.status(), StatusCode::PRECONDITION_REQUIRED);
     assert_eq!(
         harness::json_body(response).await["error_code"],
-        af_core::error_code::AUTHORING_PRECONDITION.as_str()
+        af_core::error_code::SETUP_PRECONDITION.as_str()
     );
 }
 
@@ -142,6 +187,8 @@ async fn creation_requires_one_header_key_and_refuses_file_sources() {
     assert_eq!(missing.status(), StatusCode::BAD_REQUEST);
     for invalid in [
         r#"{"platform_plugin_id":"daily-digest"}"#,
+        // Plugins are gone, so a Plugin source is a shape Save does not know.
+        r#"{"source":{"kind":"plugin","plugin_id":"0199a801-1000-7000-8000-000000000001","revision_id":"0199a801-1000-7000-8000-000000000002"},"name":"daily-digest","review_digest":"review","start":{"kind":"none"}}"#,
         r#"{"source":{"kind":"file","path":"setup.json"},"name":"file","review_digest":"review","start":{"kind":"none"}}"#,
     ] {
         let response = harness::send_with_headers(

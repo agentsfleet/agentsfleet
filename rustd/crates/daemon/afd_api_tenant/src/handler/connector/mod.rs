@@ -32,11 +32,12 @@ use std::sync::Arc;
 // Aliased: this module has a `callback` of its own — the two HANDLERS — and the
 // crate's is where the URLs those handlers travel through are composed.
 use af_core::error_code;
+use af_core::id::Uuid7;
 use af_crypto::secret::SecretBytes;
 
 use super::Refusal;
 pub(crate) use super::provider_of;
-use crate::services::{APPROVAL_IDENTITY, Services, WebhookIngress as _};
+use crate::services::{APPROVAL_IDENTITY, TenantPlane, WebhookIngress as _};
 
 /// The scoped event a failed connector read is logged under.
 pub(crate) const EVENT_READ: &str = "connector_read_failed";
@@ -65,10 +66,10 @@ pub(crate) const DETAIL_NOT_CONFIGURED: &str = "Connector is not configured";
 /// own refusal when the vault would not answer. Fail-closed: without a key
 /// there is nothing to sign a state with, and minting an unsigned one would be
 /// strictly worse than refusing the connect.
-pub(crate) async fn state_secret<D: Services>(services: &Arc<D>) -> Result<SecretBytes, Refusal> {
-    let Some(admin) = services.platform_admin_workspace() else {
-        return Err(unconfigured());
-    };
+pub(crate) async fn state_secret<D: TenantPlane>(
+    services: &Arc<D>,
+    admin: &Uuid7,
+) -> Result<SecretBytes, Refusal> {
     services
         .ingress()
         .platform_secret(admin, APPROVAL_IDENTITY)

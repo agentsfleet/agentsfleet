@@ -8,15 +8,14 @@
 
 use std::borrow::Cow;
 
-use af_wire::event::{
-    OPERATION_ID_MAX_BYTES, STEER_MESSAGE_MAX_BYTES, SteerAccepted, SteerRequest,
-};
+use af_validate::TEXT_MAX_CHARS;
+use af_wire::turn::{OPERATION_ID_MAX_BYTES, SteerAccepted, SteerRequest};
 use garde::Validate as _;
 
 use crate::validation::of_len;
 
-/// A steer message is bounded, and its optional operation id is bounded only
-/// when present.
+/// A steer message is bounded by the text ceiling, counted in characters, and
+/// its optional operation id is bounded only when present.
 ///
 /// `garde(inner(...))` is the arm that makes `None` legal while a present value
 /// is still held to its bounds — the distinction a hand-written check gets
@@ -24,10 +23,19 @@ use crate::validation::of_len;
 #[test]
 fn a_steer_request_bounds_its_message_and_its_optional_operation_id() {
     let at_limit = SteerRequest {
-        message: Cow::Owned(of_len(STEER_MESSAGE_MAX_BYTES)),
+        message: Cow::Owned(of_len(TEXT_MAX_CHARS)),
         operation_id: Some(Cow::Owned(of_len(OPERATION_ID_MAX_BYTES))),
     };
     assert!(at_limit.validate().is_ok(), "a steer at its limits");
+
+    let wide_at_limit = SteerRequest {
+        message: Cow::Owned("é".repeat(TEXT_MAX_CHARS)),
+        operation_id: None,
+    };
+    assert!(
+        wide_at_limit.validate().is_ok(),
+        "the ceiling counts characters, not bytes"
+    );
 
     let absent_id = SteerRequest {
         message: Cow::Borrowed("restart the run"),
@@ -36,7 +44,7 @@ fn a_steer_request_bounds_its_message_and_its_optional_operation_id() {
     assert!(absent_id.validate().is_ok(), "an absent operation id");
 
     let long_message = SteerRequest {
-        message: Cow::Owned(of_len(STEER_MESSAGE_MAX_BYTES + 1)),
+        message: Cow::Owned(of_len(TEXT_MAX_CHARS + 1)),
         operation_id: None,
     };
     assert!(long_message.validate().is_err(), "a message past its cap");
@@ -76,7 +84,7 @@ fn a_steer_request_refuses_an_unknown_field() {
 
 /// A message holding NUL is refused wherever it sits, and one without is not.
 ///
-/// The length rule alone accepted it, so the lease's `jsonb` cast was the first
+/// The length rule alone accepted it, so the run's `jsonb` cast was the first
 /// thing to object, after the caller had been answered 202.
 #[test]
 fn test_steer_message_holding_nul_is_refused() {
@@ -99,10 +107,10 @@ fn test_steer_message_holding_nul_is_refused() {
 #[test]
 #[expect(clippy::expect_used, reason = "the test inspects a JSON document")]
 fn test_steer_answer_tolerates_new_fields() {
-    let answer = r#"{"status":"accepted","event_id":"1790573387481-566","replayed":false,"disposition":"started","added_later":1}"#;
+    let answer = r#"{"status":"accepted","turn_id":"1790573387481-566","replayed":false,"disposition":"started","added_later":1}"#;
     let parsed: SteerAccepted<'_> =
         serde_json::from_str(answer).expect("an extended answer parses");
-    assert_eq!(parsed.event_id, "1790573387481-566");
+    assert_eq!(parsed.turn_id, "1790573387481-566");
     assert!(!parsed.replayed);
 
     let request = r#"{"message":"ship it","added_later":1}"#;

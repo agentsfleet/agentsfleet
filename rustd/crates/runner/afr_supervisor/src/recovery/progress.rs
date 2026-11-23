@@ -1,6 +1,6 @@
 //! One operation owns deduplicated ciphertext accounting and update cadence.
 
-use af_wire::activity::{TaskActivityPhase, TaskTransferBytes};
+use af_wire::activity::{DurableTaskActivityPhase, DurableTaskTransferBytes};
 use std::{
     collections::BTreeMap,
     time::{Duration, Instant},
@@ -16,10 +16,10 @@ enum State {
 #[derive(Debug, Default)]
 pub(super) struct Progress {
     objects: BTreeMap<String, State>,
-    pub(super) bytes: TaskTransferBytes,
+    pub(super) bytes: DurableTaskTransferBytes,
     pub(super) completed: u32,
     pub(super) total: Option<u32>,
-    last: Option<(TaskActivityPhase, Instant)>,
+    last: Option<(DurableTaskActivityPhase, Instant)>,
 }
 
 impl Progress {
@@ -50,7 +50,7 @@ impl Progress {
         }
     }
 
-    pub(super) fn due(&mut self, phase: TaskActivityPhase) -> bool {
+    pub(super) fn due(&mut self, phase: DurableTaskActivityPhase) -> bool {
         if self.last.is_some_and(|(previous, at)| {
             previous == phase && at.elapsed() < Duration::from_secs(1)
         }) {

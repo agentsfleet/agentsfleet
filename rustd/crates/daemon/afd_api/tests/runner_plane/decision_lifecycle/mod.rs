@@ -5,11 +5,13 @@
 )]
 
 mod assertions;
+mod durable_task_routes;
 mod fixture;
 mod setup;
-mod task_routes;
 
-use af_wire::task::{DecisionReceiptInput, DecisionRecordDisposition, DecisionReservationInput};
+use af_wire::durable_task::{
+    DecisionReceiptInput, DecisionRecordDisposition, DecisionReservationInput,
+};
 use http::{Method, StatusCode};
 use serde_json::{Value, json};
 
@@ -29,7 +31,7 @@ async fn decision_http_replays_never_resend_credentials_or_charge_another_owner(
         receipt: known(&request),
     };
     foreign(&fixture, &input, &receipt, &request.call_id).await;
-    settle_and_replay(&fixture, &receipt, &request.call_id).await;
+    record_and_replay(&fixture, &receipt, &request.call_id).await;
     let saved = success(
         &fixture,
         Method::POST,
@@ -98,7 +100,7 @@ async fn issue_and_replay(
     (input, request)
 }
 
-async fn settle_and_replay(fixture: &Fixture, receipt: &DecisionReceiptInput, call: &str) {
+async fn record_and_replay(fixture: &Fixture, receipt: &DecisionReceiptInput, call: &str) {
     refuse_invalid_receipts(fixture, receipt, call).await;
     let recorded = success(
         fixture,
@@ -109,8 +111,7 @@ async fn settle_and_replay(fixture: &Fixture, receipt: &DecisionReceiptInput, ca
     )
     .await;
     assertions::recorded(&recorded, call, false);
-    assertions::logged_before_relay(fixture).await;
-    assertions::relay_once(fixture).await;
+    // The receipt logs its line, which debits the wallet in the same commit.
     assertions::one_charge(fixture).await;
     let repeated = success(
         fixture,
@@ -162,12 +163,8 @@ async fn refuse_invalid_receipts(fixture: &Fixture, receipt: &DecisionReceiptInp
 
 fn malformed_receipts(receipt: &DecisionReceiptInput) -> Vec<Value> {
     let original = serde_json::to_value(receipt).expect("complete receipt JSON");
-    let mut oversized = original.clone();
-    *oversized
-        .pointer_mut("/receipt/result/reported_model")
-        .expect("provider model field") = json!("x".repeat(70 * 1024));
-    std::iter::once(oversized)
-        .chain(["00", "+0"].map(|alias| {
+    ["00", "+0"]
+        .map(|alias| {
             let mut malformed = original.clone();
             let answer = malformed
                 .pointer_mut("/receipt/result/result/answers")
@@ -177,8 +174,8 @@ fn malformed_receipts(receipt: &DecisionReceiptInput) -> Vec<Value> {
             *answer = json!({"type":"score","score":0.4,"confidence":0.8,
                 "probabilities":{"0":0.8,(alias):0.6,"1":0.4}});
             malformed
-        }))
-        .collect()
+        })
+        .into()
 }
 
 fn reordered_receipt(receipt: &DecisionReceiptInput) -> String {

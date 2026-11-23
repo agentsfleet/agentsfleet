@@ -5,7 +5,7 @@ import {signedInContext} from "./fixtures/auth";
 import {clientFor} from "./fixtures/api-client";
 import {FIXTURE_KEY} from "./fixtures/constants";
 import {executionInstructions} from "./fixtures/definition";
-import {assertPassed, classifyTerminalEvent} from "./fixtures/execution";
+import {assertPassed, classifyTerminalTurn} from "./fixtures/execution";
 import {awaitTerminalTurn, messageFleet} from "./fixtures/chat-walk";
 import {saveFleetViaUI} from "./fixtures/install-ui";
 import {workspaceHref} from "./fixtures/nav";
@@ -13,7 +13,7 @@ import {uniqueTag} from "./fixtures/observation";
 import {getDefaultWorkspaceId, seedFleet, waitForFleetActive} from "./fixtures/seed";
 import {auditStream, documentIsMarked, markDocument, streamCount} from "./fixtures/soft-navigation";
 import {assertDestructiveTargetIsSafe, purgeFixtureFleet} from "./fixtures/teardown";
-import {streamFleetEventsUrl} from "@/lib/api/events-types";
+import {streamFleetTurnsUrl} from "@/lib/api/turns-types";
 
 const JOURNEY_TIMEOUT_MS = 420_000;
 const RENDER_TIMEOUT_MS = 15_000;
@@ -40,7 +40,7 @@ test("a real reply and its run figures reach another session without reloading o
     const observing = await signedInContext(browser, FIXTURE_KEY.regular);
     observingContext = observing.context;
     const watching = observing.page;
-    await auditStream(watching, streamFleetEventsUrl(workspace, fleetId));
+    await auditStream(watching, streamFleetTurnsUrl(workspace, fleetId));
     await watching.goto(workspaceHref(workspace, `fleets/${fleetId}`));
     await expect(watching.getByLabel("Fleet chat", {exact: true})).toBeVisible();
     await expect.poll(() => streamCount(watching)).toEqual(ONE_OPEN_STREAM);
@@ -54,11 +54,11 @@ test("a real reply and its run figures reach another session without reloading o
     const message = `cross-session-result-${uniqueTag()}`;
     await messageFleet(acting.page, workspace, fleetId, message);
     const terminal = await awaitTerminalTurn(workspace, fleetId);
-    assertPassed(classifyTerminalEvent(terminal));
+    assertPassed(classifyTerminalTurn(terminal));
 
     const transcript = watching.getByLabel("Fleet chat", {exact: true}).getByRole("log", {name: "Chat", exact: true});
     await expect(transcript.getByText(message, {exact: true})).toBeVisible({timeout: RENDER_TIMEOUT_MS});
-    const reply = transcript.locator(`[data-message-id="${terminal.event_id}:reply"]`);
+    const reply = transcript.locator(`[data-message-id="${terminal.turn_id}:reply"]`);
     await expect(reply).toBeVisible({timeout: RENDER_TIMEOUT_MS});
     await expect(reply).toHaveAttribute("data-settled", "true", {timeout: RENDER_TIMEOUT_MS});
     await expect(reply.locator('[data-role="assistant"]')).not.toHaveText(/^\s*$/, {timeout: RENDER_TIMEOUT_MS});
@@ -71,7 +71,7 @@ test("a real reply and its run figures reach another session without reloading o
     await expect(details).toContainText(/\d[\d.,]*(?:[kmb])?/i);
 
     await expect(controlPage.getByRole("log", {name: "Chat", exact: true}).getByText(message, {exact: true})).toHaveCount(0);
-    await expect(controlPage.locator(`[data-message-id="${terminal.event_id}:reply"]`)).toHaveCount(0);
+    await expect(controlPage.locator(`[data-message-id="${terminal.turn_id}:reply"]`)).toHaveCount(0);
     const controlHistory = await clientFor(FIXTURE_KEY.regular).get<{items: Array<{event_type: string}>}>(
       `/v1/workspaces/${workspace}/fleets/${control.id}/messages`,
     );

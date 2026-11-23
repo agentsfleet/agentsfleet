@@ -1,4 +1,4 @@
-//! Dimension 4.2 — bad signature, expired, wrong audience and wrong issuer each
+//! Bad signature, expired, wrong audience and wrong issuer each
 //! refuse, and a key-id miss triggers EXACTLY ONE refresh.
 //!
 //! Every token here is a real RS256 signature over a real 2048-bit key,
@@ -266,9 +266,8 @@ fn test_a_failed_refresh_serves_the_previously_held_key_set() {
             calls: std::sync::atomic::AtomicUsize::new(0),
         },
         VerifierConfig {
-            issuer: ISSUER.into(),
-            audience: AUDIENCE.into(),
             ttl: std::time::Duration::ZERO,
+            ..VerifierConfig::new(ISSUER, AUDIENCE)
         },
         now_after_expiry(),
     );

@@ -141,8 +141,10 @@ A verb this binary does not serve gets `None` from `handler_for` and answers `40
 - **Why:** a client cannot tell a lost response from a lost request, so only the key makes its retry safe.
 
 Pure reads and internal-only `POST`s are exempt, and the OpenAPI description lists the endpoints that honor the key.
-`POST /v1/workspaces` takes no key: a tenant-unique name makes a retry answer `409`, and clients recover by reading.
-That exception covers no other endpoint.
+
+A create whose resource has a tenant-unique natural key takes no key, and a unique constraint on that key refuses the second row.
+A retry answers `409` naming the existing resource, and the client recovers by reading it.
+`POST /v1/workspaces` is keyed by the workspace name, and runner registration by the tenant's `host_id`.
 
 ### HTTP-MSGKEY — A project or draft `/messages` send carries one UUIDv7 `operation_id` in its body and refuses an `Idempotency-Key` header.
 - **Applies to:** project and creator-private draft message sends, and draft creation with a first message

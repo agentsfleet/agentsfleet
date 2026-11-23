@@ -12,7 +12,6 @@ import { runtimeModelLabel } from "@/lib/api/draft-list-types";
 import { chatRecovery } from "@/lib/api/draft-recovery";
 import { SCHEDULE_SYNC } from "@/lib/api/draft-vocabulary";
 import { setupRequirements } from "@/lib/setup-requirements";
-import {pluginsUiEnabled} from "@/lib/plugin-ui";
 import { SetupSummary } from "./SetupSummary";
 import { ScheduleSync } from "../../schedules/ScheduleSync";
 
@@ -52,7 +51,7 @@ export function SetupReview({view, client, workspace}: {view: DraftView; client:
     disabled={locked} pending={view.pending} onRetry={async () => {await client.retry();await client.refreshSetup();closeSelection();}} onReload={() => client.refreshSetup().then(() => undefined)}
     onCancel={closeSelection} onApply={async names => {await apply(selection === "repositories" ? {repositories: names} : {credentials: names});closeSelection();}} /> : null;
   return <>
-    <SetupSummary definition={definition} requirements={review?.requirements} modelLabel={modelLabel} sourceLabel={pluginsUiEnabled() ? preview?.sourceLabel : undefined}
+    <SetupSummary definition={definition} requirements={review?.requirements} modelLabel={modelLabel}
       ready={Boolean(view.fleet)} disabled={locked} schedules={schedules}
       scheduleRecovery={unsynced.length ? <ScheduleSync compact schedules={unsynced} busy={locked} onRetry={schedule => {void client.syncSchedule(schedule).catch(() => undefined);}} /> : undefined}
       secretEditor={selection === "credentials" ? editor : undefined}

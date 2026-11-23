@@ -51,7 +51,7 @@ pub const TAG_LEN: usize = 16;
 
 /// The only KEK version any stored row carries.
 ///
-/// `schema/039` adds a database CHECK that makes another value impossible, and
+/// `afd_db/schema/039` adds a database CHECK that makes another value impossible, and
 /// the associated data binds this number, so a row that somehow held a
 /// different one fails its tag rather than opening. Version 1 is not supported:
 /// nothing writes it and nothing reads it.

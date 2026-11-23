@@ -1,13 +1,13 @@
-//! Which loop device is the admitted image: its file's device and inode, read
+//! Which loop device is the verified image: its file's device and inode, read
 //! only, from the top, all of it.
 
 use super::backing_mismatch;
 use crate::toolbox::loop_device::{Backing, LO_FLAGS_DIRECT_IO, LO_FLAGS_READ_ONLY};
 
-/// The admitted image's device and inode.
+/// The verified image's device and inode.
 const IMAGE: (u64, u64) = (0x0803, 4242);
 
-/// A loop device backed by `file`, otherwise as admission attaches one.
+/// A loop device backed by `file`, otherwise as verification attaches one.
 fn attached(file: (u64, u64)) -> Backing {
     Backing {
         file,
@@ -18,7 +18,7 @@ fn attached(file: (u64, u64)) -> Backing {
 }
 
 #[test]
-fn should_take_a_read_only_loop_device_of_the_whole_admitted_file() {
+fn should_take_a_read_only_loop_device_of_the_whole_verified_file() {
     assert_eq!(backing_mismatch(&attached(IMAGE), IMAGE), None);
 }
 

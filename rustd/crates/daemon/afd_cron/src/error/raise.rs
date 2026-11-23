@@ -13,7 +13,7 @@ use super::{Error, ErrorKind};
 // [`query`] instead of a blanket lift.
 af_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
-    afd_admission::Error => Admission,
+    afd_turns::Error => TurnWrite,
     af_crypto::error::Error => Identifier,
     reqwest::Error => UpstreamUnreachable,
     serde_json::Error => Json,
@@ -132,12 +132,12 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
 )]
 fn wrapping_kinds() -> Vec<(&'static str, Error)> {
     let datastore = afd_db::error::invalid_bool_knob("MIGRATE_ON_START");
-    // By label, not by position — see `admission_sample`. Taking `.next()`
+    // By label, not by position — see `turn_sample`. Taking `.next()`
     // here would tie this sample set to the order a different crate lists its
     // kinds in, and the two needed sit on opposite sides of
     // `is_datastore_unavailable`.
-    let admission = admission_sample("query");
-    let admission_gone = admission_sample("datastore");
+    let turn = turn_sample("query");
+    let turn_gone = turn_sample("datastore");
     let identifier =
         af_crypto::secret::Kek::from_hex("not-hex").expect_err("a non-hex key is refused");
     vec![
@@ -153,16 +153,10 @@ fn wrapping_kinds() -> Vec<(&'static str, Error)> {
             "identifier",
             ErrorKind::Identifier { source: identifier }.into(),
         ),
+        ("turn write", ErrorKind::TurnWrite { source: turn }.into()),
         (
-            "admission",
-            ErrorKind::Admission { source: admission }.into(),
-        ),
-        (
-            "admission gone",
-            ErrorKind::Admission {
-                source: admission_gone,
-            }
-            .into(),
+            "turn gone",
+            ErrorKind::TurnWrite { source: turn_gone }.into(),
         ),
         (
             "upstream unreachable",
@@ -187,7 +181,33 @@ fn wrapping_kinds() -> Vec<(&'static str, Error)> {
             }
             .into(),
         ),
+        (
+            "bag unminted",
+            ErrorKind::BagUnreadable {
+                source: afd_vault::Error::from(mint_sample()),
+            }
+            .into(),
+        ),
+        (
+            "json",
+            ErrorKind::Json {
+                source: serde_json::from_str::<u8>("not a number")
+                    .expect_err("text is not a number"),
+            }
+            .into(),
+        ),
     ]
+}
+
+/// An `af_core` refusal, which the vault reads as a failed mint of its own:
+/// the vault failure that answers as a database error.
+#[cfg(feature = "test-util")]
+#[expect(
+    clippy::expect_used,
+    reason = "a sample builder whose own preconditions fail should stop the suite"
+)]
+fn mint_sample() -> af_core::error::Error {
+    af_core::id::Uuid7::parse("not-an-identifier").expect_err("a word is not an identifier")
 }
 
 /// An `af_crypto` error from a key that will not decode, for the kinds that
@@ -249,7 +269,7 @@ fn raised_kinds() -> Vec<(&'static str, Error)> {
     ]
 }
 
-/// One `afd_admission` sample, by the label that crate gives it.
+/// One `afd_turns` sample, by the label that crate gives it.
 ///
 /// By label because the two this builder needs sit on opposite sides of
 /// `is_datastore_unavailable`, and picking either by index makes this sample
@@ -259,10 +279,10 @@ fn raised_kinds() -> Vec<(&'static str, Error)> {
     clippy::expect_used,
     reason = "a sample builder whose own preconditions fail should stop the suite"
 )]
-fn admission_sample(label: &str) -> afd_admission::Error {
-    afd_admission::error::one_of_each_kind()
+fn turn_sample(label: &str) -> afd_turns::Error {
+    afd_turns::error::one_of_each_kind()
         .into_iter()
         .find(|(named, _)| *named == label)
         .map(|(_, error)| error)
-        .expect("afd_admission declares this kind")
+        .expect("afd_turns declares this kind")
 }

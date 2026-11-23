@@ -7,7 +7,7 @@ use af_wire::inference::ModelInference;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-use crate::catalogue::{CatalogueMetadata, CataloguePrice, PRICES_MAX, price_schedule};
+use crate::catalogue::{CatalogueMetadata, CataloguePrice, price_schedule};
 
 /// `PUT /v1/admin/platform-keys` metadata; key bytes already live in the vault.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -148,7 +148,7 @@ pub struct AdminDecisionModel<'a> {
     /// The schedule belongs to this decision revision, independently of coding.
     #[serde(borrow)]
     #[cfg_attr(feature = "openapi", schema(min_items = 1, max_items = 64))]
-    #[garde(length(min = 1, max = PRICES_MAX), dive, custom(price_schedule))]
+    #[garde(length(min = 1), dive, custom(price_schedule))]
     pub prices: Vec<CataloguePrice<'a>>,
 }
 
@@ -174,7 +174,7 @@ pub struct AdminModelCreate<'a> {
     /// million tokens.
     #[serde(borrow)]
     #[cfg_attr(feature = "openapi", schema(max_items = 64))]
-    #[garde(length(max = PRICES_MAX), dive, custom(coding_schedule(self.inference.is_none() && self.decision.is_some())))]
+    #[garde(dive, custom(coding_schedule(self.inference.is_none() && self.decision.is_some())))]
     pub prices: Vec<CataloguePrice<'a>>,
     /// Explicit inference settings; omitted rows remain unavailable for inference.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -200,7 +200,7 @@ pub struct AdminModelPatch<'a> {
     /// be empty. A range absent here is removed.
     #[serde(borrow)]
     #[cfg_attr(feature = "openapi", schema(max_items = 64))]
-    #[garde(length(max = PRICES_MAX), dive, custom(coding_schedule(true)))]
+    #[garde(dive, custom(coding_schedule(true)))]
     pub prices: Vec<CataloguePrice<'a>>,
     /// Omission preserves the current inference settings.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -232,7 +232,7 @@ pub struct AdminModelItem<'a> {
     /// The complete schedule, ordered by tier then start.
     #[serde(borrow)]
     pub prices: Vec<CataloguePrice<'a>>,
-    /// Non-secret settings used by setup chat and runtime leases.
+    /// Non-secret settings used by setup chat and runtime runs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub inference: Option<ModelInference>,
     /// Reviewed decision definition and independent rates, when configured.

@@ -7,7 +7,7 @@
  *      and the dashboard renders authenticated content (the workspace
  *      switcher), not the sign-in page.
  *
- * Per-spec teardown for fixture rows (fleets/credentials/events) lands with
+ * Per-spec teardown for fixture rows (fleets/credentials/turns) lands with
  * the WS-C spec workstream — the bootstrap state itself is reused across
  * runs (idempotent on the user.created replay).
  */

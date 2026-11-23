@@ -65,6 +65,9 @@ pub struct Beat {
     pub selftest_requested: bool,
     /// Fleets the beat listed as held that the runner should let go of.
     pub release_holds: Vec<String>,
+    /// Whether this beat cleared a degradation the row still held: the one
+    /// moment work the issue refused on that row can be assigned.
+    pub recovered: bool,
 }
 
 use crate::capacity::authority::{Authority, Decision, Refusal};
@@ -148,6 +151,7 @@ impl Runners {
             verdict,
             selftest_requested: row.selftest_requested,
             release_holds: Vec::new(),
+            recovered: false,
         }))
     }
 
@@ -213,6 +217,7 @@ impl Runners {
             release_holds,
             assignment: row.assignment,
             verdict,
+            recovered: row.stored.cleared_by(verdict),
         }))
     }
 

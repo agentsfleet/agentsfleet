@@ -15,7 +15,7 @@
 //! So the vocabulary here is [`Guarantee`] — what a tenant is promised — and
 //! [`Guarantee::proven_by`] is the only function in this crate that knows what
 //! a Linux host reports. A substrate that delivers filesystem isolation by
-//! giving each lease its own guest rootfs satisfies the same guarantee that
+//! giving each run its own guest rootfs satisfies the same guarantee that
 //! Landlock does, and nothing above the evidence table has to learn a second
 //! vocabulary to say so.
 //!
@@ -61,26 +61,26 @@ pub const REASON_NETWORK_NEEDS_CAGE: &str = "network isolation needs a sandbox t
 /// A subset of the runner's own requirement, `REQUIRED_CONTROLLERS` in
 /// `afr_sandbox/src/probe/mod.rs`: cpu, io, memory and pids.
 /// Evidence for [`Guarantee::ResourceLimits`] on a Linux host, and nothing
-/// beyond that — a substrate that caps a lease by giving it a vCPU and a memory
+/// beyond that — a substrate that caps a run by giving it a vCPU and a memory
 /// ceiling proves the same guarantee without a cgroup anywhere.
 const REQUIRED_CONTROLLERS: [&str; 3] = ["cpu", "memory", "pids"];
 
 /// What a runner may take work under, stated as an outcome.
 ///
 /// The unit an assignment is expressed in and a verdict refuses in. Each names
-/// something a tenant's code cannot do, or cannot exceed, while a lease runs —
+/// something a tenant's code cannot do, or cannot exceed, while a run runs —
 /// never how a host arranges it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Guarantee {
-    /// A lease sees only the filesystem it was given.
+    /// A run sees only the filesystem it was given.
     FilesystemIsolation,
-    /// A lease cannot make system calls outside the permitted set.
+    /// A run cannot make system calls outside the permitted set.
     SyscallFiltering,
-    /// A lease cannot exceed its processor, memory or process budget.
+    /// A run cannot exceed its processor, memory or process budget.
     ResourceLimits,
-    /// A lease's processes cannot escape into the host's.
+    /// A run's processes cannot escape into the host's.
     ProcessContainment,
-    /// A lease reaches only the destinations its policy permits.
+    /// A run reaches only the destinations its policy permits.
     EgressControl,
 }
 
@@ -190,7 +190,7 @@ impl Verdict {
 /// `dev_none` builds no cage, so it demands no guarantee. BOTH cage tiers
 /// demand the full set — filesystem isolation included for `container_nested`,
 /// because the in-child hardening applies Landlock fail-closed on every
-/// sandboxed tier, so a nested host without it would abort every lease.
+/// sandboxed tier, so a nested host without it would abort every run.
 /// Demanding it here surfaces that as a visible degraded row instead of a
 /// silent refusal loop.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -230,7 +230,7 @@ const fn shares_host_net(policy: NetworkPolicy) -> bool {
 ///
 /// The assignment's whole meaning, as a list: a cage tier demands the four that
 /// build one, and an allowlisted egress posture demands control over where a
-/// lease can reach, whichever tier it runs under.
+/// run can reach, whichever tier it runs under.
 fn demanded(policy: &AssignedPolicy<'_>) -> impl Iterator<Item = Guarantee> {
     let cage = TierNeeds::of(policy.sandbox_tier).any();
     CAGE_GUARANTEES

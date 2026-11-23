@@ -6,8 +6,8 @@
 //! # Why the whole ladder is one transaction
 //!
 //! Activation is a reference PRODUCER: it writes a registry entry naming a
-//! stored credential, and points the selection row at that entry. `afd_vault`'s delete is
-//! the destroyer. Between a probe and a commit taken separately, a delete would
+//! stored credential, and selects that entry. `afd_vault`'s delete is the
+//! destroyer. Between a probe and a commit taken separately, a delete would
 //! leave the tenant's ACTIVE model pointing at a credential that no longer
 //! exists — the worst instance of the orphan, because it breaks every later run
 //! rather than one list row.
@@ -34,14 +34,16 @@
 //! The other two participants spell all three locks as explicit `FOR UPDATE`
 //! reads because they READ to decide — the credential delete counts
 //! references, the entry delete asks whether it is removing the active
-//! selection. This side reads neither table to decide anything, so a pre-lock
-//! would add ceremony without adding a guarantee: `SELECT … FOR UPDATE` on a
-//! tenant with no selection row locks nothing at all, Postgres having no gap
-//! locks, which is precisely the first-activation path.
+//! selection. This side reads neither table to decide anything. It does lock
+//! the tenant row, after the credential and before any write: the selection
+//! UPDATE reads the tenant's entries from one snapshot, which cannot hold an
+//! entry a concurrent activation is still writing. A `FOR UPDATE` on the
+//! tenant's selected entry would lock nothing on a first activation, Postgres
+//! having no gap locks, so the tenant row is the lock.
 //!
 //! The protocol exists only because `secret_ref` is TEXT naming a
-//! `(workspace_id, key_name)` pair rather than a foreign key. The selection's
-//! pointer at the entry IS one, so that half the database already guards.
+//! `(workspace_id, key_name)` pair rather than a foreign key. The selection is
+//! a flag on the entry itself, so that half needs no reference at all.
 //!
 //! # One decrypt, and none on the refusals a client provokes
 //!
@@ -79,7 +81,7 @@ struct LockedCredential {
     envelope: StoredEnvelope,
 }
 
-/// One [`sql::ACTIVATE_TENANT_MODEL`] row: the pointer written and its ceiling.
+/// One [`sql::ACTIVATE_TENANT_MODEL`] row: the entry selected and its ceiling.
 #[derive(Debug, sqlx::FromRow)]
 struct Pointed {
     tenant_model_id: Uuid7,
@@ -97,8 +99,7 @@ struct Pointed {
 /// Genuine faults still travel as `Err`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Activation {
-    /// Stored. Carries the entry the selection now points at, for the response
-    /// to echo.
+    /// Stored. Carries the entry now selected, for the response to echo.
     Applied(OwnModel),
     /// This tenant has no workspace at all — a violated bootstrap invariant.
     NoWorkspace,
@@ -232,7 +233,8 @@ impl Providers {
         Ok(held)
     }
 
-    /// The registry entry and the gated selection pointer, then commit.
+    /// The tenant lock, the registry entry and the gated selection, then
+    /// commit.
     async fn write_activation(
         &self,
         mut transaction: Transaction<'_, sqlx::Postgres>,
@@ -242,6 +244,11 @@ impl Providers {
         model: &str,
         now: Timestamp,
     ) -> Result<Activation> {
+        sqlx::query(sql::LOCK_TENANT_FOR_SELECTION)
+            .bind(tenant_id)
+            .execute(&mut *transaction)
+            .await
+            .map_err(query(CONTEXT_ACTIVATE))?;
         sqlx::query(sql::INSERT_TENANT_MODEL_IF_ABSENT)
             .bind(self.mint_entry_id(now)?)
             .bind(tenant_id)

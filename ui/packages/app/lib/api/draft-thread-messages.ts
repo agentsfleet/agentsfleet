@@ -4,26 +4,24 @@ import type { Message } from "./draft-types";
 import type { SetupActivity } from "./draft-activity";
 import type { ContextProgress } from "../context-progress";
 import { isRunning, MESSAGE_ROLE, MESSAGE_STATE } from "./draft-types";
-import { isStopped } from "./draft-recovery";
 import { setupActivityText } from "./draft-activity";
 
 type ProjectMessage = typeof threadMessage;
 
 /** One conversation owns its cache; unchanged rows keep their runtime identity during streaming. */
 export function createDraftThreadProjection(): (view: DraftView) => ThreadMessageLike[] {
-  const cache = new WeakMap<Message, Map<string, {live: string | undefined; context: ContextProgress | undefined; stopped: boolean; saving: boolean; queued: boolean; row: ThreadMessageLike}>>();
+  const cache = new WeakMap<Message, Map<string, {live: string | undefined; context: ContextProgress | undefined; saving: boolean; queued: boolean; row: ThreadMessageLike}>>();
   const activities = new WeakMap<SetupActivity, ThreadMessageLike>();
-  const project: ProjectMessage = (message, view, cutoff, prefix) => {
+  const project: ProjectMessage = (message, view, prefix) => {
     const live = message.role === MESSAGE_ROLE.assistant && isRunning(message) && view.liveReply?.sequence === message.sequence ? view.liveReply.text : undefined;
-    const stopped = isStopped(message, cutoff);
-    const context = compactionFor(message, view, cutoff);
+    const context = compactionFor(message, view);
     const saving = isSaving(message, view);
     const queued = isQueued(message, view);
     const entries = cache.get(message) ?? new Map();
     const old = entries.get(prefix);
-    if (old && old.live === live && old.context === context && old.stopped === stopped && old.saving === saving && old.queued === queued) return old.row;
-    const row = threadMessage(message, view, cutoff, prefix);
-    entries.set(prefix, {live, context, stopped, saving, queued, row}); cache.set(message, entries);
+    if (old && old.live === live && old.context === context && old.saving === saving && old.queued === queued) return old.row;
+    const row = threadMessage(message, view, prefix);
+    entries.set(prefix, {live, context, saving, queued, row}); cache.set(message, entries);
     return row;
   };
   let previous: {id: string | undefined; time: number}[] = [];
@@ -46,15 +44,14 @@ export function createDraftThreadProjection(): (view: DraftView) => ThreadMessag
 
 /** A pure projection: live text can never replace a settled durable answer. */
 export function draftThreadMessages(view: DraftView, project: ProjectMessage = threadMessage, projectActivity = activityMessage, order = sortRows): ThreadMessageLike[] {
-  const cutoff = view.draft?.cancelled_through ?? "0";
   const assistants = new Set<string>();
   for (const message of view.messages) {
     if (message.role === MESSAGE_ROLE.assistant) assistants.add(message.sequence);
   }
   const rows = view.messages.flatMap(message => {
-    const row = project(message, view, cutoff, "");
+    const row = project(message, view, "");
     if (message.role !== MESSAGE_ROLE.user || !isRunning(message) || assistants.has(message.sequence)) return [row];
-    return [row, project({...message, role: MESSAGE_ROLE.assistant, text: undefined}, view, cutoff, "")];
+    return [row, project({...message, role: MESSAGE_ROLE.assistant, text: undefined}, view, "")];
   });
   const pending = view.optimistic;
   if (pending && !view.messages.some(message => message.operation_id === pending.operation)) {
@@ -66,7 +63,7 @@ export function draftThreadMessages(view: DraftView, project: ProjectMessage = t
   }
   const previousView = {...view, liveReply: null, contextProgress: null, startedTurn: null, saveOperation: null};
   const previous = (view.previousDrafts ?? []).flatMap(history => history.messages.map(message =>
-    project(message, previousView, history.cancelledThrough, `${history.id}:`)));
+    project(message, previousView, `${history.id}:`)));
   const activity = (view.activities ?? []).map(projectActivity);
   return order([...previous, ...rows, ...activity]);
 }
@@ -76,21 +73,20 @@ function sortRows(rows: ThreadMessageLike[]): ThreadMessageLike[] {
 }
 
 function activityMessage(row: SetupActivity): ThreadMessageLike {
-  return {id: `activity:${row.event_id}`, role: "system", createdAt: new Date(row.created_at),
+  return {id: `activity:${row.turn_id}`, role: "system", createdAt: new Date(row.created_at),
     content: [{type: "text", text: setupActivityText(row)}], metadata: {custom: {activity: true}}};
 }
 
-function threadMessage(message: Message, view: DraftView, cutoff: string, prefix: string): ThreadMessageLike {
+function threadMessage(message: Message, view: DraftView, prefix: string): ThreadMessageLike {
   const failure = message.failure;
-  const stopped = isStopped(message, cutoff);
-  const pending = isRunning(message) && !stopped;
+  const pending = isRunning(message);
   const saving = isSaving(message, view);
   const live = pending && message.role === MESSAGE_ROLE.assistant && view.liveReply?.sequence === message.sequence ? view.liveReply.text : undefined;
   const text = [live ?? message.text ?? "",
-    message.role === MESSAGE_ROLE.assistant && (message.state === MESSAGE_STATE.cancelled || (stopped && isRunning(message))) ? "Request stopped." : ""].filter(Boolean).join("\n\n");
+    message.role === MESSAGE_ROLE.assistant && message.state === MESSAGE_STATE.cancelled ? "Request stopped." : ""].filter(Boolean).join("\n\n");
   return {id: `${prefix}${message.sequence}:${message.role}`, role: message.role, content: [{type: "text", text}], createdAt: new Date(message.created_at),
     metadata: {custom: {saving, pending, queued: pending && isQueued(message, view),
-      contextProgress: compactionFor(message, view, cutoff),
+      contextProgress: compactionFor(message, view),
       failure: message.role === MESSAGE_ROLE.assistant ? failure : undefined}},
     ...(message.role === MESSAGE_ROLE.assistant ? {status: pending || saving ? {type: "running"} : {type: "complete", reason: "stop"}} : {})};
 }
@@ -104,7 +100,7 @@ function isSaving(message: Message, view: DraftView): boolean {
   return message.role === MESSAGE_ROLE.assistant && message.operation_id === view.saveOperation && !view.error;
 }
 
-function compactionFor(message: Message, view: DraftView, cutoff: string): ContextProgress | undefined {
-  return message.role === MESSAGE_ROLE.assistant && isRunning(message) && !isStopped(message, cutoff)
+function compactionFor(message: Message, view: DraftView): ContextProgress | undefined {
+  return message.role === MESSAGE_ROLE.assistant && isRunning(message)
     && view.contextProgress?.sequence === message.sequence ? view.contextProgress.progress : undefined;
 }

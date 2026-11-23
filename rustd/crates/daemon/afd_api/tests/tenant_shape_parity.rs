@@ -1,4 +1,4 @@
-//! Dimension 2.1 — the tenant plane's response shapes, pinned field for field.
+//! The tenant plane's response shapes, pinned field for field.
 //!
 //! # What the oracle is, and what it is not
 //!

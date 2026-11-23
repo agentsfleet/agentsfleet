@@ -29,7 +29,6 @@ export interface WorkspaceCreateResult {
   readonly request_id?: string;
 }
 
-const WORKSPACE_REQUEST_MAX_ATTEMPTS = 1;
 const INVALID_CREATE_DETAIL = "workspace create response is invalid";
 const INVALID_CREATE_SUGGESTION =
   "retry; if the error persists, contact support" as const;
@@ -86,7 +85,6 @@ const reconcileCreate = (
     .request<unknown>({
       path: `${TENANT_WORKSPACES_PATH}?${query.toString()}`,
       token,
-      retry: { maxAttempts: WORKSPACE_REQUEST_MAX_ATTEMPTS },
     })
     .pipe(
       Effect.matchEffect({
@@ -115,7 +113,6 @@ export const createWorkspaceWithReconciliation = (
       method: "POST",
       body: { name },
       token,
-      retry: { maxAttempts: WORKSPACE_REQUEST_MAX_ATTEMPTS },
     })
     .pipe(
       Effect.matchEffect({

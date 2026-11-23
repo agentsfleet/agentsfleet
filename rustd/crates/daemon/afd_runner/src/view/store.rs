@@ -3,9 +3,10 @@ use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 use sqlx::Acquire as _;
 
-use super::decode::{DetailRow, EventRow, ItemRow};
+use super::decode::{DetailRow, ItemRow, TurnRow};
 use super::{
-    KeysetCursor, RunnerDetail, RunnerEventFilter, RunnerEventPage, RunnerItem, RunnerPage, events,
+    KeysetCursor, RunnerDetail, RunnerHistoryFilter, RunnerHistoryPage, RunnerItem, RunnerPage,
+    history,
 };
 use crate::error::{Result, query, runner_not_found};
 use crate::scope::RunnerScope;
@@ -25,13 +26,13 @@ impl Runners {
     ///
     /// # Errors
     /// Reports a missing runner, datastore failures, or malformed history rows.
-    pub async fn runner_events(
+    pub async fn runner_history(
         &self,
         runner: &Uuid7,
-        filter: &RunnerEventFilter,
+        filter: &RunnerHistoryFilter,
         cursor: Option<&KeysetCursor>,
         limit: u32,
-    ) -> Result<RunnerEventPage> {
+    ) -> Result<RunnerHistoryPage> {
         let mut connection = self.pool().acquire().await?;
         let mut snapshot = connection.begin().await.map_err(query(CONTEXT_SNAPSHOT))?;
         sqlx::query(sql::runner_view::READ_SNAPSHOT)
@@ -55,7 +56,7 @@ impl Runners {
             .fetch_one(&mut *snapshot)
             .await
             .map_err(query(CONTEXT_EVENT_COUNT))?;
-        let mut rows = events::statement(runner, filter, event_types, cursor, limit)
+        let mut rows = history::statement(runner, filter, event_types, cursor, limit)
             .fetch_all(&mut *snapshot)
             .await
             .map_err(query(CONTEXT_EVENT_LIST))?;
@@ -63,10 +64,10 @@ impl Runners {
         let more = trim_to_page(&mut rows, limit);
         let items = rows
             .into_iter()
-            .map(EventRow::parse)
+            .map(TurnRow::parse)
             .collect::<Result<Vec<_>>>()?;
-        Ok(RunnerEventPage {
-            next_cursor: events::cursor(&items, more)?,
+        Ok(RunnerHistoryPage {
+            next_cursor: history::cursor(&items, more)?,
             items,
             total,
         })
@@ -100,13 +101,13 @@ impl RunnerScope<'_> {
         let statement = cursor.map_or_else(
             || {
                 sqlx::query_as::<_, ItemRow>(sql::runner_view::LIST_RUNNERS_FIRST)
-                    .bind(sql::LEASE_STATUS_ACTIVE)
+                    .bind(sql::RUN_STATUS_ACTIVE)
                     .bind(past_page(limit))
                     .bind(self.owner.tenant())
             },
             |boundary| {
                 sqlx::query_as::<_, ItemRow>(sql::runner_view::LIST_RUNNERS_AFTER)
-                    .bind(sql::LEASE_STATUS_ACTIVE)
+                    .bind(sql::RUN_STATUS_ACTIVE)
                     .bind(boundary.created_at().to_sqlx())
                     .bind(boundary.id())
                     .bind(past_page(limit))
@@ -131,7 +132,7 @@ impl RunnerScope<'_> {
         })
     }
 
-    /// Reads one runner with its current work summary and lifetime counters.
+    /// Reads one runner with its current work summary.
     ///
     /// # Errors
     /// Reports a missing runner, datastore failures, or malformed stored rows.
@@ -139,7 +140,7 @@ impl RunnerScope<'_> {
         let mut connection = self.runners.pool().acquire().await?;
         sqlx::query_as::<_, DetailRow>(sql::runner_view::RUNNER_DETAIL)
             .bind(runner)
-            .bind(sql::LEASE_STATUS_ACTIVE)
+            .bind(sql::RUN_STATUS_ACTIVE)
             .bind(self.owner.tenant())
             .bind(self.owner.platform())
             .fetch_optional(&mut *connection)

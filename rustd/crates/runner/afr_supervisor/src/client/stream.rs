@@ -3,14 +3,15 @@
 use std::num::NonZeroU64;
 
 use af_core::{error_code::ErrorCode, id::Uuid7};
+use af_stream::OwnedFrame;
 use af_wire::{
     activity::ActivityRequest,
-    fold::FoldRequest,
-    protocol::{Answer, Down, Renewal, Up},
-    report::{RenewRequest, RenewResponse, ReportRequest},
-    runner::HeartbeatRequest,
+    fold::{FoldRequest, FoldResponse},
+    protocol::{Answer, Renewal, RenewalAnswer, Up},
+    report::{RenewResponse, ReportRequest, ReportResponse},
+    runner::{HeartbeatRequest, HeartbeatResponse},
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
 
 use super::{Body, ControlPlane, Verb};
@@ -27,10 +28,26 @@ pub(crate) trait Command: Send + Sync {
     type Output: Send;
     fn expected(&self) -> Expected;
     fn outgoing(&self, request_id: NonZeroU64) -> Up<'_>;
-    fn decode(reply: Down<'_>) -> Result<Self::Output>;
+    /// Reads the reply [`Expected`] admitted: dispatch decoded the whole
+    /// frame and correlation matched its variant, so only its answer is read.
+    fn decode(reply: &OwnedFrame) -> Result<Self::Output>;
     fn timeout(&self) -> std::time::Duration {
         af_core::timing::STREAM_ANSWER_TIMEOUT
     }
+}
+
+/// The answer of a reply already correlated to its command.
+#[derive(Deserialize)]
+pub(super) struct Answered<'a, T> {
+    #[serde(borrow)]
+    pub(super) answer: Answer<'a, T>,
+}
+
+/// The per-run answers of a renewal batch already correlated to it.
+#[derive(Deserialize)]
+struct Renewed<'a> {
+    #[serde(borrow)]
+    runs: Vec<RenewalAnswer<'a>>,
 }
 
 impl StreamHandle {
@@ -52,7 +69,7 @@ impl StreamHandle {
             let frame = self
                 .request(command.expected(), |id| command.outgoing(id), deadline)
                 .await?;
-            C::decode(frame.decode()?)
+            C::decode(&frame)
         }
         .await;
         match &result {
@@ -105,15 +122,18 @@ impl ControlPlane {
         self.stream.compute(Heartbeat(request.clone())).await
     }
 
+    /// Renews one run alone; production renews in batches, so only tests
+    /// and the test-util session call this.
+    #[cfg(any(test, feature = "test-util"))]
     pub(crate) async fn renew(
         &self,
-        lease_id: &Uuid7,
-        spent: &RenewRequest,
+        run_id: &Uuid7,
+        spent: &af_wire::report::RenewRequest,
     ) -> Result<RenewResponse> {
         let batch = RenewalBatch {
-            ids: vec![lease_id.clone()],
-            leases: vec![Renewal {
-                lease_id: lease_id.as_str().into(),
+            ids: vec![run_id.clone()],
+            runs: vec![Renewal {
+                run_id: run_id.as_str().into(),
                 request: spent.clone(),
             }],
         };
@@ -123,32 +143,32 @@ impl ControlPlane {
 
     pub(crate) async fn activity(
         &self,
-        lease_id: &Uuid7,
+        run_id: &Uuid7,
         request: &ActivityRequest<'_>,
     ) -> Result<()> {
-        let verb = Verb::Activity.as_str();
+        let verb = Verb::Progress.as_str();
         tracing::debug!(event = "runner_activity_queued", verb);
         self.stream
-            .send(&Up::Activity {
-                lease_id: lease_id.as_str().into(),
+            .send(&Up::Progress {
+                run_id: run_id.as_str().into(),
                 request: request.clone(),
             })
             .await
     }
 
-    pub(crate) async fn report(&self, bytes: &[u8]) -> Result<af_wire::report::ReportResponse> {
+    pub(crate) async fn report(&self, bytes: &[u8]) -> Result<ReportResponse> {
         self.stream.compute(Report::try_from(bytes)?).await
     }
 
     pub(crate) async fn folds(
         &self,
-        lease_id: &Uuid7,
+        run_id: &Uuid7,
         fencing_token: u64,
         after_sequence: i64,
     ) -> Result<Body> {
         self.stream
             .compute(Folds {
-                lease: lease_id,
+                run: run_id,
                 request: FoldRequest {
                     fencing_token,
                     after_sequence,
@@ -172,17 +192,15 @@ impl Command for Heartbeat<'_> {
             request: self.0.clone(),
         }
     }
-    fn decode(reply: Down<'_>) -> Result<Body> {
-        let Down::Heartbeat { answer, .. } = reply else {
-            return Err(ErrorKind::StreamProtocol.into());
-        };
+    fn decode(reply: &OwnedFrame) -> Result<Body> {
+        let Answered { answer } = reply.decode::<Answered<'_, HeartbeatResponse<'_>>>()?;
         Body::encoded(Verb::Heartbeat, &Outcome::try_from(answer)?.accepted()?)
     }
 }
 
 pub(crate) struct RenewalBatch<'a> {
     pub(crate) ids: Vec<Uuid7>,
-    pub(crate) leases: Vec<Renewal<'a>>,
+    pub(crate) runs: Vec<Renewal<'a>>,
 }
 
 impl Command for RenewalBatch<'_> {
@@ -194,27 +212,19 @@ impl Command for RenewalBatch<'_> {
     fn outgoing(&self, request_id: NonZeroU64) -> Up<'_> {
         Up::RenewBatch {
             request_id,
-            leases: self.leases.clone(),
+            runs: self.runs.clone(),
         }
     }
-    fn decode(reply: Down<'_>) -> Result<Self::Output> {
-        let Down::Renewed { leases, .. } = reply else {
-            return Err(ErrorKind::StreamProtocol.into());
-        };
-        leases
-            .into_iter()
-            .map(|lease| {
-                Ok((
-                    Uuid7::parse(&lease.lease_id)?,
-                    Outcome::try_from(lease.answer)?,
-                ))
-            })
+    fn decode(reply: &OwnedFrame) -> Result<Self::Output> {
+        let Renewed { runs } = reply.decode()?;
+        runs.into_iter()
+            .map(|run| Ok((Uuid7::parse(&run.run_id)?, Outcome::try_from(run.answer)?)))
             .collect()
     }
 }
 
 pub(crate) struct Report<'a> {
-    lease: Uuid7,
+    run: Uuid7,
     request: Box<ReportRequest<'a>>,
 }
 
@@ -224,7 +234,7 @@ impl<'a> TryFrom<&'a [u8]> for Report<'a> {
         let request: ReportRequest<'_> =
             af_core::json::object_from_slice(bytes).map_err(error::malformed(Verb::Report))?;
         Ok(Self {
-            lease: Uuid7::parse(&request.lease_id)?,
+            run: Uuid7::parse(&request.run_id)?,
             request: Box::new(request),
         })
     }
@@ -232,9 +242,9 @@ impl<'a> TryFrom<&'a [u8]> for Report<'a> {
 
 impl Command for Report<'_> {
     const VERB: Option<Verb> = Some(Verb::Report);
-    type Output = af_wire::report::ReportResponse;
+    type Output = ReportResponse;
     fn expected(&self) -> Expected {
-        Expected::Report(self.lease.clone())
+        Expected::Report(self.run.clone())
     }
     fn outgoing(&self, request_id: NonZeroU64) -> Up<'_> {
         Up::Report {
@@ -242,10 +252,8 @@ impl Command for Report<'_> {
             request: Box::new(std::borrow::Cow::Borrowed(&self.request)),
         }
     }
-    fn decode(reply: Down<'_>) -> Result<Self::Output> {
-        let Down::ReportAck { answer, .. } = reply else {
-            return Err(ErrorKind::StreamProtocol.into());
-        };
+    fn decode(reply: &OwnedFrame) -> Result<Self::Output> {
+        let Answered { answer } = reply.decode::<Answered<'_, ReportResponse>>()?;
         let response = Outcome::try_from(answer)?.accepted()?;
         if !response.ok {
             return Err(ErrorKind::StreamProtocol.into());
@@ -255,7 +263,7 @@ impl Command for Report<'_> {
 }
 
 struct Folds<'a> {
-    lease: &'a Uuid7,
+    run: &'a Uuid7,
     request: FoldRequest,
 }
 
@@ -263,19 +271,17 @@ impl Command for Folds<'_> {
     const VERB: Option<Verb> = Some(Verb::Folds);
     type Output = Body;
     fn expected(&self) -> Expected {
-        Expected::Folds(self.lease.clone())
+        Expected::Folds(self.run.clone())
     }
     fn outgoing(&self, request_id: NonZeroU64) -> Up<'_> {
         Up::Folds {
             request_id,
-            lease_id: self.lease.as_str().into(),
+            run_id: self.run.as_str().into(),
             request: self.request,
         }
     }
-    fn decode(reply: Down<'_>) -> Result<Body> {
-        let Down::Folded { answer, .. } = reply else {
-            return Err(ErrorKind::StreamProtocol.into());
-        };
+    fn decode(reply: &OwnedFrame) -> Result<Body> {
+        let Answered { answer } = reply.decode::<Answered<'_, FoldResponse<'_>>>()?;
         Body::encoded(Verb::Folds, &Outcome::try_from(answer)?.accepted()?)
     }
 }
@@ -290,11 +296,9 @@ impl Command for Ping {
     fn outgoing(&self, request_id: NonZeroU64) -> Up<'_> {
         Up::Ping { request_id }
     }
-    fn decode(reply: Down<'_>) -> Result<()> {
-        match reply {
-            Down::Pong { .. } => Ok(()),
-            _ => Err(ErrorKind::StreamProtocol.into()),
-        }
+    /// A pong carries nothing beyond the identifier correlation matched.
+    fn decode(_reply: &OwnedFrame) -> Result<()> {
+        Ok(())
     }
 }
 

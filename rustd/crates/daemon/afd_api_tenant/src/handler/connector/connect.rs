@@ -26,7 +26,7 @@ use axum::response::{IntoResponse as _, Response};
 use super::{EVENT_WRITE, provider_of, state_secret, unconfigured};
 use crate::auth::{PersonIdentity, WorkspaceContext};
 use crate::handler::Refusal;
-use crate::services::{Services, WorkspaceConnectors as _};
+use crate::services::{TenantPlane, WorkspaceConnectors as _};
 
 /// `POST …/connectors/{provider}/connect`.
 ///
@@ -55,7 +55,7 @@ use crate::services::{Services, WorkspaceConnectors as _};
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn start<D: Services>(
+pub(crate) async fn start<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     person: PersonIdentity,
@@ -68,7 +68,7 @@ pub(crate) async fn start<D: Services>(
     let Some(admin) = services.platform_admin_workspace() else {
         return Err(unconfigured());
     };
-    let secret = state_secret(&services).await?;
+    let secret = state_secret(&services, admin).await?;
     let redirect_uri = relay_uri(services.dashboard(), provider);
 
     let started = services

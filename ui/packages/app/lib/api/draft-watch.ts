@@ -1,7 +1,6 @@
 // A stopped watcher cannot clear or report errors for its replacement.
 import { followDraft, type DraftProgressCallbacks } from "./draft-events";
 
-const FOLLOW_LIMIT_MS = 330_000;
 type Following = {
   readonly id: string; readonly path: string; readonly owner: AbortSignal; readonly view: AbortSignal;
   readonly reconcile: (signal: AbortSignal) => Promise<boolean>; readonly needsPolling?: () => boolean;
@@ -14,7 +13,8 @@ export class DraftWatch {
 
   follow(options: Following): void {
     this.start(options.id, options.view, async view => {
-      const owner = AbortSignal.any([options.owner, view, AbortSignal.timeout(FOLLOW_LIMIT_MS)]);
+      // The follow ends when the turn settles or its owner or view stops it.
+      const owner = AbortSignal.any([options.owner, view]);
       await followDraft(options.path, options.id, owner, () => options.reconcile(owner), options.needsPolling, options.progress);
       if (!view.aborted && !options.owner.aborted) options.finished();
     }, options.failed);

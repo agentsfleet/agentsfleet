@@ -2,7 +2,7 @@ use afd_db::error::database_answer;
 
 use super::FailOpen;
 use crate::Result;
-use crate::biller::{Account, Ask, Balance, Biller, Funds, Receipt, Settlement, WorkKey};
+use crate::biller::{Account, Ask, Balance, Biller, Funds, WorkKey};
 use crate::error::query;
 
 /// A biller whose `check` always fails the way it was built to.
@@ -15,10 +15,6 @@ impl Biller for Failing {
         Err(query("read a balance")((self.0)()))
     }
 
-    async fn settle(&self, _settlement: &Settlement) -> Result<Receipt> {
-        Ok(Receipt::default())
-    }
-
     async fn balance(&self, _payer: &Account) -> Result<Balance> {
         Err(query("read a balance")((self.0)()))
     }
@@ -27,7 +23,7 @@ impl Biller for Failing {
 fn ask() -> Ask {
     let id = afd_db::test_util::mint_id();
     Ask {
-        work: WorkKey::FleetLease(id.clone()),
+        work: WorkKey::FleetRun(id.clone()),
         payer: Account {
             tenant: id.clone(),
             workspace: id,

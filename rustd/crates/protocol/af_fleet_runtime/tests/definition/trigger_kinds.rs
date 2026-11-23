@@ -62,7 +62,7 @@ fn smallest(kind: &str) -> Value {
 
 /// Every kind the constants name parses, and serde's refusal of anything else
 /// names exactly those kinds — so a kind added to the parser and not to
-/// `TRIGGER_KINDS` (which the authoring prompt is built from) fails here.
+/// `TRIGGER_KINDS` (which the setup prompt is built from) fails here.
 #[test]
 fn every_trigger_kind_is_one_the_parser_accepts() {
     for kind in TRIGGER_KINDS {

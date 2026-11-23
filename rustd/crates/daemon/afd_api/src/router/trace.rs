@@ -3,7 +3,7 @@
 //! # The whole point is what is absent
 //!
 //! The raw path is deliberately not carried into the span: it holds real
-//! workspace, fleet, and lease identifiers. The matched route's template is.
+//! workspace, fleet, and run identifiers. The matched route's template is.
 //! Both halves matter, and for different reasons.
 //!
 //! Privacy: a concrete path is tenant data, and a span attribute is exported to
@@ -45,7 +45,7 @@ const UNMATCHED: &str = "unmatched";
 /// yet. A test mounts it over `/v1/workspaces/{workspace_id}` and reads the
 /// span back; without that, every assertion about templates would be satisfied
 /// just as well by emitting the raw path, since for a static route the two
-/// strings are equal. It is also what §7 and the milestones after it mount.
+/// strings are equal. It is also what the daemon mounts.
 ///
 /// The names in the macro are string literals because `tracing`'s macros take
 /// field names as SYNTAX, not as values — a constant cannot be substituted

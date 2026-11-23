@@ -1,4 +1,4 @@
-//! A lease whose workspace holds a checkout runs `git` in it, without the
+//! A run whose workspace holds a checkout runs `git` in it, without the
 //! model having to find it first.
 
 use af_wire::policy::{RepositoryAccess, RepositoryBinding};
@@ -8,15 +8,15 @@ use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
 use super::session_tests::drive_in;
-use crate::fixture::{Script, call, lease, say, unbounded};
+use crate::fixture::{Script, call, payload, say, unbounded};
 
-/// The repository the lease binds, and the directory it is checked out in.
+/// The repository the run binds, and the directory it is checked out in.
 const REPOSITORY: &str = "acme/widget";
 const CHECKOUT: &str = "widget";
 
 #[tokio::test(start_paused = true)]
 async fn git_runs_in_the_repository_the_supervisor_checked_out() {
-    let mut bound = lease(&[GIT.name()], unbounded());
+    let mut bound = payload(&[GIT.name()], unbounded());
     bound.policy.repository_binding = Some(RepositoryBinding {
         repositories: vec![REPOSITORY.into()],
         access: RepositoryAccess::Read,

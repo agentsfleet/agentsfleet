@@ -49,7 +49,7 @@ it("restores a saved draft conversation when receipt history returns 502", async
 // Value: protects=previous receipts remain visible across optional read failure; fails_when=transient failure erases confirmed history;
 // why_new=client fixtures start with empty activity; seam=HTTP and view patch; no_claim=receipt persistence.
 it("retains prior receipts while recording the confirmed saved revision", async () => {
-  const activities = [{event_id: "saved-one", event_type: "activity", status: "recorded", request_json: "{}", created_at: MESSAGE.created_at}];
+  const activities = [{turn_id: "saved-one", event_type: "activity", status: "recorded", request_json: "{}", created_at: MESSAGE.created_at}];
   let view: DraftView = {...EMPTY_DRAFT_VIEW, activities};
   fixture.override = () => response(historyFailure, 502);
   await updateSavedSetup("/setup", FLEET_DETAIL, new AbortController().signal, patch => {view = {...view, ...patch};}, {});

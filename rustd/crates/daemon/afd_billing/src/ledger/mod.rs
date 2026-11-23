@@ -1,81 +1,46 @@
 //! The built-in biller: wallets and the usage log, both in Postgres.
 //!
-//! A funds check is one read: the balance less every line the payer logged
-//! and was not yet charged for. It runs under the API login's lock and
-//! statement bounds (`afd_db::login`), so a read stuck behind a lock gives up
-//! unanswered rather than holding the lease path. Charging stamps the lines
-//! first and debits the wallet last, so the wallet row is locked only from the
-//! debit to the commit.
+//! A line is charged as it is written: the statement that inserts it debits
+//! the payer's wallet and adds it to the daily rollups (the `billing.usage_lines`
+//! triggers), so a funds check is one read of the wallet. It runs under the API
+//! login's lock and statement bounds (`afd_db::login`), so a read stuck behind a
+//! lock gives up unanswered rather than holding the run path.
 
-use std::sync::Arc;
-
-use af_core::clock::Clock;
 use af_core::id::Uuid7;
-use af_crypto::entropy::Entropy;
 use afd_db::Db;
 use sqlx::postgres::{PgArguments, PgRow};
 use sqlx::query::QueryAs;
-use sqlx::{Connection as _, FromRow, Postgres, SqlSafeStr};
+use sqlx::{FromRow, Postgres, SqlSafeStr};
 
-use crate::biller::{Account, Ask, Balance, Biller, Funds, Receipt, Settlement};
+use crate::biller::{Account, Ask, Balance, Biller, Funds};
 use crate::error::{billing_wallet_missing, query};
-use crate::{Nanos, Result};
+use crate::{Result, Wallet};
 
 mod lines;
-mod settle;
-mod sweep;
-pub mod unreadable;
 
 pub use self::lines::log_lines;
-#[cfg(feature = "test-util")]
-pub use self::sweep::unsettled_work;
-pub use self::sweep::{Resettled, Resume, resettle, unsettled};
 
 const INSERT_LINES: &str = include_str!("sql/insert_lines.sql");
-const SETTLE_LINES: &str = include_str!("sql/settle_lines.sql");
-const DEBIT_WALLET: &str = include_str!("sql/debit_wallet.sql");
-const ADD_USAGE_DAILY: &str = include_str!("sql/add_usage_daily.sql");
-const COUNT_RUN: &str = include_str!("sql/count_run.sql");
-const SELECT_BALANCE: &str = include_str!("sql/select_balance.sql");
 
-/// What each statement here was doing, for [`query`].
-const CONTEXT_SETTLE: &str = "settle usage lines";
+/// What the balance read was doing, for [`query`].
 const CONTEXT_BALANCE: &str = "read a balance";
 
-/// The built-in [`Biller`] over `billing.wallets` and `billing.usage_lines`.
+/// The built-in [`Biller`] over `billing.wallets`.
 #[derive(Debug, Clone)]
 pub struct LedgerBiller {
     database: Db,
-    entropy: Entropy,
-    clock: Arc<dyn Clock>,
 }
 
 impl LedgerBiller {
-    /// A biller reading and writing through `database`, minting row ids from
-    /// `entropy` at `clock`'s instant.
+    /// A biller reading through `database`.
     #[must_use]
-    pub fn new(database: Db, entropy: Entropy, clock: Arc<dyn Clock>) -> Self {
-        Self {
-            database,
-            entropy,
-            clock,
-        }
-    }
-
-    /// A biller over `database` on the wall clock and fresh entropy: what the
-    /// daemon builds, and what a test over a live database wants.
-    #[must_use]
-    pub fn on_system_clock(database: Db) -> Self {
-        Self::new(
-            database,
-            Entropy::new(),
-            Arc::new(af_core::clock::SystemClock),
-        )
+    pub const fn new(database: Db) -> Self {
+        Self { database }
     }
 }
 
 /// The funds read, `wrap`ped: as written for production, under `EXPLAIN` for
-/// a plan test.
+/// a plan test. It is the wallet row alone, the one the billing page reads.
 fn balance_statement<'q, O, S>(
     wrap: impl FnOnce(&'static str) -> S,
     tenant: &'q Uuid7,
@@ -84,7 +49,7 @@ where
     O: for<'r> FromRow<'r, PgRow>,
     S: SqlSafeStr,
 {
-    sqlx::query_as(wrap(SELECT_BALANCE)).bind(tenant)
+    sqlx::query_as(wrap(crate::sql::SELECT_WALLET)).bind(tenant)
 }
 
 /// Wraps the production funds read, keeping its bindings, for a plan test.
@@ -100,34 +65,11 @@ where
     balance_statement(wrap, tenant)
 }
 
-/// The wallet's balance and its unsettled lines, by column name.
-#[derive(Debug, sqlx::FromRow)]
-struct BalanceRow {
-    balance_nanos: i64,
-    exhausted_at: Option<jiff_sqlx::Timestamp>,
-    unsettled: i64,
-}
-
 #[async_trait::async_trait]
 impl Biller for LedgerBiller {
     async fn check(&self, ask: &Ask) -> Result<Funds> {
         let funds = self.pooled_balance(&ask.payer.tenant).await?;
-        Ok(Funds::of(funds.left(), ask.next))
-    }
-
-    async fn settle(&self, settlement: &Settlement) -> Result<Receipt> {
-        let mut connection = self.database.acquire().await?;
-        let mut transaction = connection.begin().await.map_err(query(CONTEXT_SETTLE))?;
-        log_lines(
-            &mut *transaction,
-            &self.entropy,
-            self.clock.now(),
-            settlement,
-        )
-        .await?;
-        let receipt = settle::charge(&mut transaction, settlement).await?;
-        transaction.commit().await.map_err(query(CONTEXT_SETTLE))?;
-        Ok(receipt)
+        Ok(Funds::of(funds.balance, ask.next))
     }
 
     async fn balance(&self, payer: &Account) -> Result<Balance> {
@@ -144,7 +86,7 @@ impl LedgerBiller {
     }
 }
 
-/// `tenant`'s balance and what its logged lines still owe, read on `executor`.
+/// `tenant`'s balance, every logged line already debited, read on `executor`.
 ///
 /// What [`LedgerBiller`] answers for [`Biller::balance`], exposed so a caller
 /// already inside a transaction reads it on that transaction's connection
@@ -156,14 +98,13 @@ impl LedgerBiller {
 /// # Errors
 /// The statement would not run, or the tenant has no wallet.
 pub async fn balance<'e>(executor: impl sqlx::PgExecutor<'e>, tenant: &Uuid7) -> Result<Balance> {
-    let row: Option<BalanceRow> = balance_statement(|statement| statement, tenant)
+    let wallet: Option<Wallet> = balance_statement(|statement| statement, tenant)
         .fetch_optional(executor)
         .await
         .map_err(query(CONTEXT_BALANCE))?;
-    let row = row.ok_or_else(billing_wallet_missing)?;
+    let wallet = wallet.ok_or_else(billing_wallet_missing)?;
     Ok(Balance {
-        balance: Nanos::from_i64(row.balance_nanos),
-        unsettled: Nanos::from_i64(row.unsettled),
-        exhausted_at: row.exhausted_at.map(jiff_sqlx::Timestamp::to_jiff),
+        balance: wallet.balance,
+        exhausted_at: wallet.exhausted_at,
     })
 }

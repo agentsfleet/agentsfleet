@@ -46,15 +46,10 @@ describe("toIso", () => {
 });
 
 describe("formatTimeAbsolute", () => {
-  it("uses en-US Intl.DateTimeFormat by default and matches the canonical helper output", () => {
-    const expected = new Intl.DateTimeFormat("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    }).format(new Date(ISO));
-    expect(formatTimeAbsolute(ISO)).toBe(expected);
+  // The exact text, not one Intl formatter's output: that output joins date and
+  // time with "at" on some platforms' ICU and with a comma on others.
+  it("formats en-US by default as date, comma, time on every platform", () => {
+    expect(formatTimeAbsolute(ISO)).toBe("May 03, 2026, 10:00 AM");
   });
 
   it("respects an explicit locale", () => {

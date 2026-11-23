@@ -1,11 +1,11 @@
 //! Native commands retain strict bodies and usage bounds after their HTTP adapters are removed.
 
-use af_wire::{fold::FoldRequest, protocol::Up, usage::LINES_MAX};
+use af_wire::{fold::FoldRequest, protocol::Up};
 use garde::Validate as _;
 use serde_json::{Value, error::Category, json};
 
 type TestResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
-const LEASE: &str = "01924f4e-0000-7000-8000-00000000a11e";
+const RUN: &str = "01924f4e-0000-7000-8000-00000000a11e";
 
 #[test]
 fn folds_refuse_missing_malformed_and_extra_fields() -> TestResult {
@@ -36,14 +36,14 @@ fn folds_refuse_missing_malformed_and_extra_fields() -> TestResult {
 }
 
 #[test]
-fn native_folds_validate_the_nested_cursor_and_lease_bound() -> TestResult {
-    for (lease, cursor, allowed, field) in [
-        (LEASE, 0, true, ""),
-        (LEASE, i64::MAX, true, ""),
-        (LEASE, -1, false, "after_sequence"),
-        ("x", 0, false, "lease_id"),
+fn native_folds_validate_the_nested_cursor_and_run_bound() -> TestResult {
+    for (run, cursor, allowed, field) in [
+        (RUN, 0, true, ""),
+        (RUN, i64::MAX, true, ""),
+        (RUN, -1, false, "after_sequence"),
+        ("x", 0, false, "run_id"),
     ] {
-        let bytes = json!({"type":"folds", "request_id":1, "lease_id":lease,
+        let bytes = json!({"type":"folds", "request_id":1, "run_id":run,
             "request":{"fencing_token":7,"after_sequence":cursor}})
         .to_string();
         let command: Up<'_> = serde_json::from_str(&bytes)?;
@@ -71,7 +71,7 @@ fn native_renewals_refuse_malformed_and_retired_request_shapes() -> TestResult {
         r#"{"requests":[],"input_tokens":1,"cached_input_tokens":2,"output_tokens":3}"#,
     ] {
         let body = format!(
-            r#"{{"type":"renew_batch","request_id":1,"leases":[{{"lease_id":"{LEASE}","request":{request}}}]}}"#
+            r#"{{"type":"renew_batch","request_id":1,"runs":[{{"run_id":"{RUN}","request":{request}}}]}}"#
         );
         let error = serde_json::from_str::<Up<'_>>(&body)
             .err()
@@ -92,13 +92,9 @@ fn usage(seq: u32) -> Value {
 
 #[test]
 fn native_renewals_keep_request_line_count_and_sequence_bounds() -> TestResult {
-    for (count, sequence, allowed) in [
-        (0, 0, true),
-        (LINES_MAX, u32::MAX, true),
-        (LINES_MAX + 1, 0, false),
-    ] {
-        let bytes = json!({"type":"renew_batch","request_id":1,"leases":[{
-            "lease_id":LEASE,"request":{"requests":vec![usage(sequence);count]}}]})
+    for (count, sequence, allowed) in [(0, 0, true), (2_000, u32::MAX, true)] {
+        let bytes = json!({"type":"renew_batch","request_id":1,"runs":[{
+            "run_id":RUN,"request":{"requests":vec![usage(sequence);count]}}]})
         .to_string();
         let command: Up<'_> = serde_json::from_str(&bytes)?;
         if allowed {
@@ -116,11 +112,7 @@ fn native_renewals_keep_request_line_count_and_sequence_bounds() -> TestResult {
 
 #[test]
 fn native_report_tool_traces_borrow_the_frame_and_preserve_its_answer() -> TestResult {
-    for trace in [
-        json!({"calls":[],"omitted_call_count":0}),
-        json!(7),
-        json!({"extra":1}),
-    ] {
+    for trace in [json!({"calls":[]}), json!(7), json!({"extra":1})] {
         let bytes = report(&trace).to_string();
         let command: Up<'_> = serde_json::from_str(&bytes)?;
         let Up::Report {
@@ -149,10 +141,10 @@ fn native_report_tool_traces_borrow_the_frame_and_preserve_its_answer() -> TestR
 
 fn report(trace: &Value) -> Value {
     json!({"type":"report","request_id":9,"request":{
-        "lease_id":LEASE,"event_id":LEASE,"fencing_token":7,"outcome":"processed",
+        "run_id":RUN,"turn_id":RUN,"fencing_token":7,"outcome":"processed",
         "failure_reason":null,"failure_detail":"","response_text":"private answer",
         "tokens":0,"requests":[],"telemetry":{"time_to_first_token_ms":0,"wall_ms":1},
-        "checkpoint":{"last_event_id":LEASE,"last_response":""},"tool_calls":trace
+        "checkpoint":{"last_turn_id":RUN,"last_response":""},"tool_calls":trace
     }})
 }
 
@@ -178,7 +170,7 @@ fn a_malformed_native_tool_trace_preserves_the_report_and_is_rejected_on_its_own
 #[test]
 fn native_reports_refuse_extra_frame_and_payload_fields() -> TestResult {
     for nested in [false, true] {
-        let mut value = report(&json!({"calls":[],"omitted_call_count":0}));
+        let mut value = report(&json!({"calls":[]}));
         let target = if nested {
             value
                 .get_mut("request")

@@ -1,8 +1,8 @@
-//! Which repositories a lease's workspace holds, and where each lands.
+//! Which repositories a run's workspace holds, and where each lands.
 //!
 //! The supervisor clones exactly these before the turn runs, the prompt says
 //! where they are, and the `git` tool runs in the one it finds: all three ask
-//! this module, so they cannot disagree about a lease.
+//! this module, so they cannot disagree about a run.
 
 use af_validate::rules::{charset, not_relative};
 use af_wire::policy::ExecutionPolicy;
@@ -18,7 +18,7 @@ pub const CREDENTIAL_GITHUB: &str = "github";
 /// The one character between a repository's owner and its name.
 const OWNER_SEPARATOR: char = '/';
 
-/// One repository a lease's workspace holds.
+/// One repository a run's workspace holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Checkout<'p> {
     /// `owner/name`, as the binding spells it.
@@ -32,13 +32,13 @@ pub struct Checkout<'p> {
     pub base: &'p str,
 }
 
-/// The repositories a lease under `policy` gets checked out: every bound one
+/// The repositories a run under `policy` gets checked out: every bound one
 /// when an offered tool runs in the sandbox, where it works in the workspace,
-/// and none for a lease that starts no sandbox.
+/// and none for a run that starts no sandbox.
 ///
 /// # Errors
 /// A bound name that is not `owner/name` of plain path segments, or two bound
-/// names that would land in one directory: the lease is refused rather than
+/// names that would land in one directory: the run is refused rather than
 /// cloned somewhere else.
 pub fn checkouts<'p>(policy: &'p ExecutionPolicy<'_>) -> Result<Vec<Checkout<'p>>> {
     let in_sandbox = policy.tools.iter().any(|tool| {

@@ -40,7 +40,7 @@ use axum::response::{IntoResponse as _, Response};
 
 use crate::auth::PersonIdentity;
 use crate::handler::Refusal;
-use crate::services::{Services, TenantProviders as _};
+use crate::services::{TenantPlane, TenantProviders as _};
 
 use super::tenant_of;
 
@@ -106,7 +106,7 @@ const NOT_CONFIGURED: &str = "";
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn view<D: Services>(
+pub(crate) async fn view<D: TenantPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
 ) -> Result<Response, Refusal> {
@@ -131,7 +131,7 @@ pub(crate) async fn view<D: Services>(
 
     let available = default.is_some();
     Ok(match (&selection, &default) {
-        (Some(Selection::SelfManaged(own)), _) => Json(from_own(own, available)).into_response(),
+        (Selection::SelfManaged(own), _) => Json(from_own(own, available)).into_response(),
         (_, Some(fallback)) => Json(from_default(fallback, available)).into_response(),
         (_, None) => Json(empty_view()).into_response(),
     })
