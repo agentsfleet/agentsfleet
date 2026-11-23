@@ -118,7 +118,7 @@ fn test_the_summary_names_versions_not_counts() {
 async fn migration_validates_a_selected_file_before_resolving_its_database() {
     use std::{error::Error as _, io::Write as _};
     let mut file = tempfile::NamedTempFile::new().expect("temporary configuration");
-    writeln!(file, "[runner.run]\nttl_seconds = 32").expect("unsafe run settings");
+    writeln!(file, "[runner.run]\nttl_seconds = 28").expect("unsafe run settings");
     let environment = MapEnv::from_pairs([(
         "AGENTSFLEET_CONFIG_FILE",
         file.path().to_str().expect("UTF-8 fixture path"),

@@ -87,7 +87,7 @@ mod tests {
             "[runner.health]\nheartbeat_interval_seconds=53\nhealthy_before_uncordon_seconds=60",
             "[runner.health]\noffline_after_seconds=34",
             "[runner.health]\nhealthy_before_uncordon_seconds=10",
-            "[runner.health]\nhealthy_before_uncordon_seconds=105",
+            "[runner.health]\nhealthy_before_uncordon_seconds=114",
             "[runner.sandboxes]\nmax_idle_hold_seconds=0",
         ] {
             let mut file = tempfile::NamedTempFile::new()?;
