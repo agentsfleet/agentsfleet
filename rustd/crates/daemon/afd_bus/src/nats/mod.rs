@@ -262,14 +262,19 @@ impl Bus for Adapter {
         let live = self.live.read().await;
         let live = live.as_ref().ok_or(ErrorKind::Closed)?;
         let physical = self.physical(subject);
+        // A caller whose own deadline drops this publish part-way still leaves it owed:
+        // the guard records an unfinished publish as failed, so its gap marker is paid.
+        let owed = scopeguard::guard((&live.signals, physical.clone()), |(signals, physical)| {
+            signals.record(&physical, false, Instant::now());
+        });
         let outcome = if live.signals.blocked() {
             Err(ErrorKind::NatsDisconnected.into())
         } else {
             let payload = Bytes::copy_from_slice(payload.as_bytes());
             send(&live.client, physical.clone(), payload, self.deadline).await
         };
-        live.signals
-            .record(&physical, outcome.is_ok(), Instant::now());
+        let (signals, physical) = scopeguard::ScopeGuard::into_inner(owed);
+        signals.record(&physical, outcome.is_ok(), Instant::now());
         outcome
     }
 

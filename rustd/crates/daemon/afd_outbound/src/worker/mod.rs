@@ -1,6 +1,7 @@
 //! The claim loop: Postgres holds every owed answer, and the worker claims
-//! lane heads when it starts, when it is pinged, and when a delivery finishes.
-//! It runs no timed pass (Indy, Nov 21, 2026).
+//! lane heads when it starts, when it is pinged, when a delivery finishes, and
+//! when a claim another replica held lapses. It runs no timed pass (Indy, Nov
+//! 21, 2026): the one sleep is to that lapse, read from Postgres.
 //!
 //! ```text
 //!   worker starts ────────────────────────────────┐
@@ -10,10 +11,17 @@
 //!
 //! # A lost ping waits for the next event
 //!
-//! The ping is at-most-once. A row whose ping every replica missed is claimed
-//! on the next ping, the next finished delivery, or the next worker start. A
-//! full batch claims again as soon as the lanes have room, and every finished
-//! job rings the loop, so a backlog drains without a timer.
+//! The ping is at-most-once. A ping the bus failed to send is owed, and the bus
+//! pays it as a gap on the subscription, which the worker answers with a claim.
+//! A full batch claims again as soon as the lanes have room, and every finished
+//! job rings the loop, so a backlog drains without a timer. A subscription that
+//! closes is opened again on a backoff, and the first claim after it scans.
+//!
+//! # A dead replica's claim is retaken when it lapses
+//!
+//! Its claim stops being renewed and lapses after `CLAIM_TTL`. Nothing announces
+//! that, so after a claim leaves room the worker reads the earliest live claim's
+//! expiry and sleeps to it once.
 //!
 //! # The claim is the ordering, and the lanes are the concurrency
 //!
@@ -114,6 +122,11 @@ impl<S: Deliver + 'static> Worker<S> {
             .inspect_err(|failure| unpinged(EVENT_WAKE_SUBSCRIBE_FAILED, failure))
             .ok();
         let lanes = Lanes::configured(posters, database.clone(), token.clone(), renew, retries);
+        let mut resubscribe = backon::BackoffBuilder::build(
+            backon::ExponentialBuilder::default().without_max_times(),
+        );
+        let mut reopen_at: Option<tokio::time::Instant> = None;
+        let mut lapse: Option<tokio::time::Instant> = None;
         let mut via = Via::Scan;
         while !token.is_cancelled() {
             // With no room, the next finished job rings the loop.
@@ -124,10 +137,15 @@ impl<S: Deliver + 'static> Worker<S> {
                         via = Via::Scan;
                         continue;
                     }
-                    Ok(_partial) => {}
+                    Ok(_partial) => lapse = next_lapse(&database).await,
                     // The next ping or finished delivery claims again.
                     Err(failure) => report(EVENT_CLAIM_FAILED, &failure),
                 }
+            }
+            if wake.is_none() && reopen_at.is_none() {
+                reopen_at = resubscribe
+                    .next()
+                    .map(|pause| tokio::time::Instant::now() + pause);
             }
             via = tokio::select! {
                 biased;
@@ -135,6 +153,21 @@ impl<S: Deliver + 'static> Worker<S> {
                 () = pinged(&mut wake) => Via::Ping,
                 // A finished job may have freed its lane's next row.
                 () = lanes.finished() => Via::Scan,
+                // A claim another replica stopped renewing is now claimable.
+                () = sleep_until(lapse), if lapse.is_some() => { lapse = None; Via::Scan }
+                () = sleep_until(reopen_at), if reopen_at.is_some() => {
+                    reopen_at = None;
+                    wake = bus.subscribe(&Subject::DeliveryWake).await
+                        .inspect_err(|failure| unpinged(EVENT_WAKE_SUBSCRIBE_FAILED, failure))
+                        .ok();
+                    if wake.is_some() {
+                        resubscribe = backon::BackoffBuilder::build(
+                            backon::ExponentialBuilder::default().without_max_times(),
+                        );
+                    }
+                    // Whatever was pinged while it was closed is found by a scan.
+                    Via::Scan
+                }
             };
         }
         lanes.drain().await;
@@ -186,8 +219,8 @@ impl Via {
     }
 }
 
-/// Returns on the next ping, or never when the subscription is gone; finished
-/// deliveries then carry the worker alone.
+/// Returns on the next ping, or never when the subscription is gone, until the
+/// loop opens it again.
 async fn pinged(wake: &mut Option<Subscription>) {
     let Some(subscription) = wake.as_mut() else {
         return std::future::pending().await;
@@ -195,16 +228,39 @@ async fn pinged(wake: &mut Option<Subscription>) {
     if let Err(failure) = subscription.recv().await {
         unpinged(EVENT_WAKE_CLOSED, &failure);
         *wake = None;
-        std::future::pending::<()>().await;
     }
 }
 
-/// Logs that pings stopped; owed answers now wait for a finished delivery or
-/// the next start.
+/// When the earliest claim another holder took lapses, as an instant on this
+/// replica's clock; `None` when nothing open is held or the read failed.
+async fn next_lapse(database: &Db) -> Option<tokio::time::Instant> {
+    match delivery::next_lapse(database).await {
+        Ok(left) => left.map(|left| tokio::time::Instant::now() + left),
+        Err(failure) => {
+            report(EVENT_CLAIM_FAILED, &failure);
+            None
+        }
+    }
+}
+
+/// Sleeps until `at`; never when there is nothing to wait for.
+async fn sleep_until(at: Option<tokio::time::Instant>) {
+    match at {
+        Some(at) => tokio::time::sleep_until(at).await,
+        None => std::future::pending().await,
+    }
+}
+
+/// Logs that pings stopped; the loop opens the subscription again on a backoff.
 fn unpinged(event: &'static str, failure: &afd_bus::Error) {
     let error_code = failure.code().as_str();
     let reason = failure.reason();
-    tracing::warn!(error_code, reason, event, "claims wait for the next event");
+    tracing::warn!(
+        error_code,
+        reason,
+        event,
+        "the wake subscription reopens on a backoff"
+    );
 }
 
 /// Logs a failure the loop continues past.

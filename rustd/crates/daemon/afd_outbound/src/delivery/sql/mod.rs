@@ -23,6 +23,9 @@ pub(crate) const LOCK_LANES: &str = include_str!("lock_lanes.sql");
 /// `$4` the locked lanes' providers · `$5` their workspaces, pairwise.
 pub(crate) const CLAIM_HEADS: &str = include_str!("claim_heads.sql");
 
+/// How long until the earliest live claim on an open delivery lapses, or NULL.
+pub(crate) const NEXT_LAPSE: &str = include_str!("next_lapse.sql");
+
 /// Extends a live claim. `$1` id · `$2` token · `$3` the claim's life.
 pub(crate) const RENEW_CLAIM: &str = include_str!("renew_claim.sql");
 

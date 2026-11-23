@@ -21,6 +21,8 @@ workspace = true
 test-util = ["af_observability/test-util", "tokio/net", "tokio/io-util"]
 
 [dependencies]
+# A publish dropped by its caller's deadline is still recorded as owed.
+scopeguard.workspace = true
 af_core.workspace = true
 af_observability.workspace = true
 af_validate.workspace = true

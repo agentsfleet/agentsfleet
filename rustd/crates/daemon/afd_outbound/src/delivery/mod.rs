@@ -218,6 +218,19 @@ pub async fn claim_in(
         .collect())
 }
 
+/// How long until the earliest live claim on an open delivery lapses, measured on the
+/// database's clock; `None` when nothing open is held.
+///
+/// # Errors
+/// Reports a database that would not answer.
+pub async fn next_lapse(database: &Db) -> Result<Option<Duration>> {
+    let left: Option<i64> = sqlx::query_scalar(sql::NEXT_LAPSE)
+        .fetch_one(&mut *database.acquire().await?)
+        .await
+        .map_err(crate::error::query(CONTEXT_CLAIM))?;
+    Ok(left.map(|millis| Duration::from_millis(u64::try_from(millis).unwrap_or(0))))
+}
+
 /// Extends `job`'s claim; `false` when it lapsed and another holder may own it.
 ///
 /// # Errors
