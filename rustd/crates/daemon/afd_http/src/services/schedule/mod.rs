@@ -95,7 +95,8 @@ pub trait FleetSchedules: Send + Sync + std::fmt::Debug + 'static {
     ) -> impl Future<Output = CronResult<Option<Reconciled>>> + Send;
 
     /// [`Self::create`] for a fleet, under the run `guard` proves on the
-    /// write's own transaction.
+    /// write's own transaction, keyed by `schedule`, the call's item: a retry
+    /// of the call answers the row its first attempt wrote, pushed again.
     ///
     /// # Errors
     /// As [`Self::create`]. A run that no longer holds is
@@ -103,6 +104,7 @@ pub trait FleetSchedules: Send + Sync + std::fmt::Debug + 'static {
     fn create_guarded(
         &self,
         workspace: &Uuid7,
+        schedule: &Uuid7,
         new: NewSchedule<'_>,
         now: Timestamp,
         guard: &dyn Precondition,

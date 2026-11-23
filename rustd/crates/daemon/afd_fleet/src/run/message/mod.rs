@@ -2,18 +2,19 @@
 //! answer, prepared here and posted by `afd_outbound`'s posters.
 //!
 //! ```text
-//!   proved run ──► the event's thread ──► the line's count ──► masked text
-//!        │                  │                     │                   │
-//!   stale: refuse     none: no channel     superseded: refuse     Interim
+//!   proved run ──► the event's thread ──► masked text
+//!        │                  │                  │
+//!   stale: refuse     none: no channel      Interim
 //! ```
 //!
 //! Every refusal is decided before the text is read, so a refused message
-//! costs no vault read. The order puts the thread before the count, so a
-//! message with nowhere to go is not counted. The line's marker part is the
-//! call's own number, not the count, so a retried call names the line its
-//! first attempt may have posted. A run may say as much, and as often, as it
-//! likes: the channel refuses what it cannot take, and the post answers
-//! `delivered: false`.
+//! costs no vault read. The run's standing is the verb's one fence check: it
+//! is read without a lock and nothing is written to the run, so a message
+//! never waits on a report, a renewal or a tool-call post of its run. The
+//! line's marker part is the call's own number, so a retried call names the
+//! line its first attempt may have posted. A run may say as much, and as
+//! often, as it likes: no count is kept, the channel refuses what it cannot
+//! take, and the post answers `delivered: false`.
 //!
 //! # What the mask covers
 //!
@@ -28,16 +29,11 @@ use af_wire::message_verb::MessageRequest;
 use af_wire::turn::FleetSteerBody;
 use afd_outbound::Interim;
 
-use crate::error::{Result, message_no_channel, query, run_not_found, stale_fence};
+use crate::error::{Result, message_no_channel, run_not_found};
 use crate::run::installed::Installed;
 use crate::run::pull::RunService;
-use crate::run::sql;
-use crate::run::sql::standing::COUNT_MESSAGE;
 use crate::run::standing::Standing;
 use crate::run::store::Runs;
-
-/// Statement name, for the context a count failure carries.
-const CONTEXT_COUNT: &str = "count interim message";
 
 /// Who a fleet's steer is from, and the body it stores.
 ///
@@ -54,7 +50,8 @@ pub struct SteerSender {
 }
 
 impl RunService {
-    /// One line for `run_id`'s thread, fenced, numbered and scrubbed.
+    /// One line for `run_id`'s thread, fenced and scrubbed, numbered by its
+    /// call.
     ///
     /// # Errors
     /// Refuses a run that is not this runner's or not live, a superseded
@@ -75,19 +72,6 @@ impl RunService {
             Runs::reply_destination(&mut connection, &standing.fleet_id, &standing.turn_id).await?
         }
         .ok_or_else(message_no_channel)?;
-        let counted = self
-            .runs
-            .count_message(&standing.run_id, request.fencing_token)
-            .await?;
-        if !counted {
-            // Not counted: the run stopped holding after its standing was
-            // read. The second read names how; a holder it still proves was
-            // superseded inside the count's own fence check.
-            let Standing { run_id, .. } = standing;
-            self.standing(runner_id, run_id, request.fencing_token)
-                .await?;
-            return Err(stale_fence());
-        }
         let text = self.masked(&standing, &request.text).await?;
         let Standing {
             run_id,
@@ -175,21 +159,5 @@ impl RunService {
         .await?;
         let scrub = Scrub::of(StaticSecrets::of_map(declared.secrets_map()).values())?;
         Ok(scrub.text(text).into_owned())
-    }
-}
-
-impl Runs {
-    /// Counts one message against `run_id` while it holds its fleet under
-    /// `presented`, answering whether the run still held.
-    async fn count_message(&self, run_id: &Uuid7, presented: u64) -> Result<bool> {
-        let mut connection = self.pool().acquire().await?;
-        let counted: Option<i32> = sqlx::query_scalar(COUNT_MESSAGE)
-            .bind(run_id)
-            .bind(i64::try_from(presented).unwrap_or(i64::MAX))
-            .bind(sql::RUN_STATUS_ACTIVE)
-            .fetch_optional(&mut *connection)
-            .await
-            .map_err(query(CONTEXT_COUNT))?;
-        Ok(counted.is_some())
     }
 }

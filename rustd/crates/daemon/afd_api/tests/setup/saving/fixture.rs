@@ -153,9 +153,9 @@ const RUN_STATUS_ACTIVE: &str = afd_state::sql::RUN_STATUS_ACTIVE;
 const LIVE_RUN: &str = "INSERT INTO thread.runs \
     (id, runner_id, fleet_id, workspace_id, tenant_id, turn_id, turn_created_at, \
      posture, provider, model, last_metered_at, fencing_token, run_expires_at, \
-     status, posted_message_count, created_at, updated_at) \
+     status, created_at, updated_at) \
     VALUES ($1,$2,$3,$4,$5,$6,now(),'self_managed','fixture-provider','fixture-model', \
-            now(),1,clock_timestamp() + make_interval(secs => $7),$8,0,now(),now())";
+            now(),1,clock_timestamp() + make_interval(secs => $7),$8,now(),now())";
 
 /// Waits for the runner command channel to carry a Cancel for `run`.
 pub(super) async fn cancel_heard(commands: &mut afd_bus::Subscription, run: &Uuid7) {

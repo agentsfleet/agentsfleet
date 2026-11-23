@@ -1,4 +1,4 @@
-//! Setup and recipe changes serialize on the same parent and child rows.
+//! Setup and recipe changes serialize on the fleet's writer turn and the schedule rows.
 
 use super::{Inherited, Recipe, RecipeSet, guard, retire};
 use crate::{Result, Schedules, error::ErrorKind};

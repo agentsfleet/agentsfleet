@@ -38,19 +38,29 @@
 /// `Schedules::holds_fleet` before the schedule is read or claimed.
 pub const FLEET_IN_WORKSPACE: &str = include_str!("fleet_in_workspace.sql");
 
-/// Takes the fleet's row for the length of a create.
+/// Takes the fleet's turn among its schedule writers for the length of a
+/// create.
 ///
-/// `FOR UPDATE` on the FLEET rather than on the schedules, because what is
-/// being protected is a count over rows that do not exist yet: two concurrent
-/// creates both counting 31 would both insert and leave 33. Locking the parent
-/// is how a count-then-insert becomes atomic.
+/// What is protected is a count over rows that do not exist yet: two
+/// concurrent creates both counting 31 would both insert and leave 33. A
+/// transaction-scoped advisory lock keyed by the fleet makes the
+/// count-then-insert atomic with no writer's lock on the fleet row, so the
+/// fleet's intake, reports and items never wait on a create. The row is held
+/// `FOR KEY SHARE` first, which conflicts only with a writer holding it
+/// exclusively.
+///
+/// The cap is a count rather than a constraint because the setup's recipe
+/// replacement writes into the same cap, many rows at once and in place, and
+/// must serialize with an edit of one of its schedules anyway; see
+/// `docs/architecture/concurrency.md`.
 pub const LOCK_FLEET: &str = include_str!("lock_fleet.sql");
 
-/// Takes the fleet's row, scoped to the caller's workspace, for an edit or a
+/// [`LOCK_FLEET`]'s turn, scoped to the caller's workspace, for an edit or a
 /// setup's recipe replacement.
 ///
-/// The same parent lock both take, so a recipe replacement and an edit of one
-/// of its schedules serialize; no row means a fleet outside the workspace.
+/// The same turn a create takes, so a recipe replacement, an edit of one of
+/// its schedules and a create serialize; no row means a fleet outside the
+/// workspace, and takes no turn.
 pub const LOCK_FLEET_IN_WORKSPACE: &str = include_str!("lock_fleet_in_workspace.sql");
 
 /// How many schedules this fleet already holds.

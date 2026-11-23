@@ -33,10 +33,10 @@ const INSERT_RUN: &str = "\
 INSERT INTO thread.runs
   (id, runner_id, fleet_id, workspace_id, tenant_id, turn_id, turn_created_at,
    posture, provider, model, last_metered_at, fencing_token,
-   run_expires_at, status, posted_message_count, created_at, updated_at)
+   run_expires_at, status, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6,
         coalesce($9::timestamptz, now()), 'platform', 'test', 'test', coalesce($9::timestamptz, now()), 1,
-        $7::timestamptz, $8, 0, coalesce($9::timestamptz, now()),
+        $7::timestamptz, $8, coalesce($9::timestamptz, now()),
         coalesce($9::timestamptz, now()))";
 
 /// A setup draft's run: it names its draft and no fleet, and no foreign key
@@ -45,9 +45,9 @@ const INSERT_SETUP_RUN: &str = "\
 INSERT INTO thread.runs
   (id, runner_id, draft_id, workspace_id, tenant_id, turn_id, turn_created_at,
    posture, provider, model, last_metered_at, fencing_token,
-   run_expires_at, status, posted_message_count, created_at, updated_at)
+   run_expires_at, status, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, now(), 'platform', 'test', 'test', now(), 1,
-        $7::timestamptz, $8, 0, now(), now())";
+        $7::timestamptz, $8, now(), now())";
 
 /// Where a run lives and what it owes.
 pub(crate) struct RunRow<'a> {

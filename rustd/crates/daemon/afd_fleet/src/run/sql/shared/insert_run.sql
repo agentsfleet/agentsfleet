@@ -2,9 +2,11 @@
 -- fenced on the assignment that earned it. The caller holds the host row
 -- (`lock_host.sql`) through this transaction, so this statement's snapshot, taken after that
 -- lock, sees every earlier assignment's commit: the census below counts them. The caller has
--- proved and locked the owner's scope earlier in the transaction; the fleet's own insert
--- (`insert_run_with_turn.sql`) proves it in its insert instead. A full host, a moved thread
--- fence or a moved placement choice writes nothing that commits.
+-- proved the owner's scope earlier in the transaction: a draft's by the thread row its claim
+-- holds (`assign_thread.sql`), which the draft's deletion cascades through and so waits on,
+-- and by its turn claim; the fleet's own insert (`insert_run_with_turn.sql`) proves it in its
+-- insert instead. A full host, a moved thread fence or a moved placement choice writes nothing
+-- that commits.
 --
 -- $1 run · $2 runner · $3 the owning fleet, NULL for a draft · $4 the owning draft, NULL
 -- for a fleet · $5 workspace · $6 tenant · $7 the event or draft message the run runs ·
@@ -47,11 +49,11 @@ WITH instant AS MATERIALIZED (
   INSERT INTO thread.runs
   (id, runner_id, fleet_id, draft_id, workspace_id, tenant_id, turn_id, turn_created_at,
    posture, provider, model, last_metered_at,
-   fencing_token, run_expires_at, status, posted_message_count, decision_snapshot,
+   fencing_token, run_expires_at, status, decision_snapshot,
    created_at, updated_at)
   SELECT $1, $2, $3::uuid, $4::uuid, $5, $6, $7, $8,
          $9, $10, $11, a.checked_at,
-         $12, h.run_expires_at, $13, 0, $17, a.checked_at, a.checked_at
+         $12, h.run_expires_at, $13, $17, a.checked_at, a.checked_at
   FROM held h
   CROSS JOIN after_lock a
   WHERE h.run_expires_at > a.checked_at

@@ -19,9 +19,9 @@ const WAIT: Duration = Duration::from_millis(500);
 const RUN: &str = "INSERT INTO thread.runs \
     (id, runner_id, draft_id, workspace_id, tenant_id, turn_id, turn_created_at, \
      posture, provider, model, last_metered_at, fencing_token, run_expires_at, \
-     status, posted_message_count, created_at, updated_at) \
+     status, created_at, updated_at) \
     SELECT $1,$2,$3,$4,$5,$6,now(),$7,'fixture-provider','fixture-model', \
-           now(),t.fencing_token,now() + interval '1 hour',$8,0,now(),now() \
+           now(),t.fencing_token,now() + interval '1 hour',$8,now(),now() \
       FROM thread.threads t WHERE t.id = $3";
 
 /// The draft's thread, held by its run for the next hour.

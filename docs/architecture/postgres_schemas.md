@@ -414,6 +414,8 @@ Added by this milestone:
   - `fleet.durable_task_storage_purges.delete_after_at`.
 - **Write-only columns dropped by the M253 audit.** Each was written by a statement and read by none, or written by none.
   - `connector.channels.binding_type`, always `notice_owner`; `thread.deliveries.next_attempt_at`.
+  - `thread.runs.posted_message_count`: the messages verb counted every interim line under a run
+    row lock after the line cap went, and no statement read the count.
   - `setup.replay_receipts.workspace_id`: every `scope` begins with the workspace.
   - `thread.turns.durable_task_item_id`, with its foreign key and index.
   - `fleet.durable_task_inputs.generation`, the effect state's `issued_at`, the effect payload's `request`.

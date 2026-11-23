@@ -50,11 +50,11 @@ WITH inserted_runners AS (
 )
 INSERT INTO thread.runs
   (id, runner_id, fleet_id, workspace_id, tenant_id, turn_id, turn_created_at,
-   posture, provider, model, last_metered_at, fencing_token, run_expires_at, status, posted_message_count,
+   posture, provider, model, last_metered_at, fencing_token, run_expires_at, status,
    created_at, updated_at)
 SELECT v.id, v.runner_id, v.fleet_id, v.workspace_id, $1, v.turn_id,
        v.turn_created_at, v.posture, v.provider, v.model, v.created_at,
-       v.fencing_token, v.expires_at, v.status, 0, v.created_at, v.created_at
+       v.fencing_token, v.expires_at, v.status, v.created_at, v.created_at
 FROM (VALUES
   ($8, $6, $4, $2, $13, '2025-10-09 08:00:00.050+00'::timestamptz, 'platform', 'anthropic', 'model-a', 10, 2, 3, 1, '2025-10-09 08:00:00.130+00'::timestamptz, 'expired', '2025-10-09 08:00:00.100+00'::timestamptz),
   ($9, $6, $4, $2, $13, '2025-10-09 08:00:00.050+00', 'platform', 'anthropic', 'model-a', 20, 4, 6, 2, '2025-10-09 08:00:00.230+00', 'reported', '2025-10-09 08:00:00.200+00'),

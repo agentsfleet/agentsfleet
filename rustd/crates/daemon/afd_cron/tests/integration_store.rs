@@ -24,11 +24,22 @@ mod support;
 
 use afd_cron::model::MAX_SCHEDULES_PER_FLEET;
 use afd_cron::{DesiredStatus, Refused, Source, SyncStatus};
+use sqlx::Connection as _;
 
 use self::support::{CronLane, SEED_AT};
 
 /// An expression every fixture registers under.
 const NIGHTLY: &str = "0 3 * * *";
+
+/// How long the race waits for both creators to queue.
+const QUEUE_LIMIT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// How many backends wait behind `$1`, directly or behind one that does.
+const QUEUED_BEHIND: &str = "WITH RECURSIVE behind(pid) AS ( \
+    SELECT a.pid FROM pg_stat_activity a WHERE $1 = ANY(pg_blocking_pids(a.pid)) \
+    UNION \
+    SELECT a.pid FROM pg_stat_activity a JOIN behind b ON b.pid = ANY(pg_blocking_pids(a.pid))) \
+    SELECT count(*) FROM behind";
 
 #[tokio::test]
 #[ignore = "needs the lane's Postgres and NATS"]
@@ -186,5 +197,68 @@ async fn a_fleet_at_its_ceiling_refuses_the_next_schedule() {
         lane.count().await,
         i64::try_from(MAX_SCHEDULES_PER_FLEET).expect("the ceiling fits in an i64"),
         "the refused create must not have written past the ceiling"
+    );
+}
+
+/// Two creators for the last place under the ceiling, both started while a
+/// setup holds the fleet row: the fleet's writer turn lets one count and
+/// insert before the other counts, so one is admitted, the other is refused
+/// as over the ceiling, and the fleet holds exactly the ceiling. A create that
+/// counted before taking its turn would count 31 twice behind the holder and
+/// leave 33.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs the lane's Postgres and NATS"]
+async fn two_creators_at_the_cap_admit_one() {
+    let lane = CronLane::open().await;
+    for index in 1..MAX_SCHEDULES_PER_FLEET {
+        lane.create(&format!("key-{index}"), NIGHTLY).await;
+    }
+    let mut observer = lane.connection().await;
+    let mut connection = lane.connection().await;
+    let mut setup = connection.begin().await.expect("the holder opens");
+    let holder: i32 =
+        sqlx::query_scalar("SELECT pg_backend_pid() FROM fleet.fleets WHERE id = $1 FOR UPDATE")
+            .bind(&lane.fleet)
+            .fetch_one(&mut *setup)
+            .await
+            .expect("the holder takes the fleet row");
+    let release = async {
+        tokio::time::timeout(QUEUE_LIMIT, async {
+            while sqlx::query_scalar::<_, i64>(QUEUED_BEHIND)
+                .bind(holder)
+                .fetch_one(&mut *observer)
+                .await
+                .expect("the lock graph reads")
+                < 2
+            {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("both creators queue behind the holder");
+        setup.rollback().await.expect("the holder lets go");
+    };
+
+    let (first, second, ()) = tokio::join!(
+        lane.try_create("key-first", NIGHTLY),
+        lane.try_create("key-second", NIGHTLY),
+        release
+    );
+
+    let answers = [&first, &second];
+    assert_eq!(
+        answers.iter().filter(|answer| answer.is_ok()).count(),
+        1,
+        "{first:?} / {second:?}"
+    );
+    assert!(
+        answers
+            .iter()
+            .any(|answer| matches!(answer, Err(Refused::TooMany))),
+        "the other is over the ceiling: {first:?} / {second:?}"
+    );
+    assert_eq!(
+        lane.count().await,
+        i64::try_from(MAX_SCHEDULES_PER_FLEET).expect("the ceiling fits in an i64")
     );
 }

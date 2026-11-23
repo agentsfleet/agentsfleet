@@ -18,9 +18,9 @@ pub(super) type TestResult<T = ()> = afd_setup::Result<T, Box<dyn std::error::Er
 const RUN: &str = "INSERT INTO thread.runs \
     (id, runner_id, fleet_id, workspace_id, tenant_id, turn_id, turn_created_at, \
      posture, provider, model, last_metered_at, fencing_token, run_expires_at, \
-     status, posted_message_count, created_at, updated_at) \
+     status, created_at, updated_at) \
     VALUES ($1,$2,$3,$4,$5,$6,now(),$7,$8,$9,now(),$10, \
-            clock_timestamp() + make_interval(secs => $11),$12,$13,now(),now())";
+            clock_timestamp() + make_interval(secs => $11),$12,now(),now())";
 const WAIT: Duration = Duration::from_secs(5);
 
 #[tokio::test]
@@ -119,7 +119,6 @@ pub(super) async fn seed_run(case: &Case, fleet: &Uuid7) -> TestResult<Uuid7> {
         .bind(1_i64)
         .bind(af_core::timing::RUN_TTL.as_secs_f64())
         .bind(afd_state::sql::RUN_STATUS_ACTIVE)
-        .bind(0_i32)
         .execute(&mut *case.base.db.acquire().await?)
         .await?;
     Ok(run)

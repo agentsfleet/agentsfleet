@@ -13,7 +13,6 @@
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 
-use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use afd_connector::test_util::FakeSlack;
 use agentsfleetd::preflight::SLACK_API_URL_KNOB;
@@ -92,24 +91,6 @@ impl Speaking {
         let response = post(&self.http, &self.scene, &path, body).await;
         let status = response.status().as_u16();
         (status, body_of(response).await)
-    }
-
-    /// How many lines `run_id` has counted against its cap.
-    pub(crate) async fn counted(&self, run_id: &str) -> i32 {
-        let run_id =
-            Uuid7::parse(run_id).expect("a run id the daemon answered is a canonical UUIDv7");
-        let mut connection = self
-            .scene
-            .booted
-            .database
-            .acquire()
-            .await
-            .expect("a connection");
-        sqlx::query_scalar("SELECT posted_message_count FROM thread.runs WHERE id = $1")
-            .bind(&run_id)
-            .fetch_one(&mut *connection)
-            .await
-            .expect("the run row")
     }
 
     /// Moves the fleet's live sequence past every run it has, as a reassignment

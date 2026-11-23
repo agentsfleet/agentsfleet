@@ -4,6 +4,7 @@ INSERT INTO fleet.schedules
         last_error, created_at, updated_at, once)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
         clock_timestamp() + $12::interval, NULL, now(), now(), $13)
+ON CONFLICT DO NOTHING
 RETURNING
        id, fleet_id, source, provider_schedule_id, cron_expression,
        timezone, message, once, desired_status, sync_status, resource_version,

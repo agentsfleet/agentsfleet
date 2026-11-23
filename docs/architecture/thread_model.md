@@ -52,6 +52,8 @@ Indexes: `fleet_id` and `draft_id` partial, `last_runner_id` for the foreign key
 
 Saving a draft creates a new fleet, so the fleet gets its own thread. The draft's thread stays with the draft until the draft is deleted.
 
+The thread row is where two assignments of one owner meet. Both kinds claim it with one conditional upsert (`afd_fleet`'s `run/sql/shared/assign_thread.sql`): it bumps the fence only when no live run holds the thread, so one pass gets its row back. A draft's assignment locks neither the draft nor its creator. It reads them as hints, then claims the thread and the head turn, each in one statement ([Concurrency](concurrency.md#the-setup-chat-claim-never-waits-on-a-draft)).
+
 ## thread.turns
 
 One row per input on a thread. It replaces `fleet.admissions` and `fleet.events`, which split one fleet input across two rows, and `setup.messages`, a setup draft's chat inputs (`rustd/crates/daemon/afd_db/schema/20261108125100_thread_turns.sql`).
@@ -141,7 +143,6 @@ One row per try at a turn. It replaces `runner.leases` and `setup.attempts`.
 | `run_expires_at` | `TIMESTAMPTZ(3)` | no | `lease_expires_at` | renewal deadline |
 | `last_metered_at` | `TIMESTAMPTZ(3)` | no | `leases` | metering cursor |
 | `cancel_requested_at` | `TIMESTAMPTZ(3)` | yes | `leases` | the durable Stop mark |
-| `posted_message_count` | `INTEGER` | no | `leases` | counts the run's interim lines, each marked by its call's number; no cap |
 | `decision_snapshot`, `setup_revision_id` | `JSONB`, `UUID` | yes | `leases` | decision budget and the fleet revision run |
 | `durable_task_id`, `durable_task_generation`, `durable_task_stop_generation`, `durable_task_started_at`, `durable_task_runtime_accounted_at`, `durable_task_execution_deadline_at` | as today | yes | `leases` | task slice accounting |
 

@@ -15,9 +15,9 @@ const RETAINED: &str = "WITH events AS (INSERT INTO thread.turns \
     FROM thread.runs l,generate_series(1,4000) n WHERE l.id=$1 RETURNING id AS turn_id) \
     INSERT INTO thread.runs (id,runner_id,fleet_id,workspace_id,tenant_id,turn_id, \
     turn_created_at,posture,provider,model,last_metered_at,fencing_token,run_expires_at, \
-    status,posted_message_count,created_at,updated_at) \
+    status,created_at,updated_at) \
     SELECT uuidv7(),l.runner_id,l.fleet_id,l.workspace_id,l.tenant_id,e.turn_id,l.turn_created_at, \
-    l.posture,l.provider,l.model,l.last_metered_at,0,l.run_expires_at,$2,0,l.created_at,now() \
+    l.posture,l.provider,l.model,l.last_metered_at,0,l.run_expires_at,$2,l.created_at,now() \
     FROM thread.runs l CROSS JOIN events e WHERE l.id=$1";
 const FRESH: &str = "WITH ended AS (UPDATE thread.turns SET settled_at=now() \
     WHERE thread_id=$1 AND settled_at IS NULL RETURNING thread_id,workspace_id) \

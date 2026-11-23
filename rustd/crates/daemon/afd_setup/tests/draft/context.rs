@@ -17,9 +17,9 @@ use serde_json::{Value, json};
 const RUN: &str = "INSERT INTO thread.runs \
     (id, runner_id, draft_id, workspace_id, tenant_id, turn_id, turn_created_at, \
      posture, provider, model, last_metered_at, fencing_token, run_expires_at, \
-     status, posted_message_count, created_at, updated_at) \
+     status, created_at, updated_at) \
     VALUES ($1,$2,$3,$4,$5,$6,now(),$7,'fixture-provider','fixture-model', \
-            now(),$8,now() + interval '1 hour',$9,0,now(),now())";
+            now(),$8,now() + interval '1 hour',$9,now(),now())";
 
 /// The draft's thread raised to `$2`, as a reassignment raises it.
 const FENCE: &str = "UPDATE thread.threads SET fencing_token=$2 WHERE id=$1";

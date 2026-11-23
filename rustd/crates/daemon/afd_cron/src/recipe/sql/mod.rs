@@ -1,8 +1,8 @@
 //! Every inheritance write runs on the fleet setup transaction.
 //!
-//! The parent lock and the independent count are shared with the store, so
-//! they live in [`crate::sql`]; these are the statements only a recipe
-//! replacement runs.
+//! The fleet's writer turn and the independent count are shared with the
+//! store, so they live in [`crate::sql`]; these are the statements only a
+//! recipe replacement runs.
 
 /// The fleet's recipe-owned schedules, locked, each with whether a live syncer
 /// holds it — judged on `clock_timestamp()`, after the lock wait.

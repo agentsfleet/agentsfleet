@@ -57,6 +57,7 @@ async fn a_create_under_a_guard_that_no_longer_holds_writes_nothing() {
         .store
         .create_guarded(
             &lane.workspace_id(),
+            &CronLane::token(),
             fleet_made(&fleet),
             &CronLane::token(),
             SEED_AT,
@@ -71,6 +72,7 @@ async fn a_create_under_a_guard_that_no_longer_holds_writes_nothing() {
         .store
         .create_guarded(
             &lane.workspace_id(),
+            &CronLane::token(),
             fleet_made(&fleet),
             &CronLane::token(),
             SEED_AT,
@@ -80,6 +82,103 @@ async fn a_create_under_a_guard_that_no_longer_holds_writes_nothing() {
         .expect("the lane's Postgres must answer");
     assert!(created.is_ok(), "a guard that holds lets the create land");
     assert_eq!(lane.count().await, before + 1);
+}
+
+/// A fleet's create keyed by its call: the retry of a call whose create
+/// committed but whose answer was lost finds the row the first attempt wrote,
+/// claims it for its own push, and writes no second schedule.
+#[tokio::test]
+#[ignore = "needs the lane's Postgres and NATS"]
+async fn a_keyed_create_repeated_answers_the_row_it_wrote() {
+    let lane = CronLane::open().await;
+    let fleet = lane.fleet_id();
+    let call = CronLane::token();
+    let (first_push, retry_push) = (CronLane::token(), CronLane::token());
+    let create = async |push: &af_core::id::Uuid7| {
+        lane.store
+            .create_guarded(
+                &lane.workspace_id(),
+                &call,
+                fleet_made(&fleet),
+                push,
+                SEED_AT,
+                &Verdict(true),
+            )
+            .await
+    };
+    let first = create(&first_push)
+        .await
+        .expect("the lane's Postgres must answer")
+        .expect("the first attempt lands");
+    lane.store
+        .finalize_synced(&first, &first_push, None)
+        .await
+        .expect("the lane's Postgres must answer")
+        .expect("the first attempt's push lets go");
+
+    let retried = create(&retry_push)
+        .await
+        .expect("the lane's Postgres must answer")
+        .expect("the retry answers the first attempt's row");
+
+    assert_eq!(first.schedule_id, call, "the row is keyed by its call");
+    assert_eq!(retried.schedule_id, call);
+    assert_eq!(
+        retried.sync_token,
+        Some(retry_push),
+        "claimed for the retry's push"
+    );
+    assert_eq!(lane.count().await, 1, "one call, one schedule");
+}
+
+/// A key a person's schedule of the same fleet holds, or another fleet's
+/// schedule holds, is refused as a duplicate and touches neither row; a
+/// retry whose run no longer holds claims nothing.
+#[tokio::test]
+#[ignore = "needs the lane's Postgres and NATS"]
+async fn a_keyed_create_never_answers_a_row_it_did_not_write() {
+    let lane = CronLane::open().await;
+    let other = CronLane::open().await;
+    let fleet = lane.fleet_id();
+    let person = lane.settled("key-person", "0 9 * * 1").await;
+    let theirs = other.settled("key-theirs", "0 9 * * 1").await;
+    let create = async |key: &af_core::id::Uuid7, holds: bool| {
+        lane.store
+            .create_guarded(
+                &lane.workspace_id(),
+                key,
+                fleet_made(&fleet),
+                &CronLane::token(),
+                SEED_AT,
+                &Verdict(holds),
+            )
+            .await
+            .expect("the lane's Postgres must answer")
+    };
+    let written = lane.count().await;
+
+    assert_eq!(
+        create(&person.schedule_id, true).await,
+        Err(Refused::DuplicateKey)
+    );
+    assert_eq!(
+        create(&theirs.schedule_id, true).await,
+        Err(Refused::DuplicateKey)
+    );
+    let call = CronLane::token();
+    create(&call, true).await.expect("a fresh call lands");
+    assert_eq!(create(&call, false).await, Err(Refused::Unheld));
+
+    assert_eq!(lane.count().await, written + 1);
+    assert_eq!(
+        lane.store
+            .one(&fleet, &person.schedule_id)
+            .await
+            .expect("the lane's Postgres must answer"),
+        Some(person),
+        "the person's schedule is untouched"
+    );
+    assert_eq!(other.count().await, 1, "the other fleet keeps its one");
 }
 
 #[tokio::test]

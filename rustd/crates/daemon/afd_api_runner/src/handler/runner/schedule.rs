@@ -138,7 +138,7 @@ pub(crate) async fn create<D: RunnerPlane>(
         Ok(claimed) => claimed,
         Err(replayed) => return Ok(replayed),
     };
-    let answered = create_once(&*services, &run, &request, &message, now, &guard).await;
+    let answered = create_once(&*services, &run, &item_id, &request, &message, now, &guard).await;
     let kept = ScheduleCreateRequest {
         message: Cow::Borrowed(&message),
         ..request
@@ -147,9 +147,14 @@ pub(crate) async fn create<D: RunnerPlane>(
 }
 
 /// Creates the schedule `request` asks for, its message `message`, masked.
+///
+/// The row takes the call's item as its id. A retry of a call whose create
+/// committed but whose answer was never stored on the item finds that row
+/// and answers it pushed again, so the call still makes one schedule.
 async fn create_once<D: RunnerPlane>(
     services: &D,
     run: &Standing,
+    item_id: &Uuid7,
     request: &ScheduleCreateRequest<'_>,
     message: &str,
     now: jiff::Timestamp,
@@ -160,6 +165,7 @@ async fn create_once<D: RunnerPlane>(
         .schedules()
         .create_guarded(
             &run.workspace_id,
+            item_id,
             NewSchedule {
                 fleet: &run.fleet_id,
                 source: Source::Fleet,

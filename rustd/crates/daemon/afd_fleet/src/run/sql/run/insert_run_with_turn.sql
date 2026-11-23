@@ -40,10 +40,10 @@ WITH instant AS MATERIALIZED (
   INSERT INTO thread.runs
   (id, runner_id, fleet_id, workspace_id, tenant_id, turn_id, turn_created_at,
    posture, provider, model, last_metered_at,
-   fencing_token, run_expires_at, status, posted_message_count, decision_snapshot, setup_revision_id, created_at, updated_at)
+   fencing_token, run_expires_at, status, decision_snapshot, setup_revision_id, created_at, updated_at)
   SELECT $1, $2, $3, $4, $5, e.id, $15,
          $7, $8, $9, a.checked_at,
-         $10, h.run_expires_at, $11, 0, $16, $20::uuid, a.checked_at, a.checked_at
+         $10, h.run_expires_at, $11, $16, $20::uuid, a.checked_at, a.checked_at
   FROM held h
   CROSS JOIN after_lock a
   JOIN thread.turns e ON e.thread_id = $3 AND e.id = $6

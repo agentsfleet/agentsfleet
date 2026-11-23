@@ -35,8 +35,11 @@ impl Pricing {
 impl crate::run::Runs {
     /// Financial acknowledgement for a renewal refused before extension admission.
     ///
-    /// Under the run's own row lock and no host lock: the lines are
-    /// model lines numbered by the runner, so there is no number to race for.
+    /// Under the run's own row lock, `FOR NO KEY UPDATE`, and no host lock.
+    /// The lines are model lines numbered by the runner, so there is no
+    /// number to race for, and the usage key refuses a repeat. The lock keeps
+    /// the metering order, run before wallet before task, because a task's run
+    /// has its runtime cursor advanced after the lines debit the wallet.
     pub(crate) async fn record_known_requests(
         &self,
         runner: &Uuid7,

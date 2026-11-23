@@ -16,19 +16,24 @@ use crate::model::Schedule;
 
 impl Schedules {
     /// [`Self::create`], refused as [`Refused::Unheld`] when `guard` no
-    /// longer holds.
+    /// longer holds, and keyed by `schedule`: the id the row takes, which a
+    /// fleet's create passes as its call's item. A retry of the same call
+    /// answers the row its first attempt wrote, claimed under `token`, and
+    /// writes no second schedule.
     ///
     /// # Errors
     /// As [`Self::create`].
     pub async fn create_guarded(
         &self,
         workspace: &Uuid7,
+        schedule: &Uuid7,
         new: NewSchedule<'_>,
         token: &Uuid7,
         now: Timestamp,
         guard: &dyn Precondition,
     ) -> Result<core::result::Result<Schedule, Refused>> {
-        self.insert(workspace, new, token, now, Some(guard)).await
+        self.insert(workspace, Some(schedule), new, token, now, Some(guard))
+            .await
     }
 
     /// [`Self::claim_change`], refused as [`Refused::Unheld`] when `guard` no

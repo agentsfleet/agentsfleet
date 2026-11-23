@@ -40,9 +40,9 @@ const INSERT_RUN: &str = "\
 INSERT INTO thread.runs
   (id, runner_id, fleet_id, workspace_id, tenant_id, turn_id, turn_created_at,
    posture, provider, model, last_metered_at, fencing_token, run_expires_at, status,
-   posted_message_count, created_at, updated_at)
+   created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, now(),
-        'platform', 'test', 'test', now(), 1, now() + interval '1 hour', $7, 0, now(), now())";
+        'platform', 'test', 'test', now(), 1, now() + interval '1 hour', $7, now(), now())";
 
 /// Opens a waiting turn as the assignment does when a run takes it.
 const OPEN_TURN: &str =

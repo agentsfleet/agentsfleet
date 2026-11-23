@@ -49,10 +49,10 @@ WITH runner AS (
 )
 INSERT INTO thread.runs
   (id, runner_id, fleet_id, workspace_id, tenant_id, turn_id, turn_created_at,
-   posture, provider, model, last_metered_at, fencing_token, run_expires_at, status, posted_message_count,
+   posture, provider, model, last_metered_at, fencing_token, run_expires_at, status,
    created_at, updated_at)
 VALUES ($5, $4, $3, $2, $1, $6, now(), 'platform',
-        'anthropic', 'model-a', now(), 1, now(), 'reported', 0, now(), now())
+        'anthropic', 'model-a', now(), 1, now(), 'reported', now(), now())
 ";
 
 /// Deletes the fleet row the way a purge's final statement does.

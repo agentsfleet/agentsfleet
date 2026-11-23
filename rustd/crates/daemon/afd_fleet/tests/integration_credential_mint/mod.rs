@@ -175,10 +175,10 @@ async fn seed_run(
         "INSERT INTO thread.runs
            (id, runner_id, fleet_id, workspace_id, tenant_id, turn_id, turn_created_at,
             posture, provider, model, last_metered_at,
-            fencing_token, run_expires_at, status, posted_message_count, setup_revision_id, created_at, updated_at)
+            fencing_token, run_expires_at, status, setup_revision_id, created_at, updated_at)
          SELECT $1, $2, $3, $4, f.tenant_id, $5, now(),
                 'platform', 'anthropic', 'claude-fixture', now(),
-                $6, now() + $7::interval, $8, 0, f.head_revision_id, now(), now()
+                $6, now() + $7::interval, $8, f.head_revision_id, now(), now()
          FROM fleet.fleets f WHERE f.id = $3",
     )
     .bind(run)

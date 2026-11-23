@@ -86,11 +86,12 @@ impl FleetSchedules for SchedulePlane {
     fn create_guarded(
         &self,
         workspace: &Uuid7,
+        schedule: &Uuid7,
         new: NewSchedule<'_>,
         now: Timestamp,
         guard: &dyn Precondition,
     ) -> impl Future<Output = CronResult<Result<Reconciled, Refused>>> + Send {
-        self.create_under(workspace, new, now, guard)
+        self.create_under(workspace, schedule, new, now, guard)
     }
 
     fn change_guarded(

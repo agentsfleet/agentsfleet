@@ -27,7 +27,6 @@ CREATE TABLE thread.runs (
     -- Durable Kill decision; a missed notification cannot restore authority.
     cancel_requested_at         TIMESTAMPTZ(3),
     status                      TEXT    NOT NULL,
-    posted_message_count        INTEGER NOT NULL,
     created_at                  TIMESTAMPTZ(3)  NOT NULL,
     updated_at                  TIMESTAMPTZ(3)  NOT NULL,
     -- Opaque once the task row is gone; settled runs outlive a fleet purge.

@@ -47,7 +47,7 @@ impl Setup {
             .expect("the runner the setup runs ran on");
         for run in &setup.runs {
             // A setup run its draft owns: a settled run is history that outlives the draft.
-            sqlx::query("INSERT INTO thread.runs(id,runner_id,draft_id,workspace_id,tenant_id,turn_id,turn_created_at,posture,provider,model,last_metered_at,fencing_token,run_expires_at,status,posted_message_count,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$1,to_timestamp(101),'platform','setup','setup-model',to_timestamp(101),1,to_timestamp(101),$6,0,to_timestamp(101),to_timestamp(101))")
+            sqlx::query("INSERT INTO thread.runs(id,runner_id,draft_id,workspace_id,tenant_id,turn_id,turn_created_at,posture,provider,model,last_metered_at,fencing_token,run_expires_at,status,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$1,to_timestamp(101),'platform','setup','setup-model',to_timestamp(101),1,to_timestamp(101),$6,to_timestamp(101),to_timestamp(101))")
                 .bind(run).bind(&setup.runner).bind(&setup.draft).bind(&setup.workspace).bind(&owner.tenant)
                 .bind(afd_state::sql::RUN_STATUS_REPORTED)
                 .execute(&mut *connection).await.expect("a reported setup run without retained private draft");

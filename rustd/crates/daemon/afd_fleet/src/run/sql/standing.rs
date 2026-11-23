@@ -1,5 +1,4 @@
-//! The statements a run-addressed runner verb proves its run with, and
-//! the per-run message count.
+//! The statements a run-addressed runner verb proves its run with.
 //!
 //! Each names `thread.runs` (`afd_db/schema/1810`).
 
@@ -38,9 +37,8 @@ SELECT fleet_id, workspace_id, turn_id, fence, live_seq, actor\n\
 
 /// [`RUN_READ`] and [`RUN_JUDGED`], unlocked.
 ///
-/// The schedules verbs act on other tables, and the messages verb writes only
-/// `posted_message_count`, through [`COUNT_MESSAGE`], which re-checks the fence
-/// itself, so neither holds a lock across the read.
+/// The schedules verbs act on other tables and the messages verb writes
+/// nothing to the run, so neither holds a lock across the read.
 pub const SELECT_STANDING: &str = const_format::concatcp!(RUN_READ, RUN_JUDGED);
 
 /// [`SELECT_STANDING`], holding the run row shared until the caller's
@@ -51,21 +49,3 @@ pub const SELECT_STANDING: &str = const_format::concatcp!(RUN_READ, RUN_JUDGED);
 /// and the write it guards (`crate::run::write_fence`).
 pub const SELECT_STANDING_SHARED: &str =
     const_format::concatcp!(RUN_READ, "FOR SHARE OF l", RUN_JUDGED);
-
-/// Counts one interim message of a run that still holds its fleet.
-///
-/// Answers the new count; a run a reassignment superseded since its standing
-/// was read touches no row and returns none. The line's marker part is its
-/// call's number, not this count. Nothing caps the count: the channel refuses
-/// what it cannot take.
-///
-/// The fence is in the statement rather than only in the standing read before
-/// it, so a holder superseded between the two cannot be counted, and one
-/// guarded statement means two concurrent posts each count once.
-///
-/// `$1` run, `$2` the presented token, `$3` the active status.
-/// The row is locked in a `MATERIALIZED` step and the deadline read on
-/// `clock_timestamp()` in the next, for the reason [`RUN_READ`] gives: an
-/// `UPDATE` whose own `WHERE` read the clock would judge the run before
-/// waiting on a holder that only locked the row.
-pub const COUNT_MESSAGE: &str = include_str!("count_message.sql");

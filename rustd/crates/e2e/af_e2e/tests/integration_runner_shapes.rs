@@ -17,10 +17,8 @@ use crate::wire::{
 
 /// rows, so the report can rebuild the price without re-resolving the tenant.
 ///
-/// `posted_message_count` is `NOT NULL`, so every run carries it from the
-/// moment it is written, and the messages verb counts against it under the
-/// run's fence. The run names its event by its id (`turn_id`); the
-/// actor and type are read from the event, not copied onto the run.
+/// The run names its event by its id (`turn_id`); the actor and type are
+/// read from the event, not copied onto the run.
 const RUN_SHAPE: &[&str] = &[
     "id",
     "runner_id",
@@ -36,7 +34,6 @@ const RUN_SHAPE: &[&str] = &[
     "fencing_token",
     "run_expires_at",
     "status",
-    "posted_message_count",
     "created_at",
     "updated_at",
     "setup_revision_id",

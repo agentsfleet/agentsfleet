@@ -37,13 +37,12 @@ WITH runner AS (
 INSERT INTO thread.runs
   (id, runner_id, fleet_id, workspace_id, tenant_id, turn_id, turn_created_at,
    posture, provider, model, last_metered_at, fencing_token, run_expires_at,
-   status, posted_message_count,
-   created_at, updated_at)
+   status, created_at, updated_at)
 VALUES
   ($5, $4, $3, $2, $1, $7, now(), 'platform',
-   'anthropic', 'model-a', now(), 2, now(), 'active', 0, now(), now()),
+   'anthropic', 'model-a', now(), 2, now(), 'active', now(), now()),
   ($6, $4, $3, $2, $1, $7, now(), 'platform',
-   'anthropic', 'model-a', now(), 1, now(), 'reported', 0, now(), now())
+   'anthropic', 'model-a', now(), 1, now(), 'reported', now(), now())
 ";
 
 /// Whether a run row still exists.

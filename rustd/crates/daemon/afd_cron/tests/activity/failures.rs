@@ -136,7 +136,14 @@ async fn refused_schedule_changes_leave_history_and_state_unchanged() {
     let token = CronLane::token();
     let denied = lane
         .store
-        .create_guarded(&lane.workspace_id(), new(&fleet), &token, SEED_AT, &NotHeld)
+        .create_guarded(
+            &lane.workspace_id(),
+            &CronLane::token(),
+            new(&fleet),
+            &token,
+            SEED_AT,
+            &NotHeld,
+        )
         .await
         .expect("native guard");
     assert_eq!(denied, Err(Refused::Unheld));
