@@ -52,7 +52,9 @@ pub(super) async fn guarded<D: TenantPlane>(
 
 /// What `link` wakes on, as a stream, so a `select!` can hold it across turns. It opens
 /// with one wake: access was proved before the link opened, so a removal published in
-/// between is asked about here.
+/// between is asked about here. A removal published on another node in the moment
+/// before the link's interest reaches it is the one case this misses; the next gap or
+/// reconnect asks.
 fn notices(link: Link) -> BoxStream<'static, Wake> {
     let following = stream::unfold(link, async |mut link| {
         let wake = link.changed().await;
@@ -84,7 +86,8 @@ fn watched<R: Recheck>(
 async fn step<R: Recheck>(mut guard: Guard<R>) -> Option<Turn<Guard<R>>> {
     loop {
         tokio::select! {
-            frame = guard.frames.next() => return frame.map(|frame| Turn::Frame(frame, guard)),
+            // A pending re-check goes before any frame, the opening one included.
+            biased;
             notice = guard.notices.next() => match notice {
                 Some(Wake::Changed) => match guard.watch.verdict().await {
                     Verdict::Admitted => {}
@@ -100,6 +103,7 @@ async fn step<R: Recheck>(mut guard: Guard<R>) -> Option<Turn<Guard<R>>> {
                     return None;
                 }
             },
+            frame = guard.frames.next() => return frame.map(|frame| Turn::Frame(frame, guard)),
         }
     }
 }

@@ -106,8 +106,9 @@ pub(crate) async fn remove<D: TenantPlane>(
         ))?;
     // After the commit, every open stream in the account re-reads whether its viewer
     // still belongs, so a removed member's live views end. An absent member announces
-    // too: an owner's retry after a lost notice repairs it. Its own task, so a caller
-    // that goes away after the commit does not take the notice with it.
+    // too: an owner's retry repairs a notice lost to a caller that went away before
+    // the removal answered. Its own task, so a caller that goes away once it has
+    // answered does not take the notice with it.
     let bus = services.runner_commands().clone();
     let notice = afd_bus::Subject::Members(owner.tenant().clone());
     tokio::spawn(async move {

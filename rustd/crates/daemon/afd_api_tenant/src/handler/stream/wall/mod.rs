@@ -158,7 +158,8 @@ struct Owed {
     access: bool,
     /// Re-read the workspace's fleet set.
     set: bool,
-    /// The last set read failed: the next wake of any kind reads it again.
+    /// The last set read failed: the next notice or gap reads it again. A frame does
+    /// not, so an outage costs no read per forwarded frame.
     set_retry: bool,
 }
 
@@ -171,8 +172,8 @@ impl Owed {
         set_retry: false,
     };
 
-    /// A wake of any kind settles a failed set read.
-    const fn woke(&mut self) {
+    /// A notice or a gap settles a failed set read.
+    const fn noticed(&mut self) {
         if self.set_retry {
             self.set_retry = false;
             self.set = true;
@@ -238,7 +239,6 @@ async fn step<D: TenantPlane>(mut wall: Wall<D>) -> Option<Turn<Wall<D>>> {
             wake = wall.fleets.changed() => Woke::Fleets(wake),
             () = afd_sse::sleep_until_some(wall.recount.deadline()) => continue,
         };
-        wall.owed.woke();
         match woke {
             Woke::Frame(frame) => {
                 // A gap the server could not carry is exactly the frames that
@@ -255,8 +255,14 @@ async fn step<D: TenantPlane>(mut wall: Wall<D>) -> Option<Turn<Wall<D>>> {
                 tracing::debug!(event = EVENT_BUS_CLOSED);
                 return None;
             }
-            Woke::Members(Wake::Changed) => wall.owed.access = true,
-            Woke::Fleets(Wake::Changed) => wall.owed.set = true,
+            Woke::Members(Wake::Changed) => {
+                wall.owed.noticed();
+                wall.owed.access = true;
+            }
+            Woke::Fleets(Wake::Changed) => {
+                wall.owed.noticed();
+                wall.owed.set = true;
+            }
         }
     }
 }

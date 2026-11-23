@@ -155,7 +155,9 @@ struct Inner<S> {
     /// Jobs dispatched and not yet finished, which [`Lanes::room`] reads.
     /// The deliveries this replica holds, from dispatch until their lane finishes them:
     /// their count is the lanes' load, and the claim loop tells its own claims apart
-    /// from another holder's by them.
+    /// from another holder's by them. A row this replica takes again while its lapsed
+    /// claim's job still runs is one entry; the first to finish clears it, and the
+    /// count is one low until the other does.
     held: dashmap::DashSet<af_core::id::Uuid7>,
 }
 

@@ -155,11 +155,15 @@ impl Renewals {
                 () = stop.cancelled() => return Ok(()),
                 changed = advertised.changed() => {
                     if changed.is_err() { return Ok(()); }
-                    // A new interval re-arms a regular round from the last one sent.
+                    // A new interval re-arms the round from the last one sent: a regular
+                    // round one interval on, a retry one answer bound on or one interval
+                    // when that is shorter.
                     period = *advertised.borrow_and_update();
-                    if !retrying {
-                        due = sent + period;
-                    }
+                    due = sent + if retrying {
+                        period.min(af_core::timing::STREAM_ANSWER_TIMEOUT)
+                    } else {
+                        period
+                    };
                     continue;
                 }
                 changed = sessions.changed() => {

@@ -85,6 +85,9 @@ async fn step(mut watch: Watch) -> Option<(Result<Event, Infallible>, Watch)> {
         }
         let pending = match wait(&mut watch, heartbeat_at).await {
             Waited::Read(pending) => pending,
+            // A lost subscription's retry is due: `recover` reopens it, and a reopen
+            // that succeeds owes the read.
+            Waited::Retry => continue,
             Waited::Heartbeat => return Some((Ok(heartbeat()), watch)),
             // The bus shut down: end, so the client reconnects to a serving replica.
             Waited::Closed => {
@@ -184,6 +187,8 @@ enum Waited {
     Read(Option<afd_bus::Received>),
     /// The heartbeat fell due with nothing to read.
     Heartbeat,
+    /// A lost subscription's retry fell due.
+    Retry,
     /// The bus shut down.
     Closed,
 }
@@ -198,11 +203,11 @@ async fn wait(watch: &mut Watch, heartbeat_at: Instant) -> Waited {
     }
     let retry_at = watch.link.retry_at();
     let Some(subscription) = watch.link.subscription() else {
-        // Lost and retrying: what was published meanwhile is unknown, so the
-        // retry reads again once `recover` reopens it.
+        // Lost and retrying: what was published meanwhile is unknown, so `recover`
+        // reads again once it reopens the subscription.
         return tokio::select! {
             () = tokio::time::sleep_until(heartbeat_at) => Waited::Heartbeat,
-            () = afd_sse::sleep_until_some(retry_at) => Waited::Read(None),
+            () = afd_sse::sleep_until_some(retry_at) => Waited::Retry,
             wake = watch.members.changed() => members(wake),
         };
     };

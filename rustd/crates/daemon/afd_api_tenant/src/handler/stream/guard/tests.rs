@@ -278,3 +278,29 @@ async fn should_forward_a_frame_without_asking() {
     assert_eq!(first.kind, afd_sse::KIND_CATCHING_UP);
     assert_eq!(guarded.asked(), 0);
 }
+
+/// A guard's notices open with one wake of their own, before any notice arrives, so
+/// a removal published between the open-time check and the subscription is asked
+/// about; after it, only a notice wakes them.
+#[tokio::test(start_paused = true)]
+async fn the_notices_open_with_one_wake_of_their_own() {
+    let (bus, server) = afd_bus::test_util::detached().expect("an in-process bus opens");
+    let live = afd_sse::Live::new(bus, afd_sse::StreamLimit::new(1));
+    let subject = afd_bus::Subject::Members(Uuid7::parse(WORKSPACE).expect("a fixture id"));
+    let mut notices = super::notices(live.link(subject.clone()).await);
+    assert_eq!(
+        notices.next().await,
+        Some(Wake::Changed),
+        "the opening wake"
+    );
+    assert!(
+        tokio::time::timeout(AN_HOUR, notices.next()).await.is_err(),
+        "nothing more without a notice"
+    );
+    server.publish(&subject, "");
+    assert_eq!(
+        notices.next().await,
+        Some(Wake::Changed),
+        "a notice wakes them"
+    );
+}
