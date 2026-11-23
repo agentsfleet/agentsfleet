@@ -8,8 +8,8 @@ const CONTEXT = "  Worker environment";
 const REMOVED = "- BROWSER_TIMEOUT=5";
 const ADDED = "+ BROWSER_TIMEOUT=10";
 const PROPOSAL_LABEL = "Proposed change, not applied";
-const DIFF_ADD = "diff-add";
-const DIFF_REMOVE = "diff-remove";
+const DIFF_ADD = "text-success";
+const DIFF_REMOVE = "text-error";
 
 it("distinguishes removed lines, added lines, and unchanged proposal context", () => {
   render(<StoryMessage job={{ ...DEFAULT_JOB, code: [CONTEXT, REMOVED, ADDED] }}

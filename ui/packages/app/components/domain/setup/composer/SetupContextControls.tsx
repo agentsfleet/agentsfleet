@@ -32,7 +32,7 @@ export function SetupContextControls({input, disabled}: {input: RefObject<HTMLTe
         event.currentTarget.value = "";
         if (file) void insertFile(file);
       }} />
-    <Button type="button" variant="ghost" size="icon-row" disabled={disabled} className="fleet-composer-tool"
+    <Button type="button" variant="ghost" size="icon-row" disabled={disabled} className="text-muted-foreground pointer-coarse:size-11 [&>svg]:size-4.5"
       aria-label="Insert a text document into setup" title="Insert an editable text document" onClick={() => filePicker.current?.click()}>
       <PaperclipIcon aria-hidden="true" size={18} />
     </Button>

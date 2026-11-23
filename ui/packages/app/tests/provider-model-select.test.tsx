@@ -54,17 +54,17 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("ProviderModelSelect", () => {
-  it("retains model evidence in a closed disclosure when the compact form requests it", () => {
+  it("opens model evidence in a separate card when the compact form requests it", () => {
     catalogueState.models = [cap("release-model", "openai")];
-    render(<ProviderModelSelect id="compact-model" provider="openai" model="release-model" onModelChange={() => {}} details="disclosure" />);
-    const disclosure = screen.getByRole("button", {name: "Model details"});
-    expect(disclosure.getAttribute("aria-expanded")).toBe("false");
+    render(<ProviderModelSelect id="compact-model" provider="openai" model="release-model" onModelChange={() => {}} details="popover" />);
+    const trigger = screen.getByRole("button", {name: "Model details"});
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByText("Context cap (tokens)")).toBeNull();
-    fireEvent.click(disclosure);
-    expect(disclosure.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(trigger);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByText("Context cap (tokens)")).toBeTruthy();
-    fireEvent.click(disclosure);
-    expect(disclosure.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(screen.getByRole("button", {name: "Close model details"}));
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
   });
   it.each(["gpt-6.1-sol", "gpt-5.6-terra"])("offers all model choices while retaining %s without a visibility switch", (model) => {
     const terra = { ...cap("gpt-5.6-terra", "openai", "GPT-5.6 Terra"), advanced: true };

@@ -11,12 +11,29 @@ export function useMotionEnvironment(ref: RefObject<Element | null>) {
     const media = window.matchMedia(STATIC_QUERY);
     const updateMedia = () => setStaticMode(media.matches);
     const updateHidden = () => setHidden(document.hidden);
-    updateMedia(); updateHidden();
+    updateMedia();
+    updateHidden();
     media.addEventListener("change", updateMedia);
     document.addEventListener("visibilitychange", updateHidden);
-    const observer = new IntersectionObserver(([entry]) => setVisible(Boolean(entry?.isIntersecting)), { threshold: 0.25 });
-    if (ref.current) observer.observe(ref.current);
-    return () => { observer.disconnect(); media.removeEventListener("change", updateMedia); document.removeEventListener("visibilitychange", updateHidden); };
+    const observer =
+      typeof IntersectionObserver === "undefined"
+        ? null
+        : new IntersectionObserver(
+            ([entry]) => setVisible(Boolean(entry?.isIntersecting)),
+            { threshold: 0.25 },
+          );
+    if (observer) observer.observe(ref.current!);
+    return () => {
+      observer?.disconnect();
+      media.removeEventListener("change", updateMedia);
+      document.removeEventListener("visibilitychange", updateHidden);
+    };
   }, [ref]);
-  return { active: visible && !hidden && !staticMode, staticMode };
+  return {
+    active:
+      (visible || typeof IntersectionObserver === "undefined") &&
+      !hidden &&
+      !staticMode,
+    staticMode,
+  };
 }

@@ -12,7 +12,7 @@ afterEach(() => {cleanup(); vi.unstubAllGlobals();});
 it("reads no private state until identity is loaded and authenticated", () => {
   fixture.auth.isLoaded = false;
   const view = render(<WorkspaceChat {...CHAT_PROPS} />, {wrapper: TooltipProvider});
-  expect(screen.getByLabelText("Loading your setup chat")).toBeTruthy();
+  expect(screen.getByLabelText("Loading setup chat")).toBeTruthy();
   fixture.auth.isLoaded = true; fixture.auth.isSignedIn = false;
   view.rerender(<WorkspaceChat {...CHAT_PROPS} />);
   expect(screen.getByRole("alert").textContent).toContain("Sign in again");

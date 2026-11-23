@@ -13,10 +13,10 @@ import {
 const NATIVE_SETUP_SUMMARY = "Describe and review a job in workspace chat. Save creates a fleet.";
 
 export const MARKETING_POSITIONING_SUMMARY =
-  `Open-source runtime for AI agents that wake on production events: they investigate with your logs, metrics, and code, produce an evidence-backed result, and work within configured access. An investigator does not change code; a separately configured repairer can open a draft pull request. Humans review and merge. ${NATIVE_SETUP_SUMMARY} The homepage run uses sample data.`;
+  `Open-source software for running AI agents on your infrastructure or through the hosted service. A fleet checks the logs and code you allow and shows what it found. A separate fleet with write access can draft a fix. Your team reviews and ships it. ${NATIVE_SETUP_SUMMARY} The homepage uses sample data.`;
 
 export const LLMS_FULL_INTRO =
-  `${PRODUCT_NAME} is an open-source runtime for AI agents that wake on events from production and your repositories. Each agent starts on one — an incident, a failed deploy, a pull request — reads only the sources you allow, and returns an evidence-backed result. Runs use the platform’s model or your own model key. Some runs end with diagnosis. The incident responder reads Grafana Loki and GitHub and can report to configured Slack and Jira destinations. A separately configured repairer needs an approved write grant to open a draft pull request. It never merges or deploys. ${NATIVE_SETUP_SUMMARY} The homepage conversation is an illustrative example using sample data; it does not connect tools or start real work.`;
+  `${PRODUCT_NAME} runs AI agents on a message, a schedule, or an event. Choose the hosted model or use your own model key. ${NATIVE_SETUP_SUMMARY} In the homepage example, Leah reports a frozen chat in Slack. Scout checks Grafana and finds slow replies and dropped connections. A repair fleet with write access opens a draft pull request. Leah reviews and deploys it. Scout checks reply times again, and Mira shares the result in Slack. The demo uses sample data.`;
 
 export type LlmsTextInputs = {
   docsUrl: string;
@@ -36,7 +36,7 @@ export function buildLlmsIndexText({
     `> ${MARKETING_POSITIONING_SUMMARY}`,
     "",
     "## Product",
-    `- [The fleet](${root}/#${LOOP_ANCHOR_ID}): configure a specialist job; explore an illustrative incident run`,
+    `- [The fleet](${root}/#${LOOP_ANCHOR_ID}): follow a Slack ticket from a frozen chat to faster replies`,
     `- [Getting started and pricing](${root}/#pricing): ${PRICING_COPY.status}. ${PRICING_COPY.note}`,
     "",
     "## Resources",
@@ -70,9 +70,7 @@ export function buildLlmsFullText(inputs: LlmsTextInputs): string {
     ...sourceLines,
     "",
     "## Pricing",
-    PRICING_COPY.status,
     PRICING_COPY.runtime,
-    PRICING_COPY.models,
     PRICING_COPY.note,
     "",
     "## Links",

@@ -1,12 +1,10 @@
 import { test, expect, type Page } from "@playwright/test";
-import { HERO_HEADLINE } from "../../src/lib/marketing-copy";
 
 const WAITLIST = "https://accounts.agentsfleet.net/waitlist";
 
 type InternalLinkCase = {
   label: RegExp;
   href: string;
-  heading?: string;
 };
 
 async function assertFooterLinks(page: Page) {
@@ -15,11 +13,11 @@ async function assertFooterLinks(page: Page) {
 
   const dashboardHref = await page.getByTestId("header-install-cta").getAttribute("href");
   expect(dashboardHref).toMatch(/^https?:\/\//);
-  await expect(footer.getByRole("link", { name: "join waitlist", exact: true })).toHaveAttribute("href", dashboardHref!);
+  await expect(footer.getByRole("link", { name: "Join waitlist", exact: true })).toHaveAttribute("href", dashboardHref!);
   await expect(footer.getByRole("link", { name: /^early access$/i })).toHaveCount(0);
 
   const internalFooterLinks: InternalLinkCase[] = [
-    { label: /^Use cases$/i, href: "/#how-it-works" },
+    { label: /^Examples$/i, href: "/examples" },
     { label: /^Agents$/i, href: "/agents" },
     { label: /^privacy$/i, href: "/privacy" },
     { label: /^terms$/i, href: "/terms" },
@@ -38,36 +36,21 @@ async function assertFooterLinks(page: Page) {
 test.describe("Cross-page link coverage", () => {
   test("Home page exposes expected internal and external links", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByRole("heading", { level: 1 })).toContainText(HERO_HEADLINE);
-
-    const nav = page.getByRole("navigation", { name: /primary/i });
-    await nav.getByRole("link", { name: /^Product$/i }).click();
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Find out why. Check the fix.");
+    const nav = page.getByRole("navigation", { name: "Primary" });
+    await nav.getByRole("link", { name: "Product" }).click();
     await expect(page).toHaveURL(/\/#how-it-works$/);
-    await page.goto("/");
-    await expect(page).toHaveURL(/\/$/);
-
-    await expect(nav.getByRole("link", { name: /^docs$/i })).toHaveAttribute(
-      "href",
-      "https://docs.agentsfleet.net",
-    );
-
-    await expect(page.getByRole("button", { name: /copy the install command/i })).toHaveCount(0);
-    await expect(page.getByTestId("hero").getByRole("link", { name: /Join waitlist/ })).toBeVisible();
-
-    const earlyAccess = nav.getByRole("link", { name: /^Early access$/i });
-    await expect(earlyAccess).toHaveAttribute("href", WAITLIST);
-    await expect(earlyAccess).toHaveAttribute("target", "_blank");
-    await expect(page.getByTestId("audience-section").getByRole("link", { name: "Hosted waitlist ↗", exact: true })).toHaveAttribute("href", WAITLIST);
-    await page.goto("/#pricing");
-    await expect(page.getByTestId("pricing-block")).toBeVisible();
-
-    await expect(
-      page.getByTestId("hero").getByRole("link", { name: /talk to us/i }),
-    ).toHaveCount(0);
-    await expect(page.getByTestId("pricing-cta-early-access")).toHaveText(/Join waitlist/i);
+    await expect(page.getByRole("heading", { name: /work in a private network/ })).toBeInViewport();
+    await expect(nav.getByRole("link", { name: "Docs" })).toHaveAttribute("href", "https://docs.agentsfleet.net");
+    const heroLinks = page.getByRole("region", { name: /Find out why\. Check the fix\./ }).getByRole("link");
+    await expect(heroLinks).toHaveText(["Join waitlist", "View on GitHub"]);
+    await expect(heroLinks.first()).toHaveAttribute("href", WAITLIST);
+    await expect(heroLinks.last()).toHaveAttribute("href", "https://github.com/agentsfleet/agentsfleet");
+    await expect(page.getByTestId("header-install-cta")).toHaveAttribute("href", WAITLIST);
     await expect(page.getByTestId("pricing-cta-early-access")).toHaveAttribute("href", WAITLIST);
-
-    await assertFooterLinks(page);
+    const footer = page.getByRole("contentinfo");
+    await footer.getByRole("link", { name: "Examples" }).click();
+    await expect(page.getByRole("textbox", { name: "What should your fleet handle?" })).toBeVisible();
   });
 
   test("Fleets page exposes expected machine and install links", async ({ page }) => {

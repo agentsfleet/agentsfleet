@@ -89,6 +89,7 @@ test.describe("Accessibility", () => {
   test("gallery content has zero axe violations", async ({ page }) => {
     // Scope to the gallery content — site shell (header/footer) heading order
     // is not part of the design-system contract, audited in its own spec.
+    await expect(page.getByRole("heading", { name: "Design System Gallery" })).toBeVisible();
     const results = await new AxeBuilder({ page })
       .include("main")
       .disableRules(["color-contrast"]) // brand palette; audited separately

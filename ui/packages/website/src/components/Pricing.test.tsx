@@ -16,11 +16,11 @@ describe("Getting started and pricing", () => {
     analytics.trackSignupStarted.mockReset();
   });
 
-  it("states the approved starting price, included credit, and own-key billing", () => {
+  it("states the approved starting price and own-key billing", () => {
     render(<Pricing />);
     const section = screen.getByTestId("pricing-block");
-    expect(screen.getByTestId("pricing-early-access-banner")).toHaveTextContent("$0 to start · $25 credit included");
-    expect(section).toHaveTextContent("Run your first jobs with $25 in included credit.");
+    expect(screen.getByTestId("pricing-early-access-banner")).toHaveTextContent("$0 to start");
+    expect(section).not.toHaveTextContent(/included credit|credit included|\$25/i);
     expect(section).toHaveTextContent("If you bring your own key, usage is billed by your provider directly.");
     expect(section).not.toHaveTextContent(/early access|model credit|unlimited|zero markup|save \d/i);
     expect(within(section).queryByRole("link", { name: /buy|purchase|subscribe|upgrade/i })).toBeNull();

@@ -127,14 +127,14 @@ it("dismisses an editing model form with Escape and refuses an empty native form
 
 it("requires both identity and saved-key readiness before rendering credential inputs", async () => {
   const fixture = await renderDialog([], SECRETS_LOAD.loading);
-  expect(screen.getByText("Loading model credentials…")).toBeTruthy();
+  expect(screen.getByText("Checking saved keys…")).toBeTruthy();
   expect(screen.queryByLabelText(/^api key$/i)).toBeNull();
   fixture.rerender({secretsLoad: SECRETS_LOAD.error});
   await fixture.user.click(screen.getByRole("button", {name: "Try again"}));
   expect(fixture.onSecretsNeeded).toHaveBeenCalledTimes(2);
   modelIdentity.isLoaded = false;
   fixture.rerender({secretsLoad: SECRETS_LOAD.ready});
-  expect(screen.getByText("Loading model credentials…")).toBeTruthy();
+  expect(screen.getByText("Checking saved keys…")).toBeTruthy();
   modelIdentity.isLoaded = true;
   fixture.rerender({secretsLoad: SECRETS_LOAD.ready});
   expect(screen.getByLabelText(/^api key$/i)).toBeTruthy();

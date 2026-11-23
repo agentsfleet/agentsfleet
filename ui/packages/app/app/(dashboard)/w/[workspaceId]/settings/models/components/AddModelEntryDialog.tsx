@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@agentsfleet/design-system";
+import { Alert, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, Skeleton, Spinner } from "@agentsfleet/design-system";
 import { ArrowUpRightIcon, PlusIcon } from "@phosphor-icons/react/ssr";
 import type { Secret } from "@/lib/api/secrets";
 import { useCurrentUser } from "@/lib/auth/client";
@@ -55,10 +55,22 @@ export default function AddModelEntryDialog({workspaceId, secrets, secretsLoad, 
         </DialogHeader>
         {secretsLoad === SECRETS_LOAD.error ? <Alert variant="destructive">
           <span>Couldn’t load saved keys.</span><Button type="button" variant="link" onClick={onSecretsNeeded}>Try again</Button>
-        </Alert> : secretsLoad !== SECRETS_LOAD.ready || !identity.isLoaded ? <output className="text-label text-muted-foreground">Loading model credentials…</output> :
+        </Alert> : secretsLoad !== SECRETS_LOAD.ready || !identity.isLoaded ? <ModelFormLoading /> :
           <CreateModelForm key={`${workspaceId}:${identity.userId}`} workspaceId={workspaceId} secrets={secrets}
             onCreated={onCreated} onSecretsChanged={onSecretsChanged} onCancel={() => changeOpen(false)} onComplete={complete} onPendingChange={onPendingChange} />}
       </DialogContent>
     </Dialog>
   );
+}
+
+function ModelFormLoading() {
+  return <div className="space-y-xl">
+    <div aria-hidden="true" className="grid gap-xl summary:grid-cols-2">
+      {["Provider", "Model"].map(label => <div key={label} className="space-y-md">
+        <span className="block text-label font-medium">{label}</span>
+        <Skeleton className="h-11 rounded-control" />
+      </div>)}
+    </div>
+    <Spinner size="sm" label="Checking saved keys…" />
+  </div>;
 }

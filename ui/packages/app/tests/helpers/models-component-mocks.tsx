@@ -67,8 +67,8 @@ export async function designSystemStub() {
         onChange: (event: React.ChangeEvent<HTMLInputElement>) => onCheckedChange(event.target.checked) }),
     Label: ({ children, htmlFor }: React.PropsWithChildren<{ htmlFor?: string }>) =>
       React.createElement("label", { htmlFor }, children),
-    Spinner: ({ srLabel }: { srLabel?: string }) =>
-      React.createElement("span", { "data-spinner": "1" }, srLabel),
+    Spinner: ({ label, srLabel }: { label?: React.ReactNode; srLabel?: string }) =>
+      React.createElement("span", { "data-spinner": "1" }, label ?? srLabel),
     Alert: ({
       children,
       variant: _variant,

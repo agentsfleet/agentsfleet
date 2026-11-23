@@ -1,27 +1,132 @@
-import { DisplayLG, Section } from "@agentsfleet/design-system";
-import { PUBLIC_ACCESS_URL, DOCS_URL, GITHUB_URL, SELF_HOSTED_URL } from "../config";
-import { trackNavigationClicked, trackSignupStarted } from "../analytics/posthog";
+import { DisplayLG, cn } from "@agentsfleet/design-system";
+import {
+  PUBLIC_ACCESS_URL,
+  DOCS_URL,
+  GITHUB_URL,
+  SELF_HOSTED_URL,
+} from "../config";
+import {
+  trackNavigationClicked,
+  trackSignupStarted,
+} from "../analytics/posthog";
+import { SECTION_SPACING, SITE_CONTAINER, TEXT_LINK } from "./site-classes";
 
-const SOURCE_SURFACE = "source_strip";
-const EXTERNAL_TARGET = "_blank";
-const EXTERNAL_REL = "noopener noreferrer";
+const benefits = [
+  [
+    "Keep the useful context.",
+    "Workflows with memory tools can save findings for later runs. The Slack assistant uses its channel’s context.",
+  ],
+  [
+    "Separate reads from writes.",
+    "Reading logs, posting a Slack report, and changing code require different access. Choose resources and permissions for the job you enable.",
+  ],
+  [
+    "Inspect the work and the cost.",
+    "Review run history and configure fleet budgets. An active run can cross a limit before its next budget check.",
+  ],
+];
+
+const SOURCE_LINK = cn(
+  TEXT_LINK,
+  "inline-flex min-h-11 items-center text-pulse",
+);
 
 export function AudienceSection() {
   return (
-    <Section asChild><section className="continuity-section" aria-label="Recurring work and controls" data-testid="audience-section">
-      <div className="wrap continuity-layout">
-        <div><DisplayLG>A job to come back to.<br />Context to build on.</DisplayLG><p className="continuity-lede">Configure a supported schedule, repository event, or Slack mention. Each trigger starts a new run with the job’s defined tools and access.</p><a href={DOCS_URL} className="text-pulse"
-          onClick={() => trackNavigationClicked({ source: "continuity_docs", surface: "continuity", target: "docs" })}>Read the product docs ↗</a></div>
-        <div className="continuity-details">
-          <div><span>01</span><div><h3>Keep the useful context.</h3><p>Workflows with memory tools can save findings for later runs. The Slack assistant uses its channel’s context. This is saved information, not a promise of automatic learning.</p></div></div>
-          <div><span>02</span><div><h3>Separate reads from writes.</h3><p>Reading logs, posting a Slack report, and changing code require different access. Choose resources and permissions for the job you enable.</p></div></div>
-          <div><span>03</span><div><h3>Inspect the work and the cost.</h3><p>Review run history and configure fleet budgets. An active run can cross a limit before its next budget check.</p></div></div>
+    <section
+      className={cn(SECTION_SPACING, "border-y border-border bg-card")}
+      aria-label="Recurring work and controls"
+      data-testid="audience-section"
+    >
+      <div
+        className={cn(SITE_CONTAINER, "grid gap-2xl lg:grid-cols-2 lg:gap-4xl")}
+      >
+        <div className="grid content-start gap-xl">
+          <DisplayLG className="font-bold text-balance">
+            A job to come back to.
+            <br />
+            Context to build on.
+          </DisplayLG>
+          <p className="max-w-narrow text-body-lg leading-body-lg text-text-muted">
+            Configure a supported schedule, repository event, or Slack mention.
+            Each trigger starts a new run with the job’s defined tools and
+            access.
+          </p>
+          <a
+            href={DOCS_URL}
+            className={cn(SOURCE_LINK, "w-fit")}
+            onClick={() =>
+              trackNavigationClicked({
+                source: "continuity_docs",
+                surface: "continuity",
+                target: "docs",
+              })
+            }
+          >
+            Read the product docs ↗
+          </a>
         </div>
+        <ul className="divide-y divide-border border-y border-border">
+          {benefits.map(([title, description]) => (
+            <li key={title} className="grid gap-sm py-lg">
+              <h3 className="font-bold">{title}</h3>
+              <p className="text-text-muted">{description}</p>
+            </li>
+          ))}
+        </ul>
       </div>
-      <div className="wrap source-strip"><span>Built in the open. Inspect the runtime.</span><a href={GITHUB_URL} target={EXTERNAL_TARGET} rel={EXTERNAL_REL}
-        onClick={() => trackNavigationClicked({ source: "source_github", surface: SOURCE_SURFACE, target: "github" })}>GitHub ↗</a><span><a href={PUBLIC_ACCESS_URL} target={EXTERNAL_TARGET} rel={EXTERNAL_REL}
-        onClick={() => trackSignupStarted({ source: "source_early_access", surface: SOURCE_SURFACE, mode: "humans" })}>Hosted waitlist ↗</a> · <a href={SELF_HOSTED_URL} target={EXTERNAL_TARGET} rel={EXTERNAL_REL}
-        onClick={() => trackNavigationClicked({ source: "source_self_hosted", surface: SOURCE_SURFACE, target: "self_hosted" })}>Self hosting in your infrastructure ↗</a></span></div>
-    </section></Section>
+      <div
+        className={cn(
+          SITE_CONTAINER,
+          "mt-2xl flex flex-wrap items-center gap-x-2xl text-body-sm",
+        )}
+      >
+        <a
+          href={GITHUB_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={SOURCE_LINK}
+          onClick={() =>
+            trackNavigationClicked({
+              source: "source_github",
+              surface: "source_strip",
+              target: "github",
+            })
+          }
+        >
+          GitHub ↗
+        </a>
+        <a
+          href={PUBLIC_ACCESS_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={SOURCE_LINK}
+          onClick={() =>
+            trackSignupStarted({
+              source: "source_early_access",
+              surface: "source_strip",
+              mode: "humans",
+            })
+          }
+        >
+          Join waitlist ↗
+        </a>
+        <a
+          href={SELF_HOSTED_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={SOURCE_LINK}
+          onClick={() =>
+            trackNavigationClicked({
+              source: "source_self_hosted",
+              surface: "source_strip",
+              target: "self_hosted",
+            })
+          }
+        >
+          Self hosting in your infrastructure ↗
+        </a>
+      </div>
+    </section>
   );
 }

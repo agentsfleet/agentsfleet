@@ -1,10 +1,10 @@
 import type { ReactNode } from "react";
-import { BrandMark, DisplayXL, Section } from "@agentsfleet/design-system";
+import { BrandMark, DisplayXL, cn } from "@agentsfleet/design-system";
 import { HERO_HEADLINE, PRICING_COPY } from "../lib/marketing-copy";
 import type { ExampleJob } from "../lib/example-jobs";
 import { JobComposer } from "./JobComposer";
-import { SignalField } from "./SignalField";
 import { CliQuickstart } from "./CliQuickstart";
+import { SITE_CONTAINER } from "./site-classes";
 
 type HeroProps = {
   request: string;
@@ -16,24 +16,48 @@ type HeroProps = {
 
 export default function Hero({ children, ...props }: HeroProps) {
   return (
-    <Section asChild>
-      <section className="entrance-hero" aria-label="Your engineering job" data-testid="hero" data-example={Boolean(children)}>
-        <SignalField />
-        <div className="wrap entrance-content">
-          <div className="job-entrance">
-            <div className="hero-heading">
-              <BrandMark className="entrance-mark" />
-              <DisplayXL data-testid="hero-headline">{HERO_HEADLINE}</DisplayXL>
-              <p className="hero-description">Describe a job. Build an agent to handle it.</p>
-              <p className="hero-credit ph-no-capture">{PRICING_COPY.status}</p>
-            </div>
-            {children}
-            {!children && <JobComposer {...props} />}
-            <CliQuickstart />
+    <section
+      className="bg-radial-[at_50%_0%] from-pulse/10 via-background to-background py-3xl sm:py-4xl"
+      aria-label="Your engineering job"
+      data-testid="hero"
+    >
+      <div className={SITE_CONTAINER}>
+        <div className="mx-auto max-w-measure">
+          <div
+            className={cn(
+              "grid justify-items-center gap-lg text-center",
+              children ? "pb-2xl" : "pb-3xl",
+            )}
+          >
+            {!children && <BrandMark className="size-10 text-pulse" />}
+            <DisplayXL
+              data-testid="hero-headline"
+              className={cn(
+                "font-bold text-balance",
+                children ? "text-heading" : "text-fluid-display-lg",
+              )}
+            >
+              {HERO_HEADLINE}
+            </DisplayXL>
+            {!children && (
+              <p className="text-body-lg leading-body-lg text-text-muted">
+                Describe a job. Build an agent to handle it.
+              </p>
+            )}
+            {!children && (
+              <p className="text-body-sm text-pulse ph-no-capture">
+                {PRICING_COPY.status}
+              </p>
+            )}
           </div>
-          <p className="entrance-note">Your fleet is an agent with a job, the tools it needs, and the access you choose.</p>
+          {children || <JobComposer {...props} />}
+          <CliQuickstart />
+          <p className="mt-xl text-center text-label text-text-muted">
+            Your fleet is an agent with a job, the tools it needs, and the
+            access you choose.
+          </p>
         </div>
-      </section>
-    </Section>
+      </div>
+    </section>
   );
 }

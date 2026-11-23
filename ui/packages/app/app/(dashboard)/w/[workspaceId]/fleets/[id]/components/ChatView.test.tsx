@@ -1,7 +1,8 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { TooltipProvider } from "@agentsfleet/design-system";
+import { WorkApprovals } from "@/components/domain/conversation/summary/WorkContextSections";
 import { type TurnDetail, type LiveFrame } from "@/lib/api/turns";
 import { FRAME_KIND } from "@/lib/api/turns-types";
 import type { FleetRunSummary } from "@/lib/turns/run-summary";
@@ -142,9 +143,9 @@ afterEach(() => {
 });
 
 describe("useFleetRunSummary — facts from the shared stream", () => {
-  it("the strip shows the new run figures when the completion frame arrives, with no read", async () => {
+  it("reads the new run figures when the completion frame arrives, with no read", async () => {
     render(view(summary()));
-    expect(screen.getByText("1,500")).toBeTruthy();
+    expect(screen.getByText("1500")).toBeTruthy();
 
     emit({
       kind: FRAME_KIND.TURN_RECEIVED,
@@ -155,8 +156,8 @@ describe("useFleetRunSummary — facts from the shared stream", () => {
     });
     emit(completion({ pending_approvals: 1 }));
 
-    expect(await screen.findByText("1,200")).toBeTruthy();
-    expect(screen.getByRole("link", { name: /1 approval waiting/i })).toBeTruthy();
+    expect(await screen.findByText("1200")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Open fleet with 1 pending approval" })).toBeTruthy();
     // Same status as the server rendered: the server tree is left alone.
     expect(refreshMock).not.toHaveBeenCalled();
     // One connection, and nothing else on the wire — no Server Action, no fetch.
@@ -182,8 +183,8 @@ describe("useFleetRunSummary — facts from the shared stream", () => {
     expect(screen.queryByRole("link", { name: /approval/i })).toBeNull();
 
     emit({ kind: FRAME_KIND.GATE_OPENED, gate_id: "g1", turn_id: "evt_seed", pending_approvals: 2 });
-    expect(await screen.findByRole("link", { name: /2 approvals waiting/i })).toBeTruthy();
-    expect(screen.getByText("1,500")).toBeTruthy();
+    expect(await screen.findByRole("link", { name: "Open fleet with 2 pending approvals" })).toBeTruthy();
+    expect(screen.getByText("1500")).toBeTruthy();
 
     emit({
       kind: FRAME_KIND.GATE_RESOLVED,
@@ -220,7 +221,7 @@ describe("useFleetRunSummary — facts from the shared stream", () => {
     const { rerender } = render(view(summary()));
     emit({ kind: FRAME_KIND.TURN_RECEIVED, turn_id: "evt_live", actor: "cron:*" });
     emit(completion());
-    expect(await screen.findByText("1,200")).toBeTruthy();
+    expect(await screen.findByText("1200")).toBeTruthy();
 
     // Fleet actions refreshed the page: the server says archived, and the
     // figures it rendered are newer than the frame's.
@@ -231,22 +232,21 @@ describe("useFleetRunSummary — facts from the shared stream", () => {
     expect(refreshMock).not.toHaveBeenCalled();
   });
 
-  it("a thread read that failed leaves the strip unavailable until the stream delivers a row", async () => {
-    render(view(summary({ latest: null, latestAvailable: false }), []));
+  it("clears the unavailable notice when the stream delivers a row", async () => {
+    render(view(summary({ latest: null, latestAvailable: false }), [], ChatView));
     expect(screen.getByText(METRICS_UNAVAILABLE)).toBeTruthy();
 
     emit({ kind: FRAME_KIND.TURN_RECEIVED, turn_id: "evt_live", actor: "cron:*" });
     emit(completion());
-    expect(await screen.findByText("1,200")).toBeTruthy();
-    expect(screen.queryByText(METRICS_UNAVAILABLE)).toBeNull();
+    await waitFor(() => expect(screen.queryByText(METRICS_UNAVAILABLE)).toBeNull());
   });
 
-  it("a reconnect backfill's terminal row moves the strip like a frame would", async () => {
+  it("reconciles the latest run on a reconnect backfill", async () => {
     render(view(summary()));
     act(() => {
       reconcileServerRows(FLEET_ID, [turn({ turn_id: "evt_missed", tokens: COMPLETED_TOKENS, created_at: new Date(SEED_AT + 1).toISOString() })]);
     });
-    expect(await screen.findByText("1,200")).toBeTruthy();
+    expect(await screen.findByText("1200")).toBeTruthy();
   });
 
   it("an operator's message still in flight is not the fleet's latest run", async () => {
@@ -258,14 +258,19 @@ describe("useFleetRunSummary — facts from the shared stream", () => {
       appendOptimistic(FLEET_ID, "deploy it", "steer:me");
     });
     await act(async () => {});
-    expect(screen.getByText("1,500")).toBeTruthy();
+    expect(screen.getByText("1500")).toBeTruthy();
   });
 });
 
 function SummaryProbe(props: Parameters<typeof ChatView>[0]) {
   const result = useFleetRunSummary(props.workspaceId, props.fleetId, props.initial, props.initialSummary);
-  return <FleetStatusLine status={result.status} latest={result.latest} pendingApprovals={result.pendingApprovals}
-    approvalsHref={props.approvalsHref} summaryAvailable={result.latestAvailable} />;
+  return <>
+    {result.latestAvailable ? <>
+      <span>{result.status === STATUS_ARCHIVED ? "Archived" : result.status}</span>
+      <span>{result.latest?.tokens}</span>
+    </> : <FleetStatusLine status={result.status} />}
+    <WorkApprovals approvals={{count: result.pendingApprovals, href: props.approvalsHref}} />
+  </>;
 }
 
 it("keeps ordinary chat free of the metrics strip and reveals approvals when attention is needed", () => {

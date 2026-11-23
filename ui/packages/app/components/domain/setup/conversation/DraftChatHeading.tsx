@@ -48,7 +48,7 @@ function HeadingContent({client, view, workspace, fleetPage, returnToFleet, menu
         <Button type="button" variant="ghost" size="sm" disabled={locked} onClick={() => setTitle(null)}>Cancel</Button>
       </form>
     </> : <div className="flex min-w-0 flex-1 items-center gap-lg">
-      <Icon data-app-header-icon="" size={16} className="hidden shrink-0 text-muted-foreground sm:block" aria-hidden="true" />
+      <Icon data-app-header-icon="" size={16} className="hidden shrink-0 text-muted-foreground summary:block" aria-hidden="true" />
       <PageTitle as={Title} data-app-header-title="" size="chat" className="truncate font-semibold">{label}</PageTitle>
       {editing || view.preview && !fleetPage && !view.savedSetupRevision ? <span className="inline-flex shrink-0 items-center gap-sm text-eyebrow text-muted-foreground"><span aria-hidden="true" className="size-1.5 rounded-full bg-current" />Draft</span> : null}
       {draft && editing && !view.fleet ? <DropdownMenu><DropdownMenuTrigger asChild>

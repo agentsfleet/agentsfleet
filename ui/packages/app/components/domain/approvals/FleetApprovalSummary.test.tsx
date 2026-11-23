@@ -16,19 +16,20 @@ const page = (items: Array<typeof GATE & {detail?: string; evidence?: Record<str
 beforeEach(() => {vi.clearAllMocks(); mocks.list.mockReset(); mocks.deny.mockReset(); mocks.approve.mockReset(); mocks.answer.mockReset(); mocks.list.mockResolvedValue(page());});
 afterEach(cleanup);
 
-it("reads only this fleet's pending gate and exposes decisions without page navigation", async () => {
+it("shows only Approve for this fleet's pending action", async () => {
+  mocks.list.mockResolvedValue(page([{...GATE, evidence: {}}]));
   render(<FleetApprovalSummary {...PROPS} />);
   expect(await screen.findByText(GATE.proposed_action)).toBeTruthy();
   expect(mocks.list).toHaveBeenCalledWith("workspace", {fleetId: "fleet", status: "pending", limit: 1});
   expect(screen.queryByRole("link")).toBeNull();
   expect(screen.getByText(GATE.blast_radius)).toBeTruthy();
-  expect(screen.getByRole("button", {name: "Approve"})).toBeTruthy();
+  expect(screen.getAllByRole("button").map(button => button.textContent)).toEqual(["Approve"]);
 });
 
 it("denies directly, blocks repeat submissions, then shows the confirmed outcome in place", async () => {
   const decision = Promise.withResolvers<ActionResult<ResolveOutcome>>();
   mocks.deny.mockReturnValue(decision.promise);
-  render(<FleetApprovalSummary {...PROPS} />);
+  render(<FleetApprovalSummary {...PROPS} inSetup />);
   const deny = await screen.findByRole("button", {name: "Deny"});
   fireEvent.click(deny); fireEvent.click(deny);
   expect(screen.queryByRole("alertdialog")).toBeNull();
@@ -41,14 +42,14 @@ it("denies directly, blocks repeat submissions, then shows the confirmed outcome
   expect(screen.getByRole("region", {name: "Approval decision"})).toBeTruthy();
   expect(screen.queryByRole("region", {name: "Needs your approval"})).toBeNull();
   expect(screen.queryByText("1", {selector: "h2 span"})).toBeNull();
-  expect(screen.queryByRole("button", {name: "Deny"})).toBeNull();
+  expect(screen.queryByRole("button", {name: "Approve"})).toBeNull();
   expect(screen.getByTitle("reviewer")).toBeTruthy();
   expect(screen.queryByRole("link")).toBeNull();
 });
 
 it("shows a competing approval without reporting that Deny succeeded", async () => {
   mocks.deny.mockResolvedValue({ok: true, data: {kind: "already_resolved", data: {gate_id: "gate-one", action_id: "publish", outcome: "approved", resolved_at: "2026-11-12T10:00:00Z", resolved_by: "reviewer", error_code: "UZ-APPROVAL-006", detail: "Decided elsewhere"}}});
-  render(<FleetApprovalSummary {...PROPS} />);
+  render(<FleetApprovalSummary {...PROPS} inSetup />);
   fireEvent.click(await screen.findByRole("button", {name: "Deny"}));
   expect(await screen.findByText(/Request approved/)).toBeTruthy();
   expect(screen.getByRole("region", {name: "Approval decision"})).toBeTruthy();
@@ -56,9 +57,9 @@ it("shows a competing approval without reporting that Deny succeeded", async () 
 });
 
 it("retains an uncertain decision error and permits status review", async () => {
-  mocks.deny.mockRejectedValue(new Error("offline"));
+  mocks.approve.mockRejectedValue(new Error("offline"));
   render(<FleetApprovalSummary {...PROPS} />);
-  fireEvent.click(await screen.findByRole("button", {name: "Deny"}));
+  fireEvent.click(await screen.findByRole("button", {name: "Approve"}));
   expect(await screen.findAllByText(/decision could not be confirmed/)).not.toHaveLength(0);
   expect(mocks.refresh).not.toHaveBeenCalled();
 });
@@ -69,7 +70,7 @@ it.each([
   mocks.list.mockResolvedValue({ok: true, data: {items: [gate], next_cursor: null}});
   render(<FleetApprovalSummary {...PROPS} />);
   expect(await screen.findByText("Request details unavailable.")).toBeTruthy();
-  expect(screen.queryByRole("button", {name: "Deny"})).toBeNull();
+  expect(screen.queryByRole("button", {name: "Approve"})).toBeNull();
 });
 
 it("keeps failed reads distinct from an empty inbox and retries explicitly", async () => {
@@ -87,7 +88,7 @@ it("clears actions on authorization refusal and ignores a superseded read", asyn
   view.rerender(<FleetApprovalSummary {...PROPS} revision={2} />);
   expect(await screen.findByText("Request details unavailable.")).toBeTruthy();
   await act(async () => old.reject(new Error("late response")));
-  expect(screen.queryByRole("button", {name: "Deny"})).toBeNull();
+  expect(screen.queryByRole("button", {name: "Approve"})).toBeNull();
   await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(2));
 });
 
@@ -100,9 +101,9 @@ it("uses the recorded tool action when a proposed title and blast radius are abs
 
 
 it.each([{}, {kind: "resolved", data: {gate_id: "wrong-gate", outcome: "denied"}}, {kind: "already_resolved", data: {outcome: "pending"}}])("does not confirm a malformed or unrelated decision %#", async data => {
-  mocks.deny.mockResolvedValue({ok: true, data});
+  mocks.approve.mockResolvedValue({ok: true, data});
   render(<FleetApprovalSummary {...PROPS} />);
-  fireEvent.click(await screen.findByRole("button", {name: "Deny"}));
+  fireEvent.click(await screen.findByRole("button", {name: "Approve"}));
   expect(await screen.findAllByText(/decision could not be confirmed/)).not.toHaveLength(0);
   expect(screen.getByRole("button", {name: "Check status"})).toBeTruthy();
   expect(mocks.capture).not.toHaveBeenCalled();
@@ -131,7 +132,7 @@ it("discovers the first gate even when the rendered pending count was zero", asy
   expect(screen.queryByRole("region", {name: "Needs your approval"})).toBeNull();
   view.rerender(<FleetApprovalSummary {...PROPS} count={0} revision={2} />);
   expect(await screen.findByText(GATE.proposed_action)).toBeTruthy();
-  expect(screen.getByRole("button", {name: "Deny"})).toBeTruthy();
+  expect(screen.getByRole("button", {name: "Approve"})).toBeTruthy();
 });
 
 it("keeps an unavailable inbox distinct from confirmed zero pending approvals", async () => {
@@ -139,7 +140,7 @@ it("keeps an unavailable inbox distinct from confirmed zero pending approvals", 
   render(<FleetApprovalSummary {...PROPS} count={0} />);
   expect(await screen.findByRole("region", {name: "Approvals"})).toBeTruthy();
   expect(screen.getByRole("button", {name: "Try again"})).toBeTruthy();
-  expect(screen.queryByRole("button", {name: "Deny"})).toBeNull();
+  expect(screen.queryByRole("button", {name: "Approve"})).toBeNull();
 });
 
 it("refreshes approval details when the pending count changes without a stream hint", async () => {
@@ -147,7 +148,7 @@ it("refreshes approval details when the pending count changes without a stream h
   const scope = {...PROPS, subject: "account"};
   const view = render(<WorkApprovals scope={scope} approvals={{count: 0, href: PROPS.href}} />);
   await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(1));
-  expect(screen.queryByRole("button", {name: "Deny"})).toBeNull();
+  expect(screen.queryByRole("button", {name: "Approve"})).toBeNull();
   view.rerender(<WorkApprovals scope={scope} approvals={{count: 1, href: PROPS.href}} />);
   expect(await screen.findByText(GATE.proposed_action)).toBeTruthy();
   expect(mocks.list).toHaveBeenCalledTimes(2);
@@ -175,10 +176,10 @@ it("approves the exact request directly and reads the next pending request on de
   expect(screen.getByRole("button", {name: "Approve"})).toBeTruthy();
 });
 
-it("keeps evidence and a reason in the conversation and retains authorization errors", async () => {
+it("keeps evidence and a reason in Setup and retains authorization errors", async () => {
   mocks.list.mockResolvedValue(page([{...GATE, detail: "Only the release tag", evidence: {image: "runner:release"}, expires_at: "2026-11-12T12:00:00Z"}]));
   mocks.approve.mockResolvedValue({ok: false, status: 403, error: "Not permitted", errorCode: "UZ-AUTH-022"});
-  render(<FleetApprovalSummary {...PROPS} />);
+  render(<FleetApprovalSummary {...PROPS} inSetup />);
   await screen.findByText(GATE.proposed_action);
   fireEvent.click(screen.getByRole("button", {name: "View exact action"}));
   expect(screen.getByRole("dialog", {name: "Exact action"})).toBeTruthy();
@@ -192,6 +193,17 @@ it("keeps evidence and a reason in the conversation and retains authorization er
   expect(screen.queryByText("Request approved.")).toBeNull();
   expect(screen.getByRole("button", {name: "Check status"})).toBeTruthy();
   expect(mocks.capture).not.toHaveBeenCalled();
+});
+
+it("shows scope and recorded evidence alongside direct approval", async () => {
+  mocks.list.mockResolvedValue(page([{...GATE, detail: "Only the release tag", evidence: {image: "runner:release"}, expires_at: "2026-11-12T12:00:00Z"}]));
+  render(<FleetApprovalSummary {...PROPS} />);
+  expect(await screen.findByText("Only the release tag")).toBeTruthy();
+  expect(screen.getByText(/Deadline/)).toBeTruthy();
+  expect(screen.queryByRole("button", {name: "View exact action"})).toBeNull();
+  fireEvent.click(screen.getByRole("button", {name: "Details"}));
+  expect(screen.getByText(/runner:release/)).toBeTruthy();
+  expect(screen.getByRole("button", {name: "Approve"})).toBeTruthy();
 });
 
 it("retains a pending decision and its receipt through a count and stream revision update", async () => {
@@ -233,13 +245,13 @@ const QUESTION = {...GATE, gate_id: "question-one", gate_type: "question", propo
 const receipt = (gate_id: string, outcome: string) => ({ok: true, data: {kind: "resolved", data: {
   gate_id, action_id: "ask", outcome, resolved_at: "2026-11-21T10:00:00Z", resolved_by: "reviewer"}}});
 
-it("keeps both decisions on a gate whose deadline passed", async () => {
+it("keeps Approve available after the deadline passes", async () => {
   mocks.list.mockResolvedValue(page([{...GATE, status: "timed_out", expires_at: "2026-11-21T08:00:00Z"}]));
   mocks.approve.mockResolvedValue(receipt("gate-one", "approved"));
   render(<FleetApprovalSummary {...PROPS} />);
   expect(await screen.findByText("Deadline passed")).toBeTruthy();
   expect(screen.getByRole("button", {name: "Approve"})).toHaveProperty("disabled", false);
-  expect(screen.getByRole("button", {name: "Deny"})).toHaveProperty("disabled", false);
+  expect(screen.queryByRole("button", {name: "Deny"})).toBeNull();
   fireEvent.click(screen.getByRole("button", {name: "Approve"}));
   expect(await screen.findByText("Request approved.")).toBeTruthy();
   expect(mocks.approve).toHaveBeenCalledWith("workspace", "gate-one", undefined);

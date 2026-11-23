@@ -2,7 +2,7 @@ import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { TooltipProvider } from "@agentsfleet/design-system";
+import { DEFAULT_PAGE_SIZE_OPTIONS, TooltipProvider } from "@agentsfleet/design-system";
 
 // The accept action is the view's server boundary and the router is Next's;
 // both are answered here, everything else renders for real.
@@ -71,7 +71,18 @@ describe("InvitesView", () => {
   it("should not add a separate linked card when the linked invite is already listed", () => {
     renderView([FROM_JOHN], FROM_JOHN.id);
     expect(screen.queryByText(LINKED_CARD)).toBeNull();
-    expect(screen.getByRole("button", { name: ACCEPT_JOHN })).toBeTruthy();
+    expect(screen.getByRole("button", { name: ACCEPT_JOHN }).textContent).toBe("Accept");
+    expect(screen.queryByText("Rows per page")).toBeNull();
+  });
+
+  it("keeps later invites reachable when a list fills more than one page", async () => {
+    const otherInvites = Array.from({length: DEFAULT_PAGE_SIZE_OPTIONS[0]}, (_, index) => ({
+      ...FROM_JOHN, id: `invite-${index}`, account: {tenant_id: `tenant-${index}`, owner_name: `Account ${index}`},
+    }));
+    renderView([...otherInvites, FROM_JOHN]);
+    expect(screen.queryByRole("button", {name: ACCEPT_JOHN})).toBeNull();
+    await userEvent.click(screen.getByRole("button", {name: "Next page"}));
+    expect(screen.getByRole("button", {name: ACCEPT_JOHN})).toBeTruthy();
   });
 
   it("should show the linked card above the list when other invites also wait", () => {

@@ -25,7 +25,7 @@ test("Security combines keys and sessions with compact type in both appearances"
     const key = page.getByRole("region", {name: "Account API keys"});
     const created = key.locator("time").first();
     expect(await created.evaluate(time => time.getClientRects().length)).toBe(1);
-    await expect(key.getByText("Last used: unavailable", {exact: true})).toBeVisible();
+    await expect(key.getByText("Last used", {exact: false})).toHaveCount(0);
     const account = page.getByRole("button", {name: /^Workspace and account menu/});
     const image = account.locator("[data-account-avatar] img");
     await expect(image).toBeVisible();
@@ -61,14 +61,17 @@ test("Security keeps resource rows compact through the phone layout", async ({pa
   await page.setViewportSize({width: 660, height: 844});
   await page.goto(`${chatProbe}?accountSettings=1`);
   const keys = page.getByRole("region", {name: "Account API keys"});
+  const headerIcon = page.locator("[data-resource-header] [data-app-header-icon]");
   const keyIcon = keys.getByRole("listitem").locator("svg").first();
   const sessionIcon = page.getByRole("region", {name: "Active sessions"}).locator("svg").first();
   await expect(keys.getByRole("button", {name: "Revoke API key platform-priming"})).toBeVisible();
   await expect(keyIcon).toBeHidden();
   await expect(sessionIcon).toBeHidden();
+  await expect(headerIcon).toBeHidden();
   await page.setViewportSize({width: 1024, height: 900});
   await expect(keyIcon).toBeVisible();
   await expect(sessionIcon).toBeVisible();
+  await expect(headerIcon).toBeVisible();
   expect((await keyIcon.boundingBox())?.width).toBe(16);
   expect((await sessionIcon.boundingBox())?.width).toBe(16);
 });

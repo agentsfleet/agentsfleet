@@ -34,4 +34,17 @@ describe("Spinner", () => {
     const orbit = getByRole("status").querySelector("[data-signal-spinner]") as SVGElement;
     expect(orbit.getAttribute("class")).toContain("size-6");
   });
+
+  it("uses one decorative relay above the page loading label", () => {
+    const { getByRole, queryAllByRole } = render(<Spinner variant="page" label="Loading…" aria-label="Loading page" />);
+    const status = getByRole("status", { name: "Loading page" });
+    const mark = status.querySelector("[data-signal-relay]");
+    expect(status.textContent).toBe("Loading…");
+    expect(status.classList.contains("flex-col")).toBe(true);
+    expect(mark?.getAttribute("width")).toBe("44");
+    expect(mark?.getAttribute("aria-hidden")).toBe("true");
+    expect(mark?.querySelectorAll("[data-signal-relay-pulse]")).toHaveLength(1);
+    expect(status.querySelector("[data-signal-spinner]")).toBeNull();
+    expect(queryAllByRole("status")).toHaveLength(1);
+  });
 });

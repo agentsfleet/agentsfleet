@@ -1,6 +1,6 @@
 import { AuthSignIn } from "@/lib/auth/client";
-import { AUTH_APPEARANCE } from "@/lib/clerkAppearance";
+import { AuthFormLoading } from "@/app/(auth)/AuthFormLoading";
 
 export default function SignInPage() {
-  return <AuthSignIn appearance={AUTH_APPEARANCE} />;
+  return <AuthSignIn fallback={<AuthFormLoading kind="sign-in" />} />;
 }

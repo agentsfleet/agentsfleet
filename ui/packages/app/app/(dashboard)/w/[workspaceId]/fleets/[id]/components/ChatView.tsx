@@ -31,13 +31,8 @@ type Props = {
   senderNames: readonly SenderName[];
 };
 
-// The chat surface: the thread with its status line under the composer, both
-// over one stream. The line's figures are the newest row the registry holds and the
-// fleet facts the live tail last carried; a completion, a gate frame or a
-// reconnect backfill moves them, and nothing here issues a read. The one
-// refresh of the server tree — when the stream reports a fleet status the
-// server did not render, because the header's lifecycle controls live there —
-// is the summary hook's, and it fires once per change.
+// Use the shared stream for approval counts and recovery of the latest run.
+// Refresh the server-rendered lifecycle controls only when the fleet status changes.
 export function ChatView({
   workspaceId,
   fleetId,
@@ -64,13 +59,7 @@ export function ChatView({
         senderNames={senderNames}
       />
       {!summary.latestAvailable ? <div className="mx-auto w-full max-w-chat shrink-0 px-md">
-        <FleetStatusLine
-          status={summary.status}
-          latest={summary.latest}
-          pendingApprovals={0}
-          approvalsHref={approvalsHref}
-          summaryAvailable={summary.latestAvailable}
-        />
+        <FleetStatusLine status={summary.status} />
       </div> : null}
     </div>
   );

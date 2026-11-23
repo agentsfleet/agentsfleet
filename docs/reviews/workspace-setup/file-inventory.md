@@ -293,7 +293,6 @@ The discovery command is `git grep -l -w -e daily_dollars -e monthly_dollars -e 
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/SkillEditor.tsx` | M227_001 cutover | complete/edit later |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/page.tsx` | M227_001 cutover | complete/edit later |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/actions.ts` | M227_001 cutover | complete/edit later |
-| `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/defaults/page.tsx` | M227_001 cutover | DELETE later |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/security/page.tsx` | M227_001 cutover | DELETE later |
 | `ui/packages/app/app/favicon.ico` | M227_002 carried batch | complete/edit later |
 | `ui/packages/app/app/icon.svg` | M227_002 carried batch | complete/edit later |

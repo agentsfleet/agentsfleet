@@ -31,12 +31,12 @@ export function BillingFilters({report}: {report: BillingReport}) {
   }
 
   return (
-    <div className="billing-filters" aria-busy={pending}>
+    <div className="flex flex-wrap items-center gap-md summary:gap-lg" aria-busy={pending}>
       <BillingPeriodFilter report={report} hasCutoff={params.has(BILLING_QUERY.through)} disabled={pending}
         onChange={(value, through) => change(BILLING_QUERY.period, value, through)} />
       <BillingFilter label="Fleet" value={fleet} choices={fleets} disabled={pending}
         onChange={value => change(BILLING_QUERY.fleet, value)} />
-      <span className="billing-filter-note">Periods in UTC · Date ranges in local time</span>
+      <span className="text-eyebrow leading-label text-text-dim summary:ml-auto">Periods in UTC · Date ranges in local time</span>
       {pending && <Spinner size="sm" label="Updating report…" />}
     </div>
   );

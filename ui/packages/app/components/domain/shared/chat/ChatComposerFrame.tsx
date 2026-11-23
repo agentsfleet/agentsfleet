@@ -17,7 +17,7 @@ export function ChatComposerModel({ children, select, ...trigger }: ModelProps) 
 }
 
 export function ChatComposerHint({ children, hint = "Enter to send · Shift + Enter for a new line" }: { children?: ReactNode; hint?: string }) {
-  return <div data-composer-part="hint" className="fleet-composer-hint">
+  return <div data-composer-part="hint" className="mt-md flex items-center justify-between gap-lg px-sm font-sans text-eyebrow leading-eyebrow text-text-dim">
     <span className="min-w-0">{hint}</span>
     {children ? <span className="min-w-0">{children}</span> : null}
   </div>;
@@ -33,7 +33,7 @@ type Props = {
 /** Both chat purposes use the same input, focus lifecycle and height limits. */
 export function ChatComposerFrame({id, label, inputRef, disabled, focusKey, stackActions = false, children, toolbar, actions, input}: Props) {
   useComposerFocus(inputRef, disabled, focusKey);
-  return <DashboardPanel asChild padding="none" className="fleet-composer-surface">
+  return <DashboardPanel asChild padding="none" className="fleet-composer-surface relative min-h-0 shrink-0 rounded-lg bg-card px-xl pt-xl pb-[calc(var(--sp-lg)_+_1px)] transition-colors duration-150 focus-within:border-muted-foreground motion-reduce:transition-none">
     <ComposerPrimitive.Root id={id} className="flex min-h-0 flex-col gap-sm" aria-label={label}>
       <ComposerQuote />
       {children}
@@ -49,7 +49,7 @@ export function ChatComposerInput({inputRef, placeholder, disabled, ...fieldProp
   Pick<Props, "inputRef" | "disabled"> & {placeholder: string} & ComponentProps<typeof Textarea>) {
   return (<ComposerPrimitive.Input asChild placeholder={placeholder} submitMode="enter" disabled={disabled}>
           <Textarea appearance="composer" {...fieldProps} ref={inputRef} aria-label={placeholder} rows={2}
-            className="fleet-composer-input" />
+            className="field-sizing-content min-h-chat-input max-h-[min(12rem,30dvh)] flex-1 resize-none overflow-y-auto px-sm py-0" />
         </ComposerPrimitive.Input>);
 }
 

@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@agentsfleet/design-system": "workspace:*",
+    "@phosphor-icons/react": "2.1.10",
     "posthog-js": "^1.450.0",
     "react": "19.3.1",
     "react-dom": "19.3.1",
