@@ -102,7 +102,7 @@ Production uses `ENV=prod`, `agentsfleetd-prod`, image `agentsfleetd:latest`, th
 ## How the copy behaves
 
 - `02_copy.sh` refuses unless both `audit._sqlx_migrations` versions match; after an incompatible rebuild, use clean-database priming.
-- It dumps data only, as plain SQL in `postgres:18-alpine`, excluding the ledger table.
+- It dumps data only, as plain SQL in `postgres:19-alpine`, excluding the ledger table.
 - The load truncates catalog-discovered tables under `session_replication_role = 'replica'`, which the target role must be allowed to set.
 - Truncate and restore share one `psql --single-transaction`, so a failure leaves the target unchanged.
   Fix the blocker and retry; never exclude more tables to dodge duplicate rows.
