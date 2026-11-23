@@ -344,7 +344,6 @@ Unset, the daemon stores no task checkpoints in R2, Cloudflare's object storage.
 | `supervisor.daemon_max_attempts` | 5 | Calls to the daemon fail on short outages |
 | `supervisor.daemon_initial_backoff_ms` | 250 | Reconnects start too soon or too late |
 | `supervisor.daemon_max_backoff_ms` | 30,000 | Reconnects wait too long after an outage |
-| `supervisor.renewal_interval_ms` | 5,000 | Run renewals should be sent more often |
 | `supervisor.max_concurrent_file_operations` | 2 | Checkpoint captures are skipped because both slots are busy |
 | `daemon.call_timeout_seconds` | 20 | Calls to a busy daemon time out |
 | `daemon.max_activity_batches_held` | 4 | Live activity is dropped while the daemon is busy |

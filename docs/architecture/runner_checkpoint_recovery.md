@@ -232,13 +232,13 @@ saved deadline   +-> turn is eligible after its old run and thread expire
 next assignment  `-> the expired run is marked expired in the same statement
 ```
 
-The 35-second run TTL starts at the last grant or renewal. It governs reclaim.
+The 38-second run TTL starts at the last grant or renewal. It governs reclaim.
 
 No daemon timer re-offers an expired run. The assignment that takes the turn expires the dead run's row in its own statement (`afd_fleet`'s `sql/shared/expire_prior_run.sql`), so the turn moves when a bus wake, a connection's freed capacity or a replacement's connection starts an assignment pass. [Run and liveness timing](../../rustd/crates/foundation/af_core/src/timing/mod.rs) · [Runner status](runner_fleet.md#failure-recovery-model)
 
-The run TTL includes a 5-second tick, 5-second answer window, 7-second reconnect, and 15-second renewal margin. The compile-time sums require 32 seconds within the 35-second run, and 14 seconds for the second answer and physical cleanup within that 15-second margin.
+The run TTL includes one 10-second round, a 5-second answer window, a 7-second reconnect and a 15-second renewal margin, plus one second. A deployment's heartbeat, which is the round, is refused at boot when its run TTL cannot carry it (`af_core`'s `timing/run.rs`).
 
-A host silent for three run lifetimes, 105 seconds, reads `offline` when an operator view derives it (`afd_runner`'s `view/decode.rs`). Nothing writes a `runner_offline` row or cordons a silent host. Its sandbox hold stops protecting its fleet once its last beat is older than that window (`assign_turn_head.sql`). [Renewal decision](../v2/done/M243_001_P1_API_DOCS_INFRA_OBS_RUNNERS_HOLD_ONE_PUSH_STREAM.md#renewal-recovery-budget-correction)
+A host silent for three run lifetimes, 114 seconds, reads `offline` when an operator view derives it (`afd_runner`'s `view/decode.rs`). Nothing writes a `runner_offline` row or cordons a silent host. Its sandbox hold stops protecting its fleet once its last beat is older than that window (`assign_turn_head.sql`). [Renewal decision](../v2/done/M243_001_P1_API_DOCS_INFRA_OBS_RUNNERS_HOLD_ONE_PUSH_STREAM.md#renewal-recovery-budget-correction)
 
 ```text
 brief link break + reconnect before expiry -> same run and fence

@@ -135,7 +135,7 @@ A full queue evicts its oldest thread. That thread's work stays queued in Postgr
 
 The report path writes the `thread.deliveries` row in its own transaction, then publishes `af.delivery.wake`.
 A worker claims the head row of each `(provider, workspace_id)` lane with `FOR UPDATE SKIP LOCKED` (`afd_outbound/src/delivery/sql/claim_heads.sql`).
-A claim lasts 30 s and the holder renews it every 10 s (`afd_outbound/src/delivery/mod.rs`). A worker claims at start, on a ping and when a lane finishes; no timed pass claims, so a lost ping waits for the next one.
+A claim lasts 30 s and the holder renews it every 10 s (`afd_outbound/src/delivery/mod.rs`). A worker claims at start, on a ping, when a lane finishes, and once when the earliest claim another holder took lapses; no timed pass claims. A ping the bus failed to send is owed as a gap, which the worker answers with a claim, and a closed subscription is reopened on a backoff.
 
 Up to eight deliveries run at once across lanes; each lane holds at most 32 jobs (`afd_outbound/src/lanes/mod.rs`).
 Every write after a claim matches the holder's token, so a lapsed holder's late write changes nothing.

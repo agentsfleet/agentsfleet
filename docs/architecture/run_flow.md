@@ -376,7 +376,7 @@ The toolbox image, its page cache and what bounds a host's memory and disk: [run
 
 - Timers in `af_core`: a grant lasts 35 seconds and renewals run every 5 seconds.
   A run renews at any age; its fleet's budget, its tenant's balance or a person's Stop ends it.
-  Heartbeats run every 10 seconds, a runner counts as offline after 105 seconds, and a sandbox hold lasts 10 minutes.
+  Heartbeats run every 10 seconds, a runner counts as offline after 114 seconds, and a sandbox hold lasts 10 minutes.
 
 - Assignment and intake: `[runners] assign_batch_size` candidate turns per assignment pass ([configuration reference](./config_reference.md)); no per-fleet turn cap.
   [Queue limits](./datastore_scaling.md#the-turns-ledger-is-the-queue) describe the sampled deployment budget.

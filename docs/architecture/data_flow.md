@@ -177,7 +177,7 @@ An expired run exposes the same unsettled turn with its original turn and billin
 
 The outbound worker takes durable `thread.deliveries` rows from Postgres.
 The report writes each row with a fresh `receipt` token and a lapsed `claim_expires_at`, so any replica may take it at once.
-The worker claims at start, on an `af.delivery.wake` ping and when one of its deliveries finishes; it runs no timed pass. A lost ping leaves the row owed until one of those events. A delivery whose inline attempts all fail is abandoned, and nothing retries it (`afd_outbound`'s lanes and retry modules).
+The worker claims at start, on an `af.delivery.wake` ping, when one of its deliveries finishes, and once when the earliest claim another holder took lapses; it runs no timed pass. A ping the bus failed to send is owed as a gap, which the worker answers with a claim; a ping dropped while every subscription stays connected leaves the row owed until one of those events. A delivery whose inline attempts all fail is abandoned, and nothing retries it (`afd_outbound`'s lanes and retry modules).
 
 The poster stamps `delivered_at` only after successful delivery. Abandoning an exhausted job must not mark its answer delivered.
 
@@ -276,7 +276,9 @@ Subject spellings come from `afd_bus::nats::spelling` (`rustd/crates/daemon/afd_
 | `af.thread.<thread_id>.items` | Core NATS subject | Each process's NATS hub | A fleet's live frames, where a gap or reconnect recovers durable history through the turns list, or a draft's setup progress, where a lost subscription sends `draft.resync`. |
 | `af.thread.<thread_id>.wake` | Core NATS subject, read through one `af.thread.*.wake` wildcard per replica | The gateway's assignment scheduler | Starts an assignment pass and puts its thread first. The local queue holds at most 64 distinct threads by default. |
 | `af.runner.<runner_id>.cmd` | Core NATS subject | The gateway holding the runner's connection | `Recheck` or `Cancel` for one runner host; Postgres stays the authority (`afd_gateway/src/connection/commands.rs`). |
-| `af.delivery.wake` | Core NATS subject | Outbound worker | Pings the worker after a report commits; a lost ping waits for the next ping, a finished delivery or a restart. |
+| `af.delivery.wake` | Core NATS subject | Outbound worker | Pings the worker after a report commits; a lost ping waits for the next ping, a finished delivery, a lapsed claim or a gap. |
+| `af.tenant.<tenant_id>.members` | Core NATS subject | Every open workspace wall, fleet stream and setup page in the account | A member removal publishes it after its commit; each stream re-asks its viewer's access. |
+| `af.workspace.<workspace_id>.fleets` | Core NATS subject | The workspace's open walls | A fleet insert or delete publishes it after its commit; each wall re-reads the set. |
 
 A development namespace prefixes every subject with `dev.<namespace>.` (`afd_bus/src/nats/config.rs`).
 
