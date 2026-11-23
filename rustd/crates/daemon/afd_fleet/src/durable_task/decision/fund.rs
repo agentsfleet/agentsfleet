@@ -36,12 +36,10 @@ pub(super) async fn issue(
     let result = run(tasks, durable_task_run, input, &call).await;
     match result {
         Ok(response) => Ok(response),
-        Err(fault) => {
-            match row::issued(tasks.runs.pool(), &call.id).await? {
-                Some(saved) => replay::response(tasks, saved).await,
-                None => Err(fault),
-            }
-        }
+        Err(fault) => match row::issued(tasks.runs.pool(), &call.id).await? {
+            Some(saved) => replay::response(tasks, saved).await,
+            None => Err(fault),
+        },
     }
 }
 
