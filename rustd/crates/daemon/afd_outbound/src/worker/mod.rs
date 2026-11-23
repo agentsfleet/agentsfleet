@@ -1,7 +1,8 @@
-//! The claim loop: Postgres holds every owed answer, and the worker claims
-//! lane heads when it starts, when it is pinged, when a delivery finishes, and
-//! when a claim another replica held lapses. It runs no timed pass (Indy, Nov
-//! 21, 2026): the one sleep is to that lapse, read from Postgres.
+//! The claim loop: Postgres holds every owed answer, and the worker claims lane heads.
+//!
+//! It claims when it starts, when it is pinged, when a delivery finishes, and when a
+//! claim another replica held lapses. It runs no timed pass (Indy, Nov 21, 2026): the
+//! one sleep is to that lapse, read from Postgres.
 //!
 //! ```text
 //!   worker starts ────────────────────────────────┐

@@ -49,9 +49,9 @@ impl Open {
             .await
             .expect("private listener");
         let address = listener.local_addr().expect("listener address");
-        let served = router.clone();
+        let app = router.clone();
         let server = tokio::spawn(async move {
-            axum::serve(listener, served).await.expect("server");
+            axum::serve(listener, app).await.expect("server");
         });
         let response = reqwest::Client::new()
             .get(format!("http://{address}{item}/turns/stream"))

@@ -63,12 +63,13 @@ async fn a_pushed_policy_does_not_postpone_the_next_beat() {
         |_beat| ok(10_000),
         async |calls| {
             tokio::time::sleep(Duration::from_secs(9)).await;
-            calls
+            let pushed = calls
                 .push_policy(&serde_json::json!({"status": KEEP_GOING,
                     "assigned_policy": policy(), "degraded": false, "degraded_reason": null,
                     "selftest_requested": false, "heartbeat_interval_ms": 10_000,
                     "release_holds": []}))
                 .await;
+            assert!(pushed.is_ok(), "the policy frame is pushed: {pushed:?}");
         },
     )
     .await;

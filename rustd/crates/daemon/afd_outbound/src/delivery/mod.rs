@@ -218,9 +218,10 @@ pub async fn claim_in(
         .collect())
 }
 
-/// How long until the earliest live claim another holder took on an open delivery lapses,
-/// measured on the database's clock; `None` when no other holder holds one. `held` are the
-/// deliveries this replica holds and renews itself.
+/// How long until another holder's earliest live claim lapses.
+///
+/// Measured on the database's clock; `None` when no other holder holds an open delivery.
+/// `held` are the deliveries this replica holds and renews itself.
 ///
 /// # Errors
 /// Reports a database that would not answer.

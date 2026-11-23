@@ -264,21 +264,30 @@ impl Wall {
     }
 
     /// Publishes the notice a fleet create or delete publishes after its commit.
-    pub(crate) async fn notify_fleets(&self) {
-        let subject = Subject::Fleets(self.fixture.workspace.clone());
-        self.bus
-            .publish(&subject, "")
-            .await
-            .expect("the notice publishes");
+    /// The future owns its bus handle, as [`Wall::publish`]'s does, so it stays `Send`.
+    pub(crate) fn notify_fleets(&self) -> impl Future<Output = ()> + Send + use<> {
+        let (bus, subject) = (
+            self.bus.clone(),
+            Subject::Fleets(self.fixture.workspace.clone()),
+        );
+        async move {
+            bus.publish(&subject, "")
+                .await
+                .expect("the notice publishes");
+        }
     }
 
     /// Publishes the notice a member removal publishes after its commit.
-    pub(crate) async fn notify_members(&self) {
-        let subject = Subject::Members(self.fixture.tenant.clone());
-        self.bus
-            .publish(&subject, "")
-            .await
-            .expect("the notice publishes");
+    pub(crate) fn notify_members(&self) -> impl Future<Output = ()> + Send + use<> {
+        let (bus, subject) = (
+            self.bus.clone(),
+            Subject::Members(self.fixture.tenant.clone()),
+        );
+        async move {
+            bus.publish(&subject, "")
+                .await
+                .expect("the notice publishes");
+        }
     }
 
     /// The wall says nothing for a while.

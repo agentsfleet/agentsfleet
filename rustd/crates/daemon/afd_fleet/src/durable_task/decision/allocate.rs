@@ -34,7 +34,7 @@ pub(super) struct Ready {
 }
 
 enum Read {
-    Existing(Call),
+    Existing(Box<Call>),
     Ready(Box<Ready>),
 }
 
@@ -62,7 +62,7 @@ pub(super) async fn allocate(
     let read = request.read(&mut connection, &call_id, assessment_id).await;
     transaction::recycle(connection);
     let ready = match read? {
-        Read::Existing(call) => return replay::response(tasks, call).await,
+        Read::Existing(call) => return replay::response(tasks, *call).await,
         Read::Ready(ready) => ready,
     };
     if let Err(refusal) = fund::cover(tasks, run, &ready.prepared.current, &ready.coverage).await {
@@ -149,13 +149,13 @@ impl Reservation<'_> {
         .await?;
         if let Some(call) = saved {
             replay_matches(&call, self.input, &self.digest, false)?;
-            return Ok(Read::Existing(call));
+            return Ok(Read::Existing(Box::new(call)));
         }
         let coverage = match self.money(connection, &prepared).await {
             Ok(coverage) => coverage,
             Err(refusal) => {
                 let twin = self.twin_or(connection, &key, attempt.number(), refusal);
-                return Ok(Read::Existing(twin.await?));
+                return Ok(Read::Existing(Box::new(twin.await?)));
             }
         };
         Ok(Read::Ready(Box::new(Ready {

@@ -41,9 +41,10 @@ async fn connected(fixture: &mut Fixture) -> Authority {
         .await
         .expect("opening")
     {
-        Decision::Allowed(owner) => owner,
-        Decision::Refused(_) => panic!("a fresh host acquires its connection"),
+        Decision::Allowed(owner) => Some(owner),
+        Decision::Refused(_) => None,
     }
+    .expect("a fresh host acquires its connection")
 }
 
 /// How many report writes one beat carrying `report()` made.

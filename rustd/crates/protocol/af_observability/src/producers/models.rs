@@ -86,8 +86,7 @@ impl Handles {
                 state
                     .borrow()
                     .as_ref()
-                    .map(|snapshot| readings(snapshot, field, Instant::now(), max_age))
-                    .unwrap_or_default()
+                    .map_or_default(|snapshot| readings(snapshot, field, Instant::now(), max_age))
             })?;
         }
         Ok(Self {

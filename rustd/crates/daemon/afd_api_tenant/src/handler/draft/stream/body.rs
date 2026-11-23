@@ -9,6 +9,15 @@ use tokio::time::Instant;
 
 const FAILED: &str = "draft_stream_recheck_failed";
 
+/// What a stream's next step does before it may emit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Next {
+    /// Read at once: something changed, or nothing has been read yet.
+    Read,
+    /// The last read found nothing new: wait for a notice, a gap or the heartbeat.
+    Wait,
+}
+
 struct Watch {
     drafts: Drafts,
     workspace: Uuid7,
@@ -16,8 +25,8 @@ struct Watch {
     draft: Uuid7,
     generation: i64,
     seen: HashMap<String, String>,
-    /// The last read found nothing new: wait for a notice before reading again.
-    settled: bool,
+    /// Whether the next step reads at once or waits for a notice first.
+    next: Next,
     done: bool,
     /// Live progress; reopened after a loss, never after the bus closed.
     link: afd_sse::Link,
@@ -62,7 +71,7 @@ pub(super) fn frames(
             draft,
             generation,
             seen: HashMap::new(),
-            settled: false,
+            next: Next::Read,
             done: false,
             lost: false,
             resynced: false,
@@ -114,7 +123,7 @@ async fn step(mut watch: Watch) -> Option<(Result<Event, Infallible>, Watch)> {
                         afd_bus::Received::Gap | afd_bus::Received::Lagged(_)
                     );
                     if let Some(event) = preview(&watch.draft, &view, pending) {
-                        watch.settled = !missed;
+                        watch.next = if missed { Next::Read } else { Next::Wait };
                         return Some((Ok(event), watch));
                     }
                 }
@@ -124,7 +133,7 @@ async fn step(mut watch: Watch) -> Option<(Result<Event, Infallible>, Watch)> {
                 if view.closed {
                     return None;
                 }
-                watch.settled = true;
+                watch.next = Next::Wait;
             }
             Err(error) => {
                 let error_code = error.code().as_str();
@@ -158,7 +167,7 @@ fn heartbeat() -> Event {
 async fn recover(watch: &mut Watch) -> Option<Event> {
     if watch.link.reopen_if_due().await {
         // What was published while the subscription was lost is unknown: read again.
-        watch.settled = false;
+        watch.next = Next::Read;
     }
     if !watch.lost {
         return None;
@@ -195,7 +204,7 @@ enum Waited {
 
 /// All paths return to the authorization read before they emit anything.
 async fn wait(watch: &mut Watch, heartbeat_at: Instant) -> Waited {
-    if !watch.settled {
+    if watch.next == Next::Read {
         return Waited::Read(None);
     }
     if watch.link.is_closed() {
@@ -298,7 +307,7 @@ fn changed(watch: &mut Watch, notices: Vec<afd_setup::Notice>) -> Option<Event> 
         if watch.seen.get(&key) != Some(&body) {
             watch.seen.insert(key, body.clone());
             // Something changed: read again at once before waiting.
-            watch.settled = false;
+            watch.next = Next::Read;
             return Some(Event::default().event(notice.event).data(body));
         }
     }

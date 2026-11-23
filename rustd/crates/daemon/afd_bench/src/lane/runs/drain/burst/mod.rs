@@ -138,12 +138,12 @@ async fn measure(
     }
     stop.cancel();
     let peak = joined(sampler.await, PACER_ROLE)?;
-    record_run(report, &appends, &pickups, peak).await;
+    record_run(report, &appends, &pickups, peak);
     Ok(())
 }
 
 /// Count what the pacers and the runners did, and write it into the report.
-async fn record_run(report: &mut Report, appends: &Appends, pickups: &Pickups, peak: u64) {
+fn record_run(report: &mut Report, appends: &Appends, pickups: &Pickups, peak: u64) {
     let counted = Counted {
         accepted: appends.accepted.load(Ordering::Relaxed),
         refused: appends.refused.load(Ordering::Relaxed),
@@ -155,7 +155,7 @@ async fn record_run(report: &mut Report, appends: &Appends, pickups: &Pickups, p
     record(
         report,
         counted,
-        &*appends
+        &appends
             .took
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner),
@@ -216,7 +216,7 @@ async fn append_one(
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
                     .record(returned - started),
             );
-            pickups.appended(steered.turn_id, returned).await;
+            pickups.appended(steered.turn_id, returned);
         }
         Err(_refused) => {
             appends.refused.fetch_add(1, Ordering::Relaxed);

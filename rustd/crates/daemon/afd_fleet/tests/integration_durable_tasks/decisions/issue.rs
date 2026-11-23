@@ -203,9 +203,9 @@ async fn a_decision_reservation_runs_at_most_eighteen_statements() {
         );
         assert_eq!(ran.calls_containing("INSERT INTO runner.decision_calls"), 1);
         for (text, _calls) in ran.statements() {
-            let issues = text.contains("INSERT INTO runner.decision_calls");
+            let inserts_the_call = text.contains("INSERT INTO runner.decision_calls");
             assert!(
-                issues || !(text.contains("FOR SHARE") || text.contains("FOR KEY SHARE")),
+                inserts_the_call || !(text.contains("FOR SHARE") || text.contains("FOR KEY SHARE")),
                 "only the issue statement locks: {text}"
             );
             assert!(

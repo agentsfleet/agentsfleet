@@ -261,9 +261,11 @@ async fn an_assignment_time_failure_publishes_one_changed_notice() {
         .await
         .expect("the failure publishes")
         .expect("the subscription is open");
-    let afd_bus::Received::Message(message) = received else {
-        panic!("a message, not {received:?}");
-    };
+    let message = match received {
+        afd_bus::Received::Message(message) => Some(message),
+        afd_bus::Received::Gap | afd_bus::Received::Lagged(_) => None,
+    }
+    .expect("a published message, not a gap");
     let notice: afd_turns::view::activity::DraftChanged =
         serde_json::from_str(&message.payload).expect("a `Changed` notice");
     assert_eq!(notice.changed, draft);

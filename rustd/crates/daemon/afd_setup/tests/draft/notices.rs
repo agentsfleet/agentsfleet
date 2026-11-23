@@ -25,11 +25,13 @@ const NO_MORE: Duration = Duration::from_millis(200);
 async fn one_changed(subscription: &mut Subscription, draft: &Uuid7, writer: &str) {
     let received = tokio::time::timeout(ARRIVAL, subscription.recv())
         .await
-        .unwrap_or_else(|_| panic!("{writer} publishes a notice"))
+        .expect("each writer publishes a notice")
         .expect("the subscription is open");
-    let Received::Message(message) = received else {
-        panic!("{writer}: a message, not {received:?}");
-    };
+    let message = match received {
+        Received::Message(message) => Some(message),
+        Received::Gap | Received::Lagged(_) => None,
+    }
+    .expect("a published message, not a gap");
     let notice: Changed = serde_json::from_str(&message.payload).expect("a `Changed` notice");
     assert_eq!(&notice.changed, draft, "{writer} names its draft");
     assert!(

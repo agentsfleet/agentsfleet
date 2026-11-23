@@ -65,7 +65,7 @@ impl Pickups {
     }
 
     /// One steer's append returned at `at`.
-    pub(super) async fn appended(&self, turn_id: String, at: Instant) {
+    pub(super) fn appended(&self, turn_id: String, at: Instant) {
         self.appended.insert(turn_id, at);
     }
 
@@ -75,8 +75,8 @@ impl Pickups {
     /// # Errors
     ///
     /// When the histogram will not hold the wait.
-    pub(in crate::lane::runs::drain) async fn held(&self, turn_id: &str) -> Result<()> {
-        self.took(turn_id).await.map(|_burst| ())
+    pub(in crate::lane::runs::drain) fn held(&self, turn_id: &str) -> Result<()> {
+        self.took(turn_id).map(|_burst| ())
     }
 
     /// A live run folded `turn_id` in: a pickup like a run, counted apart.
@@ -84,15 +84,15 @@ impl Pickups {
     /// # Errors
     ///
     /// When the histogram will not hold the wait.
-    pub(in crate::lane::runs::drain) async fn folded(&self, turn_id: &str) -> Result<()> {
-        if self.took(turn_id).await? {
+    pub(in crate::lane::runs::drain) fn folded(&self, turn_id: &str) -> Result<()> {
+        if self.took(turn_id)? {
             self.folded.fetch_add(1, Ordering::Relaxed);
         }
         Ok(())
     }
 
     /// Records the pickup of `turn_id`; answers whether the burst appended it.
-    async fn took(&self, turn_id: &str) -> Result<bool> {
+    fn took(&self, turn_id: &str) -> Result<bool> {
         let Some((_, at)) = self.appended.remove(turn_id) else {
             return Ok(false);
         };

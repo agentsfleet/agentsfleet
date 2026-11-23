@@ -145,9 +145,11 @@ async fn a_gate_resolution_waits_for_a_stop_holding_the_thread() {
     );
 
     let resolution = resolve.await.expect("the resolution answers");
-    let Resolution::AlreadyResolved(stood) = resolution else {
-        panic!("Stop resolved the gate first: {resolution:?}");
-    };
+    let stood = match resolution {
+        Resolution::AlreadyResolved(stood) => Some(stood),
+        _ => None,
+    }
+    .expect("Stop resolved the gate first");
     assert_eq!(stood.status, status::ARCHIVED);
     assert!(
         still_parked(&lane, &other).await,
@@ -273,12 +275,12 @@ async fn a_fleet_delete_finishes_against_a_resolution_and_a_stop() {
                 .await
                 .map_err(|error| format!("{error:?}"))
         };
-        let (contended, deleted) = tokio::join!(contender, deleted);
+        let (contest, delete_outcome) = tokio::join!(contender, deleted);
         assert!(
-            deleted.is_ok(),
-            "stopping={stopping}: the delete commits: {deleted:?}"
+            delete_outcome.is_ok(),
+            "stopping={stopping}: the delete commits: {delete_outcome:?}"
         );
         let expected = if stopping { "None" } else { "NotFound" };
-        assert_eq!(contended.as_deref(), Ok(expected), "stopping={stopping}");
+        assert_eq!(contest.as_deref(), Ok(expected), "stopping={stopping}");
     }
 }

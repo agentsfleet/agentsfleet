@@ -44,7 +44,7 @@ pub(crate) struct Calls {
 impl Calls {
     /// Pushes `response` as the daemon's policy frame, as a pushed policy reaches the
     /// heartbeat loop between beats.
-    pub(crate) async fn push_policy(&self, response: &serde_json::Value) {
+    pub(crate) async fn push_policy(&self, response: &serde_json::Value) -> crate::Result<()> {
         let frame = af_stream::encode(
             &serde_json::json!({"type": "policy", "response": response}),
             &af_stream::Budget::default(),
@@ -52,9 +52,9 @@ impl Calls {
             &self.stopped,
             tokio::time::Instant::now() + af_core::timing::STREAM_ANSWER_TIMEOUT,
         )
-        .await
-        .expect("a policy frame encodes");
+        .await?;
         self.policy.send_replace(Some(std::sync::Arc::new(frame)));
+        Ok(())
     }
 
     pub(crate) async fn recv(&mut self) -> Option<Call> {

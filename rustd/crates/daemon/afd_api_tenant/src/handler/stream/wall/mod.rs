@@ -48,7 +48,7 @@ use crate::services::{TenantPlane, WorkspaceFleets as _};
 
 /// The least time between two counter reads a lag asks for. A lag storm on a busy
 /// workspace would otherwise read the counters once per lost frame. The number is
-/// awaiting the owner's ruling (spec M255_001, Discovery); nothing forces 10 s.
+/// awaiting the owner's ruling (spec `M255_001`, Discovery); nothing forces 10 s.
 const RECOUNT_PACE: Duration = Duration::from_secs(10);
 
 /// The log event a refresh emits when the workspace's fleet set does not answer.
