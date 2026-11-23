@@ -21,12 +21,29 @@
 -- $1 run · $2 runner · $3 fence · $4 active run status · $5 read after sequence ·
 -- $6 steer producer · $7 machine actor · $8 person actor pattern · $9 Slack mention producer ·
 -- $10 Slack provider · $11 Slack person actor pattern · $12 Slack person actor separator
-WITH run AS MATERIALIZED (
+-- Locks, one step each and in this order: the fleet, its thread, the run. The fleet first,
+-- as Stop and a gate answer take it: fleet delete holds it FOR UPDATE and then deletes the
+-- runs and the thread, so this waits there holding nothing. The thread before any fold, as
+-- Stop takes it: a retry rewrites folds Stop may be settling, and taking them without it
+-- lets the two meet on two folds in opposite orders. The run after the thread, as every
+-- renewal, report and metering pass takes them; it is shared, so a status that moved while
+-- this waited is re-read.
+WITH fleet AS MATERIALIZED (
+    SELECT f.id
+    FROM fleet.fleets f
+    WHERE f.id = (SELECT l.fleet_id FROM thread.runs l WHERE l.id = $1 AND l.runner_id = $2)
+    FOR KEY SHARE OF f
+), thread AS MATERIALIZED (
+    SELECT s.fleet_id, s.last_runner_id, s.fencing_token, s.run_expires_at
+    FROM thread.threads s
+    JOIN fleet ON fleet.id = s.fleet_id
+    FOR NO KEY UPDATE OF s
+), run AS MATERIALIZED (
     SELECT l.fleet_id, head.sequence AS head_sequence,
            head.reply_provider, head.reply_address,
            l.run_expires_at, s.run_expires_at AS thread_expires_at
     FROM thread.runs l
-    JOIN thread.threads s
+    JOIN thread s
       ON s.fleet_id = l.fleet_id AND s.last_runner_id = l.runner_id
      AND s.fencing_token = l.fencing_token
     -- An admitted turn: a run on a history-only receipt has no conversation.
@@ -35,10 +52,7 @@ WITH run AS MATERIALIZED (
     WHERE l.id = $1 AND l.runner_id = $2
       AND l.fencing_token = $3 AND l.status = $4
       AND l.durable_task_id IS NULL AND l.durable_task_generation IS NULL AND head.durable_task_generation IS NULL
-    -- The thread first, as Stop takes it: a retry rewrites folds Stop may be settling,
-    -- and taking them without it lets the two meet on two folds in opposite orders. The
-    -- run is shared, so a status that moved while this waited is re-read.
-    FOR NO KEY UPDATE OF s FOR SHARE OF l
+    FOR SHARE OF l
 ), instant AS MATERIALIZED (
     -- The clock after the locks, so a wait cannot make a lapsed run look live.
     SELECT clock_timestamp() AS checked_at FROM run
