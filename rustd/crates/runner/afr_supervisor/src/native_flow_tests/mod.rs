@@ -186,7 +186,8 @@ async fn observe_progress(logs: &Capture, round: usize) -> TestResult {
                     })
                     .count()
             };
-            if completed("ping") >= round && completed("heartbeat") > round {
+            assert_eq!(completed("ping"), 0, "an idle session sends no ping");
+            if completed("heartbeat") > round {
                 return;
             }
             tokio::task::yield_now().await;
@@ -197,10 +198,11 @@ async fn observe_progress(logs: &Capture, round: usize) -> TestResult {
 }
 
 async fn observe_idle_window(logs: &Capture, frames: &mut Frames) -> TestResult {
-    // Native I/O runs between clock steps, with each ping acknowledged before the next step.
-    for round in 1..=4 {
+    // Native I/O runs between clock steps, each round's beat answered before the next step:
+    // six rounds of the default interval make the sixty seconds.
+    for round in 1..=6 {
         tokio::time::pause();
-        tokio::time::advance(Duration::from_secs(15)).await;
+        tokio::time::advance(af_core::timing::HEARTBEAT_INTERVAL).await;
         tokio::time::resume();
         observe_progress(logs, round).await?;
         frames.collect();

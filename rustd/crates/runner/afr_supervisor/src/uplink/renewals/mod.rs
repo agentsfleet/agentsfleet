@@ -135,10 +135,6 @@ impl Renewals {
         self.interval.send_replace(interval);
     }
 
-    fn interval(&self) -> Duration {
-        *self.interval.borrow()
-    }
-
     /// The runner's one clock. A round is due one heartbeat interval after the previous
     /// round was sent, and never before that round's answers are in. Each round wakes the
     /// heartbeat loop and renews the runs held. A round that failed, or in which a run was
@@ -147,11 +143,25 @@ impl Renewals {
     pub(crate) async fn run(&self, handle: &StreamHandle, stop: CancellationToken) -> Result<()> {
         let mut sessions = handle.session.clone();
         let mut previous = sessions.borrow_and_update().clone();
-        let mut due = Instant::now() + self.interval();
+        let mut advertised = self.interval.subscribe();
+        let mut sent = Instant::now();
+        let mut period = *advertised.borrow_and_update();
+        let mut due = sent + period;
         loop {
             tokio::select! {
                 biased;
                 () = stop.cancelled() => return Ok(()),
+                changed = advertised.changed() => {
+                    if changed.is_err() { return Ok(()); }
+                    // A new interval re-arms the round from the last one sent; a
+                    // retry after a refusal keeps its own, shorter, due time.
+                    let interval = *advertised.borrow_and_update();
+                    if due == sent + period {
+                        due = sent + interval;
+                    }
+                    period = interval;
+                    continue;
+                }
                 changed = sessions.changed() => {
                     if changed.is_err() { return Ok(()); }
                     let current = sessions.borrow_and_update().clone();
@@ -164,16 +174,16 @@ impl Renewals {
                 }
                 () = tokio::time::sleep_until(due) => {}
             }
-            let sent = Instant::now();
+            sent = Instant::now();
             self.beat.notify_one();
             let renewed = tokio::select! {
                 () = stop.cancelled() => return Ok(()),
                 result = self.batch(handle) => result,
             };
-            let interval = self.interval();
-            let retry = interval.min(af_core::timing::STREAM_ANSWER_TIMEOUT);
+            period = *advertised.borrow_and_update();
+            let retry = period.min(af_core::timing::STREAM_ANSWER_TIMEOUT);
             due = match renewed {
-                Ok(Settled::All) => sent + interval,
+                Ok(Settled::All) => sent + period,
                 Ok(Settled::RetryLater) => sent + retry,
                 Err(error) if error.is_retryable() => {
                     let error_code = error.code().as_str();

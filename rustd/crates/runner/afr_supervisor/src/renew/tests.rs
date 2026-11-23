@@ -76,7 +76,12 @@ async fn test_renew_keeps_on_5xx_ends_on_4xx() {
         4,
         "two 503s kept the run; the 409 ended it"
     );
-    assert_eq!(started.elapsed(), HEARTBEAT_INTERVAL * 4);
+    // The grant's round, then a 503 one round later; each 503 is retried one answer
+    // bound after it was sent, and the third retry meets the 409.
+    assert_eq!(
+        started.elapsed(),
+        HEARTBEAT_INTERVAL * 2 + af_core::timing::STREAM_ANSWER_TIMEOUT * 2
+    );
 }
 
 #[tokio::test(start_paused = true)]
