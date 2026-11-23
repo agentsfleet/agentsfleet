@@ -1,5 +1,5 @@
--- The gate's fleet and then its thread, before the gate: the order Stop and the decision
--- claim take them. Stop locks the turn and then closes its gate, and this statement writes
+-- The gate's fleet and then its thread, before the gate: the order Stop and a decision's
+-- issue statement take them. Stop locks the turn and then closes its gate, and this statement writes
 -- the gate and then the fleet's turns, so without the thread the two could lock one gate
 -- and one turn in opposite orders. The fleet comes first because fleet delete holds it
 -- FOR UPDATE and then cascades to the gates and the thread: this waits there holding

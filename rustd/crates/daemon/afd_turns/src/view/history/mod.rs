@@ -158,7 +158,7 @@ impl History {
             .await
             .map_err(error::query(CONTEXT_STOP))?;
         // The fleet and its thread in a statement of their own: an assignment holds the
-        // thread from its claim to its commit, and Stop's statement must start after that
+        // thread from the statement that takes it to its commit, and Stop's statement must start after that
         // commit to see the run it issued and mark it.
         crate::view::stop::hold_thread(&mut transaction, workspace, fleet)
             .await
