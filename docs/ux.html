@@ -759,7 +759,16 @@ document.querySelector('#modal').addEventListener('close',()=>{
 const $$ = (s, root = document) => [...root.querySelectorAll(s)];
 const esc = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const icon = name => `<i data-icon="${name}"></i>`;
-const appState = { view: 'conversation', approved: false, retried: false, schedules: {scheduled:{state:'active',wake:'12:30'}}, drafts: {}, messages: {}, variables: [], keys: ['Deploy automation'], sessions: ['Chrome on macOS', 'Safari on iPhone'], files: {}, models: {}, lifecycle: {}, secretEditor: null, stopped: {} };
+const appState = {
+  view: 'conversation', approved: false, retried: false, schedules: {scheduled:{state:'active',wake:'12:30'}},
+  drafts: {}, messages: {},
+  secrets: [
+    {name: 'REGISTRY_TOKEN', scope: 'Release watch'},
+    {name: 'SUPPORT_API_KEY', scope: 'Support triage'},
+  ],
+  keys: ['Deploy automation'], sessions: ['Chrome on macOS', 'Safari on iPhone'],
+  files: {}, models: {}, lifecycle: {}, secretEditor: null, stopped: {},
+};
 function scheduleFor(view=appState.view) { return appState.schedules[view] ||= {state:'none',wake:'12:30'}; }
 let lastFocus;
 const fleetNames = { conversation: 'Release watch', activity: 'Launch review', failure: 'Deploy monitor', scheduled: 'Merge watch', draft: 'Deployment checks', 'setup-empty': 'Deployment checks', 'setup-before': 'New fleet', 'setup-models-unavailable': 'Deployment checks', 'setup-queued': 'Deployment checks', 'setup-thinking': 'Deployment checks', 'setup-failure': 'Deployment checks' };

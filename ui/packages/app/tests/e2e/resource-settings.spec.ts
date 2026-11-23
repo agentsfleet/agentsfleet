@@ -152,3 +152,26 @@ test("remaining resource pages and empty setup retain the approved frame", async
   }
   expect(errors).toEqual([]);
 });
+
+test("the Secrets prototype lists sample secrets and adds a new entry", async ({page}) => {
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.goto(new URL("../../../../../docs/ux.html#secrets", import.meta.url).href);
+
+  const secrets = page.getByRole("region", {name: "Stored secrets", exact: true});
+  await expect(secrets.getByText("REGISTRY_TOKEN", {exact: true})).toBeVisible();
+  await expect(secrets.getByText("SUPPORT_API_KEY", {exact: true})).toBeVisible();
+  await secrets.getByRole("button", {name: "Manage REGISTRY_TOKEN", exact: true}).click();
+  const manage = page.getByRole("dialog", {name: "Manage secret", exact: true});
+  await expect(manage.getByText("Available to Release watch.", {exact: true})).toBeVisible();
+  await manage.getByRole("button", {name: "Done", exact: true}).click();
+
+  await page.getByRole("button", {name: "Add secret", exact: true}).click();
+  const add = page.getByRole("dialog", {name: "Add secret", exact: true});
+  await add.getByLabel(/^Name/).fill("SAMPLE_METRICS_KEY");
+  await add.getByLabel("Value", {exact: true}).fill("preview-only");
+  await add.getByRole("button", {name: "Add", exact: true}).click();
+  await expect(add).toBeHidden();
+  await expect(secrets.getByText("SAMPLE_METRICS_KEY", {exact: true})).toBeVisible();
+  expect(errors).toEqual([]);
+});
