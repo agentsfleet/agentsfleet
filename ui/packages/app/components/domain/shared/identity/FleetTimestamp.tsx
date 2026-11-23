@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, use, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Time, formatTimeAbsolute, formatTimeRelative, sameCalendarDay, useClientTimeReady } from "@agentsfleet/design-system";
+import { Time, cn, formatTimeAbsolute, formatTimeRelative, sameCalendarDay, useClientTimeReady } from "@agentsfleet/design-system";
 
 // When a row happened, relative to one clock every row shares. Split out of
 // `FleetMessageRow` at its length cap.
@@ -33,7 +33,7 @@ export function RelativeNowProvider({ children }: { children: ReactNode }) {
 
 // Relative time stays visual-only so the 30-second refresh cannot repeatedly
 // announce the live region. Assistive technology gets one stable exact instant.
-export function Timestamp({ createdAt, compact = false }: { createdAt: Date; compact?: boolean }) {
+export function Timestamp({ createdAt, compact = false, className }: { createdAt: Date; compact?: boolean; className?: string }) {
   const now = compact ? null : use(RelativeNowContext);
   const ready = useClientTimeReady();
   const absolute = useMemo(() => ready ? formatTimeAbsolute(createdAt) : "—", [createdAt, ready]);
@@ -48,7 +48,7 @@ export function Timestamp({ createdAt, compact = false }: { createdAt: Date; com
         label={label}
         tooltip={false}
         title={absolute}
-        className="shrink-0 font-sans text-eyebrow leading-eyebrow text-text-dim"
+        className={cn("shrink-0 font-sans text-eyebrow leading-eyebrow text-text-dim", className)}
       />
       <span className="sr-only">Occurred {absolute}</span>
     </>

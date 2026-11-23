@@ -55,7 +55,9 @@ describe("CliAuthPage — load states", () => {
       new Promise<Response>(() => undefined),
     );
     await renderPage();
-    expect(screen.getByRole("status", { name: "Loading page" }).textContent).toBe("Loading…");
+    const status = screen.getByRole("status", { name: "Loading page" });
+    expect(status.textContent).toBe("Loading…");
+    expect(status.querySelector("[data-signal-relay-pulse]")).not.toBeNull();
     expect(screen.queryByRole("button", { name: "Authorize" })).toBeNull();
   });
 

@@ -48,7 +48,7 @@ export function WorkOutputs({details, expectedDetails = details.size, hideEmpty 
 type PullRequestRecord = {target: {url: string; number: number; repository: string}; published: boolean; stale: boolean};
 function PullRequestRows({records}: {records: PullRequestRecord[]}) {
   return <ul className="space-y-sm">{records.map(({target, published, stale}) => <li key={target.url}>
-    <a className="fleet-pull-request-link" href={target.url} target="_blank" rel="noopener noreferrer">
+    <a className="flex min-h-9 items-center gap-md break-words py-sm text-label font-medium leading-label hover:underline" href={target.url} target="_blank" rel="noopener noreferrer">
       <GitPullRequestIcon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
       <span className="min-w-0 flex-1"><span className="block">Pull request #{target.number}</span>
         <span className="mt-xs block text-eyebrow font-normal leading-eyebrow text-text-dim">{published ? "Changes published" : target.repository}{stale ? " · last confirmed" : ""}</span></span>
@@ -64,7 +64,7 @@ export function WorkChanges({turns, repositories}: {turns: readonly FleetTurn[];
 export function ChangesSummary({changes}: {changes: readonly RecordedChange[]}) {
   if (!changes.length) return null;
   return <WorkSection title="Changes">{groupRecordedChanges(changes).map(group => <RecordedChangesDialog key={group.repository?.id ?? "unbound"} groups={[group]}>
-    <Button variant="ghost" size="compact" className="fleet-changes-trigger">
+    <Button variant="ghost" size="compact" className="h-auto min-h-11 w-full justify-start gap-md whitespace-normal px-0 py-xs text-left text-foreground summary:min-h-9">
       <GitDiffIcon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
       <span className="min-w-0 flex-1" title={group.repository?.fullName}>
         <span className="block font-medium">{group.changes.length} {group.changes.length === 1 ? "file" : "files"}{group.changes.some(change => change.running) ? "" : " changed"}</span>
@@ -94,7 +94,7 @@ function RepositorySources({sources}: {sources: FleetSources}) {
   const policy = ["Saved fleet policy", access ? `${access} access` : "access not specified"];
   if (publication) policy.push(publication === "existing_pr" ? "existing PRs" : "draft PRs");
   return <details className="group">
-    <summary className="fleet-sources-trigger">
+    <summary className="flex min-h-11 cursor-pointer items-center gap-sm rounded-sm py-sm text-label leading-label focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring summary:min-h-9">
       <GitBranchIcon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
       <span className="min-w-0 flex-1 break-words" title={repositories.join(", ")}>
         <RepositoryName name={label} />

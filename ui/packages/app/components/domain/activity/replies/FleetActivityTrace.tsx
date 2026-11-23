@@ -12,11 +12,11 @@ export function FleetActivityTrace({data}: {data: unknown}) {
     {rows.map(({kind, label, detail, outcome}, index) => {
       const Icon = ICONS[kind];
       return <li key={`${kind}-${index}`}><details className="group/trace">
-        <summary className="fleet-trace-action">
+        <summary className="flex min-h-11 w-fit max-w-full cursor-pointer list-none items-center gap-2 rounded-md px-2 text-label leading-5 text-muted-foreground hover:bg-secondary hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring md:min-h-9 pointer-coarse:min-h-11 [&::-webkit-details-marker]:hidden">
           <Icon aria-hidden className={cn("size-4 shrink-0", kind === "agent" && !outcome && "text-activity-agent", outcome === "failed" && "text-error", outcome === "interrupted" && "text-warning")} /><span className="min-w-0 break-words font-medium">{label}</span>
-          <CaretRightIcon aria-hidden className="fleet-trace-caret" />
+          <CaretRightIcon aria-hidden className="size-3 shrink-0 opacity-0 group-open/trace:rotate-90 group-open/trace:opacity-100 group-focus-within/trace:opacity-100 group-hover/trace:opacity-100" />
         </summary>
-        <p className="fleet-trace-detail">{detail}</p>
+        <p className="mb-2 ml-4 whitespace-pre-wrap break-words border-l border-border pl-3 text-label leading-5 text-muted-foreground">{detail}</p>
       </details></li>;
     })}
   </ul>;

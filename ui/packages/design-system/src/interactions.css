@@ -134,6 +134,14 @@
   [data-signal-spinner] path:nth-child(6) { animation-delay: -0.6s; }
   [data-signal-spinner] path:nth-child(7) { animation-delay: -0.4s; }
   [data-signal-spinner] path:nth-child(8) { animation-delay: -0.2s; }
+
+  /* Offsets put the center of the dash over each node in turn. */
+  @keyframes signal-relay {
+    33.333% { stroke-dashoffset: -27.17; }
+    66.667% { stroke-dashoffset: -63.83; }
+    100% { stroke-dashoffset: -95.5; }
+  }
+  [data-signal-relay-pulse] { animation: signal-relay 1.725s cubic-bezier(.38, 0, .62, 1) infinite; }
 }
 
 /* Status motion changes paint only; no layout or reading-position changes. */

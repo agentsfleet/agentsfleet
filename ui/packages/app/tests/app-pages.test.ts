@@ -1,6 +1,7 @@
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { AUTH_APPEARANCE } from "@/lib/clerkAppearance";
 
 const redirect = vi.fn((path: string) => {
   throw new Error(`redirect:${path}`);
@@ -33,8 +34,9 @@ vi.mock("@clerk/nextjs", () => ({
   UserProfile: ({ path, routing, appearance }: { path: string; routing: string; appearance: unknown }) => React.createElement("div", { "data-user-profile": path, "data-routing": routing, "data-appearance": JSON.stringify(appearance) }),
   SignOutButton: ({ children }: { children: React.ReactNode }) => children,
   UserButton: () => React.createElement("div", { "data-user-button": "1" }),
-  SignIn: ({ appearance }: { appearance: unknown }) => React.createElement("div", { "data-sign-in": JSON.stringify(appearance) }),
-  SignUp: ({ appearance }: { appearance: unknown }) => React.createElement("div", { "data-sign-up": JSON.stringify(appearance) }),
+  SignIn: ({ fallback }: { fallback: React.ReactNode }) => React.createElement("div", { "data-sign-in": "" }, fallback),
+  SignUp: ({ fallback }: { fallback: React.ReactNode }) => React.createElement("div", { "data-sign-up": "" }, fallback),
+  useClerk: () => ({status: "loading"}),
   useUser,
 }));
 
@@ -75,6 +77,7 @@ describe("app layouts and pages", () => {
 
     expect(rootMarkup).toContain("root child");
     expect(clerkProvider.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
+      appearance: AUTH_APPEARANCE,
       signInUrl: "/sign-in", signUpUrl: "/sign-up",
       signInFallbackRedirectUrl: "/", signUpFallbackRedirectUrl: "/",
     }));
@@ -91,7 +94,7 @@ describe("app layouts and pages", () => {
     expect(dashboardMarkup).not.toContain('href="/credentials"');
   });
 
-  it("renders sign-in and sign-up pages with shared auth appearance", async () => {
+  it("renders a route-specific loading state with each native auth widget", async () => {
     const { default: SignInPage } = await import("../app/(auth)/sign-in/[[...sign-in]]/page");
     const { default: SignUpPage } = await import("../app/(auth)/sign-up/[[...sign-up]]/page");
 
@@ -100,7 +103,7 @@ describe("app layouts and pages", () => {
 
     expect(signInMarkup).toContain("data-sign-in=");
     expect(signUpMarkup).toContain("data-sign-up=");
-    expect(signInMarkup).toContain("colorPrimary");
-    expect(signUpMarkup).toContain("colorPrimary");
+    expect(signInMarkup).toContain("Loading sign-in…");
+    expect(signUpMarkup).toContain("Loading sign-up…");
   });
 });

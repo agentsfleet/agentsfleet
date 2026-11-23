@@ -67,5 +67,5 @@ export function SecretActions({secret, pending, protectedFromDelete, onEdit, onD
 }
 
 export function SecretNameCell({secret}: {secret: Secret}) {
-  return <span className="break-words font-mono text-mono font-normal leading-mono">{secret.name}</span>;
+  return <span className="wrap-anywhere font-mono text-mono font-normal leading-mono">{secret.name}</span>;
 }

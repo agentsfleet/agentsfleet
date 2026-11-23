@@ -1,3 +1,4 @@
+import { SITE_CONTAINER } from "../components/site-classes";
 import {
   DisplayXL,
   Button,
@@ -53,7 +54,7 @@ import { AppPrimitivesGallery } from "./DesignSystemDataGallery";
 
 export default function DesignSystemGallery() {
   return (
-    <Section gap className="wrap">
+    <Section gap className={SITE_CONTAINER}>
       <DisplayXL>Design System Gallery</DisplayXL>
       <p className="text-body-lg text-text-muted">Flat surfaces. Clear hierarchy. The agentsfleet mint identity.</p>
       <TypographyButtonsGallery />

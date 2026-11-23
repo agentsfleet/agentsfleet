@@ -11,5 +11,4 @@ it("keeps the component gallery out of production routes", async () => {
   render(<RouterProvider router={router} />);
   expect(await screen.findByRole("heading", {name: "This page isn’t here."}, {timeout: 10_000})).toBeInTheDocument();
   expect(screen.queryByRole("heading", {name: /design system gallery/i})).not.toBeInTheDocument();
-  expect(screen.getByRole("main").closest(".website-palette")).toBeTruthy();
 });

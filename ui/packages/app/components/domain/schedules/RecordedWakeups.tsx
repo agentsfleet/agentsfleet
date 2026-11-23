@@ -37,7 +37,7 @@ export function RecordedWakeups({workspace, schedules, onRefresh}: {workspace: s
       return changeSchedule(workspace, current, {status}, signal);
     }, value => updated(schedule, value));}} />;
   return <>
-    {next ? <div className="fleet-wakeup-strip">
+    {next ? <div className="relative z-1 -mb-px mx-md min-h-11 rounded-t-md border border-border bg-muted px-lg py-md text-eyebrow leading-eyebrow summary:mx-5">
       {row(next)}{rest.length ? <Collapsible><CollapsibleTrigger asChild><Button variant="ghost" size="eyebrow">{rest.length} more wake-ups</Button></CollapsibleTrigger>
         <CollapsibleContent className="max-h-40 overflow-y-auto">{rest.map(row)}</CollapsibleContent></Collapsible> : null}
       {control.error && !editing && !deleting ? <p role="alert" className="text-label text-destructive">{control.error}<Button variant="link" onClick={control.refresh}>Refresh schedule</Button></p> : null}

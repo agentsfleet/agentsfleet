@@ -1,6 +1,6 @@
 import { AuthSignUp } from "@/lib/auth/client";
-import { AUTH_APPEARANCE } from "@/lib/clerkAppearance";
+import { AuthFormLoading } from "@/app/(auth)/AuthFormLoading";
 
 export default function SignUpPage() {
-  return <AuthSignUp appearance={AUTH_APPEARANCE} />;
+  return <AuthSignUp fallback={<AuthFormLoading kind="sign-up" />} />;
 }

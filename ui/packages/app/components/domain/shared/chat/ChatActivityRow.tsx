@@ -15,12 +15,12 @@ export type ChatActivityRowProps = {
 export function ChatActivityRow({sender, title, wokeOnSchedule, headline, createdAt, messageRole, outcome, failed, annotation, detailsLabel = "View turn", children}: ChatActivityRowProps) {
   const Icon = wokeOnSchedule ? ClockClockwiseIcon : title ? ClockIcon : BellIcon;
   return <div data-role={messageRole} data-compact="true" data-failed={failed || undefined}
-    className={cn("flex w-full min-w-0 items-start gap-md text-muted-foreground", title ? "fleet-schedule-receipt" : "py-lg text-conversation leading-conversation")}>
+    className={cn("flex w-full min-w-0 items-start gap-md text-muted-foreground", title ? "my-2.5 text-label font-medium leading-label" : "py-lg text-conversation leading-conversation")}>
     <Icon size={16} className="mt-xs shrink-0" aria-hidden="true" />
     <div className="min-w-0 flex-1">
       <div className="flex items-start justify-between gap-lg"><p className="min-w-0 break-words">
         <span className={title ? "font-title" : "font-semibold"}>{title ?? sender}</span>{title ? null : <> — <span>{headline}</span></>}
-      </p><Timestamp createdAt={createdAt} compact /></div>
+      </p><Timestamp createdAt={createdAt} compact className={title ? "relative top-xs hidden font-medium leading-label summary:inline" : undefined} /></div>
       {title ? <p className="break-words font-medium text-muted-foreground">{headline}</p> : null}
       {outcome ? <div className="mt-xs">{failed ? <FleetFailedOutcome>{outcome}</FleetFailedOutcome> : <p className={FLEET_OUTCOME_CLASS}>{outcome}</p>}</div> : null}
       {annotation ? <div className="mt-sm">{annotation}</div> : null}

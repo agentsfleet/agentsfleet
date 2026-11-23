@@ -2,14 +2,15 @@
 
 import { useRouter } from "next/navigation";
 import nextDynamic from "next/dynamic";
-import { Alert, Button, Skeleton } from "@agentsfleet/design-system";
+import { Alert, Button } from "@agentsfleet/design-system";
+import { RouteLoading } from "@/components/layout/RouteLoading";
 import type { FleetDetail } from "@/lib/types";
 import { SOURCE_KIND } from "@/lib/api/draft-vocabulary";
 import { MemoryMenu } from "./MemoryMenu";
 
 const WorkspaceChat = nextDynamic(() => import("@/components/domain/setup/conversation/WorkspaceChat").then(module => module.WorkspaceChat), {
   ssr: false,
-  loading: () => <output className="min-h-0 w-full flex-1" aria-label="Loading setup chat"><Skeleton className="h-full w-full" /></output>,
+  loading: () => <RouteLoading label="Loading setup chat" />,
 });
 
 export function FleetPendingChat({account, workspace, fleet, canGrant}: {

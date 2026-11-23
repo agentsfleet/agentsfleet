@@ -18,13 +18,13 @@ const PACKAGE_HELP = "Allow standard package registries while public internet ac
 export function SetupNetworkPolicy({publicInternet, packages, disabled, editHref, onChange}: Props) {
   const id = useId();
   return <>
-    <div className="setup-policy-row">
+    <div className="flex min-h-11 items-center justify-between gap-md">
       {editHref ? <span>Allow all</span> : <Label htmlFor={`${id}-public`} className="font-normal">Allow all</Label>}
       {editHref ? <NetworkEditLink href={editHref} checked={publicInternet} label="Allow all public internet access" />
         : <Switch id={`${id}-public`} aria-label="Allow all public internet access" checked={publicInternet} disabled={disabled || !onChange}
           onCheckedChange={checked => onChange?.({http_egress: checked ? "public" : "restricted"})} />}
     </div>
-    <div className="setup-policy-row">
+    <div className="flex min-h-11 items-center justify-between gap-md border-t border-border-subtle pt-md">
       <div className="flex min-w-0 items-center gap-xs">
         {editHref && !publicInternet ? <span>Enable package manager domains</span>
           : <Label htmlFor={`${id}-packages`} className={cn("min-w-0 font-normal", publicInternet && "text-text-dim")}>Enable package manager domains</Label>}

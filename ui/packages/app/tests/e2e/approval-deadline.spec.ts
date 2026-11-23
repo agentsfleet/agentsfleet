@@ -3,12 +3,12 @@ import { test } from "./fixtures/chat-probe";
 import { FLEET_ID, WORKSPACE } from "@/tests/helpers/draft-fixtures";
 
 // A passed deadline closes nothing: the daemon reports the unanswered gate as
-// `timed_out`, and the conversation's card still takes either decision. The
+// `timed_out`, and the conversation's card still offers Approve. The
 // route stands in for the daemon's approval list.
 const APPROVALS_PATH = `/backend/v1/workspaces/${WORKSPACE}/approvals`;
 const HOUR_MS = 3_600_000;
 
-test("an_expired_gate_card_still_offers_approve_and_deny", async ({page, chatProbe}) => {
+test("an_expired_gate_card_still_offers_direct_approval", async ({page, chatProbe}) => {
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
   await page.setViewportSize({width: 1480, height: 1000});
@@ -24,6 +24,6 @@ test("an_expired_gate_card_still_offers_approve_and_deny", async ({page, chatPro
   await expect(card.getByText(gate.proposed_action, {exact: true})).toBeVisible();
   await expect(card.getByText("Deadline passed", {exact: true})).toBeVisible();
   await expect(card.getByRole("button", {name: "Approve", exact: true})).toBeEnabled();
-  await expect(card.getByRole("button", {name: "Deny", exact: true})).toBeEnabled();
+  await expect(card.getByRole("button")).toHaveCount(1);
   expect(errors).toEqual([]);
 });
