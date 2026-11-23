@@ -105,6 +105,14 @@ pub(super) async fn peek(database: &afd_db::Db, lookup: Lookup<'_>) -> Result<Op
     .next())
 }
 
+/// The call once it is issued or accounted: what a replay answers from,
+/// read without a lock.
+pub(super) async fn issued(database: &afd_db::Db, id: &Uuid7) -> Result<Option<Call>> {
+    Ok(peek(database, Lookup::Id(id))
+        .await?
+        .filter(|call| call.issued || call.accounted))
+}
+
 fn statement<'a>(
     sql: &'static str,
     lookup: Lookup<'a>,

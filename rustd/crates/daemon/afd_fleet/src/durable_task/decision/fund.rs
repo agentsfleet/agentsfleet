@@ -15,7 +15,7 @@ use super::{
     ReservedDecision,
     dispatch::Issuance,
     replay,
-    row::{self, Call, Lookup},
+    row::{self, Call},
 };
 use crate::{
     Result,
@@ -37,11 +37,10 @@ pub(super) async fn issue(
     match result {
         Ok(response) => Ok(response),
         Err(fault) => {
-            let saved = row::peek(tasks.runs.pool(), Lookup::Id(&call.id)).await?;
-            if let Some(saved) = saved.filter(|saved| saved.issued || saved.accounted) {
-                return replay::response(tasks, saved).await;
+            match row::issued(tasks.runs.pool(), &call.id).await? {
+                Some(saved) => replay::response(tasks, saved).await,
+                None => Err(fault),
             }
-            Err(fault)
         }
     }
 }

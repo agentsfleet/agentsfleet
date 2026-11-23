@@ -39,6 +39,12 @@ pub(super) struct Issuance<'a> {
 
 impl Issuance<'_> {
     pub(super) async fn commit(&self) -> Result<ReservedDecision> {
+        // Funding took time, and a peer's request for this call may have
+        // issued it meanwhile. Its replay needs no thread lock, so a storm of
+        // one operation does not queue on that lock holding a connection each.
+        if let Some(issued) = row::issued(self.tasks.runs.pool(), &self.call.id).await? {
+            return replay::response(self.tasks, issued).await;
+        }
         let mut connection = transaction::acquire(self.tasks.runs.pool()).await?;
         let result = self.on(&mut connection).await;
         transaction::recycle(connection);
@@ -51,6 +57,14 @@ impl Issuance<'_> {
     async fn on(&self, connection: &mut PgConnection) -> Result<Emission> {
         let mut tx = transaction::begin(connection).await?;
         let current = verify::on(&mut tx, self.run, self.input, self.call).await?;
+        // The call before the budget: one already issued answers its replay,
+        // and only a call this request will issue is weighed against it.
+        let locked = row::find(&mut tx, Lookup::Id(&self.call.id))
+            .await?
+            .ok_or(DurableTaskRefusal::NotFound)?;
+        if locked.state()? != DecisionCallState::Reserved || locked.issued || locked.accounted {
+            return Ok(Emission::Existing(Box::new(locked)));
+        }
         budget::check_on(
             &mut tx,
             &current.current,
@@ -59,12 +73,6 @@ impl Issuance<'_> {
             false,
         )
         .await?;
-        let locked = row::find(&mut tx, Lookup::Id(&self.call.id))
-            .await?
-            .ok_or(DurableTaskRefusal::NotFound)?;
-        if locked.state()? != DecisionCallState::Reserved || locked.issued || locked.accounted {
-            return Ok(Emission::Existing(Box::new(locked)));
-        }
         let required =
             super::credit::required_on(&mut tx, self.run.run_id, self.coverage.headroom).await?;
         if required > self.coverage.required {
