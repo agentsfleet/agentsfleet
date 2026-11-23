@@ -14,8 +14,6 @@
 #[path = "support/workspace_members_fixture.rs"]
 pub(crate) mod fixture;
 
-use std::time::Duration;
-
 use af_core::error_code;
 use afd_sse::KIND_ACCESS_REVOKED;
 use afd_tenant::workspace::access::{ROLE_MEMBER, ROLE_OWNER};
@@ -199,13 +197,18 @@ async fn test_removed_member_stream_ends() {
             .contains("event: catching_up")
     );
 
-    members.remove_bob().await;
-    // Past both beats on the paused clock, then real time again: each
-    // re-check reads Postgres, and a paused runtime idling on a socket would
-    // auto-advance into the read's own deadline.
-    tokio::time::pause();
-    tokio::time::advance(Duration::from_secs(16)).await;
-    tokio::time::resume();
+    // John removes Bob through the route, which announces it on the account after
+    // the commit; both of Bob's open streams re-ask on that notice.
+    let john = members.live(&members.john, owner_scopes()).await;
+    let removed = send(
+        &john,
+        Method::DELETE,
+        &format!("/v1/tenants/me/members/{}", members.bob.user),
+        Some(&members.john.token),
+        "",
+    )
+    .await;
+    assert_eq!(removed.status(), StatusCode::NO_CONTENT);
 
     for body in [&mut wall_body, &mut tail_body] {
         let last = past_heartbeats(body).await;
