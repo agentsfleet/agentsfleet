@@ -10,7 +10,8 @@ type Props = {
   onChange: (patch: Partial<ModelFormValues>) => void;
 };
 
-export const MODEL_FORM_TRIGGER_CLASS = "font-control [&>[data-slot=select-caret]]:text-muted-foreground [&>[data-slot=select-caret]]:opacity-100";
+export const MODEL_FORM_TRIGGER_CLASS = "font-control max-summary:text-base max-summary:leading-6 pointer-coarse:text-base pointer-coarse:leading-6 " +
+  "[&>[data-slot=select-caret]]:text-muted-foreground [&>[data-slot=select-caret]]:opacity-100";
 
 export function ModelCredentialFields({id, values, secrets, onChange}: Props) {
   const available = compatibleCredentials(secrets, values.provider);

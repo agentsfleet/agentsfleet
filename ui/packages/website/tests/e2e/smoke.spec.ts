@@ -116,6 +116,46 @@ test.describe("Smoke", () => {
     }
     await expect(page.getByRole("region", { name: "Verified result in the Slack thread" })).toContainText("95% of replies started within 2.8 seconds, down from 15.1 seconds.");
   });
+
+  test("the incident stays readable if the playback script fails", async ({ page }) => {
+    await page.route("**/*", (route) =>
+      route.request().resourceType() === "script" ? route.abort() : route.continue(),
+    );
+    await page.goto("/");
+    await expect(page.getByRole("button", { name: /pause demo/i })).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "Slack ticket in customer-support" })).toBeVisible();
+    await expect(page.getByRole("article", { name: "Scout investigates the recurring chat freeze" })).toBeVisible();
+    const story = page.getByRole("region", { name: "Support investigation example" });
+    const result = story.getByRole("region", { name: "Verified result in the Slack thread" });
+    await story.focus();
+    await expect(story).toBeFocused();
+    await result.scrollIntoViewIfNeeded();
+    await expect(result).toBeInViewport();
+  });
+
+  test("the story keeps its space when playback starts", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 900 });
+    let startScripts!: () => void;
+    const scriptsAllowed = new Promise<void>((resolve) => { startScripts = resolve; });
+    await page.route("**/*", async (route) => {
+      if (route.request().resourceType() === "script") await scriptsAllowed;
+      await route.continue();
+    });
+    const story = page.getByRole("figure", { name: "Why did chat freeze?" });
+    try {
+      await page.goto("/", { waitUntil: "commit" });
+      await expect(story.getByText("Scroll across to read the full story.")).toBeVisible();
+      await page.evaluate(() => document.fonts.ready);
+      const before = await story.boundingBox();
+      startScripts();
+      await expect(story.getByRole("button", { name: "Pause demo" })).toBeVisible();
+      const after = await story.boundingBox();
+      expect(Math.abs(after!.height - before!.height)).toBeLessThanOrEqual(16);
+      await expect(story.locator("[data-active=false]").first()).toHaveCSS("transition-duration", "0s");
+    } finally {
+      startScripts();
+    }
+  });
 });
 
 test.describe("Crawler view", () => {

@@ -51,6 +51,7 @@ it("advances in view, holds the scene during inspection, and replays after the l
     );
 
   expect(stage).toHaveAttribute("data-playing", "false");
+  expect(demo).toHaveAttribute("data-animated", "true");
   visible(true);
   expect(stage).toHaveAttribute("data-playing", "true");
   advance(1000);
@@ -84,12 +85,17 @@ it("advances in view, holds the scene during inspection, and replays after the l
   reduce.matches = true;
   act(() => reduce.dispatchEvent(new Event("change")));
   expect(stage).toHaveAttribute("data-playing", "false");
+  expect(demo).toHaveAttribute("data-animated", "false");
   expect(stage.querySelectorAll("[inert]")).toHaveLength(0);
 });
 
 it("works without an intersection observer and records signup and navigation clicks", () => {
   Reflect.deleteProperty(window, "IntersectionObserver");
   render(<Home waitlistUrl="https://example.test/waitlist" />);
+  for (const signup of screen.getAllByRole("link", { name: "Join waitlist" })) {
+    expect(signup).toHaveAttribute("target", "_blank");
+    expect(signup).toHaveAttribute("rel", "noopener noreferrer");
+  }
   expect(
     document.querySelector("#product-demo [data-playing]"),
   ).toHaveAttribute("data-playing", "true");

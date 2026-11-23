@@ -8,7 +8,7 @@ test("Models and Team use actual components at the approved scale", async ({page
     await page.evaluate(value => {document.documentElement.dataset.theme = value;}, theme);
     await expect(page.getByRole("heading", {name: "Models", exact: true})).toBeVisible();
     await page.getByRole("button", {name: "Create model", exact: true}).click();
-    const dialog = page.getByRole("dialog");
+    const dialog = page.getByRole("dialog", {name: "Create model", exact: true});
     await expect(dialog.getByRole("switch", {name: "Show advanced models"})).toHaveCount(0);
     await expect(dialog.getByRole("combobox", {name: "Model", exact: true})).toBeEnabled();
     await page.screenshot({path: info.outputPath(`create-model-default-${theme}.png`), scale: "css", animations: "disabled"});
@@ -18,11 +18,27 @@ test("Models and Team use actual components at the approved scale", async ({page
     await page.getByRole("option", {name: /GLM 5.2/}).click();
     await expect(dialog.getByText("Context cap (tokens)")).toBeHidden();
     const details = dialog.getByRole("button", {name: "Model details", exact: true});
+    if (info.project.name === "chromium") {
+      await details.hover();
+      await expect(page.getByRole("tooltip")).toHaveText("Model details");
+    }
+    const picker = dialog.getByRole("combobox", {name: "Model", exact: true});
+    const beforeDetails = await picker.boundingBox();
     await expect(details).toHaveAttribute("aria-expanded", "false");
     await details.click();
     await expect(details).toHaveAttribute("aria-expanded", "true");
-    await expect(dialog.getByText("Context cap (tokens)")).toBeVisible();
-    await details.click();
+    const detailsCard = page.getByRole("dialog", {name: "Model details", exact: true});
+    await expect(detailsCard.getByText("Context cap (tokens)")).toBeVisible();
+    expect(await detailsCard.evaluate(node => {
+      const box = node.getBoundingClientRect();
+      return box.width >= 280 && node.scrollWidth <= node.clientWidth + 1 &&
+        box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight;
+    })).toBe(true);
+    expect(await picker.boundingBox()).toEqual(beforeDetails);
+    await page.keyboard.press("Escape");
+    await expect(detailsCard).toBeHidden();
+    await expect(dialog).toBeVisible();
+    await expect(details).toBeFocused();
     await expect(details).toHaveAttribute("aria-expanded", "false");
     await dialog.getByRole("radio", {name: "Use saved key"}).click();
     await dialog.getByRole("combobox", {name: "Saved key"}).click();
@@ -96,6 +112,15 @@ test("remaining resource pages and empty setup retain the approved frame", async
     await page.evaluate(() => document.fonts.ready);
     for (const label of ["Usage", "Secrets", "Plugins", "Connected apps", "New fleet"]) {
       await page.locator("[data-review-pages]").getByRole("button", {name: label, exact: true}).click();
+      if (label === "Usage") {
+        const filter = page.getByRole("combobox", {name: "Period", exact: true});
+        await expect(filter).toHaveCSS("font-size", "13px");
+        if (info.project.name === "chromium") {
+          const resting = await filter.evaluate(node => getComputedStyle(node).backgroundColor);
+          await filter.hover();
+          await expect(filter).not.toHaveCSS("background-color", resting);
+        }
+      }
       if (label === "Plugins") await expect(page.getByText("Release watch", {exact: true})).toBeVisible();
       else if (label === "New fleet") {
         const composer = page.getByRole("textbox", {name: "What would you like your fleet to do?"});

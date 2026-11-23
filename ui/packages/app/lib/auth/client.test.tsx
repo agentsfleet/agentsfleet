@@ -1,23 +1,53 @@
 import React from "react";
-import { act, cleanup, render, renderHook } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import SignInPage from "@/app/(auth)/sign-in/[[...sign-in]]/page";
+import SignUpPage from "@/app/(auth)/sign-up/[[...sign-up]]/page";
+import { AuthSessionKeeper, useCurrentUser } from "./client";
 
-const { reload, useUser } = vi.hoisted(() => ({
+const { reload, useClerk, useUser } = vi.hoisted(() => ({
   reload: vi.fn<() => Promise<unknown>>(),
+  useClerk: vi.fn(),
   useUser: vi.fn(),
 }));
 
 vi.mock("@clerk/nextjs", () => ({
   ClerkProvider: ({ children }: { children: React.ReactNode }) => children,
-  SignIn: () => null,
-  SignUp: () => null,
+  SignIn: ({fallback}: {fallback?: React.ReactNode}) => fallback,
+  SignUp: ({fallback}: {fallback?: React.ReactNode}) => fallback,
   UserButton: () => null,
+  useClerk,
   useUser,
 }));
 
-import { AuthSessionKeeper, useCurrentUser } from "./client";
-
 const USER_ID = "user_session_keeper_fixture";
+
+describe("auth page loading", () => {
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
+
+  it.each([[SignInPage, "Loading sign-in…"], [SignUpPage, "Loading sign-up…"]] as const)(
+    "announces that the auth widget is starting",
+    (Page, label) => {
+      useClerk.mockReturnValue({status: "loading"});
+      render(<Page />);
+      expect(screen.getByRole("status").textContent).toBe(label);
+      expect(screen.queryByRole("button", {name: "Reload page"})).toBeNull();
+    },
+  );
+
+  it("offers a reload when the auth widget fails", () => {
+    useClerk.mockReturnValue({status: "error"});
+    const reloadPage = vi.spyOn(window.location, "reload").mockImplementation(() => {});
+    render(<SignInPage />);
+    expect(screen.getByRole("alert").textContent).toContain("Couldn’t load sign-in.");
+    expect(screen.queryByRole("status")).toBeNull();
+    fireEvent.click(screen.getByRole("button", {name: "Reload page"}));
+    expect(reloadPage).toHaveBeenCalledOnce();
+  });
+});
 
 describe("AuthSessionKeeper", () => {
   beforeEach(() => {

@@ -1,6 +1,6 @@
 # App interface and CSS audit
 
-The app baseline is main at `e96444ac9`. This audit maps all 21 routes to their components and styles. [App design reference](../ux.html)
+The app baseline is main at `e96444ac9`. The audit maps all 21 route entries and compares rendered screens with the app design reference. [App design reference](../ux.html)
 
 ## App-wide page loading
 
@@ -8,23 +8,40 @@ The approved Single Relay sends a pulse between three nodes around the brand mar
 
 Reduced motion keeps the 44-pixel mark and “Loading…” label visible with the pulse at rest. `RouteLoading` uses the shared Spinner's page variant for navigation, initial data and connector return, alongside a compact spinner for buttons and forms. [Page loading design](../DESIGN_SYSTEM.md#page-loading) · [RouteLoading](../../ui/packages/app/components/layout/RouteLoading.tsx) · [Connector loading](../../ui/packages/app/app/connectors/loading.tsx)
 
-## Create model proposal
+## Rendered app review
 
-The HTML preview checks saved keys and then shows the form with Fable 5.1 selected. An info button beside **Model** opens context size, rates, sources and the expandable price schedule. [Interactive flow](../ux.html#model-proposal) · [Loading](../ux.html#model-loading) · [Details](../ux.html#model-details) · [Catalogue evidence](model-catalogue/catalogue.md)
+Chromium rendered 13 primary views and 12 supplemental states at widths of 320, 390 and 1480 px in both themes. All of those app layouts fit the viewport.
 
-### Loading and readiness
+The review checked type, section hierarchy, icon visibility, spacing, alignment and colors. It also exercised hover and keyboard focus on representative controls.
 
-- The current dialog opens immediately and requests saved keys and the model catalogue. The form appears after the first saved-key read, even if the catalogue is still loading. [Dialog](../../ui/packages/app/app/%28dashboard%29/w/%5BworkspaceId%5D/settings/models/components/AddModelEntryDialog.tsx#L37) · [Saved-key read](../../ui/packages/app/app/%28dashboard%29/w/%5BworkspaceId%5D/settings/models/components/use-stored-secrets.ts#L42)
-- The proposed loading row uses the existing compact Spinner and a Skeleton that reserves form space. Show one “Checking saved keys…” status, with Cancel and Retry in the relevant states. [Shared status pattern](../../ui/packages/app/components/domain/shared/dialogs/IntentDialogStatus.tsx)
-- Show “Loading models…” beside the picker until choices are available. Keep ready options usable during a refresh, along with the exact-ID path and current “Saving…” button status. [Catalogue provider](../../ui/packages/app/app/%28dashboard%29/w/%5BworkspaceId%5D/settings/models/components/ModelCatalogueProvider.tsx#L46) · [Form](../../ui/packages/app/app/%28dashboard%29/w/%5BworkspaceId%5D/settings/models/components/CreateModelForm.tsx)
+| Area | Result |
+| --- | --- |
+| Fleet Setup, Conversation and Summary | The headers and Summary use Manrope at 13/20 with semibold weight. The browser checks cover the sticky composer, phone Summary, reading position and scrolling as replies arrive. |
+| Secrets and Connected apps | The resource titles use Manrope at 20/26 and weight 650. The audit checked row alignment, action states and narrow screens. |
+| Models and Team | Registry headings and sections follow the reference hierarchy. Create Model now uses the compact loading row and stays in place while model details are open. |
+| Security | Sections and controls use the shared tokens. Header icons now appear at the reference breakpoint of 681 px across resource pages. |
+| Usage | Filter buttons use 13 px text on phones and pick up shared hover colors. Editable text fields keep the 16 px minimum for mobile Safari. |
+| Plugins and supplemental states | The audit checked shared styles on workspace entry, invitations, activity, Defaults, CLI approval, connector completion and auth loading and retry. |
 
-### Model details
+The Usage chart uses React, HTML and Tailwind. The bars scale to the largest daily charge in the selected period, and each day has a text label for screen readers. [Daily spend component](../../ui/packages/app/app/%28dashboard%29/settings/billing/components/BillingDailySpend.tsx)
 
-The current disclosures expand beneath the model picker and move the credential fields down. Open the card on click, tap or keyboard activation and name the action with a tooltip on hover or focus. [Current picker](../../ui/packages/app/app/%28dashboard%29/w/%5BworkspaceId%5D/settings/models/components/ProviderModelSelect.tsx) · [IconAction](../../ui/packages/design-system/src/design-system/IconAction.tsx) · [Popover](../../ui/packages/design-system/src/design-system/Popover.tsx)
+Redirect entries are covered by the route tests. Views without an illustrated counterpart use the shared typography, controls and layout components as their reference. [App conventions](../../ui/packages/app/AGENTS.md)
 
-Reuse the catalogue details, price schedule and source components to show each rate, tier, date and condition. Escape dismisses the card first and returns focus to its button. [Catalogue details](../../ui/packages/app/components/domain/models/CatalogueModelDetails.tsx) · [Price schedule](../../ui/packages/app/components/domain/models/ModelPriceSchedule.tsx)
+## Create model
 
-Changing models should refresh the card's details. The registry details dialog has separate rules for rates and context caps saved on an entry. [Registry details](../../ui/packages/app/app/%28dashboard%29/w/%5BworkspaceId%5D/settings/models/components/ModelDetailsDialog.tsx)
+The dialog opens with “Checking saved keys…” and reserves space for the provider and model fields. Known provider choices stay available during catalogue refresh. [Interactive reference](../ux.html#model-proposal) · [Create dialog](../../ui/packages/app/app/%28dashboard%29/w/%5BworkspaceId%5D/settings/models/components/AddModelEntryDialog.tsx) · [Create form](../../ui/packages/app/app/%28dashboard%29/w/%5BworkspaceId%5D/settings/models/components/CreateModelForm.tsx)
+
+The info button beside **Model** names the action on hover or focus. Click, tap or keyboard activation opens context size, prices, sources and the price schedule. [Details card](../../ui/packages/app/app/%28dashboard%29/w/%5BworkspaceId%5D/settings/models/components/ModelDetailsPopover.tsx) · [Catalogue details](../../ui/packages/app/components/domain/models/CatalogueModelDetails.tsx)
+
+The details card scrolls within the viewport and keeps the form aligned. Escape closes it and returns focus to the info button. [Browser checks](../../ui/packages/app/tests/e2e/resource-settings.spec.ts)
+
+## Sign-in and sign-up startup
+
+One public Chromium sample measured 1,220 ms to first byte for `/sign-in` and 877 ms for `/sign-up`. Clerk script requests began within nine milliseconds of the first byte.
+
+The measurement proxy refused the Clerk asset host, so the time to an interactive form remains unmeasured. The canonical URLs returned directly and `/signin` and `/signup` each redirected once.
+
+Both pages now send a small loading skeleton with the initial HTML. If Clerk reports a load failure, the loading panel offers a reload action. [Loading panel](../../ui/packages/app/app/%28auth%29/AuthFormLoading.tsx) · [Server markup checks](../../ui/packages/app/tests/app-pages.test.ts)
 
 ## Fleet Setup and Conversation performance
 
@@ -44,6 +61,10 @@ The browser measures elapsed time from Send. Reply timings include two animation
 Values are before → after medians. The frame column is the median of each run's 95th-percentile animation frame gaps. Completed replies stayed within 8 ms of baseline in all four groups.
 
 Desktop Setup showed shorter frame gaps in this five-run sample. Real runner, model and database delays fall outside the fixture. These samples precede the final markup and icon cleanup.
+
+The Setup trace put the first DOM text about 8 ms after the first chunk arrived. Earlier fixture events reduced both user-visible times, pointing to delivery timing as the first place to profile.
+
+The two initial history reads cover send confirmation and event-stream attachment. Before coalescing them, measure request cost and prove the remaining read sees updates around stream attachment. [Send path](../../ui/packages/app/lib/api/drafts.ts) · [Draft stream](../../ui/packages/app/lib/api/draft-events.ts)
 
 | Fixture asset | Uncompressed bytes | Gzip bytes |
 | --- | ---: | ---: |
@@ -99,8 +120,8 @@ Each route uses the root style graph. Workspace routes begin with `/w/[workspace
 
 | Page | Current component and style boundary | Refactor decision |
 | --- | --- | --- |
-| [Sign in](../../ui/packages/app/app/%28auth%29/sign-in/%5B%5B...sign-in%5D%5D/page.tsx) | Auth layout, Clerk and shared appearance preset | Keep the wrapper and verify form sizing and error states on phones when moving the auth override. |
-| [Sign up](../../ui/packages/app/app/%28auth%29/sign-up/%5B%5B...sign-up%5D%5D/page.tsx) | Same auth layout and appearance preset | Keep the shared auth styling. Check the verification input at the same time. |
+| [Sign in](../../ui/packages/app/app/%28auth%29/sign-in/%5B%5B...sign-in%5D%5D/page.tsx) | Auth layout, Clerk and shared appearance preset | Server-rendered loading panel and retry state checked on phones and desktop. |
+| [Sign up](../../ui/packages/app/app/%28auth%29/sign-up/%5B%5B...sign-up%5D%5D/page.tsx) | Same auth layout and appearance preset | Shares the loading panel and uses its own loading message. |
 | [Invites](../../ui/packages/app/app/%28dashboard%29/invites/page.tsx) | Shared `InvitesView` with route data loader, component utilities | Retain the arrangement and test the shared view once for list and empty states. |
 | [Invite detail](../../ui/packages/app/app/%28dashboard%29/invites/%5BinviteId%5D/page.tsx) | Reuses `InvitesView` with the selected invite, component utilities | Keep the accept and dismiss behaviors in the feature, using the shared controls. |
 | [Dashboard entry](../../ui/packages/app/app/%28dashboard%29/page.tsx) | Server redirect or `AccountSetup` and `NoWorkspaceEmptyState` | Keep state and redirects at the route and visual composition in the existing components. |
@@ -116,7 +137,7 @@ Each route uses the root style graph. Workspace routes begin with `/w/[workspace
 | [Plugins](../../ui/packages/app/app/%28dashboard%29/w/%5BworkspaceId%5D/plugins/page.tsx) | Server wrapper and `PluginContent` with inspector components | Keep the plugin lifecycle in the feature. Reuse resource chrome and detail primitives where the semantics match. |
 | [Secrets](../../ui/packages/app/app/%28dashboard%29/w/%5BworkspaceId%5D/secrets/page.tsx) | Shared resource header, `SecretsList` and `AddSecretDialog`; root selectors control resource scrolling | Move chrome to the resource layout without coupling it to add, edit, or reveal actions. |
 | [Workspace defaults](../../ui/packages/app/app/%28dashboard%29/w/%5BworkspaceId%5D/settings/defaults/page.tsx) | Shared PageLayout, EmptyState, and Button | Keep this small server page and existing shared primitives. |
-| [Workspace models](../../ui/packages/app/app/%28dashboard%29/w/%5BworkspaceId%5D/settings/models/page.tsx) | Server shell and catalogue provider, registry, form and details components. Rows, inputs and triggers own their styles. | Implement the proposed dialog after approval. Registry read and mutation coordination has a separate refactor seam. |
+| [Workspace models](../../ui/packages/app/app/%28dashboard%29/w/%5BworkspaceId%5D/settings/models/page.tsx) | Server shell and catalogue provider, registry, form and details components. Rows, inputs and triggers own their styles. | The Create dialog reuses the shared Spinner, Skeleton and Popover. The registry retains ownership of reads and mutations. |
 | [Workspace security URL](../../ui/packages/app/app/%28dashboard%29/w/%5BworkspaceId%5D/settings/security/page.tsx) | Authenticated redirect to account security | Keep the canonical Security UI and styling in one place. |
 | [CLI authorization](../../ui/packages/app/app/cli-auth/%5Bsession_id%5D/page.tsx) | The client page owns manual and loopback approval flows. Presentation is already split into adjacent components. | Keep the authorization state and requests at their existing boundary. Review the visual components independently with loading and error fixtures. |
 | [Connector completion](../../ui/packages/app/app/connectors/complete/page.tsx) | Server wrapper for a shared EmptyState, PageLayout and Button | Keep shared primitives and test both completion and error results. |
@@ -141,10 +162,10 @@ Tool output and tool rows compose `SignalSpinner` with local status text. Reuse 
 
 ## Verification
 
-App lint, 4,697 app tests and the configured coverage gate passed. The CSS pass also passed 82 Chromium fixtures and four sign-in and protected-route smoke checks. [Coverage scope](../../ui/packages/app/vitest.config.ts#L42)
+App lint, 4,700 app tests, the configured coverage gate and 142 Chromium fixture cases passed. [Coverage scope](../../ui/packages/app/vitest.config.ts#L42)
 
 The browser suite checks Models, Team, Billing, Security and chat with local fixtures. It covers responsive layout, focus, touch, typography and reading position. [Models and Team](../../ui/packages/app/tests/e2e/models-team-parity.spec.ts) · [Resource settings](../../ui/packages/app/tests/e2e/resource-settings.spec.ts) · [Billing](../../ui/packages/app/tests/e2e/usage-report.spec.ts)
 
 Chromium passed the Create model prototype checks at 320, 390, 696, 900 and 1480 px. The checks covered both themes, keyboard and touch, focus return and price schedule expansion. [HTML prototype](../ux.html)
 
-The Create proposal uses fixed sample data for review. When implementing it, measure click to visible dialog and click to usable form as separate times. Verify cold and ready data, retry and the exact-ID path before checking save and activation.
+The current app audit uses local data and authenticated screen fixtures. Both Clerk routes also emitted their loading status and script in a server render with the installed SDK.

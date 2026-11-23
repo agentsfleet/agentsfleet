@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
-import { useUser, ClerkProvider, SignIn, SignUp } from "@clerk/nextjs";
+import { useClerk, useUser, ClerkProvider, SignIn, SignUp } from "@clerk/nextjs";
 
 // The in-browser SDK keeps only the `__session` cookie fresh. Every dashboard
 // read and mutation resolves its bearer server-side (`credential.ts`), so
@@ -109,3 +109,7 @@ export const AuthProvider = ClerkProvider;
 export { SignOutButton as AuthSignOutButton } from "@clerk/nextjs";
 export const AuthSignIn = SignIn;
 export const AuthSignUp = SignUp;
+
+export function useAuthLoadFailed(): boolean {
+  return useClerk().status === "error";
+}

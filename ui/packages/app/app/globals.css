@@ -83,7 +83,7 @@ code, pre, kbd { font-family: var(--ff-mono); }
 
 /* Prevent mobile browser zoom without enlarging desktop form text. */
 @media (max-width: 42.5rem), (pointer: coarse) {
-  input:not([type="checkbox"]):not([type="radio"]), textarea, select, [role="combobox"]:not([data-composer-part]) {
+  input:not([type="checkbox"]):not([type="radio"]), textarea, select {
     font-size: 1rem;
     line-height: 1.5rem;
   }

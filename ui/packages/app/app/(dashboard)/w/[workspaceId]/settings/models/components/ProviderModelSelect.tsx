@@ -1,13 +1,13 @@
 "use client";
 
-import { CaretDownIcon } from "@phosphor-icons/react/ssr";
-import { Button, Collapsible, CollapsibleContent, CollapsibleTrigger, Input, Label, Select, SelectContent, SelectTrigger, SelectValue, SelectItem, cn } from "@agentsfleet/design-system";
+import { Input, Label, Select, SelectContent, SelectTrigger, SelectValue, SelectItem, cn } from "@agentsfleet/design-system";
 import { modelsForProvider, uniqueModelIds, type LibraryModel } from "@/lib/api/model-library-types";
 import { modelLabel } from "@/lib/models/display";
 import { CatalogueModelDetails } from "@/components/domain/models/CatalogueModelDetails";
 import { CATALOGUE_STATUS, type CatalogueStatus } from "./catalogue-status";
 import { useModelCatalogue } from "./ModelCatalogueProvider";
 import { CatalogueReadControls } from "./CatalogueReadControls";
+import { ModelDetailsPopover } from "./ModelDetailsPopover";
 
 const CATALOGUE_LOADING_PLACEHOLDER = "Loading models…";
 const SELECT_PLACEHOLDER = "Select a model";
@@ -16,7 +16,7 @@ const MODEL_ID_CLASS = "font-mono text-label leading-label text-muted-foreground
 export type ProviderModelSelectProps = {
   id: string; provider?: string; model: string;
   onModelChange: (value: string) => void; label?: string;
-  details?: "inline" | "disclosure";
+  details?: "inline" | "popover";
   triggerClassName?: string;
   inputClassName?: string;
 };
@@ -27,14 +27,14 @@ export default function ProviderModelSelect({ id, provider, model, onModelChange
   const options = provider ? modelsForProvider(models, provider) : uniqueModelIds(models);
   const selected = options.find((option) => option.id === model);
   return <div className="min-w-0 space-y-md">
-    <Label htmlFor={id}>{label}</Label>
+    {details === "popover" ? <div className="relative">
+      <Label htmlFor={id}>{label}</Label>
+      {selected ? <ModelDetailsPopover key={selected.id} model={selected} /> : null}
+    </div> : <Label htmlFor={id}>{label}</Label>}
     <ModelControl id={id} label={label} model={model} onModelChange={onModelChange}
       options={options} selected={selected} status={status} triggerClassName={triggerClassName} inputClassName={inputClassName} />
     <CatalogueReadControls includeAdvanced />
-    {selected ? details === "disclosure" ? <Collapsible className="group text-label">
-      <CollapsibleTrigger asChild><Button variant="ghost" size="compact" className="w-full justify-between px-0">Model details<CaretDownIcon size={16} className="group-data-[state=open]:rotate-180" aria-hidden="true" /></Button></CollapsibleTrigger>
-      <CollapsibleContent><CatalogueModelDetails model={selected} /></CollapsibleContent>
-    </Collapsible> : <CatalogueModelDetails model={selected} /> : null}
+    {selected && details === "inline" ? <CatalogueModelDetails model={selected} /> : null}
   </div>;
 }
 

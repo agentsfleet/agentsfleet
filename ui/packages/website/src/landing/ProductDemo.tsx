@@ -7,17 +7,25 @@ import { DEMO_STAGES, useDemoPlayback } from "./useDemoPlayback";
 function Scene({
   active,
   staticMode,
+  animate,
   children,
 }: {
   active: boolean;
   staticMode: boolean;
+  animate: boolean;
   children: ReactNode;
 }) {
   return (
     <div
       data-active={active}
       inert={!staticMode && !active}
-      className="min-w-0 motion-safe:[@media(scripting:enabled)]:[grid-area:1/1] motion-safe:[@media(scripting:enabled)]:transition-[opacity,visibility] motion-safe:[@media(scripting:enabled)]:duration-500 motion-safe:[@media(scripting:enabled)]:data-[active=false]:invisible motion-safe:[@media(scripting:enabled)]:data-[active=false]:opacity-0"
+      className={cn(
+        "min-w-0",
+        staticMode
+          ? "snap-start"
+          : "col-start-1 row-start-1 data-[active=false]:invisible data-[active=false]:opacity-0",
+        animate && "transition-[opacity,visibility] duration-500",
+      )}
     >
       {children}
     </div>
@@ -73,6 +81,7 @@ export function ProductDemo() {
       className="min-w-0"
       id="product-demo"
       aria-labelledby="film-heading"
+      data-animated={!demo.staticMode}
     >
       <figcaption className="mb-md flex flex-wrap justify-between gap-md">
         <h2 id="film-heading" className="font-bold text-text">
@@ -83,39 +92,52 @@ export function ProductDemo() {
         </span>
       </figcaption>
       <div className="flex flex-col gap-md">
-        <div className="flex flex-wrap items-center justify-between gap-x-lg gap-y-sm md:order-last motion-reduce:hidden [@media(scripting:none)]:hidden">
-          <div className="min-w-32 flex-1">
-            <div className="mb-sm flex gap-1" aria-hidden="true">
-              {DEMO_STAGES.map(({ name }, index) => (
-                <span
-                  key={name}
-                  className={cn(
-                    "h-0.5 flex-1 rounded-full",
-                    index <= demo.stage ? "bg-pulse" : "bg-border-strong",
-                  )}
-                />
-              ))}
+        {demo.staticMode ? (
+          <p className="flex min-h-11 items-center text-label text-text-muted md:order-last motion-reduce:hidden">
+            Scroll across to read the full story.
+          </p>
+        ) : (
+          <div className="flex min-h-11 flex-wrap items-center justify-between gap-x-lg gap-y-sm md:order-last">
+            <div className="min-w-32 flex-1">
+              <div className="mb-sm flex gap-1" aria-hidden="true">
+                {DEMO_STAGES.map(({ name }, index) => (
+                  <span
+                    key={name}
+                    className={cn(
+                      "h-0.5 flex-1 rounded-full",
+                      index <= demo.stage ? "bg-pulse" : "bg-border-strong",
+                    )}
+                  />
+                ))}
+              </div>
+              <p className="text-label text-text-muted">
+                {DEMO_STAGES[demo.stage].name}
+              </p>
             </div>
-            <p className="text-label text-text-muted">
-              {DEMO_STAGES[demo.stage].name}
-            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="min-h-11"
+              onClick={demo.toggle}
+            >
+              {demo.finished
+                ? "Replay demo"
+                : demo.paused
+                  ? "Resume demo"
+                  : "Pause demo"}
+            </Button>
           </div>
-          <Button
-            size="sm"
-            variant="outline"
-            className="min-h-11"
-            onClick={demo.toggle}
-          >
-            {demo.finished
-              ? "Replay demo"
-              : demo.paused
-                ? "Resume demo"
-                : "Pause demo"}
-          </Button>
-        </div>
+        )}
         <div
           ref={stage}
-          className="grid gap-lg motion-safe:[@media(scripting:enabled)]:gap-0 md:motion-safe:[@media(scripting:enabled)]:min-h-[29rem]"
+          className={cn(
+            "grid md:motion-safe:min-h-116",
+            demo.staticMode &&
+              "gap-lg motion-safe:snap-x motion-safe:snap-mandatory motion-safe:auto-cols-[100%] motion-safe:grid-flow-col motion-safe:overflow-x-auto",
+          )}
+          role={demo.staticMode ? "region" : undefined}
+          aria-label={demo.staticMode ? "Support investigation example" : undefined}
+          tabIndex={demo.staticMode ? 0 : undefined}
           data-playing={demo.playing}
           onFocus={demo.pause}
         >
@@ -124,6 +146,7 @@ export function ProductDemo() {
               key={DEMO_STAGES[index].name}
               active={index === demo.stage}
               staticMode={demo.staticMode}
+              animate={!demo.staticMode && demo.stage > 0}
             >
               {scene}
             </Scene>

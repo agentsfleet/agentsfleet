@@ -36,7 +36,7 @@ afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe("provider picker during catalogue loading", () => {
   it.each([CATALOGUE_STATUS.idle, CATALOGUE_STATUS.loading])(
-    "holds a disabled picker during %s and enables the same control when ready",
+    "holds a disabled picker during %s and enables the same control once providers arrive",
     async (status) => {
       catalogue.status = status;
       catalogue.models = [];
@@ -51,13 +51,16 @@ describe("provider picker during catalogue loading", () => {
       expect(dialog.queryByRole("textbox", { name: "Provider" })).toBeNull();
 
       catalogue.models = [model];
-      catalogue.status = CATALOGUE_STATUS.ready;
+      catalogue.status = CATALOGUE_STATUS.loading;
       view.rerender(<AddModelEntryDialog {...props} />);
       expect(dialog.getByRole("combobox", { name: "Provider" })).toBe(provider);
       expect(provider).toHaveProperty("disabled", false);
       expect(dialog.getByLabelText("Key name")).toHaveProperty("value", "my-provider");
       await user.click(provider);
       await user.click(screen.getByRole("option", { name: "Anthropic" }));
+      catalogue.status = CATALOGUE_STATUS.ready;
+      view.rerender(<AddModelEntryDialog {...props} />);
+      expect(dialog.getByRole("combobox", { name: "Provider" })).toBe(provider);
       expect(provider.textContent).toContain("Anthropic");
     },
   );

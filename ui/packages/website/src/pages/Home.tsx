@@ -92,6 +92,8 @@ function Pricing({ waitlistUrl }: HomeProps) {
                 <Button asChild className="min-h-11">
                   <a
                     href={waitlistUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     data-testid="pricing-cta-early-access"
                     {...linkTracking("pricing_signup", "pricing", "signup")}
                   >
@@ -133,10 +135,10 @@ function Hero({ waitlistUrl }: HomeProps) {
         className={cn(
           SITE_CONTAINER,
           SECTION_SPACING,
-          "grid items-center gap-3xl lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-3xl",
+          "grid items-start gap-3xl lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-3xl lg:motion-safe:items-center",
         )}
       >
-        <div className="grid items-start gap-xl self-start lg:motion-safe:[@media(scripting:enabled)]:self-center">
+        <div className="grid items-start gap-xl">
           <DisplayXL
             id="hero-heading"
             className="grid gap-lg font-extrabold text-balance"
@@ -154,6 +156,8 @@ function Hero({ waitlistUrl }: HomeProps) {
             <Button asChild className="min-h-11">
               <a
                 href={waitlistUrl}
+                target="_blank"
+                rel="noopener noreferrer"
                 {...linkTracking("hero_signup", "hero", "signup")}
               >
                 Join waitlist
