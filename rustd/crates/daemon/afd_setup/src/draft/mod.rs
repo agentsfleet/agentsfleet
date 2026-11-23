@@ -28,8 +28,8 @@ pub struct Drafts {
     pub(crate) senders: Cache<Uuid7, Arc<Mutex<()>>>,
     /// Carries the hints a draft run needs after a commit: the wake that
     /// assigns an accepted message, the Cancel a Stop or a deletion sends, and
-    /// a setup run's live answer. `None` publishes nothing; the 5 s probe
-    /// still finds the work.
+    /// a setup run's live answer. `None` publishes nothing, and no timer
+    /// probes for the work instead (`afd_gateway/src/scheduler/mod.rs`).
     pub(crate) bus: Option<afd_bus::Handle>,
     /// The deployment's `[setup]` settings.
     pub(crate) tuning: crate::tuning::SetupTuning,
@@ -86,7 +86,10 @@ impl Drafts {
 
     /// Hints, after the commit that queued a message on `draft`, that a draft
     /// run may take it. One wake key names the owner, fleet or draft, by its
-    /// thread's id. Lossy: a lost hint costs one 5 s probe.
+    /// thread's id. Lossy, and no timer re-probes: a lost hint leaves the
+    /// message queued until a later notification runs a pass, such as another
+    /// wake, a runner's freed capacity or a reconnection
+    /// (`afd_gateway/src/scheduler/mod.rs`).
     pub(crate) async fn wake_setup(&self, draft: &Uuid7) {
         if let Some(bus) = &self.bus {
             afd_bus::wake::publish(bus, draft.clone()).await;

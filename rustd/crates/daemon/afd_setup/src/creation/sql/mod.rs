@@ -12,9 +12,9 @@
 /// `$1` fleet, `$2` workspace.
 pub(super) const LOCK: &str = include_str!("lock.sql");
 
-/// The locked fleet with its head revision, counters and open gates, read under
-/// a fresh statement snapshot that already includes whichever writer held the
-/// lock before us.
+/// The fleet with its head revision, counters and open gates. After [`LOCK`],
+/// read under a fresh statement snapshot that already includes whichever writer
+/// held the lock before us; alone, for a read that holds nothing.
 ///
 /// `$1` fleet, `$2` workspace.
 pub(super) const LOCKED: &str = include_str!("locked.sql");
@@ -83,8 +83,3 @@ pub(super) const TENANT: &str = include_str!("tenant.sql");
 
 /// `$1` fleet, `$2` workspace, `$3` the installing status.
 pub(super) const REMOVE: &str = include_str!("remove.sql");
-
-/// The owner's wallet, locked ahead of activation like every money path.
-///
-/// `$1` tenant.
-pub(super) const WALLET: &str = include_str!("wallet.sql");

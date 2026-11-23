@@ -15,12 +15,16 @@ pub(super) async fn observe(
     observed: &mut Observed,
 ) -> Result<()> {
     let version: Option<String> = match &context.creator_id {
-        Some(creator) => sqlx::query_scalar(super::sql::AUTHORITY)
-            .bind(creator)
-            .bind(&context.workspace_id)
-            .fetch_optional(connection)
-            .await
-            .map_err(query(CONTEXT))?,
+        Some(creator) => sqlx::query_scalar(
+            observed
+                .hold
+                .statement(super::sql::AUTHORITY, super::sql::AUTHORITY_READ),
+        )
+        .bind(creator)
+        .bind(&context.workspace_id)
+        .fetch_optional(connection)
+        .await
+        .map_err(query(CONTEXT))?,
         None => Some(SYSTEM_AUTHORITY.to_owned()),
     };
     observed

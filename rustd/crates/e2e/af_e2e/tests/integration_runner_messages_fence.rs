@@ -40,7 +40,6 @@ async fn test_stale_fence_message_refused() {
         "{refused}"
     );
     assert!(posts(&speaking.slack).is_empty(), "the thread was there");
-    assert_eq!(speaking.counted(&run_id).await, 0);
     speaking.finish(supervisor).await;
 }
 
@@ -61,12 +60,10 @@ async fn test_superseded_holder_of_a_thread_posts_nothing() {
         "{refused}"
     );
     assert!(posts(&speaking.slack).is_empty(), "the thread was there");
-    assert_eq!(speaking.counted(&run_id).await, 0);
     speaking.finish(supervisor).await;
 }
 
-/// Posts racing: every one lands under its own call's line, and the count is
-/// exactly how many raced.
+/// Posts racing: every one lands under its own call's line.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_concurrent_messages_each_take_their_own_line() {
@@ -90,7 +87,5 @@ async fn test_concurrent_messages_each_take_their_own_line() {
         .collect();
     let expected: BTreeSet<u64> = (1..=u64::from(RACERS)).collect();
     assert_eq!(lines, expected, "each post took its own line");
-    let counted = i32::try_from(RACERS).expect("a small count");
-    assert_eq!(speaking.counted(&run_id).await, counted);
     speaking.finish(supervisor).await;
 }

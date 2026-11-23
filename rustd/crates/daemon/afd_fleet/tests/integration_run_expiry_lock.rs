@@ -1,9 +1,10 @@
 //! For the run verbs: a run that lapses while a verb waits on
 //! its row lock no longer holds once the verb has the lock.
 //!
-//! Three verbs read `thread.runs` under a lock: the write fence a schedule
-//! write proves itself with (`FOR SHARE`), the tool-call records
-//! (`FOR NO KEY UPDATE`), and the interim message count (an `UPDATE`). The
+//! Two verbs read `thread.runs` under a lock: the write fence a schedule
+//! write proves itself with (`FOR SHARE`) and the tool-call records
+//! (`FOR NO KEY UPDATE`). The interim message reads its run unlocked and
+//! writes nothing to it, so it has no wait to lapse in. The
 //! holder here only locks the row and writes nothing. A holder that wrote it
 //! would make Postgres re-check the predicate after the wait and hide the
 //! defect this guards against: a deadline compared with a clock read before
@@ -16,19 +17,14 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use std::borrow::Cow;
 use std::time::Duration;
 
 use af_core::id::Uuid7;
-use af_wire::message_verb::MessageRequest;
 use af_wire::tool_detail::ToolCallRecordsRequest;
-use afd_connector::Provider;
 use afd_db::Precondition as _;
 use afd_fleet::run::write_fence::WriteFence;
-use afd_turns::{Producer, Reply};
 use sqlx::{Connection as _, PgConnection, Postgres, Transaction};
 
-use crate::integration_report_owes_destination::stage::stage;
 use crate::report_seed::held;
 use crate::support::Fixtures;
 
@@ -57,9 +53,6 @@ fn record(turn: &str) -> String {
         r#"{{"call_number":1,"arguments":{{}},"truncated_arguments":false,"output":"ok","output_line_count":1,"truncated":false,"turn_id":"{turn}","kind":"tool_call","tool":"shell","status":"succeeded"}}"#
     )
 }
-
-/// The thread a message-capable event was asked from.
-const THREAD: &str = "C0FIXTURE/1700000000.000200";
 
 /// Commits a deadline on `run` lapsing in [`LAPSES_IN`], then takes the
 /// row's lock on `held`; answers the holder's backend.
@@ -201,45 +194,4 @@ async fn test_tool_call_records_refuse_a_run_lapsed_in_the_wait() {
         "a run that lapsed in the wait keeps no record"
     );
     held.fixtures.cleanup().await;
-}
-
-/// The interim message count, taken behind the held lock after the unlocked
-/// standing read has already passed.
-#[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_message_count_refuses_a_run_lapsed_in_the_wait() {
-    let stage = stage().await;
-    let reply = Reply::To {
-        connector: Provider::Slack.id(),
-        address: THREAD,
-    };
-    stage.admit(Producer::Webhook, "lapses", reply).await;
-    let (run, issued) = stage.assign_next(stage.fixtures.enrolled_at()).await;
-    let request = MessageRequest {
-        fencing_token: issued.fence.as_u64(),
-        item_id: Cow::Borrowed("0199a0b0-0000-7000-8000-0000000000aa"),
-        call_number: 1,
-        text: Cow::Borrowed("still here?"),
-    };
-    let plane = stage.fixtures.plane();
-    let mut holder = stage
-        .fixtures
-        .database
-        .acquire()
-        .await
-        .expect("a connection");
-    let mut locked = holder.begin().await.expect("holder transaction");
-    let pid = lapse_and_lock(&stage.fixtures, &mut locked, &run).await;
-
-    let (said, ()) = tokio::join!(
-        plane.message(&stage.runner, run.clone(), &request),
-        hold_past_deadline(&stage.fixtures, locked, pid, &run)
-    );
-
-    assert_eq!(
-        said.err().map(|error| error.code()),
-        Some(afd_fleet::Error::run_not_found().code()),
-        "a run that lapsed in the wait takes no message slot"
-    );
-    stage.fixtures.cleanup().await;
 }

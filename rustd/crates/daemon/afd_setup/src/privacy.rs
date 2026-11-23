@@ -30,10 +30,21 @@ impl Drafts {
 
 /// Deletes the draft and its active draft runs, answering each deleted
 /// run's runner and id so the caller can tell the runner to stop.
+///
+/// The draft's thread first, in a statement of its own: an assignment holds
+/// the thread, not the draft, until it commits, so the statements after this
+/// wait out its commit and see the run it issued. Deleting the draft first
+/// would wait on that thread inside the cascade while the assignment, holding
+/// it, re-checks its draft key: a deadlock.
 pub(crate) async fn purge(
     connection: &mut PgConnection,
     id: &Uuid7,
 ) -> Result<Vec<(Uuid7, Uuid7)>> {
+    sqlx::query(sql::message::HOLD_THREAD)
+        .bind(id)
+        .fetch_optional(&mut *connection)
+        .await
+        .map_err(query(CONTEXT))?;
     // No foreign key reaches thread.runs from a draft, so its live runs go here;
     // its thread goes with the draft's own cascade.
     let killed: Vec<(Uuid7, Uuid7)> = sqlx::query_as(crate::setup_run::DELETE_RUNS)

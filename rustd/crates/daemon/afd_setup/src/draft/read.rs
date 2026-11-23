@@ -15,8 +15,10 @@ use sqlx::{Connection as _, PgConnection};
 
 const CONTEXT: &str = "read private draft";
 
+/// A creator's draft as one read found it: under its row lock for a write
+/// ([`lock`]), or in the caller's snapshot for a read ([`unlocked`]).
 #[derive(Clone)]
-pub(crate) struct Locked {
+pub(crate) struct DraftRow {
     pub(crate) id: Uuid7,
     pub(crate) status: DraftState,
     pub(crate) title: String,
@@ -40,9 +42,9 @@ pub(crate) struct Locked {
     pub(crate) source_pin: Option<SourcePin>,
 }
 
-/// [`sql::draft::LOCK`]'s row, by column name.
+/// [`sql::draft::LOCK`]'s and [`sql::draft::READ`]'s row, by column name.
 #[derive(sqlx::FromRow)]
-struct LockedRow {
+struct Columns {
     id: Uuid7,
     status: String,
     title: String,
@@ -64,8 +66,8 @@ struct LockedRow {
     source_fleet_revision: Option<i64>,
 }
 
-impl LockedRow {
-    fn decode(self) -> Result<Locked> {
+impl Columns {
+    fn decode(self) -> Result<DraftRow> {
         let fleet = match (self.source_fleet_id, self.source_fleet_revision) {
             (Some(fleet), Some(revision)) => Some((fleet, revision)),
             _ => None,
@@ -74,7 +76,7 @@ impl LockedRow {
             source_type: self.source_type,
             fleet,
         })?;
-        Ok(Locked {
+        Ok(DraftRow {
             id: self.id.clone(),
             status: crate::draft::word(&self.status)?,
             title: self.title,
@@ -101,28 +103,54 @@ pub(crate) fn optional(id: Option<&str>) -> Result<Option<Uuid7>> {
 }
 
 impl Drafts {
-    /// Reads only the authenticated creator's current private setup.
+    /// Reads only the authenticated creator's current private setup, on one
+    /// snapshot that holds no lock.
     ///
     /// # Errors
     /// Hides missing/foreign/revoked resources and propagates datastore faults.
     pub async fn read(&self, access: Access<'_>, id: &Uuid7) -> Result<Draft> {
         let mut connection = self.database.acquire().await?;
-        let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
-        let person = access::current(&mut tx, access).await?;
-        let locked = lock(&mut tx, access, &person, id).await?;
-        let draft = project(&mut tx, locked).await?;
+        let mut tx = connection
+            .begin_with(sql::SNAPSHOT)
+            .await
+            .map_err(query(CONTEXT))?;
+        let person = access::unlocked(&mut tx, access).await?;
+        let draft = unlocked(&mut tx, access, &person, id).await?;
+        let draft = project(&mut tx, draft).await?;
         tx.commit().await.map_err(query(CONTEXT))?;
         Ok(draft)
     }
 }
 
+/// The creator's live draft, locked until the caller's write commits.
 pub(crate) async fn lock(
     connection: &mut PgConnection,
     access: Access<'_>,
     person: &Person,
     id: &Uuid7,
-) -> Result<Locked> {
-    let row: Option<LockedRow> = sqlx::query_as(sql::draft::LOCK)
+) -> Result<DraftRow> {
+    row(connection, access, person, id, sql::draft::LOCK).await
+}
+
+/// [`lock`] for a read, which holds nothing: the draft as the caller's
+/// snapshot sees it.
+pub(crate) async fn unlocked(
+    connection: &mut PgConnection,
+    access: Access<'_>,
+    person: &Person,
+    id: &Uuid7,
+) -> Result<DraftRow> {
+    row(connection, access, person, id, sql::draft::READ).await
+}
+
+async fn row(
+    connection: &mut PgConnection,
+    access: Access<'_>,
+    person: &Person,
+    id: &Uuid7,
+    statement: &'static str,
+) -> Result<DraftRow> {
+    let row: Option<Columns> = sqlx::query_as(statement)
         .bind(id)
         .bind(access.workspace)
         .bind(&person.id)
@@ -132,21 +160,21 @@ pub(crate) async fn lock(
     row.ok_or(ErrorKind::Hidden)?.decode()
 }
 
-pub(crate) async fn project(connection: &mut PgConnection, locked: Locked) -> Result<Draft> {
-    let candidate = match locked.head_revision_id {
-        Some(ref id) => Some(candidate::read(connection, &locked.id, id).await?),
+pub(crate) async fn project(connection: &mut PgConnection, draft: DraftRow) -> Result<Draft> {
+    let candidate = match draft.head_revision_id {
+        Some(ref id) => Some(candidate::read(connection, &draft.id, id).await?),
         None => None,
     };
     Ok(Draft {
-        etag: super::etag(&locked.id, locked.resource_version),
-        id: locked.id,
-        state: locked.status,
-        title: locked.title,
-        setup_model_ref: locked.setup_model_ref,
+        etag: super::etag(&draft.id, draft.resource_version),
+        id: draft.id,
+        state: draft.status,
+        title: draft.title,
+        setup_model_ref: draft.setup_model_ref,
         candidate,
         review: None,
-        linked_fleet_id: locked.fleet_id,
-        closed_at: locked.closed_at,
-        expires_at: locked.expires_at,
+        linked_fleet_id: draft.fleet_id,
+        closed_at: draft.closed_at,
+        expires_at: draft.expires_at,
     })
 }

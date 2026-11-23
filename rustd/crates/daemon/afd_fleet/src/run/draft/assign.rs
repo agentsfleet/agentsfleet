@@ -1,20 +1,29 @@
-//! The draft assignment: one transaction under the host lock takes the draft, its
-//! thread and its run, and the assignment is rendered from what it committed.
+//! The draft assignment: one transaction under the host lock reads the draft,
+//! claims its thread and its turn, and writes its run, and the assignment is
+//! rendered from what it committed.
 //!
-//! Lock order is the host row, then the draft's creator and draft (`NOWAIT`,
-//! so a busy draft never stalls the walk), then the draft's thread and its
-//! earlier run. A draft's report takes the draft and then the thread, and holds
-//! no host row, so the two never wait on each other.
+//! The assignment locks no draft and no creator, so no reader or writer of the
+//! draft can make it skip one. Its locks are the host row, then the draft's
+//! thread (the thread claim, which two passes over one draft meet at), the
+//! earlier run, and the turn (the turn claim). A Stop, a report and a renewal
+//! take the thread first too, so none of them waits on the assignment while it
+//! waits on them. Draft writers lock the draft `FOR NO KEY UPDATE`, so the
+//! key share an assignment's thread update re-checks the draft under never
+//! waits on them. A deletion takes the thread before it deletes: it waits for
+//! an assignment that holds the thread, and an assignment that reaches the
+//! thread after it waits for the deletion to commit and then finds the draft
+//! gone (`take.rs`).
 
 use af_core::id::Uuid7;
 use af_wire::{run::RunKind, setup::FailureReason};
 use afd_runner::capacity::{Held, choice::Ticket};
-use afd_setup::setup_run::{SetupAssignment, SetupHint, SetupOwed};
+use afd_setup::setup_run::{SetupAssignment, SetupClaim, SetupHint, SetupOwed};
 use jiff::Timestamp;
 use sqlx::Connection as _;
 
 use super::DraftAssignment;
 use super::issue::Issue;
+use super::take::Taken;
 use crate::error::{Result, query};
 use crate::run::{RunOwner, RunService, runner_runs};
 
@@ -86,7 +95,7 @@ impl RunService {
             .await?
         {
             SetupAssignment::Assigned(turn) => *turn,
-            SetupAssignment::Passed | SetupAssignment::Busy => {
+            SetupAssignment::Passed => {
                 commit(tx, owed, drafts, None).await?;
                 return Ok(Placement::Skipped);
             }
@@ -101,13 +110,28 @@ impl RunService {
             return Ok(Placement::Skipped);
         };
         let owner = RunOwner::Draft(turn.draft_id.clone());
-        let taken = self
+        let (won, reassignment, expired) = match self
             .take_thread(&mut tx, drafts, runner, &turn, &mut owed)
-            .await?;
-        let Some((won, reassignment)) = taken.won else {
-            commit(tx, owed, drafts, taken.expired.as_ref()).await?;
-            return Ok(Placement::Skipped);
+            .await?
+        {
+            Taken::Won {
+                won,
+                reassignment,
+                expired,
+            } => (won, reassignment, expired),
+            Taken::Passed { expired } => {
+                commit(tx, owed, drafts, expired.as_ref()).await?;
+                return Ok(Placement::Skipped);
+            }
+            // Dropping the transaction rolls it back: the draft is gone.
+            Taken::Gone => return Ok(Placement::Skipped),
         };
+        // The turn claim, under the thread this pass now holds. A message
+        // settled, or a draft that left editing, since the facts were read
+        // rolls back everything this transaction wrote, the fence bump with it.
+        if drafts.claim_setup_turn(&mut tx, &turn).await? == SetupClaim::Moved {
+            return Ok(Placement::Skipped);
+        }
         let issue = Issue {
             runner,
             owner: &owner,
@@ -121,8 +145,7 @@ impl RunService {
             // The host filled, the fence or the choice moved: nothing commits.
             return Ok(Placement::Busy);
         };
-        drafts.start_setup_turn(&mut tx, &turn).await?;
-        commit(tx, owed, drafts, taken.expired.as_ref()).await?;
+        commit(tx, owed, drafts, expired.as_ref()).await?;
         runner_runs::acquired(runner);
         log_assigned(&turn.draft_id, &run_id, runner, won.fencing_token);
         let (fence, expires_at) = (won.fencing_token, won.run_expires_at);

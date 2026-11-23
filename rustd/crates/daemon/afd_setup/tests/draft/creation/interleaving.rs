@@ -8,8 +8,15 @@ use af_core::{error_code, id::Uuid7, test_util::trace::Capture};
 use afd_setup::{SavedFleet, types::Start};
 use sqlx::Connection as _;
 
-/// Holds the fixture tenant's wallet the way activation locks it.
-const LOCK_WALLET: &str = "SELECT balance_nanos FROM billing.wallets WHERE tenant_id=$1 FOR UPDATE";
+/// Holds the fleet row the way activation's write locks it
+/// (`creation/sql/lock.sql`). Setup's readiness reads take no lock, so a held
+/// row stops activation only where it writes: at the stream record, or at the
+/// locked recheck once that record is in.
+const HOLD_FLEET: &str = "SELECT id FROM fleet.fleets WHERE id=$1 FOR UPDATE";
+
+/// The stream record an earlier pass left, so the retry's first write is the
+/// locked recheck.
+const STREAM_READY: &str = "UPDATE fleet.fleets SET setup_stream_ready=true WHERE id=$1";
 
 /// The holding session, so a proof can wait for work to queue behind it.
 const BACKEND: &str = "SELECT pg_backend_pid()";
@@ -33,15 +40,17 @@ fn installing(saved: &SavedFleet) {
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn setup_waiting_past_its_budget_answers_installing_and_the_key_finishes_it() {
-    let c = Case::create().await;
+    // Its own database: activation waits holding a lock on `fleet.fleets`, and a
+    // table lock another proof queues there would stall every session behind it.
+    let c = Case::isolated().await;
     let (key, request, fleet) = funded_retained(&c, "budget-elapsed").await;
     let mut holder = c.base.connection().await;
     let mut held = holder.begin().await.expect("holder transaction");
-    sqlx::query(LOCK_WALLET)
-        .bind(&c.base.tenant)
+    sqlx::query(HOLD_FLEET)
+        .bind(&fleet)
         .execute(&mut *held)
         .await
-        .expect("hold the wallet");
+        .expect("hold the fleet row");
     let capture = Capture::install();
     let waited = c.save(&key, request.clone()).await;
     let elapsed = capture.only("fleet_setup_budget_elapsed");
@@ -53,7 +62,7 @@ async fn setup_waiting_past_its_budget_answers_installing_and_the_key_finishes_i
         elapsed.field("error_code"),
         Some(error_code::INTERNAL_OPERATION_FAILED.as_str())
     );
-    held.rollback().await.expect("release the wallet");
+    held.rollback().await.expect("release the fleet row");
     drop(holder);
     assert_eq!(c.save(&key, request).await.status, "active");
     c.cleanup().await;
@@ -62,27 +71,34 @@ async fn setup_waiting_past_its_budget_answers_installing_and_the_key_finishes_i
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_stream_record_lost_while_activation_waited_holds_the_fleet_installing() {
-    let c = Case::create().await;
+    // Its own database: activation waits holding a lock on `fleet.fleets`, and a
+    // table lock another proof queues there would stall every session behind it.
+    let c = Case::isolated().await;
     let (key, request, fleet) = funded_retained(&c, "readiness-lost").await;
+    sqlx::query(STREAM_READY)
+        .bind(&fleet)
+        .execute(&mut *c.base.connection().await)
+        .await
+        .expect("an earlier pass recorded the stream");
     let mut holder = c.base.connection().await;
     let mut held = holder.begin().await.expect("holder transaction");
     let pid: i32 = sqlx::query_scalar(BACKEND)
         .fetch_one(&mut *held)
         .await
         .expect("holder session");
-    sqlx::query(LOCK_WALLET)
-        .bind(&c.base.tenant)
+    sqlx::query(HOLD_FLEET)
+        .bind(&fleet)
         .execute(&mut *held)
         .await
-        .expect("hold the wallet");
+        .expect("hold the fleet row");
     let (waited, ()) = tokio::join!(c.save(&key, request.clone()), async {
         c.base.waits_on(pid, 1).await;
         sqlx::query("UPDATE fleet.fleets SET setup_stream_ready=false WHERE id=$1")
             .bind(&fleet)
-            .execute(&mut *c.base.connection().await)
+            .execute(&mut *held)
             .await
             .expect("lose the stream record");
-        held.rollback().await.expect("release the wallet");
+        held.commit().await.expect("release the fleet row");
     });
     assert_eq!(waited.id, fleet);
     installing(&waited);

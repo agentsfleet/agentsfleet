@@ -1,5 +1,6 @@
 -- Drafts whose head message a draft-owned run may take, oldest head first. A hint only:
--- the assignment rereads every fact under the draft's lock.
+-- the assignment rereads the draft's facts (`head.sql`), and its thread and turn claims
+-- decide (`afd_fleet`'s `assign_thread.sql`, then `running.sql`).
 --
 -- The head is the oldest message still queued or running; a stopped one is cancelled. A running
 -- head is taken again once its thread holds no live run: its run lapsed, or its runner was

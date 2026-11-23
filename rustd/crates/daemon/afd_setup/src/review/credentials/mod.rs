@@ -84,7 +84,10 @@ async fn grant(
     service: &str,
     observed: &mut Observed,
 ) -> Result<()> {
-    let status: Option<String> = sqlx::query_scalar(crate::review::sql::GRANT)
+    let grant = observed
+        .hold
+        .statement(crate::review::sql::GRANT, crate::review::sql::GRANT_READ);
+    let status: Option<String> = sqlx::query_scalar(grant)
         .bind(draft.linked_fleet_id.as_ref())
         .bind(service)
         .fetch_optional(connection)

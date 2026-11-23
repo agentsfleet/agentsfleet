@@ -1,5 +1,6 @@
 -- The draft a draft run's report finishes, locked before the run and its thread, and the
--- message the run ran. No row once the draft is deleted.
+-- message the run ran. No key update: an assignment holding the thread re-checks its draft
+-- key under a key share, which passes. No row once the draft is deleted.
 --
 -- $1 draft · $2 the message the run ran
 SELECT d.workspace_id, d.tenant_id, d.user_id, m.sequence, m.status, m.save_requested,
@@ -8,4 +9,4 @@ SELECT d.workspace_id, d.tenant_id, d.user_id, m.sequence, m.status, m.save_requ
   JOIN thread.turns m ON m.thread_id = d.id AND m.id = $2
   JOIN identity.users u ON u.id = d.user_id
  WHERE d.id = $1
-   FOR UPDATE OF d
+   FOR NO KEY UPDATE OF d

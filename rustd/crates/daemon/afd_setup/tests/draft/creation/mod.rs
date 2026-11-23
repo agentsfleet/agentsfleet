@@ -18,6 +18,7 @@ mod identity;
 mod improvement;
 mod interleaving;
 mod race;
+mod reads;
 mod refusals;
 mod retries;
 mod rollback;

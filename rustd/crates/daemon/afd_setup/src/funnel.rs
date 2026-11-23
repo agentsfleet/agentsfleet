@@ -64,8 +64,9 @@ impl Owed {
         message: Message<'_>,
         state: &'static str,
     ) -> Result<()> {
-        // Every caller holds the creator's draft locked, and a creator's row
-        // takes their drafts with it, so the creator is still there.
+        // Every caller holds the creator's draft locked or has just moved the
+        // message's row, and a creator's deletion cascades through the draft
+        // to that row and waits on either, so the creator is still there.
         let actor: String = sqlx::query_scalar(crate::sql::access::SUBJECT)
             .bind(message.creator)
             .fetch_one(connection)

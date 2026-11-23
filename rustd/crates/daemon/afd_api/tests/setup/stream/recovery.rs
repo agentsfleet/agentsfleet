@@ -9,79 +9,35 @@ use sqlx::Connection as _;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-const BLOCKED: &str =
-    "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE $1=ANY(pg_blocking_pids(pid)))";
-
+/// The stream reads its draft in a snapshot and takes no row lock, so a writer
+/// that holds the draft row does not end it. It used to wait on that lock and
+/// close when the login's `lock_timeout` (`afd_db::login::LOCK_TIMEOUT`) passed.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn a_blocked_authorization_read_closes_at_its_deadline_and_releases_capacity() {
+async fn a_writer_holding_the_draft_row_does_not_close_the_stream() {
     let live = Live::create(1).await;
     let mut body = live.open().await;
     let mut owner = sqlx::PgConnection::connect(&live.f.owner_url())
         .await
         .expect("lock owner");
     let mut held = owner.begin().await.expect("hold draft");
-    let pid = lock_draft(&mut held, &live).await;
-    let started = tokio::time::Instant::now();
-    let read = tokio::spawn(async move {
-        let next = body.next().await;
-        (next, body)
-    });
-    let mut monitor = sqlx::PgConnection::connect(&live.f.owner_url())
+    sqlx::query("SELECT id FROM setup.drafts WHERE id=$1 FOR UPDATE")
+        .bind(&live.draft)
+        .fetch_one(&mut *held)
         .await
-        .expect("autocommit monitor");
-    wait_for_block(&mut monitor, pid).await;
-    let (next, body) = tokio::time::timeout(Duration::from_secs(12), read)
-        .await
-        .expect("bounded access read")
-        .expect("stream task");
+        .expect("draft row lock");
+    // gstack-timing-ok: the delivery deadline outlasts the lock timeout that
+    // used to close a waiting stream, so a still-open stream proves no wait.
+    let waited = tokio::time::timeout(super::DELIVERY, body.next()).await;
     assert!(
-        next.is_none(),
-        "blocked authorization cannot emit buffered text"
-    );
-    // gstack-timing-ok: checks the real bound after observing Postgres row-lock contention.
-    // The API login's `lock_timeout` (`afd_db::login`) ends the blocked check
-    // before the stream's 10 s deadline would.
-    let lock_bound = humantime_ms(afd_db::login::LOCK_TIMEOUT);
-    assert!(
-        started.elapsed() >= lock_bound,
-        "closed before the lock bound"
-    );
-    assert!(
-        started.elapsed() < Duration::from_secs(10),
-        "waited out the stream deadline"
+        waited.is_err(),
+        "an idle stream stays open while a writer holds its draft row"
     );
     held.rollback().await.expect("release draft");
     drop(body);
     assert_eq!(live.readers(), 0);
-    let replacement = live.open().await;
-    drop(replacement);
-    monitor.close().await.expect("release monitor");
     owner.close().await.expect("release owner");
     live.cleanup().await;
-}
-
-async fn lock_draft(held: &mut sqlx::Transaction<'_, sqlx::Postgres>, live: &Live) -> i32 {
-    sqlx::query_scalar("SELECT pg_backend_pid() FROM setup.drafts WHERE id=$1 FOR UPDATE")
-        .bind(&live.draft)
-        .fetch_one(&mut **held)
-        .await
-        .expect("draft row lock")
-}
-
-async fn wait_for_block(monitor: &mut sqlx::PgConnection, pid: i32) {
-    tokio::time::timeout(super::DELIVERY, async {
-        while !sqlx::query_scalar::<_, bool>(BLOCKED)
-            .bind(pid)
-            .fetch_one(&mut *monitor)
-            .await
-            .expect("current lock census")
-        {
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .expect("authorization actually waits on the held draft");
 }
 
 #[tokio::test]
@@ -258,14 +214,4 @@ async fn stream_ceiling_refuses_excess_viewers_and_dropped_body_releases_its_slo
     drop(replacement);
     assert_eq!(live.readers(), 0);
     live.cleanup().await;
-}
-
-/// A `"2000ms"`-style bound as a `Duration`.
-fn humantime_ms(bound: &str) -> Duration {
-    Duration::from_millis(
-        bound
-            .strip_suffix("ms")
-            .and_then(|millis| millis.parse().ok())
-            .expect("a bound in milliseconds"),
-    )
 }

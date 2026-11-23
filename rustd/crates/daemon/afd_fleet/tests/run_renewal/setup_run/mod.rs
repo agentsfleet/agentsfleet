@@ -19,6 +19,7 @@ use afd_setup::types::Draft;
 use super::{fixture::Running, replica::expire, seat::Seat};
 use crate::rows::{LAPSE, Row};
 
+mod claim;
 mod context;
 mod expiry;
 mod failed;

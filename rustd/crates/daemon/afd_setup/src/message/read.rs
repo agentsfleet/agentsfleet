@@ -40,7 +40,8 @@ struct Stored {
 }
 
 impl Drafts {
-    /// Reads a bounded page of the creator's durable conversation.
+    /// Reads a bounded page of the creator's durable conversation, on one
+    /// snapshot that holds no lock.
     ///
     /// # Errors
     /// Refuses foreign/malformed cursors and revoked or inaccessible drafts.
@@ -52,9 +53,12 @@ impl Drafts {
     ) -> Result<Page<Message>> {
         let request = garde::Unvalidated::new(request).validate()?;
         let mut connection = self.database.acquire().await?;
-        let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
-        let person = access::current(&mut tx, access).await?;
-        let draft = read::lock(&mut tx, access, &person, id).await?;
+        let mut tx = connection
+            .begin_with(sql::SNAPSHOT)
+            .await
+            .map_err(query(CONTEXT))?;
+        let person = access::unlocked(&mut tx, access).await?;
+        let draft = read::unlocked(&mut tx, access, &person, id).await?;
         let page = page_on(&mut tx, access, &person.id, &draft, &request).await?;
         tx.commit().await.map_err(query(CONTEXT))?;
         Ok(page)
@@ -65,7 +69,7 @@ pub(super) async fn page_on(
     connection: &mut sqlx::PgConnection,
     access: Access<'_>,
     person: &Uuid7,
-    draft: &read::Locked,
+    draft: &read::DraftRow,
     request: &MessageQuery,
 ) -> Result<Page<Message>> {
     let binding = replay::digest(&(
@@ -114,7 +118,7 @@ pub(super) async fn page_on(
 pub(super) fn recent_cursor(
     access: Access<'_>,
     person: &Uuid7,
-    draft: &read::Locked,
+    draft: &read::DraftRow,
 ) -> Result<Option<String>> {
     let before = draft.last_message_sequence.saturating_sub(12);
     let binding = replay::digest(&(CURSOR_RESOURCE, access.workspace, person, &draft.id, 25_u32))?;

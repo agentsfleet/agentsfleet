@@ -60,15 +60,25 @@ pub struct SavedFleet {
 }
 
 impl Creations {
-    /// Reads current shared setup and live prerequisites without advancing it.
+    /// Reads current shared setup and live prerequisites without advancing it,
+    /// locking no fleet, person, install or grant: a read that held the fleet
+    /// row would stall the fleet's intake and every report for its length.
+    ///
+    /// Read committed rather than on one snapshot, for the reason
+    /// [`crate::Setup::read_draft`] gives: the credential inspection opens its
+    /// secrets `FOR SHARE`.
     ///
     /// # Errors
     /// Refuses missing fleets and current access loss; preserves store failures.
     pub async fn read(&self, access: Access<'_>, fleet: &Uuid7) -> Result<SavedFleet> {
-        let (row, review) = self.snapshot(access, fleet).await?;
-        Ok(project(row, &review))
+        let (row, checked) = self.snapshot(access, fleet).await?;
+        Ok(project(row, &checked))
     }
 
+    /// The fleet and its current review, read without a lock. Setup's own
+    /// steps read it too: a lock taken here ended at this commit, before any
+    /// step acted on what it read, so it protected nothing. Each write
+    /// rechecks under its own lock (`activate.rs`, `start/recover.rs`).
     pub(super) async fn snapshot(
         &self,
         access: Access<'_>,
@@ -76,9 +86,9 @@ impl Creations {
     ) -> Result<(Stored, Review)> {
         let mut connection = self.setup.drafts.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
-        access::current(&mut tx, access).await?;
-        let row = lock(&mut tx, access.workspace, fleet).await?;
-        let checked = self.review(&mut tx, &row).await?;
+        access::unlocked(&mut tx, access).await?;
+        let row = stored(&mut tx, access.workspace, fleet).await?;
+        let checked = self.review(&mut tx, &row, review::Hold::Nothing).await?;
         tx.commit().await.map_err(query(CONTEXT))?;
         Ok((row, checked))
     }
@@ -87,6 +97,7 @@ impl Creations {
         &self,
         connection: &mut PgConnection,
         row: &Stored,
+        hold: review::Hold,
     ) -> Result<Review> {
         let mut context = row.accepted.context.clone();
         context.linked_fleet_id = Some(row.id.clone());
@@ -96,6 +107,7 @@ impl Creations {
             &context,
             &row.accepted.candidate(row.definition.clone()),
             af_core::clock::now(),
+            hold,
         )
         .await
     }
@@ -113,6 +125,13 @@ pub(super) async fn lock(
         .await
         .map_err(query(CONTEXT))?;
     locked.ok_or(ErrorKind::FleetMissing)?;
+    stored(connection, workspace, fleet).await
+}
+
+/// The fleet with its head revision, counters and open gates, as the caller's
+/// statement sees it: under [`lock`]'s row lock for a write, and unlocked for
+/// a read.
+async fn stored(connection: &mut PgConnection, workspace: &Uuid7, fleet: &Uuid7) -> Result<Stored> {
     let row: Option<StoredRow> = sqlx::query_as(sql::LOCKED)
         .bind(fleet)
         .bind(workspace)

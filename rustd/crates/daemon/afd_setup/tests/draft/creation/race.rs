@@ -21,9 +21,8 @@ use tokio::task::JoinHandle;
 /// Long enough for any healthy interleaving; a deadlock outlasts it.
 const BOUND: Duration = Duration::from_secs(30);
 const POLL: Duration = Duration::from_millis(20);
-/// The wallet row activation locks after its unlocked readiness reads.
-const HOLD_WALLET: &str = "SELECT balance_nanos FROM billing.wallets WHERE tenant_id=$1 FOR UPDATE";
-/// The linked draft row activation closes while it holds the fleet row.
+/// The linked draft row activation, and an archive, close while holding the
+/// fleet row.
 const HOLD_DRAFT: &str = "SELECT id FROM setup.drafts WHERE id=$1 FOR NO KEY UPDATE";
 /// One backend waiting directly or transitively on a holder while running a
 /// statement that starts with the given text. Fixture table locks may intervene.
@@ -32,9 +31,13 @@ SELECT unnest($1::int[]) UNION \
 SELECT a.pid FROM pg_stat_activity a JOIN blocked b ON b.pid=ANY(pg_blocking_pids(a.pid))) \
 SELECT pid FROM pg_stat_activity WHERE pid IN (SELECT pid FROM blocked) \
 AND NOT (pid=ANY($1::int[])) AND starts_with(query,$2) ORDER BY pid LIMIT 1";
-/// Where activation waits when the wallet row is held: past every unlocked check.
-const AT_WALLET: &str = "SELECT balance_nanos FROM billing.wallets";
-/// Where activation waits when its draft row is held: holding the fleet row it
+/// Where activation waits on a fleet row another writer holds: its locked
+/// recheck (`creation/sql/lock.sql`), past every unlocked readiness read.
+const AT_FLEET: &str = "SELECT id FROM fleet.fleets";
+/// The stream record an earlier pass left, so activation's first wait is its
+/// locked recheck.
+const STREAM_READY: &str = "UPDATE fleet.fleets SET setup_stream_ready=true WHERE id=$1";
+/// Where a writer waits when its draft row is held: holding the fleet row it
 /// has just activated, before its transaction commits.
 const AT_CLOSE: &str = "UPDATE setup.drafts\n   SET status = $2, closed_at";
 /// Archive's fleet row lock, the only read that could wait on an activation.
@@ -168,7 +171,9 @@ fn archive(c: &Arc<Case>, fleet: &Uuid7, tag: String) -> JoinHandle<Result<Saved
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_archive_committed_while_activation_waits_refuses_that_activation() {
-    let c = Arc::new(Case::create().await);
+    // Its own database: Archive waits holding a lock on `fleet.fleets`, and the
+    // table lock the next proof queues there would stall every session behind it.
+    let c = Arc::new(Case::isolated().await);
     let Installing {
         fleet,
         key,
@@ -176,18 +181,24 @@ async fn a_archive_committed_while_activation_waits_refuses_that_activation() {
         tag,
         draft,
     } = Installing::save(&c, "archive-first").await;
-    let wallet = Hold::take(&c.base.owner_url(), HOLD_WALLET, &c.base.tenant).await;
+    sqlx::query(STREAM_READY)
+        .bind(&fleet)
+        .execute(&mut *c.base.connection().await)
+        .await
+        .expect("an earlier pass recorded the stream");
+    // Archive takes the fleet row and stops at its draft close; activation
+    // then passes every unlocked check and queues at its locked recheck.
+    let linked = Hold::take(&c.base.owner_url(), HOLD_DRAFT, &draft).await;
+    let archiving = archive(&c, &fleet, tag);
+    blocked(&c, &[linked.pid], AT_CLOSE).await;
     let activation = activate(&c, key, request);
-    blocked(&c, &[wallet.pid], AT_WALLET).await;
-    let archived = bounded(
-        "Archive never waits on a pending activation",
-        archive(&c, &fleet, tag),
-    )
-    .await
-    .expect("Archive task")
-    .expect("Archive wins the fleet row");
+    blocked(&c, &[linked.pid], AT_FLEET).await;
+    linked.release().await;
+    let archived = bounded("Archive commits", archiving)
+        .await
+        .expect("Archive task")
+        .expect("Archive wins the fleet row");
     assert_eq!(archived.status, "archived");
-    wallet.release().await;
     let refused = bounded("activation resumes", activation)
         .await
         .expect("activation task")

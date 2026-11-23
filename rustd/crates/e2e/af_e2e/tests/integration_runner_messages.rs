@@ -109,8 +109,7 @@ async fn test_a_run_posts_long_lines_past_eight() {
     speaking.finish(supervisor).await;
 }
 
-/// An event from no thread has nowhere to post, and the run
-/// keeps its budget.
+/// An event from no thread has nowhere to post, and nothing is posted.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_message_without_channel_refused() {
@@ -128,11 +127,6 @@ async fn test_message_without_channel_refused() {
         posts(&speaking.slack).is_empty(),
         "{:?}",
         posts(&speaking.slack)
-    );
-    assert_eq!(
-        speaking.counted(&run_id).await,
-        0,
-        "a line with nowhere to go spends none of the scene's eight"
     );
     let unknown = "0195b4ba-8d3a-7fff-8abc-ffffffffffff";
     let (status, refused) = speaking.say((unknown, fence), "whose run?").await;

@@ -24,7 +24,7 @@ pub(crate) struct Person {
     pub(crate) owner: Uuid7,
 }
 
-/// [`sql::access::PERSON`]'s row, by column name.
+/// [`sql::access::PERSON`]'s and [`sql::access::PERSON_READ`]'s row, by column name.
 #[derive(sqlx::FromRow)]
 struct PersonRow {
     user_id: Uuid7,
@@ -32,8 +32,24 @@ struct PersonRow {
     personal_owner: bool,
 }
 
+/// The authenticated person, still a member, with their row key-shared until
+/// the caller's write commits.
 pub(crate) async fn current(connection: &mut PgConnection, access: Access<'_>) -> Result<Person> {
-    let row: PersonRow = sqlx::query_as(sql::access::PERSON)
+    person(connection, access, sql::access::PERSON).await
+}
+
+/// [`current`] for a read or an assignment, which holds nothing: the same
+/// membership test, with no lock on the person.
+pub(crate) async fn unlocked(connection: &mut PgConnection, access: Access<'_>) -> Result<Person> {
+    person(connection, access, sql::access::PERSON_READ).await
+}
+
+async fn person(
+    connection: &mut PgConnection,
+    access: Access<'_>,
+    statement: &'static str,
+) -> Result<Person> {
+    let row: PersonRow = sqlx::query_as(statement)
         .bind(access.workspace)
         .bind(access.subject)
         .fetch_optional(&mut *connection)

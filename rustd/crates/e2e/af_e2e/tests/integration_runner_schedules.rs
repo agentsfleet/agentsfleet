@@ -17,12 +17,13 @@
               indexes the JSON it just built"
 )]
 
+use af_core::id::Uuid7;
 use afd_cron::{FLEET_SCHEDULES_MAX, Source};
 use agentsfleetd::supervisor::Supervisor;
 use reqwest::Method;
-use serde_json::Value;
+use serde_json::{Value, json};
 
-use crate::schedules::{Assigned, KOLKATA, WEEKLY};
+use crate::schedules::{Assigned, KOLKATA, WEEKLY, itemized};
 use crate::verbs::{FakeQStash, QSTASH_TOKEN, Told};
 
 /// A valid create stores a `fleet`-sourced row, registers it
@@ -57,6 +58,51 @@ async fn test_fleet_creates_its_own_schedule() {
     assert_eq!(schedules.len(), 1);
     assert_eq!(schedules[0]["schedule_id"], created["schedule_id"]);
     assert_eq!(schedules[0]["source"], "fleet");
+    assigned.finish(supervisor).await;
+}
+
+/// A create whose schedule committed but whose answer never reached its item
+/// is retried with the same item: the retry answers the same schedule,
+/// pushed again under the same scheduler id, and the fleet holds one.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn a_retried_create_whose_answer_was_lost_creates_one_schedule() {
+    let mut supervisor = Supervisor::new();
+    let qstash = FakeQStash::start().await;
+    let assigned = Box::pin(Assigned::boot(&mut supervisor, &qstash)).await;
+    let body = itemized(json!({"fencing_token": assigned.fence, "cron": WEEKLY,
+                               "timezone": KOLKATA, "message": "weekly check", "once": false}));
+    let (status, first) = assigned
+        .call(Method::POST, &assigned.path(""), Some(&body))
+        .await;
+    assert_eq!(status, 201, "{first}");
+    let item = Uuid7::parse(body["item_id"].as_str().expect("the item id"))
+        .expect("the suite mints canonical ids");
+    // What a record that failed after the create committed leaves behind.
+    let dropped = sqlx::query("DELETE FROM thread.items WHERE id = $1")
+        .bind(&item)
+        .execute(&mut *assigned.connection().await)
+        .await
+        .expect("the stored answer is dropped");
+    assert_eq!(dropped.rows_affected(), 1, "the first answer was stored");
+
+    let (status, retried) = assigned
+        .call(Method::POST, &assigned.path(""), Some(&body))
+        .await;
+
+    assert_eq!(status, 201, "{retried}");
+    assert_eq!(first["schedule_id"], body["item_id"], "keyed by its call");
+    assert_eq!(retried["schedule_id"], first["schedule_id"]);
+    assert_eq!(retried["sync"], "synced", "{retried}");
+    assert_eq!(assigned.held(Some(Source::Fleet)).await, 1);
+    assert_eq!(
+        qstash.told(),
+        [
+            Told::Upsert(WEEKLY.to_owned()),
+            Told::Upsert(WEEKLY.to_owned())
+        ],
+        "pushed again, under the id the scheduler already files it by"
+    );
     assigned.finish(supervisor).await;
 }
 

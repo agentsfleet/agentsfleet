@@ -79,6 +79,7 @@ impl Creations {
             &captured.context,
             &captured.candidate,
             now,
+            review::Hold::Shared,
         )
         .await?;
         let id = self.setup.drafts.mint(now)?;

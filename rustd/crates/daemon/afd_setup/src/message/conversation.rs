@@ -41,7 +41,9 @@ impl Setup {
             starting_after: messages_starting_after.clone(),
         };
         let messages = page_on(&mut tx, access, &person.id, &locked, &request).await?;
-        let draft = self.review_draft_on(&mut tx, locked).await?;
+        let draft = self
+            .review_draft_on(&mut tx, locked, crate::review::Hold::Shared)
+            .await?;
         tx.commit().await.map_err(query(CONTEXT))?;
         Ok(Conversation {
             draft,

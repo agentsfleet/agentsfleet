@@ -19,7 +19,7 @@ use super::fixture::Case;
 use af_core::id::Uuid7;
 use afd_setup::{
     Access,
-    setup_run::{SetupAssignment, SetupFinish, SetupHint, SetupOwed, SetupTurn},
+    setup_run::{SetupAssignment, SetupClaim, SetupFinish, SetupHint, SetupOwed, SetupTurn},
     types::{DraftPatch, SendMessage},
 };
 use serde_json::json;
@@ -124,7 +124,7 @@ async fn try_assign(f: &Fixture, hint: &SetupHint) -> afd_setup::Result<SetupAss
 fn assigned(found: SetupAssignment) -> Option<SetupTurn> {
     match found {
         SetupAssignment::Assigned(turn) => Some(*turn),
-        SetupAssignment::Passed | SetupAssignment::Busy => None,
+        SetupAssignment::Passed => None,
     }
 }
 
@@ -140,10 +140,12 @@ async fn take(f: &Fixture, draft: &Uuid7) -> SetupTurn {
         .await
         .expect("the assignment answers");
     let turn = assigned(found).expect("the head message is assigned");
-    f.drafts
-        .start_setup_turn(&mut tx, &turn)
+    let claimed = f
+        .drafts
+        .claim_setup_turn(&mut tx, &turn)
         .await
-        .expect("the message starts");
+        .expect("the claim answers");
+    assert_eq!(claimed, SetupClaim::Taken, "the message starts");
     tx.commit().await.expect("the assignment commits");
     owed.settle(&f.drafts);
     turn

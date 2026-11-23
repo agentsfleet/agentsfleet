@@ -117,11 +117,11 @@ Model disable, wallet absence, membership removal and policy-marker drift fail c
 
 A replayed report finds the run settled and writes nothing. A report at a superseded fence is refused and writes nothing. A dead run's last slice, from its last renewal to its deadline, is not billed (Indy, Nov 21, 2026).
 
-**Locks.** Assignment holds the runner row first and takes the creator and the draft `NOWAIT`. Renewal takes the runner row, then the run's thread and row, and never a draft row. The report takes the draft, then the thread and the run, and never the runner row. [Concurrency](concurrency.md#runner-capacity-and-setup-lock-order) owns the complete lock order and exceptions.
+**Locks.** Assignment holds the runner row first and reads the creator and the draft without a lock; its thread and turn claims decide. Renewal takes the runner row, then the run's thread and row, and never a draft row. The report takes the draft, then the thread and the run, and never the runner row. [Concurrency](concurrency.md#runner-capacity-and-setup-lock-order) owns the complete lock order and exceptions.
 
 ### Stop
 
-Stop locks the draft, then cancels the turn through the Stop every thread shares (`afd_setup`'s `message/stop.rs`). The run serving the turn is marked and told to end.
+Stop locks the draft and then the thread, then cancels the turn through the Stop every thread shares (`afd_setup`'s `message/stop.rs`). The run serving the turn is marked and told to end.
 
 The next renewal of a stopped run is refused, and its request lines are still logged and charged. Its report logs the usage already spent. Stop does not undo provider work already started.
 

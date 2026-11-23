@@ -29,44 +29,74 @@ pub(super) struct Observed {
     checks: Vec<crate::types::Check>,
     versions: Vec<Value>,
     now: Timestamp,
+    hold: Hold,
+}
+
+/// Whether a review holds the access it observes until its transaction ends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Hold {
+    /// A write's review: the creator, the routing installs and the standing
+    /// grants it read stay as read until the write that relies on them
+    /// commits, so a revoke cannot land between the check and the write.
+    Shared,
+    /// A read's review, answered and discarded: it holds nothing, so it
+    /// delays no install, grant or revoke.
+    Nothing,
+}
+
+impl Hold {
+    /// `held` for a write's review, `read` for a read's.
+    const fn statement(self, held: &'static str, read: &'static str) -> &'static str {
+        match self {
+            Self::Shared => held,
+            Self::Nothing => read,
+        }
+    }
 }
 
 impl Setup {
-    /// Reads a creator-private draft and its current human review in one transaction.
+    /// Reads a creator-private draft and its current human review in one
+    /// transaction that locks no draft, person, install or grant.
+    ///
+    /// Read committed rather than on one snapshot: the credential inspection
+    /// opens its secrets `FOR SHARE` (`afd_vault`'s
+    /// `select_shared_generations.sql`), which a read-only snapshot refuses.
     ///
     /// # Errors
     /// Hides foreign or revoked access and preserves datastore failures.
     pub async fn read_draft(&self, access: Access<'_>, id: &Uuid7) -> Result<Draft> {
         let mut connection = self.drafts.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
-        let person = access::current(&mut tx, access).await?;
-        let locked = read::lock(&mut tx, access, &person, id).await?;
-        let draft = self.review_draft_on(&mut tx, locked).await?;
+        let person = access::unlocked(&mut tx, access).await?;
+        let draft = read::unlocked(&mut tx, access, &person, id).await?;
+        let draft = self.review_draft_on(&mut tx, draft, Hold::Nothing).await?;
         tx.commit().await.map_err(query(CONTEXT))?;
         Ok(draft)
     }
     pub(crate) async fn review_draft_on(
         &self,
         connection: &mut PgConnection,
-        locked: read::Locked,
+        row: read::DraftRow,
+        hold: Hold,
     ) -> Result<Draft> {
-        let review = match &locked.head_revision_id {
+        let review = match &row.head_revision_id {
             Some(id) => {
-                let candidate = candidate::read(connection, &locked.id, id).await?;
+                let candidate = candidate::read(connection, &row.id, id).await?;
                 Some(
                     build(
                         self,
                         connection,
-                        &Context::from(&locked),
+                        &Context::from(&row),
                         &candidate,
                         clock::now(),
+                        hold,
                     )
                     .await?,
                 )
             }
             None => None,
         };
-        let mut draft = read::project(connection, locked).await?;
+        let mut draft = read::project(connection, row).await?;
         draft.review = review;
         Ok(draft)
     }
@@ -78,12 +108,14 @@ pub(crate) async fn build(
     draft: &Context,
     candidate: &Candidate,
     now: Timestamp,
+    hold: Hold,
 ) -> Result<Review> {
     let target = target(connection, draft).await?;
     let mut observed = Observed {
         checks: Vec::new(),
         versions: Vec::new(),
         now,
+        hold,
     };
     let requirements = Requirements::of(&candidate.definition);
     authority::observe(connection, draft, &mut observed).await?;

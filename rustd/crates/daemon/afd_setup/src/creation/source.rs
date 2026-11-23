@@ -16,7 +16,7 @@ pub(super) struct Captured {
     pub(super) origin: Option<SaveOrigin>,
     pub(super) candidate: Candidate,
     pub(super) context: review::Context,
-    pub(super) draft: Option<draft::read::Locked>,
+    pub(super) draft: Option<draft::read::DraftRow>,
 }
 
 impl Creations {

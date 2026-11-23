@@ -19,6 +19,7 @@ use afd_connector::Provider;
 use afd_db::Precondition as _;
 use afd_fleet::run::write_fence::WriteFence;
 use afd_turns::{Producer, Reply};
+use sqlx::Connection as _;
 
 use crate::integration_report_owes_destination::stage::stage;
 use crate::report_seed::held;
@@ -26,6 +27,11 @@ use crate::rows::{LAPSE, Row};
 
 /// The thread a message-capable event was asked from.
 const THREAD: &str = "C0FIXTURE/1700000000.000100";
+
+/// How long a message may take while its run row is held by another
+/// transaction, so one that queued behind the holder fails instead of
+/// hanging where no lock timeout is set.
+const HELD_LIMIT: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// One finished call's record of `turn`, as a runner posts it.
 fn record(turn: &str) -> String {
@@ -70,11 +76,11 @@ async fn test_standing_answers_only_the_live_holder() {
 }
 
 /// A run asked from a thread may speak into it, each message under its own
-/// call's line; a run with nowhere to speak is refused before anything is
-/// counted.
+/// call's line; a run with nowhere to speak is refused before its text is
+/// read.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_messages_count_against_the_live_holder() {
+async fn test_messages_speak_for_the_live_holder() {
     let stage = stage().await;
     let reply = Reply::To {
         connector: Provider::Slack.id(),
@@ -156,6 +162,48 @@ async fn test_a_run_speaks_past_eight_lines_each_numbered() {
         assert_eq!(said.part, part);
         assert_eq!(said.text.len(), 10_000);
     }
+    stage.fixtures.cleanup().await;
+}
+
+/// A message reads its run unlocked and writes nothing to it, so a report, a
+/// renewal or a tool-call post holding the run row does not hold the line up.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_a_message_is_said_while_its_run_is_held() {
+    let stage = stage().await;
+    let reply = Reply::To {
+        connector: Provider::Slack.id(),
+        address: THREAD,
+    };
+    stage.admit(Producer::Webhook, "held", reply).await;
+    let (run_id, run) = stage.assign_next(stage.fixtures.enrolled_at()).await;
+    let request = MessageRequest {
+        fencing_token: run.fence.as_u64(),
+        item_id: Cow::Borrowed("0199a0b0-0000-7000-8000-0000000000aa"),
+        call_number: 1,
+        text: Cow::Borrowed("still on it"),
+    };
+    let mut connection = stage.fixtures.database.acquire().await.expect("holder");
+    let mut holder = connection.begin().await.expect("holder transaction");
+    sqlx::query("SELECT 1 FROM thread.runs WHERE id = $1 FOR UPDATE")
+        .bind(&run_id)
+        .execute(&mut *holder)
+        .await
+        .expect("the run row is held");
+
+    let said = tokio::time::timeout(
+        HELD_LIMIT,
+        stage
+            .fixtures
+            .plane()
+            .message(&stage.runner, run_id.clone(), &request),
+    )
+    .await
+    .expect("the line does not wait for the holder")
+    .expect("the live holder speaks");
+    holder.rollback().await.expect("the holder lets go");
+
+    assert_eq!((said.part, said.destination.as_str()), (1, THREAD));
     stage.fixtures.cleanup().await;
 }
 

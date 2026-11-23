@@ -1,4 +1,5 @@
-//! Private stream hints are read under the same creator and membership locks.
+//! Private stream hints are read under the same creator and membership checks, on a
+//! snapshot that locks nothing.
 
 mod rows;
 
@@ -65,12 +66,18 @@ impl Drafts {
         })
     }
 
+    /// One stream frame's view, on one snapshot that holds no lock: a stream
+    /// re-observes after every change, and a frame that held the draft would
+    /// queue the writer or the assignment that change woke.
     async fn current_view(&self, access: Access<'_>, id: &Uuid7) -> Result<Option<View>> {
         let mut connection = self.database.acquire().await?;
-        let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
-        let person = access::current(&mut tx, access).await?;
-        let locked = match read::lock(&mut tx, access, &person, id).await {
-            Ok(locked) => locked,
+        let mut tx = connection
+            .begin_with(crate::sql::SNAPSHOT)
+            .await
+            .map_err(query(CONTEXT))?;
+        let person = access::unlocked(&mut tx, access).await?;
+        let draft = match read::unlocked(&mut tx, access, &person, id).await {
+            Ok(draft) => draft,
             Err(error) if error.code() == error_code::SETUP_NOT_FOUND => {
                 return Ok(None);
             }
@@ -78,10 +85,10 @@ impl Drafts {
         };
         let mut notices = rows::messages(&mut tx, id).await?;
         let running_sequence = rows::running_sequence(&mut tx, id).await?;
-        if let Some(candidate) = &locked.head_revision_id {
-            notices.push(Notice::candidate(id, candidate, locked.candidate_revision));
+        if let Some(candidate) = &draft.head_revision_id {
+            notices.push(Notice::candidate(id, candidate, draft.candidate_revision));
         }
-        let closed = locked.status == DraftState::Closed;
+        let closed = draft.status == DraftState::Closed;
         if closed {
             notices.push(Notice::closed(id));
         }

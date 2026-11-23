@@ -54,7 +54,10 @@ impl Failing<'_> {
     }
 
     /// Fails the message with [`crate::sql::message::FAIL`] and owes its
-    /// funnel record.
+    /// funnel record. The assignment holds no lock on the draft, so the
+    /// statement fails only a message still holding the status it was read
+    /// with; one a Stop or a report settled since is left as they left it, and
+    /// owes nothing.
     pub(super) async fn fail(
         &self,
         connection: &mut PgConnection,
@@ -62,7 +65,7 @@ impl Failing<'_> {
         owed: &mut SetupOwed,
     ) -> Result<()> {
         let failed = MessageState::Failed.as_str();
-        sqlx::query(crate::sql::message::FAIL)
+        let moved = sqlx::query(crate::sql::message::FAIL)
             .bind(self.message.draft)
             .bind(self.sequence)
             .bind(failed)
@@ -71,6 +74,9 @@ impl Failing<'_> {
             .execute(&mut *connection)
             .await
             .map_err(query(sql::CONTEXT))?;
+        if moved.rows_affected() == 0 {
+            return Ok(());
+        }
         owed.0.finished(connection, self.message, failed).await
     }
 }

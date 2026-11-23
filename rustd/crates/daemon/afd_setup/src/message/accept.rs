@@ -131,7 +131,7 @@ impl Drafts {
         &self,
         connection: &mut PgConnection,
         person: &Person,
-        draft: &read::Locked,
+        draft: &read::DraftRow,
         request: &SendMessage,
         text: &str,
         now: Timestamp,

@@ -14,7 +14,7 @@ use sqlx::{Connection as _, PgConnection};
 /// The turn a save request rides: its locked draft, its message, and the
 /// report's clock.
 pub(crate) struct SaveTurn<'a> {
-    pub(crate) draft: &'a draft::read::Locked,
+    pub(crate) draft: &'a draft::read::DraftRow,
     pub(crate) sequence: i64,
     pub(crate) now: jiff::Timestamp,
 }
@@ -104,6 +104,7 @@ impl Creations {
             &captured.context,
             &captured.candidate,
             turn.now,
+            review::Hold::Shared,
         )
         .await?;
         if let Some(SourcePin::Fleet { fleet_id, .. }) = &locked.source_pin {

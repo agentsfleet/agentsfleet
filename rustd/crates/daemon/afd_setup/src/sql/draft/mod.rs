@@ -10,6 +10,11 @@
 /// `$1` draft, `$2` workspace, `$3` creator.
 pub(crate) const LOCK: &str = include_str!("lock.sql");
 
+/// [`LOCK`] without the lock, for a read inside the caller's snapshot.
+///
+/// `$1` draft, `$2` workspace, `$3` creator.
+pub(crate) const READ: &str = include_str!("read.sql");
+
 /// `$1` id, `$2` workspace, `$3` tenant, `$4` creator, `$5` title, `$6` status,
 /// `$7` tenant model (NULL for the platform default), `$8` source type,
 /// `$9` source fleet revision, `$10` instance name, `$11` linked fleet, `$12`

@@ -154,7 +154,7 @@ Native tasks retain their task checkpoint owner; ordinary turns use a turn-owned
 
 An absent checkpoint starts from the original accepted input and unsettled folds.
 A present invalid checkpoint refuses restore before model or tools.
-Work after the saved boundary can repeat, including external effects. A retried `message`, schedule create, schedule edit or schedule run request lands once: it names its call's item, the daemon holds an advisory lock on that run and call, and a retry reads the answer the first stored (`afd_fleet`'s `run/effect/mod.rs`). A replacement run makes new calls, so its opening note lists the calls the dead run finished (`afr_agent`'s `loop/recovery_boundary.rs`).
+Work after the saved boundary can repeat, including external effects. A retried `message`, schedule create, schedule edit or schedule run request lands once: it names its call's item, the daemon holds an advisory lock on that run and call, and a retry reads the answer the first stored (`afd_fleet`'s `run/effect/mod.rs`). A schedule create commits before its answer is stored, so its row takes the call's item as its id: a retry whose answer was lost finds that row, pushes it again under the same scheduler id and creates no second schedule (`afd_cron`'s `store/create.rs`). A replacement run makes new calls, so its opening note lists the calls the dead run finished (`afr_agent`'s `loop/recovery_boundary.rs`).
 
 ### Per-run renewal: how a long fleet keeps its run
 
@@ -1161,7 +1161,7 @@ The server owns `worker_count`; the connection cannot override it. Reducing it b
 
 The shared poll reads an optimistic kind choice. Under the host lock, each successful placement rechecks and advances the assignment revision and last successful kind. Mixed placements alternate preference across daemon replicas; an empty kind tries the other, and a competing placement invalidates the old choice.
 
-Both renewal kinds take the runner row before extending a live deadline, then the run's thread and row. A setup renewal never takes a draft row. [Concurrency](concurrency.md#runner-capacity-and-setup-lock-order) owns the ordering and the assignment's `NOWAIT` exception.
+Both renewal kinds take the runner row before extending a live deadline, then the run's thread and row. A setup renewal never takes a draft row. [Concurrency](concurrency.md#runner-capacity-and-setup-lock-order) owns the ordering and the assignment's lock-free draft read.
 
 Renewals sample database time after acquiring the host guard. Expired work requires a new capacity-checked assignment; renewal cannot revive it. Runtime renewal extends the run and thread deadlines atomically under their original fences.
 

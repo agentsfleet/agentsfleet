@@ -275,5 +275,6 @@ pub(crate) const fn run_fee(wall_ms: i64) -> i64 {
 }
 
 mod plane;
+mod post;
 mod slices;
 pub(crate) use plane::FIXTURE_KEK_HEX;

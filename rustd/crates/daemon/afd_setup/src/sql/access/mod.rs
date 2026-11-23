@@ -10,6 +10,12 @@
 /// `$1` workspace, `$2` authenticated identity-provider subject.
 pub(crate) const PERSON: &str = include_str!("person.sql");
 
+/// [`PERSON`] without the person's lock, for a read or an assignment that
+/// holds nothing.
+///
+/// `$1` workspace, `$2` authenticated identity-provider subject.
+pub(crate) const PERSON_READ: &str = include_str!("person_read.sql");
+
 /// Read before touching private state, so a committed revocation wins before
 /// replay. Not locked, for the reason [`PERSON`] gives: a revocation that
 /// commits while this request runs does not wait for it.

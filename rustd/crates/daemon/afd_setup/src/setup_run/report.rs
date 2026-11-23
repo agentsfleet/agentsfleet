@@ -46,7 +46,7 @@ pub struct SetupReportScope {
     draft_id: Uuid7,
     row: LockedRow,
     /// The draft as its creator holds it; `None` once they lost the workspace.
-    private: Option<read::Locked>,
+    private: Option<read::DraftRow>,
 }
 
 impl std::fmt::Debug for SetupReportScope {
@@ -263,7 +263,7 @@ impl Creations {
     async fn apply_setup(
         &self,
         connection: &mut PgConnection,
-        draft: &read::Locked,
+        draft: &read::DraftRow,
         proposal: &SetupProposal<'_>,
         now: Timestamp,
     ) -> Result<Applied> {

@@ -76,7 +76,7 @@ impl Drafts {
     async fn patch_candidate(
         &self,
         connection: &mut PgConnection,
-        locked: &read::Locked,
+        locked: &read::DraftRow,
         mut patch: DraftPatch,
         now: Timestamp,
     ) -> Result<()> {
@@ -120,7 +120,7 @@ impl Drafts {
     }
 }
 
-pub(crate) async fn idle(connection: &mut PgConnection, locked: &read::Locked) -> Result<()> {
+pub(crate) async fn idle(connection: &mut PgConnection, locked: &read::DraftRow) -> Result<()> {
     if locked.status != DraftState::Editing {
         return Err(ErrorKind::State {
             current: locked.status.as_str(),

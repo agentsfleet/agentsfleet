@@ -15,11 +15,11 @@ use sqlx::{Connection as _, PgConnection};
 
 /// The table the creator's person read joins and nothing before it reads.
 const LOCK_WORKSPACES: &str = "LOCK TABLE identity.workspaces IN ACCESS EXCLUSIVE MODE";
-/// The table the draft's locked read joins for its head and nothing before it reads.
+/// The table the head candidate's read takes, and nothing before it reads.
 const LOCK_CANDIDATES: &str = "LOCK TABLE fleet.revisions IN ACCESS EXCLUSIVE MODE";
 /// The table the payer's balance reads.
 const LOCK_WALLETS: &str = "LOCK TABLE billing.wallets IN ACCESS EXCLUSIVE MODE";
-/// The table the assignment's first row lock takes.
+/// The table the assignment's first read, its creator's, takes.
 const LOCK_USERS: &str = "LOCK TABLE identity.users IN ACCESS EXCLUSIVE MODE";
 /// The table a saved fleet's row is written to.
 const LOCK_FLEETS: &str = "LOCK TABLE fleet.fleets IN EXCLUSIVE MODE";
@@ -75,8 +75,8 @@ async fn an_assignment_whose_store_stops_answering_hands_the_failure_back() {
     let c = funded().await;
     let draft = queued(&c.base, c.base.access(), "Watch checkout").await;
     let hint = hint(&c.base, &draft).await;
-    // With no lock bound, the statement bound ends the creator's row lock,
-    // which is not a row another assignment holds.
+    // With no lock bound, the statement bound ends the creator's read, which
+    // waits on the table, never on a row another assignment holds.
     let bounded = [("lock_timeout", "0"), ("statement_timeout", "300ms")];
     let held = while_held(
         &c.base,

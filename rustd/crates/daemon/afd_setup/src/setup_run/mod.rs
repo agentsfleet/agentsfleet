@@ -10,8 +10,8 @@
 //! none.
 
 mod context;
+mod creator;
 mod failing;
-mod lock;
 pub(crate) mod model;
 mod preview;
 mod progress;
@@ -40,14 +40,13 @@ pub use preview::PreviewChunk;
 pub use report::{SetupFinish, SetupReportScope};
 pub use turn::{SetupHead, SetupTurn, SetupTurnText};
 
+use self::creator::Hint;
 use self::failing::Failing;
-use self::lock::{DraftLock, Hint};
 use crate::{
     Drafts, Result,
-    draft::read,
     error::raise::query,
     funnel::Owed,
-    types::{DraftState, EDITING, MessageState, QUEUED, RUNNING},
+    types::{EDITING, MessageState, QUEUED, RUNNING},
 };
 
 /// A draft an assignment may try, read without a lock.
@@ -55,7 +54,7 @@ use crate::{
 pub struct SetupHint {
     /// The draft, which is also its thread's id.
     pub draft_id: Uuid7,
-    /// The tenant whose host lock the assignment takes for it.
+    /// The tenant whose host the assignment takes for it.
     pub tenant_id: Uuid7,
     workspace_id: Uuid7,
     user_id: Uuid7,
@@ -73,6 +72,8 @@ struct HintRow {
 /// [`sql::HEAD`]'s row, by column name.
 #[derive(sqlx::FromRow)]
 struct HeadRow {
+    tenant_id: Uuid7,
+    head_revision_id: Option<Uuid7>,
     id: Uuid7,
     sequence: i64,
     status: String,
@@ -86,12 +87,23 @@ struct HeadRow {
 /// What assigning one candidate found.
 #[derive(Debug)]
 pub enum SetupAssignment {
-    /// The draft is locked and its head message assigned.
+    /// The draft's head message and what its run carries. Read without a
+    /// lock: [`Drafts::claim_setup_turn`], after the thread claim, decides
+    /// whether this assignment takes it.
     Assigned(Box<SetupTurn>),
     /// Nothing this draft may run to this runner now.
     Passed,
-    /// Another transaction holds the draft or its creator.
-    Busy,
+}
+
+/// What the turn claim found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[must_use = "a turn the claim did not take must roll its assignment back"]
+pub enum SetupClaim {
+    /// The message is running under this assignment.
+    Taken,
+    /// The message was settled, or its draft left editing, since the
+    /// assignment read it: the assignment rolls back, fence and all.
+    Moved,
 }
 
 /// Funnel steps an assignment or report owes once its transaction commits.
@@ -133,9 +145,12 @@ impl Drafts {
             .collect())
     }
 
-    /// Locks `hint`'s draft and assigns its head message in the assignment's
-    /// transaction: the creator still holds the draft, no other turn holds it,
-    /// the message's model resolves, and the payer's balance covers a turn.
+    /// Reads `hint`'s draft and its head message in the assignment's
+    /// transaction, locking neither the draft nor its creator: the creator
+    /// still holds the draft, no live run holds its thread, the message's model
+    /// resolves, and the payer's balance covers a turn. These are hints, so
+    /// nothing here can be held up by a reader or a writer of the draft; the
+    /// thread claim and [`Drafts::claim_setup_turn`] decide.
     ///
     /// A tenant's runner (`tenant_host`) never receives the platform model's
     /// key, so a head on the platform default passes, and blocks its draft for
@@ -157,21 +172,16 @@ impl Drafts {
         tenant_host: bool,
         owed: &mut SetupOwed,
     ) -> Result<SetupAssignment> {
-        let locking = Hint {
+        let creator = Hint {
             id: &hint.draft_id,
             workspace_id: &hint.workspace_id,
             tenant_id: &hint.tenant_id,
             user_id: &hint.user_id,
         };
-        let draft = match lock::lock_draft(connection, &locking, &mut owed.0).await? {
-            DraftLock::Locked(draft) => *draft,
-            DraftLock::Passed => return Ok(SetupAssignment::Passed),
-            DraftLock::Busy => return Ok(SetupAssignment::Busy),
-        };
-        if draft.status != DraftState::Editing || lock::running(connection, &draft.id).await? {
+        if !creator::holds(connection, &creator, &mut owed.0).await? {
             return Ok(SetupAssignment::Passed);
         }
-        let Some(head) = head(connection, &draft).await? else {
+        let Some(head) = head(connection, hint).await? else {
             return Ok(SetupAssignment::Passed);
         };
         if tenant_host && head.tenant_model_id.is_none() {
@@ -180,28 +190,31 @@ impl Drafts {
         let reassigned = head.status == RUNNING;
         let failing = Failing {
             message: crate::funnel::Message {
-                workspace: &draft.workspace_id,
-                creator: &draft.user_id,
-                draft: &draft.id,
+                workspace: &hint.workspace_id,
+                creator: &hint.user_id,
+                draft: &hint.draft_id,
             },
             sequence: head.sequence,
             running: reassigned,
         };
         let reference = model::reference(head.tenant_model_id.clone());
-        let model = match self.setup_model(connection, &draft, &reference).await {
+        let model = match self
+            .setup_model(connection, &head.tenant_id, &reference)
+            .await
+        {
             Ok(model) => model,
             Err(error) => return failing.refuse(connection, error, owed).await,
         };
-        let candidate = match head_candidate(connection, &draft).await {
+        let candidate = match head_candidate(connection, &hint.draft_id, &head).await {
             Ok(candidate) => candidate,
             Err(error) => return failing.refuse(connection, error, owed).await,
         };
-        let history = history(connection, &draft.id, head.sequence).await?;
+        let history = history(connection, &hint.draft_id, head.sequence).await?;
         Ok(SetupAssignment::Assigned(Box::new(SetupTurn {
-            draft_id: draft.id.clone(),
-            workspace_id: draft.workspace_id.clone(),
-            tenant_id: draft.tenant_id.clone(),
-            user_id: draft.user_id.clone(),
+            draft_id: hint.draft_id.clone(),
+            workspace_id: hint.workspace_id.clone(),
+            tenant_id: head.tenant_id,
+            user_id: hint.user_id.clone(),
             message_id: head.id,
             sequence: head.sequence,
             message_created_at: head.created_at,
@@ -220,38 +233,38 @@ impl Drafts {
     async fn setup_model(
         &self,
         connection: &mut PgConnection,
-        draft: &read::Locked,
+        tenant: &Uuid7,
         reference: &str,
     ) -> Result<RegisteredModel> {
-        let model = model::selected(connection, &draft.tenant_id, reference).await?;
-        model::gate(
-            connection,
-            &draft.tenant_id,
-            model::first_slice(self.clock)?,
-        )
-        .await?;
+        let model = model::selected(connection, tenant, reference).await?;
+        model::gate(connection, tenant, model::first_slice(self.clock)?).await?;
         Ok(model)
     }
 
-    /// Marks the assigned message running, in the assignment's transaction, once
-    /// its run is written. A reassigned message is running already.
+    /// Claims the assigned message, running, in the assignment's transaction
+    /// once the thread claim won its fence: [`SetupClaim::Taken`] when the
+    /// message is still unsettled on an editing draft, [`SetupClaim::Moved`]
+    /// when a Stop, a report or a failure settled it, or its draft left
+    /// editing, since the assignment read it. A reassigned message is running
+    /// already, and is taken again.
     ///
     /// # Errors
     /// Reports a datastore that would not answer.
-    pub async fn start_setup_turn(
+    pub async fn claim_setup_turn(
         &self,
         connection: &mut PgConnection,
         turn: &SetupTurn,
-    ) -> Result<()> {
-        sqlx::query(sql::RUNNING)
+    ) -> Result<SetupClaim> {
+        let claimed: Option<Uuid7> = sqlx::query_scalar(sql::RUNNING)
             .bind(&turn.draft_id)
             .bind(turn.sequence)
             .bind(RUNNING)
             .bind(QUEUED)
-            .execute(connection)
+            .bind(EDITING)
+            .fetch_optional(connection)
             .await
             .map_err(query(sql::CONTEXT))?;
-        Ok(())
+        Ok(claimed.map_or(SetupClaim::Moved, |_claimed| SetupClaim::Taken))
     }
 
     /// Fails the assigned message durably, in the assignment's transaction: its
@@ -281,9 +294,12 @@ impl Drafts {
     }
 }
 
-async fn head(connection: &mut PgConnection, draft: &read::Locked) -> Result<Option<HeadRow>> {
+async fn head(connection: &mut PgConnection, hint: &SetupHint) -> Result<Option<HeadRow>> {
     sqlx::query_as(sql::HEAD)
-        .bind(&draft.id)
+        .bind(&hint.draft_id)
+        .bind(&hint.workspace_id)
+        .bind(&hint.user_id)
+        .bind(EDITING)
         .bind(QUEUED)
         .bind(RUNNING)
         .fetch_optional(connection)
@@ -291,15 +307,17 @@ async fn head(connection: &mut PgConnection, draft: &read::Locked) -> Result<Opt
         .map_err(query(sql::CONTEXT))
 }
 
-/// The draft's head candidate as an assignment carries it, if it has one.
+/// The draft's head candidate as an assignment carries it, if it has one: an
+/// immutable revision read by the id [`head`] found.
 async fn head_candidate(
     connection: &mut PgConnection,
-    draft: &read::Locked,
+    draft: &Uuid7,
+    head: &HeadRow,
 ) -> Result<Option<SetupHead>> {
-    let Some(id) = &draft.head_revision_id else {
+    let Some(id) = &head.head_revision_id else {
         return Ok(None);
     };
-    let candidate = crate::candidate::read(connection, &draft.id, id).await?;
+    let candidate = crate::candidate::read(connection, draft, id).await?;
     Ok(Some(SetupHead::try_from(candidate)?))
 }
 

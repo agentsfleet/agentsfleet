@@ -29,7 +29,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | Shutdown order | decide why → cancel and join → drop | teardown is in the outer `run`, so every early return still tears down | §Shutdown choreography |
 | Cancellation reach | every long-lived task selects its own I/O against the token | a genuinely blocked `accept()` is interrupted mid-read, not at the next poll interval | §Shutdown choreography |
 | Test handshake | handshakes, never sleeps | channels, `Notify` and `CancellationToken` on both planes; `start_paused` pays no wall clock for a join timeout | §Shutdown choreography |
-| Setup chat assignment | never waits on a row lock | the creator and draft rows are taken `NOWAIT` in a savepoint; a held one skips that draft for the next | §Runner capacity and setup lock order |
+| Setup chat assignment | never waits on a draft | it reads the draft without a lock; a conditional thread upsert and a conditional turn update decide, so no draft is skipped as busy | §Runner capacity and setup lock order |
 | Discipline scope | no roster | C1–C5 hold at review; RULE NLR owns cleanup of the files a change touches | §Expanding the discipline base |
 
 ## Traps
@@ -50,7 +50,7 @@ Each trap is enforced in its owner section; this list is the index.
 
 - Channel and stream *names* are canonical in `data_flow.md`, not here (preamble).
 
-- Never let a setup chat assignment wait on a row while it holds the host row. Every other tenant on that poll would wait behind it. Take the row `NOWAIT` and skip (§Runner capacity and setup lock order).
+- Never let a setup chat assignment lock a draft or its creator while it holds the host row. Every other tenant on that poll would wait behind it, and a skip loses the wake. Read the draft unlocked and let the thread and turn claims decide (§Runner capacity and setup lock order).
 
 ## The five invariants (rules C1–C5)
 
@@ -306,6 +306,20 @@ next takes its turn (`afd_fleet/src/run/sql/shared/expire_prior_run.sql`), and
 its last runtime slice is not billed. The runner arms one host timer for its
 runs' deadlines.
 
+The daemon arms one-shot timers only, each from one event, and none repeats.
+A runner connection that ends with no successor and no replica drain arms two
+(`afd_gateway`'s `connection/departure/mod.rs`). At the latest deadline of the
+runs it held, the first requests one recovery pass.
+
+The second runs one statement at the runner's last beat plus the offline window
+(`afd_runner`'s `silence.rs`). That statement records `runner_offline` once,
+cordons an `active` runner for missed heartbeats and finishes a requested drain.
+After a later beat moves `last_seen_at`, the statement writes nothing.
+
+Daemon boot arms one more, at the latest outstanding run deadline
+(`afd_gateway`'s `scheduler/lapse/mod.rs`). A replica drain or a stop ends any
+of these that still wait.
+
 ---
 
 ## Expanding the discipline base (roster)
@@ -331,7 +345,7 @@ The funds check reads the wallet without a lock, once per payer every third tick
 
 A setup run's renewal takes the runner row exclusively while it counts capacity (`afd_fleet`'s draft renewal). It then takes the run's thread and row, and never a draft row, so a busy draft never holds it.
 
-The setup assignment is the one path that holds a host and then asks for a draft. It never waits for the draft (below).
+The setup assignment holds a host and then reads a draft without a lock (below).
 
 Retiring a revoked runner (`afd_runner`'s `delete_revoked`) holds the runner row while its foreign keys set that runner's `thread.runs.runner_id` and `thread.threads.last_runner_id` to NULL. Assignment and both renewal kinds take the runner row first, and no report takes it, so they lock in the delete's order. The delete also refuses a runner with a live run or an unbilled runtime tail (`delete_runner_if_in_state.sql`).
 
@@ -339,9 +353,33 @@ Runtime reports take the run row and never the runner or setup rows. The stateme
 
 Verify two-replica expiry races and lock-order timeouts before claiming these guarantees.
 
-The setup assignment gate reads the balance without a lock (`afd_setup`'s setup-run model gate, `afd_billing`'s `select_wallet.sql`). A setup run's renewal and report lock the owner's wallet row only through the debit their usage lines write; the other setup wallet lock is fleet creation's at Save (`afd_setup`'s creation `wallet.sql`).
+The setup assignment gate reads the balance without a lock (`afd_setup`'s setup-run model gate, `afd_billing`'s `select_wallet.sql`). A setup run's renewal and report lock the owner's wallet row only through the debit their usage lines write. Activation at Save takes no wallet lock: the balance it locked was never read.
 
-Stop and delete take the draft, then its thread or runs, and never take the runner row (`afd_setup`'s `message/stop.rs` and `privacy.rs`).
+Stop and delete take the draft, then its thread in a statement of its own, then its turn or runs, and never take the runner row (`afd_setup`'s `message/stop.rs` and `privacy.rs`).
+
+### A run's verbs on the fleet row and the run row
+
+Every `thread.items` insert and every schedule insert checks its foreign key with `FOR KEY SHARE` on the fleet row, and an item insert does the same on its run row. Only `FOR UPDATE` refuses that mode, so a lock that only puts writers in turn takes `FOR NO KEY UPDATE`, or no row lock at all.
+
+Memory capture and a grant change take the fleet row `FOR NO KEY UPDATE` (`afd_fleet`'s `run/fence/lock_memory_fleet.sql`, `afd_memory`'s `lock_capture.sql` and `lock_access.sql`). Under `FOR UPDATE` a capture and a tool-call post of one run deadlocked:
+
+```
+ capture (run/memory.rs)                 tool-call post (run/tool_detail/store.rs)
+  1 fleet.fleets  FOR UPDATE              1 thread.runs  FOR NO KEY UPDATE
+  2 thread.runs   FOR SHARE  ── waits     2 thread.items insert: fleet KEY SHARE ── waits
+```
+
+The post's key share now passes the capture's hold, the post commits, and the capture takes the run after it (`integration_memory_capture_race.rs`, `a_capture_and_a_tool_post_of_one_run_both_commit`).
+
+The messages verb reads its run's standing unlocked and writes nothing to the run, so a line never waits on a report, a renewal or a tool-call post.
+
+A refused renewal or report still bills the requests the runner reported (`afd_fleet`'s `run/usage/original.rs`). Its first statement takes the run `FOR NO KEY UPDATE` (`original_request_owner.sql`). The usage key, not this lock, stops a second charge. The lock keeps the order every metering pass takes: run, then wallet, then the durable task, whose runtime cursor on the run it advances last. With no run lock first, a task's run deadlocks with a pass holding the run and asking for the wallet.
+
+A schedule create, a schedule edit and a setup's recipe replacement take the fleet's writer turn (`afd_cron`'s `lock_fleet.sql` and `lock_fleet_in_workspace.sql`). The turn is a transaction-scoped advisory lock keyed by `uuid_hash(fleet_id)`, taken after `FOR KEY SHARE` on the fleet row. Intake, reports and items of the fleet never wait on it.
+
+The key share comes first so that a setup holding the fleet row `FOR UPDATE` is waited out before the turn. Otherwise a create holding the turn would wait on that setup's row in its insert, while the setup waits for the turn.
+
+The schedule cap is a count under that turn. A unique slot per schedule was weighed and not used. The recipe replacement writes many rows into the same cap, in place, and must also take turns with edits of its schedules.
 
 ### Every daemon statement runs under the API login's bounds
 
@@ -351,33 +389,38 @@ No product transaction sets its own with `set_config`. The four that did were re
 
 Both codes mean "not now", so one predicate reads them (`afd_db::error::is_bound_reached`). A caller answers a reached bound as retryable unavailability. The fleet task paths answer 503, billing counts it as an unanswered read, and setup activation reads it as still installing.
 
-### The setup chat claim never waits on a row
+### The setup chat claim never waits on a draft
 
-An assignment walks up to 64 queued drafts, oldest first, one transaction per draft (`afd_fleet`'s draft assignment). Each locks the host row, then the creator's user row, then the draft.
-
-Every draft writer takes that draft lock too: a sent message, an edit, an applied revision, a review. An assignment that waited on a busy draft held its host row throughout, and every tenant behind that draft waited with it:
+An assignment walks up to 64 queued drafts, oldest first, one transaction per draft (`afd_fleet`'s draft assignment). Each locks the host row, then reads the draft without a lock. Two conditional writes decide what it takes:
 
 ```
-BEFORE — the assignment waits                 AFTER — the assignment skips
-                                              
- assignment pass (R)                           assignment pass (R)
-   │ lock host row R                             │ lock host row R
-   ├─ draft A1 (tenant A) ── held by a writer    ├─ draft A1 ── held? NOWAIT refuses
-   │     ⏳ waits until the writer commits        │     ↩ savepoint rolls back, A1 skipped
-   │     (host row R held, ~1 s per write)       ├─ draft B1 (tenant B) ── free
-   ├─ draft B1 (tenant B) ── never reached       │     ✔ assigned, run issued
-   │     until A's write ends                    └─ commit; A1 is assigned on a later
-   └─ every pass repeats the wait                    pass, once its writer lets go
+ assignment pass (host row R held)        what decides
+   │
+   ├─ creator, draft, head message         hints, read unlocked (setup_run/creator.rs,
+   │                                       head.sql): a reader or writer holding the
+   │                                       draft delays nothing
+   ├─ thread claim  assign_thread.sql      conditional upsert on thread.threads, keyed
+   │     no row → pass, next draft         by the draft's id: one pass gets the row
+   ├─ turn claim    running.sql            head still unsettled, draft still editing
+   │     no row → roll back, next draft    the fence bump rolls back with it
+   └─ issue the run, commit
 ```
 
+Neither claim is refused by a lock another transaction holds, so a draft has no busy outcome. It is assigned, passed for a committed reason, or rolled back. A committed reason publishes its own event: a live run's report or lapse, a Stop, a deletion.
 
-`held` takes the creator's row `FOR SHARE NOWAIT`, then the draft's `FOR UPDATE NOWAIT`, inside a savepoint (`afd_setup`'s `setup_run::lock`). That is the order the reads after it lock them. The statements are `hold_user.sql` and `hold_draft.sql`.
+Before Nov 23, 2026 the pass took the creator and the draft `NOWAIT` in a savepoint and skipped a held draft with no log. The draft's own page reads held that lock, so a skipped Save waited for the next wake, once for 64 s.
 
-A refused lock raises `55P03 lock_not_available`. Rolling the savepoint back keeps the assignment's transaction, and its host lock, usable for the next candidate. A released savepoint keeps its row locks until the assignment commits, so the reads after it never wait.
+A draft deleted after the read took its thread with it. The thread claim's insert then fails `threads_draft_id_fkey`, and the pass rolls back and moves on (`run/draft/take.rs`).
 
-A skipped draft is passed over and kept, and the skip logs nothing. Its order by age resumes on the first assignment pass after the writer commits.
+A deletion and a Stop each take the thread in a statement of their own before their deletes or the shared Stop statement (`afd_setup`'s `privacy.rs`, `message/stop.rs`). Those statements then start after an in-flight assignment commits, so they see the run it issued: the deletion deletes it, and the Stop marks it.
 
-`make bench-runs BENCH_SHAPE=saturation` measures it with 40 hosts on a 20-connection pool. One writer holds a tenant's drafts for 1 s in every 1.25 s.
+An assignment's second update of its thread re-checks the thread's draft key under `FOR KEY SHARE` (Postgres re-checks a foreign key on any row its own transaction wrote). Draft writers therefore lock the draft `FOR NO KEY UPDATE` (`sql/draft/lock.sql`, `setup_run/sql/lock_report.sql`), which that key share passes. Under `FOR UPDATE` a writer holding the draft and waiting for the thread deadlocked with the assignment.
+
+The reads take no lock either. A draft's page, its message page and each stream frame run on one `REPEATABLE READ, READ ONLY` snapshot (`afd_setup`'s `sql/snapshot.sql`). Postgres refuses a locking read inside it.
+
+The draft review and the saved-setup read run read committed, with lock-free twins of the person, install and grant reads. They cannot run on that snapshot yet: the credential inspection opens its secrets `FOR SHARE` (`afd_vault`'s `select_shared_generations.sql`). Writers keep the draft lock, and a write's review keeps its share locks on installs and grants until the write commits.
+
+`make bench-runs BENCH_SHAPE=saturation` measured the wait the savepoint skip replaced, with 40 hosts on a 20-connection pool. One writer held a tenant's drafts for 1 s in every 1.25 s. The bench has not run on the claims.
 
 | Median of three runs | Waiting | Skipping |
 |---|---|---|
@@ -387,4 +430,4 @@ A skipped draft is passed over and kept, and the skip logs nothing. Its order by
 
 No run was doubled and no host exceeded its workers either way. The full row is in [Measured ceilings](./scaling.md#measured-ceilings).
 
-An assignment still waits on the locks it takes after the draft: the draft's thread and its earlier run (`afd_fleet`'s `run/draft/assign.rs`). It can be a deadlock victim there.
+An assignment still waits on the thread, the earlier run and the turn. A Stop, a report and a renewal take the thread first too, so they queue behind an assignment rather than lock against it in the other order.

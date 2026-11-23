@@ -46,3 +46,10 @@ pub(crate) const SEQUENCE: &str = include_str!("sequence.sql");
 /// `$1` draft, `$2` sequence, `$3` the failed status, `$4` reason, `$5` the
 /// status it must still hold.
 pub(crate) const FAIL: &str = include_str!("fail.sql");
+
+/// The draft's thread, held by a Stop or a deletion before its own
+/// statements run, so their snapshots follow any assignment that held the
+/// thread. No row when the draft has no thread.
+///
+/// `$1` draft.
+pub(crate) const HOLD_THREAD: &str = include_str!("hold_thread.sql");

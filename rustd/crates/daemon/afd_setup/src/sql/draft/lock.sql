@@ -6,7 +6,9 @@ WITH locked AS MATERIALIZED (
            closed_at, expires_at
       FROM setup.drafts
      WHERE id = $1 AND workspace_id = $2 AND user_id = $3
-       FOR UPDATE
+       -- Writers take turns; a key share, as the assignment's thread update re-checks its
+       -- draft key under, passes.
+       FOR NO KEY UPDATE
 ), clock AS MATERIALIZED (
     SELECT clock_timestamp() AS locked_at FROM locked
 )

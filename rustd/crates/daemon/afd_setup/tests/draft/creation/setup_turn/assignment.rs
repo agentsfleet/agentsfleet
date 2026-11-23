@@ -1,8 +1,8 @@
-//! An assignment takes a draft's head message only under the locks it finds:
-//! a draft another transaction holds is busy, and one whose turn, creator or
-//! draft moved since its hint is passed.
+//! An assignment reads a draft's head message without a lock: a draft another
+//! transaction holds is still assigned, and one whose turn, creator or draft
+//! moved since its hint is passed.
 
-use super::{ANSWER, assigned, funded, hint, queued, report, send, take, try_assign};
+use super::{ANSWER, funded, hint, queued, report, send, take, try_assign};
 use afd_setup::setup_run::SetupAssignment;
 use sqlx::Connection as _;
 
@@ -43,16 +43,17 @@ async fn a_taken_turn_carries_its_history_and_debug_names_no_text() {
     c.cleanup().await;
 }
 
-// Value: protects=a draft whose row another transaction holds is skipped as
-// busy, and the assignment's own transaction stays usable for the next
-// candidate; fails_when=the assignment waits on the row, or a refused NOWAIT
-// aborts the transaction; seam=Drafts::assign_setup_turn over live Postgres.
+// Value: protects=a draft whose row another transaction holds, as every draft
+// write does, is assigned and claimed without waiting on it, so a page read or
+// a writer can no longer make a pass skip the draft (the setup Save that sat
+// queued); fails_when=the assignment locks the draft or its creator again, and
+// waits out the login's lock bound or answers busy; seam=Drafts::assign_setup_turn
+// and Drafts::claim_setup_turn over live Postgres.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_draft_another_transaction_holds_is_busy() {
+async fn a_draft_another_transaction_holds_is_still_assigned() {
     let c = funded().await;
     let draft = queued(&c.base, c.base.access(), "Watch checkout").await;
-    let hint = hint(&c.base, &draft).await;
     let mut held = sqlx::Transaction::begin(c.base.connection().await, None)
         .await
         .expect("the holder opens");
@@ -62,37 +63,27 @@ async fn a_draft_another_transaction_holds_is_busy() {
         .await
         .expect("the holder locks the draft");
 
-    let mut tx = sqlx::Transaction::begin(c.base.connection().await, None)
-        .await
-        .expect("the assignment opens");
-    let mut owed = afd_setup::setup_run::SetupOwed::default();
-    let found = c
-        .base
-        .drafts
-        .assign_setup_turn(&mut tx, &hint, false, &mut owed)
-        .await
-        .expect("the assignment answers");
-    assert!(matches!(found, SetupAssignment::Busy), "{found:?}");
-    let usable: i32 = sqlx::query_scalar("SELECT 1")
-        .fetch_one(&mut *tx)
-        .await
-        .expect("the assignment's transaction survives the refused lock");
-    assert_eq!(usable, 1);
-    tx.rollback().await.expect("the assignment rolls back");
-    held.rollback().await.expect("the holder releases");
+    let taken = take(&c.base, &draft).await;
 
-    let taken = assigned(
-        try_assign(&c.base, &hint)
+    assert_eq!(taken.draft_id, draft);
+    assert_eq!(taken.sequence, 1);
+    held.rollback().await.expect("the holder releases");
+    let status: String =
+        sqlx::query_scalar("SELECT status FROM thread.turns WHERE thread_id=$1 AND sequence=1")
+            .bind(&draft)
+            .fetch_one(&mut *c.base.connection().await)
             .await
-            .expect("the assignment answers"),
+            .expect("the message");
+    assert_eq!(
+        status, "running",
+        "the claim took the message past the holder"
     );
-    assert!(taken.is_some(), "the released draft is assigned");
     c.cleanup().await;
 }
 
 // Value: protects=a hint carries no authority: a turn another assignment took
 // or a person stopped since the hint, a deleted draft and a deleted creator
-// are each passed; fails_when=any recheck under the locks is dropped and the
+// are each passed; fails_when=any recheck of the hint is dropped and the
 // stale hint is assigned; seam=Drafts::assign_setup_turn over live Postgres.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]

@@ -4,6 +4,7 @@ use super::{ACTIVE, CONTEXT, Creations, INSTALLING, progress, read, sql};
 use crate::{
     Access, Result, access,
     error::raise::query,
+    review,
     types::{CheckKind, CheckState, DraftState},
 };
 use af_core::id::Uuid7;
@@ -117,17 +118,14 @@ impl Creations {
         let mut tx = Transaction::begin(self.setup.drafts.database.acquire().await?, None)
             .await
             .map_err(query(CONTEXT))?;
-        let person = access::current(&mut tx, access).await?;
-        sqlx::query_scalar::<_, i64>(sql::WALLET)
-            .bind(person.owner)
-            .fetch_optional(&mut *tx)
-            .await
-            .map_err(query(CONTEXT))?;
+        access::current(&mut tx, access).await?;
         let row = read::lock(&mut tx, access.workspace, fleet).await?;
         if row.status != INSTALLING || row.head_revision != snapshot.head_revision {
             return Ok(());
         }
-        let checked = self.review(&mut tx, &row).await?;
+        // Held: an install or grant revoked between this check and the flip
+        // below would activate a fleet whose prerequisite is gone.
+        let checked = self.review(&mut tx, &row, review::Hold::Shared).await?;
         if !progress::ready(&checked) || row.setup_stream_ready != Some(true) {
             return Ok(());
         }

@@ -362,7 +362,7 @@ Whole local acceptance, owner review and current Continuous Integration (CI) res
 
 The private-stream survivor replaces one cancellation-or-closure check with an AND expression.
 Its changed behavior requires a running message at or below the cancellation cutoff, or a running message in a closed draft.
-Production operations prevent both states under the same draft lock used by observation.
+Production operations prevent both states: draft writers under the draft lock, and the run claim by its conditional turn update (`setup_run/sql/running.sql`).
 
 Those operations are `afd_setup`'s message cancel, run claim selection, draft patch and observe modules.
 The original defensive checks remain.

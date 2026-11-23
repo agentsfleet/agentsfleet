@@ -96,6 +96,7 @@ impl Creations {
             &captured.context,
             &captured.candidate,
             now,
+            review::Hold::Shared,
         )
         .await?;
         checked.require_digest(&request.review_digest)?;

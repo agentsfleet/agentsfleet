@@ -1,4 +1,5 @@
-//! A delayed capture rechecks its fence and grants after the fleet lock.
+//! A delayed capture rechecks its fence and grants after the fleet lock, and
+//! a capture racing a tool-call post of its own run closes no lock cycle.
 #![cfg(feature = "test-util")]
 #![expect(clippy::expect_used, reason = "test preconditions fail loudly")]
 
@@ -18,6 +19,54 @@ async fn delayed_capture_cannot_overwrite_after_a_higher_fence_commits() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn delayed_capture_observes_a_publication_revocation() {
     capture_after_change(false).await;
+}
+
+/// The four statements in the order that closed a lock cycle, on two
+/// connections: the post holds the run, the capture holds the fleet and
+/// queues for the run, then the post's item asks for the fleet through its
+/// foreign key. The capture's hold on the fleet lets that key share through,
+/// so the post commits and the capture follows it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_capture_and_a_tool_post_of_one_run_both_commit() {
+    let run = held().await;
+    let mut observer = run.fixtures.database.acquire().await.expect("observer");
+    let mut connection = run.fixtures.database.acquire().await.expect("poster");
+    let mut post = connection.begin().await.expect("post transaction");
+    let poster = run.post_holds_run(&mut post).await;
+    let capture = tokio::spawn({
+        let (plane, runner, fleet) = (run.fixtures.plane(), run.runner.clone(), run.fleet.clone());
+        let request = MemoryPushRequest {
+            run_id: Cow::Owned(run.issued.run_id.to_string()),
+            fencing_token: run.fence.as_u64(),
+            memory: vec![entry("own note", Visibility::Fleet)],
+        };
+        async move {
+            plane
+                .capture(&runner, &fleet, &request, af_core::clock::now())
+                .await
+        }
+    });
+    Held::queued_behind(&mut observer, poster).await;
+
+    let item = run.post_writes_item(&mut post).await;
+    post.commit().await.expect("the post commits");
+    let captured = capture
+        .await
+        .expect("capture task")
+        .expect("the capture commits after the post");
+
+    assert_eq!((captured.stored, captured.skipped), (1, 0));
+    assert!(run.item_kept(&item).await, "the post's item is stored");
+    let memories = afd_memory::Memories::new(
+        run.fixtures.database.clone(),
+        af_crypto::entropy::Entropy::new(),
+    );
+    let stored = memories.load(&run.fleet).await.expect("memory");
+    let notes: Vec<&str> = stored.memory.iter().map(|entry| &*entry.content).collect();
+    assert_eq!(notes, ["own note"]);
+    drop(observer);
+    run.fixtures.cleanup().await;
 }
 
 async fn capture_after_change(supersede: bool) {

@@ -1,6 +1,6 @@
 //! The reviewed subject survives private-draft deletion without retaining a transcript.
 
-use crate::{draft::read::Locked, types::SourcePin};
+use crate::{draft::read::DraftRow, types::SourcePin};
 use af_core::id::Uuid7;
 use serde::{Deserialize, Serialize};
 
@@ -29,8 +29,8 @@ pub(crate) struct Context {
     pub(crate) linked_fleet_id: Option<Uuid7>,
 }
 
-impl From<&Locked> for Context {
-    fn from(draft: &Locked) -> Self {
+impl From<&DraftRow> for Context {
+    fn from(draft: &DraftRow) -> Self {
         Self {
             subject: Subject::Draft {
                 id: draft.id.clone(),
