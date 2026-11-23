@@ -7,6 +7,7 @@ use tokio::time::Instant;
 /// across frames, and each run's renewal carries all of them.
 const LINES_PER_RUN: usize = 513;
 
+mod clock;
 mod recovery;
 
 #[tokio::test(start_paused = true)]

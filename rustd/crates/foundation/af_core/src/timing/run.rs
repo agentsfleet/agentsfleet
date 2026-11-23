@@ -153,3 +153,48 @@ impl RunClock {
         Duration::from_secs(self.sandbox_idle_hold)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use garde::Validate as _;
+
+    use super::RunSettings;
+
+    /// Whether a deployment with `ttl` and `heartbeat` boots, and if not, whether the
+    /// refusal names the heartbeat.
+    fn boots(ttl: u64, heartbeat: u64) -> Result<(), String> {
+        let settings = RunSettings {
+            ttl_seconds: ttl,
+            heartbeat_interval_seconds: heartbeat,
+            ..RunSettings::default()
+        };
+        settings.validate().map_err(|report| report.to_string())
+    }
+
+    /// The round rides the heartbeat, so a heartbeat the run's expiry cannot carry
+    /// is refused at boot by name: past the expiry's margin, past the transport's
+    /// idle bound, or past three rounds inside one expiry.
+    #[test]
+    fn a_heartbeat_the_run_clock_cannot_carry_is_refused_at_boot() {
+        for (ttl, heartbeat, accepted) in [
+            (38, 10, true),
+            (38, 11, false), // the expiry's margin: 38 - 28
+            (73, 24, true),
+            (76, 25, false), // the transport's idle bound: 24
+            (72, 24, false), // three rounds inside one expiry: (72 - 1) / 3 = 23
+        ] {
+            let verdict = boots(ttl, heartbeat);
+            assert_eq!(
+                verdict.is_ok(),
+                accepted,
+                "ttl {ttl}, heartbeat {heartbeat}: {verdict:?}"
+            );
+            if let Err(refusal) = verdict {
+                assert!(
+                    refusal.contains("heartbeat_interval_seconds"),
+                    "the refusal names the heartbeat: {refusal}"
+                );
+            }
+        }
+    }
+}
