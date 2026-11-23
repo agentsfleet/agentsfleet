@@ -65,13 +65,15 @@ test-integration-rustd: $(TEST_STATE_DEP) _migrate-test-db  ## Run the Rust subs
 	@echo "→ [rustd] Running the tests that need the cluster to themselves..."; \
 	$(call _rust_lane,rustd-integration-exclusive.log,[rustd] integration suite (exclusive),cargo test --locked --workspace --exclude afd_bench --all-features --test "*" --no-fail-fast -- --ignored --test-threads=1 $(EXCLUSIVE_FILTER))
 
+# The one Rust floor: the merged line coverage and the patch, the Rust lines
+# the branch adds, both hold it. Change it here and every grade moves; Codecov
+# reports Rust without a status, so it carries no copy (codecov.yml).
 # A ratchet toward 100%: raise it when a run beats it, lower it only on Indy's
-# word, recorded here. 98 since Nov 08, 2026: "if it fails again move the
-# coverage down to 98 on the safer side and push". The judge compares exact
-# decimals, so a fraction is enforced, not rounded. 99 since Nov 22, 2026: "The
-# coverage of rust code must be 99%, with all the files> 99% the patch coverage
-# 99%" (M253_004 §14). 98 since Nov 22, 2026: "if you can't meet 99 make it
-# 98 we can always improve".
+# word, recorded here. The judge compares exact decimals, so a fraction is
+# enforced, not rounded. 98 since Nov 22, 2026: "if you can't meet 99 make it
+# 98 we can always improve". No per-file floor, as on main since Nov 06, 2026
+# ("Use aggregate gates only"); M253_004 switched one on and Indy removed it on
+# Nov 23, 2026: "Can you move or remove the individual file coverage".
 RUSTD_COVERAGE_FLOOR ?= 98
 
 # Out of the denominator, on Indy's calls: whole-file test_util modules (fixture
@@ -82,23 +84,14 @@ RUSTD_COVERAGE_IGNORE ?= (/src/test_util(/mod)?\.rs$$|/crates/daemon/afd_bench/)
 
 # A shard reports only the tests it ran, so scripts/rustd_coverage.py merges the
 # shards' lcov files and grades the union once; a local unsharded run uses the
-# same judge. It also grades the patch, the lines this branch adds, against
-# codecov.yml's `rust-afd` target; an empty base skips that.
-# 99 since Nov 22, 2026 (M253_004 §14), up from 95; 98 the same day ("if you
-# can't meet 99 make it 98 we can always improve").
-RUSTD_PATCH_FLOOR ?= 98
-# Every .rs file the branch adds, edits or moves holds this share of ALL its
-# lines, not only the changed ones: Indy's Oct 15, 2026 rule, "its 99% of the
-# rust git diff patch files", switched on Nov 22, 2026: "Files the PR touches";
-# 98 the same day ("if you can't meet 99 make it 98 we can always improve").
-RUSTD_PER_FILE_FLOOR ?= 98
+# same judge. An empty base skips the patch grade.
 RUSTD_PATCH_BASE ?= $(shell git merge-base HEAD origin/main 2>/dev/null)
 # guffbolt and guffbolt-ai, the published harness and its providers, hold a
 # floor of their own beside the global one, over their own lines of the union.
 RUSTD_GUFFBOLT_FLOOR ?= 99
 _RUSTD_COVERAGE_JUDGE = PYTHONDONTWRITEBYTECODE=1 python3 scripts/rustd_coverage.py --floor $(RUSTD_COVERAGE_FLOOR) \
   --crate-floor guffbolt=$(RUSTD_GUFFBOLT_FLOOR) --crate-floor guffbolt-ai=$(RUSTD_GUFFBOLT_FLOOR) \
-  $(if $(RUSTD_PATCH_BASE),--patch-floor $(RUSTD_PATCH_FLOOR) --per-file-floor $(RUSTD_PER_FILE_FLOOR) --patch-base $(RUSTD_PATCH_BASE))
+  $(if $(RUSTD_PATCH_BASE),--patch-floor $(RUSTD_COVERAGE_FLOOR) --patch-base $(RUSTD_PATCH_BASE))
 
 # Each shard owns its Postgres and NATS; test-coverage-rustd-merge grades them.
 # A shard is a layer group, named by folder globs under rustd/ as the unit

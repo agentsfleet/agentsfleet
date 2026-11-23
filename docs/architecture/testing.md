@@ -185,7 +185,7 @@ Postgres, NATS, HTTP and runtime code are part of the denominator. So each shard
 
 Locally, `make test-coverage-rustd` without `RUSTD_SHARD` runs every shard in sequence. It grades with the same script, `scripts/rustd_coverage.py`, and Codecov grades the same merged report.
 
-The line floor is `RUSTD_COVERAGE_FLOOR`, 98% today, and later milestones raise it toward 100%. The same script grades the patch, the Rust lines a branch adds, against `RUSTD_PATCH_FLOOR`. That floor is 95%, Codecov's `rust-afd` patch target, and moves with it.
+The floor is `RUSTD_COVERAGE_FLOOR`, 98% today, and later milestones raise it toward 100%. It is declared once: the same script grades the patch, the Rust lines a branch adds, against it, and Codecov reports Rust without a status. There is no per-file floor.
 
 Coverage builds differ from normal development builds on purpose. Continuous Integration disables Cargo incremental compilation for this job. No edit-build loop would reuse it, and caching incremental object trees only moves stale gigabytes between runners.
 
