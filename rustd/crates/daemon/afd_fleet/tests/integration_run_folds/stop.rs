@@ -3,7 +3,7 @@
 //! folds in opposite orders.
 
 use afd_turns::Producer;
-use afd_turns::view::stop::{HOLD_THREAD, Stop, stop_on};
+use afd_turns::view::stop::{Stop, hold_thread, stop_on};
 use sqlx::Connection as _;
 
 use super::support::{Checked, STEER_JSON, STEER_TEXT, assign_as_holder, send, workspace_of};
@@ -48,11 +48,7 @@ async fn a_fold_retry_waits_for_a_stop_holding_the_thread() -> Checked {
     let pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
         .fetch_one(&mut *stopping)
         .await?;
-    sqlx::query(HOLD_THREAD)
-        .bind(&held.fleet)
-        .bind(&workspace)
-        .fetch_optional(&mut *stopping)
-        .await?;
+    hold_thread(&mut stopping, &workspace, &held.fleet).await?;
 
     let mut retry = Box::pin(assign_as_holder(&held, 0));
     let waited = tokio::select! {

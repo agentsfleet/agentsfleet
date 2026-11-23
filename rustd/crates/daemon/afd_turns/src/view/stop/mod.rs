@@ -30,6 +30,25 @@ const CLOSED_BY: &str = "stop";
 /// What a closed approval records as its detail.
 const CLOSED_DETAIL: &str = "The turn this approval waited on was stopped";
 
+/// Takes a fleet Stop's holds, [`HOLD_THREAD`], inside the caller's transaction,
+/// before [`stop_on`]. A fleet that is gone, or not in `workspace`, holds nothing,
+/// and [`stop_on`] then finds no turn.
+///
+/// # Errors
+/// The statement's own failure, for the caller to name in its own error.
+pub async fn hold_thread(
+    connection: &mut PgConnection,
+    workspace: &Uuid7,
+    fleet: &Uuid7,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(HOLD_THREAD)
+        .bind(fleet)
+        .bind(workspace)
+        .fetch_optional(connection)
+        .await?;
+    Ok(())
+}
+
 /// One live run Stop marked, and the runner holding it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Marked {

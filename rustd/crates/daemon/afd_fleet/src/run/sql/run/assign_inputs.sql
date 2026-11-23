@@ -23,7 +23,8 @@
 -- $10 Slack provider · $11 Slack person actor pattern · $12 Slack person actor separator
 WITH run AS MATERIALIZED (
     SELECT l.fleet_id, head.sequence AS head_sequence,
-           head.reply_provider, head.reply_address
+           head.reply_provider, head.reply_address,
+           l.run_expires_at, s.run_expires_at AS thread_expires_at
     FROM thread.runs l
     JOIN thread.threads s
       ON s.fleet_id = l.fleet_id AND s.last_runner_id = l.runner_id
@@ -34,16 +35,19 @@ WITH run AS MATERIALIZED (
     WHERE l.id = $1 AND l.runner_id = $2
       AND l.fencing_token = $3 AND l.status = $4
       AND l.durable_task_id IS NULL AND l.durable_task_generation IS NULL AND head.durable_task_generation IS NULL
-      AND l.run_expires_at > clock_timestamp()
-      AND s.run_expires_at > clock_timestamp()
     -- The thread first, as Stop takes it: a retry rewrites folds Stop may be settling,
-    -- and taking them without it lets the two meet on two folds in opposite orders.
-    FOR NO KEY UPDATE OF s
+    -- and taking them without it lets the two meet on two folds in opposite orders. The
+    -- run is shared, so a status that moved while this waited is re-read.
+    FOR NO KEY UPDATE OF s FOR SHARE OF l
+), instant AS MATERIALIZED (
+    -- The clock after the locks, so a wait cannot make a lapsed run look live.
+    SELECT clock_timestamp() AS checked_at FROM run
 ), ahead AS MATERIALIZED (
     -- The conversation's next messages: an addressed conversation by equality,
     -- the unaddressed one by NULL, each in the index's own order.
     SELECT w.id, w.sequence, w.parked_at, w.durable_task_id, w.durable_task_generation, w.producer, w.actor, w.workspace_id
     FROM run
+    CROSS JOIN instant i
     CROSS JOIN LATERAL (
         (SELECT a.id, a.sequence, a.parked_at, a.durable_task_id, a.durable_task_generation, a.producer, a.actor, a.workspace_id
          FROM thread.turns a
@@ -59,6 +63,7 @@ WITH run AS MATERIALIZED (
            AND a.settled_at IS NULL AND a.sequence > GREATEST(run.head_sequence, $5)
          ORDER BY a.sequence)
     ) w
+    WHERE run.run_expires_at > i.checked_at AND run.thread_expires_at > i.checked_at
 ), judged AS (
     -- Foldable until the first message that is not: a running AND in order.
     SELECT f.id, bool_and(f.foldable) OVER (ORDER BY f.sequence) AS clear

@@ -45,7 +45,8 @@ WITH instant AS MATERIALIZED (
   FROM thread.turns e
   WHERE e.thread_id = $3 AND e.id = $6
     AND e.settled_at IS NULL AND e.run_fence = $10
-    AND EXISTS (SELECT 1 FROM after_lock)
+    -- `held` returned the thread, so this runs after its wait and never when it refused.
+    AND EXISTS (SELECT 1 FROM held)
   FOR SHARE OF e
 ), inserted AS (
   -- The run starts, and its metering cursor with it, at the clock read after the

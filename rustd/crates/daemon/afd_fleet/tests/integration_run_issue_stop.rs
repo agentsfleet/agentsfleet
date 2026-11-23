@@ -17,7 +17,7 @@ use afd_db::test_util::mint_id;
 use afd_fleet::run::installed::IssueRevision;
 use afd_fleet::run::{Acquired, Billed};
 use afd_turns::view::History;
-use afd_turns::view::stop::{Stop, stop_on};
+use afd_turns::view::stop::{Stop, hold_thread, stop_on};
 use sqlx::Connection as _;
 
 use crate::seed::{self, MODEL, POSTURE, PROVIDER, Seeded, seeded};
@@ -26,10 +26,6 @@ use crate::support::Fixtures;
 /// Whether any backend is waiting on `$1`'s locks.
 const BLOCKING: &str =
     "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid)))";
-
-/// The fleet's thread in the mode a Stop holds it, in a statement of its own.
-const HOLD_THREAD: &str =
-    "SELECT pg_backend_pid() FROM thread.threads WHERE id = $1 FOR NO KEY UPDATE";
 
 /// How many runs name the turn, whatever their status.
 const RUNS_FOR_TURN: &str = "SELECT count(*) FROM thread.runs WHERE turn_id = $1";
@@ -58,19 +54,26 @@ async fn head_proof(database: &afd_db::Db, fleet: &Uuid7) -> IssueRevision {
     }
 }
 
-/// Returns once some backend waits on a lock `pid` holds.
-async fn wait_for_a_waiter(database: &afd_db::Db, pid: i32) {
+/// Whether `work` queues behind a lock `pid` holds before it finishes; `work` keeps
+/// running either way, so a statement that never waits fails the test, not hangs it.
+async fn queues_behind<F: Future + Unpin>(database: &afd_db::Db, pid: i32, work: &mut F) -> bool {
     let mut probe = database.acquire().await.expect("a connection");
-    loop {
-        let queued: bool = sqlx::query_scalar(BLOCKING)
-            .bind(pid)
-            .fetch_one(&mut *probe)
-            .await
-            .expect("inspect the lock queue");
-        if queued {
-            return;
+    let waiter = async {
+        loop {
+            let queued: bool = sqlx::query_scalar(BLOCKING)
+                .bind(pid)
+                .fetch_one(&mut *probe)
+                .await
+                .expect("inspect the lock queue");
+            if queued {
+                return;
+            }
+            tokio::task::yield_now().await;
         }
-        tokio::task::yield_now().await;
+    };
+    tokio::select! {
+        _ = work => false,
+        () = waiter => true,
     }
 }
 
@@ -90,6 +93,40 @@ fn billed(tenant: &Uuid7) -> Billed<'_> {
         provider: PROVIDER,
         model: MODEL,
     }
+}
+
+/// The control for the two refusals below: the same fixture and proof, with nothing
+/// stopped, issue the head.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_head_nothing_stopped_is_issued_under_its_proof() {
+    let fixtures = Fixtures::create().await;
+    let Seeded {
+        runners: [first, _second],
+        fleet,
+        tenant,
+        ..
+    } = seeded::<2>(&fixtures).await;
+    let runs = fixtures.runs();
+    let held = seed::select_fleet(&runs, &first, &fleet)
+        .await
+        .expect("the fleet is leasable");
+    let proof = head_proof(&fixtures.database, &fleet).await;
+
+    let issued = runs
+        .issue_for_revision(
+            &first,
+            &held,
+            billed(&tenant),
+            fixtures.enrolled_at(),
+            Some(&proof),
+        )
+        .await
+        .expect("the issue answers");
+
+    assert!(issued.is_some(), "an unstopped head is issued");
+    assert_eq!(runs_for_turn(&fixtures.database, &held.turn_id).await, 1);
+    fixtures.cleanup().await;
 }
 
 #[tokio::test]
@@ -152,36 +189,36 @@ async fn a_stop_committed_while_the_issue_waits_issues_no_run() {
     let proof = head_proof(&fixtures.database, &fleet).await;
     let mut holder = fixtures.database.acquire().await.expect("a connection");
     let mut stopping = holder.begin().await.expect("Stop's transaction");
-    let pid: i32 = sqlx::query_scalar(HOLD_THREAD)
-        .bind(&held.fleet_id)
+    let pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
         .fetch_one(&mut *stopping)
         .await
-        .expect("hold the thread");
-
-    let stop = async {
-        wait_for_a_waiter(&fixtures.database, pid).await;
-        let stopped = stop_on(
-            &mut stopping,
-            &held.workspace_id,
-            &held.fleet_id,
-            &held.turn_id,
-        )
+        .expect("Stop's backend");
+    hold_thread(&mut stopping, &held.workspace_id, &held.fleet_id)
         .await
-        .expect("Stop's statement")
-        .expect("the turn exists");
-        stopping.commit().await.expect("Stop commits");
-        stopped
-    };
-    let (issued, stopped) = tokio::join!(
-        runs.issue_for_revision(
-            &first,
-            &held,
-            billed(&tenant),
-            fixtures.enrolled_at(),
-            Some(&proof)
-        ),
-        stop
+        .expect("Stop holds the fleet and its thread");
+
+    let mut issue = Box::pin(runs.issue_for_revision(
+        &first,
+        &held,
+        billed(&tenant),
+        fixtures.enrolled_at(),
+        Some(&proof),
+    ));
+    assert!(
+        queues_behind(&fixtures.database, pid, &mut issue).await,
+        "the issue waits on the thread Stop holds"
     );
+    let stopped = stop_on(
+        &mut stopping,
+        &held.workspace_id,
+        &held.fleet_id,
+        &held.turn_id,
+    )
+    .await
+    .expect("Stop's statement")
+    .expect("the turn exists");
+    stopping.commit().await.expect("Stop commits");
+    let issued = issue.await;
 
     assert!(matches!(
         stopped.stop,
@@ -218,16 +255,14 @@ async fn a_fleet_stop_that_waited_behind_an_issue_marks_its_run() {
     insert_run(&mut issuing, &held, &first, &tenant, &run_id).await;
 
     let history = History::new(fixtures.database.clone());
-    let issue = async {
-        wait_for_a_waiter(&fixtures.database, pid).await;
-        issuing.commit().await.expect("the issue commits");
-    };
-    let (stopped, ()) = tokio::join!(
-        history.stop(&held.workspace_id, &held.fleet_id, &held.turn_id),
-        issue
+    let mut stop = Box::pin(history.stop(&held.workspace_id, &held.fleet_id, &held.turn_id));
+    assert!(
+        queues_behind(&fixtures.database, pid, &mut stop).await,
+        "Stop waits on the thread the issue holds"
     );
+    issuing.commit().await.expect("the issue commits");
 
-    let stopped = stopped.expect("Stop answers").expect("the turn exists");
+    let stopped = stop.await.expect("Stop answers").expect("the turn exists");
     let Stop::Cancelled { running, runs, .. } = stopped.stop else {
         panic!("Stop cancels the turn: {:?}", stopped.stop);
     };

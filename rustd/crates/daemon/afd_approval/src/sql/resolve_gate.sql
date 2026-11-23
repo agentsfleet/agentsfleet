@@ -11,11 +11,14 @@ WITH fleet AS MATERIALIZED (
   WHERE f.id IN (SELECT g.fleet_id FROM fleet.approval_gates g
                   WHERE g.action_id = $4 AND g.resolved_at IS NULL
                     AND (g.fleet_id = $5 OR $5 IS NULL))
+  ORDER BY f.id
   FOR KEY SHARE OF f
 ), thread AS MATERIALIZED (
+  -- In id order, as the renewal batch takes threads, when an unscoped action names several.
   SELECT s.id
   FROM thread.threads s
   WHERE s.id IN (SELECT id FROM fleet)
+  ORDER BY s.id
   FOR NO KEY UPDATE OF s
 ), resolved AS (
   UPDATE fleet.approval_gates

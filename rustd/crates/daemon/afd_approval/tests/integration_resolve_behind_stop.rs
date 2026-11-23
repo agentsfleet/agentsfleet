@@ -16,7 +16,7 @@ use af_core::id::Uuid7;
 use afd_api_wire::approval::status;
 use afd_approval::{Decision, Resolution};
 use afd_turns::view::History;
-use afd_turns::view::stop::{HOLD_THREAD, Stop, stop_on};
+use afd_turns::view::stop::{Stop, hold_thread, stop_on};
 use sqlx::Connection as _;
 
 use crate::lane::{Lane, Window};
@@ -119,10 +119,7 @@ async fn a_gate_resolution_waits_for_a_stop_holding_the_thread() {
         .fetch_one(&mut *stopping)
         .await
         .expect("Stop's backend");
-    sqlx::query(HOLD_THREAD)
-        .bind(&lane.fleet)
-        .bind(&lane.workspace)
-        .fetch_optional(&mut *stopping)
+    hold_thread(&mut stopping, &lane.workspace, &lane.fleet)
         .await
         .expect("Stop holds the fleet and its thread");
 
@@ -156,6 +153,68 @@ async fn a_gate_resolution_waits_for_a_stop_holding_the_thread() {
         still_parked(&lane, &other).await,
         "a resolution that lost unparks nothing"
     );
+}
+
+/// A resolution that waited on a thread holder still wins once the holder lets go:
+/// after a holder that wrote the thread row and committed, as a renewal or a report
+/// does, and after one that rolled back. Both parked turns of the fleet unpark.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_gate_resolution_that_waited_on_the_thread_wins_after_it() {
+    for writes in [true, false] {
+        let lane = Lane::isolated().await;
+        let action = lane.seed_gate(Window::Open).await;
+        let gated = parked_turn(&lane).await;
+        let other = parked_turn(&lane).await;
+        gate_turn(&lane, &action, Some(&gated), false).await;
+
+        let mut holder = lane.pool.acquire().await.expect("a connection");
+        let mut holding = holder.begin().await.expect("the holder's transaction");
+        let pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
+            .fetch_one(&mut *holding)
+            .await
+            .expect("the holder's backend");
+        hold_thread(&mut holding, &lane.workspace, &lane.fleet)
+            .await
+            .expect("the holder takes the fleet and its thread");
+        if writes {
+            sqlx::query("UPDATE thread.threads SET updated_at = now() WHERE id = $1")
+                .bind(&lane.fleet)
+                .execute(&mut *holding)
+                .await
+                .expect("the holder writes the thread row");
+        }
+
+        let (fleet, action_id) = (lane.fleet.to_string(), action.to_string());
+        let mut resolve = Box::pin(lane.inbox.resolve(
+            &action_id,
+            Decision::Approved,
+            APPROVER,
+            NOTE,
+            Some(&fleet),
+        ));
+        assert!(
+            queues_behind(&lane, pid, &mut resolve).await,
+            "writes={writes}: the resolution queues behind the thread's holder"
+        );
+        if writes {
+            holding.commit().await.expect("the holder commits");
+        } else {
+            holding.rollback().await.expect("the holder rolls back");
+        }
+
+        let resolution = resolve.await.expect("the resolution answers");
+        assert!(
+            matches!(resolution, Resolution::Resolved(_)),
+            "writes={writes}: the waiting resolution wins: {resolution:?}"
+        );
+        for turn in [&gated, &other] {
+            assert!(
+                !still_parked(&lane, turn).await,
+                "writes={writes}: the turn unparks"
+            );
+        }
+    }
 }
 
 #[tokio::test]

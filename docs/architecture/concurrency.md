@@ -364,7 +364,7 @@ Each takes the fleet's thread before a turn or a gate, so they queue on the thre
 ```
  fleet Stop     hold_thread.sql: fleet KEY SHARE ─► thread NO KEY UPDATE
                 then stop_turn.sql: turn ─► run ─► the turn's gate
- issue          host ─► thread (held) ─► head turn FOR SHARE, unsettled and at the fence
+ issue          fleet KEY SHARE ─► host ─► thread (held) ─► head turn FOR SHARE, unsettled, at the fence
  fold retry     assign_inputs.sql: thread NO KEY UPDATE ─► the folds
  gate answer    resolve_gate.sql: fleet KEY SHARE ─► thread NO KEY UPDATE ─► gate ─► turns
  fleet delete   fleet FOR UPDATE ─► setup cards ─► cascade to gates and thread
@@ -372,7 +372,9 @@ Each takes the fleet's thread before a turn or a gate, so they queue on the thre
 
 The Stop's holds are a statement of their own (`afd_turns`'s `view/stop/hold_thread.sql`), so Stop's statement starts after an issue that held the thread commits and marks the run it issued. The issue reads its head with a lock after its thread wait, so a Stop that committed meanwhile leaves no run (`afd_fleet`'s `integration_run_issue_stop.rs`).
 
-The fleet comes first in a Stop and a gate answer because fleet delete holds it `FOR UPDATE`, closes the setup cards and then cascades to the thread. Holding the thread there met delete at a gate: Stop deadlocked with it before Nov 23, 2026 (`afd_approval`'s `integration_resolve_behind_stop.rs`).
+The fleet comes first in a Stop and a gate answer because fleet delete holds it `FOR UPDATE`, closes the setup cards and then cascades to the thread. Holding the thread there met delete at a gate: Stop deadlocked with it before Nov 23, 2026 (`afd_approval`'s `integration_resolve_behind_stop.rs`). Every other holder of the fleet `FOR UPDATE` delays a Stop and a gate answer too, up to the login's lock bound: activation, a setup save, an archive and a recovered start (`afd_setup`'s `creation/`).
+
+A gate answer holds the thread for its one statement even when it loses. An assignment pass that meets it skips the fleet, as it skips any held thread, and the losing answer rings nothing: the turn waits for the fleet's next ring, the loss a dropped wake causes.
 
 ### A run's verbs on the fleet row and the run row
 
@@ -447,4 +449,4 @@ The draft review and the saved-setup read run read committed, with lock-free twi
 
 No run was doubled and no host exceeded its workers either way. The full row is in [Measured ceilings](./scaling.md#measured-ceilings).
 
-An assignment still waits on the thread, the earlier run and the turn. A Stop, a report and a renewal take the thread first too, so they queue behind an assignment rather than lock against it in the other order.
+An assignment still waits on the thread, the earlier run and the turn. A fleet Stop takes the fleet and then the thread, and a report and a renewal take the thread first, so they queue behind an assignment rather than lock against it in the other order.

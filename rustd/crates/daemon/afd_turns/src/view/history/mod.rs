@@ -160,10 +160,7 @@ impl History {
         // The fleet and its thread in a statement of their own: an assignment holds the
         // thread from its claim to its commit, and Stop's statement must start after that
         // commit to see the run it issued and mark it.
-        sqlx::query(crate::view::stop::HOLD_THREAD)
-            .bind(fleet)
-            .bind(workspace)
-            .fetch_optional(&mut *transaction)
+        crate::view::stop::hold_thread(&mut transaction, workspace, fleet)
             .await
             .map_err(error::query(CONTEXT_STOP))?;
         let stopped = crate::view::stop::stop_on(&mut transaction, workspace, fleet, turn_id)
