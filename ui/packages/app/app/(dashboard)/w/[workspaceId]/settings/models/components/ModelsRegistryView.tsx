@@ -35,8 +35,8 @@ export function ModelsRegistryView({
 }: Props) {
   return (
     <Section className="gap-3xl">
-      <DashboardPanel aria-label="Platform default" className="model-default summary:p-2xl">
-        <div className="model-default-identity">
+      <DashboardPanel aria-label="Platform default" className="flex flex-wrap items-center gap-xl summary:p-2xl">
+        <div className="flex min-w-0 basis-full flex-col gap-xl summary:flex-1 summary:basis-auto summary:flex-row summary:items-center">
           <span className="shrink-0 text-muted-foreground" aria-hidden="true">
             <CpuIcon size={16} className="inline-block align-middle" />
           </span>
@@ -54,7 +54,7 @@ export function ModelsRegistryView({
       </DashboardPanel>
 
       <section className="space-y-xl" aria-label="Your models">
-        <SectionHeader className="models-heading" actions={<span className="text-label text-muted-foreground">Provider keys stay hidden</span>}>
+        <SectionHeader className="min-h-5 [&_h2]:flex [&_h2]:h-5 [&_h2]:items-center" actions={<span className="text-label text-muted-foreground">Provider keys stay hidden</span>}>
           Your models <Badge className="ml-md h-6.75">{entries.length}</Badge>
         </SectionHeader>
         <DashboardPanel padding="none">
@@ -69,7 +69,7 @@ export function ModelsRegistryView({
         <p className="text-eyebrow leading-eyebrow text-text-dim">Your active model is the default for new work. Each credential stays in its selected workspace.</p>
       </section>
 
-      <div className="models-provider-footer">
+      <div className="flex flex-col flex-wrap items-start justify-between gap-5 border-t border-border py-5 summary:flex-row summary:items-center">
         <div>
           <p className="text-eyebrow text-text-dim">Bring your own provider</p>
           <p className="my-sm text-description">Provider, model, and key. All in one form.</p>
@@ -81,7 +81,9 @@ export function ModelsRegistryView({
 }
 
 function Active() {
-  return <span className="model-active"><span aria-hidden="true" />Active</span>;
+  return <span className="inline-flex items-center gap-md text-label font-title text-success">
+    <span aria-hidden="true" className="size-1.5 rounded-full bg-success" />Active
+  </span>;
 }
 
 function ModelRow({entry, workspaceName, actions}: {entry: TenantModelEntry; workspaceName: string; actions: ModelActions}) {
@@ -108,7 +110,7 @@ function ModelRow({entry, workspaceName, actions}: {entry: TenantModelEntry; wor
     </>}>
         <p title={entry.model_id} className="break-words text-label font-medium">{entry.display_name ?? entry.model_id}</p>
         <p className="mt-sm text-label text-muted-foreground">{entry.provider ? providerLabel(entry.provider) : "Unknown provider"}</p>
-        <p className="model-credential">
+        <p className="mt-md flex items-center gap-md text-eyebrow text-text-dim">
           <KeyIcon size={14} aria-hidden="true" />
           <span className="break-words">{entry.has_key ? entry.secret_ref : "Key required"} · {workspaceName}</span>
         </p>

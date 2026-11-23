@@ -45,7 +45,7 @@ export function WorkspaceFleetAddressInput({workspace, inSetup, ...props}: Props
     <ChatComposerInput {...props}
       aria-autocomplete="list" aria-controls={picker.open ? listId : undefined} aria-activedescendant={activeId}
       onSelect={event => picker.caret(event.currentTarget)} onChange={picker.change} />
-    {picker.open ? <DashboardPanel padding="none" className="fleet-address-options" ref={listRef}>
+    {picker.open ? <DashboardPanel padding="none" className="absolute -inset-x-px bottom-full z-20 max-h-[32dvh] overflow-y-auto rounded-md border border-border bg-card p-md text-foreground shadow-floating" ref={listRef}>
       <SectionLabel variant="navigation" className="block px-md py-sm text-eyebrow font-semibold text-muted-foreground">Workspace fleets</SectionLabel>
       <SuggestionList id={listId} label="Workspace fleets" active={picker.selected} onChoose={picker.choose}
         options={picker.choices.map(fleet => ({key: fleet.id, value: fleet.name, label: `@${fleet.name}`}))} />

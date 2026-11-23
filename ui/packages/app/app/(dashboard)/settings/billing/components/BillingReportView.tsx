@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, type ReactNode } from "react";
-import { DashboardPanel, Section, SectionHeader, TimeRange } from "@agentsfleet/design-system";
+import { DashboardPanel, Section, SectionHeader, TimeRange, cn } from "@agentsfleet/design-system";
 import { RouteLoading } from "@/components/layout/RouteLoading";
 import type { BillingReport } from "@/lib/api/billing_report";
 import { formatCompactCount, formatCount } from "@/lib/events/run-figures-format";
@@ -17,7 +17,7 @@ export function BillingReportView({report}: {report: BillingReport}) {
     <div className="space-y-2xl">
       <BillingFilters report={report} />
       <DashboardPanel asChild padding="none">
-        <dl className="billing-totals" aria-label="Period totals">
+        <dl className="grid divide-y divide-border summary:grid-cols-[2fr_1fr_1fr] summary:divide-x summary:divide-y-0" aria-label="Period totals">
           <Metric label="Settled charges" value={formatBalance(report.totals.charged_nanos)} note={<>{range} · USD</>} primary />
           <Metric label="Activities" value={formatCount(report.totals.activity_count)} note="With settled usage" />
           <Metric label="Tokens" value={formatCompactCount(report.totals.input_tokens + report.totals.output_tokens)} note="Input and output combined" />
@@ -37,10 +37,12 @@ export function BillingReportView({report}: {report: BillingReport}) {
 
 function Metric({label, value, note, primary}: {label: string; value: string; note: ReactNode; primary?: boolean}) {
   return (
-    <div className="billing-metric">
-      <dt>{label}</dt>
-      <dd className="billing-metric-value" data-primary={primary}><strong>{value}</strong></dd>
-      <dd className="billing-metric-note">{note}</dd>
+    <div className="grid min-w-0 grid-cols-[1fr_auto] items-start gap-x-xl p-xl leading-label summary:block summary-medium:p-2xl">
+      <dt className="text-eyebrow font-semibold leading-label text-muted-foreground summary:mb-md">{label}</dt>
+      <dd className={cn("col-start-2 row-span-2 row-start-1 wrap-anywhere", primary ? "text-success" : "text-foreground")}>
+        <strong className="block text-usage-total leading-label font-[750] tracking-usage-total summary:inline">{value}</strong>
+      </dd>
+      <dd className="col-start-1 text-eyebrow leading-label text-text-dim summary:mt-md">{note}</dd>
     </div>
   );
 }

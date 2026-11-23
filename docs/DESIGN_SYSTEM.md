@@ -506,7 +506,9 @@ Reduced motion retains color and focus feedback without movement.
 
 ### Page loading
 
-Use `RouteLoading` for page navigation and initial page data. It centers the shared Spinner with the accessible name “Loading page” and visible label “Loading…”. The first application load fills the viewport.
+Use `RouteLoading` for page navigation and initial page data. It centers the page variant of the shared Spinner with the accessible name “Loading page” and visible label “Loading…”. The first application load fills the viewport.
+
+A single pulse passes between three nodes around the steady brand mark. Reduced motion keeps the pulse and mark still.
 
 Inside the dashboard it fills the content area while the header and sidebar remain visible. Do not add route-specific skeleton layouts. Buttons, table refreshes, and other local actions keep their own loading cues.
 

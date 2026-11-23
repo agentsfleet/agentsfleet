@@ -10,6 +10,8 @@ type Props = {
   onChange: (patch: Partial<ModelFormValues>) => void;
 };
 
+export const MODEL_FORM_TRIGGER_CLASS = "font-control [&>[data-slot=select-caret]]:text-muted-foreground [&>[data-slot=select-caret]]:opacity-100";
+
 export function ModelCredentialFields({id, values, secrets, onChange}: Props) {
   const available = compatibleCredentials(secrets, values.provider);
   return (
@@ -36,7 +38,7 @@ function SavedCredential({id, values, available, onChange}: Omit<Props, "secrets
     <div className="space-y-md">
       <Label htmlFor={`${id}-saved-key`}>Saved key</Label>
       <Select value={values.savedRef} onValueChange={savedRef => onChange({savedRef})} disabled={available.length === 0}>
-        <SelectTrigger id={`${id}-saved-key`} aria-label="Saved key"><SelectValue placeholder="Select a saved key" /></SelectTrigger>
+        <SelectTrigger id={`${id}-saved-key`} aria-label="Saved key" className={MODEL_FORM_TRIGGER_CLASS}><SelectValue placeholder="Select a saved key" /></SelectTrigger>
         <SelectContent>{available.map(secret => <SelectItem key={secret.name} value={secret.name}>{secret.name}</SelectItem>)}</SelectContent>
       </Select>
       <p className="text-eyebrow leading-eyebrow text-text-dim">
@@ -54,18 +56,18 @@ function NewCredential({id, values, secrets, onChange}: Props) {
     <div className="space-y-xl">
       <div className="space-y-md">
         <Label htmlFor={`${id}-key-name`}>Key name</Label>
-        <Input id={`${id}-key-name`} value={values.keyName} onChange={event => onChange({keyName: event.target.value})} placeholder="Workspace model key" autoComplete="off" spellCheck={false} aria-invalid={held || undefined} />
+        <Input id={`${id}-key-name`} className="font-control" value={values.keyName} onChange={event => onChange({keyName: event.target.value})} placeholder="Workspace model key" autoComplete="off" spellCheck={false} aria-invalid={held || undefined} />
         <p className="text-eyebrow leading-eyebrow text-text-dim">A name to recognize this key. Its saved value stays hidden.</p>
         {held ? <output className="block text-eyebrow text-warning">That name is already in use. Choose Use saved key or enter another name.</output> : null}
       </div>
       {custom ? <div className="space-y-md">
         <Label htmlFor={`${id}-base-url`}>Base URL</Label>
-        <Input id={`${id}-base-url`} value={values.baseUrl} onChange={event => onChange({baseUrl: event.target.value})} placeholder="https://your-provider.example/v1" autoComplete="off" spellCheck={false} />
+        <Input id={`${id}-base-url`} className="font-control" value={values.baseUrl} onChange={event => onChange({baseUrl: event.target.value})} placeholder="https://your-provider.example/v1" autoComplete="off" spellCheck={false} />
         <p className="text-eyebrow text-text-dim">Use an HTTPS OpenAI-compatible endpoint.</p>
       </div> : null}
       <div className="space-y-md">
         <Label htmlFor={`${id}-api-key`}>API key</Label>
-        <Input id={`${id}-api-key`} type="password" value={values.apiKey} onChange={event => onChange({apiKey: event.target.value})}
+        <Input id={`${id}-api-key`} className="font-control" type="password" value={values.apiKey} onChange={event => onChange({apiKey: event.target.value})}
           autoComplete="off" spellCheck={false} placeholder="Enter your provider key" />
         <p className="text-eyebrow text-text-dim">The key is saved securely and its value stays hidden.</p>
       </div>

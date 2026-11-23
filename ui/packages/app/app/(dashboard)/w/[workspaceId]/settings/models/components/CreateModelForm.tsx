@@ -9,7 +9,7 @@ import { BASE_URL_NOT_HTTPS, isHttpsUrl } from "../lib/custom-endpoint";
 import { CATALOGUE_STATUS } from "./catalogue-status";
 import { useModelCatalogue } from "./ModelCatalogueProvider";
 import ProviderModelSelect from "./ProviderModelSelect";
-import { ModelCredentialFields } from "./ModelCredentialFields";
+import { ModelCredentialFields, MODEL_FORM_TRIGGER_CLASS } from "./ModelCredentialFields";
 import { useModelCreation } from "./use-model-creation";
 import { compatibleCredentials, creationActionLabel, KEY_MODE, type ModelFormValues } from "./model-creation";
 
@@ -64,17 +64,18 @@ export function CreateModelForm({workspaceId, secrets, onCreated, onSecretsChang
   }
 
   return (
-    <form action={submit} aria-busy={creation.pending} className="[&_input]:font-control [&_[role=combobox]]:font-control [&_[data-slot=select-caret]]:text-muted-foreground [&_[data-slot=select-caret]]:opacity-100">
+    <form action={submit} aria-busy={creation.pending}>
       <fieldset disabled={locked} className="min-w-0 space-y-xl border-0 p-0">
         <div className="grid min-w-0 grid-cols-1 gap-xl summary:grid-cols-2">
           <div className="space-y-md">
             <Label htmlFor={`${id}-provider`}>Provider</Label>
             {catalogueLoading || providers.length ? <Select value={values.provider} disabled={catalogueLoading} onValueChange={provider => change({provider, model: "", savedRef: "", apiKey: ""})}>
-              <SelectTrigger id={`${id}-provider`} aria-label="Provider"><SelectValue placeholder={catalogueLoading ? "Loading providers…" : "Select a provider"} /></SelectTrigger>
+              <SelectTrigger id={`${id}-provider`} aria-label="Provider" className={MODEL_FORM_TRIGGER_CLASS}><SelectValue placeholder={catalogueLoading ? "Loading providers…" : "Select a provider"} /></SelectTrigger>
               <SelectContent>{providers.map(provider => <SelectItem key={provider} value={provider}>{providerLabel(provider)}</SelectItem>)}<SelectItem value={OPENAI_COMPATIBLE_PROVIDER}>{providerLabel(OPENAI_COMPATIBLE_PROVIDER)}</SelectItem></SelectContent>
-            </Select> : <Input id={`${id}-provider`} value={values.provider} onChange={event => change({provider: event.target.value, model: "", savedRef: "", apiKey: ""})} placeholder="Provider ID" autoComplete="off" spellCheck={false} />}
+            </Select> : <Input id={`${id}-provider`} className="font-control" value={values.provider} onChange={event => change({provider: event.target.value, model: "", savedRef: "", apiKey: ""})} placeholder="Provider ID" autoComplete="off" spellCheck={false} />}
           </div>
-          <ProviderModelSelect id={`${id}-model`} provider={values.provider || undefined} model={values.model} onModelChange={model => change({model})} details="disclosure" />
+          <ProviderModelSelect id={`${id}-model`} provider={values.provider || undefined} model={values.model} onModelChange={model => change({model})} details="disclosure"
+            triggerClassName={MODEL_FORM_TRIGGER_CLASS} inputClassName="font-control" />
         </div>
         <ModelCredentialFields id={id} values={values} secrets={secrets} onChange={change} />
         <div className="flex items-start gap-lg">

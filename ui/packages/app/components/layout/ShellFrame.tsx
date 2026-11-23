@@ -39,7 +39,7 @@ export function ShellFrame({
       >
         <aside
           id={SIDEBAR_NAV_ID}
-          className="app-sidebar flex min-h-0 flex-col"
+          className="app-sidebar flex min-h-0 flex-col overflow-hidden"
         >
           <DesktopSidebarNavigation
             workspaces={workspaces}

@@ -3,8 +3,7 @@
 @import "@agentsfleet/design-system/tokens.css";
 @import "@agentsfleet/design-system/theme.css";
 @import "@agentsfleet/design-system/app-tokens.css";
-@import "./(dashboard)/settings/settings.css";
-@import "../components/domain/conversation/conversation.css";
+@import "../components/domain/conversation/summary/repository-name.css";
 
 /* Tailwind scans the sibling design-system package for utility classes used
  * in shared primitives. Without this, Button/Card/etc. ship unstyled. */
@@ -53,8 +52,6 @@ body {
   --app-canvas-block: 0px;
   scrollbar-gutter: auto;
 }
-
-.billing-page { container: billing-content / inline-size; }
 
 .app-shell-trailing {
   padding-right: var(--app-shell-edge);
@@ -110,35 +107,7 @@ code, pre, kbd { font-family: var(--ff-mono); }
 }
 
 
-.app-dashboard-canvas:has([data-fleet-authoring]) {
-  padding-block: 1rem;
-  overflow: hidden;
-}
-.app-dashboard-canvas:has([data-fleet-authoring]) > div { height: 100%; min-height: 0; }
-.app-sidebar { overflow: hidden; }
-
-.fleet-summary {
-  order: -1;
-  max-height: none;
-  overflow: visible;
-  margin: var(--sp-lg);
-}
 .app-shell:not(:has([data-fleet-workspace], [data-fleet-authoring])) .app-dashboard-canvas .page-entrance { width: 100%; max-width: 65rem; margin-inline: auto; }
-@media (min-width: 42.5625rem) {
-  .fleet-summary {
-    grid-column: 2;
-    grid-row: 1 / span 2;
-    order: 0;
-    width: var(--summary-width);
-    position: sticky;
-    top: var(--sp-2xl);
-    max-height: calc(100dvh - 12rem);
-    overflow-y: auto;
-    align-self: flex-start;
-    margin: var(--sp-2xl) 0;
-  }
-}
-
 /* Fleet workspaces share the approved edge-to-edge chat frame. */
 .app-shell:has([data-fleet-workspace], [data-fleet-authoring]) .app-dashboard-canvas {
   padding: 0;
@@ -149,11 +118,6 @@ code, pre, kbd { font-family: var(--ff-mono); }
   height: 100%;
   min-height: 0;
 }
-[data-fleet-workspace] nav[aria-label="Fleet sections"] {
-  padding-inline: var(--chat-inset);
-  margin: 0;
-}
-
 /* Resource chrome and content follow the approved title-bar/body hierarchy. */
 .app-dashboard-canvas:has(> [data-resource-header]) {
   display: flex;
@@ -180,7 +144,4 @@ code, pre, kbd { font-family: var(--ff-mono); }
 }
 @media (min-width: 48rem) and (max-width: 50rem) {
   .app-dashboard-canvas:has(> [data-resource-header]) > div:not([data-resource-header]) { padding: var(--sp-2xl); }
-}
-@media (max-width: 42.5rem) {
-  .fleet-chat-heading > svg, .fleet-chat-heading > div > svg { display: none; }
 }

@@ -13,10 +13,10 @@ type Props = {
 export function BillingFilter({label, value, choices, disabled, onChange, onOpenChange}: Props) {
   const id = useId();
   return (
-    <div className="billing-filter">
+    <div className="flex w-full min-w-0 items-center justify-between gap-md summary:w-auto">
       <Label htmlFor={id} appearance="filter">{label}</Label>
       <Select value={value} disabled={disabled} onValueChange={onChange} onOpenChange={onOpenChange}>
-        <SelectTrigger id={id} aria-label={label} appearance="filter"><SelectValue /></SelectTrigger>
+        <SelectTrigger id={id} aria-label={label} appearance="filter" className="max-w-[65%] summary:max-w-64"><SelectValue /></SelectTrigger>
         <SelectContent>
           {choices.map(choice => <SelectItem key={choice.value} value={choice.value}>{choice.label}</SelectItem>)}
         </SelectContent>

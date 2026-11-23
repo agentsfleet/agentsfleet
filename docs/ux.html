@@ -198,11 +198,169 @@ button{font-weight:500}h1,h2,h3{font-weight:650}strong{font-weight:600}
 .brand .nav-label,.address-options button{font-weight:600;color:var(--text)}
 .summary .changes-row-label small{display:block;margin:0}
 .user-turn{width:fit-content}.user-bubble{overflow-wrap:anywhere}
+/* Page loading preview follows the app shell and its viewport-filling variant. */
+.app-loading-preview { display: grid; min-height: 100%; place-items: center; padding: var(--s6); }
+.app-loading-status {
+  display: grid;
+  justify-items: center;
+  gap: var(--s3);
+  color: var(--secondary);
+  font-size: var(--fs-control);
+  line-height: var(--lh-control);
+}
+.app-loading-mark { display: block; width: 44px; height: 44px; color: var(--accent); }
+.app-loading-track { stroke: var(--line); }
+.app-loading-nodes { fill: var(--muted); }
+.app-loading-packet { stroke-dasharray: 9 91; stroke-dashoffset: 4.5; }
+.app-loading-full { display: block; padding: 0; }
+.app-loading-full > .rail, .app-loading-full .topbar { display: none; }
+.app-loading-full > .surface { height: 100%; border: 0; border-radius: 0; background: var(--canvas); }
+@media (prefers-reduced-motion: no-preference) {
+  /* Positions follow the three nodes on the normalized path. */
+  @keyframes app-loading-handoff {
+    33.333% { stroke-dashoffset: -27.17; }
+    66.667% { stroke-dashoffset: -63.83; }
+    100% { stroke-dashoffset: -95.5; }
+  }
+  .app-loading-packet { animation: app-loading-handoff 1.725s cubic-bezier(.38, 0, .62, 1) infinite; }
+}
+@media (forced-colors: active) {
+  .app-loading-mark { color: CanvasText; }
+  .app-loading-track { stroke: GrayText; }
+  .app-loading-nodes { fill: GrayText; }
+}
+/* Model dialog proposal. The existing Models view remains the component reference. */
+.model-proposal[open] {
+  display: flex;
+  flex-direction: column;
+  height: min(720px, calc(100dvh - 48px));
+}
+.model-proposal .modal-heading { flex: none; }
+.model-proposal #modal-content { display: flex; flex: 1; flex-direction: column; }
+.model-proposal #modal-content > .modal-actions { margin-top: auto; }
+.model-review-status {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin: 0 0 var(--s2);
+  color: var(--secondary);
+}
+.model-review-spinner { flex: none; width: 20px; height: 20px; color: var(--accent); }
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes model-review-ripple { 0%,100% { opacity: .25; } 40% { opacity: 1; } }
+  .model-review-spinner path { animation: model-review-ripple 1.6s ease-in-out infinite; }
+  .model-review-spinner path:nth-child(2) { animation-delay: -1.4s; }
+  .model-review-spinner path:nth-child(3) { animation-delay: -1.2s; }
+  .model-review-spinner path:nth-child(4) { animation-delay: -1s; }
+  .model-review-spinner path:nth-child(5) { animation-delay: -.8s; }
+  .model-review-spinner path:nth-child(6) { animation-delay: -.6s; }
+  .model-review-spinner path:nth-child(7) { animation-delay: -.4s; }
+  .model-review-spinner path:nth-child(8) { animation-delay: -.2s; }
+}
+.model-review-wait {
+  display: grid;
+  gap: var(--s4);
+}
+.model-review-placeholder {
+  display: block;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.model-review-wait .field { font-size: var(--fs-control); margin-bottom: 0; }
+.model-review-wait .field .model-review-placeholder { margin-top: var(--s2); }
+.model-review-label {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-height: 20px;
+}
+.model-review-info-trigger {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  min-height: 28px;
+  margin-block: -4px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--secondary);
+  cursor: pointer;
+}
+.model-review-info-trigger:hover, .model-review-info-trigger:focus-visible {
+  color: var(--text);
+  background: var(--raised);
+}
+.model-review-info-trigger svg { width: 16px; height: 16px; }
+.model-review-select { anchor-name: --model-review-select; }
+.model-review-info {
+  position: fixed;
+  inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(450px, calc(100dvh - 32px));
+  margin: 0;
+  padding: var(--s4);
+  overflow: auto;
+  overscroll-behavior: contain;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 12px 40px #0006;
+}
+@supports (position-anchor: --model-review-select) {
+  .model-review-info {
+    position-anchor: --model-review-select;
+    inset: auto;
+    top: calc(anchor(bottom) + 8px);
+    right: anchor(right);
+    transform: none;
+    position-try-fallbacks: flip-block;
+  }
+}
+.model-review-info h3 { margin: 0; font-size: 15px; font-weight: 650; }
+.model-review-info-header { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); }
+.model-review-info-header .icon-button { margin: calc(-1 * var(--s1)); }
+.model-review-model-name { margin: 0 0 var(--s3); color: var(--secondary); }
+.model-review-rates {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--s2) var(--s4);
+  margin: var(--s3) 0;
+  align-items: baseline;
+}
+.model-review-rates dt { color: var(--secondary); }
+.model-review-rates dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.model-review-rates .model-review-conditions { grid-column: 1 / -1; text-align: left; }
+.model-review-facts-title {
+  margin: var(--s3) 0 0;
+  border-top: 1px solid var(--line);
+  padding-top: var(--s3);
+  font-size: 13px;
+}
+.model-review-source { margin: 0; color: var(--secondary); font-size: 12px; }
+.model-review-source a { color: var(--text); text-underline-offset: 3px; }
+.model-review-schedule { margin-top: var(--s3); border-top: 1px solid var(--line); }
+.model-review-schedule summary { padding: var(--s3) 0 0; cursor: pointer; }
+@media (pointer: coarse) {
+  .model-review-info-trigger { min-width: 44px; min-height: 44px; margin-block: 0; }
+}
+@media (max-width: 680px) {
+  .model-proposal[open] { height: calc(100dvh - 48px); }
+  .model-review-info {
+    inset: auto 12px max(12px, env(safe-area-inset-bottom)) 12px;
+    width: auto;
+    max-height: 65dvh;
+    transform: none;
+  }
+}
 </style>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
-<div class="review-bar" aria-label="Prototype controls"><span><strong>Visual review 03</strong><span class="review-caption">Sample data · Approved Summary</span><label class="setup-review-picker" id="setup-review-picker" hidden>Example<select aria-label="Fleet setup example"><option value="draft">Draft setup</option><option value="scheduled">Scheduled fleet</option><option value="setup-empty">Nothing selected</option><option value="setup-before">Before setup</option><option value="setup-models-unavailable">Model choices unavailable</option><option value="setup-queued">On it</option><option value="setup-thinking">Thinking</option><option value="setup-failure">Request failed</option></select></label></span><div class="review-links"><button data-view="chief">Fleet handoff</button><button data-view="draft">Fleet setup</button><button data-view="conversation">Conversation</button><button data-view="activity">Activity</button><button data-view="failure">Error</button><button data-view="scheduled">Wake-up</button><button data-view="empty">Empty</button><button data-view="models">Models</button><button data-view="usage">Usage</button><button data-view="security">Security</button><button data-view="team">Team</button><button data-view="review">Sign-off</button><button class="icon-button" id="theme-toggle" aria-label="Switch color theme" title="Switch color theme"><i data-icon="sun"></i></button></div></div>
+<div class="review-bar" aria-label="Prototype controls"><span><strong>Visual review 03</strong><span class="review-caption">Sample data · Approved Summary</span><label class="setup-review-picker" id="setup-review-picker" hidden>Example<select aria-label="Fleet setup example"><option value="draft">Draft setup</option><option value="scheduled">Scheduled fleet</option><option value="setup-empty">Nothing selected</option><option value="setup-before">Before setup</option><option value="setup-models-unavailable">Model choices unavailable</option><option value="setup-queued">On it</option><option value="setup-thinking">Thinking</option><option value="setup-failure">Request failed</option></select></label><label class="setup-review-picker" id="app-loading-review-picker" hidden>View<select aria-label="App loading preview"><option value="app-loading">Dashboard</option><option value="app-loading-full">Full screen</option></select></label></span><div class="review-links"><button data-view="app-loading">App loading</button><button data-view="chief">Fleet handoff</button><button data-view="draft">Fleet setup</button><button data-view="conversation">Conversation</button><button data-view="activity">Activity</button><button data-view="failure">Error</button><button data-view="scheduled">Wake-up</button><button data-view="empty">Empty</button><button data-view="models">Models</button><button id="model-proposal-link" type="button">Model proposal</button><button data-view="usage">Usage</button><button data-view="security">Security</button><button data-view="team">Team</button><button data-view="review">Sign-off</button><button class="icon-button" id="theme-toggle" aria-label="Switch color theme" title="Switch color theme"><i data-icon="sun"></i></button></div></div>
 <div class="app">
   <nav class="rail" aria-label="Main navigation">
     <button class="brand" data-view="empty" aria-label="agentsfleet home"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0Ij4KICA8dGl0bGU+YWdlbnRzZmxlZXQ8L3RpdGxlPgogIDxyZWN0IHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCIgcng9IjEyIiBmaWxsPSIjMTUxNzE2Ii8+CiAgPGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoOCA4KSBzY2FsZSgyKSIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjYjhmMGNlIiBzdHJva2Utd2lkdGg9IjEuNCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIj4KICAgIDxwYXRoIGQ9Ik0xMiAydjZtMCA4djZNMiAxMmg2bTggMGg2TTQuOTMgNC45M2w0LjI0IDQuMjRtNS42NiA1LjY2IDQuMjQgNC4yNE00LjkzIDE5LjA3bDQuMjQtNC4yNG01LjY2LTUuNjYgNC4yNC00LjI0Ii8+CiAgICA8Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSIxLjUiIGZpbGw9IiNiOGYwY2UiIHN0cm9rZT0ibm9uZSIvPgogIDwvZz4KPC9zdmc+Cg==" width="24" height="24" alt=""><span class="nav-label">agentsfleet</span></button>
@@ -262,10 +420,105 @@ function modelsView() {
     <p class="preview-note">Sample catalogue and saved-key names. This preview makes no provider requests.</p></div>`;
 }
 
-function openCreateModel() {
+const modelProposalViews = new Set(['model-proposal', 'model-loading', 'model-details']);
+const reviewModelName = 'Fable 5.1';
+let reviewingModelProposal = false;
+let modelReviewTimer;
+
+function modelReviewSpinner() {
+  return `<svg class="model-review-spinner" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">${brandSignal()}</svg>`;
+}
+
+function modelReviewDetails() {
+  return `<section popover id="model-review-info" class="model-review-info" role="dialog" aria-labelledby="model-review-info-title">
+    <header class="model-review-info-header">
+      <h3 id="model-review-info-title">Model details</h3>
+      <button class="icon-button" type="button" aria-label="Close model details" autofocus popovertarget="model-review-info" popovertargetaction="hide">${icon('x')}</button>
+    </header>
+    <p class="model-review-model-name">Fable 5.1 · <code>claude-fable-5-1</code></p>
+    <dl class="model-review-rates">
+      <dt>Context cap</dt><dd><code>1,000,000 tokens</code></dd>
+    </dl>
+    <p class="model-review-source"><a href="https://openrouter.ai/api/v1/models/anthropic/claude-fable-5.1/endpoints#anthropic" target="_blank" rel="noreferrer">Context source</a> · Verified Oct 19, 2026, 08:45 AM IST</p>
+    <h4 class="model-review-facts-title">Price per 1M tokens (USD)</h4>
+    <dl class="model-review-rates">
+      <dt>Input</dt><dd><code>$10.00</code></dd>
+      <dt>Cached input</dt><dd><code>$0.25</code></dd>
+      <dt>Output</dt><dd><code>$50.00</code></dd>
+    </dl>
+    <details class="model-review-schedule">
+      <summary>Price schedule (1)</summary>
+      <dl class="model-review-rates">
+        <dt>Prompt tier</dt><dd>Base tier</dd>
+        <dt>Effective from</dt><dd>Oct 18, 2026, 05:30 AM IST</dd>
+        <dt>Effective until (exclusive)</dt><dd>Open-ended</dd>
+        <dt>Cache write ($/1M)</dt><dd><code>Unknown</code></dd>
+        <dt>Cache write, 5-minute ($/1M)</dt><dd><code>$12.50</code></dd>
+        <dt>Cache write, 1-hour ($/1M)</dt><dd><code>$20.00</code></dd>
+        <dt>Conditions</dt><dd class="model-review-conditions">Standard synchronous text inference. Service-tier and regional modifiers excluded.</dd>
+      </dl>
+      <p class="model-review-source"><a href="https://platform.claude.com/docs/en/about-claude/pricing" target="_blank" rel="noreferrer">Price source</a> · Verified Oct 18, 2026, 07:02 PM IST</p>
+    </details>
+  </section>`;
+}
+
+function modelReviewControl(choices) {
+  return `<div class="field">
+    <div class="model-review-label"><label for="new-model-name">Model</label>
+      <button type="button" class="model-review-info-trigger" id="model-review-info-button" aria-label="Model details" title="Model details" popovertarget="model-review-info" hidden>${icon('info')}</button>
+    </div>
+    <select class="model-review-select" id="new-model-name" required><option value="">Select a model</option>${choices.map(name => `<option value="${esc(name)}">${esc(name === reviewModelName ? 'Fable 5.1 · claude-fable-5-1' : name)}</option>`).join('')}</select>
+    ${modelReviewDetails()}
+  </div>`;
+}
+
+function syncModelReviewDetails() {
+  const trigger = $('#model-review-info-button');
+  if (!trigger) return;
+  const selected = $('#new-model-name').value === reviewModelName;
+  if (!selected) $('#model-review-info').hidePopover();
+  trigger.hidden = !selected;
+}
+
+function openModelProposal(view = 'model-proposal') {
+  clearTimeout(modelReviewTimer);
+  if (view === 'model-details') {
+    renderModelForm(true);
+    $('#model-review-info-button').focus({preventScroll:true});
+    $('#model-review-info').showPopover();
+    return;
+  }
   dialog('Create model', `<p class="model-description">Choose a model and connect its provider. You can add the key without leaving this form.</p>
-    <form id="create-model-form" class="model-form">
-      <div class="model-field-grid"><label class="field">Provider<select id="new-model-provider">${Object.entries(modelPreview.providers).map(([value,p])=>`<option value="${value}">${p.label}</option>`).join('')}</select></label>
+    <div class="model-review-wait">
+      <div class="model-field-grid" aria-hidden="true">
+        <div class="field">Provider<span class="model-review-placeholder"></span></div>
+        <div class="field">Model<span class="model-review-placeholder"></span></div>
+      </div>
+      <p class="model-review-status" role="status">${modelReviewSpinner()}<span>Checking saved keys…</span></p>
+      <span class="model-review-placeholder" aria-hidden="true"></span>
+      <span class="model-review-placeholder" aria-hidden="true"></span>
+    </div>
+    ${modalActions('<button class="primary" type="button" disabled>Create model</button>')}`);
+  $('#modal').classList.add('model-modal', 'model-proposal');
+  if (view === 'model-loading') return;
+  modelReviewTimer = setTimeout(() => {
+    if (!$('#modal').open || !reviewingModelProposal) return;
+    const focused = document.activeElement;
+    renderModelForm(true);
+    if (focused?.matches('[data-action=close]')) $('#modal-content [data-action=close]').focus();
+    else if (focused === $('#close-modal')) $('#new-model-provider').focus();
+  }, 1350);
+}
+
+function openCreateModel() {
+  if (reviewingModelProposal) openModelProposal();
+  else renderModelForm();
+}
+
+function renderModelForm(proposal = false) {
+  const body = `<p class="model-description">Choose a model and connect its provider. You can add the key without leaving this form.</p>
+    <form id="create-model-form" class="model-form" ${proposal ? 'data-model-proposal' : ''}>
+      <div class="model-field-grid"><label class="field">Provider<select id="new-model-provider" aria-label="Provider">${Object.entries(modelPreview.providers).map(([value,p])=>`<option value="${value}">${p.label}</option>`).join('')}</select></label>
       <div id="model-choice-field"></div></div>
       <label class="field" id="model-base-url-field" hidden>Base URL<input id="model-base-url" type="url" placeholder="https://models.example.com/v1" autocomplete="off"><small>Use the HTTPS endpoint supplied by your provider.</small></label>
       <fieldset class="credential-options"><legend>Provider API key</legend><div class="credential-tabs"><label><input type="radio" name="credential-mode" value="new" checked>Add new key</label><label><input type="radio" name="credential-mode" value="saved">Use saved key</label></div></fieldset>
@@ -276,16 +529,34 @@ function openCreateModel() {
       <p class="model-feedback" id="model-form-error" role="alert" hidden></p>
       <p class="preview-note">Use a sample key. Only the key’s name is kept in this local preview.</p>
       ${modalActions('<button class="primary" type="submit" id="save-new-model">Create model</button>')}
-    </form>`);
+    </form>`;
+  if (proposal && $('#modal').open) {
+    $('#modal-content').innerHTML = body;
+    icons();
+  } else {
+    dialog('Create model', body);
+  }
   $('#modal').classList.add('model-modal');
+  if (proposal) {
+    $('#modal').classList.add('model-proposal');
+    $('#new-model-provider').value = 'anthropic';
+  }
   updateModelProvider();
+  if (proposal) {
+    $('#new-model-name').value = reviewModelName;
+    syncModelReviewDetails();
+  }
 }
 
 function updateModelProvider() {
   const provider = $('#new-model-provider').value;
   const custom = provider==='custom';
-  const choices = modelPreview.providers[provider].models;
-  $('#model-choice-field').innerHTML=custom?'<label class="field">Model ID<input id="new-model-name" placeholder="Model ID from your endpoint" required autocomplete="off"></label>':`<label class="field">Model<select id="new-model-name" required><option value="">Select a model</option>${choices.map(name=>`<option value="${esc(name)}">${esc(name)}</option>`).join('')}</select></label>`;
+  const proposal = $('#create-model-form').hasAttribute('data-model-proposal');
+  const models = modelPreview.providers[provider].models;
+  const choices = proposal && provider === 'anthropic' ? [reviewModelName, ...models] : models;
+  const choiceField = $('#model-choice-field');
+  choiceField.innerHTML=custom?'<label class="field">Model ID<input id="new-model-name" placeholder="Model ID from your endpoint" required autocomplete="off"></label>':proposal ? modelReviewControl(choices) : `<label class="field">Model<select id="new-model-name" required><option value="">Select a model</option>${choices.map(name=>`<option value="${esc(name)}">${esc(name)}</option>`).join('')}</select></label>`;
+  if (proposal) icons(choiceField);
   $('#model-base-url-field').hidden=!custom;
   $('#model-base-url').disabled=!custom;
   $('#model-base-url').required=custom;
@@ -325,6 +596,7 @@ document.addEventListener('click',e=>{
 });
 document.addEventListener('change',e=>{
   if(e.target.id==='new-model-provider')updateModelProvider();
+  if(e.target.id==='new-model-name')syncModelReviewDetails();
   if(e.target.name==='credential-mode')updateCredentialMode();
 });
 document.addEventListener('input',e=>{if(e.target.closest('#create-model-form'))$('#model-form-error').hidden=true;});
@@ -357,7 +629,7 @@ document.addEventListener('submit',e=>{
   $('#modal').close();showView('models');
 });
 document.addEventListener('DOMContentLoaded',()=>{
-  $('#modal').addEventListener('close',()=>{ $('#modal').classList.remove('model-modal');const key=$('#model-api-key');if(key)key.value=''; });
+  $('#modal').addEventListener('close',()=>{ if ($('#modal').open) return;clearTimeout(modelReviewTimer);$('#modal').classList.remove('model-modal','model-proposal');const key=$('#model-api-key');if(key)key.value=''; });
 });
 </script><script>// Team preview: sample data only. No membership or email requests are made.
 const teamPreview = {
@@ -490,6 +762,29 @@ const workspaceFleets = [
   {view:'scheduled', name:'Merge watch', address:'merge-watch', instructions:'Check the pull request and report the build after merge.'},
 ];
 const pageTitles = { empty: 'New fleet', secrets: 'Secrets', usage: 'Usage', security: 'Security', review: 'Visual sign-off', connections: 'Connected apps', models: 'Models', team: 'Team' };
+const appLoadingViews = new Set(['app-loading', 'app-loading-full']);
+
+function brandSignal() {
+  const rays = ['M12 2v6', 'M19.07 4.93l-4.24 4.24', 'M22 12h-6', 'M19.07 19.07l-4.24-4.24',
+    'M12 22v-6', 'M4.93 19.07l4.24-4.24', 'M2 12h6', 'M4.93 4.93l4.24 4.24'];
+  return rays.map(ray => `<path d="${ray}" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>`).join('') + '<circle cx="12" cy="12" r="1.5" fill="currentColor"/>';
+}
+
+function appLoadingView() {
+  const route = 'M12 -6C15 -6 20 -2 25 4C29 9 31 15 29 20C27 24 21 28 12 28C3 28 -3 24 -5 20C-7 15 -5 9 -1 4C4 -2 9 -6 12 -6Z';
+  const nodes = [[12, -6], [29, 20], [-5, 20]];
+  return `<div class="app-loading-preview">
+    <div class="app-loading-status" role="status" aria-label="Loading page">
+      <svg class="app-loading-mark" viewBox="-10 -10 44 44" fill="none" aria-hidden="true" focusable="false">
+        <path class="app-loading-track" d="${route}" stroke-width="1.25"/>
+        <g class="app-loading-nodes">${nodes.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="1.8"/>`).join('')}</g>
+        <path class="app-loading-packet" d="${route}" pathLength="100" stroke="currentColor" stroke-width="2.25" stroke-linecap="round"/>
+        <g>${brandSignal()}</g>
+      </svg>
+      <span>Loading…</span>
+    </div>
+  </div>`;
+}
 window.FLEET_ICONS.info = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-40a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,0-16,16,16,0,0,1,16,16v40A8,8,0,0,1,144,176ZM112,84a12,12,0,1,1,12,12A12,12,0,0,1,112,84Z\"></path></svg>";
 window.FLEET_ICONS["circle-notch"] = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M232,128a104,104,0,0,1-208,0c0-41,23.81-78.36,60.66-95.27a8,8,0,0,1,6.68,14.54C60.15,61.59,40,93.27,40,128a88,88,0,0,0,176,0c0-34.73-20.15-66.41-51.34-80.73a8,8,0,0,1,6.68-14.54C208.19,49.64,232,87,232,128Z\"></path></svg>";
 const setupPreview = {
@@ -557,7 +852,7 @@ function setupSummary(view){
     <section class="summary-section"><div class="setup-section-heading"><h3 class="summary-label">Secrets</h3><button class="setup-manage" data-action="setup-secrets" aria-expanded="${secretsOpen}">Manage<span class="sr-only"> secrets</span></button></div>${secretsOpen?inlineSecrets(setup):resources(setup.secrets,'key','No secrets selected')}</section>
   </aside>`;
 }
-function icons() { $$('[data-icon]').forEach(el => { const key = el.dataset.icon + (el.closest('.rail-button.selected') ? '_bold' : ''); el.innerHTML = window.FLEET_ICONS[key] || window.FLEET_ICONS[el.dataset.icon] || ''; el.setAttribute('aria-hidden','true'); }); }
+function icons(root = document) { $$('[data-icon]', root).forEach(el => { const key = el.dataset.icon + (el.closest('.rail-button.selected') ? '_bold' : ''); el.innerHTML = window.FLEET_ICONS[key] || window.FLEET_ICONS[el.dataset.icon] || ''; el.setAttribute('aria-hidden','true'); }); }
 function setSidebarExpanded(expanded) {
   document.body.classList.toggle('expanded',expanded);
   setFleetListOpen(expanded);
@@ -617,13 +912,19 @@ function previewNote(text='Preview only. These actions change sample data in thi
 function modalActions(html) { return `<div class="modal-actions"><button class="secondary" type="button" data-action="close">Cancel</button>${html}</div>`; }
 function saveDraft() { const input=$('#message'); if(input) appState.drafts[appState.view]=input.value; }
 function showView(view, focus=false) {
+  reviewingModelProposal = false;
   dismissedAddress=null;addressIndex=0;saveDraft(); if(appState.lifecycle[view]==='deleted') view='empty'; appState.view = view; closeMenus();
+  const appLoading = appLoadingViews.has(view);
+  const appLoadingPicker = $('#app-loading-review-picker');
+  appLoadingPicker.hidden = !appLoading;
+  if (appLoading) appLoadingPicker.querySelector('select').value = view;
+  $('.app').classList.toggle('app-loading-full', view === 'app-loading-full');
   const isChat = !!fleetNames[view];
   const setupExample=isSetupExample(view), editing=view.startsWith('edit-');
   $('#setup-review-picker').hidden=!setupExample || editing;
   if(setupExample)$('#setup-review-picker select').value=view;
   $('#heading-new-fleet').hidden=setupExample && view!=='scheduled';
-  $('#page-title').textContent=fleetNames[view] || pageTitles[view] || 'agentsfleet';
+  $('#page-title').textContent=fleetNames[view] || pageTitles[view] || (appLoading ? 'Workspace' : 'agentsfleet');
   $('.fleet-mark i').dataset.icon=({team:'users',models:'cpu',security:'shield',usage:'chart-bar',secrets:'key',connections:'plugs-connected',review:'check-circle',empty:'note-pencil'})[view] || 'stack';
   $('#fleet-more').hidden=!isChat || setupExample; $('#header-state').hidden=!isChat; $('#run-cost').hidden=!isChat || (setupExample && view!=='scheduled');
   $('#header-state').textContent=view==='activity'?'Ready to review':view==='failure'?(appState.retried?'Connection restored':'Needs attention'):view==='scheduled'?(scheduleFor().state==='active'?'Scheduled':'Schedule '+scheduleFor().state):view==='draft'?'Draft':appState.decision ? 'Decision recorded' : 'Needs approval';
@@ -635,13 +936,13 @@ function showView(view, focus=false) {
     $('#header-state').classList.add('neutral');$('#run-cost').hidden=true;
   }
   if(setupPreview[view]?.publication)$('#header-state').hidden=true;
-  $('#main').innerHTML = isChat ? workspace(view) : view==='empty' ? emptyView() : pageView(view);
+  $('#main').innerHTML = appLoading ? appLoadingView() : isChat ? workspace(view) : view==='empty' ? emptyView() : pageView(view);
   if($('#message')) $('#message').value=appState.drafts[view] || '';
   const archived=appState.lifecycle[view]==='archived';
   if(archived){$('#header-state').textContent='Archived';$('#header-state').classList.add('neutral');$$('#transcript button').forEach(b=>b.disabled=true);}
   ['rename','schedule','archive'].forEach(action=>$('#fleet-menu [data-action="'+action+'"]').hidden=archived);
   syncFleetList();
-  $$('.review-links [data-view]').forEach(el=>{const selected=el.dataset.view===view || (el.dataset.view==='draft' && ['setup-empty','setup-before'].includes(view));el.classList.toggle('active',selected);if(selected)el.setAttribute('aria-current','page');else el.removeAttribute('aria-current');});
+  $$('.review-links [data-view]').forEach(el=>{const selected=el.dataset.view===view || (el.dataset.view==='app-loading' && appLoading) || (el.dataset.view==='draft' && ['setup-empty','setup-before'].includes(view));el.classList.toggle('active',selected);if(selected)el.setAttribute('aria-current','page');else el.removeAttribute('aria-current');});
   $$('.rail-button').forEach(el=>{const selected=el.dataset.view===view;el.classList.toggle('selected',selected);if(selected)el.setAttribute('aria-current','page');else el.removeAttribute('aria-current');});
   if(setupPreview[view]?.publicationStarted){$('#message').disabled=true;$('#send-message').disabled=true;}
   icons();updateSetupClock(view);history.replaceState(null,'','#'+view); $('#main').scrollTop=0;
@@ -995,8 +1296,23 @@ const phoneLayout=matchMedia('(max-width:680px)');
 phoneLayout.addEventListener('change',event=>setSidebarExpanded(!event.matches));
 function openLinkedView() {
   const view = location.hash.slice(1);
-  showView(Object.hasOwn(pageTitles, view) || Object.hasOwn(fleetNames, view) ? view : 'chief');
+  if (modelProposalViews.has(view)) {
+    showView('models');
+    reviewingModelProposal = true;
+    history.replaceState(null, '', '#' + view);
+    $('#main [data-action=create-model]').focus({preventScroll:true});
+    openModelProposal(view);
+    return;
+  }
+  const modal = $('#modal');
+  if (modal.open && modal.classList.contains('model-proposal')) modal.close();
+  showView(appLoadingViews.has(view) || Object.hasOwn(pageTitles, view) || Object.hasOwn(fleetNames, view) ? view : 'chief');
 }
+$('#model-proposal-link').addEventListener('click', () => {
+  if (location.hash === '#model-proposal') openLinkedView();
+  else location.hash = 'model-proposal';
+});
+$('#app-loading-review-picker select').addEventListener('change', event => showView(event.target.value));
 window.addEventListener('hashchange', openLinkedView);
 openLinkedView();
 </script>

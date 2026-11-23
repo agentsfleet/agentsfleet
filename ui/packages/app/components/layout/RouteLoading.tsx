@@ -6,7 +6,7 @@ export function RouteLoading({ fullScreen = false }: { fullScreen?: boolean }) {
       data-page-loading="true"
       className={`flex w-full flex-1 items-center justify-center p-xl ${fullScreen ? "min-h-dvh" : "min-h-full"}`}
     >
-      <Spinner size="lg" label="Loading…" aria-label="Loading page" />
+      <Spinner variant="page" label="Loading…" aria-label="Loading page" />
     </div>
   );
 }

@@ -18,7 +18,7 @@ export function SecurityResourceRow({kind, title, icon, detail, badge, lastUsed,
       {lastUsed && <span className="text-eyebrow text-text-dim">{lastUsed}</span>}
       {action}
     </>}>
-      <div className="security-resource-title"><span>{title}</span>{badge}</div>
+      <div className="flex flex-wrap items-center gap-sm text-label font-medium"><span className="wrap-anywhere">{title}</span>{badge}</div>
       <p className={session ? "mt-1.5 text-label text-muted-foreground" : "mt-sm text-label text-muted-foreground"}>{detail}</p>
     </ResourceRow>
   );
