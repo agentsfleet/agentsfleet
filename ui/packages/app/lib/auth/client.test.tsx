@@ -1,5 +1,5 @@
 import React from "react";
-import { act, cleanup, fireEvent, render, renderHook, screen } from "@testing-library/react";
+import { act, cleanup, render, renderHook, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SignInPage from "@/app/(auth)/sign-in/[[...sign-in]]/page";
 import SignUpPage from "@/app/(auth)/sign-up/[[...sign-up]]/page";
@@ -23,10 +23,7 @@ vi.mock("@clerk/nextjs", () => ({
 const USER_ID = "user_session_keeper_fixture";
 
 describe("auth page loading", () => {
-  afterEach(() => {
-    cleanup();
-    vi.restoreAllMocks();
-  });
+  afterEach(cleanup);
 
   it.each([[SignInPage, "Loading sign-in…"], [SignUpPage, "Loading sign-up…"]] as const)(
     "announces that the auth widget is starting",
@@ -34,18 +31,17 @@ describe("auth page loading", () => {
       useClerk.mockReturnValue({status: "loading"});
       render(<Page />);
       expect(screen.getByRole("status").textContent).toBe(label);
-      expect(screen.queryByRole("button", {name: "Reload page"})).toBeNull();
+      expect(screen.queryByText("Reload page")).toBeNull();
     },
   );
 
-  it("offers a reload when the auth widget fails", () => {
+  it("offers a same-page reload when the auth widget fails", () => {
     useClerk.mockReturnValue({status: "error"});
-    const reloadPage = vi.spyOn(window.location, "reload").mockImplementation(() => {});
     render(<SignInPage />);
     expect(screen.getByRole("alert").textContent).toContain("Couldn’t load sign-in.");
     expect(screen.queryByRole("status")).toBeNull();
-    fireEvent.click(screen.getByRole("button", {name: "Reload page"}));
-    expect(reloadPage).toHaveBeenCalledOnce();
+    const reloadLink = screen.getByText<HTMLAnchorElement>("Reload page", {selector: "a[href]"});
+    expect(reloadLink.href).toBe(window.location.href);
   });
 });
 
