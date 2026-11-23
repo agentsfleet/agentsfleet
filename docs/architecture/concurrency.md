@@ -359,13 +359,13 @@ Stop and delete take the draft, then its thread in a statement of its own, then 
 
 ### A fleet Stop, the issue, a fold retry and a gate answer
 
-Each takes the fleet's thread before a turn or a gate, so they queue on the thread instead of locking a turn and a gate in opposite orders:
+Each takes the fleet's thread before a turn, a gate or a run, so they queue on the thread instead of locking a turn and a gate in opposite orders:
 
 ```
  fleet Stop     hold_thread.sql: fleet KEY SHARE ─► thread NO KEY UPDATE
                 then stop_turn.sql: turn ─► run ─► the turn's gate
  issue          fleet KEY SHARE ─► host ─► thread (held) ─► head turn FOR SHARE, unsettled, at the fence
- fold retry     assign_inputs.sql: thread NO KEY UPDATE ─► the folds
+ fold retry     assign_inputs.sql: fleet KEY SHARE ─► thread NO KEY UPDATE ─► run FOR SHARE ─► the folds
  gate answer    resolve_gate.sql: fleet KEY SHARE ─► thread NO KEY UPDATE ─► gate ─► turns
  fleet delete   fleet FOR UPDATE ─► setup cards ─► cascade to gates and thread
 ```
