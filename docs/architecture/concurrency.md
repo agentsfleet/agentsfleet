@@ -376,6 +376,19 @@ The fleet comes first in a Stop and a gate answer because fleet delete holds it 
 
 A gate answer holds the thread for its one statement even when it loses. An assignment pass that meets it skips the fleet, as it skips any held thread, and the losing answer rings nothing: the turn waits for the fleet's next ring, the loss a dropped wake causes.
 
+### A decision reservation locks in one statement
+
+A reservation reads its run, its task, its source turn, the budget and the wallet with no lock, each read a round trip of its own. Then one statement takes every lock it needs, in the order the fleet's writers take them, re-checks the rows and inserts the call as issued with its payload (`afd_fleet`'s `durable_task/decision/sql/issue.sql`):
+
+```
+ reads, no lock ─► issue.sql: workspace, fleet KEY SHARE ─► thread, run, named task,
+                   source turn, each FOR SHARE ─► clock ─► INSERT call + payload
+```
+
+A share lock makes Postgres re-read a row that changed while the statement waited, so a takeover, a task cancel or a Stop that committed meanwhile issues nothing. Rows the statement only joins (the runner, the model, its revision) are read as of the statement's start. The money reads are not repeated inside it: reservations of one fleet that overlap can each pass a budget or wallet check the other's call would have failed, by one call's reservation each.
+
+The share locks let reservations of one fleet run together and make a renewal, a report or a Stop of that fleet wait for the statements in flight. With 100 reservations of one operation released together, a renewal of the same run waited at most 0.6 s for its locks, against the login's 2 s bound (`integration_durable_tasks/decisions/issue.rs`, `a_renewal_completes_during_a_reservation_storm`, four runs on the lane's Postgres).
+
 ### A run's verbs on the fleet row and the run row
 
 Every `thread.items` insert and every schedule insert checks its foreign key with `FOR KEY SHARE` on the fleet row, and an item insert does the same on its run row. Only `FOR UPDATE` refuses that mode, so a lock that only puts writers in turn takes `FOR NO KEY UPDATE`, or no row lock at all.

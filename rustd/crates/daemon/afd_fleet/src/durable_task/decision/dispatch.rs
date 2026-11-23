@@ -1,139 +1,280 @@
-//! One fresh authority check and one native credential-issuance commit.
+//! The issuance: one autocommitted statement that locks what the reads relied on, re-checks
+//! it, and inserts the call as issued with its payload (`sql/issue.sql`). The key leaves
+//! only in the answer to a statement that inserted.
 
-use af_core::id::Uuid7;
 use std::borrow::Cow;
 
+use af_core::id::Uuid7;
 use af_crypto::secret::SecretString;
-use af_wire::durable_task::{
-    DecisionCallState, DecisionDispatch, DecisionReservationInput, DecisionReservationResult,
+use af_wire::{
+    decision::DecisionPurpose,
+    durable_task::{
+        DecisionCallState, DecisionDispatch, DecisionReservationInput, DecisionReservationResult,
+    },
 };
-use sqlx::PgConnection;
+use jiff_sqlx::ToSqlx as _;
+use sqlx::types::Json;
 use zeroize::Zeroizing;
 
 use super::{
-    ReservedDecision, budget,
-    fund::Coverage,
-    replay,
-    row::{self, Call, Lookup, Payload},
-    sql, verify,
+    ReservedDecision,
+    allocate::{Ready, Reservation, replay_matches},
+    budget, ownership, replay,
+    row::{self, Lookup},
+    sql,
 };
 use crate::{
     Result,
-    durable_task::{DurableTaskRefusal, DurableTaskRun, DurableTasks, transaction},
+    durable_task::{DurableTaskRefusal, DurableTaskRun, DurableTasks, guard, transaction},
     error::query,
+    run::sql::{FLEET_STATUS_ACTIVE, RUN_STATUS_ACTIVE, RUNNER_STATUS_ACTIVE},
 };
 
-enum Emission {
-    Dispatch(ReservedDecision),
-    Existing(Box<Call>),
+/// What one issue statement answered when every check held: the call it inserted, or
+/// nothing when the operation's call was already saved.
+#[derive(sqlx::FromRow)]
+struct Answered {
+    id: Option<Uuid7>,
+    logical_expires_at: Option<jiff_sqlx::Timestamp>,
 }
 
 pub(super) struct Issuance<'a> {
     pub tasks: &'a DurableTasks,
     pub run: DurableTaskRun<'a>,
     pub input: &'a garde::Valid<DecisionReservationInput>,
-    pub call: &'a Call,
-    pub coverage: Coverage,
+    pub id: &'a Uuid7,
+    pub digest: &'a str,
+    pub ready: &'a Ready,
     pub key: &'a SecretString,
 }
 
 impl Issuance<'_> {
+    /// Runs the issue statement until it answers: a lost usage number runs it again,
+    /// which ends because each loss means another call of the run committed.
     pub(super) async fn commit(&self) -> Result<ReservedDecision> {
-        // Funding took time, and a peer's request for this call may have
-        // issued it meanwhile. Its replay needs no thread lock, so a storm of
-        // one operation does not queue on that lock holding a connection each.
-        if let Some(issued) = row::issued(self.tasks.runs.pool(), &self.call.id).await? {
-            return replay::response(self.tasks, issued).await;
-        }
-        let mut connection = transaction::acquire(self.tasks.runs.pool()).await?;
-        let result = self.on(&mut connection).await;
-        transaction::recycle(connection);
-        match result? {
-            Emission::Dispatch(packet) => Ok(packet),
-            Emission::Existing(call) => replay::response(self.tasks, *call).await,
+        let mut attempt = 0_u32;
+        loop {
+            match self.once().await {
+                Ok(Some(Answered {
+                    id: Some(id),
+                    logical_expires_at: Some(expires_at),
+                })) => return self.issued(&id, expires_at.to_jiff()),
+                Ok(Some(_saved)) => {
+                    let operation = guard::wire(&self.input.operation_id)?;
+                    return self
+                        .saved(Lookup::Operation {
+                            run: self.run.run_id,
+                            operation: &operation,
+                        })
+                        .await;
+                }
+                Ok(None) => return Err(self.refusal().await),
+                Err(Raced::Usage) => {
+                    attempt = attempt.saturating_add(1);
+                    let (run_id, event) =
+                        (self.run.run_id.as_str(), "dt_decision_sequence_retried");
+                    tracing::debug!(event, run_id, attempt);
+                }
+                Err(Raced::Assessment) => {
+                    let ready = self.ready;
+                    return self
+                        .saved(Lookup::Assessment {
+                            key: &ready.key,
+                            attempt: ready.attempt.number(),
+                        })
+                        .await;
+                }
+                Err(Raced::Other(error)) => return Err(error),
+            }
         }
     }
 
-    async fn on(&self, connection: &mut PgConnection) -> Result<Emission> {
-        let mut tx = transaction::begin(connection).await?;
-        let current = verify::on(&mut tx, self.run, self.input, self.call).await?;
-        // The call before the budget: one already issued answers its replay,
-        // and only a call this request will issue is weighed against it.
-        let locked = row::find(&mut tx, Lookup::Id(&self.call.id))
-            .await?
-            .ok_or(DurableTaskRefusal::NotFound)?;
-        if locked.state()? != DecisionCallState::Reserved || locked.issued || locked.accounted {
-            return Ok(Emission::Existing(Box::new(locked)));
-        }
-        budget::check_on(
-            &mut tx,
-            &current.current,
-            &current.context,
-            current.task.as_ref(),
-            false,
-        )
-        .await?;
-        let required =
-            super::credit::required_on(&mut tx, self.run.run_id, self.coverage.headroom).await?;
-        if required > self.coverage.required {
-            return Err(DurableTaskRefusal::DecisionUnavailable.into());
-        }
-        let payload = row::payload(&mut tx, &locked.id)
-            .await?
-            .ok_or(DurableTaskRefusal::DecisionUnavailable)?;
-        issue_on(&mut tx, &locked).await?;
-        let packet = encode(locked, payload, self.key)?;
-        tx.commit()
+    /// The issue statement, autocommitted: its locks end with it, whatever becomes of the
+    /// daemon afterwards. A request dropped while it waits on a lock can therefore still
+    /// commit its call, which that operation's retry then reads as `existing`.
+    async fn once(&self) -> Result<Option<Answered>, Raced> {
+        let mut connection = transaction::acquire(self.tasks.runs.pool()).await?;
+        let answered = self.statement(&mut connection).await;
+        transaction::recycle(connection);
+        answered
+    }
+
+    async fn statement(
+        &self,
+        connection: &mut sqlx::PgConnection,
+    ) -> Result<Option<Answered>, Raced> {
+        let bound = self.bind()?;
+        bound
+            .fetch_optional(connection)
             .await
-            .map_err(query("commit funded physical decision issuance"))?;
+            .map_err(|error| Raced::of(error, "issue one native decision call"))
+    }
+
+    /// A saved call that won the race for this operation or assessment, answered as
+    /// its replay: `existing` when it was made from the same request.
+    async fn saved(&self, lookup: Lookup<'_>) -> Result<ReservedDecision> {
+        let call = row::peek(self.tasks.runs.pool(), lookup)
+            .await?
+            .ok_or(DurableTaskRefusal::StaleState)?;
+        match lookup {
+            Lookup::Operation { .. } | Lookup::Id(_) => {
+                Reservation {
+                    tasks: self.tasks,
+                    run: self.run,
+                    input: self.input,
+                    operation: guard::wire(&self.input.operation_id)?,
+                    digest: self.digest.to_owned(),
+                }
+                .replay(call)
+                .await
+            }
+            Lookup::Assessment { .. } => {
+                replay_matches(&call, self.input, self.digest, false)?;
+                replay::response(self.tasks, call).await
+            }
+        }
+    }
+
+    /// No row: the run lost its standing, which the run read answers as it does
+    /// today, or another state the reads relied on moved.
+    async fn refusal(&self) -> crate::Error {
+        let mut connection = match transaction::acquire(self.tasks.runs.pool()).await {
+            Ok(connection) => connection,
+            Err(error) => return error,
+        };
+        let standing = ownership::context(&mut connection, self.run).await;
+        transaction::recycle(connection);
+        match standing {
+            Err(error) => error,
+            Ok(_) => DurableTaskRefusal::StaleState.into(),
+        }
+    }
+
+    fn issued(&self, id: &Uuid7, expires_at: jiff::Timestamp) -> Result<ReservedDecision> {
+        let ready = self.ready;
         let (decision_call_id, assessment_id, attempt) = (
-            self.call.id.as_str(),
-            self.call.assessment_id.as_str(),
-            self.call.attempt_number,
+            id.as_str(),
+            ready.attempt.assessment_id().as_str(),
+            ready.attempt.number(),
+        );
+        let (profile_revision, purpose) = (
+            ready.prepared.assignment.revision_id.as_str(),
+            ready.prepared.request.purpose.as_str(),
         );
         {
             let event = &"dt_decision_issued";
-            tracing::info!(event, decision_call_id, assessment_id, attempt);
+            tracing::info!(
+                event,
+                decision_call_id,
+                assessment_id,
+                attempt,
+                profile_revision,
+                purpose
+            );
         };
-        Ok(Emission::Dispatch(packet))
+        let packet = DecisionReservationResult::Dispatch {
+            call_id: id.clone().into(),
+            dispatch: Box::new(DecisionDispatch {
+                assessment_id: ready.attempt.assessment_id().clone().into(),
+                attempt: u8::try_from(ready.attempt.number()).unwrap_or(u8::MAX),
+                assignment: ready.prepared.assignment.clone(),
+                request: ready.attempt.request(&ready.prepared.request).clone(),
+                api_key: Cow::Borrowed(self.key.expose()),
+                expires_at,
+            }),
+        };
+        let body = Zeroizing::new(
+            serde_json::to_string(&packet).map_err(af_core::json::Unreadable::from)?,
+        );
+        Ok(ReservedDecision { body, issued: true })
     }
 }
 
-async fn issue_on(connection: &mut PgConnection, call: &Call) -> Result<()> {
-    sqlx::query_scalar::<_, Uuid7>(sql::ISSUE)
-        .bind(&call.id)
-        .bind(DecisionCallState::Issued.as_str())
-        .bind(DecisionCallState::Reserved.as_str())
-        .bind(crate::run::sql::RUN_STATUS_ACTIVE)
-        .bind(crate::run::sql::FLEET_STATUS_ACTIVE)
-        .bind(crate::durable_task::guard::wire(
-            &call.profile_snapshot.0.profile.model_id,
-        )?)
-        .bind(crate::durable_task::guard::wire(
-            &call.profile_snapshot.0.revision_id,
-        )?)
-        .bind(af_wire::durable_task::DurableTaskState::Running.as_str())
-        .bind(crate::run::sql::RUNNER_STATUS_ACTIVE)
-        .fetch_optional(connection)
-        .await
-        .map_err(query("commit one native decision credential grant"))?
-        .ok_or(DurableTaskRefusal::StaleState)?;
-    Ok(())
+/// Why an issue statement did not answer.
+enum Raced {
+    /// Another call of the run took the usage number this statement drew.
+    Usage,
+    /// Another call took this assessment, or this retry of its parent.
+    Assessment,
+    Other(crate::Error),
 }
 
-fn encode(call: Call, payload: Payload, key: &SecretString) -> Result<ReservedDecision> {
-    let packet = DecisionReservationResult::Dispatch {
-        call_id: call.id.into(),
-        dispatch: Box::new(DecisionDispatch {
-            assessment_id: call.assessment_id.into(),
-            attempt: call.attempt_number,
-            assignment: call.profile_snapshot.0,
-            request: payload.request.0,
-            api_key: Cow::Borrowed(key.expose()),
-            expires_at: call.logical_expires_at,
-        }),
-    };
-    let body =
-        Zeroizing::new(serde_json::to_string(&packet).map_err(af_core::json::Unreadable::from)?);
-    Ok(ReservedDecision { body, issued: true })
+impl From<crate::Error> for Raced {
+    fn from(error: crate::Error) -> Self {
+        Self::Other(error)
+    }
+}
+
+impl Raced {
+    fn of(error: sqlx::Error, context: &'static str) -> Self {
+        if afd_db::constraint::violates_unique(&error, "uq_decision_calls_usage") {
+            return Self::Usage;
+        }
+        if afd_db::constraint::violates_unique(&error, "uq_decision_calls_assessment")
+            || afd_db::constraint::violates_unique(&error, "uq_decision_calls_retry")
+        {
+            return Self::Assessment;
+        }
+        Self::Other(query(context)(error))
+    }
+}
+
+type Bound<'q> = sqlx::query::QueryAs<'q, sqlx::Postgres, Answered, sqlx::postgres::PgArguments>;
+
+impl Issuance<'_> {
+    fn bind(&self) -> Result<Bound<'_>> {
+        let (ready, run) = (self.ready, self.run);
+        let (prepared, attempt) = (&ready.prepared, &ready.attempt);
+        let goal = prepared
+            .task
+            .as_ref()
+            .filter(|_task| prepared.request.purpose == DecisionPurpose::Goal);
+        let named = prepared.task.as_ref();
+        let parent = attempt.parent();
+        Ok(sqlx::query_as(sql::ISSUE)
+            .bind(self.id)
+            .bind(run.runner_id)
+            .bind(run.run_id)
+            .bind(&prepared.context.source_turn_id)
+            .bind(&prepared.current.fleet_id)
+            .bind(&prepared.current.workspace_id)
+            .bind(&prepared.current.tenant_id)
+            .bind(goal.map(|task| &task.durable_task_id))
+            .bind(goal.map(|task| task.generation))
+            .bind(prepared.current.fence)
+            .bind(guard::wire(&self.input.operation_id)?)
+            .bind(self.digest)
+            .bind(attempt.assessment_id())
+            .bind(&ready.key)
+            .bind(attempt.number())
+            .bind(parent.map(|parent| &parent.id))
+            .bind(parent.map(|parent| parent.logical_expires_at.to_sqlx()))
+            .bind(budget::LOGICAL_SECONDS)
+            .bind(prepared.request.purpose.as_str())
+            .bind(DecisionCallState::Issued.as_str())
+            .bind(&prepared.provider)
+            .bind(&prepared.current.fleet_name)
+            .bind(Json(&prepared.assignment))
+            .bind(Json(attempt.quote(&ready.quote)))
+            .bind(Json(parent.map_or(&prepared.context, |parent| {
+                &parent.context_snapshot.0
+            })))
+            .bind(budget::CALL_NANOS)
+            .bind(guard::wire(&prepared.assignment.profile.model_id)?)
+            .bind(guard::wire(&prepared.assignment.revision_id)?)
+            .bind(Json(attempt.request(&prepared.request)))
+            .bind(RUN_STATUS_ACTIVE)
+            .bind(FLEET_STATUS_ACTIVE)
+            .bind(RUNNER_STATUS_ACTIVE)
+            .bind(af_wire::durable_task::CAPABILITY)
+            .bind(named.map(|task| &task.durable_task_id))
+            .bind(named.map(|task| task.generation))
+            .bind(af_wire::durable_task::DurableTaskState::Running.as_str())
+            .bind(afd_turns::Producer::SlackMention.as_str())
+            .bind(afd_connector::Provider::Slack.id())
+            .bind(afd_connector::slack::PERSON_ACTOR_PATTERN)
+            .bind(afd_connector::slack::PERSON_ACTOR_SEPARATOR)
+            .bind(Json(&prepared.assignment))
+            .bind(DecisionCallState::Unknown.as_str()))
+    }
 }

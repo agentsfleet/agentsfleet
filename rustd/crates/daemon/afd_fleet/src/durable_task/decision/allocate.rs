@@ -1,37 +1,48 @@
-//! Operation replay precedes rendering and fresh cumulative budget checks.
+//! A reservation reads with no lock, then issues its call in one statement
+//! (`dispatch.rs`). Operation replay and the assessment lookup precede every
+//! money check, so a saved call answers `existing` whatever the wallet or the budget.
 
 use af_core::clock;
 use af_core::id::Uuid7;
-use af_wire::{
-    decision::DecisionPurpose,
-    durable_task::{DecisionCallState, DecisionReservationInput},
-};
+use af_wire::{decision::DecisionPurpose, durable_task::DecisionReservationInput};
 use sqlx::PgConnection;
 
 use super::{
+    ReservedDecision,
     attempt::Attempt,
-    budget, context,
-    intent::Intent,
-    prepare,
+    budget,
+    dispatch::Issuance,
+    fund::{self, Coverage},
+    prepare::{self, Prepared},
+    quote::FrozenQuote,
+    replay,
     row::{self, Call, Lookup},
-    sql,
 };
 use crate::{
     Result,
     durable_task::{DurableTaskRefusal, DurableTaskRun, DurableTasks, guard, transaction},
-    error::{query, stale_fence},
+    error::stale_fence,
 };
 
-pub(super) enum Allocation {
-    Reserved(Call),
+/// Everything the issue statement needs, read and judged before it.
+pub(super) struct Ready {
+    pub prepared: Prepared,
+    pub quote: FrozenQuote,
+    pub attempt: Attempt,
+    pub key: String,
+    pub coverage: Coverage,
+}
+
+enum Read {
     Existing(Call),
+    Ready(Box<Ready>),
 }
 
 pub(super) async fn allocate(
     tasks: &DurableTasks,
     run: DurableTaskRun<'_>,
     input: &garde::Valid<DecisionReservationInput>,
-) -> Result<Allocation> {
+) -> Result<ReservedDecision> {
     if input.fencing_token != run.fencing_token {
         return Err(stale_fence());
     }
@@ -43,20 +54,45 @@ pub(super) async fn allocate(
         digest: digest(input)?,
     };
     if let Some(call) = row::peek(tasks.runs.pool(), request.operation()).await? {
-        return request.replay(call);
+        return request.replay(call).await;
     }
+    let call_id = tasks.runs.entropy().uuid7(clock::now())?;
+    let assessment_id = tasks.runs.entropy().uuid7(clock::now())?;
     let mut connection = transaction::acquire(tasks.runs.pool()).await?;
-    let result = request.on(&mut connection).await;
+    let read = request.read(&mut connection, &call_id, assessment_id).await;
     transaction::recycle(connection);
-    result
+    let ready = match read? {
+        Read::Existing(call) => return replay::response(tasks, call).await,
+        Read::Ready(ready) => ready,
+    };
+    if let Err(refusal) = fund::cover(tasks, run, &ready.prepared.current, &ready.coverage).await {
+        let mut connection = transaction::acquire(tasks.runs.pool()).await?;
+        let twin = request
+            .twin_or(&mut connection, &ready.key, ready.attempt.number(), refusal)
+            .await;
+        transaction::recycle(connection);
+        return replay::response(tasks, twin?).await;
+    }
+    let key = fund::key(tasks, ready.prepared.assignment.profile.api).await?;
+    Issuance {
+        tasks,
+        run,
+        input,
+        id: &call_id,
+        digest: &request.digest,
+        ready: &ready,
+        key: &key,
+    }
+    .commit()
+    .await
 }
 
-struct Reservation<'a> {
-    tasks: &'a DurableTasks,
-    run: DurableTaskRun<'a>,
-    input: &'a garde::Valid<DecisionReservationInput>,
-    operation: Uuid7,
-    digest: String,
+pub(super) struct Reservation<'a> {
+    pub tasks: &'a DurableTasks,
+    pub run: DurableTaskRun<'a>,
+    pub input: &'a garde::Valid<DecisionReservationInput>,
+    pub operation: Uuid7,
+    pub digest: String,
 }
 
 impl Reservation<'_> {
@@ -67,87 +103,75 @@ impl Reservation<'_> {
         }
     }
 
-    fn replay(&self, call: Call) -> Result<Allocation> {
+    /// The saved call of this operation, answered as `existing` when it is this
+    /// fence's and was made from the same request.
+    pub(super) async fn replay(&self, call: Call) -> Result<ReservedDecision> {
         if !call.owned_by(self.run) {
             return Err(stale_fence());
         }
         replay_matches(&call, self.input, &self.digest, true)?;
-        classify(call)
+        replay::response(self.tasks, call).await
     }
 
-    async fn on(&self, connection: &mut PgConnection) -> Result<Allocation> {
-        let mut tx = transaction::begin(connection).await?;
-        let current = guard::run(&mut tx, self.run).await?;
-        // A peer may have committed while this request waited for the thread lock.
-        if let Some(call) = row::find(&mut tx, self.operation()).await? {
-            return self.replay(call);
-        }
-        block_profile_switch(&mut tx, &current, self.input).await?;
-        let call_id = self.tasks.runs.entropy().uuid7(clock::now())?;
-        let assessment_id = self.tasks.runs.entropy().uuid7(clock::now())?;
-        let (prepared, quote) = prepare::on(&mut tx, self.run, self.input, &call_id).await?;
+    /// Statements 2 to 15 of the reservation, each in its own round trip on one
+    /// connection and none holding a lock.
+    async fn read(
+        &self,
+        connection: &mut PgConnection,
+        call_id: &Uuid7,
+        assessment_id: Uuid7,
+    ) -> Result<Read> {
+        let (prepared, quote) = prepare::on(connection, self.run, self.input, call_id).await?;
         let key = prepared.context.key()?;
+        let retry_of = self
+            .input
+            .retry_of
+            .as_deref()
+            .map(guard::wire)
+            .transpose()?;
         let attempt = Attempt::resolve(
-            &mut tx,
+            connection,
             &prepared,
-            self.input
-                .retry_of
-                .as_deref()
-                .map(guard::wire)
-                .transpose()?
-                .as_ref(),
+            retry_of.as_ref(),
             &key,
             &self.digest,
-            &call_id,
+            call_id,
             assessment_id,
         )
         .await?;
-        if let Some(call) = row::find(
-            &mut tx,
+        let saved = row::read(
+            connection,
             Lookup::Assessment {
                 key: &key,
                 attempt: attempt.number(),
             },
         )
-        .await?
-        {
-            replay_matches(&call, self.input, &self.digest, false)?;
-            tx.commit()
-                .await
-                .map_err(query("commit saved decision reservation lookup"))?;
-            return if call.owned_by(self.run) {
-                classify(call)
-            } else {
-                Ok(Allocation::Existing(call))
-            };
-        }
-        self.admit(&mut tx, &prepared).await?;
-        Intent {
-            run: self.run,
-            input: self.input,
-            id: &call_id,
-            prepared: &prepared,
-            quote: &quote,
-            attempt: &attempt,
-            key: &key,
-            digest: &self.digest,
-        }
-        .save(&mut tx)
         .await?;
-        let call = row::find(&mut tx, Lookup::Id(&call_id))
-            .await?
-            .ok_or(DurableTaskRefusal::NotFound)?;
-        tx.commit()
-            .await
-            .map_err(query("commit native physical decision reservation"))?;
-        reserved(&call, &prepared.assignment.revision_id);
-        Ok(Allocation::Reserved(call))
+        if let Some(call) = saved {
+            replay_matches(&call, self.input, &self.digest, false)?;
+            return Ok(Read::Existing(call));
+        }
+        let coverage = match self.money(connection, &prepared).await {
+            Ok(coverage) => coverage,
+            Err(refusal) => {
+                let twin = self.twin_or(connection, &key, attempt.number(), refusal);
+                return Ok(Read::Existing(twin.await?));
+            }
+        };
+        Ok(Read::Ready(Box::new(Ready {
+            prepared,
+            quote,
+            attempt,
+            key,
+            coverage,
+        })))
     }
-    async fn admit(
-        &self,
-        connection: &mut PgConnection,
-        prepared: &prepare::Prepared,
-    ) -> Result<()> {
+}
+
+impl Reservation<'_> {
+    /// The checks that can refuse for money: the budget, the goal's limits, an earlier
+    /// overage and the run's priced headroom.
+    async fn money(&self, connection: &mut PgConnection, prepared: &Prepared) -> Result<Coverage> {
         if self.tasks.dependencies.admin_workspace.is_none() {
             return Err(DurableTaskRefusal::DecisionUnavailable.into());
         }
@@ -156,21 +180,45 @@ impl Reservation<'_> {
             &prepared.current,
             &prepared.context,
             prepared.task.as_ref().map(|task| &task.snapshot),
-            true,
         )
-        .await
+        .await?;
+        fund::proposed(connection, self.run).await
+    }
+
+    /// A money refusal may have counted a twin of this very reservation that issued
+    /// after the lookups ran: the saved call then answers, as it would have before any
+    /// money check. Without one, or for any other failure, `refusal` stands.
+    async fn twin_or(
+        &self,
+        connection: &mut PgConnection,
+        key: &str,
+        attempt: i16,
+        refusal: crate::Error,
+    ) -> Result<Call> {
+        if !matches!(
+            refusal.kind(),
+            crate::error::ErrorKind::DurableTaskRefused { .. }
+        ) {
+            return Err(refusal);
+        }
+        if let Some(call) = row::read(connection, self.operation()).await? {
+            if !call.owned_by(self.run) {
+                return Err(stale_fence());
+            }
+            replay_matches(&call, self.input, &self.digest, true)?;
+            return Ok(call);
+        }
+        match row::read(connection, Lookup::Assessment { key, attempt }).await? {
+            Some(call) => {
+                replay_matches(&call, self.input, &self.digest, false)?;
+                Ok(call)
+            }
+            None => Err(refusal),
+        }
     }
 }
 
-fn classify(call: Call) -> Result<Allocation> {
-    if call.state()? == DecisionCallState::Reserved && !call.issued && !call.accounted {
-        Ok(Allocation::Reserved(call))
-    } else {
-        Ok(Allocation::Existing(call))
-    }
-}
-
-fn replay_matches(
+pub(super) fn replay_matches(
     call: &Call,
     input: &DecisionReservationInput,
     digest: &str,
@@ -196,59 +244,4 @@ fn digest(input: &DecisionReservationInput) -> Result<String> {
     ))
     .map_err(af_core::json::Unreadable::from)?;
     Ok(af_core::etag::sha256_hex(&bytes))
-}
-
-async fn block_profile_switch(
-    connection: &mut PgConnection,
-    current: &guard::RunRow,
-    input: &DecisionReservationInput,
-) -> Result<()> {
-    let assignment = current
-        .decision_snapshot
-        .as_ref()
-        .ok_or(DurableTaskRefusal::DecisionUnavailable)?;
-    let subject = context::subject(
-        &input.source_turn_id,
-        &input.assessment,
-        current
-            .durable_task_id
-            .as_ref()
-            .map(Uuid7::as_str)
-            .zip(input.durable_task.as_ref().map(|task| task.generation)),
-    )?;
-    let blocked: bool = sqlx::query_scalar(sql::BLOCK_PROFILE_SWITCH)
-        .bind(&current.fleet_id)
-        .bind(&current.workspace_id)
-        .bind(format!("{subject}/%"))
-        .bind(guard::wire(&assignment.0.revision_id)?)
-        .fetch_one(connection)
-        .await
-        .map_err(query(
-            "retain unresolved assessments before changing decision profile",
-        ))?;
-    if blocked {
-        return Err(DurableTaskRefusal::DecisionUnavailable.into());
-    }
-    Ok(())
-}
-
-fn reserved(call: &Call, revision: &str) {
-    let (decision_call_id, assessment_id, attempt, profile_revision, purpose) = (
-        call.id.as_str(),
-        call.assessment_id.as_str(),
-        call.attempt_number,
-        revision,
-        call.purpose.as_str(),
-    );
-    {
-        let event = &"dt_decision_reserved";
-        tracing::info!(
-            event,
-            decision_call_id,
-            assessment_id,
-            attempt,
-            profile_revision,
-            purpose
-        );
-    };
 }

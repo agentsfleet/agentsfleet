@@ -22064,7 +22064,6 @@
         "type": "string",
         "description": "Native physical-call lifecycle; unresolved calls retain their reservation.",
         "enum": [
-          "reserved",
           "issued",
           "known",
           "unknown",

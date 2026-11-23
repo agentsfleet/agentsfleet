@@ -29,13 +29,11 @@ pub(super) async fn check_on(
     current: &RunRow,
     context: &AssessedContext,
     task: Option<&DurableTaskSnapshot>,
-    allocating: bool,
 ) -> Result<()> {
     paid_ready(connection, current, context).await?;
-    let extra = if allocating { CALL_NANOS } else { 0 };
     if context.assessment.purpose() == DecisionPurpose::Goal {
         let task = &task.ok_or(DurableTaskRefusal::InvalidTarget)?.context;
-        goal(task, allocating)?;
+        goal(task)?;
     }
     let config = Runs::stored_config_on(connection, &current.fleet_id, None)
         .await?
@@ -49,7 +47,7 @@ pub(super) async fn check_on(
         .map_err(query(
             "check decision reservations against the current fleet budget",
         ))?;
-    let extra = Nanos::from_i64(extra);
+    let extra = Nanos::from_i64(CALL_NANOS);
     let projected = Spend {
         day: Nanos::from_i64(totals.day_nanos).saturating_add(extra),
         month: Nanos::from_i64(totals.month_nanos).saturating_add(extra),
@@ -60,10 +58,10 @@ pub(super) async fn check_on(
     Ok(())
 }
 
-fn goal(task: &DurableTaskContext<'_>, allocating: bool) -> Result<()> {
+fn goal(task: &DurableTaskContext<'_>) -> Result<()> {
     if task.usage.model_nanos >= task.limits.model_nanos
         || task.usage.running_nanos >= u64::from(task.limits.running_seconds) * 1_000_000_000
-        || (allocating && task.usage.decision_calls >= task.limits.decision_calls)
+        || task.usage.decision_calls >= task.limits.decision_calls
     {
         return Err(DurableTaskRefusal::LimitExhausted.into());
     }
