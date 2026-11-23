@@ -43,9 +43,9 @@ function buildColumns({
 }): DataTableColumn<Secret>[] {
   return [
     {key: "name", primary: true, header: "Name", cell: secret => <SecretNameCell secret={secret} />},
-    {key: "type", header: "Type", cell: secret => secretType(secret)},
-    {key: "value", header: "Value", cell: () => <span className="text-text-dim">Hidden</span>},
-    {key: "scope", header: "Available to", cell: secret => <SecretAccessCell secret={secret} />},
+    {key: "type", header: "Type", hideOnMobile: true, cell: secret => secretType(secret)},
+    {key: "value", header: "Value", hideOnMobile: true, cell: () => <span className="text-text-dim">Hidden</span>},
+    {key: "scope", header: "Available to", hideOnMobile: true, cell: secret => <SecretAccessCell secret={secret} />},
     {key: "actions", header: <span className="sr-only">Actions</span>, numeric: true, cell: secret => <SecretActions secret={secret} pending={pending}
       protectedFromDelete={protectedSecretName === secret.name} onEdit={onEdit} onDelete={onDelete} />},
   ];
@@ -109,7 +109,7 @@ function SecretTable({
 }) {
   return <DataTable columns={buildColumns({pending, protectedSecretName, onEdit, onDelete})}
     rows={secrets} isLoading={pending} rowKey={secret => secret.name} caption="Stored secrets"
-    className="[&_table]:min-w-160" pagination={false} />;
+    pagination={false} />;
 }
 
 export default function SecretsList({
@@ -194,7 +194,6 @@ export default function SecretsList({
           }}
         />
       )}
-      <p className="text-eyebrow leading-eyebrow text-text-dim">Secret values are hidden after saving.</p>
       <SecretDialogs
         workspaceId={workspaceId}
         editTarget={editTarget}

@@ -16,8 +16,8 @@ export function BillingReportView({report}: {report: BillingReport}) {
   return (
     <div className="space-y-2xl">
       <BillingFilters report={report} />
-      <DashboardPanel asChild padding="none">
-        <dl className="grid divide-y divide-border summary:grid-cols-[2fr_1fr_1fr] summary:divide-x summary:divide-y-0" aria-label="Period totals">
+      <DashboardPanel asChild padding="none" className="overflow-hidden bg-border">
+        <dl className="grid grid-cols-2 gap-px summary:grid-cols-[2fr_1fr_1fr]" aria-label="Period totals">
           <Metric label="Settled charges" value={formatBalance(report.totals.charged_nanos)} note={<>{range} · USD</>} primary />
           <Metric label="Activities" value={formatCount(report.totals.activity_count)} note="With settled usage" />
           <Metric label="Tokens" value={formatCompactCount(report.totals.input_tokens + report.totals.output_tokens)} note="Input and output combined" />
@@ -37,7 +37,8 @@ export function BillingReportView({report}: {report: BillingReport}) {
 
 function Metric({label, value, note, primary}: {label: string; value: string; note: ReactNode; primary?: boolean}) {
   return (
-    <div className="grid min-w-0 grid-cols-[1fr_auto] items-start gap-x-xl p-xl leading-label summary:block summary-medium:p-2xl">
+    <div className={cn("min-w-0 bg-card p-xl leading-label summary-medium:p-2xl",
+      primary ? "max-summary:col-span-full max-summary:grid max-summary:grid-cols-[1fr_auto] max-summary:items-start max-summary:gap-x-xl" : "max-summary:space-y-xs")}>
       <dt className="text-eyebrow font-semibold leading-label text-muted-foreground summary:mb-md">{label}</dt>
       <dd className={cn("col-start-2 row-span-2 row-start-1 wrap-anywhere", primary ? "text-success" : "text-foreground")}>
         <strong className="block text-usage-total leading-label font-[750] tracking-usage-total summary:inline">{value}</strong>

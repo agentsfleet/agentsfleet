@@ -207,7 +207,7 @@ describe("the approved secret rows", () => {
   it("keeps the complete long reference readable in its row and delete confirmation", async () => {
     const name = "billing-warehouse-replica-read-only-credentials-for-the-nightly-export";
     renderList([{...providerSecret(CREATED_AT), name}]);
-    expect(screen.getByText(name).className).toContain("break-words");
+    expect(screen.getByText(name).className).toContain("wrap-anywhere");
     expect(screen.getByRole("button", {name: `Manage ${name}`})).toBeTruthy();
     expect(screen.queryByRole("button", {name: /Rename secret/})).toBeNull();
     fireEvent.click(screen.getByRole("button", {name: `Manage ${name}`}));

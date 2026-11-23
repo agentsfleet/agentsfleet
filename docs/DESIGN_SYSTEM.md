@@ -603,7 +603,7 @@ Runs and Activity tabs sit directly above their content.
 A checks badge reports the result; a separate View checks button makes inspection discoverable.
 Fleet activity belongs in its conversation.
 
-Pending fleet decisions appear in Summary. Approve and Deny act on the recorded request in the fleet conversation. Show action details inline.
+Show the pending action and its scope in the Fleet conversation Summary. Approve acts on that recorded request in place.
 
 Remove standalone Approvals and Grants destinations. Retain authorization and standing-grant enforcement.
 
@@ -1137,7 +1137,7 @@ Desktop operator turns occupy 90% of the reading column; phone turns use its ful
 
 Composer paperclip controls are 36px with an 18px glyph; coarse pointers keep the 44px floor. Keep 4px horizontal text inset, an explicit focused border, and opaque neutral styling for disabled Send. Compare enabled, disabled and focused states individually.
 
-Summary reads the actual pending approval before showing its action and blast radius. Approve and Deny use the existing authenticated decision actions. A decision requires no separate review page.
+Summary reads the actual pending approval and shows the action and its scope. Approve submits the decision directly and shows the confirmed result in Summary.
 
 Missing or failed reads never become an invented target. Run duration and cost come from recorded figures. Quote uses assistant-ui composer state and serializes into the same durable text message the backend stores.
 

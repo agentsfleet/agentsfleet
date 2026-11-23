@@ -102,7 +102,6 @@ function KeyRow({row, disabled, onAction}: {row: ApiKeyRow; disabled: boolean; o
   );
   return (
     <SecurityResourceRow kind="key" title={row.key_name} icon={<KeyIcon size={16} />} detail={detail}
-      lastUsed="Last used: unavailable"
       action={<Button variant="outline" disabled={disabled} aria-label={`${action} API key ${row.key_name}`}
         onClick={() => onAction({...row, mode})}>{action}</Button>} />
   );

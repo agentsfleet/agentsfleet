@@ -10,14 +10,14 @@ import {
   CardContent,
   DataTable,
   type DataTableColumn,
+  DEFAULT_PAGE_SIZE_OPTIONS,
   EmptyState,
-  IconAction,
   PageHeader,
   PageLayout,
   PageTitle,
   Time,
 } from "@agentsfleet/design-system";
-import { CheckCircleIcon, EnvelopeOpenIcon } from "@phosphor-icons/react/ssr";
+import { EnvelopeOpenIcon } from "@phosphor-icons/react/ssr";
 import type { WaitingInvite } from "@/lib/api/invites";
 import { presentErrorString } from "@/lib/errors";
 import { DASHBOARD_ROOT_PATH, DEFAULT_WORKSPACE_SUBPATH, workspacePath } from "@/lib/workspace-routes";
@@ -81,6 +81,7 @@ export function InvitesView({ waiting, linkedId }: Props) {
           rows={waiting}
           rowKey={(invite) => invite.id}
           caption="Invites waiting for you"
+          pagination={waiting.length > DEFAULT_PAGE_SIZE_OPTIONS[0] ? undefined : false}
           empty={
             <EmptyState
               icon={<EnvelopeOpenIcon size={28} />}
@@ -99,16 +100,13 @@ function columns(pending: boolean, accept: (inviteId: string) => void): DataTabl
     {
       key: "account", primary: true,
       header: "Account",
-      cell: (invite) => <span className="truncate text-sm">{accountLabel(invite.account.owner_name)}</span>,
-    },
-    {
-      key: "time",
-      header: TIME_LABEL.expires,
-      hideOnMobile: true,
       cell: (invite) => (
-        <span className="text-label leading-label text-muted-foreground">
-          <Time value={new Date(invite.expires_at)} format="relative" className="tabular-nums" />
-        </span>
+        <div className="space-y-xs">
+          <p className="wrap-anywhere text-body-sm">{accountLabel(invite.account.owner_name)}</p>
+          <p className="text-eyebrow font-normal text-muted-foreground">
+            {TIME_LABEL.expires} <Time value={invite.expires_at} format="relative" />
+          </p>
+        </div>
       ),
     },
     {
@@ -116,14 +114,15 @@ function columns(pending: boolean, accept: (inviteId: string) => void): DataTabl
       header: "Actions",
       numeric: true,
       cell: (invite) => (
-        <IconAction
+        <Button
           type="button"
+          size="sm"
           disabled={pending}
           onClick={() => accept(invite.id)}
-          label={`${ACCEPT_LABEL} invite into ${accountLabel(invite.account.owner_name)}`}
+          aria-label={`${ACCEPT_LABEL} invite into ${accountLabel(invite.account.owner_name)}`}
         >
-          <CheckCircleIcon size={14} />
-        </IconAction>
+          {ACCEPT_LABEL}
+        </Button>
       ),
     },
   ];

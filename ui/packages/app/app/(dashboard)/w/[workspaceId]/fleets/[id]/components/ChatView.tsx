@@ -67,8 +67,6 @@ export function ChatView({
         <FleetStatusLine
           status={summary.status}
           latest={summary.latest}
-          pendingApprovals={0}
-          approvalsHref={approvalsHref}
           summaryAvailable={summary.latestAvailable}
         />
       </div> : null}

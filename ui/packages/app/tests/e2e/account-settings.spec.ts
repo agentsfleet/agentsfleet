@@ -25,7 +25,7 @@ test("Security combines keys and sessions with compact type in both appearances"
     const key = page.getByRole("region", {name: "Account API keys"});
     const created = key.locator("time").first();
     expect(await created.evaluate(time => time.getClientRects().length)).toBe(1);
-    await expect(key.getByText("Last used: unavailable", {exact: true})).toBeVisible();
+    await expect(key.getByText("Last used", {exact: false})).toHaveCount(0);
     const account = page.getByRole("button", {name: /^Workspace and account menu/});
     const image = account.locator("[data-account-avatar] img");
     await expect(image).toBeVisible();

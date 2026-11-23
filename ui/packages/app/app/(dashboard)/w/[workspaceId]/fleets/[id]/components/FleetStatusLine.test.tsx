@@ -41,14 +41,12 @@ function turn(over: Partial<TurnDetail> = {}): TurnDetail {
 // Wrapped the way `(dashboard)/layout.tsx` wraps the real tree: the outcome's
 // instant renders `relative`, which carries a tooltip holding the absolute
 // time, and `Tooltip` throws outside a provider.
-function renderLine(latest: TurnRow | null, pendingApprovals = 0, summaryAvailable = true, status = "active") {
+function renderLine(latest: TurnRow | null, summaryAvailable = true, status = "active") {
   return render(
     <TooltipProvider>
     <FleetStatusLine
       status={status}
       latest={latest}
-      pendingApprovals={pendingApprovals}
-      approvalsHref="/w/ws_1/fleets/agt_1#fleet-approvals"
       summaryAvailable={summaryAvailable}
     />
     </TooltipProvider>,
@@ -94,7 +92,7 @@ describe("FleetStatusLine", () => {
     renderLine(turn());
     expect(toneOf("active")).toBe("pulse");
     cleanup();
-    renderLine(turn(), 0, true, "archived");
+    renderLine(turn(), true, "archived");
     expect(toneOf("Archived")).toBe("neutral");
   });
 
@@ -171,25 +169,8 @@ describe("FleetStatusLine", () => {
   });
 
   it("shows every figure as unknown when the summary read failed, reported or not", () => {
-    renderLine(turn(), 0, false);
+    renderLine(turn(), false);
     expect(screen.getAllByText("—")).toHaveLength(3);
-  });
-
-  it("links pending approvals to the fleet approval section", () => {
-    renderLine(turn(), 2);
-    const link = screen.getByRole("link", { name: /2 approvals waiting/i });
-    expect(link.getAttribute("href")).toBe("/w/ws_1/fleets/agt_1#fleet-approvals");
-    expect(link.closest("[data-tone]")?.getAttribute("data-tone")).toBe("warning");
-  });
-
-  it("names a single waiting approval in the singular", () => {
-    renderLine(turn(), 1);
-    expect(screen.getByRole("link", { name: /^1 approval waiting/i })).toBeTruthy();
-  });
-
-  it("shows no approvals cell when none wait", () => {
-    renderLine(turn(), 0);
-    expect(screen.queryByRole("link")).toBeNull();
   });
 
   it("renders the empty note when no outcome exists", () => {
@@ -199,7 +180,7 @@ describe("FleetStatusLine", () => {
   });
 
   it("distinguishes an unavailable summary read from empty data", () => {
-    renderLine(null, 0, false);
+    renderLine(null, false);
     expect(screen.getByText("Latest data unavailable.")).toBeTruthy();
     expect(screen.queryByText(METRICS_EMPTY)).toBeNull();
     // Nothing is known, so every figure is a dash.

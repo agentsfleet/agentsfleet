@@ -7,10 +7,10 @@ import { Button, Dialog, DialogContent, DialogDescription, DialogFooter,
   DialogHeader, DialogTitle, DialogTrigger, Label, Textarea, Time } from "@agentsfleet/design-system";
 import { FleetPayloadDisclosure } from "../activity/messages/FleetPayloadDisclosure";
 
-type Props = {gate: SummaryApproval; pending: boolean; decided: boolean; reason: string; onReasonChange: (value: string) => void};
+type Props = {gate: SummaryApproval; title: string; pending: boolean; decided: boolean; reason: string; onReasonChange: (value: string) => void};
 
 /** Inspect the recorded request while the conversation retains decision ownership. */
-export function ApprovalRequestDetails({gate, pending, decided, reason, onReasonChange}: Props) {
+export function ApprovalRequestDetails({gate, title, pending, decided, reason, onReasonChange}: Props) {
   const reasonId = useId();
   const [open, setOpen] = useState(false);
   return <Dialog open={open} onOpenChange={setOpen}>
@@ -20,7 +20,7 @@ export function ApprovalRequestDetails({gate, pending, decided, reason, onReason
     <DialogContent>
       <DialogHeader>
         <DialogTitle>Exact action</DialogTitle>
-        <DialogDescription>“{gate.proposed_action || `${gate.tool_name}:${gate.action_name}`}”</DialogDescription>
+        <DialogDescription>“{title}”</DialogDescription>
       </DialogHeader>
       <div className="space-y-xl text-label">
         <p className="break-words">{gate.tool_name} · {gate.action_name}</p>

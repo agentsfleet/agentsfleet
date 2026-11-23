@@ -48,13 +48,13 @@ describe("ApiKeyList timestamps", () => {
     expect(times).toContain(new Date(CREATED_AT).toISOString());
     expect(times).toContain(new Date(revoked).toISOString());
     expect(container.textContent).toContain("Revoked");
-    expect(container.textContent).toContain("Last used: unavailable");
+    expect(container.textContent).not.toContain("Last used");
   });
   it("shows created time alone for an active key", () => {
     const {container} = renderList(makeResponse());
     expect(Array.from(container.querySelectorAll("time")).map((node) => node.getAttribute("dateTime")))
       .toEqual([new Date(CREATED_AT).toISOString()]);
-    expect(container.textContent).toContain("Last used: unavailable");
+    expect(container.textContent).not.toContain("Last used");
   });
 });
 

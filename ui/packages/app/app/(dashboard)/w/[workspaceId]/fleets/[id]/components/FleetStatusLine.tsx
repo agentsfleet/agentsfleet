@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import Link from "next/link";
 import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { CheckCircleIcon, WarningCircleIcon, CoinsIcon, HashIcon, HourglassIcon, CircleNotchIcon, TimerIcon } from "@phosphor-icons/react/ssr";
 import { cn, StatusLine, StatusLineItem, type StatusLineTone, Time } from "@agentsfleet/design-system";
@@ -10,8 +9,6 @@ import { formatCount, runFigure } from "@/lib/turns/run-figures-format";
 import { TURN_STATUS, outcomeFor } from "@/lib/turns/turn-summary";
 import { formatDollars } from "@/lib/money";
 import {
-  METRICS_APPROVAL_LABEL,
-  METRICS_APPROVALS_LABEL,
   METRICS_COST_LABEL,
   METRICS_EMPTY,
   METRICS_OUTCOME_LABEL,
@@ -26,7 +23,6 @@ import {
 
 const ICON_SIZE = 12;
 const TOKENS_UNIT = "tok";
-const APPROVALS_ARROW = "→";
 
 type OutcomeCell = {
   text: string;
@@ -37,28 +33,15 @@ type OutcomeCell = {
   at: Date | null;
 };
 
-// The line under the composer: status · latest outcome · tokens · spend ·
-// duration, and the approvals link when any wait. Every figure is a server
-// field off the turn row — the line does no token→cost arithmetic;
-// `cost_nanos` is the summed telemetry credit, and a run with no telemetry
-// renders cost as "—", never a fabricated zero. The pending count is the
-// server's own, off the fleet detail and then off the live tail's frames, so
-// it is exact rather than a page length with a "+".
-//
-// Each cell carries its label visually hidden ahead of the figure. The glyph
-// is what a sighted reader sees; the label is what a screen reader hears, and
-// what the acceptance walk greps the line's text for.
+// Labels accompany the glyphs for screen readers. Figures come from the
+// turn row, and missing telemetry renders a dash.
 export default function FleetStatusLine({
   status,
   latest,
-  pendingApprovals,
-  approvalsHref,
   summaryAvailable,
 }: {
   status: string;
   latest: RunFigures | null;
-  pendingApprovals: number;
-  approvalsHref: string;
   summaryAvailable: boolean;
 }) {
   const outcome = outcomeCell(latest, summaryAvailable);
@@ -113,20 +96,6 @@ export default function FleetStatusLine({
         value={shownFigure(summaryAvailable, runFigure(latest?.wall_ms, formatMs))}
         unit={METRICS_TIME_UNIT}
       />
-      {pendingApprovals > 0 ? (
-        <StatusLineItem tone="warning">
-          {/* The vertical padding is cancelled by the matching negative
-              margin: the hit area grows to a finger's height, the line's
-              own height does not. */}
-          <Link
-            href={approvalsHref}
-            className="-my-md py-md underline-offset-2 hover:underline focus-visible:underline"
-          >
-            {pendingApprovals}{" "}
-            {pendingApprovals === 1 ? METRICS_APPROVAL_LABEL : METRICS_APPROVALS_LABEL} {APPROVALS_ARROW}
-          </Link>
-        </StatusLineItem>
-      ) : null}
     </StatusLine>
   );
 }

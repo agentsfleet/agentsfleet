@@ -1,12 +1,11 @@
 import { Spinner } from "@agentsfleet/design-system";
 
-export function RouteLoading({ fullScreen = false }: { fullScreen?: boolean }) {
+export function RouteLoading({ fullScreen = false, label }: { fullScreen?: boolean; label?: string }) {
   return (
     <div
-      data-page-loading="true"
       className={`flex w-full flex-1 items-center justify-center p-xl ${fullScreen ? "min-h-dvh" : "min-h-full"}`}
     >
-      <Spinner variant="page" label="Loading…" aria-label="Loading page" />
+      <Spinner variant="page" label={label ?? "Loading…"} aria-label={label ?? "Loading page"} />
     </div>
   );
 }

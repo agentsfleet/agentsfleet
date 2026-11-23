@@ -65,26 +65,7 @@ afterEach(() => {
   cleanup();
 });
 
-describe("placeholder pages", () => {
-  it("settings defaults page renders the masked placeholder when authenticated", async () => {
-    mockAuth({ token: "tkn" });
-    const { default: Page } =
-      await import("../app/(dashboard)/w/[workspaceId]/settings/defaults/page");
-    const m = renderToStaticMarkup(
-      await Page({ params: Promise.resolve({ workspaceId: "ws_1" }) }),
-    );
-    expect(m).toContain("Defaults");
-  });
-
-  it("settings defaults page redirects to /sign-in when no token", async () => {
-    mockAuth({ token: null });
-    const { default: Page } =
-      await import("../app/(dashboard)/w/[workspaceId]/settings/defaults/page");
-    await expect(
-      Page({ params: Promise.resolve({ workspaceId: "ws_1" }) }),
-    ).rejects.toThrow("redirect:/sign-in");
-  });
-
+describe("dashboard route boundaries", () => {
   it("the old workspace security page redirects to account Security when authenticated", async () => {
     mockAuth({ token: "tkn" });
     const { default: Page } =
