@@ -264,7 +264,7 @@ async fn an_assignment_time_failure_publishes_one_changed_notice() {
     let afd_bus::Received::Message(message) = received else {
         panic!("a message, not {received:?}");
     };
-    let notice: afd_setup::Changed =
+    let notice: afd_turns::view::activity::DraftChanged =
         serde_json::from_str(&message.payload).expect("a `Changed` notice");
     assert_eq!(notice.changed, draft);
     assert!(

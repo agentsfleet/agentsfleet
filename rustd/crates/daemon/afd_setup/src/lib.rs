@@ -37,5 +37,3 @@ pub use self::message::Conversation;
 pub use self::observe::{Notice, Observation, View};
 pub use self::setup::Setup;
 pub use self::setup_run::{CONTEXT_EVENT, ContextNotice, DELTA_EVENT, Delta, TextKind};
-/// A draft's durable state changed; its open page reads it again.
-pub use afd_turns::view::activity::DraftChanged as Changed;

@@ -6,7 +6,8 @@ use std::time::Duration;
 
 use af_core::id::Uuid7;
 use afd_bus::{Received, Subject, Subscription};
-use afd_setup::{Changed, types::DraftPatch};
+use afd_setup::types::DraftPatch;
+use afd_turns::view::activity::DraftChanged as Changed;
 use serde_json::json;
 
 use super::{

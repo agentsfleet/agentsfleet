@@ -282,7 +282,7 @@ What gains: an effect item insert (`afd_fleet/src/run/sql/effect/insert_item.sql
 
 ### §5 — The setup page reads on a notice, not every second
 
-The notice is `afd_setup::Changed`, a third message beside `ContextNotice` and `Delta` in `afd_setup/src/setup_run/progress.rs`, published on the subject the stream already subscribes to, `Subject::ThreadItems` of the draft. It carries the draft id and nothing else, serialized as `{"changed":"<draft id>"}`, and the stream tries it before the other two. `Drafts` holds the bus (`afd_setup/src/draft/mod.rs:33`) and gains the one publish method every writer calls after its commit:
+The notice is `afd_turns::view::activity::DraftChanged`, a third message beside `ContextNotice` and `Delta`, published on the subject the stream already subscribes to, `Subject::ThreadItems` of the draft. It carries the draft id and nothing else, serialized as `{"changed":"<draft id>"}`, and the stream tries it before the other two. `Drafts` holds the bus (`afd_setup/src/draft/mod.rs:33`) and gains the one publish method every writer calls after its commit:
 
 | Writer | Where it commits |
 |---|---|

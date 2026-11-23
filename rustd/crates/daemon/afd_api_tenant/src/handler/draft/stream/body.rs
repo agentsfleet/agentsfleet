@@ -255,7 +255,9 @@ fn preview(draft: &Uuid7, view: &afd_setup::View, received: afd_bus::Received) -
             .ok()?;
             // A change notice carries no frame of its own: the read it asked for
             // finds what changed.
-            if serde_json::from_str::<afd_setup::Changed>(bounded.value).is_ok() {
+            if serde_json::from_str::<afd_turns::view::activity::DraftChanged>(bounded.value)
+                .is_ok()
+            {
                 return None;
             }
             if let Ok(frame) = serde_json::from_str::<afd_setup::ContextNotice>(bounded.value) {
