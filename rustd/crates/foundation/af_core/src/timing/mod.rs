@@ -81,6 +81,11 @@ pub const STREAM_PING_INTERVAL: Duration = Duration::from_secs(15);
 /// Preferred transport gets this much of the bounded reconnect attempt.
 /// Kept: a network that drops UDP would otherwise never reach the TCP fallback.
 pub const STREAM_HTTP3_CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
+/// The TCP fallback gets its own bounded connection attempt.
+///
+/// Kept: an attempt outliving the daemon's 5-second TLS accept reads its
+/// hang-up as a refused handshake, which ends the runner instead of retrying.
+pub const STREAM_HTTP2_CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 /// Ownership confirmation and lane attachment share the remaining recovery budget.
 /// Kept: the daemon holds a connection permit for an opening, and a peer that
 /// never says hello would hold it forever.
@@ -121,9 +126,11 @@ const _: () = assert!(
 );
 
 const _: () = assert!(
-    STREAM_HTTP3_CONNECT_TIMEOUT.as_nanos() + STREAM_OPEN_TIMEOUT.as_nanos()
-        < STREAM_RECOVERY_BUDGET.as_nanos(),
-    "the reconnect budget leaves the TCP fallback room after the preferred carrier"
+    STREAM_HTTP3_CONNECT_TIMEOUT.as_nanos()
+        + STREAM_HTTP2_CONNECT_TIMEOUT.as_nanos()
+        + STREAM_OPEN_TIMEOUT.as_nanos()
+        == STREAM_RECOVERY_BUDGET.as_nanos(),
+    "the complete reconnect budget includes both carriers and ownership rebuild"
 );
 
 /// One day.
