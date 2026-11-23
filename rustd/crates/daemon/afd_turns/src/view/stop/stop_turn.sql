@@ -38,7 +38,7 @@ WITH thread AS MATERIALIZED (
   WHERE NOT t.settled AND r.status = $5
     AND ((r.turn_id = t.id AND r.fencing_token = COALESCE(t.run_fence, r.fencing_token))
          OR (r.id = t.input_run_id AND r.fencing_token = t.input_fence))
-  FOR UPDATE OF r
+  FOR NO KEY UPDATE OF r
 ), marked AS (
   UPDATE thread.runs r
   SET cancel_requested_at = COALESCE(r.cancel_requested_at, clock_timestamp()),

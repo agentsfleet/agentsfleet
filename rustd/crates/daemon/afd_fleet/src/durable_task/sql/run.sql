@@ -12,7 +12,7 @@ WITH held AS MATERIALIZED (
     JOIN fleet.fleets f ON f.id = l.fleet_id AND f.workspace_id = l.workspace_id
     WHERE l.id = $1 AND l.runner_id = $2 AND l.status = $3
       AND s.last_runner_id = l.runner_id
-    FOR UPDATE OF l
+    FOR NO KEY UPDATE OF l
 ), instant AS MATERIALIZED (
     SELECT clock_timestamp() AS checked_at FROM held
 )

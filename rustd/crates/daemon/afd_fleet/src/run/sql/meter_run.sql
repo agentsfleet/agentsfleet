@@ -15,7 +15,7 @@ WITH locked_thread AS MATERIALIZED (
     FROM thread.runs l
     JOIN locked_thread a ON a.fleet_id = l.fleet_id
     WHERE l.id = $1 AND l.runner_id = $2 AND l.status = $4
-    FOR UPDATE OF l
+    FOR NO KEY UPDATE OF l
 ), held_durable_task AS MATERIALIZED (
     SELECT t.id, t.status, t.generation, t.stop_generation, t.expires_at,
            t.max_model_nanos, t.used_model_nanos,

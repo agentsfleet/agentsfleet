@@ -1,6 +1,6 @@
 -- A failed transition write can prove liveness, never continuous healthy return.
 WITH locked AS MATERIALIZED (
-  SELECT id, token_hash, connection_id, status FROM runner.runners WHERE id = $1 FOR UPDATE
+  SELECT id, token_hash, connection_id, status FROM runner.runners WHERE id = $1 FOR NO KEY UPDATE
 ), observed AS MATERIALIZED (
   SELECT r.id, clock_timestamp() AS at FROM locked r
   WHERE $2::text IS NULL OR (r.token_hash = $2 AND r.connection_id IS NOT DISTINCT FROM $3::uuid AND r.status = $4)

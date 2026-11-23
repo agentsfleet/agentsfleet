@@ -178,3 +178,36 @@ async fn test_a_second_runner_is_refused_while_the_assignment_is_live() {
 
     fixtures.cleanup().await;
 }
+
+/// A heartbeat holding its host's row, as its locking read leaves it, does not hold
+/// up the fleet's first assignment to that host: the thread's new `last_runner_id`
+/// checks its key with `FOR KEY SHARE`, which the heartbeat's `FOR NO KEY UPDATE`
+/// lets through.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn an_assignment_does_not_wait_on_a_heartbeat_of_its_host() {
+    let fixtures = Fixtures::create().await;
+    let Seeded {
+        runners: [runner],
+        fleet,
+        ..
+    } = seeded::<1>(&fixtures).await;
+    let mut beater = fixtures.database.acquire().await.expect("a connection");
+    let mut beating = sqlx::Connection::begin(&mut *beater)
+        .await
+        .expect("the heartbeat's transaction");
+    sqlx::query(afd_runner::sql::runner::TOUCH_RUNNER_LAST_SEEN)
+        .bind(&runner)
+        .bind(None::<&str>)
+        .bind(None::<af_core::id::Uuid7>)
+        .bind(afd_state::sql::RUNNER_STATUS_ACTIVE)
+        .fetch_optional(&mut *beating)
+        .await
+        .expect("the heartbeat locks its host");
+
+    let acquired = seed::select_fleet(&fixtures.runs(), &runner, &fleet).await;
+
+    assert!(acquired.is_some(), "the assignment takes the fleet's turn");
+    beating.rollback().await.expect("the heartbeat lets go");
+    fixtures.cleanup().await;
+}
