@@ -28,8 +28,7 @@
 //! So a gauge is registered with a closure that only LOADS, and what it loads
 //! from is [`super::observed::Observed`].
 
-use dashmap::DashSet;
-use std::sync::{Mutex, PoisonError};
+use dashmap::{DashMap, DashSet};
 
 use opentelemetry::KeyValue;
 use opentelemetry::metrics::{Counter, Histogram, Meter, ObservableGauge};
@@ -94,13 +93,13 @@ pub struct Instruments {
     delta: Meter,
     registry: Registry,
     claimed: DashSet<&'static str>,
-    /// The observable handles, kept alive.
+    /// The observable handles, kept alive, one per family.
     ///
     /// An observable instrument's callback lives as long as its handle. Dropped
     /// on the floor at construction, every gauge in this daemon would go silent
     /// while every counter kept working — which is the hardest kind of
     /// telemetry defect to notice, because the dashboard still draws.
-    observed: Mutex<Vec<ObservableGauge<u64>>>,
+    observed: DashMap<&'static str, ObservableGauge<u64>>,
 }
 
 impl Instruments {
@@ -112,7 +111,7 @@ impl Instruments {
             delta,
             registry,
             claimed: DashSet::new(),
-            observed: Mutex::new(Vec::new()),
+            observed: DashMap::new(),
         }
     }
 
@@ -207,10 +206,7 @@ impl Instruments {
                 }
             })
             .build();
-        self.observed
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .push(gauge);
+        self.observed.insert(family.name(), gauge);
         Ok(())
     }
 
