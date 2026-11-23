@@ -100,11 +100,17 @@ async fn step(mut watch: Watch) -> Option<(Result<Event, Infallible>, Watch)> {
             }
             Ok(Observation::Current(view)) => {
                 watch.generation = view.generation;
-                if let Some(pending) = pending
-                    && let Some(event) = preview(&watch.draft, &view, pending)
-                {
-                    watch.settled = true;
-                    return Some((Ok(event), watch));
+                if let Some(pending) = pending {
+                    // A gap or a lag may have hidden changes: after the resync, read
+                    // again at once rather than wait for the next notice.
+                    let missed = matches!(
+                        pending,
+                        afd_bus::Received::Gap | afd_bus::Received::Lagged(_)
+                    );
+                    if let Some(event) = preview(&watch.draft, &view, pending) {
+                        watch.settled = !missed;
+                        return Some((Ok(event), watch));
+                    }
                 }
                 if let Some(event) = changed(&mut watch, view.notices) {
                     return Some((Ok(event), watch));

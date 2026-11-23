@@ -163,6 +163,15 @@ impl Handle {
     }
 }
 
+/// Gaps every replica's subscriptions once, when a daemon boots.
+///
+/// A daemon that died between a commit and its publish took that notice with it;
+/// every reader re-reads Postgres on the gap, so none waits on the lost notice. A
+/// failure is logged: the booting daemon's own readers have not opened yet.
+pub async fn announce_boot(bus: &Handle) {
+    observe_notification(&Subject::Gap, bus.publish(&Subject::Gap, "").await);
+}
+
 /// Consume a notification outcome after a durable commit without changing that commit's answer.
 /// This observer records failure; publishers themselves always return Result to their caller.
 pub fn observe_notification(subject: &Subject, outcome: Result<()>) {

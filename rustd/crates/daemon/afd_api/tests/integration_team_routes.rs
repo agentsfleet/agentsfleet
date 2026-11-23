@@ -286,3 +286,41 @@ async fn refuses_malformed_calls(johns: &Router, john: &Person, stranger: &Perso
         );
     }
 }
+
+/// Removing a member announces it on the account after the commit, once, so
+/// every open stream in it re-asks its viewer's access; removing an absent
+/// member changes nothing and announces nothing.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn removing_a_member_announces_it_on_the_account() {
+    let members = Members::create().await;
+    let (bus, _server) = afd_bus::test_util::detached().expect("an in-process bus opens");
+    let john = &members.john;
+    let router = members.live_router(john, owner_scopes(), bus.clone());
+    let mut notices = bus
+        .subscribe(&afd_bus::Subject::Members(john.tenant.clone()))
+        .await
+        .expect("the account's subject opens");
+    let bob = format!("{MEMBERS}/{}", members.bob.user);
+
+    let (status, _) = call(&router, Method::DELETE, &bob, john, "").await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let notice = tokio::time::timeout(std::time::Duration::from_secs(1), notices.recv())
+        .await
+        .expect("the removal announces")
+        .expect("the subscription is open");
+    assert!(
+        matches!(notice, afd_bus::Received::Message(_)),
+        "{notice:?}"
+    );
+
+    let (status, _) = call(&router, Method::DELETE, &bob, john, "").await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "removing again is quiet");
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(200), notices.recv())
+            .await
+            .is_err(),
+        "an absent member announces nothing"
+    );
+    members.cleanup().await;
+}

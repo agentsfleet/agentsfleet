@@ -102,3 +102,32 @@ async fn a_claim_that_takes_a_row_logs_how_many_it_took() {
     assert!(took_one, "the claim that took the row logs its count");
     ledger.cleanup().await;
 }
+
+/// A claim held by a replica that stopped renewing it is retaken when it lapses,
+/// with no ping and no timed pass: the worker reads when the earliest live claim
+/// lapses and sleeps to that instant once.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_dead_replicas_claim_is_retaken_when_it_lapses() {
+    let ledger = Ledger::create().await;
+    let lane = ledger.lane().await;
+    let event = ledger.owe(&lane, "held by a dead replica").await;
+    // Another replica claimed it, then died: its claim lapses in two seconds.
+    crate::ledger::sql(
+        &ledger.database,
+        "UPDATE thread.deliveries SET receipt = $2, \
+         claim_expires_at = clock_timestamp() + interval '2 seconds' WHERE turn_id = $1",
+        &[&event, &crate::ledger::thief()],
+    )
+    .await;
+    let (bus, _server) = afd_bus::test_util::detached().expect("a detached bus");
+    let poster = Recorder::default();
+    let token = CancellationToken::new();
+    let worker = tokio::spawn(ledger.worker_on(bus, &poster).run(token.clone()));
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert_eq!(ledger.delivered().await, 0, "a live claim is not taken");
+    ledger.until_delivered(1).await;
+    token.cancel();
+    worker.await.expect("the worker stops");
+    ledger.cleanup().await;
+}

@@ -30,7 +30,12 @@ pub(super) struct Fixture {
 
 impl Fixture {
     pub(super) async fn create() -> Self {
-        let lane = TestDatabase::shared();
+        Self::create_on(TestDatabase::shared()).await
+    }
+
+    /// A case on `lane`, such as a database of its own whose statements a test
+    /// counts.
+    pub(super) async fn create_on(lane: TestDatabase) -> Self {
         let mut f = Self {
             db: lane.open(DbRole::Api, &[]).await,
             cleanup: OwnedRows::new(&lane),
