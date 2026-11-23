@@ -11,7 +11,7 @@ use af_core::id::Uuid7;
 use af_core::test_util::trace::Capture;
 use tokio::time::Instant;
 
-use super::{EVENT_HELLO_COUNTERS_UNREAD, REFRESH_INTERVAL, Recount, counters_unread};
+use super::{EVENT_HELLO_COUNTERS_UNREAD, RECOUNT_PACE, Recount, counters_unread};
 
 /// Fifty lag frames inside one beat cost one counters read in
 /// that beat — the first lag's, taken at once — and whatever they still owe
@@ -25,16 +25,16 @@ fn test_wall_lag_reads_counters_once_per_tick() {
     let first = opened + Duration::from_millis(1);
     let mut reads = 0;
     for lag in 0..50_u32 {
-        let now = first + REFRESH_INTERVAL * lag / 51;
+        let now = first + RECOUNT_PACE * lag / 51;
         if recount.lagged(now) {
             reads += 1;
         }
         assert!(!recount.due(now), "nothing more is due inside the beat");
     }
     assert_eq!(reads, 1, "the first lag reads at once, the rest wait");
-    assert_eq!(recount.deadline(), Some(first + REFRESH_INTERVAL));
+    assert_eq!(recount.deadline(), Some(first + RECOUNT_PACE));
 
-    let beat = first + REFRESH_INTERVAL;
+    let beat = first + RECOUNT_PACE;
     assert!(
         recount.due(beat),
         "the owed read falls due once, a beat later"
@@ -66,7 +66,7 @@ fn any_hello_pays_off_an_owed_read() {
     assert!(!recount.lagged(opened + Duration::from_secs(1)));
     recount.paid(); // a changed set's `hello`
     assert!(recount.deadline().is_none());
-    assert!(!recount.due(opened + REFRESH_INTERVAL * 2));
+    assert!(!recount.due(opened + RECOUNT_PACE * 2));
 }
 
 /// A `hello` whose counters did not answer says why without repeating its

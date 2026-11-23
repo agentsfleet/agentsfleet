@@ -43,7 +43,7 @@ pub use crate::frame::{
     DEFAULT_KIND, Data, Frame, KIND_ACCESS_REVOKED, KIND_CATCHING_UP, KIND_HELLO,
 };
 pub use crate::live::Live;
-pub use crate::resubscribe::Link;
+pub use crate::resubscribe::{Link, Wake};
 pub use crate::stream_limit::{MAX_STREAMS_DEFAULT, StreamLimit, StreamPermit};
 pub use crate::tail::tail;
 

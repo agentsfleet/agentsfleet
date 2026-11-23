@@ -1,29 +1,30 @@
-//! One workspace's wall: the fleets it carries, and the tick that keeps the
+//! One workspace's wall: the fleets it carries, and the notices that keep the
 //! set — and the caller's right to it — honest.
 //!
 //! # Two things go stale while a tab is open, not one
 //!
 //! A fleet installed after the connection opened has to appear on the wall, and
-//! an operator removed from the workspace has to stop seeing it. The first is
-//! the reason the daemon this ports has a refresh tick at all; the second is
-//! the reason the tick re-authorizes rather than only re-enumerating. They run
-//! on ONE beat so a new fleet and a revoked member surface together.
+//! an operator removed from the workspace has to stop seeing it. A fleet create or
+//! delete publishes a notice on the workspace after its commit, and a member
+//! removal publishes one on the account; either, or a gap that may have hidden
+//! one, makes the wall re-authorize and re-enumerate. Nothing re-reads on a timer:
+//! an idle wall runs no statement.
 //!
 //! # A datastore blip must not close live streams
 //!
-//! A tick that cannot reach Postgres keeps serving the set it already has and
-//! asks again on the next beat. Ending the stream would turn a two-second
-//! outage into every dashboard in the fleet reconnecting at once — which is the
-//! load the outage was already about. The membership half is the re-check
-//! both streams share (`revocable.rs`): budgeted, logged, and capped. An
-//! outage that outlasts the cap ends the wall without `access_revoked`.
+//! A refresh that cannot read the set keeps serving the set it already has, and
+//! the next notice reads again. Ending the stream would turn a two-second outage
+//! into every dashboard in the fleet reconnecting at once — which is the load the
+//! outage was already about. The membership half is the re-check both streams
+//! share (`revocable.rs`): an outage there ends the wall without
+//! `access_revoked`.
 //!
-//! # A lagging viewer re-reads the counters at most once per beat
+//! # A lagging viewer re-reads the counters at most once per pace
 //!
 //! A `catching_up` frame means the counters a tile shows may be stale, so the
 //! wall re-announces the set with fresh figures. A viewer falling behind
 //! falls behind repeatedly, and one read per lag frame put a slow tab's
-//! backlog straight onto Postgres. [`Recount`] spaces those reads a beat
+//! backlog straight onto Postgres. [`Recount`] spaces those reads a pace
 //! apart: the `catching_up` frame itself is still forwarded at once, and only
 //! the figures wait.
 
@@ -34,7 +35,9 @@ use std::time::Duration;
 use af_core::error_code::{Coded as _, Logged};
 use af_core::id::Uuid7;
 use afd_auth::principal::Principal;
-use afd_sse::{FanIn, Frame, KIND_CATCHING_UP};
+use afd_bus::Subject;
+use afd_http::auth::Owned;
+use afd_sse::{FanIn, Frame, KIND_CATCHING_UP, Link, Wake};
 use futures_util::stream::BoxStream;
 use tokio::time::Instant;
 
@@ -43,17 +46,15 @@ use super::revocable::{
 };
 use crate::services::{TenantPlane, WorkspaceFleets as _};
 
-/// How often the fleet set and the caller's membership are re-read.
-///
-/// The cadence `FleetSetCache` runs on, and the same value the store's own
-/// cache ages entries at — so a tick either finds a fresh enumeration or is the
-/// one viewer whose miss runs the statement for every other viewer.
-const REFRESH_INTERVAL: Duration = Duration::from_secs(10);
+/// The least time between two counter reads a lag asks for. A lag storm on a busy
+/// workspace would otherwise read the counters once per lost frame; this paces it to
+/// the cadence the wall's refresh used before it read on notices.
+const RECOUNT_PACE: Duration = Duration::from_secs(10);
 
 /// The log event a `hello` emits when it goes out without its figures.
 const EVENT_HELLO_COUNTERS_UNREAD: &str = "workspace_stream_hello_counters_unread";
 
-/// What one refresh tick concluded.
+/// What one refresh concluded.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Tick {
     /// The attached set already matches, and the caller still belongs.
@@ -63,27 +64,29 @@ enum Tick {
     /// The caller may no longer read this workspace. The stream sends
     /// `access_revoked` and closes.
     Revoked,
-    /// The caller's access went unanswered too many ticks running. The stream
-    /// closes without `access_revoked`, and the reconnect is authorized at open.
+    /// The caller's access went unanswered. The stream closes without
+    /// `access_revoked`, and the reconnect is authorized at open.
     Unverified,
 }
 
 /// Everything one workspace stream carries between frames.
 struct Wall<D> {
-    /// THIS caller's membership, re-asked on every tick: no other viewer's
+    /// THIS caller's membership, re-asked on every notice: no other viewer's
     /// answer can stand in for it. Its services and workspace are the ones
     /// the wall reads its set and counters through.
     watch: Watch<Membership<D>>,
     fan_in: FanIn,
-    next_refresh: Instant,
+    /// The account's members changed: re-ask the caller's membership.
+    members: Link,
+    /// The workspace gained or lost a fleet: re-read the set.
+    fleets: Link,
     /// Whether the opening `hello` has been sent.
     announced: bool,
     /// When a lag may next re-read the counters.
     recount: Recount,
 }
 
-/// Paces the counter reads a lag asks for: at most one per
-/// [`REFRESH_INTERVAL`].
+/// Paces the counter reads a lag asks for: at most one per [`RECOUNT_PACE`].
 ///
 /// Only a lag's reads are paced. The opening `hello` and a changed set's do
 /// not arm the pace, because frames lost after them moved the very counters
@@ -108,7 +111,7 @@ impl Recount {
 
     /// A lag's read is being taken now: the next waits a whole interval.
     fn paced(&mut self, now: Instant) {
-        self.after = now + REFRESH_INTERVAL;
+        self.after = now + RECOUNT_PACE;
         self.owed = false;
     }
 
@@ -142,17 +145,24 @@ impl Recount {
 /// Every frame one workspace stream sends, starting with its `hello`.
 pub(super) async fn frames<D: TenantPlane>(
     services: Arc<D>,
-    workspace: Uuid7,
+    owned: Owned,
     principal: Principal,
     opening: &BTreeSet<String>,
 ) -> BoxStream<'static, Frame> {
+    let Owned { workspace, tenant } = owned;
     let mut fan_in = services.live().fan_in();
     fan_in.sync_to(opening).await;
+    let members = services.live().link(Subject::Members(tenant)).await;
+    let fleets = services
+        .live()
+        .link(Subject::Fleets(workspace.clone()))
+        .await;
     let now = Instant::now();
     let wall = Wall {
         watch: Watch::new(Membership::new(services, principal, workspace), STREAM_WALL),
         fan_in,
-        next_refresh: now + REFRESH_INTERVAL,
+        members,
+        fleets,
         announced: false,
         recount: Recount::new(now),
     };
@@ -168,41 +178,55 @@ async fn step<D: TenantPlane>(mut wall: Wall<D>) -> Option<Turn<Wall<D>>> {
         return Some(announce(wall).await);
     }
     loop {
-        if Instant::now() >= wall.next_refresh {
-            match refresh(&mut wall).await {
-                Tick::Revoked => return Some(Turn::Revoked),
-                // An outage is not a revocation: the wall ends with no frame.
-                Tick::Unverified => return None,
-                Tick::Changed => return Some(announce(wall).await),
-                Tick::Steady => {}
-            }
-        }
         let now = Instant::now();
         if wall.recount.due(now) {
             wall.recount.paced(now);
             return Some(announce(wall).await);
         }
-        // Wake for whichever comes first. Sleeping the whole beat would be
-        // fine, but waking on the frame is what keeps latency at the
-        // publisher's rather than at the tick's.
-        let deadline = wall
-            .recount
-            .deadline()
-            .map_or(wall.next_refresh, |owed| owed.min(wall.next_refresh));
-        let arrived = tokio::select! {
-            frame = wall.fan_in.next_frame() => Some(frame),
-            () = tokio::time::sleep_until(deadline) => None,
+        // No timer re-reads Postgres: the wall wakes on a frame, on a notice that the
+        // account's members or the workspace's fleets changed, or on a gap or lost
+        // subscription that may have hidden one. Only an owed counter read sleeps.
+        let woke = tokio::select! {
+            frame = wall.fan_in.next_frame() => Woke::Frame(frame),
+            wake = wall.members.changed() => Woke::Notice(wake),
+            wake = wall.fleets.changed() => Woke::Notice(wake),
+            () = sleep_until_owed(wall.recount.deadline()) => continue,
         };
-        if let Some(frame) = arrived {
-            // A gap the server could not carry is exactly the frames that
-            // moved the counters, so the set is re-announced with where every
-            // fleet stands now — the backfill recovers the rows, the fresh
-            // `hello` recovers the figures — at the pace `Recount` allows.
-            if frame.kind == KIND_CATCHING_UP && wall.recount.lagged(Instant::now()) {
-                wall.announced = false;
+        match woke {
+            Woke::Frame(frame) => {
+                // A gap the server could not carry is exactly the frames that
+                // moved the counters, so the set is re-announced with where every
+                // fleet stands now — the backfill recovers the rows, the fresh
+                // `hello` recovers the figures — at the pace `Recount` allows.
+                if frame.kind == KIND_CATCHING_UP && wall.recount.lagged(Instant::now()) {
+                    wall.announced = false;
+                }
+                return Some(Turn::Frame(frame, wall));
             }
-            return Some(Turn::Frame(frame, wall));
+            // The bus shut down: end, so the client reconnects to a serving replica.
+            Woke::Notice(Wake::Closed) => return None,
+            Woke::Notice(Wake::Changed) => match refresh(&mut wall).await {
+                Tick::Revoked => return Some(Turn::Revoked),
+                // An outage is not a revocation: the wall ends with no frame.
+                Tick::Unverified => return None,
+                Tick::Changed => return Some(announce(wall).await),
+                Tick::Steady => {}
+            },
         }
+    }
+}
+
+/// What woke the wall.
+enum Woke {
+    Frame(Frame),
+    Notice(Wake),
+}
+
+/// Sleeps until an owed counter read falls due; never when none is owed.
+async fn sleep_until_owed(owed: Option<Instant>) {
+    match owed {
+        Some(at) => tokio::time::sleep_until(at).await,
+        None => std::future::pending().await,
     }
 }
 
@@ -249,8 +273,6 @@ fn counters_unread(workspace: &Uuid7, error: &afd_fleet_lifecycle::Error) {
 
 /// Re-authorize the caller, then align the attached set with the workspace's.
 async fn refresh<D: TenantPlane>(wall: &mut Wall<D>) -> Tick {
-    wall.next_refresh = Instant::now() + REFRESH_INTERVAL;
-
     match wall.watch.verdict().await {
         Verdict::Admitted => {}
         Verdict::Unverified => return Tick::Unverified,

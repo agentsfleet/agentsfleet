@@ -129,6 +129,9 @@ impl Adapter {
         let gap = format!("{prefix}{}", spelling(&Subject::Gap));
         let everyone = client.subscribe(gap.clone()).await?;
         client.flush().await?;
+        // A daemon that died between a commit and its publish took the notice with it.
+        // Every replica re-reads once when one boots, so no reader waits on a lost one.
+        signals::announce(&client, &gap, tuning.publish_deadline()).await;
         let watcher = tokio::spawn(signals::watch(
             client.clone(),
             Arc::clone(&channels),
@@ -236,6 +239,8 @@ pub fn spelling(subject: &Subject) -> String {
         Subject::ThreadItems(thread) => format!("af.thread.{thread}.items"),
         Subject::RunnerCommand(runner) => format!("af.runner.{runner}.cmd"),
         Subject::DeliveryWake => "af.delivery.wake".to_owned(),
+        Subject::Members(tenant) => format!("af.tenant.{tenant}.members"),
+        Subject::Fleets(workspace) => format!("af.workspace.{workspace}.fleets"),
         Subject::Gap => "af.bus.gap".to_owned(),
     }
 }

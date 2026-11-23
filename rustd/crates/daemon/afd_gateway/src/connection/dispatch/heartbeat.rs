@@ -45,7 +45,9 @@ impl ConnectionServices {
                     },
                 })
                 .await?;
-                self.refresh_cancellations().await?;
+                // No cancellation read rides the beat: a cancel is pushed as a runner
+                // command, and a lost one is re-read on the command subscription's
+                // gap or resubscribe, as a booting daemon's gap also forces.
             }
             Err(error) => {
                 let terminal = !error.retryable();

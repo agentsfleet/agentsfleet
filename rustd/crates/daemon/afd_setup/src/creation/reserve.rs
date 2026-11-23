@@ -190,6 +190,7 @@ impl Creations {
             model: checked.effective.runtime_model_ref.as_deref(),
         };
         let mut announcement = write_revision(connection, id, captured, head).await?;
+        announcement.fleet_set(&captured.context.workspace_id);
         announcement.append(
             self.replace_schedules(
                 connection,

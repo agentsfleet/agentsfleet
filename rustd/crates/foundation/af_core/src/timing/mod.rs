@@ -67,8 +67,9 @@ pub const SANDBOX_HOLD_IDLE: Duration = Duration::from_mins(10);
 
 /// How long an ephemeral NATS wake or runner command may wait for its broker.
 ///
-/// The turn is already durable; a lost wake leaves work for the replica's
-/// recovery probe, and heartbeat or renewal checks repair a lost runner command.
+/// The turn is already durable. A wake or runner command the broker loses is owed as
+/// a gap, whose recovery pass and re-check find the work, and every booting daemon
+/// gaps every replica once.
 /// Kept: without it every committed write's request hangs while NATS is down.
 pub const READY_WAKE_DEADLINE: Duration = Duration::from_millis(100);
 

@@ -1,8 +1,9 @@
 //! How a live stream re-asks its caller's access, and how it ends when the
 //! answer turns: `access_revoked`, then nothing.
 //!
-//! Both streams re-ask on a beat: the fleet stream on its heartbeat
-//! (`guard.rs`), the workspace wall on its refresh tick (`wall.rs`). Both ask
+//! Both streams re-ask when a notice says the account's members changed, or a
+//! gap may have hidden one: the fleet stream (`guard.rs`) and the workspace wall
+//! (`wall.rs`). Neither asks on a timer. Both ask
 //! through one [`Watch`], so they cannot disagree about an unanswered check.
 //! The ending is this adapter's, so neither stream carries a "closed" flag a
 //! later edit could forget to check. Once a turn says the access is gone, the

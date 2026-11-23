@@ -928,7 +928,6 @@ dependencies = [
  "afd_state",
  "jiff 1.0.1",
  "jiff-sqlx",
- "moka",
  "sqlx",
  "thiserror 2.0.21",
  "tokio",

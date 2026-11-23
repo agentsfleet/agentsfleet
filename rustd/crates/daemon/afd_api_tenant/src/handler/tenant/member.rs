@@ -77,7 +77,7 @@ pub(crate) async fn list<D: TenantPlane>(
     operation_id = "remove_member",
     summary = "Remove a member",
     description = concat!(
-        "Removes an account member. Open streams close within 15 seconds; later workspace ",
+        "Removes an account member. Their open streams close; later workspace ",
         "requests are refused. Missing members return 204. Removing the last owner returns ",
         "409 `UZ-INV-004`.",
     ),
@@ -94,7 +94,7 @@ pub(crate) async fn remove<D: TenantPlane>(
     user: IdPath<MemberSegment>,
     owner: OwnTenant,
 ) -> Result<Response, Refusal> {
-    services
+    let removal = services
         .team()
         .remove(owner.tenant(), user.id())
         .await
@@ -104,6 +104,13 @@ pub(crate) async fn remove<D: TenantPlane>(
                 (error.code() == error_code::MEMBER_LAST_OWNER).then_some(STATE_LAST_OWNER)
             },
         ))?;
+    if removal == afd_tenant::team::Removal::Removed {
+        // After the commit: every open stream in the account re-reads whether its
+        // viewer still belongs, so a removed member's live views end.
+        let notice = afd_bus::Subject::Members(owner.tenant().clone());
+        let sent = services.runner_commands().publish(&notice, "").await;
+        afd_bus::observe_notification(&notice, sent);
+    }
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 

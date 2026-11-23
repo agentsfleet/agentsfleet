@@ -5,8 +5,6 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
-use crate::harness;
-
 #[path = "support/fleet_stream_transport.rs"]
 mod transport;
 
@@ -16,15 +14,10 @@ pub(crate) mod fixture;
 #[path = "runner_plane/native_opening.rs"]
 mod native_opening;
 
-use std::time::Duration;
-
-use afd_auth::scope::{Scope, ScopeSet};
-use afd_fleet_lifecycle::Fleets;
 use afd_sse::KIND_ACCESS_REVOKED;
 use axum::body::BodyDataStream;
 
-use self::fixture::{Fixture, SUBJECT, Wall, data_of, next_chunk, open_stream, stream_ends};
-use self::harness::Fleet;
+use self::fixture::{Fixture, SUBJECT, Wall, data_of, next_chunk, stream_ends};
 
 /// More frames than the bus's per-reader buffer (256) holds, so a body
 /// nobody reads falls behind and the fan-in reports the gap.
@@ -41,23 +34,10 @@ const MIN_POOL_SIZE_KNOB: &str = "DATABASE_MIN_POOL_SIZE_API";
 const ACQUIRE_TIMEOUT_KNOB: &str = "DATABASE_ACQUIRE_TIMEOUT_MS";
 const ONE_CONNECTION: &str = "1";
 
-/// Under the read's two-second deadline, so the paused clock reaches the
-/// acquire budget first; long enough that the fixture's own real connects —
-/// the seed and the opening, over the lane's TLS — are not refused by it.
+/// Under the read's two-second deadline, so the acquire budget refuses the
+/// counters read first; long enough that the fixture's own real connects — the
+/// seed and the opening, over the lane's TLS — are not refused by it.
 const SHORT_ACQUIRE_MS: &str = "1500";
-
-/// A second fleet joins the workspace, and the store's live set is refreshed
-/// to carry it before any clock is paused; the new fleet's id comes back.
-async fn add_a_second_fleet(fixture: &Fixture, fleet_store: &Fleets) -> String {
-    let second = fixture.seed_second_fleet().await;
-    fleet_store.invalidate_live_set(&fixture.workspace).await;
-    let refreshed = fleet_store
-        .live_set(&fixture.workspace)
-        .await
-        .expect("the invalidated set refreshes before the clock is paused");
-    assert!(refreshed.contains(&second));
-    second
-}
 
 /// A revoked wall says why it is closing, and then nothing follows.
 async fn assert_revoked_wall_closes(body: &mut BodyDataStream) {
@@ -72,55 +52,35 @@ async fn assert_revoked_wall_closes(body: &mut BodyDataStream) {
     );
 }
 
+/// A fleet created after the wall opened is announced on the notice its create
+/// publishes, and a member removal's notice ends a revoked caller's wall.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_workspace_stream_announces_its_live_fleet_set() {
-    let fixture = Fixture::create().await;
-    fixture.seed().await;
-    let fleet = Fleet::live(
-        fixture.database.clone(),
-        SUBJECT,
-        ScopeSet::from_scopes(&Scope::ALL),
-    )
-    .with_owned_workspace(fixture.workspace.clone())
-    .with_live_bus(harness::bus().await);
-    let ownership = fleet.ownership();
-    let fleet_store = fleet.fleet_store();
-    let router = fleet.router();
-    let mut body = open_stream(&router, &fixture).await;
+    let mut wall = Wall::open(Fixture::create().await).await;
+    let second = wall.fixture.seed_second_fleet().await;
+    wall.notify_fleets().await;
+    let changed = wall.next_of("hello").await;
+    assert!(
+        changed.contains(&second),
+        "the new fleet is announced: {changed}"
+    );
 
-    let second = add_a_second_fleet(&fixture, &fleet_store).await;
-    // Skip the tick's ten seconds on the paused clock, then let real time
-    // run again before reading: the changed `hello` reads the fleets'
-    // counters from Postgres, and a paused runtime that goes idle on a socket
-    // auto-advances its clock — which would fire the read's own deadline
-    // before the datastore answers.
-    tokio::time::pause();
-    tokio::time::advance(Duration::from_secs(11)).await;
-    tokio::time::resume();
-    let changed = next_chunk(&mut body).await;
-    assert!(changed.contains("event: hello"));
-    assert!(changed.contains(&second));
-
-    ownership.revoke();
-    tokio::time::pause();
-    tokio::time::advance(Duration::from_secs(11)).await;
-    assert_revoked_wall_closes(&mut body).await;
-    drop(body);
-    tokio::time::resume();
-    fixture.cleanup().await;
+    wall.ownership.revoke();
+    wall.notify_members().await;
+    assert_revoked_wall_closes(&mut wall.body).await;
+    wall.close().await;
 }
 
 /// A `hello` whose counters read is refused still announces the set — with
 /// no figures, never with zeros.
 ///
-/// The pool holds one connection and the test keeps it, so the tick's read
-/// waits on the pool; on the paused clock the runtime auto-advances to the
-/// acquire budget, which is the refusal the wall handles. The set still goes
-/// out (`fleet_ids` carries the fleet added since the opening) and the map is
-/// empty, so a client leaves what it has standing.
+/// The pool holds one connection and the test keeps it while a gap asks for a
+/// fresh `hello`, so its counters read waits on the pool until the acquire
+/// budget refuses it. The set still goes out and the map is empty, so a client
+/// leaves what it has standing.
 #[tokio::test]
-#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_hello_whose_counters_read_is_refused_still_announces_the_set() {
     let fixture = Fixture::with_pool(&[
         (POOL_SIZE_KNOB, ONE_CONNECTION),
@@ -128,34 +88,22 @@ async fn a_hello_whose_counters_read_is_refused_still_announces_the_set() {
         (ACQUIRE_TIMEOUT_KNOB, SHORT_ACQUIRE_MS),
     ])
     .await;
-    let mut wall = Wall::open(fixture).await;
-    let second = wall.fixture.seed_second_fleet().await;
-    wall.store
-        .invalidate_live_set(&wall.fixture.workspace)
-        .await;
-    let refreshed = wall
-        .store
-        .live_set(&wall.fixture.workspace)
-        .await
-        .expect("the invalidated set refreshes before the connection is held");
-    assert!(refreshed.contains(&second));
-
-    // The one connection, held for the tick: the counters read can only wait.
+    let (bus, _server) = afd_bus::test_util::detached().expect("an in-process bus opens");
+    let mut wall = Wall::open_over(fixture, bus).await;
+    // The one connection, held: the counters read can only wait.
     let held = wall
         .fixture
         .database
         .acquire()
         .await
         .expect("the pool's one connection is free to hold");
-    tokio::time::pause();
-    tokio::time::advance(Duration::from_secs(11)).await;
-    let changed = next_chunk(&mut wall.body).await;
-    tokio::time::resume();
+    wall.publish(GAP_FRAMES).await;
+    wall.next_of("catching_up").await;
+    let changed = wall.next_of("hello").await;
     drop(held);
 
-    assert!(changed.contains("event: hello"));
     assert!(
-        changed.contains(&second),
+        changed.contains(wall.fixture.fleet.as_str()),
         "the set is announced whether or not it was priced"
     );
     let hello = data_of(&changed);

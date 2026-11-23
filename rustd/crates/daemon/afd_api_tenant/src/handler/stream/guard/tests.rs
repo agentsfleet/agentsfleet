@@ -1,7 +1,9 @@
 //! The fleet stream's re-check, against a question that answers from a
-//! script: each arm of the answer, and what each logged, on a paused clock.
+//! script and notices a test sends: each arm of the answer, what each logged,
+//! and that nothing is asked without a notice, on a paused clock.
 #![expect(clippy::expect_used, reason = "test preconditions must fail loudly")]
 
+use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
@@ -9,12 +11,12 @@ use af_core::error_code::{self, ErrorCode};
 use af_core::id::Uuid7;
 use af_core::test_util::trace::{Capture, CapturedEvent};
 use afd_http::handler::Refusable;
-use afd_sse::{Frame, KIND_ACCESS_REVOKED};
+use afd_sse::{Frame, KIND_ACCESS_REVOKED, Wake};
 use futures_util::StreamExt as _;
 use futures_util::stream::{self, BoxStream};
 
 use super::super::revocable::{EVENT_STREAM_UNVERIFIED, STREAM_FLEET};
-use super::{RECHECK_INTERVAL, Recheck, watched};
+use super::{Recheck, watched};
 
 const WORKSPACE: &str = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1011";
 
@@ -24,11 +26,8 @@ const OUTAGE_REASON: &str = "the pool timed out";
 /// The fixture outage's code.
 const OUTAGE_CODE: ErrorCode = error_code::INTERNAL_DB_QUERY;
 
-/// Half a beat: past one re-check, short of the next.
-const HALF_BEAT: Duration = RECHECK_INTERVAL.checked_div(2).expect("a beat halves");
-
-/// Past one re-check, short of the next.
-const ONE_BEAT: Duration = RECHECK_INTERVAL.saturating_add(HALF_BEAT);
+/// Longer than any re-check takes on the paused clock: an hour of idle time.
+const AN_HOUR: Duration = Duration::from_secs(3600);
 
 /// A datastore that would not answer.
 #[derive(Debug)]
@@ -49,7 +48,7 @@ impl Refusable for Outage {
     }
 }
 
-/// How the fixture question answers one beat.
+/// How the fixture question answers one re-check.
 #[derive(Debug, Clone, Copy)]
 enum Answer {
     Admitted,
@@ -57,12 +56,12 @@ enum Answer {
     Unreachable,
 }
 
-/// A question answering from a script, one answer per beat; past its end it
+/// A question answering from a script, one answer per re-check; past its end it
 /// repeats the last. `asked` indexes the script, because `admitted` takes
-/// `&self`.
+/// `&self`, and the test reads it to count the re-checks.
 struct Scripted {
     answers: Vec<Answer>,
-    asked: AtomicUsize,
+    asked: Arc<AtomicUsize>,
     workspace: Uuid7,
 }
 
@@ -84,48 +83,79 @@ impl Recheck for Scripted {
     }
 }
 
-/// A question answering `answers` in turn.
-fn scripted(answers: &[Answer]) -> Scripted {
+/// A question answering `answers` in turn, counting into `asked`.
+fn scripted(answers: &[Answer], asked: &Arc<AtomicUsize>) -> Scripted {
     Scripted {
         answers: answers.to_vec(),
-        asked: AtomicUsize::new(0),
+        asked: Arc::clone(asked),
         workspace: Uuid7::parse(WORKSPACE).expect("the fixture identifier is UUIDv7"),
     }
 }
 
-/// A stream with no frames of its own, guarded by a question answering
-/// `answers` in turn.
-fn quiet(answers: &[Answer]) -> BoxStream<'static, Frame> {
-    watched(stream::pending().boxed(), scripted(answers))
+/// A stream with frames `frames`, guarded by a question answering `answers` in
+/// turn, with the sender of its notices and the count of re-checks asked.
+struct Guarded {
+    stream: BoxStream<'static, Frame>,
+    notices: tokio::sync::mpsc::UnboundedSender<Wake>,
+    asked: Arc<AtomicUsize>,
 }
 
-/// Whether the stream is still open after `beats` re-checks from now:
-/// nothing sent, not ended.
-async fn open_through(stream: &mut BoxStream<'static, Frame>, beats: u32) -> bool {
-    let span = RECHECK_INTERVAL
-        .saturating_mul(beats)
-        .saturating_add(HALF_BEAT);
-    tokio::time::timeout(span, stream.next()).await.is_err()
+fn guarded_with(frames: BoxStream<'static, Frame>, answers: &[Answer]) -> Guarded {
+    let asked = Arc::new(AtomicUsize::new(0));
+    let (notices, received) = tokio::sync::mpsc::unbounded_channel();
+    let received = stream::unfold(received, async |mut received| {
+        received.recv().await.map(|wake| (wake, received))
+    });
+    Guarded {
+        stream: watched(frames, scripted(answers, &asked), received.boxed()),
+        notices,
+        asked,
+    }
 }
 
-/// Whether the stream ends within one more beat without sending anything,
-/// `access_revoked` included.
-async fn ends_quietly_within_a_beat(stream: &mut BoxStream<'static, Frame>) -> bool {
-    matches!(
-        tokio::time::timeout(ONE_BEAT, stream.next()).await,
-        Ok(None)
-    )
+/// A stream with no frames of its own.
+fn quiet(answers: &[Answer]) -> Guarded {
+    guarded_with(stream::pending().boxed(), answers)
 }
 
-/// The stream's next frame, within one beat, is `access_revoked`, and nothing
-/// follows it.
-async fn assert_ends_on_access_revoked(stream: &mut BoxStream<'static, Frame>) {
-    let last = tokio::time::timeout(ONE_BEAT, stream.next())
-        .await
-        .expect("the beat answers")
-        .expect("the revocation is sent");
-    assert_eq!(last.kind, KIND_ACCESS_REVOKED);
-    assert!(stream.next().await.is_none(), "nothing follows it");
+impl Guarded {
+    /// Sends one notice that the account's members may have changed.
+    fn ring(&self, wake: Wake) {
+        self.notices
+            .send(wake)
+            .expect("the guard holds the receiver");
+    }
+
+    /// How many times the guard asked.
+    fn asked(&self) -> usize {
+        self.asked.load(Ordering::Relaxed)
+    }
+
+    /// Whether the stream stays open through an hour of idle time: nothing sent,
+    /// not ended.
+    async fn open_for_an_hour(&mut self) -> bool {
+        tokio::time::timeout(AN_HOUR, self.stream.next())
+            .await
+            .is_err()
+    }
+
+    /// Whether the stream ends without sending anything, `access_revoked` included.
+    async fn ends_quietly(&mut self) -> bool {
+        matches!(
+            tokio::time::timeout(AN_HOUR, self.stream.next()).await,
+            Ok(None)
+        )
+    }
+
+    /// The stream's next frame is `access_revoked`, and nothing follows it.
+    async fn assert_ends_on_access_revoked(&mut self) {
+        let last = tokio::time::timeout(AN_HOUR, self.stream.next())
+            .await
+            .expect("the notice is answered")
+            .expect("the revocation is sent");
+        assert_eq!(last.kind, KIND_ACCESS_REVOKED);
+        assert!(self.stream.next().await.is_none(), "nothing follows it");
+    }
 }
 
 /// Every record raised under `event`, in order.
@@ -153,53 +183,98 @@ fn assert_unanswered(record: &CapturedEvent, code: ErrorCode, reason: &str) {
     );
 }
 
+/// No notice, no question: an idle stream asks nothing however long it stays
+/// open, which is the timer this guard no longer runs.
+#[tokio::test(start_paused = true)]
+async fn an_idle_stream_asks_nothing_without_a_notice() {
+    let mut guarded = quiet(&[Answer::Revoked]);
+    assert!(guarded.open_for_an_hour().await);
+    assert_eq!(guarded.asked(), 0);
+}
+
 /// A datastore that will not answer ends the stream with no frame — an
 /// outage is not a revocation — and the closing is logged once with the
 /// outage's own code.
 #[tokio::test(start_paused = true)]
 async fn should_end_quietly_and_log_once_when_the_recheck_fails() {
     let capture = Capture::install();
-    let mut stream = quiet(&[Answer::Unreachable]);
+    let mut guarded = quiet(&[Answer::Unreachable]);
+    guarded.ring(Wake::Changed);
     assert!(
-        ends_quietly_within_a_beat(&mut stream).await,
+        guarded.ends_quietly().await,
         "an unanswered check ends the stream without access_revoked"
     );
     let closing = capture.only(EVENT_STREAM_UNVERIFIED);
     assert_unanswered(&closing, OUTAGE_CODE, OUTAGE_REASON);
 }
 
-/// A caller still admitted keeps the stream, and nothing is closed.
+/// A caller still admitted keeps the stream through every notice, and nothing
+/// is closed.
 #[tokio::test(start_paused = true)]
 async fn should_keep_the_stream_quietly_while_the_caller_is_admitted() {
     let capture = Capture::install();
-    let mut stream = quiet(&[Answer::Admitted]);
-    assert!(open_through(&mut stream, 3).await);
+    let mut guarded = quiet(&[Answer::Admitted]);
+    for _ in 0..3 {
+        guarded.ring(Wake::Changed);
+    }
+    assert!(guarded.open_for_an_hour().await);
+    assert_eq!(guarded.asked(), 3, "one question per notice");
     assert!(records(&capture, EVENT_STREAM_UNVERIFIED).is_empty());
 }
 
-/// A caller who lost the workspace gets `access_revoked`, then the end.
+/// A caller who lost the workspace gets `access_revoked` on the next notice,
+/// then the end.
 #[tokio::test(start_paused = true)]
 async fn should_end_on_access_revoked_once_the_caller_is_refused() {
-    let mut stream = quiet(&[Answer::Revoked]);
-    assert_ends_on_access_revoked(&mut stream).await;
+    let mut guarded = quiet(&[Answer::Revoked]);
+    guarded.ring(Wake::Changed);
+    guarded.assert_ends_on_access_revoked().await;
 }
 
-/// A revocation after admitted beats lands on its own beat.
+/// A revocation after admitted notices lands on its own notice.
 #[tokio::test(start_paused = true)]
-async fn should_end_on_access_revoked_on_the_beat_it_lands() {
-    let mut stream = quiet(&[Answer::Admitted, Answer::Revoked]);
+async fn should_end_on_access_revoked_on_the_notice_it_lands() {
+    let mut guarded = quiet(&[Answer::Admitted, Answer::Revoked]);
+    guarded.ring(Wake::Changed);
     assert!(
-        open_through(&mut stream, 1).await,
-        "the admitted beat keeps it"
+        guarded.open_for_an_hour().await,
+        "the admitted notice keeps it"
     );
-    assert_ends_on_access_revoked(&mut stream).await;
+    guarded.ring(Wake::Changed);
+    guarded.assert_ends_on_access_revoked().await;
 }
 
-/// A frame that arrives before the beat goes straight out.
+/// A bus that shut down ends the stream with no frame and no question, so the
+/// client reconnects to a serving replica.
 #[tokio::test(start_paused = true)]
-async fn should_forward_a_frame_that_arrives_before_the_beat() {
+async fn a_closed_bus_ends_the_stream_without_asking() {
+    let mut guarded = quiet(&[Answer::Revoked]);
+    guarded.ring(Wake::Closed);
+    assert!(guarded.ends_quietly().await);
+    assert_eq!(guarded.asked(), 0);
+}
+
+/// Notices that stop for good end the stream the same way.
+#[tokio::test(start_paused = true)]
+async fn notices_that_end_end_the_stream() {
+    let Guarded {
+        mut stream,
+        notices,
+        ..
+    } = quiet(&[Answer::Admitted]);
+    drop(notices);
+    assert!(matches!(
+        tokio::time::timeout(AN_HOUR, stream.next()).await,
+        Ok(None)
+    ));
+}
+
+/// A frame that arrives goes straight out, with no question asked.
+#[tokio::test(start_paused = true)]
+async fn should_forward_a_frame_without_asking() {
     let frames = stream::iter([Frame::catching_up(1)]).chain(stream::pending());
-    let mut stream = watched(frames.boxed(), scripted(&[Answer::Admitted]));
-    let first = stream.next().await.expect("the frame goes out");
+    let mut guarded = guarded_with(frames.boxed(), &[Answer::Admitted]);
+    let first = guarded.stream.next().await.expect("the frame goes out");
     assert_eq!(first.kind, afd_sse::KIND_CATCHING_UP);
+    assert_eq!(guarded.asked(), 0);
 }

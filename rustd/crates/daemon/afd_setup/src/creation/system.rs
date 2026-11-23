@@ -130,6 +130,7 @@ impl Creations {
                 .execute(connection.as_mut())
                 .await
                 .map_err(query(CONTEXT))?;
+            afd_turns::view::activity::fleets_changed(&self.activity_streams(), workspace).await;
             Ok(())
         }
         .await;

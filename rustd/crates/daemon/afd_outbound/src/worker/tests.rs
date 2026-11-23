@@ -100,10 +100,10 @@ async fn a_wake_that_cannot_subscribe_is_logged() -> TestResult {
     Ok(())
 }
 
-/// A wake stream that ends is logged once and dropped, and never reports a
-/// ping after it.
+/// A wake stream that ends is logged once and dropped, and returns at once so
+/// the loop scans and opens the subscription again on its backoff.
 #[tokio::test]
-async fn a_closed_wake_is_logged_and_dropped() -> TestResult {
+async fn a_closed_wake_is_logged_dropped_and_returns() -> TestResult {
     let capture = Capture::install();
     let (bus, _server) = afd_bus::test_util::detached()?;
     let subscription = bus.subscribe(&Subject::DeliveryWake).await?;
@@ -112,9 +112,14 @@ async fn a_closed_wake_is_logged_and_dropped() -> TestResult {
 
     let waited = tokio::time::timeout(Duration::from_millis(50), pinged(&mut wake)).await;
 
-    assert!(waited.is_err(), "a closed wake never reports a ping");
-    assert!(wake.is_none(), "the worker stops listening");
+    assert!(
+        waited.is_ok(),
+        "a closed wake returns so the loop can reopen it"
+    );
+    assert!(wake.is_none(), "the closed subscription is dropped");
     assert_unpinged(&capture, EVENT_WAKE_CLOSED);
+    let reopened = tokio::time::timeout(Duration::from_millis(50), pinged(&mut wake)).await;
+    assert!(reopened.is_err(), "with none open, nothing is reported");
     Ok(())
 }
 

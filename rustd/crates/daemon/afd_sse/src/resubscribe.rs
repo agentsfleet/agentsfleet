@@ -153,6 +153,32 @@ impl Link {
         false
     }
 
+    /// Waits for the next reason to re-read what the subject announces: a notice, a
+    /// lag or a gap on it, or a lost subscription once it is open again, since what was
+    /// published while it was lost is unknown. [`Wake::Closed`] once the bus shut down.
+    ///
+    /// Cancel-safe: a reader may race it against its other sources in a `select!`.
+    pub async fn changed(&mut self) -> Wake {
+        loop {
+            if self.is_closed() {
+                return Wake::Closed;
+            }
+            if let Some(subscription) = self.subscription() {
+                match subscription.recv().await {
+                    Ok(_received) => return Wake::Changed,
+                    Err(error) => self.lose(&error),
+                }
+                continue;
+            }
+            if let Some(due) = self.retry_due() {
+                tokio::time::sleep_until(due).await;
+            }
+            if self.reopen_if_due().await {
+                return Wake::Changed;
+            }
+        }
+    }
+
     /// When the pending retry is due; `None` when none is pending. Answers
     /// the instant rather than waiting on it, so the wait borrows no link.
     fn retry_due(&self) -> Option<Instant> {
@@ -163,6 +189,15 @@ impl Link {
         tracing::debug!(attempt, wait_ms, event = "sse_resubscribing");
         Some(at)
     }
+}
+
+/// Why [`Link::changed`] returned.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Wake {
+    /// Something the subject announces may have changed: read it again.
+    Changed,
+    /// The bus shut down and never announces again.
+    Closed,
 }
 
 /// What one turn of the tail decided.

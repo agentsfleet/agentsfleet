@@ -49,12 +49,21 @@ impl Notices {
 #[must_use = "commit the receipt transaction with its announcement"]
 pub struct Announcement {
     fleets: Vec<Uuid7>,
+    /// Workspaces whose set of fleets this transaction changed.
+    workspaces: Vec<Uuid7>,
 }
 
 impl Announcement {
     /// Combines receipt writes owned by the same transaction.
     pub fn append(&mut self, other: Self) {
         self.fleets.extend(other.fleets);
+        self.workspaces.extend(other.workspaces);
+    }
+
+    /// Announces after the commit that `workspace` gained or lost a fleet, so its
+    /// open walls re-read the set.
+    pub fn fleet_set(&mut self, workspace: &Uuid7) {
+        self.workspaces.push(workspace.clone());
     }
 }
 
@@ -70,7 +79,12 @@ pub async fn commit(
     transaction.commit().await?;
     announcement.fleets.sort_unstable();
     announcement.fleets.dedup();
+    announcement.workspaces.sort_unstable();
+    announcement.workspaces.dedup();
     if let Some(notices) = notices {
+        for workspace in &announcement.workspaces {
+            fleets_changed(notices.streams(), workspace).await;
+        }
         let streams = notices.streams();
         futures_util::stream::iter(announcement.fleets)
             .for_each_concurrent(notices.fanout(), async move |fleet| {
@@ -109,6 +123,7 @@ pub async fn record_on(
     // A fresh identity never meets a conflict, so every write is a new receipt.
     Ok(Announcement {
         fleets: vec![fleet.clone()],
+        workspaces: Vec::new(),
     })
 }
 
@@ -132,7 +147,18 @@ pub async fn record_access_on(
         }))
         .fetch_all(connection)
         .await?;
-    Ok(Announcement { fleets })
+    Ok(Announcement {
+        fleets,
+        workspaces: Vec::new(),
+    })
+}
+
+/// Tells `workspace`'s open walls, after the commit that changed it, that its set of
+/// fleets changed. A lost notice is owed as a gap, which re-reads every wall.
+pub async fn fleets_changed(streams: &Handle, workspace: &Uuid7) {
+    let subject = afd_bus::Subject::Fleets(workspace.clone());
+    let publication = streams.publish(&subject, "").await;
+    afd_bus::observe_notification(&subject, publication);
 }
 
 /// Notify open tails after durable history commits; failure preserves reload.

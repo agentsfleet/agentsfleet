@@ -188,6 +188,14 @@ async fn mark(client: &Client, physical: String, deadline: Duration) -> Result<(
     Ok(())
 }
 
+/// Gaps every replica's subscriptions once, at boot. A failure is logged: the
+/// booting replica has no reader yet, and the next reconnect gaps the rest.
+pub(super) async fn announce(client: &Client, everyone: &str, deadline: Duration) {
+    if let Err(failure) = mark(client, everyone.to_owned(), deadline).await {
+        mark_failed(&failure);
+    }
+}
+
 /// Send each owed marker once; what fails stays owed for the next reconnect.
 pub(super) async fn pay(client: &Client, signals: &Signals, everyone: &str) -> usize {
     let owed = signals.debt().take();

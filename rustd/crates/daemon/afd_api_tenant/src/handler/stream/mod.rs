@@ -126,7 +126,7 @@ const DETAIL_FLEET_NOT_FOUND: &str = "Fleet not found";
         "connection; `Last-Event-ID` is ignored. `hello` and `catching_up` use zero ",
         "without advancing activity identifiers. Heartbeats arrive after 15 idle seconds, ",
         "with `kind: heartbeat` and no identifier.\n\n",
-        "Access is checked every 15 seconds. `access_revoked` sends ",
+        "Access is checked again when the account's members change. `access_revoked` sends ",
         access_revoked_data!(),
         "one minute; recover as after a disconnect. At capacity, 503 `UZ-API-002` ",
         "includes `Retry-After`. Fetch missed turns before reconnecting.",
@@ -164,7 +164,7 @@ pub(crate) async fn fleet<D: TenantPlane>(
         .ok_or_else(|| Refusal::coded(error_code::AGENTSFLEET_NOT_FOUND, DETAIL_FLEET_NOT_FOUND))?;
 
     let tail = services.live().tail_of(&fleet).await;
-    let frames = guard::guarded(tail, Arc::clone(&services), principal, owned.workspace);
+    let frames = guard::guarded(tail, Arc::clone(&services), principal, owned).await;
     Ok(serve(frames, slot))
 }
 
@@ -187,7 +187,8 @@ pub(crate) async fn fleet<D: TenantPlane>(
         "Identifiers restart at zero per connection; `Last-Event-ID` is ignored. `hello` ",
         "and `catching_up` use zero without advancing activity identifiers. Heartbeats ",
         "arrive after 15 idle seconds, with `kind: heartbeat` and no identifier.\n\n",
-        "Access is checked every ten seconds. `access_revoked` sends ",
+        "Access and the fleet set are checked again when the account's members or the ",
+        "workspace's fleets change. `access_revoked` sends ",
         access_revoked_data!(),
         "40 seconds; recover as after a disconnect. At capacity, 503 `UZ-API-002` ",
         "includes `Retry-After`.",
@@ -220,7 +221,7 @@ pub(crate) async fn workspace<D: TenantPlane>(
         .await
         .map_err(Refusal::at(EVENT_WORKSPACE_STREAM))?;
 
-    let frames = wall::frames(services, owned.workspace, principal, &fleets).await;
+    let frames = wall::frames(services, owned, principal, &fleets).await;
     Ok(serve(frames, slot))
 }
 
