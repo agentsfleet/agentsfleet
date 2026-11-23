@@ -33,10 +33,9 @@ pub(crate) async fn bounded<T>(operation: &str, future: impl Future<Output = T>)
 
 pub(crate) struct Calls {
     pub(crate) stopped: tokio_util::sync::CancellationToken,
-    /// Where a test pushes a daemon policy frame, once the scripted stream runs.
-    policy: Option<
+    /// Where a test pushes a daemon policy frame; the scripted stream reads it.
+    policy:
         std::sync::Arc<tokio::sync::watch::Sender<Option<std::sync::Arc<af_stream::OwnedFrame>>>>,
-    >,
     received: mpsc::UnboundedReceiver<Call>,
     /// Each answer that panicked, as the fake daemon reports it.
     failures: mpsc::UnboundedReceiver<String>,
@@ -55,9 +54,7 @@ impl Calls {
         )
         .await
         .expect("a policy frame encodes");
-        if let Some(policy) = &self.policy {
-            policy.send_replace(Some(std::sync::Arc::new(frame)));
-        }
+        self.policy.send_replace(Some(std::sync::Arc::new(frame)));
     }
 
     pub(crate) async fn recv(&mut self) -> Option<Call> {
@@ -127,10 +124,13 @@ pub(crate) fn plane<F>(answer: F) -> (ControlPlane, Calls)
 where
     F: Fn(&Call) -> Answer + Send + Sync + 'static,
 {
-    let (api, mut calls) = fake(answer);
+    let (api, calls) = fake(answer);
     let api: std::sync::Arc<dyn RunnerApi> = std::sync::Arc::new(api);
-    let (stream, policy) = stream::start(&api, calls.stopped.clone());
-    calls.policy = Some(policy);
+    let stream = stream::start(
+        &api,
+        calls.stopped.clone(),
+        std::sync::Arc::clone(&calls.policy),
+    );
     (ControlPlane::new(Box::new(SharedApi(api)), stream), calls)
 }
 
@@ -194,7 +194,7 @@ where
             received,
             failures,
             stopped: tokio_util::sync::CancellationToken::new(),
-            policy: None,
+            policy: std::sync::Arc::new(tokio::sync::watch::Sender::new(None)),
         },
     )
 }

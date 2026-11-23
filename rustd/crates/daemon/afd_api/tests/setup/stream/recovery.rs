@@ -268,14 +268,32 @@ async fn a_page_whose_subscription_was_refused_reopens_and_hears_the_next_change
     })
     .await;
     let mut body = live.open().await;
+    assert_eq!(live.readers(), 0, "the page's subscription was refused");
+    // The page runs only while its body is read: drain it, so it waits on each retry
+    // as a browser's connection would let it.
+    let (frames, mut received) = tokio::sync::mpsc::unbounded_channel();
+    let draining = tokio::spawn(async move {
+        while let Some(Ok(chunk)) = body.next().await {
+            if frames
+                .send(String::from_utf8_lossy(&chunk).into_owned())
+                .is_err()
+            {
+                return;
+            }
+        }
+    });
     // Four refusals back off 0.25 + 0.5 + 1 + 2 s; the page waits on each retry.
     tokio::time::sleep(Duration::from_secs(5)).await;
+    assert_eq!(live.readers(), 1, "a retry reopened it");
     live.mutate("UPDATE thread.turns SET status='completed' WHERE thread_id=$1")
         .await;
     live.publish(&json!({ "changed": live.draft }));
     let mut seen = Vec::new();
     loop {
-        let chunk = frame(&mut body).await;
+        let chunk = tokio::time::timeout(super::DELIVERY, received.recv())
+            .await
+            .expect("the change arrives on its notice")
+            .expect("the page is open");
         let done = chunk.contains("event: message.completed\n");
         seen.push(chunk);
         if done {
@@ -283,6 +301,6 @@ async fn a_page_whose_subscription_was_refused_reopens_and_hears_the_next_change
         }
         assert!(seen.len() < 4, "the change arrives on its notice: {seen:?}");
     }
-    drop(body);
+    draining.abort();
     live.cleanup().await;
 }

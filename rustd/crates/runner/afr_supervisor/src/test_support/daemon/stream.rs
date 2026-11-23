@@ -26,17 +26,16 @@ use crate::{
     },
 };
 
-/// The scripted stream, and the sender a test pushes a daemon policy frame through.
+/// The scripted stream, reading daemon policy frames a test pushes through `policy`.
 pub(super) fn start(
     api: &Arc<dyn RunnerApi>,
     stop: CancellationToken,
-) -> (StreamHandle, Arc<watch::Sender<Option<Arc<OwnedFrame>>>>) {
+    policy: Arc<watch::Sender<Option<Arc<OwnedFrame>>>>,
+) -> StreamHandle {
     let initial = session(&stop);
     let (current, session) = watch::channel(Some(Arc::clone(&initial.0)));
     let (renewal_owner, renewal_session) = watch::channel(Some(Arc::clone(&initial.0)));
-    let (policy, policies) = watch::channel(None);
-    let policy = Arc::new(policy);
-    let pushed = Arc::clone(&policy);
+    let policies = policy.subscribe();
     let handle = StreamHandle::new(session, Arc::new(Running::default()), policies);
     let mut renewal_handle = StreamHandle::new(
         renewal_session,
@@ -63,7 +62,7 @@ pub(super) fn start(
             batching,
         );
     });
-    (handle, pushed)
+    handle
 }
 
 fn session(stop: &CancellationToken) -> (Arc<SessionSender>, Receivers) {
