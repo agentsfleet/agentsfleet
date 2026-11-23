@@ -357,6 +357,23 @@ The setup assignment gate reads the balance without a lock (`afd_setup`'s setup-
 
 Stop and delete take the draft, then its thread in a statement of its own, then its turn or runs, and never take the runner row (`afd_setup`'s `message/stop.rs` and `privacy.rs`).
 
+### A fleet Stop, the issue, a fold retry and a gate answer
+
+Each takes the fleet's thread before a turn or a gate, so they queue on the thread instead of locking a turn and a gate in opposite orders:
+
+```
+ fleet Stop     hold_thread.sql: fleet KEY SHARE ─► thread NO KEY UPDATE
+                then stop_turn.sql: turn ─► run ─► the turn's gate
+ issue          host ─► thread (held) ─► head turn FOR SHARE, unsettled and at the fence
+ fold retry     assign_inputs.sql: thread NO KEY UPDATE ─► the folds
+ gate answer    resolve_gate.sql: fleet KEY SHARE ─► thread NO KEY UPDATE ─► gate ─► turns
+ fleet delete   fleet FOR UPDATE ─► setup cards ─► cascade to gates and thread
+```
+
+The Stop's holds are a statement of their own (`afd_turns`'s `view/stop/hold_thread.sql`), so Stop's statement starts after an issue that held the thread commits and marks the run it issued. The issue reads its head with a lock after its thread wait, so a Stop that committed meanwhile leaves no run (`afd_fleet`'s `integration_run_issue_stop.rs`).
+
+The fleet comes first in a Stop and a gate answer because fleet delete holds it `FOR UPDATE`, closes the setup cards and then cascades to the thread. Holding the thread there met delete at a gate: Stop deadlocked with it before Nov 23, 2026 (`afd_approval`'s `integration_resolve_behind_stop.rs`).
+
 ### A run's verbs on the fleet row and the run row
 
 Every `thread.items` insert and every schedule insert checks its foreign key with `FOR KEY SHARE` on the fleet row, and an item insert does the same on its run row. Only `FOR UPDATE` refuses that mode, so a lock that only puts writers in turn takes `FOR NO KEY UPDATE`, or no row lock at all.

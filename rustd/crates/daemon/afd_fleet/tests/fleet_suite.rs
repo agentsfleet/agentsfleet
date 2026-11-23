@@ -134,6 +134,8 @@ mod integration_run_issue;
 mod integration_run_issue_lock_wait;
 #[path = "integration_run_issue_refusals.rs"]
 mod integration_run_issue_refusals;
+#[path = "integration_run_issue_stop.rs"]
+mod integration_run_issue_stop;
 #[path = "integration_run_plan.rs"]
 mod integration_run_plan;
 #[path = "integration_run_release.rs"]

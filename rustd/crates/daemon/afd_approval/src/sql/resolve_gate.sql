@@ -1,4 +1,23 @@
-WITH resolved AS (
+-- The gate's fleet and then its thread, before the gate: the order Stop and the decision
+-- claim take them. Stop locks the turn and then closes its gate, and this statement writes
+-- the gate and then the fleet's turns, so without the thread the two could lock one gate
+-- and one turn in opposite orders. The fleet comes first because fleet delete holds it
+-- FOR UPDATE and then cascades to the gates and the thread: this waits there holding
+-- nothing. An action id is not unique, so both read the set of fleets its open gates name,
+-- within the caller's scope.
+WITH fleet AS MATERIALIZED (
+  SELECT f.id
+  FROM fleet.fleets f
+  WHERE f.id IN (SELECT g.fleet_id FROM fleet.approval_gates g
+                  WHERE g.action_id = $4 AND g.resolved_at IS NULL
+                    AND (g.fleet_id = $5 OR $5 IS NULL))
+  FOR KEY SHARE OF f
+), thread AS MATERIALIZED (
+  SELECT s.id
+  FROM thread.threads s
+  WHERE s.id IN (SELECT id FROM fleet)
+  FOR NO KEY UPDATE OF s
+), resolved AS (
   UPDATE fleet.approval_gates
   SET status = $1, detail = $2, resolved_by = $3,
       resolved_at = now(), updated_at = now(), active_grant_id = NULL,
@@ -8,6 +27,7 @@ WITH resolved AS (
           WHERE u.oidc_subject = $3 AND u.tenant_id = z.tenant_id)
   WHERE action_id = $4 AND resolved_at IS NULL
     AND (fleet_id = $5 OR $5 IS NULL)
+    AND fleet_id IN (SELECT id FROM thread)
     AND NOT EXISTS (SELECT 1 FROM fleet.fleets z
                      WHERE z.id = fleet.approval_gates.fleet_id AND z.status = $10)
   RETURNING id, action_id, workspace_id, fleet_id, status, resolved_at,

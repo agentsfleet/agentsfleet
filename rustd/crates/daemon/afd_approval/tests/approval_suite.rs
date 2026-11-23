@@ -61,6 +61,8 @@ mod integration_inbox_tail;
 mod integration_inbox_tail_continuation;
 #[path = "integration_inbox_tail_runless.rs"]
 mod integration_inbox_tail_runless;
+#[path = "integration_resolve_behind_stop.rs"]
+mod integration_resolve_behind_stop;
 
 #[path = "error_surface.rs"]
 mod error_surface;

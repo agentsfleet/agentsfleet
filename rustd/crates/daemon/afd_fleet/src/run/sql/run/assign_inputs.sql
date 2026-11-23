@@ -15,7 +15,8 @@
 -- starts after it, and the reply is cut to one frame, so the next takes the rest.
 --
 -- Only the runner holding the run assigns for it, and an assignment never replaces
--- a stamp a later fence wrote: fences only rise on a fleet's thread.
+-- a stamp a later fence wrote: fences only rise on a fleet's thread. It holds the thread
+-- for its one statement, so it queues behind a Stop, an assignment or a report of the fleet.
 --
 -- $1 run · $2 runner · $3 fence · $4 active run status · $5 read after sequence ·
 -- $6 steer producer · $7 machine actor · $8 person actor pattern · $9 Slack mention producer ·
@@ -35,6 +36,9 @@ WITH run AS MATERIALIZED (
       AND l.durable_task_id IS NULL AND l.durable_task_generation IS NULL AND head.durable_task_generation IS NULL
       AND l.run_expires_at > clock_timestamp()
       AND s.run_expires_at > clock_timestamp()
+    -- The thread first, as Stop takes it: a retry rewrites folds Stop may be settling,
+    -- and taking them without it lets the two meet on two folds in opposite orders.
+    FOR NO KEY UPDATE OF s
 ), ahead AS MATERIALIZED (
     -- The conversation's next messages: an addressed conversation by equality,
     -- the unaddressed one by NULL, each in the index's own order.

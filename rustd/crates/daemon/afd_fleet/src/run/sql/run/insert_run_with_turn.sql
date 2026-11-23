@@ -5,7 +5,7 @@
 -- The caller holds the host row (`lock_host.sql`) through this transaction, so
 -- this statement's snapshot, taken after that lock, sees every earlier
 -- assignment's commit: the census below counts them. A full host, a moved thread
--- fence, a moved placement choice or a moved setup writes nothing.
+-- fence, a moved placement choice, a moved setup or a stopped head writes nothing.
 WITH instant AS MATERIALIZED (
   SELECT clock_timestamp() AS checked_at
 ), host AS MATERIALIZED (
@@ -34,6 +34,19 @@ WITH instant AS MATERIALIZED (
   -- Read once `held` has the thread lock, so a wait on that lock cannot make a
   -- lapsed thread or an assignment whose deadline passed look live.
   SELECT clock_timestamp() AS checked_at FROM (SELECT count(*) FROM held) locked
+), head AS MATERIALIZED (
+  -- The head, locked once `held` has the thread, the order Stop takes them in. A Stop
+  -- that settled it before this statement began, or while `held` waited, issues nothing:
+  -- a locking read follows a version committed after this statement's snapshot and
+  -- re-checks both predicates on it, where a plain read would keep the snapshot's. FOR
+  -- SHARE because it conflicts with an update still in flight, so that update is waited
+  -- for and re-checked too; FOR KEY SHARE would read past it.
+  SELECT e.id
+  FROM thread.turns e
+  WHERE e.thread_id = $3 AND e.id = $6
+    AND e.settled_at IS NULL AND e.run_fence = $10
+    AND EXISTS (SELECT 1 FROM after_lock)
+  FOR SHARE OF e
 ), inserted AS (
   -- The run starts, and its metering cursor with it, at the clock read after the
   -- thread lock: stamping the earlier instant would bill the lock wait as runtime.
@@ -46,7 +59,7 @@ WITH instant AS MATERIALIZED (
          $10, h.run_expires_at, $11, $16, $20::uuid, a.checked_at, a.checked_at
   FROM held h
   CROSS JOIN after_lock a
-  JOIN thread.turns e ON e.thread_id = $3 AND e.id = $6
+  CROSS JOIN head e
   -- The scope proof thread.runs holds no foreign key for: a workspace or
   -- tenant that is not the fleet's writes no run, so the caller issues none.
   JOIN fleet.fleets f ON f.id = $3 AND f.workspace_id = $4 AND f.tenant_id = $5
