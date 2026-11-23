@@ -56,13 +56,6 @@ rustd/target/
 rustd/lcov*.info
 rustd/lcov-*.rev
 
-# Insta's pending-inline-snapshot drafts. `insta::assert_snapshot!(x, @r"...")`
-# records a changed inline snapshot in `.{file}.pending-snap` beside the
-# assertion, one JSON line per run, so a reviewer can read the difference. The
-# record is per-machine scratch, like `*.snap.new`: it is never the source of
-# truth, and committing it leaves the tree dirty after every Rust lane.
-*.pending-snap
-
 # Bench lane output. A result is what one run measured on one machine; the
 # committed reference point beside it is `bench/baselines/`, which IS tracked.
 bench/results/
