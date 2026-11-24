@@ -1,6 +1,5 @@
 //! A lost welcome retains the proposal until the database classifies the next opening.
 
-use crate::STREAM_STABLE_RESET_AFTER;
 use af_core::id::Uuid7;
 use af_stream::{Connection, Transport};
 use backon::BackoffBuilder as _;
@@ -37,7 +36,7 @@ impl Resume {
 }
 
 /// How long HTTP/3 is passed over after it fails while HTTP/2 works.
-const HTTP3_SKIP: Duration = Duration::from_secs(30);
+pub(crate) const HTTP3_SKIP: Duration = Duration::from_secs(30);
 
 /// What one attempt taught the runner about the two carriers.
 #[derive(Clone, Copy, Debug)]
@@ -122,8 +121,11 @@ impl Recovery {
         }
     }
 
-    pub(crate) fn after(&mut self, connected_for: Option<Duration>) -> crate::Result<Duration> {
-        if connected_for.is_some_and(|duration| duration >= STREAM_STABLE_RESET_AFTER) {
+    /// The pause before the next attempt. A session the daemon `answered` proved
+    /// usable, so the backoff starts over; a failed opening or an unanswered session
+    /// keeps doubling it.
+    pub(crate) fn after(&mut self, answered: bool) -> crate::Result<Duration> {
+        if answered {
             self.pauses = self.builder.build();
         }
         // Backon's jitter is added after its maximum-delay clamp.

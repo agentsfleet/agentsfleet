@@ -8,7 +8,7 @@ pub(crate) mod pending;
 pub(crate) mod policy;
 #[cfg(test)]
 mod pressure_tests;
-mod reconnect;
+pub(crate) mod reconnect;
 pub(crate) mod running;
 
 use std::{collections::HashSet, sync::Arc};
@@ -128,7 +128,7 @@ impl Downlink {
                 stop: &stop,
                 deadline,
             };
-            let (result, connected_for) = self
+            let (result, answered) = self
                 .connection_attempt(&opening, &mut resume, &mut preference, &mut outage)
                 .instrument(span.clone())
                 .await;
@@ -137,7 +137,7 @@ impl Downlink {
                 return Ok(());
             }
             self.retry(halt, &span, &mut outage, result)?;
-            let pause = retries.after(connected_for)?;
+            let pause = retries.after(answered)?;
             tokio::select! { () = halt.serving().cancelled() => return Ok(()), () = tokio::time::sleep(pause) => {} }
         }
     }
@@ -191,17 +191,14 @@ impl Downlink {
         resume: &mut Resume,
         preference: &mut Preference,
         outage: &mut observation::Outage,
-    ) -> (Result<Progress>, Option<std::time::Duration>) {
+    ) -> (Result<Progress>, bool) {
         let answer = match opening.open(resume, preference).await {
             Ok(connection) => {
                 outage.connected(connection.connection.transport());
-                let opened_at = Instant::now();
-                let result = self
-                    .serve(connection, opening.output.clone(), opening.stop.clone())
-                    .await;
-                (result, Some(opened_at.elapsed()))
+                self.serve(connection, opening.output.clone(), opening.stop.clone())
+                    .await
             }
-            Err(error) => (Err(error), None),
+            Err(error) => (Err(error), false),
         };
         opening.stop.cancel();
         self.current.send_replace(None);
@@ -213,7 +210,7 @@ impl Downlink {
         connected: Connected,
         budget: Budget,
         stop: CancellationToken,
-    ) -> Result<Progress> {
+    ) -> (Result<Progress>, bool) {
         self.running.new_session();
         let (queues, receivers) = Queues::new();
         let requests = pending::Requests::new();
@@ -256,8 +253,10 @@ impl Downlink {
                 &stop,
             )
             .await;
-        self.finish(connection, workers, &requests, &stop, result)
-            .await
+        let result = self
+            .finish(connection, workers, &requests, &stop, result)
+            .await;
+        (result, requests.answered())
     }
 
     async fn finish(

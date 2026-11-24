@@ -4,8 +4,7 @@ use super::{heartbeat, owner, relay::Relay, session};
 use crate::integration_runner_stream::RECOVERY_SLACK;
 use af_core::timing::STREAM_RECOVERY_BUDGET;
 use afd_runner::timing::HEARTBEAT_INTERVAL;
-use afr_supervisor::STREAM_STABLE_RESET_AFTER;
-use afr_supervisor::test_util::Session;
+use afr_supervisor::test_util::{HTTP3_SKIP, Session};
 use agentsfleetd::supervisor::Supervisor;
 use tokio::time::Instant;
 
@@ -43,8 +42,9 @@ async fn hold_healthy_http2(
     relay: &Relay,
     first: &af_core::id::Uuid7,
 ) {
+    // Past the HTTP/3 skip window, so the reconnect after this session tries HTTP/3.
     let began = Instant::now();
-    while began.elapsed() < STREAM_STABLE_RESET_AFTER {
+    while began.elapsed() < HTTP3_SKIP {
         tokio::time::sleep(HEARTBEAT_INTERVAL / 2).await;
         heartbeat(runner)
             .await

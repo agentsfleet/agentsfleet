@@ -266,10 +266,18 @@ async fn a_late_renewal_answer_cannot_acknowledge_a_new_callers_usage() -> Resul
         .deliver(&peer, StreamKind::Control, &renewed(&previous, 99))
         .await?;
     assert!(matches!(futures_util::poll!(&mut current), Poll::Pending));
+    assert!(
+        !peer.sender.requests.answered(),
+        "a late answer to nobody does not prove the session"
+    );
     harness
         .deliver(&peer, StreamKind::Control, &renewed(&request, 7))
         .await?;
     assert_eq!(current.await?.recorded_through, Some(7));
+    assert!(
+        peer.sender.requests.answered(),
+        "an answered request proves the session, so a reconnect starts its backoff over"
+    );
     peer.released();
     Ok(())
 }

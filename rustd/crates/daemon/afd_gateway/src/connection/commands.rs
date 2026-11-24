@@ -1,6 +1,5 @@
 //! Broker loss asks Postgres again; a broker message never grants or removes authority itself.
 
-use afd_bus::READY_WAKE_DEADLINE;
 use std::sync::Arc;
 
 use af_core::timing::STREAM_ANSWER_TIMEOUT;
@@ -10,20 +9,12 @@ use backon::{BackoffBuilder as _, ExponentialBuilder};
 use super::{ConnectionHandle, ConnectionServices};
 use crate::{Gateway, Operation, Result};
 
-/// Announce committed ownership with a bounded best-effort publish.
+/// Announce committed ownership with a best-effort publish, which the bus bounds at its
+/// configured publish deadline.
 pub(super) async fn announce(gateway: &Gateway, runner: &af_core::id::Uuid7) -> Result<()> {
-    let subject = Subject::RunnerCommand(runner.clone());
-    let publish = gateway
-        .inner
-        .dependencies
-        .bus
-        .publish_frame(&subject, &Command::Recheck);
-    tokio::time::timeout(READY_WAKE_DEADLINE, publish)
-        .await
-        .map_err(|source| crate::error::ErrorKind::Timeout {
-            operation: Operation::Recheck,
-            source,
-        })??;
+    Command::Recheck
+        .publish(&gateway.inner.dependencies.bus, runner)
+        .await?;
     Ok(())
 }
 
@@ -158,30 +149,24 @@ mod tests {
         tokio::time::timeout(Duration::from_secs(5), commands.recv()).await
     }
 
-    /// A broker that never answers the ownership announcement is given up on
-    /// at the ready-wake deadline, as a recheck timeout.
-    #[tokio::test(start_paused = true)]
-    async fn an_announcement_the_broker_never_answers_times_out() -> TestResult {
+    /// An ownership announcement the bus refuses returns the bus's failure, for the
+    /// caller to log; ownership is already committed.
+    #[tokio::test]
+    async fn an_announcement_the_bus_refuses_returns_its_failure() -> TestResult {
+        let (bus, _server) = afd_bus::test_util::detached()?;
+        bus.shutdown().await?;
         let gateway = crate::fixture::gateway(
             afd_db::test_util::unreachable_db(),
-            afd_bus::Handle::new(crate::fixture::Silent),
+            bus,
             afd_bus::wake::Wake::default(),
         )?;
         let runner = Uuid7::parse("019f0000-0000-7000-8000-000000000001")?;
-        let started = tokio::time::Instant::now();
         let refused = super::announce(&gateway, &runner)
             .await
             .err()
-            .ok_or("a silent broker cannot confirm the announcement")?;
-        assert_eq!(started.elapsed(), afd_bus::READY_WAKE_DEADLINE);
+            .ok_or("a shut bus cannot carry the announcement")?;
         assert!(
-            matches!(
-                refused.kind(),
-                crate::error::ErrorKind::Timeout {
-                    operation: crate::Operation::Recheck,
-                    ..
-                }
-            ),
+            matches!(refused.kind(), crate::error::ErrorKind::Bus { .. }),
             "{refused:?}"
         );
         assert_eq!(

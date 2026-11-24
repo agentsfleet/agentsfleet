@@ -15,6 +15,10 @@
 #![deny(clippy::self_named_module_files)]
 
 /// How long a stopped engine may close calls and return measured work.
+///
+/// 5 s is Indy's number (Nov 24, 2026); no provider or transport forces one. It sits
+/// inside the runner's expiry margin, which a compile-time assertion keeps within the
+/// renewal window.
 pub const ENGINE_STOP_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
 
 mod backed;

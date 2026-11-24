@@ -13,6 +13,10 @@ pub use native::NativeDaemon;
 #[cfg(feature = "test-util")]
 pub use session::Session;
 
+/// How long HTTP/3 is passed over after it fails while HTTP/2 works, for a test that
+/// must outlast the window before a reconnect tries HTTP/3 again.
+pub const HTTP3_SKIP: std::time::Duration = crate::downlink::reconnect::HTTP3_SKIP;
+
 use std::borrow::Cow;
 
 use af_wire::context::ContextLoadResponse;

@@ -4,7 +4,7 @@ use std::{
     num::NonZeroU64,
     sync::{
         Arc,
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
 };
 
@@ -43,6 +43,8 @@ pub(crate) struct Requests {
     next: AtomicU64,
     capacity: Arc<Semaphore>,
     entries: DashMap<NonZeroU64, Pending>,
+    /// Whether the daemon has answered a request on this session.
+    answered: AtomicBool,
 }
 
 impl std::fmt::Debug for Requests {
@@ -60,6 +62,7 @@ impl Requests {
             next: AtomicU64::new(2),
             capacity: Arc::new(Semaphore::new(PENDING_MAX)),
             entries: DashMap::new(),
+            answered: AtomicBool::new(false),
         })
     }
 
@@ -100,7 +103,14 @@ impl Requests {
             drop(pending.answer.send(Err(ErrorKind::StreamProtocol.into())));
             return Err(ErrorKind::StreamProtocol.into());
         }
+        self.answered.store(true, Ordering::Release);
         Ok(Some(Reply(pending.answer)))
+    }
+
+    /// Whether the daemon answered any request on this session: the session proved
+    /// usable, so a reconnect after it starts its backoff over.
+    pub(crate) fn answered(&self) -> bool {
+        self.answered.load(Ordering::Acquire)
     }
 
     pub(crate) fn close(&self) {
