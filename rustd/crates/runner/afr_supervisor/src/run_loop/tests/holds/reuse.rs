@@ -7,10 +7,10 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::holds::SANDBOX_HOLD_IDLE;
 use af_core::clock::after;
 use af_core::id::Uuid7;
 use af_core::test_util::trace::Capture;
+use af_core::timing::DAY;
 use af_wire::run::RunPayload;
 use af_wire::runner::NetworkPolicy;
 use futures_util::FutureExt as _;
@@ -141,10 +141,10 @@ async fn test_processed_run_parks_its_sandbox_frozen() {
     );
     let report = reported(&calls);
     assert_eq!(report[OUTCOME], PROCESSED);
-    // The rig's clock stands at zero, so the hold lapses one idle window in.
+    // The rig's clock stands at zero, and the hold asks for the most a daemon may grant.
     assert_eq!(
         report[HELD_UNTIL],
-        after(Timestamp::UNIX_EPOCH, SANDBOX_HOLD_IDLE).to_string()
+        after(Timestamp::UNIX_EPOCH, DAY).to_string()
     );
     assert_eq!(
         counted.read(),

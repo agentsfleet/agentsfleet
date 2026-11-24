@@ -16,7 +16,7 @@
 | Toolbox | A signed, read-only Enhanced Read-Only File System (EROFS) root filesystem built once per release from pinned Debian snapshots, downloaded before any run and verified by descriptor. No container image is pulled or unpacked on the run path |
 | Workspace disk | Per sandbox, a writable block image sized to the run's disk limit, attached with direct I/O, holding both `/workspace` and `/tmp`, deleted when its sandbox is destroyed |
 | Warm slot | A sandbox already started before any run arrives: cgroup made, workspace disk mounted, executor idle. It serves one run. Built but unwired: only the kernel lane and tests start one (`afr_sandbox/src/warm_slots/mod.rs`) |
-| Held sandbox | The sandbox of a run that ended processed, frozen through `cgroup.freeze` and kept for its fleet's next run for an idle window of ten minutes (`afr_supervisor`'s `holds`, `SANDBOX_HOLD_IDLE`). Every other run's sandbox is destroyed when the run ends |
+| Held sandbox | The sandbox of a run that ended processed, frozen through `cgroup.freeze` and kept for its fleet's next run for the daemon's idle window, `[runner.sandboxes] max_idle_hold_seconds`, ten minutes by default. The runner asks for up to a day and the report's acknowledgement narrows the hold to the daemon's window. Every other run's sandbox is destroyed when the run ends |
 | Workspace | Target, not built: per fleet, restored from and saved to R2 (or any S3-compatible store, such as a self-hosted RustFS), with only the supervisor moving bytes. No restore or save exists yet (§"A run's sandbox today") |
 | Model keys | Supervisor only; never inside a sandbox |
 | Coding engines | Codex first-class, split across the wall; Claude Code in the sandbox, its model calls through a supervisor relay |
@@ -73,7 +73,7 @@ alert fires
  → the fleet reads logs, runs command-line tools, writes Python, edits code, runs tests,
    or hands the coding to Codex on the user's own subscription
  → it proposes a fix → the supervisor pushes a pinned branch and opens a draft Pull Request
- → the runner holds the sandbox frozen for ten minutes, then destroys it
+ → the runner holds the sandbox frozen for the daemon's idle window, ten minutes by default, then destroys it
  → a follow-up ("also fix the retry") within the window thaws that same sandbox on the same runner
 ```
 
