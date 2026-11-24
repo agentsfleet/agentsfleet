@@ -1,3 +1,4 @@
+import { STATUS_TONES } from "../../output/format.ts";
 // `agentsfleet fleet list` — paginated table of fleets in a workspace.
 // Workspace defaults to `current_workspace_id`; `--workspace` overrides.
 
@@ -68,8 +69,8 @@ export const listEffectFromFlags = Effect.fn("fleet.list")(function* (
   yield* output.printEntityTable(
     {
       name: { key: FIELD_NAME, label: "NAME" },
-      id: { key: FIELD_FLEET_ID, label: "FLEET" },
-      domain: [{ key: FIELD_STATUS, label: "STATUS" }],
+      id: { key: FIELD_FLEET_ID },
+      domain: [{ key: FIELD_STATUS, label: "STATUS", tones: STATUS_TONES }],
     },
     items.map((z) => ({
       name: z.name,

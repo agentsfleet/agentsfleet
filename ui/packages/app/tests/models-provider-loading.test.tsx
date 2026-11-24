@@ -19,7 +19,7 @@ vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/actions", () => ({
 vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/actions", () => ({ createSecretAction: vi.fn() }));
 vi.mock("@/lib/auth/client", () => ({useCurrentUser: () => ({isLoaded: true, isSignedIn: true, userId: "model-owner"})}));
 
-import AddModelEntryDialog from "@/app/(dashboard)/w/[workspaceId]/settings/models/components/AddModelEntryDialog";
+import { AddModelEntryDialog } from "@/app/(dashboard)/w/[workspaceId]/settings/models/components/AddModelEntryDialog";
 
 const props = {
   workspaceId: "ws-loading", secrets: [], secretsLoad: SECRETS_LOAD.ready,

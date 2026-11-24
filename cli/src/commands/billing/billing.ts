@@ -21,8 +21,6 @@ import { decodeBilling, decodeCharges, type BillingSnapshot, type ChargeRow } fr
 
 const CHARGES_PATH = `${TENANT_BILLING_PATH}/charges`;
 const BILLING_DASHBOARD_URL = "https://app.agentsfleet.net/settings/billing";
-const PURCHASE_FOOTER_LINE_2 =
-  "Stripe purchase ships in v2.1; for now contact support for a top-up.";
 
 const BILLING_SHOWN = "Billing" as const;
 const LIMIT_LITERAL = /^\d+$/;
@@ -149,9 +147,9 @@ const groupRowsByWork = (
 const renderActivities = (output: Output, events: ReadonlyArray<WorkSummary>) =>
   output.printEntityTable(
     {
-      id: { key: "turn_id", label: "WORK_ID" },
+      id: { key: "turn_id" },
       domain: [
-        { key: "posture", label: "POSTURE" },
+        { key: "posture", label: "TYPE" },
         { key: "model", label: "MODEL" },
         { key: "in_tok", label: "IN_TOK" },
         { key: "out_tok", label: "OUT_TOK" },
@@ -184,13 +182,13 @@ const renderHuman = (
   Effect.gen(function* () {
     const output = yield* Output;
     const balanceNanos = balance.balance_nanos;
-    yield* output.info(`Tenant balance:    ${formatDollars(balanceNanos)}`);
+    yield* output.info(`Balance  ${formatDollars(balanceNanos)}`);
     yield* output.info("");
 
     if (events.length === 0) {
       yield* output.info("No billable activity recorded yet.");
     } else {
-      yield* output.info(`Last ${events.length} activities drained credits:`);
+      yield* output.info(`Last ${events.length} ${events.length === 1 ? "activity" : "activities"}`);
       yield* renderActivities(output, events);
     }
 
@@ -206,7 +204,6 @@ const renderHuman = (
     } else {
       yield* output.info(`ⓘ Out of credits? See ${BILLING_DASHBOARD_URL}`);
     }
-    yield* output.info(`   ${PURCHASE_FOOTER_LINE_2}`);
   });
 
 export const billingShowEffectFromArgs = (

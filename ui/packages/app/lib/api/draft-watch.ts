@@ -3,7 +3,7 @@ import { followDraft, type DraftProgressCallbacks } from "./draft-events";
 
 type Following = {
   readonly id: string; readonly path: string; readonly owner: AbortSignal; readonly view: AbortSignal;
-  readonly reconcile: (signal: AbortSignal) => Promise<boolean>; readonly needsPolling?: () => boolean;
+  readonly reconcile: (signal: AbortSignal) => Promise<boolean>;
   readonly progress: DraftProgressCallbacks;
   readonly finished: () => void; readonly failed: (cause: unknown) => void;
 };
@@ -15,7 +15,7 @@ export class DraftWatch {
     this.start(options.id, options.view, async view => {
       // The follow ends when the turn settles or its owner or view stops it.
       const owner = AbortSignal.any([options.owner, view]);
-      await followDraft(options.path, options.id, owner, () => options.reconcile(owner), options.needsPolling, options.progress);
+      await followDraft(options.path, options.id, owner, () => options.reconcile(owner), options.progress);
       if (!view.aborted && !options.owner.aborted) options.finished();
     }, options.failed);
   }

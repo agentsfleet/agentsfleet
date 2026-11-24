@@ -1,6 +1,5 @@
 "use client";
 
-import type { ReactNode } from "react";
 import {
   Badge, Button, DashboardPanel, DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuTrigger, ResourceRow, Section, SectionHeader,
@@ -26,12 +25,11 @@ type Props = ModelActions & {
   platformDefaultAvailable: boolean;
   onSwitchDefault: () => void;
   onLoadMore?: () => Promise<boolean>;
-  footerAction?: ReactNode;
 };
 
 export function ModelsRegistryView({
   entries, workspaceNames, platformDefault, isDefaultLive, platformDefaultAvailable,
-  onSwitchDefault, onLoadMore, footerAction, ...actions
+  onSwitchDefault, onLoadMore, ...actions
 }: Props) {
   return (
     <Section className="gap-3xl">
@@ -69,13 +67,6 @@ export function ModelsRegistryView({
         <p className="text-eyebrow leading-eyebrow text-text-dim">Your active model is the default for new work. Each credential stays in its selected workspace.</p>
       </section>
 
-      <div className="flex flex-col flex-wrap items-start justify-between gap-5 border-t border-border py-5 summary:flex-row summary:items-center">
-        <div>
-          <p className="text-eyebrow text-text-dim">Bring your own provider</p>
-          <p className="my-sm text-description">Provider, model, and key. All in one form.</p>
-        </div>
-        {footerAction}
-      </div>
     </Section>
   );
 }

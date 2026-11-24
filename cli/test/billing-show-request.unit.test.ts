@@ -158,7 +158,7 @@ describe("billingShowEffectFromArgs — request shape and validation", () => {
       Effect.provide(outputLayer(rec)),
     );
     await runWith(program);
-    expect(rec.stdout.join("\n")).toMatch(/Tenant balance: {4}\$4\.71/);
+    expect(rec.stdout.join("\n")).toContain("Balance  $4.71");
     expect(rec.stdout.join("\n")).toMatch(/No billable activity recorded yet\./);
     expect(rec.stdout.join("\n")).toMatch(/Out of credits\? See /);
   });

@@ -64,13 +64,27 @@ export class DraftHistory {
   }
 
   #remember(message: Message): void {
-    this.#rows.set(`${message.sequence}:${message.role}`, message);
+    const key = `${message.sequence}:${message.role}`;
+    const previous = this.#rows.get(key);
+    if (previous && sameMessage(previous, message)) return;
+    this.#rows.set(key, message);
     if (this.#rows.size > RETAINED_MESSAGES) {
       const excess = [...this.#rows.values()].sort(ordered).slice(0, this.#rows.size - RETAINED_MESSAGES);
       for (const oldest of excess) this.#rows.delete(`${oldest.sequence}:${oldest.role}`);
       this.#truncated = true;
     }
   }
+}
+
+/** Preserve the projection's identity when the server returns an unchanged row. */
+function sameMessage(left: Message, right: Message): boolean {
+  const {failure: previousFailure, ...previous} = left;
+  const {failure: currentFailure, ...current} = right;
+  return Object.keys(previous).length === Object.keys(current).length
+    && Object.entries(current).every(([key, value]) => previous[key as keyof typeof previous] === value)
+    && previousFailure?.reason === currentFailure?.reason
+    && previousFailure?.error_code === currentFailure?.error_code
+    && previousFailure?.recovery_action === currentFailure?.recovery_action;
 }
 
 function ordered(left: Message, right: Message): number {

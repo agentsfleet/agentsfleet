@@ -32,7 +32,7 @@ interface GrantListResponse {
 
 const GRANT_SPEC = {
   name: { key: "service", label: "SERVICE" },
-  id: { key: GRANT_ID_FIELD, label: "ID" },
+  id: { key: GRANT_ID_FIELD },
   domain: [
     { key: "status", label: "STATUS" },
     { key: "approved_at", label: "APPROVED_AT" },

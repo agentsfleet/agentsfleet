@@ -352,7 +352,7 @@ Retry activation alone after an activation failure.
 
 Storage success does not establish that a provider key works.
 
-Platform operators set the shared default through the existing `agentsfleet platform keys` commands.
+Platform operators select the shared default with `agentsfleet platform models default` and manage its provider credential with `agentsfleet secrets`.
 Keep that management in the CLI; this refresh adds no platform-default administration screen.
 Account Models retains Create model and Make active.
 

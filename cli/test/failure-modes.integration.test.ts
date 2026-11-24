@@ -157,7 +157,7 @@ describe("failure modes — runtime / observability surface", () => {
 });
 
 describe("failure modes — infra / server-down surface", () => {
-  test("doctor with /healthz returning UZ-INTERNAL-001 (DB unavailable, 503) renders [FAIL] server_reachable + the message and exits 1", async () => {
+  test("doctor with /healthz returning UZ-INTERNAL-001 (DB unavailable, 503) renders an API check failure and its message and exits 1", async () => {
     await authedScope(async () => {
       // Pin both probes:
       //   /healthz → 503 with UZ-INTERNAL-001 (the failure under test)
@@ -178,9 +178,9 @@ describe("failure modes — infra / server-down surface", () => {
         );
         expect(code).toBe(1);
         const text = out.read();
-        // The structured failure renders as a concrete "[FAIL] server_reachable"
+        // The structured failure names the failed API check
         // line plus the indented detail carrying the upstream error message.
-        expect(text).toContain("[FAIL] server_reachable");
+        expect(text).toContain("✕ API check failed");
         expect(text).toContain("Database unavailable");
         // Closing summary names the failure ratio explicitly so operators
         // can grep for it in CI logs.

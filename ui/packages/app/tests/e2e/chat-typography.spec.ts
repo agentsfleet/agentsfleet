@@ -230,8 +230,9 @@ test("the pull request starter remains editable and readable before any setup re
   const suggestion = page.getByRole("button", {name: "Watch a pull request", exact: true});
   const input = page.getByRole("textbox", {name: "What would you like your fleet to do?"});
   await expect(input).toHaveValue("");
-  const unfinished = page.getByRole("region", {name: "Unfinished setups"});
-  const resume = unfinished.getByRole("link", {name: DRAFT.title});
+  const unfinished = page.getByRole("region", {name: "Unfinished setups", exact: true});
+  const resume = unfinished.locator(`a[href$="?draft=${DRAFT.id}"]`);
+  await expect(resume).toHaveAccessibleName(DRAFT.title);
   const remove = unfinished.getByRole("button", {name: `Delete chat: ${DRAFT.title}`});
   const composerBefore = await page.getByRole("form", {name: "Setup chat composer"}).boundingBox();
   const row = await resume.boundingBox();

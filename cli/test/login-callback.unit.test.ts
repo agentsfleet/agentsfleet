@@ -96,7 +96,7 @@ describe("one authorization decision and actual final outcome", () => {
     callback.finish(true);
     const response = await reply;
     const html = await response.text();
-    expect(html).toContain("Unleash your agents.");
+    expect(html).toContain("Authorization granted");
     for (const secret of [callback.state, SESSION_ID, VERIFICATION_CODE]) expect(html).not.toContain(secret);
     expect(response.headers.get("Cache-Control")).toBe("no-store");
     expect(response.headers.get("Referrer-Policy")).toBe("no-referrer");

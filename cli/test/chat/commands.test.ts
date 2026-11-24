@@ -62,3 +62,35 @@ test("should print a resumed draft's transcript, a reply still in progress inclu
   });
   expect(reads).toEqual([`${DRAFT_PATH}/messages`]);
 });
+
+test.each([
+  ["stop without a draft", ["--model", MODEL, "--stop"], "Use --stop by itself with a draft ID"],
+  ["stop with a message", [DRAFT_ID, "--stop", "--message", PRIVATE_TEXT], "Use --stop by itself with a draft ID"],
+  ["stop with a save", [DRAFT_ID, "--stop", "--save"], "Use --stop by itself with a draft ID"],
+  ["name without a review", [DRAFT_ID, "--name", "Release checklist"], "--name requires --review, --save or --apply"],
+  ["digest without a write", [DRAFT_ID, "--review-digest", "reviewed"], "--review-digest requires --save or --apply"],
+  ["empty retry identity", [DRAFT_ID, "--message", PRIVATE_TEXT, "--operation-id", ""], "operation_id is required"],
+  ["empty candidate identity", [DRAFT_ID, "--candidate-id", ""], "draft_candidate_id is required"],
+  ["empty draft identity", [""], "draft_id is required"],
+  ["empty fleet identity", ["--model", MODEL, "--fleet", ""], "fleet_id is required"],
+  ["empty revision without a fleet", [DRAFT_ID, "--setup-revision", ""], "Revision selection requires its matching source"],
+  ["unpaired empty setup tag", [DRAFT_ID, "--setup-etag", ""], "Recovery identity fields require their matching --operation-id setup action"],
+] as const)("rejects %s before reading or writing a draft", async (_scenario, args, message) => {
+  const requests: string[] = [];
+  await withApi(request => {
+    requests.push(request.url);
+    return new Response(null, {status: 500});
+  }, async (_transport, origin) => withAuthedStateDir({workspaceId: WORKSPACE, apiUrl: origin}, async () => {
+    const stdout = bufferStream();
+    const stderr = bufferStream();
+    const code = await runCli(["chat", ...args, "--no-input", "--json"], {
+      stdout: stdout.stream, stderr: stderr.stream, env: cliEnv({AGENTSFLEET_API_URL: origin}),
+    });
+    expect(code).toBe(4);
+    expect(stdout.read()).toBe("");
+    const error = JSON.parse(stderr.read()).error;
+    expect(error).toMatchObject({code: "INVALID_ARGUMENT", message});
+    if (args.some(arg => arg === "--stop")) expect(error.suggestion).toBe("agentsfleet chat <draft-id> --stop");
+    expect(requests).toEqual([]);
+  }));
+});

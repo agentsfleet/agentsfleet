@@ -1,0 +1,110 @@
+x-database-url: &migrator-url "postgres://agentsfleet_owner:${POSTGRES_OWNER_PASSWORD:?set the database owner password}@postgres:5432/agentsfleet?sslmode=disable"
+x-nats: &nats
+  image: docker.io/library/nats:2.15.3-alpine
+  command: ["--config", "/etc/nats/agentsfleet.conf"]
+  restart: unless-stopped
+  volumes:
+    - ./nats.conf:/etc/nats/agentsfleet.conf:ro
+x-nats-auth: &nats-auth
+  NATS_PASSWORD: "${NATS_PASSWORD:?set the bus password}"
+
+services:
+  postgres:
+    image: docker.io/library/postgres:19-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: agentsfleet_owner
+      POSTGRES_DB: agentsfleet
+      POSTGRES_PASSWORD: "${POSTGRES_OWNER_PASSWORD:?set the database owner password}"
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "agentsfleet_owner", "-d", "agentsfleet"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  nats-a:
+    <<: *nats
+    environment:
+      <<: *nats-auth
+      SERVER_NAME: nats-a
+
+  nats-b:
+    <<: *nats
+    environment:
+      <<: *nats-auth
+      SERVER_NAME: nats-b
+
+  nats-c:
+    <<: *nats
+    environment:
+      <<: *nats-auth
+      SERVER_NAME: nats-c
+
+  migrate:
+    image: "${AGENTSFLEET_DAEMON_IMAGE:?set the daemon image for the chosen revision}"
+    profiles: ["maintenance"]
+    command: ["/usr/local/bin/agentsfleetd", "migrate"]
+    environment:
+      DATABASE_URL_MIGRATOR: *migrator-url
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  catalogue:
+    image: docker.io/oven/bun:1.4.5
+    profiles: ["maintenance"]
+    working_dir: /src
+    volumes:
+      - ../..:/src:ro
+    entrypoint: ["bun", "scripts/seed-models.mjs"]
+    environment:
+      DATABASE_URL: *migrator-url
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  daemon:
+    image: "${AGENTSFLEET_DAEMON_IMAGE:?set the daemon image for the chosen revision}"
+    restart: unless-stopped
+    environment:
+      DATABASE_URL_API: "postgres://agentsfleet_api:${POSTGRES_API_PASSWORD:?set the database API password}@postgres:5432/agentsfleet?sslmode=disable"
+      NATS_URL: "nats://agentsfleet:${NATS_PASSWORD:?set the bus password}@nats-a:4222,nats://agentsfleet:${NATS_PASSWORD}@nats-b:4222,nats://agentsfleet:${NATS_PASSWORD}@nats-c:4222"
+      API_URL: "${API_URL:?set the public API origin}"
+      APP_URL: "${APP_URL:?set the public dashboard origin}"
+      OIDC_ISSUER: "${OIDC_ISSUER:?set the Clerk issuer}"
+      OIDC_AUDIENCE: "${API_URL:?set the public API origin}"
+      CLERK_API_BASE: "https://api.clerk.com/v1"
+      CLERK_SECRET_KEY: "${CLERK_SECRET_KEY:?set the Clerk backend key}"
+      CLERK_WEBHOOK_SECRET: "${CLERK_WEBHOOK_SECRET:?set the Clerk signing secret}"
+      AUTH_SESSION_CODE_PEPPER: "${AUTH_SESSION_CODE_PEPPER:?set the device-code pepper}"
+      ENCRYPTION_MASTER_KEY: "${ENCRYPTION_MASTER_KEY:?set the data encryption key}"
+      PLATFORM_ADMIN_WORKSPACE_ID: "${PLATFORM_ADMIN_WORKSPACE_ID:-}"
+      AGENTSFLEET_RUNNER_STREAM_LISTEN_ADDR: "0.0.0.0:4443"
+      AGENTSFLEET_RUNNER_STREAM_TLS_CERT_FILE: /run/agentsfleet/runner-tls/cert.pem
+      AGENTSFLEET_RUNNER_STREAM_TLS_KEY_FILE: /run/agentsfleet/runner-tls/key.pem
+    ports:
+      - "127.0.0.1:3000:3000"
+      - "${RUNNER_BIND_IP:?set the private runner listener IP}:4443:4443/tcp"
+      - "${RUNNER_BIND_IP:?set the private runner listener IP}:4443:4443/udp"
+    volumes:
+      - type: bind
+        source: "${RUNNER_TLS_DIR:?set the private runner TLS directory}"
+        target: /run/agentsfleet/runner-tls
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats-a:
+        condition: service_started
+      nats-b:
+        condition: service_started
+      nats-c:
+        condition: service_started
+
+volumes:
+  postgres-data:

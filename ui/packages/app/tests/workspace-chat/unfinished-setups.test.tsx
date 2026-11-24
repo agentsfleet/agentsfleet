@@ -41,3 +41,20 @@ it("does not display private unfinished setups for a different workspace or pers
   expect(screen.queryByRole("button", {name: RETRY})).toBeNull();
   expect(reload).not.toHaveBeenCalled();
 });
+
+it("hides saved setups in a finished list while keeping access to a later page", async () => {
+  const more = vi.fn().mockResolvedValue(undefined);
+  const saved: DraftSidebarState = {
+    ...history, status: DRAFT_LIST_STATUS.ready,
+    cards: [{id: DRAFT.id, title: DRAFT.title, detail: "Fleet saved", activity: CHAT_ACTIVITY.saved}],
+  };
+  const reload = vi.fn();
+  const rendered = render(<HistoryContext value={saved}><UnfinishedSetups workspace={WORKSPACE} onReload={reload} /></HistoryContext>);
+  expect(screen.queryByRole("region", {name: "Unfinished setups"})).toBeNull();
+  rendered.rerender(<HistoryContext value={{...saved, more}}><UnfinishedSetups workspace={WORKSPACE} onReload={reload} /></HistoryContext>);
+  expect(screen.getByRole("region", {name: "Unfinished setups"})).toBeTruthy();
+  expect(screen.queryByRole("link", {name: DRAFT.title})).toBeNull();
+  fireEvent.click(screen.getByRole("button", {name: "Load more chats"}));
+  await waitFor(() => expect(more).toHaveBeenCalledOnce());
+  expect(reload).not.toHaveBeenCalled();
+});

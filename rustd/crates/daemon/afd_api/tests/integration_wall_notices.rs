@@ -107,9 +107,12 @@ async fn a_notice_whose_set_read_fails_keeps_the_set_until_one_succeeds() {
 /// Every lag re-announces the set with fresh counters at once: no pace holds the
 /// second one back.
 #[tokio::test]
-#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn every_lag_re_announces_the_set_at_once() {
-    let mut wall = Wall::open(Fixture::create().await).await;
+    // Delivered in process, so each burst fills the viewer's buffer before the next
+    // body read.
+    let (bus, _server) = afd_bus::test_util::detached().expect("an in-process bus opens");
+    let mut wall = Wall::open_over(Fixture::create().await, bus).await;
     for lag in 1..=2 {
         wall.publish(OVERFLOW_FRAMES).await;
         wall.next_of("catching_up").await;

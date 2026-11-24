@@ -108,7 +108,7 @@ const REMOVED_GROUP_SPELLINGS: ReadonlyArray<readonly [ReadonlyArray<string>, st
   [["fleet", "kill", FLEET_ID], "UNKNOWN_COMMAND"],
   [["library"], "UNKNOWN_COMMAND"],
   [["secrets", "open"], "UNKNOWN_COMMAND"],
-  [["platform", "keys", "set"], "UNKNOWN_COMMAND"],
+  [["platform", "models", "default", "set"], "UNKNOWN_COMMAND"],
   [["chat", "--library", FLEET_ID], "UNKNOWN_OPTION"],
   [["chat", "delete", FLEET_ID, "--yes"], "UNKNOWN_OPTION"],
 ];

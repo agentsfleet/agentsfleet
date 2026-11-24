@@ -1,7 +1,39 @@
 import {expect, test} from "bun:test";
-import {Effect} from "effect";
+import {Effect, Layer} from "effect";
 import {startProgress} from "../src/output/progress.ts";
+import {MINI_ORBIT_ROWS} from "../src/output/orbit.ts";
+import {terminal} from "../src/output/palette.ts";
 import {resetCapabilityWarning} from "../src/output/capability.ts";
+import {CliConfig, resolveCliConfig} from "../src/services/config.ts";
+import {HttpClient, httpClientWithProgressLayer} from "../src/services/http-client.ts";
+import {Output} from "../src/services/output.ts";
+import {asFetchImpl} from "./helpers.ts";
+import {outputDouble} from "./helpers-output-double.ts";
+
+test("returns the accepted HTTP write when the terminal animation fails", async () => {
+  const draw = Promise.withResolvers<void>();
+  const signal = Promise.withResolvers<AbortSignal | null | undefined>();
+  const config = {...resolveCliConfig(), apiUrl: "https://api.example.test",
+    fetchImpl: asFetchImpl(async (_url, init) => {
+      signal.resolve(init?.signal);
+      await draw.promise;
+      await new Promise<void>(resolve => setImmediate(resolve));
+      return Response.json({accepted: true});
+    })};
+  const output = {...outputDouble({stdoutIsTty: true}), progress: () => Effect.sync(() => {
+    draw.resolve();
+    throw new Error("Terminal disconnected");
+  })};
+  const layer = httpClientWithProgressLayer.pipe(Layer.provide(Layer.merge(
+    Layer.succeed(CliConfig, config), Layer.succeed(Output, output),
+  )));
+  const result = await Effect.runPromise(Effect.gen(function* () {
+    const client = yield* HttpClient;
+    return yield* client.request({path: "/fixture", method: "POST", body: {accepted: true}});
+  }).pipe(Effect.provide(layer)));
+  expect(result).toEqual({accepted: true});
+  expect((await signal.promise)?.aborted).toBe(false);
+});
 
 test("the terminal jellyfish sways while waiting and stops writing after cleanup", async () => {
   const chunks: string[] = [];
@@ -62,4 +94,16 @@ test.each([["failure", Effect.fail("Refused")], ["cancellation", Effect.interrup
   const writes = chunks.length;
   await Bun.sleep(300);
   expect(chunks).toHaveLength(writes);
+});
+
+test("uses miniature Orbit in a large color terminal and clears its rows on completion", async () => {
+  const chunks: string[] = [];
+  await Effect.runPromise(Effect.scoped(startProgress(
+    {isTTY: true, columns: 80, rows: 24, write: text => chunks.push(text)}, "Waiting for agentsfleet…", true,
+    {TERM: "xterm-256color"},
+  )));
+  expect(chunks[0]).toBe(terminal.reserveRows(MINI_ORBIT_ROWS));
+  expect(chunks[1]).toContain("Waiting for agentsfleet…");
+  expect(chunks[1]).toMatch(/[▀▄]/u);
+  expect(chunks.at(-1)).toBe(terminal.clearRows(MINI_ORBIT_ROWS));
 });

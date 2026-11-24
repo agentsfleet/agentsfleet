@@ -66,7 +66,7 @@ export async function fleetNavigation(page: Page): Promise<Locator> {
   }
   const expand = primary.getByRole("button", {name: "Expand navigation", exact: true});
   if (await expand.isVisible()) await expand.click();
-  await expect(primary.getByText("Fleets", {exact: true})).toBeVisible();
+  await expect(primary.getByText("Your Fleets", {exact: true})).toBeVisible();
   return primary;
 }
 

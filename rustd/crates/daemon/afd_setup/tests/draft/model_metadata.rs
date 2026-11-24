@@ -12,7 +12,7 @@ async fn model_choices_use_the_saved_credential_workspace_not_the_oldest_workspa
     use afd_db::test_util::{WorkspaceSeed, mint_id};
     use afd_setup::types::ModelsQuery;
 
-    let f = Fixture::create().await;
+    let f = Fixture::isolated().await;
     let earlier = mint_id();
     WorkspaceSeed::new(&earlier, &f.tenant)
         .at(jiff::Timestamp::UNIX_EPOCH)
@@ -46,7 +46,7 @@ async fn model_choices_use_the_saved_credential_workspace_not_the_oldest_workspa
 #[ignore = "requires live Postgres"]
 async fn an_unconfigured_row_keeps_usable_choices_visible_without_an_invented_output_limit() {
     use afd_setup::types::{ModelPurpose, ModelsQuery};
-    let f = Fixture::create().await;
+    let f = Fixture::isolated().await;
     sqlx::query("UPDATE model.platform_models SET inference=NULL WHERE id=$1")
         .bind(f.catalogue.first().expect("first catalogue model"))
         .execute(&mut *f.connection().await)

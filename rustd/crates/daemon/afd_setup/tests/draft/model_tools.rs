@@ -12,7 +12,7 @@ use afd_setup::types::{ModelPurpose, ModelsQuery};
 #[ignore = "requires live Postgres"]
 async fn tool_less_chat_routes_remain_runtime_choices_but_cannot_create_setup_chats() {
     for dialect in ["perplexity", "hyperbolic", "mira"] {
-        let f = Fixture::create().await;
+        let f = Fixture::isolated().await;
         let settings = ModelInference {
             api: InferenceApi::Chat,
             base_url: "https://models.example.com/v1".into(),

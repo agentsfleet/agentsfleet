@@ -9,8 +9,8 @@ export const platformModelsList = Effect.fn("platform.models.list")(function* (o
   const response = yield* modelPage(options);
   const output = yield* Output;
   if (output.format === OUTPUT_FORMAT.json || !output.stdoutIsTty) return yield* output.printJson(response);
-  yield* output.printEntityTable({name: {key: "name", label: "NAME"}, domain: [
-    {key: "id", label: "ID"}, {key: "provider", label: "PROVIDER"}, {key: "model_id", label: "MODEL"},
+  yield* output.printEntityTable({id: {key: "id"}, name: {key: "name", label: "NAME"}, domain: [
+    {key: "provider", label: "PROVIDER"}, {key: "model_id", label: "MODEL"},
   ], ageKey: null}, response.models.map(({id, provider, model_id, metadata}) => ({id, provider, model_id, name: metadata.display_name})));
   if (response.next_cursor) yield* output.info(`Next page: --starting-after ${response.next_cursor}`);
 });
