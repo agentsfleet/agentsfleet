@@ -45,7 +45,6 @@ guffbolt-ai = { workspace = true, features = ["test-util"] }
 af_context.workspace = true
 af_core = { workspace = true, features = ["test-util"] }
 af_crypto.workspace = true
-af_fleet_runtime = { workspace = true, features = ["test-util"] }
 af_observability.workspace = true
 af_otlp.workspace = true
 af_stream = { workspace = true, features = ["test-util"] }

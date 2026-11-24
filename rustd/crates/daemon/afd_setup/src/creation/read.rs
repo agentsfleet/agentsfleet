@@ -3,6 +3,7 @@
 use af_core::id::Uuid7;
 use af_fleet_runtime::config::HttpEgress;
 use jiff::Timestamp;
+use jiff_sqlx::Timestamp as StoredInstant;
 use sqlx::{Connection as _, PgConnection};
 
 use super::{CONTEXT, Creations, etag, sql};
@@ -26,9 +27,9 @@ pub(super) struct Stored {
     pub(super) http_egress: String,
     pub(super) package_domains: bool,
     pub(super) resource_version: i64,
-    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    #[sqlx(try_from = "StoredInstant")]
     created_at: Timestamp,
-    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    #[sqlx(try_from = "StoredInstant")]
     updated_at: Timestamp,
     memory_reads_workspace: bool,
     memory_publishes_workspace: bool,

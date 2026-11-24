@@ -14,6 +14,7 @@ use af_core::id::Uuid7;
 use af_wire::trigger_verb::TriggerKind;
 use afd_api_wire::fleet::Trigger;
 use jiff::Timestamp;
+use jiff_sqlx::Timestamp as StoredInstant;
 use sqlx::{Connection as _, PgConnection};
 
 use crate::{
@@ -121,7 +122,7 @@ struct Stored {
     verifier_header: Option<String>,
     secret_name: Option<String>,
     channel: Option<String>,
-    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    #[sqlx(try_from = "StoredInstant")]
     created_at: Timestamp,
 }
 
