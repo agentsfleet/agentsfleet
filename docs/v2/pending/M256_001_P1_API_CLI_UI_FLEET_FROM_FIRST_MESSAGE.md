@@ -426,7 +426,7 @@ The `SetupStep` events, `fleet_setup_finished`, `fleet_setup_cancelled`, `setup_
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Indy approved this report (§1) | `git grep -n -e "^- \*\*Dimension 1\.1\*\* — DONE" -- docs/v2` | one line | P0 | |
+| R1 | Indy approved this report (§1) | `git grep -n -e "^- \*\*Dimension 1\.1\*\* — DONE" -- "docs/v2/*/M256_001_*"` | one line | P0 | |
 | R2 | A first message creates one active fleet with its turn, once, and is answered on its stream (§2) | `make test-integration-rustd` | exit 0; `a_first_message_creates_an_active_fleet_with_its_turn ... ok`, `a_repeated_create_answers_the_same_fleet ... ok`, `a_first_message_is_answered_on_the_fleet_stream ... ok` | P0 | |
 | R3 | A bare fleet runs with the catalog and no secret, the wallet is its only ceiling, and no draft or revision is left in the schema (§2) | `make test-integration-rustd` | exit 0; `a_new_fleets_run_holds_the_catalog_and_no_secret ... ok`, `a_payer_with_no_wallet_row_is_refused ... ok`, `the_schema_names_no_draft_or_revision ... ok`, `a_questions_answer_resumes_after_the_model_changes ... ok` | P0 | |
 | R4 | A run's prompt is the fixed text and the fleet's pinned memory, and no setup route or status remains (§2) | `make test-unit-all` | exit 0; `a_runs_prompt_carries_the_fleets_name_and_pinned_memory ... ok`, `no_setup_route_is_mounted ... ok`, `a_fleet_is_active_or_archived ... ok` | P0 | |
