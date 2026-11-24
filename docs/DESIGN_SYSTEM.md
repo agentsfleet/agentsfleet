@@ -771,6 +771,7 @@ Reserve reply-action space before completion. Completing a live reply must not e
 
 Only replies loaded as completed history may skip offscreen layout.
 Replies with recorded task activity open that history from the reply actions. The popover supports keyboard dismissal and returns focus to its control.
+
 Show measured durations with millisecond precision, such as `842ms` or `1.237s`.
 
 Browser checks compare computed font family, size, weight, and line height across both composers.
