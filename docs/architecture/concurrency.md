@@ -29,14 +29,13 @@ Every row is extracted from the sections below; the owner column names the secti
 | Shutdown order | decide why → cancel and join → drop | teardown is in the outer `run`, so every early return still tears down | §Shutdown choreography |
 | Cancellation reach | every long-lived task selects its own I/O against the token | a genuinely blocked `accept()` is interrupted mid-read, not at the next poll interval | §Shutdown choreography |
 | Test handshake | handshakes, never sleeps | channels, `Notify` and `CancellationToken` on both planes; `start_paused` pays no wall clock for a join timeout | §Shutdown choreography |
-| Setup chat assignment | never waits on a draft | it reads the draft without a lock; a conditional thread upsert and a conditional turn update decide, so no draft is skipped as busy | §Runner capacity and setup lock order |
 | Discipline scope | no roster | C1–C5 hold at review; RULE NLR owns cleanup of the files a change touches | §Expanding the discipline base |
 
 ## Traps
 
 Each trap is enforced in its owner section; this list is the index.
 
-- Every spawned task needs a lifetime owner and stop path, including request-owned private preview publishers (§Thread map).
+- Every spawned task needs a lifetime owner and stop path (§Thread map).
 
 - Never open a second native subscription for a subject that already has local readers. The first reader opens it and starts its pump; later readers join the channel and wait until that subscription is queued (§Lock-invariant registry).
 
@@ -49,8 +48,6 @@ Each trap is enforced in its owner section; this list is the index.
 - New cross-boundary channels declare one producer and one consumer, and the payload's ownership at the boundary. Reshaping existing ones is a separate judgment with this page as input (§Channel inventory).
 
 - Channel and stream *names* are canonical in `data_flow.md`, not here (preamble).
-
-- Never let a setup chat assignment lock a draft or its creator while it holds the host row. Every other tenant on that poll would wait behind it, and a skip loses the wake. Read the draft unlocked and let the thread and turn claims decide (§Runner capacity and setup lock order).
 
 ## The five invariants (rules C1–C5)
 
@@ -93,12 +90,12 @@ The supervisor in the daemon binary (`rustd/crates/daemon/main`) owns process-li
 
 `Supervisor::spawn` supplies a cancellation token and retains each handle. Shutdown waits for each handle and reports tasks exceeding the ten-second join deadline. The supervised `bus_shutdown` task shuts the NATS connection down on cancellation.
 
-Private answer previews use a request-owned publisher (`afd_setup`'s preview publisher). Its `AbortOnDropHandle` aborts the task on cancellation or unwind; normal completion allows a two-second drain. Publication rechecks access before sending each preview.
-
 The inventory is asserted, not described. `test_boot_to_ready_on_compose`
 (the daemon's `integration_serve` test) compares a booted
 daemon's whole inventory against the names below. A task added to boot without
-a name, or a named task that boot no longer spawns, is a failing test. The daemon runs no timed loop: every task below waits on a socket, a bus message, a runner connection or cancellation.
+a name, or a named task that boot no longer spawns, is a failing test.
+
+The daemon runs no timed loop: every task below waits on a socket, a bus message, a runner connection or cancellation.
 
 | Task | Spawned by | Touches | Protection | Stop path |
 |---|---|---|---|---|
@@ -336,7 +333,7 @@ individual files a change touches.
 A checker reads `rustd/`, a make target invokes it, and a Continuous
 Integration (CI) job runs the target.
 
-## Runner capacity and setup lock order
+## Runner capacity and lock order
 
 Every assignment holds the runner row while counting live capacity and writing a run. Runtime renewal holds the runner row only shared. One statement per host takes it `FOR SHARE` first, then each run's thread and row in fleet order, and samples database time once after them.
 
@@ -344,19 +341,13 @@ Renewals never wait on each other. A credential rotation fences every renewal be
 
 The funds check reads the wallet without a lock, once per payer every third tick.
 
-A setup run's renewal takes the runner row exclusively while it counts capacity (`afd_fleet`'s draft renewal). It then takes the run's thread and row, and never a draft row, so a busy draft never holds it.
-
-The setup assignment holds a host and then reads a draft without a lock (below).
-
 Retiring a revoked runner (`afd_runner`'s `delete_revoked`) holds the runner row while its foreign keys set that runner's `thread.runs.runner_id` and `thread.threads.last_runner_id` to NULL. Assignment and both renewal kinds take the runner row first, and no report takes it, so they lock in the delete's order. The delete also refuses a runner with a live run or an unbilled runtime tail (`delete_runner_if_in_state.sql`).
 
-Runtime reports take the run row and never the runner or setup rows. The statement that logs a report's or a renewal's usage lines also writes their daily rollup rows in key order, then debits the payer's wallet row, last and in tenant order (the `billing.usage_lines` triggers). The wallet row stays locked from that statement to the commit, so a tenant's concurrent writes of usage take turns on it.
+Runtime reports take the run row and never the runner row. The statement that logs a report's or a renewal's usage lines also writes their daily rollup rows in key order. It then debits the payer's wallet row, last and in tenant order (the `billing.usage_lines` triggers).
+
+The wallet row stays locked from that statement to the commit, so a tenant's concurrent writes of usage take turns on it.
 
 Verify two-replica expiry races and lock-order timeouts before claiming these guarantees.
-
-The setup assignment gate reads the balance without a lock (`afd_setup`'s setup-run model gate, `afd_billing`'s `select_wallet.sql`). A setup run's renewal and report lock the owner's wallet row only through the debit their usage lines write. Activation at Save takes no wallet lock: the balance it locked was never read.
-
-Stop and delete take the draft, then its thread in a statement of its own, then its turn or runs, and never take the runner row (`afd_setup`'s `message/stop.rs` and `privacy.rs`).
 
 ### A fleet Stop, the issue, a fold retry and a gate answer
 
@@ -368,27 +359,29 @@ Each takes the fleet's thread before a turn, a gate or a run. They queue on the 
  issue          fleet KEY SHARE ─► host ─► thread (held) ─► head turn FOR SHARE, unsettled, at the fence
  fold retry     assign_inputs.sql: fleet KEY SHARE ─► thread NO KEY UPDATE ─► run FOR SHARE ─► the folds
  gate answer    resolve_gate.sql: fleet KEY SHARE ─► thread NO KEY UPDATE ─► gate ─► turns
- fleet delete   fleet FOR UPDATE ─► setup cards ─► cascade to gates and thread
+ fleet delete   fleet FOR UPDATE ─► cascade to gates and thread
 ```
 
 The Stop's holds are a statement of their own (`afd_turns`'s `view/stop/hold_thread.sql`). Stop's statement starts after an issue that held the thread commits, and marks the run it issued. The issue reads its head with a lock after its thread wait, so a Stop that committed meanwhile leaves no run (`afd_fleet`'s `integration_run_issue_stop.rs`).
 
 A Stop and a gate answer take the fleet first, because fleet delete holds it `FOR UPDATE` and then cascades to the thread. Holding the thread first met delete at a gate: Stop deadlocked with it before Nov 23, 2026 (`afd_approval`'s `integration_resolve_behind_stop.rs`).
 
-Every other holder of the fleet `FOR UPDATE` delays a Stop and a gate answer too, up to the login's lock bound. Those holders are activation, a setup save, an archive and a recovered start (`afd_setup`'s `creation/`).
+Every other holder of the fleet `FOR UPDATE` delays a Stop and a gate answer too, up to the login's lock bound. Those holders are a fleet `PATCH` and an archive (`afd_setup`'s `creation/`).
 
 A gate answer holds the thread for its one statement even when it loses. An assignment pass that meets it skips the fleet, as it skips any held thread. The losing answer rings nothing, so the turn waits for the fleet's next ring, as after a dropped wake.
 
+An assignment still waits on the thread, the earlier run and the turn. A fleet Stop takes the fleet and then the thread, and a report and a renewal take the thread first. So each queues behind an assignment rather than locking against it in the other order.
+
 ### A decision reservation locks in one statement
 
-A reservation reads its run, task, source turn, budget and wallet with no lock, one round trip each. Then one statement takes its locks in the fleet writers' order, re-checks the rows, and inserts the issued call with its payload (`afd_fleet`'s `durable_task/decision/sql/issue.sql`):
+A reservation reads its run, task, source turn and wallet with no lock, one round trip each. Then one statement takes its locks in the fleet writers' order, re-checks the rows, and inserts the issued call with its payload (`afd_fleet`'s `durable_task/decision/sql/issue.sql`):
 
 ```
  reads, no lock ─► issue.sql: workspace, fleet KEY SHARE ─► thread, run, named task,
                    source turn, each FOR SHARE ─► clock ─► INSERT call + payload
 ```
 
-A share lock makes Postgres re-read a row that changed while the statement waited. So a takeover, a task cancel or a Stop that committed meanwhile issues nothing. Rows the statement only joins (the runner, the model, its revision) are read as of the statement's start.
+A share lock makes Postgres re-read a row that changed while the statement waited. So a takeover, a task cancel or a Stop that committed meanwhile issues nothing. Rows the statement only joins (the runner and the model) are read as of the statement's start.
 
 The statement does not repeat the money reads. Two overlapping reservations of one fleet can each pass a money check the other's call would fail, by one call's reservation each.
 
@@ -414,11 +407,11 @@ The messages verb reads its run's standing unlocked and writes nothing to the ru
 
 A refused renewal or report still bills the requests the runner reported (`afd_fleet`'s `run/usage/original.rs`). Its first statement takes the run `FOR NO KEY UPDATE` (`original_request_owner.sql`). The usage key, not this lock, stops a second charge. The lock keeps the order every metering pass takes: run, then wallet, then the durable task, whose runtime cursor on the run it advances last. With no run lock first, a task's run deadlocks with a pass holding the run and asking for the wallet.
 
-A schedule create, a schedule edit and a setup's recipe replacement take the fleet's writer turn (`afd_cron`'s `lock_fleet.sql` and `lock_fleet_in_workspace.sql`). The turn is a transaction-scoped advisory lock keyed by `uuid_hash(fleet_id)`, taken after `FOR KEY SHARE` on the fleet row. Intake, reports and items of the fleet never wait on it.
+A schedule create and a schedule edit take the fleet's writer turn (`afd_cron`'s `lock_fleet.sql` and `lock_fleet_in_workspace.sql`). The turn is a transaction-scoped advisory lock keyed by `uuid_hash(fleet_id)`, taken after `FOR KEY SHARE` on the fleet row. Intake, reports and items of the fleet never wait on it.
 
-The key share comes first so that a setup holding the fleet row `FOR UPDATE` is waited out before the turn. Otherwise a create holding the turn would wait on that setup's row in its insert, while the setup waits for the turn.
+The key share comes first, so a writer holding the fleet row `FOR UPDATE` is waited out before the turn is taken.
 
-The schedule cap is a count under that turn. A unique slot per schedule was weighed and not used. The recipe replacement writes many rows into the same cap, in place, and must also take turns with edits of its schedules.
+The schedule cap is a count under that turn. A unique slot per schedule was weighed and not used.
 
 ### Every daemon statement runs under the API login's bounds
 
@@ -426,47 +419,4 @@ The API login carries two bounds through `ALTER ROLE` (`afd_db::login`). A lock 
 
 No product transaction sets its own with `set_config`. The four that did were removed on Nov 07, 2026; each repeated or loosened the login's bounds.
 
-Both codes mean "not now", so one predicate reads them (`afd_db::error::is_bound_reached`). A caller answers a reached bound as retryable unavailability. The fleet task paths answer 503, billing counts it as an unanswered read, and setup activation reads it as still installing.
-
-### The setup chat claim never waits on a draft
-
-An assignment walks up to 64 queued drafts, oldest first, one transaction per draft (`afd_fleet`'s draft assignment). Each locks the host row, then reads the draft without a lock. Two conditional writes decide what it takes:
-
-```
- assignment pass (host row R held)        what decides
-   │
-   ├─ creator, draft, head message         hints, read unlocked (setup_run/creator.rs,
-   │                                       head.sql): a reader or writer holding the
-   │                                       draft delays nothing
-   ├─ thread claim  assign_thread.sql      conditional upsert on thread.threads, keyed
-   │     no row → pass, next draft         by the draft's id: one pass gets the row
-   ├─ turn claim    running.sql            head still unsettled, draft still editing
-   │     no row → roll back, next draft    the fence bump rolls back with it
-   └─ issue the run, commit
-```
-
-Neither claim is refused by a lock another transaction holds, so a draft has no busy outcome. It is assigned, passed for a committed reason, or rolled back. A committed reason publishes its own event: a live run's report or lapse, a Stop, a deletion.
-
-Before Nov 23, 2026 the pass took the creator and the draft `NOWAIT` in a savepoint and skipped a held draft with no log. The draft's own page reads held that lock, so a skipped Save waited for the next wake, once for 64 s.
-
-A draft deleted after the read took its thread with it. The thread claim's insert then fails `threads_draft_id_fkey`, and the pass rolls back and moves on (`run/draft/take.rs`).
-
-A deletion and a Stop each take the thread in a statement of their own before their deletes or the shared Stop statement (`afd_setup`'s `privacy.rs`, `message/stop.rs`). Those statements then start after an in-flight assignment commits, so they see the run it issued: the deletion deletes it, and the Stop marks it.
-
-An assignment's second update of its thread re-checks the thread's draft key under `FOR KEY SHARE` (Postgres re-checks a foreign key on any row its own transaction wrote). Draft writers therefore lock the draft `FOR NO KEY UPDATE` (`sql/draft/lock.sql`, `setup_run/sql/lock_report.sql`), which that key share passes. Under `FOR UPDATE` a writer holding the draft and waiting for the thread deadlocked with the assignment.
-
-The reads take no lock either. A draft's page, its message page and each stream frame run on one `REPEATABLE READ, READ ONLY` snapshot (`afd_setup`'s `sql/snapshot.sql`). Postgres refuses a locking read inside it.
-
-The draft review and the saved-setup read run read committed, with lock-free twins of the person, install and grant reads. They cannot run on that snapshot yet: the credential inspection opens its secrets `FOR SHARE` (`afd_vault`'s `select_shared_generations.sql`). Writers keep the draft lock, and a write's review keeps its share locks on installs and grants until the write commits.
-
-`make bench-runs BENCH_SHAPE=saturation` measured the wait the savepoint skip replaced, with 40 hosts on a 20-connection pool. One writer held a tenant's drafts for 1 s in every 1.25 s. The bench has not run on the claims.
-
-| Median of three runs | Waiting | Skipping |
-|---|---|---|
-| Open-transaction age p95 | 959 ms | 17 ms |
-| Chat run p95 | 3 006 ms | 707 ms |
-| Throughput | 41.7 runs/s | 62.7 runs/s |
-
-No run was doubled and no host exceeded its workers either way. The full row is in [Measured ceilings](./scaling.md#measured-ceilings).
-
-An assignment still waits on the thread, the earlier run and the turn. A fleet Stop takes the fleet and then the thread, and a report and a renewal take the thread first. So each queues behind an assignment rather than locking against it in the other order.
+Both codes mean "not now", so one predicate reads them (`afd_db::error::is_bound_reached`). A caller answers a reached bound as retryable unavailability. The fleet task paths answer 503, and billing counts it as an unanswered read.

@@ -43,33 +43,30 @@ next time someone adds a surface.
 Mutation events fire on success only; validation failures and aborted actions
 emit nothing.
 
-## Private chat to fleet funnel
+## First message to fleet funnel
 
-| Event | Owner | Trigger |
-|---|---|---|
-| `draft_message_accepted` | Daemon | A new message is durably accepted, excluding idempotent replays. |
-| `draft_message_finished` | Daemon | An accepted message reaches its durable terminal state. |
-| `fleet_setup_finished` | Daemon | Setup reaches its durable successful outcome. |
-| `fleet_setup_cancelled` | Daemon | Setup cancellation is durable. |
+A person's first message creates the fleet, and the fleet asks for the access it needs.
+The daemon reports both steps as product events:
 
-Acceptance and completion counts must come from the daemon. Terminal-client
+| Event | Owner | Fires when | Properties allowed | Never attached |
+|---|---|---|---|---|
+| `fleet_created` | Daemon | The create commits, once per fleet; a replayed create sends nothing | `fleet_id`, `origin` (`cli` or `dashboard`) | the message text, the fleet's name |
+| `fleet_access_changed` | Daemon | A grant is requested, approved, denied or revoked | `fleet_id`, `kind`, `change` | a secret's name or value, a repository name |
+
+Creation and access counts must come from the daemon. Terminal-client
 activity, closed browser tabs, and blocked analytics scripts cannot then turn
 a browser click into conversion truth. Join only through opaque identifiers
 within the authorized workspace.
 
-The daemon reports each step from `afd_setup` after the commit that made it
-true, attributed to the person's identity-provider subject. Every property is a
-UUID or a fixed word, and `af_observability`'s setup telemetry tests (its `setup` module) pin
-each event's exact key set.
+The daemon reports each event after the commit that made it true, attributed to
+the person's identity-provider subject. Every property is a UUID or a fixed
+word. Never attach message text, names, pinned memory, URLs or secret values.
 
-These events allow only kind, state, outcome, and opaque authorized identifiers.
-Never attach message text, titles, Definitions, instructions, URLs, or secret
-values.
+A trigger added or removed is an operator log line, `trigger_changed`, never a product event.
+[Observability](observability.md) owns it; it carries `fleet_id`, `kind` and `by` (`run` or `person`), and no signing secret or URL.
 
 The browser uses the existing event catalog's runtime property allowlist and
 automatic pathname context; it does not capture query strings or fragments.
-`ui/packages/app/tests/draft-analytics-privacy.test.ts` exercises that
-allowlist with a widened payload.
 
 ## Identity lifecycle
 

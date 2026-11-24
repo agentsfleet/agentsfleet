@@ -1,8 +1,10 @@
-# Configurable decision models for intent and goal evaluation
+# Configurable decision models for goal evaluation
 
 ## Status and sources
 
 This page owns the proposed decision-provider boundary for M236 [Durable Tasks](durable_tasks.md).
+The decision model only judges whether a task is done; the fleet's own model [starts tasks](durable_tasks.md#how-a-task-starts).
+
 Indy selected Jev initially and then requested a configurable decision model per runner.
 Implementation is approved; live provider proofs and runtime acceptance remain pending.
 
@@ -40,7 +42,7 @@ One object-safe `DecisionEvaluator` trait exposes one bounded asynchronous `eval
 `DecisionClient` owns its frozen profile and credential; agent-facing calls cannot select or receive provider keys.
 Use existing boxed-future conventions; no plugin registry, provider discovery service or second agent loop is needed.
 
-`DecisionRequest` carries purpose, state and reviewed questions, bounded together by the decision model's input limit; trusted generation/evidence bindings remain outside model-controlled answers.
+`DecisionRequest` carries purpose, state and the task's statements, bounded together by the decision model's input limit; trusted generation/evidence bindings remain outside model-controlled answers.
 
 `DecisionResult` carries typed answers, the reported model and physical usage.
 The native reservation binds these results to the frozen provider/profile revision and assessed evidence.
@@ -113,9 +115,9 @@ After the thread row lock, a fresh database clock rejects claims that expired du
 Revocation still prevents new dispatch and native acceptance while preserving measured usage.
 Replacement runners may use another reviewed profile without changing the DT objective, authority, history or cumulative limits.
 
-Decision reuse requires matching profile revision, questions, assessed state, goal revision and evidence binding.
+Decision reuse requires matching profile revision, statements, goal digest, assessed state and evidence binding.
 A profile change invalidates cached assessments; it does not repeat already accepted human input or confirmed effects.
-An unset or unsupported profile leaves DT creation unavailable with a named prerequisite; ordinary chat retains its current path.
+A run with an unset or unsupported profile is offered no task tools; ordinary chat retains its current path.
 
 ## Provider APIs and Rust client choices
 
@@ -157,8 +159,8 @@ Resolve current credential state after reserving each physical call; a missing o
 Credentials never enter sandbox tools, conversation messages, saved workspace files or R2 objects.
 No provider is silently selected when its profile is missing or unavailable.
 
-Record configured and returned model identity, profile/question revision, state digest, task generation, goal revision, assessed head and physical usage.
-Only model/version identities admitted by that profile's evaluation policy may drive task creation, association or goal transitions.
+Record configured and returned model identity, profile revision, state digest, task generation, goal digest, assessed head and physical usage.
+Only model/version identities admitted by that profile's evaluation policy may drive goal transitions.
 An unknown or imprecise version blocks native decisions; retain usage and the original message.
 
 For TypeSafe, send `model: jev-latest` and record the returned version.
@@ -171,8 +173,8 @@ Native code owns authority and transitions; decision models supply assessments r
 
 | Primitive | Meaning | M236 use |
 |---|---|---|
-| Choice | Selected option, per-option probabilities and derived confidence | Intent, existing-work association and next-action proposal. |
-| Noul | Probability from zero to one that a yes/no statement is true | Semantic completion and clarification questions. |
+| Choice | Selected option, per-option probabilities and derived confidence | Next-action proposal. |
+| Noul | Probability from zero to one that a yes/no statement is true | One semantic completion statement. |
 | Score | Distribution across an ordered rubric and expected score | Optional qualitative assessment only when a reviewed rubric needs it. |
 
 A Noul near 0.5 expresses uncertainty; it is not a null or missing answer.
@@ -183,145 +185,91 @@ The following primitives describe native probability providers; the adapters mus
 Question identifiers are response keys; question instructions must carry the actual meaning.
 
 Do not depend on identifier wording that TypeSafe does not send to the model.
-Pin the fleet question revision and evaluated model profile together for every assessment.
+Pin the task's goal digest and the evaluated model profile together for every assessment.
 
 ## Who writes and stores the questions
 
-The fleet owner controls routing and completion questions, including their wording and criteria.
-Setup chat or the CLI's setup flow drafts `config["x-agentsfleet"].decision_policy`; business guidance stays in `instructions_md`.
-The owner reviews and applies that candidate through the existing setup flow.
+A task's completion statements are its own `questions`, stored on `fleet.durable_tasks` beside their `goal_digest`.
+The fleet's own model writes them in its `task_start` call, from the person's message that asked for the work.
+Nobody writes them ahead of a task, and the decision model never writes or changes them.
 
-The setup-chat LLM proposes questions in the first draft once the job and success conditions are clear.
-It derives criteria without requiring DT or model terminology, and asks when the outcome or scope is unclear.
-The decision model evaluates accepted questions during work; it does not author the setup questions.
+The fleet's model derives each statement from the person's described outcome, scope and available evidence.
+Each statement holds a stable key, its yes/no question and both its `true` and `false` criteria.
 
-The assistant derives questions from the owner's described outcome, scope and available evidence.
-It shows the proposed question, yes/no criteria or choice criteria, and the scope of the change.
-The owner can revise poor criteria through chat without editing source code or asking a platform administrator.
-
-An owner can supply exact wording: “Add a completion question: does the repair preserve SSO login? Yes when the login regression passes; No when it fails or is missing.”
-The setup assistant preserves supplied wording and proposes missing criteria for review.
-
-Each Apply creates another immutable fleet revision; it never edits an older revision.
-New DTs adopt the current accepted policy and their specific objectives automatically.
-An active DT keeps its accepted version until explicit revision adoption invalidates older assessments.
-
-Native code owns typed request construction, allowed answer/action shapes, trusted state and mandatory authority/evidence checks.
-`afr_agent`'s decision module renders the accepted configuration without changing its meaning.
-Provider documentation and adapter verification establish which question types the selected model supports.
+A person edits the statements on the task panel ([how a task starts](durable_tasks.md#how-a-task-starts)).
+The edit writes new `questions` and `goal_digest` and raises the task's generation by one.
+Prior assessments, confirmed effects and cumulative spend stay as history; a decision prepared under the old generation is stale.
 
 ```text
-UI setup chat / CLI -> assistant drafts instructions_md + decision_policy
-                                              |
-                                       owner Review/Apply
-                                              |
-                        R7 immutable -- new draft/Apply --> R8 immutable
-                             |                                  |
-                        DT accepts R7                      new DT accepts R8
-                             |
-                   explicit adoption of R8
-                             |
-            record acceptance; invalidate older assessments
-                             |
-   accepted questions + current evidence -> typed request -> selected model
+Person: "Fix the import crash in PR 101 until its checks pass"
+                         |
+fleet's model -> task_start {..., statements}
+                         |
+fleet.durable_tasks.questions + goal_digest, generation 1
+                         |
+person edits on the task panel -> PATCH F/durable_tasks/{id}
+                         |
+new questions + goal_digest, generation 2; older assessments stale
+                         |
+statements + constant next action + current evidence
+                         -> typed request -> selected model
 ```
 
-Task creation saves its accepted questions in `fleet.durable_tasks.questions`, bound to `accepted_revision_id` and `goal_digest`.
-Adoption preserves prior revisions, assessments, confirmed effects and cumulative spend.
-The model catalogue supplies supported types and evaluated model thresholds; fleet owners control the question text and criteria.
+Native code owns typed request construction, allowed answer/action shapes, trusted state and mandatory authority/evidence checks.
+The daemon compiles each goal request from the task's `questions`, the constant next-action question and complete task state (`afd_fleet/src/durable_task/decision/compile.rs`).
+Provider documentation and adapter verification establish which question types the selected model supports.
 
-The native policy parser, proposal-tool schema and UI/CLI question review are written; full runtime acceptance remains pending.
-Native decision requests compile the accepted policy and complete task/source state.
-Task adoption and the root decision loop have source implementations.
-
-Restored history is authenticated task data; current native adopted criteria control the next assessment.
+Restored history is authenticated task data; the task's current statements control the next assessment.
+Full runtime acceptance remains pending.
 
 A completed action group is sent whole first (`afr_agent/src/loop/durable_task_evidence.rs`).
 Only when `agentsfleetd` refuses it as larger than the decision model's `input_max_bytes` (`UZ-REQ-002`, before any reservation) does the runner send one semantic summary of it.
 Summaries cannot satisfy native publication or exact-head validation checks.
 
-`DecisionPolicy` resolves `RoutingQuestions` and `CompletionQuestions` through the existing serde/garde parser.
-Each role requires its exact native criterion keys; all wording and criterion text are owner-editable.
+Statements pass the statement bounds kept in `af_fleet_runtime`'s decision configuration.
+A key is 1 to 64 ASCII bytes of letters, digits, `_`, `.` or `-`, and keys are unique within a task.
+Question and criterion text is nonblank, holds no NUL and fits the text ceiling.
 
-Statements retain stable IDs and their reviewed order. Empty, duplicate, unknown, NUL-containing and oversized policy is refused, never filled with hidden questions.
+An empty list, a duplicate key or a missing criterion is refused, never filled with hidden questions.
+Statements keep their keys and order through a person's edit.
+The actual rendered request must independently satisfy the selected provider's request bounds.
 
-Question and criterion text is nonblank and holds no NUL. The actual rendered request must independently satisfy the selected provider's request bounds.
-The shared [Linkwarden policy fixture](../../rustd/crates/protocol/af_fleet_runtime/tests/fixtures/fleets/ci-repairer/decision-policy.json) illustrates the editable representation.
+## Question display in task views
 
-## Question display in setup and task views
-
-UI review and CLI setup output show owner-editable success criteria under `What counts as done?`, separately from instruction prose.
-Show the saved setup revision, current revision, question changes and the revision each DT has accepted.
-Use the existing numeric fleet revision and history rather than creating another question-version counter.
-
-The browser task view shows accepted success criteria and the saved setup revision.
-Latest assessments and assessed evidence identity have native read projections;
-their connected runtime behavior remains unverified.
+The browser's task panel shows a task's completion statements under `What counts as done?`, separately from its objective and progress.
+Each statement shows its question and its yes/no criteria, and a person edits them in place.
+Latest assessments and assessed evidence identity have native read projections; their connected runtime behavior remains unverified.
 
 Label Noul values as probability of yes; they are neither a separate confidence value nor a percentage of work completed.
 Preserve readable CLI output alongside the existing machine-readable representation.
 
-Keep the owner-approved `Save done vN → Open fleet` status pill and existing design-system controls. Normal setup omits routing categories, association/decomposition rules, next-action choices and model terminology; those remain in validated configuration and machine-readable output, editable through setup chat.
-
-The separate HTML mocks retain the current setup and fleet-chat layouts, composers and activity indicators.
-Setup chat authors fleet revisions and inline success criteria; fleet chat handles work requests and DT activity.
+Keep the existing design-system controls.
+The panel omits the constant next-action question and model terminology; those remain in machine-readable output.
 Each fleet keeps one work conversation; DT details remain associated with it.
 
 ```text
 Fleet: Linkwarden repair
-Setup revision: R8 (current)
+Task: PR 101 import repair (generation 2)
 
 What counts as done?
   1. Does the patch address the accepted defect?
      Yes: current code and regression evidence demonstrate the fix.
      No: evidence is missing, contradictory, or the defect remains.
-
-PR 101: accepted R7; R8 available; adoption requires an explicit change
+  [Edit]
 ```
-
-## Intent routing
-
-```text
-Admitted human message + bounded relevant conversation
-                      + trusted eligible DT descriptions
-                               |
-                        configured decision provider
-                               |
-conversation / status / refresh / steer / new_work / clarify
-                               |
-                   native association and permission checks
-                               |
-                answer / read / input receipt / create / clarify
-```
-
-Run routing within the existing run or its safe input boundary; no second queue or classification worker is added.
-Use trusted DT options plus explicit new-work and unclear outcomes.
-
-Use compact option keys with an immutable native identity map in the state, so sixteen candidates fit the question-size bound.
-Accept associations through that recorded map; the option key itself grants no authority.
-
-A selected browser work item is a hint that native ownership checks must validate.
-
-One closed-set label must not discard independent requests within a mixed message.
-Preserve the original text and let the conversational model propose separate bounded actions when needed.
-Native code records which input supports each action and refuses ambiguous write targets.
-
-Social input may use one intent-routing call through the selected profile.
-It makes no investigation-tool call or second goal-evaluation call solely because older work exists.
-Signed machine completions skip intent routing and match recorded waits natively.
-
-Low-confidence association, missing candidates, malformed answers and timeouts never default to new work.
-Retain the admitted message and ask for clarification or show the named routing failure.
-The proposed thresholds below require frozen real-message evaluation before enabling live autonomous writes.
 
 ## Goal evaluation
 
-The accepted `decision_policy` holds user-reviewed completion questions and criteria; `instructions_md` supplies their business context.
-Task creation freezes that fleet revision and the specific objective; typed templates preserve their meaning.
-Question changes require a new immutable revision and explicit adoption before they can affect an existing DT.
+The decision model only judges whether a task is done.
+It never starts a task, links a message to one or widens access; the fleet's own model does the first two by tool.
+A plain message makes no decision call.
+
+The goal check reads the task's own completion statements and one constant next-action question, kept beside `afd_fleet/src/durable_task/decision/compile.rs`.
+That constant is the `next_action` question and its four criteria shown in the [repair example](#concrete-repair-decision-example).
+The task's objective, a span of the person's message, supplies the business context.
 
 At a completed action group or resumed-task boundary, send bounded current task state and attributable evidence.
-Batch related semantic Noul questions with a Choice over CONTINUE, WAIT, DONE and BLOCKED.
+Batch one semantic Noul per statement with a Choice over CONTINUE, WAIT, DONE and BLOCKED.
 Include current limits so the model sees the available choices, while native code enforces the actual bounds.
 
 ```text
@@ -345,8 +293,8 @@ Decision providers supply typed assessments; recorded facts and the conversation
 ## Failures, cost and injection boundaries
 
 Validate answer type, known options, finite numeric range, probability distribution and required response usage.
-Reject stale generation, instruction revision or evidence binding before accepting a proposed transition.
-Repository text and logs remain untrusted state and cannot replace templates, grants or native completion requirements.
+Reject a stale generation, goal digest or evidence binding before accepting a proposed transition.
+Repository text and logs remain untrusted state and cannot replace the task's statements, grants or native completion requirements.
 
 Detect repeated JSON object keys before their earlier values disappear.
 Ambiguous answers invalidate the assessment while retaining independently readable usage; ambiguous usage or duplicate envelopes retain unknown accounting.
@@ -354,7 +302,7 @@ Ambiguous answers invalidate the assessment while retaining independently readab
 Normalized score receipts use `serde_with` for numeric JSON keys and reject collisions after integer conversion.
 A rejected wire receipt leaves the existing reservation and stored call unchanged.
 
-Use bounded timeouts and retry accounting shared with the task or pre-task turn.
+Use bounded timeouts and retry accounting shared with the task.
 Input tokens determine TypeSafe's documented charge; output usage remains recorded even when its rate is zero.
 Resolve exact rates through reviewed configuration rather than reusing an unrelated chat model's prices.
 
@@ -363,7 +311,7 @@ Retain uncertain call accounting and stop at the configured reservation ceiling 
 Timeouts, unsupported responses and provider failure never default to success or permission.
 
 The following proposed values fix timeout, retry, request-size and threshold policy for implementation signoff.
-Tests must include alias changes, uncertain routing, mixed requests, prompt injection, stale decisions and missing evidence.
+Tests must include alias changes, prompt injection, stale decisions, edited statements and missing evidence.
 No live provider acceptance is claimed by documentation review.
 
 ## Proposed question and threshold policy
@@ -371,35 +319,28 @@ No live provider acceptance is claimed by documentation review.
 The following numeric defaults belong to the proposed Jev profile, not every provider.
 Perplexity, Clef and OpenAI profiles require their own evaluated thresholds; self-reported probabilities cannot inherit Jev's policy.
 
-Use format revision `dt-routing-v1` for intent and `dt-goal-v1` for goal assessment.
-Render questions from the accepted fleet policy; bind its revision and normalized digest with the DT.
-Repository text cannot replace the owner's accepted questions or native guard rules.
+Use format revision `dt-goal-v1` for goal assessment.
+Render questions from the task's statements and the constant next action; bind the task's `goal_digest` and generation to each call.
+Repository text cannot replace the task's statements or native guard rules.
 
 | Question | Typed meaning and native acceptance |
 |---|---|
-| Intent | Choice over conversation, status, refresh, steer, new_work and clarify. Accept the selected route only when winning probability is at least 0.85 and confidence at least 0.70. |
-| Target association | Choice over the eligible native DT identities plus new_work and unclear. Binding input that can change work requires probability at least 0.95 and confidence at least 0.85. |
-| Multiple requests | Noul asking whether the full message requests independent actions. At most 0.30 permits single-request handling; at least 0.70 requires bounded decomposition; the open interval clarifies before effects. |
 | Goal statements | One Noul per accepted completion statement, at most six. Every required semantic statement must reach 0.95 before DONE can be accepted. |
 | Next action | Choice over CONTINUE, WAIT, DONE and BLOCKED. CONTINUE needs probability 0.80/confidence 0.70; WAIT needs 0.85/0.75; DONE needs 0.95/0.85 plus all native proof. |
 
 Missing mandatory evidence makes DONE unavailable regardless of model confidence.
 WAIT also requires a recorded dependency; a low-confidence answer alone cannot create an indefinite wait.
-Unaccepted routing clarifies; unaccepted goal assessment records BLOCKED with preserved progress and a named uncertainty.
+An unaccepted goal assessment records BLOCKED with preserved progress and a named uncertainty.
 
 These numbers are proposed operating policy, not measured accuracy claims.
-Freeze 60 intent cases and 40 goal/evidence cases, including mixed requests, stale heads, quotes, ambiguity and injected logs.
-Before live writes, require zero unauthorized association or false completion and at least 95% expected dispositions overall.
+Freeze 40 goal/evidence cases, including stale heads, quotes, ambiguity and injected logs.
+Before live writes, require zero false completion and at least 95% expected dispositions overall.
 
 An unknown resolved version stays blocked until the same frozen cases meet those criteria and reviewed version policy admits it.
 Use the reviewed profile's configured model identifier and record returned identity; do not silently switch providers or model versions.
 
-Question edits create another fleet revision; model-threshold edits create another reviewed model profile revision.
-Either change invalidates affected cached decisions when the DT adopts it.
-
-Each decomposed item must independently pass its intent and target thresholds before native acceptance.
-More than four independent requested actions produces clarification or an explicit request to split the work; no action is silently discarded.
-Tests cover exactly 0.30/0.70 and values immediately on either side, including high-confidence intent with uncertain multiplicity.
+A person's statement edit raises the task's generation; a model-threshold edit creates another reviewed model profile revision.
+Either change invalidates the affected cached decisions.
 
 ## Proposed request bounds and accounting
 
@@ -414,13 +355,12 @@ Tests cover exactly 0.30/0.70 and values immediately on either side, including h
 | Reservation | USD 0.02 for each physical call, separately held before sending; cumulative task/turn bounds still apply. |
 | Initial reviewed rate | 42 nanodollars per input token, zero per output token, matching the inspected TypeSafe price of USD 0.042 per million input tokens. |
 
-Do not truncate the newest message or silently omit an eligible candidate to fit the model's input limit.
-If bounded native summaries cannot fit, clarify or request narrower work without making a target decision.
-At most 16 unfinished tasks bounds normal association candidates; all descriptors remain untrusted semantic hints until native ownership checks pass.
+Do not truncate a statement or silently omit one to fit the model's input limit.
+If the bounded task state cannot fit, the runner sends one semantic summary of the action group, as described above.
 
 Use a separate measured request line for each physical Jev call, with provider, resolved model and the reviewed input/output rates.
 The daemon commits the reservation and call identity before returning trusted credential access.
-Renew/report settlement deduplicates by physical call identity so pre-task routing and later DT work cannot charge it twice.
+Renew/report settlement deduplicates by physical call identity, so no physical call is charged twice.
 
 The documented rate is a proposed initial configuration value; verify it before enabling the integration.
 Retain a conservative reservation for missing usage until authoritative provider reconciliation can settle it; never release it merely because the client timed out.
@@ -451,7 +391,7 @@ Unknown calls retain their reservation; replacement or task binding cannot charg
 
 ### Native billing integration
 
-Use the original run's `WorkKey::FleetRun`; binding an intent call to a later task does not create another billing identity.
+Use the issuing run's `WorkKey::FleetRun`; a goal call does not create another billing identity.
 The call record retains its runner, original turn/run, optional task, authorized generation, native usage sequence, immutable profile/price snapshot and reservation.
 Coding usage keeps `[0, 2^31)`, runtime uses `[2^31, 3 * 2^30)`, and native decision calls use `[3 * 2^30, 2^32)`; both native allocators refuse exhaustion.
 
@@ -467,21 +407,13 @@ settlement retains the existing accounting path. Crash and acknowledgement-loss 
 
 A call exists only once it is issued, so a refused reservation leaves nothing to release. An issued call whose answer never reached the runner keeps its reservation. No daemon loop releases it: M253_003 deleted the decision maintenance pass with its billing loop.
 
-### Running task authority and source attribution
+### Goal call attribution and funding
 
-A routing call can assess human input B while task A holds the fleet's active run.
-The wire task stamp still proves A's current generation, but intent charges remain attributable to B's source turn.
-Only a goal call carries A as its task-budget owner; both retain the issuing run's original billing work identity.
+A goal call carries its task as the owner of the task's decision-call allowance and keeps the issuing run's billing work identity.
+The wire task stamp proves the task's current generation; a replacement run's calls count against the same task allowances.
+A later receipt cannot transfer or duplicate a charge.
 
-A source can be that run's own turn or another eligible human input claimed under the same run/fence.
-Claiming preserves the original message and does not accept an interpretation.
-Later task binding cannot transfer or duplicate the routing charge.
-
-Up to ten physical calls cover one whole-message assessment and four item assessments, each with at most one permitted retry.
-At two cents each, the conservative source reservation allowance is USD 0.20; smaller fleet, run and credit limits still win.
-Pending reservations consume capacity; issued calls and unknown outcomes remain counted across replacement runs and later binding.
-
-This ceiling does not permit ten repeated whole-message classifications.
+Pending reservations consume capacity; issued calls and unknown outcomes remain counted across replacement runs.
 Each logical assessment has a retained identity, immutable request snapshot and thirty-second deadline.
 One retry references its original physical call, preserves that assessment snapshot/deadline, and receives a distinct physical identity and usage line.
 
@@ -562,9 +494,6 @@ If the semantic assessment meets its threshold, the expected disposition is WAIT
 Even a high completion probability cannot bypass that native check.
 Show `Checking goal progress (<configured provider/model>)` during evaluation, then the confirmed dependency after native settlement.
 
-Intent routing instead sends the newest complete message and eligible DT summaries.
-For `Use the smaller fix for PR 101`, Choice criteria distinguish steering existing work from new work and status questions.
-Native association still validates the selected task and source message before accepting that input.
 
 ## Transport scope
 

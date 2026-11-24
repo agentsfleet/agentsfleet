@@ -179,7 +179,6 @@ The daemon sends `max_message_mib` and `max_control_message_mib` to each runner 
 
 | Key | Default | Change it when… |
 |---|---|---|
-| `fleets.definition_cache_mib` | 64 | Many fleets re-parse their definitions on each run |
 | `fleets.head_cache_count` | 16,384 | You run more fleets than the cache holds |
 | `billing.price_book_cache_count` | 1,024 | You meter more models than the cache holds |
 
@@ -227,12 +226,9 @@ Unset, each `[fleet.durable_tasks]` limit allows any amount. The defaults apply 
 
 | Key | Default | Change it when… |
 |---|---|---|
-| `request_timeout_seconds` | 15 | Setup requests are answered as busy on a slow model |
-| `replay_window_hours` | 24 | A repeated setup request should replay its first answer for longer or shorter |
-| `maintenance_drafts_per_page` | 64 | Setup drafts wait while runners sit idle |
+| `replay_window_hours` | 24 | A repeated fleet create should replay its first answer for longer or shorter |
 
-Setup maintenance no longer exists, so the name of `maintenance_drafts_per_page` is stale.
-The key now caps the setup drafts offered to a runner each time it asks for work (`afd_setup/src/setup_run/mod.rs`).
+The section takes its name from `afd_setup`, the crate that creates a fleet. Within the window, a create that repeats its `operation_id` answers the first fleet (`afd_setup/src/creation/create.rs`).
 
 ### `[auth]`
 

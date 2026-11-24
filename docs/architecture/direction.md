@@ -14,27 +14,27 @@ Principles. Each links to where it's enforced; when a spec contradicts one of th
 
 - **All trigger sources enter the same turn-processing path.** Webhook, cron, steer, and continuation all commit to `thread.turns`; the assign/run path treats every actor alike. See the [intake and run flows](./data_flow.md).
 
-- **Behaviour is defined mainly in natural language, through chat, into one reviewed Definition**. It holds a one-line `description`, `instructions_md` and a `config` policy document.
+- **Behaviour comes from the conversation and the fleet's pinned memory.** A fleet starts from a person's first message, with nothing written down. Standing guidance is a `core` memory entry the fleet stores when a person asks, and every later run's prompt carries it ([pinned memory](./memory.md#6-what-reaches-the-model)).
 
-  `af_fleet_runtime` owns the Definition type and the one parser that turns `config` into `FleetConfig`. That covers triggers, tools, credentials, network, budget, gates, repository binding, model and context. The instructions are advisory prose the fleet reads at run open.
+  The rest of the prompt is fixed text naming the fleet. See [`capabilities.md`](./capabilities.md#1-what-the-model-is-told-and-what-the-run-holds).
 
-  See [`capabilities.md`](./capabilities.md) §1.
+- **Capability comes only from the run's policy.** `agentsfleetd` builds it from the fleet row and its approved grants. It holds the published tool catalog, the approved credentials and the network the fleet's two toggles allow. A message or a pinned entry grants nothing.
 
 - **Secrets are injected at run time, never embedded in prompt text or fleet context**. The supervisor substitutes `${secrets.NAME.FIELD}` at send time, outside the sandbox. The activity frame carries `args_redacted`, never the bytes ([`runner_execution.md`](./runner_execution.md#credentials)).
 
   See [`data_flow.md`](./data_flow.md) §`C. EXECUTE`, [`capabilities.md`](./capabilities.md) §3 "Secret vault" row, and [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §8.2 (api_key visibility boundary).
 
-- **History is durable with actor provenance.** Every turn lands in the turn store (`thread.turns`) with its actor. Actors read `steer:<user>`, `webhook:<source>`, `github-app`, `cron:<schedule>`, `continuation:<original>` or `slack:<user>`. See [`data_flow.md`](./data_flow.md) §"The five durable stores".
+- **History is durable with actor provenance.** Every turn lands in the turn store (`thread.turns`) with its actor. Actors read `steer:<user>`, `fleet:<fleet_id>`, `webhook:<source>`, `github-app`, `cron:<schedule>`, `continuation:<original>` or `slack:<user>`. See [`data_flow.md`](./data_flow.md) §"The five durable stores".
 
-- **Conversation checkpoints preserve current working notes.** Private setup and runtime share [conversation compaction](./context_lifecycle.md). Semantic memory supplies facts for later runs; see [semantic memory](./capabilities.md#semantic-memory-remains-separate).
+- **Conversation checkpoints preserve current working notes.** Fleet runs use [conversation compaction](./context_lifecycle.md). Semantic memory supplies facts for later runs; see [semantic memory](./capabilities.md#semantic-memory-remains-separate).
 
-- **Context follows the selected model's working window.** Before a request reaches its limit, shared compaction summarizes older groups and retains current instructions and tools. Money, output and time budgets still bound each run; see [context limits](./capabilities.md#limits-and-defaults).
+- **Context follows the selected model's working window.** Near the limit, compaction summarizes older groups and keeps the fixed prompt, pinned memory and tools. The payer's balance, output limits and the run deadline still bound each run; see [context limits](./capabilities.md#limits-and-defaults).
 
-- **Approvals are first-class.** Risky actions block at the gate; the state machine survives runner restarts. See [`capabilities.md`](./capabilities.md) §3 "Approval gating" row and [`data_flow.md`](./data_flow.md) §`C. EXECUTE`.
+- **Approvals are first-class.** A run asks a person with a question, or asks for a credential with `request_access`, and either raises a card. The asking turn settles waiting, and a person's answer or Approve resumes it. The card and the turn are Postgres rows, so both survive runner restarts; see [`capabilities.md`](./capabilities.md) §3 "Questions and access cards".
 
-- **Destructive actions are never assumed safe just because the model suggested them.** The `gates` policy lives in the fleet's reviewed `config`. `agentsfleetd` enforces it when it issues the run, before the run starts (`afd_fleet`'s run pull). The instructions may ask for approval explicitly.
+- **Destructive actions are never assumed safe just because the model suggested them.** No per-fleet rule holds an event for a person. A fleet acts only with credentials a person approved for it, and an approved GitHub scope bounds its repositories and its write reach.
 
-  See [`capabilities.md`](./capabilities.md) §3 "Approval gating".
+  See [where a grant comes from](./connectors.md#where-a-grant-comes-from). The model can still stop and ask before acting.
 
 - **Fleet-memory recall has no search infrastructure; the language model is the search engine**. Memory list/recall returns raw entries; the model reads and decides relevance. No vector search, embeddings, pgvector, pg_trgm, or full-text indexes for memory.
 
@@ -42,7 +42,7 @@ Principles. Each links to where it's enforced; when a spec contradicts one of th
 
   See [`capabilities.md`](./capabilities.md) §4 (memory checkpoint layer).
 
-- **Slack uses the existing runtime.** Configured fleet subscriptions select the recipient; connecting Slack creates no fallback agent. [Mention routing](scenarios/slack-incident-responder.md#4-routing-a-mention) owns intake and fixed notices.
+- **Slack uses the existing runtime.** A fleet's `mention` trigger row selects the recipient; connecting Slack creates no fallback agent. [Mention routing](scenarios/slack-incident-responder.md#4-routing-a-mention) owns intake and fixed notices.
 
 The runtime keeps only a thin typed envelope:
 
@@ -60,10 +60,10 @@ The runtime keeps only a thin typed envelope:
 
 - execution state
 
-- context budget knobs (defaults inherited from the active model's tier; user-overridable in `x-agentsfleet.context`)
+- context limits, read from the selected model's saved catalogue entry
 
-Everything else stays prompt-driven and is iterated in chat, then applied as a reviewed setup revision.
+Everything else stays prompt-driven and changes in the conversation or in the fleet's pinned memory.
 
 Prose cannot grant capabilities.
 
-Only the reviewed `config` plus approved workspace grants become `ExecutionPolicy` on run. Runners remain infrastructure capacity; they run Fleets but are not child resources of a customer Fleet.
+Only the fleet row and its approved grants become `ExecutionPolicy` on run. Runners remain infrastructure capacity; they run Fleets but are not child resources of a customer Fleet.

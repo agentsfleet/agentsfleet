@@ -26,7 +26,7 @@
 - **Model choice** — use the platform model or an account model configured with your own provider key.
 - **Separate working instances** — each fleet keeps its own history and memory.
 
-You write a fleet by describing the job in a private chat, in the app or with `agentsfleet chat`. The chat drafts a typed Definition you review, then Save creates the fleet and checks its access. See [fleet definitions](docs/architecture/fleet_definitions.md).
+You start a fleet by sending it your first message, in the app or with `agentsfleet chat`, and keep talking to it in that chat. It asks before it uses a secret or an integration, and you approve once. See [the user flow](docs/architecture/user_flow.md).
 
 ---
 

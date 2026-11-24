@@ -20,8 +20,8 @@ separates source changes from passing verification evidence.
 The mechanisms below define the approved implementation target, including the concrete limits and protocol in the final sections.
 The acceptance ledger distinguishes implemented components from pending runtime integration and live proof.
 
-A fleet retains its instructions, grants, conversation, memory and schedules.
-A DT names one accepted objective within that fleet.
+A fleet keeps its pinned memory, grants, triggers, schedules and conversation.
+A DT names one accepted objective within that fleet, with the completion statements that decide when it is done.
 A run gives one runner worker temporary permission to advance work.
 
 ```text
@@ -42,7 +42,7 @@ A wait is separate from its settled turn, so it cannot block the queue head.
 Distinct fleets remain the boundary for simultaneous runs.
 
 An ordinary greeting, status question or bounded one-request answer needs no DT.
-A requested objective needing ownership across attempts or external waits uses a DT.
+A request needing ownership across attempts or external waits uses a DT, which the fleet's own model starts ([how a task starts](#how-a-task-starts)).
 Earlier manual repair evidence does not prove cross-turn ownership or replacement-worker recovery.
 
 ## One runtime and documentation ownership
@@ -76,59 +76,74 @@ Storage pages, URL renewal and capture/restore pins remain necessary for bounded
 Their operations are batched; one logical pin renews an object set and uploads use bounded parallel chunks.
 The proposed limits and performance still need workload measurements before any claim that this is optimal.
 
-## Setup and request interpretation
+## How a task starts
 
-Setup wording is user-authored through chat. Selecting a starter inserts editable text into the composer; daemon-owned Markdown templates do not supply fleet instructions or decision criteria.
-The setup tool schema describes native fields and supported values.
+The fleet's own model starts a task by tool, only when a person's message asks for work that must keep going.
+No tenant route creates a task, and the decision model never starts or links one.
+A plain message makes no decision call, and a fleet with unfinished tasks keeps its full tool catalog on plain questions.
 
-A setup run's first message carries the head candidate, labelled as untrusted setup data, then the person's newest message.
-The `propose_setup` description is also the run's instructions (`af_fleet_runtime/src/setup/mod.rs`).
-It tells the model to call the tool only when that message asks to create or change the setup.
-
-No separate decision model checks the message. When the person asked to save, the tool refuses every proposal as `edit_not_requested`, and the report saves the reviewed head (`afr_tools/src/setup/mod.rs`).
-No new task scheduler, setup-chat intake SQL or question-drafting decision path is introduced.
-
-Setup chat or the CLI's setup flow drafts `instructions_md` and the fleet owner's editable `decision_policy` through the existing private flow.
-Saving setup establishes a fleet revision and capability ceiling; it does not create arbitrary future repair work.
-An explicit initial-work request can become a turn after activation under the existing start rules.
-
-Question and criterion edits create a new immutable revision through Review/Apply; older revisions remain unchanged.
-New tasks use the accepted policy; active tasks require explicit adoption that invalidates earlier assessments without resetting history or budgets.
+When the runner is task-capable and the run carries a decision profile, the catalog offers `task_start` and `task_input`.
+An ordinary run's payload then lists the fleet's unfinished tasks, so the model can name one.
+Each tool's description tells the model to call it only when the person's newest message asks.
 
 ```text
-Setup chat -> reviewed candidate -> Save/Apply -> fleet revision R7
-                                                    |
-Human: "Repair PR X until its required checks pass" --+
-                        |
-Daemon authenticates and saves the message as a turn
-                        |
-Existing fleet thread -> runner run -> decision-provider routing
-                        |
-conversation/status   refresh   steer   new work   unclear
-       |                 |       |         |          |
-     answer          fresh read  |    prepare goal   clarify
-                                 |         |
-                          daemon validates association,
-                          current grants, target and limits
-                                 |         |
-                            input receipt  create DT
+Person: "Fix the null-cart error until PR 88's checks pass"
+        |
+queued turn (a person's message) -> ordinary run -> fleet's model
+        |
+task_start {title, source_turn_id, source_start, source_end, target, statements}
+        |
+POST L/durable_tasks/bindings with one new-work item
+        |
+daemon checks source turn, span, target, statements and limits
+        |
+one transaction: the turn's plan + one task item
+                 + task (ready) + staged continuation turn
+        |
+calling run stays ordinary and ends
+        |
+continuation assigned as the task's first run, prepared before its sandbox
+        |
+each task run ends with the decision model judging the statements:
+continue / wait / done / blocked
 ```
 
-The runner calls its assigned decision provider under the current run and its billing limits.
-The conversational model prepares a bounded objective for new work; the decision result does not generate that objective.
-The daemon alone creates a DT after checking current authority and typed target evidence.
+Neither tool makes a decision call.
+Each posts the existing binding verb, `POST L/durable_tasks/bindings`, with exactly one item, and the verb answers after its commit.
+`L` and `F` are the run and fleet route prefixes defined in [Proposed native API](#proposed-native-api).
 
-A classification cannot grant repository access or choose an unrestricted branch.
+| Tool | Item | What the daemon commits |
+|---|---|---|
+| `task_start {title, source_turn_id, source_start, source_end, target, statements}` | A new-work item. | The source turn's `plan`, one `fleet.durable_task_items` row, a `ready` task whose `questions` are the call's statements, and a staged continuation turn. |
+| `task_input {durable_task_id, source_turn_id, source_start, source_end}` | A steer item for an unfinished task. | One input under the task's current generation, through `accept/input.rs`, which cancels the task's wait and queues its continuation. |
+
+`bindings::accept` keeps its one transaction and commits through `accept/commit.rs`.
+A binding made by a tool always takes the commit's not-bound branch (`afd_fleet/src/durable_task/accept/insert.rs` and `accept/write.rs`).
+The new task is written `ready` with its continuation staged, and the calling run stays an ordinary run.
+
+The daemon refuses a binding, writing nothing, unless every check holds:
+
+- The source turn is the run's head turn or one folded into it (`check_assignment`).
+- The source turn is a person's message (`check_human`): a signed-in person's, or an allowed Slack person's mention. A webhook's, a schedule's or an API key's turn is refused `UZ-DT-004`, so text alone starts no task.
+- The objective is the named span of that message. A span past the message, or a source turn the run does not hold, is refused.
+- A new item's target is valid, as `bindings/preparation.rs` judges it. It holds at least one statement, each with a stable key and nonblank text (`af_fleet_runtime`'s statement bounds). An empty list is refused 400.
+- The task limits and the cap on unfinished tasks hold. Past the cap the answer is `UZ-DT-005`.
+- A steer item names an unfinished task of this fleet. A finished or foreign task is `UZ-DT-001`.
+
+One source turn takes one plan, written once (`trg_turns_refuse_plan_change`).
+The same call again answers with the first task, and a different call naming the same turn is refused `UZ-DT-003`.
+A refusal returns to the model as `[kind] sentence`, and the model may correct its call in the same run.
+
+A person edits a task's statements on the task panel, which sends `PATCH F/durable_tasks/{id} {questions, expected_generation}` with `If-Match`.
+The edit writes new `questions` and `goal_digest` and raises the generation by one.
+A stale generation answers 412 `UZ-DT-013`, an API key answers 403, and either leaves the task unchanged.
+
+People address the fleet without DT identifiers.
+The browser can attach a selected work item as a hint; native code validates that hint against current workspace ownership.
+A signed completion event matches its task's wait directly and makes no decision call.
+
 Quoted content, tool results and model summaries cannot approve work.
 Slack work approval also requires the verified person-to-workspace link described in [sandbox evaluation](sandbox_evaluation.md#workspace-approval-in-chat-or-slack).
-
-Users address the fleet without DT identifiers.
-The browser can attach a selected work item as a hint; native code validates that hint against current workspace ownership.
-Ambiguous references ask which work; mixed greeting-plus-work retains the work request.
-
-An admitted message survives routing failure.
-A timeout, unsupported answer or uncertain association never defaults to new work or a write target.
-Signed completion events match native waits directly and skip intent classification.
 
 ## State authority and transaction boundaries
 
@@ -140,7 +155,7 @@ Large repositories use a retained verified base plus incremental chunks, as defi
 
 The fleet schema defines `fleet.durable_tasks`, `fleet.durable_task_items` and `fleet.durable_task_inputs`; authenticated list/detail reads share the daemon task owner.
 Native bind/control, authenticated reads and public control routes have source implementations.
-The root prepares intent before sandbox creation and reads the oldest unsettled human source page.
+A task run prepares before sandbox creation by reading its inputs, starting from the oldest unsettled human source page.
 
 It incorporates accepted inputs by their separate task sequence, reconciles original publication receipts and assesses complete action groups.
 Unanswered items in a mixed request cannot be skipped by advancing the source-page cursor.
@@ -158,13 +173,13 @@ with exact scope and parked acceptance in the [milestone spec](../v2/done/M236_0
 The daemon binds turns and runs to a nullable task identity; ordinary exchanges retain the existing path.
 Merge-time schema inventory checks remain required.
 
-Each DT binds its workspace, fleet, accepted instruction revision, objective, approved target and cumulative limits.
+Each DT binds its workspace, fleet, objective, completion statements, approved target and cumulative limits.
 One current generation guards changes; input sequence, checkpoint generation and run fencing remain distinct counters.
 Each remote effect has an immutable identity, request digest, expected target state and reconciliation outcome.
 
 | Boundary | Guard and committed result |
 |---|---|
-| Create | Lock current turn, fleet and authority; save immutable interpreted work items; deduplicate turn plus item identity; insert DT and bind current run together. |
+| Create | Lock the source turn and fleet; write the turn's plan and its one item once; deduplicate turn plus item identity; insert the DT `ready` and stage its continuation turn, leaving the calling run unbound. |
 | Resume | Lock current DT and the fleet's thread row; reject stopped, stale, foreign or exhausted work before issuing a bound run. |
 | Accept input | Save interpreted input and association in task history under current generation; take the queued turn; retries return the same receipt. |
 | Prepare effect | Check live run, current grants, approved target and stop generation; save immutable effect intent before the remote request. |
@@ -182,15 +197,15 @@ States distinguish ready, running, waiting, blocked, paused and terminal work.
 Done, cancelled and exhausted work cannot be revived by a greeting or late event.
 Resolving a blocker retains the original deadline, usage and attempt counts.
 
-Every claim checks the accepted instruction revision and current grant ceiling.
-Applying new fleet instructions does not silently replace an active DT's objective.
-Explicit reviewed adoption invalidates decisions made against the prior goal revision.
+A task follows the fleet's access: each of its runs holds the grants approved for the fleet when that run is issued.
+A grant approved while the task waits reaches its next run, and a revoked grant is absent from it.
+A person's statement edit raises the generation, so a goal decision prepared under the old generation is stale.
 
 ## Human input while work runs
 
 The daemon records incoming messages before acknowledging them.
 At eligible boundaries between complete action groups, the runner reads pending input through the current run.
-Decision routing and native consumption receipts associate each input without taking a second fleet run.
+The fleet's model links a message to a task with `task_input`; native consumption receipts record each input without taking a second fleet run.
 
 Turn intake and active-loop acceptance share one input claim, so a later queued run cannot repeat the steer.
 Acceptance saves interpreted input in canonical task history before taking the turn off the queue.
@@ -200,9 +215,9 @@ Resume loads accepted inputs beyond the checkpoint's covered-input cursor, even 
 The runner reconciles recorded effects before acting again on replayed input.
 The proposed receipt protocol and FIFO boundaries below define active-loop acceptance and recovery.
 
-New work discovered during a running DT becomes queued work; it does not replace the current objective.
-For mixed requests, save an immutable interpretation plan and stable native item identities before creating any DT.
-Retry deduplicates each turn/item pair; changed interpretations cannot silently add another item.
+New work discovered during a running DT becomes another task through `task_start`; it does not replace the current objective.
+Each binding carries one item with a stable native identity, written with the source turn's plan before any task changes.
+Retry deduplicates each turn/item pair, and a different plan for the same turn is refused.
 
 Status and conversation can be answered at the next safe boundary.
 Neither claims that an in-flight remote action was interrupted.
@@ -213,7 +228,7 @@ Fleet deletion fences access immediately; checkpoint cleanup follows the authori
 
 ## Existing pull request publication
 
-The initial existing-Pull-Request (PR) mode accepts an exact open same-repository PR and approved base. The reviewed setup explicitly selects `repository_publication: existing_pr`; omission retains turn-owned draft publication. Model-visible GitHub egress remains read-only in existing-PR mode; the native publisher alone may advance its bound branch.
+The initial existing-Pull-Request (PR) mode accepts an exact open same-repository PR and approved base. The scope a person approved on the fleet's GitHub grant selects existing-PR publication; without it, publication stays a turn-owned branch and draft PR. Model-visible GitHub egress remains read-only in existing-PR mode; the native publisher alone may advance its bound branch.
 
 Native target preparation reuses the current run-plane credential mint, standing grants and repository binding.
 It refuses fork heads, default/protected target branches and workflow edits.
@@ -249,13 +264,13 @@ Retain the current fleet-chat layout, message presentation, composer, header and
 Add compact inline work summaries above the composer, with details expanding in place through existing design-system components.
 This is the approved mock's placement on desktop and mobile; a fixed right sidebar is outside that visual scope.
 
-Indy approved the separate setup and fleet-chat mocks, including the existing `Save done vN → Open fleet` pill and compact work panel.
+Indy approved the fleet-chat mock and its compact work panel.
 Reuse the bundled Instrument Sans font and [design-system tokens](../../ui/packages/design-system/src/tokens.css): 14px conversation/composer text, 13px work labels and 12px secondary text.
 Match the approved spacing, borders and native status colors, then verify font loading and appearance in desktop and mobile browsers.
 
-Setup chat (`DraftConversation` and `ChatComposer`) authors fleet revisions.
 Work requests and DT activity use `FleetThread` and `SteerComposer`; task details stay within that fleet conversation.
-Saving setup records configuration; authorized requests or configured triggers start work.
+The task panel shows each task's completion statements, and a person edits them there.
+Only a person's message starts a task; a trigger or schedule wakes the fleet but starts no task by itself.
 
 ```text
 Fleet chat (existing layout)
@@ -297,7 +312,7 @@ Each task type needs its own completion evidence and authority ceiling.
 Schedules decide when to observe; a DT owns an accepted objective until its outcome is settled.
 
 Conditional fleet handoffs are follow-up work after M236.
-The caller steer API accepts authorized target fleets; native message and schedule tools remain scoped to their existing thread or fleet.
+Any fleet may steer any fleet in its workspace, as often as the payer's balance allows; schedule tools remain scoped to their own fleet.
 The follow-up needs verified conditions, explicit fleet permissions, durable turn intake/correlation, retry deduplication and bounded chains through the existing runtime.
 
 Product references include [Puffle](https://puffle.ai), [Grok Bot](https://x.ai/bot) and [Turnstone](https://myturnstone.ai/comparisons).
@@ -311,12 +326,12 @@ Store timestamps as `TIMESTAMPTZ(3)` and money as nonnegative integer nanodollar
 
 | Table or proposed addition | Required fields and uniqueness |
 |---|---|
-| `fleet.durable_tasks` | Identity/ownership, originating item, accepted revision/objective digest, target document, state, resource version, stop generation, deadline, limits, cumulative usage, input/effect cursors, recovery pointer, trusted reply destination. Unique originating item. |
+| `fleet.durable_tasks` | Identity/ownership, originating item, objective, completion statements (`questions`) and `goal_digest`, target document, state, resource version, stop generation, deadline, limits, cumulative usage, input/effect cursors, recovery pointer, trusted reply destination. Unique originating item. |
 | `fleet.durable_task_items` | Source turn, native item identity/ordinal, immutable interpretation digest, action/association, source text spans, resulting task binding, and its one reply receipt (`queued` or `answered`, operation, digest, private reply), written once. Unique turn/ordinal; conflicting replay returns 409. |
 | `fleet.durable_task_inputs` | Task/item/sequence, accepted text and interpretation, and its one apply receipt (operation, digest), written once. Unique task/item and task/sequence; one operation answers one receipt per fleet. |
 | `fleet.durable_tasks` wait columns | Generation (`wait_sequence`), arming run, expected head, the check results read when it was armed, cancellation and update time. A task holds one wait; arming the next replaces the cancelled one, and a live wait is never replaced. |
 | `fleet.durable_task_effects` | Task/item, native effect ordinal/identity, expected old state, immutable request/tree digests, prepared/issued/confirmed/unknown/refused state, remote receipt and the private target. The request is write-once; a task's purge clears the target and keeps the effect. Unique task/ordinal and operation identity. |
-| Proposed `durable_task_decisions` | Physical call identity, run/task binding, requested/resolved model, question revision, assessed state/input cursor, reservation, usage and native disposition. Unique physical call identity. |
+| Proposed `durable_task_decisions` | Physical call identity, run/task binding, requested/resolved model, goal digest and generation, assessed state/input cursor, reservation, usage and native disposition. Unique physical call identity. |
 | `runner.checkpoints` | One checkpoint system for a durable task or an ordinary turn, exactly one owner (`num_nonnulls(turn_id, durable_task_id) = 1`). A task's row carries its generation, the task and stop generations it was planned under, mode, repository, optional base and commit, budgets, history digest, covered-input cursor, effect watermark, manifest root, format/toolbox, owner run and fence, and transfer deadline (`expires_at`); those task columns are present together or not at all. Unique owner/generation; one pending capture per owner. Only a ready incremental manifest can become the task recovery pointer (`durable_tasks.checkpoint_id`). |
 | `runner.checkpoint_pages` | Native UUIDv7 page identity, owner (a checkpoint or a retained base, exactly one), page number, digest and complete bounded page bytes. Unique owner/page number; one freeze trigger makes a completed page immutable. |
 | `runner.checkpoint_bases` | Workspace/repository identity, exact Git commit, immutable base manifest, logical bytes, entry count and ready/retired state. One live base per workspace, repository, commit, format and toolbox. |
@@ -324,11 +339,11 @@ Store timestamps as `TIMESTAMPTZ(3)` and money as nonnegative integer nanodollar
 | `runner.checkpoint_identity_keys` | Workspace/repository, native key version, wrapped 256-bit content-identity key. Stable across master-key rewrapping; never sent to the sandbox or ordinary runner. |
 | `runner.checkpoint_object_refs` | Checkpoint/object or retained-base/object edges, exactly one owner; unique owner/object. Protect all reachable objects, including previous recoverable generations. |
 | `runner.checkpoint_pins` | Capture-or-restore pin on one checkpoint: kind, owner run and fence, the task and stop generations a task pin was taken under (a turn pin carries its operation instead), renewable expiry bounded by its operation deadline. One live task pin per checkpoint and kind. |
-| `thread.replay_receipts` | Opaque retry receipts: checkpoint plans, scope `<workspace>:durable_task:<task>:checkpoint`, and reviewed goal adoptions, scope `<workspace>:durable_task:<task>:adoption`, shared with turn allocations and setup operations through the same statements. No foreign key; survives plan retention and owner deletion. |
+| `thread.replay_receipts` | Opaque retry receipts: checkpoint plans, scope `<workspace>:durable_task:<task>:checkpoint`, shared with turn allocations and fleet creates through the same statements. No foreign key; survives plan retention and owner deletion. |
 | Existing turns and runs | Nullable task/item identities; input claim run/fence on turns; a source turn's accepted plan and digest (`plan`, `plan_digest`), read with the turn's own message and sender; capability-selected task context on runs. Existing one-shot rows retain null bindings. |
 
 Task targets include repository installation identity, PR identity, head repository/ref, approved base and last independently verified head.
-Target changes require an authorized new objective or explicit reviewed adoption; model prose cannot mutate the binding.
+Target changes require a new task started from a person's message; model prose cannot change the binding.
 Private objective/input/evidence content never enters analytics or generic error bodies.
 
 Object reference rows have either a checkpoint foreign key or base foreign key, with exactly one non-null owner.
@@ -356,18 +371,18 @@ Object deletion runs only after a committed tombstone and rechecks pins/referenc
 At a safe boundary, read at most four pending human turns for the current conversation, ordered by source turn sequence.
 Machine work rows do not block this input view; reading a message does not promote another task ahead of the work queue.
 
-Stop at a prior live input claim; classify ambiguous messages into a clarification receipt rather than leaving a permanent input barrier.
-Use the source message's recorded reply destination; an interpretation cannot invent a Slack thread.
+Stop at a prior live input claim; an ambiguous message gets a clarifying answer rather than leaving a permanent input barrier.
+Use the source message's recorded reply destination; a tool call cannot invent a Slack thread.
 
-The configured decision provider classifies each complete message against current native DT summaries.
-The conversational model can propose up to four action items with source spans; the daemon assigns stable item identities once.
-Save the complete immutable interpretation plan before any item changes task state.
+The fleet's model reads each message beside the run's list of unfinished tasks.
+It links the message to a task with `task_input`, or starts new work with `task_start`; each call carries one item with its source span.
+The daemon assigns the item's stable identity once and writes the source turn's plan before the item changes task state.
 
-An unbound run can bind its first new work item as current; other new items enter the queue tail.
+A task started by tool is never bound to the calling run: it is written `ready`, and its continuation turn enters the queue tail.
 An already-bound run keeps its current DT; all unrelated new work enters the queue tail.
 
 Claim an input turn under the current thread fence without marking its effects applied.
-Commit accepted text, typed interpretation and per-item DT association before the queued turn stops being eligible for its own run.
+Commit accepted text and per-item DT association before the queued turn stops being eligible for its own run.
 Different text, target or action under an existing plan identity returns a conflict.
 
 An input for the current DT can affect its next action group after acceptance.
@@ -384,7 +399,7 @@ Add `Producer::DurableTaskContinuation`, keyed by task, generation and wake/item
 
 Reuse `TurnKind::Continuation` with a typed task payload, `Producer::DurableTaskContinuation` and machine actor `durable_task:<durable_task_id>` for native continuations.
 Preserve the originating person's identity separately; do not label a scheduler or webhook wake as a new human command.
-Native control-plane commits, rather than model tool calls, create continuation turns.
+Native control-plane commits create continuation turns; a model tool call only asks for one through the binding verb.
 
 Claimed source turns remain excluded from ordinary running until their native input outcome settles or recovery reclaims the claim.
 After a claim owner expires, accepted items resume from task history; unaccepted items return to FIFO delivery without a fabricated applied receipt.
@@ -398,7 +413,7 @@ If a group overruns that bound, its earlier completion assessment is cleared. Th
 
 Checkpoint-capable tasks save before yielding; failed capture keeps the prior recoverable generation and reports the blocked handoff.
 Do not silently discard unsaved work to serve another queued task.
-The task runtime/deadline policy cannot override a smaller existing run, credit or fleet limit.
+The task runtime/deadline policy cannot override a smaller existing run limit or the payer's balance.
 
 ## Proposed native API
 
@@ -423,10 +438,10 @@ The following proposed endpoints extend those existing resource families:
 
 | Method and path | Request and successful response |
 |---|---|
-| `POST L/durable_tasks/bindings` | Source turn, expected fleet revision, plan digest, four-or-fewer typed action items and source spans; 201 returns immutable native item/task bindings, replay 200. |
+| `POST L/durable_tasks/bindings` | Posted by `task_start` and `task_input`. Fencing token, source turn, plan digest and one item: new work `{title, source_start, source_end, target, statements[]}` or a steer `{durable_task_id, source_start, source_end}`; 201 returns the binding, replay 200. |
 | `GET L/durable_tasks/inputs?starting_after=<cursor>&limit=4` | Returns eligible human messages in sequence and current task summaries, scoped to the source conversation. Machine work rows do not obstruct steering. Does not consume them. |
 | `POST L/durable_tasks/input-receipts` | Source turn/plan/item identities, expected task generation, interpreted input and association mode; 201 accepts history plus claim, replay 200. Native mode applies here or queues for another task. |
-| `POST L/durable_tasks/decisions` | Reserve a physical call for a message, pinned item or goal action group, with an optional retry parent; 201 returns its frozen request/profile and trusted-supervisor credential response. Native code owns digests, rates, limits and deadlines. |
+| `POST L/durable_tasks/decisions` | Reserve a physical call for a goal action group, with an optional retry parent; 201 returns its frozen request/profile and trusted-supervisor credential response. Native code owns digests, rates, limits and deadlines. |
 | `PATCH L/durable_tasks/decisions/{call_id}` | Bounded typed answers, actual resolved model and usage or explicit unknown outcome; 200 returns native disposition and settled/reserved usage. |
 | `POST L/durable_tasks/effects` | Immutable source item/cursor, operation identity, expected head, tested tree and supported changes; reserve and issue one bounded native publication synchronously. Confirmed creation returns 201; confirmed replay 200; unknown outcome returns 409 without retrying the mutation. |
 | `GET L/durable_tasks/effects?ordinal_after=<watermark>&starting_after=<cursor>&limit=50` | 200 returns the selected task's ordered effects after its checkpoint watermark, including unresolved and newly confirmed effects. Replacement workers need no previously returned effect identity. |
@@ -441,8 +456,8 @@ The following proposed endpoints extend those existing resource families:
 | `PATCH L/durable_tasks/checkpoints/{checkpoint_id}` | Ready state, expected generation, completed manifest root, covered-input cursor and trusted upload attestations; 200 publishes after native guards and object verification. |
 | `GET L/durable_tasks/checkpoints/{checkpoint_id}/objects?starting_after=<cursor>` | 200 returns at most 100 authorized object reads/keys; every page rechecks ownership, pins and current run. |
 | `GET F/durable_tasks?starting_after=<cursor>&limit=20` | `FleetRead`; 200 returns titles, states, version, next dependency and confirmed result links. Maximum limit 100. |
-| `GET F/durable_tasks/{durable_task_id}` | `FleetRead`; 200 returns progress, accepted questions/criteria and setup revision, assessments/evidence and ETag, with local versus published file labels. |
-| `PATCH F/durable_tasks/{durable_task_id}` | `FleetWrite` and `If-Match`; lifecycle control or explicit reviewed `goal_revision_id` adoption with expected generation/operation identity; 200 returns state/version, ETag and any in-flight effect warning. Adoption invalidates old assessments without resetting usage or expanding authority. |
+| `GET F/durable_tasks/{durable_task_id}` | `FleetRead`; 200 returns progress, completion statements (`questions`) and generation, assessments/evidence and ETag, with local versus published file labels. |
+| `PATCH F/durable_tasks/{durable_task_id}` | `FleetWrite`, a signed-in person, and `If-Match`; `{state, expected_generation}` for lifecycle control or `{questions, expected_generation}` to edit the statements; 200 returns state/version, ETag and any in-flight effect warning. A statement edit writes a new `goal_digest` and raises the generation without resetting usage or widening access. |
 
 New dispatch and task-transition bodies include the fence, current running task when bound, expected generation and operation identity.
 Late decision receipts carry their original call/fence; current task ownership is not a prerequisite for accounting.
@@ -453,11 +468,12 @@ Publication permits at most 32 changed regular-file paths, 1 MiB total decoded c
 Only supported changed-path modes are restricted; unchanged base symlinks or modes do not themselves prohibit a source repair.
 Validate bounds with `garde`; never deserialize an unproved payload into a publishing operation.
 
-Run task context adds accepted goal/revision, native target, input/effect cursors, limits, compatible checkpoint reference and permitted decision policy.
+Run task context adds the objective and completion statements, native target, input/effect cursors, limits, compatible checkpoint reference and the decision profile.
 Report task settlement adds expected generation, transition, evidence references, checkpoint identity, input responses and confirmed-effect watermark.
 Decision usage carries the native `decision_call_id`; reserve/result/renew/report replay shares one billing line with that call's authorized protocol/profile/rates.
 
-Ordinary runs omit those additions; task-bound runs require a `durable_tasks_v1` runner capability.
+Ordinary runs omit those additions and carry only the fleet's unfinished tasks, so the model can name one.
+Task-bound runs require a `durable_tasks_v1` runner capability.
 
 Generation changes can refuse a requested task transition without dropping the run's measured usage or confirmed tool outcomes.
 Settlement records spent work and stopped/stale disposition, then reconciles current native state instead of asserting DONE from an old report.
@@ -466,7 +482,7 @@ Unknown capabilities refuse task work; older runners may still receive ordinary 
 Every task API has served-route ownership, stale-fence, replay, malformed-body and stopped-task tests.
 Generate OpenAPI from wire/source definitions after route inventory and route-count tests are updated.
 
-Use new public error family `UZ-DT`: 001 not found, 002 stale state, 003 replay conflict, 004 invalid target and 005 exhausted limits.
+Use public error family `UZ-DT`: 001 not found, 002 stale state, 003 replay conflict, 004 invalid target or machine source turn and 005 exhausted limits.
 Use 006 decision unavailable, 007 ambiguous input, 008 incompatible checkpoint, 009 storage unavailable and 010 publication uncertain.
 Use 011 busy control boundary and 012 protocol incompatible; register codes and problem types only with their implementation.
 
@@ -484,7 +500,7 @@ The user continues messaging the fleet without typing task identities.
 
 | Runner collection under L | Responsibility and example |
 |---|---|
-| `durable_tasks/bindings` | Associate an admitted request with new or existing DTs. One message assigning PR X creates its task; independent PR Y work queues another. |
+| `durable_tasks/bindings` | Link a person's message to a new or existing DT, one item per call, through `task_start` or `task_input`. A message assigning PR X starts its task; a later message about PR Y starts another. |
 | `durable_tasks/inputs` | Read eligible human messages at a safe boundary, such as preserving the existing title fallback. Reading does not claim that instruction was applied. |
 | `durable_tasks/input-receipts` | Save the accepted message, interpretation and task association once. Recovery can replay its meaning without applying the same effects twice. |
 | `durable_tasks/decisions` | Reserve and record physical decision-provider calls, including typed answers, model identity, usage and native disposition. |
@@ -678,7 +694,6 @@ Save confirmed, refused or unknown outcome even if stop or run expiry occurs dur
 A repeated confirmed request returns its receipt; an unknown result blocks another send until authoritative reconciliation.
 No daemon pass reconciles an unknown result since M253_003; nothing dispatches a queued write on its own.
 
-This follows the existing synchronous setup model-call pattern in `afd_setup`'s model dispatch module.
 No client `/dispatch` request, background publisher queue or generic operations service is proposed.
 The POST finishes with a confirmed result or named failure; it does not return early and publish later.
 
@@ -709,17 +724,17 @@ Complete manifests remain readable under authorized handoff; incomplete plans ne
 ## Proposed limits
 
 These are proposed resource limits, not measured speed or availability guarantees.
-Smaller fleet budgets, run limits and host capacity always win.
+Smaller run limits, the payer's balance and host capacity always win; no fleet has a budget of its own.
 Changing these defaults requires reviewed configuration and boundary tests.
 
 | Bound | Proposed value |
 |---|---|
 | Unfinished DTs | 16 per fleet; reject excess new objectives with a clear limit response. |
 | Wall deadline | Seven days including waits; blocked/paused time does not reset it. |
-| Cumulative paid-model budget | USD 5 per DT, capped by current fleet/credit limits; never refreshed on wake. |
+| Cumulative paid-model allowance | USD 5 per DT, capped by the payer's balance; never refreshed on wake. |
 | Running time and attempts | Two hours cumulative running time; 12 execution runs; eight repair publications maximum. |
-| Decision calls | 128 physical calls per DT, including retries; pre-task calls remain charged to their source turn. |
-| Human input boundary | Four messages/four action items per message; check after each completed action group. |
+| Decision calls | 128 physical calls per DT, including retries. |
+| Human input boundary | Four messages per input read and one item per binding; check after each completed action group. |
 
 A task reserves nothing against these bounds. Each gate reads spent against the maximum, such as `used_model_nanos < max_model_nanos` (`afd_fleet`'s `assign_turn_head.sql` and `task/decision/budget.rs`), so concurrent decision calls on one task can overshoot the model budget by one call's cost. A decision call counts against `max_decision_calls` once, on its first report (`task/decision/sql/account_durable_task.sql`).
 
@@ -737,7 +752,7 @@ Arming a wait records the dependency status read at that moment, which closes th
 
 No fallback check reads GitHub on a timer: M253_003 deleted the wait polling with the task pass. A wait whose signed completion never arrives stays armed; once the task's deadline passes, the task is no longer assigned.
 
-The cap of 16 unfinished DTs bounds stored work and intent candidates, not simultaneous workers or expected everyday workload.
+The cap of 16 unfinished DTs bounds stored work and the task list an ordinary run carries, not simultaneous workers or expected everyday workload.
 It is a proposed initial product limit and needs workload evidence before any claim that it is optimal.
 
 ### User-visible decisions and transfer progress
@@ -754,8 +769,8 @@ Keep unchanged waits quiet, surface meaningful state changes and name the next r
 Credentials and private internal reasoning stay outside this presentation; bounded explanations describe decisions and observable work.
 
 Show activity in browser chat and the attached command-line interface (CLI), with the same native task/turn identities.
-Decision dispatch emits a started state; validated routing, failure or goal assessment emits the corresponding completed state.
-Use labels such as `Checking your request (<provider/model>)` and `Checking goal progress (<provider/model>)` with the selected profile.
+Decision dispatch emits a started state; a validated goal assessment or a failure emits the corresponding completed state.
+Use labels such as `Checking goal progress (<provider/model>)` with the selected profile.
 
 Show the resulting action or uncertainty after completion, not private reasoning or a fabricated model explanation.
 Expandable details can show the decision purpose, resolved model, typed assessments, duration and accounted usage.
@@ -778,10 +793,10 @@ This is source design; runtime and performance verification remain pending.
 State reused content separately and use counts or an indeterminate state when the total is unknown.
 
 ```text
-Checking your request (Jev)...
-Repairing Linkwarden PR X
+Task started: Repair Linkwarden PR X
 Saving changes: 18 / 40 MiB uploaded; repository base reused
 Upload complete; verifying saved state...
+Checking goal progress (Jev)...
 Work saved. Waiting for checks on current head.
 ```
 
@@ -791,9 +806,9 @@ Waiting stays visible without repeated unchanged notices; a closed CLI does not 
 
 ## Initial activation and acceptance
 
-Setup readiness requires an assigned decision profile, its authorized vault reference, reviewed rates/version policy and the task-capable runner protocol.
+Task tools need an assigned decision profile, its authorized vault reference, reviewed rates/version policy and the task-capable runner protocol.
+A run missing any of them is offered no `task_start` or `task_input`; ordinary conversation retains its existing path.
 Coding recovery additionally requires the R2 bucket/endpoint, bucket-scoped credential, configured master-key versions and a verified storage/encryption round trip.
-Missing setup leaves the fleet's DT capability unavailable with a named prerequisite; ordinary conversation retains its existing path.
 
 Each decision profile evaluates its selected model/version on frozen cases before autonomous write decisions are enabled.
 Actual-model and R2 calls belong to bounded development verification after implementation approval; this proposal runs none.

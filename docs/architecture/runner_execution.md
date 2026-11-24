@@ -24,43 +24,35 @@
 
 ## Run kinds
 
-A run (`Down::Run`) carries a fleet's turn or a draft's setup turn. A fleet run uses its admitted tools and an optional sandbox. A setup run gets no sandbox and one tool, `propose_setup` (`afr_supervisor/src/setup_run/mod.rs`).
+There is one run kind. A run (`Down::Run`) carries one turn of a fleet's thread. Every run is offered the published tool catalog, so every run prepares a sandbox.
 
-A setup run carries the pinned model's key and no runtime credentials, repository checkout or tenant tools. The [runner guide](runner_protocol.md) owns connection authority, capacity and recovery. [API resources](api_resources.md#setup-runs) owns the setup payload, the proposal rules and the report check.
+A task run is a fleet run bound to a durable task. A new task's continuation turn is assigned as its first task run and prepared before its sandbox ([durable tasks](durable_tasks.md#how-a-task-starts)). The [runner guide](runner_protocol.md) owns connection authority, capacity and recovery.
 
-### Proposal correction and failure
+### Refused tool calls
 
-A refused proposal returns its kind and reason to the model as the tool result (`afr_tools/src/setup/mod.rs`). The model may correct it in the same run, and the refusal writes no candidate. A correction is one more model call inside the same run.
+A call the daemon refuses returns to the model as a tool result of the form `[kind] sentence`. The model may correct the call in the same run, and the correction is one more model call inside it. An access request, a trigger add and a task start answer their refusals this way.
 
-The proposal loop has no call cap, and the run has no runtime ceiling. It renews as a fleet run does, until the payer's balance at a renewal or a person's Stop ends it (`afd_setup`'s `limits.rs`).
-
-The run reports the last proposal it kept, on the base it started from. A run that ends without an answer fails its message and writes no candidate. Save remains a separate human action.
+The run has no runtime ceiling. It renews until the payer's balance at a renewal or a person's Stop ends it.
 
 A Stop, a refused renewal or the runner's shutdown cuts the run. The cut run still sends its report, with its usage.
 
 ## Private content and report retention
 
-`DELETE` on a draft returns 204 after one transaction deletes the draft, the proposals it still owns and its active setup runs (`afd_setup/src/privacy.rs`). After the commit, the daemon tells each deleted run's runner to stop. Usage lines name the run, never the draft, so billing records outlive the delete.
+A fleet's history is shared with its workspace from its first message. `DELETE` on a fleet removes it in any status. It stops the fleet's live work as archive does, then purges its rows ([Steer, archive, delete](runner_fleet.md#steer-archive-delete)).
 
-Remove the private transcript from server-rendered and browser caches, and close its stream. The target stores no unsent text in browser local storage. In-memory text is scoped to account, workspace and subject, and cleared on logout, revocation or delete.
+Usage lines name the run, never its content, so billing records outlive the delete.
 
 | Copy | Owner / removal | Disclosed residual bound |
 |---|---|---|
-| Draft/message/candidate rows and private replay bodies | Daemon DELETE; no timed loop expires a draft, and a replay body goes when its key is claimed again past the replay window (`afd_setup`'s `replay/sql/expire.sql`); content-free receipts remain | Gone from ordinary reads at 204; database backups follow infrastructure retention, not an instant physical erase. |
-| Private progress channel / buffered deltas | Daemon drops draft-specific buffer and closes subscribers | No new private read after 204; buffered or already rendered client text cannot be recalled. |
-| Runner memory / in-flight request | Daemon deletes the active run and publishes a stop hint; the next renewal finds no run, and the runner cancels the turn and drops its local buffers | An online runner stops on the hint or at its next renewal round, one heartbeat interval at most; a disconnected runner's run expires within 38 seconds. Upstream completion may outlive local abort. |
-| Pending setup report | Worker memory holds the encoded report until the daemon acknowledges or refuses it; no report files are written (`afr_supervisor/src/setup_run/mod.rs`) | The report's bytes are zeroed when the worker drops them. Process loss discards pending memory. |
-| Logs / traces / metrics / crash diagnostics | Do not capture prompts, answers, proposal content, tokens, or secret values | No private text is intentionally written; test redaction and disabling automatic body/crash capture. |
+| The fleet's rows and replay bodies | Daemon DELETE; a replay body goes when its key is claimed again past the replay window (`afd_setup`'s `replay/sql/expire.sql`); content-free receipts remain | Gone from ordinary reads after the delete; database backups follow infrastructure retention, not an instant physical erase. |
+| Runner memory / in-flight request | Daemon marks the live run stopped and sends its runner a Cancel; a runner that reads it after the run row is gone stops at its next renewal, which finds no run | An online runner stops at the Cancel or its next renewal round, one heartbeat interval at most; a disconnected runner's run expires within 38 seconds. Upstream completion may outlive local abort. |
+| Logs / traces / metrics / crash diagnostics | Do not capture prompts, answers, tokens, or secret values | No private text is intentionally written; test redaction and disabling automatic body/crash capture. |
 | Provider requests | Provider/service account policy, disclosed on delete | Local abort cannot establish upstream erasure. Provider-specific retention is shown, never claimed zero. |
-| Saved or applied fleet setup | Deliberately shared definition, independent authority | Draft deletion does not delete a saved fleet's setup; disclose this before Save. |
 | Backups / legal accounting | Infrastructure backup schedule; billing domain content-free ledger | Follow published retention; no invented physical-purge deadline. |
 
-A retried setup report keeps its run identity, as a fleet run's does.
-The [runner guide](runner_protocol.md#results-and-billing) owns delivery and shutdown limits.
+A retried report keeps its run identity. The [runner guide](runner_protocol.md#results-and-billing) owns delivery and shutdown limits.
 
-An offline runner does not delay the 204. A late report or context save from a deleted run finds no run and writes nothing.
-
-A closed draft is stamped with a private retention deadline 30 days after close (`afd_setup`'s `creation/mod.rs`). No timed loop deletes it at that deadline, so its private history stays until the draft is deleted.
+An offline runner does not delay the delete. A late report or context save from a deleted run finds no run and writes nothing.
 
 ## The job it is built for
 
@@ -167,7 +159,7 @@ A renewal the daemon refuses, or a runner told to stop, cuts the run. The cut ke
 Each renewal answer acknowledges recorded lines through `recorded_through`, and the runner forgets only those.
 The report carries every line still unrecorded, so no backlog is renewed away first. A line sent twice is billed once, because the daemon keys lines on `(work, kind, seq)`.
 
-[Billing §3](./billing_and_provider_keys.md#3-one-debit-point-usage-settled-through-the-biller) has the full table, under **Request lines**.
+[Billing §3](./billing_and_provider_keys.md#3-one-debit-point-usage-charged-as-it-is-written) has the full table, under **Request lines**.
 
 ## Crates
 
@@ -177,7 +169,7 @@ A crate depends on its own layer or a lower one, and `runner/` and `daemon/` nev
 
 A sixth folder, `e2e/`, holds `af_e2e`: the suites that drive the runner against a booted `agentsfleetd`, and the recovery bench. It may depend on every layer, and nothing depends on it. Its `tests/layers.rs` checks every rule in this section from the manifests. The kernel lane is an example of the runner binary (`runner/main/examples/kernel_lane`).
 
-The supervisor implements credential minting over the control plane for `af_egress`, and uses `af_crypto` for encrypted private reports. No runner crate links a datastore crate or `afd_api_wire`. `af_context` holds no store: the setup draft's Postgres checkpoint store is `afd_setup::context`.
+The supervisor implements credential minting over the control plane for `af_egress`, and uses `af_crypto` for encrypted private reports. No runner crate links a datastore crate or `afd_api_wire`. `af_context` holds no store: the thread's Postgres compaction store is `afd_setup::context`.
 
 `guffbolt` is a library that knows no run, fleet or task. `drive` takes input before every model call and once more after an answer. A message that arrives while the model writes its answer runs one more turn.
 
@@ -253,7 +245,9 @@ The shared file-operation default remains two across the whole runner.
 Required restores queue while renewal continues; optional captures skip a busy boundary before freezing.
 The existing four-transfer window and checkpoint wire ceilings remain compiled bounds.
 
-The model key rides the one header its wire names. Everything the model is sent passes the secret scrub first: the instructions, the turn's message and the model's own earlier turns.
+The model key rides the one header its wire names. Everything the model is sent passes the secret scrub first: the system prompt, the turn's message and the model's own earlier turns.
+
+The system prompt is the fixed text with the fleet's name, then the fleet's pinned `core` memory under one heading (`afr_agent/src/prompt/mod.rs`). The run carries the name and no instructions. [Capabilities](capabilities.md#1-what-the-model-is-told-and-what-the-run-holds) owns the text, and [memory](memory.md#6-what-reaches-the-model) owns the pinned block and its bound.
 
 A chat run also carries the fleet's thread before its turn: every finished turn, each with the tool calls its run made (`thread.items`). No count or byte cap applies; an assignment that would not fit the 32 MiB run frame drops its oldest turns and logs `run_history_cut_to_frame`. The model's window is the in-run compaction's.
 
@@ -269,13 +263,19 @@ The wire still asks for the five-minute default, and asking for one hour is not 
 
 ## Tool catalog
 
-The runner is the harness, in Codex's shape. The catalog holds every tool the published tools page names, each with the runtime it runs in. The run's `ExecutionPolicy.tools` selects which of them the model is offered.
+The runner is the harness. The catalog holds every tool the published tools page names, each with the runtime it runs in. Every run is offered every published tool and the seven subagent tools, and the run's `ExecutionPolicy.tools` lists them.
 
-The model picks by function calling, and the router runs the handler where its runtime says. A policy naming a tool the catalog does not host refuses the run loudly. A quietly different tool set would not be the setup the fleet's author wrote.
+`task_start` and `task_input` join only on a task-capable runner whose run carries a decision profile ([durable tasks](durable_tasks.md#how-a-task-starts)). No tool allowlist narrows the rest.
+
+The model picks by function calling, and the router runs the handler where its runtime says. A policy naming a tool the catalog does not host refuses the run loudly, because a quietly different tool set hides the gap.
 
 A model call to a name outside the policy is a tool error the model sees, and the run continues. The scheduling tools write rows in `fleet.schedules` through the daemon; nothing in the runner sleeps or ticks.
 
-The scheduling tools, `message`, `fleet_activity` and `fleet_steer` reach `agentsfleetd` through `afr_tools::RunVerbs`, which the supervisor implements over its control plane. The supervisor adds the run's id and fencing token to each call, one attempt each. A tool never holds the token, and the model decides whether to try again; no retry loop does.
+The scheduling tools, `message`, `fleet_activity` and `fleet_steer` reach `agentsfleetd` through `afr_tools::RunVerbs`, which the supervisor implements over its control plane. The trigger tools, `request_access` and the task tools post their own fenced run verbs the same way. The supervisor adds the run's id and fencing token to each call, one attempt each.
+
+A tool never holds the token, and the model decides whether to try again; no retry loop does.
+
+A tool that changes the fleet says in its description to call it only when the person's newest message asks. Those tools are `memory_store` under `core`, `cron_add`, `trigger_add`, `request_access`, `task_start` and `task_input`. For the two task tools the daemon also reads who sent the run's head turn, so text alone starts no task.
 
 The generic tools are `guffbolt`'s, behind its `tools` feature (`rustd/guffbolt/src/tools/`). `afr_tools` keeps only what reaches `agentsfleetd`. Each tool takes its backend when it is built. A run builds its tools when it starts, through `afr_tools::Backends` and `guffbolt`'s `ToolsBuilder`:
 
@@ -295,14 +295,21 @@ A runner run's tools are built only over the run's sandbox or with no environmen
 
 The harness also carries tools this runner does not offer yet: an MCP client (`mcp__<server>__<tool>`, `list_mcp_resources`, `list_mcp_resource_templates`, `read_mcp_resource`), `tool_search`, `current_time`, `sleep`, `ls`, `find` and `grep`.
 
-`ask_user` is published (`afr_tools`' catalog). It ends a fleet run `waiting` once its turn's other calls ran, and the run saves a checkpoint first (`afr_agent`'s `loop/finish.rs`). The report raises a `question` gate on the turn in its own transaction (`afd_fleet`'s `run/commit/question.rs`). The gate's deadline is shown and never enforced, so an answer, early or late, resumes the turn. A setup run that asks fails with `the setup run asked a question no setup run delivers`.
+`ask_user` is published (`afr_tools`' catalog). It ends a fleet run `waiting` once its turn's other calls ran, and the run saves a checkpoint first (`afr_agent`'s `loop/finish.rs`). The report raises a `question` gate on the turn in its own transaction (`afd_fleet`'s `run/commit/question.rs`).
+
+The gate's deadline is shown and never enforced, so an answer, early or late, resumes the turn.
+
+`request_access` ends the run waiting the same way, but its own verb raises the access card, so the report raises no question for it. The card's Approve or Deny resumes the turn ([where a grant comes from](connectors.md#where-a-grant-comes-from)).
 
 | Tool | Runtime | Needs |
 |---|---|---|
 | `http_request`, `web_fetch` | supervisor, `guffbolt::tools::web` through the run's guard as the outbound hook | the network policy, the origin rules, placeholders in `Authorization` only |
-| `notify` | supervisor, `guffbolt::tools::notify` over `afr_tools`' Pushover `Notifier` backend, which sends through the run's guard | the network policy and the fleet's Pushover credential |
+| `notify` | supervisor, `guffbolt::tools::notify` over `afr_tools`' Pushover `Notifier` backend, which sends through the run's guard | the network policy and an approved `pushover` secret whose `host` is `api.pushover.net` |
 | `web_search` | the provider, as a hosted tool spec | a provider that offers one; a tool error with a code otherwise |
-| `memory_store`, `memory_recall`, `memory_list`, `memory_forget` | supervisor, `guffbolt::tools::memory` over the fleet's backend as the memory store | the loaded store and the fenced push |
+| `memory_store`, `memory_recall`, `memory_list`, `memory_forget` | supervisor, `guffbolt::tools::memory` over the fleet's backend as the memory store | the loaded store and the fenced push; `memory_store` defaults to category `note`, and only an explicit `core` is pinned into later prompts |
+| `request_access` | supervisor, through `POST L/access` | a name in the workspace vault or a connected integration, with a scope for `github`; ends the run waiting on a card unless an approved grant already covers it |
+| `trigger_add`, `trigger_list`, `trigger_remove` | supervisor, through the fenced trigger verbs | a provider the workspace has connected and a signing secret in its vault ([fleet triggers](connectors.md#fleet-triggers)) |
+| `task_start`, `task_input` | supervisor, through the binding verb `POST L/durable_tasks/bindings`, one item each; neither makes a decision call | a task-capable runner, a run with a decision profile, and a source turn that is a person's message |
 | `update_plan` | supervisor, `guffbolt::tools::plan` | nothing |
 | `message` | supervisor, through a runner verb, to the turn's thread | the messages verb |
 | `fleet_activity` | supervisor, through a runner verb | the fleets verb: the workspace's fleets, and one fleet's turns with 1 KiB excerpts, 25 a read unless asked and at most 100 |
@@ -315,9 +322,11 @@ The harness also carries tools this runner does not offer yet: an MCP client (`m
 | `image` | `guffbolt::tools::files::ImageTool` reads the file through the executor and attaches it to the next model turn; a picture longer than 2,048 px on a side is scaled to fit (Triangle filter, as Codex does) | a provider that takes images; a source file of at most 8 MiB and a shown image of at most 5 MiB (`guffbolt/src/tools/files/image.rs`) |
 | `browser`, `browser_open`, `screenshot` | sandbox under the Firecracker engine: Chromium from the toolbox, driven over the Chrome DevTools Protocol (CDP) through the process's pipes, as the environment's browser (`guffbolt::tools::env::Browser`); `SandboxEnv` on the bubblewrap engine has none, so each answers with a code | the Firecracker engine; Chromium in the toolbox; the sandbox allowlist for any host beyond loopback |
 
+`notify`, `git` and `message` fail until a person approves the credential each one needs.
+
 ### Subagents
 
-Subagents are `guffbolt`'s. A fleet offers them by naming the seven tools in its policy, as it names any `guffbolt` tool. `afr_tools` publishes them under `guffbolt`'s own names and spells none of them. The tool names and their `fork_turns` values follow Codex's multi-agent tools.
+Subagents are `guffbolt`'s, and every run is offered the seven tools that start and steer them. `afr_tools` publishes them under `guffbolt`'s own names and spells none of them.
 
 - `spawn_agent` starts a child on a task and answers its `agent_id`. The child holds the tools named in `tools`, each one its parent holds, or all of them. `fork_turns` says how much of the parent's history it starts from: `all` (the default), `none`, or a number of the parent's last turns.
 - `wait_agent` waits for a child's turn to end, up to `timeout_ms`, and reads its answer.
@@ -344,7 +353,7 @@ Later arrivals cannot extend that read; zero-byte frames consume no buffer entri
 The warning `process_ending_deadline_exceeded` records run/process identities and both timeout durations, without command text.
 The existing `agentsfleet_runner_tool_call_duration_seconds` family records this returned tool failure and its elapsed time through the agent ledger.
 
-A run whose tools are all supervisor-side starts no sandbox. A run offered any sandbox tool gets its bound repositories checked out before its turn. So a run of file tools alone reads the repository, never an empty workspace.
+Every run is offered sandbox tools, so every run gets its bound repositories checked out before its turn. So a file tool reads the repository, never an empty workspace.
 
 git runs programs of its own accord, through hooks, `!` aliases and commands named in configuration. So a run offered `git` can run, inside the same sandbox, what a run offered `shell` can. The `git` tool refuses remote subcommands as an answer to the model; the sandbox is the boundary.
 
@@ -520,7 +529,9 @@ This section records what the code builds, against the design above. Paths below
 
 `agentsfleet-runner run` builds one `BubblewrapEngine` per host through `BubblewrapConfig::for_host` (`rustd/crates/runner/main/src/main.rs`). Its inputs are the cgroup the service manager delegated, the admitted toolbox and the runner binary itself. The kernel lane builds its engine the same way (`runner/main/examples/kernel_lane/lane.rs`).
 
-**Only a run that needs a sandbox gets one.** A run whose tools all run in the supervisor starts none (`afr_agent/src/engine/mod.rs`, `afr_supervisor/src/run_loop/mod.rs`). `http_request` and the memory tools run in the supervisor, so a Pull Request reviewer built from them never builds a sandbox. Shell, git and file tools run in one (`afr_tools/src/catalog/mod.rs`).
+**Every run prepares a sandbox.** The engine builds one for a run offered a tool that runs in it (`afr_agent/src/engine/mod.rs`, `afr_supervisor/src/run_loop/mod.rs`). Every fleet is offered the whole catalog, and shell, git and file tools run in a sandbox (`afr_tools/src/catalog/mod.rs`).
+
+`http_request` and the memory tools run in the supervisor, outside the sandbox.
 
 **A processed run holds its sandbox; other outcomes kill it before reporting and release its disk after.**
 
@@ -869,7 +880,7 @@ The recovery page owns capture boundaries, file safety, fencing, and runner-wide
 
   - a failed thaw, or the deadline;
 
-  - the keeper retiring oldest holds to preserve a free worker across fleet and setup work;
+  - the keeper retiring oldest holds to keep a worker free;
 
   - the runner stopping running for any cause, or shutting down;
 
@@ -899,9 +910,13 @@ New chat turns still load recent finished thread turns; a replacement run of the
 
 - **Repository reads.** The supervisor clones with the run's own one-hour, repository-scoped token from the mint verb (`rustd/crates/daemon/afd_credential/src/credential/github/request.rs`). The token reads on a read binding and writes on a write binding.
 
+  The binding comes from the fleet's approved GitHub grant, whose scope names the repositories and read or write. A wider request keeps the old scope until a person approves it.
+
   The token never enters the sandbox. The fetch presents it in an in-memory header, and the clone's configuration names the plain URL (`rustd/crates/runner/afr_supervisor/src/workspace_clone/mod.rs`).
 
-- **Tools that need a login reuse today's mint path.** Fleets already name credentials and never hold them. A `${secrets.github.token}` placeholder resolves through `POST /v1/runners/me/credentials/mint`, which the supervisor calls.
+- **Tools that need a login reuse today's mint path.** A fleet's approved grants name its credentials, and the fleet never holds one. A `${secrets.github.token}` placeholder resolves through `POST /v1/runners/me/credentials/mint`, which the supervisor calls.
+
+  The mint reads the fleet's current grants. A revoked grant leaves a live run the secret it was issued, but the next run and the next mint lack it.
 
   Only where a token lands is new. Today the supervisor mints it once per run and keeps it in that run's egress guard until shortly before it expires. The guard substitutes it only into a request's `Authorization` header, and masks it in whatever the upstream sends back.
 
@@ -911,7 +926,7 @@ New chat turns still load recent finished thread turns; a replacement run of the
 
 - **Thread lines and schedule messages are masked twice**. The `message`, `cron_add`, `cron_update` and `schedule` tools mask run-minted tokens before text leaves the runner.
 
-  `agentsfleetd` then masks the fleet's declared static secrets with the same `af_secrets::Scrub`. It does so before it posts a line through the outbound worker's Slack poster, or stores a schedule.
+  `agentsfleetd` then masks the fleet's approved static secrets with the same `af_secrets::Scrub`. It does so before it posts a line through the outbound worker's Slack poster, or stores a schedule.
 
   The runner never holds the channel credential.
 
@@ -941,9 +956,9 @@ The fleet uses real git inside the sandbox: branches, several commits, the norma
 
 3. opens a draft Pull Request.
 
-When a fleet requires approval, the push runs in the continuation run after someone approves. The daemon compiles the rules (`rustd/crates/daemon/afd_gate/src/policy/egress/write.rs`), and the supervisor enforces them outside the sandbox.
+The push needs write in the fleet's approved GitHub scope. A write mint under a read grant is refused until a person approves a wider request. The daemon compiles the rules (`rustd/crates/daemon/afd_gate/src/policy/egress/write.rs`), and the supervisor enforces them outside the sandbox.
 
-The loop renders the same rules into the prompt as a trusted repair context. That context names the one repository, the daemon-named repair branch and the trusted base. A write-bound fleet's instructions require that input before writing, and nothing else supplies it.
+The loop renders the same rules into the prompt as a trusted repair context. That context names the one repository, the daemon-named repair branch and the trusted base. A write-bound run needs that context before writing, and nothing else supplies it.
 
 A write token inside the sandbox would be readable by every program there, including a dependency's install hook. The rules' own module documentation says this about a repository-scoped write token. That token "can force-push to `main` as easily as it can open a draft Pull Request".
 

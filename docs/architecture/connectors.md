@@ -21,6 +21,8 @@ Every row is extracted from the sections below; the owner column names the secti
 | Disconnect | internal state only | `DELETE` removes the workspace handle and routing rows; provider authorization remains active | §The registry |
 | Binding writes | each operation is atomic; concurrent Connect and Disconnect are unordered | each commits its vault and routing changes together; a first-connect race can leave a partial binding | §The registry |
 | App replay identity | authenticated body digest, per fleet | the unsigned delivery header is diagnostic only; failed fan-out legs retry without duplicating others | §GitHub App |
+| Grants | one row per `(fleet_id, service)`, asked for by the fleet | `request_access` raises the approval card; a signed-in person approves once; a run holds only approved grants | §Where a grant comes from |
+| Triggers | rows the fleet adds, kinds `webhook` · `app_event` · `mention` | `fleet.triggers`, unique `(fleet_id, kind, source)`; `trigger_add` / `trigger_list` / `trigger_remove`; every read keeps its `workspace_id` predicate | §Fleet triggers |
 | Outbound HTTP | a deadline on every vendor call | refusal is `UZ-CONN-003` (502); token exchange 10 s · Slack post 5 s · thread re-read 1.5 s · answer check 3 s | §Bounded outbound |
 | Front-door failures | 404 vs 503 | unknown provider → `UZ-CONN-004`; registry id with no `<provider>-app` bag → `UZ-CONN-001`, fail-loud | §Unknown vs unconfigured |
 
@@ -39,6 +41,14 @@ Each trap is enforced in its owner section; this list is the index.
 - No pool slot rides a vendor call; credentials load under a short acquire released before the exchange (§Bounded outbound).
 
 - The App private key and webhook secret never enter the run, runner environment, sandbox, logs, or response frames (§GitHub App).
+
+- An `app_event` row that names no repository receives no App delivery (§GitHub App).
+
+- Receiving an event needs no grant; calling the provider does. A fleet with an `app_event` row but no approved `github` grant is woken and cannot mint a token (§GitHub App).
+
+- A webhook row never takes the source `approval` or `github` (§Fleet triggers).
+
+- A page a run reads can ask the fleet to add a trigger. The row shows under "Wakes on" on the fleet page, where a person removes it (§Fleet triggers).
 
 ## Terminology (binding)
 
@@ -77,8 +87,8 @@ Complete a fresh Connect to restore the binding, or Disconnect again when remova
 - **Inbound routing follows the provider.** GitHub's app webhook uses `POST /v1/ingress/github` and its own routing statements in `afd_ingress`.
 
   Slack keeps `POST /v1/connectors/slack/events` for its signature, challenge, retry, channel and thread rules.
-  Only a configured addressed fleet or sole eligible subscriber receives a `slack_mention` turn.
-  An unconfigured channel returns `channel_not_configured` without creating a fleet or calling a model.
+  Among fleets with a `mention` row for the channel, only the addressed fleet or the sole subscriber receives a `slack_mention` turn.
+  A channel no row names returns `channel_not_configured` without creating a fleet or calling a model.
 
   [Slack mention routing](scenarios/slack-incident-responder.md#4-routing-a-mention) owns selection and fixed notices.
   Jira and Linear have connected credentials but no inbound integration yet.
@@ -150,19 +160,19 @@ Those three providers are plain `agentsfleet secrets create` entries, never regi
 
    GitHub's bag carries its App identity, user-authorization client credentials and App-level webhook secret. A missing bag fails loud with 503 `UZ-CONN-001`.
 
-4. **Provider signatures authenticate inbound events.** GitHub App traffic is verified against the platform `github-app.webhook_secret`; manual per-fleet webhooks still use the workspace `<source>.webhook_secret`; Slack App events use the platform `slack-app.signing_secret`. No inbound route falls back to Bearer authentication.
+4. **Provider signatures authenticate inbound events.** GitHub App traffic is verified against the platform `github-app.webhook_secret`. A fleet's webhook trigger is verified against the `webhook_secret` in the workspace secret its `secret_name` names. Slack App events use the platform `slack-app.signing_secret`, and no inbound route falls back to Bearer authentication.
 
 5. **A signature proves origin, never the producer**: GitHub permits every push-capable identity to create deployment statuses. Every such identity in a mapped repository sits inside the trusted producer boundary. The daemon verifies the App signature and the installation routing; it does not inspect `deployment_status.creator` or attest which system produced the status.
 
    A scenario that depends on this says so and cites this anchor rather than restating it.
 
-6. **The standing integration grant authorises every mint, including a repository write**. `connector.integration_grants` holds one row per `(fleet_id, service)`, enforced by `UNIQUE (fleet_id, service)`, and only an `approved`, unrevoked row admits a mint. Save writes that row `pending` and raises one approval card.
+6. **The standing integration grant authorises every mint, including a repository write**. `connector.integration_grants` holds one row per `(fleet_id, service)`, enforced by `UNIQUE (fleet_id, service)`, and only an `approved`, unrevoked row admits a mint. The fleet asks for it with `request_access`, which writes the row `pending` and raises one approval card.
 
-   A person's yes on that card is the answer. The reviewed Definition names the integration, and its binding names the repositories and the access level.
+   A person's Approve on that card is the answer ([where a grant comes from](#where-a-grant-comes-from)). The grant's approved `scope` names the repositories and read or write.
 
-   A repository write raises no per-event card. `agentsfleet fleet grants revoke` is the manual stop, taking effect on the next event before any provider call, and `budget.daily_nanos` bounds the money.
+   A repository write raises no per-event card. `agentsfleet fleet grants revoke` is the manual stop, taking effect at the next run and the next token mint. The payer's balance bounds the money.
 
-The token is still narrowed to the declared repositories by `ScopedRequest::for_binding`, and `Granted::verify` still checks the response. The grant is the authorisation above that scoping, never a replacement for it.
+The token is narrowed to the grant's repositories by `ScopedRequest::for_binding`, and `Granted::verify` checks the response. The grant is the authorisation above that scoping, never a replacement for it.
 
 The connector registry owns callback dispatch; provider ingress handlers own event routing once the route segment has selected them. Detailed auth behavior and refusal codes live in [`../AUTH.md`](../AUTH.md) §"OAuth connectors".
 
@@ -233,19 +243,15 @@ A callback failure rolls back its changes, preserving the preceding state.
 
 ### Repository and event subscriptions belong to fleets
 
-The App installation chooses the maximum repository set GitHub will permit. Each fleet then declares the smaller set it wants to receive:
+The App installation chooses the maximum repository set GitHub will permit. Each fleet then adds one `app_event` trigger row naming the smaller set it wants to receive ([fleet triggers](#fleet-triggers)):
 
-```yaml
-triggers:
-  - type: webhook
-    source: github
-    events: [pull_request]
-    repositories: [acme/payments]
+```text
+trigger_add {kind: "app_event", source: "github", events: ["pull_request"], repositories: ["acme/payments"]}
 ```
 
-For App traffic, `repositories` is fail-closed: omission means the fleet receives no App delivery. The omission remains valid for the existing manual per-fleet GitHub route, whose URL already identifies the target fleet. This distinction prevents an App installed across an organisation from waking every GitHub fleet for every repository.
+`repositories` is fail-closed: a row that names none receives no App delivery. This keeps an App installed across an organisation from waking every GitHub fleet for every repository.
 
-The repository match is case-insensitive, as GitHub's is. `events` answers the other way from `repositories`: a trigger with no `events` list admits every event (`afd_ingress`'s binding module).
+The repository match is case-insensitive, as GitHub's is. `events` answers the other way from `repositories`: a row with no `events` list admits every event (`afd_ingress`'s binding module).
 
 ### What the event belongs to
 
@@ -262,14 +268,14 @@ installation 10250042
         │ callback-created reverse map
         ▼
 agentsfleet workspace W
-        │ repository + event + approved-grant intersection
+        │ app_event rows in W: repository + event match
         ├── fleet A subscribes to acme/payments + pull_request  → receives it
         ├── fleet B subscribes to acme/payments + pull_request  → receives it
         ├── fleet C subscribes to acme/catalog + pull_request   → does not receive it
-        └── fleet D has no approved GitHub grant                → does not receive it
+        └── fleet D has no app_event row                        → does not receive it
 ```
 
-The user matters during setup: they choose a workspace, authorize the App installation, install or configure a fleet, and approve its GitHub grant. Once setup is complete, event routing is machine-to-machine and uses saved relationships rather than the user's browser session.
+A person acts once: they connect the workspace and authorize the App installation. The fleet adds its own `app_event` row by tool. From then on, event routing is machine-to-machine and reads saved rows rather than anyone's browser session.
 
 This gives each layer one job:
 
@@ -277,33 +283,11 @@ This gives each layer one job:
 |---|---|
 | GitHub App installation | Maximum repositories GitHub permits the App to see |
 | Workspace connection | Installation-to-workspace identity and the outbound credential handle |
-| Fleet trigger | Explicit repository and event subscription |
-| Integration grant | Whether that fleet may use GitHub |
+| Fleet trigger (`fleet.triggers`, kind `app_event`) | Explicit repository and event subscription |
+| Integration grant | Whether that fleet may call GitHub with a minted token; receiving the event needs none |
 | Turn row (`thread.turns`) | Exactly-once enqueue per matching fleet for one GitHub delivery |
 
-### Where a grant comes from
-
-A grant is **requested at Save**. When a saved fleet's readiness review finds a declared credential's grant missing, setup activation asks for it (`afd_setup`'s creation activate). The request writes a `pending` `connector.integration_grants` row and raises an approval card in one transaction (`afd_approval`'s grant statements).
-
-The fleet stays `installing` until every readiness check, the grant included, is ready (`afd_setup`'s creation progress). The run path asks the same way the first time a delivery reaches a credential with no grant (`afd_fleet`'s run deliver).
-
-Either way, the decision belongs to the approval-gate machine this codebase already ships. That machine is an inbox and a detail page with an evidence tree. It also has resolve buttons, a webhook and an append-only audit. Nothing expires a gate: a read reports `timed_out` once its deadline passes, and the gate stays answerable (`afd_approval`'s inbox).
-
-**A gate is a per-turn decision; a grant is the standing answer that outlives the run.** The gate asks; the grant remembers.
-
-Resolving the gate as approved flips the grant and the gate in one statement, so the two cannot disagree. Any non-approval outcome drives the grant to `revoked` rather than back to `pending`, which nothing would re-raise.
-
-Where origination runs is load-bearing. The App ingress query inner-joins on `status = 'approved'`. A fleet that cannot obtain a grant therefore writes no turn, takes no run and reports nothing.
-
-It goes silently inert rather than failing visibly.
-
-An origination path reachable only with a credential the fleet does not hold produces exactly that silence.
-
-A run is the last checkpoint. A credential with a mintable handle but no
-approved grant **parks the turn**.
-
-Parked turns stay out of run assignment until gate resolution clears the
-park stamp. A revoked grant ends the turn with `grant_denied`.
+### How a delivery is routed
 
 An incoming delivery follows this order:
 
@@ -319,11 +303,10 @@ verify platform webhook signature BEFORE reading routing fields
 installation.id → connector.installs → workspace
         │
         ▼
-active fleets in that workspace
+app_event rows (fleet.triggers) in that workspace, on active fleets
   ∩ source=github
   ∩ repositories contains repository.full_name
   ∩ events admits the incoming event
-  ∩ approved GitHub integration grant
         │
         ▼
 commit queued thread.turns row (body digest + fleet)
@@ -358,20 +341,66 @@ Signed workflow completions first match native task waits. `deployment_status` a
 
 Slack is the contrast and the reason this page cannot generalise: its retry semantics are load-bearing precisely because Slack does retry.
 
+### Where a grant comes from
+
+A fleet asks for a credential when it needs one. Every run is offered the supervisor tool `request_access {name, scope?}`, which posts `POST /v1/runners/me/runs/{run_id}/access`. A workspace secret, GitHub and every other connected integration pass through the same card.
+
+```text
+run calls request_access {name: "grafana"}
+        │
+        ▼
+daemon checks: a vault secret or a connected integration? a GitHub scope? a readable host?
+        │                       │
+        │ refused               └─ already covered by the approved grant ─► answers at once, no card
+        ▼
+[kind] sentence back to the model; the run continues; no row, no card
+        │
+        ▼ (passes, not covered)
+grant pending + requested_scope ─► approval card carrying the asking turn
+        │                          the run ends waiting, as ask_user does
+        ▼
+a signed-in person clicks Approve or Deny
+        │
+        ▼
+resolve_gate.sql flips the grant and writes the answer turn ─► the run resumes
+```
+
+The daemon checks a request before it writes anything:
+
+- The name is a workspace vault secret or a connected integration. The grant's `kind` comes from the vault entry, as `afd_credential`'s secrets module routes it.
+- A `github` request names a scope: the repositories, and read or write. The repository parser in `af_fleet_runtime` reads it.
+- A secret's `host` must be one `af_egress::allowlist_host` can read, because the secret is sent only to that host.
+
+A refused request returns `[kind] sentence` to the model, and the run continues with no row and no card. A request the approved grant already covers answers at once, with no card. A second request while one is pending answers 200 and raises no second card.
+
+Otherwise the daemon sets the grant `pending`, keeps the asked-for scope in `requested_scope` and raises the approval card through `request_grant.sql`. The card carries the asking turn. The tool ends the run waiting, as `ask_user` does, and the turn settles waiting, so the fleet's later turns are not held behind it.
+
+Only a signed-in person answers the card; an API key gets 403. Approve and Deny go through `resolve_gate.sql`, which flips the grant and writes the same answer turn a question's answer writes. Its message reads `approved` or `denied`, and that turn resumes the waiting run, holding the credential or knowing it was refused.
+
+Approve moves `requested_scope` into `scope`. Until then the approved scope stays in force, so a token mint wider than it is refused. Deny sets the grant `revoked`, and a later request for the same name sets it `pending` again with a new card.
+
+`agentsfleet fleet grants revoke`, or `DELETE` on the fleet's `integration-grants/{id}`, revokes a grant. A live run keeps what it was issued. The next run and the next token mint do not.
+
+A run's policy reads only approved grants ([egress model](runner_fleet.md#egress-model-outbound-is-the-only-network-surface)). Their names fill the `secrets_map`, an approved GitHub scope builds the repository binding, and each approved secret's host joins the network `allow` list. Slack's `addressed_only` reads the GitHub scope's write reach.
+
+**A card is a per-turn question; a grant is the standing answer that outlives the run.** The card asks, and the grant remembers. Each request, approval, denial and revoke emits the product event `fleet_access_changed` ([product analytics](product_analytics.md)).
+
+The card is the approval inbox this codebase already ships: an inbox, a detail page, resolve buttons, an approval webhook and an append-only audit. Nothing expires a card. A read reports `timed_out` once its deadline passes, and the card stays answerable (`afd_approval`'s inbox).
+
 ### Credential use remains separate from event receipt
 
 Receiving a signed event does not give GitHub credentials to a fleet.
 When the fleet calls GitHub through `${secrets.github.token}`, its runner-token plane asks the daemon to mint a token.
 
-The daemon derives the fleet and workspace from the run and rechecks the approved integration grant.
+The daemon derives the fleet and workspace from the run and reads the fleet's current grant.
 It loads the workspace installation handle, signs with the platform key and exchanges for a short-lived token.
 
 The runner caches that token for the run and refreshes it 30 seconds before expiry.
 It masks the token in tool responses (`af_egress`'s vault module).
 The App private key and webhook secret never enter the run, runner environment, sandbox, logs or response frames.
 
-The binding determines token scope (`afd_credential`'s GitHub request builder).
-Read bindings receive contents read without Pull Request permissions; repair bindings add bounded write permissions, never workflows.
+The repository binding, built from the grant's approved scope, determines token scope (`afd_credential`'s GitHub request builder).
+Read bindings receive contents read without Pull Request permissions; write bindings add bounded write permissions, never workflows.
 Actions/checks reads require installation permission; a missing permission returns 403 to the fleet.
 
 The shared HTTP client disables automatic redirects, but the tool supports guarded bodyless GET redirects.
@@ -382,11 +411,53 @@ See [guarded downloads](runner_fleet.md#guarded-tool-downloads); implementation 
 
 | Provider | Connect credential | Inbound events after M102_005 |
 |---|---|---|
-| <img src="https://cdn.simpleicons.org/github" width="14" alt="" /> GitHub | App installation handle | App ingress routes by installation + repository + event + grant; manual per-fleet webhook remains available |
+| <img src="https://cdn.simpleicons.org/github" width="14" alt="" /> GitHub | App installation handle | App ingress routes by installation, then by each `app_event` row's repositories and events |
 | <img src="https://api.iconify.design/logos/slack-icon.svg" width="14" alt="" /> Slack | bot token from OAuth | specialized events route: signature, challenge, and mention routing to one `slack_mention` event (`afd_api_ingress`'s mention handler) |
 | <img src="https://cdn.simpleicons.org/zoho" width="14" alt="" /> Zoho Desk | OAuth refresh handle, multi-data-center token endpoint | no inbound integration in this workstream |
 | <img src="https://cdn.simpleicons.org/jira" width="14" alt="" /> Jira | OAuth refresh handle | no inbound integration in this workstream |
 | <img src="https://cdn.simpleicons.org/linear" width="14" alt="" /> Linear | OAuth refresh handle | no inbound integration in this workstream |
+
+## Fleet triggers
+
+A trigger is a `fleet.triggers` row that lets something outside wake a fleet. The fleet adds its own rows by tool, and a person sees and removes them. Schedules are separate `fleet.schedules` rows the fleet adds with `cron_add` ([QStash owns the clock](data_flow.md#qstash-owns-the-clock)).
+
+| Kind | `source` | Fields | One per fleet | The turn it writes |
+|---|---|---|---|---|
+| `webhook` | the sender's lowercase slug, never `approval` or `github` | `events`, `verifier_scheme`, `verifier_header`, `secret_name` | per source | actor `webhook:<source>`, from `POST /v1/webhooks/{fleet_id}/{source}` |
+| `app_event` | `github` | `repositories`, `events` | one GitHub App subscription | actor `github-app` |
+| `mention` | `slack` | `channel`, a Slack channel identifier rather than its name | one Slack channel | producer `slack_mention`, actor `slack:<user>` |
+
+The row is unique on `(fleet_id, kind, source)` and is deleted with its fleet. Indexes on `(workspace_id, kind, source)` and `(workspace_id, kind, channel)` serve the ingress reads ([Postgres schemas](postgres_schemas.md)).
+
+### Adding, listing and removing
+
+A run adds, lists and removes rows with `trigger_add`, `trigger_list` and `trigger_remove` (`afr_tools`). Each posts a fenced run verb, `POST`, `GET` or `DELETE /v1/runners/me/runs/{run_id}/triggers`, carrying `item_id`, `call_number` and `fencing_token` as the schedule verb does. Each tool's description tells the model to call it only when the person's newest message asks.
+
+An add is refused, and the model reads `[kind] sentence` and may correct the call in the same run, when:
+
+- the workspace has not connected the provider, for an `app_event` or `mention` row;
+- `secret_name` names no secret in the workspace vault;
+- the row fails the trigger checks in `af_fleet_runtime`'s `config/trigger` module;
+- a webhook row's source is `approval`, the approval route's segment, or `github`, which is an `app_event` row;
+- the fleet already holds a row of that kind and source.
+
+No count limit applies beyond what the workspace has connected. A person lists a fleet's rows with `GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/triggers` (`fleet:read`) and removes one with `DELETE` on `triggers/{id}` (`fleet:write`). The CLI's `agentsfleet fleet triggers list|remove` and the fleet page's "Wakes on" list call the same routes ([web app](web_app.md)).
+
+Each add or remove writes the operator log `trigger_changed` with `fleet_id`, `kind` and `by` (`run` or `person`). It carries no signing secret and no URL ([observability](observability.md)).
+
+### Routing a delivery to its rows
+
+The three ingress statements, for webhooks, App events and mentions, read `fleet.triggers`. Each keeps its `workspace_id` predicate, so a delivery never reaches another workspace's fleet. An App delivery for a repository no row in the install's workspace names writes no turn.
+
+A delivery needs no grant on the fleet; a grant governs only what the fleet may call ([where a grant comes from](#where-a-grant-comes-from)). A signed delivery to a removed row's URL, or to a source no row ever named, answers 404 and writes no turn.
+
+### Webhook signing recipes
+
+The registry sources `linear` and `slack` imply their own signing recipe and refuse a `verifier`. Any other source's `verifier` names its scheme, stored as `verifier_scheme`: `body-hex-sha256`, `body-hex`, `body-base64-sha256`, `slack-v0` or `svix-v1`.
+
+The three body recipes need a header, stored as `verifier_header`: an HTTP token of 1 to 128 characters. `slack-v0` and `svix-v1` read fixed headers and refuse one (`af_fleet_runtime`'s `config/trigger` verifier).
+
+`secret_name` names the workspace secret that signs the deliveries. That secret is a JSON object with a `webhook_secret` string, which holds the `whsec_` value for Svix. One fleet can hold rows on registry and declared recipes side by side.
 
 ## Bounded outbound: every vendor call has a deadline
 

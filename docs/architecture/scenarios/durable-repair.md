@@ -7,7 +7,7 @@ Read this scenario to follow three hypothetical repairs through ordinary chat, s
 | Source | M236 contains native durable task, decision, publication, recovery, CLI and browser implementations. |
 | Combined demonstration | Unfinished. The sequence below describes required observations, not a completed run. |
 | Live evidence | The [acceptance ledger](../../../playbooks/operations/acceptance/baselines/M236_001-autonomy.md) owns actual bindings, measurements and remaining proof. |
-| Authority | One reviewed fleet setup, explicit existing-PR targets, bounded durable task limits and configured notification destinations. |
+| Authority | The fleet's approved GitHub grant, explicit existing-PR targets, bounded durable task limits and configured notification destinations. |
 | Exclusions | Fleet merge/deployment, arbitrary repository writes and an unreviewed monitoring-to-repair handoff. |
 
 ## Before the demonstration
@@ -17,7 +17,7 @@ The names, defects and commit letters below are hypothetical.
 They establish no diagnosis of real Linkwarden code.
 
 Each PR needs an unchanged regression that exposes its assigned defect.
-The fleet needs current repository grants and reviewed permission to update each exact existing PR.
+The fleet needs a GitHub grant a person approved with write scope and existing-PR publication for the repository ([where a grant comes from](../connectors.md#where-a-grant-comes-from)).
 The PR author may use Codex, Claude Code or another tool; authorship grants the fleet no authority.
 
 | Durable task name | Accepted objective | Target |
@@ -26,13 +26,13 @@ The PR author may use Codex, Claude Code or another tool; authorship grants the 
 | Search repair | Remove pagination duplicates without weakening the regression. | PR Y and its distinct branch. |
 | Export repair | Correct Unicode export while preserving the accepted format. | PR Z and its distinct branch. |
 
-The accepted completion questions require the unchanged regression and required Continuous Integration (CI) checks at the current head.
-[Question ownership](../goal_evaluation.md#who-writes-and-stores-the-questions) defines setup review and later revision adoption.
+Each task's completion statements require the unchanged regression and required Continuous Integration (CI) checks at the current head.
+The fleet's model writes them when it starts the task, and Indy can edit them on the task panel ([question ownership](../goal_evaluation.md#who-writes-and-stores-the-questions)).
 The example uses Jev; [decision models](../goal_evaluation.md) owns provider selection and assessment rules.
 
 Indy uses authenticated browser chat or the command-line interface (CLI) through a coding agent.
 Both clients send ordinary fleet messages through the existing turn intake path.
-A machine credential cannot impersonate a human approval.
+A machine credential cannot impersonate a human approval, and a webhook or schedule turn cannot start a task.
 
 ## Admit and steer work through ordinary conversation
 
@@ -41,18 +41,20 @@ Indy                    Fleet turn intake                Current fleet run
  |                                |                               |
  | Repair import PR X             |                               |
  |------------------------------->| save source message A1        |
- |                                |------------------------------>| interpret request
- |                                |<------------------------------| bind Import repair
+ |                                |------------------------------>| task_start
+ |                                |<------------------------------| Import repair ready
  | Repair search PR Y             |                               |
- | and export PR Z                |                               |
  |------------------------------->| save source message A2        |
- |                                |------------------------------>| bounded decomposition
- |                                |<------------------------------| save immutable items
- |                                | queue Search and Export       |
- | Keep import's fallback title   |                               |
+ |                                |------------------------------>| task_start
+ |                                |<------------------------------| Search repair ready
+ | Repair export PR Z             |                               |
  |------------------------------->| save source message A3        |
- |                                |------------------------------>| bind accepted steer
- |                                |<------------------------------| save meaning and cursor
+ |                                |------------------------------>| task_start
+ |                                |<------------------------------| Export repair ready
+ | Keep import's fallback title   |                               |
+ |------------------------------->| save source message A4        |
+ |                                |------------------------------>| task_input (Import)
+ |                                |<------------------------------| save input and cursor
  |                                |                               | apply at safe boundary
 ```
 
@@ -60,9 +62,9 @@ Indy names the work through its purpose or PR URL, without entering an internal 
 An ambiguous instruction such as “cancel that” requires clarification.
 A new request cannot inherit an older repair's publication authority.
 
-A2 creates two stable durable task items.
-Replaying A2 must return those items instead of creating duplicate repairs.
-A3 changes the import method within the accepted objective; it grants no new repository access or completion criteria.
+One message takes one plan, so each repair starts from its own message.
+Replaying A2's call must return the Search task instead of creating a duplicate repair.
+A4 changes the import method within the accepted objective; it grants no new repository access or completion statements.
 
 The human-input view reads messages in source order while machine work waits.
 A steer for Search remains queued while Import owns the run.
@@ -73,7 +75,7 @@ A status question uses recorded evidence and states its freshness.
 An explicit request for fresh status may read current evidence within the existing authority and limits.
 
 [Human input](../durable_tasks.md#human-input-while-work-runs) owns input claims, accepted receipts and safe boundaries.
-[Intent routing](../goal_evaluation.md#intent-routing) owns classification and uncertainty.
+[How a task starts](../durable_tasks.md#how-a-task-starts) owns `task_start`, `task_input` and their checks.
 Neither a sidebar selection nor a new chat mode supplies durable task authority.
 
 ## Publish, lose a worker and recover the same durable task
@@ -91,13 +93,13 @@ Import run             Native publication          Saved state / GitHub
  publish tested candidate B ----->| record effect E1           |
                                   | append only if head = A -->| B accepted
      |<--- acknowledgement lost --|                            |
- accept steer A3 beyond G1 cursor |                            |
+ accept steer A4 beyond G1 cursor |                            |
  worker disappears               |                            |
      |                            |                            |
  replacement run               |                            |
  fresh authority + restore G1 <-------------------------------|
  read E1 and exact PR history --->| confirm B already exists    |
- replay accepted A3              |                            |
+ replay accepted A4              |                            |
  test correction C -> save G2     |                            |
  publish C, record CI(C) wait ----|--------------------------->|
  settle report and release       |                            |
@@ -107,7 +109,7 @@ Import run             Native publication          Saved state / GitHub
 
 The lost acknowledgement and worker replacement are deliberate failure conditions for the controlled run.
 The replacement reconciles E1 before attempting another publication.
-Saved input A3 remains available beyond G1's covered-input cursor.
+Saved input A4 remains available beyond G1's covered-input cursor.
 
 A human push from A to another head must reject a publication prepared against A.
 The fleet keeps saved work and reads fresh evidence instead of overwriting that push.
@@ -147,7 +149,7 @@ Each continuation rechecks current workspace access, repository grants, target i
 Duplicate events, old heads and replaced wait generations cannot complete newer work.
 A missed event costs no model call or restore; the wait stays armed until a signed event matches it or the durable task's deadline passes.
 
-Jev proposes a goal result against the accepted questions and current evidence.
+Jev proposes a goal result against the task's completion statements and current evidence.
 Native proof checks decide whether the durable task may finish.
 [Goal evaluation](../goal_evaluation.md#goal-evaluation) owns malformed, unavailable, contradictory and stale judgments.
 
@@ -183,7 +185,7 @@ Existing schedule -> bounded Grafana observation
 
 The scheduled observer uses a configured Slack destination and stable incident correlation.
 Repeated failing observations must not create duplicate notices or repair durable tasks.
-Detection alone grants no permission to repair, and setup capability does not imply unlimited standing work approval.
+Detection alone grants no permission to repair, and an approved grant does not imply unlimited standing work approval.
 
 This scenario requires an authorized human to approve the repair scope.
 [Workspace approval](../sandbox_evaluation.md#workspace-approval-in-chat-or-slack) owns that boundary.
@@ -207,10 +209,10 @@ The acceptance ledger records verification status separately from screenshots an
 |---|---|
 | Ordinary chat | Brief action/results, saved status with freshness, natural-language steering and clarification only for ambiguous targets. |
 | PR badge | Standard pull-request icon and actual PR number, linked through one explicit native durable task identity. |
-| Durable tasks | Durable task purpose and recorded action or wait reason; accepted objective, criteria and controls behind a disclosure. |
+| Durable tasks | Durable task purpose and recorded action or wait reason; accepted objective, editable completion statements and controls behind a disclosure. |
 | Outputs | Native PR targets, including bounded history from saved durable task activity; local edits do not prove publication. |
 | Changes | Recorded file writes with expandable details; no new diff service. |
-| Sources | Saved fleet repository policy, without claiming fresh remote grants. |
+| Sources | The fleet's approved GitHub scope, without claiming fresh remote grants. |
 | CLI | Native durable task identity and decision/transfer observations through the existing attached turn stream. |
 | Recovery | Restoration, uncertain publication readback and confirmed resumed work remain distinguishable. |
 
@@ -219,7 +221,7 @@ A timed-out publication must remain uncertain until readback confirms its effect
 Neither interface invents completed work from a status label or model prose.
 
 The composer remains reachable while evidence expands.
-Typing and reading older messages must preserve the draft and reading position.
+Typing and reading older messages must preserve the unsent text and reading position.
 A late PR badge stays on the sender line without moving the visible reply.
 
 ## Evidence needed to close this scenario
@@ -230,13 +232,13 @@ M236 completion depends on the [active acceptance ledger](../../../playbooks/ope
 
 | Proof | Evidence to retain |
 |---|---|
-| Three assigned repairs | Actual PR URLs, accepted objectives/questions, stable durable task identities and one active fleet run. |
-| Conversation and steering | Greeting with a complete empty tool-call inventory; saved status; accepted A3; ambiguous-target clarification; duplicate A2 replay. |
+| Three assigned repairs | Actual PR URLs, accepted objectives and statements, stable durable task identities and one active fleet run. |
+| Conversation and steering | Greeting with a complete empty tool-call inventory; saved status; accepted A4; ambiguous-target clarification; duplicate A2 replay. |
 | Publication and recovery | Exact tested trees/heads, unknown E1 readback, worker replacement, compatible G1/G2 coverage and accepted-input replay. |
 | CI continuation | Signed, duplicate, stale, fast and missed completion cases; one effective wake; final current-head checks and unchanged regressions. |
 | Authority and limits | Human advancement, revoked grants, closed PRs, pause/cancel, deadlines and exhausted limits stop prohibited effects. |
 | Grafana and Slack | Quiet/failing/recovered windows, deployed revision, bounded queries, stable incident identity and configured destination receipts. |
-| User surfaces | Actual CLI capture and browser evidence for native durable task attribution, reconnection, readable progress, preserved drafts and stable scrolling. |
+| User surfaces | Actual CLI capture and browser evidence for native durable task attribution, reconnection, readable progress, preserved unsent text and stable scrolling. |
 
 Mechanism pages own API collections, Rust interfaces, provider limits and checkpoint formats.
 This page owns their combined worked example and its remaining proof.

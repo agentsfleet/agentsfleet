@@ -8,11 +8,12 @@
 
 ## The cast
 
-Two fleets, both saved from fixtures under `rustd/crates/protocol/af_fleet_runtime/tests/fixtures/fleets/`.
+Two fleets, each started from a first message and taught its job by chat.
+Each keeps its standing guidance as pinned memory, and every fleet is offered every published tool.
 
-| Fleet | What it does | Tools |
+| Fleet | What it does | Tools it uses |
 |---|---|---|
-| `runner-link-watch` | Reads Grafana, read-only, and writes one report on the runner link. | `http_request`, memory, `fleet_steer` to report back |
+| `runner-link-watch` | Reads Grafana with its approved `grafana` secret and writes one report on the runner link. Its pinned memory says it only reads. | `http_request`, memory, `fleet_steer` to report back |
 | `chief-of-staff` | The one fleet the owner talks to. It reads every fleet and hands work on. | `fleet_activity`, `fleet_steer` |
 
 ## 1. A person reaches a fleet by name
@@ -24,11 +25,11 @@ dashboard      in any fleet's chat:   @runner-link-watch Hourly runner link chec
 Slack          @agentsfleet-dev runner-link-watch: Hourly runner link check
 ```
 
-The name is the fleet's saved name, the one the sidebar shows. The command line and the dashboard look it up with `GET …/fleets?name=`, then send an ordinary message. Slack has one bot for every fleet, so there the first word after the bot names the fleet.
+The name is the fleet's name, the one the sidebar shows. The command line and the dashboard look it up with `GET …/fleets?name=`, then send an ordinary message. Slack has one bot for every fleet, so there the first word after the bot names the fleet.
 
-In the dashboard, type `@` to see active fleets in the current workspace. Use the arrow keys and Enter, or tap a fleet. The composer keeps the rest of the draft.
+In the dashboard, type `@` to see active fleets in the current workspace. Use the arrow keys and Enter, or tap a fleet. The composer keeps the rest of the message.
 
-Fleet conversations are stacked in the sidebar, with an **Edit** link beneath each editable fleet. In an interactive named CLI conversation, the prompt shows the recipient, for example `@runner-link-watch> `.
+Fleet conversations are stacked in the sidebar. In an interactive named CLI conversation, the prompt shows the recipient, for example `@runner-link-watch> `.
 
 ## 2. A fleet hands work to a fleet, and hears back
 
@@ -39,7 +40,7 @@ chief-of-staff      fleet_activity()                       find runner-link-watc
                     fleet_steer(<watch id>, "run the hourly check")
                     answers at once: "asked runner-link-watch"          it does not wait
 
-runner-link-watch   runs under its own grants and budget
+runner-link-watch   runs under its own grants
                     its message begins: [from fleet chief-of-staff, fleet_id <id>; …]
                     writes its report, then
                     fleet_steer(<chief id>, "✅ No action needed · lost 0.2 % · …")
@@ -55,13 +56,13 @@ A digest is the same fleet reading without steering. `fleet_activity()` lists ev
 
 ## 3. The rules that bound it
 
-- A name grants nothing. A person's message passes the message route's own guard, or Slack's channel subscription.
+- A name grants nothing. A person's message passes the message route's own guard, or a channel's `mention` trigger row.
 - An unknown `@name` is refused. It never falls back to the fleet whose chat was open.
 - A fleet's target is another fleet in its own workspace, and active.
-- The fleet's `tools` list is the only consent. Nothing lists targets, limits the chain or caps the count.
-- Authority never widens. The target runs under its own revision, grants, gates and budget, and a steer carries text, never policy.
+- Any fleet may steer any fleet in its workspace, as often as the payer's balance allows. Nothing lists targets, limits the chain or caps the count.
+- A steer carries text, never access: the target runs under its own grants. A fleet with no access can still ask a fleet that holds access to act.
 - A fleet's steer runs as its own run. A resent steer admits once. A runner that lost its run writes none.
-- Prompt injection is accepted, and stated. A fleet that reads untrusted text and holds `fleet_steer` can be told to steer any fleet in its workspace. Each target's own gates and budget bound the damage.
+- Prompt injection is accepted, and stated. A fleet that reads untrusted text can be told to steer any fleet in its workspace. Each target's own grants and the payer's balance bound the damage.
 
 ## 4. Not this feature
 

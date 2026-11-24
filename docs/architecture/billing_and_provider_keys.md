@@ -6,7 +6,7 @@ How users pay for what they run. The runtime stays neutral between two cost real
 
 This is a cross-cutting topic. The data model lives in the tenant provider records. The runtime hooks live in the control plane's run path (`agentsfleetd`) and the runner's supervisor.
 
-The setup-time path lives in workspace chat, the reviewed setup and Save.
+A fleet's model is its `fleet.fleets.model_ref`, stored when the fleet is created and changed with one `PATCH` ([user flow §8.7](./user_flow.md#87-model-and-context-cap-origin-platform-vs-self-managed)).
 
 The end-to-end walkthroughs are in [`scenarios/`](./scenarios/). This file is the canonical concept reference: it describes shape and behaviour.
 
@@ -29,7 +29,7 @@ Every row is extracted from the numbered sections below; the owner column names 
 | Invariant | Value | Mechanism | Owner section |
 |---|---|---|---|
 | Currency unit | nanos; 1 USD = 1,000,000,000 | `billing.wallets.balance_nanos BIGINT`, signed; i64 caps one tenant at ~$9.2B | §2 |
-| Postures | exactly 2, selected by the saved runtime reference | `platform-default` uses `platform`; an owner's model registration uses `self_managed`; both debit the owner's wallet | §1 |
+| Postures | exactly 2, selected by the fleet's `model_ref` | `platform-default` uses `platform`; an owner's model registration uses `self_managed`; both debit the owner's wallet | §1 |
 | Debit point | usage only, as it is written | each renewal's and the report's slice is one usage line; the statement that inserts a line debits the payer's wallet and adds it to the daily rollups (Indy, Nov 22, 2026: "apply at write"); assignment charges nothing | §3 |
 | Line charge | `⌈runtime⌉ + Σ ⌈tokens × rate⌉` | the `Rater`: run fee under both postures, each token category under platform, each rounded up on its own | §4.1 |
 | Short balance | the wallet's balance, below zero if it must | every logged line is already debited, so a funds check reads `billing.wallets` alone; a payer below zero is refused by every funds check until a grant repays it | §3, §5, §11 |
@@ -39,8 +39,7 @@ Every row is extracted from the numbered sections below; the owner column names 
 | Mid-run exhaustion | refused within three renewals | funds are checked once per payer on a stream's first tick, then every `FUNDS_CHECK_TICKS` (3) ticks; a short payer's runs answer `UZ-RUN-012` and end at their current deadlines, never extended | §3, §5 |
 | Money set aside | none | a funds check reads the balance; parallel runs can overdraw by at most three slices each before their next check refuses | §5, §11 |
 | Statement bounds | the API login role's | 2 s lock wait, 5 s statement; no billing statement sets its own; a bound reached is a biller with no answer | §11 |
-| Budget gate | per-fleet, independent of the balance gate | `daily_nanos` rolling 24 h · `monthly_nanos` Coordinated Universal Time (UTC) calendar month; mid-run refusal `UZ-RUN-015` | §5.1 |
-| Budget no-verdict posture | asymmetric | database failure → admit; no budget declared → admit; unparseable budget → refuse | §5.1 |
+| Spending ceiling | the payer's balance, and nothing per fleet | no fleet has a budget; an empty wallet, or a payer with no wallet row, refuses the turn `balance_exhausted` | §5 |
 | `api_key` boundary | process-internal vs user-facing | never in responses, logs, fleet context, or saved rows; the runner run is the machine-plane exception | §8.2 |
 | Credential list | metadata projection | `kind` ∈ {`provider_key`, `custom_endpoint`, `custom_secret`}; `api_key` structurally absent (no field to leak) | §8.3 |
 | Model registry | one row per `(model_name, secret_ref)` | `model.tenant_models`, `UNIQUE (tenant_id, model_name, secret_ref)`; entries reference keys, never own material | §8.4 |
@@ -49,7 +48,7 @@ Every row is extracted from the numbered sections below; the owner column names 
 | Catalogue read | `GET /v1/models`, bearer-authed | the public `cap.json` route is retired: `404`, no alias | §10 |
 | Plan tiers | none in the cost function | future paid plans manifest as grants or top-ups, never a branch in the charge functions | §2.4 |
 | Posture switch | assignment-time snapshot wins | posture resolved once, at gate time, and stored on the run | §7 |
-| Blocked rows | terminal | no automatic replay after top-up; re-trigger the source (§6); continuation applies only to approval gates | §6 |
+| Blocked rows | terminal | no automatic replay after top-up; re-trigger the source (§6); a continuation follows only a card's answer | §6 |
 | Live dollar values | never in this doc | served by the authenticated billing surface; the run fee is declared once, in `afd_billing` | preamble, §4.1 |
 
 ## Traps
@@ -60,14 +59,13 @@ Each trap is enforced in its owner section; this list is the index.
 - Metering never stops, and nothing zeroes the money column: every slice is a usage line priced at what the catalogue publishes (§2.3).
 - Never fold a catalogue read fault into "this model is not in the catalogue". The second is a value, the first is an error the pass logs as `run_tokens_unpriced`. Both count the tokens as unpriced on the line, visibly (§4.1).
 - A re-sent request line is stored once on `(work, kind, seq)`. A re-sent renewal measures about zero run time against the run's cursor, so retries never charge twice (§3).
-- The budget gate counts each usage line in the window it was written in. A line is one renewal interval of usage, so a long run's spend lands where it was used (§5.1).
+- No fleet has a budget. A fleet that schedules itself can spend the payer's whole balance, so the balance gate is the only stop (§5).
 - No plan branch inside the charge functions, ever (§2.4).
 - The provider `api_key` never joins `secrets_map`; it rides `ExecutionPolicy` on a different path entirely (§8.2).
 - Model-registry entries reference vault keys; they never own credential material (§8.4).
-- Absence of a `tenant_model_selection` row means a platform account default; it does not replace a fleet's saved model reference (§1).
+- Absence of a `tenant_model_selection` row means a platform account default; it does not replace a fleet's `model_ref` (§1).
 - No silent auto-fallback from self-managed to platform on provider error; it would charge without consent (§13).
 - `tenant provider create` never test-calls the provider; a bad key surfaces at the first turn, when the provider refuses it (§7).
-- Budget overshoot is bounded, not zero: at most one renewal window past the cap (§5.1).
 
 ## Topology
 
@@ -84,8 +82,8 @@ The diagrams live with their flows: the per-slice metering picture (§3) and the
 | A provider is priced, or records why it never will be | "not yet priced" read as a queue nobody was working; 87 providers sat in it | §10 |
 | Free usage is a balance, not a promotional window | a number that drains cannot silently stay open; the timestamp-gated version priced every tenant at zero for its whole life | §2.3 |
 | Usage is charged as it is logged | a run, its usage and the debit commit together; the relay that settled lines later went with every timed loop (Indy, Nov 21, 2026: "Delete all now"), and the debit moved into the line's insert (Indy, Nov 22, 2026: "apply at write") | §3, §11 |
-| Budget gate fails open on database failure | a metering outage must not halt every fleet on the platform | §5.1 |
-| One billing lifecycle behind `Arc<dyn Biller>` | fleet runs and setup chat disagreed on rounding, pricing and outages; a billing service or third party must be able to bill | §11 |
+| The payer's balance is the only ceiling | a fleet starts with nothing set up, so nothing per fleet bounds it (Indy, Nov 24, 2026: "Yes budget - approved payer's balance") | §5 |
+| One billing lifecycle behind `Arc<dyn Biller>` | one rounding, pricing and outage rule for every line; a billing service or third party must be able to bill | §11 |
 | No holds: check funds, accept bounded debt | holds reserved too little to stop parallel overspend and kept a second balance in sync; one source of truth is the wallet's balance (Indy, Nov 05, 2026) | §5, §11 |
 | Billing outages fail open, flippable at one construction site | early adoption favours the optimistic path; closing it is one line | §11 |
 | Statement bounds live on the login role, not on billing statements | one `ALTER ROLE` covers every daemon statement; per-statement overrides drifted from it | §11; M242_001 |
@@ -97,45 +95,15 @@ The diagrams live with their flows: the per-slice metering picture (§3) and the
 
 ---
 
-## Setup run funds and settlement
-
-Setup chat bills through the shared `Biller` lifecycle (§11), on the same `Arc<dyn Biller>` fleet runs use. `agentsfleetd` builds it once at boot and hands the same biller to the setup path.
-
-A setup turn is a draft-owned run on the common run path. Its usage lines carry `work_type = 'setup_run'` and name the run as their work (`WorkKey::SetupRun`).
-
-Models and billing resolve from `Owned.tenant`, the workspace owner's account, not the joined member's account. Send captures the selected model reference. An idle, version-guarded draft PATCH can replace a disabled selection; earlier turns keep their own.
-
-Model disable, wallet absence, membership removal and policy-marker drift fail closed. A refused assignment records the message's bounded failure.
-
-**Bound.** A setup run must fund its first slice, one run lifetime of runtime fees, as a fleet run must (`afd_setup`'s `setup_run::model::first_slice`). It is the amount the assignment checks for, not money set aside. No whole-run estimate exists, because the balance check at every renewal ends a runaway.
-
-**Assignment.** The gate reads the owner's balance (`afd_billing::ledger::balance`), which every logged line has already debited. It reads on the assignment's own transaction and refuses a run whose bound it cannot cover. A tenant with no wallet is refused.
-
-**Renewal.** Each renewal checks the payer's funds first (`afd_fleet`'s `run/draft/renew.rs`). It logs the runtime slice since the run's cursor and every model request the renewal carries. A refused renewal still logs the request lines, because the runner spent them.
-
-**Report.** The report transaction settles the run under its fence and logs the last slice and request lines with `log_lines`, which debits the owner's wallet. The `Rater` prices each line by its whole-request tier (§3).
-
-A replayed report finds the run settled and writes nothing. A report at a superseded fence is refused and writes nothing. A dead run's last slice, from its last renewal to its deadline, is not billed (Indy, Nov 21, 2026).
-
-**Locks.** Assignment holds the runner row first and reads the creator and the draft without a lock; its thread and turn claims decide. Renewal takes the runner row, then the run's thread and row, and never a draft row. The report takes the draft, then the thread and the run, and never the runner row. [Concurrency](concurrency.md#runner-capacity-and-setup-lock-order) owns the complete lock order and exceptions.
-
-### Stop
-
-Stop locks the draft and then the thread, then cancels the turn through the Stop every thread shares (`afd_setup`'s `message/stop.rs`). The run serving the turn is marked and told to end.
-
-The next renewal of a stopped run is refused, and its request lines are still logged and charged. Its report logs the usage already spent. Stop does not undo provider work already started.
-
-Save uses the reviewed candidate after queued and running messages have stopped. Closing the draft keeps its usage lines.
-
 ## Detail
 
 Everything below is the full reference. Headings are stable because specs cite them by §-number and text; insert new sections, never rename or renumber existing ones.
 
 ## 1. The two postures
 
-One persona carries the worked examples: **John Doe** first saves a fleet with the platform default, then selects his own Fireworks model. The second setup uses his credential, so he pays Fireworks directly for tokens. Both setups debit the same tenant wallet for runtime.
+One persona carries the worked examples: **John Doe** first creates a fleet on the platform default, then switches it to his own Fireworks model. From then on the fleet uses his credential, so he pays Fireworks directly for tokens. Both postures debit the same tenant wallet for runtime.
 
-There are two billing postures. A fleet's saved `runtime_model_ref` selects its posture when a runtime run is assigned. Different fleets in one tenant can use different postures:
+There are two billing postures. A fleet's `model_ref` selects its posture when a run is assigned. Different fleets in one tenant can use different postures:
 
 - **Platform-managed.** `platform-default` selects the administrator's enabled default model and its credential. The `agentsfleet-admin` account stores that credential in its workspace vault. `PUT /v1/admin/platform-keys` saves the default pointer in `model.platform_defaults`, without key material.
   - At run time, `agentsfleetd` follows that pointer and reads the model's saved inference settings. The user pays runtime fees and the model's token rates.
@@ -152,7 +120,7 @@ Both postures dial their selected model's saved endpoint (§9); platform uses th
 
 `model.tenant_models.selected` marks the separate account default. The tenant provider commands update that default; no selected row means `platform`.
 
-Runtime resolution in `afd_credential` uses the fleet's saved reference and never consults this default. Changing the account default therefore does not rewrite saved fleets.
+Runtime resolution in `afd_credential` uses the fleet's `model_ref` and never consults this default. A create that names no model stores the workspace's selected model on the fleet. A later change to the default rewrites no fleet.
 
 ---
 
@@ -238,13 +206,13 @@ A fleet run is charged for what it uses, and only that: no turn costs anything t
      report → nothing
 ```
 
-`afd_fleet`'s task decision intent module assigns the native decision range before dispatch.
+`afd_fleet`'s task decision module assigns the native decision range before dispatch.
 Run-scoped reservation and PATCH routes fund one send and record its receipt under the original payer and frozen prices.
-The runner reserves and records intent and goal calls through these routes; the [native decision billing design](goal_evaluation.md#native-billing-integration) describes their accounting.
+The runner reserves and records goal calls through these routes; the [native decision billing design](goal_evaluation.md#native-billing-integration) describes their accounting.
 
 | Step | What moves | Where in `afd_fleet` |
 |---|---|---|
-| Assign | nothing; the balance and budget gates read (§5) | the run start_check module |
+| Assign | nothing; the balance gate reads (§5) | the run start_check module |
 | Renew | on a checked tick, the payer's balance must fund one more floor; every tick logs and charges the slice | the run renew and coverage modules |
 | Report | the final slice is logged and charged in the report's transaction | the run report and settle modules |
 
@@ -291,17 +259,15 @@ A balance that cannot cover a line takes it anyway and goes below zero (§11). T
 
 Every write of a payer's usage now holds that payer's wallet row from the line's insert until its transaction commits, so a tenant's concurrent reports and renewals take turns on that one row.
 
-**Charges history.** `GET /v1/tenants/me/billing/charges` reads `billing.usage_lines`, newest first, one row per line, whether a fleet run (`charge_type: stage`) or a setup chat (`charge_type: setup`) logged it.
+**Charges history.** `GET /v1/tenants/me/billing/charges` reads `billing.usage_lines`, newest first, one row per line a fleet run logged (`charge_type: stage`).
 
 The page is cut by the `(tenant_id, created_at, id)` index before any join, under one descending `(created_at, id)` cursor. Reading history never changes the wallet.
 
-Setup rows have `charge_type: setup` and `run_id`; `turn_id` is null. A retained private draft supplies only its public saved-fleet link and current public fleet name. No draft title, instructions, messages, answers, or credential metadata enters the billing response.
-
-Setup costs stay visible after private chat deletion because a setup line keeps its run's identifier in `run_id`, with no foreign key. Without a kept public fleet link, `fleet_id` and `fleet_name` are null.
-
 A fleet line keeps the fleet's identifier and the name it had when the line was written, through the fleet's deletion. A line for a fleet already purged names it by its identifier.
 
-The dashboard labels setup records **Setup chat**, using **Fleet setup** when no fleet link exists. The command-line interface requests a bounded raw charge page and keeps every returned record before forwarding its cursor.
+The command-line interface requests a bounded raw charge page and keeps every returned record before forwarding its cursor.
+
+**Stop.** A person's Stop marks the run and tells it to end; it does not undo provider work already started. The next renewal is refused, its request lines are still logged and charged, and the report logs the usage already spent.
 
 ---
 
@@ -374,22 +340,17 @@ The token component dominates a token-heavy run; the run fee dominates a long, q
 
 ## 5. The balance gate: code path
 
-`money_gates` in `afd_fleet`'s run start_check module runs the payer, balance and fleet-budget gates and charges nothing. Nothing is set aside; the run's usage is charged as it is logged (§3).
+`money_gates` in `afd_fleet`'s run start_check module runs the payer and balance gates and charges nothing. Nothing is set aside; the run's usage is charged as it is logged (§3). No fleet has a budget: the payer's balance is the only ceiling.
 
 ```mermaid
 flowchart TD
     A([Run poll: assign the oldest unsettled turn]) --> B[UPDATE thread.turns<br/>SET status=received, opened_at]
-    B --> C[Resolve saved runtime model and posture<br/>Providers::resolve_reference]
+    B --> C[Resolve the fleet's model_ref and posture<br/>Providers::resolve_reference]
     C --> D[Estimate the run's floor<br/>Accounts::estimate through the Rater]
     D --> E{balance<br/>≥ floor?}
     E -->|no| Block[UPDATE thread.turns<br/>SET status=gate_blocked<br/>failure_reason=balance_exhausted]
     Block --> X1([Settle the fenced turn, terminal])
-    E -->|yes| BG{fleet budget<br/>gates::fleet_budget}
-    BG -->|breach| BB[UPDATE thread.turns<br/>SET status=gate_blocked<br/>failure_reason=budget_breach]
-    BB --> X1
-    BG -->|ok| G[Approval gate]
-    G -->|blocked| Wait[gate_blocked until<br/>user resumes]
-    G -->|pass| H[Resolve secrets_map]
+    E -->|yes| H[Resolve secrets_map<br/>from the fleet's approved grants]
     H --> J[Issue run]
     J --> Renew[Runner /renew ticks<br/>check funds, log and charge the slice §3]
     Renew --> K[Runner reports result]
@@ -400,55 +361,16 @@ flowchart TD
 Properties:
 
 - **The balance is what the biller says is available**. The gate reads `Biller::balance` and covers the floor from the wallet's balance, which every logged line has already debited. What runs in flight spent therefore counts against it.
-- **A tenant with no wallet row is admitted**, as an operator gap rather than a refusal. Its lines are logged and rolled up with nothing debited.
+- **A tenant with no wallet row is refused**, as an empty wallet is: the turn settles `balance_exhausted`, and the fleet stays `active`.
 - **A tenant in debt is refused**. What it has left is below zero, so it covers no floor, even a zero one (`afd_fleet`'s money-gates debt suite).
 - **The floor is small on purpose**. The runner does not know its token counts at run time, so the floor is `ESTIMATE_FLOOR_INPUT_TOKENS` and `ESTIMATE_FLOOR_OUTPUT_TOKENS` at the issue instant.
 - **A balance crossing zero mid-run ends the run.** Each renewal checks that the balance covers one more floor. When it cannot, the biller answers `Short` and the renewal is refused with `UZ-RUN-012`.
 - **Concurrent turns on a near-zero balance.** Nothing is set aside, so runs that start together all pass against the same balance. Each spends about one slice before its next renewal check sees the debits and refuses.
 - **That spend still counts**, so what is left can end below zero by about one slice per run. The debt refuses new work until a grant repays it (`parallel_runs_overdraw_by_at_most_a_slice_each_then_stop`).
 - **An outage admits.** A funds check the biller cannot answer comes back `Unconfirmed` and the run continues. Its lines are logged in the run's own transaction (§11).
+- **One fleet can drain the pool.** The balance bounds the tenant, not how its fleets divide it. A fleet that schedules itself, or loops on tool calls, can spend the whole balance until the gate refuses.
 
-### 5.1 The per-fleet budget gate: a second, independent ceiling
-
-The balance gate above bounds what a **tenant** may spend: one credit pool, one `balance_nanos`. It says nothing about how that pool is divided. A single misbehaving fleet in a tool-call loop can drain the whole pool while every other fleet in the tenant starves.
-
-`daily_nanos` / `monthly_nanos` in a fleet's reviewed setup are the **fleet-scoped** ceiling, the blast-radius guard. Both are positive integer nanos, written as decimal strings. The two gates are independent and both must pass:
-
-| | Balance gate | Budget gate |
-|---|---|---|
-| Scope | tenant (`billing.wallets.balance_nanos`) | one fleet (the selected revision's `config` → `x-agentsfleet.budget`) |
-| Question | "can this tenant afford one more run?" | "has this fleet spent its own allowance?" |
-| Pre-run refusal | `gate_blocked` + `balance_exhausted` | `gate_blocked` + `budget_breach` |
-| Mid-run refusal | `/renew` → `UZ-RUN-012` → `renewal_terminate` | `/renew` → `UZ-RUN-015` → `budget_breach` |
-| Source of truth | `Biller::balance` | the fleet's `billing.usage_lines`, summed by `afd_billing::limits::fleet_spend` |
-
-**Where it fires.** `money_gates` runs `gates::fleet_budget` after `gates::balance`, before the run is issued.
-
-Mid-run, the renewal re-reads the ceiling live from the fleet's selected setup revision on every tick. The renewal ignores the fleet's status (`afd_fleet`'s run coverage module). Applying a revision that lowers a runaway fleet's `daily_nanos` therefore bites at its next tick, not only at its next run.
-
-**Windows.** `daily_nanos` is a **rolling 24 hours** and `monthly_nanos` the **UTC calendar month**. Both open from one `now()` in the same statement (`select_fleet_spend.sql` in `afd_billing`), so the two windows can never straddle a tick.
-
-A line counts in a window when it was written inside it. Each line is one slice of at most one renewal interval. A long run's spend therefore lands in the window it was used in.
-
-The read is served by `idx_usage_lines_fleet_id_created_at`, and a planner probe in `afd_fleet`'s ledger-reads suite pins that. `monthly_nanos` is optional; absent means no monthly ceiling.
-
-**Spend means what the fleet's usage cost.** A line that took the balance below zero counts at its price like any other.
-
-The ceiling bounds what a fleet uses; the debt is the balance gate's concern. The setup chat that authored a fleet does not count against its budget; whether it should is open (§11).
-
-**Overshoot is bounded, not zero.** The ceiling is a floor-check: a run is admitted while `spend < cap`. An already-running run may exceed its cap by at most one renewal window's worth of usage before its next `/renew` refuses it. Enforcing a *predicted* end-of-run cost would refuse runs that would have finished under budget.
-
-**Failure posture, deliberately asymmetric.** Three distinct "no verdict" causes, three different answers:
-
-| Cause | Answer | Why |
-|---|---|---|
-| Database unreachable / query failed | **admit** (fail open) | mirrors `gates::balance`: a metering outage must not halt every fleet on the platform |
-| Fleet declares **no** `budget` | **admit** | undeclared is unbounded, exactly as before this gate existed. The tenant credit pool still bounds it. Refusing would enforce a ceiling nobody wrote |
-| `budget` declared but unparseable | **refuse** (fail closed) | a ceiling we cannot read is not a ceiling we may ignore |
-
-The same `FleetConfig` parser that accepted the budget at ingest parses the stored one (`af_fleet_runtime::config::budget::Budget`). The ceiling that admits a run and the ceiling that kills it are therefore one number.
-
-**The fleet list reads a counter, not a sum.** A trigger on `billing.usage_lines` (slot 2040) keeps `fleet.activity_counters.budget_used_nanos`. The fleet list therefore stays one indexed counter read per fleet, with no per-row aggregate.
+**The fleet read shows spend, never a cap.** A trigger on `billing.usage_lines` (slot 2040) keeps `fleet.activity_counters.budget_used_nanos`, which the fleet read returns as `budget_used_nanos`. The fleet list therefore stays one indexed counter read per fleet, with no per-row aggregate.
 
 ---
 
@@ -464,7 +386,7 @@ When the gate blocks, the user's surfaces show:
 
 The blocked row is **terminal** (turn settled, immutable narrative). When the user's balance is later topped up (manually by us in v2.0, or via Stripe in v2.1+), there is **no automatic replay**. If they want the missed turns answered, they re-trigger from the source (push another commit, send another steer).
 
-The `actor=continuation:<original>` resume belongs to the approval gate (`afd_approval`'s inbox resolve); a balance-blocked row has no resume.
+The `actor=continuation:<original>` resume follows only a card's answer, to a run's question or to its access request (`afd_approval`'s inbox resolve). A balance-blocked row has no resume.
 
 The reasoning is that a balance-exhausted turn is usually evidence the user was already off the rails (runaway loop, mis-configured cron). Auto-replay would compound the bill.
 
@@ -472,13 +394,13 @@ The reasoning is that a balance-exhausted turn is usually evidence the user was 
 
 ## 7. Switching posture mid-stream
 
-A saved setup can select either the platform default or an owner's configured model. Effects on subsequent billing:
+A fleet's `model_ref` names either the platform default or an owner's configured model. One `PATCH` on the fleet changes it and writes one `model_changed` turn. Effects on subsequent billing:
 
-- **Platform → self-managed.** Save the owner's model reference in the fleet setup. New runs use its credential and charge runtime fees without token markup.
-- **Self-managed → platform.** Save `platform-default` in the fleet setup. New runs use the enabled platform default and its token rates. The balance gate still applies.
-- **Mid-turn change.** The assignment-time model and posture snapshot governs that running run. A later setup change does not reprice it.
+- **Platform → self-managed.** Set the fleet's `model_ref` to the owner's model reference. New runs use its credential and charge runtime fees without token markup.
+- **Self-managed → platform.** Set the fleet's `model_ref` to `platform-default`. New runs use the enabled platform default and its token rates. The balance gate still applies.
+- **Mid-turn change.** The assignment-time model and posture snapshot governs that running run. A later `model_ref` change does not reprice it.
 
-Changing the tenant's account default alone does not change either saved selection. The current reference, credential and settings must stay eligible at assignment (§9).
+Changing the tenant's account default alone does not change any fleet's `model_ref`. The current reference, credential and settings must stay eligible at assignment (§9).
 
 The `tenant provider create` PUT validates eagerly on structure (body shape, credential presence, JSON shape, model-library catalogue membership). It does **not** make a synthetic call to the large language model (LLM) provider to verify the key works.
 
@@ -520,7 +442,6 @@ The api_key, platform OR self-managed, crosses one boundary cleanly. It exists o
 
 - `vault.secrets` rows as envelope ciphertext.
 - Server-side process memory. For runtime, `Providers::resolve_reference` opens the selected key in `agentsfleetd` and delivers it on `ExecutionPolicy.api_key` to the trusted runner supervisor. The key stays outside the sandbox and `secrets_map` ([`runner_execution.md`](./runner_execution.md#crates)).
-- Setup does the same: the assignment opens the pinned model's key and carries it in the setup run's payload. A tenant runner is never assigned a setup run on the platform model. [`AUTH.md`](../AUTH.md#fleet-setup-and-credential-boundary) owns that boundary. Resolved keys use `SecretString` in `afd_credential`.
 - Outbound HTTPS request headers to the provider (e.g. `Authorization: Bearer …`).
 
 **The api_key MUST NEVER appear in:**
@@ -531,7 +452,7 @@ The api_key, platform OR self-managed, crosses one boundary cleanly. It exists o
 
   The provider key takes a different path entirely. The runner's provider client uses it for the inference call only, never via `secrets_map`.
 - Saved turn rows: `thread.turns`, `billing.usage_lines`, anything else under `core.*` or `billing.*`.
-- User-facing surfaces: fleet setup and reviews, the dashboard, CLI table output, status-page bodies.
+- User-facing surfaces: the fleet page and chat, the dashboard, CLI table output, status-page bodies.
 
 The boundary is process-internal against user-facing, not in-memory against not-in-memory. Within `agentsfleetd`, the resolved provider key and connector tokens are held as `af_crypto::secret::SecretString`, whose owned buffer is wiped on drop. The decrypted `secrets_map` a run carries, authorization-header storage, and plaintext during active use stay outside this guarantee.
 
@@ -606,13 +527,13 @@ Curation input for prices stays an operator tool and does not decide runtime rou
 
 Workspace choices join the owner's model registrations to credentials and the exact `(provider, model_id)` catalogue row. The active platform default uses its own configured model and credential. Both choices require credentials, valid settings, nonnegative prices, and a usable context window.
 
-Setup additionally requires that the selected SDK wire supports proposal tools; runtime eligibility is checked separately. A credential carrying an endpoint restriction authorizes only that saved endpoint. Catalogue changes advance the revision pinned into the model identity; stale admitted work cannot silently acquire different routing or limits.
+A credential carrying an endpoint restriction authorizes only that saved endpoint. Catalogue changes advance the revision pinned into the model identity; stale admitted work cannot silently acquire different routing or limits.
 
 The native Ollama API does not authorize local network access. A saved base URL must be HTTPS on a public host, as for every other API, until customer-host ownership is decided.
 
-The daemon resolves the exact selected reference for runtime runs and includes non-secret settings in `ExecutionPolicy.inference`. The supervisor uses the resolved key outside the sandbox and sends inference through its guarded transport. An absent configuration refuses the run.
+The daemon resolves the fleet's exact `model_ref` for each run and includes non-secret settings in `ExecutionPolicy.inference`. The supervisor uses the resolved key outside the sandbox and sends inference through its guarded transport. An absent configuration refuses the run.
 
-Setup keeps credentials in the daemon and sends only its scoped capability to the runner. Neither path follows redirects; outbound address guards stay in force.
+That transport follows no redirects, and outbound address guards stay in force.
 
 The fleet's operating context cap can trigger earlier [conversation compaction](context_lifecycle.md). A valid checkpoint lets the same run continue with tools.
 
@@ -629,7 +550,7 @@ It also filters the warning containing a provider's private error text. Model ke
 
 `model.platform_models` holds each exact provider/model identity, display name, context evidence, advanced flag and inference settings. `model.platform_model_prices` holds its prompt-size tiers, effective date ranges, token rates and price evidence. Platform admins manage both through `POST/PATCH/DELETE /v1/admin/models`; authenticated tenants read them through **`GET /v1/models`**.
 
-Workspace chat lists only eligible owner registrations and the enabled platform default (§9), rather than every catalogue row. The setup and trigger resolution flow is documented in [`user_flow.md` §8.7](./user_flow.md#87-model-and-context-cap-origin-platform-vs-self-managed).
+The fleet's model picker lists only eligible owner registrations and the enabled platform default (§9), rather than every catalogue row. The create and run resolution flow is documented in [`user_flow.md` §8.7](./user_flow.md#87-model-and-context-cap-origin-platform-vs-self-managed).
 
 Read shape: API reference › Model Library (keyset-paged; `version` moves on every catalogue change).
 
@@ -660,24 +581,20 @@ Properties:
 - **Reading the catalogue requires an authenticated tenant.** The dashboard fetches through a token-minting Server Action. The command-line interface resolves context caps server-side through provider selection.
 - **The response carries no global rate block**. The run fee is declared once, in `afd_billing`'s `nanos` module. The daemon charges, and a client renders what it is served.
 - **Consumed per-session, not cached at the edge**. The dashboard fetches the library once per session. The payload is small and the read is no longer a Content Delivery Network (CDN) concern.
-- **Runtime assignment resolves the saved model reference**. Its catalogue row supplies the physical context and inference settings; `ExecutionPolicy.model_context_tokens` carries that window separately from the fleet's operating cap. Token rates are read once per run pass, as one price book (§4.1).
+- **Runtime assignment resolves the fleet's `model_ref`**. Its catalogue row supplies the physical context and inference settings; `ExecutionPolicy.model_context_tokens` carries that window separately from the fleet's operating cap. Token rates are read once per run pass, as one price book (§4.1).
 
 ---
 
 ## 11. One billing lifecycle behind a `Biller` trait
 
-Decided 2026-10-18/19 (M229 §9; Discovery "Billing revamp"). It replaces two money paths that disagreed.
-
-Fleet runs used `afd_billing::Accounts` plus one SQL statement that priced, debited and recorded together. Setup chat kept its own reservation maths, debit and settlement SQL inside `afd_setup`.
-
-They rounded differently, priced cached tokens differently, failed differently during an outage, and wrote two charge tables. Fleet runs (§3) and setup chat both bill through it, and runners report one line per provider request.
+Decided 2026-10-18/19 (M229 §9; Discovery "Billing revamp"). Every line a run writes goes through one `Rater`, one usage log and one `Biller`, with one rounding, pricing and outage rule. Fleet runs (§3) bill through it, and runners report one line per provider request.
 
 ```
  work happens ─► usage lines        ─► Rater (pure)              ─► UsageLog (ours, inside the work's transaction)
  (runner, per     {seq, at, prompt,     tier by whole-request         billing.usage_lines, one row per request,
-  request;         cached_read,         prompt size, price by `at`,   unique (work, kind, seq); the charges page reads it
-  setup chat       cache_write,         posture, one rounding rule        its insert debits billing.wallets and
-  makes its own)   cache_write_5m,                                        adds to the daily rollups (triggers)
+  request)         cached_read,         prompt size, price by `at`,   unique (work, kind, seq); the charges page reads it
+                   cache_write,         posture, one rounding rule        its insert debits billing.wallets and
+                   cache_write_5m,                                        adds to the daily rollups (triggers)
                    cache_write_1h,                               Arc<dyn Biller>   check / balance
                    output, runtime}                              ├─ LedgerBiller: billing.wallets (built in)
                                                                  ├─ a billing service in its own process (later)
@@ -688,14 +605,14 @@ They rounded differently, priced cached tokens differently, failed differently d
 
 The run path calls the biller only to check. Lines once waited in the log for a relay to charge them; the relay went with every timed loop (Indy, Nov 21, 2026), and the charge moved into the line's own insert (Indy, Nov 22, 2026: "apply at write"). Each line is charged once, on `(work, kind, seq)`, so a repeated write never doubles a charge.
 
-**The trait.** `afd_billing::biller::Biller` is an `#[async_trait] Send + Sync + Debug` trait held as `Arc<dyn Biller>`, the shape `afd_setup`'s provider `Transport` already uses.
+**The trait.** `afd_billing::biller::Biller` is an `#[async_trait] Send + Sync + Debug` trait held as `Arc<dyn Biller>`.
 
 | Method | When | Idempotent on |
 |---|---|---|
-| `check(&Ask) -> Funds` | each fleet renewal and each setup run renewal | writes nothing |
+| `check(&Ask) -> Funds` | each fleet renewal | writes nothing |
 | `balance(&Account) -> Balance` | the assignment and issue gates | read only |
 
-`WorkKey` is `FleetRun(id)` or `SetupRun(id)`, so the two products share one vocabulary. `check` answers `Funds::Covered`, `Short { available, asked }` or `Unconfirmed`, which the outage policy lets through.
+`WorkKey::FleetRun(id)` names the run a line belongs to. `check` answers `Funds::Covered`, `Short { available, asked }` or `Unconfirmed`, which the outage policy lets through.
 
 A `Settlement` carries each line's raw usage and the daemon's price; `afd_billing::ledger::log_lines` writes it, and the insert charges that price.
 
@@ -739,17 +656,15 @@ A check against the wallet's balance is the one source of truth. The cost is bou
 
 **Tests every biller runs.** `afd_billing::biller::conformance::every_check` (test-util) runs against `LedgerBiller` on a live database and against `RecordingBiller`, the in-memory double domain tests use. `conformance::a_payer_in_debt_is_short` takes a payer each biller drove into debt its own way.
 
-**Budgets** are a separate `afd_billing::limits::fleet_spend` reader over `billing.usage_lines`, so a budget holds whichever biller answers the checks. It counts the fleet's own lines. Setup-chat lines name no fleet; whether a fleet's budget should count the setup chat that authored it is Indy's call.
+**Metrics.** `Observed<B>` wraps the biller where `agentsfleetd` builds it, outside the outage policy, and records `agentsfleet_billing_funds_check_total` (`afd_billing/src/biller/observed.rs`).
 
-**Metrics.** `Observed<B>` wraps the biller where `agentsfleetd` builds it, outside the outage policy, and records `agentsfleet_billing_funds_check_total` (`afd_billing/src/biller/observed.rs`). `agentsfleet_billing_settle_total` is no longer declared. `agentsfleet_billing_unpriced_tokens_total` and `agentsfleet.billing.credit.consumed` are still declared (`rustd/crates/protocol/af_observability/src/metrics/census.tsv`), as is the `wallet_exhausted` product event, but nothing records them: their one producer was `settle`, which went with the relay.
+`agentsfleet_billing_settle_total` is not declared. `agentsfleet_billing_unpriced_tokens_total`, `agentsfleet.billing.credit.consumed` and the `wallet_exhausted` product event are declared (`rustd/crates/protocol/af_observability/src/metrics/census.tsv`). Nothing records them, because their one producer, `settle`, went with the relay.
 
 **Removed from the fleet path:** `Accounts`' money statements, the receive charge, and the pricing and debit inside the run metering statement. The base-tier-only price read, `slice_charge` and its round-down rule went too.
 
 Fleet runs write only usage lines. The turn-history reads sum a turn's cost from its usage lines through `idx_usage_lines_fleet_id_turn_id`. That covering index took the read from 183 ms to 5 ms in the design audit.
 
 The run `metered_*` token cursors and the thread row's runtime cursor are gone. Runners report each request, and each run meters its own run time. The fleet charges table, its trigger and schema slot 2010 are gone.
-
-**Removed from setup chat:** the coverage rule (`balance >= (running + 1) * worst_case_turn_cost`), the report's own wallet debit and the separate setup settlement table (slot 2020). Every setup-side wallet row lock and the two-source union behind the charges page went with them. M253 removed the daemon's setup model calls, so setup usage now arrives only through setup run renewals and reports.
 
 ## 13. Open questions deferred to v2.1+ and v3
 

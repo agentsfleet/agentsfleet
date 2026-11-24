@@ -244,7 +244,7 @@ Closing that gap is collector configuration rather than a census change.
 
 Runner logs go to stderr; heartbeat, renewal and reports carry liveness and results over `/v1/runners`. The runner sends nothing to PostHog. The daemon owns reported runner state and fleet liveness.
 
-Fleet-runtime runs run inside `runner.run` spans. Private setup takes a separate path without that span (the `afr_supervisor` worker pool).
+Every fleet run runs inside a `runner.run` span.
 
 A followed tool GET emits `http_redirect_started` and exactly one `http_redirect_completed` or `http_redirect_failed` in the parent tool-call context (`af_egress`). The terminal record carries hop count, upstream status, whether headers were stripped, a fixed safe reason and elapsed milliseconds.
 
@@ -433,7 +433,7 @@ rate, sampling and retry limits and its proof.
 | OTLP traces | installed, called when configured | the same module builds the span exporter inside `af_observability`'s counting wrapper; `serve/exporting.rs` spawns `otlp_export`, which samples the resident set and runs the shutdown flush |
 | OTLP run metrics | installed, called when configured | every census family is claimed from the registry at boot and produced at the call site that owns its mechanism (`af_observability`'s `producers` module); a family with no producer fails `every_census_family_has_a_producer` |
 | PostHog events | installed, called when configured | `af_observability`'s `product` module; boot opens the client, the supervised `analytics_flush` task drains it before exit |
-| runner export | installed, called when configured | `run` in `agentsfleet-runner`'s `main.rs` builds it from `afr_telemetry` before boot, and fleet-runtime runs run inside a `runner.run` span; setup currently has no equivalent run span |
+| runner export | installed, called when configured | `run` in `agentsfleet-runner`'s `main.rs` builds it from `afr_telemetry` before boot, and every fleet run runs inside a `runner.run` span |
 | runner collector | installed in dev; real run spans and provider histogram verified in Grafana Nov 04, 2026 | `deploy/baremetal/otelcol-runner.{yml,nft,service}` and `install-collector.sh`; localhost receiver behind root-only admission; traces and metrics only; actual-sandbox probe pending |
 
 ## Metrics stay semantic
@@ -539,6 +539,7 @@ What each step a chat crosses emits, as built. A row's gap means the signal does
 | First chunk (`afd_fleet` run activity) | none | `delivery_stage{run_to_first_chunk, event_to_first_chunk, run_to_first_chunk}` | none |
 | Automatic quarantine or lift (`afd_runner`) | `runner_cordoned`, `runner_cordon_lifted` after commit | `agentsfleet_runner_cordon_changes_total{change}` with `cordoned` or `lifted` | none |
 | Paired recovery (`afr_supervisor`) | `respawn_checkpoint_committed`, `respawn_checkpoint_restored` with turn, run, fence and checkpoint identity | no checkpoint latency series yet | existing run span |
+| Trigger added or removed (`fleet.triggers`, by a run's `trigger_add` / `trigger_remove` or a person's `DELETE`) | `trigger_changed` with `fleet_id`, `kind` and `by` (`run` or `person`); no signing secret and no URL | none | request span only |
 
 Built in M233_002, closing the gaps M238 left:
 
@@ -646,12 +647,12 @@ Failure drops analytics without failing a request. `capture` returns once the
 event is queued, never on delivery, so application wording says `submitted`,
 never `captured` or `delivered`.
 
-Eleven events reach production code: `ServerStarted`, `WorkerStarted`,
+These events reach production code: `ServerStarted`, `WorkerStarted`,
 `StartupFailed`, `WorkspaceCreated`, `FleetCompleted`, `ApiError`,
-`AuthLoginCompleted`, `AuthRejected`, `EntitlementRejected`, `InviteEmail` and
-`Setup`. `InviteEmail` is reported under one of three names by its
-outcome. `Setup` is reported under one of five funnel names by its step
-([product_analytics.md](./product_analytics.md) §"Private chat to fleet funnel").
+`AuthLoginCompleted`, `AuthRejected`, `EntitlementRejected` and `InviteEmail`,
+with the fleet events `fleet_created` and `fleet_access_changed`
+([product_analytics.md](./product_analytics.md)). `InviteEmail` is reported under one of three names by its
+outcome.
 
 Two more, `FleetTriggered` and `SignupBootstrapped`, are declared and mapped
 but emitted by nothing. They appear in the telemetry enum, its property mapper

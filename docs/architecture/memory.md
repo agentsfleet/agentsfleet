@@ -54,17 +54,16 @@ Memory continuity **requires reusing the same `fleet_id`** across events. The al
 
 ## 4. Slack threads and fleet memory
 
-Memory belongs to a configured fleet and its permitted scope, rather than a Slack thread.
-Mentions routed to that fleet can use saved facts only when its tools and grants permit memory capture and recall.
-A shared fleet identifier alone proves neither operation.
+Memory belongs to a fleet, not to a Slack thread.
+A mention routed to a fleet through its `mention` trigger runs with that fleet's memory, like any other turn.
+A fleet identifier alone proves neither a read nor a save.
 
 The runner reads or saves memory only under the current run fence.
-[Slack routing](scenarios/slack-incident-responder.md#4-routing-a-mention) selects configured fleets; an unconfigured channel never creates a memory-owning fallback fleet.
-Historical stored fleets and their memory remain unchanged.
+[Slack routing](scenarios/slack-incident-responder.md#4-routing-a-mention) selects the subscribed fleet; an unconfigured channel never creates a memory-owning fallback fleet.
 
 ## 5. Categories, selection, tools: see the topic docs
 
-The four tools (`memory_store` / `memory_recall` / `memory_list` / `memory_forget`) and the categories live in [`capabilities.md`](./capabilities.md) §4 and the user-facing memory doc. The categories are `core` pinned, `daily` 72h auto-prune and `conversation` windowed. The byte-budget category-pinned loading window and cap eviction live there too.
+The four tools (`memory_store` / `memory_recall` / `memory_list` / `memory_forget`) and the categories live in [`capabilities.md`](./capabilities.md) §4 and the user-facing memory doc. The categories are `core` pinned into every prompt, `note` the default, `daily` 72h auto-prune and `conversation` windowed. The byte-budget category-pinned loading window and cap eviction live there too.
 
 No vector search, no scoring. Recall is a case-insensitive substring match on `key` and content. Key matches come first (`afr_memory`'s in-run store and `afd_memory`'s search statements).
 
@@ -72,19 +71,25 @@ No vector search, no scoring. Recall is a case-insensitive substring match on `k
 
 At run start, the supervisor loads the fleet's saved entries into the runner's memory tool store.
 Workspace entries join that store only when the reader holds the shared-memory grant.
-The prompt builder does not insert the entire store into each model request.
 
-The model reads entries through its allowed `memory_recall` and `memory_list` tools; returned content enters the conversation as tool output.
+The prompt builder (`afr_agent`'s `prompt` module) writes the [fixed prompt text](capabilities.md#1-what-the-model-is-told-and-what-the-run-holds). Under one heading after it, it writes every `core` entry of the fleet's own that the load carried. With no pinned entry, the heading is absent.
+
+Other categories and other fleets' shared entries stay recall-only. The model reads them through `memory_recall` and `memory_list`; returned content enters the conversation as tool output.
+
+The pinned block is bounded by the load's byte budget, `af_wire::memory::LOAD_WINDOW_BYTES`. The context planner counts it against the model's window, and the saved compaction's digest covers the fixed text only.
+
+`memory_store` stores under category `note` unless the call names one, so only an explicit `core` is pinned. The fixed text tells the model to pin only when the person's newest message asks.
+
+A pinned entry stays in every later prompt until a person removes it. The fleet page's Remembers list, `agentsfleet fleet memory` and `DELETE F/memories/{key}` remove one.
 
 The implemented scopes are fleet-private and workspace-shared. There is no account-wide memory scope in `memory.entries` or the runner's loading path.
-Private setup chat uses its own conversation history and checkpoint; its setup tool set does not expose the runtime memory tools.
 
 ## 7. Two checkpoint mechanisms
 
 | Mechanism | Trigger and content | Next run or request |
 |---|---|---|
 | Semantic memory capture | After every five completed tool calls by default, push pending `memory_store` changes; push again before the final report | A later run of the same fleet loads saved entries into its tool store; granted readers also load workspace-shared entries |
-| Conversation compaction | Near the model's working-window limit, a metered model call summarizes selected conversation groups into `thread.compactions` | Preparation uses the thread's checkpoint, a draft's or a fleet chat's (any other run keeps its own in memory), original source checks and retained conversation suffix |
+| Conversation compaction | Near the model's working-window limit, a metered model call summarizes selected conversation groups into `thread.compactions` | Preparation uses the fleet chat's checkpoint (any other run keeps its own in memory), original source checks and retained conversation suffix |
 
 Semantic capture skips empty changes and makes no summary model call.
 A failed mid-run push is logged; final capture retries before reporting, as described in [runner transport](runner_fleet.md#memory-continuity-durable-fleet-memory-rides-the-trusted-plane).
@@ -101,7 +106,7 @@ Four stores keep four different things. Each answers one question.
 |---|---|---|---|---|
 | `thread.turns` | What was said in this chat? | Every message, as it arrives | Every run of the chat, at its start | The chat is deleted |
 | `thread.compactions` | What has a long chat been about? | A compaction, only when the chat outgrows the model's window | The next run of the same chat | Replaced by the next compaction |
-| `memory.entries` | What should this fleet remember across all its chats? | The model, on purpose, with `memory_store` | The model, with `memory_recall` | Deleted |
+| `memory.entries` | What should this fleet remember across runs? | The model, on purpose, with `memory_store` | Every run's prompt (`core` entries) and the model, with `memory_recall` | Deleted |
 | Turn checkpoints | How does a replacement run carry on mid-turn? | The runner, while a turn runs | A replacement run, if the first one dies | The turn finishes |
 
 A run reads its own chat back on every turn, so short chats need no compaction:
@@ -110,13 +115,13 @@ A run reads its own chat back on every turn, so short chats need no compaction:
 turn 1    "I am Indy"          ─► thread.turns row 1
 turns 2–14 …                   ─► thread.turns rows 2–14
 turn 15   "who am i"
-  the run builds: instructions + tools + [compaction, if any] + turns 1–14 + "who am i"
+  the run builds: fixed text + pinned memory + tools + [compaction, if any] + turns 1–14 + "who am i"
   no compaction was needed, so the model reads turn 1 itself ─► "You're Indy"
 ```
 
-A setup draft's chat and a fleet's chat work the same way: each owns one thread.
-A new chat starts with an empty thread; only a fleet's `memory.entries` carries facts between chats.
-When a fleet's instructions or model change, the old compaction is not reused; the next run reads the turns themselves.
+A fleet's chat owns one thread, whose id is the fleet's.
+A new fleet starts with an empty thread and no memory of its own.
+When a fleet's model changes, the old compaction is not reused; the next run reads the turns themselves.
 
 ## Code pointers
 
@@ -126,4 +131,5 @@ When a fleet's instructions or model change, the old compaction is not reused; t
 | The only write/read adapter (`WHERE fleet_id = $1`, `ON CONFLICT (key, fleet_id)`) | `afd_memory`'s Postgres store and its SQL statements |
 | Runner load/capture endpoints (run-derived `fleet_id`, fencing) | `afd_api_runner`'s runner memory handler |
 | Tenant read and forget (ownership-gated) | `afd_api_tenant`'s fleet memory handler |
+| The pinned block in each run's prompt | `afr_agent`'s `prompt` module |
 | A run's memory, seeded at run start and pushed before the report | `afr_memory`'s `Loaded` store |

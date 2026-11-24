@@ -53,8 +53,6 @@ The task policy caps new admissions and interpretation sizes.
 New tasks save their configured allowances in the existing task-limit columns.
 Lowering admission caps preserves committed receipts, saved allowances and existing task candidates.
 
-Setup runs read no deployment setting of their own.
-A setup run has no runtime ceiling; it renews as a fleet run does, until the payer's balance or a person's Stop ends it (`afd_setup`'s `limits.rs`).
 Nothing adds a deadline for a person to answer or approve.
 
 A daemon file that still names `[inference]` or `[authoring.turn]` refuses startup (`daemon/main/src/config/policies.rs`).
@@ -69,14 +67,9 @@ It configures outbound provider requests; it does not define a local model serve
 ```text
 Fleet run:
   runner guffbolt loop -> selected external provider
-
-Setup run:
-  runner guffbolt loop -> selected external provider
 ```
 
-A setup run reaches its model the way a fleet run does, with the key its run payload carries (`afr_agent/src/loop/mod.rs`).
-A tenant's runner is never assigned a setup turn on the platform model, whose key that run would carry.
-Both run kinds use `guffbolt::drive`; the setup loop lives in `afr_agent/src/setup`.
+A run reaches its model with the key its run payload carries, through `guffbolt::drive` (`afr_agent/src/loop/mod.rs`).
 
 `[outbound.retries]` controls inline vendor-delivery attempts and exponential pauses.
 A delivery whose inline attempts all end retryably is marked abandoned, and nothing reschedules it (`afd_outbound`'s `lanes/mod.rs`).
@@ -142,8 +135,8 @@ The run lifetime defaults to 38 seconds.
 An omitted offline threshold retains three run lifetimes.
 
 A run has no maximum runtime, and none is saved with it.
-Each grant is one run lifetime; the fleet's budget, the tenant's balance or a person's Stop ends a looping run.
-A durable task's run keeps its own saved execution deadline, and a renewal past it answers `UZ-RUN-011`.
+Each grant is one run lifetime; the payer's balance or a person's Stop ends a looping run.
+A durable task's run keeps its own saved deadline, and a renewal past it answers `UZ-RUN-011`.
 
 | Setting | Default | Checked relationship |
 | --- | ---: | --- |
@@ -168,13 +161,17 @@ The runner saves progress automatically at a safe boundary before a continuing m
 
 Model policy and credentials come from the new run.
 
+A checkpoint names its turn and owner, never a version of the fleet, so an answer resumes whatever changed on the fleet, its model included. A checkpoint restored under another model keeps the conversation and tool results. It drops only the reasoning the old provider signed, because another provider cannot read it.
+
 | Workload | Private state | Durable owner |
 |---|---|---|
 | Ordinary API-only turn | Encrypted history root in PostgreSQL | Turn head on its `thread.turns` row |
 | Ordinary turn with workspace files | Same history root plus an ordered manifest and encrypted private object-store chunks | Same turn head |
 | Native durable task | Task history and file manifest with its bound base and overlay | Existing task checkpoint and task generation |
 
-Both owners share one checkpoint system (M253_004). `runner.checkpoints` holds a turn's or a task's plans and generations, exactly one owner per row (`num_nonnulls(turn_id, durable_task_id) = 1`). Pages, object refs and pins hang off it, one encrypted object custody serves both, and allocation receipts sit in `thread.replay_receipts` beside setup's retry keys.
+Both owners share one checkpoint system (M253_004). `runner.checkpoints` holds a turn's or a task's plans and generations, exactly one owner per row (`num_nonnulls(turn_id, durable_task_id) = 1`). Pages, object refs and pins hang off it, and one encrypted object custody serves both.
+
+Allocation receipts sit in `thread.replay_receipts` beside the other retry keys, such as a fleet create's.
 
 ```text
 thread.turns.head_checkpoint_id ──┐        ┌── fleet.durable_tasks.checkpoint_id
@@ -252,7 +249,7 @@ replacement + invalid head or file         -> stop before model or tools
 cordoned + 30 s of continuous healthy beats -> the heartbeat lifts a missed_heartbeats cordon
 ```
 
-After dispatch, a required file restore waits for runner admission while run renewal continues. The supervisor validates the exact turn, setup, generation, root, and toolbox.
+After dispatch, a required file restore waits for runner admission while run renewal continues. The supervisor validates the exact turn, generation, root, and toolbox.
 
 It writes files through checked directory descriptors and applies modes before thawing. [Ordinary restore](../../rustd/crates/runner/afr_supervisor/src/recovery/turn/restore.rs) · [Workspace preparation](../../rustd/crates/runner/afr_supervisor/src/run_loop/turn_recovery.rs)
 
@@ -444,7 +441,7 @@ Benchmark drivers, test files, documentation and generated output are accounted 
 
 | Repository path | Symbol or statement | Change |
 |---|---|---|
-| [`rustd/crates/daemon/afd_runner/src/capacity/mod.rs`](../../rustd/crates/daemon/afd_runner/src/capacity/mod.rs) | shared host authority helper | Prove token and connection under a shared host lock. Fleet and setup issue retain their exclusive locks. |
+| [`rustd/crates/daemon/afd_runner/src/capacity/mod.rs`](../../rustd/crates/daemon/afd_runner/src/capacity/mod.rs) | shared host authority helper | Prove token and connection under a shared host lock. Run issue retains its exclusive lock. |
 | [`rustd/crates/daemon/afd_runner/src/capacity/sql/mod.rs`](../../rustd/crates/daemon/afd_runner/src/capacity/sql/mod.rs) | capacity SQL bindings | Register the shared-lock statement. |
 | **New** `rustd/crates/daemon/afd_runner/src/capacity/sql/share_host.sql` | new host authority query | Read the host with FOR SHARE so rotation and issue conflict with checkpoint authority. |
 | [`rustd/crates/daemon/afd_fleet/src/run/turn_checkpoint/guard.rs`](../../rustd/crates/daemon/afd_fleet/src/run/turn_checkpoint/guard.rs) | TurnRunGuard::lock | Use shared host authority, preserve parent/thread/run order, and recheck time after waits. |

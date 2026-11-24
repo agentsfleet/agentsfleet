@@ -108,7 +108,7 @@ Three structural pillars carry v2:
 
   Supported providers are listed in [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §9, the single source of truth, and there is no vendor lock-in on inference cost.
 
-- **Chat-authored.** Browser or terminal chat produces one validated Definition containing instructions and policy. Save creates an independent fleet.
+- **Chat-authored.** A person's first message, in the browser or the terminal, creates the fleet and its chat. The fleet keeps standing guidance as pinned memory and asks a person for each credential it needs.
 
 **Self-host is deferred to v3.** v2 ships hosted-only on `api.agentsfleet.net`, signing users in through Clerk with Open Authorization (OAuth). The architecture admits self-host: the auth substrate, the key-management-service adapter, and process management are the only deployment-specific layers. Validating it on a clean Linux host outside Fly.io is a v3 workstream.
 
@@ -206,7 +206,7 @@ Typed automation solves repetitive known paths well, but it is weak when:
 
 - the operator wants to iterate behavior by changing instructions and policy in chat instead of rewriting typed control flow.
 
-v2 should keep a minimal typed envelope for safety, durability, auth, approvals, and idempotency. The operational behavior itself should stay primarily natural-language-driven through each fleet's reviewed instructions and the consumer's own operating instructions.
+v2 should keep a minimal typed envelope for safety, durability, auth, approvals, and idempotency. The operational behavior itself should stay primarily natural-language-driven, through each fleet's conversation and pinned memory and the consumer's own operating instructions.
 
 ### Why this is not automatically a good business
 
@@ -278,17 +278,17 @@ Trigger modes:
 
 - **Steer.** A direct operator instruction via `agentsfleet fleet steer <fleet_id> <message>` or the dashboard chat widget; lands with `actor=steer:<user>`.
 
-All three flow through the same reasoning loop. The fleet does not branch on actor type. Its instructions describe the general outcome and the same `http_request` tool calls fire regardless of trigger source.
+All three flow through the same reasoning loop. The fleet does not branch on actor type. Its pinned memory describes the general outcome and the same `http_request` tool calls fire regardless of trigger source.
 
 ### 5.2 Slack as a configured fleet surface
 
 Slack brings the existing fleet runtime into the channel where a person asks for work.
-A workspace administrator connects Slack, and a member reviews the fleet's channel subscription.
+A workspace administrator connects Slack, and a fleet subscribes to a channel with a `mention` trigger when a person asks.
 The connector alone creates no answering fleet.
 
-[Slack mention routing](scenarios/slack-incident-responder.md#4-routing-a-mention) selects one configured fleet or records a fixed notice.
+[Slack mention routing](scenarios/slack-incident-responder.md#4-routing-a-mention) selects one subscribed fleet or records a fixed notice.
 Unconfigured channels return `channel_not_configured` without a model call.
-Tools, memory and unattended work require the configured fleet's existing authority.
+Credentials and unattended work require the fleet's approved grants.
 
 ## 6. Where this points after v2
 
@@ -304,15 +304,15 @@ The same fleet owns both; the diagnosis and the customer-facing narrative come f
 
 Structural changes from MVP to bastion:
 
-1. **Per-fleet audience routing.** The setup's `config` (`x-agentsfleet`) gains `audiences: [internal_slack, customer_status, customer_email]`; the instructions draft per-audience summaries from the same evidence.
+1. **Per-fleet audience routing.** The fleet's pinned memory names its audiences. The fleet writes one summary per audience (internal Slack, customer status, customer email) from the same evidence.
 2. **Status-page rendering surface.** A hosted page at `status.<customer-domain>` renders the latest `processed` event's customer-facing summary.
-3. **Broadcast channels.** The fleet's `tools:` grows `email_send`, `sms_send` (text message; approval-gated for a first incident), `webhook_post` (Statuspage / PagerDuty downstream).
-4. **Approval gating per audience**. The setup's `gates` can require human approval for customer-facing audiences while internal Slack flows without a gate. The M47 approval inbox handles the mechanic.
+3. **Broadcast channels.** The published tool catalog grows `email_send`, `sms_send` (text message) and `webhook_post` (Statuspage / PagerDuty downstream), each needing an approved credential.
+4. **Approval per audience**. The fleet asks a person with a question before a customer-facing post, while internal Slack flows without one. The approval inbox handles the mechanic.
 5. **Per-actor retention**. Customer-facing communications carry stricter retention (Sarbanes-Oxley Act (SOX), General Data Protection Regulation (GDPR)); `thread.turns` retention becomes per-actor configurable.
 
-What does not change: the runtime architecture, the sandbox boundary and the trigger model. The secret vault, network policy, budget caps and context lifecycle stay as they are. Bastion audience routing applies to work-events only; worker-emitted `system:*` rows stay on the internal operator timeline.
+What does not change: the runtime architecture, the sandbox boundary and the trigger model. The secret vault, network policy, wallet check and context lifecycle stay as they are. Bastion audience routing applies to work-events only; worker-emitted `system:*` rows stay on the internal operator timeline.
 
-The bastion is an instructions authoring pattern plus a few tool primitives plus a rendering surface, not a different product.
+The bastion is a pinned-memory pattern plus a few tool primitives plus a rendering surface, not a different product.
 
 ### 6.2 Slack Rung 1 — hired durable agents
 
@@ -326,7 +326,7 @@ M206 built the first hired-agent slice. It is a fleet attached to one channel wh
 
 - **Rung 1, follow-on**. From the same Slack surface, a recurring need becomes a durable agent subscribed to a real source such as Zoho Desk.
 
-  It wakes unattended and takes **gated** write actions with approval. That is the existing event-driven runtime.
+  It wakes unattended and writes only with credentials a person approved. That is the existing event-driven runtime.
 
   The Slack surface adds per-integration OAuth connectors and the Slack-user → `approval:resolve` allowlist. It depends on M105 (schedules).
 
@@ -358,22 +358,22 @@ Captured here because it surfaced as product direction (marketing showcase + cus
 
 - **Fleet keys as a first-class principal.** Deferred to v2.1.
 
-## Fleet setup and runtime
+## Fleet creation and runtime
 
-The same fleet lifecycle begins with a private setup chat. A creator describes the operational outcome, edits the shared validated Definition and reviews policy/access before Save. Save creates one resumable fleet.
+A fleet's lifecycle begins with a person's first message, which creates the fleet, its thread and its first turn in one transaction. The fleet works at once, holding the published tool catalog and no credential.
 
-Setup has bounded inference and proposal authority: a setup run's only tool is `propose_setup`. The saved fleet gains runtime capabilities only through existing model, billing, connection and approval checks.
+It gains access only when it asks with `request_access` and a person approves the card. It adds its own schedules and triggers by tool, and keeps standing guidance as pinned memory.
 
 The common architecture pages own this sequence:
 
 | Topic | Owner |
 |---|---|
-| Setup and revisions | [Fleet definitions](fleet_definitions.md#validated-definition) |
-| Activation, intake and recovery | [Data flow](data_flow.md#fleet-setup-and-runtime-sequence) |
-| Setup runs | [Runner protocol](runner_fleet.md#setup-runs) |
+| What a fleet is | [User flow](user_flow.md#81-what-a-fleet-is) |
+| Creation, intake and recovery | [Data flow](data_flow.md#fleet-creation-and-recovery) |
+| Access requests and grants | [Connectors](connectors.md#where-a-grant-comes-from) |
 | Private copies | [Runner runtime](runner_execution.md#private-content-and-report-retention) |
-| Money | [Billing](billing_and_provider_keys.md#setup-run-funds-and-settlement) |
-| Interface | [Web app](web_app.md#workspace-setup-and-runtime-subjects) |
+| Money | [Billing](billing_and_provider_keys.md#5-the-balance-gate-code-path) |
+| Interface | [Web app](web_app.md) |
 | Wire shapes | [API resources](api_resources.md) |
 
 Implementation verification and deployment acceptance evidence belong to the owning spec and review ledger.

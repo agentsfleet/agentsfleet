@@ -19,13 +19,11 @@ Stack facts this page assumes:
 
 ## Chat workspace
 
-The [chat workspace design](../designs/chat-within-a-workspace.md) applies these server/client boundaries to one setup-and-runtime conversation.
-It retains assistant-ui, keys private draft/shared fleet adapters by account/workspace/subject, and loads configuration details on intent.
+The dashboard applies these server and client boundaries to one conversation per fleet.
+A person's first message on **New fleet** creates the fleet, and every later message goes to that fleet's chat.
+The chat keeps assistant-ui, keys its streams by account, workspace and signed-in person, and loads fleet details on intent.
 
-Private chat **Save** and editor **Save changes** follow the [single resource reference](api_resources.md).
-The **Save** flap saves the reviewed setup directly, with elapsed progress and native retry.
-
-The setup API and workspace chat adapters are implemented. The [original API proposal](../reviews/workspace-setup/api.md) records design history; [API resources](api_resources.md) describes the current routes.
+[API resources](api_resources.md) owns the routes the app calls.
 
 ## The five statements
 
@@ -33,11 +31,11 @@ The setup API and workspace chat adapters are implemented. The [original API pro
 
 Backend authentication happens in a Server Component, Server Action or
 authenticated route handler. The token comes from `auth()` on the server.
-Stateful setup requests use the browser's same-origin cookie through the
-whitelisted `/live/v1/workspaces/{workspaceId}/...` proxy; they carry no browser bearer.
+Live chat requests use the browser's same-origin cookie through the allowlisted
+`/live/v1/workspaces/{workspaceId}/...` route handlers; they carry no browser bearer.
 
-The proxy authenticates upstream requests, bounds their bodies and checks write origins
-(`lib/api/setup-proxy/`). Browser setup state lives in `lib/api/drafts.ts`.
+Those handlers authenticate upstream requests, bound their bodies and check write origins.
+They carry a fleet's messages, turn streams, uploads and task reads.
 
 `app/cli-auth/[session_id]/page.tsx` is another deliberate browser transport, the command-line
 handoff. It derives an Elliptic-Curve Diffie-Hellman key in the browser and
@@ -46,7 +44,7 @@ the private key with it.
 
 It is the documented exception
 ([`../AUTH.md`](../AUTH.md) §"Why the dashboard rides one token"), and it is
-separate from the setup proxy.
+separate from the `/live` handlers.
 
 Every server fetch makes one attempt and sets no deadline of its own: a
 caller that wants one passes its own signal. A failed request surfaces to the
@@ -127,7 +125,7 @@ The bar between the worlds:
                        │  props: plain data only
   ┌────────────────────▼─── CLIENT (leaves) ───────┐
   │  <RecentChats>         <SecretForm>  <Menu>    │  ← useTransition, useOptimistic,
-  │  cookie-only setup transport; no bearer/key    │     useActionState live here
+  │  cookie-only /live transport; no bearer/key    │     useActionState live here
   └────────────────────────────────────────────────┘
 ```
 
@@ -204,10 +202,10 @@ backend reads, actions and streams. Application code in the browser holds no
 backend bearer. [`../AUTH.md`](../AUTH.md) §"Why the dashboard rides one token"
 describes this boundary.
 
-Workspace setup uses a narrow Backend-for-Frontend today: its `/live` handler
-authenticates each allowed request and stream. Writes also require a matching
-origin. This handler is separate from the generic `/backend` rewrite, which
-cannot bypass its checks.
+The fleet chat uses a narrow Backend-for-Frontend: its `/live` handlers
+authenticate each allowed request and stream. Writes also require a matching
+origin. These handlers are separate from the generic `/backend` rewrite, which
+cannot bypass their checks.
 
 A common boundary for every dashboard route remains future work, alongside
 scoped capability tokens. Backend authorization must continue to cover the
@@ -217,65 +215,71 @@ Keeping tokens out of application state does not prevent a compromised page
 from calling Clerk's own token API. Content-Security-Policy and
 Subresource-Integrity remain separate browser protections.
 
-## Workspace setup and runtime subjects
+## Fleet chat subjects
 
-Opening New fleet allocates no resource; the first mutation creates a creator-private draft. Messages, pending sends, streams and caches bind account, workspace and subject. Durable messages recover progress; streams carry authorized hints.
+Opening **New fleet** allocates no resource. Send calls `POST /v1/workspaces/{workspace_id}/fleets`, which writes the fleet and its first turn, and the browser replaces the URL with the fleet's page.
+Messages, pending sends, streams and caches bind account, workspace and fleet.
 
-Subject disposal, logout, revocation and deletion clear private buffers. Hiding the instruction editor preserves local edits; [manual-edit recovery](shared_chat_verification.md#setup-and-runtime-stay-together) explains conflicts. Unsent draft text stays in memory; private drafts never broadcast across the workspace.
+A refused create returns the message to the composer with **Resend**, and the sidebar lists no fleet.
+The refusal names its code, such as `UZ-SETUP-008` when the workspace has no usable model.
+[Fleet creation and recovery](data_flow.md#fleet-creation-and-recovery) owns the transaction and its retry key.
 
-The private setup, workspace activity and fleet activity proxies bound stream handshakes to 30 seconds and rotate established bodies at 240 seconds from request start.
+Logout, revocation and deletion clear the browser's buffers. Unsent text stays in memory and is never broadcast across the workspace.
+
+The workspace activity and fleet activity proxies bound stream handshakes to 30 seconds and rotate established bodies at 240 seconds from request start.
 `StreamLifetime` forwards bytes on demand, ends rotation cleanly, and aborts the upstream request.
 Browser cancellation, request cancellation, upstream failure and ordinary completion release timers and the upstream reader.
 
-The proxies forward `Last-Event-ID` unchanged. Private setup reconnects retain the authorized subject and recover durable messages through the existing client. Runtime turn streams use connection-local counters; the daemon ignores the header and the client recovers gaps through the durable turns list.
+The proxies forward `Last-Event-ID` unchanged. Turn streams use connection-local counters; the daemon ignores the header and the client recovers gaps through the durable turns list.
 
-A shared Definition powers instruction edits, model proposals and checked saves. Save retains one fleet identity with visible setup checks and keeps setup open. When an initial run is requested, Pending remains until its committed turn is confirmed with its expected turn identity.
+Models and billing resolve from the workspace owner's account; joined members receive authorized owner-facing actions.
+Runtime controls and shared fleet history keep their existing authority. [API resources](api_resources.md) owns each route's scope.
 
-Models and billing resolve from the workspace owner's account; joined members receive authorized owner-facing actions. Edit fleet starts a private draft against a pinned setup revision.
+### One fleet page
 
-Runtime controls and shared fleet history retain their existing authority. See [fleet_definitions.md](fleet_definitions.md#validated-definition), [data_flow.md](data_flow.md#fleet-creation-and-setup-recovery), and [API resources](api_resources.md).
+Below, F is `/v1/workspaces/{workspace_id}/fleets/{fleet_id}`.
 
-The **Instructions** dialog edits the current instructions before Save. Opening it requests no run and creates no fleet.
-
-The saved view separates setup readiness from the first run's acceptance; an accepted run can still be running.
-The inline receipt shows `Save done vN`; readiness remains separate from the saved version.
-
-The saved response supplies the Definition when present; otherwise the view retains the reviewed candidate's Definition. Unknown trigger or access data stays unconfirmed.
-
-### One fleet workspace
-
-New fleet keeps the private setup conversation open across multiple messages.
-The header shows the reviewed fleet name and the **Edit instructions** pencil.
-
-The **Save** flap saves the fleet. Sending **Save** in chat also saves it and opens its conversation.
-
-The sidebar's **Fleets** list shows authorized saved fleets.
-Private drafts appear under **Unfinished setups** on **New fleet**.
+**New fleet** (`/w/{workspaceId}/fleets/new`) renders the fleet composer.
+Its suggestion buttons fill the composer with editable text from `ui/packages/app/public/fleet-starters.json`.
+Any member sees a new fleet at once, in the sidebar's **Fleets** list.
 
 Active fleet dots use the brand color; hover or keyboard focus reveals the delete control.
+**Archive** and permanent **Delete** live in **Fleet actions**; **Your fleets** opens the listing.
 
-Fleet **Edit setup** opens the setup page at its latest saved revision. **Archive** and permanent **Delete** live in **Fleet actions**.
+Beside the chat, the fleet page shows three short lists of rows that exist:
 
-The **Edit instructions** pencil opens the tall instruction editor. Its **Save changes** action applies the reviewed edit.
+| List | Reads | A person's action |
+|---|---|---|
+| **Wakes on** | `GET F/schedules` and `GET F/triggers` | remove a schedule or a trigger; copy a webhook trigger's URL |
+| **Can access** | approved grants from `GET F/integration-grants` | **Remove** sends `DELETE F/integration-grants/{id}`, which revokes the grant |
+| **Remembers** | the fleet's pinned entries from `GET F/memories` | remove sends one `DELETE F/memories/{key}`, and the row leaves |
 
-Saving a revision keeps setup open. An explicit chat Save shows `Saving setup...` through model finalization and the checked write, then `Save done vN`.
+The fleet adds its own schedules and triggers, pins its own memory and asks for its own access; the lists only show and remove.
+[Fleet triggers](connectors.md#fleet-triggers), [pinned memory](memory.md#6-what-reaches-the-model) and [grants](connectors.md#where-a-grant-comes-from) own those records.
 
-Existing runs keep their pinned revision; new runs use the saved version.
-Fleet messages, setup receipts and integration activity share one chronological conversation. **Saved memories** opens from **Fleet actions**; **Your fleets** opens the listing.
+When the fleet calls `request_access`, an access card appears in the chat with **Approve** and **Deny**.
+**Approve** sends one approve request, and the waiting run resumes holding the access. A 403 leaves the card open with the refusal's message.
+
+The header's model picker sends one `PATCH F` carrying `model_ref`. The **Allow all** and **Packages** switches each send one `PATCH F`, carrying `http_egress` or `package_domains`.
+
+Both switches start off, and a 403 leaves the switch off. The [egress model](runner_fleet.md#egress-model-outbound-is-the-only-network-surface) owns what each one opens.
+
+Fleet messages, access cards and integration activity share one chronological conversation. **Saved memories** opens from **Fleet actions**.
 
 A message sent while the fleet's run is live folds into that run. The row shows `Added to the current run` until the run answers it, and the view waits on the message's own event.
 
-Both purposes use `ChatConnection`, `ReplyStream`, `ChatThread`, `ChatMessageRow` and `ChatComposerFrame`.
+The chat uses `ChatConnection`, `ReplyStream`, `ChatThread`, `ChatMessageRow` and `ChatComposerFrame`.
 Effects own connections and cleanup; render stays pure and Hooks remain static.
-Private history loading does not wait for model or sidebar lists.
 
 Fleet chat also renders `DurableTaskPanel` inline above its composer through `FleetThreadViewport`.
-Its scoped reads load compact unfinished work; expanding a row loads accepted criteria through `DurableTaskDetail`.
-The [DT owner](durable_tasks.md#status-and-ownership) distinguishes these implemented reads from pending task attempts and recovery.
+Its scoped reads load compact unfinished work; expanding a row loads the task's completion statements through `DurableTaskDetail`.
+The [durable task owner](durable_tasks.md#status-and-ownership) distinguishes these reads from task attempts and recovery.
+
+A person edits a task's statements in that detail, which sends one `PATCH F/durable_tasks/{id}` carrying `expected_generation`.
+A 412 reloads the task and keeps the person's text, so a second editor's change is never overwritten silently.
 
 The existing fleet stream supplies `durable_task_changed` read hints through `durableTasksSeq`; its initial hello and gap recovery also invalidate task reads.
 Account or workspace changes abort old requests, and access loss clears private rows.
 Transient failures retain labelled confirmed data and expose retry without claiming fresh progress.
 
-An identity-owned cache retains at most five conversations and 1 MiB for 120 seconds, with access loss clearing its contents.
 See [shared chat implementation and verification](shared_chat_verification.md#browser-ownership) for the call graph and recovery rules.

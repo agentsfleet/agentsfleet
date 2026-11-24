@@ -15,7 +15,7 @@ He said, "Yes i agree on NATS."
 The M244_001 spec's Discovery records that approval and the measurements it depended on.
 
 Postgres owns every durable fact and every compare-and-swap transition.
-Core NATS carries live activity, draft progress, wake notifications, runner commands and the outbound ping.
+Core NATS carries live activity, wake notifications, runner commands and the outbound ping.
 NATS runs without JetStream and without a key-value store, so it holds no state.
 
 Each signal is disposable because its durable authority and its recovery path live in Postgres.
@@ -61,7 +61,7 @@ An unset or malformed `NATS_URL` refuses boot as `UZ-STARTUP-001`.
 Boot refuses, as `UZ-STARTUP-004`, a seed that does not answer within five seconds.
 It also refuses a server reporting JetStream, no cluster, no headers, or a `max_payload` under the largest frame (`afd_bus/src/nats/preflight.rs`).
 
-The largest frame is the setup draft frame, 960 KiB (`afd_bus::DRAFT_FRAME_BYTES`).
+The largest frame the preflight checks is 960 KiB, the larger of `afd_bus`'s two frame bounds.
 That is NATS's default 1 MiB `max_payload`, which no server here overrides, less a 64 KiB envelope.
 The tail's 64 KiB batch plus 64 KiB of envelope fits under it.
 

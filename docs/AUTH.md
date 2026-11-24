@@ -1014,43 +1014,29 @@ A prompt-injected fleet that reads `AGENTSFLEET_RUNNER_TOKEN` or its own `/proc/
 
 ---
 
-## Fleet setup and credential boundary
+## Fleet access and credential boundary
 
-A fleet's setup is a typed Definition written in chat and stored as an
-immutable revision ([fleet definitions](architecture/fleet_definitions.md)).
-Its configuration names the credentials the fleet needs, by name only: a setup
-cannot carry a secret value. The setup model never receives those runtime secrets.
+A fleet has no setup document. It holds only the credentials a person approved for it.
+When a run needs one, the fleet calls `request_access` with the credential's name, and for GitHub the repositories and read or write.
+The daemon checks that the workspace holds that secret or has connected that integration, then raises an approval card ([connectors](architecture/connectors.md#where-a-grant-comes-from)).
 
-Setup uses ordinary `Guard::Bearer` routes and `PersonIdentity`, admitting browser sessions, command-line credentials and tenant API keys acting as their creator.
+A signed-in person approves the card once; an API key cannot.
+The routes use ordinary `Guard::Bearer` and `PersonIdentity`, and the card's approval route refuses a caller that is not a person.
 There is no upload or import route.
-Fresh-session restrictions remain on the login surfaces, including command-line credential minting.
-
-Private drafts require current account membership or personal ownership, plus the draft creator's identity.
-An account owner or `workspace:any` operator cannot read another person's private draft.
-Missing, foreign and creator-private drafts return the same nondisclosing 404.
 
 | Action | Required scope | Additional boundary |
 |---|---|---|
-| Read, edit, message or stream a private draft | `fleet:write` | Current membership and creator identity |
-| Save or Apply a reviewed setup | `fleet:write` | Current membership; a private candidate must belong to the caller |
+| Create a fleet or send it a message | `fleet:write` | Current membership |
+| Approve or deny an access card | the approvals route's scope | A signed-in person |
+| List or revoke a fleet's grants | `grant:read`, `grant:write` | Revoking needs a signed-in person |
 
 The route scopes live in `afd_http/src/route/{workspace,fleet}.rs`.
-`afd_setup/src/access.rs` and `sql/draft/lock.sql` enforce the inner identity boundary.
-[Fleet definitions](architecture/fleet_definitions.md) describes review, Save and Apply.
+A run's secret values resolve at run time inside `agentsfleetd` from the fleet's approved grants, and ride the runner run envelope described above.
+Each static secret is sent only to its own `host` field, whichever fleet uses it.
 
-The setup review is where credential presence matters: it reports each named
-credential and why the setup needs it (`rustd/crates/daemon/afd_setup/src/review/credentials/`).
-Named runtime secret values resolve at run time inside `agentsfleetd` and
-ride the runner run envelope described above. Capability comes from the
-server-built `ExecutionPolicy` and workspace credential grants.
-
-The setup model's inference key rides the setup run, as a fleet run's does.
-The assignment opens the pinned model's key in its own transaction and
-carries it in the run payload (`afd_fleet/src/run/draft/assign.rs`,
-`afd_credential/src/provider/registered/key.rs`). A tenant runner is never
-assigned a setup run on the platform model, so the platform key never
-reaches a host its tenant controls. The daemon makes no model call, and
-neither the browser nor a sandbox receives the key.
+The fleet's model key rides each run, as before.
+A tenant runner is never assigned a run on the platform model, so the platform key never reaches a host its tenant controls.
+Neither the browser nor a sandbox receives the key.
 
 ## Backend validation (the common path)
 

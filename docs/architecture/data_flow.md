@@ -22,18 +22,18 @@ Every row is extracted from the sections below; the owner column names the secti
 
 | Invariant | Value | Mechanism | Owner section |
 |---|---|---|---|
-| Event ingress | Seven producers, one queue | `Producer` names `steer`, `webhook`, `webhook_app`, `schedule_fire`, `gate_continuation`, `durable_task_continuation` and `slack_mention`. Each commits a `thread.turns` row and attempts a wake notification. | §B. TRIGGER |
+| Event ingress | Seven producers, one queue | `Producer` names `steer`, `webhook`, `webhook_app`, `schedule_fire`, `question_answer`, `durable_task_continuation` and `slack_mention`. Each commits a `thread.turns` row and attempts a wake notification. | §B. TRIGGER |
 | Message disposition | `started`, `folded` or `queued` | a message accepted while its fleet's run is live folds into that run; the run takes it at its next model call, and the message's own turn gets the run's reply | §"C. EXECUTE" |
 | Queue ownership | Postgres | Intake, assignment and settlement use the same `thread.turns` row. Outbound replies are `thread.deliveries` rows; core NATS carries only notifications. | §Steer flow end-to-end |
-| Durable stores | 4 tables, join key `turn_id` | `thread.turns` (one row per input, UNIQUE `(producer, producer_key)` and `(thread_id, sequence)`) · `thread.deliveries` (one row per answer, UNIQUE `(fleet_id, turn_id)`) · `thread.threads` (one row per fleet or draft, holding `resume_context`) · `billing.usage_lines` (one row per measured slice of a run, UNIQUE `(work_type, work_id, kind, seq)`, charged by its own insert) | §The five durable stores |
+| Durable stores | 4 tables, join key `turn_id` | `thread.turns` (one row per input, UNIQUE `(producer, producer_key)` and `(thread_id, sequence)`) · `thread.deliveries` (one row per answer, UNIQUE `(fleet_id, turn_id)`) · `thread.threads` (one row per fleet, `id = fleet_id`, holding `resume_context`) · `billing.usage_lines` (one row per measured slice of a run, UNIQUE `(work_type, work_id, kind, seq)`, charged by its own insert) | §The five durable stores |
 | Replay safety | Stable producer and turn identities | Intake deduplicates `(producer, producer_key)`; a reassigned turn keeps its turn and billing identities. | §"C. EXECUTE" |
 | Stale-writer rejection | `UZ-RUN-005` | Thread, run and turn fences guard the report transaction. | §"C. EXECUTE" |
 | Bus connection | One NATS connection per daemon process | Publishes and subscriptions share it; one native subscription per subject with local readers. The inbound queue and outbound delivery claims use Postgres. | §Connection topology |
 | Postgres acquire failures | 2 distinct errors | `PoolTimeout` (capacity) vs `PoolUnavailable` (datastore); one connection per handler (RULE CNX) | §The Postgres pool |
 | Postgres statement bounds | the API login role's | 2 s lock wait (`55P03`) and 5 s statement (`57014`), declared in `afd_db::login` and set once by `ALTER ROLE`; no statement sets its own | §The Postgres pool |
-| Config freshness | named by the assignment | a `PATCH` takes effect on the next run: the assignment returns the head revision id and the parsed definition is held under that id; no signal | §Config reload |
-| Gate-blocked rows | terminal | never reopened; the resolved gate lands a NEW row via `actor=continuation:<original>` | §"C. EXECUTE" step 3 |
-| Activation guarantee | Checked activation and the initial turn commit together | Run-now acceptance follows the committed turn; a lost wake cannot strand it. | §A. SAVE |
+| Config freshness | read per run | the assignment reads the fleet row and its approved grants on every run, so a `PATCH` or an approval takes effect on the next run; no signal | §Config reload |
+| Waiting rows (`gate_blocked`) | terminal | a turn that ended waiting on a question or an access request is never reopened; the person's answer lands a NEW `question_answer` row with `actor=continuation:<original>` | §B. TRIGGER |
+| Create guarantee | The fleet, its thread and its first turn commit together | A lost wake or a dead daemon cannot strand the turn; the next pass or the boot gap assigns it. | §Fleet creation and recovery |
 | Server-Sent Events (SSE) sequence ids | not durable | per-connection counter, resets to 0; `Last-Event-ID` ignored; backfill via the turns list | §D. WATCH |
 | Client gap recovery | reconnect, or `catching_up` on either stream | bounded `thread.turns` list `since` last delivery minus 2 s overlap, merged by turn id; a lost server subscription arrives as `catching_up` with `dropped: 0` | §Two streams + one pub/sub channel |
 | Cron authority | QStash | signature verified at ingress; replay suppressed atomically; the runner owns no timer | §B. TRIGGER |
@@ -51,7 +51,7 @@ Each trap is enforced in its owner section; this list is the index.
 - Never acquire a second Postgres connection while holding one; that is how a pool deadlocks (§The Postgres pool).
 - The Postgres pool has no ordering or fairness guarantee; do not assert one (§The Postgres pool).
 - No product statement sets its own lock or statement bound; the login role's bounds cover every daemon statement (§The Postgres pool).
-- `gate_blocked` rows are NEVER reopened (§"C. EXECUTE" step 3).
+- `gate_blocked` rows are NEVER reopened; a person's answer writes a new turn (§B. TRIGGER).
 - A Pull Request reviewer cannot post a review or a comment: no egress write rule admits one ([`run_flow.md`](./run_flow.md) §"4. How AGENT BOB 01 can reply").
 - Every push is its own turn. One that arrives while the fleet's run is live folds into that run; the rest queue behind it (§"C. EXECUTE").
 - Preserve the turn's identity across assignments and retries (§B. TRIGGER).
@@ -76,8 +76,8 @@ The diagrams live with their flows. Each is the section's proof, so none is dupl
 - coding fleet vs Fleet runtime: §The coding fleet and the Fleet runtime
 - the intake, assignment and settlement boundaries in §Steer flow end-to-end
 - the NATS connection topology: §Connection topology
-- save, trigger envelope, run, watch: §"End-to-end sequence", A through D
-- the setup failure window: §The install failure scenario, visually
+- create, trigger envelope, run, watch: §"End-to-end sequence", A through D
+- the create failure window: §The create failure scenario, visually
 
 ## Decisions
 
@@ -91,8 +91,8 @@ The diagrams live with their flows. Each is the section's proof, so none is dupl
 | Gap recovery is client-side, not server resume | no channel or frame-shape change; the durable table is the recovery source | §Two streams; M122 |
 | QStash owns the clock | the runner owns no schedule timer | §B. TRIGGER |
 | A message accepted during a live run folds into it | one Postgres statement writes its turn; the running run takes it at its next model call, so no second run starts | §"C. EXECUTE"; M242_002 |
-| Private drafts own setup | Native JSON can initialize a draft; GitHub/template-bundle import and Markdown export stay unsupported | [`user_flow.md`](./user_flow.md) §"§8.1 Setting up the Fleet" |
-| Retained setup identity | Retry resumes missing checks under the original creation identity | §The install failure scenario |
+| A first message creates the fleet | the fleet and its first turn commit together, and nothing about the job is written before the fleet works | [`user_flow.md`](./user_flow.md#81-what-a-fleet-is) |
+| One retry key per create | the replay receipt is written first, so a retry answers the same fleet and turn | §The create failure scenario |
 | Browser SSE uses the authenticated Next.js proxy | the server resolves the session and forwards a Bearer; the daemon authenticates Authorization ([AUTH](../AUTH.md)) | §D. WATCH |
 | Outbound answers are generic `thread.deliveries` rows, each taken by one worker per lane | the report path stays provider-agnostic (Invariant 9) | §"C. EXECUTE"; M106, M244 |
 
@@ -102,7 +102,7 @@ The diagrams live with their flows. Each is the section's proof, so none is dupl
 
 Everything below is the full reference. One event is told twice, at two zoom levels, and they do not repeat each other; read the one that matches your question.
 
-Section "Steer flow end-to-end" draws the path as boxes, so you can see where a call goes. Section "End-to-end sequence" (A INSTALL → D WATCH) states what each step must guarantee.
+Section "Steer flow end-to-end" draws the path as boxes, so you can see where a call goes. Section "End-to-end sequence" (A CREATE to D WATCH) states what each step must guarantee.
 
 Headings are stable because specs cite them by text. Insert new sections; never rename existing ones.
 
@@ -110,7 +110,7 @@ Headings are stable because specs cite them by text. Insert new sections; never 
 
 | Process | Role |
 |---|---|
-| **`agentsfleetd`** (`agentsfleetd serve`) | Owns Postgres, its NATS connection, the Vault and HTTP assignment. Producers commit turns; assignment passes give a turn's run to a runner; reports commit results, usage and settlement together. The daemon publishes live activity and delivers outbound replies. Setup model calls use daemon-held keys. |
+| **`agentsfleetd`** (`agentsfleetd serve`) | Owns Postgres, its NATS connection, the Vault and HTTP assignment. Producers commit turns; assignment passes give a turn's run to a runner; reports commit results, usage and settlement together. The daemon publishes live activity and delivers outbound replies. |
 | **`agentsfleet-runner`** (host-resident daemon) | The plane that runs the work. Boots from an operator-installed `agt_r` token (env `AGENTSFLEET_RUNNER_TOKEN`, no self-register), then loops `heartbeat → run → run → report → activity` over HTTPS carrying that token. Holds **zero datastore credentials**. A trusted supervisor runs the agent loop and holds the model key. A run that needs one gets a sandbox (bubblewrap, Landlock, seccomp, cgroups) that runs tool calls and nothing else; the sandbox gets a network namespace of its own unless the runner's network policy is `allow_all`. Credential substitution happens in the supervisor at send time ([`runner_execution.md`](./runner_execution.md#process-model)). The supervisor forwards activity frames to `agentsfleetd` over the `activity` verb. |
 
 Streams and tables: §"Two streams + one pub/sub channel" and §"The five durable stores: who owns what".
@@ -198,7 +198,7 @@ Read the primary keys and the shape falls out:
   thread.turns       PK id  + UNIQUE (producer, producer_key)   one row per INPUT
                             + UNIQUE (thread_id, sequence)
   thread.deliveries  PK id  + UNIQUE (fleet_id, turn_id)       one row per ANSWER
-  thread.threads     PK id  (= fleet_id or draft_id)            one row per THREAD
+  thread.threads     PK id  (= fleet_id)                        one row per THREAD
 ```
 
 Two of them grow with traffic. `thread.threads` does not, because it is a cursor and not a log. That is why "where does this fleet resume" is a primary-key lookup rather than a sort over its history.
@@ -233,10 +233,10 @@ The spellings live in `af_core::turn::status` and are never literals in schema (
 
 | Table | Cardinality | Mutability | Answers |
 |---|---|---|---|
-| `thread.turns` | **One row per input** | INSERT (status=`queued`); the assignment stamps `run_fence` and `opened_at` (status=`received`); the input claim stamps `input_run_id` and `input_fence`; then `parked_at` and the report's `settled_at` with status=`processed` \| `fleet_error` \| `gate_blocked` \| `cancelled` | "What did this Fleet do for turn X? Who triggered it, what did they ask, what did it answer, did the gates pass?" Accepted work, its current ownership and completion, and the user's narrative log. `UNIQUE (producer, producer_key)` deduplicates producer retries. The single source of truth for the turns list and `agentsfleet fleet turns`. |
+| `thread.turns` | **One row per input** | INSERT (status=`queued`); the assignment stamps `run_fence` and `opened_at` (status=`received`); the input claim stamps `input_run_id` and `input_fence`; then the report's `settled_at` with status=`processed` \| `fleet_error` \| `gate_blocked` \| `cancelled` | "What did this Fleet do for turn X? Who triggered it, what did they ask, what did it answer, did it wait on a person?" Accepted work, its current ownership and completion, and the user's narrative log. `UNIQUE (producer, producer_key)` deduplicates producer retries. The single source of truth for the turns list and `agentsfleet fleet turns`. |
 | `thread.deliveries` | **One row per answer** | INSERT in the report's transaction, then UPDATE `receipt` and `delivered_at` | "Do we still owe somebody this answer?" Committed with the money and the result, so no window exists where a run is charged and its answer exists nowhere. `UNIQUE (fleet_id, turn_id)` makes a replayed report owe one delivery, not two. |
-| `thread.threads` | **One row per fleet or draft** | INSERT with its owner; the assignment raises `fencing_token`; the report replaces `resume_context` | "Where did this Fleet leave off?" The fence, the warm hold and the resume bookmark. The run path reads `resume_context` with the fleet row and hands it to no run. "Which fleet is running right now" is `thread.runs`, which has the fencing token and the expiry that make the answer trustworthy. |
-| `billing.usage_lines` | **One row per measured slice** of a run: each renewal and the report log the runtime and tokens since the last slice, priced. UNIQUE `(work_type, work_id, kind, seq)`, where the work is the run and `kind` says whether the line is a model call, a runtime slice or a decision call. No money is set aside: the line's insert takes it from `billing.wallets` in the same statement (billing §3, §11). | INSERT in the run's own transaction; `settled_at` is stamped once the biller has charged the line, and nothing else changes. | "What did turn X's run use, and what did it cost?" Billing audit and the source of fleet budgets. Joinable to `thread.turns` on `turn_id`, the turn's primary key. |
+| `thread.threads` | **One row per fleet** | INSERT with its fleet; the assignment raises `fencing_token`; the report replaces `resume_context` | "Where did this Fleet leave off?" The fence, the warm hold and the resume bookmark. The run path reads `resume_context` with the fleet row and hands it to no run. "Which fleet is running right now" is `thread.runs`, which has the fencing token and the expiry that make the answer trustworthy. |
+| `billing.usage_lines` | **One row per measured slice** of a run: each renewal and the report log the runtime and tokens since the last slice, priced. UNIQUE `(work_type, work_id, kind, seq)`, where the work is the run and `kind` says whether the line is a model call, a runtime slice or a decision call. No money is set aside: the line's insert takes it from `billing.wallets` in the same statement (billing §3, §11). | INSERT in the run's own transaction; `settled_at` is stamped once the biller has charged the line, and nothing else changes. | "What did turn X's run use, and what did it cost?" Billing audit. Joinable to `thread.turns` on `turn_id`, the turn's primary key. |
 
 Why a narrative table and a usage table (`thread.turns` + `billing.usage_lines`) instead of one? They have different write authorities and retention rules:
 
@@ -276,11 +276,11 @@ Subject spellings come from `afd_bus::nats::spelling` (`rustd/crates/daemon/afd_
 |---|---|---|---|
 | `thread.turns` | Postgres ledger | Intake, assignment and report paths | Durable inbound queue, ordered by turn `sequence` within a thread. |
 | `thread.deliveries` | Postgres rows, taken per lane | Outbound worker | Delivers replies; at most one row per `(provider, workspace_id)` lane is held at a time. |
-| `af.thread.<thread_id>.items` | Core NATS subject | Each process's NATS hub | A fleet's live frames, where a gap or reconnect recovers durable history through the turns list, or a draft's setup progress, where a lost subscription sends `draft.resync`. |
+| `af.thread.<thread_id>.items` | Core NATS subject | Each process's NATS hub | A fleet's live frames. A gap or reconnect recovers durable history through the turns list. |
 | `af.thread.<thread_id>.wake` | Core NATS subject, read through one `af.thread.*.wake` wildcard per replica | The gateway's assignment scheduler | Starts an assignment pass and puts its thread first. The local queue holds at most 64 distinct threads by default. |
 | `af.runner.<runner_id>.cmd` | Core NATS subject | The gateway holding the runner's connection | `Recheck` or `Cancel` for one runner host; Postgres stays the authority (`afd_gateway/src/connection/commands.rs`). |
 | `af.delivery.wake` | Core NATS subject | Outbound worker | Pings the worker after a report commits; a lost ping waits for the next ping, a finished delivery, a lapsed claim or a gap. |
-| `af.tenant.<tenant_id>.members` | Core NATS subject | Every open workspace stream, fleet stream and setup page in the account | A member removal publishes it after its commit; each stream re-asks its viewer's access. |
+| `af.tenant.<tenant_id>.members` | Core NATS subject | Every open workspace stream and fleet stream in the account | A member removal publishes it after its commit; each stream re-asks its viewer's access. |
 | `af.workspace.<workspace_id>.fleets` | Core NATS subject | The workspace's open workspace streams | A fleet insert or delete publishes it after its commit; each stream re-reads the set. |
 
 A development namespace prefixes every subject with `dev.<namespace>.` (`afd_bus/src/nats/config.rs`).
@@ -360,127 +360,68 @@ No product statement sets its own override. A statement that hits either bound a
 
 ## Config reload: pull-per-run, no signal
 
-Canonical: [`runner_fleet.md` §Config](./runner_fleet.md). The assignment reads the head revision id from `fleet.fleets` on every run, and a replica holds the parsed definition under that id. A `PATCH` takes effect on the next run with no signal.
+Canonical: [`runner_fleet.md` §Config](./runner_fleet.md).
+
+The assignment reads the fleet row and its approved grants on every run. A `PATCH` to the model or a network toggle takes effect on the next run with no signal. So does a grant a person approves or revokes.
 
 What is specific to this flow: status works the same way. The assignment scan filters `fleet.fleets.status = 'active'`, so an archived Fleet drops out on the next scan and never re-enters.
 
 ## End-to-end sequence
 
-### Fleet setup and runtime sequence
+### Fleet creation and runtime sequence
 
 ```text
-person -> private draft/messages -> validated Definition -> reviewed candidate
-                                                                |
-                                                            chat Save
-                                                                |
-                                                     retained installing fleet
-                                                                |
-                                             checks + actual grants + guarded activation
-                                                                |
-                                      no initial request | Blocked | Accepted stable turn
-                                                                |
-                                            schedules sync after activation
-                                                                |
-                                          B. TRIGGER -> C. EXECUTE -> D. WATCH
+person -> POST W/fleets {message, operation_id, model_ref?, name?}
+                                  |
+        one transaction: replay receipt -> fleet.fleets (active)
+                         -> thread.threads (id = fleet id) -> thread.turns #1 (queued)
+                                  |
+                   commit -> wake + fleet notice
+                                  |
+                B. TRIGGER -> C. EXECUTE -> D. WATCH
 ```
 
-Messages are durable recovery; progress streams are hints. Private draft access requires its creator and current membership. Runtime history stays fleet-scoped.
+W is `/v1/workspaces/{workspace_id}`. Every later message, webhook, schedule fire or mention enters through B. TRIGGER.
 
-Improve applies a reviewed setup revision to a saved fleet. An accepted initial turn survives reload with the same turn identity.
+The fleet adds its own schedules and triggers by tool, and asks for access when a run needs it ([grants](connectors.md#where-a-grant-comes-from)). Messages are durable recovery; progress streams are hints.
 
-### A. SAVE  (a reviewed private candidate)
+### A. CREATE  (the first message)
 
-§"Fleet creation and setup recovery" below carries the creation sequence. The retained creation identity makes retries resume the same setup.
+A person's first message creates the fleet, and that message is the fleet's first turn. §"Fleet creation and recovery" below carries the transaction and its retries.
 
-### Fleet creation and setup recovery
+### Fleet creation and recovery
 
-#### Review and first Save
+`POST W/fleets {message, operation_id, model_ref?, name?}` needs the `fleet:write` scope. `afd_setup/src/creation/create.rs` writes four rows in one transaction, in this order:
 
-A draft has no queued/running message when Save begins. GET draft returns normalized effective setup, immutable requirements, live readiness, and a digest. The person chooses Save or Save and run now; trigger content is identical.
+1. The replay receipt under scope `<workspace>:fleet:create:<person>`, keyed by `operation_id`. It is written first, so concurrent callers with one key create one fleet.
+2. The `fleet.fleets` row, `active`, with its name, its resolved `model_ref` and both network toggles off.
+3. The `thread.threads` row, whose id is the fleet's id.
+4. Turn #1, `queued`, with actor `steer:<person>`, written the way `afd_turns`'s `admit_one.sql` writes any message.
 
-Stop cancels one turn (`PATCH D/turns/{turn_id}`) through the Stop every thread shares. A queued turn never runs. The setup run serving a running turn is marked and told to end. Later turns stay queued, and each runs subject to ordinary capacity and balance checks.
+After the commit, the daemon publishes the thread's wake and the fleet notice. The answer is 201 with the fleet and `accepted: {turn_id, disposition}`.
 
-A stopped run's usage is still logged and charged. A superseded run's report and context save write nothing.
+The model is the body's `model_ref`, or else the workspace's selected model, resolved at create and stored on the row. The name is the body's, or else `fleet-` and the last 12 hex digits of the id. [API resources](api_resources.md) owns the name rule and the wire shapes.
 
-Save requires that no message be queued or running; the draft enters `saving`, and activation closes it.
+| Call | Answer | Rows written |
+|---|---|---|
+| A first call | 201, `replayed: false` | the receipt, the fleet, its thread and turn #1 |
+| The same `operation_id` and text | 200 with the same fleet and turn, `replayed: true` | none |
+| The same `operation_id` with other text | 409 `UZ-SETUP-005` | none |
+| The same `operation_id` after the fleet is deleted | 410 `UZ-SETUP-013` | none |
+| No `model_ref` and no selected model, or a model the workspace cannot use | 409 `UZ-SETUP-008` | none |
+| A name the workspace already holds | 409 `UZ-AGT-006` | none |
 
-Already accepted candidate edits stay available for the person's review; Stop does not undo them. `afd_setup` owns the Stop implementation and the creation regression tests that define these boundaries.
+The create checks no wallet. The first run's admission does: an empty wallet, or a payer with no wallet row, refuses the turn `balance_exhausted`, and the fleet stays `active`.
 
-POST fleets includes a UUIDv7 `Idempotency-Key`, immutable source, reviewed name, digest and start choice. Authorization precedes recording the normalized body and fleet identity. Changed-body reuse returns 409.
+A daemon that dies after the commit leaves a queued turn, and the next daemon's boot gap re-reads it. A wake the bus drops leaves the turn in the ledger for the next assignment pass.
 
-Within the [setup replay window](api_resources.md#shared-wire-rules), the same key and body resume that fleet’s setup checks. Progress may advance; accepted inputs and identity stay unchanged. After expiry, inspect the linked fleet before another Save.
+Nothing is private. Every member of the workspace reads the new fleet and its messages at once, before any run.
 
-The draft enters `saving` with the linked fleet identity.
+#### Archive and delete
 
-#### Bounded setup checks
+`PATCH F` with `{status: "archived"}` and the current `If-Match` archives the fleet under `fleet:write`; a stale tag answers 412. F is `W/fleets/{fleet_id}`. Pending cards are cancelled under the fleet lifecycle guard.
 
-1. Confirm the source revision, schema version, review digest, and policy marker.
-2. Resolve the workspace owner's runtime model and wallet; recheck current membership and fleet scope.
-3. Verify declared connections and credentials by name without putting secret values in the candidate or response.
-4. Create or locate the required approval requests. A pending/rejected grant produces a blocked check, not ready access. Repeated setup does not duplicate approval requests.
-5. Complete required setup resources under the retained identity. External calls run before database locks are held.
-6. Atomically compare installing state, setup revision, policy marker, and approved access. Check affected rows. Only this guarded update may activate the fleet.
-7. Commit the requested initial turn with activation, or record its refused outcome. Acceptance follows this commit. Attempt the wake notification after commit, then register schedules independently.
-
-Each external setup call has a declared timeout. A request has a 15-second setup budget and returns `201 installing` if the fleet exists but required checks remain. Five-second external-call limits fit this budget; after it is spent, the daemon keeps pending checks for explicit retry.
-
-Malformed source or mismatched review fails before creating a runnable fleet. A database outage may leave the client uncertain whether the accepted identity committed: same-key retry resolves that uncertainty. A platform outage cannot become a guessed success.
-
-A stored partial result exposes checks and next actions through GET fleet.
-
-#### Initial run and triggers
-
-`none` creates no initial turn. `run_now` commits one turn with activation and returns its stable turn identity. A lost wake leaves `start.state` accepted.
-
-A refused initial turn may leave the fleet active with `start.state` blocked and its error. Retrying setup keeps the initial turn identity. A person can explicitly send another fleet message later.
-
-Cron is registered after activation, so no pre-activation callback queue exists. GitHub and Slack can observe activation immediately; no claim is made that the initial run completes before other work arrives. Existing affinity and turn ordering apply.
-
-A schedule push failure leaves an active fleet with `sync:"failed"` and Retry sync. A push still unfinished when Save stops waiting (5 s) stays `sync:"syncing"`. No sweep re-drives it, and its 30 s fence run refuses a `:sync` retry until it expires.
-
-GET fleet and CLI expose both independently from required activation checks.
-
-#### Retry, archive and delete
-
-Same-key POST or `PATCH fleet {status:"active"}` with the current resource `If-Match` resumes missing setup checks. Approving a setup grant through the dashboard's approval route runs the same step (`afd_api_tenant`'s approval resolve). It also syncs the fleet's trigger schedules, so the fleet activates with no further request.
-
-The signed approval webhook (`POST /v1/webhooks/{fleet_id}/approval`) resolves the gate but carries no person to run setup as. After an approval there, the next Save or `PATCH` `active` activates the fleet.
-
-PATCH stays status/name only. Concurrent setup requests share the same guarded stages and initial turn identity.
-
-A name edit during installing invalidates the pending review and refuses activation until a newly reviewed revision is applied. It cannot silently change accepted creation inputs.
-
-Archive uses existing fleet:write authority. The transaction changes fleet state and setup cancellation generation before a late activation can commit. The linked draft closes; a new setup starts from a new draft.
-
-Pending approval requests are cancelled under the fleet lifecycle guard. An archived fleet takes no new run or grant use, and its history stays readable.
-
-If activation already won and advanced the resource tag, a stale archive receives 412. The person must refetch before deciding to archive the active fleet. Another Save has a fresh key and fleet ID, and the cancelled key keeps referring to the archived fleet.
-
-Fleet DELETE requires fleet:admin and works in any status: it releases live work as archive does, then purges. Deleting private draft text is not permission to delete the shared fleet. Draft removal cancels private work and hides its prefix; shared installing checks stay recoverable through the fleet by authorized members.
-
-#### Applying an improvement
-
-Improve copies an immutable fleet setup revision into a creator-private draft. POST fleet revisions carries `If-Match: setup_etag`, one header replay key, candidate ID, and review digest. It atomically checks target/source revisions and updates the setup pointer, policy marker, and affected inherited schedules.
-
-A stale base or digest refuses the whole update. The response is the new setup tag and schedule states.
-
-Already held runs keep captured setup except live revocation and renewed budget ceilings. New runs use the reviewed new revision. A policy marker drift blocks new turns until a human reviews and applies a revision.
-
-A name/status resource change does not falsely make setup content change; inherited schedule tags include instance setup and recipe/override revision.
-
-In the browser, **Edit setup** opens that private draft beside the current fleet conversation.
-Multiple messages and manual instruction edits update the same candidate.
-The instruction editor’s **Save changes** applies the reviewed revision and returns focus to the fleet conversation.
-
-A stale setup tag keeps the proposed edits for review.
-An initial chat **Save** opens the same fleet Chat workspace.
-Both purposes share the [provider reader and browser chat implementation](shared_chat_verification.md).
-
-#### CLI partial success
-
-The CLI displays `Fleet created: installing`, each missing check and its action, and the fleet ID. Approving a missing grant retries setup on its own; after fixing any other check, `agentsfleet fleet activate <FLEET_ID>` retries it. It exits nonzero, keeping the creation replay key for explicit retry.
-
-An active fleet with a blocked initial run prints the partial outcome and an actionable retry. So does any schedule not `synced` (`failed`, `syncing`, or a status the CLI does not know). The CLI exits nonzero rather than claiming all requested work succeeded.
+An archived fleet takes no new run or grant use, and its history stays readable. Fleet DELETE requires `fleet:admin` and works in any status: it releases live work as archive does, then purges.
 
 ### B. TRIGGER  (steer / webhook / cron — three callers, ONE ingress)
 
@@ -488,7 +429,7 @@ The heading keeps its old words because other pages cite it by text. Seven produ
 
 Workspace connection proofs: [connectors.md](./connectors.md) §"GitHub App: platform setup to fleet runs".
 
-[Conversation compaction](context_lifecycle.md) continues a run without a new turn. Only an approved gate writes a continuation turn.
+[Conversation compaction](context_lifecycle.md) continues a run without a new turn. Only a person's answer on a card writes a continuation turn.
 
 ```
    Common turn fields, stored in thread.turns.
@@ -527,8 +468,8 @@ Workspace connection proofs: [connectors.md](./connectors.md) §"GitHub App: pla
    APP         → POST /v1/ingress/github
                  verify platform github-app.webhook_secret BEFORE payload read
                  installation.id → connector.installs → workspace
-                 repository.full_name + event + approved grant
-                    → active fleet subscriptions
+                 repository.full_name + event
+                    → fleet.triggers rows (kind app_event) of that workspace
                  authenticated-body-digest/fleet replay slot
                → INSERT thread.turns for each exact match
                       actor=github-app      kind=webhook
@@ -537,17 +478,20 @@ Workspace connection proofs: [connectors.md](./connectors.md) §"GitHub App: pla
                → 202
 
                `repositories` is required and fail-closed, with replay per fleet
-               ([connectors.md](./connectors.md) §"Repository and event subscriptions belong to fleets").
+               ([connectors.md](./connectors.md#fleet-triggers)). The fleet
+               needs no grant to receive a delivery.
 
-   MANUAL     Custom providers and the old GitHub workflow_run path keep
-   WEBHOOK      POST /v1/webhooks/{fleet_id}/{source}   (one per webhook trigger)
-                 POST /v1/webhooks/{fleet_id}/github
-               with a workspace credential's `webhook_secret` field. The named
-               stored trigger selects its registry or declared recipe. Svix uses
-               this same source URL and claims its signed delivery identifier;
-               other recipes claim the authenticated body digest. The fleet
-               identifier is already in the URL, so this route does not require
-               `repositories` and does not use `connector.installs`.
+   MANUAL     Custom providers post
+   WEBHOOK      POST /v1/webhooks/{fleet_id}/{source}
+               one URL per fleet.triggers row of kind webhook, signed with
+               the `webhook_secret` field of the workspace secret the row
+               names (`secret_name`). The row selects its registry or
+               declared recipe (connectors.md#webhook-signing-recipes). Svix
+               uses this same source URL and claims its signed delivery
+               identifier; other recipes claim the authenticated body digest.
+               The fleet identifier is already in the URL, so this route does
+               not require `repositories` and does not use
+               `connector.installs`. A source with no row answers 404.
 
                The internal Clerk endpoint that bootstraps our own tenants
                on `user.created` is NOT this surface. Its path is in the
@@ -567,16 +511,20 @@ Workspace connection proofs: [connectors.md](./connectors.md) §"GitHub App: pla
                       workspace_id=<ws>        request=<schedule-event-json>
                       created_at=<rfc3339>
 
-   CONTINUATION  an approved gate resumes the run it parked
-               → INSERT thread.turns keyed by the gate's action
-                      actor=continuation:<parked_turn_id>  kind=continuation
-                      workspace_id=<ws>  request=<continuation-msg>
-                      reply copied from the parked turn (Reply::Inherit)
-                 The new row carries resumes_turn_id=<parked_turn_id>;
-                 the parked row is never reopened (afd_approval's inbox resolve).
+   ANSWER     a person answers a run's question, or approves or denies
+               the fleet's access request, on its card
+               → INSERT thread.turns producer=question_answer, keyed by
+                 the card's action
+                      actor=continuation:<waiting_turn_id>  kind=continuation
+                      workspace_id=<ws>  request=<the answer, or
+                      "approved" / "denied">
+                      reply copied from the waiting turn (Reply::Inherit)
+                 The new row carries resumes_turn_id=<waiting_turn_id>;
+                 the waiting row is never reopened (afd_approval's inbox resolve).
 
-   TASK          a durable task's matched completion or wake
-   CONTINUATION  → INSERT thread.turns keyed by task, generation and wake
+   TASK          a task the fleet's model started, a person's input to it,
+   CONTINUATION  or its matched completion or wake
+               → INSERT thread.turns keyed by task, generation and wake
                  (producer durable_task_continuation; durable_tasks.md)
 
    All seven producers commit the same turn shape to one ledger. The
@@ -584,9 +532,11 @@ Workspace connection proofs: [connectors.md](./connectors.md) §"GitHub App: pla
    fleet's instructions and the user's history filter.
 
    > [!NOTE]
-   > SLACK — producer `slack_mention` (M206_002, afd_api_ingress's mention
+   > SLACK: producer `slack_mention` (M206_002, afd_api_ingress's mention
    > handler). One more producer into THIS same ingress; the assign/run path
-   > does not change. Routing lives in scenarios/slack-incident-responder.md §4;
+   > does not change. A mention reaches the fleet whose fleet.triggers row of
+   > kind mention names its channel. Routing lives in
+   > scenarios/slack-incident-responder.md §4;
    > memory continuity in [`runner_fleet.md`](./runner_fleet.md) §"Memory
    > continuity". Spec: docs/v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md
 
@@ -595,12 +545,12 @@ Workspace connection proofs: [connectors.md](./connectors.md) §"GitHub App: pla
 #### QStash owns the clock
 
 The callback signature covers its destination URL, exact body and message identity.
-Ingress selects the schedule through `Upstash-Schedule-Id`, outside that signature; cryptographic target and revision binding stay unresolved.
+Ingress selects the schedule through `Upstash-Schedule-Id`, outside that signature, so no signature binds the schedule it names.
 Schedule activity snapshots describe database state at acceptance.
 
 Schedule history uses `afd_api_wire::activity::FleetActivity` and the existing `afd_turns::activity` receipt writer.
 `afd_cron::store::history` records create/edit/pause/removal intent and fenced sync outcomes on the schedule transaction.
-Setup recipes append receipts to the author's transaction; confirmed deletion keeps the held description and message.
+Confirmed deletion keeps the held description and message.
 
 The transaction commits before its connection is released and the existing catch-up notice is published.
 These receipts admit no work and create no Durable Task.
@@ -616,7 +566,7 @@ The [durable repair scenario](scenarios/durable-repair.md) uses this existing sc
 
 `agentsfleetd` stores the desired schedule, pushes each mutation to QStash synchronously, and receives the fires. The runner owns no schedule timer ([`runner_execution.md`](./runner_execution.md#tool-catalog)).
 
-- **Three authors.** A schedule's `source` is `trigger`, `api` or `fleet`. `trigger` is the cron trigger in the reviewed setup, `api` a person, and `fleet` the fleet itself through its run's schedules verb.
+- **Two authors.** A schedule's `source` is `api` for a person, through the schedule routes. It is `fleet` for the fleet itself, through `cron_add` and its run's schedules verb. Every schedule is an independent row, with no recipe and no override.
 - **A fleet edits only its own.** The fleet is the run's, so a body cannot name another. A fleet holds at most 16 schedules it made and changes or deletes only those.
 - **Every write proves the run again** on its own transaction (`afd_fleet::run::write_fence`), holding the run row shared until commit. A reassignment, renew or settle waits for it. An old holder resumed after a reassignment writes nothing: `UZ-RUN-005`, `current_state` `superseded`.
 - **Run-now** admits through the same `schedule_fire` producer a QStash fire does, keyed `run:<turn_id>` by the held turn, so a reassigned run replays the fire. Both record `actor=cron:<schedule_id>`. Its refusals are listed in API reference › Runner plane (Run a schedule now).
@@ -640,11 +590,11 @@ The native report commits its terminal outcome.
 1. Refuse placement when the runner's isolation verdict is degraded or unreadable.
 2. Probe eligible active fleets and each thread's oldest unsettled turn through `idx_turns_thread_id_sequence_unsettled`.
 3. Prefer held fleets, recent hints and previous placement; randomize the remaining candidates. Try at most 64 candidates per assignment.
-4. Lock the fleet's `thread.threads` row and its exact oldest turn with `SKIP LOCKED`. A locked or parked head cannot be skipped within that fleet.
+4. Lock the fleet's `thread.threads` row and its exact oldest turn with `SKIP LOCKED`. A locked head cannot be skipped within that fleet.
 5. Raise the thread's fence and stamp it on the turn as `run_fence` in one statement. Decode before committing; malformed stored data rolls back the fence.
 6. The same statement opens the turn (`opened_at`, status `received`). Terminal refusals settle the turn without issuing a run.
-7. Resolve the payer, balance, budget, approvals and installed policy. A wait for a person parks the head and releases the unissued thread.
-8. Resolve declared tool secrets separately from the model provider key. Build `ExecutionPolicy` and insert the `thread.runs` row under the raised fence.
+7. Resolve the payer and balance. An empty wallet, or a payer with no wallet row, refuses the turn `balance_exhausted`.
+8. Build `ExecutionPolicy` from the fleet row and its approved grants, and resolve those grants' secrets separately from the model provider key. Insert the `thread.runs` row under the raised fence.
 9. Run the run in the supervisor and sandbox. Forward live activity over the runner's connection; report the outcome and measured usage when the run ends.
 10. Commit the report under the host, thread, run and turn guards. One transaction records usage, the answer, `resume_context`, turn settlement, thread release and any outbound delivery.
 11. After commit, publish terminal activity and attempt outbound delivery.
@@ -665,7 +615,9 @@ A runner that disappears leaves an unsettled turn. Once its run expires, another
 
 The turn keeps its original time and billing identities. The previous holder cannot settle through the newer fence.
 
-Approval resolution unparks eligible heads and attempts a wake notification. Nothing expires a gate: one past its deadline reads `timed_out` and stays answerable (`afd_approval`'s inbox module).
+**Waiting on a person.** A run that asks a question, or calls `request_access` for a credential not yet approved, ends waiting. Its turn settles waiting and its card carries the turn, so the fleet's later turns are not held ([grants](connectors.md#where-a-grant-comes-from)).
+
+The person's answer, Approve or Deny writes the continuation turn in B. TRIGGER and attempts a wake notification. Nothing expires a card: one past its deadline reads `timed_out` and stays answerable (`afd_approval`'s inbox module).
 No timer re-reads Postgres, so work behind a lost notification waits for the next event that starts an assignment pass.
 
 See [the queue design](./datastore_scaling.md#the-turns-ledger-is-the-queue) for budgets and recovery limits.
@@ -728,10 +680,10 @@ The outbound worker posts that answer to its connector thread; [the Slack flow](
 
    UI        Fleet navigation /w/{workspace}/fleets
                → the server requests one fleet and redirects to its conversation,
-                 or to setup when the list is empty.
-               → the open sidebar pages through the workspace’s fleets and the
-                 viewer’s private setup drafts. Selecting a fleet opens its
-                 conversation stream. Other sidebar entries stay unsubscribed.
+                 or to the fleet composer (/fleets/new) when the list is empty.
+               → the open sidebar pages through the workspace’s fleets.
+                 Selecting a fleet opens its conversation stream. Other
+                 sidebar entries stay unsubscribed.
 
    API       Workspace activity stream
                → agentsfleetd authorizes the workspace and fans in only its
@@ -808,34 +760,33 @@ One PR through one run: its records and timers in [run_flow.md §1](./run_flow.m
 ## What the fleet (host) never does
 
 - Never touches the user's laptop directly
-- Never reads the user's local filesystem (it sees only what the fleet's reviewed setup grants it)
+- Never reads the user's local filesystem (it sees only what a person approved for the fleet)
 - Never escapes the sandbox: namespaces, Landlock, seccomp and cgroup v2 bound each run's sandbox, and the agent loop runs outside it ([`runner_execution.md`](./runner_execution.md#sandbox-engines)). **Network egress** follows the runner's network policy (see [`runner_fleet.md` §Egress model](./runner_fleet.md)).
 - Never holds a datastore credential: the runner reaches the platform only over the `/v1/runners` protocol
 
-## The install failure scenario, visually
+## The create failure scenario, visually
 
 ```text
-record key + normalized body + retained installing fleet -> commit
-checks or grants incomplete -> installing + missing checks
-same key + same body -> resume same fleet and setup revision
-Archive wins activation guard -> archived fleet; linked draft closed
-activation + initial turn -> commit together
-read back the same initial turn -> Accepted
-read-back unavailable -> Pending; retry confirms the same turn
-register schedules independently
+receipt + fleet + thread + turn #1 -> commit together
+no usable model, or a taken name -> 409; nothing written
+same key + same text -> 200; the same fleet and turn, replayed: true
+same key + other text -> 409 UZ-SETUP-005; no second fleet
+same key after delete -> 410 UZ-SETUP-013
+commit, then the daemon dies -> the next daemon's boot gap reads the queued turn
 lost wake -> the turn waits in the ledger for the next pass (another wake, a bus gap recheck or a runner's free slot)
+empty wallet at the first run -> the turn is refused balance_exhausted; the fleet stays active
 ```
 
-Do not delete the retained fleet on setup failure. Do not report activation after a zero-row update or submit another initial turn on retry.
+Do not report a fleet before its commit, and never write a second first turn on retry.
 
 Queued steer turns take part in ordinary message history alongside opened turns in one statement snapshot. That history carries stable turn identity and pagination (`afd_turns`'s `select_thread_page.sql`). No creation worker is introduced.
 
-## Proposed Durable Task admission
+## Durable Task admission
 
-M236 added [Durable Tasks](durable_tasks.md) beneath fleets while keeping this turns ledger and one active run per fleet.
-The daemon saves a message before acknowledging it; the runner then uses [runner-assigned decision routing](goal_evaluation.md#intent-routing) under its run.
-Native code creates work or associates input only after current authority and target checks.
+[Durable Tasks](durable_tasks.md) sit beneath fleets and keep this turns ledger and one active run per fleet. The fleet's own model starts a task with `task_start` and joins a later message to one with `task_input`. Both work only under a person's message ([how a task starts](durable_tasks.md#how-a-task-starts)).
+
+Both tools post the binding verb, and neither makes a decision call. A new task is written `ready` with its continuation turn staged. The calling run stays ordinary, and the task's first run takes a turn of its own.
 
 A waiting Durable Task (DT) has a settled turn and a wait kept on the task's own row.
 Another queued objective can use the fleet's thread; a matched completion creates one continuation turn.
-Neither model classification nor an R2 checkpoint replaces queue or ownership authority.
+Neither a model's judgment nor an R2 checkpoint replaces queue or ownership authority.

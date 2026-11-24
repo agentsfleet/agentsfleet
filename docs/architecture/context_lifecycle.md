@@ -1,19 +1,19 @@
 # Shared conversation compaction
 
-> Read this when setup chat or fleet runtime approaches the selected model's working window. Parent: [Architecture](README.md).
+> Read this when a fleet run approaches the selected model's working window. Parent: [Architecture](README.md).
 
 ## Approved behavior
 
 ```text
- Private setup chat                  Fleet execution
-        |                                   |
-        +----------- af_context -----------+
-                     |       |
-               summarize     checkpoint
-                     |       |
-              metered call   guarded daemon storage
-                     |       |
-                     +-------+--> continue the same work
+                 Fleet run
+                     |
+                 af_context
+                  /      \
+          summarize      checkpoint
+              |              |
+        metered call   guarded daemon storage
+              |              |
+              +------+-------+--> continue the same work
 ```
 
 The selected model supplies its physical window. Preflight compacts at 90 percent input fill, or earlier when input plus reserved output would exceed 95 percent.
@@ -30,7 +30,7 @@ Known adapters use generics; selected runtime effects use object-safe trait obje
 Cancellation uses `Fn`; progress observations use `FnMut`; an owned prepared publication consumes a `FnOnce` callback.
 Database generation and source guards make repeated writes idempotent.
 
-Original history remains available. Current instructions, authoritative state and the current request remain pinned.
+Original history remains available. The fixed prompt text, the pinned memory, authoritative state and the current request are never summarized.
 Summaries and quoted prior conversation are untrusted data.
 
 Whole tool call/result groups remain atomic; opaque native continuations never replay against a changed prefix.
@@ -92,22 +92,21 @@ Each count binds to the request bytes, model, route settings, physical window an
 Count failure stops that request; it cannot become a zero count or an automatic paid retry.
 
 After publication, preparation inserts the summary as explicitly untrusted conversation data before the retained suffix and current request.
-Current installed instructions and authoritative state remain separate.
+The fixed prompt text, the pinned memory and authoritative state stay separate from it.
 
-A setup run loads its draft's checkpoint with `Up::ContextLoad` before its first model call.
-A fleet run keeps its compaction summary in its own state and stores none, so a new runtime run never inherits another run's conversation checkpoint.
+A fleet chat's run loads its thread's checkpoint with `Up::ContextLoad` before its first model call ([checkpoint ownership](#checkpoint-ownership-and-storage)).
+Any other run keeps its compaction summary in its own state and stores none, so it never inherits another run's conversation checkpoint.
 
 ## User-visible progress
 
 The engine offers `Read`, `Summarizing` and `Committed` observations in `af_context`'s compact module.
-Setup sends `context.progress` through its creator-private stream; fleet runs send `context_progress` through the authenticated activity stream.
+Fleet runs send `context_progress` through the authenticated activity stream.
 Each notice contains a generation and a closed state: `summarizing`, `resuming` or `interrupted`.
 
 React announces “Context summarizing…” and, after the checkpoint commits, “Context summarized, resuming…”.
 An unsuccessful operation can announce “Context summarization interrupted.”
 Runtime child summaries remain private; root summaries announce progress without publishing generated notes.
 
-Setup notices recheck the current creator, membership, run and message before publication and forwarding.
 The browser accepts notices only for a known running message, rejects older generations and clears visible hints on reconnect, cancellation or completion.
 
 Ordinary reply text replaces the interim status. Saved history remains authoritative.
@@ -128,30 +127,29 @@ Missing usage produces no fabricated zero; prompts, credentials, URLs and reques
 
 ## Checkpoint ownership and storage
 
-The `thread.compactions` table holds a conversation's working state, one row per thread, separate from semantic memory and immutable fleet revisions.
-A row belongs to its thread's owner: a private setup draft, or a fleet's chat.
+The `thread.compactions` table holds a conversation's working state, one row per thread, separate from semantic memory.
+A row belongs to its thread, and so to the fleet whose id the thread carries.
 
 A fleet chat's run loads its thread's row through the fenced `context_load` verb, opens on the summary in place of the turns it covers, and saves the next summary through `context_save` whenever its in-run compaction covers earlier turns whole.
 Any other run holds its compaction summary in the loop's own state. It stores no row, calls no route and holds no datastore credential for it.
 
 Checkpoint restoration checks model/inference identity, trusted pinned-state identity, source coverage, source digest and generation.
 
-A foreign key removes a draft's checkpoint with the draft, and so with its workspace or tenant.
+A foreign key removes a checkpoint with its thread, and so with its fleet, workspace or tenant.
 
-A setup run saves its checkpoint with `Up::ContextSave`.
-The save is a compare-and-swap on the row's `resource_version`, written only while the run holds the draft's thread at its fence (`afd_setup`'s `setup_run/context.rs`).
+The save is a compare-and-swap on the row's `resource_version`.
+It is written only while the run holds the fleet's thread at its fence (`afd_setup`'s `context` statements).
+
 A superseded run's save is refused with `RUN_STALE_FENCING_TOKEN` and writes nothing. A stale generation cannot replace current state either.
 An incurred charge survives a refused save.
 
-The assignment carries the draft's earlier turns in the run payload, each with its sequence.
 The run skips the turns a loaded checkpoint covers.
-guffbolt's window hook compacts the oldest turns when the window fills, and the run saves the hook's output.
-The daemon makes no model call for setup, compaction included.
+When the window fills, guffbolt's window hook compacts the oldest turns, and the run saves the hook's output.
+The daemon makes no model call for compaction.
 
 ## Tenant boundaries and sensitive buffers
 
-A setup run reads its draft's checkpoint only while it holds the draft's thread at its fence (`afd_fleet`'s `run/draft/context.rs`).
-The assignment checked the draft's creator and current workspace membership.
+A fleet run reads its thread's checkpoint only while it holds that thread at its fence.
 
 The checkpoint table uses the shared daemon database role; these application checks enforce tenant access.
 
@@ -170,15 +168,13 @@ Access isolation, buffer wiping and protection against a compromised daemon or h
 The shared engine is the `af_context` crate. Its window, planner, compaction, checkpoint, summary and trace modules sit beside adapters in the daemon's repository modules.
 The checkpoint table is `rustd/crates/daemon/afd_db/schema/20261108123655_thread_compactions.sql`, registered in `afd_db`'s migration list.
 
-Setup's draft rows, its funds bound, its progress and its checkpoint store live in `afd_setup`.
-A setup run's assignment, renewal and report run in `afd_fleet`'s `run/draft` module.
-The runner protocol lives in `af_wire` (run payloads, the setup report, the context load and save payloads, and runner route declarations) and the generated `public/openapi.json`.
+The checkpoint store lives in `afd_setup`'s `context` module.
+The runner protocol lives in `af_wire` (run payloads, the context load and save payloads, and runner route declarations) and the generated `public/openapi.json`.
 
 Runtime use lives in `afr_agent` (context and loop modules, provider request estimation) and `afd_gate`'s context policy.
-The runner's setup run lives in `afr_supervisor`'s `setup_run` module, which drives `afr_agent`'s setup loop.
 
-Status and traces reach the browser through tenant private-stream forwarding and shared activity payloads.
-The app's draft and fleet stream reducers, projections and accessible status components render them.
+Status and traces reach the browser through shared activity payloads.
+The app's fleet stream reducers, projections and accessible status components render them.
 Evidence lives in host unit and integration tests, the unchanged continuity acceptance, and the architecture pages this one links.
 
 ## Required proof
@@ -250,9 +246,9 @@ A new chat run currently carries up to eight finished question/answer turns. The
 That window does not replay every previous tool record or inherit another run's summary.
 
 ```text
-Current request: instructions + bounded prior chat + newest turn
+Current request: fixed text + pinned memory + bounded prior chat + newest turn
 Within run:   prepared history + assistant calls + matching tool results
-After compact:  instructions + validated summary + retained groups + new input
+After compact:  fixed text + pinned memory + validated summary + retained groups + new input
 DT resume:      compatible handoff + accepted input beyond checkpoint cursor
 ```
 
@@ -269,8 +265,8 @@ The send answers disposition `folded` with `folded_into_turn_id`, and the runnin
 The folded message's own turn receives the run's reply when the run reports succeeded.
 
 Dispositions are `started`, `folded` and `queued`.
-M236 proposes that the runner-assigned decision model classifies folded input and that native receipts prevent replay through a later queued turn.
-The next request would carry accepted questions, DT state, compatible history, current tools and accepted input beyond the checkpoint cursor.
+A folded message joins a task only when the fleet's model calls `task_input` on it ([how a task starts](durable_tasks.md#how-a-task-starts)).
+The next request would carry the task's statements, DT state, compatible history, current tools and accepted input beyond the checkpoint cursor.
 
 Removing a steer from the queue does not mark its meaning or effects checkpointed.
 Recovery replays accepted input and reconciles recorded effects before another action.

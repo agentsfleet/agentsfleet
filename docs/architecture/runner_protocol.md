@@ -19,8 +19,7 @@ The [certificate guide](../../playbooks/operations/runner_stream_tls/001_playboo
 ## Why it exists
 
 The daemon pushes work to available workers, so idle workers send no run requests.
-One authenticated connection carries both fleet runs and setup operations.
-The browser setup chat keeps its existing API and user authentication.
+One authenticated connection carries every fleet run.
 
 ## How it behaves
 
@@ -203,15 +202,16 @@ The ask after every answer is unconditional, so a message landing after the assi
 A run keeps its compaction summary in its own state. It mints every branch it writes, so a load could only answer nothing, and nothing outside the run reads a summary.
 The runner sends no context checkpoint and the daemon serves no context route.
 
-### Setup operations on the native session
+### Run payload and protocol version
 
-A setup turn is a run on the common run path: a `Down::Run` whose payload's owner names the draft.
-It renews and reports as a fleet run does, and its report carries the proposal the run kept.
+Every `Down::Run` carries one turn of a fleet's thread. Its `RunPayload` carries the fleet's `name` and its unfinished tasks. Its `NetworkPolicy` comes from the fleet's toggles and approved grants ([egress model](runner_fleet.md#egress-model-outbound-is-the-only-network-surface)).
 
-It reads and saves the draft's compacted context with `context_load` and `context_save` on the work stream, under its fence.
+A fleet chat run reads and saves its thread's compacted context on the work stream, under its fence. The messages are `context_load` and `context_save` (`afr_agent`'s `loop/context/saved.rs`).
 The runner makes every model call; the daemon makes none.
 
-The protocol is `agentsfleet.runner.v4` alone.
+A run's fenced verbs are HTTP routes under `/v1/runners/me/runs/{run_id}`, outside this stream. They include `POST …/access` for an access request, `POST`, `GET` and `DELETE …/triggers` for trigger rows, and `POST …/durable_tasks/bindings` for a task start or input. [API resources](api_resources.md) owns their shapes.
+
+The protocol has one version, `af_wire::protocol::VERSION`, and a wire change moves it.
 A runner that names any other version is refused at hello with `UZ-RUN-023`, so it owns no connection and is assigned no run.
 
 ### Session protocol
@@ -228,8 +228,8 @@ The control stream authenticates and confirms ownership; secondary streams bind 
 | Kind | Carries |
 |---|---|
 | `control` | Opening, credits, heartbeat, ping, renewals, cancellation and drain |
-| `work` | Runs (`Down::Run`), folded input, and a setup run's context load and save |
-| `reports` | Fleet and setup completion with matching acknowledgements |
+| `work` | Runs (`Down::Run`), folded input, and a chat run's context load and save |
+| `reports` | Run completion with matching acknowledgements |
 | `activity` | Fleet progress without application acknowledgements |
 
 Messages use a four-byte big-endian length followed by UTF-8 JSON.

@@ -1,6 +1,6 @@
 # How a run works, from "start a fleet" to a sandbox being nuked
 
-Read this when you want one run's whole path on one page. The path starts with a fleet installed and a pull request (PR) opened. It continues through the turn queued and its run, and ends with the report settled and the sandbox held or destroyed.
+Read this when you want one run's whole path on one page. The path starts with a fleet created from a first message and a pull request (PR) opened. It continues through the turn queued and its run, and ends with the report settled and the sandbox held or destroyed.
 
 The page walks the path and links each step to the page that owns it.
 
@@ -10,8 +10,7 @@ Where a step's facts live on one of those pages, this page links rather than res
 Crate names refer to crates under `rustd/crates/`.
 Expanded acronyms: Hash-based Message Authentication Code (HMAC), Server-Sent Events (SSE), Time To Live (TTL).
 
-This fleet-runtime example uses `github-pr-reviewer`, saved as "agent-bob-01" on `agentsfleet/linkwarden`.
-Private setup turns use [setup runs](runner_fleet.md#setup-runs), without runtime tools or a sandbox.
+This example is the `github-pr-reviewer` fleet, named "agent-bob-01", which watches `agentsfleet/linkwarden`.
 
 Section 1 covers the daemon, section 2 the runner, and section 3 the complete example.
 Sections 6 and 7 cover the sandbox and host.
@@ -21,22 +20,23 @@ Sections 6 and 7 cover the sandbox and host.
 ## 1. From "start a fleet" to a run
 
 ```text
- SAVE (once)             fleet.fleets row (name = "agent-bob-01", installing) Postgres
-                         fleet.revisions r1: description,
-                           instructions_md, config (selected)                 Postgres
-                         connector.integration_grants (fleet, "github") pending,
-                           then approved by a person                          Postgres
-                         the approval retries setup
-                         locked recheck, all checks ready ⇒ active            Postgres
-                         start none: no turn, no run row
+ FIRST MESSAGE           POST /v1/workspaces/{ws}/fleets {message, name: "agent-bob-01"}
+   (once)                fleet.fleets (active) + thread.threads + turn #1     Postgres
+                         its runs, each when the person's message asks:
+                           memory_store, category core ⇒ pinned guidance      Postgres
+                           request_access github {agentsfleet/linkwarden,
+                             write, base main} ⇒ grant pending + a card;
+                             a person approves once ⇒ approved                Postgres
+                           trigger_add app_event github {pull_request,
+                             agentsfleet/linkwarden} ⇒ fleet.triggers row     Postgres
 
  PR OPENED               POST /v1/ingress/github
    GitHub ──signed──►    1 verify HMAC vs vault "github-app".webhook_secret
                          2 installation.id ─► connector.installs ─► workspace
                          3 body ─► 12-field PullRequestDigest (not GitHub's payload)
-                         4 fleets in that workspace: active ∩ approved github grant
-                                                   ∩ setup repositories ∋ repo
-                                                   ∩ setup events ∋ pull_request
+                         4 fleet.triggers rows in that workspace, kind app_event,
+                           active fleet ∩ repositories ∋ repo
+                                        ∩ events ∋ pull_request
                          5 per matched fleet:
                              INSERT thread.turns status=queued (producer=webhook_app,
                                  key = "{fleet}:{sha256(body)}")           Postgres  ← the acceptance
@@ -50,30 +50,24 @@ Sections 6 and 7 cover the sandbox and host.
                          d raise thread fence, stamp turn run_fence; decode before commit
                          e same UPDATE opens the turn: status=received, opened_at
                          f publish turn_received bracket on af.thread.<id>.items
-                         g gates: payer → balance → budget → approval (nothing charged)
-                         h vault: static secrets + mintable "github"; build ExecutionPolicy
-                             (tools, network.allow, origin rules for api.github.com)
+                         g payer → balance (nothing charged)
+                         h fleet row + approved grants ⇒ ExecutionPolicy (the catalog,
+                             mintable "github", network.allow, origin rules for api.github.com)
                          i INSERT thread.runs        status=active, fencing_token, expires  ← THE RUN ROW
                          j push Down::Run{run:{run_id,fencing_token,run_expires_at,
                                                   event{digest},policy,
-                                                  instructions=instructions_md}}
+                                                  name="agent-bob-01"}}
 ```
 
-### Save writes the fleet and its setup, then activates once ready
+### A first message creates the fleet
 
-Save (`POST /v1/workspaces/{ws}/fleets`, C1 in [`api_resources.md`](./api_resources.md)) commits the `fleet.fleets` row as `installing`. The reviewed Definition becomes its first `fleet.revisions` row (`afd_setup`'s creation reserve). Nothing touches a queue or an approval before that commit.
+A person types the job on New fleet, or runs `agentsfleet fleet create`. `POST /v1/workspaces/{ws}/fleets` commits the fleet, its thread and its first turn in one transaction ([creation and recovery](data_flow.md#fleet-creation-and-recovery)).
 
-Setup then advances in bounded steps (`afd_setup`'s creation activate).
-A missing grant raises a pending approval card (`afd_approval`'s setup request).
-Approving it retries setup (`afd_api_tenant`'s approval resolve).
+That message saves nothing about the job. The fleet's own runs set it up by tool, each only when the person's newest message asks.
 
-[Setup recovery](data_flow.md#fleet-creation-and-setup-recovery) covers bounded retries.
-Once setup checks pass, a locked recheck activates the fleet.
-A requested initial turn commits in that same transaction.
+`memory_store` under `core` pins the standing guidance, which every later prompt carries. `request_access` raises the card a person approves once, and `trigger_add` writes the GitHub subscription ([triggers](connectors.md#fleet-triggers)).
 
-With start `none` (`afd_setup`'s creation types), Save writes no turn, run or thread assignment.
-
-The fleet's display name ("agent-bob-01") is `fleet.fleets.name`. The run reads it into `Installed.name` (`afd_fleet`'s run install); nothing in routing reads it.
+The fleet's display name ("agent-bob-01") is `fleet.fleets.name`. The run payload carries it into the prompt's fixed text; nothing in routing reads it.
 
 ### Ingress: how a PR on `agentsfleet/linkwarden` finds the fleet
 
@@ -83,16 +77,15 @@ A `ping` is answered only after verification.
 
 The route reads the body once with `github::Delivery::read`. It takes `installation.id` and `repository.full_name`, resolves the installation to a workspace with `SELECT_INSTALL_WORKSPACE` (`afd_ingress`), and classifies under `Policy::AppIngress`. It then asks `subscribers`.
 
-`subscribers` (`afd_ingress`) runs `SELECT_APP_SUBSCRIBERS`: every `fleet.fleets` row in that workspace with `status = active`, joined to `connector.integration_grants` where `service = 'github'` and `status = approved`. The document half is in Rust. `Binding::read_for_source` picks the webhook trigger whose `source` is `github`, then `serves_repository(repository)` and `admits(event)` decide.
+`subscribers` (`afd_ingress`) reads the `fleet.triggers` rows of kind `app_event` in that workspace whose fleet is `active`. The statement keeps its `workspace_id` predicate, and a delivery needs no grant on the fleet.
 
-`serves_repository` is fail-closed: a trigger with no `repositories` list subscribes to nothing, and the match is case-insensitive. `admits` is the opposite: no `events` list means every event. Every match gets the delivery.
+The repository match is fail-closed: a row with no `repositories` subscribes to nothing, and the match is case-insensitive. The event match is the opposite: no `events` means every event. Every match gets the delivery.
 
 The fleet slug `agent-bob-01` receives the request through linkwarden's installation, which maps to Indy's workspace.
-Each active fleet there with an approved `github` grant receives one turn when its reviewed setup includes the following webhook trigger.
+Each active fleet there whose row names the repository and the event receives one turn.
 
-The trigger uses `source: github`, `events: [pull_request]`, and `repositories: [agentsfleet/linkwarden]`.
-The test fixture's native setup says exactly that (`rustd/crates/protocol/af_fleet_runtime/tests/fixtures/fleets/github-pr-reviewer/definition.json`).
-Two fleets so configured both run (`docs/architecture/connectors.md`).
+This fleet's row has `source: github`, `events: [pull_request]` and `repositories: [agentsfleet/linkwarden]`.
+Two fleets with matching rows both run ([triggers](connectors.md#fleet-triggers)).
 
 The digest the fleet reasons over is twelve fields (`afd_api_wire`'s `PullRequestDigest`). The fields are action, repo, number, title, url, state, draft, author, head_ref, base_ref, head_sha, received_at.
 
@@ -112,10 +105,10 @@ The gateway assigns a queued turn and its fleet's thread.
 
 1. Read the oldest unsettled turn for each eligible fleet through `idx_turns_thread_id_sequence_unsettled`.
 2. Prefer held fleets and recent wake notifications, then try a bounded candidate set.
-3. Lock a candidate's `thread.threads` row and exact oldest turn with `SKIP LOCKED`. A locked or parked head blocks later rows.
+3. Lock a candidate's `thread.threads` row and exact oldest turn with `SKIP LOCKED`. A locked head blocks later rows.
 4. Raise the thread's fence and stamp it on the turn as `run_fence`. Decode the envelope before committing, so malformed stored data rolls back both fences.
 5. The same update opens the turn: it sets `opened_at` and moves `queued` to `received`.
-6. Read installed configuration, resolve billing and check approval gates. Parked work frees the thread and keeps its place in the queue.
+6. Read the fleet row and its approved grants, and resolve the payer and balance. An empty wallet, or a payer with no wallet row, refuses the turn `balance_exhausted`.
 7. Assemble credentials and policy, then insert the `thread.runs` row under the raised fence.
 
 An expired run leaves its turn unsettled. The next assignment of that turn marks the run expired in the same statement (`afd_fleet`'s `sql/shared/expire_prior_run.sql`); no daemon timer does it. Redelivery keeps its turn id, intake time and prior billing identity.
@@ -170,25 +163,26 @@ Process loss can discard results or usage the daemon has not accepted.
    ├────────────────────► verify HMAC (github-app.webhook_secret)
    │                      installation → workspace W
    │                      digest{action:"opened", repo:"agentsfleet/linkwarden", number, ...}
-   │                      fleets in W: active ∩ github grant approved
-   │                        ∩ setup repositories ∋ agentsfleet/linkwarden
+   │                      app_event rows in W: active fleet
+   │                        ∩ repositories ∋ agentsfleet/linkwarden
    │                        ∩ events ∋ pull_request          ⇒ agent-bob-01 (and any twin)
    │                      commit queued turn + best-effort wake
    │◄──── 202 ────────────┤
    │                      gateway sees available capacity on the native connection
-   │                      assign: thread fence+1, turn received, gates, vault, policy:
-   │                        tools: [http_request, memory_store, memory_recall]
+   │                      assign: thread fence+1, turn received, wallet, grants, policy:
+   │                        tools: the published catalog + the sub-agent tools
    │                        network.allow: [api.github.com]
    │                        mintable: github; binding: linkwarden, write, base main
    │                        origin api.github.com rules: GET/HEAD /repos/agentsfleet/linkwarden/*
    │                           POST /git/blobs|trees|commits, POST /git/refs{ref locked},
    │                           POST /pulls{head,base locked, draft:true}
    │                           PATCH own event ref{force:false, sha only}
-   │                      ├──── Down::Run{run:{instructions,event=digest}} ─────────────►
-   │                      │                                  admit: all three tools Supervisor
-   │                      │                                  ⇒ needs_sandbox = false ⇒ NO SANDBOX
+   │                      ├──── Down::Run{run:{name,event=digest}} ────────────────────►
+   │                      │                                  admit: the catalog holds sandbox tools
+   │                      │                                  ⇒ prepare a sandbox, check out linkwarden
    │                      │◄──── GET memory/{fleet} ─────────────────────────────────────┤
-   │                      │                                  prompt: instructions + repair context;
+   │                      │                                  prompt: fixed text + pinned memory
+   │                      │                                    + repair context;
    │                      │                                  user turn = the 12-field digest JSON
    │                      │                                  model turn 1 → http_request GET .../pulls/{n}
    │                      │◄──── POST credentials/mint {run_id, "github"} ─────────────┤
@@ -206,17 +200,17 @@ Process loss can discard results or usage the daemon has not accepted.
    │                      turn settled, turn_complete frame → dashboard thread
 ```
 
-**What the run carries for this fleet.** The setup's configuration names three tools, one credential and one network host.
+**What the run carries for this fleet.** The run holds every published tool, one approved credential and one network host.
 
-The fleet's write binding is on `agentsfleet/linkwarden` with base `main`. Its daily budget is `2000000000` nanos, two dollars (`rustd/crates/protocol/af_fleet_runtime/tests/fixtures/fleets/github-pr-reviewer/definition.json`).
+The approved GitHub scope gives the write binding on `agentsfleet/linkwarden` with base `main`. No budget applies: the payer's balance is the only ceiling.
 
-All three tools are `Runtime::Supervisor` (`afr_tools`' catalog), so `needs_sandbox` is false. The run therefore starts no sandbox at all ([`runner_execution.md`](./runner_execution.md) §"A run's sandbox today"). No repository is cloned either: only a run offered a sandbox tool gets its bound repositories checked out (`afr_supervisor`'s checkout).
+The catalog holds sandbox tools, so every run prepares a sandbox ([`runner_execution.md`](./runner_execution.md) §"A run's sandbox today"). A run offered a sandbox tool gets its bound repositories checked out (`afr_supervisor`'s checkout), so this sandbox holds `agentsfleet/linkwarden`.
 
-**The prompt.** The system prompt is `## Installed instructions` plus the run's `instructions` (`afr_agent`'s prompt).
+**The prompt.** The system prompt is the fixed text with the fleet's name, then its pinned memory (`afr_agent`'s prompt). [Capabilities](capabilities.md#1-what-the-model-is-told-and-what-the-run-holds) owns the text.
 
 Because the binding is write, a `## Trusted repair context` block follows, naming the repository, the locked repair branch and the base. The first user turn is the whole digest JSON, because the `PullRequestDigest` has no `message` field.
 
-The instructions' first step reads `repo` and `number` from exactly that digest (`instructions_md` in `definition.json`).
+The guidance the fleet pinned tells it to read `repo` and `number` from exactly that digest.
 
 **Step 2, the diff read.** `http_request` drafts `GET https://api.github.com/repos/agentsfleet/linkwarden/pulls/{n}` with `Authorization: Bearer ${secrets.github.token}` (`afr_tools`' `http_request`).
 
@@ -246,14 +240,14 @@ The runner matches these rules in `af_egress`'s origin module.
 The PATCH supports bounded corrections within the same event's branch and existing draft.
 GitHub rejects non-fast-forward updates when `force:false`; this is not an expected-old-head comparison.
 
-Fleet instructions require fresh ref/draft reads and the observed branch head as the correction commit's sole parent.
+Fresh ref and draft reads, with the observed branch head as the correction commit's sole parent, come from the fleet's pinned guidance.
 A later turn cannot select an earlier event's draft through these rules.
 
 Compatible runners must precede runs carrying the new `patch` method; older readers reject it.
 
 The reviews path remains denied by `allows_origin` in `af_egress`'s policy module.
 The tool returns `ToolErrorCode::RequestPolicyNotAllowed`, with `[request_policy_not_allowed]` visible to the model.
-The run loop can continue after a refusal; the CI fleet instructions require stopping.
+The run loop can continue after a refusal; a fleet's pinned guidance can ask it to stop.
 
 The error advises against trying another path, API or credential because one development run tried sixteen alternatives after a denied post.
 The same guidance accompanies `secret_not_found` (`af_egress`'s error module).
@@ -271,11 +265,11 @@ On GitHub: nothing. Memory: whatever `memory_store` wrote, pushed before the rep
 
 ## 4. How AGENT BOB 01 can reply
 
-**Instructions are prose and cannot widen anything.** The run marks `instructions` as soft reasoning input (`af_wire`'s run payload).
+**Pinned guidance is prose and cannot widen anything.** The prompt's fixed text and pinned memory are soft reasoning input.
 
 Hard tool and secret policy stays in `policy`. The daemon compiles the egress rules from the binding alone (`afd_gate`'s policy build and egress modules). The runner evaluates them as written (`af_egress`'s admission).
 
-So writing "post the review" in the instructions (which the fixture already does) changes the model's intent, not the egress policy check.
+So pinning "post the review" changes the model's intent, not the egress policy check.
 
 **A chat message uses the same intake path.** `POST /v1/workspaces/{ws}/fleets/{id}/messages` creates its own `chat` turn (`afd_turns`'s steer module).
 
@@ -287,7 +281,7 @@ A parked or task-bound message ahead of it is a barrier, so the new message queu
 
 The web app shows a folded message as "Added to the current run" and waits on the message's own turn. The CLI `steer` command waits on the message's own turn id the same way.
 
-The message runs with the same policy. The instructions tell the fleet to treat a message with no PR as chat. They also require saving operator facts with `memory_store` (`definition.json`).
+The message runs with the same policy. The fleet's pinned guidance decides whether a message with no PR is chat, and which operator facts it stores.
 
 A chat message cannot add an egress rule.
 
@@ -303,7 +297,7 @@ The write rules admit a fix on the repair branch and one draft PR, and no commen
 
 **The other reply path, also not for GitHub.** The report owes a `thread.deliveries` delivery only when the turn recorded a reply destination. That is `afd_fleet`'s run commit and `rustd/crates/daemon/afd_db/schema/20261108125100_thread_turns.sql`.
 
-A failed run that wrote no answer owes that destination one fixed notice. So does a turn refused at a gate, and one ended after its runs kept lapsing (`afd_fleet`'s run `unanswered` module). A clean run that wrote nothing still owes nothing.
+A failed run that wrote no answer owes that destination one fixed notice. So does a turn refused before it runs, and one ended after its runs kept lapsing (`afd_fleet`'s run `unanswered` module). A clean run that wrote nothing still owes nothing.
 
 The App webhook admits with `Reply::None` (`afd_ingress`'s deliver). Only Slack posters exist (`afd_outbound`'s posters), so there is no daemon-side "answer back to the PR" either.
 
@@ -324,7 +318,7 @@ Unblocking the review is a one-rule change in `afd_gate`'s egress write rules: a
    assign fence+1 (sticky: last_runner_id sorts first, random tie-break)
    new run row, new run_id, new fencing_token
    load: fleet memory window (≤256 KiB, core pinned) ⇒ what memory_store saved last run
-   NOT carried: the previous answer, and for this fleet no sandbox and no clone
+   NOT carried: the previous answer; a sandbox only while its hold lasts
 ```
 
 **Same fleet, new turn, new run.** The body digest is the dedupe key (`afd_ingress`'s App routing). A `synchronize` body differs and creates a new turn.
@@ -343,11 +337,11 @@ A runner with a held sandbox checks that fleet first. Other runners skip the fle
 
 A recall reads as many entries past the window as it asks for (`af_wire`'s memory module; [Runner Fleet](./runner_fleet.md) §"Memory continuity"). Memory belongs to the fleet, not the PR.
 
-The second review knows the first only if its instructions have it read the existing reviews or recall what it stored.
+The second review knows the first only if its pinned guidance has it read the existing reviews or recall what it stored.
 
 A chat run also carries every finished turn of the thread, with each turn's tool calls. A webhook run like this one carries none (`afd_fleet`'s run answer).
 
-A fleet with a sandbox tool continues in its held sandbox when the hold is still live and its key matches. This fleet has no sandbox, so it never holds one.
+Every run prepares a sandbox, so the fleet continues in its held sandbox when the hold is still live and its key matches.
 
 **What does not carry over.** The resume context is written to `thread.threads.resume_context` and loaded with the fleet.
 
@@ -375,7 +369,7 @@ The toolbox image, its page cache and what bounds a host's memory and disk: [run
 - Activity: 64 KiB batches, 4 held (`afr_supervisor`'s activity). Memory: a 256 KiB memory window (`af_wire`'s memory module).
 
 - Timers in `afd_runner`'s `timing`: a grant lasts 38 seconds, and each heartbeat round renews it.
-  A run renews at any age; its fleet's budget, its tenant's balance or a person's Stop ends it.
+  A run renews at any age; its tenant's balance or a person's Stop ends it.
   Heartbeats run every 10 seconds, a runner counts as offline after 114 seconds, and a sandbox hold lasts 10 minutes.
 
 - Assignment and intake: `[runners] assign_batch_size` candidate turns per assignment pass ([configuration reference](./config_reference.md)); no per-fleet turn cap.

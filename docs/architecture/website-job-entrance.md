@@ -1,7 +1,9 @@
 # Website job entrance
 
 Read this when changing the public composer, sample conversation, signup boundary, or shared brand assets.
-The website illustrates the [chat setup experience](high_level.md#fleet-setup-and-runtime); the illustration does not author, install, or run a fleet.
+The website illustrates a fleet's chat; the illustration does not create or run a fleet.
+
+Its sample story shows a setup review and a Save, which the product lacks. In the product, a person's first message creates the fleet ([what a fleet is](user_flow.md#81-what-a-fleet-is)).
 
 ## Marketing homepage
 
@@ -78,7 +80,7 @@ Selecting evidence reveals sample excerpts within that viewport; closing restore
 The example labels sample output and unapplied changes. The incident, regression, and agent examples use real Linkwarden repository sources pinned to an immutable revision; run excerpts stay illustrative.
 The current runtime's access rules, run behavior, and delivery limits come from the [runtime comparison](../reviews/workspace-setup/runtime-baseline.md).
 
-The animation makes no claim that it performs automatic repair, GitHub posting or private draft API calls.
+The animation makes no claim that it performs automatic repair, GitHub posting or fleet API calls.
 
 ## Signup and installer boundaries
 
@@ -86,9 +88,9 @@ The homepage and the examples page use the same waitlist destination. `VITE_WAIT
 
 The request stays in React memory; reload clears it.
 Private input is not placed in URL parameters, analytics, session storage, or local storage.
-No website-to-account draft handoff is implemented.
+No website-to-account handoff of the request is implemented.
 
-The earlier setup preview, inactive draft export, and unused Pretext dependency have been removed.
+The website carries no request export and no Pretext dependency.
 
 The installer preview uses `curl -fsSL https://agentsfleet.dev | bash`.
 The endpoint serves a script, but its public package stays unpublished, as Indy confirmed.

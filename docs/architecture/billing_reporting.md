@@ -16,7 +16,9 @@ work's transaction                                Usage page
       trg_usage_lines_debit_wallets wallet (last)
 ```
 
-A run, a setup renewal and a decision call log their lines in their own transaction (`afd_billing::ledger::log_lines`, or the fleet's own report and renewal statements). The insert charges each new line in the same statement (Indy, Nov 22, 2026: "apply at write"): three statement-level triggers on `billing.usage_lines` add it to the rollup, count its run and debit its payer's wallet. Funds checks read the wallet alone (`afd_billing/src/sql/select_wallet.sql`).
+A fleet run and a decision call log their lines in their own transaction (`afd_billing::ledger::log_lines`, or the fleet's own report and renewal statements). The insert charges each new line in the same statement (Indy, Nov 22, 2026: "apply at write"). Three statement-level triggers on `billing.usage_lines` add it to the rollup, count its run and debit its payer's wallet.
+
+Funds checks read the wallet alone (`afd_billing/src/sql/select_wallet.sql`).
 
 The account comes from the authenticated person; no request chooses another tenant. Every query binds that tenant. Reporting reads cannot mint credits, write a line or change a wallet.
 
@@ -33,7 +35,9 @@ Each trigger reads only the lines its statement inserted. A line the unique key 
 
 Postgres fires a statement's triggers in name order: the day rows, then the run count, then the wallet. Day and run rows are written in key order and wallets lock in tenant order, so two writes take their row locks in the same order.
 
-A run counts once, on the UTC day of its first runtime slice: the new line that carries run time with the smallest number, when no line of its kind numbered lower is already logged. Only a runtime slice carries run time (`af_wire::usage::UsageLine`). A fleet run and a setup run number their runtime slices by start and write them in that order, so no smaller slice arrives later.
+A run counts once, on the UTC day of its first runtime slice. That slice is the new runtime line with the smallest number, when no lower runtime line is already logged.
+
+Only a runtime slice carries run time (`af_wire::usage::UsageLine`). A fleet run numbers its runtime slices by start and writes them in that order, so no smaller slice arrives later.
 
 The ledger stays the source of truth: the rollup is derived and can be rebuilt from `billing.usage_lines`. Like the ledger, the rollup has no foreign keys. Its `tenant_id` and `fleet_id` are opaque, so a line for an erased payer still lands.
 
@@ -41,7 +45,7 @@ The ledger stays the source of truth: the rollup is derived and can be rebuilt f
 
 - Month to date, Today and Last 7 days use UTC. The report covers every whole UTC day from the period's first day through the cutoff's day.
 - A line belongs to the UTC day it was created, and the trigger functions run in UTC to file it there.
-- All fleets includes runtime and setup; Setup chat selects setup runs (`work_type = 'setup_run'`). A specific fleet selects its runtime usage. Filter choices come from the whole unfiltered period.
+- All fleets includes every fleet's usage, and a specific fleet selects its own. Filter choices come from the whole unfiltered period.
 - The report has no model filter. A request that sends `model` is refused, because ignoring it would answer with a wider report.
 - Amounts stay integer nanodollar strings over the API and use the existing exact-small-amount formatter. A combined stored charge is never recomputed from today's rates.
 - A customer's own provider key means that provider charges the model usage; the page distinguishes it from credits charged here. Missing provider usage does not mean free usage.
@@ -52,7 +56,7 @@ The required `daily` array includes every UTC calendar date from `from_at` throu
 
 `activity_count` is the number of runs. It appears on the period totals and on each fleet group; model and daily groups carry none, because one run spans several models and days.
 
-Each `spending.by_fleet` item includes sorted, distinct, nonempty recorded model identifiers in `models`, including deleted fleets and setup charges.
+Each `spending.by_fleet` item includes sorted, distinct, nonempty recorded model identifiers in `models`, deleted fleets included.
 
 The chart keeps nanodollars as integers until formatting or bounded display scaling. Accessible labels name each day and charge; an unavailable report never displays authoritative zero usage.
 
@@ -93,7 +97,7 @@ Integration tests prove each of these through the real insert (`afd_billing/test
 ## Dashboard presentation
 
 The Period control lists named months and sends their existing inclusive reporting cutoffs.
-All Fleets includes Setup and saved fleets; individual fleet choices follow it.
+All Fleets includes every fleet; individual fleet choices follow it.
 Control changes clear obsolete URL state and retain the supported report filters.
 
 The daily chart uses CSS bars inside the shared dashboard panel.

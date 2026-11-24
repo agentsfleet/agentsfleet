@@ -22,41 +22,40 @@ Every name below follows the pattern most of `rustd/crates/daemon/afd_db/schema/
 | Unique | `uq_<table>_<columns>` | `uq_turns_thread_id_sequence` |
 | Index | `idx_<table>_<columns>` | `idx_turns_thread_id_created_at_id` |
 | Partial index | `idx_<table>_<columns>_<state>` | `idx_turns_thread_id_sequence_unsettled` |
-| Check | `ck_<table>_<rule>` | `ck_threads_one_owner` |
+| Check | `ck_<table>_<rule>` | `ck_checkpoints_one_owner` |
 | Trigger | `trg_<table>_<what>` | `trg_history_refuse_update` |
 
 Every foreign-key column gets its own `idx_<table>_<column>`, unless it leads another index or unique key. Postgres indexes neither side of a foreign key on its own, and every `ON DELETE CASCADE` scans the child.
 
 ## Schemas
 
-The `thread` schema holds `threads`, `turns`, `runs`, `items` and `deliveries`. The `setup` schema replaces `authoring` and holds a draft's own rows. `runner.history` stays in the `runner` schema, because it records runners, not conversations.
+The `thread` schema holds `threads`, `turns`, `runs`, `items` and `deliveries`. `runner.history` stays in the `runner` schema, because it records runners, not conversations.
 
 ## thread.threads
 
-One row per fleet and one per draft, written in the statement that creates its owner. It starts at fencing token 0 with a lapsed run deadline. It replaces `runner.slots` and `fleet.sessions`.
+One row per fleet, written in the transaction that creates the fleet. It starts at fencing token 0 with a lapsed run deadline. It replaces `runner.slots` and `fleet.sessions`.
 
 | Column | Type | Null | Came from | Why |
 |--------|------|------|-----------|-----|
-| `id` | `UUID` PK | no | slot id | equals the fleet's or draft's id, so no lookup maps one to the other |
-| `fleet_id` | `UUID` | yes | `runner.slots.fleet_id` | FK `fleet.fleets(id)` ON DELETE CASCADE: a thread dies with its fleet |
-| `draft_id` | `UUID` | yes | `runner.slots.draft_id` | FK `setup.drafts(id)` ON DELETE CASCADE: a thread dies with its draft |
+| `id` | `UUID` PK | no | slot id | equals the fleet's id, so no lookup maps one to the other |
+| `fleet_id` | `UUID` | no | `runner.slots.fleet_id` | FK `fleet.fleets(id)` ON DELETE CASCADE: a thread dies with its fleet |
 | `fencing_token` | `BIGINT` | no | `runner.slots.fencing_token` | raised once per assignment |
 | `last_runner_id` | `UUID` | yes | `runner.slots.last_runner_id` | FK `runner.runners(id)` ON DELETE SET NULL: the sticky runner a warm sandbox waits on; a deleted runner leaves the thread free |
 | `run_expires_at` | `TIMESTAMPTZ(3)` | yes | `runner.slots.lease_expires_at` | the live run's expiry |
 | `hold_expires_at` | `TIMESTAMPTZ(3)` | yes | `runner.slots.hold_expires_at` | how long the runner keeps the warm sandbox |
 | `resume_context` | `JSONB` | yes | `fleet.sessions.context_json` | the conversation state a fleet's next run resumes from |
 
-Checks: exactly one of `fleet_id` and `draft_id` is set, and `id` equals it. Which one is set is the thread's kind.
+Checks: `fleet_id` is `NOT NULL`, and a check holds `id = fleet_id`. A thread has one kind, a fleet's.
 
-Indexes: `fleet_id` and `draft_id` partial, `last_runner_id` for the foreign key, and `last_runner_id` where a hold is set, which the capacity count and the dropped-hold clear read per runner (`afd_runner`'s `capacity/sql/census.sql` and `holds/clear_dropped_holds.sql`). The report sets `resume_context` in the same update that releases the run.
+Indexes: `fleet_id`, `last_runner_id` for the foreign key, and `last_runner_id` where a hold is set. The capacity count and the dropped-hold clear read that last one per runner (`afd_runner`'s `capacity/sql/census.sql` and `holds/clear_dropped_holds.sql`). The report sets `resume_context` in the same update that releases the run.
 
-Saving a draft creates a new fleet, so the fleet gets its own thread. The draft's thread stays with the draft until the draft is deleted.
+`POST W/fleets` writes the fleet, its thread and its first turn in one transaction, so a fleet always has its thread ([fleet creation and recovery](data_flow.md#fleet-creation-and-recovery)). The thread's id is the fleet's id, and the thread lives until the fleet is purged.
 
-The thread row is where two assignments of one owner meet. Both kinds claim it with one conditional upsert (`afd_fleet`'s `run/sql/shared/assign_thread.sql`): it bumps the fence only when no live run holds the thread, so one pass gets its row back. A draft's assignment locks neither the draft nor its creator. It reads them as hints, then claims the thread and the head turn, each in one statement ([Concurrency](concurrency.md#the-setup-chat-claim-never-waits-on-a-draft)).
+The thread row is where two assignments of one fleet meet. Each claims it with one conditional upsert (`afd_fleet`'s `run/sql/shared/assign_thread.sql`). The upsert bumps the fence only when no live run holds the thread, so one pass gets its row back.
 
 ## thread.turns
 
-One row per input on a thread. It replaces `fleet.admissions` and `fleet.events`, which split one fleet input across two rows, and `setup.messages`, a setup draft's chat inputs (`rustd/crates/daemon/afd_db/schema/20261108125100_thread_turns.sql`).
+One row per input on a thread. It replaces `fleet.admissions` and `fleet.events`, which split one fleet input across two rows (`rustd/crates/daemon/afd_db/schema/20261108125100_thread_turns.sql`).
 
 A fleet's intake writes the turn `queued`. The assignment that first runs it stamps its fence and opens it in one update. The report settles and closes it in one update, since one statement may change a row once.
 
@@ -64,32 +63,28 @@ A history-only receipt, such as an activity or a model change, is written opened
 
 | Column | Type | Null | Came from | Why |
 |--------|------|------|-----------|-----|
-| `id` | `UUID` PK | no | `admissions.id` = `events.event_id`; `messages.id` | the turn id, which every table and the wire name `turn_id` |
-| `sequence` | `BIGINT` identity by default | no | `admissions.sequence`; `messages.sequence` | unique with `thread_id`. A fleet's turns draw it in intake order, a history-only receipt included; a setup draft numbers its own from 1, because its watermarks name turns by it |
-| `thread_id` | `UUID` | no | `fleet_id`; `messages.draft_id` | FK `thread.threads(id)` ON DELETE CASCADE |
-| `workspace_id` | `UUID` | no | `workspace_id`; the draft's | FK `identity.workspaces(id)` ON DELETE CASCADE |
-| `kind` | `TEXT` | no | `event_type`; `chat` for a setup turn | `chat`, `webhook`, `cron`, `continuation`, `activity`, and the rest of the event type vocabulary |
-| `actor` | `TEXT` | no | `actor`; the sender's OIDC subject for a setup turn | who sent it |
-| `status` | `TEXT` | no | `events.status`, and `queued` before the event opens; `messages.status` | see the status map below |
-| `producer`, `producer_key`, `payload_digest` | `TEXT` | yes, all or none | `admissions` | retry dedup, unique `(producer, producer_key)`; a resend with another body is refused. NULL on a history-only receipt and on a setup turn, so `producer IS NOT NULL` is an admitted fleet input |
-| `request_json` | `JSONB` | no | `admissions.request_json`, `events.request_json`; `messages.user_text` as `{"message": …}` | the input itself; readers that decode a string select `request_json::text` |
+| `id` | `UUID` PK | no | `admissions.id` = `events.event_id` | the turn id, which every table and the wire name `turn_id` |
+| `sequence` | `BIGINT` identity by default | no | `admissions.sequence` | unique with `thread_id`. A fleet's turns draw it in intake order, a history-only receipt included |
+| `thread_id` | `UUID` | no | `fleet_id` | FK `thread.threads(id)` ON DELETE CASCADE |
+| `workspace_id` | `UUID` | no | `workspace_id` | FK `identity.workspaces(id)` ON DELETE CASCADE |
+| `kind` | `TEXT` | no | `event_type` | `chat`, `webhook`, `cron`, `continuation`, `activity`, and the rest of the event type vocabulary |
+| `actor` | `TEXT` | no | `actor` | who sent it |
+| `status` | `TEXT` | no | `events.status`, and `queued` before the event opens | see the status map below |
+| `producer`, `producer_key`, `payload_digest` | `TEXT` | yes, all or none | `admissions` | retry dedup, unique `(producer, producer_key)`; a resend with another body is refused. NULL on a history-only receipt, so `producer IS NOT NULL` is an admitted fleet input |
+| `request_json` | `JSONB` | no | `admissions.request_json`, `events.request_json` | the input itself; readers that decode a string select `request_json::text` |
 | `reply_provider`, `reply_address` | `TEXT` | yes | `admissions.reply_*` | where a connector answer goes; both or neither |
-| `answer_text` | `TEXT` | yes | `events.response_text`, `messages.answer_text` | the answer |
+| `answer_text` | `TEXT` | yes | `events.response_text` | the answer |
 | `tool_calls` | `JSONB` | yes | `events.tool_calls` | the compact trace summary the thread page reads; full detail is in `thread.items` |
 | `token_count`, `wall_ms` | `BIGINT` | yes | `events` | usage shown on the turn; NULL until a run reports |
-| `failure_reason`, `failure_detail` | `TEXT` | yes | `events`, `messages.failure_reason` | why a turn failed |
+| `failure_reason`, `failure_detail` | `TEXT` | yes | `events` | why a turn failed |
 | `resumes_turn_id` | `UUID` | yes | `events.resumes_event_id` | FK `thread.turns(id)` ON DELETE SET NULL: a continuation names the turn it resumes |
 | `run_fence`, `input_run_id`, `input_fence` | `BIGINT`, `UUID`, `BIGINT` | yes | `admissions` | the fence of the assignment that took the turn as its head, and of the run whose conversation folded it in. No foreign key: a fence outlives its run |
 | `opened_at` | `TIMESTAMPTZ(3)` | yes | new | when the fleet's event opened; history reads and the activity counter read only opened turns |
-| `parked_at`, `interpreted_at`, `settled_at` | `TIMESTAMPTZ(3)` | yes | `admissions`; `messages.finished_at` | waiting on an approval; read by a task; finished. A setup turn settles when it finishes |
+| `parked_at`, `interpreted_at`, `settled_at` | `TIMESTAMPTZ(3)` | yes | `admissions` | waiting on an approval; read by a task; finished |
 | `plan`, `plan_digest` | `JSONB`, `TEXT` | yes, both or neither | the durable task interpretation table (M253) | the accepted durable task plan read from this turn, written once: `trg_turns_refuse_plan_change` refuses a second write. Its message and sender stay this turn's `request_json`, `actor` and `producer`, so the plan lives as long as the turn, which is until the fleet is purged |
 | `durable_task_id`, `durable_task_item_id`, `durable_task_generation` | `UUID`, `UUID`, `BIGINT` | yes | `admissions` | composite FKs `(durable_task_id, thread_id, workspace_id)` to `fleet.durable_tasks` and `(durable_task_item_id, thread_id, workspace_id)` to `fleet.durable_task_items`, ON DELETE SET NULL on the id column, as today |
 | `durable_task_activity`, `durable_task_activity_sequence`, `durable_task_activity_truncated` | `JSONB`, `BIGINT`, `BOOLEAN` | no | `events` | bounded task progress, at most 128 entries |
-| `operation_id` | `UUID` | yes | `messages.operation_id` | a setup turn's request operation. Not a `producer_key`: it is a minted `UUID` the wire returns, and it is not unique, because the retry window lives in `thread.replay_receipts` and the same key queues a new turn once it passes |
-| `tenant_model_id` | `UUID` | yes | `messages` | FK `model.tenant_models(id)` ON DELETE SET NULL: the model a setup turn chose; NULL is the platform default |
-| `proposed_revision_id` | `UUID` | yes | `messages` | FK `fleet.revisions(id)` ON DELETE SET NULL: the proposal a setup turn wrote (`setup.candidates` until M253_004) |
 | `head_checkpoint_id`, `next_checkpoint_generation` | `UUID`, `BIGINT` | yes | `runner.turn_recovery` | the turn's private recovery head and the generation its next checkpoint takes; `fk_turns_head_checkpoint` → `runner.checkpoints(id, turn_id)` ON DELETE SET NULL, deferred (folded in M253_004) |
-| `save_requested`, `save_error_code` | `BOOLEAN`, `TEXT` | no, yes | `messages` | a setup turn that saves the head, and why a checked save was refused |
 
 Indexes:
 - **Unique:** `(thread_id, sequence)` and `(producer, producer_key)`.
@@ -98,12 +93,11 @@ Indexes:
 - **Assignment:** `(thread_id, sequence) WHERE settled_at IS NULL`.
 - **One conversation's next turns:** `(thread_id, reply_provider, reply_address, sequence) WHERE settled_at IS NULL`.
 - **Tasks:** `(durable_task_id, durable_task_generation, settled_at, sequence)`.
-- **Setup drafts with a turn waiting or running:** `(status, thread_id) WHERE producer IS NULL AND settled_at IS NULL`.
-- **Foreign keys:** `durable_task_item_id`, `resumes_turn_id`, `tenant_model_id` and `candidate_id`.
+- **Foreign keys:** `durable_task_item_id` and `resumes_turn_id`.
 
 Two triggers, `trg_turns_count_inserted_opened` and `trg_turns_count_opened`, bump `fleet.activity_counters.event_count` once per turn, when its event opens.
 
-A fleet's thread is written with the fleet, and a draft's with the draft, so a turn always has one. A setup turn is never opened, so the history reads and the activity counter skip it.
+A fleet's thread is written with the fleet, so a turn always has one.
 
 The fleet queue reads that scan across threads require `producer IS NOT NULL`. A turn's `created_at` is its intake instant, so a webhook's turn sorts at intake rather than at its first assignment.
 
@@ -113,7 +107,7 @@ Still to come, from the design: one `run_id` replacing `run_fence` and the `inpu
 
 ### Status map
 
-A fleet turn stores the event words today, plus `queued`; a setup turn stores the setup words. The target column is the rename.
+A turn stores the event words, plus `queued`. The target column is the rename.
 
 | Stored today | Meaning | Target |
 |--------------|---------|--------|
@@ -124,29 +118,28 @@ A fleet turn stores the event words today, plus `queued`; a setup turn stores th
 | `processed` | answered | `answered` |
 | `fleet_error` | failed | `failed` |
 | `cancelled` | a person stopped it; settled with no answer | `cancelled` |
-| `queued`, `running`, `completed`, `failed`, `cancelled` on a setup turn | a setup draft's turn | `queued`, `running`, `answered`, `failed`, `cancelled` |
 
 ## thread.runs
 
-One row per try at a turn. It replaces `runner.leases` and `setup.attempts`.
+One row per try at a turn. It replaces `runner.leases`.
 
 | Column | Type | Null | Came from | Why |
 |--------|------|------|-----------|-----|
 | `id` | `UUID` PK | no | `leases.id` | the run id |
-| `thread_id` | `UUID` | no | `leases.fleet_id` / `draft_id` | FK `thread.threads(id)` ON DELETE CASCADE |
+| `fleet_id` | `UUID` | no | `leases.fleet_id` | the fleet the run serves, so its thread; no FK, because a settled run outlives the fleet's purge |
 | `turn_id` | `UUID` | no | `leases.event_id` | FK `thread.turns(id)` ON DELETE CASCADE: the turn the run was assigned for |
 | `runner_id` | `UUID` | yes | `leases.runner_id` | FK `runner.runners(id)` ON DELETE SET NULL: a retired runner's settled runs stay as history |
 | `workspace_id`, `tenant_id` | `UUID` | no | `leases` | FKs to `identity.workspaces` and `identity.tenants` ON DELETE CASCADE |
-| `fencing_token` | `BIGINT` | no | `leases.fencing_token` | unique with `thread_id`: one run per fence |
+| `fencing_token` | `BIGINT` | no | `leases.fencing_token` | the fence of the assignment that issued the run; `(fleet_id, status, fencing_token DESC)` is indexed |
 | `status` | `TEXT` | no | `leases.status` | `active`, `reported`, `expired`, `stopped` |
 | `posture`, `provider`, `model` | `TEXT` | no | `leases` | what the run is allowed and which model it uses |
 | `run_expires_at` | `TIMESTAMPTZ(3)` | no | `lease_expires_at` | renewal deadline |
 | `last_metered_at` | `TIMESTAMPTZ(3)` | no | `leases` | metering cursor |
 | `cancel_requested_at` | `TIMESTAMPTZ(3)` | yes | `leases` | the durable Stop mark |
-| `decision_snapshot`, `setup_revision_id` | `JSONB`, `UUID` | yes | `leases` | decision budget and the fleet revision run |
+| `decision_snapshot` | `JSONB` | yes | `leases` | decision budget |
 | `durable_task_id`, `durable_task_generation`, `durable_task_stop_generation`, `durable_task_started_at`, `durable_task_runtime_accounted_at`, `durable_task_execution_deadline_at` | as today | yes | `leases` | task slice accounting |
 
-The owner is the thread's `kind`, so runs carry no `fleet_id` or `draft_id`. `leases.event_created_at` is dropped, because the turn holds its own `created_at`.
+A run names its fleet in `fleet_id`, which is `NOT NULL`. A thread's id is its fleet's, so the run needs no second owner column. `leases.event_created_at` is dropped, because the turn holds its own `created_at`.
 
 The cycle `turns.run_id` → `runs` and `runs.turn_id` → `turns` closes with one `ALTER TABLE thread.turns ADD CONSTRAINT … FOREIGN KEY (run_id)` in the runs file.
 
@@ -203,10 +196,10 @@ Every column that holds a turn id is named `turn_id` (or `source_turn_id`), and 
 | `runner.checkpoints` (was `runner.turn_checkpoints`; its pins, pages and refs hang off it) | `event_id` | `turn_id`; `runner.checkpoints.turn_id` → `thread.turns(id)` ON DELETE CASCADE (M253_004) |
 | `thread.replay_receipts` (was `runner.turn_checkpoint_operations`) | `event_id` | none: the scope `<workspace>:turn:<turn>:checkpoint` names the turn and no foreign key holds it, like every retry key (M253_004); retention deletes a terminal turn's receipts before clearing its head |
 | `thread.items` | `event_id` → `fleet.events` | `turn_id` → `thread.turns(id)` ON DELETE CASCADE (done; the file moved to `20261108125110` to follow `thread.turns`) |
-| `fleet.approval_gates` | `event_id` | `turn_id` (done), null for an install grant card. The FK to `thread.turns(id)` ON DELETE CASCADE waits for M253_003: the gate fixtures still bind a minted id with no turn behind it |
+| `fleet.approval_gates` | `event_id` | `turn_id` (done). A card for a fleet's access request carries its asking turn, as a run's question does. The FK to `thread.turns(id)` ON DELETE CASCADE waits for M253_003: the gate fixtures still bind a minted id with no turn behind it |
 | `thread.deliveries` | `event_id` | `turn_id` (done). No FK yet: a Slack notice owes a delivery that names its own row id (`afd_ingress/src/slack/notice.rs`), so it has no turn |
 | `thread.runs` | `event_id`, `event_created_at` | `turn_id`, `turn_created_at` (done). No FK yet: a settled run outlives its owner, so the FK arrives with the `thread_id` change |
-| `billing.usage_lines` | `event_id`, the setup attempt's id | `turn_id`, `run_id` (done; `run_id` names a setup run, a fleet line names its run in `work_id`). No FK: a line outlives what it names. `work_type` is `fleet_run` or `setup_run` |
+| `billing.usage_lines` | `event_id` | `turn_id`, `run_id` (done; a fleet line names its run in `work_id`). No FK: a line outlives what it names. `work_type` is `fleet_run` |
 | `runner.decision_calls` | `source_turn_id` | `source_turn_id` (done). No FK: the call outlives its run and turn |
 | `fleet.durable_task_items` | `admission_id` | `turn_id` (done). No FK: an item receipt outlives its source turn. The interpretation it pointed beside is now the turn's own `plan` and `plan_digest` (M253) |
 
@@ -217,7 +210,7 @@ Only the daemon uses NATS. The runner reaches the daemon on its connection.
 | Subject | Replaces | Who subscribes |
 |---------|----------|----------------|
 | `af.thread.{thread_id}.wake` | `af.wake.{shard}` (16 shards) | every daemon replica, once, with the wildcard `af.thread.*.wake`; the wake queue is keyed by thread |
-| `af.thread.{thread_id}.items` | `af.fleet.{fleet_id}.tail`, `af.draft.{draft_id}.events` | each open stream, for its one thread |
+| `af.thread.{thread_id}.items` | `af.fleet.{fleet_id}.tail` | each open stream, for its one thread |
 | `af.runner.{runner_id}.cmd` | unchanged | the gateway holding that runner's connection |
 | `af.delivery.wake` | `af.outbound.wake` | the delivery worker |
 | `af.bus.gap` | the private `GAP_ALL` constant | every listener; a gap triggers the Postgres re-read |

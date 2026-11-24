@@ -177,7 +177,7 @@ Use a synthetic Git repository with a pinned base commit, a small build, an exis
 | 1 | Bind a repository and ask for the change. | Record the exact base commit and current repository permission; create one private writable checkout. | Repository hash, clean initial diff and denied foreign repository access. |
 | 2 | Start work and perform setup. | Report progress for checkout, environment setup and the first useful command separately. | Stage timings and a command result; a live machine alone is insufficient. |
 | 3 | Send a follow-up while a command is running. | Acknowledge the queued steer event; finish the current run before running that event. Show queued versus consumed status. | A controlled command barrier proves the follow-up does not start a second active run and runs after the first. Mid-run steering is a separate proposed behavior. |
-| 4 | Grow both setup and runtime context through repeated compaction. | Continue with the goal, latest instructions and complete tool groups; retain original source history. | Forced host tests plus the unchanged full continuity scenario. Turn count alone does not prove a compaction occurred. |
+| 4 | Grow the fleet's conversation context through repeated compaction. | Continue with the goal, latest instructions and complete tool groups; retain original source history. | Forced host tests plus the unchanged full continuity scenario. Turn count alone does not prove a compaction occurred. |
 | 5 | Edit tracked files, create an untracked file and leave a local commit unpushed. | Report which checkpoint durably protects each item and its recovery boundary. | Hashes, Git status and the committed workspace manifest; no assumption that Git commit captures all files. |
 | 6 | Suspend, then replace the worker after a completed durable save. | Restore the declared files and base commit under a new current run. Reject stale writers. Report processes as restored or stopped according to the chosen mechanism. | Restore on a different worker; compare hashes and reject an old run's mutation. |
 | 7 | Drop a command attachment after its side effect, then reconnect. | Reattach to the existing command or report uncertain outcome. Never automatically start the side effect again. | Append a unique marker once; interrupt transport after acknowledgement and count markers after reconnect. |
@@ -185,7 +185,7 @@ Use a synthetic Git repository with a pinned base commit, a small build, an exis
 
 Steps 5–7 describe required future workspace/backend behavior, not capabilities proved by the current compaction work. A supervisor restart additionally requires application conversation recovery; restoring a guest cannot restore an agent loop running outside it.
 
-[Existing steer semantics](runner_fleet.md#steer-kill-pause) queue a human message for the next run. The supplied Claude reference observes consumption during the current agent task. Adopting a sandbox backend does not change that product behavior. 
+[Existing steer semantics](runner_fleet.md#steer-archive-delete) queue a human message for the next run. The supplied Claude reference observes consumption during the current agent task. Adopting a sandbox backend does not change that product behavior. 
 
 Test the existing ordering first; changing it requires a decision about partial tool effects, ordering, interruption and model-request cancellation.
 
@@ -788,7 +788,7 @@ If serial diagnosis cannot meet that bound, revisit fleet concurrency explicitly
 ### Several monitoring bots and their triggers
 
 Several monitoring fleets are a supported arrangement; one global monitoring fleet is not required.
-Each separately saved monitoring bot is a fleet with its own setup, triggers, permissions, budget and queue.
+Each monitoring bot is a fleet with its own pinned memory, triggers, grants and queue; the payer's balance bounds them all.
 Independent fleets run concurrently when worker capacity and permission checks allow.
 
 | Monitoring arrangement | Work admitted and run |
@@ -805,7 +805,7 @@ The existing incident design describes scheduled Grafana reads.
 Each due schedule wakes its own fleet, even when another monitoring fleet is already running.
 Reading Grafana with a credential does not itself create an incoming alert subscription.
 
-For an alert-driven setup, define which approved alert route targets which monitoring fleet before promising selective wakeups.
+For alert-driven monitoring, define which alert route targets which monitoring fleet before promising selective wakeups.
 The generic webhook route (`afd_api_ingress`) names one fleet and source; it does not infer alert kinds from arbitrary payloads.
 Grafana alert validation, routing and incident grouping need their own design and delivery proof.
 
@@ -875,7 +875,7 @@ File checkpoints and full guest snapshots carry different compatibility costs; r
 |---|---|---|
 | Shared preparation | `af_context` (planner and ports, with the preparation-work and planner tests) | Reduce cumulative estimates, retain a final complete provider estimate and exact output safety, and reject stale source. A blocked summary must not block another conversation. |
 | Runtime history | `afr_agent` (loop, conversation and context modules); proposed history-index module | One owned encoded-history index and borrowed views; invalidate the affected tail when pending input changes. Preserve complete tool groups and native continuation rules. |
-| Setup preparation | `afd_setup` (model context, dispatch and funding, with the existing funding/source-change integration tests) | Reuse prepared input only with an exact source/authority witness after funding. Funding and model access stay outside datastore locks. |
+| Compaction store | `afd_setup`'s `context` module (the thread's saved compaction), read by `afd_fleet`'s run context | Reuse prepared input only with an exact source witness. Funding and model access stay outside datastore locks. |
 | Repository preparation proposal | `afr_supervisor` (run-loop checkout and workspace clone, with the related checkout and concurrency tests) | Separate trusted repository acquisition from local or remote materialization. Preserve credential isolation; publish an immutable source before shortening mirror lock duration. |
 | Native backend experiment | Existing `afr_sandbox` engine/boot and `afr_executor` boundaries; proposed guest engine informed by SPACE | Map readiness, process identity, bounded streams, cancellation, network policy, quota and cleanup. Unsupported semantics must refuse explicitly. |
 | Recovery proposal | Existing `afr_supervisor` held-sandbox and run paths, plus a manifest/storage owner to be selected with the storage mechanism | Bind durable workspace generation to current fleet authority. Test host loss, source changes, deletion and revoked credentials. No new scheduler. |
@@ -945,5 +945,5 @@ The historical pre-optimization compaction regression failed while the independe
 
 Full acceptance remains incomplete, so this evaluation makes no readiness or concurrent-throughput claim.
 
-The [proposed original-Pull-Request continuation](run_flow.md#original-pull-request-repair-proposed-follow-on) records the requested existing-PR flow and future recovery proofs.
+The [proposed original-Pull-Request continuation](run_flow.md#original-pull-request-repair) records the requested existing-PR flow and future recovery proofs.
 M224 starts with the manually triggered fleet-owned draft demonstration; the broader runtime behavior remains unimplemented.
