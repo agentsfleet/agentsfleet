@@ -234,7 +234,7 @@ next assignment  `-> the expired run is marked expired in the same statement
 
 The 38-second run TTL starts at the last grant or renewal. It governs reclaim.
 
-No daemon timer re-offers an expired run. The assignment that takes the turn expires the dead run's row in its own statement (`afd_fleet`'s `sql/shared/expire_prior_run.sql`). The turn moves when a bus wake, a connection's freed capacity or a replacement's connection starts an assignment pass. [Run and liveness timing](../../rustd/crates/daemon/afd_runner/src/timing/mod.rs) · [Runner status](runner_fleet.md#failure-recovery-model)
+No daemon timer re-offers an expired run: the assignment that takes the turn expires the dead run's row in its own statement (`afd_fleet`'s `sql/shared/expire_prior_run.sql`). The turn moves when a bus wake, a connection's freed capacity or a replacement's connection starts an assignment pass. [Run and liveness timing](../../rustd/crates/daemon/afd_runner/src/timing/mod.rs) · [Runner status](runner_fleet.md#failure-recovery-model)
 
 The run TTL includes one 10-second round, a 5-second answer window, a 7-second reconnect and a 15-second renewal margin, plus one second. A deployment's heartbeat, which is the round, is refused at boot when its run TTL cannot carry it (`afd_runner`'s `timing/run.rs`).
 
