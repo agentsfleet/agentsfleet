@@ -2,7 +2,6 @@ import { test } from "./fixtures/chat-probe";
 import { expect, type Locator, type Page } from "@playwright/test";
 import { DURABLE_TASK_IDS, detail, summary } from "@/tests/helpers/task-reads";
 import { DRAFT } from "@/tests/helpers/draft-fixtures";
-import { historyEntry } from "./acceptance/fixtures/private-chat";
 
 test("the chat row uses the design-system stream motion token", async ({page, chatProbe}) => {
   await page.emulateMedia({reducedMotion: "no-preference"});
@@ -232,7 +231,7 @@ test("the pull request starter remains editable and readable before any setup re
   const input = page.getByRole("textbox", {name: "What would you like your fleet to do?"});
   await expect(input).toHaveValue("");
   const unfinished = page.getByRole("region", {name: "Unfinished setups", exact: true});
-  const resume = historyEntry(unfinished, DRAFT.id);
+  const resume = unfinished.locator(`a[href$="?draft=${DRAFT.id}"]`);
   await expect(resume).toHaveAccessibleName(DRAFT.title);
   const remove = unfinished.getByRole("button", {name: `Delete chat: ${DRAFT.title}`});
   const composerBefore = await page.getByRole("form", {name: "Setup chat composer"}).boundingBox();

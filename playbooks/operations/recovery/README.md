@@ -38,10 +38,54 @@ Core NATS comes back as an empty transport and reconnects to the restored daemon
 
 ## Restore into a separate installation
 
-1. Select a separate Compose project, new volume and recovery-only identity and ingress endpoints. Keep the original installation running independently. Load the backup's master key in the isolated daemon configuration and leave the runner stopped.
+Run this drill on a dedicated recovery host or virtual machine. The Compose daemon binds host ports `3000` and `4443` there. Prepare a separate Compose project with an empty volume and recovery-only identity and ingress endpoints.
 
-   Check the archive checksum and use the same Postgres major version.
-2. Start only Postgres. Create the shared roles from the [release's roles migration](../../../rustd/crates/daemon/afd_db/schema/20261108120100_roles_and_privileges.sql) using the names below. Open the same `psql` command as in [control-plane setup](../../SELF_HOST.md#3-migrate-and-start-the-control-plane).
+1. Stage the recovery images.
+
+   ```bash
+   af_compose pull postgres nats-a nats-b nats-c migrate daemon
+   ```
+
+   Compose reports the Postgres, NATS, and daemon images available locally.
+2. Create the network and a stopped Postgres container.
+
+   ```bash
+   af_compose create --pull never postgres
+   ```
+
+   Compose reports the Postgres container as created and creates the `${AF_INSTALLATION}_default` network.
+3. Verify access to a test endpoint before blocking egress. Set `AF_EGRESS_CHECK_URL` to an operator-controlled HTTP endpoint at a literal IP address outside the recovery network that returns HTTP 200.
+
+   ```bash
+   curl --noproxy '*' --max-time 5 --fail --silent --show-error \
+     --output /dev/null --write-out '%{http_code}\n' "$AF_EGRESS_CHECK_URL"
+   ```
+
+   ```text
+   200
+   ```
+
+   Run the second probe on the recovery Compose network.
+
+   ```bash
+   docker run --rm --pull never --network "${AF_INSTALLATION}_default" --entrypoint wget \
+     docker.io/library/postgres:19-alpine -Y off -T 5 -O /dev/null "$AF_EGRESS_CHECK_URL"
+   ```
+
+   Expect a successful connection and exit zero.
+4. Isolate the recovery host and its containers before copying the archive or starting services. Block traffic to all external networks, including the original installation. Keep local loopback and the Compose network available.
+
+   Repeat both probes and confirm that each fails to connect or times out. Record the results and keep the restriction for the entire drill.
+
+   The restored daemon can dispatch pending connector deliveries as soon as it starts. A backup and its original master key can restore grants that send to live destinations. Use the backup's master key in the isolated daemon configuration and leave the runner stopped.
+5. Start Postgres after checking the archive checksum and matching the backup's Postgres major version.
+
+   ```bash
+   af_compose up -d --wait --pull never postgres
+   ```
+
+   Expect the recovery Postgres container to be healthy.
+6. Create the shared roles from the [release's roles migration](../../../rustd/crates/daemon/afd_db/schema/20261108120100_roles_and_privileges.sql) using the names below. Open the same `psql` command as in [control-plane setup](../../SELF_HOST.md#3-migrate-and-start-the-control-plane).
 
    ```sql
    CREATE ROLE db_migrator NOLOGIN;
@@ -52,7 +96,8 @@ Core NATS comes back as an empty transport and reconnects to the restored daemon
    GRANT memory_runtime TO api_runtime WITH INHERIT FALSE, SET TRUE;
    ```
 
-3. Create the API login and its timeout settings from control-plane setup. Enter the password for the isolated environment. Restore only into the empty database.
+7. Create the API login and its timeout settings from control-plane setup. Enter the password for the isolated environment.
+8. Restore into the empty database.
 
    ```bash
    af_compose exec -T postgres pg_restore --exit-on-error --single-transaction \
@@ -60,15 +105,49 @@ Core NATS comes back as an empty transport and reconnects to the restored daemon
    ```
 
    Expect a zero exit from the restore.
-4. Run `af_compose run --rm migrate`. Expect a zero exit and leave the runner stopped.
-5. Verify migration history, a known workspace and saved fleet, and the daemon's readiness. For a live verification, use recovery-only provider credentials, webhook routes and a separately registered runner. Confirm inference can decode a stored secret without printing it.
+9. Verify the restored schema with the release migrator.
 
-   Record the checksum, restore time, revision and identifiers. Resume [priming](../../PRIME.md) at the first missing check.
+   ```bash
+   af_compose run --rm --pull never migrate
+   ```
+
+   Expect exit zero. Verify migration history, a known workspace and a saved fleet in the restored database.
+10. Start the bus and daemon with the network restriction still in place.
+
+    ```bash
+    af_compose up -d --pull never nats-a nats-b nats-c daemon
+    ```
+
+    Expect the daemon and all three NATS services to be running.
+11. Probe the recovery daemon on the recovery Compose network.
+
+    ```bash
+    af_compose exec -T postgres sh -c '
+      for attempt in $(seq 10); do
+        if wget -Y off -T 5 -O - http://daemon:3000/readyz; then
+          exit 0
+        fi
+        sleep 1
+      done
+      exit 1
+    '
+    ```
+
+    Expect HTTP 200 within ten attempts. Record the checksum, restore time, revision and identifiers. Record restored-secret decryption as unverified during this drill.
+12. Stop the drill services before releasing the network restriction.
+
+    ```bash
+    af_compose stop
+    ```
+
+    Expect Compose to report the daemon, bus, and database containers stopped.
+
+Use a fresh fixture installation with its own provider credentials, webhook routes and separately registered runner for live sign-in and inference checks. Use [priming](../../PRIME.md) for that installation.
 
 ## Upgrade or roll back
 
 1. Record current versions and digests, take a verified backup, and drain the runner before maintenance. Use [runner onboarding](../runner_onboarding/001_playbook.md) for runner replacement.
-2. In an isolated installation, restore the backup and migrate with the candidate daemon image. Verify readiness, dashboard and CLI sign-in, the saved fixture, and its first setup and runtime replies with the matching candidate runner and signed toolbox.
+2. Restore the backup on the isolated recovery host and migrate with the candidate daemon image. Verify readiness and the saved fleet there. Verify dashboard and CLI sign-in and the first setup and runtime replies on a fresh fixture installation with the matching candidate runner and signed toolbox.
 3. After approval for the target installation, deploy the candidate image, dashboard, CLI and runner together. Record migration and verification evidence before admitting new work.
 4. For a startup problem after migration, compare schema history with the prior binary and use the [failed migration guide](../failed_migration/001_playbook.md). For an incompatible schema, recover from the last matching backup into an isolated target before switching ingress. Record any writes that would be lost since that backup before approving a cutover.
 
