@@ -21,7 +21,7 @@ import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import { FleetPendingChat } from "./components/FleetPendingChat";
 import type { FleetDetail } from "@/lib/types";
 import { setupRequirements } from "@/lib/setup-requirements";
-import { SetupSummary } from "@/components/domain/setup/summary/SetupSummary";
+import { ScheduledSetupSummary } from "./components/ScheduledSetupSummary";
 
 export const dynamic = "force-dynamic";
 
@@ -101,7 +101,7 @@ async function loadChatView(
       senderLabel={fleet.name}
       setupRevision={fleet.setup_revision}
       setup={<FleetRecovery key={`${workspaceId}:${fleet.id}:${fleet.etag}`} workspace={workspaceId} fleet={fleet} showSaved />}
-      setupSummary={scheduled ? <SetupSummary requirements={setupRequirements(fleet.definition) ?? undefined} schedules={fleet.schedules}
+      setupSummary={scheduled ? <ScheduledSetupSummary requirements={setupRequirements(fleet.definition) ?? undefined} schedules={fleet.schedules}
         ready editHref={fleetSetupPath(workspaceId, fleet.id, fleet.setup_revision)} /> : undefined}
       modelLabel={modelLabel}
       initial={turns}
