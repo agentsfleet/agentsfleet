@@ -1,7 +1,7 @@
 import { expect } from "@playwright/test";
 import { test } from "./fixtures/chat-probe";
 import { WORKSPACE } from "@/tests/helpers/draft-fixtures";
-import { UUID_V7 } from "@/tests/fleet-thread/steer-copy";
+import { COMPOSER_NAME, NOTICES_LABEL, RESEND_LABEL, SEND_LABEL, SEND_UNCONFIRMED_TEXT, UUID_V7 } from "@/tests/fleet-thread/steer-copy";
 
 // The open chat is the fixture's own fleet; `agentbob` is another fleet in its workspace.
 const BOB = "0199a801-1000-7000-8000-0000000000b0";
@@ -36,6 +36,41 @@ test("chat_sends_an_addressed_message_and_opens_the_named_fleet", async ({page, 
   // Nothing waits behind it: the send settled, so no unsent notice remains.
   await expect(page.getByRole("list", {name: "Unsent messages"})).toHaveCount(0);
   expect(errors).toEqual([]);
+});
+
+test("an interrupted send offers inline retry and reuses the original operation", async ({page, chatProbe}, info) => {
+  const posts: unknown[] = [];
+  await page.route(`**/live/v1/workspaces/${WORKSPACE}/fleets/*/messages`, route => {
+    posts.push(route.request().postDataJSON());
+    if (posts.length === 1) return route.abort("failed");
+    return route.fulfill({status: 202, json: {status: "accepted", turn_id: "0199a801-1000-7000-8000-0000000000e0", replayed: true}});
+  });
+  await page.goto(`${chatProbe}?address=1`);
+  const message = "Check the release checklist when you’re ready.";
+  const input = page.getByRole("textbox", {name: COMPOSER_NAME});
+  await input.fill(message);
+  await page.getByRole("button", {name: SEND_LABEL, exact: true}).click();
+  const notices = page.getByRole("list", {name: NOTICES_LABEL});
+  const alert = notices.getByRole("alert");
+  await expect(alert.getByText(SEND_UNCONFIRMED_TEXT, {exact: true})).toBeVisible();
+  await expect(alert).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(input).toHaveValue(message);
+  const retry = alert.getByRole("button", {name: RESEND_LABEL, exact: true});
+  await expect(retry).toHaveAccessibleDescription(message);
+  const returned = alert.getByText(message, {exact: true});
+  await expect(returned).toHaveCSS("width", "1px");
+  await input.fill("A different draft");
+  await expect(returned).toHaveClass(/truncate/);
+  await expect(retry).toHaveAccessibleDescription(message);
+  await input.fill(message);
+  await page.screenshot({path: info.outputPath("send-interrupted.png"), animations: "disabled", scale: "css"});
+  await retry.press("Enter");
+  await expect.poll(() => posts.length).toBe(2);
+  expect(posts[0]).toEqual({message, operation_id: expect.stringMatching(UUID_V7)});
+  expect(posts[1]).toEqual(posts[0]);
+  await expect(notices).toHaveCount(0);
+  await expect(input).toHaveValue("");
+  await expect(input).toBeFocused();
 });
 
 test("the workspace picker inserts only active fleets and keeps the unsent words", async ({page, chatProbe}, info) => {

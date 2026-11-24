@@ -6,8 +6,8 @@ import { ClockClockwiseIcon, WarningCircleIcon } from "@phosphor-icons/react/ssr
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Alert, Button } from "@agentsfleet/design-system";
 
 /** Setup and saved-fleet failures use the same quiet, actionable message. */
-export function ChatFailure({title, description, note, details, onRetry, disabled}: {
-  title: string; description: string; note?: string; details?: ReactNode;
+export function ChatFailure({title, description, details, onRetry, disabled}: {
+  title: string; description: string; details?: ReactNode;
   onRetry?: () => void | Promise<void>; disabled?: boolean;
 }) {
   const titleId = useId();
@@ -32,7 +32,6 @@ export function ChatFailure({title, description, note, details, onRetry, disable
         <ClockClockwiseIcon size={16} aria-hidden="true" />{retrying ? "Trying again…" : "Try again"}
       </Button> : null}
     </div>
-    {note ? <p className="mt-sm text-eyebrow leading-eyebrow text-muted-foreground">{note}</p> : null}
       {details ? <Accordion type="single" collapsible className="min-w-0">
         <AccordionItem value="details" className="border-0">
           <AccordionTrigger className="w-fit flex-none justify-start gap-sm py-0 text-eyebrow leading-conversation font-normal text-muted-foreground pointer-coarse:min-h-11 [&>svg]:order-first [&>svg]:ml-0 [&>svg]:size-3 [&>svg]:-rotate-90 [&[data-state=open]>svg]:rotate-0">View details</AccordionTrigger>

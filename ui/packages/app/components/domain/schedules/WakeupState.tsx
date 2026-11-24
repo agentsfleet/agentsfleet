@@ -10,13 +10,13 @@ import {scheduleStateText} from "@/lib/api/schedule-status";
 const MAX_TIMER_MS = 2_147_483_647;
 
 export function WakeupState({schedule, onRefresh}: {schedule: Schedule; onRefresh: () => void}) {
-  if (schedule.status === "deleting" || schedule.status === "paused") return <p className="text-eyebrow text-muted-foreground">{schedule.sync === SCHEDULE_SYNC.synced ? scheduleStateText(schedule) : `${schedule.status === "deleting" ? "Removal" : "Pause"} ${schedule.sync === SCHEDULE_SYNC.failed ? "failed." : "pending."}`}</p>;
-  if (schedule.sync !== SCHEDULE_SYNC.synced) return <p className="text-eyebrow leading-eyebrow text-warning">
+  if (schedule.status === "deleting" || schedule.status === "paused") return <span className="text-eyebrow text-muted-foreground">{schedule.sync === SCHEDULE_SYNC.synced ? scheduleStateText(schedule) : `${schedule.status === "deleting" ? "Removal" : "Pause"} ${schedule.sync === SCHEDULE_SYNC.failed ? "failed." : "pending."}`}</span>;
+  if (schedule.sync !== SCHEDULE_SYNC.synced) return <span className="text-eyebrow leading-eyebrow text-warning">
     {schedule.sync === SCHEDULE_SYNC.failed ? "Registration failed." : "Scheduler registration pending."}
-  </p>;
-  if (schedule.status !== "active") return <p className="text-eyebrow text-muted-foreground">{scheduleStateText(schedule)}</p>;
+  </span>;
+  if (schedule.status !== "active") return <span className="text-eyebrow text-muted-foreground">{scheduleStateText(schedule)}</span>;
   if (schedule.run_state !== SCHEDULE_RUN_STATE.scheduled || !schedule.next_run_at)
-    return <p className="text-eyebrow text-muted-foreground">Next wake-up unavailable.</p>;
+    return <span className="text-eyebrow text-muted-foreground">Next wake-up unavailable.</span>;
   return <NextWakeup instant={schedule.next_run_at} onRefresh={onRefresh} />;
 }
 

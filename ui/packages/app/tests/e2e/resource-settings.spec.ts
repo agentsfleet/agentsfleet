@@ -84,6 +84,16 @@ test("resource cards match the approved viewport and retain readable phone conte
       return box.left >= 0 && box.right <= innerWidth && node.scrollWidth <= node.clientWidth + 1;
     }))).toBe(true);
     await page.screenshot({path: info.outputPath(`matched-team-${theme}.png`), scale: "css", animations: "disabled"});
+    await page.getByRole("button", {name: "Invite member"}).click();
+    const invite = page.getByRole("dialog", {name: "Invite a teammate"});
+    const email = invite.getByRole("textbox", {name: "Email address"});
+    await expect(email).toBeFocused();
+    const scope = invite.getByText(/They’ll join as a Member/).locator("..");
+    const [fieldBox, scopeBox] = await Promise.all([email.boundingBox(), scope.boundingBox()]);
+    expect(fieldBox?.x).toBe(scopeBox?.x);
+    await expect(email).toHaveCSS("box-shadow", /inset/);
+    await page.screenshot({path: info.outputPath(`invite-alignment-${theme}.png`), scale: "css", animations: "disabled"});
+    await invite.getByRole("button", {name: "Cancel", exact: true}).click();
     await page.getByRole("region", {name: "Pending invitations", exact: true}).scrollIntoViewIfNeeded();
     const heading = page.getByRole("heading", {name: "Pending invitations 1", exact: true});
     expect(await heading.evaluate(element => {
@@ -137,6 +147,7 @@ test("remaining resource pages and empty setup retain the approved frame", async
         await actions.click();
         const management = page.getByRole("dialog", {name: "Manage secret", exact: true});
         await expect(management.getByText("“Release service”", {exact: true})).toBeVisible();
+        await expect(management.getByText("••••••••", {exact: true})).toBeVisible();
         await expect(management.getByRole("button", {name: "Replace value"})).toBeVisible();
         await expect(management.getByRole("button", {name: "Delete secret"})).toBeVisible();
         await management.getByRole("button", {name: "Done", exact: true}).click();

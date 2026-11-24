@@ -3,9 +3,7 @@
 import type { Page } from "@playwright/test";
 import type { TurnRow, TurnsPage } from "@/lib/api/turns";
 import { expect, test } from "@playwright/test";
-import { RUN_DETAILS_LABEL } from "@/components/domain/activity/replies/FleetReplyFigures";
 import { FRAME_KIND } from "@/lib/api/turns-types";
-import { formatCompactCount } from "@/lib/turns/run-figures-format";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import { workspaceHref } from "./fixtures/nav";
@@ -98,13 +96,9 @@ test("native fleet streaming deduplicates completion and backfills after disconn
     await expect(chat.getByText(STREAMING_MARKER, { exact: true })).toBeVisible();
     const firstLiveLineUiObservationMs = performance.now() - firstLiveLineStarted;
     await expect(chat.getByText(LIVE_MARKER, { exact: true })).toHaveCount(1);
-    // The completion's figures ride its frame into the reply's Run details.
     const liveReply = chat.locator('[data-role="assistant"]').filter({ hasText: LIVE_MARKER });
-    await liveReply.getByRole("button", { name: RUN_DETAILS_LABEL, exact: true }).click();
-    const details = page.getByRole("dialog", { name: RUN_DETAILS_LABEL });
-    await expect(details.getByText(formatCompactCount(LIVE_TOKENS), { exact: true })).toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(details).toBeHidden();
+    await expect(liveReply.getByRole("button", {name: "Copy reply"})).toBeVisible();
+    await expect(liveReply.getByRole("button", {name: "Run details"})).toHaveCount(0);
     // Only the final opening frame carries a pending approval, so the label
     // proves every malformed frame before it was consumed.
     await expect(page.getByText(NEEDS_APPROVAL, { exact: true })).toBeVisible();

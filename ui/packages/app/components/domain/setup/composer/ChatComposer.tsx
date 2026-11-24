@@ -1,11 +1,11 @@
 "use client";
 
-import { ComposerPrimitive } from "@assistant-ui/react";
-import { useRef } from "react";
-import { ArrowUpIcon, NotePencilIcon, SquareIcon } from "@phosphor-icons/react/ssr";
-import { Button, cn } from "@agentsfleet/design-system";
 import type { DraftClient } from "@/lib/api/drafts";
 import type { DraftView } from "@/lib/api/draft-state";
+import { ComposerPrimitive } from "@assistant-ui/react";
+import { useRef } from "react";
+import { ArrowUpIcon, NotePencilIcon } from "@phosphor-icons/react/ssr";
+import { Button, cn } from "@agentsfleet/design-system";
 import { DRAFT_STATE } from "@/lib/api/draft-types";
 import { savedDraft } from "@/lib/api/draft-continuation";
 import { CHAT_PLACEHOLDER } from "../chat-defaults";
@@ -13,6 +13,7 @@ import { WorkspaceFleetAddressInput } from "../../conversation/composer/FleetAdd
 import { SetupContextControls } from "./SetupContextControls";
 import { ChatToolbar } from "./ChatToolbar";
 import { ChatComposerFrame, ChatComposerHint } from "../../shared/chat/ChatComposerFrame";
+import { ChatStopButton } from "@/components/domain/shared/chat/ChatStopButton";
 import { SetupSaveFlap } from "../saving/SetupSaveFlap";
 import { SetupWakeups } from "./SetupWakeups";
 
@@ -30,7 +31,7 @@ export function ChatComposer({ client, view, workspace, canStop, onOpenFleet, on
     <ChatComposerFrame stackActions={empty} label="Setup chat composer" inputRef={input} disabled={disabled} focusKey={view.focusRevision}
       input={<WorkspaceFleetAddressInput workspace={workspace} inSetup inputRef={input} placeholder={placeholder} disabled={disabled} />}
       toolbar={<>{empty && <SetupContextControls input={input} disabled={disabled} />}<ChatToolbar client={client} view={view} inputRef={input} /></>}
-      actions={canStop ? <Button variant="secondary" size="icon" className="size-9 [&_svg]:size-4.5" aria-label="Stop setup" disabled={stopDisabled} onClick={() => { void client.stop().catch(errorAlreadyVisible); }}><SquareIcon className="size-4.5" /></Button>
+      actions={canStop ? <ChatStopButton label="Stop setup" disabled={stopDisabled} onClick={() => { void client.stop().catch(errorAlreadyVisible); }} />
         : <ComposerPrimitive.Send asChild><Button size={empty ? "default" : "icon"} className={cn("disabled:border-transparent disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100", empty ? "max-[42.5rem]:min-h-11 max-[42.5rem]:px-md [&_svg]:size-4" : "size-9 rounded-full max-[42.5rem]:size-9 max-[42.5rem]:min-h-9 [&_svg]:size-4.5")} aria-label={empty ? "New fleet from message" : "Send message"} onClick={() => input.current?.focus({preventScroll: true})} {...(disabled ? {disabled: true} : {})}>{empty ? <><NotePencilIcon size={16} />New fleet</> : <ArrowUpIcon className="size-4.5" />}</Button></ComposerPrimitive.Send>} />
     <ChatComposerHint hint={empty ? "Start with a goal. You can edit the setup before saving." : undefined}>{empty ? null : view.preview?.setupRevision || view.draft?.linked_fleet_id
       ? "Keep chatting to change the setup." : "Save when the setup is ready."}</ChatComposerHint>

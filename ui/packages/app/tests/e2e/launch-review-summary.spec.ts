@@ -71,6 +71,82 @@ test("Summary geometry and colors match ux.html on desktop and mobile in both th
   await reference.close();
 });
 
+test("repository Sources keeps each label on one line and opens with the keyboard", async ({page, chatProbe, isMobile}, info) => {
+  const reference = await page.context().newPage();
+  await Promise.all([
+    page.goto(`${chatProbe}?visual=1&state=completed`),
+    reference.goto(new URL("../../../../../docs/ux.html#conversation", import.meta.url).href),
+  ]);
+  const sources = page.getByRole("region", {name: "Sources", exact: true});
+  const design = reference.locator(".summary-section").filter({has: reference.getByText("Sources", {exact: true})});
+  const row = sources.locator("summary");
+  const designRow = design.locator("summary");
+  const repository = "agentsfleet/platform-images";
+  for (const disclosure of [row, designRow]) {
+    await expect(disclosure.locator("strong")).toHaveText(repository);
+    await expect(disclosure.locator("small")).toHaveText("Policy: Edit existing PRs");
+  }
+
+  for (const theme of ["dark", "light"]) {
+    for (const surface of [page, reference]) await surface.evaluate(async palette => {
+      document.documentElement.dataset.theme = palette;
+      await document.fonts.ready;
+    }, theme);
+    const expected = await sourceDisclosureGeometry(designRow);
+    expect(expected.gaps).toEqual([8, 8]);
+    expect(expected.text).toEqual({lineHeights: [20, 16], offset: [0, 0], policyFits: true});
+    await expect.poll(() => sourceDisclosureGeometry(row)).toEqual(expected);
+    if (!isMobile) expect((await row.boundingBox())?.height).toBe((await designRow.boundingBox())?.height);
+    await sources.screenshot({path: info.outputPath(`app-sources-${theme}.png`), scale: "css", animations: "disabled"});
+    await design.screenshot({path: info.outputPath(`reference-sources-${theme}.png`), scale: "css", animations: "disabled"});
+  }
+
+  if (!isMobile) {
+    await page.setViewportSize({width: 768, height: 900});
+    const compact = await sourceDisclosureGeometry(row);
+    expect(compact.text).toEqual({lineHeights: [20, 16], offset: [0, 0], policyFits: true});
+    await expect(row.locator("strong")).toHaveCSS("text-overflow", "ellipsis");
+    expect(await row.locator("strong").evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
+    await sources.screenshot({path: info.outputPath("app-sources-narrow.png"), scale: "css", animations: "disabled"});
+  }
+
+  const link = sources.getByRole("link", {name: repository, exact: true});
+  await expect(link).toBeHidden();
+  await row.press("Enter");
+  await expect(link).toBeVisible();
+  await expect(link).toHaveAttribute("href", `https://github.com/${repository}`);
+  await row.press("Space");
+  await expect(link).toBeHidden();
+  await reference.close();
+});
+
+function sourceDisclosureGeometry(row: Locator) {
+  return row.evaluate(node => {
+    const [icon, copy, caret] = Array.from(node.children, child => child.getBoundingClientRect());
+    const title = node.querySelector("strong");
+    const policy = node.querySelector("small");
+    if (!icon || !copy || !caret || !title || !policy) throw new Error("The Sources disclosure is missing its icon, labels, or caret");
+    const titleBox = title.getBoundingClientRect();
+    const policyBox = policy.getBoundingClientRect();
+    const rowStyle = getComputedStyle(node);
+    return {
+      gaps: [copy.left - icon.right, caret.left - copy.right],
+      icons: [icon.width, caret.width],
+      padding: [rowStyle.paddingTop, rowStyle.paddingBottom],
+      radius: rowStyle.borderTopLeftRadius,
+      text: {
+        lineHeights: [titleBox.height, policyBox.height],
+        offset: [policyBox.left - titleBox.left, policyBox.top - titleBox.bottom],
+        policyFits: policy.scrollWidth <= policy.clientWidth,
+      },
+      typography: [title, policy].map(element => {
+        const style = getComputedStyle(element);
+        return [style.fontSize, style.lineHeight, style.fontWeight, style.color];
+      }),
+    };
+  });
+}
+
 function geometry(element: Locator) {
   return element.evaluate(node => {
     const css = getComputedStyle(node);

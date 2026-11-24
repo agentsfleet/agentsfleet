@@ -158,10 +158,7 @@ describe("FleetThread — role rendering: row kinds and badges", () => {
     renderThread();
     expect(screen.getByText(/investigate the spike/)).toBeTruthy();
     const working = screen.getByRole("status", { name: "On it" });
-    // Queued retains visible activity while it waits for work to start.
-    expect(working.querySelector("[data-signal-spinner]")).toBeNull();
-    expect(working.querySelector('[data-chat-loading="true"]')).toBeTruthy();
-    expect(working.querySelector("[data-chat-loading]")?.textContent).toBe("On it");
+    expect(working.querySelectorAll(".chat-reply-dots > span")).toHaveLength(3);
     expect(working.closest('[data-role="assistant"]')).toBeTruthy();
     expect(screen.queryByText(/^sending$/i)).toBeNull();
   });

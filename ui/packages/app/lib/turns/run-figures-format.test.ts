@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { MS_PER_SECOND } from "@/lib/utils";
 
-import { formatCompactCount, formatCount, formatElapsed, formatRunDuration, runFigure } from "./run-figures-format";
+import { formatCompactCount, formatCount, formatElapsed, formatRunDuration } from "./run-figures-format";
 
 // Pin tests throughout: each literal is the string a surface draws.
 
@@ -13,14 +13,6 @@ describe("run-figures-format", () => {
   ])("keeps reported duration %s precise as %s", (ms, shown) => {
     expect(formatRunDuration(ms)).toBe(shown);
   });
-  it("should leave a figure the run did not report out, and keep a reported zero", () => {
-    expect(runFigure(null, formatCount)).toBeNull();
-    expect(runFigure(undefined, formatCount)).toBeNull();
-    // A reported zero is a figure, not a missing one.
-    expect(runFigure(0, formatCount)).toBe("0");
-    expect(runFigure(12_400, formatCompactCount)).toBe("12.4K");
-  });
-
   it("should count in full for the status line and compactly for a reply", () => {
     expect(formatCount(1_234_567)).toBe("1,234,567");
     expect(formatCompactCount(999)).toBe("999");

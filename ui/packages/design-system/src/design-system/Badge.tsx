@@ -1,6 +1,9 @@
+import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 import { type ComponentProps } from "react";
 import { cn } from "../utils";
+
+const NEUTRAL_BADGE = "border-border bg-transparent text-muted-foreground";
 
 export const badgeVariants = cva(
   [
@@ -10,11 +13,12 @@ export const badgeVariants = cva(
   {
     variants: {
       variant: {
-        default: "border-border bg-transparent text-muted-foreground",
+        default: NEUTRAL_BADGE,
+        count: `${NEUTRAL_BADGE} min-w-6 shrink-0 justify-center tabular-nums`,
         orange: "border-border bg-transparent text-foreground",
         amber: "border-border bg-transparent text-warning",
         green: "border-border bg-transparent text-success",
-        cyan: "border-border bg-transparent text-muted-foreground",
+        cyan: NEUTRAL_BADGE,
         destructive:
           "border-border bg-transparent text-destructive",
         live: "border-pulse bg-pulse text-on-pulse",
@@ -31,11 +35,14 @@ export const badgeVariants = cva(
 export type BadgeVariant = NonNullable<VariantProps<typeof badgeVariants>["variant"]>;
 
 export type BadgeProps = ComponentProps<"div"> &
-  VariantProps<typeof badgeVariants>;
+  VariantProps<typeof badgeVariants> & {
+    asChild?: boolean;
+  };
 
-export function Badge({ className, variant, ref, ...props }: BadgeProps) {
+export function Badge({ asChild, className, variant, ref, ...props }: BadgeProps) {
+  const Comp = asChild ? Slot : "div";
   return (
-    <div
+    <Comp
       ref={ref}
       className={cn(badgeVariants({ variant }), className)}
       {...props}

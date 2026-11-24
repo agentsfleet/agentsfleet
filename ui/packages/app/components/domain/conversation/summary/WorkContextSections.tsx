@@ -68,16 +68,12 @@ export function ChangesSummary({changes}: {changes: readonly RecordedChange[]}) 
       <GitDiffIcon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
       <span className="min-w-0 flex-1" title={group.repository?.fullName}>
         <span className="block font-medium">{group.changes.length} {group.changes.length === 1 ? "file" : "files"}{group.changes.some(change => change.running) ? "" : " changed"}</span>
-        {group.label ? <RepositoryName name={group.label} className="text-eyebrow font-normal text-muted-foreground" /> : null}
+        {group.label ? <span className="repo-name min-w-0 text-eyebrow font-normal text-muted-foreground"><span>{group.label}</span></span> : null}
       </span>
       {group.lines.kind !== "unknown" ? <RecordedChangeCounts lines={group.lines} /> : null}
       <CaretRightIcon size={14} className="shrink-0 text-muted-foreground" aria-hidden="true" />
     </Button>
   </RecordedChangesDialog>)}</WorkSection>;
-}
-
-function RepositoryName({name, className = "font-medium"}: {name: string; className?: string}) {
-  return <span className={`repo-name min-w-0 ${className}`}><span>{name}</span></span>;
 }
 
 export function WorkSources({sources, files}: {sources?: FleetSources; files?: readonly {id: string; name: string}[]}) {
@@ -89,16 +85,14 @@ export function WorkSources({sources, files}: {sources?: FleetSources; files?: r
 }
 
 function RepositorySources({sources}: {sources: FleetSources}) {
-  const {repositories, access, publication} = sources;
+  const {repositories} = sources;
   const label = repositories.length === 1 ? repositories.join("") : `${repositories.length} repositories`;
-  const policy = ["Saved fleet policy", access ? `${access} access` : "access not specified"];
-  if (publication) policy.push(publication === "existing_pr" ? "existing PRs" : "draft PRs");
   return <details className="group">
-    <summary className="flex min-h-11 cursor-pointer items-center gap-sm rounded-sm py-sm text-label leading-label focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring summary:min-h-9">
+    <summary className="flex min-h-9 cursor-pointer items-center gap-md rounded-chip py-sm text-label leading-label focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-summary:min-h-11 pointer-coarse:min-h-11">
       <GitBranchIcon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
-      <span className="min-w-0 flex-1 break-words" title={repositories.join(", ")}>
-        <RepositoryName name={label} />
-        <span className="mt-xs block text-eyebrow leading-eyebrow text-muted-foreground">{policy.join(" · ")}</span>
+      <span className="min-w-0 flex-1" title={repositories.join(", ")}>
+        <strong className="block truncate font-medium">{label}</strong>
+        <small className="block truncate text-eyebrow leading-eyebrow text-text-dim">Policy: {repositoryPolicyLabel(sources)}</small>
       </span>
       <CaretDownIcon size={16} className="shrink-0 text-muted-foreground transition-transform group-open:rotate-180 motion-reduce:transition-none" aria-hidden="true" />
     </summary>
@@ -106,6 +100,13 @@ function RepositorySources({sources}: {sources: FleetSources}) {
       <a href={`https://github.com/${repository}`} target="_blank" rel="noopener noreferrer" className="hover:underline">{repository}</a>
     </li>)}</ul>
   </details>;
+}
+
+function repositoryPolicyLabel({access, publication}: FleetSources): string {
+  if (access === "read") return "Read only";
+  if (publication === "existing_pr") return access === "write" ? "Edit existing PRs" : "Existing PRs";
+  if (publication === "event_draft") return access === "write" ? "Open draft PRs" : "Draft PRs";
+  return access === "write" ? "Write access" : "Not specified";
 }
 
 export function WorkApprovals({approvals, scope}: {approvals?: {count: number; href: string}; scope?: {workspaceId: string; fleetId: string; subject: string; revision: number}}) {

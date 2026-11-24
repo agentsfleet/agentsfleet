@@ -770,7 +770,7 @@ Completed replies keep the same markdown renderer and text nodes used while stre
 Reserve reply-action space before completion. Completing a live reply must not enable layout skipping or change its scroll position.
 
 Only replies loaded as completed history may skip offscreen layout.
-Run details use a compact, optional popover with keyboard dismissal and focus return.
+Replies with recorded task activity open that history from the reply actions. The popover supports keyboard dismissal and returns focus to its control.
 Show measured durations with millisecond precision, such as `842ms` or `1.237s`.
 
 Browser checks compare computed font family, size, weight, and line height across both composers.
@@ -1226,9 +1226,9 @@ While pending it shows a spinner, a muted-to-bright label and whole seconds. Onl
 
 Unconfirmed writes retain Retry and the original operation identity. Natural chat Save remains available through the same native fleet-saving path.
 
-Queued, Thinking and working rows share the same progress label. Only the visual clock ticks; the accessible label stays stable.
+Queued, thinking and working replies use three dots on one line with a stable accessible status label.
 
-Reduced motion disables spinner rotation and the sweep. The clock unmounts when work finishes or the row disappears.
+Reduced motion keeps the dots static. Forced colors use the system text color for the dots.
 
 Context compaction uses one quiet row: “Compacting context · This can take a few minutes”. Show a text glyph and the shared muted-to-bright sweep. Replace the ordinary working indicator until the next reply or compaction state.
 

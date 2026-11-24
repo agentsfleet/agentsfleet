@@ -155,6 +155,22 @@
   0%, 12% { background-position: 100% 0; }
   88%, 100% { background-position: 0% 0; }
 }
+.chat-reply-dots { display: inline-flex; gap: var(--sp-sm); }
+.chat-reply-dots > span { width: var(--sp-sm); height: var(--sp-sm); border-radius: 50%; background: currentColor; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .chat-reply-dots > span { animation: chat-reply-dot 1.2s ease-in-out infinite; }
+  .chat-reply-dots > span:nth-child(2) { animation-delay: 120ms; }
+  .chat-reply-dots > span:nth-child(3) { animation-delay: 240ms; }
+}
+@keyframes chat-reply-dot {
+  0%, 60%, 100% { opacity: .45; }
+  30% { opacity: 1; }
+}
+@media (forced-colors: active) {
+  .chat-reply-dots > span { forced-color-adjust: none; background: CanvasText; animation: none; }
+}
+
 [data-chat-loading="true"] {
   color: var(--chat-loading-base, var(--text-subtle));
   background-image: linear-gradient(100deg, var(--chat-loading-base, var(--text-subtle)) 30%, var(--chat-loading-sweep, var(--text-dim)) 50%, var(--chat-loading-base, var(--text-subtle)) 70%);

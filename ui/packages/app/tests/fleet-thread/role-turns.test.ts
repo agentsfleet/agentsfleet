@@ -159,25 +159,20 @@ describe("FleetThread — role rendering: turns and connection", () => {
     ]);
     renderThread();
 
-    // "Still working." reads the same at one second and at five minutes.
-    expect(screen.getByTestId("fleet-working")).toBeTruthy();
-    // The accessible name stays "Working"; the visible words are one waiting verb.
-    const label = screen.getByRole("status", { name: "Working" }).querySelector("[data-chat-loading]")?.textContent ?? "";
-    expect(label).toBe("Working");
+    const status = screen.getByRole("status", {name: "Working"});
+    expect(status.querySelectorAll(".chat-reply-dots > span")).toHaveLength(3);
     expect(screen.queryByText(OUTCOME.WORKING)).toBeNull();
   });
 
-  it("keeps the waiting clock out of announcements", () => {
+  it("gives queued and running dots stable accessible names", () => {
     const waiting = (clientTimestamp: boolean) =>
       ev({ role: "user", actor: "steer:user_abc", text: "Howdy", reply: "", status: "received", clientTimestamp });
     for (const [queued, name] of [[false, "Working"], [true, "On it"]] as const) {
       mockStream([waiting(queued)]);
       const view = renderThread();
-      // The status is named once; the visual clock never changes its spoken name.
-      const status = screen.getByRole("status", { name });
-      expect(status.querySelector("[data-waiting-elapsed]")?.getAttribute("aria-hidden")).toBe("true");
-      expect(status.getAttribute("aria-label")).toBe(name);
-      expect(status.textContent).toContain(name);
+      const status = screen.getByRole("status", {name});
+      expect(status.querySelector(".chat-reply-dots")?.getAttribute("aria-hidden")).toBe("true");
+      expect(status.textContent).toBe(name);
       view.unmount();
     }
   });

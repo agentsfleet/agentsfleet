@@ -11,8 +11,10 @@ import { ChatMessageRow } from "../../shared/chat/ChatMessageRow";
 import { ContextProgressStatus } from "../../usage/ContextProgressStatus";
 import { Timestamp } from "../../shared/identity/FleetTimestamp";
 import { ChatProgressLabel, QUEUED_PROGRESS_LABEL } from "../../shared/chat/ChatProgressLabel";
+import { ChatReplyProgress } from "@/components/domain/shared/chat/ChatReplyProgress";
 
 const PART_COMPONENTS = {Text: FleetReplyMarkdown};
+const SAVING_LABEL = "Saving";
 
 export const DraftMessage = memo(function DraftMessage({message}: {message: MessageState}) {
   const user = message.role === MESSAGE_ROLE.user;
@@ -30,7 +32,7 @@ export const DraftMessage = memo(function DraftMessage({message}: {message: Mess
     <ChatMessageRow sender={user ? "You" : "Fleet setup"} operator={user} messageRole={message.role} timestamp={<Timestamp createdAt={message.createdAt} />}>
       {saving ? null : text ? user ? <FleetMarkdown expandable>{text}</FleetMarkdown> : <MessagePrimitive.Parts components={PART_COMPONENTS} /> : null}
       {running && context ? <ContextProgressStatus value={context} /> :
-        (saving || queued || running) && (saving || !text) ? <DraftProgress label={admitting ? "Sending" : queued ? QUEUED_PROGRESS_LABEL : saving && !modelPending ? "Saving" : "Thinking"} startedAtMs={typeof message.metadata.custom.startedAtMs === "number" ? message.metadata.custom.startedAtMs : message.createdAt.getTime()} />
+        (saving || queued || running) && (saving || !text) ? <DraftProgress label={admitting ? "Sending" : queued ? QUEUED_PROGRESS_LABEL : saving && !modelPending ? SAVING_LABEL : "Thinking"} startedAtMs={typeof message.metadata.custom.startedAtMs === "number" ? message.metadata.custom.startedAtMs : message.createdAt.getTime()} />
         : null}
       {!user && message.metadata.custom.failure ? <DraftFailure message={message} /> : null}
     </ChatMessageRow>
@@ -38,6 +40,7 @@ export const DraftMessage = memo(function DraftMessage({message}: {message: Mess
 });
 
 function DraftProgress({label, startedAtMs}: {label: string; startedAtMs: number}) {
+  if (label !== SAVING_LABEL) return <ChatReplyProgress label={label} />;
   return <output aria-label={label} aria-live="off" className="inline-flex items-center gap-sm text-body-sm text-muted-foreground"><ChatProgressLabel label={label} startedAtMs={startedAtMs} /></output>;
 }
 

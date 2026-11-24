@@ -10,7 +10,7 @@ import { useFleetUploadPreviews } from "../composer/useFleetUploadPreviews";
 import { SteerComposer } from "../composer/SteerComposer";
 import { __resetPendingSendsForTests } from "@/lib/streaming/pending-sends";
 import { sendMarks } from "@/lib/streaming/send-marks";
-import { UUID_V7 } from "@/tests/fleet-thread/steer-copy";
+import { RESEND_LABEL, UUID_V7 } from "@/tests/fleet-thread/steer-copy";
 
 // A chat message that opens with `@name`, through the real ledger, the real
 // lookup and steer clients and a stub daemon at the network boundary. The open
@@ -289,7 +289,7 @@ describe("an addressed chat message", () => {
     expect(posts()).toHaveLength(reason === "missing" ? 0 : 1);
     expect(router.push).not.toHaveBeenCalled();
     daemon(() => listOf(summary(BOB, BOB_NAME)));
-    fireEvent.click(screen.getByRole("button", {name: /^Resend$/}));
+    fireEvent.click(screen.getByRole("button", {name: RESEND_LABEL}));
     await waitFor(() => expect(router.push).toHaveBeenCalledExactlyOnceWith(`/w/${WORKSPACE}/fleets/${BOB}`));
     expect(posts().at(-1)).toEqual({url: messagesOf(BOB), body: {message: "Check status", operation_id: operation}});
     expect(lookups()).toHaveLength(reason === "missing" ? 2 : 1);

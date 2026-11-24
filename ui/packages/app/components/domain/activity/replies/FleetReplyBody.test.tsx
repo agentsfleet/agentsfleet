@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { AssistantRuntimeProvider, ThreadPrimitive, useExternalStoreRuntime } from "@assistant-ui/react";
 
 import type { FleetTurn } from "@/lib/streaming/fleet-stream-row";
@@ -12,26 +12,27 @@ import { toReplyMessage } from "./fleetReplyMessage";
 import { convertTurn } from "../../conversation/stream/useFleetTurnStream";
 
 const REPLY: ReplyContext = {
-  errored: false,
   running: false,
   queued: false,
   turnId: "e1",
   reasoning: "",
   span: { startedAtMs: null, endedAtMs: null },
   content: [],
-  startedAtMs: 0,
 };
 const COMPLETE = "complete";
 
 type PartInfo = Parameters<typeof renderReplyPart>[0];
 const REPLY_TEXT = "Opened the PR.";
 
+type ReplyFields = Pick<FleetTurn, "tokens" | "wallMs" | "costNanos" | "replyRecovering" | "durableTaskActivity">;
+
 // One fleet reply through the real renderer, with no transcript around it.
-function Transcriptless({ status, text = REPLY_TEXT, restarted = false, announce = false, attempt = "2" }: { status: FleetTurn["status"]; text?: string; restarted?: boolean; announce?: boolean; attempt?: string }) {
+function Transcriptless({ status, text = REPLY_TEXT, restarted = false, announce = false, attempt = "2", fields }: { status: FleetTurn["status"]; text?: string; restarted?: boolean; announce?: boolean; attempt?: string; fields?: Partial<ReplyFields> }) {
   const turn: FleetTurn = {
     id: REPLY.turnId, role: "assistant", actor: "fleet", text: "", reply: text, outcome: "",
     failureLabel: null, failureDetail: null, createdAt: new Date(0), status, runRestarted: restarted ? true : undefined,
     ...(restarted ? { restartAttempt: attempt } : {}),
+    ...fields,
   };
   const runtime = useExternalStoreRuntime<FleetTurn>({
     isRunning: false,
@@ -104,6 +105,32 @@ describe("a reply's settling", () => {
     view.rerender(<Transcriptless status={AGENTSFLEET_TURN_STATUS.PROCESSED} />);
     expect(screen.getByText(REPLY_TEXT)).toBeTruthy();
     expect(screen.queryByTestId(SETTLED_REPLY_STATUS)).toBeNull();
+  });
+
+  it("settles a plain reply with copy controls and without a metering receipt", () => {
+    render(<Transcriptless status={AGENTSFLEET_TURN_STATUS.PROCESSED} fields={{tokens: 290, wallMs: 693, costNanos: "100000"}} />);
+    expect(screen.getByText(REPLY_TEXT)).toBeTruthy();
+    expect(screen.getByRole("button", {name: "Copy reply"})).toBeTruthy();
+    expect(screen.queryByRole("button", {name: "Run details"})).toBeNull();
+    expect(screen.queryByText(/Worked for|Work completed|Reported cost/)).toBeNull();
+  });
+
+  it("opens completed task history after settlement, without usage figures", () => {
+    const durableTaskActivity: FleetTurn["durableTaskActivity"] = {truncated: false, items: [{kind: "durable_task_decision_completed", progress: {
+      activity_id: "019f0000-0000-7000-8000-000000000001", durable_task_id: null, source_turn_id: null,
+      operation: "goal", phase: "recorded", provider: null, model: null, completed: 1, total: 1,
+    }}]};
+    const view = render(<Transcriptless status={AGENTSFLEET_TURN_STATUS.RECEIVED} fields={{durableTaskActivity}} />);
+    expect(screen.queryByRole("button", {name: "Task activity"})).toBeNull();
+    view.rerender(<Transcriptless status={AGENTSFLEET_TURN_STATUS.PROCESSED} text="" fields={{durableTaskActivity, replyRecovering: true}} />);
+    expect(screen.getByText(/Loading final reply/)).toBeTruthy();
+    expect(screen.queryByRole("button", {name: "Task activity"})).toBeNull();
+    view.rerender(<Transcriptless status={AGENTSFLEET_TURN_STATUS.PROCESSED} fields={{durableTaskActivity}} />);
+    expect(screen.queryByText("Assessment recorded · goal progress")).toBeNull();
+    fireEvent.click(screen.getByRole("button", {name: "Task activity"}));
+    const history = within(screen.getByRole("dialog", {name: "Task activity"}));
+    expect(history.getAllByText("Assessment recorded · goal progress")).toHaveLength(2);
+    expect(history.queryByText("Reported cost")).toBeNull();
   });
 });
 

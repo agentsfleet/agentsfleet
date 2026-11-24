@@ -55,7 +55,10 @@ export function SecretActions({secret, pending, protectedFromDelete, onEdit, onD
       <DialogHeader><DialogTitle>Manage secret</DialogTitle><DialogDescription>
         <span className="mb-md block font-medium text-foreground">“{secret.name}”</span>Stored in this workspace. {accessSentence(secret)}
       </DialogDescription></DialogHeader>
-      <p className="text-label text-muted-foreground">{secretType(secret)} · Value hidden</p>
+      <p className="flex items-center gap-md text-label text-muted-foreground">
+        {secretType(secret)} <code aria-hidden="true" className="font-mono text-mono">••••••••</code>
+        <span className="sr-only">Value hidden</span>
+      </p>
       {protectedFromDelete ? <p className="text-eyebrow text-text-dim">This key is used by your active model. Choose another model before deleting it.</p> : null}
       <DialogFooter className="flex-wrap">
         <Button variant="outline" className="px-lg" disabled={pending} onClick={() => handoff(onEdit)}>Replace value</Button>

@@ -62,9 +62,9 @@ function FleetItems({collection, drafts, history, workspace, onNavigate}: {histo
 
     {!history && setups.error ? <Button variant="link" size="sm" disabled={setupsLoading} onClick={() => {void drafts.load();}}>Retry loading setups</Button> : null}
     {(history ? history.more : setups.more) ? <Button variant="ghost" size="sm" disabled={setupsLoading} onClick={() => {if (history) void history.more?.(); else void drafts.load(true);}}>Load more setups</Button> : null}
-    {page.loading && !page.items.length ? <output className="px-md text-label text-muted-foreground">Loading fleets…</output> : null}
-    {!page.loading && !page.error && !page.items.length && !openSetups.length && !setupsLoading ? <p className="px-md text-label text-muted-foreground">Saved fleets will appear here.</p> : null}
-    {page.error ? <output className="px-md py-sm text-label text-muted-foreground">{page.error} <Button variant="link" size="sm" disabled={page.loading} onClick={() => {void collection.load();}}>Refresh</Button></output> : null}
+    {page.loading && !page.items.length ? <output className="px-lg text-label text-muted-foreground">Loading fleets…</output> : null}
+    {!page.loading && !page.error && !page.items.length && !openSetups.length && !setupsLoading ? <p className="px-lg text-label text-muted-foreground">Saved fleets will appear here.</p> : null}
+    {page.error ? <output className="px-lg py-sm text-label text-muted-foreground">{page.error} <Button variant="link" size="sm" disabled={page.loading} onClick={() => {void collection.load();}}>Refresh</Button></output> : null}
     {page.more ? <Button variant="ghost" size="sm" disabled={page.loading} onClick={() => {void collection.load(true);}}>Load more fleets</Button> : null}
     {selected ? <FleetLifecycleDialog action="delete" fleet={selected} workspace={workspace} onRemoved={removed} onClose={() => setSelected(null)} /> : null}
   </>;
@@ -72,7 +72,7 @@ function FleetItems({collection, drafts, history, workspace, onNavigate}: {histo
 
 function renderSetupLink(card: SidebarDraft, workspace: string, active: boolean, onNavigate: () => void) {
   const href = `/w/${workspace}/fleets/new?draft=${card.id}`;
-  return <NavItem asChild key={href} appearance="list" active={active} onClick={onNavigate} className="min-w-0 font-medium">
+  return <NavItem asChild key={href} appearance="list" active={active} onClick={onNavigate} className="min-w-0 px-lg font-medium">
     <Link href={href} prefetch={false} title={card.title}>
       <span className="min-w-0 flex-1 truncate">{card.title}</span><NotePencilIcon size={14} className="shrink-0 text-text-dim" aria-hidden="true" />
     </Link>
@@ -93,7 +93,7 @@ function FleetRow({fleet, workspace, pathname, edit, onNavigate, deleting, onDel
   deleting: boolean; onDelete: () => void;
 }) {
   return <div className="group flex min-w-0 items-center">
-    <NavItem asChild appearance="list" active={pathname === `/w/${workspace}/fleets/${fleet.id}`} className="min-w-0 flex-1" onClick={onNavigate}>
+    <NavItem asChild appearance="list" active={pathname === `/w/${workspace}/fleets/${fleet.id}`} className="min-w-0 flex-1 px-lg" onClick={onNavigate}>
       <Link href={`/w/${workspace}/fleets/${fleet.id}`} prefetch={false} title={`${fleet.name} · ${fleet.status}`}>
         <span className="min-w-0 flex-1 truncate font-semibold text-foreground">{fleet.name}</span>
         {fleet.status === AGENTSFLEET_STATUS.ARCHIVED ? <span className="shrink-0 text-eyebrow text-text-dim">Archived</span> : null}

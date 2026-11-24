@@ -1,4 +1,4 @@
-import { expect } from "@playwright/test";
+import { expect, type Locator } from "@playwright/test";
 import { test } from "./fixtures/chat-probe";
 import { SCHEDULE_TURN } from "@/tests/helpers/schedule-activity";
 
@@ -82,7 +82,8 @@ test("native scheduled composer preserves chat through edit, pause, resume and d
   await editor.getByRole("button", {name: "Cancel", exact: true}).click();
   expect(writes).toHaveLength(0);
   await footer.getByRole("button", {name: "Pause wake-up"}).click();
-  await expect(footer.getByText("Paused", {exact: true})).toBeVisible();
+  await expectPausedWakeupGeometry(footer);
+  await page.screenshot({path: info.outputPath("paused-wakeup.png"), scale: "css", animations: "disabled"});
   await footer.getByRole("button", {name: "Resume wake-up"}).click();
   await expect(footer.getByRole("button", {name: "Pause wake-up"})).toBeEnabled();
   await footer.getByRole("button", {name: "Edit wake-up"}).click();
@@ -104,6 +105,18 @@ test("native scheduled composer preserves chat through edit, pause, resume and d
   await expect(input).toHaveValue("Keep my unsent instruction");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
+
+async function expectPausedWakeupGeometry(footer: Locator) {
+  const paused = footer.getByText("Paused", {exact: true});
+  await expect(paused).toBeVisible();
+  const label = await footer.getByText("Wake-up ·", {exact: true}).boundingBox();
+  const status = await paused.boundingBox();
+  const strip = await footer.getByRole("group", {name: "Every 30 minutes"}).locator("..").boundingBox();
+  const composer = await footer.getByRole("form", {name: "Chat composer"}).boundingBox();
+  if (!label || !status || !strip || !composer) throw new Error("The paused wake-up or composer is missing");
+  expect(status.y + status.height / 2).toBeCloseTo(label.y + label.height / 2);
+  expect(composer.y - strip.y - strip.height).toBe(8);
+}
 
 test("empty and invalid wake-up edits retain the saved schedule and unsent chat", async ({page, chatProbe}) => {
   const {SCHEDULE} = await import("@/tests/helpers/draft-fixtures");

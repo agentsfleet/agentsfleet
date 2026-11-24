@@ -67,8 +67,9 @@ for (const view of views) test(`${view.state} follows the reference on desktop a
       await match(strip, design, [...type, "margin-left", "margin-right", "margin-bottom"]);
       const seam = await composerSeam(strip, page.locator(".fleet-composer-surface"));
       expect(seam).toEqual(await composerSeam(design, reference.locator(".composer")));
-      expect(seam).toEqual(isMobile ? [8, 8, -1] : [20, 20, -1]);
-      await match(strip.locator('fieldset > div > span').first(), design.locator(":scope > span"), type);
+      expect(seam).toEqual(isMobile ? [8, 8, 8] : [20, 20, 8]);
+      const wakeupLabel = strip.locator('span[aria-hidden="true"]').filter({hasText: /^Next wake-up/});
+      await match(wakeupLabel, design.locator(":scope > span"), type);
       await match(strip.getByRole("button", {name: "Edit wake-up"}).locator("svg"), design.locator("button i").first(), ["width", "height"]);
       for (let i=0; i<2; i++) {
         await match(events.nth(i), receipts.nth(i), [...type, "gap", "width", "padding-top", "padding-bottom"]);

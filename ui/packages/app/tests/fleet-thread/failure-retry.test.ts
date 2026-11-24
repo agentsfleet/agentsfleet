@@ -47,29 +47,24 @@ it("does not retry while the thread is already running", () => {
   expect(postSteerMock).not.toHaveBeenCalled();
 });
 
-it("shows unavailable usage honestly and does not create zero-valued figures", () => {
+it("provides a fallback when no failure details were recorded", () => {
   failed();
-  expect(screen.getByText("Final usage isn’t available for this request.")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", {name: "View details"}));
   expect(screen.getByText("No further details were reported.")).toBeTruthy();
-  expect(screen.queryByTestId("fleet-reply-figures")).toBeNull();
 });
 
-it("keeps reported usage and failure diagnostics behind View details", () => {
+it("keeps failure diagnostics in View details without usage figures", () => {
   const reason = "Provider refused the request";
   const detail = "The upstream model ended this request before producing an answer.";
   mockStream([ev({actor: ACTOR, role: "user", text: REQUEST, status: "fleet_error", outcome: OUTCOME.FAILED,
     custom: {requestJson: JSON.stringify({message: REQUEST})}, failureLabel: reason, failureDetail: detail,
     tokens: 120, wallMs: MS_PER_SECOND, costNanos: REPORTED_COST_NANOS})]);
   renderThread();
-  expect(screen.queryByText("Final usage isn’t available for this request.")).toBeNull();
   expect(screen.queryByText(detail)).toBeNull();
-  expect(screen.queryByTestId("fleet-reply-figures")).toBeNull();
   fireEvent.click(screen.getByRole("button", {name: "View details"}));
   expect(screen.getByText(`Reason: ${reason}`)).toBeTruthy();
   expect(screen.getByText(detail)).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", {name: "Run details"}));
-  expect(screen.getByRole("dialog", {name: "Run details"}).textContent).toContain("$0.001");
+  expect(screen.queryByRole("button", {name: "Run details"})).toBeNull();
   expect(screen.queryByText("No further details were reported.")).toBeNull();
 });
 
