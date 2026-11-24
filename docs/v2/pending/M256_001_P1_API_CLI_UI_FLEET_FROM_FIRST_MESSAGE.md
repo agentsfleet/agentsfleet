@@ -153,7 +153,7 @@ today  /w/{ws}/fleets/{id}/setup ─► redirect ─► fleets/new?fleet=&setup_
 
 Keeping `/setup` as today's private improvement chat is rejected: it keeps `setup.drafts` and the review for every later change.
 
-### D3 — What does a new fleet start with? OPEN
+### D3 — What does a new fleet start with? OPEN, budget ruled: the payer's balance is the ceiling
 
 Revision 1 must exist before the first run, and no model has written it. Today a run with `tools: []` is offered no tool (`docs/architecture/capabilities.md:23`), a Definition with empty instructions is refused at run time (`afd_fleet/src/run/installed.rs:244-248`), and `daily_nanos` is required (`af_fleet_runtime/src/config/budget.rs:92-98`).
 
@@ -185,7 +185,7 @@ today   a person's message ─► run ─► decision call (intent) ─► the m
 - **2. A route now.** The binding needs a live run and prepares its GitHub target outside the transaction (`afd_fleet/src/durable_task/accept/mod.rs:47-55`, `bindings/preparation.rs:80-113`). A route is therefore a second write path that skips `authorize::binding` (`afd_fleet/src/durable_task/decision/authorize.rs:55-108`), and a `ready` task still waits for a capable runner.
 - **3. A flag on the message.** One writer stays. It skips the same authorization, which then needs a replacement.
 
-### D5 — The schema rows inherited from M255_001 Dimension 1.1. OPEN
+### D5 — The schema rows inherited from M255_001 Dimension 1.1. RULED: option 3, the reviews' end state, 14 tables to 8
 
 `docs/architecture/schema_convergence.md` asks, for each of fourteen tables, whether it folds into threads, turns, runs and items. Two reviews answered: the design reviews ("the reviews' end state") and a later Fable 5.2 review that disagreed with five folds. With drafts gone, rows 1 and 4 need no fold: the table and every `draft_id` are deleted in §7.
 
@@ -291,7 +291,7 @@ No code. Each ruling is put through AskUserQuestion with its picture, and the sp
 - **Dimension 1.2** — the fate of `/setup` is chosen → Test `setup_route_signed_off` (manual): Indy answers D2. Expected and evidence as 1.1.
 - **Dimension 1.3** — the starting setup is chosen → Test `starting_setup_signed_off` (manual): Indy answers D3 and, for option 1, names the starter's tools, network rule and daily budget. Expected and evidence as 1.1.
 - **Dimension 1.4** — DONE (his quote is in Discovery) — direct task creation is chosen → Test `direct_task_signed_off` (manual): Indy answers D4. Expected and evidence as 1.1.
-- **Dimension 1.5** — every schema row is ruled → Test `schema_convergence_signed_off` (manual): Indy answers D5. Expected: every verdict cell of `docs/architecture/schema_convergence.md` starts with `RULED`, and Discovery quotes him.
+- **Dimension 1.5** — DONE (every verdict cell reads `RULED`; his quote is in Discovery) — every schema row is ruled → Test `schema_convergence_signed_off` (manual): Indy answers D5. Expected: every verdict cell of `docs/architecture/schema_convergence.md` starts with `RULED`, and Discovery quotes him.
 
 ### §2 — `POST W/fleets` creates an active fleet with its first turn
 
@@ -451,7 +451,7 @@ The draft steps of `SetupStep`, `fleet_setup_finished` and `fleet_setup_cancelle
 
 ## Out of Scope
 
-- The schema folds D5 rules in (rows 3, 11 and whatever else Indy signs): M256_002. Rows 1 and 4 are §7 here.
+- The schema folds D5 ruled in (rows 3, 10, 11, 12 and 14 fold; rows 2, 6 and 8 take them): M256_002. Rows 1 and 4 are §7 here.
 - A tenant route that creates a durable task: its own spec, if D4 is ruled that way.
 - A timer wake for a waiting durable task, so that a task could "watch": not planned; a trigger does it.
 - Billing on the call path, and runner checkpoints (`runner.checkpoint_*`): Indy's separate tracks.
@@ -486,7 +486,10 @@ The draft steps of `SetupStep`, `fleet_setup_finished` and `fleet_setup_cancelle
 - > Owner (Indy, Nov 24, 2026): "`setup.drafts` (rows 1 and 4) is decided by this milestone, and the folds after it follow." — context: D5, and the folds as M256_002.
 - > Owner (Indy, Nov 24, 2026): "D4 Agreed" — context: D4 option 1. A task is asked for in a message; a tenant task route gets its own spec.
 - > Owner (Indy, Nov 24, 2026): "D1 why do you need to write a fleet setup?  How can we avoid that?", "D2 Refer D1", "D3 Why should it start with somethig?", "D5 I am not following here?" — context: questions, not rulings. D1 to D3 are being reshaped around a fleet that needs no authored setup; D5 is re-explained.
-- **Owner decisions** — D1: OPEN. D2: OPEN, follows D1. D3: OPEN. D4: RULED, option 1. D5: OPEN. Each is put through AskUserQuestion; a question that times out is not an answer.
+- > Owner (Indy, Nov 24, 2026): "Yes budget - approved payer's balance" — context: D3. A fleet with no budget of its own is bounded by the payer's balance.
+- > Owner (Indy, Nov 24, 2026): "Tables merge more 14 down to 8" — context: D5 option 3, chosen in the dialog and repeated after the three Fable objections were put to him: a report deletes other runs' items, effects stop outliving their fleet, and the compaction save locks `thread.threads`. `M256_002` builds the folds with those as its tests.
+- > Owner (Indy, Nov 24, 2026): "Ideally i wanna get rid of authoring drafts in a clean way?  no stale or unused optional ones just for the sake of it? How can we do that? How will the user experience be" — context: D1 and D2. No optional setup surface survives; the options are being reshaped around a fleet with no authored Definition.
+- **Owner decisions** — D1: OPEN. D2: OPEN, follows D1. D3: OPEN, budget ruled. D4: RULED, option 1. D5: RULED, option 3. Each is put through AskUserQuestion; a question that times out is not an answer.
 - **Consults** — four read-only source traces at `3fbd9e40e` (setup draft, fleet chat, durable tasks, app and CLI), by Explore agents; the author re-read every line this spec cites. Findings that shaped it: `Creations::materialise` has no production caller; an integration grant already parks at first use; a task has no timer wake; a run with no tools can only talk. The brainstorm's Goldfish swarm was not run: its own rule needs the owner's readiness answer first, and the review below used the same reviewers.
 - **Model reviews** — EGM review of the first draft, four Claude Fable 5.2 Goldfish reviewers with no context, read-only at `3fbd9e40e`: comprehension 5 Blocker, 10 Major, 10 Nit; zoom-out 2, 7, 4; design 3, 5, 4; codebase-details 2, 9, 7. Each cited line was re-read before its disposition. **Fixed by rewriting:** the schema folds and the task route left the spec (zoom-out B1; design M4, M5); the starting setup became D3 and the budget left the agent defaults (zoom-out B2; design M1; codebase B1); `decision_policy` is access (design B1; zoom-out M2); the setup tool rides a flag the daemon checks, a flagged message is never folded, and the report re-reads the turn (design B2); an access edit needs a signed-in person and leaves an activity turn (design B3); each activation check has a stated fate (design M2); the teardown is last (zoom-out M3); the hidden draft and the private improvement chat are rejected outside the option lists (comprehension B4, B5); D5 names every row and each option's cost, and its fourth option says R1 moves (comprehension B1 to B3; design M5); the terms are defined before use. **Fixed in place:** three citations, the replay code, the `materialise` description, the sweep patterns and the kept modules (codebase B2, M3 to M9 and nits). **Left open, each to Indy:** a public proposal a person applies (design's option 1c) is not listed, because it is a setup card; a higher scope than `fleet:write` for access edits is not proposed, because Save sits on `fleet:write` today. The implementation-readiness reviewer and a re-audit run after the rulings, when the Sections are rewritten.
 - **Open blockers** — D1 to D5, each resolved by Indy's ruling. The per-file blast list for `draft_id`, `setup.drafts` and `afd_setup`, written when D1 is ruled (SPEC-BLAST). Whether `network` can express the starter's rule (D3). `direction.md`'s "one reviewed Definition" sentence, reworded by Indy with the D1 ruling.
