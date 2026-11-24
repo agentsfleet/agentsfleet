@@ -13,12 +13,12 @@ use afd_api_wire::schedule::Patch;
 pub struct EditRequest<'a> {
     /// Workspace the caller may edit.
     pub workspace: &'a Uuid7,
-    /// Fleet whose setup also serializes recipe replacement.
+    /// Fleet whose writer turn the edit takes.
     pub fleet: &'a Uuid7,
     /// Schedule under that fleet.
     pub schedule: &'a Uuid7,
     /// Required version from the last resource read.
     pub expected: Option<&'a str>,
-    /// An overlay or an independent schedule edit.
+    /// The fields to change; an `override` body is refused.
     pub patch: &'a Patch,
 }

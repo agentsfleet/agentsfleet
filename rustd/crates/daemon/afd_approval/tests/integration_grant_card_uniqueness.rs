@@ -1,30 +1,13 @@
-//! Grant-card ownership, contention, and release against the real schema.
+//! Grant-card ownership, release, and rollback against the real schema.
 #![expect(clippy::expect_used, reason = "test preconditions must fail loudly")]
 
+use crate::grant_lane::{GITHUB, SENTRY, ask, grants, only_card};
 use crate::lane::{Lane, NOW, mint};
-use af_core::id::Uuid7;
-use af_crypto::entropy::Entropy;
-use afd_approval::{Decision, IntegrationGrants, Origin, Requested, Wanted};
+use afd_approval::{Decision, GrantKind, Requested, Wanted};
 
-const SERVICE: &str = "github";
 const INDEX: &str = "uq_approval_gates_active_grant_id";
 
-async fn request(lane: &Lane, service: &str) -> Requested {
-    IntegrationGrants::new(lane.pool.clone(), Entropy::new())
-        .request(
-            &lane.workspace,
-            &lane.fleet,
-            Wanted {
-                service,
-                credential: service,
-                origin: Origin::Park,
-            },
-            NOW,
-        )
-        .await
-        .expect("request runs")
-}
-
+/// Every card on the lane's fleet, and how many still hold their grant.
 async fn counts(lane: &Lane) -> (i64, i64) {
     sqlx::query_as(
         "SELECT COUNT(*), COUNT(active_grant_id) FROM fleet.approval_gates WHERE fleet_id = $1",
@@ -35,17 +18,16 @@ async fn counts(lane: &Lane) -> (i64, i64) {
     .expect("card counts")
 }
 
+/// Two names, two grants, two cards: the active reference is per grant.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn concurrent_requests_share_one_active_grant_card() {
+async fn each_name_holds_its_own_active_card() {
     let lane = Lane::isolated().await;
-    let (first, second) = tokio::join!(request(&lane, SERVICE), request(&lane, SERVICE));
-    assert!(matches!(
-        (first, second),
-        (Requested::Raised, Requested::Pending) | (Requested::Pending, Requested::Raised)
-    ));
-    assert_eq!(counts(&lane).await, (1, 1));
-    assert_eq!(request(&lane, "zoho").await, Requested::Raised);
+    let turn = lane.asking_turn().await;
+    let first = ask(&lane, SENTRY, GrantKind::Secret, None, &turn).await;
+    let second = ask(&lane, GITHUB, GrantKind::Integration, None, &turn).await;
+    assert!(matches!(first, Requested::Raised { .. }), "{first:?}");
+    assert!(matches!(second, Requested::Raised { .. }), "{second:?}");
     assert_eq!(counts(&lane).await, (2, 2));
 }
 
@@ -53,15 +35,16 @@ async fn concurrent_requests_share_one_active_grant_card() {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_second_active_reference_is_refused_by_the_database() {
     let lane = Lane::isolated().await;
-    request(&lane, SERVICE).await;
+    let turn = lane.asking_turn().await;
+    ask(&lane, SENTRY, GrantKind::Secret, None, &turn).await;
     let failure = sqlx::query(
         "INSERT INTO fleet.approval_gates
         (id, fleet_id, workspace_id, action_id, tool_name, action_name, gate_type,
          proposed_action, evidence, blast_radius, expires_at, status,
-         detail, created_at, updated_at, active_grant_id)
+         detail, created_at, updated_at, turn_id, active_grant_id)
         SELECT $2, fleet_id, workspace_id, $3, tool_name, action_name, gate_type,
          proposed_action, evidence, blast_radius, expires_at, status,
-         detail, created_at, updated_at, active_grant_id
+         detail, created_at, updated_at, turn_id, active_grant_id
         FROM fleet.approval_gates WHERE fleet_id = $1",
     )
     .bind(&lane.fleet)
@@ -78,21 +61,19 @@ async fn a_second_active_reference_is_refused_by_the_database() {
     );
 }
 
+/// An answer releases the active reference and keeps the card as history; a
+/// later ask after an approval is covered, and after a denial raises anew.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn resolutions_release_the_active_reference_and_keep_history() {
-    for decision in [Decision::Approved, Decision::Denied] {
+    for (decision, after) in [(Decision::Approved, (1, 0)), (Decision::Denied, (2, 1))] {
         let lane = Lane::isolated().await;
-        request(&lane, SERVICE).await;
-        let action: Uuid7 =
-            sqlx::query_scalar("SELECT action_id FROM fleet.approval_gates WHERE fleet_id = $1")
-                .bind(&lane.fleet)
-                .fetch_one(&mut *lane.pool.acquire().await.expect("connection"))
-                .await
-                .expect("card action");
+        let turn = lane.asking_turn().await;
+        ask(&lane, SENTRY, GrantKind::Secret, None, &turn).await;
+        let card = only_card(&lane).await;
         lane.inbox
             .resolve(
-                action.as_str(),
+                card.action.as_str(),
                 decision,
                 "fixture",
                 "",
@@ -100,12 +81,18 @@ async fn resolutions_release_the_active_reference_and_keep_history() {
             )
             .await
             .expect("resolution");
-        assert_eq!(counts(&lane).await, (1, 0));
-        assert!(matches!(
-            request(&lane, SERVICE).await,
-            Requested::Approved | Requested::Denied
-        ));
-        assert_eq!(counts(&lane).await, (1, 0));
+        assert_eq!(counts(&lane).await, (1, 0), "{decision:?}");
+
+        let again = lane.asking_turn().await;
+        let outcome = ask(&lane, SENTRY, GrantKind::Secret, None, &again).await;
+
+        let expected_raise = decision == Decision::Denied;
+        assert_eq!(
+            matches!(outcome, Requested::Raised { .. }),
+            expected_raise,
+            "{decision:?}: {outcome:?}"
+        );
+        assert_eq!(counts(&lane).await, after, "{decision:?}");
     }
 }
 
@@ -113,14 +100,16 @@ async fn resolutions_release_the_active_reference_and_keep_history() {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_card_insert_failure_rolls_back_the_new_grant() {
     let lane = Lane::isolated().await;
-    let result = IntegrationGrants::new(lane.pool.clone(), Entropy::new())
+    let turn = lane.asking_turn().await;
+    let result = grants(&lane)
         .request(
             &mint(),
             &lane.fleet,
             Wanted {
-                service: SERVICE,
-                credential: SERVICE,
-                origin: Origin::Park,
+                name: SENTRY,
+                kind: GrantKind::Secret,
+                scope: None,
+                turn: &turn,
             },
             NOW,
         )

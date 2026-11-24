@@ -44,8 +44,8 @@ pub use self::identity::RunnerIdentity;
 pub use self::ownership::{Acting, DETAIL_NOT_YOURS, Owned, Owner, WorkspaceContext, own};
 pub use self::person::{
     AnyClass, ClassPolicy, DETAIL_NOT_DASHBOARD, DETAIL_PERSON_REQUIRED, DETAIL_SESSION_REQUIRED,
-    DashboardClass, DashboardIdentity, FreshSession, FreshSessionClass, HumanClass, HumanIdentity,
-    PersonIdentity, Proven,
+    DETAIL_SIGNED_IN_REQUIRED, DashboardClass, DashboardIdentity, FreshSession, FreshSessionClass,
+    HumanClass, HumanIdentity, PersonIdentity, Proven, SignedInClass, SignedInPerson,
 };
 pub use self::request::{AuthenticationResult, BearerAuthentication, RequestAuthentication};
 pub use self::runner_stream::{

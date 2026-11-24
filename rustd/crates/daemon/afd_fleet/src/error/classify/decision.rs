@@ -22,10 +22,10 @@ impl Error {
             | ErrorKind::UsageCount { .. }
             | ErrorKind::DurableTaskCounter { .. }
             | ErrorKind::DurableTaskControlTurn { .. }
-            | ErrorKind::DurableTaskMutation { .. }
             | ErrorKind::DurableTaskControlConflict { .. }
             | ErrorKind::DurableTaskPrecondition { .. }
             | ErrorKind::DurableTaskRefused { .. }
+            | ErrorKind::FleetRefused { .. }
             | ErrorKind::TurnCheckpointRefused { .. }
             | ErrorKind::TurnCheckpointFailure { .. }
             | ErrorKind::Context { .. }
@@ -33,6 +33,7 @@ impl Error {
             | ErrorKind::Datastore { .. }
             | ErrorKind::Runner { .. }
             | ErrorKind::Gate { .. }
+            | ErrorKind::Approval { .. }
             | ErrorKind::Credential { .. }
             | ErrorKind::Billing { .. }
             | ErrorKind::Query { .. }
@@ -43,7 +44,7 @@ impl Error {
             | ErrorKind::Mint { .. }
             | ErrorKind::Entropy { .. }
             | ErrorKind::ConfigUnreadable { .. }
-            | ErrorKind::SetupUnavailable
+            | ErrorKind::FleetRowUnreadable
             | ErrorKind::VaultDataInvalid
             | ErrorKind::SequenceCorrupt
             | ErrorKind::PostureCorrupt
@@ -52,7 +53,6 @@ impl Error {
             | ErrorKind::RunLost
             | ErrorKind::RunCancelled
             | ErrorKind::RenewalNoCredits
-            | ErrorKind::BudgetExhausted
             | ErrorKind::MessageNoChannel
             | ErrorKind::Scrub { .. }
             | ErrorKind::IntegrationNotConnected

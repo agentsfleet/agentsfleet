@@ -41,7 +41,6 @@ fn schedule() -> Schedule {
         created_at: MADE_AT,
         updated_at: MADE_AT,
         fire_at: None,
-        recipe: None,
     }
 }
 

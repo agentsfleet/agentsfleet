@@ -49,18 +49,15 @@ pub const FLEET_IN_WORKSPACE: &str = include_str!("fleet_in_workspace.sql");
 /// `FOR KEY SHARE` first, which conflicts only with a writer holding it
 /// exclusively.
 ///
-/// The cap is a count rather than a constraint because the setup's recipe
-/// replacement writes into the same cap, many rows at once and in place, and
-/// must serialize with an edit of one of its schedules anyway; see
-/// `docs/architecture/concurrency.md`.
+/// The cap is a count rather than a constraint because it spans two sources
+/// with caps of their own ([`COUNT_FOR_SOURCE`]), which no single row
+/// constraint can express; see `docs/architecture/concurrency.md`.
 pub const LOCK_FLEET: &str = include_str!("lock_fleet.sql");
 
-/// [`LOCK_FLEET`]'s turn, scoped to the caller's workspace, for an edit or a
-/// setup's recipe replacement.
+/// [`LOCK_FLEET`]'s turn, scoped to the caller's workspace, for an edit.
 ///
-/// The same turn a create takes, so a recipe replacement, an edit of one of
-/// its schedules and a create serialize; no row means a fleet outside the
-/// workspace, and takes no turn.
+/// The same turn a create takes, so an edit and a create on one fleet
+/// serialize; no row means a fleet outside the workspace, and takes no turn.
 pub const LOCK_FLEET_IN_WORKSPACE: &str = include_str!("lock_fleet_in_workspace.sql");
 
 /// How many schedules this fleet already holds.
@@ -72,11 +69,6 @@ pub const COUNT_FOR_FLEET: &str = include_str!("count_for_fleet.sql");
 /// source carries a cap of its own: a fleet's own schedules are bounded below
 /// the fleet's whole complement.
 pub const COUNT_FOR_SOURCE: &str = include_str!("count_for_source.sql");
-
-/// How many of this fleet's schedules no setup recipe owns.
-///
-/// What a recipe replacement adds its new count to before it is admitted.
-pub const COUNT_INDEPENDENT: &str = include_str!("count_independent.sql");
 
 /// Whether this fleet already registered that upstream id.
 pub const PROVIDER_SCHEDULE_ID_EXISTS: &str = include_str!("provider_schedule_id_exists.sql");

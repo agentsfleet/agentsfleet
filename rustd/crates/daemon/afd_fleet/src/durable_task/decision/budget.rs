@@ -1,10 +1,8 @@
-//! Provisional decision credit is cumulative and shares the fleet's budget.
+//! A decision reservation's limits: the task's own allowances and the
+//! retained overage. The payer's balance is the only other ceiling, and the
+//! funding check reads it (`fund.rs`).
 
 use af_wire::{decision::DecisionPurpose, durable_task::DurableTaskContext};
-use afd_billing::{
-    Nanos, Spend,
-    budget::{self, Verdict},
-};
 use sqlx::PgConnection;
 
 use super::{context::AssessedContext, sql};
@@ -12,17 +10,10 @@ use crate::{
     Result,
     durable_task::{DurableTaskRefusal, DurableTaskSnapshot, guard::RunRow},
     error::query,
-    run::Runs,
 };
 
 pub(super) const CALL_NANOS: i64 = 20_000_000;
 pub(super) const LOGICAL_SECONDS: f64 = 30.0;
-
-#[derive(sqlx::FromRow)]
-struct FleetSpend {
-    day_nanos: i64,
-    month_nanos: i64,
-}
 
 pub(super) async fn check_on(
     connection: &mut PgConnection,
@@ -34,26 +25,6 @@ pub(super) async fn check_on(
     if context.assessment.purpose() == DecisionPurpose::Goal {
         let task = &task.ok_or(DurableTaskRefusal::InvalidTarget)?.context;
         goal(task)?;
-    }
-    let config = Runs::stored_config_on(connection, &current.fleet_id, None)
-        .await?
-        .ok_or(DurableTaskRefusal::StaleState)?;
-    let totals: FleetSpend = sqlx::query_as(sql::BUDGET)
-        .bind(&current.workspace_id)
-        .bind(&current.fleet_id)
-        .bind(af_core::timing::DAY)
-        .fetch_one(connection)
-        .await
-        .map_err(query(
-            "check decision reservations against the current fleet budget",
-        ))?;
-    let extra = Nanos::from_i64(CALL_NANOS);
-    let projected = Spend {
-        day: Nanos::from_i64(totals.day_nanos).saturating_add(extra),
-        month: Nanos::from_i64(totals.month_nanos).saturating_add(extra),
-    };
-    if budget::covers_reservation(config.budget(), projected) != Verdict::Admit {
-        return Err(DurableTaskRefusal::LimitExhausted.into());
     }
     Ok(())
 }

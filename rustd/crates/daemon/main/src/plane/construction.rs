@@ -1,6 +1,6 @@
 //! Construction groups retain each shared owner while the serving plane is assembled.
 
-use super::{PlaneParts, durable_task_plane, run_plane, surfaces};
+use super::{PlaneParts, durable_task_plane, run_plane};
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use af_crypto::secret::Kek;
@@ -22,7 +22,7 @@ pub(super) struct Common {
     pub(super) durable_task_master: Arc<Kek>,
     pub(super) turns: Turns,
     pub(super) biller: Arc<dyn Biller>,
-    pub(super) drafts: afd_setup::Drafts,
+    pub(super) creations: afd_setup::Creations,
 }
 
 impl Common {
@@ -49,19 +49,17 @@ impl Common {
             })
             .with_notice_fanout(tuning.server.max_live_activity_notices);
         let biller = crate::billing::biller(parts.database.clone());
-        let drafts = afd_setup::Drafts::new(parts.database.clone(), Entropy::new())
-            .with_tuning(setup_tuning(&tuning.setup))
-            .with_list_page(pages(&tuning.api).list)
-            .with_analytics(parts.analytics.clone())
-            .with_clock(parts.runtime.clock)
-            .with_bus(parts.bus.clone());
+        let creations =
+            afd_setup::Creations::new(parts.database.clone(), Entropy::new(), turns.clone())
+                .with_tuning(setup_tuning(tuning.setup))
+                .with_list_page(pages(&tuning.api).list);
         Self {
             providers,
             github_client,
             durable_task_master,
             turns,
             biller,
-            drafts,
+            creations,
         }
     }
 }
@@ -80,7 +78,6 @@ pub(super) struct NativeInputs<'a> {
     pub(super) storage_config: StorageConfig,
     pub(super) master: Arc<Kek>,
     pub(super) client: reqwest::Client,
-    pub(super) setup: &'a surfaces::SetupStores,
     pub(super) stream_limit: afd_sse::StreamLimit,
     pub(super) frame_memory: af_stream::MemoryLimits,
     pub(super) analytics: Analytics,
@@ -140,8 +137,6 @@ impl NativeInputs<'_> {
             database: self.database.clone(),
             runners: runners.clone(),
             runs: runs.clone(),
-            drafts: self.setup.drafts.clone(),
-            creations: self.setup.creations.clone(),
             bus: self.bus,
             stream_limit: self.stream_limit,
             wake: self.wake,
@@ -174,7 +169,7 @@ const fn mib_bytes(mib: u32) -> u32 {
 }
 
 /// The run plane's settings from the deployment file's `[runners]`,
-/// `[turns]`, `[fleets]`, `[billing]` and `[durable_tasks]` sections.
+/// `[turns]`, `[billing]` and `[durable_tasks]` sections.
 fn run_limits(tuning: &crate::config::tuning::Tuning) -> afd_fleet::run::RunLimits {
     let minutes = |value: u32| std::time::Duration::from_secs(u64::from(value) * 60);
     let days = |value: u32| af_core::timing::DAY.saturating_mul(value);
@@ -183,8 +178,6 @@ fn run_limits(tuning: &crate::config::tuning::Tuning) -> afd_fleet::run::RunLimi
     afd_fleet::run::RunLimits {
         max_runs_per_turn: tuning.turns.max_runs_per_turn,
         assign_batch_size: tuning.runners.turns_per_assignment_pass,
-        definition_cache_bytes: u64::from(tuning.fleets.definition_cache_mib) * 1024 * 1024,
-        head_cache_count: tuning.fleets.head_cache_count,
         price_book_cache_count: tuning.billing.price_book_cache_count,
         turn_checkpoints: afd_fleet::run::TurnCheckpointLimits {
             retention: days(checkpoints.retention_days),
@@ -231,12 +224,10 @@ pub(super) const fn pages(api: &crate::config::tuning::ApiTuning) -> afd_http::p
     }
 }
 
-/// The setup chat's settings from the deployment file's `[setup]`.
-fn setup_tuning(setup: &crate::config::tuning::SetupTuning) -> afd_setup::tuning::SetupTuning {
+/// A fleet create's settings from the deployment file's `[setup]`.
+fn setup_tuning(setup: crate::config::tuning::SetupTuning) -> afd_setup::tuning::SetupTuning {
     afd_setup::tuning::SetupTuning {
-        budget: std::time::Duration::from_secs(u64::from(setup.request_timeout_seconds)),
         replay_window: std::time::Duration::from_secs(u64::from(setup.replay_window_hours) * 3_600),
-        scan_batch: i64::from(setup.maintenance_drafts_per_page),
     }
 }
 
@@ -257,7 +248,6 @@ mod run_limit_tests {
         let mut tuning = crate::config::tuning::Tuning::default();
         tuning.turns.max_runs_per_turn = 5;
         tuning.runners.turns_per_assignment_pass = 9;
-        tuning.fleets.head_cache_count = 7;
         tuning.billing.price_book_cache_count = 11;
         tuning.turns.checkpoints.restore_pin_minutes = 4;
         tuning.tasks.slice_seconds = 120;
@@ -265,7 +255,6 @@ mod run_limit_tests {
         let limits = run_limits(&tuning);
         assert_eq!(limits.max_runs_per_turn, 5);
         assert_eq!(limits.assign_batch_size, 9);
-        assert_eq!(limits.head_cache_count, 7);
         assert_eq!(limits.price_book_cache_count, 11);
         assert_eq!(limits.turn_checkpoints.restore_pin.as_secs(), 240);
         assert_eq!(limits.tasks.slice.as_secs(), 120);

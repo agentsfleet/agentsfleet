@@ -13,19 +13,6 @@ pub use schedule::{ScheduleChange, ScheduleFire, ScheduleFireDescription, Schedu
 #[derive(Debug, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum FleetActivity<'a> {
-    /// An immutable setup revision committed.
-    SetupSaved {
-        /// The saved decimal revision.
-        revision: Cow<'a, str>,
-        /// Display provenance, independent of caller authority.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        origin: Option<Cow<'a, str>>,
-    },
-    /// The checked setup activation committed.
-    SetupReady {
-        /// The checked decimal revision.
-        revision: Cow<'a, str>,
-    },
     /// Access was saved, without claiming provider acceptance.
     AccessSaved {
         /// The credential name, never its value.

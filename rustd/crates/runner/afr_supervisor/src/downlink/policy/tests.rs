@@ -291,7 +291,7 @@ async fn test_a_saturation_release_beats_at_once() {
     let beating = Heartbeat::new(&plane, &probe, &holds).keep_beating(&published, &halt);
     let saturating = async {
         watching.changed().await.unwrap();
-        holds.occupy(crate::holds::Occupant::Fleet {
+        holds.occupy(crate::holds::Occupant {
             run: Uuid7::parse(OTHER_FLEET).unwrap(),
             fleet: Uuid7::parse(OTHER_FLEET).unwrap(),
         })

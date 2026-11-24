@@ -21,11 +21,9 @@ impl Case {
         )?;
         assert_eq!(acquired.kind, Kind::Reassigned);
         assert!(acquired.fence > self.acquired.fence);
-        let installed = required(self.runs.installed(&acquired.fleet_id).await?)?;
-        let revision = required(installed.issue_revision)?;
         let issued = required(
             self.runs
-                .issue_for_revision(
+                .issue(
                     &self.foreign,
                     &acquired,
                     Billed {
@@ -35,7 +33,6 @@ impl Case {
                         model: crate::seed::MODEL,
                     },
                     self.fixtures.enrolled_at(),
-                    Some(&revision),
                 )
                 .await?,
         )?;

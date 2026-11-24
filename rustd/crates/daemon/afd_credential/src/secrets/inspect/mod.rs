@@ -1,4 +1,4 @@
-//! Setup inspection extracts only connector identity; unrelated secret fields are skipped.
+//! Inspection extracts only connector identity; unrelated secret fields are skipped.
 
 use af_core::id::Uuid7;
 use afd_vault::{Generation, Vault};

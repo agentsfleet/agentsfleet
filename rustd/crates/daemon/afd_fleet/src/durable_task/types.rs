@@ -53,8 +53,8 @@ pub struct DurableTaskRun<'a> {
 
 /// An accepted objective after input validation and native target preflight.
 ///
-/// Fields stay private to this owner. Raw model output cannot construct a
-/// prepared binding through the public native service interface.
+/// Fields stay private to this owner, so a binding the verb did not check
+/// cannot be built through the public native service interface.
 #[derive(Debug, Clone)]
 pub struct PreparedDurableTask {
     pub(super) source_span: Range<i32>,
@@ -66,14 +66,13 @@ pub struct PreparedDurableTask {
     pub(super) limits: DurableTaskLimits,
 }
 
-/// Complete immutable interpretation; partial item acceptance is forbidden.
+/// One source turn's complete plan; a source turn takes one plan, and a
+/// repeat with another digest is refused.
 #[derive(Debug, Clone)]
 pub struct PreparedPlan {
     pub(super) source_turn_id: Uuid7,
-    pub(super) accepted_revision_id: Uuid7,
     pub(super) digest: String,
     pub(super) items: Vec<super::PreparedItem>,
-    pub(super) authorization: Option<af_wire::durable_task::DurableTaskBindingsInput>,
 }
 
 /// One atomic plan's native item identities in their original order.
@@ -99,11 +98,11 @@ pub struct DurableTaskBinding {
     pub durable_task_id: Option<Uuid7>,
     /// Current generation, without granting execution of another task.
     pub durable_task_generation: Option<u64>,
-    /// Native route, without inventing a task for conversational input.
+    /// Whether the item started a task or steered one.
     pub action: af_wire::durable_task::DurableTaskInputAction,
     /// Current execution may apply the accepted item at its next safe boundary.
     pub applies_here: bool,
-    /// Per-task accepted input order, absent for a new goal or conversation.
+    /// Per-task accepted input order, absent for a new task.
     pub input_sequence: Option<u64>,
 }
 
@@ -122,8 +121,6 @@ pub struct DurableTaskSnapshot {
     pub title: String,
     /// Version of the entire native resource, including accounted progress.
     pub resource_version: u64,
-    /// Human-readable immutable setup revision number.
-    pub accepted_revision_number: u64,
 }
 
 impl DurableTaskSnapshot {
@@ -170,8 +167,6 @@ pub struct DurableTaskSummary {
     pub resource_version: u64,
     /// Generation required by subsequent task operations.
     pub generation: u64,
-    /// Setup revision accepted by this objective.
-    pub accepted_revision_id: Uuid7,
     /// Acceptance instant used by the keyset boundary.
     pub created_at: jiff::Timestamp,
     /// Fixed cumulative wall deadline.
@@ -199,13 +194,12 @@ impl DurableTaskControl {
     }
 }
 
-/// An explicit human adoption, separate from lifecycle state and execution authority.
+/// A person's edit of a task's completion statements, under the generation
+/// they read: the task is judged against the new ones from its next goal check.
 #[derive(Debug, Clone)]
-pub struct DurableTaskAdoption {
-    /// Reviewed immutable fleet setup containing the new completion wording.
-    pub goal_revision_id: Uuid7,
-    /// Stable operation identity for idempotent adoption.
-    pub operation_id: Uuid7,
-    /// Generation the person read before choosing the new goal revision.
+pub struct DurableTaskStatements {
+    /// The replacement statements, at least one, each with a unique id.
+    pub questions: Vec<af_wire::durable_task::DurableTaskStatement>,
+    /// Generation the person read before the edit; a stale one is refused.
     pub expected_generation: u64,
 }

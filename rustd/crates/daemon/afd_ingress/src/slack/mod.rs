@@ -1,14 +1,15 @@
-//! A chat mention's fleets: who in a workspace attached to the channel it
+//! A chat mention's fleets: who in a workspace subscribed to the channel it
 //! arrived in.
 //!
-//! The GitHub App read's sibling, split the same way (`sql.rs` on
-//! `SELECT_APP_SUBSCRIBERS`): the statement asks only the relational question —
-//! which fleets are in the workspace and alive — and the document question,
-//! whether a fleet's `mention` trigger names THIS channel, is [`subscribed`],
-//! a pure function a test reaches with no datastore.
+//! The GitHub App read's sibling (`sql.rs` on `SELECT_APP_SUBSCRIBERS`): the
+//! statement selects the fleets whose `mention` row names THIS channel, and
+//! [`subscribed`] reads each one's status and approved GitHub reach, a pure
+//! function a test reaches with no datastore.
 
 use af_core::id::Uuid7;
-use af_fleet_runtime::config::{Access, FleetConfig};
+use af_fleet_runtime::config::{Access, RepositoryBinding};
+use af_wire::trigger_verb::TriggerKind;
+use afd_api_wire::grant::status;
 use afd_fleet_lifecycle::FleetStatus;
 
 use crate::error::{self, Result};
@@ -35,8 +36,12 @@ const CONTEXT_MENTION_SUBSCRIBERS: &str = "resolve mention subscribers";
 ///
 /// Archived fleets are read, not skipped: a person who addresses one by name
 /// is owed a notice saying so, and a fleet the read silently dropped would earn
-/// "no such fleet" instead. Installing fleets are not attached to anything yet.
+/// "no such fleet" instead.
 const READABLE: [FleetStatus; 2] = [FleetStatus::Active, FleetStatus::Archived];
+
+/// The grant a fleet's GitHub scope is approved under, as the policy build and
+/// the token mint name it.
+const SERVICE_GITHUB: &str = "github";
 
 /// One fleet attached to a channel, as routing reads it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,12 +58,12 @@ pub struct Subscriber {
 }
 
 impl Ingress {
-    /// The fleets in `workspace` whose `mention` trigger names `channel` on
+    /// The fleets in `workspace` whose `mention` row names `channel` on
     /// `provider`, in fleet-id order.
     ///
     /// # Errors
     /// Reports a datastore that would not answer, a row this build cannot read,
-    /// and a stored document that no longer parses.
+    /// and a stored GitHub scope the parser refuses.
     pub async fn mention_subscribers(
         &self,
         workspace: &Uuid7,
@@ -70,6 +75,11 @@ impl Ingress {
         let rows: Vec<CandidateRow> = sqlx::query_as(sql::SELECT_MENTION_CANDIDATES)
             .bind(workspace)
             .bind(&statuses)
+            .bind(TriggerKind::Mention.as_str())
+            .bind(provider.to_ascii_lowercase())
+            .bind(channel.as_str())
+            .bind(SERVICE_GITHUB)
+            .bind(status::APPROVED)
             .fetch_all(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_MENTION_SUBSCRIBERS))?;
@@ -81,63 +91,52 @@ impl Ingress {
                     row.fleet_id.clone(),
                     &row.name,
                     &row.status,
-                    &row.document,
-                    provider,
-                    channel,
+                    row.github_scope.as_deref(),
                 )
             })
-            .filter_map(Result::transpose)
             .collect()
     }
 }
 
-/// [`sql::SELECT_MENTION_CANDIDATES`]'s row: one fleet a mention could reach.
+/// [`sql::SELECT_MENTION_CANDIDATES`]'s row: one fleet subscribed to the channel.
 #[derive(Debug, sqlx::FromRow)]
 struct CandidateRow {
-    /// The fleet, as text.
+    /// The fleet.
     fleet_id: Uuid7,
     /// Its saved name: the one the dashboard and the command line show.
     name: String,
     /// The stored status word.
     status: String,
-    /// The head revision's configuration, as JSON text.
-    document: String,
+    /// The GitHub scope a person approved for it, as JSON text, or `None`.
+    github_scope: Option<String>,
 }
 
-/// Whether one stored fleet is attached to `channel` on `provider`.
+/// One subscribed fleet as routing reads it.
 ///
-/// `None` for a fleet whose document declares no `mention` trigger, or one
-/// naming another provider or another channel. The channel is compared by its
-/// identifier, which a rename does not change; the provider ignoring case, for
-/// the reason the webhook source is (`binding.rs`).
-///
-/// A subscriber is addressed by `name`, the fleet's saved name, never by the
-/// name inside its document, which a save can leave different: one fleet then
-/// answers to one name on every surface.
+/// A fleet whose approved GitHub scope reaches write takes only mentions
+/// addressed to it by name: an unaddressed mention in a busy channel must not
+/// steer a fleet that can push to a repository.
 ///
 /// # Errors
-/// A status this build cannot name, and a stored document that no longer
-/// parses — both this deployment's incidents rather than a sender's.
+/// A status this build cannot name, and a stored scope the parser refuses —
+/// both this deployment's incidents rather than a sender's.
 pub(crate) fn subscribed(
     fleet: Uuid7,
     name: &str,
     stored_status: &str,
-    document: &str,
-    provider: &str,
-    channel: &ChannelId,
-) -> Result<Option<Subscriber>> {
+    github_scope: Option<&str>,
+) -> Result<Subscriber> {
     let status = error::stored_status(stored_status)?;
-    let config = FleetConfig::stored(document)?;
-    Ok(config
-        .is_attached_to(provider, channel)
-        .then(|| Subscriber {
-            fleet,
-            name: name.to_owned(),
-            runnable: status.is_runnable(),
-            addressed_only: config
-                .repository_binding()
-                .is_some_and(|binding| binding.access() == Access::Write),
-        }))
+    let addressed_only = github_scope
+        .map(RepositoryBinding::parse)
+        .transpose()?
+        .is_some_and(|binding| binding.access() == Access::Write);
+    Ok(Subscriber {
+        fleet,
+        name: name.to_owned(),
+        runnable: status.is_runnable(),
+        addressed_only,
+    })
 }
 
 #[cfg(test)]

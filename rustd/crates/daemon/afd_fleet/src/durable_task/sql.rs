@@ -8,7 +8,6 @@ pub(super) const LOCK_SOURCE: &str = include_str!("sql/lock_source.sql");
 pub(super) const REPLAY: &str = include_str!("sql/replay.sql");
 pub(super) const INSERT_ITEM: &str = include_str!("sql/insert_item.sql");
 pub(super) const INSERT_DURABLE_TASK: &str = include_str!("sql/insert_durable_task.sql");
-pub(super) const BIND_RUN: &str = include_str!("sql/bind_run.sql");
 pub(super) const READ: &str = include_str!("sql/read.sql");
 pub(super) const LOCK_DURABLE_TASK: &str = include_str!("sql/lock_durable_task.sql");
 pub(super) const CONTROL: &str = include_str!("sql/control.sql");

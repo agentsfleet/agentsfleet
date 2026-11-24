@@ -15,7 +15,7 @@ const PAGE: &str = "019f0000-0000-7000-8000-000000000003";
 fn recovery_payload() -> af_wire::run::RunPayload<'static> {
     let mut run = payload(RUN_ID, FLEET_ID);
     run.event.workspace_id = ID.into();
-    run.durable_tasks = true;
+    run.durable_task = Some(fixture::task());
     run.decision = Some(Box::new(fixture::assignment()));
     run.policy.tools.clear();
     run.policy.context.context_cap_tokens = 64000;
@@ -189,7 +189,7 @@ fn assert_refused_start(archive: &archive::Archive, refusal: Refusal) {
         Some(&serde_json::json!("startup_posture"))
     );
     let detail = if refusal == Refusal::Inputs {
-        "native task intent could not be established"
+        "the bound task's inputs could not be read"
     } else {
         "durable task recovery could not be established"
     };

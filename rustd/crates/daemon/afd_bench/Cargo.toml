@@ -33,18 +33,19 @@ afd_state.workspace = true
 afd_turns.workspace = true
 # The rest of the run plane the drain composes: `Plane::run` walks past the
 # assignment into the payer's wallet (`afd_billing`), the provider
-# (`afd_credential`), the vault (`afd_vault`), the approval gate (`afd_gate`)
-# and the standing grants (`afd_approval`). The drain builds the same plane the daemon's root builds,
+# (`afd_credential`), the vault (`afd_vault`) and the standing grants
+# (`afd_approval`). The drain builds the same plane the daemon's root builds,
 # so each is here for the same reason `afd_fleet` is: a copy would not be the
 # path under measurement.
 afd_billing.workspace = true
 afd_credential.workspace = true
-afd_gate.workspace = true
 afd_approval.workspace = true
-# The setup chat half of the production poll: `RunService::assign_with` admits chat
-# work through `Drafts`, and the saturation shape seeds its drafts through
-# `Drafts::create`, the route's own write path.
+# The saturation shape starts its chat fleets through `Creations::create`, the
+# route's own write path, from the first-message body the route reads
+# (`afd_api_wire`), proved inside its bounds (`garde`).
 afd_setup.workspace = true
+afd_api_wire.workspace = true
+garde.workspace = true
 # The live set a wall's viewers re-read every tick, read beside the poll so the
 # saturation shape measures the two competing for one pool.
 afd_fleet_lifecycle.workspace = true

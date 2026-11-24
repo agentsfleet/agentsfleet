@@ -34,10 +34,6 @@ af_core::error_shell!(
 /// What actually went wrong. Crate-visible so a raise site can name the variant.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ErrorKind {
-    /// A setup written under another build's semantics needs explicit review.
-    #[error("the selected setup requires policy review")]
-    Policy,
-
     /// No fleet with this id belongs to the caller's workspace.
     #[error("no such fleet in this workspace")]
     FleetAbsent,
@@ -101,10 +97,6 @@ impl Error {
     /// The code and the sentence, decided together — see the module note.
     fn answer(&self) -> (ErrorCode, &'static str) {
         match self.kind() {
-            ErrorKind::Policy => (
-                error_code::SETUP_POLICY,
-                af_core::problem::Problem::of(error_code::SETUP_POLICY).title(),
-            ),
             ErrorKind::FleetAbsent => (
                 error_code::AGENTSFLEET_NOT_FOUND,
                 af_core::problem::Problem::of(error_code::AGENTSFLEET_NOT_FOUND).title(),
@@ -155,8 +147,7 @@ impl Error {
             | ErrorKind::OverBudget { .. }
             | ErrorKind::Exhausted { .. }
             | ErrorKind::TimedOut { .. } => true,
-            ErrorKind::Policy
-            | ErrorKind::FleetAbsent
+            ErrorKind::FleetAbsent
             | ErrorKind::NotRunnable { .. }
             | ErrorKind::Query { .. }
             | ErrorKind::Entropy { .. } => false,
@@ -174,8 +165,7 @@ impl Error {
     pub const fn not_runnable(&self) -> Option<afd_fleet_lifecycle::FleetStatus> {
         match self.kind() {
             ErrorKind::NotRunnable { status } => Some(*status),
-            ErrorKind::Policy
-            | ErrorKind::FleetAbsent
+            ErrorKind::FleetAbsent
             | ErrorKind::Datastore { .. }
             | ErrorKind::Query { .. }
             | ErrorKind::OverBudget { .. }
@@ -191,8 +181,7 @@ impl Error {
     pub const fn is_over_capacity(&self) -> bool {
         match self.kind() {
             ErrorKind::OverBudget { .. } | ErrorKind::Exhausted { .. } => true,
-            ErrorKind::Policy
-            | ErrorKind::FleetAbsent
+            ErrorKind::FleetAbsent
             | ErrorKind::NotRunnable { .. }
             | ErrorKind::Datastore { .. }
             | ErrorKind::Query { .. }

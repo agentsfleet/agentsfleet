@@ -101,7 +101,6 @@ impl Fixture {
         )
         .name("approval")
         .at(afd_db::test_util::SEEDED_AT)
-        .native_setup()
         .insert(&mut *connection)
         .await
         .expect("the approval fleet seeds");
@@ -195,7 +194,6 @@ impl Fixture {
         )
         .name("approval-other")
         .at(afd_db::test_util::SEEDED_AT)
-        .native_setup()
         .insert(&mut *connection)
         .await
         .expect("the second fleet seeds");

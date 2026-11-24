@@ -1,5 +1,4 @@
-SELECT id, title, status AS state, resource_version, generation,
-       accepted_revision_id, created_at, expires_at
+SELECT id, title, status AS state, resource_version, generation, created_at, expires_at
 FROM fleet.durable_tasks
 WHERE fleet_id = $1 AND workspace_id = $2
   AND terminal_at IS NULL

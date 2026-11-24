@@ -20,7 +20,9 @@ fn input() -> DecisionReservationInput {
         operation_id: CALL.to_owned(),
         fencing_token: 0,
         source_turn_id: CALL.to_owned(),
-        assessment: af_wire::durable_task::DecisionAssessment::Message,
+        assessment: af_wire::durable_task::DecisionAssessment::Goal {
+            action_group_id: CALL.to_owned(),
+        },
         durable_task: None,
         retry_of: None,
         evidence: serde_json::json!({}),

@@ -14,8 +14,6 @@ mod assessment;
 mod effects;
 mod evidence;
 mod finish_boundary;
-mod intake;
-mod intake_fixture;
 mod publication;
 mod publication_fixture;
 mod publication_guards;
@@ -100,7 +98,7 @@ impl RunVerbs for Goals {
 
 fn assigned_run(tools: &[&str], context: u32) -> af_wire::run::RunPayload<'static> {
     let mut this_run = payload(tools, unbounded());
-    this_run.durable_tasks = true;
+    this_run.durable_task = Some(task());
     this_run.policy.model_context_tokens = context;
     this_run.decision = Some(Box::new(assignment()));
     this_run
@@ -186,7 +184,6 @@ async fn complete_and_wait_reports_retain_native_goal_proof_and_private_history(
         let prepared = PreparedDurableTask {
             execution_deadline: native.inputs.execution_deadline,
             inputs: native.inputs.clone(),
-            allow_actions: true,
         };
         let output = run(&engine, &this_run, &native, &prepared).await?;
         let report = output.task.ok_or_else(crate::decision::unavailable)?;
@@ -279,7 +276,6 @@ async fn untrusted_goal_results_never_authorize_completion() -> crate::Result<()
         let prepared = PreparedDurableTask {
             execution_deadline: native.inputs.execution_deadline,
             inputs: native.inputs.clone(),
-            allow_actions: true,
         };
         let output = run(&engine, &this_run, &native, &prepared).await?;
         assert!(output.task.is_none());
@@ -319,7 +315,6 @@ async fn continue_requires_another_action_group_and_a_fresh_goal_receipt() -> cr
     let prepared = PreparedDurableTask {
         execution_deadline: native.inputs.execution_deadline,
         inputs: native.inputs.clone(),
-        allow_actions: true,
     };
     let output = run(&engine, &this_run, &native, &prepared).await?;
     assert_eq!(

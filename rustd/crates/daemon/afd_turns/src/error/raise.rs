@@ -180,7 +180,6 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             "exhausted",
             query("admitting an event")(sqlx::Error::Database(Box::new(DiskFull))),
         ),
-        ("policy", ErrorKind::Policy.into()),
         (
             "timed out",
             query("admitting an event")(sqlx::Error::Database(Box::new(LockWaitExpired))),

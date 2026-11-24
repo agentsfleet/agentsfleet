@@ -11,7 +11,6 @@ CREATE TABLE fleet.schedules (
     message                TEXT    NOT NULL,
     once                   BOOLEAN NOT NULL,
     fire_at                TIMESTAMPTZ(3),
-    recipe                 JSONB,
     desired_status         TEXT    NOT NULL,
     sync_status            TEXT    NOT NULL,
     resource_version       BIGINT  NOT NULL,

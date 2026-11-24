@@ -57,6 +57,10 @@ afd_http::plane_collector! {
         crate::handler::runner::schedule_edit::update,
         crate::handler::runner::schedule_run::run,
         crate::handler::runner::schedule_run::runs,
+        crate::handler::runner::trigger::add,
+        crate::handler::runner::trigger::list,
+        crate::handler::runner::trigger::remove,
+        crate::handler::runner::access::request,
         crate::handler::runner::self_record::handle,
         crate::handler::runner::stream::handle,
     )

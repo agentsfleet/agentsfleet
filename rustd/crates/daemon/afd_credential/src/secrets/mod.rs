@@ -1,7 +1,7 @@
-//! The credentials a fleet declared, split by how the runner will get them.
+//! The credentials a fleet holds, split by how the runner will get them.
 //!
-//! The stored config carries a list of credential NAMES. This resolves each to
-//! the vault object behind it and then splits the set in two: a static
+//! A fleet's approved grants carry a list of credential NAMES. This resolves
+//! each to the vault object behind it and then splits the set in two: a static
 //! credential ships its stored value in `secrets_map`, where the runner's tool
 //! bridge reads it as `${secrets.<name>.<field>}`; an on-demand one ships as an
 //! id and a name only, and the runner comes back to the broker for a
@@ -185,21 +185,21 @@ impl Declared {
     }
 }
 
-// M-TEST-UTIL: gated on the feature rather than `cfg(test)`, because the
-// caller that needs it is the POLICY suite in `afd_fleet` — a different crate,
-// whose test build cannot see this one's `cfg(test)` items.
+// M-TEST-UTIL, not `cfg(test)`: `afd_gate`'s policy suite is the caller.
 #[cfg(any(test, feature = "test-util"))]
 impl Declared {
-    /// A declaration carrying mintable entries and no stored values.
-    ///
-    /// The routing above needs a vault read to reach; the policy assembly's
-    /// grant pass needs only the mintable half. This hands a sibling unit test
-    /// that half directly rather than making it stand up a datastore to prove
-    /// a decision no datastore takes part in.
-    pub fn with_mintable<'a>(entries: impl IntoIterator<Item = (&'a str, &'a str)>) -> Self {
+    /// The two halves the routing above would have split, handed to a policy
+    /// test that has no vault to route through.
+    pub fn with_parts<'a>(
+        stored: impl IntoIterator<Item = (&'a str, Value)>,
+        mintable: impl IntoIterator<Item = (&'a str, &'a str)>,
+    ) -> Self {
         Self {
-            secrets_map: Map::new(),
-            mintable: entries
+            secrets_map: stored
+                .into_iter()
+                .map(|(name, value)| (name.to_owned(), value))
+                .collect(),
+            mintable: mintable
                 .into_iter()
                 .map(|(name, integration)| Mintable {
                     name: name.into(),

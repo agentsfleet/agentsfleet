@@ -4,7 +4,7 @@ mod project;
 mod sql;
 
 use crate::{
-    Access, Drafts, Result, access,
+    Access, Creations, Result, access,
     error::{ErrorKind, raise::query},
     replay,
     types::{ModelPurpose, ModelsQuery, Page, WorkspaceModel},
@@ -16,7 +16,7 @@ use sqlx::Connection as _;
 const CONTEXT: &str = "list workspace owner's model choices";
 const RESOURCE: &str = "workspace-owner-models-reference-asc";
 
-impl Drafts {
+impl Creations {
     /// Lists configured priced choices from the workspace owner, including for joined members.
     ///
     /// # Errors

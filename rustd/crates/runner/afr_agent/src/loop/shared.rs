@@ -113,6 +113,10 @@ pub(crate) struct Shared<'run> {
     pub(crate) registry: Agents,
     /// The system prompt every loop of the run opens with.
     pub(crate) instructions: String,
+    /// The fixed text the system prompt opens with: all a compaction's
+    /// pinned digest covers, so pinned memory or access changing between
+    /// runs keeps the thread's saved summary readable.
+    pub(crate) fixed: String,
     pub(crate) started: Instant,
 }
 
@@ -140,14 +144,15 @@ pub(crate) fn run_state<'run>(
 impl<'run> Shared<'run> {
     /// What `run` shares between its loops, driving `provider` over the
     /// tools `selection` offers, those `backed` holds among them, under
-    /// `instructions`, masking through `scrub`; every call shares `state`.
+    /// `prompt`'s system prompt, masking through `scrub`; every call shares
+    /// `state`.
     pub(crate) fn new(
         run: &AgentRun<'run>,
         (selection, backed): (&'run Selection<'run>, RunTools<'run>),
         provider: &'run Provider,
         scrub: &'run Scrub,
         registry: Agents,
-        instructions: String,
+        prompt: crate::prompt::Prompt,
         state: &'run Run<'run>,
     ) -> Self {
         let policy = &run.run.policy;
@@ -185,7 +190,8 @@ impl<'run> Shared<'run> {
                 .numbering(&state.calls),
             meter: run.meter,
             registry,
-            instructions,
+            instructions: prompt.instructions,
+            fixed: prompt.fixed,
             started,
         }
     }

@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use af_core::{error_code, id::Uuid7};
 use af_wire::{
-    durable_task::{DecisionAssessment, DecisionCallState, DecisionRecordDisposition},
+    durable_task::{DecisionCallState, DecisionRecordDisposition},
     usage::LineKind,
 };
 use afd_fleet::durable_task::DurableTaskLifecycle as _;
@@ -33,7 +33,7 @@ async fn concurrent_decision_replays_issue_one_key_and_account_one_complete_line
 
 async fn replays(case: &Case, operations: Operations) {
     let fixture = Decisions::create(case).await;
-    let input = fixture.reservation(DecisionAssessment::Message, None);
+    let input = fixture.call_input().await;
     let replies = contend(&fixture, &input, operations).await;
     assert_eq!(replies.iter().filter(|(issued, _)| *issued).count(), 1);
     let body = &replies
@@ -99,10 +99,11 @@ pub(super) async fn contend(
     let barrier = Barrier::new(CALLERS);
     let active = AtomicUsize::new(0);
     let peak = AtomicUsize::new(0);
+    let task = fixture.bind_goal().await;
     let peers = match operations {
         Operations::Same => Vec::new(),
         Operations::Independent => (1..CALLERS)
-            .map(|_| fixture.reservation(DecisionAssessment::Message, None))
+            .map(|_| fixture.goal_reservation(&task))
             .collect::<Vec<_>>(),
     };
     let requests = match operations {

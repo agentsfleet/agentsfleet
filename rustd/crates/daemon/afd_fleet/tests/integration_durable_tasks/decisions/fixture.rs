@@ -31,28 +31,17 @@ pub(super) struct Decisions<'a> {
     pub tasks: DurableTasks,
     pub model: DecisionModelFixture,
     pub assignment: DecisionAssignment,
-    pub revision: Uuid7,
     pub dependencies: DurableTaskDependencies,
     pub vault: Vault,
 }
 
 impl<'a> Decisions<'a> {
     pub(super) async fn create(case: &'a Case) -> Self {
-        Self::with_daily_budget(case, 1_000_000_000).await
-    }
-
-    pub(super) async fn with_daily_budget(case: &'a Case, daily: i64) -> Self {
         case.held.fixtures.seed_model_rate(PROVIDER, MODEL).await;
         let model = DecisionModelFixture::create(&case.held.fixtures.database)
             .await
             .expect("reviewed decision model fixture");
         let assignment = assignment(case, &model).await;
-        let config = json!({"name":"pull-request-repair", "x-agentsfleet":{"tools":[], "triggers":[],
-            "budget":{"daily_nanos":daily.to_string()}, "decision_policy": policy()}});
-        case.held
-            .fixtures
-            .native_config(&case.held.fleet, &config.to_string())
-            .await;
         let mut connection = case
             .held
             .fixtures
@@ -66,12 +55,6 @@ impl<'a> Decisions<'a> {
             .execute(&mut *connection)
             .await
             .expect("well-formed already-issued snapshot");
-        let revision: Uuid7 =
-            sqlx::query_scalar("SELECT head_revision_id FROM fleet.fleets WHERE id=$1")
-                .bind(&case.held.fleet)
-                .fetch_one(&mut *connection)
-                .await
-                .expect("accepted owner revision");
         drop(connection);
         let mut dependencies = DurableTaskDependencies::from(&case.held.fixtures.plane());
         dependencies.admin_workspace = Some(case.scope.workspace_id.clone());
@@ -102,7 +85,6 @@ impl<'a> Decisions<'a> {
             tasks,
             model,
             assignment,
-            revision,
             dependencies,
             vault,
         }
@@ -190,6 +172,26 @@ impl<'a> Decisions<'a> {
         &self,
         limits: DurableTaskLimits,
     ) -> DecisionDurableTaskVersion {
+        self.bind_goal_on(
+            json!({"repository":"example/linkwarden","repository_id":101,"installation_id":1,"number":101,
+                "branch":"repair","base":"main","head":"0".repeat(40),"tree":"1".repeat(40),
+                "url":"https://github.com/example/linkwarden/pull/101","workflows":[]}),
+            limits,
+        )
+        .await
+    }
+
+    /// A task that works through the API alone, bound to the fixture run.
+    pub(super) async fn bind_api_only_goal(&self) -> DecisionDurableTaskVersion {
+        self.bind_goal_on(json!({"kind":"api_only"}), DurableTaskLimits::default())
+            .await
+    }
+
+    async fn bind_goal_on(
+        &self,
+        target: Value,
+        limits: DurableTaskLimits,
+    ) -> DecisionDurableTaskVersion {
         let goal = GOALS.first().expect("accepted fixture objective");
         let questions = serde_json::from_value(json!([
             {"name":"goal.defect-fixed","question":{"type":"noul",
@@ -207,14 +209,11 @@ impl<'a> Decisions<'a> {
             (*goal).to_owned(),
             questions,
             sha256_hex(goal.as_bytes()),
-            json!({"repository":"example/linkwarden","repository_id":101,"installation_id":1,"number":101,
-                "branch":"repair","base":"main","head":"0".repeat(40),"tree":"1".repeat(40),
-                "url":"https://github.com/example/linkwarden/pull/101","workflows":[]}).to_string(),
+            target.to_string(),
             limits,
         );
         let plan = PreparedPlan::from_parts(
             self.case.held.turn_id.clone(),
-            self.revision.clone(),
             "accepted-decision-goal".to_owned(),
             vec![item],
         );
@@ -223,17 +222,35 @@ impl<'a> Decisions<'a> {
             .bind(self.case.run(), &plan)
             .await
             .expect("native bound task");
+        let task = bindings
+            .items
+            .first()
+            .expect("one task")
+            .durable_task_id
+            .clone()
+            .expect("accepted goal owns a task");
+        // A binding leaves its run unbound; the goal check is a task run's,
+        // so the fixture run takes the task as its continuation's run would.
+        // A replayed binding found the run already attached.
+        if !bindings.replayed {
+            assert!(
+                self.tasks
+                    .attach_run(&self.case.held.run_key, &task, 1)
+                    .await
+                    .expect("the fixture run attaches"),
+                "a ready task takes its first run"
+            );
+        }
         DecisionDurableTaskVersion {
-            durable_task_id: bindings
-                .items
-                .first()
-                .expect("one task")
-                .durable_task_id
-                .as_ref()
-                .expect("accepted goal owns a task")
-                .to_string(),
+            durable_task_id: task.to_string(),
             generation: 1,
         }
+    }
+
+    /// A decision call's input: a goal check of the fixture's bound task.
+    pub(super) async fn call_input(&self) -> garde::Valid<DecisionReservationInput> {
+        let task = self.bind_goal().await;
+        self.goal_reservation(&task)
     }
 
     pub(super) async fn counts(&self) -> (i64, i64, i64) {
@@ -274,11 +291,6 @@ pub(super) async fn lock_thread(connection: &mut sqlx::PgConnection, case: &Case
         .await
         .expect("existing issuance lock");
     pid
-}
-
-pub(super) fn policy() -> Value {
-    serde_json::from_str(af_fleet_runtime::test_util::DECISION_POLICY)
-        .expect("reviewed owner criteria fixture")
 }
 
 async fn assignment(case: &Case, model: &DecisionModelFixture) -> DecisionAssignment {

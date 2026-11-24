@@ -1,38 +1,34 @@
-//! The verb that was missing: asking for a grant a person can give.
+//! A fleet asking for one secret or integration, and the card a person
+//! answers it on.
 //!
 //! # Why this crate, beside the revoke
 //!
-//! [`crate::grant`]'s module note already argues it: this crate was the grant
-//! table's writer before either verb existed, because `sql::RESOLVE_GATE` moves
-//! a grant in the same statement that answers its gate. The request is the
-//! third direction of that one authority, and putting it on the run path
-//! instead would give `connector.integration_grants` a second writer whose writes
-//! the resolve would have to trust.
+//! [`crate::grant`]'s module note argues it: this crate is the grant table's
+//! writer, because `sql::RESOLVE_GATE` moves a grant in the same statement
+//! that answers its card. The request is the third direction of that one
+//! authority, and putting it on the run path instead would give
+//! `connector.integration_grants` a second writer whose writes the resolve
+//! would have to trust.
 //!
-//! # What was actually broken
+//! # The card carries the asking turn
 //!
-//! The approve half shipped complete. `RESOLVE_GATE`'s `granted` arm moves a
-//! grant when a person answers a gate of kind [`KIND_INTEGRATION_GRANT`], and
-//! it has been correct and unreachable — every `INSERT INTO
-//! connector.integration_grants` in the repository was in a test file, so no row
-//! ever existed for it to move. A fleet declaring a mintable credential parked
-//! its delivery on a grant that could not be created, redelivering every second
-//! against a dashboard that reported it healthy.
+//! A run asks, then ends waiting, as a run's question does. The card is raised
+//! with the asking turn as its `turn_id`, so answering it writes the answer
+//! turn a question's answer writes, and the waiting run resumes holding the
+//! access or knowing it was refused.
 //!
 //! # The card carries the key the approve statement matches on
 //!
 //! `RESOLVE_GATE` joins `g.service = r.evidence->>'service'`. A card written
 //! without that key resolves cleanly, moves no grant, and leaves the fleet
-//! exactly where it was — a failure with no error, which is the class this
-//! module exists to end. [`Wanted::evidence`] is the only place that key is
-//! written, and it is spelled from the same constant the statement is bound
-//! with.
+//! exactly where it was — a failure with no error. [`Wanted::evidence`] is the
+//! only place that key is written.
 
 use std::time::Duration;
 
 use af_core::id::Uuid7;
 use af_core::timing::DAY;
-use afd_api_wire::grant::status;
+use afd_api_wire::grant::kind;
 use jiff::Timestamp;
 use sqlx::Acquire as _;
 
@@ -42,7 +38,7 @@ use crate::{Result, error};
 /// Statement name, for the context a query failure carries.
 const CONTEXT_REQUEST: &str = "grant.request";
 
-/// The gate kind whose approval also moves an integration grant.
+/// The gate kind whose answer also moves an integration grant.
 ///
 /// Declared here and imported by [`crate::inbox`], which binds it into
 /// `RESOLVE_GATE`'s `granted` arm: the raise and the resolve must spell one
@@ -50,32 +46,23 @@ const CONTEXT_REQUEST: &str = "grant.request";
 /// matching (RULE UFS).
 pub const KIND_INTEGRATION_GRANT: &str = "integration_grant";
 
-/// The `evidence` key naming the third party a card is about.
-///
-/// The rendered key is also read by `RESOLVE_GATE`'s evidence join. The live
-/// request-then-approve regression verifies that those spellings agree.
+/// The `evidence` keys a card carries: the name `RESOLVE_GATE` joins on, the
+/// channel it reaches a run through, and the scope asked for.
 const EVIDENCE_SERVICE: &str = "service";
+const EVIDENCE_KIND: &str = "kind";
+const EVIDENCE_SCOPE: &str = "scope";
 
-/// A grant request was written, and a person now owes an answer.
+/// A grant request raised a card, and a person now owes an answer.
 const EVENT_REQUESTED: &str = "grant_requested";
 
-/// A request found a card already open and wrote nothing.
+/// A request found a card already open and raised none.
 const EVENT_SUPPRESSED: &str = "grant_request_suppressed";
-
-/// A grant row carries a status this build has no arm for.
-const EVENT_STATUS_UNKNOWN: &str = "grant_status_unrecognised";
 
 /// How long a grant card stands before the sweeper may take it.
 ///
-/// Thirty days, and deliberately not the hour an event gate gets
-/// (`af_fleet_runtime::config::DEFAULT_TIMEOUT`). That hour bounds a
-/// question about ONE delivery, where a run is waiting and a stale answer is
-/// worse than none. This card asks for a STANDING authorisation, raised at
-/// install for a person who may not be at their desk, and an hour would expire
-/// it before they read it — leaving the fleet exactly as unable to run as it
-/// was, which is the failure this module exists to end.
-///
-/// A span the statement adds to the database clock, so the card's deadline is
+/// Thirty days: the card asks for a STANDING authorisation that a person may
+/// not read for days, and the run waits on it as it waits on a question. A
+/// span the statement adds to the database clock, so the card's deadline is
 /// stamped by the same clock the sweeper later reads it against.
 ///
 /// Kept: `fleet.approval_gates.expires_at` is `NOT NULL` and read back as a timestamp.
@@ -84,126 +71,147 @@ const GRANT_DECISION_WINDOW: Duration = DAY.saturating_mul(GRANT_DECISION_DAYS);
 /// The days in [`GRANT_DECISION_WINDOW`].
 const GRANT_DECISION_DAYS: u32 = 30;
 
-/// The card's headline, before the service it names.
-const PROPOSED_ACTION_PREFIX: &str = "mint short-lived credentials for ";
+/// The provenance a fleet's request records on the grant row.
+pub const REASON_ASKED_BY_THE_FLEET: &str = "Asked for by the fleet in its chat";
 
-/// The card's blast radius, around the service it names.
-const RADIUS_PREFIX: &str = "every credential this fleet mints for ";
-const RADIUS_SUFFIX: &str = ", until a person revokes the grant";
-
-/// Where a request came from, and the provenance it records.
+/// Which channel an approved grant reaches a run through.
 ///
-/// A closed pair rather than a reason string and an origin label travelling
-/// beside each other: they are one fact read two ways — an operator reads the
-/// sentence on the card, a dashboard counts the label — and two fields would
-/// let a card say it came from the install while the metric said it came from a
-/// park.
+/// Derived by the caller from the vault entry or the connected integration
+/// the name resolves to, never chosen by the run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Origin {
-    /// The saved Definition declared the credential and setup found no grant.
-    Install,
-    /// A delivery reached the credential and found no grant.
-    Park,
+pub enum GrantKind {
+    /// A workspace vault entry whose stored value ships to the run.
+    Secret,
+    /// A connected integration whose token is minted per run.
+    Integration,
 }
 
-impl Origin {
-    /// The reason stored on the grant row.
-    #[must_use]
-    pub const fn reason(self) -> &'static str {
-        match self {
-            Self::Install => REASON_DECLARED_AT_INSTALL,
-            Self::Park => REASON_WANTED_BY_A_DELIVERY,
-        }
-    }
-
-    /// The label an operator's metric counts this request under.
+impl GrantKind {
+    /// The spelling `connector.integration_grants.kind` stores.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::Install => "install",
-            Self::Park => "park",
+            Self::Secret => kind::SECRET,
+            Self::Integration => kind::INTEGRATION,
+        }
+    }
+
+    /// The card's headline and blast radius for `name`.
+    fn card(self, name: &str) -> (String, String) {
+        match self {
+            Self::Secret => (
+                format!("use the workspace secret {name}"),
+                format!("every run of this fleet holds {name}, until a person revokes the grant"),
+            ),
+            Self::Integration => (
+                format!("mint short-lived credentials for {name}"),
+                format!(
+                    "every credential this fleet mints for {name}, until a person revokes the grant"
+                ),
+            ),
         }
     }
 }
 
-/// The provenance an install-time request records.
-///
-/// The vocabulary the codebase already assumed: `af_wire`'s own wire fixture
-/// and this crate's grant suite both carry this sentence, and both were
-/// test-only until a production writer existed to mean it.
-pub const REASON_DECLARED_AT_INSTALL: &str = "Declared by the fleet's setup at install";
-
-/// The provenance the park-time backstop records.
-///
-/// Private, unlike [`REASON_DECLARED_AT_INSTALL`]: the install sentence predates
-/// this module and three test crates already assert against it by name, while
-/// this one is reachable where it matters through [`Origin::reason`].
-const REASON_WANTED_BY_A_DELIVERY: &str = "Wanted by a delivery that could not run";
-
-/// One integration a fleet needs standing permission to mint against.
+/// One secret or integration a fleet asks to hold.
 #[derive(Debug, Clone, Copy)]
 pub struct Wanted<'a> {
-    /// The connector's own name — `github`, `zoho` — as
-    /// `afd_credential::secrets::connector::Connector::name` spells it.
-    ///
-    /// This is the value `RESOLVE_GATE` matches the grant row on, so it is the
-    /// service and never the fleet's own name for the credential.
-    pub service: &'a str,
-    /// The name the fleet declared the credential under.
-    ///
-    /// Card copy only. `github` for the service and `gh` for the declaration is
-    /// ordinary, and a person answering wants to see which of their fleet's
-    /// declarations is asking.
-    pub credential: &'a str,
-    /// Where the request came from.
-    pub origin: Origin,
+    /// The vault key or the integration's name — `sentry`, `github` — which is
+    /// the grant row's `service` and the key `RESOLVE_GATE` matches it on.
+    pub name: &'a str,
+    /// Which channel it reaches a run through.
+    pub kind: GrantKind,
+    /// The scope asked for, in the JSON shape
+    /// `af_fleet_runtime::config::RepositoryBinding::recorded` writes, or
+    /// `None` for a name that takes no scope.
+    pub scope: Option<&'a str>,
+    /// The turn whose run asked: the card carries it, and its answer resumes it.
+    pub turn: &'a Uuid7,
 }
 
 impl Wanted<'_> {
     /// The `evidence` body, carrying the one key the approve statement joins on.
     ///
-    /// Rendered rather than bound as a value: the statement casts `$12::jsonb`,
-    /// which is how every other gate insert in this workspace writes the column
-    /// — the driver's JSON binding is not compiled in, and turning it on for
-    /// one object would be a feature the rest of the daemon does not use.
+    /// Rendered rather than bound as a value: the statement casts `::jsonb`,
+    /// which is how every other gate insert in this workspace writes the
+    /// column. A scope that is not JSON renders as `null`; the caller parsed it
+    /// before asking, so that is a bug's trace on the card, never a refusal.
     fn evidence(&self) -> String {
-        serde_json::json!({ EVIDENCE_SERVICE: self.service }).to_string()
+        let scope = self
+            .scope
+            .and_then(|text| serde_json::from_str::<serde_json::Value>(text).ok());
+        serde_json::json!({
+            EVIDENCE_SERVICE: self.name,
+            EVIDENCE_KIND: self.kind.as_str(),
+            EVIDENCE_SCOPE: scope,
+        })
+        .to_string()
     }
 }
 
-/// What a request found, and therefore what its caller does next.
-///
-/// Four arms rather than a `bool`, because the park path turns on the
-/// difference: a pending grant means wait, and a revoked one means a person
-/// said no and the event must END rather than ask again every second.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// What a request did, and therefore what the run does next.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Requested {
-    /// The grant, the card, or both were written. A person now owes an answer.
-    Raised,
-    /// A card was already open for this service. Nothing was written.
-    Pending,
-    /// The fleet already holds a standing yes; there was nothing to ask.
-    Approved,
-    /// A person answered no. Asking again would talk over them.
-    Denied,
+    /// A card was raised; the run ends waiting on its answer.
+    Raised {
+        /// The fleet's grant for the name.
+        grant: Uuid7,
+        /// The card a person answers.
+        gate: Uuid7,
+    },
+    /// A card for this grant is already open, so none was raised.
+    Pending {
+        /// The fleet's grant for the name.
+        grant: Uuid7,
+        /// The open card, or `None` when a concurrent request raised it after
+        /// this one looked.
+        gate: Option<Uuid7>,
+    },
+    /// The approved grant already holds what was asked; the run continues.
+    Covered {
+        /// The fleet's grant for the name.
+        grant: Uuid7,
+    },
+}
+
+impl Requested {
+    /// The fleet's grant for the name, whatever the request did.
+    #[must_use]
+    pub const fn grant(&self) -> &Uuid7 {
+        match self {
+            Self::Raised { grant, .. } | Self::Pending { grant, .. } | Self::Covered { grant } => {
+                grant
+            }
+        }
+    }
+
+    /// The card a person answers, when one is open.
+    #[must_use]
+    pub const fn gate(&self) -> Option<&Uuid7> {
+        match self {
+            Self::Raised { gate, .. } => Some(gate),
+            Self::Pending { gate, .. } => gate.as_ref(),
+            Self::Covered { .. } => None,
+        }
+    }
 }
 
 impl IntegrationGrants {
-    /// Ask for one grant, and raise the card a person answers it on.
+    /// Ask a person for one grant, and raise the card they answer it on.
     ///
-    /// The grant and card land in one transaction. The unique active grant
-    /// reference allows one actionable card and any number of answered cards.
-    /// Repeated requests do not update either row. `now` mints the rows'
+    /// The grant and the card land in one transaction. A revoked grant is
+    /// asked again: it moves back to `pending` with a new card. A pending
+    /// grant with an open card raises none, and an approved grant raises one
+    /// only when a scope it does not hold is asked for; until that card is
+    /// approved the approved scope stays in force. `now` mints the rows'
     /// identifiers and nothing else; every stamp is the database's.
     ///
     /// # Preconditions
-    /// `fleet` MUST belong to `workspace`. Unlike this crate's two
-    /// tenant-facing grant verbs, the statement does not re-derive that —
-    /// `grant_sql::SELECT_FLEET_IN_WORKSPACE` says why — so a caller holding an
-    /// untrusted pair must check it before asking. Today's two callers each
-    /// take both identifiers from a single trusted row, so no endpoint can
-    /// route a caller-supplied pair here; the card would otherwise land in a
-    /// workspace's inbox that does not own the fleet it names.
+    /// `fleet` MUST belong to `workspace` and `wanted.turn` to `fleet`: the
+    /// statement re-derives neither, so a caller takes all three from the
+    /// fenced run it serves. A scoped request MUST be one the approved scope
+    /// does not already cover, which the caller decides with the scope parser;
+    /// this store compares the stored and asked scopes only for equality.
     ///
     /// # Errors
     /// Reports a datastore that would not answer, and an identifier that could
@@ -220,86 +228,51 @@ impl IntegrationGrants {
             .begin()
             .await
             .map_err(error::query(CONTEXT_REQUEST))?;
-        let (raised, found) = self
+        let outcome = self
             .request_on(&mut transaction, workspace, fleet, &wanted, now)
             .await?;
         transaction
             .commit()
             .await
             .map_err(error::query(CONTEXT_REQUEST))?;
-        let outcome = settle(&found, raised > 0, fleet, wanted.service);
-        report(outcome, fleet, &wanted);
+        report(&outcome, fleet, &wanted);
         Ok(outcome)
     }
 
-    /// Draws one identifier for a row this statement writes.
+    /// Draws one identifier for a row this request writes.
     ///
-    /// Three per request — the grant, the gate, and the action a person answers
-    /// about — all through the workspace's one entropy surface, for the reason
-    /// [`afd_gate`]'s park mints its pair there: a second source is a second
-    /// failure mode on a path that already has one.
+    /// Three per request — the grant, the card, and the action a person
+    /// answers about — all through the workspace's one entropy surface: a
+    /// second source is a second failure mode on a path that already has one.
     fn mint(&self, now: Timestamp) -> Result<Uuid7> {
         Ok(self.entropy().uuid7(now)?)
     }
 }
 
-/// What the statement found, as the answer a caller acts on.
-///
-/// `found` is read after ensuring the grant exists. A pending grant can have
-/// either an active card or an expired card that needs replacing.
-fn settle(found: &str, raised: bool, fleet: &Uuid7, service: &str) -> Requested {
-    match found {
-        status::PENDING if raised => Requested::Raised,
-        status::PENDING => Requested::Pending,
-        status::APPROVED => Requested::Approved,
-        status::REVOKED => Requested::Denied,
-        // A spelling this build has no arm for. Waiting is the fail-safe
-        // direction — an unknown status must never be read as a person's no,
-        // which would end an event nobody answered.
-        unknown => {
-            let fleet_id = fleet.as_str();
-            let status = unknown.to_owned();
-            {
-                let (event, message) = (
-                    &EVENT_STATUS_UNKNOWN,
-                    format_args!(
-                        "a grant row carries a status this build cannot place; the event waits"
-                    ),
-                );
-                tracing::warn!(message, event, fleet_id, service, status);
-            };
-            Requested::Pending
-        }
-    }
-}
-
 /// Says what the request did, in the two lines an operator counts.
-fn report(outcome: Requested, fleet: &Uuid7, wanted: &Wanted<'_>) {
+fn report(outcome: &Requested, fleet: &Uuid7, wanted: &Wanted<'_>) {
     let fleet_id = fleet.as_str();
-    let service = wanted.service;
-    let origin = wanted.origin.as_str();
+    let kind = wanted.kind.as_str();
     match outcome {
-        Requested::Raised => {
+        Requested::Raised { .. } => {
             let (event, message) = (
                 &EVENT_REQUESTED,
                 format_args!("a grant was requested and a person now owes an answer"),
             );
-            tracing::info!(message, event, fleet_id, service, origin);
+            tracing::info!(message, event, fleet_id, kind);
         }
-        Requested::Pending => {
+        Requested::Pending { .. } => {
             let (event, message) = (
                 &EVENT_SUPPRESSED,
-                format_args!("a card is already open for this service; nothing was written"),
+                format_args!("a card is already open for this grant; none was raised"),
             );
-            tracing::debug!(message, event, fleet_id, service, origin);
+            tracing::debug!(message, event, fleet_id, kind);
         }
-        Requested::Approved | Requested::Denied => (),
+        Requested::Covered { .. } => (),
     }
 }
 
 mod ask;
-mod cancel;
-mod setup;
 
 #[cfg(test)]
 mod tests;

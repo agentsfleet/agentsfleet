@@ -43,6 +43,7 @@ use axum::response::{IntoResponse as _, Response};
 use http::request::Parts;
 
 use crate::envelope::ProblemResponse;
+use crate::handler::Refusal;
 use crate::request_id::RequestId;
 
 /// The refusal a handler mounted without its guard answers with.
@@ -75,6 +76,12 @@ pub const DETAIL_PERSON_REQUIRED: &str =
 /// the rule uniquely, which is why it is `pub` and why a test must never
 /// re-spell it (RULE UFS).
 pub const DETAIL_SESSION_REQUIRED: &str = "Minting a command-line credential requires a browser sign-in; an existing credential cannot mint another";
+
+/// The refusal an API key earns on a write only a signed-in person may make:
+/// approving or denying an access card, revoking a grant, opening a fleet's
+/// network, and editing a task's statements.
+pub const DETAIL_SIGNED_IN_REQUIRED: &str =
+    "A signed-in person must make this change; an API key cannot";
 
 /// One route family's rule about which credential classes may act.
 ///
@@ -180,6 +187,27 @@ impl ClassPolicy for HumanClass {
     const EVENT: &'static str = "cli_credential_person_required";
 }
 
+/// A person signed in through a browser or their own terminal, for the writes
+/// that hand a fleet access or reach.
+///
+/// Admits what [`HumanClass`] admits and refuses with its own sentence: the
+/// fleet asks and a person answers, so an organisation's key, which a fleet's
+/// own tools could be handed, must never approve what the fleet asked for.
+#[derive(Debug, Clone, Copy)]
+pub struct SignedInClass;
+
+impl ClassPolicy for SignedInClass {
+    const ADMITS: &'static [PersonCredential] = &[
+        PersonCredential::SessionToken {
+            workspace_scope: None,
+        },
+        PersonCredential::CliCredential,
+    ];
+    const CODE: ErrorCode = error_code::AUTH_FORBIDDEN;
+    const DETAIL: &'static str = DETAIL_SIGNED_IN_REQUIRED;
+    const EVENT: &'static str = "signed_in_person_required";
+}
+
 /// A person whose credential class satisfied `P`.
 ///
 /// The `PhantomData` carries the policy at the type level and nothing at
@@ -206,6 +234,22 @@ impl<P: ClassPolicy> Proven<P> {
     #[must_use]
     pub fn subject(&self) -> &str {
         self.0.subject().as_str()
+    }
+}
+
+impl Proven<AnyClass> {
+    /// The same person, proved again under `P`, for a route whose rule turns
+    /// on what the request asks rather than on the route alone: a `PATCH`
+    /// that opens the network, or an approval's decision segment.
+    ///
+    /// # Errors
+    /// `P`'s own refusal for a class it does not admit.
+    pub fn narrow<P: ClassPolicy>(&self) -> Result<Proven<P>, Refusal> {
+        if admits::<P>(self.0.credential()) {
+            Ok(Proven(self.0.clone(), PhantomData))
+        } else {
+            Err(refuse(P::CODE, P::DETAIL, P::EVENT).into())
+        }
     }
 }
 
@@ -246,6 +290,9 @@ pub type FreshSession = Proven<FreshSessionClass>;
 
 /// A human acting for themselves, for the verb that revokes one.
 pub type HumanIdentity = Proven<HumanClass>;
+
+/// A signed-in person, for the writes that hand a fleet access or reach.
+pub type SignedInPerson = Proven<SignedInClass>;
 
 /// The person the guard layer proved, if it ran at all.
 ///

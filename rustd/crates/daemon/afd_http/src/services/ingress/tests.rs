@@ -13,7 +13,7 @@ use af_fleet_runtime::config::ChannelId;
 use afd_connector::Provider;
 use afd_db::{Db, DbRole, PoolConfig};
 use afd_ingress::slack::{MentionTurn, NoticeOwed};
-use afd_ingress::{Binding, Delivery, Ingress, Surface};
+use afd_ingress::{Binding, Delivery, Ingress, StoredTrigger, Surface};
 use afd_vault::Vault;
 use jiff::Timestamp;
 
@@ -80,19 +80,13 @@ fn binding() -> Binding {
         fleet(),
         workspace(),
         "active",
-        &serde_json::json!({
-            "name": "adapter",
-            "x-agentsfleet": {
-                "triggers": [{"type": "webhook", "source": SOURCE}],
-                "tools": ["bash"],
-                "budget": {"daily_nanos": af_core::money::NANOS_PER_USD.to_string()},
-            },
-        })
-        .to_string(),
-        SOURCE,
+        &StoredTrigger {
+            source: SOURCE.to_owned(),
+            ..StoredTrigger::default()
+        },
     )
-    .expect("the fixture document parses")
-    .expect("the fixture document declares a webhook trigger")
+    .expect("the fixture row parses")
+    .expect("the fixture row names a registry source")
 }
 
 /// Every method on the seam reaches the store it names.

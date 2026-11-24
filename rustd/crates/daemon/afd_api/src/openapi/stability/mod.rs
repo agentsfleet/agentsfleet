@@ -25,10 +25,6 @@ const BETA_NOTE: &str = "Beta: this field may change shape before it is stable."
 /// being built, and the runner that fills them is new; both may reshape them.
 pub(super) const BETA_FIELDS: &[(&str, &[&str])] = &[
     ("NetworkPolicy", &["http_egress", "package_manager_domains"]),
-    (
-        "DefinitionNetwork",
-        &["http_egress", "package_manager_domains"],
-    ),
     ("TurnDetail", &["tool_calls"]),
     (
         "ToolCallDetail",
@@ -67,13 +63,7 @@ pub(super) const BETA_FIELDS: &[(&str, &[&str])] = &[
     // calls them; their replies may still reshape.
     (
         "FleetItem",
-        &[
-            "description",
-            "events_processed",
-            "fleet_id",
-            "name",
-            "status",
-        ],
+        &["events_processed", "fleet_id", "name", "status"],
     ),
     (
         "FleetTurnItem",

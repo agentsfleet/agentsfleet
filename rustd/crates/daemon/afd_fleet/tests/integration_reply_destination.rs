@@ -199,7 +199,7 @@ async fn continuation_inherits_the_resumed_destination() {
         let continuation = admit(
             &fixtures,
             IncomingTurn {
-                producer: Producer::GateContinuation,
+                producer: Producer::QuestionAnswer,
                 key: Key::Repeated(&key),
                 event_type: TurnKind::Continuation,
                 reply: Reply::Inherit { turn_id },

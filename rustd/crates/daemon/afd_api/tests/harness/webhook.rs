@@ -14,14 +14,13 @@
 //! every suite is the closest reachable thing to a single owner.
 
 use af_core::id::Uuid7;
-use af_core::money::NANOS_PER_USD;
 use af_crypto::mac::HmacSha256Tag;
 use af_crypto::secret::SecretBytes;
 use af_webhook::Scheme;
 use af_webhook::vendor::svix;
 use afd_api_ingress::{HEADER_APPROVAL_SIGNATURE, HEADER_APPROVAL_TIMESTAMP};
 use afd_fleet_lifecycle::FleetStatus;
-use afd_ingress::Binding;
+use afd_ingress::{Binding, StoredTrigger};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use http::HeaderName;
@@ -81,25 +80,6 @@ pub(crate) const TRIGGER_LINEAR: &str = r#"[{"type":"webhook","source":"linear"}
 pub(crate) const TRIGGER_SVIX: &str =
     r#"[{"type":"webhook","source":"clerk","verifier":{"scheme":"svix-v1"}}]"#;
 
-/// A stored document carrying `triggers` and nothing else varying.
-///
-/// The surrounding keys are the ones [`af_fleet_runtime::FleetConfig::stored`]
-/// requires. Built here rather than loaded from a file so a reader sees the
-/// whole input beside the assertion — the shape
-/// `afd_ingress::binding::tests` already uses for the same reason.
-pub(crate) fn document(triggers: &str) -> String {
-    format!(
-        r#"{{
-          "name": "ingress-fixture",
-          "x-agentsfleet": {{
-            "triggers": {triggers},
-            "tools": ["bash"],
-            "budget": {{ "daily_nanos": "{NANOS_PER_USD}" }}
-          }}
-        }}"#
-    )
-}
-
 /// The binding an active fleet declaring `triggers` resolves to.
 pub(crate) fn binding(triggers: &str) -> Binding {
     binding_of(FLEET, triggers, FleetStatus::Active.as_str())
@@ -110,25 +90,48 @@ pub(crate) fn binding_with_status(triggers: &str, status: &str) -> Binding {
     binding_of(FLEET, triggers, status)
 }
 
-/// The same, for a fleet a test identifies.
+/// The same, for a fleet a test identifies: the webhook in `triggers`, a
+/// trigger list in the tool's own keys, as its `fleet.triggers` row holds it.
 pub(crate) fn binding_of(fleet: &str, triggers: &str, status: &str) -> Binding {
     let authored: serde_json::Value = serde_json::from_str(triggers).expect("fixture triggers");
-    let source = authored
+    let hook = authored
         .as_array()
         .expect("trigger list")
         .iter()
         .find(|trigger| trigger["type"] == "webhook")
-        .and_then(|trigger| trigger["source"].as_str())
-        .expect("fixture webhook source");
-    Binding::stored(
-        id(fleet),
-        id(WORKSPACE),
-        status,
-        &document(triggers),
-        source,
-    )
-    .expect("the fixture document parses and its status is one this build knows")
-    .expect("the fixture document declares a webhook trigger")
+        .expect("fixture webhook trigger");
+    let text = |key: &str| {
+        hook.get(key)
+            .and_then(|value| value.as_str())
+            .map(str::to_owned)
+    };
+    let list = |key: &str| {
+        hook.get(key)
+            .and_then(|value| value.as_array())
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|item| item.as_str().map(str::to_owned))
+                    .collect()
+            })
+    };
+    let verifier = |key: &str| {
+        hook.get("verifier")
+            .and_then(|recipe| recipe.get(key))
+            .and_then(|value| value.as_str())
+            .map(str::to_owned)
+    };
+    let row = StoredTrigger {
+        source: text("source").expect("fixture webhook source"),
+        events: list("events"),
+        repositories: list("repositories"),
+        verifier_scheme: verifier("scheme"),
+        verifier_header: verifier("header"),
+        secret_name: text("credential_name"),
+    };
+    Binding::stored(id(fleet), id(WORKSPACE), status, &row)
+        .expect("the fixture row parses and its status is one this build knows")
+        .expect("the fixture row names a recipe this daemon verifies")
 }
 
 /// A fixture identifier, parsed once so no test spells the check twice.

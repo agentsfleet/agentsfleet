@@ -71,7 +71,6 @@ async fn a_committed_boundary_receipt_advances_the_task_checkpoint_it_reports() 
     let prepared = PreparedDurableTask {
         execution_deadline: native.inputs.execution_deadline,
         inputs: native.inputs.clone(),
-        allow_actions: true,
     };
     let sink = Committing::default();
     let output = engine
@@ -120,7 +119,6 @@ async fn recovered_history_without_a_current_native_task_is_refused_before_any_m
     let prepared = PreparedDurableTask {
         execution_deadline: inputs.execution_deadline,
         inputs,
-        allow_actions: true,
     };
     let recovered = crate::DurableTaskRecovery {
         task: task(),

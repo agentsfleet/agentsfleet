@@ -64,10 +64,6 @@ async fn issue_refuses_platform_posture_on_a_tenant_runner() {
     fixtures.cleanup().await;
 }
 
-/// A native setup a fleet can be moved onto; `native_config` saves it on the
-/// platform model.
-const PLATFORM_CONFIG: &str = r#"{"name":"moved","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"}}}"#;
-
 /// Runs one statement about `fleet` or a turn, on a connection borrowed
 /// for that statement.
 async fn execute(fixtures: &Fixtures, statement: &'static str, id: &Uuid7) {
@@ -108,7 +104,9 @@ async fn held_fleet_on_the_platform_model_waits_for_its_hold() {
     )
     .await;
 
-    fixtures.native_config(&fleet, PLATFORM_CONFIG).await;
+    fixtures
+        .set_model(&fleet, afd_credential::provider::PLATFORM_MODEL_REF)
+        .await;
     crate::queue::enqueue(
         &fixtures.database,
         &fleet,

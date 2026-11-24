@@ -14,7 +14,6 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use af_core::clock::{after, now};
-use af_wire::run::RunKind;
 use af_wire::runner::{AssignedPolicy, NetworkPolicy, SandboxTier};
 pub(crate) use afr_supervisor::test_util::{FENCING, RUN_ID};
 use afr_supervisor::test_util::{FLEET_ID, Healthy, RUN_JSON};
@@ -150,7 +149,8 @@ enum Reports {
 /// now, naming a model that never resolves.
 fn payload() -> Value {
     let mut run: Value = serde_json::from_str(RUN_JSON).expect("the fixture run parses");
-    run["kind"] = RunKind::Fleet.as_str().into();
+    // `TaggedRun`'s tag: a fleet's turn is the one kind of run there is.
+    run["kind"] = "fleet".into();
     run["run_id"] = RUN_ID.into();
     run["run_expires_at"] = granted_until().to_string().into();
     run["event"]["fleet_id"] = FLEET_ID.into();

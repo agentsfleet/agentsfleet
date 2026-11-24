@@ -27,14 +27,12 @@ async fn configured(
     // Each installation belongs to one workspace, including concurrent fixture cases.
     let installation = installation();
     install(fixture, installation).await;
-    let config = json!({"name":"pull-request-repair","x-agentsfleet":{"tools":[],"triggers":[],
-        "budget":{"daily_nanos":"1000000000"},"decision_policy":super::fixture::policy(),
-        "repositories":["example/linkwarden"],
-        "repository_access":"write","repository_base":"main","repository_publication":"existing_pr",
-        "repository_validation_workflows":[{"path":".github/workflows/test.yml","sha256":af_core::etag::sha256_hex(WORKFLOW.as_bytes())}]}});
+    let scope = json!({"repositories":["example/linkwarden"],
+        "access":"write","base":"main","publication":"existing_pr",
+        "validation_workflows":[{"path":".github/workflows/test.yml","sha256":af_core::etag::sha256_hex(WORKFLOW.as_bytes())}]});
     case.held
         .fixtures
-        .native_config(&case.held.fleet, &config.to_string())
+        .approve_github(&case.held.fleet, &scope)
         .await;
     let mut plane = case.held.fixtures.plane();
     let platform = platform(fixture, server, installation, access).await;

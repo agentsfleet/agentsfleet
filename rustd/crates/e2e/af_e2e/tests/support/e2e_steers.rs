@@ -20,24 +20,14 @@ use serde_json::{Value, json};
 use tokio::sync::Mutex;
 
 use crate::e2e::{Scenario, unique_ids};
-use crate::e2e_seed::{FLEET_CONFIG_JSON, Seeded, scenario_tag, seed_fleet_as};
+use crate::e2e_seed::{Seeded, scenario_tag, seed_fleet_as};
 use crate::speaking::Speaking;
 use crate::wire::{get, json as body_of, post};
-
-/// A copy of a fleet's head revision, stamped with a policy this build does
-/// not run (`afd_turns/tests/receipts/locking.rs` writes the same).
-const FOREIGN_REVISION: &str = "INSERT INTO fleet.revisions \
-    (id, fleet_id, revision, definition, canonical_digest, policy_semantics, installed, runtime_model_ref, created_at, updated_at) \
-    SELECT $2, r.fleet_id, r.revision + 1, r.definition, md5(random()::text), 'foreign-semantics', \
-           true, r.runtime_model_ref, now(), now() \
-    FROM fleet.revisions r JOIN fleet.fleets f ON f.head_revision_id = r.id WHERE f.id = $1";
 
 /// A fleet's stored status words, as the seed writes them.
 pub(crate) const ACTIVE: &str = "active";
 /// See [`ACTIVE`].
 pub(crate) const ARCHIVED: &str = "archived";
-/// See [`ACTIVE`].
-pub(crate) const INSTALLING: &str = "installing";
 
 /// A booted daemon with the scenario's fleet as the sender, and the fleets
 /// a suite seeds beside it.
@@ -71,13 +61,8 @@ type Columns = (
 
 impl Crew {
     pub(crate) async fn boot(supervisor: &mut Supervisor) -> Self {
-        Self::boot_with(supervisor, FLEET_CONFIG_JSON).await
-    }
-
-    /// [`Crew::boot`], the sender fleet running the setup `config` describes.
-    pub(crate) async fn boot_with(supervisor: &mut Supervisor, config: &str) -> Self {
         Self {
-            speaking: Speaking::boot(supervisor, config).await,
+            speaking: Speaking::boot(supervisor).await,
             seeded: Mutex::new(Vec::new()),
         }
     }
@@ -122,38 +107,11 @@ impl Crew {
             fleet,
             &scene.workspace,
             &scene.tenant,
-            FLEET_CONFIG_JSON,
             now,
             seed,
         )
         .await;
         self.seeded.lock().await.push(fleet.clone());
-    }
-
-    /// Moves `fleet`'s setup to a new head revision stamped with a policy this
-    /// build does not run, as a setup that needs review is. A new row, because
-    /// `fleet.revisions` is append-only.
-    pub(crate) async fn stale_setup(&self, fleet: &Uuid7) {
-        let revision = afd_db::test_util::mint_id();
-        let mut connection = self
-            .run()
-            .booted
-            .database
-            .acquire()
-            .await
-            .expect("a connection");
-        sqlx::query(FOREIGN_REVISION)
-            .bind(fleet)
-            .bind(&revision)
-            .execute(&mut *connection)
-            .await
-            .expect("the foreign revision inserts");
-        sqlx::query("UPDATE fleet.fleets SET head_revision_id = $2 WHERE id = $1")
-            .bind(fleet)
-            .bind(&revision)
-            .execute(&mut *connection)
-            .await
-            .expect("the head moves");
     }
 
     /// Lets the scenario's runner hold `workers` runs at once: its row's
@@ -184,16 +142,7 @@ impl Crew {
             tag: &tag,
         };
         let now = af_core::clock::now();
-        seed_fleet_as(
-            &scene.booted,
-            &fleet,
-            &workspace,
-            &tenant,
-            FLEET_CONFIG_JSON,
-            now,
-            seed,
-        )
-        .await;
+        seed_fleet_as(&scene.booted, &fleet, &workspace, &tenant, now, seed).await;
         self.seeded.lock().await.push(fleet.clone());
         fleet
     }

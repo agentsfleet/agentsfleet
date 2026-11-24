@@ -52,7 +52,6 @@ pub(crate) fn report<'a>(
 ) -> ReportRequest<'a> {
     ReportRequest {
         folded_through_sequence: None,
-        setup: None,
         durable_task: None,
         run_id: Cow::Borrowed(held.issued.run_id.as_str()),
         turn_id: Cow::Borrowed(held.turn_id.as_str()),

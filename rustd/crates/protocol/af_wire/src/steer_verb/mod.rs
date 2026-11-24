@@ -2,8 +2,9 @@
 //! fleet in its workspace.
 //!
 //! The text bound is the one ceiling every text shares, a person's steer
-//! among them, so a fleet asks no more than a person may. The body names no policy: the target runs under its own setup,
-//! and a steer carries words, never authority.
+//! among them, so a fleet asks no more than a person may. The body names no
+//! policy: the target runs under its own access, and a steer carries words,
+//! never authority.
 
 use std::borrow::Cow;
 

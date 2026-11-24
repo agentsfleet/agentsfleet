@@ -32,10 +32,10 @@ pub(crate) struct Speaking {
 }
 
 impl Speaking {
-    pub(crate) async fn boot(supervisor: &mut Supervisor, config: &str) -> Self {
+    pub(crate) async fn boot(supervisor: &mut Supervisor) -> Self {
         let slack = FakeSlack::start().await;
         let api = slack.api_base();
-        let scene = scenario_with(supervisor, None, &[(SLACK_API_URL_KNOB, &api)], config).await;
+        let scene = scenario_with(supervisor, None, &[(SLACK_API_URL_KNOB, &api)]).await;
         seal_slack_grant(&scene).await;
         Self {
             scene,

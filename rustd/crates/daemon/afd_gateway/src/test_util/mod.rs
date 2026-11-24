@@ -14,10 +14,7 @@ use crate::connection::{
 use crate::{Gateway, Result, error::ErrorKind};
 use af_core::{id::Uuid7, timing::STREAM_ANSWER_TIMEOUT};
 use af_stream::{Budget, OwnedFrame, Reader};
-use af_wire::{
-    protocol::{StreamKind, Up},
-    run::AcceptedKinds,
-};
+use af_wire::protocol::{StreamKind, Up};
 use afd_auth::directory::Digest;
 use std::{collections::BTreeMap, num::NonZeroU64, sync::Arc};
 use tokio::{
@@ -56,7 +53,6 @@ impl RunnerConnection {
         gateway: &Gateway,
         runner: Uuid7,
         digest: Digest,
-        accepted: AcceptedKinds,
         credits: usize,
     ) -> Result<Self> {
         let dependencies = &gateway.inner.dependencies;
@@ -78,7 +74,6 @@ impl RunnerConnection {
             authority,
             cache,
             pipes.writers,
-            accepted,
         ));
         let mut connection = Self {
             services,

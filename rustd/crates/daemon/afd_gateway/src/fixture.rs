@@ -34,7 +34,6 @@ pub(crate) fn clocked(
         durable_task_reports: None,
         turn_checkpoints: afd_fleet::run::turn_checkpoint::TurnCheckpoints::new(Arc::clone(&key)),
         runs: Runs::new(database.clone(), bus.clone(), Entropy::new()),
-        gates: afd_gate::gate::Gates::new(database.clone(), bus.clone(), Entropy::new()),
         accounts: afd_billing::Accounts::new(database.clone()),
         biller: Arc::new(afd_billing::ledger::LedgerBiller::new(database.clone())),
         memories: afd_memory::Memories::new(database.clone(), Entropy::new()),
@@ -53,19 +52,11 @@ pub(crate) fn clocked(
             database.clone(),
         )),
     };
-    let drafts = afd_setup::Drafts::new(database.clone(), Entropy::new()).with_bus(bus.clone());
-    let turns = afd_turns::Turns::new(database.clone(), bus.clone(), Entropy::new());
-    let creations = afd_setup::Creations::new(
-        afd_setup::Setup::new(drafts.clone(), Arc::clone(&key)),
-        turns,
-    );
     Ok(Gateway::new(GatewayDependencies {
         recovery: RecoverySettings::default(),
         runners: afd_runner::Runners::new(database.clone(), Entropy::new()),
         database,
         runs,
-        drafts,
-        creations,
         bus,
         stream_limit: afd_sse::StreamLimit::new(usize::MAX),
         wake,

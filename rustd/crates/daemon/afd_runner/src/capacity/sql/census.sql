@@ -10,6 +10,6 @@ SELECT instant.checked_at,
          WHERE $4::boolean AND s.last_runner_id = $1
            AND s.hold_expires_at IS NOT NULL
            AND s.hold_expires_at > instant.checked_at
-           -- Every other owner's hold, fleet or draft: a thread's id is its owner's.
+           -- Every other fleet's hold: a thread's id is its fleet's.
            AND ($3::uuid IS NULL OR s.id <> $3::uuid)) AS held
 FROM instant

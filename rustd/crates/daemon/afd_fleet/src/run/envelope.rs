@@ -104,23 +104,23 @@ pub struct Opened {
     /// The active platform default's versions, when one is active: the key the
     /// platform resolution is cached under.
     pub platform_key: Option<afd_credential::provider::cache::PlatformKeyKey>,
-    /// Whether the fleet's runs read workspace-shared memory.
-    pub memory_reads_workspace: bool,
-    /// Whether the fleet's runs publish to workspace-shared memory.
-    pub memory_publishes_workspace: bool,
+    /// Whether the fleet's runs read and publish workspace-shared memory.
+    pub memory: afd_api_wire::fleet::MemoryAccess,
     /// Whether a later message waited in the head's conversation when the
     /// assignment read it. False lets the run skip its first fold ask.
     pub inputs_waiting: bool,
     /// Whether the head turn belongs to a durable task.
     pub head: HeadKind,
-    /// The installed setup, parsed through the definition cache.
+    /// Whether the run can be judged: the host is task-capable and has a
+    /// decision profile selected, so the run may start and join durable tasks.
+    pub judged: bool,
+    /// The fleet row and its session, as the assignment read them.
     pub(crate) setup: FleetWithSession,
 }
 
 #[cfg(test)]
 impl Opened {
-    /// A first delivery of a fleet with no installed setup, for a unit test
-    /// that never reaches the parse.
+    /// A first delivery of an active fleet, for a unit test.
     pub(crate) fn unread(workspace_id: Uuid7, tenant_id: Uuid7) -> Self {
         Self {
             received: Received {
@@ -131,19 +131,11 @@ impl Opened {
             tenant_id,
             catalogue_version: 0,
             platform_key: None,
-            memory_reads_workspace: false,
-            memory_publishes_workspace: false,
+            memory: afd_api_wire::fleet::MemoryAccess::default(),
             inputs_waiting: true,
             head: HeadKind::DurableTask,
-            setup: FleetWithSession::unread(workspace_id),
-        }
-    }
-
-    /// The same, for a fleet whose setup is installed at `revision`.
-    pub(crate) fn installed(workspace_id: Uuid7, tenant_id: Uuid7, revision: Uuid7) -> Self {
-        Self {
-            setup: FleetWithSession::installed(workspace_id.clone(), revision),
-            ..Self::unread(workspace_id, tenant_id)
+            judged: false,
+            setup: FleetWithSession::active(workspace_id),
         }
     }
 }

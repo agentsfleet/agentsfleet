@@ -113,7 +113,7 @@ async fn a_scoped_person_reaches_every_verb_on_their_own_workspace() {
     for (method, path, _scopes) in every_verb() {
         let body = match &method {
             &Method::POST => {
-                r#"{"source":{"kind":"draft","draft_candidate_id":"01924f4e-0000-7000-8000-00000000f1ee"},"name":"daily-digest","review_digest":"review","start":{"kind":"none"}}"#
+                r#"{"message":"Triage the failing deploy","operation_id":"01924f4e-0000-7000-8000-00000000f1ee"}"#
             }
             &Method::PATCH => r#"{"status":"archived"}"#,
             _reads_and_deletes => "",

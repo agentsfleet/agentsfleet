@@ -1,6 +1,5 @@
--- The fleet's report: `shared/settle_run.sql` with the fleet's usage lines, turn,
--- delivery, session and tool records in the same statement. A change to the
--- shared bookkeeping belongs in both.
+-- The fleet's report: the run settled with the fleet's usage lines, turn, delivery, session
+-- and tool records in the same statement.
 --
 -- A terminal report in one statement: every write the report's
 -- transaction made under the run's own lock. A potential sandbox hold

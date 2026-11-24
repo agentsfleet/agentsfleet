@@ -1,4 +1,4 @@
-SELECT f.head_revision_id AS revision_id, l.durable_task_id, l.decision_snapshot
+SELECT l.durable_task_id, l.decision_snapshot
 FROM runner.decision_calls c
 JOIN thread.runs l ON l.id = c.original_run_id AND l.runner_id = c.original_runner_id
 JOIN runner.runners r ON r.id = l.runner_id AND r.status = $4

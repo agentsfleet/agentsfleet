@@ -5,7 +5,6 @@
 
 use af_core::test_util::trace::Capture;
 use af_wire::report::RenewRequest;
-use tracing::Level;
 
 use super::rows::Found;
 use super::verdict::{Judged, Verdict, log_refused, refusal_of};
@@ -26,8 +25,6 @@ fn passing() -> Judged {
         cancelled: Some(false),
         fence_holds: Some(true),
         priced_as_held: Some(true),
-        ceilings_current: Some(true),
-        over_budget: Some(false),
         host_renews: Some(true),
         admitted: Some(true),
         has_durable_task: Some(false),
@@ -46,7 +43,7 @@ type Case = (fn(&mut Judged), Verdict);
 
 #[test]
 fn each_failed_check_answers_as_the_per_run_path_would() {
-    let cases: [Case; 10] = [
+    let cases: [Case; 9] = [
         (|row| row.found = false, Verdict::Lost),
         (|row| row.has_durable_task = Some(true), Verdict::Tasked),
         (|row| row.host_renews = Some(false), Verdict::Lost),
@@ -54,7 +51,6 @@ fn each_failed_check_answers_as_the_per_run_path_would() {
         (|row| row.cancelled = Some(true), Verdict::Cancelled),
         (|row| row.fence_holds = Some(false), Verdict::Lost),
         (|row| row.priced_as_held = Some(false), Verdict::Moved),
-        (|row| row.ceilings_current = Some(false), Verdict::Moved),
         (|row| row.thread_moved = false, Verdict::Lost),
         (|row| row.extended_until = None, Verdict::Lost),
     ];
@@ -63,23 +59,6 @@ fn each_failed_check_answers_as_the_per_run_path_would() {
         fail(&mut row);
         assert_eq!(row.verdict(), expected, "case {index}");
     }
-}
-
-// Value: protects=a looping run ends on its fleet's budget, not a clock;
-// fails_when=the batch renews a fleet at its ceiling, or answers it as lost;
-// why_new=the 12-hour ceiling was the other thing that ended a looping run;
-// seam=none; no_claim=how spend is summed.
-#[test]
-fn a_run_over_its_budget_is_not_renewed() {
-    let mut row = passing();
-    row.over_budget = Some(true);
-    let verdict = row.verdict();
-    assert_eq!(verdict, Verdict::OverBudget);
-    assert_eq!(
-        refusal_of(&verdict).code(),
-        af_core::error_code::RUN_BUDGET_EXCEEDED,
-        "the runner is told the fleet's ceiling stopped it"
-    );
 }
 
 // Value: protects=a run of any age renews for one more lifetime; fails_when=a
@@ -91,9 +70,8 @@ fn a_run_over_its_budget_is_not_renewed() {
 fn a_run_past_twelve_hours_renews() {
     // Each statement, and the parameter it binds the run lifetime to.
     for (name, statement, lifetime) in [
-        ("renew_batch", crate::run::sql::renew::RENEW_BATCH, "$28"),
+        ("renew_batch", crate::run::sql::renew::RENEW_BATCH, "$25"),
         ("meter_run", crate::run::sql::meter::METER_RUN, "$5"),
-        ("extend_run", crate::run::sql::shared::EXTEND_RUN, "$5"),
     ] {
         let grant = statement
             .split("AS capped")
@@ -145,7 +123,6 @@ fn a_cancelled_run_that_lost_its_fence_is_still_cancelled() {
 // retries, and none is answered lost.
 #[tokio::test]
 async fn a_frame_the_datastore_refuses_answers_every_run_retry() {
-    let _counted = test_dead::CACHE_LOOKUPS.lock().await;
     let runs = vec![
         (test_dead::id(1), RenewRequest::default()),
         (test_dead::id(4), RenewRequest::default()),
@@ -184,29 +161,8 @@ fn found() -> Found {
         model: "claude-opus-5".to_owned(),
         durable_task_id: None,
         created_at: test_dead::AT,
-        head_revision_id: None,
         catalogue_version: 1,
     }
-}
-
-/// A fleet at its ceiling is logged under the per-run path's own event, with
-/// the identifiers an operator greps for.
-#[test]
-fn a_fleet_at_its_ceiling_is_logged_as_a_budget_breach() {
-    let log = Capture::install();
-    let row = found();
-    let verdict = Verdict::OverBudget;
-
-    log_refused(&row, &verdict, &refusal_of(&verdict));
-
-    let line = log.only("renew_budget_breach");
-    assert_eq!(line.level, Level::WARN);
-    assert_eq!(line.field("fleet_id"), Some(row.fleet_id.as_str()));
-    assert_eq!(line.field("run_id"), Some(row.id.as_str()));
-    assert_eq!(
-        line.field("error_code"),
-        Some(refusal_of(&verdict).code().as_str())
-    );
 }
 
 /// The refusals the per-run path answers silently are named, each with the

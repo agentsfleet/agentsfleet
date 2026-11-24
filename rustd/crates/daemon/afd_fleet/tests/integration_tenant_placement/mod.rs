@@ -194,7 +194,6 @@ async fn assign_head(fixtures: &Fixtures, fleet: &Uuid7, runner: &Uuid7) -> bool
         .bind(af_wire::durable_task::CAPABILITY)
         .bind(af_wire::durable_task::DurableTaskState::Ready.as_str())
         .bind(af_wire::durable_task::DurableTaskState::Running.as_str())
-        .bind(afd_fleet::durable_task::DECISION_POLICY_PATH)
         .bind(afd_state::sql::FLEET_STATUS_ACTIVE)
         .bind(af_core::turn::status::RECEIVED)
         .bind(true)

@@ -34,18 +34,18 @@ pub(super) async fn identities(
                     }),
                 )
             }
-            PreparedItem::Existing {
+            PreparedItem::Steer {
                 durable_task_id, ..
             } => {
                 let duplicate = identities.iter().any(|prior: &DurableTaskBinding| {
-                    prior.durable_task_id.as_ref() == durable_task_id.as_ref()
+                    prior.durable_task_id.as_ref() == Some(durable_task_id)
                 });
                 let wake = if duplicate {
                     None
                 } else {
-                    super::input::wake(tasks, scope, item).await?
+                    super::input::wake(tasks, scope, durable_task_id).await?
                 };
-                (durable_task_id.clone(), wake)
+                (Some(durable_task_id.clone()), wake)
             }
         };
         identities.push(DurableTaskBinding {

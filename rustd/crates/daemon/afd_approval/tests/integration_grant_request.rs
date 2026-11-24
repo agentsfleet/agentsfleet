@@ -1,320 +1,223 @@
-//! The request verb, and the approve half it finally reaches.
+//! A fleet's access request: the grant row and the one card a person answers.
 //!
 //! # Why these need a real datastore
 //!
-//! Grant and card writes share a transaction. The unique active grant
-//! reference arbitrates duplicate cards, while the grant row remains unique
-//! per fleet and service. These guarantees require the real schema.
-//!
-//! # And why the approve arm is asserted HERE
-//!
-//! `RESOLVE_GATE`'s `granted` CTE joins `g.service = r.evidence->>'service'`.
-//! It has been correct and unreachable since it was written, because nothing
-//! wrote a row for it to move. A test that seeded a grant by hand would prove
-//! the join against a fixture's idea of the row; what has to be proven is the
-//! join against the row the REQUEST writes, so these two verbs are exercised
-//! back to back in one lane.
+//! The grant and its card share a transaction, the grant row is unique per
+//! fleet and name, and the unique active grant reference arbitrates cards.
+//! Each claim here is a claim about what those statements and constraints
+//! decide, so each is proven against the real schema.
 #![expect(
     clippy::expect_used,
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use af_core::id::Uuid7;
-use af_crypto::entropy::Entropy;
+use std::sync::Arc;
+
+use afd_api_wire::approval::status as card_status;
 use afd_api_wire::grant::status;
-use afd_approval::{
-    Decision, IntegrationGrants, KIND_INTEGRATION_GRANT, Origin, REASON_DECLARED_AT_INSTALL,
-    Requested, Resolution, Wanted,
+use afd_approval::{Decision, GrantKind, REASON_ASKED_BY_THE_FLEET, Requested};
+use serde_json::json;
+use tokio::sync::Barrier;
+
+use crate::grant_lane::{
+    GITHUB, READ_SCOPE, SENTRY, answer, ask, cards, grant, grant_count, only_card,
 };
-use jiff::Timestamp;
+use crate::lane::Lane;
 
-use crate::lane::{Lane, NOW};
+/// Callers released together on one fresh grant.
+const CALLERS: usize = 100;
 
-/// The service every request in this suite asks about.
-const SERVICE: &str = "github";
-
-/// The name the fixture fleet declared that service's credential under.
-///
-/// Deliberately NOT the service's own spelling: the card names the fleet's
-/// declaration and the grant names the connector, and a fixture where the two
-/// matched could not tell a swapped pair apart.
-const CREDENTIAL: &str = "gh";
-
-/// Repeated grant requests prove parked redelivery reuses its approval card.
-const POLLS: usize = 10;
-
-/// Who the fixture records as answering a card.
-const REVIEWER: &str = "operator@fixture";
-
-/// The store under test, over the lane's pool.
-fn grants(lane: &Lane) -> IntegrationGrants {
-    IntegrationGrants::new(lane.pool.clone(), Entropy::new())
-}
-
-/// What the fixture asks for.
-const fn wanted() -> Wanted<'static> {
-    Wanted {
-        service: SERVICE,
-        credential: CREDENTIAL,
-        origin: Origin::Install,
-    }
-}
-
-/// Requests one grant on `lane`'s fleet.
-async fn request(lane: &Lane) -> Requested {
-    grants(lane)
-        .request(&lane.workspace, &lane.fleet, wanted(), NOW)
-        .await
-        .expect("the request must run")
-}
-
-/// Every grant row the lane's fleet holds, as `(service, status, reason)`.
-async fn grant_rows(lane: &Lane) -> Vec<(String, String, String)> {
-    sqlx::query_as(
-        "SELECT service, status, requested_reason
-           FROM connector.integration_grants WHERE fleet_id = $1",
-    )
-    .bind(&lane.fleet)
-    .fetch_all(&mut *lane.pool.acquire().await.expect("the lane must answer"))
-    .await
-    .expect("the grant rows are readable")
-}
-
-/// Every gate this suite's kind raised on the lane's fleet, as
-/// `(action_id, evidence service, turn_id)`.
-async fn cards(lane: &Lane) -> Vec<(Uuid7, Option<String>, Option<Uuid7>)> {
-    sqlx::query_as(
-        "SELECT action_id, evidence->>'service', turn_id
-           FROM fleet.approval_gates
-          WHERE fleet_id = $1 AND gate_type = $2",
-    )
-    .bind(&lane.fleet)
-    .bind(KIND_INTEGRATION_GRANT)
-    .fetch_all(&mut *lane.pool.acquire().await.expect("the lane must answer"))
-    .await
-    .expect("the gate rows are readable")
-}
-
-/// Whether the resolve woke the fleet for a parked delivery to poll again.
-///
-/// Any mark counts: the index mints each generation's token, so the value
-/// says only that a mark was written.
-async fn fleet_is_ready(lane: &Lane) -> bool {
-    crate::tail_watch::delivery_unparked(lane).await
-}
-
-/// The action id of the one card this fleet holds.
-///
-/// A named helper rather than `cards(..).remove(0)` at four call sites: the
-/// suite asserts elsewhere that exactly one card exists, and a panic here says
-/// which precondition failed rather than reporting an index out of bounds.
-async fn first_card_action(lane: &Lane) -> Uuid7 {
-    cards(lane)
-        .await
-        .into_iter()
-        .next()
-        .expect("a request raised a card to answer")
-        .0
-}
-
-/// A declared mintable credential leaves the request with a row and a card.
-///
-/// The headline. Before this verb existed the row could not be created at all,
-/// so a fleet declaring `github` parked every delivery on a decision nobody
-/// could be asked for.
+/// A first request writes the grant pending and raises one card carrying the
+/// asking turn and the scope asked for.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn a_request_writes_the_grant_and_the_card_together() {
+async fn a_first_request_writes_a_pending_grant_and_one_card_on_its_turn() {
     let lane = Lane::isolated().await;
-    crate::tail_watch::park_delivery(&lane).await;
+    let turn = lane.asking_turn().await;
 
-    assert_eq!(request(&lane).await, Requested::Raised);
+    let outcome = ask(
+        &lane,
+        GITHUB,
+        GrantKind::Integration,
+        Some(READ_SCOPE),
+        &turn,
+    )
+    .await;
 
+    let held = grant(&lane, GITHUB).await;
+    let card = only_card(&lane).await;
     assert_eq!(
-        grant_rows(&lane).await,
-        vec![(
-            SERVICE.to_owned(),
-            status::PENDING.to_owned(),
-            REASON_DECLARED_AT_INSTALL.to_owned()
-        )]
+        outcome,
+        Requested::Raised {
+            grant: held.id.clone(),
+            gate: card.gate.clone()
+        }
     );
-    let raised = cards(&lane).await;
-    assert_eq!(raised.len(), 1);
-    let only = raised.first().expect("the request raised exactly one card");
-    // The key `RESOLVE_GATE` joins on. A card without it resolves cleanly and
-    // moves no grant — a failure with no error, which is the class this
-    // milestone exists to end.
-    assert_eq!(only.1.as_deref(), Some(SERVICE));
-    // And NO event. A grant card carrying one would land a continuation event
-    // beside the still-leasable delivery, and the fleet would run the work
-    // twice.
-    assert_eq!(only.2, None);
+    assert_eq!(
+        (
+            held.kind.as_str(),
+            held.status.as_str(),
+            held.reason.as_str()
+        ),
+        ("integration", status::PENDING, REASON_ASKED_BY_THE_FLEET)
+    );
+    assert_eq!(
+        held.scope, None,
+        "nothing is in force until a person approves"
+    );
+    assert_eq!(
+        held.requested_scope,
+        Some(json!({"repositories": ["org/app"], "access": "read"}))
+    );
+    assert_eq!(
+        card.turn,
+        Some(turn),
+        "the card carries the turn that asked"
+    );
+    assert_eq!(
+        card.evidence,
+        json!({
+            "service": "github",
+            "kind": "integration",
+            "scope": {"repositories": ["org/app"], "access": "read"},
+        })
+    );
+    assert_eq!(card.status, card_status::PENDING);
 }
 
-/// A repeated install writes one row, and the table is what says so.
+/// A second request while a card is open raises none beside it, and names the
+/// open card.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn a_repeated_request_does_not_duplicate_the_grant() {
+async fn a_second_request_while_pending_raises_no_second_card() {
     let lane = Lane::isolated().await;
-    crate::tail_watch::park_delivery(&lane).await;
+    let first_turn = lane.asking_turn().await;
+    let second_turn = lane.asking_turn().await;
 
-    assert_eq!(request(&lane).await, Requested::Raised);
-    assert_eq!(request(&lane).await, Requested::Pending);
+    let first = ask(&lane, SENTRY, GrantKind::Secret, None, &first_turn).await;
+    let second = ask(&lane, SENTRY, GrantKind::Secret, None, &second_turn).await;
 
-    assert_eq!(grant_rows(&lane).await.len(), 1);
+    let card = only_card(&lane).await;
+    let held = grant(&lane, SENTRY).await;
+    assert!(matches!(first, Requested::Raised { .. }), "{first:?}");
+    assert_eq!(
+        second,
+        Requested::Pending {
+            grant: held.id,
+            gate: Some(card.gate)
+        }
+    );
+    assert_eq!(card.turn, Some(first_turn), "the open card keeps its turn");
+    assert_eq!(grant_count(&lane).await, 1);
 }
 
-/// A park redelivering every second raises one card, not one per second.
-///
-/// Ten consecutive requests, which at the one-second redelivery cadence is ten
-/// seconds of a parked delivery. The guard is a pre-insert `NOT EXISTS` and not
-/// a rate limit, which is the difference between "one question stands" and "one
-/// question a minute".
+/// A request the approved grant already holds is covered: no card, no write.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn a_redelivering_park_raises_one_card_not_one_per_second() {
+async fn a_covered_request_writes_nothing() {
     let lane = Lane::isolated().await;
-    crate::tail_watch::park_delivery(&lane).await;
+    for (name, kind, scope) in [
+        (SENTRY, GrantKind::Secret, None),
+        (GITHUB, GrantKind::Integration, Some(READ_SCOPE)),
+    ] {
+        let turn = lane.asking_turn().await;
+        ask(&lane, name, kind, scope, &turn).await;
+        let raised = cards(&lane).await.last().expect("a card").action.clone();
+        answer(&lane, &raised, Decision::Approved).await;
+        let approved = grant(&lane, name).await;
+        let cards_before = cards(&lane).await.len();
 
-    let mut outcomes = Vec::with_capacity(POLLS);
-    for _poll in 0..POLLS {
-        outcomes.push(request(&lane).await);
+        let again = lane.asking_turn().await;
+        let outcome = ask(&lane, name, kind, scope, &again).await;
+
+        assert_eq!(
+            outcome,
+            Requested::Covered {
+                grant: approved.id.clone()
+            },
+            "{name}"
+        );
+        assert_eq!(
+            grant(&lane, name).await,
+            approved,
+            "{name}: the row is untouched"
+        );
+        assert_eq!(cards(&lane).await.len(), cards_before, "{name}: no card");
+    }
+}
+
+/// A denied name can be asked again: the grant moves back to pending and one
+/// new card is raised, while the denied card stays answered.
+#[tokio::test]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn a_request_after_a_deny_raises_a_new_card() {
+    let lane = Lane::isolated().await;
+    let first_turn = lane.asking_turn().await;
+    ask(&lane, SENTRY, GrantKind::Secret, None, &first_turn).await;
+    let denied = only_card(&lane).await;
+    answer(&lane, &denied.action, Decision::Denied).await;
+    assert_eq!(grant(&lane, SENTRY).await.status, status::REVOKED);
+
+    let second_turn = lane.asking_turn().await;
+    let outcome = ask(&lane, SENTRY, GrantKind::Secret, None, &second_turn).await;
+
+    let held = grant(&lane, SENTRY).await;
+    let all = cards(&lane).await;
+    let [old, new] = all.as_slice() else {
+        unreachable!("one denied card and one new card: {all:?}");
+    };
+    assert_eq!(
+        outcome,
+        Requested::Raised {
+            grant: held.id.clone(),
+            gate: new.gate.clone()
+        }
+    );
+    assert_eq!(held.status, status::PENDING);
+    assert_eq!((held.approved_at, held.revoked_at), (None, None));
+    assert_eq!(old.gate, denied.gate);
+    assert_eq!(old.status, card_status::DENIED);
+    assert_eq!(new.status, card_status::PENDING);
+    assert_eq!(
+        new.turn,
+        Some(second_turn),
+        "the new card carries the new ask"
+    );
+    assert_eq!(grant_count(&lane).await, 1, "one grant row per name");
+}
+
+/// A hundred requests released together on a fresh name raise one card.
+#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn a_hundred_concurrent_requests_raise_one_card() {
+    let lane = Arc::new(Lane::isolated().await);
+    let turn = lane.asking_turn().await;
+    let barrier = Arc::new(Barrier::new(CALLERS));
+    let callers: Vec<_> = (0..CALLERS)
+        .map(|_caller| {
+            let (lane, barrier, turn) = (Arc::clone(&lane), Arc::clone(&barrier), turn.clone());
+            tokio::spawn(async move {
+                barrier.wait().await;
+                ask(&lane, SENTRY, GrantKind::Secret, None, &turn).await
+            })
+        })
+        .collect();
+    let mut outcomes = Vec::with_capacity(CALLERS);
+    for caller in callers {
+        outcomes.push(caller.await.expect("the caller joins"));
     }
 
-    let (first, rest) = outcomes.split_first().expect("ten polls answered");
-    assert_eq!(*first, Requested::Raised);
-    assert!(
-        rest.iter().all(|seen| *seen == Requested::Pending),
-        "{outcomes:?}"
-    );
+    let raised = outcomes
+        .iter()
+        .filter(|outcome| matches!(outcome, Requested::Raised { .. }))
+        .count();
+    let pending = outcomes
+        .iter()
+        .filter(|outcome| matches!(outcome, Requested::Pending { .. }))
+        .count();
+    assert_eq!((raised, pending), (1, CALLERS - 1), "{outcomes:?}");
     assert_eq!(cards(&lane).await.len(), 1);
-    assert_eq!(grant_rows(&lane).await.len(), 1);
-}
-
-/// Approving the card grants the integration, in the statement that resolved it.
-///
-/// The approve half, reached for the first time by a row this crate wrote.
-#[tokio::test]
-#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn approving_the_card_grants_the_integration() {
-    let lane = Lane::isolated().await;
-    crate::tail_watch::park_delivery(&lane).await;
-    request(&lane).await;
-    let action = first_card_action(&lane).await;
-
-    let resolved = lane
-        .inbox
-        .resolve(
-            action.as_str(),
-            Decision::Approved,
-            REVIEWER,
-            "",
-            Some(lane.fleet.as_str()),
-        )
-        .await
-        .expect("the resolve must run");
-
-    assert!(matches!(resolved, Resolution::Resolved(_)), "{resolved:?}");
-    let granted = grant_rows(&lane).await;
-    let moved = granted
-        .first()
-        .expect("the fleet holds its requested grant");
-    assert_eq!(moved.1, status::APPROVED);
-    // One statement answered the card and moved the grant, so both carry the
-    // same `now()`: the grant was approved at the instant the card resolved.
-    let approved = approved_at(&lane)
-        .await
-        .expect("an approval stamps the grant");
-    assert_eq!(Some(approved), card_resolved_at(&lane, &action).await);
-    assert!(
-        fleet_is_ready(&lane).await,
-        "approving an install grant wakes the parked delivery"
-    );
-}
-
-/// Denying the card revokes the grant rather than leaving it pending.
-///
-/// The half that ends a parked event: the delivery reads `revoked` on its next
-/// poll and writes a terminal row instead of parking again. Proven on the run
-/// path in `afd_fleet`; proven HERE as the column transition it depends on.
-#[tokio::test]
-#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn denying_the_card_revokes_the_grant() {
-    let lane = Lane::isolated().await;
-    crate::tail_watch::park_delivery(&lane).await;
-    request(&lane).await;
-    let action = first_card_action(&lane).await;
-
-    lane.inbox
-        .resolve(
-            action.as_str(),
-            Decision::Denied,
-            REVIEWER,
-            "",
-            Some(lane.fleet.as_str()),
-        )
-        .await
-        .expect("the resolve must run");
-
-    let denied = grant_rows(&lane).await;
-    let taken_back = denied.first().expect("the fleet holds its requested grant");
-    assert_eq!(taken_back.1, status::REVOKED);
-    assert!(
-        fleet_is_ready(&lane).await,
-        "denying an install grant wakes the parked delivery to terminalize"
-    );
-    // A denied grant is never re-asked. Talking over a person's no every second
-    // is the loop with a card on it rather than the loop without one.
-    assert_eq!(request(&lane).await, Requested::Denied);
-    assert_eq!(cards(&lane).await.len(), 1);
-}
-
-/// A standing yes is not asked about again.
-#[tokio::test]
-#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn an_approved_grant_raises_no_second_card() {
-    let lane = Lane::isolated().await;
-    crate::tail_watch::park_delivery(&lane).await;
-    request(&lane).await;
-    let action = first_card_action(&lane).await;
-    lane.inbox
-        .resolve(
-            action.as_str(),
-            Decision::Approved,
-            REVIEWER,
-            "",
-            Some(lane.fleet.as_str()),
-        )
-        .await
-        .expect("the resolve must run");
-
-    assert_eq!(request(&lane).await, Requested::Approved);
-
-    assert_eq!(cards(&lane).await.len(), 1);
-}
-
-/// When the grant was approved, as the resolve stamped it.
-async fn approved_at(lane: &Lane) -> Option<Timestamp> {
-    sqlx::query_scalar::<_, Option<jiff_sqlx::Timestamp>>(
-        "SELECT approved_at FROM connector.integration_grants WHERE fleet_id = $1",
-    )
-    .bind(&lane.fleet)
-    .fetch_one(&mut *lane.pool.acquire().await.expect("the lane must answer"))
-    .await
-    .expect("approved_at is readable")
-    .map(jiff_sqlx::Timestamp::to_jiff)
-}
-
-/// When the card for `action` was resolved.
-async fn card_resolved_at(lane: &Lane, action: &Uuid7) -> Option<Timestamp> {
-    sqlx::query_scalar::<_, Option<jiff_sqlx::Timestamp>>(
-        "SELECT resolved_at FROM fleet.approval_gates WHERE action_id = $1",
-    )
-    .bind(action)
-    .fetch_one(&mut *lane.pool.acquire().await.expect("the lane must answer"))
-    .await
-    .expect("resolved_at is readable")
-    .map(jiff_sqlx::Timestamp::to_jiff)
+    assert_eq!(grant_count(&lane).await, 1);
 }
 
 /// One fleet's request is not another's.
@@ -323,10 +226,11 @@ async fn card_resolved_at(lane: &Lane, action: &Uuid7) -> Option<Timestamp> {
 async fn a_request_names_the_fleet_that_asked() {
     let mine = Lane::isolated().await;
     let theirs = Lane::isolated().await;
+    let turn = mine.asking_turn().await;
 
-    request(&mine).await;
+    ask(&mine, SENTRY, GrantKind::Secret, None, &turn).await;
 
-    assert_eq!(grant_rows(&theirs).await, Vec::new());
+    assert_eq!(grant_count(&theirs).await, 0);
     assert_eq!(cards(&theirs).await, Vec::new());
-    assert_ne!(mine.fleet.as_str(), Uuid7::as_str(&theirs.fleet));
+    assert_eq!(grant_count(&mine).await, 1);
 }

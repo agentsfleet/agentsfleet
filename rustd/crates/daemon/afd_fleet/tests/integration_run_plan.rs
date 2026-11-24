@@ -14,14 +14,10 @@ use crate::support::Fixtures;
 
 #[path = "integration_run_plan/assignment.rs"]
 mod assignment;
-#[path = "integration_run_plan/gates.rs"]
-mod gates;
 #[path = "integration_run_plan/idle.rs"]
 mod idle;
 #[path = "integration_run_plan/meter.rs"]
 mod meter;
-#[path = "integration_run_plan/prepared.rs"]
-mod prepared;
 
 /// Plans every prepared statement once for all binds, as a cached plan does.
 const FORCE_GENERIC: &str = "SET LOCAL plan_cache_mode = force_generic_plan";
@@ -120,7 +116,6 @@ async fn head_plan(connection: &mut PgConnection, runner: &Uuid7) -> serde_json:
     .bind(af_wire::durable_task::CAPABILITY)
     .bind(af_wire::durable_task::DurableTaskState::Ready.as_str())
     .bind(af_wire::durable_task::DurableTaskState::Running.as_str())
-    .bind(afd_fleet::durable_task::DECISION_POLICY_PATH)
     .bind(false)
     .bind(Option::<jiff_sqlx::Timestamp>::None)
     .bind(Option::<Uuid7>::None)

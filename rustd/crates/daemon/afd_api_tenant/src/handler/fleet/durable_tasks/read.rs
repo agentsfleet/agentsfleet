@@ -132,7 +132,6 @@ fn render(page: DurableTaskPage) -> DurableTasksResponse<'static> {
                 status: item.state,
                 resource_version: item.resource_version,
                 generation: item.generation,
-                accepted_revision_id: Cow::Owned(item.accepted_revision_id.into()),
                 created_at: item.created_at,
                 expires_at: item.expires_at,
             })
@@ -154,7 +153,6 @@ pub(super) fn render_one(saved: afd_fleet::durable_task::DurableTaskSnapshot) ->
             etag: Cow::Owned(tag),
             title: Cow::Owned(saved.title),
             resource_version: saved.resource_version,
-            setup_revision: saved.accepted_revision_number,
             context: saved.context,
         }),
     )

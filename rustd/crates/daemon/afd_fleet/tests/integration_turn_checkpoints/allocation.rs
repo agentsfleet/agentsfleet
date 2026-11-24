@@ -122,34 +122,26 @@ async fn a_replayed_begin_after_its_writer_pin_was_released_conflicts() -> Check
     Ok(())
 }
 
-// Value: protects=a resumed run is handed the committed head, and never one
-// saved under another setup revision; fails_when=turn_resume stops reading the
-// head's descriptor or its setup comparison is dropped; why_new=the present-head
-// arm and the setup refusal had no case; seam=Runs::turn_resume over live
-// Postgres, the head's setup revision then moved.
+// Value: protects=a run that paused to ask is resumed from its committed head
+// after a person moves the fleet to another model, with no checkpoint refusal;
+// fails_when=turn_resume compares the head against the fleet's setup or model
+// again; seam=Runs::turn_resume over live Postgres, the fleet's model patched
+// between the checkpoint and the resume.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn turn_resume_answers_the_committed_head_and_refuses_one_from_another_setup() -> Checked {
+async fn a_questions_answer_resumes_after_the_model_changes() -> Checked {
     let case = Case::new().await?;
     assert_eq!(case.runs.turn_resume(case.run()).await?, None);
     let descriptor = publish(&case, &store()?, &root(&case, TurnWorkspace::ApiOnly)).await?;
+
+    case.fixtures
+        .set_model(&case.acquired.fleet_id, "fixture-other-model")
+        .await;
+
     assert_eq!(
         case.runs.turn_resume(case.run()).await?,
-        Some(*descriptor.clone())
-    );
-
-    let mut connection = case.fixtures.database.acquire().await?;
-    // The checkpoint's revision is a real fleet revision (`fk_checkpoints_revision`),
-    // so the run's moves instead: the comparison is the same either way.
-    sqlx::query("UPDATE thread.runs SET setup_revision_id=$2 WHERE id=$1")
-        .bind(&case.issued.run_id)
-        .bind(mint_id())
-        .execute(&mut *connection)
-        .await?;
-    drop(connection);
-    assert_eq!(
-        code(case.runs.turn_resume(case.run()).await.map_err(Into::into)),
-        Some(error_code::RUN_CHECKPOINT_INCOMPATIBLE)
+        Some(*descriptor),
+        "the committed head resumes under the fleet's new model"
     );
     case.fixtures.cleanup().await;
     Ok(())

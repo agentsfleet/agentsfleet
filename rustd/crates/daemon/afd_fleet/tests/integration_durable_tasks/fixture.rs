@@ -32,8 +32,6 @@ pub(super) struct Case {
     pub(super) held: Held,
     pub(super) tasks: DurableTasks,
     pub(super) scope: DurableTaskScope,
-    pub(super) revision: Uuid7,
-    pub(super) revision_number: u64,
     pub(super) turns: Turns,
 }
 
@@ -48,26 +46,19 @@ impl Case {
         )
         .await;
         durable_task_capability(&held, true).await;
-        held.fixtures
-            .native_config(
-                &held.fleet,
-                r#"{"name":"pull-request-repair","x-agentsfleet":{"tools":[],"triggers":[],"budget":{"daily_nanos":"1000000000"}}}"#,
-            )
-            .await;
-        let (workspace, revision, number): (Uuid7, Uuid7, i64) = sqlx::query_as(
-            "SELECT f.workspace_id,f.head_revision_id,r.revision FROM fleet.fleets f JOIN fleet.revisions r ON r.id=f.head_revision_id WHERE f.id=$1",
-        )
-        .bind(&held.fleet)
-        .fetch_one(
-            &mut *held
-                .fixtures
-                .database
-                .acquire()
+        let workspace: Uuid7 =
+            sqlx::query_scalar("SELECT workspace_id FROM fleet.fleets WHERE id=$1")
+                .bind(&held.fleet)
+                .fetch_one(
+                    &mut *held
+                        .fixtures
+                        .database
+                        .acquire()
+                        .await
+                        .expect("scope connection"),
+                )
                 .await
-                .expect("scope connection"),
-        )
-        .await
-        .expect("saved native revision");
+                .expect("the fleet's workspace");
         let scope = DurableTaskScope {
             workspace_id: workspace,
             fleet_id: held.fleet.clone(),
@@ -86,8 +77,6 @@ impl Case {
             held,
             tasks,
             scope,
-            revision,
-            revision_number: u64::try_from(number).expect("positive saved revision"),
             turns,
         }
     }
@@ -105,7 +94,7 @@ impl Case {
     }
 
     pub(super) fn plan(&self, digest: &str, count: usize) -> PreparedPlan {
-        self.source_plan(
+        Self::source_plan(
             self.held.turn_id.clone(),
             digest,
             count,
@@ -114,18 +103,12 @@ impl Case {
     }
 
     pub(super) fn source_plan(
-        &self,
         source: Uuid7,
         digest: &str,
         count: usize,
         limits: DurableTaskLimits,
     ) -> PreparedPlan {
-        PreparedPlan::from_parts(
-            source,
-            self.revision.clone(),
-            digest.to_owned(),
-            items(count, limits),
-        )
+        PreparedPlan::from_parts(source, digest.to_owned(), items(count, limits))
     }
 
     /// The forthcoming input API owns this assignment in production. Seeding it here

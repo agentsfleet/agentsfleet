@@ -10,12 +10,11 @@
 -- run that never left the daemon must not count toward its turn's DEFAULT_MAX_RUNS_PER_TURN (every row
 -- of the turn counts, `assign_turn_head.sql` earlier_runs). The thread is freed the way
 -- an assignment that issued no run frees it (`release_runless_thread.sql`), so the next
--- assignment takes the same work at the next fence. A fleet's thread is keyed by the fleet,
--- a draft's by the draft, so one statement serves both.
+-- assignment takes the same work at the next fence. A fleet's thread is keyed by the fleet.
 --
 -- $1 run · $2 runner · $3 fence · $4 active status
 WITH held AS MATERIALIZED (
-    SELECT COALESCE(l.fleet_id, l.draft_id) AS thread_id
+    SELECT l.fleet_id AS thread_id
     FROM thread.runs l
     WHERE l.id = $1 AND l.runner_id = $2 AND l.fencing_token = $3 AND l.status = $4
 ), thread AS MATERIALIZED (
@@ -28,7 +27,7 @@ WITH held AS MATERIALIZED (
     DELETE FROM thread.runs l
     USING thread t
     WHERE l.id = $1 AND l.runner_id = $2 AND l.fencing_token = $3 AND l.status = $4
-      AND COALESCE(l.fleet_id, l.draft_id) = t.id
+      AND l.fleet_id = t.id
     RETURNING t.id AS thread_id
 ), freed AS (
     UPDATE thread.threads s

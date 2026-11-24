@@ -5,29 +5,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::decision::DecisionPurpose;
 
-/// The native meaning being assessed, independently of its physical calls.
+/// The native meaning being assessed, independently of its physical calls:
+/// one completed action group against its task's completion statements.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum DecisionAssessment {
-    /// Interpret the complete admitted message against current work.
-    Message,
-    /// Check one action in a complete, pinned bounded interpretation.
-    Item {
-        /// Zero-based action within the native interpretation.
-        #[garde(skip)]
-        ordinal: u8,
-        /// Digest of the complete proposed interpretation, not model wording.
-        #[garde(length(bytes, min = 64, max = 64), pattern(r"^[0-9a-f]{64}$"))]
-        interpretation_digest: String,
-        /// Inclusive byte boundary in the original complete human message.
-        #[garde(range(min = 0))]
-        source_start: i32,
-        /// Exclusive byte boundary, checked against the native source text.
-        #[garde(range(min = 1))]
-        source_end: i32,
-    },
-    /// Assess one completed action group against its task's accepted goal.
+    /// Assess one completed action group against its task's statements.
     Goal {
         /// Trusted supervisor identity retained through this logical assessment.
         #[garde(
@@ -43,7 +27,6 @@ impl DecisionAssessment {
     #[must_use]
     pub const fn purpose(&self) -> DecisionPurpose {
         match self {
-            Self::Message | Self::Item { .. } => DecisionPurpose::Intent,
             Self::Goal { .. } => DecisionPurpose::Goal,
         }
     }

@@ -12,7 +12,7 @@ use afd_runner::{DETAIL_SELFTEST_REFUSED, KeysetCursor, RunnerEdit};
 use serde_json::Value;
 
 use super::{Fixture, enrolment};
-use crate::rows::{self, SetupRunRow};
+use crate::rows::{self, PlacedRunRow};
 use af_crypto::entropy::Entropy;
 use afd_db::Migrator;
 use afd_db::config::DbRole;
@@ -215,18 +215,17 @@ async fn test_an_edit_stores_its_binds_in_the_sandbox_configuration() {
 }
 
 /// The deletion matrix: a revoked runner's record retires even after it ran a
-/// setup run, and that run stays as history naming no runner. A setup run holds
-/// no money: its usage lines name the run and outlive it.
+/// run, and that settled run stays as history naming no runner.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn test_retiring_a_runner_that_ran_a_setup_run_keeps_its_runs() {
+async fn test_retiring_a_runner_keeps_its_settled_runs() {
     let mut fixture = Fixture::create().await;
     let runner = fixture.enrol().await;
     let mut connection = fixture.owner.acquire().await.expect("a seed connection");
-    let run = rows::setup_run(
+    let run = rows::placed_run(
         &mut connection,
         (&runner, &mint_id(), &mint_id()),
-        SetupRunRow {
+        PlacedRunRow {
             status: afd_state::sql::RUN_STATUS_EXPIRED,
             run_expires_at: clock::now(),
         },
@@ -244,7 +243,7 @@ async fn test_retiring_a_runner_that_ran_a_setup_run_keeps_its_runs() {
         .platform()
         .delete_revoked(&runner)
         .await
-        .expect("a runner that ran a setup run still retires");
+        .expect("a runner that ran a run still retires");
 
     let left: i64 = sqlx::query_scalar(COUNT_RUNS)
         .bind(&runner)
@@ -257,8 +256,8 @@ async fn test_retiring_a_runner_that_ran_a_setup_run_keeps_its_runs() {
             .bind(&run)
             .fetch_all(&mut *connection)
             .await
-            .expect("the setup run reads");
-    assert_eq!(kept, vec![None], "the setup run stays, naming no runner");
+            .expect("the settled run reads");
+    assert_eq!(kept, vec![None], "the settled run stays, naming no runner");
     sqlx::query("DELETE FROM thread.runs WHERE id = $1")
         .bind(&run)
         .execute(&mut *connection)

@@ -27,14 +27,14 @@ pub(super) fn assignment() -> Result<DecisionAssignment, Failed> {
     assignment.validate()?;
     Ok(assignment)
 }
-pub(super) fn inputs(config: &Config) -> Result<Value, Failed> {
-    let task = DurableTaskContext {
+/// The task the recovery run is bound to, as its payload and its inputs name it.
+pub(super) fn task(config: &Config) -> DurableTaskContext<'static> {
+    DurableTaskContext {
         durable_task_id: TASK.into(),
         originating_item_id: TASK.into(),
         target: config.target(),
         generation: 1,
         stop_generation: 0,
-        accepted_revision_id: TASK.into(),
         objective: "Capture accepted progress".into(),
         goal_digest: "a".repeat(64).into(),
         questions: vec![],
@@ -48,14 +48,15 @@ pub(super) fn inputs(config: &Config) -> Result<Value, Failed> {
         expires_at: deadline(),
         limits: DurableTaskLimits::default(),
         usage: DurableTaskUsage::default(),
-    };
+    }
+}
+pub(super) fn inputs(config: &Config) -> Result<Value, Failed> {
     Ok(serde_json::to_value(DurableTaskInputsResponse {
         source_turn_id: TASK.to_owned(),
-        accepted_revision_id: Some(TASK.to_owned()),
         current_message: None,
         inputs: vec![],
         accepted_inputs: vec![],
-        current_durable_task: Some(task),
+        current_durable_task: Some(task(config)),
         execution_deadline: Some(deadline()),
         current_interpretation: None,
         durable_tasks: vec![],

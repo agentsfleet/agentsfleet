@@ -3,6 +3,7 @@
 mod cancellation;
 pub(super) mod faults;
 mod fencing;
+mod first_message;
 mod fixture;
 mod halt;
 mod locks;

@@ -1,15 +1,29 @@
-//! What the model is offered: the selection's functions as one loop's tools,
-//! and its hosted entries as tools the provider runs.
+//! What the model is offered: the names a run selects from its policy, the
+//! selection's functions as one loop's tools, and its hosted entries as tools
+//! the provider runs.
 //!
 //! The catalog and the providers each own their half; this is the one place
 //! that reads both, so neither crate depends on the other.
 
-use afr_tools::catalog::WEB_SEARCH;
+use af_wire::run::RunPayload;
+use afr_tools::catalog::{WEB_SEARCH, is_task_tool};
 use afr_tools::{Entry, Offered, RunTools, Selection};
 use guffbolt::Hosted;
 use guffbolt::Tools;
 
 use crate::router::{LoopTool, Routed};
+
+/// The names `run` is offered, in its policy's order: every one, less the
+/// task tools when the run carries no decision profile, since no judge would
+/// assess the task they start.
+pub(crate) fn names<'p>(run: &'p RunPayload<'_>) -> Vec<&'p str> {
+    run.policy
+        .tools
+        .iter()
+        .map(AsRef::as_ref)
+        .filter(|name| run.decision.is_some() || !is_task_tool(name))
+        .collect()
+}
 
 /// The tools `selection` offers one loop, in the order its policy named
 /// them: each handler as the router runs it, and each tool the run built

@@ -77,8 +77,10 @@ impl Config {
             workflows: vec![],
         }
     }
-    pub(crate) fn configure(run: &mut RunPayload<'_>) -> Result<(), Failed> {
-        run.durable_tasks = true;
+    /// Binds `run` to the recovery task, judged by the fixture's decision
+    /// profile: a task-bound run is the one that prepares as a task.
+    pub(crate) fn configure(&self, run: &mut RunPayload<'_>) -> Result<(), Failed> {
+        run.durable_task = Some(wire::task(self));
         run.decision = Some(Box::new(wire::assignment()?));
         Ok(())
     }

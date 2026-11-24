@@ -50,7 +50,7 @@ impl Error {
                 error_code::INTERNAL_OPERATION_FAILED,
                 detail::UPSTREAM_UNAVAILABLE,
             ),
-            ErrorKind::Exhausted | ErrorKind::Identifier { .. } => (
+            ErrorKind::Identifier { .. } => (
                 error_code::INTERNAL_OPERATION_FAILED,
                 detail::OPERATION_FAILED,
             ),

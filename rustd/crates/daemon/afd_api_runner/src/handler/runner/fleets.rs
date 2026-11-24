@@ -238,7 +238,6 @@ fn fleet_item(row: &FleetRow) -> FleetItem<'_> {
         fleet_id: Cow::Borrowed(&row.id),
         name: Cow::Borrowed(&row.name),
         status: Cow::Borrowed(row.status.as_str()),
-        description: row.description.as_deref().map(Cow::Borrowed),
         events_processed: Cow::Owned(row.events_processed.to_string()),
     }
 }

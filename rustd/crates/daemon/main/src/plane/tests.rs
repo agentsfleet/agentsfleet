@@ -192,15 +192,13 @@ async fn production_plane_maps_every_activity_and_admin_service_to_its_owned_sto
     assert!(Shared::now(&plane) > jiff::Timestamp::UNIX_EPOCH);
 }
 
-/// The setup, outbound and tenant surfaces each hand a route the store the
+/// The fleet, outbound and tenant surfaces each hand a route the store the
 /// plane built for it, so no two routes share one by accident.
 #[tokio::test]
 async fn production_plane_maps_every_surface_to_its_owned_store() {
     let plane = plane();
 
-    assert!(same(TenantPlane::drafts(&plane), &plane.setup.drafts));
-    assert!(same(TenantPlane::setup(&plane), &plane.setup.setup));
-    assert!(same(TenantPlane::creations(&plane), &plane.setup.creations));
+    assert!(same(TenantPlane::creations(&plane), &plane.creations));
     assert!(same(TenantPlane::ingress(&plane), &plane.activity.ingress));
     assert!(same(IngressPlane::ingress(&plane), &plane.activity.ingress));
     assert!(same(
@@ -247,7 +245,10 @@ async fn production_plane_hands_each_route_its_deployment_facts() {
         TenantPlane::dashboard(&plane).as_str(),
         format!("{DASHBOARD}/")
     );
-    assert_ne!(TenantPlane::dashboard(&plane).as_str(), plane.deployment());
+    let tenant = TenantPlane::deployment(&plane);
+    assert_ne!(TenantPlane::dashboard(&plane).as_str(), tenant);
+    // A webhook trigger's address is built from the base the tenant reads.
+    assert_eq!(RunnerPlane::deployment(&plane), tenant);
     let fire = IngressPlane::scheduler(&plane).verify(FIRE, b"{}").await;
     assert_eq!(
         fire.as_ref().err().and_then(afd_cron::Error::bag_fault),

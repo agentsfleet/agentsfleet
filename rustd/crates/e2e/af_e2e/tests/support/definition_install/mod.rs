@@ -1,11 +1,9 @@
-//! A definition scenario: a first-party fleet's native setup saved into a booted daemon.
+//! A corpus scenario: a first-party fleet's rows in a booted daemon.
 //!
-//! Where `e2e::scenario` seeds a fleet with an empty tool list, this reads the
-//! corpus fleet's `definition.json` — the native Definition a reviewed Save
-//! stores — so the policy every run compiles from it is that fleet's own. The GitHub grant lands approved, which is what a
-//! person's answer on the setup's grant check leaves behind. The credentials
-//! the definition declares are sealed into the vault first, as setup readiness
-//! requires.
+//! Where `e2e::scenario` seeds a bare fleet, this seeds the fleet a corpus
+//! scenario runs as: its row, its network, and the GitHub and secret grants a
+//! person's approvals leave behind. The credentials those grants name are
+//! sealed into the vault first.
 //!
 //! The daemon boots through `boot_with_exchanger`, so a GitHub mint runs the
 //! grant check, the vault read and the broker, and only the token endpoint is
@@ -72,7 +70,7 @@ impl Exchanger for MintedToken {
     }
 }
 
-/// One static credential a definition declares: its vault name and its fields.
+/// One static credential a corpus fleet holds: its vault name and its fields.
 pub(crate) struct Secret {
     pub(crate) name: &'static str,
     pub(crate) body: Value,
@@ -162,7 +160,7 @@ async fn boot_minting(
 }
 
 /// Seals the GitHub handle for a fresh installation, lands that
-/// installation's routing row, then seals every credential the definition
+/// installation's routing row, then seals every credential the fleet
 /// declares.
 async fn seal_credentials(booted: &Booted, workspace: &Uuid7, secrets: &[Secret], now: Timestamp) {
     let installation = fresh_installation();

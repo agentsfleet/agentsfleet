@@ -124,7 +124,6 @@ async fn insert(
         .bind(&owner.current.turn_id)
         .bind(&owner.current.fleet_id)
         .bind(&owner.current.workspace_id)
-        .bind(&owner.setup)
         .bind(generation)
         .bind(expected)
         .bind(&owner.current.id)

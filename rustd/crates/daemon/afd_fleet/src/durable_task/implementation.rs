@@ -1,11 +1,11 @@
 //! Task lifecycle entry points retain one operation observation and their original tracing spans.
 
 use super::{
-    CheckpointMaintenance, CheckpointMaintenanceCursor, DurableTaskAdoption, DurableTaskAfter,
-    DurableTaskControl, DurableTaskFuture as Reply, DurableTaskLifecycle, DurableTaskPage,
-    DurableTaskRun, DurableTaskScope, DurableTaskSnapshot, DurableTasks, ReservedDecision,
-    adoption, bindings, checkpoint, control, decision, effects, input_receipt, inputs, list,
-    observe, read,
+    CheckpointMaintenance, CheckpointMaintenanceCursor, DurableTaskAfter, DurableTaskControl,
+    DurableTaskFuture as Reply, DurableTaskLifecycle, DurableTaskPage, DurableTaskRun,
+    DurableTaskScope, DurableTaskSnapshot, DurableTaskStatements, DurableTasks, ReservedDecision,
+    bindings, checkpoint, control, decision, effects, input_receipt, inputs, list, observe, read,
+    statements,
 };
 #[cfg(any(test, feature = "test-util"))]
 use super::{DurableTaskBindings, PreparedPlan, accept};
@@ -198,20 +198,20 @@ impl DurableTaskLifecycle for DurableTasks {
         observe::call(DurableTaskOperation::Read, inputs::read(self, run, input))
     }
 
-    fn adopt_goal<'a>(
+    fn edit_statements<'a>(
         &'a self,
         scope: &'a DurableTaskScope,
         durable_task_id: &'a Uuid7,
         expected_tag: &'a str,
-        adoption: &'a DurableTaskAdoption,
+        edit: &'a DurableTaskStatements,
     ) -> Reply<'a, DurableTaskSnapshot> {
         let span = tracing::info_span!(
-            "task_goal_adoption",
+            "task_statements_edit",
             durable_task_id = durable_task_id.as_str()
         );
         observe::trace(
             DurableTaskOperation::AdoptGoal,
-            adoption::apply(self, scope, durable_task_id, expected_tag, adoption),
+            statements::apply(self, scope, durable_task_id, expected_tag, edit),
             span,
         )
     }

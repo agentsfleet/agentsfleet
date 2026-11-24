@@ -1,4 +1,4 @@
-//! The scoped writer turn is shared with setup edits; a row lock covers the tag.
+//! The scoped writer turn is shared with creates; a row lock covers the tag.
 
 /// Whether a live syncer holds the schedule, judged on `clock_timestamp()`
 /// after the lock wait rather than at the transaction's start.

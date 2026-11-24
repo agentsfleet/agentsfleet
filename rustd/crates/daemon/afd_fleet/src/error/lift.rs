@@ -39,6 +39,7 @@ af_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
     afd_runner::Error => Runner,
     afd_gate::Error => Gate,
+    afd_approval::Error => Approval,
     afd_credential::Error => Credential,
     afd_billing::Error => Billing,
     afd_memory::Error => Memory,

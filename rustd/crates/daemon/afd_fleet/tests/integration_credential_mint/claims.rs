@@ -92,11 +92,11 @@ async fn seed_install(fixtures: &Fixtures, workspace: &Uuid7, installation: &str
     .expect("the routing row must insert");
 }
 
-/// A fleet granted `service` whose workspace holds `handle` under `name`.
-async fn granted_with(fixtures: &Fixtures, name: &str, service: &str, handle: &str) -> Bound {
-    let owner = bound(fixtures, &authority::config(&[name])).await;
+/// A fleet approved for `name`, whose workspace holds `handle` under it.
+async fn granted_with(fixtures: &Fixtures, name: &str, handle: &str) -> Bound {
+    let owner = bound(fixtures).await;
     seed_handle(fixtures, &owner.workspace, name, handle).await;
-    seed_grant(fixtures, &owner.fleet, service, STATUS_APPROVED).await;
+    seed_grant(fixtures, &owner.fleet, name, STATUS_APPROVED).await;
     owner
 }
 
@@ -147,15 +147,9 @@ async fn test_a_handle_naming_another_workspaces_installation_mints_nothing() {
     support::install_subscriber();
     let fixtures = Fixtures::create().await;
     let installation = installation();
-    let victim = bound(&fixtures, "{}").await;
+    let victim = bound(&fixtures).await;
     seed_install(&fixtures, &victim.workspace, &installation).await;
-    let forger = granted_with(
-        &fixtures,
-        CONNECTOR_GITHUB,
-        CONNECTOR_GITHUB,
-        &github_handle(&installation),
-    )
-    .await;
+    let forger = granted_with(&fixtures, CONNECTOR_GITHUB, &github_handle(&installation)).await;
 
     let capture = Capture::install();
     let (answer, exchanges) = mint(&fixtures, &forger, CONNECTOR_GITHUB).await;
@@ -174,13 +168,7 @@ async fn test_a_handle_with_no_routing_row_mints_nothing() {
     // would say whether some other workspace holds the installation.
     support::install_subscriber();
     let fixtures = Fixtures::create().await;
-    let unrouted = granted_with(
-        &fixtures,
-        CONNECTOR_GITHUB,
-        CONNECTOR_GITHUB,
-        &github_handle(&installation()),
-    )
-    .await;
+    let unrouted = granted_with(&fixtures, CONNECTOR_GITHUB, &github_handle(&installation())).await;
 
     let (answer, exchanges) = mint(&fixtures, &unrouted, CONNECTOR_GITHUB).await;
 
@@ -196,13 +184,7 @@ async fn test_the_workspaces_own_installation_mints() {
     support::install_subscriber();
     let fixtures = Fixtures::create().await;
     let installation = installation();
-    let owner = granted_with(
-        &fixtures,
-        CONNECTOR_GITHUB,
-        CONNECTOR_GITHUB,
-        &github_handle(&installation),
-    )
-    .await;
+    let owner = granted_with(&fixtures, CONNECTOR_GITHUB, &github_handle(&installation)).await;
     seed_install(&fixtures, &owner.workspace, &installation).await;
 
     let (answer, exchanges) = mint(&fixtures, &owner, CONNECTOR_GITHUB).await;
@@ -217,21 +199,16 @@ async fn test_the_workspaces_own_installation_mints() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires a live Postgres and NATS; run through `make test-integration-rustd`"]
 async fn test_a_github_handle_filed_under_another_name_is_not_connected() {
-    // Asked for by a name no connector carries, the grant gate has nothing to
-    // check; the handle inside still says GitHub. Even with its workspace
-    // holding the installation, it is not minted as a connector nobody granted.
-    // The handle IS stored under that name, so this is not a vault miss.
+    // Approved under a name no connector carries, the connector check has
+    // nothing to check; the handle inside still says GitHub. Even with its
+    // workspace holding the installation, it is not minted as a connector
+    // nobody approved. The handle IS stored under that name, so this is not a
+    // vault miss.
     support::install_subscriber();
     let fixtures = Fixtures::create().await;
     let renamed = "github_copy";
     let installation = installation();
-    let owner = granted_with(
-        &fixtures,
-        renamed,
-        CONNECTOR_GITHUB,
-        &github_handle(&installation),
-    )
-    .await;
+    let owner = granted_with(&fixtures, renamed, &github_handle(&installation)).await;
     seed_install(&fixtures, &owner.workspace, &installation).await;
 
     let (answer, exchanges) = mint(&fixtures, &owner, renamed).await;
@@ -254,7 +231,6 @@ async fn test_a_refresh_steered_off_its_provider_posts_nothing() {
     let fixtures = Fixtures::create().await;
     let steered = granted_with(
         &fixtures,
-        CONNECTOR_ZOHO,
         CONNECTOR_ZOHO,
         &zoho_handle("https://collector.example"),
     )
@@ -284,7 +260,6 @@ async fn test_a_refresh_at_its_own_data_centre_mints() {
     let fixtures = Fixtures::create().await;
     let owner = granted_with(
         &fixtures,
-        CONNECTOR_ZOHO,
         CONNECTOR_ZOHO,
         &zoho_handle("https://accounts.zoho.eu"),
     )

@@ -2,9 +2,9 @@
 //!
 //! Every store the mention reads is live — the app bag behind the wall, the
 //! install row the team resolves through, the grant the bot's identity comes
-//! from, and fleet rows stored from real documents — so each case below is
-//! the path a production mention takes, stopped only at the queue, which the
-//! turns ledger defers past by design.
+//! from, and fleet rows with their `mention` trigger rows and approved GitHub
+//! grants — so each case below is the path a production mention takes,
+//! stopped only at the queue, which the turns ledger defers past by design.
 
 #![cfg(feature = "test-util")]
 #![expect(
@@ -16,7 +16,6 @@
 
 use crate::harness;
 
-use af_core::money::NANOS_PER_USD;
 use af_webhook::Scheme;
 use afd_connector::Provider;
 use afd_connector::slack::Thread;
@@ -50,23 +49,36 @@ fn path() -> String {
     format!("/v1/connectors/{}/events", PROVIDER.id())
 }
 
-/// A native configuration attaching `name` to `channel`, bound to a
-/// repository with `access` when given.
-fn document(name: &str, channel: &str, access: Option<&str>) -> String {
-    let mut runtime = serde_json::json!({
-        "triggers": [{"type": "mention", "source": PROVIDER.id(), "channels": [channel]}],
-        "tools": [],
-        "budget": {"daily_nanos": NANOS_PER_USD.to_string()}
-    });
-    if let Some(access) = access {
-        runtime["repositories"] = serde_json::json!(["acme/widgets"]);
-        runtime["repository_access"] = serde_json::json!(access);
-        // A write binding opens a Pull Request, so it names a base.
-        if access == "write" {
-            runtime["repository_base"] = serde_json::json!("main");
-        }
+/// A fleet a test seeds: its name, the channel its `mention` row names, and
+/// the GitHub reach a person approved for it, when one did.
+pub(super) struct Subscribed {
+    name: String,
+    channel: String,
+    access: Option<&'static str>,
+}
+
+impl Subscribed {
+    /// The approved GitHub scope, as the grant stores it, when one was approved.
+    fn scope(&self) -> Option<String> {
+        self.access.map(|access| {
+            let mut scope = serde_json::json!({"repositories": ["acme/widgets"], "access": access});
+            // A write binding opens a Pull Request, so it names a base.
+            if access == "write" {
+                scope["base"] = serde_json::json!("main");
+            }
+            scope.to_string()
+        })
     }
-    serde_json::json!({"name": name, "x-agentsfleet": runtime}).to_string()
+}
+
+/// A fleet named `name` subscribed to `channel`, approved to reach a
+/// repository with `access` when given.
+fn document(name: &str, channel: &str, access: Option<&'static str>) -> Subscribed {
+    Subscribed {
+        name: name.to_owned(),
+        channel: channel.to_owned(),
+        access,
+    }
 }
 
 /// One `app_mention` from `team`, asked by `user` with `text`, in the

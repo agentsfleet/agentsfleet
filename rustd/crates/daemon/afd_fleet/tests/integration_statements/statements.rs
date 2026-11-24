@@ -20,7 +20,7 @@ use super::*;
 /// tail so the three variants cannot drift; the head alone is no statement, so
 /// only the joined whole can be prepared. Enumerate with
 /// `git grep -n 'concatcp!' -- rustd/crates/*/*/src` and keep the SQL ones here.
-const JOINED: [(&str, &str); 5] = [
+const JOINED: [(&str, &str); 4] = [
     (
         "afd_fleet::run::sql::standing::SELECT_STANDING",
         afd_fleet::run::sql::standing::SELECT_STANDING,
@@ -34,10 +34,6 @@ const JOINED: [(&str, &str); 5] = [
         afd_fleet::run::sql::tool_detail::SELECT_LIVE_RUN,
     ),
     (
-        "afd_fleet::durable_task::DECISION_BUDGET_STATEMENT",
-        afd_fleet::durable_task::DECISION_BUDGET_STATEMENT,
-    ),
-    (
         "afd_fleet::durable_task::LOCKED_DECISION_CALL_STATEMENT",
         afd_fleet::durable_task::LOCKED_DECISION_CALL_STATEMENT,
     ),
@@ -46,7 +42,7 @@ const JOINED: [(&str, &str); 5] = [
 /// A statement naming a column the rebuilt schema dropped.
 const DROPPED_COLUMN: (&str, &str) = (
     "seeded/dropped_column.sql",
-    "SELECT deletion_generation FROM setup.drafts WHERE id = $1",
+    "SELECT head_revision_id FROM fleet.fleets WHERE id = $1",
 );
 
 /// `name: error` for every statement in `statements` that does not prepare.

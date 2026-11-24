@@ -49,7 +49,7 @@ async fn a_run_over_built_tools_calls_them_and_ends() {
         results(&transcript),
         [
             "stored deploy:window",
-            "deploy:window (core): Fridays after six",
+            "deploy:window (note): Fridays after six",
             r#"echo {"n":1} at step 2 call 1"#,
         ]
     );
@@ -58,7 +58,7 @@ async fn a_run_over_built_tools_calls_them_and_ends() {
         [Memory {
             key: "deploy:window".to_owned(),
             content: "Fridays after six".to_owned(),
-            category: "core".to_owned(),
+            category: "note".to_owned(),
             reach: guffbolt::tools::memory::Reach::Private,
         }]
     );

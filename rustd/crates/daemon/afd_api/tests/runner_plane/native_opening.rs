@@ -57,7 +57,7 @@ impl Routed {
             ScopeSet::from_scopes(&Scope::ALL),
         )
         .with_owned_workspace(self.fixture.workspace.clone())
-        .with_native_setup(self.fixture.database.clone())
+        .with_native_gateway(self.fixture.database.clone())
     }
 
     async fn cleanup(self) {

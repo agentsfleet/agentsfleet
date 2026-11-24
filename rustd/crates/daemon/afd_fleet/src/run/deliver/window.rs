@@ -9,7 +9,6 @@
 
 use af_core::error_code::{Coded as _, Logged};
 use af_wire::memory::MemoryLoadResponse;
-use afd_api_wire::fleet::MemoryAccess;
 
 use crate::run::envelope::Acquired;
 use crate::run::pull::RunService;
@@ -27,10 +26,7 @@ impl RunService {
         acquired: &Acquired,
     ) -> Option<MemoryLoadResponse<'static>> {
         let fleet_id = &acquired.fleet_id;
-        let grants = MemoryAccess {
-            read: acquired.opened.memory_reads_workspace,
-            publish: acquired.opened.memory_publishes_workspace,
-        };
+        let grants = acquired.opened.memory;
         let window = self
             .memories
             .load_scoped(fleet_id, &acquired.workspace_id, grants)

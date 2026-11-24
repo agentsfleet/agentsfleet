@@ -36,7 +36,7 @@ fn an_unreadable_stored_row_never_renders_the_private_text_it_held() {
 
 #[test]
 fn a_column_read_back_empty_is_a_stored_fault_naming_only_the_column() {
-    let error = super::absent("review_context");
+    let error = super::absent("http_egress");
 
     assert_eq!(error.code(), af_core::error_code::INTERNAL_DB_QUERY);
     assert!(!error.is_datastore_unavailable());
@@ -44,23 +44,7 @@ fn a_column_read_back_empty_is_a_stored_fault_naming_only_the_column() {
         .source()
         .expect("the missing column is kept as the cause");
     assert!(
-        cause.to_string().contains("missing field `review_context`"),
+        cause.to_string().contains("missing field `http_egress`"),
         "the cause names the column: {cause}"
     );
-}
-
-#[test]
-fn a_stored_count_that_is_not_one_keeps_the_parse_failure_as_its_cause() {
-    let refusal = "1x".parse::<u64>().expect_err("not a number");
-    let error = super::stored_number("revision")(refusal);
-
-    assert_eq!(error.code(), af_core::error_code::INTERNAL_DB_QUERY);
-    let cause = error
-        .source()
-        .expect("the parse failure is kept as the cause");
-    assert!(
-        cause.downcast_ref::<std::num::ParseIntError>().is_some(),
-        "the cause is the parser's own error: {cause:?}"
-    );
-    assert_ne!(cause.to_string(), error.to_string());
 }

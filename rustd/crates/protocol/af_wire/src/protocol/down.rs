@@ -88,7 +88,7 @@ pub enum Down<'a> {
     },
     /// A run assigned under the runner's available capacity.
     Run {
-        /// A fleet's event or a setup draft's message, with its payload.
+        /// A fleet's turn, with its payload.
         #[serde(borrow)]
         run: TaggedRun<'a>,
     },
@@ -135,7 +135,7 @@ pub enum Down<'a> {
         #[serde(borrow)]
         answer: Answer<'a, FoldResponse<'a>>,
     },
-    /// A setup run's draft context, or why the run may not read it.
+    /// A run's fleet context, or why the run may not read it.
     ContextLoaded {
         /// Identifier of the context-load request.
         request_id: NonZeroU64,
@@ -146,7 +146,7 @@ pub enum Down<'a> {
         #[serde(borrow)]
         answer: Answer<'a, crate::context::ContextLoadResponse>,
     },
-    /// A setup run's context save, stored or refused.
+    /// A run's context save, stored or refused.
     ContextSaved {
         /// Identifier of the context-save request.
         request_id: NonZeroU64,

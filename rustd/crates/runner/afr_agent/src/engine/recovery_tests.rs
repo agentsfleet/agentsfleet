@@ -14,7 +14,6 @@ pub(super) fn task() -> DurableTaskContext<'static> {
         target: DurableTaskTarget::ApiOnly,
         generation: 1,
         stop_generation: 0,
-        accepted_revision_id: "019f0000-0000-7000-8000-000000000003".into(),
         objective: "Investigate the reported failure".into(),
         goal_digest: "a".repeat(64).into(),
         questions: vec![],

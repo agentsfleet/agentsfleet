@@ -63,7 +63,10 @@ fn assert_every_named_code_is_registered() {
         error_code::INPUT_TOO_LONG,
         error_code::RUN_RENEWAL_NO_CREDITS,
         error_code::RUN_RENEW_BODY_MALFORMED,
-        error_code::RUN_BUDGET_EXCEEDED,
+        error_code::FLEET_ACCESS_NAME_NOT_FOUND,
+        error_code::FLEET_PROVIDER_NOT_CONNECTED,
+        error_code::FLEET_TRIGGER_EXISTS,
+        error_code::FLEET_TRIGGER_SECRET_NOT_FOUND,
         // Was omitted when it was declared, which is the exact gap this list
         // exists to close — a code reachable from no check is a code that can
         // quietly lose its entry.

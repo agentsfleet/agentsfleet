@@ -1,4 +1,5 @@
 use super::fixture::{self, Fixture, Line};
+use af_core::id::Uuid7;
 use af_wire::usage::LineKind;
 use afd_billing::report::{Aggregate, Filter, Report, dimension};
 use afd_billing::sql::work;
@@ -10,7 +11,7 @@ const MIDNIGHT: &str = "2026-10-01T00:00:00Z";
 #[ignore = "requires live Postgres: make test-integration-rustd"]
 async fn daily_spend_reconciles_filtered_snapshot() {
     let f = Fixture::shared().await;
-    seed_days(&f).await;
+    let triage = seed_days(&f).await;
     let mut request = fixture::request();
     request.window.from = fixture::instant(BEFORE_MIDNIGHT);
     for filter in [
@@ -20,7 +21,7 @@ async fn daily_spend_reconciles_filtered_snapshot() {
             ..Filter::default()
         },
         Filter {
-            work_type: Some(work::SETUP_RUN),
+            fleet: Some(triage),
             ..Filter::default()
         },
         Filter {
@@ -34,7 +35,7 @@ async fn daily_spend_reconciles_filtered_snapshot() {
     }
     request.filter = Filter::default();
     let report = f.billing.report(&f.tenant, &request).await.unwrap();
-    // One run, counted once on its first runtime slice's day; setup is no run.
+    // One run, counted once on its first runtime slice's day; a lone model call is no run.
     assert_eq!(fixture::summary(&report).activity_count, Some(1));
     assert!(days(&report).all(|day| day.activity_count.is_none()));
     let mut dates: Vec<_> = days(&report)
@@ -61,7 +62,7 @@ async fn daily_spend_reconciles_filtered_snapshot() {
 #[ignore = "requires live Postgres: make test-integration-rustd"]
 async fn usage_keeps_deleted_fleet_models() {
     let f = Fixture::shared().await;
-    seed_days(&f).await;
+    let triage = seed_days(&f).await;
     let mut request = fixture::request();
     request.window.from = fixture::instant(BEFORE_MIDNIGHT);
     let report = f.billing.report(&f.tenant, &request).await.unwrap();
@@ -69,7 +70,7 @@ async fn usage_keeps_deleted_fleet_models() {
     assert_eq!(fleet.label.as_deref(), Some(fixture::FLEET_NAME));
     // The runtime-only slice has no model, so it names none.
     assert_eq!(fleet.models, [fixture::MODEL_A, fixture::MODEL_B]);
-    request.filter.work_type = Some(work::SETUP_RUN);
+    request.filter.fleet = Some(triage);
     let filtered = f.billing.report(&f.tenant, &request).await.unwrap();
     let fleet = fixture::group(&filtered, dimension::FLEET, Some(f.fleet.as_str()));
     assert_eq!(fleet.label.as_deref(), Some(fixture::FLEET_NAME));
@@ -77,9 +78,10 @@ async fn usage_keeps_deleted_fleet_models() {
     f.close().await;
 }
 
-/// One run crossing UTC midnight, with a runtime-only slice, and a setup run;
-/// the fleet identifier has no live fleet row.
-async fn seed_days(f: &Fixture) {
+/// One run crossing UTC midnight, with a runtime-only slice, and a lone model
+/// call on a second fleet, whose identifier it answers; neither fleet
+/// identifier has a live fleet row.
+async fn seed_days(f: &Fixture) -> Uuid7 {
     let mut first = Line::runtime(&f.tenant, &f.fleet, 17);
     first.at = BEFORE_MIDNIGHT;
     let mut second = first.next(LineKind::Model, 0, 23);
@@ -88,10 +90,12 @@ async fn seed_days(f: &Fixture) {
     let mut runtime = first.next(LineKind::Runtime, 60_000, 0);
     runtime.model = "";
     runtime.at = MIDNIGHT;
-    let mut setup = Line::setup(&f.tenant, 29);
-    setup.at = MIDNIGHT;
-    setup.unpriced = 5;
-    fixture::seed(&f.admin, &[first, second, runtime, setup]).await;
+    let triage = fixture::id();
+    let mut call = Line::call(&f.tenant, &triage, 29);
+    call.at = MIDNIGHT;
+    call.unpriced = 5;
+    fixture::seed(&f.admin, &[first, second, runtime, call]).await;
+    triage
 }
 
 fn days(report: &Report) -> impl Iterator<Item = &Aggregate> {

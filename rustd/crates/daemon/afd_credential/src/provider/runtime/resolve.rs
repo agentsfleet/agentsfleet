@@ -1,4 +1,4 @@
-//! Runtime opens the exact owner reference selected by the saved setup.
+//! Runtime opens the exact owner reference the fleet's `model_ref` names.
 
 use af_core::id::Uuid7;
 use afd_billing::Posture;

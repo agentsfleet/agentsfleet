@@ -24,6 +24,7 @@ mod policy_shapes;
 #[path = "redaction.rs"]
 mod redaction;
 // Every runner route template, pinned in one reviewed snapshot.
+mod durable_task_binding;
 mod durable_task_owned;
 mod durable_task_progress;
 mod durable_task_validation;
@@ -46,7 +47,5 @@ mod validation_mutation;
 #[path = "validation_run.rs"]
 mod validation_run;
 // The setup report admits every Definition the Definition parser admits.
-#[path = "validation_setup.rs"]
-mod validation_setup;
 #[path = "validation_steer.rs"]
 mod validation_steer;

@@ -1,13 +1,13 @@
--- The fleet's assignment. Its `won_thread` step is `../shared/assign_thread.sql` and its
--- `prior_run` and `bumped` steps are `../shared/expire_prior_run.sql`, fused here
--- with the fleet's turn, which the assignment stamps and opens as the fleet's event in one
--- update, so a chat's assignment stays one round trip: a change to the bookkeeping belongs in both.
+-- The fleet's assignment. Its `won_thread` step is `../shared/assign_thread.sql`, fused here
+-- with the expiry of the prior run and the fleet's turn, which the assignment stamps and opens
+-- as the fleet's event in one update, so a chat's assignment stays one round trip: a change to
+-- the thread's bookkeeping belongs in both.
 WITH fleet AS MATERIALIZED (
-  SELECT f.id, f.workspace_id, f.tenant_id, f.name, f.status, f.head_revision_id,
-         f.memory_reads_workspace, f.memory_publishes_workspace
+  SELECT f.id, f.workspace_id, f.tenant_id, f.name, f.status, f.model_ref, f.http_egress,
+         f.package_domains, f.memory_reads_workspace, f.memory_publishes_workspace
   FROM fleet.fleets f
   JOIN runner.runners placed ON placed.id = $2
-  WHERE f.id = $1 AND f.status = $12
+  WHERE f.id = $1 AND f.status = $11
     -- A tenant's runner takes only its tenant's work. Without this row the thread
     -- below is never written, so a foreign assignment changes nothing.
     AND (placed.platform_owned OR placed.tenant_id = f.tenant_id)
@@ -49,11 +49,8 @@ WITH fleet AS MATERIALIZED (
 ), first_head AS MATERIALIZED (
   SELECT a.id, a.durable_task_id, host.platform_owned AS host_platform FROM thread.turns a
   JOIN fleet f ON f.id = a.thread_id AND f.workspace_id = a.workspace_id
-  LEFT JOIN fleet.revisions setup ON setup.id = f.head_revision_id AND setup.fleet_id = f.id
   JOIN runner.runners host ON host.id = $2
   WHERE a.thread_id = $1 AND a.settled_at IS NULL AND host.cordon_reason IS NULL
-    AND ((host.durable_tasks_enabled AND COALESCE(host.capability_report @> jsonb_build_object($8::text, true), false))
-         OR setup.definition #> $11::text[] IS NULL OR setup.definition #> $11::text[] = 'null'::jsonb)
     AND ((a.durable_task_id IS NULL AND a.durable_task_generation IS NULL) OR EXISTS (
       SELECT 1 FROM fleet.durable_tasks t JOIN runner.runners r ON r.id = $2
       WHERE t.id = a.durable_task_id AND t.generation = a.durable_task_generation AND t.fleet_id = a.thread_id AND t.workspace_id = a.workspace_id
@@ -65,44 +62,29 @@ WITH fleet AS MATERIALIZED (
   ORDER BY a.sequence
   LIMIT 1
 ), head AS MATERIALIZED (
-  -- A tenant runner never receives the platform model key: the revision this
-  -- head runs must name the tenant's own model. Tested after the head is chosen,
-  -- so a refused head blocks its fleet instead of being jumped.
+  -- A tenant runner never receives the platform model key: the fleet must name the
+  -- tenant's own model. Tested after the head is chosen, so a refused head blocks its
+  -- fleet instead of being jumped.
   SELECT h.id FROM first_head h
   CROSS JOIN fleet f
-  WHERE h.host_platform OR EXISTS (
-    SELECT 1 FROM fleet.revisions r
-    WHERE r.fleet_id = f.id
-      AND r.id = COALESCE(
-        (SELECT t.accepted_revision_id FROM fleet.durable_tasks t WHERE t.id = h.durable_task_id AND t.fleet_id = f.id),
-        f.head_revision_id)
-      AND r.runtime_model_ref IS NOT NULL AND r.runtime_model_ref <> $15::text)
+  WHERE h.host_platform OR f.model_ref <> $14::text
 ), locked AS (
   SELECT a.id FROM thread.turns a
   JOIN head h ON h.id = a.id
   CROSS JOIN won_thread
   WHERE a.settled_at IS NULL
-    AND ($14::boolean OR a.durable_task_id IS NOT NULL OR a.head_checkpoint_id IS NULL)
+    AND ($13::boolean OR a.durable_task_id IS NOT NULL OR a.head_checkpoint_id IS NULL)
   FOR UPDATE OF a SKIP LOCKED
 ), stamped AS (
   -- Stamps the fence and, the first time a run takes the turn, opens its event: one
   -- update, since one statement may change a row once.
   UPDATE thread.turns a
   SET run_fence = won_thread.fencing_token,
-      status = CASE WHEN a.opened_at IS NULL THEN $13 ELSE a.status END,
+      status = CASE WHEN a.opened_at IS NULL THEN $12 ELSE a.status END,
       opened_at = COALESCE(a.opened_at, now()),
       updated_at = now()
   FROM locked l, won_thread
   WHERE a.id = l.id AND a.settled_at IS NULL
-    AND (a.parked_at IS NULL OR NOT EXISTS (
-      (SELECT 1 FROM fleet.approval_gates g
-      WHERE g.fleet_id = a.thread_id AND g.resolved_at IS NULL
-        AND g.turn_id IS NULL LIMIT 1)
-      UNION ALL
-      (SELECT 1 FROM fleet.approval_gates g
-      WHERE g.fleet_id = a.thread_id AND g.resolved_at IS NULL
-        AND g.turn_id = a.id
-        AND g.expires_at > (SELECT checked_at FROM instant) LIMIT 1)))
   RETURNING WITH (OLD AS prior)
             a.id, a.workspace_id, a.actor, a.kind AS event_type, a.request_json::text AS request_json,
             a.created_at, a.durable_task_id, a.durable_task_generation,
@@ -125,15 +107,8 @@ WITH fleet AS MATERIALIZED (
   FROM stamped a
   LEFT JOIN fleet.activity_counters k ON k.fleet_id = $1
 ), installed AS (
-  SELECT r.definition::text AS definition, r.runtime_model_ref, s.resume_context::text AS context_json,
-         r.policy_semantics, r.id AS revision_id, t.generation AS durable_task_generation,
-         current.definition::text AS current_definition
-  FROM stamped a
-  CROSS JOIN fleet f
-  LEFT JOIN fleet.durable_tasks t ON t.id = a.durable_task_id AND t.fleet_id = f.id AND t.workspace_id = f.workspace_id
-  LEFT JOIN fleet.revisions r ON r.id = COALESCE(t.accepted_revision_id, f.head_revision_id)
-   AND r.fleet_id = f.id
-  LEFT JOIN fleet.revisions current ON current.id = f.head_revision_id AND current.fleet_id = f.id
+  SELECT s.resume_context::text AS context_json
+  FROM fleet f
   LEFT JOIN thread.threads s ON s.id = f.id
 ), catalogue AS MATERIALIZED (
   SELECT c.number FROM model.revision c WHERE c.id = 1
@@ -162,18 +137,21 @@ SELECT a.id AS turn_id, a.workspace_id, a.actor, a.event_type,
        -- its turn, so each one is a run that lapsed without reporting.
        (SELECT count(*) FROM thread.runs x
          WHERE x.turn_id = a.id AND x.fleet_id = $1) AS earlier_runs,
-       f.tenant_id, f.name, f.status, f.head_revision_id,
-       f.memory_reads_workspace, f.memory_publishes_workspace,
-       i.definition, i.runtime_model_ref, i.context_json, i.policy_semantics,
-       i.revision_id, i.durable_task_generation, i.current_definition,
+       f.tenant_id, f.name, f.status, f.model_ref, f.http_egress, f.package_domains,
+       f.memory_reads_workspace, f.memory_publishes_workspace, i.context_json,
        a.inserted, a.created_at AS opened_at, a.status AS event_status,
        k.event_count, k.budget_used_nanos,
        (SELECT number FROM catalogue) AS catalogue_version,
        pl.platform_secret_id, pl.platform_secret_digest,
        -- Whether the head belongs to a durable task: only such an issue reads
-       -- its task source (`task/sql/issue_source.sql`); a plain chat's run
-       -- insert carries the setup proof instead.
+       -- its task source (`task/sql/issue_source.sql`).
        (a.durable_task_id IS NOT NULL OR a.durable_task_generation IS NOT NULL) AS tasked,
+       -- Whether the host can judge a task: task-capable, with a decision profile selected.
+       -- Only such a run is offered the task tools.
+       (SELECT r.durable_tasks_enabled
+               AND COALESCE(r.capability_report @> jsonb_build_object($8::text, true), false)
+               AND r.decision_platform_model_id IS NOT NULL
+          FROM runner.runners r WHERE r.id = $2) AS judged,
        -- Whether a later message waits in the head's conversation, foldable
        -- or not: the run's first fold ask finds nothing when this is false.
        -- assign_inputs.sql's two branches, through the same index. A durable

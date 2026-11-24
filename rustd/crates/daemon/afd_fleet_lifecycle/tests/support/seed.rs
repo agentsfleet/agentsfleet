@@ -1,7 +1,7 @@
 //! The fleet rows a lane writes before a test runs.
 //!
-//! Native-shaped rows written in SQL: setup is `afd_setup`'s to perform,
-//! and this crate only ever reads, counts and purges what setup wrote. Every
+//! Native-shaped rows written in SQL: creation is `afd_setup`'s to perform,
+//! and this crate only ever reads, counts and purges what creation wrote. Every
 //! row carries the resource version the conditional purge compares against.
 
 use af_core::id::Uuid7;
@@ -26,8 +26,7 @@ impl Lane {
         let name = format!("fleet-{id}");
         FleetSeed::new(&id, workspace, &self.tenant, ACTIVE)
             .name(&name)
-            .native_setup()
-            .versions(INITIAL_VERSION, INITIAL_VERSION)
+            .version(INITIAL_VERSION)
             .at(at)
             .insert(&mut *self.connection().await)
             .await
@@ -38,21 +37,6 @@ impl Lane {
     /// One active fleet in the lane's own workspace.
     pub(crate) async fn fleet(&self) -> Uuid7 {
         self.fleet_at(&self.workspace, NOW).await
-    }
-
-    /// One fleet in the lane's own workspace with no saved setup, so no head
-    /// revision describes it.
-    pub(crate) async fn fleet_without_setup(&self) -> Uuid7 {
-        let id = mint();
-        let name = format!("fleet-{id}");
-        FleetSeed::new(&id, &self.workspace, &self.tenant, ACTIVE)
-            .name(&name)
-            .versions(INITIAL_VERSION, INITIAL_VERSION)
-            .at(NOW)
-            .insert(&mut *self.connection().await)
-            .await
-            .expect("seeding a fleet with no setup");
-        id
     }
 
     /// Takes the fleet to `archived` and answers the tag a purge must present,

@@ -1,5 +1,5 @@
 //! The rows these suites seed beyond what `afd_db::test_util` spells: a run
-//! with the event it executes, a fleet's thread, and a setup draft's run.
+//! with the event it executes, a fleet's thread, and a placed run.
 //!
 //! One column list each, so a schema change edits this file and not every
 //! suite. Every row is stamped by the database's `now()` unless the suite
@@ -38,16 +38,6 @@ VALUES ($1, $2, $3, $4, $5, $6,
         coalesce($9::timestamptz, now()), 'platform', 'test', 'test', coalesce($9::timestamptz, now()), 1,
         $7::timestamptz, $8, coalesce($9::timestamptz, now()),
         coalesce($9::timestamptz, now()))";
-
-/// A setup draft's run: it names its draft and no fleet, and no foreign key
-/// reaches a draft, so the draft and its turn are opaque ids here.
-const INSERT_SETUP_RUN: &str = "\
-INSERT INTO thread.runs
-  (id, runner_id, draft_id, workspace_id, tenant_id, turn_id, turn_created_at,
-   posture, provider, model, last_metered_at, fencing_token,
-   run_expires_at, status, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, now(), 'platform', 'test', 'test', now(), 1,
-        $7::timestamptz, $8, now(), now())";
 
 /// Where a run lives and what it owes.
 pub(crate) struct RunRow<'a> {
@@ -96,22 +86,24 @@ pub(crate) async fn payload(connection: &mut PgConnection, row: RunRow<'_>) -> U
     event
 }
 
-/// What a setup run holds, and whether it still runs.
-pub(crate) struct SetupRunRow<'a> {
+/// What a placed run holds, and whether it still runs.
+pub(crate) struct PlacedRunRow<'a> {
     /// Its status, as stored.
     pub(crate) status: &'a str,
     /// When its run lapses.
     pub(crate) run_expires_at: Timestamp,
 }
 
-/// Seeds one setup draft's run `runner` holds, and answers its id.
-pub(crate) async fn setup_run(
+/// Seeds one run `runner` holds for a fleet the suite needs no row of, and
+/// answers its id. No foreign key reaches a run's fleet or turn, so both are
+/// opaque ids here: the run occupies a worker and nothing else.
+pub(crate) async fn placed_run(
     connection: &mut PgConnection,
     (runner, workspace, tenant): (&Uuid7, &Uuid7, &Uuid7),
-    row: SetupRunRow<'_>,
+    row: PlacedRunRow<'_>,
 ) -> Uuid7 {
     let id = mint_id();
-    sqlx::query(INSERT_SETUP_RUN)
+    sqlx::query(INSERT_RUN)
         .bind(&id)
         .bind(runner)
         .bind(mint_id())
@@ -120,8 +112,9 @@ pub(crate) async fn setup_run(
         .bind(mint_id())
         .bind(row.run_expires_at.to_sqlx())
         .bind(row.status)
+        .bind(None::<jiff_sqlx::Timestamp>)
         .execute(&mut *connection)
         .await
-        .expect("the setup run seeds");
+        .expect("the placed run seeds");
     id
 }

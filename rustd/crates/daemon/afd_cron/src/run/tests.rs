@@ -41,7 +41,6 @@ fn schedule(desired: DesiredStatus, sync: SyncStatus, cron: &str) -> Schedule {
         created_at: NOW,
         updated_at: NOW,
         fire_at: None,
-        recipe: None,
     }
 }
 

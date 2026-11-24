@@ -135,17 +135,17 @@ pub struct Resolved {
     pub resolved_by: String,
     /// Their note.
     pub detail: String,
-    /// The event the gate blocked, which a continuation resumes from.
+    /// The turn whose run waits on the gate, which its answer resumes.
     ///
-    /// `None` for a gate that held no run: the column is nullable for gates
-    /// raised outside an event (an install-time integration grant), and a
-    /// resolve of one must decode rather than fail after the row moved.
+    /// `None` only for a gate raised outside a run: the column is nullable,
+    /// and a resolve of one must decode rather than fail after the row moved.
     pub turn_id: Option<Uuid7>,
-    /// The continuation this decision landed, when it landed one.
+    /// Which family of gate this is: a run's question or an access card.
+    pub gate_type: String,
+    /// The answer turn this decision landed, when it landed one.
     ///
-    /// `Some` only for an approval THIS caller won: a denial continues
-    /// nothing, and a caller who lost the race did not write the row the
-    /// winner already did.
+    /// `Some` for an answered question and for an approved or denied access
+    /// card; a denied question continues nothing.
     pub continuation_turn_id: Option<Uuid7>,
 }
 
@@ -212,6 +212,7 @@ pub(super) struct StoredResolution {
     resolved_by: String,
     detail: String,
     turn_id: Option<Uuid7>,
+    gate_type: String,
 }
 
 impl From<StoredResolution> for Resolved {
@@ -226,6 +227,7 @@ impl From<StoredResolution> for Resolved {
             resolved_by: stored.resolved_by,
             detail: stored.detail,
             turn_id: stored.turn_id,
+            gate_type: stored.gate_type,
             continuation_turn_id: None,
         }
     }

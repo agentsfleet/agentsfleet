@@ -11,7 +11,7 @@ const UNLISTED: &str = "https://downloads.example.net/log.txt";
 
 #[test]
 fn should_allow_public_hosts_only_when_selected() -> crate::Result<()> {
-    let mut policy = policy(true);
+    let mut policy = policy();
     policy.network_policy.allow.clear();
     let refused = EgressPolicy::new(&policy)
         .allow(draft("GET", UNLISTED, &[], None))
@@ -35,7 +35,7 @@ fn should_allow_public_hosts_only_when_selected() -> crate::Result<()> {
 
 #[test]
 fn should_allow_only_exact_preset_and_additional_hosts_in_restricted_mode() -> crate::Result<()> {
-    let mut policy = policy(true);
+    let mut policy = policy();
     policy.network_policy.allow = vec!["extra.example.net".into()];
     policy.network_policy.package_manager_domains = true;
     let egress_policy = EgressPolicy::new(&policy);
@@ -63,7 +63,7 @@ fn should_allow_only_exact_preset_and_additional_hosts_in_restricted_mode() -> c
 
 #[test]
 fn should_preserve_boundaries_with_public_http_egress() {
-    let mut policy = policy(true);
+    let mut policy = policy();
     policy.network_policy.http_egress = HttpEgress::Public;
     let egress_policy = EgressPolicy::new(&policy);
     let cases = [
@@ -99,7 +99,7 @@ fn should_preserve_boundaries_with_public_http_egress() {
 
 #[test]
 fn should_restrict_credentials_and_repository_with_public_http_egress() {
-    let mut policy = policy(true);
+    let mut policy = policy();
     policy.network_policy.http_egress = HttpEgress::Public;
     let egress_policy = EgressPolicy::new(&policy);
     let cases = [
@@ -130,10 +130,6 @@ fn should_restrict_credentials_and_repository_with_public_http_egress() {
             ),
             Refusal::RequestPolicyNotAllowed,
         ),
-        (
-            draft("POST", UNLISTED, &[], Some("{}")),
-            Refusal::MethodNotAllowed,
-        ),
     ];
     for (draft, expected) in cases {
         let refused = egress_policy.allow(draft).err();
@@ -144,4 +140,24 @@ fn should_restrict_credentials_and_repository_with_public_http_egress() {
             refused.as_ref().map(shown)
         );
     }
+}
+
+/// A public fleet may write to any public host: no method is held back for a
+/// host it names no credential for.
+#[test]
+fn should_allow_a_credential_free_post_to_an_unlisted_host_with_public_http_egress() {
+    let mut policy = policy();
+    policy.network_policy.http_egress = HttpEgress::Public;
+
+    let sent = EgressPolicy::new(&policy).allow(draft("POST", UNLISTED, &[], Some("{}")));
+    assert!(sent.is_ok(), "{:?}", sent.err().as_ref().map(shown));
+
+    policy.network_policy.http_egress = HttpEgress::Restricted;
+    let refused = EgressPolicy::new(&policy)
+        .allow(draft("POST", UNLISTED, &[], Some("{}")))
+        .err();
+    assert_eq!(
+        refused.as_ref().and_then(crate::Error::refusal),
+        Some(Refusal::HostNotAllowed)
+    );
 }

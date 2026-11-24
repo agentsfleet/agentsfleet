@@ -11,8 +11,6 @@ closed_set! {
     WorkType {
         /// A fleet run's run.
         FleetRun => "fleet_run",
-        /// A draft-owned setup run.
-        SetupRun => "setup_run",
     }
 }
 

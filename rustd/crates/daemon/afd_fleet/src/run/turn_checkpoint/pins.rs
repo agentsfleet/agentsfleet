@@ -187,7 +187,6 @@ pub(super) async fn update(
     let mut owner = TurnRunGuard::lock(runs, &mut connection, run).await?;
     allocation::head(&mut owner).await?;
     let plan = Plan::load(&mut owner, &guard::id(&reference.checkpoint_id)?).await?;
-    let _scope = plan.scope(&owner)?;
     let pin = exact(&mut owner, reference).await?;
     if !pin.belongs(&owner, super::WRITER) && !pin.belongs(&owner, super::READER) {
         return Err(TurnCheckpointRefusal::Conflict.into());

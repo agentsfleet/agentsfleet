@@ -16,21 +16,28 @@
 //! vault can only fail there — which is the proof it was never turned back
 //! earlier.
 //!
-//! Every case declares a WRITE binding on the `github` connector, the only pair
+//! Every case approves a WRITE scope on the `github` connector, the only pair
 //! the deleted gate ever applied to.
 
 use super::*;
 use crate::requests;
 use af_core::error_code::ErrorCode;
 
-/// A stored document declaring a write reach over `acme/payments`, which is
+/// An approved GitHub scope with write reach over `acme/payments`, which is
 /// what puts a binding on the run's mint scope.
-const WRITE_BOUND_CONFIG: &str = r#"{"name":"probe","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"},"repositories":["acme/payments"],"repository_access":"write","repository_base":"main"}}"#;
+const WRITE_SCOPE: &str = r#"{"repositories":["acme/payments"],"access":"write","base":"main"}"#;
 
 /// A write-bound fleet whose `github` grant is approved, ready to mint.
 async fn write_bound(fixtures: &Fixtures) -> Bound {
-    let owner = bound(fixtures, WRITE_BOUND_CONFIG).await;
-    seed_grant(fixtures, &owner.fleet, CONNECTOR_GITHUB, STATUS_APPROVED).await;
+    let owner = bound(fixtures).await;
+    seed_scoped_grant(
+        fixtures,
+        &owner.fleet,
+        CONNECTOR_GITHUB,
+        STATUS_APPROVED,
+        Some(WRITE_SCOPE),
+    )
+    .await;
     owner
 }
 
@@ -71,12 +78,10 @@ async fn test_the_standing_grant_alone_carries_a_write_mint_to_the_vault() {
 async fn test_a_write_mint_without_a_standing_grant_is_refused() {
     // The negative that keeps the case above honest. Remove the grant and the
     // mint refuses — so that case passes because the grant authorised it, not
-    // because nothing is checked. An approved card is seeded here to make the
-    // point sharply: a card cannot stand in for the grant.
+    // because nothing is checked.
     support::install_subscriber();
     let fixtures = Fixtures::create().await;
-    let owner = bound(&fixtures, WRITE_BOUND_CONFIG).await;
-    let _gate = seed_write_gate(&fixtures, &owner).await;
+    let owner = bound(&fixtures).await;
 
     assert_eq!(
         refusal_code(&fixtures, &owner).await,

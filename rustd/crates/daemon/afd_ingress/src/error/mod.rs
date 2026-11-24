@@ -18,8 +18,8 @@
 //! up.
 //!
 //! The one apparent exception proves it: [`ErrorKind::ConfigUnreadable`] is a
-//! document THIS daemon stored and can no longer parse, which is an operator's
-//! incident and not a sender's.
+//! trigger row or grant scope THIS daemon stored and can no longer parse, which
+//! is an operator's incident and not a sender's.
 
 use af_core::error_code::{self, ErrorCode};
 
@@ -77,7 +77,7 @@ pub(crate) enum ErrorKind {
         source: afd_turns::Error,
     },
 
-    #[error("the stored fleet document no longer parses")]
+    #[error("a stored trigger row or grant scope no longer parses")]
     ConfigUnreadable {
         #[source]
         source: af_fleet_runtime::Error,
@@ -87,7 +87,7 @@ pub(crate) enum ErrorKind {
     ///
     /// A status spelled by a newer daemon, or a `workspace_id` that is not a
     /// canonical identifier. Neither is defaulted past: the status because
-    /// reading a state this build does not understand as `installing` would let
+    /// reading a state this build does not understand as `archived` would let
     /// it act on the wrong one, and the workspace because the column is a
     /// NOT NULL foreign key, so a value that will not parse is a broken
     /// invariant rather than a race.

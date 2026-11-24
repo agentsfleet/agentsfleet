@@ -12,7 +12,6 @@ use crate::{Result, error::query};
 #[derive(sqlx::FromRow)]
 pub(super) struct Plan {
     pub id: Uuid7,
-    pub setup_revision_id: Uuid7,
     pub owner_run_id: Uuid7,
     pub owner_fence: i64,
     #[sqlx(try_from = "i64")]
@@ -62,7 +61,7 @@ impl Plan {
             checkpoint_id: CheckpointOperationId(self.id.as_str().to_owned()),
             generation: self.generation,
             format_version: self.format_version,
-            scope: self.scope(owner)?,
+            scope: self.scope(owner),
             expected_head: self
                 .expected_head_id
                 .as_ref()
@@ -81,10 +80,7 @@ impl Plan {
         })
     }
 
-    pub(super) fn scope(&self, owner: &TurnRunGuard<'_>) -> Result<TurnScope> {
-        if self.setup_revision_id != owner.setup {
-            return Err(TurnCheckpointRefusal::Incompatible.into());
-        }
+    pub(super) fn scope(&self, owner: &TurnRunGuard<'_>) -> TurnScope {
         // `plan.sql` reads `has_workspace` as a toolbox digest's presence, so
         // the digest alone names the workspace.
         let workspace = self
@@ -93,7 +89,7 @@ impl Plan {
             .map_or(TurnWorkspace::ApiOnly, |toolbox_digest| {
                 TurnWorkspace::Files { toolbox_digest }
             });
-        Ok(owner.scope(workspace))
+        owner.scope(workspace)
     }
 
     pub(super) fn folds(&self) -> Result<Vec<FoldRef>> {
@@ -124,7 +120,7 @@ impl Plan {
             checkpoint_id: CheckpointOperationId(self.id.as_str().to_owned()),
             generation: self.generation,
             format_version: self.format_version,
-            scope: self.scope(owner)?,
+            scope: self.scope(owner),
             manifest_root: self
                 .manifest_root
                 .clone()

@@ -3,6 +3,7 @@
 //! group equals what the ledger lines sum to.
 
 use super::fixture::{self, Fixture, Line};
+use af_core::id::Uuid7;
 use af_wire::usage::LineKind;
 use afd_billing::report::{Aggregate, Filter, dimension};
 use afd_billing::sql::work;
@@ -116,7 +117,7 @@ impl From<&Aggregate> for Group {
 #[ignore = "requires live Postgres: make test-integration-rustd"]
 async fn report_groups_equal_the_ledger_for_a_seeded_month() {
     let f = Fixture::shared().await;
-    seed_month(&f).await;
+    let triage = seed_month(&f).await;
     let request = fixture::request();
     let total = fixture::summary(&f.billing.report(&f.tenant, &request).await.unwrap()).clone();
     // Nine of the twelve runs are this tenant's, each counted on its first slice.
@@ -128,7 +129,7 @@ async fn report_groups_equal_the_ledger_for_a_seeded_month() {
             ..Filter::default()
         },
         Filter {
-            work_type: Some(work::SETUP_RUN),
+            fleet: Some(triage.clone()),
             ..Filter::default()
         },
         Filter {
@@ -157,7 +158,7 @@ async fn report_groups_equal_the_ledger_for_a_seeded_month() {
         served.sort();
         expected.sort();
         assert_eq!(served, expected, "{:?}", request.filter);
-        // Three fleets and setup, whatever the filter selects.
+        // Three fleets with runs and one with lone model calls, whatever the filter selects.
         let fleets = served
             .iter()
             .filter(|group| group.dimension == dimension::FLEET)
@@ -172,8 +173,9 @@ async fn report_groups_equal_the_ledger_for_a_seeded_month() {
 async fn the_rollup_equals_the_ledger_key_by_key() {
     let f = Fixture::shared().await;
     seed_month(&f).await;
-    // The tenant's nine runs hold 27 keys, three a run; its five setups 5 and
-    // its runs either side of the period 2; the other tenant's three runs 9.
+    // The tenant's nine runs hold 27 keys, three a run; its five lone model
+    // calls 5, one a day; its runs either side of the period 2; the other
+    // tenant's three runs 9. A lone call counts no run.
     for (tenant, keys, runs) in [(&f.tenant, 34, 11), (&f.foreign, 9, 3)] {
         let rollup = fixture::usage_daily(&f.admin, tenant).await;
         assert_eq!(rollup.len(), keys);
@@ -190,15 +192,16 @@ async fn the_rollup_equals_the_ledger_key_by_key() {
 
 /// Twelve runs over October, each crossing UTC midnight on three fleets: some
 /// written in one statement, some written whole twice, some a day at a time.
-/// Setup runs and runs on either side of the period complete the month.
-async fn seed_month(f: &Fixture) {
+/// Lone model calls on a fourth fleet, whose identifier it answers, and runs
+/// on either side of the period complete the month.
+async fn seed_month(f: &Fixture) -> Uuid7 {
     let fleets = [f.fleet.clone(), fixture::id(), fixture::id()];
     for run in 0..RUNS {
         let tenant = if run % 4 == 3 { &f.foreign } else { &f.tenant };
         let money = i64::try_from(run).unwrap();
         let (day, next) = (1 + 2 * run, 2 + 2 * run);
         let mut first = Line::runtime(tenant, fleets.get(run % 3).unwrap(), 10 + money);
-        first.name = Some(FLEET_NAMES.get(run % 3).unwrap().to_string());
+        first.name = FLEET_NAMES.get(run % 3).unwrap().to_string();
         first.at = at(format!("2026-10-{day:02}T23:59:59.000Z"));
         let mut call = first.next(LineKind::Model, 0, 100 + money);
         call.at = at(format!("2026-10-{day:02}T23:59:59.500Z"));
@@ -224,18 +227,20 @@ async fn seed_month(f: &Fixture) {
             }
         }
     }
+    let triage = fixture::id();
     for attempt in 0..4_i64 {
-        let mut setup = Line::setup(&f.tenant, 30 + attempt);
-        setup.at = at(format!("2026-10-{:02}T08:00:00.000Z", 5 + 5 * attempt));
-        setup.unpriced = attempt;
-        fixture::seed(&f.admin, &[setup]).await;
+        let mut call = Line::call(&f.tenant, &triage, 30 + attempt);
+        call.at = at(format!("2026-10-{:02}T08:00:00.000Z", 5 + 5 * attempt));
+        call.unpriced = attempt;
+        fixture::seed(&f.admin, &[call]).await;
     }
-    fixture::seed(&f.admin, &[Line::setup(&f.tenant, 77)]).await;
+    fixture::seed(&f.admin, &[Line::call(&f.tenant, &triage, 77)]).await;
     let mut before = Line::runtime(&f.tenant, &f.fleet, 88);
     before.at = fixture::BEFORE;
     let mut after = Line::runtime(&f.tenant, &f.fleet, 99);
     after.at = "2026-10-26T00:00:00Z";
     fixture::seed(&f.admin, &[before, after]).await;
+    triage
 }
 
 /// A seeded instant; the fixture's lines hold their instants for the test's life.

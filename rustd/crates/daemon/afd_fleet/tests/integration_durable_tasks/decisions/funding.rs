@@ -2,7 +2,7 @@
 //! same request issues.
 
 use af_core::{error_code, test_util::trace::Capture};
-use af_wire::durable_task::{DecisionAssessment, DecisionCallState};
+use af_wire::durable_task::DecisionCallState;
 use afd_fleet::durable_task::DurableTaskLifecycle as _;
 use serde_json::{Value, json};
 
@@ -61,7 +61,7 @@ async fn refuse_twice(fixture: &Decisions<'_>) {
     let case = fixture.case;
     let financial = wallet_snapshot(fixture).await;
     for _ in 0..2 {
-        let input = fixture.reservation(DecisionAssessment::Message, None);
+        let input = fixture.call_input().await;
         let failure = fixture
             .tasks
             .reserve_decision(case.run(), &input)
@@ -95,7 +95,7 @@ async fn recover(fixture: &Decisions<'_>, balance: i64) {
         .fixtures
         .seed_wallet(&case.held.tenant, balance)
         .await;
-    let input = fixture.reservation(DecisionAssessment::Message, None);
+    let input = fixture.call_input().await;
     let (issued, body) = fixture.reserve(&input).await;
     assert!(issued);
     assert_eq!(fixture.counts().await, (1, 1, 0));

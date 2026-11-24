@@ -23,14 +23,12 @@ use crate::tail_watch::{NOTE, OPERATOR};
 /// How long before the answer the deadline passed.
 const LATE: Duration = Duration::from_hours(2);
 
-/// Dimension 2.1: a policy gate timed out two hours ago, then approved. The
-/// parked turn is released, and the approval lands the continuation the
-/// next assignment takes.
+/// An access card timed out two hours ago, then approved: the approval lands
+/// the answer turn the next assignment takes.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn an_approval_after_the_deadline_releases_the_turn() {
+async fn an_approval_after_the_deadline_answers_the_turn() {
     let lane = Lane::isolated().await;
-    crate::tail_watch::park_delivery(&lane).await;
     let action = lane.seed_gate(Window::Open).await;
     lane.lapse_by(&action, LATE).await;
 
@@ -44,15 +42,11 @@ async fn an_approval_after_the_deadline_releases_the_turn() {
         unreachable!("a late approval is an approval, got {outcome:?}");
     };
     assert_eq!(lane.status_of(&action).await, "approved");
-    assert!(
-        crate::tail_watch::delivery_unparked(&lane).await,
-        "the parked turn is released"
-    );
     assert!(resolved.continuation_turn_id.is_some());
     assert!(lane.continuation_is_unsettled(&action).await, "assignable");
 }
 
-/// Dimension 2.2: a `question` gate past its deadline answered "yes" lands
+/// A `question` gate past its deadline answered "yes" lands
 /// one continuation whose body carries the answer and the asking turn.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -94,7 +88,7 @@ async fn a_question_answered_after_the_deadline_resumes_the_run() {
     );
 }
 
-/// Dimension 2.3: an answer and a denial race; one wins, the other is told
+/// An answer and a denial race; one wins, the other is told
 /// the standing decision, and at most one continuation exists.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -132,8 +126,8 @@ async fn two_answers_to_one_gate_resolve_it_once() {
     assert!(lane.continuations(Producer::QuestionAnswer, &action).await <= 1);
 }
 
-/// Dimension 2.4: an approval after the fleet is archived is refused, and no
-/// turn is written.
+/// An approval after the fleet is archived is refused, and no turn is
+/// written.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn an_answer_to_an_archived_fleets_gate_is_refused() {

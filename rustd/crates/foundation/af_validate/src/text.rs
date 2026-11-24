@@ -1,6 +1,6 @@
-//! The one ceiling on text a person or a model hands the system: a setup
-//! chat message, a message typed into a running fleet, a fleet's
-//! instructions.
+//! The one ceiling on text a person or a model hands the system: a fleet's
+//! first message, a message typed into a running fleet, a fleet's message to
+//! another.
 //!
 //! Past it a text is refused with [`TEXT_TOO_LONG`]. Below it, the limit a
 //! person meets is the model's context window, which every model call already
@@ -17,14 +17,10 @@ pub const TEXT_MAX_CHARS: usize = 1 << 20;
 /// person reading the refusal; the test beside it pins the two together.
 pub const TEXT_TOO_LONG: &str = "Input exceeds the maximum length of 1,048,576 characters.";
 
-/// The widest one character serializes to when this system writes JSON: a
-/// `\u00XX` control escape. serde writes every other character as itself.
-pub(crate) const JSON_CHAR_MAX_BYTES: usize = 6;
-
 /// The widest one character can arrive in JSON a client wrote: a character
 /// outside the Basic Multilingual Plane, escaped as a surrogate pair
 /// (`\uD83D\uDE00`), which is one `char` against the ceiling.
-pub(crate) const JSON_INPUT_CHAR_MAX_BYTES: usize = 12;
+const JSON_INPUT_CHAR_MAX_BYTES: usize = 12;
 
 /// The most bytes a text at [`TEXT_MAX_CHARS`] takes as a JSON string a
 /// client wrote.
@@ -38,6 +34,10 @@ pub const TEXT_MAX_JSON_BYTES: usize = JSON_INPUT_CHAR_MAX_BYTES * TEXT_MAX_CHAR
 #[cfg(test)]
 mod tests {
     use super::{TEXT_MAX_CHARS, TEXT_MAX_JSON_BYTES, TEXT_TOO_LONG};
+
+    /// The widest one character serializes to when this system writes JSON:
+    /// a `\u00XX` control escape. serde writes every other character as itself.
+    const JSON_CHAR_MAX_BYTES: usize = 6;
 
     #[test]
     fn the_ceiling_is_1_048_576_chars_and_its_refusal_names_it() {
@@ -54,10 +54,7 @@ mod tests {
     #[test]
     fn the_json_bound_holds_the_ceiling_at_a_clients_widest_escape() {
         let written = serde_json::to_string(&"\u{1}".repeat(TEXT_MAX_CHARS)).unwrap_or_default();
-        assert_eq!(
-            written.len(),
-            super::JSON_CHAR_MAX_BYTES * TEXT_MAX_CHARS + 2
-        );
+        assert_eq!(written.len(), JSON_CHAR_MAX_BYTES * TEXT_MAX_CHARS + 2);
         let sent = format!("\"{}\"", r"\uD83D\uDE00".repeat(TEXT_MAX_CHARS));
         assert_eq!(
             sent.len(),

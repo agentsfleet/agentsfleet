@@ -12,10 +12,6 @@ pub struct RunLimits {
     pub max_runs_per_turn: u32,
     /// Waiting turns one assignment pass considers.
     pub assign_batch_size: usize,
-    /// Bytes of setup documents the definition cache weighs.
-    pub definition_cache_bytes: u64,
-    /// Fleets whose head revision the replica remembers.
-    pub head_cache_count: u64,
     /// Model price books the replica holds.
     pub price_book_cache_count: u64,
     /// Turn checkpoint lifetimes.
@@ -31,8 +27,6 @@ impl Default for RunLimits {
         Self {
             max_runs_per_turn: af_core::limits::DEFAULT_MAX_RUNS_PER_TURN,
             assign_batch_size: super::assign::MAX_CANDIDATES_PER_POLL,
-            definition_cache_bytes: super::cache::DEFINITION_CAPACITY_BYTES,
-            head_cache_count: super::cache::HEAD_CAPACITY,
             price_book_cache_count: super::cache::PRICE_BOOK_CAPACITY,
             turn_checkpoints: TurnCheckpointLimits::default(),
             tasks: crate::durable_task::policy::DurableTaskTimes::default(),
@@ -105,8 +99,6 @@ mod tests {
         let limits = RunLimits::default();
         assert_eq!(limits.max_runs_per_turn, 3);
         assert_eq!(limits.assign_batch_size, 64);
-        assert_eq!(limits.definition_cache_bytes, 64 * 1024 * 1024);
-        assert_eq!(limits.head_cache_count, 16_384);
         assert_eq!(limits.price_book_cache_count, 1_024);
         let checkpoints = limits.turn_checkpoints;
         assert_eq!(checkpoints.retention_seconds(), 7 * 24 * 60 * 60);

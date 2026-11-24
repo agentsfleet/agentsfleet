@@ -14,7 +14,7 @@ use af_core::id::Uuid7;
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::{Value, json};
 
-use crate::steers::{ARCHIVED, Crew, INSTALLING};
+use crate::steers::{ARCHIVED, Crew};
 use crate::wire::{report, report_body, wait_for_assignment};
 
 /// The ids a page's items name, in order.
@@ -82,8 +82,8 @@ async fn assert_waiting_message_is_queued(crew: &Crew, run: &str, fence: u64) {
     assert!(queued.get("response_excerpt").is_none(), "{queued}");
 }
 
-/// The list names every fleet in the run's workspace, archived and
-/// installing ones with their status, and none from another; one fleet's
+/// The list names every fleet in the run's workspace, an archived one with
+/// its status, and none from another; one fleet's
 /// events include a message still waiting for a runner.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -91,15 +91,14 @@ async fn fleets_read_lists_workspace_fleets_for_a_live_run() {
     let mut supervisor = Supervisor::new();
     let crew = Crew::boot(&mut supervisor).await;
     let archived = crew.sibling_as("archived-fleet", ARCHIVED).await;
-    let installing = crew.sibling_as("installing-fleet", INSTALLING).await;
     let foreign = crew.foreign("other-workspace-fleet").await;
     let (run, fence) = crew.speaking.run_seeded().await;
 
     let (status, page) = read_fleets(&crew, &run, fence).await;
     assert_eq!(status, 200, "{page}");
     let listed = ids(&page);
-    assert_eq!(listed.len(), 3, "{page}");
-    for fleet in [&crew.run().fleet, &archived, &installing] {
+    assert_eq!(listed.len(), 2, "{page}");
+    for fleet in [&crew.run().fleet, &archived] {
         assert!(
             listed.contains(&fleet.to_string()),
             "{fleet} missing: {page}"

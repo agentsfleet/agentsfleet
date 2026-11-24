@@ -35,8 +35,6 @@ pub(super) struct ConfigToml {
     #[garde(dive)]
     pub context: super::tuning::ContextTuning,
     #[garde(dive)]
-    pub fleets: super::tuning::FleetsTuning,
-    #[garde(dive)]
     pub billing: super::tuning::BillingTuning,
     #[garde(dive)]
     pub durable_tasks: super::tuning::DurableTasksTuning,

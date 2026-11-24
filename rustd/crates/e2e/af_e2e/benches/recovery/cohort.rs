@@ -44,7 +44,6 @@ pub(super) async fn population(run: &Scenario, model: &Model, n: usize) -> Check
             &format!("Recovery verification {index}"),
             &workspace,
             &tenant,
-            e2e_seed::FLEET_CONFIG_JSON,
             run.seeded_at,
         )
         .await;

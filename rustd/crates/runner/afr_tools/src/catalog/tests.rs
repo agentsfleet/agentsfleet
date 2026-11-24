@@ -265,23 +265,29 @@ fn every_published_handler_entry_is_hosted() {
     );
 }
 
-/// The two fleet tools are offered only to a run whose
-/// policy names them, and both are hosted here.
+/// The tools this runner hosts over its verbs are offered only to a run
+/// whose policy names them, and every one is hosted here.
 #[test]
 fn fleet_tools_are_offered_only_when_declared() {
     let (transport, _sent) = crate::testing::replying(200, "");
     let catalog = Catalog::hosted(transport);
+    let hosted = [
+        "fleet_steer",
+        "fleet_activity",
+        "trigger_add",
+        "trigger_list",
+        "trigger_remove",
+        "request_access",
+        "task_start",
+        "task_input",
+    ];
 
     let without = catalog.select(&["message"]).unwrap();
-    assert!(!without.offers("fleet_steer"));
-    assert!(!without.offers("fleet_activity"));
+    assert!(hosted.iter().all(|name| !without.offers(name)));
 
-    let with = catalog
-        .select(&["message", "fleet_steer", "fleet_activity"])
-        .unwrap();
-    assert!(with.offers("fleet_steer"));
-    assert!(with.offers("fleet_activity"));
-    assert_eq!(PUBLISHED.len(), 32);
+    let with = catalog.select(&hosted).unwrap();
+    assert!(hosted.iter().all(|name| with.offers(name)));
+    assert_eq!(PUBLISHED.len(), 38);
 }
 
 /// A tool a run builds over its own backends is offered with no handler, and

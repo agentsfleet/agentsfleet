@@ -23,7 +23,6 @@ pub(super) struct RunRow {
     pub durable_task_stop_generation: Option<i64>,
     pub fence: i64,
     pub live_fence: i64,
-    pub revision_id: Option<Uuid7>,
     pub fleet_status: String,
     pub fleet_name: String,
     pub decision_snapshot: Option<sqlx::types::Json<af_wire::decision::DecisionAssignment>>,

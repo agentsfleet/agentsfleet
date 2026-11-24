@@ -9,10 +9,10 @@ use af_wire::{
     decision::{DecisionAnswer, DecisionOutcome, DecisionResult},
     durable_task::{
         DecisionAssessment, DecisionDurableTaskVersion, DecisionReceipt, DurableTaskDisposition,
-        DurableTaskInputAction, DurableTaskReport,
+        DurableTaskReport,
     },
 };
-use afd_fleet::durable_task::{DurableTaskLifecycle as _, DurableTaskReportOwner as _};
+use afd_fleet::durable_task::DurableTaskReportOwner as _;
 
 use super::super::{
     fixture::{Case, exercise},
@@ -20,26 +20,13 @@ use super::super::{
 };
 use super::{
     fixture::{Decisions, request},
-    interpretation::{choose, proposed},
     reply::known_result,
+    steps::choose,
 };
 
-/// The API-only task an accepted new-work interpretation made current.
+/// An API-only task, bound to the fixture run.
 async fn accepted(fixture: &Decisions<'_>) -> DecisionDurableTaskVersion {
-    let input = garde::Unvalidated::new(proposed(fixture, DurableTaskInputAction::NewWork).await)
-        .validate()
-        .expect("complete paid interpretation");
-    let task = fixture
-        .tasks
-        .interpret(fixture.case.run(), &input)
-        .await
-        .expect("an API-only goal")
-        .current_durable_task
-        .expect("the new goal is the run's task");
-    DecisionDurableTaskVersion {
-        durable_task_id: task.durable_task_id.to_string(),
-        generation: task.generation,
-    }
+    fixture.bind_api_only_goal().await
 }
 
 /// Records `assessment` for `task` with its provider answers as `edit` leaves
@@ -149,35 +136,6 @@ async fn a_completion_the_goal_decision_does_not_support_is_ambiguous() {
             &fixture,
             report(&task, DurableTaskDisposition::Complete, unproved),
             error_code::DURABLE_TASK_INPUT_AMBIGUOUS,
-        )
-        .await;
-        fixture.model.finish().await.expect("model cleanup");
-    })
-    .await;
-}
-
-// Value: protects=only a goal decision about the task's current execution
-// supports a report; fails_when=the assessment-kind check is dropped and an item
-// decision stands in for the goal; why_new=the check had no case; seam=the
-// production reserve, receipt and report-preparation verbs over live Postgres,
-// the item decision recorded while the task is current; no_claim=a stale stamp.
-#[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_report_backed_by_a_non_goal_decision_is_stale() {
-    exercise(async |case: &Case| {
-        let fixture = Decisions::create(case).await;
-        let task = accepted(&fixture).await;
-        let item = DecisionAssessment::Item {
-            ordinal: 0,
-            interpretation_digest: "a".repeat(64),
-            source_start: 0,
-            source_end: 6,
-        };
-        let call = decided(&fixture, item, &task, |_| {}).await;
-        refused(
-            &fixture,
-            report(&task, DurableTaskDisposition::Complete, call),
-            error_code::DURABLE_TASK_STALE_STATE,
         )
         .await;
         fixture.model.finish().await.expect("model cleanup");

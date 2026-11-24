@@ -81,11 +81,11 @@ async fn test_saturation_that_releases_nothing_does_not_ring() {
     let (holds, _clock) = holds(2);
     hold(&holds, &engine, FLEET_A).await;
 
-    let _first = holds.occupy(crate::holds::Occupant::Fleet {
+    let _first = holds.occupy(crate::holds::Occupant {
         run: id(FLEET_A),
         fleet: id(FLEET_A),
     });
-    let _last = holds.occupy(crate::holds::Occupant::Fleet {
+    let _last = holds.occupy(crate::holds::Occupant {
         run: id(FLEET_B),
         fleet: id(FLEET_B),
     });

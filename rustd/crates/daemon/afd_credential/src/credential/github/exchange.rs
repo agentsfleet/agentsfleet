@@ -32,7 +32,7 @@ pub struct Exchange<'a> {
     pub app: &'a GithubApp,
     /// The workspace's stored handle, naming which installation to mint for.
     pub handle: &'a Value,
-    /// The fleet's declared reach. `None` refuses before anything is signed.
+    /// The fleet's approved reach. `None` refuses before anything is signed.
     pub binding: Option<&'a RepositoryBinding>,
     /// The client both calls go through. Shared and passed in, so the broker's
     /// connection pool and timeout are one decision made once.

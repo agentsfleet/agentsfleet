@@ -37,7 +37,7 @@ pub(crate) fn query(context: &'static str) -> impl Fn(sqlx::Error) -> Error {
 /// Refuses a fleet row this build cannot make sense of, naming the column.
 ///
 /// Not a default, for the reason [`afd_fleet_lifecycle::FleetStatus::parse`]
-/// gives about its own half: a newer daemon's status read as `installing` here
+/// gives about its own half: a newer daemon's status read as `archived` here
 /// would let this one act on a state it does not understand. The delivery is
 /// refused and the column is named, so an operator has somewhere to look.
 pub(crate) fn row_unreadable(column: &'static str) -> Error {

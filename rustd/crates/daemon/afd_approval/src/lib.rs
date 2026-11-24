@@ -1,5 +1,5 @@
-//! The operator's side of a standing decision: an approval gate, and the
-//! integration grant an approval leaves behind.
+//! The person's side of a standing decision: an approval gate, and the grant
+//! an approved access card leaves behind.
 //!
 //! Two tables, one authority. [`Inbox`] is the queue of questions a person is
 //! being asked; [`IntegrationGrants`] is the memory of the answers, which the
@@ -10,11 +10,11 @@
 //!
 //! # Why this is not a module inside `afd_fleet`
 //!
-//! `afd_gate::gate` is the RUNNER's side: it parks a run behind a gate and
-//! reads the durable answer back. This crate is the PERSON's side, and the two
-//! ask different questions of one table — a runner asks about one action it
-//! already holds, an operator browses a queue they did not raise and answers
-//! rows they must be authorised for.
+//! The runner plane raises a run's question and reads approved grants into a
+//! run's policy. This crate is the PERSON's side, and the two ask different
+//! questions of one table — a run asks about the turn it holds, a person
+//! browses a queue they did not raise and answers rows they must be authorised
+//! for.
 //!
 //! Keeping them apart is what lets the API's approval surface compile without
 //! the runner plane behind it: `afd_fleet` carries runs, money, policy,
@@ -49,5 +49,5 @@ pub use self::error::{Error, Result};
 pub use self::grant::{GrantRow, IntegrationGrants, Revocation};
 pub use self::inbox::{Cursor, Filter, GateRow, Inbox, Resolution, Resolved};
 pub use self::request::{
-    KIND_INTEGRATION_GRANT, Origin, REASON_DECLARED_AT_INSTALL, Requested, Wanted,
+    GrantKind, KIND_INTEGRATION_GRANT, REASON_ASKED_BY_THE_FLEET, Requested, Wanted,
 };

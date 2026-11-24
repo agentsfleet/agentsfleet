@@ -29,7 +29,7 @@ use af_core::problem::Problem;
 use af_observability::verb_span::{ReportStage, VerbClock};
 use af_wire::protocol::MESSAGE_BYTES_MAX;
 use af_wire::report::{FailureClass, Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry};
-use af_wire::run::{SetupReport, TaggedRun};
+use af_wire::run::TaggedRun;
 
 use super::{ConnectionServices, Message};
 use crate::Result;
@@ -76,8 +76,6 @@ pub(super) struct Unsent {
     turn_id: String,
     /// The fence the assignment raised, which the failure report echoes.
     fencing_token: u64,
-    /// Whether a setup draft owns the run, whose report carries its setup part.
-    draft: bool,
 }
 
 impl Unsent {
@@ -88,7 +86,6 @@ impl Unsent {
             run_id: payload.run_id.clone().into_owned(),
             turn_id: payload.event.turn_id.clone().into_owned(),
             fencing_token: payload.fencing_token,
-            draft: payload.owner.setup().is_some(),
         }
     }
 
@@ -125,7 +122,6 @@ impl Unsent {
             held_until: None,
             folded_through_sequence: None,
             memory: Vec::new(),
-            setup: self.draft.then_some(SetupReport { proposal: None }),
         }
     }
 }
@@ -156,17 +152,11 @@ impl ConnectionServices {
         let detail = detail();
         let request = unsent.report(&detail);
         let received = self.gateway.inner.dependencies.wall_clock.now();
-        if unsent.draft {
-            self.runs
-                .report_draft(&self.creations, &self.handle.runner, &request, received)
-                .await?;
-        } else {
-            let mut clock = VerbClock::<ReportStage>::start();
-            let _settled = self
-                .runs
-                .report_with(&self.handle.runner, &request, received, None, &mut clock)
-                .await?;
-        }
+        let mut clock = VerbClock::<ReportStage>::start();
+        let _settled = self
+            .runs
+            .report_with(&self.handle.runner, &request, received, None, &mut clock)
+            .await?;
         // Hoisted: see the `tracing` note in the workspace Cargo.toml.
         let error_code = error_code::RUN_FRAME_TOO_LARGE.as_str();
         let (run_id, turn_id) = (unsent.run_id.as_str(), unsent.turn_id.as_str());

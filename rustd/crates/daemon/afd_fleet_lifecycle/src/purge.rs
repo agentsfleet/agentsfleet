@@ -5,7 +5,7 @@
 //! Archive and delete are separate operations a person picks between: archive
 //! keeps the history, delete removes it, and neither waits on the other, so a
 //! delete takes the fleet from any status, including `active`. A delete that
-//! also ends the fleet's setup and live work runs [`delete_locked`] inside the
+//! also ends the fleet's live work runs [`delete_locked`] inside the
 //! transaction that does that teardown (`Creations::delete`), so all of it
 //! commits or none does. A live run that survives is deleted here, and its
 //! runner learns at its next renewal, which answers `RUN_NOT_FOUND`.
@@ -32,7 +32,7 @@
 //! `fleet_id` is no foreign key, so a charge the wallet was already debited for
 //! outlives the fleet still naming which fleet it paid for, beside the
 //! `fleet_name` captured when the money moved. Erasing one would falsify the
-//! reconciliation between the charges and the wallet. A setup retry key in
+//! reconciliation between the charges and the wallet. A create's retry key in
 //! `thread.replay_receipts` survives too, for the rest of its 24-hour
 //! window: it carries no foreign key, so a late retry finds its resource gone
 //! rather than creating it again (slot 1980).
@@ -51,7 +51,7 @@ const CONTEXT_RUNS: &str = "purge fleet live runs";
 /// transaction.
 ///
 /// The only delete path: the caller already holds the row lock and has
-/// checked the tag, so a delete that also ends the fleet's setup and work
+/// checked the tag, so a delete that also ends the fleet's work
 /// commits all of it or none of it. It commits nothing itself; after the
 /// caller commits, it owes the workspace's fleet-set notice.
 ///

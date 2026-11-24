@@ -11,7 +11,6 @@ use crate::activity::ActivityRequest;
 use crate::context::{ContextLoadRequest, ContextSaveRequest};
 use crate::fold::FoldRequest;
 use crate::report::{RenewRequest, ReportRequest};
-use crate::run::AcceptedKinds;
 use crate::runner::HeartbeatRequest;
 
 mod decode;
@@ -39,9 +38,6 @@ pub enum Up<'a> {
         /// Session-local correlation identifier.
         #[garde(skip)]
         request_id: NonZeroU64,
-        /// Work domains this runner can execute.
-        #[garde(skip)]
-        accepted_kinds: AcceptedKinds,
         /// Runs the runner still considers active.
         #[serde(borrow)]
         #[garde(length(max = RUNS_MAX), inner(length(bytes, min = 36, max = 36)))]
@@ -149,12 +145,12 @@ pub enum Up<'a> {
         #[garde(dive)]
         request: Cow<'a, crate::run::TurnCheckpointCommand>,
     },
-    /// A setup run reads its draft's compacted context, under its fence.
+    /// A run reads its fleet's compacted context, under its fence.
     ContextLoad {
         /// Echoed by the loaded-context answer.
         #[garde(skip)]
         request_id: NonZeroU64,
-        /// The setup run; the daemon derives the draft from it.
+        /// The run; the daemon derives the fleet from it.
         #[serde(borrow)]
         #[garde(length(bytes, min = 36, max = 36))]
         run_id: Cow<'a, str>,
@@ -162,12 +158,12 @@ pub enum Up<'a> {
         #[garde(dive)]
         request: ContextLoadRequest,
     },
-    /// A setup run saves its draft's compacted context, under its fence.
+    /// A run saves its fleet's compacted context, under its fence.
     ContextSave {
         /// Echoed by the saved-context answer.
         #[garde(skip)]
         request_id: NonZeroU64,
-        /// The setup run; the daemon derives the draft from it.
+        /// The run; the daemon derives the fleet from it.
         #[serde(borrow)]
         #[garde(length(bytes, min = 36, max = 36))]
         run_id: Cow<'a, str>,

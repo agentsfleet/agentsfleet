@@ -4,7 +4,7 @@
 //! # What one iteration is
 //!
 //! One [`Host::assign`] — in production `RunService::assign_with`, the verb the runner
-//! route serves, which tries a setup chat and a fleet run in the order the
+//! route serves, which tries a chat run and a fleet run in the order the
 //! host's ticket names — timed end to end. Every [`RENEW_EVERY`] assignments the host
 //! renews each chat run it holds, so renewals compete for the pool the way a
 //! host mid-conversation makes them compete.
@@ -37,7 +37,7 @@ pub(super) struct Held {
 pub(super) enum Assigned {
     /// No work this assignment.
     Nothing,
-    /// A setup chat run, held until the window ends.
+    /// A chat fleet's first run, held until the window ends.
     Chat(Held),
     /// A fleet run.
     Fleet,
@@ -89,7 +89,7 @@ impl Shared {
 pub(super) struct Tally {
     /// Polls made, run or not.
     pub(super) assignments: u64,
-    /// Setup chat runs issued to this host.
+    /// Chat runs issued to this host.
     pub(super) chat: u64,
     /// Fleet runs issued to this host.
     pub(super) fleet: u64,
@@ -99,8 +99,8 @@ pub(super) struct Tally {
     pub(super) renewals: u64,
     /// How long an assignment that issued a run of either kind took.
     pub(super) run_latency: Latency,
-    /// How long an assignment that issued a setup chat run took: the tail an assignment
-    /// waiting on a locked draft shows in.
+    /// How long an assignment that issued a chat run took: the tail an assignment
+    /// waiting on a locked fleet shows in.
     pub(super) chat_latency: Latency,
 }
 
@@ -201,7 +201,7 @@ fn renewal(result: Result<()>) -> bool {
     }
 }
 
-/// Idle capacity sends no repeated assignment; held setup work still renews on its clock.
+/// Idle capacity sends no repeated assignment; held chat work still renews on its clock.
 async fn wait<H: Host>(
     host: &H,
     runner: &Uuid7,

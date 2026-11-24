@@ -69,6 +69,13 @@ pub enum RunnerRoute {
     Schedule,
     /// One schedule's runs: reading them, and creating one to fire it now.
     ScheduleRuns,
+    /// What may wake the held fleet besides its schedules: listing its
+    /// triggers, and the fleet adding one.
+    Triggers,
+    /// One trigger of the held fleet: removing it.
+    Trigger,
+    /// The held fleet asking a person for a secret or an integration.
+    Access,
     /// A line said to the event's thread before the answer.
     Messages,
     /// Work the held fleet puts on another fleet in its workspace.
@@ -106,6 +113,9 @@ impl RunnerRoute {
         Self::Schedules,
         Self::Schedule,
         Self::ScheduleRuns,
+        Self::Triggers,
+        Self::Trigger,
+        Self::Access,
         Self::Messages,
         Self::Steers,
         Self::Fleets,
@@ -117,17 +127,20 @@ impl RunnerRoute {
     /// Reads are the runner asking what it has been given — its own record, a
     /// fleet's memory. Reporting is a `POST` because
     /// each one appends a fact rather than replacing a resource. The schedules
-    /// are the one resource a runner manages: a collection it lists and adds
-    /// to, members it edits and removes, and runs it reads and creates.
+    /// and triggers are the resources a runner manages: collections it lists
+    /// and adds to, and members it removes; a schedule is also edited, and its
+    /// runs read and created.
     #[must_use]
     pub const fn verbs(self) -> &'static [Verb] {
         match self {
             Self::DurableTaskCheckpointPage => &[Verb::Get, Verb::Put],
             Self::Schedules
             | Self::ScheduleRuns
+            | Self::Triggers
             | Self::DurableTaskEffects
             | Self::DurableTaskCheckpointObjects => &[Verb::Get, Verb::Post],
             Self::Schedule => &[Verb::Patch, Verb::Delete],
+            Self::Trigger => &[Verb::Delete],
             Self::DurableTaskDecision
             | Self::DurableTaskCheckpoint
             | Self::DurableTaskCheckpointPin => &[Verb::Patch],
@@ -149,6 +162,7 @@ impl RunnerRoute {
             | Self::DurableTaskCheckpointUploads
             | Self::DurableTaskCheckpointAuthorizations
             | Self::Messages
+            | Self::Access
             | Self::Steers => &[Verb::Post],
         }
     }
@@ -185,6 +199,9 @@ impl RunnerRoute {
             Self::Schedules => paths::RUN_SCHEDULES,
             Self::Schedule => paths::RUN_SCHEDULE,
             Self::ScheduleRuns => paths::RUN_SCHEDULE_RUNS,
+            Self::Triggers => paths::RUN_TRIGGERS,
+            Self::Trigger => paths::RUN_TRIGGER,
+            Self::Access => paths::RUN_ACCESS,
             Self::Messages => paths::RUN_MESSAGES,
             Self::Steers => paths::RUN_STEERS,
             Self::Fleets => paths::RUN_FLEETS,

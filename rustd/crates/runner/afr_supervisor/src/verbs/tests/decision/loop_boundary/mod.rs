@@ -40,7 +40,6 @@ async fn exercise(mode: &'static str) {
     let prepared = afr_agent::PreparedDurableTask {
         execution_deadline: inputs.execution_deadline,
         inputs,
-        allow_actions: true,
     };
     let output = execute(&engine, &run, &prepared, &verbs, &host).await;
     assert_stopped(&output, &model);

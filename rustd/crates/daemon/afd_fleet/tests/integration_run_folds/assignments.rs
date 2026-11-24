@@ -33,7 +33,7 @@ async fn test_a_live_run_is_assigned_a_persons_messages_oldest_first() -> Checke
 }
 
 /// A message no person sent is never folded and never passed: a webhook, a
-/// gate's continuation or a machine's steer runs as a run of its own, and a
+/// question's answer or a machine's steer runs as a run of its own, and a
 /// person's steer behind it waits, and reads as waiting.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -41,7 +41,7 @@ async fn test_a_message_no_person_sent_stops_the_fold() -> Checked {
     let machine = afd_turns::view::ACTOR_MACHINE;
     for (producer, actor) in [
         (Producer::Webhook, crate::seed::ACTOR),
-        (Producer::GateContinuation, crate::seed::ACTOR),
+        (Producer::QuestionAnswer, crate::seed::ACTOR),
         (Producer::Steer, machine),
     ] {
         let held = held().await;

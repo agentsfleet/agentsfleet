@@ -13,8 +13,8 @@ async fn test_mint_scope_is_the_presenting_runners_run() {
     // workspace.
     support::install_subscriber();
     let fixtures = Fixtures::create().await;
-    let owner = bound(&fixtures, "{}").await;
-    let stranger = bound(&fixtures, "{}").await;
+    let owner = bound(&fixtures).await;
+    let stranger = bound(&fixtures).await;
     let runs = fixtures.runs();
 
     let scope = runs
@@ -60,7 +60,7 @@ async fn test_mint_refuses_a_superseded_active_run() {
     // affinity row's sequence, as the memory fence and report are.
     support::install_subscriber();
     let fixtures = Fixtures::create().await;
-    let owner = bound(&fixtures, "{}").await;
+    let owner = bound(&fixtures).await;
     seed_handle(
         &fixtures,
         &owner.workspace,
@@ -109,7 +109,8 @@ async fn test_a_static_handle_mints_from_the_runs_own_workspace() {
     // resolved the wrong workspace fails here rather than passing on presence.
     support::install_subscriber();
     let fixtures = Fixtures::create().await;
-    let owner = bound(&fixtures, "{}").await;
+    let owner = bound(&fixtures).await;
+    seed_grant(&fixtures, &owner.fleet, CONNECTOR_STATIC, STATUS_APPROVED).await;
     seed_handle(
         &fixtures,
         &owner.workspace,
@@ -145,7 +146,7 @@ async fn test_the_grant_gate_refuses_before_the_vault_is_opened() {
     // would surface as a successful mint.
     support::install_subscriber();
     let fixtures = Fixtures::create().await;
-    let owner = bound(&fixtures, "{}").await;
+    let owner = bound(&fixtures).await;
     seed_handle(
         &fixtures,
         &owner.workspace,
@@ -183,7 +184,7 @@ async fn test_an_unconnected_integration_is_not_a_grant_failure() {
     // isolates the second.
     support::install_subscriber();
     let fixtures = Fixtures::create().await;
-    let owner = bound(&fixtures, "{}").await;
+    let owner = bound(&fixtures).await;
     seed_grant(&fixtures, &owner.fleet, CONNECTOR_GITHUB, STATUS_APPROVED).await;
 
     let refusal = fixtures

@@ -8,7 +8,6 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use af_core::error_code::RUN_BUDGET_EXCEEDED;
 use af_core::id::Uuid7;
 use af_wire::report::RenewRequest;
 use af_wire::usage::LineKind;
@@ -17,7 +16,7 @@ use afd_db::test_util::statements::{self, Window as Counted};
 use afd_fleet::run::renew::Renewals;
 use jiff::Timestamp;
 
-use crate::integration_renew_batch::{SEEDED_DAILY_NANOS, codes, frame, spend};
+use crate::integration_renew_batch::{codes, frame};
 use crate::report_seed::{Held, held, held_in};
 use crate::support::Fixtures;
 
@@ -59,7 +58,7 @@ async fn kept_frame_with(
 
 /// How many times the frame's pre-read ran in `ran`.
 fn pre_reads(ran: &statements::Ran) -> u64 {
-    ran.calls_containing("l.durable_task_id, l.created_at, f.head_revision_id")
+    ran.calls_containing("l.durable_task_id, l.created_at,")
 }
 
 // Value: protects=a steady-state frame whose session kept its runs' facts
@@ -113,59 +112,6 @@ async fn kept_facts_skip_the_pre_read_until_a_version_moves() {
     assert_eq!(pre_reads(&steady), 0, "{:?}", steady.statements());
     assert_eq!(pre_reads(&relearning), 1, "a moved version is read again");
     owner.close().await;
-    held.fixtures.cleanup().await;
-}
-
-/// A fleet config whose daily ceiling is `nanos`.
-fn daily_ceiling(nanos: i64) -> String {
-    format!(
-        r#"{{"name":"ceiling","x-agentsfleet":{{"triggers":[],"tools":[],"budget":{{"daily_nanos":"{nanos}"}}}}}}"#
-    )
-}
-
-// Value: protects=a replica that cached a fleet's ceiling obeys a new head
-// revision another plane applied, with no signal between them;
-// fails_when=the kept frame judges the cached revision's ceiling;
-// why_new=a frame renews from kept facts and the replica's last-read head;
-// seam=none; no_claim=a new run, whose assignment returns the head's document.
-#[tokio::test]
-#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn config_cache_follows_new_head_revision() {
-    let held = held_in(Fixtures::create_isolated().await).await;
-    let run = &held.issued.run_id;
-    let workspace = held.acquired.workspace_id.clone();
-    held.fixtures
-        .native_config(&held.fleet, &daily_ceiling(10 * SEEDED_DAILY_NANOS))
-        .await;
-    let plane_a = held.fixtures.plane();
-    kept_frame(&plane_a, &held, run)
-        .await
-        .expect("plane A renews under the ten-dollar revision");
-    spend(
-        &held,
-        &held.tenant,
-        &workspace,
-        &held.fleet,
-        5 * SEEDED_DAILY_NANOS,
-    )
-    .await;
-    held.run_a_slice().await;
-    kept_frame(&plane_a, &held, run)
-        .await
-        .expect("five dollars spent is under ten");
-
-    // Plane B's Save: the fleet's head moves to a one-dollar revision.
-    held.fixtures
-        .native_config(&held.fleet, &daily_ceiling(SEEDED_DAILY_NANOS))
-        .await;
-    held.run_a_slice().await;
-    let judged = kept_frame(&plane_a, &held, run).await;
-
-    assert_eq!(
-        judged.as_ref().err().map(afd_fleet::Error::code),
-        Some(RUN_BUDGET_EXCEEDED),
-        "{judged:?}"
-    );
     held.fixtures.cleanup().await;
 }
 

@@ -75,6 +75,9 @@ const CONNECTOR_ZOHO: &str = "zoho";
 /// The grant status a mint is admitted under.
 const STATUS_APPROVED: &str = "approved";
 
+/// The stored status of a grant a person denied or took back.
+const STATUS_REVOKED: &str = "revoked";
+
 /// The token a static handle carries, distinct per workspace so a
 /// wrong-workspace resolution is caught by VALUE and not merely by absence.
 const OWNER_TOKEN: &str = "ghp_owner_workspace_token";
@@ -96,26 +99,10 @@ struct Bound {
     event: Uuid7,
 }
 
-/// Seeds a fleet with one runner holding one live run.
-async fn bound(fixtures: &Fixtures, config_json: &str) -> Bound {
+/// Seeds a fleet with one runner holding one live run, and no grant.
+async fn bound(fixtures: &Fixtures) -> Bound {
     let Seeded { runners, fleet, .. } = seeded::<1>(fixtures).await;
     let workspace = workspace_of(fixtures, &fleet).await;
-    let config_json = if config_json == "{}" {
-        af_fleet_runtime::test_util::FIXTURE_CONFIG
-    } else {
-        config_json
-    };
-    let mut config: serde_json::Value = serde_json::from_str(config_json).expect("fixture config");
-    config
-        .as_object_mut()
-        .expect("config object")
-        .entry("x-agentsfleet")
-        .or_insert_with(|| serde_json::json!({}))
-        .as_object_mut()
-        .expect("runtime block")
-        .entry("credentials")
-        .or_insert_with(|| serde_json::json!(["static", "github", "zoho"]));
-    set_config(fixtures, &fleet, &config.to_string()).await;
     let (run, event) = (mint_id(), mint_id());
     let [runner] = runners;
     seed_run(fixtures, &run, &runner, &fleet, &workspace, &event).await;
@@ -140,11 +127,6 @@ async fn workspace_of(fixtures: &Fixtures, fleet: &Uuid7) -> Uuid7 {
         .fetch_one(&mut *connection)
         .await
         .expect("a seeded fleet has a workspace")
-}
-
-/// Replaces a seeded fleet's stored configuration.
-async fn set_config(fixtures: &Fixtures, fleet: &Uuid7, config_json: &str) {
-    fixtures.native_config(fleet, config_json).await;
 }
 
 /// Writes one live run binding `runner` to `fleet`, over the fleet's
@@ -175,10 +157,10 @@ async fn seed_run(
         "INSERT INTO thread.runs
            (id, runner_id, fleet_id, workspace_id, tenant_id, turn_id, turn_created_at,
             posture, provider, model, last_metered_at,
-            fencing_token, run_expires_at, status, setup_revision_id, created_at, updated_at)
+            fencing_token, run_expires_at, status, created_at, updated_at)
          SELECT $1, $2, $3, $4, f.tenant_id, $5, now(),
                 'platform', 'anthropic', 'claude-fixture', now(),
-                $6, now() + $7::interval, $8, f.head_revision_id, now(), now()
+                $6, now() + $7::interval, $8, now(), now()
          FROM fleet.fleets f WHERE f.id = $3",
     )
     .bind(run)
@@ -258,6 +240,17 @@ async fn seed_handle(fixtures: &Fixtures, workspace: &Uuid7, name: &str, handle:
 
 /// Writes an approved integration grant for `fleet`.
 async fn seed_grant(fixtures: &Fixtures, fleet: &Uuid7, service: &str, status: &str) {
+    seed_scoped_grant(fixtures, fleet, service, status, None).await;
+}
+
+/// [`seed_grant`] carrying `scope`, the JSON an approved GitHub grant stores.
+async fn seed_scoped_grant(
+    fixtures: &Fixtures,
+    fleet: &Uuid7,
+    service: &str,
+    status: &str,
+    scope: Option<&str>,
+) {
     let mut connection = fixtures
         .database
         .acquire()
@@ -265,49 +258,17 @@ async fn seed_grant(fixtures: &Fixtures, fleet: &Uuid7, service: &str, status: &
         .expect("a pooled connection");
     sqlx::query(
         "INSERT INTO connector.integration_grants
-           (id, fleet_id, service, status, requested_reason, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, 'fixture', now(), now())
+           (id, fleet_id, service, kind, status, scope, requested_reason, created_at, updated_at)
+         VALUES ($1, $2, $3, $5, $4, $6::jsonb, 'fixture', now(), now())
          ON CONFLICT (fleet_id, service) DO UPDATE SET status = EXCLUDED.status",
     )
     .bind(mint_id())
     .bind(fleet)
     .bind(service)
     .bind(status)
+    .bind(afd_api_wire::grant::kind::INTEGRATION)
+    .bind(scope)
     .execute(&mut *connection)
     .await
     .expect("the grant row must insert");
-}
-
-/// The gate kind a write mint spends.
-const KIND_REPOSITORY_WRITE: &str = "repository_write";
-
-/// Writes one answered repository-write gate for `owner`'s fleet and event.
-async fn seed_write_gate(fixtures: &Fixtures, owner: &Bound) -> Uuid7 {
-    let workspace = workspace_of(fixtures, &owner.fleet).await;
-    let gate_id = mint_id();
-    let mut connection = fixtures
-        .database
-        .acquire()
-        .await
-        .expect("a pooled connection");
-    sqlx::query(
-        "INSERT INTO fleet.approval_gates
-           (id, fleet_id, workspace_id, action_id, tool_name, action_name,
-            gate_type, proposed_action, evidence, blast_radius, expires_at,
-            resolved_by, status, detail, created_at, updated_at, turn_id)
-         VALUES ($1, $2, $3, $4, 'git', 'push',
-                 $5, 'open a repair pull request', '{}'::jsonb, 'one repository',
-                 now() + $6::interval, 'fixture:human', 'approved', '', now(), now(), $7)",
-    )
-    .bind(&gate_id)
-    .bind(&owner.fleet)
-    .bind(&workspace)
-    .bind(mint_id())
-    .bind(KIND_REPOSITORY_WRITE)
-    .bind(RUN_WINDOW)
-    .bind(&owner.event)
-    .execute(&mut *connection)
-    .await
-    .expect("the gate row must insert");
-    gate_id
 }

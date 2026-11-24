@@ -57,26 +57,6 @@ async fn reassigned_durable_task_attaches_to_one_ordinary_run_with_original_gene
     .await;
 }
 
-#[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn changed_setup_blocks_reassigned_durable_task_without_issuing_another_run() {
-    exercise(async |case| {
-        let fixture = Decisions::create(case).await;
-        let task = fixture.bind_goal().await;
-        let durable_task_id = id(&task.durable_task_id);
-        support::expire(case).await;
-        // The setup changes before the reassignment, which reads it in its assignment.
-        let config = serde_json::json!({"name":"pull-request-repair","x-agentsfleet":{"tools":[],"triggers":[],
-            "budget":{"daily_nanos":"900000000"},"decision_policy":super::fixture::policy()}});
-        case.held.fixtures.native_config(&case.held.fleet, &config.to_string()).await;
-        let acquired = support::assign(case).await;
-        let body = case.held.fixtures.plane().assign_selected(acquired, &case.held.runner, af_core::clock::now()).await.expect("changed authority is a native refusal");
-        assert!(body.is_none());
-        support::assert_blocked(case, &durable_task_id).await;
-        fixture.model.finish().await.expect("model fixture cleanup");
-    }).await;
-}
-
 /// The cap that ends a plain event after its runs keep lapsing leaves a
 /// durable task alone: the task's own run allowance bounds it, and ending
 /// its event would strand the task as running with nothing left to run it.

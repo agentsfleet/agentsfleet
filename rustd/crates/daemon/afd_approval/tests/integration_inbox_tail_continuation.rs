@@ -1,9 +1,10 @@
-//! What the tail says when an approval continues a run.
+//! What the tail says when an approved access card answers the run that
+//! waited on it.
 //!
-//! Split from `integration_inbox_tail.rs` at the 350-line cap. The
-//! continuation is the half of the resolve with an ORDER to prove — the run
-//! opens before the answer is announced — and the half where two writers can
-//! reach one row, so its proofs sit together.
+//! Split from `integration_inbox_tail.rs` at the 350-line cap. The answer
+//! turn is the half of the resolve with an ORDER to prove — the run opens
+//! before the answer is announced — and the half where two writers can reach
+//! one row, so its proofs sit together.
 
 #![expect(
     clippy::expect_used,
@@ -17,9 +18,10 @@ use afd_turns::{IncomingTurn, Key, Producer, Turns};
 use serde_json::json;
 
 use crate::lane::{Lane, Window};
-use crate::tail_watch::{
-    CONTINUATION_ACTOR_PREFIX, CONTINUATION_BODY, NOTE, OPERATOR, next_frame, tail,
-};
+use crate::tail_watch::{CONTINUATION_ACTOR_PREFIX, NOTE, OPERATOR, answer_body, next_frame, tail};
+
+/// What an approved card's answer turn tells the run that waited.
+const APPROVED: &str = "approved";
 
 /// An approval opens the continued run on the tail before it announces the
 /// answer.
@@ -198,16 +200,20 @@ async fn preinsert_continuation(lane: &Lane, approved: &Uuid7) -> Uuid7 {
     // The run path, played by hand: the same turn the resolve is about
     // to ask for, then the row it would have written. Keyed on the gate's
     // action, so the resolve's own `admit` returns this very id.
+    let body = answer_body(APPROVED, &predecessor);
+    let request_json = body.to_string();
     let admitted = Turns::for_tests(lane.pool.clone(), lane.bus.clone())
         .admit(IncomingTurn {
-            producer: Producer::GateContinuation,
+            producer: Producer::QuestionAnswer,
             key: Key::Repeated(approved.as_str()),
             fleet: &lane.fleet,
             workspace: &lane.workspace,
             actor: actor.as_str(),
             event_type: TurnKind::Continuation,
-            request_json: CONTINUATION_BODY,
-            reply: afd_turns::Reply::None,
+            request_json: &request_json,
+            reply: afd_turns::Reply::Inherit {
+                turn_id: &predecessor,
+            },
         })
         .await
         .expect("the turn ledger accepts the continuation");
@@ -218,7 +224,7 @@ async fn preinsert_continuation(lane: &Lane, approved: &Uuid7) -> Uuid7 {
         .bind(&lane.workspace)
         .bind(&actor)
         .bind(TurnKind::Continuation.as_str())
-        .bind(sqlx::types::Json(serde_json::json!({})))
+        .bind(sqlx::types::Json(body))
         .bind(&predecessor)
         .bind(af_core::turn::status::RECEIVED)
         .fetch_one(&mut *lane.pool.acquire().await.expect("the lane's pool answers"))

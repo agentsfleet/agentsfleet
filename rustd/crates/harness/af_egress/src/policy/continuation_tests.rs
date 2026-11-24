@@ -1,15 +1,15 @@
-//! A read-only network allows only the exact, non-force repair update rule.
+//! A GitHub origin admits only the exact, non-force repair update as a PATCH.
 
 use af_wire::policy::{HttpJsonFieldRule, HttpMethod, HttpPathMatch, HttpRequestRule};
 
 use super::{EgressPolicy, tests::draft};
-use crate::fixture::{ELASTIC_QUERY, policy};
+use crate::fixture::policy;
 
 const PATH: &str = "/repos/acme/widgets/git/refs/heads/agentsfleet-repair/run-41";
 const BODY: &str = r#"{"force":false,"sha":"new-head"}"#;
 
 fn allowed(method: &str, path: &str, body: &str) -> bool {
-    let mut policy = policy(true);
+    let mut policy = policy();
     let rule = HttpRequestRule {
         method: HttpMethod::Patch,
         path: PATH.into(),
@@ -70,16 +70,12 @@ fn query_other_refs_and_method_substitutions_are_refused() {
 }
 
 #[test]
-fn query_post_allowance_and_existing_write_rules_never_authorize_patch() {
-    let policy = policy(true);
-    for url in [
-        ELASTIC_QUERY,
-        "https://api.github.com/repos/acme/widgets/git/refs",
-    ] {
-        assert!(
-            EgressPolicy::new(&policy)
-                .allow(draft("PATCH", url, &[], Some(BODY)))
-                .is_err()
-        );
-    }
+fn an_existing_write_rule_never_authorizes_a_patch() {
+    let policy = policy();
+    let refs = "https://api.github.com/repos/acme/widgets/git/refs";
+    assert!(
+        EgressPolicy::new(&policy)
+            .allow(draft("PATCH", refs, &[], Some(BODY)))
+            .is_err()
+    );
 }

@@ -4,8 +4,8 @@
 //! every event for every repository it can see to ONE endpoint, carrying no
 //! fleet, no workspace and no principal. Everything about where a delivery goes
 //! is looked up — `connector.installs` maps the installation to a workspace,
-//! and `connector.integration_grants` plus each fleet's setup revision decide
-//! which fleets in it subscribed.
+//! and each fleet's `app_event` row in `fleet.triggers` decides which fleets
+//! in it subscribed. No grant is read: receiving an event needs none.
 //!
 //! That lookup is `afd_ingress::app`, and it read almost no covered lines,
 //! because every suite in front of it injects a stub that answers the routing
@@ -21,18 +21,12 @@
 //! wrong one.
 
 use af_core::id::Uuid7;
-use af_core::money::NANOS_PER_USD;
-use af_fleet_runtime::test_util::FixtureSetup;
-use afd_api_wire::grant::status as grant_status;
+use af_wire::trigger_verb::TriggerKind;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{
-    FIXTURE_SETUP_MODEL_REF, FleetSeed, GrantSeed, InstallSeed, SetupRevision, TestDatabase,
-    WorkspaceSeed, mint_id,
-};
+use afd_db::test_util::{FleetSeed, InstallSeed, TestDatabase, WorkspaceSeed, mint_id};
 use afd_tenant::test_util::{Signup, sign_up};
 use afd_vault::{SecretBody, SecretName};
-use jiff::Timestamp;
 
 use super::harness;
 
@@ -79,6 +73,9 @@ pub(super) enum Mapped {
     ToWorkspace,
     /// An App installed on an account that never finished connecting.
     Nowhere,
+    /// The installation routes to another workspace, which holds no fleet
+    /// subscribed to it.
+    ToOtherWorkspace,
 }
 
 /// A deployment holding an App, and a tenant whose fleet subscribed to it.
@@ -131,8 +128,10 @@ impl Fixture {
     /// Seeds the deployment, the tenant, its fleet, and the install mapping.
     pub(super) async fn seed(&self, mapped: Mapped) {
         self.seed_rows().await;
-        if matches!(mapped, Mapped::ToWorkspace) {
-            self.map_installation().await;
+        match mapped {
+            Mapped::ToWorkspace => self.map_installation(&self.workspace).await,
+            Mapped::ToOtherWorkspace => self.map_installation(&self.admin).await,
+            Mapped::Nowhere => {}
         }
         let text = str::from_utf8(APP_SECRET).expect("the fixture secret is text");
         self.seal(
@@ -142,11 +141,12 @@ impl Fixture {
         .await;
     }
 
-    /// The tenant, both workspaces, the person, the fleet and its grant.
+    /// The tenant, both workspaces, the person, the fleet and its App
+    /// subscription row.
     ///
-    /// The grant is what `SELECT_APP_SUBSCRIBERS` joins on: a fleet without an
-    /// approved grant for the provider is not a subscriber however its document
-    /// reads, which is the relational half of the narrowing.
+    /// The row is what `SELECT_APP_SUBSCRIBERS` reads: a fleet with no
+    /// `app_event` row in the install's workspace is not a subscriber, and the
+    /// row's repository list is the narrowing. The fleet holds no grant.
     async fn seed_rows(&self) {
         let email = format!("{}@example.test", self.subject);
         sign_up(
@@ -168,7 +168,6 @@ impl Fixture {
             .insert(&mut *connection)
             .await
             .expect("the admin workspace seeds");
-        let setup = FixtureSetup::new(&document());
         FleetSeed::new(
             &self.fleet,
             &self.workspace,
@@ -176,26 +175,30 @@ impl Fixture {
             afd_state::sql::FLEET_STATUS_ACTIVE,
         )
         .name("app-ingress-fleet")
-        .unplaced_setup(SetupRevision {
-            definition: &setup.definition,
-            digest: &setup.digest,
-            semantics: setup.semantics(),
-            model_ref: Some(FIXTURE_SETUP_MODEL_REF),
-        })
+        .unplaced()
         .insert(&mut *connection)
         .await
         .expect("the fleet seeds");
-        GrantSeed::new(&self.fleet, PROVIDER, grant_status::APPROVED)
-            .approved(Timestamp::UNIX_EPOCH)
-            .insert(&mut *connection)
-            .await
-            .expect("the grant seeds");
+        drop(connection);
+        let repositories = [REPOSITORY.to_owned()];
+        let events = ["workflow_run".to_owned()];
+        harness::triggers::seed(
+            &self.database,
+            &self.fleet,
+            &self.workspace,
+            harness::triggers::Seeded {
+                repositories: Some(&repositories),
+                events: Some(&events),
+                ..harness::triggers::Seeded::new(TriggerKind::AppEvent, PROVIDER)
+            },
+        )
+        .await;
     }
 
-    /// Maps the delivery's installation to the tenant workspace.
-    async fn map_installation(&self) {
+    /// Maps the delivery's installation to `workspace`.
+    async fn map_installation(&self, workspace: &Uuid7) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        InstallSeed::new(PROVIDER, &self.installation, &self.workspace)
+        InstallSeed::new(PROVIDER, &self.installation, workspace)
             .insert(&mut *connection)
             .await
             .expect("the installation maps to a workspace");
@@ -243,6 +246,18 @@ impl Fixture {
         .expect("the fleet event count reads")
     }
 
+    /// Who each of the fixture fleet's turns was admitted from, oldest first.
+    pub(super) async fn turn_actors(&self) -> Vec<String> {
+        let mut connection = self.database.acquire().await.expect("an API connection");
+        sqlx::query_scalar(
+            "SELECT actor FROM thread.turns WHERE thread_id = $1 ORDER BY created_at, id",
+        )
+        .bind(&self.fleet)
+        .fetch_all(&mut *connection)
+        .await
+        .expect("the fleet's turns read")
+    }
+
     pub(super) async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
         let mut transaction = sqlx::Acquire::begin(&mut *connection)
@@ -281,26 +296,4 @@ fn minted_installation() -> String {
     let random_half = minted.get(20..).unwrap_or("1");
     let value = u64::from_str_radix(random_half, 16).unwrap_or(1);
     format!("{}", value.max(1))
-}
-
-/// The stored document: one webhook trigger subscribing to one repository.
-///
-/// The repository list is what makes this fleet a subscriber. A fleet naming no
-/// repository has opted in to nothing on this surface — one App delivery is
-/// offered to every fleet in the workspace, so silence must not wake it for
-/// another team's repository.
-fn document() -> String {
-    format!(
-        r#"{{
-          "name": "app-ingress-fleet",
-          "x-agentsfleet": {{
-            "triggers": [
-              {{"type":"webhook","source":"{PROVIDER}",
-                "repositories":["{REPOSITORY}"],"events":["workflow_run"]}}
-            ],
-            "tools": ["bash"],
-            "budget": {{ "daily_nanos": "{NANOS_PER_USD}" }}
-          }}
-        }}"#
-    )
 }

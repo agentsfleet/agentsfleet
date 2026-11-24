@@ -6,7 +6,7 @@
 //! `impl WebhookIngress for Ingress` and `afd_ingress`'s own resolution read no
 //! covered lines: the delegating adapter and the SQL behind it never run.
 //!
-//! These do run them. The row comes out of `fleet.revisions`, the secret out of
+//! These do run them. The row comes out of `fleet.triggers`, the secret out of
 //! `vault.secrets`, and the claim lands in the live turns ledger — so a
 //! delivery here crosses the same three stores in the same order the daemon
 //! crosses them.
@@ -16,7 +16,7 @@
 //! The route's policy — which events a trigger admits, what an archived fleet is
 //! answered, which actor a wake records — is proven with no datastore and stays
 //! there. What lives here is only what a stub cannot answer honestly: that the
-//! stored document resolves to the binding the reader believes it does, that
+//! stored row resolves to the binding the reader believes it does, that
 //! the sealed credential opens to the secret the wall then verifies against,
 //! and that a turn reaches the ledger.
 
@@ -85,7 +85,7 @@ async fn deliver(
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_signed_delivery_resolves_its_fleet_and_secret_out_of_the_live_stores() {
     // The whole order in one pass, and the only test that proves the stores
-    // answer at all: the binding is read from the head `fleet.revisions` document,
+    // answer at all: the binding is read from the fleet's `fleet.triggers` row,
     // the secret is opened out of `vault.secrets`, the tag verifies against it,
     // and the claim reaches the turns ledger. A stub can answer each of
     // those; none of them can be WRONG under a stub, which is what this is here
@@ -303,3 +303,5 @@ async fn a_fleet_this_deployment_does_not_serve_is_refused_without_naming_it() {
 
 #[path = "ingress_live/declared.rs"]
 mod declared;
+#[path = "ingress_live/triggers.rs"]
+mod triggers;

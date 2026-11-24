@@ -69,7 +69,7 @@ fn readable(
         checkpoint_id: af_wire::run::CheckpointOperationId(plan.id.as_str().to_owned()),
         generation: plan.generation,
         format_version: plan.format_version,
-        scope: plan.scope(owner)?,
+        scope: plan.scope(owner),
         manifest_root: manifest.to_owned(),
         history_digest: plan
             .history_digest
@@ -155,7 +155,7 @@ fn validate(
     {
         return Err(TurnCheckpointRefusal::Conflict.into());
     }
-    let scope = plan.scope(owner)?;
+    let scope = plan.scope(owner);
     root::validate(
         bytes,
         &scope,

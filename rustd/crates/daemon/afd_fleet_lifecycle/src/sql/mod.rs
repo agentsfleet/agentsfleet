@@ -27,7 +27,6 @@
 //! is 1.69 ms against 0.21 ms, and the gap grows with the counters table
 //! because the scan is O(counters) where the lookups are O(page). `LEFT JOIN
 //! LATERAL` does not help; the planner flattens it back into the same join.
-//! The head revision's triggers are reached the same way, for the same reason.
 //!
 //! An INNER JOIN is wrong in either shape: a fleet that has never run has no
 //! counter row, and dropping those empties the list.
@@ -72,10 +71,10 @@ pub(crate) const DELETE_FLEET: &str = include_str!("delete_fleet.sql");
 /// live one would name a fleet that no longer exists, and goes here.
 pub(crate) const DELETE_ACTIVE_RUNS: &str = include_str!("delete_active_runs.sql");
 
-/// Which runnable fleets may read each secret, from the revisions a run reads.
+/// Which runnable fleets may read each secret, from their approved grants.
 ///
-/// `$1` workspace · `$2` the runnable status. One row per secret name and
-/// fleet, ordered by name; see the statement's note for which revisions count.
+/// `$1` workspace · `$2` the runnable status · `$3` the approved grant status.
+/// One row per secret name and fleet, ordered by name.
 pub(crate) const SELECT_SECRET_ACCESS: &str = include_str!("select_secret_access.sql");
 
 /// Every fleet identifier in one workspace.

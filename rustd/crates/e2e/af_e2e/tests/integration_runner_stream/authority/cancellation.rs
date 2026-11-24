@@ -85,18 +85,14 @@ async fn lost_archive(fixture: &Fixture) -> TestResult {
         fixture.bus.clone(),
         Subject::RunnerCommand(fixture.scene.runner_id.clone()),
     );
-    let creations = fixture.creations(bus)?;
+    let creations = fixture.creations(bus);
     let access = fixture.operator.access(&fixture.scene);
     let current = creations.read(access, &fixture.scene.fleet).await?;
+    let archive: afd_api_wire::fleet::PatchFleetRequest =
+        serde_json::from_value(json!({"status": "archived"}))?;
+    let archive = garde::Unvalidated::new(archive).validate()?;
     creations
-        .patch(
-            access,
-            &fixture.scene.fleet,
-            Some(&current.etag),
-            Some("archived"),
-            None,
-            clock::now(),
-        )
+        .patch(access, &fixture.scene.fleet, Some(&current.etag), &archive)
         .await?;
     assert_eq!(
         dropped.load(Ordering::SeqCst),

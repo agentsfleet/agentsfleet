@@ -62,7 +62,6 @@ fn arm(bytes: &[u8]) {
 fn owned_secret_buffers_are_wiped_before_free() {
     // One test owns the observer, so parallel tests cannot replace its pointer.
     unwiped_control();
-    private_preview();
     daemon_secret_text_and_clone();
     daemon_secret_text_during_unwinding();
     daemon_secret_bytes();
@@ -88,19 +87,6 @@ fn unwiped_control() {
         !WIPED.load(Ordering::Acquire),
         "control bytes were not wiped"
     );
-}
-
-fn private_preview() {
-    let frame: afd_setup::Delta = serde_json::from_value(serde_json::json!({
-        "draft_id":"01990000-0000-7000-8000-000000000001",
-        "sequence":"1","stream_id":"01990000-0000-7000-8000-000000000002",
-        "stream_seq":1,"stream_start":true,"text_kind":"answer",
-        "text":"private preview answer 日本語"
-    }))
-    .expect("public preview wire shape");
-    arm(frame.text.as_bytes());
-    drop(frame);
-    assert_wiped();
 }
 
 fn daemon_secret_text_and_clone() {

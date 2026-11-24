@@ -22,17 +22,6 @@ impl ConnectionServices {
                 request.requests.validate()?;
                 let id = Uuid7::parse(&request.run_id)?;
                 let received = self.gateway.inner.dependencies.wall_clock.now();
-                // A draft-owned run's report carries its setup outcome.
-                if request.setup.is_some() {
-                    self.runs
-                        .report_draft(&self.creations, &self.handle.runner, request, received)
-                        .await?;
-                    self.cache.forget(&id);
-                    return Ok(ReportResponse {
-                        ok: true,
-                        hold: None,
-                    });
-                }
                 let kept = self.cache.reported(&id);
                 let settled = self
                     .runs

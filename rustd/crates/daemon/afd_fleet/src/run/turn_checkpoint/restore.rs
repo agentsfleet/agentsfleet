@@ -31,7 +31,7 @@ pub(super) async fn read(
     }
     let bytes = root::open(store, &mut owner, &plan).await?;
     let covered = plan.folds()?;
-    root::validate(&bytes, &plan.scope(&owner)?, &covered, None)?;
+    root::validate(&bytes, &plan.scope(&owner), &covered, None)?;
     folds::validate(&mut owner, &covered, None).await?;
     let pin = pins::reader(runs, &mut owner, &plan.id, &guard::id(operation)?).await?;
     let response = TurnCheckpointResponse::Read(Box::new(TurnCheckpointSaved {

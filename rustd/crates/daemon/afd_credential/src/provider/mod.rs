@@ -1,4 +1,4 @@
-//! Whose key this run dials with, resolved from the saved setup for every run.
+//! Whose key this run dials with, resolved from the fleet's model for every run.
 //!
 //! A saved reference names either the platform default or one of the tenant's
 //! own registry entries. Resolving it ([`Providers::resolve_reference`], and

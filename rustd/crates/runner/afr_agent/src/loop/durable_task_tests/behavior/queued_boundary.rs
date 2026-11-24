@@ -1,12 +1,15 @@
-//! Queued source meaning is bound and reread before another root action is allowed.
+//! A message no ordinary run bound with `task_input` never reaches a task run:
+//! the task run neither binds it nor answers it, and its model never reads it.
 use super::*;
+
+/// The message a person sent while the task ran, which no run bound.
+const UNBOUND: &str = "is it done yet?";
 
 #[derive(Debug)]
 struct Queued {
-    intake: intake_fixture::IntakeNative,
     goals: Goals,
-    queries: Mutex<Vec<DurableTaskInputsQuery>>,
-    receipts: Mutex<Vec<DurableTaskInputReceiptInput>>,
+    bindings: AtomicUsize,
+    receipts: AtomicUsize,
 }
 
 #[async_trait::async_trait]
@@ -21,34 +24,20 @@ impl RunVerbs for Queued {
         &self,
         query: DurableTaskInputsQuery,
     ) -> Result<DurableTaskInputsResponse<'static>, Unanswered> {
-        self.queries
-            .lock()
-            .expect("input reads")
-            .push(query.clone());
-        self.intake.durable_task_inputs(query).await
+        self.goals.durable_task_inputs(query).await
     }
     async fn durable_task_bindings(
         &self,
-        request: DurableTaskBindingsInput,
+        _: DurableTaskBindingsInput,
     ) -> Result<DurableTaskBindingsResponse<'static>, Unanswered> {
-        let result = self.intake.durable_task_bindings(request).await?;
-        self.intake
-            .inputs
-            .lock()
-            .expect("accepted input")
-            .inputs
-            .clear();
-        Ok(result)
+        self.bindings.fetch_add(1, Ordering::Relaxed);
+        Err(Unanswered::Unreachable)
     }
     async fn durable_task_decision(
         &self,
         input: DecisionReservationInput,
     ) -> Result<DecisionEvaluation, Unanswered> {
-        if matches!(input.assessment, DecisionAssessment::Goal { .. }) {
-            self.goals.durable_task_decision(input).await
-        } else {
-            self.intake.durable_task_decision(input).await
-        }
+        self.goals.durable_task_decision(input).await
     }
     async fn durable_task_effects(
         &self,
@@ -58,147 +47,52 @@ impl RunVerbs for Queued {
     }
     async fn durable_task_input_receipt(
         &self,
-        input: DurableTaskInputReceiptInput,
+        _: DurableTaskInputReceiptInput,
     ) -> Result<DurableTaskInputReceiptResult, Unanswered> {
-        assert_eq!(input.mode, DurableTaskInputMode::Answered);
-        assert_eq!(input.source_turn_id, SOURCE);
-        let result = DurableTaskInputReceiptResult {
-            item_id: input.item_id.clone(),
-            mode: input.mode,
-            covered_input_sequence: None,
-            replayed: false,
-        };
-        if let Some(source) = self
-            .intake
-            .inputs
-            .lock()
-            .expect("accepted input")
-            .current_interpretation
-            .as_mut()
-        {
-            for item in &mut source.items {
-                if item.binding.item_id == input.item_id {
-                    item.response_text.clone_from(&input.response_text);
-                }
-            }
-        }
-        self.receipts.lock().expect("input receipts").push(input);
-        Ok(result)
-    }
-}
-
-fn queued() -> Queued {
-    let intake = intake_fixture::native(
-        "hello",
-        [intake_fixture::route("conversation", "unclear", 0.0)],
-    );
-    let mut inputs = intake.inputs.lock().expect("queued source");
-    inputs.inputs.push(DurableTaskHumanInput {
-        source_turn_id: SOURCE.to_owned(),
-        sequence: 1,
-        message: "hello".to_owned(),
-        accepted: None,
-    });
-    inputs
-        .current_durable_task
-        .as_mut()
-        .expect("the intake fixture names a current task")
-        .questions = vec![question()];
-    drop(inputs);
-    Queued {
-        intake,
-        goals: goals([evaluation("WAIT", Some(1.0), 0.0)]),
-        queries: Mutex::new(vec![]),
-        receipts: Mutex::new(vec![]),
+        self.receipts.fetch_add(1, Ordering::Relaxed);
+        Err(Unanswered::Unreachable)
     }
 }
 
 #[tokio::test]
-async fn queued_message_is_bound_once_then_reread_and_answered_before_root_work()
--> crate::Result<()> {
-    let native = queued();
-    let plan =
-        serde_json::json!([intake_fixture::proposed("conversation", None, 0, 5)]).to_string();
-    let script = Script::new([
-        vec![say(&plan), ended(false)],
-        vec![say("Hello."), ended(false)],
-        vec![say("Investigation awaits checks."), ended(false)],
-    ]);
-    let engine = super::super::super::tests::engine(vec![], &script);
-    let this_run = assigned_run(&[], 16_384);
-    let inputs = native
-        .intake
-        .inputs
-        .lock()
-        .expect("prepared inputs")
-        .clone();
-    let prepared = PreparedDurableTask {
-        execution_deadline: inputs.execution_deadline,
-        inputs,
-        allow_actions: true,
+async fn a_message_no_run_bound_never_reaches_the_task_run() -> crate::Result<()> {
+    let mut goals = goals([evaluation("WAIT", Some(1.0), 0.0)]);
+    goals.inputs.inputs.push(DurableTaskHumanInput {
+        source_turn_id: PENDING.to_owned(),
+        sequence: 1,
+        message: UNBOUND.to_owned(),
+        accepted: None,
+    });
+    let native = Queued {
+        goals,
+        bindings: AtomicUsize::new(0),
+        receipts: AtomicUsize::new(0),
     };
-    let output = run(&engine, &this_run, &native, &prepared).await?;
-    assert_queued_outcome(&native, &script, output)
-}
+    let tool = &afr_tools::catalog::UPDATE_PLAN;
+    let script = Script::new([vec![
+        call("plan", tool.name(), serde_json::json!({})),
+        ended(false),
+    ]]);
+    let engine =
+        super::super::super::tests::engine(vec![Canned::boxed(tool, "Plan updated")], &script);
+    let this_run = assigned_run(&[tool.name()], 16_384);
+    let prepared = PreparedDurableTask {
+        execution_deadline: native.goals.inputs.execution_deadline,
+        inputs: native.goals.inputs.clone(),
+    };
 
-fn assert_queued_outcome(
-    native: &Queued,
-    script: &Script,
-    output: crate::RunOutput,
-) -> crate::Result<()> {
+    let output = run(&engine, &this_run, &native, &prepared).await?;
+
     assert_eq!(
         output
             .task
             .ok_or_else(crate::decision::unavailable)?
-            .covered_input_sequence,
-        0
+            .disposition,
+        DurableTaskDisposition::Waiting
     );
-    assert!(output.result.content.contains("Hello."));
-    assert!(
-        output
-            .result
-            .content
-            .contains("Investigation awaits checks.")
-    );
-    assert_eq!(script.sent().len(), 3);
-    assert_eq!(
-        native
-            .intake
-            .bindings
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .len(),
-        1
-    );
-    assert_eq!(
-        native
-            .intake
-            .decisions
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .len(),
-        1
-    );
-    let receipts = native
-        .receipts
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    assert_eq!(receipts.len(), 1);
-    assert_eq!(
-        receipts
-            .first()
-            .and_then(|receipt| receipt.response_text.as_deref()),
-        Some("Hello.")
-    );
-    let reads = native
-        .queries
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    assert!(reads.len() >= 2);
-    assert!(
-        reads
-            .iter()
-            .all(|query| query.after_input_sequence == Some(0) && query.starting_after.is_none())
-    );
+    assert_eq!(native.bindings.load(Ordering::Relaxed), 0, "no binding");
+    assert_eq!(native.receipts.load(Ordering::Relaxed), 0, "no answer");
+    let sent = format!("{:?}", script.sent());
+    assert!(!sent.contains(UNBOUND), "the model never read it: {sent}");
     Ok(())
 }

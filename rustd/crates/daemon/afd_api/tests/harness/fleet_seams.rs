@@ -114,7 +114,7 @@ impl Fleet {
         self
     }
 
-    /// Runs native setup and purge over a live database, notifying through `bus`.
+    /// Runs fleet creates and purges over a live database, notifying through `bus`.
     pub(crate) fn with_fleet_queue(self, database: Db, bus: afd_bus::Handle) -> Self {
         self.with_fleet_queue_budgets(database, bus, afd_turns::Budgets::default())
     }
@@ -139,21 +139,11 @@ impl Fleet {
                     afd_turns::view::activity::DEFAULT_ACTIVITY_NOTICES,
                 ));
         self.creations = afd_setup::Creations::new(
-            self.setup.clone(),
+            database.clone(),
+            Entropy::new(),
             afd_turns::Turns::for_tests(database.clone(), bus).with_budgets(budgets),
         );
         self.fleets = Fleets::new(database);
-        self
-    }
-
-    /// Registers a chat save's trigger schedules through `scheduler`, as the
-    /// serving plane does. After [`Self::with_fleet_queue`], which replaces
-    /// the creations this configures.
-    pub(crate) fn with_schedule_registration(
-        mut self,
-        scheduler: Arc<dyn afd_cron::Scheduler>,
-    ) -> Self {
-        self.creations = self.creations.with_scheduler(scheduler);
         self
     }
 

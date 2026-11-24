@@ -1,39 +1,28 @@
-//! Private chat setup over the shared native Definition.
+//! A workspace's fleets as a person creates, reads, changes and deletes them.
 //!
-//! Access is checked inside each transaction, before replay. Candidates are
-//! immutable snapshots; Save and activation copy them into shared setup.
-//! HTTP adapters and the runner use this domain owner without owning its rows.
+//! A person's first message creates an active fleet with its thread and first
+//! turn in one transaction; nothing is set up before it works. Access is
+//! checked inside each transaction, before replay. This crate also keeps the
+//! fleet chat's compaction store ([`context`]), the workspace's model choices
+//! and a fleet's trigger rows ([`trigger`]). HTTP adapters and the run plane
+//! use it without owning its rows.
 
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 #![deny(clippy::self_named_module_files)]
 
 mod access;
-mod candidate;
 mod catalogue;
 pub mod context;
 mod creation;
-mod draft;
 pub mod error;
-mod funnel;
 #[cfg(test)]
 mod limits;
-mod message;
-mod observe;
-mod paging;
-mod privacy;
 mod replay;
-mod review;
-mod setup;
-pub mod setup_run;
 mod sql;
+pub mod trigger;
 pub mod tuning;
 pub mod types;
 
 pub use self::access::Access;
-pub use self::creation::{Creations, SavedFleet, SetupCheck, SetupProgress, SystemSetup};
-pub use self::draft::Drafts;
+pub use self::creation::Creations;
 pub use self::error::{Error, Result};
-pub use self::message::Conversation;
-pub use self::observe::{Notice, Observation, View};
-pub use self::setup::Setup;
-pub use self::setup_run::{CONTEXT_EVENT, ContextNotice, DELTA_EVENT, Delta, TextKind};

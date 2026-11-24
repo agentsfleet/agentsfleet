@@ -134,11 +134,11 @@ fn a_named_field_is_refused_rather_than_registered_to_never_fire() {
     }
 }
 
-/// A schedule route and a fleet definition's cron trigger reach one verdict,
+/// A schedule route and the fleet runtime's cron check reach one verdict,
 /// because the route's check is the fleet runtime's: the same expressions are
 /// admitted and refused on both sides, minute 61 among them.
 #[test]
-fn a_schedule_route_refuses_what_a_fleet_definition_refuses() {
+fn a_schedule_route_refuses_what_the_fleet_runtime_refuses() {
     for (expression, admitted) in [
         ("0 9 * * *", true),
         ("*/60 * * * *", true),
@@ -287,20 +287,5 @@ fn each_field_refuses_under_its_own_name() {
     assert_eq!(
         message("").expect_err("an empty message is refused"),
         Invalid::Message
-    );
-}
-
-/// A recipe is held to the same three fields: an expression this daemon will
-/// not register is refused as an invalid request naming the cron.
-#[test]
-fn a_recipe_with_an_unregistrable_expression_is_refused_as_the_cron() {
-    let refused = afd_cron::Recipe::parse("@daily", "UTC", "run the nightly repair")
-        .expect_err("an alias is not a schedule this daemon registers");
-    assert_eq!(
-        (refused.code(), refused.detail()),
-        (
-            af_core::error_code::INVALID_REQUEST,
-            afd_cron::validate::DETAIL_INVALID_CRON
-        )
     );
 }

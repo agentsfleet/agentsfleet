@@ -19,7 +19,6 @@ pub(super) async fn execute(
     let prepared = PreparedDurableTask {
         execution_deadline: inputs.execution_deadline,
         inputs,
-        allow_actions: true,
     };
     engine
         .run(AgentRun {

@@ -18,9 +18,7 @@ use std::borrow::Cow;
 use af_core::error_code;
 use af_core::id::Uuid7;
 use af_core::test_util::trace::Capture;
-use af_crypto::entropy::Entropy;
 use af_wire::report::{Outcome, RenewRequest, ReportRequest};
-use af_wire::run::AcceptedKinds;
 use afd_billing::Nanos;
 use afd_db::test_util::mint_id;
 use afd_fleet::run::Renewed;
@@ -207,7 +205,6 @@ async fn test_a_failed_report_on_a_finished_event_settles_with_nothing_owed() {
     .await;
     let failed = ReportRequest {
         folded_through_sequence: None,
-        setup: None,
         outcome: Outcome::FleetError,
         failure_detail: Cow::Borrowed("the child exited 1"),
         ..processed(&held, None)
@@ -244,14 +241,12 @@ async fn test_a_failed_report_on_a_finished_event_settles_with_nothing_owed() {
 async fn test_a_runner_with_no_run_or_no_host_row_gets_no_work() {
     let held = held().await;
     let plane = held.fixtures.plane();
-    let drafts = afd_setup::Drafts::new(held.fixtures.database.clone(), Entropy::new());
     let stranger = mint_id();
 
     let window = plane.load(&held.spare, &held.fleet).await;
     let capture = Capture::install();
     let answer = plane
         .assign_with(
-            &drafts,
             afd_fleet::run::AssignRequest {
                 runner: &stranger,
                 held: &[],
@@ -259,7 +254,6 @@ async fn test_a_runner_with_no_run_or_no_host_row_gets_no_work() {
                 now: held.now,
                 recovery: None,
             },
-            AcceptedKinds::ALL,
             &mut af_observability::verb_span::VerbClock::untimed(),
             |_run, _metadata| (),
         )

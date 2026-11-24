@@ -7,7 +7,9 @@
 //! The tools a run builds over its own backends ([`BACKED`]) need none: the
 //! run builds them, `guffbolt`'s, when it starts ([`crate::Backends`]). Nor
 //! do `guffbolt`'s subagent tools, which this catalog publishes under
-//! `guffbolt`'s own names rather than its own list ([`builds`]).
+//! `guffbolt`'s own names rather than its own list ([`builds`]). The task
+//! tools ([`TASK_TOOLS`]) are offered only to a run carrying a decision
+//! profile, which the agent decides before it selects.
 
 use std::sync::Arc;
 
@@ -20,7 +22,10 @@ use crate::handler::Typed;
 use crate::runtime::{CatalogTool, Runtime};
 use crate::selection::Offered;
 use crate::selection::Selection;
-use crate::verbs::{FleetActivity, FleetSteer};
+use crate::verbs::{
+    FleetActivity, FleetSteer, RequestAccess, TaskInput, TaskStart, TriggerAdd, TriggerList,
+    TriggerRemove,
+};
 
 /// One published tool: its name and the runtime it executes in.
 ///
@@ -86,6 +91,20 @@ pub const CRON_LIST: Entry = Entry::new("cron_list", Runtime::Supervisor);
 pub const CRON_REMOVE: Entry = Entry::new("cron_remove", Runtime::Supervisor);
 /// Updates a cron schedule.
 pub const CRON_UPDATE: Entry = Entry::new("cron_update", Runtime::Supervisor);
+/// Adds what may wake the fleet: a webhook, a GitHub App event or a Slack
+/// mention, through a runner verb.
+pub const TRIGGER_ADD: Entry = Entry::new("trigger_add", Runtime::Supervisor);
+/// Lists what may wake the fleet.
+pub const TRIGGER_LIST: Entry = Entry::new("trigger_list", Runtime::Supervisor);
+/// Removes one trigger of the fleet.
+pub const TRIGGER_REMOVE: Entry = Entry::new("trigger_remove", Runtime::Supervisor);
+/// Asks a person to approve one secret or integration; the run ends waiting
+/// on the card unless an approved grant already covers it.
+pub const REQUEST_ACCESS: Entry = Entry::new("request_access", Runtime::Supervisor);
+/// Starts a durable task from a span of a person's message.
+pub const TASK_START: Entry = Entry::new("task_start", Runtime::Supervisor);
+/// Joins a span of a person's message to an unfinished task.
+pub const TASK_INPUT: Entry = Entry::new("task_input", Runtime::Supervisor);
 /// Runs a cron schedule now.
 pub const CRON_RUN: Entry = Entry::new("cron_run", Runtime::Supervisor);
 /// Lists a cron schedule's runs.
@@ -116,7 +135,7 @@ pub const BROWSER_OPEN: Entry = Entry::new("browser_open", Runtime::Sandbox);
 pub const SCREENSHOT: Entry = Entry::new("screenshot", Runtime::Sandbox);
 
 /// Every published tool.
-pub const PUBLISHED: [&Entry; 32] = [
+pub const PUBLISHED: [&Entry; 38] = [
     &HTTP_REQUEST,
     &WEB_FETCH,
     &NOTIFY,
@@ -137,6 +156,12 @@ pub const PUBLISHED: [&Entry; 32] = [
     &CRON_UPDATE,
     &CRON_RUN,
     &CRON_RUNS,
+    &TRIGGER_ADD,
+    &TRIGGER_LIST,
+    &TRIGGER_REMOVE,
+    &REQUEST_ACCESS,
+    &TASK_START,
+    &TASK_INPUT,
     &SHELL,
     &EXEC_COMMAND,
     &WRITE_STDIN,
@@ -150,6 +175,17 @@ pub const PUBLISHED: [&Entry; 32] = [
     &BROWSER_OPEN,
     &SCREENSHOT,
 ];
+
+/// The tools that bind a person's message to durable work: offered only to a
+/// run whose payload carries a decision profile, the judge a task's runs are
+/// assessed by.
+pub const TASK_TOOLS: [&Entry; 2] = [&TASK_START, &TASK_INPUT];
+
+/// Whether `name` is one of [`TASK_TOOLS`].
+#[must_use]
+pub fn is_task_tool(name: &str) -> bool {
+    TASK_TOOLS.iter().any(|entry| entry.name == name)
+}
 
 /// Every published tool a run builds over its own backends when it starts:
 /// every tool of `guffbolt`'s this catalog publishes. The provider's
@@ -237,7 +273,16 @@ impl Catalog {
     /// `transport`; every other tool is `guffbolt`'s, which the run builds.
     #[must_use]
     pub fn hosted(transport: Arc<dyn Transport>) -> Self {
-        let mut hosted = Self::new(vec![Typed::boxed(FleetSteer), Typed::boxed(FleetActivity)]);
+        let mut hosted = Self::new(vec![
+            Typed::boxed(FleetSteer),
+            Typed::boxed(FleetActivity),
+            Typed::boxed(TriggerAdd),
+            Typed::boxed(TriggerList),
+            Typed::boxed(TriggerRemove),
+            Typed::boxed(RequestAccess),
+            Typed::boxed(TaskStart),
+            Typed::boxed(TaskInput),
+        ]);
         hosted.transport = Some(transport);
         hosted
     }

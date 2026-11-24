@@ -5,35 +5,20 @@ use tokio::sync::mpsc;
 
 use super::{Holds, Request};
 
-/// Every kind of work consumes the same local worker budget.
+/// One run of a fleet, which consumes a worker of the local budget.
 #[derive(Debug)]
-pub(crate) enum Occupant {
-    Fleet {
-        run: Uuid7,
-        fleet: Uuid7,
-    },
-    /// A setup draft's run, which holds no sandbox and so no fleet's hold.
-    Setup {
-        run: Uuid7,
-    },
-}
-
-impl Occupant {
-    pub(super) fn parts(self) -> (Uuid7, Option<Uuid7>) {
-        match self {
-            Self::Fleet { run, fleet } => (run, Some(fleet)),
-            Self::Setup { run } => (run, None),
-        }
-    }
+pub(crate) struct Occupant {
+    /// The run.
+    pub(crate) run: Uuid7,
+    /// The fleet it runs, whose hold a park transfers into.
+    pub(crate) fleet: Uuid7,
 }
 
 impl Holds {
-    /// Reserves work before a fleet or setup run starts. Park transfers
-    /// this same run into a hold; a later drop cannot vacate another attempt.
+    /// Reserves work before a fleet's run starts. Park transfers this same
+    /// run into a hold; a later drop cannot vacate another attempt.
     pub(crate) fn occupy(&self, occupant: Occupant) -> Occupied {
-        let run = match &occupant {
-            Occupant::Fleet { run, .. } | Occupant::Setup { run } => run.clone(),
-        };
+        let run = occupant.run.clone();
         let _stopped = self.requests.send(Request::Occupy { occupant });
         Occupied {
             requests: self.requests.clone(),

@@ -1,8 +1,8 @@
 //! Behavior of the existing native task owner, shared by person and runner APIs.
 
 use super::{
-    DurableTaskAdoption, DurableTaskAfter, DurableTaskControl, DurableTaskPage, DurableTaskRun,
-    DurableTaskScope, DurableTaskSnapshot, ReservedDecision,
+    DurableTaskAfter, DurableTaskControl, DurableTaskPage, DurableTaskRun, DurableTaskScope,
+    DurableTaskSnapshot, DurableTaskStatements, ReservedDecision,
 };
 #[cfg(any(test, feature = "test-util"))]
 use super::{DurableTaskBindings, PreparedPlan};
@@ -91,7 +91,8 @@ pub trait DurableTaskLifecycle: Send + Sync + std::fmt::Debug {
         run: DurableTaskRun<'a>,
         input: &'a garde::Valid<af_wire::durable_task::DurableTaskInputReceiptInput>,
     ) -> DurableTaskFuture<'a, af_wire::durable_task::DurableTaskInputReceiptResult>;
-    /// Accept complete native routing/association proofs through the existing bind path.
+    /// Bind one span of a person's message to a new or an unfinished task,
+    /// as a run's task tool asks.
     fn interpret<'a>(
         &'a self,
         run: DurableTaskRun<'a>,
@@ -122,13 +123,14 @@ pub trait DurableTaskLifecycle: Send + Sync + std::fmt::Debug {
         input: &'a garde::Valid<af_wire::durable_task::DurableTaskInputsQuery>,
     ) -> DurableTaskFuture<'a, af_wire::durable_task::DurableTaskInputsResponse<'static>>;
 
-    /// Adopt reviewed goal criteria without changing target authority or cumulative limits.
-    fn adopt_goal<'a>(
+    /// A person's edit of a task's completion statements, under the tag and
+    /// generation they read.
+    fn edit_statements<'a>(
         &'a self,
         scope: &'a DurableTaskScope,
         durable_task_id: &'a Uuid7,
         expected_tag: &'a str,
-        adoption: &'a DurableTaskAdoption,
+        edit: &'a DurableTaskStatements,
     ) -> DurableTaskFuture<'a, DurableTaskSnapshot>;
 
     /// Reserve one physical call; replays cannot issue another credential.
@@ -151,12 +153,12 @@ pub trait DurableTaskLifecycle: Send + Sync + std::fmt::Debug {
         after: Option<&'a DurableTaskAfter>,
         limit: u32,
     ) -> DurableTaskFuture<'a, DurableTaskPage>;
-    /// Bind a complete prepared interpretation without allocating on replay.
+    /// Bind a complete prepared plan without allocating on replay.
     ///
-    /// A test seam: the plan is built by the caller, so it can skip the
-    /// authorization that `interpret` proves before it binds. Production reaches
-    /// the same binding only through `interpret`, so this method is not compiled
-    /// into a build without `test-util`.
+    /// A test seam: the plan is built by the caller, so it can skip the checks
+    /// `interpret` proves before it binds. Production reaches the same binding
+    /// only through `interpret`, so this method is not compiled into a build
+    /// without `test-util`.
     #[cfg(any(test, feature = "test-util"))]
     fn bind<'a>(
         &'a self,

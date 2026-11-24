@@ -1,7 +1,5 @@
 //! Failed reads and parks, repeated refusals, and assignments another runner won.
 
-mod parking;
-
 use super::seed::seed_provider_resolution;
 use super::*;
 
@@ -12,8 +10,8 @@ use crate::rows::{LAPSE, Row};
 /// The stored status of an event nobody ended.
 const STATUS_RECEIVED_ROW: &str = "received";
 
-/// A stored document the runtime parser cannot read: no triggers, no runtime.
-const UNREADABLE_CONFIG: &str = "{}";
+/// A stored network setting no daemon writes.
+const UNREADABLE_EGRESS: &str = "fixture-unknown-egress";
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -23,7 +21,7 @@ async fn should_refuse_an_unreadable_fleet_once_however_often_it_is_assigned() {
     let fixtures = Fixtures::create().await;
     let seeded = ready(&fixtures).await;
     fixtures
-        .corrupt_native_config(&seeded.fleet, UNREADABLE_CONFIG)
+        .set_network(&seeded.fleet, UNREADABLE_EGRESS, false)
         .await;
     let assigned = assign(&fixtures, &seeded).await;
 
@@ -63,7 +61,7 @@ async fn an_unreadable_redelivery_preserves_an_existing_terminal_ending() {
         .await
         .expect("counters");
     fixtures
-        .corrupt_native_config(&seeded.fleet, UNREADABLE_CONFIG)
+        .set_network(&seeded.fleet, UNREADABLE_EGRESS, false)
         .await;
     // The holder stops renewing, and the finished event is assigned again under
     // its now unreadable setup: a terminal redelivery.
@@ -105,7 +103,7 @@ async fn should_answer_no_work_when_an_unreadable_fleets_refusal_cannot_be_recor
     let fixtures = Fixtures::create_isolated().await;
     let seeded = ready(&fixtures).await;
     fixtures
-        .corrupt_native_config(&seeded.fleet, UNREADABLE_CONFIG)
+        .set_network(&seeded.fleet, UNREADABLE_EGRESS, false)
         .await;
     let assigned = assign(&fixtures, &seeded).await;
     let owner = fixtures.open(afd_db::config::DbRole::Migrator).await;
@@ -149,7 +147,7 @@ async fn should_write_no_run_when_another_runner_won_the_assignment_mid_pass() {
     let fixtures = Fixtures::create().await;
     let (fleet, workspace, tenant, [runner, rival]) = seeded_parts::<2>(&fixtures).await;
     let seeded = ready_in(&fixtures, &workspace, runner, fleet, tenant).await;
-    set_config(&fixtures, &seeded.fleet, READ_BOUND_CONFIG).await;
+    bind(&fixtures, &seeded.fleet, read_bound()).await;
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
     let assigned = assign(&fixtures, &seeded).await;
     let thread = Row::Thread(&assigned.fleet_id);
@@ -190,7 +188,7 @@ async fn should_write_no_run_when_the_pass_outlived_its_assignment() {
     // its lapse rather than write a run another runner may soon hold.
     let fixtures = Fixtures::create().await;
     let seeded = ready(&fixtures).await;
-    set_config(&fixtures, &seeded.fleet, READ_BOUND_CONFIG).await;
+    bind(&fixtures, &seeded.fleet, read_bound()).await;
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
     let mut assigned = assign(&fixtures, &seeded).await;
     assigned.held_until = jiff::Timestamp::UNIX_EPOCH;

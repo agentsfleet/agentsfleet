@@ -115,7 +115,7 @@ async fn a_durable_task_over_its_model_budget_is_not_assigned() {
 }
 
 async fn bind(case: &Case, limits: DurableTaskLimits) -> DecisionDurableTaskVersion {
-    let plan = case.source_plan(case.held.turn_id.clone(), "bounded-report", 1, limits);
+    let plan = Case::source_plan(case.held.turn_id.clone(), "bounded-report", 1, limits);
     let result = case
         .tasks
         .bind(case.run(), &plan)

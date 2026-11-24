@@ -41,7 +41,6 @@ use crate::services::{TenantPlane, WorkspaceApprovals as _};
 
 mod query;
 pub(crate) mod resolve;
-mod setup;
 
 /// The scoped events each verb's failures are logged under.
 const EVENT_LIST: &str = "approval_list_failed";

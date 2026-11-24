@@ -1,4 +1,4 @@
-//! Serializes fleet and setup runs on the physical host's assigned limit.
+//! Serializes fleet runs on the physical host's assigned limit.
 //!
 //! Callers retain the transaction through the guarded run write. The census
 //! is a separate statement after the host lock: a statement snapshot acquired
@@ -21,8 +21,6 @@ mod sql;
 pub enum Work<'a> {
     /// Reusing this fleet's hold replaces it without taking another worker.
     Fleet(&'a Uuid7),
-    /// A setup run holds no sandbox, so it cannot reuse a fleet's.
-    Setup,
     /// Current work renews its live run without charging idle holds.
     Existing,
 }
@@ -238,7 +236,7 @@ pub async fn lock<'a>(
         .bind(crate::sql::RUN_STATUS_ACTIVE)
         .bind(match work {
             Work::Fleet(fleet) => Some(fleet),
-            Work::Setup | Work::Existing => None,
+            Work::Existing => None,
         })
         .bind(!matches!(work, Work::Existing))
         .fetch_one(&mut **transaction)
@@ -302,7 +300,7 @@ impl PlacementRefusal {
 
 /// Logs a refused placement. Any occurrence means the assignment's filter has a hole,
 /// so it is an error with its registry code, never a debug line.
-pub fn refused_placement(runner: &Uuid7, refusal: PlacementRefusal, run_type: &str) {
+pub fn refused_placement(runner: &Uuid7, refusal: PlacementRefusal) {
     let runner_id = runner.as_str();
     let reason = refusal.as_str();
     let error_code = af_core::error_code::RUNNER_PLACEMENT_REFUSED.as_str();
@@ -312,5 +310,5 @@ pub fn refused_placement(runner: &Uuid7, refusal: PlacementRefusal, run_type: &s
         "runner_placement_refused",
         format_args!("issue refused a placement the assignment should have filtered"),
     );
-    tracing::error!(message, error_code, runner_id, reason, run_type, event);
+    tracing::error!(message, error_code, runner_id, reason, event);
 }

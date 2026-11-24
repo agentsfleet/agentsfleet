@@ -19,7 +19,7 @@ const CALLERS: usize = 100;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn concurrent_plan_replays_preserve_all_goals_and_their_original_revision() {
+async fn concurrent_plan_replays_preserve_every_goal() {
     exercise(bind_and_replay).await;
 }
 
@@ -55,12 +55,17 @@ async fn bind_and_replay(case: &Case) {
     assert_eq!(unique.len(), 3);
     assert_eq!(
         case.counts().await,
-        (3, 3, 3),
-        "one active task and two queued continuations"
+        (3, 3, 4),
+        "three ready tasks, each with its own queued continuation"
+    );
+    assert_eq!(
+        decision_calls(case).await,
+        0,
+        "no binding makes a decision call"
     );
 
     accepted_goals(case, first).await;
-    replay_after_revision(case, &plan, first).await;
+    replay_and_refuse_a_changed_plan(case, &plan, first).await;
 }
 
 async fn contended_calls(case: &Case, plan: &PreparedPlan) -> Vec<DurableTaskBindings> {
@@ -92,7 +97,7 @@ async fn contended_calls(case: &Case, plan: &PreparedPlan) -> Vec<DurableTaskBin
 
 async fn accepted_goals(case: &Case, bindings: &DurableTaskBindings) {
     let (tasks, scope) = (&case.tasks, &case.scope);
-    for (index, (binding, goal)) in bindings.items.iter().zip(GOALS).enumerate() {
+    for (binding, goal) in bindings.items.iter().zip(GOALS) {
         let durable_task_id = binding
             .durable_task_id
             .as_ref()
@@ -102,23 +107,17 @@ async fn accepted_goals(case: &Case, bindings: &DurableTaskBindings) {
             .await
             .expect("accepted goal");
         let current = &snapshot.context;
-        let state = if index == 0 {
-            DurableTaskState::Running
-        } else {
-            DurableTaskState::Ready
-        };
-        let usage = DurableTaskUsage {
-            runs: u32::from(index == 0),
-            ..DurableTaskUsage::default()
-        };
+        assert!(
+            !binding.applies_here,
+            "the calling run stays an ordinary run"
+        );
         assert_eq!(
             (
                 snapshot.title.as_str(),
                 current.objective.as_ref(),
-                current.accepted_revision_id.as_ref(),
                 current.durable_task_id.as_ref()
             ),
-            (goal, goal, case.revision.as_str(), durable_task_id.as_str())
+            (goal, goal, durable_task_id.as_str())
         );
         assert_eq!(current.questions, questions());
         assert_eq!(
@@ -130,24 +129,45 @@ async fn accepted_goals(case: &Case, bindings: &DurableTaskBindings) {
                 current.limits,
                 snapshot.resource_version
             ),
-            (state, 1, 0, usage, DurableTaskLimits::default(), 1)
+            (
+                DurableTaskState::Ready,
+                1,
+                0,
+                DurableTaskUsage::default(),
+                DurableTaskLimits::default(),
+                1
+            )
         );
-        assert_eq!(snapshot.accepted_revision_number, case.revision_number);
     }
 }
 
-async fn replay_after_revision(case: &Case, plan: &PreparedPlan, first: &DurableTaskBindings) {
-    let tasks = &case.tasks;
-    case.held
-        .fixtures
-        .native_config(&case.held.fleet,
-            r#"{"name":"updated-repair-setup","x-agentsfleet":{"tools":[],"triggers":[],"budget":{"daily_nanos":"1000000000"}}}"#,
+/// The decision calls the fleet's runs have made.
+async fn decision_calls(case: &Case) -> i64 {
+    sqlx::query_scalar("SELECT count(*) FROM runner.decision_calls WHERE fleet_id = $1")
+        .bind(&case.held.fleet)
+        .fetch_one(
+            &mut *case
+                .held
+                .fixtures
+                .database
+                .acquire()
+                .await
+                .expect("decision call connection"),
         )
-        .await;
+        .await
+        .expect("decision calls are countable")
+}
+
+async fn replay_and_refuse_a_changed_plan(
+    case: &Case,
+    plan: &PreparedPlan,
+    first: &DurableTaskBindings,
+) {
+    let tasks = &case.tasks;
     let replay = tasks
         .bind(case.run(), plan)
         .await
-        .expect("accepted identity survives a newer setup");
+        .expect("the same call answers the first");
     assert!(replay.replayed);
     assert_eq!(replay.items, first.items);
     assert_eq!(replay.execution_deadline, first.execution_deadline);
@@ -157,7 +177,7 @@ async fn replay_after_revision(case: &Case, plan: &PreparedPlan, first: &Durable
         .await
         .expect_err("changed replay cannot allocate work");
     assert_eq!(refusal.code(), error_code::DURABLE_TASK_REPLAY_CONFLICT);
-    assert_eq!(case.counts().await, (3, 3, 3));
+    assert_eq!(case.counts().await, (3, 3, 4));
 }
 
 #[tokio::test]
@@ -219,7 +239,7 @@ async fn ownership(case: &Case) {
         .await
         .expect_err("foreign scope cannot discover the task");
     assert_eq!(refused.code(), error_code::DURABLE_TASK_NOT_FOUND);
-    assert_eq!(case.counts().await, (2, 2, 2));
+    assert_eq!(case.counts().await, (2, 2, 3));
     assert_eq!(
         tasks
             .read(scope, task)
@@ -227,13 +247,14 @@ async fn ownership(case: &Case) {
             .expect("owned read recovers")
             .context
             .state,
-        DurableTaskState::Running
+        DurableTaskState::Ready
     );
 }
 
-/// Native receipts preserve the database ceiling rather than restarting a slice on replay.
+/// A binding leaves the calling run unbound, so it carries no task deadline,
+/// on its reply or its row.
 async fn stored_deadline(case: &Case, reply: &DurableTaskBindings) {
-    let stored: jiff_sqlx::Timestamp = sqlx::query_scalar(
+    let stored: Option<jiff_sqlx::Timestamp> = sqlx::query_scalar(
         "SELECT durable_task_execution_deadline_at FROM thread.runs WHERE id=$1",
     )
     .bind(case.run().run_id)
@@ -247,22 +268,7 @@ async fn stored_deadline(case: &Case, reply: &DurableTaskBindings) {
             .expect("deadline connection"),
     )
     .await
-    .expect("bound run deadline");
-    assert_eq!(reply.execution_deadline, Some(stored.to_jiff()));
-    let input = case
-        .tasks
-        .inputs(
-            case.run(),
-            &garde::Unvalidated::new(af_wire::durable_task::DurableTaskInputsQuery {
-                fencing_token: case.run().fencing_token,
-                starting_after: None,
-                after_input_sequence: None,
-                limit: 4,
-            })
-            .validate()
-            .expect("input query"),
-        )
-        .await
-        .expect("recovery input read");
-    assert_eq!(input.execution_deadline, reply.execution_deadline);
+    .expect("the run row");
+    assert_eq!(stored, None);
+    assert_eq!(reply.execution_deadline, None);
 }

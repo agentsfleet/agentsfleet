@@ -16,7 +16,6 @@ fn assigned_run() -> Result<AssignedRun> {
         expires_at: Timestamp::UNIX_EPOCH,
         target: None,
         reported: None,
-        draft: None,
     })
 }
 
@@ -114,7 +113,6 @@ fn held(index: usize, expires_at: Timestamp) -> Result<AssignedRun> {
         expires_at,
         target: None,
         reported: None,
-        draft: None,
     })
 }
 

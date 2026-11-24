@@ -38,11 +38,9 @@
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 #![deny(clippy::self_named_module_files)]
 
-mod activation;
 mod credentials;
 mod fire;
 mod next;
-mod recipe;
 mod run;
 mod scheduler;
 mod service;
@@ -62,7 +60,6 @@ pub use self::model::{
     DesiredStatus, FLEET_SCHEDULES_MAX, MAX_SCHEDULES_PER_FLEET, Schedule, Source, SyncStatus,
 };
 pub use self::qstash::{Attempts, QStash};
-pub use self::recipe::{Inherited, Recipe, RecipeSet};
 pub use self::scheduler::Scheduler;
 pub use self::service::{Reconciled, Schedules as ScheduleService};
 pub use self::store::{Change, EditRequest, FireTarget, NewSchedule, Refused, SYNC_RUN, Schedules};

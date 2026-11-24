@@ -9,7 +9,6 @@ use afd_billing::price::RatedLine;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 
-use super::ceilings::Ceilings;
 use super::rows::Found;
 use super::verdict::Judged;
 use crate::error::Result;
@@ -21,7 +20,6 @@ pub(super) struct Bound<'a> {
     pub(super) found: &'a Found,
     pub(super) request: &'a RenewRequest,
     pub(super) pricing: Arc<Pricing>,
-    pub(super) ceilings: Option<Ceilings>,
 }
 
 /// The statement's parallel arrays: one entry per run, one per request line.
@@ -33,9 +31,6 @@ pub(super) struct Columns<'a> {
     catalogue: Vec<Option<i64>>,
     runtime_price: Vec<Option<Uuid7>>,
     runtime_line: Vec<Uuid7>,
-    daily: Vec<Option<i64>>,
-    monthly: Vec<Option<i64>>,
-    revision: Vec<Option<&'a Uuid7>>,
     lines: Vec<(&'a Uuid7, Uuid7, RatedLine)>,
 }
 
@@ -56,9 +51,6 @@ impl<'a> Columns<'a> {
             catalogue: Vec::new(),
             runtime_price: Vec::new(),
             runtime_line: Vec::new(),
-            daily: Vec::new(),
-            monthly: Vec::new(),
-            revision: Vec::new(),
             lines: Vec::new(),
         };
         for entry in bound {
@@ -70,13 +62,6 @@ impl<'a> Columns<'a> {
             columns.catalogue.push(entry.pricing.catalogue_version());
             columns.runtime_price.push(entry.pricing.runtime_price(now));
             columns.runtime_line.push(entropy.uuid7(now)?);
-            columns
-                .daily
-                .push(entry.ceilings.map(|ceilings| ceilings.daily));
-            columns
-                .monthly
-                .push(entry.ceilings.and_then(|ceilings| ceilings.monthly));
-            columns.revision.push(row.head_revision_id.as_ref());
             for line in
                 entry
                     .pricing
@@ -110,9 +95,6 @@ impl<'a> Columns<'a> {
             .bind(self.catalogue.clone())
             .bind(self.runtime_price.clone())
             .bind(self.runtime_line.clone())
-            .bind(self.daily.clone())
-            .bind(self.monthly.clone())
-            .bind(self.revision.clone())
             .bind(
                 self.lines
                     .iter()
@@ -155,7 +137,6 @@ impl<'a> Columns<'a> {
             .bind(LineKind::Runtime.as_str())
             // The wire's runtime field is a `u32` of milliseconds.
             .bind(i64::from(u32::MAX))
-            .bind(af_core::timing::DAY)
             .bind(afd_runner::capacity::renewable_states())
     }
 }

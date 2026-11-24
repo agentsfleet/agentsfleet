@@ -1,24 +1,10 @@
 //! Decision statements stay with the existing task lifecycle owner.
 
-pub(super) const CANDIDATES: &str = include_str!("sql/candidates.sql");
-pub(super) const ASSIGN_SOURCE: &str = include_str!("../sql/pending_inputs.sql");
 pub(super) const LOCK_DURABLE_TASK: &str = include_str!("sql/lock_durable_task.sql");
 pub(super) const PROFILE: &str = include_str!("sql/profile.sql");
 pub(super) const PEEK_CALL: &str = include_str!("sql/find_call.sql");
 pub(super) const FIND_CALL: &str = const_format::concatcp!(PEEK_CALL, " FOR UPDATE");
 pub(super) const PAYLOAD: &str = include_str!("sql/payload.sql");
-pub(super) const BUDGET: &str = const_format::concatcp!(
-    "WITH charged AS (\n",
-    afd_billing::limits::SELECT_FLEET_SPEND,
-    "\n), pending AS (\n\
-        SELECT COALESCE(SUM(reserved_nanos), 0)::bigint AS nanos\n\
-        FROM runner.decision_calls\n\
-        WHERE workspace_id = $1 AND fleet_id = $2 AND accounted_at IS NULL\n\
-    )\n\
-    SELECT (charged.day_nanos + pending.nanos)::bigint AS day_nanos,\n\
-           (charged.month_nanos + pending.nanos)::bigint AS month_nanos\n\
-    FROM charged CROSS JOIN pending\n",
-);
 pub(super) const BLOCK_PROFILE_SWITCH: &str = include_str!("sql/block_profile_switch.sql");
 pub(super) const CONTEXT: &str = include_str!("sql/context.sql");
 pub(super) const SOURCE: &str = include_str!("sql/source.sql");

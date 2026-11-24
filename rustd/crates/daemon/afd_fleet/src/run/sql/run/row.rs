@@ -21,7 +21,7 @@ use crate::{Result, error::query};
 /// # Fenced on the assignment that earned it
 ///
 /// The `held` arm writes nothing unless the thread still carries this assignment's
-/// token (`$10`) and has not lapsed (`$11`), and every other arm reads from it.
+/// token (`$10`) and has not lapsed (`$18`), and every other arm reads from it.
 /// A pass that outlived its assignment lost the thread to a runner that took the same
 /// entry over, and an unfenced insert would have two runners executing one
 /// event. A lost fence writes no row at all, which the caller reads as no-work.
@@ -43,7 +43,7 @@ pub const INSERT_RUN_WITH_TURN: &str = include_str!("insert_run_with_turn.sql");
 
 /// Everything [`INSERT_RUN_WITH_TURN`] needs, by name.
 ///
-/// Seventeen positional parameters, several of them same-typed text that a
+/// Eighteen positional parameters, several of them same-typed text that a
 /// transposition would compile straight through, and this workspace disables
 /// sqlx's `macros` feature deliberately, so there is no compile-time query
 /// checking to catch it. Naming the fields is what replaces
@@ -87,14 +87,9 @@ pub struct RunRow<'a> {
     /// The placement choice's revision the host lock read; the insert
     /// advances it, and writes nothing that commits if it moved.
     pub run_version: i64,
-    /// The kind the advanced choice records.
-    pub run_kind: &'a str,
     /// When the assignment lapses, as the assignment answered it: a pass that outlived
     /// it writes no run.
     pub held_until: Timestamp,
-    /// The head revision the assignment assembled the setup from; a run whose
-    /// fleet's head moved since writes nothing. `None` checks no revision.
-    pub setup_revision: Option<&'a Uuid7>,
 }
 
 impl RunRow<'_> {
@@ -127,11 +122,7 @@ impl RunRow<'_> {
             .bind(self.turn_created_at.to_sqlx())
             .bind(self.decision_snapshot.map(sqlx::types::Json))
             .bind(self.run_version)
-            .bind(self.run_kind)
             .bind(self.held_until.to_sqlx())
-            .bind(self.setup_revision)
-            .bind(af_wire::durable_task::CAPABILITY)
-            .bind(crate::durable_task::DECISION_POLICY_PATH)
             .fetch_optional(connection)
             .await
             .map_err(query(

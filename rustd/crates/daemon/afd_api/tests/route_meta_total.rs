@@ -117,6 +117,18 @@ const RETIRED_PLUGIN_ROUTES: usize = 4;
 /// The dashboard preference write went with `identity.user_preferences`.
 const RETIRED_PREFERENCE_ROUTES: usize = 1;
 
+/// A fleet is a chat from its first message, so what set one up went: a
+/// creator's drafts, one draft, its messages, its setup-progress stream and
+/// its turn's Stop, applying a reviewed revision to a fleet, and the
+/// setup-context read. The workspace's model choices stay.
+const RETIRED_SETUP_ROUTES: usize = 7;
+
+/// What may wake a fleet and what it asks to hold, which the fleet now adds
+/// itself: a fleet's triggers and one trigger, read and removed by a person;
+/// the run's triggers and one trigger, which the fleet adds, reads and
+/// removes; and the run's request for a secret or an integration.
+const FLEET_SELF_SERVICE_ADDITIONS: usize = 5;
+
 /// What this daemon's union must carry.
 const RUST_ROUTE_COUNT: usize = PINNED_ROUTE_COUNT - DECLARED_DIVERGENCES
     + VERB_SPLITS
@@ -130,11 +142,13 @@ const RUST_ROUTE_COUNT: usize = PINNED_ROUTE_COUNT - DECLARED_DIVERGENCES
     + TENANT_RUNNER_ADDITIONS
     + FLEET_TO_FLEET_ADDITIONS
     + STOP_ADDITIONS
+    + FLEET_SELF_SERVICE_ADDITIONS
     - RETIRED_WEBHOOK_ROUTES
     - RETIRED_RUNNER_HTTP_ROUTES
     - RETIRED_CATALOGUE_ROUTES
     - RETIRED_PLUGIN_ROUTES
-    - RETIRED_PREFERENCE_ROUTES;
+    - RETIRED_PREFERENCE_ROUTES
+    - RETIRED_SETUP_ROUTES;
 
 /// Every family's roster is reachable from `Route::all`, and nothing is
 /// counted twice.
@@ -205,9 +219,8 @@ fn test_every_template_is_a_low_cardinality_literal() {
     }
 }
 
-/// The three event tails and the native runner stream share the separate stream limit,
-/// and only the two probes are exempt from shedding. One tail is a creator's
-/// draft progress, which the setup reference specifies as `text/event-stream`.
+/// The two event tails and the native runner stream share the separate stream
+/// limit, and only the two probes are exempt from shedding.
 ///
 /// Every route states its class, so the default is not a fallthrough and no
 /// hand-maintained name list is needed. What is left to prove is the POLICY:
@@ -231,7 +244,6 @@ fn test_only_probes_and_streams_escape_the_request_ceiling() {
     assert_eq!(
         streams,
         vec![
-            Route::Workspace(WorkspaceRoute::DraftStream),
             Route::Workspace(WorkspaceRoute::TurnsStream),
             Route::Fleet(FleetRoute::TurnsStream),
             Route::Runner(RunnerRoute::Stream),

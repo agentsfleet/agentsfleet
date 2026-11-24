@@ -2,17 +2,15 @@
 
 use super::{TestResult, operator::Operator};
 use crate::e2e::{self, Scenario};
-use af_core::clock;
-use af_crypto::{entropy::Entropy, secret::Kek};
+use af_crypto::entropy::Entropy;
 use af_stream::Transport;
 use afd_bus::Handle;
-use afd_setup::{Creations, Drafts, Setup, SystemSetup};
+use afd_setup::Creations;
 use afd_turns::Turns;
 use agentsfleetd::{
     serve::{Booted, boot},
     supervisor::Supervisor,
 };
-use std::sync::Arc;
 
 use super::super::raw::Native;
 
@@ -40,7 +38,7 @@ impl Fixture {
         );
         let peer = boot(&environment, e2e::EPHEMERAL, &mut replica).await?;
         let bus = scene.booted.bus.clone();
-        let mut fixture = Self {
+        Ok(Self {
             scene,
             peer,
             bus,
@@ -48,47 +46,7 @@ impl Fixture {
             primary,
             replica,
             siblings: Vec::new(),
-        };
-        fixture.reviewed_fleet().await?;
-        Ok(fixture)
-    }
-
-    /// Kill reads a saved review, so install through the production setup owner.
-    async fn reviewed_fleet(&mut self) -> TestResult {
-        let mut config: serde_json::Value =
-            serde_json::from_str(crate::e2e_seed::FLEET_CONFIG_JSON)?;
-        config
-            .as_object_mut()
-            .ok_or("the seed fleet configuration is an object")?
-            .insert("name".to_owned(), "cancellation-review".into());
-        let definition = crate::e2e_native::definition(
-            &config.to_string(),
-            crate::e2e_seed::FIXTURE_INSTRUCTIONS,
-        );
-        let fleet = self
-            .creations(self.bus.clone())?
-            .materialise(
-                SystemSetup {
-                    workspace: &self.scene.workspace,
-                    definition: &definition,
-                },
-                clock::now(),
-            )
-            .await?;
-        crate::e2e_retire::retire_fleet(&self.scene.booted, &self.scene.fleet).await;
-        self.scene.fleet = fleet;
-        let registered =
-            afd_runner::Runners::new(self.scene.booted.database.clone(), Entropy::new())
-                .register(
-                    &crate::e2e_seed::scenario_enrolment(&self.scene.fleet),
-                    "fixture:platform-operator",
-                    clock::now(),
-                )
-                .await?;
-        self.scene.runner_id = registered.runner_id;
-        registered.token.expose().clone_into(&mut self.scene.token);
-        self.scene.turn_id = self.scene.enqueue_event(e2e::EVENT_TYPE).await;
-        Ok(())
+        })
     }
 
     pub(super) async fn native(&self, transport: Transport) -> Native {
@@ -100,14 +58,16 @@ impl Fixture {
         .await
     }
 
-    pub(super) fn creations(&self, bus: Handle) -> TestResult<Creations> {
+    /// The fleet owner on `bus`, as the tenant plane builds it.
+    pub(super) fn creations(&self, bus: Handle) -> Creations {
         let database = self.scene.booted.database.clone();
-        let drafts = Drafts::new(database.clone(), Entropy::new());
-        let setup = Setup::new(drafts, Arc::new(Kek::from_hex(e2e::GOOD_KEK)?));
-        Ok(Creations::new(
-            setup,
-            Turns::new(database, bus, Entropy::new()),
-        ))
+        let turns = Turns::new(database.clone(), bus, Entropy::new());
+        Creations::new(database, Entropy::new(), turns)
+    }
+
+    /// Retires `fleet` with the scenario's, for a fleet the test made itself.
+    pub(super) fn adopt(&mut self, fleet: af_core::id::Uuid7) {
+        self.siblings.push(fleet);
     }
 
     pub(super) async fn sibling(&mut self, name: &str) -> (af_core::id::Uuid7, af_core::id::Uuid7) {

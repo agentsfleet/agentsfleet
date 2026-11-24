@@ -92,7 +92,7 @@ impl TurnSnapshot {
             previous.validate()?;
             if previous.scope != scope {
                 return Err(recovery_invalid(
-                    "previous checkpoint belongs to a different setup or workspace",
+                    "previous checkpoint belongs to a different fleet, turn or workspace",
                 ));
             }
         }
@@ -155,7 +155,7 @@ impl TurnRecovery {
         history.root.check()?;
         if history.scope != scope || history.root.folds != self.adopted {
             return Err(recovery_invalid(
-                "ordinary restore has a different setup or adopted input membership",
+                "ordinary restore has a different scope or adopted input membership",
             ));
         }
         history.root.scrub(
@@ -167,22 +167,17 @@ impl TurnRecovery {
 }
 
 fn scope(run: &RunPayload<'_>, workspace: TurnWorkspace) -> Result<TurnScope> {
-    if run.durable_tasks || run.durable_task.is_some() {
+    if run.durable_task.is_some() {
         return Err(recovery_invalid(
             "ordinary recovery cannot impersonate native task state",
         ));
     }
-    let revision = run
-        .setup_revision_id
-        .as_ref()
-        .ok_or_else(|| recovery_invalid("ordinary recovery has no issued setup witness"))?;
     let scope = TurnScope {
         workspace_id: CheckpointOperationId(run.event.workspace_id.to_string()),
         fleet_id: CheckpointOperationId(run.event.fleet_id.to_string()),
         // An answer's run resumes, and goes on saving, the asking turn's
         // checkpoint.
         turn_id: CheckpointOperationId(run.event.checkpoint_turn_id().into_owned()),
-        setup_revision_id: CheckpointOperationId(revision.to_string()),
         workspace,
     };
     scope.validate()?;

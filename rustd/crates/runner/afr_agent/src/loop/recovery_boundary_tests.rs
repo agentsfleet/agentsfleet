@@ -85,14 +85,13 @@ impl RecoveryBoundarySink for Sink {
 }
 
 /// An ordinary run that may be recovered: its identities are the ones a
-/// checkpoint scope carries, and its setup revision is issued.
+/// checkpoint scope carries.
 fn recoverable() -> RunPayload<'static> {
     let id = |number: u32| format!("019f0000-0000-7000-8000-{number:012x}");
     let mut run = payload(&[UPDATE_PLAN.name()], unbounded());
     run.event.workspace_id = id(1).into();
     run.event.fleet_id = id(2).into();
     run.event.turn_id = id(3).into();
-    run.setup_revision_id = Some(id(4).into());
     run.run_id = id(5).into();
     run
 }
@@ -150,7 +149,8 @@ async fn a_skipped_or_unreserved_boundary_leaves_the_run_answering() {
 #[tokio::test]
 async fn a_root_that_cannot_be_captured_skips_its_checkpoint_and_answers() {
     let mut run = recoverable();
-    run.setup_revision_id = None;
+    // A scope that names no fleet identifier is one no checkpoint can carry.
+    run.event.fleet_id = "fleet-1".into();
     let sink = Sink::new(None, Answer::Skipped);
 
     let output = drive(&run, &sink).await;
@@ -189,7 +189,6 @@ async fn an_assigned_checkpoint_with_no_restored_state_refuses_the_run_before_an
             workspace_id: id(1),
             fleet_id: id(2),
             turn_id: id(3),
-            setup_revision_id: id(4),
             workspace: TurnWorkspace::ApiOnly,
         },
         manifest_root: af_core::etag::sha256_hex(b"manifest"),

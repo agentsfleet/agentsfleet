@@ -264,8 +264,8 @@ async fn answer(
         })
         .await
     {
-        Ok(body) => Ok(json!({"status":"ok", "response":
-            af_core::json::object_from_slice::<Value>(&body).map_err(error::malformed(verb))?})),
+        Ok(reply) => Ok(json!({"status":"ok", "response":
+            af_core::json::object_from_slice::<Value>(&reply.bytes).map_err(error::malformed(verb))?})),
         Err(failure) => Ok(
             json!({"status":"refused", "error_code":failure.code().as_str(),
             "detail":"scripted daemon refusal", "retryable":failure.is_retryable()}),

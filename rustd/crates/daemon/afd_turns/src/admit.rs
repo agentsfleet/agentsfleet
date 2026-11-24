@@ -71,9 +71,8 @@ impl Turns {
     /// # Errors
     /// Reports a database that would not commit the row, and a spent
     /// deployment ceiling — both the retryable refusal, with no acceptance
-    /// recorded — plus a fleet outside the caller's workspace and a setup
-    /// needing review. A lost wake notification leaves the committed turn
-    /// available to every poll.
+    /// recorded — plus a fleet outside the caller's workspace. A lost wake
+    /// notification leaves the committed turn available to every poll.
     pub async fn admit(&self, turn: IncomingTurn<'_>) -> Result<Admitted> {
         self.admit_under(turn, None).await
     }

@@ -21,8 +21,8 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_api_wire::grant::status;
-use afd_approval::{IntegrationGrants, REASON_DECLARED_AT_INSTALL, Revocation};
+use afd_api_wire::grant::{kind, status};
+use afd_approval::{IntegrationGrants, REASON_ASKED_BY_THE_FLEET, Revocation};
 use std::time::Duration;
 
 use af_core::clock::after;
@@ -47,12 +47,15 @@ const SERVICE_SLACK: &str = "slack";
 const SERVICE_GITHUB: &str = "github";
 const SERVICE_ZOHO: &str = "zoho";
 
-/// The reason the install records on every seeded row.
+/// The reason a fleet's request records on every seeded row.
 ///
 /// Imported rather than restated: the production request writes this sentence,
 /// and a second copy here is a fixture that would keep passing after the real
 /// one changed (RULE UFS).
-const REASON: &str = REASON_DECLARED_AT_INSTALL;
+const REASON: &str = REASON_ASKED_BY_THE_FLEET;
+
+/// The scope the approved GitHub row holds, as JSON a grant stores.
+const GITHUB_SCOPE: &str = r#"{"repositories":["org/app"],"access":"read"}"#;
 
 /// A workspace that exists in no fixture, for the scope refusals.
 const FOREIGN_WORKSPACE: &str = "01900000-0000-7000-8000-0000000000ff";
@@ -65,16 +68,19 @@ async fn seed_grant(lane: &Lane, service: &str, state: &str, created_at: Timesta
     let id = crate::lane::mint();
     let approved_at = (state == status::APPROVED).then(|| after(created_at, APPROVED_AFTER));
     let revoked_at = (state == status::REVOKED).then(|| after(created_at, REVOKED_AFTER));
+    let scope = (service == SERVICE_GITHUB).then_some(GITHUB_SCOPE);
     sqlx::query(
         "INSERT INTO connector.integration_grants
-           (id, fleet_id, service, status, requested_reason,
+           (id, fleet_id, service, kind, status, scope, requested_reason,
             approved_at, revoked_at, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)",
+         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $10)",
     )
     .bind(&id)
     .bind(&lane.fleet)
     .bind(service)
+    .bind(kind::INTEGRATION)
     .bind(state)
+    .bind(scope)
     .bind(REASON)
     .bind(approved_at.map(Timestamp::to_sqlx))
     .bind(revoked_at.map(Timestamp::to_sqlx))
@@ -135,7 +141,7 @@ async fn a_fleet_with_no_grants_is_not_a_fleet_that_is_not_there() {
     assert_eq!(
         held,
         Some(Vec::new()),
-        "a fleet declaring no mintable credential holds no grants and still exists"
+        "a fleet that never asked for access holds no grants and still exists"
     );
 
     let absent = afd_db::test_util::mint_id();
@@ -145,13 +151,13 @@ async fn a_fleet_with_no_grants_is_not_a_fleet_that_is_not_there() {
         .expect("the read must not fault");
     assert_eq!(
         missing, None,
-        "a fleet nobody installed is absent, not empty"
+        "a fleet that does not exist is absent, not empty"
     );
 }
 
 /// The list carries every status, newest first.
 ///
-/// Including the `pending` and `revoked` rows the runner plane is blind to.
+/// Including the `pending` and `revoked` rows a run's policy is blind to.
 /// That breadth is the point of the operator's surface: it shows what a person
 /// has and has not answered, which is exactly the distinction a mint must not
 /// be able to make.
@@ -200,6 +206,21 @@ async fn the_list_shows_every_status_newest_first() {
     assert_eq!(revoked.revoked_at, Some(after(latest, REVOKED_AFTER)));
     assert_eq!(revoked.approved_at, None);
     assert_eq!(pending.reason, REASON);
+
+    // The kind and both scopes ride beside the status, the scope as the JSON
+    // the grant stored.
+    let github = held.get(1).expect("three rows were seeded");
+    assert_eq!(github.kind, kind::INTEGRATION);
+    let scope: Option<serde_json::Value> = github
+        .scope
+        .as_deref()
+        .map(|text| serde_json::from_str(text).expect("the scope is JSON"));
+    assert_eq!(
+        scope,
+        Some(serde_json::json!({"repositories": ["org/app"], "access": "read"}))
+    );
+    assert_eq!(github.requested_scope, None);
+    assert_eq!(pending.scope, None);
 }
 
 /// A revoke moves the row once, and says so once.

@@ -1,4 +1,4 @@
-SELECT id, revision_id AS setup_revision_id, owner_run_id, owner_fence, generation, format_version,
+SELECT id, owner_run_id, owner_fence, generation, format_version,
        expected_head_checkpoint_id AS expected_head_id, toolbox_digest IS NOT NULL AS has_workspace,
        toolbox_digest, page_ids, history_digest,
        manifest_root, covered_fold_ids, covered_fold_sequences,

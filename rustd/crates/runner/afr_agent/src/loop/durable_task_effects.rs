@@ -8,7 +8,7 @@ use af_wire::durable_task::{
 
 impl Harness<'_, '_> {
     pub(super) async fn reconcile_durable_task_effects(&mut self) -> Result<()> {
-        let Some(prepared) = self.task.as_mut().filter(|task| task.allow_actions) else {
+        let Some(prepared) = self.task.as_mut() else {
             return Ok(());
         };
         let durable_task_id = prepared

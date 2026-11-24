@@ -1,7 +1,7 @@
 //! What a read receipt answers, without a database.
 #![expect(clippy::expect_used, reason = "a wrong answer fails the proof loudly")]
 
-use super::{Receipt, Resource, bound, decide, sql};
+use super::{Receipt, bound, decide};
 use af_core::error_code::{self, ErrorCode};
 use af_core::id::Uuid7;
 
@@ -63,21 +63,5 @@ fn a_receipt_answers_by_actor_body_and_resource() {
                 "{case}"
             ),
         }
-    }
-}
-
-#[test]
-fn every_resource_kind_is_one_the_read_checks() {
-    for resource in [
-        Resource::Fleet,
-        Resource::FleetRevision,
-        Resource::Draft,
-        Resource::Message,
-    ] {
-        let arm = format!("WHEN '{}' THEN", resource.kind());
-        assert!(
-            sql::READ.contains(&arm),
-            "{resource:?} has no arm in read.sql"
-        );
     }
 }

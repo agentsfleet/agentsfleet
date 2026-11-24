@@ -1,6 +1,6 @@
 //! A null override restores the recipe; omitted fields retain current intent.
 
-use crate::setup::present;
+use crate::present;
 use serde::{Deserialize, Serialize};
 
 /// Human-editable schedule intent; deletion keeps its separate resource verb.

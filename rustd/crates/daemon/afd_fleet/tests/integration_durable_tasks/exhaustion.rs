@@ -22,7 +22,7 @@ async fn exhausted(case: &Case) {
     let fourth = tasks
         .bind(
             case.run(),
-            &case.source_plan(source, "fourth-goal", 1, DurableTaskLimits::default()),
+            &Case::source_plan(source, "fourth-goal", 1, DurableTaskLimits::default()),
         )
         .await
         .expect("fourth independent goal");

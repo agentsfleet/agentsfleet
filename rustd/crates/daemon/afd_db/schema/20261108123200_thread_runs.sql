@@ -1,19 +1,17 @@
--- One unit of work handed to one runner: a fleet's turn or a setup draft's turn. Work can
--- be held more than once, each fenced. A run names exactly one owner, the one whose
--- `thread.threads` row it holds, so the statements both kinds share reach the thread by
--- `COALESCE(fleet_id, draft_id)`; `fleet_id` alone is read by the fleet's own statements.
--- No foreign key to fleets, drafts or turns: a settled run is history that outlives its
--- owner. The insert proves scope, and an owner's deletion deletes its active runs itself.
+-- One unit of work handed to one runner: a fleet's turn. Work can be held more than once, each
+-- fenced. A run names its fleet, whose `thread.threads` row it holds, so the statements reach
+-- the thread by `fleet_id`. No foreign key to fleets or turns: a settled run is history that
+-- outlives its fleet. The insert proves scope, and a fleet's deletion deletes its active runs
+-- itself.
 -- The runner is history the same way: its deletion, refused while it holds a run or owes
 -- metering, leaves its settled runs naming no runner.
 CREATE TABLE thread.runs (
     id                          UUID PRIMARY KEY,
     runner_id                   UUID    REFERENCES runner.runners(id) ON DELETE SET NULL,
-    fleet_id                    UUID,
-    draft_id                    UUID,
+    fleet_id                    UUID    NOT NULL,
     workspace_id                UUID    NOT NULL,
     tenant_id                   UUID    NOT NULL,
-    -- The fleet turn, or the setup draft turn, this run runs.
+    -- The fleet turn this run runs.
     turn_id                     UUID    NOT NULL,
     -- The turn's intake instant, copied so billing reads it without a join.
     turn_created_at             TIMESTAMPTZ(3)  NOT NULL,
@@ -34,17 +32,13 @@ CREATE TABLE thread.runs (
     -- Non-secret snapshot of the decision revision this run delivered. No foreign key:
     -- settled history must survive catalogue removal.
     decision_snapshot JSONB,
-    -- Opaque immutable setup selected at issue; a resumed ordinary root must
-    -- match this witness. No foreign key: settled runs survive fleet purge.
-    setup_revision_id UUID,
     -- The run freezes semantic ownership and meters its own task-running delta.
     -- Opaque durable_task_id already outlives task deletion; these add no privacy owner FK.
     durable_task_generation BIGINT CHECK (durable_task_generation > 0),
     durable_task_stop_generation BIGINT CHECK (durable_task_stop_generation >= 0),
     durable_task_started_at TIMESTAMPTZ(3),
     durable_task_runtime_accounted_at TIMESTAMPTZ(3),
-    durable_task_execution_deadline_at TIMESTAMPTZ(3),
-    CONSTRAINT ck_runs_one_owner CHECK (num_nonnulls(fleet_id, draft_id) = 1)
+    durable_task_execution_deadline_at TIMESTAMPTZ(3)
 );
 
 CREATE INDEX idx_runs_turn_id_fencing_token
@@ -52,11 +46,6 @@ CREATE INDEX idx_runs_turn_id_fencing_token
 
 CREATE INDEX idx_runs_fleet_id_status_fencing_token
     ON thread.runs (fleet_id, status, fencing_token DESC);
-
--- The draft kind's lookups by draft, and the live-run delete its deletion runs, as the
--- index above serves the fleet's. Partial: a fleet run has no draft.
-CREATE INDEX idx_runs_draft_id_status_fencing_token
-    ON thread.runs (draft_id, status, fencing_token DESC) WHERE draft_id IS NOT NULL;
 
 CREATE INDEX idx_runs_runner_id_created_at_id
     ON thread.runs (runner_id, created_at DESC, id DESC);

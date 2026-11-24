@@ -36,30 +36,25 @@ WITH fleet AS MATERIALIZED (
   RETURNING id, action_id, workspace_id, fleet_id, status, resolved_at,
             resolved_by, detail, gate_type, evidence, turn_id
 ), granted AS (
+  -- A card's answer is what its grant becomes: Approve moves the asked scope into force,
+  -- Deny revokes, and either clears the ask.
   UPDATE connector.integration_grants g
-  SET status      = CASE WHEN r.status = $6 THEN $7 ELSE $8 END,
-      approved_at = CASE WHEN r.status = $6 THEN now() END,
-      revoked_at  = CASE WHEN r.status = $6 THEN NULL ELSE now() END,
-      updated_at  = now()
+  SET status          = CASE WHEN r.status = $6 THEN $7 ELSE $8 END,
+      scope           = CASE WHEN r.status = $6 THEN COALESCE(g.requested_scope, g.scope)
+                             ELSE g.scope END,
+      requested_scope = NULL,
+      approved_at     = CASE WHEN r.status = $6 THEN now() ELSE g.approved_at END,
+      revoked_at      = CASE WHEN r.status = $6 THEN NULL ELSE now() END,
+      updated_at      = now()
   FROM resolved r
   WHERE g.fleet_id = r.fleet_id
     AND g.service  = r.evidence->>'service'
     AND r.gate_type = $9
-    AND r.turn_id IS NULL
-    AND g.status != $8
   RETURNING g.id
-), unparked AS (
-  UPDATE thread.turns a SET parked_at = NULL, updated_at = now()
-  FROM resolved r
-  -- Parked rows and assigned ones: a park in flight holds an assigned row's lock and
-  -- this waits on it, so the park cannot strand its flag. The unassigned backlog is
-  -- neither rewritten nor locked.
-  WHERE a.thread_id = r.fleet_id AND a.settled_at IS NULL
-    AND (a.parked_at IS NOT NULL OR a.run_fence IS NOT NULL)
 )
 
 SELECT id AS gate_id, action_id, workspace_id,
-       fleet_id, status, resolved_at, resolved_by, detail, turn_id,
+       fleet_id, status, resolved_at, resolved_by, detail, turn_id, gate_type,
        (SELECT COUNT(*) FROM fleet.approval_gates g
          WHERE g.fleet_id = resolved.fleet_id AND g.resolved_at IS NULL
            AND g.id NOT IN (SELECT id FROM resolved)) AS pending_approvals

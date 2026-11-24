@@ -3,9 +3,9 @@
 //! A rate is worth nothing beside a run issued twice. So once the
 //! requesters stop, the shape counts, from Postgres:
 //!
-//! - drafts holding more than one active setup run — the schema already
-//!   makes a message admitted twice impossible, so a second live run on one
-//!   draft is the only form a doubled chat run can take;
+//! - fleets a chat tenant started holding more than one active run — the
+//!   schema already makes a message admitted twice impossible, so a second
+//!   live run on one such fleet is the only form a doubled chat run can take;
 //! - fleets holding more than one active run;
 //! - hosts carrying more active runs than workers;
 //!
@@ -18,8 +18,8 @@ use crate::error::{ErrorKind, Result};
 use crate::fixture::RunPrefix;
 use af_core::id::Uuid7;
 
-/// Drafts holding more than one active setup run.
-const DOUBLED_DRAFTS: &str = include_str!("sql/doubled_drafts.sql");
+/// Chat tenants' fleets holding more than one active run.
+const DOUBLED_CHATS: &str = include_str!("sql/doubled_chats.sql");
 
 /// Fleets holding more than one active run.
 const DOUBLED_FLEETS: &str = include_str!("sql/doubled_fleets.sql");
@@ -27,10 +27,10 @@ const DOUBLED_FLEETS: &str = include_str!("sql/doubled_fleets.sql");
 /// Hosts holding more active work than workers.
 const OVERSUBSCRIBED: &str = include_str!("sql/oversubscribed.sql");
 
-/// Setup runs the window issued, which the prefix sweep then removes.
+/// Chat runs the window issued, which the prefix sweep then removes.
 const ISSUED_ATTEMPTS: &str = include_str!("sql/issued_attempts.sql");
 
-/// Measurement key and refusal name: drafts with two live chat runs.
+/// Measurement key and refusal name: chat fleets with two live runs.
 pub(super) const DOUBLED_CHAT: &str = "doubled_chat_runs";
 
 /// Measurement key and refusal name: fleets with two live runs.
@@ -43,7 +43,7 @@ pub(super) const OVERSUBSCRIBED_HOSTS: &str = "oversubscribed_hosts";
 pub(super) const POOL_UNRECOVERED: &str = "pool_recovery";
 
 /// The run kind a run that issued no chat run is refused for.
-const CHAT: &str = "setup chat";
+const CHAT: &str = "chat";
 
 /// The counts after a window.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -94,7 +94,7 @@ pub(super) async fn count(
 ) -> Result<Census> {
     let hosts = format!("{}%", prefix.as_str());
     let mut connection = stores.database.acquire().await?;
-    let doubled_chat: i64 = sqlx::query_scalar(DOUBLED_DRAFTS)
+    let doubled_chat: i64 = sqlx::query_scalar(DOUBLED_CHATS)
         .bind(tenants)
         .bind(afd_state::sql::RUN_STATUS_ACTIVE)
         .fetch_one(&mut *connection)
@@ -111,14 +111,14 @@ pub(super) async fn count(
         .await?;
     Ok(Census {
         chat_issued,
-        doubled_chat: crate::datastores::postgres_count(doubled_chat, "doubled drafts")?,
+        doubled_chat: crate::datastores::postgres_count(doubled_chat, "doubled chats")?,
         doubled_fleet: crate::datastores::postgres_count(doubled_fleet, "doubled fleets")?,
         oversubscribed: crate::datastores::postgres_count(oversubscribed, "oversubscribed hosts")?,
         recovered,
     })
 }
 
-/// Setup runs this run's chat tenants hold, for the fixture ledger.
+/// Runs this run's chat tenants' fleets hold, for the fixture ledger.
 ///
 /// # Errors
 ///
@@ -129,7 +129,7 @@ pub(super) async fn issued(stores: &Datastores, tenants: &[Uuid7]) -> Result<u64
         .bind(tenants)
         .fetch_one(&mut *connection)
         .await?;
-    crate::datastores::postgres_count(issued, "issued setup runs")
+    crate::datastores::postgres_count(issued, "issued chat runs")
 }
 
 #[cfg(test)]
@@ -171,7 +171,7 @@ mod tests {
             ..CLEAN
         }
         .judge()
-        .expect_err("a draft held twice is a defect");
+        .expect_err("a chat fleet held twice is a defect");
         let said = refused.to_string();
         assert!(said.contains(DOUBLED_CHAT) && said.contains('2'), "{said}");
     }

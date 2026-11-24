@@ -182,17 +182,8 @@ fn context_values_reach_the_runtime() -> Checked {
 }
 
 #[test]
-fn fleets_and_billing_values_reach_the_runtime() -> Checked {
-    let tuning = tuned(
-        "[fleets]\ndefinition_cache_mib=8\nhead_cache_count=9\n\
-         [billing]\n\
-         price_book_cache_count=7",
-    )?;
-    let fleets = tuning.fleets;
-    assert_eq!(
-        (fleets.definition_cache_mib, fleets.head_cache_count),
-        (8, 9)
-    );
+fn billing_values_reach_the_runtime() -> Checked {
+    let tuning = tuned("[billing]\nprice_book_cache_count=7")?;
     let billing = tuning.billing;
     assert_eq!(billing.price_book_cache_count, 7);
     Ok(())
@@ -238,18 +229,8 @@ fn durable_tasks_values_reach_the_runtime() -> Checked {
 
 #[test]
 fn setup_values_reach_the_runtime() -> Checked {
-    let setup = tuned(
-        "[setup]\nrequest_timeout_seconds=9\nreplay_window_hours=2\nmaintenance_drafts_per_page=8",
-    )?
-    .setup;
-    assert_eq!(
-        (
-            setup.request_timeout_seconds,
-            setup.replay_window_hours,
-            setup.maintenance_drafts_per_page
-        ),
-        (9, 2, 8)
-    );
+    let setup = tuned("[setup]\nreplay_window_hours=2")?.setup;
+    assert_eq!(setup.replay_window_hours, 2);
     Ok(())
 }
 
@@ -455,8 +436,6 @@ const REFUSED: &[(&str, &str)] = &[
         "[context]\nlarge_tool_window_count=0",
         "large_tool_window_count",
     ),
-    ("[fleets]\ndefinition_cache_mib=0", "definition_cache_mib"),
-    ("[fleets]\nhead_cache_count=0", "head_cache_count"),
     (
         "[billing]\nprice_book_cache_count=0",
         "price_book_cache_count",
@@ -490,15 +469,7 @@ const REFUSED: &[(&str, &str)] = &[
         "[durable_tasks.checkpoints]\nobjects_per_delete_call=0",
         "objects_per_delete_call",
     ),
-    (
-        "[setup]\nrequest_timeout_seconds=0",
-        "request_timeout_seconds",
-    ),
     ("[setup]\nreplay_window_hours=0", "replay_window_hours"),
-    (
-        "[setup]\nmaintenance_drafts_per_page=0",
-        "maintenance_drafts_per_page",
-    ),
     ("[auth]\ncli_login_ttl_seconds=0", "cli_login_ttl_seconds"),
     (
         "[auth]\ncli_login_ttl_seconds=86401",

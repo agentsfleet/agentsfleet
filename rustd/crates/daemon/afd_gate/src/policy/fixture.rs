@@ -1,22 +1,15 @@
 //! Fixtures the policy modules' unit tests share.
 //!
-//! A stored fleet document and a resolved provider are what every assertion in
-//! this directory starts from, and each test module was building its own. The
-//! copies were identical, which is the problem: a document literal repeated per
-//! module is one place per module a schema change has to be found, and nothing
-//! fails when only some of them are.
-
-#![expect(
-    clippy::expect_used,
-    reason = "a fixture asserts by panicking; the manifest's restriction set is for the daemon"
-)]
-
-use af_core::money::NANOS_PER_USD;
-use af_fleet_runtime::FleetConfig;
+//! A resolved provider and a fleet's approved grants are what every assertion
+//! in this directory starts from, spelled once so a shape change is found in
+//! one place.
 
 use af_crypto::secret::SecretString;
+use afd_api_wire::grant::kind;
 use afd_billing::rates::Posture;
 use afd_credential::provider::{Dialled, Resolved};
+
+use crate::policy::approved::{Approved, ApprovedGrant};
 
 /// The provider key a resolution carries, so a test can assert it travelled.
 pub(super) const KEY: &str = "sk-the-billed-key";
@@ -27,18 +20,6 @@ pub(super) const KEY: &str = "sk-the-billed-key";
 /// INHERITED, and a value that also happens to select a tier would let a
 /// tiering bug pass as an inheritance success.
 pub(super) const RESOLVED_CAP_TOKENS: u32 = 256_000;
-
-/// A stored config with `runtime` merged into the `x-agentsfleet` block.
-///
-/// # Panics
-/// When `runtime` does not compose into a document the stored mode resolves.
-pub(super) fn config(runtime: &str) -> FleetConfig {
-    let document = format!(
-        r#"{{"name":"probe","x-agentsfleet":{{"triggers":[],"tools":[],
-           "budget":{{"daily_nanos":"{NANOS_PER_USD}"}}{runtime}}}}}"#
-    );
-    FleetConfig::stored(&document).expect("a stored document resolves")
-}
 
 /// A resolved platform provider, optionally dialling a custom endpoint.
 pub(super) fn provider(endpoint: Option<Dialled>) -> Resolved {
@@ -55,4 +36,28 @@ pub(super) fn resolved_with(model: &str, cap_tokens: u32, endpoint: Option<Diall
         endpoint,
         SecretString::new(KEY.to_owned()),
     )
+}
+
+/// A fleet whose approved grants are `secrets` as secrets, `integrations` as
+/// integrations, and GitHub under `github_scope` when one is given.
+pub(super) fn approved(
+    secrets: &[&str],
+    integrations: &[&str],
+    github_scope: Option<&str>,
+) -> Approved {
+    let grant = |name: &str, kind: &str, scope: Option<&str>| ApprovedGrant {
+        name: name.to_owned(),
+        kind: kind.to_owned(),
+        scope: scope.map(str::to_owned),
+    };
+    secrets
+        .iter()
+        .map(|name| grant(name, kind::SECRET, None))
+        .chain(
+            integrations
+                .iter()
+                .map(|name| grant(name, kind::INTEGRATION, None)),
+        )
+        .chain(github_scope.map(|scope| grant("github", kind::INTEGRATION, Some(scope))))
+        .collect()
 }

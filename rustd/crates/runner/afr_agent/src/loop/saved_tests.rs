@@ -13,7 +13,6 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use af_core::error_code;
 use af_providers::{Connect, Provider};
-use af_secrets::Scrub;
 use af_wire::context::{ContextLoadResponse, ContextSaveRequest, ContextSaveResponse};
 use af_wire::policy::ExecutionPolicy;
 use af_wire::run::{RunPayload, Turn};
@@ -77,15 +76,14 @@ fn chat(count: u64) -> RunPayload<'static> {
 }
 
 /// A saved checkpoint of `run`'s thread, covering through `covered_through`,
-/// written for this run's model and prompt.
+/// written for this run's model and fixed prompt text.
 fn checkpoint(run: &RunPayload<'_>, covered_through: u64) -> Value {
-    let scrub = Scrub::new(&run.policy).unwrap();
-    let instructions = scrub.clean(Prompt::new(run).instructions).into_inner();
+    let fixed = Prompt::new(run, &afr_memory::Seed::default()).fixed;
     let (model, pinned) = super::context::digests(
         &run.policy.context.model,
         run.policy.inference.as_ref(),
         run.policy.model_context_tokens,
-        &instructions,
+        &fixed,
     )
     .unwrap();
     json!({

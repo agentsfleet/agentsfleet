@@ -1,7 +1,7 @@
 //! Acceptance policy a deployment configures; unset, a knob limits nothing.
 
 mod defaults;
-mod interpretation;
+mod new_work;
 
 pub use defaults::DurableTaskDefaults;
 
@@ -10,7 +10,7 @@ use garde::Validate;
 use serde::Deserialize;
 use std::time::Duration;
 
-/// Deployment limits for new interpretations and objectives.
+/// Deployment limits for new tasks and their statements.
 #[derive(Debug, Clone, Copy, Deserialize, Validate)]
 #[serde(default, deny_unknown_fields)]
 pub struct DurableTaskSettings {
@@ -20,19 +20,19 @@ pub struct DurableTaskSettings {
     /// Accepted inputs recovered beyond the saved incorporation cursor per read.
     #[garde(range(min = 1))]
     pub max_inputs_per_safe_boundary: usize,
-    /// Complete immutable actions accepted from one human message.
+    /// Binding items accepted from one human message.
     #[garde(range(min = 1))]
     pub max_actions_per_message: usize,
     /// Original source bytes retained as one new objective.
     #[garde(range(min = 1))]
     pub max_objective_bytes: usize,
-    /// UTF-8 bytes in a new interpretation's compact label.
+    /// UTF-8 bytes in a new task's compact label.
     #[garde(range(min = 1))]
     pub max_title_bytes: usize,
-    /// Completion statements frozen with a new objective's accepted setup.
+    /// Completion statements a task is judged against.
     #[garde(range(min = 1))]
     pub max_completion_questions: usize,
-    /// UTF-8 bytes in each new objective's completion question text.
+    /// UTF-8 bytes in each completion statement's question text.
     #[garde(range(min = 1))]
     pub max_question_text_bytes: usize,
     /// Bytes in the authored question and its criteria together.

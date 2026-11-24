@@ -20,8 +20,6 @@ pub(crate) struct Answer {
     pub(crate) fleet_found: bool,
     /// The fleet's stored status, when found.
     pub(crate) status: Option<String>,
-    /// Whether the fleet's head setup carries this build's policy stamp.
-    pub(crate) setup_current: bool,
     /// Whether this statement wrote the stored row.
     pub(crate) inserted: bool,
     /// The stored row: this statement's, or the one the key already held.
@@ -65,8 +63,8 @@ impl Answer {
     }
 }
 
-/// The outcome, in order: fleet absent, repeat, not runnable, policy,
-/// deployment ceiling, accepted.
+/// The outcome, in order: fleet absent, repeat, not runnable, deployment
+/// ceiling, accepted.
 ///
 /// # Errors
 /// The refusal that applied first, or an unreadable answer: a status this
@@ -89,9 +87,6 @@ pub(crate) fn decide(answer: &Answer, bound: Bound) -> Result<Ledger> {
         if status != required {
             return Err(ErrorKind::NotRunnable { status }.into());
         }
-    }
-    if !answer.setup_current {
-        return Err(ErrorKind::Policy.into());
     }
     if !bound.ceiling_open {
         return Err(ErrorKind::OverBudget { limit: bound.limit }.into());

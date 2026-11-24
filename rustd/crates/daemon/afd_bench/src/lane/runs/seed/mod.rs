@@ -188,7 +188,6 @@ pub(crate) async fn rows(
     )
     .name(&fleet)
     .tags(&[tag])
-    .native_setup()
     .at(now)
     .insert(&mut *connection)
     .await

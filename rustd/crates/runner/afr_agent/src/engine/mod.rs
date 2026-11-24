@@ -178,20 +178,20 @@ pub struct Needs {
 /// Runs one run's turn.
 #[async_trait::async_trait]
 pub trait AgentEngine: Send + Sync + fmt::Debug {
-    /// Establishes native intent before provisioning any sandbox or checkout.
-    /// Engines without durable coordination refuse durable runs explicitly.
+    /// Reads a task-bound run's native inputs before any sandbox or checkout
+    /// is provisioned; a run bound to no task prepares nothing. Engines
+    /// without durable coordination refuse a task-bound run explicitly.
     async fn prepare_durable_task(
         &self,
         run: &RunPayload<'_>,
         _verbs: &dyn RunVerbs,
-        _meter: &Meter,
-        _stop: &CancellationToken,
     ) -> Result<Option<crate::PreparedDurableTask>> {
-        if run.durable_tasks {
+        if run.durable_task.is_some() {
             return Err(crate::decision::unavailable());
         }
         Ok(None)
     }
+
     /// Says what a run under `policy` needs, before anything is prepared
     /// for it.
     ///
@@ -206,20 +206,6 @@ pub trait AgentEngine: Send + Sync + fmt::Debug {
     /// a failed [`ExecutionResult`]. An error here means the engine itself
     /// could not run.
     async fn run(&self, run: AgentRun<'_>) -> Result<RunOutput>;
-
-    /// Runs a setup draft's turn to its end: no sandbox, `propose_setup`
-    /// alone, and the proposal the run kept handed back
-    /// ([`crate::setup::SetupRun`]).
-    ///
-    /// # Errors
-    /// The engine hosts no setup run, which this default refuses, or its
-    /// model or the run's assignment could not be used. A failure the model
-    /// caused is a failed result, as [`AgentEngine::run`]'s is.
-    async fn setup(&self, _run: crate::setup::SetupRun<'_>) -> Result<crate::setup::SetupOutput> {
-        Err(crate::error::setup_assignment(
-            "this engine hosts no setup run",
-        ))
-    }
 }
 
 #[cfg(test)]

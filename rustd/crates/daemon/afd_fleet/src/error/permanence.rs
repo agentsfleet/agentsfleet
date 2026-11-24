@@ -58,7 +58,7 @@ impl Error {
         match self.inner.kind {
             ErrorKind::VaultDataInvalid
             | ErrorKind::ConfigUnreadable { .. }
-            | ErrorKind::SetupUnavailable => true,
+            | ErrorKind::FleetRowUnreadable => true,
             ErrorKind::Datastore { .. }
             | ErrorKind::DecisionRequest { .. }
             | ErrorKind::DecisionDeadline { .. }
@@ -71,16 +71,17 @@ impl Error {
             | ErrorKind::Billing { .. }
             | ErrorKind::Credential { .. }
             | ErrorKind::Gate { .. }
+            | ErrorKind::Approval { .. }
             | ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
             | ErrorKind::Events { .. }
             | ErrorKind::Outbound { .. }
             | ErrorKind::Rejected { .. }
-            | ErrorKind::DurableTaskMutation { .. }
             | ErrorKind::DurableTaskControlTurn { .. }
             | ErrorKind::DurableTaskControlConflict { .. }
             | ErrorKind::DurableTaskPrecondition { .. }
             | ErrorKind::DurableTaskRefused { .. }
+            | ErrorKind::FleetRefused { .. }
             | ErrorKind::TurnCheckpointRefused { .. }
             | ErrorKind::TurnCheckpointFailure { .. }
             | ErrorKind::UsageCount { .. }
@@ -100,7 +101,6 @@ impl Error {
             | ErrorKind::RunLost
             | ErrorKind::RunCancelled
             | ErrorKind::RenewalNoCredits
-            | ErrorKind::BudgetExhausted
             | ErrorKind::MessageNoChannel
             | ErrorKind::Scrub { .. }
             | ErrorKind::SequenceCorrupt

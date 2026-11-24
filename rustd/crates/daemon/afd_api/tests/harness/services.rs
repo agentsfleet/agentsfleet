@@ -171,14 +171,6 @@ impl TenantPlane for Fleet {
         &self.tasks
     }
 
-    fn drafts(&self) -> &afd_setup::Drafts {
-        &self.drafts
-    }
-
-    fn setup(&self) -> &afd_setup::Setup {
-        &self.setup
-    }
-
     fn creations(&self) -> &afd_setup::Creations {
         &self.creations
     }
@@ -260,6 +252,14 @@ impl RunnerPlane for Fleet {
 
     fn interjector(&self) -> &afd_outbound::Interjector {
         &self.interjector
+    }
+
+    fn analytics(&self) -> &af_observability::Analytics {
+        &self.analytics
+    }
+
+    fn deployment(&self) -> &str {
+        DEPLOYMENT
     }
 }
 

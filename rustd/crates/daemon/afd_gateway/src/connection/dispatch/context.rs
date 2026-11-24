@@ -1,6 +1,6 @@
-//! A run's compacted context, a setup draft's or a fleet chat's, read and
-//! saved on the run's own connection: the read is `afd_fleet`'s, the fenced
-//! save `afd_setup`'s.
+//! A run's compacted fleet chat context, read and saved on the run's own
+//! connection through `afd_fleet`, whose save is `afd_setup::context`'s
+//! fenced store.
 //!
 //! The checkpoint crosses the wire as the opaque document `af_wire` carries,
 //! so it is decoded here, into the `af_context` type both halves check.
@@ -12,7 +12,7 @@ use af_core::id::Uuid7;
 use af_wire::context::{
     ContextLoadRequest, ContextLoadResponse, ContextSaveRequest, ContextSaveResponse,
 };
-use afd_setup::setup_run::ContextSave;
+use afd_fleet::run::ContextSave;
 use garde::Validate as _;
 
 use super::super::{ConnectionServices, Message, context::answer};
@@ -75,7 +75,7 @@ impl ConnectionServices {
                     resource_version: request.resource_version,
                     checkpoint,
                 };
-                self.drafts
+                self.runs
                     .save_context(&self.handle.runner, save, now)
                     .await?;
                 Ok(ContextSaveResponse {

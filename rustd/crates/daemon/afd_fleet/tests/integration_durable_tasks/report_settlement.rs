@@ -14,7 +14,6 @@ use std::{borrow::Cow, sync::Arc};
 pub(super) fn request(case: &Case, task: Option<DurableTaskReport>) -> ReportRequest<'_> {
     ReportRequest {
         folded_through_sequence: None,
-        setup: None,
         durable_task: task,
         run_id: Cow::Borrowed(case.held.run_key.as_str()),
         turn_id: Cow::Borrowed(case.held.turn_id.as_str()),

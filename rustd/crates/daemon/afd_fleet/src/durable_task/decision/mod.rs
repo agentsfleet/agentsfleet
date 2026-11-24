@@ -34,10 +34,6 @@ use af_wire::durable_task::{
 use super::{DurableTaskRun, DurableTasks};
 use crate::Result;
 
-/// Full assembled budget query for the database statement inventory.
-#[cfg(feature = "test-util")]
-pub const DECISION_BUDGET_STATEMENT: &str = sql::BUDGET;
-
 /// Locking call lookup for the database statement inventory.
 #[cfg(feature = "test-util")]
 pub const LOCKED_DECISION_CALL_STATEMENT: &str = sql::FIND_CALL;

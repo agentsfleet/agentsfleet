@@ -44,7 +44,7 @@ async fn the_four_tools_share_one_run_memory() {
     let recalled = call_built(&run, "memory_recall", json!({"query": "OPERATOR_context"})).await;
     assert_eq!(
         recalled.text,
-        "operator_context:review_status (core): two findings open\n\
+        "operator_context:review_status (note): two findings open\n\
          operator_context:codename (core): bluebird"
     );
 
@@ -62,14 +62,16 @@ async fn the_four_tools_share_one_run_memory() {
         dropped.text
     );
     let listed = call_built(&run, "memory_list", json!({})).await;
-    assert_eq!(listed.text, "operator_context:review_status (core)");
+    assert_eq!(listed.text, "operator_context:review_status (note)");
 
     let pushed = run.memory.into_pending();
     assert_eq!(pushed.len(), 1);
     assert_eq!(
-        pushed[0].category, PINNED_CATEGORY,
-        "no category names the pinned one"
+        pushed[0].category,
+        guffbolt::tools::memory::DEFAULT_CATEGORY,
+        "no category names the default one, never the pinned one"
     );
+    assert_ne!(pushed[0].category, PINNED_CATEGORY);
 }
 
 #[tokio::test]

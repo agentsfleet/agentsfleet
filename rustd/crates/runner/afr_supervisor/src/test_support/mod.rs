@@ -81,6 +81,8 @@ pub(crate) fn clock() -> Arc<dyn af_core::clock::Clock> {
 pub(crate) enum Answer {
     /// Replies 2xx with these bytes.
     Reply(Bytes),
+    /// Replies 201 with these bytes: the verb created what it answers for.
+    Created(Bytes),
     /// Fails with this error.
     Fail(crate::Error),
     /// Never answers.

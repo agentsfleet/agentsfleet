@@ -144,8 +144,8 @@ async fn the_page_reads_newest_first() {
 
 /// The cursor walks every gate raised in the same millisecond.
 ///
-/// One run parks several tools at once, so siblings sharing an instant are
-/// ordinary rather than exotic. The predicate is a row-wise
+/// Gates raised in one transaction share its instant, so siblings sharing one
+/// are ordinary rather than exotic. The predicate is a row-wise
 /// `(created_at, id) < ($6, $7::uuid)` for exactly this: an instant alone would
 /// resume PAST every sibling of the cursor row and lose them silently.
 ///

@@ -1,11 +1,7 @@
-//! Collection rows retain their lightweight trigger projection.
+//! The workspace's fleet directory.
 
 use serde::Serialize;
-use serde_json::value::RawValue;
 use std::borrow::Cow;
-
-/// Validated stored trigger JSON, omitted when unavailable.
-pub type Triggers = Option<Box<RawValue>>;
 
 /// A shared fleet in the workspace directory.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -23,13 +19,6 @@ pub struct FleetSummary<'a> {
     /// Last mutation.
     #[serde(with = "af_wire::instant")]
     pub updated_at: jiff::Timestamp,
-    /// The saved purpose, as the fleet's setup describes it; null while the
-    /// fleet has no saved setup.
-    pub description: Option<Cow<'a, str>>,
-    /// Authored trigger projection.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
-    pub triggers: Triggers,
     /// Exact lifetime event count.
     pub events_processed: String,
     /// Exact lifetime spend in nanos.

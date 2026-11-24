@@ -9,7 +9,6 @@ use af_core::{clock, error_code, id::Uuid7};
 use af_crypto::entropy::Entropy;
 use af_wire::{
     protocol::Up,
-    run::AcceptedKinds,
     runner::{AssignedPolicy, NetworkPolicy, RegisterRequest, SandboxTier},
 };
 use afd_db::{
@@ -59,7 +58,6 @@ impl Live {
             &gateway,
             enrolled.runner_id.clone(),
             enrolled.token.digest().clone(),
-            AcceptedKinds::ALL,
             1,
         )
         .await?;
@@ -113,7 +111,7 @@ fn registration() -> RegisterRequest<'static> {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn an_opening_frame_on_an_open_connection_is_a_protocol_error() -> TestResult {
     let mut live = Live::connect().await?;
-    let hello = json!({"type":"hello","request_id":2,"accepted_kinds":["fleet","setup"],
+    let hello = json!({"type":"hello","request_id":2,
         "running":[],"credits":1});
     let confirm = json!({"type":"confirm","request_id":3,"connection_id":mint_id()});
     for frame in [hello, confirm] {
@@ -329,7 +327,6 @@ async fn fleet_progress_the_datastore_cannot_retain_is_observed_not_returned() -
                 fence: 1,
             }),
             reported: None,
-            draft: None,
         },
         clock::now(),
     )?;

@@ -15,7 +15,7 @@ use super::{
     WorkspaceOnboarding, WorkspaceSecrets,
 };
 
-/// The tenant plane: a person's account, workspaces, fleets, setup and the
+/// The tenant plane: a person's account, workspaces, fleets and the
 /// connectors and streams over them.
 ///
 /// Each seam whose store holds something a suite cannot build — a bus
@@ -141,11 +141,8 @@ pub trait TenantPlane: Shared {
     /// Authoritative task lifecycle over the same fleet run and turn stores.
     fn tasks(&self) -> &dyn afd_fleet::durable_task::DurableTaskLifecycle;
 
-    /// Creator-private setup shared by browser and terminal conversation clients.
-    fn drafts(&self) -> &afd_setup::Drafts;
-    /// Human-reviewed native setup over the same private state and process key.
-    fn setup(&self) -> &afd_setup::Setup;
-    /// Retained native Save, checked activation and initial-run recovery.
+    /// A fleet's create from its first message, its read, change and delete,
+    /// its trigger rows and the workspace's model choices.
     fn creations(&self) -> &afd_setup::Creations;
 
     /// The workspace whose vault holds this deployment's own platform secrets,

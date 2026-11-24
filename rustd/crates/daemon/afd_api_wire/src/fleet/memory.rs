@@ -1,4 +1,4 @@
-//! Shared-memory permissions remain independent from immutable fleet setup.
+//! A fleet's shared-memory permissions.
 
 use serde::{Deserialize, Serialize};
 

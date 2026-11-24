@@ -8,7 +8,7 @@ use bytes::Bytes;
 use tokio::sync::mpsc;
 
 use super::Answer;
-use crate::client::{Call, ControlPlane, RunnerApi};
+use crate::client::{Call, ControlPlane, Reply, RunnerApi};
 use crate::error;
 
 mod stream;
@@ -18,7 +18,7 @@ struct SharedApi(std::sync::Arc<dyn RunnerApi>);
 
 #[async_trait::async_trait]
 impl RunnerApi for SharedApi {
-    async fn send(&self, call: Call) -> crate::Result<Bytes> {
+    async fn send(&self, call: Call) -> crate::Result<Reply> {
         self.0.send(call).await
     }
 }
@@ -99,7 +99,7 @@ impl<F> RunnerApi for FakeApi<F>
 where
     F: Fn(&Call) -> Answer + Send + Sync,
 {
-    async fn send(&self, call: Call) -> crate::Result<Bytes> {
+    async fn send(&self, call: Call) -> crate::Result<Reply> {
         let answer =
             catch_unwind(AssertUnwindSafe(|| (self.answer)(&call))).unwrap_or_else(|panic| {
                 let message = panic
@@ -115,12 +115,16 @@ where
             });
         drop(self.calls.send(call));
         match answer {
-            Answer::Reply(bytes) => Ok(bytes),
+            Answer::Reply(bytes) => Ok(Reply::ok(bytes)),
+            Answer::Created(bytes) => Ok(Reply {
+                created: true,
+                bytes,
+            }),
             Answer::Fail(failure) => Err(failure),
             Answer::Stall => std::future::pending().await,
             Answer::Late(after, bytes) => {
                 tokio::time::sleep(after).await;
-                Ok(bytes)
+                Ok(Reply::ok(bytes))
             }
         }
     }

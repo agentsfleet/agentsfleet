@@ -99,6 +99,7 @@ mod support;
 mod team_faults;
 
 /// Signed deliveries, as a provider would present them.
+pub(crate) mod triggers;
 pub(crate) mod webhook;
 
 pub(crate) use self::stubs_identity::{RecordingWriteback, WroteBack};
@@ -242,8 +243,6 @@ const FIXTURE_APP_URL: &str = "https://app.fixture.test";
 #[derive(Debug)]
 pub(crate) struct Fleet {
     native: Option<Db>,
-    drafts: afd_setup::Drafts,
-    setup: afd_setup::Setup,
     creations: afd_setup::Creations,
     ready: ReadyInputs,
     mock_directory: MockDirectory,

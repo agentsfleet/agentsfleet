@@ -12,7 +12,6 @@ use af_wire::usage::{LineKind, RequestLines, RequestUsage};
 use jiff::Timestamp;
 use sqlx::Connection as _;
 
-use super::{DEEP_DAILY_BUDGET, set_fleet_config};
 use crate::report_seed::{DEEP_POOL, Held, held};
 use crate::rows::Row;
 
@@ -44,12 +43,11 @@ fn one_request() -> RenewRequest {
     }
 }
 
-/// A held run whose payer and fleet have room, so only the case's own change
-/// decides its renewal.
+/// A held run whose payer has room, so only the case's own change decides
+/// its renewal.
 async fn funded() -> Held {
     let held = held().await;
     held.fixtures.seed_wallet(&held.tenant, DEEP_POOL).await;
-    set_fleet_config(&held, DEEP_DAILY_BUDGET).await;
     held
 }
 

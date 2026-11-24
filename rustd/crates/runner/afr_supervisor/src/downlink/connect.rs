@@ -24,9 +24,8 @@ use crate::{
     error::{self, ErrorKind},
 };
 
-/// The protocol revision this runner speaks: v4, so the daemon assigns it a
-/// setup draft's turn as a draft-owned run (`crate::setup_run`) and answers
-/// its context verb.
+/// The protocol revision this runner speaks: every assignment is a fleet's
+/// turn, carrying the fleet's name and no installed instructions.
 const SPOKEN: &str = protocol::VERSION;
 
 /// Kept: a zero interval in a welcome would fire the runner's rounds back to back.
@@ -152,7 +151,6 @@ impl Opening<'_> {
         let running = self.running.snapshot();
         let hello: Up<'_> = Up::Hello {
             request_id: NonZeroU64::MIN,
-            accepted_kinds: af_wire::run::AcceptedKinds::ALL,
             running: running.iter().map(|id| id.as_str().into()).collect(),
             credits: 0,
             unconfirmed_connection_id: resume.unconfirmed().map(|id| id.as_str().into()),

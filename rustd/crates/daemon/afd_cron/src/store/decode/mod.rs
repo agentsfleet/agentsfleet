@@ -25,8 +25,6 @@ const COL_SOURCE: &str = "source";
 const COL_DESIRED_STATUS: &str = "desired_status";
 /// See [`ScheduleRow::sync_status`].
 const COL_SYNC_STATUS: &str = "sync_status";
-/// See [`ScheduleRow::recipe`].
-const COL_RECIPE: &str = "recipe";
 
 /// A schedule row as the statements answer it, before its words are read.
 #[derive(Debug, FromRow)]
@@ -67,8 +65,6 @@ struct ScheduleRow {
     updated_at: Timestamp,
     /// The instant a `once` schedule is for.
     fire_at: Option<jiff_sqlx::Timestamp>,
-    /// The inherited recipe, as JSON text.
-    recipe: Option<String>,
 }
 
 /// What sqlx reports for a column this build cannot make sense of.
@@ -106,15 +102,6 @@ impl ScheduleRow {
             created_at: self.created_at,
             updated_at: self.updated_at,
             fire_at: self.fire_at.map(jiff_sqlx::Timestamp::to_jiff),
-            recipe: self
-                .recipe
-                .as_deref()
-                .map(serde_json::from_str)
-                .transpose()
-                .map_err(|source| sqlx::Error::ColumnDecode {
-                    index: COL_RECIPE.into(),
-                    source: Box::new(source),
-                })?,
         })
     }
 }

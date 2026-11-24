@@ -179,7 +179,6 @@ mod tests {
             execution_deadline: None,
             inputs: DurableTaskInputsResponse {
                 source_turn_id: "turn".to_owned(),
-                accepted_revision_id: None,
                 current_message: None,
                 inputs: Vec::new(),
                 accepted_inputs: Vec::new(),
@@ -189,7 +188,6 @@ mod tests {
                 durable_tasks: Vec::new(),
                 next_cursor: None,
             },
-            allow_actions: false,
         }
     }
 

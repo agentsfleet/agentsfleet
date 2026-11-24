@@ -43,16 +43,11 @@ pub async fn log_lines<'e>(
         .iter()
         .map(|_line| Ok(entropy.uuid7(now)?))
         .collect::<Result<Vec<Uuid7>>>()?;
-    let (fleet, fleet_name, turn_id, run) = match &settlement.attribution {
-        Attribution::Fleet {
-            fleet,
-            fleet_name,
-            turn_id,
-        } => (Some(fleet), Some(fleet_name.as_str()), Some(turn_id), None),
-        Attribution::SetupRun { message } => {
-            (None, None, Some(message), Some(settlement.work.id()))
-        }
-    };
+    let Attribution::Fleet {
+        fleet,
+        fleet_name,
+        turn_id,
+    } = &settlement.attribution;
     let lines = &settlement.lines;
     let unpriced = lines
         .iter()
@@ -65,9 +60,8 @@ pub async fn log_lines<'e>(
         .bind(&settlement.payer.tenant)
         .bind(&settlement.payer.workspace)
         .bind(fleet)
-        .bind(fleet_name)
+        .bind(fleet_name.as_str())
         .bind(turn_id)
-        .bind(run)
         .bind(&settlement.provider)
         .bind(&settlement.model)
         .bind(settlement.posture.as_str())
@@ -123,16 +117,18 @@ mod tests {
     /// A server nothing listens on: a statement sent here fails to connect.
     const NOWHERE: &str = "postgres://nobody@127.0.0.1:1/nowhere";
 
-    /// A setup run's settlement of `lines`, every identifier `id`.
+    /// A fleet run's settlement of `lines`, every identifier `id`.
     fn settlement(id: &Uuid7, lines: Vec<RatedLine>) -> Settlement {
         Settlement {
-            work: WorkKey::SetupRun(id.clone()),
+            work: WorkKey::FleetRun(id.clone()),
             payer: Account {
                 tenant: id.clone(),
                 workspace: id.clone(),
             },
-            attribution: Attribution::SetupRun {
-                message: id.clone(),
+            attribution: Attribution::Fleet {
+                fleet: id.clone(),
+                fleet_name: String::new(),
+                turn_id: id.clone(),
             },
             provider: String::new(),
             model: String::new(),

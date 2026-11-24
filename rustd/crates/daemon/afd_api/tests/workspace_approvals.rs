@@ -34,8 +34,9 @@ use serde_json::Value;
 
 use self::harness::{Fleet, OWNED_WORKSPACE};
 
-/// A tenant api-key, shaped as the authenticator classifies one.
-const TENANT_KEY: &str = "agt_tfacefeeddecafbaddecafbaddecafbaddecafbaddecafbaddecafbaddecafbad";
+/// A signed-in person's browser session: an approve or a deny needs a person,
+/// so the suite signs in as one.
+const SESSION: &str = "fixture.header.payload";
 
 /// The subject the fixture credential resolves to.
 const SUBJECT: &str = "user_2approvals";
@@ -72,14 +73,14 @@ async fn send(
     body: &str,
 ) -> axum::response::Response {
     let router = Fleet::new()
-        .with_person(TENANT_KEY, SUBJECT, scopes)
+        .with_dashboard_holding(SUBJECT, scopes)
         .router();
     harness::send(&router, method, path, credential, body).await
 }
 
 /// One fully authorised request, for the tests isolating another axis.
 async fn authorised(method: Method, path: &str, body: &str) -> axum::response::Response {
-    send(EVERY_APPROVAL_SCOPE, method, path, Some(TENANT_KEY), body).await
+    send(EVERY_APPROVAL_SCOPE, method, path, Some(SESSION), body).await
 }
 
 /// Seeing the queue does not confer the authority to answer it.
@@ -88,14 +89,7 @@ async fn authorised(method: Method, path: &str, body: &str) -> axum::response::R
 /// assumed: a reader reaches both reads and is refused the decision.
 #[tokio::test]
 async fn reading_the_queue_does_not_confer_the_authority_to_answer_it() {
-    let listed = send(
-        APPROVAL_READ,
-        Method::GET,
-        &collection(),
-        Some(TENANT_KEY),
-        "",
-    )
-    .await;
+    let listed = send(APPROVAL_READ, Method::GET, &collection(), Some(SESSION), "").await;
     assert_ne!(
         listed.status(),
         StatusCode::FORBIDDEN,
@@ -106,7 +100,7 @@ async fn reading_the_queue_does_not_confer_the_authority_to_answer_it() {
         APPROVAL_READ,
         Method::POST,
         &decision("approve"),
-        Some(TENANT_KEY),
+        Some(SESSION),
         "",
     )
     .await;
@@ -135,7 +129,7 @@ async fn answering_a_gate_carries_the_authority_to_browse() {
         APPROVAL_RESOLVE,
         Method::GET,
         &collection(),
-        Some(TENANT_KEY),
+        Some(SESSION),
         "",
     )
     .await;

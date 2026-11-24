@@ -8,8 +8,7 @@ impl Error {
     pub const fn durable_task_current_state(&self) -> Option<&'static str> {
         match &self.inner.kind {
             ErrorKind::DurableTaskControlConflict { state }
-            | ErrorKind::DurableTaskControlTurn { state, .. }
-            | ErrorKind::DurableTaskMutation { state, .. } => Some(state.as_str()),
+            | ErrorKind::DurableTaskControlTurn { state, .. } => Some(state.as_str()),
             ErrorKind::DurableTaskStorageSigning { .. }
             | ErrorKind::DurableTaskStorageSigningParameters { .. }
             | ErrorKind::DurableTaskStorageRequest { .. }
@@ -28,6 +27,7 @@ impl Error {
             | ErrorKind::DurableTaskCounter { .. }
             | ErrorKind::DurableTaskPrecondition { .. }
             | ErrorKind::DurableTaskRefused { .. }
+            | ErrorKind::FleetRefused { .. }
             | ErrorKind::TurnCheckpointRefused { .. }
             | ErrorKind::TurnCheckpointFailure { .. }
             | ErrorKind::Context { .. }
@@ -35,6 +35,7 @@ impl Error {
             | ErrorKind::Datastore { .. }
             | ErrorKind::Runner { .. }
             | ErrorKind::Gate { .. }
+            | ErrorKind::Approval { .. }
             | ErrorKind::Credential { .. }
             | ErrorKind::Billing { .. }
             | ErrorKind::Query { .. }
@@ -45,7 +46,7 @@ impl Error {
             | ErrorKind::Mint { .. }
             | ErrorKind::Entropy { .. }
             | ErrorKind::ConfigUnreadable { .. }
-            | ErrorKind::SetupUnavailable
+            | ErrorKind::FleetRowUnreadable
             | ErrorKind::VaultDataInvalid
             | ErrorKind::SequenceCorrupt
             | ErrorKind::PostureCorrupt
@@ -54,7 +55,6 @@ impl Error {
             | ErrorKind::RunLost
             | ErrorKind::RunCancelled
             | ErrorKind::RenewalNoCredits
-            | ErrorKind::BudgetExhausted
             | ErrorKind::MessageNoChannel
             | ErrorKind::Scrub { .. }
             | ErrorKind::IntegrationNotConnected
@@ -89,9 +89,9 @@ impl Error {
             | ErrorKind::UsageCount { .. }
             | ErrorKind::DurableTaskCounter { .. }
             | ErrorKind::DurableTaskControlTurn { .. }
-            | ErrorKind::DurableTaskMutation { .. }
             | ErrorKind::DurableTaskControlConflict { .. }
             | ErrorKind::DurableTaskRefused { .. }
+            | ErrorKind::FleetRefused { .. }
             | ErrorKind::TurnCheckpointRefused { .. }
             | ErrorKind::TurnCheckpointFailure { .. }
             | ErrorKind::Context { .. }
@@ -99,6 +99,7 @@ impl Error {
             | ErrorKind::Datastore { .. }
             | ErrorKind::Runner { .. }
             | ErrorKind::Gate { .. }
+            | ErrorKind::Approval { .. }
             | ErrorKind::Credential { .. }
             | ErrorKind::Billing { .. }
             | ErrorKind::Query { .. }
@@ -109,7 +110,7 @@ impl Error {
             | ErrorKind::Mint { .. }
             | ErrorKind::Entropy { .. }
             | ErrorKind::ConfigUnreadable { .. }
-            | ErrorKind::SetupUnavailable
+            | ErrorKind::FleetRowUnreadable
             | ErrorKind::VaultDataInvalid
             | ErrorKind::SequenceCorrupt
             | ErrorKind::PostureCorrupt
@@ -118,7 +119,6 @@ impl Error {
             | ErrorKind::RunLost
             | ErrorKind::RunCancelled
             | ErrorKind::RenewalNoCredits
-            | ErrorKind::BudgetExhausted
             | ErrorKind::MessageNoChannel
             | ErrorKind::Scrub { .. }
             | ErrorKind::IntegrationNotConnected

@@ -176,7 +176,7 @@ async fn an_unrotated_refresh_token_reason_carries_no_code_prefix() {
         fleet_id: test_dead::id(1),
         turn_id: "1767225600000-1".into(),
         binding: None,
-        runner_credentials: Vec::new(),
+        integrations: Vec::new(),
     };
     let handle = serde_json::Value::Object(serde_json::Map::from_iter([(
         af_core::credential::FIELD_REFRESH_TOKEN.to_owned(),

@@ -16,11 +16,10 @@
 )]
 
 use af_core::id::Uuid7;
-use af_core::money::NANOS_PER_USD;
 use afd_fleet_lifecycle::FleetStatus;
 
 use super::{Fanout, fanout, replay_id};
-use crate::binding::Binding;
+use crate::binding::{Binding, StoredTrigger};
 
 /// The provider whose App ingress these rules belong to.
 const SOURCE: &str = "github";
@@ -30,37 +29,23 @@ const FLEET: &str = "01912d4e-8f2a-7c3b-9d1e-4a5b6c7d8e9f";
 /// See [`FLEET`].
 const WORKSPACE: &str = "01912d4e-8f2a-7c3b-9d1e-4a5b6c7d8ea0";
 
-/// A stored document declaring one GitHub webhook trigger.
-///
-/// The surrounding keys are the ones [`af_fleet_runtime::FleetConfig::stored`]
-/// requires. Written out rather than loaded from a fixture so a reader sees the
-/// whole input beside the assertion.
-fn subscribed() -> String {
-    format!(
-        r#"{{
-  "name": "ingress-fixture",
-  "x-agentsfleet": {{
-    "triggers": [{{"type":"webhook","source":"github","repositories":["owner/repo"]}}],
-    "tools": ["bash"],
-    "budget": {{ "daily_nanos": "{NANOS_PER_USD}" }}
-  }}
-}}"#
-    )
-}
-
 /// A subscribed fleet, for the tests that only count them.
 fn subscriber() -> Binding {
     let parse = |text: &str| Uuid7::parse(text).expect("the fixture identifiers are canonical");
+    let row = StoredTrigger {
+        source: SOURCE.to_owned(),
+        repositories: Some(vec!["owner/repo".to_owned()]),
+        ..StoredTrigger::default()
+    };
 
-    Binding::read_for_source(
+    Binding::read(
         parse(FLEET),
         parse(WORKSPACE),
         FleetStatus::Active.as_str(),
-        &subscribed(),
-        SOURCE,
+        &row,
     )
-    .expect("the document parses and the status is one this build knows")
-    .expect("the document declares a github webhook trigger")
+    .expect("the row parses and the status is one this build knows")
+    .expect("the row names a registry source")
 }
 
 /// `n` subscribers, for the ceiling's boundary.

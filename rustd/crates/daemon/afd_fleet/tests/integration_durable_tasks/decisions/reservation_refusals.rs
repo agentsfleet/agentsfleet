@@ -2,13 +2,11 @@
 //! or its own saved call can no longer stand behind a paid decision.
 
 use af_core::{error_code, error_code::ErrorCode};
-use af_wire::durable_task::{
-    DecisionAssessment, DecisionDurableTaskVersion, DecisionReservationInput, DurableTaskLimits,
-};
-use afd_fleet::durable_task::{DurableTaskLifecycle as _, PreparedPlan};
+use af_wire::durable_task::DecisionReservationInput;
+use afd_fleet::durable_task::DurableTaskLifecycle as _;
 
 use super::{
-    super::fixture::{Case, exercise, items},
+    super::fixture::{Case, exercise},
     fixture::Decisions,
 };
 
@@ -50,7 +48,7 @@ async fn an_archived_fleet_reserves_no_decision() {
         .await;
         refused(
             &fixture,
-            &fixture.reservation(DecisionAssessment::Message, None),
+            &fixture.call_input().await,
             error_code::DURABLE_TASK_STALE_STATE,
         )
         .await;
@@ -60,14 +58,13 @@ async fn an_archived_fleet_reserves_no_decision() {
     .await;
 }
 
-// Value: protects=a goal decision is reserved only for a live task asked the
-// policy's own completion questions; fails_when=the expiry check or the question
-// comparison is dropped from goal preparation; why_new=both refusals had no case;
-// seam=the production bind and reserve verbs over live Postgres; no_claim=the
+// Value: protects=a goal decision is reserved only for a live task;
+// fails_when=the expiry check is dropped from goal preparation; seam=the
+// production bind and reserve verbs over live Postgres; no_claim=the
 // running-state check, which the run's lock refuses first.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_goal_decision_needs_a_live_durable_task_with_the_policys_questions() {
+async fn a_goal_decision_needs_a_live_durable_task() {
     exercise(async |case: &Case| {
         let fixture = Decisions::create(case).await;
         let task = fixture.bind_goal().await;
@@ -86,39 +83,6 @@ async fn a_goal_decision_needs_a_live_durable_task_with_the_policys_questions() 
         fixture.model.finish().await.expect("model cleanup");
     })
     .await;
-    exercise(async |case: &Case| {
-        let fixture = Decisions::create(case).await;
-        // The case's own plan asks a regression question the policy never asks.
-        let plan = PreparedPlan::from_parts(
-            case.held.turn_id.clone(),
-            fixture.revision.clone(),
-            "off-policy-goal".to_owned(),
-            items(1, DurableTaskLimits::default()),
-        );
-        let bound = fixture
-            .tasks
-            .bind(case.run(), &plan)
-            .await
-            .expect("a bound task");
-        let task = DecisionDurableTaskVersion {
-            durable_task_id: bound
-                .items
-                .first()
-                .and_then(|item| item.durable_task_id.as_ref())
-                .map(ToString::to_string)
-                .expect("the item owns a task"),
-            generation: 1,
-        };
-        refused(
-            &fixture,
-            &fixture.goal_reservation(&task),
-            error_code::DURABLE_TASK_INVALID_TARGET,
-        )
-        .await;
-        assert_eq!(fixture.counts().await, (0, 0, 0));
-        fixture.model.finish().await.expect("model cleanup");
-    })
-    .await;
 }
 
 // Value: protects=a saved call whose stored status no build wrote is refused as
@@ -131,7 +95,7 @@ async fn a_goal_decision_needs_a_live_durable_task_with_the_policys_questions() 
 async fn a_saved_call_with_an_unknown_status_is_refused_as_corrupt() {
     exercise(async |case: &Case| {
         let fixture = Decisions::create(case).await;
-        let input = fixture.reservation(DecisionAssessment::Message, None);
+        let input = fixture.call_input().await;
         fixture.reserve(&input).await;
         sqlx::query("UPDATE runner.decision_calls SET status='mislaid' WHERE original_run_id=$1")
             .bind(&case.held.run_key)

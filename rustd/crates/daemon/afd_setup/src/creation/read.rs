@@ -1,118 +1,79 @@
-//! Shared fleet reads retain setup progress without exposing any private conversation.
+//! A fleet as a member of its workspace reads it.
 
-use super::{
-    CONTEXT, Creations, SetupProgress, etag, progress, sql,
-    stored::{Stored, StoredRow},
-};
-use crate::{
-    Access, Result, access,
-    error::{ErrorKind, raise::query},
-    review,
-    types::{Review, StartOutcome},
-};
 use af_core::id::Uuid7;
-use af_fleet_runtime::Definition;
+use af_fleet_runtime::config::HttpEgress;
 use jiff::Timestamp;
-use serde::Serialize;
 use sqlx::{Connection as _, PgConnection};
 
-/// Native fleet snapshot used by browser and terminal adapters.
-#[derive(Debug, Serialize)]
-pub struct SavedFleet {
-    /// Shared runtime identity, unrelated to private draft ownership.
-    pub id: Uuid7,
-    /// Instance slug.
-    pub name: String,
-    /// Existing fleet lifecycle vocabulary.
-    pub status: String,
-    /// Name/status version.
-    pub etag: String,
-    /// Definition-only version.
-    pub setup_etag: String,
-    /// Decimal setup revision.
-    pub setup_revision: String,
-    /// Exact immutable setup identity for explicit adoption by existing work.
-    pub setup_revision_id: Uuid7,
-    /// Policy interpretation of this setup.
-    pub policy_semantics: String,
-    /// Shared immutable setup, without conversation or credentials.
-    pub definition: Definition,
-    /// Actual current installation checks.
-    pub setup: SetupProgress,
-    /// Initial turn outcome, independent of completed work.
-    pub start: StartOutcome,
-    /// Creation time.
-    #[serde(with = "af_wire::instant")]
-    pub created_at: Timestamp,
-    /// Latest resource mutation.
-    #[serde(with = "af_wire::instant")]
-    pub updated_at: Timestamp,
-    /// Exact activity count.
-    pub events_processed: String,
-    /// Exact billed nanos.
-    pub budget_used_nanos: String,
-    /// Current unanswered approval gates.
-    pub pending_approvals: i64,
-    /// Current independent shared-memory read permission.
-    pub memory_reads_workspace: bool,
-    /// Current independent shared-memory publication permission.
-    pub memory_publishes_workspace: bool,
+use super::{CONTEXT, Creations, etag, sql};
+use crate::{
+    Access, Result, access,
+    error::{
+        ErrorKind,
+        raise::{absent, query},
+    },
+    trigger,
+    types::SavedFleet,
+};
+
+/// [`sql::LOCKED`]'s row, by column name.
+#[derive(Debug, sqlx::FromRow)]
+pub(super) struct Stored {
+    pub(super) id: Uuid7,
+    pub(super) name: String,
+    pub(super) status: String,
+    pub(super) model_ref: String,
+    pub(super) http_egress: String,
+    pub(super) package_domains: bool,
+    pub(super) resource_version: i64,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    created_at: Timestamp,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    updated_at: Timestamp,
+    memory_reads_workspace: bool,
+    memory_publishes_workspace: bool,
+    events_processed: i64,
+    budget_used_nanos: i64,
+    pending_approvals: i64,
+}
+
+impl Stored {
+    /// The row's HTTP egress scope; a spelling this build cannot read is a
+    /// stored fault.
+    pub(super) fn egress(&self) -> Result<HttpEgress> {
+        HttpEgress::parse(&self.http_egress).ok_or_else(|| absent("http_egress"))
+    }
 }
 
 impl Creations {
-    /// Reads current shared setup and live prerequisites without advancing it,
-    /// locking no fleet, person, install or grant: a read that held the fleet
-    /// row would stall the fleet's intake and every report for its length.
-    ///
-    /// Read committed rather than on one snapshot, for the reason
-    /// [`crate::Setup::read_draft`] gives: the credential inspection opens its
-    /// secrets `FOR SHARE`.
+    /// Reads `fleet` without a lock: a read that held the fleet row would
+    /// stall its intake and every report for its length.
     ///
     /// # Errors
-    /// Refuses missing fleets and current access loss; preserves store failures.
+    /// A caller who is not a current member, a fleet outside the workspace,
+    /// and datastore failures.
     pub async fn read(&self, access: Access<'_>, fleet: &Uuid7) -> Result<SavedFleet> {
-        let (row, checked) = self.snapshot(access, fleet).await?;
-        Ok(project(row, &checked))
-    }
-
-    /// The fleet and its current review, read without a lock. Setup's own
-    /// steps read it too: a lock taken here ended at this commit, before any
-    /// step acted on what it read, so it protected nothing. Each write
-    /// rechecks under its own lock (`activate.rs`, `start/recover.rs`).
-    pub(super) async fn snapshot(
-        &self,
-        access: Access<'_>,
-        fleet: &Uuid7,
-    ) -> Result<(Stored, Review)> {
-        let mut connection = self.setup.drafts.database.acquire().await?;
-        let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
-        access::unlocked(&mut tx, access).await?;
-        let row = stored(&mut tx, access.workspace, fleet).await?;
-        let checked = self.review(&mut tx, &row, review::Hold::Nothing).await?;
-        tx.commit().await.map_err(query(CONTEXT))?;
-        Ok((row, checked))
-    }
-
-    pub(super) async fn review(
-        &self,
-        connection: &mut PgConnection,
-        row: &Stored,
-        hold: review::Hold,
-    ) -> Result<Review> {
-        let mut context = row.accepted.context.clone();
-        context.linked_fleet_id = Some(row.id.clone());
-        review::build(
-            &self.setup,
-            connection,
-            &context,
-            &row.accepted.candidate(row.definition.clone()),
-            af_core::clock::now(),
-            hold,
-        )
-        .await
+        let (row, triggers) = {
+            let mut connection = self.database.acquire().await?;
+            let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
+            access::unlocked(&mut tx, access).await?;
+            let row = stored(&mut tx, access.workspace, fleet).await?;
+            let triggers = trigger::list(&mut tx, fleet).await?;
+            tx.commit().await.map_err(query(CONTEXT))?;
+            (row, triggers)
+        };
+        // Read after the fleet's connection went back: the grant store takes
+        // its own, and a request holds one at a time.
+        let grants = self
+            .grants
+            .page(access.workspace, fleet)
+            .await?
+            .ok_or(ErrorKind::FleetMissing)?;
+        project(row, triggers, grants)
     }
 }
 
+/// Locks `fleet`'s row for a write, then reads it under that lock.
 pub(super) async fn lock(
     connection: &mut PgConnection,
     workspace: &Uuid7,
@@ -128,39 +89,47 @@ pub(super) async fn lock(
     stored(connection, workspace, fleet).await
 }
 
-/// The fleet with its head revision, counters and open gates, as the caller's
-/// statement sees it: under [`lock`]'s row lock for a write, and unlocked for
-/// a read.
-async fn stored(connection: &mut PgConnection, workspace: &Uuid7, fleet: &Uuid7) -> Result<Stored> {
-    let row: Option<StoredRow> = sqlx::query_as(sql::LOCKED)
+/// The fleet with its counters and open gates, as the caller's statement sees it.
+pub(super) async fn stored(
+    connection: &mut PgConnection,
+    workspace: &Uuid7,
+    fleet: &Uuid7,
+) -> Result<Stored> {
+    let row: Option<Stored> = sqlx::query_as(sql::LOCKED)
         .bind(fleet)
         .bind(workspace)
         .fetch_optional(connection)
         .await
         .map_err(query(CONTEXT))?;
-    row.ok_or(ErrorKind::FleetMissing)?.decode()
+    row.ok_or_else(|| ErrorKind::FleetMissing.into())
 }
 
-fn project(row: Stored, review: &Review) -> SavedFleet {
-    let setup = progress::current(&row, review);
-    SavedFleet {
+/// The read a create, a read and a change answer with.
+pub(super) fn project(
+    row: Stored,
+    triggers: Vec<trigger::TriggerRow>,
+    grants: Vec<afd_approval::GrantRow>,
+) -> Result<SavedFleet> {
+    let http_egress = match row.egress()? {
+        HttpEgress::Restricted => af_wire::policy::HttpEgress::Restricted,
+        HttpEgress::Public => af_wire::policy::HttpEgress::Public,
+    };
+    Ok(SavedFleet {
         etag: etag(&row.id, row.resource_version),
-        setup_etag: etag(&row.id, row.head_revision),
-        setup_revision: row.head_revision.to_string(),
-        setup_revision_id: row.head_revision_id,
-        policy_semantics: row.accepted.policy_semantics,
         id: row.id,
         name: row.name,
         status: row.status,
-        definition: row.definition,
-        setup,
-        start: row.initial_start.outcome,
+        model_ref: row.model_ref,
+        http_egress,
+        package_domains: row.package_domains,
+        triggers,
+        grants,
+        memory_reads_workspace: row.memory_reads_workspace,
+        memory_publishes_workspace: row.memory_publishes_workspace,
         created_at: row.created_at,
         updated_at: row.updated_at,
         events_processed: row.events_processed.to_string(),
         budget_used_nanos: row.budget_used_nanos.to_string(),
         pending_approvals: row.pending_approvals,
-        memory_reads_workspace: row.memory_reads_workspace,
-        memory_publishes_workspace: row.memory_publishes_workspace,
-    }
+    })
 }

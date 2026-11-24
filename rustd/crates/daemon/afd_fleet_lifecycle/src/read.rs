@@ -28,27 +28,6 @@ const CONTEXT_INGRESS: &str = "read a fleet's ingress status";
 /// The column a status this build does not know is reported against.
 const COLUMN_STATUS: &str = "status";
 
-/// The trigger list, as the stored configuration already holds it.
-///
-/// Carried as the raw JSON TEXT the projection returned rather than a parsed
-/// tree, because nothing on this path reads inside it: the store hands it up,
-/// and the wire layer splices it into the response through `serde_json`'s
-/// `RawValue`. Parsing it here would be a full deserialize whose only product
-/// is a re-serialize into the same bytes.
-///
-/// Validity is therefore the wire layer's question: text that will not parse
-/// renders as `null`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Triggers(Box<str>);
-
-impl Triggers {
-    /// The stored JSON text.
-    #[must_use]
-    pub fn as_json_text(&self) -> &str {
-        &self.0
-    }
-}
-
 /// One fleet as a list page shows it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FleetRow {
@@ -60,13 +39,8 @@ pub struct FleetRow {
     pub status: FleetStatus,
     /// When it was installed; the walk's sort key.
     pub created_at: Timestamp,
-    /// When it last changed. Doubles as the config revision a PATCH echoes.
+    /// When it last changed.
     pub updated_at: Timestamp,
-    /// What it is for: the head revision's `description`. `None` while the
-    /// fleet has no saved setup to describe it.
-    pub description: Option<String>,
-    /// What may wake it, projected from the head revision's configuration.
-    pub triggers: Option<Triggers>,
     /// Lifetime event count, from the maintained counter row.
     pub events_processed: i64,
     /// Lifetime spend, from the same row. Server truth, never client arithmetic.
@@ -132,7 +106,7 @@ impl Fleets {
         Ok(FleetPage { rows, more })
     }
 
-    /// The fleet `workspace` holds under the saved name `name`, as a list page
+    /// The fleet `workspace` holds under the name `name`, as a list page
     /// shows it, or `None` when no fleet there has that name.
     ///
     /// The name is the instance's, unique in its workspace, so the answer is
@@ -160,7 +134,7 @@ impl Fleets {
     /// failure. Collapsing them would make an outage look like a deleted fleet.
     ///
     /// Narrow on purpose: deciding whether a message may be posted needs the
-    /// status and nothing the setup holds.
+    /// status and nothing else the row holds.
     ///
     /// # Errors
     /// Reports a datastore that would not answer, or a status this build
@@ -192,8 +166,6 @@ struct PageRow {
     created_at: Timestamp,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     updated_at: Timestamp,
-    description: Option<String>,
-    triggers: Option<String>,
     event_count: i64,
     budget_used_nanos: i64,
 }
@@ -211,8 +183,6 @@ impl TryFrom<PageRow> for FleetRow {
             name: row.name,
             created_at: row.created_at,
             updated_at: row.updated_at,
-            description: row.description,
-            triggers: row.triggers.map(|text| Triggers(text.into_boxed_str())),
             events_processed: row.event_count,
             budget_used_nanos: row.budget_used_nanos,
         })

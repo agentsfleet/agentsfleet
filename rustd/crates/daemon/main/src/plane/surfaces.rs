@@ -18,39 +18,12 @@ use afd_turns::Turns;
 use super::config::{LoginConfig, ScheduleConfig};
 use super::{config, platform};
 
-/// The setup drafts, the setup over them, and the creations that admit a
-/// finished draft. Setup's model calls are the runner's, so none is built
-/// here.
-#[derive(Debug)]
-pub(super) struct SetupStores {
-    pub(super) drafts: afd_setup::Drafts,
-    pub(super) setup: afd_setup::Setup,
-    pub(super) creations: afd_setup::Creations,
-}
-
-/// Builds the setup surfaces over `drafts`, each over the one before it.
-///
-/// `drafts` already carries the pool and the analytics reporter, so every
-/// surface below reports its funnel steps the same way. The setup wraps the
-/// drafts, and the creations wrap the setup and the shared turns ledger — so
-/// the order below is the dependency order, not a preference.
-pub(super) fn setup(drafts: afd_setup::Drafts, kek: &Arc<Kek>, turns: &Turns) -> SetupStores {
-    let setup = afd_setup::Setup::new(drafts.clone(), Arc::clone(kek));
-    let creations = afd_setup::Creations::new(setup.clone(), turns.clone());
-    SetupStores {
-        drafts,
-        setup,
-        creations,
-    }
-}
-
 /// What the plane sends outbound: schedules registered with the external
 /// scheduler, the connect flow, and the interim message poster.
 #[derive(Debug)]
 pub(super) struct Outbound {
     pub(super) schedules: afd_http::services::SchedulePlane,
-    /// The scheduler the fire route verifies through, and a chat save
-    /// registers its trigger schedules through.
+    /// The scheduler the fire route verifies through.
     pub(super) scheduler: Arc<dyn afd_cron::Scheduler>,
     pub(super) connectors: afd_connector::Connectors,
     pub(super) interjector: afd_outbound::Interjector,

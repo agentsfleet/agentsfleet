@@ -34,9 +34,6 @@ impl Fleet {
     /// Streams through `bus` while setting the stream ceiling for the load ladder.
     pub(crate) fn with_stream_capacity(mut self, bus: afd_bus::Handle, capacity: usize) -> Self {
         self.runner_commands = bus.clone();
-        // A draft's writers publish its notice where its open page listens, as the
-        // daemon wires them.
-        self.drafts = self.drafts.clone().with_bus(bus.clone());
         self.live = Live::new(bus, StreamLimit::new(capacity));
         self
     }
@@ -52,7 +49,6 @@ impl Fleet {
             capabilities,
             authenticator,
         } = Inputs::new(database);
-        let built = setup::stores(&database, &ledger);
         Self {
             native: None,
             ready: ReadyInputs {
@@ -70,9 +66,7 @@ impl Fleet {
             platform_keys: PlatformKeys::new(database.clone()),
             runs: NoWork::default(),
             tasks: tasks(&database, &bus, &ledger),
-            drafts: built.drafts,
-            setup: built.setup,
-            creations: built.creations,
+            creations: setup::creations(&database, &ledger),
             workspaces: Ownership::Stub(OneWorkspace::fixed()),
             workspace_directory: Workspaces::new(database.clone(), Entropy::new()),
             api_keys: ApiKeys::new(database.clone(), Entropy::new()),

@@ -60,4 +60,11 @@ pub trait RunnerPlane: Shared {
     /// What an interim message is posted through: the outbound worker's Slack
     /// poster, whose API base is the seam a suite points at a loopback.
     fn interjector(&self) -> &afd_outbound::Interjector;
+
+    /// Where this instance's product events go; it carries its own absence.
+    fn analytics(&self) -> &af_observability::Analytics;
+
+    /// This deployment's own base URL, which a webhook trigger's address is
+    /// built from.
+    fn deployment(&self) -> &str;
 }

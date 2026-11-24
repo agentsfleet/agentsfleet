@@ -1,27 +1,25 @@
-//! The integration-grant surface's payloads, and the column vocabulary two
-//! planes read.
+//! The integration-grant surface's payloads, and the column vocabulary three
+//! crates read.
 //!
-//! A grant is a standing human decision about a fleet's relationship with a
-//! third party: asked once, answered once, and consulted on every credential
-//! mint after that. The operator lists them and revokes them; the runner plane
-//! only ever asks whether one is approved.
+//! A grant gives one fleet one credential: a workspace secret or a connected
+//! integration such as GitHub. The fleet asks for it by name, a person
+//! approves it once on a card, and every run and credential mint after that
+//! reads it. A person lists a fleet's grants and revokes one.
 //!
 //! # Why the spellings live here rather than beside either reader
 //!
-//! Three crates touch `connector.integration_grants.status` and none of them owns
-//! it. `afd_gate` reads it on the mint hot path, `afd_approval` writes it —
-//! both when an approval moves a grant and when an operator revokes one — and
-//! the API renders it. This crate is the one they already share, so a spelling
-//! declared here cannot drift into a row one plane writes and another cannot
-//! read. It is the same arrangement, for the same reason, as
+//! `afd_gate` reads `connector.integration_grants.status` and `kind` on the
+//! policy and mint paths, `afd_approval` writes them, and the API renders
+//! them. This crate is the one they already share, so a spelling declared
+//! here cannot drift into a row one plane writes and another cannot read. It
+//! is the same arrangement, for the same reason, as
 //! [`crate::approval::status`].
 //!
 //! # Field order is the contract
 //!
-//! `GrantSummary` serializes its fields in DECLARATION order, and a client
-//! reading the response as a positional document would see a reorder. The
-//! absent instants serialize as explicit `null` like everything else in this
-//! crate — never `skip_serializing_if`.
+//! `Grant` serializes its fields in DECLARATION order. Absent values serialize
+//! as explicit `null` like everything else in this crate — never
+//! `skip_serializing_if`.
 
 use std::borrow::Cow;
 
@@ -29,61 +27,60 @@ use serde::Serialize;
 
 /// The spellings `connector.integration_grants.status` stores.
 ///
-/// Three, and only one of them admits anything. `pending` is a grant the
-/// install raised and nobody has answered; `approved` is the standing yes a
-/// mint checks for; `revoked` is a yes a person took back. Absent, pending and
-/// revoked are one answer to the runner plane and three different rows to the
-/// operator, which is why the vocabulary is shared and the QUESTIONS are not.
+/// Three, and only one of them admits anything. `pending` is a grant a fleet
+/// asked for and nobody has answered; `approved` is the standing yes a run and
+/// a mint read; `revoked` is a no, or a yes a person took back. A fleet that
+/// asks again moves a revoked grant back to `pending`.
 pub mod status {
-    /// Raised by the install, waiting on a human.
+    /// Asked for by the fleet, waiting on a person.
     pub const PENDING: &str = "pending";
-    /// The standing yes a credential mint is gated on.
+    /// The standing yes a run's policy and a credential mint read.
     pub const APPROVED: &str = "approved";
-    /// A yes a person took back; nothing mints against it again.
+    /// Denied, or a yes a person took back; nothing reads it as access.
     pub const REVOKED: &str = "revoked";
 }
 
+/// The spellings `connector.integration_grants.kind` stores: which channel the
+/// approved credential reaches a run through.
+pub mod kind {
+    /// A workspace vault entry the run's tools address by field.
+    pub const SECRET: &str = "secret";
+    /// A connected integration whose token is minted per run, such as GitHub.
+    pub const INTEGRATION: &str = "integration";
+}
+
 /// One grant as the fleet's list shows it.
-//
-// `approved_at` and `revoked_at` are the two instants a grant's own
-// transitions stamp — the table carries no `updated_at`, because a row-change
-// time would say nothing those two do not already say. Both are `null` on a
-// pending row and exactly one is set afterwards.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct GrantSummary<'a> {
+pub struct Grant<'a> {
     /// The grant's own row id — what a revoke addresses it by.
     pub id: Cow<'a, str>,
-    /// The third party the grant is about, as the credential classifier names it.
-    pub service: Cow<'a, str>,
+    /// `secret` or `integration`, from [`kind`].
+    pub kind: Cow<'a, str>,
+    /// The vault key or integration the fleet asked for.
+    pub name: Cow<'a, str>,
     /// Where the decision stands, from [`status`].
     pub status: Cow<'a, str>,
-    /// When the grant was raised.
-    #[serde(with = "af_wire::instant")]
-    pub created_at: jiff::Timestamp,
+    /// The GitHub scope in force, `{repositories, access, base?}`, or `null`.
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
+    pub scope: Option<serde_json::Value>,
+    /// A wider GitHub scope waiting on a person, or `null`.
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
+    pub requested_scope: Option<serde_json::Value>,
     /// When a person approved it, or `null`.
     #[serde(with = "af_wire::instant::option", default)]
     pub approved_at: Option<jiff::Timestamp>,
-    /// When a person took that back, or `null`.
-    #[serde(with = "af_wire::instant::option", default)]
-    pub revoked_at: Option<jiff::Timestamp>,
-    /// Why the row exists at all — the install's own words, stored once.
-    pub reason: Cow<'a, str>,
 }
 
 /// `GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/integration-grants`.
 //
-// `total` is the length of `items` and not a count of everything stored: the
-// list is unpaged, because a fleet holds at most one grant per service and the
-// supported-service count is what bounds it. Emitted anyway, because a
-// dashboard reads it.
+// Unpaged: a fleet holds at most one grant per name, so the workspace's vault
+// and connected integrations bound the list.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct GrantsResponse<'a> {
     /// The fleet's grants, newest first.
-    pub items: Vec<GrantSummary<'a>>,
-    /// How many rows `items` carries.
-    pub total: usize,
+    pub items: Vec<Grant<'a>>,
 }
 
 #[cfg(test)]
@@ -93,75 +90,69 @@ mod tests {
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
 
-    use super::{GrantSummary, GrantsResponse, status};
+    use super::{Grant, GrantsResponse, kind, status};
     use std::borrow::Cow;
 
     #[test]
-    fn a_fleet_holding_no_grants_answers_an_empty_array_and_a_zero() {
-        // Never `null`, and never an omitted `total`. A dashboard iterating the
-        // list should not have to branch on its absence first, and
-        // `.{ .items = grants.items, .total = grants.items.len }` emits `[]`
-        // and `0` for an empty slice too.
-        let body = serde_json::to_string(&GrantsResponse {
-            items: vec![],
-            total: 0,
-        })
-        .expect("the response serializes");
+    fn a_fleet_holding_no_grants_answers_an_empty_array() {
+        let body = serde_json::to_string(&GrantsResponse { items: vec![] })
+            .expect("the response serializes");
 
-        assert_eq!(body, r#"{"items":[],"total":0}"#);
+        assert_eq!(body, r#"{"items":[]}"#);
     }
 
     #[test]
-    fn a_pending_grant_emits_both_instants_as_explicit_nulls() {
+    fn a_pending_secret_emits_its_absent_values_as_explicit_nulls() {
         // The whole reason this crate forbids `skip_serializing_if`: a dropped
         // key would change the document a client parses without changing any
         // value in it.
-        let body = serde_json::to_string(&GrantSummary {
+        let body = serde_json::to_string(&Grant {
             id: Cow::Borrowed("01924f4e-0000-7000-8000-0000000000a1"),
-            service: Cow::Borrowed("slack"),
+            kind: Cow::Borrowed(kind::SECRET),
+            name: Cow::Borrowed("sentry"),
             status: Cow::Borrowed(status::PENDING),
-            created_at: jiff::Timestamp::constant(1_777_507_200, 0),
+            scope: None,
+            requested_scope: None,
             approved_at: None,
-            revoked_at: None,
-            reason: Cow::Borrowed("Declared by the fleet's setup at install"),
         })
         .expect("the row serializes");
 
         assert_eq!(
             body,
-            r#"{"id":"01924f4e-0000-7000-8000-0000000000a1","service":"slack","status":"pending","created_at":"2026-04-30T00:00:00Z","approved_at":null,"revoked_at":null,"reason":"Declared by the fleet's setup at install"}"#
+            r#"{"id":"01924f4e-0000-7000-8000-0000000000a1","kind":"secret","name":"sentry","status":"pending","scope":null,"requested_scope":null,"approved_at":null}"#
         );
     }
 
     #[test]
-    fn a_revoked_grant_keeps_the_approval_it_once_had() {
-        // Revoking stamps `revoked_at` and leaves `approved_at` alone, so the
-        // row still says a person once said yes. A revoke that cleared it would
-        // make a taken-back approval indistinguishable from one never given.
-        let body = serde_json::to_string(&GrantSummary {
+    fn a_wider_github_request_shows_beside_the_scope_in_force() {
+        let body = serde_json::to_value(Grant {
             id: Cow::Borrowed("01924f4e-0000-7000-8000-0000000000a2"),
-            service: Cow::Borrowed("github"),
-            status: Cow::Borrowed(status::REVOKED),
-            created_at: jiff::Timestamp::constant(1, 0),
+            kind: Cow::Borrowed(kind::INTEGRATION),
+            name: Cow::Borrowed("github"),
+            status: Cow::Borrowed(status::APPROVED),
+            scope: Some(serde_json::json!({"repositories": ["org/app"], "access": "read"})),
+            requested_scope: Some(
+                serde_json::json!({"repositories": ["org/app"], "access": "write", "base": "main"}),
+            ),
             approved_at: Some(jiff::Timestamp::constant(2, 0)),
-            revoked_at: Some(jiff::Timestamp::constant(3, 0)),
-            reason: Cow::Borrowed("asked at install"),
         })
         .expect("the row serializes");
 
-        assert_eq!(
-            body,
-            r#"{"id":"01924f4e-0000-7000-8000-0000000000a2","service":"github","status":"revoked","created_at":"1970-01-01T00:00:01Z","approved_at":"1970-01-01T00:00:02Z","revoked_at":"1970-01-01T00:00:03Z","reason":"asked at install"}"#
-        );
+        let read = |pointer: &str| body.pointer(pointer).and_then(serde_json::Value::as_str);
+        assert_eq!(read("/scope/access"), Some("read"));
+        assert_eq!(read("/requested_scope/access"), Some("write"));
+        assert_eq!(read("/approved_at"), Some("1970-01-01T00:00:02Z"));
     }
 
     #[test]
-    fn the_status_vocabulary_is_the_columns_exact_spellings() {
+    fn the_vocabularies_are_the_columns_exact_spellings() {
         // Pinned against the strings, because these are what the schema holds
         // and what `afd_approval` writes. A rename here would silently stop
         // matching every stored row.
         assert_eq!(status::PENDING, "pending");
         assert_eq!(status::APPROVED, "approved");
         assert_eq!(status::REVOKED, "revoked");
+        assert_eq!(kind::SECRET, "secret");
+        assert_eq!(kind::INTEGRATION, "integration");
     }
 }

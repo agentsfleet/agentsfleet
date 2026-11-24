@@ -61,17 +61,15 @@ fn checkpoint_debug_omits_keys_and_signed_transport_while_wire_retains_them()
 
 #[test]
 fn stored_action_and_effect_spellings_match_public_json() -> serde_json::Result<()> {
-    for spelling in [
-        "conversation",
-        "status",
-        "refresh",
-        "steer",
-        "new_work",
-        "clarify",
-    ] {
+    for spelling in ["steer", "new_work"] {
         let action: DurableTaskInputAction = serde_json::from_value(json!(spelling))?;
         assert_eq!(action.as_str(), spelling);
         assert_eq!(serde_json::to_value(action)?, json!(spelling));
+    }
+    // The intake's routing answers are gone; only a tool's two actions bind.
+    for retired in ["conversation", "status", "refresh", "clarify"] {
+        let refused = serde_json::from_value::<DurableTaskInputAction>(json!(retired)).err();
+        assert!(refused.is_some(), "{retired} must not decode");
     }
     for spelling in ["prepared", "issued", "confirmed", "unknown", "refused"] {
         let state: DurableTaskEffectState = serde_json::from_value(json!(spelling))?;

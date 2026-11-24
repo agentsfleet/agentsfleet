@@ -15,7 +15,7 @@ use afd_fleet::run::RunService;
 use jiff::Timestamp;
 
 use super::seed::seed_provider_resolution;
-use super::{READ_BOUND_CONFIG, set_config};
+use super::{bind, read_bound};
 use crate::report_seed::{DEEP_POOL, SLICE, SLICE_MS};
 use crate::seed::{ACTOR, seeded_parts};
 use crate::support::Fixtures;
@@ -58,7 +58,7 @@ impl Chat {
     pub(super) async fn open() -> Self {
         let fixtures = Fixtures::create().await;
         let (fleet, workspace, tenant, [runner, spare]) = seeded_parts::<2>(&fixtures).await;
-        set_config(&fixtures, &fleet, READ_BOUND_CONFIG).await;
+        bind(&fixtures, &fleet, read_bound()).await;
         fixtures.seed_wallet(&tenant, DEEP_POOL).await;
         let default = seed_provider_resolution(&fixtures, &fleet).await;
         Self {
@@ -187,7 +187,6 @@ impl Chat {
     ) {
         let request = ReportRequest {
             folded_through_sequence: None,
-            setup: None,
             durable_task: None,
             run_id: Cow::Borrowed(run.run_id.as_str()),
             turn_id: Cow::Borrowed(run.turn_id.as_str()),

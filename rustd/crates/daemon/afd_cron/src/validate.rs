@@ -2,11 +2,11 @@
 //!
 //! # The expression check is the fleet runtime's
 //!
-//! [`cron`] delegates to [`af_fleet_runtime::config::check_schedule`], the check
-//! a fleet definition's cron trigger is parsed with. A schedule route and a
-//! proposed definition therefore cannot disagree on what a schedule may say:
-//! the parser, the alias and name refusals, the step guard and the range guard
-//! all live there, once, and its module note says why each exists.
+//! [`cron`] delegates to [`af_fleet_runtime::config::check_schedule`], the one
+//! cron check the person's route and the fleet's own `cron_add` verb both go
+//! through, so the two cannot disagree on what a schedule may say: the parser,
+//! the alias and name refusals, the step guard and the range guard all live
+//! there, once, and its module note says why each exists.
 //!
 //! # The bounds come first, and the type says so
 //!
@@ -17,8 +17,7 @@
 //! [`Fields`], and the three readers take `&garde::Valid<Fields>` — a value only
 //! a passed validation constructs.
 
-// The fleet runtime's bound, so a schedule route and a definition's cron
-// trigger stop at the same length.
+// The fleet runtime's bound, so every schedule surface stops at one length.
 use af_fleet_runtime::config::{CronSchedule, check_schedule};
 use af_validate::PathTable;
 use const_format::concatcp;

@@ -19,8 +19,8 @@ use serde::{Deserialize, Serialize};
 pub const INDEXED_TEXT_MAX_BYTES: usize = 2704 - 8 - 16 - 8 - 4;
 
 /// The one category that loads before recency is considered, and that
-/// is never swept. It is also the category a runner stores under when the
-/// model names none.
+/// is never swept: a fleet's pinned memory, which every run's prompt
+/// carries. A runner stores under it only when the model names it.
 pub const PINNED_CATEGORY: &str = "core";
 
 /// Byte budget for one load window.

@@ -42,8 +42,8 @@ pub const RUN_ID: &str = "01890a5d-ac96-774b-bcce-b302099a8057";
 pub const FLEET_ID: &str = "01890a5d-ac96-774b-bcce-b302099a8058";
 /// The fencing token the fixture run carries.
 pub const FENCING: u64 = 504;
-/// The scope a healthy daemon assigns a setup run's draft context.
-pub const DRAFT_SCOPE: &str = "draft:01890a5d-ac96-774b-bcce-b302099a8058";
+/// The scope a healthy daemon assigns the fixture fleet's saved context.
+pub const CONTEXT_SCOPE: &str = "fleet:01890a5d-ac96-774b-bcce-b302099a8058";
 /// The id a healthy daemon names this runner by.
 pub const RUNNER_ID: &str = "01890a5d-ac96-774b-bcce-b302099a8059";
 /// The host a healthy daemon has this runner on.
@@ -96,14 +96,14 @@ impl Healthy {
                 | Verb::DurableTaskCheckpointAuthorizations
                 | Verb::DurableTaskCheckpointPin
                 | Verb::TurnCheckpoint
-                // A setup run's save names a version only its fixture knows.
+                // A context save names a version only its fixture knows.
                 | Verb::ContextSave
                 // The native opening is a stream, never an HTTP fixture route.
                 | Verb::Open,
             ) => Value::Null,
-            // A healthy daemon whose draft has no saved context yet.
+            // A healthy daemon whose fleet has no saved context yet.
             Some(Verb::ContextLoad) => value(&ContextLoadResponse {
-                scope: DRAFT_SCOPE.to_owned(),
+                scope: CONTEXT_SCOPE.to_owned(),
                 resource_version: 0,
                 checkpoint: None,
             }),
@@ -142,7 +142,11 @@ impl Healthy {
                 | Verb::Message
                 | Verb::FleetList
                 | Verb::FleetTurns
-                | Verb::FleetSteer,
+                | Verb::FleetSteer
+                | Verb::TriggerAdd
+                | Verb::TriggerList
+                | Verb::TriggerRemove
+                | Verb::Access,
             )
             | None => value(&ReportResponse { ok: true, hold: None }),
         }

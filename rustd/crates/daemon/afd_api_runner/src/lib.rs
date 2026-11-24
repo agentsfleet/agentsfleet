@@ -1,7 +1,8 @@
 //! Runner-control HTTP adapters.
 //!
-//! The stream, self-record, credential, memory, message, schedule, fleet steer,
-//! fleets, tool-call, decision and task handlers live here so host protocol
+//! The stream, self-record, credential, memory, message, schedule, trigger,
+//! access, fleet steer, fleets, tool-call, decision and task handlers live
+//! here so host protocol
 //! changes compile independently. Heartbeats, runs, renewals, activity and reports
 //! travel on the stream.
 
@@ -23,7 +24,7 @@ use std::sync::Arc;
 use af_wire::protocol::MESSAGE_BYTES_MAX;
 use afd_http::handler::setup_input::TEXT_BODY_BYTES_MAX;
 use axum::extract::DefaultBodyLimit;
-use axum::routing::{MethodRouter, get, patch, post};
+use axum::routing::{MethodRouter, delete, get, patch, post};
 use handler::runner::durable_task_checkpoints as checkpoints;
 use route::RunnerRoute;
 use services::RunnerPlane;
@@ -75,6 +76,11 @@ pub fn handler_for<D: RunnerPlane>(verb: RunnerRoute) -> MethodRouter<Arc<D>> {
             .delete(handler::runner::schedule_edit::remove::<D>),
         RunnerRoute::ScheduleRuns => get(handler::runner::schedule_run::runs::<D>)
             .post(handler::runner::schedule_run::run::<D>),
+        RunnerRoute::Triggers => {
+            get(handler::runner::trigger::list::<D>).post(handler::runner::trigger::add::<D>)
+        }
+        RunnerRoute::Trigger => delete(handler::runner::trigger::remove::<D>),
+        RunnerRoute::Access => post(handler::runner::access::request::<D>),
         RunnerRoute::Messages => post(handler::runner::message::handle::<D>),
         // A fleet's message to another carries text up to the one ceiling,
         // past axum's 2 MiB default once escaped.

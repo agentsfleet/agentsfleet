@@ -2,8 +2,8 @@
 //!
 //! The text is masked for every token the run minted before it leaves, and
 //! `agentsfleetd` masks the fleet's stored secrets. The tool answers at once:
-//! the other fleet runs on its own, under its own setup and budget, and can
-//! answer with this same tool. Its progress is read with `fleet_activity`.
+//! the other fleet runs on its own, under its own access, and can answer with
+//! this same tool. Its progress is read with `fleet_activity`.
 
 use af_core::id::Uuid7;
 use af_wire::steer_verb::FleetSteerAccepted;

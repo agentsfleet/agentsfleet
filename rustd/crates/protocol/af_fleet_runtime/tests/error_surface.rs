@@ -7,7 +7,7 @@
 //!
 //! # What this crate has that the others do not
 //!
-//! Every kind here reports ONE code, `UZ-AGT-008` — an authored document
+//! Every kind here reports ONE code, `UZ-AGT-008` — a configuration request
 //! was rejected, and a caller cannot act on which rule it broke. The structure
 //! an author needs is in the message, which is why this suite grades rendering
 //! and chains rather than a code partition.
@@ -46,20 +46,16 @@ fn the_error_surface_holds() {
 }
 
 /// Every kind names the setting it concerns in this crate's own spelling, or
-/// none where the failure is the document's shape: a log may carry the answer,
-/// so authored text such as `Not Kebab` or `not-a-key` must never be it.
+/// none where the failure is the request's shape: a log may carry the answer,
+/// so authored text such as `Not Kebab` must never be it.
 #[test]
 fn every_kind_names_its_setting_in_the_crates_own_spelling() {
     let expected = [
-        ("missing required field", Some("name")),
-        ("invalid definition", None),
-        ("runtime key outside block", Some("gates")),
-        ("unsupported key", Some("gates")),
-        ("unknown runtime key", Some("x-agentsfleet")),
-        ("runtime block required", Some("x-agentsfleet")),
+        ("missing required field", Some("criteria")),
+        ("unsupported key", None),
+        ("invalid statement", Some("statements")),
         ("invalid name", Some("name")),
         ("invalid credential ref", Some("credentials")),
-        ("invalid budget", Some("budget.daily_nanos")),
         ("invalid trigger set", Some("triggers")),
         ("unverifiable webhook source", Some("triggers")),
         ("invalid signature config", Some("triggers")),

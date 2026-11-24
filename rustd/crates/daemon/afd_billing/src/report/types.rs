@@ -15,7 +15,7 @@ pub struct Window {
 /// Exact filters over the ledger's public attribution.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Filter {
-    /// A runtime fleet; private setup remains its own category.
+    /// A runtime fleet.
     pub fleet: Option<Uuid7>,
     /// A stored work type, chosen from `crate::sql::work`.
     pub work_type: Option<&'static str>,
@@ -41,7 +41,7 @@ pub struct Report {
 pub mod dimension {
     /// Totals across every filtered line, independent of the displayed page.
     pub const SUMMARY: i32 = 0;
-    /// Selected-period spending by fleet or setup.
+    /// Selected-period spending by fleet.
     pub const FLEET: i32 = 1;
     /// Selected-period spending by model.
     pub const MODEL: i32 = 2;
@@ -55,7 +55,7 @@ pub mod dimension {
 pub struct Aggregate {
     /// One of `dimension`'s named values.
     pub dimension: i32,
-    /// A model or fleet identifier; absent for totals and private setup.
+    /// A model or fleet identifier; absent for totals.
     pub key: Option<String>,
     /// The fleet-name snapshot, when present.
     pub label: Option<String>,

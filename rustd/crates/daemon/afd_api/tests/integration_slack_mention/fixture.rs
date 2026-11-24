@@ -3,8 +3,8 @@
 //!
 //! Everything a mention reads on its way to the ledger is real here: the app
 //! bag the wall verifies against, the install row the team resolves through,
-//! the sealed grant the bot's identity is read from, and fleet rows whose
-//! stored configurations are ones Save accepts. The bus is unreachable;
+//! the sealed grant the bot's identity is read from, and fleet rows with the
+//! `mention` rows a run's `trigger_add` writes. The bus is unreachable;
 //! a turn commits to Postgres and its notification may fail independently.
 //!
 //! Slack is a loopback. A routed mention reads its thread back before it is
@@ -12,19 +12,17 @@
 //! read — carrying the fixture grant's bearer — never leaves the machine.
 
 use af_core::id::Uuid7;
-use af_fleet_runtime::test_util::FixtureSetup;
+use af_wire::trigger_verb::TriggerKind;
+use afd_api_wire::grant::{kind, status as grant_status};
 use afd_connector::Provider;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{
-    FIXTURE_SETUP_MODEL_REF, FleetSeed, InstallSeed, SetupRevision, TestDatabase, WorkspaceSeed,
-    mint_id,
-};
+use afd_db::test_util::{FleetSeed, GrantSeed, InstallSeed, TestDatabase, WorkspaceSeed, mint_id};
 use afd_tenant::test_util::{Signup, sign_up};
 use afd_turns::Producer;
 use afd_vault::{SecretBody, SecretName};
 
-use super::harness;
+use super::{Subscribed, harness};
 use afd_connector::test_util::FakeSlack;
 
 /// The field a connector's app bag carries its inbound signing secret in.
@@ -38,6 +36,9 @@ pub(super) const BOT_USER: &str = "UBOTFIXTURE";
 
 /// What every fixture person's subject starts with.
 const SUBJECT_PREFIX: &str = "user_live_slack_mention_";
+
+/// The grant a fleet's GitHub reach is approved under.
+const GITHUB: &str = "github";
 
 /// One turn row, as the ledger holds it.
 #[derive(Debug, PartialEq, Eq)]
@@ -176,47 +177,63 @@ impl Fixture {
 
     /// A fleet in the team's workspace, stored from the native `config` a
     /// reviewed setup would store, with `status`.
-    pub(super) async fn fleet(&self, config: &str, status: &str) -> Uuid7 {
+    pub(super) async fn fleet(&self, config: &Subscribed, status: &str) -> Uuid7 {
         self.fleet_in(&self.workspace, config, status, None).await
     }
 
     /// The same fleet, saved under `saved` rather than its definition's name,
     /// as a person who renamed it on save leaves it.
-    pub(super) async fn fleet_saved_as(&self, config: &str, status: &str, saved: &str) -> Uuid7 {
+    pub(super) async fn fleet_saved_as(
+        &self,
+        config: &Subscribed,
+        status: &str,
+        saved: &str,
+    ) -> Uuid7 {
         self.fleet_in(&self.workspace, config, status, Some(saved))
             .await
     }
 
     /// The same fleet in the tenant's other workspace: the one a Slack team
     /// that moved has left behind.
-    pub(super) async fn fleet_elsewhere(&self, config: &str, status: &str) -> Uuid7 {
+    pub(super) async fn fleet_elsewhere(&self, config: &Subscribed, status: &str) -> Uuid7 {
         self.fleet_in(&self.admin, config, status, None).await
     }
 
     async fn fleet_in(
         &self,
         workspace: &Uuid7,
-        config: &str,
+        config: &Subscribed,
         status: &str,
         saved: Option<&str>,
     ) -> Uuid7 {
-        let parsed = af_fleet_runtime::FleetConfig::authored(config)
-            .expect("the fixture configuration parses");
         let fleet = mint_id();
-        let setup = FixtureSetup::new(config);
         let mut connection = self.database.acquire().await.expect("an API connection");
         FleetSeed::new(&fleet, workspace, &self.tenant, status)
-            .name(saved.unwrap_or_else(|| parsed.name().as_str()))
+            .name(saved.unwrap_or(&config.name))
             .at(afd_db::test_util::SEEDED_AT)
-            .unplaced_setup(SetupRevision {
-                definition: &setup.definition,
-                digest: &setup.digest,
-                semantics: setup.semantics(),
-                model_ref: Some(FIXTURE_SETUP_MODEL_REF),
-            })
+            .unplaced()
             .insert(&mut *connection)
             .await
             .expect("the fleet row seeds");
+        if let Some(scope) = config.scope() {
+            GrantSeed::new(&fleet, GITHUB, kind::INTEGRATION, grant_status::APPROVED)
+                .scope(&scope)
+                .approved(afd_db::test_util::SEEDED_AT)
+                .insert(&mut *connection)
+                .await
+                .expect("the approved GitHub grant seeds");
+        }
+        drop(connection);
+        harness::triggers::seed(
+            &self.database,
+            &fleet,
+            workspace,
+            harness::triggers::Seeded {
+                channel: Some(&config.channel),
+                ..harness::triggers::Seeded::new(TriggerKind::Mention, Provider::Slack.id())
+            },
+        )
+        .await;
         fleet
     }
 

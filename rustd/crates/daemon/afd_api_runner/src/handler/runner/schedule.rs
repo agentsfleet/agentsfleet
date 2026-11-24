@@ -196,8 +196,8 @@ async fn create_once<D: RunnerPlane>(
     summary = "List the running fleet's schedules",
     description = concat!(
         "Lists the assigned fleet's schedules oldest first. `source` is `api` for ",
-        "user-created schedules, `trigger` for setup-defined schedules, or `fleet` for ",
-        "fleet-created schedules. This runner can change only `fleet` schedules.",
+        "user-created schedules or `fleet` for fleet-created schedules. This runner can ",
+        "change only `fleet` schedules.",
     ),
     params(afd_http::openapi::path::Run, afd_http::openapi::query::Fence),
     responses(

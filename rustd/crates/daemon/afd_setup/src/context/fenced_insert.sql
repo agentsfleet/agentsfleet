@@ -1,6 +1,6 @@
 -- A run's first save: the insert `insert.sql` makes, written only while the run holds its
 -- thread at its fence, share-locked for the reason `fenced_update.sql` gives. A run names its
--- thread by its owner, `COALESCE(fleet_id, draft_id)`, as the statements both kinds share do.
+-- thread by its fleet.
 --
 -- $1 id · $2 thread · $3 version · $4 document · $5 expected version · $6 run · $7 runner ·
 -- $8 fence · $9 the live run status
@@ -16,8 +16,8 @@ WITH locked_thread AS MATERIALIZED (
     SELECT r.id
       FROM thread.runs r
       JOIN locked_thread t
-        ON t.id = COALESCE(r.fleet_id, r.draft_id) AND t.fencing_token = r.fencing_token
-     WHERE r.id = $6 AND COALESCE(r.fleet_id, r.draft_id) = $2 AND r.runner_id = $7
+        ON t.id = r.fleet_id AND t.fencing_token = r.fencing_token
+     WHERE r.id = $6 AND r.fleet_id = $2 AND r.runner_id = $7
        AND r.fencing_token = $8 AND r.status = $9
        FOR SHARE OF r
 )

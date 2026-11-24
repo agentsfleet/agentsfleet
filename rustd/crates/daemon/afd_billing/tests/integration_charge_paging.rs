@@ -1,4 +1,4 @@
-//! Tenant charge paging bounds its usage-line work before detail joins.
+//! Tenant charge paging reads one page of usage lines by its index.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::unwrap_used,
@@ -6,7 +6,7 @@
 )]
 
 use af_core::id::Uuid7;
-use afd_billing::sql::CHARGE_TYPE_SETUP;
+use afd_billing::sql::charge::STAGE;
 use afd_billing::tenant::cursor::Boundary;
 use afd_billing::tenant::{self, Billing, ChargeRow};
 use afd_db::test_util::{TestDatabase, mint_id};
@@ -24,7 +24,7 @@ const PAGING_INDEX: &str = "idx_usage_lines_tenant_id_created_at_id";
 
 #[tokio::test]
 #[ignore = "requires live Postgres: make test-integration-rustd"]
-async fn charge_pages_bound_usage_history_before_detail_joins() {
+async fn charge_pages_bound_usage_history_to_one_page() {
     // The plan proof owns schema statistics; concurrent tests must not change them.
     let database = TestDatabase::create().await;
     let db = database.open(DbRole::Migrator, &[]).await;
@@ -66,7 +66,7 @@ fn boundary_at(second: i64) -> Boundary {
     }
 }
 
-/// The plan of the page the store runs: its statement and its seven binds, run
+/// The plan of the page the store runs: its statement and its binds, run
 /// through `EXPLAIN` by the store's own query builder.
 async fn explain(db: &Db, tenant: &Uuid7, boundary: Option<&Boundary>) -> Value {
     let (plan,): (Value,) = tenant::charges_query(
@@ -87,7 +87,7 @@ fn assert_page_rows(rows: &[ChargeRow], tenant: &Uuid7, size: i64, boundary: Opt
     assert_eq!(rows.len(), usize::try_from(PAGE).unwrap(), "{rows:#?}");
     for row in rows {
         assert_eq!(row.tenant_id, tenant.as_str(), "{row:#?}");
-        assert_eq!(row.charge_type, CHARGE_TYPE_SETUP, "{row:#?}");
+        assert_eq!(row.charge_type, STAGE, "{row:#?}");
     }
     for (newer, older) in rows.iter().zip(rows.iter().skip(1)) {
         assert!(

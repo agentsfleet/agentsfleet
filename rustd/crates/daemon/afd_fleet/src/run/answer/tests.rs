@@ -10,8 +10,6 @@
 
 use std::borrow::Cow;
 
-use af_core::money::NANOS_PER_USD;
-use af_fleet_runtime::FleetConfig;
 use af_wire::policy::{ContextBudget, ExecutionPolicy, NetworkPolicy};
 use af_wire::turn::TurnKind;
 use serde_json::Value;
@@ -24,28 +22,21 @@ use crate::run::test_dead;
 /// Where the rendered answer says whether to resume the held sandbox.
 const RESUME_HOLD: &str = "/run/resume_hold";
 
-/// The fixture fleet's name, in its document and its row alike.
-const FLEET_NAME: &str = "fixture";
+/// Where the rendered answer names the fleet to its runner.
+const NAME: &str = "/run/name";
 
-/// The smallest fleet document a stored config accepts.
-fn document() -> String {
-    serde_json::json!({
-        "name": FLEET_NAME,
-        "x-agentsfleet": {"triggers": [], "tools": [], "budget": {"daily_nanos": NANOS_PER_USD.to_string()}},
-    })
-    .to_string()
-}
+/// The fixture fleet's name.
+const FLEET_NAME: &str = "Support triage";
 
-/// The fleet as the assignment read it, built from no bundle.
+/// The fleet as the assignment read it from its row.
 fn installed() -> Installed {
     Installed {
-        issue_revision: None,
         workspace_id: test_dead::id(2),
         name: FLEET_NAME.to_owned(),
-        config: FleetConfig::authored(&document()).expect("the fixture document is authorable"),
-        instructions: String::new(),
+        model_ref: "platform-default".to_owned(),
+        http_egress: af_fleet_runtime::config::HttpEgress::Restricted,
+        package_domains: false,
         context_json: FRESH_CONTEXT.to_owned(),
-        runtime_model_ref: "platform-default".to_owned(),
     }
 }
 
@@ -54,12 +45,7 @@ fn policy() -> ExecutionPolicy<'static> {
     ExecutionPolicy {
         inference: None,
         model_context_tokens: 0,
-        network_policy: NetworkPolicy {
-            allow: Vec::new(),
-            read_only: true,
-            read_post_paths: Vec::new(),
-            ..NetworkPolicy::default()
-        },
+        network_policy: NetworkPolicy::default(),
         tools: Vec::new(),
         secrets_map: None,
         mintable: Vec::new(),
@@ -103,12 +89,21 @@ fn rendered(resume_hold: bool) -> Value {
             decision: None,
             task: None,
             expires_at: acquired.held_until,
+            unfinished_tasks: Vec::new(),
         },
     );
     serde_json::to_value(af_wire::protocol::Down::Run {
         run: af_wire::run::TaggedRun::Fleet(Box::new(run)),
     })
     .expect("an assignment renders")
+}
+
+#[test]
+fn a_rendered_run_names_its_fleet() {
+    assert_eq!(
+        rendered(false).pointer(NAME),
+        Some(&Value::String(FLEET_NAME.to_owned()))
+    );
 }
 
 #[test]

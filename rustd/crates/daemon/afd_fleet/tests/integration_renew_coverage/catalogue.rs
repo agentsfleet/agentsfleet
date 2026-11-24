@@ -1,6 +1,5 @@
 //! Rate catalogue outages preserve unpriced token observations.
 
-use super::{DEEP_DAILY_BUDGET, set_fleet_config};
 use crate::integration_held_sandbox::report::processed;
 use crate::report_seed::{self, Held, held_in};
 use crate::seed::{MODEL, PROVIDER};
@@ -26,7 +25,6 @@ use jiff::Timestamp;
 async fn a_renewal_during_a_catalogue_fault_logs_its_tokens_unpriced() {
     let held = held_in(Fixtures::create_isolated().await).await;
     let plane = held.fixtures.plane();
-    set_fleet_config(&held, DEEP_DAILY_BUDGET).await;
     held.fixtures.seed_model_rate(PROVIDER, MODEL).await;
     let first = token_charge(&held, &plane, 0, 10_000).await;
     assert!(first > 0, "the fixture rate prices ten thousand tokens");
@@ -62,12 +60,10 @@ async fn a_renewal_during_a_catalogue_fault_logs_its_tokens_unpriced() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_report_during_a_catalogue_fault_logs_the_tokens_it_leaves_uncharged() {
     let held = held_in(Fixtures::create_isolated().await).await;
-    set_fleet_config(&held, DEEP_DAILY_BUDGET).await;
     // A priced model, so the refusal below is the fault and not a missing rate.
     held.fixtures.seed_model_rate(PROVIDER, MODEL).await;
     let report = ReportRequest {
         folded_through_sequence: None,
-        setup: None,
         requests: af_wire::usage::RequestLines(vec![request(&held, 0, 12_000, 3_000, 500)]),
         ..processed(&held, None)
     };

@@ -168,7 +168,6 @@ impl<'lane> Owner<'lane> {
             afd_state::sql::FLEET_STATUS_ACTIVE,
         )
         .name("Repair progress")
-        .native_setup()
         .insert(&mut *connection)
         .await
         .expect("fleet seeds");
@@ -213,7 +212,6 @@ impl<'lane> Owner<'lane> {
             afd_state::sql::FLEET_STATUS_ACTIVE,
         )
         .name("Pull request review")
-        .native_setup()
         .insert(&mut *connection)
         .await
         .expect("owned empty fleet seeds");

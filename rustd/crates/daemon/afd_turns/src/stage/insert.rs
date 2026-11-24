@@ -16,8 +16,7 @@ const CONTEXT_ADMIT: &str = "admit one message";
 pub(crate) struct Gates {
     /// The sampled deployment estimate, compared with the ceiling.
     pub(crate) estimate: u64,
-    /// The status a new key needs; `None` admits a fleet in any status, as
-    /// activation does while the fleet is still installing.
+    /// The status a new key needs; `None` admits a fleet in any status.
     pub(crate) runnable: Option<FleetStatus>,
 }
 
@@ -50,7 +49,6 @@ impl Turns {
             .bind(reply.connector)
             .bind(reply.address)
             .bind(reply.inherited.as_ref())
-            .bind(af_fleet_runtime::definition::POLICY_SEMANTICS)
             .bind(runnable.map(FleetStatus::as_str))
             .bind(af_core::turn::status::QUEUED)
             .fetch_one(&mut *connection)

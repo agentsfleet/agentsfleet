@@ -87,7 +87,7 @@ impl Exchanger for Rotating {
 /// Mints the Zoho credential for a granted fleet whose workspace holds
 /// `handle`, through a vendor that does `during` mid-exchange.
 async fn mint_rotating(fixtures: &Fixtures, handle: &str, during: During) -> (Bound, Minted) {
-    let owner = bound(fixtures, "{}").await;
+    let owner = bound(fixtures).await;
     seed_handle(fixtures, &owner.workspace, CONNECTOR_ZOHO, handle).await;
     seed_grant(fixtures, &owner.fleet, CONNECTOR_ZOHO, STATUS_APPROVED).await;
     let vendor = Rotating {

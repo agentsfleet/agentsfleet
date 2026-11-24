@@ -44,7 +44,6 @@ fn task() -> DurableTaskContext<'static> {
         target: DurableTaskTarget::ApiOnly,
         generation: 7,
         stop_generation: 0,
-        accepted_revision_id: ID.into(),
         objective: "Repair the admitted defect".into(),
         goal_digest: "b".repeat(64).into(),
         questions: vec![],

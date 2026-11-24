@@ -38,7 +38,6 @@ pub struct ProblemResponse {
     request_id: String,
     current_state: Option<String>,
     etag: Option<String>,
-    review_digest: Option<String>,
     resolution: Option<Resolution>,
     effect: Option<af_wire::durable_task::DurableTaskEffect>,
 }
@@ -78,7 +77,6 @@ impl ProblemResponse {
             request_id: request_id.into(),
             current_state: None,
             etag: None,
-            review_digest: None,
             resolution: None,
             effect: None,
         }
@@ -150,24 +148,6 @@ impl ProblemResponse {
         }
     }
 
-    /// A stale-review409 includes only the new digest and the required state.
-    #[must_use]
-    pub fn review_changed(
-        detail: impl Into<String>,
-        request_id: impl Into<String>,
-        digest: impl Into<String>,
-    ) -> Self {
-        Self {
-            review_digest: Some(digest.into()),
-            ..Self::conflict(
-                af_core::error_code::SETUP_REVIEW,
-                detail,
-                request_id,
-                "review_required",
-            )
-        }
-    }
-
     /// The status this refusal answers with.
     #[must_use]
     pub fn status(&self) -> StatusCode {
@@ -202,9 +182,6 @@ impl ProblemResponse {
         }
         if let Some(etag) = &self.etag {
             body.insert("etag".to_owned(), etag.clone().into());
-        }
-        if let Some(digest) = &self.review_digest {
-            body.insert("review_digest".to_owned(), digest.clone().into());
         }
         if let Some(standing) = &self.resolution {
             body.insert("gate_id".to_owned(), standing.gate_id.clone().into());

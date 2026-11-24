@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 fn context() -> Value {
     json!({
         "durable_task_id":"task", "originating_item_id":"item", "target":{"kind":"api_only"},
-        "generation":7, "stop_generation":2, "accepted_revision_id":"revision",
+        "generation":7, "stop_generation":2,
         "objective":"Retain the accepted goal", "goal_digest":"digest", "questions":[],
         "state":"running", "covered_input_sequence":3, "input_sequence":5,
         "effect_cursor":9, "confirmed_effect_watermark":8, "checkpoint_id":"checkpoint",
@@ -53,7 +53,7 @@ fn owned_bindings_preserve_deadline_and_association_after_transport_drop() -> se
 }
 
 fn inputs(current: &Value) -> Value {
-    json!({"source_turn_id":"source","accepted_revision_id":"revision",
+    json!({"source_turn_id":"source",
         "current_message":"original message", "inputs":[{"source_turn_id":"next",
             "sequence":4,"message":"next message","accepted":null}],
         "accepted_inputs":[{"source_turn_id":"source","plan_digest":"plan",

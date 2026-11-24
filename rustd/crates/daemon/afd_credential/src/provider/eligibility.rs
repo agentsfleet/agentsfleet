@@ -1,9 +1,9 @@
 //! What a model's saved facts let it do: run a fleet, and take a tool call.
 //!
-//! The setup catalogue and the setup run's model check both read this, so a
-//! model the catalogue offers for setup is one the assignment admits. The
-//! provider rules behind it are in `af_providers::settings`; this is the one place the
-//! daemon's setup path reaches them, so `afd_setup` names no provider crate.
+//! The workspace's model catalogue and a fleet's model check both read this,
+//! so a model the catalogue offers is one the assignment admits. The provider
+//! rules behind it are in `af_providers::settings`; this is the one place the
+//! daemon's fleet path reaches them, so `afd_setup` names no provider crate.
 
 use af_wire::inference::ModelInference;
 
@@ -32,7 +32,8 @@ pub struct ModelFacts<'a> {
 pub struct Eligibility {
     /// Its settings route to its endpoint, so a fleet can run on it.
     pub runtime: bool,
-    /// It routes and its provider takes a tool call, so setup can run on it.
+    /// It routes and its provider takes a tool call, so a fleet's tools can
+    /// run on it.
     pub tools: bool,
 }
 
@@ -73,8 +74,8 @@ impl RegisteredModel {
 mod tests {
     use super::{Eligibility, ModelFacts};
 
-    /// A model with no saved settings routes nowhere, so neither a fleet nor
-    /// setup may run on it.
+    /// A model with no saved settings routes nowhere, so no fleet may run on it
+    /// or call a tool through it.
     #[test]
     fn a_model_without_settings_is_eligible_for_nothing() {
         let facts = ModelFacts {

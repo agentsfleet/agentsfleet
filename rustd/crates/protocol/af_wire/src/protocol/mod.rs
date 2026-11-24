@@ -9,11 +9,10 @@ pub use up::{Renewal, Up};
 /// The one revision this build speaks, negotiated before the server accepts
 /// a runner session; a runner sending any other is refused at hello.
 ///
-/// It runs setup on the common run path: a runner may be assigned a
-/// [`crate::run::RunPayload`] whose `owner` names a setup draft, and it reads
-/// and saves that draft's compacted context with [`Up::ContextLoad`] and
-/// [`Up::ContextSave`].
-pub const VERSION: &str = "agentsfleet.runner.v4";
+/// Every assignment is a fleet's turn: its payload carries the fleet's name
+/// and unfinished tasks and no installed instructions, and a hello names no
+/// work kinds.
+pub const VERSION: &str = "agentsfleet.runner.v5";
 /// Application version; independent of the negotiated HTTP version.
 pub const VERSION_HEADER: &str = "agentsfleet-runner-protocol";
 /// Which independently flow-controlled request this stream serves.
@@ -24,8 +23,9 @@ pub const CONNECTION_HEADER: &str = "agentsfleet-runner-connection";
 ///
 /// It excludes the four-byte length prefix. Both directions share one data
 /// budget, so its 64 MiB default holds one frame this large each way. A run
-/// carrying instructions, a setup candidate and a message, each at the text
-/// ceiling and at its widest escape, fits.
+/// carrying a message at the text ceiling and at its widest escape, beside
+/// its whole memory window, fits; history past the frame is dropped oldest
+/// first.
 pub const MESSAGE_BYTES_MAX: usize = 32 * 1024 * 1024;
 /// Maximum JSON payload on the control stream. Control carries no text a
 /// person wrote, and its memory pool is sized for frames this large.

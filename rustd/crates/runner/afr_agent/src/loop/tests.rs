@@ -34,6 +34,17 @@ pub(crate) async fn drive(
     run: &RunPayload<'_>,
     stop: &CancellationToken,
 ) -> (RunOutput, Vec<ActivityFrame<'static>>) {
+    drive_with_memory(engine, run, afr_memory::Seed::default(), stop).await
+}
+
+/// Runs `run`, whose memory load is `memory`, on `engine` until it ends or
+/// `stop` is cancelled.
+pub(crate) async fn drive_with_memory(
+    engine: &Loop,
+    run: &RunPayload<'_>,
+    memory: afr_memory::Seed<'_>,
+    stop: &CancellationToken,
+) -> (RunOutput, Vec<ActivityFrame<'static>>) {
     let frames = Frames::default();
     let sink = frames.sink();
     let run = AgentRun {
@@ -42,7 +53,7 @@ pub(crate) async fn drive(
         recovered_turn: None,
         prepared_durable_task: None,
         run,
-        memory: afr_memory::Seed::default(),
+        memory,
         executor: &afr_executor::ExecutorSlot::unavailable(afr_executor::Unavailable::NoSandbox),
         mint: &CountingMint::never(),
         verbs: &afr_tools::CLOSED,
@@ -132,9 +143,12 @@ async fn test_loop_runs_tool_calls_until_answer() {
         [UPDATE_PLAN.name()],
         "offered exactly the policy's tools"
     );
-    assert_eq!(
-        sent[0].instructions,
-        "## Installed instructions\n\nRead the run."
+    assert!(
+        sent[0]
+            .instructions
+            .starts_with("You are support-triage, a fleet in agentsfleet"),
+        "the system prompt is the fixed text naming the fleet: {}",
+        sent[0].instructions
     );
     assert_eq!(
         sent[0].messages,

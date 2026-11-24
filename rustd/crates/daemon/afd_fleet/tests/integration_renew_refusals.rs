@@ -7,12 +7,10 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use af_core::error_code::{
-    RUN_BUDGET_EXCEEDED, RUN_CANCELLED, RUN_NOT_FOUND, RUN_RENEWAL_NO_CREDITS,
-};
+use af_core::error_code::{RUN_CANCELLED, RUN_NOT_FOUND, RUN_RENEWAL_NO_CREDITS};
 use af_core::test_util::trace::Capture;
 
-use crate::integration_renew_batch::{SEEDED_DAILY_NANOS, codes, frame, spend};
+use crate::integration_renew_batch::{codes, frame};
 use crate::report_seed::held;
 use crate::rows::Row;
 
@@ -40,49 +38,6 @@ async fn host_batch_answers_foreign_run_lost_alone() {
         "{answers:?}"
     );
     foreign.fixtures.cleanup().await;
-    held.fixtures.cleanup().await;
-}
-
-// Value: protects=a fleet at its ceiling stops alone, and one nano under runs
-// on; fails_when=the statement compares as `>` rather than `budget::covers`'s
-// reached, or one fleet's ceiling stops another; why_new=the ceiling is read
-// in the statement; seam=none; no_claim=a monthly ceiling, which the seeded
-// setup does not declare.
-#[tokio::test]
-#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn host_batch_refuses_over_budget_fleet_alone() {
-    let held = held().await;
-    let under = held.hold_another().await;
-    let workspace = held.acquired.workspace_id.clone();
-    spend(
-        &held,
-        &held.tenant,
-        &workspace,
-        &held.fleet,
-        SEEDED_DAILY_NANOS,
-    )
-    .await;
-    spend(
-        &held,
-        &under.tenant,
-        &under.workspace,
-        &under.fleet,
-        SEEDED_DAILY_NANOS - 1,
-    )
-    .await;
-
-    let log = Capture::install();
-    let answers = frame(&held, &[&held.issued.run_id, &under.run], false).await;
-    let breach = log.only("renew_budget_breach");
-    drop(log);
-
-    assert_eq!(
-        codes(&answers),
-        [Some(RUN_BUDGET_EXCEEDED), None],
-        "{answers:?}"
-    );
-    assert_eq!(breach.field("fleet_id"), Some(held.fleet.as_str()));
-    assert_eq!(breach.field("run_id"), Some(held.issued.run_id.as_str()));
     held.fixtures.cleanup().await;
 }
 

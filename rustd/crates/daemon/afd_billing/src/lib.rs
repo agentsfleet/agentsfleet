@@ -1,9 +1,9 @@
-//! What a run costs, what a tenant has, and what a fleet has already spent.
+//! What a run costs, and what a tenant has to pay for it.
 //!
 //! # Why this is a module and not three
 //!
-//! The wallet and rate constants, the arithmetic, the ceilings and the debits
-//! are four layers, each depending on the ones above it. The split is real but
+//! The wallet and rate constants, the arithmetic and the debits are three
+//! layers, each depending on the ones above it. The split is real but
 //! it is a split by LAYER, and the layers all answer one question: how much,
 //! and is there enough.
 //!
@@ -11,8 +11,7 @@
 //! [`nanos`] is pure arithmetic over a unit, and everything with a connection
 //! sits on top of it. Nothing in that pure module can reach a datastore, which
 //! is what makes the money arithmetic testable without one — a property the
-//! module boundary enforces rather than a comment asserting it. Time is the
-//! database's: the spend windows open from its `now()`.
+//! module boundary enforces rather than a comment asserting it.
 //!
 //! # The separation this module is built around
 //!
@@ -33,9 +32,7 @@
 pub mod error;
 
 pub mod biller;
-pub mod budget;
 pub mod ledger;
-pub mod limits;
 pub mod nanos;
 pub mod price;
 pub mod rates;
@@ -49,7 +46,6 @@ pub mod store;
 pub mod tenant;
 pub mod wallet;
 
-pub use self::budget::{Spend, Verdict};
 pub use self::error::{Error, Result};
 pub use self::nanos::{
     ESTIMATE_FLOOR_INPUT_TOKENS, ESTIMATE_FLOOR_OUTPUT_TOKENS, Nanos, RUN_NANOS_PER_SEC,

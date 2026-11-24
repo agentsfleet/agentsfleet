@@ -15,11 +15,8 @@ use sqlx::Connection as _;
 use crate::{seed::seeded_parts, support::Fixtures};
 
 mod contention;
-mod deadlines;
 mod delivery;
 mod ordering;
-mod parking;
-mod parking_commit;
 mod reassignment;
 mod recovery_page;
 mod settlement;
@@ -30,8 +27,6 @@ const INSERT: &str = "INSERT INTO thread.turns \
      request_json, created_at, updated_at) \
     VALUES ($1, $2, $3, $4, $1, 'fixture-digest', 'fixture:steer', \
             $5, $7, '{\"prompt\":\"fixture\"}', $6, $6)";
-const PARK: &str = "UPDATE thread.turns SET parked_at = CASE WHEN $2 THEN now() END \
-    WHERE id = $1";
 const FINISH: &str = "UPDATE thread.turns SET settled_at = now() WHERE id = $1";
 const STAMPS: &str = "SELECT a.run_fence, s.fencing_token FROM thread.turns a \
     LEFT JOIN thread.threads s ON s.fleet_id = a.thread_id WHERE a.id = $1";
@@ -84,7 +79,7 @@ async fn next(runs: &Runs, runner: &Uuid7) -> Option<Acquired> {
 
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn test_fleet_rows_run_in_order_behind_a_park() {
+async fn test_fleet_rows_run_in_order() {
     let fixtures = Fixtures::create().await;
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;
     let runs = fixtures.runs_with_dead_bus();
@@ -93,31 +88,14 @@ async fn test_fleet_rows_run_in_order_behind_a_park() {
         events.push(enqueue(&fixtures, &fleet, &workspace).await);
     }
     let head = events.first().expect("three turns");
-    parking::seed_gate(&fixtures, &fleet, &workspace).await;
+    assert_eq!(stamps(&fixtures, head).await, (None, UNASSIGNED));
     let mut connection = fixtures
         .database
         .acquire()
         .await
         .expect("runtime connection");
-    sqlx::query(PARK)
-        .bind(head)
-        .bind(true)
-        .execute(&mut *connection)
-        .await
-        .expect("park head");
-    assert!(
-        next(&runs, &runner).await.is_none(),
-        "park holds later rows"
-    );
-    assert_eq!(stamps(&fixtures, head).await, (None, UNASSIGNED));
-    sqlx::query(PARK)
-        .bind(head)
-        .bind(false)
-        .execute(&mut *connection)
-        .await
-        .expect("answer gate");
     for event in events {
-        let acquired = next(&runs, &runner).await.expect("unparked head");
+        let acquired = next(&runs, &runner).await.expect("the head in order");
         assert_eq!(acquired.turn_id, event);
         finish(&runs, &mut connection, acquired).await;
     }

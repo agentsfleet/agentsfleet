@@ -1,6 +1,6 @@
 use super::{Draft, EgressPolicy, Placement};
 use crate::error::raise;
-use crate::fixture::{BASE, BRANCH, ELASTIC_QUERY, GITHUB, Shown, policy, shown};
+use crate::fixture::{BASE, BRANCH, GITHUB, Shown, policy, shown};
 use crate::refusal::Refusal;
 
 pub(super) fn draft(
@@ -21,29 +21,26 @@ pub(super) fn draft(
     }
 }
 
-/// The URL `draft` is allowed to under a policy with `read_only`, or why not.
-pub(super) fn allow(read_only: bool, draft: Draft) -> Result<String, Shown> {
-    let policy = policy(read_only);
+/// The URL `draft` is allowed to under the fixture policy, or why not.
+pub(super) fn allow(draft: Draft) -> Result<String, Shown> {
+    let policy = policy();
     EgressPolicy::new(&policy)
         .allow(draft)
         .map(|allowed| allowed.url.to_string())
         .map_err(|error| shown(&error))
 }
 
-pub(super) fn refused(read_only: bool, draft: Draft) -> Option<Shown> {
-    allow(read_only, draft).err()
+pub(super) fn refused(draft: Draft) -> Option<Shown> {
+    allow(draft).err()
 }
 
 #[test]
 fn should_send_only_the_listed_methods_in_any_case() {
     let url = "https://api.github.com/repos/acme/widgets/pulls";
 
+    assert_eq!(allow(draft("get", url, &[], None)), Ok(url.to_owned()));
     assert_eq!(
-        allow(false, draft("get", url, &[], None)),
-        Ok(url.to_owned())
-    );
-    assert_eq!(
-        refused(false, draft("TRACE", url, &[], None)),
+        refused(draft("TRACE", url, &[], None)),
         Some(shown(&raise::method_not_allowed("TRACE")))
     );
 }
@@ -51,19 +48,16 @@ fn should_send_only_the_listed_methods_in_any_case() {
 #[test]
 fn should_refuse_an_unlisted_host_and_any_scheme_but_https() {
     assert_eq!(
-        refused(false, draft("GET", "https://evil.example/x", &[], None)),
+        refused(draft("GET", "https://evil.example/x", &[], None)),
         Some(shown(&raise::host_not_allowed("evil.example")))
     );
     assert_eq!(
-        refused(
-            false,
-            draft(
-                "GET",
-                "http://api.github.com/repos/acme/widgets/",
-                &[],
-                None
-            )
-        ),
+        refused(draft(
+            "GET",
+            "http://api.github.com/repos/acme/widgets/",
+            &[],
+            None
+        )),
         Some(shown(&raise::https_required()))
     );
 }
@@ -71,7 +65,7 @@ fn should_refuse_an_unlisted_host_and_any_scheme_but_https() {
 #[test]
 fn should_refuse_an_allowlisted_address_literal_in_a_private_range() {
     assert_eq!(
-        refused(false, draft("GET", "https://127.0.0.1/admin", &[], None)),
+        refused(draft("GET", "https://127.0.0.1/admin", &[], None)),
         Some(shown(&raise::egress_denied("127.0.0.1")))
     );
 }
@@ -82,35 +76,31 @@ fn should_refuse_a_placeholder_anywhere_but_authorization_and_the_whole_host() {
     let token = "${secrets.grafana.token}";
 
     assert_eq!(
-        refused(
-            false,
-            draft("POST", url, &[], Some(&format!("{{\"t\":\"{token}\"}}")))
-        ),
+        refused(draft(
+            "POST",
+            url,
+            &[],
+            Some(&format!("{{\"t\":\"{token}\"}}"))
+        )),
         Some(misplaced("a placeholder in the body"))
     );
     assert_eq!(
-        refused(
-            false,
-            draft("GET", &format!("{url}?key={token}"), &[], None)
-        ),
+        refused(draft("GET", &format!("{url}?key={token}"), &[], None)),
         Some(misplaced(
             "a placeholder in the URL, or credentials in its userinfo"
         ))
     );
     assert_eq!(
-        refused(false, draft("GET", url, &[("X-Api-Key", token)], None)),
+        refused(draft("GET", url, &[("X-Api-Key", token)], None)),
         Some(misplaced("the X-Api-Key header as written"))
     );
     assert_eq!(
-        refused(
-            false,
-            draft(
-                "GET",
-                url,
-                &[("Authorization", "Bearer ${secrets.grafana}")],
-                None
-            )
-        ),
+        refused(draft(
+            "GET",
+            url,
+            &[("Authorization", "Bearer ${secrets.grafana}")],
+            None
+        )),
         Some(misplaced("the Authorization header as written"))
     );
 }
@@ -118,22 +108,21 @@ fn should_refuse_a_placeholder_anywhere_but_authorization_and_the_whole_host() {
 #[test]
 fn should_refuse_a_host_header_and_credentials_in_the_userinfo() {
     assert_eq!(
-        refused(
-            false,
-            draft(
-                "GET",
-                "https://demo-grafana.internal/",
-                &[("Host", "evil.example")],
-                None
-            )
-        ),
+        refused(draft(
+            "GET",
+            "https://demo-grafana.internal/",
+            &[("Host", "evil.example")],
+            None
+        )),
         Some(misplaced("the Host header as written"))
     );
     assert_eq!(
-        refused(
-            false,
-            draft("GET", "https://user:pass@demo-grafana.internal/", &[], None)
-        ),
+        refused(draft(
+            "GET",
+            "https://user:pass@demo-grafana.internal/",
+            &[],
+            None
+        )),
         Some(misplaced(
             "a placeholder in the URL, or credentials in its userinfo"
         ))
@@ -143,15 +132,12 @@ fn should_refuse_a_host_header_and_credentials_in_the_userinfo() {
 #[test]
 fn should_refuse_a_request_no_origin_rule_allows() {
     assert_eq!(
-        refused(
-            false,
-            draft(
-                "GET",
-                "https://api.github.com/repos/acme/other/pulls",
-                &[],
-                None
-            )
-        ),
+        refused(draft(
+            "GET",
+            "https://api.github.com/repos/acme/other/pulls",
+            &[],
+            None
+        )),
         Some(shown(&raise::request_policy_not_allowed(
             GITHUB,
             "GET",
@@ -166,7 +152,7 @@ fn should_tell_the_model_which_key_a_closed_rule_refused() {
     let pulls = "https://api.github.com/repos/acme/widgets/pulls";
     let body = format!(r#"{{"head":"{BRANCH}","base":"{BASE}","draft":true,"issue":7}}"#);
     assert_eq!(
-        refused(false, draft("POST", pulls, &[], Some(&body))),
+        refused(draft("POST", pulls, &[], Some(&body))),
         Some(shown(&raise::request_policy_not_allowed(
             GITHUB,
             "POST",
@@ -177,52 +163,8 @@ fn should_tell_the_model_which_key_a_closed_rule_refused() {
 }
 
 #[test]
-fn should_allow_under_read_only_reads_listed_query_posts_and_rule_allowed_posts() {
-    let refs = "https://api.github.com/repos/acme/widgets/git/refs";
-    let locked = r#"{"ref":"refs/heads/agentsfleet-repair/run-41","sha":"abc"}"#;
-
-    assert_eq!(
-        allow(true, draft("POST", ELASTIC_QUERY, &[], Some("{}"))),
-        Ok(ELASTIC_QUERY.to_owned())
-    );
-    assert_eq!(
-        allow(
-            true,
-            draft(
-                "POST",
-                &format!("{ELASTIC_QUERY}?format=json"),
-                &[],
-                Some("{}")
-            )
-        ),
-        Ok(format!("{ELASTIC_QUERY}?format=json"))
-    );
-    assert_eq!(
-        allow(true, draft("POST", refs, &[], Some(locked))),
-        Ok(refs.to_owned())
-    );
-    for refused_post in [
-        "https://demo.es.example/_query_other",
-        "https://demo.es.example/_bulk",
-    ] {
-        assert_eq!(
-            refused(true, draft("POST", refused_post, &[], Some("{}"))),
-            Some(shown(&raise::method_not_allowed("POST"))),
-            "{refused_post}"
-        );
-    }
-    assert_eq!(
-        refused(
-            true,
-            draft("DELETE", "https://demo.es.example/index", &[], None)
-        ),
-        Some(shown(&raise::method_not_allowed("DELETE")))
-    );
-}
-
-#[test]
 fn should_refuse_a_url_that_does_not_parse() {
-    let refusal = refused(false, draft("GET", "https://[::1", &[], None));
+    let refusal = refused(draft("GET", "https://[::1", &[], None));
 
     assert!(
         matches!(refusal, Some((Some(Refusal::InvalidUrl), _))),
@@ -233,15 +175,12 @@ fn should_refuse_a_url_that_does_not_parse() {
 #[test]
 fn should_refuse_a_placeholder_in_a_header_name() {
     assert_eq!(
-        refused(
-            false,
-            draft(
-                "GET",
-                "https://demo-grafana.internal/",
-                &[("X-${secrets.grafana.token}", "1")],
-                None
-            )
-        ),
+        refused(draft(
+            "GET",
+            "https://demo-grafana.internal/",
+            &[("X-${secrets.grafana.token}", "1")],
+            None
+        )),
         Some(misplaced(
             "the X-${secrets.grafana.token} header as written"
         ))
@@ -249,16 +188,16 @@ fn should_refuse_a_placeholder_in_a_header_name() {
 }
 
 #[test]
-fn should_allow_a_read_under_read_only() {
+fn should_allow_a_read_to_a_listed_host() {
     let github = "https://api.github.com/repos/acme/widgets/pulls";
     let elastic = "https://demo.es.example/index";
 
     assert_eq!(
-        allow(true, draft("GET", github, &[], None)),
+        allow(draft("GET", github, &[], None)),
         Ok(github.to_owned())
     );
     assert_eq!(
-        allow(true, draft("HEAD", elastic, &[], None)),
+        allow(draft("HEAD", elastic, &[], None)),
         Ok(elastic.to_owned())
     );
 }
@@ -272,7 +211,7 @@ fn should_refuse_an_allowlisted_v6_literal_in_a_private_range() {
         ("[::ffff:169.254.169.254]", "[::ffff:a9fe:a9fe]"),
     ];
     for (written, host) in literals {
-        let mut policy = policy(false);
+        let mut policy = policy();
         policy.network_policy.allow.push(host.into());
 
         let url = format!("https://{written}/admin");
@@ -294,7 +233,7 @@ fn should_refuse_userinfo_carrying_only_a_name_or_only_a_password() {
         "https://:secret@demo-grafana.internal/",
     ] {
         assert_eq!(
-            refused(false, draft("GET", userinfo, &[], None)),
+            refused(draft("GET", userinfo, &[], None)),
             Some(misplaced(
                 "a placeholder in the URL, or credentials in its userinfo"
             )),

@@ -18,8 +18,6 @@ pub struct CheckpointGuard<'a> {
     pub generation: i64,
     /// Current stop generation.
     pub stop_generation: i64,
-    /// Accepted revision identity.
-    pub revision_id: &'a Uuid7,
     /// Covered native input sequence.
     pub covered_input_sequence: i64,
     /// Confirmed native effect watermark.
@@ -44,7 +42,6 @@ impl CheckpointGuard<'_> {
             .bind(self.run_id)
             .bind(self.generation)
             .bind(self.stop_generation)
-            .bind(self.revision_id)
             .bind(self.covered_input_sequence)
             .bind(self.effect_watermark)
             .bind(self.head)

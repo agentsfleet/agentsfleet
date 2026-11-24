@@ -79,7 +79,8 @@ backed! {
 impl Handler for CronAdd<'_> {
     const NAME: &'static str = "cron_add";
     const DESCRIPTION: &'static str = "Schedule a run on a recurring cron expression, with a \
-        message saying what to do each time it fires.";
+        message saying what to do each time it fires. Call it only when the person's newest \
+        message asks for a recurring run.";
     type Arguments = Add;
 
     async fn run(&self, arguments: Add, context: Context<'_>) -> ToolOutput {

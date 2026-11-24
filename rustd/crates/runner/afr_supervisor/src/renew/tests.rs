@@ -177,31 +177,6 @@ async fn each_grant_moves_the_deadline_and_a_lapsed_run_ends_at_once() {
     );
 }
 
-#[tokio::test(start_paused = true)]
-async fn an_exhausted_budget_ends_the_run_as_a_budget_breach() {
-    let (plane, _calls) = plane(|_call| {
-        Answer::Fail(error::refused(
-            Verb::Renew,
-            402,
-            Some(error_code::RUN_BUDGET_EXCEEDED),
-        ))
-    });
-    let run = Uuid7::parse(RUN_ID).unwrap();
-    let clock = clock();
-
-    let class = Renewal::new(
-        &plane,
-        &run,
-        GRANTED_UNTIL,
-        &clock,
-        &Arc::new(Meter::default()),
-    )
-    .keep()
-    .await;
-
-    assert_eq!(class, FailureClass::BudgetBreach);
-}
-
 /// The daemon meters tokens at each renewal, so a renewal reports what the
 /// run spent so far, cumulative, rather than the zero a run that never ends
 /// would otherwise be billed.

@@ -33,7 +33,7 @@ fn a_workspace_that_resolves_to_no_tenant_is_refused_terminally() {
         "an unowned workspace must end the event, not leave it leasable"
     );
     assert!(
-        !matches!(decided, Declined::Retry(_) | Declined::Await(_)),
+        !matches!(decided, Declined::Retry(_)),
         "a missing foreign key is not something a later poll repairs"
     );
 }
@@ -95,16 +95,11 @@ async fn decided_on_a_dead_ledger(
     posture: afd_billing::rates::Posture,
 ) -> (super::StartCheck, af_core::test_util::trace::Capture) {
     use af_core::test_util::trace::Capture;
-    use af_fleet_runtime::FleetConfig;
 
     use super::{Request, money_gates};
     use crate::run::test_dead;
 
     let log = Capture::install();
-    let config = FleetConfig::authored(
-        r#"{"name":"fixture","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"}}}"#,
-    )
-    .expect("the fixture document is authorable");
     let (workspace, fleet, tenant) = (test_dead::id(2), test_dead::id(1), test_dead::id(3));
     let event = test_dead::id(5);
     let accounts = afd_billing::Accounts::new(test_dead::database());
@@ -117,7 +112,6 @@ async fn decided_on_a_dead_ledger(
             workspace_id: &workspace,
             fleet_id: &fleet,
             turn_id: &event,
-            budget: config.budget(),
             posture,
             provider: "anthropic",
             model: "claude-fixture",
@@ -129,8 +123,8 @@ async fn decided_on_a_dead_ledger(
     (decided, log)
 }
 
-/// Asserts the dead-ledger outcome: both read gates failed open under their own
-/// names and the run was started. Nothing is charged at the start check, so no
+/// Asserts the dead-ledger outcome: the balance gate failed open under its own
+/// name and the run was started. Nothing is charged at the start check, so no
 /// write gate is left to end the pass; the run's usage is charged as its
 /// lines are logged.
 #[cfg(feature = "test-util")]
@@ -142,31 +136,30 @@ fn assert_read_gates_fail_open_and_start(
         matches!(decided, super::StartCheck::Start(_)),
         "an unreadable ledger starts: {decided:?}"
     );
-    for event in ["run_balance_unavailable", "run_budget_unavailable"] {
-        let line = log.only(event).fields;
-        assert_eq!(
-            line.get("error_code").map(String::as_str),
-            Some(af_core::error_code::INTERNAL_DB_QUERY.as_str()),
-            "{event} names the registry code"
-        );
-        let reason = line.get("reason").map_or("", String::as_str);
-        assert!(
-            !reason.is_empty() && !reason.contains("[UZ-"),
-            "{event}'s reason is the fault's sentence, its code kept out of it: {reason}"
-        );
-        assert!(
-            line.get("cause_error_code")
-                .is_some_and(|code| code.starts_with("UZ-")),
-            "{event}: the ledger fault's own code rides `cause_error_code`: {line:?}"
-        );
-    }
+    let event = "run_balance_unavailable";
+    let line = log.only(event).fields;
+    assert_eq!(
+        line.get("error_code").map(String::as_str),
+        Some(af_core::error_code::INTERNAL_DB_QUERY.as_str()),
+        "{event} names the registry code"
+    );
+    let reason = line.get("reason").map_or("", String::as_str);
+    assert!(
+        !reason.is_empty() && !reason.contains("[UZ-"),
+        "{event}'s reason is the fault's sentence, its code kept out of it: {reason}"
+    );
+    assert!(
+        line.get("cause_error_code")
+            .is_some_and(|code| code.starts_with("UZ-")),
+        "{event}: the ledger fault's own code rides `cause_error_code`: {line:?}"
+    );
 }
 
-/// With the ledger unreachable, the catalogue read fails first: both read gates
-/// fail open and the run is started.
+/// With the ledger unreachable, the catalogue read fails first: the balance
+/// gate fails open and the run is started.
 #[cfg(feature = "test-util")]
 #[tokio::test]
-async fn an_unreadable_catalogue_and_budget_fail_open_and_start() {
+async fn an_unreadable_catalogue_fails_open_and_starts() {
     let (decided, log) = decided_on_a_dead_ledger(afd_billing::rates::Posture::Platform).await;
     assert_read_gates_fail_open_and_start(&decided, &log);
 }

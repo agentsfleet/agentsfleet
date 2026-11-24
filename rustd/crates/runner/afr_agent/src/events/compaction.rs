@@ -1,7 +1,7 @@
 //! A compaction's notices: summarizing, resuming once its checkpoint
 //! committed, or interrupted. Child summaries stay private; root progress
-//! carries no generated notes. A fleet run's window hook and a setup run's
-//! both emit these, as `context_progress` frames the daemon republishes.
+//! carries no generated notes. A run's window hook emits these, as
+//! `context_progress` frames the daemon republishes.
 
 use af_context::{Compaction, Progress};
 use af_wire::{

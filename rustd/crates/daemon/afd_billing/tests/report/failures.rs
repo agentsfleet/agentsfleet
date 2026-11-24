@@ -20,7 +20,7 @@ const REPORT_STATEMENT: &[u8] = b"WITH cells AS";
 #[ignore = "requires live Postgres: make test-integration-rustd"]
 async fn connection_loss_during_the_report_read_keeps_money_and_retry_intact() {
     let f = Fixture::shared().await;
-    fixture::seed(&f.admin, &[Line::setup(&f.tenant, 17)]).await;
+    fixture::seed(&f.admin, &[Line::call(&f.tenant, &f.fleet, 17)]).await;
     let before = fixture::written(&f.admin, &f.tenant).await;
     let (options, target) = api_target().await;
     let proxy = CutProxy::new(target, REPORT_STATEMENT).await;
@@ -90,7 +90,7 @@ pub(super) fn config_through(options: &PgConnectOptions, addr: SocketAddr) -> Po
 #[ignore = "requires live Postgres: make test-integration-rustd"]
 async fn a_closed_report_pool_returns_an_unavailable_error_without_changing_the_ledger() {
     let f = Fixture::shared().await;
-    fixture::seed(&f.admin, &[Line::setup(&f.tenant, 17)]).await;
+    fixture::seed(&f.admin, &[Line::call(&f.tenant, &f.fleet, 17)]).await;
     let before = fixture::written(&f.admin, &f.tenant).await;
     f.api.close().await;
     let error = f

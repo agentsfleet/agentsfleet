@@ -37,7 +37,7 @@ pub(super) struct Keeper {
     clock: Arc<dyn Clock>,
     held: Vec<Entry>,
     workers: usize,
-    busy: BTreeMap<Uuid7, Option<Uuid7>>,
+    busy: BTreeMap<Uuid7, Uuid7>,
     /// Set once the runner takes no new run; nothing is held after.
     closed: bool,
     /// Every teardown in flight, so shutdown can wait for each one.
@@ -100,8 +100,7 @@ impl Keeper {
                     reason,
                 } => self.destroy(&fleet, sandbox, reason),
                 Request::Occupy { occupant } => {
-                    let (run, fleet) = occupant.parts();
-                    self.busy.insert(run, fleet);
+                    self.busy.insert(occupant.run, occupant.fleet);
                     self.cap(self.room(), Release::Saturated);
                 }
                 Request::Vacate { run } => {
@@ -157,7 +156,7 @@ impl Keeper {
         }
         // A successful park consumes this run's busy reservation atomically.
         // Its guard may still be alive while the report awaits acknowledgement.
-        let transfers = self.busy.get(&run).and_then(Option::as_ref) == Some(&key.fleet);
+        let transfers = self.busy.get(&run) == Some(&key.fleet);
         let busy = self.busy.len() - usize::from(transfers);
         let room = self.workers.saturating_sub(busy).saturating_sub(1);
         if room == 0 {
@@ -228,10 +227,7 @@ impl Keeper {
     /// A hold transferring into a busy fleet is already charged by that worker.
     fn cap(&mut self, keep: usize, reason: Release) {
         let busy = &self.busy;
-        let protected = |entry: &Entry| {
-            busy.values()
-                .any(|fleet| fleet.as_ref() == Some(&entry.key.fleet))
-        };
+        let protected = |entry: &Entry| busy.values().any(|fleet| *fleet == entry.key.fleet);
         let mut over = self
             .held
             .iter()

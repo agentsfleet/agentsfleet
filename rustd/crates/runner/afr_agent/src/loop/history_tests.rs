@@ -104,7 +104,8 @@ fn test_history_message_matches_its_first_reading() {
     ] {
         let mut run = payload(&[], unbounded());
         run.event.request_json = request.into();
-        assert_eq!(Prompt::new(&run).message, message_of(request));
+        let message = Prompt::new(&run, &afr_memory::Seed::default()).message;
+        assert_eq!(message, message_of(request));
     }
 }
 

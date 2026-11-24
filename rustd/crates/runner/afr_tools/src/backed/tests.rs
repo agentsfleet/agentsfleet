@@ -87,7 +87,7 @@ async fn a_runs_memory_tools_share_its_memory_to_the_push() {
     let pending = run.memory.pending().await;
 
     assert_eq!(stored.text, "stored deploy:target");
-    assert_eq!(recalled.text, "deploy:target (core): staging first");
+    assert_eq!(recalled.text, "deploy:target (note): staging first");
     assert_eq!(pending.len(), 1, "one store is one pending push");
     assert_eq!(
         pending.first().map(|delta| delta.key.as_ref()),

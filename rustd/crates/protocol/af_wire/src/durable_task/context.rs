@@ -22,16 +22,13 @@ pub struct DurableTaskContext<'a> {
     pub generation: u64,
     /// Committed cutoff for new effects.
     pub stop_generation: u64,
-    /// Fleet revision whose reviewed goal was accepted.
-    #[serde(borrow)]
-    pub accepted_revision_id: Cow<'a, str>,
-    /// Accepted objective, distinct from standing fleet instructions.
+    /// Accepted objective: the span of the person's message that started the task.
     #[serde(borrow)]
     pub objective: Cow<'a, str>,
     /// Digest of the frozen objective and completion questions.
     #[serde(borrow)]
     pub goal_digest: Cow<'a, str>,
-    /// Accepted questions with stable identities and complete reviewed criteria.
+    /// The task's completion statements, as named questions with both criteria.
     pub questions: Vec<crate::decision::NamedQuestion>,
     /// Current durable state.
     pub state: DurableTaskState,
@@ -67,7 +64,6 @@ impl DurableTaskContext<'_> {
             target: self.target,
             generation: self.generation,
             stop_generation: self.stop_generation,
-            accepted_revision_id: Cow::Owned(self.accepted_revision_id.into_owned()),
             objective: Cow::Owned(self.objective.into_owned()),
             goal_digest: Cow::Owned(self.goal_digest.into_owned()),
             questions: self.questions,

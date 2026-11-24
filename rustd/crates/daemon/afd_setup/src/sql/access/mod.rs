@@ -22,8 +22,3 @@ pub(crate) const PERSON_READ: &str = include_str!("person_read.sql");
 ///
 /// `$1` owner tenant, `$2` person.
 pub(crate) const MEMBER: &str = include_str!("member.sql");
-
-/// The sign-in subject a person id names, for a runner path that holds only the id.
-///
-/// `$1` person.
-pub(crate) const SUBJECT: &str = include_str!("subject.sql");

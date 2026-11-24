@@ -12,7 +12,6 @@ use afd_billing::biller::{
     Account, Ask, Attribution, Biller, FailOpen, Funds, RecordingBiller, Settlement, WorkKey,
 };
 use afd_billing::ledger::{LedgerBiller, log_lines};
-use afd_billing::limits::fleet_spend;
 use afd_billing::price::RatedLine;
 use afd_billing::{Nanos, Posture};
 use afd_db::test_util::{mint_id, unreachable_db};
@@ -197,33 +196,5 @@ async fn a_logged_line_debits_its_wallet_once() {
         balance.balance.as_i64(),
         BALANCE.as_i64() - LINE.as_i64() * 2,
         "each line is debited once"
-    );
-}
-
-#[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn a_fleets_spend_is_the_sum_of_its_lines() {
-    let (lane, payer) = funded_lane().await;
-    let work = WorkKey::FleetRun(mint_id());
-    log(
-        &lane,
-        &settlement(&lane, &payer, &work, vec![rated(0), rated(1), rated(2)]),
-    )
-    .await;
-    let spend = fleet_spend(
-        &mut *lane.pool.acquire().await.expect("the lane answers"),
-        &lane.workspace,
-        &lane.fleet,
-    )
-    .await
-    .expect("reads the spend");
-    assert_eq!(
-        spend.day.as_i64(),
-        LINE.as_i64() * 3,
-        "today's spend is every line"
-    );
-    assert_eq!(
-        spend.month, spend.day,
-        "this month's spend includes today's"
     );
 }

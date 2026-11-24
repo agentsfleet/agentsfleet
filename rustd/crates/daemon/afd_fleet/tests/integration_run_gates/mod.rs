@@ -36,13 +36,15 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+mod access;
+mod access_later;
+mod access_refusals;
+mod bare;
 mod bindings;
-mod cases;
 mod chat;
 mod decision;
 mod decision_expiry;
 mod faults;
-mod gates_read;
 mod history;
 mod lapses;
 mod restart;
@@ -63,56 +65,35 @@ use crate::support::Fixtures;
 /// An event type `TurnKind::parse` accepts. See the module note.
 const EVENT_TYPE_CHAT: &str = "chat";
 
-/// A stored document the runtime parser accepts, with a one-dollar ceiling.
-const BUDGETED_CONFIG: &str = r#"{"name":"probe","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"}}}"#;
-
-/// [`BUDGETED_CONFIG`] with a WRITE reach over one repository.
+/// An approved GitHub scope with WRITE reach over one repository.
 ///
 /// Exactly one repository and a declared base, so the only thing left that can
 /// refuse the egress build is the repair branch — which is the subject.
-const WRITE_BOUND_CONFIG: &str = r#"{"name":"probe","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"},"repositories":["agentsfleet/probe"],"repository_access":"write","repository_base":"main"}}"#;
+fn write_bound() -> serde_json::Value {
+    serde_json::json!({"repositories":["agentsfleet/probe"],"access":"write","base":"main"})
+}
 
-/// [`WRITE_BOUND_CONFIG`] with a second repository, which no write binding may
-/// carry.
+/// [`write_bound`] with a second repository, which no write binding may carry.
 ///
 /// `egress::write` locks its rules to ONE repository by construction: naming
 /// several would bind the first and leave the rest reachable. The parser admits
-/// the list, so the refusal lands at assembly — a fleet author's mistake, and
-/// the reachable trigger for `BINDING_UNENFORCEABLE` now that a write binding
-/// always resolves a branch.
-const MULTI_REPOSITORY_WRITE_CONFIG: &str = r#"{"name":"probe","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"},"repositories":["agentsfleet/probe","agentsfleet/second"],"repository_access":"write","repository_base":"main"}}"#;
+/// the list, so the refusal lands at assembly, and that is the reachable
+/// trigger for `BINDING_UNENFORCEABLE`.
+fn multi_repository_write() -> serde_json::Value {
+    serde_json::json!({"repositories":["agentsfleet/probe","agentsfleet/second"],
+        "access":"write","base":"main"})
+}
 
-/// [`WRITE_BOUND_CONFIG`] differing in one word: the reach is READ.
-///
-/// A read binding carries no base — the parser refuses one that does — so the
-/// pair is as close as the config language allows two bindings to be.
-const READ_BOUND_CONFIG: &str = r#"{"name":"probe","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"},"repositories":["agentsfleet/probe"],"repository_access":"read"}}"#;
+/// [`write_bound`] differing in its reach, which is READ and carries no base.
+fn read_bound() -> serde_json::Value {
+    serde_json::json!({"repositories":["agentsfleet/probe"],"access":"read"})
+}
 
 /// The status a refused event's row is left in.
 const STATUS_GATE_BLOCKED: &str = "gate_blocked";
 
 /// The status an event that is delivered, or merely waiting, is left in.
 const STATUS_RECEIVED: &str = "received";
-
-/// The gate kind a fixture raises over a whole event.
-const KIND_EVENT: &str = "tool_call";
-
-/// The gate kind that answers "may this run author a branch".
-///
-/// Mirrored from `afd_gate::gate::KIND_REPOSITORY_WRITE` rather than imported,
-/// which is this suite's habit for anything the DAEMON reads back: a fixture
-/// that imported it would keep matching a kind that moved, and a kind the
-/// reader no longer selects on is the one failure this fixture exists to catch.
-const KIND_REPOSITORY_WRITE: &str = "repository_write";
-
-/// The stored spelling of a gate a human said yes to.
-const STATUS_APPROVED: &str = "approved";
-
-/// How long a fixture gate stays unexpired.
-const GATE_WINDOW: std::time::Duration = std::time::Duration::from_secs(600);
-
-/// A settled spend past [`BUDGETED_CONFIG`]'s ceiling, in nanodollars.
-const OVERSPENT_NANOS: i64 = 2_000_000_000;
 
 /// The context ceiling the fixture model is catalogued with.
 const CONTEXT_CAP_TOKENS: i32 = 200_000;
@@ -216,7 +197,8 @@ async fn terminal_of(
     })
 }
 
-/// Replaces a seeded fleet's stored configuration.
-async fn set_config(fixtures: &Fixtures, fleet: &Uuid7, config_json: &str) {
-    fixtures.native_config(fleet, config_json).await;
+/// Approves the seeded fleet's GitHub grant at `scope`, as a person's
+/// Approve leaves it.
+async fn bind(fixtures: &Fixtures, fleet: &Uuid7, scope: serde_json::Value) {
+    fixtures.approve_github(fleet, &scope).await;
 }

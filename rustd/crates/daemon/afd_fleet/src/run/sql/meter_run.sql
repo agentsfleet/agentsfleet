@@ -1,6 +1,6 @@
--- The fleet's per-run renewal: `shared/extend_run.sql` with the durable task's limits
--- and the turn's fence checked in the same statement. A change to the shared
--- bookkeeping belongs in both.
+-- The fleet's per-run renewal: one run and its thread extended by one lifetime and metered,
+-- with the durable task's limits and the turn's fence checked in the same statement. A change
+-- to this bookkeeping belongs in `renew_batch.sql` too.
 WITH locked_thread AS MATERIALIZED (
     SELECT s.fleet_id, s.fencing_token, s.run_expires_at
     FROM thread.threads s JOIN thread.runs l ON l.fleet_id = s.fleet_id

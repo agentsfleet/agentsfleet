@@ -110,39 +110,22 @@ pub(super) fn item(
     action: DurableTaskInputAction,
     applies_here: bool,
 ) -> DurableTaskRecoveredItem {
-    let text = match action {
-        DurableTaskInputAction::Conversation => "hello",
-        DurableTaskInputAction::Status => "what is the investigation status?",
-        _ => "investigate the failure",
-    };
     DurableTaskRecoveredItem {
         binding: DurableTaskItemBinding {
             item_id: id.to_owned(),
-            durable_task_id: if action == DurableTaskInputAction::Conversation {
-                None
-            } else {
-                Some(SOURCE.to_owned())
-            },
-            durable_task_generation: if action == DurableTaskInputAction::Conversation {
-                None
-            } else {
-                Some(1)
-            },
+            durable_task_id: Some(SOURCE.to_owned()),
+            durable_task_generation: Some(1),
             action,
             applies_here,
             input_sequence: None,
         },
-        accepted_text: text.to_owned(),
+        accepted_text: "investigate the failure".to_owned(),
         interpretation: "Preserve the source request".to_owned(),
         response_text: None,
     }
 }
 
-pub(super) async fn execute(
-    script: &Script,
-    native: &Replies,
-    allow_actions: bool,
-) -> crate::Result<crate::RunOutput> {
+pub(super) async fn execute(script: &Script, native: &Replies) -> crate::Result<crate::RunOutput> {
     let engine = super::super::super::tests::engine(vec![], script);
     let this_run = assigned_run(&[], 16_384);
     let inputs = native
@@ -153,7 +136,6 @@ pub(super) async fn execute(
     let prepared = PreparedDurableTask {
         execution_deadline: inputs.execution_deadline,
         inputs,
-        allow_actions,
     };
     run(&engine, &this_run, native, &prepared).await
 }

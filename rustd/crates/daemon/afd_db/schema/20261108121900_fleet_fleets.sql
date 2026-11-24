@@ -1,15 +1,19 @@
--- The deployed agent. Its setup lives only in `fleet.revisions`, and `head_revision_id` names
--- the live one. Purging a fleet cascades everything it owns except money.
+-- The deployed agent: a name, a model, its network toggles, and what it owns by key. A person's
+-- first message writes it `active` with its thread and first turn. Purging a fleet cascades
+-- everything it owns except money. `model_ref` is the workspace model its runs resolve, read by
+-- the run's issue and the fleet read; `http_egress` (`restricted` or `public`) and
+-- `package_domains` feed the run's network policy (`afd_gate/src/policy/`), and a person flips
+-- them. Their spellings are `af_fleet_runtime::config::HttpEgress`'s.
 CREATE TABLE fleet.fleets (
     id                          UUID PRIMARY KEY,
     workspace_id                UUID    NOT NULL,
     tenant_id                   UUID    NOT NULL,
     name                        TEXT    NOT NULL,
     status                      TEXT    NOT NULL,
-    head_revision_id            UUID,
+    model_ref                   TEXT    NOT NULL,
+    http_egress                 TEXT    NOT NULL,
+    package_domains             BOOLEAN NOT NULL,
     required_tags               TEXT[]  NOT NULL,
-    setup_stream_ready          BOOLEAN,
-    initial_start               JSONB,
     memory_reads_workspace      BOOLEAN NOT NULL,
     memory_publishes_workspace  BOOLEAN NOT NULL,
     resource_version            BIGINT  NOT NULL,
@@ -35,6 +39,3 @@ CREATE INDEX idx_fleets_workspace_id_status_id ON fleet.fleets (workspace_id, st
 CREATE INDEX idx_fleets_tenant_id ON fleet.fleets (tenant_id);
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON fleet.fleets TO api_runtime;
-
-CREATE INDEX idx_fleets_head_revision_id
-    ON fleet.fleets (head_revision_id) WHERE head_revision_id IS NOT NULL;

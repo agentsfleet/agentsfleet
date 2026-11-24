@@ -1,14 +1,13 @@
 -- One capture plan, then one recoverable generation, of a turn's or a durable task's private
 -- state: exactly one owner. Each owner draws `generation` under its own row's lock (turns'
--- next_checkpoint_generation, tasks' checkpoint_sequence). `revision_id` is the fleet revision the
--- capturing run executed. Allocation receipts live in `thread.replay_receipts`.
+-- next_checkpoint_generation, tasks' checkpoint_sequence). Allocation receipts live in
+-- `thread.replay_receipts`.
 CREATE TABLE runner.checkpoints (
     id UUID PRIMARY KEY,
     turn_id UUID REFERENCES thread.turns (id) ON DELETE CASCADE,
     durable_task_id UUID,
     fleet_id UUID NOT NULL REFERENCES fleet.fleets (id) ON DELETE CASCADE,
     workspace_id UUID NOT NULL REFERENCES identity.workspaces (id) ON DELETE CASCADE,
-    revision_id UUID NOT NULL,
     generation BIGINT NOT NULL CHECK (generation > 0),
     owner_run_id UUID NOT NULL,
     owner_fence BIGINT NOT NULL CHECK (owner_fence > 0),
@@ -46,8 +45,6 @@ CREATE TABLE runner.checkpoints (
     updated_at TIMESTAMPTZ(3) NOT NULL,
     CONSTRAINT fk_checkpoints_durable_task FOREIGN KEY (durable_task_id, fleet_id, workspace_id)
         REFERENCES fleet.durable_tasks (id, fleet_id, workspace_id) ON DELETE CASCADE,
-    CONSTRAINT fk_checkpoints_revision FOREIGN KEY (revision_id, fleet_id)
-        REFERENCES fleet.revisions (id, fleet_id),
     CONSTRAINT fk_checkpoints_base FOREIGN KEY (checkpoint_base_id, workspace_id, repository)
         REFERENCES runner.checkpoint_bases (id, workspace_id, repository),
     CONSTRAINT uq_checkpoints_id_turn_id UNIQUE (id, turn_id),
@@ -82,8 +79,6 @@ CREATE UNIQUE INDEX uq_checkpoints_durable_task_id_pending ON runner.checkpoints
 
 CREATE INDEX idx_checkpoints_workspace_id_id ON runner.checkpoints (workspace_id, id);
 CREATE INDEX idx_checkpoints_fleet_id ON runner.checkpoints (fleet_id);
--- Deleting a fleet deletes its revisions, and each one checks fk_checkpoints_revision here.
-CREATE INDEX idx_checkpoints_revision_id ON runner.checkpoints (revision_id);
 CREATE INDEX idx_checkpoints_checkpoint_base_id ON runner.checkpoints (checkpoint_base_id) WHERE checkpoint_base_id IS NOT NULL;
 CREATE INDEX idx_checkpoints_turn_id_generation_ready ON runner.checkpoints (turn_id, generation) WHERE ready_at IS NOT NULL;
 CREATE INDEX idx_checkpoints_expires_at_id_unready ON runner.checkpoints (expires_at, id) WHERE ready_at IS NULL;

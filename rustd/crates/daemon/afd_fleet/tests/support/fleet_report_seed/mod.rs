@@ -164,8 +164,6 @@ async fn issue_received(
 pub(crate) struct Other {
     pub(crate) run: Uuid7,
     pub(crate) fleet: Uuid7,
-    pub(crate) tenant: Uuid7,
-    pub(crate) workspace: Uuid7,
 }
 
 /// Room for every run a test hands one host.
@@ -263,8 +261,6 @@ impl Held {
         Other {
             run: issued.run_id,
             fleet,
-            tenant,
-            workspace: acquired.workspace_id,
         }
     }
 }

@@ -172,7 +172,6 @@ impl Fixture {
             )
             .name(name)
             .at(afd_db::test_util::SEEDED_AT)
-            .native_setup()
             .insert(&mut *connection)
             .await
             .expect("the tenant's fleets seed");

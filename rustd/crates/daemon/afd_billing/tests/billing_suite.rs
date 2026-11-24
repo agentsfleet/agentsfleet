@@ -21,5 +21,3 @@ mod funds_cap;
 mod reads;
 #[path = "billing/recorded.rs"]
 mod recorded;
-#[path = "billing/spend.rs"]
-mod spend;

@@ -18,7 +18,7 @@ use libtest_mimic::Failed;
 use serde_json::{Value, json};
 use tokio::sync::{Mutex, Notify};
 
-use crate::supervisor_model::{INSTRUCTIONS, STEER};
+use crate::supervisor_model::{NAME, STEER};
 
 /// A fixture credential; never a real integration credential.
 pub(crate) const TOKEN: &str = "kernel-fixture-credential";
@@ -201,7 +201,7 @@ fn run(
     run.event.workspace_id = WORKSPACE_ID.into();
     run.event.actor = "steer:user".into();
     run.event.request_json = json!({ "message": STEER }).to_string().into();
-    run.instructions = INSTRUCTIONS.into();
+    run.name = NAME.into();
     run.policy.tools = tools.iter().map(|name| (*name).to_owned().into()).collect();
     run.policy.context.tool_window = 32;
     run.policy.context.context_cap_tokens = 65_536;
@@ -219,8 +219,8 @@ fn run(
             base_branch: "main".into(),
         });
     }
-    if recovery.is_some() {
-        crate::supervisor_recovery::Config::configure(&mut run)?;
+    if let Some(recovery) = recovery {
+        recovery.configure(&mut run)?;
     }
     // Assignments use the daemon's tagged run encoding.
     Ok(serde_json::to_value(af_wire::run::TaggedRun::Fleet(

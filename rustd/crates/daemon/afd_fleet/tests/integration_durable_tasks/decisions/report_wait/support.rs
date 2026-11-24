@@ -3,8 +3,8 @@ use super::super::super::fixture::Case;
 use super::super::{
     fixture::{Decisions, request},
     github_server::Server,
-    interpretation::choose,
     reply::known_result,
+    steps::choose,
 };
 use af_core::id::Uuid7;
 use af_wire::{

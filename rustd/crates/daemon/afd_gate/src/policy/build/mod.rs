@@ -1,118 +1,80 @@
 //! Assembling the one value a run hands a runner.
 //!
-//! Everything below has already been decided somewhere else — the config
-//! parsed, the provider resolved, the credentials split, the gates passed. This
-//! is the assembly, and it is deliberately the only place that knows the whole
-//! shape: a second assembler would be a second opinion about what a run is
-//! allowed to do.
+//! Everything below has already been decided somewhere else — the fleet row
+//! read, its approved grants read, the provider resolved, the approved names
+//! resolved against the vault. This is the assembly, and it is deliberately
+//! the only place that knows the whole shape: a second assembler would be a
+//! second opinion about what a run is allowed to do.
 //!
-//! # A mintable credential is refused unless its integration was granted
+//! # A run holds exactly what a person approved
 //!
-//! `secrets_map` ships stored values; `mintable` grants the run permission to
-//! come back for a short-lived token. The second is the one that needs a
-//! standing human decision, because it reaches a third party under the
-//! workspace's own authority — so a mintable credential whose integration has
-//! no approved grant does not silently degrade to "not available". It PARKS the
-//! run, which is what puts the question to a human.
-//!
-//! The grant set arrives as an argument rather than being read here, and that
-//! is the fail-closed direction: resolving it lazily inside would make "nobody
-//! asked" and "nobody granted" look the same to this function. It arrives as a
-//! [`Grants`] rather than a slice of names for the same reason one layer out —
-//! see that type for why the empty case has to be spelled deliberately.
+//! The approved grants are the one source of names and scope. A credential
+//! reaches the run only through the channel a person approved it as: a static
+//! secret ships in `secrets_map` only when approved as a secret, and a
+//! mintable one is offered only when approved as an integration. A vault entry
+//! whose shape changed after its approval is withheld rather than shipped
+//! through a channel nobody approved.
 
-use af_fleet_runtime::FleetConfig;
 use af_wire::policy::{ExecutionPolicy, Mintable};
-
-use crate::policy::context::{self, Overlay};
-use crate::policy::egress;
-use crate::policy::grants::{Grants, first_ungranted};
-use crate::policy::shape::{network, wire_binding};
+use afd_api_wire::grant::kind;
 use afd_credential::provider::Resolved;
 use afd_credential::secrets::Declared;
+use serde_json::{Map, Value};
 
-/// What the assembly produced.
-#[derive(Debug)]
-pub enum Assembled<'a> {
-    /// The run may proceed under this policy.
-    Ready(Box<ExecutionPolicy<'a>>),
-    /// A mintable credential names an integration nobody has granted.
-    ///
-    /// The run parks and a human is asked. Boxed values name WHICH credential
-    /// and WHICH integration, because "a grant is missing" is unactionable
-    /// while "`github` for `repair-bot`" is a button someone can press.
-    Ungranted {
-        /// The credential the fleet declared.
-        credential: &'a str,
-        /// The integration it needs a grant for.
-        integration: &'a str,
-    },
-}
+use crate::policy::approved::Approved;
+use crate::policy::context::{self, Overlay};
+use crate::policy::shape::{Network, network, wire_binding};
+use crate::policy::{catalog, egress};
 
 /// What one run's policy is assembled from.
 ///
-/// A bundle rather than six arguments, three of which are borrowed slices of
-/// the same shape. Everything here is borrowed BY the assembled policy, which
-/// is why the grant set is not among them: it decides whether there is a
-/// policy at all and contributes no bytes to one, so tying it to the same
-/// lifetime would make a caller hold its grant rows for as long as the run
-/// answer it has nothing to do with.
+/// A bundle rather than seven arguments, several of which are borrowed values
+/// of related shapes that would compile clean in the wrong order.
 #[derive(Debug, Clone, Copy)]
 pub struct Inputs<'a> {
-    /// The config resolved for this run.
-    pub config: &'a FleetConfig,
+    /// The fleet row's two network toggles.
+    pub network: Network,
+    /// The grants a person approved for the fleet.
+    pub approved: &'a Approved,
+    /// The approved names the vault answered with, already split by channel.
+    pub declared: &'a Declared,
     /// The provider this run was billed against.
     pub provider: &'a Resolved,
-    /// The credentials the vault answered with, already split by channel.
-    pub declared: &'a Declared,
     /// The branch a write-bound run may author on, when one was authorised.
     pub repair_branch: Option<&'a str>,
     /// The deployment's tool-window tiers.
     pub windows: context::ToolWindows,
+    /// Whether the run can be judged: the runner is task-capable and the run
+    /// carries a decision profile, so it may start and join durable tasks.
+    pub judged: bool,
 }
 
 /// The policy this run runs under.
 ///
-/// `granted` is what the workspace stands behind; see [`Grants`] for why the
-/// empty set has to be named rather than defaulted into.
-///
 /// # Errors
-/// A rejection, [`crate::Error::is_rejected`], when a write binding cannot be
-/// turned into egress rules that bound anything — a fleet author's mistake,
-/// distinct from a datastore fault, and the caller ends the event with its
-/// [`crate::Error::detail`] rather than retrying it.
-pub fn assemble<'a>(inputs: Inputs<'a>, granted: &Grants) -> crate::Result<Assembled<'a>> {
-    if let Some(wanted) = first_ungranted(inputs.declared, granted) {
-        return Ok(Assembled::Ungranted {
-            credential: &wanted.name,
-            integration: &wanted.integration,
-        });
-    }
-
-    Ok(Assembled::Ready(Box::new(policy(inputs)?)))
-}
-
-fn policy(inputs: Inputs<'_>) -> crate::Result<ExecutionPolicy<'_>> {
-    let binding = inputs.config.repository_binding();
+/// A rejection, [`crate::Error::is_rejected`], when an approved write scope
+/// cannot be turned into egress rules that bound anything, and a permanent
+/// failure, [`crate::Error::is_config_permanent`], when the approved scope no
+/// longer reads back. Both end the event with [`crate::Error::detail`] rather
+/// than retrying it.
+pub fn assemble(inputs: Inputs<'_>) -> crate::Result<ExecutionPolicy<'_>> {
+    let binding = inputs.approved.repository_binding()?;
+    let statics = approved_statics(inputs.approved, inputs.declared);
     let wire = inputs.provider.wire();
     Ok(ExecutionPolicy {
         inference: inputs.provider.inference.clone(),
         model_context_tokens: inputs.provider.context_cap_tokens,
-        network_policy: network(inputs.config),
-        tools: inputs
-            .config
-            .tools()
-            .iter()
-            .map(|tool| tool.as_ref().into())
-            .collect(),
-        // The tool bridge needs null when no static credentials were declared.
-        secrets_map: Some(inputs.declared.secrets_map())
-            .filter(|declared| !declared.is_empty())
-            .map(|declared| serde_json::Value::Object(declared.clone())),
+        network_policy: network(inputs.network, &statics, binding.is_some()),
+        tools: catalog::offered(inputs.judged),
+        // The tool bridge needs null when no static credential was approved.
+        secrets_map: Some(statics)
+            .filter(|statics| !statics.is_empty())
+            .map(Value::Object),
         mintable: inputs
             .declared
             .mintable()
             .iter()
+            .filter(|minted| inputs.approved.holds(&minted.name, kind::INTEGRATION))
             .map(|granted| Mintable {
                 name: granted.name.as_ref().into(),
                 integration: granted.integration.as_ref().into(),
@@ -124,22 +86,31 @@ fn policy(inputs: Inputs<'_>) -> crate::Result<ExecutionPolicy<'_>> {
         api_key: inputs.provider.api_key().expose().into(),
         inference_host: wire.inference_host.into(),
         base_url: wire.base_url.map(Into::into),
-        repository_binding: binding.map(wire_binding),
-        // Only a bound fleet has egress rules to author; an unbound one reaches
-        // no repository at all, which the runner enforces by admitting nothing.
+        repository_binding: binding.as_ref().map(wire_binding),
+        // Only an approved GitHub scope has egress rules to author; a fleet
+        // without one reaches no repository at all, which the runner enforces
+        // by admitting nothing.
         http_origin_policies: binding
+            .as_ref()
             .map(|bound| egress::build(bound, inputs.repair_branch))
             .transpose()?
             .unwrap_or_default(),
-        context: context::resolve(
-            inputs.config.context(),
-            Overlay {
-                cap_tokens: inputs.provider.context_cap_tokens,
-                model: &inputs.provider.model,
-                windows: inputs.windows,
-            },
-        ),
+        context: context::resolve(Overlay {
+            cap_tokens: inputs.provider.context_cap_tokens,
+            model: &inputs.provider.model,
+            windows: inputs.windows,
+        }),
     })
+}
+
+/// The stored values of the credentials a person approved as secrets.
+fn approved_statics(approved: &Approved, declared: &Declared) -> Map<String, Value> {
+    declared
+        .secrets_map()
+        .iter()
+        .filter(|(name, _stored)| approved.holds(name, kind::SECRET))
+        .map(|(name, stored)| (name.clone(), stored.clone()))
+        .collect()
 }
 
 #[cfg(test)]

@@ -52,7 +52,6 @@ impl Lane {
         FleetSeed::new(&self.fleet, &self.workspace, &self.tenant, FLEET_ARCHIVED)
             .name("turn-fixture-fleet")
             .at(SEEDED_AT)
-            .native_setup()
             .insert(&mut *self.database.acquire().await?)
             .await?;
         Ok(())

@@ -21,7 +21,7 @@
 //!
 //! That crate owns the same table's reads and the steer's append, and it is the
 //! obvious home until you count what would come with this: `afd_vault` drags
-//! AES-GCM, and `af_fleet_runtime` drags a whole document reader. Both would
+//! AES-GCM, and `af_fleet_runtime` drags the trigger parser. Both would
 //! then sit behind every history page the dashboard asks for. It is the same
 //! argument `afd_vault` makes for not living inside `afd_fleet`, applied one
 //! table over.
@@ -32,9 +32,9 @@
 //!   delivery
 //!      │
 //!      ▼
-//!   Ingress::binding        fleet row → workspace, status, webhook trigger
+//!   Ingress::binding        fleet row + trigger row → workspace, status, recipe
 //!      │                    absent ⇒ UZ-WH-001, and so is a fleet with no
-//!      │                    webhook trigger — see `Binding::read_for_source`
+//!      │                    webhook row for the source — see `Binding::read`
 //!      ▼
 //!   Ingress::signing_secret vault → the shared secret, or None
 //!      │                    None ⇒ Refusal::Unconfigured ⇒ UZ-WH-020
@@ -66,12 +66,13 @@ pub mod sql;
 
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
+use af_wire::trigger_verb::TriggerKind;
 use afd_db::Db;
 use afd_turns::Turns;
 use afd_vault::Vault;
 
 pub use self::app::{Fanout, replay_id};
-pub use self::binding::Binding;
+pub use self::binding::{Binding, StoredTrigger};
 pub use self::deliver::{Delivery, Surface};
 pub use self::error::{Error, Result};
 
@@ -111,24 +112,26 @@ impl Ingress {
         }
     }
 
-    /// What this fleet's row says about receiving a signed delivery.
+    /// What this fleet's trigger row says about receiving a signed delivery.
     ///
-    /// `Ok(None)` both for a fleet with no row and for one whose document
-    /// declares no webhook trigger. One answer for two states on purpose: they
-    /// answer the same `UZ-WH-001`, and distinguishing them would confirm a
-    /// fleet id to whoever guessed it.
+    /// `Ok(None)` both for a fleet with no row and for one with no webhook
+    /// row for `source`. One answer for two states on purpose: they answer the
+    /// same `UZ-WH-001`, and distinguishing them would confirm a fleet id to
+    /// whoever guessed it.
     ///
-    /// `source` is the provider named in the URL. A fleet declaring no trigger
-    /// for it resolves to `Ok(None)`, regardless of declaration order.
+    /// `source` is the provider named in the URL, matched lowercase: a stored
+    /// source is a lowercase slug, so case can only differ on the URL's side.
     ///
     /// # Errors
     /// Reports a datastore that would not answer, a row this build cannot read,
-    /// a stored status it cannot name, and a stored document that no longer
-    /// parses.
+    /// a stored status it cannot name, and a stored row the trigger parser
+    /// refuses.
     pub async fn binding(&self, fleet: &Uuid7, source: &str) -> Result<Option<Binding>> {
         let mut connection = self.database.acquire().await?;
         let row: Option<IngressRow> = sqlx::query_as(sql::SELECT_FLEET_INGRESS)
             .bind(fleet)
+            .bind(TriggerKind::Webhook.as_str())
+            .bind(source.to_ascii_lowercase())
             .fetch_optional(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_BINDING))?;
@@ -137,23 +140,18 @@ impl Ingress {
             return Ok(None);
         };
 
-        // The column is a NOT NULL foreign key onto `identity.workspaces`, so a
-        // value that will not parse is a broken invariant rather than a race —
-        // and it is reported as this daemon's fault, not answered as "no such
-        // fleet", which would send an operator looking at the wrong thing.
-        let workspace = row.workspace_id.clone();
-
-        Binding::read_for_source(fleet.clone(), workspace, &row.status, &row.document, source)
+        Binding::read(fleet.clone(), row.workspace_id, &row.status, &row.trigger)
     }
 }
 
 /// [`sql::SELECT_FLEET_INGRESS`]'s row: what one fleet says about a delivery.
 #[derive(Debug, sqlx::FromRow)]
 struct IngressRow {
-    /// The owning workspace, as text.
+    /// The owning workspace.
     workspace_id: Uuid7,
     /// The stored status word.
     status: String,
-    /// The head revision's configuration, as JSON text.
-    document: String,
+    /// The webhook row for the delivery's source.
+    #[sqlx(flatten)]
+    trigger: StoredTrigger,
 }

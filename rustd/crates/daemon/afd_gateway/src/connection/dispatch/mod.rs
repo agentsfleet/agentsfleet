@@ -19,10 +19,6 @@ mod turn_checkpoint;
 #[path = "live_tests.rs"]
 mod tests;
 
-#[cfg(all(test, feature = "test-util"))]
-#[path = "draft_tests.rs"]
-mod draft_tests;
-
 impl ConnectionServices {
     #[tracing::instrument(
         name = "runner_connection_dispatch",

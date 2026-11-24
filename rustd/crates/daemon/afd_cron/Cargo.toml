@@ -84,9 +84,9 @@ tracing.workspace = true
 # path table.
 af_validate.workspace = true
 garde.workspace = true
-# The cron check. `validate::cron` delegates to `check_schedule`, the one a
-# fleet definition's cron trigger is parsed with, so a schedule route and a
-# proposed definition cannot disagree on what a schedule may say.
+# The cron check. `validate::cron` delegates to `check_schedule`, the one
+# cron check every schedule surface shares, so a person's route and a fleet's
+# own verb cannot disagree on what a schedule may say.
 af_fleet_runtime.workspace = true
 # The cron grammar, read here only to compute a schedule's next fire (`next`)
 # and to word it (`run`). Whether an expression is admissible is

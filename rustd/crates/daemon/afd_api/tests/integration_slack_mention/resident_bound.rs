@@ -6,7 +6,7 @@ use super::*;
 use af_core::id::Uuid7;
 use afd_db::test_util::mint_id;
 
-pub(super) fn owner_document() -> String {
+pub(super) fn owner_document() -> Subscribed {
     document("notice-carrier", CHANNEL, None)
 }
 

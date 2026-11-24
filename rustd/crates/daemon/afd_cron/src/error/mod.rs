@@ -52,7 +52,7 @@ af_core::error_shell!(
 /// What actually went wrong. Crate-visible so a raise site can name the variant.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ErrorKind {
-    #[error("the schedule patch does not match its source")]
+    #[error("the schedule patch names none of its own fields")]
     Patch,
     #[error("a conditional schedule edit requires its current tag")]
     Precondition,
@@ -60,7 +60,7 @@ pub(crate) enum ErrorKind {
     Stale { etag: String },
     #[error("the schedule is being removed")]
     Deleting,
-    #[error("the inherited schedule encoding is invalid")]
+    #[error("a schedule fire body could not be encoded")]
     Json {
         #[source]
         source: serde_json::Error,
@@ -71,8 +71,6 @@ pub(crate) enum ErrorKind {
     Refused { refusal: crate::Refused },
     #[error("a schedule sync currently owns the row")]
     Held,
-    #[error("the schedule revision is exhausted")]
-    Exhausted,
     #[error("the datastore holding the schedule row would not answer")]
     Datastore {
         #[source]
@@ -335,7 +333,6 @@ impl Error {
             | ErrorKind::Invalid { .. }
             | ErrorKind::Refused { .. }
             | ErrorKind::Held
-            | ErrorKind::Exhausted
             | ErrorKind::Datastore { .. }
             | ErrorKind::Query { .. }
             | ErrorKind::Identifier { .. }

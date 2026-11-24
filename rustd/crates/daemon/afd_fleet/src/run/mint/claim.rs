@@ -35,7 +35,7 @@ use crate::error::{
 
 /// What the mint must still prove before it may exchange this handle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Claim {
+pub(in crate::run) enum Claim {
     /// Nothing a datastore can hold to an owner: an inline credential the
     /// workspace supplied itself, a refresh handle posting where its connector
     /// does, or an integration no connector carries.
@@ -57,7 +57,11 @@ pub(super) enum Claim {
 /// Refuses a GitHub handle that names no readable installation as a reconnect,
 /// the same answer the exchange would give it, and a refresh handle steering
 /// its post anywhere the connect flow does not write as a reconnect too.
-pub(super) fn claim(connectors: &dyn Connectors, requested: &str, handle: &Value) -> Result<Claim> {
+pub(in crate::run) fn claim(
+    connectors: &dyn Connectors,
+    requested: &str,
+    handle: &Value,
+) -> Result<Claim> {
     let Some(connector) = handle
         .get(FIELD_INTEGRATION)
         .and_then(Value::as_str)

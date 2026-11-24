@@ -1,5 +1,5 @@
 INSERT INTO fleet.durable_tasks
-  (id, fleet_id, workspace_id, tenant_id, originating_durable_task_item_id, accepted_revision_id,
+  (id, fleet_id, workspace_id, tenant_id, originating_durable_task_item_id,
    title, objective, questions, goal_digest, target, status, resource_version,
    generation, stop_generation, input_sequence, covered_input_sequence,
    effect_cursor, confirmed_effect_watermark, max_model_nanos, used_model_nanos,
@@ -7,7 +7,7 @@ INSERT INTO fleet.durable_tasks
    used_runs, max_publications, used_publications, max_decision_calls,
    used_decision_calls,
    expires_at, terminal_at, created_at, updated_at)
-SELECT $1, f.id, f.workspace_id, f.tenant_id, $3, f.head_revision_id,
+SELECT $1, f.id, f.workspace_id, f.tenant_id, $3,
        $4, 'Repair the accepted redirect defect.', $5::jsonb, repeat('b', 64),
        '{"kind":"api_only"}'::jsonb, $6, 1, 1, 0, 0, 0, 0, 0,
        5000000000, 12000000, 7200000000000, 1000000000,

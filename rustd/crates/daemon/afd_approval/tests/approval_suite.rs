@@ -33,8 +33,13 @@ mod tail_watch;
 )]
 mod lane;
 
+#[path = "support/grant_lane.rs"]
+mod grant_lane;
+
 #[path = "integration_gate_kinds.rs"]
 mod integration_gate_kinds;
+#[path = "integration_grant_answer.rs"]
+mod integration_grant_answer;
 #[path = "integration_grant_card_uniqueness.rs"]
 mod integration_grant_card_uniqueness;
 #[path = "integration_grant_forgery.rs"]
@@ -61,8 +66,6 @@ mod integration_inbox_resolved_once_race;
 mod integration_inbox_tail;
 #[path = "integration_inbox_tail_continuation.rs"]
 mod integration_inbox_tail_continuation;
-#[path = "integration_inbox_tail_runless.rs"]
-mod integration_inbox_tail_runless;
 #[path = "integration_resolve_behind_stop.rs"]
 mod integration_resolve_behind_stop;
 

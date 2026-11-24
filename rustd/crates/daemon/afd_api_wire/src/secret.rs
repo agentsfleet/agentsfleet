@@ -100,9 +100,9 @@ pub struct SecretSummary<'a> {
     /// The custom endpoint, where one may be displayed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub base_url: Option<Cow<'a, str>>,
-    /// Runnable fleets in this workspace whose setup declares this secret: the
-    /// head revision, or an unfinished task's accepted revision. Present only
-    /// when the caller may read fleets; an empty list means no fleet uses it.
+    /// Fleets in this workspace holding an approved grant for this secret.
+    /// Present only when the caller may read fleets; an empty list means no
+    /// fleet uses it.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(extensions(("x-stability" = json!("stable")))))]
     pub available_to: Option<Vec<SecretFleet<'a>>>,

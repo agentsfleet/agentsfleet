@@ -6,37 +6,21 @@ use super::super::{
 };
 use super::{
     fixture::{Decisions, request},
-    interpretation::{choose, proposed},
     reply::known_result,
+    steps::{choose, durable_tasks_enabled},
 };
 use af_wire::{
     decision::DecisionOutcome,
     durable_task::{
-        DecisionDurableTaskVersion, DecisionReceipt, DurableTaskDisposition,
-        DurableTaskInputAction, DurableTaskReport, DurableTaskState,
+        DecisionDurableTaskVersion, DecisionReceipt, DurableTaskDisposition, DurableTaskReport,
+        DurableTaskState,
     },
 };
 use afd_fleet::durable_task::{DurableTaskLifecycle as _, DurableTaskSnapshot};
 use std::sync::Arc;
 
 async fn accepted(fixture: &Decisions<'_>) -> DecisionDurableTaskVersion {
-    let input = garde::Unvalidated::new(proposed(fixture, DurableTaskInputAction::NewWork).await)
-        .validate()
-        .expect("complete paid interpretation");
-    let result = fixture
-        .tasks
-        .interpret(fixture.case.run(), &input)
-        .await
-        .expect("native API-only goal");
-    let task = result
-        .current_durable_task
-        .expect("first new goal owns current run");
-    assert_eq!(task.objective, "Repair");
-    assert_eq!(task.questions.len(), 2);
-    DecisionDurableTaskVersion {
-        durable_task_id: task.durable_task_id.to_string(),
-        generation: task.generation,
-    }
+    fixture.bind_api_only_goal().await
 }
 
 async fn completion(
@@ -74,7 +58,7 @@ async fn paid_current_api_only_completion_commits_done_with_both_decision_charge
 async fn done(case: &Case) {
     let fixture = Decisions::create(case).await;
     let task = accepted(&fixture).await;
-    super::configured::support::set(case, false).await;
+    durable_tasks_enabled(case, false).await;
     let durable_task_id = task.durable_task_id.clone();
     let semantic = completion(&fixture, task).await;
     let report = report_settlement::request(case, Some(semantic));

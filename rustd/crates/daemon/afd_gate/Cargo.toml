@@ -1,6 +1,6 @@
 [package]
 name = "afd_gate"
-description = "What a fleet's configuration permits, and the gate a run stops at when the answer needs a human."
+description = "What a fleet's run is permitted: its policy, assembled from the fleet row and the grants a person approved."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -15,41 +15,28 @@ categories.workspace = true
 workspace = true
 
 [dependencies]
-afd_bus.workspace = true
-# A gate's spend is priced before it is admitted.
-afd_billing.workspace = true
-# Identifiers, the clock a gate's deadline is measured against, registry codes.
+# Identifiers and registry codes.
 af_core = { workspace = true, features = ["sqlx"] }
-# What the policy assembly resolves a fleet's declared credentials into.
+# What the policy assembly resolves a fleet's approved credentials into.
 afd_credential.workspace = true
-af_crypto.workspace = true
 # The Postgres pool every statement here runs on.
 afd_db.workspace = true
-# The fleet's activity counters, read once right before a gate's frame goes
-# out so the wall's tiles move on it. Acyclic: the event store knows no gate.
-afd_turns.workspace = true
-# A fleet's declared policy, as its config spells it.
+# The approved GitHub scope, parsed back into the binding a run is told.
 af_fleet_runtime.workspace = true
-# The approval status vocabulary this plane shares with the operator's.
+# The grant status and kind vocabulary this plane shares with the person's.
 afd_api_wire.workspace = true
 af_wire.workspace = true
-# The one ceiling model-authored card text is held to.
-af_validate.workspace = true
-# The gate reference a parked run is resumed by is base64url on the wire.
+# A repair branch names its event as base64url.
 base64.workspace = true
-# The instant an identifier is minted at; every other instant is the database's.
-jiff.workspace = true
 serde_json.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
-tracing.workspace = true
 
 [features]
 # M-TEST-UTIL. Unlocks the refusals a stubbed service answers with, so a caller's
 # suite reaches this crate's seam with no datastore behind it.
 test-util = [
     "af_core/test-util",
-    "af_crypto/test-util",
     "afd_db/test-util",
     "afd_credential/test-util",
     "af_fleet_runtime/test-util",
@@ -58,5 +45,10 @@ test-util = [
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 afd_db = { workspace = true, features = ["test-util"] }
+# The two-part credential declaration the policy suite assembles from.
+afd_credential = { workspace = true, features = ["test-util"] }
 # The fleet status the fixtures seed, spelled where the lifecycle declares it.
 afd_fleet_lifecycle.workspace = true
+# The provider key and posture a resolved provider fixture carries.
+af_crypto.workspace = true
+afd_billing.workspace = true

@@ -4,7 +4,6 @@
 //! store's private pool, and task work never introduces a competing queue.
 
 mod accept;
-mod adoption;
 mod bindings;
 pub(crate) mod checkpoint;
 mod continuation;
@@ -18,7 +17,7 @@ mod github;
 mod guard;
 mod implementation;
 mod input_receipt;
-mod inputs;
+pub(crate) mod inputs;
 mod lifecycle;
 mod list;
 mod observe;
@@ -30,6 +29,7 @@ mod report;
 mod row;
 pub(crate) mod run;
 mod sql;
+mod statements;
 pub mod storage;
 #[cfg(feature = "test-util")]
 mod test_util;
@@ -43,20 +43,18 @@ use af_observability::metrics::label::durable_task::{DurableTaskOperation, Durab
 
 use crate::{Result, run::Runs};
 
-/// Canonical setup lookup path shared by task guards, queue queries and their measurements.
-pub const DECISION_POLICY_PATH: &[&str] = &["config", "x-agentsfleet", "decision_policy"];
-
-pub use decision::ReservedDecision;
 #[cfg(feature = "test-util")]
-pub use decision::{DECISION_BUDGET_STATEMENT, LOCKED_DECISION_CALL_STATEMENT};
+pub use decision::LOCKED_DECISION_CALL_STATEMENT;
+pub use decision::ReservedDecision;
 pub use dependencies::DurableTaskDependencies;
 pub use github::Github;
 use prepared::PreparedItem;
 pub use refusal::DurableTaskRefusal;
 pub use types::{
-    CheckpointMaintenance, CheckpointMaintenanceCursor, DurableTaskAdoption, DurableTaskAfter,
-    DurableTaskBinding, DurableTaskBindings, DurableTaskControl, DurableTaskPage, DurableTaskRun,
-    DurableTaskScope, DurableTaskSnapshot, DurableTaskSummary, PreparedDurableTask, PreparedPlan,
+    CheckpointMaintenance, CheckpointMaintenanceCursor, DurableTaskAfter, DurableTaskBinding,
+    DurableTaskBindings, DurableTaskControl, DurableTaskPage, DurableTaskRun, DurableTaskScope,
+    DurableTaskSnapshot, DurableTaskStatements, DurableTaskSummary, PreparedDurableTask,
+    PreparedPlan,
 };
 
 pub use lifecycle::{DurableTaskFuture, DurableTaskLifecycle};

@@ -9,23 +9,19 @@
 
 use std::time::Instant;
 
-use af_core::error_code::{Coded as _, Logged};
 use af_core::id::Uuid7;
-use af_fleet_runtime::FleetConfig;
-use af_fleet_runtime::config::Access;
+use af_fleet_runtime::config::{Access, RepositoryBinding};
 use jiff::Timestamp;
-
-use afd_approval::{Origin, Requested, Wanted};
 
 use crate::error::Result;
 use crate::run::AssignedRun;
-use crate::run::answer::{EVENT_ASSIGNED, no_work};
+use crate::run::answer::EVENT_ASSIGNED;
 use crate::run::envelope::Acquired;
 use crate::run::pull::{Assigned, CheckedFleetWork, RunService, Step};
 use af_core::turn::label;
 use af_wire::run::RunPayload;
-use afd_gate::policy::build::{self, Assembled};
-use afd_gate::policy::repair;
+use afd_gate::policy::approved::Approved;
+use afd_gate::policy::{Network, build, repair};
 
 impl RunService {
     /// Assemble the policy and write the row that makes this runner the holder.
@@ -33,6 +29,9 @@ impl RunService {
     /// Named `deliver` rather than `issue`: `Runs::issue` writes the ROW, and
     /// this is the whole delivery around it. Answers [`Step::Go`] only when
     /// that row was written.
+    ///
+    /// The policy is read from the fleet row and the grants a person approved
+    /// for it, fresh for every run: a revoke reaches the next run.
     pub(super) async fn deliver_with<T, F>(
         &self,
         runner_id: &Uuid7,
@@ -45,47 +44,37 @@ impl RunService {
         T: Send,
         F: for<'a> FnMut(RunPayload<'a>, AssignedRun) -> T + Send,
     {
+        let approved = {
+            let mut connection = self.runs.pool().acquire().await?;
+            Approved::read_on(&mut connection, &checked.acquired.fleet_id).await?
+        };
         let declared = afd_credential::secrets::declared(
             &self.vault,
             &checked.acquired.workspace_id,
-            &checked.installed.credential_names(),
+            &approved.names(),
             self.broker.connectors(),
         )
         .await?;
-        let branch =
-            Self::repair_branch(checked.acquired.turn_id.as_str(), &checked.installed.config);
-        let granted = match checked.granted.clone() {
-            Some(granted) => granted,
-            None => {
-                self.gates
-                    .approved_integrations(&checked.acquired.fleet_id)
-                    .await?
-            }
-        };
-
-        let policy = match build::assemble(
-            build::Inputs {
-                config: &checked.installed.config,
-                provider: &checked.resolved,
-                declared: &declared,
-                repair_branch: branch.as_deref(),
-                windows: self.runs.limits().tool_windows,
+        // An unreadable approved scope ends the event in the assembly below.
+        let binding = approved.repository_binding().ok().flatten();
+        let branch = Self::repair_branch(checked.acquired.turn_id.as_str(), binding.as_ref());
+        let policy = match build::assemble(build::Inputs {
+            network: Network {
+                http_egress: checked.installed.http_egress,
+                package_domains: checked.installed.package_domains,
             },
-            &granted,
-        ) {
-            Ok(Assembled::Ready(policy)) => policy,
-            Ok(Assembled::Ungranted {
-                credential,
-                integration,
-            }) => {
-                return self
-                    .ungranted(runner_id, &checked.acquired, credential, integration, now)
-                    .await;
-            }
-            // A fleet author's mistake, not an operational fault: assembly reads
-            // nothing and refuses only a binding it cannot enforce, so nothing
-            // about the next poll will be different and the event ends. Its
-            // detail is stored, never the `[CODE]` rendering.
+            approved: &approved,
+            declared: &declared,
+            provider: &checked.resolved,
+            repair_branch: branch.as_deref(),
+            windows: self.runs.limits().tool_windows,
+            judged: checked.acquired.opened.judged,
+        }) {
+            Ok(policy) => policy,
+            // Assembly reads nothing and refuses only an approved scope it
+            // cannot enforce, so nothing about the next poll will be
+            // different and the event ends. Its detail is stored, never the
+            // `[CODE]` rendering.
             Err(misconfigured) => {
                 let reason = misconfigured.detail();
                 return self
@@ -99,187 +88,29 @@ impl RunService {
                     .map(|()| Step::Stop);
             }
         };
-        self.issue_ready(runner_id, &checked, *policy, now, began, emit)
+        self.issue_ready(runner_id, &checked, policy, now, began, emit)
             .await
-    }
-
-    /// Ask for the grant this delivery needs, and say what the poll answers.
-    ///
-    /// The backstop, not the design: a fleet installed with its grant requested
-    /// leaves install with this card already raised, and reaching here means the
-    /// install-time request could not be written or never ran. Asking
-    /// again is what makes the invariant unconditional — a park is a question,
-    /// never a silent loop — and the request is idempotent, so the one-second
-    /// redelivery cadence raises one card rather than sixty a minute.
-    ///
-    /// A DENIED grant ends the event. The gate that denied it carries no
-    /// `turn_id` and so could not end anything itself; this is where a
-    /// person's no stops the redelivery. An open card parks the delivery, and
-    /// anything else stops it for the next poll to ask again.
-    async fn ungranted<T>(
-        &self,
-        runner_id: &Uuid7,
-        acquired: &Acquired,
-        credential: &str,
-        integration: &str,
-        now: Timestamp,
-    ) -> Result<Step<Assigned<T>>> {
-        let asked = self
-            .grants
-            .request(
-                &acquired.workspace_id,
-                &acquired.fleet_id,
-                Wanted {
-                    service: integration,
-                    credential,
-                    origin: Origin::Park,
-                },
-                now,
-            )
-            .await;
-        let reason = format!("{credential} needs a grant for {integration}");
-        match answers(written(asked, &acquired.fleet_id, integration)) {
-            Ungranted::Ends => self
-                .refused(acquired, label::GRANT_DENIED, runner_id, &reason)
-                .await
-                .map(|()| Step::Stop),
-            waits @ (Ungranted::Parks | Ungranted::Retries) => {
-                no_work(runner_id, &reason);
-                Ok(waits.ending())
-            }
-        }
     }
 
     /// The branch a write-bound run may author on.
     ///
-    /// `None` for a read binding, which needs none, and `None` for an event
-    /// whose identifier is not one this daemon minted — which the assembly then
-    /// refuses, because a write binding that cannot name its branch cannot be
-    /// turned into rules that bound anything.
-    ///
-    /// Takes the two values it reads rather than the two structs holding them.
-    /// It stopped needing a datastore when the gate lookup went, so the only
-    /// thing standing between it and a unit test was a signature asking for
-    /// more than it used.
+    /// `None` for no binding or a read binding, which needs none.
     ///
     /// # The branch names the EVENT, and the grant is what authorises it
     ///
-    /// It named the approved repository-write gate until that gate was retired.
-    /// The grant could not take its place: `uq_integration_grants_fleet_id_service`
-    /// makes it one row for the fleet's whole life, so every event would author
-    /// on one branch and a second run would force-update the first run's head.
-    ///
-    /// So the two questions are answered by two sources. Authority is the
-    /// standing grant, read at the mint, which is the only path to a token.
-    /// Identity is the event, which is unique per run — and that is all the
-    /// branch has to carry, because `policy::egress` locks whatever name comes
-    /// back as the one ref the run may create.
-    ///
-    /// Still no fleet and no workspace in the name: an identifier read off a
-    /// public repository says when, never whose.
-    fn repair_branch(turn_id: &str, config: &FleetConfig) -> Option<String> {
-        let binding = config.repository_binding()?;
-        if binding.access() != Access::Write {
-            return None;
-        }
-        // The identifier is passed WHOLE. It used to be parsed as a `Uuid7`
-        // first, which could not succeed: `afd_turns::admit` is the only
-        // thing that mints one and it spells `<millis>-<sequence>`, so every
-        // write-bound delivery lost its branch and the assembly refused the
-        // event.
-        Some(repair::branch_for(turn_id))
-    }
-}
-
-/// A park could not raise its card, and the write failed rather than the human.
-const EVENT_REQUEST_FAILED: &str = "park_grant_request_failed";
-
-/// The request's answer, with a failure to write one REPORTED before it is dropped.
-///
-/// The error dies here either way — [`answers`] never ends a delivery on an
-/// unwritten request, because a datastore that would not answer is this
-/// instance's problem and reading its silence as a refusal would end deliveries
-/// on an outage. What it must not do is die QUIETLY. A park that could not raise
-/// its card answers the same `no_work` with the same reason as a park waiting on
-/// a person, so without this line the two are indistinguishable in the log while
-/// the delivery redelivers every second — which is precisely the failure with no
-/// error that this milestone exists to end, reproduced on the path that ends it.
-///
-/// [`crate::run::pull::RunService::refused`] already reports the denial and
-/// `IntegrationGrants::request` reports what it wrote; the error was the one
-/// outcome nothing spoke for. The install path says the same thing at its own
-/// call site (`afd_fleet_lifecycle::install::grants`).
-fn written(
-    asked: Result<Requested, afd_approval::Error>,
-    fleet: &Uuid7,
-    service: &str,
-) -> Option<Requested> {
-    match asked {
-        Ok(answer) => Some(answer),
-        Err(unwritten) => {
-            // Hoisted: the `log` bridge duplicates field expressions and
-            // llvm-cov scores the dead copy.
-            let Logged { error_code, reason } = unwritten.logged();
-            let fleet_id = fleet.as_str();
-            {
-                let (event, message) = (
-                    &EVENT_REQUEST_FAILED,
-                    format_args!(
-                        "the delivery parked without raising its grant card; the next poll asks again"
-                    ),
-                );
-                tracing::warn!(message, error_code, event, fleet_id, service, reason);
-            };
-            None
-        }
-    }
-}
-
-/// What an ungranted delivery does once the grant has been asked for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Ungranted {
-    /// A card is open and a person owes the answer, which re-marks the fleet:
-    /// the delivery parks until then.
-    Parks,
-    /// Nobody owes an answer — the grant just landed, or its card could not
-    /// be written — so the delivery stays leasable and the next poll asks
-    /// again.
-    Retries,
-    /// The event ends: nothing about the next poll would be different.
-    Ends,
-}
-
-impl Ungranted {
-    /// The step an ungranted delivery takes once its answer is rendered: an
-    /// open card parks it, and anything else stops it — for the next poll to
-    /// ask again, or, for [`Ungranted::Ends`], after the refusal was written.
-    const fn ending<T>(self) -> Step<Assigned<T>> {
-        match self {
-            Self::Parks => Step::Park,
-            Self::Retries | Self::Ends => Step::Stop,
-        }
-    }
-}
-
-/// Whether an ungranted delivery parks, retries, or ends on an answer
-/// already given.
-///
-/// A person's NO is the only outcome that makes the next poll pointless — every
-/// other reading leaves a question a human can still answer, and ending an
-/// event on any of them would throw away work nobody refused.
-///
-/// Only an OPEN card parks, because parking clears the fleet's mark and only
-/// an answer or an expiry puts it back. A grant approved since the assembly
-/// read has no answer left to wait for, and `None` — a request that could not
-/// be WRITTEN — has no card anyone could answer; either would wait forever on
-/// a park, so both retry on the next poll. Fail-closed here means keeping the
-/// event alive: a datastore that would not answer is this instance's problem,
-/// and reading its silence as a refusal would end deliveries on an outage.
-const fn answers(asked: Option<Requested>) -> Ungranted {
-    match asked {
-        Some(Requested::Denied) => Ungranted::Ends,
-        Some(Requested::Raised | Requested::Pending) => Ungranted::Parks,
-        Some(Requested::Approved) | None => Ungranted::Retries,
+    /// `uq_integration_grants_fleet_id_service` makes the GitHub grant one row
+    /// for the fleet's whole life, so a branch named for the grant would have
+    /// every event author on one branch, and a second run would force-update
+    /// the first run's head. Authority is the approved grant, read at the
+    /// mint, which is the only path to a token. Identity is the event, which
+    /// is unique per run — and that is all the branch has to carry, because
+    /// `policy::egress` locks whatever name comes back as the one ref the run
+    /// may create. No fleet and no workspace in the name: an identifier read
+    /// off a public repository says when, never whose.
+    fn repair_branch(turn_id: &str, binding: Option<&RepositoryBinding>) -> Option<String> {
+        binding
+            .filter(|bound| bound.access() == Access::Write)
+            .map(|_write| repair::branch_for(turn_id))
     }
 }
 

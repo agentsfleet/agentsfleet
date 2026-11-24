@@ -82,17 +82,6 @@ impl RunService {
                 self.let_go(&held).await;
                 Ok(None)
             }
-            Ok(Step::Park) => {
-                if let Err(fault) = self
-                    .runs
-                    .park(&held.fleet_id, &held.turn_id, held.fence)
-                    .await
-                {
-                    self.let_go(&held).await;
-                    return Err(fault);
-                }
-                Ok(None)
-            }
             Err(fault) => {
                 self.let_go(&held).await;
                 Err(fault)
@@ -125,11 +114,9 @@ mod tests {
     #[tokio::test]
     async fn should_raise_the_fault_and_log_a_release_the_datastore_refuses() {
         let log = Capture::install();
-        // Its setup is parsed through the definitions cache.
-        let _counted = test_dead::CACHE_LOOKUPS.lock().await;
-        // Installed, so the pass gets past the setup the assignment carried and
+        // Installed, so the pass gets past the row the assignment carried and
         // reaches its first read after it, which a dead datastore refuses.
-        let acquired = test_dead::acquired_installed();
+        let acquired = test_dead::acquired();
         let fleet = acquired.fleet_id.clone();
 
         let fault = test_dead::plane()
@@ -145,7 +132,7 @@ mod tests {
             .expect_err("a read after the assignment with no datastore is a fault, not a decision");
 
         // The first read after the assignment is the credential plane's, because the
-        // assignment carries the setup; whichever read it is, its fault is the
+        // assignment carries the fleet row; whichever read it is, its fault is the
         // caller's, and the release below carries the same code.
         let line = log.only(EVENT_ASSIGNMENT_RELEASE_FAILED).fields;
         assert_eq!(

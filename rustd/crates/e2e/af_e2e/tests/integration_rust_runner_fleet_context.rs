@@ -27,8 +27,8 @@ use crate::fake_model::{Asked, FakeModel, say};
 use crate::https::Upstream;
 use crate::integration_rust_runner::allow_all_egress;
 
-/// A tool-less fleet whose authored operating window a few long answers fill.
-const CHATTY_FLEET: &str = r#"{"name":"e2e-fleet","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"},"context":{"context_cap_tokens":6000}}}"#;
+/// A model window a few answers fill, so earlier notes compact.
+const CHATTY_WINDOW: i32 = 6000;
 /// The note whose run's first request is read.
 const LAST: u32 = 12;
 /// What each answer repeats, so a few answers fill the window.
@@ -139,7 +139,8 @@ async fn connection(scene: &Scenario) -> sqlx::pool::PoolConnection<sqlx::Postgr
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn the_next_fleet_turn_loads_the_saved_summary() {
     let mut supervisor = Supervisor::new();
-    let scene = scenario_with(&mut supervisor, None, &[], CHATTY_FLEET).await;
+    let scene = scenario_with(&mut supervisor, None, &[]).await;
+    crate::e2e_seed::narrow_model_window(&scene.booted, CHATTY_WINDOW, af_core::clock::now()).await;
     allow_all_egress(&scene).await;
     let upstream = Upstream::serve(Vec::new()).await;
     let marker = format!("[fleet case {}]", scene.fleet);

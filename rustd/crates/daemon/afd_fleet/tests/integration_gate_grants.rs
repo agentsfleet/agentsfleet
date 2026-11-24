@@ -1,10 +1,10 @@
-//! The integration-grant read against a live Postgres.
+//! The approved-grant read against a live Postgres.
 //!
 //! What is proven is the three-way collapse: absent, `pending` and `revoked`
 //! must all be absent from the answer. The failure that would hide is silent
-//! in the dangerous direction — a fleet minting against an integration a human
-//! only ever *requested* — and no type catches it, because every one of those
-//! rows is a perfectly well-formed grant row.
+//! in the dangerous direction — a run holding a secret or minting against an
+//! integration a person only ever *requested* — and no type catches it,
+//! because every one of those rows is a perfectly well-formed grant row.
 //!
 //! Marked `#[ignore]` so `make test-unit-rustd` compiles and lints these
 //! without needing datastores, and `make test-integration-rustd` — which runs
@@ -18,71 +18,82 @@
 use crate::seed;
 use crate::support;
 use af_core::id::Uuid7;
-use afd_db::test_util::mint_id;
-use afd_gate::policy::grants::Grants;
+use afd_api_wire::grant::{kind, status};
+use afd_db::test_util::GrantSeed;
+use afd_gate::policy::approved::Approved;
 
 use self::seed::{Seeded, seeded};
 use self::support::Fixtures;
 
-/// Grant identifiers, distinct and version-7 so the table's CHECK admits them.
-/// Three grant identifiers this test alone can name.
-///
-/// A function rather than a `const` array: `connector.integration_grants.id` is the
-/// primary key, and with every test in the lane sharing one database a fixed
-/// identifier is a unique-violation the moment a second test seeds its own
-/// grants. See [`afd_db::test_util::mint_id`].
-fn grant_ids() -> [Uuid7; 3] {
-    [mint_id(), mint_id(), mint_id()]
-}
-
 /// Writes one grant row for `fleet`.
-async fn grant(fixtures: &Fixtures, id: &Uuid7, fleet: &Uuid7, service: &str, status: &str) {
+async fn grant(fixtures: &Fixtures, fleet: &Uuid7, service: &str, of: &str, state: &str) {
     let mut connection = fixtures
         .database
         .acquire()
         .await
         .expect("a pooled connection");
-    sqlx::query(
-        "INSERT INTO connector.integration_grants
-           (id, fleet_id, service, status, requested_reason, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, now(), now())",
-    )
-    .bind(id)
-    .bind(fleet)
-    .bind(service)
-    .bind(status)
-    .bind("a fixture asked")
-    .execute(&mut *connection)
-    .await
-    .expect("the grant row must insert");
+    GrantSeed::new(fleet, service, of, state)
+        .insert(&mut *connection)
+        .await
+        .expect("the grant row must insert");
+}
+
+/// `fleet`'s approved grants, as a run's policy build reads them.
+async fn approved(fixtures: &Fixtures, fleet: &Uuid7) -> Approved {
+    let mut connection = fixtures
+        .database
+        .acquire()
+        .await
+        .expect("a pooled connection");
+    Approved::read_on(&mut connection, fleet)
+        .await
+        .expect("the grant read must run")
 }
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_only_approved_grants_reach_the_set() {
-    // The whole point. `pending` is a human who has been ASKED and has not
-    // answered; `revoked` is a human who answered and then changed their mind.
-    // Admitting either would mint a third-party token under an authority
-    // nobody currently grants.
+    // `pending` is a person who has been ASKED and has not answered;
+    // `revoked` is a person who answered no, or changed their mind. Admitting
+    // either would hand a run an authority nobody currently grants.
     let fixtures = Fixtures::create().await;
     let Seeded { fleet, .. } = seeded::<0>(&fixtures).await;
-    let grants = grant_ids();
-    grant(&fixtures, &grants[0], &fleet, "github", "approved").await;
-    grant(&fixtures, &grants[1], &fleet, "zoho", "pending").await;
-    grant(&fixtures, &grants[2], &fleet, "slack", "revoked").await;
+    grant(
+        &fixtures,
+        &fleet,
+        "github",
+        kind::INTEGRATION,
+        status::APPROVED,
+    )
+    .await;
+    grant(&fixtures, &fleet, "sentry", kind::SECRET, status::APPROVED).await;
+    grant(&fixtures, &fleet, "zoho", kind::SECRET, status::PENDING).await;
+    grant(
+        &fixtures,
+        &fleet,
+        "slack",
+        kind::INTEGRATION,
+        status::REVOKED,
+    )
+    .await;
 
-    let granted = fixtures
-        .gates()
-        .approved_integrations(&fleet)
-        .await
-        .expect("the grant read must run");
+    let granted = approved(&fixtures, &fleet).await;
 
-    assert!(granted.holds("github"));
-    assert!(!granted.holds("zoho"), "a pending grant is not a grant");
-    assert!(!granted.holds("slack"), "a revoked grant is not a grant");
-    // Absent joins the other two, which is the reading that makes a fleet
-    // declaring an integration nobody ever considered park rather than run.
-    assert!(!granted.holds("stripe"));
+    assert!(granted.holds("github", kind::INTEGRATION));
+    assert!(granted.holds("sentry", kind::SECRET));
+    assert!(
+        !granted.holds("sentry", kind::INTEGRATION),
+        "a grant is of its kind"
+    );
+    assert!(
+        !granted.holds("zoho", kind::SECRET),
+        "a pending grant is not a grant"
+    );
+    assert!(
+        !granted.holds("slack", kind::INTEGRATION),
+        "a revoked grant is not a grant"
+    );
+    assert!(!granted.holds("stripe", kind::SECRET));
 }
 
 #[tokio::test]
@@ -91,13 +102,7 @@ async fn test_a_fleet_with_no_grants_holds_nothing_and_is_not_an_error() {
     let fixtures = Fixtures::create().await;
     let Seeded { fleet, .. } = seeded::<0>(&fixtures).await;
 
-    let granted = fixtures
-        .gates()
-        .approved_integrations(&fleet)
-        .await
-        .expect("no rows is not a datastore failure");
-
-    assert_eq!(granted, Grants::none());
+    assert_eq!(approved(&fixtures, &fleet).await.names().len(), 0);
 }
 
 #[tokio::test]
@@ -109,13 +114,18 @@ async fn test_another_fleets_grant_is_not_this_fleets() {
     let fixtures = Fixtures::create().await;
     let Seeded { fleet: mine, .. } = seeded::<0>(&fixtures).await;
     let Seeded { fleet: theirs, .. } = seeded::<0>(&fixtures).await;
-    grant(&fixtures, &grant_ids()[0], &theirs, "github", "approved").await;
+    grant(
+        &fixtures,
+        &theirs,
+        "github",
+        kind::INTEGRATION,
+        status::APPROVED,
+    )
+    .await;
 
-    let granted = fixtures
-        .gates()
-        .approved_integrations(&mine)
-        .await
-        .expect("the grant read must run");
-
-    assert!(!granted.holds("github"));
+    assert!(
+        !approved(&fixtures, &mine)
+            .await
+            .holds("github", kind::INTEGRATION)
+    );
 }

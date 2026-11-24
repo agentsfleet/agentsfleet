@@ -22,12 +22,8 @@ const GRANT_WRITE: &[Scope] = &[Scope::GrantWrite];
 /// A route addressed by workspace AND fleet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FleetRoute {
-    /// One fleet: read it, steer it, or delete it.
+    /// One fleet: read it, change it, or delete it.
     Detail,
-    /// Creator-private editor context with bounded conversations and receipts.
-    SetupContext,
-    /// Apply a reviewed private improvement to this fleet's setup.
-    Revisions,
     /// The fleet's message thread.
     Messages,
     /// Current durable objectives belonging to this fleet.
@@ -58,14 +54,16 @@ pub enum FleetRoute {
     Grants,
     /// Revoking one grant.
     Grant,
+    /// What may wake the fleet besides its schedules.
+    Triggers,
+    /// Removing one trigger.
+    Trigger,
 }
 
 impl FleetRoute {
     /// Every fleet route.
     pub const ALL: &'static [Self] = &[
         Self::Detail,
-        Self::SetupContext,
-        Self::Revisions,
         Self::Messages,
         Self::DurableTasks,
         Self::DurableTask,
@@ -81,6 +79,8 @@ impl FleetRoute {
         Self::MemoryAccess,
         Self::Grants,
         Self::Grant,
+        Self::Triggers,
+        Self::Trigger,
     ];
 
     /// The verbs this route identity serves.
@@ -91,16 +91,16 @@ impl FleetRoute {
     #[must_use]
     pub const fn verbs(self) -> &'static [Verb] {
         match self {
-            Self::SetupContext
-            | Self::DurableTasks
+            Self::DurableTasks
             | Self::Turns
             | Self::TurnsStream
             | Self::Item
             | Self::Memories
-            | Self::Grants => &[Verb::Get],
+            | Self::Grants
+            | Self::Triggers => &[Verb::Get],
             Self::DurableTask | Self::Turn => &[Verb::Get, Verb::Patch],
-            Self::Memory | Self::Grant => &[Verb::Delete],
-            Self::ScheduleSync | Self::Revisions => &[Verb::Post],
+            Self::Memory | Self::Grant | Self::Trigger => &[Verb::Delete],
+            Self::ScheduleSync => &[Verb::Post],
             Self::MemoryAccess => &[Verb::Patch],
             Self::Messages | Self::Schedules => &[Verb::Get, Verb::Post],
             Self::Detail | Self::Schedule => &[Verb::Get, Verb::Patch, Verb::Delete],
@@ -119,8 +119,6 @@ impl FleetRoute {
         match self {
             Self::TurnsStream => RouteClass::Stream,
             Self::Detail
-            | Self::SetupContext
-            | Self::Revisions
             | Self::Messages
             | Self::DurableTasks
             | Self::DurableTask
@@ -134,7 +132,9 @@ impl FleetRoute {
             | Self::Memory
             | Self::MemoryAccess
             | Self::Grants
-            | Self::Grant => RouteClass::Api,
+            | Self::Grant
+            | Self::Triggers
+            | Self::Trigger => RouteClass::Api,
         }
     }
 
@@ -142,8 +142,6 @@ impl FleetRoute {
     const fn template(self) -> &'static str {
         match self {
             Self::Detail => fleet_path!(""),
-            Self::SetupContext => fleet_path!("/setup-context"),
-            Self::Revisions => fleet_path!("/revisions"),
             Self::Messages => fleet_path!("/messages"),
             Self::DurableTasks => fleet_path!("/durable_tasks"),
             Self::DurableTask => fleet_path!("/durable_tasks/{durable_task_id}"),
@@ -174,6 +172,8 @@ impl FleetRoute {
             Self::MemoryAccess => fleet_path!("/memory-access"),
             Self::Grants => fleet_path!("/integration-grants"),
             Self::Grant => fleet_path!("/integration-grants/{grant_id}"),
+            Self::Triggers => fleet_path!("/triggers"),
+            Self::Trigger => fleet_path!("/triggers/{trigger_id}"),
         }
     }
 
@@ -185,19 +185,23 @@ impl FleetRoute {
         match self {
             Self::Detail => Scopes::rwa(FLEET_READ, FLEET_WRITE, FLEET_ADMIN),
             // Who may read and publish shared memory is an edit to the fleet,
-            // not a lifecycle transition, so it takes the write scope.
-            Self::Revisions | Self::Memory | Self::MemoryAccess | Self::SetupContext => {
-                Scopes::Always(FLEET_WRITE)
-            }
+            // not a lifecycle transition, so it takes the write scope; so does
+            // removing what may wake it.
+            Self::Memory | Self::MemoryAccess | Self::Trigger => Scopes::Always(FLEET_WRITE),
             // Stopping a turn is steering the fleet, so it takes the write
             // scope its messages take.
             Self::Messages | Self::DurableTask | Self::Turn => Scopes::rw(FLEET_READ, FLEET_WRITE),
             Self::Schedules | Self::Schedule => Scopes::rw(SCHEDULE_READ, SCHEDULE_WRITE),
             Self::ScheduleSync => Scopes::Always(SCHEDULE_WRITE),
-            Self::DurableTasks | Self::Turns | Self::TurnsStream | Self::Item | Self::Memories => {
-                Scopes::Always(FLEET_READ)
-            }
+            Self::DurableTasks
+            | Self::Turns
+            | Self::TurnsStream
+            | Self::Item
+            | Self::Memories
+            | Self::Triggers => Scopes::Always(FLEET_READ),
             Self::Grants => Scopes::Always(GRANT_READ),
+            // A revoke also needs a signed-in person, which its handler's
+            // extractor asks.
             Self::Grant => Scopes::Always(GRANT_WRITE),
         }
     }

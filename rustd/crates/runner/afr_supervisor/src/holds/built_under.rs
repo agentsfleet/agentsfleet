@@ -32,8 +32,6 @@ impl BuiltUnder {
         Self {
             network: NetworkPolicy {
                 allow: owned(&network.allow),
-                read_only: network.read_only,
-                read_post_paths: owned(&network.read_post_paths),
                 http_egress: network.http_egress,
                 package_manager_domains: network.package_manager_domains,
             },
@@ -56,8 +54,6 @@ impl BuiltUnder {
         Self {
             network: NetworkPolicy {
                 allow: hosts.iter().copied().map(Cow::Borrowed).collect(),
-                read_only: false,
-                read_post_paths: Vec::new(),
                 ..NetworkPolicy::default()
             },
             repositories: None,

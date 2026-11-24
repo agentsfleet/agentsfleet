@@ -19,7 +19,7 @@ use sha2::{Digest as _, Sha256};
 use sqlx::PgConnection;
 use std::time::Duration;
 
-const CONTEXT: &str = "check setup operation replay";
+const CONTEXT: &str = "check fleet create replay";
 const HASH_PREFIX: &str = "setup:v1:sha256:";
 
 pub(crate) fn digest(value: &impl Serialize) -> Result<String> {
@@ -48,32 +48,6 @@ fn sorted(value: Value) -> Value {
     }
 }
 
-/// The kind of resource an operation's receipt names: the table [`find`]
-/// checks it still exists in.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Resource {
-    /// `fleet.fleets`: a Save.
-    Fleet,
-    /// `fleet.revisions`: an applied improvement.
-    FleetRevision,
-    /// `setup.drafts`: a started setup chat.
-    Draft,
-    /// `thread.turns`: a setup draft's accepted message.
-    Message,
-}
-
-impl Resource {
-    /// The spelling [`sql::READ`]'s `CASE` matches.
-    const fn kind(self) -> &'static str {
-        match self {
-            Self::Fleet => "fleet",
-            Self::FleetRevision => "fleet_revision",
-            Self::Draft => "draft",
-            Self::Message => "message",
-        }
-    }
-}
-
 /// The digest a receipt stores: the request's, bound to the person who sent
 /// it, so another person reusing the key reads as a changed body.
 pub(crate) fn bound(actor: &Uuid7, digest: &str) -> Result<String> {
@@ -89,8 +63,8 @@ pub(crate) struct Receipt {
     live: bool,
 }
 
-/// The resource this operation already created inside [`REPLAY_WINDOW`], when
-/// it created one.
+/// The fleet this operation already created inside `window`, when it
+/// created one.
 ///
 /// A receipt outlives the resource it names, so a retry after deletion answers
 /// Gone here, in the same statement that reads the receipt. A receipt past the
@@ -102,7 +76,6 @@ pub(crate) struct Receipt {
 pub(crate) async fn find(
     connection: &mut PgConnection,
     scope: &str,
-    resource: Resource,
     operation: &Uuid7,
     actor: &Uuid7,
     digest: &str,
@@ -112,7 +85,6 @@ pub(crate) async fn find(
         .bind(scope)
         .bind(operation)
         .bind(window)
-        .bind(resource.kind())
         .fetch_optional(connection)
         .await
         .map_err(query(CONTEXT))?;

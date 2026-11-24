@@ -98,31 +98,6 @@ pub(super) async fn assert_issued(case: &Case, task: &Uuid7, run: &Uuid7, fence:
     assert_eq!(rows, (2, 1));
 }
 
-pub(super) async fn assert_blocked(case: &Case, task: &Uuid7) {
-    let row: (String, i64, i64, i32, i64) = sqlx::query_as("SELECT status,generation,stop_generation,used_runs,(SELECT count(*) FROM thread.runs WHERE fleet_id=$2) FROM fleet.durable_tasks WHERE id=$1")
-        .bind(task).bind(&case.scope.fleet_id).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("refusal observer")).await.expect("blocked original task");
-    assert_eq!(row, ("blocked".to_owned(), 2, 1, 1, 1));
-    let live: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM thread.turns WHERE durable_task_id=$1 AND settled_at IS NULL",
-    )
-    .bind(task)
-    .fetch_one(
-        &mut *case
-            .held
-            .fixtures
-            .database
-            .acquire()
-            .await
-            .expect("continuation observer"),
-    )
-    .await
-    .expect("preserved original human source");
-    assert_eq!(
-        live, 1,
-        "original human source is not falsely settled by an authority refusal"
-    );
-}
-
 async fn chat_source(case: &Case) {
     // The shared direct-issue seed predates TurnKind and stores the producer
     // spelling as its event kind. Full Plane issuance requires a native Chat.

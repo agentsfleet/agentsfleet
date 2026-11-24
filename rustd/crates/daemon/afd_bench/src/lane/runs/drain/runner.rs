@@ -311,7 +311,6 @@ const fn chunk(seq: u64) -> ActivityFrame<'static> {
 fn processed<'a>(run: &'a RunPayload<'a>, folded_through: Option<i64>) -> ReportRequest<'a> {
     ReportRequest {
         folded_through_sequence: folded_through,
-        setup: None,
         durable_task: None,
         run_id: Cow::Borrowed(&run.run_id),
         turn_id: Cow::Borrowed(&run.event.turn_id),

@@ -5,8 +5,8 @@ use af_wire::durable_task::DurableTaskState;
 use sqlx::PgConnection;
 
 use super::super::{
-    DurableTaskBinding, DurableTaskRefusal, DurableTaskRun, PreparedDurableTask, PreparedItem,
-    PreparedPlan, guard::RunRow, sql,
+    DurableTaskBinding, DurableTaskRefusal, PreparedDurableTask, PreparedItem, PreparedPlan,
+    guard::RunRow, sql,
 };
 use super::source::Source;
 use crate::error::{Result, query};
@@ -15,7 +15,6 @@ const CONTEXT: &str = "write durable task binding";
 
 pub(super) struct Acceptance<'a> {
     pub source: &'a Source,
-    pub active: bool,
     pub unfinished_max: u32,
 }
 
@@ -48,16 +47,10 @@ pub(super) async fn item(
 pub(super) async fn task(
     connection: &mut PgConnection,
     current: &RunRow,
-    plan: &PreparedPlan,
     item: &PreparedDurableTask,
     binding: &DurableTaskBinding,
     acceptance: Acceptance<'_>,
 ) -> Result<()> {
-    let status = if acceptance.active {
-        DurableTaskState::Running
-    } else {
-        DurableTaskState::Ready
-    };
     let questions =
         serde_json::to_string(&item.questions).map_err(af_core::json::Unreadable::from)?;
     sqlx::query_scalar::<_, Uuid7>(sql::INSERT_DURABLE_TASK)
@@ -71,17 +64,15 @@ pub(super) async fn task(
         .bind(&current.workspace_id)
         .bind(&current.tenant_id)
         .bind(&binding.item_id)
-        .bind(&plan.accepted_revision_id)
         .bind(&item.title)
         .bind(&item.objective)
         .bind(&questions)
         .bind(&item.goal_digest)
         .bind(&item.target_json)
-        .bind(status.as_str())
+        .bind(DurableTaskState::Ready.as_str())
         .bind(item.limits.model_nanos)
         .bind(i64::from(item.limits.running_seconds) * 1_000_000_000)
         .bind(i64::from(item.limits.runs))
-        .bind(i32::from(acceptance.active))
         .bind(i64::from(item.limits.publications))
         .bind(i64::from(item.limits.decision_calls))
         .bind(&acceptance.source.reply_provider)
@@ -92,31 +83,6 @@ pub(super) async fn task(
         .await
         .map_err(query(CONTEXT))?
         .ok_or(DurableTaskRefusal::LimitExhausted)?;
-    Ok(())
-}
-
-pub(super) async fn run(
-    connection: &mut PgConnection,
-    run: DurableTaskRun<'_>,
-    binding: &DurableTaskBinding,
-    slice_seconds: i32,
-) -> Result<()> {
-    sqlx::query(sql::BIND_RUN)
-        .bind(
-            binding
-                .durable_task_id
-                .as_ref()
-                .ok_or(DurableTaskRefusal::InvalidTarget)?,
-        )
-        .bind(run.run_id)
-        .bind(run.runner_id)
-        .bind(afd_billing::biller::WorkKey::FleetRun(run.run_id.clone()).work_type())
-        .bind(af_wire::usage::LineKind::Model.as_str())
-        .bind(slice_seconds)
-        .bind(1_000_000_000_i64)
-        .execute(connection)
-        .await
-        .map_err(query(CONTEXT))?;
     Ok(())
 }
 

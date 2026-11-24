@@ -31,11 +31,7 @@ use afd_cron::model::{DEFAULT_TIMEZONE, FLEET_SCHEDULES_MAX, MAX_SCHEDULES_PER_F
 use afd_cron::{DesiredStatus, Source, SyncStatus, validate};
 
 /// Every source and the word its column holds.
-const SOURCES: &[(Source, &str)] = &[
-    (Source::Api, "api"),
-    (Source::Trigger, "trigger"),
-    (Source::Fleet, "fleet"),
-];
+const SOURCES: &[(Source, &str)] = &[(Source::Api, "api"), (Source::Fleet, "fleet")];
 
 /// Every intent and the word its column holds.
 const INTENTS: &[(DesiredStatus, &str)] = &[
@@ -61,7 +57,7 @@ fn every_source_is_declared_and_spelled_as_this_table_says() {
     for (source, word) in SOURCES {
         // Exhaustive, no wildcard: a new variant fails to COMPILE here.
         match source {
-            Source::Api | Source::Trigger | Source::Fleet => {}
+            Source::Api | Source::Fleet => {}
         }
         assert!(
             Source::ALL.contains(source),
@@ -183,6 +179,9 @@ fn no_two_variants_of_one_enum_share_a_word() {
 #[test]
 fn a_word_this_build_does_not_know_parses_as_nothing() {
     assert_eq!(Source::parse(UNKNOWN), None);
+    // A schedule derived from a trigger no longer exists, so its word is one
+    // this build refuses rather than one it reads as a person's.
+    assert_eq!(Source::parse("trigger"), None);
     assert_eq!(DesiredStatus::parse(UNKNOWN), None);
     assert_eq!(SyncStatus::parse(UNKNOWN), None);
 }

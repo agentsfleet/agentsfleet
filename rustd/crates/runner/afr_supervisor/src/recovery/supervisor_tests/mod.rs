@@ -56,7 +56,6 @@ async fn run(outcome: Outcome) -> Checked {
     let frozen = Arc::clone(&engine.frozen);
     let mut run = test_support::payload(RUN_ID, FLEET_ID);
     run.event.workspace_id = ID.into();
-    run.setup_revision_id = Some(ID.into());
     run.policy.context.context_cap_tokens = 64_000;
     run.policy.context.tool_window = 64;
     run.policy.context.memory_checkpoint_every = 100;
@@ -93,7 +92,6 @@ fn scope(run: &af_wire::run::RunPayload<'_>) -> TurnScope {
         turn_id: CheckpointOperationId(run.event.turn_id.to_string()),
         fleet_id: CheckpointOperationId(run.event.fleet_id.to_string()),
         workspace_id: CheckpointOperationId(run.event.workspace_id.to_string()),
-        setup_revision_id: CheckpointOperationId(ID.to_owned()),
         workspace: TurnWorkspace::Files {
             toolbox_digest: "b".repeat(64),
         },

@@ -95,16 +95,10 @@ pub const DETAIL_RUN_LOST: &str = "Run was reassigned before this renewal; termi
 pub const DETAIL_RUN_CANCELLED: &str =
     "Fleet was archived; stop this run and report its final result";
 
-/// The renewal refusal when the TENANT's credit pool is spent.
-///
-/// Distinct from [`DETAIL_BUDGET_EXHAUSTED`] beside it, and the two sentences
-/// are the only thing that tells an operator which pool to look at: this one is
-/// topped up, that one is revised in the fleet's reviewed setup.
+/// The renewal refusal when the payer's balance is spent, or the payer has
+/// no wallet: the balance is the only ceiling a run has.
 pub const DETAIL_RENEWAL_NO_CREDITS: &str =
     "Tenant balance can no longer fund this run; not renewed";
-
-/// The renewal refusal when the FLEET's own ceiling is reached.
-pub const DETAIL_BUDGET_EXHAUSTED: &str = "Fleet budget exhausted for this window; not renewed";
 
 /// The mint refusal when the workspace has no connected integration under
 /// the handle.

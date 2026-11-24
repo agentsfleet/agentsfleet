@@ -56,10 +56,9 @@ const INVENTORY: &[&str] = &[
     // The caller's identity read. Listed here beside the tenant plane's own
     // rows because it is read for the caller itself, like every path above it.
     "/v1/users/me",
-    // Workspace fleets and install.
+    // Workspace fleets: a first message creates one; read, change, delete.
     "/v1/workspaces/{workspace_id}/fleets",
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}",
-    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/setup-context",
     // The vault.
     "/v1/workspaces/{workspace_id}/secrets",
     "/v1/workspaces/{workspace_id}/secrets/{name}",
@@ -80,24 +79,23 @@ const INVENTORY: &[&str] = &[
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/memory-access",
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/integration-grants",
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/integration-grants/{grant_id}",
+    // What may wake a fleet besides its schedules: the fleet adds them by
+    // tool, and a person lists and removes them.
+    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/triggers",
+    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/triggers/{trigger_id}",
     // Approvals.
     "/v1/workspaces/{workspace_id}/approvals",
     "/v1/workspaces/{workspace_id}/approvals/{gate_id}",
     "/v1/workspaces/{workspace_id}/approvals/{gate_id}/{decision}",
     // Onboarding.
     "/v1/workspaces/{workspace_id}/onboarding",
-    // M227 N1–N11 (`docs/architecture/api_resources.md`) — eligible models,
-    // creator-private drafts and reviewed setup revisions. Removed R1/R2
-    // `library-entries` and the retired Plugin routes have no row here.
+    // The workspace's model choices, which a fleet's `model_ref` copies.
     "/v1/workspaces/{workspace_id}/models",
-    "/v1/workspaces/{workspace_id}/drafts",
-    "/v1/workspaces/{workspace_id}/drafts/{draft_id}",
-    "/v1/workspaces/{workspace_id}/drafts/{draft_id}/messages",
-    "/v1/workspaces/{workspace_id}/drafts/{draft_id}/turns/stream",
-    // Stop on a draft's turn, beside the fleet turn's PATCH.
-    "/v1/workspaces/{workspace_id}/drafts/{draft_id}/turns/{turn_id}",
-    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/revisions",
 ];
+
+/// The path segments of the setup surface a fleet no longer has: a draft, a
+/// reviewed revision applied to a fleet, and the setup-context read.
+const SETUP_SEGMENTS: [&str; 3] = ["/drafts", "/revisions", "/setup-context"];
 
 /// The paths the table carries that belong to a LATER milestone.
 ///
@@ -163,6 +161,33 @@ fn test_route_inventory_matches_interfaces() {
     assert!(
         extra.is_empty(),
         "the route table carries paths no inventory names: {extra:?}"
+    );
+}
+
+/// A fleet is a chat from its first message: no inventory path and no route
+/// the daemon tables names a draft, a revision or the setup context.
+#[test]
+fn no_setup_route_is_mounted() {
+    let paths = INVENTORY
+        .iter()
+        .copied()
+        .chain(Route::all().map(|route| route.meta().template));
+    let mut walked = 0;
+    for path in paths {
+        walked += 1;
+        for segment in SETUP_SEGMENTS {
+            assert!(!path.contains(segment), "{path} names {segment}");
+        }
+    }
+    assert!(
+        walked > INVENTORY.len(),
+        "the walk read the route table too"
+    );
+    // The scan finds a setup path when one is there.
+    assert!(
+        SETUP_SEGMENTS
+            .iter()
+            .any(|segment| "/v1/workspaces/{workspace_id}/drafts".contains(segment))
     );
 }
 
@@ -274,7 +299,7 @@ fn a_statement_naming_a_plugin_table_is_named() {
         "SELECT id FROM setup.plugin_entries WHERE tenant_id = $1"
     ));
     assert!(!names_a_plugin_table(
-        "SELECT id FROM setup.drafts WHERE id = $1"
+        "SELECT id FROM fleet.fleets WHERE id = $1"
     ));
 }
 

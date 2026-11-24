@@ -1,7 +1,7 @@
 //! A fleet chat's saved summary, as one run holds it: read at the run's
 //! start, placed ahead of the earlier turns it does not cover, and saved
-//! again whenever the run's compaction covers more of them. Setup keeps its
-//! draft's the same way, through the same fenced verbs (`crate::setup`).
+//! again whenever the run's compaction covers more of them, through the
+//! fleet's fenced context verbs.
 //!
 //! ```text
 //!  load ─► ContextLoad ─► the thread's checkpoint, kept when it belongs to this
@@ -32,8 +32,8 @@ use af_wire::run::Turn;
 use afr_tools::{RunVerbs, Unanswered};
 use guffbolt::Message;
 
-use crate::setup::usable;
-
+const EVENT_IGNORED: &str = "context_checkpoint_ignored";
+const EVENT_UNREADABLE: &str = "context_checkpoint_unreadable";
 const EVENT_LOAD_FAILED: &str = "fleet_context_load_failed";
 const EVENT_SAVED: &str = "fleet_context_saved";
 const EVENT_SAVE_FAILED: &str = "fleet_context_save_failed";
@@ -227,3 +227,30 @@ fn code_of(failure: Unanswered) -> &'static str {
 #[derive(Debug, thiserror::Error)]
 #[error("agentsfleetd did not answer the context save")]
 struct Unreachable;
+
+/// The stored `document`, when it is a valid checkpoint of `identity`. A
+/// document that does not parse or validate is a corrupt store and logs a
+/// warning; a valid one written for another identity is expected after a
+/// model or fixed-text change and logs at `info`.
+fn usable(document: serde_json::Value, identity: &Identity, run_id: &str) -> Option<Checkpoint> {
+    let read = serde_json::from_value::<Checkpoint>(document)
+        .map_err(crate::Error::from)
+        .and_then(|checkpoint| {
+            checkpoint.validate_document()?;
+            Ok(checkpoint)
+        });
+    let checkpoint = match read {
+        Ok(checkpoint) => checkpoint,
+        Err(corrupt) => {
+            // The code alone: a parse failure can quote the stored text.
+            let error_code = corrupt.code().as_str();
+            tracing::warn!(event = EVENT_UNREADABLE, error_code, run_id);
+            return None;
+        }
+    };
+    let placeable = Some(checkpoint).filter(|checkpoint| checkpoint.belongs_to(identity));
+    if placeable.is_none() {
+        tracing::info!(event = EVENT_IGNORED, run_id);
+    }
+    placeable
+}

@@ -1,13 +1,12 @@
-//! Safe-boundary input recovery preserves FIFO and paid accepted meaning.
+//! Safe-boundary input recovery preserves FIFO and the accepted span.
 use super::{
     super::fixture::{Case, GOALS, exercise},
-    existing_inputs::proposed,
     fixture::Decisions,
 };
-use af_core::{error_code, paging::Cursor};
+use af_core::{error_code, etag::sha256_hex, id::Uuid7, paging::Cursor};
 use af_wire::durable_task::{
-    DurableTaskInputAction, DurableTaskInputMode, DurableTaskInputReceiptInput,
-    DurableTaskInputsQuery,
+    DurableTaskBindingItem, DurableTaskBindingsInput, DurableTaskInputAction, DurableTaskInputMode,
+    DurableTaskInputReceiptInput, DurableTaskInputsQuery,
 };
 use afd_fleet::durable_task::DurableTaskLifecycle as _;
 
@@ -127,16 +126,9 @@ async fn accepted_input_recovery_retains_exact_meaning_and_applied_cursor() {
         let fixture = Decisions::create(case).await;
         let task = fixture.bind_goal().await;
         let source = case.assigned_source().await;
-        let plan = proposed(
-            &fixture,
-            &source,
-            &task.durable_task_id,
-            DurableTaskInputAction::Steer,
-        )
-        .await;
-        let plan = garde::Unvalidated::new(plan)
+        let plan = garde::Unvalidated::new(steer(case, &source, &task.durable_task_id))
             .validate()
-            .expect("paid input interpretation");
+            .expect("a task_input binding");
         let bound = fixture
             .tasks
             .interpret(case.run(), &plan)
@@ -176,15 +168,36 @@ async fn accepted_input_recovery_retains_exact_meaning_and_applied_cursor() {
             .expect("safe-boundary receipt replay");
         assert!(replay.replayed);
         assert_eq!(replay.covered_input_sequence, Some(1));
-        assert_eq!(fixture.counts().await, (1, 1, 1));
+        assert_eq!(
+            fixture.counts().await,
+            (0, 0, 0),
+            "a steer makes no decision call"
+        );
         fixture.model.finish().await.expect("model cleanup");
     })
     .await;
 }
 
+/// The binding `task_input` sends: the first word of `source` steers `task`.
+fn steer(case: &Case, source: &Uuid7, task: &str) -> DurableTaskBindingsInput {
+    let mut input = DurableTaskBindingsInput {
+        fencing_token: case.run().fencing_token,
+        source_turn_id: source.to_string(),
+        plan_digest: "0".repeat(64),
+        items: vec![DurableTaskBindingItem::Steer {
+            source_start: 0,
+            source_end: 6,
+            durable_task_id: task.to_owned(),
+        }],
+    };
+    let digest = sha256_hex(&serde_json::to_vec(&input.interpretation()).expect("exact binding"));
+    input.plan_digest = digest;
+    input
+}
+
 fn assert_recovered(
     page: &af_wire::durable_task::DurableTaskInputsResponse<'_>,
-    plan: &af_wire::durable_task::DurableTaskBindingsInput,
+    plan: &DurableTaskBindingsInput,
     item: &str,
     applied: bool,
 ) {
@@ -198,7 +211,10 @@ fn assert_recovered(
     assert_eq!(input.action, DurableTaskInputAction::Steer);
     assert_eq!(input.original_message, GOALS.join("; "));
     assert_eq!(input.accepted_text, "Repair");
-    assert_eq!(input.interpretation, "Preserve title decoding behavior");
+    assert_eq!(
+        input.interpretation, "",
+        "a tool's steer carries no interpretation"
+    );
     assert_eq!(input.applied, applied);
     assert!(input.response_text.is_none());
     let source = page.inputs.first().expect("source still owes its answer");
@@ -211,7 +227,7 @@ fn assert_recovered(
 
 fn apply_receipt(
     case: &Case,
-    plan: &af_wire::durable_task::DurableTaskBindingsInput,
+    plan: &DurableTaskBindingsInput,
     item: &str,
     task: af_wire::durable_task::DecisionDurableTaskVersion,
 ) -> garde::Valid<DurableTaskInputReceiptInput> {

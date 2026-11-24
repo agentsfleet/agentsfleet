@@ -19,12 +19,9 @@ pub struct FleetItem<'a> {
     /// Its saved name in this workspace.
     #[serde(borrow)]
     pub name: Cow<'a, str>,
-    /// Where it stands: `installing`, `active` or `archived`.
+    /// Where it stands: `active` or `archived`.
     #[serde(borrow)]
     pub status: Cow<'a, str>,
-    /// What it is for, from its saved setup. Omitted while it has none.
-    #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
-    pub description: Option<Cow<'a, str>>,
     /// How many turns it has processed, as a decimal string.
     #[serde(borrow)]
     pub events_processed: Cow<'a, str>,

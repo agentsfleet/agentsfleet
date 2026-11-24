@@ -53,14 +53,36 @@ pub(crate) struct Call {
     pub(crate) body: Option<Bytes>,
 }
 
-/// Sends one runner verb and returns the successful reply's bytes.
+/// A 2xx reply: its bytes, and whether the verb created what it answers
+/// for. An access request reads the difference: a 201 raised a card the run
+/// waits on, a 200 found a grant or a card already there.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Reply {
+    /// Whether the status was 201.
+    pub(crate) created: bool,
+    /// The reply body.
+    pub(crate) bytes: Bytes,
+}
+
+#[cfg(test)]
+impl Reply {
+    /// A 2xx that created nothing, carrying `bytes`, as a fake daemon answers.
+    pub(crate) const fn ok(bytes: Bytes) -> Self {
+        Self {
+            created: false,
+            bytes,
+        }
+    }
+}
+
+/// Sends one runner verb and returns the successful reply.
 ///
 /// Every failure comes back classified: [`crate::Error::is_retryable`] for a
 /// transport failure, a 5xx or a 429, a refusal for any other 4xx.
 #[async_trait::async_trait]
 pub(crate) trait RunnerApi: Send + Sync + fmt::Debug {
-    /// Sends `call` and returns the reply body of a 2xx.
-    async fn send(&self, call: Call) -> Result<Bytes>;
+    /// Sends `call` and returns the reply of a 2xx.
+    async fn send(&self, call: Call) -> Result<Reply>;
 }
 
 /// A successful reply, decoded on demand, and zeroed when dropped.
@@ -73,10 +95,16 @@ pub(crate) trait RunnerApi: Send + Sync + fmt::Debug {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Body {
     verb: Verb,
+    created: bool,
     bytes: Zeroizing<Vec<u8>>,
 }
 
 impl Body {
+    /// Whether the verb created what the reply answers for: a 201.
+    pub(crate) const fn created(&self) -> bool {
+        self.created
+    }
+
     /// The reply as text, for a caller that hands it on whole — a tool whose
     /// model reads `agentsfleetd`'s answer as it came. A byte that is not
     /// UTF-8 reads as U+FFFD rather than failing the call.
@@ -204,14 +232,15 @@ impl ControlPlane {
         let event = EVENT_STARTED;
         tracing::debug!(verb = verb_name, event);
         match self.api.send(Call { verb, path, body }).await {
-            Ok(bytes) => {
+            Ok(reply) => {
                 let event = EVENT_COMPLETED;
                 tracing::debug!(verb = verb_name, event);
                 // `Vec::from` takes the buffer without a copy when the reply
                 // owns it alone, so no second clear copy is left to free.
                 Ok(Body {
                     verb,
-                    bytes: Zeroizing::new(Vec::from(bytes)),
+                    created: reply.created,
+                    bytes: Zeroizing::new(Vec::from(reply.bytes)),
                 })
             }
             Err(failure) => {

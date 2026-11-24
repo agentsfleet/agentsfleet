@@ -1,10 +1,16 @@
-//! Production interpretation prepares remote targets outside the native bind transaction.
+//! A run's task tool binds one span of a person's message to durable work.
+//!
+//! The fleet's own model calls `task_start` or `task_input`, and the verb
+//! takes it at its word: no decision call authorizes the binding. What the
+//! daemon proves is whose words they are — the source turn is the run's head
+//! or folded into it, and a person's message — that the span lies inside it,
+//! and, for new work, that its target and statements hold. Remote target reads
+//! run outside the bind transaction, which then commits through `accept`.
 
 use super::{
-    DurableTaskRefusal, DurableTaskRun, DurableTasks, PreparedPlan, accept, decision, guard,
-    transaction,
+    DurableTaskRefusal, DurableTaskRun, DurableTasks, PreparedPlan, accept, guard, transaction,
 };
-use crate::{Result, run::Runs};
+use crate::Result;
 use af_wire::durable_task::{
     DurableTaskBindingsInput, DurableTaskBindingsResponse, DurableTaskItemBinding,
 };
@@ -22,52 +28,41 @@ pub(super) async fn accept(
     if digest != input.plan_digest {
         return Err(DurableTaskRefusal::ReplayConflict.into());
     }
+    tasks.dependencies.policy.items(&input.items)?;
     let mut plan = PreparedPlan {
         source_turn_id: guard::id(&input.source_turn_id, "source_turn_id")?,
-        accepted_revision_id: guard::id(&input.accepted_revision_id, "accepted_revision_id")?,
         digest,
         items: Vec::new(),
-        authorization: Some((**input).clone()),
     };
     if let Some(accepted) = accept::existing(tasks, run, &plan).await? {
         return Ok(response(accepted));
     }
-    let (config, message) = source(tasks, run, &plan).await?;
-    let policy = config
-        .decision_policy()
-        .ok_or(DurableTaskRefusal::DecisionUnavailable)?;
-    let objectives = tasks
-        .dependencies
-        .policy
-        .interpretation(input, &message, policy)?;
-    let questions = decision::compile::completion(policy)?;
-    plan.items = preparation::prepare(tasks, run, input, objectives, &config, &questions).await?;
+    let message = source(tasks, run, &plan).await?;
+    for item in &input.items {
+        plan.items
+            .push(preparation::prepare(tasks, run, item, &message).await?);
+    }
     Ok(response(accept::bind(tasks, run, &plan).await?))
 }
 
+/// The source turn's message, once the turn is proved the run's and a
+/// person's. Read and released before any remote target read.
 async fn source(
     tasks: &DurableTasks,
     run: DurableTaskRun<'_>,
     plan: &PreparedPlan,
-) -> Result<(af_fleet_runtime::FleetConfig, String)> {
+) -> Result<String> {
     let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     let current = guard::run(&mut tx, run).await?;
     let source = accept::source::lock(&mut tx, run, &current, plan).await?;
     accept::source::check_human(&source)?;
-    if current.revision_id.as_ref() != Some(&plan.accepted_revision_id) {
-        return Err(DurableTaskRefusal::StaleState.into());
-    }
-    let config =
-        Runs::stored_config_on(&mut tx, &current.fleet_id, Some(&plan.accepted_revision_id))
-            .await?
-            .ok_or(DurableTaskRefusal::InvalidTarget)?;
     let message = source.message()?.into_owned();
-    tx.commit().await.map_err(crate::error::query(
-        "finish native interpretation preflight",
-    ))?;
+    tx.commit()
+        .await
+        .map_err(crate::error::query("finish task binding preflight"))?;
     transaction::recycle(connection);
-    Ok((config, message))
+    Ok(message)
 }
 
 fn response(accepted: super::DurableTaskBindings) -> DurableTaskBindingsResponse<'static> {

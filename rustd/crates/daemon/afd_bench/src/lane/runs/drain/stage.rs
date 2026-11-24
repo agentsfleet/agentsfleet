@@ -13,7 +13,6 @@ use afd_credential::provider::Providers;
 use afd_credential::secrets::Registry;
 use afd_db::test_util::WalletSeed;
 use afd_fleet::run::{RunService, Runs};
-use afd_gate::gate::Gates;
 use afd_memory::Memories;
 use afd_vault::Vault;
 
@@ -112,13 +111,10 @@ impl Staged {
         &self,
         stores: &Datastores,
     ) -> Result<Vec<afd_gateway::test_util::RunnerConnection>> {
-        let (gateway, _) = super::connection::gateway(stores, &self.kek);
+        let gateway = super::connection::gateway(stores, &self.kek);
         let mut sessions = Vec::with_capacity(self.runners.len());
         for runner in &self.runners {
-            sessions.push(
-                super::connection::open(&gateway, runner, af_wire::run::AcceptedKinds::FLEET, 1)
-                    .await?,
-            );
+            sessions.push(super::connection::open(&gateway, runner, 1).await?);
         }
         Ok(sessions)
     }
@@ -140,7 +136,6 @@ pub(in crate::lane::runs) fn plane(stores: &Datastores, kek: &Arc<Kek>) -> RunSe
         durable_task_reports: None,
         turn_checkpoints: afd_fleet::run::turn_checkpoint::TurnCheckpoints::new(Arc::clone(kek)),
         runs: Runs::new(database.clone(), stores.bus.clone(), Entropy::new()),
-        gates: Gates::new(database.clone(), stores.bus.clone(), Entropy::new()),
         accounts: Accounts::new(database.clone()),
         // The daemon wraps this in its outage policy and metrics; a bench
         // lane reaches neither, so the bare ledger is the same money path.

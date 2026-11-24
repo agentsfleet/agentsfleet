@@ -102,9 +102,6 @@ pub struct TurnScope {
     /// Stable root event across every replacement run.
     #[garde(dive)]
     pub turn_id: CheckpointOperationId,
-    /// Setup frozen during run issuance, independent of the later fleet head.
-    #[garde(dive)]
-    pub setup_revision_id: CheckpointOperationId,
     /// API-only or complete files; a building workspace has no saved variant.
     #[garde(dive)]
     pub workspace: TurnWorkspace,
@@ -137,7 +134,7 @@ pub struct TurnResume {
     /// Unsupported formats refuse before any model or tool call.
     #[garde(range(min = TURN_CHECKPOINT_FORMAT, max = TURN_CHECKPOINT_FORMAT))]
     pub format_version: u32,
-    /// Scope and setup the frozen files and private root authenticate.
+    /// Scope the frozen files and private root authenticate.
     #[garde(dive)]
     pub scope: TurnScope,
     /// Digest of the complete ordered manifest.

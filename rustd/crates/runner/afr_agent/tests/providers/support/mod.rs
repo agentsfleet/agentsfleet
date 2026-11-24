@@ -220,13 +220,13 @@ pub(crate) fn payload(provider: &str, tools: &[&str], message: &str) -> RunPaylo
         "run_id": RUN_ID, "fencing_token": 1, "run_expires_at": AT,
         "event": {"turn_id": "e", "fleet_id": "f", "workspace_id": "w", "actor": "a",
             "event_type": "chat", "request_json": request, "created_at": AT},
-        "policy": {"model_context_tokens": 200_000,"network_policy": {"allow": [], "read_only": true, "read_post_paths": []},
+        "policy": {"model_context_tokens": 200_000,"network_policy": {"allow": []},
             "tools": tools, "secrets_map": {"github": {"token": TOKEN, "host": "api.github.com"}},
             "mintable": [], "provider": provider, "api_key": KEY, "inference_host": "",
             "base_url": null, "repository_binding": null, "http_origin_policies": [],
             "context": {"tool_window": 0, "memory_checkpoint_every": 0,
                 "stage_chunk_threshold": 0.75, "model": "model-1", "context_cap_tokens": 200_000}},
-        "instructions": "Read the run.", "history": [], "resume_hold": false, "inputs_waiting": true,
+        "name": "support-triage", "history": [], "resume_hold": false, "inputs_waiting": true,
         "owner": {"kind": "fleet", "fleet_id": "f"}
     });
     // Leaked so the borrowed payload lives as long as the test that reads it.

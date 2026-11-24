@@ -15,21 +15,20 @@ impl Schedules {
     /// `updated_at`, read back after the write — see `store::fire_at`.
     ///
     /// # Errors
-    /// Refuses hidden resources, stale/missing tags, invalid edits and live syncs.
+    /// Refuses hidden resources, stale/missing tags, an `override` body,
+    /// invalid edits and live syncs.
     pub async fn edit(&self, request: EditRequest<'_>, token: &Uuid7) -> Result<Schedule> {
         let mut tx = sqlx::Transaction::begin(self.database.acquire().await?, None)
             .await
             .map_err(error::query(CONTEXT))?;
         let row = super::guard::lock(&mut tx, &request).await?;
-        let (effective, inherited) = input::replacement(&row, request.patch)?;
-        let encoded = inherited.as_ref().map(serde_json::to_string).transpose()?;
+        let replaced = input::replacement(&row, request.patch)?;
         sqlx::query(sql::UPDATE)
             .bind(request.schedule)
-            .bind(effective.cron)
-            .bind(effective.timezone)
-            .bind(effective.message)
-            .bind(effective.status.as_str())
-            .bind(encoded)
+            .bind(replaced.cron)
+            .bind(replaced.timezone)
+            .bind(replaced.message)
+            .bind(replaced.status.as_str())
             .bind(SyncStatus::Syncing.as_str())
             .bind(token)
             .bind(SYNC_RUN)

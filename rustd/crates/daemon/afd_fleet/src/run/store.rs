@@ -26,11 +26,10 @@ pub struct Runs {
     wake: Wake,
     ticket: Option<afd_runner::capacity::choice::Ticket>,
     authority: Option<afd_runner::capacity::authority::Authority>,
-    /// Parsed definitions by revision id, shared by every clone of this store.
-    definitions: crate::run::cache::Definitions,
-    /// Price books by model and catalogue version, shared the same way.
+    /// Price books by model and catalogue version, shared by every clone of
+    /// this store.
     prices: crate::run::cache::PriceBooks,
-    /// The newest versions this replica has read, shared the same way.
+    /// The newest catalogue version this replica has read, shared the same way.
     latest: crate::run::cache::Latest,
     /// The deployment's run-plane settings; one pointer wide, as the
     /// caches are, because this store rides inside futures.
@@ -74,7 +73,6 @@ impl Runs {
             wake: Wake::default(),
             ticket: None,
             authority: None,
-            definitions: crate::run::cache::Definitions::default(),
             prices: crate::run::cache::PriceBooks::default(),
             latest: crate::run::cache::Latest::default(),
             limits: std::sync::Arc::default(),
@@ -86,10 +84,7 @@ impl Runs {
     /// every clone made after.
     #[must_use]
     pub fn with_limits(mut self, limits: crate::run::RunLimits) -> Self {
-        self.definitions =
-            crate::run::cache::Definitions::with_capacity(limits.definition_cache_bytes);
         self.prices = crate::run::cache::PriceBooks::with_capacity(limits.price_book_cache_count);
-        self.latest = crate::run::cache::Latest::with_capacity(limits.head_cache_count);
         self.limits = std::sync::Arc::new(limits);
         self
     }
@@ -100,7 +95,7 @@ impl Runs {
         &self.limits
     }
 
-    /// The newest catalogue version and head revisions this replica has read.
+    /// The newest catalogue version this replica has read.
     pub(crate) const fn latest(&self) -> &crate::run::cache::Latest {
         &self.latest
     }
@@ -108,11 +103,6 @@ impl Runs {
     /// The price books this replica holds, by model and catalogue version.
     pub(crate) const fn prices(&self) -> &crate::run::cache::PriceBooks {
         &self.prices
-    }
-
-    /// The parsed definitions this replica holds, by revision id.
-    pub(crate) const fn definitions(&self) -> &crate::run::cache::Definitions {
-        &self.definitions
     }
 
     /// Bind streamed run operations to the credential and owner acquired at opening.

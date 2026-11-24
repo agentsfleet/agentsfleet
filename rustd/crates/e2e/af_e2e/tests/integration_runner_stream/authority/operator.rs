@@ -190,6 +190,63 @@ impl Operator {
         Ok((status, body))
     }
 
+    /// `POST W/fleets` with `message` as the first message, answering the
+    /// created body after proving 201 and a `Location` naming the new fleet.
+    pub(super) async fn create_fleet(&self, scene: &Scenario, message: &str) -> TestResult<Value> {
+        let operation = mint_id();
+        let response = self
+            .http
+            .post(format!(
+                "{}/v1/workspaces/{}/fleets",
+                scene.base, scene.workspace
+            ))
+            .bearer_auth(self.token.expose())
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .body(serde_json::to_vec(
+                &json!({"message": message, "operation_id": operation.as_str()}),
+            )?)
+            .send()
+            .await?;
+        let status = response.status();
+        let location = response
+            .headers()
+            .get(reqwest::header::LOCATION)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_owned);
+        let body: Value = serde_json::from_slice(&response.bytes().await?)?;
+        assert_eq!(status, reqwest::StatusCode::CREATED, "create: {body}");
+        let fleet = crate::wire::pointer(&body, "/fleet/id")
+            .as_str()
+            .ok_or("the created fleet's id")?;
+        assert!(
+            location.as_deref().is_some_and(|at| at.ends_with(fleet)),
+            "{location:?} names {fleet}"
+        );
+        Ok(body)
+    }
+
+    /// `fleet`'s live stream on the scenario's daemon, held open for `window`.
+    pub(super) async fn stream(
+        &self,
+        scene: &Scenario,
+        fleet: &af_core::id::Uuid7,
+        window: Duration,
+    ) -> TestResult<reqwest::Response> {
+        let path = format!(
+            "{}/v1/workspaces/{}/fleets/{fleet}/turns/stream",
+            scene.base, scene.workspace
+        );
+        let response = afd_identity::direct(window)
+            .build()?
+            .get(path)
+            .bearer_auth(self.token.expose())
+            .header(reqwest::header::ACCEPT, "text/event-stream")
+            .send()
+            .await?;
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        Ok(response)
+    }
+
     async fn answer(response: reqwest::Response) -> TestResult<Value> {
         let status = response.status();
         let body: Value = serde_json::from_slice(&response.bytes().await?)?;

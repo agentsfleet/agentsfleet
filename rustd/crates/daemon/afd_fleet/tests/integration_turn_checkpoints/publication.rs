@@ -19,7 +19,6 @@ pub(super) fn root(case: &Case, workspace: TurnWorkspace) -> TurnPrivateRoot {
         workspace_id: CheckpointOperationId(case.acquired.workspace_id.as_str().to_owned()),
         fleet_id: CheckpointOperationId(case.acquired.fleet_id.as_str().to_owned()),
         turn_id: CheckpointOperationId(case.acquired.turn_id.as_str().to_owned()),
-        setup_revision_id: CheckpointOperationId(case.setup.as_str().to_owned()),
         workspace,
     };
     TurnPrivateRoot {

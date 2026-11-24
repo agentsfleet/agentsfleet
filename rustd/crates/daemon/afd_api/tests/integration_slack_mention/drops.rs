@@ -212,9 +212,9 @@ async fn a_connected_long_team_identity_does_not_create_an_implicit_fleet() {
     fixture.cleanup().await;
 }
 
-async fn unconfigured_state(fixture: &Fixture) -> (i64, i64, i64, i64) {
-    sqlx::query_as("SELECT (SELECT count(*) FROM fleet.fleets WHERE workspace_id=$1), (SELECT count(*) FROM fleet.revisions r JOIN fleet.fleets f ON f.id=r.fleet_id WHERE f.workspace_id=$1), (SELECT count(*) FROM connector.channels WHERE provider=$2 AND external_account_id=$3), (SELECT count(*) FROM thread.deliveries WHERE workspace_id=$1)")
+async fn unconfigured_state(fixture: &Fixture) -> (i64, i64, i64) {
+    sqlx::query_as("SELECT (SELECT count(*) FROM fleet.fleets WHERE workspace_id=$1), (SELECT count(*) FROM connector.channels WHERE provider=$2 AND external_account_id=$3), (SELECT count(*) FROM thread.deliveries WHERE workspace_id=$1)")
         .bind(fixture.workspace()).bind(PROVIDER.id()).bind(&fixture.team)
         .fetch_one(&mut *fixture.database().acquire().await.expect("side effect observer"))
-        .await.expect("fleets, revisions, channel bindings and deliveries")
+        .await.expect("fleets, channel bindings and deliveries")
 }

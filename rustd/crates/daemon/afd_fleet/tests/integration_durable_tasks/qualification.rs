@@ -3,12 +3,11 @@
 use std::ops::Range;
 
 use af_core::error_code::{self, ErrorCode};
-use af_core::id::Uuid7;
 use af_wire::durable_task::DurableTaskLimits;
 use afd_fleet::durable_task::{DurableTaskLifecycle as _, PreparedDurableTask, PreparedPlan};
 use afd_turns::Producer;
 
-use super::fixture::{Case, GOALS, exercise, items, questions};
+use super::fixture::{Case, GOALS, exercise, questions};
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -18,7 +17,7 @@ async fn only_current_assigned_human_intent_can_allocate_work() {
 
 async fn source_authority(case: &Case) {
     let tasks = &case.tasks;
-    let missing = case.source_plan(
+    let missing = Case::source_plan(
         afd_db::test_util::mint_id(),
         "missing",
         1,
@@ -27,7 +26,7 @@ async fn source_authority(case: &Case) {
     refused(case, &missing, error_code::DURABLE_TASK_NOT_FOUND).await;
     let human = afd_turns::view::steer_actor("native_durable_task_owner");
     let source = case.source(Producer::Steer, &human).await;
-    let unassigned = case.source_plan(
+    let unassigned = Case::source_plan(
         source.clone(),
         "unassigned",
         2,
@@ -41,7 +40,7 @@ async fn source_authority(case: &Case) {
     ] {
         let source = case.source(producer, actor).await;
         case.assign(&source).await;
-        let plan = case.source_plan(source, "not-human-intent", 2, DurableTaskLimits::default());
+        let plan = Case::source_plan(source, "not-human-intent", 2, DurableTaskLimits::default());
         refused(case, &plan, error_code::DURABLE_TASK_INVALID_TARGET).await;
     }
     case.assign(&source).await;
@@ -51,7 +50,7 @@ async fn source_authority(case: &Case) {
         .expect("assigned human intent remains usable");
     assert_eq!(
         (bound.items.len(), bound.replayed, case.counts().await),
-        (2, false, (2, 2, 6))
+        (2, false, (2, 2, 7))
     );
     let replay = tasks
         .bind(case.run(), &unassigned)
@@ -87,7 +86,7 @@ async fn interpretation_bounds(case: &Case) {
         .expect("valid retry");
     assert_eq!(
         (accepted.items.len(), accepted.replayed, case.counts().await),
-        (3, false, (3, 3, 3))
+        (3, false, (3, 3, 4))
     );
 }
 
@@ -103,88 +102,9 @@ fn span_plan(case: &Case, span: Range<i32>) -> PreparedPlan {
     );
     PreparedPlan::from_parts(
         case.held.turn_id.clone(),
-        case.revision.clone(),
         "invalid-span".to_owned(),
         vec![item],
     )
-}
-
-#[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_new_interpretation_requires_the_current_saved_setup_revision() {
-    exercise(revision).await;
-}
-
-async fn revision(case: &Case) {
-    case.held
-        .fixtures
-        .native_config(&case.held.fleet,
-            r#"{"name":"revised-repair-criteria","x-agentsfleet":{"tools":[],"triggers":[],"budget":{"daily_nanos":"1000000000"}}}"#,
-        )
-        .await;
-    refused(
-        case,
-        &case.plan("old-setup", 3),
-        error_code::DURABLE_TASK_STALE_STATE,
-    )
-    .await;
-    let (revision, number): (Uuid7, i64) =
-        sqlx::query_as("SELECT f.head_revision_id,r.revision FROM fleet.fleets f JOIN fleet.revisions r ON r.id=f.head_revision_id WHERE f.id=$1")
-            .bind(&case.held.fleet)
-            .fetch_one(
-                &mut *case
-                    .held
-                    .fixtures
-                    .database
-                    .acquire()
-                    .await
-                    .expect("revision connection"),
-            )
-            .await
-            .expect("current saved revision");
-    assert_ne!(revision, case.revision);
-    let number = u64::try_from(number).expect("positive saved revision");
-    assert_eq!(number, case.revision_number + 1);
-    accepted_revision(case, &revision, number).await;
-}
-
-async fn accepted_revision(case: &Case, revision: &Uuid7, number: u64) {
-    let (tasks, scope) = (&case.tasks, &case.scope);
-    let plan = PreparedPlan::from_parts(
-        case.held.turn_id.clone(),
-        revision.clone(),
-        "new-setup".to_owned(),
-        items(3, DurableTaskLimits::default()),
-    );
-    let accepted = tasks
-        .bind(case.run(), &plan)
-        .await
-        .expect("current reviewed setup binds");
-    assert_eq!(
-        (accepted.items.len(), accepted.replayed, case.counts().await),
-        (3, false, (3, 3, 3))
-    );
-    for binding in &accepted.items {
-        let task = tasks
-            .read(
-                scope,
-                binding
-                    .durable_task_id
-                    .as_ref()
-                    .expect("accepted goal owns a task"),
-            )
-            .await
-            .expect("saved accepted goal");
-        assert_eq!(
-            (
-                task.context.accepted_revision_id.as_ref(),
-                task.accepted_revision_number,
-                task.context.generation,
-                task.resource_version
-            ),
-            (revision.as_str(), number, 1, 1)
-        );
-    }
 }
 
 async fn refused(case: &Case, plan: &PreparedPlan, expected: ErrorCode) {

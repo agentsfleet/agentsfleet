@@ -37,6 +37,7 @@ use crate::harness::{json_body, send};
 mod ceiling;
 mod fixture;
 mod lifecycle;
+mod overrides;
 mod refusals;
 
 /// An expression this daemon registers.

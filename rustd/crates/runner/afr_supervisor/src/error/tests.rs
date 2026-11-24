@@ -43,15 +43,15 @@ fn every_verb_logs_under_its_own_family() {
 
 #[test]
 fn a_refusal_carries_the_daemons_code_and_status_through() {
-    let body = br#"{"error_code":"UZ-RUN-015","detail":"over budget"}"#;
+    let body = br#"{"error_code":"UZ-RUN-012","detail":"no credits"}"#;
     let refusal = raise::refused_with_body(Verb::Renew, 402, body);
 
     assert_eq!(
         refusal.refusal_code(),
-        Some(error_code::RUN_BUDGET_EXCEEDED)
+        Some(error_code::RUN_RENEWAL_NO_CREDITS)
     );
     assert_eq!(refusal.refusal_status(), Some(402));
-    assert_eq!(refusal.code(), error_code::RUN_BUDGET_EXCEEDED);
+    assert_eq!(refusal.code(), error_code::RUN_RENEWAL_NO_CREDITS);
     assert!(!refusal.is_retryable());
     assert!(
         refusal.to_string().contains("refused the renew call (402)"),

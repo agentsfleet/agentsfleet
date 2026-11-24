@@ -29,7 +29,7 @@ async fn test_fleet_cannot_touch_human_schedules() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
     let held = Box::pin(Assigned::boot(&mut supervisor, &qstash)).await;
-    for source in [Source::Api, Source::Trigger] {
+    for source in [Source::Api] {
         let schedule = held
             .seed(source, &format!("person-{}", source.as_str()))
             .await;

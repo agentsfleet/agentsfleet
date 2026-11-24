@@ -45,7 +45,7 @@ async fn report_totals_cover_the_whole_period() {
     let mut rows: Vec<_> = (0..31)
         .map(|_| Line::runtime(&f.tenant, &f.fleet, 17))
         .collect();
-    rows.push(Line::setup(&f.tenant, 29));
+    rows.push(Line::call(&f.tenant, &fixture::id(), 29));
     rows.push(Line::runtime(&f.foreign, &f.fleet, 999));
     fixture::seed(&f.admin, &rows).await;
     let before = fixture::ledger(&f.admin, &f.tenant).await;
@@ -56,11 +56,11 @@ async fn report_totals_cover_the_whole_period() {
         .unwrap();
     let total = fixture::summary(&report);
     assert_eq!(total.charged_nanos, 31 * 17 + 29);
-    // Setup work has no runtime slice, so only the 31 fleet runs count.
+    // The lone model call has no runtime slice, so only the 31 runtime-led runs count.
     assert_eq!((total.activity_count, total.line_count), (Some(31), 32));
     assert_eq!(total.input_tokens, 32 * fixture::INPUT);
     assert_eq!(total.output_tokens, 32 * fixture::OUTPUT);
-    // Only the runtime slices carry run time; the setup line is a model call.
+    // Only the runtime slices carry run time; the model call carries none.
     assert_eq!(total.runtime_ms, 31 * fixture::RUNTIME);
     assert_eq!(
         fixture::balance(&f.admin, &f.tenant).await,
@@ -75,14 +75,14 @@ async fn report_totals_cover_the_whole_period() {
 #[ignore = "requires live Postgres: make test-integration-rustd"]
 async fn out_of_period_lines_are_excluded() {
     let f = Fixture::shared().await;
-    let mut old = Line::setup(&f.tenant, 888);
+    let mut old = Line::call(&f.tenant, &f.fleet, 888);
     old.at = fixture::BEFORE;
-    let mut next_day = Line::setup(&f.tenant, 777);
+    let mut next_day = Line::call(&f.tenant, &f.fleet, 777);
     next_day.at = "2026-10-26T00:00:00Z";
     // The report covers whole UTC days, so a line after the cutoff on its day counts.
-    let mut same_day = Line::setup(&f.tenant, 666);
+    let mut same_day = Line::call(&f.tenant, &f.fleet, 666);
     same_day.at = fixture::LATER;
-    let mut unknown = Line::setup(&f.tenant, 0);
+    let mut unknown = Line::call(&f.tenant, &f.fleet, 0);
     unknown.posture = posture::SELF_MANAGED;
     unknown.unpriced = 5;
     fixture::seed(&f.admin, &[old, next_day, same_day, unknown]).await;
@@ -123,12 +123,14 @@ async fn out_of_period_lines_are_excluded() {
 async fn exact_filters_preserve_unfiltered_choices_and_deleted_fleet_labels() {
     let f = Fixture::shared().await;
     let other = fixture::id();
+    let triage = fixture::id();
     let mut second = Line::runtime(&f.tenant, &other, 23);
     second.model = fixture::MODEL_B;
-    second.name = Some("Release notes".to_owned());
+    second.name = "Release notes".to_owned();
     let first = Line::runtime(&f.tenant, &f.fleet, 17);
     let call = first.next(LineKind::Model, 0, 3);
-    fixture::seed(&f.admin, &[first, call, second, Line::setup(&f.tenant, 29)]).await;
+    let lone_call = Line::call(&f.tenant, &triage, 29);
+    fixture::seed(&f.admin, &[first, call, second, lone_call]).await;
     let mut request = fixture::request();
     request.filter.fleet = Some(f.fleet.clone());
     let report = f.billing.report(&f.tenant, &request).await.unwrap();
@@ -159,7 +161,11 @@ async fn exact_filters_preserve_unfiltered_choices_and_deleted_fleet_labels() {
         .collect();
     assert_eq!(
         fleets,
-        HashSet::from([Some(f.fleet.to_string()), Some(other.to_string()), None])
+        HashSet::from([
+            Some(f.fleet.to_string()),
+            Some(other.to_string()),
+            Some(triage.to_string())
+        ])
     );
     let models: HashSet<_> = report
         .aggregates
@@ -174,19 +180,25 @@ async fn exact_filters_preserve_unfiltered_choices_and_deleted_fleet_labels() {
             (Some(fixture::MODEL_B), 0, None)
         ])
     );
-    request.filter.fleet = None;
-    request.filter.work_type = Some(work::SETUP_RUN);
-    let setup = f.billing.report(&f.tenant, &request).await.unwrap();
-    let summary = fixture::summary(&setup);
+    // Both filters at once isolate the fleet whose run logged only a model call.
+    request.filter.fleet = Some(triage.clone());
+    request.filter.work_type = Some(work::FLEET_RUN);
+    let isolated = f.billing.report(&f.tenant, &request).await.unwrap();
+    let summary = fixture::summary(&isolated);
     assert_eq!(
         (summary.charged_nanos, summary.activity_count),
         (29, Some(0))
     );
-    let private = fixture::group(&setup, dimension::FLEET, None);
+    let lone = fixture::group(&isolated, dimension::FLEET, Some(triage.as_str()));
     assert_eq!(
-        (private.label.as_deref(), private.charged_nanos),
-        (None, 29)
+        (lone.label.as_deref(), lone.charged_nanos),
+        (Some(fixture::CALL_FLEET_NAME), 29)
     );
-    assert_eq!(private.models, [fixture::MODEL_B]);
+    assert_eq!(lone.models, [fixture::MODEL_B]);
+    let unselected = fixture::group(&isolated, dimension::FLEET, Some(f.fleet.as_str()));
+    assert_eq!(
+        (unselected.charged_nanos, unselected.activity_count),
+        (0, Some(0))
+    );
     f.close().await;
 }

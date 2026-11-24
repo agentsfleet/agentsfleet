@@ -44,7 +44,7 @@ async fn separate_source_answers_owe_one_reply_to_the_original_destination() {
 
 async fn scenario(case: &Case, reply: Reply<'_>) {
     let source = source(case, reply).await;
-    let plan = case.source_plan(
+    let plan = Case::source_plan(
         source.clone(),
         &"a".repeat(64),
         3,

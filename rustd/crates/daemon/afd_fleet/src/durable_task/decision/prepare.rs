@@ -2,39 +2,18 @@
 
 use af_core::id::Uuid7;
 use af_wire::{
-    decision::{DecisionAssignment, DecisionPurpose, DecisionRequest},
-    durable_task::{DecisionAssessment, DecisionReservationInput, DurableTaskState},
+    decision::{DecisionAssignment, DecisionRequest, NamedQuestion},
+    durable_task::{DecisionReservationInput, DurableTaskState},
 };
 use afd_billing::price::PriceBook;
-use serde::Serialize;
-use sqlx::{PgConnection, types::Json};
+use sqlx::PgConnection;
 
-use super::{
-    compile,
-    context::{AssessedContext, DurableTaskStamp},
-    ownership::Execution,
-    quote::FrozenQuote,
-    sql,
-};
+use super::{compile, context::AssessedContext, ownership::Execution, quote::FrozenQuote, sql};
 use crate::{
     Result,
-    durable_task::{
-        DurableTaskRefusal, DurableTaskRun, DurableTaskScope, DurableTaskSnapshot, guard,
-    },
+    durable_task::{DurableTaskRefusal, DurableTaskRun, DurableTaskSnapshot, guard},
     error::query,
-    run::Runs,
 };
-
-#[derive(Debug, Serialize, sqlx::FromRow)]
-pub(super) struct Candidate {
-    #[sqlx(default)]
-    pub alias: String,
-    #[sqlx(flatten)]
-    #[serde(flatten)]
-    pub stamp: DurableTaskStamp,
-    title: String,
-    target: Json<serde_json::Value>,
-}
 
 pub(super) struct Prepared {
     pub current: guard::RunRow,
@@ -70,23 +49,8 @@ impl super::ownership::NativeContext {
             .0
             .clone();
         let provider = enabled(connection, &assignment).await?;
-        let revision = self.revision(input.assessment.purpose())?;
-        let config = Runs::stored_config_on(
-            connection,
-            &self.current.fleet_id,
-            Some(&guard::wire(revision)?),
-        )
-        .await?
-        .ok_or(DurableTaskRefusal::DecisionUnavailable)?;
-        let policy = config
-            .decision_policy()
-            .ok_or(DurableTaskRefusal::DecisionUnavailable)?;
-        let candidates = candidates(connection, &self.scope, input.assessment.purpose()).await?;
         let questions = questions(
-            policy,
-            input,
             self.task.as_ref().map(|task| &task.snapshot),
-            &candidates,
             self.current.checked_at,
         )?;
         let context = self.assessed(
@@ -95,7 +59,6 @@ impl super::ownership::NativeContext {
             af_core::etag::sha256_hex(
                 &serde_json::to_vec(&questions).map_err(af_core::json::Unreadable::from)?,
             ),
-            &candidates,
         )?;
         let request = super::request::compile(
             call,
@@ -103,7 +66,6 @@ impl super::ownership::NativeContext {
             &self.source.message()?,
             &context,
             self.task.as_ref().map(|task| &task.snapshot),
-            &candidates,
             questions,
         )?;
         // Judged before the request's own validation, so an oversize state
@@ -152,50 +114,18 @@ pub(super) async fn enabled(
         .ok_or_else(|| DurableTaskRefusal::DecisionUnavailable.into())
 }
 
-pub(super) async fn candidates(
-    connection: &mut PgConnection,
-    scope: &DurableTaskScope,
-    purpose: DecisionPurpose,
-) -> Result<Vec<Candidate>> {
-    if purpose == DecisionPurpose::Goal {
-        return Ok(Vec::new());
-    }
-    let mut rows: Vec<Candidate> = sqlx::query_as(sql::CANDIDATES)
-        .bind(&scope.fleet_id)
-        .bind(&scope.workspace_id)
-        .fetch_all(connection)
-        .await
-        .map_err(query("read complete native decision candidates"))?;
-    for (ordinal, candidate) in rows.iter_mut().enumerate() {
-        crate::durable_task::row::state(&candidate.stamp.state)?;
-        candidate.alias = format!("t{ordinal}");
-    }
-    Ok(rows)
-}
-
+/// What a goal check asks: the task's own statements, then the constant
+/// next-action question.
 fn questions(
-    policy: &af_fleet_runtime::config::decision::DecisionPolicy,
-    input: &DecisionReservationInput,
     task: Option<&DurableTaskSnapshot>,
-    candidates: &[Candidate],
     now: jiff::Timestamp,
-) -> Result<Vec<af_wire::decision::NamedQuestion>> {
-    if !matches!(input.assessment, DecisionAssessment::Goal { .. }) {
-        return compile::routing(
-            policy,
-            candidates,
-            matches!(input.assessment, DecisionAssessment::Message),
-        );
-    }
+) -> Result<Vec<NamedQuestion>> {
     let task = &task.ok_or(DurableTaskRefusal::InvalidTarget)?.context;
     if task.state != DurableTaskState::Running || task.expires_at <= now {
         return Err(DurableTaskRefusal::StaleState.into());
     }
-    let mut questions = compile::completion(policy)?;
-    if questions != task.questions {
-        return Err(DurableTaskRefusal::InvalidTarget.into());
-    }
-    questions.push(compile::next_action(policy));
+    let mut questions = task.questions.clone();
+    questions.push(compile::next_action());
     Ok(questions)
 }
 

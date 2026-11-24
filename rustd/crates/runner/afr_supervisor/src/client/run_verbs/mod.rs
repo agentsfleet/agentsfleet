@@ -1,6 +1,6 @@
-//! The schedules, messages and fleets verbs, typed: the paths under one held run,
-//! the bodies carrying its fence, and the query a read or a delete carries it
-//! in instead.
+//! The schedules, messages, fleets, triggers and access verbs, typed: the
+//! paths under one held run, the bodies carrying its fence, and the query a
+//! read or a delete carries it in instead.
 //!
 //! Split from [`super`] because these are the run's verbs a run's tools
 //! drive, where the rest are the supervisor's own duties.
@@ -23,6 +23,8 @@ use url::form_urlencoded::Serializer;
 
 use super::{Body, ControlPlane, Verb, run_path};
 use crate::error::Result;
+
+mod access;
 
 impl ControlPlane {
     /// Sends one schedules call for the fleet `run_id` runs, fenced by

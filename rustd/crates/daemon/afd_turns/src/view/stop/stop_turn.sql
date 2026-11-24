@@ -1,5 +1,4 @@
--- Stop: a person ends one turn of a thread, a fleet's or a setup draft's alike, in one
--- statement. It locks the thread first, as an assignment, a renewal and a report do, so it
+-- Stop: a person ends one turn of a fleet's thread in one statement. It locks the thread first, as an assignment, a renewal and a report do, so it
 -- queues behind any of them rather than deadlocking against one.
 --
 -- An unsettled turn is cancelled and settled, so no assignment takes it again. When a live run
@@ -11,8 +10,7 @@
 -- cancelled turn with its state and refuses any other. No row: no such turn in this
 -- workspace and thread.
 --
--- A fleet's turn is opened as it settles, so history shows the stopped message; a setup
--- draft's turn never opens a fleet event.
+-- The turn is opened as it settles, so history shows the stopped message.
 --
 -- $1 workspace · $2 thread · $3 turn · $4 the status Stop writes · $5 the active run
 -- status · $6 the status a closed approval takes · $7 who it records as its resolver ·
@@ -30,11 +28,10 @@ WITH thread AS MATERIALIZED (
   FOR UPDATE OF t
 ), run AS MATERIALIZED (
   -- The live run serving the target: the run that took it as its head under the fence it
-  -- stamped, or the run whose conversation folded it in. A setup draft's turn carries no
-  -- fence, so its run is the one that took it.
+  -- stamped, or the run whose conversation folded it in.
   SELECT r.id, r.runner_id, r.turn_id, r.fencing_token
   FROM target t
-  JOIN thread.runs r ON COALESCE(r.fleet_id, r.draft_id) = $2
+  JOIN thread.runs r ON r.fleet_id = $2
   WHERE NOT t.settled AND r.status = $5
     AND ((r.turn_id = t.id AND r.fencing_token = COALESCE(t.run_fence, r.fencing_token))
          OR (r.id = t.input_run_id AND r.fencing_token = t.input_fence))
@@ -49,8 +46,7 @@ WITH thread AS MATERIALIZED (
 ), cancelled AS (
   UPDATE thread.turns t
   SET status = $4, settled_at = clock_timestamp(), parked_at = NULL,
-      opened_at = CASE WHEN t.producer IS NOT NULL THEN COALESCE(t.opened_at, now())
-                       ELSE t.opened_at END,
+      opened_at = COALESCE(t.opened_at, now()),
       updated_at = now()
   FROM target
   WHERE t.thread_id = $2 AND t.settled_at IS NULL AND NOT target.settled

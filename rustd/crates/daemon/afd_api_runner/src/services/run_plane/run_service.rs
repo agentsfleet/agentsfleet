@@ -5,8 +5,13 @@ use super::{
     MemoryRecallResponse, MessageRequest, MintCredentialRequest, Minted, RunPlane, Standing,
     SteerSender, Timestamp, ToolCallRecordsRequest, ToolCallRecordsStored, Uuid7,
 };
+use af_wire::access_verb::AccessRequest;
+use af_wire::trigger_verb::TriggerAddRequest;
 use afd_fleet::run::RunService;
+use afd_fleet::run::access::AccessAsked;
 use afd_fleet::run::effect::{Claim, Effect};
+use afd_fleet::run::write_fence::WriteFence;
+use afd_setup::trigger::TriggerRow;
 
 /// The production plane answers it directly.
 ///
@@ -100,5 +105,41 @@ impl RunPlane for RunService {
         text: &str,
     ) -> impl Future<Output = afd_fleet::Result<SteerSender>> + Send {
         Self::sender(self, standing, text)
+    }
+
+    fn request_access(
+        &self,
+        runner_id: &Uuid7,
+        run_id: Uuid7,
+        request: &garde::Valid<AccessRequest<'_>>,
+        now: Timestamp,
+    ) -> impl Future<Output = afd_fleet::Result<AccessAsked>> + Send {
+        Self::request_access(self, runner_id, run_id, request, now)
+    }
+
+    fn add_trigger(
+        &self,
+        standing: &Standing,
+        item_id: &Uuid7,
+        request: &TriggerAddRequest<'_>,
+        guard: &WriteFence,
+    ) -> impl Future<Output = afd_fleet::Result<TriggerRow>> + Send {
+        Self::add_trigger(self, standing, item_id, request, guard)
+    }
+
+    fn triggers(
+        &self,
+        standing: &Standing,
+    ) -> impl Future<Output = afd_fleet::Result<Vec<TriggerRow>>> + Send {
+        Self::triggers(self, standing)
+    }
+
+    fn remove_trigger(
+        &self,
+        standing: &Standing,
+        trigger: &Uuid7,
+        guard: &WriteFence,
+    ) -> impl Future<Output = afd_fleet::Result<bool>> + Send {
+        Self::remove_trigger(self, standing, trigger, guard)
     }
 }

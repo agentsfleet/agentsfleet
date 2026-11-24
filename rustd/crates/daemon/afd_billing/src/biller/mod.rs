@@ -38,9 +38,6 @@ pub use self::recording::RecordingBiller;
 pub enum WorkKey {
     /// A fleet run's run.
     FleetRun(Uuid7),
-    /// A draft-owned setup run, by the run's id. The charges page shows its
-    /// lines as `setup`, with the run as their `run_id`.
-    SetupRun(Uuid7),
 }
 
 impl WorkKey {
@@ -49,7 +46,6 @@ impl WorkKey {
     pub const fn work_type(&self) -> &'static str {
         match self {
             Self::FleetRun(_) => sql::work::FLEET_RUN,
-            Self::SetupRun(_) => sql::work::SETUP_RUN,
         }
     }
 
@@ -57,7 +53,7 @@ impl WorkKey {
     #[must_use]
     pub const fn id(&self) -> &Uuid7 {
         match self {
-            Self::FleetRun(id) | Self::SetupRun(id) => id,
+            Self::FleetRun(id) => id,
         }
     }
 }
@@ -71,7 +67,7 @@ pub struct Account {
     pub workspace: Uuid7,
 }
 
-/// What a charge names beside its work, for the charges page and budgets.
+/// What a charge names beside its work, for the charges page.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Attribution {
     /// A fleet run: the fleet, its name at charge time, and the turn it ran.
@@ -82,13 +78,6 @@ pub enum Attribution {
         fleet_name: String,
         /// The turn the run answered.
         turn_id: Uuid7,
-    },
-    /// A draft-owned run's setup turn: the run is the work, and the line
-    /// names the draft message it ran as its `turn_id`, so a line reaches its
-    /// draft through the run and its message directly.
-    SetupRun {
-        /// The draft message the run ran.
-        message: Uuid7,
     },
 }
 

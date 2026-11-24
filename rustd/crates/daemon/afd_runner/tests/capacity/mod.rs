@@ -1,4 +1,4 @@
-//! Real Postgres host capacity, shared between setup and runtime runs.
+//! Real Postgres host capacity, shared between live runs and idle holds.
 #![cfg(feature = "test-util")]
 #![expect(clippy::expect_used, reason = "test preconditions must fail loudly")]
 

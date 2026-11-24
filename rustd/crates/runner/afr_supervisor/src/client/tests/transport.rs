@@ -21,8 +21,9 @@ async fn the_http_client_sends_the_token_and_the_right_method() {
     let first = seen.recv().await.unwrap();
     let second = seen.recv().await.unwrap();
     let third = seen.recv().await.unwrap();
-    assert_eq!(&*posted, b"{\"a\":1}");
-    assert!(read.is_empty());
+    assert_eq!(&*posted.bytes, b"{\"a\":1}");
+    assert!(read.bytes.is_empty());
+    assert!(!posted.created && !read.created, "a 200 created nothing");
     assert_eq!(
         (first.method, first.path.as_str()),
         (Method::POST, "/v1/credentials")
@@ -33,6 +34,27 @@ async fn the_http_client_sends_the_token_and_the_right_method() {
     assert_eq!(second.method, Method::GET);
     assert_eq!(second.content_type, None);
     assert_eq!(third.method, Method::POST);
+}
+
+/// A 201 reads as created, which an access request ends its run waiting on;
+/// any other 2xx does not.
+#[tokio::test]
+async fn the_http_client_says_when_a_reply_created_what_it_answers_for() {
+    let (base, _seen) = daemon().await;
+    let api = api(&base, "agt_r_token").unwrap();
+
+    let created = api
+        .send(call(Verb::Access, "/status/201", Some(b"{\"g\":1}")))
+        .await
+        .unwrap();
+    let accepted = api
+        .send(call(Verb::Access, "/status/202", Some(b"{}")))
+        .await
+        .unwrap();
+
+    assert!(created.created);
+    assert_eq!(&*created.bytes, b"{\"g\":1}");
+    assert!(!accepted.created);
 }
 
 #[tokio::test]

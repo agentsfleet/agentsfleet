@@ -48,7 +48,6 @@ impl<B: Biller> Biller for Observed<B> {
 pub(crate) const fn work_type(work: &WorkKey) -> WorkType {
     match work {
         WorkKey::FleetRun(_) => WorkType::FleetRun,
-        WorkKey::SetupRun(_) => WorkType::SetupRun,
     }
 }
 
@@ -67,12 +66,8 @@ mod tests {
     fn the_labels_spell_the_stored_values() -> Result<(), Box<dyn std::error::Error>> {
         let id = Uuid7::encode(jiff::Timestamp::UNIX_EPOCH, [1; ENTROPY_LEN])?;
         assert_eq!(
-            work_type(&WorkKey::FleetRun(id.clone())).as_str(),
+            work_type(&WorkKey::FleetRun(id)).as_str(),
             sql::work::FLEET_RUN
-        );
-        assert_eq!(
-            work_type(&WorkKey::SetupRun(id)).as_str(),
-            sql::work::SETUP_RUN
         );
         Ok(())
     }

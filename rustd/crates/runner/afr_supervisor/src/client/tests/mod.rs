@@ -91,6 +91,7 @@ fn test_reply_body_is_a_zeroing_buffer() {
     }
     let body = super::Body {
         verb: Verb::Heartbeat,
+        created: false,
         bytes: zeroize::Zeroizing::new(b"{}".to_vec()),
     };
     assert_eq!(bytes_of(&body).as_slice(), b"{}");

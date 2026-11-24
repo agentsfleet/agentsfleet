@@ -9,16 +9,11 @@
 )]
 
 use af_core::id::Uuid7;
-use af_fleet_runtime::definition::{POLICY_SEMANTICS, canonical_digest};
-use afd_db::test_util::{FleetSeed, SetupRevision, TenantSeed, WorkspaceSeed};
+use afd_db::test_util::{FleetSeed, TenantSeed, WorkspaceSeed};
 use jiff::Timestamp;
 
 use crate::rows::Row;
 use crate::support::Fixtures;
-
-/// The native setup a seeded fleet is saved with: no trigger, no tool, a
-/// dollar a day. Suites that need another install their own over it.
-const SEEDED_NATIVE_CONFIG: &str = r#"{"name":"seeded","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"}}}"#;
 
 /// The `thread.threads` column an assignment's expiry lives in.
 pub(crate) const COLUMN_HELD_UNTIL: &str = "run_expires_at";
@@ -107,7 +102,7 @@ impl Fixtures {
         .await;
     }
 
-    /// [`Self::seed_fleet`], with its setup revision running on `model_ref`.
+    /// [`Self::seed_fleet`], running on `model_ref`.
     pub(crate) async fn seed_fleet_on(
         &self,
         fleet: &Uuid7,
@@ -131,13 +126,11 @@ impl Fixtures {
                 .insert(&mut *connection)
                 .await
                 .expect("the workspace row must insert");
+            // A payer with no wallet row is refused every run, so the
+            // tenant a fixture signs up holds one, funded.
+            self.seed_wallet(tenant, crate::report_seed::DEEP_POOL)
+                .await;
         }
-        let definition = crate::setup::definition(SEEDED_NATIVE_CONFIG);
-        let stored = serde_json::to_string(&definition).expect("Definition JSON");
-        let digest = canonical_digest(&definition).expect("canonical digest");
-        // Every saved fleet carries the setup revision Save selected, and
-        // admission refuses a fleet whose revision was written under other
-        // policy semantics, or that has none.
         FleetSeed::new(
             fleet,
             workspace,
@@ -145,12 +138,7 @@ impl Fixtures {
             afd_state::sql::FLEET_STATUS_ACTIVE,
         )
         .tags(&[tag])
-        .setup(SetupRevision {
-            definition: &stored,
-            digest: &digest,
-            semantics: POLICY_SEMANTICS,
-            model_ref: Some(model_ref),
-        })
+        .model(model_ref)
         .insert(&mut *connection)
         .await
         .expect("the fleet row must insert");

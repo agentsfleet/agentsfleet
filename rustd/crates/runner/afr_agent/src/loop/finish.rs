@@ -142,7 +142,6 @@ impl Harness<'_, '_> {
         let recovery_durable_task = self
             .task
             .as_ref()
-            .filter(|task| task.allow_actions)
             .and_then(|task| task.inputs.current_durable_task.clone());
         match recovery_durable_task {
             None => None,

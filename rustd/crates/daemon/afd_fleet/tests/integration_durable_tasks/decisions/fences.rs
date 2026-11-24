@@ -2,7 +2,7 @@
 //! runner the run was issued to.
 
 use af_core::error_code;
-use af_wire::durable_task::{DecisionAssessment, DecisionReceiptInput};
+use af_wire::durable_task::DecisionReceiptInput;
 use afd_fleet::durable_task::{DurableTaskLifecycle as _, DurableTaskRun};
 
 use super::{
@@ -21,9 +21,7 @@ use super::{
 async fn a_decision_needs_the_runs_fence_and_its_own_runner() {
     exercise(async |case: &Case| {
         let fixture = Decisions::create(case).await;
-        let mut stale = fixture
-            .reservation(DecisionAssessment::Message, None)
-            .into_inner();
+        let mut stale = fixture.call_input().await.into_inner();
         stale.fencing_token += 1;
         let stale = garde::Unvalidated::new(stale)
             .validate()
@@ -36,9 +34,7 @@ async fn a_decision_needs_the_runs_fence_and_its_own_runner() {
         assert_eq!(refused.code(), error_code::RUN_STALE_FENCING_TOKEN);
         assert_eq!(fixture.counts().await, (0, 0, 0), "nothing was reserved");
 
-        let (_, body) = fixture
-            .reserve(&fixture.reservation(DecisionAssessment::Message, None))
-            .await;
+        let (_, body) = fixture.reserve(&fixture.call_input().await).await;
         let call = request(&body);
         let receipt = |fencing_token| {
             garde::Unvalidated::new(DecisionReceiptInput {

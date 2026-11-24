@@ -43,9 +43,10 @@ pub struct DurableTaskHumanInput {
     pub accepted: Option<DurableTaskAcceptedInterpretation>,
 }
 
-/// Trusted compact work offered for intent association without loading private evidence.
+/// A fleet's unfinished task, compact enough for a model to name the one a
+/// person's message steers without loading its private evidence.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DurableTaskInputCandidate {
     /// Native task identity.
     pub durable_task_id: String,
@@ -63,8 +64,6 @@ pub struct DurableTaskInputCandidate {
 pub struct DurableTaskInputsResponse<'a> {
     /// Native turn owned by this run, including signed continuation events.
     pub source_turn_id: String,
-    /// Installed revision under which a new human interpretation may bind.
-    pub accepted_revision_id: Option<String>,
     /// Complete current human message, absent for native machine continuations.
     /// Its presence is established from native turn authority.
     pub current_message: Option<String>,
@@ -96,7 +95,6 @@ impl DurableTaskInputsResponse<'_> {
     pub fn into_owned(self) -> DurableTaskInputsResponse<'static> {
         DurableTaskInputsResponse {
             source_turn_id: self.source_turn_id,
-            accepted_revision_id: self.accepted_revision_id,
             current_message: self.current_message,
             inputs: self.inputs,
             accepted_inputs: self.accepted_inputs,

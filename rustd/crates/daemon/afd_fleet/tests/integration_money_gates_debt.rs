@@ -16,7 +16,7 @@ use afd_fleet::run::start_check::{StartCheck, money_gates};
 
 use afd_db::test_util::mint_id;
 
-use crate::integration_money_gates::{AMPLE_DAILY_NANOS, biller, budgeted, request};
+use crate::integration_money_gates::{biller, request};
 use crate::seed::unique_ids;
 use crate::support::Fixtures;
 
@@ -41,14 +41,13 @@ async fn a_tenant_in_debt_is_refused_until_its_balance_is_repaid() {
         .seed_fleet(&fleet, &workspace, &tenant, "money-gates")
         .await;
     fixtures.seed_wallet(&tenant, -DEBT_NANOS).await;
-    let config = budgeted(AMPLE_DAILY_NANOS);
     let (in_debt, repaid) = (mint_id(), mint_id());
 
     let decided = money_gates(
         &accounts,
         &biller,
         Ok(Some(tenant.clone())),
-        request(&workspace, &fleet, &in_debt, &config),
+        request(&workspace, &fleet, &in_debt),
         fixtures.enrolled_at(),
     )
     .await
@@ -63,7 +62,7 @@ async fn a_tenant_in_debt_is_refused_until_its_balance_is_repaid() {
         &accounts,
         &biller,
         Ok(Some(tenant.clone())),
-        request(&workspace, &fleet, &repaid, &config),
+        request(&workspace, &fleet, &repaid),
         fixtures.enrolled_at(),
     )
     .await

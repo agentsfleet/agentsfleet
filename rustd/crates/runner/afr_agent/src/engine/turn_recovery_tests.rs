@@ -13,7 +13,6 @@ fn payload() -> RunPayload<'static> {
     run.event.workspace_id = id(1).0.into();
     run.event.fleet_id = id(2).0.into();
     run.event.turn_id = id(3).0.into();
-    run.setup_revision_id = Some(id(4).0.into());
     run.run_id = id(5).0.into();
     run
 }
@@ -99,27 +98,41 @@ fn ordinary_state_restores_answers_input_membership_and_current_secret_scrubbing
     Ok(())
 }
 
+/// A person changed the fleet's model while a turn was paused: the restore
+/// keeps the conversation and the answers, and drops the reasoning the old
+/// model's provider signed, which the new model cannot verify. A provider
+/// change drops it as well.
 #[test]
-fn new_model_resolution_keeps_work_but_discards_provider_replay() -> crate::Result<()> {
-    let (mut run, recovered) = fixture()?;
-    run.policy.context.model = "another-model".into();
-    run.policy.provider = "another-provider".into();
-    let root = recovered.restore(&run, TurnWorkspace::ApiOnly, &crate::fixture::scrub())?;
-    assert!(!has_replay(&root));
-    assert_eq!(root.messages.len(), 2);
-    assert_eq!(root.driver.answers().len(), 1);
+fn a_restore_under_another_model_drops_signed_reasoning() -> crate::Result<()> {
+    for (model, provider) in [
+        ("another-model", None),
+        ("another-model", Some("another-provider")),
+    ] {
+        let (mut run, recovered) = fixture()?;
+        run.policy.context.model = model.into();
+        if let Some(provider) = provider {
+            run.policy.provider = provider.into();
+        }
+        let root = recovered.restore(&run, TurnWorkspace::ApiOnly, &crate::fixture::scrub())?;
+        assert!(!has_replay(&root), "{model} {provider:?}");
+        assert!(matches!(
+            root.messages.as_slice(),
+            [Message::User(asked), Message::Assistant { text, .. }]
+                if asked == "request and incorporated follow-up" && text == "accepted answer A"
+        ));
+        assert_eq!(root.driver.answers().len(), 1);
+    }
     Ok(())
 }
 
 #[test]
-fn changed_setup_scope_workspace_digest_or_adopted_membership_refuses() -> crate::Result<()> {
+fn changed_scope_workspace_digest_or_adopted_membership_refuses() -> crate::Result<()> {
     let (run, recovered) = fixture()?;
-    for case in 0..8 {
+    for case in 1..8 {
         let mut run = run.clone();
         let mut saved = recovered.clone();
         let mut workspace = TurnWorkspace::ApiOnly;
         match case {
-            0 => run.setup_revision_id = Some(id(8).0.into()),
             1 => run.event.turn_id = id(8).0.into(),
             2 => run.event.fleet_id = id(8).0.into(),
             3 => run.event.workspace_id = id(8).0.into(),
@@ -164,14 +177,12 @@ fn unsupported_format_refuses_even_when_its_bytes_match_the_descriptor() -> crat
 }
 
 #[test]
-fn capture_requires_plain_authority_a_frozen_setup_and_a_bounded_complete_root() -> crate::Result<()>
-{
-    for case in 0..3 {
+fn capture_requires_plain_authority_and_a_bounded_complete_root() -> crate::Result<()> {
+    for case in 0..2 {
         let mut run = payload();
         let mut root = root()?;
         match case {
-            0 => run.durable_tasks = true,
-            1 => run.setup_revision_id = None,
+            0 => run.durable_task = Some(super::recovery_tests::task()),
             _ => root.messages.push(Message::User(
                 "x".repeat(af_wire::protocol::MESSAGE_BYTES_MAX),
             )),
@@ -202,9 +213,9 @@ fn a_snapshot_prints_its_scope_and_size_and_none_of_its_history() -> crate::Resu
 }
 
 #[test]
-fn a_previous_checkpoint_of_another_setup_is_not_extended() -> crate::Result<()> {
+fn a_previous_checkpoint_of_another_fleet_is_not_extended() -> crate::Result<()> {
     let (mut run, recovered) = fixture()?;
-    run.setup_revision_id = Some(id(9).0.into());
+    run.event.fleet_id = id(9).0.into();
 
     let refused = TurnSnapshot::capture(
         &run,
@@ -222,7 +233,7 @@ fn a_previous_checkpoint_of_another_setup_is_not_extended() -> crate::Result<()>
     assert!(
         refused
             .to_string()
-            .contains("previous checkpoint belongs to a different setup or workspace"),
+            .contains("previous checkpoint belongs to a different fleet, turn or workspace"),
         "{refused}"
     );
     Ok(())

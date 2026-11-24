@@ -55,7 +55,7 @@ async fn a_context_read_answers_only_its_runner_at_its_fence() {
     assert_eq!(stale.code(), error_code::RUN_STALE_FENCING_TOKEN);
     assert_eq!(
         read.scope,
-        afd_setup::context::Owner::Fleet(running.fleet.clone()).scope(),
+        afd_setup::context::fleet_identity(&running.fleet),
         "a fleet run reads its fleet's thread"
     );
     assert!(read.checkpoint.is_none(), "nothing was saved yet");

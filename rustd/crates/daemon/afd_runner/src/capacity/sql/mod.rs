@@ -20,9 +20,9 @@ pub(super) const SHARE_HOST: &str = include_str!("share_host.sql");
 /// new assignment that counts holds.
 pub(super) const CENSUS: &str = include_str!("census.sql");
 
-/// The host's run-type counter and the type it chose last.
+/// The host's run version. `$1` runner.
 pub(super) const CHOICE: &str = include_str!("choice.sql");
 
 /// Advances the counter, only from the version the caller read. `$1` runner,
-/// `$2` the version read, `$3` the type chosen.
+/// `$2` the version read.
 pub(super) const RECORD_CHOICE: &str = include_str!("record_choice.sql");

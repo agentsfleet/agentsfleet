@@ -115,14 +115,9 @@ const FRAGMENTS: &[(&str, Path)] = &[
         "SET settled_at = clock_timestamp(), parked_at = NULL",
         Path::Report,
     ),
-    // The renewal: the host's pre-read, the documents a cold cache reads,
-    // and the batch itself.
+    // The renewal: the host's pre-read and the batch itself.
     (
         "l.cancel_requested_at IS NOT NULL AS cancelled",
-        Path::Meter,
-    ),
-    (
-        "SELECT r.id, r.definition::text AS definition FROM fleet.revisions r WHERE r.id = ANY(",
         Path::Meter,
     ),
     // Fold: `assign_inputs.sql`.
@@ -165,10 +160,9 @@ const FRAGMENTS: &[(&str, Path)] = &[
     ("SELECT number FROM model.revision", Path::Pricing),
     // Issue.
     (
-        "r.definition::text, f.status, r.runtime_model_ref",
+        "f.status, f.name, f.model_ref, f.http_egress, f.package_domains",
         Path::Issue,
     ),
-    ("SELECT r.definition::text FROM fleet.fleets", Path::Issue),
     (
         "memory_reads_workspace, memory_publishes_workspace FROM fleet.fleets",
         Path::Issue,

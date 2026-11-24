@@ -1,1 +1,1 @@
-SELECT run_version, last_run_type FROM runner.runners WHERE id = $1
+SELECT run_version FROM runner.runners WHERE id = $1

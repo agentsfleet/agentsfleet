@@ -82,9 +82,9 @@ pub struct Ask<'a> {
     pub workspace_id: &'a Uuid7,
     /// The stored handle, as the vault holds it.
     pub handle: &'a Value,
-    /// The fleet's declared repository reach, for the connectors that scope by
-    /// it. `None` is a fleet that declared none, and the GitHub mint refuses
-    /// rather than widening.
+    /// The repository reach a person approved on the fleet's grant, for the
+    /// connectors that scope by it. `None` is a fleet with no approved scope,
+    /// and the GitHub mint refuses rather than widening.
     pub binding: Option<&'a RepositoryBinding>,
     /// The instant every expiry decision is measured from.
     pub now: Timestamp,

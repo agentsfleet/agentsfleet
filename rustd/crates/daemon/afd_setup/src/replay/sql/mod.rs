@@ -7,8 +7,7 @@
 //! the window against `statement_timestamp()`, so a key the read calls expired
 //! is one the delete calls expired too.
 
-/// `$1` scope, `$2` operation, `$3` the replay window, `$4` the resource kind
-/// (a [`super::Resource`] spelling) whose table `live` checks.
+/// `$1` scope, `$2` operation, `$3` the replay window.
 pub(super) const READ: &str = include_str!("read.sql");
 
 /// Deletes the key's receipt once it is outside the window, so the unique

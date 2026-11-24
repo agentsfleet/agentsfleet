@@ -79,28 +79,45 @@ fn a_later_update_moves_updated_at_and_leaves_created_at() -> af_core::error::Re
     Ok(())
 }
 
-/// The setup a seeded fleet selects is the one `af_fleet_runtime` writes,
-/// byte for byte: the parser that owns the format digests it the same way.
+/// The network a seeded fleet takes is spelled as the crate that owns the
+/// column's vocabulary spells a new fleet's.
 #[test]
-fn the_seeded_fixture_setup_is_the_runtimes() {
-    let setup = af_fleet_runtime::test_util::FixtureSetup::default();
-    assert_eq!(setup.definition, super::FIXTURE_SETUP_DEFINITION);
-    assert_eq!(setup.digest, super::FIXTURE_SETUP_DIGEST);
-    assert_eq!(setup.semantics(), super::FIXTURE_SETUP_SEMANTICS);
+fn the_seeded_network_is_a_new_fleets() {
+    assert_eq!(
+        super::FIXTURE_HTTP_EGRESS,
+        af_fleet_runtime::config::HttpEgress::default().as_str()
+    );
 }
 
-/// A native setup on a seed that named no tags takes the unplaced tag, so no
-/// other suite's runner is handed it; one that named its own keeps them.
+/// A fleet with no named tags takes the unplaced tag, so no other suite's
+/// runner is handed its work; one that named its own keeps them.
 #[test]
-fn a_native_setup_keeps_named_tags_and_otherwise_takes_the_unplaced_one()
+fn an_unplaced_fleet_keeps_named_tags_and_otherwise_takes_the_unplaced_one()
 -> af_core::error::Result<()> {
     let (id, workspace, tenant) = ids()?;
-    let untagged = FleetSeed::new(&id, &workspace, &tenant, STATUS).native_setup();
+    let untagged = FleetSeed::new(&id, &workspace, &tenant, STATUS).unplaced();
     assert_eq!(untagged.required_tags, ["fixture-unplaced"]);
 
     let tagged = FleetSeed::new(&id, &workspace, &tenant, STATUS)
         .tags(&["linux-runner"])
-        .native_setup();
+        .unplaced();
     assert_eq!(tagged.required_tags, ["linux-runner"]);
+    Ok(())
+}
+
+#[test]
+fn a_fresh_seed_runs_the_fixture_model_on_a_restricted_network() -> af_core::error::Result<()> {
+    let (id, workspace, tenant) = ids()?;
+    let fresh = FleetSeed::new(&id, &workspace, &tenant, STATUS);
+    assert_eq!(
+        (fresh.model_ref, fresh.http_egress, fresh.package_domains),
+        (super::FIXTURE_MODEL_REF, super::FIXTURE_HTTP_EGRESS, false)
+    );
+
+    let opened = fresh.model("tenant:kimi").network("public", true);
+    assert_eq!(
+        (opened.model_ref, opened.http_egress, opened.package_domains),
+        ("tenant:kimi", "public", true)
+    );
     Ok(())
 }

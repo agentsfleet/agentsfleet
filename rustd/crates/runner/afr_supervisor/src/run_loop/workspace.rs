@@ -145,9 +145,7 @@ impl Run<'_> {
         slot: &ExecutorSlot<'_>,
         prepared: Option<&afr_agent::PreparedDurableTask>,
     ) -> bool {
-        if !prepared.is_some_and(|prepared| prepared.allow_actions)
-            && self.payload.turn_resume.is_none()
-        {
+        if prepared.is_none() && self.payload.turn_resume.is_none() {
             return true;
         }
         tokio::select! {

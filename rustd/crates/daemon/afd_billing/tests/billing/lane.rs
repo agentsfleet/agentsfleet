@@ -7,8 +7,8 @@
 //! fleet in its predicate, and no other test can name them.
 //!
 //! The wallet and the usage lines are written here directly, because their
-//! production writers live in `afd_tenant` (signup) and the run and setup
-//! chat paths, which depend on this crate rather than the other way round.
+//! production writers live in `afd_tenant` (signup) and the run paths, which
+//! depend on this crate rather than the other way round.
 #![expect(
     clippy::expect_used,
     reason = "test support: an unmet precondition should fail the test loudly"

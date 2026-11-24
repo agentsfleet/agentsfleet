@@ -35,10 +35,7 @@ impl Run<'_> {
         if self.payload.turn_resume.is_some() {
             return self.prepare_turn_recovery(sandbox, build).await;
         }
-        let Some(prepared) = build
-            .prepared_durable_task
-            .filter(|prepared| prepared.allow_actions)
-        else {
+        let Some(prepared) = build.prepared_durable_task else {
             return Ok(());
         };
         let task = prepared
@@ -94,9 +91,8 @@ impl Run<'_> {
         &self,
         prepared: Option<&PreparedDurableTask>,
     ) -> Result<Option<DurableTaskRecovery>> {
-        let Some(task) = prepared
-            .filter(|prepared| prepared.allow_actions)
-            .and_then(|prepared| prepared.inputs.current_durable_task.as_ref())
+        let Some(task) =
+            prepared.and_then(|prepared| prepared.inputs.current_durable_task.as_ref())
         else {
             return Ok(None);
         };

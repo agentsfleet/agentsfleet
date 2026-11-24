@@ -29,12 +29,9 @@ jiff.workspace = true
 serde_json.workspace = true
 # The schema compiler, off by default, exactly as in `af_wire`.
 utoipa = { workspace = true, optional = true }
-# The Definition's published shape, read only by the document build so the
-# shipped daemon's graph is unchanged.
-af_fleet_runtime = { workspace = true, optional = true }
 
 [features]
-openapi = ["dep:utoipa", "af_wire/openapi", "dep:af_fleet_runtime", "af_fleet_runtime/openapi"]
+openapi = ["dep:utoipa", "af_wire/openapi"]
 
 [dev-dependencies]
 serde_json.workspace = true

@@ -1,4 +1,5 @@
-//! A plan is replayed as a whole; changed count or meaning cannot append work.
+//! A plan is replayed as a whole: one source turn takes one plan, and a
+//! repeat with another digest is refused.
 
 use af_core::id::Uuid7;
 use sqlx::PgConnection;
@@ -36,11 +37,7 @@ pub(super) async fn read(
     if rows.is_empty() {
         return Ok(None);
     }
-    let count = plan
-        .authorization
-        .as_ref()
-        .map_or(plan.items.len(), |input| input.items.len());
-    if rows.len() != count || rows.iter().any(|row| row.plan_digest != plan.digest) {
+    if rows.iter().any(|row| row.plan_digest != plan.digest) {
         return Err(DurableTaskRefusal::ReplayConflict.into());
     }
     let items = rows

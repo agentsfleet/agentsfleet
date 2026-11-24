@@ -40,35 +40,29 @@ pub const DEFAULT_TIMEZONE: &str = "UTC";
 
 /// Who asked for this schedule to exist.
 ///
-/// The distinction is ownership, not provenance: a `Trigger` schedule is
-/// derived from the fleet's stored document and is rewritten whenever that
-/// document is, while an `Api` schedule was created by a person and survives a
-/// document edit. A sync that could not tell them apart would delete one of
-/// them on every install.
+/// The distinction is ownership: every schedule is an independent row edited
+/// by its own fields, and the source decides who may edit it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Source {
     /// Created through the schedules surface by a person.
     Api,
-    /// Derived from a `cron` trigger in the fleet's stored document.
-    Trigger,
     /// Created by the fleet itself, through the run it was running under.
     ///
-    /// The only source a fleet may change or delete: the other two belong to
-    /// a person, and a fleet that could rewrite them could undo what its
-    /// operator set.
+    /// The only source a fleet may change or delete: the other belongs to a
+    /// person, and a fleet that could rewrite it could undo what its operator
+    /// set.
     Fleet,
 }
 
 impl Source {
     /// Every source, for the readers that walk them.
-    pub const ALL: &'static [Self] = &[Self::Api, Self::Trigger, Self::Fleet];
+    pub const ALL: &'static [Self] = &[Self::Api, Self::Fleet];
 
     /// The word the column holds.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Api => "api",
-            Self::Trigger => "trigger",
             Self::Fleet => "fleet",
         }
     }
@@ -235,8 +229,6 @@ pub struct Schedule {
     /// expression has no year, so a sync after this instant would register a
     /// match a year out; the reconciler retires it instead.
     pub fire_at: Option<Timestamp>,
-    /// Pinned base and explicit instance overlay, absent for independent schedules.
-    pub recipe: Option<crate::Inherited>,
 }
 
 impl Schedule {
@@ -260,10 +252,7 @@ impl Schedule {
             status: Cow::Borrowed(self.desired_status.as_str()),
             sync: Cow::Borrowed(self.sync_status.as_str()),
             etag: self.etag(),
-            overrides: self
-                .recipe
-                .as_ref()
-                .and_then(|recipe| recipe.overrides.clone()),
+            overrides: None,
             last_error: self.last_error.as_deref().map(Cow::Borrowed),
             description: crate::run::describe(&self.cron, &self.timezone),
             run_state,
@@ -273,19 +262,12 @@ impl Schedule {
         }
     }
 
-    /// Strong version spanning recipe, fleet setup and instance override revisions.
+    /// Strong version over the row's identity and its own counter.
     #[must_use]
     pub fn etag(&self) -> String {
-        let versions = self.recipe.as_ref().map(|recipe| {
-            format!(
-                "{}:{}:{}",
-                recipe.recipe_revision, recipe.setup_revision, recipe.override_revision
-            )
-        });
         af_core::etag::compute(&[
             Some(self.schedule_id.as_str().as_bytes()),
             Some(&self.resource_version.to_be_bytes()),
-            versions.as_deref().map(str::as_bytes),
         ])
     }
 }

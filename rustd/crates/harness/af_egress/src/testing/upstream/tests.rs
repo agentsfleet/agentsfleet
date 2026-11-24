@@ -37,7 +37,7 @@ async fn a_failed_handshake_leaves_the_fake_serving_and_stop_closes_it() {
     )])
     .await;
     let network = upstream.network();
-    let policy = policy(true);
+    let policy = policy();
     let mint = CountingMint::never();
     let clock = FixedClock::at(jiff::Timestamp::UNIX_EPOCH);
     let mut egress = Egress::new("run-upstream", &policy, &mint, &clock);

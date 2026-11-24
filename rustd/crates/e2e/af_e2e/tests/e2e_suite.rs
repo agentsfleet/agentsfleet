@@ -104,8 +104,6 @@ mod integration_rust_runner_nested;
 mod integration_rust_runner_repairs;
 #[path = "integration_rust_runner_reviews.rs"]
 mod integration_rust_runner_reviews;
-#[path = "integration_rust_runner_setup/mod.rs"]
-mod integration_rust_runner_setup;
 #[path = "integration_rust_runner_telemetry.rs"]
 mod integration_rust_runner_telemetry;
 #[path = "integration_tenant_registry.rs"]
@@ -118,8 +116,6 @@ mod integration_tool_call_details_lifecycle;
 mod integration_tool_call_refusals;
 #[path = "integration_tool_trace.rs"]
 mod integration_tool_trace;
-#[path = "integration_unreadable_config.rs"]
-mod integration_unreadable_config;
 #[path = "support/e2e_reads.rs"]
 mod reads;
 mod recovery_process;
@@ -139,6 +135,3 @@ mod tail;
 mod verbs;
 #[path = "support/e2e_wire.rs"]
 mod wire;
-
-#[path = "integration_grant_denial.rs"]
-mod integration_grant_denial;

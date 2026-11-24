@@ -3,7 +3,6 @@
 
 use crate::{
     e2e::{ACTOR, EVENT_TYPE, REQUEST_JSON, Scenario},
-    e2e_native::Stored,
     e2e_seed,
 };
 use af_core::{clock, id::Uuid7};
@@ -31,10 +30,6 @@ pub(super) async fn sibling(scene: &Scenario, name: &str) -> (Uuid7, Uuid7) {
 
 async fn seed_sibling(scene: &Scenario, name: &str) -> Uuid7 {
     let fleet = mint_id();
-    let stored = Stored::of(&crate::e2e_native::definition(
-        e2e_seed::FLEET_CONFIG_JSON,
-        e2e_seed::FIXTURE_INSTRUCTIONS,
-    ));
     let tag = e2e_seed::scenario_tag(&scene.fleet);
     let mut connection = scene
         .booted
@@ -51,7 +46,6 @@ async fn seed_sibling(scene: &Scenario, name: &str) -> Uuid7 {
     .name(name)
     .tags(&[tag.as_str()])
     .at(clock::now())
-    .setup(stored.revision())
     .insert(&mut *connection)
     .await
     .expect("second runnable fleet");

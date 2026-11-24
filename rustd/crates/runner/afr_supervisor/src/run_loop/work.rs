@@ -45,7 +45,7 @@ impl Run<'_> {
         );
         let prepared = match lessee
             .agent
-            .prepare_durable_task(self.payload, &verbs, &self.meter, &self.interrupt)
+            .prepare_durable_task(self.payload, &verbs)
             .await
         {
             Ok(prepared) => prepared,
@@ -55,7 +55,7 @@ impl Run<'_> {
                         &failure,
                         FailureClass::StartupPosture,
                         "task_preparation_failed",
-                        "native task intent could not be established",
+                        "the bound task's inputs could not be read",
                     )
                     .into();
             }
@@ -117,7 +117,7 @@ impl Run<'_> {
         sink: ActivitySink,
         prepared: Option<&afr_agent::PreparedDurableTask>,
     ) -> Worked {
-        if needs_sandbox && prepared.is_none_or(|prepared| prepared.allow_actions) {
+        if needs_sandbox {
             self.sandboxed(seed, sink, prepared).await
         } else {
             let none = ExecutorSlot::unavailable(Unavailable::NoSandbox);

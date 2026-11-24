@@ -1,13 +1,14 @@
 //! Which fleets may read each workspace secret, from the policy a run enforces.
 //!
-//! A fleet reads a secret only by declaring its name in the revision a run
-//! runs: `afd_credential::secrets::declared` resolves that list and nothing
-//! else. This read projects the same list, so "available to" is never inferred
-//! from a reference, a trigger or a name that merely looks related.
+//! A fleet reads a secret only once a person approved its grant:
+//! `afd_credential::secrets::declared` resolves the approved names and nothing
+//! else. This read projects the same grants, so "available to" is never
+//! inferred from a request, a trigger or a name that merely looks related.
 
 use std::collections::BTreeMap;
 
 use af_core::id::Uuid7;
+use afd_api_wire::grant::status::APPROVED;
 
 use crate::error::{self, Result};
 use crate::{FleetStatus, Fleets, sql};
@@ -24,8 +25,8 @@ pub struct SecretFleet {
     pub name: String,
 }
 
-/// Secret name to the runnable fleets that declare it, each list ordered by name.
-/// A secret no runnable fleet declares has no entry.
+/// Secret name to the runnable fleets approved to read it, each list ordered by
+/// name. A secret no runnable fleet holds has no entry.
 pub type SecretAccess = BTreeMap<String, Vec<SecretFleet>>;
 
 #[derive(sqlx::FromRow)]
@@ -36,7 +37,8 @@ struct Row {
 }
 
 impl Fleets {
-    /// Every secret name runnable fleets in `workspace` declare, with those fleets.
+    /// Every secret name runnable fleets in `workspace` hold an approved grant
+    /// for, with those fleets.
     ///
     /// One statement for the whole workspace, never one per secret or fleet.
     ///
@@ -47,6 +49,7 @@ impl Fleets {
         let rows: Vec<Row> = sqlx::query_as(sql::SELECT_SECRET_ACCESS)
             .bind(workspace)
             .bind(FleetStatus::Active.as_str())
+            .bind(APPROVED)
             .fetch_all(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_ACCESS))?;

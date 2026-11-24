@@ -52,6 +52,7 @@ af_stream = { workspace = true, features = ["test-util"] }
 af_webhook = { workspace = true, features = ["test-util"] }
 af_wire = { workspace = true, features = ["test-util"] }
 # The daemon's stores, read back and seeded through their own statements.
+afd_api_wire.workspace = true
 afd_approval.workspace = true
 afd_auth.workspace = true
 afd_billing.workspace = true
@@ -73,6 +74,7 @@ afd_vault.workspace = true
 # The layer test reads every member manifest with a real parser.
 toml.workspace = true
 async-trait.workspace = true
+garde.workspace = true
 axum.workspace = true
 # The recovery bench's command line.
 clap.workspace = true

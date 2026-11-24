@@ -1,6 +1,5 @@
 //! Publication advances a capture's head without replacing its verified base.
 
-use af_core::id::Uuid7;
 use std::{sync::Arc, time::Duration};
 
 use af_core::{error_code, etag::sha256_hex};
@@ -31,7 +30,7 @@ async fn capture(case: &Case) {
     let fixture = Decisions::create(case).await;
     let task = fixture.bind_goal().await;
     let durable_task_id = id(&task.durable_task_id);
-    super::configured::support::set(case, false).await;
+    super::steps::durable_tasks_enabled(case, false).await;
     let tasks = storage(&fixture);
     let base_input = input(
         &task,
@@ -192,12 +191,6 @@ async fn report_head(
     let state: (String, String) = sqlx::query_as("SELECT c.commit_oid, b.commit_oid FROM runner.checkpoints c JOIN runner.checkpoint_bases b ON b.id = c.checkpoint_base_id WHERE c.id = $1")
         .bind(&checkpoint_id).fetch_one(&mut *connection).await.expect("separate saved heads");
     assert_eq!(state, (head.to_owned(), "0".repeat(40)));
-    let revision: Uuid7 =
-        sqlx::query_scalar("SELECT accepted_revision_id FROM fleet.durable_tasks WHERE id = $1")
-            .bind(&durable_task_id)
-            .fetch_one(&mut *connection)
-            .await
-            .expect("accepted revision");
     for (candidate, expected) in [(head, true), ("0".repeat(40).as_str(), false)] {
         let accepted = afd_fleet::durable_task::CheckpointGuard {
             checkpoint_id: Some(plan.checkpoint_id.as_str()),
@@ -205,7 +198,6 @@ async fn report_head(
             run_id: case.run().run_id,
             generation: 1,
             stop_generation: 0,
-            revision_id: &revision,
             covered_input_sequence: 0,
             effect_watermark: 0,
             head: Some(candidate),

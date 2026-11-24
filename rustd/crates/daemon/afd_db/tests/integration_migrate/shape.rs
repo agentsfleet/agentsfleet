@@ -8,9 +8,8 @@
 use super::*;
 
 /// The nine owned schemas. `audit` holds only sqlx's ledger.
-const OWNED_SCHEMAS: [&str; 10] = [
+const OWNED_SCHEMAS: [&str; 9] = [
     "identity",
-    "setup",
     "fleet",
     "runner",
     "thread",
@@ -79,6 +78,97 @@ async fn test_migrate_from_empty_builds_nine_owned_schemas() {
     assert_eq!(
         table_schemas, owned,
         "every owned schema holds a table, and only they do"
+    );
+
+    drop(connection);
+    db.close().await;
+    database.cleanup().await;
+}
+
+/// The columns of the schemas in `$1` and the tables in `$2` that name a draft
+/// or a revision.
+const DRAFT_OR_REVISION_COLUMNS: &str = "\
+SELECT table_schema || '.' || table_name || '.' || column_name
+  FROM information_schema.columns
+ WHERE (table_schema = ANY($1) OR table_schema || '.' || table_name = ANY($2))
+   AND (column_name = 'draft_id' OR column_name LIKE '%revision\\_id')";
+
+/// The columns [`DRAFT_OR_REVISION_COLUMNS`] finds in `schemas` and `tables`.
+async fn draft_or_revision_columns(
+    connection: &mut PgConnection,
+    schemas: &[&str],
+    tables: &[&str],
+) -> Vec<String> {
+    sqlx::query_scalar(DRAFT_OR_REVISION_COLUMNS)
+        .bind(schemas)
+        .bind(tables)
+        .fetch_all(connection)
+        .await
+        .unwrap()
+}
+
+/// Whether `thread.threads.fleet_id` admits NULL.
+const THREAD_FLEET_NULLABLE: &str = "\
+SELECT is_nullable FROM information_schema.columns
+ WHERE table_schema = 'thread' AND table_name = 'threads' AND column_name = 'fleet_id'";
+
+/// Every CHECK `thread.threads` carries, as Postgres renders it.
+const THREAD_CHECKS: &str = "\
+SELECT pg_get_constraintdef(con.oid)
+  FROM pg_constraint con
+ WHERE con.conrelid = 'thread.threads'::regclass AND con.contype = 'c'";
+
+/// No draft or revision survives migration: no `setup` schema, no
+/// `fleet.revisions`, no column naming either, and a thread belongs to exactly
+/// the fleet its id names.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn the_schema_names_no_draft_or_revision() {
+    let (database, db) = migrated().await;
+    let mut connection = db.acquire().await.unwrap();
+
+    let schemas: Vec<String> = sqlx::query_scalar(BUILT_SCHEMAS)
+        .fetch_all(&mut *connection)
+        .await
+        .unwrap();
+    assert!(
+        !schemas.iter().any(|schema| schema == "setup"),
+        "{schemas:?}"
+    );
+    let built = built(&mut connection).await;
+    assert!(
+        built.contains("fleet.fleets"),
+        "the catalog read finds a known table"
+    );
+    assert!(!built.contains("fleet.revisions"), "{built:?}");
+    assert!(!built.contains("setup.drafts"), "{built:?}");
+
+    // The same read finds a revision column where one belongs: the catalog's.
+    let catalogue = draft_or_revision_columns(&mut connection, &["model"], &[]).await;
+    assert!(
+        catalogue.contains(&"model.platform_models.decision_revision_id".to_owned()),
+        "{catalogue:?}"
+    );
+    let named = draft_or_revision_columns(
+        &mut connection,
+        &["fleet", "thread"],
+        &["runner.checkpoints"],
+    )
+    .await;
+    assert_eq!(named, Vec::<String>::new());
+
+    let nullable: String = sqlx::query_scalar(THREAD_FLEET_NULLABLE)
+        .fetch_one(&mut *connection)
+        .await
+        .unwrap();
+    assert_eq!(nullable, "NO");
+    let checks: Vec<String> = sqlx::query_scalar(THREAD_CHECKS)
+        .fetch_all(&mut *connection)
+        .await
+        .unwrap();
+    assert!(
+        checks.iter().any(|check| check.contains("id = fleet_id")),
+        "{checks:?}"
     );
 
     drop(connection);

@@ -3,9 +3,10 @@
 //! # What it asks
 //!
 //! What native gateway assignments sustain when hosts outnumber the pool's
-//! connections, and whether placement stays correct. Hosts receive setup
-//! chats and fleet runs through their own guarded session and renew held
-//! work, while wall viewers read the fleet
+//! connections, and whether placement stays correct. Hosts receive the
+//! first turns of fleets chat tenants started and ready fleets' runs through
+//! their own guarded session and renew held work, while wall viewers read the
+//! fleet
 //! live set on the same pool. Requesters default to twice the pool size, so
 //! the default shape's `fit` guard is the one thing this shape skips on
 //! purpose.
@@ -90,7 +91,15 @@ pub async fn run(
     let kek = Arc::new(platform::minted_kek()?);
     let host = Arc::new(Production::new(stores, &kek));
     let mut ledger = FixtureLedger::new();
-    let staged = stage::stage(stores, &host.drafts, &kek, prefix, parameters, &mut ledger).await;
+    let staged = stage::stage(
+        stores,
+        &host.creations,
+        &kek,
+        prefix,
+        parameters,
+        &mut ledger,
+    )
+    .await;
     let measured = match staged {
         Ok(staged) => measure(&run, &host, &staged, &mut ledger, &mut report).await,
         Err(refused) => Err(refused),
@@ -193,7 +202,7 @@ fn first_tenant(staged: &stage::Staged) -> Option<Uuid7> {
     staged.tenants.first().map(|seeded| seeded.tenant.clone())
 }
 
-/// The slow writer over `tenant`'s drafts, on the connection it was handed.
+/// The slow writer over `tenant`'s fleets, on the connection it was handed.
 fn spawn_writer(
     mut locker: sqlx::PgConnection,
     tenant: Option<Uuid7>,

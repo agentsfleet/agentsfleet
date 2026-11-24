@@ -39,8 +39,8 @@ use crate::e2e_db::scenario_database;
 use crate::e2e_event::{enqueue, enqueue_unsupported};
 use crate::e2e_retire::retire_fleet;
 use crate::e2e_seed::{
-    DEEP_POOL, FLEET_CONFIG_JSON, FLEET_NAME, scenario_enrolment, seed_fleet, seed_model_rate,
-    seed_platform_default, seed_wallet,
+    DEEP_POOL, FLEET_NAME, scenario_enrolment, seed_fleet, seed_model_rate, seed_platform_default,
+    seed_wallet,
 };
 use crate::e2e_seed_keys::seed_provider_key;
 
@@ -165,7 +165,7 @@ pub(crate) async fn scenario_with_provider(
     supervisor: &mut Supervisor,
     provider_base: Option<&str>,
 ) -> Scenario {
-    scenario_with(supervisor, provider_base, &[], FLEET_CONFIG_JSON).await
+    scenario_with(supervisor, provider_base, &[]).await
 }
 
 /// [`scenario_with_provider`], with a suite's own knobs and fleet document.
@@ -177,7 +177,6 @@ pub(crate) async fn scenario_with(
     supervisor: &mut Supervisor,
     provider_base: Option<&str>,
     extra: &[(&str, &str)],
-    config: &str,
 ) -> Scenario {
     install_subscriber();
     // Before the daemon boots, because booting one is joining the consumer
@@ -193,10 +192,7 @@ pub(crate) async fn scenario_with(
     let now = af_core::clock::now();
 
     let (fleet, workspace, tenant) = unique_ids();
-    seed_fleet(
-        &booted, &fleet, FLEET_NAME, &workspace, &tenant, config, now,
-    )
-    .await;
+    seed_fleet(&booted, &fleet, FLEET_NAME, &workspace, &tenant, now).await;
     seed_wallet(&booted, &tenant, DEEP_POOL, now).await;
     seed_model_rate(&booted, now).await;
     let default = seed_platform_default(&booted, &workspace, now).await;

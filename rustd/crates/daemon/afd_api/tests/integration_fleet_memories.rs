@@ -207,7 +207,6 @@ impl Fixture {
         )
         .name("memory")
         .at(afd_db::test_util::SEEDED_AT)
-        .native_setup()
         .insert(&mut *connection)
         .await
         .expect("the authenticated fleet seeds");

@@ -1,53 +1,38 @@
-//! Native setup projections are borrowed through serialization without a JSON copy.
+//! A fleet as one read answers it, and what its create answers.
 
 use serde::Serialize;
 use serde_json::Value;
-use std::borrow::Cow;
 
-/// Public manual-webhook address for one declared source.
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct WebhookUrl<'a> {
-    /// Declared provider.
-    pub source: Cow<'a, str>,
-    /// Deployment-derived address.
-    pub url: Cow<'a, str>,
-}
-
-/// Shared fleet resource, returned by create, read and lifecycle changes.
+/// Shared fleet resource, returned by create, read and every change.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Serialize)]
-pub struct FleetResponse<D = Value, P = Value, O = Value, S = Value> {
+pub struct FleetResponse<'a, S = Value> {
     /// Fleet identity.
     pub id: String,
     /// Validated instance slug.
     pub name: String,
-    /// Current lifecycle state.
+    /// `active` or `archived`.
     pub status: String,
-    /// Strong resource tag for name/status changes.
+    /// Strong resource tag for every change.
     pub etag: String,
-    /// Strong setup tag for reviewed improvement application.
-    pub setup_etag: String,
-    /// Exact decimal immutable setup revision.
-    pub setup_revision: String,
-    /// Native immutable revision identity used for explicit task goal adoption.
-    pub setup_revision_id: String,
-    /// Pinned policy interpretation.
-    pub policy_semantics: String,
-    /// Complete validated native setup, with no private transcript.
-    #[cfg_attr(feature = "openapi", schema(value_type = af_fleet_runtime::definition::DefinitionSchema))]
-    pub definition: D,
-    /// Live prerequisites and authorized recovery actions.
-    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
-    pub setup: P,
-    /// Explicit initial-run progress.
-    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
-    pub start: O,
-    /// Actual stored schedule observations.
+    /// The workspace model the fleet's runs use; copy one from
+    /// `GET /v1/workspaces/{workspace_id}/models`.
+    pub model_ref: String,
+    /// Where the fleet's HTTP tools may reach: `restricted` to the hosts of its
+    /// approved access, or `public`. A new fleet is `restricted`.
+    pub http_egress: af_wire::policy::HttpEgress,
+    /// Whether its HTTP tools may also reach the package registries. A new
+    /// fleet may not.
+    pub package_domains: bool,
+    /// Stored schedule observations.
     #[cfg_attr(feature = "openapi", schema(value_type = Vec<Object>))]
     pub schedules: Vec<S>,
-    /// Manual webhook addresses from the declared setup.
-    pub webhook_urls: Vec<WebhookUrl<'static>>,
+    /// What else may wake it, as its rows hold them.
+    pub triggers: Vec<super::Trigger<'a>>,
+    /// The secrets and integrations it asked for, and where each stands.
+    pub grants: Vec<crate::grant::Grant<'a>>,
+    /// Current independent shared-memory permissions.
+    pub memory_access: super::MemoryAccess,
     /// Creation timestamp, such as `2026-10-24T05:00:00.000Z`.
     #[serde(with = "af_wire::instant")]
     pub created_at: jiff::Timestamp,
@@ -61,6 +46,39 @@ pub struct FleetResponse<D = Value, P = Value, O = Value, S = Value> {
     pub budget_used_nanos: String,
     /// Current unanswered approval gates.
     pub pending_approvals: i64,
-    /// Current independent shared-memory permissions.
-    pub memory_access: super::MemoryAccess,
+}
+
+/// Where a new fleet's first message went. Nothing runs ahead of it, so it
+/// never joins a live run.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FirstTurnDisposition {
+    /// A runner took it at once.
+    Started,
+    /// It waits for a runner.
+    Queued,
+}
+
+/// The first message a create accepted, as the fleet's first turn.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct FirstTurn {
+    /// The turn the message became; filter the fleet's turn stream on it.
+    pub turn_id: String,
+    /// Where it went.
+    pub disposition: FirstTurnDisposition,
+}
+
+/// `POST /v1/workspaces/{workspace_id}/fleets`: the fleet and its first turn.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Serialize)]
+pub struct CreatedFleet<'a, S = Value> {
+    /// The created fleet.
+    pub fleet: FleetResponse<'a, S>,
+    /// The first message, as the fleet's first turn.
+    pub accepted: FirstTurn,
+    /// Whether an earlier create with the same `operation_id` already made
+    /// this fleet: `true` on a repeat, which answers 200.
+    pub replayed: bool,
 }

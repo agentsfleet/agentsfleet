@@ -4,8 +4,7 @@
 use jiff::Timestamp;
 
 use super::rows::Found;
-use crate::error::{Result, budget_exhausted, run_cancelled, run_lost};
-use crate::run::coverage::EVENT_BUDGET_BREACH;
+use crate::error::{Result, run_cancelled, run_lost};
 
 /// Logged when the batch refuses a run the per-run path would also refuse
 /// without a record: the run is lost or cancelled.
@@ -25,8 +24,6 @@ pub(super) struct Judged {
     pub(super) cancelled: Option<bool>,
     pub(super) fence_holds: Option<bool>,
     pub(super) priced_as_held: Option<bool>,
-    pub(super) ceilings_current: Option<bool>,
-    pub(super) over_budget: Option<bool>,
     pub(super) host_renews: Option<bool>,
     pub(super) admitted: Option<bool>,
     pub(super) has_durable_task: Option<bool>,
@@ -40,9 +37,8 @@ pub(super) enum Verdict {
     Extended(Timestamp),
     Lost,
     Cancelled,
-    OverBudget,
-    /// Its prices or ceilings moved under the statement: it takes the
-    /// per-run path, and the replica reads the fleet's versions again.
+    /// Its prices moved under the statement: it takes the per-run path, and
+    /// the replica reads the catalogue version again.
     Moved,
     /// The run runs a durable task, which the statement never renews: it
     /// takes the per-run path, which checks the task's authority. A plain
@@ -74,11 +70,8 @@ impl Judged {
         if !held(self.fence_holds) {
             return Verdict::Lost;
         }
-        if !held(self.priced_as_held) || !held(self.ceilings_current) {
+        if !held(self.priced_as_held) {
             return Verdict::Moved;
-        }
-        if held(self.over_budget) {
-            return Verdict::OverBudget;
         }
         match self.extended_until {
             // Both rows moved, or the run is lost: a deadline the thread does
@@ -93,34 +86,21 @@ impl Judged {
 pub(super) fn refusal_of(verdict: &Verdict) -> crate::Error {
     match verdict {
         Verdict::Cancelled => run_cancelled(),
-        Verdict::OverBudget => budget_exhausted(),
         Verdict::Lost | Verdict::Extended(_) | Verdict::Moved | Verdict::Tasked => run_lost(),
     }
 }
 
 /// Says why the batch refused a run.
 ///
-/// A fleet at its ceiling is the per-run path's `renew_budget_breach`, under
-/// the same name. The other refusals the per-run path answers without a
-/// record, and an operator asking why a run stopped needs one, so the batch
-/// names them under one event with the verdict as a field.
+/// The per-run path answers these refusals without a record, and an operator
+/// asking why a run stopped needs one, so the batch names them under one event
+/// with the verdict as a field.
 pub(super) fn log_refused(row: &Found, verdict: &Verdict, refusal: &crate::Error) {
     let fleet = row.fleet_id.as_str();
     let run = row.id.as_str();
     let code = refusal.code().as_str();
     // How the refusal reads in its log record.
     let which = match verdict {
-        Verdict::OverBudget => {
-            let (fleet_id, run_id, error_code, event, message) = (
-                &fleet,
-                &run,
-                &code,
-                &EVENT_BUDGET_BREACH,
-                format_args!("the fleet reached a ceiling its author declared; not renewed"),
-            );
-            tracing::warn!(message, fleet_id, run_id, error_code, event);
-            return;
-        }
         Verdict::Lost => "lost",
         Verdict::Cancelled => "cancelled",
         Verdict::Extended(_) | Verdict::Moved | Verdict::Tasked => return,
