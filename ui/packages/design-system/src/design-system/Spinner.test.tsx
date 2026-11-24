@@ -35,6 +35,16 @@ describe("Spinner", () => {
     expect(orbit.getAttribute("class")).toContain("size-6");
   });
 
+  it("pairs the full-screen mark with a decorative wordmark and one loading status", () => {
+    const { getAllByRole, getByRole, getByText } = render(<Spinner variant="full-screen" label="Loading…" aria-label="Loading page" />);
+    const status = getByRole("status", { name: "Loading page" });
+    expect(getAllByRole("status")).toHaveLength(1);
+    const wordmark = getByText("agentsfleet");
+    expect(status.contains(wordmark)).toBe(true);
+    expect(wordmark.closest('[aria-hidden="true"]')?.querySelectorAll(".page-loading-stroke")).toHaveLength(8);
+    expect(getByText("Loading…").closest('[aria-hidden="true"]')).toBeNull();
+  });
+
   it("assembles the eight strokes above the page loading label", () => {
     const { getByRole, queryAllByRole } = render(<Spinner variant="page" label="Loading…" aria-label="Loading page" />);
     const status = getByRole("status", { name: "Loading page" });
