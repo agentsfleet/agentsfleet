@@ -1,4 +1,4 @@
-// Reviewed setup revision, lifecycle and purge behavior through the terminal.
+// A fleet's model and network changes, lifecycle and purge through the terminal.
 
 import { describe, it, beforeAll, afterAll } from "bun:test";
 import assert from "node:assert/strict";
@@ -17,33 +17,20 @@ import {
 } from "./global-setup.ts";
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
-import { saveProbeFleet } from "./fixtures/seed.ts";
+import { createProbeFleet } from "./fixtures/seed.ts";
 import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
 import {
   archiveFleet,
   expectStatus,
+  getStatus,
   ARCHIVED_REFUSAL,
 } from "./fixtures/lifecycle.ts";
-import { resolveFleetName, applyReviewedImprovement } from "./fixtures/improvement-ops.ts";
 
 const target = process.env.AGENTSFLEET_ACCEPTANCE_TARGET ?? "";
 const isLive = target.startsWith("https://");
 
-// State buckets the server may settle into for each lifecycle checkpoint.
-const LIVE_STATES: ReadonlyArray<string> = [
-  AGENTSFLEET_STATUS.active,
-  "running",
-  "starting",
-];
-
 const INSTALL_TIMEOUT_MS = 90_000;
 const SETUP_TIMEOUT_MS = 120_000;
-
-function installedId(installed: { id?: string; fleet_id?: string }): string {
-  const id = installed.id ?? installed.fleet_id;
-  if (!id) throw new Error(`install response missing id: ${JSON.stringify(installed)}`);
-  return id;
-}
 
 if (!isLive) {
   describe("fleet-update-delete.spec.ts", () => {
@@ -89,30 +76,35 @@ if (!isLive) {
       if (stateDir) await fs.rm(stateDir, { recursive: true, force: true });
     });
 
-    // Scenario 1: install → update → kill → delete → list excludes it.
-    describe("update then delete (happy path)", () => {
+    // Scenario 1: create → change model and network → delete → list excludes it.
+    describe("change then delete (happy path)", () => {
       let fleetId: string = "";
-      let fleetName: string = "";
 
-      it("Save reviewed native setup", async () => {
-        const installed = await saveProbeFleet({ env, timeoutMs: INSTALL_TIMEOUT_MS });
-        fleetId = installedId(installed);
-        fleetName = await resolveFleetName(env, fleetId);
-        assert.ok(fleetName.startsWith(ACCEPTANCE_RUN_PREFIX), `name not run-scoped: ${fleetName}`);
+      it("fleet create starts a run-scoped fleet", async () => {
+        const created = await createProbeFleet({ env, timeoutMs: INSTALL_TIMEOUT_MS });
+        fleetId = created.id;
+        assert.ok(created.name.startsWith(ACCEPTANCE_RUN_PREFIX), `name not run-scoped: ${created.name}`);
       }, SETUP_TIMEOUT_MS);
 
-      it("Apply advances one reviewed setup revision and identifies its fleet", async () => {
-        const updated = await applyReviewedImprovement(env, fleetId);
-        assertNoSecretLeak(updated, sessionJwt);
-        assert.equal(BigInt(updated.envelope.setup_revision), BigInt(updated.previousRevision) + 1n);
-        assert.equal(updated.envelope.fleet_id, fleetId, `update echoed wrong id: ${updated.stdout}`);
-      }, 120_000);
+      it("fleet model set answers the fleet on the model it names", async () => {
+        const before = await getStatus(env, fleetId);
+        const result = await runWithEnv(["fleet", "model", "set", fleetId, before.model_ref, "--json"]);
+        assert.equal(result.code, 0, `model set exited ${result.code}: ${result.stderr}`);
+        const fleet = JSON.parse(result.stdout) as { id?: string; model_ref?: string };
+        assert.equal(fleet.id, fleetId, `model set answered another fleet: ${result.stdout}`);
+        assert.equal(fleet.model_ref, before.model_ref);
+      }, 30_000);
 
-      it("status still reflects a live state after update", async () => {
-        // A config PATCH must not knock the fleet out of its running
-        // lifecycle — update is non-destructive to status.
-        const payload = await expectStatus(env, fleetId, LIVE_STATES);
-        assert.equal(typeof payload.status, "string");
+      it("fleet network set --private --no-packages closes the network", async () => {
+        const result = await runWithEnv(["fleet", "network", "set", fleetId, "--private", "--no-packages", "--json"]);
+        assert.equal(result.code, 0, `network set exited ${result.code}: ${result.stderr}`);
+        const fleet = JSON.parse(result.stdout) as { http_egress?: string; package_domains?: boolean };
+        assert.equal(fleet.http_egress, "restricted");
+        assert.equal(fleet.package_domains, false);
+      }, 30_000);
+
+      it("a changed fleet stays active", async () => {
+        await expectStatus(env, fleetId, AGENTSFLEET_STATUS.active);
       });
 
       it("delete removes a live fleet from the list", async () => {
@@ -133,13 +125,12 @@ if (!isLive) {
       }, 30_000);
     });
 
-    // Scenario 2: install → archive → archive again → refused as archived (409).
+    // Scenario 2: create → archive → archive again → refused as archived (409).
     describe("archive is terminal", () => {
       let fleetId: string = "";
 
       beforeAll(async () => {
-        const installed = await saveProbeFleet({ env, timeoutMs: INSTALL_TIMEOUT_MS });
-        fleetId = installedId(installed);
+        fleetId = (await createProbeFleet({ env, timeoutMs: INSTALL_TIMEOUT_MS })).id;
         await archiveFleet(env, fleetId);
         await expectStatus(env, fleetId, TERMINAL_STATUSES);
       }, SETUP_TIMEOUT_MS);

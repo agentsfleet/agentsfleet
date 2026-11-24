@@ -1,9 +1,10 @@
 /**
- * grant-ops.ts — the integration-grant surface, from the CLI's side of it.
+ * grant-ops.ts — the access-request surface, from the CLI's side of it.
  *
- * The fleet declares a name-bound refresh handle and waits for the operator's
- * approval. These fleets call no tools, so this walk exercises permission and
- * delivery without attempting an upstream token exchange.
+ * A fleet asks for a name-bound refresh handle with `request_access` when its
+ * first message tells it to, and waits on the card for a person's answer. The
+ * fleet calls no other tool, so this walk exercises permission and delivery
+ * without attempting an upstream token exchange.
  */
 
 import { runFleetctl } from "./cli.js";
@@ -30,11 +31,9 @@ export const GRANT_CREDENTIAL_NAME = CONNECTOR_SERVICE_LINEAR;
 const FIELD_INTEGRATION = "integration";
 const FIELD_REFRESH_TOKEN = "refresh_token";
 
-/**
- * The provenance an install-time grant carries. Cross-runtime pair of
- * `afd_approval::request::REASON_DECLARED_AT_INSTALL`.
- */
-export const REASON_DECLARED_AT_INSTALL = "Declared by the fleet's setup at install";
+/** A first message that makes the fleet ask for the connector, and nothing else. */
+export const ACCESS_REQUEST_MESSAGE =
+  `Call request_access with the name ${GRANT_CREDENTIAL_NAME}. When it answers, reply DONE and stop. Call no other tool.`;
 
 /** Grant-row statuses, as `afd_api_wire::grant::status` spells them. */
 export const GRANT_STATUS = {
@@ -51,14 +50,15 @@ export const GATE_STATUS = {
 
 const SECRET_CREATE_TIMEOUT_MS = 30_000;
 const HTTP_TIMEOUT_MS = 30_000;
+const GATE_POLL_MS = 2_000;
 
+/** `Grant` as `GET F/integration-grants` lists it. */
 export interface GrantRow {
   readonly id?: string | null;
-  readonly service?: string | null;
+  readonly kind?: string | null;
+  readonly name?: string | null;
   readonly status?: string | null;
   readonly approved_at?: number | string | null;
-  readonly revoked_at?: number | string | null;
-  readonly reason?: string | null;
 }
 
 export interface GateRow {
@@ -127,8 +127,8 @@ async function approvals(ctx: AuthContext, query: string): Promise<ReadonlyArray
   return Array.isArray(body.items) ? body.items : [];
 }
 
-/** The one unanswered integration-grant card a fleet's install raised, or null
- * while the install-time request is still in flight. */
+/** The one unanswered integration-grant card a fleet's request raised, or null
+ * while the fleet's first run has not asked yet. */
 export async function pendingGateFor(
   ctx: AuthContext,
   fleetId: string,
@@ -143,3 +143,17 @@ export async function pendingGateFor(
 }
 
 
+
+/** The card the fleet's `request_access` raises, once its first run asks. */
+export async function waitForPendingGate(
+  ctx: AuthContext,
+  fleetId: string,
+  deadline: number,
+): Promise<GateRow> {
+  while (Date.now() < deadline) {
+    const card = await pendingGateFor(ctx, fleetId);
+    if (card) return card;
+    await Bun.sleep(GATE_POLL_MS);
+  }
+  throw new Error(`fleet ${fleetId} raised no access request before the deadline`);
+}

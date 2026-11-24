@@ -269,10 +269,10 @@ describe("help DX surfaces (real binary)", () => {
     const result = await runFleetctl(["fleet", "--help"], { env: helpEnv() });
     assert.equal(result.code, 0, `stderr=${result.stderr}`);
     const out = stripAnsi(result.stdout);
-    for (const verb of ["list", "status", "activate", "archive", "delete", "steer", "logs", "turns"]) {
+    for (const verb of ["create", "list", "status", "archive", "delete", "steer", "logs", "turns", "triggers", "model", "network"]) {
       assert.match(out, new RegExp(`^\\s+${verb}\\s`, "m"), `fleet --help missing "${verb}"`);
     }
-    assert.ok(out.includes("agentsfleet chat --fleet <fleet_id>"), "fleet --help should name the improvement route");
+    assert.ok(out.includes('agentsfleet fleet create "<message>"'), "fleet --help should name how a fleet starts");
   });
 });
 

@@ -1,11 +1,11 @@
 /**
- * steer-live — one-shot `fleet steer` against a freshly-installed live fleet.
+ * steer-live — one-shot `fleet steer` against a fleet `fleet create` just started.
  *
  * Scenario (seeded-credentials session, mirrors lifecycle-with-token.spec.ts):
  *   - mint a Clerk session JWT via the admin path
  *   - hydrate workspaces.json directly from the API (the CLI only
  *     hydrates inside the login flow)
- *   - install the platform-ops bundle (prefix-scoped name)
+ *   - start a probe fleet with `fleet create` (prefix-scoped name)
  *   - drive `fleet steer <fleet_id> <message> --json` non-interactively — the
  *     spawned child's stdin is a pipe AND a positional message is
  *     supplied, so `shouldEnterSteerRepl` (message===undefined && tty)
@@ -40,10 +40,9 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { Schema } from "effect";
+import crypto from "node:crypto";
 
-import { ACCEPTANCE_RUN_PREFIX, ACCEPTANCE_TARGET_ENV, AGENTSFLEET_STATUS } from "./fixtures/constants.ts";
-import { FleetSchema } from "../../src/commands/chat/protocol.ts";
+import { ACCEPTANCE_RUN_PREFIX, ACCEPTANCE_TARGET_ENV } from "./fixtures/constants.ts";
 import { composeEnv, runFleetctl } from "./fixtures/cli.js";
 import type { RunResult } from "./fixtures/cli.js";
 import { assertNoSecretLeak } from "./fixtures/negatives.ts";
@@ -54,7 +53,8 @@ import {
 } from "./global-setup.ts";
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
-import { saveProbeFleet, saveSteerProbeFleet } from "./fixtures/seed.ts";
+import { createProbeFleet } from "./fixtures/seed.ts";
+import { PROBE_MESSAGE } from "./fixtures/fleet-create.ts";
 import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
 import { trailingJsonText } from "./fixtures/steer-envelope.ts";
 
@@ -72,9 +72,9 @@ const STATUS_PROCESSED = "processed" as const;
 const STATE_DIR_PREFIX = "agentsfleet-steer-" as const;
 const ONE_SHOT_MESSAGE = "respond with a single short acknowledgement and stop" as const;
 const WHITESPACE_MESSAGE = "   " as const;
-// An unresolved owner model reference must leave setup incomplete.
+// A model reference no workspace can use: the create is refused and writes nothing.
 const NONEXISTENT_MODEL = "accounts/fireworks/models/kimi-k2.6" as const;
-const MODEL_CHECK = {kind: "model", state: "pending", action: "account_models"} as const;
+const NO_USABLE_MODEL = "UZ-SETUP-008" as const;
 const NO_COLOR = "1" as const;
 
 // The SSE round-trip falls back to a ~60s poll window before declaring a
@@ -145,10 +145,7 @@ if (!isLive) {
       const hydrated = await hydrateWorkspacesForToken({ apiUrl, token: sessionJwt, stateDir });
       workspaceId = hydrated.currentWorkspaceId;
 
-      const installed = await saveSteerProbeFleet({ env, seedFixtureSecrets: false });
-      const id = installed.id ?? installed.fleet_id;
-      if (!id) throw new Error(`install missing id: ${JSON.stringify(installed)}`);
-      fleetId = id;
+      fleetId = (await createProbeFleet({ env, seedFixtureSecrets: false })).id;
     }, STEER_TIMEOUT_MS);
 
     afterAll(async () => {
@@ -186,17 +183,15 @@ if (!isLive) {
         `expected "message is required" stem; got stdout=${result.stdout} stderr=${result.stderr}`);
     });
 
-    it("a missing runtime model blocks setup before any execution", async () => {
-      const blocked = Schema.decodeUnknownSync(FleetSchema)(await saveProbeFleet({
-        env, seedFixtureSecrets: false, model: NONEXISTENT_MODEL,
-      }));
-      assert.equal(blocked.status, AGENTSFLEET_STATUS.installing);
-      const check = blocked.setup.checks.find((entry) => entry.kind === MODEL_CHECK.kind);
-      assert.ok(check, "Save must report the missing runtime model");
-      assert.equal(check.subject, NONEXISTENT_MODEL);
-      assert.equal(check.state, MODEL_CHECK.state);
-      assert.equal(check.next_action?.kind, MODEL_CHECK.action);
-      assert.equal(blocked.start.turn_id, undefined, "incomplete setup must not start an execution");
+    it("a create on a model the workspace cannot use is refused and starts no fleet", async () => {
+      const name = `${ACCEPTANCE_RUN_PREFIX}-no-model-${crypto.randomBytes(3).toString("hex")}`;
+      const refused = await runWithEnv(["--json", "fleet", "create", PROBE_MESSAGE, "--name", name, "--model", NONEXISTENT_MODEL]);
+      assert.equal(refused.code, 3, `expected the daemon's refusal; stdout=${refused.stdout} stderr=${refused.stderr}`);
+      assert.equal(JSON.parse(refused.stderr).error.code, NO_USABLE_MODEL);
+      assert.equal(refused.stdout.trim(), "", "a refused create must print no fleet");
+      const listed = await runWithEnv(["fleet", "list", JSON_FLAG]);
+      const names = (JSON.parse(listed.stdout) as { items: ReadonlyArray<{ name: string }> }).items.map((fleet) => fleet.name);
+      assert.ok(!names.includes(name), "a refused create must write no fleet");
     }, STEER_TIMEOUT_MS);
 
     it("fleet steer with no <fleet_id> exits non-zero with a usage stem", async () => {

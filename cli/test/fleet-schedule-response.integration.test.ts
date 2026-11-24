@@ -59,7 +59,7 @@ describe("schedule responses are checked before rendering", () => {
   });
 
   test.each(VERBS)("%s retains extra server fields in valid raw JSON", async (verb) => {
-    const row = {...ROW, source: "api", once: true, etag: "opaque", override: {message: "wake"}};
+    const row = {...ROW, source: "api", once: true, etag: "opaque"};
     const body = verb === "list" ? {schedules: [row], metadata: {served: true}} : row;
     const result = await run(verb, body, true);
     expect(result.code).toBe(0);

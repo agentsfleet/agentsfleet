@@ -53,7 +53,6 @@ const LIVE_ACCEPTANCE_FILES: ReadonlyArray<string> = [
   "test/acceptance/perf.spec.ts",
   "test/acceptance/platform-operator-live.spec.ts",
   "test/acceptance/referential-integrity.spec.ts",
-  "test/acceptance/refine-setup-live.spec.ts",
   "test/acceptance/schedule-live.spec.ts",
   "test/acceptance/secret-vault.spec.ts",
   "test/acceptance/steer-live.spec.ts",

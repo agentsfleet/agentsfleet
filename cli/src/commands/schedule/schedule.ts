@@ -10,6 +10,7 @@ import { HttpClient } from "../../services/http-client.ts";
 import { OUTPUT_FORMAT, Output } from "../../services/output.ts";
 import { Workspaces } from "../../services/workspaces.ts";
 import {
+  HEADER_IF_MATCH,
   wsFleetSchedulePath,
   wsFleetScheduleSyncPath,
   wsFleetSchedulesPath,
@@ -25,7 +26,6 @@ import {
   decodeEditBase,
   decodeSchedule,
   decodeSchedules,
-  SCHEDULE_SOURCE,
   SCHEDULE_STATUS,
   scheduleRows,
   scheduleSummary,
@@ -41,7 +41,6 @@ const FIELD_NEXT_RUN = "next_run_at" as const;
 const FIELD_MESSAGE = "message" as const;
 const FIELD_STATUS = "status" as const;
 const DEFAULT_TIMEZONE = "UTC" as const;
-const HEADER_IF_MATCH = "If-Match" as const;
 
 const USAGE_CREATE =
   "usage: agentsfleet fleet schedule create <fleet_id> --cron <expr> --message <text> [--timezone <tz>]";
@@ -196,17 +195,15 @@ export const scheduleUpdateEffectFromArgs = (
     }
     const ctx = yield* scheduleContext(flags);
     const path = wsFleetSchedulePath(ctx.wsId, fleetId, scheduleId);
-    // The daemon refuses a PATCH without the row's current tag (428), and an
-    // inherited row takes only an `override` that replaces its overlay whole,
-    // so the row is read first and the change merged into the overlay it holds.
+    // The daemon refuses a PATCH without the row's current tag (428), so the
+    // row is read first. Every schedule is its own row: the change is the body.
     const base = yield* decodeEditBase(yield* ctx.http.request<unknown>({ path, token: ctx.token }));
-    const body = base.source === SCHEDULE_SOURCE.trigger ? { override: { ...base.override, ...change } } : change;
     const row = yield* ctx.http.request<unknown>({
       path,
       method: HTTP_METHOD.patch,
       token: ctx.token,
       headers: { [HEADER_IF_MATCH]: base.etag },
-      body,
+      body: change,
     });
     yield* printSchedule(ctx.output, row, flags.stdoutIsTty, "updated");
   });

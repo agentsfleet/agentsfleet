@@ -1,41 +1,35 @@
-// Ordinary terminal chat, backed by creator-private workspace drafts.
+// `agentsfleet chat [<fleet_id|@name>]`: talk to a fleet; with none named, the
+// first line starts one.
 
-import { Argument, Command, Flag } from "effect/cli";
-import { chatEffect } from "../../commands/chat/commands.ts";
-import { withManagedExitCode } from "../../runtime/exit-code.service.ts";
-import { METAVAR, opt, textFlag } from "./flags.ts";
+import { Option } from "effect";
+import { Command, Flag } from "effect/cli";
+import { chatEffect } from "../../commands/chat/chat.ts";
+import { fleetIdOrNameOptionalArgument, opt } from "./flags.ts";
 import { guardedHandler } from "./guarded-handler.ts";
-import { chatHistoryCommands } from "./chat-history.command.ts";
 
-const choiceFlag = (name: string, description: string) => Flag.Boolean(name).pipe(Flag.withDescription(description), Flag.withDefault(false));
+// The draft chat's flags. Each still parses, hidden, so `chat` refuses it by
+// name and points at what replaced it, where an unknown flag would only be
+// called unknown.
+const RETIRED_SWITCHES = ["review", "save", "apply", "stop", "no-input"] as const;
+const RETIRED_VALUES = [
+  "definition", "fleet", "setup-revision", "candidate-id", "setup-etag",
+  "review-digest", "run-now", "name", "model", "message", "operation-id",
+] as const;
+
+const retiredFlags = () => ({
+  ...Object.fromEntries(RETIRED_SWITCHES.map((name) =>
+    [name, Flag.Boolean(name).pipe(Flag.withHidden, Flag.withoutNegation, Flag.withDefault(false))])),
+  ...Object.fromEntries(RETIRED_VALUES.map((name) => [name, Flag.String(name).pipe(Flag.withHidden, Flag.optional)])),
+});
 
 export const chatCommand = () => Command.make("chat", {
-  draftId: Argument.String("draft-id").pipe(Argument.optional),
-  operationId: textFlag("operation-id", "Retry an unconfirmed --no-input message, draft creation or setup action with its original identity", METAVAR.id),
-  candidateId: textFlag("candidate-id", "Original candidate identifier from setup recovery metadata", METAVAR.id),
-  setupEtag: textFlag("setup-etag", "Original inspected fleet setup tag for uncertain Apply recovery", METAVAR.etag),
-  model: textFlag("model", "Setup model reference for a new private draft", METAVAR.ref),
-  message: textFlag("message", "Send ordinary chat text and follow its durable outcome", METAVAR.text),
-  fleet: textFlag("fleet", "Improve this existing fleet; no first message is needed", METAVAR.id),
-  setupRevision: textFlag("setup-revision", "Exact fleet setup revision to improve", METAVAR.count),
-  definition: textFlag("definition", "Start from this native Definition JSON file; no first message is needed", METAVAR.path),
-  noInput: choiceFlag("no-input", "Run only the supplied actions without a terminal prompt"),
-  review: choiceFlag("review", "Inspect the full current setup, access, readiness, and review digest"),
-  save: choiceFlag("save", "Explicitly save the previously reviewed setup"),
-  apply: choiceFlag("apply", "Explicitly apply the reviewed improvement to its source fleet"),
-  stop: choiceFlag("stop", "Cancel through the latest accepted message in this draft"),
-  name: textFlag("name", "Select the instance name before reviewing", METAVAR.name),
-  reviewDigest: textFlag("review-digest", "Digest from the setup you inspected", METAVAR.digest),
-  runNow: textFlag("run-now", "With --save, admit this initial runtime message once", METAVAR.text),
+  fleetId: fleetIdOrNameOptionalArgument,
+  retired: retiredFlags(),
 }).pipe(
-  Command.withDescription("Create, resume, and review a private workspace chat"),
-  guardedHandler((flags) => withManagedExitCode(chatEffect({
-    operationId: opt(flags.operationId), draftId: opt(flags.draftId), model: opt(flags.model), message: opt(flags.message),
-    candidateId: opt(flags.candidateId), setupEtag: opt(flags.setupEtag),
-    fleet: opt(flags.fleet), setupRevision: opt(flags.setupRevision),
-    definition: opt(flags.definition),
-    noInput: flags.noInput, review: flags.review, save: flags.save, apply: flags.apply, stop: flags.stop,
-    name: opt(flags.name), reviewDigest: opt(flags.reviewDigest), runNow: opt(flags.runNow),
-  }))),
-  Command.withSubcommands(chatHistoryCommands()),
+  Command.withDescription("Talk to a fleet; with none named, the first line starts one"),
+  guardedHandler(({ fleetId, retired }) => chatEffect(opt(fleetId), {
+    retired: Object.entries(retired)
+      .filter(([, typed]) => typeof typed === "boolean" ? typed : Option.isSome(typed))
+      .map(([name]) => name),
+  })),
 );

@@ -73,7 +73,6 @@ export const METAVAR = {
   text: "<text>",
   ref: "<ref>",
   etag: "<etag>",
-  digest: "<digest>",
   path: "<path>",
 } as const;
 
@@ -236,6 +235,12 @@ export const sortFlag = Flag.Literals("sort", API_KEY_SORTS).pipe(
 export const keyNameFlag = textFlag(FLAG.name, "Human-readable key name");
 export const secretNameFlag = textFlag("secret", "Named secret from the workspace vault", METAVAR.name);
 export const modelOverrideFlag = textFlag(FLAG.model, "Override the default model identifier", METAVAR.name);
+export const fleetNameFlag = textFlag(FLAG.name, "Fleet name (default: fleet- and the end of its id)", METAVAR.name);
+export const fleetModelFlag = textFlag(
+  FLAG.model,
+  "Model reference from `agentsfleet models list` (default: the workspace's selected model)",
+  METAVAR.ref,
+);
 
 export const tokenNameFlag = textFlag(
   "token-name",
@@ -270,7 +275,8 @@ export const fleetIdArgument = idArgument(FLEET_ID_ARGUMENT, FLEET_ID_DESC);
 export const fleetIdOptionalArgument = fleetIdArgument.pipe(Argument.optional);
 
 /**
- * A fleet id, or `@` and the fleet's saved name. Only `fleet steer` takes it.
+ * A fleet id, or `@` and the fleet's saved name. `chat`, `fleet steer` and the
+ * fleet's triggers, model and network verbs take it.
  *
  * A value that opens with `@` is held to the address rule the dashboard shares
  * (`lib/fleet-address.ts`), with nothing after the name: the message is its own
@@ -286,6 +292,11 @@ export const fleetIdOrNameArgument = Argument.String(FLEET_ID_ARGUMENT).pipe(
       value.startsWith(FLEET_NAME_PREFIX) ? readFleetAddress(value)?.rest === "" : isValidId(value),
     (value: string) => (value.startsWith(FLEET_NAME_PREFIX) ? NOT_A_FLEET_NAME : NOT_A_UUIDV7),
   ),
+);
+export const fleetIdOrNameOptionalArgument = fleetIdOrNameArgument.pipe(Argument.optional);
+export const triggerIdArgument = idArgument("trigger_id", "Trigger ID");
+export const modelRefArgument = Argument.String("ref").pipe(
+  Argument.withDescription("Model reference from `agentsfleet models list`"),
 );
 export const workspaceIdArgument = idArgument("workspace_id", WORKSPACE_ID_DESC);
 export const workspaceIdOptionalArgument = workspaceIdArgument.pipe(Argument.optional);

@@ -7,12 +7,16 @@
 
 import { runFleetctl } from "./cli.js";
 import { Schema } from "effect";
-import { FleetSchema, decimal } from "../../../src/commands/chat/protocol.ts";
+import { decimal } from "../../../src/commands/fleet/read.ts";
 
 type Env = Readonly<Record<string, string>>;
 
+// `Fleet` as `GET F` answers it, stated here rather than imported so the reader
+// checks the CLI's output against the published shape, not against itself.
 const FleetDetailSchema = Schema.Struct({
-  ...FleetSchema.fields, events_processed: decimal, budget_used_nanos: decimal,
+  id: Schema.String, name: Schema.String, status: Schema.String, etag: Schema.String,
+  model_ref: Schema.String, http_egress: Schema.Literals(["restricted", "public"]), package_domains: Schema.Boolean,
+  events_processed: decimal, budget_used_nanos: decimal,
 });
 
 export interface FleetRow {

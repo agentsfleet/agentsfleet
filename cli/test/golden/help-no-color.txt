@@ -28,8 +28,8 @@ SUBCOMMANDS
   whoami         Show who this terminal is signed in as
   doctor         Diagnose CLI configuration and connectivity
   workspace      Manage workspaces
-  chat           Create, resume, and review a private workspace chat
-  fleet          Run, steer and inspect fleets
+  chat           Talk to a fleet; with none named, the first line starts one
+  fleet          Start, steer and inspect fleets
   models         Browse the model catalogue and choose the tenant's provider
   secrets        Workspace secret vault
   connections    Inspect workspace connectors

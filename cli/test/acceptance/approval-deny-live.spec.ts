@@ -1,25 +1,15 @@
 /**
  * approval-deny-live — "no, don't do that", answered from the terminal.
  *
- * A fleet whose setup declares a connector cannot activate until a person
- * grants it that access: Save leaves the fleet installing behind an
- * `integration_grant` gate. This walk raises that gate itself, the way
- * grant-approval-live does, so the denial is never decided against whatever
- * happens to be sitting in a shared inbox, and then refuses it:
+ * A fleet holds only the access a person approved. This walk starts a fleet
+ * with `fleet create`, its first message telling it to ask for a connector
+ * with `request_access`, so the card is this fleet's own and is never decided
+ * against whatever sits in a shared inbox. Then it refuses it:
  *
  *   - `approvals show` reads the pending request
  *   - `approvals deny` answers denied, and the inbox holds it pending no more
- *   - the grant the install wrote is revoked, and the fleet stays installing
+ *   - the grant the request wrote is revoked, and the fleet stays active
  *   - a second answer is refused with the decision that stands
- *
- * # Why no event or log carries the refusal
- *
- * An install-time gate holds no run. Its `turn_id` is null, which is what
- * `afd_approval/src/sql/resolve_gate.sql` keys the grant update on, and a
- * denial lands no continuation, so `fleet turns` has no row to show it in.
- * The refusal is visible where this gate's effect lives instead: the grant
- * row and the fleet's status. A run-time gate needs a trigger that declares a
- * write capability, which no fixture in this lane provides.
  *
  * Live-only: registers real tests only when `AGENTSFLEET_ACCEPTANCE_TARGET` is
  * an https URL, matching every other live spec in this lane.
@@ -40,12 +30,13 @@ import { resolveAcceptanceEnv, resolveClerkSecret, resolveFixtureEmail } from ".
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
 import { addWorkspace, listWorkspaces, useWorkspace } from "./fixtures/workspace-ops.ts";
-import { fixtureDefinition, saveNativeFleet } from "./fixtures/native-setup.ts";
+import { createFleetFromCli } from "./fixtures/fleet-create.ts";
 import { readAuthContext, type AuthContext } from "./fixtures/native-api.ts";
 import { deleteFixtureFleet } from "./fixtures/teardown.ts";
 import { getStatus } from "./fixtures/lifecycle.ts";
 import { randomUuidv7 } from "./helpers-lifecycle-with-token.ts";
 import {
+  ACCESS_REQUEST_MESSAGE,
   CONNECTOR_SERVICE_LINEAR,
   ensureConnectorHandle,
   GRANT_CREDENTIAL_NAME,
@@ -53,6 +44,7 @@ import {
   KIND_INTEGRATION_GRANT,
   listGrants,
   pendingGateFor,
+  waitForPendingGate,
 } from "./fixtures/grant-ops.ts";
 import { GATE_STATUS } from "../../src/constants/approvals.ts";
 import { EXIT_CODE } from "../../src/errors/index.ts";
@@ -103,7 +95,6 @@ if (!isLive) {
     let workspaceId = "";
     let ctx: AuthContext | null = null;
     let fleetId = "";
-    let savedStatus = "";
     let gateId = "";
 
     async function run(args: ReadonlyArray<string>): Promise<RunResult> {
@@ -119,7 +110,7 @@ if (!isLive) {
     }
 
     async function linearGrant() {
-      return (await listGrants(env, fleetId)).find((row) => row.service === CONNECTOR_SERVICE_LINEAR);
+      return (await listGrants(env, fleetId)).find((row) => row.name === CONNECTOR_SERVICE_LINEAR);
     }
 
     beforeAll(async () => {
@@ -135,10 +126,9 @@ if (!isLive) {
       ctx = await readAuthContext(env);
 
       await ensureConnectorHandle(env);
-      const fleet = await saveNativeFleet(env,
-        fixtureDefinition(FLEET_NAME, GRANT_CREDENTIAL_NAME));
-      fleetId = fleet.id;
-      savedStatus = fleet.status;
+      const deadline = Date.now() + SETUP_TIMEOUT_MS;
+      fleetId = (await createFleetFromCli(env, { name: FLEET_NAME, message: ACCESS_REQUEST_MESSAGE })).fleet_id;
+      gateId = (await waitForPendingGate(ctx, fleetId, deadline)).gate_id;
     }, SETUP_TIMEOUT_MS);
 
     afterAll(async () => {
@@ -153,13 +143,8 @@ if (!isLive) {
       }
     });
 
-    it("Save leaves the fleet installing behind a pending access request", async () => {
-      assert.ok(ctx, "no auth context");
-      assert.equal(savedStatus, AGENTSFLEET_STATUS.installing, "an ungranted connector must keep setup partial");
-      const card = await pendingGateFor(ctx, fleetId);
-      assert.ok(card, "Save raised no access request for the declared connector");
-      gateId = card.gate_id;
-
+    it("the fleet's request raises one pending access card", async () => {
+      assert.ok(gateId, "the fleet raised no access request");
       const gate = await showGate();
       assert.equal(gate.fleet_id, fleetId);
       assert.equal(gate.gate_type, KIND_INTEGRATION_GRANT);
@@ -190,14 +175,13 @@ if (!isLive) {
       assert.equal(await pendingGateFor(ctx, fleetId), null);
     });
 
-    it("the denial revokes the grant the install wrote, and the fleet does not activate", async () => {
+    it("the denial revokes the grant the request wrote, and the fleet stays active without it", async () => {
       assert.ok(gateId, "no access request was raised");
       const grant = await linearGrant();
       assert.equal(grant?.status, GRANT_STATUS.revoked, `a denied request left the grant: ${JSON.stringify(grant)}`);
-      assert.ok(grant?.revoked_at, `a revoked grant must carry revoked_at: ${JSON.stringify(grant)}`);
       assert.equal(grant?.approved_at ?? null, null, "a denied grant was never approved");
-      assert.equal((await getStatus(env, fleetId)).status, AGENTSFLEET_STATUS.installing,
-        "a fleet whose access was refused must not run");
+      assert.equal((await getStatus(env, fleetId)).status, AGENTSFLEET_STATUS.active,
+        "a denial answers the run; it does not stop the fleet");
     });
 
     it("approving a denied request is refused with the decision that stands", async () => {

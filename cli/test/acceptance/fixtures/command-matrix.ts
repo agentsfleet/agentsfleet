@@ -59,7 +59,6 @@ export const READ_ONLY_COMMANDS: ReadonlyArray<ReadOnlyCommandRow> = [
   { args: ["models", "current", "--json"], requiredKey: "mode" },
   { args: ["usage", "show", "--json"], requiredKey: "balance_nanos" },
   { args: ["fleet", "list", "--json"], isList: true, itemsKey: "items", label: "fleet list" },
-  { args: ["chat", "list", "--json"], isList: true, itemsKey: "items" },
 ];
 
 export interface PerFleetReadOnlyCommandRow {
@@ -113,7 +112,6 @@ export const REQUIRES_IDENTIFIER: ReadonlyArray<RequiresIdentifierRow> = [
   // archive/logs and grant/fleet delete all run validateRequiredId
   // — §4c2 sweep relies on validatesClient: true to fire the no-network
   // invariant against an invalid-format id sample.
-  { args: ["fleet", "activate"], expectedErrorCode: "UZ-AGT-009", argName: "fleet_id", apiHits: false, validatesClient: true },
   { args: ["fleet", "archive"], expectedErrorCode: "UZ-AGT-009", argName: "fleet_id", apiHits: false, validatesClient: true },
   { args: ["fleet", "logs"], expectedErrorCode: "UZ-AGT-009", argName: "fleet_id", apiHits: false, validatesClient: true },
   { args: ["workspace", "use"], argName: "workspace_id", apiHits: false, validatesClient: true, clientRejectCode: "UNKNOWN_WORKSPACE" },
@@ -166,8 +164,6 @@ export const REQUIRES_POSITIONAL_ARG: ReadonlyArray<RequiresPositionalArgRow> = 
   { args: ["platform", "models", "update"], missingArgName: "model_id" },
   { args: ["platform", "models", "delete"], missingArgName: "model_id" },
   { args: ["platform", "models", "default", "delete"], missingArgName: "provider" },
-  { args: ["chat", "rename"], missingArgName: "draft-id" },
-  { args: ["chat", "delete"], missingArgName: "draft-id" },
   { args: ["workspace", "create"], missingArgName: "name" },
   { args: ["workspace", "use"], missingArgName: "workspace_id" },
   { args: ["workspace", "delete"], missingArgName: "workspace_id" },
@@ -179,11 +175,14 @@ export const REQUIRES_POSITIONAL_ARG: ReadonlyArray<RequiresPositionalArgRow> = 
   { args: ["fleet", "approvals", "approve"], missingArgName: "gate_id" },
   { args: ["fleet", "approvals", "deny"], missingArgName: "gate_id" },
   { args: ["connections", "show"], missingArgName: "provider" },
-  { args: ["fleet", "activate"], missingArgName: "fleet_id" },
   { args: ["fleet", "archive"], missingArgName: "fleet_id" },
   { args: ["fleet", "delete"], missingArgName: "fleet_id" },
   { args: ["fleet", "turns"], missingArgName: "fleet_id" },
   { args: ["fleet", "steer"], missingArgName: "fleet_id" },
+  { args: ["fleet", "triggers", "list"], missingArgName: "fleet_id" },
+  { args: ["fleet", "triggers", "remove"], missingArgName: "fleet_id" },
+  { args: ["fleet", "model", "set"], missingArgName: "fleet_id" },
+  { args: ["fleet", "network", "set"], missingArgName: "fleet_id" },
   { args: ["fleet", "memory", "search"], missingArgName: "query" },
   { args: ["secrets", "create"], missingArgName: "name" },
   { args: ["secrets", "update"], missingArgName: "name" },
@@ -202,9 +201,9 @@ export const REQUIRES_POSITIONAL_ARG: ReadonlyArray<RequiresPositionalArgRow> = 
 // a pipe, which it did not before M171 (the previous parser routed a group's bare
 // invocation through `help({ error: true })`, i.e. stderr).
 //
-// A node that owns subcommands and ALSO runs is listed in ACTION_GROUP_NODES
-// instead: bare `agentsfleet chat` opens a conversation, so asserting it
-// prints help would be asserting the opposite of what it is for.
+// A node that owns subcommands and ALSO runs would be listed in
+// ACTION_GROUP_NODES instead, since asserting it prints help would assert the
+// opposite of what it is for. `chat` was one; it is a leaf now.
 export const GROUP_NODES: ReadonlyArray<ReadonlyArray<string>> = [
   ["platform"],
   ["platform", "runners"],
@@ -222,14 +221,15 @@ export const GROUP_NODES: ReadonlyArray<ReadonlyArray<string>> = [
   ["secrets"],
   ["fleet", "schedule"],
   ["fleet", "memory"],
+  ["fleet", "triggers"],
+  ["fleet", "model"],
+  ["fleet", "network"],
 ];
 
 // Nodes that own subcommands and carry their own action. Bare invocation runs
 // the command, so these are excluded from the print-help-and-exit-0 sweep and
 // covered by their own command's tests instead.
-export const ACTION_GROUP_NODES: ReadonlyArray<ReadonlyArray<string>> = [
-  ["chat"],
-];
+export const ACTION_GROUP_NODES: ReadonlyArray<ReadonlyArray<string>> = [];
 
 // A value-taking flag with its value omitted. The parser raises
 // optionMissingArgument at parse time, so no state or network is involved.
@@ -255,7 +255,7 @@ export const HANDLER_VALIDATED_REQUIRED_FLAG: ReadonlyArray<ReadonlyArray<string
   ["fleet", "logs"],
   ["fleet", "grants", "list"],
   ["fleet", "memory", "list"],
-  ["chat", "--no-input"],
+  ["fleet", "create"],
 ];
 
 // A syntactically valid invocation whose identifier is malformed. The guard
@@ -264,6 +264,7 @@ export const MALFORMED_ID_INVOCATIONS: ReadonlyArray<ReadonlyArray<string>> = [
   ["fleet", "logs", "--fleet", "not-a-uuid"],
   ["fleet", "archive", "not-a-uuid"],
   ["fleet", "delete", "not-a-uuid"],
+  ["fleet", "triggers", "remove", EXAMPLE_FLEET_ID, "not-a-uuid"],
 ];
 
 

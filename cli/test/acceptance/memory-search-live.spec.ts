@@ -8,10 +8,10 @@
  * `rustd/crates/daemon/afd_http/src/route/fleet.rs`), the CLI's memory group is
  * read-only by design (`src/program/tree/memory.command.ts`), and the only
  * write is the runner's capture of what a run stored through the
- * `memory_store` tool, pushed before the run reports (`afr_memory`). A tool
- * reaches a run only through the fleet's `tools:` allowlist
- * (`docs/architecture/capabilities.md`). So the seed is one real run: a fleet
- * allowed `memory_store` is told a fact, and the search asks for it after.
+ * `memory_store` tool, pushed before the run reports (`afr_memory`). Every run
+ * is offered the tool, which it calls only when the person's newest message
+ * asks. So the seed is one real run: a message asks the fleet to remember a
+ * fact, and the search asks for it after.
  *
  * Live-only: registers real tests only when `AGENTSFLEET_ACCEPTANCE_TARGET` is
  * an https URL, matching every other live spec in this lane.
@@ -32,13 +32,10 @@ import { assertNoSecretLeak, refusalCode } from "./fixtures/negatives.ts";
 import { resolveAcceptanceEnv, resolveClerkSecret, resolveFixtureEmail } from "./global-setup.ts";
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
-import { saveNativeFleet } from "./fixtures/native-setup.ts";
-import { waitForFleetActive } from "./fixtures/seed.ts";
+import { createFleetFromCli } from "./fixtures/fleet-create.ts";
 import { deleteFixtureFleet } from "./fixtures/teardown.ts";
 import { trailingJson } from "./fixtures/steer-envelope.ts";
 import { randomUuidv7 } from "./helpers-lifecycle-with-token.ts";
-import type { DefinitionSchema } from "../../src/commands/chat/protocol.ts";
-import { NANOS_PER_USD } from "../../src/constants/billing.ts";
 import { EXIT_CODE } from "../../src/errors/index.ts";
 
 const target = process.env[ACCEPTANCE_TARGET_ENV] ?? "";
@@ -53,8 +50,8 @@ const MEMORY = ["fleet", "memory"] as const;
 // budget has to exceed the CLI's own internal cap.
 const STEER_TIMEOUT_MS = 180_000;
 const SETUP_TIMEOUT_MS = 180_000;
-// `afr_tools::catalog::MEMORY_STORE`, and the category a store without one
-// lands in (`af_wire::memory::PINNED_CATEGORY`).
+// `afr_tools::catalog::MEMORY_STORE`, and the category the message names: only
+// an explicit `core` is pinned into every later prompt.
 const MEMORY_STORE_TOOL = "memory_store" as const;
 const PINNED_CATEGORY = "core" as const;
 const MEMORY_KEY = "release_freeze_owner" as const;
@@ -76,16 +73,13 @@ const PageSchema = Schema.Struct({ items: Schema.Array(EntrySchema), total: Sche
 // stored fact.
 const freshWord = (): string => `harbour${crypto.randomBytes(4).toString("hex")}`;
 
-function rememberingFleet(name: string): typeof DefinitionSchema.Type {
-  return {
-    schema_version: 1,
-    description: "Remembers the fact it is told",
-    instructions_md: `When a message arrives, call the ${MEMORY_STORE_TOOL} tool exactly once with key ` +
-      `"${MEMORY_KEY}", category "${PINNED_CATEGORY}" and content equal to the message text, ` +
-      "then reply STORED and stop. Call no other tool.",
-    config: { name, "x-agentsfleet": { triggers: [], tools: [MEMORY_STORE_TOOL], credentials: [],
-      budget: { daily_nanos: String(NANOS_PER_USD) } } },
-  };
+// The fleet's first message asks for nothing it would store.
+const FIRST_MESSAGE = "Reply READY and stop. Call no tool." as const;
+
+// The message that asks for the store, carrying the fact as the content.
+function rememberThis(fact: string): string {
+  return `Remember this: call the ${MEMORY_STORE_TOOL} tool exactly once with key "${MEMORY_KEY}", ` +
+    `category "${PINNED_CATEGORY}" and content "${fact}", then reply STORED and stop. Call no other tool.`;
 }
 
 if (!isLive) {
@@ -120,8 +114,7 @@ if (!isLive) {
       stateDir = await fs.mkdtemp(path.join(os.tmpdir(), STATE_DIR_PREFIX));
       env = composeEnv({ AGENTSFLEET_API_URL: apiUrl, AGENTSFLEET_STATE_DIR: stateDir, NO_COLOR });
       await hydrateWorkspacesForToken({ apiUrl, token: sessionJwt, stateDir });
-      fleetId = (await saveNativeFleet(env, rememberingFleet(FLEET_NAME))).id;
-      await waitForFleetActive(env, fleetId, Date.now() + SETUP_TIMEOUT_MS);
+      fleetId = (await createFleetFromCli(env, { name: FLEET_NAME, message: FIRST_MESSAGE })).fleet_id;
     }, SETUP_TIMEOUT_MS);
 
     afterAll(async () => {
@@ -132,16 +125,16 @@ if (!isLive) {
       }
     });
 
-    it("a run told one fact finishes processed", async () => {
-      assert.ok(fleetId, "the fleet was not saved in beforeAll");
-      const steered = await run(["fleet", "steer", fleetId, fact, JSON_FLAG], STEER_TIMEOUT_MS);
+    it("a run asked to remember one fact finishes processed", async () => {
+      assert.ok(fleetId, "the fleet was not created in beforeAll");
+      const steered = await run(["fleet", "steer", fleetId, rememberThis(fact), JSON_FLAG], STEER_TIMEOUT_MS);
       assert.equal(steered.code, 0, `the run did not finish: stdout=${steered.stdout} stderr=${steered.stderr}`);
       const envelope = Schema.decodeUnknownSync(SteerSchema)(trailingJson(steered.stdout));
       assert.equal(envelope.status, STATUS_PROCESSED, `expected ${STATUS_PROCESSED}: ${JSON.stringify(envelope)}`);
     }, STEER_TIMEOUT_MS);
 
     it("`memory search` finds the fact by a word inside it", async () => {
-      assert.ok(fleetId, "the fleet was not saved in beforeAll");
+      assert.ok(fleetId, "the fleet was not created in beforeAll");
       const found = await memoryPage(["search", word]);
       const entry = found.items.find((item) => item.key === MEMORY_KEY);
       if (entry === undefined) {
@@ -154,14 +147,14 @@ if (!isLive) {
     });
 
     it("`memory list` shows the stored entry under its key and category", async () => {
-      assert.ok(fleetId, "the fleet was not saved in beforeAll");
+      assert.ok(fleetId, "the fleet was not created in beforeAll");
       const entry = (await memoryPage(["list"])).items.find((item) => item.key === MEMORY_KEY);
       assert.ok(entry, `memory list does not show ${MEMORY_KEY}`);
       assert.equal(entry.category, PINNED_CATEGORY);
     });
 
     it("`memory search` for a word the fleet was never told answers an empty page, not an error", async () => {
-      assert.ok(fleetId, "the fleet was not saved in beforeAll");
+      assert.ok(fleetId, "the fleet was not created in beforeAll");
       const missed = await memoryPage(["search", freshWord()]);
       assert.deepEqual(missed.items, []);
       assert.equal(missed.total, 0);

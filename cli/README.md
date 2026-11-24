@@ -7,7 +7,7 @@ The official Command Line Interface (CLI) for [agentsfleet](https://agentsfleet.
 [![npm](https://img.shields.io/npm/v/@agentsfleet/cli?style=for-the-badge&color=cb3837)](https://www.npmjs.com/package/@agentsfleet/cli)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 
-Sign in, manage workspaces, create fleets from chat, and inspect their activity from your terminal.
+Sign in, manage workspaces, start a fleet with its first message, keep talking to it, and inspect its activity from your terminal.
 
 > **Pre-release** — agentsfleet is in pre-release. The Application Programming
 > Interface (API), the CLI, and behavior may change without notice before
@@ -36,7 +36,17 @@ agentsfleet workspace create my-workspace
 
 # Verify configuration and connectivity
 agentsfleet doctor
+
+# Start a fleet from its first message; it prints the fleet's id
+agentsfleet fleet create "Watch checkout errors and tell me when they spike"
+
+# Keep talking to it, by id or by @name
+agentsfleet chat <fleet_id>
 ```
+
+`agentsfleet chat` with no fleet named starts one from the first line you type.
+A fleet asks for a secret or an integration when it needs one;
+`agentsfleet fleet approvals list` shows what waits for your answer.
 
 ## Usage
 

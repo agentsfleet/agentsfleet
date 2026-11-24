@@ -38,9 +38,8 @@ import { assertNoSecretLeak, refusalCode } from "./fixtures/negatives.ts";
 import { resolveAcceptanceEnv, resolveClerkSecret, resolveFixtureEmail } from "./global-setup.ts";
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
-import { saveSteerProbeFleet } from "./fixtures/seed.ts";
+import { createProbeFleet } from "./fixtures/seed.ts";
 import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
-import { SCHEDULE_SYNC } from "../../src/commands/chat/protocol.ts";
 import { SCHEDULE_STATUS } from "../../src/commands/schedule/read.ts";
 import { REJECTION_CODE } from "../../src/constants/rejection.ts";
 import { EXIT_CODE } from "../../src/errors/index.ts";
@@ -48,6 +47,9 @@ import { instantMs } from "../../src/lib/instant.ts";
 
 const target = process.env[ACCEPTANCE_TARGET_ENV] ?? "";
 const isLive = target.startsWith("https://");
+
+// A schedule the daemon registered with the external scheduler.
+const SCHEDULE_SYNCED = "synced" as const;
 
 const STATE_DIR_PREFIX = "agentsfleet-schedule-" as const;
 const NO_COLOR = "1" as const;
@@ -123,7 +125,7 @@ if (!isLive) {
       env = composeEnv({ AGENTSFLEET_API_URL: apiUrl, AGENTSFLEET_STATE_DIR: stateDir, NO_COLOR });
       workspaceId = (await hydrateWorkspacesForToken({ apiUrl, token: sessionJwt, stateDir }))
         .currentWorkspaceId;
-      fleetId = (await saveSteerProbeFleet({ env })).id;
+      fleetId = (await createProbeFleet({ env })).id;
     }, SETUP_TIMEOUT_MS);
 
     afterAll(async () => {
@@ -178,7 +180,7 @@ if (!isLive) {
     it("`schedule sync` registers it with the scheduler, which names the next run", async () => {
       assert.ok(scheduleId, "no schedule was created");
       const synced = await view(["sync", fleetId, scheduleId]);
-      assert.equal(synced.sync, SCHEDULE_SYNC.synced,
+      assert.equal(synced.sync, SCHEDULE_SYNCED,
         `the scheduler did not take the registration: ${JSON.stringify(synced)}`);
       assert.equal(synced.run_state, RUN_STATE_SCHEDULED);
       assert.notEqual(instantMs(synced.next_run_at), null,

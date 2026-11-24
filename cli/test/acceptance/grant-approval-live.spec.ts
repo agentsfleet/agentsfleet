@@ -1,9 +1,11 @@
 /**
- * A declared connector needs explicit approval before the fleet activates.
- * The CLI saves partial setup, answers its own approval, continues the exact
- * saved operation, runs a real message, observes spending, and revokes access.
- * The spending is read the way a terminal user reads it: `usage show` prints
- * the run's charge as a row, and its cursor pages back without repeating one.
+ * A fleet asks for a connector with `request_access`, and a person approves
+ * it once from the terminal. The fleet starts with `fleet create`, its first
+ * message telling it to ask; the approval resumes that turn holding the
+ * access. Then it runs a real message, the spending shows up, and the access
+ * is revoked. The spending is read the way a terminal user reads it: `usage
+ * show` prints the run's charge as a row, and its cursor pages back without
+ * repeating one.
  */
 
 import { describe, it, beforeAll, afterAll } from "bun:test";
@@ -11,9 +13,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { Schema } from "effect";
 
-import { ACCEPTANCE_TARGET_ENV } from "./fixtures/constants.ts";
+import { ACCEPTANCE_TARGET_ENV, AGENTSFLEET_STATUS } from "./fixtures/constants.ts";
 import { composeEnv, runFleetctl } from "./fixtures/cli.js";
 import type { RunResult } from "./fixtures/cli.js";
 import { assertNoSecretLeak, refusalCode } from "./fixtures/negatives.ts";
@@ -26,14 +27,15 @@ import {
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
 import { addWorkspace, listWorkspaces, useWorkspace } from "./fixtures/workspace-ops.ts";
-import { createNativeDraft, fixtureDefinition, inspectDraft } from "./fixtures/native-setup.ts";
-import { FleetSchema } from "../../src/commands/chat/protocol.ts";
+import { createFleetFromCli } from "./fixtures/fleet-create.ts";
+import { getStatus } from "./fixtures/lifecycle.ts";
 import { deleteFixtureFleet } from "./fixtures/teardown.ts";
 import { readAuthContext, type AuthContext } from "./fixtures/native-api.ts";
 import { chargedNanos, readUsagePage, usageTextNaming } from "./fixtures/usage-ops.ts";
 import { EXIT_CODE } from "../../src/errors/index.ts";
 import { instantMs } from "../../src/lib/instant.ts";
 import {
+  ACCESS_REQUEST_MESSAGE,
   CONNECTOR_SERVICE_LINEAR,
   ensureConnectorHandle,
   GRANT_CREDENTIAL_NAME,
@@ -41,7 +43,7 @@ import {
   KIND_INTEGRATION_GRANT,
   listGrants,
   pendingGateFor,
-  REASON_DECLARED_AT_INSTALL,
+  waitForPendingGate,
   type GrantRow,
 } from "./fixtures/grant-ops.ts";
 
@@ -63,18 +65,11 @@ const STATUS_PROCESSED = "processed" as const;
 const GRANT_COMMAND = ["fleet", "grants"] as const;
 const REVOKE_VERB = "revoke" as const;
 const FLEET_FLAG = "--fleet" as const;
-const CHAT_COMMAND = "chat";
-const SAVE_FLAG = "--save";
-const NO_INPUT_FLAG = "--no-input";
-const REVIEW_DIGEST_FLAG = "--review-digest";
-const RECOVERY_KIND = "setup_operation_recovery";
-const recoverySchema = Schema.Struct({kind: Schema.Literal(RECOVERY_KIND), operation_id: Schema.String,
-  draft_candidate_id: Schema.String, name: Schema.String, review_digest: Schema.String});
 
 // A steer's SSE round trip falls back to a ~60s poll window before rendering;
 // the budget has to exceed the CLI's own internal cap.
 const STEER_TIMEOUT_MS = 180_000;
-// Install plus the wait for the install-time grant row.
+// The create plus the first run reaching its `request_access` call.
 const SETUP_TIMEOUT_MS = 180_000;
 // The usage ledger settles after the terminal row; the balance follows it.
 const BALANCE_SETTLE_MS = 90_000;
@@ -88,20 +83,22 @@ const FOREIGN_CURSOR = "not-a-cursor" as const;
 // (afd_billing/src/error/mod.rs).
 const CODE_INVALID_REQUEST = "UZ-REQ-001" as const;
 
+const linearOf = (grants: ReadonlyArray<GrantRow>) => grants.filter((row) => row.name === CONNECTOR_SERVICE_LINEAR);
+
 if (!isLive) {
   describe("grant-approval-live.spec.ts", () => {
     it.skip(`requires ${ACCEPTANCE_TARGET_ENV} to be an https URL`, () => {});
   });
 } else {
-  describe("grant-approval-live — approve access, continue setup, run, and revoke", () => {
+  describe("grant-approval-live — the fleet asks, a person approves once, it runs, access is revoked", () => {
     let sessionJwt = "";
     let stateDir = "";
     let env: Record<string, string> = {};
     let workspaceId = "";
     let fleetId = "";
     let ctx: AuthContext | null = null;
-    let installGrant: GrantRow | null = null;
-    let recovery: typeof recoverySchema.Type | null = null;
+    let requestedGrant: GrantRow | null = null;
+    let gateId = "";
     let balanceBeforeNanos = 0n;
     let steeredTurnId = "";
 
@@ -143,17 +140,10 @@ if (!isLive) {
 
       balanceBeforeNanos = await readBalanceNanos();
       await ensureConnectorHandle(env);
-      const draft = await createNativeDraft(ctx, fixtureDefinition(FLEET_NAME, GRANT_CREDENTIAL_NAME));
-      const review = await inspectDraft(env, draft.id);
-      const saved = await runWithEnv([JSON_FLAG, CHAT_COMMAND, draft.id, NO_INPUT_FLAG, SAVE_FLAG,
-        REVIEW_DIGEST_FLAG, review.review_digest]);
-      assert.equal(saved.code, 1, `unapproved setup must remain partial: ${saved.stderr}`);
-      const fleet = saved.stdout.trim().split("\n").map((line): unknown => JSON.parse(line)).find(Schema.is(FleetSchema));
-      assert.ok(fleet, "Save returned no fleet");
-      fleetId = fleet.id;
-      assert.equal(fleet.status, "installing");
-      recovery = Schema.decodeUnknownSync(recoverySchema)(trailingJson(saved.stderr));
-      installGrant = (await listGrants(env, fleetId)).find((row) => row.service === CONNECTOR_SERVICE_LINEAR) ?? null;
+      const deadline = Date.now() + SETUP_TIMEOUT_MS;
+      fleetId = (await createFleetFromCli(env, { name: FLEET_NAME, message: ACCESS_REQUEST_MESSAGE })).fleet_id;
+      gateId = (await waitForPendingGate(ctx, fleetId, deadline)).gate_id;
+      requestedGrant = linearOf(await listGrants(env, fleetId))[0] ?? null;
     }, SETUP_TIMEOUT_MS);
 
     afterAll(async () => {
@@ -168,30 +158,19 @@ if (!isLive) {
       }
     });
 
-    it("a declared connector leaves a pending grant and keeps setup from activating", async () => {
-      assert.ok(fleetId, "the fleet was not installed in beforeAll");
+    it("the fleet's request leaves one pending grant, named for what it asked", async () => {
+      assert.ok(fleetId, "the fleet was not created in beforeAll");
       const grants = await listGrants(env, fleetId);
-      const mine = grants.filter((row) => row.service === CONNECTOR_SERVICE_LINEAR);
+      const mine = linearOf(grants);
       assert.equal(mine.length, 1,
         `expected one ${CONNECTOR_SERVICE_LINEAR} grant for the fleet; got ${JSON.stringify(grants)}`);
-      const grant = mine[0];
-      assert.equal(grant?.status, GRANT_STATUS.pending,
-        `saving is not consent: ${JSON.stringify(grant)}`);
-      assert.equal(grant?.approved_at ?? null, null,
-        `a pending grant cannot carry approved_at: ${JSON.stringify(grant)}`);
-      assert.equal(grant?.revoked_at ?? null, null,
-        `a fresh install-time grant is not revoked: ${JSON.stringify(grant)}`);
-      // The provenance separates this row from one a person answered: only the
-      // install writer stamps this sentence.
-      assert.equal(grant?.reason, REASON_DECLARED_AT_INSTALL,
-        `the grant must name the install as its provenance: ${JSON.stringify(grant)}`);
+      assert.equal(mine[0]?.status, GRANT_STATUS.pending, `asking is not consent: ${JSON.stringify(mine[0])}`);
+      assert.equal(mine[0]?.approved_at ?? null, null,
+        `a pending grant cannot carry approved_at: ${JSON.stringify(mine[0])}`);
     });
 
     it("the CLI inbox shows the pending access request for this fleet", async () => {
-      assert.ok(installGrant, "Save wrote no grant");
-      assert.ok(ctx, "no auth context");
-      const card = await pendingGateFor(ctx, fleetId);
-      assert.ok(card, "Save must request explicit integration approval");
+      assert.ok(requestedGrant, "the request wrote no grant");
       const listed = await runFleetctl(
         ["fleet", "approvals", "list", FLEET_FLAG, fleetId, JSON_FLAG],
         { env },
@@ -204,29 +183,19 @@ if (!isLive) {
         `the inbox must carry this fleet's ${KIND_INTEGRATION_GRANT} request: ${listed.stdout}`);
     });
 
-    it("explicit approval and continuation activate the same saved fleet", async () => {
-      assert.ok(ctx, "no auth context");
-      assert.ok(recovery, "no continuation identity");
-      const card = await pendingGateFor(ctx, fleetId);
-      assert.ok(card, "no approval request");
-      const approved = await runWithEnv(["fleet", "approvals", "approve", card.gate_id, JSON_FLAG]);
+    it("one approval grants the access and answers the asking turn", async () => {
+      assert.ok(ctx && gateId, "no access request was raised");
+      const approved = await runWithEnv(["fleet", "approvals", "approve", gateId, JSON_FLAG]);
       assert.equal(approved.code, 0, `approval failed: ${approved.stderr}`);
-      const continued = await runWithEnv([JSON_FLAG, CHAT_COMMAND, NO_INPUT_FLAG, SAVE_FLAG,
-        "--operation-id", recovery.operation_id, "--candidate-id", recovery.draft_candidate_id,
-        "--name", recovery.name, REVIEW_DIGEST_FLAG, recovery.review_digest]);
-      assert.equal(continued.code, 0, `continuation failed: ${continued.stderr}`);
-      const fleet = continued.stdout.trim().split("\n").map((line): unknown => JSON.parse(line)).find(Schema.is(FleetSchema));
-      assert.ok(fleet, "continuation returned no fleet");
-      assert.equal(fleet.id, fleetId, "continuation must retain the saved identity");
-      assert.equal(fleet.status, "active");
-      const grant = (await listGrants(env, fleetId)).find((row) => row.service === CONNECTOR_SERVICE_LINEAR);
+      const grant = linearOf(await listGrants(env, fleetId))[0];
       assert.equal(grant?.status, GRANT_STATUS.approved);
-      assert.ok(grant?.approved_at);
+      assert.ok(grant?.approved_at, `an approved grant must carry approved_at: ${JSON.stringify(grant)}`);
       assert.equal(await pendingGateFor(ctx, fleetId), null);
+      assert.equal((await getStatus(env, fleetId)).status, AGENTSFLEET_STATUS.active);
     });
 
     it("the granted fleet answers a steer, and the tenant balance falls", async () => {
-      assert.ok(fleetId, "the fleet was not installed in beforeAll");
+      assert.ok(fleetId, "the fleet was not created in beforeAll");
       const result = await runWithEnv([...STEER_COMMAND, fleetId, ONE_SHOT_MESSAGE, JSON_FLAG]);
       assert.equal(result.code, 0,
         `a granted fleet's steer must exit 0; stdout=${result.stdout} stderr=${result.stderr}`);
@@ -290,20 +259,18 @@ if (!isLive) {
 
     // Last, and deliberately so: revoking the standing grant is what stops the
     // fleet reaching the provider, so every step that needs it has run by here.
-    it("`fleet grants revoke` revokes the standing permission the install wrote", async () => {
-      const grantId = installGrant?.id;
-      assert.ok(grantId, `the install-time grant carried no id: ${JSON.stringify(installGrant)}`);
+    it("`fleet grants revoke` revokes the standing permission the approval gave", async () => {
+      const grantId = requestedGrant?.id;
+      assert.ok(grantId, `the requested grant carried no id: ${JSON.stringify(requestedGrant)}`);
       const revoked = await runWithEnv([...GRANT_COMMAND, REVOKE_VERB, grantId, FLEET_FLAG, fleetId]);
       assert.equal(revoked.code, 0, `fleet grants revoke exited ${revoked.code}: ${revoked.stderr}`);
 
       const grants = await listGrants(env, fleetId);
-      const mine = grants.filter((row) => row.service === CONNECTOR_SERVICE_LINEAR);
+      const mine = linearOf(grants);
       assert.equal(mine.length, 1,
         `the revoke must move the row, never add one: ${JSON.stringify(grants)}`);
       assert.equal(mine[0]?.status, GRANT_STATUS.revoked,
         `the CLI still reports the grant standing: ${JSON.stringify(mine[0])}`);
-      assert.ok(mine[0]?.revoked_at,
-        `a revoked grant must carry revoked_at: ${JSON.stringify(mine[0])}`);
     });
   });
 }

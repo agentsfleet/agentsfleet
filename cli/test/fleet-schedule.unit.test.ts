@@ -210,24 +210,6 @@ describe("schedule create/list/update/delete/sync effects", () => {
     expect(resumed[1]?.body).toEqual({ status: "active" });
   });
 
-  // A trigger row inherits the fleet's recipe: the daemon refuses flat fields
-  // for it, and an override replaces the overlay whole, so pausing must keep
-  // an override already set or it would silently undo it.
-  test.each([
-    ["no overlay", undefined, { status: "paused" }],
-    ["an overlay", { cron: "0 10 * * *", message: "earlier" }, { cron: "0 10 * * *", message: "earlier", status: "paused" }],
-    ["a paused overlay", { status: "active" }, { status: "paused" }],
-  ])("update of a trigger schedule with %s sends the merged override", async (_label, overlay, expected) => {
-    const calls: HttpRequestInput[] = [];
-    const row = { ...scheduleRow, source: "trigger", ...(overlay === undefined ? {} : { override: overlay }) };
-    const exit = await Effect.runPromiseExit(
-      provide(scheduleUpdateEffectFromArgs(FLEET_ID, SCHEDULE_ID, { status: "paused" }), newCapture(), calls, row),
-    );
-    expect(Exit.isSuccess(exit)).toBe(true);
-    expect(calls[1]?.headers).toEqual({ "If-Match": '"tag-1"' });
-    expect(calls[1]?.body).toEqual({ override: expected });
-  });
-
   test("update refuses before any write when nothing changes or the row has no tag", async () => {
     const none: HttpRequestInput[] = [];
     const empty = await Effect.runPromise(Effect.flip(

@@ -45,7 +45,7 @@ import {
 import { resolveAcceptanceEnv, resolveClerkSecret, resolveFixtureEmail } from "./global-setup.ts";
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
-import { saveProbeFleet } from "./fixtures/seed.ts";
+import { createProbeFleet } from "./fixtures/seed.ts";
 import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
 import { archiveFleet, expectStatus, ARCHIVED_REFUSAL } from "./fixtures/lifecycle.ts";
 import { CLI_ROOT, isLive, type ValidateModule, randomUuidv7 } from "./helpers-lifecycle-with-token.ts";
@@ -105,12 +105,10 @@ if (!isLive) {
     describe("lifecycle walk", () => {
       let fleetId: string = "";
 
-      it("install platform-ops bundle", async () => {
-        const installed = await saveProbeFleet({ env });
-        assert.ok(installed.id || installed.fleet_id, `install response missing id: ${JSON.stringify(installed)}`);
-        const id = installed.id ?? installed.fleet_id;
-        if (!id) throw new Error("install missing id");
-        fleetId = id;
+      it("fleet create starts a probe fleet from its first message", async () => {
+        const created = await createProbeFleet({ env });
+        assert.ok(created.id && created.turn_id, `fleet create answered no ids: ${JSON.stringify(created)}`);
+        fleetId = created.id;
       });
 
       // Per-fleet read-only sweep — runs against the live fleetId so

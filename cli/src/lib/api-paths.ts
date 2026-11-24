@@ -42,9 +42,14 @@ export const USERS_ME_PATH = "/v1/users/me";
 // Healthz body envelope — the server's `{status: "ok"}` response.
 export const HEALTHZ_STATUS_OK = "ok";
 
+// The precondition every fleet and schedule PATCH or DELETE carries: the tag
+// the read before it answered. The daemon refuses a write without one (428).
+export const HEADER_IF_MATCH = "If-Match";
+
 const enc = (s: string): string => encodeURIComponent(s);
 
-// Workspace-scoped fleet collection.
+// Workspace-scoped fleet collection. A POST here is the fleet's first message:
+// the daemon writes the fleet and its first turn together.
 export const wsFleetsPath = (wsId: string): string =>
   `${WORKSPACES_PATH}${enc(wsId)}/fleets`;
 
@@ -91,6 +96,17 @@ export const wsFleetScheduleSyncPath = (
   fleetId: string,
   scheduleId: string,
 ): string => `${wsFleetSchedulePath(wsId, fleetId, scheduleId)}/sync`;
+
+// Workspace-scoped per-fleet triggers: what lets a webhook, a GitHub App event
+// or a Slack mention wake the fleet. A run adds one; a person lists and removes.
+export const wsFleetTriggersPath = (wsId: string, fleetId: string): string =>
+  `${wsFleetPath(wsId, fleetId)}/triggers`;
+
+export const wsFleetTriggerPath = (
+  wsId: string,
+  fleetId: string,
+  triggerId: string,
+): string => `${wsFleetTriggersPath(wsId, fleetId)}/${enc(triggerId)}`;
 
 // Workspace-scoped secrets vault (workspace-level, not per-fleet).
 export const wsSecretsPath = (wsId: string): string =>

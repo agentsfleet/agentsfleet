@@ -45,7 +45,7 @@ import {
 } from "./global-setup.ts";
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
-import { saveProbeFleet } from "./fixtures/seed.ts";
+import { createProbeFleet } from "./fixtures/seed.ts";
 import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
 
 const target = process.env.AGENTSFLEET_ACCEPTANCE_TARGET ?? "";
@@ -245,10 +245,7 @@ if (!isLive) {
       let fleetId = "";
 
       beforeAll(async () => {
-        const installed = await saveProbeFleet({ env });
-        const id = installed.id ?? installed.fleet_id;
-        if (!id) throw new Error(`install missing id: ${JSON.stringify(installed)}`);
-        fleetId = id;
+        fleetId = (await createProbeFleet({ env })).id;
       }, REMOTE_SETUP_TIMEOUT_MS);
 
       it(`walks <= ${MAX_TURN_PAGES} pages, each page under ${PER_COMMAND_BUDGET_MS}ms`, async () => {

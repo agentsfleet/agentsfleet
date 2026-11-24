@@ -56,7 +56,7 @@ import {
 } from "./global-setup.ts";
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
-import { saveProbeFleet } from "./fixtures/seed.ts";
+import { createProbeFleet } from "./fixtures/seed.ts";
 import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
 import {
   AGENT_FLAG,
@@ -143,10 +143,7 @@ if (!isLive) {
       // Install once for the whole suite — generates the timeline the logs
       // tail and the events walk both read. Prefix-scoped name so teardown
       // only reaps this run's fleet.
-      const installed = await saveProbeFleet({ env, seedFixtureSecrets: false });
-      const id = installed.id ?? installed.fleet_id;
-      if (!id) throw new Error(`install missing id: ${JSON.stringify(installed)}`);
-      fleetId = id;
+      fleetId = (await createProbeFleet({ env, seedFixtureSecrets: false })).id;
     });
 
     afterAll(async () => {

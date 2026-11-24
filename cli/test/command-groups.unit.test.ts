@@ -1,6 +1,5 @@
-// The grouped command surface: every command is under its resource, the old
-// root-level spellings are gone, and setup chat never turns into a runtime
-// message.
+// The grouped command surface: every command is under its resource, and the
+// old root-level spellings are gone.
 
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
@@ -110,7 +109,7 @@ const REMOVED_GROUP_SPELLINGS: ReadonlyArray<readonly [ReadonlyArray<string>, st
   [["secrets", "open"], "UNKNOWN_COMMAND"],
   [["platform", "models", "default", "set"], "UNKNOWN_COMMAND"],
   [["chat", "--library", FLEET_ID], "UNKNOWN_OPTION"],
-  [["chat", "delete", FLEET_ID, "--yes"], "UNKNOWN_OPTION"],
+  [["fleet", "activate", FLEET_ID], "UNKNOWN_COMMAND"],
 ];
 
 describe("removed_group_spellings_are_refused", () => {
@@ -122,23 +121,10 @@ describe("removed_group_spellings_are_refused", () => {
   });
 });
 
-describe("setup_chat_never_calls_runtime_steer", () => {
-  const drafts = `/v1/workspaces/${WORKSPACE_ID}/drafts`;
-  const messages = `/v1/workspaces/${WORKSPACE_ID}/fleets/${FLEET_ID}/messages`;
-
-  test("chat --fleet edits setup through drafts only", async () => {
-    const run = await record(["chat", "--fleet", FLEET_ID, "--setup-revision", "1", "--model", "setup-default", "--message", "x", "--no-input"]);
-    expect(run.calls.length).toBeGreaterThan(0);
-    for (const call of run.calls) {
-      expect(call.split(" ")[1]?.startsWith(drafts)).toBe(true);
-      expect(call).not.toContain(messages);
-    }
-  });
-
-  test("fleet steer admits a runtime message and touches no draft", async () => {
+describe("fleet_steer_reaches_the_fleets_messages", () => {
+  test("fleet steer admits one message on the fleet's thread", async () => {
     const run = await record(["fleet", "steer", FLEET_ID, "x"]);
-    expect(run.calls).toEqual([`POST ${messages}`]);
-    expect(run.calls.some((call) => call.includes(drafts))).toBe(false);
+    expect(run.calls).toEqual([`POST /v1/workspaces/${WORKSPACE_ID}/fleets/${FLEET_ID}/messages`]);
   });
 });
 

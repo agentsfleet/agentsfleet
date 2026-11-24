@@ -17,7 +17,7 @@ const row = {
   cron: "0 9 * * *",
   timezone: "Asia/Kolkata",
   message: "summarize",
-  source: "trigger",
+  source: "fleet",
   status: "active",
   sync: "synced",
   etag: '"tag-7"',
@@ -121,7 +121,7 @@ describe("schedule commands", () => {
           `DELETE /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/schedules/${SCHEDULE_ID}`,
         ]);
         expect(calls[1]?.headers["if-match"]).toBe('"tag-7"');
-        expect(JSON.parse(calls[1]?.body ?? "{}")).toEqual({ override: { status: "paused" } });
+        expect(JSON.parse(calls[1]?.body ?? "{}")).toEqual({ status: "paused" });
       });
     });
   });
