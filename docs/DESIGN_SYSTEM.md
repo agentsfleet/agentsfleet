@@ -1205,7 +1205,7 @@ The header shortcut starts a new fleet through the shared navigation intent on r
 
 ### Fleet setup review
 
-Use a single divider after the setup metadata. Lead with the spending limit in 16px type at weight 650 and a quieter 12px period. Place the next wake-up on the same 28px row rhythm.
+Use a single divider after the setup metadata. Use the same 12px size for the amount and period, with weight 650 for the amount. Place the next wake-up on the same 28px row rhythm.
 
 Show the reviewed runtime model in Fleet setup.
 

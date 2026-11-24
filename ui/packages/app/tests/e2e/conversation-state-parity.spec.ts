@@ -144,7 +144,7 @@ async function expectWakeupSummaryValues(panel: Locator, controls: Locator[]) {
   };
   const values = await panel.locator("dd").all();
   const amount = panel.locator("dd").first().locator(":is(.summary-scroll-label, .summary-action-label) > span");
-  await expect(amount).toHaveCSS("font-size", "16px");
+  await expect(amount).toHaveCSS("font-size", "12px");
   await expect(amount).toHaveCSS("font-weight", "650");
   await expect(amount.locator("small")).toHaveCSS("font-size", "12px");
   const right = await rightEdge(panel.getByRole("heading", {name: "Summary", exact: true}));

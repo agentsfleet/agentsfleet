@@ -63,7 +63,7 @@ function ScrollableValue({label, children, className, textClassName}: {label: st
 }
 
 function BudgetAmount({nanos, period}: {nanos: string; period: "day" | "month"}) {
-  return <ScrollableValue label={`Spending limit per ${period}`} textClassName="text-base font-title leading-label tabular-nums">
+  return <ScrollableValue label={`Spending limit per ${period}`} textClassName="text-eyebrow font-title leading-label tabular-nums">
     {formatDollars(nanos, 9)} <small className="text-eyebrow font-medium text-text-dim">/ {period}</small>
   </ScrollableValue>;
 }
