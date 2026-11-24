@@ -60,7 +60,24 @@ const STALE_AFTER_MS = 60 * 60 * 1000;
 export const PER_RUN_FIXTURE_RE =
   /^(?:(signup-fixture|signup-webhook|signup-lifecycle|first-visit|workspace-create|team-invitee)-[0-9a-f]{8}\+clerk_test@(e2e\.agentsfleet\.net|mailinator\.com)|delivered\+clerk_test_[0-9a-f]{8}@resend\.dev)$/i;
 
-const SWEEP_QUERIES = ["+clerk_test@e2e.agentsfleet.net", "+clerk_test@mailinator.com", `@${TEST_INBOX_DOMAIN}`];
+/**
+ * The local acceptance lane's platform identity: one per worktree, named for
+ * the worktree's namespace (`deploy/local/bootstrap.ts` takes
+ * `LOCAL_ACCEPTANCE_NAMESPACE`, which is `wt_<8 hex>`).
+ *
+ * The lane creates it with the platform scopes and never removed it, so every
+ * worktree left a platform-admin account behind in the development Clerk
+ * instance — they were the bulk of what accumulated. Removing the account is
+ * safe: the bootstrap provisions it again on the next run, and the bootstrap
+ * already revokes that session when it finishes.
+ *
+ * The same shape a person could not own, so the sweep's safety boundary
+ * holds: a real address never carries this prefix and this namespace form.
+ */
+export const LOCAL_PLATFORM_FIXTURE_RE =
+  /^local-platform-wt_[0-9a-f]{8}@e2e\.agentsfleet\.net$/i;
+
+const SWEEP_QUERIES = ["+clerk_test@e2e.agentsfleet.net", "+clerk_test@mailinator.com", `@${TEST_INBOX_DOMAIN}`, "local-platform-"];
 
 interface CachedFixture {
   sessionId?: string;
@@ -101,7 +118,7 @@ async function sweepStaleFixtureUsers(): Promise<void> {
     for (const user of users) {
       if (seen.has(user.id)) continue;
       seen.add(user.id);
-      if (!PER_RUN_FIXTURE_RE.test(user.email)) continue;
+      if (!PER_RUN_FIXTURE_RE.test(user.email) && !LOCAL_PLATFORM_FIXTURE_RE.test(user.email)) continue;
       if (now - user.createdAtMs < STALE_AFTER_MS) continue;
       try {
         await deleteUser(user.id);
