@@ -1,5 +1,6 @@
 import {expect, type Locator} from "@playwright/test";
 import {test} from "./fixtures/chat-probe";
+import {expectSummaryColumns} from "./fixtures/summary-columns";
 
 test("the launch review Summary shows the recorded output, people, processes and attached sources", async ({page, chatProbe}, info) => {
   await page.goto(chatProbe + "?visual=1&state=activity");
@@ -51,7 +52,7 @@ test("a current preview process has a running status and both repositories agree
   }
 });
 
-test("Summary geometry and colors match ux.html on desktop and mobile in both themes", async ({page, chatProbe}) => {
+test("Summary geometry and colors match ux.html on desktop and mobile in both themes", async ({page, chatProbe}, info) => {
   await page.goto(chatProbe + "?visual=1&state=activity");
   const summary = page.getByRole("complementary", {name: "Summary"});
   const section = summary.getByRole("heading", {name: "Agents & processes"});
@@ -59,6 +60,14 @@ test("Summary geometry and colors match ux.html on desktop and mobile in both th
   const reference = await page.context().newPage();
   await reference.goto(new URL("../../../../../docs/ux.html#activity", import.meta.url).href);
   const design = reference.locator("aside.summary");
+  const labels = ["Changes", "Output", "Sources"];
+  await expectSummaryColumns(summary, labels.map(label => summary.getByText(label, {exact: true})), [
+    summary.getByRole("button", {name: /4 files changed/}),
+    summary.getByRole("link", {name: "Launch preview"}),
+    summary.locator("summary").filter({hasText: "2 attached files"}),
+  ]);
+  const designRows = ["4 files changed", "Launch preview", "2 attached files"].map(label => design.locator(".summary-row").filter({hasText: label}));
+  await expectSummaryColumns(design, labels.map(label => design.getByText(label, {exact: true})), designRows);
   await expect.poll(() => rowPositions(summary, "h2,button,a,summary")).toEqual(await rowPositions(design, "h2,.summary-label,.summary-row"));
   for (const appearance of ["dark", "light"]) {
     for (const surface of [page, reference]) await surface.evaluate(theme => { document.documentElement.dataset.theme = theme; }, appearance);
@@ -67,6 +76,7 @@ test("Summary geometry and colors match ux.html on desktop and mobile in both th
     for (const [actual, expected] of pairs) {
       await expect.poll(() => geometry(actual)).toEqual(await geometry(expected));
     }
+    await design.screenshot({path: info.outputPath(`reference-activity-${appearance}.png`), animations: "disabled", scale: "css"});
   }
   await reference.close();
 });
@@ -82,6 +92,7 @@ test("repository Sources keeps each label on one line and opens with the keyboar
   const row = sources.locator("summary");
   const designRow = design.locator("summary");
   const repository = "agentsfleet/platform-images";
+  await expectRepositoryColumns(sources, reference.getByRole("complementary", {name: "Fleet summary"}), row, designRow);
   for (const disclosure of [row, designRow]) {
     await expect(disclosure.locator("strong")).toHaveText(repository);
     await expect(disclosure.locator("small")).toHaveText("Policy: Edit existing PRs");
@@ -155,6 +166,15 @@ function geometry(element: Locator) {
   });
 }
 
+
+async function expectRepositoryColumns(sources: Locator, prototype: Locator, row: Locator, designRow: Locator) {
+  const app = sources.locator("xpath=ancestor::aside");
+  const headings = (panel: Locator) => ["Output", "Sources"].map(label => panel.getByText(label, {exact: true}));
+  await expectSummaryColumns(app, headings(app), [app.getByRole("link", {name: /Pull request #58/}), row]);
+  await expectSummaryColumns(prototype, headings(prototype), [
+    prototype.locator(".summary-row").filter({hasText: "Pull request #58"}), designRow,
+  ]);
+}
 
 function rowPositions(panel: Locator, selectors: string) {
   return panel.evaluate((node, query) => {

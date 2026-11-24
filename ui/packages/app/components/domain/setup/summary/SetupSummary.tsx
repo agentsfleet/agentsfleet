@@ -3,10 +3,12 @@
 import type { ReactNode } from "react";
 import type { Definition, Review, Schedule } from "@/lib/api/draft-types";
 import type { SetupNetworkChange } from "@/lib/setup-requirements";
+import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { useId, useState } from "react";
 import Link from "next/link";
-import { Button, Section, SectionLabel, Time, cn, sameCalendarDay } from "@agentsfleet/design-system";
-import { GitBranchIcon, KeyIcon } from "@phosphor-icons/react/ssr";
+import { Button, DescriptionDetails, DescriptionList, DescriptionTerm, List, ListItem, Section, SectionLabel, Time, cn, sameCalendarDay } from "@agentsfleet/design-system";
+import { ClockIcon, CpuIcon, GitBranchIcon, KeyIcon, TerminalWindowIcon, WalletIcon } from "@phosphor-icons/react/ssr";
+import { SUMMARY_ICON, SUMMARY_ROW } from "@/components/domain/shared/summary/summary-row";
 import { hasProposedWakeup, setupRequirements } from "@/lib/setup-requirements";
 import { SetupNetworkPolicy } from "./SetupNetworkPolicy";
 import { formatDollars } from "@/lib/money";
@@ -28,15 +30,18 @@ export function SetupSummary({definition, requirements, modelLabel, schedules = 
   const nextWakeup = nextFleetWakeup(schedules);
   const tools = setup?.tools.length ? toolSummary(setup.tools) : null;
   return <div className="ph-no-capture ph-no-record min-w-0 text-label leading-label [overflow-wrap:anywhere]">
-    <dl className="space-y-md">
-      <Meta label="Model">{modelLabel ?? "Not reviewed"}</Meta>
-      <Meta label="Spending limit" emphasize>{setup ? <>{formatDollars(setup.budget.daily_nanos, 9)} / day{setup.budget.monthly_nanos ? <span className="block">{formatDollars(setup.budget.monthly_nanos, 9)} / month</span> : null}</> : "Not reviewed"}</Meta>
-      <Meta label="Next wake-up" emphasize>{nextWakeup ? <Time value={nextWakeup} format={sameCalendarDay(nextWakeup, today) ? "minute" : "compact"} /> : wakeupStatus(schedules, definition, Boolean(setup))}</Meta>
-    </dl>
+    <DescriptionList className="space-y-sm text-label [&>div]:flex-nowrap [&>div]:items-center [&>div]:gap-md">
+      <Meta icon={WalletIcon} label="Spending limit" emphasize>{setup ? <>{formatDollars(setup.budget.daily_nanos, 9)} / day{setup.budget.monthly_nanos ? <span className="block">{formatDollars(setup.budget.monthly_nanos, 9)} / month</span> : null}</> : "Not reviewed"}</Meta>
+      <Meta icon={ClockIcon} label="Next wake-up">{nextWakeup ? <Time value={nextWakeup} format={sameCalendarDay(nextWakeup, today) ? "minute" : "compact"} /> : wakeupStatus(schedules, definition, Boolean(setup))}</Meta>
+      {modelLabel ? <Meta icon={CpuIcon} label="Model">{modelLabel}</Meta> : null}
+    </DescriptionList>
     {scheduleRecovery ? <div className="mt-lg">{scheduleRecovery}</div> : null}
     <SummarySection title="Repositories" className="mt-lg" action={<Manage kind="repositories" href={editHref} disabled={disabled} onClick={onManage && (trigger => onManage("repositories", trigger))} />}>
       <SummaryResources items={setup?.repositories} kind="repositories" />
-      {tools ? <p className="mt-sm text-eyebrow leading-summary-label text-muted-foreground"><span className="mr-md text-text-dim">Tools</span>{tools}</p> : null}
+      {tools ? <p className={cn(SUMMARY_ROW, "min-h-8 py-xs text-eyebrow leading-summary-label text-muted-foreground")}>
+        <TerminalWindowIcon className={SUMMARY_ICON} aria-hidden="true" />
+        <span className="min-w-0"><span className="text-text-dim">Tools · </span><span>{tools}</span></span>
+      </p> : null}
     </SummarySection>
     <SummarySection title="Public internet access">
       {setup ? <SetupNetworkPolicy publicInternet={network?.http_egress === "public"} packages={network?.package_manager_domains === true}
@@ -49,10 +54,12 @@ export function SetupSummary({definition, requirements, modelLabel, schedules = 
   </div>;
 }
 
-function Meta({label, emphasize, children}: {label: string; emphasize?: boolean; children: ReactNode}) {
-  return <div className="grid grid-cols-[5.25rem_minmax(0,1fr)] items-baseline gap-md">
-    <dt className="text-eyebrow leading-summary-label text-text-dim">{label}</dt>
-    <dd className={cn("min-w-0 break-words", emphasize && "font-medium")}>{children}</dd>
+function Meta({icon: Icon, label, emphasize, children}: {icon: PhosphorIcon; label: string; emphasize?: boolean; children: ReactNode}) {
+  return <div className="min-h-8 min-w-0">
+    <DescriptionTerm className={cn(SUMMARY_ROW, "shrink-0 text-eyebrow leading-summary-label text-text-dim")}>
+      <Icon className={SUMMARY_ICON} aria-hidden="true" /><span>{label}</span>
+    </DescriptionTerm>
+    <DescriptionDetails className={cn("min-w-0 break-words font-medium leading-label", emphasize && "font-semibold tabular-nums")}>{children}</DescriptionDetails>
   </div>;
 }
 function SummarySection({title, action, children, className}: {title: string; action?: ReactNode; children: ReactNode; className?: string}) {
@@ -67,10 +74,10 @@ function SummarySection({title, action, children, className}: {title: string; ac
 function SummaryResources({items, kind}: {items?: readonly string[]; kind: "repositories" | "secrets"}) {
   if (!items?.length) return <p className="text-muted-foreground">{items ? `No ${kind} selected` : "Not reviewed"}</p>;
   const Icon = kind === "repositories" ? GitBranchIcon : KeyIcon;
-  return <ul>{items.map(name => <li key={name} className="flex min-h-8 min-w-0 items-center gap-md py-xs">
-    <Icon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+  return <List variant="plain" className="space-y-0 text-label leading-label">{items.map(name => <ListItem key={name} className={cn(SUMMARY_ROW, "min-h-8 py-xs")}>
+    <Icon className={SUMMARY_ICON} aria-hidden="true" />
     <span className="min-w-0 break-words font-medium">{name}</span>
-  </li>)}</ul>;
+  </ListItem>)}</List>;
 }
 function Manage({kind, href, onClick, disabled, expanded, controls}: {kind: "secrets" | "repositories"; href?: string; onClick?: (trigger: HTMLButtonElement) => void; disabled?: boolean; expanded?: boolean; controls?: string}) {
   if (!href && !onClick) return null;

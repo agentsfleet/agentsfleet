@@ -85,7 +85,7 @@ export function RefreshVisualFixture() {
         <FleetDurableTaskProvider changeRepositories={phase === "activity" ? launchChangeRepositories(LAUNCH_REVIEW_ID, repositoryLabel) : undefined} files={phase === "activity" ? [{id: "brief", name: "launch-brief.md"}, {id: "reference", name: "mobile-reference.png"}] : previews.files} readOnly={archived} workspaceId={WORKSPACE} fleetId={FLEET_ID} subject="fixture-owner" revision={VISUAL_SCENARIOS.indexOf(phase)} turns={turns} schedules={schedules} sources={{repositories: phase === "empty" || phase === "activity" || phase === "error" ? [] : ["agentsfleet/platform-images"], access: "write", publication: "existing_pr"}}
           approvals={{count: phase === "completed" ? 1 : 0, href: `/w/${WORKSPACE}/fleets/${FLEET_ID}#fleet-approvals`}}>
         <FleetConversationLayout summary={scheduled ? "setup" : "current-work"} work={scheduled
-          ? <SetupSummary definition={SCHEDULED_DEFINITION} schedules={schedules} modelLabel="MiniMax M3.1 Flash" editHref={fleetSetupPath(WORKSPACE, FLEET_ID, FLEET_DETAIL.setup_revision)} />
+          ? <SetupSummary definition={SCHEDULED_DEFINITION} schedules={schedules} editHref={fleetSetupPath(WORKSPACE, FLEET_ID, FLEET_DETAIL.setup_revision)} />
           : <DurableTaskPanel workspaceId={WORKSPACE} fleetId={FLEET_ID} subject="fixture-owner" revision={VISUAL_SCENARIOS.indexOf(phase)} />}>
           <div className="flex min-h-0 flex-1 flex-col">
             <FleetThreadViewport archived={archived} modelLabel="MiniMax M3" turnsCount={messages.length} connectionStatus={CONNECTION_STATUS.LIVE}

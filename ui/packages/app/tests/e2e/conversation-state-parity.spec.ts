@@ -2,6 +2,7 @@ import { expect, type Locator, type Page } from "@playwright/test";
 import { test } from "./fixtures/chat-probe";
 import { DEPLOY_CHECK } from "./fixtures/deploy-failure-data";
 import { visualWakeup } from "./fixtures/refresh-wakeup-data";
+import { expectSummaryColumns } from "./fixtures/summary-columns";
 
 const views = [{state: "error", reference: "failure", name: "Deploy monitor"}, {state: "wake-up", reference: "scheduled", name: "Merge watch"}] as const;
 const type = ["font-family", "font-size", "line-height", "font-weight", "color"];
@@ -44,26 +45,7 @@ for (const view of views) test(`${view.state} follows the reference on desktop a
       await expect(alert.getByRole("button", {name: "View details"})).toBeVisible();
     } else {
       const receipts = reference.locator(".event-line");
-      const summary = page.getByRole("complementary", {name: "Summary"});
-      await expect(summary.getByText("MiniMax M3.1 Flash")).toBeVisible();
-      await expect(summary.getByText("$1.00 / day")).toBeVisible();
-      await expect(summary.locator("dd time")).toBeVisible();
-      await expect(summary.getByText("agentsfleet/agentsfleet", {exact: true})).toBeVisible();
-      const publicAccess = summary.getByRole("link", {name: /Allow all public internet access \(on\)/});
-      const packages = summary.getByRole("switch", {name: "Enable package manager domains"});
-      await expect(publicAccess).toBeVisible();
-      await expect(packages).toBeDisabled();
-      await expect(packages).toBeChecked();
-      await expect(summary.getByText("github", {exact: true})).toBeVisible();
-      const designSummary = reference.locator(".summary");
-      await match(summary.getByRole("heading", {name: "Summary"}), designSummary.locator("h2"), type);
-      for (const label of ["Model", "Spending limit", "Next wake-up", "Repositories", "Public internet access", "Secrets"]) {
-        await match(summary.getByText(label, {exact: true}), designSummary.getByText(label, {exact: true}), ["font-size", "color"]);
-      }
-      const switchStyle = ["width", "height", "background-color", "opacity"];
-      await match(publicAccess.locator("[data-state]").first(), designSummary.locator("#setup-public-internet"), switchStyle);
-      await match(packages, designSummary.getByRole("switch", {name: "Enable package manager domains"}), switchStyle);
-      if (!isMobile) await match(summary, designSummary, ["width", "background-color", "border-top-color", "border-top-left-radius"]);
+      await compareWakeupSummary(page, reference, isMobile);
       await match(strip, design, [...type, "margin-left", "margin-right", "margin-bottom"]);
       const seam = await composerSeam(strip, page.locator(".fleet-composer-surface"));
       expect(seam).toEqual(await composerSeam(design, reference.locator(".composer")));
@@ -109,6 +91,59 @@ for (const view of views) test(`${view.state} follows the reference on desktop a
   }
   await reference.close();
 });
+
+async function compareWakeupSummary(page: Page, reference: Page, isMobile: boolean) {
+  const summary = page.getByRole("complementary", {name: "Summary"});
+  const prototype = reference.getByRole("complementary", {name: "Fleet summary"});
+  await expect(summary.getByText("$1.00 / day")).toBeVisible();
+  await expect(summary.locator("dd time")).toBeVisible();
+  const publicAccess = summary.getByRole("link", {name: /Allow all public internet access \(on\)/});
+  const packages = summary.getByRole("switch", {name: "Enable package manager domains"});
+  await expect(publicAccess).toBeVisible();
+  await expect(packages).toBeDisabled();
+  await expect(packages).toBeChecked();
+  await match(summary.getByRole("heading", {name: "Summary"}), prototype.locator("h2"), type);
+  const sections = ["Repositories", "Public internet access", "Secrets"];
+  for (const label of ["Spending limit", "Next wake-up", ...sections]) {
+    await match(summary.getByText(label, {exact: true}), prototype.getByText(label, {exact: true}), ["font-size", "color"]);
+  }
+  for (const label of ["Allow all", "Enable package manager domains"]) {
+    await match(summary.getByText(label, {exact: true}), prototype.getByText(label, {exact: true}), ["font-size", "line-height"]);
+  }
+  for (const panel of [summary, prototype]) {
+    await expect(panel.locator("dt")).toHaveCount(2);
+    await expect(panel.locator("dt").first()).toHaveText("Spending limit");
+    await expectSummaryColumns(panel, sections.map(label => panel.getByText(label, {exact: true})), [
+      ...await panel.locator("dt").all(),
+      panel.getByText("agentsfleet/agentsfleet", {exact: true}).locator(".."),
+      panel.locator("p").filter({hasText: "Tools · Shell"}),
+      panel.getByText("Allow all", {exact: true}).locator(".."),
+      panel.getByText("Enable package manager domains", {exact: true}).locator("../.."),
+      panel.getByText("github", {exact: true}).locator(".."),
+    ]);
+  }
+  const allowAll = publicAccess.locator("[data-state]").first();
+  const designAllowAll = prototype.locator("#setup-public-internet");
+  const designPackages = prototype.getByRole("switch", {name: "Enable package manager domains"});
+  const switchStyle = ["width", "height", "background-color", "opacity"];
+  await match(allowAll, designAllowAll, switchStyle);
+  await match(packages, designPackages, switchStyle);
+  await expectWakeupSummaryValues(summary, [allowAll, packages]);
+  await expectWakeupSummaryValues(prototype, [designAllowAll, designPackages]);
+  if (!isMobile) await match(summary, prototype, ["width", "background-color", "border-top-color", "border-top-left-radius"]);
+}
+
+async function expectWakeupSummaryValues(panel: Locator, controls: Locator[]) {
+  const rightEdge = async (locator: Locator) => {
+    const box = await locator.boundingBox();
+    if (!box) throw new Error("The Summary value or control has no visible bounds");
+    return Math.round(box.x + box.width);
+  };
+  const values = await panel.locator("dd").all();
+  await expect(panel.locator("dd").first()).toHaveCSS("font-weight", "600");
+  const right = await rightEdge(panel.getByRole("heading", {name: "Summary", exact: true}));
+  for (const item of [...values, ...controls]) expect(await rightEdge(item)).toBe(right);
+}
 
 test("scheduled and paused wake-ups keep their text and controls on one line", async ({page, chatProbe, isMobile}, info) => {
   const reference = await page.context().newPage();

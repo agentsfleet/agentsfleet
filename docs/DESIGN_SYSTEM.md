@@ -718,7 +718,9 @@ Keep one visual shell through setup, confirmed save, and the fleet conversation.
 
 Label the setup state Fleet setup. Its flap action is Save.
 
-Show model, spending limit, repositories, internet access and secrets in Summary. Show Next wake-up only in the composer flap.
+Show the reviewed runtime model, spending limit, repositories, internet access and secrets in the setup Summary.
+
+For a scheduled fleet conversation, show the spending limit and next wake-up at the top of Summary. The composer shows the runtime model and the wake-up controls.
 
 After the server confirms the fleet identity, open its conversation without an extra Open fleet action. Replace the draft URL with the saved fleet URL.
 Show confirmed readiness separately from saving.
@@ -1201,11 +1203,13 @@ The header shortcut starts a new fleet through the shared navigation intent on r
 
 ### Fleet setup review
 
-Use the original flat Summary rows and dividers. Model and spending limit appear at the top.
+Use flat Summary rows and dividers. Put the spending limit first and show the reviewed runtime model in Fleet setup.
+
+Align section headings and the leading edge of 16 px icons. Start row text 8 px after each icon. Use the same text column for Changes, Output, Sources and setup rows.
 
 The broader sections are Repositories, Public internet access and Secrets. Tools sit in a small row with repositories. Remove Purpose, repeated recurrence prose and the separate Review setup panel.
 
-Public internet access has Allow all and Enable package manager domains, without an internal divider. Keep the package label on one line with the same row spacing. When Allow all is enabled, disable the package option while preserving its selection.
+Public internet access has Allow all and Enable package manager domains. Align the switches to the same right edge and wrap the package label in its text column when space is tight. When Allow all is enabled, disable the package option while preserving its selection.
 
 The setup Summary uses a 320px desktop width so its policy label and controls fit. Conversation summaries retain their existing width. Keep existing domain rules in configuration; no additional domain editor appears in this Summary.
 

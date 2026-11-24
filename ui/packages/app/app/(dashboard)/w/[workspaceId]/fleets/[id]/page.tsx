@@ -102,7 +102,6 @@ async function loadChatView(
       setupRevision={fleet.setup_revision}
       setup={<FleetRecovery key={`${workspaceId}:${fleet.id}:${fleet.etag}`} workspace={workspaceId} fleet={fleet} showSaved />}
       setupSummary={scheduled ? <SetupSummary requirements={setupRequirements(fleet.definition) ?? undefined} schedules={fleet.schedules}
-        modelLabel={modelLabel}
         ready editHref={fleetSetupPath(workspaceId, fleet.id, fleet.setup_revision)} /> : undefined}
       modelLabel={modelLabel}
       initial={turns}
