@@ -1,6 +1,6 @@
 //! What the wall reads, and when: nothing while idle, the caller's membership
 //! and the set on a notice, the set it has when a read fails, and a lagging
-//! viewer's counters no faster than the pace allows.
+//! viewer's counters again on every lag.
 //!
 //! Where a test moves the runtime's clock it pauses it, advances and resumes
 //! before reading, so the reads run on real time and never race the clock's
@@ -15,17 +15,11 @@ use std::time::Duration;
 
 use crate::integration_fleet_streams::fixture::{Fixture, Wall, next_chunk};
 
-/// Past the pace between two counter reads a lag asks for.
-const PAST_THE_PACE: Duration = Duration::from_secs(11);
-
 /// An hour on the paused clock: longer than any timer the wall ran before.
 const AN_HOUR: Duration = Duration::from_secs(3600);
 
 /// Frames enough to overflow a viewer's 256-frame buffer while it is not read.
 const OVERFLOW_FRAMES: usize = 400;
-
-/// How long a stream is watched for anything more.
-const QUIET: Duration = Duration::from_millis(1_500);
 
 /// The pool knobs that let a test hold the only connection.
 const POOL_SIZE_KNOB: &str = "DATABASE_POOL_SIZE_API";
@@ -110,30 +104,21 @@ async fn a_notice_whose_set_read_fails_keeps_the_set_until_one_succeeds() {
     wall.close().await;
 }
 
-/// A second lag inside the pace does not re-read the counters at once: its
-/// read waits for the pace to end, which announces them then.
+/// Every lag re-announces the set with fresh counters at once: no pace holds the
+/// second one back.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn a_second_lag_inside_the_pace_re_announces_when_it_ends() {
+async fn every_lag_re_announces_the_set_at_once() {
     let mut wall = Wall::open(Fixture::create().await).await;
-    wall.publish(OVERFLOW_FRAMES).await;
-    wall.next_of("catching_up").await;
-    wall.next_of("hello").await;
-
-    wall.publish(OVERFLOW_FRAMES).await;
-    wall.next_of("catching_up").await;
-    while let Ok(event) = tokio::time::timeout(QUIET, next_chunk(&mut wall.body)).await {
+    for lag in 1..=2 {
+        wall.publish(OVERFLOW_FRAMES).await;
+        wall.next_of("catching_up").await;
+        let hello = wall.next_of("hello").await;
         assert!(
-            !event.contains("event: hello"),
-            "no read before the pace ends: {event}"
+            hello.contains(wall.fixture.fleet.as_str()),
+            "lag {lag} announces the set"
         );
     }
-    skip(PAST_THE_PACE).await;
-    let hello = wall.next_of("hello").await;
-    assert!(
-        hello.contains(wall.fixture.fleet.as_str()),
-        "the owed read announces the set"
-    );
     wall.close().await;
 }
 

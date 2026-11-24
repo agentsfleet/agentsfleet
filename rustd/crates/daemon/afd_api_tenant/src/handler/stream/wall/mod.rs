@@ -19,18 +19,13 @@
 //! share (`revocable.rs`): an outage there ends the wall without
 //! `access_revoked`.
 //!
-//! # A lagging viewer re-reads the counters at most once per pace
+//! # A lagging viewer gets the counters again
 //!
 //! A `catching_up` frame means the counters a tile shows may be stale, so the
-//! wall re-announces the set with fresh figures. A viewer falling behind
-//! falls behind repeatedly, and one read per lag frame put a slow tab's
-//! backlog straight onto Postgres. [`Recount`] spaces those reads a pace
-//! apart: the `catching_up` frame itself is still forwarded at once, and only
-//! the figures wait.
+//! frame is forwarded and the set is re-announced with fresh figures at once.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
-use std::time::Duration;
 
 use af_core::error_code::{Coded as _, Logged};
 use af_core::id::Uuid7;
@@ -39,17 +34,11 @@ use afd_bus::Subject;
 use afd_http::auth::Owned;
 use afd_sse::{FanIn, Frame, KIND_CATCHING_UP, Link, Wake};
 use futures_util::stream::BoxStream;
-use tokio::time::Instant;
 
 use super::revocable::{
     Membership, Recheck as _, STREAM_WALL, Turn, Verdict, Watch, until_revoked,
 };
 use crate::services::{TenantPlane, WorkspaceFleets as _};
-
-/// The least time between two counter reads a lag asks for. A lag storm on a busy
-/// workspace would otherwise read the counters once per lost frame. The number is
-/// awaiting the owner's ruling (spec `M255_001`, Discovery); nothing forces 10 s.
-const RECOUNT_PACE: Duration = Duration::from_secs(10);
 
 /// The log event a refresh emits when the workspace's fleet set does not answer.
 const EVENT_SET_UNREAD: &str = "workspace_stream_set_unread";
@@ -90,64 +79,6 @@ struct Wall<D> {
     owed: Owed,
     /// Whether the opening `hello` has been sent.
     announced: bool,
-    /// When a lag may next re-read the counters.
-    recount: Recount,
-}
-
-/// Paces the counter reads a lag asks for: at most one per [`RECOUNT_PACE`].
-///
-/// Only a lag's reads are paced. The opening `hello` and a changed set's do
-/// not arm the pace, because frames lost after them moved the very counters
-/// they announced: the first gap on a fresh connection re-announces at once.
-/// Every `hello` still pays off a read a lag was owed.
-#[derive(Debug, Clone, Copy)]
-struct Recount {
-    /// The earliest moment the counters may be read again.
-    after: Instant,
-    /// Whether a lag asked for a read the pace has not allowed yet.
-    owed: bool,
-}
-
-impl Recount {
-    /// A pace with nothing read yet.
-    const fn new(now: Instant) -> Self {
-        Self {
-            after: now,
-            owed: false,
-        }
-    }
-
-    /// A lag's read is being taken now: the next waits a whole interval.
-    fn paced(&mut self, now: Instant) {
-        self.after = now + RECOUNT_PACE;
-        self.owed = false;
-    }
-
-    /// A `hello` read the counters, which settles anything a lag was owed.
-    const fn paid(&mut self) {
-        self.owed = false;
-    }
-
-    /// A lag arrived. `true` means read the counters now, and the pace is
-    /// armed; otherwise the read is owed at [`Recount::deadline`].
-    fn lagged(&mut self, now: Instant) -> bool {
-        if now >= self.after {
-            self.paced(now);
-            return true;
-        }
-        self.owed = true;
-        false
-    }
-
-    /// When an owed read falls due, if one is owed.
-    fn deadline(&self) -> Option<Instant> {
-        self.owed.then_some(self.after)
-    }
-
-    /// Whether an owed read is due at `now`.
-    fn due(&self, now: Instant) -> bool {
-        self.owed && now >= self.after
-    }
 }
 
 /// The reads a wall owes. Each kind of notice owes only its own read; a gap reaches
@@ -196,7 +127,6 @@ pub(super) async fn frames<D: TenantPlane>(
         .live()
         .link(Subject::Fleets(workspace.clone()))
         .await;
-    let now = Instant::now();
     let wall = Wall {
         watch: Watch::new(Membership::new(services, principal, workspace), STREAM_WALL),
         fan_in,
@@ -204,7 +134,6 @@ pub(super) async fn frames<D: TenantPlane>(
         fleets,
         owed: Owed::OPENING,
         announced: false,
-        recount: Recount::new(now),
     };
     until_revoked(wall, step)
 }
@@ -218,11 +147,6 @@ async fn step<D: TenantPlane>(mut wall: Wall<D>) -> Option<Turn<Wall<D>>> {
         return Some(announce(wall).await);
     }
     loop {
-        let now = Instant::now();
-        if wall.recount.due(now) {
-            wall.recount.paced(now);
-            return Some(announce(wall).await);
-        }
         match settle(&mut wall).await {
             Tick::Revoked => return Some(Turn::Revoked),
             // An outage is not a revocation: the wall ends with no frame.
@@ -232,20 +156,19 @@ async fn step<D: TenantPlane>(mut wall: Wall<D>) -> Option<Turn<Wall<D>>> {
         }
         // No timer re-reads Postgres: the wall wakes on a frame, on a notice that the
         // account's members or the workspace's fleets changed, or on a gap or lost
-        // subscription that may have hidden one. Only an owed counter read sleeps.
+        // subscription that may have hidden one.
         let woke = tokio::select! {
             frame = wall.fan_in.next_frame() => Woke::Frame(frame),
             wake = wall.members.changed() => Woke::Members(wake),
             wake = wall.fleets.changed() => Woke::Fleets(wake),
-            () = afd_sse::sleep_until_some(wall.recount.deadline()) => continue,
         };
         match woke {
             Woke::Frame(frame) => {
                 // A gap the server could not carry is exactly the frames that
                 // moved the counters, so the set is re-announced with where every
                 // fleet stands now — the backfill recovers the rows, the fresh
-                // `hello` recovers the figures — at the pace `Recount` allows.
-                if frame.kind == KIND_CATCHING_UP && wall.recount.lagged(Instant::now()) {
+                // `hello` recovers the figures.
+                if frame.kind == KIND_CATCHING_UP {
                     wall.announced = false;
                 }
                 return Some(Turn::Frame(frame, wall));
@@ -275,8 +198,7 @@ enum Woke {
 }
 
 /// The `hello` for the set the wall carries now, which reads the counters.
-async fn announce<D: TenantPlane>(mut wall: Wall<D>) -> Turn<Wall<D>> {
-    wall.recount.paid();
+async fn announce<D: TenantPlane>(wall: Wall<D>) -> Turn<Wall<D>> {
     let carried = wall.fan_in.fleets();
     let membership = wall.watch.question();
     let frame = hello(membership.services(), membership.workspace(), carried).await;
