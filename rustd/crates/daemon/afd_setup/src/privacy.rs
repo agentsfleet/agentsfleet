@@ -23,6 +23,7 @@ impl Drafts {
         read::lock(&mut tx, access, &person, id).await?;
         let killed = purge(&mut tx, id).await?;
         tx.commit().await.map_err(query(CONTEXT))?;
+        self.changed(id).await;
         self.announce_cancelled(killed).await;
         Ok(())
     }

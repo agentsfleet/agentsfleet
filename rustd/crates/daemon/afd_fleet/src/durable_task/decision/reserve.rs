@@ -2,11 +2,7 @@
 
 use af_wire::durable_task::DecisionReservationInput;
 
-use super::{
-    ReservedDecision,
-    allocate::{self, Allocation},
-    fund, replay,
-};
+use super::{ReservedDecision, allocate};
 use crate::{
     Result,
     durable_task::{DurableTaskRun, DurableTasks},
@@ -31,8 +27,5 @@ async fn run(
     durable_task_run: DurableTaskRun<'_>,
     input: &garde::Valid<DecisionReservationInput>,
 ) -> Result<ReservedDecision> {
-    match allocate::allocate(tasks, durable_task_run, input).await? {
-        Allocation::Reserved(call) => fund::issue(tasks, durable_task_run, input, call).await,
-        Allocation::Existing(call) => replay::response(tasks, call).await,
-    }
+    allocate::allocate(tasks, durable_task_run, input).await
 }

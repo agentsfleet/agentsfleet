@@ -19,6 +19,7 @@ mod messages;
 mod model_keys;
 mod model_metadata;
 mod model_tools;
+mod notices;
 mod observe;
 mod privacy;
 mod races;

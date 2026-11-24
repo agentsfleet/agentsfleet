@@ -4,10 +4,19 @@ use af_core::id::Uuid7;
 use afd_setup::{Access, Drafts, Observation};
 use axum::response::sse::Event;
 use futures_util::{Stream, stream};
-use std::{collections::HashMap, convert::Infallible, time::Duration};
+use std::{collections::HashMap, convert::Infallible};
+use tokio::time::Instant;
 
-const QUIET: Duration = Duration::from_secs(1);
 const FAILED: &str = "draft_stream_recheck_failed";
+
+/// What a stream's next step does before it may emit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Next {
+    /// Read at once: something changed, or nothing has been read yet.
+    Read,
+    /// The last read found nothing new: wait for a notice, a gap or the heartbeat.
+    Wait,
+}
 
 struct Watch {
     drafts: Drafts,
@@ -16,7 +25,8 @@ struct Watch {
     draft: Uuid7,
     generation: i64,
     seen: HashMap<String, String>,
-    delay: Duration,
+    /// Whether the next step reads at once or waits for a notice first.
+    next: Next,
     done: bool,
     /// Live progress; reopened after a loss, never after the bus closed.
     link: afd_sse::Link,
@@ -25,6 +35,8 @@ struct Watch {
     /// The viewer was told; a further loss before any delivery is the same
     /// outage and is not announced again.
     resynced: bool,
+    /// The account's members changed: read again, which re-proves the viewer.
+    members: afd_sse::Link,
     _slot: afd_sse::StreamPermit,
 }
 
@@ -34,6 +46,8 @@ pub(super) struct Feed {
     pub(super) slot: afd_sse::StreamPermit,
     /// The subscription the handler opened before answering.
     pub(super) link: afd_sse::Link,
+    /// The account's members notice, opened beside it.
+    pub(super) members: afd_sse::Link,
 }
 
 pub(super) fn frames(
@@ -44,7 +58,11 @@ pub(super) fn frames(
     generation: i64,
     feed: Feed,
 ) -> impl Stream<Item = Result<Event, Infallible>> + Send + 'static {
-    let Feed { slot, link } = feed;
+    let Feed {
+        slot,
+        link,
+        members,
+    } = feed;
     stream::unfold(
         Watch {
             drafts,
@@ -53,24 +71,39 @@ pub(super) fn frames(
             draft,
             generation,
             seen: HashMap::new(),
-            delay: Duration::ZERO,
+            next: Next::Read,
             done: false,
             lost: false,
             resynced: false,
             link,
+            members,
             _slot: slot,
         },
         step,
     )
 }
 
+/// The next frame. No timer reads Postgres: the stream reads when a notice, a gap
+/// or a lag arrives on the draft's subject, when the account's members change, or
+/// when a lost subscription reopens; its heartbeat reads nothing.
 async fn step(mut watch: Watch) -> Option<(Result<Event, Infallible>, Watch)> {
-    let heartbeat_at = tokio::time::Instant::now() + afd_sse::HEARTBEAT_INTERVAL;
+    let heartbeat_at = Instant::now() + afd_sse::KEEP_ALIVE_INTERVAL;
     while !watch.done {
         if let Some(event) = recover(&mut watch).await {
             return Some((Ok(event), watch));
         }
-        let pending = receive(&mut watch).await;
+        let pending = match wait(&mut watch, heartbeat_at).await {
+            Waited::Read(pending) => pending,
+            // A lost subscription's retry is due: `recover` reopens it, and a reopen
+            // that succeeds owes the read.
+            Waited::Retry => continue,
+            Waited::Heartbeat => return Some((Ok(heartbeat()), watch)),
+            // The bus shut down: end, so the client reconnects to a serving replica.
+            Waited::Closed => {
+                tracing::debug!(event = "draft_stream_bus_closed");
+                return None;
+            }
+        };
         let access = Access {
             workspace: &watch.workspace,
             subject: &watch.subject,
@@ -82,11 +115,17 @@ async fn step(mut watch: Watch) -> Option<(Result<Event, Infallible>, Watch)> {
             }
             Ok(Observation::Current(view)) => {
                 watch.generation = view.generation;
-                if let Some(pending) = pending
-                    && let Some(event) = preview(&watch.draft, &view, pending)
-                {
-                    watch.delay = QUIET;
-                    return Some((Ok(event), watch));
+                if let Some(pending) = pending {
+                    // A gap or a lag may have hidden changes: after the resync, read
+                    // again at once rather than wait for the next notice.
+                    let missed = matches!(
+                        pending,
+                        afd_bus::Received::Gap | afd_bus::Received::Lagged(_)
+                    );
+                    if let Some(event) = preview(&watch.draft, &view, pending) {
+                        watch.next = if missed { Next::Read } else { Next::Wait };
+                        return Some((Ok(event), watch));
+                    }
                 }
                 if let Some(event) = changed(&mut watch, view.notices) {
                     return Some((Ok(event), watch));
@@ -94,10 +133,7 @@ async fn step(mut watch: Watch) -> Option<(Result<Event, Infallible>, Watch)> {
                 if view.closed {
                     return None;
                 }
-                watch.delay = QUIET;
-                if tokio::time::Instant::now() >= heartbeat_at {
-                    return Some((Ok(heartbeat()), watch));
-                }
+                watch.next = Next::Wait;
             }
             Err(error) => {
                 let error_code = error.code().as_str();
@@ -129,7 +165,10 @@ fn heartbeat() -> Event {
 /// Reopen a lost subscription once its retry is due, and tell the viewer to
 /// resync after a loss. A closed bus is never retried.
 async fn recover(watch: &mut Watch) -> Option<Event> {
-    watch.link.reopen_if_due().await;
+    if watch.link.reopen_if_due().await {
+        // What was published while the subscription was lost is unknown: read again.
+        watch.next = Next::Read;
+    }
     if !watch.lost {
         return None;
     }
@@ -151,28 +190,58 @@ fn deleted(draft: &Uuid7) -> Option<Event> {
         .ok()
 }
 
+/// What ended a wait.
+enum Waited {
+    /// Read the draft again; with the message that asked, if one did.
+    Read(Option<afd_bus::Received>),
+    /// The heartbeat fell due with nothing to read.
+    Heartbeat,
+    /// A lost subscription's retry fell due.
+    Retry,
+    /// The bus shut down.
+    Closed,
+}
+
 /// All paths return to the authorization read before they emit anything.
-async fn receive(watch: &mut Watch) -> Option<afd_bus::Received> {
-    if watch.delay.is_zero() {
-        return None;
+async fn wait(watch: &mut Watch, heartbeat_at: Instant) -> Waited {
+    if watch.next == Next::Read {
+        return Waited::Read(None);
     }
+    if watch.link.is_closed() {
+        return Waited::Closed;
+    }
+    let retry_at = watch.link.retry_at();
     let Some(subscription) = watch.link.subscription() else {
-        tokio::time::sleep(watch.delay).await;
-        return None;
+        // Lost and retrying: what was published meanwhile is unknown, so `recover`
+        // reads again once it reopens the subscription.
+        return tokio::select! {
+            () = tokio::time::sleep_until(heartbeat_at) => Waited::Heartbeat,
+            () = afd_bus::sleep_until_some(retry_at) => Waited::Retry,
+            wake = watch.members.changed() => members(wake),
+        };
     };
     tokio::select! {
-        () = tokio::time::sleep(watch.delay) => None,
+        () = tokio::time::sleep_until(heartbeat_at) => Waited::Heartbeat,
+        wake = watch.members.changed() => members(wake),
         received = subscription.recv() => match received {
             Ok(received) => {
                 watch.resynced = false;
-                Some(received)
+                Waited::Read(Some(received))
             }
             Err(error) => {
                 watch.link.lose(&error);
                 watch.lost = !watch.resynced;
-                None
+                Waited::Read(None)
             }
         },
+    }
+}
+
+/// A members notice asks for a read, which re-proves the viewer.
+const fn members(wake: afd_sse::Wake) -> Waited {
+    match wake {
+        afd_sse::Wake::Changed => Waited::Read(None),
+        afd_sse::Wake::Closed => Waited::Closed,
     }
 }
 
@@ -193,6 +262,13 @@ fn preview(draft: &Uuid7, view: &afd_setup::View, received: afd_bus::Received) -
             })
             .validate()
             .ok()?;
+            // A change notice carries no frame of its own: the read it asked for
+            // finds what changed.
+            if serde_json::from_str::<afd_turns::view::activity::DraftChanged>(bounded.value)
+                .is_ok()
+            {
+                return None;
+            }
             if let Ok(frame) = serde_json::from_str::<afd_setup::ContextNotice>(bounded.value) {
                 let frame = garde::Unvalidated::new(frame).validate().ok()?;
                 if !permitted(draft, view, &frame.draft_id, &frame.sequence) {
@@ -230,7 +306,8 @@ fn changed(watch: &mut Watch, notices: Vec<afd_setup::Notice>) -> Option<Event> 
         let body = serde_json::to_string(&notice).ok()?;
         if watch.seen.get(&key) != Some(&body) {
             watch.seen.insert(key, body.clone());
-            watch.delay = Duration::ZERO;
+            // Something changed: read again at once before waiting.
+            watch.next = Next::Read;
             return Some(Event::default().event(notice.event).data(body));
         }
     }

@@ -278,7 +278,7 @@ pub(super) async fn watch(
                     retry = settle(&client, &signals, &everyone_subject).await;
                 }
             }
-            () = sleep_until_some(retry) => {
+            () = crate::sleep_until_some(retry) => {
                 retry = settle(&client, &signals, &everyone_subject).await;
             }
             next = everyone.next() => {
@@ -293,13 +293,5 @@ pub(super) async fn watch(
                 }
             }
         }
-    }
-}
-
-/// Sleeps until `at`, or forever when there is nothing to retry.
-async fn sleep_until_some(at: Option<tokio::time::Instant>) {
-    match at {
-        Some(at) => tokio::time::sleep_until(at).await,
-        None => std::future::pending().await,
     }
 }

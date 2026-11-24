@@ -17,7 +17,7 @@ Every row is taken from the sections below; the owner column names the section t
 
 | Invariant | Value | Mechanism | Owner section |
 |---|---|---|---|
-| Run expiry backstop | `RUN_TTL` = 35 s (single-sourced for the control plane in `af_core`'s timing constants) | the next eligible assignment re-runs an expired thread with a higher fencing token | §Failure recovery model |
+| Run expiry backstop | `RUN_TTL` = 38 s (single-sourced for the control plane in `afd_runner`'s timing constants) | the next eligible assignment re-runs an expired thread with a higher fencing token | §Failure recovery model |
 | Max run duration | none | `/renew` extends to `now+RUN_TTL` at any age; the fleet's budget, the tenant's balance or a person's Stop ends a looping run, and a durable task's own deadline shortens the grant | §Per-run renewal |
 | Stale-writer rejection | `UZ-RUN-005` | `report` verifies the monotonic `fencing_token` in the same atomic statement that flips the run | §System guarantees |
 | Sandbox failure fails closed | `startup_posture` | the turn never runs; the run reports `fleet_error` naming why, and nothing runs unsandboxed in its place | §System guarantees |
@@ -136,7 +136,7 @@ A runner's work becomes eligible when its thread's run expires. The next assign 
 
 | Failure | Recovery | Durable guard |
 |---|---|---|
-| Runner dies mid-run | A later assign pass takes the same unsettled turn after its 35-second run expires. | The thread and turn receive a higher fence; the old holder cannot write. |
+| Runner dies mid-run | A later assign pass takes the same unsettled turn after its 38-second run expires. | The thread and turn receive a higher fence; the old holder cannot write. |
 | Every run of one turn lapses | After `[turns] max_runs_per_turn` lapsed runs, three by default ([configuration reference](./config_reference.md)), the next assignment ends the turn as `fleet_error` with `run_expired`. A durable task's turn is exempt; its own run allowance bounds it. | The same transaction settles the turn, so the fleet's next turn can run. |
 | Wake notification lost | The turn waits until a bus gap, a wake subscription change, freed runner capacity or another wake starts a pass that reads PostgreSQL. No timer probes. | Acceptance is already committed in `thread.turns`. |
 | Assignment decoding fails | The transaction rolls back its thread and turn changes. | Both fences remain unchanged. |
@@ -158,14 +158,14 @@ Work after the saved boundary can repeat, including external effects. A retried 
 
 ### Per-run renewal: how a long fleet keeps its run
 
-A native renewal batch extends active runs every five seconds. Each run carries the provider-request usage the daemon has not yet recorded.
+A native renewal batch extends active runs once per heartbeat interval, in the same round as the heartbeat. Each run carries the provider-request usage the daemon has not yet recorded.
 
 The runner asks engines to stop nine seconds before its last confirmed deadline.
 This leaves time to stop and reap their processes before another runner can reclaim work.
 Renewal atomically extends **both** the run row and the thread row under a fence:
 
 ```text
- run issued                                every RENEWAL_TICK (5 s) tick
+ run issued                                every round (the heartbeat interval, 10 s)
  (expires = now + RUN_TTL)              sends a native renewal batch
    |            tick    tick    tick    tick   tick
    *------------*-------*-------*-------*------*-------------------->
@@ -238,7 +238,9 @@ The sandbox is the same binary's `sandbox` entry, bound read-only into it. There
 
 The build graph keeps datastore crates outside the runner. [Runner process model](runner_execution.md#crates) owns the shared crate list, including cryptography for encrypted private reports.
 
-The frozen `/v1/runners` wire types live in `af_wire`. The knobs both planes key off (`RUN_TTL` and friends) live in `af_core`, and both binaries build them. The control plane's run, fence, reclaim and assignment code is `afd_fleet`, `afd_runner` and `afd_api_runner`, built only into `agentsfleetd`.
+The frozen `/v1/runners` wire types live in `af_wire`. The spans both planes agree on live in `af_core`, and both binaries build them: the answer bound, the reconnect budget and the renewal window.
+
+The daemon's run clock (`RUN_TTL` and friends) lives in `afd_runner`'s `timing`. The control plane's run, fence, reclaim and assignment code is `afd_fleet`, `afd_runner` and `afd_api_runner`, built only into `agentsfleetd`.
 
 The runner's supervisor, agent loop, tool catalog, outbound guard, in-sandbox server and sandbox engine are the `afr_*` crates under `rustd/crates/`. They import nothing from the control plane.
 
@@ -351,9 +353,9 @@ Supported software still advertises `durable_tasks_v1` while its assignment is O
 Existing durable runs retain their frozen mode, input, recovery, accounting and report duties.
 The candidate, assignment and final issue checks all require configured support before a new durable run commits.
 
-The **heartbeat cadence travels the same way** (M205). `af_core::timing` owns both `RUNNER_OFFLINE_AFTER` and the `HEARTBEAT_INTERVAL` served beneath it. A compile-time assertion beside them keeps the served cadence strictly below the offline threshold.
+The **heartbeat cadence travels in the welcome**, never in the heartbeat reply. The daemon serves the interval it runs with, and the runner rounds on it. `afd_runner::timing` owns `RUNNER_OFFLINE_AFTER` and the `HEARTBEAT_INTERVAL` default, with a compile-time assertion keeping the cadence strictly below the offline threshold.
 
-A host holds no interval of its own, so moving the threshold moves every host's beat within one cycle. The field is required rather than optional.
+A host holds no interval of its own, so a changed interval reaches every host when it reconnects. The field is required rather than optional.
 
 A reply without it is refused at parse, and the beat takes the existing backoff. A runner guessing its own cadence is the drift this removes.
 
@@ -416,7 +418,9 @@ A Kubernetes-style `status` plus `conditions` JSONB split is adopted **only if**
 
 ### Automatic quarantine and return
 
-No daemon code sets an automatic cordon or writes a `runner_offline` row: the liveness sweep that did is gone (Indy, Nov 21, 2026). A host silent past the offline window, 105 seconds by default, reads `offline` when a read derives its liveness (`afd_runner`'s `view/decode.rs`). Its sandbox hold stops protecting its fleet from other runners' assignments (`assign_turn_head.sql`).
+No timed sweep cordons a host or writes a `runner_offline` row: the liveness sweep is gone (Indy, Nov 21, 2026). A runner connection that ends with no successor arms one visit instead, at its last beat plus the offline window (`afd_gateway`'s `connection/departure/mod.rs`). The visit writes `runner_offline` once and cordons an `active` host for missed heartbeats, unless the host beat again (`afd_runner`'s `silence.rs`).
+
+A host silent past the offline window, 114 seconds by default, also reads `offline` when a read derives its liveness (`afd_runner`'s `view/decode.rs`). Its sandbox hold stops protecting its fleet from other runners' assignments (`assign_turn_head.sql`).
 
 A row that already carries `missed_heartbeats` still returns. Healthy heartbeats from the current connection must continue for 30 seconds before the heartbeat lifts it and writes `runner_uncordoned`. A gap of at least two heartbeat intervals or a failed health proof resets that interval. Lifting it preserves an operator's cordon, drain or revocation. New fleet and setup assignments refuse a cordoned host under its row lock.
 

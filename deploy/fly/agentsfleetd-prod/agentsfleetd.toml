@@ -70,7 +70,8 @@ max_buffered_bytes = 16_777_216
 max_buffered_bytes = 67_108_864
 
 [runner.run]
-ttl_seconds = 35
+# The heartbeat interval plus the 28 s renewal margin: the runner renews on its beat.
+ttl_seconds = 38
 
 [runner.health]
 heartbeat_interval_seconds = 10

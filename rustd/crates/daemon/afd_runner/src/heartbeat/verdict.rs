@@ -17,18 +17,23 @@ const EVENT_VERDICT_WRITE: &str = "verdict_persist_failed";
 
 /// Writes what this beat changed about the verdict.
 ///
-/// A fresh report always lands with its verdict; otherwise only a MOVED verdict
-/// writes, and the statement's own guard makes a steady state write nothing at
+/// A fresh report lands with its verdict unless the row already holds that report
+/// under that verdict; otherwise only a MOVED verdict writes, and the statement's own guard makes a steady state write nothing at
 /// all. The `differs_from` check ahead of it saves the round trip that guard
 /// would otherwise cost on every beat of every idle host.
 pub(super) async fn persist(
     connection: &mut PgConnection,
     runner: &Uuid7,
     incoming: Option<&CapabilityReport<'_>>,
+    reported: Option<&CapabilityReport<'_>>,
     stored: &StoredVerdict,
     verdict: Verdict,
 ) {
+    // A report the row already holds, under a verdict it already says, writes nothing:
+    // a steady host's beat touches only its liveness.
+    let unchanged = incoming.is_some() && incoming == reported && !stored.differs_from(verdict);
     match incoming {
+        Some(_) if unchanged => {}
         Some(report) => {
             let report_json = render_object(report);
             let write = sqlx::query(sql::runner::UPDATE_RUNNER_CAPABILITY_AND_VERDICT)

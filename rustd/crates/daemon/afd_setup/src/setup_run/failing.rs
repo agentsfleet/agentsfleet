@@ -77,7 +77,8 @@ impl Failing<'_> {
         if moved.rows_affected() == 0 {
             return Ok(());
         }
-        owed.0.finished(connection, self.message, failed).await
+        owed.changed(self.message.draft);
+        owed.steps.finished(connection, self.message, failed).await
     }
 }
 

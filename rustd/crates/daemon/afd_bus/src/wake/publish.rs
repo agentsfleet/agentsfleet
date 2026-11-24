@@ -1,23 +1,17 @@
-use af_core::{error_code::Coded as _, id::Uuid7, timing::READY_WAKE_DEADLINE};
+use af_core::{error_code::Coded as _, id::Uuid7};
 use af_observability::{metrics::label::fleet::ReadyWake, producers};
 
 use crate::{Handle, Subject};
 
-/// Publish only after commit; failure cannot reject work already accepted.
+/// Publish only after commit; failure cannot reject work already accepted. The bus
+/// bounds the publish at its configured `publish_deadline_ms`.
 ///
 /// `owner` is the waiting work's thread, a fleet or a setup draft, named by
 /// its own id: one wake subject serves both kinds.
 pub async fn publish(bus: &Handle, owner: Uuid7) {
     let payload = owner.to_string();
-    let outcome = tokio::time::timeout(
-        READY_WAKE_DEADLINE,
-        bus.publish(&Subject::ThreadWake(owner), &payload),
-    )
-    .await;
-    let failure = match outcome {
-        Ok(Ok(())) => return,
-        Ok(Err(error)) => error,
-        Err(elapsed) => elapsed.into(),
+    let Err(failure) = bus.publish(&Subject::ThreadWake(owner), &payload).await else {
+        return;
     };
     producers::fleet::ready_wake_failed(ReadyWake::Ring);
     let logged = failure.logged();
@@ -27,7 +21,9 @@ pub async fn publish(bus: &Handle, owner: Uuid7) {
             &"turn_wake_ring_failed",
             &logged.error_code,
             &logged.reason,
-            format_args!("notification was lost; the next Postgres probe finds the turn"),
+            format_args!(
+                "notification was lost; the bus owes its subject a gap, and the recovery pass that answers it finds the turn"
+            ),
         );
         tracing::warn!(message, event, error_code, reason, thread_id);
     };

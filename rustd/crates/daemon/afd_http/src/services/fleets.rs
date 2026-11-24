@@ -8,7 +8,6 @@
 //! takes ALREADY-PARSED values, so no implementation carries a validation arm.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::Arc;
 
 use af_core::id::Uuid7;
 use afd_api_wire::tail::FleetCounters;
@@ -65,10 +64,9 @@ pub trait WorkspaceFleets: Send + Sync + std::fmt::Debug + 'static {
 
     /// Every fleet this workspace holds, by identifier.
     ///
-    /// The live wall's tick. Cached in the store rather than per connection —
-    /// the set is a property of the workspace, so one enumeration serves every
-    /// viewer of it. Whether THIS caller may see them is decided per request by
-    /// the ownership layer and is never cached with the set.
+    /// Read when a wall opens and on each notice that the set or the account's
+    /// members may have changed. Whether THIS caller may see them is decided per
+    /// request by the ownership layer.
     ///
     /// # Errors
     /// Reports a datastore that would not answer. An empty workspace is an
@@ -76,15 +74,14 @@ pub trait WorkspaceFleets: Send + Sync + std::fmt::Debug + 'static {
     fn live_set(
         &self,
         workspace: &Uuid7,
-    ) -> impl Future<Output = FleetResult<Arc<BTreeSet<String>>>> + Send;
+    ) -> impl Future<Output = FleetResult<BTreeSet<String>>> + Send;
 
     /// Where every fleet of `workspace` in `fleets` stands: the counter
     /// snapshot a `hello` carries so a subscriber is right before its first
     /// frame.
     ///
-    /// Never cached, and asked only when a `hello` is about to go out: the
-    /// set may be a tick old, but a counter that old is the staleness the
-    /// frame exists to remove. Every identifier the workspace holds answers,
+    /// Asked only when a `hello` is about to go out. Every identifier the
+    /// workspace holds answers,
     /// zeros for a fleet that has never run; one it does not hold is absent.
     ///
     /// # Errors
@@ -94,10 +91,6 @@ pub trait WorkspaceFleets: Send + Sync + std::fmt::Debug + 'static {
         workspace: &Uuid7,
         fleets: &[String],
     ) -> impl Future<Output = FleetResult<BTreeMap<String, FleetCounters>>> + Send;
-
-    /// Expires the workspace's cached live set after a delete committed
-    /// elsewhere, so the next enumeration no longer lists the fleet.
-    fn invalidate_live_set(&self, workspace: &Uuid7) -> impl Future<Output = ()> + Send;
 
     /// Which runnable fleets may read each of the workspace's secrets.
     ///
@@ -139,7 +132,7 @@ impl WorkspaceFleets for afd_fleet_lifecycle::Fleets {
     fn live_set(
         &self,
         workspace: &Uuid7,
-    ) -> impl Future<Output = FleetResult<Arc<BTreeSet<String>>>> + Send {
+    ) -> impl Future<Output = FleetResult<BTreeSet<String>>> + Send {
         Self::live_set(self, workspace)
     }
 
@@ -149,10 +142,6 @@ impl WorkspaceFleets for afd_fleet_lifecycle::Fleets {
         fleets: &[String],
     ) -> impl Future<Output = FleetResult<BTreeMap<String, FleetCounters>>> + Send {
         Self::counters(self, workspace, fleets)
-    }
-
-    fn invalidate_live_set(&self, workspace: &Uuid7) -> impl Future<Output = ()> + Send {
-        Self::invalidate_live_set(self, workspace)
     }
 
     fn secret_access(

@@ -54,7 +54,7 @@ mod read;
 #[path = "gate_lane_seed.rs"]
 mod seed;
 
-pub(crate) use self::seed::Window;
+pub(crate) use self::seed::{LOCK_FLEET, SETUP_CARD, Window};
 
 /// The instant a fixture row is raised at, and identifiers are minted at.
 ///

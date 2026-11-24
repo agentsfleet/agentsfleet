@@ -4,7 +4,8 @@
 use super::{hold, live};
 use crate::seed::{Seeded, seeded, seeded_parts};
 use crate::support::Fixtures;
-use af_core::timing::SANDBOX_HOLD_IDLE;
+use afd_runner::timing::SANDBOX_HOLD_IDLE;
+
 use afd_bus::wake::Wake;
 use afd_db::test_util::mint_id;
 

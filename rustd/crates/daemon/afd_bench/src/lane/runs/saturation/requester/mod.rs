@@ -212,7 +212,7 @@ async fn wait<H: Host>(
     let stop = shared.abort.token();
     let notified = host.wait(runner);
     tokio::pin!(notified);
-    let mut renew = tokio::time::interval(af_core::timing::RENEWAL_TICK);
+    let mut renew = tokio::time::interval(afd_runner::timing::HEARTBEAT_INTERVAL);
     renew.tick().await;
     loop {
         tokio::select! {

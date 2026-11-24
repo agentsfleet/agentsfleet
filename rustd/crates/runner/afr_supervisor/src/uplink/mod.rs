@@ -29,6 +29,8 @@ pub(crate) struct SessionSender {
     pub(crate) budget: Budget,
     /// The frame ceilings the connection's welcome announced.
     pub(crate) ceilings: af_stream::Ceilings,
+    /// The heartbeat interval the connection's welcome announced.
+    pub(crate) interval: std::time::Duration,
     pub(crate) stop: CancellationToken,
 }
 

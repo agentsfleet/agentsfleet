@@ -4,11 +4,11 @@ use super::connect::Connected;
 use crate::{
     Result,
     error::ErrorKind,
-    uplink::{StreamHandle, queues::Receivers, writer},
+    uplink::{queues::Receivers, writer},
 };
 use af_stream::{OwnedFrame, Reader};
 use af_wire::protocol::StreamKind;
-use tokio::{sync::mpsc, task::JoinSet, time::Instant};
+use tokio::{sync::mpsc, task::JoinSet};
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument as _, instrument::WithSubscriber as _};
 
@@ -97,18 +97,6 @@ async fn read(
     }
 }
 
-pub(super) async fn ping(handle: StreamHandle, stop: CancellationToken) -> Result<()> {
-    let mut ticks = tokio::time::interval_at(
-        Instant::now() + af_core::timing::STREAM_PING_INTERVAL,
-        af_core::timing::STREAM_PING_INTERVAL,
-    );
-    ticks.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-    loop {
-        tokio::select! { () = stop.cancelled() => return Ok(()), _ = ticks.tick() => {} }
-        handle.compute(crate::client::stream::Ping).await?;
-    }
-}
-
 /// Native codec tasks carry their connection's correlation and scoped subscriber.
 pub(super) fn track(
     workers: &mut JoinSet<Result<()>>,
@@ -158,6 +146,7 @@ fn observe(done: std::result::Result<Result<()>, tokio::task::JoinError>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio::time::Instant;
 
     #[tokio::test(start_paused = true)]
     async fn a_task_that_ignores_cancellation_is_aborted_after_one_answer_bound() {

@@ -64,19 +64,13 @@ pub use self::read::{After, FleetPage, FleetRow, Triggers};
 #[derive(Debug, Clone)]
 pub struct Fleets {
     database: Db,
-    /// One enumeration per workspace per tick, shared by every viewer of it.
-    /// See [`live_set`] for why this read is cached where the others are not.
-    live_sets: live_set::LiveSets,
 }
 
 impl Fleets {
     /// Bind the store to the durable fleet database.
     #[must_use]
     pub fn new(database: Db) -> Self {
-        Self {
-            database,
-            live_sets: live_set::live_sets(),
-        }
+        Self { database }
     }
 }
 

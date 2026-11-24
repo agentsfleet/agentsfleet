@@ -102,7 +102,7 @@ fn malformed_unknown_and_unsafe_settings_refuse_without_echoing_values() -> Test
         "[telemetry]\notlp_endpoint = 'private-invalid-value'",
         "[server]\nport = 'private-invalid-value'",
         "[server]\nunknown = 'private-invalid-value'",
-        "[runner.run]\nttl_seconds = 32",
+        "[runner.run]\nttl_seconds = 28",
         "[runner.scheduling]\nmax_concurrent_recovery_assignments = 0",
         "[runner.stream.data]\nmax_buffered_bytes = 1",
         "[runner.stream.data]\nmax_buffered_bytes = 67_108_863",

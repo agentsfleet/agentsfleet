@@ -1,9 +1,10 @@
 //! A native carrier's application traffic cannot replace liveness or durable authority.
 #![expect(clippy::expect_used, reason = "integration preconditions fail loudly")]
 
-use af_core::timing::{HEARTBEAT_INTERVAL, STREAM_ANSWER_TIMEOUT};
+use af_core::timing::STREAM_ANSWER_TIMEOUT;
 use af_stream::Transport;
 use af_wire::protocol::StreamKind;
+use afd_runner::timing::HEARTBEAT_INTERVAL;
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
 use tokio::time::Instant;

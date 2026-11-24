@@ -16,7 +16,7 @@
 | Toolbox | A signed, read-only Enhanced Read-Only File System (EROFS) root filesystem built once per release from pinned Debian snapshots, downloaded before any run and verified by descriptor. No container image is pulled or unpacked on the run path |
 | Workspace disk | Per sandbox, a writable block image sized to the run's disk limit, attached with direct I/O, holding both `/workspace` and `/tmp`, deleted when its sandbox is destroyed |
 | Warm slot | A sandbox already started before any run arrives: cgroup made, workspace disk mounted, executor idle. It serves one run. Built but unwired: only the kernel lane and tests start one (`afr_sandbox/src/warm_slots/mod.rs`) |
-| Held sandbox | The sandbox of a run that ended processed, frozen through `cgroup.freeze` and kept for its fleet's next run for an idle window of ten minutes (`af_core::timing::SANDBOX_HOLD_IDLE`). Every other run's sandbox is destroyed when the run ends |
+| Held sandbox | The sandbox of a run that ended processed, frozen through `cgroup.freeze` and kept for its fleet's next run for the daemon's idle window, `[runner.sandboxes] max_idle_hold_seconds`, ten minutes by default. The runner asks for up to a day and the report's acknowledgement narrows the hold to the daemon's window. Every other run's sandbox is destroyed when the run ends |
 | Workspace | Target, not built: per fleet, restored from and saved to R2 (or any S3-compatible store, such as a self-hosted RustFS), with only the supervisor moving bytes. No restore or save exists yet (§"A run's sandbox today") |
 | Model keys | Supervisor only; never inside a sandbox |
 | Coding engines | Codex first-class, split across the wall; Claude Code in the sandbox, its model calls through a supervisor relay |
@@ -48,7 +48,7 @@ Remove the private transcript from server-rendered and browser caches, and close
 |---|---|---|
 | Draft/message/candidate rows and private replay bodies | Daemon DELETE; no timed loop expires a draft, and a replay body goes when its key is claimed again past the replay window (`afd_setup`'s `replay/sql/expire.sql`); content-free receipts remain | Gone from ordinary reads at 204; database backups follow infrastructure retention, not an instant physical erase. |
 | Private progress channel / buffered deltas | Daemon drops draft-specific buffer and closes subscribers | No new private read after 204; buffered or already rendered client text cannot be recalled. |
-| Runner memory / in-flight request | Daemon deletes the active run and publishes a stop hint; the next renewal finds no run, and the runner cancels the turn and drops its local buffers | An online runner stops on the hint or at its next five-second renewal; a disconnected runner's run expires within 35 seconds. Upstream completion may outlive local abort. |
+| Runner memory / in-flight request | Daemon deletes the active run and publishes a stop hint; the next renewal finds no run, and the runner cancels the turn and drops its local buffers | An online runner stops on the hint or at its next renewal round, one heartbeat interval at most; a disconnected runner's run expires within 38 seconds. Upstream completion may outlive local abort. |
 | Pending setup report | Worker memory holds the encoded report until the daemon acknowledges or refuses it; no report files are written (`afr_supervisor/src/setup_run/mod.rs`) | The report's bytes are zeroed when the worker drops them. Process loss discards pending memory. |
 | Logs / traces / metrics / crash diagnostics | Do not capture prompts, answers, proposal content, tokens, or secret values | No private text is intentionally written; test redaction and disabling automatic body/crash capture. |
 | Provider requests | Provider/service account policy, disclosed on delete | Local abort cannot establish upstream erasure. Provider-specific retention is shown, never claimed zero. |
@@ -73,7 +73,7 @@ alert fires
  → the fleet reads logs, runs command-line tools, writes Python, edits code, runs tests,
    or hands the coding to Codex on the user's own subscription
  → it proposes a fix → the supervisor pushes a pinned branch and opens a draft Pull Request
- → the runner holds the sandbox frozen for ten minutes, then destroys it
+ → the runner holds the sandbox frozen for the daemon's idle window, ten minutes by default, then destroys it
  → a follow-up ("also fix the retry") within the window thaws that same sandbox on the same runner
 ```
 

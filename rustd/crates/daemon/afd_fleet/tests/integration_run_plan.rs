@@ -113,7 +113,7 @@ async fn head_plan(connection: &mut PgConnection, runner: &Uuid7) -> serde_json:
     .bind(afd_state::sql::FLEET_STATUS_ACTIVE)
     .bind(runner)
     .bind(64_i64)
-    .bind(af_core::timing::RUNNER_OFFLINE_AFTER)
+    .bind(afd_runner::timing::RUNNER_OFFLINE_AFTER)
     .bind(afd_state::sql::RUNNER_STATUS_ACTIVE)
     .bind(Vec::<Uuid7>::new())
     .bind(Option::<Uuid7>::None)

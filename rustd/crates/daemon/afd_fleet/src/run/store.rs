@@ -18,7 +18,7 @@ use afd_db::Db;
 /// carries the live tail and the disposable notifications.
 #[derive(Debug, Clone)]
 pub struct Runs {
-    clock: af_core::timing::RunClock,
+    clock: afd_runner::timing::RunClock,
     resume_from_checkpoint: bool,
     database: Db,
     bus: Handle,
@@ -38,13 +38,13 @@ pub struct Runs {
 }
 
 impl Runs {
-    pub(crate) const fn clock(&self) -> af_core::timing::RunClock {
+    pub(crate) const fn clock(&self) -> afd_runner::timing::RunClock {
         self.clock
     }
 
     /// Uses the deployment clock validated before startup.
     #[must_use]
-    pub fn with_clock(mut self, clock: af_core::timing::RunClock) -> Self {
+    pub fn with_clock(mut self, clock: afd_runner::timing::RunClock) -> Self {
         self.clock = clock;
         self
     }
@@ -66,7 +66,7 @@ impl Runs {
     #[must_use]
     pub fn new(database: Db, bus: Handle, entropy: Entropy) -> Self {
         Self {
-            clock: af_core::timing::RunClock::default(),
+            clock: afd_runner::timing::RunClock::default(),
             resume_from_checkpoint: true,
             database,
             bus,

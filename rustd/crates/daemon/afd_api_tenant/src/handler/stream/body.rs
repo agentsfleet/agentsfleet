@@ -15,7 +15,7 @@
 //!
 //! # The heartbeat
 //!
-//! A named event, sent after [`afd_sse::HEARTBEAT_INTERVAL`] with nothing else
+//! A named event, sent after [`afd_sse::KEEP_ALIVE_INTERVAL`] with nothing else
 //! written, and re-armed by every event — heartbeats included — which is the
 //! `KeepAlive` behaviour this replaces.
 //!
@@ -65,7 +65,7 @@ pub(super) fn serve(frames: BoxStream<'static, Frame>, slot: StreamPermit) -> Re
             frames,
             _slot: slot,
             queued: VecDeque::new(),
-            quiet_until: Instant::now() + afd_sse::HEARTBEAT_INTERVAL,
+            quiet_until: Instant::now() + afd_sse::KEEP_ALIVE_INTERVAL,
         },
         Wire::next_chunk,
     );
@@ -106,7 +106,7 @@ impl Wire {
             frame = self.frames.next() => Some(frame?),
             () = tokio::time::sleep_until(quiet_until) => None,
         };
-        self.quiet_until = Instant::now() + afd_sse::HEARTBEAT_INTERVAL;
+        self.quiet_until = Instant::now() + afd_sse::KEEP_ALIVE_INTERVAL;
         let Some(frame) = arrived else {
             return Some((Ok(HEARTBEAT.clone()), self));
         };

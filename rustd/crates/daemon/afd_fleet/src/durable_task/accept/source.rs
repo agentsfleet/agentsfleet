@@ -35,7 +35,18 @@ pub(in crate::durable_task) async fn load(
     current: &RunRow,
     turn: &Uuid7,
 ) -> Result<Source> {
-    let source: Source = sqlx::query_as(sql::LOCK_SOURCE)
+    fetch(connection, current, turn, sql::LOCK_SOURCE).await
+}
+
+/// [`load`] through `statement`, its columns and binds: the decision reservation
+/// reads the same turn with no lock.
+pub(in crate::durable_task) async fn fetch(
+    connection: &mut PgConnection,
+    current: &RunRow,
+    turn: &Uuid7,
+    statement: &'static str,
+) -> Result<Source> {
+    let source: Source = sqlx::query_as(statement)
         .bind(turn)
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
@@ -44,7 +55,7 @@ pub(in crate::durable_task) async fn load(
         .bind(afd_connector::slack::PERSON_ACTOR_SEPARATOR)
         .fetch_optional(connection)
         .await
-        .map_err(query("lock durable task source"))?
+        .map_err(query("read durable task source"))?
         .ok_or(DurableTaskRefusal::NotFound)?;
     Ok(source)
 }

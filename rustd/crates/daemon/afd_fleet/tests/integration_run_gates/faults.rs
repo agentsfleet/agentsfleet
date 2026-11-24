@@ -156,7 +156,7 @@ async fn should_write_no_run_when_another_runner_won_the_assignment_mid_pass() {
     fixtures.age(thread, "run_expires_at", LAPSE).await;
     let won = fixtures
         .runs()
-        .assign(&assigned.fleet_id, &rival, af_core::timing::RUN_TTL)
+        .assign(&assigned.fleet_id, &rival, afd_runner::timing::RUN_TTL)
         .await
         .expect("the assignment statement answers");
     assert!(won.is_some(), "the rival takes the lapsed thread");

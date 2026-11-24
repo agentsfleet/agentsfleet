@@ -10,7 +10,7 @@ use std::time::Duration;
 use af_core::clock::{FixedClock, after};
 use af_core::id::Uuid7;
 use af_core::test_util::trace::Capture;
-use af_core::timing::SANDBOX_HOLD_IDLE;
+use af_core::timing::DAY;
 use afr_sandbox::{Engine, Limits, Sandbox, SandboxRequest};
 use jiff::Timestamp;
 
@@ -107,7 +107,7 @@ async fn test_a_parked_sandbox_is_taken_by_its_fleets_next_run() {
     clock.advance(Duration::from_secs(30));
     let taken = holds.take(&key(FLEET_A)).await.unwrap();
 
-    assert_eq!(until, Some(after(START, SANDBOX_HOLD_IDLE)));
+    assert_eq!(until, Some(after(START, DAY)));
     assert_eq!(taken.held, Duration::from_secs(30));
     assert!(
         fleets(&holds).await.is_empty(),
@@ -167,7 +167,7 @@ async fn test_expired_hold_is_destroyed() {
     let (holds, clock) = holds(2);
 
     hold(&holds, &engine, FLEET_A).await;
-    clock.advance(SANDBOX_HOLD_IDLE.saturating_sub(Duration::from_millis(1)));
+    clock.advance(DAY.saturating_sub(Duration::from_millis(1)));
     assert_eq!(fleets(&holds).await, [FLEET_A], "held until its deadline");
     clock.advance(Duration::from_millis(1));
     let left = fleets(&holds).await;

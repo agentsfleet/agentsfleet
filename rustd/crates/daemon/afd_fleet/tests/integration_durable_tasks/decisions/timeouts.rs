@@ -46,16 +46,34 @@ async fn blocked(case: &Case, capture: &Capture) {
         .expect("hold source after thread can be acquired");
     statement_timeout(&tasks, case, &input, capture).await;
     cancellation(&tasks, case, &input, capture, &database).await;
+    assert_eq!(
+        fixture.counts().await,
+        (0, 0, 0),
+        "neither waiter saved a call"
+    );
     blocker.rollback().await.expect("release source blocker");
-    assert_eq!(fixture.counts().await, (0, 0, 0));
-    let result = timeout(
+    // The cancelled request's issue statement was already with Postgres. It is one
+    // autocommitted statement, so it issues its call once the lock frees, though nobody
+    // is left to read the key; the operation's retry reads that call back.
+    abandoned_statement_ends(case).await;
+    assert_eq!(fixture.counts().await, (1, 1, 0));
+    let (issued, body) = timeout(
         Duration::from_secs(5),
         tasks.reserve_decision(case.run(), &input),
     )
     .await
     .expect("original fleet thread is usable after cancellation")
-    .expect("same accepted source recovers");
-    assert!(result.into_parts().0);
+    .expect("the same operation replays")
+    .into_parts();
+    assert!(!issued, "the retry gets no second key");
+    let body: serde_json::Value = serde_json::from_str(&body).expect("a reservation answer");
+    assert_eq!(
+        (body.get("status"), body.get("state")),
+        (
+            Some(&serde_json::json!("existing")),
+            Some(&serde_json::json!("issued"))
+        )
+    );
     assert_eq!(fixture.counts().await, (1, 1, 0));
     database.close().await;
     fixture
@@ -63,6 +81,35 @@ async fn blocked(case: &Case, capture: &Capture) {
         .finish()
         .await
         .expect("decision model fixture lifecycle");
+}
+
+/// Waits until no backend is still running an issue statement, named by how
+/// `decision/sql/issue.sql` opens.
+async fn abandoned_statement_ends(case: &Case) {
+    let mut probe = case
+        .held
+        .fixtures
+        .database
+        .acquire()
+        .await
+        .expect("a connection");
+    timeout(Duration::from_secs(5), async {
+        loop {
+            let running: bool = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE state <> 'idle' \
+                 AND query LIKE '-- A decision reservation''s one locking statement%')",
+            )
+            .fetch_one(&mut *probe)
+            .await
+            .expect("inspect the abandoned statement");
+            if !running {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("the abandoned statement ends once its lock frees");
 }
 
 pub(super) async fn single_connection(fixture: &Decisions<'_>) -> (Db, DurableTasks) {

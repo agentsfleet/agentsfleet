@@ -195,3 +195,46 @@ async fn test_tool_call_records_refuse_a_run_lapsed_in_the_wait() {
     );
     held.fixtures.cleanup().await;
 }
+
+/// Two writers of one run still take turns: a tool-call post, which locks the run
+/// itself, waits for a renewal holding it and gives up at the login's lock bound.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_tool_record_post_still_waits_on_a_renewal() {
+    let held = held().await;
+    let run = &held.issued.run_id;
+    let post = format!(
+        r#"{{"fencing_token":{},"calls":[{}]}}"#,
+        held.fence.as_u64(),
+        record(held.turn_id.as_str())
+    );
+    let post: ToolCallRecordsRequest<'_> = serde_json::from_str(&post).expect("a well-formed post");
+    let mut renewer = held
+        .fixtures
+        .database
+        .acquire()
+        .await
+        .expect("a connection");
+    let mut renewing = renewer.begin().await.expect("the renewal's transaction");
+    let cancelled: Option<bool> = sqlx::query_scalar(afd_fleet::run::sql::shared::LOCK_CANCELLED)
+        .bind(run)
+        .bind(&held.runner)
+        .fetch_optional(&mut *renewing)
+        .await
+        .expect("the renewal locks its run");
+    assert_eq!(cancelled, Some(false), "the renewal holds a live run");
+
+    let kept = held
+        .fixtures
+        .plane()
+        .record_tool_calls(&held.runner, run.as_str(), &post, held.now)
+        .await;
+
+    assert_eq!(
+        kept.err().map(|error| error.code()),
+        Some(af_core::error_code::INTERNAL_DB_UNAVAILABLE),
+        "the post waited for the renewal until the lock bound"
+    );
+    renewing.rollback().await.expect("the renewal lets go");
+    held.fixtures.cleanup().await;
+}

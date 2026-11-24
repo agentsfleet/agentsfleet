@@ -11,8 +11,8 @@ use afd_bus::Subject;
 use tokio_util::sync::CancellationToken;
 
 use super::{
-    EVENT_CLAIM_COMPLETED, EVENT_CLAIM_FAILED, EVENT_CLAIM_STARTED, EVENT_WAKE_CLOSED,
-    EVENT_WAKE_SUBSCRIBE_FAILED, Via, Worker, claim_once, pinged, report,
+    EVENT_CLAIM_COMPLETED, EVENT_CLAIM_FAILED, EVENT_CLAIM_STARTED, EVENT_WAKE_CLOSED, Via, Worker,
+    claim_once, pinged, report,
 };
 use crate::delivery::Outgoing;
 use crate::error::query;
@@ -72,38 +72,11 @@ fn a_logged_failure_reason_carries_no_code_prefix() {
     );
 }
 
-/// A worker whose bus refuses the subscription says so once and runs on its
-/// finished deliveries alone.
+/// A wake stream that ends, as it does when the bus shuts down, is logged once and
+/// dropped, and never reports a ping again: the loop goes on claiming on finished
+/// deliveries and lapses.
 #[tokio::test]
-async fn a_wake_that_cannot_subscribe_is_logged() -> TestResult {
-    let capture = Capture::install();
-    let (bus, _server) = afd_bus::test_util::detached()?;
-    bus.shutdown().await?;
-    let stopped = CancellationToken::new();
-    stopped.cancel();
-
-    let database = afd_db::test_util::unreachable_db();
-    Worker::new(database, bus, posters(), Entropy::new())
-        .run(stopped)
-        .await;
-
-    let logged = assert_unpinged(&capture, EVENT_WAKE_SUBSCRIBE_FAILED);
-    assert_eq!(
-        logged.field("error_code"),
-        Some(error_code::INTERNAL_OPERATION_FAILED.as_str())
-    );
-    assert_eq!(
-        logged.field("reason"),
-        Some("closed"),
-        "a shut bus refuses as closed"
-    );
-    Ok(())
-}
-
-/// A wake stream that ends is logged once and dropped, and never reports a
-/// ping after it.
-#[tokio::test]
-async fn a_closed_wake_is_logged_and_dropped() -> TestResult {
+async fn a_closed_wake_is_logged_dropped_and_returns() -> TestResult {
     let capture = Capture::install();
     let (bus, _server) = afd_bus::test_util::detached()?;
     let subscription = bus.subscribe(&Subject::DeliveryWake).await?;
@@ -112,9 +85,14 @@ async fn a_closed_wake_is_logged_and_dropped() -> TestResult {
 
     let waited = tokio::time::timeout(Duration::from_millis(50), pinged(&mut wake)).await;
 
-    assert!(waited.is_err(), "a closed wake never reports a ping");
-    assert!(wake.is_none(), "the worker stops listening");
+    assert!(
+        waited.is_ok(),
+        "a closed wake returns once, so the loop logs it and goes on"
+    );
+    assert!(wake.is_none(), "the closed subscription is dropped");
     assert_unpinged(&capture, EVENT_WAKE_CLOSED);
+    let reopened = tokio::time::timeout(Duration::from_millis(50), pinged(&mut wake)).await;
+    assert!(reopened.is_err(), "with none open, nothing is reported");
     Ok(())
 }
 
@@ -198,7 +176,7 @@ async fn a_failed_claim_is_logged_by_the_loop() -> TestResult {
     let (bus, _server) = afd_bus::test_util::detached()?;
     let worker = Worker::new(
         afd_db::test_util::unreachable_db(),
-        bus,
+        bus.subscribe(&Subject::DeliveryWake).await?,
         posters(),
         Entropy::new(),
     );
@@ -223,7 +201,13 @@ async fn a_refused_draw_is_logged_by_the_loop() -> TestResult {
     let (bus, _server) = afd_bus::test_util::detached()?;
     let (entropy, control) = Entropy::new_mocked();
     control.fail_next();
-    let worker = Worker::new(afd_db::test_util::unreachable_db(), bus, posters(), entropy);
+    let wake = bus.subscribe(&Subject::DeliveryWake).await?;
+    let worker = Worker::new(
+        afd_db::test_util::unreachable_db(),
+        wake,
+        posters(),
+        entropy,
+    );
 
     run_until_logged(worker, &capture, EVENT_CLAIM_FAILED).await;
 
@@ -235,16 +219,4 @@ async fn a_refused_draw_is_logged_by_the_loop() -> TestResult {
     );
     failed.assert_uncoded_reason();
     Ok(())
-}
-
-/// A worker that never got a wake subscription waits on its scans alone: the
-/// ping it would have listened for never arrives.
-#[tokio::test]
-async fn a_worker_with_no_wake_never_reports_a_ping() {
-    let mut wake = None;
-
-    let waited = tokio::time::timeout(Duration::from_millis(50), pinged(&mut wake)).await;
-
-    assert!(waited.is_err(), "no subscription, no ping");
-    assert!(wake.is_none());
 }

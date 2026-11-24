@@ -19,8 +19,7 @@ impl Creations {
     /// and deletes the fleet, all under the tag `expected`.
     ///
     /// Runners hear their Cancel only after the commit, so no runner stops for
-    /// a delete that rolled back. After it, the caller owes the fleet store's
-    /// live-set invalidation.
+    /// a delete that rolled back; the workspace's open walls hear after it too.
     ///
     /// # Errors
     /// Refuses a caller who is not a current member, a fleet outside the
@@ -35,9 +34,13 @@ impl Creations {
             return Err(ErrorKind::Stale { etag: current }.into());
         }
         let cancelled = self.cancel(&mut tx, fleet).await?;
-        super::activate::close_saved_drafts(&mut tx, fleet).await?;
+        let closed = super::activate::close_saved_drafts(&mut tx, fleet).await?;
         afd_fleet_lifecycle::delete_locked(&mut tx, access.workspace, fleet).await?;
         tx.commit().await.map_err(query(CONTEXT))?;
+        for draft in &closed {
+            self.setup.drafts.changed(draft).await;
+        }
+        afd_turns::view::activity::fleets_changed(&self.activity_streams(), access.workspace).await;
         self.announce_cancellations(cancelled).await;
         if row.status == INSTALLING {
             self.setup_cancelled(access, fleet);

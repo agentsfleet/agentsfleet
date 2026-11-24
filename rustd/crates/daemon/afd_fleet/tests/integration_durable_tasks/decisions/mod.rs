@@ -28,6 +28,8 @@ mod github_server;
 mod goal_evidence;
 mod input_recovery;
 mod interpretation;
+mod issue;
+mod issue_races;
 mod ordering;
 mod outages;
 mod preflight;

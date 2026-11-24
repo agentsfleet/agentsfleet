@@ -70,6 +70,7 @@ impl Drafts {
         let updated = read::lock(&mut tx, access, &person, id).await?;
         let draft = read::project(&mut tx, updated).await?;
         tx.commit().await.map_err(query(CONTEXT))?;
+        self.changed(id).await;
         Ok(draft)
     }
 

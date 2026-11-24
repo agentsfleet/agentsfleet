@@ -34,6 +34,13 @@ const READ: &str = "SELECT queryid, sum(calls)::bigint, min(query) FROM pg_stat_
          AND userid <> (SELECT oid FROM pg_roles WHERE rolname = current_user) \
        GROUP BY queryid";
 
+/// Every transaction other roles have begun in this database: the control statements
+/// [`READ`] leaves out, counted on their own.
+const READ_BEGUN: &str = "SELECT COALESCE(sum(calls), 0)::bigint FROM pg_stat_statements \
+       WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database()) \
+         AND toplevel AND query ~* '^\\s*(BEGIN|START TRANSACTION)\\y' \
+         AND userid <> (SELECT oid FROM pg_roles WHERE rolname = current_user)";
+
 /// Installs the counter's views in the current database.
 const INSTALL: &str = "CREATE EXTENSION IF NOT EXISTS pg_stat_statements";
 
@@ -70,6 +77,25 @@ pub async fn install(owner: &Db) {
         .execute(&mut *connection)
         .await
         .expect("pg_stat_statements must install; is it preloaded?");
+}
+
+/// How many transactions the work under count has begun so far. Read it before and after
+/// a piece of work: the difference is the explicit transactions that work opened, which a
+/// [`Window`] does not count.
+///
+/// # Panics
+/// When the counter will not answer.
+pub async fn transactions_begun(owner: &Db) -> u64 {
+    let mut connection = owner
+        .acquire()
+        .await
+        .expect("the counter must reach its database");
+    let begun: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(READ_BEGUN))
+        .persistent(false)
+        .fetch_one(&mut *connection)
+        .await
+        .expect("pg_stat_statements must answer");
+    u64::try_from(begun).unwrap_or(0)
 }
 
 /// Calls and normalized text, by query id, at one instant.

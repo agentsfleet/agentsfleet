@@ -19,6 +19,7 @@ mod durable_policy;
 mod faults;
 mod lifecycle;
 mod operator;
+mod report_writes;
 use afd_db::test_util::refusal;
 
 use std::borrow::Cow;

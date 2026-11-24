@@ -29,7 +29,15 @@ impl Live {
         capacity: usize,
         wrap: impl FnOnce(afd_bus::Handle) -> afd_bus::Handle,
     ) -> Self {
-        let f = Fixture::create().await;
+        Self::on(Fixture::create().await, capacity, wrap).await
+    }
+
+    /// The same stream over the case `f`, on whatever database it holds.
+    pub(super) async fn on(
+        f: Fixture,
+        capacity: usize,
+        wrap: impl FnOnce(afd_bus::Handle) -> afd_bus::Handle,
+    ) -> Self {
         let (inner, server) =
             afd_bus::test_util::detached().expect("an in-process bus opens no socket");
         let bus = wrap(inner);

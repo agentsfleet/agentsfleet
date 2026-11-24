@@ -7,12 +7,11 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use af_core::timing::{RUN_TTL, RUNNER_OFFLINE_AFTER, SANDBOX_HOLD_IDLE};
-
 use super::{hold, live, thread};
 use crate::rows::Row;
 use crate::seed::{self, Seeded, seeded, seeded_parts};
 use crate::support::Fixtures;
+use afd_runner::timing::{RUN_TTL, RUNNER_OFFLINE_AFTER, SANDBOX_HOLD_IDLE};
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]

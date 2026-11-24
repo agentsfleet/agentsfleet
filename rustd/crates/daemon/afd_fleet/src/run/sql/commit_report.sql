@@ -71,7 +71,7 @@ WITH scope AS MATERIALIZED (
   FROM thread.runs l
   JOIN locked_thread a ON a.fleet_id = l.fleet_id
   WHERE l.id = $1 AND l.runner_id = $2 AND l.status = $4
-  FOR UPDATE OF l
+  FOR NO KEY UPDATE OF l
 ), instant AS MATERIALIZED (
   -- Read once the thread and run locks are held, so the slice is measured to
   -- the moment the report owns the run, never before a lock wait.

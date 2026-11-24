@@ -22,7 +22,7 @@ async fn disabling_new_durable_work_keeps_software_capability_and_ordinary_worke
                     "registry_allowlist": [], "worker_count": 1, "extra_binds": [],
                 },
                 "degraded": false, "degraded_reason": null, "selftest_requested": false,
-                "heartbeat_interval_ms": 2000, "release_holds": [],
+                "release_holds": [],
             }))
         });
         let probe = probe();

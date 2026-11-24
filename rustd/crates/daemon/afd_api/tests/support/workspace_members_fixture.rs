@@ -136,17 +136,6 @@ impl Members {
         sign_up(&self.database, &signup).await;
     }
 
-    /// John removes Bob from his account.
-    pub(crate) async fn remove_bob(&self) {
-        let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query(afd_tenant::sql::member::DELETE_MEMBERSHIP)
-            .bind(&self.john.tenant)
-            .bind(&self.bob.user)
-            .execute(&mut *connection)
-            .await
-            .expect("Bob's membership is removed");
-    }
-
     /// The actor of every message admitted to John's fleet.
     pub(crate) async fn admitted_actors(&self) -> Vec<String> {
         let mut connection = self.database.acquire().await.expect("an API connection");

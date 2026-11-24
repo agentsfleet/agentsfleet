@@ -18,9 +18,6 @@ pub struct RuntimeSettings {
     /// Exponential ceiling before jitter; reconnect and reports are unbounded in count.
     #[garde(range(min = 1, max = 30_000))]
     pub daemon_max_backoff_ms: u64,
-    /// Batched host renewal cadence; cannot exceed the existing safe cadence.
-    #[garde(range(min = 100, max = 5000))]
-    pub renewal_interval_ms: u64,
     /// Required file restores queue; optional captures skip when admission is full.
     #[garde(range(min = 1, max = 16))]
     pub max_concurrent_file_operations: usize,
@@ -51,7 +48,6 @@ impl RuntimePolicy {
             daemon_max_attempts: 5,
             daemon_initial_backoff_ms: 250,
             daemon_max_backoff_ms: 30_000,
-            renewal_interval_ms: 5000,
             max_concurrent_file_operations: 2,
         },
     };

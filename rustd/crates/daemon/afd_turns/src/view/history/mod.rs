@@ -157,6 +157,12 @@ impl History {
         let mut transaction = sqlx::Connection::begin(&mut *connection)
             .await
             .map_err(error::query(CONTEXT_STOP))?;
+        // The fleet and its thread in a statement of their own: an assignment holds the
+        // thread from the statement that takes it to its commit, and Stop's statement must start after that
+        // commit to see the run it issued and mark it.
+        crate::view::stop::hold_thread(&mut transaction, workspace, fleet)
+            .await
+            .map_err(error::query(CONTEXT_STOP))?;
         let stopped = crate::view::stop::stop_on(&mut transaction, workspace, fleet, turn_id)
             .await
             .map_err(error::query(CONTEXT_STOP))?;

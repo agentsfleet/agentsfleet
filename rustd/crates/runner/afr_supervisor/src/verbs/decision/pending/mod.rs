@@ -1,10 +1,10 @@
 //! A run retains physical receipts when its agent future is cancelled.
 
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use af_core::id::Uuid7;
 use af_wire::durable_task::{DecisionReceiptInput, DecisionReceiptResult};
-use parking_lot::Mutex;
+use dashmap::DashMap;
 
 mod receipt;
 use receipt::Receipt;
@@ -16,13 +16,13 @@ use crate::{
 /// Owned by one run; each in-flight physical call retains at most one receipt.
 #[derive(Default)]
 pub(crate) struct PendingDecisions {
-    receipts: Mutex<HashMap<Uuid7, Arc<Receipt>>>,
+    receipts: DashMap<Uuid7, Arc<Receipt>>,
 }
 
 impl std::fmt::Debug for PendingDecisions {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PendingDecisions")
-            .field("pending", &self.receipts.lock().len())
+            .field("pending", &self.receipts.len())
             .finish_non_exhaustive()
     }
 }
@@ -30,12 +30,11 @@ impl std::fmt::Debug for PendingDecisions {
 impl PendingDecisions {
     pub(super) fn retain(&self, call: Uuid7, input: DecisionReceiptInput) -> Result<Arc<Receipt>> {
         let input = Arc::new(Receipt::new(input));
-        let mut receipts = self.receipts.lock();
-        match receipts.entry(call) {
-            std::collections::hash_map::Entry::Occupied(_) => Err(error::config(
+        match self.receipts.entry(call) {
+            dashmap::Entry::Occupied(_) => Err(error::config(
                 "a physical decision already has a retained receipt",
             )),
-            std::collections::hash_map::Entry::Vacant(entry) => {
+            dashmap::Entry::Vacant(entry) => {
                 entry.insert(Arc::clone(&input));
                 Ok(input)
             }
@@ -61,7 +60,7 @@ impl PendingDecisions {
         })
         .await;
         // A dropped future never reaches removal; its run still owns the receipt.
-        self.receipts.lock().remove(call);
+        self.receipts.remove(call);
         result
     }
 
@@ -73,9 +72,8 @@ impl PendingDecisions {
     ) -> Result<()> {
         let receipts: Vec<_> = self
             .receipts
-            .lock()
             .iter()
-            .map(|(call, input)| (call.clone(), Arc::clone(input)))
+            .map(|entry| (entry.key().clone(), Arc::clone(entry.value())))
             .collect();
         for (call, input) in receipts {
             self.record(plane, halt, run, &call, &input).await?;

@@ -16,12 +16,12 @@ use afr_sandbox::{Engine as _, HostProbe, Kvm, Limits, SandboxRequest};
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
-use super::{Assignment, Heartbeat, MIN_HEARTBEAT_INTERVAL};
+use super::{Assignment, Heartbeat};
 use crate::client::{Call, Verb};
 use crate::error;
 use crate::halt::Halt;
 use crate::holds::{BuiltUnder, HoldKey, Holds, Release};
-use crate::test_support::{self, Answer, FakeEngine, INTERVAL_MS, drain, json, plane};
+use crate::test_support::{self, Answer, FakeEngine, INTERVAL_MS, drain, json, plane, plane_every};
 
 /// The fleet whose sandbox the runner holds.
 pub(super) const FLEET: &str = "01890a5d-ac96-774b-bcce-b302099a80a1";
@@ -30,7 +30,7 @@ const OTHER_FLEET: &str = "01890a5d-ac96-774b-bcce-b302099a80a2";
 const RUN: &str = "01890a5d-ac96-774b-bcce-b302099a80b1";
 /// A name in `release_holds` that is no fleet id.
 const NOT_AN_ID: &str = "not-a-fleet";
-/// A tick long enough that a beat inside it came early.
+/// A round long enough that a beat inside it came early.
 pub(super) const TICK_MS: u32 = 3_600_000;
 /// The event every release is logged under.
 pub(super) const RELEASED: &str = "sandbox_hold_released";
@@ -42,7 +42,7 @@ pub(super) const STOP: &str = "stop";
 pub(super) const HOLDS_FIELD: &str = "holds";
 
 /// A registry holding nothing, as a runner that has run no run.
-fn idle_holds() -> Holds {
+pub(super) fn idle_holds() -> Holds {
     Holds::start(Arc::new(SystemClock))
 }
 
@@ -60,32 +60,31 @@ pub(super) fn probe() -> HostProbe {
 }
 
 /// The assignment every answer here carries.
-fn policy() -> serde_json::Value {
+pub(super) fn policy() -> serde_json::Value {
     serde_json::json!({ "durable_tasks_enabled": true,"sandbox_tier": "landlock_full", "network_policy": "allow_all",
         "registry_allowlist": [], "worker_count": 3, "extra_binds": []})
 }
 
-fn reply(status: &str, selftest: bool, interval_ms: u32) -> Answer {
-    answer(status, &policy(), selftest, interval_ms, &[])
+fn reply(status: &str, selftest: bool) -> Answer {
+    answer(status, &policy(), selftest, &[])
 }
 
 /// An answer whose `release_holds` names `released`.
 pub(super) fn releasing(status: &str, released: &[&str]) -> Answer {
-    answer(status, &policy(), false, TICK_MS, released)
+    answer(status, &policy(), false, released)
 }
 
 /// The daemon's heartbeat answer, every field spelled once.
-fn answer(
+pub(super) fn answer(
     status: &str,
     assigned: &serde_json::Value,
     selftest: bool,
-    interval_ms: u32,
     released: &[&str],
 ) -> Answer {
     json(
         &serde_json::json!({"status": status, "assigned_policy": assigned, "degraded": false,
         "degraded_reason": null, "selftest_requested": selftest,
-        "heartbeat_interval_ms": interval_ms, "release_holds": released}),
+        "release_holds": released}),
     )
 }
 
@@ -130,8 +129,8 @@ async fn an_assignment_reaches_the_runs_and_labels_the_self_test_it_asks_for() {
     let beats = Arc::new(AtomicUsize::new(0));
     let counted = Arc::clone(&beats);
     let (plane, mut calls) = plane(move |_call| match counted.fetch_add(1, Ordering::SeqCst) {
-        0 => reply(KEEP_GOING, true, 2000),
-        _later => answer("drain", &serde_json::Value::Null, false, 2000, &[]),
+        0 => reply(KEEP_GOING, true),
+        _later => answer("drain", &serde_json::Value::Null, false, &[]),
     });
     let probe = probe();
     let held = idle_holds();
@@ -146,7 +145,6 @@ async fn an_assignment_reaches_the_runs_and_labels_the_self_test_it_asks_for() {
         test_support::assigned(NetworkPolicy::AllowAll, &[]),
         "the assigned posture reaches the runs"
     );
-    assert_eq!(assigned.interval, Duration::from_millis(2000));
     assert!(
         unassigned.is_err(),
         "a null assignment is refused: {unassigned:?}"
@@ -168,17 +166,6 @@ async fn an_assignment_reaches_the_runs_and_labels_the_self_test_it_asks_for() {
     assert_eq!(sent(&calls[1])["selftest"]["sandbox_tier"], "landlock_full");
 }
 
-#[tokio::test]
-async fn a_zero_interval_is_floored() {
-    let (plane, _calls) = plane(|_call| reply(KEEP_GOING, false, 0));
-    let probe = probe();
-
-    let held = idle_holds();
-    let beat = Heartbeat::new(&plane, &probe, &held).beat().await.unwrap();
-
-    assert_eq!(beat.interval, MIN_HEARTBEAT_INTERVAL);
-}
-
 #[test]
 fn a_worker_takes_work_only_when_wanted() {
     let mut assignment = Assignment::initial();
@@ -198,10 +185,13 @@ fn a_worker_takes_work_only_when_wanted() {
 async fn a_failed_beat_retries_and_a_stop_ends_runs_in_flight() {
     let beats = Arc::new(AtomicUsize::new(0));
     let counted = Arc::clone(&beats);
-    let (plane, _calls) = plane(move |_call| match counted.fetch_add(1, Ordering::SeqCst) {
-        0 | 1 => Answer::Fail(error::unavailable(Verb::Heartbeat, 503)),
-        2 => reply(KEEP_GOING, false, INTERVAL_MS),
-        _later => reply(STOP, false, INTERVAL_MS),
+    let every = Duration::from_millis(u64::from(INTERVAL_MS));
+    let (plane, _calls) = plane_every(every, move |_call| {
+        match counted.fetch_add(1, Ordering::SeqCst) {
+            0 | 1 => Answer::Fail(error::unavailable(Verb::Heartbeat, 503)),
+            2 => reply(KEEP_GOING, false),
+            _later => reply(STOP, false),
+        }
     });
     let probe = probe();
     let (published, mut watching) = watch::channel(Assignment::initial());
@@ -285,10 +275,14 @@ async fn test_a_saturation_release_beats_at_once() {
     let holds = holding(&engine, 2).await;
     let beats = Arc::new(AtomicUsize::new(0));
     let counted = Arc::clone(&beats);
-    let (plane, mut calls) = plane(move |_call| match counted.fetch_add(1, Ordering::SeqCst) {
-        0 => releasing(KEEP_GOING, &[]),
-        _later => releasing(STOP, &[]),
-    });
+    let (plane, mut calls) =
+        plane_every(
+            Duration::from_millis(u64::from(TICK_MS)),
+            move |_call| match counted.fetch_add(1, Ordering::SeqCst) {
+                0 => releasing(KEEP_GOING, &[]),
+                _later => releasing(STOP, &[]),
+            },
+        );
     let probe = probe();
     let (published, mut watching) = watch::channel(Assignment::initial());
     let halt = Halt::new(CancellationToken::new());

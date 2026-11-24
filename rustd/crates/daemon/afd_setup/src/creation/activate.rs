@@ -148,9 +148,9 @@ impl Creations {
             .into());
         }
         super::start::store(&mut tx, access, fleet, &initial).await?;
-        close_saved_drafts(&mut tx, fleet).await?;
+        let closed = close_saved_drafts(&mut tx, fleet).await?;
         let number = row.head_revision.to_string();
-        let announcement = afd_turns::view::activity::record_on(
+        let mut announcement = afd_turns::view::activity::record_on(
             &mut tx,
             access.workspace,
             fleet,
@@ -160,6 +160,9 @@ impl Creations {
         )
         .await
         .map_err(query(CONTEXT))?;
+        for draft in &closed {
+            announcement.draft_changed(draft);
+        }
         afd_turns::view::activity::commit(tx, announcement, Some(&self.turns.notices()))
             .await
             .map_err(query(CONTEXT))?;
@@ -176,14 +179,13 @@ impl Creations {
 pub(super) async fn close_saved_drafts(
     connection: &mut sqlx::PgConnection,
     fleet: &Uuid7,
-) -> Result<()> {
-    sqlx::query(sql::CLOSE_DRAFTS)
+) -> Result<Vec<Uuid7>> {
+    sqlx::query_scalar(sql::CLOSE_DRAFTS)
         .bind(fleet)
         .bind(DraftState::Closed.as_str())
         .bind(super::PRIVATE_RETENTION)
         .bind(DraftState::Saving.as_str())
-        .execute(connection)
+        .fetch_all(connection)
         .await
-        .map_err(query(CONTEXT))?;
-    Ok(())
+        .map_err(query(CONTEXT))
 }

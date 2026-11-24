@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 use tokio::{io::DuplexStream, time::Instant};
 use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 
-use super::{Opening, Running};
+use super::{MIN_HEARTBEAT_INTERVAL, Opening, Running};
 use crate::{
     config::{Config, ENV_API_URL, ENV_RUNNER_TOKEN, ENV_STREAM_CA, ENV_STREAM_URL},
     downlink::reconnect::Resume,
@@ -42,6 +42,8 @@ enum Script {
     NotWelcomed,
     /// Prepares, then welcomes a connection it never proposed.
     WelcomesAnother,
+    /// Prepares, then welcomes the proposal announcing this heartbeat interval.
+    Welcomes(u32),
 }
 
 impl Script {
@@ -54,7 +56,9 @@ impl Script {
             (Self::NotPrepared, 1) | (Self::NotWelcomed, 2) => Some(pong),
             (Self::PreparedOutOfTurn, 1) => Some(json!({"type":"prepared", "request_id":2,
                 "connection_id":PROPOSED, "previous_connection_id":null})),
-            (Self::NotWelcomed | Self::WelcomesAnother, 1) => Some(prepared),
+            (Self::NotWelcomed | Self::WelcomesAnother | Self::Welcomes(_), 1) => Some(prepared),
+            (Self::Welcomes(interval_ms), 2) => Some(json!({"type":"welcome", "request_id":1,
+                "connection_id":PROPOSED, "heartbeat_interval_ms":interval_ms})),
             (Self::WelcomesAnother, 2) => Some(json!({"type":"welcome", "request_id":1,
                 "connection_id":"019f0000-0000-7000-8000-0000000000a2",
                 "heartbeat_interval_ms":1000})),
@@ -160,6 +164,14 @@ async fn converse(
 
 /// Opens one session against `script` and returns why it was refused.
 async fn refusal(script: Script) -> Proof<(crate::Error, Resume)> {
+    let (attached, resume) = attempt(script).await?;
+    let failure = attached.err().ok_or("the scripted opening was accepted")?;
+    Ok((failure, resume))
+}
+
+/// Opens one session against `script`: the heartbeat interval it carries, or why it was
+/// refused.
+async fn attempt(script: Script) -> Proof<(crate::Result<Duration>, Resume)> {
     let daemon = Daemon::start(script).await?;
     let root = daemon.identity.root();
     let config = Config::from_env(&af_core::env::MapEnv::from_pairs([
@@ -194,12 +206,24 @@ async fn refusal(script: Script) -> Proof<(crate::Error, Resume)> {
         Duration::from_secs(6),
         opening.attach(&mut connection, &mut resume),
     )
-    .await?;
-    let failure = attached.err().ok_or("the scripted opening was accepted")?;
+    .await?
+    .map(|(_pipes, (_ceilings, interval))| interval);
     connection
         .close(Instant::now() + Duration::from_secs(5))
         .await?;
-    Ok((failure, resume))
+    Ok((attached, resume))
+}
+
+/// The welcome's interval is the period of the runner's one clock, so the session
+/// carries it, and a zero is floored rather than firing rounds back to back.
+#[tokio::test]
+async fn a_welcomed_session_carries_its_interval_floored() -> Proof {
+    for (announced_ms, expected) in [(7_000, Duration::from_secs(7)), (0, MIN_HEARTBEAT_INTERVAL)] {
+        let (attached, _resume) = attempt(Script::Welcomes(announced_ms)).await?;
+
+        assert_eq!(attached?, expected, "{announced_ms} ms announced");
+    }
+    Ok(())
 }
 
 #[tokio::test]

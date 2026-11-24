@@ -28,8 +28,7 @@
 //! So a gauge is registered with a closure that only LOADS, and what it loads
 //! from is [`super::observed::Observed`].
 
-use std::collections::BTreeSet;
-use std::sync::{Mutex, PoisonError};
+use dashmap::{DashMap, DashSet};
 
 use opentelemetry::KeyValue;
 use opentelemetry::metrics::{Counter, Histogram, Meter, ObservableGauge};
@@ -93,26 +92,26 @@ pub struct Instruments {
     /// source-owned totals; runner histograms can use their isolated collector.
     delta: Meter,
     registry: Registry,
-    claimed: Mutex<BTreeSet<&'static str>>,
-    /// The observable handles, kept alive.
+    claimed: DashSet<&'static str>,
+    /// The observable handles, kept alive, one per family.
     ///
     /// An observable instrument's callback lives as long as its handle. Dropped
     /// on the floor at construction, every gauge in this daemon would go silent
     /// while every counter kept working — which is the hardest kind of
     /// telemetry defect to notice, because the dashboard still draws.
-    observed: Mutex<Vec<ObservableGauge<u64>>>,
+    observed: DashMap<&'static str, ObservableGauge<u64>>,
 }
 
 impl Instruments {
     /// Binds the declared contract to a meter.
     #[must_use]
-    pub const fn new(registry: Registry, cumulative: Meter, delta: Meter) -> Self {
+    pub fn new(registry: Registry, cumulative: Meter, delta: Meter) -> Self {
         Self {
             cumulative,
             delta,
             registry,
-            claimed: Mutex::new(BTreeSet::new()),
-            observed: Mutex::new(Vec::new()),
+            claimed: DashSet::new(),
+            observed: DashMap::new(),
         }
     }
 
@@ -207,10 +206,7 @@ impl Instruments {
                 }
             })
             .build();
-        self.observed
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .push(gauge);
+        self.observed.insert(family.name(), gauge);
         Ok(())
     }
 
@@ -220,10 +216,9 @@ impl Instruments {
     /// same sequence on every run is one a reader can diff against the census.
     #[must_use]
     pub fn unclaimed(&self) -> Vec<Box<str>> {
-        let claimed = self.claimed.lock().unwrap_or_else(PoisonError::into_inner);
         self.registry
             .families()
-            .filter(|family| !claimed.contains(&*family.name))
+            .filter(|family| !self.claimed.contains(&*family.name))
             .map(|family| family.name.clone())
             .collect()
     }
@@ -250,10 +245,7 @@ impl Instruments {
 
     /// Records that somebody took an instrument for `family`.
     fn claim(&self, family: &'static str) {
-        self.claimed
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .insert(family);
+        self.claimed.insert(family);
     }
 }
 

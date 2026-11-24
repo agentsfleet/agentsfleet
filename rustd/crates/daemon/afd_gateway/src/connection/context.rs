@@ -63,7 +63,7 @@ impl ConnectionServices {
         }
     }
 
-    pub(super) fn policy<'a>(&self, beat: &'a Beat) -> Result<HeartbeatResponse<'a>> {
+    pub(super) fn policy(beat: &Beat) -> Result<HeartbeatResponse<'_>> {
         Ok(HeartbeatResponse {
             status: HeartbeatStatus::Ok,
             assigned_policy: beat.assignment.decode()?,
@@ -75,9 +75,6 @@ impl ConnectionServices {
                 .iter()
                 .map(|id| id.as_str().into())
                 .collect(),
-            heartbeat_interval_ms: super::opening::interval_millis(
-                &self.gateway.inner.dependencies.runners,
-            )?,
         })
     }
 
@@ -110,7 +107,7 @@ impl ConnectionServices {
             .await?;
         self.apply_policy(&beat);
         self.send(&Message::Policy {
-            response: self.policy(&beat)?,
+            response: Self::policy(&beat)?,
         })
         .await?;
         self.refresh_cancellations().await

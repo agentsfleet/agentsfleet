@@ -34,6 +34,9 @@ impl Fleet {
     /// Streams through `bus` while setting the stream ceiling for the load ladder.
     pub(crate) fn with_stream_capacity(mut self, bus: afd_bus::Handle, capacity: usize) -> Self {
         self.runner_commands = bus.clone();
+        // A draft's writers publish its notice where its open page listens, as the
+        // daemon wires them.
+        self.drafts = self.drafts.clone().with_bus(bus.clone());
         self.live = Live::new(bus, StreamLimit::new(capacity));
         self
     }

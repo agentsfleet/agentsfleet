@@ -15,6 +15,7 @@ categories.workspace = true
 workspace = true
 
 [dependencies]
+dashmap.workspace = true
 # `error_shell!`, `error_lifts!` and the registry code a refusal is logged under.
 af_core.workspace = true
 # The charset and relative-step rules a repository binding's halves are held to.

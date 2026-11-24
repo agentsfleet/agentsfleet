@@ -35,7 +35,9 @@ mod resolver;
 mod rig;
 mod sandbox;
 
-pub(crate) use self::daemon::{Calls, activities, bounded, drain, plane, plane_with_http};
+pub(crate) use self::daemon::{
+    Calls, activities, bounded, drain, plane, plane_every, plane_with_http,
+};
 pub(crate) use self::fixtures::{healthy, payload, report_body};
 pub(crate) use self::git_fixture::{FIRST_README, FIXTURE_BRANCH, commit, git, head, repository};
 pub(crate) use self::resolver::{Stalled, assigned};
@@ -52,6 +54,14 @@ pub(crate) const GRANTED_UNTIL: jiff::Timestamp = jiff::Timestamp::constant(30, 
 
 /// The cadence and retry delay the fake daemon answers with, in milliseconds.
 pub(crate) const INTERVAL_MS: u32 = 1000;
+
+/// The heartbeat interval a fake daemon's welcome announces unless a test names one: a
+/// daemon's default. The runner itself only ever reads the interval its daemon sends.
+pub(crate) const ROUND: Duration = Duration::from_secs(10);
+
+/// The run lifetime a fake daemon grants: a daemon's default. The runner itself only
+/// ever reads the expiry its daemon sends.
+pub(crate) const GRANT: Duration = Duration::from_secs(38);
 
 /// The report fields, and the spellings, the run tests read back.
 pub(crate) const FAILURE_REASON: &str = "failure_reason";

@@ -22,7 +22,7 @@ use std::sync::Arc;
     description = concat!(
         "Streams private setup progress, partial replies and `context.progress` summary status. After reconnecting, reload the ",
         "draft and messages; `Last-Event-ID` is only a temporary hint. Access is checked ",
-        "before each message and at least every ten seconds while idle.",
+        "before each message.",
     ),
     params(afd_http::openapi::path::Draft),
     responses((status=200, body=String, content_type="text/event-stream", description="Private progress"),
@@ -51,13 +51,20 @@ pub(crate) async fn open<D: TenantPlane>(
     let link = live
         .link(afd_bus::Subject::ThreadItems(draft.clone()))
         .await;
+    let members = live
+        .link(afd_bus::Subject::Members(owned.tenant.clone()))
+        .await;
     let stream = body::frames(
         services.drafts().clone(),
         owned.workspace,
         person.subject().to_owned(),
         draft,
         view.generation,
-        body::Feed { slot, link },
+        body::Feed {
+            slot,
+            link,
+            members,
+        },
     );
     Ok(Sse::new(stream).into_response())
 }

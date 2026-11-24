@@ -8,7 +8,6 @@ SELECT id, original_runner_id, original_run_id,
        known_usage, charged_nanos, canonical_receipt_digest,
        failure_receipt_digest, failure_reason,
        (EXTRACT(EPOCH FROM (clock_timestamp() - failure_recorded_at)) * 1000)::bigint AS failure_age_ms,
-       GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (logical_expires_at - clock_timestamp())) * 1000))::bigint AS remaining_ms,
        created_at
 FROM runner.decision_calls
 WHERE (id = $1 AND $1 IS NOT NULL)

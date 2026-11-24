@@ -148,7 +148,6 @@ impl Lane {
             .expect("the delete transaction opens");
         afd_fleet_lifecycle::delete_locked(&mut transaction, workspace, fleet).await?;
         transaction.commit().await.expect("the delete commits");
-        self.fleets.invalidate_live_set(workspace).await;
         Ok(())
     }
 

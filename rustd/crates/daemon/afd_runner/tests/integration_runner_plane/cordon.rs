@@ -1,8 +1,9 @@
 //! Automatic quarantine is independent of operator intent and run expiry.
 
-use af_core::{clock, id::Uuid7, timing::RUNNER_OFFLINE_AFTER};
+use af_core::{clock, id::Uuid7};
 use afd_api_wire::{admin::RunnerEventType, operator::CordonReason};
 use afd_runner::capacity::authority::{Authority, Decision};
+use afd_runner::timing::RUNNER_OFFLINE_AFTER;
 
 use super::{Fixture, enrolment, refusal::Refusal};
 mod offline;
@@ -74,7 +75,7 @@ async fn beat(fixture: &Fixture, owner: &Authority) {
 async fn prove_elapsed(fixture: &Fixture, runner: &Uuid7) {
     // Advance only the proof's start; last_seen remains a current proved beat.
     sqlx::query("UPDATE runner.runners SET cordon_healthy_since_at = clock_timestamp() - $2::interval WHERE id = $1")
-        .bind(runner).bind(af_core::timing::UNCORDON_AFTER + std::time::Duration::from_secs(1))
+        .bind(runner).bind(afd_runner::timing::UNCORDON_AFTER + std::time::Duration::from_secs(1))
         .execute(&mut *fixture.database.acquire().await.expect("connection")).await.expect("age proof");
 }
 
@@ -142,7 +143,7 @@ async fn missed_cadence_resets_an_old_healthy_proof() {
         "UPDATE runner.runners SET last_seen_at = clock_timestamp() - $2::interval WHERE id = $1",
     )
     .bind(owner.runner())
-    .bind(af_core::timing::HEARTBEAT_INTERVAL.saturating_mul(2))
+    .bind(afd_runner::timing::HEARTBEAT_INTERVAL.saturating_mul(2))
     .execute(&mut *fixture.database.acquire().await.expect("connection"))
     .await
     .expect("missed beat");

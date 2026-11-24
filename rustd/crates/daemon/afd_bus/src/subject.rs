@@ -15,6 +15,12 @@ pub enum Subject {
     /// An owed delivery was committed; a worker should claim now rather than
     /// at its next pass. Lossy: a missed ping costs one pass.
     DeliveryWake,
+    /// An account's members changed; every open stream in the account re-reads
+    /// whether its viewer may still watch. Payload-free.
+    Members(Uuid7),
+    /// A workspace gained or lost a fleet; its open walls re-read the set.
+    /// Payload-free.
+    Fleets(Uuid7),
     /// Frames on any subject may be missing; every reader re-reads Postgres.
     Gap,
 }
@@ -28,6 +34,8 @@ impl Subject {
             Self::ThreadItems(_) => "thread_items",
             Self::RunnerCommand(_) => "runner_command",
             Self::DeliveryWake => "delivery_wake",
+            Self::Members(_) => "members",
+            Self::Fleets(_) => "fleets",
             Self::Gap => "gap",
         }
     }

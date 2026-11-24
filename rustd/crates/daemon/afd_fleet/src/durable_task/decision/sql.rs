@@ -20,9 +20,8 @@ pub(super) const BUDGET: &str = const_format::concatcp!(
     FROM charged CROSS JOIN pending\n",
 );
 pub(super) const BLOCK_PROFILE_SWITCH: &str = include_str!("sql/block_profile_switch.sql");
-pub(super) const SEQUENCE: &str = include_str!("sql/sequence.sql");
-pub(super) const INSERT_CALL: &str = include_str!("sql/insert_call.sql");
-pub(super) const INSERT_PAYLOAD: &str = include_str!("sql/insert_payload.sql");
+pub(super) const CONTEXT: &str = include_str!("sql/context.sql");
+pub(super) const SOURCE: &str = include_str!("sql/source.sql");
 pub(super) const ISSUE: &str = include_str!("sql/issue.sql");
 pub(super) const RECORD: &str = include_str!("sql/record.sql");
 pub(super) const RECORD_PAYLOAD: &str = include_str!("sql/record_payload.sql");

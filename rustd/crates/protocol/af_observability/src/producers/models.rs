@@ -1,5 +1,5 @@
 //! Per-call latency and expiring catalogue metadata; callbacks never query the database.
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::error::Result;
@@ -55,7 +55,9 @@ pub struct Handles {
     cache_read: Counter<u64>,
     cache_write: Counter<u64>,
     first: Histogram<f64>,
-    snapshot: Arc<Mutex<Option<Snapshot>>>,
+    /// The latest snapshot, replaced whole: a scrape reads it without waiting, and a
+    /// writer never leaves a reader holding a half-replaced set.
+    snapshot: Arc<tokio::sync::watch::Sender<Option<Snapshot>>>,
 }
 
 impl std::fmt::Debug for Snapshot {
@@ -72,7 +74,7 @@ impl Handles {
     /// # Errors
     /// Refuses a census/instrument disagreement.
     pub(super) fn claim(instruments: &Instruments, max_age: Duration) -> Result<Self> {
-        let snapshot: Arc<Mutex<Option<Snapshot>>> = Arc::new(Mutex::new(None));
+        let snapshot = Arc::new(tokio::sync::watch::Sender::new(None));
         for (family, field) in [
             (&declared::LIMITS, Field::Limits),
             (&declared::ROUTES, Field::Routes),
@@ -82,14 +84,9 @@ impl Handles {
             let state = Arc::clone(&snapshot);
             instruments.gauge_u64(family, move || {
                 state
-                    .try_lock()
-                    .ok()
-                    .and_then(|guard| {
-                        guard
-                            .as_ref()
-                            .map(|snapshot| readings(snapshot, field, Instant::now(), max_age))
-                    })
-                    .unwrap_or_default()
+                    .borrow()
+                    .as_ref()
+                    .map_or_default(|snapshot| readings(snapshot, field, Instant::now(), max_age))
             })?;
         }
         Ok(Self {
@@ -180,19 +177,20 @@ pub fn call(
 
 /// Replaces the whole metadata snapshot; missing/removed rows cannot linger.
 pub fn catalogue(models: Option<(Vec<ModelInfo>, bool)>) {
-    if let Some(producers) = installed()
-        && let Ok(mut target) = producers.models.snapshot.lock()
-    {
-        *target = models.map(|(mut models, mut clipped)| {
-            let kept = usize::try_from(MAX_MODELS).unwrap_or(usize::MAX);
-            clipped |= models.len() > kept;
-            models.truncate(kept);
-            Snapshot {
-                models,
-                clipped,
-                at: Instant::now(),
-            }
-        });
+    if let Some(producers) = installed() {
+        producers
+            .models
+            .snapshot
+            .send_replace(models.map(|(mut models, mut clipped)| {
+                let kept = usize::try_from(MAX_MODELS).unwrap_or(usize::MAX);
+                clipped |= models.len() > kept;
+                models.truncate(kept);
+                Snapshot {
+                    models,
+                    clipped,
+                    at: Instant::now(),
+                }
+            }));
     }
 }
 

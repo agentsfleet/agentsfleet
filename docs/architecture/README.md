@@ -149,6 +149,7 @@ After that, dip into whichever of these matches the change you're making:
 | 📏 [`scaling.md`](./scaling.md) | Sizing the runtime and its tuning knobs. |
 | 🗄️ [`datastore_scaling.md`](./datastore_scaling.md) | Where state lives: Postgres facts, core NATS signals. |
 | 🗃️ [`postgres_schemas.md`](./postgres_schemas.md) | Which Postgres schema owns each table, and the naming rules. |
+| 🧬 [`schema_convergence.md`](./schema_convergence.md) | Which setup, chat and durable-task tables fold into threads, turns, runs and items. |
 | 🖥️ [`web_app.md`](./web_app.md) | The dashboard's server-client rules. |
 | [`shared_chat_verification.md`](./shared_chat_verification.md) | Shared provider reader, browser lifecycle, tracing, limits and verification evidence. |
 | [`docs/architecture/high_level.md#fleet-setup-and-runtime`](high_level.md#fleet-setup-and-runtime) | Common validated fleet setup and reviewed lifecycle. |

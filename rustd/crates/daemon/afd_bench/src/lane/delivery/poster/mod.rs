@@ -15,7 +15,8 @@
 //! Delivery latency is enqueue-to-first-attempt; retry occupancy is the gap
 //! between one attempt and the next on the same job, which is time the ladder
 //! held the only worker. Both fall out of one `Instant` per attempt — taken
-//! BEFORE the lock, so a reader snapshotting the map never delays a stamp.
+//! before the entry is written, and each job's attempts sit in their own map entry, so
+//! concurrent deliveries never wait on one another's stamps.
 //!
 //! The window is a different instant. A job settles when the vendor ANSWERS,
 //! which is the attempt plus the delay the script gave it; each attempt
@@ -33,8 +34,10 @@
 
 use core::time::Duration;
 use std::collections::{BTreeMap, HashMap};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+
+use dashmap::DashMap;
 use std::time::Instant;
 
 use af_core::id::Uuid7;
@@ -101,7 +104,10 @@ pub struct Scripted {
     behaviours: Arc<BTreeMap<String, Behaviour>>,
     fast: Duration,
     slow: Duration,
-    seen: Arc<Mutex<Seen>>,
+    /// Every attempt of this run's jobs, one entry per job.
+    attempts: Arc<DashMap<Uuid7, Vec<Attempt>>>,
+    /// Jobs answered with a foreign destination: left by an earlier run.
+    foreign: Arc<AtomicU64>,
     /// Jobs of this run that reached a terminal state: delivered, or the
     /// ladder exhausted. Read without the lock by whoever waits for the drain.
     settled: Arc<AtomicU64>,
@@ -117,7 +123,8 @@ impl Scripted {
             behaviours: Arc::new(behaviours),
             fast,
             slow,
-            seen: Arc::new(Mutex::new(Seen::default())),
+            attempts: Arc::new(DashMap::new()),
+            foreign: Arc::new(AtomicU64::new(0)),
             settled: Arc::new(AtomicU64::new(0)),
             settled_signal: Arc::new(Notify::new()),
         }
@@ -138,15 +145,17 @@ impl Scripted {
 
     /// A snapshot of everything seen so far.
     ///
-    /// Taken once, by the reporter, after the worker is stopped: cloning the
-    /// map under the lock while the worker is still stamping would delay a
-    /// stamp by the length of the clone.
+    /// Taken once, by the reporter, after the worker is stopped.
     #[must_use]
     pub fn seen(&self) -> Seen {
-        self.seen.lock().map_or_default(|seen| Seen {
-            attempts: seen.attempts.clone(),
-            foreign: seen.foreign,
-        })
+        Seen {
+            attempts: self
+                .attempts
+                .iter()
+                .map(|entry| (entry.key().clone(), entry.value().clone()))
+                .collect(),
+            foreign: self.foreign.load(Ordering::Acquire),
+        }
     }
 
     /// The behaviour scripted for a destination, or `None` for a job that is
@@ -165,15 +174,15 @@ impl Scripted {
         delay: Duration,
         terminal: bool,
     ) -> bool {
-        let attempts_so_far = self.seen.lock().map_or(0, |mut seen| {
-            let attempts = seen.attempts.entry(id.clone()).or_default();
+        let attempts_so_far = {
+            let mut attempts = self.attempts.entry(id.clone()).or_default();
             attempts.push(Attempt {
                 at,
                 behaviour,
                 delay,
             });
             attempts.len()
-        });
+        };
         // Terminal for the drain means delivered OR the ladder exhausted,
         // which is this many attempts on one job; the poster is not told
         // when the worker gives up, so it counts.
@@ -181,9 +190,7 @@ impl Scripted {
     }
 
     fn foreign(&self) {
-        if let Ok(mut seen) = self.seen.lock() {
-            seen.foreign += 1;
-        }
+        self.foreign.fetch_add(1, Ordering::AcqRel);
     }
 }
 

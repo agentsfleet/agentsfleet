@@ -1,11 +1,11 @@
-//! Funding outages preserve one unsent call and resolve fresh keys on recovery.
+//! A funding outage saves no call, and the reservation that follows recovery reads the
+//! key as it then stands.
 
 use std::sync::Arc;
 
 use af_core::{error_code, test_util::trace::Capture};
 use af_wire::durable_task::{
-    DecisionAssessment, DecisionCallState, DecisionReceipt, DecisionReceiptInput,
-    DecisionRecordDisposition, DecisionReservationInput, DecisionUnavailableCause,
+    DecisionAssessment, DecisionCallState, DecisionRecordDisposition, DecisionReservationInput,
 };
 use afd_billing::{biller::FailOpen, ledger::LedgerBiller};
 use afd_db::test_util::unreachable_db;
@@ -14,14 +14,14 @@ use afd_vault::{SecretBody, SecretName};
 use serde_json::{Value, json, value::RawValue};
 
 use super::{
-    super::fixture::{Case, exercise, id},
+    super::fixture::{Case, exercise},
     fixture::{Decisions, known, request},
 };
 use crate::seed::{MODEL, PROVIDER};
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn unconfirmed_credit_keeps_the_intent_and_resolves_a_fresh_key_on_recovery() {
+async fn a_funding_outage_saves_no_call_and_recovery_reads_a_fresh_key() {
     let capture = Capture::install();
     exercise(async |case| funding(case, &capture).await).await;
 }
@@ -29,13 +29,17 @@ async fn unconfirmed_credit_keeps_the_intent_and_resolves_a_fresh_key_on_recover
 async fn funding(case: &Case, capture: &Capture) {
     let mut fixture = Decisions::create(case).await;
     let input = fixture.reservation(DecisionAssessment::Message, None);
-    let original = unpriced(&fixture, &input).await;
+    unpriced(&fixture, &input).await;
     unconfirmed(&fixture, &input).await;
     funding_events(capture, case);
     rotate_key(&fixture).await;
     let (issued, body) = fixture.reserve(&input).await;
     assert!(issued);
-    assert_eq!(body.get("call_id"), Some(&json!(original)));
+    let original = body
+        .get("call_id")
+        .and_then(Value::as_str)
+        .expect("the issued call")
+        .to_owned();
     assert_eq!(
         body.pointer("/dispatch/api_key"),
         Some(&json!("rotated-native-fixture"))
@@ -48,6 +52,7 @@ async fn funding(case: &Case, capture: &Capture) {
         json!({"status":"existing", "call_id":original, "state":"issued"})
     );
     assert_eq!(fixture.counts().await, (1, 1, 0));
+    changed_evidence_conflicts(&fixture).await;
     disabled_after_issue(&mut fixture, &input, &body).await;
     fixture
         .model
@@ -70,81 +75,46 @@ async fn rotate_key(fixture: &Decisions<'_>) {
         .expect("admin rotates before first issuance");
 }
 
-async fn unpriced(
-    fixture: &Decisions<'_>,
-    input: &garde::Valid<DecisionReservationInput>,
-) -> String {
+async fn unpriced(fixture: &Decisions<'_>, input: &garde::Valid<DecisionReservationInput>) {
     let case = fixture.case;
     let removed = sqlx::query("DELETE FROM model.platform_model_prices WHERE decision_revision_id IS NULL AND platform_model_id IN (SELECT id FROM model.platform_models WHERE provider=$1 AND model_name=$2)")
         .bind(PROVIDER).bind(MODEL)
         .execute(&mut *case.held.fixtures.database.acquire().await.expect("owned rate injection"))
         .await.expect("remove this isolated fixture's coding price");
     assert_eq!(removed.rows_affected(), 1);
-    let failure = fixture
-        .tasks
-        .reserve_decision(case.run(), input)
-        .await
-        .expect_err("decision issuance requires known whole-work credit headroom");
-    assert_eq!(
-        failure.code(),
-        error_code::DURABLE_TASK_DECISION_UNAVAILABLE
-    );
-    assert_eq!(fixture.counts().await, (1, 1, 0));
-    let call = unissued_replays(fixture).await;
+    let independent = fixture.reservation(DecisionAssessment::Message, None);
+    for candidate in [input, &independent] {
+        let failure = fixture
+            .tasks
+            .reserve_decision(case.run(), candidate)
+            .await
+            .expect_err("decision issuance requires known whole-work credit headroom");
+        assert_eq!(
+            failure.code(),
+            error_code::DURABLE_TASK_DECISION_UNAVAILABLE
+        );
+        assert_eq!(fixture.counts().await, (0, 0, 0), "a refusal saves nothing");
+    }
     case.held.fixtures.seed_model_rate(PROVIDER, MODEL).await;
-    call
 }
 
-async fn unissued_replays(fixture: &Decisions<'_>) -> String {
+/// The same assessment from another operation with other evidence conflicts with the
+/// issued call and changes nothing.
+async fn changed_evidence_conflicts(fixture: &Decisions<'_>) {
     let saved = fixture.call_snapshot().await;
-    let call = saved
-        .0
-        .get("id")
-        .and_then(Value::as_str)
-        .expect("retained native call");
-    let independent = fixture.reservation(DecisionAssessment::Message, None);
-    let mut changed = (*independent).clone();
-    changed.operation_id = afd_db::test_util::mint_id().into();
+    let mut changed = (*fixture.reservation(DecisionAssessment::Message, None)).clone();
     changed.evidence = json!({"observation":"a different tested head"});
     let changed = garde::Unvalidated::new(changed)
         .validate()
         .expect("bounded conflicting assessment");
-    for (candidate, expected) in [
-        (&independent, error_code::DURABLE_TASK_DECISION_UNAVAILABLE),
-        (&changed, error_code::DURABLE_TASK_REPLAY_CONFLICT),
-    ] {
-        let failure = fixture
-            .tasks
-            .reserve_decision(fixture.case.run(), candidate)
-            .await
-            .expect_err(
-                "independent operations cannot duplicate or change an unfinished assessment",
-            );
-        assert_eq!(failure.code(), expected);
-        assert_eq!(fixture.call_snapshot().await, saved);
-        assert_eq!(fixture.counts().await, (1, 1, 0));
-    }
-    premature_receipt(fixture, call).await;
-    assert_eq!(fixture.call_snapshot().await, saved);
-    assert_eq!(fixture.counts().await, (1, 1, 0));
-    call.to_owned()
-}
-
-async fn premature_receipt(fixture: &Decisions<'_>, call: &str) {
-    let receipt = garde::Unvalidated::new(DecisionReceiptInput {
-        fencing_token: fixture.case.run().fencing_token,
-        receipt: DecisionReceipt::Unknown {
-            cause: DecisionUnavailableCause::Timeout,
-        },
-    })
-    .validate()
-    .expect("bounded premature receipt");
     let failure = fixture
         .tasks
-        .record_decision(fixture.case.run(), &id(call), &receipt)
+        .reserve_decision(fixture.case.run(), &changed)
         .await
-        .expect_err("an unissued call cannot acquire a physical receipt");
-    assert_eq!(failure.code(), error_code::DURABLE_TASK_INVALID_TARGET);
+        .expect_err("another operation cannot change an issued assessment");
+    assert_eq!(failure.code(), error_code::DURABLE_TASK_REPLAY_CONFLICT);
+    assert_eq!(fixture.call_snapshot().await, saved);
+    assert_eq!(fixture.counts().await, (1, 1, 0));
 }
 
 fn funding_events(capture: &Capture, case: &Case) {
@@ -183,7 +153,7 @@ async fn unconfirmed(fixture: &Decisions<'_>, input: &garde::Valid<DecisionReser
         failure.code(),
         error_code::DURABLE_TASK_DECISION_UNAVAILABLE
     );
-    assert_eq!(fixture.counts().await, (1, 1, 0));
+    assert_eq!(fixture.counts().await, (0, 0, 0), "a refusal saves nothing");
 }
 
 async fn disabled_after_issue(

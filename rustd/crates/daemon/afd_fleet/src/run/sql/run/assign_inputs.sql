@@ -15,16 +15,35 @@
 -- starts after it, and the reply is cut to one frame, so the next takes the rest.
 --
 -- Only the runner holding the run assigns for it, and an assignment never replaces
--- a stamp a later fence wrote: fences only rise on a fleet's thread.
+-- a stamp a later fence wrote: fences only rise on a fleet's thread. It holds the thread
+-- for its one statement, so it queues behind a Stop, an assignment or a report of the fleet.
 --
 -- $1 run · $2 runner · $3 fence · $4 active run status · $5 read after sequence ·
 -- $6 steer producer · $7 machine actor · $8 person actor pattern · $9 Slack mention producer ·
 -- $10 Slack provider · $11 Slack person actor pattern · $12 Slack person actor separator
-WITH run AS MATERIALIZED (
+-- Locks, one step each and in this order: the fleet, its thread, the run. The fleet first,
+-- as Stop and a gate answer take it: fleet delete holds it FOR UPDATE and then deletes the
+-- runs and the thread, so this waits there holding nothing. The thread before any fold, as
+-- Stop takes it: a retry rewrites folds Stop may be settling, and taking them without it
+-- lets the two meet on two folds in opposite orders. The run after the thread, as every
+-- renewal, report and metering pass takes them; it is shared, so a status that moved while
+-- this waited is re-read.
+WITH fleet AS MATERIALIZED (
+    SELECT f.id
+    FROM fleet.fleets f
+    WHERE f.id = (SELECT l.fleet_id FROM thread.runs l WHERE l.id = $1 AND l.runner_id = $2)
+    FOR KEY SHARE OF f
+), thread AS MATERIALIZED (
+    SELECT s.fleet_id, s.last_runner_id, s.fencing_token, s.run_expires_at
+    FROM thread.threads s
+    JOIN fleet ON fleet.id = s.fleet_id
+    FOR NO KEY UPDATE OF s
+), run AS MATERIALIZED (
     SELECT l.fleet_id, head.sequence AS head_sequence,
-           head.reply_provider, head.reply_address
+           head.reply_provider, head.reply_address,
+           l.run_expires_at, s.run_expires_at AS thread_expires_at
     FROM thread.runs l
-    JOIN thread.threads s
+    JOIN thread s
       ON s.fleet_id = l.fleet_id AND s.last_runner_id = l.runner_id
      AND s.fencing_token = l.fencing_token
     -- An admitted turn: a run on a history-only receipt has no conversation.
@@ -33,13 +52,16 @@ WITH run AS MATERIALIZED (
     WHERE l.id = $1 AND l.runner_id = $2
       AND l.fencing_token = $3 AND l.status = $4
       AND l.durable_task_id IS NULL AND l.durable_task_generation IS NULL AND head.durable_task_generation IS NULL
-      AND l.run_expires_at > clock_timestamp()
-      AND s.run_expires_at > clock_timestamp()
+    FOR SHARE OF l
+), instant AS MATERIALIZED (
+    -- The clock after the locks, so a wait cannot make a lapsed run look live.
+    SELECT clock_timestamp() AS checked_at FROM run
 ), ahead AS MATERIALIZED (
     -- The conversation's next messages: an addressed conversation by equality,
     -- the unaddressed one by NULL, each in the index's own order.
     SELECT w.id, w.sequence, w.parked_at, w.durable_task_id, w.durable_task_generation, w.producer, w.actor, w.workspace_id
     FROM run
+    CROSS JOIN instant i
     CROSS JOIN LATERAL (
         (SELECT a.id, a.sequence, a.parked_at, a.durable_task_id, a.durable_task_generation, a.producer, a.actor, a.workspace_id
          FROM thread.turns a
@@ -55,6 +77,7 @@ WITH run AS MATERIALIZED (
            AND a.settled_at IS NULL AND a.sequence > GREATEST(run.head_sequence, $5)
          ORDER BY a.sequence)
     ) w
+    WHERE run.run_expires_at > i.checked_at AND run.thread_expires_at > i.checked_at
 ), judged AS (
     -- Foldable until the first message that is not: a running AND in order.
     SELECT f.id, bool_and(f.foldable) OVER (ORDER BY f.sequence) AS clear

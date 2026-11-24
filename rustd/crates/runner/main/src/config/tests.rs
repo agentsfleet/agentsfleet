@@ -19,7 +19,6 @@ max_retry_after_seconds = 60
 daemon_max_attempts = 5
 daemon_initial_backoff_ms = 250
 daemon_max_backoff_ms = 30_000
-renewal_interval_ms = 5000
 max_concurrent_file_operations = 2
 ";
 
@@ -86,7 +85,7 @@ fn custom_profile_reaches_component_policies() -> Checked {
         file,
         "[inference]\nconnect_timeout_seconds=2\nstream_idle_timeout_seconds=7\n\
         [provider_retries]\nmax_attempts=1\nmax_stream_open_attempts=1\n\
-        [supervisor]\ndaemon_max_attempts=2\nrenewal_interval_ms=1000\nmax_concurrent_file_operations=1"
+        [supervisor]\ndaemon_max_attempts=2\nmax_concurrent_file_operations=1"
     )?;
     let env = MapEnv::from_pairs([(ENV_CONFIG_FILE, file.path().to_str().ok_or("UTF-8 path")?)]);
     let selected = read(&env).map_err(|status| format!("custom profile refused: {status:?}"))?;
@@ -97,7 +96,6 @@ fn custom_profile_reaches_component_policies() -> Checked {
         af_providers::settings::RetryPolicy::DEFAULT
     );
     assert_eq!(selected.supervisor.settings().daemon_max_attempts, 2);
-    assert_eq!(selected.supervisor.settings().renewal_interval_ms, 1000);
     assert_eq!(
         selected
             .supervisor
@@ -127,7 +125,8 @@ const INVALID_PROFILES: &[(&str, &str)] = &[
         "daemon_initial_backoff_ms",
     ),
     (
-        "[supervisor]\nrenewal_interval_ms=5001",
+        // The runner renews on its heartbeat round, so no key sets a renewal cadence.
+        "[supervisor]\nrenewal_interval_ms = 5000",
         "renewal_interval_ms",
     ),
     (

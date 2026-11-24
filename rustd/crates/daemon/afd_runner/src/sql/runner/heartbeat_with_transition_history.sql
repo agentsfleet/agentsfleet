@@ -3,7 +3,7 @@ WITH locked AS MATERIALIZED (
   SELECT id, last_seen_at, cordon_reason, cordoned_at, cordon_healthy_since_at,
          degraded_reason, status, token_hash, connection_id,
          jsonb_build_array(sandbox_tier, network_policy, registry_allowlist, worker_count, sandbox_config, durable_tasks_enabled, decision_platform_model_id) AS policy_witness
-  FROM runner.runners WHERE id = $1 FOR UPDATE
+  FROM runner.runners WHERE id = $1 FOR NO KEY UPDATE
 ), observed AS MATERIALIZED (
   SELECT r.*, clock_timestamp() AS checked_at FROM locked r
   WHERE $7::text IS NULL OR (r.token_hash = $7 AND r.connection_id IS NOT DISTINCT FROM $8::uuid AND r.status = $16)

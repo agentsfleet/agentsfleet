@@ -4,9 +4,10 @@
 //! Eligibility is read on the workspace billing owner, never the chat
 //! creator's account. Nothing here calls a model: the runner does.
 
-use af_core::{id::Uuid7, timing::RunClock};
+use af_core::id::Uuid7;
 use afd_billing::RUN_NANOS_PER_SEC;
 use afd_credential::provider::{PLATFORM_MODEL_REF, RegisteredModel};
+use afd_runner::timing::RunClock;
 use sqlx::PgConnection;
 
 use crate::{Result, error::ErrorKind};
@@ -78,7 +79,8 @@ pub(crate) async fn gate(
 
 #[cfg(test)]
 mod tests {
-    use af_core::{id::Uuid7, timing::RunClock};
+    use af_core::id::Uuid7;
+    use afd_runner::timing::RunClock;
 
     use super::{first_slice, reference, tenant_model};
     use afd_credential::provider::PLATFORM_MODEL_REF;
