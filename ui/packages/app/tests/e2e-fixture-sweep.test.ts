@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PER_RUN_FIXTURE_RE } from "./e2e/acceptance/global-teardown";
+import { LOCAL_PLATFORM_FIXTURE_RE, PER_RUN_FIXTURE_RE } from "./e2e/acceptance/global-teardown";
 import { TEST_INBOX_DOMAIN, TEST_INBOX_LOCAL_PREFIX } from "./e2e/acceptance/fixtures/constants";
 
 // The teardown sweep deletes users, so its pattern is its safety boundary: it
@@ -22,5 +22,16 @@ describe("the stale fixture sweep's address pattern", () => {
     expect(PER_RUN_FIXTURE_RE.test(`team-invitee-${TAG}+clerk_test@e2e.agentsfleet.net`)).toBe(true);
     expect(PER_RUN_FIXTURE_RE.test(`first-visit-${TAG}+clerk_test@e2e.agentsfleet.net`)).toBe(true);
     expect(PER_RUN_FIXTURE_RE.test("admin-fixture@e2e.agentsfleet.net")).toBe(false);
+  });
+
+  it("should match the local lane's per-worktree platform identity", () => {
+    expect(LOCAL_PLATFORM_FIXTURE_RE.test(`local-platform-wt_${TAG}@e2e.agentsfleet.net`)).toBe(true);
+  });
+
+  it("should leave the local lane's other addresses alone", () => {
+    expect(LOCAL_PLATFORM_FIXTURE_RE.test(`local-platform-wt_${TAG}@e2e.agentsfleet.net.example`)).toBe(false);
+    expect(LOCAL_PLATFORM_FIXTURE_RE.test(`local-platform-wt_notatag@e2e.agentsfleet.net`)).toBe(false);
+    expect(LOCAL_PLATFORM_FIXTURE_RE.test(`local-platform-${TAG}@e2e.agentsfleet.net`)).toBe(false);
+    expect(LOCAL_PLATFORM_FIXTURE_RE.test("admin-fixture@e2e.agentsfleet.net")).toBe(false);
   });
 });
