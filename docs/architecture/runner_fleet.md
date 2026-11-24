@@ -238,7 +238,7 @@ The sandbox is the same binary's `sandbox` entry, bound read-only into it. There
 
 The build graph keeps datastore crates outside the runner. [Runner process model](runner_execution.md#crates) owns the shared crate list, including cryptography for encrypted private reports.
 
-The frozen `/v1/runners` wire types live in `af_wire`. The spans both planes agree on (the answer bound, the reconnect budget, the renewal window) live in `af_core`, and both binaries build them; the daemon's run clock (`RUN_TTL` and friends) lives in `afd_runner`'s `timing`. The control plane's run, fence, reclaim and assignment code is `afd_fleet`, `afd_runner` and `afd_api_runner`, built only into `agentsfleetd`.
+The frozen `/v1/runners` wire types live in `af_wire`. The spans both planes agree on live in `af_core`, and both binaries build them: the answer bound, the reconnect budget and the renewal window. The daemon's run clock (`RUN_TTL` and friends) lives in `afd_runner`'s `timing`. The control plane's run, fence, reclaim and assignment code is `afd_fleet`, `afd_runner` and `afd_api_runner`, built only into `agentsfleetd`.
 
 The runner's supervisor, agent loop, tool catalog, outbound guard, in-sandbox server and sandbox engine are the `afr_*` crates under `rustd/crates/`. They import nothing from the control plane.
 
@@ -351,7 +351,7 @@ Supported software still advertises `durable_tasks_v1` while its assignment is O
 Existing durable runs retain their frozen mode, input, recovery, accounting and report duties.
 The candidate, assignment and final issue checks all require configured support before a new durable run commits.
 
-The **heartbeat cadence travels in the welcome** instead, never in the heartbeat reply. `afd_runner::timing` owns both `RUNNER_OFFLINE_AFTER` and the `HEARTBEAT_INTERVAL` default; the daemon serves the interval it runs with in each connection's welcome, and the runner rounds on that. A compile-time assertion beside them keeps the served cadence strictly below the offline threshold.
+The **heartbeat cadence travels in the welcome** instead, never in the heartbeat reply. `afd_runner::timing` owns both `RUNNER_OFFLINE_AFTER` and the `HEARTBEAT_INTERVAL` default. The daemon serves the interval it runs with in each connection's welcome, and the runner rounds on that. A compile-time assertion beside them keeps the served cadence strictly below the offline threshold.
 
 A host holds no interval of its own, so moving the threshold moves every host's beat within one cycle. The field is required rather than optional.
 
