@@ -5,9 +5,12 @@
 use af_core::error_code;
 use afd_fleet::durable_task::DurableTaskLifecycle as _;
 
+use af_wire::durable_task::DecisionReservationInput;
+
 use super::{
     super::fixture::{Case, exercise, id},
     fixture::Decisions,
+    steps::another_operation,
 };
 
 /// Rewrites the run's frozen decision assignment with `statement`, which binds
@@ -47,12 +50,13 @@ async fn unavailable(fixture: &Decisions<'_>) {
     );
 }
 
-/// Issues one message call and leaves it without a receipt.
-async fn unreceipted(fixture: &Decisions<'_>) {
+/// Issues one goal call and leaves it without a receipt.
+async fn unreceipted(fixture: &Decisions<'_>) -> garde::Valid<DecisionReservationInput> {
     let input = fixture.call_input().await;
     let (issued, _body) = fixture.reserve(&input).await;
     assert!(issued);
     assert_eq!(fixture.counts().await, (1, 1, 0), "one call is issued");
+    input
 }
 
 // Value: protects=a subject with an unreceipted call takes no call under another
@@ -92,9 +96,9 @@ async fn an_unreceipted_call_blocks_its_subject_under_a_new_profile() {
 async fn a_changed_profile_of_one_revision_replays_the_issued_call() {
     exercise(async |case: &Case| {
         let fixture = Decisions::create(case).await;
-        unreceipted(&fixture).await;
+        let input = unreceipted(&fixture).await;
         reassign(case, INPUT_BYTES, "1").await;
-        let again = fixture.call_input().await;
+        let again = another_operation(&input);
         let (issued, body) = fixture.reserve(&again).await;
         assert!(!issued, "the saved call answers: {body}");
         assert_eq!(body.get("state"), Some(&serde_json::json!("issued")));

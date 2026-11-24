@@ -19,7 +19,7 @@ use crate::definition_code::{
 };
 use crate::definition_install::install_definition;
 use crate::definition_responder::{RUN, RUN_URL, github_get, responder_upstream};
-use crate::definition_run::{run_event, run_event_from};
+use crate::definition_run::{offered_catalog, run_event, run_event_from};
 use crate::e2e_seed_keys::seed_tenant_key;
 use crate::fake_model::{Asked, FakeModel, say};
 use crate::https::Upstream;
@@ -129,7 +129,7 @@ async fn test_code_running_definition_roundtrip() {
 fn assert_code_results(asked: &[Asked]) {
     let mut offered = asked[0].tools.clone();
     offered.sort_unstable();
-    assert_eq!(offered, ["apply_patch", "git", "shell"]);
+    assert_eq!(offered, offered_catalog());
     let checked_out = format!("{REPOSITORY} is checked out at ./greeter on its default branch");
     assert!(
         asked[0].instructions.contains(&checked_out),

@@ -93,7 +93,7 @@ async fn unreadable(case: &Case) {
         .expect("repaired work replays");
     assert_eq!(replay.items, accepted.items);
     assert!(replay.replayed);
-    assert_eq!(case.counts().await, (1, 1, 1));
+    assert_eq!(case.counts().await, (1, 1, 2));
 }
 
 async fn unreadable_result(case: &Case, task: &Uuid7, objective: &str) {
@@ -112,5 +112,6 @@ async fn unreadable_result(case: &Case, task: &Uuid7, objective: &str) {
         failure.to_string()
     );
     assert!(!failure.detail().contains(objective));
-    assert_eq!(case.counts().await, (1, 1, 1));
+    // The source turn and the task's staged continuation.
+    assert_eq!(case.counts().await, (1, 1, 2));
 }

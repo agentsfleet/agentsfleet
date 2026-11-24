@@ -78,8 +78,7 @@ pub struct Acquired {
 /// Whether an assigned head belongs to a durable task.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HeadKind {
-    /// A chat message: the run insert proves the setup, and the issue reads
-    /// no task source.
+    /// A chat message: the issue reads no task source.
     Plain,
     /// A durable task's turn: the issue reads its task source and
     /// attaches it.

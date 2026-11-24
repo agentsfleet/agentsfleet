@@ -38,13 +38,14 @@ pub const FIXTURE_MODEL_REF: &str = "platform-default";
 /// spells it.
 pub const FIXTURE_HTTP_EGRESS: &str = "restricted";
 
-/// The placement tag an [`FleetSeed::unplaced`] fleet requires when its seed
-/// names none, and that no fixture runner carries.
+/// The placement tag a seeded fleet requires until its seed names its own,
+/// and that no fixture runner carries.
 ///
 /// Every fleet admits work every runner could take, and a suite that only
 /// admits leaves that work behind. In a shared lane the next suite's runner
 /// would be handed it. Untagged, a fleet matches every runner; this tag
-/// matches none, so admitted work stays with its own suite.
+/// matches none, so admitted work stays with its own suite. A suite whose
+/// runners take the work names the tag they carry with [`FleetSeed::tags`].
 const UNPLACED: &[&str] = &["fixture-unplaced"];
 
 /// One fleet row, built from its identity and its status.
@@ -70,8 +71,8 @@ pub struct FleetSeed<'a> {
 impl<'a> FleetSeed<'a> {
     /// A fleet named after its own id, which keeps the name unique within its
     /// workspace without the caller minting one. The fixture model, a
-    /// restricted network with no package registries, no tags, no memory
-    /// grants, stamped by the database's `now()`.
+    /// restricted network with no package registries, the [`UNPLACED`] tag,
+    /// no memory grants, stamped by the database's `now()`.
     pub fn new(
         id: &'a Uuid7,
         workspace_id: &'a Uuid7,
@@ -87,7 +88,7 @@ impl<'a> FleetSeed<'a> {
             model_ref: FIXTURE_MODEL_REF,
             http_egress: FIXTURE_HTTP_EGRESS,
             package_domains: false,
-            required_tags: &[],
+            required_tags: UNPLACED,
             memory_reads_workspace: false,
             memory_publishes_workspace: false,
             resource_version: None,
@@ -117,14 +118,15 @@ impl<'a> FleetSeed<'a> {
         self
     }
 
-    /// The capability tags a runner must carry to be placed on the fleet.
+    /// The capability tags a runner must carry to be placed on the fleet, in
+    /// place of [`UNPLACED`]. An empty list matches every runner in the lane.
     pub const fn tags(mut self, tags: &'a [&'a str]) -> Self {
         self.required_tags = tags;
         self
     }
 
-    /// Takes [`UNPLACED`] when the seed named no tags, so no runner from
-    /// another suite is handed the fleet's work; named tags stay.
+    /// Takes [`UNPLACED`] back when the tags named are none, so no runner
+    /// from another suite is handed the fleet's work; named tags stay.
     pub const fn unplaced(mut self) -> Self {
         if self.required_tags.is_empty() {
             self.required_tags = UNPLACED;

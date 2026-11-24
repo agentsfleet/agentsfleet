@@ -73,13 +73,21 @@ const INPUT_NANOS_PER_MTOK: i64 = 3_000_000_000;
 const CACHED_INPUT_NANOS_PER_MTOK: i64 = 300_000_000;
 const OUTPUT_NANOS_PER_MTOK: i64 = 15_000_000_000;
 
-/// The context window a seeded catalogue row advertises. Unread; `NOT NULL`.
+/// The context window a seeded catalogue row advertises: the window a run
+/// plans its context in.
 const CONTEXT_CAP_TOKENS: i32 = 200_000;
 
 /// The saved inference settings the scenario's model routes through: the
 /// Messages API at the real base URL, with the output limit the runs assert on.
 const MODEL_INFERENCE: &str =
     r#"{"api":"messages","base_url":"https://api.anthropic.com/v1","max_output_tokens":8192}"#;
+
+/// [`MODEL_INFERENCE`] with an output limit a narrowed window still holds. A
+/// model whose output limit exceeds its window does not route
+/// (`guffbolt_ai::wire::Route::new`), so the daemon resolves no provider and
+/// no run opens.
+const NARROW_INFERENCE: &str =
+    r#"{"api":"messages","base_url":"https://api.anthropic.com/v1","max_output_tokens":1024}"#;
 
 /// The placement tag a scenario's fleet requires and only its own runner
 /// carries.
@@ -230,6 +238,11 @@ pub(crate) async fn seed_wallet(booted: &Booted, tenant: &Uuid7, nanos: i64, now
 /// assertion downstream reads a charge of nothing — which would make the ledger
 /// row this scenario writes indistinguishable from one the gate never priced.
 pub(crate) async fn seed_model_rate(booted: &Booted, now: Timestamp) {
+    write_model(booted, CONTEXT_CAP_TOKENS, MODEL_INFERENCE, now).await;
+}
+
+/// Writes the shared catalogue row with window `cap` and `inference`.
+async fn write_model(booted: &Booted, cap: i32, inference: &str, now: Timestamp) {
     let mut connection = booted
         .database
         .acquire()
@@ -237,14 +250,14 @@ pub(crate) async fn seed_model_rate(booted: &Booted, now: Timestamp) {
         .expect("a pooled connection");
     let catalogue_row =
         Uuid7::parse(CATALOGUE_ROW).expect("the catalogue row is a canonical UUIDv7");
-    ModelSeed::new(&catalogue_row, PROVIDER, MODEL, CONTEXT_CAP_TOKENS)
+    ModelSeed::new(&catalogue_row, PROVIDER, MODEL, cap)
         .rates(
             INPUT_NANOS_PER_MTOK,
             CACHED_INPUT_NANOS_PER_MTOK,
             OUTPUT_NANOS_PER_MTOK,
         )
         .verified_at(now)
-        .inference(MODEL_INFERENCE)
+        .inference(inference)
         .insert(&mut *connection)
         .await
         .expect("the catalogue seed must scene");
@@ -271,28 +284,12 @@ pub(crate) async fn approve_secret(booted: &Booted, fleet: &Uuid7, name: &str, n
     .expect("the approved secret grant inserts");
 }
 
-/// Shrinks the scenario model's context window to `cap` tokens, for a suite
-/// whose fleet must compact within a few turns. The next scenario's
-/// [`seed_model_rate`] writes the window back.
+/// Shrinks the scenario model's context window to `cap` tokens, its output
+/// limit with it ([`NARROW_INFERENCE`]; `cap` must hold it), for a suite whose
+/// fleet must compact within a few turns. The next scenario's
+/// [`seed_model_rate`] writes both back.
 pub(crate) async fn narrow_model_window(booted: &Booted, cap: i32, now: Timestamp) {
-    let mut connection = booted
-        .database
-        .acquire()
-        .await
-        .expect("a pooled connection");
-    let catalogue_row =
-        Uuid7::parse(CATALOGUE_ROW).expect("the catalogue row is a canonical UUIDv7");
-    ModelSeed::new(&catalogue_row, PROVIDER, MODEL, cap)
-        .rates(
-            INPUT_NANOS_PER_MTOK,
-            CACHED_INPUT_NANOS_PER_MTOK,
-            OUTPUT_NANOS_PER_MTOK,
-        )
-        .verified_at(now)
-        .inference(MODEL_INFERENCE)
-        .insert(&mut *connection)
-        .await
-        .expect("the narrowed catalogue row writes");
+    write_model(booted, cap, NARROW_INFERENCE, now).await;
 }
 
 /// Makes `(PROVIDER, MODEL)` the active platform default.

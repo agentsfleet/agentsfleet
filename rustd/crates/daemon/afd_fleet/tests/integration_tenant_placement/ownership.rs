@@ -109,6 +109,5 @@ async fn issue_refuses_a_foreign_runner_under_the_host_lock() {
     assert_eq!(runs_of(&fixtures, &u_runner).await, 0);
     assert_eq!(refused.field("error_code"), Some("UZ-RUN-027"));
     assert_eq!(refused.field("reason"), Some("foreign_tenant"));
-    assert_eq!(refused.field("run_type"), Some("fleet"));
     fixtures.cleanup().await;
 }

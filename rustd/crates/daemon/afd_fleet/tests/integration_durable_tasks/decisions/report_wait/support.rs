@@ -160,10 +160,13 @@ pub(super) async fn counts(case: &Case, task: &Uuid7) -> (i64, i64, i64, i64, i6
 }
 
 pub(super) fn assert_counts(counts: (i64, i64, i64, i64, i64), state: DurableTaskState) {
+    // The thread's turns: the source turn, the first-generation continuation
+    // the binding staged (settled once the task moved past it), and a ready
+    // task's next continuation.
     let expected = match state {
-        DurableTaskState::Ready => Some((1, 2, 0, 2, 2)),
-        DurableTaskState::Waiting => Some((0, 0, 1, 2, 1)),
-        DurableTaskState::Blocked => Some((0, 0, 0, 2, 1)),
+        DurableTaskState::Ready => Some((1, 2, 0, 2, 3)),
+        DurableTaskState::Waiting => Some((0, 0, 1, 2, 2)),
+        DurableTaskState::Blocked => Some((0, 0, 0, 2, 2)),
         _ => None,
     }
     .expect("scenario uses Ready, Waiting or Blocked");

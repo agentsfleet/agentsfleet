@@ -45,7 +45,6 @@ async fn test_an_assignment_behind_a_live_assignment_skips_and_takes_nothing() {
     let mut assigning = other.begin().await.expect("a transaction");
     sqlx::query(ASSIGN_THREAD)
         .bind(&fleet)
-        .bind(None::<Uuid7>)
         .bind(&second)
         .bind(RUN_TTL)
         .bind(RUNNER_OFFLINE_AFTER)

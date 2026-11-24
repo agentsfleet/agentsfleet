@@ -45,8 +45,9 @@ const MARK_DELIVERED: &str = "UPDATE thread.turns SET run_fence = 1 \
 const IN_FLIGHT_INDEXES: [&str; 1] = ["idx_turns_thread_id_created_at_id"];
 
 /// Ledger history, most of it delivered and settled, across many fleets of one workspace:
-/// `$1` tenant, `$2` instant, `$3` fleets, `$4` turns per fleet. Each
-/// turn is a millisecond after the one before it.
+/// `$1` tenant, `$2` instant, `$3` fleets, `$4` turns per fleet, and every
+/// fleet on model `$5` with network `$6`. Each turn is a millisecond after the
+/// one before it.
 const SEED_LEDGER: &str = "
 WITH workspace AS (
     INSERT INTO identity.workspaces (id, tenant_id, name, created_at)
@@ -54,10 +55,10 @@ WITH workspace AS (
     RETURNING id
 ), fleets AS (
     INSERT INTO fleet.fleets
-      (id, workspace_id, tenant_id, name, status, required_tags,
-       memory_reads_workspace, memory_publishes_workspace, resource_version,
+      (id, workspace_id, tenant_id, name, status, model_ref, http_egress, package_domains,
+       required_tags, memory_reads_workspace, memory_publishes_workspace, resource_version,
        created_at, updated_at)
-    SELECT uuidv7(), workspace.id, $1, 'queued-plan-' || f, 'active',
+    SELECT uuidv7(), workspace.id, $1, 'queued-plan-' || f, 'active', $5, $6, false,
            '{}'::text[], false, false, 1, $2::timestamptz, $2::timestamptz
       FROM workspace, generate_series(1, $3) f
     RETURNING id, workspace_id

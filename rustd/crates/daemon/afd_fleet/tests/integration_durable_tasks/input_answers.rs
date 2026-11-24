@@ -275,11 +275,11 @@ fn assert_event(event: &Value) {
 }
 
 async fn interpreted(case: &Case, source: &Uuid7) {
-    // PreparedPlan::from_parts supplies accepted meaning without a paid model call.
-    // Its original source must also carry the persisted interpretation boundary.
-    let updated = sqlx::query("UPDATE thread.turns SET interpreted_at=clock_timestamp() WHERE id=$1 AND input_run_id=$2 AND interpreted_at IS NULL")
-        .bind(source).bind(&case.held.run_key)
-        .execute(&mut *case.held.fixtures.database.acquire().await.expect("accepted interpretation fixture"))
-        .await.expect("accepted source interpretation boundary");
-    assert_eq!(updated.rows_affected(), 1);
+    // The binding wrote the source turn's plan under its digest and marked the
+    // turn interpreted, which an answer receipt needs to complete it.
+    let written: bool = sqlx::query_scalar("SELECT interpreted_at IS NOT NULL AND plan IS NOT NULL AND plan_digest=$2 FROM thread.turns WHERE id=$1")
+        .bind(source).bind("a".repeat(64))
+        .fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("source plan observer"))
+        .await.expect("the source turn reads");
+    assert!(written, "the source turn holds its plan");
 }

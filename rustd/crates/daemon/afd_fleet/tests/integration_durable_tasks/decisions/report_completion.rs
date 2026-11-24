@@ -51,7 +51,7 @@ async fn completion(
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn paid_current_api_only_completion_commits_done_with_both_decision_charges() {
+async fn paid_current_api_only_completion_commits_done_with_its_one_goal_charge() {
     exercise(done).await;
 }
 
@@ -94,7 +94,7 @@ async fn done(case: &Case) {
             .expect("same terminal task"),
         snapshot
     );
-    assert_eq!(fixture.counts().await, (2, 2, 2));
+    assert_eq!(fixture.counts().await, (1, 1, 1));
     fixture.model.finish().await.expect("model cleanup");
 }
 
@@ -109,6 +109,8 @@ async fn assert_done(fixture: &Decisions<'_>, durable_task_id: &str) -> DurableT
     assert_eq!(snapshot.context.generation, 2);
     assert_eq!(snapshot.context.usage.model_nanos, 3);
     assert!(snapshot.context.usage.running_nanos > 0);
-    assert_eq!(fixture.counts().await, (2, 2, 2));
+    // The goal check is the run's one decision call: starting the task by
+    // tool made none.
+    assert_eq!(fixture.counts().await, (1, 1, 1));
     snapshot
 }

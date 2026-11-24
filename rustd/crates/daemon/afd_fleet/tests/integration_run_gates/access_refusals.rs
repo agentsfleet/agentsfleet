@@ -5,36 +5,10 @@ use super::access::{Live, SENTRY, rows, store};
 use super::*;
 
 use af_core::error_code;
-use af_crypto::entropy::Entropy;
 use afd_approval::Requested;
-use afd_db::test_util::InstallSeed;
 use serde_json::{Value, json};
 
 use crate::grants::GITHUB;
-
-/// The provider an installation row names for GitHub.
-const PROVIDER_GITHUB: &str = "github";
-
-/// An installation identifier no other case names.
-fn installation() -> String {
-    let mut bytes = [0u8; 4];
-    Entropy::new()
-        .fill(&mut bytes)
-        .expect("the host provides entropy");
-    u32::from_be_bytes(bytes).to_string()
-}
-
-/// Connects GitHub to the live fleet's workspace: the handle in its vault
-/// and the installation mapped to it.
-async fn connect_github(fixtures: &Fixtures, live: &Live) {
-    let id = installation();
-    let handle = json!({"integration": "github", "installation_id": id});
-    store(fixtures, &live.workspace, GITHUB, &handle).await;
-    InstallSeed::new(PROVIDER_GITHUB, &id, &live.workspace)
-        .insert(&mut *fixtures.database.acquire().await.expect("a connection"))
-        .await
-        .expect("the installation maps to the workspace");
-}
 
 /// A GitHub scope over `org/app` at `access`.
 fn app_scope(access: &str) -> Value {
@@ -96,7 +70,7 @@ async fn a_request_for_an_unconnected_integration_is_refused() {
 async fn a_github_request_without_a_scope_is_refused() {
     let fixtures = Fixtures::create().await;
     let live = Live::issue(&fixtures).await;
-    connect_github(&fixtures, &live).await;
+    fixtures.connect_github(&live.workspace).await;
 
     let missing = live.ask(&fixtures, GITHUB, None).await;
     let unreadable = live
@@ -135,7 +109,7 @@ async fn a_secret_with_an_unreadable_host_cannot_be_requested() {
 async fn a_request_inside_the_approved_scope_needs_no_card() {
     let fixtures = Fixtures::create().await;
     let live = Live::issue(&fixtures).await;
-    connect_github(&fixtures, &live).await;
+    fixtures.connect_github(&live.workspace).await;
     fixtures
         .approve_github(&live.ready.fleet, &app_scope("read"))
         .await;
@@ -159,7 +133,7 @@ async fn a_request_inside_the_approved_scope_needs_no_card() {
 async fn a_wider_github_request_keeps_the_old_scope_until_approved() {
     let fixtures = Fixtures::create().await;
     let live = Live::issue(&fixtures).await;
-    connect_github(&fixtures, &live).await;
+    fixtures.connect_github(&live.workspace).await;
     fixtures
         .approve_github(&live.ready.fleet, &app_scope("read"))
         .await;

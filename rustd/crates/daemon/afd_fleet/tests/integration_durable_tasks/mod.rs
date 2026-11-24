@@ -19,6 +19,7 @@ mod receipt_branches;
 mod replay_reads;
 mod report_evidence;
 mod report_limits;
+mod report_notice;
 mod report_settlement;
 mod stored_state;
 mod task_edits;

@@ -114,22 +114,24 @@ async fn a_durable_task_over_its_model_budget_is_not_assigned() {
     .await;
 }
 
-async fn bind(case: &Case, limits: DurableTaskLimits) -> DecisionDurableTaskVersion {
+/// A one-goal task under `limits`, with the fixture run as its first run.
+pub(super) async fn bind(case: &Case, limits: DurableTaskLimits) -> DecisionDurableTaskVersion {
     let plan = Case::source_plan(case.held.turn_id.clone(), "bounded-report", 1, limits);
     let result = case
         .tasks
         .bind(case.run(), &plan)
         .await
         .expect("bounded accepted task");
+    let task = result
+        .items
+        .first()
+        .expect("one goal")
+        .durable_task_id
+        .as_ref()
+        .expect("native task");
+    case.attach(task).await;
     DecisionDurableTaskVersion {
-        durable_task_id: result
-            .items
-            .first()
-            .expect("one goal")
-            .durable_task_id
-            .as_ref()
-            .expect("native task")
-            .to_string(),
+        durable_task_id: task.to_string(),
         generation: 1,
     }
 }
@@ -173,7 +175,8 @@ async fn settle(case: &Case, task: DecisionDurableTaskVersion, reason: Option<&s
     }
     let saved = exhausted(case, &task.durable_task_id, reason).await;
     let retained = evidence(case, &id(&task.durable_task_id)).await;
-    assert_eq!(case.counts().await, (1, 1, 1));
+    // The source turn and the binding's continuation; exhaustion queues none.
+    assert_eq!(case.counts().await, (1, 1, 2));
     plane
         .report_with(
             &case.held.runner,
@@ -192,7 +195,7 @@ async fn settle(case: &Case, task: DecisionDurableTaskVersion, reason: Option<&s
         saved
     );
     assert_eq!(evidence(case, &id(&task.durable_task_id)).await, retained);
-    assert_eq!(case.counts().await, (1, 1, 1));
+    assert_eq!(case.counts().await, (1, 1, 2));
 }
 
 async fn evidence(case: &Case, task: &Uuid7) -> Value {
@@ -304,92 +307,4 @@ async fn observe_report_commit(case: &Case, pid: i32) {
     })
     .await
     .expect("report reaches commit after live preparation");
-}
-
-// Value: protects=a stopped task's notice reaches the person when its run
-// answered nothing; fails_when=the notice only rewrites an answer already owed
-// and a run with no text owes none; why_new=the report owes an answer inside
-// its one statement, before the task settlement writes the notice;
-// seam=none; no_claim=the notice's wording.
-#[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_notice_is_owed_when_the_run_answered_nothing() {
-    exercise(async |case| {
-        sqlx::query(
-            "UPDATE thread.turns SET reply_provider = $2, reply_address = $3 WHERE id = $1",
-        )
-        .bind(&case.held.turn_id)
-        .bind(afd_connector::Provider::Slack.id())
-        .bind("C0FIXTURE:1700000000.000100")
-        .execute(
-            &mut *case
-                .held
-                .fixtures
-                .database
-                .acquire()
-                .await
-                .expect("producer"),
-        )
-        .await
-        .expect("the turn asks for its answer on a thread");
-        let task = bind(
-            case,
-            DurableTaskLimits {
-                runs: 1,
-                ..DurableTaskLimits::default()
-            },
-        )
-        .await;
-        let semantic = DurableTaskReport {
-            durable_task: task,
-            disposition: DurableTaskDisposition::Continue,
-            decision_call_id: None,
-            checkpoint_id: None,
-            covered_input_sequence: 0,
-            effect_watermark: 0,
-        };
-        let report = af_wire::report::ReportRequest {
-            response_text: std::borrow::Cow::Borrowed(""),
-            ..request(case, Some(semantic))
-        };
-        let mut plane = case.held.fixtures.plane();
-        plane.durable_task_reports = Some(Arc::new(case.tasks.clone()));
-        plane
-            .report_with(
-                &case.held.runner,
-                &report,
-                af_core::clock::after(case.held.now, crate::report_seed::SLICE),
-                None,
-                &mut af_observability::verb_span::VerbClock::untimed(),
-            )
-            .await
-            .expect("the report settles");
-
-        let (owed, answered): (Option<String>, String) = sqlx::query_as(
-            "SELECT (SELECT o.answer FROM thread.deliveries o WHERE o.turn_id = e.id), \
-                    e.answer_text FROM thread.turns e WHERE e.id = $1",
-        )
-        .bind(&case.held.turn_id)
-        .fetch_one(
-            &mut *case
-                .held
-                .fixtures
-                .database
-                .acquire()
-                .await
-                .expect("observer"),
-        )
-        .await
-        .expect("the event reads");
-        assert!(
-            !answered.is_empty(),
-            "the task's notice replaced the empty answer"
-        );
-        assert_eq!(
-            owed.as_deref(),
-            Some(answered.as_str()),
-            "the notice is owed"
-        );
-    })
-    .await;
 }

@@ -191,16 +191,6 @@ async fn change(held: &Held, statement: &'static str, turn: &Uuid7) -> Checked {
     Ok(())
 }
 
-/// Parks `turn`, as an approval gate does.
-pub(super) async fn park(held: &Held, turn: &Uuid7) -> Checked {
-    change(
-        held,
-        "UPDATE thread.turns SET parked_at = now() WHERE id = $1",
-        turn,
-    )
-    .await
-}
-
 /// Settles `turn` the way an earlier run's report would have.
 pub(super) async fn settle_directly(held: &Held, turn: &Uuid7) -> Checked {
     change(

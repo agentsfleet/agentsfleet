@@ -65,6 +65,7 @@ pub(in super::super) async fn model(fixture: &Decisions<'_>, selected: Option<&U
 
 pub(in super::super) async fn expire(case: &Case) {
     chat_source(case).await;
+    continuation_turn(case).await;
     let mut connection = case
         .held
         .fixtures
@@ -96,6 +97,31 @@ pub(super) async fn assert_issued(case: &Case, task: &Uuid7, run: &Uuid7, fence:
     let rows: (i64, i64) = sqlx::query_as("SELECT (SELECT count(*) FROM thread.runs WHERE fleet_id=$1),(SELECT count(*) FROM thread.runs WHERE fleet_id=$1 AND status='active')")
         .bind(&case.scope.fleet_id).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("single execution observer")).await.expect("old and new runs");
     assert_eq!(rows, (2, 1));
+}
+
+/// The fixture run stands in for its task's continuation run, so its turn
+/// carries the task as a continuation turn does: reassigning the turn issues
+/// the task again under the generation the turn names.
+async fn continuation_turn(case: &Case) {
+    let bound = sqlx::query(
+        "UPDATE thread.turns a SET durable_task_id = l.durable_task_id, \
+         durable_task_generation = l.durable_task_generation \
+         FROM thread.runs l WHERE l.id = $1 AND a.id = l.turn_id \
+         AND a.durable_task_id IS NULL AND l.durable_task_id IS NOT NULL",
+    )
+    .bind(&case.held.run_key)
+    .execute(
+        &mut *case
+            .held
+            .fixtures
+            .database
+            .acquire()
+            .await
+            .expect("continuation fixture"),
+    )
+    .await
+    .expect("the run's turn takes its task");
+    assert_eq!(bound.rows_affected(), 1, "the fixture run holds a task");
 }
 
 async fn chat_source(case: &Case) {

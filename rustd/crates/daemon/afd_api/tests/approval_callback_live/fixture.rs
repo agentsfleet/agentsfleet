@@ -1,8 +1,10 @@
 //! The rows an approval callback is judged against, and the vault it reads.
 //!
 //! Split from the tests because the seed is the larger half and none of it is
-//! the assertion: two fleets, two pending gates identical but for their
+//! the assertion: two fleets, two pending access cards identical but for their
 //! identifiers, and one deployment secret sealed where the route looks for it.
+//! An access card is the gate a person approves or denies; its answer moves
+//! the fleet's grant and resumes the run that asked.
 //!
 //! # The second fleet is load-bearing, not a duplicate
 //!
@@ -12,6 +14,8 @@
 //! not already answered.
 
 use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
+use afd_approval::{GrantKind, IntegrationGrants, Requested, Wanted};
 use afd_auth::credential::Presented;
 use afd_auth::directory::Digest;
 use afd_auth::scope::{Scope, ScopeSet};
@@ -40,10 +44,13 @@ const APPROVAL_KEY: &str = afd_http::services::APPROVAL_IDENTITY;
 /// then finds empty, which is `UZ-WH-020` — the same answer as storing nothing.
 const SECRET_FIELD: &str = "webhook_secret";
 
-/// The expiry the seeded gates carry: 2100-01-01, far past any run, so no test
-/// here races the expiry sweeper or a locking validity check into a decision no
-/// person made. No assertion reads it back.
-const GATE_EXPIRES_AT: &str = "2100-01-01T00:00:00Z";
+/// The workspace secret each fleet's run asks a person for.
+const ASKED_FOR: &str = "sentry";
+
+/// The bearer a signed-in person's browser session presents, which the
+/// dashboard half answers with: only a signed-in person approves an access
+/// card on the dashboard's route, and an API key is refused there.
+pub(super) const SESSION: &str = "fixture.header.payload";
 
 /// The event type a continuation is written under.
 const EVENT_CONTINUATION: &str = "continuation";
@@ -51,7 +58,8 @@ const EVENT_CONTINUATION: &str = "continuation";
 /// What every fixture person's subject starts with.
 const SUBJECT_PREFIX: &str = "user_live_approval_callback_";
 
-/// Two fleets, two pending gates, and a deployment holding a signing secret.
+/// Two fleets, two pending access cards, and a deployment holding a signing
+/// secret.
 pub(super) struct Fixture {
     lane: TestDatabase,
     pub(super) database: Db,
@@ -69,16 +77,18 @@ pub(super) struct Fixture {
     pub(super) other_workspace: Uuid7,
     admin: Uuid7,
     pub(super) fleet: Uuid7,
-    other_fleet: Uuid7,
+    pub(super) other_fleet: Uuid7,
     user: Uuid7,
     key: Uuid7,
+    /// Each fleet's card and the action a callback names it by. The store mints
+    /// them when [`Self::seed`] raises the cards; until then they name nothing.
     pub(super) gate: Uuid7,
     pub(super) other_gate: Uuid7,
     pub(super) action: Uuid7,
     pub(super) other_action: Uuid7,
     pub(super) event: Uuid7,
     pub(super) other_event: Uuid7,
-    pub(super) token: String,
+    token: String,
 }
 
 impl Fixture {
@@ -109,19 +119,20 @@ impl Fixture {
     }
 
     /// The production router over this fixture's rows, its bus and its vault.
+    ///
+    /// The fixture's person is signed in through [`SESSION`] for the dashboard
+    /// half, and also holds the fixture's API key.
     pub(super) fn router(&self) -> axum::Router {
-        harness::Fleet::live(
-            self.database.clone(),
-            &self.subject,
-            ScopeSet::from_scopes(&Scope::ALL),
-        )
-        .with_owned_workspace(self.other_workspace.clone())
-        .with_platform_admin(self.admin.clone())
-        .with_approval_queue(self.database.clone(), self.bus.clone())
-        .router()
+        let scopes = ScopeSet::from_scopes(&Scope::ALL);
+        harness::Fleet::live(self.database.clone(), &self.subject, scopes)
+            .with_dashboard_holding(&self.subject, scopes)
+            .with_owned_workspace(self.other_workspace.clone())
+            .with_platform_admin(self.admin.clone())
+            .with_approval_queue(self.database.clone(), self.bus.clone())
+            .router()
     }
 
-    pub(super) async fn seed(&self) {
+    pub(super) async fn seed(&mut self) {
         self.seed_tenant().await;
         self.seed_gates().await;
         self.seal_signing_secret().await;
@@ -178,10 +189,12 @@ impl Fixture {
         }
     }
 
-    /// One pending gate on each fleet, differing in nothing but identifiers.
-    async fn seed_gates(&self) {
+    /// One pending access card on each fleet, differing in nothing but
+    /// identifiers: each fleet's run asked for [`ASKED_FOR`] on its turn, through
+    /// the store a run's `request_access` writes through.
+    async fn seed_gates(&mut self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        // Each gate held a run for a turn, which an approval's continuation resumes.
+        // Each card kept a run waiting on a turn, which its answer resumes.
         for (fleet, workspace, turn) in [
             (&self.fleet, &self.workspace, &self.event),
             (&self.other_fleet, &self.other_workspace, &self.other_event),
@@ -189,34 +202,59 @@ impl Fixture {
             TurnSeed::new(fleet, workspace, turn, SEEDED_TURN)
                 .insert(&mut *connection)
                 .await
-                .expect("the gated turn seeds");
+                .expect("the waiting turn seeds");
         }
-        sqlx::query(
-            "INSERT INTO fleet.approval_gates \
-               (id, fleet_id, workspace_id, action_id, tool_name, action_name, gate_type, \
-                proposed_action, evidence, blast_radius, expires_at, resolved_by, status, \
-                detail, created_at, updated_at, turn_id) \
-             VALUES ($1, $2, $3, $4, 'git', 'push', 'tool', \
-                     'open a pull request', '{}', 'one repository', $9::timestamptz, '', \
-                     'pending', '', now(), now(), $5), \
-                    ($6, $7, $8, $10, 'git', 'push', 'tool', \
-                     'open a pull request', '{}', 'one repository', $9::timestamptz, '', \
-                     'pending', '', now(), now(), $11)",
+        drop(connection);
+        let (gate, action) = self.ask(&self.workspace, &self.fleet, &self.event).await;
+        let (other_gate, other_action) = self
+            .ask(&self.other_workspace, &self.other_fleet, &self.other_event)
+            .await;
+        (self.gate, self.action) = (gate, action);
+        (self.other_gate, self.other_action) = (other_gate, other_action);
+    }
+
+    /// `fleet`'s run on `turn` asks for [`ASKED_FOR`], answering the card it
+    /// raised and the action a callback names it by.
+    async fn ask(&self, workspace: &Uuid7, fleet: &Uuid7, turn: &Uuid7) -> (Uuid7, Uuid7) {
+        let requested = IntegrationGrants::new(self.database.clone(), Entropy::new())
+            .request(
+                workspace,
+                fleet,
+                Wanted {
+                    name: ASKED_FOR,
+                    kind: GrantKind::Secret,
+                    scope: None,
+                    turn,
+                },
+                af_core::clock::now(),
+            )
+            .await
+            .expect("the fleet's request is answered");
+        assert!(
+            matches!(requested, Requested::Raised { .. }),
+            "a first request raises a card: {requested:?}"
+        );
+        let gate = requested.gate().cloned().expect("a raised card is named");
+        let mut connection = self.database.acquire().await.expect("an API connection");
+        let action = sqlx::query_scalar("SELECT action_id FROM fleet.approval_gates WHERE id = $1")
+            .bind(&gate)
+            .fetch_one(&mut *connection)
+            .await
+            .expect("the raised card is readable");
+        (gate, action)
+    }
+
+    /// The status of `fleet`'s grant for [`ASKED_FOR`].
+    pub(super) async fn grant_status(&self, fleet: &Uuid7) -> String {
+        let mut connection = self.database.acquire().await.expect("an API connection");
+        sqlx::query_scalar(
+            "SELECT status FROM connector.integration_grants WHERE fleet_id = $1 AND service = $2",
         )
-        .bind(&self.gate)
-        .bind(&self.fleet)
-        .bind(&self.workspace)
-        .bind(&self.action)
-        .bind(&self.event)
-        .bind(&self.other_gate)
-        .bind(&self.other_fleet)
-        .bind(&self.other_workspace)
-        .bind(GATE_EXPIRES_AT)
-        .bind(&self.other_action)
-        .bind(&self.other_event)
-        .execute(&mut *connection)
+        .bind(fleet)
+        .bind(ASKED_FOR)
+        .fetch_one(&mut *connection)
         .await
-        .expect("both pending gates seed");
+        .expect("the fleet's grant is readable")
     }
 
     /// The signing secret, sealed where the route reads it from.

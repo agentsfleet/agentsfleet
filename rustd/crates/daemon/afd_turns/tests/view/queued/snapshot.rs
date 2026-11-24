@@ -32,6 +32,8 @@ async fn thread_pages_use_one_statement_snapshot_before_and_after_delivery() {
         )))
         .bind(1_i32)
         .bind(50_i32)
+        .bind(afd_db::test_util::FIXTURE_MODEL_REF)
+        .bind(afd_db::test_util::FIXTURE_HTTP_EGRESS)
         .execute(&mut *owner)
         .await
         .expect("one queued head");

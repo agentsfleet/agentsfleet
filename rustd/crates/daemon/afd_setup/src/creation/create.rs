@@ -119,6 +119,9 @@ impl Creations {
         let scope = format!("{}:fleet:create:{}", create.access.workspace, person.id);
         if let Some(existing) = self.receipt(&mut tx, create, &scope, &person).await? {
             tx.commit().await.map_err(query(CONTEXT))?;
+            // The replay reads on connections of its own; holding this one while
+            // it waits for them starves a pool every racing caller holds a slot of.
+            drop(connection);
             return self
                 .replayed(create, &existing)
                 .await
@@ -145,6 +148,7 @@ impl Creations {
                 .await?
                 .ok_or(ErrorKind::Replay)?;
             tx.commit().await.map_err(query(CONTEXT))?;
+            drop(connection);
             return self
                 .replayed(create, &existing)
                 .await

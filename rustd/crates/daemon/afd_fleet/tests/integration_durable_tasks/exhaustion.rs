@@ -44,7 +44,8 @@ async fn exhausted(case: &Case) {
         .expect("unfinished work read");
     assert_eq!(page.items, Vec::new(), "cancelled work leaves the list");
     assert!(!page.more);
-    assert_eq!(case.counts().await, (4, 4, 5));
+    // Two sources and the continuation each new task was staged with.
+    assert_eq!(case.counts().await, (4, 4, 6));
 }
 
 async fn refused_resume(case: &Case, task: &Uuid7, resource: &str) {

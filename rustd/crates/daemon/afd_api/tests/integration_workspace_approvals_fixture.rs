@@ -19,7 +19,15 @@ use afd_db::test_util::{
     WorkspaceSeed, mint_id,
 };
 
+use afd_auth::scope::{Scope, ScopeSet};
+
+use crate::harness::{self, Fleet};
 use crate::integration_workspace_approvals::SUBJECT;
+
+/// The bearer a signed-in person's browser session presents. A router built
+/// `with_dashboard_holding` the fixture's subject accepts it as that person, and
+/// only a signed-in person may approve or deny; the fixture's API key may not.
+pub(crate) const SESSION: &str = "fixture.header.payload";
 
 /// The seeded gates' expiry: 2100-01-01, far past any run, so no test seeding
 /// through it races the expiry sweeper or a locking validity check; no assertion
@@ -65,6 +73,18 @@ impl Fixture {
             subject,
             lane,
         }
+    }
+
+    /// The production router over this fixture's rows and the lane's bus, where
+    /// the fixture's person is signed in through [`SESSION`] and also holds the
+    /// fixture's API key.
+    pub(crate) async fn signed_in(&self) -> axum::Router {
+        let scopes = ScopeSet::from_scopes(&Scope::ALL);
+        Fleet::live(self.database.clone(), self.subject, scopes)
+            .with_owned_workspace(self.workspace.clone())
+            .with_dashboard_holding(self.subject, scopes)
+            .with_approval_queue(self.database.clone(), harness::bus().await)
+            .router()
     }
 
     pub(crate) async fn seed(&self) {

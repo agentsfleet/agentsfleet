@@ -198,7 +198,7 @@ async fn a_create_with_no_usable_model_writes_nothing() {
 async fn a_taken_name_refuses_the_create() {
     let f = Fixture::create().await;
     let named = |operation| CreateFleetRequest {
-        name: Some("Support triage".to_owned()),
+        name: Some("support-triage".to_owned()),
         ..f.request(&operation)
     };
     f.creations

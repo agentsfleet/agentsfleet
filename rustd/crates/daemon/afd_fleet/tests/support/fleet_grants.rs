@@ -11,7 +11,7 @@ use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use af_crypto::secret::Kek;
 use afd_api_wire::grant::{kind, status};
-use afd_db::test_util::GrantSeed;
+use afd_db::test_util::{GrantSeed, InstallSeed};
 use afd_vault::{SecretBody, SecretName, Vault};
 use serde_json::Value;
 
@@ -19,6 +19,9 @@ use crate::support::Fixtures;
 
 /// The service a GitHub grant is stored under.
 pub(crate) const GITHUB: &str = "github";
+
+/// The provider an installation row names for GitHub.
+const PROVIDER_GITHUB: &str = "github";
 
 impl Fixtures {
     /// Approves `fleet`'s GitHub grant at `scope`, the JSON an access request
@@ -84,6 +87,24 @@ impl Fixtures {
 }
 
 impl Fixtures {
+    /// Connects GitHub to `workspace`, as the App install leaves it: the
+    /// on-demand handle in its vault and a fresh installation mapped to it.
+    /// An access request for GitHub is refused without both, so an approved
+    /// GitHub grant always has them.
+    pub(crate) async fn connect_github(&self, workspace: &Uuid7) {
+        let mut bytes = [0u8; 4];
+        Entropy::new()
+            .fill(&mut bytes)
+            .expect("the host provides entropy");
+        let installation = u32::from_be_bytes(bytes).to_string();
+        let handle = serde_json::json!({"integration": GITHUB, "installation_id": installation});
+        self.store_secret(workspace, GITHUB, &handle).await;
+        InstallSeed::new(PROVIDER_GITHUB, &installation, workspace)
+            .insert(&mut *self.database.acquire().await.expect("a connection"))
+            .await
+            .expect("the installation maps to the workspace");
+    }
+
     /// Seals `body` under `name` in `workspace`'s vault, as the run plane
     /// reads it.
     pub(crate) async fn store_secret(&self, workspace: &Uuid7, name: &str, body: &Value) {

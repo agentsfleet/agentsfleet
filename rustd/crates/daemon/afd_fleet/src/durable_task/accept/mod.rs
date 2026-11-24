@@ -3,6 +3,7 @@
 mod commit;
 mod input;
 mod insert;
+mod plan;
 mod prepare;
 mod replay;
 pub(in crate::durable_task) mod source;
@@ -12,6 +13,10 @@ use super::{DurableTaskBindings, DurableTaskRun, DurableTasks, PreparedPlan, gua
 use crate::error::{Result, query};
 
 const CONTEXT: &str = "bind a task plan";
+
+/// What an accepted input stores as its interpretation: a tool sends none, so
+/// the accepted text is the input's whole meaning.
+pub(in crate::durable_task) const NO_INTERPRETATION: &str = "";
 
 /// [`bind`] under the operation's trace and outcome label: the lifecycle's
 /// test-only entry point, kept beside what it wraps.

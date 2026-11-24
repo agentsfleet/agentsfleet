@@ -19,6 +19,7 @@ use super::{
     super::fixture::{Case, exercise},
     concurrency::{Operations, contend},
     fixture::{Decisions, known, request},
+    steps::another_operation,
 };
 
 #[tokio::test]
@@ -48,7 +49,7 @@ async fn unfunded(fixture: &Decisions<'_>) {
         .await
         .expect("a funded payer");
     case.held.fixtures.seed_wallet(&case.held.tenant, 0).await;
-    let another = fixture.call_input().await;
+    let another = another_operation(&input);
     for replay in [&input, &another] {
         assert_eq!(fixture.reserve(replay).await, (false, expected.clone()));
     }
@@ -75,11 +76,7 @@ async fn overcharged(fixture: &Decisions<'_>) {
     assert_eq!(recorded.state, DecisionCallState::Known);
     assert_eq!(recorded.overage_nanos.as_deref(), Some("20000002"));
 
-    let mut another = (*input).clone();
-    another.operation_id = afd_db::test_util::mint_id().into();
-    let another = garde::Unvalidated::new(another)
-        .validate()
-        .expect("another operation of the same assessment");
+    let another = another_operation(&input);
     for replay in [&input, &another] {
         let (issued, saved) = fixture.reserve(replay).await;
         assert!(!issued);
@@ -99,6 +96,9 @@ async fn overcharged(fixture: &Decisions<'_>) {
 async fn a_reservation_issues_while_a_reader_holds_the_thread() {
     exercise(async |case: &Case| {
         let fixture = Decisions::create(case).await;
+        // The goal check's task is bound, and its run attached, before the
+        // reader holds the thread: binding writes under the thread's lock.
+        let input = fixture.call_input().await;
         let mut holder = case
             .held
             .fixtures
@@ -113,7 +113,6 @@ async fn a_reservation_issues_while_a_reader_holds_the_thread() {
             .await
             .expect("a receipt's read holds the thread shared");
 
-        let input = fixture.call_input().await;
         let (issued, _body) = fixture.reserve(&input).await;
 
         assert!(issued, "a shared thread does not hold the reservation up");

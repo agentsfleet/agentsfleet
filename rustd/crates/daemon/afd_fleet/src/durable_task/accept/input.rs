@@ -6,15 +6,11 @@ use super::super::{
     DurableTaskBinding, DurableTaskRefusal, DurableTaskScope, DurableTasks, PreparedItem,
     continuation::Continuation, fetch, guard, row,
 };
-use super::{prepare::Wake, source::Source};
+use super::{NO_INTERPRETATION, prepare::Wake, source::Source};
 use crate::{Result, error::query};
 use af_core::id::Uuid7;
 use af_wire::durable_task::DurableTaskState;
 use sqlx::PgConnection;
-
-/// What a tool's steer stores as its input's interpretation: the tool sends
-/// none, so the accepted text is the input's whole meaning.
-const NO_INTERPRETATION: &str = "";
 
 #[derive(sqlx::FromRow)]
 struct Origin {

@@ -68,10 +68,9 @@ impl RunService {
         connector: Option<&dyn Connector>,
     ) -> Result<()> {
         // Gated on ON-DEMAND connectors only, which mirrors the run
-        // classifier. A `static` handle carries its own token and an unknown
-        // name is not a grantable service at all, so both fall through to the
-        // vault path — where they surface as "not connected" rather than as a
-        // grant nobody can ever request.
+        // classifier. A runner's own mint never reaches an ungranted name here:
+        // `mint_for` refuses it first. This check holds the daemon's task mints,
+        // whose integration comes from the task, to the same approved grants.
         if connector.is_some_and(|connector| connector.supply() == Supply::OnDemand)
             && !scope.integrations.iter().any(|name| name == integration)
         {

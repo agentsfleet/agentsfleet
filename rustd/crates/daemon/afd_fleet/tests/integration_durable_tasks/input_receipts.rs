@@ -81,7 +81,8 @@ async fn queued_item_receipt_preserves_original_answer_on_replay_and_conflict() 
         .await
         .expect("stored original answer");
         assert_eq!(rows, ["Queued: Repair title decoding in PR 101"]);
-        assert_eq!(case.counts().await, (1, 1, 1));
+        // The source turn and the task's staged continuation; a receipt adds none.
+        assert_eq!(case.counts().await, (1, 1, 2));
     })
     .await;
 }

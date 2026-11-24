@@ -192,12 +192,17 @@ impl Fixture {
     }
 
     /// Who each of the fixture fleet's turns was admitted from, oldest first.
+    ///
+    /// The history-only receipts storing a signing secret writes on a fleet
+    /// whose trigger names it are not admitted work, so they are left out.
     pub(super) async fn turn_actors(&self) -> Vec<String> {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query_scalar(
-            "SELECT actor FROM thread.turns WHERE thread_id = $1 ORDER BY created_at, id",
+            "SELECT actor FROM thread.turns WHERE thread_id = $1 AND kind <> $2 \
+             ORDER BY created_at, id",
         )
         .bind(&self.fleet)
+        .bind(afd_turns::view::activity::EVENT_TYPE_ACTIVITY)
         .fetch_all(&mut *connection)
         .await
         .expect("the fleet's turns read")

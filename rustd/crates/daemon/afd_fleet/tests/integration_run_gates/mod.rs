@@ -197,8 +197,11 @@ async fn terminal_of(
     })
 }
 
-/// Approves the seeded fleet's GitHub grant at `scope`, as a person's
-/// Approve leaves it.
+/// Connects GitHub to the seeded fleet's workspace and approves its GitHub
+/// grant at `scope`, as the App install and a person's Approve leave them: an
+/// approved name reaches the run through the vault entry it was asked for.
 async fn bind(fixtures: &Fixtures, fleet: &Uuid7, scope: serde_json::Value) {
+    let workspace = seed::workspace_of(fixtures, fleet).await;
+    fixtures.connect_github(&workspace).await;
     fixtures.approve_github(fleet, &scope).await;
 }

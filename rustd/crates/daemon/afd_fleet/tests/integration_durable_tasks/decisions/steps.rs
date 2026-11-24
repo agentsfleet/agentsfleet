@@ -1,10 +1,24 @@
 //! Shared steps a decision case takes outside the decision verbs: picking a
-//! choice answer, and switching the fixture runner's durable tasks.
+//! choice answer, retrying an assessment from another operation, and
+//! switching the fixture runner's durable tasks.
 
 use af_core::clock;
+use af_wire::durable_task::DecisionReservationInput;
 use afd_runner::RunnerEdit;
 
 use super::super::fixture::Case;
+
+/// `input`'s assessment from another operation: the same action group of the
+/// same task, which a goal check's key names, under a fresh operation.
+pub(super) fn another_operation(
+    input: &garde::Valid<DecisionReservationInput>,
+) -> garde::Valid<DecisionReservationInput> {
+    let mut another = (**input).clone();
+    another.operation_id = afd_db::test_util::mint_id().into();
+    garde::Unvalidated::new(another)
+        .validate()
+        .expect("another operation of the same assessment")
+}
 
 /// Picks `selected` for the choice question `name`, with certainty.
 pub(super) fn choose(

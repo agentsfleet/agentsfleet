@@ -38,7 +38,8 @@ async fn accepted_replays_share_thread_and_run_read_locks() {
         assert_eq!(replay.current_durable_task, first.current_durable_task);
         assert_eq!(replay.execution_deadline, first.execution_deadline);
         reader.commit().await.expect("release reader");
-        assert_eq!(case.counts().await, (3, 3, 3));
+        // The source turn and one staged continuation per task; a replay adds none.
+        assert_eq!(case.counts().await, (3, 3, 4));
     })
     .await;
 }
@@ -80,7 +81,7 @@ async fn accepted_replays_wait_for_writers_and_recheck_the_fence() {
                 .code(),
             error_code::RUN_STALE_FENCING_TOKEN
         );
-        assert_eq!(case.counts().await, (1, 1, 1));
+        assert_eq!(case.counts().await, (1, 1, 2));
         assert_eq!(first.items.len(), 1);
     })
     .await;

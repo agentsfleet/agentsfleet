@@ -20,29 +20,22 @@ async fn assign_around_bound_continuations(case: &Case) {
     let before = case
         .source_message(Producer::Steer, &actor, "check the logs first")
         .await;
-    case.tasks
+    let bound = case
+        .tasks
         .bind(case.run(), &case.plan("three-goals", 3))
         .await
         .expect("the plan binds and queues its continuations");
     let after = case
         .source_message(Producer::Steer, &actor, "and the dashboard")
         .await;
-    assert!(
-        waiting_durable_task_bound(case).await > 0,
-        "task-bound continuations wait, unparked, behind the test_run"
-    );
-    // The bind made this run a durable task's, which is assigned nothing. Making
-    // it a plain run again leaves the bound continuations as the only thing
-    // that can stop the assignment.
     assert_eq!(
-        held.runs
-            .assign_folds(&held.runner, &held.issued.run_id, held.fence.as_u64(), 0)
-            .await
-            .expect("bound task fold refusal")
-            .inputs
-            .len(),
-        0
+        waiting_durable_task_bound(case).await,
+        3,
+        "each task's continuation waits, unparked, behind the test_run"
     );
+    task_run_folds_nothing(case, &bound).await;
+    // Making the run a plain one again leaves the bound continuations as the
+    // only thing that can stop the assignment.
     clear_durable_task_binding(case).await;
     let assigned = held
         .runs
@@ -59,6 +52,27 @@ async fn assign_around_bound_continuations(case: &Case) {
         [before.as_str()],
         "{} waits behind the task-bound messages",
         after.as_str()
+    );
+}
+
+/// A durable task's run is assigned nothing: the fixture run takes the first
+/// task, as its continuation's run would.
+async fn task_run_folds_nothing(case: &Case, bound: &afd_fleet::durable_task::DurableTaskBindings) {
+    let held = &case.held;
+    let first = bound
+        .items
+        .first()
+        .and_then(|item| item.durable_task_id.as_ref())
+        .expect("the first goal owns a task");
+    case.attach(first).await;
+    assert_eq!(
+        held.runs
+            .assign_folds(&held.runner, &held.issued.run_id, held.fence.as_u64(), 0)
+            .await
+            .expect("bound task fold refusal")
+            .inputs
+            .len(),
+        0
     );
 }
 

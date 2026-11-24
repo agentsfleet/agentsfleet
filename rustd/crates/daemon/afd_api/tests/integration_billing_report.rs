@@ -172,6 +172,7 @@ async fn served_daily_report_includes_zero_days_and_complete_models() {
     let path = format!("{REPORT}?period=week");
     let body = harness::json_body(get(&members, &members.john, &path).await).await;
     assert_week_projection(&body);
+    // Every seeded line is a fleet run's, so the runtime filter keeps them all.
     let runtime = harness::json_body(
         get(
             &members,
@@ -181,13 +182,24 @@ async fn served_daily_report_includes_zero_days_and_complete_models() {
         .await,
     )
     .await;
+    assert_week_projection(&runtime);
+    // None of them names John's fleet, so a filter on it selects nothing.
+    let other = harness::json_body(
+        get(
+            &members,
+            &members.john,
+            &format!("{path}&fleet_id={}", members.fleet),
+        )
+        .await,
+    )
+    .await;
     assert_eq!(
-        runtime.pointer("/daily/6/totals/charged_nanos"),
+        other.pointer("/daily/6/totals/charged_nanos"),
         Some(&json!("0"))
     );
-    assert_eq!(runtime.pointer("/spending/by_fleet"), Some(&json!([])));
+    assert_eq!(other.pointer("/spending/by_fleet"), Some(&json!([])));
     assert!(
-        runtime
+        other
             .pointer("/filters/fleets")
             .and_then(Value::as_array)
             .is_some_and(|fleets| !fleets.is_empty()),

@@ -168,6 +168,19 @@ impl Case {
             .expect("native input assignment fixture");
     }
 
+    /// Makes the fixture run `task`'s first run. A binding leaves its calling
+    /// run unbound and stages a continuation; a scenario that reports for the
+    /// task holds the run its continuation would be issued.
+    pub(super) async fn attach(&self, task: &Uuid7) {
+        assert!(
+            self.tasks
+                .attach_run(&self.held.run_key, task, 1)
+                .await
+                .expect("the fixture run attaches"),
+            "a ready task takes its first run"
+        );
+    }
+
     pub(super) async fn counts(&self) -> (i64, i64, i64) {
         sqlx::query_as("SELECT (SELECT count(*) FROM fleet.durable_tasks WHERE fleet_id=$1), (SELECT count(*) FROM fleet.durable_task_items WHERE fleet_id=$1), (SELECT count(*) FROM thread.turns WHERE thread_id=$1)")
             .bind(&self.scope.fleet_id)

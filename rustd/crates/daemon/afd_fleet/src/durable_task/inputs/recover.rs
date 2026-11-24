@@ -41,9 +41,8 @@ pub(super) async fn read(
             .bind(sources)
             .bind(&current.fleet_id)
             .bind(&current.workspace_id)
-            .bind("items")
-            .bind("proposed")
-            .bind("interpretation")
+            // A new task's item has no input row; neither carries an interpretation.
+            .bind(crate::durable_task::accept::NO_INTERPRETATION)
             .fetch_all(connection)
             .await
             .map_err(query(

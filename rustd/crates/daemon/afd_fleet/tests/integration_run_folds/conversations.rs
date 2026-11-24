@@ -12,9 +12,12 @@ use super::support::{
 };
 use crate::report_seed::held;
 
-/// The Slack thread a Slack-started run answers in.
-const THREAD_A: &str =
-    r#"{"team_id":"T0FOLDTEAM","channel_id":"C0123456789","thread_ts":"1700000000.000100"}"#;
+/// The Slack thread in `team` a Slack-started run answers in.
+fn thread_a(team: &str) -> String {
+    serde_json::json!({"team_id": team, "channel_id": "C0123456789", "thread_ts": "1700000000.000100"})
+        .to_string()
+}
+
 /// A Slack thread the held run did not start in.
 const OTHER_THREAD: &str =
     r#"{"team_id":"T024BE7LD","channel_id":"C0123456789","thread_ts":"1700000000.000200"}"#;
@@ -59,8 +62,15 @@ async fn test_another_conversation_is_neither_assigned_nor_in_the_way() -> Check
     Ok(())
 }
 
-/// A Slack team and the people the tests below link or leave unlinked.
-const TEAM: &str = "T0FOLDTEAM";
+/// A Slack team no other run installed: a team is installed once per
+/// provider, so a fixed one refuses every run after the first.
+fn team() -> String {
+    let id = afd_db::test_util::mint_id();
+    let node = id.as_str().rsplit('-').next().unwrap_or_default();
+    format!("T{}", node.to_ascii_uppercase())
+}
+
+/// The people the test below links or leaves unlinked.
 const LINKED: &str = "ULINKEDPERSON";
 const STRANGER: &str = "USTRANGERONE";
 
@@ -73,13 +83,15 @@ const STRANGER: &str = "USTRANGERONE";
 async fn test_a_slack_thread_run_folds_its_threads_linked_people_only() -> Checked {
     let held = held().await;
     let workspace = workspace_of(&held).await?;
-    address_head(&held, THREAD_A).await?;
-    link_slack_person(&held, &workspace, TEAM, LINKED).await?;
+    let team = team();
+    let thread_a = thread_a(&team);
+    address_head(&held, &thread_a).await?;
+    link_slack_person(&held, &workspace, &team, LINKED).await?;
     let thread = |address| Reply::To {
         connector: Provider::Slack.id(),
         address,
     };
-    let actor = |person: &str| format!("slack:{TEAM}:{person}");
+    let actor = |person: &str| format!("slack:{team}:{person}");
     let mention = Producer::SlackMention;
     let linked = actor(LINKED);
     let stranger = actor(STRANGER);
@@ -89,7 +101,7 @@ async fn test_a_slack_thread_run_folds_its_threads_linked_people_only() -> Check
         mention,
         &linked,
         MENTION_JSON,
-        thread(THREAD_A),
+        thread(&thread_a),
     )
     .await?;
     let elsewhere = send_as(
@@ -107,7 +119,7 @@ async fn test_a_slack_thread_run_folds_its_threads_linked_people_only() -> Check
         mention,
         &linked,
         MENTION_JSON,
-        thread(THREAD_A),
+        thread(&thread_a),
     )
     .await?;
     let unknown = send_as(
@@ -116,7 +128,7 @@ async fn test_a_slack_thread_run_folds_its_threads_linked_people_only() -> Check
         mention,
         &stranger,
         MENTION_JSON,
-        thread(THREAD_A),
+        thread(&thread_a),
     )
     .await?;
     let behind = send_as(
@@ -125,7 +137,7 @@ async fn test_a_slack_thread_run_folds_its_threads_linked_people_only() -> Check
         mention,
         &linked,
         MENTION_JSON,
-        thread(THREAD_A),
+        thread(&thread_a),
     )
     .await?;
     let assigned: Vec<Uuid7> = assign_as_holder(&held, 0)

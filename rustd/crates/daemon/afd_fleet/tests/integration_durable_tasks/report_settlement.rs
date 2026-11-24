@@ -45,14 +45,15 @@ async fn task(case: &Case, disposition: DurableTaskDisposition) -> DurableTaskRe
         .bind(case.run(), &case.plan("report-goal", 1))
         .await
         .expect("accepted API-only task");
-    let durable_task_id = bindings
+    let task = bindings
         .items
         .first()
         .expect("one task")
         .durable_task_id
         .as_ref()
-        .expect("task owner")
-        .to_string();
+        .expect("task owner");
+    case.attach(task).await;
+    let durable_task_id = task.to_string();
     DurableTaskReport {
         durable_task: DecisionDurableTaskVersion {
             durable_task_id,
@@ -162,7 +163,9 @@ async fn continuation_without_recovery_checkpoint_settles_but_never_wakes() {
                 .is_some()
         );
         settle(case, &report, &durable_task_id).await;
-        assert_eq!(case.counts().await, (1, 1, 1));
+        // The source turn and the continuation the binding staged; the
+        // report queues none.
+        assert_eq!(case.counts().await, (1, 1, 2));
     })
     .await;
 }
@@ -206,7 +209,7 @@ async fn malformed_stale_and_unpaid_semantic_reports_never_prepare_a_permit() {
             );
         }
         assert!(!case.held.fixtures.turn_settled(&case.held.turn_id).await);
-        assert_eq!(case.counts().await, (1, 1, 1));
+        assert_eq!(case.counts().await, (1, 1, 2));
     })
     .await;
 }

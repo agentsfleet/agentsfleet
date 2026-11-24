@@ -5,7 +5,7 @@ use super::super::{
     PreparedPlan, guard, transaction,
 };
 use super::{
-    CONTEXT,
+    CONTEXT, plan as source_plan,
     prepare::Wake,
     replay, source,
     write::{Writer, Written},
@@ -40,6 +40,7 @@ pub(super) async fn commit(
         });
     }
     source::check(&source, plan)?;
+    source_plan::write(&mut tx, &current, plan, &identities).await?;
     let Written { bound, queued } = Writer {
         tasks,
         current: &current,

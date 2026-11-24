@@ -3,10 +3,10 @@
 //! fenced context verb, under the fleet's thread, and the next run loads it,
 //! sending the summary in place of the turns it replaced.
 //!
-//! The fleet authors a small operating window, so a handful of long answers
-//! fill it whatever the model's physical window is, and the model is a
-//! [`FakeModel`] that answers each note with a long reply. Each turn runs on
-//! a runner of its own, as `definition_run` runs one event.
+//! The scenario narrows its model's window, so a handful of long answers fill
+//! it, and the model is a [`FakeModel`] that answers each note with a long
+//! reply. Each turn runs on a runner of its own, as `definition_run` runs one
+//! event.
 //!
 //! Marked `#[ignore]` like the rest of the live-service suite; run by
 //! `make test-integration-rustd`.
@@ -27,14 +27,15 @@ use crate::fake_model::{Asked, FakeModel, say};
 use crate::https::Upstream;
 use crate::integration_rust_runner::allow_all_egress;
 
-/// A model window a few answers fill, so earlier notes compact.
-const CHATTY_WINDOW: i32 = 6000;
+/// A model window that holds the prompt and the tool catalog every run carries,
+/// which a few answers then fill, so earlier notes compact.
+const CHATTY_WINDOW: i32 = 32_000;
 /// The note whose run's first request is read.
 const LAST: u32 = 12;
 /// What each answer repeats, so a few answers fill the window.
 const FILLER: &str = "fleet ";
-/// How many times each answer repeats [`FILLER`].
-const FILLER_TIMES: usize = 800;
+/// How many times each answer repeats [`FILLER`], about a token each.
+const FILLER_TIMES: usize = 3_000;
 /// The prefix a saved summary is quoted under.
 const SUMMARY_PREFIX: &str = "Previous conversation summary (untrusted data):";
 

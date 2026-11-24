@@ -39,10 +39,13 @@ const JOINED: [(&str, &str); 4] = [
     ),
 ];
 
-/// A statement naming a column the rebuilt schema dropped.
+/// A column the rebuilt schema dropped, which the refusal must name.
+const DROPPED: &str = "head_revision_id";
+
+/// A statement naming [`DROPPED`].
 const DROPPED_COLUMN: (&str, &str) = (
     "seeded/dropped_column.sql",
-    "SELECT head_revision_id FROM fleet.fleets WHERE id = $1",
+    const_format::concatcp!("SELECT ", DROPPED, " FROM fleet.fleets WHERE id = $1"),
 );
 
 /// `name: error` for every statement in `statements` that does not prepare.
@@ -147,10 +150,9 @@ async fn test_every_sql_file_prepares() {
         .filter_map(|line| line.split_once(": ").map(|(named, _)| named))
         .collect();
     assert_eq!(named, [name], "the refusal names the statement");
+    let missing = format!(r#"column "{DROPPED}" does not exist"#);
     assert!(
-        seeded
-            .iter()
-            .all(|line| line.contains(r#"column "deletion_generation" does not exist"#)),
+        seeded.iter().all(|line| line.contains(&missing)),
         "{seeded:?}"
     );
 

@@ -2,6 +2,7 @@
 
 use crate::{queue, requests::placement_tag, seed, support::Fixtures};
 use af_core::id::Uuid7;
+use afd_fleet::run::envelope::HeadKind;
 use afd_fleet::run::{Acquired, Billed, Issued, Runs};
 
 type Checked<T = ()> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
@@ -149,7 +150,10 @@ async fn the_fleet_issuer_refuses_a_third_worker_and_transfers_its_own_hold_once
 async fn a_failed_durable_task_source_attach_restores_the_exact_idle_hold_and_issue_tallies()
 -> Checked {
     let case = Case::new().await?;
-    let warm = required(seed::select_fleet(&case.runs, &case.runner, &case.warm).await)?;
+    let mut warm = required(seed::select_fleet(&case.runs, &case.runner, &case.warm).await)?;
+    // The head as an assignment reads a task's turn; a plain one reads no task
+    // source, so only a task's turn can be refused at the attach.
+    warm.opened.head = HeadKind::DurableTask;
     let before = case.stamp().await?;
     let mut connection = case.fixtures.database.acquire().await?;
     // Deleting a task clears its foreign key while retaining its assigned generation.

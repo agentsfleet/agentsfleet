@@ -1,6 +1,6 @@
 //! The refusals the parity walk makes on its way through: a credential that
-//! belongs to nobody, an event type this daemon cannot name, and the poll that
-//! must not hand the same work out twice.
+//! belongs to nobody, a mint no person approved, an event type this daemon
+//! cannot name, and the poll that must not hand the same work out twice.
 //!
 //! Split from the walk by concern (RULE FLL): that file is the SEQUENCE a
 //! runner performs, and these are the three places it asserts the daemon says
@@ -47,11 +47,12 @@ pub(super) async fn assert_credential_and_duplicate_refusals(
         &json!({"run_id": run_id, "integration": "anthropic", "scope": null}),
     )
     .await;
-    assert_eq!(mint.status().as_u16(), 404);
+    assert_eq!(mint.status().as_u16(), 403);
     assert_eq!(
         field(&json(mint).await, "error_code"),
-        &json!("UZ-CRED-001"),
-        "a provider credential is not silently treated as a mintable connector"
+        &json!("UZ-GRANT-001"),
+        "a run mints only what a person approved for its fleet, and nobody approved \
+         a provider credential, so it is refused before the vault is opened"
     );
 
     scene.native_session().await.capacity(2);

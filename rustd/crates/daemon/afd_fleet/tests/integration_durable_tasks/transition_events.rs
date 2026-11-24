@@ -120,6 +120,7 @@ async fn a_report_that_missed_an_accepted_input_blocks_on_changed_evidence() {
     exercise(async |case| {
         let (task, _) = admitted(case).await;
         let durable_task_id = id(&task.durable_task_id);
+        case.attach(&durable_task_id).await;
         let pending = sqlx::query("UPDATE fleet.durable_tasks SET input_sequence=1 WHERE id=$1")
             .bind(&durable_task_id)
             .execute(
@@ -192,6 +193,7 @@ async fn a_report_claiming_a_cursor_the_durable_task_never_reached_is_unverified
         exercise(async |case| {
             let (task, _) = admitted(case).await;
             let durable_task_id = id(&task.durable_task_id);
+            case.attach(&durable_task_id).await;
             let report = request(
                 case,
                 Some(DurableTaskReport {

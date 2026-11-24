@@ -19,7 +19,7 @@ use serde_json::{Value, json};
 
 use crate::definition_code::greeter_origin;
 use crate::definition_install::install_definition;
-use crate::definition_run::run_event_from;
+use crate::definition_run::{offered_catalog, run_event_from};
 use crate::fake_model::{Asked, FakeModel, call, say};
 use crate::https::Upstream;
 use crate::integration_tool_trace::stored_trace;
@@ -128,7 +128,7 @@ async fn test_delegating_definition_roundtrip() {
     let root: Vec<&Asked> = asked.iter().filter(|turn| !is_child(turn)).collect();
     let mut offered = root[0].tools.clone();
     offered.sort_unstable();
-    assert_eq!(offered, [FILE_READ, SPAWN_AGENT, WAIT_AGENT]);
+    assert_eq!(offered, offered_catalog(), "the root holds the catalog");
     assert_eq!(
         root[2].results[2..],
         [

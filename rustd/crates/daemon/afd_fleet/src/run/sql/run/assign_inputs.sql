@@ -1,10 +1,9 @@
 -- Assigns, for a live run that is not a durable task, the messages a person
 -- sent in the run's conversation after the run's own, oldest first: the
 -- durable task's rule (pending_inputs.sql). It stops at the first message of
--- that conversation it must not fold: a parked one, whose approval gate must
--- not be passed; a task-bound one, which belongs to its durable task's
--- generation; and one no person sent, such as a webhook, a schedule fire or a
--- gate's continuation, which runs as a run of its own. Another conversation's
+-- that conversation it must not fold: a task-bound one, which belongs to its
+-- durable task's generation; and one no person sent, such as a webhook, a
+-- schedule fire or a question's answer, which runs as a run of its own. Another conversation's
 -- messages are neither assigned nor in the way. A message this run already
 -- assigned is returned again, so a retry after a lost answer reads the same
 -- messages.

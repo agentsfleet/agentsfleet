@@ -13,7 +13,7 @@ use afd_cron::Source;
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
 
-use crate::definition_run::run_event;
+use crate::definition_run::{offered_catalog, run_event};
 use crate::fake_model::{FakeModel, call, say};
 use crate::https::Upstream;
 use crate::integration_rust_runner::allow_all_egress;
@@ -49,7 +49,9 @@ async fn a_fleet_runs_cron_add_creates_its_schedule() {
         ("processed", ANSWER)
     );
     let asked = transcript.asked();
-    assert_eq!(asked[0].tools, ["cron_add"], "the run offered its one tool");
+    let mut offered = asked[0].tools.clone();
+    offered.sort_unstable();
+    assert_eq!(offered, offered_catalog(), "the run is offered the catalog");
     let result = &asked[1].results[0];
     assert!(result.contains(r#""source":"fleet""#), "{result}");
     assert_eq!(schedules_held(&scene, Some(Source::Fleet)).await, 1);
