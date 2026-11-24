@@ -3,6 +3,7 @@
 use std::{borrow::Cow, sync::Arc, time::Duration};
 
 use af_core::{id::Uuid7, limits::WorkerCount, timing::HEARTBEAT_INTERVAL};
+use af_stream::OwnedFrame;
 use af_wire::{
     protocol::Down,
     runner::{
@@ -135,18 +136,9 @@ impl<'a> Heartbeat<'a> {
                     if changed.is_err() { halt.stop(); return; }
                     let frame = updates.borrow_and_update().clone();
                     if let Some(frame) = frame {
-                        let result = match frame.decode::<Down<'_>>() {
-                            Ok(Down::Policy { response }) => self.apply(&response),
-                            Ok(_) => Err(ErrorKind::StreamProtocol.into()),
-                            Err(error) => Err(error.into()),
-                        };
-                        match result {
+                        match pushed(&frame).and_then(|response| self.apply(&response)) {
                             Ok(policy) => { publish(assignment, policy, halt); }
-                            Err(error) => {
-                                let error_code = error.code().as_str();
-                                tracing::error!(event = "runner_assignment_refused", error_code);
-                                halt.stop(); return;
-                            }
+                            Err(error) => return refused(&error, halt),
                         }
                     }
                     continue;
@@ -163,9 +155,12 @@ impl<'a> Heartbeat<'a> {
             match beaten {
                 Ok(policy) => {
                     retries = self.plane.runtime.endless();
-                    backoff = None;
                     rounds.advertised(policy.interval);
                     publish(assignment, policy, halt);
+                    backoff = match overtaken(&mut updates) {
+                        Ok(overtaken) => overtaken.then_some(Duration::ZERO),
+                        Err(error) => return refused(&error, halt),
+                    };
                 }
                 Err(error) if halt.stops_on(&error) => return self.close(),
                 Err(error) if !error.is_retryable() => {
@@ -208,6 +203,38 @@ impl<'a> Heartbeat<'a> {
         let error_code = code.as_str();
         tracing::warn!(event = EVENT_LAST_FAILED, error_code);
     }
+}
+
+/// The policy a pushed frame carries.
+fn pushed(frame: &OwnedFrame) -> Result<HeartbeatResponse<'_>> {
+    match frame.decode::<Down<'_>>() {
+        Ok(Down::Policy { response }) => Ok(response),
+        Ok(_) => Err(ErrorKind::StreamProtocol.into()),
+        Err(error) => Err(error.into()),
+    }
+}
+
+/// Whether a policy was pushed while a beat was in flight.
+///
+/// Nothing on a frame orders it against that beat's answer: the daemon may have read the
+/// host's row before the beat changed it, or after. The frame is marked seen and left
+/// unapplied, and the caller beats again at once. That answer is newer than both.
+///
+/// # Errors
+/// The frame is not a policy.
+fn overtaken(updates: &mut watch::Receiver<Option<Arc<OwnedFrame>>>) -> Result<bool> {
+    if !updates.has_changed().unwrap_or(false) {
+        return Ok(false);
+    }
+    let frame = updates.borrow_and_update().clone();
+    frame.map_or(Ok(false), |frame| pushed(&frame).map(|_policy| true))
+}
+
+/// Stops the runner on a pushed frame it cannot take as a policy.
+fn refused(error: &crate::error::Error, halt: &Halt) {
+    let error_code = error.code().as_str();
+    tracing::error!(event = "runner_assignment_refused", error_code);
+    halt.stop();
 }
 
 fn publish(assignment: &watch::Sender<Assignment>, policy: Assignment, halt: &Halt) {

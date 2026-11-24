@@ -45,8 +45,14 @@ impl Calls {
     /// Pushes `response` as the daemon's policy frame, as a pushed policy reaches the
     /// heartbeat loop between beats.
     pub(crate) async fn push_policy(&self, response: &serde_json::Value) -> crate::Result<()> {
+        self.push_frame(&serde_json::json!({"type": "policy", "response": response}))
+            .await
+    }
+
+    /// Pushes `message` on the frame a pushed policy rides, whatever it holds.
+    pub(crate) async fn push_frame(&self, message: &serde_json::Value) -> crate::Result<()> {
         let frame = af_stream::encode(
-            &serde_json::json!({"type": "policy", "response": response}),
+            message,
             &af_stream::Budget::default(),
             af_wire::protocol::StreamKind::Control,
             &self.stopped,

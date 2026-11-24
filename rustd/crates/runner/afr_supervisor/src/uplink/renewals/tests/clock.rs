@@ -261,3 +261,36 @@ async fn a_pending_retry_moves_up_to_a_shorter_interval() -> crate::Result<()> {
     ran?;
     observed
 }
+
+/// A batch answered three intervals after its round does not hold the beat back: the
+/// beat is woken each interval while the batch is out, as the gateway's two-interval
+/// silence limit needs.
+#[tokio::test(start_paused = true)]
+async fn a_slow_batch_keeps_waking_the_beat_each_interval() -> crate::Result<()> {
+    const ONE: Duration = Duration::from_secs(1);
+    let registry = Arc::new(Renewals::default());
+    let (handle, mut peer) = RenewalPeer::new();
+    let _held = held(&registry)?;
+    registry.advertised(ONE);
+    let started = Instant::now();
+    let stop = CancellationToken::new();
+    let running = registry.run(&handle, stop.clone());
+    let observed = async {
+        let (at, request, run) = next_batch(&mut peer, started).await?;
+        assert_eq!(at, ONE, "the first round is one interval in");
+        assert!(beat_waiting(&registry).await, "the round woke the beat");
+        for interval in 2..=3_u32 {
+            tokio::time::sleep_until(started + ONE * interval + Duration::from_millis(1)).await;
+            assert!(
+                beat_waiting(&registry).await,
+                "the beat is woken at {interval} s while the batch is out"
+            );
+        }
+        answer(&peer, request, &run, true).await?;
+        stop.cancel();
+        Ok::<(), crate::Error>(())
+    };
+    let (ran, observed) = tokio::join!(running, observed);
+    ran?;
+    observed
+}

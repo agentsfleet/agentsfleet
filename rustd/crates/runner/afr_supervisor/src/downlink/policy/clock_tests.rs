@@ -1,6 +1,7 @@
-//! The heartbeat loop beats when the runner's one clock rings it, and at no other
-//! time: a pushed policy does not move the next beat, and a round that falls while a
-//! beat is in flight is kept for exactly one more beat.
+//! The heartbeat loop beats when the runner's one clock rings it: a pushed policy does
+//! not move the next beat, and a round that falls while a beat is in flight is kept for
+//! exactly one more beat. One beat goes off the clock: the one that follows a policy
+//! pushed while a beat was in flight.
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -21,6 +22,15 @@ async fn beats_until(
     answering: impl Fn(usize) -> Answer + Send + Sync + 'static,
     during: impl AsyncFnOnce(&crate::test_support::Calls),
 ) -> Vec<Duration> {
+    beats_and_workers_until(until, answering, during).await.0
+}
+
+/// As [`beats_until`], and the worker count the last published assignment carries.
+async fn beats_and_workers_until(
+    until: Duration,
+    answering: impl Fn(usize) -> Answer + Send + Sync + 'static,
+    during: impl AsyncFnOnce(&crate::test_support::Calls),
+) -> (Vec<Duration>, u32) {
     let started = Instant::now();
     let stamps = Arc::new(Mutex::new(Vec::new()));
     let stamped = Arc::clone(&stamps);
@@ -33,7 +43,7 @@ async fn beats_until(
     });
     let probe = probe();
     let holds = idle_holds();
-    let (published, _watching) = watch::channel(Assignment::initial());
+    let (published, watching) = watch::channel(Assignment::initial());
     let shutdown = CancellationToken::new();
     let halt = Halt::new(shutdown.clone());
     let beating = Heartbeat::new(&plane, &probe, &holds).keep_beating(&published, &halt);
@@ -47,7 +57,11 @@ async fn beats_until(
     let beats = stamps
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    beats.iter().copied().filter(|at| *at < until).collect()
+    let workers = watching.borrow().workers;
+    (
+        beats.iter().copied().filter(|at| *at < until).collect(),
+        workers,
+    )
 }
 
 fn ok(interval_ms: u32) -> Answer {
@@ -107,5 +121,68 @@ async fn a_round_due_during_a_beat_in_flight_still_beats_once() {
             Duration::from_secs(9),
         ],
         "the kept round beats once when the answer lands, then the clock resumes"
+    );
+}
+
+/// A policy pushed while a beat is in flight may be older than that beat's answer. It
+/// is not applied over the answer: the loop beats again at once, and the workers the
+/// answers assign stand.
+#[tokio::test(start_paused = true)]
+async fn a_policy_pushed_during_a_beat_is_answered_by_another_beat() {
+    let (beats, workers) = beats_and_workers_until(
+        Duration::from_millis(2_500),
+        |beat| match (beat, ok(10_000)) {
+            // The first beat is answered at 2 s; the policy below lands at 1 s.
+            (1, Answer::Reply(bytes)) => Answer::Late(Duration::from_secs(2), bytes),
+            (_, answered) => answered,
+        },
+        async |calls| {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            // As the daemon's opening recheck pushes for a host whose row is degraded
+            // until this very beat lifts it.
+            let pushed = calls
+                .push_policy(&serde_json::json!({"status": KEEP_GOING,
+                    "assigned_policy": policy(), "degraded": true,
+                    "degraded_reason": "sandbox", "selftest_requested": false,
+                    "heartbeat_interval_ms": 10_000, "release_holds": []}))
+                .await;
+            assert!(pushed.is_ok(), "the policy frame is pushed: {pushed:?}");
+        },
+    )
+    .await;
+    assert_eq!(
+        beats,
+        [Duration::ZERO, Duration::from_secs(2)],
+        "the answer at 2 s is followed by one more beat at once"
+    );
+    assert_eq!(
+        workers, 3,
+        "the pushed degradation did not replace the answers"
+    );
+}
+
+/// A pushed frame that is no policy stops the runner when it lands during a beat, as it
+/// does when it lands between beats.
+#[tokio::test(start_paused = true)]
+async fn a_frame_that_is_no_policy_pushed_during_a_beat_stops_the_runner() {
+    let (beats, _workers) = beats_and_workers_until(
+        Duration::from_secs(30),
+        |beat| match (beat, ok(10_000)) {
+            (1, Answer::Reply(bytes)) => Answer::Late(Duration::from_secs(2), bytes),
+            (_, answered) => answered,
+        },
+        async |calls| {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            let pushed = calls
+                .push_frame(&serde_json::json!({"type": "cancel", "run_id": "r", "error_code": "UZ-RUN-001"}))
+                .await;
+            assert!(pushed.is_ok(), "the frame is pushed: {pushed:?}");
+        },
+    )
+    .await;
+    assert_eq!(
+        beats,
+        [Duration::ZERO],
+        "the runner stops on the frame: no later round beats"
     );
 }

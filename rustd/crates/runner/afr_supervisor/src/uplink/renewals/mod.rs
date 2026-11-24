@@ -140,6 +140,10 @@ impl Renewals {
     /// heartbeat loop and renews the runs held. A round that failed, or in which a run was
     /// refused for now, is followed by another one answer bound after it was sent, or one
     /// interval when that is shorter. A new connected session starts a round at once.
+    ///
+    /// A batch still out an interval after its round keeps waking the beat each interval.
+    /// The gateway closes a connection that sends no beat for two intervals, and a batch
+    /// may take a whole answer bound, which is longer than the shortest interval.
     pub(crate) async fn run(&self, handle: &StreamHandle, stop: CancellationToken) -> Result<()> {
         let mut sessions = handle.session.clone();
         let mut previous = sessions.borrow_and_update().clone();
@@ -176,9 +180,19 @@ impl Renewals {
             }
             sent = Instant::now();
             self.beat.notify_one();
-            let renewed = tokio::select! {
-                () = stop.cancelled() => return Ok(()),
-                result = self.batch(handle) => result,
+            let batch = self.batch(handle);
+            tokio::pin!(batch);
+            let mut beat_at = sent + period;
+            let renewed = loop {
+                tokio::select! {
+                    biased;
+                    () = stop.cancelled() => return Ok(()),
+                    result = &mut batch => break result,
+                    () = tokio::time::sleep_until(beat_at) => {
+                        self.beat.notify_one();
+                        beat_at += period;
+                    }
+                }
             };
             period = *advertised.borrow_and_update();
             retrying = match renewed {

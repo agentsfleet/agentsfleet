@@ -138,12 +138,13 @@ impl<S: Deliver + 'static> Worker<S> {
             // With no room, the next finished job rings the loop.
             let room = lanes.room();
             if room > 0 {
+                let claiming = tokio::time::Instant::now();
                 match claim_once(&database, &entropy, &lanes, via, room).await {
                     Ok(claimed) if claimed == room => {
                         via = Via::Scan;
                         continue;
                     }
-                    Ok(_partial) => match next_lapse(&database, &lanes).await {
+                    Ok(_partial) => match next_lapse(&database, &lanes, claiming.elapsed()).await {
                         Ok(next) => lapse = next,
                         // The lapse already known still stands; the next claim reads again.
                         Err(failure) => report(EVENT_LAPSE_UNREAD, &failure),
@@ -250,15 +251,17 @@ async fn pinged(wake: &mut Option<Subscription>) {
 
 /// When the earliest claim another holder took lapses, as an instant on this replica's
 /// clock; `None` when no other holder holds an open delivery. The deliveries `lanes` hold
-/// are this replica's own, renewed while they run, so they are left out.
+/// are this replica's own, renewed while they run, so they are left out. `since` is how
+/// long ago the claim this read follows began: a claim that lapsed in between is now.
 ///
 /// # Errors
 /// The ledger would not answer.
 async fn next_lapse<S: Deliver + 'static>(
     database: &Db,
     lanes: &Lanes<S>,
+    since: Duration,
 ) -> crate::Result<Option<tokio::time::Instant>> {
-    let left = delivery::next_lapse(database, &lanes.held()).await?;
+    let left = delivery::next_lapse(database, &lanes.held(), since).await?;
     Ok(left.map(|left| tokio::time::Instant::now() + left))
 }
 

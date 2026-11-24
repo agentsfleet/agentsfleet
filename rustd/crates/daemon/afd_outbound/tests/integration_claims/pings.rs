@@ -153,16 +153,53 @@ async fn the_lapse_leaves_out_the_deliveries_this_replica_holds() {
             .fetch_one(&mut *ledger.database.acquire().await.expect("a connection"))
             .await
             .expect("the delivery row");
-    let anyone = afd_outbound::delivery::next_lapse(&ledger.database, &[])
+    let anyone = afd_outbound::delivery::next_lapse(&ledger.database, &[], Duration::ZERO)
         .await
         .expect("the lapse reads");
     assert!(
         anyone.is_some_and(|left| left <= Duration::from_secs(30)),
         "another holder's claim sets the lapse: {anyone:?}"
     );
-    let own = afd_outbound::delivery::next_lapse(&ledger.database, &[id])
+    let own = afd_outbound::delivery::next_lapse(&ledger.database, &[id], Duration::ZERO)
         .await
         .expect("the lapse reads");
     assert_eq!(own, None, "this replica's own claim sets no lapse");
+    ledger.cleanup().await;
+}
+
+/// A claim that lapsed after the claim the read follows began may have been skipped as
+/// live, so it answers zero and the worker claims at once. One that lapsed before that
+/// claim began was seen lapsed and is left out, so a row waiting in its lane never
+/// wakes the worker again.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_claim_that_lapsed_during_the_claim_answers_zero() {
+    let ledger = Ledger::create().await;
+    let lane = ledger.lane().await;
+    let event = ledger.owe(&lane, "lapsed a moment ago").await;
+    crate::ledger::sql(
+        &ledger.database,
+        "UPDATE thread.deliveries SET receipt = $2, \
+         claim_expires_at = clock_timestamp() - interval '1 second' WHERE turn_id = $1",
+        &[&event, &crate::ledger::thief()],
+    )
+    .await;
+    // A window measured on a monotonic clock carries nanoseconds.
+    let window = Duration::from_nanos(5_000_000_001);
+    let during = afd_outbound::delivery::next_lapse(&ledger.database, &[], window)
+        .await
+        .expect("the lapse reads");
+    assert_eq!(
+        during,
+        Some(Duration::ZERO),
+        "a claim that lapsed inside the window is due now"
+    );
+    let before = afd_outbound::delivery::next_lapse(&ledger.database, &[], Duration::ZERO)
+        .await
+        .expect("the lapse reads");
+    assert_eq!(
+        before, None,
+        "a claim that lapsed before the window is left out"
+    );
     ledger.cleanup().await;
 }
