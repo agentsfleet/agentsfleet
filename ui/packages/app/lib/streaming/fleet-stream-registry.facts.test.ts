@@ -80,9 +80,9 @@ describe("fleet-stream-registry — fleet facts", () => {
   it("a completion folds both facts and the row's figures in", () => {
     const { release, emit } = open();
     emit({ kind: FRAME_KIND.TURN_RECEIVED, turn_id: "evt_live", actor: "cron:*" });
-    emit(completion({ fleet_status: "installing", pending_approvals: 2 }));
+    emit(completion({ fleet_status: "archived", pending_approvals: 2 }));
     const snap = getSnapshot(FLEET);
-    expect(snap.fleet).toEqual({ status: "installing", pendingApprovals: 2 });
+    expect(snap.fleet).toEqual({ status: "archived", pendingApprovals: 2 });
     expect(snap.latest).toMatchObject({ tokens: 1200, status: "processed" });
     release();
   });
@@ -100,7 +100,7 @@ describe("fleet-stream-registry — fleet facts", () => {
 
   it("a server render's facts overwrite the tail's, and the next frame overwrites them back", () => {
     const { release, emit } = open();
-    emit(completion({ fleet_status: "installing", pending_approvals: 1 }));
+    emit(completion({ fleet_status: "archived", pending_approvals: 1 }));
     reconcileServerFacts(FLEET, { status: "archived", pendingApprovals: 0 });
     expect(getSnapshot(FLEET).fleet).toEqual({ status: "archived", pendingApprovals: 0 });
     emit({ kind: FRAME_KIND.GATE_OPENED, gate_id: "g", turn_id: "e", pending_approvals: 1 });
@@ -119,10 +119,10 @@ describe("fleet-stream-registry — fleet facts", () => {
     const es = FakeEventSource.instances[0]!;
     es.emit({ kind: FRAME_KIND.TURN_RECEIVED, turn_id: "evt_live", actor: "cron:*" });
     const woken = listener.mock.calls.length;
-    es.emit(completion({ fleet_status: "installing", pending_approvals: 3 }));
+    es.emit(completion({ fleet_status: "archived", pending_approvals: 3 }));
     expect(listener.mock.calls.length).toBe(woken + 1);
     const snap = getSnapshot(FLEET);
-    expect(snap.fleet).toEqual({ status: "installing", pendingApprovals: 3 });
+    expect(snap.fleet).toEqual({ status: "archived", pendingApprovals: 3 });
     expect(snap.latest).toMatchObject({ tokens: 1200 });
     release();
   });

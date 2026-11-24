@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterEach, expect, it, vi } from "vitest";
-import { adoptDurableTaskGoal, controlDurableTask, readDurableTask } from "@/lib/api/tasks";
+import { controlDurableTask, editDurableTaskStatements, readDurableTask } from "@/lib/api/tasks";
 import { detail, DURABLE_TASK_IDS } from "./helpers/task-reads";
 const TAG = `"${"a".repeat(64)}"`;
 afterEach(() => vi.unstubAllGlobals());
@@ -17,10 +17,13 @@ it("requires confirmed version and generation and never retries uncertain mutati
   expect(network.mock.calls[0]?.[1]).toMatchObject({method: "PATCH", redirect: "manual", cache: "no-store",
     headers: {"If-Match": TAG}, body: JSON.stringify({state: "paused", expected_generation: 1})});
   network.mockResolvedValueOnce(Response.json(task, {headers: {etag: TAG}}));
-  expect((await adoptDurableTaskGoal("w", "f", task, DURABLE_TASK_IDS[1], DURABLE_TASK_IDS[2], signal)).kind).toBe("confirmed");
+  const questions = [{...task.context.questions[0], name: "repair", question: {type: "noul", instructions: "Is PR 88 green? 🦉",
+    criteria: {true: "Every check passed.", false: "A check failed or is pending."}}}] as const;
+  expect((await editDurableTaskStatements("w", "f", task, questions, signal)).kind).toBe("confirmed");
+  expect(network.mock.calls[1]?.[1]).toMatchObject({method: "PATCH", headers: {"If-Match": TAG}});
   const body = network.mock.calls[1]?.[1]?.body;
   if (typeof body !== "string") throw new Error("Expected a JSON request body");
-  expect(JSON.parse(body)).toEqual({goal_revision_id: DURABLE_TASK_IDS[1], operation_id: DURABLE_TASK_IDS[2], expected_generation: 1});
+  expect(JSON.parse(body)).toEqual({questions, expected_generation: 1});
 });
 
 it("keeps refusal, stale state, limits, malformed confirmation and transport uncertainty distinct", async () => {

@@ -10,7 +10,7 @@ import {
   workspaceEntryPattern,
 } from "./fixtures/nav";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
-import { FIXTURE_KEY } from "./fixtures/constants";
+import { FIXTURE_KEY, NEW_FLEET_COPY } from "./fixtures/constants";
 import {
   installPaintBoundaryAudit,
   readBlankFrameEvidence,
@@ -21,10 +21,10 @@ const ROUTE_TIMEOUT_MS = 10_000;
 const LOADING_LABEL = "Loading…";
 const STREAM_PREFIX = `dashboard-fluidity-${crypto.randomBytes(4).toString("hex")}`;
 
-// Wait for the conversation or empty-workspace setup after the entry redirect.
+// Wait for the conversation or an empty workspace's New fleet after the entry redirect.
 async function expectFleetsRouteLoaded(page: Page): Promise<void> {
   await expect(page.getByLabel("Fleet chat", {exact: true}).or(
-    page.getByLabel("Fleet setup conversation", {exact: true}),
+    page.getByRole("form", {name: NEW_FLEET_COPY.composer, exact: true}),
   ).filter({visible: true})).toBeVisible({ timeout: ROUTE_TIMEOUT_MS });
 }
 
@@ -97,18 +97,18 @@ test.describe("authenticated dashboard fluidity", () => {
     streamWorkspaceId = null;
   });
 
-  test("New fleet opens its composer while unfinished setups are loading", async ({page}, info) => {
+  test("New fleet opens its composer while the fleet list is loading", async ({page}, info) => {
     const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
     await signInAs(page, FIXTURE_KEY.regular);
     await page.addInitScript(() => {
       const observer = new MutationObserver(() => {
         if (!document.querySelector('textarea[aria-label="What would you like your fleet to do?"]:enabled')) return;
-        performance.mark("setup-composer-ready");
+        performance.mark("new-fleet-composer-ready");
         observer.disconnect();
       });
       observer.observe(document, {subtree: true, childList: true, attributes: true, attributeFilter: ["disabled"]});
     });
-    const path = `**/live/v1/workspaces/${workspaceId}/drafts?*`;
+    const path = `**/live/v1/workspaces/${workspaceId}/fleets?*`;
     const release = Promise.withResolvers<void>();
     let sidebarRequested = false;
     await page.route(path, async route => {
@@ -120,12 +120,12 @@ test.describe("authenticated dashboard fluidity", () => {
       await page.goto(`/w/${workspaceId}/fleets/new`, {waitUntil: "domcontentloaded"});
       await expect.poll(() => sidebarRequested, {timeout: ROUTE_TIMEOUT_MS}).toBe(true);
       const composer = page.getByRole("textbox", {name: "What would you like your fleet to do?"});
-      const loadingSetups = page.getByLabel("Loading unfinished setups", {exact: true});
-      await expect(loadingSetups).toBeVisible();
+      const loadingFleets = page.getByText("Loading fleets…", {exact: true});
+      await expect(loadingFleets).toBeVisible();
       await expect(composer).toBeEnabled({timeout: ROUTE_TIMEOUT_MS});
       await composer.fill("Review the release checklist.");
       const timing = await page.evaluate(() => {
-        const ready = performance.getEntriesByName("setup-composer-ready")[0]?.startTime;
+        const ready = performance.getEntriesByName("new-fleet-composer-ready")[0]?.startTime;
         const models = performance.getEntriesByType("resource").find((entry): entry is PerformanceResourceTiming => {
           const path = new URL(entry.name).pathname;
           return entry instanceof PerformanceResourceTiming && path.startsWith("/live/v1/workspaces/") && path.endsWith("/models");
@@ -133,14 +133,14 @@ test.describe("authenticated dashboard fluidity", () => {
         return {composerReadyMs: ready, afterModelResponseMs: ready !== undefined && models ? ready - models.responseEnd : undefined};
       });
       expect(timing.composerReadyMs).toEqual(expect.any(Number));
-      await info.attach("setup-composer-performance", {contentType: "application/json", body: JSON.stringify({
+      await info.attach("new-fleet-composer-performance", {contentType: "application/json", body: JSON.stringify({
         ...timing,
         sidebarRequested,
         sidebarResponseHeld: true,
       })});
       release.resolve();
-      await expect(loadingSetups).toBeHidden({timeout: ROUTE_TIMEOUT_MS});
-      await expect(page.getByText("Unfinished setups could not be loaded.", {exact: false})).toHaveCount(0);
+      await expect(loadingFleets).toBeHidden({timeout: ROUTE_TIMEOUT_MS});
+      await expect(page.getByText("Fleets could not be loaded.", {exact: false})).toHaveCount(0);
       await expect(composer).toHaveValue("Review the release checklist.");
     } finally {
       release.resolve();

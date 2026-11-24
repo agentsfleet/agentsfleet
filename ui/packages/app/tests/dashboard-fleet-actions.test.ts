@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import userEvent from "@testing-library/user-event";
 import { FleetActions } from "@/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetActions";
 import { FleetDetailSchema } from "@/lib/api/fleet-detail";
-import { FLEET_DETAIL, response } from "./helpers/draft-fixtures";
+import { FLEET_DETAIL, response } from "./helpers/fleet-fixtures";
 
 const {setStatus, remove, navigation} = vi.hoisted(() => ({setStatus: vi.fn(), remove: vi.fn(), navigation: {replace: vi.fn(), refresh: vi.fn()}}));
 vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", () => ({setFleetStatusAction: setStatus, deleteFleetAction: remove}));

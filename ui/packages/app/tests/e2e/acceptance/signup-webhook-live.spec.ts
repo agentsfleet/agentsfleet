@@ -16,6 +16,7 @@ import { expect, test } from "@playwright/test";
 import { deleteUser, findUserIdByEmail } from "./fixtures/clerk-admin";
 import { signUpAs } from "./fixtures/signup";
 import { workspaceHref } from "./fixtures/nav";
+import { NEW_FLEET_COPY } from "./fixtures/constants";
 
 const PASSWORD = "SignupFixture!2026-live";
 const PROD_WEBHOOK_FLAG = "E2E_ALLOW_PROD_SIGNUP_WEBHOOK";
@@ -69,6 +70,7 @@ test.describe("signup webhook live", () => {
     await expect(createLink).toBeVisible();
     const createHref = workspaceHref(signup.workspaceId, "fleets/new");
     await expect(createLink).toHaveAttribute("href", createHref);
-    await expect(page.getByRole("button", {name: "New fleet from message", exact: true})).toBeVisible();
+    await expect(page.getByRole("form", {name: NEW_FLEET_COPY.composer, exact: true})
+      .getByRole("button", {name: NEW_FLEET_COPY.send, exact: true})).toBeVisible();
   });
 });

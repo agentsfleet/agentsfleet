@@ -12,7 +12,7 @@ import { clientFor } from "./fixtures/api-client";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import { workspaceHref } from "./fixtures/nav";
-import { getDefaultWorkspaceId, seedFleet, waitForFleetActive } from "./fixtures/seed";
+import { getDefaultWorkspaceId, seedFleet, expectFleetActive } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 
 const FLEET_PREFIX = "resend-spec-";
@@ -56,7 +56,7 @@ async function withResendPage(
     return answerThrough(route, steers, loseFirstAnswer);
   });
   try {
-    await waitForFleetActive(FIXTURE_KEY.regular, workspaceId, fleet.id);
+    await expectFleetActive(FIXTURE_KEY.regular, workspaceId, fleet.id);
     await signInAs(page, FIXTURE_KEY.regular);
     await body({ workspaceId, fleetId: fleet.id, href, message }, steers);
   } finally {

@@ -10,7 +10,7 @@
  * target that is not disposable.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { FLEET, FLEET_ID, DRAFT_ID, CANDIDATE_ID } from "./helpers/draft-fixtures";
+import { FLEET_DETAIL, FLEET_ID } from "./helpers/fleet-fixtures";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import { SOAK_FLEET_PREFIX } from "./e2e/acceptance/fixtures/soak-scenario";
 
@@ -22,7 +22,8 @@ type StubFleet = { id: string; name: string; status: string };
 /** Fleets under names no prefix list ever carried — Dimension 1.1's point. */
 const UNLISTED_NAMES = ["console-ab12", "pulse-cd34", "nav-ef56"] as const;
 
-const FLEET_IDS = [FLEET_ID, DRAFT_ID, CANDIDATE_ID] as const;
+const SECOND_FLEET_ID = "0199a801-1000-7000-8000-0000000000c2";
+const FLEET_IDS = [FLEET_ID, SECOND_FLEET_ID, "0199a801-1000-7000-8000-0000000000c3"] as const;
 
 const listWorkspaces = vi.fn();
 const listFleets = vi.fn();
@@ -52,7 +53,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   process.env.NEXT_PUBLIC_API_URL = DEV_API_URL;
   del.mockResolvedValue(undefined);
-  get.mockResolvedValue({...FLEET, status: AGENTSFLEET_STATUS.ACTIVE});
+  get.mockResolvedValue({...FLEET_DETAIL, status: AGENTSFLEET_STATUS.ACTIVE});
 });
 
 afterEach(() => {
@@ -70,7 +71,7 @@ describe("sweepLeakedFixtureFleets", () => {
     expect(counts).toEqual({removed: listWorkspaces.mock.calls.length, failed: 0});
     expect(get.mock.calls.some(([path]) => String(path).endsWith(FLEET_ID))).toBe(false);
     expect(del.mock.calls.some(([path]) => String(path).endsWith(FLEET_ID))).toBe(false);
-    expect(del.mock.calls.some(([path]) => String(path).endsWith(DRAFT_ID))).toBe(true);
+    expect(del.mock.calls.some(([path]) => String(path).endsWith(SECOND_FLEET_ID))).toBe(true);
   });
 
   it("test_sweep_reaps_a_fleet_under_any_name", async () => {
@@ -88,7 +89,7 @@ describe("sweepLeakedFixtureFleets", () => {
     expect(counts.failed).toBe(0);
     // DELETE ends live work itself: the sweep never archives first.
     expect(patch).not.toHaveBeenCalled();
-    expect(del).toHaveBeenCalledWith(expect.stringContaining(FLEET_ID), {"If-Match": FLEET.etag});
+    expect(del).toHaveBeenCalledWith(expect.stringContaining(FLEET_ID), {"If-Match": FLEET_DETAIL.etag});
     // Assert each individual fleet reached a delete, not just that the total
     // adds up — a count can be right while the wrong rows were removed.
     const deleted = del.mock.calls.map(([path]) => String(path));
@@ -104,7 +105,7 @@ describe("sweepLeakedFixtureFleets", () => {
     listWorkspaces.mockResolvedValue([{ id: "ws-1", name: "fixture-workspace" }]);
     listFleets.mockResolvedValue(fleets("console-ab12", "pulse-cd34", "nav-ef56"));
     del.mockImplementation((path: string) =>
-      path.endsWith(DRAFT_ID) ? Promise.reject(new Error("stuck")) : Promise.resolve(),
+      path.endsWith(SECOND_FLEET_ID) ? Promise.reject(new Error("stuck")) : Promise.resolve(),
     );
 
     const { sweepLeakedFixtureFleets } = await loadSweep();
@@ -156,6 +157,6 @@ describe("cleanWorkspaceFleets", () => {
 
     expect(counts).toEqual({ removed: 2, failed: 0 });
     const deleted = del.mock.calls.map(([path]) => String(path));
-    expect(deleted.some((p) => p.endsWith(DRAFT_ID))).toBe(false); // count-bbb survived
+    expect(deleted.some((p) => p.endsWith(SECOND_FLEET_ID))).toBe(false); // count-bbb survived
   });
 });

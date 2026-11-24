@@ -61,7 +61,7 @@ describe("stopTurn", () => {
 
   it("hands the 200 body to the door's reader, which may take any shape", async () => {
     fetchMock.mockResolvedValueOnce(answer(200, { sequence: "3", state: "cancelled" }));
-    const result = await stopTurn("/live/v1/workspaces/ws/drafts/d/turns/t", new AbortController().signal, (body) => body);
+    const result = await stopTurn("/live/v1/workspaces/ws/fleets/f/turns/t", new AbortController().signal, (body) => body);
     expect(result).toEqual({ kind: TURN_STOP_KIND.STOPPED, answer: { sequence: "3", state: "cancelled" } });
   });
 

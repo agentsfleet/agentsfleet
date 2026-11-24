@@ -1,7 +1,6 @@
 import { test } from "./fixtures/chat-probe";
 import { expect, type Locator, type Page } from "@playwright/test";
 import { DURABLE_TASK_IDS, detail, summary } from "@/tests/helpers/task-reads";
-import { DRAFT } from "@/tests/helpers/draft-fixtures";
 
 test("the chat row uses the design-system stream motion token", async ({page, chatProbe}) => {
   await page.emulateMedia({reducedMotion: "no-preference"});
@@ -12,8 +11,8 @@ test("the chat row uses the design-system stream motion token", async ({page, ch
   await expect(reply).toHaveCSS("transition-duration", "0.2s");
 });
 
-test("setup and fleet status text has a muted-to-foreground sweep with accessible motion fallbacks", async ({page, chatProbe}) => {
-  for (const route of ["?loading=1", "?activity=1"]) {
+test("fleet status text has a muted-to-foreground sweep with accessible motion fallbacks", async ({page, chatProbe}) => {
+  for (const route of ["?loading=thinking", "?activity=1"]) {
     await page.emulateMedia({reducedMotion: "no-preference", forcedColors: "none"});
     await page.goto(`${chatProbe}${route}`);
     const label = page.locator('[data-chat-loading="true"]').first();
@@ -218,62 +217,43 @@ test("conversation and composer use the approved Manrope scale", async ({page, c
   await info.attach("chat-manrope-fixture", {path: screenshot, contentType: "image/png"});
 });
 
-test("the pull request starter remains editable and readable before any setup request", async ({page, chatProbe}, info) => {
+test("the pull request starter remains editable and readable before any fleet exists", async ({page, chatProbe}, info) => {
   const writes: string[] = [];
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
   page.on("request", request => {
     if (!["GET", "HEAD"].includes(request.method())) writes.push(request.method());
   });
-  await page.goto(`${chatProbe}?starters=1`);
+  await page.goto(`${chatProbe}?newFleet=1`);
   await expect(page.getByRole("heading", {name: "What should your fleet do?"})).toBeVisible();
   const suggestion = page.getByRole("button", {name: "Watch a pull request", exact: true});
   const input = page.getByRole("textbox", {name: "What would you like your fleet to do?"});
   await expect(input).toHaveValue("");
-  const unfinished = page.getByRole("region", {name: "Unfinished setups", exact: true});
-  const resume = unfinished.locator(`a[href$="?draft=${DRAFT.id}"]`);
-  await expect(resume).toHaveAccessibleName(DRAFT.title);
-  const remove = unfinished.getByRole("button", {name: `Delete chat: ${DRAFT.title}`});
-  const composerBefore = await page.getByRole("form", {name: "Setup chat composer"}).boundingBox();
-  const row = await resume.boundingBox();
-  const action = await resume.getByText("Resume", {exact: true}).boundingBox();
-  if (!composerBefore || !row || !action) throw new Error("Unfinished setup and composer geometry must be available");
-  expect(Math.abs(row.x - composerBefore.x)).toBeLessThanOrEqual(1);
-  expect(Math.abs(row.x + row.width - composerBefore.x - composerBefore.width)).toBeLessThanOrEqual(1);
-  expect(Math.abs(row.x + row.width - action.x - action.width - 15)).toBeLessThanOrEqual(1);
-  await resume.hover(); await expect(remove).toHaveCSS("opacity", "1");
-  const removeBox = await remove.boundingBox();
-  if (!removeBox) throw new Error("The delete control must remain reachable");
-  expect(removeBox.x + removeBox.width).toBeLessThanOrEqual(action.x);
-  expect(await resume.getByText("Resume", {exact: true}).boundingBox()).toEqual(action);
-  await resume.focus(); await page.keyboard.press("Tab"); await expect(remove).toBeFocused();
+  await expect(page.getByRole("region", {name: "Unfinished setups", exact: true})).toHaveCount(0);
   await suggestion.focus(); await page.keyboard.press("Enter");
-  await expect(input).toHaveValue(/Does the review cover the requested pull request at its current head\?/);
-  await expect(input).toHaveValue(/Are the findings supported by concrete code or check evidence\?/);
+  await expect(input).toHaveValue(/^Review GitHub pull requests for me\./);
+  await expect(input).toHaveValue(/Comment only\. Do not push code, approve, merge, close, or deploy\.$/);
+  await expect(input).not.toHaveValue(/completion questions|save the fleet/);
   const edited = `${await input.inputValue()}\n\nOnly review the API changes; preserve session expiry.`;
   await input.fill(edited);
   await expect(input).toHaveValue(edited);
   await expect(input).toHaveCSS("font-size", info.project.name === "mobile-chromium" ? "16px" : "13px");
-  await expect(page.getByRole("button", {name: "New fleet from message", exact: true})).toBeEnabled();
+  const composer = page.getByRole("form", {name: "New fleet composer"});
+  await expect(composer.getByRole("button", {name: "Send", exact: true})).toBeEnabled();
   expect(writes).toEqual([]);
   expect(errors).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  const composer = await page.getByRole("form", {name: "Setup chat composer"}).boundingBox();
-  expect(composer).not.toBeNull();
-  if (!composer) throw new Error("The starter must leave its editable composer visible");
-  expect(composer.y + composer.height).toBeLessThanOrEqual((page.viewportSize()?.height ?? 0) + 1);
+  const box = await composer.boundingBox();
+  if (!box) throw new Error("The starter must leave its editable composer visible");
+  expect(box.y + box.height).toBeLessThanOrEqual((page.viewportSize()?.height ?? 0) + 1);
   const screenshot = info.outputPath("editable-pull-request-starter.png");
   await page.screenshot({path: screenshot, scale: "css", animations: "disabled"});
   await info.attach("editable-pull-request-starter", {path: screenshot, contentType: "image/png"});
 });
 
-test("a saved setup has one quiet receipt and incoming messages have readable details", async ({page, chatProbe}, info) => {
+test("incoming messages and failed requests have readable details", async ({page, chatProbe}, info) => {
   await page.emulateMedia({reducedMotion: "reduce"});
-  await page.goto(`${chatProbe}?setup=1`);
-  const receipt = page.getByRole("region", {name: "Saved fleet setup"});
-  await expect(receipt.getByRole("heading")).toHaveText("Saved setup");
-  await expect(receipt.getByRole("list")).toHaveCount(0);
-  await expect(receipt.locator("svg")).toHaveCount(0);
+  await page.goto(`${chatProbe}?messages=1`);
   await expect(page.getByText("Message received", {exact: true})).toBeVisible();
   const disclosure = page.getByRole("button", {name: "View message"});
   await disclosure.focus(); await page.keyboard.press("Enter");
@@ -288,9 +268,9 @@ test("a saved setup has one quiet receipt and incoming messages have readable de
   await expect(page.getByText("The connection to the model provider was lost mid-turn.")).toBeVisible();
   await page.keyboard.press("Enter");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  const screenshot = info.outputPath("setup-message-clarity.png");
+  const screenshot = info.outputPath("message-clarity.png");
   await page.screenshot({path: screenshot, scale: "css", animations: "disabled"});
-  await info.attach("setup-message-clarity", {path: screenshot, contentType: "image/png"});
+  await info.attach("message-clarity", {path: screenshot, contentType: "image/png"});
 });
 
 test("recorded actions stay visible and distinguish every terminal outcome", async ({page, chatProbe}, info) => {
@@ -429,7 +409,7 @@ async function expectSourceHierarchy(panel: Locator) {
   await disclosure.click();
 }
 
-test("setup Summary retains full inline phone content and room for policy labels", async ({page, chatProbe}, info) => {
+test("fleet Summary retains full inline phone content and room for policy labels", async ({page, chatProbe}, info) => {
   await page.setViewportSize(info.project.name === "chromium" ? {width: 1480, height: 1000} : {width: 390, height: 844});
   for (const theme of ["dark", "light"]) {
     await page.goto(chatProbe);

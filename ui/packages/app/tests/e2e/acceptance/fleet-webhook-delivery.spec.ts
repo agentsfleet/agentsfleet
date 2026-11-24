@@ -1,11 +1,11 @@
-import { executionInstructions, WEBHOOK_EVENT_WORKFLOW_RUN, fixtureDefinition, webhookConfig } from "./fixtures/definition";
 /**
  * fleet-webhook-delivery.spec.ts — one signed GitHub delivery wakes a fleet
  * exactly once, and its exact replay wakes nothing.
  *
- * Wire: a fleet whose runtime config declares a GitHub `workflow_run` webhook and
- * names a workspace secret → that secret is stored → a captured GitHub
- * delivery is signed with it and posted to the fleet's webhook route → the
+ * Wire: a workspace secret is stored → a fleet is asked, in its first message,
+ * to add a webhook trigger that verifies GitHub's body signature with that
+ * secret → its trigger row names the URL → a captured GitHub `workflow_run`
+ * delivery is signed with the secret and posted to that URL → the
  * daemon accepts it and names the event → the identical bytes are posted
  * again → the daemon reports a replay and names the SAME event → an online
  * runner runs the one event, and the fleet's history carries exactly one
@@ -23,8 +23,9 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { expect, test } from "@playwright/test";
 import type { TurnsPage } from "@/lib/api/turns";
-
-import { saveFixtureFleet } from "./fixtures/native-setup";
+import { z } from "zod";
+import { TRIGGER_KIND, TriggerSchema } from "@/lib/api/fleet-detail";
+import { createFixtureFleet } from "./fixtures/fleet-create";
 import { clientFor } from "./fixtures/api-client";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import {
@@ -33,21 +34,26 @@ import {
   TURN_STATUS,
   failWith,
 } from "./fixtures/execution";
-import { getDefaultWorkspaceId, waitForFleetActive } from "./fixtures/seed";
+import { pollFor } from "./fixtures/observation";
+import { getDefaultWorkspaceId, expectFleetActive } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 
-// The fleet is named per run.
-const WEBHOOK_TEMPLATE = "fleet-webhook-delivery";
 const FLEET_PREFIX = "fleet-webhook-";
 // The workspace secret the trigger names. Not `github`: that name is the
 // GitHub CONNECTION's handle, and a fleet secret must never shadow it.
 //
-// CONSTANT, and deliberately. The name goes into the fleet's runtime config,
-// so a per-run name would give every run a different setup to review. Secrets
-// upsert by name, so rotating only the VALUE still gives each run a secret no
-// stale fleet can verify against, while the setup stays byte-identical.
+// CONSTANT, and deliberately: secrets upsert by name, so rotating only the
+// VALUE gives each run a secret no stale fleet can verify against, while the
+// message asking for the trigger stays the same words.
 const CREDENTIAL_NAME = "acceptance-webhook-secret";
 const WEBHOOK_SECRET_FIELD = "webhook_secret";
+// The trigger's source slug. Not `github`: a webhook may not take a reserved
+// source, and an App subscription needs a real installation this fixture
+// cannot arrange. GitHub's `sha256=<hex>` body signature is the generic
+// `body-hex-sha256` recipe on its own header.
+const WEBHOOK_SOURCE = "deploy-alerts";
+const VERIFIER = {scheme: "body-hex-sha256", header: "x-hub-signature-256"} as const;
+const WEBHOOK_EVENT_WORKFLOW_RUN = "workflow_run";
 
 // The delivery GitHub sent for a failed deploy, captured once and reused by
 // the daemon's own router suite. A failed `workflow_run` is the one shape the
@@ -86,7 +92,10 @@ const POLL_INTERVAL_MS = 2_000;
 // silently becoming too short when the cadence slows.
 const REPLAY_GRACE_POLLS = 5;
 const REPLAY_GRACE_MS = POLL_INTERVAL_MS * REPLAY_GRACE_POLLS;
-const JOURNEY_TIMEOUT_MS = 240_000;
+// The first message's run reaches a runner and calls trigger_add: the queue plus one provider round trip.
+const TRIGGER_TIMEOUT_MS = 180_000;
+const JOURNEY_TIMEOUT_MS = 420_000;
+const TriggersSchema = z.object({items: z.array(TriggerSchema)});
 
 interface Accepted {
   turn_id: string;
@@ -124,23 +133,35 @@ async function webhookTurns(workspaceId: string, fleetId: string) {
   return page.items.filter((item) => item.event_type === TURN_KIND_WEBHOOK);
 }
 
-/** The workspace signing secret and saved fleet a delivery needs. */
+/** What the fleet is asked to do with its first message: add the one trigger this journey delivers to. */
+function triggerMessage(): string {
+  return `Call trigger_add once with kind "webhook", source "${WEBHOOK_SOURCE}", events ["${WEBHOOK_EVENT_WORKFLOW_RUN}"], ` +
+    `verifier ${JSON.stringify(VERIFIER)} and secret_name "${CREDENTIAL_NAME}". Then reply with the single word done.`;
+}
+
+/** The webhook row the fleet added, once it names the URL deliveries go to. */
+async function webhookTrigger(workspaceId: string, fleetId: string) {
+  const page = TriggersSchema.parse(await clientFor(FIXTURE_KEY.regular)
+    .get<unknown>(`/v1/workspaces/${workspaceId}/fleets/${fleetId}/triggers`));
+  return page.items.find((item) => item.kind === TRIGGER_KIND.webhook && item.source === WEBHOOK_SOURCE && item.url) ?? null;
+}
+
+/** The workspace signing secret, and a fleet that added the trigger a delivery needs. */
 async function arrangeWebhookFleet(workspaceId: string, tag: string) {
   const tenant = clientFor(FIXTURE_KEY.regular);
   // The VALUE is random per run, so a stale row from an interrupted run can
-  // never verify this run's delivery; the NAME is not, because it rides the
-  // saved setup — see CREDENTIAL_NAME.
+  // never verify this run's delivery; the NAME is not — see CREDENTIAL_NAME.
   const secret = crypto.randomBytes(24).toString("hex");
   await tenant.post(`/v1/workspaces/${workspaceId}/secrets`, {
     name: CREDENTIAL_NAME,
     data: { [WEBHOOK_SECRET_FIELD]: secret },
   });
 
-  const fleet = await saveFixtureFleet(FIXTURE_KEY.regular, workspaceId,
-    fixtureDefinition(WEBHOOK_TEMPLATE, executionInstructions(), webhookConfig(WEBHOOK_TEMPLATE, CREDENTIAL_NAME)), `${FLEET_PREFIX}${tag}`);
-  await waitForFleetActive(FIXTURE_KEY.regular, workspaceId, fleet.id);
-  const webhook = fleet.webhook_urls.find((entry) => entry.source === "github");
-  if (!webhook) throw new Error("Save reply did not include the GitHub webhook URL");
+  const { fleet } = await createFixtureFleet(FIXTURE_KEY.regular, workspaceId,
+    { name: `${FLEET_PREFIX}${tag}`, message: triggerMessage() });
+  await expectFleetActive(FIXTURE_KEY.regular, workspaceId, fleet.id);
+  const webhook = await pollFor(() => webhookTrigger(workspaceId, fleet.id), TRIGGER_TIMEOUT_MS);
+  if (webhook?.url == null) failWith(classifyIdle(await anyRunnerLive()));
   return { fleetId: fleet.id, webhookUrl: webhook.url, secret };
 }
 

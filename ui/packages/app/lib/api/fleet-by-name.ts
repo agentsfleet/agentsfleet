@@ -1,5 +1,5 @@
 // One fleet in the workspace by its saved name, read by the browser through the
-// same-origin setup proxy (`GET /v1/workspaces/{id}/fleets?name=`), which mints
+// same-origin workspace proxy (`GET /v1/workspaces/{id}/fleets?name=`), which mints
 // the bearer the browser does not hold. An addressed chat message resolves its
 // name here before anything is sent.
 //

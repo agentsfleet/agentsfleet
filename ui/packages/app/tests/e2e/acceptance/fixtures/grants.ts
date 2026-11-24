@@ -1,14 +1,19 @@
 /**
  * grants.ts — the wire side of the integration-grant walk.
  *
- * The name-bound Linear handle requires explicit integration approval.
- * These fleets have no tools, so its placeholder refresh value is never sent
- * upstream. The journey proves approval, delivery and billing, not OAuth refresh.
+ * A fleet asks for the name-bound Linear handle with `request_access`, and a
+ * person approves it once on the card that request raises. The journey's
+ * fleets are only asked to answer, so its placeholder refresh value is never
+ * sent upstream. The journey proves approval, delivery and billing, not OAuth
+ * refresh.
  */
+import { z } from "zod";
 import { clientFor, type ClientHandle } from "./api-client";
 import type { ApprovalGate, ApprovalsListResponse } from "@/lib/api/approvals";
+import type { FleetGrant } from "@/lib/api/fleet-detail";
 import { APPROVAL_STATUS } from "@/lib/api/approvals-types";
-import { NANOS_PER_USD, type TenantBilling, type TenantBillingChargesResponse } from "@/lib/types";
+import { GrantSchema } from "@/lib/api/fleet-detail";
+import type { TenantBilling, TenantBillingChargesResponse } from "@/lib/types";
 
 /**
  * The gate kind the daemon raises for a mintable credential.
@@ -98,14 +103,6 @@ export async function ensureConnectorHandle(
   }
 }
 
-/**
- * Native setup with one workspace credential requirement for the grant journey.
- */
-export function connectorConfig(name: string) {
-  return { name, "x-agentsfleet": { triggers: [], tools: [],
-    credentials: [GRANT_CREDENTIAL_NAME], budget: { daily_nanos: String(NANOS_PER_USD) } } };
-}
-
 /** Every gate the workspace holds for one fleet, newest first. */
 export async function listGatesForFleet(
   handle: ClientHandle,
@@ -120,8 +117,8 @@ export async function listGatesForFleet(
 }
 
 /**
- * The one card a fleet's install raised and nobody has answered, or `null`
- * while the install-time request is still in flight.
+ * The one card a fleet's access request raised and nobody has answered, or
+ * `null` while its run has not asked yet.
  *
  * Singular on purpose: the daemon allows one actionable card per
  * (fleet, service), so a second pending row for one fleet is a defect the
@@ -145,28 +142,11 @@ export async function pendingGateFor(
   return pending[0] ?? null;
 }
 
-/** Grant-row statuses, as `afd_api_wire::grant::status` spells them. */
-export const GRANT_STATUS = {
-  pending: "pending",
-  approved: "approved",
-  revoked: "revoked",
-} as const;
+export { GRANT_STATUS } from "@/lib/api/fleet-detail";
 
-/**
- * The provenance an install-time grant carries. Cross-runtime pair of
- * `afd_approval::request::REASON_DECLARED_AT_INSTALL`.
- */
-export const REASON_DECLARED_AT_INSTALL = "Declared by the fleet's setup at install";
-
-/** One standing permission the daemon checks before it mints. */
-export interface IntegrationGrant {
-  readonly id: string;
-  readonly service: string;
-  readonly status: string;
-  readonly approved_at: string | null;
-  readonly revoked_at: string | null;
-  readonly reason: string | null;
-}
+/** One credential a fleet asked for, and what a person decided. */
+export type IntegrationGrant = FleetGrant;
+const GrantsSchema = z.object({ items: z.array(GrantSchema) });
 
 /** Every integration grant the workspace holds for one fleet. */
 export async function listGrantsForFleet(
@@ -174,15 +154,12 @@ export async function listGrantsForFleet(
   workspaceId: string,
   fleetId: string,
 ): Promise<IntegrationGrant[]> {
-  const page = await clientFor(handle).get<{ items: IntegrationGrant[] }>(
-    GRANTS_PATH(workspaceId, fleetId),
-  );
-  return page.items ?? [];
+  return GrantsSchema.parse(await clientFor(handle).get<unknown>(GRANTS_PATH(workspaceId, fleetId))).items;
 }
 
 /**
- * The one standing grant an install wrote for the connector, or `null` while
- * the install-time request is still in flight.
+ * The one grant the fleet's request wrote for the connector, or `null` while
+ * its run has not asked yet.
  *
  * Singular for the reason `pendingGateFor` is: `uq_integration_grants_fleet_id_service`
  * permits one row per (fleet, service), so a second is a defect to surface.
@@ -193,7 +170,7 @@ export async function connectorGrantFor(
   fleetId: string,
 ): Promise<IntegrationGrant | null> {
   const mine = (await listGrantsForFleet(handle, workspaceId, fleetId)).filter(
-    (grant) => grant.service === CONNECTOR_SERVICE_LINEAR,
+    (grant) => grant.name === CONNECTOR_SERVICE_LINEAR,
   );
   if (mine.length > 1) {
     throw new Error(

@@ -1,8 +1,8 @@
 import type { ActionResult } from "@/lib/actions/with-token";
-import type { Fleet } from "@/lib/api/draft-types";
+import type { NativeFleetDetail } from "@/lib/api/fleet-detail";
 import { deleteFleetAction, setFleetStatusAction } from "@/app/(dashboard)/w/[workspaceId]/fleets/actions";
-import { FleetSchema } from "@/lib/api/draft-types";
-import { setupRequest, SetupUnavailable } from "@/lib/api/draft-request";
+import { FleetDetailSchema } from "@/lib/api/fleet-detail";
+import { liveRequest, RequestFailed } from "@/lib/api/live-request";
 import { isDefiniteRefusal } from "@/lib/api/errors";
 import { presentErrorString, UNCONFIRMED_REQUEST_MESSAGE } from "@/lib/errors";
 
@@ -56,12 +56,12 @@ async function attempt<T>(call: () => Promise<ActionResult<T>>): Promise<ActionR
   catch { return {ok: false, error: UNCONFIRMED_REQUEST_MESSAGE}; }
 }
 
-async function read(request: Request): Promise<ActionResult<Fleet>> {
+async function read(request: Request): Promise<ActionResult<NativeFleetDetail>> {
   try {
     const path = `/live/v1/workspaces/${encodeURIComponent(request.workspace)}/fleets/${encodeURIComponent(request.fleetId)}`;
-    return {ok: true, data: await setupRequest({path}, FleetSchema, request.signal)};
+    return {ok: true, data: await liveRequest({path}, FleetDetailSchema, request.signal)};
   } catch (cause) {
-    return cause instanceof SetupUnavailable ? {ok: false, error: cause.message, status: cause.status, errorCode: cause.code}
+    return cause instanceof RequestFailed ? {ok: false, error: cause.message, status: cause.status, errorCode: cause.code}
       : {ok: false, error: UNCONFIRMED_REQUEST_MESSAGE};
   }
 }

@@ -1,6 +1,6 @@
 import { expect } from "@playwright/test";
 import { test } from "./fixtures/chat-probe";
-import { WORKSPACE } from "@/tests/helpers/draft-fixtures";
+import { WORKSPACE } from "@/tests/helpers/fleet-fixtures";
 import { COMPOSER_NAME, NOTICES_LABEL, RESEND_LABEL, SEND_LABEL, SEND_UNCONFIRMED_TEXT, UUID_V7 } from "@/tests/fleet-thread/steer-copy";
 
 // The open chat is the fixture's own fleet; `agentbob` is another fleet in its workspace.

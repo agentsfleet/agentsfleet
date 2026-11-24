@@ -1,68 +1,53 @@
 /**
- * Full-lifecycle Scenario 2 — persistent fixture login → install via dashboard
- * UI → observe → bill → archive.
+ * Full-lifecycle Scenario 2 — persistent fixture login → a first message on
+ * New fleet → observe → bill → archive.
  *
- * Sister to signup-lifecycle.spec.ts. Same install + observation + lifecycle
- * leg; the only difference is the auth prefix: cookie-mount via signInAs
- * (using the persistent `regular` fixture) instead of driving Clerk's hosted
- * SignUp form. Runs on DEV AND PROD — the persistent fixture is provisioned
- * in both Clerk DEV and Clerk PROD by globalSetup.
+ * Sister to signup-lifecycle.spec.ts. Same first message + observation +
+ * lifecycle leg; the only difference is the auth prefix: cookie-mount via
+ * signInAs (using the persistent `regular` fixture) instead of driving Clerk's
+ * hosted SignUp form. Runs on DEV AND PROD — the persistent fixture is
+ * provisioned in both Clerk DEV and Clerk PROD by globalSetup.
  *
- * Why cookie-mount instead of the sign-in form: form-driven login is covered
- * by signup-lifecycle.spec.ts (in DEV). Scenario 2 is about the lifecycle after auth,
- * not the login mechanism — cookie-mount keeps every PROD deploy run fast
- * and isolates the spec from Clerk SignIn component drift.
+ * The fleet is named by the daemon, so the spec owns it by its identity and
+ * purges exactly that row, never a name prefix a sibling might share.
  */
 import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
-import { saveFleetViaUI } from "./fixtures/install-ui";
+import { createFleetViaUI } from "./fixtures/new-fleet";
+import { probeMessage } from "./fixtures/probe";
 import {
   archiveFleet,
   expectDetailArchived,
   expectSidebarFleetState,
 } from "./fixtures/lifecycle";
+import { uniqueTag } from "./fixtures/observation";
 import { getDefaultWorkspaceId } from "./fixtures/seed";
-import { cleanWorkspaceFleets } from "./fixtures/teardown";
+import { purgeFixtureFleet } from "./fixtures/teardown";
 import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
 const FLOW_TIMEOUT_MS = 120_000;
-// One stable name per spec: the save names the fleet after it and the server
-// suffixes a repeat (`login-lifecycle-001`), so the sweep's prefix still
-// reaches every row this spec made.
-const FLEET_PREFIX = "login-lifecycle";
 
-test.describe("login → install → lifecycle", () => {
+test.describe("login → first message → lifecycle", () => {
   test.setTimeout(FLOW_TIMEOUT_MS);
+  let workspaceId = "";
+  let fleetId: string | null = null;
 
   test.afterEach(async () => {
-    const ws = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
-    await cleanWorkspaceFleets(FIXTURE_KEY.regular, ws, FLEET_PREFIX);
+    if (workspaceId && fleetId) await purgeFixtureFleet(FIXTURE_KEY.regular, workspaceId, fleetId);
+    fleetId = null;
   });
 
-  test("test_user_saves_a_fleet_from_chat", async ({ page }) => {
-    // Cookie-mount via signInAs — no form-drive needed.
+  test("test_user_starts_a_fleet_from_its_first_message", async ({ page }) => {
     await signInAs(page, FIXTURE_KEY.regular);
+    workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
+    fleetId = await createFleetViaUI(page, workspaceId, probeMessage(uniqueTag()));
 
-    // Save through the private chat's inline setup. An archived-but-not-deleted
-    // row from an interrupted run is the server's to suffix around. The chat
-    // targets the fixture's default workspace — the one active in the
-    // browser here.
-    const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
-    const fleetId = await saveFleetViaUI(page, FLEET_PREFIX, {
-      handle: FIXTURE_KEY.regular,
-      workspaceId,
-    });
-
-    // Post-install: form redirects to detail page. Recent Activity section
-    // is the section-scaffolding assertion (matches logs-detail downgrade).
+    // The page is the fleet's chat, with nothing to set up first.
     await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${fleetId}`));
-    // The detail page opens on Chat — the conversation card is the
-    // post-install scaffolding assertion.
     await expect(page.getByLabel("Fleet chat")).toBeVisible({ timeout: 15_000 });
 
-    // Saved history exposes the new fleet and its active status.
-    await page.goto(workspaceHref(workspaceId, "fleets"));
+    // The sidebar lists the new fleet and its active status.
     await expectSidebarFleetState(page, fleetId, "active");
 
     // Billing page loads the report's period totals.

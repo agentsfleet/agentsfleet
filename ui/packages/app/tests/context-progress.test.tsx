@@ -6,9 +6,6 @@ import { FRAME_KIND } from "@/lib/api/turns-types";
 import { applyLiveFrame, parseLiveFrame } from "@/lib/streaming/fleet-stream-frames";
 import { hideContextProgress } from "@/lib/streaming/fleet-stream-context";
 import { applyReplyDelta, applyReplyRecovery } from "@/lib/streaming/fleet-stream-reply-frames";
-import { createDraftThreadProjection, draftThreadMessages } from "@/lib/api/draft-thread-messages";
-import { EMPTY_DRAFT_VIEW } from "@/lib/api/draft-state";
-import { DRAFT, MESSAGE } from "./helpers/draft-fixtures";
 import { evt } from "./helpers/fleet-stream-fixtures";
 
 afterEach(cleanup);
@@ -71,18 +68,4 @@ it("hides status on reply/gap/recovery while retaining its duplicate ordering fr
   const reply = applyReplyDelta(next, "e0", {answer: "Visible answer", reasoning: "", thinking: false});
   expect(reply[0]).toMatchObject({reply: "Visible answer", contextProgressHidden: true});
   expect(applyReplyRecovery(reply, "e0", false)[0]?.contextProgress).toBeUndefined();
-});
-
-it("projects setup status only onto the matching running answer and preserves settled message identities", () => {
-  const project = createDraftThreadProjection();
-  const messages = [MESSAGE, {...MESSAGE, sequence: "2", role: "assistant" as const, state: "running" as const}];
-  const view = {...EMPTY_DRAFT_VIEW, draft: DRAFT, messages};
-  const before = project(view);
-  const contextProgress = {sequence: "2", progress: start};
-  const after = project({...view, contextProgress});
-  expect(after[0]).toBe(before[0]);
-  expect(after[1]).not.toBe(before[1]);
-  expect(after[1]?.metadata?.custom?.contextProgress).toEqual(start);
-  expect(draftThreadMessages({...view, contextProgress, messages: [MESSAGE, {...messages[1]!, state: "cancelled"}]})[1]?.metadata?.custom?.contextProgress).toBeUndefined();
-  expect(draftThreadMessages({...view, contextProgress, messages: [{...messages[1]!, state: "completed"} ]})[0]?.metadata?.custom?.contextProgress).toBeUndefined();
 });

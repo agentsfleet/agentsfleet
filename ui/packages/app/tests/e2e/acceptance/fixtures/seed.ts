@@ -10,10 +10,12 @@
  */
 import type { ClientHandle } from "./api-client";
 import type { FixtureKey, FleetStatus } from "./constants";
-import { fixtureDefinition } from "./definition";
-import { saveFixtureFleet } from "./native-setup";
+import { awaitFirstTurnSettled, createFixtureFleet } from "./fleet-create";
+import { probeMessage } from "./probe";
 import { clientFor } from "./api-client";
 
+/** What a seeded fleet's first message asks: one line back and no tool, the cheapest first turn there is. */
+const SEED_TOKEN = "ready";
 
 export interface Workspace {
   id: string;
@@ -52,45 +54,37 @@ export async function getDefaultWorkspaceId(handle: ClientHandle): Promise<strin
 
 export interface SeedFleetOpts {
   name: string;
+  /** The first message; a fleet cannot exist without one. Defaults to a one-line probe. */
+  message?: string;
 }
 
+/**
+ * A fleet and its first turn, through `POST W/fleets`, returned once that turn
+ * has settled: a seeded fleet is quiet when the spec starts, as one with no
+ * history used to be. A sibling holding the name moves this one to `name-2`.
+ */
 export async function seedFleet(key: FixtureKey, workspaceId: string, opts: SeedFleetOpts): Promise<Fleet> {
-  const fleet = await saveFixtureFleet(key, workspaceId, fixtureDefinition(opts.name), opts.name);
+  const {fleet, turnId} = await createFixtureFleet(key, workspaceId, {name: opts.name, message: opts.message ?? probeMessage(SEED_TOKEN)});
+  await awaitFirstTurnSettled(key, workspaceId, fleet.id, turnId);
   return { id: fleet.id, name: fleet.name };
 }
 
 /**
- * Poll until the fleet is `active`. `seedFleet` returns on the create response,
- * but the detail page hides its working surfaces behind the install gate until
- * the status flips — a spec that navigates immediately lands on the gate, not
- * the fleet. Waiting for `active` specifically (not merely "not installing")
- * means a fleet that FAILED or was archived fails the wait loudly
- * instead of passing the suite onto a fleet that can never render a console.
+ * A fleet is born `active`: its create commits the fleet and its first turn
+ * together, so there is nothing to wait for. Anything else — archived, or a
+ * status this suite does not know — fails loudly instead of letting a spec
+ * walk a fleet that can never render a console.
  */
-export async function waitForFleetActive(
+export async function expectFleetActive(
   handle: ClientHandle,
   workspaceId: string,
   fleetId: string,
-  timeoutMs = 30_000,
 ): Promise<void> {
-  const c = clientFor(handle);
-  const deadline = Date.now() + timeoutMs;
-  for (;;) {
-    const fleet = await c.get<{ status: string }>(
-      `/v1/workspaces/${workspaceId}/fleets/${fleetId}`,
-    );
-    if (fleet.status === "active") return;
-    if (fleet.status !== "installing") {
-      throw new Error(
-        `[e2e:seed] fleet ${fleetId} reached terminal status "${fleet.status}" before active`,
-      );
-    }
-    if (Date.now() > deadline) {
-      throw new Error(
-        `[e2e:seed] fleet ${fleetId} still installing after ${timeoutMs}ms`,
-      );
-    }
-    await new Promise((resolve) => setTimeout(resolve, 500));
+  const fleet = await clientFor(handle).get<{ status: string }>(
+    `/v1/workspaces/${workspaceId}/fleets/${fleetId}`,
+  );
+  if (fleet.status !== "active") {
+    throw new Error(`[e2e:seed] fleet ${fleetId} is "${fleet.status}", not active`);
   }
 }
 

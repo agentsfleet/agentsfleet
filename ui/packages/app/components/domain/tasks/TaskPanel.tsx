@@ -24,13 +24,13 @@ const EMPTY_DURABLE_TASKS: readonly DurableTaskSummary[] = [];
 const EMPTY_TURNS: readonly FleetTurn[] = [];
 
 /** Standalone consumers share the same owner; the fleet chat supplies it above both surfaces. */
-export function DurableTaskPanel({showRepositories = true, ...props}: FleetDurableTaskProps & {showRepositories?: boolean}) {
+export function DurableTaskPanel(props: FleetDurableTaskProps) {
   const view = useFleetDurableTaskView();
-  const work = <CurrentWork showRepositories={showRepositories} />;
+  const work = <CurrentWork />;
   return view ? work : <FleetDurableTaskProvider {...props}>{work}</FleetDurableTaskProvider>;
 }
 
-function CurrentWork({showRepositories}: {showRepositories: boolean}) {
+function CurrentWork() {
   const view = useFleetDurableTaskView();
   const [workOpen, setWorkOpen] = useState(false);
   const [expandedDurableTask, setExpandedDurableTask] = useState("");
@@ -53,9 +53,9 @@ function CurrentWork({showRepositories}: {showRepositories: boolean}) {
         title="View durable task details" onClick={() => {setWorkOpen(true); setExpandedDurableTask(task.id);}}><WarningIcon size={14} className="shrink-0 text-warning" aria-hidden="true" /><span className="min-w-0 flex-1">{task.title} · {task.status === "blocked" ? "Blocked" : "Attempts exhausted"}</span><CaretDownIcon size={14} className="shrink-0 text-muted-foreground" aria-hidden="true" /></Button>)}
     </section> : null}
     <WorkChanges turns={turns} repositories={view.changeRepositories} />
-    <WorkOutputs previews={[...new Set(resources.flatMap(run => run.previews))]} details={read.details} expectedDetails={read.references.length} hideEmpty={turns.length > 0 || !showRepositories} />
+    <WorkOutputs previews={[...new Set(resources.flatMap(run => run.previews))]} details={read.details} expectedDetails={read.references.length} hideEmpty={turns.length > 0} />
     <RunResources rows={resources.flatMap(run => run.rows)} />
-    {showRepositories || files?.length ? <WorkSources sources={showRepositories ? sources : undefined} files={files} /> : null}
+    <WorkSources sources={sources} files={files} />
     {tasks.length ? <div className="border-t border-border pt-sm"><Accordion type="single" collapsible value={workOpen ? "durable_tasks" : ""} onValueChange={value => setWorkOpen(value === "durable_tasks")}><AccordionItem value="durable_tasks" className="border-0">
       <AccordionTrigger className="min-h-11 gap-md py-sm text-label font-normal md:min-h-9"><span className="flex flex-1 items-center justify-between gap-md"><span className="inline-flex items-center gap-sm">Tasks{needsAttention ? <WarningIcon size={14} className="text-warning" aria-label="Needs attention" /> : null}</span><span className="text-eyebrow text-muted-foreground">{tasks.length}</span></span></AccordionTrigger>
       <AccordionContent><DurableTaskRows workspaceId={workspaceId} fleetId={fleetId} tasks={tasks} details={read.details} turns={turns} retry={read.retry} retryDetails={read.retryDetails} expandedDurableTask={expandedDurableTask} onExpand={setExpandedDurableTask} /></AccordionContent>

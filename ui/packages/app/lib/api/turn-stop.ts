@@ -1,5 +1,5 @@
 // The composer's Stop for every thread: one PATCH of a turn's status, sent from
-// the browser to the same-origin turn route of a fleet or a draft, which mints
+// the browser to the fleet's same-origin turn route, which mints
 // the bearer and calls the daemon. A `fetch`, not a Server Action, for the
 // reason the steer is one: Next runs one tab's Server Actions one at a time, so
 // a Stop would queue behind a send.

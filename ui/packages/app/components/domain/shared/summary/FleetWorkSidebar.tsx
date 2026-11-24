@@ -23,9 +23,9 @@ export function FleetWorkSidebar({children}: {children: ReactNode}) {
   </Card>;
 }
 
-export function FleetConversationLayout({children, work, className, summary = "current-work"}: {children: ReactNode; work?: ReactNode; className?: string; summary?: "current-work" | "setup"}) {
+export function FleetConversationLayout({children, work, className}: {children: ReactNode; work?: ReactNode; className?: string}) {
   return <FleetSummaryContext value={work}>
-    <CurrentWorkSummaryContext value={summary === "current-work"}>
+    <CurrentWorkSummaryContext value>
       <div className={cn("fleet-conversation-layout relative flex min-h-0 flex-1 flex-col", className)} data-testid="fleet-conversation-layout">{children}</div>
     </CurrentWorkSummaryContext>
   </FleetSummaryContext>;

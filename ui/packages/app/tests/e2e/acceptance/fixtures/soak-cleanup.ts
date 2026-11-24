@@ -3,18 +3,16 @@ import type { ClientHandle } from "./api-client";
 import {readFile, stat} from "node:fs/promises";
 import { z } from "zod";
 import { clientFor, FixtureHttpError } from "./api-client";
-import { FleetSchema } from "@/lib/api/draft-types";
+import { FleetDetailSchema } from "@/lib/api/fleet-detail";
 import { HTTP_STATUS_NOT_FOUND } from "@/lib/api/errors";
 import { FIXTURE_KEY } from "./constants";
 import { SOAK_FLEET_PREFIX } from "./soak-scenario";
 import { loadWorktreeEnv } from "./env-loader";
 import { assertDestructiveTargetIsSafe, purgeFixtureFleet } from "./teardown";
 
-const MAX_SAVED_SETUPS = 4;
 const MAX_MANIFEST_BYTES = 16 * 1024;
 const Identifiers = z.strictObject({
-  workspace: z.uuidv7(), name: z.string().startsWith(SOAK_FLEET_PREFIX),
-  fleet: z.uuidv7().nullable(), drafts: z.array(z.uuidv7()).max(MAX_SAVED_SETUPS),
+  workspace: z.uuidv7(), name: z.string().startsWith(SOAK_FLEET_PREFIX), fleet: z.uuidv7().nullable(),
 });
 
 /** Only the explicitly supplied development fixture identifiers may be removed. */
@@ -25,11 +23,10 @@ export async function cleanupSoak(input: unknown, handle: ClientHandle = FIXTURE
   const scope = `/v1/workspaces/${identifiers.workspace}`;
   const fleetId = identifiers.fleet;
   if (fleetId) await allowMissing(async () => {
-    const fleet = FleetSchema.parse(await client.get<unknown>(`${scope}/fleets/${fleetId}`));
+    const fleet = FleetDetailSchema.parse(await client.get<unknown>(`${scope}/fleets/${fleetId}`));
     if (fleet.name !== identifiers.name) throw new Error("The retained fleet name does not match; no records were deleted");
     await purgeFixtureFleet(handle, identifiers.workspace, fleetId);
   });
-  for (const draft of identifiers.drafts) await allowMissing(() => client.delete(`${scope}/drafts/${draft}`));
 }
 
 /** A previous attempt may have deleted the record before another deletion failed. */

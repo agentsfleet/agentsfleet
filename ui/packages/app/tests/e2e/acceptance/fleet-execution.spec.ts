@@ -1,14 +1,12 @@
-import { executionInstructions } from "./fixtures/definition";
 /**
- * fleet-execution.spec.ts — one fleet, from a reviewed chat setup to a finished job,
+ * fleet-execution.spec.ts — one fleet, from its first message to a finished job,
  * against the Rust daemon serving this environment.
  *
- * Wire: save a fleet from the private chat's inline setup, with instructions
- * that carry a real request → open the same conversation in a
- * second tab and leave it watching → message the fleet from its own composer →
+ * Wire: type a first message on New fleet → open the fleet's conversation in
+ * a second tab and leave it watching → message the fleet from its own composer →
  * an online runner runs the delivery → the run reaches the provider and
  * comes back → both conversations show the persisted reply over their fleet
- * stream, and the untouched control fleet has no chat delivery or run.
+ * stream, and the control fleet holds no turn and no run but its own first one.
  *
  * What a failure prints is part of the contract. `fixtures/execution.ts`
  * classifies every terminal row and every API refusal, and the walk throws its
@@ -31,6 +29,7 @@ import {
   classifyStillRunning,
   classifyTerminalTurn,
   classifyIdle,
+  chatTurnIds,
   failWith,
   findRunFor,
   JOURNEY_LEG,
@@ -39,19 +38,18 @@ import {
   type JourneyLeg,
   type RunLocation,
 } from "./fixtures/execution";
-import { saveFleetViaUI } from "./fixtures/install-ui";
+import { createFixtureFleet } from "./fixtures/fleet-create";
+import { createFleetViaUI } from "./fixtures/new-fleet";
+import { probeMessage } from "./fixtures/probe";
 import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
-import { getDefaultWorkspaceId, seedFleet, waitForFleetActive } from "./fixtures/seed";
-import { cleanWorkspaceFleets } from "./fixtures/teardown";
+import { getDefaultWorkspaceId, expectFleetActive } from "./fixtures/seed";
+import { cleanWorkspaceFleets, purgeFixtureFleet } from "./fixtures/teardown";
 import {documentIsMarked, markDocument} from "./fixtures/soft-navigation";
 
-// One stable template for the fleet that executes — the server suffixes a
-// repeat — and one prefix for the control fleet that must NOT see its
-// activity. Both carry a live cron trigger, so the afterEach sweep is what
-// stops them waking runners after the run; one sweep prefix reaches both.
-const EXECUTING_TEMPLATE = "fleet-exec";
+// The fleet that executes is made on New fleet and named by the daemon, so it
+// is purged by its identity; the control fleet that must NOT see its activity
+// is swept by its prefix.
 const CONTROL_PREFIX = "fleet-exec-control-";
-const SWEEP_PREFIX = EXECUTING_TEMPLATE;
 
 const RENDER_TIMEOUT_MS = 15_000;
 // Delivery → run is the queue plus the runner heartbeat cadence, the same
@@ -61,7 +59,7 @@ const RUN_TIMEOUT_MS = 120_000;
 // model minute, not a stalled one: past this the run itself is what expired.
 const EXECUTION_TIMEOUT_MS = 150_000;
 const POLL_INTERVAL_MS = 2_000;
-// Install (60s inside saveFleetViaUI) + the two budgets above + the conversation and
+// The first message's own run + the two budgets above + the conversation and
 // thread renders, with headroom that is deliberately NOT another retry.
 const JOURNEY_TIMEOUT_MS = 420_000;
 
@@ -126,12 +124,16 @@ async function pollFor<T>(read: () => Promise<T | null>, timeoutMs: number): Pro
 }
 
 test.describe("fleet execution", () => {
+  let executing: {workspaceId: string; fleetId: string} | null = null;
+
   test.afterEach(async () => {
     const ws = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
-    await cleanWorkspaceFleets(FIXTURE_KEY.regular, ws, SWEEP_PREFIX);
+    if (executing) await purgeFixtureFleet(FIXTURE_KEY.regular, executing.workspaceId, executing.fleetId);
+    executing = null;
+    await cleanWorkspaceFleets(FIXTURE_KEY.regular, ws, CONTROL_PREFIX);
   });
 
-  test("a fleet installed from the gallery executes to a result the operator can read", {tag: "@post-deploy"}, async ({
+  test("a fleet made from its first message executes to a result the operator can read", {tag: "@post-deploy"}, async ({
     page,
     context,
   }, testInfo) => {
@@ -141,25 +143,21 @@ test.describe("fleet execution", () => {
     const controlName = `${CONTROL_PREFIX}${tag}`;
     const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
 
-    // ── 1.1 A reviewed save reaches active ──
-    // Save the reviewed setup and open the fleet from the receipt.
+    // ── 1.1 A first message makes an active fleet ──
     await signInAs(page, FIXTURE_KEY.regular);
-    const fleetId = await saveFleetViaUI(page, EXECUTING_TEMPLATE, {
-      handle: FIXTURE_KEY.regular,
-      workspaceId,
-      instructions: executionInstructions(),
-    });
+    const fleetId = await createFleetViaUI(page, workspaceId, probeMessage(`first-${tag}`));
+    executing = {workspaceId, fleetId};
     await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${fleetId}`));
     await observed(JOURNEY_LEG.install, () =>
-      waitForFleetActive(FIXTURE_KEY.regular, workspaceId, fleetId),
+      expectFleetActive(FIXTURE_KEY.regular, workspaceId, fleetId),
     );
-    // The control fleet: installed the same way a sibling would be, never
-    // messaged. Its durable history is the negative routing check.
+    // The control fleet: made the way a sibling would be, never messaged
+    // again. Its durable history is the negative routing check.
     const control = await observed(JOURNEY_LEG.install, () =>
-      seedFleet(FIXTURE_KEY.regular, workspaceId, { name: controlName }),
+      createFixtureFleet(FIXTURE_KEY.regular, workspaceId, { name: controlName, message: probeMessage(`control-${tag}`) }),
     );
     await observed(JOURNEY_LEG.install, () =>
-      waitForFleetActive(FIXTURE_KEY.regular, workspaceId, control.id),
+      expectFleetActive(FIXTURE_KEY.regular, workspaceId, control.fleet.id),
     );
 
     // A second page watches the same conversation before the delivery arrives.
@@ -170,6 +168,8 @@ test.describe("fleet execution", () => {
     await markDocument(watching);
 
     // ── Trigger: the operator messages the fleet from its own composer ──
+    // The first message's turn is already on the thread; the walk follows only the new one.
+    const seen = await observed(JOURNEY_LEG.run, () => chatTurnIds(FIXTURE_KEY.regular, workspaceId, fleetId));
     await page.goto(workspaceHref(workspaceId, `fleets/${fleetId}`));
     const composer = page.getByLabel(COMPOSER_LABEL);
     await expect(composer).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
@@ -178,7 +178,7 @@ test.describe("fleet execution", () => {
 
     // ── 1.2 An online runner runs the delivery ──
     const run = await pollFor<RunLocation>(
-      () => observed(JOURNEY_LEG.run, () => findRunFor(fleetId)),
+      () => observed(JOURNEY_LEG.run, () => findRunFor(fleetId, seen)),
       RUN_TIMEOUT_MS,
     );
     if (run === null) failWith(classifyIdle(await anyRunnerLive()));
@@ -187,7 +187,7 @@ test.describe("fleet execution", () => {
     const terminal = await pollFor<TurnDetail>(
       () =>
         observed(JOURNEY_LEG.execute, () =>
-          readTerminalChatTurn(FIXTURE_KEY.regular, workspaceId, fleetId),
+          readTerminalChatTurn(FIXTURE_KEY.regular, workspaceId, fleetId, seen),
         ),
       EXECUTION_TIMEOUT_MS,
     );
@@ -195,7 +195,7 @@ test.describe("fleet execution", () => {
       // No terminal row inside the budget. A run that settled without one is
       // a report that never landed; a run still running is the provider or
       // the clock; no run at all is the runner.
-      const settled = await observed(JOURNEY_LEG.execute, () => findRunFor(fleetId));
+      const settled = await observed(JOURNEY_LEG.execute, () => findRunFor(fleetId, seen));
       if (settled !== null && runIsSettled(settled.outcome)) {
         failWith(classifyReportMissing(settled.outcome));
       }
@@ -244,12 +244,12 @@ test.describe("fleet execution", () => {
     await expect(observedReply).toHaveAttribute("data-settled", "true", {timeout: RENDER_TIMEOUT_MS});
     await expect(observedReply.locator(ASSISTANT_TURN)).not.toHaveText(/^\s*$/, {timeout: RENDER_TIMEOUT_MS});
     expect(await documentIsMarked(watching)).toBe(true);
-    // A setup receipt may appear on an untouched fleet; execution must not.
+    // The control fleet holds its own first turn and nothing of this walk's.
     const controlHistory = await clientFor(FIXTURE_KEY.regular).get<{items: TurnDetail[]}>(
-      `/v1/workspaces/${workspaceId}/fleets/${control.id}/messages`,
+      `/v1/workspaces/${workspaceId}/fleets/${control.fleet.id}/messages`,
     );
-    expect(controlHistory.items.every(row => row.event_type === TURN_KIND_ACTIVITY)).toBe(true);
-    expect(await findRunFor(control.id)).toBeNull();
+    expect(controlHistory.items.filter(row => row.event_type !== TURN_KIND_ACTIVITY).map(row => row.turn_id)).toEqual([control.turnId]);
+    expect(await findRunFor(control.fleet.id, new Set([control.turnId]))).toBeNull();
     expect(streams.workspace, "sidebar history opens no workspace stream").toBe(0);
     expect(streams.fleet, "the watching conversation opens one fleet stream").toBe(1);
     await watching.close();

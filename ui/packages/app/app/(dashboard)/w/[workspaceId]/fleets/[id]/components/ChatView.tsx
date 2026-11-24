@@ -1,7 +1,7 @@
 "use client";
 
 import type { FleetSources } from "@/lib/fleet-sources";
-import type { Schedule } from "@/lib/api/draft-types";
+import type { Schedule } from "@/lib/api/schedule-types";
 import type { TurnDetail } from "@/lib/api/turns";
 import type { ReactNode } from "react";
 import type { FleetRunSummary } from "@/lib/turns/run-summary";
@@ -14,9 +14,8 @@ type Props = {
   schedules?: readonly Schedule[];
   sources?: FleetSources;
   modelLabel?: string;
-  setupRevision?: string;
-  setup?: ReactNode;
-  setupSummary?: ReactNode;
+  /** The fleet's lists and switches, shown beside the chat until it is archived. */
+  lists?: ReactNode;
   workspaceId: string;
   fleetId: string;
   senderLabel: string;
@@ -41,15 +40,15 @@ export function ChatView({
   initialSummary,
   approvalsHref,
   viewer,
-  senderNames, modelLabel, setupRevision, setup, setupSummary, sources, schedules,
+  senderNames, modelLabel, lists, sources, schedules,
 }: Props) {
   const summary = useFleetRunSummary(workspaceId, fleetId, initial, initialSummary);
   const archived = summary.status === "archived";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-xs overflow-clip">
-      <FleetThreadDynamic sources={sources} schedules={schedules} approvals={{count: summary.pendingApprovals, href: approvalsHref}} modelLabel={modelLabel} setupRevision={setupRevision}
-        setup={archived ? undefined : setup} setupSummary={archived ? undefined : setupSummary}
+      <FleetThreadDynamic sources={sources} schedules={schedules} approvals={{count: summary.pendingApprovals, href: approvalsHref}} modelLabel={modelLabel}
+        lists={archived ? undefined : lists}
         archived={archived}
         workspaceId={workspaceId}
         fleetId={fleetId}

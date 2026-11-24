@@ -1,7 +1,7 @@
 "use client";
 
 import type { TurnRow } from "@/lib/api/turns";
-import type {Schedule} from "@/lib/api/draft-types";
+import type {Schedule} from "@/lib/api/schedule-types";
 import type {RunFigures} from "@/lib/turns/run-summary";
 import {cn} from "@agentsfleet/design-system";
 import { useCallback, useSyncExternalStore } from "react";

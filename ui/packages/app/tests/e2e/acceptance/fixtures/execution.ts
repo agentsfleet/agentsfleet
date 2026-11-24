@@ -19,6 +19,9 @@ import { RunOutcome } from "@/tests/helpers/runner-control-types";
 import { clientFor, type ClientHandle } from "./api-client";
 import { FIXTURE_KEY } from "./constants";
 
+/** No turn seen yet: every run and turn of the fleet counts. */
+const NONE_SEEN: ReadonlySet<string> = new Set();
+
 // One spelling each for the statuses and failure classes this module reads
 // (RULE UFS). The turn statuses mirror `lib/api/turns.ts:TurnStatus`; the
 // failure labels mirror `af_wire::report::FailureClass`
@@ -237,16 +240,17 @@ export interface RunLocation {
 /**
  * The run an online runner took for this fleet, wherever the scheduler put
  * it. The read is per runner, so the walk visits every runner's first run
- * page; the fleet is fresh, so its first run is the one.
+ * page. A fleet's first message runs at create, so a walk that sent a later
+ * message names the turns it already saw in `seen` and finds only the new run.
  */
-export async function findRunFor(fleetId: string): Promise<RunLocation | null> {
+export async function findRunFor(fleetId: string, seen: ReadonlySet<string> = NONE_SEEN): Promise<RunLocation | null> {
   const operator = clientFor(FIXTURE_KEY.operator);
   const runners = await operator.get<RunnerListResponse>(FLEET_RUNNERS_PATH);
   for (const runner of runners.items) {
     const runs = await operator.get<RunnerRunResponse>(
       `${FLEET_RUNNERS_PATH}/${runner.id}/runs?limit=${RUN_PAGE_SIZE}`,
     );
-    const run = runs.items.find((item) => item.fleet_id === fleetId);
+    const run = runs.items.find((item) => item.fleet_id === fleetId && !seen.has(item.turn_id));
     if (run) return { runnerId: runner.id, hostId: runner.host_id, outcome: run.outcome };
   }
   return null;
@@ -261,6 +265,18 @@ export async function anyRunnerLive(): Promise<boolean> {
 /** Whether a run outcome is one the runner has finished reporting. */
 export function runIsSettled(outcome: string): boolean {
   return outcome !== RunOutcome.Running;
+}
+
+/** The chat turns the thread holds now, whatever their status: what a walk names `seen` before it sends. */
+export async function chatTurnIds(
+  handle: ClientHandle,
+  workspaceId: string,
+  fleetId: string,
+): Promise<ReadonlySet<string>> {
+  const page = await clientFor(handle).get<ThreadPage>(
+    `/v1/workspaces/${workspaceId}/fleets/${fleetId}/messages`,
+  );
+  return new Set(page.items.filter((item) => item.event_type === TURN_KIND_CHAT).map((item) => item.turn_id));
 }
 
 /**
@@ -291,12 +307,13 @@ export async function readTerminalChatTurn(
   handle: ClientHandle,
   workspaceId: string,
   fleetId: string,
+  seen: ReadonlySet<string> = NONE_SEEN,
 ): Promise<TurnDetail | null> {
   const page = await clientFor(handle).get<ThreadPage>(
     `/v1/workspaces/${workspaceId}/fleets/${fleetId}/messages`,
   );
   const turn = page.items.find(
-    (item) => item.event_type === TURN_KIND_CHAT && item.status !== TURN_STATUS.received,
+    (item) => item.event_type === TURN_KIND_CHAT && item.status !== TURN_STATUS.received && !seen.has(item.turn_id),
   );
   return turn ?? null;
 }

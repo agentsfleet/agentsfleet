@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, type ReactNode } from "react";
+import { memo } from "react";
 import { ThreadPrimitive } from "@assistant-ui/react";
 import { ArchiveIcon } from "@phosphor-icons/react/ssr";
 import { Skeleton } from "@agentsfleet/design-system";
@@ -19,8 +19,6 @@ const BACKFILL_LABEL = "Loading recent activity";
 
 type FleetThreadViewportProps = SteerComposerProps & {
   archived?: boolean;
-  setup?: ReactNode;
-  setupTurnId?: string;
   turnsCount: number;
   connectionStatus: ConnectionStatus;
   /** Reconnects the live stream now, from the offline notice. */
@@ -30,14 +28,14 @@ type FleetThreadViewportProps = SteerComposerProps & {
 // Memoised: the thread re-renders on every streamed flush, and nothing this
 // shell draws moves with one. The messages below subscribe on their own.
 export const FleetThreadViewport = memo(function FleetThreadViewport({
-  turnsCount, connectionStatus, onRetry, pending, onResend, onDismiss, onRestored, onDraft, turnStop, modelLabel, setup, setupTurnId, archived = false,
+  turnsCount, connectionStatus, onRetry, pending, onResend, onDismiss, onRestored, onDraft, turnStop, modelLabel, archived = false,
 }: FleetThreadViewportProps) {
   return <ChatThread testId="fleet-thread-root" label="Fleet chat" footer={<>
     <FleetConnectionNotice status={connectionStatus} onRetry={onRetry} />
     {archived ? <p className="flex items-center justify-center gap-md border-t border-border py-xl text-center text-label text-muted-foreground"><ArchiveIcon size={16} aria-hidden="true" />Archived · This fleet is permanently stopped. Its history is available to read.</p>
       : <><ChangesStrip /><WakeupStrip /><SteerComposer modelLabel={modelLabel} pending={pending} onResend={onResend} onDismiss={onDismiss} onRestored={onRestored} onDraft={onDraft} turnStop={turnStop} /></>}
   </>}>
-    <SettledReplyStatus><ChatHistory setup={setup} setupTurnId={setupTurnId} turnsCount={turnsCount} connectionStatus={connectionStatus} /></SettledReplyStatus>
+    <SettledReplyStatus><ChatHistory turnsCount={turnsCount} connectionStatus={connectionStatus} /></SettledReplyStatus>
   </ChatThread>;
 });
 
@@ -55,9 +53,7 @@ function BackfillSkeleton() {
   );
 }
 
-function ChatHistory({ turnsCount, connectionStatus, setup, setupTurnId }: Pick<FleetThreadViewportProps, "turnsCount" | "connectionStatus" | "setup" | "setupTurnId">) {
-  const renderMessage = useCallback((props: Parameters<typeof renderFleetMessage>[0]) =>
-    setup && props.message.id === setupTurnId ? setup : renderFleetMessage(props), [setup, setupTurnId]);
+function ChatHistory({ turnsCount, connectionStatus }: Pick<FleetThreadViewportProps, "turnsCount" | "connectionStatus">) {
   const isAwaitingFirstFrames =
     turnsCount === 0 &&
     (connectionStatus === CONNECTION_STATUS.CONNECTING ||
@@ -79,12 +75,11 @@ function ChatHistory({ turnsCount, connectionStatus, setup, setupTurnId }: Pick<
       // of every Thought that folded above the composer.
       className="mx-auto flex w-full max-w-chat flex-1 flex-col justify-start py-md"
     >
-      {setupTurnId ? null : setup}
       {isAwaitingFirstFrames ? <BackfillSkeleton /> : null}
-      {isIdleEmpty && !setup ? (
+      {isIdleEmpty ? (
         <p className="px-sm py-lg text-sm text-muted-foreground">{EMPTY_HINT}</p>
       ) : null}
-      <ThreadPrimitive.Messages>{renderMessage}</ThreadPrimitive.Messages>
+      <ThreadPrimitive.Messages>{renderFleetMessage}</ThreadPrimitive.Messages>
     </div>
   );
 }

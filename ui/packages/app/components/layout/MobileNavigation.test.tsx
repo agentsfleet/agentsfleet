@@ -5,7 +5,7 @@ import { MobileNavigation } from "./MobileNavigation";
 
 vi.mock("@/lib/auth/client", () => ({useCurrentUser: () => ({userId: "reviewer", isLoaded: true})}));
 vi.mock("@/lib/analytics/posthog", () => ({trackNavigationClicked: vi.fn()}));
-vi.mock("./DraftSidebarHistory", () => ({DraftSidebarHistory: ({account, workspace}: {account: string | null; workspace: string | null}) => <p>Recent chats: {account} / {workspace}</p>}));
+vi.mock("./SidebarFleets", () => ({SidebarFleets: ({account, workspace}: {account: string | null; workspace: string | null}) => <p>Your fleets: {account} / {workspace}</p>}));
 afterEach(cleanup);
 
 it("opens scoped navigation in the shared dialog, closes on Escape and on route selection", async () => {
@@ -13,7 +13,7 @@ it("opens scoped navigation in the shared dialog, closes on Escape and on route 
   const trigger = screen.getByRole("button", {name: "Open navigation"});
   await act(async () => {fireEvent.click(trigger);});
   expect(screen.getByRole("dialog", {name: "Navigation"})).toBeTruthy();
-  expect(screen.getByText("Recent chats: account / workspace")).toBeTruthy();
+  expect(screen.getByText("Your fleets: account / workspace")).toBeTruthy();
   fireEvent.keyDown(document.activeElement!, {key: "Escape"});
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   expect(document.activeElement).toBe(trigger);

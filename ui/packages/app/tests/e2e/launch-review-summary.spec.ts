@@ -68,7 +68,9 @@ test("Summary geometry and colors match ux.html on desktop and mobile in both th
   ]);
   const designRows = ["4 files changed", "Launch preview", "2 attached files"].map(label => design.locator(".summary-row").filter({hasText: label}));
   await expectSummaryColumns(design, labels.map(label => design.getByText(label, {exact: true})), designRows);
-  await expect.poll(() => rowPositions(summary, "h2,button,a,summary")).toEqual(await rowPositions(design, "h2,.summary-label,.summary-row"));
+  // The reference shows the current work; the fleet's own lists ("Wakes on", "Can access", "Remembers", "Network") follow it.
+  await expect.poll(() => rowPositions(summary, ':scope > h2, [aria-label="Current work"] :is(h2,button,a,summary)'))
+    .toEqual(await rowPositions(design, "h2,.summary-label,.summary-row"));
   for (const appearance of ["dark", "light"]) {
     for (const surface of [page, reference]) await surface.evaluate(theme => { document.documentElement.dataset.theme = theme; }, appearance);
     const pairs = [[summary, design], [summary.locator("h2").first(), design.locator("h2").first()],

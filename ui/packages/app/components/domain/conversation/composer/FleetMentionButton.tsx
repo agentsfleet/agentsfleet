@@ -7,16 +7,17 @@ import {AtIcon} from "@phosphor-icons/react/ssr";
 import {Button} from "@agentsfleet/design-system";
 import {activeFleetMention} from "@/lib/chat-address";
 
-export function FleetMentionButton({input, disabled, inSetup = false}: {
-  input: RefObject<HTMLTextAreaElement | null>; disabled: boolean; inSetup?: boolean;
+/** `inline`: the mention goes where the caret is, never in front as the message's recipient. */
+export function FleetMentionButton({input, disabled, inline}: {
+  input: RefObject<HTMLTextAreaElement | null>; disabled: boolean; inline: boolean;
 }) {
   const aui = useAui();
-  const label = inSetup ? "Mention a fleet in setup" : "Address a workspace fleet";
+  const label = inline ? "Mention a fleet" : "Address a workspace fleet";
   function mention() {
     const field = input.current;
     if (!field) return;
     const {selectionStart, selectionEnd, value} = field;
-    const recipient = !inSetup && /^\s*@[a-z\d-]+(?=[\s,:]|$)/i.exec(value);
+    const recipient = !inline && /^\s*@[a-z\d-]+(?=[\s,:]|$)/i.exec(value);
     if (recipient) {
       field.setSelectionRange(recipient[0].length, recipient[0].length);
       field.focus();

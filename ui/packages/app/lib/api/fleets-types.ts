@@ -5,18 +5,11 @@
 // that switches/compares against a status value reads from this const. Mirrors
 // the backend `FleetStatus` enum in rustd/crates/daemon/afd_fleet_lifecycle/src/lib.rs.
 export const AGENTSFLEET_STATUS = {
+  // The status a fleet is born in: its first message's turn is already queued.
   ACTIVE: "active",
   // Terminal. An operator's archive (or the platform gate) cancels live work
   // and keeps the history readable; nothing returns the fleet to `active`.
   ARCHIVED: "archived",
-  // The status a row is born in. Mirrors `FleetStatus::Installing` in
-  // rustd/crates/daemon/afd_fleet_lifecycle/src/lib.rs — but no caller sees it on a
-  // successful create any more: the flip to `active` happens inside the
-  // install rather than on a thread after the 201
-  // (rustd/crates/daemon/afd_fleet_lifecycle/src/install.rs), so the 201 already
-  // reads `active`. The Fleets list/detail keep an installing indicator
-  // visible while a fleet reads this, so a stalled install is never hidden.
-  INSTALLING: "installing",
 } as const;
 export type FleetStatus = typeof AGENTSFLEET_STATUS[keyof typeof AGENTSFLEET_STATUS];
 

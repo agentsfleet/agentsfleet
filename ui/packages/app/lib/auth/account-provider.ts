@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { boundedBody } from "@/lib/api/setup-proxy/body";
+import { boundedBody } from "@/lib/api/workspace-proxy/body";
 import { ACCOUNT_PROVIDER_CONFIG as CONFIG } from "./account-config";
 
 const activitySchema = z.object({browser_name: z.string().nullish(), device_type: z.string().nullish(),

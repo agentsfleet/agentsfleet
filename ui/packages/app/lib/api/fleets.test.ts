@@ -1,25 +1,19 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { FLEET_DETAIL, FLEET_ID, WORKSPACE } from "@/tests/helpers/draft-fixtures";
+import { FLEET_DETAIL, FLEET_ID, GRANT_ID, SCHEDULE, TRIGGER_ID, WORKSPACE } from "@/tests/helpers/fleet-fixtures";
 import { ApiError } from "./errors";
-import { FleetListSchema } from "./fleet-detail";
+import { FleetListSchema, githubScope } from "./fleet-detail";
 
 const fetchMock = vi.fn();
 vi.stubGlobal("fetch", fetchMock);
 
 afterEach(() => fetchMock.mockReset());
 
-const fleet = { id: "zom_1", name: "platform-ops", description: null, status: "active", created_at: "1970-01-01T00:00:00Z", updated_at: "1970-01-01T00:00:00Z", events_processed: "0", budget_used_nanos: "0" };
+const fleet = { id: "zom_1", name: "platform-ops", status: "active", created_at: "1970-01-01T00:00:00Z", updated_at: "1970-01-01T00:00:00Z", events_processed: "0", budget_used_nanos: "0" };
 
 describe("listFleets", () => {
-  it.each([{description: null}, {description: "Watch production errors"}])("preserves the saved purpose $description", async ({description}) => {
-    fetchMock.mockResolvedValue({ok: true, status: 200, json: async () => ({items: [{...fleet, description}], total: null, next_cursor: null})});
-    const {listFleets} = await import("./fleets");
-    expect((await listFleets("ws_1", "tok")).items[0]?.description).toBe(description);
-  });
-
-  it.each([{description: undefined}, {description: 7}, {description: {}}, {description: ""}])("refuses malformed saved purpose $description", ({description}) => {
-    const parsed = FleetListSchema.safeParse({items: [{...fleet, description}], total: null, next_cursor: null});
-    expect(parsed).toMatchObject({success: false, error: {issues: [expect.objectContaining({path: ["items", 0, "description"]})]}});
+  it.each([{name: undefined}, {name: 7}])("refuses a row with no name $name", ({name}) => {
+    const parsed = FleetListSchema.safeParse({items: [{...fleet, name}], total: null, next_cursor: null});
+    expect(parsed).toMatchObject({success: false, error: {issues: [expect.objectContaining({path: ["items", 0, "name"]})]}});
   });
 
   it("GET /v1/workspaces/:ws/fleets with bearer, returns envelope", async () => {
@@ -86,29 +80,29 @@ describe("native fleet detail", () => {
     expect(archived.status).toBe("archived");
     expect(fetchMock.mock.calls.at(-1)?.[1]?.headers).toMatchObject({"If-Match": ETAG});
   });
-  it("preserves exact nanos and independent permissions and derives triggers from native setup", async () => {
-    fetchMock.mockResolvedValue(answer());
+  it("reads the fleet's model, network, rows and permissions with exact nanos", async () => {
+    const trigger = {id: TRIGGER_ID, kind: "webhook", source: "sentry", url: "https://api.example.test/v1/webhooks/fleet/sentry", created_at: "1970-01-01T00:00:00Z"};
+    const grant = {id: GRANT_ID, kind: "integration", name: "github", status: "approved", scope: {repositories: ["org/app"], access: "read"}, approved_at: null};
+    fetchMock.mockResolvedValue(answer({...detail, http_egress: "public", package_domains: true, schedules: [SCHEDULE], triggers: [trigger], grants: [grant]}));
     const {getFleet} = await import("./fleets");
     const result = await getFleet(WORKSPACE, FLEET_ID, "tok");
     expect(result.etag).toBe(ETAG);
-    expect(result.fleet.budget_used_nanos).toBe("9007199254740993");
-    expect(result.fleet.pending_approvals).toBe(2);
-    expect(result.fleet.memory_access).toEqual({read: true, publish: false});
-    expect(result.fleet.triggers).toEqual([]);
-    expect(result.fleet.definition.config).toEqual(detail.definition.config);
+    expect(result.fleet).toMatchObject({model_ref: detail.model_ref, http_egress: "public", package_domains: true,
+      budget_used_nanos: "9007199254740993", pending_approvals: 2, memory_access: {read: true, publish: false}});
+    expect(result.fleet.schedules).toEqual([SCHEDULE]);
+    expect(result.fleet.triggers).toEqual([trigger]);
+    expect(githubScope(result.fleet.grants[0]?.scope)).toEqual({repositories: ["org/app"], access: "read"});
   });
-  it("decodes an omitted trigger list as chat and steer only", async () => {
-    const config = {...detail.definition.config, "x-agentsfleet": {tools: []}};
-    fetchMock.mockResolvedValue(answer({...detail, definition: {...detail.definition, config}}));
-    const {getFleet} = await import("./fleets");
-    expect((await getFleet(WORKSPACE, FLEET_ID, "tok")).fleet.triggers).toEqual([]);
-  });
-  it("rejects the deleted trigger variant in a server projection", async () => {
-    const config = {...detail.definition.config, "x-agentsfleet": {triggers: [{type: "api"}]}};
-    fetchMock.mockResolvedValue(answer({...detail, definition: {...detail.definition, config}}));
+  it.each([{http_egress: "read_only"}, {model_ref: ""}, {package_domains: "yes"}, {grants: [{id: GRANT_ID, kind: "secret", name: "", status: "pending"}]},
+    {triggers: [{id: "not-a-uuid", kind: "webhook", source: "sentry", created_at: "1970-01-01T00:00:00Z"}]}])("refuses a fleet field outside its wire shape %o", async (field) => {
+    fetchMock.mockResolvedValue(answer({...detail, ...field}));
     const {getFleet} = await import("./fleets");
     await expect(getFleet(WORKSPACE, FLEET_ID, "tok")).rejects.toThrow();
   });
+  it.each([null, {repositories: [], access: "read"}, {repositories: ["org/app"]}, {repositories: ["org/app"], access: "admin"}])(
+    "reads no GitHub scope from %j", (scope) => {
+      expect(githubScope(scope)).toBeNull();
+    });
   it.each(["", "   "])("refuses an empty ETag %j", async (etag) => {
     fetchMock.mockResolvedValue(answer(detail, etag));
     const {getFleet, FLEET_ETAG_REQUIRED} = await import("./fleets");
@@ -125,8 +119,8 @@ describe("native fleet detail", () => {
     const {getFleet} = await import("./fleets");
     await expect(getFleet(WORKSPACE, FLEET_ID, "tok")).rejects.toThrow("disagree");
   });
-  it.each([{...detail, definition: undefined}, {...detail, budget_used_nanos: Number.MAX_SAFE_INTEGER + 1},
-    {...detail, definition: {...detail.definition, config: {}}}])("refuses malformed native projections", async (invalid) => {
+  it.each([{...detail, schedules: undefined}, {...detail, budget_used_nanos: Number.MAX_SAFE_INTEGER + 1},
+    {...detail, grants: undefined}])("refuses malformed native projections", async (invalid) => {
     fetchMock.mockResolvedValue(answer(invalid));
     const {getFleet} = await import("./fleets");
     await expect(getFleet(WORKSPACE, FLEET_ID, "tok")).rejects.toThrow();
@@ -145,7 +139,7 @@ describe("native fleet detail", () => {
 });
 
 describe("conditional fleet lifecycle", () => {
-  it.each(["active", "archived"] as const)("sends the displayed resource tag for %s", async (status) => {
+  it.each(["archived"] as const)("sends the displayed resource tag for %s", async (status) => {
     fetchMock.mockResolvedValue(answer({...detail, status}));
     const {setFleetStatus} = await import("./fleets");
     const result = await setFleetStatus(WORKSPACE, FLEET_ID, status, ETAG, "tok");
@@ -153,11 +147,11 @@ describe("conditional fleet lifecycle", () => {
       method: "PATCH", headers: expect.objectContaining({"If-Match": ETAG}), body: JSON.stringify({status}),
     }));
     expect(result.status).toBe(status);
-    expect(result.setup_revision).toBe(detail.setup_revision);
+    expect(result.model_ref).toBe(detail.model_ref);
   });
   it("requires a resource tag before sending", async () => {
     const {setFleetStatus} = await import("./fleets");
-    await expect(setFleetStatus(WORKSPACE, FLEET_ID, "active", "", "tok")).rejects.toThrow("ETag");
+    await expect(setFleetStatus(WORKSPACE, FLEET_ID, "archived", "", "tok")).rejects.toThrow("ETag");
     expect(fetchMock).not.toHaveBeenCalled();
   });
   it.each([409, 412])("preserves %i without rebasing and replaying a lifecycle change", async (status) => {

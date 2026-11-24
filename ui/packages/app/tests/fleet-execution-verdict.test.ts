@@ -1,4 +1,3 @@
-import { EXECUTION_REPLY_PREFIX, executionInstructions, fixtureDefinition, fixtureConfig, webhookConfig } from "./e2e/acceptance/fixtures/definition";
 /**
  * The execution journey's classifier and its place in the release gate.
  *
@@ -10,7 +9,7 @@ import { EXECUTION_REPLY_PREFIX, executionInstructions, fixtureDefinition, fixtu
  * `acceptance-e2e` is a claim that includes it.
  */
 import { describe, expect, it } from "vitest";
-import { NANOS_PER_USD } from "@/lib/types";
+import { accessMessage, accessReply, probeMessage, probeReply } from "./e2e/acceptance/fixtures/probe";
 import { RunOutcome } from "@/tests/helpers/runner-control-types";
 import {
   classifyApiFailure,
@@ -130,19 +129,16 @@ describe("the terminal row is classified before it is trusted", () => {
   });
 });
 
-describe("native execution fixtures", () => {
-  it("keeps executable instructions separate from typed setup metadata", () => {
-    const definition = fixtureDefinition("exec-check", executionInstructions());
-    expect(definition.config.name).toBe("exec-check");
-    expect(definition.instructions_md).toContain(EXECUTION_REPLY_PREFIX);
-    expect(definition.instructions_md).toContain("Do not call any tool");
-    expect(definition.instructions_md).not.toContain("---");
+describe("probe messages", () => {
+  it("never spell the reply they ask for, so the person's own message cannot pass for it", () => {
+    expect(probeReply("tok-7")).toBe("ACK tok-7");
+    expect(probeMessage("tok-7")).toContain("tok-7");
+    expect(probeMessage("tok-7")).not.toContain(probeReply("tok-7"));
+    expect(probeMessage("tok-7")).toContain("Do not call any tool");
   });
-  it.each([fixtureConfig("trigger-check"), webhookConfig("trigger-check", "gh-secret")])(
-    "declares nanos and complete native runtime keys", (config) => {
-      expect(config).toMatchObject({name: "trigger-check", "x-agentsfleet": {
-        triggers: expect.any(Array), tools: expect.any(Array), budget: {daily_nanos: String(NANOS_PER_USD)},
-      }});
-      expect(JSON.stringify(config)).not.toContain("daily_dollars");
-    });
+  it("ask for a credential by name and name the reply that proves the run resumed with it", () => {
+    expect(accessReply("tok-8")).toBe("GRANTED tok-8");
+    expect(accessMessage("vendor_api", "tok-8")).toContain("request_access with the name vendor_api");
+    expect(accessMessage("vendor_api", "tok-8")).not.toContain(accessReply("tok-8"));
+  });
 });

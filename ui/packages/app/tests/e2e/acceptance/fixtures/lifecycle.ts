@@ -7,7 +7,7 @@ import {fleetNavigation} from "./nav";
 
 const ROW_STATE_TIMEOUT_MS = 15_000;
 
-type RowState = "active" | "installing" | "archived";
+type RowState = "active" | "archived";
 
 async function confirmAction(page: Page, label: "Archive"): Promise<void> {
   await page.getByRole("button", {name: "Fleet actions", exact: true}).click();

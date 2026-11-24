@@ -1,7 +1,9 @@
-import chief from "../../../../../rustd/crates/protocol/af_fleet_runtime/tests/fixtures/fleets/chief-of-staff/definition.json";
-import specialist from "../../../../../rustd/crates/protocol/af_fleet_runtime/tests/fixtures/fleets/runner-link-watch/definition.json";
 import { expect } from "@playwright/test";
 import { test } from "./fixtures/chat-probe";
+
+// The two fleets the fixture names: a chief that steers, and the specialist it steers.
+const CHIEF = "chief-of-staff";
+const SPECIALIST = "runner-link-watch";
 
 // The fixture's one event: `chief-of-staff` steered `runner-link-watch`, and the turn waits for a runner.
 const SENDER_LINE = "[from fleet chief-of-staff, fleet_id 0199a801-1000-7000-8000-0000000000c0; answer with fleet_steer to that id]";
@@ -13,7 +15,7 @@ test("fleet_thread_renders_a_fleet_steer_row", async ({page, chatProbe}) => {
   await page.goto(`${chatProbe}?fleetSteer=1`);
   const turn = page.locator('[data-role="user"]');
   await expect(turn).toHaveCount(1);
-  await expect(turn.getByTestId("fleet-message-sender")).toHaveText(`@${chief.config.name}`);
+  await expect(turn.getByTestId("fleet-message-sender")).toHaveText(`@${CHIEF}`);
   await expect(turn).not.toContainText(SENDER_LINE);
   await expect(turn).toContainText(STEER_TEXT);
   // The pill a person's queued message shows, unchanged for a fleet's.
@@ -29,7 +31,7 @@ test("the chief's conversation shows the requested check, the specialist's repor
   await expect(page.getByText("Have runner-link-watch run its check and tell me the result.", {exact: true})).toBeVisible();
   await expect(page.getByText("I asked @runner-link-watch to check the connection. It will report back here.", {exact: true})).toBeVisible();
   const report = page.locator('[data-role="user"]').filter({hasText: "The runner link stayed connected"});
-  await expect(report.getByTestId("fleet-message-sender")).toHaveText(`@${specialist.config.name}`);
+  await expect(report.getByTestId("fleet-message-sender")).toHaveText(`@${SPECIALIST}`);
   await expect(report).toContainText("No action needed. The runner link stayed connected during this check.");
   await expect(page.getByText("Runner Link Watch found no interruptions. No action is needed.", {exact: true})).toBeVisible();
   await expect(page.getByText(/answer with fleet_steer/)).toHaveCount(0);

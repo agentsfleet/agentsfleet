@@ -1,6 +1,6 @@
 "use client";
 
-import type {Schedule} from "@/lib/api/draft-types";
+import type {Schedule} from "@/lib/api/schedule-types";
 import {useFleetDurableTaskView} from "../tasks/FleetTaskProvider";
 import {RecordedWakeups} from "./RecordedWakeups";
 

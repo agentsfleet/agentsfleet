@@ -3,7 +3,7 @@ import type {Fleet} from "./fixtures/seed";
 import {signInAs} from "./fixtures/auth";
 import {FIXTURE_KEY} from "./fixtures/constants";
 import {fleetNavigation, openFleetFromSidebar, workspaceHref} from "./fixtures/nav";
-import {getDefaultWorkspaceId, seedFleet, waitForFleetActive} from "./fixtures/seed";
+import {getDefaultWorkspaceId, seedFleet, expectFleetActive} from "./fixtures/seed";
 import {assertDestructiveTargetIsSafe, purgeFixtureFleet} from "./fixtures/teardown";
 
 const PURPOSES = ["release-review", "deployment-watch", "issue-triage", "incident-summary", "change-review", "maintenance-watch"];
@@ -21,7 +21,7 @@ test("saved fleets remain selectable on desktop and mobile without opening backg
     for (const purpose of PURPOSES) {
       const fleet = await seedFleet(FIXTURE_KEY.regular, workspace, {name: `conversation-${purpose}`});
       fleets.push(fleet);
-      await waitForFleetActive(FIXTURE_KEY.regular, workspace, fleet.id);
+      await expectFleetActive(FIXTURE_KEY.regular, workspace, fleet.id);
     }
     const newest = fleets.at(-1);
     if (!newest) throw new Error("Conversation fixtures were not created");

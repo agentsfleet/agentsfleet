@@ -7,7 +7,8 @@ import { clientFor } from "./fixtures/api-client";
 import { listWorkspaces } from "./fixtures/seed";
 import { cleanWorkspaceFleets, purgeFixtureFleet } from "./fixtures/teardown";
 import { expectSelectedWorkspace, gotoWorkspace, openWorkspaceMenu, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
-import { saveFleetViaUI } from "./fixtures/install-ui";
+import { createFleetViaUI } from "./fixtures/new-fleet";
+import { probeMessage } from "./fixtures/probe";
 import {
   archiveFleet,
   expectDetailArchived,
@@ -32,7 +33,6 @@ const TEMP_DIR_PREFIX = "agentsfleet-operator-journey-";
 // so the sweep can never drift from what the journey actually names. The
 // seeded fleet carries a live cron trigger; a leaked row keeps waking
 // runners until something deletes it.
-const JOURNEY_FLEET_PREFIX = "journey-fleet";
 
 interface CliFleetListResponse {
   items?: Array<{ id?: string; name?: string; status?: string }>;
@@ -138,13 +138,13 @@ test.describe("operator journey", () => {
 
   test.afterEach(async () => {
     // The fleet outlives more failure modes than the API key: it exists
-    // before the key is minted, and saveFleetViaUI can die after the server
-    // created it but before the id is readable from the URL. Sweeping by
-    // name-prefix with the admin fixture JWT across every workspace this
-    // run created depends on neither, so a journey that fails anywhere
-    // after fleet creation still tears down its cron-carrying rows.
+    // before the key is minted, and the first message can make it before its
+    // id is readable from the URL. Every workspace swept here is one this run
+    // created, so sweeping each whole with the admin fixture JWT depends on
+    // neither, and a journey that fails anywhere after fleet creation still
+    // tears down its rows.
     for (const wsId of createdWorkspaceIds) {
-      await cleanWorkspaceFleets(FIXTURE_KEY.admin, wsId, JOURNEY_FLEET_PREFIX).catch(
+      await cleanWorkspaceFleets(FIXTURE_KEY.admin, wsId).catch(
         (err: unknown) => {
           console.error(`[e2e:journey] fleet sweep failed for workspace ${wsId}:`, err);
         },
@@ -159,15 +159,13 @@ test.describe("operator journey", () => {
     }
   });
 
-  test("operator switches workspace, installs a Fleet, visits settings, mints an API key, uses it from command line, then halts the Fleet", async ({ page }) => {
+  test("operator switches workspace, starts a Fleet from its first message, visits settings, mints an API key, uses it from command line, then halts the Fleet", async ({ page }) => {
     page.setDefaultTimeout(ACTION_TIMEOUT_MS);
     const apiUrl = process.env.NEXT_PUBLIC_API_URL;
     if (!apiUrl) throw new Error("NEXT_PUBLIC_API_URL must be set");
 
     const primaryWorkspaceName = uniqueName("journey-primary");
     const secondaryWorkspaceName = uniqueName("journey-secondary");
-    // The template is stable; the fleet takes its name, suffixed by the server
-    // if the run's fresh workspace somehow already holds it. Read back below.
     const apiKeyName = uniqueName("journey-key");
 
     await signInAs(page, FIXTURE_KEY.admin);
@@ -190,12 +188,8 @@ test.describe("operator journey", () => {
 
     await clickSidebarLink(page, workspaceHref(wsId, "fleets"), workspaceUrlPattern("fleets/new"));
     await expect(page.getByRole("heading", {name: "What should your fleet do?", exact: true})).toBeVisible();
-    const fleetId = await saveFleetViaUI(page, JOURNEY_FLEET_PREFIX, {
-      handle: FIXTURE_KEY.admin,
-      workspaceId: wsId,
-    });
-    // The detail page opens on Chat — the conversation card is the
-    // post-install scaffolding assertion.
+    const fleetId = await createFleetViaUI(page, wsId, probeMessage(crypto.randomBytes(4).toString("hex")));
+    // The first message opens the fleet's chat.
     await expect(page.getByLabel("Fleet chat")).toBeVisible({ timeout: 15_000 });
 
     await page.goto(workspaceHref(wsId, "turns"));
@@ -240,7 +234,7 @@ test.describe("operator journey", () => {
       throw new Error(`agentsfleet fleet list failed with API key auth (exit ${cli.code}):\n${cli.stderr}`);
     }
     const cliList = JSON.parse(cli.stdout) as CliFleetListResponse;
-    expect(cliList.items?.some((fleet) => fleet.id === fleetId && (fleet.name ?? "").startsWith(JOURNEY_FLEET_PREFIX))).toBe(true);
+    expect(cliList.items?.some((fleet) => fleet.id === fleetId)).toBe(true);
 
     await clickSidebarLink(page, "/settings/billing", /\/settings\/billing(\?|$)/);
     await expect(page.getByLabel("Period totals")).toBeVisible();

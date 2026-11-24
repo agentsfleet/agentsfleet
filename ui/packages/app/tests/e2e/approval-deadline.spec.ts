@@ -1,6 +1,6 @@
 import { expect } from "@playwright/test";
 import { test } from "./fixtures/chat-probe";
-import { FLEET_ID, WORKSPACE } from "@/tests/helpers/draft-fixtures";
+import { FLEET_ID, WORKSPACE } from "@/tests/helpers/fleet-fixtures";
 
 // A passed deadline closes nothing: the daemon reports the unanswered gate as
 // `timed_out`, and the conversation's card still offers Approve. The

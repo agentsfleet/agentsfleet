@@ -22,7 +22,9 @@ const { composer, aui } = vi.hoisted(() => {
 const FLEET_PATH = "/w/ws_1/fleets/fleet_1";
 vi.mock("next/navigation", () => ({ usePathname: () => FLEET_PATH }));
 const setup = vi.hoisted(() => ({ modelChanging: false }));
-vi.mock("../../setup/FleetSetupContext", () => ({ useFleetSetup: () => ({ modelChanging: setup.modelChanging }) }));
+// The picker reads the same choice; with no model change on its way there is no choice to read.
+vi.mock("../../models/FleetModelContext", () => ({ useFleetModelChoice: () => setup.modelChanging
+  ? { models: [], selected: null, label: "Saved model", changing: true, error: null, select: () => {} } : null }));
 
 vi.mock("@assistant-ui/react", () => ({
   ComposerPrimitive: {
@@ -197,6 +199,16 @@ describe("SteerComposer", () => {
     expect(screen.getByRole("link", { name: "Sign in" }).getAttribute("href")).toBe(`/sign-in?redirect_url=${encodeURIComponent(FLEET_PATH)}`);
     expect(screen.getByRole("button", { name: RESEND })).toBeTruthy();
     expect(composer.setText).toHaveBeenCalledExactlyOnceWith("deploy the canary");
+  });
+
+  it("creates a fleet from the first message: its own placeholder and label, an inline mention, and no upload", () => {
+    render(<SteerComposer creating pending={[]} onResend={noop} onDismiss={noop} onRestored={noop} onDraft={noop} />);
+    expect(screen.getByRole("textbox").getAttribute("placeholder")).toBe("What would you like your fleet to do?");
+    expect(screen.getByLabelText("New fleet composer")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Mention a fleet" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Address a workspace fleet" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /upload|attach|insert/i })).toBeNull();
+    expect(screen.getByRole("button", { name: SEND })).toBeTruthy();
   });
 
   it("holds Send while the fleet's model is changing", () => {

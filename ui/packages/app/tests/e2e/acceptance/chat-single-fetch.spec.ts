@@ -16,7 +16,7 @@ import {
 } from "@/lib/acceptance/workspace-fetch-audit";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
-import { getDefaultWorkspaceId, seedFleet, waitForFleetActive } from "./fixtures/seed";
+import { getDefaultWorkspaceId, seedFleet, expectFleetActive } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { workspaceHref } from "./fixtures/nav";
 
@@ -55,7 +55,7 @@ test.describe("chat view request profile", () => {
     const fleet = await seedFleet(FIXTURE_KEY.regular, workspaceId, {
       name: `${CHAT_SEED_PREFIX}${tag}`,
     });
-    await waitForFleetActive(FIXTURE_KEY.regular, workspaceId, fleet.id);
+    await expectFleetActive(FIXTURE_KEY.regular, workspaceId, fleet.id);
 
     test.skip(!(await resetAudit(page)), "workspace fetch audit route is disabled");
     await page.goto(workspaceHref(workspaceId, `fleets/${fleet.id}`));

@@ -14,15 +14,17 @@ import { fleetComposerText } from "@/lib/chat-message-text";
 import { parseChatAddress } from "@/lib/chat-address";
 import { ChatComposerFrame, ChatComposerHint } from "../../shared/chat/ChatComposerFrame";
 import { ChatStopButton } from "@/components/domain/shared/chat/ChatStopButton";
-import { useFleetSetup } from "../../setup/FleetSetupContext";
+import { useFleetModelChoice } from "../../models/FleetModelContext";
 import { FleetMentionButton } from "./FleetMentionButton";
 import { FleetModelSelect } from "../../models/FleetModelSelect";
 import { AddUploadPreview, ComposerUploadAttachments } from "./UploadAttachments";
 
 const PLACEHOLDER = "Message your fleet…";
+const NEW_FLEET_PLACEHOLDER = "What would you like your fleet to do?";
 const SEND_LABEL = "Send";
 const STOP_LABEL = "Stop";
 const COMPOSER_LABEL = "Chat composer";
+const NEW_FLEET_LABEL = "New fleet composer";
 const SESSION_EXPIRED = "Your session expired. Sign in again before sending this message.";
 const SEND_FAILED = "Message not sent.";
 const SEND_UNCONFIRMED = "Sending was interrupted.";
@@ -50,10 +52,12 @@ export type SteerComposerProps = {
   onDraft: (text: string) => void;
   /** Stop for the turn this fleet is working on; absent where no turn can be stopped. */
   turnStop?: TurnStop;
+  /** The message creates the fleet: there is no fleet yet to upload to or address from. */
+  creating?: boolean;
 };
 
-export function SteerComposer({ pending, onResend, onDismiss, onRestored, onDraft, turnStop, modelLabel = "Saved model" }: SteerComposerProps) {
-  const modelChanging = useFleetSetup()?.modelChanging ?? false;
+export function SteerComposer({ pending, onResend, onDismiss, onRestored, onDraft, turnStop, modelLabel = "Saved model", creating = false }: SteerComposerProps) {
+  const modelChanging = useFleetModelChoice()?.changing ?? false;
   const unresolved = useMemo(
     () => pending.filter((entry) => !NOT_NOTICED.has(entry.state)),
     [pending],
@@ -64,13 +68,13 @@ export function SteerComposer({ pending, onResend, onDismiss, onRestored, onDraf
   const draftRef = useRef<HTMLTextAreaElement>(null);
   return (
     <>
-    <ChatComposerFrame id="fleet-steer-composer" label={COMPOSER_LABEL} inputRef={draftRef} disabled={modelChanging}
-      input={<FleetAddressInput inputRef={draftRef} disabled={modelChanging} placeholder={PLACEHOLDER} />}
-      toolbar={<><AddUploadPreview /><FleetMentionButton input={draftRef} disabled={modelChanging} /><FleetModelSelect label={modelLabel} /></>}
+    <ChatComposerFrame id="fleet-steer-composer" label={creating ? NEW_FLEET_LABEL : COMPOSER_LABEL} inputRef={draftRef} disabled={modelChanging}
+      input={<FleetAddressInput inline={creating} inputRef={draftRef} disabled={modelChanging} placeholder={creating ? NEW_FLEET_PLACEHOLDER : PLACEHOLDER} />}
+      toolbar={<>{creating ? null : <AddUploadPreview />}<FleetMentionButton inline={creating} input={draftRef} disabled={modelChanging} /><FleetModelSelect label={modelLabel} /></>}
       actions={<>{turnStop?.visible ? <ChatStopButton label={STOP_LABEL} disabled={turnStop.stopping} onClick={turnStop.stop} /> : null}<SendButton draftRef={draftRef} /></>}>
         <PendingSendNotices entries={unresolved} onResend={onResend} onDismiss={onDismiss} draftRef={draftRef} />
         <DraftReporter onDraft={onDraft} />
-        <ComposerUploadAttachments />
+        {creating ? null : <ComposerUploadAttachments />}
 
     </ChatComposerFrame>
     <ChatComposerHint />
@@ -119,7 +123,7 @@ function useRestoreRefusedTextOnMount(
  * a refused send comes back through the pending-send notice.
  */
 function SendButton({ draftRef }: { draftRef: RefObject<HTMLTextAreaElement | null> }) {
-  const modelChanging = useFleetSetup()?.modelChanging ?? false;
+  const modelChanging = useFleetModelChoice()?.changing ?? false;
   return (
     <ComposerPrimitive.Send asChild>
       <Button
@@ -185,7 +189,7 @@ function PendingSendNotices({ entries, ...actions }: { entries: readonly Pending
 function PendingSendNotice({ entry, onResend, onDismiss, draftRef }: { entry: PendingSend } & NoticeProps) {
   const aui = useAui();
   const draftMatches = useComposerPayload() === entry.text;
-  const modelChanging = useFleetSetup()?.modelChanging ?? false;
+  const modelChanging = useFleetModelChoice()?.changing ?? false;
   const textId = useId();
   // Sign-in returns to this fleet, where the notice's Resend is waiting.
   const pathname = usePathname();

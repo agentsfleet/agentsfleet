@@ -15,6 +15,8 @@ import { activeFleetMention } from "@/lib/chat-address";
 import { workspaceIdFromPath } from "@/lib/workspace-routes";
 
 type Props = {inputRef: RefObject<HTMLTextAreaElement | null>; placeholder: string; disabled: boolean};
+/** `inline`: a chosen fleet is mentioned where the caret is, never made the message's recipient. */
+type AddressProps = Props & {inline: boolean};
 type Picker = ReturnType<typeof useFleetAddress>;
 type KeyControls = {
   open: boolean; inputRef: Props["inputRef"]; choices: readonly NativeFleetSummary[]; selected: number;
@@ -25,13 +27,9 @@ const EMPTY = {items: [], loading: true, more: false, error: null};
 const emptySnapshot = () => EMPTY;
 const emptySubscribe = () => () => {};
 
-export function FleetAddressInput(props: Props) {
+export function FleetAddressInput({inline, ...props}: AddressProps) {
   const workspace = workspaceIdFromPath(usePathname());
-  return <WorkspaceFleetAddressInput {...props} workspace={workspace} inSetup={false} />;
-}
-
-export function WorkspaceFleetAddressInput({workspace, inSetup, ...props}: Props & {workspace: string | null; inSetup: boolean}) {
-  const picker = useFleetAddress(props, inSetup, workspace);
+  const picker = useFleetAddress(props, inline, workspace);
   const listId = useId();
   const listRef = useRef<HTMLDivElement>(null);
   const activeId = picker.open && picker.selected >= 0 ? `${listId}-${picker.selected}` : undefined;
@@ -54,7 +52,7 @@ export function WorkspaceFleetAddressInput({workspace, inSetup, ...props}: Props
   </div>;
 }
 
-function useFleetAddress({inputRef, disabled}: Props, inSetup: boolean, workspace: string | null) {
+function useFleetAddress({inputRef, disabled}: Props, inline: boolean, workspace: string | null) {
   const aui = useAui();
   const text = useAuiState(state => state.composer.text);
   const [caret, setCaret] = useState(0);
@@ -65,7 +63,7 @@ function useFleetAddress({inputRef, disabled}: Props, inSetup: boolean, workspac
   const prefix = text.slice(0, caret);
   const mention = activeFleetMention(prefix);
   const open = Boolean(workspace && focused && !disabled && mention !== undefined && dismissed !== text
-    && (inSetup || !/^\s*@[a-z\d-]+[\s,:]/i.test(prefix)));
+    && (inline || !/^\s*@[a-z\d-]+[\s,:]/i.test(prefix)));
   const query = mention ?? "";
   const collection = useRecentPage(open && workspace ? `/live${fleetsPath(workspace)}` : null, FleetListSchema);
   const page = useSyncExternalStore(collection?.subscribe ?? emptySubscribe,
@@ -77,7 +75,7 @@ function useFleetAddress({inputRef, disabled}: Props, inSetup: boolean, workspac
     const before = text.slice(0, caret - query.length - 1).trimStart();
     const after = text.slice(caret).replace(/^[a-z\d-]+/i, "");
     const words = [before.trimEnd(), after.trimStart()].filter(Boolean).join(" ");
-    const addressed = inSetup ? text.slice(0, caret - query.length - 1) + "@" + name + " " + after.trimStart() : `@${name} ${words}`;
+    const addressed = inline ? text.slice(0, caret - query.length - 1) + "@" + name + " " + after.trimStart() : `@${name} ${words}`;
     // Native selection events may still describe the old cursor after the text changes.
     setCaret(addressed.length);
     setDismissed(addressed);

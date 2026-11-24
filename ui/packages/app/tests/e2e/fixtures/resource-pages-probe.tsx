@@ -1,15 +1,12 @@
 import { visualSecretName } from "./visual-fixture-data";
 import type { ReactNode } from "react";
 import type { ConnectorCatalogEntry } from "@/lib/api/connectors";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { PathnameContext, SearchParamsContext } from "next/dist/shared/lib/hooks-client-context.shared-runtime";
 import { Button, PageHeader, PageLayout, PageTitle, TooltipProvider } from "@agentsfleet/design-system";
 import { ShellFrame } from "@/components/layout/ShellFrame";
-import { DraftConversation } from "@/components/domain/setup/conversation/DraftConversation";
-import { DraftChatHeading } from "@/components/domain/setup/conversation/DraftChatHeading";
-import { DraftClient } from "@/lib/api/drafts";
-import { EMPTY_DRAFT_VIEW } from "@/lib/api/draft-state";
+import { NewFleetChat } from "@/components/domain/fleet/NewFleetChat";
 import { UsageLayout } from "@/app/(dashboard)/settings/billing/components/UsageLayout";
 import SecretsList from "@/app/(dashboard)/w/[workspaceId]/secrets/components/SecretsList";
 import AddSecretDialog from "@/app/(dashboard)/w/[workspaceId]/secrets/components/AddSecretDialog";
@@ -21,7 +18,7 @@ import { ModelLabelsProvider } from "@/components/domain/models/ModelLabels";
 import { BILLING_MODEL, BILLING_MODEL_NAME, billingReport } from "@/tests/helpers/billing-report";
 import { OWN_ACCOUNT } from "@/tests/helpers/workspace-fixtures";
 import {VisualLifecycleNotice} from "./visual-lifecycle-notice";
-import { MODEL, WORKSPACE } from "@/tests/helpers/draft-fixtures";
+import { MODEL, WORKSPACE } from "@/tests/helpers/fleet-fixtures";
 
 const router = {bfcacheId: "resource-pages-review", back() {}, forward() {}, refresh() {}, push() {}, replace() {}, async prefetch() {}};
 const PAGES = [
@@ -50,7 +47,7 @@ export function ResourcePagesFixture() {
 }
 
 function ResourcePage({kind}: {kind: typeof PAGES[number]["key"]}) {
-  if (kind === "new") return <EmptySetup />;
+  if (kind === "new") return <PageLayout fullHeight className="flex min-h-0 flex-1 flex-col"><NewFleetChat workspace={WORKSPACE} models={[MODEL]} /></PageLayout>;
   if (kind === "usage") return <ModelLabelsProvider labels={{[BILLING_MODEL]: BILLING_MODEL_NAME}}><UsageLayout>
     <BillingReportView report={billingReport({from_at: "2026-11-01T00:00:00Z", through_at: "2026-11-12T11:44:00Z"})} />
   </UsageLayout></ModelLabelsProvider>;
@@ -64,12 +61,3 @@ function Resource({title, description, children, actions}: {title: string; descr
   return <PageLayout className="gap-2xl"><PageHeader description={description} actions={actions}><PageTitle>{title}</PageTitle></PageHeader>{children}</PageLayout>;
 }
 
-function EmptySetup() {
-  const [client] = useState(() => new DraftClient({account: "fixture-owner", workspace: WORKSPACE, subject: "creator"}));
-  useEffect(() => () => client.dispose(), [client]);
-  const view = {...EMPTY_DRAFT_VIEW, model: MODEL.ref, models: [MODEL]};
-  return <PageLayout fullHeight className="flex min-h-0 flex-1 flex-col"><div data-fleet-setup className="flex min-h-0 flex-1 flex-col">
-    <DraftChatHeading workspace={WORKSPACE} client={client} view={view} />
-    <DraftConversation client={client} view={view} workspace={WORKSPACE} />
-  </div></PageLayout>;
-}

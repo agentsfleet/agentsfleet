@@ -4,7 +4,6 @@ import type { ReactNode } from "react";
 import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 import Link from "next/link";
 import { cn, NavItem as NavigationItem, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@agentsfleet/design-system";
-import { useFreshFleetChat } from "./draft-sidebar-state";
 import { trackNavigationClicked } from "@/lib/analytics/posthog";
 import { NAV_SURFACE, navSource, resolveHref, type NavEntry } from "./sidebar-navigation-data";
 
@@ -25,7 +24,6 @@ export function NavSection({ items, ...props }: NavListProps & { items: NavEntry
 }
 
 function NavItems({ items, activeHref, workspaceId, onNavigate, collapsed, overlay }: NavListProps & { items: NavEntry[] }) {
-  const fresh = useFreshFleetChat(workspaceId);
   return items.map((entry) => {
     const href = resolveHref(entry, workspaceId);
     return (
@@ -40,7 +38,6 @@ function NavItems({ items, activeHref, workspaceId, onNavigate, collapsed, overl
         collapsed={collapsed}
         overlay={overlay}
         onClick={() => {
-          if (entry.path === "fleets/new") fresh();
           onNavigate();
           trackNavigationClicked({ source: navSource(entry), surface: NAV_SURFACE, target: href });
         }}

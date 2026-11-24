@@ -1,8 +1,8 @@
-import type { Schedule } from "@/lib/api/draft-types";
+import type { Schedule } from "@/lib/api/schedule-types";
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { ScheduleSync } from "@/components/domain/schedules/ScheduleSync";
-import { FAILED_SCHEDULE, PENDING_SCHEDULE, SCHEDULE } from "./helpers/draft-fixtures";
+import { FAILED_SCHEDULE, PENDING_SCHEDULE, SCHEDULE } from "./helpers/fleet-fixtures";
 
 afterEach(cleanup);
 

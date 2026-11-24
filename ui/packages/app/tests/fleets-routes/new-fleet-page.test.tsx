@@ -1,61 +1,52 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { MODEL } from "../helpers/fleet-fixtures";
 
-const {credential, workspaces, chat} = vi.hoisted(() => ({credential: vi.fn(), workspaces: vi.fn(), chat: vi.fn()}));
+const {credential, workspaces, chat, request} = vi.hoisted(() => ({credential: vi.fn(), workspaces: vi.fn(), chat: vi.fn(), request: vi.fn()}));
 vi.mock("@/lib/auth/platform", () => ({hasScope: () => Promise.resolve(false)}));
 vi.mock("@/lib/auth/credential", () => ({requireCredential: credential}));
 vi.mock("@/lib/workspace", () => ({listTenantWorkspacesCached: workspaces}));
+vi.mock("@/lib/api/client", () => ({request}));
 vi.mock("next/navigation", () => ({notFound: () => { throw new Error("not-found"); }}));
-vi.mock("@/components/domain/setup/conversation/WorkspaceChat", () => ({WorkspaceChat: chat}));
+vi.mock("@/components/domain/fleet/NewFleetChat", () => ({NewFleetChat: chat}));
 import Page from "../../app/(dashboard)/w/[workspaceId]/fleets/new/page";
 
 const WORKSPACE = "0199a801-1000-7000-8000-000000000001";
-const DRAFT = "0199a801-1000-7000-8000-000000000002";
-const ACCOUNT = "account-owner";
 
 beforeEach(() => {
   vi.resetAllMocks();
   credential.mockResolvedValue("synthetic-session");
-  workspaces.mockResolvedValue({items: [{id: WORKSPACE, account: {tenant_id: ACCOUNT}}]});
-  chat.mockReturnValue(<p>Private chat</p>);
+  workspaces.mockResolvedValue({items: [{id: WORKSPACE, account: {tenant_id: "account-owner"}}]});
+  request.mockResolvedValue({items: [MODEL], next_cursor: null});
+  chat.mockReturnValue(<p>New fleet composer</p>);
 });
 
-function page(query: Record<string, string | string[] | undefined> = {}, workspace = WORKSPACE) {
-  return Page({params: Promise.resolve({workspaceId: workspace}), searchParams: Promise.resolve(query)});
+function page(workspace = WORKSPACE) {
+  return Page({params: Promise.resolve({workspaceId: workspace})});
 }
 
-describe("native fleet chat entry", () => {
-  it("authenticates before resolving ownership or rendering private chat", async () => {
+describe("New fleet", () => {
+  it("authenticates before reading the workspace or its models", async () => {
     credential.mockRejectedValue(new Error("sign-in"));
     await expect(page()).rejects.toThrow("sign-in");
-    expect(workspaces).not.toHaveBeenCalled(); expect(chat).not.toHaveBeenCalled();
+    expect(workspaces).not.toHaveBeenCalled(); expect(request).not.toHaveBeenCalled(); expect(chat).not.toHaveBeenCalled();
   });
-  it("binds the owning account and workspace without allocating a draft", async () => {
-    const markup = renderToStaticMarkup(await page());
-    expect(markup).toContain("Private chat");
-    expect(chat.mock.calls[0]?.[0]).toMatchObject({account: ACCOUNT, workspace: WORKSPACE, draft: undefined});
+  it("renders the composer for the workspace with the models it can run, and creates nothing", async () => {
+    expect(renderToStaticMarkup(await page())).toContain("New fleet composer");
+    expect(chat.mock.calls[0]?.[0]).toEqual({workspace: WORKSPACE, models: [MODEL]});
+    expect(request).toHaveBeenCalledExactlyOnceWith(`/v1/workspaces/${WORKSPACE}/models`, {method: "GET"}, "synthetic-session");
     expect(workspaces).toHaveBeenCalledWith("synthetic-session");
   });
-  it("passes a validated private draft selection without reading its text on the page", async () => {
-    renderToStaticMarkup(await page({draft: DRAFT}));
-    expect(chat.mock.calls[0]?.[0]).toMatchObject({draft: DRAFT});
-  });
-  it("pins improvement to the selected fleet and setup revision", async () => {
-    renderToStaticMarkup(await page({fleet: DRAFT, setup_revision: "2"}));
-    expect(chat.mock.calls[0]?.[0]).toMatchObject({source: {kind: "fleet", fleet_id: DRAFT, setup_revision: "2"}});
-  });
-  it.each([{revision: DRAFT}, {fleet: DRAFT}, {fleet: "checkout-watch", setup_revision: "2"}, {fleet: DRAFT, setup_revision: "0"}, {fleet: DRAFT, setup_revision: "2", draft: DRAFT}])("refuses unknown, incomplete or mixed fleet selections", async (query) => {
-    await expect(page(query)).rejects.toThrow("not-found");
-    expect(chat).not.toHaveBeenCalled();
+  it("offers no models when the catalogue cannot be read, so the first message uses the workspace's model", async () => {
+    request.mockRejectedValue(new Error("catalogue unavailable"));
+    renderToStaticMarkup(await page());
+    expect(chat.mock.calls[0]?.[0]).toEqual({workspace: WORKSPACE, models: []});
   });
   it.each(["foreign", ".."])("hides an unowned workspace %s", async (workspace) => {
-    await expect(page({}, workspace)).rejects.toThrow("not-found");
+    await expect(page(workspace)).rejects.toThrow("not-found");
     expect(chat).not.toHaveBeenCalled();
   });
-  it.each([{draft: ".."}, {draft: [DRAFT, DRAFT]}])("refuses malformed or repeated draft selections", async (query) => {
-    await expect(page(query)).rejects.toThrow("not-found"); expect(chat).not.toHaveBeenCalled();
-  });
-  it("preserves dependency failure without guessing an account", async () => {
+  it("preserves dependency failure without guessing a workspace", async () => {
     workspaces.mockRejectedValue(new Error("workspace dependency unavailable"));
     await expect(page()).rejects.toThrow("workspace dependency unavailable");
     expect(chat).not.toHaveBeenCalled();

@@ -1,30 +1,22 @@
 import { notFound } from "next/navigation";
-import { z } from "zod";
 import { PageLayout } from "@agentsfleet/design-system";
 import { requireCredential } from "@/lib/auth/credential";
 import { listTenantWorkspacesCached } from "@/lib/workspace";
-import { WorkspaceChat } from "@/components/domain/setup/conversation/WorkspaceChat";
-import { SOURCE_KIND } from "@/lib/api/draft-vocabulary";
+import { readWorkspaceModels } from "../[id]/components/view-data";
+import { NewFleetChat } from "@/components/domain/fleet/NewFleetChat";
 
 export const dynamic = "force-dynamic";
-const SearchSchema = z.union([
-  z.object({draft: z.uuidv7()}).strict(),
-  z.object({fleet: z.uuidv7(), setup_revision: z.string().regex(/^[1-9][0-9]*$/)}).strict(),
-  z.object({}).strict(),
-]);
 
-export default async function NewFleetPage({params, searchParams}: {
-  params: Promise<{workspaceId: string}>; searchParams: Promise<Record<string, string | string[] | undefined>>;
-}) {
+export default async function NewFleetPage({params}: {params: Promise<{workspaceId: string}>}) {
   const {workspaceId} = await params;
   const token = await requireCredential();
-  const {items} = await listTenantWorkspacesCached(token);
-  const workspace = items.find((item) => item.id === workspaceId);
-  if (!workspace) notFound();
-  const query = SearchSchema.safeParse(await searchParams);
-  if (!query.success) notFound();
-  const source = "fleet" in query.data ? {kind: SOURCE_KIND.fleet, fleet_id: query.data.fleet, setup_revision: query.data.setup_revision} : undefined;
+  const [{items}, models] = await Promise.all([
+    listTenantWorkspacesCached(token),
+    // The picker offers what the workspace can run; with none read, the first message uses the workspace's model.
+    readWorkspaceModels(workspaceId, token).catch(() => []),
+  ]);
+  if (!items.some(item => item.id === workspaceId)) notFound();
   return <PageLayout fullHeight className="flex min-h-0 flex-1 flex-col">
-    <WorkspaceChat account={workspace.account.tenant_id} workspace={workspaceId} draft={"draft" in query.data ? query.data.draft : undefined} source={source} />
+    <NewFleetChat key={workspaceId} workspace={workspaceId} models={models} />
   </PageLayout>;
 }

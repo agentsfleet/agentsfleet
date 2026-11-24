@@ -1,26 +1,27 @@
 /** Secondary-workspace lifecycle journeys retain their exact workspace identity.
  * Archive leaves read-only history. Direct permanent deletion starts from an
- * active fleet with one confirmation. Cleanup reaches only this suite's fleets. */
+ * active fleet with one confirmation. Each fleet is made by a first message on
+ * New fleet and named by the daemon, so cleanup reaches exactly the fleets this
+ * suite made, by their identities. */
 import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
-import { clientFor } from "./fixtures/api-client";
-import { ensureSecondWorkspace, getDefaultWorkspaceId, waitForFleetActive } from "./fixtures/seed";
-import { saveFleetViaUI } from "./fixtures/install-ui";
+import { clientFor, FixtureHttpError } from "./fixtures/api-client";
+import { ensureSecondWorkspace, getDefaultWorkspaceId, expectFleetActive } from "./fixtures/seed";
+import { createFleetViaUI } from "./fixtures/new-fleet";
+import { probeMessage } from "./fixtures/probe";
 import { expectDetailArchived, expectSidebarFleetState, archiveFleet, captureLifecycleReview } from "./fixtures/lifecycle";
-import { cleanWorkspaceFleets } from "./fixtures/teardown";
+import { uniqueTag } from "./fixtures/observation";
+import { purgeFixtureFleet } from "./fixtures/teardown";
 import { FIXTURE_KEY, SECOND_WORKSPACE_NAME } from "./fixtures/constants";
 import { gotoWorkspace, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
 const SWITCH_TIMEOUT_MS = 10_000;
 const FLOW_TIMEOUT_MS = 120_000;
-// Purpose-based fleet names keep cleanup scoped to this lifecycle suite.
-// A fleet name is a kebab slug (af_fleet_runtime FleetName); the Definition parse refuses anything else.
-const SEED_PREFIX = "workspace-lifecycle";
-
 test.describe("multi-workspace + fleet lifecycle", () => {
   test.setTimeout(FLOW_TIMEOUT_MS);
+  const made: string[] = [];
 
-  test("operator switches workspace, installs, then archives the fleet", async ({ page }, info) => {
+  test("operator switches workspace, starts a fleet, then archives it", async ({ page }, info) => {
     const primary = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
     const secondary = await ensureSecondWorkspace(FIXTURE_KEY.regular, SECOND_WORKSPACE_NAME);
     expect(secondary.id).not.toEqual(primary);
@@ -38,12 +39,10 @@ test.describe("multi-workspace + fleet lifecycle", () => {
       timeout: SWITCH_TIMEOUT_MS,
     });
 
-    // Onboard + install against the secondary workspace — the one now active
-    // in the browser, so the onboarded card renders on /w/<secondary>/fleets/new.
-    const fleetId = await saveFleetViaUI(page, SEED_PREFIX, {
-      handle: FIXTURE_KEY.regular,
-      workspaceId: secondary.id,
-    });
+    // The first message goes to the secondary workspace — the one now active
+    // in the browser, so its New fleet is /w/<secondary>/fleets/new.
+    const fleetId = await createFleetViaUI(page, secondary.id, probeMessage(uniqueTag()));
+    made.push(fleetId);
     await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${fleetId}`));
 
     await page.goto(workspaceHref(secondary.id, "fleets"));
@@ -62,10 +61,9 @@ test.describe("multi-workspace + fleet lifecycle", () => {
   test("an active fleet can be permanently deleted with one confirmation", async ({page}, info) => {
     const secondary = await ensureSecondWorkspace(FIXTURE_KEY.regular, SECOND_WORKSPACE_NAME);
     await signInAs(page, FIXTURE_KEY.regular);
-    const fleetId = await saveFleetViaUI(page, `${SEED_PREFIX}-deletion`, {
-      handle: FIXTURE_KEY.regular, workspaceId: secondary.id,
-    });
-    await waitForFleetActive(FIXTURE_KEY.regular, secondary.id, fleetId);
+    const fleetId = await createFleetViaUI(page, secondary.id, probeMessage(uniqueTag()));
+    made.push(fleetId);
+    await expectFleetActive(FIXTURE_KEY.regular, secondary.id, fleetId);
     await page.reload();
     await page.getByRole("button", {name: "Fleet actions", exact: true}).click();
     await page.getByRole("menuitem", {name: "Permanently delete", exact: true}).click();
@@ -86,9 +84,14 @@ test.describe("multi-workspace + fleet lifecycle", () => {
   });
 
   test.afterEach(async () => {
-    // Prefix-scoped: the secondary workspace is shared with the switcher
-    // specs, so cleanup must never reach past this spec's own seeds.
+    // Identity-scoped: the secondary workspace is shared with the switcher
+    // specs, so cleanup must never reach past the fleets this spec made. A
+    // fleet the test itself deleted is already gone.
     const secondary = await ensureSecondWorkspace(FIXTURE_KEY.regular, SECOND_WORKSPACE_NAME);
-    await cleanWorkspaceFleets(FIXTURE_KEY.regular, secondary.id, SEED_PREFIX);
+    for (const fleetId of made.splice(0)) {
+      await purgeFixtureFleet(FIXTURE_KEY.regular, secondary.id, fleetId).catch((error: unknown) => {
+        if (!(error instanceof FixtureHttpError && error.status === 404)) throw error;
+      });
+    }
   });
 });

@@ -8,7 +8,7 @@ import { FleetStreams } from "@/lib/streaming/fleet-stream-registry";
 import { FRAME_KIND } from "@/lib/api/turns-types";
 import { FakeEventSource } from "@/tests/helpers/fake-event-source";
 import { row } from "@/tests/helpers/fleet-stream-fixtures";
-import {SCHEDULE} from "@/tests/helpers/draft-fixtures";
+import {SCHEDULE} from "@/tests/helpers/fleet-fixtures";
 
 const PROPS = {workspaceId: "workspace", fleetId: "fleet", initial: 2};
 const INITIAL = [row({turn_id: "recorded", status: "processed", response_text: "Retained answer"})];

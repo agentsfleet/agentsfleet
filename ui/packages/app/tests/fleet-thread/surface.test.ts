@@ -1,7 +1,6 @@
 import { ev, mockStream, renderThread, renderThreadWithInitial, routerRefreshMock, serverTurn, threadElement } from "./harness";
-import { cloneElement, createElement } from "react";
 import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { FleetThread } from "@/components/domain/conversation/thread/FleetThread";
 import { CONNECTION_STATUS } from "@/components/domain/conversation/stream/useFleetTurnStream";
 
@@ -17,24 +16,6 @@ describe("FleetThread — empty state", () => {
 });
 
 describe("FleetThread — header chrome", () => {
-  it("keeps saved and ready receipts distinct when readiness is attached to the saved revision", () => {
-    mockStream(["setup_saved", "setup_ready"].map((kind, index) => ev({id: kind, role: "system", actor: "system",
-      status: "recorded", text: kind === "setup_saved" ? "Saved setup" : "Setup ready", createdAt: new Date(Date.UTC(2026, 4, 15, 9, index)),
-      custom: {requestJson: JSON.stringify({kind, revision: "3"})}})));
-    render(cloneElement(threadElement(), {setupRevision: "3", setup: createElement("h2", null, "Saved setup")}));
-    expect(screen.getAllByText("Saved setup")).toHaveLength(1);
-    expect(screen.getByText("Setup ready")).toBeTruthy();
-  });
-  it("shows the saved setup revision without treating it as a new run", () => {
-    mockStream([]);
-    render(cloneElement(threadElement(), {setupRevision: "3", setup: createElement("h2", null, "Setup ready")}));
-    const setup = screen.getByRole("heading", {name: "Setup ready"});
-    expect(screen.getByRole("log").contains(setup)).toBe(true);
-    expect(screen.queryByText("Saved v3")).toBeNull();
-    expect(screen.queryByText("New runs use this setup. Edit setup to change it.")).toBeNull();
-    expect(screen.getByPlaceholderText(/message your fleet/i)).toHaveProperty("disabled", false);
-    expect(routerRefreshMock).not.toHaveBeenCalled();
-  });
   // The panel header is gone in the steady state. It said "Chat" directly
   // beneath a tab reading "Chat", and a "Live" that was true on almost every
   // load — chrome restating what the operator can already see. The states that

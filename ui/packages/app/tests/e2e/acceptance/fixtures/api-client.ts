@@ -56,7 +56,7 @@ export type ClientHandle = FixtureKey | { sessionJwt: string; sessionId?: string
 
 /** Preserve HTTP status so fixture cleanup can distinguish absence from failure. */
 export class FixtureHttpError extends Error {
-  constructor(readonly status: number, message: string) {
+  constructor(readonly status: number, message: string, readonly code?: string) {
     super(message);
     this.name = "FixtureHttpError";
   }
@@ -100,7 +100,7 @@ export function clientFor(handle: ClientHandle): ApiClient {
       const requestId: unknown = Reflect.get(record, "request_id");
       const problem = { error_code: typeof errorCode === "string" ? errorCode : undefined,
         request_id: typeof requestId === "string" ? requestId : undefined };
-      throw new FixtureHttpError(res.status, `${method} ${p} → ${res.status}: ${JSON.stringify(problem)}`);
+      throw new FixtureHttpError(res.status, `${method} ${p} → ${res.status}: ${JSON.stringify(problem)}`, problem.error_code);
     }
     return value;
   }

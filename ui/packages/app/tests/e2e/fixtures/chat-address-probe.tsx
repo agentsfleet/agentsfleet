@@ -21,7 +21,7 @@ import { useTurnStop } from "@/components/domain/conversation/composer/useTurnSt
 import type { TurnRow } from "@/lib/api/turns";
 import { STOP_TURNS } from "./fleet-stop-data";
 import { SCHEDULE_TURN } from "@/tests/helpers/schedule-activity";
-import { FLEET_ID, WORKSPACE } from "@/tests/helpers/draft-fixtures";
+import { FLEET_ID, WORKSPACE } from "@/tests/helpers/fleet-fixtures";
 
 const VIEWER = "fixture-owner";
 const OPEN_FLEET = "support-triage";

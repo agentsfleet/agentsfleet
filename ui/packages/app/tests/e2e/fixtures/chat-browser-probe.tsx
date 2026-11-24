@@ -1,66 +1,30 @@
-import { EmptySetupAlignmentFixture, ChatAlignmentFixture, ChatErrorFixture, SetupAlignmentFixture } from "./chat-alignment-probe";
+import { ChatAlignmentFixture, FleetSampleFixture, LoadingReplyFixture } from "./chat-alignment-probe";
 import { ChatAddressFixture, FleetSteerRowFixture, FleetStopFixture } from "./chat-address-probe";
 import {ThemeProvider} from "next-themes";
 import { createRoot } from "react-dom/client";
-import { DraftConversation } from "@/components/domain/setup/conversation/DraftConversation";
-import { DraftClient } from "@/lib/api/drafts";
-import { EMPTY_DRAFT_VIEW } from "@/lib/api/draft-state";
-import { DRAFT, FLEET, MESSAGE, MODEL, WORKSPACE } from "@/tests/helpers/draft-fixtures";
 import { ActivityFixture } from "./chat-activity-probe";
-import { SetupProgress } from "@/components/domain/setup/summary/SetupProgress";
 import { FleetActivityRow, SenderLabelProvider } from "@/components/domain/activity/messages/FleetMessageRow";
 import { ChatFailure } from "@/components/domain/shared/chat/ChatFailure";
 import { DurableTaskFixture } from "./task-browser-probe";
 import { ChatScrollFixture } from "./chat-scroll-probe";
 import { ScheduleFixture } from "./schedule-browser-probe";
-import { DraftSidebarItem } from "@/components/layout/DraftSidebarItem";
-import { CHAT_ACTIVITY } from "@/lib/api/draft-summary";
-import { Section } from "@agentsfleet/design-system";
 import { RefreshVisualFixture } from "./refresh-visual-probe";
 import { AccountSettingsFixture } from "./account-settings-probe";
 import { ResourceSettingsFixture } from "./resource-settings-probe";
 import { ResourcePagesFixture } from "./resource-pages-probe";
 import { UsageBrowserFixture } from "./usage-browser-probe";
-import { CONTEXT_STATE } from "@/lib/context-progress";
+import { NewFleetFixture } from "./new-fleet-probe";
 
-const client = new DraftClient({account: "fixture-owner", workspace: WORKSPACE, subject: "creator"});
-const SAMPLE_CHAT_AT = new Date().toISOString();
-const view = {...EMPTY_DRAFT_VIEW, draft: DRAFT, model: MODEL.ref, models: [MODEL], messages: [
-  {...MESSAGE, created_at: SAMPLE_CHAT_AT, text: "Investigate the failing test and explain the evidence."},
-  {...MESSAGE, created_at: SAMPLE_CHAT_AT, sequence: "2", role: "assistant" as const,
-    text: "The request has an owner. Switching conversations cancels its stream.\n\n- Stop closes the active reader.\n- Retry preserves the request identity.\n- The evidence stays with this conversation."},
-]};
 const root = document.getElementById("root");
 if (!root) throw new Error("Chat fixture root is missing");
 const query = new URLSearchParams(location.search);
-const blank = {...EMPTY_DRAFT_VIEW, model: MODEL.ref, models: [MODEL]};
-const SETUP_CREATED_AT = new Date("2026-11-01T13:00:00Z");
-createRoot(root).render(<ThemeProvider attribute="data-theme" defaultTheme="dark" enableSystem={false}>{query.has("address") ? <ChatAddressFixture /> : query.has("fleetSteer") ? <FleetSteerRowFixture report={query.get("fleetSteer") === "report"} /> : query.has("fleetStop") ? <FleetStopFixture /> : query.has("chatError") ? <ChatErrorFixture draft={query.has("fleetSave") ? DRAFT.id : undefined} /> : query.has("usage") ? <UsageBrowserFixture /> : query.has("resourcePages") ? <ResourcePagesFixture /> : query.has("resources") ? <ResourceSettingsFixture /> : query.has("accountSettings") ? <AccountSettingsFixture /> : query.has("visual") ? <RefreshVisualFixture /> : query.has("emptySetup") ? <EmptySetupAlignmentFixture /> : query.has("setupAlignment") ? <SetupAlignmentFixture /> : query.has("alignment") ? <ChatAlignmentFixture /> : query.has("starters") ? <main className="flex h-dvh flex-col bg-background text-foreground">
-  <DraftConversation client={client} view={blank} workspace={WORKSPACE} unfinished={<UnfinishedFixture />} />
-</main> : query.has("scroll") ? <ChatScrollFixture /> : query.has("schedules") ? <ScheduleFixture /> : query.has("durable_tasks") ? <DurableTaskFixture /> : query.has("setup") ? <SetupFixture /> : query.has("activity") ? <ActivityFixture /> : <main className="flex h-dvh flex-col bg-background text-foreground">
-  <p className="px-xl py-sm text-eyebrow text-muted-foreground">Sample data · Chat component review</p>
-  <DraftConversation client={client} view={query.has("loading") ? {...view, busy: true,
-    contextProgress: query.get("loading") === "compacting" ? {sequence: MESSAGE.sequence, progress: {generation: 1, state: CONTEXT_STATE.summarizing}} : undefined,
-    messages: [{...MESSAGE, created_at: SAMPLE_CHAT_AT, state: query.get("loading") === "queued" ? "queued" : "running"}]} : view} workspace={WORKSPACE} />
-</main>}</ThemeProvider>);
-window.addEventListener("pagehide", () => client.dispose(), {once: true});
+const MESSAGE_CREATED_AT = new Date("2026-11-01T13:00:00Z");
+createRoot(root).render(<ThemeProvider attribute="data-theme" defaultTheme="dark" enableSystem={false}>{query.has("address") ? <ChatAddressFixture /> : query.has("fleetSteer") ? <FleetSteerRowFixture report={query.get("fleetSteer") === "report"} /> : query.has("fleetStop") ? <FleetStopFixture /> : query.has("usage") ? <UsageBrowserFixture /> : query.has("resourcePages") ? <ResourcePagesFixture /> : query.has("resources") ? <ResourceSettingsFixture /> : query.has("accountSettings") ? <AccountSettingsFixture /> : query.has("visual") ? <RefreshVisualFixture /> : query.has("newFleet") ? <NewFleetFixture /> : query.has("alignment") ? <ChatAlignmentFixture /> : query.has("scroll") ? <ChatScrollFixture /> : query.has("schedules") ? <ScheduleFixture /> : query.has("durable_tasks") ? <DurableTaskFixture /> : query.has("messages") ? <MessagesFixture /> : query.has("activity") ? <ActivityFixture /> : query.has("loading") ? <LoadingReplyFixture state={query.get("loading") ?? "running"} /> : <FleetSampleFixture />}</ThemeProvider>);
 
-function UnfinishedFixture() {
-  return <Section aria-label="Unfinished setups" className="mt-xl gap-md border-t border-border pt-xl">
-    <h2 className="text-body font-semibold">Unfinished setups</h2>
-    <DraftSidebarItem card={{id: DRAFT.id, title: DRAFT.title, detail: "In progress", activity: CHAT_ACTIVITY.draft}}
-      workspace={WORKSPACE} active={false} disabled={false} onNavigate={() => {}} onDelete={() => {}} />
-  </Section>;
-}
-
-function SetupFixture() {
-  const checks = [{kind: "model", subject: "platform-default", state: "ready"},
-    {kind: "credentials", subject: "github", state: "ready"}, {kind: "connections", subject: "github", state: "ready"},
-    {kind: "grants", subject: "github", state: "ready"}, {kind: "credentials", subject: "slack", state: "ready"},
-    {kind: "connections", subject: "slack", state: "ready"}];
+/** An incoming message and a failed request, as the fleet chat shows them. */
+function MessagesFixture() {
   return <SenderLabelProvider senderLabel="ci-responder"><main className="min-h-dvh space-y-md bg-background p-lg text-foreground">
-    <SetupProgress fleet={{...FLEET, setup_revision: "2", status: "active", setup: {state: "ready", checks}}} workspace={WORKSPACE} onContinue={() => {}} onRetrySchedule={() => {}} busy={false} />
-    <FleetActivityRow sender="Slack" headline="Message received" createdAt={SETUP_CREATED_AT} messageRole="system" detailsLabel="View message">
+    <FleetActivityRow sender="Slack" headline="Message received" createdAt={MESSAGE_CREATED_AT} messageRole="system" detailsLabel="View message">
       <p>Diagnose the failed title regression using the current source.</p>
     </FleetActivityRow>
     <ChatFailure title="Couldn’t complete this request" description="The response was interrupted."

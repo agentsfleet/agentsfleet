@@ -20,13 +20,14 @@ const Dependency = z.object({active: z.boolean(), head: GitOid, updated_at: Inst
   workflow_id: Count, run_id: Count.nullable(), run_number: Count.nullable(), run_attempt: Count.nullable(),
   status: z.string(), conclusion: z.string().nullable(),
 }))});
+/** One completion statement: the decision model judges the task done when every one reads true. */
 const Statement = z.object({name: z.string().min(1), question: z.object({
   type: z.literal("noul"), instructions: z.string().min(1),
   criteria: z.object({true: z.string().min(1), false: z.string().min(1)}),
 })});
 const Summary = z.object({
   id: Identity, title: z.string().min(1), status: Status, resource_version: Count,
-  generation: Count, accepted_revision_id: Identity, created_at: Instant, expires_at: Instant,
+  generation: Count, created_at: Instant, expires_at: Instant,
 });
 // The panel reads one page; a continuation would mean an incomplete
 // response, not no work, so a page that names one is refused.
@@ -37,12 +38,12 @@ const Detail = z.object({
     expected_head: GitOid, tested_tree: GitOid, commit: GitOid.nullable(), pull_request_url: z.string(),
   }).nullable().optional(),
   dependency: Dependency.nullable().optional(),
-  title: z.string().min(1), resource_version: Count, setup_revision: Count,
+  title: z.string().min(1), resource_version: Count,
   etag: z.string().regex(/^"[0-9a-f]{64}"$/u).optional(),
   context: z.object({
     target: Target.optional(),
     durable_task_id: Identity, generation: Count, stop_generation: Count,
-    accepted_revision_id: Identity, objective: z.string(), goal_digest: z.string(),
+    objective: z.string(), goal_digest: z.string(),
     questions: z.array(Statement).min(1), state: Status,
     covered_input_sequence: Count, effect_cursor: Count, confirmed_effect_watermark: Count,
     checkpoint_id: Identity.nullable(), expires_at: Instant,
@@ -57,6 +58,7 @@ export type DurableTaskStatus = z.infer<typeof Status>;
 export type DurableTaskSummary = z.infer<typeof Summary>;
 export type DurableTaskPage = z.infer<typeof Page>;
 export type DurableTaskDetail = z.infer<typeof Detail>;
+export type DurableTaskStatement = z.infer<typeof Statement>;
 export type DurableTaskControl = "paused" | "ready" | "cancelled";
 export type DurableTaskChange = {kind: "confirmed"; value: DurableTaskDetail} | {kind: "failed"; reason: "access" | "changed" | "limited" | "unconfirmed" | "invalid"};
 export type DurableTaskReadFailure = "access" | "missing" | "timeout" | "unreachable" | "invalid";
@@ -100,13 +102,14 @@ export function controlDurableTask(workspace: string, fleet: string, task: Durab
   return changeDurableTask(workspace, fleet, task, {state}, signal);
 }
 
-export function adoptDurableTaskGoal(workspace: string, fleet: string, task: DurableTaskDetail, revision: string, operation: string,
+/** A person's new statements for the task, against the generation they read. */
+export function editDurableTaskStatements(workspace: string, fleet: string, task: DurableTaskDetail, questions: readonly DurableTaskStatement[],
   signal: AbortSignal): Promise<DurableTaskChange> {
-  return changeDurableTask(workspace, fleet, task, {goal_revision_id: revision, operation_id: operation}, signal);
+  return changeDurableTask(workspace, fleet, task, {questions}, signal);
 }
 
 async function changeDurableTask(workspace: string, fleet: string, task: DurableTaskDetail,
-  mutation: {state: DurableTaskControl} | {goal_revision_id: string; operation_id: string}, signal: AbortSignal): Promise<DurableTaskChange> {
+  mutation: {state: DurableTaskControl} | {questions: readonly DurableTaskStatement[]}, signal: AbortSignal): Promise<DurableTaskChange> {
   if (!task.etag) return {kind: "failed", reason: "changed"};
   try {
     const response = await fetch(`/live${fleetPath(workspace, fleet)}/durable_tasks/${encodeURIComponent(task.context.durable_task_id)}`, {

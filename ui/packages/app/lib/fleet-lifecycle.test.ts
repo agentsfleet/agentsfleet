@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { FleetDetailSchema } from "./api/fleet-detail";
-import { FLEET_DETAIL, response } from "@/tests/helpers/draft-fixtures";
+import { FLEET_DETAIL, response } from "@/tests/helpers/fleet-fixtures";
 import { advanceFleetLifecycle } from "./fleet-lifecycle";
 
 const {archive, remove} = vi.hoisted(() => ({archive: vi.fn(), remove: vi.fn()}));

@@ -1,4 +1,4 @@
-/** Only saved repository policy crosses into the chat; credentials never do. */
+/** Only the approved GitHub scope crosses into the chat; credentials never do. */
 export type FleetSources = {
   repositories: readonly string[];
   access: "read" | "write" | null;
@@ -10,6 +10,6 @@ export function fleetSources(config: unknown): FleetSources {
   const repositories = Array.isArray(policy.repositories) ? policy.repositories.filter((value): value is string =>
     typeof value === "string" && /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value) && !value.split("/").some(part => part === "." || part === "..")) : [];
   return {repositories: [...new Set(repositories)],
-    access: policy.repository_access === "read" || policy.repository_access === "write" ? policy.repository_access : null,
-    publication: policy.repository_publication === "existing_pr" || policy.repository_publication === "event_draft" ? policy.repository_publication : null};
+    access: policy.access === "read" || policy.access === "write" ? policy.access : null,
+    publication: policy.publication === "existing_pr" || policy.publication === "event_draft" ? policy.publication : null};
 }

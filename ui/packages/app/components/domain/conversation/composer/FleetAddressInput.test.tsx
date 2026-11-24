@@ -4,8 +4,8 @@ import { AssistantRuntimeProvider, ComposerPrimitive, useExternalStoreRuntime } 
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { FleetMentionButton } from "./FleetMentionButton";
-import { FleetAddressInput, WorkspaceFleetAddressInput } from "./FleetAddressInput";
-import { FLEET_DETAIL, WORKSPACE, response } from "@/tests/helpers/draft-fixtures";
+import { FleetAddressInput } from "./FleetAddressInput";
+import { FLEET_DETAIL, WORKSPACE, response } from "@/tests/helpers/fleet-fixtures";
 import userEvent from "@testing-library/user-event";
 
 const location = vi.hoisted(() => ({path: ""}));
@@ -19,12 +19,12 @@ const options = [
 const read = vi.fn();
 const page = (items = options, cursor: string | null = null) => response({items, next_cursor: cursor, total: null});
 
-function Harness({disabled = false, inSetup = false, onNew = async () => {}}: {disabled?: boolean; inSetup?: boolean; onNew?: (message: AppendMessage) => Promise<void>}) {
+function Harness({disabled = false, inline = false, onNew = async () => {}}: {disabled?: boolean; inline?: boolean; onNew?: (message: AppendMessage) => Promise<void>}) {
   const runtime = useExternalStoreRuntime({messages: [], convertMessage: (message: ThreadMessageLike) => message, onNew});
   const ref = useRef<HTMLTextAreaElement>(null);
   return <AssistantRuntimeProvider runtime={runtime}><ComposerPrimitive.Root>
-    <FleetMentionButton input={ref} disabled={disabled} />
-    {inSetup ? <WorkspaceFleetAddressInput workspace={WORKSPACE} inSetup inputRef={ref} placeholder="Message" disabled={disabled} /> : <FleetAddressInput inputRef={ref} placeholder="Message" disabled={disabled} />}
+    <FleetMentionButton input={ref} disabled={disabled} inline={inline} />
+    <FleetAddressInput inline={inline} inputRef={ref} placeholder="Message" disabled={disabled} />
   </ComposerPrimitive.Root></AssistantRuntimeProvider>;
 }
 function enter(text: string) {
@@ -160,11 +160,43 @@ it("never displays a late list from another workspace", async () => {
 });
 
 
-it("keeps a setup mention inside the owner's instructions", async () => {
-  render(<Harness inSetup />);
+it("keeps an inline mention inside a new fleet's first message", async () => {
+  render(<Harness inline />);
   const input = enter("Ask @bo");
   await userEvent.click(await screen.findByRole("option", {name: "@bob"}));
   expect(input.value).toBe("Ask @bob ");
+  enter("@bob Ask @bo");
+  expect(await screen.findByRole("option", {name: "@bob"})).toBeTruthy();
+});
+
+it("leaves a mention already being typed alone, and replaces a selection with a new one", async () => {
+  render(<Harness inline />);
+  const input = enter("Ask @bo");
+  input.setSelectionRange(input.value.length, input.value.length);
+  await userEvent.click(screen.getByRole("button", {name: "Mention a fleet"}));
+  expect(input.value).toBe("Ask @bo");
+  input.setSelectionRange(0, 3);
+  await userEvent.click(screen.getByRole("button", {name: "Mention a fleet"}));
+  expect(input.value).toBe("@ @bo");
+});
+
+it("does nothing from a mention button with no composer field", async () => {
+  function Detached() {
+    const runtime = useExternalStoreRuntime({messages: [], convertMessage: (message: ThreadMessageLike) => message, onNew: async () => {}});
+    const ref = useRef<HTMLTextAreaElement>(null);
+    return <AssistantRuntimeProvider runtime={runtime}><FleetMentionButton input={ref} disabled={false} inline /></AssistantRuntimeProvider>;
+  }
+  render(<Detached />);
+  await userEvent.click(screen.getByRole("button", {name: "Mention a fleet"}));
+  expect(document.activeElement).toBe(screen.getByRole("button", {name: "Mention a fleet"}));
+});
+
+it("inserts an inline mention at the caret rather than jumping to a leading recipient", async () => {
+  render(<Harness inline />);
+  const input = enter("@bob Review");
+  input.setSelectionRange(input.value.length, input.value.length);
+  await userEvent.click(screen.getByRole("button", {name: "Mention a fleet"}));
+  expect(input.value).toBe("@bob Review @");
 });
 
 it("opens the picker from its action and preserves an existing addressed message", async () => {

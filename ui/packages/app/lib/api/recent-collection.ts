@@ -1,8 +1,9 @@
 import type { z } from "zod";
-import { losesAccess, setupRequest } from "./draft-request";
-import { LIST_PAGE_LIMIT } from "./draft-list-types";
+import { liveRequest, losesAccess } from "./live-request";
 
 type Page<T> = {items: T[]; next_cursor: string | null};
+// Rows the sidebar asks for per read.
+const LIST_PAGE_LIMIT = 50;
 type Snapshot<T> = {items: readonly T[]; more: boolean; loading: boolean; error: string | null};
 
 /** One mounted sidebar owns its requests, pagination and private rows. */
@@ -35,7 +36,7 @@ export class RecentCollection<T extends {id: string}> {
     const query = new URLSearchParams({limit: String(LIST_PAGE_LIMIT)});
     if (cursor) query.set("starting_after", cursor);
     try {
-      const page = await setupRequest({path: `${this.path}?${query}`}, this.schema, this.#owner.signal);
+      const page = await liveRequest({path: `${this.path}?${query}`}, this.schema, this.#owner.signal);
       this.#owner.signal.throwIfAborted();
       const rows = new Map((append ? this.#snapshot.items : []).map(item => [item.id, item]));
       for (const item of page.items) if (!this.#removed.has(item.id)) rows.set(item.id, item);

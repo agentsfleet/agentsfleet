@@ -114,8 +114,8 @@ function turn(reply: string, status: FleetTurn["status"]): FleetTurn {
   };
 }
 
-function thread(setupSummary?: React.ReactNode) {
-  return <FleetThread workspaceId="ws_flush" fleetId="fleet_flush" senderLabel={SENDER} initial={[]} viewer={shell.user} senderNames={[]} setupSummary={setupSummary} sources={{repositories: ["agentsfleet/agentsfleet"], access: "write", publication: "existing_pr"}} />;
+function thread(lists?: React.ReactNode) {
+  return <FleetThread workspaceId="ws_flush" fleetId="fleet_flush" senderLabel={SENDER} initial={[]} viewer={shell.user} senderNames={[]} lists={lists} sources={{repositories: ["agentsfleet/agentsfleet"], access: "write", publication: "existing_pr"}} />;
 }
 
 function flush(view: ReturnType<typeof render>, turn: FleetTurn) {
@@ -170,14 +170,15 @@ it("clears confirmed work and cancels its reads when the fleet stream revokes ac
   } finally {vi.unstubAllGlobals();}
 });
 
-it("shows the saved setup beside current work without listing repositories twice", async () => {
+it("shows the fleet's lists beside its current work, and its approved repositories as sources", async () => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({items: [], next_cursor: null})));
   try {
     shell.stream.mockReturnValue({...STABLE, turns: []});
-    render(thread(<p>Saved scheduled setup</p>));
-    expect(screen.getByText("Saved scheduled setup")).toBeTruthy();
+    render(thread(<p>Wakes on, Can access, Remembers</p>));
+    const summary = screen.getByRole("complementary", {name: "Summary"});
     await waitFor(() => expect(screen.getByRole("region", {name: "Current work"})).toBeTruthy());
-    expect(screen.queryByRole("region", {name: "Sources"})).toBeNull();
+    expect(summary.textContent).toContain("Wakes on, Can access, Remembers");
+    expect(screen.getByRole("region", {name: "Sources"}).textContent).toContain("agentsfleet/agentsfleet");
   } finally {vi.unstubAllGlobals();}
 });
 
@@ -188,7 +189,6 @@ it("does not decode runtime bodies as receipts and tolerates a recorded turn wit
     const view = render(thread());
     expect(decode).not.toHaveBeenCalled();
     flush(view, {...turn("", AGENTSFLEET_TURN_STATUS.RECORDED), role: "system"});
-    expect(decode).toHaveBeenCalledWith("");
     expect(screen.getByRole("log")).toBeTruthy();
   } finally {decode.mockRestore();}
 });

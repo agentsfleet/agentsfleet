@@ -7,7 +7,6 @@ import {
   DesktopSidebarNavigation,
 } from "./SidebarNavigation";
 import { WorkspaceCreationProvider } from "./WorkspaceCreationProvider";
-import { DraftSidebarProvider } from "./draft-sidebar-state";
 import { ResourceHeader } from "./ResourceHeader";
 import { FleetNoticeProvider } from "./FleetNoticeProvider";
 
@@ -33,7 +32,7 @@ export function ShellFrame({
   const knownWorkspaceIds = workspaces.map((workspace) => workspace.id);
   return (
     <WorkspaceCreationProvider knownWorkspaceIds={knownWorkspaceIds}>
-      <DraftSidebarProvider><FleetNoticeProvider><div
+      <FleetNoticeProvider><div
         className="app-surface app-shell fixed inset-0 grid h-dvh grid-cols-[auto_minmax(0,1fr)] bg-surface-deep pb-sm pr-sm summary:pb-md summary:pr-md"
         data-surface="dashboard"
       >
@@ -59,7 +58,7 @@ export function ShellFrame({
             </div>
           </div>
         </main>
-      </div></FleetNoticeProvider></DraftSidebarProvider>
+      </div></FleetNoticeProvider>
     </WorkspaceCreationProvider>
   );
 }

@@ -1,10 +1,9 @@
 "use client";
 
 import type { FleetSources } from "@/lib/fleet-sources";
-import type { Schedule } from "@/lib/api/draft-types";
+import type { Schedule } from "@/lib/api/schedule-types";
 
 import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
-import { ACTIVITY_KIND, FLEET_ACTIVITY, readFleetActivity } from "@/lib/turns/fleet-activity";
 import {
   AssistantRuntimeProvider,
   useExternalStoreRuntime,
@@ -37,6 +36,8 @@ import { FleetScopeProvider } from "../stream/FleetScope";
 import { FleetDurableTaskProvider } from "../../tasks/FleetTaskProvider";
 import { DurableTaskPanel } from "../../tasks/TaskPanel";
 import { FLEET_CHAT_CONFIG } from "../../activity/tools/FleetToolRegistry";
+import { useReloadListsAfter } from "../../fleet/FleetListsProvider";
+import { TERMINAL_STATUSES } from "@/lib/streaming/fleet-stream-row";
 
 export type FleetThreadProps = {
   archived?: boolean;
@@ -44,9 +45,8 @@ export type FleetThreadProps = {
   approvals?: {count: number; href: string};
   sources?: FleetSources;
   modelLabel?: string;
-  setupRevision?: string;
-  setup?: ReactNode;
-  setupSummary?: ReactNode;
+  /** What sits beside the chat under its current work: the fleet's lists and switches. */
+  lists?: ReactNode;
   workspaceId: string;
   fleetId: string;
   /** The console's own fleet — the name a fleet reply is labelled with. */
@@ -90,13 +90,15 @@ export function FleetThread(props: FleetThreadProps) {
 }
 
 function OwnedFleetThread(props: FleetThreadProps) {
-  const {stream, arrived, names, ledger, delivery, runtime, setupTurnId, subject, previewCount, files} = useThreadRuntime(props);
+  const {stream, arrived, names, ledger, delivery, runtime, subject, previewCount, files} = useThreadRuntime(props);
   const turnStop = useTurnStop(props.workspaceId, props.fleetId, stream.turns, stream.reconcileRows);
+  const settledTurns = useMemo(() => stream.turns.filter(turn => TERMINAL_STATUSES.has(turn.status)).length, [stream.turns]);
+  useReloadListsAfter(settledTurns);
   const settledLive = stream.connectionStatus === CONNECTION_STATUS.LIVE && !arrived;
   const durableTaskSubject = stream.connectionStatus === CONNECTION_STATUS.REVOKED ? null : subject;
   const {workTurns} = stream;
   const work = useMemo(() => <DurableTaskPanel workspaceId={props.workspaceId} fleetId={props.fleetId}
-    subject={durableTaskSubject} revision={stream.durableTasksSeq} turns={workTurns} sources={props.sources} readOnly={props.archived} showRepositories={!props.setupSummary} />, [props.sources, props.workspaceId, props.fleetId, durableTaskSubject, stream.durableTasksSeq, workTurns, props.archived, props.setupSummary]);
+    subject={durableTaskSubject} revision={stream.durableTasksSeq} turns={workTurns} sources={props.sources} readOnly={props.archived} />, [props.sources, props.workspaceId, props.fleetId, durableTaskSubject, stream.durableTasksSeq, workTurns, props.archived]);
   return (
     <AssistantRuntimeProvider runtime={runtime} config={FLEET_CHAT_CONFIG}>
       <FleetScopeProvider workspaceId={props.workspaceId} fleetId={props.fleetId}>
@@ -109,7 +111,7 @@ function OwnedFleetThread(props: FleetThreadProps) {
                 <FleetConnectionIndicator status={stream.connectionStatus} arrived={arrived} />
               </div>}
               <FleetDurableTaskProvider files={files} workspaceId={props.workspaceId} fleetId={props.fleetId} subject={durableTaskSubject} revision={stream.durableTasksSeq} turns={workTurns} sources={props.sources} schedules={props.schedules} approvals={props.approvals} approvalRevision={stream.approvalsSeq} readOnly={props.archived}>
-              <FleetConversationLayout summary={props.setupSummary ? "setup" : "current-work"} work={durableTaskSubject && props.setupSummary ? <div className="space-y-lg">{props.setupSummary}{work}</div> : work}><FleetThreadViewport modelLabel={props.modelLabel} setup={props.setup} setupTurnId={setupTurnId}
+              <FleetConversationLayout work={durableTaskSubject && props.lists ? <>{work}{props.lists}</> : work}><FleetThreadViewport modelLabel={props.modelLabel}
                 archived={props.archived}
                 turnsCount={stream.turns.length + previewCount} connectionStatus={stream.connectionStatus}
                 onRetry={stream.retryConnection} pending={ledger.pending} onResend={delivery.resend}
@@ -123,7 +125,7 @@ function OwnedFleetThread(props: FleetThreadProps) {
   );
 }
 
-function useThreadRuntime({workspaceId, fleetId, senderLabel, initial, viewer, senderNames, setupRevision, archived = false}: FleetThreadProps) {
+function useThreadRuntime({workspaceId, fleetId, senderLabel, initial, viewer, senderNames, archived = false}: FleetThreadProps) {
   const stream = useFleetTurnStream(workspaceId, fleetId, initial);
   // Connection chrome disappears after its arrival cue settles.
   const arrived = useArrivalCue(stream.connectionStatus);
@@ -148,13 +150,6 @@ function useThreadRuntime({workspaceId, fleetId, senderLabel, initial, viewer, s
   const runtimeRef = useRef<AssistantRuntime | null>(null);
   const previews = useFleetUploadPreviews({workspaceId, fleetId, subject, turns: stream.turns, onNew: delivery.onNew, runtime: runtimeRef});
   const { entries, convertEntry } = useFleetThreadEntries(stream.turns, stream.convertTurn, previews.groupBreaks);
-  const setupTurnId = useMemo(() => stream.turns.findLast(turn => {
-    if (turn.status !== FLEET_ACTIVITY.status) return false;
-    const activity = readFleetActivity(turn.custom?.requestJson ?? "");
-    return activity
-      && activity.kind === ACTIVITY_KIND.setupSaved
-      && activity.revision === setupRevision;
-  })?.id, [stream.turns, setupRevision]);
   const messages = useMemo(() => mergePreviewEntries(entries, previews.entries), [entries, previews.entries]);
   const convertMessage = useCallback((entry: FleetConversationEntry) => entry.kind === "upload-preview" ? entry.message : convertEntry(entry), [convertEntry]);
   const adapters = useMemo(() => ({attachments: previews.attachments}), [previews.attachments]);
@@ -170,5 +165,5 @@ function useThreadRuntime({workspaceId, fleetId, senderLabel, initial, viewer, s
     runtimeRef.current = runtime;
     return () => { runtimeRef.current = null; };
   }, [runtime]);
-  return {stream, arrived, names, ledger, delivery, runtime, setupTurnId, subject, previewCount: previews.entries.length, files: previews.files};
+  return {stream, arrived, names, ledger, delivery, runtime, subject, previewCount: previews.entries.length, files: previews.files};
 }

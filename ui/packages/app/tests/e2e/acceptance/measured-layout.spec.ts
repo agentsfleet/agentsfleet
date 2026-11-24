@@ -21,7 +21,7 @@ import { v7 } from "uuid";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import { clientFor } from "./fixtures/api-client";
-import { getDefaultWorkspaceId, seedFleet, waitForFleetActive } from "./fixtures/seed";
+import { getDefaultWorkspaceId, seedFleet, expectFleetActive } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { workspaceHref } from "./fixtures/nav";
 
@@ -91,7 +91,7 @@ test.describe("a paginating table fills the page it sits on", () => {
     await client.post(secrets, { name: secret, data: { purpose: "table fill fixture" } });
     const fleet = await seedFleet(FIXTURE_KEY.regular, workspaceId, { name: `${TABLE_FILL_FLEET_PREFIX}${crypto.randomUUID()}` });
     try {
-      await waitForFleetActive(FIXTURE_KEY.regular, workspaceId, fleet.id);
+      await expectFleetActive(FIXTURE_KEY.regular, workspaceId, fleet.id);
       await client.post(`/v1/workspaces/${workspaceId}/fleets/${fleet.id}/messages`, {
         message: TABLE_FILL_MESSAGE,
         operation_id: v7(),

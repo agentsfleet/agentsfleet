@@ -1,7 +1,3 @@
-import { DraftConversation } from "@/components/domain/setup/conversation/DraftConversation";
-import { DraftChatHeading } from "@/components/domain/setup/conversation/DraftChatHeading";
-import { DraftClient } from "@/lib/api/drafts";
-import { EMPTY_DRAFT_VIEW } from "@/lib/api/draft-state";
 import { useState, type ReactNode } from "react";
 import { TooltipProvider } from "@agentsfleet/design-system";
 import { ShellFrame } from "@/components/layout/ShellFrame";
@@ -19,18 +15,16 @@ import { DurableTaskPanel } from "@/components/domain/tasks/TaskPanel";
 import { CONNECTION_STATUS } from "@/components/domain/conversation/stream/useFleetTurnStream";
 import { RENDER_KIND, RENDER_KIND_KEY } from "@/components/domain/conversation/thread/useFleetThreadEntries";
 import { ACTOR } from "@/lib/turns/turn-summary";
+import { CONTEXT_STATE } from "@/lib/context-progress";
 import { FleetDetailSchema } from "@/lib/api/fleet-detail";
-import { FLEET_DETAIL, WORKSPACE, FLEET_ID, FLEET, DRAFT, MODEL, MESSAGE, REVIEW } from "@/tests/helpers/draft-fixtures";
-import { SCHEDULE_RUN_STATE, SCHEDULE_SYNC } from "@/lib/api/draft-vocabulary";
-import { NANOS_PER_USD } from "@/lib/types";
-import { WorkspaceChat } from "@/components/domain/setup/conversation/WorkspaceChat";
+import { FLEET_DETAIL, WORKSPACE, FLEET_ID } from "@/tests/helpers/fleet-fixtures";
 
 const router = {bfcacheId: "visual-fixture", back() {}, forward() {}, refresh() {}, push() {}, replace() {}, async prefetch() {}};
 const exchanges = [
   ["What is happening with the Linkwarden repair?", "The selected run failed its callback regression. I’m inspecting the recorded failure before changing the source."],
   ["Use that run and attempt. Keep the existing assertions.", "I’ll keep the repair within the reviewed repository and preserve the regression assertions."],
   ["Require passing checks before marking the repair done.", "The completion criterion will require passing checks on the proposed revision. Jev evaluates the recorded evidence against that criterion."],
-  ["Save those instructions.", "In this demonstration, the saved setup receipt is simulated. Production confirms a save only after the existing API accepts it."],
+  ["Remember to link the evidence in every report.", "I pinned that, so every later run starts with it. You can remove it under Remembers."],
   ["Show me the durable task and its progress.", "Summary shows the saved objective, criteria and recorded progress. You can keep chatting while the fleet works."],
 ];
 const history: ThreadMessageLike[] = exchanges.flatMap(([question, answer], index) => [
@@ -54,43 +48,51 @@ export function ChatAlignmentFixture() {
 }
 
 
-const setupClient = new DraftClient({account: "fixture-owner", workspace: WORKSPACE, subject: "creator"});
-export function ChatErrorFixture({draft}: {draft?: string}) {
-  return <AppRouterContext value={router}><ChatFixtureShell setup>
-    <WorkspaceChat account="fixture-owner" workspace={WORKSPACE} draft={draft} />
-  </ChatFixtureShell></AppRouterContext>;
+const OWNER = {[RENDER_KIND_KEY]: RENDER_KIND.TRIGGER, actor: `${ACTOR.STEER_PREFIX}fixture-owner`};
+const SAMPLE_AT = new Date();
+const SAMPLE: ThreadMessageLike[] = [
+  {id: "sample-request", role: "user", createdAt: SAMPLE_AT, content: "Investigate the failing test and explain the evidence.", metadata: {custom: OWNER}},
+  {id: "sample-answer", role: "assistant", createdAt: SAMPLE_AT, content: "The request has an owner. Switching conversations cancels its stream.\n\n- Stop closes the active reader.\n- Retry preserves the request identity.\n- The evidence stays with this conversation."},
+];
+
+/** A short fleet conversation beside its Summary: production thread, composer and task reader over sample turns. */
+export function FleetSampleFixture() {
+  const [messages] = useState(SAMPLE);
+  const runtime = useExternalStoreRuntime({messages, convertMessage: (message: ThreadMessageLike) => message, onNew: async () => {}});
+  return <AppRouterContext value={router}><PathnameContext value={`/w/${WORKSPACE}/fleets/${FLEET_ID}`}><SearchParamsContext value={new URLSearchParams()}>
+    <TooltipProvider><SenderLabelProvider senderLabel="ci-repairer"><SenderNamesProvider names={senderNamesFrom("fixture-owner", [])}>
+      <main className="flex h-dvh flex-col bg-background text-foreground">
+        <p className="px-xl py-sm text-eyebrow text-muted-foreground">Sample data · Chat component review</p>
+        <AssistantRuntimeProvider runtime={runtime}><FleetConversationLayout work={<DurableTaskPanel workspaceId={WORKSPACE} fleetId={FLEET_ID} subject="fixture-owner" revision={0} sources={{repositories: ["linkwarden/linkwarden"], access: "write", publication: "existing_pr"}} />}>
+          <FleetThreadViewport modelLabel="MiniMax M3.1 Flash" turnsCount={messages.length} connectionStatus={CONNECTION_STATUS.LIVE}
+            pending={[]} onRetry={() => {}} onResend={() => {}} onDismiss={() => {}} onRestored={() => {}} onDraft={() => {}} />
+        </FleetConversationLayout></AssistantRuntimeProvider>
+      </main>
+    </SenderNamesProvider></SenderLabelProvider></TooltipProvider>
+  </SearchParamsContext></PathnameContext></AppRouterContext>;
 }
 
-export function EmptySetupAlignmentFixture() {
-  const view = {...EMPTY_DRAFT_VIEW, model: MODEL.ref, models: [MODEL]};
-  return <AppRouterContext value={router}><ChatFixtureShell setup>
-    <DraftChatHeading client={setupClient} view={view} workspace={WORKSPACE} />
-    <DraftConversation client={setupClient} view={view} workspace={WORKSPACE} />
-  </ChatFixtureShell></AppRouterContext>;
-}
-
-export function SetupAlignmentFixture() {
-  const model = {...MODEL, label: "MiniMax M3.1 Flash"};
-  const definition = {...REVIEW.effective.definition, config: {...REVIEW.effective.definition.config,
-    "x-agentsfleet": {triggers: [{type: "cron", schedule: "0 9 * * 1-5", timezone: "Asia/Kolkata"}]}}};
-  const [createdAt] = useState(() => new Date(Date.now() - 5 * 60 * 1000).toISOString());
-  const view = {...EMPTY_DRAFT_VIEW, draft: {...DRAFT, candidate: DRAFT.candidate ? {...DRAFT.candidate, definition} : undefined, linked_fleet_id: FLEET_ID, review: {...REVIEW,
-    requirements: {credentials: ["github"], repositories: ["agentsfleet/linkwarden"], tools: ["shell"],
-      network: {http_egress: "restricted", allow: ["api.github.com"]}, budget: {daily_nanos: String(NANOS_PER_USD)}},
-    effective: {...REVIEW.effective, definition, instance_name: "Pull request review", target_setup_revision: "1"}}}, fleet: {...FLEET, name: "Pull request review", schedules: [{schedule_id: "review-mornings", fleet_id: FLEET_ID, description: "Weekday pull request review", cron: "0 9 * * 1-5", timezone: "Asia/Kolkata", message: "Review open pull requests", status: "active", sync: SCHEDULE_SYNC.failed, last_error: "Scheduler unavailable", run_state: SCHEDULE_RUN_STATE.unavailable, next_run_at: null}]}, model: model.ref, models: [model],
-    messages: exchanges.flatMap(([question, answer], index) => [
-      {...MESSAGE, created_at: createdAt, sequence: String(index * 2 + 1), text: question ?? ""},
-      {...MESSAGE, created_at: createdAt, sequence: String(index * 2 + 2), role: "assistant" as const, text: answer ?? ""},
-    ])};
-  return <AppRouterContext value={router}><ChatFixtureShell setup>
-    <DraftChatHeading client={setupClient} view={view} workspace={WORKSPACE} />
-      <DraftConversation client={setupClient} view={view} workspace={WORKSPACE} />
-  </ChatFixtureShell></AppRouterContext>;
+/** A fleet's reply before its answer: queued, working, compacting its context, or thinking. */
+export function LoadingReplyFixture({state}: {state: string}) {
+  const reply: ThreadMessageLike = {id: "loading-reply", role: "assistant", createdAt: SAMPLE_AT, status: {type: "running"},
+    content: state === "thinking" ? [{type: "reasoning", text: "Reading the failing test before changing the source."}] : [],
+    metadata: {custom: {queued: state === "queued",
+      ...(state === "compacting" ? {contextProgress: {generation: 1, state: CONTEXT_STATE.summarizing}} : {})}}};
+  const [messages] = useState<ThreadMessageLike[]>(() => [SAMPLE[0] ?? reply, reply]);
+  const runtime = useExternalStoreRuntime({messages, isRunning: true, convertMessage: (message: ThreadMessageLike) => message, onNew: async () => {}});
+  return <SenderLabelProvider senderLabel="ci-repairer"><SenderNamesProvider names={senderNamesFrom("fixture-owner", [])}>
+    <main className="flex h-dvh flex-col bg-background text-foreground">
+      <AssistantRuntimeProvider runtime={runtime}>
+        <FleetThreadViewport modelLabel="MiniMax M3.1 Flash" turnsCount={messages.length} connectionStatus={CONNECTION_STATUS.LIVE}
+          pending={[]} onRetry={() => {}} onResend={() => {}} onDismiss={() => {}} onRestored={() => {}} onDraft={() => {}} />
+      </AssistantRuntimeProvider>
+    </main>
+  </SenderNamesProvider></SenderLabelProvider>;
 }
 
 /** Render the production shell; only identity and API data are supplied by fixtures. */
-function ChatFixtureShell({children, setup = false}: {children: ReactNode; setup?: boolean}) {
-  return <PathnameContext value={`/w/${WORKSPACE}/fleets/${setup ? "new" : FLEET_ID}`}><SearchParamsContext value={new URLSearchParams()}>
+function ChatFixtureShell({children}: {children: ReactNode}) {
+  return <PathnameContext value={`/w/${WORKSPACE}/fleets/${FLEET_ID}`}><SearchParamsContext value={new URLSearchParams()}>
     <TooltipProvider><ShellFrame workspaces={[{id: WORKSPACE, name: "Release workspace", created_at: "2026-01-01T00:00:00Z", ...OWN_ACCOUNT}]}>
       <SenderLabelProvider senderLabel="ci-repairer"><SenderNamesProvider names={senderNamesFrom("fixture-owner", [])}>
         <div data-fleet-workspace className="flex h-full min-h-0 flex-col">{children}</div>

@@ -51,14 +51,12 @@ function Detached() {
   return null;
 }
 
-function View({ turnsCount = 0, messages = NO_MESSAGES, isRunning = false, connectionStatus = CONNECTION_STATUS.LIVE, setup, setupTurnId, work }: {
+function View({ turnsCount = 0, messages = NO_MESSAGES, isRunning = false, connectionStatus = CONNECTION_STATUS.LIVE, work }: {
   turnsCount?: number;
   messages?: ThreadMessageLike[];
   isRunning?: boolean;
   connectionStatus?: ConnectionStatus;
-  setup?: ReactNode;
   work?: ReactNode;
-  setupTurnId?: string;
 }) {
   const runtime = useExternalStoreRuntime<ThreadMessageLike>({
     messages,
@@ -69,7 +67,6 @@ function View({ turnsCount = 0, messages = NO_MESSAGES, isRunning = false, conne
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <FleetConversationLayout work={work}><FleetThreadViewport
-        setup={setup} setupTurnId={setupTurnId}
         turnsCount={turnsCount}
         connectionStatus={connectionStatus}
         onRetry={() => {}}
@@ -297,25 +294,6 @@ describe("FleetThreadViewport layout", () => {
     const view = render(<View />);
     const footerElement = view.getByTestId("fleet-chat-footer");
     expect(view.getByTestId("fleet-thread-root").querySelector('[role="presentation"]')?.contains(footerElement)).toBe(true);
-  });
-  it("places the saved setup inside the log once, with the composer still available", () => {
-    const view = render(<View setup={<h2>Saved setup</h2>} />);
-    expect(view.getByRole("log").contains(view.getByRole("heading", {name: "Saved setup"}))).toBe(true);
-    expect(view.queryAllByText("Saved setup")).toHaveLength(1);
-    expect(view.queryByText("Saved v1")).toBeNull();
-    expect(view.getByRole("form", {name: "Chat composer"})).toBeTruthy();
-  });
-  it("replaces the saved receipt in sequence without repeating it above later messages", () => {
-    const messages: ThreadMessageLike[] = [
-      {id: "before", role: "user", content: "Save this setup"},
-      {id: "saved", role: "system", content: "Saved setup"},
-      {id: "after", role: "user", content: "Check performance"},
-    ];
-    const view = render(<View messages={messages} turnsCount={3} setupTurnId="saved" setup={<h2>Saved setup</h2>} />);
-    const history = view.getByRole("log").textContent ?? "";
-    expect(history.indexOf("Save this setup")).toBeLessThan(history.indexOf("Saved setup"));
-    expect(history.indexOf("Saved setup")).toBeLessThan(history.indexOf("Check performance"));
-    expect(view.getAllByText("Saved setup")).toHaveLength(1);
   });
 });
 

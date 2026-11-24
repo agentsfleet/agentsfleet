@@ -11,6 +11,7 @@ import type { Locator, Page } from "@playwright/test";
 import type { ClientHandle } from "./api-client";
 import { expect } from "@playwright/test";
 import { getDefaultWorkspaceId } from "./seed";
+import { NEW_FLEET_COPY } from "./constants";
 
 // A URL matcher for a workspace-scoped page: `/w/<any-id>/<subpath>` with an
 // optional trailing query. Pass "" to match the workspace home (`/w/<id>`).
@@ -49,7 +50,7 @@ export function workspaceEntryPattern(workspaceId: string): RegExp {
 export async function expectWorkspaceEntry(page: Page, workspaceId: string): Promise<void> {
   await expect(page).toHaveURL(workspaceEntryPattern(workspaceId));
   await expect(page.getByLabel("Fleet chat", {exact: true}).or(
-    page.getByLabel("Fleet setup conversation", {exact: true}),
+    page.getByRole("form", {name: NEW_FLEET_COPY.composer, exact: true}),
   ).filter({visible: true})).toBeVisible();
 }
 

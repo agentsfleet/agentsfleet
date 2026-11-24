@@ -107,7 +107,7 @@ test("resource cards match the approved viewport and retain readable phone conte
   }
 });
 
-test("remaining resource pages and empty setup retain the approved frame", async ({page, chatProbe}, info) => {
+test("remaining resource pages and New fleet retain the approved frame", async ({page, chatProbe}, info) => {
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
   await page.setViewportSize(info.project.name === "chromium" ? {width: 1480, height: 1000} : {width: 390, height: 844});

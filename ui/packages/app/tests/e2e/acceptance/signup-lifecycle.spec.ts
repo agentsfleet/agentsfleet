@@ -1,10 +1,11 @@
 /**
  * Full-lifecycle Scenario 1 — ephemeral signup → workspace auto-provision →
- * install via dashboard UI → observe → bill → halt.
+ * a first message on New fleet → observe → bill → halt.
  *
  * End-to-end UI-driven: the operator never leaves the browser. signup goes
  * through Clerk's hosted form, install goes through /w/<id>/fleets/new, every
  * lifecycle transition is a real click in the dashboard. No API short-cuts.
+ * A fleet is made by the message typed on New fleet; nothing is set up first.
  *
  * DEV-only — Clerk PROD almost certainly does not have test mode enabled, so
  * the `+clerk_test` alias would not short-circuit OTP. Mirrors
@@ -20,7 +21,8 @@
 import * as crypto from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { deleteUser, findUserIdByEmail } from "./fixtures/clerk-admin";
-import { saveFleetViaUI } from "./fixtures/install-ui";
+import { createFleetViaUI } from "./fixtures/new-fleet";
+import { probeMessage } from "./fixtures/probe";
 import {
   archiveFleet,
   expectDetailArchived,
@@ -38,13 +40,9 @@ function uniqueEmail(): string {
   return `signup-lifecycle-${tag}+clerk_test@e2e.agentsfleet.net`;
 }
 
-// The workspace is this run's own, so the name is stable for consistency with
-// every other dashboard install rather than for convergence.
-const LIFECYCLE_TEMPLATE = "lifecycle";
-
 const isProdApi = (process.env.NEXT_PUBLIC_API_URL ?? "").includes("api.agentsfleet.net");
 
-test.describe("signup → install → lifecycle", () => {
+test.describe("signup → first message → lifecycle", () => {
   test.skip(isProdApi, "Scenario 1 only runs against DEV/local — Clerk test mode is DEV-only");
   test.setTimeout(FLOW_TIMEOUT_MS);
 
@@ -69,7 +67,7 @@ test.describe("signup → install → lifecycle", () => {
     createdEmail = null;
   });
 
-  test("fresh signup walks install → observe → bill → halt entirely in the UI", {tag: "@post-deploy"}, async ({
+  test("fresh signup walks a first message → observe → bill → halt entirely in the UI", {tag: "@post-deploy"}, async ({
     page,
   }) => {
     const email = uniqueEmail();
@@ -85,31 +83,23 @@ test.describe("signup → install → lifecycle", () => {
     const workspaceId = signup.workspaceId;
     cleanupSession = { sessionJwt: signup.sessionJwt, workspaceId };
 
-    // A fresh workspace opens setup through its fleet entry route.
+    // A fresh workspace opens New fleet through its fleet entry route.
     // First-deploy regression surface lives here (route-guard chain on a
     // brand-new tenant, WorkspaceSwitcher with the auto-provisioned default).
     await page.goto(workspaceHref(workspaceId, "fleets"));
     await expect(page.getByRole("heading", { name: "What should your fleet do?" })).toBeVisible();
     await expect(page.getByTestId("workspace-switcher")).toBeVisible();
 
-    // Save through the private chat's inline setup. The fresh tenant has exactly
-    // one auto-provisioned workspace (signup.workspaceId) — the one active in
-    // the browser — so its chat opens here. The seeded draft reuses the signup
-    // session's own JWT (no persistent fixture), so it is this person's chat.
-    const fleetId = await saveFleetViaUI(page, LIFECYCLE_TEMPLATE, {
-      handle: { sessionJwt: signup.sessionJwt },
-      workspaceId,
-    });
-
-    // Post-install: the form redirects to /w/<id>/fleets/${id}. Recent Activity
-    // section is the section-scaffolding assertion (matches logs-detail's
-    // downgrade — section presence, not payload contents).
+    // The first message makes the fleet. The fresh tenant has exactly one
+    // auto-provisioned workspace (signup.workspaceId) — the one active in the
+    // browser — so the fleet is made there.
+    const fleetId = await createFleetViaUI(page, workspaceId, probeMessage(crypto.randomBytes(4).toString("hex")));
     await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${fleetId}`));
     // The detail page opens on Chat — the conversation card is the
     // post-install scaffolding assertion.
     await expect(page.getByLabel("Fleet chat")).toBeVisible({ timeout: 15_000 });
 
-    // Saved history exposes the new fleet and its active status.
+    // The sidebar lists the new fleet and its active status.
     await page.goto(workspaceHref(workspaceId, "fleets"));
     await expectSidebarFleetState(page, fleetId, "active");
 

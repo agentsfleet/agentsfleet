@@ -1,4 +1,4 @@
-import { runtimeModelLabel } from "@/lib/api/draft-list-types";
+import { runtimeModelLabel } from "@/lib/api/workspace-models";
 import { describe, expect, it, vi } from "vitest";
 
 const listFleetMessagesMock = vi.hoisted(() => vi.fn());
@@ -14,7 +14,7 @@ vi.mock("@/lib/api/tenant-members", () => ({ listWorkspaceMembers: listWorkspace
 vi.mock("@/lib/api/client", () => ({request: requestMock}));
 
 import { CHAT_TURNS, startChatData, type ChatViewData } from "./view-data";
-import { MODEL } from "@/tests/helpers/draft-fixtures";
+import { MODEL } from "@/tests/helpers/fleet-fixtures";
 import { ACCOUNT_ROLE } from "@/lib/api/workspaces-types";
 import type { WorkspaceMember } from "@/lib/api/tenant-members";
 
@@ -49,14 +49,14 @@ function resetMocks() {
 describe("startChatData", () => {
   it("loads model labels once beside history and preserves the selected model on failed lookup", async () => {
     resetMocks();
-    requestMock.mockResolvedValue({items: [{...MODEL, ref: "platform-default", label: "MiniMax M3.1 Flash"}], next_cursor: null});
+    requestMock.mockResolvedValue({items: [{...MODEL, ref: "model:flash", label: "MiniMax M3.1 Flash"}], next_cursor: null});
     const data = startChat();
     const models = await data.models;
     expect(requestMock).toHaveBeenCalledExactlyOnceWith("/v1/workspaces/ws_1/models", {method: "GET"}, ARGS.token);
-    expect(runtimeModelLabel(models, undefined)).toBe("MiniMax M3.1 Flash");
+    expect(runtimeModelLabel(models, "model:flash")).toBe("MiniMax M3.1 Flash");
     expect(runtimeModelLabel(models, "my-model")).toBe("my-model");
     requestMock.mockRejectedValue(new Error(UPSTREAM_DOWN));
-    expect(runtimeModelLabel(await startChat().models, undefined)).toBe("Platform default model");
+    expect(runtimeModelLabel(await startChat().models, "model:flash")).toBe("model:flash");
   });
 
   it("reads every page of models and refuses a repeated cursor", async () => {

@@ -19,7 +19,7 @@ import { clientFor } from "./fixtures/api-client";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import { openWorkspaceMenu, workspaceHref } from "./fixtures/nav";
-import { getDefaultWorkspaceId, seedFleet, waitForFleetActive } from "./fixtures/seed";
+import { getDefaultWorkspaceId, seedFleet, expectFleetActive } from "./fixtures/seed";
 import {
   OWNER_INVITES, WAITING_INVITES, inviteeEmail, removeTeammate, signUpInvitee, type InviteRow, type OnePage,
 } from "./fixtures/teammate";
@@ -191,7 +191,7 @@ test.describe("teammates join an account", () => {
     const tag = crypto.randomBytes(3).toString("hex");
     const fleet = await seedFleet(FIXTURE_KEY.admin, workspaceId, { name: `${THREAD_PREFIX}${tag}` });
     try {
-      await waitForFleetActive(FIXTURE_KEY.admin, workspaceId, fleet.id);
+      await expectFleetActive(FIXTURE_KEY.admin, workspaceId, fleet.id);
       // A teammate's turn carries their name when their account has one
       // (lib/turns/sender-names.ts); each sender line is held to what the
       // backend recorded.

@@ -1,5 +1,5 @@
 import type { TurnDetail } from "@/lib/api/turns";
-import { SCHEDULE, WORKSPACE } from "./draft-fixtures";
+import { SCHEDULE, WORKSPACE } from "./fleet-fixtures";
 
 export const SCHEDULE_SNAPSHOT = {schedule_id: SCHEDULE.schedule_id, description: SCHEDULE.description,
   message: SCHEDULE.message, status: SCHEDULE.status, sync: SCHEDULE.sync};

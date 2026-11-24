@@ -8,7 +8,7 @@ import type {ListApprovalsOpts} from "@/lib/api/approvals";
 import {listApprovals} from "@/lib/api/approvals";
 import {ApiError} from "@/lib/api/errors";
 import {CATALOGUE_MODEL} from "@/tests/helpers/catalogue-fixtures";
-import {WORKSPACE, FLEET_ID} from "@/tests/helpers/draft-fixtures";
+import {WORKSPACE, FLEET_ID} from "@/tests/helpers/fleet-fixtures";
 
 const FIXTURE_TOKEN = "fixture-token";
 
