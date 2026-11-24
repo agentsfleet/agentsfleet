@@ -102,9 +102,12 @@ async fn a_tick_whose_set_read_fails_keeps_the_set_until_one_succeeds() {
 /// A second lag inside one tick does not re-read the counters at once: its
 /// read waits for the tick after the first, which announces them then.
 #[tokio::test]
-#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_second_lag_inside_a_tick_re_announces_when_the_tick_ends() {
-    let mut wall = Wall::open(Fixture::create().await).await;
+    // Deliver each burst in process so it fills the viewer's buffer before
+    // the next body read.
+    let (bus, _server) = afd_bus::test_util::detached().expect("an in-process bus opens");
+    let mut wall = Wall::open_over(Fixture::create().await, bus).await;
     wall.publish(OVERFLOW_FRAMES).await;
     wall.next_of("catching_up").await;
     wall.next_of("hello").await;

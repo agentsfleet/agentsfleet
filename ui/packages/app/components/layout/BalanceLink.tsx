@@ -3,8 +3,6 @@ import { cn } from "@agentsfleet/design-system";
 import { formatBalance } from "@/lib/money";
 import { NANOS_PER_USD } from "@/lib/types";
 
-// Header balance links to Billing. Information blue separates the amount
-// from navigation; exhaustion keeps the destructive treatment.
 export const BALANCE_HREF = "/settings/billing";
 export const BALANCE_LABEL = "Credits";
 export const BALANCE_ARIA_LABEL = "Credit balance";
@@ -35,11 +33,8 @@ export function BalanceLink({
       aria-label={`${BALANCE_LABEL} ${balance}: ${isExhausted ? BALANCE_EXHAUSTED_ARIA_LABEL : BALANCE_ARIA_LABEL}`}
       data-exhausted={isExhausted ? "true" : undefined}
       className={cn(
-        "hidden h-8 shrink-0 items-center gap-sm rounded-md border px-md no-underline sm:inline-flex",
+        "flex min-h-9 w-full items-center justify-between gap-sm rounded-md px-md no-underline hover:bg-muted",
         "transition-colors duration-snap ease-snap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        isExhausted
-          ? "border-destructive/40 bg-destructive/10 hover:bg-destructive/20"
-          : "border-info/40 bg-info/10 hover:bg-info/20",
       )}
     >
       <span className="font-sans text-label text-muted-foreground">
@@ -48,7 +43,7 @@ export function BalanceLink({
       <span
         className={cn(
           "font-mono text-body-sm font-semibold tabular-nums",
-          isExhausted ? "text-destructive" : "text-info",
+          isExhausted ? "text-destructive" : "text-foreground",
         )}
       >
         {balance}

@@ -31,7 +31,7 @@ it("settles an applied revision when its following receipt read fails and permit
   const client = await fixture.ready(true);
   await client.apply();
   expect(client.getSnapshot()).toMatchObject({savedSetupRevision: "2", fleet: {setup_revision: "2"}, pending: false, error: null});
-  await client.rename("Updated conversation");
+  await client.rename(DRAFT_ID, "Updated conversation");
   expect(client.getSnapshot().pending).toBe(false);
   expect(fixture.calls.filter(call => call.path.endsWith("/revisions"))).toHaveLength(1);
   expect(fixture.mutations().at(-1)?.body).toEqual({title: "Updated conversation"});

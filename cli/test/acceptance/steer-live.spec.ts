@@ -174,7 +174,7 @@ if (!isLive) {
       const result = await runWithEnv([...STEER_COMMAND, fleetId, ONE_SHOT_MESSAGE]);
       assert.equal(result.code, 0, `conversation failed: stdout=${result.stdout} stderr=${result.stderr}`);
       assert.match(result.stdout, /Final reply:\s*\S/u, "the terminal must show the fleet's answer");
-      assert.match(result.stdout, /turn [\da-f-]+ processed/u, "the terminal must confirm the completed turn");
+      assert.match(result.stdout, /\bturn [\da-f-]+ processed/u, "the terminal must confirm the completed turn");
       assert.doesNotMatch(result.stdout, /"turn_id"\s*:/u, "ordinary conversation must not print the machine envelope");
     }, STEER_TIMEOUT_MS);
 

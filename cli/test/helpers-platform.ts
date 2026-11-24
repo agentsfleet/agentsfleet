@@ -37,9 +37,9 @@ export class PlatformFixture {
 
   readonly calls: PlatformCall[] = [];
   readonly state = mkdtempSync(join(tmpdir(), "agentsfleet-platform-"));
-  respond: (call: PlatformCall) => Response = () => Response.json({});
+  respond: (call: PlatformCall) => Response | Promise<Response> = () => Response.json({});
 
-  async run(args: readonly string[], input = "", tty = false, inputTTY = false) {
+  async run(args: readonly string[], input = "", tty = false, inputTTY = false, palette: NodeJS.ProcessEnv = {NO_COLOR: "1"}) {
     const stdout: string[] = []; const stderr: string[] = [];
     const fetchImpl = async (resource: string | URL | Request, init?: RequestInit) => {
       const url = new URL(typeof resource === "string" ? resource : resource instanceof URL ? resource.href : resource.url);
@@ -52,9 +52,9 @@ export class PlatformFixture {
     Object.defineProperty(stdin, "isTTY", {value: inputTTY});
     const code = await runCli([...this.root, ...args], {
       env: {AGENTSFLEET_API_URL: "http://127.0.0.1:1", AGENTSFLEET_API_KEY: "afk_unit_test",
-        AGENTSFLEET_STATE_DIR: this.state, NO_COLOR: "1"},
-      stdout: {write: (value: string) => {stdout.push(value); return true;}, isTTY: tty},
-      stderr: {write: (value: string) => {stderr.push(value); return true;}, isTTY: tty},
+        AGENTSFLEET_STATE_DIR: this.state, ...palette},
+      stdout: {write: (value: string) => {stdout.push(value); return true;}, isTTY: tty, columns: 160},
+      stderr: {write: (value: string) => {stderr.push(value); return true;}, isTTY: tty, columns: 160},
       stdin,
       fetchImpl,
     });

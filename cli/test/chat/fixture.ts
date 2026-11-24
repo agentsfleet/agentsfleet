@@ -51,8 +51,8 @@ export const EMPTY_PAGE = {items: [], next_cursor: null};
 export const JSON_TYPE = "application/json";
 
 export async function withApi<T>(handler: (request: Request) => Response | Promise<Response>,
-  run: (transport: ReturnType<typeof createTransport>, origin: string) => Promise<T>): Promise<T> {
-  const server = Bun.serve({hostname: "127.0.0.1", port: 0, fetch: handler});
+  run: (transport: ReturnType<typeof createTransport>, origin: string) => Promise<T>, idleTimeout?: number): Promise<T> {
+  const server = Bun.serve({hostname: "127.0.0.1", port: 0, fetch: handler, ...(idleTimeout === undefined ? {} : {idleTimeout})});
   const origin = `http://127.0.0.1:${server.port}`;
   const config = Layer.succeed(CliConfig, {apiUrl: origin, dashboardUrl: origin, accessToken: Option.some(TOKEN),
     jsonMode: false, noOpen: true, telemetryPosthogKey: "", telemetryPosthogHost: origin});

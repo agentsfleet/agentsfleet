@@ -29,7 +29,7 @@ Redirect entries are covered by the route tests. Views without an illustrated co
 
 ## Create model
 
-The dialog opens with “Checking saved keys…” and reserves space for the provider and model fields. Known provider choices stay available during catalogue refresh. [Interactive reference](../ux.html#model-proposal) · [Create dialog](../../ui/packages/app/app/%28dashboard%29/w/%5BworkspaceId%5D/settings/models/components/AddModelEntryDialog.tsx) · [Create form](../../ui/packages/app/app/%28dashboard%29/w/%5BworkspaceId%5D/settings/models/components/CreateModelForm.tsx)
+The Create model dialog keeps the provider and model fields available while saved keys load. Known provider choices stay available during catalogue refresh. [Interactive reference](../ux.html#models) · [Create dialog](../../ui/packages/app/app/%28dashboard%29/w/%5BworkspaceId%5D/settings/models/components/AddModelEntryDialog.tsx) · [Create form](../../ui/packages/app/app/%28dashboard%29/w/%5BworkspaceId%5D/settings/models/components/CreateModelForm.tsx)
 
 The info button beside **Model** names the action on hover or focus. Click, tap or keyboard activation opens context size, prices, sources and the price schedule. [Details card](../../ui/packages/app/app/%28dashboard%29/w/%5BworkspaceId%5D/settings/models/components/ModelDetailsPopover.tsx) · [Catalogue details](../../ui/packages/app/components/domain/models/CatalogueModelDetails.tsx)
 

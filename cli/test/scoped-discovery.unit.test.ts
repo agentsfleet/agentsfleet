@@ -10,10 +10,11 @@ import {
 } from "./helpers-discovery.ts";
 
 // Each server closure, and exactly what it should advertise per family.
-const MATRIX: ReadonlyArray<{ readonly scopes: ReadonlyArray<string>; readonly families: Readonly<Record<string, ReadonlyArray<string>>> }> = [
+const MATRIX: ReadonlyArray<{ readonly scopes: ReadonlyArray<string>; readonly families: Readonly<Record<string, ReadonlyArray<string>>>; readonly defaults?: ReadonlyArray<string> }> = [
   { scopes: [], families: {} },
-  { scopes: ["platform-key:read"], families: { keys: ["list"] } },
-  { scopes: ["platform-key:admin", "platform-key:read"], families: { keys: ["list", "use", "delete"] } },
+  { scopes: ["platform-key:read"], families: { models: ["default"] }, defaults: ["list"] },
+  { scopes: ["platform-key:admin", "platform-key:read"], families: { models: ["default"] }, defaults: ["list", "use", "delete"] },
+  { scopes: ["model:read", "platform-key:read"], families: { models: ["list", "show", "default"] }, defaults: ["list"] },
   { scopes: ["model:read"], families: { models: ["list", "show"] } },
   { scopes: ["model:admin", "model:read"], families: { models: ["list", "show", "create", "update", "delete"] } },
   { scopes: ["runner:read"], families: { runners: ["list", "show", "history", "runs"] } },
@@ -39,6 +40,10 @@ describe("platform_discovery_matches_effective_scope_matrix", () => {
       for (const [family, leaves] of Object.entries(row.families)) {
         const help = await withKey(row.scopes, ["platform", family, "--help"]);
         expect([...rows(help.out)].sort()).toEqual([...leaves].sort());
+      }
+      if (row.defaults) {
+        const help = await withKey(row.scopes, ["platform", "models", "default", "--help"]);
+        expect([...rows(help.out)].sort()).toEqual([...row.defaults].sort());
       }
     });
   }
@@ -152,7 +157,7 @@ describe("discovery_does_not_reuse_another_identity_or_target", () => {
     },
   );
 
-  test.each([[["fleet", "list"]], [["fleet", "--help"]], [["platform", "keys", "list"]]])(
+  test.each([[["fleet", "list"]], [["fleet", "--help"]], [["platform", "models", "default", "list"]]])(
     "%p makes no identity read",
     async (argv) => {
       const outcome = await withKey(["platform-key:read"], argv);
@@ -166,7 +171,7 @@ describe("discovery_does_not_reuse_another_identity_or_target", () => {
     expect(rows(outcome.out)).not.toContain("platform");
   });
 
-  test.each([[["platform", "keys", "list", "--help"]], [["platform", "keys"]], [["help", "platform"]]])(
+  test.each([[["platform", "models", "default", "list", "--help"]], [["platform", "models", "default"]], [["help", "platform"]]])(
     "%p is a discovery request",
     async (argv) => {
       const outcome = await withKey(["platform-key:read"], argv);
@@ -182,7 +187,7 @@ describe("discovery_does_not_reuse_another_identity_or_target", () => {
 
 describe("hidden_command_and_stale_completion_cannot_bypass_authorization", () => {
   test("an unadvertised command still parses and the server still refuses it", async () => {
-    const outcome = await withKey([], ["platform", "keys", "list"]);
+    const outcome = await withKey([], ["platform", "models", "default", "list"]);
     expect(outcome.calls.map((call) => `${call.method} ${call.path}`)).toEqual(["GET /v1/admin/platform-keys"]);
     expect(outcome.err).toMatch(/^ {2}code {10}UZ-AUTH-022$/m);
     expect(outcome.code).toBe(EXIT_SERVER);

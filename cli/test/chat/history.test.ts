@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { runCli } from "../../src/cli.ts";
+import { composeEnv, runFleetctl } from "../acceptance/fixtures/cli.js";
 import { bufferStream, cliEnv, withAuthedStateDir } from "../helpers-cli-state.ts";
 import { DRAFT, DRAFT_ID, FLEET_ID, WORKSPACE, problem, withApi } from "./fixture.ts";
 
@@ -12,7 +13,7 @@ const PAGE = {items: [ROW], next_cursor: CURSOR, total: null, extra: "preserved"
 type Call = {method: string; path: string; query: string; body: unknown; tag: string | null; authenticated: boolean};
 type Reply = (request: Request, calls: readonly Call[]) => Response | Promise<Response>;
 
-async function run(args: readonly string[], reply: Reply) {
+async function run(args: readonly string[], reply: Reply, idleTimeout?: number, beforeStop?: () => Promise<void>) {
   const calls: Call[] = [];
   return withApi(async request => {
     const url = new URL(request.url);
@@ -24,8 +25,9 @@ async function run(args: readonly string[], reply: Reply) {
     const out = bufferStream(); const err = bufferStream();
     const code = await runCli(["chat", ...args], {stdout: out.stream, stderr: err.stream,
       env: cliEnv({AGENTSFLEET_API_URL: origin, NO_COLOR: "1"})});
+    await beforeStop?.();
     return {code, stdout: out.read(), stderr: err.read(), calls};
-  }));
+  }), idleTimeout);
 }
 
 test("lists a bounded private page and repeats the same literal search with its opaque cursor", async () => {
@@ -93,6 +95,45 @@ test("an empty page is explicit in text and intact in JSON", async () => {
     if (json) expect(JSON.parse(result.stdout)).toEqual(body);
     else expect(result.stdout).toContain("No setup chats match this list.");
   }
+});
+
+test("a history read that stalls after headers times out and closes the request", async () => {
+  const cancelled = Promise.withResolvers<void>();
+  const result = await run(["list", "--json"], request => {
+    request.signal.addEventListener("abort", () => cancelled.resolve(), {once: true});
+    return new Response(new ReadableStream({
+      start(body) {body.enqueue(new TextEncoder().encode('{"items":['));},
+      cancel() {cancelled.resolve();},
+    }), {headers: {"content-type": "application/json"}});
+  }, 0, () => cancelled.promise);
+  expect(result.code).not.toBe(0);
+  expect(result.stdout).toBe("");
+  expect(JSON.parse(result.stderr).error.code).toBe("TIMEOUT");
+  expect(result.calls).toHaveLength(1);
+}, 20_000);
+
+test.each([
+  ["empty", {items: [], next_cursor: null}, ["--json"]],
+  ["with a next page", PAGE, ["--json"]],
+  ["shown as text", PAGE, []],
+] as const)("the built CLI exits after one chat history response %s", async (_scenario, page, flags) => {
+  const calls: string[] = [];
+  await withApi(request => {
+    calls.push(`${request.method} ${new URL(request.url).pathname}`);
+    return Response.json(page);
+  }, async (_transport, origin) => withAuthedStateDir({workspaceId: WORKSPACE, apiUrl: origin}, async stateDir => {
+    const result = await runFleetctl(["chat", "list", ...flags], {env: composeEnv({
+      AGENTSFLEET_API_URL: origin, AGENTSFLEET_STATE_DIR: stateDir,
+    })});
+    expect(result.code).toBe(0);
+    expect(result.stderr).toBe("");
+    if (flags.length) expect(JSON.parse(result.stdout)).toEqual(page);
+    else {
+      expect(result.stdout).toContain(TITLE);
+      expect(result.stdout).toContain(`--cursor ${CURSOR}`);
+    }
+    expect(calls).toEqual([`GET ${PATH}`]);
+  }));
 });
 
 test.each([

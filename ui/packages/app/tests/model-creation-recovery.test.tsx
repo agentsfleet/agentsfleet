@@ -125,21 +125,22 @@ it("dismisses an editing model form with Escape and refuses an empty native form
   expect(screen.queryByRole("dialog")).toBeNull();
 });
 
-it("requires both identity and saved-key readiness before rendering credential inputs", async () => {
+it("keeps model and new-key inputs usable as saved keys load or fail", async () => {
   const fixture = await renderDialog([], SECRETS_LOAD.loading);
+  const dialog = screen.getByRole("dialog");
+  expect(within(dialog).getByLabelText(/^api key$/i)).toBeTruthy();
+  expect(screen.queryByText("Checking saved keys…")).toBeNull();
+  await fixture.user.click(within(dialog).getByRole("radio", {name: "Use saved key"}));
   expect(screen.getByText("Checking saved keys…")).toBeTruthy();
-  expect(screen.queryByLabelText(/^api key$/i)).toBeNull();
+  expect(within(dialog).getByLabelText("Provider")).toHaveProperty("disabled", false);
   fixture.rerender({secretsLoad: SECRETS_LOAD.error});
   await fixture.user.click(screen.getByRole("button", {name: "Try again"}));
   expect(fixture.onSecretsNeeded).toHaveBeenCalledTimes(2);
+  await fixture.user.click(within(dialog).getByRole("radio", {name: "Add new key"}));
+  expect(within(dialog).getByLabelText(/^api key$/i)).toBeTruthy();
   modelIdentity.isLoaded = false;
   fixture.rerender({secretsLoad: SECRETS_LOAD.ready});
-  expect(screen.getByText("Checking saved keys…")).toBeTruthy();
-  modelIdentity.isLoaded = true;
-  fixture.rerender({secretsLoad: SECRETS_LOAD.ready});
-  expect(screen.getByLabelText(/^api key$/i)).toBeTruthy();
-  await fixture.user.click(screen.getByRole("button", {name: "Cancel"}));
-  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(screen.queryByLabelText(/^api key$/i)).toBeNull();
 });
 
 it("offers saved-key selection after an uncertain storage response without replaying storage", async () => {

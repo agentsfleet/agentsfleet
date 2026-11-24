@@ -33,22 +33,10 @@ export function draftHref(workspaceId: string, draftId: string): string {
   return `${workspaceHref(workspaceId, NEW_FLEET)}?draft=${encodeURIComponent(draftId)}`;
 }
 
-/** The private chat's entry under Unfinished setups on New fleet. */
-export function historyEntry(page: Page, draftId: string): Locator {
-  return page.locator(`a[href$="?draft=${encodeURIComponent(draftId)}"]`);
-}
-
-/**
- * The same entry, narrowed to the "Unfinished setups" section.
- *
- * The sidebar's "Your Fleets" list links an unfinished draft too, so the
- * page-wide locator matches two anchors and clicking it is a strict-mode
- * violation. The section is the chat's own history; the sidebar entry is the
- * fleet list, and the two are different places on the page.
- */
-export function unfinishedSetupEntry(page: Page, draftId: string): Locator {
-  return page.getByRole("region", { name: "Unfinished setups", exact: true })
-    .locator(`a[href$="?draft=${encodeURIComponent(draftId)}"]`);
+// A draft can appear in the sidebar and the history region. The privacy
+// checks search the entire page for either link.
+export function historyEntry(scope: Page | Locator, draftId: string): Locator {
+  return scope.locator(`a[href$="?draft=${encodeURIComponent(draftId)}"]`);
 }
 
 /** Exercise the runtime header menu rather than bypassing it through the footer. */

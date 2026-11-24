@@ -11,7 +11,7 @@ import {
 } from "../src/output/format.ts";
 
 const NAME = { key: "name", label: "NAME" } as const;
-const IDENTIFIER = { key: "id", label: "FLEET" } as const;
+const IDENTIFIER = { key: "id" } as const;
 const STATUS = { key: "status", label: "STATUS" } as const;
 const WIDE = { widthHint: 200 } as const;
 
@@ -19,9 +19,9 @@ const labels = (spec: EntityTableSpec): string[] =>
   entityColumns(spec).map((column) => column.label);
 
 describe("entityColumns fixes one order", () => {
-  test("name, then identifier, then domain columns, then the age", () => {
+  test("identifier, then name, then domain columns, then the age", () => {
     expect(labels({ name: NAME, id: IDENTIFIER, domain: [STATUS] }))
-      .toEqual(["NAME", "FLEET", "STATUS", "AGO"]);
+      .toEqual(["ID", "NAME", "STATUS", "AGO"]);
   });
 
   test("a table with no identifier still ends with the age", () => {
@@ -29,16 +29,16 @@ describe("entityColumns fixes one order", () => {
       .toEqual(["NAME", "STATUS", "AGO"]);
   });
 
-  test("a table with no domain columns is name, identifier, age", () => {
+  test("a table with no domain columns is identifier, name, age", () => {
     expect(labels({ name: NAME, id: IDENTIFIER, domain: [] }))
-      .toEqual(["NAME", "FLEET", "AGO"]);
+      .toEqual(["ID", "NAME", "AGO"]);
   });
 
   test("an entity with no name of its own leads with its identifier", () => {
     // A hosted schedule has no name — its identity IS the identifier, and
     // inventing one would be a column that says nothing.
     expect(labels({ id: IDENTIFIER, domain: [STATUS] }))
-      .toEqual(["FLEET", "STATUS", "AGO"]);
+      .toEqual(["ID", "STATUS", "AGO"]);
   });
 
   test("an entity that has no age declares it, and gets no empty column", () => {
@@ -52,7 +52,7 @@ describe("entityColumns fixes one order", () => {
     const tier = { key: "tier", label: "TIER" } as const;
     const secrets = { key: "credentials", label: "SECRETS" } as const;
     expect(labels({ name: NAME, id: IDENTIFIER, domain: [tier, secrets] }))
-      .toEqual(["NAME", "FLEET", "TIER", "SECRETS", "AGO"]);
+      .toEqual(["ID", "NAME", "TIER", "SECRETS", "AGO"]);
   });
 });
 

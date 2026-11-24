@@ -67,7 +67,7 @@ describe("steer — sse_error never renders because the poll overwrites it", () 
     // the sse_error render arm was bypassed entirely.
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(rec.requests.some((r) => !isPost(r))).toBe(true);
-    expect(rec.stdout.join("\n")).toContain(`${TURN_ID} ${TURN_STATUS.PROCESSED}`);
+    expect(rec.stdout.join("\n")).toContain(`turn ${TURN_ID} processed`);
     expect(rec.stderr.join("\n")).not.toContain(SSE_ERROR_RENDER_PREFIX);
   });
 });

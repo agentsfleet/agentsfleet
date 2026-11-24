@@ -15,7 +15,7 @@ import { maySpeculateOnHover } from "@/components/domain/shared/dialogs/intent-m
 import type { TenantModelEntry, TenantPlatformDefault } from "@/lib/types";
 import { listModelEntriesAction, resetProviderAction, setProviderSelfManagedAction, deleteModelEntryAction } from "../actions";
 import { captureModelActivated, captureProviderReset } from "../lib/track";
-import AddModelEntryDialog from "./AddModelEntryDialog";
+import { AddModelEntryDialog } from "./AddModelEntryDialog";
 import EditModelEntryDialog from "./EditModelEntryDialog";
 import { readErrorCopy } from "./registry-view";
 import { useStoredSecrets } from "./use-stored-secrets";
@@ -204,7 +204,6 @@ export default function ModelsRegistryTable({ workspaceId, workspaces, initialPa
           onView={entry => {preloadCatalogue(); setDetailsTarget(entry);}}
           onEdit={entry => {preloadAllModels(); setEditTarget(entry);}} onRemove={setRemoveTarget}
           onIntent={() => {if (catalogueStatus !== CATALOGUE_STATUS.error && maySpeculateOnHover()) preloadCatalogue();}}
-          footerAction={<AddModelEntryDialog workspaceId={workspaceId} secrets={secrets} secretsLoad={secretsLoad} onCreated={refresh} onSecretsChanged={refreshSecrets} onSecretsNeeded={refreshSecrets} triggerLabel="Add another model" secondary />}
           onLoadMore={nextCursor ? () => loadMore(nextCursor) : undefined} />}
 
         {nextCursor !== null ? <p className="text-body-sm text-muted-foreground" aria-live="polite">

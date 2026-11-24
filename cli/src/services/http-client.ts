@@ -6,7 +6,7 @@
 // Credentials service is responsible for reading the on-disk token
 // and passing it here as a Redacted value.
 
-import { Effect, Layer, Option, Redacted, Context } from "effect";
+import { Effect, Layer, Option, Redacted, Context, Semaphore } from "effect";
 import {
   ApiError,
   apiRequest,
@@ -16,6 +16,7 @@ import {
 } from "../lib/http.ts";
 import { DROP_CODES, PRE_SEND_CODES, isTransientResponse, socketCode } from "../lib/http-failure.ts";
 import { CliConfig } from "./config.ts";
+import { OUTPUT_FORMAT, Output } from "./output.ts";
 import { NetworkError, ServerError } from "../errors/index.ts";
 import { isString } from "../lib/guards.ts";
 import { HTTP_METHOD, type HttpMethod } from "../constants/http-method.ts";
@@ -164,6 +165,7 @@ const QUERY_ASSIGNMENT = "=";
 const QUERY_VALUE_PLACEHOLDER = "{value}";
 const TRACE_ATTEMPT = "http.attempt";
 const STATUS_NONE = "none";
+const PROGRESS_DELAY_MS = 400;
 
 /**
  * The endpoint a record names, with every identifier in it replaced.
@@ -197,6 +199,7 @@ const attemptRecord = (method: string, path: string, status: number | undefined,
 const makeLive = (
   apiUrl: string,
   fetchImpl: FetchImpl | undefined,
+  progress?: Effect.Effect<never>,
 ): HttpClientShape => ({
   request: <T = unknown>(
     input: HttpRequestInput,
@@ -214,7 +217,7 @@ const makeLive = (
     // plain callbacks inside a promise, so logging from them would escape the
     // fiber whose level `--log-level` set.
     const trace: string[] = [];
-    return Effect.tryPromise({
+    const request = Effect.tryPromise({
       try: async (signal) => {
         const startedAt = Date.now();
         try {
@@ -237,7 +240,12 @@ const makeLive = (
         }
       },
       catch: (cause) => toCliError(url, cause),
-    }).pipe(
+    });
+    // Terminal output belongs to the request scope. A failed draw must not
+    // interrupt a write that the server may already have accepted.
+    return (progress ? Effect.scoped(
+      Effect.forkScoped(Effect.ignoreCause(progress)).pipe(Effect.andThen(request)),
+    ) : request).pipe(
       // ensuring, not tap: a request that failed is the one worth reading.
       Effect.ensuring(
         Effect.forEach(trace, (line) => Effect.logDebug(line), { discard: true }),
@@ -254,6 +262,26 @@ export const httpClientLayer: Layer.Layer<HttpClient, never, CliConfig> =
       return HttpClient.of(makeLive(config.apiUrl, config.fetchImpl));
     }),
   );
+
+export const httpClientWithProgressLayer = Layer.effect(
+  HttpClient,
+  Effect.gen(function* () {
+    const config = yield* CliConfig;
+    const output = yield* Output;
+    if (output.format !== OUTPUT_FORMAT.text || !output.stdoutIsTty) {
+      return HttpClient.of(makeLive(config.apiUrl, config.fetchImpl));
+    }
+    // Requests can overlap. Only the terminal animation takes a permit.
+    const slot = yield* Semaphore.make(1);
+    const progress = slot.withPermit(Effect.scoped(
+      Effect.sleep(PROGRESS_DELAY_MS).pipe(
+        Effect.andThen(output.progress("Waiting for agentsfleet…")),
+        Effect.andThen(Effect.never),
+      ),
+    ));
+    return HttpClient.of(makeLive(config.apiUrl, config.fetchImpl, progress));
+  }),
+);
 
 // Token resolution helper for command handlers. Precedence: the env-sourced
 // service API key (AGENTSFLEET_API_KEY) wins over the stored login JWT — a

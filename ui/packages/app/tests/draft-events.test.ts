@@ -19,9 +19,9 @@ beforeEach(() => {
 });
 afterEach(() => { for (const owner of owners.splice(0)) owner.abort(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
-function follow(reconcile = vi.fn(async () => true), needsPolling?: () => boolean) {
+function follow(reconcile = vi.fn(async () => true)) {
   const owner = new AbortController(); owners.push(owner);
-  const pending = followDraft(PATH, DRAFT_ID, owner.signal, reconcile, needsPolling);
+  const pending = followDraft(PATH, DRAFT_ID, owner.signal, reconcile);
   const source = FakeEventSource.instances.at(-1);
   if (!source) throw new Error("Private connection was not opened");
   return {owner, pending, source, reconcile};
@@ -31,7 +31,7 @@ it.each([false, true])("keeps preview gaps separate from authoritative reads (pr
   const owner = new AbortController(); owners.push(owner);
   const progress = {delta: vi.fn(() => true), gap: vi.fn()};
   const reconcile = vi.fn(async () => true);
-  const pending = followDraft(PATH, DRAFT_ID, owner.signal, reconcile, undefined, enabled ? progress : undefined);
+  const pending = followDraft(PATH, DRAFT_ID, owner.signal, reconcile, enabled ? progress : undefined);
   const source = FakeEventSource.instances.at(-1);
   if (!source) throw new Error("Private connection was not opened");
   source.emitNamed(DRAFT_DELTA_EVENT, "private preview");
@@ -49,14 +49,18 @@ it.each([false, true])("keeps preview gaps separate from authoritative reads (pr
   owner.abort(); await pending;
 });
 
-it("keeps one quiet connection without repeated reads or two-second reconnects", async () => {
+it("keeps one connection with one read over a minute of healthy heartbeats", async () => {
   vi.useFakeTimers();
   const current = follow(); current.source.open();
-  await vi.advanceTimersByTimeAsync(QUIET_WINDOW_MS);
+  for (let elapsed = 0; elapsed < OUTAGE_WINDOW_MS; elapsed += QUIET_WINDOW_MS) {
+    await vi.advanceTimersByTimeAsync(QUIET_WINDOW_MS);
+    current.source.heartbeat();
+  }
   expect(current.reconcile).toHaveBeenCalledTimes(1);
   expect(FakeEventSource.instances).toHaveLength(1); expect(current.source.closed).toBe(false);
   expect(current.source.url).toBe(`${PATH}/turns/stream`);
   current.owner.abort(); await current.pending; expect(current.source.closed).toBe(true);
+  expect(vi.getTimerCount()).toBe(0);
 });
 
 it("coalesces a burst during an in-flight read and reconciles the terminal result", async () => {
@@ -74,7 +78,7 @@ it("reports the current draft's running notice while a read is pending", async (
   const read = Promise.withResolvers<boolean>();
   const reconcile = vi.fn(() => read.promise);
   const started = vi.fn();
-  const pending = followDraft(PATH, DRAFT_ID, owner.signal, reconcile, undefined, {started, delta: () => false, gap: vi.fn()});
+  const pending = followDraft(PATH, DRAFT_ID, owner.signal, reconcile, {started, delta: () => false, gap: vi.fn()});
   const source = FakeEventSource.instances.at(-1);
   if (!source) throw new Error("Private connection was not opened");
   source.open();
@@ -178,52 +182,5 @@ it.each([false, true])("discards a queued read and late completion after owner a
   await vi.advanceTimersByTimeAsync(0);
   expect(current.source.closed).toBe(true);
   expect(current.reconcile).toHaveBeenCalledTimes(1);
-  expect(vi.getTimerCount()).toBe(0);
-});
-
-it("should reconcile eventless accounting settlement and close the connection", async () => {
-  vi.useFakeTimers();
-  let unresolved = true;
-  const current = follow(vi.fn(async () => unresolved), () => unresolved);
-  current.source.open();
-  await vi.advanceTimersByTimeAsync(0);
-  expect(current.reconcile).toHaveBeenCalledTimes(1);
-  unresolved = false;
-  await vi.advanceTimersByTimeAsync(QUIET_WINDOW_MS);
-  expect(current.reconcile).toHaveBeenCalledTimes(2);
-  expect(current.source.closed).toBe(true);
-  expect(vi.getTimerCount()).toBe(0);
-  await current.pending;
-});
-
-it("should cancel accounting polling when the owner leaves", async () => {
-  vi.useFakeTimers();
-  const current = follow(vi.fn(async () => true), () => true);
-  current.source.open(); await vi.advanceTimersByTimeAsync(0);
-  // Accounting poll plus the shared silence watchdog.
-  expect(vi.getTimerCount()).toBe(2);
-  current.owner.abort(); await current.pending;
-  await vi.advanceTimersByTimeAsync(QUIET_WINDOW_MS);
-  expect(current.reconcile).toHaveBeenCalledTimes(1);
-  expect(current.source.closed).toBe(true);
-  expect(vi.getTimerCount()).toBe(0);
-});
-
-it("should share one durable read when an event arrives during an accounting poll", async () => {
-  vi.useFakeTimers();
-  const polling = Promise.withResolvers<boolean>();
-  const reconcile = vi.fn(async () => false).mockResolvedValueOnce(true)
-    .mockImplementationOnce(() => polling.promise);
-  const current = follow(reconcile, () => true);
-  current.source.open(); await vi.advanceTimersByTimeAsync(0);
-  await vi.advanceTimersByTimeAsync(QUIET_WINDOW_MS);
-  expect(reconcile).toHaveBeenCalledTimes(2);
-  // The connection watchdog stays armed while the accounting read is in flight.
-  expect(vi.getTimerCount()).toBe(1);
-  hint(current.source); hint(current.source, DRAFT_EVENT.candidate);
-  expect(reconcile).toHaveBeenCalledTimes(2);
-  polling.resolve(true); await current.pending;
-  expect(reconcile).toHaveBeenCalledTimes(3);
-  expect(current.source.closed).toBe(true);
   expect(vi.getTimerCount()).toBe(0);
 });

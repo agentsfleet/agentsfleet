@@ -33,9 +33,15 @@ const SERVER_ERROR_TAG = "ServerError";
 // server-supplied err.code (network failure, timeout, transport).
 // Surfaced on the doctor JSON envelope's error.code field.
 const REQUEST_FAILED = "REQUEST_FAILED";
+const WORKSPACE_ACCESS_DENIED = "UZ-AUTH-001";
+const CHECK_TEXT = {
+  [DOCTOR_CHECK.SERVER_REACHABLE]: {passed: "API responding", failed: "API check failed"},
+  [DOCTOR_CHECK.WORKSPACE_SELECTED]: {passed: "Workspace selected", failed: "Select a workspace"},
+  [DOCTOR_CHECK.WORKSPACE_BINDING_VALID]: {passed: "Can list fleets in this workspace", failed: "Could not list fleets in this workspace"},
+} as const;
 
 interface DoctorCheckResult {
-  readonly name: string;
+  readonly name: keyof typeof CHECK_TEXT;
   readonly ok: boolean;
   readonly detail: string;
 }
@@ -115,10 +121,13 @@ const runBindingCheck = (
           onFailure: (err): DoctorCheckResult => {
             const code =
               err._tag === SERVER_ERROR_TAG ? err.code : REQUEST_FAILED;
+            const advice = code === WORKSPACE_ACCESS_DENIED
+              ? "Select a workspace this credential can access, or use the intended credential."
+              : err.suggestion;
             return {
               name: DOCTOR_CHECK.WORKSPACE_BINDING_VALID,
               ok: false,
-              detail: `${wsId}: ${code} — run \`agentsfleet workspace list\` to reset`,
+              detail: `${wsId}: ${code} — ${advice}`,
             };
           },
         }),
@@ -128,18 +137,23 @@ const runBindingCheck = (
 const renderHuman = (
   checks: ReadonlyArray<DoctorCheckResult>,
   ok: boolean,
+  workspace: string | null,
 ): Effect.Effect<void, never, Output> =>
   Effect.gen(function* () {
     const output = yield* Output;
     yield* output.printSection("agentsfleet doctor");
-    // Check status lines (both [OK] and [FAIL]) route to stdout via
-    // output.info so the full report lands on one stream. output.success
-    // and output.error split across stdout/stderr, which would scatter
-    // the report across two streams.
-    for (const c of checks) {
-      const tag = c.ok ? "[OK]" : "[FAIL]";
-      yield* output.info(`${tag} ${c.name}`);
-      if (!c.ok && c.detail) yield* output.info(`        ${c.detail}`);
+    for (const check of checks) {
+      const label = CHECK_TEXT[check.name];
+      if (check.ok) {
+        const detail = check.name === DOCTOR_CHECK.SERVER_REACHABLE ? check.detail
+          : check.name === DOCTOR_CHECK.WORKSPACE_SELECTED ? workspace : null;
+        yield* output.success(detail ? `${label.passed} · ${detail}` : label.passed);
+      } else if (check.name === DOCTOR_CHECK.WORKSPACE_BINDING_VALID && workspace === null) {
+        yield* output.info("– Fleet access check skipped until a workspace is selected");
+      } else {
+        yield* output.info(`✕ ${label.failed}`);
+        yield* output.info(`  ${check.detail}`);
+      }
     }
     yield* output.info("");
     const passed = checks.filter((c) => c.ok).length;
@@ -167,7 +181,7 @@ export const doctorEffect: Effect.Effect<
     ok: wsSelected,
     detail: wsSelected
       ? String(wsId)
-      : `no workspace selected. Run: ${WORKSPACE_CREATE_USAGE}`,
+      : `Run \`agentsfleet workspace list\` to see your workspaces, then \`agentsfleet workspace use <id>\`. To create one, run \`${WORKSPACE_CREATE_USAGE}\`.`,
   };
 
   const bindingCheck: DoctorCheckResult = wsId
@@ -189,7 +203,7 @@ export const doctorEffect: Effect.Effect<
   if (output.format !== OUTPUT_FORMAT.text) {
     yield* output.printJson(report);
   } else {
-    yield* renderHuman(checks, ok);
+    yield* renderHuman(checks, ok, state.items.find(item => item.workspace_id === wsId)?.name ?? wsId);
   }
   return ok ? 0 : 1;
 });

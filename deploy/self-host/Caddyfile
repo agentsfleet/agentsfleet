@@ -1,0 +1,8 @@
+# Set these two hosts to the API and dashboard domains for this installation.
+api.example.org {
+	reverse_proxy 127.0.0.1:3000
+}
+
+fleet.example.org {
+	reverse_proxy 127.0.0.1:3100
+}

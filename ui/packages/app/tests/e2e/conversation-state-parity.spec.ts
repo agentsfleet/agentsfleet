@@ -6,16 +6,24 @@ import { visualWakeup } from "./fixtures/refresh-wakeup-data";
 const views = [{state: "error", reference: "failure", name: "Deploy monitor"}, {state: "wake-up", reference: "scheduled", name: "Merge watch"}] as const;
 const type = ["font-family", "font-size", "line-height", "font-weight", "color"];
 const frame = ["background-color", "border-top-color", "border-top-width", "border-top-left-radius", "padding-top", "padding-right", "padding-bottom", "padding-left", "width"];
+const referenceTime = new Date("2026-11-15T12:00:00Z");
+
+test.use({timezoneId: "UTC"});
 
 for (const view of views) test(`${view.state} follows the reference on desktop and phone`, async ({page, chatProbe, isMobile}, info) => {
   const size = isMobile ? {width: 390, height: 844} : {width: 1440, height: 1000};
   const reference = await page.context().newPage();
-  for (const surface of [page, reference]) {await surface.setViewportSize(size); await surface.emulateMedia({reducedMotion: "reduce"});}
+  // The reference shows one day of activity.
+  await page.clock.setFixedTime(referenceTime);
+  for (const surface of [page, reference]) {
+    await surface.setViewportSize(size);
+    await surface.emulateMedia({reducedMotion: "reduce"});
+  }
   await Promise.all([page.goto(`${chatProbe}?visual=1&state=${view.state}`), reference.goto(new URL(`../../../../../docs/ux.html#${view.reference}`, import.meta.url).href)]);
   const alert = page.getByRole("alert", {name: "Couldn’t complete this request"});
   const strip = page.getByRole("group", {name: "Every 30 minutes"}).locator("..");
   const events = page.locator('[data-role="system"]');
-  const design = reference.locator(view.state === "error" ? ".error-card" : ".wake-strip");
+  const design = reference.locator(view.state === "error" ? ".retry-note" : ".wake-strip");
   const actual = view.state === "error" ? alert : strip;
   await expect(actual).toBeVisible(); await expect(design).toBeVisible();
   const chat = page.getByRole("log", {name: "Chat"});
@@ -23,20 +31,17 @@ for (const view of views) test(`${view.state} follows the reference on desktop a
   if (view.state === "wake-up") await expect(input).toBeFocused();
   for (const theme of ["dark", "light"]) {
     for (const surface of [page, reference]) await surface.evaluate(async theme => {document.documentElement.dataset.theme = theme; await document.fonts.ready;}, theme);
-    await match(actual, design, frame);
+    await match(actual, design, view.state === "error" ? ["background-color", "border-top-width"] : frame);
     await match(page.getByRole("heading", {name: view.name, exact: true}), reference.locator(".title-group h1"), type);
     await match(chat.locator('[data-role="user"] p').first(), reference.locator(".user-bubble p"), type);
     await match(chat.locator('[data-role="assistant"] p').first(), reference.locator(".assistant-turn > p").first(), type);
     await match(input, reference.locator(".composer textarea"), ["font-family", "font-size", "line-height"]);
     if (view.state === "error") {
-      const heading = alert.getByRole("heading", {name: "Couldn’t complete this request"});
+      await expect(alert.getByText(/deployment connection expired before the health check/i)).toBeVisible();
       const primary = alert.getByRole("button", {name: "Try again"});
-      await match(heading, design.locator("h2"), [...type, "gap", "margin-bottom"]);
-      await match(heading.locator("svg"), design.locator("h2 i"), ["width", "height"]);
-      await match(alert.locator("p").first(), design.locator("p").first(), type);
-      await match(primary, design.locator(".primary"), [...type, "height", "background-color", "border-radius", "padding-top", "padding-left"]);
-      await match(alert.getByRole("button", {name: "View details"}), design.locator("summary"), type);
-      expect(await verticalGap(alert.locator("p").first(), primary)).toBe(await verticalGap(design.locator("p").first(), design.locator(".primary")));
+      await match(primary.locator("svg"), design.locator(".retry-action i"), ["width", "height"]);
+      await expect(primary).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+      await expect(alert.getByRole("button", {name: "View details"})).toBeVisible();
     } else {
       const receipts = reference.locator(".event-line");
       const summary = page.getByRole("complementary", {name: "Summary"});
@@ -94,7 +99,7 @@ for (const view of views) test(`${view.state} follows the reference on desktop a
     await expect(chat.locator('[data-role="user"]').filter({hasText: DEPLOY_CHECK})).toHaveCount(2);
     await expect(alert).toBeVisible();
   } else {
-    const schedule = visualWakeup(Date.now());
+    const schedule = visualWakeup(referenceTime.getTime());
     await page.route(`**/schedules/${schedule.schedule_id}`, route => route.fulfill({json: {...schedule, source: "api", etag: '"sample"'}}));
     await strip.getByRole("button", {name: "Edit wake-up"}).press("Enter");
     await expect(page.getByRole("dialog", {name: "Edit wake-up"}).getByLabel("Timezone")).toHaveValue("UTC");
