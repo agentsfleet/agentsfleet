@@ -6,11 +6,19 @@ import { visualWakeup } from "./fixtures/refresh-wakeup-data";
 const views = [{state: "error", reference: "failure", name: "Deploy monitor"}, {state: "wake-up", reference: "scheduled", name: "Merge watch"}] as const;
 const type = ["font-family", "font-size", "line-height", "font-weight", "color"];
 const frame = ["background-color", "border-top-color", "border-top-width", "border-top-left-radius", "padding-top", "padding-right", "padding-bottom", "padding-left", "width"];
+const referenceTime = new Date("2026-11-15T12:00:00Z");
+
+test.use({timezoneId: "UTC"});
 
 for (const view of views) test(`${view.state} follows the reference on desktop and phone`, async ({page, chatProbe, isMobile}, info) => {
   const size = isMobile ? {width: 390, height: 844} : {width: 1440, height: 1000};
   const reference = await page.context().newPage();
-  for (const surface of [page, reference]) {await surface.setViewportSize(size); await surface.emulateMedia({reducedMotion: "reduce"});}
+  // The reference shows one day of activity.
+  await page.clock.setFixedTime(referenceTime);
+  for (const surface of [page, reference]) {
+    await surface.setViewportSize(size);
+    await surface.emulateMedia({reducedMotion: "reduce"});
+  }
   await Promise.all([page.goto(`${chatProbe}?visual=1&state=${view.state}`), reference.goto(new URL(`../../../../../docs/ux.html#${view.reference}`, import.meta.url).href)]);
   const alert = page.getByRole("alert", {name: "Couldn’t complete this request"});
   const strip = page.getByRole("group", {name: "Every 30 minutes"}).locator("..");
@@ -91,7 +99,7 @@ for (const view of views) test(`${view.state} follows the reference on desktop a
     await expect(chat.locator('[data-role="user"]').filter({hasText: DEPLOY_CHECK})).toHaveCount(2);
     await expect(alert).toBeVisible();
   } else {
-    const schedule = visualWakeup(Date.now());
+    const schedule = visualWakeup(referenceTime.getTime());
     await page.route(`**/schedules/${schedule.schedule_id}`, route => route.fulfill({json: {...schedule, source: "api", etag: '"sample"'}}));
     await strip.getByRole("button", {name: "Edit wake-up"}).press("Enter");
     await expect(page.getByRole("dialog", {name: "Edit wake-up"}).getByLabel("Timezone")).toHaveValue("UTC");
