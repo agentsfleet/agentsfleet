@@ -69,8 +69,8 @@ async fn beats_and_workers_until(
     )
 }
 
-fn ok(interval_ms: u32) -> Answer {
-    answer(KEEP_GOING, &policy(), false, interval_ms, &[])
+fn ok() -> Answer {
+    answer(KEEP_GOING, &policy(), false, &[])
 }
 
 /// A policy pushed nine seconds after a beat is applied and the next beat still goes
@@ -80,13 +80,13 @@ async fn a_pushed_policy_does_not_postpone_the_next_beat() {
     let beats = beats_until(
         Duration::from_secs(10),
         Duration::from_millis(10_500),
-        |_beat| ok(10_000),
+        |_beat| ok(),
         async |calls| {
             tokio::time::sleep(Duration::from_secs(9)).await;
             let pushed = calls
                 .push_policy(&serde_json::json!({"status": KEEP_GOING,
                     "assigned_policy": policy(), "degraded": false, "degraded_reason": null,
-                    "selftest_requested": false, "heartbeat_interval_ms": 10_000,
+                    "selftest_requested": false,
                     "release_holds": []}))
                 .await;
             assert!(pushed.is_ok(), "the policy frame is pushed: {pushed:?}");
@@ -108,7 +108,7 @@ async fn a_round_due_during_a_beat_in_flight_still_beats_once() {
         Duration::from_secs(3),
         Duration::from_millis(9_500),
         |beat| {
-            let answered = ok(3_000);
+            let answered = ok();
             match (beat, answered) {
                 // The second beat, sent on the round at 3 s, is answered at 7 s: the
                 // round at 6 s falls while it is in flight.
@@ -139,7 +139,7 @@ async fn a_policy_pushed_during_a_beat_is_answered_by_another_beat() {
     let (beats, workers) = beats_and_workers_until(
         Duration::from_secs(10),
         Duration::from_millis(2_500),
-        |beat| match (beat, ok(10_000)) {
+        |beat| match (beat, ok()) {
             // The first beat is answered at 2 s; the policy below lands at 1 s.
             (1, Answer::Reply(bytes)) => Answer::Late(Duration::from_secs(2), bytes),
             (_, answered) => answered,
@@ -152,7 +152,7 @@ async fn a_policy_pushed_during_a_beat_is_answered_by_another_beat() {
                 .push_policy(&serde_json::json!({"status": KEEP_GOING,
                     "assigned_policy": policy(), "degraded": true,
                     "degraded_reason": "sandbox", "selftest_requested": false,
-                    "heartbeat_interval_ms": 10_000, "release_holds": []}))
+                    "release_holds": []}))
                 .await;
             assert!(pushed.is_ok(), "the policy frame is pushed: {pushed:?}");
         },
@@ -176,7 +176,7 @@ async fn a_frame_that_is_no_policy_pushed_during_a_beat_stops_the_runner() {
     let (beats, _workers) = beats_and_workers_until(
         Duration::from_secs(10),
         Duration::from_secs(30),
-        |beat| match (beat, ok(10_000)) {
+        |beat| match (beat, ok()) {
             (1, Answer::Reply(bytes)) => Answer::Late(Duration::from_secs(2), bytes),
             (_, answered) => answered,
         },

@@ -86,13 +86,6 @@ impl Attempt {
         }
     }
 
-    pub(super) const fn number(&self) -> i16 {
-        match self {
-            Self::Original { .. } => 0,
-            Self::Retry { .. } => 1,
-        }
-    }
-
     pub(super) fn assessment_id(&self) -> &Uuid7 {
         match self {
             Self::Original { assessment_id } => assessment_id,

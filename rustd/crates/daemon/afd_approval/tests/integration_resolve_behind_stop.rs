@@ -19,7 +19,7 @@ use afd_turns::view::History;
 use afd_turns::view::stop::{Stop, hold_thread, stop_on};
 use sqlx::Connection as _;
 
-use crate::lane::{Lane, Window};
+use crate::lane::{LOCK_FLEET, Lane, SETUP_CARD, Window};
 
 const APPROVER: &str = "human:approver";
 
@@ -29,48 +29,10 @@ const NOTE: &str = "approved while stopping";
 const BLOCKING: &str =
     "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid)))";
 
-/// A queued fleet turn parked behind its approval, as a run's park leaves it.
-const PARKED_TURN: &str = "INSERT INTO thread.turns (id,thread_id,workspace_id,producer,producer_key,\
-payload_digest,actor,kind,status,request_json,created_at,updated_at,parked_at) VALUES \
-($1,$2,$3,'steer',$1,'fixture','steer:fixture','chat','queued','{}',now(),now(),now())";
-
-/// Fleet delete's first hold (`afd_setup/src/creation/sql/lock.sql`).
-const LOCK_FLEET: &str = "SELECT pg_backend_pid() FROM fleet.fleets WHERE id = $1 FOR UPDATE";
-
 /// Fleet delete's close of its setup cards (`afd_approval/src/grant_sql/cancel_setup_cards.sql`).
 const CLOSE_SETUP_CARDS: &str = "UPDATE fleet.approval_gates SET status = $2, resolved_by = 'delete', \
 detail = '', resolved_at = now(), updated_at = now(), active_grant_id = NULL \
 WHERE fleet_id = $1 AND resolved_at IS NULL AND gate_type = $3";
-
-/// The gate kind fleet delete closes before it deletes the fleet.
-const SETUP_CARD: &str = "integration_grant";
-
-async fn parked_turn(lane: &Lane) -> Uuid7 {
-    let id = afd_db::test_util::mint_id();
-    sqlx::query(PARKED_TURN)
-        .bind(&id)
-        .bind(&lane.fleet)
-        .bind(&lane.workspace)
-        .execute(&mut *lane.pool.acquire().await.expect("a connection"))
-        .await
-        .expect("the parked turn inserts");
-    id
-}
-
-/// Points `action`'s gate at `turn`, as a setup card when `card` is set.
-async fn gate_turn(lane: &Lane, action: &Uuid7, turn: Option<&Uuid7>, card: bool) {
-    sqlx::query(
-        "UPDATE fleet.approval_gates SET turn_id = $2, \
-         gate_type = CASE WHEN $3 THEN $4 ELSE gate_type END WHERE action_id = $1",
-    )
-    .bind(action)
-    .bind(turn)
-    .bind(card)
-    .bind(SETUP_CARD)
-    .execute(&mut *lane.pool.acquire().await.expect("a connection"))
-    .await
-    .expect("the gate moves");
-}
 
 async fn still_parked(lane: &Lane, turn: &Uuid7) -> bool {
     sqlx::query_scalar(
@@ -109,9 +71,9 @@ async fn queues_behind<F: Future + Unpin>(lane: &Lane, pid: i32, work: &mut F) -
 async fn a_gate_resolution_waits_for_a_stop_holding_the_thread() {
     let lane = Lane::isolated().await;
     let action = lane.seed_gate(Window::Open).await;
-    let gated = parked_turn(&lane).await;
-    let other = parked_turn(&lane).await;
-    gate_turn(&lane, &action, Some(&gated), false).await;
+    let gated = lane.parked_turn().await;
+    let other = lane.parked_turn().await;
+    lane.gate_turn(&action, Some(&gated), false).await;
 
     let mut holder = lane.pool.acquire().await.expect("a connection");
     let mut stopping = holder.begin().await.expect("Stop's transaction");
@@ -166,9 +128,9 @@ async fn a_gate_resolution_that_waited_on_the_thread_wins_after_it() {
     for writes in [true, false] {
         let lane = Lane::isolated().await;
         let action = lane.seed_gate(Window::Open).await;
-        let gated = parked_turn(&lane).await;
-        let other = parked_turn(&lane).await;
-        gate_turn(&lane, &action, Some(&gated), false).await;
+        let gated = lane.parked_turn().await;
+        let other = lane.parked_turn().await;
+        lane.gate_turn(&action, Some(&gated), false).await;
 
         let mut holder = lane.pool.acquire().await.expect("a connection");
         let mut holding = holder.begin().await.expect("the holder's transaction");
@@ -225,8 +187,9 @@ async fn a_fleet_delete_finishes_against_a_resolution_and_a_stop() {
     for stopping in [false, true] {
         let lane = Lane::isolated().await;
         let action = lane.seed_gate(Window::Open).await;
-        let gated = parked_turn(&lane).await;
-        gate_turn(&lane, &action, stopping.then_some(&gated), true).await;
+        let gated = lane.parked_turn().await;
+        lane.gate_turn(&action, stopping.then_some(&gated), true)
+            .await;
 
         let mut holder = lane.pool.acquire().await.expect("a connection");
         let mut deleting = holder.begin().await.expect("delete's transaction");

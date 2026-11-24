@@ -33,6 +33,8 @@ mod tail_watch;
 )]
 mod lane;
 
+#[path = "integration_gate_kinds.rs"]
+mod integration_gate_kinds;
 #[path = "integration_grant_card_uniqueness.rs"]
 mod integration_grant_card_uniqueness;
 #[path = "integration_grant_forgery.rs"]

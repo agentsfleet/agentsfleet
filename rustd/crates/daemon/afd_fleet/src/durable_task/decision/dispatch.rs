@@ -80,7 +80,7 @@ impl Issuance<'_> {
                     return self
                         .saved(Lookup::Assessment {
                             key: &ready.key,
-                            attempt: ready.attempt.number(),
+                            attempt: i16::from(ready.attempt.ordinal()),
                         })
                         .await;
                 }
@@ -157,7 +157,7 @@ impl Issuance<'_> {
         let (decision_call_id, assessment_id, attempt) = (
             id.as_str(),
             ready.attempt.assessment_id().as_str(),
-            ready.attempt.number(),
+            i16::from(ready.attempt.ordinal()),
         );
         let (profile_revision, purpose) = (
             ready.prepared.assignment.revision_id.as_str(),
@@ -242,7 +242,7 @@ impl Issuance<'_> {
             .bind(self.digest)
             .bind(attempt.assessment_id())
             .bind(&ready.key)
-            .bind(attempt.number())
+            .bind(i16::from(attempt.ordinal()))
             .bind(parent.map(|parent| &parent.id))
             .bind(parent.map(|parent| parent.logical_expires_at.to_sqlx()))
             .bind(budget::LOGICAL_SECONDS)

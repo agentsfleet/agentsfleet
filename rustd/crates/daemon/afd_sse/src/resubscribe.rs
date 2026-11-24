@@ -171,7 +171,7 @@ impl Link {
                 continue;
             }
             // Retrying here: a closed link returned above, and an open one read.
-            afd_bus::sleep_until_some(self.retry_due()).await;
+            afd_bus::sleep_until_some(self.retry_at()).await;
             if self.reopen_if_due().await {
                 return Wake::Changed;
             }
@@ -179,17 +179,9 @@ impl Link {
     }
 
     /// When a lost subscription is next retried; `None` while open or once closed.
+    /// Answers the instant rather than waiting on it, so the wait borrows no link.
     #[must_use]
-    pub const fn retry_at(&self) -> Option<Instant> {
-        match self.state {
-            State::Retrying { at, .. } => Some(at),
-            State::Open(_) | State::Closed => None,
-        }
-    }
-
-    /// When the pending retry is due; `None` when none is pending. Answers
-    /// the instant rather than waiting on it, so the wait borrows no link.
-    fn retry_due(&self) -> Option<Instant> {
+    pub fn retry_at(&self) -> Option<Instant> {
         let State::Retrying { attempt, at } = self.state else {
             return None;
         };
@@ -240,7 +232,7 @@ async fn turn(link: &mut Link, seq: u64) -> Turn {
         return Turn::End;
     }
     let Some(subscription) = link.subscription() else {
-        if let Some(due) = link.retry_due() {
+        if let Some(due) = link.retry_at() {
             tokio::time::sleep_until(due).await;
         }
         // Frames published while the tail was down are gone: the viewer

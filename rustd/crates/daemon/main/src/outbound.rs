@@ -19,7 +19,12 @@ pub const OUTBOUND_WORKER: &str = "connector:outbound";
 ///
 /// It claims owed answers from `thread.deliveries` at start, when `bus` pings
 /// it and when a delivery finishes; it runs no timed pass.
-pub(crate) fn spawn(
+///
+/// # Errors
+/// The ping subscription would not open. The boot is refused, as an unreachable
+/// NATS seed refuses it: a worker that never hears a ping would leave an owed
+/// answer waiting for a restart.
+pub(crate) async fn spawn(
     supervisor: &mut Supervisor,
     database: &Db,
     bus: afd_bus::Handle,
@@ -27,10 +32,11 @@ pub(crate) fn spawn(
     vendor_client: reqwest::Client,
     slack_api_base: String,
     settings: &crate::preflight::runtime::OperationalSettings,
-) {
+) -> afd_bus::Result<()> {
+    let wake = bus.subscribe(&afd_bus::Subject::DeliveryWake).await?;
     let worker = Worker::new(
         database.clone(),
-        bus,
+        wake,
         Posters {
             slack: SlackPoster::new(grants, vendor_client, slack_api_base)
                 .with_deadlines(settings.tuning.slack_deadlines()),
@@ -39,4 +45,5 @@ pub(crate) fn spawn(
     )
     .with_retries(settings.outbound_retries);
     supervisor.spawn(OUTBOUND_WORKER, move |token| worker.run(token));
+    Ok(())
 }

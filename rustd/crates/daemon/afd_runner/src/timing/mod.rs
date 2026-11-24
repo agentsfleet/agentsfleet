@@ -37,7 +37,7 @@ pub const RUNNER_OFFLINE_AFTER: Duration = RUN_TTL.saturating_mul(3);
 ///
 /// The default of the daemon's `heartbeat_interval_seconds`. The daemon serves the value
 /// it runs with in each connection's welcome, and the runner rounds on that, so a host
-/// never holds its own copy; this one is its period only before a first connection.
+/// never holds its own copy.
 /// Strictly below [`RUNNER_OFFLINE_AFTER`], which is what guarantees an idle
 /// host beats before a fleet read would derive it offline.
 pub const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);

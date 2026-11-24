@@ -106,6 +106,39 @@ async fn each_round_wakes_the_beat_and_a_new_connection_brings_its_interval() ->
     observed
 }
 
+/// A dropped connection fires no round, since nothing can renew through it; the next
+/// connection rounds at once.
+#[tokio::test(start_paused = true)]
+async fn no_round_fires_while_disconnected_and_a_reconnect_rounds_at_once() -> crate::Result<()> {
+    let registry = Arc::new(Renewals::default());
+    let (handle, mut peer) = RenewalPeer::new();
+    let _held = held(&registry)?;
+    let started = Instant::now();
+    let stop = CancellationToken::new();
+    let running = registry.run(&handle, stop.clone());
+    let observed = async {
+        let (at, request, run) = next_batch(&mut peer, started).await?;
+        assert_eq!(at, TEN, "the first round is one interval in");
+        assert!(beat_waiting(&registry).await, "the round woke the beat");
+        answer(&peer, request, &run, true).await?;
+        peer.disconnect();
+        tokio::time::sleep_until(started + TEN * 4).await;
+        assert!(
+            !beat_waiting(&registry).await,
+            "no round fired while disconnected"
+        );
+        peer.reconnect(TEN);
+        let (at, request, run) = next_batch(&mut peer, started).await?;
+        assert_eq!(at, TEN * 4, "the new connection renews at once");
+        answer(&peer, request, &run, true).await?;
+        stop.cancel();
+        Ok::<(), crate::Error>(())
+    };
+    let (ran, observed) = tokio::join!(running, observed);
+    ran?;
+    observed
+}
+
 /// A round refused for now is followed one answer bound after it was sent, and
 /// the round after an acceptance one interval after that; the run stays held.
 #[tokio::test(start_paused = true)]

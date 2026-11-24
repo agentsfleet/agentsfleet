@@ -165,7 +165,7 @@ impl Ledger {
     /// A worker pinged over the lane's NATS under this test's namespace.
     /// Every worker of one test shares the namespace.
     pub(super) async fn worker(&self, poster: &Recorder) -> Worker<Recorder> {
-        self.worker_on(self.bus().await, poster)
+        self.worker_on(self.bus().await, poster).await
     }
 
     /// A connection to the lane's NATS under this test's namespace.
@@ -176,10 +176,18 @@ impl Ledger {
     }
 
     /// [`Ledger::worker`], pinged over `bus`.
-    pub(super) fn worker_on(&self, bus: afd_bus::Handle, poster: &Recorder) -> Worker<Recorder> {
+    pub(super) async fn worker_on(
+        &self,
+        bus: afd_bus::Handle,
+        poster: &Recorder,
+    ) -> Worker<Recorder> {
+        let wake = bus
+            .subscribe(&afd_bus::Subject::DeliveryWake)
+            .await
+            .expect("the ping subscription opens");
         Worker::new(
             self.database.clone(),
-            bus,
+            wake,
             Posters {
                 slack: poster.clone(),
             },

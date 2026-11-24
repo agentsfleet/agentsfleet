@@ -68,7 +68,12 @@ pub(super) async fn allocate(
     if let Err(refusal) = fund::cover(tasks, run, &ready.prepared.current, &ready.coverage).await {
         let mut connection = transaction::acquire(tasks.runs.pool()).await?;
         let twin = request
-            .twin_or(&mut connection, &ready.key, ready.attempt.number(), refusal)
+            .twin_or(
+                &mut connection,
+                &ready.key,
+                i16::from(ready.attempt.ordinal()),
+                refusal,
+            )
             .await;
         transaction::recycle(connection);
         return replay::response(tasks, twin?).await;
@@ -143,7 +148,7 @@ impl Reservation<'_> {
             connection,
             Lookup::Assessment {
                 key: &key,
-                attempt: attempt.number(),
+                attempt: i16::from(attempt.ordinal()),
             },
         )
         .await?;
@@ -154,7 +159,7 @@ impl Reservation<'_> {
         let coverage = match self.money(connection, &prepared).await {
             Ok(coverage) => coverage,
             Err(refusal) => {
-                let twin = self.twin_or(connection, &key, attempt.number(), refusal);
+                let twin = self.twin_or(connection, &key, i16::from(attempt.ordinal()), refusal);
                 return Ok(Read::Existing(Box::new(twin.await?)));
             }
         };

@@ -109,7 +109,7 @@ Worker capacity remains assigned per runner in PostgreSQL.
 | `af_providers/src/settings/timeouts.rs`, `guffbolt-ai/src/wire/{timeouts,stream/mod}.rs` | `TimeoutSettings`, `Timeouts::wire`, `guffbolt_ai::wire::Timeouts` | Share checked physical and semantic inactivity limits |
 | `main/src/config/{settings,policies}.rs`, `preflight/runtime.rs`, `serve/clients.rs`, `plane/*` | Checked operational snapshot and separate storage pool owner | Inject daemon settings without changing storage timeouts |
 | `af_providers/src/{retry/settings,connect/mod,transport/mod}.rs`, `guffbolt-ai/src/wire/{retry/mod,connected/reopen}.rs` | `RetrySettings`, `RetryPolicy::wire`, `Connector::configured`, `Connected::with_retry` | Bound sends and eligible reopenings independently |
-| `afr_supervisor/src/config/runtime.rs`, `client/*`, `downlink/*`, `uplink/renewals/*` | `RuntimeSettings`, `RuntimePolicy`, `ControlPlane::retrying`, `run_with_interval` | Apply runner-local retry and cadence settings |
+| `afr_supervisor/src/config/runtime.rs`, `client/*`, `downlink/*`, `uplink/renewals/*` | `RuntimeSettings`, `RuntimePolicy`, `ControlPlane::retrying`, `Renewals::run` | Apply runner-local retry and cadence settings |
 | `afr_supervisor/src/recovery/admission.rs`, `lib.rs` | `RecoveryResources::configured`, composition | Share file admission across the runner |
 | `runner/main/src/config/mod.rs`, `main.rs`, `host.rs`, `deploy/baremetal/*`, `deploy/local/linux.sh` | Runner profile loading, installation and read-only mounting | Deliver a real profile to each runner binary |
 | `afd_outbound/src/{retry,worker/mod,lanes/mod,poster/mod}.rs`, `main/src/outbound.rs` | Checked retry policy and `deliver_with_policy` | Apply inline delivery limits; an exhausted delivery is final |
@@ -234,7 +234,7 @@ next assignment  `-> the expired run is marked expired in the same statement
 
 The 38-second run TTL starts at the last grant or renewal. It governs reclaim.
 
-No daemon timer re-offers an expired run. The assignment that takes the turn expires the dead run's row in its own statement (`afd_fleet`'s `sql/shared/expire_prior_run.sql`), so the turn moves when a bus wake, a connection's freed capacity or a replacement's connection starts an assignment pass. [Run and liveness timing](../../rustd/crates/foundation/af_core/src/timing/mod.rs) · [Runner status](runner_fleet.md#failure-recovery-model)
+No daemon timer re-offers an expired run. The assignment that takes the turn expires the dead run's row in its own statement (`afd_fleet`'s `sql/shared/expire_prior_run.sql`), so the turn moves when a bus wake, a connection's freed capacity or a replacement's connection starts an assignment pass. [Run and liveness timing](../../rustd/crates/daemon/afd_runner/src/timing/mod.rs) · [Runner status](runner_fleet.md#failure-recovery-model)
 
 The run TTL includes one 10-second round, a 5-second answer window, a 7-second reconnect and a 15-second renewal margin, plus one second. A deployment's heartbeat, which is the round, is refused at boot when its run TTL cannot carry it (`afd_runner`'s `timing/run.rs`).
 

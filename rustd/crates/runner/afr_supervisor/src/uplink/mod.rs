@@ -57,15 +57,6 @@ impl StreamHandle {
         }
     }
 
-    /// The heartbeat interval the connected session's welcome announced; none while
-    /// disconnected.
-    pub(crate) fn interval(&self) -> Option<std::time::Duration> {
-        self.session
-            .borrow()
-            .as_ref()
-            .map(|session| session.interval)
-    }
-
     #[cfg(feature = "test-util")]
     pub(crate) async fn wait_connected(&self, deadline: Instant) -> Result<()> {
         let mut session = self.session.clone();

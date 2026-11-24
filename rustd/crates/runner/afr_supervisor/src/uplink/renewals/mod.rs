@@ -140,13 +140,14 @@ impl Renewals {
     pub(crate) async fn run(&self, handle: &StreamHandle, stop: CancellationToken) -> Result<()> {
         let mut sessions = handle.session.clone();
         let mut previous = sessions.borrow_and_update().clone();
-        let mut sent = Instant::now();
-        // The period is the connected session's: before a first connection no round is
-        // due, since a round needs a session to renew through.
-        let mut period = previous.as_ref().map(|session| session.interval);
-        let mut due = period.map(|period| sent + period);
+        // When the next round is due, and the connected session's interval it runs at. A
+        // round needs a session to renew through: before a first connection and after one
+        // drops, none is due.
+        let mut due = previous
+            .as_ref()
+            .map(|session| (Instant::now() + session.interval, session.interval));
         loop {
-            tokio::select! {
+            let round = tokio::select! {
                 biased;
                 () = stop.cancelled() => return Ok(()),
                 changed = sessions.changed() => {
@@ -154,24 +155,29 @@ impl Renewals {
                     let current = sessions.borrow_and_update().clone();
                     let unchanged = current.as_ref().zip(previous.as_ref())
                         .is_some_and(|(current, previous)| Arc::ptr_eq(current, previous));
-                    let connected = current.as_ref().filter(|session| !session.stop.is_cancelled());
-                    let Some(session) = connected.filter(|_| !unchanged) else {
-                        previous = current;
+                    let connected = current.as_ref()
+                        .filter(|session| !session.stop.is_cancelled())
+                        .map(|session| session.interval);
+                    previous = current;
+                    if unchanged { continue; }
+                    let Some(interval) = connected else {
+                        due = None;
                         continue;
                     };
-                    period = Some(session.interval);
-                    previous = current;
                     // Recovery must not spend another round waiting to renew live work.
+                    interval
                 }
-                () = async {
+                round = async {
                     match due {
-                        Some(due) => tokio::time::sleep_until(due).await,
+                        Some((at, round)) => {
+                            tokio::time::sleep_until(at).await;
+                            round
+                        }
                         None => std::future::pending().await,
                     }
-                } => {}
-            }
-            let Some(round) = period else { continue };
-            sent = Instant::now();
+                } => round,
+            };
+            let sent = Instant::now();
             self.beat.notify_one();
             let batch = self.batch(handle);
             tokio::pin!(batch);
@@ -197,7 +203,7 @@ impl Renewals {
                 }
                 Err(error) => return Err(error),
             };
-            due = Some(next_due(sent, round, retrying));
+            due = Some((next_due(sent, round, retrying), round));
         }
     }
 

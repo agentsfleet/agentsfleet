@@ -152,7 +152,7 @@ impl Healthy {
         })
     }
 
-    /// A healthy beat: the assignment and the cadence this daemon was given.
+    /// A healthy beat: the assignment this daemon was given.
     fn heartbeat(&self) -> Value {
         value(&HeartbeatResponse {
             status: HeartbeatStatus::Ok,
@@ -161,7 +161,6 @@ impl Healthy {
             degraded_reason: None,
             selftest_requested: false,
             release_holds: Vec::new(),
-            heartbeat_interval_ms: self.interval_ms,
         })
     }
 

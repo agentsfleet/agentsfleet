@@ -96,10 +96,14 @@ async fn test_leasing_stopped_ends_every_hold_and_beats_at_once() {
     let holds = holding(&engine, 2).await;
     let beats = Arc::new(AtomicUsize::new(0));
     let counted = Arc::clone(&beats);
-    let (plane, mut calls) = plane(move |_call| match counted.fetch_add(1, Ordering::SeqCst) {
-        0 => releasing(KEEP_GOING, &[]),
-        _later => releasing(STOP, &[]),
-    });
+    let (plane, mut calls) =
+        plane_every(
+            Duration::from_millis(u64::from(TICK_MS)),
+            move |_call| match counted.fetch_add(1, Ordering::SeqCst) {
+                0 => releasing(KEEP_GOING, &[]),
+                _later => releasing(STOP, &[]),
+            },
+        );
     let probe = probe();
     let (published, mut watching) = watch::channel(Assignment::initial());
     let halt = Halt::new(CancellationToken::new());

@@ -159,6 +159,8 @@ fn schedule_config(config: &BootConfig, client: reqwest::Client) -> crate::plane
     }
 }
 
+/// # Errors
+/// The answer-delivery worker's ping subscription would not open.
 pub(super) async fn spawn_background(
     supervisor: &mut Supervisor,
     config: &BootConfig,
@@ -166,7 +168,7 @@ pub(super) async fn spawn_background(
     kek: &Arc<Kek>,
     bus: afd_bus::Handle,
     outbound_client: reqwest::Client,
-) {
+) -> Result<(), BootFailure> {
     let outbound_bus = bus.clone();
     supervisor.spawn(crate::BUS_SHUTDOWN, async move |token| {
         token.cancelled().await;
@@ -196,7 +198,9 @@ pub(super) async fn spawn_background(
         outbound_client,
         config.slack_api_base().to_owned(),
         &config.runtime.operations,
-    );
+    )
+    .await?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -343,7 +347,8 @@ mod tests {
         clippy::disallowed_methods,
         reason = "the outbound client is built only to be handed over; it never sends"
     )]
-    async fn a_bus_that_will_not_drain_at_shutdown_leaves_a_line() {
+    async fn a_bus_that_will_not_drain_at_shutdown_leaves_a_line()
+    -> Result<(), Box<dyn std::error::Error>> {
         let config = configured(&[]);
         let mut supervisor = Supervisor::new();
         let capture = Capture::install();
@@ -353,10 +358,10 @@ mod tests {
             &config,
             &afd_db::test_util::unreachable_db(),
             &Arc::new(af_crypto::secret::Kek::from_bytes([0x2a; 32])),
-            Handle::new(Undrainable(afd_bus::test_util::unreachable())),
+            Handle::new(Undrainable(afd_bus::test_util::detached()?.0)),
             reqwest::Client::new(),
         )
-        .await;
+        .await?;
         let _report = supervisor.shutdown().await;
 
         let logged = capture.only("notification_bus_shutdown_failed");
@@ -367,6 +372,40 @@ mod tests {
             "the line names its code"
         );
         logged.assert_uncoded_reason();
+        Ok(())
+    }
+
+    /// A delivery ping subscription that will not open refuses the boot as the bus's
+    /// failure: a worker that never hears a ping would leave an owed answer waiting
+    /// for a restart.
+    #[tokio::test]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the outbound client is built only to be handed over; it never sends"
+    )]
+    async fn a_wake_that_cannot_subscribe_refuses_the_boot() {
+        let config = configured(&[]);
+        let mut supervisor = Supervisor::new();
+
+        let refused = spawn_background(
+            &mut supervisor,
+            &config,
+            &afd_db::test_util::unreachable_db(),
+            &Arc::new(af_crypto::secret::Kek::from_bytes([0x2a; 32])),
+            afd_bus::test_util::unreachable(),
+            reqwest::Client::new(),
+        )
+        .await;
+        let _report = supervisor.shutdown().await;
+
+        assert!(
+            matches!(&refused, Err(crate::error::BootFailure::Bus(_))),
+            "refused as the bus: {refused:?}"
+        );
+        assert_eq!(
+            refused.err().map(|failure| failure.code()),
+            Some(af_core::error_code::STARTUP_BUS_CONNECT)
+        );
     }
 
     #[tokio::test]

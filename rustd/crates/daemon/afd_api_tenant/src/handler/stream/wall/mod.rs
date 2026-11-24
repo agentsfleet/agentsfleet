@@ -129,11 +129,14 @@ async fn step<D: TenantPlane>(mut wall: Wall<D>) -> Option<Turn<Wall<D>>> {
         }
         // No timer re-reads Postgres: the wall wakes on a frame, on a notice that the
         // account's members or the workspace's fleets changed, or on a gap or lost
-        // subscription that may have hidden one.
+        // subscription that may have hidden one. Biased toward the notices, as the
+        // fleet guard is: a pending re-check goes before any frame, so a removed
+        // member is sent nothing more once the removal's notice has arrived.
         let woke = tokio::select! {
-            frame = wall.fan_in.next_frame() => Woke::Frame(frame),
+            biased;
             wake = wall.members.changed() => Woke::Members(wake),
             wake = wall.fleets.changed() => Woke::Fleets(wake),
+            frame = wall.fan_in.next_frame() => Woke::Frame(frame),
         };
         match woke {
             Woke::Frame(frame) => {

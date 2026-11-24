@@ -138,7 +138,7 @@ A worker claims the head row of each `(provider, workspace_id)` lane with `FOR U
 
 A claim lasts 30 s and the holder renews it every 10 s (`afd_outbound/src/delivery/mod.rs`). A worker claims at start, on a ping, when a lane finishes, and once when another holder's earliest claim lapses. No timed pass claims.
 
-A ping the bus failed to send is owed as a gap, and the worker answers the gap with a claim. A closed subscription is reopened on a backoff.
+A ping the bus failed to send is owed as a gap, and the worker answers the gap with a claim. A reconnect keeps the subscription and gaps it; once the bus shuts down, the worker claims on finished deliveries and lapses alone.
 
 Up to eight deliveries run at once across lanes; each lane holds at most 32 jobs (`afd_outbound/src/lanes/mod.rs`).
 Every write after a claim matches the holder's token, so a lapsed holder's late write changes nothing.

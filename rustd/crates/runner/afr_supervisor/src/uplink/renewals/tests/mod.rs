@@ -214,6 +214,11 @@ impl RenewalPeer {
         (sender, outgoing)
     }
 
+    /// Drops the session, as a lost connection does.
+    fn disconnect(&self) {
+        self.current.send_replace(None);
+    }
+
     /// Replaces the session with a new connection whose welcome announced `interval`.
     fn reconnect(&mut self, interval: Duration) {
         let (sender, outgoing) = Self::session(interval);

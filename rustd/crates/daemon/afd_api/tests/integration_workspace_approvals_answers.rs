@@ -55,11 +55,24 @@ async fn a_question_takes_an_answer_that_stands_and_an_archived_fleet_takes_none
     .with_approval_queue(fixture.database.clone(), harness::bus().await)
     .router();
     let tool = fixture.gate.as_str().to_owned();
+    // A setup card and a runless gate hang from no turn, and are no question either.
+    let card = fixture.seed_gate("integration_grant", 4).await;
+    let runless = fixture.seed_gate("tool", 5).await;
+    let gate_id = |gate: &str| af_core::id::Uuid7::parse(gate).expect("a seeded gate id");
+    sqlx::query("UPDATE fleet.approval_gates SET turn_id = NULL WHERE id IN ($1, $2)")
+        .bind(gate_id(&card))
+        .bind(gate_id(&runless))
+        .execute(&mut *fixture.database.acquire().await.expect("an API connection"))
+        .await
+        .expect("the two gates hang from no turn");
 
     // The decision has to match the gate's kind; a denial fits either.
+    let no_question = r#"{"answer":"Yes"}"#;
     for (gate, verb, body) in [
         (question.as_str(), "approve", ""),
-        (tool.as_str(), "answer", r#"{"answer":"Yes"}"#),
+        (tool.as_str(), "answer", no_question),
+        (card.as_str(), "answer", no_question),
+        (runless.as_str(), "answer", no_question),
     ] {
         let (status, refused) = decide(&router, &fixture, gate, verb, body).await;
         assert_eq!(status, StatusCode::BAD_REQUEST, "{verb}: {refused}");
@@ -68,6 +81,15 @@ async fn a_question_takes_an_answer_that_stands_and_an_archived_fleet_takes_none
             refused.get("detail").and_then(Value::as_str),
             Some("a question takes an answer, and only a question does")
         );
+    }
+    for gate in [&card, &runless] {
+        let pending: String =
+            sqlx::query_scalar("SELECT status FROM fleet.approval_gates WHERE id = $1")
+                .bind(gate_id(gate))
+                .fetch_one(&mut *fixture.database.acquire().await.expect("an API connection"))
+                .await
+                .expect("the gate reads back");
+        assert_eq!(pending, "pending", "a refused answer leaves {gate} open");
     }
 
     let answer = r#"{"answer":"Ship it after the release"}"#;

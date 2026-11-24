@@ -41,7 +41,7 @@ impl ConnectionServices {
                 self.send(&Message::Heartbeat {
                     request_id,
                     answer: Answer::Ok {
-                        response: self.policy(&beat)?,
+                        response: Self::policy(&beat)?,
                     },
                 })
                 .await?;

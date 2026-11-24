@@ -17,7 +17,7 @@ Every row is taken from the sections below; the owner column names the section t
 
 | Invariant | Value | Mechanism | Owner section |
 |---|---|---|---|
-| Run expiry backstop | `RUN_TTL` = 38 s (single-sourced for the control plane in `af_core`'s timing constants) | the next eligible assignment re-runs an expired thread with a higher fencing token | §Failure recovery model |
+| Run expiry backstop | `RUN_TTL` = 38 s (single-sourced for the control plane in `afd_runner`'s timing constants) | the next eligible assignment re-runs an expired thread with a higher fencing token | §Failure recovery model |
 | Max run duration | none | `/renew` extends to `now+RUN_TTL` at any age; the fleet's budget, the tenant's balance or a person's Stop ends a looping run, and a durable task's own deadline shortens the grant | §Per-run renewal |
 | Stale-writer rejection | `UZ-RUN-005` | `report` verifies the monotonic `fencing_token` in the same atomic statement that flips the run | §System guarantees |
 | Sandbox failure fails closed | `startup_posture` | the turn never runs; the run reports `fleet_error` naming why, and nothing runs unsandboxed in its place | §System guarantees |
@@ -238,7 +238,7 @@ The sandbox is the same binary's `sandbox` entry, bound read-only into it. There
 
 The build graph keeps datastore crates outside the runner. [Runner process model](runner_execution.md#crates) owns the shared crate list, including cryptography for encrypted private reports.
 
-The frozen `/v1/runners` wire types live in `af_wire`. The knobs both planes key off (`RUN_TTL` and friends) live in `af_core`, and both binaries build them. The control plane's run, fence, reclaim and assignment code is `afd_fleet`, `afd_runner` and `afd_api_runner`, built only into `agentsfleetd`.
+The frozen `/v1/runners` wire types live in `af_wire`. The spans both planes agree on (the answer bound, the reconnect budget, the renewal window) live in `af_core`, and both binaries build them; the daemon's run clock (`RUN_TTL` and friends) lives in `afd_runner`'s `timing`. The control plane's run, fence, reclaim and assignment code is `afd_fleet`, `afd_runner` and `afd_api_runner`, built only into `agentsfleetd`.
 
 The runner's supervisor, agent loop, tool catalog, outbound guard, in-sandbox server and sandbox engine are the `afr_*` crates under `rustd/crates/`. They import nothing from the control plane.
 
@@ -351,7 +351,7 @@ Supported software still advertises `durable_tasks_v1` while its assignment is O
 Existing durable runs retain their frozen mode, input, recovery, accounting and report duties.
 The candidate, assignment and final issue checks all require configured support before a new durable run commits.
 
-The **heartbeat cadence travels the same way** (M205). `af_core::timing` owns both `RUNNER_OFFLINE_AFTER` and the `HEARTBEAT_INTERVAL` served beneath it. A compile-time assertion beside them keeps the served cadence strictly below the offline threshold.
+The **heartbeat cadence travels in the welcome** instead, never in the heartbeat reply. `afd_runner::timing` owns both `RUNNER_OFFLINE_AFTER` and the `HEARTBEAT_INTERVAL` default; the daemon serves the interval it runs with in each connection's welcome, and the runner rounds on that. A compile-time assertion beside them keeps the served cadence strictly below the offline threshold.
 
 A host holds no interval of its own, so moving the threshold moves every host's beat within one cycle. The field is required rather than optional.
 

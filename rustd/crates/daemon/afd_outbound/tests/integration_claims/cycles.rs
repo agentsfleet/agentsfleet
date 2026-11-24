@@ -77,7 +77,7 @@ async fn a_failed_delivery_is_marked_failed_and_not_retried() {
     let (bus, server) = afd_bus::test_util::detached().expect("a detached bus");
     let poster = Recorder::failing(event.clone());
     let token = CancellationToken::new();
-    let worker = tokio::spawn(ledger.worker_on(bus, &poster).run(token.clone()));
+    let worker = tokio::spawn(ledger.worker_on(bus, &poster).await.run(token.clone()));
 
     let row = ledger.until(&event, |row| row.abandoned).await;
     // A later answer and its ping make the worker claim again.

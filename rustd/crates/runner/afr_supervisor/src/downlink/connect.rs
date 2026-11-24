@@ -29,6 +29,9 @@ use crate::{
 /// its context verb.
 const SPOKEN: &str = protocol::VERSION;
 
+/// Kept: a zero interval in a welcome would fire the runner's rounds back to back.
+pub(crate) const MIN_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(1);
+
 pub(crate) struct Pipe {
     pub(crate) writer: DuplexStream,
     pub(crate) reader: Reader<IncomingReader>,
@@ -239,8 +242,7 @@ impl Opening<'_> {
         Ok((
             proposed,
             Ceilings::announced(max_message_bytes, max_control_message_bytes),
-            Duration::from_millis(u64::from(heartbeat_interval_ms))
-                .max(crate::downlink::policy::MIN_HEARTBEAT_INTERVAL),
+            Duration::from_millis(u64::from(heartbeat_interval_ms)).max(MIN_HEARTBEAT_INTERVAL),
         ))
     }
 

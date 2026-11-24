@@ -148,7 +148,7 @@ This leaves time to stop the engine and reap its processes.
 | Stable reset | 60 seconds | A stable connection resets reconnect backoff |
 | UDP failure history | 30 seconds | How long a new connection skips HTTP/3 after HTTP/3 failed to connect and HTTP/2 connected |
 
-[Timing constants](../../rustd/crates/foundation/af_core/src/timing/mod.rs) assert the renewal and recovery relationship.
+[The run clock's constants](../../rustd/crates/daemon/afd_runner/src/timing/mod.rs) assert the renewal relationship, and [the shared stream spans](../../rustd/crates/foundation/af_core/src/timing/mod.rs) assert the recovery budget.
 Repeated outages can exceed the recovery window; confirmed run expiry still stops the running run.
 Reconnect starts renewal immediately; it never waits for the next periodic tick.
 

@@ -23,16 +23,12 @@ use crate::{
     holds::{Holds, Release},
 };
 
-/// Kept: a zero interval from the daemon would spin the beat loop.
-pub(crate) const MIN_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(1);
 const EVENT_LAST_FAILED: &str = "heartbeat_last_failed";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Assignment {
     pub(crate) status: HeartbeatStatus,
     pub(crate) workers: u32,
-    /// The interval the last heartbeat answer named; none before the first answer.
-    pub(crate) interval: Option<Duration>,
     pub(crate) egress: Egress,
 }
 
@@ -41,7 +37,6 @@ impl Assignment {
         Self {
             status: HeartbeatStatus::Ok,
             workers: 0,
-            interval: None,
             egress: Egress::closed(),
         }
     }
@@ -110,10 +105,6 @@ impl<'a> Heartbeat<'a> {
             } else {
                 WorkerCount::clamping(policy.worker_count).get()
             },
-            interval: Some(
-                Duration::from_millis(u64::from(reply.heartbeat_interval_ms))
-                    .max(MIN_HEARTBEAT_INTERVAL),
-            ),
             egress: Egress::assigned(policy),
         };
         Ok(self.last.clone())
@@ -174,15 +165,13 @@ impl<'a> Heartbeat<'a> {
                 Err(error) => {
                     let error_code = error.code().as_str();
                     tracing::warn!(event = "heartbeat_failed", error_code);
-                    // A retry never waits past the next round: the interval the daemon
-                    // last answered with, or before any answer the one its welcome named.
-                    let round = self.last.interval.or_else(|| self.plane.stream.interval());
-                    backoff = if let Some(pause) = retries.next() {
-                        Some(round.map_or(pause, |round| pause.min(round)))
-                    } else {
+                    // The next round wakes the beat sooner than a long pause, and a new
+                    // connection rounds at once.
+                    let Some(pause) = retries.next() else {
                         halt.stop();
                         return;
                     };
+                    backoff = Some(pause);
                 }
             }
         }

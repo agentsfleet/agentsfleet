@@ -21,7 +21,7 @@ async fn a_ping_claims_a_full_backlog_without_a_pass() {
     let (bus, server) = afd_bus::test_util::detached().expect("a detached bus");
     let poster = Recorder::default();
     let token = CancellationToken::new();
-    let worker = tokio::spawn(ledger.worker_on(bus, &poster).run(token.clone()));
+    let worker = tokio::spawn(ledger.worker_on(bus, &poster).await.run(token.clone()));
     // Let the opening claim find nothing and the subscription settle.
     tokio::time::sleep(Duration::from_millis(200)).await;
     let before = pings();
@@ -123,7 +123,7 @@ async fn a_dead_replicas_claim_is_retaken_when_it_lapses() {
     let (bus, _server) = afd_bus::test_util::detached().expect("a detached bus");
     let poster = Recorder::default();
     let token = CancellationToken::new();
-    let worker = tokio::spawn(ledger.worker_on(bus, &poster).run(token.clone()));
+    let worker = tokio::spawn(ledger.worker_on(bus, &poster).await.run(token.clone()));
     tokio::time::sleep(Duration::from_millis(500)).await;
     assert_eq!(ledger.delivered().await, 0, "a live claim is not taken");
     ledger.until_delivered(1).await;
