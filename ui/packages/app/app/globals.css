@@ -3,7 +3,7 @@
 @import "@agentsfleet/design-system/tokens.css";
 @import "@agentsfleet/design-system/theme.css";
 @import "@agentsfleet/design-system/app-tokens.css";
-@import "../components/domain/conversation/summary/repository-name.css";
+@import "../components/domain/shared/summary/summary-labels.css";
 
 /* Tailwind scans the sibling design-system package for utility classes used
  * in shared primitives. Without this, Button/Card/etc. ship unstyled. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { SectionHeader } from "./SectionHeader";
 
 describe("SectionHeader", () => {
@@ -32,6 +32,15 @@ describe("SectionHeader", () => {
 
     expect(screen.getByRole("heading", { level: 2, name: "Manage events" })).toBeInTheDocument();
     expect(container.firstElementChild?.children).toHaveLength(1);
+  });
+
+  it("renders a zero count as an inline badge inside the heading", () => {
+    render(<SectionHeader count={0}>Your models</SectionHeader>);
+
+    const heading = screen.getByRole("heading", { level: 2, name: /^Your models\s*0$/ });
+    const count = within(heading).getByText("0");
+    expect(count.tagName).toBe("SPAN");
+    expect(count).toHaveClass("min-w-6", "justify-center", "tabular-nums");
   });
 
   it("keeps the description with its label when a caller requests paragraph semantics", () => {

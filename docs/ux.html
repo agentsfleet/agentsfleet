@@ -136,15 +136,15 @@ button{font-weight:500}h1,h2,h3{font-weight:650}strong{font-weight:600}
 .setup-review-picker{display:flex;align-items:center;gap:8px;margin-left:12px;padding-left:12px;border-left:1px solid var(--line);font-size:12px;color:var(--secondary)}
 .setup-review-picker select{min-height:32px;padding:4px 32px 4px 8px;font-size:12px;background-color:var(--surface);max-width:152px}
 .review-links{overflow-x:auto;scrollbar-width:thin;min-width:0}.review-bar>span{display:flex;align-items:center;flex-shrink:0}.review-caption{font-size:11px}.review-bar{gap:8px}
-.setup-summary>h2{margin-bottom:var(--s4);padding-bottom:var(--s3);border-bottom:1px solid var(--line)}
-.setup-summary .setup-meta{display:grid;gap:var(--s1);margin:0}
-.setup-summary .setup-meta>div{display:flex;min-height:32px;align-items:center;justify-content:space-between;gap:var(--s2)}
+.setup-summary{padding:var(--s4)}
+.setup-summary>h2{margin-bottom:var(--s3)}
+.setup-summary .setup-meta{display:grid;margin:0;padding-bottom:var(--s2);border-bottom:1px solid var(--line)}
+.setup-summary .setup-meta>div{display:flex;min-height:28px;align-items:center;justify-content:space-between;gap:var(--s2)}
 .setup-summary dt{display:flex;flex:none;align-items:center;gap:var(--s2);color:var(--muted);font-size:12px;line-height:18px}
-.setup-summary dd{min-width:0;margin:0;text-align:right;font-size:13px;line-height:20px;font-weight:500;overflow-wrap:anywhere}
+.setup-summary dd{flex:1;min-width:0;margin:0;text-align:right;font-size:13px;line-height:20px;font-weight:500;overflow-wrap:anywhere}
 .setup-summary dd button{padding:0;text-align:right;min-height:24px;border-radius:4px;font-weight:inherit;font-size:13px}
-.setup-summary .setup-meta>div:first-child dd{font-weight:600;font-variant-numeric:tabular-nums}
-.setup-summary .setup-origin{display:flex;align-items:center;gap:var(--s2);color:var(--muted);margin:0 0 14px;font-size:12px;line-height:16px}
-.setup-summary .summary-section{padding:14px 0}.setup-summary .summary-section:last-child{padding-bottom:0}
+.setup-budget-control{width:100%}.setup-budget-value{font-size:16px;font-weight:650;font-variant-numeric:tabular-nums;white-space:nowrap}.setup-budget-value small{font-size:12px;font-weight:500;color:var(--muted)}
+.setup-summary .summary-section{padding:var(--s3) 0 0;border:0}.setup-summary>h2+.summary-section{padding-top:0}
 .setup-error{color:var(--error);font-weight:500}
 .composer-footer .model-control:disabled{opacity:.45;cursor:not-allowed}
 .composer-footer .model-list-recovery{font-size:var(--fs-meta);line-height:var(--lh-meta);font-weight:400}
@@ -155,16 +155,19 @@ button{font-weight:500}h1,h2,h3{font-weight:650}strong{font-weight:600}
 #setup-secrets-form .setup-selection{max-height:12rem;overflow:auto;border:1px solid var(--line);border-radius:var(--radius-sm);padding:0 var(--s2)}
 #setup-secrets-form .checkbox + .checkbox{border-top:1px solid var(--soft-line)}
 #repository-search{width:100%;margin:var(--s2) 0}
-.setup-summary .setup-section-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
-.setup-summary .summary-label{font-size:12px;line-height:18px;font-weight:400;margin:0}.setup-summary .setup-manage{min-height:28px;padding:4px 0 4px 8px;font-size:12px;line-height:16px;color:var(--muted);border-radius:4px}
+.setup-summary .setup-section-heading{display:flex;align-items:center;justify-content:space-between;gap:var(--s1);margin-bottom:var(--s1)}
+.setup-summary .summary-label{font-size:12px;line-height:18px;font-weight:500;margin:0}.setup-summary .setup-manage{min-height:28px;padding:var(--s1) 0;font-size:12px;line-height:16px;color:var(--secondary);border-radius:4px}
 .setup-summary .setup-resource,.setup-summary .setup-tools{display:flex;align-items:center;gap:var(--s2);min-height:32px}
-.setup-summary .setup-resource{font-size:13px;line-height:20px}.setup-summary .setup-resource span{min-width:0;overflow-wrap:anywhere}
-.summary-row>i,.setup-summary :is(dt,.setup-resource,.setup-tools,.setup-origin,.setup-policy-row)>i{flex:none;width:16px;height:16px;color:var(--secondary)}
+.setup-resource-list{list-style:none;margin:0;padding:0}
+.setup-summary .setup-resource{font-size:13px;line-height:20px}.setup-summary .setup-resource .summary-scroll-label{flex:1}
+.setup-secret-mask{flex:none;color:var(--secondary)}
+.summary-row>i,.setup-summary :is(dt,.setup-resource,.setup-tools,.setup-policy-row)>i{flex:none;width:16px;height:16px;color:var(--secondary)}
+.summary-row:has(>span>small)>i:first-child{align-self:start;margin-top:2px}
 .summary-detail{display:block;padding-inline-start:var(--s6);overflow-wrap:anywhere}
 .setup-summary .setup-none{margin:0;color:var(--muted);font-size:13px;line-height:20px}
-.setup-summary .setup-tools{margin:0;color:var(--secondary);font-size:12px;line-height:18px}.setup-summary .setup-tools>span>span{color:var(--muted)}
-.setup-policy-row{display:flex;align-items:center;gap:var(--s2);min-height:44px}.setup-policy-row+.setup-policy-row{padding-top:var(--s2);border-top:1px solid var(--soft-line)}
-.setup-policy-label{display:flex;flex:1;align-items:center;gap:var(--s1);min-width:0;font-size:var(--fs-control);line-height:var(--lh-control)}.setup-policy-label label{cursor:pointer}.setup-policy-info{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:32px;height:32px;padding:4px;border-radius:4px;color:var(--muted)}.setup-policy-info i{width:16px;height:16px}
+.setup-summary .setup-tools{margin:var(--s1) 0 0;color:var(--secondary);font-size:12px;line-height:18px}.setup-summary .setup-tools>span>span{color:var(--muted)}
+.setup-policy-row{display:flex;align-items:center;gap:var(--s2);min-height:36px;margin-top:var(--s1)}
+.setup-policy-label{display:flex;flex:1;align-items:center;gap:2px;min-width:0;font-size:var(--fs-control);line-height:var(--lh-control)}.setup-policy-label label{cursor:pointer;white-space:nowrap}.setup-policy-info{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:32px;height:32px;padding:4px;border-radius:4px;color:var(--muted)}.setup-policy-info i{width:16px;height:16px}
 :root{--strong-line:#828e9e}[data-theme=light]{--strong-line:#697586}
 .setup-summary input.setup-switch{appearance:none;display:block;min-height:0;width:36px;height:20px;padding:2px;margin:0;flex-shrink:0;border:0;border-radius:20px;background:var(--strong-line);cursor:pointer;box-shadow:none}
 .setup-summary input.setup-switch::before{content:'';display:block;width:16px;height:16px;background:var(--surface);border-radius:50%;transition:transform .15s ease-out}
@@ -180,7 +183,8 @@ button{font-weight:500}h1,h2,h3{font-weight:650}strong{font-weight:600}
 @keyframes setup-spinner-turn{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.setup-live-text{animation:none;background:none;-webkit-text-fill-color:currentColor}.setup-live-spinner{animation:none}}
 @media(max-width:1100px){.review-caption{display:none}.setup-review-picker{margin-left:8px;padding-left:8px}.review-bar{padding-left:12px;padding-right:12px}}
-@media(max-width:680px){.review-bar{height:auto;min-height:82px;flex-wrap:wrap;padding-top:8px;padding-bottom:8px}.review-bar>span{width:100%;justify-content:space-between}.review-links{width:100%}.app{height:calc(100dvh - 82px)}.setup-review-picker{border:0;padding:0;margin:0}.setup-summary .setup-meta{gap:8px}.setup-summary .summary-section{padding:12px 0}.setup-summary .setup-resource{min-height:36px}.setup-summary .setup-manage{min-height:44px;padding:8px}.setup-policy-info{width:36px;height:44px}.setup-policy-row{min-height:48px}.setup-summary .setup-section-heading{margin-bottom:0}.setup-save{min-height:44px}.setup-summary .setup-origin{margin-bottom:12px}}
+@media(max-width:680px){.review-bar{height:auto;min-height:82px;flex-wrap:wrap;padding-top:8px;padding-bottom:8px}.review-bar>span{width:100%;justify-content:space-between}.review-links{width:100%}.app{height:calc(100dvh - 82px)}.setup-review-picker{border:0;padding:0;margin:0}.setup-save{min-height:44px}}
+@media(pointer:coarse){.setup-summary .setup-manage{min-height:44px}.setup-policy-info{width:36px;height:44px}.setup-policy-row{min-height:48px}}
 @media(prefers-reduced-motion:reduce){.setup-summary input.setup-switch::before{transition:none}}
 
 .rail .new-fleet{background:color-mix(in oklab,var(--accent) 10%,transparent);color:var(--text)}
@@ -214,11 +218,20 @@ button{font-weight:500}h1,h2,h3{font-weight:650}strong{font-weight:600}
 @media(max-width:680px){.rail .brand,.rail .brand img{width:44px;height:44px;min-height:44px}}
 
 /* The label traverses only its own overflow. The icon, count and action stay still. */
-.repo-name { display: block; max-width: 100%; overflow: hidden; }
-.repo-name > span { display: block; position: relative; left: 0; width: max-content; min-width: 100%; white-space: nowrap; transform: translateX(0); }
+:is(.repo-name, .summary-scroll-label, .summary-action-label) { display: block; min-width: 0; max-width: 100%; container-type: inline-size; }
+.repo-name { overflow: hidden; }
+.summary-action-label { overflow: clip; }
+.summary-scroll-label { overflow-x: auto; scrollbar-width: none; }
+.summary-scroll-label[tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+:is(.repo-name, .summary-scroll-label, .summary-action-label) > span { display: block; width: max-content; min-width: 100%; white-space: nowrap; }
 @media (hover: hover) and (prefers-reduced-motion: no-preference) {
-  .repo-name > span { transition: left 1.2s linear .25s, transform 1.2s linear .25s; }
-  :is(button, summary):is(:hover, :focus-visible) .repo-name > span { left: 100%; transform: translateX(-100%); }
+  :is(.repo-name, .summary-scroll-label, .summary-action-label) > span { transition: transform 1.2s linear .25s; }
+  :is(button, summary):is(:hover, :focus-visible) .repo-name > span,
+  :is(button, summary):is(:hover, :focus-visible) .summary-action-label > span,
+  .summary-scroll-label:hover:not(:focus) > span { transform: translateX(min(0px, calc(100cqw - 100%))); }
+  /* A translated label has reached its own edge. Keep native scrolling for focused labels. */
+  .summary-scroll-label:hover:not(:focus) { overflow: clip; }
+  .summary-scroll-label:focus > span { transition: none; }
 }
 @media (hover: none), (prefers-reduced-motion: reduce) {
   .repo-name > span { width: auto; white-space: normal; overflow-wrap: anywhere; }
@@ -235,6 +248,7 @@ button{font-weight:500}h1,h2,h3{font-weight:650}strong{font-weight:600}
 }
 
 /* Page loading preview follows the app shell and its viewport-filling variant. */
+.surface:has(.app-loading-preview) { animation: none; }
 .app-loading-preview { display: grid; min-height: 100%; place-items: center; padding: var(--s6); }
 .app-loading-status {
   display: grid;
@@ -244,26 +258,29 @@ button{font-weight:500}h1,h2,h3{font-weight:650}strong{font-weight:600}
   font-size: var(--fs-control);
   line-height: var(--lh-control);
 }
-.app-loading-mark { display: block; width: 44px; height: 44px; color: var(--accent); }
-.app-loading-track { stroke: var(--line); }
-.app-loading-nodes { fill: var(--muted); }
-.app-loading-packet { stroke-dasharray: 9 91; stroke-dashoffset: 4.5; }
+.app-loading-mark { display: block; width: 60px; height: 60px; color: var(--accent); }
+.app-loading-stroke {
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: translate(var(--ray-x), var(--ray-y)) rotate(var(--ray-angle));
+}
+.app-loading-signature { display: flex; align-items: center; gap: var(--s2); }
+.app-loading-wordmark { color: var(--text); font-size: 22px; font-weight: 650; line-height: 1; }
 .app-loading-full { display: block; padding: 0; }
 .app-loading-full > .rail, .app-loading-full .topbar { display: none; }
 .app-loading-full > .surface { height: 100%; border: 0; border-radius: 0; background: var(--canvas); }
 @media (prefers-reduced-motion: no-preference) {
-  /* Positions follow the three nodes on the normalized path. */
-  @keyframes app-loading-handoff {
-    33.333% { stroke-dashoffset: -27.17; }
-    66.667% { stroke-dashoffset: -63.83; }
-    100% { stroke-dashoffset: -95.5; }
+  @keyframes app-loading-form {
+    0%, 12%, 100% { transform: translate(var(--start-x), var(--start-y)) scaleX(.62); }
+    49%, 73% { transform: translate(var(--ray-x), var(--ray-y)) rotate(var(--ray-angle)); }
   }
-  .app-loading-packet { animation: app-loading-handoff 1.725s cubic-bezier(.38, 0, .62, 1) infinite; }
+  .app-loading-stroke { animation: app-loading-form 2.4s cubic-bezier(.45, 0, .22, 1) var(--delay) infinite backwards; }
 }
 @media (forced-colors: active) {
   .app-loading-mark { color: CanvasText; }
-  .app-loading-track { stroke: GrayText; }
-  .app-loading-nodes { fill: GrayText; }
 }
 /* Model details and price schedule inside Create model. */
 .model-review-spinner { flex: none; width: 20px; height: 20px; color: var(--accent); }
@@ -807,6 +824,7 @@ const appState = {
   files: {}, models: {}, lifecycle: {}, secretEditor: null, stopped: {},
 };
 function scheduleFor(view=appState.view) { return appState.schedules[view] ||= {state:'none',wake:'12:30'}; }
+function wakeupTime(schedule) { return new Date(`1970-01-01T${schedule.wake}:00Z`).toLocaleTimeString('en-US',{timeZone:'UTC',hour:'numeric',minute:'2-digit'}); }
 let lastFocus;
 const fleetNames = { conversation: 'Release watch', activity: 'Launch review', failure: 'Deploy monitor', scheduled: 'Merge watch', draft: 'Deployment checks', 'setup-empty': 'Deployment checks', 'setup-before': 'New fleet', 'setup-models-unavailable': 'Deployment checks', 'setup-queued': 'Deployment checks', 'setup-thinking': 'Deployment checks', 'setup-failure': 'Deployment checks' };
 const workspaceFleets = [
@@ -837,17 +855,26 @@ function brandSignal() {
   return rays.map(ray => `<path d="${ray}" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>`).join('') + '<circle cx="12" cy="12" r="1.5" fill="currentColor"/>';
 }
 
-function appLoadingView(label) {
-  const route = 'M12 -6C15 -6 20 -2 25 4C29 9 31 15 29 20C27 24 21 28 12 28C3 28 -3 24 -5 20C-7 15 -5 9 -1 4C4 -2 9 -6 12 -6Z';
-  const nodes = [[12, -6], [29, 20], [-5, 20]];
+function appLoadingView(label, fullScreen) {
+  // Opposite strokes travel together. The resting positions match the brand mark.
+  const pairs = [
+    {startX:-4, startY:-6, rayX:0, rayY:-7, angle:90},
+    {startX:-4, startY:-2, rayX:-4.95, rayY:-4.95, angle:45},
+    {startX:-4, startY:2, rayX:-7, rayY:0, angle:0},
+    {startX:-4, startY:6, rayX:-4.95, rayY:4.95, angle:-45},
+  ];
+  const strokes = pairs.map(({startX, startY, rayX, rayY, angle}, index) =>
+    [1, -1].map(side => `<path class="app-loading-stroke" d="M-3 0h6"
+      style="--start-x:${startX*side}px;--start-y:${startY*side}px;--ray-x:${rayX*side}px;--ray-y:${rayY*side}px;--ray-angle:${angle}deg;--delay:${index*45}ms"/>`).join('')
+  ).join('');
   return `<div class="app-loading-preview">
     <div class="app-loading-status" role="status" aria-label="${label === 'Loading…' ? 'Loading page' : label}">
-      <svg class="app-loading-mark" viewBox="-10 -10 44 44" fill="none" aria-hidden="true" focusable="false">
-        <path class="app-loading-track" d="${route}" stroke-width="1.25"/>
-        <g class="app-loading-nodes">${nodes.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="1.8"/>`).join('')}</g>
-        <path class="app-loading-packet" d="${route}" pathLength="100" stroke="currentColor" stroke-width="2.25" stroke-linecap="round"/>
-        <g>${brandSignal()}</g>
-      </svg>
+      <div class="app-loading-signature" aria-hidden="true">
+        <svg class="app-loading-mark" viewBox="0 0 30 30" fill="none" focusable="false">
+          <g transform="translate(15 15)">${strokes}<circle r="1.5" fill="currentColor"/></g>
+        </svg>
+        ${fullScreen ? '<span class="app-loading-wordmark">agentsfleet</span>' : ''}
+      </div>
       <span>${label}</span>
     </div>
   </div>`;
@@ -855,8 +882,8 @@ function appLoadingView(label) {
 window.FLEET_ICONS.info = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-40a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,0-16,16,16,0,0,1,16,16v40A8,8,0,0,1,144,176ZM112,84a12,12,0,1,1,12,12A12,12,0,0,1,112,84Z\"></path></svg>";
 window.FLEET_ICONS["circle-notch"] = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M232,128a104,104,0,0,1-208,0c0-41,23.81-78.36,60.66-95.27a8,8,0,0,1,6.68,14.54C60.15,61.59,40,93.27,40,128a88,88,0,0,0,176,0c0-34.73-20.15-66.41-51.34-80.73a8,8,0,0,1,6.68-14.54C208.19,49.64,232,87,232,128Z\"></path></svg>";
 const setupPreview = {
-  draft: {model:'MiniMax M3.1 Flash',dailyLimit:1,source:'Deployment reviewer · v3',repositories:['agentsfleet/agentsfleet','agentsfleet/docs'],tools:['Shell'],secrets:['DEPLOY_TOKEN','github'],publicInternet:false,packageDomains:true,instructions:'Check deployments for the selected repositories. Report the release, health checks, and any failures. Ask before changing a deployment.'},
-  scheduled: {model:'MiniMax M3.1 Flash',dailyLimit:1,source:'Pull request reviewer · v3',repositories:['agentsfleet/agentsfleet'],tools:['Shell'],secrets:['github'],publicInternet:true,packageDomains:true,instructions:'Watch pull request #58. When it merges, check the image build and notify the releases channel.'},
+  draft: {model:'MiniMax M3.1 Flash',dailyLimit:1,repositories:['agentsfleet/agentsfleet','agentsfleet/docs'],tools:['Shell'],secrets:['DEPLOY_TOKEN','github'],publicInternet:false,packageDomains:true,instructions:'Check deployments for the selected repositories. Report the release, health checks, and any failures. Ask before changing a deployment.'},
+  scheduled: {model:'MiniMax M3.1 Flash',dailyLimit:1,repositories:['agentsfleet/agentsfleet'],tools:['Shell'],secrets:['github'],publicInternet:true,packageDomains:true,instructions:'Watch pull request #58. When it merges, check the image build and notify the releases channel.'},
   'setup-empty': {model:'MiniMax M3.1 Flash',dailyLimit:1,repositories:[],tools:[],secrets:[],publicInternet:false,packageDomains:false,instructions:'Describe the work this fleet should do.'},
   'setup-before': null,
   'setup-models-unavailable': null,
@@ -904,22 +931,22 @@ function setupRepositoryDialog() {
 function inlineSecrets(setup) {
   return `<form id="setup-secrets-form"><div class="setup-selection">${selectionRows(setupSecretChoices, setup.secrets)}</div><div class="inline-actions"><button class="text-button" type="button" data-action="setup-secrets">Cancel</button><button class="primary" type="submit">Apply selection</button></div></form>`;
 }
+function summaryNameLabel(name, focusable=false){return `<span ${focusable?'class="summary-scroll-label" tabindex="0"':'class="summary-action-label"'}><span>${esc(name)}</span></span>`;}
 function setupSummary(view){
   const setup=setupPreview[view];
   if(!setup)return `<aside class="summary setup-summary" aria-label="Fleet summary"><h2>Summary ${icon('list-bullets')}</h2><section class="summary-section"><p class="setup-none">Your setup will appear here as you chat.</p></section></aside>`;
   const schedule=scheduleFor(view);
   const secretsOpen=appState.secretEditor===view;
-  const next=schedule.state==='active'?`${esc(schedule.wake)} UTC`:schedule.state==='paused'?'Paused':'Not scheduled';
-  const resources=(items,glyph,empty)=>items.length?items.map(name=>`<div class="setup-resource">${icon(glyph)}<span>${esc(name)}</span></div>`).join(''):`<p class="setup-none">${empty}</p>`;
+  const next=schedule.state==='active'?wakeupTime(schedule):schedule.state==='paused'?'Paused':'Not set';
+  const resources=(items,glyph,empty)=>items.length?`<ul class="setup-resource-list" role="list">${items.map(name=>`<li class="setup-resource">${icon(glyph)}${summaryNameLabel(name,true)}${glyph==='key'?`<span class="setup-secret-mask">${hiddenValue()}</span>`:''}</li>`).join('')}</ul>`:`<p class="setup-none">${empty}</p>`;
   return `<aside class="summary setup-summary" aria-label="Fleet summary"><h2>Summary ${icon('list-bullets')}</h2>
     <dl class="setup-meta">
-      <div><dt>${icon('wallet')}<span>Spending limit</span></dt><dd><button data-action="setup-budget" aria-label="Edit spending limit">${new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(setup.dailyLimit)} / day</button></dd></div>
+      <div><dt>${icon('wallet')}<span>Spending limit</span></dt><dd><button class="setup-budget-control" data-action="setup-budget" aria-label="Edit spending limit"><span class="summary-action-label"><span class="setup-budget-value">${new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(setup.dailyLimit)} <small>/ day</small></span></span></button></dd></div>
       <div><dt>${icon('clock')}<span>Next wake-up</span></dt><dd><button data-action="schedule" aria-label="Edit next wake-up">${next}</button></dd></div>
-      ${view==='scheduled'?'':`<div><dt>${icon('cpu')}<span>Model</span></dt><dd>${esc(appState.models[view]||setup.model)}</dd></div>`}
+      ${view==='scheduled'?'':`<div><dt>${icon('cpu')}<span>Model</span></dt><dd>${summaryNameLabel(appState.models[view]||setup.model,true)}</dd></div>`}
     </dl>
-    ${setup.source?`<p class="setup-origin">${icon('puzzle-piece')}<span>From ${esc(setup.source)}</span></p>`:''}
     <section class="summary-section"><div class="setup-section-heading"><h3 class="summary-label">Repositories</h3><button class="setup-manage" data-action="setup-repositories">Manage<span class="sr-only"> repositories</span></button></div>${resources(setup.repositories,'git-branch','No repositories selected')}${setup.tools.length?`<p class="setup-tools">${icon('terminal-window')}<span><span>Tools · </span>${setup.tools.map(esc).join(' · ')}</span></p>`:''}</section>
-    <section class="summary-section" aria-label="Public internet access"><div class="summary-label">Public internet access</div><div class="setup-policy-row">${icon('globe')}<label class="setup-policy-label" for="setup-public-internet">Allow all</label><input id="setup-public-internet" class="setup-switch" type="checkbox" role="switch" aria-label="Allow all public internet access" ${setup.publicInternet?'checked':''}></div><div class="setup-policy-row" id="setup-package-row" ${setup.publicInternet?'data-inactive':''}>${icon('package')}<div class="setup-policy-label"><label for="setup-package-domains">Enable package manager domains</label><button class="setup-policy-info" data-action="setup-network-info" aria-label="About package manager domains">${icon('info')}</button></div><input id="setup-package-domains" class="setup-switch" type="checkbox" role="switch" ${setup.packageDomains?'checked':''} ${setup.publicInternet?'disabled':''}></div></section>
+    <section class="summary-section" aria-label="Public internet access"><h3 class="summary-label">Public internet access</h3><div class="setup-policy-row">${icon('globe')}<label class="setup-policy-label" for="setup-public-internet">Allow all</label><input id="setup-public-internet" class="setup-switch" type="checkbox" role="switch" aria-label="Allow all public internet access" ${setup.publicInternet?'checked':''}></div><div class="setup-policy-row" id="setup-package-row" ${setup.publicInternet?'data-inactive':''}>${icon('package')}<div class="setup-policy-label"><label for="setup-package-domains">Packages</label><button class="setup-policy-info" data-action="setup-network-info" aria-label="About package manager domains">${icon('info')}</button></div><input id="setup-package-domains" class="setup-switch" type="checkbox" role="switch" ${setup.packageDomains?'checked':''} ${setup.publicInternet?'disabled':''}></div></section>
     <section class="summary-section"><div class="setup-section-heading"><h3 class="summary-label">Secrets</h3><button class="setup-manage" data-action="setup-secrets" aria-expanded="${secretsOpen}">Manage<span class="sr-only"> secrets</span></button></div>${secretsOpen?inlineSecrets(setup):resources(setup.secrets,'key','No secrets selected')}</section>
   </aside>`;
 }
@@ -1015,7 +1042,7 @@ function showView(view, focus=false) {
     $('#header-state').classList.add('neutral');$('#run-cost').hidden=true;
   }
   if(setupPreview[view]?.saved)$('#header-state').hidden=true;
-  $('#main').innerHTML = appLoading ? appLoadingView(loadingLabel) : isChat ? workspace(view) : view==='empty' ? emptyView() : pageView(view);
+  $('#main').innerHTML = appLoading ? appLoadingView(loadingLabel, view === 'app-loading-full') : isChat ? workspace(view) : view==='empty' ? emptyView() : pageView(view);
   if($('#message')) $('#message').value=appState.drafts[view] || '';
   const archived=appState.lifecycle[view]==='archived';
   if(archived){$('#header-state').textContent='Archived';$('#header-state').classList.add('neutral');$$('#transcript button').forEach(b=>b.disabled=true);}
@@ -1103,7 +1130,7 @@ function previewReplyBody(reply) {
   return `<p class="preview-reply-text">${esc(reply.text)}</p>${reply.status==='settled'?actions():''}`;
 }
 function releaseSourcesAndTasks() {
-  return `<section class="summary-section"><div class="summary-label">Sources</div><details><summary class="summary-row">${icon("git-branch")}<span class="source-row-label" title="agentsfleet/platform-images"><strong>agentsfleet/platform-images</strong><small>Policy: Edit existing PRs</small></span>${icon("caret-down")}</summary><a class="summary-detail" href="https://github.com/agentsfleet/platform-images">agentsfleet/platform-images</a></details></section><section class="summary-section"><details><summary class="summary-row"><span>Tasks</span><small>1</small>${icon("caret-down")}</summary><p>Release readiness</p></details></section>`;
+  return `<section class="summary-section"><div class="summary-label">Sources</div><details><summary class="summary-row">${icon("git-branch")}<span class="source-row-label" title="agentsfleet/platform-images"><strong>${summaryNameLabel('agentsfleet/platform-images')}</strong><small>Policy: Edit existing PRs</small></span>${icon("caret-down")}</summary><a class="summary-detail" href="https://github.com/agentsfleet/platform-images">agentsfleet/platform-images</a></details></section><section class="summary-section"><details><summary class="summary-row"><span>Tasks</span><small>1</small>${icon("caret-down")}</summary><p>Release readiness</p></details></section>`;
 }
 function summary(view) {
   if(isSetupExample(view))return setupSummary(view);
@@ -1113,7 +1140,7 @@ function summary(view) {
   }
   if(view==='activity') return activitySummary();
   const decision=view==='conversation'&&!appState.approved ? `<section class="summary-section"><div class="summary-label attention">Needs your approval <span class="badge">1</span></div><strong>Publish runner image</strong><p>Production registry · Release tag</p><div class="approval-actions"><button class="primary" data-action="approve">Approve</button></div></section>` : view==='failure' ? `<section class="summary-section"><div class="summary-label ${appState.retried?'':'attention'}">${appState.retried?'Recovered':'Needs attention'}</div><strong>${appState.retried?'Health check passed':'Deploy connection expired'}</strong><p>${appState.retried?'Recovery recorded in the conversation.':'Reconnect in the conversation to continue.'}</p></section>` : view==='draft' ? `<section class="summary-section"><p>Your decisions and outputs will appear here as the fleet works.</p></section>` : `<section class="summary-section"><div class="summary-label">Status</div><strong>${view==='scheduled'?(scheduleFor().state==='active'?'Watching pull request #58':'Schedule '+scheduleFor().state):'Request approved'}</strong></section>`;
-  return `<aside class="summary" aria-label="Fleet summary"><h2>Summary ${icon('list-bullets')}</h2>${decision}${view==='conversation'?`<section class="summary-section"><div class="summary-label">Changes</div><button class="summary-row" data-action="changes">${icon('git-diff')}<span>3 files changed</span><span class="diff-stat">At least +1 <b>−1</b></span>${icon('caret-right')}</button></section><section class="summary-section"><div class="summary-label">Output</div><button class="summary-row" data-action="output">${icon('git-pull-request')}<span>Pull request #58<small>Changes published</small></span>${icon('arrow-up-right')}</button></section>${releaseSourcesAndTasks()}`:''}${view==='scheduled'||['active','paused'].includes(scheduleFor().state)?`<section class="summary-section"><div class="summary-label">Next wake-up</div><button class="summary-row" data-action="schedule">${icon('clock')}<span>${scheduleFor().state==='active'?`${esc(scheduleFor().wake)} UTC`:'Not scheduled'}<small>${scheduleFor().state==='active'?'Every 30 minutes':scheduleFor().state==='paused'?'Paused by you':'Cancelled by you'}</small></span></button></section>${view==='scheduled'?`<section class="summary-section"><div class="summary-label">Watching</div><button class="summary-row" data-action="output">${icon('git-pull-request')}<span>Pull request #58<small>Open · Checks passed</small></span></button></section>`:''}`:''}</aside>`;
+  return `<aside class="summary" aria-label="Fleet summary"><h2>Summary ${icon('list-bullets')}</h2>${decision}${view==='conversation'?`<section class="summary-section"><div class="summary-label">Changes</div><button class="summary-row" data-action="changes">${icon('git-diff')}${summaryNameLabel('3 files changed')}<span class="diff-stat">At least +1 <b>−1</b></span>${icon('caret-right')}</button></section><section class="summary-section"><div class="summary-label">Output</div><button class="summary-row" data-action="output">${icon('git-pull-request')}<span>Pull request #58<small>Changes published</small></span>${icon('arrow-up-right')}</button></section>${releaseSourcesAndTasks()}`:''}${view==='scheduled'||['active','paused'].includes(scheduleFor().state)?`<section class="summary-section"><div class="summary-label">Next wake-up</div><button class="summary-row" data-action="schedule">${icon('clock')}<span>${scheduleFor().state==='active'?`${esc(scheduleFor().wake)} UTC`:'Not scheduled'}<small>${scheduleFor().state==='active'?'Every 30 minutes':scheduleFor().state==='paused'?'Paused by you':'Cancelled by you'}</small></span></button></section>${view==='scheduled'?`<section class="summary-section"><div class="summary-label">Watching</div><button class="summary-row" data-action="output">${icon('git-pull-request')}<span>Pull request #58<small>Open · Checks passed</small></span></button></section>`:''}`:''}</aside>`;
 }
 // Stop shows beside Send only while a turn of this conversation runs or waits.
 function pendingPreviewReply(view) {return (appState.messages[view]||[]).findLast(message=>message.reply?.status==='running')?.reply;}
@@ -1146,7 +1173,7 @@ function composer(empty=false) {
   const view=appState.view;
   const wakeup=scheduleFor();
   const paused=wakeup.state==='paused';
-  const nextWakeup=new Date(`1970-01-01T${wakeup.wake}:00Z`).toLocaleTimeString('en-US',{timeZone:'UTC',hour:'numeric',minute:'2-digit'});
+  const nextWakeup=wakeupTime(wakeup);
   return `<div class="composer-wrap">${setupFlap(view)}${view==='activity'?`<div class="flap-wrap"><button class="work-flap" data-action="activity-changes">${icon('git-diff')}<strong>6 files changed</strong><span class="diff-stat">+271 <b>−3</b></span>${icon('caret-up')}</button></div>`:''}${['active','paused'].includes(wakeup.state)?`<div class="wake-strip">${icon('clock')}<span><span class="wake-label-prefix">${paused?'Wake-up':'Next wake-up'} · </span>${paused?'<span class="wake-label-paused">Paused</span>':`<span title="${esc(wakeup.wake)} UTC">${esc(nextWakeup)}</span>`}</span><div class="wake-actions"><button class="icon-button" data-action="schedule" aria-label="Edit scheduled wake-up" title="Edit wake-up">${icon('pencil-simple')}</button><button class="icon-button" data-action="pause-schedule" aria-label="${paused?'Resume':'Pause'} scheduled wake-up" title="${paused?'Resume':'Pause'} wake-up">${icon(paused?'play':'pause')}</button><button class="icon-button" data-action="cancel-schedule" aria-label="Cancel scheduled wake-up" title="Cancel wake-up">${icon('trash')}</button></div></div>`:''}<div class="composer"><div class="attached-files">${(appState.files[view]||[]).map((f,i)=>`<span class="file-chip">${icon('file-text')}${esc(f)}<button class="attachment-remove" data-remove-file="${i}" aria-label="Remove ${esc(f)}">×</button></span>`).join('')}</div><label class="sr-only" for="message">${empty?'Describe your new fleet':'Message '+fleetNames[view]}</label>${(empty || workspaceFleets.some(fleet=>fleet.view===view))?'<div id="address-options" class="address-options" hidden></div>':''}<textarea id="message" ${(empty || workspaceFleets.some(fleet=>fleet.view===view))?'aria-autocomplete="list"':''} rows="2" placeholder="${empty?'What would you like your fleet to do?':'Message your fleet…'}"></textarea><div class="composer-footer"><button class="icon-button" data-action="attach" aria-label="Attach a document" title="Attach document">${icon('paperclip')}</button><button class="icon-button" data-action="mention" aria-label="${(empty || workspaceFleets.some(fleet=>fleet.view===view))?(empty?'Mention a fleet in setup':'Address a workspace fleet'):'Mention a source'}" title="${(empty || workspaceFleets.some(fleet=>fleet.view===view))?(empty?'Mention a fleet in setup':'Address a workspace fleet'):'Mention a source'}">${icon('at')}</button>${composerModel(view)}${empty?`<button class="primary" id="send-message" style="margin-left:auto">${icon('note-pencil')}New fleet</button>`:`<button class="icon-button stop-turn" data-action="stop-turn" aria-label="Stop" title="Stop" ${turnRuns(view)?'':'hidden'}><span aria-hidden="true" class="stop-glyph"></span></button><button class="send" id="send-message" aria-label="Send message">${icon('arrow-up')}</button>`}</div></div><div class="composer-caption"><span>${empty?'Start with a goal. You can edit the setup before saving.':'Enter to send · Shift + Enter for a new line'}</span>${empty?'':'<span>Token budget: 18%</span>'}</div><p class="draft-status" id="draft-status" hidden></p></div>`;
 }
 function archivedWorkspace(view) {
@@ -1196,7 +1223,7 @@ function secretsView() {
 }
 function hiddenValue() {return '<code aria-hidden="true">••••••••</code><span class="sr-only">Value hidden</span>';}
 function reviewView() {
-  return `<div class="page">${pageHeading('A clearer place to work.','Fleet setup and Summary follow Indy’s approved design. See the updated App loading, Fleet Summary, Usage, and Security.')}<div class="review-grid"><div><ul class="review-list"><li>${icon('check-circle')}<div><strong>Manrope, with room to read</strong><p>13px / 20px desktop reading text, regular weight; 12px / 16px compact labels. 16px phone reading and typing. Stronger headings, normal tracking.</p></div></li><li>${icon('list-bullets')}<div><strong>A small, permanent Summary</strong><p>248px on desktop. Decisions, changes, outputs, and the next wake-up. Always inline; above the chat on narrow phones. No drawer or Environment section.</p></div></li><li>${icon('chat-circle-text')}<div><strong>One conversation for all the work</strong><p>Readable replies, grouped tools, file changes, commands, Slack events, wake-ups, and lasting errors with a recovery action.</p></div></li><li>${icon('note-pencil')}<div><strong>Fewer places to look</strong><p>Visible New fleet writing-pad icon. 20px rail glyphs and 16px action glyphs retain comfortable click targets. Delete stays in overflow.</p></div></li><li>${icon('shield')}<div><strong>Account essentials</strong><p>Security contains only API keys and active sessions. Usage has clear charges and filters. Sign out returns to the avatar menu.</p></div></li></ul><div class="font-specimen">The runner update is ready.<br><span class="subtle">3 files changed. Both scans passed.</span></div></div><aside class="signoff-panel"><h3>Indy’s sign-off</h3><div class="signoff-state">${icon('clock')}Dashboard and chat updates await review</div><p><strong>Selected:</strong> Manrope.</p><p><strong>Approved foundation:</strong> layout, borders, chat states, Usage, Security, Models, and Secrets.</p><p><strong>Summary for review.</strong> Spending limit comes first. Fleet setup shows the reviewed runtime model. In the scheduled conversation, the composer shows the model and Summary shows the next wake-up. Use Fleet setup and its Example picker to review the draft, scheduled and empty states.</p><p>Use existing Secrets. Environment variables are outside the current scope.</p><p>Use 13px desktop conversation/activity text with 20px line height, 12px metadata, and 16px phone reading text. Verify both themes, mobile widths, and 200% zoom.</p><div class="rule"></div><p><strong>Next:</strong> a separate proposal to remove fleet-library CLI surfaces, simplify commands, and verify named fleet handoffs.</p><p class="preview-note">This prototype uses sample data.</p></aside></div><div class="runtime-note"><h3>Use the assistant-ui foundation already in the app.</h3><p>Keep ExternalStoreRuntime over the durable fleet event log. Add typed renderers and composer adapters. Editing and branching need backend contracts; Slack delivery and scheduling stay server responsibilities. The new mention components require a version review.</p><p>Streamdown is optional if richer streaming Markdown proves useful. Add virtualization only when measured long-thread performance requires it. No second chat framework is needed.</p></div></div>`;
+  return `<div class="page">${pageHeading('A clearer place to work.','Fleet setup and Summary follow Indy’s approved design. See the updated App loading, Fleet Summary, Usage, and Security.')}<div class="review-grid"><div><ul class="review-list"><li>${icon('check-circle')}<div><strong>Manrope, with room to read</strong><p>13px / 20px desktop reading text, regular weight; 12px / 16px compact labels. 16px phone reading and typing. Stronger headings, normal tracking.</p></div></li><li>${icon('list-bullets')}<div><strong>A small, permanent Summary</strong><p>248px on desktop. Decisions, changes, outputs, and the next wake-up. Always inline; above the chat on narrow phones. No drawer or Environment section.</p></div></li><li>${icon('chat-circle-text')}<div><strong>One conversation for all the work</strong><p>Readable replies, grouped tools, file changes, commands, Slack events, wake-ups, and lasting errors with a recovery action.</p></div></li><li>${icon('note-pencil')}<div><strong>Fewer places to look</strong><p>Visible New fleet writing-pad icon. 20px rail glyphs and 16px action glyphs retain comfortable click targets. Delete stays in overflow.</p></div></li><li>${icon('shield')}<div><strong>Account essentials</strong><p>Security contains only API keys and active sessions. Usage has clear charges and filters. Sign out returns to the avatar menu.</p></div></li></ul><div class="font-specimen">The runner update is ready.<br><span class="subtle">3 files changed. Both scans passed.</span></div></div><aside class="signoff-panel"><h3>Indy’s sign-off</h3><div class="signoff-state">${icon('clock')}Dashboard and chat updates await review</div><p><strong>Selected:</strong> Manrope.</p><p><strong>Approved foundation:</strong> layout, borders, chat states, Usage, Security, Models, and Secrets.</p><p><strong>App loading and Summary approved.</strong> Spending limit comes first. Fleet setup shows the reviewed runtime model. In the scheduled conversation, the composer shows the model and Summary shows the next wake-up. Use Fleet setup and its Example picker to review the draft, scheduled and empty states.</p><p>Use existing Secrets. Environment variables are outside the current scope.</p><p>Use 13px desktop conversation/activity text with 20px line height, 12px metadata, and 16px phone reading text. Verify both themes, mobile widths, and 200% zoom.</p><div class="rule"></div><p><strong>Next:</strong> a separate proposal to remove fleet-library CLI surfaces, simplify commands, and verify named fleet handoffs.</p><p class="preview-note">This prototype uses sample data.</p></aside></div><div class="runtime-note"><h3>Use the assistant-ui foundation already in the app.</h3><p>Keep ExternalStoreRuntime over the durable fleet event log. Add typed renderers and composer adapters. Editing and branching need backend contracts; Slack delivery and scheduling stay server responsibilities. The new mention components require a version review.</p><p>Streamdown is optional if richer streaming Markdown proves useful. Add virtualization only when measured long-thread performance requires it. No second chat framework is needed.</p></div></div>`;
 }
 function scheduleDialog() { dialog('Scheduled wake-up',`<p>${esc(fleetNames[appState.view])} will wake up every 30 minutes to continue its current task.</p><form id="schedule-form"><label class="field">Next wake-up (UTC)<input type="time" id="wake-time" value="${esc(scheduleFor().wake)}" required></label><label class="field">Repeat<select><option>Every 30 minutes</option></select></label>${previewNote()}${modalActions('<button class="primary" type="submit">Save wake-up</button>')}</form>`); }
 const PREVIEW_REPLIES={greeting:'Hello! What would you like me to check on the release?',checklist:'I can help with the release checklist. Which step would you like to review?'};

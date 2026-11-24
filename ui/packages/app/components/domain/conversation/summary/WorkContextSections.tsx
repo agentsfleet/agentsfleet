@@ -50,7 +50,7 @@ type PullRequestRecord = {target: {url: string; number: number; repository: stri
 function PullRequestRows({records}: {records: PullRequestRecord[]}) {
   return <List variant="plain" className="space-y-sm text-label leading-label">{records.map(({target, published, stale}) => <ListItem key={target.url}>
     <a className={cn(SUMMARY_ROW, "min-h-9 break-words py-sm text-label font-medium leading-label hover:underline")} href={target.url} target="_blank" rel="noopener noreferrer">
-      <GitPullRequestIcon className={SUMMARY_ICON} aria-hidden="true" />
+      <GitPullRequestIcon className={cn(SUMMARY_ICON, "mt-xs self-start")} aria-hidden="true" />
       <span className="min-w-0 flex-1"><span className="block">Pull request #{target.number}</span>
         <span className="mt-xs block text-eyebrow font-normal leading-eyebrow text-text-dim">{published ? "Changes published" : target.repository}{stale ? " · last confirmed" : ""}</span></span>
       <ArrowUpRightIcon className={SUMMARY_ICON} aria-hidden="true" /></a>
@@ -66,9 +66,9 @@ export function ChangesSummary({changes}: {changes: readonly RecordedChange[]}) 
   if (!changes.length) return null;
   return <WorkSection title="Changes">{groupRecordedChanges(changes).map(group => <RecordedChangesDialog key={group.repository?.id ?? "unbound"} groups={[group]}>
     <Button variant="ghost" size="compact" className={cn(SUMMARY_ROW, "h-auto min-h-11 w-full justify-start whitespace-normal px-0 py-xs text-left text-foreground summary:min-h-9")}>
-      <GitDiffIcon className={SUMMARY_ICON} aria-hidden="true" />
+      <GitDiffIcon className={cn(SUMMARY_ICON, group.label && "mt-xs self-start")} aria-hidden="true" />
       <span className="min-w-0 flex-1" title={group.repository?.fullName}>
-        <span className="block font-medium">{group.changes.length} {group.changes.length === 1 ? "file" : "files"}{group.changes.some(change => change.running) ? "" : " changed"}</span>
+        <span className="summary-action-label font-medium"><span>{group.changes.length} {group.changes.length === 1 ? "file" : "files"}{group.changes.some(change => change.running) ? "" : " changed"}</span></span>
         {group.label ? <span className="repo-name min-w-0 text-eyebrow font-normal text-muted-foreground"><span>{group.label}</span></span> : null}
       </span>
       {group.lines.kind !== "unknown" ? <RecordedChangeCounts lines={group.lines} /> : null}
@@ -90,9 +90,9 @@ function RepositorySources({sources}: {sources: FleetSources}) {
   const label = repositories.length === 1 ? repositories.join("") : `${repositories.length} repositories`;
   return <details className="group">
     <summary className={cn(SUMMARY_ROW, "min-h-9 cursor-pointer rounded-chip py-sm text-label leading-label focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-summary:min-h-11 pointer-coarse:min-h-11")}>
-      <GitBranchIcon className={SUMMARY_ICON} aria-hidden="true" />
+      <GitBranchIcon className={cn(SUMMARY_ICON, "mt-xs self-start")} aria-hidden="true" />
       <span className="min-w-0 flex-1" title={repositories.join(", ")}>
-        <strong className="block truncate font-medium">{label}</strong>
+        <strong className="summary-action-label font-medium"><span>{label}</span></strong>
         <small className="block truncate text-eyebrow leading-eyebrow text-text-dim">Policy: {repositoryPolicyLabel(sources)}</small>
       </span>
       <CaretDownIcon className={cn(SUMMARY_ICON, "transition-transform group-open:rotate-180 motion-reduce:transition-none")} aria-hidden="true" />

@@ -101,7 +101,7 @@ async function improveTheSavedFleet(page: Page, workspaceId: string, fleetId: st
   await (await editSetupAction(page)).click();
   await expect(page).toHaveURL(new RegExp(`/fleets/new\\?fleet=${fleetId}&setup_revision=${before.setup_revision}$`));
   await expect(page.getByLabel(CHAT_COPY.composer)).toBeVisible();
-  const packages = page.getByRole("switch", {name: "Enable package manager domains"});
+  const packages = page.getByRole("switch", {name: "Packages"});
   await expect(packages).toBeEnabled();
   const created = page.waitForResponse(response => response.request().method() === "POST"
     && new URL(response.url()).pathname.endsWith(`/workspaces/${workspaceId}/drafts`));

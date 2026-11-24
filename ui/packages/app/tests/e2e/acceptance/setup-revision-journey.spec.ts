@@ -93,7 +93,7 @@ test.describe("setup revisions", () => {
       // The stale edit lands after this chat's draft exists: an editing draft opened earlier
       // on revision 1 is the creator's to continue (draft-editor.ts editorPatch), so it would
       // have been this chat's draft rather than a superseded one.
-      const packages = stale.getByRole("switch", {name: "Enable package manager domains"});
+      const packages = stale.getByRole("switch", {name: "Packages"});
       await expect(packages).toBeEnabled();
       await packages.click();
       await expect(packages).toBeChecked();

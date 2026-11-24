@@ -86,8 +86,10 @@ it("shows attention before the nearest wake-up and retains additional schedule d
 it.each([
   ["paused", "syncing", "Pause pending."], ["paused", "failed", "Pause failed."],
   ["deleting", "syncing", "Removal pending."], ["deleting", "failed", "Removal failed."],
-])("describes %s intent accurately while sync is %s", (status, sync, label) => {
-  render(<RecordedWakeups workspace="workspace" schedules={[{...SCHEDULE, status, sync}]} />);
+  ["deleting", "synced", "Removal requested"],
+])("describes %s intent when scheduler sync is %s", (status, sync, label) => {
+  const schedule: Schedule = {...SCHEDULE, status, sync, next_run_at: null, run_state: status === "paused" ? "paused" : "next_run_unavailable"};
+  render(<RecordedWakeups workspace="workspace" schedules={[schedule]} />);
   expect(screen.getByText(label)).toBeTruthy();
   expect(document.querySelector("time")).toBeNull();
   expect(screen.queryByText(/registration/i)).toBeNull();

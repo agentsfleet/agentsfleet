@@ -114,10 +114,10 @@ test("saved setup has the same composer placement, flat header, summary and retu
   await expect(summary.getByRole("region", {name: "Repositories"})).toContainText("agentsfleet/linkwarden");
   await expect(summary.getByRole("region", {name: "Secrets"})).toContainText("github");
   await expect(summary.getByRole("region", {name: "Public internet access"})).toBeVisible();
-  const packageLabel = summary.getByText("Enable package manager domains", {exact: true});
+  const packageLabel = summary.getByText("Packages", {exact: true});
   const policyRow = packageLabel.locator("../..");
-  await expect(policyRow).toHaveCSS("border-top-width", "1px");
-  await expect(packageLabel).toHaveCSS("white-space", "normal");
+  await expect(policyRow).toHaveCSS("border-top-width", "0px");
+  await expect(packageLabel).toHaveCSS("white-space", "nowrap");
   await expect(summary.getByText("Next wake-up", {exact: true})).toBeVisible();
   await expect(summary).toContainText("Scheduler unavailable");
   await expect(summary.getByRole("button", {name: "Retry registration"})).toBeVisible();

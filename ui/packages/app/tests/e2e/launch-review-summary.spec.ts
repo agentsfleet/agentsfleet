@@ -114,22 +114,34 @@ test("repository Sources keeps each label on one line and opens with the keyboar
 
   if (!isMobile) {
     await page.setViewportSize({width: 768, height: 900});
-    const compact = await sourceDisclosureGeometry(row);
-    expect(compact.text).toEqual({lineHeights: [20, 16], offset: [0, 0], policyFits: true});
-    await expect(row.locator("strong")).toHaveCSS("text-overflow", "ellipsis");
-    expect(await row.locator("strong").evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
+    await expectCompactSourceLabel(row);
     await sources.screenshot({path: info.outputPath("app-sources-narrow.png"), scale: "css", animations: "disabled"});
   }
 
   const link = sources.getByRole("link", {name: repository, exact: true});
   await expect(link).toBeHidden();
-  await row.press("Enter");
+  await row.locator("strong").click();
+  await expect(row).toBeFocused();
   await expect(link).toBeVisible();
   await expect(link).toHaveAttribute("href", `https://github.com/${repository}`);
-  await row.press("Space");
+  await page.keyboard.press("Space");
   await expect(link).toBeHidden();
   await reference.close();
 });
+
+async function expectCompactSourceLabel(row: Locator) {
+  const compact = await sourceDisclosureGeometry(row);
+  expect(compact.text).toEqual({lineHeights: [20, 16], offset: [0, 0], policyFits: true});
+  await expect(row.locator("strong")).toHaveCSS("overflow-x", "clip");
+  const title = row.locator("strong");
+  expect(await title.evaluate(el => (el.firstElementChild?.getBoundingClientRect().width ?? 0) > el.clientWidth)).toBe(true);
+  await row.hover();
+  await expect.poll(() => row.locator("strong > span").evaluate(el => {
+    if (!el.parentElement) throw new Error("Expected the source label viewport");
+    return el.getBoundingClientRect().right - el.parentElement.getBoundingClientRect().right;
+  })).toBeCloseTo(0, 0);
+  await expect(row.locator("strong > span")).toHaveCSS("white-space", "nowrap");
+}
 
 function sourceDisclosureGeometry(row: Locator) {
   return row.evaluate(node => {
@@ -214,7 +226,7 @@ test("long repository names reveal their ending without moving icons or counts",
   }
   await page.emulateMedia({reducedMotion:"reduce"});
   await expect(label).toHaveCSS("white-space","normal");
-  await expect(label).toHaveCSS("left","0px");
+  await expect(label).toHaveCSS("transform","none");
   expect(await label.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
   await row.click();
   await expect(page.getByRole("dialog")).toBeVisible();

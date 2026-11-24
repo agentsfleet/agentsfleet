@@ -98,7 +98,7 @@ async function compareWakeupSummary(page: Page, reference: Page, isMobile: boole
   await expect(summary.getByText("$1.00 / day")).toBeVisible();
   await expect(summary.locator("dd time")).toBeVisible();
   const publicAccess = summary.getByRole("link", {name: /Allow all public internet access \(on\)/});
-  const packages = summary.getByRole("switch", {name: "Enable package manager domains"});
+  const packages = summary.getByRole("switch", {name: "Packages"});
   await expect(publicAccess).toBeVisible();
   await expect(packages).toBeDisabled();
   await expect(packages).toBeChecked();
@@ -107,7 +107,7 @@ async function compareWakeupSummary(page: Page, reference: Page, isMobile: boole
   for (const label of ["Spending limit", "Next wake-up", ...sections]) {
     await match(summary.getByText(label, {exact: true}), prototype.getByText(label, {exact: true}), ["font-size", "color"]);
   }
-  for (const label of ["Allow all", "Enable package manager domains"]) {
+  for (const label of ["Allow all", "Packages"]) {
     await match(summary.getByText(label, {exact: true}), prototype.getByText(label, {exact: true}), ["font-size", "line-height"]);
   }
   for (const panel of [summary, prototype]) {
@@ -115,21 +115,24 @@ async function compareWakeupSummary(page: Page, reference: Page, isMobile: boole
     await expect(panel.locator("dt").first()).toHaveText("Spending limit");
     await expectSummaryColumns(panel, sections.map(label => panel.getByText(label, {exact: true})), [
       ...await panel.locator("dt").all(),
-      panel.getByText("agentsfleet/agentsfleet", {exact: true}).locator(".."),
+      panel.getByRole("listitem").filter({hasText: "agentsfleet/agentsfleet"}),
       panel.locator("p").filter({hasText: "Tools · Shell"}),
       panel.getByText("Allow all", {exact: true}).locator(".."),
-      panel.getByText("Enable package manager domains", {exact: true}).locator("../.."),
-      panel.getByText("github", {exact: true}).locator(".."),
+      panel.getByText("Packages", {exact: true}).locator("../.."),
+      panel.getByRole("listitem").filter({hasText: "github"}),
     ]);
   }
   const allowAll = publicAccess.locator("[data-state]").first();
   const designAllowAll = prototype.locator("#setup-public-internet");
-  const designPackages = prototype.getByRole("switch", {name: "Enable package manager domains"});
+  const designPackages = prototype.getByRole("switch", {name: "Packages"});
   const switchStyle = ["width", "height", "background-color", "opacity"];
   await match(allowAll, designAllowAll, switchStyle);
   await match(packages, designPackages, switchStyle);
-  await expectWakeupSummaryValues(summary, [allowAll, packages]);
-  await expectWakeupSummaryValues(prototype, [designAllowAll, designPackages]);
+  const appMask = summary.getByText("••••••••", {exact: true});
+  const designMask = prototype.getByText("••••••••", {exact: true});
+  await match(appMask, designMask, ["font-family", "font-size", "width"]);
+  await expectWakeupSummaryValues(summary, [allowAll, packages, appMask]);
+  await expectWakeupSummaryValues(prototype, [designAllowAll, designPackages, designMask]);
   if (!isMobile) await match(summary, prototype, ["width", "background-color", "border-top-color", "border-top-left-radius"]);
 }
 
@@ -140,7 +143,10 @@ async function expectWakeupSummaryValues(panel: Locator, controls: Locator[]) {
     return Math.round(box.x + box.width);
   };
   const values = await panel.locator("dd").all();
-  await expect(panel.locator("dd").first()).toHaveCSS("font-weight", "600");
+  const amount = panel.locator("dd").first().locator(":is(.summary-scroll-label, .summary-action-label) > span");
+  await expect(amount).toHaveCSS("font-size", "16px");
+  await expect(amount).toHaveCSS("font-weight", "650");
+  await expect(amount.locator("small")).toHaveCSS("font-size", "12px");
   const right = await rightEdge(panel.getByRole("heading", {name: "Summary", exact: true}));
   for (const item of [...values, ...controls]) expect(await rightEdge(item)).toBe(right);
 }
