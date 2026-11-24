@@ -23,7 +23,7 @@ pub(super) async fn release(connection: &mut PgConnection) {
 pub(super) async fn candidates(connection: &mut PgConnection, runner: &Uuid7) -> serde_json::Value {
     let active = afd_state::sql::FLEET_STATUS_ACTIVE;
     let runner_active = afd_state::sql::RUNNER_STATUS_ACTIVE;
-    let offline = af_core::timing::RUNNER_OFFLINE_AFTER.as_secs();
+    let offline = afd_runner::timing::RUNNER_OFFLINE_AFTER.as_secs();
     let task = durable_task_parameters();
     let model = afd_credential::provider::PLATFORM_MODEL_REF;
     explain(connection, &format!("gate_candidates('{active}','{runner}',64,'{offline} seconds','{runner_active}','{{}}',NULL,{task},false,NULL,NULL,true,'{model}')")).await
@@ -37,8 +37,8 @@ pub(super) async fn assign(
     let runner_active = afd_state::sql::RUNNER_STATUS_ACTIVE;
     let active = afd_state::sql::RUN_STATUS_ACTIVE;
     let expired = afd_state::sql::RUN_STATUS_EXPIRED;
-    let ttl = af_core::timing::RUN_TTL.as_secs();
-    let offline = af_core::timing::RUNNER_OFFLINE_AFTER.as_secs();
+    let ttl = afd_runner::timing::RUN_TTL.as_secs();
+    let offline = afd_runner::timing::RUNNER_OFFLINE_AFTER.as_secs();
     let task = durable_task_parameters();
     let fleet_active = afd_state::sql::FLEET_STATUS_ACTIVE;
     let received = af_core::turn::status::RECEIVED;

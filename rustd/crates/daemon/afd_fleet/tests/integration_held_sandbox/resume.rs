@@ -9,7 +9,8 @@
 )]
 
 use af_core::id::Uuid7;
-use af_core::timing::{RUN_TTL, RUNNER_OFFLINE_AFTER, SANDBOX_HOLD_IDLE};
+use afd_runner::timing::{RUN_TTL, RUNNER_OFFLINE_AFTER, SANDBOX_HOLD_IDLE};
+
 use afd_fleet::run::{Billed, Kind, Runs};
 use jiff::Timestamp;
 

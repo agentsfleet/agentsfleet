@@ -8,9 +8,10 @@ mod relay;
 
 use super::recovery::proxy::FaultProxy;
 use crate::{e2e::scenario, wire};
-use af_core::timing::{HEARTBEAT_INTERVAL, STREAM_ANSWER_TIMEOUT, STREAM_RECOVERY_BUDGET};
+use af_core::timing::{STREAM_ANSWER_TIMEOUT, STREAM_RECOVERY_BUDGET};
 use af_stream::Transport;
 use af_wire::usage::RequestLines;
+use afd_runner::timing::HEARTBEAT_INTERVAL;
 use afr_agent::Meter;
 use afr_supervisor::test_util::Session;
 use agentsfleetd::supervisor::Supervisor;

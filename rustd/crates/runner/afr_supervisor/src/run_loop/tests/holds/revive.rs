@@ -219,7 +219,7 @@ fn next_run_cut_while_its_memory_loads(call: &Call) -> Option<Answer> {
     match call.verb {
         Verb::Load => match daemon(|_call| None)(call) {
             Answer::Reply(bytes) => Some(Answer::Late(
-                af_core::timing::HEARTBEAT_INTERVAL.saturating_mul(2),
+                crate::test_support::ROUND.saturating_mul(2),
                 bytes,
             )),
             other => Some(other),
@@ -259,7 +259,7 @@ async fn test_a_cut_before_the_build_releases_the_hold() {
 #[tokio::test(start_paused = true)]
 async fn test_cut_during_thaw_settles_the_hold() {
     let engine = FakeEngine {
-        thaw_takes: af_core::timing::HEARTBEAT_INTERVAL.saturating_mul(2),
+        thaw_takes: crate::test_support::ROUND.saturating_mul(2),
         ..FakeEngine::default()
     };
     let (mut rig, counted) = holding(next_run_cut, engine, Behaviour::Answer);

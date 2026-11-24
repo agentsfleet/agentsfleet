@@ -6,9 +6,8 @@
 //! plan counts how many of each one turn of a given length sends, and whether
 //! the runner also holds the run for that long.
 
+use afd_runner::timing::HEARTBEAT_INTERVAL;
 use core::time::Duration;
-
-use af_core::timing::HEARTBEAT_INTERVAL;
 
 /// How often the runner's activity pump flushes a batch of frames: the
 /// supervisor's `FLUSH_EVERY`, restated because a bench must not depend on

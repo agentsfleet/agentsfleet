@@ -65,7 +65,7 @@ fn candidates<'q, O>(
         .bind(i64::try_from(MAX_CANDIDATES_PER_POLL).unwrap_or(i64::MAX))
         // How long a silent holder binds, and the status a holder must be in
         // to bind at all; the instant they compare against is the statement's.
-        .bind(af_core::timing::RUNNER_OFFLINE_AFTER)
+        .bind(afd_runner::timing::RUNNER_OFFLINE_AFTER)
         .bind(afd_state::sql::RUNNER_STATUS_ACTIVE)
         .bind(Vec::<Uuid7>::new())
         .bind(None::<&Uuid7>)

@@ -163,6 +163,14 @@ impl Handle {
     }
 }
 
+/// How long an ephemeral NATS wake or runner command may wait for its broker.
+///
+/// The turn is already durable. A wake or runner command the broker loses is owed as
+/// a gap, whose recovery pass and re-check find the work, and every booting daemon
+/// gaps every replica once.
+/// Kept: without it every committed write's request hangs while NATS is down.
+pub const READY_WAKE_DEADLINE: std::time::Duration = std::time::Duration::from_millis(100);
+
 /// Sleeps until `at`, or never when there is nothing to wait for.
 ///
 /// A `select!` arm with no deadline then simply never fires. Every reader of a wake that

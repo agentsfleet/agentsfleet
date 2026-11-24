@@ -2,7 +2,7 @@
 
 use std::{borrow::Cow, sync::Arc, time::Duration};
 
-use af_core::{id::Uuid7, limits::WorkerCount, timing::HEARTBEAT_INTERVAL};
+use af_core::{id::Uuid7, limits::WorkerCount};
 use af_stream::OwnedFrame;
 use af_wire::{
     protocol::Down,
@@ -31,7 +31,8 @@ const EVENT_LAST_FAILED: &str = "heartbeat_last_failed";
 pub(crate) struct Assignment {
     pub(crate) status: HeartbeatStatus,
     pub(crate) workers: u32,
-    pub(crate) interval: Duration,
+    /// The interval the last heartbeat answer named; none before the first answer.
+    pub(crate) interval: Option<Duration>,
     pub(crate) egress: Egress,
 }
 
@@ -40,7 +41,7 @@ impl Assignment {
         Self {
             status: HeartbeatStatus::Ok,
             workers: 0,
-            interval: HEARTBEAT_INTERVAL,
+            interval: None,
             egress: Egress::closed(),
         }
     }
@@ -109,8 +110,10 @@ impl<'a> Heartbeat<'a> {
             } else {
                 WorkerCount::clamping(policy.worker_count).get()
             },
-            interval: Duration::from_millis(u64::from(reply.heartbeat_interval_ms))
-                .max(MIN_HEARTBEAT_INTERVAL),
+            interval: Some(
+                Duration::from_millis(u64::from(reply.heartbeat_interval_ms))
+                    .max(MIN_HEARTBEAT_INTERVAL),
+            ),
             egress: Egress::assigned(policy),
         };
         Ok(self.last.clone())
@@ -171,8 +174,11 @@ impl<'a> Heartbeat<'a> {
                 Err(error) => {
                     let error_code = error.code().as_str();
                     tracing::warn!(event = "heartbeat_failed", error_code);
+                    // A retry never waits past the next round: the interval the daemon
+                    // last answered with, or before any answer the one its welcome named.
+                    let round = self.last.interval.or_else(|| self.plane.stream.interval());
                     backoff = if let Some(pause) = retries.next() {
-                        Some(pause.min(self.last.interval))
+                        Some(round.map_or(pause, |round| pause.min(round)))
                     } else {
                         halt.stop();
                         return;

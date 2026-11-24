@@ -14,6 +14,9 @@
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 #![deny(clippy::self_named_module_files)]
 
+/// How long a stopped engine may close calls and return measured work.
+pub const ENGINE_STOP_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
+
 mod backed;
 pub mod catalog;
 pub mod error;

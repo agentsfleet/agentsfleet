@@ -1,11 +1,12 @@
 //! Exact Ring accounting has its own binary because producers are process-wide.
 
+use afd_bus::READY_WAKE_DEADLINE;
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
 
-use af_core::{id::Uuid7, timing::READY_WAKE_DEADLINE};
+use af_core::id::Uuid7;
 use af_observability::test_util::Capture;
 use afd_bus::{Bus, Handle, Result, Subject, Subscription, wake};
 use async_trait::async_trait;

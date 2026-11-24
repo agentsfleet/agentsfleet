@@ -5,7 +5,8 @@
 //! closing runner's final list.
 
 use af_core::id::Uuid7;
-use af_core::timing::SANDBOX_HOLD_IDLE;
+use afd_runner::timing::SANDBOX_HOLD_IDLE;
+
 use af_wire::runner::{FLEET_ID_TEXT_BYTES, HOLDS_MAX, HeartbeatRequest};
 use afd_db::test_util::mint_id;
 use afd_runner::{Beat, NO_REPORT};

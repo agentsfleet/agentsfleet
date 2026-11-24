@@ -26,6 +26,14 @@ use jiff::Timestamp;
 use tokio::sync::{Notify, mpsc, oneshot};
 
 mod built_under;
+/// How long this runner holds a fleet's sandbox, frozen, after a run that used it ends
+/// processed, for that fleet's next run to continue in.
+///
+/// A chat follow-up usually lands within minutes. The runner holds at most as many as it
+/// has workers, and a frozen sandbox runs nothing, which is what bounds the cost of the
+/// wait. The daemon caps what a hold protects at its `max_idle_hold_seconds`.
+pub(crate) const SANDBOX_HOLD_IDLE: Duration = Duration::from_mins(10);
+
 mod keeper;
 mod occupancy;
 

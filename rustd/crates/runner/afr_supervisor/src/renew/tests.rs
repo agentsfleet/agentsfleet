@@ -20,8 +20,8 @@ use tokio::time::Instant;
 use super::{EXPIRY_MARGIN, Renewal};
 use crate::client::Verb;
 use crate::error;
+use crate::test_support::ROUND;
 use crate::test_support::{Answer, GRANTED_UNTIL, RUN_ID, drain, json, plane};
-use af_core::timing::HEARTBEAT_INTERVAL;
 
 /// The renew body's usage lines, by the key the daemon reads them under.
 const REQUESTS: &str = "requests";
@@ -80,7 +80,7 @@ async fn test_renew_keeps_on_5xx_ends_on_4xx() {
     // bound after it was sent, and the third retry meets the 409.
     assert_eq!(
         started.elapsed(),
-        HEARTBEAT_INTERVAL * 2 + af_core::timing::STREAM_ANSWER_TIMEOUT * 2
+        ROUND * 2 + af_core::timing::STREAM_ANSWER_TIMEOUT * 2
     );
 }
 
@@ -167,7 +167,7 @@ async fn each_grant_moves_the_deadline_and_a_lapsed_run_ends_at_once() {
 
     assert_eq!(
         started.elapsed(),
-        HEARTBEAT_INTERVAL * 10 + budget(),
+        ROUND * 10 + budget(),
         "ten grants, then one budget of blips"
     );
     assert_eq!(

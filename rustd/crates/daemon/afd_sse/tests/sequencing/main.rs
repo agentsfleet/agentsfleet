@@ -104,7 +104,7 @@ async fn test_sse_sequencing_semantics() {
 /// The per-fleet stream ANNOUNCES itself, before anything is published.
 ///
 /// Without this the first byte of an idle fleet's body is the keep-alive
-/// heartbeat, `afd_sse::HEARTBEAT_INTERVAL` away. The browser opens the socket
+/// heartbeat, `afd_sse::KEEP_ALIVE_INTERVAL` away. The browser opens the socket
 /// at once, but the surface reports itself live off the first FRAME -- so a
 /// quiet fleet rendered "Connecting…" for fifteen seconds with nothing whatever
 /// wrong. The wall stream has always opened with `hello`; the per-fleet route

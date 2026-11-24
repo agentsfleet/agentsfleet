@@ -54,7 +54,7 @@ pub use crate::tail::tail;
 /// discovers a client that went away without closing, and without it a stream
 /// over a dead connection would hold its slot until a publish that may never
 /// come. It also keeps intermediaries from idling the connection out.
-pub const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(15);
+pub const KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(15);
 
 /// The named event browsers can observe without treating it as activity.
 ///

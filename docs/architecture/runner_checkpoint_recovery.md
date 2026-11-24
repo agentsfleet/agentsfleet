@@ -153,7 +153,7 @@ A durable task's run keeps its own saved execution deadline, and a renewal past 
 | `runner.health.healthy_before_uncordon_seconds` | 30 seconds | Greater than one heartbeat interval and shorter than the offline threshold |
 | `runner.sandboxes.max_idle_hold_seconds` | 600 seconds | From one second through one day, 86,400 seconds |
 
-Startup requires a run lifetime greater than the existing 32-second renewal/reconnect budget and at most one hour (`af_core`'s `timing/run.rs`).
+Startup requires a run lifetime greater than the 28-second renewal and reconnect budget and at most one hour (`afd_runner`'s `timing/run.rs`).
 A daemon file that still names `runner.run.max_runtime_seconds` refuses startup.
 
 The configuration extension is under verification. Source inspection and
@@ -236,7 +236,7 @@ The 38-second run TTL starts at the last grant or renewal. It governs reclaim.
 
 No daemon timer re-offers an expired run. The assignment that takes the turn expires the dead run's row in its own statement (`afd_fleet`'s `sql/shared/expire_prior_run.sql`), so the turn moves when a bus wake, a connection's freed capacity or a replacement's connection starts an assignment pass. [Run and liveness timing](../../rustd/crates/foundation/af_core/src/timing/mod.rs) · [Runner status](runner_fleet.md#failure-recovery-model)
 
-The run TTL includes one 10-second round, a 5-second answer window, a 7-second reconnect and a 15-second renewal margin, plus one second. A deployment's heartbeat, which is the round, is refused at boot when its run TTL cannot carry it (`af_core`'s `timing/run.rs`).
+The run TTL includes one 10-second round, a 5-second answer window, a 7-second reconnect and a 15-second renewal margin, plus one second. A deployment's heartbeat, which is the round, is refused at boot when its run TTL cannot carry it (`afd_runner`'s `timing/run.rs`).
 
 A host silent for three run lifetimes, 114 seconds, reads `offline` when an operator view derives it (`afd_runner`'s `view/decode.rs`). The end of its connection arms one visit at that window, which writes `runner_offline` once and cordons an `active` host (`afd_runner`'s `silence.rs`).
 

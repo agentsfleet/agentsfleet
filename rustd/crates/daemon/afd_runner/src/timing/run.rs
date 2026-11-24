@@ -2,17 +2,21 @@
 
 use std::time::Duration;
 
+use af_core::timing::{
+    DAY, MAX_RUN_SECONDS, RENEWAL_WINDOW, STREAM_ANSWER_TIMEOUT, STREAM_IDLE_TIMEOUT,
+    STREAM_RECOVERY_BUDGET,
+};
 use garde::Validate;
 use serde::Deserialize;
 
 /// The shortest heartbeat interval a deployment may set, and so the shortest round.
-pub const MIN_HEARTBEAT_SECONDS: u64 = 1;
+const MIN_HEARTBEAT_SECONDS: u64 = 1;
 
 /// What a run's expiry must leave beyond one round: the answer bound, the reconnect
 /// budget and the renewal window, plus the strict second.
-pub const RENEWAL_MARGIN_SECONDS: u64 = super::STREAM_ANSWER_TIMEOUT
-    .saturating_add(super::STREAM_RECOVERY_BUDGET)
-    .saturating_add(super::RENEWAL_WINDOW)
+const RENEWAL_MARGIN_SECONDS: u64 = STREAM_ANSWER_TIMEOUT
+    .saturating_add(STREAM_RECOVERY_BUDGET)
+    .saturating_add(RENEWAL_WINDOW)
     .as_secs()
     + 1;
 
@@ -22,16 +26,10 @@ pub const MIN_RUN_SECONDS: u64 = MIN_HEARTBEAT_SECONDS + RENEWAL_MARGIN_SECONDS;
 
 /// The longest heartbeat whose beat and answer still land before the transport closes
 /// an idle session.
-const IDLE_HEARTBEAT_SECONDS: u64 = super::STREAM_IDLE_TIMEOUT
-    .saturating_sub(super::STREAM_ANSWER_TIMEOUT)
+const IDLE_HEARTBEAT_SECONDS: u64 = STREAM_IDLE_TIMEOUT
+    .saturating_sub(STREAM_ANSWER_TIMEOUT)
     .as_secs()
     - 1;
-
-/// Longest run lifetime a deployment may configure: one hour per grant.
-///
-/// A bound on one renewal slice, not on a run. A run renews for as long as its
-/// fleet's budget covers it and nobody stops it.
-pub const MAX_RUN_SECONDS: u64 = Duration::from_hours(1).as_secs();
 
 /// Cross-checked run, heartbeat and sandbox timing resolved before startup.
 #[derive(Debug, Clone, Copy, Deserialize, Validate)]
@@ -53,7 +51,7 @@ pub struct RunSettings {
     #[garde(range(min = self.heartbeat_interval_seconds.saturating_add(1), max = self.offline_seconds().saturating_sub(1)))]
     pub healthy_before_uncordon_seconds: u64,
     /// Maximum idle reservation for a frozen sandbox after a completed run.
-    #[garde(range(min = 1, max = super::DAY.as_secs()))]
+    #[garde(range(min = 1, max = DAY.as_secs()))]
     pub sandbox_idle_hold_seconds: u64,
 }
 

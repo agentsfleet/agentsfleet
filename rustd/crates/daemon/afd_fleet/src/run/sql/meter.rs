@@ -58,7 +58,7 @@ pub struct Metering<'a> {
 
 impl<'a> Metering<'a> {
     /// [`METER_RUN`] with every parameter bound, in `$n` order.
-    pub(crate) fn bind(&self, clock: af_core::timing::RunClock) -> Bound<'a> {
+    pub(crate) fn bind(&self, clock: afd_runner::timing::RunClock) -> Bound<'a> {
         sqlx::query(METER_RUN)
             .bind(self.run_id)
             .bind(self.runner_id)

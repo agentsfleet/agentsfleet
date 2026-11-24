@@ -170,7 +170,7 @@ struct RenewalPeer {
 impl RenewalPeer {
     /// A peer whose session's welcome announced the default interval.
     fn new() -> (super::super::StreamHandle, Self) {
-        Self::with_interval(af_core::timing::HEARTBEAT_INTERVAL)
+        Self::with_interval(crate::test_support::ROUND)
     }
 
     /// A peer whose session's welcome announced `interval`.

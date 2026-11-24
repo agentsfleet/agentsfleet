@@ -6,12 +6,9 @@ use crate::{
     config::Config,
     renew::Renewal,
 };
-use af_core::{
-    clock::FixedClock,
-    env::MapEnv,
-    id::Uuid7,
-    timing::{HEARTBEAT_INTERVAL, RUN_TTL, STREAM_ANSWER_TIMEOUT},
-};
+use af_core::{clock::FixedClock, env::MapEnv, id::Uuid7, timing::STREAM_ANSWER_TIMEOUT};
+
+use crate::test_support::{GRANT, ROUND};
 use af_wire::protocol::Up;
 use futures_util::poll;
 use std::{pin::Pin, sync::Arc, time::Duration};
@@ -31,7 +28,7 @@ async fn republishing_the_same_connection_does_not_start_an_extra_renewal() -> c
     let _held = registry.register(
         &run,
         Arc::new(afr_agent::Meter::default()),
-        Instant::now() + RUN_TTL,
+        Instant::now() + GRANT,
     )?;
     let stop = CancellationToken::new();
     let renewing = registry.run(&handle, stop.clone());
@@ -43,7 +40,7 @@ async fn republishing_the_same_connection_does_not_start_an_extra_renewal() -> c
         peer.outgoing.priority.try_recv(),
         Err(tokio::sync::mpsc::error::TryRecvError::Empty)
     ));
-    tokio::time::advance(HEARTBEAT_INTERVAL).await;
+    tokio::time::advance(ROUND).await;
     assert!(poll!(&mut renewing).is_pending());
     assert!(
         peer.outgoing.priority.try_recv().is_ok(),
@@ -55,8 +52,7 @@ async fn republishing_the_same_connection_does_not_start_an_extra_renewal() -> c
 
 #[tokio::test(start_paused = true)]
 async fn the_full_recovery_and_answer_budgets_preserve_running_work() -> crate::Result<()> {
-    let connected =
-        HEARTBEAT_INTERVAL + STREAM_ANSWER_TIMEOUT + af_core::timing::STREAM_RECOVERY_BUDGET;
+    let connected = ROUND + STREAM_ANSWER_TIMEOUT + af_core::timing::STREAM_RECOVERY_BUDGET;
     recovered(connected, STREAM_ANSWER_TIMEOUT).await
 }
 
@@ -66,7 +62,7 @@ async fn recovered(connected: Duration, answer_delay: Duration) -> crate::Result
     let run = Uuid7::parse(crate::test_util::RUN_ID)?;
     let clock = FixedClock::at(jiff::Timestamp::UNIX_EPOCH);
     let meter = Arc::new(afr_agent::Meter::default());
-    let grant = af_core::clock::after(jiff::Timestamp::UNIX_EPOCH, RUN_TTL);
+    let grant = af_core::clock::after(jiff::Timestamp::UNIX_EPOCH, GRANT);
     let keeping = Renewal::new(&plane, &run, grant, &clock, &meter).keep();
     let stop = CancellationToken::new();
     let registry = Arc::clone(&handle.renewing);
@@ -114,7 +110,7 @@ async fn lose_first_renewal(
     mut renewing: Pin<&mut impl Future<Output = crate::Result<()>>>,
     old: &mut RenewalPeer,
 ) -> crate::Result<()> {
-    tokio::time::advance(HEARTBEAT_INTERVAL).await;
+    tokio::time::advance(ROUND).await;
     assert!(poll!(&mut renewing).is_pending());
     let unanswered = old
         .outgoing

@@ -16,13 +16,13 @@ use super::ACTIVITY_DRAIN_WAIT;
 use crate::client::{Call, Verb};
 use crate::egress::Egress;
 use crate::error;
+use crate::test_support::ROUND;
 use crate::test_support::{
     Answer, Behaviour, FAILURE_REASON, FENCING, FLEET_ID, FakeAgent, FakeEngine, OUTCOME,
     PROCESSED, RENEWAL_TERMINATE, RUN_ID, RUNNER_CRASH, Rig, STARTUP_POSTURE, daemon, payload,
     position, reported,
 };
 use crate::turns::FleetTurns;
-use af_core::timing::HEARTBEAT_INTERVAL;
 
 /// The metered fields a renewal and a report carry, by their wire names.
 const TOKENS: &str = "tokens";

@@ -2,8 +2,10 @@
 #![expect(clippy::expect_used, reason = "integration preconditions fail loudly")]
 
 use crate::e2e::Scenario;
-use af_core::timing::{ENGINE_STOP_GRACE, RUN_TTL, STREAM_ANSWER_TIMEOUT};
+use af_core::timing::STREAM_ANSWER_TIMEOUT;
+use afd_runner::timing::RUN_TTL;
 use afr_agent::scripted::{ScriptedEngine, Step};
+use afr_tools::ENGINE_STOP_GRACE;
 use guffbolt::Usage;
 use std::{path::Path, time::Duration};
 use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};

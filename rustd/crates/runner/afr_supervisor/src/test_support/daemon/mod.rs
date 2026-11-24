@@ -130,7 +130,7 @@ pub(crate) fn plane<F>(answer: F) -> (ControlPlane, Calls)
 where
     F: Fn(&Call) -> Answer + Send + Sync + 'static,
 {
-    plane_every(af_core::timing::HEARTBEAT_INTERVAL, answer)
+    plane_every(crate::test_support::ROUND, answer)
 }
 
 /// As [`plane`], with each connection's welcome announcing `interval`, the period of

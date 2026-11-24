@@ -50,7 +50,7 @@ async fn idle_private_stream_sends_an_observable_heartbeat_and_still_rechecks_ac
     assert!(open.frame().await.contains("event: message.accepted"));
     assert!(open.frame().await.contains("event: candidate.changed"));
     let bytes = tokio::time::timeout(
-        afd_sse::HEARTBEAT_INTERVAL + super::DELIVERY,
+        afd_sse::KEEP_ALIVE_INTERVAL + super::DELIVERY,
         open.response.chunk(),
     )
     .await

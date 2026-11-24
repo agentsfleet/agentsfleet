@@ -1,6 +1,6 @@
 //! Only a valid host heartbeat extends the connection's liveness deadline.
 
-use af_core::timing::HEARTBEAT_INTERVAL;
+use afd_runner::timing::HEARTBEAT_INTERVAL;
 use parking_lot::Mutex;
 use std::time::Duration;
 use tokio::time::{Instant, sleep_until};
@@ -44,7 +44,8 @@ impl Liveness {
 #[cfg(test)]
 mod tests {
     use super::Liveness;
-    use af_core::timing::HEARTBEAT_INTERVAL;
+    use afd_runner::timing::HEARTBEAT_INTERVAL;
+
     use std::task::Poll;
 
     #[tokio::test(start_paused = true)]

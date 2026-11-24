@@ -1,8 +1,9 @@
 //! Broker loss asks Postgres again; a broker message never grants or removes authority itself.
 
+use afd_bus::READY_WAKE_DEADLINE;
 use std::sync::Arc;
 
-use af_core::timing::{READY_WAKE_DEADLINE, STREAM_ANSWER_TIMEOUT};
+use af_core::timing::STREAM_ANSWER_TIMEOUT;
 use afd_bus::{Command, Received, Subject};
 use backon::{BackoffBuilder as _, ExponentialBuilder};
 
@@ -172,7 +173,7 @@ mod tests {
             .await
             .err()
             .ok_or("a silent broker cannot confirm the announcement")?;
-        assert_eq!(started.elapsed(), af_core::timing::READY_WAKE_DEADLINE);
+        assert_eq!(started.elapsed(), afd_bus::READY_WAKE_DEADLINE);
         assert!(
             matches!(
                 refused.kind(),

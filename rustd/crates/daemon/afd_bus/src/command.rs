@@ -22,7 +22,7 @@ impl Command {
     pub async fn publish(&self, bus: &crate::Handle, runner: &Uuid7) -> crate::Result<()> {
         let subject = crate::Subject::RunnerCommand(runner.clone());
         tokio::time::timeout(
-            af_core::timing::READY_WAKE_DEADLINE,
+            crate::READY_WAKE_DEADLINE,
             bus.publish_frame(&subject, self),
         )
         .await?

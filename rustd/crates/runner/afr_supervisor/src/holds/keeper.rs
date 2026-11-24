@@ -4,7 +4,6 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use af_core::clock::{self, Clock};
 use af_core::id::Uuid7;
-use af_core::timing::SANDBOX_HOLD_IDLE;
 use afr_sandbox::Sandbox;
 use afr_telemetry::labels::SandboxHold;
 use afr_telemetry::record;
@@ -12,7 +11,7 @@ use jiff::Timestamp;
 use tokio::sync::{Notify, mpsc};
 use tokio::task::JoinSet;
 
-use super::{HoldKey, Parked, Release, Request, Taken};
+use super::{HoldKey, Parked, Release, Request, SANDBOX_HOLD_IDLE, Taken};
 
 /// The event a parked sandbox is logged under.
 const EVENT_HELD: &str = "sandbox_held";

@@ -22,6 +22,7 @@ mod rows;
 mod tests;
 mod verdict;
 
+use afd_runner::timing::FUNDS_CHECK_TICKS;
 use std::collections::HashMap;
 
 use af_core::id::Uuid7;
@@ -32,8 +33,6 @@ use jiff::Timestamp;
 use self::verdict::Answer;
 use crate::error::Result;
 use crate::run::pull::RunService;
-
-use af_core::timing::FUNDS_CHECK_TICKS;
 
 /// Whether a session's renewal frame `tick`, counted from 0, checks funds.
 ///

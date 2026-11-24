@@ -1,6 +1,7 @@
 //! A lost welcome retains the proposal until the database classifies the next opening.
 
-use af_core::{id::Uuid7, timing::STREAM_STABLE_RESET_AFTER};
+use crate::STREAM_STABLE_RESET_AFTER;
+use af_core::id::Uuid7;
 use af_stream::{Connection, Transport};
 use backon::BackoffBuilder as _;
 use std::time::Duration;

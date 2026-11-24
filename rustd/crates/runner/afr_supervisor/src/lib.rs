@@ -54,6 +54,9 @@ mod uplink;
 mod verbs;
 mod worker_pool;
 
+/// A runner stream connection must remain usable this long before reconnect backoff resets.
+pub const STREAM_STABLE_RESET_AFTER: std::time::Duration = std::time::Duration::from_secs(60);
+
 #[cfg(test)]
 mod test_support;
 #[cfg(any(test, feature = "test-util"))]

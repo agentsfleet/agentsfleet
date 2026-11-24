@@ -1,6 +1,7 @@
 //! The process bounds pending work before joining every owned worker.
 
-use af_core::{error_code, timing::ENGINE_STOP_GRACE};
+use af_core::error_code;
+use afr_tools::ENGINE_STOP_GRACE;
 use tokio::task::JoinSet;
 
 const SHUTDOWN_GRACE: std::time::Duration = std::time::Duration::from_secs(35);

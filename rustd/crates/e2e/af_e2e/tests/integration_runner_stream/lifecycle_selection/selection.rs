@@ -2,7 +2,9 @@
 
 use super::{heartbeat, owner, relay::Relay, session};
 use crate::integration_runner_stream::RECOVERY_SLACK;
-use af_core::timing::{HEARTBEAT_INTERVAL, STREAM_RECOVERY_BUDGET, STREAM_STABLE_RESET_AFTER};
+use af_core::timing::STREAM_RECOVERY_BUDGET;
+use afd_runner::timing::HEARTBEAT_INTERVAL;
+use afr_supervisor::STREAM_STABLE_RESET_AFTER;
 use afr_supervisor::test_util::Session;
 use agentsfleetd::supervisor::Supervisor;
 use tokio::time::Instant;

@@ -7,10 +7,11 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use afd_runner::timing::{RUN_TTL, SANDBOX_HOLD_IDLE};
 use std::borrow::Cow;
 
 use af_core::id::Uuid7;
-use af_core::timing::{RUN_TTL, SANDBOX_HOLD_IDLE};
+
 use af_wire::report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry};
 use jiff::Timestamp;
 

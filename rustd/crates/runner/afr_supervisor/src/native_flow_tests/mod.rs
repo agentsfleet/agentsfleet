@@ -202,7 +202,7 @@ async fn observe_idle_window(logs: &Capture, frames: &mut Frames) -> TestResult 
     // six rounds of the default interval make the sixty seconds.
     for round in 1..=6 {
         tokio::time::pause();
-        tokio::time::advance(af_core::timing::HEARTBEAT_INTERVAL).await;
+        tokio::time::advance(crate::test_support::ROUND).await;
         tokio::time::resume();
         observe_progress(logs, round).await?;
         frames.collect();

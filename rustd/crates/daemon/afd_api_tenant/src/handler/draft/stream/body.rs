@@ -87,7 +87,7 @@ pub(super) fn frames(
 /// or a lag arrives on the draft's subject, when the account's members change, or
 /// when a lost subscription reopens; its heartbeat reads nothing.
 async fn step(mut watch: Watch) -> Option<(Result<Event, Infallible>, Watch)> {
-    let heartbeat_at = Instant::now() + afd_sse::HEARTBEAT_INTERVAL;
+    let heartbeat_at = Instant::now() + afd_sse::KEEP_ALIVE_INTERVAL;
     while !watch.done {
         if let Some(event) = recover(&mut watch).await {
             return Some((Ok(event), watch));

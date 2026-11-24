@@ -119,7 +119,7 @@ impl Harness {
             queues,
             budget: Budget::default(),
             ceilings: af_stream::Ceilings::PROTOCOL,
-            interval: af_core::timing::HEARTBEAT_INTERVAL,
+            interval: crate::test_support::ROUND,
             stop: CancellationToken::new(),
         });
         self.current.send_replace(Some(Arc::clone(&sender)));

@@ -141,12 +141,10 @@ impl Renewals {
         let mut sessions = handle.session.clone();
         let mut previous = sessions.borrow_and_update().clone();
         let mut sent = Instant::now();
-        let mut period = previous
-            .as_ref()
-            .map_or(af_core::timing::HEARTBEAT_INTERVAL, |session| {
-                session.interval
-            });
-        let mut due = sent + period;
+        // The period is the connected session's: before a first connection no round is
+        // due, since a round needs a session to renew through.
+        let mut period = previous.as_ref().map(|session| session.interval);
+        let mut due = period.map(|period| sent + period);
         loop {
             tokio::select! {
                 biased;
@@ -161,17 +159,23 @@ impl Renewals {
                         previous = current;
                         continue;
                     };
-                    period = session.interval;
+                    period = Some(session.interval);
                     previous = current;
                     // Recovery must not spend another round waiting to renew live work.
                 }
-                () = tokio::time::sleep_until(due) => {}
+                () = async {
+                    match due {
+                        Some(due) => tokio::time::sleep_until(due).await,
+                        None => std::future::pending().await,
+                    }
+                } => {}
             }
+            let Some(round) = period else { continue };
             sent = Instant::now();
             self.beat.notify_one();
             let batch = self.batch(handle);
             tokio::pin!(batch);
-            let mut beat_at = sent + period;
+            let mut beat_at = sent + round;
             let renewed = loop {
                 tokio::select! {
                     biased;
@@ -179,7 +183,7 @@ impl Renewals {
                     result = &mut batch => break result,
                     () = tokio::time::sleep_until(beat_at) => {
                         self.beat.notify_one();
-                        beat_at += period;
+                        beat_at += round;
                     }
                 }
             };
@@ -193,7 +197,7 @@ impl Renewals {
                 }
                 Err(error) => return Err(error),
             };
-            due = next_due(sent, period, retrying);
+            due = Some(next_due(sent, round, retrying));
         }
     }
 

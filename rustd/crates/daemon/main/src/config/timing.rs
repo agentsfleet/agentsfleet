@@ -1,6 +1,6 @@
 //! The daemon's file shape resolves into the shared, cross-checked run clock.
 
-use af_core::timing::RunSettings;
+use afd_runner::timing::RunSettings;
 use serde::Deserialize;
 
 #[derive(Deserialize)]

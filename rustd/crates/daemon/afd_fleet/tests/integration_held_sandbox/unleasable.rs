@@ -9,7 +9,8 @@
 )]
 
 use af_core::id::Uuid7;
-use af_core::timing::SANDBOX_HOLD_IDLE;
+use afd_runner::timing::SANDBOX_HOLD_IDLE;
+
 use afd_state::sql::RUNNER_STATUS_DRAINED;
 use jiff::Timestamp;
 

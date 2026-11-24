@@ -1,4 +1,5 @@
-use af_core::{error_code::Coded as _, id::Uuid7, timing::READY_WAKE_DEADLINE};
+use crate::READY_WAKE_DEADLINE;
+use af_core::{error_code::Coded as _, id::Uuid7};
 use af_observability::{metrics::label::fleet::ReadyWake, producers};
 
 use crate::{Handle, Subject};

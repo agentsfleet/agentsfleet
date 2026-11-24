@@ -146,7 +146,7 @@ async fn an_assignment_reaches_the_runs_and_labels_the_self_test_it_asks_for() {
         test_support::assigned(NetworkPolicy::AllowAll, &[]),
         "the assigned posture reaches the runs"
     );
-    assert_eq!(assigned.interval, Duration::from_millis(2000));
+    assert_eq!(assigned.interval, Some(Duration::from_millis(2000)));
     assert!(
         unassigned.is_err(),
         "a null assignment is refused: {unassigned:?}"
@@ -176,7 +176,7 @@ async fn a_zero_interval_is_floored() {
     let held = idle_holds();
     let beat = Heartbeat::new(&plane, &probe, &held).beat().await.unwrap();
 
-    assert_eq!(beat.interval, MIN_HEARTBEAT_INTERVAL);
+    assert_eq!(beat.interval, Some(MIN_HEARTBEAT_INTERVAL));
 }
 
 #[test]

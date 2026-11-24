@@ -131,7 +131,7 @@ impl Case {
             .bind(&self.base.workspace)
             .bind(&self.base.tenant)
             .bind(mint())
-            .bind(af_core::timing::RUN_TTL.as_secs_f64())
+            .bind(afd_runner::timing::RUN_TTL.as_secs_f64())
             .bind(RUN_STATUS_ACTIVE)
             .execute(&mut *connection)
             .await

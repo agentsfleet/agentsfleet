@@ -206,7 +206,7 @@ async fn test_a_stale_assignment_writes_no_run() {
     assert!(expired.is_none(), "a lapsed assignment writes no run");
 
     let won = runs
-        .assign(&held.fleet_id, &second, af_core::timing::RUN_TTL)
+        .assign(&held.fleet_id, &second, afd_runner::timing::RUN_TTL)
         .await
         .expect("the assignment statement answers");
     assert!(

@@ -14,10 +14,11 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use afd_runner::timing::{RUN_TTL, RUNNER_OFFLINE_AFTER};
 use std::time::Duration;
 
 use af_core::id::Uuid7;
-use af_core::timing::{RUN_TTL, RUNNER_OFFLINE_AFTER};
+
 use afd_fleet::run::sql::shared::ASSIGN_THREAD;
 use sqlx::Connection as _;
 
