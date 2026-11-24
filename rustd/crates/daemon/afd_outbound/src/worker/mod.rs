@@ -15,8 +15,9 @@
 //! The ping is at-most-once. A ping the bus failed to send is owed, and the bus
 //! pays it as a gap on the subscription, which the worker answers with a claim.
 //! A full batch claims again as soon as the lanes have room, and every finished
-//! job rings the loop, so a backlog drains without a timer. A subscription that
-//! closes is opened again on a backoff, and the first claim after it scans.
+//! job rings the loop, so a backlog drains without a timer. A reconnect keeps the
+//! subscription and gaps it; it closes only when the bus shuts down, and the worker
+//! then claims on finished deliveries and lapses alone.
 //!
 //! # A dead replica's claim is retaken when it lapses
 //!
@@ -51,12 +52,10 @@ const EVENT_CLAIM_COMPLETED: &str = "outbound_claim_completed";
 /// Logged when a claim could not be made; the next ping or finished delivery
 /// claims again.
 const EVENT_CLAIM_FAILED: &str = "outbound_claim_failed";
-/// Logged when pings stop reaching this worker; only finished deliveries and
+/// Logged when pings stop reaching this worker; only finished deliveries, lapses and
 /// the next start claim for it then.
 const EVENT_WAKE_SUBSCRIBE_FAILED: &str = "outbound_wake_subscribe_failed";
 const EVENT_WAKE_CLOSED: &str = "outbound_wake_closed";
-/// The wake subscription was opened again after it closed.
-const EVENT_WAKE_REOPENED: &str = "outbound_wake_reopened";
 /// The lapse read failed: the loop keeps the lapse it had, and the next claim reads again.
 const EVENT_LAPSE_UNREAD: &str = "outbound_lapse_unread";
 
@@ -127,11 +126,6 @@ impl<S: Deliver + 'static> Worker<S> {
             .inspect_err(|failure| unpinged(EVENT_WAKE_SUBSCRIBE_FAILED, failure))
             .ok();
         let lanes = Lanes::configured(posters, database.clone(), token.clone(), renew, retries);
-        let mut resubscribe = backon::BackoffBuilder::build(
-            backon::ExponentialBuilder::default().without_max_times(),
-        );
-        let mut reopen_at: Option<tokio::time::Instant> = None;
-        let mut reopen_attempt = 0_u32;
         let mut lapse: Option<tokio::time::Instant> = None;
         let mut via = Via::Scan;
         while !token.is_cancelled() {
@@ -153,11 +147,6 @@ impl<S: Deliver + 'static> Worker<S> {
                     Err(failure) => report(EVENT_CLAIM_FAILED, &failure),
                 }
             }
-            if wake.is_none() && reopen_at.is_none() {
-                reopen_at = resubscribe
-                    .next()
-                    .map(|pause| tokio::time::Instant::now() + pause);
-            }
             via = tokio::select! {
                 biased;
                 () = token.cancelled() => break,
@@ -165,27 +154,7 @@ impl<S: Deliver + 'static> Worker<S> {
                 // A finished job may have freed its lane's next row.
                 () = lanes.finished() => Via::Scan,
                 // A claim another replica stopped renewing is now claimable.
-                () = sleep_until(lapse) => { lapse = None; Via::Scan }
-                () = sleep_until(reopen_at) => {
-                    reopen_at = None;
-                    reopen_attempt = reopen_attempt.saturating_add(1);
-                    let attempt = reopen_attempt;
-                    wake = bus.subscribe(&Subject::DeliveryWake).await
-                        .inspect_err(|failure| {
-                            let (error_code, reason) = (failure.code().as_str(), failure.reason());
-                            tracing::warn!(error_code, reason, attempt, event = EVENT_WAKE_SUBSCRIBE_FAILED);
-                        })
-                        .ok();
-                    if wake.is_some() {
-                        tracing::info!(attempt, event = EVENT_WAKE_REOPENED);
-                        reopen_attempt = 0;
-                        resubscribe = backon::BackoffBuilder::build(
-                            backon::ExponentialBuilder::default().without_max_times(),
-                        );
-                    }
-                    // Whatever was pinged while it was closed is found by a scan.
-                    Via::Scan
-                }
+                () = afd_bus::sleep_until_some(lapse) => { lapse = None; Via::Scan }
             };
         }
         lanes.drain().await;
@@ -237,8 +206,7 @@ impl Via {
     }
 }
 
-/// Returns on the next ping, or never when the subscription is gone, until the
-/// loop opens it again.
+/// Returns on the next ping, or never once the subscription is gone.
 async fn pinged(wake: &mut Option<Subscription>) {
     let Some(subscription) = wake.as_mut() else {
         return std::future::pending().await;
@@ -265,24 +233,11 @@ async fn next_lapse<S: Deliver + 'static>(
     Ok(left.map(|left| tokio::time::Instant::now() + left))
 }
 
-/// Sleeps until `at`; never when there is nothing to wait for.
-async fn sleep_until(at: Option<tokio::time::Instant>) {
-    match at {
-        Some(at) => tokio::time::sleep_until(at).await,
-        None => std::future::pending().await,
-    }
-}
-
-/// Logs that pings stopped; the loop opens the subscription again on a backoff.
+/// Logs that pings stopped reaching this worker.
 fn unpinged(event: &'static str, failure: &afd_bus::Error) {
     let error_code = failure.code().as_str();
     let reason = failure.reason();
-    tracing::warn!(
-        error_code,
-        reason,
-        event,
-        "the wake subscription reopens on a backoff"
-    );
+    tracing::warn!(error_code, reason, event);
 }
 
 /// Logs a failure the loop continues past.

@@ -130,12 +130,23 @@ pub(crate) fn plane<F>(answer: F) -> (ControlPlane, Calls)
 where
     F: Fn(&Call) -> Answer + Send + Sync + 'static,
 {
+    plane_every(af_core::timing::HEARTBEAT_INTERVAL, answer)
+}
+
+/// As [`plane`], with each connection's welcome announcing `interval`, the period of
+/// the runner's clock. A daemon announces the same interval in its welcome and its
+/// heartbeat answers, so a test that answers with a shorter one announces it here too.
+pub(crate) fn plane_every<F>(interval: Duration, answer: F) -> (ControlPlane, Calls)
+where
+    F: Fn(&Call) -> Answer + Send + Sync + 'static,
+{
     let (api, calls) = fake(answer);
     let api: std::sync::Arc<dyn RunnerApi> = std::sync::Arc::new(api);
     let stream = stream::start(
         &api,
         calls.stopped.clone(),
         std::sync::Arc::clone(&calls.policy),
+        interval,
     );
     (ControlPlane::new(Box::new(SharedApi(api)), stream), calls)
 }

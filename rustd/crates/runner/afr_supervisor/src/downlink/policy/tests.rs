@@ -21,7 +21,7 @@ use crate::client::{Call, Verb};
 use crate::error;
 use crate::halt::Halt;
 use crate::holds::{BuiltUnder, HoldKey, Holds, Release};
-use crate::test_support::{self, Answer, FakeEngine, INTERVAL_MS, drain, json, plane};
+use crate::test_support::{self, Answer, FakeEngine, INTERVAL_MS, drain, json, plane, plane_every};
 
 /// The fleet whose sandbox the runner holds.
 pub(super) const FLEET: &str = "01890a5d-ac96-774b-bcce-b302099a80a1";
@@ -198,10 +198,13 @@ fn a_worker_takes_work_only_when_wanted() {
 async fn a_failed_beat_retries_and_a_stop_ends_runs_in_flight() {
     let beats = Arc::new(AtomicUsize::new(0));
     let counted = Arc::clone(&beats);
-    let (plane, _calls) = plane(move |_call| match counted.fetch_add(1, Ordering::SeqCst) {
-        0 | 1 => Answer::Fail(error::unavailable(Verb::Heartbeat, 503)),
-        2 => reply(KEEP_GOING, false, INTERVAL_MS),
-        _later => reply(STOP, false, INTERVAL_MS),
+    let every = Duration::from_millis(u64::from(INTERVAL_MS));
+    let (plane, _calls) = plane_every(every, move |_call| {
+        match counted.fetch_add(1, Ordering::SeqCst) {
+            0 | 1 => Answer::Fail(error::unavailable(Verb::Heartbeat, 503)),
+            2 => reply(KEEP_GOING, false, INTERVAL_MS),
+            _later => reply(STOP, false, INTERVAL_MS),
+        }
     });
     let probe = probe();
     let (published, mut watching) = watch::channel(Assignment::initial());

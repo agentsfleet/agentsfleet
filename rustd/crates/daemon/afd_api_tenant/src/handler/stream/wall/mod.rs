@@ -75,41 +75,12 @@ struct Wall<D> {
     members: Link,
     /// The workspace gained or lost a fleet: re-read the set.
     fleets: Link,
-    /// The reads a wake asked for and the wall has not run yet.
-    owed: Owed,
+    /// A wake asked to re-ask the caller's membership and re-read the set, and the
+    /// wall has not yet. Both are read on any notice: notices are rare, and a set
+    /// read that failed is read again at the next one, never on a frame.
+    owed: bool,
     /// Whether the opening `hello` has been sent.
     announced: bool,
-}
-
-/// The reads a wall owes. Each kind of notice owes only its own read; a gap reaches
-/// both links and so owes both.
-#[derive(Debug, Clone, Copy, Default)]
-struct Owed {
-    /// Re-ask the caller's membership.
-    access: bool,
-    /// Re-read the workspace's fleet set.
-    set: bool,
-    /// The last set read failed: the next notice or gap reads it again. A frame does
-    /// not, so an outage costs no read per forwarded frame.
-    set_retry: bool,
-}
-
-impl Owed {
-    /// Both reads, once: the wall authorized and enumerated before its links opened,
-    /// so a removal or a fleet published in between is read here.
-    const OPENING: Self = Self {
-        access: true,
-        set: true,
-        set_retry: false,
-    };
-
-    /// A notice or a gap settles a failed set read.
-    const fn noticed(&mut self) {
-        if self.set_retry {
-            self.set_retry = false;
-            self.set = true;
-        }
-    }
 }
 
 /// Every frame one workspace stream sends, starting with its `hello`.
@@ -132,7 +103,9 @@ pub(super) async fn frames<D: TenantPlane>(
         fan_in,
         members,
         fleets,
-        owed: Owed::OPENING,
+        // The wall authorized and enumerated before its links opened, so a removal
+        // or a fleet published in between is read here.
+        owed: true,
         announced: false,
     };
     until_revoked(wall, step)
@@ -178,14 +151,7 @@ async fn step<D: TenantPlane>(mut wall: Wall<D>) -> Option<Turn<Wall<D>>> {
                 tracing::debug!(event = EVENT_BUS_CLOSED);
                 return None;
             }
-            Woke::Members(Wake::Changed) => {
-                wall.owed.noticed();
-                wall.owed.access = true;
-            }
-            Woke::Fleets(Wake::Changed) => {
-                wall.owed.noticed();
-                wall.owed.set = true;
-            }
+            Woke::Members(Wake::Changed) | Woke::Fleets(Wake::Changed) => wall.owed = true,
         }
     }
 }
@@ -239,23 +205,20 @@ fn counters_unread(workspace: &Uuid7, error: &afd_fleet_lifecycle::Error) {
 
 /// Runs the reads the wall owes: the caller's membership, then the attached set aligned
 /// with the workspace's. A set read that fails keeps the set the wall has, logs, and is
-/// read again at the next wake.
+/// read again at the next notice.
 async fn settle<D: TenantPlane>(wall: &mut Wall<D>) -> Tick {
-    if std::mem::take(&mut wall.owed.access) {
-        match wall.watch.verdict().await {
-            Verdict::Admitted => {}
-            Verdict::Unverified => return Tick::Unverified,
-            Verdict::Revoked => {
-                // Detach before returning, so no frame already queued on an
-                // attached channel can still reach a caller who lost the right
-                // to it.
-                wall.fan_in.sync_to(&BTreeSet::new()).await;
-                return Tick::Revoked;
-            }
-        }
-    }
-    if !std::mem::take(&mut wall.owed.set) {
+    if !std::mem::take(&mut wall.owed) {
         return Tick::Steady;
+    }
+    match wall.watch.verdict().await {
+        Verdict::Admitted => {}
+        Verdict::Unverified => return Tick::Unverified,
+        Verdict::Revoked => {
+            // Detach before returning, so no frame already queued on an attached
+            // channel can still reach a caller who lost the right to it.
+            wall.fan_in.sync_to(&BTreeSet::new()).await;
+            return Tick::Revoked;
+        }
     }
     let membership = wall.watch.question();
     let workspace = membership.workspace().clone();
@@ -269,7 +232,6 @@ async fn settle<D: TenantPlane>(wall: &mut Wall<D>) -> Tick {
         }
         Err(error) => {
             set_unread(&workspace, &error);
-            wall.owed.set_retry = true;
             Tick::Steady
         }
     }

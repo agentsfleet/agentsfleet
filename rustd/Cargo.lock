@@ -1169,7 +1169,6 @@ dependencies = [
  "afd_db",
  "afd_state",
  "afd_vault",
- "async-trait",
  "backon",
  "dashmap",
  "garde",

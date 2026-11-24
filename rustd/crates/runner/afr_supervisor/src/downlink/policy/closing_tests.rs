@@ -23,7 +23,7 @@ use crate::client::{Call, Verb};
 use crate::error;
 use crate::halt::Halt;
 use crate::holds::{Holds, Parked, Release};
-use crate::test_support::{Answer, FakeEngine, drain, plane};
+use crate::test_support::{Answer, FakeEngine, drain, plane, plane_every};
 
 /// The beat the daemon answers `stop`, once running stopped two beats in.
 const STOPPED_AT_BEAT: usize = 3;
@@ -201,7 +201,7 @@ async fn test_leasing_stopped_brings_one_beat_forward_and_no_more() {
     let holds = holding(&engine, 2).await;
     let stamps = Arc::new(Mutex::new(Vec::new()));
     let stamped = Arc::clone(&stamps);
-    let (plane, mut calls) = plane(move |_call| {
+    let (plane, mut calls) = plane_every(Duration::from_millis(u64::from(TICK_MS)), move |_call| {
         let mut beats = stamped.lock().unwrap();
         beats.push(tokio::time::Instant::now());
         let status = if beats.len() < STOPPED_AT_BEAT {

@@ -71,14 +71,13 @@ fn held(registry: &Arc<Renewals>) -> crate::Result<super::super::Registration> {
     )
 }
 
-/// Each round wakes the beat and renews at once, one interval after the last; an
-/// interval advertised later re-arms the next round from the last one sent.
+/// Each round wakes the beat and renews at once, one interval after the last; a new
+/// connection rounds at once and then at the interval its welcome announced.
 #[tokio::test(start_paused = true)]
-async fn each_round_wakes_the_beat_and_follows_a_newly_advertised_interval() -> crate::Result<()> {
+async fn each_round_wakes_the_beat_and_a_new_connection_brings_its_interval() -> crate::Result<()> {
     let registry = Arc::new(Renewals::default());
     let (handle, mut peer) = RenewalPeer::new();
     let _held = held(&registry)?;
-    registry.advertised(TEN);
     let started = Instant::now();
     let stop = CancellationToken::new();
     let running = registry.run(&handle, stop.clone());
@@ -87,12 +86,16 @@ async fn each_round_wakes_the_beat_and_follows_a_newly_advertised_interval() -> 
         assert_eq!(at, TEN, "the first round is one interval in");
         assert!(beat_waiting(&registry).await, "the round woke the beat");
         answer(&peer, request, &run, true).await?;
-        registry.advertised(SEVEN);
+        tokio::time::sleep_until(started + TEN + FIVE).await;
+        peer.reconnect(SEVEN);
+        let (at, request, run) = next_batch(&mut peer, started).await?;
+        assert_eq!(at, TEN + FIVE, "a new connection renews at once");
+        answer(&peer, request, &run, true).await?;
         let (at, request, run) = next_batch(&mut peer, started).await?;
         assert_eq!(
             at,
-            TEN + SEVEN,
-            "the new interval counts from the last round"
+            TEN + FIVE + SEVEN,
+            "then at the interval its welcome announced"
         );
         answer(&peer, request, &run, true).await?;
         stop.cancel();
@@ -110,7 +113,6 @@ async fn a_refused_renewal_is_retried_one_answer_bound_after_it_was_sent() -> cr
     let registry = Arc::new(Renewals::default());
     let (handle, mut peer) = RenewalPeer::new();
     let held = held(&registry)?;
-    registry.advertised(TEN);
     let started = Instant::now();
     let stop = CancellationToken::new();
     let running = registry.run(&handle, stop.clone());
@@ -148,7 +150,6 @@ async fn a_refused_renewal_is_retried_one_answer_bound_after_it_was_sent() -> cr
 async fn an_idle_round_beats_alone_and_a_waiting_beat_is_stored_once() -> crate::Result<()> {
     let registry = Arc::new(Renewals::default());
     let (handle, mut peer) = RenewalPeer::new();
-    registry.advertised(TEN);
     let stop = CancellationToken::new();
     let running = tokio::spawn({
         let registry = Arc::clone(&registry);
@@ -177,7 +178,6 @@ async fn a_run_in_flight_renews_after_the_last_beat() -> crate::Result<()> {
     let registry = Arc::new(Renewals::default());
     let (handle, mut peer) = RenewalPeer::new();
     let _held = held(&registry)?;
-    registry.advertised(TEN);
     let started = Instant::now();
     let stop = CancellationToken::new();
     let running = registry.run(&handle, stop.clone());
@@ -195,73 +195,6 @@ async fn a_run_in_flight_renews_after_the_last_beat() -> crate::Result<()> {
     observed
 }
 
-/// A retry pending when a longer interval is advertised keeps its own due time, even
-/// when the old interval equalled the retry bound and the two cannot be told apart by
-/// their instants.
-#[tokio::test(start_paused = true)]
-async fn a_pending_retry_keeps_its_time_when_a_longer_interval_arrives() -> crate::Result<()> {
-    let registry = Arc::new(Renewals::default());
-    let (handle, mut peer) = RenewalPeer::new();
-    let _held = held(&registry)?;
-    registry.advertised(FIVE);
-    let started = Instant::now();
-    let stop = CancellationToken::new();
-    let running = registry.run(&handle, stop.clone());
-    let observed = async {
-        let (at, request, run) = next_batch(&mut peer, started).await?;
-        assert_eq!(at, FIVE);
-        answer(&peer, request, &run, false).await?;
-        registry.advertised(TEN);
-        let (at, request, run) = next_batch(&mut peer, started).await?;
-        assert_eq!(
-            at,
-            FIVE + FIVE,
-            "the retry is not pushed to the new interval"
-        );
-        answer(&peer, request, &run, true).await?;
-        let (at, request, run) = next_batch(&mut peer, started).await?;
-        assert_eq!(
-            at,
-            FIVE + FIVE + TEN,
-            "the round after it follows the new interval"
-        );
-        answer(&peer, request, &run, true).await?;
-        stop.cancel();
-        Ok::<(), crate::Error>(())
-    };
-    let (ran, observed) = tokio::join!(running, observed);
-    ran?;
-    observed
-}
-
-/// A pending retry moves up when a shorter interval is advertised: one interval when
-/// that is shorter than the answer bound.
-#[tokio::test(start_paused = true)]
-async fn a_pending_retry_moves_up_to_a_shorter_interval() -> crate::Result<()> {
-    let registry = Arc::new(Renewals::default());
-    let (handle, mut peer) = RenewalPeer::new();
-    let _held = held(&registry)?;
-    registry.advertised(TEN);
-    let started = Instant::now();
-    let stop = CancellationToken::new();
-    let running = registry.run(&handle, stop.clone());
-    let three = Duration::from_secs(3);
-    let observed = async {
-        let (at, request, run) = next_batch(&mut peer, started).await?;
-        assert_eq!(at, TEN);
-        answer(&peer, request, &run, false).await?;
-        registry.advertised(three);
-        let (at, request, run) = next_batch(&mut peer, started).await?;
-        assert_eq!(at, TEN + three, "the retry follows the shorter interval");
-        answer(&peer, request, &run, true).await?;
-        stop.cancel();
-        Ok::<(), crate::Error>(())
-    };
-    let (ran, observed) = tokio::join!(running, observed);
-    ran?;
-    observed
-}
-
 /// A batch answered three intervals after its round does not hold the beat back: the
 /// beat is woken each interval while the batch is out, as the gateway's two-interval
 /// silence limit needs.
@@ -269,9 +202,8 @@ async fn a_pending_retry_moves_up_to_a_shorter_interval() -> crate::Result<()> {
 async fn a_slow_batch_keeps_waking_the_beat_each_interval() -> crate::Result<()> {
     const ONE: Duration = Duration::from_secs(1);
     let registry = Arc::new(Renewals::default());
-    let (handle, mut peer) = RenewalPeer::new();
+    let (handle, mut peer) = RenewalPeer::with_interval(ONE);
     let _held = held(&registry)?;
-    registry.advertised(ONE);
     let started = Instant::now();
     let stop = CancellationToken::new();
     let running = registry.run(&handle, stop.clone());

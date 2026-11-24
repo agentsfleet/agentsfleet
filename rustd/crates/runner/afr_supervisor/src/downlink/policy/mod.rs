@@ -155,7 +155,6 @@ impl<'a> Heartbeat<'a> {
             match beaten {
                 Ok(policy) => {
                     retries = self.plane.runtime.endless();
-                    rounds.advertised(policy.interval);
                     publish(assignment, policy, halt);
                     backoff = match overtaken(&mut updates) {
                         Ok(overtaken) => overtaken.then_some(Duration::ZERO),

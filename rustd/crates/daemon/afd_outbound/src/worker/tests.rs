@@ -12,7 +12,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::{
     EVENT_CLAIM_COMPLETED, EVENT_CLAIM_FAILED, EVENT_CLAIM_STARTED, EVENT_WAKE_CLOSED,
-    EVENT_WAKE_REOPENED, EVENT_WAKE_SUBSCRIBE_FAILED, Via, Worker, claim_once, pinged, report,
+    EVENT_WAKE_SUBSCRIBE_FAILED, Via, Worker, claim_once, pinged, report,
 };
 use crate::delivery::Outgoing;
 use crate::error::query;
@@ -100,8 +100,9 @@ async fn a_wake_that_cannot_subscribe_is_logged() -> TestResult {
     Ok(())
 }
 
-/// A wake stream that ends is logged once and dropped, and returns at once so
-/// the loop scans and opens the subscription again on its backoff.
+/// A wake stream that ends, as it does when the bus shuts down, is logged once and
+/// dropped, and never reports a ping again: the loop goes on claiming on finished
+/// deliveries and lapses.
 #[tokio::test]
 async fn a_closed_wake_is_logged_dropped_and_returns() -> TestResult {
     let capture = Capture::install();
@@ -114,7 +115,7 @@ async fn a_closed_wake_is_logged_dropped_and_returns() -> TestResult {
 
     assert!(
         waited.is_ok(),
-        "a closed wake returns so the loop can reopen it"
+        "a closed wake returns once, so the loop logs it and goes on"
     );
     assert!(wake.is_none(), "the closed subscription is dropped");
     assert_unpinged(&capture, EVENT_WAKE_CLOSED);
@@ -252,102 +253,4 @@ async fn a_worker_with_no_wake_never_reports_a_ping() {
 
     assert!(waited.is_err(), "no subscription, no ping");
     assert!(wake.is_none());
-}
-
-/// A bus whose first wake subscription comes from `first`, which the test shuts to
-/// close it, and every later one from `then`.
-#[derive(Debug)]
-struct Swapping {
-    first: std::sync::Mutex<Option<afd_bus::Handle>>,
-    /// Subscribes refused after the first, before `then` serves.
-    refusals: std::sync::atomic::AtomicUsize,
-    then: afd_bus::Handle,
-}
-
-#[async_trait::async_trait]
-impl afd_bus::Bus for Swapping {
-    async fn publish(&self, subject: &Subject, payload: &str) -> afd_bus::Result<()> {
-        self.then.publish(subject, payload).await
-    }
-
-    async fn publish_batch(&self, subject: &Subject, payloads: &[String]) -> afd_bus::Result<()> {
-        self.then.publish_batch(subject, payloads).await
-    }
-
-    async fn subscribe(&self, subject: &Subject) -> afd_bus::Result<afd_bus::Subscription> {
-        let first = self
-            .first
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .take();
-        if let Some(first) = first {
-            return first.subscribe(subject).await;
-        }
-        let refusing = self
-            .refusals
-            .try_update(
-                std::sync::atomic::Ordering::AcqRel,
-                std::sync::atomic::Ordering::Acquire,
-                |left| left.checked_sub(1),
-            )
-            .is_ok();
-        if refusing {
-            // A transient refusal, as a timed-out subscribe is: the worker retries.
-            if let Err(elapsed) =
-                tokio::time::timeout(Duration::ZERO, std::future::pending::<()>()).await
-            {
-                return Err(elapsed.into());
-            }
-        }
-        self.then.subscribe(subject).await
-    }
-
-    async fn subscribe_thread_wakes(&self) -> afd_bus::Result<afd_bus::Subscription> {
-        self.then.subscribe_thread_wakes().await
-    }
-
-    async fn shutdown(&self) -> afd_bus::Result<()> {
-        self.then.shutdown().await
-    }
-}
-
-/// A wake subscription that closes is opened again on a backoff: a refused retry is
-/// logged with its attempt, and the reopen that follows with the next.
-#[tokio::test(start_paused = true)]
-async fn a_closed_wake_is_opened_again_on_a_backoff() -> TestResult {
-    let capture = Capture::install();
-    let (first, _first_server) = afd_bus::test_util::detached()?;
-    let (then, _then_server) = afd_bus::test_util::detached()?;
-    let bus = afd_bus::Handle::new(Swapping {
-        first: std::sync::Mutex::new(Some(first.clone())),
-        refusals: std::sync::atomic::AtomicUsize::new(1),
-        then,
-    });
-    let worker = Worker::new(
-        afd_db::test_util::unreachable_db(),
-        bus,
-        posters(),
-        Entropy::new(),
-    );
-    let closing = async {
-        while capture
-            .events()
-            .iter()
-            .all(|record| record.field("event") != Some(EVENT_CLAIM_STARTED))
-        {
-            tokio::time::sleep(Duration::from_millis(5)).await;
-        }
-        first.shutdown().await
-    };
-    let (closed, ()) = tokio::join!(
-        closing,
-        run_until_logged(worker, &capture, EVENT_WAKE_REOPENED)
-    );
-    closed?;
-    assert_unpinged(&capture, EVENT_WAKE_CLOSED);
-    let refused = capture.only(EVENT_WAKE_SUBSCRIBE_FAILED);
-    assert_eq!(refused.field("attempt"), Some("1"));
-    let reopened = capture.only(EVENT_WAKE_REOPENED);
-    assert_eq!(reopened.field("attempt"), Some("2"));
-    Ok(())
 }

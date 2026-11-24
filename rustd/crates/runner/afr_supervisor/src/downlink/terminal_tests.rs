@@ -239,6 +239,7 @@ async fn events_after(
         queues,
         budget: Budget::default(),
         ceilings: af_stream::Ceilings::PROTOCOL,
+        interval: af_core::timing::HEARTBEAT_INTERVAL,
         stop: stop.clone(),
     };
     let mut dispatch = Dispatch {

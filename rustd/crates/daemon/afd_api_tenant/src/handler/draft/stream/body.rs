@@ -216,7 +216,7 @@ async fn wait(watch: &mut Watch, heartbeat_at: Instant) -> Waited {
         // reads again once it reopens the subscription.
         return tokio::select! {
             () = tokio::time::sleep_until(heartbeat_at) => Waited::Heartbeat,
-            () = afd_sse::sleep_until_some(retry_at) => Waited::Retry,
+            () = afd_bus::sleep_until_some(retry_at) => Waited::Retry,
             wake = watch.members.changed() => members(wake),
         };
     };

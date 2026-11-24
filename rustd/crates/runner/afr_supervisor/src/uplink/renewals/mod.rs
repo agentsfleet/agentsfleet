@@ -44,8 +44,6 @@ pub(crate) struct Renewals {
     /// while a beat is in flight or backing off is kept for its next turn, and a session
     /// with no heartbeat loop loses nothing.
     beat: Notify,
-    /// The interval the daemon last advertised on a heartbeat answer.
-    interval: watch::Sender<Duration>,
 }
 
 impl Default for Renewals {
@@ -54,7 +52,6 @@ impl Default for Renewals {
             runs: DashMap::new(),
             slots: Arc::new(Semaphore::new(RUNS_MAX)),
             beat: Notify::new(),
-            interval: watch::Sender::new(af_core::timing::HEARTBEAT_INTERVAL),
         }
     }
 }
@@ -130,16 +127,12 @@ impl Renewals {
         &self.beat
     }
 
-    /// Takes the interval a heartbeat answer advertised for the rounds after it.
-    pub(crate) fn advertised(&self, interval: Duration) {
-        self.interval.send_replace(interval);
-    }
-
     /// The runner's one clock. A round is due one heartbeat interval after the previous
     /// round was sent, and never before that round's answers are in. Each round wakes the
     /// heartbeat loop and renews the runs held. A round that failed, or in which a run was
     /// refused for now, is followed by another one answer bound after it was sent, or one
-    /// interval when that is shorter. A new connected session starts a round at once.
+    /// interval when that is shorter. A new connected session starts a round at once, at
+    /// the interval its welcome announced.
     ///
     /// A batch still out an interval after its round keeps waking the beat each interval.
     /// The gateway closes a connection that sends no beat for two intervals, and a batch
@@ -147,33 +140,29 @@ impl Renewals {
     pub(crate) async fn run(&self, handle: &StreamHandle, stop: CancellationToken) -> Result<()> {
         let mut sessions = handle.session.clone();
         let mut previous = sessions.borrow_and_update().clone();
-        let mut advertised = self.interval.subscribe();
         let mut sent = Instant::now();
-        let mut period = *advertised.borrow_and_update();
+        let mut period = previous
+            .as_ref()
+            .map_or(af_core::timing::HEARTBEAT_INTERVAL, |session| {
+                session.interval
+            });
         let mut due = sent + period;
-        // A retry after a refusal keeps its own, shorter, due time when the interval moves.
-        let mut retrying = false;
         loop {
             tokio::select! {
                 biased;
                 () = stop.cancelled() => return Ok(()),
-                changed = advertised.changed() => {
-                    if changed.is_err() { return Ok(()); }
-                    // A new interval re-arms the round from the last one sent: a regular
-                    // round one interval on, a retry one answer bound on or one interval
-                    // when that is shorter.
-                    period = *advertised.borrow_and_update();
-                    due = next_due(sent, period, retrying);
-                    continue;
-                }
                 changed = sessions.changed() => {
                     if changed.is_err() { return Ok(()); }
                     let current = sessions.borrow_and_update().clone();
                     let unchanged = current.as_ref().zip(previous.as_ref())
                         .is_some_and(|(current, previous)| Arc::ptr_eq(current, previous));
-                    let connected = current.as_ref().is_some_and(|session| !session.stop.is_cancelled());
+                    let connected = current.as_ref().filter(|session| !session.stop.is_cancelled());
+                    let Some(session) = connected.filter(|_| !unchanged) else {
+                        previous = current;
+                        continue;
+                    };
+                    period = session.interval;
                     previous = current;
-                    if unchanged || !connected { continue; }
                     // Recovery must not spend another round waiting to renew live work.
                 }
                 () = tokio::time::sleep_until(due) => {}
@@ -194,8 +183,7 @@ impl Renewals {
                     }
                 }
             };
-            period = *advertised.borrow_and_update();
-            retrying = match renewed {
+            let retrying = match renewed {
                 Ok(Settled::All) => false,
                 Ok(Settled::RetryLater) => true,
                 Err(error) if error.is_retryable() => {

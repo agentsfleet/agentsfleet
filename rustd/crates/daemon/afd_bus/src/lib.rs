@@ -163,6 +163,17 @@ impl Handle {
     }
 }
 
+/// Sleeps until `at`, or never when there is nothing to wait for.
+///
+/// A `select!` arm with no deadline then simply never fires. Every reader of a wake that
+/// may hold a deadline, a retry or a lapse, waits on it through this.
+pub async fn sleep_until_some(at: Option<tokio::time::Instant>) {
+    match at {
+        Some(at) => tokio::time::sleep_until(at).await,
+        None => std::future::pending().await,
+    }
+}
+
 /// Gaps every replica's subscriptions once, when a daemon boots.
 ///
 /// A daemon that died between a commit and its publish took that notice with it;

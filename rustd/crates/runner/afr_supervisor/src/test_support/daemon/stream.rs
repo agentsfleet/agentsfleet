@@ -26,13 +26,15 @@ use crate::{
     },
 };
 
-/// The scripted stream, reading daemon policy frames a test pushes through `policy`.
+/// The scripted stream, reading daemon policy frames a test pushes through `policy`;
+/// each connection's welcome announces `interval`.
 pub(super) fn start(
     api: &Arc<dyn RunnerApi>,
     stop: CancellationToken,
     policy: Arc<watch::Sender<Option<Arc<OwnedFrame>>>>,
+    interval: std::time::Duration,
 ) -> StreamHandle {
-    let initial = session(&stop);
+    let initial = session(&stop, interval);
     let (current, session) = watch::channel(Some(Arc::clone(&initial.0)));
     let (renewal_owner, renewal_session) = watch::channel(Some(Arc::clone(&initial.0)));
     let policies = policy.subscribe();
@@ -65,7 +67,10 @@ pub(super) fn start(
     handle
 }
 
-fn session(stop: &CancellationToken) -> (Arc<SessionSender>, Receivers) {
+fn session(
+    stop: &CancellationToken,
+    interval: std::time::Duration,
+) -> (Arc<SessionSender>, Receivers) {
     let (queues, receivers) = Queues::new();
     let (budget, _) = Budget::duplex(MemoryLimits::default());
     (
@@ -74,6 +79,7 @@ fn session(stop: &CancellationToken) -> (Arc<SessionSender>, Receivers) {
             budget,
             requests: Requests::new(),
             ceilings: af_stream::Ceilings::PROTOCOL,
+            interval,
             stop: stop.child_token(),
         }),
         receivers,
@@ -121,7 +127,7 @@ async fn connections(
         if stop.is_cancelled() || current.is_closed() {
             return;
         }
-        connected = session(&stop);
+        connected = session(&stop, sender.interval);
     }
 }
 

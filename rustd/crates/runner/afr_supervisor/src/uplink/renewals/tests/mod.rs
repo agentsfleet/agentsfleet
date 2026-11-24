@@ -13,7 +13,8 @@ mod recovery;
 #[tokio::test(start_paused = true)]
 async fn a_held_run_renews_once_per_heartbeat_interval() -> crate::Result<()> {
     let registry = Arc::new(Renewals::default());
-    let (handle, mut peer) = RenewalPeer::new();
+    // The daemon's welcome announced a 1 s interval.
+    let (handle, mut peer) = RenewalPeer::with_interval(Duration::from_secs(1));
     let run = Uuid7::parse(crate::test_util::RUN_ID)?;
     let started = Instant::now();
     let _registration = registry.register(
@@ -21,8 +22,6 @@ async fn a_held_run_renews_once_per_heartbeat_interval() -> crate::Result<()> {
         Arc::new(afr_agent::Meter::default()),
         started + Duration::from_secs(28),
     )?;
-    // The daemon advertised a 1 s interval on its last heartbeat answer.
-    registry.advertised(Duration::from_secs(1));
     let stop = tokio_util::sync::CancellationToken::new();
     let running = registry.run(&handle, stop.clone());
     let observed = async {
@@ -169,16 +168,14 @@ struct RenewalPeer {
 }
 
 impl RenewalPeer {
+    /// A peer whose session's welcome announced the default interval.
     fn new() -> (super::super::StreamHandle, Self) {
-        let (queues, outgoing) = super::super::queues::Queues::new();
-        let (_, output) = af_stream::Budget::duplex(af_stream::MemoryLimits::default());
-        let sender = Arc::new(super::super::SessionSender {
-            requests: crate::downlink::pending::Requests::new(),
-            queues,
-            budget: output,
-            ceilings: af_stream::Ceilings::PROTOCOL,
-            stop: tokio_util::sync::CancellationToken::new(),
-        });
+        Self::with_interval(af_core::timing::HEARTBEAT_INTERVAL)
+    }
+
+    /// A peer whose session's welcome announced `interval`.
+    fn with_interval(interval: Duration) -> (super::super::StreamHandle, Self) {
+        let (sender, outgoing) = Self::session(interval);
         let (current, session) = tokio::sync::watch::channel(Some(Arc::clone(&sender)));
         let (policies, watching) = tokio::sync::watch::channel(None);
         let handle = super::super::StreamHandle::new(
@@ -195,6 +192,34 @@ impl RenewalPeer {
                 _policies: policies,
             },
         )
+    }
+
+    /// A connected session whose welcome announced `interval`, and what it sends.
+    fn session(
+        interval: Duration,
+    ) -> (
+        Arc<super::super::SessionSender>,
+        super::super::queues::Receivers,
+    ) {
+        let (queues, outgoing) = super::super::queues::Queues::new();
+        let (_, output) = af_stream::Budget::duplex(af_stream::MemoryLimits::default());
+        let sender = Arc::new(super::super::SessionSender {
+            requests: crate::downlink::pending::Requests::new(),
+            queues,
+            budget: output,
+            ceilings: af_stream::Ceilings::PROTOCOL,
+            interval,
+            stop: tokio_util::sync::CancellationToken::new(),
+        });
+        (sender, outgoing)
+    }
+
+    /// Replaces the session with a new connection whose welcome announced `interval`.
+    fn reconnect(&mut self, interval: Duration) {
+        let (sender, outgoing) = Self::session(interval);
+        self.sender = Arc::clone(&sender);
+        self.outgoing = outgoing;
+        self.current.send_replace(Some(sender));
     }
 
     /// Read all partitions before answering in reverse order, retaining only small replies.

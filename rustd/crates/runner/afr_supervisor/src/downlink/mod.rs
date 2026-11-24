@@ -222,6 +222,7 @@ impl Downlink {
             queues,
             budget,
             ceilings: connected.ceilings,
+            interval: connected.interval,
             stop: stop.clone(),
         });
         let (frames_tx, mut frames) = mpsc::channel(16);

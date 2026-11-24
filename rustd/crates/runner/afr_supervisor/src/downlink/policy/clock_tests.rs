@@ -13,20 +13,25 @@ use tokio_util::sync::CancellationToken;
 use super::tests::{KEEP_GOING, answer, idle_holds, policy, probe};
 use super::{Assignment, Heartbeat};
 use crate::halt::Halt;
-use crate::test_support::{Answer, plane};
+use crate::test_support::{Answer, plane_every};
 
-/// Runs the heartbeat loop over a plane that answers each beat with `answering`, until
-/// `until` has passed, then stops; answers when each beat was sent, from the start.
+/// Runs the heartbeat loop over a plane whose welcome announces `every` and that answers
+/// each beat with `answering`, until `until` has passed, then stops; answers when each
+/// beat was sent, from the start.
 async fn beats_until(
+    every: Duration,
     until: Duration,
     answering: impl Fn(usize) -> Answer + Send + Sync + 'static,
     during: impl AsyncFnOnce(&crate::test_support::Calls),
 ) -> Vec<Duration> {
-    beats_and_workers_until(until, answering, during).await.0
+    beats_and_workers_until(every, until, answering, during)
+        .await
+        .0
 }
 
 /// As [`beats_until`], and the worker count the last published assignment carries.
 async fn beats_and_workers_until(
+    every: Duration,
     until: Duration,
     answering: impl Fn(usize) -> Answer + Send + Sync + 'static,
     during: impl AsyncFnOnce(&crate::test_support::Calls),
@@ -34,7 +39,7 @@ async fn beats_and_workers_until(
     let started = Instant::now();
     let stamps = Arc::new(Mutex::new(Vec::new()));
     let stamped = Arc::clone(&stamps);
-    let (plane, calls) = plane(move |_call| {
+    let (plane, calls) = plane_every(every, move |_call| {
         let mut beats = stamped
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -73,6 +78,7 @@ fn ok(interval_ms: u32) -> Answer {
 #[tokio::test(start_paused = true)]
 async fn a_pushed_policy_does_not_postpone_the_next_beat() {
     let beats = beats_until(
+        Duration::from_secs(10),
         Duration::from_millis(10_500),
         |_beat| ok(10_000),
         async |calls| {
@@ -99,6 +105,7 @@ async fn a_pushed_policy_does_not_postpone_the_next_beat() {
 #[tokio::test(start_paused = true)]
 async fn a_round_due_during_a_beat_in_flight_still_beats_once() {
     let beats = beats_until(
+        Duration::from_secs(3),
         Duration::from_millis(9_500),
         |beat| {
             let answered = ok(3_000);
@@ -130,6 +137,7 @@ async fn a_round_due_during_a_beat_in_flight_still_beats_once() {
 #[tokio::test(start_paused = true)]
 async fn a_policy_pushed_during_a_beat_is_answered_by_another_beat() {
     let (beats, workers) = beats_and_workers_until(
+        Duration::from_secs(10),
         Duration::from_millis(2_500),
         |beat| match (beat, ok(10_000)) {
             // The first beat is answered at 2 s; the policy below lands at 1 s.
@@ -166,6 +174,7 @@ async fn a_policy_pushed_during_a_beat_is_answered_by_another_beat() {
 #[tokio::test(start_paused = true)]
 async fn a_frame_that_is_no_policy_pushed_during_a_beat_stops_the_runner() {
     let (beats, _workers) = beats_and_workers_until(
+        Duration::from_secs(10),
         Duration::from_secs(30),
         |beat| match (beat, ok(10_000)) {
             (1, Answer::Reply(bytes)) => Answer::Late(Duration::from_secs(2), bytes),

@@ -45,14 +45,6 @@ pub use crate::frame::{
 pub use crate::live::Live;
 pub use crate::resubscribe::{Link, Wake};
 
-/// Sleeps until `at`; never when there is nothing to wait for, so a `select!` arm
-/// with no deadline simply never fires.
-pub async fn sleep_until_some(at: Option<tokio::time::Instant>) {
-    match at {
-        Some(at) => tokio::time::sleep_until(at).await,
-        None => std::future::pending().await,
-    }
-}
 pub use crate::stream_limit::{MAX_STREAMS_DEFAULT, StreamLimit, StreamPermit};
 pub use crate::tail::tail;
 
