@@ -66,7 +66,8 @@ test.describe("a private fleet setup chat", () => {
 async function recoverFromHistoryAndReload(page: Page, workspaceId: string, draftId: string): Promise<void> {
   await openDraft(page, workspaceId, draftId);
   await page.goto(workspaceHref(workspaceId, NEW_FLEET));
-  await historyEntry(page, draftId).click();
+  const unfinished = page.getByRole("region", {name: "Unfinished setups", exact: true});
+  await historyEntry(unfinished, draftId).click();
   await expect(page).toHaveURL(new RegExp(`\\?draft=${draftId}$`));
   await expect(setupSummary(page)).toBeVisible();
   await page.reload();

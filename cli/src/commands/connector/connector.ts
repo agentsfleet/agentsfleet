@@ -1,3 +1,4 @@
+import { STATUS_TONES } from "../../output/format.ts";
 // Connector inspection commands. These are read-only mirrors of the dashboard
 // catalog and per-provider status routes.
 
@@ -95,9 +96,9 @@ export const connectorListEffectFromArgs = (
     yield* output.printEntityTable(
       {
         name: { key: "display_name", label: "NAME" },
-        id: { key: FIELD_PROVIDER, label: "PROVIDER" },
+        id: { key: FIELD_PROVIDER },
         domain: [
-          { key: FIELD_STATE, label: "STATE" },
+          { key: FIELD_STATE, label: "STATE", tones: STATUS_TONES },
           { key: "hint", label: "NEXT ACTION" },
           { key: "archetype", label: "KIND" },
         ],

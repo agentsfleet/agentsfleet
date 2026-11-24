@@ -19,7 +19,7 @@ The founding steps use this page's [release commands](#steps) too.
 
 ## Before you begin
 
-1. Confirm founding step 09 has green evidence. If not, stop and use [chronological setup](../../README.md#chronological-setup).
+1. Confirm founding step 09 has green evidence. If not, stop and use [chronological setup](../../hosted/README.md#chronological-setup).
 2. Run only read-only checks:
 
    ```bash

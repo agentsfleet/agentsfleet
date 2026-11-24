@@ -157,7 +157,7 @@ export const approvalsListEffectFromArgs = (
     yield* output.printEntityTable(
       {
         name: { key: GATE_FIELD.fleet, label: GATE_COLUMN.fleet },
-        id: { key: GATE_FIELD.gate, label: GATE_COLUMN.gate },
+        id: { key: GATE_FIELD.gate },
         domain: [
           { key: GATE_FIELD.kind, label: GATE_COLUMN.kind },
           { key: GATE_FIELD.status, label: GATE_COLUMN.status },

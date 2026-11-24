@@ -153,7 +153,8 @@ describe("doctorEffect — binding check token-failure branch", () => {
     const exit = await Effect.runPromiseExit(program);
     expect(Exit.isSuccess(exit) ? exit.value : -1).toBe(1);
     const joined = rec.stdout.join("\n");
-    expect(joined).toMatch(/\[FAIL\] workspace_binding_valid/);
+    expect(joined).toContain("✕ Could not list fleets in this workspace");
+    expect(joined).toContain("not authenticated");
     expect(joined).toMatch(/not authenticated/);
   });
 });

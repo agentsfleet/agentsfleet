@@ -161,7 +161,7 @@ describe("automatic terminal authorization", () => {
     expect(boundary.verifies).toBe(1);
     expect(boundary.minted).toBe(1);
     expect(boundary.stored).toBe(boundary.credential);
-    expect(await boundary.responseText()).toContain("Unleash your agents.");
+    expect(await boundary.responseText()).toContain("Authorization granted");
     expect(boundary.rec.stdout.some((line) => line.includes("signed in as Person — Team"))).toBe(true);
   });
 

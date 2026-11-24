@@ -47,7 +47,9 @@ describe("billingShowEffectFromArgs — grouped events and pagination", () => {
     );
     await runWith(program);
     const out = rec.stdout.join("\n");
-    expect(out).toMatch(/Last 1 activities drained credits:/);
+    expect(out).toContain("Last 1 activity");
+    expect(out).toContain("Balance  $5.00");
+    expect(out).not.toContain("Stripe purchase");
     expect(out).toMatch(/TABLE:1/);
   });
 

@@ -1,3 +1,4 @@
+import { STATUS_TONES } from "../../output/format.ts";
 // Workspace command Effects — create / list / use / show / secrets / delete.
 //
 // Only `workspace create` hits the API (POST /v1/workspaces). The other five
@@ -49,7 +50,7 @@ import { AGE_KEY, EMPTY_CELL } from "../../output/index.ts";
 
 const WORKSPACE_SHOWN = "Workspace" as const;
 const WORKSPACES_LISTED = "Workspaces" as const;
-const WORKSPACE_STATUS_ACTIVE = "active" as const;
+const WORKSPACE_SELECTED = "Selected";
 
 const WORKSPACE_ID_FIELD = "workspace_id";
 const WORKSPACE_LOCAL_REMOVAL_FIELD = "removed_from_local_state";
@@ -166,8 +167,8 @@ export const workspaceListEffect: Effect.Effect<
   yield* output.printEntityTable(
     {
       name: { key: "name", label: "NAME" },
-      id: { key: WORKSPACE_ID_FIELD, label: "WORKSPACE" },
-      domain: [{ key: "status", label: "STATUS" }],
+      id: { key: WORKSPACE_ID_FIELD },
+      domain: [{ key: "status", label: "STATUS", tones: STATUS_TONES }],
     },
     state.items.map((item) => ({
       name: item.name ?? EMPTY_CELL,
@@ -176,7 +177,7 @@ export const workspaceListEffect: Effect.Effect<
       // to learn. A workspace has no server-side status, so "which one am I
       // in" is the only status there is to report.
       status: item.workspace_id === state.current_workspace_id
-        ? WORKSPACE_STATUS_ACTIVE
+        ? WORKSPACE_SELECTED
         : EMPTY_CELL,
       [AGE_KEY]: item.created_at,
     })),
@@ -273,10 +274,10 @@ export const workspaceShowEffectFromArgs = (
     }
     yield* output.printSection("Workspace");
     yield* output.printKeyValue({
-      workspace_id: detail.workspace_id,
-      active: detail.active ? "yes" : "no",
-      name: detail.name ?? EMPTY_CELL,
-    });
+      ID: detail.workspace_id,
+      Name: detail.name ?? EMPTY_CELL,
+      Status: detail.active ? WORKSPACE_SELECTED : EMPTY_CELL,
+    }, { Status: STATUS_TONES });
   });
 
 export const workspaceDeleteEffectFromArgs = (

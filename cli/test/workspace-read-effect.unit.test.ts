@@ -42,11 +42,11 @@ describe("workspaceListEffect", () => {
       Effect.provide(analyticsLayer(rec)),
     );
     await runWith(program);
-    expect(rec.stdout[0]).toContain(`"status":"active"`);
+    expect(rec.stdout[0]).toContain(`"status":"Selected"`);
     expect(rec.stdout[0]).toContain(`"workspace_id":"${WS_ID}"`);
     // The row that is not the current workspace reports the empty cell, not a
     // second status word — there is only one workspace you are in.
-    expect(rec.stdout[1]).not.toContain(`"status":"active"`);
+    expect(rec.stdout[1]).not.toContain(`"status":"Selected"`);
     expect(rec.events[0]?.event).toBe("workspace_list_viewed");
     expect(rec.events[0]?.properties).toEqual({ workspace_count: 2 });
   });
@@ -230,8 +230,7 @@ describe("workspaceShowEffectFromArgs", () => {
     );
     await runWith(program);
     expect(rec.stdout).toContain("# Workspace");
-    expect(rec.stdout.some((line) => line.includes(`workspace_id:`))).toBe(
-      true,
-    );
+    expect(rec.stdout).toContain(`  ID: ${WS_ID}`);
+    expect(rec.stdout).toContain("  Status: Selected");
   });
 });

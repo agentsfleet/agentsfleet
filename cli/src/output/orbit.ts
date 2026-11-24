@@ -12,6 +12,33 @@ const CAPTION_ROW = 9;
 const CAPTIONS = { idle: "Just floating.", working: "On the lookout.", done: "A little victory dance." } as const;
 const TENTACLE_LENGTHS = [10, 14, 12, 14, 10] as const;
 
+const MINI_GLYPHS: Readonly<Partial<Record<string, OrbitColor>>> = {
+  L: "L", M: "M", B: "B", W: "W", D: "D", P: "P", T: "T",
+};
+const pixels = (row: string): Pixel[] => Array.from(row, glyph => MINI_GLYPHS[glyph] ?? null);
+const pixelPair = (top: string, bottom: string) => [pixels(top), pixels(bottom)] as const;
+const MINI_TOP = "...LLLLL...";
+const MINI_BELL = [
+  pixelPair(MINI_TOP, "..LMMMMMB.."),
+  pixelPair(".WMMMMMMMB.", ".MMDDMDDMM."),
+  pixelPair(".LPLMMDLPL.", "..LLLLLLL.."),
+];
+const MINI_TENTACLES = [
+  pixelPair("...M.T.M...", "...T..MM..."),
+  pixelPair("...T.M.T...", "...MM..M..."),
+] as const;
+export const MINI_ORBIT_COLUMNS = MINI_TOP.length;
+export const MINI_ORBIT_ROWS = MINI_BELL.length + 1;
+
+/** Orbit's waiting pose in four terminal rows, using the full sprite's palette. */
+export function miniOrbitFrame(tick: number, label: string, opts: StyleOpts): readonly string[] {
+  const pose = Math.floor(tick / 3) % 2 === 0 ? MINI_TENTACLES[0] : MINI_TENTACLES[1];
+  return [...MINI_BELL, pose].map(([top, bottom], row) => {
+    const caption = row === 1 ? `   ${label}` : "";
+    return orbitRow(top, bottom, opts) + caption;
+  });
+}
+
 export function orbitFrame(tick: number, state: PetState, opts: StyleOpts): readonly string[] {
   const cycle = tick % CYCLE_FRAMES;
   const pose = { angle: cycle / CYCLE_FRAMES * Math.PI * 2, working: state === PET_STATE.working,

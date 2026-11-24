@@ -1,0 +1,16 @@
+[Unit]
+Description=agentsfleet Dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=agentsfleet-web
+WorkingDirectory=/srv/agentsfleet/ui/packages/app
+Environment=AGENTSFLEET_UI_ENV_FILE=/etc/agentsfleet/dashboard.env
+ExecStart=/usr/local/bin/bun run start --hostname 127.0.0.1 --port 3100
+Restart=on-failure
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

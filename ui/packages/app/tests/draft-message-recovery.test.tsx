@@ -54,7 +54,7 @@ it("rechecks the client before admitting a retry from a stale eligible render", 
   render(<DraftConversation workspace={CHAT_PROPS.workspace} client={client} view={client.getSnapshot()} />);
   const pending = Promise.withResolvers<Response>();
   fixture.fetch.mockImplementationOnce(() => pending.promise);
-  const renaming = client.rename("Another mutation owns this conversation");
+  const renaming = client.rename(DRAFT.id, "Another mutation owns this conversation");
   expect(client.getSnapshot().busy).toBe(true);
   const writes = fixture.writes().length;
   await act(async () => fireEvent.click(screen.getByRole("button", {name: RETRY})));

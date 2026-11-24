@@ -52,6 +52,7 @@ it("shows each fleet next to its private setup conversation and includes unfinis
   expect(screen.queryByText("Saved setup must not duplicate fleet")).toBeNull();
   expect(screen.queryByRole("link", {name: "Unfinished fleet edit"})).toBeNull();
   const edit = screen.getByRole("link", {name: `Edit ${active.name}`});
+  expect(edit.parentElement).toBe(fleet.parentElement);
   expect(edit.getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/new?draft=${EDIT_ID}`);
   expect(edit.lastElementChild?.getAttribute("width")).toBe("14");
   expect(edit.lastElementChild?.getAttribute("aria-hidden")).toBe("true");

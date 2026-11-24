@@ -16,6 +16,8 @@ import {
   formatSection,
   formatEvidence,
   type FormatOpts,
+  type FieldTones,
+  type ValueTones,
   type TableColumn,
   type TableRow,
   type KeyValueRows,
@@ -47,20 +49,20 @@ export interface WriteStream {
 // Stream-writing helpers. Mirror the existing printSection / printKeyValue /
 // printTable signatures in src/ui-theme.js so call sites only update their
 // imports, not their argument shape.
-export function printSection(stream: WriteStream, title: string): void {
-  stream.write(formatSection(title));
+export function printSection(stream: WriteStream, title: string, opts?: FormatOpts): void {
+  stream.write(formatSection(title, opts));
 }
 
-export function printKeyValue(stream: WriteStream, rows: KeyValueRows): void {
-  stream.write(formatKeyValue(rows));
+export function printKeyValue(stream: WriteStream, rows: KeyValueRows, opts?: FormatOpts, tones?: FieldTones): void {
+  stream.write(formatKeyValue(rows, opts, tones));
 }
 
-export function printTable(stream: WriteStream, columns: ReadonlyArray<TableColumn>, rows: ReadonlyArray<TableRow>): void {
-  stream.write(formatTable(columns, rows));
+export function printTable(stream: WriteStream, columns: ReadonlyArray<TableColumn>, rows: ReadonlyArray<TableRow>, opts?: FormatOpts): void {
+  stream.write(formatTable(columns, rows, opts));
 }
 
-export function printEntityTable(stream: WriteStream, spec: EntityTableSpec, rows: ReadonlyArray<TableRow>): void {
-  stream.write(entityTable(spec, rows));
+export function printEntityTable(stream: WriteStream, spec: EntityTableSpec, rows: ReadonlyArray<TableRow>, opts?: FormatOpts): void {
+  stream.write(entityTable(spec, rows, opts));
 }
 
 export {
@@ -84,6 +86,8 @@ export {
   ColorMode,
   type StyleOpts,
   type FormatOpts,
+  type FieldTones,
+  type ValueTones,
   type TableColumn,
   type TableRow,
   type KeyValueRows,

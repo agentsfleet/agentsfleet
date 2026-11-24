@@ -4,7 +4,7 @@
 // signals, they're chrome.
 
 import { instantMs, isInstant } from "../lib/instant.ts";
-import { palette, type StyleOpts } from "./palette.ts";
+import { palette, type StyleOpts, type Token } from "./palette.ts";
 
 const COLUMN_GAP = "  ";
 
@@ -73,7 +73,7 @@ const AGE_COLUMN_IS_APPENDED =
   "the age column is appended by entityColumns — a domain column cannot claim it";
 
 /**
- * One table shape: the thing's name, then its identifier, then what it is,
+ * One table shape: the thing's identifier, then its name, then what it is,
  * then how old it is.
  *
  * The groups are separate fields rather than one array because that is what
@@ -85,7 +85,7 @@ const AGE_COLUMN_IS_APPENDED =
 export interface EntityTableSpec {
   /** Absent only where the entity genuinely has none — a schedule, say. */
   readonly name?: TableColumn;
-  readonly id?: TableColumn;
+  readonly id?: Omit<TableColumn, "label">;
   readonly domain: ReadonlyArray<TableColumn>;
   /**
    * The row field the age reads, where it is not [`AGE_KEY`].
@@ -119,7 +119,22 @@ export interface TableColumn {
   readonly key: string;
   readonly label: string;
   readonly align?: typeof ALIGN_LEFT | typeof ALIGN_RIGHT;
+  readonly tones?: ValueTones;
 }
+
+export type ValueTones = Readonly<Record<string, Token>>;
+export type FieldTones = Readonly<Record<string, ValueTones>>;
+
+/** Shared by table and detail status fields. Unmapped states use normal text. */
+export const STATUS_TONES = {
+  active: "evidence",
+  online: "success",
+  offline: "error",
+  connected: "success",
+  Ready: "success",
+  Selected: "success",
+  Default: "success",
+} as const satisfies ValueTones;
 
 export type TableRow = Record<string, unknown>;
 export type KeyValueRows =
@@ -162,7 +177,7 @@ export function formatEvidence(
   return `${label} ${source} ${quoted}`;
 }
 
-export function formatKeyValue(rows: KeyValueRows, opts?: FormatOpts): string {
+export function formatKeyValue(rows: KeyValueRows, opts?: FormatOpts, tones?: FieldTones): string {
   const entries: ReadonlyArray<readonly [string, unknown]> = Array.isArray(rows)
     ? (rows as ReadonlyArray<readonly [string, unknown]>)
     : Object.entries(rows as Record<string, unknown>);
@@ -171,7 +186,7 @@ export function formatKeyValue(rows: KeyValueRows, opts?: FormatOpts): string {
   const sep = palette.subtle("  ·  ", opts);
   const lines = entries.map(([key, value]) => {
     const label = palette.subtle(safeCell(key).padEnd(width), opts);
-    return `  ${label}${sep}${safeCell(value)}`;
+    return `  ${label}${sep}${paintValue(safeCell(value), tones?.[key], opts)}`;
   });
   return `${lines.join(LITERAL)}\n`;
 }
@@ -201,13 +216,16 @@ function renderRow(
   widths: ReadonlyArray<number>,
   row: TableRow,
   alignments: ReadonlyArray<typeof ALIGN_LEFT | typeof ALIGN_RIGHT>,
+  opts: FormatOpts | undefined,
 ): string {
   return columns
     .map((c, i) => {
-      const cell = safeCell(row[c.key]);
+      const value = safeCell(row[c.key]);
+      const styled = paintValue(value, c.tones, opts);
+      const padding = " ".repeat((widths[i] ?? 0) - value.length);
       return alignments[i] === ALIGN_RIGHT
-        ? cell.padStart(widths[i] ?? 0)
-        : cell.padEnd(widths[i] ?? 0);
+        ? padding + styled
+        : styled + padding;
     })
     .join(COLUMN_GAP);
 }
@@ -228,7 +246,7 @@ function renderHorizontal(
   );
   const lines = [renderHeader(columns, widths, opts), renderRule(widths, opts)];
   for (const row of rows)
-    lines.push(renderRow(columns, widths, row, alignments));
+    lines.push(renderRow(columns, widths, row, alignments, opts));
   return `${lines.join(LITERAL)}\n`;
 }
 
@@ -243,7 +261,7 @@ function renderVertical(
   const blocks = rows.map((row) => {
     const lines = columns.map((c) => {
       const label = palette.subtle(c.label.padEnd(labelWidth), opts);
-      const value = safeCell(row[c.key]);
+      const value = paintValue(safeCell(row[c.key]), c.tones, opts);
       return `  ${label}  ${value}`;
     });
     return lines.join(LITERAL);
@@ -272,11 +290,16 @@ export function entityColumns(spec: EntityTableSpec): ReadonlyArray<TableColumn>
     if (column.key === AGE_KEY || column.label === AGE_LABEL)
       throw new Error(AGE_COLUMN_IS_APPENDED);
   return [
+    ...(spec.id === undefined ? [] : [{...spec.id, label: "ID"}]),
     ...(spec.name === undefined ? [] : [spec.name]),
-    ...(spec.id === undefined ? [] : [spec.id]),
     ...spec.domain,
     ...(spec.ageKey === null ? [] : [{ key: AGE_KEY, label: AGE_LABEL }]),
   ];
+}
+
+function paintValue(value: string, tones: ValueTones | undefined, opts: FormatOpts | undefined): string {
+  const tone = tones && Object.hasOwn(tones, value) ? tones[value] : undefined;
+  return tone ? palette[tone](value, opts) : value;
 }
 
 /** [`formatTable`] over [`entityColumns`], with the age rendered per row. */

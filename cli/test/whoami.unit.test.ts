@@ -71,7 +71,7 @@ const outputLayer = (
       }),
   });
 
-const credentialsLayer = (token: string | null): Layer.Layer<Credentials> =>
+const credentialsLayer = (token: string | null, machineName?: string): Layer.Layer<Credentials> =>
   Layer.succeed(Credentials, {
     getAccessToken: Effect.sync(() =>
       token === null ? Option.none() : Option.some(Redacted.make(token)),
@@ -82,6 +82,7 @@ const credentialsLayer = (token: string | null): Layer.Layer<Credentials> =>
       sessionId: null,
       apiUrl: null,
       credentialId: null,
+      ...(machineName === undefined ? {} : {machineName}),
     })),
     saveAccessToken: () => Effect.void,
     clearAccessToken: Effect.void,
@@ -116,6 +117,7 @@ const configLayer = (
 interface RunInput {
   readonly jsonMode?: boolean;
   readonly fileToken?: string | null;
+  readonly machineName?: string;
   readonly envToken?: string | null;
   readonly responder?: () => Effect.Effect<unknown, ServerError>;
 }
@@ -133,7 +135,7 @@ const run = async (
             rec,
             input.jsonMode === true ? OUTPUT_FORMAT.json : OUTPUT_FORMAT.text,
           ),
-          credentialsLayer(input.fileToken === undefined ? FILE_TOKEN : input.fileToken),
+          credentialsLayer(input.fileToken === undefined ? FILE_TOKEN : input.fileToken, input.machineName),
           httpLayer(rec, responder),
           configLayer(input.jsonMode ?? false, input.envToken ?? null),
         ),
@@ -162,6 +164,12 @@ describe("whoamiEffect", () => {
     expect(rec.stdout).toContain("scopes: fleet:read, secret:read");
   });
 
+  test("shows the stored machine name for a device session", async () => {
+    const {rec} = await run({machineName: "studio-workstation"});
+    expect(rec.stdout).toContain("machine: studio-workstation");
+    expect(rec.stdout.some(line => line.startsWith("credential: "))).toBe(false);
+  });
+
   test("reads the identity route and sends the stored credential", async () => {
     const { rec } = await run();
 
@@ -170,9 +178,10 @@ describe("whoamiEffect", () => {
   });
 
   test("an exported service key wins over the credential on disk", async () => {
-    const { rec } = await run({ envToken: ENV_TOKEN });
+    const { rec } = await run({ envToken: ENV_TOKEN, machineName: "studio-workstation" });
 
     expect(rec.tokens).toEqual([ENV_TOKEN]);
+    expect(rec.stdout.some(line => line.startsWith("machine: "))).toBe(false);
   });
 
   test("a missing display name renders the placeholder, never a guess", async () => {

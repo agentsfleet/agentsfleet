@@ -10,9 +10,10 @@ import "@/components/domain/setup/conversation/FleetSetup";
 
 export type Call = {path: string; method: string; body: unknown; headers: Headers};
 const auth = vi.hoisted(() => ({isLoaded: true, isSignedIn: true, userId: "creator"}));
-const navigation = vi.hoisted(() => ({push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), search: ""}));
+const navigation = vi.hoisted(() => ({push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), search: "", pathname: ""}));
 export const chatRouter = navigation;
-vi.mock("next/navigation", () => ({useRouter: () => navigation, useSearchParams: () => new URLSearchParams(navigation.search)}));
+vi.mock("next/navigation", () => ({useRouter: () => navigation, usePathname: () => navigation.pathname,
+  useSearchParams: () => new URLSearchParams(navigation.search)}));
 vi.mock("@/lib/auth/client", () => ({useCurrentUser: () => auth}));
 
 export class ChatFixture {
@@ -66,6 +67,7 @@ export class ChatFixture {
   });
   mount(): void {
     chatRouter.push.mockClear(); chatRouter.replace.mockClear(); chatRouter.refresh.mockClear();
+    chatRouter.pathname = `/w/${WORKSPACE}/fleets/new`;
     auth.isLoaded = true; auth.isSignedIn = true; auth.userId = "creator";
     FakeEventSource.instances = [];
     vi.stubGlobal("EventSource", FakeEventSource);
@@ -77,10 +79,6 @@ export class ChatFixture {
 export const CHAT_PROPS = {account: "account-one", workspace: WORKSPACE};
 
 export async function setupAction(name: string): Promise<HTMLElement> {
-  if (name === "Rename chat") {
-    await userEvent.setup().click(await screen.findByRole("button", {name: "Draft actions"}));
-    return screen.getByRole("menuitem", {name});
-  }
   return screen.findByRole("button", {name});
 }
 
@@ -91,4 +89,8 @@ export async function chooseSetupAction(name: string): Promise<void> {
 export async function saveInChat(): Promise<void> {
   fireEvent.change(await screen.findByRole("textbox"), {target: {value: "Save"}});
   fireEvent.click(screen.getByRole("button", {name: /^(Send message|New fleet from message)$/}));
+}
+
+export async function editChatTitle(): Promise<void> {
+  await userEvent.setup().click(await screen.findByTitle("Click to edit the chat name"));
 }

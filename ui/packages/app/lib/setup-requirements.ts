@@ -20,7 +20,7 @@ const TimingSchema = z.object({triggers: z.array(FleetTriggerSchema).default([])
 
 export type SetupNetworkChange = {http_egress: "public" | "restricted"} | {package_manager_domains: boolean};
 
-export function savedSetupRequirements(definition?: Definition) {
+function savedSetupRequirements(definition?: Definition) {
   const result = SavedConfigSchema.safeParse(definition?.config["x-agentsfleet"]);
   return result.success ? result.data : null;
 }

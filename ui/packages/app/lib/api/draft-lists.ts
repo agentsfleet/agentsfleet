@@ -2,9 +2,10 @@
 
 import type { z } from "zod";
 import type { Draft, DraftCard, WorkspaceModel } from "./draft-types";
+import type { DraftView } from "./draft-state";
 import { DraftCardsSchema, ModelsSchema } from "./draft-types";
 import { losesAccess, setupRequest, SetupUnavailable } from "./draft-request";
-import { DRAFT_LIST, DRAFT_LIST_STATUS, LIST_PAGE_LIMIT, type DraftList, type DraftListsView } from "./draft-list-types";
+import { DRAFT_LIST, DRAFT_LIST_STATUS, LIST_PAGE_LIMIT, MODEL_LIST_RETRYING, defaultChatModel, type DraftList, type DraftListsView } from "./draft-list-types";
 type Page<T> = {readonly items: readonly T[]; readonly next_cursor: string | null};
 type ListUpdates = {
   ready: (list: DraftList, view: DraftListsView) => void;
@@ -157,4 +158,50 @@ function summaryRevision(value: string | undefined): number | null {
 function appendNew<T>(rows: readonly T[], more: readonly T[], key: (row: T) => string): readonly T[] {
   const seen = new Set(rows.map(key));
   return [...rows, ...more.filter((row) => !seen.has(key(row)))];
+}
+
+export function draftListActions(lists: DraftLists, owner: AbortSignal, snapshot: () => DraftView,
+  update: (patch: Partial<DraftView>) => void, denied: (cause: unknown) => void) {
+  const modelFor = (models: readonly WorkspaceModel[]) => snapshot().draft?.setup_model_ref ?? defaultChatModel(models, snapshot().model);
+  const changes: ListUpdates = {
+    ready: (list, result) => {
+      if (list === DRAFT_LIST.models) {
+        const {models, moreModels} = result;
+        update({models, moreModels, model: modelFor(models), modelListStatus: DRAFT_LIST_STATUS.ready});
+      } else {
+        const {draft} = snapshot();
+        const {cards, moreChats} = draft ? lists.updateDraft(draft) : result;
+        update({cards, moreChats, listStatus: DRAFT_LIST_STATUS.ready});
+      }
+    },
+    failed: (list, cause) => {
+      if (losesAccess(cause)) denied(cause);
+      else if (list === DRAFT_LIST.models) update({modelListStatus: DRAFT_LIST_STATUS.unavailable});
+      else update({listStatus: DRAFT_LIST_STATUS.unavailable});
+    },
+  };
+  const loadModels = async (): Promise<void> => { await lists.first(DRAFT_LIST.models, owner, changes); };
+  return {
+    initialize: async () => {
+      update({listStatus: DRAFT_LIST_STATUS.loading, modelListStatus: DRAFT_LIST_STATUS.loading, error: null});
+      await lists.open(owner, changes);
+    },
+    loadModels,
+    retryModels: async () => {
+      const view = snapshot();
+      if (view.inaccessible || view.modelListStatus !== DRAFT_LIST_STATUS.unavailable) return;
+      update({modelListStatus: MODEL_LIST_RETRYING});
+      await loadModels();
+    },
+    loadMore: async (list: DraftList) => {
+      if (snapshot().inaccessible) return;
+      try {
+        const page = await lists.more(list, owner);
+        if (page) update({...page, model: modelFor(page.models)});
+      } catch (cause) {
+        if (!owner.aborted && losesAccess(cause)) denied(cause);
+        throw cause;
+      }
+    },
+  };
 }

@@ -66,7 +66,7 @@ const announceSession = Effect.fnUntraced(function* (
   // The session block is scaffolding a person reads while waiting; a script
   // gets the whole outcome in one record when the flow completes.
   if (output.format !== OUTPUT_FORMAT.text) return;
-  yield* output.printSection("Login session");
+  yield* output.printSection("Sign in to the agentsfleet CLI");
   yield* output.printKeyValue({ session_id: sessionId, login_url: loginUrl });
 });
 
@@ -114,6 +114,7 @@ const persistSuccess = Effect.fnUntraced(function* (
     sessionId,
     apiUrl: config.apiUrl,
     credentialId: minted.id,
+    machineName: minted.machineName,
   });
   return minted.credential;
 });

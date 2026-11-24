@@ -10,8 +10,6 @@ export const DRAFT_EVENT = {
   cancelled: "message.cancelled", failed: "message.failed", timedOut: "message.timed_out",
   candidate: "candidate.changed", closed: "draft.closed", deleted: "draft.deleted",
 } as const;
-const ACCOUNTING_POLL_MS = 5_000;
-const ACCOUNTING_POLL_JITTER_MS = 1_000;
 const HintSchema = z.object({draft_id: z.uuidv7(), sequence: z.unknown().optional()});
 const Sequence = z.string().regex(/^[1-9][0-9]{0,18}$/);
 export const DRAFT_DELTA_EVENT = "message.delta";
@@ -24,26 +22,24 @@ export type DraftProgressCallbacks = {
   readonly gap: () => void;
 };
 
-export async function followDraft(path: string, draft: string, owner: AbortSignal, reconcile: () => Promise<boolean>, needsPolling: () => boolean = () => false, progress?: DraftProgressCallbacks): Promise<void> {
+export async function followDraft(path: string, draft: string, owner: AbortSignal, reconcile: () => Promise<boolean>, progress?: DraftProgressCallbacks): Promise<void> {
   owner.throwIfAborted();
-  await new DraftProgress(path, draft, reconcile, needsPolling, progress).follow(owner);
+  await new DraftProgress(path, draft, reconcile, progress).follow(owner);
 }
 
 class DraftProgress {
   readonly #source: ChatConnection;
   readonly #draft: string;
   readonly #reconcile: () => Promise<boolean>;
-  readonly #needsPolling: () => boolean;
   readonly #stopped = Promise.withResolvers<void>();
   #reading = false;
   #queued = false;
   #closed = false;
   #failures = 0;
   #retryTimer: ReturnType<typeof setTimeout> | undefined;
-  #pollTimer: ReturnType<typeof setTimeout> | undefined;
 
-  constructor(path: string, draft: string, reconcile: () => Promise<boolean>, needsPolling: () => boolean, progress?: DraftProgressCallbacks) {
-    this.#draft = draft; this.#reconcile = reconcile; this.#needsPolling = needsPolling;
+  constructor(path: string, draft: string, reconcile: () => Promise<boolean>, progress?: DraftProgressCallbacks) {
+    this.#draft = draft; this.#reconcile = reconcile;
     this.#source = new ChatConnection({
       url: `${path}/turns/stream`,
       events: [...Object.values(DRAFT_EVENT), DRAFT_DELTA_EVENT, DRAFT_RESYNC_EVENT, DRAFT_CONTEXT_EVENT],
@@ -70,13 +66,12 @@ class DraftProgress {
   }
 
   #stop(cause?: unknown): void {
-    this.#closed = true; this.#source.close(); clearTimeout(this.#retryTimer); clearTimeout(this.#pollTimer);
+    this.#closed = true; this.#source.close(); clearTimeout(this.#retryTimer);
     if (cause === undefined) this.#stopped.resolve(); else this.#stopped.reject(cause);
   }
 
   async #refresh(): Promise<void> {
     if (this.#closed || this.#retryTimer !== undefined) return;
-    clearTimeout(this.#pollTimer); this.#pollTimer = undefined;
     if (this.#reading) { this.#queued = true; return; }
     this.#reading = true;
     try {
@@ -85,7 +80,6 @@ class DraftProgress {
         if (!await this.#reconcile()) { this.#stop(); return; }
         this.#failures = 0;
       } while (this.#needsRead());
-      this.#pollAccounting();
     } catch (cause) {
       this.#recover(cause);
     } finally { this.#reading = false; }
@@ -93,12 +87,6 @@ class DraftProgress {
 
   #needsRead(): boolean {
     return this.#queued && !this.#closed;
-  }
-
-  #pollAccounting(): void {
-    if (this.#closed || !this.#needsPolling()) return;
-    const delay = ACCOUNTING_POLL_MS + Math.floor(Math.random() * ACCOUNTING_POLL_JITTER_MS);
-    this.#pollTimer = setTimeout(() => { this.#pollTimer = undefined; void this.#refresh(); }, delay);
   }
 
   #recover(cause: unknown): void {
