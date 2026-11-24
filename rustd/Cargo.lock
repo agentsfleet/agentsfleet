@@ -88,7 +88,6 @@ version = "0.78.0"
 dependencies = [
  "af_validate",
  "base64 0.23.1",
- "garde",
  "hex",
  "jiff 1.0.2",
  "serde",
