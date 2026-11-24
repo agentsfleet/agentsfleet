@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CircleNotchIcon } from "@phosphor-icons/react/ssr";
+import { Spinner } from "@agentsfleet/design-system";
 import { MS_PER_SECOND } from "@/lib/utils";
 
 export const QUEUED_PROGRESS_LABEL = "On it";
@@ -10,7 +10,7 @@ export const QUEUED_PROGRESS_LABEL = "On it";
 export function ChatProgressLabel({label, startedAtMs}: {label: string; startedAtMs?: number}) {
   const [observedAt] = useState(() => Date.now());
   return <span className="inline-flex min-w-0 items-center gap-sm">
-    <CircleNotchIcon className="size-4 shrink-0 text-muted-foreground motion-safe:animate-spin" aria-hidden="true" data-chat-spinner="" />
+    <Spinner className="shrink-0" aria-hidden="true" data-chat-spinner="" />
     <span className="font-semibold" data-chat-loading="true">{label}</span>
     <span aria-hidden="true" className="text-muted-foreground">·</span>
     <ElapsedSeconds startedAtMs={startedAtMs ?? observedAt} />

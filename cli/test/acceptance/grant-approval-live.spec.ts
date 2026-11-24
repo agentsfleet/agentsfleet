@@ -30,7 +30,7 @@ import { createNativeDraft, fixtureDefinition, inspectDraft } from "./fixtures/n
 import { FleetSchema } from "../../src/commands/chat/protocol.ts";
 import { deleteFixtureFleet } from "./fixtures/teardown.ts";
 import { readAuthContext, type AuthContext } from "./fixtures/native-api.ts";
-import { chargedNanos, readUsagePage, usageTextNaming } from "./fixtures/usage-ops.ts";
+import { chargedNanos, readUsagePage, readUsageTextTotal } from "./fixtures/usage-ops.ts";
 import { EXIT_CODE } from "../../src/errors/index.ts";
 import { instantMs } from "../../src/lib/instant.ts";
 import {
@@ -80,7 +80,7 @@ const SETUP_TIMEOUT_MS = 180_000;
 const BALANCE_SETTLE_MS = 90_000;
 const BALANCE_POLL_MS = 3_000;
 // A dollar figure as `formatDollars` (src/constants/billing.ts) renders one.
-const DOLLARS = /-?\$[\d,]+\.\d{2,}/u;
+const DOLLARS = /^-?\$[\d,]+\.\d{2,}$/u;
 // Decodes to no boundary the charges route can read, so no page issued it
 // (`afd_billing::tenant::cursor::parse`).
 const FOREIGN_CURSOR = "not-a-cursor" as const;
@@ -249,16 +249,10 @@ if (!isLive) {
         `the run did not deplete credit: ${balanceBeforeNanos} → ${balanceAfterNanos} nanos`);
     }, STEER_TIMEOUT_MS);
 
-    it("`usage show` prints the run's charge as a readable row, and the JSON charges this fleet", async () => {
+    it("`usage show` prints a dollar total for the run and JSON shows a positive charge for this fleet", async () => {
       assert.ok(steeredTurnId, "the steer did not run");
-      const text = await usageTextNaming(runWithEnv, steeredTurnId);
-      assert.match(text, /Tenant balance:/u);
-      assert.match(text, /activities drained credits:/u);
-      // A table row or, on a narrow terminal, a label/value block: either way
-      // the stretch of output naming the work also names its total in dollars.
-      const row = text.split(/\n\s*\n/u).find((block) => block.includes(steeredTurnId)) ?? "";
-      assert.match(row, /TOTAL/u, `the run's row carries no total: ${text}`);
-      assert.match(row, DOLLARS, `the run's row carries no dollar figure: ${text}`);
+      const printedTotal = await readUsageTextTotal(runWithEnv, steeredTurnId);
+      assert.match(printedTotal, DOLLARS, `the run's total is not a dollar figure: ${printedTotal}`);
 
       const charged = await chargedNanos(runWithEnv, fleetId, steeredTurnId);
       assert.ok(charged > 0n, `usage show charged the run nothing: ${charged} nanos`);

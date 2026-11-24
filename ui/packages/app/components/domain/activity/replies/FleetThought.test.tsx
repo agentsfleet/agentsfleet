@@ -44,7 +44,7 @@ describe("FleetThought", () => {
     expect(chip().textContent).toContain("4s");
     expect(chip().textContent).toContain("Checking the header");
     expect(chip().querySelector('[data-chat-loading="true"]')).toBeTruthy();
-    expect(chip().querySelector("[data-signal-spinner]")).toBeNull();
+    expect(chip().querySelectorAll(".page-loading-stroke")).toHaveLength(8);
     // The chip sits in the transcript's live log: its name never ticks.
     expect(screen.getByRole("button", { name: THOUGHT_LIVE_LABEL })).toBe(chip());
     act(() => {
@@ -59,7 +59,7 @@ describe("FleetThought", () => {
     const view = render(<Reply live reasoning={REASONING} startedAtMs={STARTED} endedAtMs={null} />);
     view.rerender(<Reply live={false} reasoning={REASONING} startedAtMs={STARTED} endedAtMs={ENDED} />);
     expect(chip().textContent).toBe(`${THOUGHT_LABEL} · 8.5s`);
-    expect(chip().querySelector("[data-signal-spinner]")).toBeNull();
+    expect(chip().querySelector(".page-loading-stroke")).toBeNull();
     expect(screen.queryByText(REASONING, { selector: "p" })).toBeNull();
 
     // An operator-opened chip stays open through later renders.

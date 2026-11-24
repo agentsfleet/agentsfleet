@@ -12,9 +12,9 @@ describe("Spinner", () => {
 
   it("uses a decorative brand signal without nesting another live status", () => {
     const { getByRole, queryAllByRole } = render(<Spinner />);
-    const mark = getByRole("status").querySelector("[data-signal-spinner]");
+    const mark = getByRole("status").querySelector("svg");
     expect(mark?.getAttribute("aria-hidden")).toBe("true");
-    expect(mark?.querySelectorAll("path")).toHaveLength(8);
+    expect(mark?.querySelectorAll(".page-loading-stroke")).toHaveLength(8);
     expect(queryAllByRole("status")).toHaveLength(1);
   });
 
@@ -31,8 +31,8 @@ describe("Spinner", () => {
 
   it("scales the mark by size", () => {
     const { getByRole } = render(<Spinner size="lg" />);
-    const orbit = getByRole("status").querySelector("[data-signal-spinner]") as SVGElement;
-    expect(orbit.getAttribute("class")).toContain("size-6");
+    const mark = getByRole("status").querySelector("svg");
+    expect(mark?.classList.contains("size-6")).toBe(true);
   });
 
   it("pairs the full-screen mark with a decorative wordmark and one loading status", () => {
@@ -54,7 +54,6 @@ describe("Spinner", () => {
     expect(mark?.getAttribute("width")).toBe("60");
     expect(mark?.getAttribute("aria-hidden")).toBe("true");
     expect(mark?.querySelectorAll(".page-loading-stroke")).toHaveLength(8);
-    expect(status.querySelector("[data-signal-spinner]")).toBeNull();
     expect(queryAllByRole("status")).toHaveLength(1);
   });
 });

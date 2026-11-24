@@ -8,9 +8,8 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  SignalSpinner,
+  Spinner,
   TerminalPanel,
-  cn,
 } from "@agentsfleet/design-system";
 
 import { TOOL_CALL_READ, readToolCall, type ToolCallFull, type ToolCallRead } from "@/lib/streaming/fleet-tool-call-reader";
@@ -84,7 +83,7 @@ function useToolCallRead({ workspaceId, fleetId }: FleetScope, turnId: string, c
 }
 
 function ReadBody({ read, name, outcome }: { read: ToolCallRead | null; name: string; outcome: ToolResult | undefined }) {
-  if (read === null) return <output className={cn(NOTE_CLASS, "inline-flex items-center gap-xs")}><SignalSpinner className="text-pulse" aria-hidden="true" />{LOADING_LABEL}</output>;
+  if (read === null) return <Spinner className={`${NOTE_CLASS} gap-xs`} label={LOADING_LABEL} aria-busy={false} />;
   if (read.kind === TOOL_CALL_READ.FULL) return <FullCall call={read.call} name={name} />;
   return (
     <>

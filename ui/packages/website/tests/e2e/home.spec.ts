@@ -139,6 +139,24 @@ test("autoplay types, appends, pauses, and loops without changing the page scrol
   await expect(conversation).not.toContainText(DEFAULT_JOB.report);
   expect(await page.evaluate(() => scrollY)).toBe(scroll);
 });
+test("pausing the example freezes its pending loader", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: MOTION_VIEWPORT_HEIGHT });
+  await startMotion(page);
+  const example = page.getByTestId("how-it-works");
+  await example.scrollIntoViewIfNeeded();
+  await expect(example).toHaveAttribute("data-running", "true");
+  const pending = createChatStory(DEFAULT_JOB).steps.find(({ step }) => step.activity);
+  if (!pending) throw new Error("Missing pending example step");
+  await page.clock.runFor(Math.floor((pending.startsAt + pending.typesAt) / 2));
+  const stroke = example.locator(".page-loading-stroke").first();
+  await expect(stroke).toHaveCSS("animation-play-state", "running");
+  await page.getByRole("button", { name: "Pause", exact: true }).click();
+  await expect(stroke).toHaveCSS("animation-play-state", "paused");
+  await expect(page.getByRole("button", { name: "Play", exact: true })).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(example).toHaveAttribute("data-running", "true");
+  await expect(stroke).toHaveCSS("animation-play-state", "running");
+});
 test("keyboard evidence inspection keeps content and focus until explicit play", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await startMotion(page);

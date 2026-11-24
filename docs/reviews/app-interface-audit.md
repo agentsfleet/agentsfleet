@@ -160,7 +160,7 @@ The 330-line Events list can split column and cell presentation from pagination 
 
 The 281-line `SteerComposer` has inline pending and send-error notices. The current state owners handle cancellation, recovery, retry identity and focus. [Composer](../../ui/packages/app/components/domain/conversation/composer/SteerComposer.tsx) · [Chat ownership](../../ui/packages/app/AGENTS.md)
 
-Tool output and tool rows compose `SignalSpinner` with local status text. Reuse the labeled Spinner when its announcement and visible role match. [Tool output](../../ui/packages/app/components/domain/activity/tools/FleetToolOutputDialog.tsx#L87) · [Tool row](../../ui/packages/app/components/domain/activity/tools/FleetToolCallRow.tsx) · [Connection indicator](../../ui/packages/app/components/domain/conversation/chrome/FleetConnectionIndicator.tsx#L97)
+Tool output and tool rows use the shared `Spinner` with a visible status label. [Tool output](../../ui/packages/app/components/domain/activity/tools/FleetToolOutputDialog.tsx#L86) · [Tool row](../../ui/packages/app/components/domain/activity/tools/FleetToolCallRow.tsx#L22)
 
 ## Verification
 

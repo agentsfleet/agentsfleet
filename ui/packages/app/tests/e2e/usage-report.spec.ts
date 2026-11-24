@@ -3,6 +3,9 @@ import {test} from "./fixtures/chat-probe";
 import {BILLING_FLEET, BILLING_MODEL, BILLING_MODEL_NAME, billingReport, billingRowTotals, billingTotals} from "@/tests/helpers/billing-report";
 import type {BillingReport} from "@/lib/api/billing_report";
 
+// Exercise the width change a classic scrollbar can introduce as the report arrives.
+test.use({ launchOptions: { ignoreDefaultArgs: ["--hide-scrollbars"] } });
+
 function reportFor(query: URLSearchParams): BillingReport {
   const week = query.get("period") === "week";
   const month = (query.get("through_at") ?? "2026-11").slice(0, 7);
@@ -16,6 +19,37 @@ function reportFor(query: URLSearchParams): BillingReport {
   return billingReport({period: week ? "week" : "month", from_at: `${month}-${String(first).padStart(2, "0")}T00:00:00Z`, through_at: `${month}-11T12:00:00Z`,
     daily, totals, spending: {by_fleet: [{key: BILLING_FLEET, label: "Payment alerts", totals, models: [BILLING_MODEL, "retired-model"]}], by_model: []}});
 }
+
+test("Usage stays in place when the loaded report makes the page scroll", async ({ page, chatProbe }, info) => {
+  const desktop = info.project.name === "chromium";
+  await page.setViewportSize({ width: desktop ? 1480 : 390, height: 520 });
+  const release = Promise.withResolvers<void>();
+  await page.route("**/backend/v1/tenants/me/billing/reports/current?*", async route => {
+    await release.promise;
+    await route.fulfill({ json: reportFor(new URL(route.request().url()).searchParams) });
+  });
+  const heading = page.getByRole("heading", { name: "Usage", exact: true });
+  const header = page.getByRole("main").locator('[data-slot="page-header"]').filter({ has: heading });
+  const scrollport = page.getByRole("main").locator(":scope > div:not([data-resource-header])");
+
+  let loadingLayout: Awaited<ReturnType<typeof header.boundingBox>>;
+  try {
+    await page.goto(`${chatProbe}?usage=1`);
+    await expect(page.getByRole("status", { name: "Loading page" })).toBeVisible();
+    await page.evaluate(() => document.fonts.ready);
+    await expect(header).toBeVisible();
+    expect(await scrollport.evaluate(element => element.scrollHeight <= element.clientHeight)).toBe(true);
+    loadingLayout = await header.boundingBox();
+    expect(loadingLayout).not.toBeNull();
+  } finally {
+    release.resolve();
+  }
+
+  await expect(page.getByRole("figure", { name: "Daily spend" })).toBeVisible();
+  await expect(page.getByRole("status", { name: "Loading page" })).toHaveCount(0);
+  expect(await scrollport.evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true);
+  expect(await header.boundingBox()).toEqual(loadingLayout);
+});
 
 test("Usage renders recorded daily bars and model sets while filters request complete reports", async ({page, chatProbe}, info) => {
   const errors: string[] = []; page.on("pageerror", error => errors.push(error.message));
