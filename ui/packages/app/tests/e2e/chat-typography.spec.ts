@@ -425,7 +425,7 @@ async function expectSourceHierarchy(panel: Locator) {
   expect(metrics.gap).toBeGreaterThanOrEqual(4); expect(metrics.gap).toBeLessThanOrEqual(8);
   if (!(await sources.locator("details").evaluate(node => node.hasAttribute("open")))) await disclosure.click();
   await expect(sources.getByRole("link", {name: "linkwarden/linkwarden", exact: true})).toHaveAttribute("href", "https://github.com/linkwarden/linkwarden");
-  await expect(sources.getByText("Saved fleet policy · write access · existing PRs", {exact: true})).toBeVisible();
+  await expect(sources.getByText("Policy: Edit existing PRs", {exact: true})).toBeVisible();
   await disclosure.click();
 }
 

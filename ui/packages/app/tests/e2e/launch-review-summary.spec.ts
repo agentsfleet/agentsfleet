@@ -1,5 +1,6 @@
 import {expect, type Locator} from "@playwright/test";
 import {test} from "./fixtures/chat-probe";
+import {expectSummaryColumns} from "./fixtures/summary-columns";
 
 test("the launch review Summary shows the recorded output, people, processes and attached sources", async ({page, chatProbe}, info) => {
   await page.goto(chatProbe + "?visual=1&state=activity");
@@ -51,7 +52,7 @@ test("a current preview process has a running status and both repositories agree
   }
 });
 
-test("Summary geometry and colors match ux.html on desktop and mobile in both themes", async ({page, chatProbe}) => {
+test("Summary geometry and colors match ux.html on desktop and mobile in both themes", async ({page, chatProbe}, info) => {
   await page.goto(chatProbe + "?visual=1&state=activity");
   const summary = page.getByRole("complementary", {name: "Summary"});
   const section = summary.getByRole("heading", {name: "Agents & processes"});
@@ -59,6 +60,14 @@ test("Summary geometry and colors match ux.html on desktop and mobile in both th
   const reference = await page.context().newPage();
   await reference.goto(new URL("../../../../../docs/ux.html#activity", import.meta.url).href);
   const design = reference.locator("aside.summary");
+  const labels = ["Changes", "Output", "Sources"];
+  await expectSummaryColumns(summary, labels.map(label => summary.getByText(label, {exact: true})), [
+    summary.getByRole("button", {name: /4 files changed/}),
+    summary.getByRole("link", {name: "Launch preview"}),
+    summary.locator("summary").filter({hasText: "2 attached files"}),
+  ]);
+  const designRows = ["4 files changed", "Launch preview", "2 attached files"].map(label => design.locator(".summary-row").filter({hasText: label}));
+  await expectSummaryColumns(design, labels.map(label => design.getByText(label, {exact: true})), designRows);
   await expect.poll(() => rowPositions(summary, "h2,button,a,summary")).toEqual(await rowPositions(design, "h2,.summary-label,.summary-row"));
   for (const appearance of ["dark", "light"]) {
     for (const surface of [page, reference]) await surface.evaluate(theme => { document.documentElement.dataset.theme = theme; }, appearance);
@@ -67,9 +76,99 @@ test("Summary geometry and colors match ux.html on desktop and mobile in both th
     for (const [actual, expected] of pairs) {
       await expect.poll(() => geometry(actual)).toEqual(await geometry(expected));
     }
+    await design.screenshot({path: info.outputPath(`reference-activity-${appearance}.png`), animations: "disabled", scale: "css"});
   }
   await reference.close();
 });
+
+test("repository Sources keeps each label on one line and opens with the keyboard", async ({page, chatProbe, isMobile}, info) => {
+  const reference = await page.context().newPage();
+  await Promise.all([
+    page.goto(`${chatProbe}?visual=1&state=completed`),
+    reference.goto(new URL("../../../../../docs/ux.html#conversation", import.meta.url).href),
+  ]);
+  const sources = page.getByRole("region", {name: "Sources", exact: true});
+  const design = reference.locator(".summary-section").filter({has: reference.getByText("Sources", {exact: true})});
+  const row = sources.locator("summary");
+  const designRow = design.locator("summary");
+  const repository = "agentsfleet/platform-images";
+  await expectRepositoryColumns(sources, reference.getByRole("complementary", {name: "Fleet summary"}), row, designRow);
+  for (const disclosure of [row, designRow]) {
+    await expect(disclosure.locator("strong")).toHaveText(repository);
+    await expect(disclosure.locator("small")).toHaveText("Policy: Edit existing PRs");
+  }
+
+  for (const theme of ["dark", "light"]) {
+    for (const surface of [page, reference]) await surface.evaluate(async palette => {
+      document.documentElement.dataset.theme = palette;
+      await document.fonts.ready;
+    }, theme);
+    const expected = await sourceDisclosureGeometry(designRow);
+    expect(expected.gaps).toEqual([8, 8]);
+    expect(expected.text).toEqual({lineHeights: [20, 16], offset: [0, 0], policyFits: true});
+    await expect.poll(() => sourceDisclosureGeometry(row)).toEqual(expected);
+    if (!isMobile) expect((await row.boundingBox())?.height).toBe((await designRow.boundingBox())?.height);
+    await sources.screenshot({path: info.outputPath(`app-sources-${theme}.png`), scale: "css", animations: "disabled"});
+    await design.screenshot({path: info.outputPath(`reference-sources-${theme}.png`), scale: "css", animations: "disabled"});
+  }
+
+  if (!isMobile) {
+    await page.setViewportSize({width: 768, height: 900});
+    await expectCompactSourceLabel(row);
+    await sources.screenshot({path: info.outputPath("app-sources-narrow.png"), scale: "css", animations: "disabled"});
+  }
+
+  const link = sources.getByRole("link", {name: repository, exact: true});
+  await expect(link).toBeHidden();
+  await row.locator("strong").click();
+  await expect(row).toBeFocused();
+  await expect(link).toBeVisible();
+  await expect(link).toHaveAttribute("href", `https://github.com/${repository}`);
+  await page.keyboard.press("Space");
+  await expect(link).toBeHidden();
+  await reference.close();
+});
+
+async function expectCompactSourceLabel(row: Locator) {
+  const compact = await sourceDisclosureGeometry(row);
+  expect(compact.text).toEqual({lineHeights: [20, 16], offset: [0, 0], policyFits: true});
+  await expect(row.locator("strong")).toHaveCSS("overflow-x", "clip");
+  const title = row.locator("strong");
+  expect(await title.evaluate(el => (el.firstElementChild?.getBoundingClientRect().width ?? 0) > el.clientWidth)).toBe(true);
+  await row.hover();
+  await expect.poll(() => row.locator("strong > span").evaluate(el => {
+    if (!el.parentElement) throw new Error("Expected the source label viewport");
+    return el.getBoundingClientRect().right - el.parentElement.getBoundingClientRect().right;
+  })).toBeCloseTo(0, 0);
+  await expect(row.locator("strong > span")).toHaveCSS("white-space", "nowrap");
+}
+
+function sourceDisclosureGeometry(row: Locator) {
+  return row.evaluate(node => {
+    const [icon, copy, caret] = Array.from(node.children, child => child.getBoundingClientRect());
+    const title = node.querySelector("strong");
+    const policy = node.querySelector("small");
+    if (!icon || !copy || !caret || !title || !policy) throw new Error("The Sources disclosure is missing its icon, labels, or caret");
+    const titleBox = title.getBoundingClientRect();
+    const policyBox = policy.getBoundingClientRect();
+    const rowStyle = getComputedStyle(node);
+    return {
+      gaps: [copy.left - icon.right, caret.left - copy.right],
+      icons: [icon.width, caret.width],
+      padding: [rowStyle.paddingTop, rowStyle.paddingBottom],
+      radius: rowStyle.borderTopLeftRadius,
+      text: {
+        lineHeights: [titleBox.height, policyBox.height],
+        offset: [policyBox.left - titleBox.left, policyBox.top - titleBox.bottom],
+        policyFits: policy.scrollWidth <= policy.clientWidth,
+      },
+      typography: [title, policy].map(element => {
+        const style = getComputedStyle(element);
+        return [style.fontSize, style.lineHeight, style.fontWeight, style.color];
+      }),
+    };
+  });
+}
 
 function geometry(element: Locator) {
   return element.evaluate(node => {
@@ -79,6 +178,15 @@ function geometry(element: Locator) {
   });
 }
 
+
+async function expectRepositoryColumns(sources: Locator, prototype: Locator, row: Locator, designRow: Locator) {
+  const app = sources.locator("xpath=ancestor::aside");
+  const headings = (panel: Locator) => ["Output", "Sources"].map(label => panel.getByText(label, {exact: true}));
+  await expectSummaryColumns(app, headings(app), [app.getByRole("link", {name: /Pull request #58/}), row]);
+  await expectSummaryColumns(prototype, headings(prototype), [
+    prototype.locator(".summary-row").filter({hasText: "Pull request #58"}), designRow,
+  ]);
+}
 
 function rowPositions(panel: Locator, selectors: string) {
   return panel.evaluate((node, query) => {
@@ -118,7 +226,7 @@ test("long repository names reveal their ending without moving icons or counts",
   }
   await page.emulateMedia({reducedMotion:"reduce"});
   await expect(label).toHaveCSS("white-space","normal");
-  await expect(label).toHaveCSS("left","0px");
+  await expect(label).toHaveCSS("transform","none");
   expect(await label.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
   await row.click();
   await expect(page.getByRole("dialog")).toBeVisible();

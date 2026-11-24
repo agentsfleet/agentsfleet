@@ -1,10 +1,13 @@
 import { memo } from "react";
 import { ActionBarPrimitive } from "@assistant-ui/react";
-import { CheckIcon, CopyIcon } from "@phosphor-icons/react/ssr";
-import { Button } from "@agentsfleet/design-system";
+import { CheckIcon, CopyIcon, ListBulletsIcon } from "@phosphor-icons/react/ssr";
+import { Button, Popover, PopoverContent, PopoverTrigger } from "@agentsfleet/design-system";
+import { readDurableTaskActivityHistory } from "@/lib/task-activity";
 import { QuoteReply } from "../../shared/chat/ChatQuote";
+import { DurableTaskActivityTimeline } from "@/components/domain/tasks/TaskActivityTimeline";
 
 const COPY_REPLY_LABEL = "Copy reply";
+const TASK_ACTIVITY_LABEL = "Task activity";
 export const REPLY_ACTIONS_TEST_ID = "fleet-reply-actions";
 
 /**
@@ -15,11 +18,14 @@ export const REPLY_ACTIONS_TEST_ID = "fleet-reply-actions";
 export const FleetReplyActions = memo(function FleetReplyActions({
   answer,
   settled,
+  activity,
 }: {
   answer: string;
   settled: boolean;
+  activity?: unknown;
 }) {
   const controls = settled && answer.length > 0;
+  const hasActivity = !!readDurableTaskActivityHistory(activity)?.items.length;
   return (
     <ActionBarPrimitive.Root autohide="never" data-testid={REPLY_ACTIONS_TEST_ID} className="-ml-sm flex h-11 items-center gap-xs">
       {controls ? <>
@@ -30,6 +36,16 @@ export const FleetReplyActions = memo(function FleetReplyActions({
         </Button></ActionBarPrimitive.Copy>
         <QuoteReply text={answer} />
       </> : null}
+      {hasActivity ? <Popover>
+        <PopoverTrigger asChild>
+          <Button variant="ghost" size="icon-sm" aria-label={TASK_ACTIVITY_LABEL} title={TASK_ACTIVITY_LABEL}>
+            <ListBulletsIcon aria-hidden="true" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent side="top" align="start" aria-label={TASK_ACTIVITY_LABEL}>
+          <DurableTaskActivityTimeline value={activity} running={false} />
+        </PopoverContent>
+      </Popover> : null}
     </ActionBarPrimitive.Root>
   );
 });

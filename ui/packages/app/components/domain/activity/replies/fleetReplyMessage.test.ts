@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { MessageState, ThreadMessageLike } from "@assistant-ui/react";
 
 import { REASONING_SPAN, REPLY_FIGURE, readToolResult, replyParts, reportsOwnRun, toReplyMessage } from "./fleetReplyMessage";
-import { readOmittedCallCount, readReasoningSpan, readReplyFigures } from "../messages/fleetMessageReaders";
+import { readOmittedCallCount, readReasoningSpan, readReplyWallMs } from "../messages/fleetMessageReaders";
 import { evt } from "@/tests/helpers/fleet-stream-fixtures";
 import { ACTOR } from "@/lib/turns/turn-summary";
 import { AGENTSFLEET_TURN_STATUS, type FleetTurn, type FleetTurnStatus } from "@/lib/streaming/fleet-stream-row";
@@ -15,7 +15,6 @@ const { SUCCEEDED, FAILED, INTERRUPTED } = TOOL_CALL_STATUS;
 const CALL_ID = "f1:0";
 const ARGS = { query: "deploy window" } as const;
 const OUTPUT = "3 matches";
-const TOKENS = 12_400;
 const WALL_MS = 41_000;
 const OMITTED = 4;
 const BASE: ThreadMessageLike = {
@@ -118,7 +117,7 @@ describe("toReplyMessage", () => {
     }));
     const row = evt({id: "memory-and-file", tools: [...tools,
       {name: TOOL_NAME.FILE_READ, startedAtMs: STARTED, ms: DONE_AFTER_MS, done: true, status: SUCCEEDED}],
-      reply: "The file is ready.", tokens: TOKENS, wallMs: WALL_MS});
+      reply: "The file is ready.", wallMs: WALL_MS});
     const originalTrace = row.tools;
     const message = toReplyMessage(BASE, row);
     expect(message.content).toEqual([
@@ -128,7 +127,7 @@ describe("toReplyMessage", () => {
     ]);
     expect(row.tools).toBe(originalTrace);
     expect(row.tools).toHaveLength(5);
-    expect(message.metadata?.custom).toMatchObject({[REPLY_FIGURE.TOKENS]: TOKENS, [REPLY_FIGURE.WALL_MS]: WALL_MS});
+    expect(message.metadata?.custom).toMatchObject({[REPLY_FIGURE.WALL_MS]: WALL_MS});
   });
 
   it("test_malformed_tool_result_reads_absent", () => {
@@ -141,16 +140,14 @@ describe("toReplyMessage", () => {
   });
 
   it("test_reply_figures_ride_the_reply_bag", () => {
-    const row = evt({ tokens: TOKENS, wallMs: WALL_MS, costNanos: null, omittedCallCount: OMITTED });
+    const row = evt({ wallMs: WALL_MS, omittedCallCount: OMITTED });
     const message = toReplyMessage(BASE, row);
     expect(message.metadata?.custom).toMatchObject({
-      [REPLY_FIGURE.TOKENS]: TOKENS,
       [REPLY_FIGURE.WALL_MS]: WALL_MS,
-      [REPLY_FIGURE.COST_NANOS]: null,
       [REPLY_FIGURE.OMITTED_CALLS]: OMITTED,
     });
     // An unreported figure reads null, never zero.
-    expect(readReplyFigures(asState(message.metadata?.custom))).toEqual({ tokens: TOKENS, wallMs: WALL_MS, costNanos: null });
+    expect(readReplyWallMs(asState(message.metadata?.custom))).toBe(WALL_MS);
     expect(readOmittedCallCount(asState(message.metadata?.custom))).toBe(OMITTED);
   });
 
@@ -162,8 +159,8 @@ describe("toReplyMessage", () => {
     const malformed = asState({ [REASONING_SPAN.STARTED]: "1000", [REASONING_SPAN.ENDED]: Number.NaN });
     expect(readReasoningSpan(malformed)).toEqual({ startedAtMs: null, endedAtMs: null });
     expect(readReasoningSpan(asState({}))).toEqual({ startedAtMs: null, endedAtMs: null });
-    const wrongFigures = asState({ [REPLY_FIGURE.TOKENS]: "12", [REPLY_FIGURE.WALL_MS]: Number.POSITIVE_INFINITY, [REPLY_FIGURE.OMITTED_CALLS]: -3 });
-    expect(readReplyFigures(wrongFigures)).toEqual({ tokens: null, wallMs: null, costNanos: null });
+    const wrongFigures = asState({ [REPLY_FIGURE.WALL_MS]: Number.POSITIVE_INFINITY, [REPLY_FIGURE.OMITTED_CALLS]: -3 });
+    expect(readReplyWallMs(wrongFigures)).toBeNull();
     expect(readOmittedCallCount(wrongFigures)).toBe(0);
     expect(readOmittedCallCount(asState({}))).toBe(0);
   });

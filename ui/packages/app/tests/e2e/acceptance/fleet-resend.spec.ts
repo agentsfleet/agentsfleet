@@ -21,8 +21,8 @@ const TRANSCRIPT_LABEL = "Chat";
 const COMPOSER_LABEL = "Chat composer";
 const NOTICES_LABEL = "Unsent messages";
 const SEND_LABEL = "Send";
-const RESEND_LABEL = "Resend";
-const SEND_UNCONFIRMED = "Couldn't confirm this message was sent.";
+const RESEND_LABEL = "Try again";
+const SEND_UNCONFIRMED = "Sending was interrupted.";
 const POST = "POST";
 const UUID_V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const AcceptedSchema = z.object({ turn_id: z.uuidv7() });
@@ -110,8 +110,7 @@ test("test_failed_send_resend_journey", async ({ page }) => {
 
     await draft.fill(message);
     await composer.getByRole("button", { name: SEND_LABEL }).click();
-    // The daemon took it, but the answer never arrived: the page cannot know,
-    // so it says the send could not be confirmed and hands the text back.
+    // The page offers a retry and restores the draft when the response is lost.
     await expect(notices.getByText(SEND_UNCONFIRMED)).toBeVisible();
     await expect(draft).toHaveValue(message);
 

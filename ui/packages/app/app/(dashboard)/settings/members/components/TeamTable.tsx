@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Badge, Button, CopyButton, DashboardPanel, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Time } from "@agentsfleet/design-system";
+import { Button, CopyButton, DashboardPanel, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Section, SectionHeader, Time } from "@agentsfleet/design-system";
 import { DotsThreeIcon, EnvelopeSimpleIcon, PaperPlaneTiltIcon, TrashIcon } from "@phosphor-icons/react/ssr";
 import type { InviteSummary } from "@/lib/api/invites";
 import { EMAIL_STATUS } from "@/lib/api/invites-types";
@@ -41,15 +41,13 @@ export function TeamTable({members, invites, memberCount, inviteCount, searching
 }
 
 function RosterSection({title, count, empty, children}: {title: string; count: number; empty: string; children: ReactNode[]}) {
-  return <section aria-label={title} className="space-y-lg">
-    <h2 className="flex h-5 items-center gap-lg text-label font-semibold">
-      {title}<Badge className="h-6.75 min-w-6.25 justify-center tabular-nums">{count}</Badge>
-    </h2>
+  return <Section aria-label={title} className="block space-y-md">
+    <SectionHeader count={count}>{title}</SectionHeader>
     <DashboardPanel padding="none">
       {children.length ? <ul className="divide-y divide-border">{children}</ul> :
         <p className="p-2xl text-label text-muted-foreground">{empty}</p>}
     </DashboardPanel>
-  </section>;
+  </Section>;
 }
 
 function MemberRow({member, pending, onRemove, viewerUserId}: Pick<Props, "pending" | "onRemove" | "viewerUserId"> & {member: MemberSummary}) {

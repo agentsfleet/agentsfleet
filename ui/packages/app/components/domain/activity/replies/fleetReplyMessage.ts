@@ -27,13 +27,11 @@ export const REASONING_SPAN = {
   ENDED: "reasoningEndedAtMs",
 } as const;
 
-/** Custom-bag keys for what the turn cost and the calls it did not record. On
+/** Custom-bag keys for turn duration and the calls it did not record. On
  * the reply, never the trigger: the trigger's conversion is compared to detect
  * a changed row, and a turn's figures change while its trigger does not. */
 export const REPLY_FIGURE = {
-  TOKENS: "replyTokens",
   WALL_MS: "replyWallMs",
-  COST_NANOS: "replyCostNanos",
   OMITTED_CALLS: "omittedCallCount",
 } as const;
 
@@ -111,9 +109,7 @@ export function toReplyMessage(base: ThreadMessageLike, turn: FleetTurn, request
         contextProgress: turn.contextProgressHidden ? undefined : turn.contextProgress,
         [REASONING_SPAN.STARTED]: turn.reasoningStartedAtMs,
         [REASONING_SPAN.ENDED]: turn.reasoningEndedAtMs,
-        [REPLY_FIGURE.TOKENS]: turn.tokens,
         [REPLY_FIGURE.WALL_MS]: turn.wallMs,
-        [REPLY_FIGURE.COST_NANOS]: turn.costNanos,
         [REPLY_FIGURE.OMITTED_CALLS]: turn.omittedCallCount,
       },
     },

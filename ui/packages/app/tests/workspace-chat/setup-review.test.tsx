@@ -37,7 +37,7 @@ it("reads current fleet configuration instead of the older closed draft or stale
     preview: {definition: REVIEW.effective.definition, instanceName: "Obsolete preview", revision: "1", setupRevision: "1"}}} />);
   expect(screen.getByText("current-runtime")).toBeTruthy();
   expect(screen.getByText("current-secret")).toBeTruthy();
-  expect(screen.getByText("$2.00 / day")).toBeTruthy();
+  expect(screen.getByText("$2.00").textContent).toBe("$2.00 / day");
 });
 
 it("retains the retry after a scheduler refusal without claiming registration succeeded", async () => {

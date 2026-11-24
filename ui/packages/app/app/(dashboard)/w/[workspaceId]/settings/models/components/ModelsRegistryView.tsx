@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  Badge, Button, DashboardPanel, DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+  Button, DashboardPanel, DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuTrigger, ResourceRow, Section, SectionHeader,
 } from "@agentsfleet/design-system";
 import { CpuIcon, DotsThreeIcon, KeyIcon } from "@phosphor-icons/react/ssr";
@@ -51,9 +51,9 @@ export function ModelsRegistryView({
         )}
       </DashboardPanel>
 
-      <section className="space-y-xl" aria-label="Your models">
-        <SectionHeader className="min-h-5 [&_h2]:flex [&_h2]:h-5 [&_h2]:items-center" actions={<span className="text-label text-muted-foreground">Provider keys stay hidden</span>}>
-          Your models <Badge className="ml-md h-6.75">{entries.length}</Badge>
+      <Section className="block space-y-lg" aria-label="Your models">
+        <SectionHeader count={entries.length} actions={<span className="text-label text-muted-foreground">Provider keys stay hidden</span>}>
+          Your models
         </SectionHeader>
         <DashboardPanel padding="none">
           <ul className="divide-y divide-border-subtle">
@@ -65,7 +65,7 @@ export function ModelsRegistryView({
         </DashboardPanel>
         {onLoadMore && <Button variant="outline" disabled={actions.pending} onClick={() => { void onLoadMore(); }}>Load more models</Button>}
         <p className="text-eyebrow leading-eyebrow text-text-dim">Your active model is the default for new work. Each credential stays in its selected workspace.</p>
-      </section>
+      </Section>
 
     </Section>
   );

@@ -52,7 +52,8 @@ test("Appearance applies the selected palette and persists across reload", async
   await page.getByRole("menuitem", { name: "Appearance: switch to light" }).click();
   await expect(root).toHaveAttribute("data-theme", "light");
   await expect(surface).toHaveCSS("background-color", "rgb(250, 251, 252)");
-  await expect(page.getByRole("menuitem", { name: "Appearance: switch to dark" })).toBeVisible();
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  await expect(trigger).toBeFocused();
 
   await page.reload();
   await expect(root).toHaveAttribute("data-theme", "light");
@@ -60,6 +61,8 @@ test("Appearance applies the selected palette and persists across reload", async
   await page.getByRole("menuitem", { name: "Appearance: switch to dark" }).press("Enter");
   await expect(root).toHaveAttribute("data-theme", "dark");
   await expect(surface).toHaveCSS("background-color", dark);
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  await expect(trigger).toBeFocused();
 });
 
 test("Appearance switches to light on the first click with a saved System preference", async ({page}) => {

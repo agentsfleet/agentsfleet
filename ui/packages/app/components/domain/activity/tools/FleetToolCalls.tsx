@@ -12,7 +12,7 @@ export const TOOL_CALLS_LABEL = "Tool activity";
 const COMMANDS = "commands";
 
 /** Adjacent calls share one compact disclosure; each keeps its own identity. */
-export function ToolCallList({children, activity, footer}: {children: ReactNode; activity: ToolActivity; footer?: ReactNode}) {
+export function ToolCallList({children, activity}: {children: ReactNode; activity: ToolActivity}) {
   const running = activity.state === CELL_STATE.RUNNING;
   const Icon = activity.state === CELL_STATE.SUCCEEDED ? CheckCircleIcon : ACTIVITY_ICONS[activity.kind];
   const label = [activity.label, activity.target].filter(Boolean).join(" ");
@@ -24,7 +24,7 @@ export function ToolCallList({children, activity, footer}: {children: ReactNode;
           <span className="block sm:inline" data-chat-loading={running}>{toolActivityLabel(activity)}</span>
         </span>
       </AccordionTrigger>
-      <AccordionContent className="pb-0"><List variant="plain" aria-label={TOOL_CALLS_LABEL} className="flex flex-col gap-xs space-y-0 sm:gap-0">{children}</List>{footer}</AccordionContent>
+      <AccordionContent className="pb-0"><List variant="plain" aria-label={TOOL_CALLS_LABEL} className="flex flex-col gap-xs space-y-0 sm:gap-0">{children}</List></AccordionContent>
     </AccordionItem>
   </Accordion>;
 }

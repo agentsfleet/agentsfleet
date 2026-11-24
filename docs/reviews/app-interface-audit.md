@@ -4,9 +4,11 @@ The app baseline is main at `e96444ac9`. The audit maps all 21 route entries and
 
 ## App-wide page loading
 
-The approved Single Relay sends a pulse between three nodes around the brand mark. The dashboard keeps its sidebar and header visible while the full-screen variant centers the status in the window. [Dashboard](../ux.html#app-loading) · [Full screen](../ux.html#app-loading-full)
+Eight strokes gather into the approved brand mark in opposing pairs. The dashboard keeps its sidebar and header visible while the full-screen variant centers the status in the window. [Dashboard](../ux.html#app-loading) · [Full screen](../ux.html#app-loading-full)
 
-Reduced motion keeps the 44-pixel mark and “Loading…” label visible with the pulse at rest. `RouteLoading` uses the shared Spinner's page variant for navigation, initial data and connector return, alongside a compact spinner for buttons and forms. [Page loading design](../DESIGN_SYSTEM.md#page-loading) · [RouteLoading](../../ui/packages/app/components/layout/RouteLoading.tsx) · [Connector loading](../../ui/packages/app/app/connectors/loading.tsx)
+Reduced motion keeps the assembled mark and “Loading…” label still. Full-screen waits also show the agentsfleet wordmark.
+
+`RouteLoading` uses the shared Spinner's page variant for navigation, initial data and connector return, alongside a compact spinner for buttons and forms. [Page loading design](../DESIGN_SYSTEM.md#page-loading) · [RouteLoading](../../ui/packages/app/components/layout/RouteLoading.tsx) · [Connector loading](../../ui/packages/app/app/connectors/loading.tsx)
 
 ## Rendered app review
 
@@ -41,7 +43,7 @@ One public Chromium sample measured 1,220 ms to first byte for `/sign-in` and 87
 
 The measurement proxy refused the Clerk asset host, so the time to an interactive form remains unmeasured. The canonical URLs returned directly and `/signin` and `/signup` each redirected once.
 
-Both pages now send a small loading skeleton with the initial HTML. If Clerk reports a load failure, the loading panel offers a reload action. [Loading panel](../../ui/packages/app/app/%28auth%29/AuthFormLoading.tsx) · [Server markup checks](../../ui/packages/app/tests/app-pages.test.ts)
+Both pages send the shared page loader in the initial HTML while Clerk prepares the form. If Clerk reports a load failure, the page offers a reload action. [Loading panel](../../ui/packages/app/app/%28auth%29/AuthFormLoading.tsx) · [Server markup checks](../../ui/packages/app/tests/app-pages.test.ts)
 
 Server components render the panel and a small client component reads Clerk’s status. Each local production route bundle measured 220.56 kB gzip against a 230.4 kB budget. [Client status](../../ui/packages/app/app/%28auth%29/AuthFormStatus.tsx) · [Route budgets](../../ui/packages/app/.size-limit.mjs)
 
@@ -96,12 +98,12 @@ The app uses the shadcn New York setup, Tailwind tokens, Phosphor icons and Reac
 | [`app/globals.css`](../../ui/packages/app/app/globals.css) | Tailwind, shared and app tokens, type, scrollbars, reduced motion, mobile form sizing, Clerk overrides and app shell rules. |
 | [ChatThread](../../ui/packages/app/components/domain/shared/chat/ChatThread.tsx), [ChatComposerFrame](../../ui/packages/app/components/domain/shared/chat/ChatComposerFrame.tsx), [FleetWorkSidebar](../../ui/packages/app/components/domain/shared/summary/FleetWorkSidebar.tsx) | Viewport and sticky footer, composer surface and input sizing, and responsive Summary layout. Activity, failures, and resource disclosures own their spacing and typography. |
 | [Billing](../../ui/packages/app/app/%28dashboard%29/settings/billing/components/BillingReportView.tsx), [Team](../../ui/packages/app/app/%28dashboard%29/settings/members/components/TeamTable.tsx), [Security](../../ui/packages/app/components/account/SecurityResourceRow.tsx), [Models](../../ui/packages/app/app/%28dashboard%29/w/%5BworkspaceId%5D/settings/models/components/ModelsRegistryView.tsx) | Billing filters and totals, Team roster geometry, Security title wrapping, and Models registry and form styles live with their components. |
-| [`repository-name.css`](../../ui/packages/app/components/domain/conversation/summary/repository-name.css) | The existing repository-name overflow animation, including touch and reduced-motion rules. |
+| [`summary-labels.css`](../../ui/packages/app/components/domain/shared/summary/summary-labels.css) | Single-line Summary labels, with pointer, keyboard, touch and reduced-motion behavior. |
 | [Shared tokens](../../ui/packages/design-system/src/tokens.css), [Tailwind theme](../../ui/packages/design-system/src/theme.css), [app tokens](../../ui/packages/design-system/src/app-tokens.css) | Brand and semantic values, typography including Manrope, Tailwind utilities and app-specific density. |
 
 The global stylesheet used to import `settings/settings.css` and `conversation/conversation.css`. Tailwind utilities now live on their elements, such as Billing’s time-zone note with its font, color and wide-screen alignment. [App style graph](../../ui/packages/app/app/globals.css) · [Billing filters](../../ui/packages/app/app/%28dashboard%29/settings/billing/components/BillingFilters.tsx#L39)
 
-Tailwind emits each distinct utility once and shared components group repeated roles and layouts. The repository-name animation keeps its own stylesheet for hover, touch and reduced motion. [Repository-name CSS](../../ui/packages/app/components/domain/conversation/summary/repository-name.css) · [App conventions](../../ui/packages/app/AGENTS.md)
+Tailwind emits each distinct utility once and shared components group repeated roles and layouts. The repository-name animation keeps its own stylesheet for hover, touch and reduced motion. [Repository-name CSS](../../ui/packages/app/components/domain/shared/summary/summary-labels.css) · [App conventions](../../ui/packages/app/AGENTS.md)
 
 ### Inline CSS and component overrides
 
@@ -122,7 +124,7 @@ Each route uses the root style graph. Workspace routes begin with `/w/[workspace
 
 | Page | Current component and style boundary | Refactor decision |
 | --- | --- | --- |
-| [Sign in](../../ui/packages/app/app/%28auth%29/sign-in/%5B%5B...sign-in%5D%5D/page.tsx) | Auth layout, Clerk and shared appearance preset | Server-rendered loading panel and retry state checked on phones and desktop. |
+| [Sign in](../../ui/packages/app/app/%28auth%29/sign-in/%5B%5B...sign-in%5D%5D/page.tsx) | Auth layout, Clerk and shared appearance preset | Server-rendered page loader and retry state. |
 | [Sign up](../../ui/packages/app/app/%28auth%29/sign-up/%5B%5B...sign-up%5D%5D/page.tsx) | Same auth layout and appearance preset | Shares the loading panel and uses its own loading message. |
 | [Invites](../../ui/packages/app/app/%28dashboard%29/invites/page.tsx) | Shared `InvitesView` with route data loader, component utilities | Retain the arrangement and test the shared view once for list and empty states. |
 | [Invite detail](../../ui/packages/app/app/%28dashboard%29/invites/%5BinviteId%5D/page.tsx) | Reuses `InvitesView` with the selected invite, component utilities | Keep the accept and dismiss behaviors in the feature, using the shared controls. |

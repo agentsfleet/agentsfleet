@@ -25,7 +25,9 @@ describe("shared page loading", () => {
       const host = document.createElement("div");
       host.innerHTML = renderToStaticMarkup(React.createElement(Loading));
       const status = within(host).getByRole("status", { name: "Loading page" });
-      expect(status.textContent).toBe("Loading…");
+      expect(within(status).getByText("Loading…")).toBeTruthy();
+      expect(status.querySelectorAll(".page-loading-stroke")).toHaveLength(8);
+      expect(Boolean(within(status).queryByText("agentsfleet"))).toBe(!name.startsWith("(dashboard)"));
       expect(host.querySelector(".animate-pulse")).toBeNull();
       expect(host.querySelector("h1")).toBeNull();
     });

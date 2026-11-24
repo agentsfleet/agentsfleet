@@ -23,10 +23,18 @@ it("labels sources as saved policy without claiming fresh connected permissions"
   view.rerender(<WorkSources sources={fleetSources({repositories: ["a/b"]})} />);
   fireEvent.click(screen.getByRole("region", {name: "Sources"}).querySelector("summary")!);
   expect(screen.getByRole("link", {name: "a/b"}).getAttribute("href")).toBe("https://github.com/a/b");
-  expect(screen.getByText("Saved fleet policy · access not specified")).toBeTruthy();
-  for (const publication of ["existing_pr", "event_draft"]) {
-    view.rerender(<WorkSources sources={fleetSources({repositories: ["a/b"], repository_access: "write", repository_publication: publication})} />);
-    expect(screen.getByText(publication === "existing_pr" ? "Saved fleet policy · write access · existing PRs" : "Saved fleet policy · write access · draft PRs")).toBeTruthy();
+  expect(screen.getByText("Policy: Not specified")).toBeTruthy();
+  const policies = [
+    ["read", "existing_pr", "Read only"],
+    ["write", null, "Write access"],
+    ["write", "existing_pr", "Edit existing PRs"],
+    ["write", "event_draft", "Open draft PRs"],
+    [null, "existing_pr", "Existing PRs"],
+    [null, "event_draft", "Draft PRs"],
+  ] as const;
+  for (const [access, publication, label] of policies) {
+    view.rerender(<WorkSources sources={fleetSources({repositories: ["a/b"], repository_access: access, repository_publication: publication})} />);
+    expect(screen.getByText(`Policy: ${label}`)).toBeTruthy();
   }
 });
 

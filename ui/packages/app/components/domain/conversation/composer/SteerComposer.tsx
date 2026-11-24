@@ -1,22 +1,23 @@
 "use client";
 
+import type { TurnStop } from "./useTurnStop";
 import { FleetAddressInput } from "./FleetAddressInput";
 import { useEffect, useId, useMemo, useRef, type RefObject } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ComposerPrimitive, useAui, useAuiState } from "@assistant-ui/react";
-import { Alert, Button, List, ListItem } from "@agentsfleet/design-system";
-import { ArrowUpIcon, SquareIcon } from "@phosphor-icons/react/ssr";
+import { Alert, Button, List, ListItem, cn } from "@agentsfleet/design-system";
+import { ArrowUpIcon, ClockClockwiseIcon, WarningCircleIcon } from "@phosphor-icons/react/ssr";
 import { PENDING_SEND_STATE, type PendingSend } from "../delivery/useFleetPendingSends";
 import { signInPath } from "@/lib/auth/sign-in-redirect";
 import { fleetComposerText } from "@/lib/chat-message-text";
 import { parseChatAddress } from "@/lib/chat-address";
 import { ChatComposerFrame, ChatComposerHint } from "../../shared/chat/ChatComposerFrame";
+import { ChatStopButton } from "@/components/domain/shared/chat/ChatStopButton";
 import { useFleetSetup } from "../../setup/FleetSetupContext";
 import { FleetMentionButton } from "./FleetMentionButton";
 import { FleetModelSelect } from "../../models/FleetModelSelect";
 import { AddUploadPreview, ComposerUploadAttachments } from "./UploadAttachments";
-import type { TurnStop } from "./useTurnStop";
 
 const PLACEHOLDER = "Message your fleet…";
 const SEND_LABEL = "Send";
@@ -24,10 +25,10 @@ const STOP_LABEL = "Stop";
 const COMPOSER_LABEL = "Chat composer";
 const SESSION_EXPIRED = "Your session expired. Sign in again before sending this message.";
 const SEND_FAILED = "Message not sent.";
-const SEND_UNCONFIRMED = "Couldn't confirm this message was sent.";
+const SEND_UNCONFIRMED = "Sending was interrupted.";
 const SEND_CONFLICT = "This message conflicts with one already sent.";
 const SIGN_IN_LABEL = "Sign in";
-const RESEND_LABEL = "Resend";
+const RETRY_LABEL = "Try again";
 const SEND_AS_NEW_LABEL = "Send as new";
 const NOTICES_LABEL = "Unsent messages";
 // In flight, or dismissed: neither is the operator's to act on here.
@@ -66,7 +67,7 @@ export function SteerComposer({ pending, onResend, onDismiss, onRestored, onDraf
     <ChatComposerFrame id="fleet-steer-composer" label={COMPOSER_LABEL} inputRef={draftRef} disabled={modelChanging}
       input={<FleetAddressInput inputRef={draftRef} disabled={modelChanging} placeholder={PLACEHOLDER} />}
       toolbar={<><AddUploadPreview /><FleetMentionButton input={draftRef} disabled={modelChanging} /><FleetModelSelect label={modelLabel} /></>}
-      actions={<>{turnStop?.visible ? <StopButton stop={turnStop} /> : null}<SendButton draftRef={draftRef} /></>}>
+      actions={<>{turnStop?.visible ? <ChatStopButton label={STOP_LABEL} disabled={turnStop.stopping} onClick={turnStop.stop} /> : null}<SendButton draftRef={draftRef} /></>}>
         <PendingSendNotices entries={unresolved} onResend={onResend} onDismiss={onDismiss} draftRef={draftRef} />
         <DraftReporter onDraft={onDraft} />
         <ComposerUploadAttachments />
@@ -136,24 +137,6 @@ function SendButton({ draftRef }: { draftRef: RefObject<HTMLTextAreaElement | nu
   );
 }
 
-// Shown only while a turn of this fleet runs, beside Send rather than in its
-// place: sending mid-run steers the run, so both stay available.
-function StopButton({ stop }: { stop: TurnStop }) {
-  return (
-    <Button
-      type="button"
-      variant="secondary"
-      size="icon-row"
-      aria-label={STOP_LABEL}
-      className="shrink-0 self-end rounded-full [&_svg]:size-4.5"
-      disabled={stop.stopping}
-      onClick={stop.stop}
-    >
-      <SquareIcon size={18} aria-hidden="true" />
-    </Button>
-  );
-}
-
 // Its own leaf: it reads the draft, so typing re-renders only this.
 function DraftReporter({ onDraft }: Pick<SteerComposerProps, "onDraft">) {
   const draft = useComposerPayload();
@@ -201,6 +184,7 @@ function PendingSendNotices({ entries, ...actions }: { entries: readonly Pending
 // that could only be refused again.
 function PendingSendNotice({ entry, onResend, onDismiss, draftRef }: { entry: PendingSend } & NoticeProps) {
   const aui = useAui();
+  const draftMatches = useComposerPayload() === entry.text;
   const modelChanging = useFleetSetup()?.modelChanging ?? false;
   const textId = useId();
   // Sign-in returns to this fleet, where the notice's Resend is waiting.
@@ -219,28 +203,29 @@ function PendingSendNotice({ entry, onResend, onDismiss, draftRef }: { entry: Pe
     draftRef.current?.focus();
   };
   const unconfirmed = entry.state === PENDING_SEND_STATE.UNKNOWN;
+  const conflict = entry.state === PENDING_SEND_STATE.CONFLICT;
   return (
     <Alert
       variant={unconfirmed ? "warning" : "destructive"}
-      className="items-center gap-sm"
+      className="items-center gap-md border-0 bg-transparent p-0 text-label text-muted-foreground [&>button]:focus-visible:ring-inset [&>button]:focus-visible:ring-offset-0"
       onDismiss={dismiss}
     >
-      {/* The reason keeps its own line on a narrow screen; only the quoted
-          message truncates. */}
-      <span className="min-w-0 flex-1">
-        <span className="block">{sentenceFor(entry)}</span>
-        <span id={textId} className="block truncate text-foreground">{entry.text}</span>
-      </span>
-      {entry.state === PENDING_SEND_STATE.SESSION ? (
-        <Button asChild type="button" variant="outline" size="sm">
-          <Link href={signInPath(pathname)}>{SIGN_IN_LABEL}</Link>
+      <WarningCircleIcon className={cn("size-3.5 shrink-0", unconfirmed ? "text-warning" : "text-destructive")} aria-hidden="true" />
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-lg gap-y-xs">
+        <span className="min-w-0">
+          <span className="block">{sentenceFor(entry)}</span>
+          <span id={textId} className={draftMatches ? "sr-only" : "block truncate text-foreground"}>{entry.text}</span>
+        </span>
+        {entry.state === PENDING_SEND_STATE.SESSION ? (
+          <Button asChild type="button" variant="link" size="sm">
+            <Link href={signInPath(pathname)}>{SIGN_IN_LABEL}</Link>
+          </Button>
+        ) : null}
+        <Button type="button" variant="link" size="sm" className="min-h-8 px-sm text-primary pointer-coarse:min-h-11"
+          disabled={modelChanging} onClick={resend} aria-describedby={textId}>
+          {conflict ? SEND_AS_NEW_LABEL : <><ClockClockwiseIcon size={16} aria-hidden="true" />{RETRY_LABEL}</>}
         </Button>
-      ) : null}
-      {/* Offered after a sign-in too: once the session is back, a Resend is
-          the way out, and a fresh 401 simply marks it again. */}
-      <Button type="button" variant="outline" size="sm" disabled={modelChanging} onClick={resend} aria-describedby={textId}>
-        {entry.state === PENDING_SEND_STATE.CONFLICT ? SEND_AS_NEW_LABEL : RESEND_LABEL}
-      </Button>
+      </div>
     </Alert>
   );
 }

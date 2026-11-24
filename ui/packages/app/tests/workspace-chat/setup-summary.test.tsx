@@ -12,7 +12,7 @@ afterEach(cleanup);
 it("uses the approved flat grouping and real model and spending metadata", () => {
   render(<SetupSummary definition={REVIEW.effective.definition} requirements={REQUIREMENTS} modelLabel="MiniMax M3.1 Flash" />);
   expect(screen.getByText("MiniMax M3.1 Flash")).toBeTruthy();
-  expect(screen.getByText("$1.00 / day")).toBeTruthy();
+  expect(screen.getByText("$1.00").closest("dd")?.textContent).toBe("$1.00 / day");
   expect(screen.getByText("Next wake-up")).toBeTruthy();
   expect(within(screen.getByRole("region", {name: "Repositories"})).getByText("agentsfleet/web")).toBeTruthy();
   expect(screen.getByText("Shell")).toBeTruthy();
@@ -45,7 +45,7 @@ it("changes only the chosen policy and disables package domains while Allow all 
   fireEvent.click(screen.getByRole("switch", {name: "Allow all public internet access"}));
   expect(change).toHaveBeenLastCalledWith({http_egress: "public"});
   rerender(<SetupSummary requirements={{...REQUIREMENTS, network: {...REQUIREMENTS.network, http_egress: "public"}}} onNetworkChange={change} />);
-  const packages = screen.getByRole("switch", {name: "Enable package manager domains"});
+  const packages = screen.getByRole("switch", {name: "Packages"});
   expect(packages.getAttribute("data-state")).toBe("checked");
   expect(packages).toHaveProperty("disabled", true);
   fireEvent.click(packages);
@@ -53,7 +53,7 @@ it("changes only the chosen policy and disables package domains while Allow all 
   fireEvent.click(screen.getByRole("switch", {name: "Allow all public internet access"}));
   expect(change).toHaveBeenLastCalledWith({http_egress: "restricted"});
   rerender(<SetupSummary requirements={REQUIREMENTS} onNetworkChange={change} />);
-  fireEvent.click(screen.getByRole("switch", {name: "Enable package manager domains"}));
+  fireEvent.click(screen.getByRole("switch", {name: "Packages"}));
   expect(change).toHaveBeenLastCalledWith({package_manager_domains: false});
 });
 
@@ -72,8 +72,8 @@ it("labels incomplete saved setup metadata without inventing schedule or network
 
 it("retains exact nanos above Number.MAX_SAFE_INTEGER", () => {
   render(<SetupSummary requirements={{...REQUIREMENTS, budget: {daily_nanos: "1", monthly_nanos: "9223372036854775807"}}} />);
-  expect(screen.getByText("$0.000000001 / day")).toBeTruthy();
-  expect(screen.getByText("$9,223,372,036.854775807 / month")).toBeTruthy();
+  expect(screen.getByText("$0.000000001").textContent).toBe("$0.000000001 / day");
+  expect(screen.getByText("$9,223,372,036.854775807").textContent).toBe("$9,223,372,036.854775807 / month");
 });
 
 it.each([{}, {...REQUIREMENTS, credentials: null}, {...REQUIREMENTS, budget: {daily_nanos: "0"}},
@@ -83,7 +83,7 @@ it.each([{}, {...REQUIREMENTS, credentials: null}, {...REQUIREMENTS, budget: {da
   const definition: Definition = {...REVIEW.effective.definition, config: {"x-agentsfleet": REQUIREMENTS}};
   render(<SetupSummary definition={definition} requirements={requirements} />);
   expect(screen.getByText("Network policy not reviewed")).toBeTruthy();
-  expect(screen.queryByText("$1.00 / day")).toBeNull();
+  expect(screen.queryByText("$1.00")).toBeNull();
 });
 
 it.each([{allow: []}, {package_manager_domains: false}, {}])("does not turn an incomplete network policy into public access: %j", network => {

@@ -505,7 +505,11 @@ Reduced motion retains color and focus feedback without movement.
 
 Use `RouteLoading` for page navigation and initial page data. It centers the page variant of the shared Spinner with the accessible name “Loading page” and visible label “Loading…”. The first application load fills the viewport.
 
-A single pulse passes between three nodes around the steady brand mark. Reduced motion keeps the pulse and mark still.
+Eight strokes open in opposing pairs from two columns into the brand mark around a fixed center. The full-screen version pairs the mark with the agentsfleet wordmark. The label stays still.
+
+Reduced motion displays the assembled mark immediately.
+
+On sign-in and sign-up the same mark appears in the form column until Clerk is ready. A failed load offers Reload page.
 
 Inside the dashboard it fills the content area while the header and sidebar remain visible. Do not add route-specific skeleton layouts. Buttons, table refreshes, and other local actions keep their own loading cues.
 
@@ -718,7 +722,9 @@ Keep one visual shell through setup, confirmed save, and the fleet conversation.
 
 Label the setup state Fleet setup. Its flap action is Save.
 
-Show model, spending limit, repositories, internet access and secrets in Summary. Show Next wake-up only in the composer flap.
+Show the reviewed runtime model, spending limit, repositories, internet access and secrets in the setup Summary.
+
+For a scheduled fleet conversation, show the spending limit and next wake-up at the top of Summary. The composer shows the runtime model and the wake-up controls.
 
 After the server confirms the fleet identity, open its conversation without an extra Open fleet action. Replace the draft URL with the saved fleet URL.
 Show confirmed readiness separately from saving.
@@ -770,7 +776,8 @@ Completed replies keep the same markdown renderer and text nodes used while stre
 Reserve reply-action space before completion. Completing a live reply must not enable layout skipping or change its scroll position.
 
 Only replies loaded as completed history may skip offscreen layout.
-Run details use a compact, optional popover with keyboard dismissal and focus return.
+Replies with recorded task activity open that history from the reply actions. The popover supports keyboard dismissal and returns focus to its control.
+
 Show measured durations with millisecond precision, such as `842ms` or `1.237s`.
 
 Browser checks compare computed font family, size, weight, and line height across both composers.
@@ -1200,17 +1207,23 @@ The header shortcut starts a new fleet through the shared navigation intent on r
 
 ### Fleet setup review
 
-Use the original flat Summary rows and dividers. Model and spending limit appear at the top.
+Use a single divider after the setup metadata. Use the same 12px size for the amount and period, with weight 650 for the amount. Place the next wake-up on the same 28px row rhythm.
+
+Show the reviewed runtime model in Fleet setup.
+
+Align section headings and the leading edge of 16 px icons. Start row text 8 px after each icon. Use the same text column for Changes, Output, Sources and setup rows.
 
 The broader sections are Repositories, Public internet access and Secrets. Tools sit in a small row with repositories. Remove Purpose, repeated recurrence prose and the separate Review setup panel.
 
-Public internet access has Allow all and Enable package manager domains, without an internal divider. Keep the package label on one line with the same row spacing. When Allow all is enabled, disable the package option while preserving its selection.
+Public internet access has Allow all and Packages. Keep the package label on one line and align the switches to the same right edge as the Summary values. When Allow all is enabled, disable the package option while preserving its selection.
 
-The setup Summary uses a 320px desktop width so its policy label and controls fit. Conversation summaries retain their existing width. Keep existing domain rules in configuration; no additional domain editor appears in this Summary.
+Setup and conversation use the shared responsive Summary widths of 248px, 228px and 216px on desktop. Keep existing domain rules in configuration; no additional domain editor appears in this Summary.
 
 Edits use the native creator-owned draft and preserve unrelated policy.
 
-Secret names may appear; values never do. A missing review stays unknown. Before a candidate exists, show only “Your setup will appear here as you chat.”
+Show each secret name beside the key icon and align its mask dots with the values column. Keep repository, secret and model names on one line. Longer names scroll on hover, with manual scrolling for touch, keyboard and reduced motion.
+
+A missing review stays unknown. Before a candidate exists, show only “Your setup will appear here as you chat.”
 
 The desktop Summary scrolls only when the viewport requires it; phone layouts place it inline.
 
@@ -1226,9 +1239,9 @@ While pending it shows a spinner, a muted-to-bright label and whole seconds. Onl
 
 Unconfirmed writes retain Retry and the original operation identity. Natural chat Save remains available through the same native fleet-saving path.
 
-Queued, Thinking and working rows share the same progress label. Only the visual clock ticks; the accessible label stays stable.
+Queued, thinking and working replies use three dots on one line with a stable accessible status label.
 
-Reduced motion disables spinner rotation and the sweep. The clock unmounts when work finishes or the row disappears.
+Reduced motion keeps the dots static. Forced colors use the system text color for the dots.
 
 Context compaction uses one quiet row: “Compacting context · This can take a few minutes”. Show a text glyph and the shared muted-to-bright sweep. Replace the ordinary working indicator until the next reply or compaction state.
 

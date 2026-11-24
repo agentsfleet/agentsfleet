@@ -106,6 +106,48 @@ test("the conversation has one retry action and reports when the check succeeds"
   await expect(page.getByRole("button", {name: "Reconnect & retry"})).toHaveCount(0);
 });
 
+test("an addressed preview opens the new turn and quotes its streamed reply", async ({page}) => {
+  const time = new Date("2026-11-23T00:00:00Z");
+  await page.clock.install({time});
+  await page.clock.pauseAt(new Date(time.valueOf() + 1_000));
+  await page.emulateMedia({reducedMotion: "reduce"});
+  await page.goto(review("bob"));
+  const input = page.locator("#message");
+  await input.fill("@release-watch Hello");
+  await input.press("Enter");
+  const reply = page.locator("[data-preview-reply]");
+  await expect(page).toHaveURL(/#conversation$/);
+  await expect(page.getByText("Hello", {exact: true})).toBeInViewport();
+  await expect(reply.getByRole("status", {name: "Working"})).toBeVisible();
+  await page.clock.runFor(2_000);
+  const answer = "Hello! What would you like me to check on the release?";
+  await expect(reply.getByText(answer, {exact: true})).toBeVisible();
+  await reply.getByRole("button", {name: "Quote response"}).click();
+  await expect(input).toHaveValue(`> ${answer}\n\n`);
+});
+
+test("stopping a waiting or streaming preview keeps the stopped result and composer focus", async ({page}) => {
+  const time = new Date("2026-11-23T00:00:00Z");
+  await page.clock.install({time});
+  await page.clock.pauseAt(new Date(time.valueOf() + 1_000));
+  await page.goto(review("conversation"));
+  const input = page.locator("#message");
+  for (const waiting of [true, false]) {
+    await input.fill("Hello");
+    await input.press("Enter");
+    const reply = page.locator("[data-preview-reply]").last();
+    if (waiting) await expect(reply.getByRole("status", {name: "Working"})).toBeVisible();
+    else {
+      await page.clock.runFor(550);
+      await expect(reply.locator(".preview-reply-text")).toBeVisible();
+    }
+    await page.getByRole("button", {name: "Stop", exact: true}).click();
+    await page.clock.runFor(2_000);
+    await expect(reply.getByText("Stopped.", {exact: true})).toBeVisible();
+    await expect(input).toBeFocused();
+  }
+});
+
 test("the CLI tabs show sign-in progress and a delayed runner request", async ({page}) => {
   const time = new Date("2026-11-23T00:00:00Z");
   await page.clock.install({time});

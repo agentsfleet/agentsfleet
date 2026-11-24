@@ -140,10 +140,8 @@ async function reviewModels(page: Page, reference: Page) {
   const section = page.getByRole("region", {name: "Your models"});
   const heading = section.getByRole("heading");
   const designHeading = reference.locator(".section-title h3");
-  const count = heading.getByText("1"), designCount = designHeading.locator(".label-chip");
   await match(heading, designHeading, [...text, "height"]);
-  await match(count, designCount, [...text, "width", "height", "border-radius"]);
-  expect(await topOffset(heading, count)).toBe(await topOffset(designHeading, designCount));
+  await matchCountGeometry(heading, designHeading);
   await match(section.getByRole("listitem"), reference.locator(".model-row"), ["height", "width", "padding-left", "padding-top", "gap"]);
   await match(section.getByText("OpenAI", {exact: true}), reference.locator(".resource-copy p"), text);
   await matchGlyph(section.locator("p svg"), reference.locator(".model-row small i"));
@@ -160,6 +158,8 @@ async function reviewTeam(page: Page, reference: Page, isMobile: boolean) {
   const search = page.getByRole("searchbox");
   await match(search, reference.locator("#team-search"), text);
   await matchGlyph(search.locator("..").locator("svg"), reference.locator(".search i"));
+  await matchCountGeometry(page.getByRole("region", {name: "Members", exact: true}).getByRole("heading"), reference.locator("#members-title"));
+  await matchCountGeometry(page.getByRole("region", {name: "Pending invitations", exact: true}).getByRole("heading"), reference.locator("#invitations-title"));
   const row = page.getByRole("listitem", {name: "Kishore", exact: true});
   await match(row, reference.locator(".team-row").first(), ["height", "width", "padding-left", "padding-top"]);
   await match(row.getByText("kishore@example.com"), reference.locator(".team-person > span").first(), text);
@@ -175,6 +175,40 @@ async function reviewTeam(page: Page, reference: Page, isMobile: boolean) {
   const avatar = row.locator(":scope > [aria-hidden]").first();
   expect(await avatar.isVisible()).toBe(!isMobile);
   if (!isMobile) await match(avatar, reference.locator(".team-avatar").first(), [...text, "width", "height", "background-color"]);
+}
+
+async function matchCountGeometry(heading: Locator, designHeading: Locator) {
+  await match(heading.locator("span"), designHeading.locator(".section-count"), [...text, "border-radius"]);
+  const measure = (locator: Locator) => locator.evaluate(element => {
+    const badge = element.lastElementChild;
+    const title = element.firstChild;
+    if (!badge || !title) throw new Error("The section heading is missing its label or count");
+    const label = document.createRange();
+    label.selectNode(title);
+    const originalCount = badge.textContent;
+    const geometry = ["0", "1", "2", "10"].map(count => {
+      badge.textContent = count;
+      const digits = document.createRange();
+      digits.selectNodeContents(badge);
+      const box = badge.getBoundingClientRect();
+      const labelBox = label.getBoundingClientRect();
+      const digitBox = digits.getBoundingClientRect();
+      return {
+        width: box.width,
+        height: box.height,
+        gap: box.left - labelBox.right,
+        centerOffset: box.top + box.height / 2 - labelBox.top - labelBox.height / 2,
+        digitPadding: [digitBox.left - box.left, box.right - digitBox.right, digitBox.top - box.top, box.bottom - digitBox.bottom],
+      };
+    });
+    badge.textContent = originalCount;
+    return geometry;
+  });
+  const [actual, reference] = await Promise.all([measure(heading), measure(designHeading)]);
+  expect(actual).toEqual(reference);
+  for (const count of actual.slice(0, 3)) {
+    expect(count).toMatchObject({width: 25, height: 26, gap: 8, centerOffset: 0});
+  }
 }
 
 async function useTeam(page: Page) {

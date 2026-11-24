@@ -3,7 +3,6 @@ import { z } from "zod";
 
 import { REASONING_SPAN, REPLY_FIGURE } from "../replies/fleetReplyMessage";
 import { GROUP_META, RENDER_KIND_KEY } from "../../conversation/thread/useFleetThreadEntries";
-import { readNanos } from "@/lib/api/nanos";
 
 // The custom-metadata accessors a rendered message reads. Pure and JSX-free,
 // split out of `fleetMessageRenderers` at its length cap. `convertTurn`
@@ -57,17 +56,8 @@ export function readReasoningSpan(message: MessageState): { startedAtMs: number 
   };
 }
 
-/** What the turn cost, as the run reported it. A figure it did not report
- * reads null, so nothing draws it as zero. */
-export type ReplyFigures = { tokens: number | null; wallMs: number | null; costNanos: string | null };
-
-export function readReplyFigures(message: MessageState): ReplyFigures {
-  const custom = message.metadata.custom;
-  return {
-    tokens: finiteNumber(custom[REPLY_FIGURE.TOKENS]),
-    wallMs: finiteNumber(custom[REPLY_FIGURE.WALL_MS]),
-    costNanos: readNanos(custom[REPLY_FIGURE.COST_NANOS]),
-  };
+export function readReplyWallMs(message: MessageState): number | null {
+  return finiteNumber(message.metadata.custom[REPLY_FIGURE.WALL_MS]);
 }
 
 /** How many calls the saved trace left out to stay inside its bounds. */

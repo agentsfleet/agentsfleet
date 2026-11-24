@@ -3,10 +3,13 @@
 import type { ReactNode } from "react";
 import type { Definition, Review, Schedule } from "@/lib/api/draft-types";
 import type { SetupNetworkChange } from "@/lib/setup-requirements";
+import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { useId, useState } from "react";
 import Link from "next/link";
-import { Button, Section, SectionLabel, Time, cn, sameCalendarDay } from "@agentsfleet/design-system";
-import { GitBranchIcon, KeyIcon } from "@phosphor-icons/react/ssr";
+import { Button, DescriptionDetails, DescriptionList, DescriptionTerm, List, ListItem, Section, SectionLabel, Time, cn, sameCalendarDay } from "@agentsfleet/design-system";
+import { ClockIcon, CpuIcon, GitBranchIcon, KeyIcon, TerminalWindowIcon, WalletIcon } from "@phosphor-icons/react/ssr";
+import { SUMMARY_ICON, SUMMARY_ROW } from "@/components/domain/shared/summary/summary-row";
+import { SecretValueMask } from "@/components/domain/shared/secrets/SecretValueMask";
 import { hasProposedWakeup, setupRequirements } from "@/lib/setup-requirements";
 import { SetupNetworkPolicy } from "./SetupNetworkPolicy";
 import { formatDollars } from "@/lib/money";
@@ -28,15 +31,21 @@ export function SetupSummary({definition, requirements, modelLabel, schedules = 
   const nextWakeup = nextFleetWakeup(schedules);
   const tools = setup?.tools.length ? toolSummary(setup.tools) : null;
   return <div className="ph-no-capture ph-no-record min-w-0 text-label leading-label [overflow-wrap:anywhere]">
-    <dl className="space-y-md">
-      <Meta label="Model">{modelLabel ?? "Not reviewed"}</Meta>
-      <Meta label="Spending limit" emphasize>{setup ? <>{formatDollars(setup.budget.daily_nanos, 9)} / day{setup.budget.monthly_nanos ? <span className="block">{formatDollars(setup.budget.monthly_nanos, 9)} / month</span> : null}</> : "Not reviewed"}</Meta>
-      <Meta label="Next wake-up" emphasize>{nextWakeup ? <Time value={nextWakeup} format={sameCalendarDay(nextWakeup, today) ? "minute" : "compact"} /> : wakeupStatus(schedules, definition, Boolean(setup))}</Meta>
-    </dl>
+    <DescriptionList className="space-y-0 border-b border-border pb-md text-label [&>div]:flex-nowrap [&>div]:items-center [&>div]:gap-md">
+      <Meta icon={WalletIcon} label="Spending limit">{setup ? <>
+        <BudgetAmount nanos={setup.budget.daily_nanos} period="day" />
+        {setup.budget.monthly_nanos ? <BudgetAmount nanos={setup.budget.monthly_nanos} period="month" /> : null}
+      </> : "Not reviewed"}</Meta>
+      <Meta icon={ClockIcon} label="Next wake-up">{nextWakeup ? <Time value={nextWakeup} format={sameCalendarDay(nextWakeup, today) ? "minute" : "compact"} /> : wakeupStatus(schedules, definition, Boolean(setup))}</Meta>
+      {modelLabel ? <Meta icon={CpuIcon} label="Model"><ScrollableValue label="Model name">{modelLabel}</ScrollableValue></Meta> : null}
+    </DescriptionList>
     {scheduleRecovery ? <div className="mt-lg">{scheduleRecovery}</div> : null}
-    <SummarySection title="Repositories" className="mt-lg" action={<Manage kind="repositories" href={editHref} disabled={disabled} onClick={onManage && (trigger => onManage("repositories", trigger))} />}>
+    <SummarySection title="Repositories" action={<Manage kind="repositories" href={editHref} disabled={disabled} onClick={onManage && (trigger => onManage("repositories", trigger))} />}>
       <SummaryResources items={setup?.repositories} kind="repositories" />
-      {tools ? <p className="mt-sm text-eyebrow leading-summary-label text-muted-foreground"><span className="mr-md text-text-dim">Tools</span>{tools}</p> : null}
+      {tools ? <p className={cn(SUMMARY_ROW, "min-h-8 py-xs text-eyebrow leading-summary-label text-muted-foreground")}>
+        <TerminalWindowIcon className={SUMMARY_ICON} aria-hidden="true" />
+        <span className="min-w-0"><span className="text-text-dim">Tools · </span><span>{tools}</span></span>
+      </p> : null}
     </SummarySection>
     <SummarySection title="Public internet access">
       {setup ? <SetupNetworkPolicy publicInternet={network?.http_egress === "public"} packages={network?.package_manager_domains === true}
@@ -49,16 +58,28 @@ export function SetupSummary({definition, requirements, modelLabel, schedules = 
   </div>;
 }
 
-function Meta({label, emphasize, children}: {label: string; emphasize?: boolean; children: ReactNode}) {
-  return <div className="grid grid-cols-[5.25rem_minmax(0,1fr)] items-baseline gap-md">
-    <dt className="text-eyebrow leading-summary-label text-text-dim">{label}</dt>
-    <dd className={cn("min-w-0 break-words", emphasize && "font-medium")}>{children}</dd>
+function ScrollableValue({label, children, className, textClassName}: {label: string; children: ReactNode; className?: string; textClassName?: string}) {
+  return <Section aria-label={label} tabIndex={0} className={cn("summary-scroll-label", className)}><span className={textClassName}>{children}</span></Section>;
+}
+
+function BudgetAmount({nanos, period}: {nanos: string; period: "day" | "month"}) {
+  return <ScrollableValue label={`Spending limit per ${period}`} textClassName="text-eyebrow font-title leading-label tabular-nums">
+    {formatDollars(nanos, 9)} <small className="text-eyebrow font-medium text-text-dim">/ {period}</small>
+  </ScrollableValue>;
+}
+
+function Meta({icon: Icon, label, children}: {icon: PhosphorIcon; label: string; children: ReactNode}) {
+  return <div className="min-h-7 min-w-0">
+    <DescriptionTerm className={cn(SUMMARY_ROW, "shrink-0 text-eyebrow leading-summary-label text-text-dim")}>
+      <Icon className={SUMMARY_ICON} aria-hidden="true" /><span>{label}</span>
+    </DescriptionTerm>
+    <DescriptionDetails className="min-w-0 flex-1 break-words font-medium leading-label">{children}</DescriptionDetails>
   </div>;
 }
-function SummarySection({title, action, children, className}: {title: string; action?: ReactNode; children: ReactNode; className?: string}) {
-  return <Section aria-label={title} variant="divided" className={cn("space-y-sm py-lg last:pb-0", className)}>
+function SummarySection({title, action, children}: {title: string; action?: ReactNode; children: ReactNode}) {
+  return <Section aria-label={title} className="block space-y-sm pt-lg">
     <div className="flex items-center justify-between gap-sm">
-      <SectionLabel as="h3" variant="summary">{title}</SectionLabel>
+      <SectionLabel as="h3" variant="summary" className="font-medium">{title}</SectionLabel>
       {action}
     </div>
     {children}
@@ -67,14 +88,15 @@ function SummarySection({title, action, children, className}: {title: string; ac
 function SummaryResources({items, kind}: {items?: readonly string[]; kind: "repositories" | "secrets"}) {
   if (!items?.length) return <p className="text-muted-foreground">{items ? `No ${kind} selected` : "Not reviewed"}</p>;
   const Icon = kind === "repositories" ? GitBranchIcon : KeyIcon;
-  return <ul>{items.map(name => <li key={name} className="flex min-h-8 min-w-0 items-center gap-md py-xs">
-    <Icon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
-    <span className="min-w-0 break-words font-medium">{name}</span>
-  </li>)}</ul>;
+  return <List variant="plain" className="space-y-0 text-label leading-label">{items.map(name => <ListItem key={name} className={cn(SUMMARY_ROW, "min-h-8 py-xs")}>
+    <Icon className={SUMMARY_ICON} aria-hidden="true" />
+    <ScrollableValue label={kind === "secrets" ? "Secret name" : "Repository name"} className="flex-1 font-medium">{name}</ScrollableValue>
+    {kind === "secrets" ? <span className="shrink-0 text-muted-foreground"><SecretValueMask /></span> : null}
+  </ListItem>)}</List>;
 }
 function Manage({kind, href, onClick, disabled, expanded, controls}: {kind: "secrets" | "repositories"; href?: string; onClick?: (trigger: HTMLButtonElement) => void; disabled?: boolean; expanded?: boolean; controls?: string}) {
   if (!href && !onClick) return null;
-  return <Button asChild={Boolean(href)} variant="ghost" size="compact" className="px-0 text-eyebrow"
+  return <Button asChild={Boolean(href)} variant="ghost" size="compact" className="min-h-7 px-0 text-eyebrow leading-eyebrow pointer-coarse:min-h-11"
     aria-label={`Manage ${kind}`} aria-expanded={href ? undefined : expanded} aria-controls={controls} disabled={disabled}
     onClick={onClick ? event => onClick(event.currentTarget) : undefined}>
     {href ? <Link href={`${href}#${kind}`}>Manage</Link> : "Manage"}
@@ -84,7 +106,7 @@ function wakeupStatus(schedules: readonly Schedule[], definition: Definition | u
   if (schedules.some(schedule => schedule.status === "active")) return "Unavailable";
   if (schedules.some(schedule => schedule.status === "paused")) return "Paused";
   if (hasProposedWakeup(definition) && !schedules.length) return "Pending save";
-  return known ? "Not scheduled" : "Not reviewed";
+  return known ? "Not set" : "Not reviewed";
 }
 
 function toolSummary(tools: readonly string[]): string {

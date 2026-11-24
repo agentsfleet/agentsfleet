@@ -100,7 +100,7 @@ describe("dashboard route boundaries", () => {
     );
     expect(m).not.toContain("<h1");
     expect(m).toContain('aria-label="Loading page"');
-    expect(m).toContain("data-signal-relay-pulse");
+    expect(m).toContain("page-loading-stroke");
     expect(m).not.toContain("No activity yet"); // data not yet resolved
   });
 

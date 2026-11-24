@@ -62,13 +62,8 @@ test("a real reply and its run figures reach another session without reloading o
     await expect(reply).toBeVisible({timeout: RENDER_TIMEOUT_MS});
     await expect(reply).toHaveAttribute("data-settled", "true", {timeout: RENDER_TIMEOUT_MS});
     await expect(reply.locator('[data-role="assistant"]')).not.toHaveText(/^\s*$/, {timeout: RENDER_TIMEOUT_MS});
-    const figures = reply.getByRole("button", {name: "Run details", exact: true}).last();
-    await expect(figures).toBeVisible();
-    await figures.click();
-    const details = watching.getByRole("dialog", {name: "Run details", exact: true});
-    await expect(details).toContainText("Duration");
-    await expect(details).toContainText("Tokens");
-    await expect(details).toContainText(/\d[\d.,]*(?:[kmb])?/i);
+    await expect(reply.getByRole("button", {name: "Copy reply", exact: true})).toBeVisible();
+    await expect(reply.getByRole("button", {name: "Run details", exact: true})).toHaveCount(0);
 
     await expect(controlPage.getByRole("log", {name: "Chat", exact: true}).getByText(message, {exact: true})).toHaveCount(0);
     await expect(controlPage.locator(`[data-message-id="${terminal.turn_id}:reply"]`)).toHaveCount(0);
