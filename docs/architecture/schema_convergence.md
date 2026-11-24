@@ -2,7 +2,7 @@
 
 Setup, chat and durable tasks each write their own tables. This page asks, table by table, whether each should fold into the thread model: threads, turns, runs and items ([`thread_model.md`](./thread_model.md)).
 
-Indy rules on every row. His ruling replaces the verdict cell, and his words go in the Discovery of `M255_001`. The folds he signs become `M255_002`; nothing on this page changes a table by itself.
+Indy rules on every row in `M256_001`, a fleet created from its first message, which decides `setup.drafts` and so the folds after it. `M255_001` deferred the rulings there (its Discovery quotes him). His ruling replaces the verdict cell; nothing on this page changes a table by itself.
 
 Facts are read from the schema files under `rustd/crates/daemon/afd_db/schema/` at `9dd3d0b5a`, after `M255_001` rewrote the decision path. "Writers" counts production statement files that insert, update or delete the table, by crate. A saving marked unmeasured is settled by the statement counter (`afd_db::test_util::statements`) before its fold is built.
 
