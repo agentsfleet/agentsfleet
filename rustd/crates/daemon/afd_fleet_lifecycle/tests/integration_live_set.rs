@@ -1,11 +1,7 @@
-//! Concurrent misses on one workspace's live set share one load, and its
-//! failure.
-//!
-//! A load the cache coalesced hands every waiter a clone of ONE `Arc`; loads
-//! that ran apart each answer their own. So "all twenty answers are the same
-//! allocation" is the observable form of "the statement ran once", read
-//! without counting statements on a database other suites share.
-//! `#[ignore]`d; `make test-integration-rustd` runs it.
+//! A workspace's live set is read fresh: a fleet created or deleted shows in the
+//! very next read, since a wall reads it on the notice that change publishes, and
+//! an outage answers as an outage. `#[ignore]`d where it needs the lane's
+//! Postgres; `make test-integration-rustd` runs it.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
@@ -13,64 +9,53 @@
 )]
 
 use std::collections::BTreeSet;
-use std::sync::Arc;
 
 use af_core::error_code;
-use af_core::id::Uuid7;
-use afd_fleet_lifecycle::Fleets;
-use tokio::task::JoinSet;
 
 use crate::support::Lane;
 
-/// Viewers missing at once, as a busy wall's tabs do when an entry expires.
-const VIEWERS: usize = 20;
-
-/// Every viewer reads `workspace` at once; their answers in arrival order.
-async fn read_together(
-    fleets: &Fleets,
-    workspace: &Uuid7,
-) -> Vec<afd_fleet_lifecycle::Result<Arc<BTreeSet<String>>>> {
-    let mut viewers = JoinSet::new();
-    for _ in 0..VIEWERS {
-        let (fleets, workspace) = (fleets.clone(), workspace.clone());
-        viewers.spawn(async move { fleets.live_set(&workspace).await });
-    }
-    viewers.join_all().await
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test]
 #[ignore = "needs the lane's Postgres"]
-async fn test_concurrent_misses_read_once() {
+async fn each_read_sees_the_fleets_committed_before_it() {
     let lane = Lane::create().await;
-    let seeded = [lane.fleet().await, lane.fleet().await];
-    lane.fleets.invalidate_live_set(&lane.workspace).await;
-    let answers = read_together(&lane.fleets, &lane.workspace).await;
-    let answers: Vec<_> = answers
-        .into_iter()
-        .map(|answer| answer.expect("the workspace's set is readable"))
-        .collect();
-    let first = answers.first().expect("every viewer answered");
-    assert!(
-        answers.iter().all(|set| Arc::ptr_eq(set, first)),
-        "every concurrent miss received the one load's answer"
+    let first = lane.fleet().await;
+    let set = |fleets: &[&af_core::id::Uuid7]| -> BTreeSet<String> {
+        fleets.iter().map(ToString::to_string).collect()
+    };
+    let read = lane.fleets.live_set(&lane.workspace).await;
+    assert_eq!(read.expect("readable"), set(&[&first]));
+
+    let second = lane.fleet().await;
+    let read = lane.fleets.live_set(&lane.workspace).await;
+    assert_eq!(
+        read.expect("readable"),
+        set(&[&first, &second]),
+        "a fleet created a moment ago is in the next read"
     );
-    let expected: BTreeSet<String> = seeded.iter().map(ToString::to_string).collect();
-    assert_eq!(**first, expected);
+
+    lane.delete(&lane.workspace, &first)
+        .await
+        .expect("the fleet deletes");
+    let read = lane.fleets.live_set(&lane.workspace).await;
+    assert_eq!(
+        read.expect("readable"),
+        set(&[&second]),
+        "a deleted fleet is gone from the next read"
+    );
     lane.cleanup().await;
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn test_a_shared_load_that_fails_reaches_every_waiter_as_an_outage() {
+#[tokio::test]
+async fn a_read_on_a_dead_database_is_an_outage() {
     let fleets = Lane::with_dead_database();
     let workspace = crate::support::mint();
-    for answer in read_together(&fleets, &workspace).await {
-        let error = answer.expect_err("nobody answers on the dead database");
-        assert_eq!(error.code(), error_code::INTERNAL_DB_UNAVAILABLE);
-        assert!(
-            error.is_datastore_unavailable(),
-            "an outage stays an outage"
-        );
-    }
-    let again = fleets.live_set(&workspace).await;
-    assert!(again.is_err(), "a failed load is not cached as an answer");
+    let error = fleets
+        .live_set(&workspace)
+        .await
+        .expect_err("nobody answers on the dead database");
+    assert_eq!(error.code(), error_code::INTERNAL_DB_UNAVAILABLE);
+    assert!(
+        error.is_datastore_unavailable(),
+        "an outage stays an outage"
+    );
 }

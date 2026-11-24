@@ -307,10 +307,14 @@ async fn drain(stores: &Datastores, poster: Scripted, parameters: Parameters) ->
     let transactions_before = postgres_transactions(&stores.database).await?;
     let token = CancellationToken::new();
     let started = Instant::now();
+    let wake = stores
+        .bus
+        .subscribe(&afd_bus::Subject::DeliveryWake)
+        .await?;
     let worker = tokio::spawn(
         Worker::new(
             stores.database.clone(),
-            stores.bus.clone(),
+            wake,
             Posters {
                 slack: poster.clone(),
             },

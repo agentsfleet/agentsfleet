@@ -283,7 +283,7 @@ pub(super) struct DataBuffer {
 #[derive(Default, Deserialize, Validate)]
 #[serde(default, deny_unknown_fields)]
 pub(super) struct Run {
-    #[garde(range(min = af_core::timing::MIN_RUN_SECONDS, max = af_core::timing::MAX_RUN_SECONDS))]
+    #[garde(range(min = afd_runner::timing::MIN_RUN_SECONDS, max = af_core::timing::MAX_RUN_SECONDS))]
     pub ttl_seconds: Option<u64>,
 }
 

@@ -1,0 +1,22 @@
+# The runner runs one clock: the renewal round, which also wakes the host heartbeat
+# (`afr_supervisor/src/uplink/renewals/mod.rs`). Its cadence is a sleep re-armed after each
+# round's answers, so a new `interval` or `interval_at` loop in the supervisor is a second
+# clock, as the ping and the fixed renewal ticker were. The activity flush, which batches
+# progress frames rather than polling state, is the one exception. Test code is outside
+# the rule.
+id: rust-runner-interval-loop
+language: Rust
+severity: error
+message: "a tokio `interval` in the runner supervisor is a second clock; ride the round in `uplink/renewals` or wake on an event"
+files:
+  - rustd/crates/runner/afr_supervisor/src/**/*.rs
+ignores:
+  - rustd/crates/runner/afr_supervisor/src/**/activity/mod.rs
+  - rustd/crates/runner/afr_supervisor/src/**/{tests,test_util,test_support,testing,fixture}/**
+  - rustd/crates/runner/afr_supervisor/src/**/{test,tests,*_test,*_tests,test_util,test_support,testing,fixture}.rs
+rule:
+  not: { matches: rust-in-cfg-test }
+  kind: call_expression
+  has:
+    field: function
+    regex: (^|::)(interval|interval_at)$

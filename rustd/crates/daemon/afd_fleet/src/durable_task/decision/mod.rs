@@ -10,7 +10,6 @@ mod context;
 mod credit;
 mod dispatch;
 mod fund;
-mod intent;
 mod journal;
 mod locks;
 mod ownership;
@@ -23,7 +22,6 @@ mod reserve;
 mod row;
 mod semantic;
 mod sql;
-mod verify;
 pub(in crate::durable_task) use authorize::goal;
 
 use std::fmt;

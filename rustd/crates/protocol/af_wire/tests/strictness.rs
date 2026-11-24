@@ -228,7 +228,7 @@ fn test_every_runner_bound_reply_accepts_an_unknown_field() {
 /// [`GROWN_POLICY`] as well as at their own.
 fn policy_carrying_replies() -> [(&'static str, String, Decodes); 2] {
     let heartbeat = format!(
-        r#"{{"status":"ok","assigned_policy":{GROWN_POLICY},"degraded":false,"degraded_reason":null,"selftest_requested":false,"release_holds":[],"heartbeat_interval_ms":10000,"future":1}}"#
+        r#"{{"status":"ok","assigned_policy":{GROWN_POLICY},"degraded":false,"degraded_reason":null,"selftest_requested":false,"release_holds":[],"future":1}}"#
     );
     let own = format!(
         r#"{{"id":"r","status":"active","host_id":"h","sandbox_tier":"landlock_full","last_seen_at":"1970-01-01T00:00:00.001Z","assigned_policy":{GROWN_POLICY},"achievable":null,"degraded":false,"degraded_reason":null,"future":1}}"#

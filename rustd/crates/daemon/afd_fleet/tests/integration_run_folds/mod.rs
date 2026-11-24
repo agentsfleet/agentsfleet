@@ -13,6 +13,7 @@ mod assignments;
 mod conversations;
 mod limits;
 mod settles;
+mod stop;
 mod support;
 mod terminal;
 mod waiting;

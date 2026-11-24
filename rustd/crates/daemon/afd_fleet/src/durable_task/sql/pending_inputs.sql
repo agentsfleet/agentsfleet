@@ -18,7 +18,7 @@ WITH origin AS MATERIALIZED (
       AND a.reply_provider IS NULL AND a.reply_address IS NULL
       AND a.settled_at IS NULL AND ($13 OR a.interpreted_at IS NULL)
 ), candidates AS MATERIALIZED (
-    SELECT a.id, a.sequence, a.request_json, a.producer,
+    SELECT a.id, a.sequence, a.request_json, a.producer, a.input_run_id, a.input_fence,
            (a.input_run_id IS NULL
             OR (a.input_run_id = $9 AND a.input_fence = $10)
             OR NOT EXISTS (
@@ -35,14 +35,18 @@ WITH origin AS MATERIALIZED (
       AND a.id <> $3 AND a.sequence > $7
     ORDER BY a.sequence LIMIT $8
 ), eligible AS MATERIALIZED (
-    SELECT id, sequence, request_json, producer FROM candidates
+    SELECT id, sequence, request_json, producer, input_run_id, input_fence FROM candidates
     WHERE assignable AND NOT EXISTS (
         SELECT 1 FROM candidates barrier WHERE NOT barrier.assignable AND barrier.sequence <= candidates.sequence)
 ), assigned AS (
     UPDATE thread.turns a
     SET input_run_id = $9, input_fence = $10, updated_at = now()
     FROM eligible e
-    WHERE a.id = e.id AND a.id = $12
+    -- Re-checked on the row it writes: a Stop that settled the turn, or another run that
+    -- stamped it, while this waited leaves it as it is.
+    WHERE a.id = e.id AND a.id = $12 AND a.settled_at IS NULL
+      AND a.input_run_id IS NOT DISTINCT FROM e.input_run_id
+      AND a.input_fence IS NOT DISTINCT FROM e.input_fence
       AND e.sequence = (SELECT min(sequence) FROM eligible)
     RETURNING e.id, e.sequence, e.request_json, e.producer
 )

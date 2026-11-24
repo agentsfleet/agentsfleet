@@ -222,7 +222,7 @@ async fn serve_plane(
         config.runtime.requests,
         config.runtime.operations.tuning.server.max_request_body,
     );
-    start_workers(supervisor, config, &analytics, &runtime).await;
+    start_workers(supervisor, config, &analytics, &runtime).await?;
     let drain = runner_drain(&gateway, &native);
     serve_runner(
         listener,
@@ -279,7 +279,7 @@ async fn start_workers(
     config: &BootConfig,
     analytics: &Analytics,
     runtime: &Runtime,
-) {
+) -> Result<(), BootFailure> {
     spawn_background(
         supervisor,
         config,
@@ -288,8 +288,9 @@ async fn start_workers(
         runtime.bus.clone(),
         runtime.outbound_client.clone(),
     )
-    .await;
+    .await?;
     report_workers(supervisor, analytics);
+    Ok(())
 }
 
 /// Reports the serving port, then hands `analytics` to a supervised flush that

@@ -50,7 +50,6 @@ pub(super) struct Call {
     pub failure_receipt_digest: Option<String>,
     pub failure_reason: Option<Json<DecisionUnavailableCause>>,
     pub failure_age_ms: Option<i64>,
-    pub remaining_ms: i64,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     pub created_at: jiff::Timestamp,
 }
@@ -85,12 +84,18 @@ pub(super) async fn find(
 }
 
 pub(super) async fn read_on(connection: &mut PgConnection, id: &Uuid7) -> Result<Option<Call>> {
-    statement(sql::PEEK_CALL, Lookup::Id(id))
+    read(connection, Lookup::Id(id)).await
+}
+
+/// The saved call `lookup` names, read with no lock on the caller's connection.
+pub(super) async fn read(
+    connection: &mut PgConnection,
+    lookup: Lookup<'_>,
+) -> Result<Option<Call>> {
+    statement(sql::PEEK_CALL, lookup)
         .fetch_optional(connection)
         .await
-        .map_err(query(
-            "read immutable accounted decision for task acceptance",
-        ))
+        .map_err(query("read retained physical decision"))
 }
 
 pub(super) async fn peek(database: &afd_db::Db, lookup: Lookup<'_>) -> Result<Option<Call>> {
@@ -103,14 +108,6 @@ pub(super) async fn peek(database: &afd_db::Db, lookup: Lookup<'_>) -> Result<Op
     .await?
     .into_iter()
     .next())
-}
-
-/// The call once it is issued or accounted: what a replay answers from,
-/// read without a lock.
-pub(super) async fn issued(database: &afd_db::Db, id: &Uuid7) -> Result<Option<Call>> {
-    Ok(peek(database, Lookup::Id(id))
-        .await?
-        .filter(|call| call.issued || call.accounted))
 }
 
 fn statement<'a>(

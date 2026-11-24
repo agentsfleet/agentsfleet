@@ -117,7 +117,7 @@ pub(super) async fn seed_run(case: &Case, fleet: &Uuid7) -> TestResult<Uuid7> {
         .bind("fixture-provider")
         .bind("fixture-model")
         .bind(1_i64)
-        .bind(af_core::timing::RUN_TTL.as_secs_f64())
+        .bind(afd_runner::timing::RUN_TTL.as_secs_f64())
         .bind(afd_state::sql::RUN_STATUS_ACTIVE)
         .execute(&mut *case.base.db.acquire().await?)
         .await?;

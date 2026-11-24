@@ -23,7 +23,7 @@ WITH held AS MATERIALIZED (
     FROM thread.threads s
     JOIN held h ON s.id = h.thread_id
     WHERE s.fencing_token = $3
-    FOR UPDATE OF s
+    FOR NO KEY UPDATE OF s
 ), released AS (
     DELETE FROM thread.runs l
     USING thread t

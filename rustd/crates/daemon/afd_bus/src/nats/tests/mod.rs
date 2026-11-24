@@ -43,6 +43,8 @@ fn each_subject_spells_its_thread_noun() -> TestResult {
         Subject::ThreadItems(id.clone()),
         Subject::RunnerCommand(id.clone()),
         Subject::DeliveryWake,
+        Subject::Members(id.clone()),
+        Subject::Fleets(id.clone()),
         Subject::Gap,
     ]
     .map(|subject| (spelling(&subject), subject.kind()));
@@ -53,6 +55,8 @@ fn each_subject_spells_its_thread_noun() -> TestResult {
             (format!("af.thread.{ID}.items"), "thread_items"),
             (format!("af.runner.{ID}.cmd"), "runner_command"),
             ("af.delivery.wake".to_owned(), "delivery_wake"),
+            (format!("af.tenant.{ID}.members"), "members"),
+            (format!("af.workspace.{ID}.fleets"), "fleets"),
             ("af.bus.gap".to_owned(), "gap"),
         ]
     );

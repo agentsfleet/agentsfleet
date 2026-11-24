@@ -138,12 +138,12 @@ async fn measure(
     }
     stop.cancel();
     let peak = joined(sampler.await, PACER_ROLE)?;
-    record_run(report, &appends, &pickups, peak).await;
+    record_run(report, &appends, &pickups, peak);
     Ok(())
 }
 
 /// Count what the pacers and the runners did, and write it into the report.
-async fn record_run(report: &mut Report, appends: &Appends, pickups: &Pickups, peak: u64) {
+fn record_run(report: &mut Report, appends: &Appends, pickups: &Pickups, peak: u64) {
     let counted = Counted {
         accepted: appends.accepted.load(Ordering::Relaxed),
         refused: appends.refused.load(Ordering::Relaxed),
@@ -151,11 +151,15 @@ async fn record_run(report: &mut Report, appends: &Appends, pickups: &Pickups, p
         folded: pickups.folded_count(),
         backlog_peak: peak,
     };
+    let waits = pickups.waits();
     record(
         report,
         counted,
-        &*appends.took.lock().await,
-        &pickups.waits().await,
+        &appends
+            .took
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner),
+        &waits,
     );
 }
 
@@ -205,8 +209,14 @@ async fn append_one(
             appends.accepted.fetch_add(1, Ordering::Relaxed);
             // A histogram that will not hold one append's time loses that one
             // sample, never the steer: the pickup is still timed below.
-            drop(appends.took.lock().await.record(returned - started));
-            pickups.appended(steered.turn_id, returned).await;
+            drop(
+                appends
+                    .took
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .record(returned - started),
+            );
+            pickups.appended(steered.turn_id, returned);
         }
         Err(_refused) => {
             appends.refused.fetch_add(1, Ordering::Relaxed);

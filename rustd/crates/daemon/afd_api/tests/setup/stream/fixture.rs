@@ -7,6 +7,11 @@ use tokio::{net::TcpListener, task::JoinHandle};
 
 pub(super) struct Open {
     pub(super) fixture: Fixture,
+    /// The router the stream is served from, and every write a test sends goes through,
+    /// so a writer's notice reaches the open stream.
+    pub(super) router: axum::Router,
+    /// The in-process bus's server: what a test publishes as another replica would.
+    pub(super) bus: afd_bus::test_util::Server,
     pub(super) item: String,
     pub(super) draft: Uuid7,
     pub(super) response: reqwest::Response,
@@ -20,7 +25,11 @@ impl Open {
     )]
     pub(super) async fn create() -> Self {
         let fixture = Fixture::create().await;
-        let router = fixture.router();
+        let (handle, bus) = afd_bus::test_util::detached().expect("an in-process bus opens");
+        let router = fixture
+            .services(&afd_auth::scope::Scope::ALL)
+            .with_live_bus(handle)
+            .router();
         let created = send(
             &router,
             Method::POST,
@@ -40,8 +49,9 @@ impl Open {
             .await
             .expect("private listener");
         let address = listener.local_addr().expect("listener address");
+        let app = router.clone();
         let server = tokio::spawn(async move {
-            axum::serve(listener, router).await.expect("server");
+            axum::serve(listener, app).await.expect("server");
         });
         let response = reqwest::Client::new()
             .get(format!("http://{address}{item}/turns/stream"))
@@ -62,6 +72,8 @@ impl Open {
         );
         Self {
             fixture,
+            router,
+            bus,
             item,
             draft,
             response,
@@ -86,6 +98,25 @@ impl Open {
                 .expect("clean stream end")
                 .is_none()
         );
+    }
+
+    /// Removes the authenticated person and publishes the account's members notice, as
+    /// a member removal does after its commit.
+    pub(super) async fn revoke(&self) {
+        sqlx::query("DELETE FROM identity.users WHERE id=$1")
+            .bind(&self.fixture.owner)
+            .execute(
+                &mut *self
+                    .fixture
+                    .db
+                    .acquire()
+                    .await
+                    .expect("revocation connection"),
+            )
+            .await
+            .expect("revoke the authenticated person");
+        self.bus
+            .publish(&afd_bus::Subject::Members(self.fixture.tenant.clone()), "");
     }
 
     pub(super) async fn finish(self) {

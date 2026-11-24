@@ -35,9 +35,10 @@ CREATE TABLE runner.decision_calls (
     -- Decision usage lines number from 0 per run under the usage kind `decision`.
     usage_sequence BIGINT NOT NULL CHECK (usage_sequence >= 0),
     reserved_nanos BIGINT NOT NULL CHECK (reserved_nanos >= 0),
-    -- NULL until dispatch is issued; never NULL again after.
+    -- The statement that inserts the call issues it, so this is its clock; the column stays
+    -- nullable only because the receipt path reads `issued_at IS NOT NULL` as a fact.
     issued_at TIMESTAMPTZ(3),
-    -- NULL while funding or physical usage is unresolved.
+    -- NULL while physical usage is unresolved.
     accounted_at TIMESTAMPTZ(3),
     known_usage JSONB,
     charged_nanos BIGINT CHECK (charged_nanos >= 0),
@@ -71,10 +72,6 @@ CREATE INDEX idx_decision_calls_unresolved_run
 
 CREATE INDEX idx_decision_calls_unresolved_fleet
     ON runner.decision_calls (fleet_id, workspace_id) WHERE accounted_at IS NULL;
-
-CREATE INDEX idx_decision_calls_expired_unissued
-    ON runner.decision_calls (logical_expires_at, id)
-    WHERE issued_at IS NULL AND accounted_at IS NULL;
 
 CREATE INDEX idx_decision_calls_durable_task ON runner.decision_calls (durable_task_id, created_at);
 

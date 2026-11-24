@@ -166,9 +166,10 @@ impl Creations {
         if scope.row.status != RUNNING {
             return Ok(Announcement::default());
         }
+        owed.changed(&scope.draft_id);
         let Some(draft) = &scope.private else {
             write_turn(connection, scope, Finish::status(CANCELLED)).await?;
-            owed.0
+            owed.steps
                 .finished(connection, scope.message(), CANCELLED)
                 .await?;
             return Ok(Announcement::default());
@@ -181,7 +182,9 @@ impl Creations {
                 ..Finish::status(failed)
             };
             write_turn(connection, scope, ending).await?;
-            owed.0.finished(connection, scope.message(), failed).await?;
+            owed.steps
+                .finished(connection, scope.message(), failed)
+                .await?;
             return Ok(Announcement::default());
         }
         // A save turn proposes nothing: it saves the head the person reviewed.
@@ -208,7 +211,7 @@ impl Creations {
             ..Finish::status(completed)
         };
         write_turn(connection, scope, ending).await?;
-        owed.0
+        owed.steps
             .finished(connection, scope.message(), completed)
             .await?;
         if !scope.row.save_requested {
@@ -237,7 +240,7 @@ impl Creations {
         afd_turns::view::activity::commit(transaction, announcement, Some(&notices))
             .await
             .map_err(query(sql::CONTEXT))?;
-        owed.settle(&self.setup.drafts);
+        owed.settle(&self.setup.drafts).await;
         Ok(())
     }
 

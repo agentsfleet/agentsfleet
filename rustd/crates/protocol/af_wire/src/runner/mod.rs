@@ -262,9 +262,6 @@ pub struct HeartbeatResponse<'a> {
     /// sandboxes.
     #[serde(borrow)]
     pub release_holds: Vec<Cow<'a, str>>,
-    /// Milliseconds to wait before the next heartbeat. Use this server-provided interval to
-    /// avoid being marked offline.
-    pub heartbeat_interval_ms: u32,
 }
 
 /// `GET /v1/runners/me` reply — the runner's own registration row, read-only.

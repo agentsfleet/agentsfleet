@@ -24,7 +24,7 @@ impl<S: Deliver + 'static> Inner<S> {
     ) {
         while let Some(job) = self.take_or_retire(&destination, &mut jobs) {
             let stop = self.run_job(&job).await;
-            self.done();
+            self.done(&job);
             if stop {
                 return;
             }

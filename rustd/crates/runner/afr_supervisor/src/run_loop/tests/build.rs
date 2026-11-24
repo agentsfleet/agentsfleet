@@ -24,7 +24,7 @@ use crate::test_support::{FIXTURE_BRANCH, GRANTED_UNTIL, repository};
 const PREPARE_TAKES: Duration = Duration::from_millis(500);
 /// How long the token mint takes: past the first renewal, so a renewal the
 /// daemon refuses lands while the checkout waits on it.
-const MINT_TAKES: Duration = RENEWAL_TICK.saturating_mul(2);
+const MINT_TAKES: Duration = ROUND.saturating_mul(2);
 pub(super) const HELD_UNTIL: &str = "held_until";
 const REPOSITORY: &str = "acme/widget";
 const WORKSPACE_ID: &str = "01890a5d-ac96-774b-bcce-b302099a805a";

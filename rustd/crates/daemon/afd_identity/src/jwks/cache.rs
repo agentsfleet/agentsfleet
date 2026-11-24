@@ -53,9 +53,10 @@ pub(crate) struct KeyCache<S> {
     ttl: Duration,
     stale_grace: Duration,
     refresh_min_interval: Duration,
-    held: tokio::sync::RwLock<Option<Held>>,
-    /// The single-flight gate. Held across the fetch, which happens with the
-    /// `held` lock RELEASED so a cache hit never queues behind a slow provider.
+    /// The held set, replaced whole: a verification reads it without waiting.
+    held: tokio::sync::watch::Sender<Option<Held>>,
+    /// The single-flight gate. Held across the fetch, while `held` stays readable,
+    /// so a cache hit never queues behind a slow provider.
     flight: tokio::sync::Mutex<LastAttempt>,
 }
 
@@ -76,7 +77,7 @@ impl<S: KeySetSource> KeyCache<S> {
             ttl: config.ttl,
             stale_grace: config.stale_grace,
             refresh_min_interval: config.refresh_min_interval,
-            held: tokio::sync::RwLock::new(None),
+            held: tokio::sync::watch::Sender::new(None),
             flight: tokio::sync::Mutex::new(LastAttempt(None)),
         }
     }
@@ -94,14 +95,14 @@ impl<S: KeySetSource> KeyCache<S> {
     /// [`VerifyError::KeySetUnavailable`] when there is no set to serve at all.
     pub(crate) async fn resolve(&self, kid: &str) -> Result<Arc<JwkKeySet>, VerifyError> {
         let reason = {
-            let held = self.held.read().await;
+            let held = self.held.borrow();
             match held.as_ref() {
                 None => Reason::Expired,
                 Some(entry) if !self.is_fresh(entry) => Reason::Expired,
                 Some(entry) if entry.keys.find(kid).is_some() => {
                     // The overwhelmingly common path: fresh, and it has the
-                    // key. Returns under a READ lock, so concurrent
-                    // verifications never serialize on each other.
+                    // key. A shared borrow, so concurrent verifications never
+                    // serialize on each other.
                     return Ok(Arc::clone(&entry.keys));
                 }
                 // Fresh, and the key is not in it. The issuer publishes a new
@@ -116,8 +117,7 @@ impl<S: KeySetSource> KeyCache<S> {
         // A failed refresh never renews the last confirmation timestamp.
         let held = self
             .held
-            .read()
-            .await
+            .borrow()
             .as_ref()
             .map(|entry| (Arc::clone(&entry.keys), entry.fetched_at));
         let Some((keys, fetched_at)) = held else {
@@ -143,7 +143,7 @@ impl<S: KeySetSource> KeyCache<S> {
     /// [`VerifyError::KeySetUnavailable`] when the fetch or the parse failed.
     pub(crate) async fn prime(&self) -> Result<Arc<JwkKeySet>, VerifyError> {
         self.fetch_and_install().await?;
-        let held = self.held.read().await;
+        let held = self.held.borrow();
         held.as_ref()
             .map(|entry| Arc::clone(&entry.keys))
             .ok_or(VerifyError::KeySetUnavailable)
@@ -164,7 +164,7 @@ impl<S: KeySetSource> KeyCache<S> {
         let mut last = self.flight.lock().await;
 
         // Another flight may have refreshed while this one waited for the gate.
-        if reason == Reason::Expired && self.held_is_fresh().await {
+        if reason == Reason::Expired && self.held_is_fresh() {
             return;
         }
         if let LastAttempt(Some(previous)) = *last
@@ -196,9 +196,11 @@ impl<S: KeySetSource> KeyCache<S> {
     }
 
     /// Whether the held set is within its time-to-live.
-    async fn held_is_fresh(&self) -> bool {
-        let held = self.held.read().await;
-        held.as_ref().is_some_and(|entry| self.is_fresh(entry))
+    fn held_is_fresh(&self) -> bool {
+        self.held
+            .borrow()
+            .as_ref()
+            .is_some_and(|entry| self.is_fresh(entry))
     }
 
     /// Reads the source and replaces the held set, or changes nothing.
@@ -221,10 +223,10 @@ impl<S: KeySetSource> KeyCache<S> {
             };
         }
         let fetched_at = self.clock.now();
-        *self.held.write().await = Some(Held {
+        self.held.send_replace(Some(Held {
             keys: Arc::new(parsed),
             fetched_at,
-        });
+        }));
         Ok(())
     }
 }

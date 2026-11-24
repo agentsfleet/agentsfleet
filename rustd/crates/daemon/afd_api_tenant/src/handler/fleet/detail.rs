@@ -2,7 +2,7 @@
 
 use crate::auth::{PersonIdentity, WorkspaceContext};
 use crate::handler::Refusal;
-use crate::services::{TenantPlane, WorkspaceFleets as _};
+use crate::services::TenantPlane;
 use afd_http::handler::setup_refusal;
 pub(crate) use afd_http::handler::{FleetPath, parse_fleet_id};
 use axum::extract::{Path, State};
@@ -64,9 +64,5 @@ pub(crate) async fn purge<D: TenantPlane>(
         )
         .await
         .map_err(setup_refusal)?;
-    services
-        .fleets()
-        .invalidate_live_set(&owned.workspace)
-        .await;
     Ok(StatusCode::NO_CONTENT.into_response())
 }

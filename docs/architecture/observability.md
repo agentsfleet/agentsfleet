@@ -521,7 +521,7 @@ The only bound is the shared batch queue, `SPAN_QUEUE` (2048 spans) in
 `af_otlp`'s pipelines module, which drops past its cap without counting.
 
 An idle runner sends one heartbeat every 10 s (`HEARTBEAT_INTERVAL` in
-`af_core`), and each one is a matched request and therefore a span. Span volume grows with runner count until a route policy
+`afd_runner`'s `timing`), and each one is a matched request and therefore a span. Span volume grows with runner count until a route policy
 exists, and none is declared yet.
 
 ### The chat path's signals

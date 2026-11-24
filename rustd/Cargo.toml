@@ -1010,6 +1010,7 @@ tempfile = { version = "3.27.0", default-features = false }
 # the calls, not their numbers.
 # tokio-quiche 0.23.0 and quiche 0.30.1 still cap this below 0.2.190; retain the published
 # transport. parking_lot 0.13 waits on the same cap: its parking_lot_core 0.10 needs 0.2.191.
+# gix 0.91 waits on it too: its gix-hashtable 0.19 takes parking_lot 0.13.
 libc = { version = "=0.2.189", default-features = false }
 # The sandbox's egress scope speaks netlink itself: route netlink for the veth
 # pair, its addresses and its route, nf_tables for the host-side rules. Pure

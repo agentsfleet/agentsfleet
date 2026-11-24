@@ -19,7 +19,7 @@ use tokio::sync::Mutex;
 /// Native private setup service, shared by browser and terminal chat.
 #[derive(Debug, Clone)]
 pub struct Drafts {
-    pub(crate) clock: af_core::timing::RunClock,
+    pub(crate) clock: afd_runner::timing::RunClock,
     pub(crate) database: Db,
     pub(crate) entropy: Entropy,
     pub(crate) analytics: Analytics,
@@ -40,7 +40,7 @@ pub struct Drafts {
 impl Drafts {
     /// Uses the deployment clock validated before startup.
     #[must_use]
-    pub fn with_clock(mut self, clock: af_core::timing::RunClock) -> Self {
+    pub fn with_clock(mut self, clock: afd_runner::timing::RunClock) -> Self {
         self.clock = clock;
         self
     }
@@ -52,7 +52,7 @@ impl Drafts {
     #[must_use]
     pub fn new(database: Db, entropy: Entropy) -> Self {
         Self {
-            clock: af_core::timing::RunClock::default(),
+            clock: afd_runner::timing::RunClock::default(),
             database,
             entropy,
             analytics: Analytics::silent(),
@@ -93,6 +93,14 @@ impl Drafts {
     pub(crate) async fn wake_setup(&self, draft: &Uuid7) {
         if let Some(bus) = &self.bus {
             afd_bus::wake::publish(bus, draft.clone()).await;
+        }
+    }
+
+    /// Tells `draft`'s open setup page, after the commit that changed its durable
+    /// state, to read it again.
+    pub(crate) async fn changed(&self, draft: &Uuid7) {
+        if let Some(bus) = &self.bus {
+            afd_turns::view::activity::draft_changed(bus, draft).await;
         }
     }
 

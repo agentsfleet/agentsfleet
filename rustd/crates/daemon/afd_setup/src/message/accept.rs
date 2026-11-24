@@ -119,6 +119,7 @@ impl Drafts {
         };
         tx.commit().await.map_err(query(CONTEXT))?;
         if !accepted.replayed {
+            self.changed(id).await;
             self.wake_setup(id).await;
             let draft_id = id.clone();
             let step = SetupStep::MessageAccepted { draft_id };

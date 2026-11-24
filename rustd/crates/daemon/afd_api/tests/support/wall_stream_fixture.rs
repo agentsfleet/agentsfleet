@@ -19,10 +19,9 @@ use http::{Method, StatusCode};
 
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_bus::Subject;
-use afd_fleet_lifecycle::Fleets;
 use axum::body::BodyDataStream;
 
-use crate::harness::{self, Fleet, OneWorkspace, send};
+use crate::harness::{Fleet, OneWorkspace, send};
 
 /// How long a quiet stream is watched to show it says nothing.
 const QUIET: Duration = Duration::from_millis(1_500);
@@ -212,15 +211,21 @@ impl Fixture {
 pub(crate) struct Wall {
     pub(crate) fixture: Fixture,
     pub(crate) ownership: OneWorkspace,
-    pub(crate) store: Fleets,
     /// The bus the wall's router streams through, and the one a test publishes on.
     pub(crate) bus: afd_bus::Handle,
     pub(crate) body: BodyDataStream,
 }
 
 impl Wall {
+    /// The wall over its own namespace of the lane's NATS: another suite's bus
+    /// booting gaps every subscription on the shared subjects, and a wall that
+    /// asserts it stays quiet must not hear it.
     pub(crate) async fn open(fixture: Fixture) -> Self {
-        Self::open_over(fixture, harness::bus().await).await
+        let namespace = format!("wall-{}", fixture.workspace.as_str().replace('-', ""));
+        let bus = afd_bus::test_util::lane_in(&namespace)
+            .await
+            .expect("the lane's NATS: run through make test-integration-rustd");
+        Self::open_over(fixture, bus).await
     }
 
     /// The same wall over `bus`, for a test that must control delivery, such
@@ -235,12 +240,10 @@ impl Wall {
         .with_owned_workspace(fixture.workspace.clone())
         .with_live_bus(bus.clone());
         let ownership = fleet.ownership();
-        let store = fleet.fleet_store();
         let body = open_stream(&fleet.router(), &fixture).await;
         Self {
             fixture,
             ownership,
-            store,
             bus,
             body,
         }
@@ -257,6 +260,33 @@ impl Wall {
                     .await
                     .expect("the frame publishes");
             }
+        }
+    }
+
+    /// Publishes the notice a fleet create or delete publishes after its commit.
+    /// The future owns its bus handle, as [`Wall::publish`]'s does, so it stays `Send`.
+    pub(crate) fn notify_fleets(&self) -> impl Future<Output = ()> + Send + use<> {
+        let (bus, subject) = (
+            self.bus.clone(),
+            Subject::Fleets(self.fixture.workspace.clone()),
+        );
+        async move {
+            bus.publish(&subject, "")
+                .await
+                .expect("the notice publishes");
+        }
+    }
+
+    /// Publishes the notice a member removal publishes after its commit.
+    pub(crate) fn notify_members(&self) -> impl Future<Output = ()> + Send + use<> {
+        let (bus, subject) = (
+            self.bus.clone(),
+            Subject::Members(self.fixture.tenant.clone()),
+        );
+        async move {
+            bus.publish(&subject, "")
+                .await
+                .expect("the notice publishes");
         }
     }
 

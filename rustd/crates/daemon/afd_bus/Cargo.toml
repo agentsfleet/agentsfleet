@@ -21,6 +21,8 @@ workspace = true
 test-util = ["af_observability/test-util", "tokio/net", "tokio/io-util"]
 
 [dependencies]
+# A publish dropped by its caller's deadline is still recorded as owed.
+scopeguard.workspace = true
 af_core.workspace = true
 af_observability.workspace = true
 af_validate.workspace = true
@@ -40,8 +42,7 @@ tracing.workspace = true
 af_core = { workspace = true, features = ["test-util"] }
 # Reads agentsfleet_bus_gaps_total back in the live suite.
 af_observability = { workspace = true, features = ["test-util"] }
-# `test-util` pauses time for the publish-deadline tests in `wake_failure`.
-tokio = { workspace = true, features = ["net", "io-util", "test-util"] }
+tokio = { workspace = true, features = ["net", "io-util"] }
 
 # Reaches the lane's seeds, connection and relay through `test_util`, the one
 # place that holds them.

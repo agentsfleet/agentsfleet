@@ -10,8 +10,8 @@ type TestResult = Result<(), Box<dyn std::error::Error>>;
 #[test]
 fn deployment_defaults_keep_the_current_recovery_budget() -> TestResult {
     let settings = read(&MapEnv::default())?;
-    assert_eq!(settings.clock.ttl(), Duration::from_secs(35));
-    assert_eq!(settings.clock.offline_after(), Duration::from_secs(105));
+    assert_eq!(settings.clock.ttl(), Duration::from_secs(38));
+    assert_eq!(settings.clock.offline_after(), Duration::from_secs(114));
     assert_eq!(settings.assignments.get(), 8);
     assert_eq!(settings.requests.get(), 256);
     assert!(!settings.resume_from_checkpoint);

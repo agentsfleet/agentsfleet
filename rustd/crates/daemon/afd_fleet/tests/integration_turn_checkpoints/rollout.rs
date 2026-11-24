@@ -1,5 +1,6 @@
 //! Disabling restore admission preserves checkpointed heads on ordinary and recovery assignments.
 
+use afd_runner::timing::{RunClock, RunSettings};
 use std::sync::Arc;
 
 use af_crypto::secret::Kek;
@@ -59,10 +60,7 @@ async fn disabled_resume_keeps_existing_reassignment_for_an_event_without_a_chec
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_configured_clock_changes_new_grants_and_preserves_existing_deadlines() -> Checked {
-    use af_core::{
-        clock,
-        timing::{RunClock, RunSettings},
-    };
+    use af_core::clock;
     let mut case = Case::with_fixtures(Fixtures::create_isolated().await).await?;
     let original = run_deadline(&case).await?;
     let settings = garde::Unvalidated::new(RunSettings {

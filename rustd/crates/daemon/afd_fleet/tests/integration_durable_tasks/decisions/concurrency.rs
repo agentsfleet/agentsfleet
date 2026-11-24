@@ -18,7 +18,7 @@ use super::{
 };
 
 #[derive(Clone, Copy)]
-enum Operations {
+pub(super) enum Operations {
     Same,
     Independent,
 }
@@ -90,7 +90,7 @@ fn compiled_request(fixture: &Decisions<'_>, body: &Value) -> af_wire::decision:
     request
 }
 
-async fn contend(
+pub(super) async fn contend(
     fixture: &Decisions<'_>,
     input: &garde::Valid<af_wire::durable_task::DecisionReservationInput>,
     operations: Operations,

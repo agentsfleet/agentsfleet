@@ -4,7 +4,6 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use af_core::clock::{self, Clock};
 use af_core::id::Uuid7;
-use af_core::timing::SANDBOX_HOLD_IDLE;
 use afr_sandbox::Sandbox;
 use afr_telemetry::labels::SandboxHold;
 use afr_telemetry::record;
@@ -170,7 +169,11 @@ impl Keeper {
         }
         self.cap(room - 1, Release::Capped);
         let since = self.clock.now();
-        let until = clock::after(since, SANDBOX_HOLD_IDLE);
+        // The hold asks for the most a daemon may grant, the ceiling of its
+        // `max_idle_hold_seconds`; the daemon commits its configured length and the
+        // report's acknowledgement narrows the hold to it, so the setting is the one
+        // source of how long a sandbox stays held.
+        let until = clock::after(since, af_core::timing::DAY);
         let run_id = run.as_str();
         let fleet_id = key.fleet.as_str();
         let event = EVENT_HELD;

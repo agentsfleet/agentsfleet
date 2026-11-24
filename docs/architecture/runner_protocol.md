@@ -139,17 +139,16 @@ This leaves time to stop the engine and reap its processes.
 
 | Timing | Value | Meaning |
 |---|---|---|
-| Heartbeat | Every 10 seconds | No heartbeat for two intervals closes the connection |
-| Ping | Every 15 seconds | An unanswered ping fails after 5 seconds; idle detection can take 20 seconds |
-| Renewal | Every 5 seconds | One frame names every live run on the host; each answer has its own 5-second deadline |
-| Run grant | 35 seconds | Includes recovery, another renewal answer and physical cleanup |
-| Offline threshold | 105 seconds | Three run lifetimes of silence; a read derives the host `offline` and its sandbox hold stops protecting its fleet |
+| Round | Every heartbeat interval, 10 seconds by default | The runner's one clock: each round sends the heartbeat and one renewal frame naming every live run on the host; each answer has its own 5-second deadline. A round refused for now is retried 5 seconds after it was sent |
+| Heartbeat | Each round | No heartbeat for two intervals closes the connection; an unanswered heartbeat fails after 5 seconds. No ping is sent |
+| Run grant | 38 seconds | One round, its answer, the reconnect budget and the renewal margin, plus one second |
+| Offline threshold | 114 seconds | Three run lifetimes of silence; a read derives the host `offline` and its sandbox hold stops protecting its fleet |
 | Recovery attempt | 7 seconds total | HTTP/3 setup 2 seconds, HTTP/2 setup 2 seconds, authenticated opening and rebuild 3 seconds |
-| Reconnect delay | Jittered exponential backoff, capped at 30 seconds | Failed openings and short connections retain retry history |
-| Stable reset | 60 seconds | A stable connection resets reconnect backoff |
+| Reconnect delay | Jittered exponential backoff, capped at 30 seconds | Failed openings and unanswered connections retain retry history |
+| Backoff reset | First answer | A connection the daemon answered a request on resets reconnect backoff |
 | UDP failure history | 30 seconds | How long a new connection skips HTTP/3 after HTTP/3 failed to connect and HTTP/2 connected |
 
-[Timing constants](../../rustd/crates/foundation/af_core/src/timing/mod.rs) assert the renewal and recovery relationship.
+[The run clock's constants](../../rustd/crates/daemon/afd_runner/src/timing/mod.rs) assert the renewal relationship, and [the shared stream spans](../../rustd/crates/foundation/af_core/src/timing/mod.rs) assert the recovery budget.
 Repeated outages can exceed the recovery window; confirmed run expiry still stops the running run.
 Reconnect starts renewal immediately; it never waits for the next periodic tick.
 

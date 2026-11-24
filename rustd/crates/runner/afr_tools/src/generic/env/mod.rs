@@ -39,7 +39,7 @@ const REPLY_SLACK: Duration = Duration::from_secs(1);
 const ENDING_GRACE: Duration = KILL_GRACE
     .saturating_add(DRAIN_GRACE)
     .saturating_add(REPLY_SLACK);
-const _: () = assert!(ENDING_GRACE.as_nanos() <= af_core::timing::ENGINE_STOP_GRACE.as_nanos());
+const _: () = assert!(ENDING_GRACE.as_nanos() <= crate::ENGINE_STOP_GRACE.as_nanos());
 // Unconfigured, the harness and the executor hold one read size and one edge;
 // configured, the tools read the executor's through `Env`.
 const _: () = assert!(guffbolt::tools::env::MAX_READ_BYTES == afr_executor::MAX_READ_BYTES);

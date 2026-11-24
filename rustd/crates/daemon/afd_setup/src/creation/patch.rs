@@ -65,16 +65,19 @@ impl Creations {
                 .await
                 .map_err(query(CONTEXT))?;
         }
-        let cancelled = if requested == ARCHIVED {
+        let (cancelled, closed) = if requested == ARCHIVED {
             let cancelled = self.cancel(&mut tx, fleet).await?;
             // The draft's proposal is now the fleet's revision 1, so the draft
             // has nothing left to edit: an archive ends it.
-            super::activate::close_saved_drafts(&mut tx, fleet).await?;
-            cancelled
+            let closed = super::activate::close_saved_drafts(&mut tx, fleet).await?;
+            (cancelled, closed)
         } else {
-            Vec::new()
+            (Vec::new(), Vec::new())
         };
         tx.commit().await.map_err(query(CONTEXT))?;
+        for draft in &closed {
+            self.setup.drafts.changed(draft).await;
+        }
         self.announce_cancellations(cancelled).await;
         // Archiving an installing fleet cancels its setup; a live fleet's setup
         // already finished, and `transition` refused any repeated archive above.

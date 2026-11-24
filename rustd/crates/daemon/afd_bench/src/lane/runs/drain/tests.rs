@@ -53,10 +53,11 @@ fn short_turn_sends_no_renewal() {
 }
 
 #[test]
-fn default_turn_renews_twice_and_posts_forty_times() {
+fn default_turn_renews_once_and_posts_forty_times() {
+    // One round per heartbeat interval: a ten-second turn renews once.
     let turn = Turn::back_to_back(Duration::from_secs(10));
 
-    assert_eq!((turn.renewals, turn.posts), (2, 40));
+    assert_eq!((turn.renewals, turn.posts), (1, 40));
 }
 
 #[test]

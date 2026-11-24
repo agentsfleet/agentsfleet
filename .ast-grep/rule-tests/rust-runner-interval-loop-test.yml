@@ -1,0 +1,27 @@
+id: rust-runner-interval-loop
+valid:
+  # A sleep re-armed after each round, a call to the clock itself, and a test's own ticker.
+  - |
+    async fn round(due: Instant) {
+        tokio::time::sleep_until(due).await;
+    }
+  - |
+    fn start(renewals: &Renewals) {
+        let _running = renewals.run(&handle, stop);
+    }
+  - |
+    #[cfg(test)]
+    mod tests {
+        fn tick() {
+            let _ticks = tokio::time::interval(Duration::from_secs(1));
+        }
+    }
+invalid:
+  - |
+    async fn ping() {
+        let mut ticks = tokio::time::interval_at(Instant::now() + PERIOD, PERIOD);
+    }
+  - |
+    async fn renew() {
+        let mut ticks = interval(Duration::from_secs(5));
+    }

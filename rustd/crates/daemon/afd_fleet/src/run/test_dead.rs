@@ -105,7 +105,7 @@ pub(crate) fn acquired() -> Acquired {
         predecessor_run_id: None,
         fleet_id: id(1),
         fence: Fence::from_i64(3),
-        held_until: af_core::clock::after(AT, af_core::timing::RUN_TTL),
+        held_until: af_core::clock::after(AT, afd_runner::timing::RUN_TTL),
         kind: Kind::Fresh,
         turn_id: id(5),
         actor: "fixture:steer".to_owned(),

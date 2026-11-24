@@ -15,7 +15,8 @@
 )]
 
 use af_core::id::Uuid7;
-use af_core::timing::RUN_TTL;
+use afd_runner::timing::RUN_TTL;
+
 use afd_fleet::run::sql::meter::Metering;
 use afd_fleet::run::usage::Pricing;
 use afd_fleet::run::{Renewed, Runs};

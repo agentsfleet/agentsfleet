@@ -26,7 +26,6 @@ const HELD_UNTIL: &str = "2026-10-18T06:10:00.250Z";
 /// A heartbeat answer releasing nothing.
 // pin test: literal is the contract
 const BEAT_ANSWER: &str = r#"{
-  "heartbeat_interval_ms": 10000,
   "status": "ok",
   "assigned_policy": {
     "sandbox_tier": "dev_none",

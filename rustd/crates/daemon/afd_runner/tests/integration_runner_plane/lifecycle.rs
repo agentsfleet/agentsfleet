@@ -1,10 +1,11 @@
 //! Enrolment and the beats after it: what each writes to history, and when the
 //! database's clock is read.
 
+use afd_runner::timing::RUNNER_OFFLINE_AFTER;
 use std::time::Duration;
 
 use af_core::clock;
-use af_core::timing::RUNNER_OFFLINE_AFTER;
+
 use afd_api_wire::admin::RunnerEventType;
 use afd_runner::NO_REPORT;
 use afd_runner::sql::NEVER_SEEN;

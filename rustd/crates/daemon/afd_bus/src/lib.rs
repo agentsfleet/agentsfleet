@@ -163,6 +163,26 @@ impl Handle {
     }
 }
 
+/// Sleeps until `at`, or never when there is nothing to wait for.
+///
+/// A `select!` arm with no deadline then simply never fires. Every reader of a wake that
+/// may hold a deadline, a retry or a lapse, waits on it through this.
+pub async fn sleep_until_some(at: Option<tokio::time::Instant>) {
+    match at {
+        Some(at) => tokio::time::sleep_until(at).await,
+        None => std::future::pending().await,
+    }
+}
+
+/// Gaps every replica's subscriptions once, when a daemon boots.
+///
+/// A daemon that died between a commit and its publish took that notice with it;
+/// every reader re-reads Postgres on the gap, so none waits on the lost notice. A
+/// failure is logged: the booting daemon's own readers have not opened yet.
+pub async fn announce_boot(bus: &Handle) {
+    observe_notification(&Subject::Gap, bus.publish(&Subject::Gap, "").await);
+}
+
 /// Consume a notification outcome after a durable commit without changing that commit's answer.
 /// This observer records failure; publishers themselves always return Result to their caller.
 pub fn observe_notification(subject: &Subject, outcome: Result<()>) {

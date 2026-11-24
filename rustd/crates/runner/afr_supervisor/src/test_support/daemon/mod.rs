@@ -33,12 +33,36 @@ pub(crate) async fn bounded<T>(operation: &str, future: impl Future<Output = T>)
 
 pub(crate) struct Calls {
     pub(crate) stopped: tokio_util::sync::CancellationToken,
+    /// Where a test pushes a daemon policy frame; the scripted stream reads it.
+    policy:
+        std::sync::Arc<tokio::sync::watch::Sender<Option<std::sync::Arc<af_stream::OwnedFrame>>>>,
     received: mpsc::UnboundedReceiver<Call>,
     /// Each answer that panicked, as the fake daemon reports it.
     failures: mpsc::UnboundedReceiver<String>,
 }
 
 impl Calls {
+    /// Pushes `response` as the daemon's policy frame, as a pushed policy reaches the
+    /// heartbeat loop between beats.
+    pub(crate) async fn push_policy(&self, response: &serde_json::Value) -> crate::Result<()> {
+        self.push_frame(&serde_json::json!({"type": "policy", "response": response}))
+            .await
+    }
+
+    /// Pushes `message` on the frame a pushed policy rides, whatever it holds.
+    pub(crate) async fn push_frame(&self, message: &serde_json::Value) -> crate::Result<()> {
+        let frame = af_stream::encode(
+            message,
+            &af_stream::Budget::default(),
+            af_wire::protocol::StreamKind::Control,
+            &self.stopped,
+            tokio::time::Instant::now() + af_core::timing::STREAM_ANSWER_TIMEOUT,
+        )
+        .await?;
+        self.policy.send_replace(Some(std::sync::Arc::new(frame)));
+        Ok(())
+    }
+
     pub(crate) async fn recv(&mut self) -> Option<Call> {
         self.received.recv().await
     }
@@ -106,9 +130,24 @@ pub(crate) fn plane<F>(answer: F) -> (ControlPlane, Calls)
 where
     F: Fn(&Call) -> Answer + Send + Sync + 'static,
 {
+    plane_every(crate::test_support::ROUND, answer)
+}
+
+/// As [`plane`], with each connection's welcome announcing `interval`, the period of
+/// the runner's clock. A daemon announces the same interval in its welcome and its
+/// heartbeat answers, so a test that answers with a shorter one announces it here too.
+pub(crate) fn plane_every<F>(interval: Duration, answer: F) -> (ControlPlane, Calls)
+where
+    F: Fn(&Call) -> Answer + Send + Sync + 'static,
+{
     let (api, calls) = fake(answer);
     let api: std::sync::Arc<dyn RunnerApi> = std::sync::Arc::new(api);
-    let stream = stream::start(&api, calls.stopped.clone());
+    let stream = stream::start(
+        &api,
+        calls.stopped.clone(),
+        std::sync::Arc::clone(&calls.policy),
+        interval,
+    );
     (ControlPlane::new(Box::new(SharedApi(api)), stream), calls)
 }
 
@@ -172,6 +211,7 @@ where
             received,
             failures,
             stopped: tokio_util::sync::CancellationToken::new(),
+            policy: std::sync::Arc::new(tokio::sync::watch::Sender::new(None)),
         },
     )
 }

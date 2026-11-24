@@ -60,39 +60,31 @@ async fn subscription_gap_and_lag_request_resync_without_private_text() {
     live.cleanup().await;
 }
 
+/// A bus that shut down never announces again, so the stream ends — after at
+/// most a resync — and the client reconnects to a replica that is serving. No
+/// timer keeps reading Postgres for it.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn draft_stream_resyncs_when_its_subscription_ends() {
+async fn draft_stream_ends_when_its_bus_shuts_down() {
     let live = Live::create(1).await;
     let mut body = live.open().await;
     live.bus.shutdown().await.expect("the bus shuts down");
-    let resync = tokio::time::timeout(super::DELIVERY, body.next())
-        .await
-        .expect("a lost subscription is announced")
-        .expect("the running draft stays open")
-        .expect("infallible body");
-    assert_eq!(resync.as_ref(), b"event: draft.resync\ndata: {}\n\n");
-    let heartbeat =
-        tokio::time::timeout(afd_sse::HEARTBEAT_INTERVAL + super::DELIVERY, body.next())
+    loop {
+        let next = tokio::time::timeout(super::DELIVERY, body.next())
             .await
-            .expect("a stopped bus retains periodic durable reads")
-            .expect("the running draft stays open")
-            .expect("infallible body");
-    assert_eq!(
-        heartbeat.as_ref(),
-        b"event: heartbeat\ndata: {\"kind\":\"heartbeat\"}\n\n"
-    );
-    live.mutate("UPDATE thread.turns SET status='completed' WHERE thread_id=$1")
-        .await;
-    live.mutate("UPDATE setup.drafts SET status='closed',closed_at=now(),expires_at=now()+interval '1 day' WHERE id=$1").await;
-    assert!(
-        frame(&mut body)
-            .await
-            .contains("event: message.completed\n")
-    );
-    assert!(frame(&mut body).await.contains("event: draft.closed\n"));
-    closed(&mut body).await;
+            .expect("a shut bus ends the stream promptly");
+        let Some(chunk) = next else {
+            break;
+        };
+        let chunk = chunk.expect("infallible body");
+        assert_eq!(
+            chunk.as_ref(),
+            b"event: draft.resync\ndata: {}\n\n",
+            "only a resync precedes the end"
+        );
+    }
     drop(body);
+    assert_eq!(live.readers(), 0);
     live.cleanup().await;
 }
 
@@ -213,5 +205,102 @@ async fn stream_ceiling_refuses_excess_viewers_and_dropped_body_releases_its_slo
     let replacement = live.open().await;
     drop(replacement);
     assert_eq!(live.readers(), 0);
+    live.cleanup().await;
+}
+
+/// A bus that refuses the first `refusals` subscribes to a draft's items subject, then
+/// serves them; every other subject passes through.
+#[derive(Debug)]
+struct Refusing {
+    refusals: AtomicUsize,
+    inner: Handle,
+}
+
+#[async_trait::async_trait]
+impl Bus for Refusing {
+    async fn publish(&self, subject: &Subject, payload: &str) -> afd_bus::Result<()> {
+        self.inner.publish(subject, payload).await
+    }
+
+    async fn publish_batch(&self, subject: &Subject, payloads: &[String]) -> afd_bus::Result<()> {
+        self.inner.publish_batch(subject, payloads).await
+    }
+
+    async fn subscribe(&self, subject: &Subject) -> afd_bus::Result<Subscription> {
+        let refusing = matches!(subject, Subject::ThreadItems(_))
+            && self
+                .refusals
+                .try_update(Ordering::AcqRel, Ordering::Acquire, |left| {
+                    left.checked_sub(1)
+                })
+                .is_ok();
+        if refusing {
+            // A transient refusal, as a timed-out subscribe is: the link retries.
+            if let Err(elapsed) =
+                tokio::time::timeout(Duration::ZERO, std::future::pending::<()>()).await
+            {
+                return Err(elapsed.into());
+            }
+        }
+        self.inner.subscribe(subject).await
+    }
+
+    async fn subscribe_thread_wakes(&self) -> afd_bus::Result<Subscription> {
+        self.inner.subscribe_thread_wakes().await
+    }
+
+    async fn shutdown(&self) -> afd_bus::Result<()> {
+        self.inner.shutdown().await
+    }
+}
+
+/// A page whose subscription was refused at open keeps its heartbeat, reopens the
+/// subscription on its retry without reading on the retry itself, and then hears the
+/// next change on its notice.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_page_whose_subscription_was_refused_reopens_and_hears_the_next_change() {
+    let live = Live::over(1, |inner| {
+        Handle::new(Refusing {
+            refusals: AtomicUsize::new(4),
+            inner,
+        })
+    })
+    .await;
+    let mut body = live.open().await;
+    assert_eq!(live.readers(), 0, "the page's subscription was refused");
+    // The page runs only while its body is read: drain it, so it waits on each retry
+    // as a browser's connection would let it.
+    let (frames, mut received) = tokio::sync::mpsc::unbounded_channel();
+    let draining = tokio::spawn(async move {
+        while let Some(Ok(chunk)) = body.next().await {
+            if frames
+                .send(String::from_utf8_lossy(&chunk).into_owned())
+                .is_err()
+            {
+                return;
+            }
+        }
+    });
+    // Four refusals back off 0.25 + 0.5 + 1 + 2 s; the page waits on each retry.
+    tokio::time::sleep(Duration::from_secs(5)).await;
+    assert_eq!(live.readers(), 1, "a retry reopened it");
+    live.mutate("UPDATE thread.turns SET status='completed' WHERE thread_id=$1")
+        .await;
+    live.publish(&json!({ "changed": live.draft }));
+    let mut seen = Vec::new();
+    loop {
+        let chunk = tokio::time::timeout(super::DELIVERY, received.recv())
+            .await
+            .expect("the change arrives on its notice")
+            .expect("the page is open");
+        let done = chunk.contains("event: message.completed\n");
+        seen.push(chunk);
+        if done {
+            break;
+        }
+        assert!(seen.len() < 4, "the change arrives on its notice: {seen:?}");
+    }
+    draining.abort();
     live.cleanup().await;
 }

@@ -41,11 +41,13 @@ impl ConnectionServices {
                 self.send(&Message::Heartbeat {
                     request_id,
                     answer: Answer::Ok {
-                        response: self.policy(&beat)?,
+                        response: Self::policy(&beat)?,
                     },
                 })
                 .await?;
-                self.refresh_cancellations().await?;
+                // No cancellation read rides the beat: a cancel is pushed as a runner
+                // command, and a lost one is re-read on the command subscription's
+                // gap or resubscribe, as a booting daemon's gap also forces.
             }
             Err(error) => {
                 let terminal = !error.retryable();

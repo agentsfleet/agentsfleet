@@ -17,7 +17,7 @@ use crate::error::Error;
 
 /// Leave time for an uncooperative engine, process-group termination and reaping before
 /// the daemon may hand the expired run to another runner.
-pub(crate) const EXPIRY_MARGIN: Duration = af_core::timing::ENGINE_STOP_GRACE
+pub(crate) const EXPIRY_MARGIN: Duration = afr_tools::ENGINE_STOP_GRACE
     .saturating_add(afr_executor::timing::KILL_GRACE)
     .saturating_add(Duration::from_secs(2));
 
@@ -64,7 +64,7 @@ impl<'a> Renewal<'a> {
         }
     }
 
-    /// Renews every [`RENEWAL_TICK`] and returns why the run ended.
+    /// Renews on each round of the runner's clock and returns why the run ended.
     ///
     /// A transport failure or a 5xx keeps the run: the daemon may be briefly
     /// unwell and the next tick may land. A 4xx ends it — revoked, lapsed, out

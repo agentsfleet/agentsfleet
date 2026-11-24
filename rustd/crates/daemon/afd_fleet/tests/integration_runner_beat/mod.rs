@@ -22,10 +22,11 @@
 mod recovery;
 use crate::requests;
 use crate::support;
+use afd_runner::timing::RUNNER_OFFLINE_AFTER;
 use std::borrow::Cow;
 
 use af_core::id::Uuid7;
-use af_core::timing::RUNNER_OFFLINE_AFTER;
+
 use af_crypto::entropy::Entropy;
 use af_wire::runner::{
     CapabilityReport, HeartbeatRequest, NetworkPolicy, SandboxTier, SelftestCheck, SelftestReport,

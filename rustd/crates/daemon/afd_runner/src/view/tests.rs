@@ -1,13 +1,13 @@
+use crate::timing::{RUNNER_OFFLINE_AFTER, RunClock};
 use std::time::Duration;
 
 use af_core::clock;
-use af_core::timing::RUNNER_OFFLINE_AFTER;
+
 use af_wire::runner::RunnerLiveness;
 use jiff::Timestamp;
 
 use super::decode::derive_liveness;
 use crate::sql::NEVER_SEEN;
-use af_core::timing::RunClock;
 
 /// The database clock every case is judged at.
 const CHECKED_AT: Timestamp = Timestamp::constant(1_760_000_000, 0);

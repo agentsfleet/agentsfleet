@@ -43,7 +43,7 @@ Each rule below holds until the milestone named beside it lands; that milestone'
 | Message folded into a run | `thread.turns.input_run_id` and `input_fence` (#803; `assign_inputs.sql` for any other run) | None |
 | Run deadline | `thread.runs.run_expires_at`, one clock | None |
 | Usage and money | `billing.usage_lines`; no relay settles them since M253_003 | None |
-| Outbound reply owed | `thread.deliveries` | A NATS ping wakes a worker, which also claims at start and after each delivery; nothing rescans for a lost ping |
+| Outbound reply owed | `thread.deliveries` | A NATS ping wakes a worker, which also claims at start, after each delivery and once when another holder's claim lapses; nothing rescans on a period |
 | Device-login session, OAuth nonce | Postgres rows (M244) | None |
 | Live tail, wake-ups, runner commands | Core NATS subjects | Lossy; the table below names what each loss costs |
 
@@ -136,7 +136,7 @@ A bus disconnect sends `catching_up` on reconnect, not at the drop (`afd_bus/src
 
 ```
 report commits ─► thread.deliveries row ─► ping (lossy) ─► worker claims the lane's head row
-                                                        └─ a lost ping waits for the next ping or worker start
+                                                        └─ a lost ping waits for the next ping, a gap or worker start
 ```
 
 Only the head of each `(provider, workspace)` lane is claimable, so claims never reorder a lane. A delivery whose inline attempts all fail is abandoned; nothing retries it later (`afd_outbound`'s `lanes/mod.rs`).
@@ -166,7 +166,8 @@ Every NATS subject is at most once. Each one names its Postgres backstop, or say
 | `af.thread.<id>.items` | Frames missing on screen | Gap signal, then a backfill from Postgres |
 | `af.thread.<id>.wake` | Work waits until the next ring, credit increase or reconnect | None: the turn stays in `thread.turns` |
 | `af.runner.<id>.cmd` | A cancel or folded input delayed | The cancel mark, and pending input read at each model call |
-| Outbound ping | A reply waits until the next ping or worker start | None: the row stays in `thread.deliveries` |
+| Outbound ping | A reply waits until the next ping, a gap or worker start | None: the row stays in `thread.deliveries` |
+| `af.tenant.<id>.members`, `af.workspace.<id>.fleets` | An open stream keeps its viewer or set until the next notice | A gap, which every booting daemon also publishes, makes every stream re-read |
 
 ## Milestones
 

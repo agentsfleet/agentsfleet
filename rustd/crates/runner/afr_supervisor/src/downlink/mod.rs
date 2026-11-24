@@ -8,7 +8,7 @@ pub(crate) mod pending;
 pub(crate) mod policy;
 #[cfg(test)]
 mod pressure_tests;
-mod reconnect;
+pub(crate) mod reconnect;
 pub(crate) mod running;
 
 use std::{collections::HashSet, sync::Arc};
@@ -90,11 +90,7 @@ impl Downlink {
 
     pub(crate) async fn run(self, halt: &Halt) -> Result<()> {
         let stop = CancellationToken::new();
-        let renewing = self.handle.renewing.run_with_interval(
-            &self.handle,
-            stop.clone(),
-            std::time::Duration::from_millis(self.runtime.settings().renewal_interval_ms),
-        );
+        let renewing = self.handle.renewing.run(&self.handle, stop.clone());
         let sessions = self.sessions(halt);
         tokio::pin!(renewing, sessions);
         tokio::select! {
@@ -132,7 +128,7 @@ impl Downlink {
                 stop: &stop,
                 deadline,
             };
-            let (result, connected_for) = self
+            let (result, answered) = self
                 .connection_attempt(&opening, &mut resume, &mut preference, &mut outage)
                 .instrument(span.clone())
                 .await;
@@ -141,7 +137,7 @@ impl Downlink {
                 return Ok(());
             }
             self.retry(halt, &span, &mut outage, result)?;
-            let pause = retries.after(connected_for)?;
+            let pause = retries.after(answered)?;
             tokio::select! { () = halt.serving().cancelled() => return Ok(()), () = tokio::time::sleep(pause) => {} }
         }
     }
@@ -195,17 +191,14 @@ impl Downlink {
         resume: &mut Resume,
         preference: &mut Preference,
         outage: &mut observation::Outage,
-    ) -> (Result<Progress>, Option<std::time::Duration>) {
+    ) -> (Result<Progress>, bool) {
         let answer = match opening.open(resume, preference).await {
             Ok(connection) => {
                 outage.connected(connection.connection.transport());
-                let opened_at = Instant::now();
-                let result = self
-                    .serve(connection, opening.output.clone(), opening.stop.clone())
-                    .await;
-                (result, Some(opened_at.elapsed()))
+                self.serve(connection, opening.output.clone(), opening.stop.clone())
+                    .await
             }
-            Err(error) => (Err(error), None),
+            Err(error) => (Err(error), false),
         };
         opening.stop.cancel();
         self.current.send_replace(None);
@@ -217,7 +210,7 @@ impl Downlink {
         connected: Connected,
         budget: Budget,
         stop: CancellationToken,
-    ) -> Result<Progress> {
+    ) -> (Result<Progress>, bool) {
         self.running.new_session();
         let (queues, receivers) = Queues::new();
         let requests = pending::Requests::new();
@@ -226,6 +219,7 @@ impl Downlink {
             queues,
             budget,
             ceilings: connected.ceilings,
+            interval: connected.interval,
             stop: stop.clone(),
         });
         let (frames_tx, mut frames) = mpsc::channel(16);
@@ -240,7 +234,6 @@ impl Downlink {
             &mut workers,
         );
         self.current.send_replace(Some(Arc::clone(&sender)));
-        io::track(&mut workers, io::ping(self.handle.clone(), stop.clone()));
         let mut dispatch = Dispatch {
             requests: &requests,
             running: &self.running,
@@ -260,8 +253,10 @@ impl Downlink {
                 &stop,
             )
             .await;
-        self.finish(connection, workers, &requests, &stop, result)
-            .await
+        let result = self
+            .finish(connection, workers, &requests, &stop, result)
+            .await;
+        (result, requests.answered())
     }
 
     async fn finish(
