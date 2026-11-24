@@ -218,6 +218,36 @@ pub async fn claim_in(
         .collect())
 }
 
+/// How long until another holder's earliest claim lapses.
+///
+/// Measured on the database's clock; `None` when no other holder holds an open delivery.
+/// `held` are the deliveries this replica holds and renews itself. `since` is how long ago
+/// the claim this read follows began: a claim that lapsed within it answers zero, since
+/// that claim may have skipped it as live.
+///
+/// # Errors
+/// Reports a database that would not answer.
+pub async fn next_lapse(
+    database: &Db,
+    held: &[Uuid7],
+    since: Duration,
+) -> Result<Option<Duration>> {
+    // Postgres keeps an interval to the microsecond, and the encoder refuses a finer one;
+    // rounding up only widens the window, which costs at most one more claim.
+    let since = Duration::from_micros(
+        u64::try_from(since.as_micros())
+            .unwrap_or(u64::MAX)
+            .saturating_add(u64::from(!since.subsec_nanos().is_multiple_of(1_000))),
+    );
+    let left: Option<i64> = sqlx::query_scalar(sql::NEXT_LAPSE)
+        .bind(held)
+        .bind(since)
+        .fetch_one(&mut *database.acquire().await?)
+        .await
+        .map_err(crate::error::query(CONTEXT_CLAIM))?;
+    Ok(left.map(|millis| Duration::from_millis(u64::try_from(millis).unwrap_or(0))))
+}
+
 /// Extends `job`'s claim; `false` when it lapsed and another holder may own it.
 ///
 /// # Errors

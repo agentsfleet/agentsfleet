@@ -239,6 +239,7 @@ async fn events_after(
         queues,
         budget: Budget::default(),
         ceilings: af_stream::Ceilings::PROTOCOL,
+        interval: crate::test_support::ROUND,
         stop: stop.clone(),
     };
     let mut dispatch = Dispatch {

@@ -1,19 +1,22 @@
-import { RadioGroup, RadioGroupItem, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@agentsfleet/design-system";
+import { Button, Spinner, RadioGroup, RadioGroupItem, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@agentsfleet/design-system";
 import type { Secret } from "@/lib/api/secrets";
 import { OPENAI_COMPATIBLE_PROVIDER } from "@/lib/types";
+import { SECRETS_LOAD, type SecretsLoad } from "./secrets-load";
 import { compatibleCredentials, KEY_MODE, type ModelFormValues } from "./model-creation";
 
 type Props = {
   id: string;
   values: ModelFormValues;
   secrets: readonly Secret[];
+  secretsLoad: SecretsLoad;
+  onSecretsNeeded: () => void;
   onChange: (patch: Partial<ModelFormValues>) => void;
 };
 
 export const MODEL_FORM_TRIGGER_CLASS = "font-control max-summary:text-base max-summary:leading-6 pointer-coarse:text-base pointer-coarse:leading-6 " +
   "[&>[data-slot=select-caret]]:text-muted-foreground [&>[data-slot=select-caret]]:opacity-100";
 
-export function ModelCredentialFields({id, values, secrets, onChange}: Props) {
+export function ModelCredentialFields({id, values, secrets, secretsLoad, onSecretsNeeded, onChange}: Props) {
   const available = compatibleCredentials(secrets, values.provider);
   return (
     <div className="space-y-lg">
@@ -27,13 +30,19 @@ export function ModelCredentialFields({id, values, secrets, onChange}: Props) {
           </Label>)}
       </RadioGroup>
       {values.mode === KEY_MODE.saved
-        ? <SavedCredential id={id} values={values} available={available} onChange={onChange} />
+        ? <SavedCredential id={id} values={values} available={available} status={secretsLoad} onReload={onSecretsNeeded} onChange={onChange} />
         : <NewCredential id={id} values={values} secrets={secrets} onChange={onChange} />}
     </div>
   );
 }
 
-function SavedCredential({id, values, available, onChange}: Omit<Props, "secrets"> & {available: Secret[]}) {
+function SavedCredential({id, values, available, status, onReload, onChange}: Pick<Props, "id" | "values" | "onChange"> & {
+  available: Secret[]; status: SecretsLoad; onReload: () => void;
+}) {
+  if (status === SECRETS_LOAD.error) return <output className="text-label text-muted-foreground">
+    Couldn’t load saved keys. <Button type="button" variant="link" onClick={onReload}>Try again</Button>
+  </output>;
+  if (status !== SECRETS_LOAD.ready) return <Spinner size="sm" label="Checking saved keys…" />;
   const selected = available.find(secret => secret.name === values.savedRef);
   return (
     <div className="space-y-md">
@@ -50,7 +59,7 @@ function SavedCredential({id, values, available, onChange}: Omit<Props, "secrets
   );
 }
 
-function NewCredential({id, values, secrets, onChange}: Props) {
+function NewCredential({id, values, secrets, onChange}: Pick<Props, "id" | "values" | "secrets" | "onChange">) {
   const custom = values.provider.trim() === OPENAI_COMPATIBLE_PROVIDER;
   const held = values.keyName.trim() !== "" && secrets.some(secret => secret.name === values.keyName.trim());
   return (

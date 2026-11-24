@@ -13,7 +13,7 @@ describe("AddModelEntryDialog — unified form shape", () => {
     expect(screen.getByRole("combobox", {name: "Saved key"})).toHaveProperty("disabled", true);
   });
   it("waits for the signed-in owner before opening or loading model credentials", async () => {
-    const { default: AddModelEntryDialog } = await import("@/app/(dashboard)/w/[workspaceId]/settings/models/components/AddModelEntryDialog");
+    const { AddModelEntryDialog } = await import("@/app/(dashboard)/w/[workspaceId]/settings/models/components/AddModelEntryDialog");
     const props = {workspaceId: "ws_1", secrets: [], secretsLoad: "ready" as const,
       onCreated: vi.fn(), onSecretsChanged: vi.fn(), onSecretsNeeded: vi.fn()};
     const user = userEvent.setup();

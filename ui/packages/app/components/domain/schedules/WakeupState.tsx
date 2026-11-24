@@ -8,15 +8,19 @@ import {scheduleStateText} from "@/lib/api/schedule-status";
 
 // setTimeout holds its delay in a signed 32-bit integer; a longer one fires at once.
 const MAX_TIMER_MS = 2_147_483_647;
+const WAKEUP_PREFIX = "text-foreground @max-[8.75rem]:sr-only";
 
 export function WakeupState({schedule, onRefresh}: {schedule: Schedule; onRefresh: () => void}) {
-  if (schedule.status === "deleting" || schedule.status === "paused") return <p className="text-eyebrow text-muted-foreground">{schedule.sync === SCHEDULE_SYNC.synced ? scheduleStateText(schedule) : `${schedule.status === "deleting" ? "Removal" : "Pause"} ${schedule.sync === SCHEDULE_SYNC.failed ? "failed." : "pending."}`}</p>;
-  if (schedule.sync !== SCHEDULE_SYNC.synced) return <p className="text-eyebrow leading-eyebrow text-warning">
+  if (schedule.status === "paused" && schedule.sync === SCHEDULE_SYNC.synced) return <span className="block truncate text-eyebrow leading-eyebrow text-muted-foreground">
+    <span className={WAKEUP_PREFIX}>Wake-up · </span><span>{scheduleStateText(schedule)}</span>
+  </span>;
+  if (schedule.status === "deleting" || schedule.status === "paused") return <span className="text-eyebrow text-muted-foreground">{schedule.sync === SCHEDULE_SYNC.synced ? scheduleStateText(schedule) : `${schedule.status === "deleting" ? "Removal" : "Pause"} ${schedule.sync === SCHEDULE_SYNC.failed ? "failed." : "pending."}`}</span>;
+  if (schedule.sync !== SCHEDULE_SYNC.synced) return <span className="text-eyebrow leading-eyebrow text-warning">
     {schedule.sync === SCHEDULE_SYNC.failed ? "Registration failed." : "Scheduler registration pending."}
-  </p>;
-  if (schedule.status !== "active") return <p className="text-eyebrow text-muted-foreground">{scheduleStateText(schedule)}</p>;
+  </span>;
+  if (schedule.status !== "active") return <span className="text-eyebrow text-muted-foreground">{scheduleStateText(schedule)}</span>;
   if (schedule.run_state !== SCHEDULE_RUN_STATE.scheduled || !schedule.next_run_at)
-    return <p className="text-eyebrow text-muted-foreground">Next wake-up unavailable.</p>;
+    return <span className="text-eyebrow text-muted-foreground">Next wake-up unavailable.</span>;
   return <NextWakeup instant={schedule.next_run_at} onRefresh={onRefresh} />;
 }
 
@@ -37,5 +41,8 @@ function NextWakeup({instant, onRefresh}: {instant: string; onRefresh: () => voi
   const today = clock !== null && sameCalendarDay(instant, new Date(clock));
   return elapsed ? <div className="text-eyebrow text-muted-foreground">
     <p>Next wake-up needs an update.</p><Button variant="link" size="eyebrow" onClick={onRefresh}>Refresh schedule</Button>
-  </div> : <span className="text-eyebrow leading-eyebrow text-foreground"><span className="sr-only">Next wake-up · </span><Time value={instant} format={today ? "minute" : "compact"} tooltip /></span>;
+  </div> : <span className="block truncate text-eyebrow leading-eyebrow text-foreground">
+    <span className={today ? WAKEUP_PREFIX : "@max-[11.5rem]:sr-only"}>Next wake-up · </span>
+    <Time value={instant} format={today ? "minute" : "compact"} tooltip />
+  </span>;
 }

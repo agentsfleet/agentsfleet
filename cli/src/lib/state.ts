@@ -46,6 +46,7 @@ export interface Credentials {
   // without listing every credential the person owns. Null only in the
   // signed-out record.
   credential_id: string | null;
+  machine_name?: string;
 }
 
 export interface WorkspaceItem {

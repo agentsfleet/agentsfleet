@@ -4,9 +4,9 @@
 
 export const COMPOSER_NAME = "Message your fleet…";
 export const SEND_FAILED_TEXT = "Message not sent.";
-export const SEND_UNCONFIRMED_TEXT = "Couldn't confirm this message was sent.";
+export const SEND_UNCONFIRMED_TEXT = "Sending was interrupted.";
 export const SEND_CONFLICT_TEXT = "This message conflicts with one already sent.";
-export const RESEND_LABEL = "Resend";
+export const RESEND_LABEL = "Try again";
 export const SEND_AS_NEW_LABEL = "Send as new";
 export const SEND_LABEL = "Send";
 export const SIGN_IN_LABEL = "Sign in";

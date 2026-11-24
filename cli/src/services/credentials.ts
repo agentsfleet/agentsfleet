@@ -24,6 +24,7 @@ export interface SaveAccessTokenInput {
   readonly apiUrl: string | undefined;
   // Identifier of the minted credential, so `logout` can revoke it by name.
   readonly credentialId: string;
+  readonly machineName?: string;
 }
 
 // Every persisted field of the record, materialized from ONE disk read. The
@@ -39,6 +40,7 @@ export interface CredentialsSnapshot {
   readonly sessionId: string | null;
   readonly apiUrl: string | null;
   readonly credentialId: string | null;
+  readonly machineName?: string;
 }
 
 export interface CredentialsShape {
@@ -99,6 +101,7 @@ const makeLive = (env: NodeJS.ProcessEnv): CredentialsShape => ({
       sessionId: rec.session_id ?? null,
       apiUrl: rec.api_url ?? null,
       credentialId: rec.credential_id ?? null,
+      ...(typeof rec.machine_name === "string" && rec.machine_name ? {machineName: rec.machine_name} : {}),
     })),
   ),
   saveAccessToken: (input) =>
@@ -110,6 +113,7 @@ const makeLive = (env: NodeJS.ProcessEnv): CredentialsShape => ({
           session_id: input.sessionId,
           api_url: input.apiUrl ?? null,
           credential_id: input.credentialId,
+          ...(input.machineName === undefined ? {} : {machine_name: input.machineName}),
         }),
       catch: unexpected("save"),
     }),

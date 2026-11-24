@@ -22,10 +22,10 @@ mod rows;
 mod tests;
 mod verdict;
 
+use afd_runner::timing::FUNDS_CHECK_TICKS;
 use std::collections::HashMap;
 
 use af_core::id::Uuid7;
-use af_core::timing::{RENEWAL_TICK, RUN_TTL};
 use af_wire::report::RenewRequest;
 use futures_util::StreamExt as _;
 use jiff::Timestamp;
@@ -33,19 +33,6 @@ use jiff::Timestamp;
 use self::verdict::Answer;
 use crate::error::Result;
 use crate::run::pull::RunService;
-
-/// How many renewal ticks pass between funds checks of one payer.
-///
-/// A two-tick chat then pays two thirds of a check instead of four statements,
-/// and a run overruns its payer's balance by at most this many slices.
-pub const FUNDS_CHECK_TICKS: u64 = 3;
-
-// A cadence of zero would check once per session and never again, and one as
-// long as a run lives would let a run pass its balance unchecked.
-const _: () = assert!(
-    FUNDS_CHECK_TICKS >= 1 && FUNDS_CHECK_TICKS * RENEWAL_TICK.as_secs() < RUN_TTL.as_secs(),
-    "funds are checked at least once, and well inside a run's life"
-);
 
 /// Whether a session's renewal frame `tick`, counted from 0, checks funds.
 ///

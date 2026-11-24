@@ -45,7 +45,7 @@ use self::seed::{Seeded, seeded};
 use self::support::Fixtures;
 
 /// How long the fixture runs, gates and minted credentials stay live.
-const RUN_WINDOW: std::time::Duration = af_core::timing::RUN_TTL;
+const RUN_WINDOW: std::time::Duration = afd_runner::timing::RUN_TTL;
 
 /// The key every fixture in this lane seals and opens under.
 ///

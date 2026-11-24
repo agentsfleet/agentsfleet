@@ -286,8 +286,11 @@ impl Command for Folds<'_> {
     }
 }
 
+/// An application round trip with no other effect: the telemetry tests' request.
+#[cfg(test)]
 pub(crate) struct Ping;
 
+#[cfg(test)]
 impl Command for Ping {
     type Output = ();
     fn expected(&self) -> Expected {

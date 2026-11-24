@@ -13,10 +13,10 @@
 //! never a link: nothing outside the sandbox resolves inside it. Two workers
 //! never fetch into one mirror at once; each mirror has its own lock.
 
-use std::collections::HashMap;
+use dashmap::DashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, PoisonError};
 
 use afr_sandbox::HostWorkspace;
 use afr_tools::sandbox::Checkout;
@@ -51,7 +51,7 @@ const WAIT_STOPPED: &str = "stopped while another run held the repository's mirr
 pub struct Mirrors {
     root: PathBuf,
     origin: String,
-    locks: Mutex<HashMap<PathBuf, Arc<tokio::sync::Mutex<()>>>>,
+    locks: DashMap<PathBuf, Arc<tokio::sync::Mutex<()>>>,
 }
 
 /// One checkout's inputs. Its `Debug` names the token only as redacted, so a
@@ -86,7 +86,7 @@ impl Mirrors {
         Self {
             root,
             origin: origin.into(),
-            locks: Mutex::new(HashMap::new()),
+            locks: DashMap::new(),
         }
     }
 
@@ -152,8 +152,7 @@ impl Mirrors {
 
     /// The lock for `mirror`, made the first time anyone asks for it.
     fn lock(&self, mirror: &Path) -> Arc<tokio::sync::Mutex<()>> {
-        let mut locks = self.locks.lock().unwrap_or_else(PoisonError::into_inner);
-        Arc::clone(locks.entry(mirror.to_owned()).or_default())
+        Arc::clone(&self.locks.entry(mirror.to_owned()).or_default())
     }
 }
 

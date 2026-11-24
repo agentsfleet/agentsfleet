@@ -9,6 +9,7 @@ import { AGENTSFLEET_TURN_STATUS } from "@/lib/streaming/fleet-stream-row";
 import * as activity from "@/lib/turns/fleet-activity";
 import * as messageRenderers from "../../activity/messages/fleetMessageRenderers";
 import { __resetPendingSendsForTests } from "@/lib/streaming/pending-sends";
+import { postSteer } from "@/lib/api/fleet-steer";
 
 // The thread shell under a streamed reply, through the real runtime: every
 // flush hands the thread a new turn array, and the counters below say who
@@ -221,6 +222,46 @@ describe("a streamed reply and the thread around it", () => {
     expect(screen.getByText(new RegExp(`word${FLUSHES - 1}$`))).toBeTruthy();
     expect(shell.viewportRenders).toBe(0);
     expect(shell.composerCommits).toBe(0);
+  });
+
+  it("keeps the viewport, composer and settled answers steady while twenty fleet replies stream", async () => {
+    const send = vi.mocked(postSteer);
+    send.mockClear();
+    send.mockImplementation(async () => ({ok: true, data: {status: "accepted",
+      turn_id: `fleet-turn-${send.mock.calls.length}`, replayed: false, disposition: "started", folded_into_turn_id: null}}));
+    const settled: FleetTurn[] = [];
+    shell.stream.mockReturnValue({...STABLE, turns: settled});
+    const mounted = render(thread());
+    const show = (turns: readonly FleetTurn[]) => {
+      shell.stream.mockReturnValue({...STABLE, turns});
+      mounted.rerender(thread());
+    };
+
+    for (let count = 1; count <= 20; count += 1) {
+      const text = `Fleet request ${count}`;
+      const composer = screen.getByRole("textbox", {name: /^Message your fleet/});
+      fireEvent.change(composer, {target: {value: text}});
+      await act(async () => {fireEvent.click(screen.getByRole("button", {name: "Send"}));});
+      expect(send.mock.calls.at(-1)?.[2]).toBe(text);
+
+      const running = {...turn("", AGENTSFLEET_TURN_STATUS.RECEIVED),
+        id: `fleet-turn-${count}`, text, createdAt: new Date(count)};
+      show([...settled, running]);
+      const beforeFlush = {viewport: shell.viewportRenders, composer: shell.composerCommits};
+      for (const suffix of ["first", "final"]) {
+        const reply = `Fleet reply ${count} ${suffix}`;
+        show([...settled, {...running, reply}]);
+        expect(screen.getByText(reply)).toBeTruthy();
+      }
+      expect(shell.viewportRenders).toBe(beforeFlush.viewport);
+      expect(shell.composerCommits).toBe(beforeFlush.composer);
+      settled.push({...running, reply: `Fleet reply ${count} final`, status: AGENTSFLEET_TURN_STATUS.PROCESSED});
+      show([...settled]);
+    }
+
+    expect(send).toHaveBeenCalledTimes(20);
+    expect(screen.getAllByText(/^Fleet reply \d+ final$/)).toHaveLength(20);
+    send.mockReset();
   });
 
   it("test_backfill_walk_notifies_once: the transcript announces a settled reply once, and never while it streams", () => {

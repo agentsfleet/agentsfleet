@@ -153,9 +153,35 @@ impl Link {
         false
     }
 
-    /// When the pending retry is due; `None` when none is pending. Answers
-    /// the instant rather than waiting on it, so the wait borrows no link.
-    fn retry_due(&self) -> Option<Instant> {
+    /// Waits for the next reason to re-read what the subject announces: a notice, a
+    /// lag or a gap on it, or a lost subscription once it is open again, since what was
+    /// published while it was lost is unknown. [`Wake::Closed`] once the bus shut down.
+    ///
+    /// Cancel-safe: a reader may race it against its other sources in a `select!`.
+    pub async fn changed(&mut self) -> Wake {
+        loop {
+            if self.is_closed() {
+                return Wake::Closed;
+            }
+            if let Some(subscription) = self.subscription() {
+                match subscription.recv().await {
+                    Ok(_received) => return Wake::Changed,
+                    Err(error) => self.lose(&error),
+                }
+                continue;
+            }
+            // Retrying here: a closed link returned above, and an open one read.
+            afd_bus::sleep_until_some(self.retry_at()).await;
+            if self.reopen_if_due().await {
+                return Wake::Changed;
+            }
+        }
+    }
+
+    /// When a lost subscription is next retried; `None` while open or once closed.
+    /// Answers the instant rather than waiting on it, so the wait borrows no link.
+    #[must_use]
+    pub fn retry_at(&self) -> Option<Instant> {
         let State::Retrying { attempt, at } = self.state else {
             return None;
         };
@@ -163,6 +189,15 @@ impl Link {
         tracing::debug!(attempt, wait_ms, event = "sse_resubscribing");
         Some(at)
     }
+}
+
+/// Why [`Link::changed`] returned.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Wake {
+    /// Something the subject announces may have changed: read it again.
+    Changed,
+    /// The bus shut down and never announces again.
+    Closed,
 }
 
 /// What one turn of the tail decided.
@@ -197,7 +232,7 @@ async fn turn(link: &mut Link, seq: u64) -> Turn {
         return Turn::End;
     }
     let Some(subscription) = link.subscription() else {
-        if let Some(due) = link.retry_due() {
+        if let Some(due) = link.retry_at() {
             tokio::time::sleep_until(due).await;
         }
         // Frames published while the tail was down are gone: the viewer

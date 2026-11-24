@@ -23,7 +23,7 @@ use crate::client::{Call, Verb};
 use crate::error;
 use crate::halt::Halt;
 use crate::holds::{Holds, Parked, Release};
-use crate::test_support::{Answer, FakeEngine, drain, plane};
+use crate::test_support::{Answer, FakeEngine, drain, plane, plane_every};
 
 /// The beat the daemon answers `stop`, once running stopped two beats in.
 const STOPPED_AT_BEAT: usize = 3;
@@ -96,10 +96,14 @@ async fn test_leasing_stopped_ends_every_hold_and_beats_at_once() {
     let holds = holding(&engine, 2).await;
     let beats = Arc::new(AtomicUsize::new(0));
     let counted = Arc::clone(&beats);
-    let (plane, mut calls) = plane(move |_call| match counted.fetch_add(1, Ordering::SeqCst) {
-        0 => releasing(KEEP_GOING, &[]),
-        _later => releasing(STOP, &[]),
-    });
+    let (plane, mut calls) =
+        plane_every(
+            Duration::from_millis(u64::from(TICK_MS)),
+            move |_call| match counted.fetch_add(1, Ordering::SeqCst) {
+                0 => releasing(KEEP_GOING, &[]),
+                _later => releasing(STOP, &[]),
+            },
+        );
     let probe = probe();
     let (published, mut watching) = watch::channel(Assignment::initial());
     let halt = Halt::new(CancellationToken::new());
@@ -201,7 +205,7 @@ async fn test_leasing_stopped_brings_one_beat_forward_and_no_more() {
     let holds = holding(&engine, 2).await;
     let stamps = Arc::new(Mutex::new(Vec::new()));
     let stamped = Arc::clone(&stamps);
-    let (plane, mut calls) = plane(move |_call| {
+    let (plane, mut calls) = plane_every(Duration::from_millis(u64::from(TICK_MS)), move |_call| {
         let mut beats = stamped.lock().unwrap();
         beats.push(tokio::time::Instant::now());
         let status = if beats.len() < STOPPED_AT_BEAT {

@@ -9,9 +9,7 @@ use std::sync::atomic::Ordering;
 
 #[tokio::test]
 async fn native_pending_refused_and_stale_decisions_stop_root_without_completion() {
-    for mode in [
-        "reserved", "issued", "unknown", "not_sent", "refused", "stale",
-    ] {
+    for mode in ["issued", "unknown", "not_sent", "refused", "stale"] {
         exercise(mode).await;
     }
 }

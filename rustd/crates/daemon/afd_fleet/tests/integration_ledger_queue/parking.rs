@@ -12,6 +12,13 @@ const HOLD: &str = "SELECT pg_backend_pid() FROM thread.threads
     WHERE fleet_id = $1 FOR UPDATE";
 const BLOCKED: &str = "SELECT EXISTS (SELECT 1 FROM pg_stat_activity
     WHERE $1 = ANY(pg_blocking_pids(pid)))";
+// Waiters behind `$1` and behind those: a second row-lock waiter queues on the first
+// waiter's tuple lock, so Postgres names the first waiter, not the holder.
+const WAITERS: &str = "WITH first AS (SELECT pid FROM pg_stat_activity
+      WHERE $1 = ANY(pg_blocking_pids(pid)))
+    SELECT count(*) FROM pg_stat_activity a
+    WHERE $1 = ANY(pg_blocking_pids(a.pid))
+       OR EXISTS (SELECT 1 FROM first f WHERE f.pid = ANY(pg_blocking_pids(a.pid)))";
 const GATE: &str = "INSERT INTO fleet.approval_gates
     (id, fleet_id, workspace_id, action_id, tool_name, action_name, gate_type,
      proposed_action, evidence, blast_radius, expires_at, status, detail,
@@ -20,9 +27,11 @@ const GATE: &str = "INSERT INTO fleet.approval_gates
       'open a pull request', '{}'::jsonb, 'one repository', now()+interval '1 hour',
       $4, '', now(), now(), NULL)";
 
-// Value: protects=answer-first park ordering; fails_when=park uses a stale gate;
-// why_new=the resolver must now wait for a turn lock, so hold the earlier thread;
-// seam=none; no_claim=park-first ordering, covered separately.
+// Value: protects=a park and an answer that meet on the thread leave no stranded turn;
+// fails_when=the answer is lost behind the park, or the park outlives the answer;
+// why_new=the resolver takes the thread first, so it queues behind the park;
+// seam=none; no_claim=an answer that commits before the park starts, covered by the
+// park's own pending-gate check.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_answer_during_the_park_lock_wait_cannot_strand_the_turn() {
@@ -134,18 +143,41 @@ async fn answer_while_blocked(
         bus.clone(),
         Turns::for_tests(fixtures.database.clone(), bus),
     );
-    let answer = inbox
-        .resolve(
-            action.as_str(),
-            Decision::Approved,
-            "fixture:human",
-            "",
-            None,
-        )
-        .await
-        .expect("answer commits while park waits");
+    let answer = inbox.resolve(
+        action.as_str(),
+        Decision::Approved,
+        "fixture:human",
+        "",
+        None,
+    );
+    // The answer takes the thread first too, so it queues behind the park; the thread's
+    // holder lets go once both wait, the park commits, and the answer unparks the turn.
+    let release = async {
+        wait_for_waiters(fixtures, pid, 2).await;
+        blocker.rollback().await.expect("release park");
+    };
+    let (answer, ()) = tokio::join!(answer, release);
+    let answer = answer.expect("the answer commits after the park");
     assert!(matches!(answer, Resolution::Resolved(_)));
-    blocker.rollback().await.expect("release park");
+}
+
+async fn wait_for_waiters(fixtures: &Fixtures, pid: i32, waiters: i64) {
+    let mut observer = fixtures.database.acquire().await.expect("observer");
+    tokio::time::timeout(WITHIN, async {
+        loop {
+            let queued: i64 = sqlx::query_scalar(WAITERS)
+                .bind(pid)
+                .fetch_one(&mut *observer)
+                .await
+                .expect("observe the thread's queue");
+            if queued >= waiters {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("the park and the answer both queue on the thread");
 }
 
 pub(super) async fn wait_for_park(fixtures: &Fixtures, pid: i32) {

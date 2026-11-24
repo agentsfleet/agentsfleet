@@ -30,7 +30,7 @@ pub trait KeySetSource: Send + Sync + std::fmt::Debug {
 /// Counting its reads is what proves the refresh policy.
 #[derive(Debug)]
 pub struct StaticKeySet {
-    document: std::sync::Mutex<Box<[u8]>>,
+    document: Box<[u8]>,
     fetches: std::sync::atomic::AtomicUsize,
 }
 
@@ -39,7 +39,7 @@ impl StaticKeySet {
     #[must_use]
     pub fn new(document: impl Into<Box<[u8]>>) -> Self {
         Self {
-            document: std::sync::Mutex::new(document.into()),
+            document: document.into(),
             fetches: std::sync::atomic::AtomicUsize::new(0),
         }
     }
@@ -57,14 +57,10 @@ impl StaticKeySet {
 impl KeySetSource for StaticKeySet {
     fn fetch(&self) -> impl Future<Output = Result<Vec<u8>, VerifyError>> + Send {
         // safe because: Relaxed — the counter only tallies reads for a test to
-        // assert on; the cache mutex publishes the data itself.
+        // assert on; the document never changes after construction.
         self.fetches
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let document = self
-            .document
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .to_vec();
+        let document = self.document.to_vec();
         std::future::ready(Ok(document))
     }
 }

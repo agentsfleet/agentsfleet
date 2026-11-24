@@ -37,6 +37,7 @@ const TAG_SERVER_ERROR = "ServerError" as const;
 export interface MintedCredential {
   readonly id: string;
   readonly credential: Redacted.Redacted<string>;
+  readonly machineName: string;
 }
 
 // The label this credential is filed under, and the key the server's
@@ -71,7 +72,7 @@ const exchangeFailed = (
 // check is the load-bearing one — it is what makes "the server handed back
 // something that is not a credential" a typed failure here rather than a
 // value that reaches disk and fails on the next command.
-const decodeMinted = (raw: unknown): MintedCredential | null => {
+const decodeMinted = (raw: unknown): Omit<MintedCredential, "machineName"> | null => {
   if (raw === null || typeof raw !== "object") return null;
   const body = raw as { readonly id?: unknown; readonly credential?: unknown };
   if (!isString(body.id) || body.id.length === 0) return null;
@@ -85,11 +86,12 @@ export const exchangeForCredential = (
 ): Effect.Effect<MintedCredential, CliError, HttpClient> =>
   Effect.gen(function* () {
     const http = yield* HttpClient;
+    const machine = machineName();
     const raw = yield* http
       .request<unknown>({
         path: CLI_CREDENTIALS_PATH,
         method: "POST",
-        body: { machine_name: machineName() },
+        body: { machine_name: machine },
         token: sessionToken,
       })
       .pipe(
@@ -107,7 +109,7 @@ export const exchangeForCredential = (
         exchangeFailed("the mint response carried no usable credential"),
       );
     }
-    return minted;
+    return {...minted, machineName: machine};
   });
 
 // Ends this terminal's credential at the server, by identifier rather than by

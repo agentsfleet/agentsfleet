@@ -2,7 +2,8 @@ import type { ReactNode } from "react";
 import type { DefaultReplyContent as DefaultContent, ReplyContext } from "./fleet-reply-content";
 import { MessagePrimitive, MessagePartPrimitive, groupPartByType } from "@assistant-ui/react";
 import { FleetMarkdown, FleetReplyMarkdown } from "../../shared/chat/FleetMarkdown";
-import { Waiting } from "./FleetReplyFigures";
+import { ChatReplyProgress } from "@/components/domain/shared/chat/ChatReplyProgress";
+import { QUEUED_PROGRESS_LABEL } from "@/components/domain/shared/chat/ChatProgressLabel";
 import { ACTIVITY_TRACE_PART } from "./fleet-activity-trace";
 import { FleetActivityTrace } from "./FleetActivityTrace";
 import { FleetThought } from "./FleetThought";
@@ -25,12 +26,12 @@ export function renderReplyPart({part, children}: ReplyRenderInfo, reply: ReplyC
     case GROUP.REASONING: return <FleetThought live={part.status.type === STATUS_RUNNING} reasoning={reply.reasoning}
       startedAtMs={reply.span.startedAtMs} endedAtMs={reply.span.endedAtMs}>{children}</FleetThought>;
     case GROUP.TOOL: return <FleetToolGroup content={reply.content} indices={part.indices}
-      running={reply.running} wallMs={reply.wallMs} figures={reply.figures} activity={reply.activity} turnId={reply.turnId}>{children}</FleetToolGroup>;
+      running={reply.running} wallMs={reply.wallMs} turnId={reply.turnId}>{children}</FleetToolGroup>;
     case "reasoning": return <p className="whitespace-pre-wrap text-body-sm leading-prose text-text-dim">{part.text}</p>;
     case "tool-call": return part.toolUI ?? <FleetRegisteredTool {...part} />;
     case "text": return <ReplyText streaming={reply.running} plainText={reply.plainText} />;
     case "indicator": return reply.contextProgress || reply.content.some(item => item.type === "tool-call" && item.result === undefined)
-      ? <></> : <Waiting queued={reply.queued} startedAtMs={reply.startedAtMs} />;
+      ? null : <ChatReplyProgress label={reply.queued ? QUEUED_PROGRESS_LABEL : "Working"} />;
     case "data": return part.name === ACTIVITY_TRACE_PART ? <FleetActivityTrace data={part.data} /> : <DefaultReplyContent data={readDefaultReplyContent(part)} />;
     default: return <DefaultReplyContent data={readDefaultReplyContent(part)} />;
   }

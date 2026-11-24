@@ -10,7 +10,7 @@ executable: false
 
 ## What this does
 
-Adds a runner host after the founding installation; after a wipe, follow the [founding route](../../README.md#chronological-setup) instead.
+Adds a runner host after the founding installation; after a wipe, follow the [founding route](../../hosted/README.md#chronological-setup) instead.
 Indy creates external state, the agent prepares the host, and the deployment pipeline installs and verifies the runner.
 
 | Environment | Dashboard | 1Password item in the environment's vault |

@@ -44,6 +44,7 @@ mod silence;
 pub mod spelling;
 pub mod sql;
 pub mod store;
+pub mod timing;
 pub mod validate;
 pub mod view;
 

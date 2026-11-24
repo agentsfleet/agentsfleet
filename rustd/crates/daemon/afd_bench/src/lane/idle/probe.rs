@@ -65,7 +65,7 @@ fn candidates<'q, O>(
         .bind(i64::try_from(MAX_CANDIDATES_PER_POLL).unwrap_or(i64::MAX))
         // How long a silent holder binds, and the status a holder must be in
         // to bind at all; the instant they compare against is the statement's.
-        .bind(af_core::timing::RUNNER_OFFLINE_AFTER)
+        .bind(afd_runner::timing::RUNNER_OFFLINE_AFTER)
         .bind(afd_state::sql::RUNNER_STATUS_ACTIVE)
         .bind(Vec::<Uuid7>::new())
         .bind(None::<&Uuid7>)
@@ -74,6 +74,11 @@ fn candidates<'q, O>(
         .bind(af_wire::durable_task::DurableTaskState::Running.as_str())
         .bind(afd_fleet::durable_task::DECISION_POLICY_PATH)
         // The serving generation, as a poll sends it; recovery is the other.
+        .bind(false)
+        // No recovery scan, so no key to resume it after.
+        .bind(None::<jiff_sqlx::Timestamp>)
+        .bind(None::<&Uuid7>)
+        // Checkpoint resume off, the deployment default.
         .bind(false)
         .bind(afd_credential::provider::PLATFORM_MODEL_REF)
 }

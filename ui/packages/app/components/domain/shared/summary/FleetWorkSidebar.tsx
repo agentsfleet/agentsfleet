@@ -17,7 +17,7 @@ export function FleetWorkSidebar({children}: {children: ReactNode}) {
     currentWork && "summary:p-lg summary-medium:p-xl")}>
     <aside aria-label="Summary">
       <h2 className={cn("flex items-center justify-between text-label font-semibold leading-label",
-        currentWork ? "mb-md summary:mb-xl" : "mb-xl border-b border-border pb-lg")}>Summary<ListBulletsIcon size={16} className="text-muted-foreground" aria-hidden="true" /></h2>
+        currentWork ? "mb-md summary:mb-xl" : "mb-lg")}>Summary<ListBulletsIcon size={16} className="text-muted-foreground" aria-hidden="true" /></h2>
       {children}
     </aside>
   </Card>;

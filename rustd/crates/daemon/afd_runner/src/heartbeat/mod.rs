@@ -170,7 +170,15 @@ impl Runners {
         let assigned = row.assignment.decode()?;
         let verdict = reconcile(&assigned, incoming.or(stored.as_ref()));
 
-        verdict::persist(connection, runner, incoming, &row.stored, verdict).await;
+        verdict::persist(
+            connection,
+            runner,
+            incoming,
+            stored.as_ref(),
+            &row.stored,
+            verdict,
+        )
+        .await;
         // After the capability write, so a malformed verdict cannot cost the
         // beat its reconciliation.
         let reported = persist_selftest(connection, runner, beat.selftest.as_ref()).await;

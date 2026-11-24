@@ -1,4 +1,5 @@
-//! Native credit refusals retain one unsent assessment and never debit its payer.
+//! A refused funding leaves no call, no payload and no debit; once the payer is funded the
+//! same request issues.
 
 use af_core::{error_code, test_util::trace::Capture};
 use af_wire::durable_task::{DecisionAssessment, DecisionCallState};
@@ -18,7 +19,7 @@ enum Funding {
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn native_credit_shortage_and_payer_debt_preserve_unsent_calls_without_charges() {
+async fn a_refused_funding_leaves_no_call() {
     for funding in [Funding::Short, Funding::Debt] {
         exercise(async |case| refused(case, funding).await).await;
     }
@@ -46,9 +47,9 @@ async fn refused(case: &Case, funding: Funding) {
         .seed_wallet(&case.held.tenant, remaining)
         .await;
     let reason = "insufficient_credit";
-    let call = retain_refusals(&fixture).await;
+    refuse_twice(&fixture).await;
     funding_events(&capture, case, reason);
-    recover(&fixture, &call, balance).await;
+    recover(&fixture, balance).await;
     fixture
         .model
         .finish()
@@ -56,10 +57,9 @@ async fn refused(case: &Case, funding: Funding) {
         .expect("decision model fixture lifecycle");
 }
 
-async fn retain_refusals(fixture: &Decisions<'_>) -> Value {
+async fn refuse_twice(fixture: &Decisions<'_>) {
     let case = fixture.case;
     let financial = wallet_snapshot(fixture).await;
-    let mut saved = None;
     for _ in 0..2 {
         let input = fixture.reservation(DecisionAssessment::Message, None);
         let failure = fixture
@@ -71,16 +71,9 @@ async fn retain_refusals(fixture: &Decisions<'_>) -> Value {
             failure.code(),
             error_code::DURABLE_TASK_DECISION_UNAVAILABLE
         );
-        assert_eq!(fixture.counts().await, (1, 1, 0));
+        assert_eq!(fixture.counts().await, (0, 0, 0), "a refusal saves nothing");
         assert_eq!(wallet_snapshot(fixture).await, financial);
-        let current = fixture.call_snapshot().await;
-        if let Some(original) = &saved {
-            assert_eq!(&current, original);
-        } else {
-            saved = Some(current);
-        }
     }
-    saved.expect("one retained assessment").0
 }
 
 fn funding_events(capture: &Capture, case: &Case, reason: &'static str) {
@@ -96,7 +89,7 @@ fn funding_events(capture: &Capture, case: &Case, reason: &'static str) {
     );
 }
 
-async fn recover(fixture: &Decisions<'_>, call: &Value, balance: i64) {
+async fn recover(fixture: &Decisions<'_>, balance: i64) {
     let case = fixture.case;
     case.held
         .fixtures
@@ -105,7 +98,7 @@ async fn recover(fixture: &Decisions<'_>, call: &Value, balance: i64) {
     let input = fixture.reservation(DecisionAssessment::Message, None);
     let (issued, body) = fixture.reserve(&input).await;
     assert!(issued);
-    assert_eq!(body.get("call_id"), call.get("id"));
+    assert_eq!(fixture.counts().await, (1, 1, 0));
     let request = request(&body);
     let receipt = known(&request);
     let recorded = fixture.record(&request.call_id, receipt.clone()).await;

@@ -109,7 +109,7 @@ Worker capacity remains assigned per runner in PostgreSQL.
 | `af_providers/src/settings/timeouts.rs`, `guffbolt-ai/src/wire/{timeouts,stream/mod}.rs` | `TimeoutSettings`, `Timeouts::wire`, `guffbolt_ai::wire::Timeouts` | Share checked physical and semantic inactivity limits |
 | `main/src/config/{settings,policies}.rs`, `preflight/runtime.rs`, `serve/clients.rs`, `plane/*` | Checked operational snapshot and separate storage pool owner | Inject daemon settings without changing storage timeouts |
 | `af_providers/src/{retry/settings,connect/mod,transport/mod}.rs`, `guffbolt-ai/src/wire/{retry/mod,connected/reopen}.rs` | `RetrySettings`, `RetryPolicy::wire`, `Connector::configured`, `Connected::with_retry` | Bound sends and eligible reopenings independently |
-| `afr_supervisor/src/config/runtime.rs`, `client/*`, `downlink/*`, `uplink/renewals/*` | `RuntimeSettings`, `RuntimePolicy`, `ControlPlane::retrying`, `run_with_interval` | Apply runner-local retry and cadence settings |
+| `afr_supervisor/src/config/runtime.rs`, `client/*`, `downlink/*`, `uplink/renewals/*` | `RuntimeSettings`, `RuntimePolicy`, `ControlPlane::retrying`, `Renewals::run` | Apply runner-local retry and cadence settings |
 | `afr_supervisor/src/recovery/admission.rs`, `lib.rs` | `RecoveryResources::configured`, composition | Share file admission across the runner |
 | `runner/main/src/config/mod.rs`, `main.rs`, `host.rs`, `deploy/baremetal/*`, `deploy/local/linux.sh` | Runner profile loading, installation and read-only mounting | Deliver a real profile to each runner binary |
 | `afd_outbound/src/{retry,worker/mod,lanes/mod,poster/mod}.rs`, `main/src/outbound.rs` | Checked retry policy and `deliver_with_policy` | Apply inline delivery limits; an exhausted delivery is final |
@@ -138,7 +138,7 @@ assignment. Active runs retain their stored deadlines and can reconnect.
 Checkpoint capture continues while resume is disabled.
 
 The deployment clock controls grants, renewals, heartbeat cadence, host quarantine and sandbox holds.
-The run lifetime defaults to 35 seconds.
+The run lifetime defaults to 38 seconds.
 An omitted offline threshold retains three run lifetimes.
 
 A run has no maximum runtime, and none is saved with it.
@@ -147,13 +147,13 @@ A durable task's run keeps its own saved execution deadline, and a renewal past 
 
 | Setting | Default | Checked relationship |
 | --- | ---: | --- |
-| `runner.run.ttl_seconds` | 35 seconds | More than 32 seconds; at most one hour, 3,600 seconds |
-| `runner.health.heartbeat_interval_seconds` | 10 seconds | Positive; two intervals remain shorter than the offline threshold |
+| `runner.run.ttl_seconds` | 38 seconds | At least 29 seconds, one round plus the 28-second renewal margin; at most one hour, 3,600 seconds |
+| `runner.health.heartbeat_interval_seconds` | 10 seconds | Positive; at most 24 seconds, `ttl_seconds` − 28 and a third of `ttl_seconds` − 1, since it is also the renewal round; two intervals remain shorter than the offline threshold |
 | `runner.health.offline_after_seconds` | Three run lifetimes | At least one run lifetime; at most three hours, 10,800 seconds |
 | `runner.health.healthy_before_uncordon_seconds` | 30 seconds | Greater than one heartbeat interval and shorter than the offline threshold |
 | `runner.sandboxes.max_idle_hold_seconds` | 600 seconds | From one second through one day, 86,400 seconds |
 
-Startup requires a run lifetime greater than the existing 32-second renewal/reconnect budget and at most one hour (`af_core`'s `timing/run.rs`).
+Startup requires a run lifetime greater than the 28-second renewal and reconnect budget and at most one hour (`afd_runner`'s `timing/run.rs`).
 A daemon file that still names `runner.run.max_runtime_seconds` refuses startup.
 
 The configuration extension is under verification. Source inspection and
@@ -232,13 +232,15 @@ saved deadline   +-> turn is eligible after its old run and thread expire
 next assignment  `-> the expired run is marked expired in the same statement
 ```
 
-The 35-second run TTL starts at the last grant or renewal. It governs reclaim.
+The 38-second run TTL starts at the last grant or renewal. It governs reclaim.
 
-No daemon timer re-offers an expired run. The assignment that takes the turn expires the dead run's row in its own statement (`afd_fleet`'s `sql/shared/expire_prior_run.sql`), so the turn moves when a bus wake, a connection's freed capacity or a replacement's connection starts an assignment pass. [Run and liveness timing](../../rustd/crates/foundation/af_core/src/timing/mod.rs) · [Runner status](runner_fleet.md#failure-recovery-model)
+No daemon timer re-offers an expired run: the assignment taking the turn expires the dead run's row itself (`afd_fleet`'s `sql/shared/expire_prior_run.sql`). The turn moves when a bus wake, a connection's freed capacity or a replacement's connection starts an assignment pass. [Run and liveness timing](../../rustd/crates/daemon/afd_runner/src/timing/mod.rs) · [Runner status](runner_fleet.md#failure-recovery-model)
 
-The run TTL includes a 5-second tick, 5-second answer window, 7-second reconnect, and 15-second renewal margin. The compile-time sums require 32 seconds within the 35-second run, and 14 seconds for the second answer and physical cleanup within that 15-second margin.
+The run TTL includes one 10-second round, a 5-second answer window, a 7-second reconnect and a 15-second renewal margin, plus one second. A deployment's heartbeat, which is the round, is refused at boot when its run TTL cannot carry it (`afd_runner`'s `timing/run.rs`).
 
-A host silent for three run lifetimes, 105 seconds, reads `offline` when an operator view derives it (`afd_runner`'s `view/decode.rs`). Nothing writes a `runner_offline` row or cordons a silent host. Its sandbox hold stops protecting its fleet once its last beat is older than that window (`assign_turn_head.sql`). [Renewal decision](../v2/done/M243_001_P1_API_DOCS_INFRA_OBS_RUNNERS_HOLD_ONE_PUSH_STREAM.md#renewal-recovery-budget-correction)
+A host silent for three run lifetimes, 114 seconds, reads `offline` when an operator view derives it (`afd_runner`'s `view/decode.rs`). The end of its connection arms one visit at that window, which writes `runner_offline` once and cordons an `active` host (`afd_runner`'s `silence.rs`).
+
+Its sandbox hold stops protecting its fleet once its last beat is older than that window (`assign_turn_head.sql`). [Renewal decision](../v2/done/M243_001_P1_API_DOCS_INFRA_OBS_RUNNERS_HOLD_ONE_PUSH_STREAM.md#renewal-recovery-budget-correction)
 
 ```text
 brief link break + reconnect before expiry -> same run and fence

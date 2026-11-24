@@ -29,9 +29,6 @@ afd_state.workspace = true
 # Row instants, read through the `TIMESTAMPTZ(3)` bridge.
 jiff.workspace = true
 jiff-sqlx.workspace = true
-# One fleet enumeration per workspace per tick, shared by every live stream
-# watching it — and `get`/`insert` coalesce the misses a cadence produces.
-moka.workspace = true
 sqlx = { workspace = true, features = ["derive"] }
 thiserror.workspace = true
 

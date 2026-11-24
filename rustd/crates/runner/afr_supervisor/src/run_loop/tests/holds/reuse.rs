@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use af_core::clock::after;
 use af_core::id::Uuid7;
 use af_core::test_util::trace::Capture;
-use af_core::timing::SANDBOX_HOLD_IDLE;
+use af_core::timing::DAY;
 use af_wire::run::RunPayload;
 use af_wire::runner::NetworkPolicy;
 use futures_util::FutureExt as _;
@@ -19,12 +19,12 @@ use jiff::Timestamp;
 use crate::client::{Call, Verb};
 use crate::error;
 use crate::holds::Release;
+use crate::test_support::ROUND;
 use crate::test_support::{
     Answer, Behaviour, FAILURE_REASON, FLEET_ID, FakeAgent, FakeEngine, Freezer, OUTCOME,
     PROCESSED, RENEWAL_TERMINATE, RUN_ID, Rig, assigned, bounded, daemon, payload, position,
     reported,
 };
-use af_core::timing::RENEWAL_TICK;
 
 /// The fleet's second run, after the one that left its sandbox held.
 pub(super) const NEXT_RUN_ID: &str = "01890a5d-ac96-774b-bcce-b302099a805a";
@@ -134,17 +134,17 @@ async fn test_processed_run_parks_its_sandbox_frozen() {
     rig.run(&payload(RUN_ID, FLEET_ID)).await.unwrap();
     let calls = rig.calls();
     assert_eq!(reports.load(Ordering::SeqCst), 3);
-    tokio::time::sleep(RENEWAL_TICK * 2).await;
+    tokio::time::sleep(ROUND * 2).await;
     assert!(
         rig.calls().iter().all(|call| call.verb != Verb::Renew),
         "a hold never renews after acknowledgement"
     );
     let report = reported(&calls);
     assert_eq!(report[OUTCOME], PROCESSED);
-    // The rig's clock stands at zero, so the hold lapses one idle window in.
+    // The rig's clock stands at zero, and the hold asks for the most a daemon may grant.
     assert_eq!(
         report[HELD_UNTIL],
-        after(Timestamp::UNIX_EPOCH, SANDBOX_HOLD_IDLE).to_string()
+        after(Timestamp::UNIX_EPOCH, DAY).to_string()
     );
     assert_eq!(
         counted.read(),

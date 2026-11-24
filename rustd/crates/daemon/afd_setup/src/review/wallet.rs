@@ -1,6 +1,6 @@
 //! Readiness is a current observation; wallet balances never enter review identity.
 
-use af_core::timing::RunClock;
+use afd_runner::timing::RunClock;
 use sqlx::PgConnection;
 
 use super::{Context, Observed};

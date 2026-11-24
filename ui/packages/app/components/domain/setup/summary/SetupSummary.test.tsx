@@ -14,11 +14,11 @@ it.each([false, true])("keeps saved network access in setup and disables package
   expect(publicLink.getAttribute("href")).toBe(editHref);
   expect(screen.getByRole("link", {name: "Manage secrets"}).getAttribute("href")).toBe(editHref + "#secrets");
   if (publicInternet) {
-    const packages = screen.getByRole("switch", {name: "Enable package manager domains"});
+    const packages = screen.getByRole("switch", {name: "Packages"});
     expect(packages.getAttribute("aria-checked")).toBe("true");
     expect(packages).toHaveProperty("disabled", true);
   } else {
-    expect(screen.getByRole("link", {name: "Enable package manager domains (on). Edit setup"})).toBeTruthy();
+    expect(screen.getByRole("link", {name: "Packages (on). Edit setup"})).toBeTruthy();
   }
 });
 
@@ -41,5 +41,5 @@ it("shows the earliest scheduled wake-up and describes a paused or proposed sche
   current.rerender(<SetupSummary definition={definition} ready />);
   expect(screen.getByText("Pending save")).toBeTruthy();
   current.rerender(<SetupSummary definition={definition} ready schedules={[{...SCHEDULE, status: "removed"}]} />);
-  expect(screen.getByText("Not scheduled")).toBeTruthy();
+  expect(screen.getByText("Not set")).toBeTruthy();
 });

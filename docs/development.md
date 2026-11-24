@@ -527,6 +527,9 @@ The shared Mac checkout survives. Delete only your disposable machine, then repe
   `ui/agentsfleet.dev/dist/vercel.json` (two explicit header sources; the
   optional-group regex form does not match bare `/`). Deploys ride the git
   integration: preview-on-PR, prod-on-merge.
+- The dashboard opts out of Turbopack’s persistent build cache on Vercel. A
+  cache restored from an earlier deployment can feed PostCSS an import that
+  the current commit removed. Local builds use Next.js defaults.
 - Parsing `/v6/deployments` JSON: use `jq`; python's `json.load` chokes on
   control characters in the response.
 

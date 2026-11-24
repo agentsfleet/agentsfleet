@@ -119,6 +119,7 @@ impl Harness {
             queues,
             budget: Budget::default(),
             ceilings: af_stream::Ceilings::PROTOCOL,
+            interval: crate::test_support::ROUND,
             stop: CancellationToken::new(),
         });
         self.current.send_replace(Some(Arc::clone(&sender)));
@@ -170,7 +171,7 @@ impl Peer {
     }
 
     fn released(&self) {
-        assert_eq!(self.sender.requests.entries.lock().len(), 0);
+        assert_eq!(self.sender.requests.entries.len(), 0);
         assert_eq!(
             self.sender.requests.capacity.available_permits(),
             PENDING_MAX
@@ -265,10 +266,18 @@ async fn a_late_renewal_answer_cannot_acknowledge_a_new_callers_usage() -> Resul
         .deliver(&peer, StreamKind::Control, &renewed(&previous, 99))
         .await?;
     assert!(matches!(futures_util::poll!(&mut current), Poll::Pending));
+    assert!(
+        !peer.sender.requests.answered(),
+        "a late answer to nobody does not prove the session"
+    );
     harness
         .deliver(&peer, StreamKind::Control, &renewed(&request, 7))
         .await?;
     assert_eq!(current.await?.recorded_through, Some(7));
+    assert!(
+        peer.sender.requests.answered(),
+        "an answered request proves the session, so a reconnect starts its backoff over"
+    );
     peer.released();
     Ok(())
 }

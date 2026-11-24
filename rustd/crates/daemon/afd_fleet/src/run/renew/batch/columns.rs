@@ -96,7 +96,11 @@ impl<'a> Columns<'a> {
     }
 
     /// [`sql::renew::RENEW_BATCH`] with every parameter bound, in `$n` order.
-    pub(super) fn bind(&self, runner_id: &'a Uuid7, clock: af_core::timing::RunClock) -> Query<'a> {
+    pub(super) fn bind(
+        &self,
+        runner_id: &'a Uuid7,
+        clock: afd_runner::timing::RunClock,
+    ) -> Query<'a> {
         sqlx::query_as(sql::renew::RENEW_BATCH)
             .bind(runner_id)
             .bind(self.ids.clone())

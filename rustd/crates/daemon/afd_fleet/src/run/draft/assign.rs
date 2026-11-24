@@ -132,6 +132,7 @@ impl RunService {
         if drafts.claim_setup_turn(&mut tx, &turn).await? == SetupClaim::Moved {
             return Ok(Placement::Skipped);
         }
+        owed.changed(&turn.draft_id);
         let issue = Issue {
             runner,
             owner: &owner,
@@ -189,7 +190,7 @@ async fn commit(
     expired: Option<&Uuid7>,
 ) -> Result<()> {
     tx.commit().await.map_err(query(CONTEXT))?;
-    owed.settle(drafts);
+    owed.settle(drafts).await;
     if let Some(expired) = expired {
         runner_runs::expired(expired);
     }

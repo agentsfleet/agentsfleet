@@ -3,6 +3,7 @@
 mod context;
 mod fixture;
 mod live;
+mod notices;
 mod preview;
 mod privacy;
 mod recovery;

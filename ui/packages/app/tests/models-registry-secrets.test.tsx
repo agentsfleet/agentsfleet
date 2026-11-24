@@ -76,21 +76,23 @@ describe("Models registry stored secrets", () => {
     expect(replaceSecretActionMock).not.toHaveBeenCalled();
   });
 
-  it.each(["refused", "rejected"])("blocks a first %s secret read and recovers through Try again", async failure => {
+  it.each(["refused", "rejected"])("recovers saved keys after a first %s secret read and keeps the form usable", async failure => {
     registration();
     if (failure === "rejected") listSecretsActionMock.mockRejectedValueOnce(new Error("Connection lost"));
     else listSecretsActionMock.mockResolvedValueOnce({ok: false, error: "Temporarily unavailable", status: 503});
     listSecretsActionMock.mockResolvedValue({ok: true, data: {secrets: []}});
     await renderTable(registry([]));
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", {name: "Create model"}));
-    const dialog = within(await screen.findByRole("dialog"));
-    expect((await dialog.findByRole("alert")).textContent).toContain("Couldn’t load saved keys.");
+    const dialog = await open(user);
+    expect(dialog.getByLabelText("API key")).toBeTruthy();
+    await user.click(dialog.getByRole("radio", {name: "Use saved key"}));
+    expect(await dialog.findByText(/Couldn’t load saved keys/)).toBeTruthy();
     expect(dialog.queryByLabelText("API key")).toBeNull();
-    expect(dialog.queryByRole("button", {name: "Create model"})).toBeNull();
+    expect(dialog.getByRole("button", {name: "Create model"})).toHaveProperty("disabled", true);
     expect(createSecretActionMock).not.toHaveBeenCalled();
     await user.click(dialog.getByRole("button", {name: "Try again"}));
-    await dialog.findByLabelText("Key name");
+    await dialog.findByRole("combobox", {name: "Saved key"});
+    await user.click(dialog.getByRole("radio", {name: "Add new key"}));
     await fill(user, dialog);
     await user.click(dialog.getByRole("button", {name: "Create model"}));
     await waitFor(() => expect(createSecretActionMock).toHaveBeenCalledTimes(1));

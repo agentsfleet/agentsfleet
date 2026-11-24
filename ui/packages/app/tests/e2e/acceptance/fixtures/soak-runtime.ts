@@ -118,7 +118,7 @@ export class SoakRuntime {
     await expect(reply).toBeVisible({timeout: SOAK.turnTimeoutMs});
     await expandIfFolded(this.page.locator(`[data-message-id="${receipt.turn_id}${REPLY_ID_SUFFIX}"]`));
     await expect(reply).toContainText(await visibleReply(this.page, saved!.response_text!), {timeout: SOAK.turnTimeoutMs});
-    await expect(reply.getByTestId("fleet-reply-figures")).toBeVisible();
+    await expect(reply.getByRole("button", {name: "Copy reply", exact: true})).toBeVisible();
     this.turns.push({id: saved!.turn_id, request, answer: saved!.response_text!});
   }
 

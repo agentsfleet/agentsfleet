@@ -1,8 +1,7 @@
 "use client";
 
-import type { ReactNode } from "react";
 import {
-  Badge, Button, DashboardPanel, DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+  Button, DashboardPanel, DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuTrigger, ResourceRow, Section, SectionHeader,
 } from "@agentsfleet/design-system";
 import { CpuIcon, DotsThreeIcon, KeyIcon } from "@phosphor-icons/react/ssr";
@@ -26,12 +25,11 @@ type Props = ModelActions & {
   platformDefaultAvailable: boolean;
   onSwitchDefault: () => void;
   onLoadMore?: () => Promise<boolean>;
-  footerAction?: ReactNode;
 };
 
 export function ModelsRegistryView({
   entries, workspaceNames, platformDefault, isDefaultLive, platformDefaultAvailable,
-  onSwitchDefault, onLoadMore, footerAction, ...actions
+  onSwitchDefault, onLoadMore, ...actions
 }: Props) {
   return (
     <Section className="gap-3xl">
@@ -53,9 +51,9 @@ export function ModelsRegistryView({
         )}
       </DashboardPanel>
 
-      <section className="space-y-xl" aria-label="Your models">
-        <SectionHeader className="min-h-5 [&_h2]:flex [&_h2]:h-5 [&_h2]:items-center" actions={<span className="text-label text-muted-foreground">Provider keys stay hidden</span>}>
-          Your models <Badge className="ml-md h-6.75">{entries.length}</Badge>
+      <Section className="block space-y-lg" aria-label="Your models">
+        <SectionHeader count={entries.length} actions={<span className="text-label text-muted-foreground">Provider keys stay hidden</span>}>
+          Your models
         </SectionHeader>
         <DashboardPanel padding="none">
           <ul className="divide-y divide-border-subtle">
@@ -67,15 +65,8 @@ export function ModelsRegistryView({
         </DashboardPanel>
         {onLoadMore && <Button variant="outline" disabled={actions.pending} onClick={() => { void onLoadMore(); }}>Load more models</Button>}
         <p className="text-eyebrow leading-eyebrow text-text-dim">Your active model is the default for new work. Each credential stays in its selected workspace.</p>
-      </section>
+      </Section>
 
-      <div className="flex flex-col flex-wrap items-start justify-between gap-5 border-t border-border py-5 summary:flex-row summary:items-center">
-        <div>
-          <p className="text-eyebrow text-text-dim">Bring your own provider</p>
-          <p className="my-sm text-description">Provider, model, and key. All in one form.</p>
-        </div>
-        {footerAction}
-      </div>
     </Section>
   );
 }

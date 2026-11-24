@@ -10,7 +10,7 @@ use sqlx::PgConnection;
 use super::{
     prepare::Prepared,
     quote::FrozenQuote,
-    row::{self, Call, Lookup},
+    row::{self, Call},
 };
 use crate::{Result, durable_task::DurableTaskRefusal};
 
@@ -37,7 +37,7 @@ impl Attempt {
         let Some(parent) = parent else {
             return Ok(Self::Original { assessment_id });
         };
-        let parent = row::find(connection, Lookup::Id(parent))
+        let parent = row::read_on(connection, parent)
             .await?
             .ok_or(DurableTaskRefusal::NotFound)?;
         if parent.attempt_number != 0
@@ -78,7 +78,8 @@ impl Attempt {
         })
     }
 
-    pub(super) const fn number(&self) -> i16 {
+    /// The attempt as the dispatch names it: 0 for the original call, 1 for its retry.
+    pub(super) const fn ordinal(&self) -> u8 {
         match self {
             Self::Original { .. } => 0,
             Self::Retry { .. } => 1,

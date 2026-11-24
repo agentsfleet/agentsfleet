@@ -1,8 +1,5 @@
 import { MS_PER_SECOND, SECONDS_PER_MINUTE } from "@/lib/utils";
 
-// The reported figures shared by a reply's details and the console's status:
-// a figure the run did not report is left out, never drawn as zero.
-
 const LOCALE = "en-US";
 const COUNT_FORMAT = new Intl.NumberFormat(LOCALE);
 // A compact count: "12.4K".
@@ -15,12 +12,6 @@ const MINUTES = unitFormat("minute");
 const SECONDS = unitFormat("second");
 const MILLISECONDS = unitFormat("millisecond");
 const MINUTES_PER_HOUR = 60;
-
-/** A figure's text, or null when the run did not report it: left out, never
- * drawn as zero. */
-export function runFigure<T>(value: T | null | undefined, format: (value: T) => string): string | null {
-  return value === null || value === undefined ? null : format(value);
-}
 
 /** "12,400" */
 export function formatCount(value: number): string {

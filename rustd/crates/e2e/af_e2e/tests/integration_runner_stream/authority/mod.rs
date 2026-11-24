@@ -6,6 +6,7 @@ mod fencing;
 mod fixture;
 mod halt;
 mod locks;
+mod lost_wake;
 mod operator;
 mod policy;
 mod runner_reads;

@@ -120,9 +120,9 @@ Each key overrides `[database]` and the environment for that role only.
 
 | Key | Default | Change it when… |
 |---|---|---|
-| `run.ttl_seconds` | 35 | A run's lease lapses on a slow link; shorter finds a dead runner sooner |
+| `run.ttl_seconds` | 38 | A run's lease lapses on a slow link; shorter finds a dead runner sooner |
 | `health.heartbeat_interval_seconds` | 10 | Runners should report more or less often |
-| `health.offline_after_seconds` | unset: 3 × `ttl_seconds` (105) | Runners are marked offline too fast or too slow |
+| `health.offline_after_seconds` | unset: 3 × `ttl_seconds` (114) | Runners are marked offline too fast or too slow |
 | `health.healthy_before_uncordon_seconds` | 30 | A recovered runner should get work sooner or later |
 | `sandboxes.max_idle_hold_seconds` | 600 | Frozen sandboxes hold host resources too long, or follow-ups miss a warm sandbox |
 
@@ -344,7 +344,6 @@ Unset, the daemon stores no task checkpoints in R2, Cloudflare's object storage.
 | `supervisor.daemon_max_attempts` | 5 | Calls to the daemon fail on short outages |
 | `supervisor.daemon_initial_backoff_ms` | 250 | Reconnects start too soon or too late |
 | `supervisor.daemon_max_backoff_ms` | 30,000 | Reconnects wait too long after an outage |
-| `supervisor.renewal_interval_ms` | 5,000 | Run renewals should be sent more often |
 | `supervisor.max_concurrent_file_operations` | 2 | Checkpoint captures are skipped because both slots are busy |
 | `daemon.call_timeout_seconds` | 20 | Calls to a busy daemon time out |
 | `daemon.max_activity_batches_held` | 4 | Live activity is dropped while the daemon is busy |
@@ -414,7 +413,8 @@ The daemon also refuses:
 - `max_in_flight_requests` or `max_sse_streams` over 65,536, and `max_concurrent_recovery_assignments` over 64;
 - `drain_timeout_seconds` under 6, and `background_task_join_timeout_seconds` under 9;
 - `max_message_mib` over 32, and `max_control_message_mib` over 2;
-- `ttl_seconds` outside 33 to 3,600, a heartbeat that does not fit twice inside the offline time, or an uncordon time outside them;
+- `ttl_seconds` outside 29 to 3,600, or an uncordon time outside the heartbeat and offline times;
+- a heartbeat above the least of 24 seconds, `ttl_seconds` − 28, a third of `ttl_seconds` − 1 and half the offline time − 1. Each heartbeat is also the runner's renewal round;
 - `max_udp_payload_bytes` outside 1,200 to 65,507, a control buffer under 12 MiB, or a data buffer under 64 MiB;
 - `lock_max_attempts` over 1,000, or attempts times `lock_retry_interval_ms` over 300,000;
 - `[outbound.retries]` with more than 10 attempts or a backoff over 30,000 ms;

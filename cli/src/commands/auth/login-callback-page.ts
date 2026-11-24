@@ -2,7 +2,7 @@ export const PAGE_STATUS = { success: "success", denied: "denied", failed: "fail
 export type CallbackPageStatus = (typeof PAGE_STATUS)[keyof typeof PAGE_STATUS];
 
 const PAGE_COPY = {
-  [PAGE_STATUS.success]: ["Unleash your agents.", "You're signed in. Return to your terminal and put your agents to work."],
+  [PAGE_STATUS.success]: ["Authorization granted", "Return to your terminal to continue."],
   [PAGE_STATUS.denied]: ["Authorization denied", "Your terminal has not been signed in. You can close this page."],
   [PAGE_STATUS.failed]: ["Sign-in did not complete", "Return to your terminal for details, then start a new sign-in."],
 } as const;

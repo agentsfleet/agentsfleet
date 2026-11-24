@@ -150,7 +150,7 @@ async fn step(session: &mut RunnerConnection, shared: &Shared, tally: &mut Tally
     }
     tally.run_latency.record(started.elapsed())?;
     if let Some(pickups) = &shared.pickups {
-        pickups.held(&run.event.turn_id).await?;
+        pickups.held(&run.event.turn_id)?;
     }
     let folded_through = run_turn(session, &run, shared).await?;
     let request = processed(&run, folded_through);
@@ -285,7 +285,7 @@ async fn ask(
     for input in native::accepted(answer)?.inputs {
         through = through.max(input.sequence);
         if let Some(pickups) = &shared.pickups {
-            pickups.folded(&input.turn_id).await?;
+            pickups.folded(&input.turn_id)?;
         }
     }
     Ok(through)

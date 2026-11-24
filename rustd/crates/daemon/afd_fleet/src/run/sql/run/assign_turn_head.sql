@@ -114,7 +114,7 @@ WITH fleet AS MATERIALIZED (
   FROM thread.runs l JOIN stamped a ON a.id = l.turn_id
   WHERE l.fleet_id = $1
   ORDER BY l.fencing_token DESC LIMIT 1
-  FOR UPDATE OF l
+  FOR NO KEY UPDATE OF l
 ), bumped AS (
   UPDATE thread.runs l SET status = $7, updated_at = now()
   FROM prior_run p WHERE l.id = p.id AND l.status = $6

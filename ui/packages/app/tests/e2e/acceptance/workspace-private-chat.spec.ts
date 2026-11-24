@@ -66,7 +66,8 @@ test.describe("a private fleet setup chat", () => {
 async function recoverFromHistoryAndReload(page: Page, workspaceId: string, draftId: string): Promise<void> {
   await openDraft(page, workspaceId, draftId);
   await page.goto(workspaceHref(workspaceId, NEW_FLEET));
-  await historyEntry(page, draftId).click();
+  const unfinished = page.getByRole("region", {name: "Unfinished setups", exact: true});
+  await historyEntry(unfinished, draftId).click();
   await expect(page).toHaveURL(new RegExp(`\\?draft=${draftId}$`));
   await expect(setupSummary(page)).toBeVisible();
   await page.reload();
@@ -100,7 +101,7 @@ async function improveTheSavedFleet(page: Page, workspaceId: string, fleetId: st
   await (await editSetupAction(page)).click();
   await expect(page).toHaveURL(new RegExp(`/fleets/new\\?fleet=${fleetId}&setup_revision=${before.setup_revision}$`));
   await expect(page.getByLabel(CHAT_COPY.composer)).toBeVisible();
-  const packages = page.getByRole("switch", {name: "Enable package manager domains"});
+  const packages = page.getByRole("switch", {name: "Packages"});
   await expect(packages).toBeEnabled();
   const created = page.waitForResponse(response => response.request().method() === "POST"
     && new URL(response.url()).pathname.endsWith(`/workspaces/${workspaceId}/drafts`));

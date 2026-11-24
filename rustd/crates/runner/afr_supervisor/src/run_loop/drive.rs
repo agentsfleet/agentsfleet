@@ -1,10 +1,11 @@
 //! The turn itself: the engine runs, beside its sandbox's build when the run
 //! has one, and reaches the sandbox's executor through the build's slot.
 
+use afr_tools::ENGINE_STOP_GRACE;
 use std::panic::AssertUnwindSafe;
 
 use af_core::error_code;
-use af_core::timing::ENGINE_STOP_GRACE;
+
 use af_wire::report::FailureClass;
 use afr_agent::AgentRun;
 use afr_executor::ExecutorSource;

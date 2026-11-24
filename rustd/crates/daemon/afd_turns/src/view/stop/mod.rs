@@ -8,9 +8,10 @@
 //! run's next renewal, which reads the same mark
 //! (`afd_bus/src/command.rs`).
 //!
-//! A fleet reaches this through [`History::stop`](crate::view::History::stop);
-//! a setup draft runs [`stop_on`] inside the transaction that already holds
-//! the draft, because its creator-private access is checked there.
+//! A fleet reaches this through [`History::stop`](crate::view::History::stop),
+//! which takes [`HOLD_THREAD`] first; a setup draft runs [`stop_on`] inside the
+//! transaction that already holds the draft and its thread, because its
+//! creator-private access is checked there.
 
 use af_core::id::Uuid7;
 use sqlx::PgConnection;
@@ -18,12 +19,35 @@ use sqlx::PgConnection;
 /// The statement Stop runs. Public so the plan suite can `EXPLAIN` it.
 pub const STOP_TURN: &str = include_str!("stop_turn.sql");
 
+/// A fleet Stop's fleet and thread holds, run before [`STOP_TURN`] in the same
+/// transaction. A setup draft holds its thread through its own statement.
+pub const HOLD_THREAD: &str = include_str!("hold_thread.sql");
+
 /// Who a closed approval records as its resolver: the person's Stop, not a
 /// reviewer's decision.
 const CLOSED_BY: &str = "stop";
 
 /// What a closed approval records as its detail.
 const CLOSED_DETAIL: &str = "The turn this approval waited on was stopped";
+
+/// Takes a fleet Stop's holds, [`HOLD_THREAD`], inside the caller's transaction,
+/// before [`stop_on`]. A fleet that is gone, or not in `workspace`, holds nothing,
+/// and [`stop_on`] then finds no turn.
+///
+/// # Errors
+/// The statement's own failure, for the caller to name in its own error.
+pub async fn hold_thread(
+    connection: &mut PgConnection,
+    workspace: &Uuid7,
+    fleet: &Uuid7,
+) -> crate::error::Result<(), sqlx::Error> {
+    sqlx::query(HOLD_THREAD)
+        .bind(fleet)
+        .bind(workspace)
+        .fetch_optional(connection)
+        .await?;
+    Ok(())
+}
 
 /// One live run Stop marked, and the runner holding it.
 #[derive(Debug, Clone, PartialEq, Eq)]

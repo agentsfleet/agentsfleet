@@ -148,12 +148,11 @@ obs_write_json() {
 }
 
 obs_runner_offline_seconds() {
-  # Read from `af_core::timing` because that is the constant the daemon
-  # judges by: `afd_runner/src/sweep/liveness/mod.rs` marks a runner offline once
-  # `RUNNER_OFFLINE_AFTER` passes without a heartbeat. Deriving the alert
-  # threshold from the same line keeps the alert and the sweep from disagreeing
-  # about when a runner is gone.
-  local constants="$OBS_REPO_ROOT/rustd/crates/foundation/af_core/src/timing.rs"
+  # Read from `afd_runner`'s timing because that is the constant the daemon
+  # judges by: a read derives a runner offline once `RUNNER_OFFLINE_AFTER`
+  # passes without a heartbeat. Deriving the alert threshold from the same line
+  # keeps the alert and the daemon from disagreeing about when a runner is gone.
+  local constants="$OBS_REPO_ROOT/rustd/crates/daemon/afd_runner/src/timing/mod.rs"
   local run_seconds multiplier
   run_seconds="$(
     sed -n \

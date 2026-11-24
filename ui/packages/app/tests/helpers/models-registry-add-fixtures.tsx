@@ -56,7 +56,7 @@ export const FORM_MODEL = "claude-sonnet-5-5";
 export const ROTATED_API_KEY = "sk-ant-rotated-key";
 
 export async function renderDialog(secrets: Secret[] = [], secretsLoad: SecretsLoad = SECRETS_LOAD.ready) {
-  const { default: AddModelEntryDialog } = await import(
+  const { AddModelEntryDialog } = await import(
     "../../app/(dashboard)/w/[workspaceId]/settings/models/components/AddModelEntryDialog"
   );
   const onCreated = vi.fn();

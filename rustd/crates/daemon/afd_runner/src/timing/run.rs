@@ -1,0 +1,198 @@
+//! Validated deployment run timing, shared by every daemon store.
+
+use std::time::Duration;
+
+use af_core::timing::{
+    DAY, MAX_RUN_SECONDS, RENEWAL_WINDOW, STREAM_ANSWER_TIMEOUT, STREAM_IDLE_TIMEOUT,
+    STREAM_RECOVERY_BUDGET,
+};
+use garde::Validate;
+use serde::Deserialize;
+
+/// The shortest heartbeat interval a deployment may set, and so the shortest round.
+const MIN_HEARTBEAT_SECONDS: u64 = 1;
+
+/// What a run's expiry must leave beyond one round: the answer bound, the reconnect
+/// budget and the renewal window, plus the strict second.
+const RENEWAL_MARGIN_SECONDS: u64 = STREAM_ANSWER_TIMEOUT
+    .saturating_add(STREAM_RECOVERY_BUDGET)
+    .saturating_add(RENEWAL_WINDOW)
+    .as_secs()
+    + 1;
+
+/// Integer-second run lifetime strictly above the complete renewal budget at the
+/// shortest round.
+pub const MIN_RUN_SECONDS: u64 = MIN_HEARTBEAT_SECONDS + RENEWAL_MARGIN_SECONDS;
+
+/// The longest heartbeat whose beat and answer still land before the transport closes
+/// an idle session.
+const IDLE_HEARTBEAT_SECONDS: u64 = STREAM_IDLE_TIMEOUT
+    .saturating_sub(STREAM_ANSWER_TIMEOUT)
+    .as_secs()
+    - 1;
+
+/// Cross-checked run, heartbeat and sandbox timing resolved before startup.
+#[derive(Debug, Clone, Copy, Deserialize, Validate)]
+#[serde(default, deny_unknown_fields)]
+pub struct RunSettings {
+    /// Every renewal leaves the complete connection-recovery safety budget.
+    #[garde(range(min = MIN_RUN_SECONDS, max = MAX_RUN_SECONDS))]
+    pub ttl_seconds: u64,
+    /// The daemon advertises this cadence and uses it for connection silence. The
+    /// runner's renewal round rides it, so it is also bounded by the run's expiry, and by
+    /// three rounds, the funds-check cadence, inside one expiry.
+    #[garde(range(min = MIN_HEARTBEAT_SECONDS, max = self.heartbeat_ceiling()))]
+    pub heartbeat_interval_seconds: u64,
+    /// Omission retains three run lifetimes; an explicit threshold is at most
+    /// three of the longest.
+    #[garde(range(min = self.ttl_seconds, max = MAX_RUN_SECONDS.saturating_mul(3)))]
+    pub offline_after_seconds: Option<u64>,
+    /// Continuous healthy heartbeats required before automatic quarantine lifts.
+    #[garde(range(min = self.heartbeat_interval_seconds.saturating_add(1), max = self.offline_seconds().saturating_sub(1)))]
+    pub healthy_before_uncordon_seconds: u64,
+    /// Maximum idle reservation for a frozen sandbox after a completed run.
+    #[garde(range(min = 1, max = DAY.as_secs()))]
+    pub sandbox_idle_hold_seconds: u64,
+}
+
+impl RunSettings {
+    fn offline_seconds(self) -> u64 {
+        self.offline_after_seconds
+            .unwrap_or_else(|| self.ttl_seconds.saturating_mul(3))
+    }
+
+    /// The least of the offline bound, the idle bound, the expiry's margin and three
+    /// rounds inside one expiry.
+    fn heartbeat_ceiling(self) -> u64 {
+        (self.offline_seconds().saturating_sub(1) / 2)
+            .min(IDLE_HEARTBEAT_SECONDS)
+            .min(self.ttl_seconds.saturating_sub(RENEWAL_MARGIN_SECONDS))
+            .min(self.ttl_seconds.saturating_sub(1) / super::FUNDS_CHECK_TICKS)
+    }
+}
+
+impl Default for RunSettings {
+    fn default() -> Self {
+        Self {
+            ttl_seconds: super::RUN_TTL.as_secs(),
+            heartbeat_interval_seconds: super::HEARTBEAT_INTERVAL.as_secs(),
+            offline_after_seconds: None,
+            healthy_before_uncordon_seconds: super::UNCORDON_AFTER.as_secs(),
+            sandbox_idle_hold_seconds: super::SANDBOX_HOLD_IDLE.as_secs(),
+        }
+    }
+}
+
+/// A run clock whose bounds have already been checked at startup.
+#[derive(Debug, Clone, Copy)]
+pub struct RunClock {
+    ttl: u64,
+    heartbeat: u64,
+    offline_after: u64,
+    uncordon_after: u64,
+    sandbox_idle_hold: u64,
+}
+
+impl Default for RunClock {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+impl RunClock {
+    /// Default timing also supports stores constructed in constant contexts.
+    pub const DEFAULT: Self = Self {
+        ttl: super::RUN_TTL.as_secs(),
+        heartbeat: super::HEARTBEAT_INTERVAL.as_secs(),
+        offline_after: super::RUNNER_OFFLINE_AFTER.as_secs(),
+        uncordon_after: super::UNCORDON_AFTER.as_secs(),
+        sandbox_idle_hold: super::SANDBOX_HOLD_IDLE.as_secs(),
+    };
+
+    /// Keeps validated values without exposing an unchecked constructor.
+    #[must_use]
+    pub fn new(settings: &garde::Valid<RunSettings>) -> Self {
+        Self {
+            ttl: settings.ttl_seconds,
+            heartbeat: settings.heartbeat_interval_seconds,
+            offline_after: settings.offline_seconds(),
+            uncordon_after: settings.healthy_before_uncordon_seconds,
+            sandbox_idle_hold: settings.sandbox_idle_hold_seconds,
+        }
+    }
+
+    /// Span granted by a new or successfully renewed run.
+    #[must_use]
+    pub const fn ttl(self) -> Duration {
+        Duration::from_secs(self.ttl)
+    }
+
+    /// Cadence advertised to the runner on welcome and heartbeat replies.
+    #[must_use]
+    pub const fn heartbeat_interval(self) -> Duration {
+        Duration::from_secs(self.heartbeat)
+    }
+
+    /// Silence after which the runner is considered offline.
+    #[must_use]
+    pub const fn offline_after(self) -> Duration {
+        Duration::from_secs(self.offline_after)
+    }
+
+    /// Uninterrupted healthy return required to lift automatic quarantine.
+    #[must_use]
+    pub const fn uncordon_after(self) -> Duration {
+        Duration::from_secs(self.uncordon_after)
+    }
+
+    /// Maximum reservation for a frozen sandbox after a completed run.
+    #[must_use]
+    pub const fn sandbox_idle_hold(self) -> Duration {
+        Duration::from_secs(self.sandbox_idle_hold)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use garde::Validate as _;
+
+    use super::RunSettings;
+
+    /// Whether a deployment with `ttl` and `heartbeat` boots, and if not, whether the
+    /// refusal names the heartbeat.
+    fn boots(ttl: u64, heartbeat: u64) -> Result<(), String> {
+        let settings = RunSettings {
+            ttl_seconds: ttl,
+            heartbeat_interval_seconds: heartbeat,
+            ..RunSettings::default()
+        };
+        settings.validate().map_err(|report| report.to_string())
+    }
+
+    /// The round rides the heartbeat, so a heartbeat the run's expiry cannot carry
+    /// is refused at boot by name: past the expiry's margin, past the transport's
+    /// idle bound, or past three rounds inside one expiry.
+    #[test]
+    fn a_heartbeat_the_run_clock_cannot_carry_is_refused_at_boot() {
+        for (ttl, heartbeat, accepted) in [
+            (38, 10, true),
+            (38, 11, false), // the expiry's margin: 38 - 28
+            (73, 24, true),
+            (76, 25, false), // the transport's idle bound: 24
+            (72, 24, false), // three rounds inside one expiry: (72 - 1) / 3 = 23
+        ] {
+            let verdict = boots(ttl, heartbeat);
+            assert_eq!(
+                verdict.is_ok(),
+                accepted,
+                "ttl {ttl}, heartbeat {heartbeat}: {verdict:?}"
+            );
+            if let Err(refusal) = verdict {
+                assert!(
+                    refusal.contains("heartbeat_interval_seconds"),
+                    "the refusal names the heartbeat: {refusal}"
+                );
+            }
+        }
+    }
+}

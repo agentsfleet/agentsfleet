@@ -1,8 +1,11 @@
 "use client";
 
-import { createContext, useContext, useState, type Dispatch, type SetStateAction, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type Dispatch, type SetStateAction, type ReactNode } from "react";
+import { usePathname } from "next/navigation";
+import { workspaceIdFromPath } from "@/lib/workspace-routes";
 import { useCurrentUser } from "@/lib/auth/client";
 import type { DraftClient } from "@/lib/api/drafts";
+import { DraftTitleWrites } from "@/lib/api/draft-cache";
 import type { DeleteDraft } from "@/lib/api/draft-request";
 import type { SidebarDraft } from "@/lib/api/draft-summary";
 import type { DRAFT_LIST_STATUS as HISTORY_STATUS } from "@/lib/api/draft-list-types";
@@ -12,10 +15,18 @@ export type DraftSidebarState = { workspace: string; subject: string; cards: rea
 type DraftHistoryStatus = typeof HISTORY_STATUS[keyof typeof HISTORY_STATUS];
 export const HistoryContext = createContext<DraftSidebarState | null>(null);
 export const UpdateContext = createContext<Dispatch<SetStateAction<DraftSidebarState | null>>>(() => {});
+export const TitleWritesContext = createContext<DraftTitleWrites | null>(null);
 
 export function DraftSidebarProvider({ children }: { children: ReactNode }) {
   const [history, setHistory] = useState<DraftSidebarState | null>(null);
-  return <UpdateContext value={setHistory}><HistoryContext value={history}>{children}</HistoryContext></UpdateContext>;
+  const {userId} = useCurrentUser();
+  const workspace = workspaceIdFromPath(usePathname());
+  const titleWrites = useMemo(() => userId ? new DraftTitleWrites() : null, [userId]);
+  useEffect(() => () => titleWrites?.clear(), [titleWrites]);
+  useEffect(() => titleWrites?.navigate(workspace), [titleWrites, workspace]);
+  return <TitleWritesContext value={titleWrites}>
+    <UpdateContext value={setHistory}><HistoryContext value={history}>{children}</HistoryContext></UpdateContext>
+  </TitleWritesContext>;
 }
 
 export function useFreshFleetChat(workspace: string | null) {

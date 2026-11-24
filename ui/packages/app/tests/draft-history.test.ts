@@ -3,10 +3,31 @@ import { afterEach, expect, it, vi } from "vitest";
 import { DraftHistory } from "@/lib/api/draft-history";
 import { UNKNOWN_USAGE_REASON } from "@/lib/api/draft-recovery";
 import { MESSAGE_ROLE, MESSAGE_STATE } from "@/lib/api/draft-types";
+import type { Message } from "@/lib/api/draft-types";
 import { DRAFT, MESSAGE, response } from "./helpers/draft-fixtures";
 
 const OWNER = new AbortController();
 afterEach(() => vi.unstubAllGlobals());
+
+it("retains unchanged rows and updates a later failure or accounting result", async () => {
+  const failure = {reason: "Usage pending", error_code: "UZ-SETUP-015", recovery_action: "retry_message"};
+  let current: Message = {...MESSAGE, state: MESSAGE_STATE.failed, failure};
+  vi.stubGlobal("fetch", vi.fn(async () => response({items: [current], next_cursor: null})));
+  const history = new DraftHistory();
+  const read = async () => (await history.read("/draft", OWNER.signal))[0];
+  expect(await read()).toEqual(current);
+  let previous = await read();
+  expect(await read()).toBe(previous);
+  for (const update of [{reason: "Usage returned"}, {error_code: "UZ-SETUP-016"}, {recovery_action: "review"}]) {
+    current = {...current, failure: {...current.failure!, ...update}};
+    const next = await read();
+    expect(next).not.toBe(previous);
+    expect(next?.failure).toEqual(current.failure);
+    previous = next;
+  }
+  current = {...current, save_error_code: "UZ-SETUP-016"};
+  expect((await read())?.save_error_code).toBe(current.save_error_code);
+});
 
 it("revisits an in-flight page and orders a late assistant beside its own user", async () => {
   let completed = false;

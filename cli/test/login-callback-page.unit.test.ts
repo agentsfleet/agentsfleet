@@ -4,8 +4,8 @@ import { BRAND_MARK_PATH, PAGE_STATUS, callbackPage } from "../src/commands/auth
 describe("the login callback page", () => {
   test("renders the approved completion message", async () => {
     const html = await callbackPage(PAGE_STATUS.success).text();
-    expect(html).toContain("<h1>Unleash your agents.</h1>");
-    expect(html).toContain("You're signed in. Return to your terminal and put your agents to work.");
+    expect(html).toContain("<h1>Authorization granted</h1>");
+    expect(html).toContain("Return to your terminal to continue.");
     expect(html).toContain("You can close this tab.");
   });
 

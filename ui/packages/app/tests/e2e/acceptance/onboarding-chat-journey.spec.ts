@@ -50,8 +50,8 @@ test.describe("onboarding chat", () => {
     await page.getByRole("button", { name: CHAT_COPY.start, exact: true }).click();
 
     // The proposal arrives as a reviewable setup, with its runtime model named.
-    // The proposed name heads the page (DraftChatHeading); the setup region holds its checks.
-    await expect(page.getByRole("heading", { level: 1, name: FLEET_NAME, exact: true })).toBeVisible({ timeout: PROPOSAL_TIMEOUT_MS });
+    // The chat title is editable. The setup region shows the proposed fleet name.
+    await expect(setupSummary(page).getByText(FLEET_NAME, { exact: true })).toBeVisible({ timeout: PROPOSAL_TIMEOUT_MS });
     const summary = setupSummary(page);
     // The region lists only checks that are not ready (SetupChecks issuesOnly), so a ready
     // runtime model shows as no readiness list at all, not as a "Model" row.

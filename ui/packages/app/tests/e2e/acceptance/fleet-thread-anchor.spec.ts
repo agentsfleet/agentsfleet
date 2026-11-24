@@ -113,32 +113,23 @@ test("test_send_scrolls_once", async ({ page }) => {
   });
 });
 
-test("run details opens by keyboard without moving the reply", async ({ page }) => {
-  await withReplyPage(page, FLEET_NAME, async ({ chat, stream }) => {
-    await stream.send([opening(Date.now(), TEAMMATE), answer(), {
+test("a metered completion preserves the answer position without adding a receipt", async ({page}) => {
+  await withReplyPage(page, FLEET_NAME, async ({chat, stream, ownActor, sendOwn}) => {
+    await sendOwn(OWN_TURN, TURN_ID);
+    await stream.send([opening(Date.now(), ownActor), answer()]);
+    const reply = chat.getByText(ANSWER, {exact: true});
+    await expect(reply).toBeVisible();
+    const tops = await sampleTop(reply, SAMPLE_MS, () => stream.send([{
       afterMs: 0,
       body: frame(FRAME_KIND.TURN_COMPLETE, {
-        turn_id: TURN_ID, actor: TEAMMATE, status: "processed", final_reply: ANSWER,
+        turn_id: TURN_ID, actor: ownActor, status: "processed", final_reply: ANSWER,
         wall_ms: 12_000, tokens: 1_200, cost_nanos: "40000000",
       }),
-    }]);
-    const reply = chat.getByText(ANSWER, { exact: true });
-    await expect(reply).toBeVisible();
-    const details = chat.getByRole("button", { name: "Run details" });
-    await details.focus();
-    const tops = await sampleTop(reply, SAMPLE_MS, async () => {
-      await page.keyboard.press("Enter");
-      const dialog = page.getByRole("dialog", { name: "Run details" });
-      await expect(dialog).toContainText("Reported cost");
-      await expect(dialog).toContainText("$0.04");
-      const bounds = await dialog.boundingBox();
-      expect(bounds?.width).toBeLessThanOrEqual(280);
-      expect(bounds?.height).toBeLessThanOrEqual(160);
-      await page.keyboard.press("Escape");
-    });
+    }]));
     expectHeld(tops);
-    await expect(page.getByRole("dialog")).toHaveCount(0);
-    await expect(details).toBeFocused();
+    await expect(chat.getByRole("button", {name: "Copy reply"})).toBeVisible();
+    await expect(chat.getByRole("button", {name: "Run details"})).toHaveCount(0);
+    await expect(chat.getByText(/Worked for/)).toHaveCount(0);
   });
 });
 

@@ -5,11 +5,12 @@
 //! could shift. Liveness is derived at the `checked_at` the statement answered
 //! with — the database's clock, the one the live-run test inside it used.
 
+use crate::timing::RunClock;
 use std::borrow::Cow;
 
 use af_core::clock;
 use af_core::id::Uuid7;
-use af_core::timing::RunClock;
+
 use af_wire::runner::{
     AssignedPolicy, CapabilityReport, ExtraBind, RunnerLiveness, SelftestCheck, SelftestReport,
 };

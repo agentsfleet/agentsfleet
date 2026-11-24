@@ -13,6 +13,10 @@ pub use native::NativeDaemon;
 #[cfg(feature = "test-util")]
 pub use session::Session;
 
+/// How long HTTP/3 is passed over after it fails while HTTP/2 works, for a test that
+/// must outlast the window before a reconnect tries HTTP/3 again.
+pub const HTTP3_SKIP: std::time::Duration = crate::downlink::reconnect::HTTP3_SKIP;
+
 use std::borrow::Cow;
 
 use af_wire::context::ContextLoadResponse;
@@ -152,7 +156,7 @@ impl Healthy {
         })
     }
 
-    /// A healthy beat: the assignment and the cadence this daemon was given.
+    /// A healthy beat: the assignment this daemon was given.
     fn heartbeat(&self) -> Value {
         value(&HeartbeatResponse {
             status: HeartbeatStatus::Ok,
@@ -161,7 +165,6 @@ impl Healthy {
             degraded_reason: None,
             selftest_requested: false,
             release_holds: Vec::new(),
-            heartbeat_interval_ms: self.interval_ms,
         })
     }
 

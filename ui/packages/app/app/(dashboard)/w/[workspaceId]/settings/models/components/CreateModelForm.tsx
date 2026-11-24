@@ -10,11 +10,12 @@ import { CATALOGUE_STATUS } from "./catalogue-status";
 import { useModelCatalogue } from "./ModelCatalogueProvider";
 import ProviderModelSelect from "./ProviderModelSelect";
 import { ModelCredentialFields, MODEL_FORM_TRIGGER_CLASS } from "./ModelCredentialFields";
+import { SECRETS_LOAD, type SecretsLoad } from "./secrets-load";
 import { useModelCreation } from "./use-model-creation";
 import { compatibleCredentials, creationActionLabel, KEY_MODE, type ModelFormValues } from "./model-creation";
 
 type Props = {
-  workspaceId: string; secrets: readonly Secret[];
+  workspaceId: string; secrets: readonly Secret[]; secretsLoad: SecretsLoad; onSecretsNeeded: () => void;
   onCreated: () => void; onSecretsChanged: () => void;
   onCancel: () => void; onComplete: () => void;
   onPendingChange: (pending: boolean) => void;
@@ -23,7 +24,7 @@ const INITIAL_VALUES: ModelFormValues = {
   provider: "", model: "", keyName: "", baseUrl: "", apiKey: "", mode: KEY_MODE.new, savedRef: "", activate: false,
 };
 
-export function CreateModelForm({workspaceId, secrets, onCreated, onSecretsChanged, onCancel, onComplete, onPendingChange}: Props) {
+export function CreateModelForm({workspaceId, secrets, secretsLoad, onSecretsNeeded, onCreated, onSecretsChanged, onCancel, onComplete, onPendingChange}: Props) {
   const id = useId();
   const [values, setValues] = useState(INITIAL_VALUES);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -36,7 +37,7 @@ export function CreateModelForm({workspaceId, secrets, onCreated, onSecretsChang
   const available = compatibleCredentials(secrets, values.provider.trim());
   const heldName = secrets.some(secret => secret.name === values.keyName.trim());
   const validCredential = values.mode === KEY_MODE.saved
-    ? available.some(secret => secret.name === values.savedRef)
+    ? secretsLoad === SECRETS_LOAD.ready && available.some(secret => secret.name === values.savedRef)
     : values.keyName.trim() !== "" && !heldName && values.apiKey.trim() !== "" && (!custom || values.baseUrl.trim() !== "");
   const canCreate = workspaceId !== "" && values.provider.trim() !== "" && values.model.trim() !== "" && validCredential;
   const error = validationError ?? creation.state.error;
@@ -78,7 +79,7 @@ export function CreateModelForm({workspaceId, secrets, onCreated, onSecretsChang
           <ProviderModelSelect id={`${id}-model`} provider={values.provider || undefined} model={values.model} onModelChange={model => change({model})} details="popover"
             triggerClassName={MODEL_FORM_TRIGGER_CLASS} inputClassName="font-control" />
         </div>
-        <ModelCredentialFields id={id} values={values} secrets={secrets} onChange={change} />
+        <ModelCredentialFields id={id} values={values} secrets={secrets} secretsLoad={secretsLoad} onSecretsNeeded={onSecretsNeeded} onChange={change} />
         <div className="flex items-start gap-lg">
           <Checkbox id={`${id}-active`} checked={values.activate} onCheckedChange={activate => change({activate: activate === true})} />
           <div className="space-y-xs"><Label htmlFor={`${id}-active`} className="text-description font-semibold">Make active</Label><p className="text-eyebrow leading-eyebrow text-muted-foreground">Use this as your default model for new work.</p></div>

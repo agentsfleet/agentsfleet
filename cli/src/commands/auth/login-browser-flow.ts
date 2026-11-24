@@ -90,10 +90,11 @@ function decisionFailure(decision: CallbackDecision): CliError {
 const announceBrowserSession = Effect.fnUntraced(function* (url: string, code: string) {
   const output = yield* Output;
   if (output.format !== OUTPUT_FORMAT.text) return;
-  yield* output.printSection("Connect your terminal");
-  yield* output.info("Open this link on this computer:");
+  yield* output.printSection("Sign in to the agentsfleet CLI");
+  yield* output.info("Open this link in a browser on this computer.");
   yield* output.printKeyValue({ login_url: url });
   yield* output.info(`Check code: ${code}`);
+  yield* output.info("Confirm the code matches before you authorize.");
   yield* output.info("Waiting for authorization… (Esc to cancel)");
 });
 

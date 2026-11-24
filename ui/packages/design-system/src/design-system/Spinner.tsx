@@ -1,15 +1,15 @@
-import type { ComponentProps, ReactNode } from "react";
+import type { ComponentProps, CSSProperties, ReactNode } from "react";
 
 import { cn } from "../utils";
-import { BrandMark, SignalSpinner } from "./BrandMark";
+import { SignalSpinner } from "./BrandMark";
 
 export type SpinnerSize = "sm" | "md" | "lg";
 
 export interface SpinnerProps extends Omit<ComponentProps<"span">, "children"> {
   /** Inline mark diameter. `sm` for in-button, `lg` for standalone inline waits. */
   size?: SpinnerSize;
-  /** Page loading uses the relay mark above the status label. */
-  variant?: "inline" | "page";
+  /** Full-screen waits also display the wordmark beside the forming brand mark. */
+  variant?: "inline" | "page" | "full-screen";
   /**
    * Visible loading label. The page variant places it below the mark.
    */
@@ -23,7 +23,13 @@ const MARK_SIZE: Record<SpinnerSize, string> = {
   md: "size-4",
   lg: "size-6",
 };
-const RELAY_PATH = "M12 -6C15 -6 20 -2 25 4C29 9 31 15 29 20C27 24 21 28 12 28C3 28 -3 24 -5 20C-7 15 -5 9 -1 4C4 -2 9 -6 12 -6Z";
+// Stroke midpoints in SVG units, relative to the brand mark's fixed center.
+const STROKE_PAIRS = [
+  {startY: -6, rayX: 0, rayY: -7, angle: 90},
+  {startY: -2, rayX: -4.95, rayY: -4.95, angle: 45},
+  {startY: 2, rayX: -7, rayY: 0, angle: 0},
+  {startY: 6, rayX: -4.95, rayY: 4.95, angle: -45},
+];
 
 /*
  * The system's indeterminate loading affordance. Use Spinner for short
@@ -44,7 +50,7 @@ export function Spinner({
       aria-busy="true"
       className={cn(
         "inline-flex items-center",
-        variant === "page" ? "flex-col gap-lg" : "gap-2",
+        variant === "inline" ? "gap-2" : "flex-col gap-lg",
         "text-muted-foreground",
         label &&
           "font-sans text-label leading-label",
@@ -52,26 +58,29 @@ export function Spinner({
       )}
       {...rest}
     >
-      {variant === "page" ? <SignalRelay /> : <SignalSpinner className={MARK_SIZE[size]} />}
+      {variant === "inline" ? <SignalSpinner className={MARK_SIZE[size]} /> :
+        <span aria-hidden="true" className="inline-flex items-center gap-md">
+          <PageLoadingMark />
+          {variant === "full-screen" && <span className="text-wordmark leading-none font-title text-foreground">agentsfleet</span>}
+        </span>}
       {label ? <span>{label}</span> : <span className="sr-only">{srLabel}</span>}
     </span>
   );
 }
 
-function SignalRelay() {
-  return (
-    <svg viewBox="-10 -10 44 44" width={44} height={44} fill="none"
-      aria-hidden="true" focusable="false" data-signal-relay=""
-      className="shrink-0 text-pulse forced-colors:text-[CanvasText]">
-      <path d={RELAY_PATH} strokeWidth={1.25} className="stroke-border forced-colors:stroke-[GrayText]" />
-      <g className="fill-text-dim forced-colors:fill-[GrayText]">
-        <circle cx={12} cy={-6} r={1.8} />
-        <circle cx={29} cy={20} r={1.8} />
-        <circle cx={-5} cy={20} r={1.8} />
-      </g>
-      <path d={RELAY_PATH} data-signal-relay-pulse="" pathLength={100} stroke="currentColor"
-        strokeWidth={2.25} strokeLinecap="round" strokeDasharray="9 91" strokeDashoffset={4.5} />
-      <BrandMark className="text-current" />
-    </svg>
-  );
+function PageLoadingMark() {
+  return <svg viewBox="0 0 30 30" width={60} height={60} fill="none" aria-hidden="true" focusable="false"
+    className="shrink-0 text-pulse forced-colors:text-[CanvasText]">
+    <g transform="translate(15 15)" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round">
+      {STROKE_PAIRS.map(({startY, rayX, rayY, angle}, index) => [1, -1].map(side => {
+        const style: CSSProperties & Record<`--${string}`, string> = {
+          "--start-x": `${-4 * side}px`, "--start-y": `${startY * side}px`,
+          "--ray-x": `${rayX * side}px`, "--ray-y": `${rayY * side}px`,
+          "--ray-angle": `${angle}deg`, "--delay": `${index * 45}ms`,
+        };
+        return <path key={`${startY}:${side}`} className="page-loading-stroke" d="M-3 0h6" style={style} />;
+      }))}
+      <circle r={1.5} fill="currentColor" stroke="none" />
+    </g>
+  </svg>;
 }

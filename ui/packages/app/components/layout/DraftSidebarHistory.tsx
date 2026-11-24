@@ -15,7 +15,7 @@ export function DraftSidebarHistory({account = null, workspace, onNavigate, over
   if (!workspace || !userId || !account) return null;
   return <div key={`${account}:${workspace}:${userId}`} className={overlay ? "ph-no-capture ph-no-record px-sm" : "ph-no-capture ph-no-record px-sm md:px-lg"}>
     <details open className="group/fleets">
-      <NavItem asChild appearance="list" className="cursor-pointer list-none text-eyebrow font-medium leading-eyebrow text-text-dim [&::-webkit-details-marker]:hidden"><summary>
+      <NavItem asChild appearance="list" className="cursor-pointer list-none px-lg text-eyebrow font-medium leading-eyebrow text-text-dim [&::-webkit-details-marker]:hidden"><summary>
         <span className="flex-1">Your Fleets</span>
         <CaretDownIcon size={14} className="shrink-0 -rotate-90 transition-transform group-open/fleets:rotate-0 motion-reduce:transition-none" aria-hidden="true" />
       </summary></NavItem>

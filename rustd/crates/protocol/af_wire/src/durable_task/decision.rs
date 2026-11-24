@@ -56,8 +56,6 @@ pub struct DecisionReservationInput {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DecisionCallState {
-    /// Durable intent exists; confirmed funding/issuance has not completed.
-    Reserved,
     /// The one credential response was authorized; physical usage is pending.
     Issued,
     /// A complete canonical usage receipt is accounted.
@@ -73,7 +71,6 @@ impl DecisionCallState {
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::Reserved => "reserved",
             Self::Issued => "issued",
             Self::Known => "known",
             Self::Unknown => "unknown",

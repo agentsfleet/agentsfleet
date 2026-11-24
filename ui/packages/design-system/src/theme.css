@@ -159,6 +159,7 @@
   --text-display-xl: var(--fs-display-xl);
   --text-display-lg: var(--fs-display-lg);
   --text-display-md: var(--fs-display-md);
+  --text-wordmark: var(--fs-wordmark);
   --text-heading: var(--fs-heading);
   --text-conversation-heading: var(--fs-conversation-heading, var(--fs-heading));
   --leading-conversation-heading: var(--lh-conversation-heading, var(--lh-heading));

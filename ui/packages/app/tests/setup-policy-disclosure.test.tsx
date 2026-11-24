@@ -25,7 +25,7 @@ describe("setup policy explanation", () => {
     await user.click(screen.getByRole("button", {name: "Done"}));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(screen.getByRole("switch", {name: "Allow all public internet access"}).getAttribute("aria-checked")).toBe("false");
-    expect(screen.getByRole("switch", {name: "Enable package manager domains"}).getAttribute("aria-checked")).toBe("false");
+    expect(screen.getByRole("switch", {name: "Packages"}).getAttribute("aria-checked")).toBe("false");
     expect(change).not.toHaveBeenCalled();
   });
 
@@ -34,7 +34,7 @@ describe("setup policy explanation", () => {
     const change = vi.fn();
     render(<TooltipProvider><SetupSummary requirements={REVIEW.requirements} disabled onNetworkChange={change} /></TooltipProvider>);
     expect(screen.getByRole("switch", {name: "Allow all public internet access"})).toHaveProperty("disabled", true);
-    expect(screen.getByRole("switch", {name: "Enable package manager domains"})).toHaveProperty("disabled", true);
+    expect(screen.getByRole("switch", {name: "Packages"})).toHaveProperty("disabled", true);
     const help = screen.getByRole("button", {name: "About package manager domains"});
     expect(help).toHaveProperty("disabled", false); await user.click(help);
     expect((await screen.findByRole("dialog", {name: "Package manager domains"})).textContent).toContain("This option is disabled when Allow all is on.");
@@ -52,7 +52,7 @@ describe("setup policy explanation", () => {
     const user = userEvent.setup(), change = vi.fn();
     render(<TooltipProvider><SetupSummary requirements={{...REVIEW.requirements,
       network: {http_egress: "public", package_manager_domains: true, allow: []}}} onNetworkChange={change} /></TooltipProvider>);
-    const packages = screen.getByRole("switch", {name: "Enable package manager domains"});
+    const packages = screen.getByRole("switch", {name: "Packages"});
     expect(packages).toHaveProperty("disabled", true);
     expect(packages.getAttribute("aria-checked")).toBe("true");
     await user.click(screen.getByRole("button", {name: "About package manager domains"}));

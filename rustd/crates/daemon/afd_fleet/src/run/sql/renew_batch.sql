@@ -79,7 +79,7 @@ WITH asked AS (
   JOIN asked a ON a.run_id = l.id
   WHERE l.runner_id = $1 AND l.status = $25
   ORDER BY l.fleet_id
-  FOR UPDATE OF l
+  FOR NO KEY UPDATE OF l
 ), instant AS MATERIALIZED (
   -- Read once the locks are held, so every deadline is judged after them.
   SELECT clock_timestamp() AS checked_at FROM (SELECT count(*) FROM probe) locked

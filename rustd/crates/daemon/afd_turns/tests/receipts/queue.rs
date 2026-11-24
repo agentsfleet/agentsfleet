@@ -5,9 +5,8 @@ use af_core::test_util::trace::Capture;
 use af_core::test_util::trace::install_subscriber;
 use af_wire::turn::TurnKind;
 use afd_bus::test_util::Server;
-use afd_bus::{Bus, Handle, Received, Subject, Subscription};
+use afd_bus::{Handle, Received, Subject, Subscription};
 use afd_turns::{Admitted, IncomingTurn, Key, Producer, Reply as ReplyTo, Turns};
-use async_trait::async_trait;
 use std::collections::HashMap;
 
 /// Who the fixture's turn says raised it.
@@ -89,39 +88,6 @@ impl Rings {
         }
         Ok(rung)
     }
-}
-
-/// A broker that takes a signal and never answers, as a stalled connection
-/// does: only the publisher's own deadline ends the wait.
-#[derive(Debug)]
-struct Silent;
-
-#[async_trait]
-impl Bus for Silent {
-    async fn publish(&self, _subject: &Subject, _payload: &str) -> afd_bus::Result<()> {
-        std::future::pending().await
-    }
-
-    async fn publish_batch(&self, _subject: &Subject, _payloads: &[String]) -> afd_bus::Result<()> {
-        std::future::pending().await
-    }
-
-    async fn subscribe(&self, _subject: &Subject) -> afd_bus::Result<Subscription> {
-        std::future::pending().await
-    }
-
-    async fn subscribe_thread_wakes(&self) -> afd_bus::Result<Subscription> {
-        std::future::pending().await
-    }
-
-    async fn shutdown(&self) -> afd_bus::Result<()> {
-        Ok(())
-    }
-}
-
-/// A bus whose every publish waits forever.
-pub(super) fn silent() -> Handle {
-    Handle::new(Silent)
 }
 
 /// The lane's turns over an in-process bus, and its one reader of every

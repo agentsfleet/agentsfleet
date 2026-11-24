@@ -27,10 +27,11 @@ pub(crate) mod report;
 mod resume;
 mod unleasable;
 
+use afd_runner::timing::{HEARTBEAT_INTERVAL, RUN_TTL, SANDBOX_HOLD_IDLE};
 use std::borrow::Cow;
 
 use af_core::id::Uuid7;
-use af_core::timing::{HEARTBEAT_INTERVAL, RUN_TTL, SANDBOX_HOLD_IDLE};
+
 use af_wire::runner::{HeartbeatRequest, HeldFleets};
 use afd_fleet::run::Runs;
 use afd_runner::Beat;

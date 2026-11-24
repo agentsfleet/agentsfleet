@@ -2,8 +2,9 @@ import type { FleetSources } from "@/lib/fleet-sources";
 import type { FleetTurn } from "@/lib/streaming/fleet-stream-row";
 import type { DurableTaskDetails } from "../../tasks/use-task-details";
 import Link from "next/link";
-import { Button } from "@agentsfleet/design-system";
+import { Button, List, ListItem, cn } from "@agentsfleet/design-system";
 import { ArrowUpRightIcon, CaretDownIcon, CaretRightIcon, GitBranchIcon, GitDiffIcon, GitPullRequestIcon } from "@phosphor-icons/react/ssr";
+import { SUMMARY_ICON, SUMMARY_ROW } from "@/components/domain/shared/summary/summary-row";
 import { confirmed } from "../../tasks/use-task-read";
 import { FleetApprovalSummary } from "../../approvals/FleetApprovalSummary";
 import { AttachedSources, PreviewOutputs } from "./RunResources";
@@ -47,13 +48,13 @@ export function WorkOutputs({details, expectedDetails = details.size, hideEmpty 
 
 type PullRequestRecord = {target: {url: string; number: number; repository: string}; published: boolean; stale: boolean};
 function PullRequestRows({records}: {records: PullRequestRecord[]}) {
-  return <ul className="space-y-sm">{records.map(({target, published, stale}) => <li key={target.url}>
-    <a className="flex min-h-9 items-center gap-md break-words py-sm text-label font-medium leading-label hover:underline" href={target.url} target="_blank" rel="noopener noreferrer">
-      <GitPullRequestIcon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+  return <List variant="plain" className="space-y-sm text-label leading-label">{records.map(({target, published, stale}) => <ListItem key={target.url}>
+    <a className={cn(SUMMARY_ROW, "min-h-9 break-words py-sm text-label font-medium leading-label hover:underline")} href={target.url} target="_blank" rel="noopener noreferrer">
+      <GitPullRequestIcon className={cn(SUMMARY_ICON, "mt-xs self-start")} aria-hidden="true" />
       <span className="min-w-0 flex-1"><span className="block">Pull request #{target.number}</span>
         <span className="mt-xs block text-eyebrow font-normal leading-eyebrow text-text-dim">{published ? "Changes published" : target.repository}{stale ? " · last confirmed" : ""}</span></span>
-      <ArrowUpRightIcon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" /></a>
-  </li>)}</ul>;
+      <ArrowUpRightIcon className={SUMMARY_ICON} aria-hidden="true" /></a>
+  </ListItem>)}</List>;
 }
 
 export function WorkChanges({turns, repositories}: {turns: readonly FleetTurn[]; repositories?: readonly RecordedChangeRepository[]}) {
@@ -64,20 +65,16 @@ export function WorkChanges({turns, repositories}: {turns: readonly FleetTurn[];
 export function ChangesSummary({changes}: {changes: readonly RecordedChange[]}) {
   if (!changes.length) return null;
   return <WorkSection title="Changes">{groupRecordedChanges(changes).map(group => <RecordedChangesDialog key={group.repository?.id ?? "unbound"} groups={[group]}>
-    <Button variant="ghost" size="compact" className="h-auto min-h-11 w-full justify-start gap-md whitespace-normal px-0 py-xs text-left text-foreground summary:min-h-9">
-      <GitDiffIcon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+    <Button variant="ghost" size="compact" className={cn(SUMMARY_ROW, "h-auto min-h-11 w-full justify-start whitespace-normal px-0 py-xs text-left text-foreground summary:min-h-9")}>
+      <GitDiffIcon className={cn(SUMMARY_ICON, group.label && "mt-xs self-start")} aria-hidden="true" />
       <span className="min-w-0 flex-1" title={group.repository?.fullName}>
-        <span className="block font-medium">{group.changes.length} {group.changes.length === 1 ? "file" : "files"}{group.changes.some(change => change.running) ? "" : " changed"}</span>
-        {group.label ? <RepositoryName name={group.label} className="text-eyebrow font-normal text-muted-foreground" /> : null}
+        <span className="summary-action-label font-medium"><span>{group.changes.length} {group.changes.length === 1 ? "file" : "files"}{group.changes.some(change => change.running) ? "" : " changed"}</span></span>
+        {group.label ? <span className="repo-name min-w-0 text-eyebrow font-normal text-muted-foreground"><span>{group.label}</span></span> : null}
       </span>
       {group.lines.kind !== "unknown" ? <RecordedChangeCounts lines={group.lines} /> : null}
       <CaretRightIcon size={14} className="shrink-0 text-muted-foreground" aria-hidden="true" />
     </Button>
   </RecordedChangesDialog>)}</WorkSection>;
-}
-
-function RepositoryName({name, className = "font-medium"}: {name: string; className?: string}) {
-  return <span className={`repo-name min-w-0 ${className}`}><span>{name}</span></span>;
 }
 
 export function WorkSources({sources, files}: {sources?: FleetSources; files?: readonly {id: string; name: string}[]}) {
@@ -89,23 +86,28 @@ export function WorkSources({sources, files}: {sources?: FleetSources; files?: r
 }
 
 function RepositorySources({sources}: {sources: FleetSources}) {
-  const {repositories, access, publication} = sources;
+  const {repositories} = sources;
   const label = repositories.length === 1 ? repositories.join("") : `${repositories.length} repositories`;
-  const policy = ["Saved fleet policy", access ? `${access} access` : "access not specified"];
-  if (publication) policy.push(publication === "existing_pr" ? "existing PRs" : "draft PRs");
   return <details className="group">
-    <summary className="flex min-h-11 cursor-pointer items-center gap-sm rounded-sm py-sm text-label leading-label focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring summary:min-h-9">
-      <GitBranchIcon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
-      <span className="min-w-0 flex-1 break-words" title={repositories.join(", ")}>
-        <RepositoryName name={label} />
-        <span className="mt-xs block text-eyebrow leading-eyebrow text-muted-foreground">{policy.join(" · ")}</span>
+    <summary className={cn(SUMMARY_ROW, "min-h-9 cursor-pointer rounded-chip py-sm text-label leading-label focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-summary:min-h-11 pointer-coarse:min-h-11")}>
+      <GitBranchIcon className={cn(SUMMARY_ICON, "mt-xs self-start")} aria-hidden="true" />
+      <span className="min-w-0 flex-1" title={repositories.join(", ")}>
+        <strong className="summary-action-label font-medium"><span>{label}</span></strong>
+        <small className="block truncate text-eyebrow leading-eyebrow text-text-dim">Policy: {repositoryPolicyLabel(sources)}</small>
       </span>
-      <CaretDownIcon size={16} className="shrink-0 text-muted-foreground transition-transform group-open:rotate-180 motion-reduce:transition-none" aria-hidden="true" />
+      <CaretDownIcon className={cn(SUMMARY_ICON, "transition-transform group-open:rotate-180 motion-reduce:transition-none")} aria-hidden="true" />
     </summary>
-    <ul className="mt-sm space-y-sm">{repositories.map(repository => <li key={repository} className="break-words text-label leading-label">
+    <List variant="plain" className="mt-sm space-y-sm pl-6 text-label leading-label">{repositories.map(repository => <ListItem key={repository} className="break-words">
       <a href={`https://github.com/${repository}`} target="_blank" rel="noopener noreferrer" className="hover:underline">{repository}</a>
-    </li>)}</ul>
+    </ListItem>)}</List>
   </details>;
+}
+
+function repositoryPolicyLabel({access, publication}: FleetSources): string {
+  if (access === "read") return "Read only";
+  if (publication === "existing_pr") return access === "write" ? "Edit existing PRs" : "Existing PRs";
+  if (publication === "event_draft") return access === "write" ? "Open draft PRs" : "Draft PRs";
+  return access === "write" ? "Write access" : "Not specified";
 }
 
 export function WorkApprovals({approvals, scope}: {approvals?: {count: number; href: string}; scope?: {workspaceId: string; fleetId: string; subject: string; revision: number}}) {

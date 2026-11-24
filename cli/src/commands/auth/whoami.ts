@@ -65,6 +65,7 @@ const renderHuman = (
   identity: CallerIdentity,
   apiUrl: string,
   source: string,
+  machine: string | undefined,
 ): Effect.Effect<void, never, Output> =>
   Effect.gen(function* () {
     const output = yield* Output;
@@ -74,7 +75,7 @@ const renderHuman = (
       name: identity.displayName ?? EMPTY_CELL,
       user_id: identity.userId,
       tenant: `${identity.tenantName} (${identity.tenantId})`,
-      credential: credentialProse(identity.credential),
+      ...(machine === undefined ? {credential: credentialProse(identity.credential)} : {machine}),
       source,
       api_url: apiUrl,
       scopes:
@@ -97,8 +98,8 @@ export const whoamiEffect: Effect.Effect<
   // precedence `source` reports below: an exported service key wins over a
   // stored login, which is the case worth naming — the terminal looks signed
   // in as one identity and acts as another.
-  const stored = yield* credentials.getAccessToken;
-  const token = Option.orElse(config.accessToken, () => stored);
+  const stored = yield* credentials.snapshot;
+  const token = Option.orElse(config.accessToken, () => stored.accessToken);
 
   // Refused here, with no request sent. A terminal holding nothing has an
   // answer already, and spending a round trip to be told 401 would report the
@@ -150,6 +151,7 @@ export const whoamiEffect: Effect.Effect<
       identity,
       config.apiUrl,
       Option.isSome(config.accessToken) ? SOURCE_ENVIRONMENT : SOURCE_FILE,
+      Option.isSome(config.accessToken) ? undefined : stored.machineName,
     );
   }
 });

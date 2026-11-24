@@ -4,12 +4,11 @@ import type { MessageState } from "@assistant-ui/react";
 import { FLEET_OUTCOME_CLASS } from "../messages/FleetFailedOutcome";
 import { FleetReplyFailure } from "./FleetReplyFailure";
 import { FleetMessageRow, ROW_TONE } from "../messages/FleetMessageRow";
-import { FleetReplyFigures, OmittedCalls } from "./FleetReplyFigures";
 import { FleetReplyParts } from "./FleetReplyParts";
 import { FleetReplyActions } from "./FleetReplyActions";
 import { useRestartAnnouncement, useSettleAnnouncement } from "./FleetReplyAnnouncements";
 import { messageOutcome } from "../messages/fleetFailureCopy";
-import { readOmittedCallCount, readQueued, readReasoningSpan, readReplyFigures, readReplyRecovering, readRestartAttempt, readRunRestarted, readSubmittedAtMs } from "../messages/fleetMessageReaders";
+import { readOmittedCallCount, readQueued, readReasoningSpan, readReplyRecovering, readReplyWallMs, readRestartAttempt, readRunRestarted, readSubmittedAtMs } from "../messages/fleetMessageReaders";
 import { STATUS_AGENT_ERROR } from "../messages/fleetMessageStatus";
 import { STATUS_RUNNING } from "./fleetReplyMessage";
 import { REPLY_ID_SUFFIX } from "../../conversation/thread/useFleetThreadEntries";
@@ -41,7 +40,7 @@ export function FleetReply({
   const recovering = readReplyRecovering(message);
   const answer = message.content.flatMap(part => part.type === "text" ? [part.text] : []).join("\n\n").trim();
   const span = readReasoningSpan(message);
-  const figures = readReplyFigures(message);
+  const omittedCalls = readOmittedCallCount(message);
   const queued = readQueued(message);
   const context = readContextProgress(message.metadata.custom.contextProgress);
   const turnId = message.id.endsWith(REPLY_ID_SUFFIX) ? message.id.slice(0, -REPLY_ID_SUFFIX.length) : message.id;
@@ -60,17 +59,17 @@ export function FleetReply({
     >
       {readRunRestarted(message) ? <p className="text-body-sm text-text-subtle">Run restarted</p> : null}
       <DurableTaskActivityTimeline value={message.metadata.custom.durableTaskActivity} running={running} attentionOnly />
-      <FleetReplyParts errored={errored} running={running} queued={queued} turnId={turnId}
+      <FleetReplyParts running={running} queued={queued} turnId={turnId}
         reasoning={reasoningText(message)} span={span} content={message.content}
-        startedAtMs={message.createdAt.getTime()} wallMs={figures.wallMs} figures={figures} activity={message.metadata.custom.durableTaskActivity} contextProgress={context} plainText={message.metadata.custom.previewUpload === true} />
+        wallMs={readReplyWallMs(message)} contextProgress={context} plainText={message.metadata.custom.previewUpload === true} />
       {running ? <ContextProgressStatus value={context} /> : null}
-      <OmittedCalls count={readOmittedCallCount(message)} />
+      {omittedCalls > 0 ? <p className="mb-xs text-body-sm text-text-subtle">{omittedCalls} more {omittedCalls === 1 ? "call" : "calls"} not recorded</p> : null}
       {errored && !running && !recovering ? <FleetReplyFailure message={message} /> : null}
       {answer.length === 0 && !running && !errored ? <p className={FLEET_OUTCOME_CLASS}>{messageOutcome(message)}</p> : null}
       {recovering ? <output aria-label={RECOVERING_LABEL} className="text-body-sm text-text-subtle">{RECOVERING_LABEL}</output> : null}
       <NativeDurableTaskPrBadge activity={message.metadata.custom.durableTaskActivity} />
-      {!running && !errored && !recovering && !message.content.some(part => part.type === "tool-call") ? <FleetReplyFigures figures={figures} activity={message.metadata.custom.durableTaskActivity} summary /> : null}
-      <FleetReplyActions answer={answer} settled={!running && !errored && !recovering} />
+      <FleetReplyActions answer={answer} settled={!running && !errored && !recovering}
+        activity={!running && !recovering ? message.metadata.custom.durableTaskActivity : undefined} />
     </FleetMessageRow>
   );
 }

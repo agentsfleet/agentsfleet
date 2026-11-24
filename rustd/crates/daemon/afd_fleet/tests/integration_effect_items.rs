@@ -286,3 +286,39 @@ async fn a_second_takeover_still_lists_the_first_dead_runs_posts() {
     assert_eq!(tools, [MESSAGE, "shell"], "run 1's post survives run 2's");
     held.fixtures.cleanup().await;
 }
+
+/// A renewal holding the run, as its lock statement leaves it, does not hold up an
+/// item insert for that run: the insert's foreign-key check takes the run
+/// `FOR KEY SHARE`, which the renewal's `FOR NO KEY UPDATE` lets through.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn an_effect_item_insert_does_not_wait_on_a_renewal() {
+    let held = held().await;
+    let plane = held.fixtures.plane();
+    let standing = standing(&held).await;
+    let mut renewer = held
+        .fixtures
+        .database
+        .acquire()
+        .await
+        .expect("a connection");
+    let mut renewing = sqlx::Connection::begin(&mut *renewer)
+        .await
+        .expect("the renewal's transaction");
+    let cancelled: Option<bool> = sqlx::query_scalar(afd_fleet::run::sql::shared::LOCK_CANCELLED)
+        .bind(&held.issued.run_id)
+        .bind(&held.runner)
+        .fetch_optional(&mut *renewing)
+        .await
+        .expect("the renewal locks its run");
+    assert_eq!(cancelled, Some(false), "the renewal holds a live run");
+
+    let posts = std::sync::atomic::AtomicU32::new(0);
+    let one = item();
+    let answered = send(&plane, &standing, message(&held, &one, 1), &posts).await;
+
+    assert_eq!(answered, POSTED);
+    assert_eq!(items_of(&held, &held.issued.run_id).await, 1);
+    renewing.rollback().await.expect("the renewal lets go");
+    held.fixtures.cleanup().await;
+}

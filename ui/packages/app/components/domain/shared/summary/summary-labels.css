@@ -1,0 +1,19 @@
+/* The label traverses only its own overflow. The icon, count and action stay still. */
+:is(.repo-name, .summary-scroll-label, .summary-action-label) { display: block; min-width: 0; max-width: 100%; container-type: inline-size; }
+.repo-name { overflow: hidden; }
+.summary-action-label { overflow: clip; }
+.summary-scroll-label { overflow-x: auto; scrollbar-width: none; }
+.summary-scroll-label[tabindex]:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+:is(.repo-name, .summary-scroll-label, .summary-action-label) > span { display: block; width: max-content; min-width: 100%; white-space: nowrap; }
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  :is(.repo-name, .summary-scroll-label, .summary-action-label) > span { transition: transform 1.2s linear .25s; }
+  :is(button, summary):is(:hover, :focus-visible) .repo-name > span,
+  :is(button, summary):is(:hover, :focus-visible) .summary-action-label > span,
+  .summary-scroll-label:hover:not(:focus) > span { transform: translateX(min(0px, calc(100cqw - 100%))); }
+  /* A translated label has reached its own edge. Keep native scrolling for focused labels. */
+  .summary-scroll-label:hover:not(:focus) { overflow: clip; }
+  .summary-scroll-label:focus > span { transition: none; }
+}
+@media (hover: none), (prefers-reduced-motion: reduce) {
+  .repo-name > span { width: auto; white-space: normal; overflow-wrap: anywhere; }
+}

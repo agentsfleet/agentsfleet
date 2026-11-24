@@ -77,7 +77,7 @@ pub(crate) async fn list<D: TenantPlane>(
     operation_id = "remove_member",
     summary = "Remove a member",
     description = concat!(
-        "Removes an account member. Open streams close within 15 seconds; later workspace ",
+        "Removes an account member. Their open streams close; later workspace ",
         "requests are refused. Missing members return 204. Removing the last owner returns ",
         "409 `UZ-INV-004`.",
     ),
@@ -104,6 +104,17 @@ pub(crate) async fn remove<D: TenantPlane>(
                 (error.code() == error_code::MEMBER_LAST_OWNER).then_some(STATE_LAST_OWNER)
             },
         ))?;
+    // After the commit, every open stream in the account re-reads whether its viewer
+    // still belongs, so a removed member's live views end. An absent member announces
+    // too: an owner's retry repairs a notice lost to a caller that went away before
+    // the removal answered. Its own task, so a caller that goes away once it has
+    // answered does not take the notice with it.
+    let bus = services.runner_commands().clone();
+    let notice = afd_bus::Subject::Members(owner.tenant().clone());
+    tokio::spawn(async move {
+        let sent = bus.publish(&notice, "").await;
+        afd_bus::observe_notification(&notice, sent);
+    });
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 

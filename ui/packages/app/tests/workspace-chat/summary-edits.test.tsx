@@ -31,7 +31,7 @@ const patch = () => fixture.writes().find(call => call.method === "PATCH");
 it("creates a network policy from the off state without asking the model or editing instructions", async () => {
   await open({tools: ["shell"], budget: {daily_nanos: "1000000000"}});
   const publicAccess = screen.getByRole("switch", {name: "Allow all public internet access"});
-  const packages = screen.getByRole("switch", {name: "Enable package manager domains"});
+  const packages = screen.getByRole("switch", {name: "Packages"});
   expect(publicAccess.getAttribute("aria-checked")).toBe("false");
   expect(packages.getAttribute("aria-checked")).toBe("false");
   expect(packages).toHaveProperty("disabled", false);
@@ -56,7 +56,7 @@ it("preserves the domain list, read-only flag, packages, tools and budget when t
 
 it("changes package registry access without changing existing destination restrictions", async () => {
   await open();
-  fireEvent.click(screen.getByRole("switch", {name: "Enable package manager domains"}));
+  fireEvent.click(screen.getByRole("switch", {name: "Packages"}));
   await waitFor(() => expect(client.getSnapshot().busy).toBe(false));
   expect(patch()?.body).toMatchObject({config_ops: [{path: "/config/x-agentsfleet/network", value: {...network, package_manager_domains: false}}]});
 });

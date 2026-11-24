@@ -56,8 +56,8 @@ describe("CliAuthPage — load states", () => {
     );
     await renderPage();
     const status = screen.getByRole("status", { name: "Loading page" });
-    expect(status.textContent).toBe("Loading…");
-    expect(status.querySelector("[data-signal-relay-pulse]")).not.toBeNull();
+    expect(status.textContent).toBe("agentsfleetLoading…");
+    expect(status.querySelectorAll(".page-loading-stroke")).toHaveLength(8);
     expect(screen.queryByRole("button", { name: "Authorize" })).toBeNull();
   });
 
@@ -65,10 +65,10 @@ describe("CliAuthPage — load states", () => {
     vi.mocked(globalThis.fetch).mockResolvedValueOnce(jsonResponse(200, activeBody()));
     await renderPage();
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Connect your terminal" })).toBeTruthy();
+      expect(screen.getByRole("heading", { name: "Sign in to the agentsfleet CLI" })).toBeTruthy();
     });
     expect(screen.getByRole("button", { name: "Authorize" }).hasAttribute("disabled")).toBe(false);
-    expect(screen.getByText("Allow your terminal to use your agentsfleet account. Continue only if you started this sign-in.")).toBeTruthy();
+    expect(screen.getByText("Continue only if you started this sign-in.")).toBeTruthy();
   });
 
   it("treats verification_pending as already-approved on another tab", async () => {
@@ -98,7 +98,7 @@ describe("CliAuthPage — load states", () => {
     );
     await renderPage();
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Connect your terminal" })).toBeTruthy();
+      expect(screen.getByRole("heading", { name: "Sign in to the agentsfleet CLI" })).toBeTruthy();
     });
   });
 

@@ -2,10 +2,8 @@ import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { SetupProgress } from "@/components/domain/setup/summary/SetupProgress";
 import { SetupChecks } from "@/components/domain/setup/summary/SetupChecks";
-import { FleetSetupDetails } from "@/components/domain/setup/summary/FleetSetupDetails";
-import { initialDefinition, safeActionHref } from "@/components/domain/setup/chat-defaults";
-import { FAILED_SCHEDULE, FLEET, PENDING_SCHEDULE, REVIEW, SCHEDULE, WORKSPACE } from "@/tests/helpers/draft-fixtures";
-import { NANOS_PER_USD } from "@/lib/types";
+import { safeActionHref } from "@/components/domain/setup/chat-defaults";
+import { FAILED_SCHEDULE, FLEET, PENDING_SCHEDULE, SCHEDULE, WORKSPACE } from "@/tests/helpers/draft-fixtures";
 
 afterEach(cleanup);
 
@@ -109,24 +107,4 @@ it("calls an active fleet ready only when every schedule is registered, and retr
   expect(retry).toHaveBeenCalledWith(failed);
   view.rerender(<SetupProgress fleet={{...active, schedules: [{...failed, last_error: null}]}} workspace={WORKSPACE} onContinue={vi.fn()} onRetrySchedule={retry} busy={false} />);
   expect(screen.getByText("Scheduler sync failed. Will retry on the next sync.")).toBeTruthy();
-});
-
-it("shows unresolved defaults and the exact source and fleet revisions under review", () => {
-  const definition = initialDefinition();
-  expect(definition.config["x-agentsfleet"]).toMatchObject({tools: [], budget: {daily_nanos: String(NANOS_PER_USD)}});
-  render(<FleetSetupDetails review={{...REVIEW, effective: {...REVIEW.effective, definition, runtime_model_ref: null, source_revision: "source-2", target_setup_revision: "3"}}} />);
-  expect(screen.getAllByText("Account default is not resolved")).toHaveLength(2);
-  expect(screen.getByText("source-2")).toBeTruthy();
-  expect(screen.getByText("Current saved setup")).toBeTruthy();
-  expect(screen.getByText("Revision 3")).toBeTruthy();
-  expect(screen.getByText("Add instructions before saving.")).toBeTruthy();
-});
-
-it("shows resolved model and instructions for a new setup without inventing saved revisions", async () => {
-  render(<FleetSetupDetails review={REVIEW} />);
-  expect(screen.getAllByText(REVIEW.effective.runtime_model_ref!)).toHaveLength(2);
-  expect(await screen.findByText(REVIEW.effective.definition.instructions_md.trim())).toBeTruthy();
-  expect(screen.getByText("Source revision unavailable")).toBeTruthy();
-  expect(screen.queryByText("Current saved setup")).toBeNull();
-  expect(screen.queryByText("Add instructions before saving.")).toBeNull();
 });

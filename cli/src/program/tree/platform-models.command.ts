@@ -4,6 +4,7 @@ import { guardedHandler } from "./guarded-handler.ts";
 import { grants, listedWhen, type Visibility } from "./visibility.ts";
 import { PLATFORM_SCOPE, platformFileFlag, platformPagingFlags } from "./platform-flags.ts";
 import { idArgument, opt } from "./flags.ts";
+import { platformModelDefaultCommand } from "./platform-model-default.command.ts";
 
 const modelId = {id: idArgument("model_id", "Platform catalogue row identifier")};
 const list = Command.make("list", platformPagingFlags).pipe(Command.withDescription("List the full admin catalogue (model:read)"),
@@ -20,13 +21,15 @@ const remove = Command.make("delete", modelId).pipe(Command.withDescription("Del
 export const platformModelsCommand = (visibility: Visibility) => {
   const read = grants(visibility, PLATFORM_SCOPE.modelRead);
   const admin = grants(visibility, PLATFORM_SCOPE.modelAdmin);
+  const defaults = platformModelDefaultCommand(visibility);
   return {
-    listed: read || admin,
+    listed: read || admin || defaults.listed,
     command: Command.make("models").pipe(
       Command.withDescription("Manage the shared model catalogue"),
       Command.withSubcommands([
         listedWhen(read)(list), listedWhen(read)(show),
         listedWhen(admin)(create), listedWhen(admin)(update), listedWhen(admin)(remove),
+        listedWhen(defaults.listed)(defaults.command),
       ]),
     ),
   };

@@ -1,6 +1,8 @@
-//! The claim loop: Postgres holds every owed answer, and the worker claims
-//! lane heads when it starts, when it is pinged, and when a delivery finishes.
-//! It runs no timed pass (Indy, Nov 21, 2026).
+//! The claim loop: Postgres holds every owed answer, and the worker claims lane heads.
+//!
+//! It claims when it starts, when it is pinged, when a delivery finishes, and when a
+//! claim another replica held lapses. It runs no timed pass (Indy, Nov 21, 2026): the
+//! one sleep is to that lapse, read from Postgres.
 //!
 //! ```text
 //!   worker starts ────────────────────────────────┐
@@ -10,10 +12,19 @@
 //!
 //! # A lost ping waits for the next event
 //!
-//! The ping is at-most-once. A row whose ping every replica missed is claimed
-//! on the next ping, the next finished delivery, or the next worker start. A
-//! full batch claims again as soon as the lanes have room, and every finished
-//! job rings the loop, so a backlog drains without a timer.
+//! The ping is at-most-once. A ping the bus failed to send is owed, and the bus
+//! pays it as a gap on the subscription, which the worker answers with a claim.
+//! A full batch claims again as soon as the lanes have room, and every finished
+//! job rings the loop, so a backlog drains without a timer. The daemon opens the
+//! subscription before the worker starts, and a subscription it cannot open refuses
+//! the boot. A reconnect keeps the subscription and gaps it; it closes only when the
+//! bus shuts down, and the worker then claims on finished deliveries and lapses alone.
+//!
+//! # A dead replica's claim is retaken when it lapses
+//!
+//! Its claim stops being renewed and lapses after `CLAIM_TTL`. Nothing announces
+//! that, so after a claim leaves room the worker reads the earliest live claim's
+//! expiry and sleeps to it once.
 //!
 //! # The claim is the ordering, and the lanes are the concurrency
 //!
@@ -27,7 +38,7 @@ use std::time::Duration;
 
 use af_core::error_code::{Coded as _, Logged};
 use af_crypto::entropy::Entropy;
-use afd_bus::{Handle, Subject, Subscription};
+use afd_bus::Subscription;
 use afd_db::Db;
 use tokio_util::sync::CancellationToken;
 
@@ -42,10 +53,11 @@ const EVENT_CLAIM_COMPLETED: &str = "outbound_claim_completed";
 /// Logged when a claim could not be made; the next ping or finished delivery
 /// claims again.
 const EVENT_CLAIM_FAILED: &str = "outbound_claim_failed";
-/// Logged when pings stop reaching this worker; only finished deliveries and
+/// Logged when pings stop reaching this worker; only finished deliveries, lapses and
 /// the next start claim for it then.
-const EVENT_WAKE_SUBSCRIBE_FAILED: &str = "outbound_wake_subscribe_failed";
 const EVENT_WAKE_CLOSED: &str = "outbound_wake_closed";
+/// The lapse read failed: the loop keeps the lapse it had, and the next claim reads again.
+const EVENT_LAPSE_UNREAD: &str = "outbound_lapse_unread";
 
 /// What triggered a claim, for the claim counter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -61,7 +73,7 @@ pub(crate) enum Via {
 #[derive(Debug)]
 pub struct Worker<S> {
     database: Db,
-    bus: Handle,
+    wake: Subscription,
     posters: Posters<S>,
     entropy: Entropy,
     renew: Duration,
@@ -69,12 +81,18 @@ pub struct Worker<S> {
 }
 
 impl<S: Deliver + 'static> Worker<S> {
-    /// A worker claiming from `database`, pinged over `bus`.
+    /// A worker claiming from `database`, pinged on `wake`: the subscription to
+    /// [`afd_bus::Subject::DeliveryWake`] its daemon opened at boot.
     #[must_use]
-    pub const fn new(database: Db, bus: Handle, posters: Posters<S>, entropy: Entropy) -> Self {
+    pub const fn new(
+        database: Db,
+        wake: Subscription,
+        posters: Posters<S>,
+        entropy: Entropy,
+    ) -> Self {
         Self {
             database,
-            bus,
+            wake,
             posters,
             entropy,
             renew: delivery::CLAIM_RENEW,
@@ -102,29 +120,31 @@ impl<S: Deliver + 'static> Worker<S> {
     pub async fn run(self, token: CancellationToken) {
         let Self {
             database,
-            bus,
+            wake,
             posters,
             entropy,
             renew,
             retries,
         } = self;
-        let mut wake = bus
-            .subscribe(&Subject::DeliveryWake)
-            .await
-            .inspect_err(|failure| unpinged(EVENT_WAKE_SUBSCRIBE_FAILED, failure))
-            .ok();
+        let mut wake = Some(wake);
         let lanes = Lanes::configured(posters, database.clone(), token.clone(), renew, retries);
+        let mut lapse: Option<tokio::time::Instant> = None;
         let mut via = Via::Scan;
         while !token.is_cancelled() {
             // With no room, the next finished job rings the loop.
             let room = lanes.room();
             if room > 0 {
+                let claiming = tokio::time::Instant::now();
                 match claim_once(&database, &entropy, &lanes, via, room).await {
                     Ok(claimed) if claimed == room => {
                         via = Via::Scan;
                         continue;
                     }
-                    Ok(_partial) => {}
+                    Ok(_partial) => match next_lapse(&database, &lanes, claiming.elapsed()).await {
+                        Ok(next) => lapse = next,
+                        // The lapse already known still stands; the next claim reads again.
+                        Err(failure) => report(EVENT_LAPSE_UNREAD, &failure),
+                    },
                     // The next ping or finished delivery claims again.
                     Err(failure) => report(EVENT_CLAIM_FAILED, &failure),
                 }
@@ -135,6 +155,8 @@ impl<S: Deliver + 'static> Worker<S> {
                 () = pinged(&mut wake) => Via::Ping,
                 // A finished job may have freed its lane's next row.
                 () = lanes.finished() => Via::Scan,
+                // A claim another replica stopped renewing is now claimable.
+                () = afd_bus::sleep_until_some(lapse) => { lapse = None; Via::Scan }
             };
         }
         lanes.drain().await;
@@ -186,8 +208,7 @@ impl Via {
     }
 }
 
-/// Returns on the next ping, or never when the subscription is gone; finished
-/// deliveries then carry the worker alone.
+/// Returns on the next ping, or never once the subscription is gone.
 async fn pinged(wake: &mut Option<Subscription>) {
     let Some(subscription) = wake.as_mut() else {
         return std::future::pending().await;
@@ -195,16 +216,30 @@ async fn pinged(wake: &mut Option<Subscription>) {
     if let Err(failure) = subscription.recv().await {
         unpinged(EVENT_WAKE_CLOSED, &failure);
         *wake = None;
-        std::future::pending::<()>().await;
     }
 }
 
-/// Logs that pings stopped; owed answers now wait for a finished delivery or
-/// the next start.
+/// When the earliest claim another holder took lapses, as an instant on this replica's
+/// clock; `None` when no other holder holds an open delivery. The deliveries `lanes` hold
+/// are this replica's own, renewed while they run, so they are left out. `since` is how
+/// long ago the claim this read follows began: a claim that lapsed in between is now.
+///
+/// # Errors
+/// The ledger would not answer.
+async fn next_lapse<S: Deliver + 'static>(
+    database: &Db,
+    lanes: &Lanes<S>,
+    since: Duration,
+) -> crate::Result<Option<tokio::time::Instant>> {
+    let left = delivery::next_lapse(database, &lanes.held(), since).await?;
+    Ok(left.map(|left| tokio::time::Instant::now() + left))
+}
+
+/// Logs that pings stopped reaching this worker.
 fn unpinged(event: &'static str, failure: &afd_bus::Error) {
     let error_code = failure.code().as_str();
     let reason = failure.reason();
-    tracing::warn!(error_code, reason, event, "claims wait for the next event");
+    tracing::warn!(error_code, reason, event);
 }
 
 /// Logs a failure the loop continues past.

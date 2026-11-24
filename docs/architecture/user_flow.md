@@ -202,11 +202,11 @@ In addition to the declared triggers, every Fleet always accepts:
 
   The 202 answer names a disposition. A message sent while the fleet's run is live is `folded` into that run, which takes it at its next model call. Otherwise the message has `started` a run of its own, or is `queued` behind the work ahead of it.
 
-  The dashboard names every send with an `operation_id`, a version 7 universally unique identifier (UUID v7). It keeps unresolved sends in a per-user, per-fleet ledger mirrored to `localStorage` until the 202 response arrives. Retry, Resend, and Resend after reload all carry the same identifier.
+  The dashboard names every send with an `operation_id`, a version 7 universally unique identifier (UUID v7). It keeps unresolved sends in a per-user, per-fleet ledger mirrored to `localStorage` until the 202 response arrives. **Try again** carries the same identifier, including after reload.
 
-  Resending with that identifier returns the first turn ([API reference](https://docs.agentsfleet.net/api-reference/introduction) › Fleet messages). A send unanswered after 30 seconds reads "Couldn't confirm" with Resend.
+  Retrying with that identifier returns the first turn ([API reference](https://docs.agentsfleet.net/api-reference/introduction) › Fleet messages). A send unanswered after 30 seconds shows “Sending was interrupted.” beside **Try again**.
 
-  Another tab's send stays hidden while that tab holds its Web Lock, then shows Resend once the tab is gone. Every tab keeps a dismissal tombstone for one day, so a late write cannot restore a dismissed send. A final `UZ-AGT-016` refusal offers Send as new under a fresh identifier, without Resend.
+  Another tab's send stays hidden while that tab holds its Web Lock, then shows **Try again** once the tab is gone. Every tab keeps a dismissal tombstone for one day, so a late write cannot restore a dismissed send. A final `UZ-AGT-016` refusal offers **Send as new** under a fresh identifier.
 
   A replayed answer for a turn the page never loaded reads that turn's detail and settles its row. A turn already loaded settles from its own frames. A running turn unheard from for 45 seconds is read once, so a lost completion still ends its row.
 
@@ -231,7 +231,7 @@ The user experience inside Claude (or Amp / Codex CLI / OpenCode) feels like thi
 The dashboard equivalent surface on `/fleets/{id}` matches the CLI path:
 
 - The **Trigger panel** renders one card per declared trigger. A GitHub App card shows connector state plus repository/event subscriptions and routes a disconnected workspace to Connect GitHub. Custom providers keep registration guidance and copyable per-fleet URLs; the dashboard never asks for or stores a user's provider PAT.
-- The **chat surface** shows trigger turns as system chips and each reply as its thinking, its tool calls and its answer. It reads the live frames while the fleet works and the turn's saved trace after a reload. A send the server refuses leaves the thread, and its text returns to the composer with Resend.
+- The **chat surface** shows trigger turns as system chips and each reply as its thinking, its tool calls and its answer. It reads the live frames while the fleet works and the turn's saved trace after a reload. A send the server refuses leaves the thread, and its text returns to the composer with **Try again**.
 - The **workspace switcher** requires a name while the server owns workspace identity. The browser never repeats a failed POST on its own. It reports the failure and walks the tenant workspace endpoint's stable cursor pages to refresh the complete list.
 - The CLI handles an uncertain response or registered name conflict with one encoded exact-name GET. It then selects the authoritative match without replaying the POST. A deliberate same-name retry cannot create another row because the tenant/name unique index returns a registered `409 Conflict`.
 - For login tokens, both create and list resolve the database subject mapping before a stale signed tenant claim and return that tenant identifier. Tenant API keys instead stay bound to the tenant recorded on the key, even if the creator's user mapping later changes. These rules keep local state from mixing tenants without letting an API key cross its issuing boundary.

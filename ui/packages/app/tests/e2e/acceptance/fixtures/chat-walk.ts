@@ -4,7 +4,7 @@
  *
  * One turn is four things a walk must not conflate: the operator's send, the
  * daemon's acknowledgement of it, the runner running and finishing the work,
- * and the reply appearing on screen with its figures. Each is a different
+ * and the reply appearing on screen. Each is a different
  * failure with a different owner, so each is its own bounded step here and the
  * verdicts come from `execution.ts`'s classifiers rather than from a timeout.
  *
@@ -15,7 +15,6 @@
  */
 import { expect, type Page } from "@playwright/test";
 import type { TurnDetail } from "@/lib/api/turns";
-import { REPLY_FIGURES_TEST_ID, RUN_DETAILS_LABEL } from "@/components/domain/activity/replies/FleetReplyFigures";
 import { FIXTURE_KEY } from "./constants";
 import {
   anyRunnerLive,
@@ -106,13 +105,7 @@ export async function awaitTerminalTurn(
   failWith(classifyIdle(await anyRunnerLive()));
 }
 
-/**
- * The reply as the operator reads it, and its optional reported figures.
- *
- * The row is what the daemon persisted; this is the surface a person sees, and
- * the two are asserted apart on purpose. Unknown figures are omitted from the
- * details window, so require both recorded time and token count there.
- */
+/** A persisted terminal row can arrive before the browser paints its reply. */
 export async function expectAnsweredOnScreen(
   page: Page,
   workspaceId: string,
@@ -122,12 +115,6 @@ export async function expectAnsweredOnScreen(
   const reply = page.getByLabel(CHAT_LABEL).locator(ASSISTANT_TURN).last();
   await expect(reply).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
   await expect(reply).not.toHaveText(/^\s*$/);
-  const figures = reply.getByTestId(REPLY_FIGURES_TEST_ID);
-  await expect(figures).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
-  await figures.click();
-  const details = page.getByRole("dialog", { name: RUN_DETAILS_LABEL });
-  await expect(details).toContainText("Duration", { timeout: RENDER_TIMEOUT_MS });
-  await expect(details).toContainText("Tokens", { timeout: RENDER_TIMEOUT_MS });
-  await expect(details).toContainText(/\d[\d.,]*(?:[kmb])?/i);
-  await page.keyboard.press("Escape");
+  await expect(reply.getByRole("button", {name: "Copy reply"})).toBeVisible({timeout: RENDER_TIMEOUT_MS});
+  await expect(reply.getByRole("button", {name: "Run details"})).toHaveCount(0);
 }

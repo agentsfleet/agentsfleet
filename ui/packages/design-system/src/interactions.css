@@ -135,13 +135,17 @@
   [data-signal-spinner] path:nth-child(7) { animation-delay: -0.4s; }
   [data-signal-spinner] path:nth-child(8) { animation-delay: -0.2s; }
 
-  /* Offsets put the center of the dash over each node in turn. */
-  @keyframes signal-relay {
-    33.333% { stroke-dashoffset: -27.17; }
-    66.667% { stroke-dashoffset: -63.83; }
-    100% { stroke-dashoffset: -95.5; }
+  @keyframes page-loading-form {
+    0%, 12%, 100% { transform: translate(var(--start-x), var(--start-y)) scaleX(.62); }
+    49%, 73% { transform: translate(var(--ray-x), var(--ray-y)) rotate(var(--ray-angle)); }
   }
-  [data-signal-relay-pulse] { animation: signal-relay 1.725s cubic-bezier(.38, 0, .62, 1) infinite; }
+  .page-loading-stroke { animation: page-loading-form 2.4s cubic-bezier(.45, 0, .22, 1) var(--delay) infinite backwards; }
+}
+
+.page-loading-stroke {
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: translate(var(--ray-x), var(--ray-y)) rotate(var(--ray-angle));
 }
 
 /* Status motion changes paint only; no layout or reading-position changes. */
@@ -155,6 +159,22 @@
   0%, 12% { background-position: 100% 0; }
   88%, 100% { background-position: 0% 0; }
 }
+.chat-reply-dots { display: inline-flex; gap: var(--sp-sm); }
+.chat-reply-dots > span { width: var(--sp-sm); height: var(--sp-sm); border-radius: 50%; background: currentColor; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .chat-reply-dots > span { animation: chat-reply-dot 1.2s ease-in-out infinite; }
+  .chat-reply-dots > span:nth-child(2) { animation-delay: 120ms; }
+  .chat-reply-dots > span:nth-child(3) { animation-delay: 240ms; }
+}
+@keyframes chat-reply-dot {
+  0%, 60%, 100% { opacity: .45; }
+  30% { opacity: 1; }
+}
+@media (forced-colors: active) {
+  .chat-reply-dots > span { forced-color-adjust: none; background: CanvasText; animation: none; }
+}
+
 [data-chat-loading="true"] {
   color: var(--chat-loading-base, var(--text-subtle));
   background-image: linear-gradient(100deg, var(--chat-loading-base, var(--text-subtle)) 30%, var(--chat-loading-sweep, var(--text-dim)) 50%, var(--chat-loading-base, var(--text-subtle)) 70%);

@@ -298,3 +298,61 @@ async fn a_transient_loss_is_retried_at_once_and_a_closed_one_never() -> TestRes
     assert!(!link.reopen_if_due().await, "a closed bus is final");
     Ok(())
 }
+
+/// A message on the link's subject wakes it as a change; so does a gap, which may
+/// have hidden one.
+#[tokio::test]
+async fn a_link_wakes_changed_on_a_message_and_on_a_gap() -> TestResult {
+    let (bus, server) = afd_bus::test_util::detached()?;
+    let live = Live::new(bus, StreamLimit::new(4));
+    let subject = Subject::Members(Uuid7::parse(FLEET)?);
+    let mut link = live.link(subject.clone()).await;
+    server.publish(&subject, "");
+    let woke = tokio::time::timeout(Duration::from_secs(1), link.changed()).await?;
+    assert_eq!(woke, super::Wake::Changed, "a notice");
+    server.gap(&subject);
+    let woke = tokio::time::timeout(Duration::from_secs(1), link.changed()).await?;
+    assert_eq!(woke, super::Wake::Changed, "a gap");
+    Ok(())
+}
+
+/// A link whose subscribe failed wakes as a change once it reopens: what was published
+/// while it was down is unknown.
+#[tokio::test(start_paused = true)]
+async fn a_lost_link_wakes_changed_once_it_reopens() -> TestResult {
+    let (live_bus, _server) = afd_bus::test_util::detached()?;
+    let flaky = Handle::new(Flaky {
+        refusals: AtomicUsize::new(2),
+        live: live_bus,
+    });
+    let live = Live::new(flaky, StreamLimit::new(4));
+    let mut link = live.link(Subject::Members(Uuid7::parse(FLEET)?)).await;
+    assert!(
+        link.subscription().is_none(),
+        "the first subscribe was refused"
+    );
+    assert!(link.retry_at().is_some(), "a refused link is retrying");
+    // The first retry is refused too; the link keeps waiting and wakes only once open.
+    let woke = tokio::time::timeout(Duration::from_secs(60), link.changed()).await?;
+    assert_eq!(woke, super::Wake::Changed);
+    assert!(
+        link.subscription().is_some(),
+        "the second retry reopened it"
+    );
+    assert!(link.retry_at().is_none(), "an open link has no retry");
+    Ok(())
+}
+
+/// A link on a bus that shut down says so, and never retries.
+#[tokio::test(start_paused = true)]
+async fn a_link_on_a_closed_bus_wakes_closed() -> TestResult {
+    let (bus, _server) = afd_bus::test_util::detached()?;
+    let live = Live::new(bus.clone(), StreamLimit::new(4));
+    let mut link = live.link(Subject::Members(Uuid7::parse(FLEET)?)).await;
+    bus.shutdown().await?;
+    let woke = tokio::time::timeout(Duration::from_secs(60), link.changed()).await?;
+    assert_eq!(woke, super::Wake::Closed);
+    let again = tokio::time::timeout(Duration::from_secs(60), link.changed()).await?;
+    assert_eq!(again, super::Wake::Closed, "closed stays closed");
+    Ok(())
+}

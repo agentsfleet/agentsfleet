@@ -385,3 +385,32 @@ async fn boot_refuses_an_unreachable_seed() -> TestResult {
     assert!(error.to_string().contains("NATS_URL"), "{error}");
     Ok(())
 }
+
+/// A daemon that boots gaps every subscription another replica holds, whatever
+/// its subject, so a notice a dead daemon never published is read from
+/// Postgres instead of waited on.
+#[tokio::test]
+#[ignore = "needs live NATS: make test-integration-rustd"]
+async fn a_booting_daemons_gap_reaches_every_replicas_subscriptions() -> TestResult {
+    let seeds = seeds()?;
+    let ns = namespace();
+    let replica = bus(seeds.first().ok_or("node 1")?, &ns, Tuning::default()).await?;
+    let publisher = bus(seeds.get(1).ok_or("node 2")?, &ns, Tuning::default()).await?;
+    let id = Uuid7::parse("0195b4ba-8d3a-7f13-8abc-2b3e1e0bb0aa")?;
+    let subjects = [fleet(7)?, Subject::Members(id.clone()), Subject::Fleets(id)];
+    let mut subscriptions = Vec::new();
+    for subject in &subjects {
+        let mut subscription = replica.subscribe(subject).await?;
+        settle(&publisher, subject, &mut [&mut subscription]).await?;
+        subscriptions.push(subscription);
+    }
+    let booting = bus(seeds.get(2).ok_or("node 3")?, &ns, Tuning::default()).await?;
+    afd_bus::announce_boot(&booting).await;
+    for subscription in &mut subscriptions {
+        assert_eq!(next(subscription).await?, Received::Gap, "the boot gaps it");
+    }
+    booting.shutdown().await?;
+    publisher.shutdown().await?;
+    replica.shutdown().await?;
+    Ok(())
+}

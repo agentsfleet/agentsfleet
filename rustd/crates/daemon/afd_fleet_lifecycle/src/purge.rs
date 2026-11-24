@@ -53,7 +53,7 @@ const CONTEXT_RUNS: &str = "purge fleet live runs";
 /// The only delete path: the caller already holds the row lock and has
 /// checked the tag, so a delete that also ends the fleet's setup and work
 /// commits all of it or none of it. It commits nothing itself; after the
-/// caller commits, it owes [`crate::Fleets::invalidate_live_set`].
+/// caller commits, it owes the workspace's fleet-set notice.
 ///
 /// # Errors
 /// Reports a fleet that is not in `workspace` and datastore failures.

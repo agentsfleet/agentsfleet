@@ -30,6 +30,9 @@ export function FleetSetup({client, view, workspace}: {client: DraftClient; view
   // The save heading is the page's `h2`; without it the questions take that level, so no heading skips one.
   const saveHeading = revision && !recorded ? SAVED_SETUP_LABEL : null;
   return <Section className="ph-no-capture ph-no-record my-md gap-sm py-xs" aria-label="Fleet setup">
+    {proposed && !fleet && setup ? <p className="text-label text-muted-foreground">
+      Fleet name <strong className="font-semibold text-foreground">{setup.effective.instance_name}</strong>
+    </p> : null}
     {saveHeading ? <h2 className="text-label font-medium text-muted-foreground">{saveHeading}</h2> : null}
     {checks.length ? <SetupChecks issuesOnly checks={checks} label="Configuration readiness" workspace={workspace} definition={definition} onRefresh={() => client.refreshFleetSetup(true)} /> : null}
     {questions ? <SetupQuestions definition={questions} label={questionLabel(Boolean(proposed), revision)} heading={saveHeading ? "h3" : "h2"} /> : null}

@@ -195,3 +195,46 @@ async fn delete_removes_a_fleet_in_any_status() {
     assert_deleted(&archived, &item, &current, None).await;
     archived.cleanup().await;
 }
+
+/// A save that creates a fleet and the delete that removes it each announce the
+/// workspace's fleet set after their commit, so an open wall re-reads it.
+#[tokio::test]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn saving_and_deleting_a_fleet_announce_the_workspaces_fleet_set() {
+    let case = Case::create().await;
+    case.fund().await;
+    let mut notices = case
+        .bus
+        .subscribe(&afd_bus::Subject::Fleets(case.base.workspace.clone()))
+        .await
+        .expect("the workspace's subject opens");
+    let (_, request) = case.request().await;
+    let saved = case.save(mint().as_str(), &request).await;
+    assert_eq!(saved.status(), StatusCode::CREATED);
+    announced(&mut notices, "a save").await;
+    let item = saved.headers()[header::LOCATION]
+        .to_str()
+        .expect("fleet location")
+        .to_owned();
+    let tag = saved.headers()[header::ETAG]
+        .to_str()
+        .expect("fleet tag")
+        .to_owned();
+    assert_eq!(
+        remove(&case, &item, Some(&tag)).await.status(),
+        StatusCode::NO_CONTENT
+    );
+    announced(&mut notices, "a delete").await;
+    case.cleanup().await;
+}
+
+async fn announced(notices: &mut afd_bus::Subscription, writer: &str) {
+    let received = tokio::time::timeout(std::time::Duration::from_secs(5), notices.recv())
+        .await
+        .unwrap_or_else(|_| panic!("{writer} announces the fleet set"))
+        .expect("the subscription is open");
+    assert!(
+        matches!(received, afd_bus::Received::Message(_)),
+        "{writer}: {received:?}"
+    );
+}

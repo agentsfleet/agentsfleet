@@ -131,7 +131,7 @@ function InviteForm({ error, pending, ownerName, onSend, onCancel }: InviteFormP
                 <FormItem>
                   <FormLabel>Email address</FormLabel>
                   <FormControl>
-                    <Input type="email" className="font-medium" placeholder="teammate@example.com" autoComplete="off" {...field} />
+                    <Input type="email" className="font-medium focus-visible:ring-inset focus-visible:ring-offset-0" placeholder="teammate@example.com" autoComplete="off" {...field} />
                   </FormControl>
                   <FormMessage />
                   <FormDescription className="mt-lg flex items-start gap-lg rounded-md border border-border p-xl text-label">

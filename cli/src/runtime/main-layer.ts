@@ -31,7 +31,7 @@ import {
   outputFromStreamsLayer,
 } from "../services/output.ts";
 import { Credentials, credentialsLayer } from "../services/credentials.ts";
-import { HttpClient, httpClientLayer } from "../services/http-client.ts";
+import { HttpClient, httpClientWithProgressLayer } from "../services/http-client.ts";
 import { Input, inputLayer } from "../services/input.ts";
 import { Stdin, stdinLayer, stdinFromStreamLayer } from "../services/stdin.ts";
 import { Browser } from "../services/browser.service.ts";
@@ -114,7 +114,7 @@ export const mainLayerFor = (
     commandRunId: input.commandRunId ?? crypto.randomUUID(),
   });
 
-  const http = httpClientLayer.pipe(Layer.provide(configBase));
+  const http = httpClientWithProgressLayer.pipe(Layer.provide(Layer.mergeAll(configBase, outputBase)));
   const analytics = analyticsLayer.pipe(
     Layer.provide(telemetryRuntimeLayer),
     Layer.provide(configBase),

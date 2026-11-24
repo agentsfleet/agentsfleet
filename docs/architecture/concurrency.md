@@ -147,7 +147,8 @@ below are the concurrency view.
 | cancellation | `CancellationToken` | the supervisor → every supervised task and every live connection | edge-triggered; a task selects it against its own I/O, so it is interrupted mid-read |
 | `thread.turns` | PostgreSQL queue | producers commit turns; assignment passes take the oldest unsettled turn per eligible fleet | thread and turn fences; reports settle in the usage transaction |
 | `thread.deliveries` | PostgreSQL rows claimed per lane | the report path writes the row in its transaction → any replica's outbound worker claims the lane head | durable; the claim's token names the holder, and a lapsed holder's late write matches no row |
-| `af.delivery.wake` | core NATS subject (at most once) | the report path after its commit → every replica's outbound worker | the payload names the delivery, but the worker reads only the ping and claims from Postgres. A lost ping waits for the next ping or finished lane on some replica; no timed pass claims. |
+| `af.delivery.wake` | core NATS subject (at most once) | the report path after its commit → every replica's outbound worker | the payload names the delivery, but the worker reads only the ping and claims from Postgres. A ping the bus failed to send is owed as a gap; one dropped silently waits for the next ping, a finished lane or a lapsed claim on some replica; no timed pass claims. |
+| `af.tenant.<tenant_id>.members`, `af.workspace.<workspace_id>.fleets` | core NATS subjects (at most once), payload-free | a member removal, or a fleet insert or delete, after its commit → every open stream in the account or workspace | a stream reads Postgres on the notice, a gap or a lag, and on no timer; every booting daemon publishes one gap (`afd_bus::announce_boot`), so a notice a dead daemon never sent costs one re-read |
 | `af.thread.<thread_id>.items` | core NATS subject (at most once) | `agentsfleetd` publishers (+ runner-forwarded frames) → each process's one native subscription per subject, fanned out by reference | ephemeral; every SSE stream shares the published frame, and the response body writes its payload from that one allocation |
 | `af.thread.<thread_id>.wake` | core NATS subject, read through the `af.thread.*.wake` wildcard | intake and gate-answer commits publish thread IDs to every replica | ephemeral; a detected gap (lag, lost subscription, unreadable payload) starts a recovery pass that reads PostgreSQL; a silently lost ring waits for the next ring or freed runner capacity |
 
@@ -357,6 +358,44 @@ The setup assignment gate reads the balance without a lock (`afd_setup`'s setup-
 
 Stop and delete take the draft, then its thread in a statement of its own, then its turn or runs, and never take the runner row (`afd_setup`'s `message/stop.rs` and `privacy.rs`).
 
+### A fleet Stop, the issue, a fold retry and a gate answer
+
+Each takes the fleet's thread before a turn, a gate or a run. They queue on the thread instead of locking a turn and a gate in opposite orders:
+
+```
+ fleet Stop     hold_thread.sql: fleet KEY SHARE ─► thread NO KEY UPDATE
+                then stop_turn.sql: turn ─► run ─► the turn's gate
+ issue          fleet KEY SHARE ─► host ─► thread (held) ─► head turn FOR SHARE, unsettled, at the fence
+ fold retry     assign_inputs.sql: fleet KEY SHARE ─► thread NO KEY UPDATE ─► run FOR SHARE ─► the folds
+ gate answer    resolve_gate.sql: fleet KEY SHARE ─► thread NO KEY UPDATE ─► gate ─► turns
+ fleet delete   fleet FOR UPDATE ─► setup cards ─► cascade to gates and thread
+```
+
+The Stop's holds are a statement of their own (`afd_turns`'s `view/stop/hold_thread.sql`). Stop's statement starts after an issue that held the thread commits, and marks the run it issued. The issue reads its head with a lock after its thread wait, so a Stop that committed meanwhile leaves no run (`afd_fleet`'s `integration_run_issue_stop.rs`).
+
+A Stop and a gate answer take the fleet first, because fleet delete holds it `FOR UPDATE` and then cascades to the thread. Holding the thread first met delete at a gate: Stop deadlocked with it before Nov 23, 2026 (`afd_approval`'s `integration_resolve_behind_stop.rs`).
+
+Every other holder of the fleet `FOR UPDATE` delays a Stop and a gate answer too, up to the login's lock bound. Those holders are activation, a setup save, an archive and a recovered start (`afd_setup`'s `creation/`).
+
+A gate answer holds the thread for its one statement even when it loses. An assignment pass that meets it skips the fleet, as it skips any held thread. The losing answer rings nothing, so the turn waits for the fleet's next ring, as after a dropped wake.
+
+### A decision reservation locks in one statement
+
+A reservation reads its run, task, source turn, budget and wallet with no lock, one round trip each. Then one statement takes its locks in the fleet writers' order, re-checks the rows, and inserts the issued call with its payload (`afd_fleet`'s `durable_task/decision/sql/issue.sql`):
+
+```
+ reads, no lock ─► issue.sql: workspace, fleet KEY SHARE ─► thread, run, named task,
+                   source turn, each FOR SHARE ─► clock ─► INSERT call + payload
+```
+
+A share lock makes Postgres re-read a row that changed while the statement waited. So a takeover, a task cancel or a Stop that committed meanwhile issues nothing. Rows the statement only joins (the runner, the model, its revision) are read as of the statement's start.
+
+The statement does not repeat the money reads. Two overlapping reservations of one fleet can each pass a money check the other's call would fail, by one call's reservation each.
+
+The share locks let reservations of one fleet run together. A renewal, a report or a Stop of that fleet waits for the statements in flight.
+
+With 100 reservations of one operation released together, a renewal of the same run waited at most 0.6 s for its locks. The login's bound is 2 s (`integration_durable_tasks/decisions/issue.rs`, `a_renewal_completes_during_a_reservation_storm`, four runs on the lane's Postgres).
+
 ### A run's verbs on the fleet row and the run row
 
 Every `thread.items` insert and every schedule insert checks its foreign key with `FOR KEY SHARE` on the fleet row, and an item insert does the same on its run row. Only `FOR UPDATE` refuses that mode, so a lock that only puts writers in turn takes `FOR NO KEY UPDATE`, or no row lock at all.
@@ -430,4 +469,4 @@ The draft review and the saved-setup read run read committed, with lock-free twi
 
 No run was doubled and no host exceeded its workers either way. The full row is in [Measured ceilings](./scaling.md#measured-ceilings).
 
-An assignment still waits on the thread, the earlier run and the turn. A Stop, a report and a renewal take the thread first too, so they queue behind an assignment rather than lock against it in the other order.
+An assignment still waits on the thread, the earlier run and the turn. A fleet Stop takes the fleet and then the thread, and a report and a renewal take the thread first. So each queues behind an assignment rather than locking against it in the other order.

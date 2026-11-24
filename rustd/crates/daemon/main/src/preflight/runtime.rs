@@ -1,11 +1,9 @@
 //! Runtime policy is resolved once before opening any service.
 
+use afd_runner::timing::{RunClock, RunSettings};
 use std::{num::NonZeroUsize, sync::Arc};
 
-use af_core::{
-    env::EnvSource,
-    timing::{RunClock, RunSettings},
-};
+use af_core::env::EnvSource;
 use garde::Validate;
 
 use super::{Fault, Refusal};

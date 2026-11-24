@@ -37,6 +37,19 @@ pub(crate) enum Window {
 /// second table, and these tests are about the gate row's own transition.
 const KIND: &str = "repository_write";
 
+/// The gate kind of a setup card: an integration grant's, which fleet delete closes
+/// before it deletes the fleet.
+pub(crate) const SETUP_CARD: &str = "integration_grant";
+
+/// Fleet delete's first hold (`afd_setup/src/creation/sql/lock.sql`).
+pub(crate) const LOCK_FLEET: &str =
+    "SELECT pg_backend_pid() FROM fleet.fleets WHERE id = $1 FOR UPDATE";
+
+/// A queued fleet turn parked behind its approval, as a run's park leaves it.
+const PARKED_TURN: &str = "INSERT INTO thread.turns (id,thread_id,workspace_id,producer,producer_key,\
+payload_digest,actor,kind,status,request_json,created_at,updated_at,parked_at) VALUES \
+($1,$2,$3,'steer',$1,'fixture','steer:fixture','chat','queued','{}',now(),now(),now())";
+
 impl Lane {
     /// Seeds one pending gate, returning its action id.
     ///
@@ -88,6 +101,34 @@ impl Lane {
             .await
             .expect("the gate becomes a question");
         action
+    }
+
+    /// A queued turn of the lane's fleet, parked behind its approval.
+    pub(crate) async fn parked_turn(&self) -> Uuid7 {
+        let id = mint();
+        sqlx::query(PARKED_TURN)
+            .bind(&id)
+            .bind(&self.fleet)
+            .bind(&self.workspace)
+            .execute(&mut *self.connection().await)
+            .await
+            .expect("the parked turn inserts");
+        id
+    }
+
+    /// Points `action`'s gate at `turn`, as a setup card when `card` is set.
+    pub(crate) async fn gate_turn(&self, action: &Uuid7, turn: Option<&Uuid7>, card: bool) {
+        sqlx::query(
+            "UPDATE fleet.approval_gates SET turn_id = $2, \
+             gate_type = CASE WHEN $3 THEN $4 ELSE gate_type END WHERE action_id = $1",
+        )
+        .bind(action)
+        .bind(turn)
+        .bind(card)
+        .bind(SETUP_CARD)
+        .execute(&mut *self.connection().await)
+        .await
+        .expect("the gate moves");
     }
 
     /// Moves `action`'s deadline to `ago` before the database's clock.

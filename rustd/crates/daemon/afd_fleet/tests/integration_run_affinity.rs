@@ -19,7 +19,8 @@
 use crate::requests;
 use crate::support;
 use af_core::id::Uuid7;
-use af_core::timing::RUN_TTL;
+use afd_runner::timing::RUN_TTL;
+
 use af_wire::runner::{NetworkPolicy, SandboxTier};
 
 use self::requests::{enrolment_tagged, placement_tag};

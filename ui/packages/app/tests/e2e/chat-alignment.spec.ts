@@ -76,8 +76,14 @@ test("the fleet disclosure retains loaded pages when collapsed and reopened", as
   await expect(fleet.locator("svg")).toHaveCount(0);
   await expect(edit.locator(":scope > svg:last-child")).toHaveAttribute("width", "14");
   await expect(fleet.locator("span").first()).toHaveCSS("font-weight", "600");
-  const labelEdges = await Promise.all([disclosure, fleet, edit].map(row => row.locator("span").first().boundingBox()));
-  expect(labelEdges.map(box => box?.x)).toEqual(Array(3).fill(labelEdges[0]?.x));
+  const edges = await Promise.all([disclosure.locator("span").first(), fleet.locator("span").first(),
+    nav.getByRole("link", {name: "Secrets", exact: true}).locator("svg")].map(item => item.boundingBox()));
+  for (const edge of edges) expect(edge?.x).toBe(edges[0]?.x);
+  const [fleetBox, editBox, rail] = await Promise.all([fleet.boundingBox(), edit.boundingBox(), nav.boundingBox()]);
+  if (!fleetBox || !editBox || !rail) throw new Error("The fleet and its edit action should have visible bounds.");
+  expect(editBox.y + editBox.height / 2).toBeCloseTo(fleetBox.y + fleetBox.height / 2, 0);
+  expect(editBox.x).toBeGreaterThan(fleetBox.x);
+  expect(editBox.x + editBox.width).toBeLessThan(rail.x + rail.width);
   await disclosure.focus();
   await page.keyboard.press("Enter");
   await expect(nav.getByRole("link", {name: "Support triage", exact: true})).toBeHidden();
@@ -108,10 +114,10 @@ test("saved setup has the same composer placement, flat header, summary and retu
   await expect(summary.getByRole("region", {name: "Repositories"})).toContainText("agentsfleet/linkwarden");
   await expect(summary.getByRole("region", {name: "Secrets"})).toContainText("github");
   await expect(summary.getByRole("region", {name: "Public internet access"})).toBeVisible();
-  const packageLabel = summary.getByText("Enable package manager domains", {exact: true});
+  const packageLabel = summary.getByText("Packages", {exact: true});
   const policyRow = packageLabel.locator("../..");
-  await expect(policyRow).toHaveCSS("border-top-width", "1px");
-  await expect(packageLabel).toHaveCSS("white-space", "normal");
+  await expect(policyRow).toHaveCSS("border-top-width", "0px");
+  await expect(packageLabel).toHaveCSS("white-space", "nowrap");
   await expect(summary.getByText("Next wake-up", {exact: true})).toBeVisible();
   await expect(summary).toContainText("Scheduler unavailable");
   await expect(summary.getByRole("button", {name: "Retry registration"})).toBeVisible();
@@ -125,6 +131,35 @@ test("saved setup has the same composer placement, flat header, summary and retu
   }
   await expect(page.getByRole("button", {name: "Work context"})).toHaveCount(0);
   await expect(input).toHaveValue("Preserve the existing regression assertions");
+});
+
+test("a private setup title edits in place and saves when focus leaves", async ({page, chatProbe}) => {
+  await page.route("**/live/v1/workspaces/*/models?*", route => route.fulfill({json: {items: [MODEL], next_cursor: null}}));
+  await page.route("**/live/v1/workspaces/*/drafts?*", route => route.fulfill({json: {items: [], next_cursor: null}}));
+  await page.route(`**/live/v1/workspaces/*/drafts/${DRAFT.id}/messages?*`, route => route.fulfill({json: {items: [], next_cursor: null}}));
+  let draft = DRAFT;
+  await page.route(`**/live/v1/workspaces/*/drafts/${DRAFT.id}`, route => {
+    if (route.request().method() === "PATCH") {
+      expect(route.request().headers()["if-match"]).toBe(DRAFT.etag);
+      draft = {...DRAFT, title: route.request().postDataJSON().title, etag: '"renamed"'};
+    }
+    return route.fulfill({json: draft});
+  });
+  await page.goto(`${chatProbe}?chatError=1&fleetSave=1`);
+  const heading = page.getByRole("heading", {name: DRAFT.title, exact: true});
+  await expect(heading).toBeVisible();
+  const before = await heading.boundingBox();
+  await heading.press("F2");
+  const field = page.getByRole("textbox", {name: "Chat name", exact: true});
+  await expect(field).toBeFocused();
+  await expect(field).toHaveCSS("border-top-width", "0px");
+  await expect(field).toHaveCSS("text-decoration-line", "underline");
+  const editing = await field.boundingBox();
+  expect(editing?.height ?? 0).toBeGreaterThan(0);
+  expect(editing?.height ?? Infinity).toBeLessThanOrEqual((before?.height ?? 0) + 4);
+  await field.fill("Release checklist");
+  await page.getByRole("form", {name: "Setup chat composer"}).getByRole("textbox").click();
+  await expect(page.getByRole("heading", {name: "Release checklist", exact: true})).toBeVisible();
 });
 
 test("a resumed setup retries model choices beside the picker on both appearances", async ({page, chatProbe}, info) => {
@@ -172,23 +207,23 @@ test("a resumed setup retries model choices beside the picker on both appearance
   expect(errors).toEqual([]);
 });
 
-for (const state of ["queued", "running"]) test(`${state} chat shows a spinner, a brightening label and seconds`, async ({page, chatProbe}, info) => {
+for (const state of ["queued", "running"]) test(`${state} chat shows three dots on one text line`, async ({page, chatProbe}, info) => {
   const errors: string[] = [];page.on("pageerror", error => errors.push(error.message));
   await page.goto(`${chatProbe}?loading=${state}`);
-  const label = page.getByText(state === "queued" ? "On it" : "Thinking", {exact: true});
-  await expect(label).toHaveAttribute("data-chat-loading", "true");
-  const line = label.locator("..");
-  await expect(line.locator("[data-chat-spinner]")).toBeVisible();
-  const clock = line.locator("[data-waiting-elapsed]");
-  await expect(clock).toHaveAttribute("aria-hidden", "true");
-  const before = await clock.textContent();
-  await expect.poll(() => clock.textContent()).not.toBe(before);
+  const line = page.getByRole("status", {name: state === "queued" ? "On it" : "Thinking", exact: true});
+  const dots = line.locator(".chat-reply-dots > span");
+  await expect(dots).toHaveCount(3);
+  await expect(dots.first()).toBeVisible();
+  expect(await line.evaluate(element => element.getBoundingClientRect().height)).toBe(
+    await line.evaluate(element => parseFloat(getComputedStyle(element).lineHeight)));
   await page.emulateMedia({reducedMotion: "no-preference"});
-  await expect(label).toHaveCSS("animation-name", "chat-status-sweep");
+  await expect(dots.first()).toHaveCSS("animation-name", "chat-reply-dot");
   await page.screenshot({path: info.outputPath(`chat-${state}.png`), scale: "css"});
   await page.emulateMedia({reducedMotion: "reduce"});
-  await expect(label).toHaveCSS("animation-name", "none");
-  await expect(line.locator("[data-chat-spinner]")).toHaveCSS("animation-name", "none");
+  await expect(dots.first()).toHaveCSS("animation-name", "none");
+  await page.emulateMedia({forcedColors: "active", reducedMotion: "no-preference"});
+  await expect(dots.first()).toHaveCSS("forced-color-adjust", "none");
+  await expect(dots.first()).toHaveCSS("animation-name", "none");
   expect(errors).toEqual([]);
 });
 

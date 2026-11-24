@@ -28,7 +28,7 @@ function FleetItems({collection, drafts, history, workspace, onNavigate}: {histo
   const edits = Map.groupBy(openSetups, card => card.linkedFleet);
   const fleetIds = new Set(page.items.map(fleet => fleet.id));
   const query = useSearchParams();
-  const currentDraft = query.get("draft") ?? history?.current;
+  const currentDraft = query.get("draft") ?? history?.current ?? null;
   const pathname = usePathname();
   const router = useRouter();
   const [selected, setSelected] = useState<NativeFleetSummary | null>(null);
@@ -45,47 +45,67 @@ function FleetItems({collection, drafts, history, workspace, onNavigate}: {histo
     if (pathname.includes(`/fleets/${id}`)) router.replace(`/w/${workspace}/fleets/new`);
     else router.refresh();
   };
-  function setupLink(title: string, card?: SidebarDraft, fleetId?: string) {
-    const href = card ? `/w/${workspace}/fleets/new?draft=${card.id}` : `/w/${workspace}/fleets/${fleetId}/setup`;
-    return <NavItem asChild key={href} appearance="list" active={pathname.endsWith("/fleets/new") && (card ? currentDraft === card.id : query.get("fleet") === fleetId)}
-      onClick={onNavigate} className="min-w-0 font-medium">
-      <Link href={href} prefetch={false} title={card?.title ?? title}>
-        <span className="min-w-0 flex-1 truncate">{title}</span><NotePencilIcon size={14} className="shrink-0 text-text-dim" aria-hidden="true" />
-      </Link>
-    </NavItem>;
-  }
+  const setupLink = (card: SidebarDraft) => renderSetupLink(card, workspace, pathname.endsWith("/fleets/new") && currentDraft === card.id, onNavigate);
   return <>
-    {page.items.map(fleet => <Fragment key={fleet.id}>
-      <FleetRow fleet={fleet} workspace={workspace} pathname={pathname} onNavigate={onNavigate}
-        deleting={selected !== null} onDelete={() => setSelected(fleet)} />
-      {fleet.status !== AGENTSFLEET_STATUS.ARCHIVED && (edits.get(fleet.id)?.map(card => setupLink(`Edit ${fleet.name}`, card))
-        ?? setupLink(`Edit ${fleet.name}`, undefined, fleet.id))}
-    </Fragment>)}
-    {openSetups.filter(card => !card.linkedFleet || !fleetIds.has(card.linkedFleet)).map(card => setupLink(card.title, card))}
+    {page.items.map(fleet => {
+      const linked = edits.get(fleet.id) ?? [];
+      const archived = fleet.status === AGENTSFLEET_STATUS.ARCHIVED;
+      const primary = linked.find(card => card.id === currentDraft) ?? linked[0];
+      const edit = archived ? undefined : fleetEditLink(workspace, fleet.id, primary, pathname, currentDraft, query.get("fleet"));
+      return <Fragment key={fleet.id}>
+        <FleetRow fleet={fleet} workspace={workspace} pathname={pathname} edit={edit} onNavigate={onNavigate}
+          deleting={selected !== null} onDelete={() => setSelected(fleet)} />
+        {archived ? null : linked.filter(card => card !== primary).map(setupLink)}
+      </Fragment>;
+    })}
+    {openSetups.filter(card => !card.linkedFleet || !fleetIds.has(card.linkedFleet)).map(setupLink)}
 
     {!history && setups.error ? <Button variant="link" size="sm" disabled={setupsLoading} onClick={() => {void drafts.load();}}>Retry loading setups</Button> : null}
     {(history ? history.more : setups.more) ? <Button variant="ghost" size="sm" disabled={setupsLoading} onClick={() => {if (history) void history.more?.(); else void drafts.load(true);}}>Load more setups</Button> : null}
-    {page.loading && !page.items.length ? <output className="px-md text-label text-muted-foreground">Loading fleets…</output> : null}
-    {!page.loading && !page.error && !page.items.length && !openSetups.length && !setupsLoading ? <p className="px-md text-label text-muted-foreground">Saved fleets will appear here.</p> : null}
-    {page.error ? <output className="px-md py-sm text-label text-muted-foreground">{page.error} <Button variant="link" size="sm" disabled={page.loading} onClick={() => {void collection.load();}}>Refresh</Button></output> : null}
+    {page.loading && !page.items.length ? <output className="px-lg text-label text-muted-foreground">Loading fleets…</output> : null}
+    {!page.loading && !page.error && !page.items.length && !openSetups.length && !setupsLoading ? <p className="px-lg text-label text-muted-foreground">Saved fleets will appear here.</p> : null}
+    {page.error ? <output className="px-lg py-sm text-label text-muted-foreground">{page.error} <Button variant="link" size="sm" disabled={page.loading} onClick={() => {void collection.load();}}>Refresh</Button></output> : null}
     {page.more ? <Button variant="ghost" size="sm" disabled={page.loading} onClick={() => {void collection.load(true);}}>Load more fleets</Button> : null}
     {selected ? <FleetLifecycleDialog action="delete" fleet={selected} workspace={workspace} onRemoved={removed} onClose={() => setSelected(null)} /> : null}
   </>;
 }
 
-function FleetRow({fleet, workspace, pathname, onNavigate, deleting, onDelete}: {
+function renderSetupLink(card: SidebarDraft, workspace: string, active: boolean, onNavigate: () => void) {
+  const href = `/w/${workspace}/fleets/new?draft=${card.id}`;
+  return <NavItem asChild key={href} appearance="list" active={active} onClick={onNavigate} className="min-w-0 px-lg font-medium">
+    <Link href={href} prefetch={false} title={card.title}>
+      <span className="min-w-0 flex-1 truncate">{card.title}</span><NotePencilIcon size={14} className="shrink-0 text-text-dim" aria-hidden="true" />
+    </Link>
+  </NavItem>;
+}
+
+function fleetEditLink(workspace: string, fleetId: string, draft: SidebarDraft | undefined, pathname: string,
+  currentDraft: string | null, selectedFleet: string | null) {
+  const setupPath = `/w/${workspace}/fleets/${fleetId}/setup`;
+  const setupPage = pathname.endsWith("/fleets/new");
+  if (draft) return {href: `/w/${workspace}/fleets/new?draft=${draft.id}`, selected: setupPage && currentDraft === draft.id, title: draft.title};
+  return {href: setupPath, selected: pathname === setupPath || setupPage && selectedFleet === fleetId};
+}
+
+function FleetRow({fleet, workspace, pathname, edit, onNavigate, deleting, onDelete}: {
   fleet: NativeFleetSummary; workspace: string; pathname: string; onNavigate: () => void;
+  edit: {href: string; selected: boolean; title?: string | undefined} | undefined;
   deleting: boolean; onDelete: () => void;
 }) {
-  return <div className="group relative">
-    <NavItem asChild appearance="list" active={pathname === `/w/${workspace}/fleets/${fleet.id}`} className="pr-12" onClick={onNavigate}>
+  return <div className="group flex min-w-0 items-center">
+    <NavItem asChild appearance="list" active={pathname === `/w/${workspace}/fleets/${fleet.id}`} className="min-w-0 flex-1 px-lg" onClick={onNavigate}>
       <Link href={`/w/${workspace}/fleets/${fleet.id}`} prefetch={false} title={`${fleet.name} · ${fleet.status}`}>
         <span className="min-w-0 flex-1 truncate font-semibold text-foreground">{fleet.name}</span>
         {fleet.status === AGENTSFLEET_STATUS.ARCHIVED ? <span className="shrink-0 text-eyebrow text-text-dim">Archived</span> : null}
       </Link>
     </NavItem>
+    {edit ? <NavItem asChild appearance="list" active={edit.selected} className="w-9 shrink-0 justify-center px-0 pointer-coarse:w-11" onClick={onNavigate}>
+      <Link href={edit.href} prefetch={false} aria-label={`Edit ${fleet.name}`} title={edit.title ?? `Edit ${fleet.name}`}>
+        <NotePencilIcon size={14} aria-hidden="true" />
+      </Link>
+    </NavItem> : null}
     <IconAction revealOnRowFocus variant="ghost" label={`Permanently delete fleet: ${fleet.name}`} disabled={deleting}
-      className="absolute right-xs top-1/2 -translate-y-1/2"
+      className="shrink-0"
       onClick={onDelete}><TrashIcon size={14} aria-hidden="true" /></IconAction>
   </div>;
 }

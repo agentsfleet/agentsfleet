@@ -80,10 +80,10 @@ mod integration_tenant_models;
 mod integration_tenant_money;
 #[path = "integration_tenant_provider.rs"]
 mod integration_tenant_provider;
+#[path = "integration_wall_notices.rs"]
+mod integration_wall_notices;
 #[path = "integration_wall_recheck.rs"]
 mod integration_wall_recheck;
-#[path = "integration_wall_ticks.rs"]
-mod integration_wall_ticks;
 #[path = "integration_workspace_approvals.rs"]
 mod integration_workspace_approvals;
 #[path = "integration_workspace_approvals_answers.rs"]

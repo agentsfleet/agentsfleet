@@ -1,15 +1,12 @@
 import type { MessageState } from "@assistant-ui/react";
-import type { readReasoningSpan, ReplyFigures } from "../messages/fleetMessageReaders";
+import type { readReasoningSpan } from "../messages/fleetMessageReaders";
 import { z } from "zod";
 
 export type ReplyContext = {
-  errored: boolean; running: boolean; queued: boolean; turnId: string; reasoning: string;
+  running: boolean; queued: boolean; turnId: string; reasoning: string;
   span: ReturnType<typeof readReasoningSpan>;
   content: MessageState["content"];
-  startedAtMs: number;
   wallMs?: number | null;
-  figures?: ReplyFigures;
-  activity?: unknown;
   contextProgress?: unknown;
   plainText?: boolean;
 };

@@ -1,4 +1,5 @@
 import type { HttpRequestInput } from "../../services/http-client.ts";
+import type { FieldTones } from "../../output/index.ts";
 import { Effect, Schema } from "effect";
 import { HttpClient } from "../../services/http-client.ts";
 import { Output, OUTPUT_FORMAT } from "../../services/output.ts";
@@ -16,11 +17,7 @@ const RESPONSE_HINT = "verify that this terminal client and daemon use the same 
 export const platformRequest = Effect.fn("platform.request")(function* (request: HttpRequestInput) {
   const http = yield* HttpClient;
   const token = yield* resolveAuthToken;
-  const output = yield* Output;
-  return yield* Effect.scoped(Effect.gen(function* () {
-    yield* output.progress("Contacting platform…");
-    return yield* http.request<unknown>({...request, token});
-  }));
+  return yield* http.request<unknown>({...request, token});
 });
 
 export function decodePlatform<T>(schema: Schema.Codec<T, unknown>, value: unknown) {
@@ -47,11 +44,11 @@ export const readPlatformFile = Effect.fn("platform.readFile")(function* (path: 
   return yield* Effect.try({try: (): unknown => JSON.parse(text), catch: () => invalidInput("The input must contain valid JSON")});
 });
 
-export const platformResult = Effect.fn("platform.result")(function* (value: unknown, title: string, fields: Readonly<Record<string, string>>) {
+export const platformResult = Effect.fn("platform.result")(function* (value: unknown, title: string, fields: Readonly<Record<string, string>>, tones?: FieldTones) {
   const output = yield* Output;
   if (output.format === OUTPUT_FORMAT.json || !output.stdoutIsTty) return yield* output.printJson(value);
   yield* output.printSection(title);
-  yield* output.printKeyValue(fields);
+  yield* output.printKeyValue(fields, tones);
 });
 
 export function platformPath(base: string, id: string, suffix = "") {

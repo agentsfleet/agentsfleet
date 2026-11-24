@@ -12,7 +12,7 @@ WITH prior_run AS MATERIALIZED (
   WHERE l.turn_id = $3 AND COALESCE(l.fleet_id, l.draft_id) = COALESCE($1::uuid, $2::uuid)
   ORDER BY l.fencing_token DESC
   LIMIT 1
-  FOR UPDATE OF l
+  FOR NO KEY UPDATE OF l
 ), bumped AS (
   UPDATE thread.runs l SET status = $5, updated_at = now()
   FROM prior_run p WHERE l.id = p.id AND l.status = $4

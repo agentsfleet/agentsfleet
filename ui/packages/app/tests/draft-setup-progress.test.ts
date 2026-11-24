@@ -38,7 +38,7 @@ it("keeps the original pending action and operation key after a lost save respon
   // Save writes the default tools with a PATCH before its POST; the key is the POST's.
   const saves = () => fixture.mutations().filter(call => call.method === "POST");
   const key = saves()[0]?.headers.get("Idempotency-Key");
-  await expect(client.rename("Renamed setup")).rejects.toMatchObject({status: 409});
+  await expect(client.rename(DRAFT_ID, "Renamed setup")).rejects.toMatchObject({status: 409});
   expect(client.getSnapshot().setupAction).toBe("saving");
   expect(saves()).toHaveLength(1);
   fixture.override = () => undefined;

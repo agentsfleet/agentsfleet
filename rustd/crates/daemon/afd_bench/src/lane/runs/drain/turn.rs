@@ -1,14 +1,13 @@
 //! One simulated turn: what a run sends between its grant and its report.
 //!
 //! A drained "chat" that held and reported at once left out most of a real
-//! one: a runner renews its run every [`RENEWAL_TICK`] and its activity pump
+//! one: a runner renews its run every [`HEARTBEAT_INTERVAL`] and its activity pump
 //! posts the live tail every [`ACTIVITY_FLUSH`] while the model streams. The
 //! plan counts how many of each one turn of a given length sends, and whether
 //! the runner also holds the run for that long.
 
+use afd_runner::timing::HEARTBEAT_INTERVAL;
 use core::time::Duration;
-
-use af_core::timing::RENEWAL_TICK;
 
 /// How often the runner's activity pump flushes a batch of frames: the
 /// supervisor's `FLUSH_EVERY`, restated because a bench must not depend on
@@ -32,7 +31,7 @@ impl Turn {
     #[must_use]
     pub(in crate::lane::runs) fn back_to_back(turn: Duration) -> Self {
         Self {
-            renewals: whole(turn, RENEWAL_TICK),
+            renewals: whole(turn, HEARTBEAT_INTERVAL),
             posts: whole(turn, ACTIVITY_FLUSH),
             hold: None,
         }

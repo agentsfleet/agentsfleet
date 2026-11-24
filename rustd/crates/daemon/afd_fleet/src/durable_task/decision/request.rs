@@ -38,6 +38,32 @@ struct Objective<'a> {
     objective: &'a str,
 }
 
+/// The part of `message` an item assessment names, or `None` for a whole message or a
+/// goal. A range that does not fall on characters of `message` is an invalid target; the
+/// reservation judges it before it assigns the source turn, so a malformed range changes
+/// nothing.
+pub(super) fn assessed<'m>(
+    input: &DecisionReservationInput,
+    message: &'m str,
+) -> Result<Option<&'m str>> {
+    match &input.assessment {
+        af_wire::durable_task::DecisionAssessment::Item {
+            source_start,
+            source_end,
+            ..
+        } => {
+            // Validation proves nonnegative offsets; the width assertion preserves every u32.
+            let span = usize::try_from(source_start.unsigned_abs()).unwrap_or(usize::MAX)
+                ..usize::try_from(source_end.unsigned_abs()).unwrap_or(usize::MAX);
+            Ok(Some(
+                message.get(span).ok_or(DurableTaskRefusal::InvalidTarget)?,
+            ))
+        }
+        af_wire::durable_task::DecisionAssessment::Message
+        | af_wire::durable_task::DecisionAssessment::Goal { .. } => Ok(None),
+    }
+}
+
 pub(super) fn compile(
     call: &Uuid7,
     input: &garde::Valid<DecisionReservationInput>,
@@ -47,20 +73,7 @@ pub(super) fn compile(
     candidates: &[Candidate],
     questions: Vec<NamedQuestion>,
 ) -> Result<DecisionRequest> {
-    let assessed_message = match &input.assessment {
-        af_wire::durable_task::DecisionAssessment::Item {
-            source_start,
-            source_end,
-            ..
-        } => {
-            // Validation proves nonnegative offsets; the width assertion preserves every u32.
-            let span = usize::try_from(source_start.unsigned_abs()).unwrap_or(usize::MAX)
-                ..usize::try_from(source_end.unsigned_abs()).unwrap_or(usize::MAX);
-            Some(message.get(span).ok_or(DurableTaskRefusal::InvalidTarget)?)
-        }
-        af_wire::durable_task::DecisionAssessment::Message
-        | af_wire::durable_task::DecisionAssessment::Goal { .. } => None,
-    };
+    let assessed_message = assessed(input, message)?;
     let source_turn_id = crate::durable_task::guard::wire(&input.source_turn_id)?;
     let state = State {
         source_turn_id: &source_turn_id,

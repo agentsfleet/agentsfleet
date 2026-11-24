@@ -60,8 +60,8 @@ test.describe("setup revisions", () => {
     await page.goto(workspaceHref(workspaceId, NEW_FLEET));
     await page.getByLabel(CHAT_PLACEHOLDER).fill(description());
     await page.getByRole("button", { name: CHAT_COPY.start, exact: true }).click();
-    // The proposed name heads the page (DraftChatHeading); the setup region holds its checks.
-    await expect(page.getByRole("heading", { level: 1, name: FLEET_NAME, exact: true })).toBeVisible({ timeout: PROPOSAL_TIMEOUT_MS });
+    // The chat title is editable. The setup region shows the proposed fleet name.
+    await expect(setupSummary(page).getByText(FLEET_NAME, { exact: true })).toBeVisible({ timeout: PROPOSAL_TIMEOUT_MS });
     await (await privateSaveButton(page)).click();
     const saved = await openSavedFleet(page, { handle: FIXTURE_KEY.regular, workspaceId });
     fleetId = saved;
@@ -93,7 +93,7 @@ test.describe("setup revisions", () => {
       // The stale edit lands after this chat's draft exists: an editing draft opened earlier
       // on revision 1 is the creator's to continue (draft-editor.ts editorPatch), so it would
       // have been this chat's draft rather than a superseded one.
-      const packages = stale.getByRole("switch", {name: "Enable package manager domains"});
+      const packages = stale.getByRole("switch", {name: "Packages"});
       await expect(packages).toBeEnabled();
       await packages.click();
       await expect(packages).toBeChecked();

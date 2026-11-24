@@ -20,7 +20,7 @@ It promotes the build outputs of a successful `test.yml` run for the exact same 
 
 ## Before you begin
 
-1. Confirm founding steps 01 through 06 have green evidence. If not, stop and use [chronological setup](../../README.md#chronological-setup); never infer a rebuild.
+1. Confirm founding steps 01 through 06 have green evidence. If not, stop and use [chronological setup](../../hosted/README.md#chronological-setup); never infer a rebuild.
 2. Run the read-only input gate:
 
    ```bash
