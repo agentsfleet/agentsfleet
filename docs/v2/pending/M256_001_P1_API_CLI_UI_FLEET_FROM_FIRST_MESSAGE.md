@@ -22,7 +22,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Categories:** API, CLI, UI
 
-**Batch:** B1, alone; the design is ruled, and two defaults (A1 and A2) wait for Indy's approval before any build
+**Batch:** B1, alone; the design is ruled, and nothing is built until Indy approves this report (§1)
 
 **Depends on:** M255_001 (merged as #862), whose Dimension 1.1, the rulings on `docs/architecture/schema_convergence.md`, closed here on Nov 24, 2026
 
@@ -52,7 +52,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 - **A ceremony before work.** A draft is private to its creator (`afd_setup/src/sql/draft/lock.sql:8`), is reviewed and saved against a digest (`afd_api_wire/src/fleet/input.rs:48-62`), waits in `installing` for grant cards (`afd_setup/src/creation/activate.rs:77-92`), and expires 30 days after it closes (`afd_setup/src/creation/mod.rs:88`).
 - **A document someone must write.** A run is refused without a Definition, a revision and a model (`afd_fleet/src/run/installed.rs:164-193`), and is offered only the tools the Definition lists (`docs/architecture/capabilities.md:23`).
 
-**Solution summary:** A fleet becomes a name, a model, a thread, its memory, its grants, its triggers and its schedules. `POST W/fleets` writes the fleet and its first turn. A run is offered the tool catalog. A person attaches a secret or an integration to a fleet, and a run holds exactly what is attached. The fleet adds its own schedules and triggers by tool, and starts a durable task by tool when a person's message asks for work that must keep going. Standing guidance is the fleet's memory. Each fleet has a network toggle, private by default. The draft, the Definition and its revisions, the setup run kind, the review, Save, `installing`, `/setup`, the per-fleet budget, the event-gate rules and the grant approval card are deleted.
+**Solution summary:** A fleet becomes a name, a model, a thread, its memory, its grants, its triggers and its schedules. `POST W/fleets` writes the fleet and its first turn. A run is offered the tool catalog. A person attaches a secret or an integration to a fleet, and a run holds exactly what is attached. The fleet adds its own schedules and triggers by tool, and starts a durable task by tool when a person's message asks for work that must keep going. Standing guidance is the fleet's pinned memory, which every run's prompt carries. Each fleet has a network toggle, private by default. The draft, the Definition and its revisions, the setup run kind, the review, Save, `installing`, `/setup`, the per-fleet budget, the event-gate rules and the grant approval card are deleted.
 
 **Design flow:**
 
@@ -68,7 +68,7 @@ AFTER   first message ─► POST W/fleets {message, operation_id, model_ref?, n
                    ─► the next run holds it; each secret is sent only to its own host
         wakes on   "check every 15 minutes" ─► cron_add (exists) ─► fleet.schedules
                    "wake on Sentry alerts"  ─► trigger_add ─► fleet.triggers ─► the fleet page shows the URL
-        guidance   "always link the evidence" ─► memory_store (exists) ─► loaded into every later run
+        guidance   "always link the evidence" ─► memory_store, pinned (exists) ─► in the system prompt of every later run
         task       "fix the null-cart error until PR 88 is green" ─► the fleet's model calls task_start ─► the daemon binds the task
                    ─► after each group of actions the decision model judges the task's own done-questions
 ```
@@ -101,9 +101,9 @@ AFTER   first message ─► POST W/fleets {message, operation_id, model_ref?, n
 | Network | Each fleet has an "Allow all" and a "Packages" toggle, private by default. The runner's posture stays as the operator's ceiling. |
 | Steering | Any fleet may steer any fleet in its workspace. |
 | Gates | The per-fleet rule for events that wait for a person is deleted. |
-| Tasks | The fleet's own model decides when a message becomes a task and writes its completion questions. The decision model only judges whether it is done. A task follows the fleet's access at each run. No tenant route creates one (D4). |
+| Tasks | The fleet's own model decides when a message becomes a task and writes its completion questions. The decision model only judges whether it is done. A later message joins a running task through the fleet's model too. A task follows the fleet's access at each run. No tenant route creates one (D4). |
 | Wallet | A payer with no wallet row is refused. |
-| Memory | Standing guidance lives in the fleet's memory. |
+| Memory | Standing guidance lives in the fleet's memory. Pinned entries are put into every run's prompt, under a short fixed text. Read-only network access is dropped. |
 | D5 | The schema folds, fourteen tables to eight, are built as M256_002. |
 
 **What gets looser or different.** Each line is a behaviour change this report asks Indy to accept.
@@ -113,17 +113,18 @@ AFTER   first message ─► POST W/fleets {message, operation_id, model_ref?, n
 3. A fleet may add any webhook, GitHub subscription or Slack channel the workspace has connected. A hostile page a run reads can ask for the same.
 4. A fleet set to "Allow all" can post what it has read to any public host. On an `allow_all` runner the sandbox shares the host's network whatever the fleet's toggle says, as today. A stored secret is still sent only to its own `host` field (`af_egress/src/policy/mod.rs:219-241`).
 5. No fleet has a budget. A fleet that schedules itself can spend the payer's whole balance.
-6. Nothing pins instructions into a run's prompt. What a person asked a fleet to remember is in memory, loaded per run (`afd_fleet/src/run/answer/mod.rs:87`).
-7. One model starts a task, where today two must agree (`afr_agent/src/decision/routing.rs:80-106`), and it writes the done-questions the judge then uses. A person may edit them.
-8. A fleet that has a task no longer loses its tools on plain questions (`afr_agent/src/loop/mod.rs:111-118`).
-9. Approving and denying disappear. With the gate rules and the grant card gone, the only thing a person answers is a run's question. unverified: that nothing else writes an approval gate; the access trace found three writers (`afd_gate/src/gate/park.rs`, `afd_fleet/src/run/commit/question.rs`, the grant request).
-10. A removed grant leaves a live run with the secret it was issued. The next run and the next token mint do not have it.
+6. A fleet knows its job only from what it pinned in memory and from the conversation. Today the Definition's instructions are the system prompt (`afr_agent/src/prompt/mod.rs:41-52`) and memory is reached only by a recall (`docs/architecture/memory.md:73-75`). Pinned entries spend prompt space on every run.
+7. Read-only is gone. A fleet may write with any credential attached to it, where a Definition could hold it to reads.
+8. One model starts a task, where today two must agree (`afr_agent/src/decision/routing.rs:80-106`), and it writes the done-questions the judge then uses. A person may edit them. A later message is linked to a running task by that same model, with no probability bar, where today the link needs 0.95 (`docs/architecture/goal_evaluation.md:383-389`).
+9. A fleet that has a task no longer loses its tools on plain questions (`afr_agent/src/loop/mod.rs:111-118`).
+10. Approving and denying disappear. With the gate rules and the grant card gone, the only thing a person answers is a run's question. unverified: that nothing else writes an approval gate; the access trace found three writers (`afd_gate/src/gate/park.rs`, `afd_fleet/src/run/commit/question.rs`, the grant request).
+11. A removed grant leaves a live run with the secret it was issued. The next run and the next token mint do not have it.
 
-### A1 — A later message reaches an unfinished task through the worker's tool. DEFAULT
+### A1 — A later message reaches an unfinished task through the worker's tool. RULED
 
-Today the decision model's association answer links a person's later message to a task. With the worker deciding, it is shown the fleet's unfinished tasks and calls `task_input` to add the message to one, `task_start` for new work, or neither. Alternative: a decision call on each person's message while a task is unfinished.
+Today the decision model's association answer links a person's later message to a task. With the worker deciding, it is shown the fleet's unfinished tasks and calls `task_input` to add the message to one, `task_start` for new work, or neither. The daemon's part stays: it records the input under the task's generation, cancels a wait and queues the continuation (`afd_fleet/src/durable_task/accept/input.rs`). Declined: a decision call on each person's message while a task is unfinished, and a task the person selects.
 
-### A2 — The toggles' defaults and who flips them. DEFAULT
+### A2 — The toggles' defaults and who flips them. RULED: both off; a signed-in person flips them
 
 "Allow all" and "Packages" both start off. A signed-in person with `fleet:write` flips them; an API key cannot. A private fleet's HTTP tools reach the hosts of its attached secrets, GitHub when attached, and the package registries when "Packages" is on. The sandbox follows the runner's posture as today, with those same hosts added on an allow-list runner.
 
@@ -202,11 +203,11 @@ Counts are from the worktree at `d79e88a46`, production files with tests apart u
 
 Build order: §1, a doc-only commit of the design, then §2 to §8, one gated commit each. **The dual-read rule:** until §8 a fleet whose `head_revision_id` is NULL takes the new path, and a fleet with a revision takes today's, so drafts and their tests stay green. Schema edits before §8 only add; §8 drops. The runner protocol's `VERSION` moves once, in §8.
 
-### §1 — Indy approves the two defaults
+### §1 — Indy approves this report
 
-No code. A1 and A2 are put through AskUserQuestion, and each "DEFAULT" becomes "RULED" with his quote before the spec leaves `pending/`.
+No code. Every decision above is ruled. Indy reads the report as the dry run of the change and approves it, or sends it back, before the spec leaves `pending/`.
 
-- **Dimension 1.1** — the defaults are approved or overruled → Test `first_message_defaults_signed_off` (manual): Indy answers A1 and A2. Expected: no heading reads "DEFAULT", and Discovery quotes him. Evidence: this spec, in the Pull Request.
+- **Dimension 1.1** — the report is approved → Test `first_message_report_signed_off` (manual): Indy reads the rulings, the eleven behaviour changes, the Sections and the Schema table. Expected: his approval quoted in Discovery. Evidence: this spec, in the Pull Request.
 
 ### §2 — A fleet with no revision is created, assigned and run
 
@@ -214,7 +215,9 @@ No code. A1 and A2 are put through AskUserQuestion, and each "DEFAULT" becomes "
 
 **Run.** The message admit, the candidate list, the assignment and `installed.rs` accept a fleet with no revision. The policy build takes the fleet row and its grants: the whole tool catalog; `secrets_map` and the mintable list from the grants; the context limits from the model; no budget. The wallet check stays and refuses a payer with no wallet row.
 
-**Network.** `fleet.fleets.http_egress` (`restricted` or `public`) and `package_domains` replace the Definition's `network` key and feed `NetworkPolicy` as it does today. `allow` is derived: the `host` of each attached secret, and GitHub's when attached. The runner's posture and the supervisor's merge of its registry list with the fleet's hosts are unchanged (`afr_supervisor/src/egress/mod.rs`). A person's `PATCH F` flips either toggle (A2).
+**Network.** `fleet.fleets.http_egress` (`restricted` or `public`) and `package_domains` replace the Definition's `network` key and feed `NetworkPolicy` as it does today. `allow` is derived: the `host` of each attached secret, and GitHub's when attached. `read_only` and `read_post_paths` are deleted. The runner's posture and the supervisor's merge of its registry list with the fleet's hosts are unchanged (`afr_supervisor/src/egress/mod.rs`). A person's `PATCH F` flips either toggle (A2).
+
+**Prompt.** The payload carries the fleet's name and no instructions. `afr_agent`'s prompt builder writes a fixed text (what a fleet is, its name, how it remembers, schedules, adds triggers, starts tasks and what to say when it lacks access), then every pinned entry the memory load carried (category `core`), under one heading. Entries of other categories stay recall-only.
 
 **The witness.** `fleet.fleets.policy_version` starts at 0 and rises in the statement that changes the model, a toggle or a grant. A run stores it at issue; the issue insert takes the fleet `FOR SHARE` and writes no run when the version moved; a turn checkpoint is refused when its version differs, as a changed revision is today. A token mint reads the fleet's current grants.
 
@@ -231,7 +234,9 @@ No code. A1 and A2 are put through AskUserQuestion, and each "DEFAULT" becomes "
 - **Dimension 2.11** — the model is a field → Test `a_model_change_is_one_patch` (integration): `PATCH F {model_ref}` → 200, `policy_version` + 1, the next run's provider is the new model, one `model_changed` turn; an ineligible ref → 409 `UZ-SETUP-008` and no change.
 - **Dimension 2.12** — a private fleet is held to its hosts → Test `a_private_fleet_is_refused_at_an_unlisted_host` (integration): a restricted fleet with `sentry` attached → an HTTP tool call to another public host is refused `host_not_allowed`; the secret's own host is reached.
 - **Dimension 2.13** — only a person opens the network → Test `an_api_key_cannot_open_a_fleets_network` (integration): an API key sends `PATCH F {http_egress:"public"}` → 403 and no change; a person's patch → 200 and `policy_version` + 1.
-- **Dimension 2.14** — the answer arrives in the fleet's chat → Test `a_first_message_is_answered_on_the_fleet_stream` (e2e, `af_e2e`): two daemons, the real bus and Postgres, a native runner; the create, then `GET F/turns/stream` delivers the turn's completion.
+- **Dimension 2.14** — pinned memory is in the prompt → Test `a_runs_prompt_carries_the_fleets_name_and_pinned_memory` (unit, `afr_agent`): a payload with two `core` entries and one `daily` entry → the system prompt holds the fixed text, the fleet's name and both pinned entries, and not the third.
+- **Dimension 2.15** — a bare fleet's prompt names no job → Test `a_new_fleets_prompt_holds_only_the_fixed_text` (unit): no pinned entry → the prompt holds the fixed text and no memory heading.
+- **Dimension 2.16** — the answer arrives in the fleet's chat → Test `a_first_message_is_answered_on_the_fleet_stream` (e2e, `af_e2e`): two daemons, the real bus and Postgres, a native runner; the create, then `GET F/turns/stream` delivers the turn's completion.
 
 ### §3 — A person attaches access, and a run holds exactly that
 
@@ -335,7 +340,7 @@ removed                W/drafts and every D route; POST F/revisions; GET F/setup
 
 **Codes.** Kept under their numbers: `UZ-SETUP-005` (a changed replay), `UZ-SETUP-008` (no usable model), `UZ-SETUP-004` (a missing tag), `UZ-AGT-006`, `UZ-AGT-016`. New codes take the next free numbers in `af_core/src/error_code/fleet.rs`, each with its `REGISTRY` row and problem entry: a grant's name is not in the workspace, an integration is not connected, a trigger sits outside the fleet's grants, a trigger already exists. A caller that is not a person answers the existing 403. The rest of the `UZ-SETUP` family and the budget codes are deleted.
 
-**Runner wire.** `RunPayload` loses `setup_revision_id`, `instructions` and the draft owner, and gains `policy_version`. New verbs under L, each with `item_id`, `call_number` and `fencing_token`: `triggers` (add, list, remove), and `durable_tasks` start and input, which replace the binding and the input receipt as the runner calls them. The decision verbs keep the goal assessment and lose the message and item assessments. `VERSION` moves once.
+**Runner wire.** `RunPayload` loses `setup_revision_id`, `instructions` and the draft owner, and gains `policy_version` and the fleet's `name`. `NetworkPolicy` loses `read_only` and `read_post_paths`. New verbs under L, each with `item_id`, `call_number` and `fencing_token`: `triggers` (add, list, remove), and `durable_tasks` start and input, which replace the binding and the input receipt as the runner calls them. The decision verbs keep the goal assessment and lose the message and item assessments. `VERSION` moves once.
 
 **Schema** (edited in place, pre-production; adds land with their Section, drops in §8).
 
@@ -394,9 +399,9 @@ The `SetupStep` events, `fleet_setup_finished`, `fleet_setup_cancelled` and `set
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Indy approved or overruled A1 and A2 (§1) | `git grep -n -e "^### A[1-2] .* DEFAULT$" -- docs/v2` | no output | P0 | |
+| R1 | Indy approved this report, and no default is open (§1) | `git grep -n -e "^### A[1-2] .* DEFAULT$" -- docs/v2` | no output, and Discovery holds his approval | P0 | |
 | R2 | A first message creates one active fleet with its turn, once, and is answered on its stream (§2) | `make test-integration-rustd` | exit 0; `a_first_message_creates_an_active_fleet_with_its_turn ... ok`, `a_repeated_create_answers_the_same_fleet ... ok`, `a_first_message_is_answered_on_the_fleet_stream ... ok` | P0 | |
-| R3 | A bare fleet runs with the catalog and no secret, and the wallet is its only ceiling (§2) | `make test-integration-rustd` | exit 0; `a_new_fleets_run_holds_the_catalog_and_no_secret ... ok`, `a_run_with_no_balance_is_refused ... ok` | P0 | |
+| R3 | A bare fleet runs with the catalog and no secret, and the wallet is its only ceiling (§2) | `make test-integration-rustd` | exit 0; `a_new_fleets_run_holds_the_catalog_and_no_secret ... ok`, `a_run_with_no_balance_is_refused ... ok`; and `make test-unit-all` shows `a_runs_prompt_carries_the_fleets_name_and_pinned_memory ... ok` | P0 | |
 | R4 | A run holds exactly what a person attached (§3) | `make test-integration-rustd` | exit 0; `an_attached_secret_is_in_the_next_runs_policy ... ok`, `an_api_key_cannot_add_a_grant ... ok`, `a_removed_grant_leaves_the_next_run_without_the_secret ... ok` | P0 | |
 | R5 | Triggers route from rows the fleet added (§4) | `make test-integration-rustd` | exit 0; `a_webhook_trigger_admits_a_signed_delivery ... ok`, `a_github_trigger_routes_an_app_delivery ... ok`, `a_mention_reaches_the_fleet_subscribed_to_its_channel ... ok` | P0 | |
 | R6 | The fleet's model starts a task, only under a person's message, and plain chat pays no decision call (§5) | `make test-integration-rustd` | exit 0; `a_task_start_binds_a_task_with_its_own_questions ... ok`, `a_task_start_under_a_webhook_turn_is_refused ... ok`, `a_plain_message_makes_no_decision_call ... ok`, `a_goal_check_uses_the_tasks_questions ... ok` | P0 | |
@@ -419,7 +424,7 @@ The `SetupStep` events, `fleet_setup_finished`, `fleet_setup_cancelled` and `set
 | the Definition and its engines | `git grep -n -w -e FleetConfig -e "Definition::parse" -e DecisionPolicy -e GatePolicy -e propose_setup -e SetupWork -e "Owner::Draft" -e "RunKind::Setup" -e same_durable_task_authority -- rustd` | no output |
 | review, Save and `installing` | `git grep -n -e review_digest -e draft_candidate_id -e SaveSource -e save_requested -e PRIVATE_RETENTION -e "FleetStatus::Installing" -e "PatchStatus::Active" -e setup_stream_ready -- rustd ui/packages cli public` | no output |
 | the grant card, approve and deny | `git grep -n -e request_for_setup -e first_ungranted -e integration_grants -e "integration-grants" -e GateContinuation -e gate_continuation -- rustd ui/packages cli public` | no output |
-| the task intake | `git grep -n -e task_intent_unavailable -e allow_actions -e "DecisionAssessment::Message" -e "DecisionAssessment::Item" -- rustd` | no output |
+| the task intake | `git grep -n -e task_intent_unavailable -e allow_actions -e "DecisionAssessment::Message" -e "DecisionAssessment::Item" -e read_post_paths -e INSTALLED_INSTRUCTIONS -- rustd` | no output |
 | recipes and the fleet budget | `git grep -n -e "Source::Trigger" -e daily_nanos -e monthly_nanos -e budget_used_nanos -- rustd ui/packages cli public` | no output |
 | the setup clients | `git ls-files ui/packages/app/components/domain/setup "ui/packages/app/lib/api/draft*" ui/packages/app/lib/api/setup-proxy ui/packages/app/lib/setup-requirements.ts cli/src/commands/chat/setup-session.ts cli/src/commands/chat/setup-recovery.ts` | no output |
 
@@ -437,7 +442,7 @@ The `SetupStep` events, `fleet_setup_finished`, `fleet_setup_cancelled` and `set
 
 1. **Successful user moment** — a person types one sentence on New fleet and reads the fleet's answer in that fleet's chat, with nothing to set up.
 2. **Preserved user behaviour** — messages, stops, schedules, memory, a run's question, durable tasks, archive and delete work as they do today. Webhook URLs and GitHub and Slack routing keep working from rows.
-3. **Optimal-way check** — one call that writes the fleet and its turn, and no document behind it. The gap is the two defaults in A1 and A2.
+3. **Optimal-way check** — one call that writes the fleet and its turn, and no document behind it. Every decision is ruled; the gap is Indy's approval of this report.
 4. **Rebuild-vs-iterate** — rebuild how a fleet comes to exist and what a run's policy is read from; iterate on the run loop, schedules and tasks.
 5. **What we build** — a create that takes a message; a policy read from the fleet and its grants; grants a person adds; a network toggle per fleet; trigger rows with their tools; a task the fleet's model starts, with its own questions; two lists on the fleet page; the CLI's create, chat and lists.
 6. **What we do NOT build** — a setup of any kind, a settings page, a starter Definition, a fleet budget, an access request from a run, a task route, a slug derived from the message.
@@ -466,10 +471,12 @@ The `SetupStep` events, `fleet_setup_finished`, `fleet_setup_cancelled` and `set
 - > Owner (Indy, Nov 24, 2026): "i think the runner poster must be nuked and this must on a fleet based, the summary has the toggle. So remove from runner and add it to per fleet based, by defaut fleets are private.", then, after the host-network risk was put to him, "Fleet toggle; runner stays the ceiling (Recommended)" — context: the network. It replaces his earlier "The runner's egress only".
 - > Owner (Indy, Nov 24, 2026): "Refuse the run (Recommended)" — context: a payer with no wallet row. "Follow the fleet's access (Recommended)" — context: a task and the fleet's grants.
 - > Owner (Indy, Nov 24, 2026): "who decided the durable task before, since now its manual?", "so a decision call for every message, is that how we do today?", "decision can be on messages too. i want to understand how decision worked in drafts", then "The fleet's own model decides, like setup did", with "how does the model call decide for a decision model elaborate ascii pictorial" — context: task intake. The author had recommended a Tasks toggle and said this option deserved its own spec; it is §5 here, since no other switch survives the Definition.
-- **Owner decisions** — the scope, D1 to D5, access, triggers, steering, the network, the wallet, the gates, tasks and memory: RULED. A1 and A2: DEFAULT, awaiting approval through AskUserQuestion; a question that times out is not an answer.
+- > Owner (Indy, Nov 24, 2026): "for a plain message like `hello`, `how are you`, `what is your name` what happens" and "i wanna keep it chat based unlike you had before where you just save when i just types 1 message, in here it wont be the case since there is no safe keep it open like openclaw like" — context: nothing about a fleet's job is saved on its first message; it grows by chat. "Pinned memory in every prompt (Recommended)" — context: the prompt. "Drop it" — context: read-only network access.
+- > Owner (Indy, Nov 24, 2026): "Both off; a person flips (Recommended)" — context: A2. "The fleet's own model, by tool", with "what is the current as is behavior before we intend to change" — context: A1, against the author's recommendation to keep the decision model's 0.95 bar while a task runs.
+- **Owner decisions** — every decision in this spec: RULED. Pending: Indy's approval of the report (Dimension 1.1); a question that times out is not an answer.
 - **Consults** — nine read-only traces by Explore agents: at `3fbd9e40e` the setup draft, the fleet chat, durable tasks, and the app and CLI; at `d79e88a46` the trigger readers, the access readers, the revision and task readers, the setup-only client code, and OpenClaw's source at `630b7e1d`. OpenClaw is one chat that keeps going after a machine-level form; its agent writes its own instruction files and schedules.
 - **Model reviews, round 1** — EGM review of the first draft, four Claude Fable 5.2 Goldfish reviewers: comprehension 5 Blocker, 10 Major, 10 Nit; zoom-out 2, 7, 4; design 3, 5, 4; codebase-details 2, 9, 7. That draft kept an authored setup; Indy's rulings replaced its design.
 - **Model reviews, round 2** — EGM review of the no-Definition rewrite, three Claude Fable 5.2 reviewers: design 4 Blocker, 7 Major, 4 Nit; implementation-readiness 5, 8, 3; codebase-details 1, 9, 5. **Fixed by Indy's rulings:** the run that asks for access mid-call had no resume and invalidated its own checkpoint (design B1, readiness B2, B3); access is attached by a person. **Fixed by rewriting:** a task blocked on its own first grant (design B2; a task follows the fleet's access); no first slice landed green (design B3, readiness B4; the dual-read rule and add-then-drop schema); a hostile page could open a trigger (design B4; first bounded, then overruled); the crate moves made a Cargo cycle and broke `af_wire`'s rule (readiness B1; both crates shrink in place); a sweep token matched a type that stays (readiness B5, codebase B1; dropped); the HTTP tools ignored the runner's posture (design M4; a per-fleet toggle under the runner's ceiling); steering was a confused deputy (design M5; first a grant, then overruled); the decision call taxed machine turns (design M7; no intent call at all); the schema table lacked dependents and types, error codes, tiers and missing Dimensions (readiness M1 to M8); wrong layers, counts and a missing wire field (codebase M1 to M9). **Left as stated:** the model writes a task's finish line and a person may edit it (design M6), on Indy's ruling "Questions per task". **Overruled by Indy after this round:** bounding a trigger by the fleet's grants (design B4) and steering as a grant (design M5); both risks are named under "What gets looser".
-- **Open blockers** — A1 and A2. Whether anything besides the gate rules, the question and the grant request writes an approval gate; `git grep -n INSERT_GATE` at PLAN settles it before §8 deletes approve and deny. How `task_input` and the unfinished-task list reach a run's prompt without the deleted intake; reading `afd_fleet/src/durable_task/input_receipt/` and `afr_agent/src/decision/mod.rs` at PLAN settles it. §5 was written after the round-2 review and has not been reviewed.
+- **Open blockers** — Indy's approval of the report. Whether anything besides the gate rules, the question and the grant request writes an approval gate; `git grep -n INSERT_GATE` at PLAN settles it before §8 deletes approve and deny. How `task_input` and the unfinished-task list reach a run's prompt without the deleted intake; reading `afd_fleet/src/durable_task/input_receipt/` and `afr_agent/src/decision/mod.rs` at PLAN settles it. §2's prompt and network paragraphs and all of §5 were written after the round-2 review; round 3 below reviews them.
 - **Discovery candidates, recorded and not scope** (Indy's list, Nov 24, 2026) — billing on the call path, as a per-call usage frame or a platform model gateway; a delivery claim lifetime derived from the retry budget; sandbox drain as a kernel event; a metrics sampler audit; the mailinator teardown sweep. From the M255 close-out: the docs pages `fleets/library.mdx` and `api-reference/error-codes.mdx` still describe plugins, whose routes are gone; the docs Makefile's 10-second `openapi.json` download cap times out on slow links; `cargo shear` warns about unlinked `af_fleet_runtime/src/setup/tests/{schema,settle}.rs`, which this spec deletes; three files over 350 lines (`afr_supervisor`'s `downlink/terminal_tests.rs` and `renew/tests.rs`, the daemon's `config/settings.rs`); renewal slack after one silent round is about 1.5 s, with clock skew and a doubled reconnect pause not budgeted.
 - **Deferrals and transfers** — out: the fourteen-to-eight folds to M256_002, on Indy's words "`setup.drafts` (rows 1 and 4) is decided by this milestone, and the folds after it follow." In: M255_001 Dimension 1.1, closed here. Each further one needs an owner quote, as `> Owner (<name>, <MMM DD, YYYY HH:MM>): "<quote>" — context: <item, why>`.
