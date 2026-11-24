@@ -39,7 +39,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 **Terms.** W is `/v1/workspaces/{workspace_id}`, F is `W/fleets/{fleet_id}`, L is `/v1/runners/me/runs/{run_id}`. Rust paths that start with a crate name are under `rustd/crates/<layer>/`; app paths are under `ui/packages/app/`.
 
 - A **turn** is one input on a fleet's thread, and a **run** is one try at answering it. The **Definition** is today's stored setup: a name, instructions and 14 runtime keys (`af_fleet_runtime/src/config/mod.rs:65-80`), one immutable row per **revision** in `fleet.revisions`.
-- A **grant** is a row a person adds to give one fleet one credential: a workspace secret or an integration such as GitHub.
+- A **grant** is a row giving one fleet one credential: a workspace secret or an integration such as GitHub. The fleet asks for it, and a person approves it once on a card.
 - A **trigger** is a row that lets something outside wake a fleet: a webhook, a GitHub App event or a Slack mention. A **schedule** is a cron row. The app lists both as "Wakes on".
 - A **durable task** is one accepted, bounded objective a fleet works on across several runs, judged done against its completion statements. It has no timer wake, and its default limits are 7 days and 12 runs (`af_wire/src/durable_task/limits.rs:27-34`); "watch" is a schedule or a trigger.
 - **A person** on a route is a signed-in caller, not an API key (`afd_http/src/auth/person.rs`). **A person's message** is a turn that passes `check_human` (`afd_fleet/src/durable_task/accept/source.rs:77-92`): a signed-in person's, or an allowed Slack person's mention.
@@ -51,7 +51,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 - **A ceremony before work.** A draft is private to its creator (`afd_setup/src/sql/draft/lock.sql:8`), is reviewed and saved against a digest (`afd_api_wire/src/fleet/input.rs:48-62`), waits in `installing` for grant cards (`afd_setup/src/creation/activate.rs:77-92`), and expires 30 days after it closes (`afd_setup/src/creation/mod.rs:88`).
 - **A document someone must write.** A run is refused without a Definition, a revision and a model (`afd_fleet/src/run/installed.rs:164-193`), and is offered only the tools the Definition lists (`docs/architecture/capabilities.md:23`).
 
-**Solution summary:** A fleet becomes a name, a model, a thread, its memory, its grants, its triggers and its schedules. `POST W/fleets` writes the fleet and its first turn. A run is offered the tool catalog and holds exactly the credentials a person attached to its fleet. The fleet adds its own schedules and triggers by tool, starts a durable task by tool when a person's message asks for work that must keep going, and keeps standing guidance as pinned memory, which every run's prompt carries. Each fleet has a network toggle, private by default. The draft, the Definition and its revisions, the setup run kind, the review, Save, `installing`, `/setup`, the per-fleet budget, the event-gate rules and the grant approval card are deleted.
+**Solution summary:** A fleet becomes a name, a model, a thread, its memory, its grants, its triggers and its schedules. `POST W/fleets` writes the fleet and its first turn. A run is offered the tool catalog and holds exactly the access a person approved for its fleet. The fleet adds its own schedules and triggers by tool, starts a durable task by tool when a person's message asks for work that must keep going, and keeps standing guidance as pinned memory, which every run's prompt carries. Each fleet has a network toggle, private by default. The draft, the Definition and its revisions, the setup run kind, the review, Save, `installing`, `/setup`, the per-fleet budget, the event-gate rules and the grant approval card are deleted.
 
 **Design flow:**
 
@@ -62,9 +62,9 @@ TODAY   first message ─► POST W/drafts ─► private draft + its own thread
 
 AFTER   first message ─► POST W/fleets {message, operation_id, model_ref?, name?}
           ONE transaction: fleet.fleets(active) + thread.threads(id = fleet id) + thread.turns #1 queued
-        run        the tool catalog, the fixed prompt text plus the fleet's pinned memory, the credentials attached to this fleet
+        run        the tool catalog, the fixed prompt text plus the fleet's pinned memory, the credentials approved for this fleet
         guidance   "always link the evidence" ─► memory_store, category core (exists) ─► in every later run's prompt
-        access     the fleet says "I have no access to Sentry" ─► a person adds it under "Can access" ─► POST F/grants
+        access     the fleet calls request_access ─► a card in the chat ─► a person clicks Approve once ─► the fleet resumes holding it
         wakes on   "check every 15 minutes" ─► cron_add (exists) ─► fleet.schedules
                    "wake on Sentry alerts"  ─► trigger_add ─► fleet.triggers ─► the fleet page shows the URL
         task       "fix the null-cart error until PR 88 is green" ─► the fleet's model calls task_start
@@ -77,8 +77,8 @@ AFTER   first message ─► POST W/fleets {message, operation_id, model_ref?, n
 | Step | Rows written | What the runner does |
 |---|---|---|
 | "hello" | `fleet.fleets` (`active`), `thread.threads`, `thread.turns` #1 (`queued`, actor `steer:<person>`); then `thread.runs` | one model call with the fixed text and no memory; answers; no tool, no decision call |
-| "You watch the runner-to-daemon link. You only read. Query Grafana at …" | `thread.turns` #2, `memory.entries` (category `core`) | calls `memory_store`; says it has no access to a `grafana` secret |
-| The person adds `grafana` under "Can access" | `fleet.grants` (kind `secret`), an `access_changed` activity turn | nothing; the next run's `secrets_map` holds it and its host is reachable |
+| "You watch the runner-to-daemon link. You only read. Query Grafana at …" | `thread.turns` #2, `memory.entries` (category `core`), `connector.integration_grants` (`grafana`, `pending`), a card carrying turn #2 | calls `memory_store`, then `request_access {name: "grafana"}`; the run ends waiting |
+| The person clicks Approve | the grant `approved`, an answer turn that resumes turn #2 | resumes where it stopped, now holding `grafana`; its host is reachable |
 | "check it now" | `thread.turns`, `thread.runs`, `thread.items` | its prompt carries the pinned guidance; reads Grafana with `http_request`; reports |
 | "do this every hour at seven past" | `fleet.schedules` (source `fleet`) | calls `cron_add` |
 | Every hour | `thread.turns` (actor `cron:<schedule>`), `thread.runs` | reads Grafana and reports |
@@ -93,7 +93,7 @@ AFTER   first message ─► POST W/fleets {message, operation_id, model_ref?, n
 | Scope | The ceremony and the record are both deleted in M256_001, in one Pull Request. Nobody writes a setup; `/setup` goes. |
 | Start | A fleet starts with nothing, and nothing about its job is saved by its first message. The payer's balance is the only ceiling; a payer with no wallet row is refused. |
 | Memory | Standing guidance is the fleet's pinned memory, put into every run's prompt under a short fixed text. |
-| Access | A person attaches a secret or an integration to a fleet. A run holds only what is attached. |
+| Access | The fleet asks for a secret or an integration with a tool, and a person approves it once on the card today's grant uses. A run holds only what was approved. |
 | Wakes on | The fleet adds its own triggers by tool, as it adds schedules, with no limit beyond what the workspace has connected. |
 | Network | Each fleet has "Allow all" and "Packages", both off at birth; a signed-in person flips them. The runner's posture stays as the operator's ceiling. Read-only is dropped. |
 | Steering | Any fleet may steer any fleet in its workspace. |
@@ -103,22 +103,22 @@ AFTER   first message ─► POST W/fleets {message, operation_id, model_ref?, n
 
 **What gets looser or different.** Each line is a behaviour change Indy accepts by approving this report.
 
-1. Every fleet is offered every published tool and the seven sub-agent tools (`afr_tools/src/catalog/mod.rs:119`), so every run prepares a sandbox. `notify`, `git` and `message` fail until their credential is attached.
+1. Every fleet is offered every published tool and the seven sub-agent tools (`afr_tools/src/catalog/mod.rs:119`), so every run prepares a sandbox. `notify`, `git` and `message` fail until their credential is approved.
 2. Any fleet may read and steer any fleet in its workspace, as often as the payer's balance allows. A fleet with no access can drive one that holds access.
 3. A fleet may add any webhook, GitHub subscription or Slack channel the workspace has connected. A hostile page a run reads can ask for the same.
 4. A fleet set to "Allow all" can post what it has read to any public host. On an `allow_all` runner the sandbox shares the host's network whatever the toggle says, as today. A stored secret is still sent only to its own `host` field (`af_egress/src/policy/mod.rs:219-241`).
-5. A private fleet's HTTP tools reach only the hosts of its attached secrets and GitHub when attached. `web_fetch` is refused there, `web_search` runs at the model provider and is unaffected, and `notify` needs its `pushover` secret to carry `host: api.pushover.net`. On an allow-list runner a secret whose host does not resolve to a public address refuses the fleet's runs until it is removed, as a named host does today (`afr_supervisor/src/egress/mod.rs:95-99`).
+5. A private fleet's HTTP tools reach only the hosts of its approved secrets and GitHub when approved. `web_fetch` is refused there, `web_search` runs at the model provider and is unaffected, and `notify` needs its `pushover` secret to carry `host: api.pushover.net`. On an allow-list runner a secret whose host does not resolve to a public address refuses the fleet's runs until it is removed, as a named host does today (`afr_supervisor/src/egress/mod.rs:95-99`).
 6. No fleet has a budget. A fleet that schedules itself can spend the payer's whole balance.
 7. A fleet knows its job only from what it pinned in memory and from the conversation. Whatever it pins is in every later prompt until a person removes it, a hostile page's suggestion included.
-8. Read-only is gone. A fleet may write with any credential attached to it.
+8. Read-only is gone. A fleet may write with any credential approved for it.
 9. One model starts a task and links later messages to it, where today two must agree and the link needs a probability of 0.95 (`afr_agent/src/decision/routing.rs:80-131`, `docs/architecture/goal_evaluation.md:383-389`). A person may edit a task's statements.
 10. A fleet that has a task no longer loses its tools on plain questions (`afr_agent/src/loop/mod.rs:111-118`).
-11. Approving and denying disappear; a person only answers a run's question. unverified: that nothing but the gate rules, the question and the grant request writes an approval gate; `git grep -n INSERT_GATE -- rustd` at PLAN settles it before §3 deletes them.
-12. A removed grant leaves a live run with the secret it was issued. The next run and the next token mint do not have it.
+11. Every credential now needs an approval, a workspace secret included; today a secret the Definition names needs none. The setup card and the gate rules go; a person answers a run's question or approves an access card.
+12. A revoked grant leaves a live run with the secret it was issued. The next run and the next token mint do not have it.
 
 **Practices carried from the setup chat.**
 
-1. Each tool that changes a fleet (`memory_store` under `core`, `cron_add`, `trigger_add`, `task_start`, `task_input`) says in its description to call it only when the person's newest message asks, as `propose_setup` does today (`af_fleet_runtime/src/setup/mod.rs:34-40`).
+1. Each tool that changes a fleet (`memory_store` under `core`, `cron_add`, `trigger_add`, `request_access`, `task_start`, `task_input`) says in its description to call it only when the person's newest message asks, as `propose_setup` does today (`af_fleet_runtime/src/setup/mod.rs:34-40`).
 2. A refused call returns to the model as `[kind] sentence`, and the model may correct it in the same run.
 3. For the two task tools the daemon reads who sent the run's head turn; text alone starts no task.
 4. A person can see and remove what the fleet did: its pinned memory, schedules, triggers and tasks are listed on the fleet page.
@@ -126,7 +126,7 @@ AFTER   first message ─► POST W/fleets {message, operation_id, model_ref?, n
 ## PR Intent & comprehension handshake
 
 - **PR title (eventual):** feat(fleet): a fleet is a chat from its first message; setup, the Definition and revisions are gone
-- **Intent (one sentence):** A person starts a fleet by saying what they want and keeps talking to it, and what a fleet may touch is whatever a person attached to it.
+- **Intent (one sentence):** A person starts a fleet by saying what they want and keeps talking to it, and what a fleet may touch is whatever a person approved when it asked.
 - **Authoring handshake:** Indy wants authoring gone cleanly, with no optional setup left behind, kept simple, in one milestone. ASSUMPTIONS I'M MAKING: 1. Nothing is backward compatible: routes, wire and schema are edited in place, and the dev database is torn down at merge. 2. One Pull Request, built as six commits, one per Section §2 to §7; each compiles and passes its own Dimensions, and the full gate runs once on the final tree. 3. M256_002 builds the fourteen-to-eight folds on the schema this spec leaves.
 - **Implementer handshake:** recorded in the Pull Request Session Notes at PLAN, before any edit (SPEC-HANDSHAKE).
 
@@ -152,9 +152,9 @@ Counts are from the worktree at `d79e88a46`.
 | `rustd/crates/daemon/afd_db/schema/**`, `afd_db/src/migration.rs`, `afd_db/src/test_util/**`, `afd_db/tests/**` | DELETE/EDIT/CREATE | the Schema table in Interfaces |
 | `rustd/crates/daemon/afd_gate/**` | EDIT/DELETE | §2: the policy is built from the fleet row; the rule parks (`gate/{first,pass,park}.rs`) go. §3: grants feed it; `policy/grants.rs` goes |
 | `rustd/crates/daemon/afd_fleet/src/**`, `afd_fleet/tests/**` | EDIT/DELETE | §2: admit, candidates, assignment, issue, `installed.rs`, renewal, payload, the checkpoint guard, the budget's gate and ceilings; `run/draft/**` (1,188 lines), `durable_task/adoption.rs` and the task intake go. §3: mint scope. §5: the binding without its decision authorization |
-| `rustd/crates/daemon/afd_ingress/src/**`, `afd_api_ingress/src/handler/{webhook,mention}/**` | EDIT | §4: routing reads `fleet.triggers`. §3: the approval webhook goes |
+| `rustd/crates/daemon/afd_ingress/src/**`, `afd_api_ingress/src/handler/{webhook,mention}/**` | EDIT | §4: routing reads `fleet.triggers` |
 | `rustd/crates/daemon/afd_cron/src/**` (`recipe/**` is 10 files; 29 production files name a recipe) | DELETE/EDIT | §4: trigger-sourced rows, recipes and overrides go |
-| `rustd/crates/daemon/afd_approval/**`, `afd_credential/src/**`, `afd_billing/src/{budget.rs,nanos.rs,sql/select_tenant_charges_*.sql}` | EDIT/DELETE | §3: grants are rows a person writes; the request, the card, approve and deny go. §2: the fleet budget goes |
+| `rustd/crates/daemon/afd_approval/**`, `afd_credential/src/**`, `afd_billing/src/{budget.rs,nanos.rs,sql/select_tenant_charges_*.sql}` | EDIT/DELETE | §3: the fleet's request raises today's card, carrying its turn, and Approve resumes it; the install-time request goes. §2: the fleet budget goes |
 | `rustd/crates/daemon/afd_api_tenant/src/**`, `afd_api_runner/src/handler/runner/**`, `afd_http/src/**`, `afd_api/**`, `afd_api_wire/src/**`, `afd_fleet_lifecycle/**`, `afd_turns/**`, `afd_sse/src/frame/**`, `rustd/crates/foundation/af_core/src/{error_code,problem}/**`, `public/{openapi.json,llms.txt,agentsfleet-manifest.json}` | EDIT/DELETE | the Routes and Codes in Interfaces; `handler/draft/**` (1,106 lines) is deleted |
 | `rustd/crates/protocol/{af_wire,af_observability}/**`, `rustd/crates/harness/{af_egress,af_secrets,af_providers}/**`, `rustd/crates/foundation/af_validate/src/**`, `rustd/crates/runner/{afr_supervisor,afr_agent,afr_tools,main}/**`, `rustd/guffbolt/src/tools/memory/**` | EDIT/DELETE | §2 to §5: the payload, the prompt, read-only's code, the memory tool's default category, the trigger and task verbs and tools; the setup tool, its loop and the draft branch go |
 | `rustd/crates/daemon/{afd_bench,afd_gateway,afd_runner,main}/**`, `rustd/crates/e2e/af_e2e/tests/**` | EDIT | the other holders of a draft id, a revision id or `installing`, and their tests |
@@ -165,8 +165,7 @@ Counts are from the worktree at `d79e88a46`.
 
 ## Applicable Rules
 
-- **`domains/sql.md`** — SQL-FILE, SQL-UPSERT, SQL-FKSTATE, SQL-LOCKCLOCK, TXN, IDMP. **`domains/http*.md`** — HTTP-GARDE, HTTP-VALID, HTTP-STATUS, HTTP-STATEEXT, HTTP-OPENAPI. **`domains/auth.md`** — the scope and the person check of each new and changed route and verb.
-- **`languages/rust.md`**, **`languages/typescript.md`** — ERR-RS, RS-FROM, RS-MAPERR; the app's and the CLI's layer rules. **`tests.md`** — TEST-NEG, TEST-RACE, TEST-COUNTER, TEST-REDGREEN, TCF. **`domains/architecture.md`**, **`domains/logging.md`** — ARCH-WINS, ARCH-LAND, ARCH-PUBLISHED; LOG-EVENT, LOG-RENAME.
+- **`domains/sql.md`** — SQL-FILE, SQL-UPSERT, SQL-FKSTATE, SQL-LOCKCLOCK, TXN, IDMP. **`domains/http*.md`** — HTTP-GARDE, HTTP-VALID, HTTP-STATUS, HTTP-STATEEXT, HTTP-OPENAPI. **`domains/auth.md`** — the scope and the person check of each new and changed route and verb. **`languages/rust.md`**, **`languages/typescript.md`** — ERR-RS, RS-FROM, RS-MAPERR; the app's and the CLI's layer rules. **`tests.md`** — TEST-NEG, TEST-RACE, TEST-COUNTER, TEST-REDGREEN, TCF. **`domains/architecture.md`**, **`domains/logging.md`** — ARCH-WINS, ARCH-LAND, ARCH-PUBLISHED; LOG-EVENT, LOG-RENAME.
 
 ## Applicable Gates
 
@@ -182,8 +181,7 @@ Counts are from the worktree at `d79e88a46`.
 
 ## Prior-Art / Reference Implementations
 
-- **Reference:** `afd_setup/src/creation/system.rs` and `afd_setup/src/draft/create.rs` — a fleet installed with no draft, and a create whose retry key is a body `operation_id` with a replay receipt; §2's `creation/create.rs` combines them in one transaction.
-- **Reference:** `afd_api_tenant/src/handler/{secret/mod.rs,grant.rs}` — a workspace-scoped write and today's grant list and revoke; §3's routes mirror them. `afd_api_runner/src/handler/runner/schedule.rs` with `rustd/guffbolt/src/tools/schedule/cron.rs` — a tool family that writes rows through a fenced run verb; §4 mirrors both, with its tools in `afr_tools`.
+- **Reference:** `afd_setup/src/creation/system.rs` and `afd_setup/src/draft/create.rs` — a fleet installed with no draft, and a create whose retry key is a body `operation_id` with a replay receipt; §2's `creation/create.rs` combines them in one transaction. `afd_approval/src/{grant_sql/request_grant.sql,sql/resolve_gate.sql,inbox/resolve/mod.rs}` and `afd_fleet/src/run/commit/question.rs` — today's grant card, its approval, and a question whose answer resumes the asking turn; §3 joins them. `afd_api_runner/src/handler/runner/schedule.rs` with `rustd/guffbolt/src/tools/schedule/cron.rs` — a tool family that writes rows through a fenced run verb; §4 mirrors both, with its tools in `afr_tools`.
 - **Reference:** `afd_fleet/src/durable_task/accept/{commit,insert,write,input}.rs` — the task commit and the input's wake; §5 calls them and adds no second writer.
 - **Divergence:** none from the HTTP standard. The CLI keeps its six practices (SPEC-PRIOR): layered command, handler and error; handlers that neither print nor exit; one renderer; structured JSON errors; three test tiers; JSON when stdout is not a terminal.
 
@@ -237,24 +235,32 @@ No code. Indy reads the report as the dry run of the change and approves it, or 
 - **Dimension 2.22** — a paused run resumes after a model change → Test `a_questions_answer_resumes_after_the_model_changes` (integration): a run asks with `ask_user`; `PATCH F {model_ref}`; the answer → the turn is answered under the new model, and no checkpoint refusal is raised.
 - **Dimension 2.23** — the answer arrives in the fleet's chat → Test `a_first_message_is_answered_on_the_fleet_stream` (e2e, `af_e2e`): two daemons, the real bus and Postgres, a native runner; the create, then `GET F/turns/stream` delivers the turn's completion.
 
-### §3 — A person attaches access, and a run holds exactly that
+### §3 — The fleet asks for access, and a person approves it once
 
-`fleet.grants` replaces `connector.integration_grants`: one row per `(fleet_id, name)`, a `kind` the daemon derives from the vault entry as `afd_credential/src/secrets/mod.rs:166-185` routes it today (`secret` or `integration`), a `scope` for GitHub, and the person who added it. A row existing is the grant. `POST F/grants` and `DELETE F/grants/{id}` need a person; each writes an `access_changed` activity turn naming them. The name must be in the workspace vault, an integration must be connected, a secret's `host` must be readable by `af_egress::allowlist_host` when present, and `github` needs a scope, which `af_fleet_runtime/src/config/repository.rs` parses. The policy build passes the grants' names to `secrets::declared`, builds the repository binding and origin policies from the GitHub scope as it does from the Definition's binding today, and sets `allow` to the attached secrets' hosts. The token mint reads the fleet's current grants (`afd_fleet/src/run/scope.rs:93-110`). Slack's `addressed_only` reads the GitHub scope's write reach (`afd_ingress/src/slack/mod.rs:137-139`).
+`request_access {name, scope?}` is a supervisor tool every run is offered. It posts `POST L/access`. The daemon checks that the name is in the workspace vault or is a connected integration, derives the grant's `kind` from the vault entry as `afd_credential/src/secrets/mod.rs:166-185` routes it today, requires a scope for `github` and parses it with `af_fleet_runtime/src/config/repository.rs`, and checks a secret's `host` with `af_egress::allowlist_host`. A refusal returns `[kind] sentence` and the run continues. A request the approved grant already covers answers at once with no card.
 
-**Deleted here.** The grant request and its card (`afd_approval/src/request/**`, the `granted` step of `resolve_gate.sql`, `policy/grants.rs`, the ungranted park in `afd_fleet/src/run/deliver/mod.rs`), `fleet.approval_gates.active_grant_id`, approve and deny with their routes and CLI, the approval webhook and `Producer::GateContinuation`. A run's question and its answer stay.
+Otherwise the daemon sets the grant `pending` with the requested scope and raises today's card through `request_grant.sql`, now carrying the asking turn. The tool ends the run waiting, as `ask_user` does (`afr_agent/src/loop/finish.rs:110-113`), and the commit raises no question for it. The turn settles as waiting, so the fleet's later turns are not held (`assign_turn_head.sql:97-105` holds only a parked head).
 
-- **Dimension 3.1** — an attached secret reaches the next run → Test `an_attached_secret_is_in_the_next_runs_policy` (integration): `POST F/grants {name:"sentry"}` → 201 with kind `secret` and one activity turn; the next run's `secrets_map` holds `sentry` and no other workspace secret, and `allow` holds its host.
-- **Dimension 3.2** — a machine cannot attach → Test `an_api_key_cannot_add_a_grant` (integration): an API key with `grant:write` → 403 and no row.
-- **Dimension 3.3** — the scope is required → Test `a_caller_without_grant_write_cannot_add_a_grant` (integration): a person without `grant:write` → 403 and no row.
-- **Dimension 3.4** — an unknown name is refused → Test `a_secret_the_workspace_lacks_cannot_be_attached` (integration): a name absent from the vault → 404 and no row.
-- **Dimension 3.5** — an unconnected integration is refused → Test `an_unconnected_integration_cannot_be_attached` (integration): `github` with no workspace install → 409 and no row.
-- **Dimension 3.6** — GitHub needs a scope → Test `a_github_grant_without_a_scope_is_refused` (integration): `{name:"github"}` with no `scope`, or a scope the parser refuses → 400 and no row.
-- **Dimension 3.7** — a host must be readable → Test `a_secret_with_an_unreadable_host_cannot_be_attached` (integration): a secret whose `host` the allowlist helper cannot read → 400 and no row; a secret with no `host` attaches and opens none.
-- **Dimension 3.8** — a removal takes effect at the next run → Test `a_removed_grant_leaves_the_next_run_without_the_secret` (integration): `DELETE F/grants/{id}` → 204; the next run holds no such secret, and a token mint for a removed integration is refused.
-- **Dimension 3.9** — the GitHub scope bounds the token → Test `a_token_is_minted_only_for_the_attached_repositories` (integration): a grant for `org/app` read → a mint for `org/other`, or for write, is refused.
-- **Dimension 3.10** — a duplicate is one row → Test `attaching_the_same_secret_twice_is_one_row` (integration): the second `POST` → 200 with the existing row and no second activity turn.
-- **Dimension 3.11** — an answer resumes after an attach → Test `a_questions_answer_resumes_after_a_grant_is_added` (integration): a run asks with `ask_user`; a grant is added; the answer → the turn's run restores its checkpoint and holds the new secret.
-- **Dimension 3.12** — approve and deny are gone → Test `no_approve_or_deny_route_is_mounted` (unit, `route_inventory.rs`): `INVENTORY` holds the answer route and no approve, deny or approval-webhook path.
+**State authority:** `connector.integration_grants` and its unique `(fleet_id, service)`. **Guarded transition:** Approve and Deny go through `resolve_gate.sql`, which flips the grant (no longer only for a card with no turn) and writes the answer turn a question's answer writes (`afd_approval/src/inbox/resolve/mod.rs:70-90`), with "approved" or "denied" as its message, so the waiting run resumes. Approve moves the requested scope into `scope`; until then the approved scope stays in force. A request on a revoked row sets it pending again, where today it answers "denied" (`afd_approval/src/request/mod.rs:255`). Only a signed-in person approves. `DELETE F/integration-grants/{id}` revokes, as today.
+
+The policy build reads approved grants: their names go to `secrets::declared`, the GitHub scope builds the repository binding and origin policies as the Definition's binding does today, and `allow` holds the approved secrets' hosts. The token mint reads the current grants (`afd_fleet/src/run/scope.rs:93-110`). Slack's `addressed_only` reads the GitHub scope's write reach (`afd_ingress/src/slack/mod.rs:137-139`).
+
+**Deleted here.** The install-time request (`Origin::Install`, `request_for_setup`), the park at assignment (`afd_gate/src/policy/grants.rs` and the ungranted path in `afd_fleet/src/run/deliver/mod.rs`), and `Producer::GateContinuation`, which only the gate rules used. The card, Approve, Deny, the answer route and the approval webhook stay.
+
+- **Dimension 3.1** — a request raises one card → Test `a_request_access_raises_one_card_and_waits` (integration): a run headed by a person's message posts `{name:"sentry"}` → 201; the grant `pending` with kind `secret`; one card carrying the turn; the turn settles waiting. A second request while pending → 200 and no second card.
+- **Dimension 3.2** — Approve resumes with the access → Test `an_approved_request_resumes_the_turn_with_the_secret` (integration): Approve → the grant `approved`, one answer turn; the resumed run's `secrets_map` holds `sentry` and no other workspace secret, and `allow` holds its host.
+- **Dimension 3.3** — Deny resumes without it → Test `a_denied_request_resumes_the_turn_without_access` (integration): Deny → the grant `revoked`; the resumed run's policy lacks the secret.
+- **Dimension 3.4** — a denied name can be asked again → Test `a_request_after_a_deny_raises_a_new_card` (integration): a later request for the denied name → the grant `pending` again and one new card.
+- **Dimension 3.5** — a machine cannot approve → Test `an_api_key_cannot_approve_a_grant` (integration): an API key on the approve route → 403 and the grant stays `pending`.
+- **Dimension 3.6** — an unknown name is refused → Test `a_request_for_a_secret_the_workspace_lacks_is_refused` (integration): a name absent from the vault → the refusal, no row and no card.
+- **Dimension 3.7** — an unconnected integration is refused → Test `a_request_for_an_unconnected_integration_is_refused` (integration): `github` with no workspace install → the refusal and no row.
+- **Dimension 3.8** — GitHub needs a scope → Test `a_github_request_without_a_scope_is_refused` (integration): no `scope`, or one the parser refuses → the refusal and no row.
+- **Dimension 3.9** — a host must be readable → Test `a_secret_with_an_unreadable_host_cannot_be_requested` (integration): a `host` the allowlist helper cannot read → the refusal and no row.
+- **Dimension 3.10** — a refusal is a sentence → Test `a_refused_access_request_returns_its_kind_and_sentence` (unit, `afr_tools`): each refusal above → a tool result of the form `[kind] sentence`, and the run continues.
+- **Dimension 3.11** — a covered request needs no card → Test `a_request_inside_the_approved_scope_needs_no_card` (integration): `github` approved for `org/app` read; a request for the same → 200, no card, and the run continues.
+- **Dimension 3.12** — a wider scope asks again → Test `a_wider_github_request_keeps_the_old_scope_until_approved` (integration): a request for `org/app` write → one card; a write mint before Approve is refused, and after it succeeds.
+- **Dimension 3.13** — a revoke takes effect at the next run → Test `a_revoked_grant_leaves_the_next_run_without_the_secret` (integration): `DELETE F/integration-grants/{id}` → 204; the next run holds no such secret, and a token mint for a revoked integration is refused.
+- **Dimension 3.14** — a waiting request holds no queue → Test `a_turn_after_a_waiting_request_runs` (integration): a card is open for turn #2; turn #3 arrives → it is assigned and answered.
 
 ### §4 — Triggers are rows the fleet adds
 
@@ -293,28 +299,28 @@ The checks: the source turn is the run's head turn or one folded into it (`accep
 - **Dimension 5.12** — an input needs a person and a live task → Test `a_task_input_under_a_machine_turn_is_refused` (integration): a webhook's source turn → `UZ-DT-004`; a finished or foreign task → `UZ-DT-001`; no input row in either case.
 - **Dimension 5.13** — a person edits the statements → Test `a_question_edit_bumps_the_generation` (integration): the patch → new `questions` and `goal_digest`, generation + 1.
 - **Dimension 5.14** — a stale or machine edit is refused → Test `a_stale_question_edit_changes_nothing` (integration): a stale generation → 412 `UZ-DT-013`; an API key → 403; the task unchanged.
-- **Dimension 5.15** — access added mid-task does not block → Test `a_task_continues_after_a_grant_is_added` (integration): a grant is added while a task waits → its next turn is issued with the grant.
+- **Dimension 5.15** — access approved mid-task does not block → Test `a_task_continues_after_a_grant_is_approved` (integration): a grant is approved while a task waits → its next turn is issued with the grant.
 
 ### §6 — The app: one chat and three short lists
 
-`/w/{ws}/fleets/new` renders the fleet composer; Send calls `POST W/fleets` and replaces the URL with the fleet's page. Beside the chat the fleet page shows "Wakes on" (schedules and triggers, with remove and a webhook's URL), "Can access" (grants, with add and remove; the add lists the workspace's stored secrets and connected integrations) and "Remembers" (the pinned entries from `GET F/memories`, with remove). The model picker and the two network toggles each send one `PATCH F`. The task panel shows and edits a task's statements. The setup components, the draft client, the setup proxy, the `/setup` route, the unfinished-setups list, goal adoption and the approve and deny controls are deleted; the pull-request starter loses its setup wording.
+`/w/{ws}/fleets/new` renders the fleet composer; Send calls `POST W/fleets` and replaces the URL with the fleet's page. Beside the chat the fleet page shows "Wakes on" (schedules and triggers, with remove and a webhook's URL), "Can access" (approved grants from `GET F/integration-grants`, with Remove), an access card in the chat with Approve and Deny and "Remembers" (the pinned entries from `GET F/memories`, with remove). The model picker and the two network toggles each send one `PATCH F`. The task panel shows and edits a task's statements. The setup components, the draft client, the setup proxy, the `/setup` route, the unfinished-setups list, goal adoption and the approve and deny controls are deleted; the pull-request starter loses its setup wording.
 
 - **Dimension 6.1** — one message, one chat → Test `a first message opens the fleet's chat` (integration, Playwright on the mocked API, `make dry-app`): type on New fleet → the URL is `/fleets/{id}`, the answer renders, the sidebar lists the fleet.
 - **Dimension 6.2** — a refused create keeps the text → Test `a refused create returns its text to the composer` (unit, vitest): a 409 → the composer holds the message with Resend, and no fleet is listed.
-- **Dimension 6.3** — a refused attach shows why → Test `a refused grant shows its reason` (unit, vitest): picking `sentry` sends one `POST F/grants`; a 404 → the refusal's message shows and no row is added.
-- **Dimension 6.4** — no draft surface → Test `the fleet page asks for no draft or setup` (unit, vitest): the page reads `GET F/schedules`, `GET F/triggers`, `GET F/grants` and `GET F/memories`, and sends no `/drafts`, `/setup-context` or `/integration-grants` request.
+- **Dimension 6.3** — approving a card is one call → Test `approving an access card sends one approve` (unit, vitest): Approve on an access card sends one approve request; a 403 leaves the card open with the refusal's message.
+- **Dimension 6.4** — no draft surface → Test `the fleet page asks for no draft or setup` (unit, vitest): the page reads `GET F/schedules`, `GET F/triggers`, `GET F/integration-grants` and `GET F/memories`, and sends no `/drafts` or `/setup-context` request.
 - **Dimension 6.5** — a refused toggle stays off → Test `a refused network toggle stays off` (unit, vitest): switching "Allow all" on sends one `PATCH F {http_egress:"public"}`; a 403 leaves the switch off.
 - **Dimension 6.6** — a pin can be removed → Test `removing a pinned memory deletes it` (unit, vitest): Remove on a "Remembers" row → one `DELETE F/memories/{key}` and the row leaves.
 - **Dimension 6.7** — a stale statement edit reloads → Test `a stale statement edit reloads the task` (unit, vitest): an edit sends one `PATCH F/durable_tasks/{id}`; a 412 reloads the task and keeps the person's text.
-- **Dimension 6.8** — the real path → Test `onboarding-chat-journey.spec.ts` (e2e, `make acceptance`): a signed-in person types a first message, reads the answer, attaches a secret and sees a later run use it.
+- **Dimension 6.8** — the real path → Test `onboarding-chat-journey.spec.ts` (e2e, `make acceptance`): a signed-in person types a first message, reads the answer, approves the fleet's request for a secret and sees the run resume with it.
 
 ### §7 — The CLI: create, chat, and the lists
 
-`agentsfleet fleet create "<message>" [--name] [--model]`. `agentsfleet chat [<id|@name>]` talks to a fleet; with no fleet its first line creates one. `agentsfleet fleet grants list|add|remove`, `fleet triggers list|remove`, `fleet model set <id|@name> <ref>` and `fleet network set <id|@name> --allow-all|--private [--packages|--no-packages]` join `fleet schedule` and `fleet memory`, which stay. `--definition`, `--review`, `--save`, `--apply`, the draft subcommands, `fleet activate` and `fleet approvals approve|deny` go.
+`agentsfleet fleet create "<message>" [--name] [--model]`. `agentsfleet chat [<id|@name>]` talks to a fleet; with no fleet its first line creates one. `fleet triggers list|remove`, `fleet model set <id|@name> <ref>` and `fleet network set <id|@name> --allow-all|--private [--packages|--no-packages]` join `fleet schedule`, `fleet memory`, `fleet grants list|revoke` and `fleet approvals list|approve|deny`, which stay. `--definition`, `--review`, `--save`, `--apply`, the draft subcommands and `fleet activate` go.
 
 - **Dimension 7.1** — create from the terminal → Test `install-fleet-cli.spec.ts` (e2e, `make acceptance`): the built binary against a live daemon, `fleet create "watch checkout errors" --json` → `{fleet_id, turn_id}`, exit 0, and the fleet shows in the browser.
 - **Dimension 7.2** — chat creates on its first line → Test `chat with no fleet creates one on the first line` (unit, in-process): one `POST W/fleets`, then the fleet stream.
-- **Dimension 7.3** — a refused grant is a structured error → Test `fleet grants add prints the refusal as JSON` (unit, handler): a 404 → the JSON error with its code and a suggestion, exit 1.
+- **Dimension 7.3** — a refused approval is a structured error → Test `fleet approvals approve prints the refusal as JSON` (unit, handler): a 403 → the JSON error with its code and a suggestion, exit 1.
 - **Dimension 7.4** — a removed flag names its replacement → Test `chat --save is refused with the new command` (unit): exit 2, the message names `fleet create`.
 - **Dimension 7.5** — a create needs a message → Test `fleet create with no message is a usage error` (unit, handler): no argument → exit 2 and no request sent.
 
@@ -329,17 +335,16 @@ GET F                  Fleet = {id, name, status, etag, model_ref, http_egress, 
                        memory_access, created_at, updated_at, events_processed, budget_used_nanos} · fleet:read
 PATCH F                If-Match; {status?: "archived", name?, model_ref?, http_egress?, package_domains?}; 200 Fleet · fleet:write;
                        the two network fields need a person
-GET F/grants           200 {items: Grant[]} · grant:read        Grant = {id, kind, name, scope?, created_by, created_at}
-POST F/grants          {name, scope?}; 201 Grant, 200 when it exists · grant:write, a person
-DELETE F/grants/{id}   204 · grant:write, a person
+GET F/integration-grants         200 {items: Grant[]} · grant:read   Grant = {id, kind, name, status, scope?, requested_scope?, approved_at?}
+DELETE F/integration-grants/{id} 204 · grant:write, a person
 GET F/triggers         200 {items: Trigger[]} · fleet:read      Trigger = {id, kind, source, events?, repositories?, channel?, url?, created_at}
 DELETE F/triggers/{id} 204 · fleet:write
 PATCH F/durable_tasks/{id}   If-Match; {state, expected_generation} | {questions, expected_generation}, a person's
 PATCH F/schedules/{id}       its own fields only; an `override` body is 400
-unchanged              POST F/messages, F/memories, W/secrets, W/models, W/approvals (list) and its answer route
-removed                W/drafts and its member routes; POST F/revisions; GET F/setup-context; F/integration-grants; the approve and deny routes;
-                       POST /v1/webhooks/{fleet_id}/approval; Fleet's definition, setup, start, setup_etag, setup_revision, setup_revision_id,
-                       policy_semantics, webhook_urls, pending_approvals; FleetSummary's description and triggers; a task's setup_revision
+unchanged              POST F/messages, F/memories, W/secrets, W/models, W/approvals with its approve, deny and answer routes (approve and deny
+                       need a person), POST /v1/webhooks/{fleet_id}/approval
+removed                W/drafts and its member routes; POST F/revisions; GET F/setup-context; Fleet's definition, setup, start, setup_etag, setup_revision, setup_revision_id,
+                       policy_semantics, webhook_urls; FleetSummary's description and triggers; a task's setup_revision
 ```
 
 **Run verbs.** The trigger verbs carry `item_id`, `call_number` and `fencing_token`, as the schedule verb does.
@@ -347,13 +352,14 @@ removed                W/drafts and its member routes; POST F/revisions; GET F/s
 ```
 POST L/triggers                 {kind: "webhook"|"app_event"|"mention", source?, events?, repositories?, verifier?, secret_name?, channel?}; 201 Trigger
 GET L/triggers                  200 {items: Trigger[]}        DELETE L/triggers/{id}   204
+POST L/access                   {name, scope?}; 201 {grant_id, gate_id}; 200 when already covered or pending
 POST L/durable_tasks/bindings   kept. {fencing_token, source_turn_id, plan_digest, items: [one]}; a new-work item is {title, source_start, source_end,
                                 target, statements[]}, a steer item {durable_task_id, source_start, source_end}; 201 the bindings; a repeat: 200.
                                 It loses accepted_revision_id and message_decision_call_id
 removed                         the message and item assessments of POST L/durable_tasks/decisions
 ```
 
-**Codes.** Kept under their numbers: `UZ-SETUP-004`, `UZ-SETUP-005`, `UZ-SETUP-008`, `UZ-SETUP-013`, `UZ-AGT-006`, `UZ-AGT-016`, and the `UZ-DT` family. New, numbered at PLAN from the next free in `af_core/src/error_code/fleet.rs`, each with its `REGISTRY` row and problem entry: a grant's name is not in the workspace (404); an integration or provider is not connected (409); a trigger already exists (409); a trigger's signing secret is not in the workspace (404). A caller that is not a person answers the existing 403. The rest of the `UZ-SETUP` family and the budget codes are deleted.
+**Codes.** Kept under their numbers: `UZ-SETUP-004`, `UZ-SETUP-005`, `UZ-SETUP-008`, `UZ-SETUP-013`, `UZ-AGT-006`, `UZ-AGT-016`, and the `UZ-DT` family. New, numbered at PLAN from the next free in `af_core/src/error_code/fleet.rs`, each with its `REGISTRY` row and problem entry: a requested name is not in the workspace (404); an integration or provider is not connected (409); a trigger already exists (409); a trigger's signing secret is not in the workspace (404). A caller that is not a person answers the existing 403. The rest of the `UZ-SETUP` family and the budget codes are deleted.
 
 **Runner wire.** `RunPayload` loses `setup_revision_id`, `instructions`, `durable_tasks` and the draft owner, and gains the fleet's `name` and its unfinished tasks. The turn checkpoint's scope loses its revision. `NetworkPolicy` loses `read_only` and `read_post_paths`. `VERSION` moves once.
 
@@ -365,8 +371,8 @@ Remember standing guidance with memory_store under the category core, only when 
 It is shown to you at the start of every run. Store anything else under another category.
 Schedule yourself with the cron tools, add a webhook, GitHub or Slack trigger with trigger_add, and start work that must
 keep going with task_start, each only when the person's newest message asks.
-You hold only the secrets and integrations a person attached to you. When you lack one, say which, and ask the person to
-add it under Can access.
+You hold only the secrets and integrations a person approved for you. When you need one, call request_access with its name
+(and, for GitHub, the repositories and read or write); the person approves it once.
 ```
 
 **Schema** (edited in place, pre-production).
@@ -380,8 +386,7 @@ add it under Can access.
 | `thread.runs` | − `draft_id`, `idx_runs_draft_id_status_fencing_token`, `ck_runs_one_owner`, `setup_revision_id`; `fleet_id` is `NOT NULL` | §2 |
 | `fleet.durable_tasks` | − `accepted_revision_id` and `fk_durable_tasks_revision` | §2 |
 | `runner.checkpoints` | − `revision_id`, `fk_checkpoints_revision` and `idx_checkpoints_revision_id` | §2 |
-| `connector.integration_grants` → `fleet.grants`, in a new schema file | `id`, `fleet_id` (cascade), `kind TEXT NOT NULL`, `name TEXT NOT NULL`, `scope JSONB`, `created_by TEXT NOT NULL`, `created_at`, `updated_at`; unique `(fleet_id, name)`; `api_runtime` may `SELECT`, `INSERT` and `DELETE`. `status`, `requested_reason`, `approved_at`, `revoked_at` go | §3 |
-| `fleet.approval_gates` | − `active_grant_id` and its key | §3 |
+| `connector.integration_grants` | + `kind TEXT NOT NULL`, `scope JSONB`, `requested_scope JSONB`; unique `(fleet_id, service)` stays | §3 |
 | `fleet.triggers`, new | `id UUID` key, `fleet_id` (cascade), `workspace_id`, `kind TEXT NOT NULL` (`webhook`, `app_event` or `mention`), `source TEXT NOT NULL` (the webhook's slug, `github` or `slack`), `events TEXT[]`, `repositories TEXT[]`, `verifier_scheme`, `verifier_header`, `secret_name`, `channel` (nullable, set per kind), `created_at`, `updated_at`; unique `(fleet_id, kind, source)`; indexes on `(workspace_id, kind, source)` and `(workspace_id, kind, channel)`; the grants `fleet.schedules` has | §4 |
 | `fleet.schedules` | − `recipe` | §4 |
 
@@ -393,9 +398,10 @@ add it under Can access.
 | No usable model | failure | no eligible model | 409; nothing written | `a_create_with_no_usable_model_writes_nothing` |
 | Lost wake or dead daemon | failure | a crash between the commit and the wake | the turn stays queued; the boot gap assigns it | `a_first_message_is_answered_on_the_fleet_stream` |
 | Empty wallet or none | capacity | the payer cannot cover a run | the turn is refused `balance_exhausted` | `a_payer_with_no_wallet_row_is_refused` |
-| A machine changes access | security | an API key calls `POST F/grants` or patches `http_egress` | 403; nothing changes | `an_api_key_cannot_add_a_grant` |
-| A token outside its scope | security | a run asks for another repository or for write | the mint is refused | `a_token_is_minted_only_for_the_attached_repositories` |
-| Dependency missing | failure | a secret or integration the workspace lacks | 404 or 409; no row | `a_secret_the_workspace_lacks_cannot_be_attached` |
+| A machine approves access or opens the network | security | an API key on the approve route, or patching `http_egress` | 403; nothing changes | `an_api_key_cannot_approve_a_grant` |
+| A token outside its scope | security | a run mints for another repository or for write | the mint is refused until a wider request is approved | `a_wider_github_request_keeps_the_old_scope_until_approved` |
+| Denied request | failure | a person clicks Deny | the run resumes without the access and says so | `a_denied_request_resumes_the_turn_without_access` |
+| Dependency missing | failure | a secret or integration the workspace lacks | the tool's refusal; no row and no card | `a_request_for_a_secret_the_workspace_lacks_is_refused` |
 | Forged delivery | security | a wrong signature on a trigger's URL | 401; no turn | `an_unsigned_delivery_to_a_trigger_is_refused` |
 | A delivery crossing workspaces | security | another workspace's install names the same repository | no turn | `an_app_delivery_outside_a_trigger_reaches_no_fleet` |
 | A machine turn starts or steers a task | security | a webhook body steers the model to a task tool | the verb refuses `UZ-DT-004`; no task or input | `a_task_start_under_a_webhook_turn_is_refused` |
@@ -406,8 +412,8 @@ add it under Can access.
 ## Invariants
 
 1. A thread belongs to one fleet — `thread.threads.fleet_id` is `NOT NULL` with `id = fleet_id` checked in the schema (Dimension 2.19).
-2. A run is issued only the credentials attached to its fleet — the policy build's one source of names is `fleet.grants` (Dimension 3.1).
-3. Only a person adds or removes a grant, opens a fleet's network or edits a task's statements — each route requires the person extractor (Dimensions 3.2, 2.14 and 5.14).
+2. A run is issued only the access a person approved for its fleet — the policy build's one source of names and scope is the approved grants (Dimensions 3.2 and 3.12).
+3. Only a person approves a grant, opens a fleet's network or edits a task's statements — the approve route, `PATCH F`'s network fields and the statement patch require the person extractor (Dimensions 3.5, 2.14 and 5.14).
 4. A task starts, and an input joins one, only under a person's message and on that person's words — the binding passes its source turn through `check_assignment` and `check_human` and takes the text as a span of it (Dimensions 5.3, 5.4 and 5.12).
 5. A delivery reaches only fleets of the workspace its install belongs to — each trigger read keeps its `workspace_id` predicate (Dimension 4.5).
 6. No code names a draft, a Definition or a revision — the modules are deleted and `Owner` has one variant, so a reference does not compile (Dimension 2.21).
@@ -417,7 +423,7 @@ add it under Can access.
 | Metric / event | Audience | Fires when | Properties allowed | Privacy guard | Test |
 |----------------|----------|------------|--------------------|---------------|------|
 | `fleet_created` | product | the create commits, once per fleet | `fleet_id`, `origin` (`cli`, `dashboard`) | no message text or name | `a_first_message_creates_an_active_fleet_with_its_turn` |
-| `fleet_access_changed` | product | a grant is added or removed | `fleet_id`, `kind`, `change` | no secret name or value, no repository name | `an_attached_secret_is_in_the_next_runs_policy` |
+| `fleet_access_changed` | product | a grant is requested, approved, denied or revoked | `fleet_id`, `kind`, `change` | no secret name or value, no repository name | `an_approved_request_resumes_the_turn_with_the_secret` |
 | `trigger_changed` (log) | operator | a trigger row is added or removed | `fleet_id`, `kind`, `by` (`run` or `person`) | no signing secret, no URL | `a_webhook_trigger_admits_a_signed_delivery` |
 
 The `SetupStep` events, `fleet_setup_finished`, `fleet_setup_cancelled`, `setup_proposal_refused` and `task_intent_unavailable` are removed, and `docs/architecture/product_analytics.md` changes in the same Pull Request.
@@ -430,11 +436,11 @@ The `SetupStep` events, `fleet_setup_finished`, `fleet_setup_cancelled`, `setup_
 | R2 | A first message creates one active fleet with its turn, once, and is answered on its stream (§2) | `make test-integration-rustd` | exit 0; `a_first_message_creates_an_active_fleet_with_its_turn ... ok`, `a_repeated_create_answers_the_same_fleet ... ok`, `a_first_message_is_answered_on_the_fleet_stream ... ok` | P0 | |
 | R3 | A bare fleet runs with the catalog and no secret, the wallet is its only ceiling, and no draft or revision is left in the schema (§2) | `make test-integration-rustd` | exit 0; `a_new_fleets_run_holds_the_catalog_and_no_secret ... ok`, `a_payer_with_no_wallet_row_is_refused ... ok`, `the_schema_names_no_draft_or_revision ... ok`, `a_questions_answer_resumes_after_the_model_changes ... ok` | P0 | |
 | R4 | A run's prompt is the fixed text and the fleet's pinned memory, and no setup route or status remains (§2) | `make test-unit-all` | exit 0; `a_runs_prompt_carries_the_fleets_name_and_pinned_memory ... ok`, `no_setup_route_is_mounted ... ok`, `a_fleet_is_active_or_archived ... ok` | P0 | |
-| R5 | A run holds exactly what a person attached (§3) | `make test-integration-rustd` | exit 0; `an_attached_secret_is_in_the_next_runs_policy ... ok`, `an_api_key_cannot_add_a_grant ... ok`, `a_removed_grant_leaves_the_next_run_without_the_secret ... ok` | P0 | |
+| R5 | A run holds exactly what a person approved when the fleet asked (§3) | `make test-integration-rustd` | exit 0; `a_request_access_raises_one_card_and_waits ... ok`, `an_approved_request_resumes_the_turn_with_the_secret ... ok`, `an_api_key_cannot_approve_a_grant ... ok` | P0 | |
 | R6 | Triggers route from rows the fleet added, inside its workspace (§4) | `make test-integration-rustd` | exit 0; `a_webhook_trigger_admits_a_signed_delivery ... ok`, `an_app_delivery_outside_a_trigger_reaches_no_fleet ... ok`, `a_mention_reaches_the_fleet_subscribed_to_its_channel ... ok` | P0 | |
 | R7 | The fleet's model starts a task only under a person's message, and plain chat pays no decision call (§5) | `make test-integration-rustd` | exit 0; `a_task_start_writes_a_ready_task_and_its_continuation ... ok`, `a_task_start_under_a_webhook_turn_is_refused ... ok`, `a_plain_message_makes_no_decision_call ... ok` | P0 | |
 | R8 | The app is one chat with its lists (§6) | `make dry-app` | exit 0; `a first message opens the fleet's chat` passed | P0 | |
-| R9 | The CLI creates a fleet and attaches access (§7) | `make test-unit-all` | exit 0; `chat with no fleet creates one on the first line` and `fleet grants add prints the refusal as JSON` pass | P1 | |
+| R9 | The CLI creates a fleet and approves access (§7) | `make test-unit-all` | exit 0; `chat with no fleet creates one on the first line` and `fleet approvals approve prints the refusal as JSON` pass | P1 | |
 | R10 | The live path works for a signed-in person (§6, §7) | `make acceptance SUITE=all` | exit 0; `onboarding-chat-journey.spec.ts` and `install-fleet-cli.spec.ts` passed | P1 | |
 | S1 | Lint | `make lint-all` | exit 0 | P0 | |
 | S2 | Unit | `make test-unit-all` | exit 0 | P0 | |
@@ -450,16 +456,14 @@ The `SetupStep` events, `fleet_setup_finished`, `fleet_setup_cancelled`, `setup_
 | drafts and revisions | `git grep -n -e "setup\.drafts" -e "fleet\.revisions" -e draft_id -e head_revision_id -e setup_revision_id -e accepted_revision_id -e proposed_revision_id -e goal_revision_id -e runtime_model_ref -e policy_semantics -e initial_start -e setup_etag -- rustd ui/packages cli public` | no output |
 | the Definition and its engines | `git grep -n -w -e FleetConfig -e "Definition::parse" -e DecisionPolicy -e GatePolicy -e propose_setup -e SetupWork -e SetupStep -e "Owner::Draft" -e "RunKind::Setup" -e same_durable_task_authority -e INSTALLED_INSTRUCTIONS -- rustd` | no output |
 | review, Save and `installing` | `git grep -n -e review_digest -e draft_candidate_id -e SaveSource -e save_requested -e PRIVATE_RETENTION -e "FleetStatus::Installing" -e "PatchStatus::Active" -e setup_stream_ready -e "/drafts" -- rustd ui/packages cli public` | no output |
-| the grant card, approve and deny | `git grep -n -e request_for_setup -e first_ungranted -e "connector\.integration_grants" -e "integration-grants" -e requested_reason -e active_grant_id -e GateContinuation -e gate_continuation -e pending_approvals -- rustd ui/packages cli public` | no output |
+| the install-time request and the gate rules | `git grep -n -e request_for_setup -e first_ungranted -e "Origin::Install" -e GateContinuation -e gate_continuation -- rustd ui/packages cli public` | no output |
 | the task intake and read-only | `git grep -n -e task_intent_unavailable -e allow_actions -e "DecisionAssessment::Message" -e "DecisionAssessment::Item" -e read_post_paths -e allows_read_only -- rustd` | no output |
 | recipes and the fleet budget | `git grep -n -e "Source::Trigger" -e daily_nanos -e monthly_nanos -e webhook_urls -- rustd ui/packages cli public` | no output |
 | the setup clients | `git ls-files ui/packages/app/components/domain/setup "ui/packages/app/lib/api/draft*" ui/packages/app/lib/api/setup-proxy ui/packages/app/lib/setup-requirements.ts cli/src/commands/chat/setup-session.ts cli/src/commands/chat/setup-recovery.ts` | no output |
 
 ## Out of Scope
 
-- The fourteen-to-eight schema folds: M256_002, on the schema this spec leaves.
-- Deleting the runner's network posture: its own spec, with a sandbox mode that keeps a public fleet off the runner machine's network. Also later: renaming the two shrunken crates, billing on the call path, and the checkpoint tables beyond the dropped column.
-- A tenant route that creates a durable task; a timer wake for a waiting task; moving today's drafts and revisions, since the dev database is torn down at merge.
+- The fourteen-to-eight schema folds: M256_002, on the schema this spec leaves. Deleting the runner's network posture: its own spec, with a sandbox mode that keeps a public fleet off the runner machine's network. Also later: renaming the two shrunken crates, billing on the call path, and the checkpoint tables beyond the dropped column. A tenant route that creates a durable task; a timer wake for a waiting task; moving today's drafts and revisions, since the dev database is torn down at merge.
 
 ---
 
@@ -469,32 +473,28 @@ The `SetupStep` events, `fleet_setup_finished`, `fleet_setup_cancelled`, `setup_
 2. **Preserved user behaviour** — messages, stops, schedules, memory, a run's question, running durable tasks, archive and delete work as they do today. Webhook URLs and GitHub and Slack routing keep working from rows.
 3. **Optimal-way check** — one call that writes the fleet and its turn, and no document behind it. Every decision is ruled; the gap is Indy's approval of this report.
 4. **Rebuild-vs-iterate** — rebuild how a fleet comes to exist, what a run's policy and prompt are read from, and how a task starts; iterate on the run loop, schedules and the goal check.
-5. **What we build** — a create that takes a message; a policy read from the fleet and its grants; a prompt of fixed text and pinned memory; grants a person adds; a network toggle; trigger rows and task tools the fleet calls; three lists on the fleet page; the CLI's create, chat and lists.
+5. **What we build** — a create that takes a message; a policy read from the fleet and its grants; a prompt of fixed text and pinned memory; an access request the fleet makes and a person approves once; a network toggle; trigger rows and task tools the fleet calls; three lists on the fleet page; the CLI's create, chat and lists.
 6. **What we do NOT build** — a setup of any kind, a settings page, a starter Definition, a fleet budget, an access request from a run, a task route, a version counter, a slug derived from the message.
-7. **Fit with existing features** — it builds on the cron tools, memory, the secret vault, a run's question and the task commit. It must not destabilize a secret's host binding, the one rule on where a credential goes.
+7. **Fit with existing features** — it builds on the cron tools, memory, the secret vault, a run's question and the task commit. It must not destabilize a secret's host binding, the one rule on where a credential goes, or the approval card, which every credential now passes through.
 8. **Surface order** — API and runner first, then the app and the CLI, because both lose their draft client once the daemon's routes are settled.
 9. **Dashboard restraint** — the three lists show rows that exist. "Can access" offers only what the workspace already stores or has connected.
-10. **Confused-user next step** — a fleet that lacks access says so in its answer and "Can access" is beside the chat; a refused create names its code and the page that fixes it; `agentsfleet fleet grants list` and `fleet triggers list` print what a fleet has.
+10. **Confused-user next step** — a fleet that needs access asks for it on a card in the chat, and "Can access" lists what it holds; a refused create names its code and the page that fixes it; `agentsfleet fleet grants list`, `fleet approvals list` and `fleet triggers list` print what a fleet has and what waits.
 
 ## Decomposition & alternatives (patch vs refactor)
 
 - **Chosen shape:** seven Sections: the approval, the cut, access, triggers, tasks, the app, the CLI. The cut comes first so no commit carries today's path beside the new one.
-- **Alternatives considered:** keeping the record as what the chat writes to (the author's recommendation, declined by Indy for "Everything in M256_001"); today's path kept alive beside the new one until a last teardown commit (dropped: three Sections removed what it still needed); a version counter as the witness a revision id was (dropped: it refused a question's answer after any change); access asked by the run at first use (declined: nothing today stops a run mid-call and resumes it); a run that becomes a task run midway (dropped: a task run is prepared before its sandbox); a Tasks toggle, a `/task` message or a decision call on every message (declined by Indy); the decision model's bar for linking a later message (declined by Indy); deleting the runner's posture (declined here for the host-network risk).
+- **Alternatives considered:** keeping the record as what the chat writes to (the author's recommendation, declined by Indy for "Everything in M256_001"); today's path kept alive beside the new one until a last teardown commit (dropped: three Sections removed what it still needed); a version counter as the witness a revision id was (dropped: it refused a question's answer after any change); a person attaching access on the fleet page (approved first, then replaced by Indy with the one-time Approve: "which was easy"); access asked mid-call with a resume of the same run (dropped: the request ends the run waiting, as a question does); a run that becomes a task run midway (dropped: a task run is prepared before its sandbox); a Tasks toggle, a `/task` message or a decision call on every message (declined by Indy); the decision model's bar for linking a later message (declined by Indy); deleting the runner's posture (declined here for the host-network risk).
 - **Patch-vs-refactor verdict:** a **refactor** because two tables, a run kind, the task intake and the source of every run's policy and prompt are removed, two crates lose most of their code, and the approval machinery loses all but the question.
 
 ## Discovery (consult log)
 
-- > Owner (Indy, Nov 24, 2026): "Today a user goes draft → setup → fleet → durable tasks. I want to start a fleet and keep chatting. The setup draft is confusing." and "No private state: no \"private until approved\" draft phase." and "No setup approval step. Approvals happen on GitHub and in other tools, not in a setup card." and "No expiry. Archive already exists; the user decides." — context: the goal.
-- > Owner (Indy, Nov 24, 2026): "Ideally i wanna get rid of authoring drafts in a clean way?  no stale or unused optional ones just for the sake of it?", then "Everything in M256_001" after the sizing, having first said "let us not change untill we know what we are geting in to" — context: the scope. The author recommended deleting only the ceremony.
-- > Owner (Indy, Nov 24, 2026): "Yes budget - approved payer's balance" and "Refuse the run (Recommended)" — context: the wallet. "Delete the rule (Recommended)" — context: the event gates. "i think it must be easy to associate secrets to fleets? only if its added then we use them?", then "A person attaches it (Recommended)" — context: access.
-- > Owner (Indy, Nov 24, 2026): "The fleet adds them by tool", then "No limit" — context: triggers, against the author's recommendation to bound them by the fleet's grants. "Any fleet may" — context: steering, against the recommendation that a person allow it.
-- > Owner (Indy, Nov 24, 2026): "i think the runner poster must be nuked and this must on a fleet based, the summary has the toggle. So remove from runner and add it to per fleet based, by defaut fleets are private.", then "Fleet toggle; runner stays the ceiling (Recommended)" and "Both off; a person flips (Recommended)" — context: the network. "Drop it" — context: read-only.
-- > Owner (Indy, Nov 24, 2026): "the md file save in openclaw is our database here", "where it gets stored as memory", "i wanna keep it chat based … keep it open like openclaw like", then "Pinned memory in every prompt (Recommended)" — context: memory and the prompt.
-- > Owner (Indy, Nov 24, 2026): "Questions per task", "The fleet's own model decides, like setup did", "the outcome completion is from a deciison model", "The fleet's own model, by tool" and "Follow the fleet's access (Recommended)" — context: tasks. The last link went against the author's recommendation to keep the decision model's bar.
-- > Owner (Indy, Nov 24, 2026): "should we followe the practices of the draft into the fleet conversation chat?" and "Keep it simple and follow a realistic construct on an user will need" — context: the four carried practices. "D4 Agreed" — context: no tenant task route. "Tables merge more 14 down to 8" — context: the folds, repeated after the Fable review's three objections were put to him; every verdict cell of `schema_convergence.md` reads `RULED`, which closes M255_001 Dimension 1.1.
-- > Owner (Indy, Nov 24, 2026): "approved", "i dont need a fresh review again" and "paused runs must resume cleanly if model changes, it shoudnt matter" — context: Dimension 1.1, the report as pushed at `556f29631`; no fourth review; Dimension 2.22. Every decision in this spec is ruled.
+- > Owner (Indy, Nov 24, 2026): "Today a user goes draft → setup → fleet → durable tasks. I want to start a fleet and keep chatting. The setup draft is confusing." and "No private state: no \"private until approved\" draft phase." and "No setup approval step. Approvals happen on GitHub and in other tools, not in a setup card." and "No expiry. Archive already exists; the user decides." — context: the goal. > Owner (Indy, Nov 24, 2026): "Ideally i wanna get rid of authoring drafts in a clean way?  no stale or unused optional ones just for the sake of it?", then "Everything in M256_001" after the sizing, having first said "let us not change untill we know what we are geting in to" — context: the scope. The author recommended deleting only the ceremony.
+- > Owner (Indy, Nov 24, 2026): "Yes budget - approved payer's balance" and "Refuse the run (Recommended)" — context: the wallet. "Delete the rule (Recommended)" — context: the event gates. "i think it must be easy to associate secrets to fleets? only if its added then we use them?", then "A person attaches it (Recommended)" — context: access. > Owner (Indy, Nov 24, 2026): "The fleet adds them by tool", then "No limit" — context: triggers, against the author's recommendation to bound them by the fleet's grants. "Any fleet may" — context: steering, against the recommendation that a person allow it.
+- > Owner (Indy, Nov 24, 2026): "i think the runner poster must be nuked and this must on a fleet based, the summary has the toggle. So remove from runner and add it to per fleet based, by defaut fleets are private.", then "Fleet toggle; runner stays the ceiling (Recommended)" and "Both off; a person flips (Recommended)" — context: the network. "Drop it" — context: read-only. > Owner (Indy, Nov 24, 2026): "the md file save in openclaw is our database here", "where it gets stored as memory", "i wanna keep it chat based … keep it open like openclaw like", then "Pinned memory in every prompt (Recommended)" — context: memory and the prompt.
+- > Owner (Indy, Nov 24, 2026): "Questions per task", "The fleet's own model decides, like setup did", "the outcome completion is from a deciison model", "The fleet's own model, by tool" and "Follow the fleet's access (Recommended)" — context: tasks. The last link went against the author's recommendation to keep the decision model's bar. > Owner (Indy, Nov 24, 2026): "should we followe the practices of the draft into the fleet conversation chat?" and "Keep it simple and follow a realistic construct on an user will need" — context: the four carried practices. "D4 Agreed" — context: no tenant task route. "Tables merge more 14 down to 8" — context: the folds, repeated after the Fable review's three objections were put to him; every verdict cell of `schema_convergence.md` reads `RULED`, which closes M255_001 Dimension 1.1.
+- > Owner (Indy, Nov 25, 2026): "why can we use the old style one time approve?", "which was easy", then "Fleet asks, you Approve once (Recommended)" and "that is fine keep going" — context: access. It replaces "A person attaches it" from Nov 24; every credential, a secret included, now passes the card. > Owner (Indy, Nov 24, 2026): "approved", "i dont need a fresh review again" and "paused runs must resume cleanly if model changes, it shoudnt matter" — context: Dimension 1.1, the report as pushed at `556f29631`; no fourth review; Dimension 2.22. Every decision in this spec is ruled.
 - **Consults** — nine read-only traces by Explore agents: at `3fbd9e40e` the setup draft, the fleet chat, durable tasks, and the app and CLI; at `d79e88a46` the trigger readers, the access readers, the revision and task readers, the setup-only client code, and OpenClaw's source at `630b7e1d`, which is one chat that keeps going after a machine-level form.
-- **Model reviews** — three EGM rounds by Claude Fable 5.2 Goldfish reviewers with no context. Round 1, on a draft that kept an authored setup: comprehension 5 Blocker, 10 Major, 10 Nit; zoom-out 2, 7, 4; design 3, 5, 4; codebase-details 2, 9, 7; Indy's rulings replaced that design. Round 2, on the first no-Definition rewrite: design 4, 7, 4; implementation-readiness 5, 8, 3; codebase-details 1, 9, 5; fixed, the largest by Indy's "A person attaches it". Round 3, on the ruled design: design 3, 7, 4; implementation-readiness 5, 8, 3. **Fixed in this revision:** the version counter refused a question's answer after any change (dropped); a run could not become a task run midway (`task_start` queues the task's first turn); `task_input` skipped the existing wake path and the person check (both tools post the existing binding, on a span of a person's turn); the dual path contradicted three Sections and two `NOT NULL` keys (the cut comes first); unlisted statements dropped a bare fleet (named in §2); the kept modules were not separable (kept lists); the default memory category pinned everything (default changed); the GitHub scope named the wrong type; missing route, verb, code and schema detail; a sweep token that stays (`budget_used_nanos` is kept); too few failure paths (now 48 of 74 Dimensions prove a refusal, a replay or an absence). **Left as stated:** a hostile page can get something pinned (behaviour change 7), on Indy's ruling. That revision was not reviewed again, on Indy's word.
-- **Open blockers** — whether anything besides the gate rules, the question and the grant request writes an approval gate (behaviour change 11); settled at PLAN.
+- **Model reviews** — three EGM rounds by Claude Fable 5.2 Goldfish reviewers with no context. Round 1, on a draft that kept an authored setup: comprehension 5 Blocker, 10 Major, 10 Nit; zoom-out 2, 7, 4; design 3, 5, 4; codebase-details 2, 9, 7; Indy's rulings replaced that design. Round 2, on the first no-Definition rewrite: design 4, 7, 4; implementation-readiness 5, 8, 3; codebase-details 1, 9, 5; fixed, the largest by Indy's "A person attaches it". Round 3, on the ruled design: design 3, 7, 4; implementation-readiness 5, 8, 3. **Fixed in that revision:** the version counter refused a question's answer after any change (dropped); a run could not become a task run midway (`task_start` queues the task's first turn); `task_input` skipped the existing wake path and the person check (both tools post the existing binding, on a span of a person's turn); the dual path contradicted three Sections and two `NOT NULL` keys (the cut comes first); unlisted statements dropped a bare fleet (named in §2); the kept modules were not separable (kept lists); the default memory category pinned everything (default changed); the GitHub scope named the wrong type; missing route, verb, code and schema detail; a sweep token that stays (`budget_used_nanos` is kept); too few failure paths (at that revision 48 of 74 Dimensions proved a refusal, a replay or an absence). **Left as stated:** a hostile page can get something pinned (behaviour change 7), on Indy's ruling. That revision was not reviewed again, on Indy's word.
+- **Open blockers** — none. Every decision is ruled and the report is approved.
 - **Discovery candidates, recorded and not scope** (Indy's list, Nov 24, 2026) — billing on the call path, as a per-call usage frame or a platform model gateway; a delivery claim lifetime derived from the retry budget; sandbox drain as a kernel event; a metrics sampler audit; the mailinator teardown sweep. From the M255 close-out: the docs pages `fleets/library.mdx` and `api-reference/error-codes.mdx` still describe plugins, whose routes are gone; the docs Makefile's 10-second `openapi.json` download cap times out on slow links; `cargo shear` warns about unlinked `af_fleet_runtime/src/setup/tests/{schema,settle}.rs`, which this spec deletes; three files over 350 lines (`afr_supervisor`'s `downlink/terminal_tests.rs` and `renew/tests.rs`, the daemon's `config/settings.rs`); renewal slack after one silent round is about 1.5 s, with clock skew and a doubled reconnect pause not budgeted.
 - **Deferrals and transfers** — out: the fourteen-to-eight folds to M256_002, on Indy's words "`setup.drafts` (rows 1 and 4) is decided by this milestone, and the folds after it follow." In: M255_001 Dimension 1.1, closed here. Each further one needs an owner quote, as `> Owner (<name>, <MMM DD, YYYY HH:MM>): "<quote>" — context: <item, why>`.
