@@ -18,10 +18,6 @@ const nextConfig: NextConfig = {
     ] },
   ],
   // Turbopack is the default bundler in Next.js 16.1.
-  // File system cache (incremental computation) is stable and on-by-default —
-  // dependency graphs, aggregation graphs, and value cells persist to disk.
-  // No turbo config block needed; it's all automatic.
-  // See: https://nextjs.org/blog/turbopack-incremental-computation
 
   // Start with explicitly annotated components so compiled behavior can be
   // compared before expanding to the rest of the dashboard.
@@ -39,6 +35,9 @@ const nextConfig: NextConfig = {
   // build must shell out to the project-local tsc CLI instead of loading the
   // retired JavaScript compiler API (vercel/next.js#95831, stable in 16.2.12).
   experimental: {
+    // A cache restored across Vercel deployments can feed old CSS imports to PostCSS.
+    // https://github.com/vercel/next.js/issues/100326
+    ...(process.env.VERCEL === "1" && {turbopackFileSystemCacheForBuild: false}),
     useTypeScriptCli: true,
     // `proxy.ts` matches the setup and message routes, so Next buffers their
     // bodies, and past its 10 MiB default it truncates them silently. The
