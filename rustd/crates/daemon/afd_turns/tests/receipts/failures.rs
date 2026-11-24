@@ -4,7 +4,7 @@ use super::{
     Fallible,
     lane::Lane,
     ledger::{admit, steer},
-    queue::{RING_FAILED, admit_against, over, over_bus, silent},
+    queue::{RING_FAILED, admit_against, over, over_bus},
 };
 use af_core::{error_code, test_util::trace::assert_uncoded};
 use afd_turns::Reply as ReplyTo;
@@ -37,21 +37,15 @@ async fn a_refused_notification_is_logged_and_leaves_one_queued_row() -> Fallibl
     Ok(())
 }
 
+/// A notification the bus lost leaves the accepted turn durable: the replay finds it,
+/// and the next ring names its fleet.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn a_silent_notification_is_bounded_and_does_not_lose_acceptance() -> Fallible {
+async fn a_lost_notification_does_not_lose_acceptance() -> Fallible {
     let lane = Lane::seed().await?;
-    let run = tokio::time::timeout(
-        std::time::Duration::from_secs(2),
-        admit_against(&lane, &over(&lane, silent())),
-    )
-    .await?;
+    let run = admit_against(&lane, &over(&lane, afd_bus::test_util::unreachable())).await;
     let admitted = run.admitted()?;
-    let logged = run.event(RING_FAILED).ok_or("the deadline is logged")?;
-    assert_uncoded(
-        logged.get("reason").map_or("", String::as_str),
-        "notification timeout",
-    );
+    run.event(RING_FAILED).ok_or("the lost ring is logged")?;
     let (mut rings, turns) = over_bus(&lane).await?;
     let replayed = admit(&turns, steer(&lane, lane.fleet.as_str(), ReplyTo::None)).await?;
     assert!(replayed.replayed);

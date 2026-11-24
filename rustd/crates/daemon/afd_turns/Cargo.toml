@@ -73,8 +73,6 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
 # The in-process bus the receipt suites admit over and read wake rings back
 # from, and the unreachable one their failure arms use.
 afd_bus = { workspace = true, features = ["test-util"] }
-# The stalled broker `tests/receipts/queue.rs` implements the bus trait for.
-async-trait.workspace = true
 # The lane fixture: the shared test database and the identifier minting the
 # seeded rows are addressed by.
 afd_db = { workspace = true, features = ["test-util"] }
