@@ -509,6 +509,8 @@ Eight strokes open in opposing pairs from two columns into the brand mark around
 
 Reduced motion displays the assembled mark immediately.
 
+On sign-in and sign-up the same mark appears in the form column until Clerk is ready. A failed load offers Reload page.
+
 Inside the dashboard it fills the content area while the header and sidebar remain visible. Do not add route-specific skeleton layouts. Buttons, table refreshes, and other local actions keep their own loading cues.
 
 ### Tables and record dates

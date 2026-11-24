@@ -282,6 +282,22 @@ button{font-weight:500}h1,h2,h3{font-weight:650}strong{font-weight:600}
 @media (forced-colors: active) {
   .app-loading-mark { color: CanvasText; }
 }
+.auth-loading-preview { display: flex; min-height: 100%; flex-direction: column; background: var(--surface); }
+.auth-loading-brand { display: flex; align-items: center; gap: 4px; padding: 12px 32px; font-weight: 500; }
+.auth-loading-brand svg { width: 24px; height: 24px; color: var(--accent); }
+.auth-loading-layout { display: grid; flex: 1; align-items: center; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 64px; width: 100%; max-width: 1280px; margin: auto; padding: 24px 32px; }
+.auth-loading-intro { display: grid; gap: var(--s6); }
+.auth-loading-intro h1 { margin: 0 0 var(--s3); font-size: var(--fs-page-title); }
+.auth-loading-tile { justify-self: start; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--panel); }
+.auth-loading-tile svg { display: block; width: 56px; height: 56px; color: var(--accent); }
+.auth-loading-intro ul { display: grid; gap: 12px; list-style: none; margin: 0; padding: 0; }
+.auth-loading-intro li { display: flex; align-items: center; gap: 8px; color: var(--secondary); }
+.auth-loading-intro li i { width: 16px; height: 16px; color: var(--accent); }
+.auth-loading-preview p { color: var(--secondary); margin: 0; }
+.auth-loading-form { display: grid; justify-items: center; gap: 16px; text-align: center; }
+.auth-loading-form .app-loading-preview { min-height: 0; padding: 16px; }
+@media (max-width: 1023px) { .auth-loading-layout { grid-template-columns: 1fr; padding-inline: 12px; }.auth-loading-intro { display: none; } }
+@media (max-width: 639px) { .auth-loading-brand { padding-inline: 16px; } }
 /* Model details and price schedule inside Create model. */
 .model-review-spinner { flex: none; width: 20px; height: 20px; color: var(--accent); }
 @media (prefers-reduced-motion: no-preference) {
@@ -446,7 +462,7 @@ button{font-weight:500}h1,h2,h3{font-weight:650}strong{font-weight:600}
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
-<div class="review-bar" aria-label="Prototype controls"><span><strong>Visual review</strong><span class="review-caption">Sample data</span><label class="setup-review-picker" id="setup-review-picker" hidden>Example<select aria-label="Fleet setup example"><option value="draft">Draft setup</option><option value="scheduled">Scheduled fleet</option><option value="setup-empty">Nothing selected</option><option value="setup-before">Before setup</option><option value="setup-models-unavailable">Model choices unavailable</option><option value="setup-queued">On it</option><option value="setup-thinking">Thinking</option><option value="setup-failure">Request failed</option></select></label><label class="setup-review-picker" id="workspace-review-picker" hidden>Workspace<select aria-label="New fleet workspace example"><option value="populated">Saved fleets</option><option value="fresh">No fleets yet</option><option value="unfinished">Unfinished setup</option></select></label><label class="setup-review-picker" id="app-loading-review-picker" hidden>View<select aria-label="App loading preview"><option value="app-loading">Dashboard</option><option value="app-loading-full">Full screen</option><option value="fleet-setup-loading">Fleet setup</option><option value="fleet-chat-loading">Fleet conversation</option></select></label></span><div class="review-links"><button data-view="app-loading">App loading</button><button data-view="empty">New fleet</button><button data-view="draft">Fleet setup</button><button data-view="chief">Fleet handoff</button><button data-view="conversation">Conversation</button><button data-view="activity">Activity</button><button data-view="failure">Error</button><button data-view="scheduled">Wake-up</button><button data-view="usage">Usage</button><button data-view="models">Models</button><button data-view="secrets">Secrets</button><button data-view="team">Team</button><button data-view="security">Security</button><button data-view="cli-sign-in">CLI sign-in</button><button data-view="terminal">Terminal</button><button data-view="review">Sign-off</button><button class="icon-button" id="theme-toggle" aria-label="Switch color theme" title="Switch color theme"><i data-icon="sun"></i></button></div></div>
+<div class="review-bar" aria-label="Prototype controls"><span><strong>Visual review</strong><span class="review-caption">Sample data</span><label class="setup-review-picker" id="setup-review-picker" hidden>Example<select aria-label="Fleet setup example"><option value="draft">Draft setup</option><option value="scheduled">Scheduled fleet</option><option value="setup-empty">Nothing selected</option><option value="setup-before">Before setup</option><option value="setup-models-unavailable">Model choices unavailable</option><option value="setup-queued">On it</option><option value="setup-thinking">Thinking</option><option value="setup-failure">Request failed</option></select></label><label class="setup-review-picker" id="workspace-review-picker" hidden>Workspace<select aria-label="New fleet workspace example"><option value="populated">Saved fleets</option><option value="fresh">No fleets yet</option><option value="unfinished">Unfinished setup</option></select></label><label class="setup-review-picker" id="app-loading-review-picker" hidden>View<select aria-label="App loading preview"><option value="app-loading">Dashboard</option><option value="app-loading-full">Full screen</option><option value="fleet-setup-loading">Fleet setup</option><option value="fleet-chat-loading">Fleet conversation</option><option value="sign-in-loading">Sign in</option><option value="sign-up-loading">Sign up</option></select></label></span><div class="review-links"><button data-view="app-loading">App loading</button><button data-view="empty">New fleet</button><button data-view="draft">Fleet setup</button><button data-view="chief">Fleet handoff</button><button data-view="conversation">Conversation</button><button data-view="activity">Activity</button><button data-view="failure">Error</button><button data-view="scheduled">Wake-up</button><button data-view="usage">Usage</button><button data-view="models">Models</button><button data-view="secrets">Secrets</button><button data-view="team">Team</button><button data-view="security">Security</button><button data-view="cli-sign-in">CLI sign-in</button><button data-view="terminal">Terminal</button><button data-view="review">Sign-off</button><button class="icon-button" id="theme-toggle" aria-label="Switch color theme" title="Switch color theme"><i data-icon="sun"></i></button></div></div>
 <div class="app">
   <nav class="rail" aria-label="Main navigation">
     <button class="brand" data-view="empty" aria-label="agentsfleet home"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0Ij4KICA8dGl0bGU+YWdlbnRzZmxlZXQ8L3RpdGxlPgogIDxyZWN0IHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCIgcng9IjEyIiBmaWxsPSIjMTUxNzE2Ii8+CiAgPGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoOCA4KSBzY2FsZSgyKSIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjYjhmMGNlIiBzdHJva2Utd2lkdGg9IjEuNCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIj4KICAgIDxwYXRoIGQ9Ik0xMiAydjZtMCA4djZNMiAxMmg2bTggMGg2TTQuOTMgNC45M2w0LjI0IDQuMjRtNS42NiA1LjY2IDQuMjQgNC4yNE00LjkzIDE5LjA3bDQuMjQtNC4yNG01LjY2LTUuNjYgNC4yNC00LjI0Ii8+CiAgICA8Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSIxLjUiIGZpbGw9IiNiOGYwY2UiIHN0cm9rZT0ibm9uZSIvPgogIDwvZz4KPC9zdmc+Cg==" width="24" height="24" alt=""><span class="nav-label">agentsfleet</span></button>
@@ -847,6 +863,8 @@ const appLoadingViews = new Map([
   ['app-loading-full', 'Loading…'],
   ['fleet-setup-loading', 'Loading setup chat'],
   ['fleet-chat-loading', 'Loading fleet chat'],
+  ['sign-in-loading', 'Loading sign-in…'],
+  ['sign-up-loading', 'Loading sign-up…'],
 ]);
 
 function brandSignal() {
@@ -878,6 +896,18 @@ function appLoadingView(label, fullScreen) {
       <span>${label}</span>
     </div>
   </div>`;
+}
+function authLoadingView(label) {
+  const mark = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">${brandSignal()}</svg>`;
+  const steps = ['Describe the result you need', 'Review the setup and access', 'Follow the work and review the results'];
+  return `<div class="auth-loading-preview"><div class="auth-loading-brand">${mark}agentsfleet</div>
+    <div class="auth-loading-layout"><div class="auth-loading-intro">
+      <div class="auth-loading-tile">${mark}</div><div><h1>Put your agents to work.</h1>
+      <p>Give your fleet a task, connect the tools it needs, and keep the work and results in one place.</p></div>
+      <ul>${steps.map(step => `<li>${icon('check-circle')}${step}</li>`).join('')}</ul>
+      <p>Your tools. Your models. Your direction.</p></div>
+      <div class="auth-loading-form">${appLoadingView(label, false)}<p>From a task in mind to work you can review.</p></div>
+    </div></div>`;
 }
 window.FLEET_ICONS.info = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-40a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,0-16,16,16,0,0,1,16,16v40A8,8,0,0,1,144,176ZM112,84a12,12,0,1,1,12,12A12,12,0,0,1,112,84Z\"></path></svg>";
 window.FLEET_ICONS["circle-notch"] = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M232,128a104,104,0,0,1-208,0c0-41,23.81-78.36,60.66-95.27a8,8,0,0,1,6.68,14.54C60.15,61.59,40,93.27,40,128a88,88,0,0,0,176,0c0-34.73-20.15-66.41-51.34-80.73a8,8,0,0,1,6.68-14.54C208.19,49.64,232,87,232,128Z\"></path></svg>";
@@ -1023,7 +1053,8 @@ function showView(view, focus=false) {
   const appLoadingPicker = $('#app-loading-review-picker');
   appLoadingPicker.hidden = !appLoading;
   if (appLoading) appLoadingPicker.querySelector('select').value = view;
-  $('.app').classList.toggle('app-loading-full', view === 'app-loading-full');
+  const authLoading = view === 'sign-in-loading' || view === 'sign-up-loading';
+  $('.app').classList.toggle('app-loading-full', view === 'app-loading-full' || authLoading);
   const isChat = !!fleetNames[view];
   const setupExample=isSetupExample(view), editing=view.startsWith('edit-');
   $('#workspace-review-picker').hidden=view!=='empty';
@@ -1042,7 +1073,7 @@ function showView(view, focus=false) {
     $('#header-state').classList.add('neutral');$('#run-cost').hidden=true;
   }
   if(setupPreview[view]?.saved)$('#header-state').hidden=true;
-  $('#main').innerHTML = appLoading ? appLoadingView(loadingLabel, view === 'app-loading-full') : isChat ? workspace(view) : view==='empty' ? emptyView() : pageView(view);
+  $('#main').innerHTML = authLoading ? authLoadingView(loadingLabel) : appLoading ? appLoadingView(loadingLabel, view === 'app-loading-full') : isChat ? workspace(view) : view==='empty' ? emptyView() : pageView(view);
   if($('#message')) $('#message').value=appState.drafts[view] || '';
   const archived=appState.lifecycle[view]==='archived';
   if(archived){$('#header-state').textContent='Archived';$('#header-state').classList.add('neutral');$$('#transcript button').forEach(b=>b.disabled=true);}

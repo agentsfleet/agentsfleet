@@ -43,7 +43,7 @@ One public Chromium sample measured 1,220 ms to first byte for `/sign-in` and 87
 
 The measurement proxy refused the Clerk asset host, so the time to an interactive form remains unmeasured. The canonical URLs returned directly and `/signin` and `/signup` each redirected once.
 
-Both pages now send a small loading skeleton with the initial HTML. If Clerk reports a load failure, the loading panel offers a reload action. [Loading panel](../../ui/packages/app/app/%28auth%29/AuthFormLoading.tsx) · [Server markup checks](../../ui/packages/app/tests/app-pages.test.ts)
+Both pages send the shared page loader in the initial HTML while Clerk prepares the form. If Clerk reports a load failure, the page offers a reload action. [Loading panel](../../ui/packages/app/app/%28auth%29/AuthFormLoading.tsx) · [Server markup checks](../../ui/packages/app/tests/app-pages.test.ts)
 
 Server components render the panel and a small client component reads Clerk’s status. Each local production route bundle measured 220.56 kB gzip against a 230.4 kB budget. [Client status](../../ui/packages/app/app/%28auth%29/AuthFormStatus.tsx) · [Route budgets](../../ui/packages/app/.size-limit.mjs)
 
@@ -124,7 +124,7 @@ Each route uses the root style graph. Workspace routes begin with `/w/[workspace
 
 | Page | Current component and style boundary | Refactor decision |
 | --- | --- | --- |
-| [Sign in](../../ui/packages/app/app/%28auth%29/sign-in/%5B%5B...sign-in%5D%5D/page.tsx) | Auth layout, Clerk and shared appearance preset | Server-rendered loading panel and retry state checked on phones and desktop. |
+| [Sign in](../../ui/packages/app/app/%28auth%29/sign-in/%5B%5B...sign-in%5D%5D/page.tsx) | Auth layout, Clerk and shared appearance preset | Server-rendered page loader and retry state. |
 | [Sign up](../../ui/packages/app/app/%28auth%29/sign-up/%5B%5B...sign-up%5D%5D/page.tsx) | Same auth layout and appearance preset | Shares the loading panel and uses its own loading message. |
 | [Invites](../../ui/packages/app/app/%28dashboard%29/invites/page.tsx) | Shared `InvitesView` with route data loader, component utilities | Retain the arrangement and test the shared view once for list and empty states. |
 | [Invite detail](../../ui/packages/app/app/%28dashboard%29/invites/%5BinviteId%5D/page.tsx) | Reuses `InvitesView` with the selected invite, component utilities | Keep the accept and dismiss behaviors in the feature, using the shared controls. |

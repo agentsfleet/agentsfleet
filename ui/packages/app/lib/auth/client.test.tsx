@@ -33,7 +33,10 @@ describe("auth page loading", () => {
     (Page, label) => {
       useClerk.mockReturnValue({status: "loading"});
       render(<Page />);
-      expect(screen.getByRole("status").textContent).toBe(label);
+      const status = screen.getByRole("status", {name: label});
+      expect(status.textContent).toBe(label);
+      expect(status.closest("[data-dashboard-panel]")).toBeNull();
+      expect(status.querySelectorAll(".page-loading-stroke")).toHaveLength(8);
       expect(screen.queryByRole("button", {name: "Reload page"})).toBeNull();
     },
   );
