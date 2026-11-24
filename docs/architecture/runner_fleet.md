@@ -416,7 +416,9 @@ A Kubernetes-style `status` plus `conditions` JSONB split is adopted **only if**
 
 ### Automatic quarantine and return
 
-No daemon code sets an automatic cordon or writes a `runner_offline` row: the liveness sweep that did is gone (Indy, Nov 21, 2026). A host silent past the offline window, 114 seconds by default, reads `offline` when a read derives its liveness (`afd_runner`'s `view/decode.rs`). Its sandbox hold stops protecting its fleet from other runners' assignments (`assign_turn_head.sql`).
+No timed sweep cordons a host or writes a `runner_offline` row: the liveness sweep is gone (Indy, Nov 21, 2026). A runner connection that ends with no successor arms one visit instead, at its last beat plus the offline window (`afd_gateway`'s `connection/departure/mod.rs`). The visit writes `runner_offline` once and cordons an `active` host for missed heartbeats, unless the host beat again (`afd_runner`'s `silence.rs`).
+
+A host silent past the offline window, 114 seconds by default, also reads `offline` when a read derives its liveness (`afd_runner`'s `view/decode.rs`). Its sandbox hold stops protecting its fleet from other runners' assignments (`assign_turn_head.sql`).
 
 A row that already carries `missed_heartbeats` still returns. Healthy heartbeats from the current connection must continue for 30 seconds before the heartbeat lifts it and writes `runner_uncordoned`. A gap of at least two heartbeat intervals or a failed health proof resets that interval. Lifting it preserves an operator's cordon, drain or revocation. New fleet and setup assignments refuse a cordoned host under its row lock.
 
