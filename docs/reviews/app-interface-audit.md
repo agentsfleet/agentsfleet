@@ -6,7 +6,9 @@ The app baseline is main at `e96444ac9`. The audit maps all 21 route entries and
 
 Eight strokes gather into the approved brand mark in opposing pairs. The dashboard keeps its sidebar and header visible while the full-screen variant centers the status in the window. [Dashboard](../ux.html#app-loading) · [Full screen](../ux.html#app-loading-full)
 
-Reduced motion keeps the assembled mark and “Loading…” label still. Full-screen waits also show the agentsfleet wordmark. `RouteLoading` uses the shared Spinner's page variant for navigation, initial data and connector return, alongside a compact spinner for buttons and forms. [Page loading design](../DESIGN_SYSTEM.md#page-loading) · [RouteLoading](../../ui/packages/app/components/layout/RouteLoading.tsx) · [Connector loading](../../ui/packages/app/app/connectors/loading.tsx)
+Reduced motion keeps the assembled mark and “Loading…” label still. Full-screen waits also show the agentsfleet wordmark.
+
+`RouteLoading` uses the shared Spinner's page variant for navigation, initial data and connector return, alongside a compact spinner for buttons and forms. [Page loading design](../DESIGN_SYSTEM.md#page-loading) · [RouteLoading](../../ui/packages/app/components/layout/RouteLoading.tsx) · [Connector loading](../../ui/packages/app/app/connectors/loading.tsx)
 
 ## Rendered app review
 
