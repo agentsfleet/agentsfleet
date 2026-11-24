@@ -27,7 +27,7 @@ export async function expectAccessible(page: Page, state: string): Promise<void>
     }));
     expect.soft(violations, state).toEqual([]);
   } finally {
-    await style.evaluate(element => element.remove());
+    await style.evaluate(node => { node.parentNode?.removeChild(node); });
   }
 }
 
