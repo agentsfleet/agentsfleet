@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Date:** Nov 24, 2026
 
-**Status:** PENDING
+**Status:** IN_PROGRESS
 
 **Priority:** P1, a new person meets a private draft, a setup card and a Save before a fleet does any work
 
@@ -144,7 +144,7 @@ Counts are from the worktree at `d79e88a46`.
 
 | File | Action | Why |
 |------|--------|-----|
-| `docs/v2/pending/M256_001_P1_API_CLI_UI_FLEET_FROM_FIRST_MESSAGE.md` | EDIT | this spec; moves to `active/`, then `done/` |
+| `docs/v2/active/M256_001_P1_API_CLI_UI_FLEET_FROM_FIRST_MESSAGE.md` | EDIT | this spec, moved from `pending/`; moves to `done/` at close |
 | `docs/architecture/*.md`, `docs/architecture/scenarios/*.md` (40 pages name a Definition, draft, revision or setup), `playbooks/operations/slack_incident_drill/001_playbook.md` | EDIT/DELETE | the design as ruled, in a doc-only commit before the code; `fleet_definitions.md` is deleted; `concurrency.md` loses the draft's locks |
 | `rustd/crates/daemon/afd_setup/**` (164 production files, 10,975 lines; 56 test files) | DELETE/EDIT | §2. **Kept:** `access.rs`, `error/**`, `paging.rs`, `limits.rs`, `tuning.rs`, `types/**` trimmed to the fleet and model types, `replay/**`, `context/**`, `catalogue/**` moved off `Drafts`, and `creation/{mod,read,patch,delete}.rs` with a new `creation/create.rs` and their statements. Everything else goes |
 | `rustd/crates/protocol/af_fleet_runtime/**` (6,763 production lines) | DELETE/EDIT | §2. **Kept:** `name/**`, `error/**`, `config/trigger/**` with the `raw` types it reads, `config/repository.rs` (the GitHub scope), `config/policy/http_egress.rs`, and the statement shape and bounds from `config/decision/`. `definition/**`, `setup/**` and the rest of `config/**` go |
