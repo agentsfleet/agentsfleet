@@ -9,6 +9,7 @@ const originalUrl = process.env.NEXT_PUBLIC_API_URL;
 let fixtureDirectory: string | undefined;
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   if (fixtureDirectory) rmSync(fixtureDirectory, { recursive: true });
   fixtureDirectory = undefined;
   if (originalFile === undefined) delete process.env.AGENTSFLEET_UI_ENV_FILE;
@@ -45,4 +46,18 @@ test("Next configuration loads the configured file without a worktree symlink", 
   await import("../next.config");
 
   expect(process.env.NEXT_PUBLIC_API_URL).toBe("https://next.example.test");
+});
+
+test.each([
+  {vercel: "1", cache: false},
+  {vercel: "0", cache: undefined},
+  {vercel: undefined, cache: undefined},
+])("sets the persistent build cache to $cache with VERCEL=$vercel", async ({vercel, cache}) => {
+  vi.stubEnv("AGENTSFLEET_UI_ENV_FILE", undefined);
+  vi.stubEnv("VERCEL", vercel);
+  vi.resetModules();
+
+  const {default: config} = await import("../next.config");
+
+  expect(config.experimental?.turbopackFileSystemCacheForBuild).toBe(cache);
 });
