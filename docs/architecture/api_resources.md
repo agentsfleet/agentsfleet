@@ -299,7 +299,10 @@ Reasoning and tool arguments never enter the private preview.
 `draft.resync` carries `{}` after a subscription gap and requests a durable read, without another model request.
 
 Before each frame, recheck current membership, deletion generation, the run and running message state.
-A quiet stream reads nothing. It reads when its draft's writers publish a change after their commit, when the account's members change, and on a gap or lag; its 15-second heartbeat reads nothing. Each access read has a ten-second deadline.
+
+A quiet stream reads nothing, and its 15-second heartbeat reads nothing. It reads when a draft writer publishes a change after its commit, when the account's members change, or on a gap or lag.
+
+Each access read has a ten-second deadline.
 Revocation closes the stream; deletion emits only identity and closes.
 
 Already rendered text cannot be recalled.

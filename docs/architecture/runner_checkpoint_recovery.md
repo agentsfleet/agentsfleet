@@ -238,7 +238,9 @@ No daemon timer re-offers an expired run. The assignment that takes the turn exp
 
 The run TTL includes one 10-second round, a 5-second answer window, a 7-second reconnect and a 15-second renewal margin, plus one second. A deployment's heartbeat, which is the round, is refused at boot when its run TTL cannot carry it (`af_core`'s `timing/run.rs`).
 
-A host silent for three run lifetimes, 114 seconds, reads `offline` when an operator view derives it (`afd_runner`'s `view/decode.rs`). Nothing writes a `runner_offline` row or cordons a silent host. Its sandbox hold stops protecting its fleet once its last beat is older than that window (`assign_turn_head.sql`). [Renewal decision](../v2/done/M243_001_P1_API_DOCS_INFRA_OBS_RUNNERS_HOLD_ONE_PUSH_STREAM.md#renewal-recovery-budget-correction)
+A host silent for three run lifetimes, 114 seconds, reads `offline` when an operator view derives it (`afd_runner`'s `view/decode.rs`). Nothing writes a `runner_offline` row or cordons a silent host.
+
+Its sandbox hold stops protecting its fleet once its last beat is older than that window (`assign_turn_head.sql`). [Renewal decision](../v2/done/M243_001_P1_API_DOCS_INFRA_OBS_RUNNERS_HOLD_ONE_PUSH_STREAM.md#renewal-recovery-budget-correction)
 
 ```text
 brief link break + reconnect before expiry -> same run and fence

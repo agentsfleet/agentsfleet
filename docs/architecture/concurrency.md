@@ -360,7 +360,7 @@ Stop and delete take the draft, then its thread in a statement of its own, then 
 
 ### A fleet Stop, the issue, a fold retry and a gate answer
 
-Each takes the fleet's thread before a turn, a gate or a run, so they queue on the thread instead of locking a turn and a gate in opposite orders:
+Each takes the fleet's thread before a turn, a gate or a run. They queue on the thread instead of locking a turn and a gate in opposite orders:
 
 ```
  fleet Stop     hold_thread.sql: fleet KEY SHARE ─► thread NO KEY UPDATE
@@ -371,24 +371,30 @@ Each takes the fleet's thread before a turn, a gate or a run, so they queue on t
  fleet delete   fleet FOR UPDATE ─► setup cards ─► cascade to gates and thread
 ```
 
-The Stop's holds are a statement of their own (`afd_turns`'s `view/stop/hold_thread.sql`), so Stop's statement starts after an issue that held the thread commits and marks the run it issued. The issue reads its head with a lock after its thread wait, so a Stop that committed meanwhile leaves no run (`afd_fleet`'s `integration_run_issue_stop.rs`).
+The Stop's holds are a statement of their own (`afd_turns`'s `view/stop/hold_thread.sql`). Stop's statement starts after an issue that held the thread commits, and marks the run it issued. The issue reads its head with a lock after its thread wait, so a Stop that committed meanwhile leaves no run (`afd_fleet`'s `integration_run_issue_stop.rs`).
 
-The fleet comes first in a Stop and a gate answer because fleet delete holds it `FOR UPDATE`, closes the setup cards and then cascades to the thread. Holding the thread there met delete at a gate: Stop deadlocked with it before Nov 23, 2026 (`afd_approval`'s `integration_resolve_behind_stop.rs`). Every other holder of the fleet `FOR UPDATE` delays a Stop and a gate answer too, up to the login's lock bound: activation, a setup save, an archive and a recovered start (`afd_setup`'s `creation/`).
+A Stop and a gate answer take the fleet first, because fleet delete holds it `FOR UPDATE` and then cascades to the thread. Holding the thread first met delete at a gate: Stop deadlocked with it before Nov 23, 2026 (`afd_approval`'s `integration_resolve_behind_stop.rs`).
 
-A gate answer holds the thread for its one statement even when it loses. An assignment pass that meets it skips the fleet, as it skips any held thread, and the losing answer rings nothing: the turn waits for the fleet's next ring, the loss a dropped wake causes.
+Every other holder of the fleet `FOR UPDATE` delays a Stop and a gate answer too, up to the login's lock bound. Those holders are activation, a setup save, an archive and a recovered start (`afd_setup`'s `creation/`).
+
+A gate answer holds the thread for its one statement even when it loses. An assignment pass that meets it skips the fleet, as it skips any held thread. The losing answer rings nothing, so the turn waits for the fleet's next ring, as after a dropped wake.
 
 ### A decision reservation locks in one statement
 
-A reservation reads its run, its task, its source turn, the budget and the wallet with no lock, each read a round trip of its own. Then one statement takes every lock it needs, in the order the fleet's writers take them, re-checks the rows and inserts the call as issued with its payload (`afd_fleet`'s `durable_task/decision/sql/issue.sql`):
+A reservation reads its run, task, source turn, budget and wallet with no lock, one round trip each. Then one statement takes its locks in the fleet writers' order, re-checks the rows, and inserts the issued call with its payload (`afd_fleet`'s `durable_task/decision/sql/issue.sql`):
 
 ```
  reads, no lock ─► issue.sql: workspace, fleet KEY SHARE ─► thread, run, named task,
                    source turn, each FOR SHARE ─► clock ─► INSERT call + payload
 ```
 
-A share lock makes Postgres re-read a row that changed while the statement waited, so a takeover, a task cancel or a Stop that committed meanwhile issues nothing. Rows the statement only joins (the runner, the model, its revision) are read as of the statement's start. The money reads are not repeated inside it: reservations of one fleet that overlap can each pass a budget or wallet check the other's call would have failed, by one call's reservation each.
+A share lock makes Postgres re-read a row that changed while the statement waited. So a takeover, a task cancel or a Stop that committed meanwhile issues nothing. Rows the statement only joins (the runner, the model, its revision) are read as of the statement's start.
 
-The share locks let reservations of one fleet run together and make a renewal, a report or a Stop of that fleet wait for the statements in flight. With 100 reservations of one operation released together, a renewal of the same run waited at most 0.6 s for its locks, against the login's 2 s bound (`integration_durable_tasks/decisions/issue.rs`, `a_renewal_completes_during_a_reservation_storm`, four runs on the lane's Postgres).
+The statement does not repeat the money reads. Two overlapping reservations of one fleet can each pass a money check the other's call would fail, by one call's reservation each.
+
+The share locks let reservations of one fleet run together. A renewal, a report or a Stop of that fleet waits for the statements in flight.
+
+With 100 reservations of one operation released together, a renewal of the same run waited at most 0.6 s for its locks. The login's bound is 2 s (`integration_durable_tasks/decisions/issue.rs`, `a_renewal_completes_during_a_reservation_storm`, four runs on the lane's Postgres).
 
 ### A run's verbs on the fleet row and the run row
 
@@ -463,4 +469,4 @@ The draft review and the saved-setup read run read committed, with lock-free twi
 
 No run was doubled and no host exceeded its workers either way. The full row is in [Measured ceilings](./scaling.md#measured-ceilings).
 
-An assignment still waits on the thread, the earlier run and the turn. A fleet Stop takes the fleet and then the thread, and a report and a renewal take the thread first, so they queue behind an assignment rather than lock against it in the other order.
+An assignment still waits on the thread, the earlier run and the turn. A fleet Stop takes the fleet and then the thread, and a report and a renewal take the thread first. So each queues behind an assignment rather than locking against it in the other order.

@@ -177,7 +177,10 @@ An expired run exposes the same unsettled turn with its original turn and billin
 
 The outbound worker takes durable `thread.deliveries` rows from Postgres.
 The report writes each row with a fresh `receipt` token and a lapsed `claim_expires_at`, so any replica may take it at once.
-The worker claims at start, on an `af.delivery.wake` ping, when one of its deliveries finishes, and once when the earliest claim another holder took lapses; it runs no timed pass. A ping the bus failed to send is owed as a gap, which the worker answers with a claim; a ping dropped while every subscription stays connected leaves the row owed until one of those events. A delivery whose inline attempts all fail is abandoned, and nothing retries it (`afd_outbound`'s lanes and retry modules).
+
+The worker claims at start, on an `af.delivery.wake` ping, and when one of its deliveries finishes. It also claims once when another holder's earliest claim lapses, and runs no timed pass.
+
+A ping the bus failed to send is owed as a gap, and the worker answers the gap with a claim. A ping dropped while every subscription stays connected leaves the row owed until one of those events. A delivery whose inline attempts all fail is abandoned, and nothing retries it (`afd_outbound`'s lanes and retry modules).
 
 The poster stamps `delivered_at` only after successful delivery. Abandoning an exhausted job must not mark its answer delivered.
 

@@ -26,7 +26,7 @@ Facts are read from the schema files under `rustd/crates/daemon/afd_db/schema/` 
  runner.decision_calls                         runner.decision_calls    (stays: a ledger)
 ```
 
-Fourteen tables become nine, and the six durable-task tables become two. A task as one long-lived turn, which would make it zero, is rejected: a waiting task must not block the queue head ([`durable_tasks.md`](./durable_tasks.md), "A wait is separate from its settled turn").
+Fourteen tables become nine, and the six durable-task tables become two. Zero is rejected: one long-lived turn per task would block the queue head ([`durable_tasks.md`](./durable_tasks.md), "A wait is separate from its settled turn").
 
 ## One row per table
 

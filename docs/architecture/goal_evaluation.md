@@ -465,7 +465,7 @@ Native reservations and PATCH receipts retain original ownership. The source con
 uses the existing report drainer for encrypted late decision receipts; renew/report
 settlement retains the existing accounting path. Crash and acknowledgement-loss acceptance remain pending.
 
-A call exists only once it is issued, so a refused reservation leaves nothing to release. An issued call whose answer never reached the runner keeps its reservation: no daemon loop releases it, since M253_003 deleted the decision maintenance pass with the billing loop that ran it.
+A call exists only once it is issued, so a refused reservation leaves nothing to release. An issued call whose answer never reached the runner keeps its reservation. No daemon loop releases it: M253_003 deleted the decision maintenance pass with its billing loop.
 
 ### Running task authority and source attribution
 
@@ -491,6 +491,7 @@ No provider error body or raw header is retained as retry evidence.
 
 Resolve operation replay before rendering current state or reevaluating counters.
 Identical issued operations return their existing identity without credentials; changed request content conflicts.
+
 A reservation saves nothing until its one issue statement inserts the call as issued, after confirmed funding. Among concurrent reservations of one operation, one inserts and the rest read the saved call.
 
 Late receipts authenticate the original runner, run and fence, even when the current run/task has changed or disappeared.
