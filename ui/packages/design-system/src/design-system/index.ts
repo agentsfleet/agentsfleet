@@ -44,7 +44,7 @@ export { default as Grid } from "./Grid";
 export { default as Section } from "./Section";
 export { default as InstallBlock } from "./InstallBlock";
 export { WakePulse, type WakePulseProps } from "./WakePulse";
-export { BrandMark, SignalSpinner } from "./BrandMark";
+export { BrandMark } from "./BrandMark";
 export {
   Badge,
   badgeVariants,

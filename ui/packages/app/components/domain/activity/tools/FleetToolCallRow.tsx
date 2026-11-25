@@ -1,6 +1,6 @@
 import type { FileChange, ToolArgs } from "@/lib/streaming/fleet-stream-tool-trace";
 import { lazy, memo, Suspense, useMemo, useState } from "react";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, ListItem, SignalSpinner, cn } from "@agentsfleet/design-system";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, ListItem, Spinner, cn } from "@agentsfleet/design-system";
 import { useFleetScope } from "../../conversation/stream/FleetScope";
 import { readToolResult } from "../replies/fleetReplyMessage";
 import { CELL_STATE, cellDiff, toolCopy } from "./copy/tool-call-copy";
@@ -19,7 +19,7 @@ const CARD_TOOLS: ReadonlySet<string> = new Set([
 ]);
 const NO_CHANGES: readonly FileChange[] = [];
 const FleetToolOutputDialog = lazy(() => import("./FleetToolOutputDialog").then(module => ({default: module.FleetToolOutputDialog})));
-const FULL_OUTPUT_LOADING = <output className="inline-flex items-center gap-xs text-label text-muted-foreground"><SignalSpinner className="text-pulse" aria-hidden="true" />Loading full command output…</output>;
+const FULL_OUTPUT_LOADING = <Spinner className="gap-xs" label="Loading full command output…" aria-busy={false} />;
 
 export type ToolCallRowProps = {
   name: string;

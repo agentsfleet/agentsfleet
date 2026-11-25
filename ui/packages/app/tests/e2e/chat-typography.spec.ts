@@ -24,7 +24,7 @@ test("setup and fleet status text has a muted-to-foreground sweep with accessibl
     await expect(label).toHaveCSS("opacity", "1");
     if (route === "?activity=1") {
       const activity = page.getByRole("button", {name: /^Tool activity:/}).filter({has: page.locator('[data-chat-loading="true"]')}).first();
-      await expect(activity.locator("[data-signal-spinner]")).toHaveCount(0);
+      await expect(activity.locator(".page-loading-stroke")).toHaveCount(0);
       await expect(activity.locator("svg").first()).toHaveCSS("animation-name", "none");
     }
     for (const theme of ["light", "dark"]) {
@@ -382,7 +382,7 @@ test("work stays in a sidebar while the ordinary chat composer preserves its dra
 });
 
 async function expectActivityGeometry(page: Page, action: Locator, tools: Locator, mobile: boolean) {
-  for (const icon of await page.locator('[data-tool-bullet], [data-signal-spinner]').all()) {
+  for (const icon of await page.locator('[data-tool-bullet], [role="status"] > svg:has(.page-loading-stroke)').all()) {
     await expect(icon).toHaveCSS("width", "16px");
     await expect(icon).toHaveCSS("height", "16px");
   }

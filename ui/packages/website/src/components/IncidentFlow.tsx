@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { SignalSpinner, Button } from "@agentsfleet/design-system";
+import { Button, Spinner } from "@agentsfleet/design-system";
 import type { ExampleJob } from "../lib/example-jobs";
 import type { StoryFrame } from "../lib/chat-story";
 import { StoryMessage } from "./StoryMessage";
@@ -63,7 +63,7 @@ export function IncidentFlow({
       >
         {/* oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- scrollable log must be keyboard-reachable (WCAG 2.1.1) */}
         <div ref={attach} role="log" tabIndex={0}
-          className="group/chat h-80 overflow-y-auto overscroll-contain bg-background p-lg [scrollbar-width:thin] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring md:h-[clamp(17.5rem,46vh,27.5rem)] md:p-xl"
+          className="group/chat h-80 overflow-y-auto overscroll-contain bg-background p-lg [scrollbar-width:thin] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring data-[playing=false]:[--loading-play-state:paused] md:h-[clamp(17.5rem,46vh,27.5rem)] md:p-xl"
           data-playing={running}
           onScroll={scroll.onScroll}
           aria-label="Example conversation"
@@ -83,7 +83,7 @@ export function IncidentFlow({
             ))}
             {frame.pending && (
               <div className="flex min-h-11 items-center gap-md text-label text-text-muted">
-                <SignalSpinner className="size-6 text-pulse group-data-[playing=true]/chat:motion-safe:animate-spin" />
+                <Spinner size="lg" aria-hidden="true" />
                 <span>{frame.pending.activity}…</span>
               </div>
             )}

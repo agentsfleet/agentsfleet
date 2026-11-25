@@ -65,7 +65,9 @@ describe("FleetToolOutputDialog", () => {
     const fetchMock = stubRead(200, { call_id: CALL_ID, arguments: { url: "https://api.example/run" }, truncated_arguments: false, output, output_line_count: 224, truncated: false });
     renderDialog();
     expect(screen.getByRole("dialog", { name: TITLE })).toBeTruthy();
-    expect(screen.getByText(LOADING_LABEL)).toBeTruthy();
+    const status = screen.getByRole("status");
+    expect(status.textContent).toBe(LOADING_LABEL);
+    expect(status.getAttribute("aria-busy")).toBe("false");
     await screen.findByText("224 lines");
     expect(numbers().length).toBeLessThan(100);
     fireEvent.change(screen.getByRole("searchbox", {name: "Find in output"}), {target: {value: "line 224"}});

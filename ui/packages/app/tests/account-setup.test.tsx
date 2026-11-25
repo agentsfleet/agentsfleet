@@ -145,12 +145,13 @@ describe("AccountSetup", () => {
     expect(screen.getByRole("heading", { level: 2 }).textContent).toBe(STALLED_TITLE);
   });
 
-  it("uses the shared decorative loader only while waiting", async () => {
-    const {container} = render(<AccountSetup />);
-    expect(container.querySelector("[data-signal-spinner]")?.getAttribute("aria-hidden")).toBe("true");
+  it("shows the standard page mark while provisioning and removes it on timeout", async () => {
+    render(<AccountSetup />);
+    const status = screen.getByRole("status");
+    expect(status.querySelector('svg[aria-hidden="true"]')?.querySelectorAll(".page-loading-stroke")).toHaveLength(8);
     expect(screen.getAllByRole("status")).toHaveLength(1);
 
     await tick(ACCOUNT_SETUP_GIVE_UP_MS);
-    expect(container.querySelector("[data-signal-spinner]")).toBeNull();
+    expect(screen.getByRole("status").querySelector(".page-loading-stroke")).toBeNull();
   });
 });

@@ -76,16 +76,36 @@ export async function chargedNanos(run: Run, fleetId: string, turnId: string): P
   return total;
 }
 
-/** The text page that names `workId`, reached by following the printed `--cursor` hint. */
-export async function usageTextNaming(run: Run, workId: string): Promise<string> {
+/** The printed total for `workId`, reached by following the printed `--cursor` hint. */
+export async function readUsageTextTotal(run: Run, workId: string): Promise<string> {
   let cursor: string | undefined;
   for (let page = 0; page < MAX_PAGES; page += 1) {
     const result = await run([...USAGE_SHOW, LIMIT_FLAG, String(PAGE_ROWS), ...cursorArgs(cursor)]);
     assert.equal(result.code, 0, `usage show exited ${result.code}: ${result.stderr}`);
-    if (result.stdout.includes(workId)) return result.stdout;
+    const total = printedTotal(result.stdout, workId);
+    if (total !== undefined) {
+      assert.ok(total, `usage show printed no TOTAL for work ${workId}`);
+      return total;
+    }
     const next = NEXT_PAGE_HINT.exec(result.stdout)?.[1];
     if (next === undefined) break;
     cursor = next;
   }
   throw new assert.AssertionError({ message: `usage show never printed a row for work ${workId}` });
+}
+
+// Undefined means the work is on another page. Null means its total is missing.
+function printedTotal(text: string, workId: string): string | null | undefined {
+  const lines = text.split("\n");
+  const tableRow = lines.find(line => line.startsWith(`${workId} `));
+  if (tableRow !== undefined) {
+    const totalColumn = lines.find(line => /^ID +.+ +TOTAL *$/u.test(line))?.lastIndexOf("TOTAL");
+    return totalColumn === undefined ? null : tableRow.slice(totalColumn).trim() || null;
+  }
+
+  const record = text.split(/\n[ \t]*\n/u).find(block => block.split("\n").some(
+    line => line.trim().replace(/ +/gu, " ") === `ID ${workId}`,
+  ));
+  if (record === undefined) return undefined;
+  return /^ +TOTAL +(\S+) *$/mu.exec(record)?.[1] ?? null;
 }

@@ -30,12 +30,16 @@ for (const motion of ["no-preference", "reduce"] as const) test(`Save confirms o
     await expect(page.getByRole("button", {name: "Save fleet", exact: true})).toHaveCount(0);
     await page.getByRole("button", {name: "Save", exact: true}).evaluate((button: HTMLButtonElement) => {button.click();button.click();});
     const progress = page.getByRole("status", {name: "Saving setup", exact: true});
-    await expect(progress.locator("[data-chat-spinner]")).toBeVisible();
-    await expect(progress.locator("[data-chat-spinner]")).toHaveCSS("animation-name", motion === "reduce" ? "none" : "spin");
+    const mark = progress.locator("[data-chat-spinner] svg");
+    await expect(mark).toBeVisible();
+    const strokes = mark.locator(".page-loading-stroke");
+    await expect(strokes).toHaveCount(8);
+    const stroke = strokes.first();
+    await expect(stroke).toHaveCSS("animation-name", motion === "reduce" ? "none" : "page-loading-form");
     await expect(progress.locator("[data-chat-loading]")).toHaveCSS("animation-name", motion === "reduce" ? "none" : "chat-status-sweep");
     if (motion === "no-preference") {
-      const rotation = await progress.locator("[data-chat-spinner]").evaluate(element => getComputedStyle(element).transform);
-      await expect.poll(() => progress.locator("[data-chat-spinner]").evaluate(element => getComputedStyle(element).transform)).not.toBe(rotation);
+      const transform = await stroke.evaluate(element => getComputedStyle(element).transform);
+      await expect.poll(() => stroke.evaluate(element => getComputedStyle(element).transform)).not.toBe(transform);
     }
     await expect(progress.locator("[data-chat-loading]")).toHaveText("Saving");
     await expect(progress).toContainText("2s");

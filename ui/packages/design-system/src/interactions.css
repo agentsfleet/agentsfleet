@@ -120,26 +120,16 @@
   }
 }
 
-/* Waiting uses the identity's rays; opacity changes never affect its geometry. */
+/* The strokes form the brand mark around a fixed center. */
 @media (prefers-reduced-motion: no-preference) {
-  @keyframes signal-ripple {
-    0%, 100% { opacity: 0.25; }
-    40% { opacity: 1; }
-  }
-  [data-signal-spinner] path { animation: signal-ripple 1.6s ease-in-out infinite; }
-  [data-signal-spinner] path:nth-child(2) { animation-delay: -1.4s; }
-  [data-signal-spinner] path:nth-child(3) { animation-delay: -1.2s; }
-  [data-signal-spinner] path:nth-child(4) { animation-delay: -1s; }
-  [data-signal-spinner] path:nth-child(5) { animation-delay: -0.8s; }
-  [data-signal-spinner] path:nth-child(6) { animation-delay: -0.6s; }
-  [data-signal-spinner] path:nth-child(7) { animation-delay: -0.4s; }
-  [data-signal-spinner] path:nth-child(8) { animation-delay: -0.2s; }
-
   @keyframes page-loading-form {
     0%, 12%, 100% { transform: translate(var(--start-x), var(--start-y)) scaleX(.62); }
     49%, 73% { transform: translate(var(--ray-x), var(--ray-y)) rotate(var(--ray-angle)); }
   }
-  .page-loading-stroke { animation: page-loading-form 2.4s cubic-bezier(.45, 0, .22, 1) var(--delay) infinite backwards; }
+  .page-loading-stroke {
+    animation: page-loading-form 2.4s cubic-bezier(.45, 0, .22, 1) var(--delay) infinite backwards;
+    animation-play-state: var(--loading-play-state, running);
+  }
 }
 
 .page-loading-stroke {

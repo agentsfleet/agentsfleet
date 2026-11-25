@@ -27,6 +27,29 @@ async function visibleGradients(page: Page) {
 }
 
 for (const route of AUTH_ROUTES) {
+  test(`${route} shows the standard page loader while Clerk starts`, async ({ page }) => {
+    const clerkScript = /\/clerk\.browser\.js(?:\?.*)?$/;
+    const release = Promise.withResolvers<void>();
+    await page.route(clerkScript, async script => {
+      await release.promise;
+      await script.continue();
+    });
+
+    try {
+      await page.goto(route, { waitUntil: "domcontentloaded" });
+      const loading = page.getByRole("status", { name: `Loading ${route.slice(1)}…` });
+      await expect(loading).toBeVisible();
+      const strokes = loading.locator(".page-loading-stroke");
+      await expect(strokes).toHaveCount(8);
+      await expect(strokes.first()).toHaveCSS("animation-name", "page-loading-form");
+    } finally {
+      release.resolve();
+    }
+
+    await expect(page.locator(INPUT_SELECTOR).first()).toBeVisible({ timeout: RENDER_TIMEOUT });
+    await expect(page.locator(".page-loading-stroke")).toHaveCount(0);
+  });
+
   test(`${route} renders shared fonts, solid surfaces, and visible input states`, async ({ page }) => {
     await page.goto(route);
     const input = page.locator(INPUT_SELECTOR).first();
