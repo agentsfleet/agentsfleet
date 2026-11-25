@@ -34,6 +34,7 @@ pub(crate) use self::raise::{
     boundary, capture_limit, capture_unavailable, checkpoint_transfer, client, config, egress,
     egress_blocked, egress_no_ipv4, egress_unresolved, encode, git, malformed, refused_with_body,
     stream_disconnected, stream_protocol, token_refused, transport, unavailable,
+    unavailable_with_body,
 };
 
 /// The daemon refused the runner's token.
@@ -167,6 +168,8 @@ pub(crate) enum ErrorKind {
         verb: Verb,
         /// The status it answered.
         status: u16,
+        /// A registered code from the daemon's problem body, if present.
+        code: Option<ErrorCode>,
     },
 
     /// The daemon refused the call with a 4xx; retrying changes nothing.

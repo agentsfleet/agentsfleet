@@ -69,7 +69,17 @@ pub(crate) fn transport(verb: Verb) -> impl Fn(reqwest::Error) -> Error {
 
 /// Reports a 5xx or a 429.
 pub(crate) fn unavailable(verb: Verb, status: u16) -> Error {
-    ErrorKind::Unavailable { verb, status }.into()
+    unavailable_with_body(verb, status, &[])
+}
+
+/// Reports a retryable response while retaining its registered problem code.
+pub(crate) fn unavailable_with_body(verb: Verb, status: u16, body: &[u8]) -> Error {
+    ErrorKind::Unavailable {
+        verb,
+        status,
+        code: problem_code(body),
+    }
+    .into()
 }
 
 /// Reports a 4xx, carrying the code the daemon named.
@@ -82,11 +92,14 @@ pub(crate) fn refused(verb: Verb, status: u16, code: Option<ErrorCode>) -> Error
 /// A body that is not a problem document, or names a code this build does not
 /// declare, refuses with no code rather than guessing one.
 pub(crate) fn refused_with_body(verb: Verb, status: u16, body: &[u8]) -> Error {
-    let code = af_core::json::object_from_slice::<Problem<'_>>(body)
+    refused(verb, status, problem_code(body))
+}
+
+fn problem_code(body: &[u8]) -> Option<ErrorCode> {
+    af_core::json::object_from_slice::<Problem<'_>>(body)
         .ok()
         .and_then(|problem| problem.error_code)
-        .and_then(|named| ErrorCode::lookup(&named));
-    refused(verb, status, code)
+        .and_then(|named| ErrorCode::lookup(&named))
 }
 
 /// Reports a runner that stopped because the daemon refused its token.

@@ -1,7 +1,7 @@
 // The wake-ups journey, from a terminal: night-owl schedules itself and adds a
 // signed webhook, and a person reads and removes both.
 //
-// The fleet's name, its messages, its cron expression and its webhook's source
+// The fleet's name, its webhook message, source
 // and secret are `tests/fixtures/fleets/night-owl.json`. The journey reads the
 // rows the fleet's tools wrote; it sends no delivery and waits for no wake.
 
@@ -17,9 +17,10 @@ import { awaitTurn, processed, steer } from "./fixtures/prime-turns.ts";
 import { SCHEDULE_STATUS } from "../../src/commands/schedule/read.ts";
 
 const fixture = primeFixture("night-owl");
-const scheduleAsk = entry(fixture.follow_ups, 0, "follow-up");
 const webhookAsk = entry(fixture.follow_ups, 1, "follow-up");
-const cron = field(wake(fixture, "schedule").cron, "schedule cron");
+// Browser acceptance covers actual wakes. The CLI lists and removes the schedule
+// before this UTC weekday, so repeated wakes cannot queue ahead of the webhook.
+const cron = `0 0 * * ${(new Date().getUTCDay() + 3) % 7}`;
 const webhook = wake(fixture, "webhook");
 const webhookSource = field(webhook.source, "webhook source");
 const webhookSecret = field(webhook.secret_name, "webhook secret name");
@@ -88,7 +89,8 @@ if (!isLive) {
     it("the schedule the fleet adds for itself shows in `fleet schedule list`", async () => {
       assert.ok(fleetId, "the fleet was not created");
       assert.deepEqual(await schedules(), [], "a fleet starts with no schedule");
-      await steer(session, fleetId, said(scheduleAsk, `Use the cron expression ${cron}.`));
+      await steer(session, fleetId, `Call cron_add once with cron ${cron}, timezone UTC, and the message "Say what woke you". ` +
+        "After the tool confirms the schedule, reply in one line and finish. Call no other tool.");
 
       const listed = await schedules();
       const mine = listed.filter((row) => row.cron === cron);
@@ -111,8 +113,9 @@ if (!isLive) {
     it("the webhook the fleet adds shows in `fleet triggers list` with the URL deliveries go to", async () => {
       assert.ok(fleetId, "the fleet was not created");
       assert.deepEqual(await triggers(), [], "a fleet starts with no trigger");
-      await steer(session, fleetId,
-        said(webhookAsk, `Verify deliveries with the ${VERIFIER_SCHEME} scheme on the ${VERIFIER_HEADER} header.`));
+      await steer(session, fleetId, said(webhookAsk,
+        `Verify deliveries with the ${VERIFIER_SCHEME} scheme on the ${VERIFIER_HEADER} header. ` +
+        "Call trigger_add once. After it confirms the trigger, reply in one line and finish. Call no other tool."));
 
       const listed = await triggers();
       const mine = listed.filter((row) => row.kind === TRIGGER_KIND_WEBHOOK && row.source === webhookSource);
