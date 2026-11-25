@@ -39,12 +39,12 @@ const FLAG = {
   timezone: "timezone",
 } as const;
 
-const DESC_CRON = "Cron expression" as const;
-const DESC_MESSAGE = "Message sent to the Fleet" as const;
+const DESC_CRON = "When to run, as a cron expression (e.g. \"0 9 * * 1-5\" is 9am on weekdays)" as const;
+const DESC_MESSAGE = "Message the fleet gets each time the schedule runs" as const;
 const WORKSPACE_ID_DESC = "Workspace ID" as const;
 const FLEET_ID_DESC = "Fleet ID" as const;
-const NEXT_CURSOR = "next_cursor from a previous page" as const;
-const PAGE_SIZE = "Page size" as const;
+const NEXT_CURSOR = "Continue from the cursor the previous page printed" as const;
+const PAGE_SIZE = "How many to show" as const;
 
 // The floor is a shape check: a count of zero or less is not a page size. No
 // ceiling sits beside it; the server bounds its own `limit` and its refusal
@@ -144,11 +144,11 @@ export const listLimitFlag = positiveInt(FLAG.limit).pipe(
   Flag.optional,
 );
 export const memoryLimitFlag = positiveInt(FLAG.limit).pipe(
-  Flag.withDescription("Max entries to return"),
+  Flag.withDescription("How many entries to show"),
   Flag.optional,
 );
 export const billingLimitFlag = positiveInt(FLAG.limit).pipe(
-  Flag.withDescription("Maximum charge records to read"),
+  Flag.withDescription("How many charges to show"),
   Flag.optional,
 );
 
@@ -172,7 +172,7 @@ export const providerFlag = textFlag(
  */
 export const baseUrlFlag = Flag.String("base-url").pipe(
   Flag.withDescription(
-    "Custom endpoint base URL (https; required for a custom-endpoint provider)",
+    "Your provider's https address (needed for a custom endpoint)",
   ),
   Flag.withMetavar(METAVAR.url),
   Flag.filter(
@@ -192,20 +192,20 @@ export const baseUrlFlag = Flag.String("base-url").pipe(
 
 export const apiKeyFlag = textFlag(
   "api-key",
-  "Provider API key (required with a named --provider, optional for a keyless custom endpoint)",
+  "Your provider API key (needed unless your custom endpoint takes none)",
   METAVAR.token,
 );
-export const modelFlag = textFlag(FLAG.model, "Default model identifier (required with --provider)", METAVAR.name);
-export const dataFlag = textFlag(FLAG.data, "Secret JSON object, or @- to read stdin", METAVAR.json);
+export const modelFlag = textFlag(FLAG.model, "Model to use (needed with --provider)", METAVAR.name);
+export const dataFlag = textFlag(FLAG.data, "The secret as a JSON object, or @- to read it from stdin", METAVAR.json);
 export const dataReplacementFlag = textFlag(
   FLAG.data,
-  "Replacement JSON object, or @- to read stdin",
+  "The new JSON object, or @- to read it from stdin",
 );
 
 export const categoryFlag = textFlag("category", "Filter by category", METAVAR.name);
-export const actorFlag = textFlag("actor", "Filter by actor glob", METAVAR.glob);
+export const actorFlag = textFlag("actor", "Only messages from senders matching this pattern (e.g. webhook:*)", METAVAR.glob);
 export const eventTimeFlag = (name: string, relative: boolean) =>
-  requiredTextFlag(name, relative ? "RFC 3339 or duration (e.g. 2h)" : "RFC 3339 timestamp", METAVAR.when).pipe(
+  requiredTextFlag(name, relative ? "A time such as 2026-11-25T09:00:00Z, or a duration such as 2h" : "A time such as 2026-11-25T09:00:00Z", METAVAR.when).pipe(
     Flag.filter((value) => eventTime(value, Date.now(), relative) !== undefined,
       () => relative ? "expected an RFC 3339 timestamp or duration (e.g. 2h)" : "expected an RFC 3339 timestamp"),
     Flag.optional,
@@ -222,33 +222,33 @@ export const messageFlag = Flag.String(FLAG.message).pipe(
 );
 export const cronOptionalFlag = textFlag(FLAG.cron, DESC_CRON, METAVAR.expression);
 export const messageOptionalFlag = textFlag(FLAG.message, DESC_MESSAGE, METAVAR.message);
-export const timezoneFlag = textFlag(FLAG.timezone, "IANA timezone", METAVAR.timezone);
-export const timezoneDefaultFlag = textFlag(FLAG.timezone, "IANA timezone (default: UTC)", METAVAR.timezone);
+export const timezoneFlag = textFlag(FLAG.timezone, "Time zone, e.g. Europe/London", METAVAR.timezone);
+export const timezoneDefaultFlag = textFlag(FLAG.timezone, "Time zone, e.g. Europe/London (default: UTC)", METAVAR.timezone);
 export const scheduleStatusFlag = textFlag("status", "active or paused", METAVAR.status);
 
 export const sortFlag = Flag.Literals("sort", API_KEY_SORTS).pipe(
-  Flag.withDescription("Sort order"),
+  Flag.withDescription("How to sort the list"),
   Flag.withMetavar(`<${API_KEY_SORTS.join("|")}>`),
   Flag.optional,
 );
 
-export const keyNameFlag = textFlag(FLAG.name, "Human-readable key name");
-export const secretNameFlag = textFlag("secret", "Named secret from the workspace vault", METAVAR.name);
-export const modelOverrideFlag = textFlag(FLAG.model, "Override the default model identifier", METAVAR.name);
-export const fleetNameFlag = textFlag(FLAG.name, "Fleet name (default: fleet- and the end of its id)", METAVAR.name);
+export const keyNameFlag = textFlag(FLAG.name, "A name to recognise the key by");
+export const secretNameFlag = textFlag("secret", "Name of a secret saved in this workspace", METAVAR.name);
+export const modelOverrideFlag = textFlag(FLAG.model, "Use this model instead of the default", METAVAR.name);
+export const fleetNameFlag = textFlag(FLAG.name, "Name for the fleet (default: fleet- plus the end of its ID)", METAVAR.name);
 export const fleetModelFlag = textFlag(
   FLAG.model,
-  "Model reference from `agentsfleet models list` (default: the workspace's selected model)",
+  "Model ID from `agentsfleet models list` (default: the workspace's model)",
   METAVAR.ref,
 );
 
 export const tokenNameFlag = textFlag(
   "token-name",
-  "Label for this session, shown on the approval page and in `whoami` (default: platform family)",
+  "Name for this sign-in, shown when you approve it and in `whoami` (default: your operating system)",
   METAVAR.label,
 );
 export const forceFlag = Flag.Boolean("force").pipe(
-  Flag.withDescription("Skip the existing-credential prompt and overwrite"),
+  Flag.withDescription("Replace the saved sign-in without asking"),
   Flag.withDefault(false),
 );
 
@@ -258,7 +258,7 @@ export const forceFlag = Flag.Boolean("force").pipe(
 // exits with a validation error rather than quietly doing less than it says.
 export const logoutAllFlag = Flag.Boolean("all").pipe(
   Flag.withDescription(
-    "rejected — logout already revokes what it can; passing this flag exits with a validation error",
+    "Not supported: logout already signs out all it can, so this flag is refused",
   ),
   Flag.withDefault(false),
 );
@@ -275,7 +275,7 @@ export const fleetIdArgument = idArgument(FLEET_ID_ARGUMENT, FLEET_ID_DESC);
 export const fleetIdOptionalArgument = fleetIdArgument.pipe(Argument.optional);
 
 /**
- * A fleet id, or `@` and the fleet's saved name. `chat`, `fleet steer` and the
+ * A fleet id, or `@` and the fleet's saved name. `fleet steer` and the
  * fleet's triggers, model and network verbs take it.
  *
  * A value that opens with `@` is held to the address rule the dashboard shares
@@ -286,23 +286,22 @@ export const fleetIdOptionalArgument = fleetIdArgument.pipe(Argument.optional);
  * in refusals, so nothing that reads either changes.
  */
 export const fleetIdOrNameArgument = Argument.String(FLEET_ID_ARGUMENT).pipe(
-  Argument.withDescription("Fleet ID, or @ and the fleet's name"),
+  Argument.withDescription("Fleet ID, or @ followed by the fleet's name"),
   Argument.filter(
     (value: string) =>
       value.startsWith(FLEET_NAME_PREFIX) ? readFleetAddress(value)?.rest === "" : isValidId(value),
     (value: string) => (value.startsWith(FLEET_NAME_PREFIX) ? NOT_A_FLEET_NAME : NOT_A_UUIDV7),
   ),
 );
-export const fleetIdOrNameOptionalArgument = fleetIdOrNameArgument.pipe(Argument.optional);
 export const triggerIdArgument = idArgument("trigger_id", "Trigger ID");
-export const modelRefArgument = Argument.String("ref").pipe(
-  Argument.withDescription("Model reference from `agentsfleet models list`"),
+export const modelRefArgument = Argument.String("model_ref").pipe(
+  Argument.withDescription("Model ID from `agentsfleet models list`"),
 );
 export const workspaceIdArgument = idArgument("workspace_id", WORKSPACE_ID_DESC);
 export const workspaceIdOptionalArgument = workspaceIdArgument.pipe(Argument.optional);
-export const gateIdArgument = idArgument("gate_id", "Approval gate ID");
+export const gateIdArgument = idArgument("gate_id", "Request ID from `agentsfleet fleet approvals list`");
 export const apiKeyIdArgument = idArgument("api_key_id", "API key ID");
-export const grantIdArgument = idArgument("grant_id", "Grant ID");
+export const grantIdArgument = idArgument("grant_id", "ID from `agentsfleet fleet grants list`");
 export const scheduleIdArgument = idArgument("schedule_id", "Schedule ID");
 
 export const workspaceNameArgument = Argument.String(FLAG.name).pipe(
@@ -312,10 +311,10 @@ export const secretNameArgument = Argument.String(FLAG.name).pipe(
   Argument.withDescription("Secret name"),
 );
 export const providerArgument = Argument.String(FLAG.provider).pipe(
-  Argument.withDescription("Connector provider"),
+  Argument.withDescription("App name, such as github or slack"),
 );
 export const queryArgument = Argument.String("query").pipe(
-  Argument.withDescription("Substring to search for"),
+  Argument.withDescription("Text to search for"),
 );
 export const messageArgument = Argument.String(FLAG.message).pipe(
   Argument.withDescription("Message to send"),

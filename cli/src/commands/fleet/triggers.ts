@@ -1,6 +1,6 @@
-// `agentsfleet fleet triggers list|remove` — what can wake a fleet from outside:
+// `agentsfleet fleet triggers list|delete` — what can wake a fleet from outside:
 // a webhook, a GitHub App event or a Slack mention. A run adds a trigger with
-// its trigger tool when a person asks it to; a person reads and removes them here.
+// its trigger tool when a person asks it to; a person reads and deletes them here.
 
 import type { CliConfig } from "../../services/config.ts";
 import type { Credentials } from "../../services/credentials.ts";
@@ -67,7 +67,7 @@ export const triggersListEffect = (
     })));
   });
 
-export const triggerRemoveEffect = (
+export const triggerDeleteEffect = (
   fleetArgument: string,
   triggerId: string,
 ): Effect.Effect<void, CliError, FleetServices> =>
@@ -80,7 +80,7 @@ export const triggerRemoveEffect = (
     yield* http.request<unknown>({ path: wsFleetTriggerPath(wsId, fleetId, triggerId), method: HTTP_METHOD.delete, token });
     yield* writesJson(output)
       ? output.printJson({ deleted: true, trigger_id: triggerId })
-      : output.success(`Removed trigger ${triggerId}; it no longer wakes the fleet.`);
+      : output.success(`Deleted trigger ${triggerId}; it no longer wakes the fleet.`);
   });
 
 // What the row listens for: a mention's channel, an App subscription's

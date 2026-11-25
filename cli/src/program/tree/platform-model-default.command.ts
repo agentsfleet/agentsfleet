@@ -5,15 +5,15 @@ import { PLATFORM_SCOPE } from "./platform-flags.ts";
 import { grants, listedWhen, type Visibility } from "./visibility.ts";
 import { baseUrlFlag, opt, requiredIdFlag, requiredTextFlag } from "./flags.ts";
 
-const list = Command.make("list").pipe(Command.withDescription("List configured providers and the selected default (platform-key:read)"), guardedHandler(() => platformDefaultList()));
+const list = Command.make("list").pipe(Command.withDescription("List the providers set up, and which is the default (platform-key:read)"), guardedHandler(() => platformDefaultList()));
 const use = Command.make("use", {
-  provider: requiredTextFlag("provider", "Provider with a named secret in the source workspace"),
-  workspace: requiredIdFlag("workspace", "Workspace containing the provider secret"),
-  model: requiredTextFlag("model", "Catalogued provider model identifier"),
+  provider: requiredTextFlag("provider", "Provider whose key is saved in that workspace"),
+  workspace: requiredIdFlag("workspace", "Workspace where the provider key is saved"),
+  model: requiredTextFlag("model", "Model ID from the catalogue"),
   baseUrl: baseUrlFlag,
-}).pipe(Command.withDescription("Select the platform default using a workspace secret (platform-key:admin)"),
+}).pipe(Command.withDescription("Make a model the default, using a key saved in a workspace (platform-key:admin)"),
   guardedHandler(({provider, workspace, model, baseUrl}) => platformDefaultUse({provider, workspace, model, baseUrl: opt(baseUrl)})));
-const remove = Command.make("delete", {provider: Argument.String("provider")}).pipe(Command.withDescription("Delete a platform provider default (platform-key:admin)"),
+const remove = Command.make("delete", {provider: Argument.String("provider")}).pipe(Command.withDescription("Remove a provider's default setting (platform-key:admin)"),
   guardedHandler(({provider}) => platformDefaultDelete(provider)));
 
 export const platformModelDefaultCommand = (visibility: Visibility) => {
@@ -22,7 +22,7 @@ export const platformModelDefaultCommand = (visibility: Visibility) => {
   return {
     listed: read || admin,
     command: Command.make("default").pipe(
-      Command.withDescription("Manage the platform default model and its provider reference"),
+      Command.withDescription("Set the default model every account gets"),
       Command.withSubcommands([listedWhen(read)(list), listedWhen(admin)(use), listedWhen(admin)(remove)]),
     ),
   };

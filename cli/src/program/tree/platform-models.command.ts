@@ -6,16 +6,16 @@ import { PLATFORM_SCOPE, platformFileFlag, platformPagingFlags } from "./platfor
 import { idArgument, opt } from "./flags.ts";
 import { platformModelDefaultCommand } from "./platform-model-default.command.ts";
 
-const modelId = {id: idArgument("model_id", "Platform catalogue row identifier")};
-const list = Command.make("list", platformPagingFlags).pipe(Command.withDescription("List the full admin catalogue (model:read)"),
+const modelId = {id: idArgument("model_id", "Model ID from `agentsfleet platform models list`")};
+const list = Command.make("list", platformPagingFlags).pipe(Command.withDescription("List every model in the catalogue (model:read)"),
   guardedHandler(({limit, startingAfter}) => platformModelsList({limit: opt(limit), startingAfter: opt(startingAfter)})));
-const show = Command.make("show", modelId).pipe(Command.withDescription("Read one model through the catalogue API (model:read)"),
+const show = Command.make("show", modelId).pipe(Command.withDescription("Show one model (model:read)"),
   guardedHandler(({id}) => platformModelShow(id)));
-const create = Command.make("create", {file: platformFileFlag}).pipe(Command.withDescription("Create a priced model from JSON (model:admin)"),
+const create = Command.make("create", {file: platformFileFlag}).pipe(Command.withDescription("Add a model and its prices from a JSON file (model:admin)"),
   guardedHandler(({file}) => platformModelWrite(file)));
-const update = Command.make("update", {...modelId, file: platformFileFlag}).pipe(Command.withDescription("Replace model settings and price schedule (model:admin)"),
+const update = Command.make("update", {...modelId, file: platformFileFlag}).pipe(Command.withDescription("Replace a model's settings and prices (model:admin)"),
   guardedHandler(({id, file}) => platformModelWrite(file, id)));
-const remove = Command.make("delete", modelId).pipe(Command.withDescription("Delete a catalogue model (model:admin)"),
+const remove = Command.make("delete", modelId).pipe(Command.withDescription("Remove a model from the catalogue (model:admin)"),
   guardedHandler(({id}) => platformModelDelete(id)));
 
 export const platformModelsCommand = (visibility: Visibility) => {
@@ -25,7 +25,7 @@ export const platformModelsCommand = (visibility: Visibility) => {
   return {
     listed: read || admin || defaults.listed,
     command: Command.make("models").pipe(
-      Command.withDescription("Manage the shared model catalogue"),
+      Command.withDescription("Manage the models every account can choose from"),
       Command.withSubcommands([
         listedWhen(read)(list), listedWhen(read)(show),
         listedWhen(admin)(create), listedWhen(admin)(update), listedWhen(admin)(remove),

@@ -44,14 +44,15 @@ test("fleet create with no message makes no API request", async () => {
   }));
 });
 
-test("the built binary refuses chat --save and names fleet create", async () => {
+test("the built binary refuses the removed chat and names fleet create and fleet steer", async () => {
   await authedScope(async (stateDir) => withMockApi({}, async (apiUrl, calls) => {
     const result = await runFleetctl(["chat", "--save"], {
       env: composeEnv({AGENTSFLEET_API_URL: apiUrl, AGENTSFLEET_STATE_DIR: stateDir, NO_COLOR: "1"}),
     });
     expect(result.code).toBe(4);
-    expect(result.stderr).toContain("chat --save was removed");
+    expect(result.stderr).toContain("the chat command was removed");
     expect(result.stderr).toContain('agentsfleet fleet create "<message>"');
+    expect(result.stderr).toContain("agentsfleet fleet steer <fleet_id|@name>");
     expect(calls).toEqual([]);
   }));
 });

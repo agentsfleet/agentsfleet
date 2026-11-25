@@ -51,6 +51,16 @@ else describe("chat and fleet create refuse what they cannot do", () => {
     assert.match(error.suggestion, /agentsfleet fleet create "<message>"/);
     assert.equal(result.stdout.trim(), "");
   });
+  it("chat is removed, naming fleet create and fleet steer", async () => {
+    const result = await run(["chat"]);
+    assert.equal(result.code, 4);
+    const error = JSON.parse(result.stderr).error as {code: string; message: string; suggestion: string};
+    assert.equal(error.code, REJECTION_CODE.invalidArgument);
+    assert.match(error.message, /the chat command was removed/);
+    assert.match(error.suggestion, /agentsfleet fleet create "<message>"/);
+    assert.match(error.suggestion, /agentsfleet fleet steer <fleet_id\|@name>/);
+    assert.equal(result.stdout.trim(), "");
+  });
   it("fleet create with no message is refused before any fleet exists", async () => {
     const result = await run(["fleet", "create"]);
     assert.equal(result.code, 4);

@@ -86,18 +86,18 @@ if (!isLive) {
         assert.ok(created.name.startsWith(ACCEPTANCE_RUN_PREFIX), `name not run-scoped: ${created.name}`);
       }, SETUP_TIMEOUT_MS);
 
-      it("fleet model set answers the fleet on the model it names", async () => {
+      it("fleet model use answers the fleet on the model it names", async () => {
         const before = await getStatus(env, fleetId);
-        const result = await runWithEnv(["fleet", "model", "set", fleetId, before.model_ref, "--json"]);
-        assert.equal(result.code, 0, `model set exited ${result.code}: ${result.stderr}`);
+        const result = await runWithEnv(["fleet", "model", "use", fleetId, before.model_ref, "--json"]);
+        assert.equal(result.code, 0, `model use exited ${result.code}: ${result.stderr}`);
         const fleet = JSON.parse(result.stdout) as { id?: string; model_ref?: string };
-        assert.equal(fleet.id, fleetId, `model set answered another fleet: ${result.stdout}`);
+        assert.equal(fleet.id, fleetId, `model use answered another fleet: ${result.stdout}`);
         assert.equal(fleet.model_ref, before.model_ref);
       }, 30_000);
 
-      it("fleet network set --private --no-packages closes the network", async () => {
-        const result = await runWithEnv(["fleet", "network", "set", fleetId, "--private", "--no-packages", "--json"]);
-        assert.equal(result.code, 0, `network set exited ${result.code}: ${result.stderr}`);
+      it("fleet network use private --no-packages closes the network", async () => {
+        const result = await runWithEnv(["fleet", "network", "use", fleetId, "private", "--no-packages", "--json"]);
+        assert.equal(result.code, 0, `network use exited ${result.code}: ${result.stderr}`);
         const fleet = JSON.parse(result.stdout) as { http_egress?: string; package_domains?: boolean };
         assert.equal(fleet.http_egress, "restricted");
         assert.equal(fleet.package_domains, false);

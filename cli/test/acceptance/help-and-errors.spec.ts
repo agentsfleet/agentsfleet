@@ -229,11 +229,11 @@ describe("help DX surfaces (real binary)", () => {
     const out = stripAnsi(result.stdout);
     // The command list, whatever the renderer calls its heading.
     assert.match(out, /subcommands/i);
-    for (const command of ["chat", "fleet", "workspace", "secrets", "usage"]) {
+    for (const command of ["fleet", "workspace", "secrets", "usage"]) {
       assert.match(out, new RegExp(`^\\s+${command}\\s`, "m"), `help missing "${command}" command`);
     }
-    // Fleet verbs moved under `fleet`; the root no longer lists them.
-    for (const moved of ["status", "steer", "memory"]) {
+    // Fleet verbs moved under `fleet`, and `chat` is gone; the root lists none of them.
+    for (const moved of ["status", "steer", "memory", "chat"]) {
       assert.doesNotMatch(out, new RegExp(`^\\s+${moved}\\s`, "m"), `root help still lists "${moved}"`);
     }
     // Env vars are documented externally; help carries a one-line pointer.

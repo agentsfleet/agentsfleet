@@ -26,7 +26,7 @@ const secretCreateCommand = Command.make("create", {
   apiKey: apiKeyFlag,
   model: modelFlag,
 }).pipe(
-  Command.withDescription("Store a secret JSON object"),
+  Command.withDescription("Save a secret (a JSON object) in this workspace"),
   guardedHandler(({ name, data, provider, baseUrl, apiKey, model }) =>
     secretAddEffectFromFlags({
       name,
@@ -50,7 +50,7 @@ const secretUpdateCommand = Command.make(VERB.update, {
   apiKey: apiKeyFlag,
   model: modelFlag,
 }).pipe(
-  Command.withDescription("Replace a secret's stored body without releasing the name"),
+  Command.withDescription("Replace a secret's value, keeping its name"),
   guardedHandler(({ name, data, provider, baseUrl, apiKey, model }) =>
     secretUpdateEffectFromFlags({
       name,
@@ -64,22 +64,22 @@ const secretUpdateCommand = Command.make(VERB.update, {
 );
 
 const secretShowCommand = Command.make("show", { name: secretNameArgument }).pipe(
-  Command.withDescription("Confirm a secret exists (never echoes secret bytes)"),
+  Command.withDescription("Check that a secret exists (its value is never shown)"),
   guardedHandler(({ name }) => secretShowEffectFromName(name)),
 );
 
 const secretListCommand = Command.make(VERB.list).pipe(
-  Command.withDescription("List secrets in the workspace vault"),
+  Command.withDescription("List the secrets saved in this workspace"),
   guardedHandler(() => secretListEffect),
 );
 
 const secretDeleteCommand = Command.make(VERB.delete, { name: secretNameArgument }).pipe(
-  Command.withDescription("Delete a secret from the workspace vault"),
+  Command.withDescription("Delete a secret from this workspace"),
   guardedHandler(({ name }) => secretDeleteEffectFromName(name)),
 );
 
 export const secretsCommand = () => Command.make("secrets").pipe(
-  Command.withDescription("Workspace secret vault"),
+  Command.withDescription("Save passwords and API keys your fleets can ask for"),
   Command.withSubcommands([
     secretCreateCommand,
     secretUpdateCommand,

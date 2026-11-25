@@ -8,7 +8,7 @@ import { grants, listedWhen, type Visibility } from "./visibility.ts";
 import { platformLabelsFlag, platformPagingFlags, platformPolicyFlag, platformTokenFlag } from "./platform-flags.ts";
 import { eventTimeFlag, idArgument, opt, requiredIdFlag, requiredTextFlag, sinceFlag } from "./flags.ts";
 
-const runnerId = {id: idArgument("runner_id", "Runner identifier")};
+const runnerId = {id: idArgument("runner_id", "Runner ID")};
 
 /**
  * One command group per kind of runner, from one definition: the platform's
@@ -18,44 +18,44 @@ const runnerId = {id: idArgument("runner_id", "Runner identifier")};
  */
 export const runnersCommand = (kind: RunnerKind, visibility: Visibility) => {
   const {read: readScope, write: writeScope, register: registerScope} = kind.scopes;
-  const actionCommand = (name: string, action: RunnerAction) => Command.make(name, runnerId).pipe(
-    Command.withDescription(`Request ${name} (${writeScope})`), guardedHandler(({id}) => runnerAction(kind, id, action)),
+  const actionCommand = (name: string, action: RunnerAction, what: string) => Command.make(name, runnerId).pipe(
+    Command.withDescription(`${what} (${writeScope})`), guardedHandler(({id}) => runnerAction(kind, id, action)),
   );
   const list = Command.make("list", platformPagingFlags).pipe(
     Command.withDescription(`List runners (${readScope})`),
     guardedHandler(({limit, startingAfter}) => runnersList(kind, {limit: opt(limit), startingAfter: opt(startingAfter)})),
   );
   const show = Command.make("show", runnerId).pipe(
-    Command.withDescription(`Show policy, capabilities, liveness, counters, and checks (${readScope})`),
+    Command.withDescription(`Show a runner's settings, health and recent activity (${readScope})`),
     guardedHandler(({id}) => runnerShow(kind, id)),
   );
   const register = Command.make("register", {
-    host: requiredTextFlag("host-id", "Host identity", "<host>"), policy: platformPolicyFlag,
+    host: requiredTextFlag("host-id", "A name for the machine", "<host>"), policy: platformPolicyFlag,
     labels: platformLabelsFlag, tokenFile: platformTokenFlag,
-  }).pipe(Command.withDescription(`Register a host and save its token (${registerScope})`),
+  }).pipe(Command.withDescription(`Add a machine as a runner and save its token (${registerScope})`),
     guardedHandler(({host, policy, labels, tokenFile}) => runnerRegister(kind, host, {policy, labels: opt(labels)}, tokenFile)));
   const update = Command.make("update", {...runnerId, policy: platformPolicyFlag.pipe(Flag.optional), labels: platformLabelsFlag}).pipe(
-    Command.withDescription(`Replace policy and/or labels (${writeScope})`),
+    Command.withDescription(`Change a runner's settings or labels (${writeScope})`),
     guardedHandler(({id, policy, labels}) => runnerUpdate(kind, id, {policy: opt(policy), labels: opt(labels)})),
   );
   const rotate = Command.make("rotate-token", {...runnerId, tokenFile: platformTokenFlag}).pipe(
-    Command.withDescription(`Replace the runner token and save it once (${writeScope})`),
+    Command.withDescription(`Give a runner a new token and save it (${writeScope})`),
     guardedHandler(({id, tokenFile}) => runnerRotate(kind, id, tokenFile)),
   );
   const remove = Command.make("delete", runnerId).pipe(
     Command.withDescription(`Delete a revoked runner and its history (${writeScope})`), guardedHandler(({id}) => runnerDelete(kind, id)),
   );
   const history = Command.make("history", {...runnerId, ...platformPagingFlags,
-    eventType: requiredTextFlag("event-type", "Comma-separated runner event types").pipe(
+    eventType: requiredTextFlag("event-type", "Only these kinds of events, separated by commas").pipe(
       Flag.filter(value => value.split(",").every(Schema.is(Schema.Enum(RunnerEventType))), () => "expected known runner event types separated by commas"), Flag.optional,
     ),
     since: sinceFlag, until: eventTimeFlag("until", false),
-  }).pipe(Command.withDescription(`Read runner history (${readScope})`), guardedHandler(({id, limit, startingAfter, eventType, since, until}) =>
+  }).pipe(Command.withDescription(`Show what happened to a runner (${readScope})`), guardedHandler(({id, limit, startingAfter, eventType, since, until}) =>
     runnerHistory(id, RunnerHistory.History, {limit: opt(limit), startingAfter: opt(startingAfter), eventType: opt(eventType), since: opt(since), until: opt(until)})));
   const runs = Command.make("runs", {...runnerId, ...platformPagingFlags,
     workspace: requiredIdFlag("workspace", "Filter by workspace").pipe(Flag.optional),
     fleet: requiredTextFlag("fleet", "Filter by fleet ID or exact name").pipe(Flag.optional),
-  }).pipe(Command.withDescription(`Read runner runs (${readScope})`), guardedHandler(({id, limit, startingAfter, workspace, fleet}) =>
+  }).pipe(Command.withDescription(`Show the work a runner did (${readScope})`), guardedHandler(({id, limit, startingAfter, workspace, fleet}) =>
     runnerHistory(id, RunnerHistory.Runs, {limit: opt(limit), startingAfter: opt(startingAfter), workspace: opt(workspace), fleet: opt(fleet)})));
 
   // Registering is independent of the read/write ladder: a registrar sees
@@ -72,8 +72,10 @@ export const runnersCommand = (kind: RunnerKind, visibility: Visibility) => {
       Command.withDescription(kind.description), Command.withSubcommands([
         reads(list), reads(show), listedWhen(registrable)(register), writes(update), writes(rotate), writes(remove),
         ...operatorReads,
-        writes(actionCommand("cordon", RunnerAction.Cordon)), writes(actionCommand("drain", RunnerAction.Drain)),
-        writes(actionCommand("revoke", RunnerAction.Revoke)), writes(actionCommand("self-test", RunnerAction.SelfTest)),
+        writes(actionCommand("cordon", RunnerAction.Cordon, "Stop giving a runner new work")),
+        writes(actionCommand("drain", RunnerAction.Drain, "Let a runner finish its work, then stop it")),
+        writes(actionCommand("revoke", RunnerAction.Revoke, "Turn off a runner's token so it can no longer connect")),
+        writes(actionCommand("self-test", RunnerAction.SelfTest, "Ask a runner to check itself")),
       ]),
     ),
   };

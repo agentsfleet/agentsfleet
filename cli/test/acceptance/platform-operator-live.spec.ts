@@ -78,8 +78,9 @@ else describe("Platform operator commands", () => {
     }
   });
 
-  it.each(["runners", "models", "keys"])("refuses %s administration for a tenant identity", async group => {
-    const result = await runFleetctl(["--json", "platform", group, "list"], {env: ordinaryEnv});
+  // The provider defaults are `platform models default`, under platform-key:read.
+  it.each(["runners", "models", "models default"])("refuses %s administration for a tenant identity", async family => {
+    const result = await runFleetctl(["--json", "platform", ...family.split(" "), "list"], {env: ordinaryEnv});
     assert.equal(result.code, 3);
     const error = Schema.decodeUnknownSync(Schema.Struct({error: Schema.Struct({code: Schema.String})}))(JSON.parse(result.stderr));
     assert.equal(error.error.code, "UZ-AUTH-022");
@@ -122,7 +123,7 @@ else describe("Platform operator commands", () => {
       const model = Schema.decodeUnknownSync(Schema.Struct({id: Schema.String}))(await command(["models", "show", page.models[0].id]));
       assert.equal(model.id, page.models[0].id);
     }
-    const keys = Schema.decodeUnknownSync(Schema.Struct({keys: Schema.Array(Schema.Unknown)}))(await command(["keys", "list"]));
+    const keys = Schema.decodeUnknownSync(Schema.Struct({keys: Schema.Array(Schema.Unknown)}))(await command(["models", "default", "list"]));
     assert.ok(Array.isArray(keys.keys));
   });
 

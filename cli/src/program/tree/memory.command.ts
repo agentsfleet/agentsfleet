@@ -25,7 +25,7 @@ const memoryListCommand = Command.make("list", {
   workspace: workspaceFlag,
 }).pipe(
   Command.withDescription(
-    `List entries newest-first (server default ${DEFAULT_LIST_LIMIT})`,
+    `List what a fleet remembers, newest first (${DEFAULT_LIST_LIMIT} unless you say)`,
   ),
   guardedHandler(({ fleet, category, limit, startingAfter, workspace }) =>
     Effect.gen(function* () {
@@ -49,7 +49,7 @@ const memorySearchCommand = Command.make("search", {
   workspace: workspaceFlag,
 }).pipe(
   Command.withDescription(
-    `Substring-search keys and content (server default ${DEFAULT_RECALL_LIMIT})`,
+    `Search what a fleet remembers for some text (${DEFAULT_RECALL_LIMIT} results unless you say)`,
   ),
   guardedHandler(({ query, fleet, limit, workspace }) =>
     Effect.gen(function* () {
@@ -65,6 +65,6 @@ const memorySearchCommand = Command.make("search", {
 );
 
 export const memoryCommand = () => Command.make("memory").pipe(
-  Command.withDescription("Inspect a Fleet's durable memory (read-only)"),
+  Command.withDescription("Read what a fleet remembers (read-only)"),
   Command.withSubcommands([memoryListCommand, memorySearchCommand]),
 );

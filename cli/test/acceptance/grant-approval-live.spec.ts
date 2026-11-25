@@ -61,6 +61,13 @@ const BALANCE_FIELD = "balance_nanos" as const;
 const ONE_SHOT_MESSAGE = "respond with a single short acknowledgement and stop" as const;
 const ENVELOPE_STATUS_KEY = "status" as const;
 const ENVELOPE_TURN_ID_KEY = "turn_id" as const;
+// A steer that lands while the approval's resumed run still goes joins that run
+// (`folded_into_turn_id`, afd_turns/src/view/steer/disposition.rs), and a run
+// bills its lines under its own head turn (afd_billing/src/ledger/lines.rs).
+const ENVELOPE_FOLDED_INTO_KEY = "folded_into_turn_id" as const;
+// The text view's two headings (src/commands/billing/billing.ts, renderHuman).
+const BALANCE_HEADING = /^Balance\s+-?\$/mu;
+const ACTIVITY_HEADING = /^Last \d+ activit(?:y|ies)$/mu;
 const STATUS_PROCESSED = "processed" as const;
 const GRANT_COMMAND = ["fleet", "grants"] as const;
 const REVOKE_VERB = "revoke" as const;
@@ -101,6 +108,8 @@ if (!isLive) {
     let gateId = "";
     let balanceBeforeNanos = 0n;
     let steeredTurnId = "";
+    // The turn the steer's work is billed under: its own, or the run it joined.
+    let billedTurnId = "";
 
     async function runWithEnv(args: ReadonlyArray<string>): Promise<RunResult> {
       const result = await runFleetctl(args, { env, timeoutMs: STEER_TIMEOUT_MS });
@@ -205,6 +214,8 @@ if (!isLive) {
       const turnId = envelope[ENVELOPE_TURN_ID_KEY];
       assert.equal(typeof turnId, "string", `the steer named no work: ${JSON.stringify(envelope)}`);
       steeredTurnId = String(turnId);
+      const joined = envelope[ENVELOPE_FOLDED_INTO_KEY];
+      billedTurnId = typeof joined === "string" ? joined : steeredTurnId;
 
       // Nanos, never a rendered figure: a run costing a fraction of a cent
       // moves the balance and no two-decimal display.
@@ -219,17 +230,17 @@ if (!isLive) {
     }, STEER_TIMEOUT_MS);
 
     it("`usage show` prints the run's charge as a readable row, and the JSON charges this fleet", async () => {
-      assert.ok(steeredTurnId, "the steer did not run");
-      const text = await usageTextNaming(runWithEnv, steeredTurnId);
-      assert.match(text, /Tenant balance:/u);
-      assert.match(text, /activities drained credits:/u);
+      assert.ok(billedTurnId, "the steer did not run");
+      const text = await usageTextNaming(runWithEnv, billedTurnId);
+      assert.match(text, BALANCE_HEADING);
+      assert.match(text, ACTIVITY_HEADING);
       // A table row or, on a narrow terminal, a label/value block: either way
       // the stretch of output naming the work also names its total in dollars.
-      const row = text.split(/\n\s*\n/u).find((block) => block.includes(steeredTurnId)) ?? "";
+      const row = text.split(/\n\s*\n/u).find((block) => block.includes(billedTurnId)) ?? "";
       assert.match(row, /TOTAL/u, `the run's row carries no total: ${text}`);
       assert.match(row, DOLLARS, `the run's row carries no dollar figure: ${text}`);
 
-      const charged = await chargedNanos(runWithEnv, fleetId, steeredTurnId);
+      const charged = await chargedNanos(runWithEnv, fleetId, billedTurnId);
       assert.ok(charged > 0n, `usage show charged the run nothing: ${charged} nanos`);
     }, STEER_TIMEOUT_MS);
 

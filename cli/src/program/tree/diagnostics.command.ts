@@ -8,7 +8,7 @@ import { PET_COMMAND } from "../../constants/pet.ts";
 import { petPreview } from "../../commands/pet/preview.ts";
 
 const doctorCommand = Command.make("doctor").pipe(
-  Command.withDescription("Diagnose CLI configuration and connectivity"),
+  Command.withDescription("Check your setup and that the server is reachable"),
   // doctor answers a verdict, not just success: every check ran, and one
   // failed. The number goes to the exit-code service because the command
   // tree discards a handler's return value.

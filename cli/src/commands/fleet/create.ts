@@ -3,7 +3,7 @@
 // One POST writes the fleet and the message's turn together; nothing is set
 // up first. The name and the model are optional: the daemon names the fleet
 // from its id and runs it on the workspace's selected model unless told
-// otherwise. `chat` with no fleet sends the same request for its first line.
+// otherwise.
 
 import type { Redacted } from "effect";
 import type { CliConfig } from "../../services/config.ts";
@@ -38,13 +38,13 @@ const CreatedSchema = Schema.Struct({
     disposition: Schema.Literals([DISPOSITION_STARTED, DISPOSITION_QUEUED]),
   }),
 });
-export type CreatedFleet = typeof CreatedSchema.Type;
+type CreatedFleet = typeof CreatedSchema.Type;
 
 /**
  * Writes the fleet and its first turn. The operation id is minted per call: it
  * lets the daemon answer a transport retry with the fleet it already wrote.
  */
-export const createFleet = (
+const createFleet = (
   wsId: string,
   token: Redacted.Redacted<string>,
   input: FleetCreateInput,
@@ -89,5 +89,5 @@ export const fleetCreateEffect = (
       return yield* output.printJson({ fleet_id: id, turn_id: turnId });
     }
     yield* output.success(`Started fleet ${name} (${id}). First turn ${turnId}: ${disposition}.`);
-    yield* output.info(`Talk to it with: agentsfleet chat ${id}`);
+    yield* output.info(`Talk to it with: agentsfleet fleet steer ${id}`);
   });

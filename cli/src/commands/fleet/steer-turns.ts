@@ -245,31 +245,6 @@ const textPrinter = (output: Output) => (line: string): void => {
   if (output.format === OUTPUT_FORMAT.text) Effect.runSync(output.info(line));
 };
 
-/**
- * One read of a turn the daemon admitted before any tail could subscribe: its
- * outcome if it has already settled, else undefined.
- *
- * The live channel has no replay, so a reply that settled before the tail was
- * live is only in the saved turn. Read after the tail is live, the two cover
- * every moment between them. A turn not yet in the read store is still running.
- */
-export const readSettledTurn = (
-  wsId: string,
-  fleetId: string,
-  turnId: string,
-  token: Redacted.Redacted<string>,
-  presentation: SteerPresentation,
-  signal?: AbortSignal,
-): Effect.Effect<PolledSteerOutcome | undefined, CliError, HttpClient | Output> =>
-  Effect.gen(function* () {
-    const http = yield* HttpClient;
-    const output = yield* Output;
-    const res = yield* http.request<unknown>({ path: wsFleetTurnPath(wsId, fleetId, turnId), token, signal }).pipe(
-      Effect.catch((error) => notYetSaved(error) ? Effect.succeed(null) : Effect.fail(error)),
-    );
-    return settledOutcome(res, turnId, presentation, textPrinter(output));
-  });
-
 const notYetSaved = (error: CliError): boolean =>
   error._tag === CLI_ERROR_TAG.server && error.status === 404 && error.code === TURN_NOT_FOUND_CODE;
 

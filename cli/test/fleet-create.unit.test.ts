@@ -81,7 +81,7 @@ describe("fleet create", () => {
       .pipe(Effect.provide(makeLayer(rec, created, false, { stdoutIsTty: true }))));
     expect(rec.stdout).toEqual([
       `Started fleet fleet-0000c0ea7e (${NEW_FLEET_ID}). First turn ${FIRST_TURN_ID}: queued.`,
-      `Talk to it with: agentsfleet chat ${NEW_FLEET_ID}`,
+      `Talk to it with: agentsfleet fleet steer ${NEW_FLEET_ID}`,
     ]);
   });
 

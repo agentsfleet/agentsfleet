@@ -1,10 +1,10 @@
-// `fleet model set` and `fleet network set`: one PATCH under the tag the read
+// `fleet model use` and `fleet network use`: one PATCH under the tag the read
 // before it answered, printing what the daemon then holds.
 
 import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit } from "effect";
 import { runCli } from "../src/cli.ts";
-import { fleetModelSetEffect, fleetNetworkSetEffect } from "../src/commands/fleet/settings.ts";
+import { fleetModelUseEffect } from "../src/commands/fleet/settings.ts";
 import { ValidationError } from "../src/errors/index.ts";
 import { bufferStream, cliEnv } from "./helpers-cli-state.ts";
 import { FLEET } from "./helpers-fleet.ts";
@@ -31,9 +31,9 @@ const patched = (change: Record<string, unknown>): MockRoutes => ({
 const sent = (calls: ReadonlyArray<MockCall>) => calls.map((call) => `${call.method} ${call.path}`);
 const patchOf = (calls: ReadonlyArray<MockCall>) => calls.find((call) => call.method === "PATCH");
 
-describe("fleet model set", () => {
+describe("fleet model use", () => {
   test("patches model_ref under the read tag and names the model the fleet now runs on", async () => {
-    const result = await run(["fleet", "model", "set", FLEET.id, "owner/fast"], patched({ model_ref: "owner/fast" }));
+    const result = await run(["fleet", "model", "use", FLEET.id, "owner/fast"], patched({ model_ref: "owner/fast" }));
     expect(result.code).toBe(0);
     expect(sent(result.calls)).toEqual([`GET ${FLEET_PATH}`, `PATCH ${FLEET_PATH}`]);
     expect(patchOf(result.calls)?.headers["if-match"]).toBe(FLEET.etag);
@@ -44,7 +44,7 @@ describe("fleet model set", () => {
   test("finds a fleet by @name before it reads and patches it", async () => {
     const page = { items: [{ id: FLEET.id, name: "argo", status: "active", events_processed: "0", budget_used_nanos: "0",
       created_at: "2026-11-25T10:00:00Z" }], next_cursor: null };
-    const result = await run(["fleet", "model", "set", "@argo", "owner/fast"],
+    const result = await run(["fleet", "model", "use", "@argo", "owner/fast"],
       { [`GET ${FLEETS}`]: () => jsonResponse(200, page), ...patched({ model_ref: "owner/fast" }) });
     expect(result.code).toBe(0);
     expect(result.calls[0]?.search).toBe("?name=argo");
@@ -52,7 +52,7 @@ describe("fleet model set", () => {
   });
 
   test("an @name no fleet carries changes nothing", async () => {
-    const result = await run(["fleet", "model", "set", "@argo", "owner/fast"],
+    const result = await run(["fleet", "model", "use", "@argo", "owner/fast"],
       { [`GET ${FLEETS}`]: () => jsonResponse(200, { items: [], next_cursor: null }) });
     expect(result.code).toBe(4);
     expect(result.err).toContain("No fleet named `argo` in this workspace");
@@ -60,7 +60,7 @@ describe("fleet model set", () => {
   });
 
   test("a model the workspace cannot use is the daemon's refusal, and nothing is printed as changed", async () => {
-    const result = await run(["--json", "fleet", "model", "set", FLEET.id, "owner/missing"], {
+    const result = await run(["--json", "fleet", "model", "use", FLEET.id, "owner/missing"], {
       [`GET ${FLEET_PATH}`]: () => jsonResponse(200, FLEET),
       [`PATCH ${FLEET_PATH}`]: () => jsonResponse(409, { error_code: "UZ-SETUP-008", detail: "Model not usable", request_id: "req_model" }),
     });
@@ -70,7 +70,7 @@ describe("fleet model set", () => {
   });
 
   test("a patch answer of another shape is refused", async () => {
-    const result = await run(["fleet", "model", "set", FLEET.id, "owner/fast"], {
+    const result = await run(["fleet", "model", "use", FLEET.id, "owner/fast"], {
       [`GET ${FLEET_PATH}`]: () => jsonResponse(200, FLEET),
       [`PATCH ${FLEET_PATH}`]: () => jsonResponse(200, { id: FLEET.id, status: "active" }),
     });
@@ -80,14 +80,14 @@ describe("fleet model set", () => {
   });
 
   test("a stdout that is not a terminal gets the fleet the daemon answered as JSON", async () => {
-    const result = await run(["fleet", "model", "set", FLEET.id, "owner/fast"], patched({ model_ref: "owner/fast" }), false);
+    const result = await run(["fleet", "model", "use", FLEET.id, "owner/fast"], patched({ model_ref: "owner/fast" }), false);
     expect(result.code).toBe(0);
     expect(JSON.parse(result.out)).toMatchObject({ id: FLEET.id, model_ref: "owner/fast", etag: '"fleet-2"' });
   });
 
   test.each([["an empty reference", ""], ["a blank reference", "  "]] as const)("%s is a usage error with no request", async (_case, ref) => {
     const rec = makeRecorder();
-    const exit = await Effect.runPromiseExit(fleetModelSetEffect(FLEET.id, ref).pipe(Effect.provide(makeLayer(rec))));
+    const exit = await Effect.runPromiseExit(fleetModelUseEffect(FLEET.id, ref).pipe(Effect.provide(makeLayer(rec))));
     if (Exit.isSuccess(exit)) throw new Error("expected a usage refusal");
     const error = Cause.squash(exit.cause);
     expect(error).toBeInstanceOf(ValidationError);
@@ -96,13 +96,13 @@ describe("fleet model set", () => {
   });
 });
 
-describe("fleet network set", () => {
+describe("fleet network use", () => {
   test.each([
-    [["--allow-all"], { http_egress: "public" }, "Fleet argo: any public host, package registries blocked."],
-    [["--private", "--packages"], { http_egress: "restricted", package_domains: true }, "Fleet argo: private, package registries allowed."],
-    [["--allow-all", "--no-packages"], { http_egress: "public", package_domains: false }, "Fleet argo: any public host, package registries blocked."],
-  ] as const)("%p patches %p", async (flags, change, line) => {
-    const result = await run(["fleet", "network", "set", FLEET.id, ...flags], patched(change));
+    [["allow-all"], { http_egress: "public" }, "Fleet argo: any public host, package registries blocked."],
+    [["private", "--packages"], { http_egress: "restricted", package_domains: true }, "Fleet argo: private, package registries allowed."],
+    [["allow-all", "--no-packages"], { http_egress: "public", package_domains: false }, "Fleet argo: any public host, package registries blocked."],
+  ] as const)("%p patches %p", async (words, change, line) => {
+    const result = await run(["fleet", "network", "use", FLEET.id, ...words], patched(change));
     expect(result.code).toBe(0);
     expect(sent(result.calls)).toEqual([`GET ${FLEET_PATH}`, `PATCH ${FLEET_PATH}`]);
     expect(patchOf(result.calls)?.headers["if-match"]).toBe(FLEET.etag);
@@ -110,26 +110,15 @@ describe("fleet network set", () => {
     expect(result.out).toContain(line);
   });
 
-  test.each([
-    ["both switches", { allowAll: true, private: true, packages: undefined }],
-    ["neither switch", { allowAll: false, private: false, packages: true }],
-  ] as const)("%s is a usage error with no request", async (_case, flags) => {
-    const rec = makeRecorder();
-    const exit = await Effect.runPromiseExit(fleetNetworkSetEffect(FLEET.id, flags).pipe(Effect.provide(makeLayer(rec))));
-    if (Exit.isSuccess(exit)) throw new Error("expected a usage refusal");
-    expect(Cause.squash(exit.cause)).toMatchObject({ detail: "choose exactly one of --allow-all or --private" });
-    expect(rec.requests).toEqual([]);
-  });
-
-  test("the command line refuses both switches before any request", async () => {
-    const result = await run(["fleet", "network", "set", FLEET.id, "--allow-all", "--private"], {});
-    expect(result.code).toBe(4);
-    expect(result.err).toContain("choose exactly one of --allow-all or --private");
-    expect(result.calls.filter((call) => call.path.startsWith(FLEETS))).toEqual([]);
-  });
+  test.each([["no mode word", []], ["a mode word it does not know", ["open"]], ["the old switch", ["--allow-all"]]] as const)(
+    "%s is refused before any request", async (_case, words) => {
+      const result = await run(["fleet", "network", "use", FLEET.id, ...words], {});
+      expect(result.code).toBe(4);
+      expect(result.calls.filter((call) => call.path.startsWith(FLEETS))).toEqual([]);
+    });
 
   test("an API key opening the network gets the daemon's refusal, and the fleet reads unchanged", async () => {
-    const result = await run(["--json", "fleet", "network", "set", FLEET.id, "--allow-all"], {
+    const result = await run(["--json", "fleet", "network", "use", FLEET.id, "allow-all"], {
       [`GET ${FLEET_PATH}`]: () => jsonResponse(200, FLEET),
       [`PATCH ${FLEET_PATH}`]: () => jsonResponse(403, { error_code: "UZ-AUTH-001", detail: "person identity required", request_id: "req_net" }),
     });

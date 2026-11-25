@@ -16,12 +16,12 @@ import { Flag, GlobalFlag } from "effect/cli";
 
 export const globalFlags = {
   api: Flag.String("api").pipe(
-    Flag.withDescription("API base URL"),
+    Flag.withDescription("Server address to talk to"),
     Flag.withMetavar("<url>"),
     Flag.optional,
   ),
   json: Flag.Boolean("json").pipe(
-    Flag.withDescription("Machine-readable JSON output"),
+    Flag.withDescription("Print JSON instead of text"),
     Flag.withDefault(false),
   ),
 } as const;
@@ -33,7 +33,7 @@ export const globalFlags = {
 export const completionsFlag = GlobalFlag.Action({
   flag: GlobalFlag.Completions.flag.pipe(
     Flag.withDescription(
-      "Print a static completion script; write it to a file and regenerate after login, a target change or a permission change",
+      "Print a tab-completion script for your shell; save it to a file, and redo it after you sign in",
     ),
   ),
   run: GlobalFlag.Completions.run,

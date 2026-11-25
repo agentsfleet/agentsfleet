@@ -24,7 +24,7 @@ const listsRow = (text: string, name: string): boolean =>
 
 test("--help lists the fleet group; its lifecycle verbs appear under `fleet --help`", async () => {
   const root = await helpText([]);
-  assert.ok(listsRow(root, "chat"), "chat line missing");
+  assert.ok(!listsRow(root, "chat"), "removed chat command still listed");
   assert.ok(listsRow(root, "fleet"), "fleet group missing from top-level help");
   assert.ok(listsRow(root, "secrets"), "secrets group missing from top-level help");
   assert.ok(!listsRow(root, "install"), "removed install verb still listed");

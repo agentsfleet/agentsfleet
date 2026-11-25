@@ -17,13 +17,13 @@ export const PLATFORM_SCOPE = {
 
 export const platformPagingFlags = {
   limit: positiveInt("limit").pipe(
-    Flag.withDescription("Page size"), Flag.optional,
+    Flag.withDescription("How many to show"), Flag.optional,
   ),
   startingAfter: startingAfterFlag,
 };
 
-export const platformFileFlag = requiredTextFlag("file", "JSON input file; - reads stdin", METAVAR.path);
-export const platformPolicyFlag = requiredTextFlag("policy", "Complete assigned runner policy JSON file; - reads stdin", METAVAR.path);
-export const platformLabelsFlag = requiredTextFlag("labels", "Comma-separated tags; an empty value clears labels", METAVAR.text).pipe(Flag.optional);
-export const platformTokenFlag = requiredTextFlag("token-out", "New private file for the one-time runner token (mode 0600)", METAVAR.path);
-export const platformEtagFlag = requiredTextFlag("if-match", "Exact inspected resource tag returned by list/show", METAVAR.etag);
+export const platformFileFlag = requiredTextFlag("file", "JSON file to read (- reads stdin)", METAVAR.path);
+export const platformPolicyFlag = requiredTextFlag("policy", "The runner's full settings as a JSON file (- reads stdin)", METAVAR.path);
+export const platformLabelsFlag = requiredTextFlag("labels", "Labels, separated by commas; an empty value clears them", METAVAR.text).pipe(Flag.optional);
+export const platformTokenFlag = requiredTextFlag("token-out", "A new file, readable only by you, to save the runner's token in (shown once)", METAVAR.path);
+export const platformEtagFlag = requiredTextFlag("if-match", "The version tag list or show printed, so you never overwrite a newer change", METAVAR.etag);

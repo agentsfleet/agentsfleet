@@ -37,6 +37,18 @@ describe("the help command form", () => {
     expect(steer.out).not.toMatch(/--(?:task-id|goal-revision)/u);
   });
 
+  test.each([
+    [["fleet", "create"], "agentsfleet fleet create [flags] [<message>]", "Start a fleet with your first message"],
+    [["fleet", "steer"], "agentsfleet fleet steer [flags] <fleet_id> [<message>]", "Talk to a fleet: send one message, or chat if you give none"],
+    [["fleet", "triggers", "delete"], "agentsfleet fleet triggers delete [flags] <fleet_id> <trigger_id>", "Delete a trigger so it no longer wakes the fleet"],
+  ] as const)("`%p --help` prints that command's own usage, not the root's", async (path, usage, description) => {
+    const { code, out } = await help([...path, "--help"]);
+    expect(code).toBe(0);
+    expect(out).toContain(usage);
+    expect(out).toContain(description);
+    expect(out).not.toContain("agentsfleet <subcommand>");
+  });
+
   test("bare `agentsfleet` answers the root help at exit 0", async () => {
     const { code, out } = await help([]);
     expect(code).toBe(0);
@@ -55,7 +67,7 @@ describe("the help command form", () => {
     const viaFlag = await help(["workspace", "--help"]);
     expect(viaCommand.code).toBe(0);
     expect(viaCommand.out).toBe(viaFlag.out);
-    expect(viaCommand.out).toContain("Manage workspaces");
+    expect(viaCommand.out).toContain("Create and switch between workspaces");
   });
 
   test("`help <group> <verb>` reaches the verb's own help", async () => {

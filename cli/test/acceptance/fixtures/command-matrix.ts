@@ -25,7 +25,6 @@ export const COMMAND_GROUPS: ReadonlyArray<string> = [
   "models",
   "usage",
   "fleet",
-  "chat",
 ];
 
 export interface ReadOnlyCommandRow {
@@ -180,9 +179,9 @@ export const REQUIRES_POSITIONAL_ARG: ReadonlyArray<RequiresPositionalArgRow> = 
   { args: ["fleet", "turns"], missingArgName: "fleet_id" },
   { args: ["fleet", "steer"], missingArgName: "fleet_id" },
   { args: ["fleet", "triggers", "list"], missingArgName: "fleet_id" },
-  { args: ["fleet", "triggers", "remove"], missingArgName: "fleet_id" },
-  { args: ["fleet", "model", "set"], missingArgName: "fleet_id" },
-  { args: ["fleet", "network", "set"], missingArgName: "fleet_id" },
+  { args: ["fleet", "triggers", "delete"], missingArgName: "fleet_id" },
+  { args: ["fleet", "model", "use"], missingArgName: "fleet_id" },
+  { args: ["fleet", "network", "use"], missingArgName: "fleet_id" },
   { args: ["fleet", "memory", "search"], missingArgName: "query" },
   { args: ["secrets", "create"], missingArgName: "name" },
   { args: ["secrets", "update"], missingArgName: "name" },
@@ -203,7 +202,7 @@ export const REQUIRES_POSITIONAL_ARG: ReadonlyArray<RequiresPositionalArgRow> = 
 //
 // A node that owns subcommands and ALSO runs would be listed in
 // ACTION_GROUP_NODES instead, since asserting it prints help would assert the
-// opposite of what it is for. `chat` was one; it is a leaf now.
+// opposite of what it is for. None does today.
 export const GROUP_NODES: ReadonlyArray<ReadonlyArray<string>> = [
   ["platform"],
   ["platform", "runners"],
@@ -264,7 +263,7 @@ export const MALFORMED_ID_INVOCATIONS: ReadonlyArray<ReadonlyArray<string>> = [
   ["fleet", "logs", "--fleet", "not-a-uuid"],
   ["fleet", "archive", "not-a-uuid"],
   ["fleet", "delete", "not-a-uuid"],
-  ["fleet", "triggers", "remove", EXAMPLE_FLEET_ID, "not-a-uuid"],
+  ["fleet", "triggers", "delete", EXAMPLE_FLEET_ID, "not-a-uuid"],
 ];
 
 

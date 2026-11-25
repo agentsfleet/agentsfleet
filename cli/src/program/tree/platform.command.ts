@@ -13,7 +13,7 @@ export const platformCommand = (visibility: Visibility) => {
   const models = platformModelsCommand(visibility);
   const families = [runners, models];
   return Command.make("platform").pipe(
-    Command.withDescription("Administer platform resources with your existing operator scopes"),
+    Command.withDescription("Run the platform itself (for operators)"),
     Command.withSubcommands([
       listedWhen(runners.listed)(runners.command),
       listedWhen(models.listed)(models.command),

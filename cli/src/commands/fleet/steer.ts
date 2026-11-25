@@ -35,9 +35,7 @@ import {
 import {
   openTurnTail,
   pollTurnTerminal,
-  readSettledTurn,
   STATUS_COMPLETE,
-  TAIL_OPENED,
   TAIL_TIMED_OUT,
   type TurnTailHandle,
   type PolledSteerOutcome,
@@ -112,33 +110,6 @@ export const steerTurnEffect = (
     (tail) => Effect.promise(() => tail.close()),
   );
 
-/**
- * Follows a turn the daemon admitted before any tail could subscribe: the
- * first turn of a fleet a create just wrote, whose stream did not exist yet.
- *
- * The tail opens after the turn, so whatever settled before it was live is
- * read once from the saved turn; anything later arrives on the tail.
- */
-export const followTurnEffect = (
-  wsId: string,
-  fleetId: string,
-  turn: AdmittedTurn,
-  token: Redacted.Redacted<string>,
-  streamGet: StreamGetFn,
-  signal?: AbortSignal,
-): Effect.Effect<void, CliError, TurnServices> =>
-  Effect.acquireUseRelease(
-    openTurnTail(wsId, fleetId, token, streamGet, signal),
-    (tail) => Effect.gen(function* () {
-      const readiness = yield* Effect.promise(() => tail.awaitReady());
-      const saved = readiness === TAIL_OPENED
-        ? yield* readSettledTurn(wsId, fleetId, turn.turn_id, token, tail.presentation, signal)
-        : undefined;
-      yield* settleTurn(tail, readiness, saved, wsId, fleetId, turn, token, signal);
-    }),
-    (tail) => Effect.promise(() => tail.close()),
-  );
-
 const steerTurnWithTail = (
   wsId: string,
   fleetId: string,
@@ -182,16 +153,14 @@ const steerTurnWithTail = (
     }
     // A folded message keeps its own turn: the run it joined answers it
     // there when that run reports, so the CLI waits on the message's own id.
-    yield* settleTurn(tail, readiness, undefined, wsId, fleetId, { ...post, turn_id: post.turn_id }, token, signal);
+    yield* settleTurn(tail, readiness, wsId, fleetId, { ...post, turn_id: post.turn_id }, token, signal);
   });
 
-// Waits out the turn's outcome, unless a saved read already settled it, then
-// prints it. The poll stops short of a terminal status only when the caller's
+// Waits out the turn's outcome, then prints it. The poll stops short of a terminal status only when the caller's
 // signal ended the wait.
 const settleTurn = (
   tail: TurnTailHandle,
   readiness: TailReadiness,
-  saved: RenderableSteerOutcome | undefined,
   wsId: string,
   fleetId: string,
   turn: AdmittedTurn,
@@ -199,7 +168,7 @@ const settleTurn = (
   signal?: AbortSignal,
 ): Effect.Effect<void, CliError, TurnServices> =>
   Effect.gen(function* () {
-    const outcome = saved ?? (yield* resolveSteerOutcome(tail, readiness, wsId, fleetId, turn.turn_id, token, signal));
+    const outcome = yield* resolveSteerOutcome(tail, readiness, wsId, fleetId, turn.turn_id, token, signal);
     if (signal?.aborted || outcome.kind !== STATUS_COMPLETE) {
       return yield* failSteerInterrupted();
     }

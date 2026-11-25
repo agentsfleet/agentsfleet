@@ -1,5 +1,5 @@
-// `fleet triggers list|remove`: what wakes a fleet from outside, read and
-// removed by a person.
+// `fleet triggers list|delete`: what wakes a fleet from outside, read and
+// deleted by a person.
 
 import { describe, expect, test } from "bun:test";
 import { runCli } from "../src/cli.ts";
@@ -71,33 +71,33 @@ describe("fleet triggers list", () => {
   });
 });
 
-describe("fleet triggers remove", () => {
-  const removed: MockRoutes = { [`DELETE ${TRIGGERS}/${WEBHOOK_ID}`]: () => new Response(null, { status: 204 }) };
+describe("fleet triggers delete", () => {
+  const deleted: MockRoutes = { [`DELETE ${TRIGGERS}/${WEBHOOK_ID}`]: () => new Response(null, { status: 204 }) };
 
   test("deletes the one trigger and says it no longer wakes the fleet", async () => {
-    const result = await run(["fleet", "triggers", "remove", FLEET.id, WEBHOOK_ID], removed);
+    const result = await run(["fleet", "triggers", "delete", FLEET.id, WEBHOOK_ID], deleted);
     expect(result.code).toBe(0);
     expect(result.sent).toEqual([`DELETE ${TRIGGERS}/${WEBHOOK_ID}`]);
-    expect(result.out).toContain(`Removed trigger ${WEBHOOK_ID}; it no longer wakes the fleet.`);
+    expect(result.out).toContain(`Deleted trigger ${WEBHOOK_ID}; it no longer wakes the fleet.`);
   });
 
-  test("--json reports the removal as a record", async () => {
-    const result = await run(["--json", "fleet", "triggers", "remove", FLEET.id, WEBHOOK_ID], removed);
+  test("--json reports the deletion as a record", async () => {
+    const result = await run(["--json", "fleet", "triggers", "delete", FLEET.id, WEBHOOK_ID], deleted);
     expect(result.code).toBe(0);
     expect(JSON.parse(result.out)).toEqual({ deleted: true, trigger_id: WEBHOOK_ID });
   });
 
   test("a trigger the fleet does not have is the daemon's refusal", async () => {
-    const result = await run(["fleet", "triggers", "remove", FLEET.id, APP_ID], {
+    const result = await run(["fleet", "triggers", "delete", FLEET.id, APP_ID], {
       [`DELETE ${TRIGGERS}/${APP_ID}`]: () => jsonResponse(404, { error_code: "UZ-AGT-030", detail: "No such trigger", request_id: "req_trig" }),
     });
     expect(result.code).toBe(3);
     expect(result.err).toContain("UZ-AGT-030");
-    expect(result.out).not.toContain("Removed trigger");
+    expect(result.out).not.toContain("Deleted trigger");
   });
 
   test("a malformed trigger id is refused before any request", async () => {
-    const result = await run(["fleet", "triggers", "remove", FLEET.id, "not-a-uuid"], {});
+    const result = await run(["fleet", "triggers", "delete", FLEET.id, "not-a-uuid"], {});
     expect(result.code).toBe(4);
     expect(result.err).toContain("trigger_id");
     expect(result.sent.filter((call) => call.includes("/fleets"))).toEqual([]);

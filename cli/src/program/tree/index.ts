@@ -10,12 +10,12 @@ import { globalFlags } from "./global-flags.ts";
 import { authCommands } from "./auth.command.ts";
 import { diagnosticsCommands } from "./diagnostics.command.ts";
 import { workspaceCommand, usageCommand } from "./workspace.command.ts";
-import { chatCommand } from "./chat.command.ts";
 import { fleetCommand } from "./fleet.command.ts";
 import { modelsCommand } from "./models.command.ts";
 import { secretsCommand } from "./secrets.command.ts";
 import { apiKeysCommand, connectionsCommand } from "./access.command.ts";
 import { platformCommand } from "./platform.command.ts";
+import { removedCommands } from "./removed.command.ts";
 import { tenantRunnersCommand } from "./platform-runners.command.ts";
 import { UNKNOWN_VISIBILITY, listedWhen, type Visibility } from "./visibility.ts";
 import { CLI_NAME } from "../../constants/rejection.ts";
@@ -25,13 +25,12 @@ import { CLI_NAME } from "../../constants/rejection.ts";
 export const buildCommandTree = (visibility: Visibility = UNKNOWN_VISIBILITY) => {
   const runners = tenantRunnersCommand(visibility);
   return Command.make(CLI_NAME).pipe(
-    Command.withDescription("agentsfleet cli"),
+    Command.withDescription("Start and talk to your fleets from the terminal"),
     Command.withSharedFlags(globalFlags),
     Command.withSubcommands([
       ...authCommands(),
       ...diagnosticsCommands(),
       workspaceCommand(),
-      chatCommand(),
       fleetCommand(),
       modelsCommand(),
       secretsCommand(),
@@ -40,6 +39,7 @@ export const buildCommandTree = (visibility: Visibility = UNKNOWN_VISIBILITY) =>
       usageCommand(),
       platformCommand(visibility),
       listedWhen(runners.listed)(runners.command),
+      ...removedCommands(),
     ]),
   );
 };

@@ -31,7 +31,7 @@ const scheduleCreateCommand = Command.make(VERB.create, {
   timezone: timezoneDefaultFlag,
   workspace: workspaceFlag,
 }).pipe(
-  Command.withDescription("Create a hosted schedule for a Fleet"),
+  Command.withDescription("Make a fleet run on a schedule"),
   guardedHandler(({ fleetId, cron, message, timezone, workspace }) =>
     Effect.gen(function* () {
       const isTty = yield* stdoutIsTty;
@@ -50,7 +50,7 @@ const scheduleListCommand = Command.make(VERB.list, {
   fleetId: fleetIdArgument,
   workspace: workspaceFlag,
 }).pipe(
-  Command.withDescription("List hosted schedules for a Fleet"),
+  Command.withDescription("List a fleet's schedules"),
   guardedHandler(({ fleetId, workspace }) =>
     Effect.gen(function* () {
       const isTty = yield* stdoutIsTty;
@@ -71,7 +71,7 @@ const scheduleUpdateCommand = Command.make(VERB.update, {
   status: scheduleStatusFlag,
   workspace: workspaceFlag,
 }).pipe(
-  Command.withDescription("Update a hosted schedule"),
+  Command.withDescription("Change a schedule"),
   guardedHandler(({ fleetId, scheduleId, cron, message, timezone, status, workspace }) =>
     Effect.gen(function* () {
       const isTty = yield* stdoutIsTty;
@@ -92,7 +92,7 @@ const scheduleDeleteCommand = Command.make(VERB.delete, {
   scheduleId: scheduleIdArgument,
   workspace: workspaceFlag,
 }).pipe(
-  Command.withDescription("Delete a hosted schedule"),
+  Command.withDescription("Delete a schedule"),
   guardedHandler(({ fleetId, scheduleId, workspace }) =>
     Effect.gen(function* () {
       const isTty = yield* stdoutIsTty;
@@ -109,7 +109,7 @@ const scheduleShowCommand = Command.make(VERB.show, {
   scheduleId: scheduleIdArgument,
   workspace: workspaceFlag,
 }).pipe(
-  Command.withDescription("Show one hosted schedule"),
+  Command.withDescription("Show one schedule"),
   guardedHandler(({ fleetId, scheduleId, workspace }) =>
     Effect.gen(function* () {
       const isTty = yield* stdoutIsTty;
@@ -126,7 +126,7 @@ const scheduleSyncCommand = Command.make(VERB.sync, {
   scheduleId: scheduleIdArgument,
   workspace: workspaceFlag,
 }).pipe(
-  Command.withDescription("Re-apply a hosted schedule"),
+  Command.withDescription("Send a schedule to the scheduler again"),
   guardedHandler(({ fleetId, scheduleId, workspace }) =>
     Effect.gen(function* () {
       const isTty = yield* stdoutIsTty;
@@ -139,7 +139,7 @@ const scheduleSyncCommand = Command.make(VERB.sync, {
 );
 
 export const scheduleCommand = () => Command.make("schedule").pipe(
-  Command.withDescription("Manage hosted Fleet schedules"),
+  Command.withDescription("Make a fleet run on a schedule"),
   Command.withSubcommands([
     scheduleCreateCommand,
     scheduleListCommand,

@@ -1,4 +1,4 @@
-// The prompt `fleet steer` and `chat` share: each line a person types is one
+// The prompt `fleet steer` opens with no message: each line a person types is one
 // turn, run to its outcome before the next prompt. A failed turn is rendered
 // and the prompt returns; Ctrl+C ends the session as an interrupt.
 

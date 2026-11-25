@@ -1,4 +1,4 @@
-// `agentsfleet fleet model set` and `fleet network set` — what a person changes
+// `agentsfleet fleet model use` and `fleet network use` — what a person changes
 // about a fleet after it starts. Each is one PATCH under the tag the read
 // before it answered, and prints what the daemon then holds. Only a signed-in
 // person may open a fleet's network; the daemon refuses an API key.
@@ -16,9 +16,13 @@ import { requireWorkspaceId, resolveAuthToken } from "../workspace/guards.ts";
 import { decodeFleet, HTTP_EGRESS, writesJson, type Fleet } from "./read.ts";
 import { resolveSteerTarget } from "./steer-target.ts";
 
-export interface NetworkFlags {
-  readonly allowAll: boolean;
-  readonly private: boolean;
+/** The mode word `fleet network use` takes, and the `http_egress` each one sends. */
+export const NETWORK_MODE = Object.freeze({ allowAll: "allow-all", private: "private" } as const);
+export const NETWORK_MODES = [NETWORK_MODE.allowAll, NETWORK_MODE.private] as const;
+export type NetworkMode = (typeof NETWORK_MODES)[number];
+
+export interface NetworkChoice {
+  readonly mode: NetworkMode;
   /** Undefined leaves the fleet's package registries as they are. */
   readonly packages: boolean | undefined;
 }
@@ -26,11 +30,9 @@ export interface NetworkFlags {
 type FleetServices = CliConfig | Credentials | HttpClient | Output | Workspaces;
 type FleetChange = Readonly<Record<string, unknown>>;
 
-const MODEL_USAGE = "usage: agentsfleet fleet model set <fleet_id|@name> <ref>" as const;
-const NETWORK_USAGE =
-  "usage: agentsfleet fleet network set <fleet_id|@name> --allow-all|--private [--packages|--no-packages]" as const;
+const MODEL_USAGE = "usage: agentsfleet fleet model use <fleet_id|@name> <model_ref>" as const;
 
-export const fleetModelSetEffect = (
+export const fleetModelUseEffect = (
   fleetArgument: string,
   modelRef: string,
 ): Effect.Effect<void, CliError, FleetServices> =>
@@ -39,17 +41,15 @@ export const fleetModelSetEffect = (
     : patchFleet(fleetArgument, { model_ref: modelRef },
       (fleet) => `Fleet ${fleet.name} now runs on ${fleet.model_ref}; its next run uses it.`);
 
-export const fleetNetworkSetEffect = (
+export const fleetNetworkUseEffect = (
   fleetArgument: string,
-  flags: NetworkFlags,
+  choice: NetworkChoice,
 ): Effect.Effect<void, CliError, FleetServices> =>
-  flags.allowAll === flags.private
-    ? Effect.fail(new ValidationError({ detail: "choose exactly one of --allow-all or --private", suggestion: NETWORK_USAGE }))
-    : patchFleet(fleetArgument, {
-      http_egress: flags.allowAll ? HTTP_EGRESS.public : HTTP_EGRESS.restricted,
-      ...(flags.packages === undefined ? {} : { package_domains: flags.packages }),
-    }, (fleet) => `Fleet ${fleet.name}: ${fleet.http_egress === HTTP_EGRESS.public ? "any public host" : "private"}, ` +
-      `package registries ${fleet.package_domains ? "allowed" : "blocked"}.`);
+  patchFleet(fleetArgument, {
+    http_egress: choice.mode === NETWORK_MODE.allowAll ? HTTP_EGRESS.public : HTTP_EGRESS.restricted,
+    ...(choice.packages === undefined ? {} : { package_domains: choice.packages }),
+  }, (fleet) => `Fleet ${fleet.name}: ${fleet.http_egress === HTTP_EGRESS.public ? "any public host" : "private"}, ` +
+    `package registries ${fleet.package_domains ? "allowed" : "blocked"}.`);
 
 const patchFleet = (
   fleetArgument: string,

@@ -57,12 +57,11 @@ describe("CLI tree — every documented route is reachable", () => {
     ["fleet", "schedule", "create"], ["fleet", "schedule", "list"], ["fleet", "schedule", "update"], ["fleet", "schedule", "delete"], ["fleet", "schedule", "show"], ["fleet", "schedule", "sync"],
     ["models", "current"], ["models", "use"], ["models", "reset"],
     ["usage", "show"],
-    ["chat"],
     ["fleet", "create"], ["fleet", "show"],
     ["fleet", "list"], ["fleet", "status"], ["fleet", "archive"], ["fleet", "delete"],
     ["fleet", "logs"], ["fleet", "turns"], ["fleet", "steer"],
-    ["fleet", "triggers", "list"], ["fleet", "triggers", "remove"],
-    ["fleet", "model", "set"], ["fleet", "network", "set"],
+    ["fleet", "triggers", "list"], ["fleet", "triggers", "delete"],
+    ["fleet", "model", "use"], ["fleet", "network", "use"],
     ["secrets", "create"], ["secrets", "update"], ["secrets", "show"], ["secrets", "list"], ["secrets", "delete"],
   ];
 

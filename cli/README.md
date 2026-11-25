@@ -37,14 +37,13 @@ agentsfleet workspace create my-workspace
 # Verify configuration and connectivity
 agentsfleet doctor
 
-# Start a fleet from its first message; it prints the fleet's id
+# Start a fleet with your first message; it prints the fleet's id
 agentsfleet fleet create "Watch checkout errors and tell me when they spike"
 
-# Keep talking to it, by id or by @name
-agentsfleet chat <fleet_id>
+# Keep talking to it, by id or by @name; with no message it opens a prompt
+agentsfleet fleet steer <fleet_id> "check it now"
 ```
 
-`agentsfleet chat` with no fleet named starts one from the first line you type.
 A fleet asks for a secret or an integration when it needs one;
 `agentsfleet fleet approvals list` shows what waits for your answer.
 
