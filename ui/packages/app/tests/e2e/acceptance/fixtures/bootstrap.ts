@@ -61,7 +61,7 @@ function buildPayload(fixture: ProvisionedUser): UserCreatedPayload {
 
 interface BootstrapResponse {
   created: boolean;
-  tenant_id: string;
+  workspace_id: string;
   workspace_name?: string;
 }
 
