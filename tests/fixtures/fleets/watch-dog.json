@@ -36,5 +36,5 @@
     "GitHub's real pull request event wakes the fleet once, and it says the pull request's number.",
     "The fleet closes the pull request and deletes its branch."
   ],
-  "repository": "agentsfleet/acceptance-playground"
+  "repository": "agentsfleet/linkwarden"
 }
