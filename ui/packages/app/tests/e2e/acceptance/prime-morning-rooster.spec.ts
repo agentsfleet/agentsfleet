@@ -120,10 +120,13 @@ test.describe.serial(`prime fleet ${fixture.name}`, {tag: POST_DEPLOY_TAG}, () =
     // The browser's fleet holds what the API's does: active, one person's turn, answered.
     const browser = FleetDetailSchema.parse(await clientFor(PRIME_PERSON).get<unknown>(`/v1/workspaces/${workspaceId}/fleets/${typed.id}`));
     expect(browser.status).toBe(STATUS_ACTIVE);
+    const browserTurn = await awaitTerminalTurn(workspaceId, typed.id);
+    assertPassed(classifyTerminalTurn(browserTurn));
     const [turn, ...others] = await threadOf(workspaceId, typed.id);
     expect(others).toEqual([]);
-    expect(turn && messageOf(turn)).toBe(typed.message);
-    expect(turn?.response_text).toContain(probeReply(typed.token));
+    expect(turn?.turn_id).toBe(browserTurn.turn_id);
+    expect(messageOf(browserTurn)).toBe(typed.message);
+    expect(browserTurn.response_text).toContain(probeReply(typed.token));
 
     // The command line makes the same thing from the same words; the name is the fixture's with a tag, because the fixture's is taken.
     const token = uniqueTag();
