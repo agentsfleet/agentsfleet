@@ -1,4 +1,4 @@
-// Checks on this machine's setup, and the jellyfish.
+// Local diagnostics and Orbit.
 
 import { Command } from "effect/cli";
 import { guardedHandler } from "./guarded-handler.ts";
@@ -15,10 +15,9 @@ const doctorCommand = Command.make("doctor").pipe(
   guardedHandler(() => withManagedExitCode(doctorEffect)),
 );
 
-// Runnable by name, never advertised: it is a preview of the progress pet,
-// not a command anyone needs to find.
+// Keep Orbit out of the fleet command list.
 const petCommand = Command.make(PET_COMMAND).pipe(
-  Command.withDescription("Watch Orbit, your terminal jellyfish, for five seconds"),
+  Command.withDescription("Play Orbit, a small terminal paddle game"),
   guardedHandler(() => petPreview),
   Command.unlisted,
 );

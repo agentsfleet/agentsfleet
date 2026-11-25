@@ -1,55 +1,44 @@
-import type {WritableStreamLike} from "./capability.ts";
-import {Effect} from "effect";
-import {palette, terminal} from "./palette.ts";
-import {ColorMode, detectColorMode} from "./capability.ts";
-import {MINI_ORBIT_COLUMNS, MINI_ORBIT_ROWS, miniOrbitFrame, orbitFrame} from "./orbit.ts";
-import {PET_DISPLAY, PET_FRAME_MS, PET_IDLE_FRAMES, PET_MIN_COLUMNS, PET_MIN_ROWS, PET_ROWS, PET_STATE,
-  PET_WORKING_END_FRAME, type PetDisplay} from "../constants/pet.ts";
-import {REDUCED_MOTION_ENV} from "../constants/env.ts";
+import type { WritableStreamLike } from "./capability.ts";
+import { Effect } from "effect";
+import { palette } from "./palette.ts";
+import { detectColorMode } from "./capability.ts";
+import { REDUCED_MOTION_ENV } from "../constants/env.ts";
+import { visibleLength } from "./text.ts";
 
-const FRAMES = [" (o.o)~ ", " (o.o)~~", " ~(o.o)~", "~(o.o)~ ", " (o.o)~ ", " (-.-)~ "] as const;
+const FRAME_MS = 135;
+const LANE = 6;
 
 /** The request scope interrupts the animation before clearing its status line. */
-export function startProgress(stream: WritableStreamLike, label: string, enabled: boolean, env: NodeJS.ProcessEnv = process.env,
-  display: PetDisplay = PET_DISPLAY.compact) {
+export function startProgress(stream: WritableStreamLike, label: string, enabled: boolean, env: NodeJS.ProcessEnv = process.env) {
   return Effect.gen(function* () {
     if (!enabled || !stream.isTTY) return;
-    const width = label.length + FRAMES[0].length + 2;
-    if (env[REDUCED_MOTION_ENV] || env.CI || env.TERM === "dumb" || (stream.columns !== undefined && stream.columns <= width)) {
-      stream.write(`${display === PET_DISPLAY.preview ? `${FRAMES[0]} ` : ""}${label}\n`);
+    const width = visibleLength(label) + LANE + 4;
+    const fits = () => stream.columns === undefined || stream.columns > width;
+    if (env[REDUCED_MOTION_ENV] || env.CI || env.TERM === "dumb" || !fits()) {
+      stream.write(`${label}\n`);
       return;
     }
-    const mode = detectColorMode(env, stream);
-    const preview = display === PET_DISPLAY.preview && mode === ColorMode.XTERM256 &&
-      (stream.columns ?? 0) >= PET_MIN_COLUMNS && (stream.rows ?? 0) >= PET_MIN_ROWS;
-    const mini = display === PET_DISPLAY.compact && mode === ColorMode.XTERM256 &&
-      (stream.columns ?? 0) >= MINI_ORBIT_COLUMNS + 3 + label.length && (stream.rows ?? 0) > MINI_ORBIT_ROWS;
-    const blockRows = preview ? PET_ROWS : mini ? MINI_ORBIT_ROWS : 0;
-    const columns = stream.columns, rows = stream.rows;
-    const sameSize = () => stream.columns === columns && stream.rows === rows;
-    let resized = false;
-    let frame = 0;
-    const style = {env, stream, mode, warnStream: stream};
-    const frames = FRAMES.map(value => palette.pulse(value, style));
+    const style = {env, stream, mode: detectColorMode(env, stream), warnStream: stream};
+    let position = 0;
+    let direction = 1;
+    let reflowed = false;
     const draw = Effect.sync(() => {
-      if (resized) return;
-      if (blockRows && !sameSize()) { resized = true; stream.write("\r\n"); return; }
-      if (preview) {
-        const state = frame < PET_IDLE_FRAMES ? PET_STATE.idle : frame < PET_WORKING_END_FRAME ? PET_STATE.working : PET_STATE.done;
-        const tick = frame - (state === PET_STATE.working ? PET_IDLE_FRAMES : state === PET_STATE.done ? PET_WORKING_END_FRAME : 0);
-        stream.write(terminal.repaintRows(orbitFrame(tick, state, {env, stream, mode})));
-      } else if (mini) {
-        stream.write(terminal.repaintRows(miniOrbitFrame(frame, label, style)));
-      } else stream.write(`\r${frames[frame % frames.length]} ${label}`);
-      frame += 1;
+      if (reflowed) return;
+      if (!fits()) {
+        reflowed = true;
+        stream.write("\r\n");
+        return;
+      }
+      const frame = `[${" ".repeat(position)}o${" ".repeat(LANE - position)}]`;
+      stream.write(`\r${palette.pulse(frame, style)} ${label}`);
+      if (position === LANE) direction = -1;
+      if (position === 0) direction = 1;
+      position += direction;
     });
     yield* Effect.addFinalizer(() => Effect.sync(() => {
-      // Resizing can reflow the block, so its old cursor coordinates no longer belong to us.
-      if (blockRows && (resized || !sameSize())) { if (!resized) stream.write("\r\n"); return; }
-      stream.write(blockRows ? terminal.clearRows(blockRows) : `\r${" ".repeat(width)}\r`);
+      if (!reflowed) stream.write(fits() ? `\r${" ".repeat(width)}\r` : "\r\n");
     }));
-    if (blockRows) stream.write(terminal.reserveRows(blockRows));
     yield* draw;
-    yield* Effect.forkScoped(Effect.forever(Effect.sleep(PET_FRAME_MS).pipe(Effect.andThen(draw))));
+    yield* Effect.forkScoped(Effect.forever(Effect.sleep(FRAME_MS).pipe(Effect.andThen(draw))));
   });
 }

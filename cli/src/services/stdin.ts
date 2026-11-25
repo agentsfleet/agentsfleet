@@ -8,6 +8,7 @@ import { UnexpectedError } from "../errors/index.ts";
 
 export interface StdinShape {
   readonly isTTY: boolean;
+  readonly stream?: NodeJS.ReadableStream;
   readonly readAll: () => Effect.Effect<string, UnexpectedError>;
 }
 
@@ -20,6 +21,7 @@ export const Stdin = Context.Service<Stdin>("agentsfleet/runtime/Stdin");
 
 export const makeLive = (stream: NodeJS.ReadableStream = process.stdin): StdinShape => ({
   isTTY: Boolean((stream as { isTTY?: boolean }).isTTY),
+  stream,
   readAll: () => Effect.tryPromise({
     try: signal => readStreamToEnd(stream, signal),
     catch: () => new UnexpectedError({detail: "Could not read standard input", suggestion: "check the input pipe and try again"}),

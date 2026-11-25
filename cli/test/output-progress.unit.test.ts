@@ -1,8 +1,6 @@
 import {expect, test} from "bun:test";
 import {Effect, Layer} from "effect";
 import {startProgress} from "../src/output/progress.ts";
-import {MINI_ORBIT_ROWS} from "../src/output/orbit.ts";
-import {terminal} from "../src/output/palette.ts";
 import {resetCapabilityWarning} from "../src/output/capability.ts";
 import {CliConfig, resolveCliConfig} from "../src/services/config.ts";
 import {HttpClient, httpClientWithProgressLayer} from "../src/services/http-client.ts";
@@ -35,13 +33,13 @@ test("returns the accepted HTTP write when the terminal animation fails", async 
   expect((await signal.promise)?.aborted).toBe(false);
 });
 
-test("the terminal jellyfish sways while waiting and stops writing after cleanup", async () => {
+test("the terminal ball moves while waiting and stops writing after cleanup", async () => {
   const chunks: string[] = [];
   await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
-    yield* startProgress({isTTY: true, columns: 31, write: text => chunks.push(text)}, "Contacting platform…", true, {});
+    yield* startProgress({isTTY: true, columns: 40, write: text => chunks.push(text)}, "Contacting platform…", true, {});
     yield* Effect.sleep(300);
-    expect(chunks[0]).toBe("\r (o.o)~  Contacting platform…");
-    expect(chunks[1]).toBe("\r (o.o)~~ Contacting platform…");
+    expect(chunks[0]).toBe("\r[o      ] Contacting platform…");
+    expect(chunks[1]).toBe("\r[ o     ] Contacting platform…");
   })));
   expect(chunks.at(-1)).toMatch(/^\r +\r$/);
   const writes = chunks.length;
@@ -61,10 +59,10 @@ test.each([12, 30])("uses static progress when the terminal is only %s columns w
   expect(chunks).toEqual(["Contacting platform…\n"]);
 });
 
-test.each([{}, {NO_COLOR: "1"}])("colors the jellyfish through the shared palette and honors %j", async env => {
+test.each([{}, {NO_COLOR: "1"}])("colors the ball through the shared palette and honors %j", async env => {
   const chunks: string[] = [];
   await Effect.runPromise(Effect.scoped(startProgress({isTTY: true, write: text => chunks.push(text)}, "Orbit", true, {TERM: "xterm-256color", ...env})));
-  expect(chunks[0]).toBe(env.NO_COLOR ? "\r (o.o)~  Orbit" : "\r\u001b[38;5;79m (o.o)~ \u001b[0m Orbit");
+  expect(chunks[0]).toBe(env.NO_COLOR ? "\r[o      ] Orbit" : "\r\u001b[38;5;79m[o      ]\u001b[0m Orbit");
 });
 
 test("keeps the basic-color fallback notice on the invocation's stream", async () => {
@@ -72,7 +70,7 @@ test("keeps the basic-color fallback notice on the invocation's stream", async (
   const chunks: string[] = [];
   await Effect.runPromise(Effect.scoped(startProgress({isTTY: true, write: text => chunks.push(text)}, "Orbit", true, {TERM: "vt100"})));
   expect(chunks[0]).toBe("note: terminal advertises <256 colors; using basic palette\n");
-  expect(chunks[1]).toBe("\r\u001b[36m (o.o)~ \u001b[0m Orbit");
+  expect(chunks[1]).toBe("\r\u001b[36m[o      ]\u001b[0m Orbit");
 });
 
 test.each([[false, true], [true, false], [true, undefined]] as const)("stays silent when disabled or redirected (enabled: %s, terminal: %s)", async (enabled, tty) => {
@@ -89,21 +87,29 @@ test.each([["failure", Effect.fail("Refused")], ["cancellation", Effect.interrup
     yield* outcome;
   })));
   expect(result._tag).toBe("Failure");
-  expect(chunks[0]).toContain("(o.o)");
+  expect(chunks[0]).toContain("[o      ]");
   expect(chunks.at(-1)).toMatch(/^\r +\r$/);
   const writes = chunks.length;
   await Bun.sleep(300);
   expect(chunks).toHaveLength(writes);
 });
 
-test("uses miniature Orbit in a large color terminal and clears its rows on completion", async () => {
+test.each([false, true])("releases a status line that reflows after the terminal narrows (%s)", async redraw => {
   const chunks: string[] = [];
-  await Effect.runPromise(Effect.scoped(startProgress(
-    {isTTY: true, columns: 80, rows: 24, write: text => chunks.push(text)}, "Waiting for agentsfleet…", true,
-    {TERM: "xterm-256color"},
-  )));
-  expect(chunks[0]).toBe(terminal.reserveRows(MINI_ORBIT_ROWS));
-  expect(chunks[1]).toContain("Waiting for agentsfleet…");
-  expect(chunks[1]).toMatch(/[▀▄]/u);
-  expect(chunks.at(-1)).toBe(terminal.clearRows(MINI_ORBIT_ROWS));
+  const stream = {isTTY: true, columns: 80, write: (text: string) => chunks.push(text)};
+  await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
+    yield* startProgress(stream, "Waiting for agentsfleet…", true, {});
+    stream.columns = 20;
+    if (redraw) yield* Effect.sleep(300);
+  })));
+  expect(chunks).toEqual(["\r[o      ] Waiting for agentsfleet…", "\r\n"]);
+});
+
+test("reverses the ball at the other edge of the lane", async () => {
+  const chunks: string[] = [];
+  await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
+    yield* startProgress({isTTY: true, columns: 80, write: text => chunks.push(text)}, "Working", true, {});
+    yield* Effect.sleep(1150);
+  })));
+  expect(chunks.slice(5, 8)).toEqual(["\r[     o ] Working", "\r[      o] Working", "\r[     o ] Working"]);
 });
