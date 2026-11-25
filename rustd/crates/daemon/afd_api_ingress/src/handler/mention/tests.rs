@@ -1,8 +1,12 @@
 //! Parsing and filtering a verified mention, with no datastore.
 
+use af_core::id::Uuid7;
+use af_crypto::secret::SecretString;
+use afd_connector::grant::BotIdentity;
+
 use super::{
-    Asked, Parsed, REASON_BOT_MESSAGE, REASON_UNREADABLE, parse, unserialisable,
-    without_bot_mention,
+    Asked, Parsed, REASON_BOT_MESSAGE, REASON_BOT_USER_UNKNOWN, REASON_UNREADABLE, parse,
+    spoken_by_us, unserialisable, without_bot_mention,
 };
 use crate::handler::webhook::REASON_UNSUPPORTED_EVENT;
 
@@ -135,6 +139,52 @@ fn non_human_mentions_are_dropped() {
         Parsed::Dropped(REASON_UNSUPPORTED_EVENT),
         "an envelope that is not an event callback is not a mention"
     );
+}
+
+/// The workspace the guard logs a fail-closed drop under.
+fn workspace() -> Uuid7 {
+    Uuid7::parse("01920000-0000-7000-8000-0000000000a1").unwrap_or_else(|_| unreachable!())
+}
+
+/// The bot a grant speaks as, known by `user_id` or not.
+fn bot(user_id: Option<&str>) -> BotIdentity {
+    BotIdentity {
+        token: SecretString::new("xoxb-fixture".to_owned()),
+        user_id: user_id.map(str::to_owned),
+    }
+}
+
+/// The bot's own reply is dropped as `bot_message`; a person or another app
+/// is let through.
+#[test]
+fn only_the_bots_own_user_is_dropped() {
+    let workspace = workspace();
+    assert_eq!(
+        spoken_by_us(&workspace, &bot(Some("UBOT")), "UBOT"),
+        Some(REASON_BOT_MESSAGE),
+        "the bot's own reply mentions itself and would loop"
+    );
+    for user in ["U01", "U0PAGERDUTY", "ubot"] {
+        assert_eq!(
+            spoken_by_us(&workspace, &bot(Some("UBOT")), user),
+            None,
+            "`{user}` is not the bot"
+        );
+    }
+}
+
+/// A grant that recorded no bot user id cannot tell the bot's own reply from
+/// a person's, so every mention is dropped rather than risk a loop.
+#[test]
+fn a_grant_with_no_bot_user_drops_every_mention() {
+    let workspace = workspace();
+    for user in ["U01", "UBOT"] {
+        assert_eq!(
+            spoken_by_us(&workspace, &bot(None), user),
+            Some(REASON_BOT_USER_UNKNOWN),
+            "`{user}` under a grant naming no bot user"
+        );
+    }
 }
 
 /// The bot's own leading mention is removed and the rest kept; a message not

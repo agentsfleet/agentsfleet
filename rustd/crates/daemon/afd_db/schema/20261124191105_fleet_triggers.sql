@@ -25,7 +25,6 @@ CREATE TABLE fleet.triggers (
     secret_name         TEXT,
     channel             TEXT,
     created_at          TIMESTAMPTZ(3)  NOT NULL,
-    updated_at          TIMESTAMPTZ(3)  NOT NULL,
     CONSTRAINT uq_triggers_fleet_id_kind_source UNIQUE (fleet_id, kind, source)
 );
 
@@ -37,4 +36,16 @@ CREATE INDEX idx_triggers_workspace_id_kind_source
 CREATE INDEX idx_triggers_workspace_id_kind_channel
     ON fleet.triggers (workspace_id, kind, channel);
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON fleet.triggers TO api_runtime;
+-- Append-only: a change is a remove and an add, so even a role granted UPDATE by mistake is
+-- refused one. DELETE stays granted, and the fleet's delete still cascades.
+CREATE FUNCTION fleet.triggers_refuse_update() RETURNS trigger AS $$
+BEGIN
+    RAISE EXCEPTION 'triggers is append-only';
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_triggers_refuse_update
+    BEFORE UPDATE ON fleet.triggers
+    FOR EACH ROW EXECUTE FUNCTION fleet.triggers_refuse_update();
+
+GRANT SELECT, INSERT, DELETE ON fleet.triggers TO api_runtime;

@@ -8,9 +8,11 @@
  *
  * One fleet walks the whole chain: it asks and a card is raised, Approve
  * resumes the asking turn, a revoke makes its next run ask again, and Deny
- * resumes that turn without the secret. What a run held is read from what the
- * daemon did: a request the approved grant covers raises no card, so a card
- * after a revoke is a run that did not hold the secret.
+ * resumes that turn without the secret. The API does not expose the secrets a
+ * run was handed, so what a run held is read from two facts the API does show:
+ * the grant row was revoked before the run was sent, and the daemon's answer
+ * to the run's own `request_access`, saved in its tool trace, is the one it
+ * gives a run that does not hold the secret.
  */
 import { expect, test, type Page } from "@playwright/test";
 import { z } from "zod";
@@ -43,6 +45,10 @@ const REFUSED_WORD = "REFUSED";
 // The secret only has to exist and name a host the egress allowlist reads; no run sends it anywhere.
 const SECRET_HOST = "example.com";
 const ACCESS_COLUMN = 3;
+// What `request_access` tells a run, as `afr_tools/src/verbs/access/mod.rs` words it: the run asked
+// a person and does not hold the secret, or the approved grant already covers it and the run holds it.
+const ASKED_ANSWER = (name: string) => `Waiting for a person to approve access to ${name}.`;
+const HOLDS_ANSWER = "this run holds it";
 const SecretsSchema = z.object({secrets: z.array(z.object({name: z.string(), available_to: z.array(z.object({id: z.string()})).optional()}))});
 
 /** The fixture's follow-up with what this run adds: the secret's name, no tool but the request, and a token per answer. */
@@ -53,7 +59,14 @@ function askFor(token: string): string {
     `If they denied, end your reply with the word ${REFUSED_WORD}, a space, then the token ${token}.`;
 }
 
-type Asked = {readonly gate: ApprovalGate; readonly turnId: string; readonly token: string};
+type Asked = {readonly gate: ApprovalGate; readonly turn: TurnDetail; readonly token: string};
+
+/** What the daemon answered `turn`'s one call to `tool`, as the turn's saved trace carries it. */
+function answerTo(turn: TurnDetail, tool: string): string {
+  const calls = turn.tool_calls?.calls.filter((made) => made.name === tool) ?? [];
+  expect(calls, `turn ${turn.turn_id} calls ${tool} once`).toHaveLength(1);
+  return entry(fixture, calls, 0, tool).output_head ?? "";
+}
 
 test.describe.serial(`prime fleet ${fixture.name}`, {tag: POST_DEPLOY_TAG}, () => {
   test.setTimeout(STEP_TIMEOUT_MS);
@@ -91,18 +104,18 @@ test.describe.serial(`prime fleet ${fixture.name}`, {tag: POST_DEPLOY_TAG}, () =
     if (gate === null) throw new Error(`turn ${turn.turn_id} called ${REQUEST_ACCESS} and no card is pending`);
     expect(serviceOn(gate)).toBe(wanted.name);
     expect(await grant()).toMatchObject({kind: KIND_SECRET, status: GRANT_STATUS.pending});
-    return {gate, turnId: turn.turn_id, token};
+    return {gate, turn, token};
   }
 
   /** One click on the open card, and the turn that click resumed. */
   async function answer(page: Page, decision: CardDecision): Promise<TurnDetail> {
-    const {gate, turnId} = open();
+    const {gate, turn} = open();
     const before = await observed(JOURNEY_LEG.run, () => threadTurnIds(PRIME_PERSON, workspaceId, primed().id));
     await decideFleetRequest(page, workspaceId, primed().id, gate, decision, RENDER_TIMEOUT_MS);
     expect(await pendingGateFor(PRIME_PERSON, workspaceId, primed().id)).toBeNull();
     const resumed = await awaitTerminalTurn(workspaceId, primed().id, before, TURN_KIND_CONTINUATION);
     assertPassed(classifyTerminalTurn(resumed));
-    expect(resumed.resumes_turn_id, "the answer resumes the turn that asked").toBe(turnId);
+    expect(resumed.resumes_turn_id, "the answer resumes the turn that asked").toBe(turn.turn_id);
     return resumed;
   }
 
@@ -149,13 +162,18 @@ test.describe.serial(`prime fleet ${fixture.name}`, {tag: POST_DEPLOY_TAG}, () =
   test(proof(3), async ({page}) => {
     await signInAs(page, PRIME_PERSON);
     const approved = await grant();
+    expect(approved.status, "the walk revokes an approved grant").toBe(GRANT_STATUS.approved);
     await clientFor(PRIME_PERSON).delete(`/v1/workspaces/${workspaceId}/fleets/${primed().id}/integration-grants/${approved.id}`);
+    // Read before the next run is sent, so this is the grant the run starts under.
     expect((await grant()).status).toBe(GRANT_STATUS.revoked);
     expect(await holders()).toEqual([]);
-    // The next run asks again and a new card is raised: a run that held the secret would have been answered with none.
     const earlier = open().gate.gate_id;
     asked = await ask(page);
     expect(asked.gate.gate_id).not.toBe(earlier);
+    // The daemon told this run it does not hold the secret; a run the approved grant covers is told it holds it.
+    const answered = answerTo(asked.turn, REQUEST_ACCESS);
+    expect(answered).toBe(ASKED_ANSWER(wanted.name));
+    expect(answered).not.toContain(HOLDS_ANSWER);
   });
 
   test(proof(2), async ({page}) => {

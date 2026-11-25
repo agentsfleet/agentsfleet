@@ -162,7 +162,7 @@ impl RunService {
             TriggerKind::Webhook => {
                 let secret = request.secret_name.as_deref().unwrap_or(checked.source);
                 self.vault
-                    .find(&standing.workspace_id, secret)
+                    .find_on(connection, &standing.workspace_id, secret)
                     .await?
                     .map(drop)
                     .ok_or_else(|| FleetRefusal::TriggerSecretNotFound.into())

@@ -8,11 +8,12 @@
 //!
 //! ```text
 //!   envelope ─► parse+filter ─► team→workspace ─► bot identity ─► subscribers
-//!                  │                  │                 │               │
-//!                  └ unreadable_body  └ team_not_mapped └ bot_message   ▼
-//!                    bot_message                                       route
-//!                    unsupported_event                                  │
-//!                                                   admit ◄─ compose ◄─ re-read
+//!                  │                  │                 │                   │
+//!                  └ unreadable_body  └ team_not_mapped └ bot_message       │
+//!                    bot_message                          bot_user_unknown  ▼
+//!                    unsupported_event                                    route
+//!                                                                           │
+//!                                                     admit ◄─ compose ◄─ re-read
 //! ```
 //!
 //! The last three steps, for a mention routing gave one fleet, live in the
@@ -48,6 +49,9 @@ use self::admit::Routed;
 pub(super) const REASON_BOT_MESSAGE: &str = "bot_message";
 /// See [`REASON_BOT_MESSAGE`].
 pub(super) const REASON_TEAM_NOT_MAPPED: &str = "team_not_mapped";
+/// The grant recorded no bot user id, so the bot's own replies cannot be told
+/// from anyone else's; admitting them would loop, so every mention is dropped.
+pub(super) const REASON_BOT_USER_UNKNOWN: &str = "bot_user_unknown";
 /// No saved fleet is configured for this channel.
 pub(super) const REASON_CHANNEL_NOT_CONFIGURED: &str = "channel_not_configured";
 /// No active fleet in the channel can carry a notice: an archived fleet
@@ -56,6 +60,8 @@ pub(super) const REASON_NO_ACTIVE_CARRIER: &str = "no_active_notice_carrier";
 
 /// The event a datastore failure on this path is refused under.
 const EVENT_MENTION: &str = "slack_mention_failed";
+/// The event a mention dropped for a grant with no bot user id is logged under.
+const EVENT_BOT_USER_UNKNOWN: &str = "slack_mention_bot_user_unknown";
 /// The event a mention that was admitted or answered with a notice is logged
 /// under.
 const EVENT_ROUTED: &str = "slack_mention_routed";
@@ -237,9 +243,8 @@ pub(super) async fn admit<D: IngressPlane>(
     let Some((workspace, identity)) = answerer(services, provider, &asked.team_id).await? else {
         return Ok(Outcome::Dropped(REASON_TEAM_NOT_MAPPED));
     };
-    // The bot's own reply mentions itself; admitting it would loop.
-    if identity.user_id.as_deref() == Some(asked.user.as_str()) {
-        return Ok(Outcome::Dropped(REASON_BOT_MESSAGE));
+    if let Some(reason) = spoken_by_us(&workspace, &identity, &asked.user) {
+        return Ok(Outcome::Dropped(reason));
     }
 
     let subscribers = services
@@ -269,6 +274,30 @@ pub(super) async fn admit<D: IngressPlane>(
         },
     )
     .await
+}
+
+/// The drop reason for a mention `user` made, judged against the bot the
+/// workspace's grant speaks as, or `None` when someone else asked.
+///
+/// The bot's own reply mentions itself, and admitting it would loop. A grant
+/// that recorded no bot user id cannot tell that reply from anyone's, so it
+/// fails closed: every mention is dropped, and the drop is logged for the
+/// operator, since reconnecting Slack records the id.
+pub(super) fn spoken_by_us(
+    workspace: &Uuid7,
+    identity: &BotIdentity,
+    user: &str,
+) -> Option<&'static str> {
+    let Some(bot) = identity.user_id.as_deref() else {
+        // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+        let workspace_id = workspace.as_str();
+        {
+            let event = &EVENT_BOT_USER_UNKNOWN;
+            tracing::warn!(workspace_id, event);
+        };
+        return Some(REASON_BOT_USER_UNKNOWN);
+    };
+    (bot == user).then_some(REASON_BOT_MESSAGE)
 }
 
 /// The workspace `team` is installed in and the bot that answers there, or

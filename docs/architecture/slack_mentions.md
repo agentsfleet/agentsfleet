@@ -62,6 +62,7 @@ Person           Slack                 agentsfleetd                         Post
 
 Before any route, the daemon drops a message Slack marks with a `subtype`: an edit, a join, or a classic bot or webhook post.
 It drops a mention with no user, and any post by its own bot user, so a reply never wakes a fleet.
+A grant that recorded no bot user id cannot tell its own replies apart, so every mention in that workspace is dropped as `bot_user_unknown` and logged until Slack is reconnected.
 
 A post with Slack's `bot_id` and a real user wakes a fleet like a person's. Alert apps and a person's own token through an app both post this way.
 
@@ -125,9 +126,10 @@ It skips the post only on its own bot's marker for that answer, and posts anyway
 - A destination that refuses a delivery for good, or one out of delivery cycles, is abandoned and never offered again.
 - No count or length cap applies to interim lines. Slack refuses what it cannot take, and the run reads that line as undelivered.
 - A channel has no mention per fleet, and a mention cannot reach a fleet in another workspace.
-- Any app in the channel can wake a fleet by mentioning it. Our own replies stay dropped.
+- Any app in the channel can wake a fleet by mentioning it. Our own replies stay dropped, and a grant with no bot user id drops every mention.
 - Alert text carries outside content that reaches the model. Approved grants, the repair-branch write rule and egress policy still bound what the run can do.
 - A noisy or looping bot starts a paid run on each mention, bounded by the workspace wallet.
+- Anyone who can click in a channel can approve an access card from Slack, and that grants the credential. Keep a fleet that asks for write access in a channel of trusted members.
 
 ## Related pages
 

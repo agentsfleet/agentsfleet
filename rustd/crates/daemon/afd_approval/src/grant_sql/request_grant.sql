@@ -34,7 +34,7 @@ WITH requested AS MATERIALIZED (
      gate_type, proposed_action, evidence, blast_radius, expires_at,
      status, detail, created_at, updated_at, turn_id, active_grant_id)
   SELECT $7, $1, $8, $9, $2, $2,
-         $11, $12, $13::jsonb, $14, now() + $15::interval,
+         $11, $12, $13::jsonb, $14, clock_timestamp() + $15::interval,
          $16, '', now(), now(), $10, reopened.id
   FROM reopened
   WHERE NOT EXISTS (SELECT 1 FROM open_card)
