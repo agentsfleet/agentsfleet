@@ -1,7 +1,5 @@
 //! Private causal failures; the parent generates the one public error shell.
 
-use super::Error;
-
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ErrorKind {
     #[error("a saved usage count cannot be represented as a nonnegative metric")]
@@ -87,12 +85,6 @@ pub(crate) enum ErrorKind {
         #[source]
         source: afd_turns::Error,
     },
-    #[error("the task mutation was refused")]
-    DurableTaskMutation {
-        state: af_wire::durable_task::DurableTaskState,
-        #[source]
-        source: Box<Error>,
-    },
     #[error("the task generation or lifecycle state changed")]
     DurableTaskControlConflict {
         state: af_wire::durable_task::DurableTaskState,
@@ -102,6 +94,10 @@ pub(crate) enum ErrorKind {
     #[error("{reason}")]
     DurableTaskRefused {
         reason: crate::durable_task::DurableTaskRefusal,
+    },
+    #[error("{reason}")]
+    FleetRefused {
+        reason: crate::run::refusal::FleetRefusal,
     },
     #[error("{reason}")]
     TurnCheckpointRefused {
@@ -140,6 +136,12 @@ pub(crate) enum ErrorKind {
     Gate {
         #[source]
         source: afd_gate::Error,
+    },
+
+    #[error("the grant store could not answer for the runner plane")]
+    Approval {
+        #[source]
+        source: afd_approval::Error,
     },
 
     #[error("the credential plane could not answer for the runner plane")]
@@ -209,8 +211,8 @@ pub(crate) enum ErrorKind {
         source: af_fleet_runtime::Error,
     },
 
-    #[error("the fleet needs a reviewed native setup before it can run")]
-    SetupUnavailable,
+    #[error("the fleet's stored network scope cannot be read")]
+    FleetRowUnreadable,
 
     #[error("a stored credential body is not the JSON object the tool bridge addresses")]
     VaultDataInvalid,
@@ -235,9 +237,6 @@ pub(crate) enum ErrorKind {
 
     #[error("the tenant's credit pool cannot fund another slice of this run")]
     RenewalNoCredits,
-
-    #[error("the fleet reached a spend ceiling its own author declared")]
-    BudgetExhausted,
 
     #[error("the held event recorded no thread a message can go to")]
     MessageNoChannel,

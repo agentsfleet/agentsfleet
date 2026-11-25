@@ -3,14 +3,13 @@
 //! # Why this is its own crate
 //!
 //! It is the lifecycle AROUND a fleet, where `afd_fleet` is the runner plane
-//! that acts on one — runs, gates, budgets, memory. The two never call each
-//! other; they meet at `fleet.fleets`, one writing the row and the other reading
-//! it, which is a table and not a dependency.
+//! that acts on one — runs, gates, memory. The two never call each other; they
+//! meet at `fleet.fleets`, one writing the row and the other reading it, which
+//! is a table and not a dependency.
 //!
-//! Setup is not here. Every fleet is written by the native setup authority,
-//! `afd_setup::Creations` — a person's reviewed Save, an explicit Apply,
-//! and the daemon's own system setup for a channel's resident — so one parser
-//! and one storage shape decide what a fleet may do.
+//! Creation is not here. A person's first message writes the fleet, its
+//! thread and its first turn in one transaction (`afd_setup::Creations`), so
+//! one writer decides what a new fleet holds.
 //!
 //! # What it does not contain
 //!
@@ -56,7 +55,7 @@ pub mod purge_statements {
 pub use self::access::{SecretAccess, SecretFleet};
 pub use self::error::{Error, Result};
 pub use self::purge::delete_locked;
-pub use self::read::{After, FleetPage, FleetRow, Triggers};
+pub use self::read::{After, FleetPage, FleetRow};
 
 /// The workspace's fleets, as one store.
 ///
@@ -81,12 +80,8 @@ impl Fleets {
 /// silently matches no row.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FleetStatus {
-    /// The row exists; its setup checks may not yet pass.
-    ///
-    /// The state every fleet is born in. Setup activation flips it to
-    /// [`FleetStatus::Active`] only after a fresh locked recheck.
-    Installing,
-    /// Leasable. The only status the runner's candidate query admits.
+    /// Leasable, and the status every fleet is born in. The only status the
+    /// runner's candidate query admits.
     Active,
     /// Terminal. Reached by an operator's archive or by the platform gate's
     /// trip; history stays readable, every further transition is refused, and
@@ -99,13 +94,12 @@ impl FleetStatus {
     ///
     /// What [`FleetStatus::parse`] searches and what the census label set is
     /// held equal to; a member added here without its label fails that test.
-    pub const ALL: [Self; 3] = [Self::Installing, Self::Active, Self::Archived];
+    pub const ALL: [Self; 2] = [Self::Active, Self::Archived];
 
     /// The stored spelling — the bytes in the column, and on the wire.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::Installing => "installing",
             Self::Active => "active",
             Self::Archived => "archived",
         }
@@ -126,7 +120,7 @@ impl FleetStatus {
     ///
     /// `None` rather than a default, because a row holding a status this build
     /// does not know is a fact worth refusing over: defaulting it would let a
-    /// newer daemon's state read as `installing` here and be flipped out of it.
+    /// state this build cannot act on read as one it can.
     #[must_use]
     pub fn parse(raw: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|status| status.as_str() == raw)
@@ -135,6 +129,8 @@ impl FleetStatus {
 
 #[cfg(test)]
 mod tests {
+    use super::FleetStatus;
+
     /// `active` is the only runnable status, so the spelling turn intake binds
     /// for a runnable send cannot go stale.
     #[test]
@@ -146,8 +142,6 @@ mod tests {
         assert_eq!(runnable, [FleetStatus::Active]);
     }
 
-    use super::FleetStatus;
-
     #[test]
     fn every_status_round_trips_through_its_stored_spelling() {
         for status in FleetStatus::ALL {
@@ -155,10 +149,18 @@ mod tests {
         }
     }
 
+    /// A fleet is born active and ends archived; nothing waits in between.
+    #[test]
+    fn a_fleet_is_active_or_archived() {
+        assert_eq!(
+            FleetStatus::ALL,
+            [FleetStatus::Active, FleetStatus::Archived]
+        );
+        assert_eq!(FleetStatus::parse("installing"), None);
+    }
+
     #[test]
     fn an_unknown_spelling_is_refused_rather_than_defaulted() {
-        // A newer daemon's status must not read as `installing` here — this
-        // build would then flip a row out of a state it does not understand.
         assert_eq!(FleetStatus::parse("draining"), None);
         assert_eq!(FleetStatus::parse(""), None);
         assert_eq!(FleetStatus::parse("ACTIVE"), None);

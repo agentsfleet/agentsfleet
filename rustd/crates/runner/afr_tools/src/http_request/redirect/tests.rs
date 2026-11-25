@@ -18,7 +18,7 @@ const LOG: &str = "2026-10-30T08:34:00Z assertion failed: decoded title";
 #[tokio::test]
 async fn should_expose_incomplete_source_reads_before_the_body() {
     for lossy in [false, true] {
-        let run = RunFixture::new(true);
+        let run = RunFixture::new();
         let (transport, _sent) = RecordingTransport::answering(move |request| {
             if request.url().path().ends_with("/logs") {
                 Ok(redirected(
@@ -48,7 +48,7 @@ async fn should_expose_incomplete_source_reads_before_the_body() {
 #[tokio::test]
 async fn should_read_text_through_admitted_redirects() {
     for status in [301, 302, 303, 307, 308] {
-        let run = RunFixture::new(true);
+        let run = RunFixture::new();
         let (transport, sent) = RecordingTransport::answering(move |request| {
             if request.url().path().ends_with("/logs") {
                 Ok(redirected(
@@ -78,7 +78,7 @@ async fn should_read_text_through_admitted_redirects() {
 
 #[tokio::test]
 async fn should_strip_headers_across_redirect_origins() {
-    let run = RunFixture::new(true);
+    let run = RunFixture::new();
     let (transport, sent) = RecordingTransport::answering(|request| {
         let target = match (request.host(), request.url().path()) {
             (GITHUB, path) if path.ends_with("/logs") => {
@@ -133,7 +133,7 @@ async fn should_refuse_redirect_before_transmission() {
             ToolErrorCode::CredentialPlacementNotAllowed,
         ),
     ] {
-        let run = RunFixture::new(true);
+        let run = RunFixture::new();
         let (transport, sent) = RecordingTransport::answering(move |request| {
             Ok(redirected(302, request.url(), target))
         });
@@ -158,7 +158,7 @@ async fn should_keep_unaffected_clients_single_hop() {
         ("GET", Some("body")),
         ("POST", Some("body")),
     ] {
-        let run = RunFixture::new(false);
+        let run = RunFixture::new();
         let (transport, sent) =
             RecordingTransport::answering(|request| Ok(redirected(302, request.url(), "/another")));
         let tool = sending(&HTTP_REQUEST, Arc::new(transport));
@@ -191,7 +191,7 @@ impl Transport for Never {
 #[tokio::test(start_paused = true)]
 async fn should_bound_the_whole_http_read_deadline() {
     let capture = af_core::test_util::trace::Capture::install();
-    let run = RunFixture::new(true);
+    let run = RunFixture::new();
     let tool = sending(&HTTP_REQUEST, Arc::new(Never));
     let run = run.run();
     let output = call(&tool, &run, json!({"url": INITIAL})).await;
@@ -216,7 +216,7 @@ async fn should_follow_mixed_case_get_and_mask_success_and_error_echoes() {
     const TARGET: &str = "https://demo-grafana.internal/download?sig=a*b~c&job=9";
     for (method, status) in [("get", 200), ("Get", 403), ("GET", 500)] {
         let capture = af_core::test_util::trace::Capture::install();
-        let run = RunFixture::new(true);
+        let run = RunFixture::new();
         let (transport, sent) = RecordingTransport::answering(move |request| {
             if request.host() == GITHUB {
                 Ok(redirected(302, request.url(), TARGET))
@@ -261,7 +261,7 @@ async fn should_retain_safe_context_when_redirects_stop() {
         (1, "loop refused", 1),
         (2, "limit exceeded", 4),
     ] {
-        let run = RunFixture::new(true);
+        let run = RunFixture::new();
         let (transport, sent) = RecordingTransport::answering(move |request| {
             if case == 0 {
                 return Ok(inbound(302, ""));
@@ -308,7 +308,7 @@ impl Transport for SlowHops {
 
 #[tokio::test(start_paused = true)]
 async fn should_share_one_deadline_across_redirect_hops() {
-    let run = RunFixture::new(true);
+    let run = RunFixture::new();
     let tool = sending(&HTTP_REQUEST, Arc::new(SlowHops));
     let began = tokio::time::Instant::now();
     let output = call(&tool, &run.run(), json!({"url": INITIAL})).await;

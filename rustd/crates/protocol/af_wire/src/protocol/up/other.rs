@@ -1,6 +1,6 @@
 //! Non-report commands use ordinary tagged decoding; raw report data stays borrowed separately.
 
-use super::{AcceptedKinds, ActivityRequest, FoldRequest, HeartbeatRequest, Renewal, Up};
+use super::{ActivityRequest, FoldRequest, HeartbeatRequest, Renewal, Up};
 use serde::Deserialize;
 use std::{borrow::Cow, num::NonZeroU64};
 
@@ -9,7 +9,6 @@ use std::{borrow::Cow, num::NonZeroU64};
 pub(super) enum Other<'a> {
     Hello {
         request_id: NonZeroU64,
-        accepted_kinds: AcceptedKinds,
         #[serde(borrow)]
         running: Vec<Cow<'a, str>>,
         credits: usize,
@@ -84,7 +83,6 @@ impl<'a> From<Other<'a>> for Up<'a> {
             value,
             Hello {
                 request_id,
-                accepted_kinds,
                 running,
                 credits,
                 unconfirmed_connection_id

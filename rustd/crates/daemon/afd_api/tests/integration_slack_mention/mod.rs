@@ -2,9 +2,9 @@
 //!
 //! Every store the mention reads is live — the app bag behind the wall, the
 //! install row the team resolves through, the grant the bot's identity comes
-//! from, and fleet rows stored from real documents — so each case below is
-//! the path a production mention takes, stopped only at the queue, which the
-//! turns ledger defers past by design.
+//! from, and fleet rows with their `mention` trigger rows and approved GitHub
+//! grants — so each case below is the path a production mention takes,
+//! stopped only at the queue, which the turns ledger defers past by design.
 
 #![cfg(feature = "test-util")]
 #![expect(
@@ -16,7 +16,6 @@
 
 use crate::harness;
 
-use af_core::money::NANOS_PER_USD;
 use af_webhook::Scheme;
 use afd_connector::Provider;
 use afd_connector::slack::Thread;
@@ -50,23 +49,36 @@ fn path() -> String {
     format!("/v1/connectors/{}/events", PROVIDER.id())
 }
 
-/// A native configuration attaching `name` to `channel`, bound to a
-/// repository with `access` when given.
-fn document(name: &str, channel: &str, access: Option<&str>) -> String {
-    let mut runtime = serde_json::json!({
-        "triggers": [{"type": "mention", "source": PROVIDER.id(), "channels": [channel]}],
-        "tools": [],
-        "budget": {"daily_nanos": NANOS_PER_USD.to_string()}
-    });
-    if let Some(access) = access {
-        runtime["repositories"] = serde_json::json!(["acme/widgets"]);
-        runtime["repository_access"] = serde_json::json!(access);
-        // A write binding opens a Pull Request, so it names a base.
-        if access == "write" {
-            runtime["repository_base"] = serde_json::json!("main");
-        }
+/// A fleet a test seeds: its name, the channel its `mention` row names, and
+/// the GitHub reach a person approved for it, when one did.
+pub(super) struct Subscribed {
+    name: String,
+    channel: String,
+    access: Option<&'static str>,
+}
+
+impl Subscribed {
+    /// The approved GitHub scope, as the grant stores it, when one was approved.
+    fn scope(&self) -> Option<String> {
+        self.access.map(|access| {
+            let mut scope = serde_json::json!({"repositories": ["acme/widgets"], "access": access});
+            // A write binding opens a Pull Request, so it names a base.
+            if access == "write" {
+                scope["base"] = serde_json::json!("main");
+            }
+            scope.to_string()
+        })
     }
-    serde_json::json!({"name": name, "x-agentsfleet": runtime}).to_string()
+}
+
+/// A fleet named `name` subscribed to `channel`, approved to reach a
+/// repository with `access` when given.
+fn document(name: &str, channel: &str, access: Option<&'static str>) -> Subscribed {
+    Subscribed {
+        name: name.to_owned(),
+        channel: channel.to_owned(),
+        access,
+    }
 }
 
 /// One `app_mention` from `team`, asked by `user` with `text`, in the
@@ -92,6 +104,16 @@ fn app_mention(
 ) -> String {
     format!(
         r#"{{"type":"event_callback","team_id":"{team}","event_id":"{event_id}","event":{{"type":"app_mention","user":"{user}","text":"{text}","ts":"{MENTION_TS}","thread_ts":"{thread_ts}","channel":"{channel}"}}}}"#
+    )
+}
+
+/// `body` as Slack delivers it when an app posted the message: the same event,
+/// stamped with the app's `bot_id`.
+fn posted_by_an_app(body: &str) -> String {
+    body.replacen(
+        r#""type":"app_mention","#,
+        r#""type":"app_mention","bot_id":"B0ANAPP01","#,
+        1,
     )
 }
 
@@ -162,6 +184,43 @@ async fn signed_mention_admits_one_event() {
     );
     assert_eq!(admitted.event_type, "chat");
     a_chat_is_owed_back_to_the_thread_it_was_asked_in(&admitted);
+
+    fixture.cleanup().await;
+}
+
+/// An alert app's mention carries Slack's `bot_id` and its own user, and wakes
+/// the channel's fleet as that user.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn an_apps_mention_admits_one_event() {
+    let fixture = Fixture::create().await;
+    fixture.seed().await;
+    let responder = fixture
+        .fleet(
+            &document("responder", CHANNEL, Some("read")),
+            FleetStatus::Active.as_str(),
+        )
+        .await;
+    let router = fixture.router();
+    let alerts = "U0ALERTS01";
+
+    let body = posted_by_an_app(&mention(
+        &fixture.team,
+        "EvApp01",
+        alerts,
+        &format!("<@{BOT_USER}> disk full on db-1"),
+    ));
+    assert_eq!(deliver(&router, &body).await.status(), StatusCode::OK);
+
+    let admitted = fixture
+        .turn(&key(&fixture.team, "EvApp01"))
+        .await
+        .expect("the app's mention was admitted");
+    assert_eq!(admitted.fleet, responder.as_str());
+    assert_eq!(
+        admitted.actor,
+        format!("{}:{}:{alerts}", PROVIDER.id(), fixture.team)
+    );
 
     fixture.cleanup().await;
 }

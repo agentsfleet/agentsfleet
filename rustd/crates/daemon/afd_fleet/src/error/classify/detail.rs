@@ -3,12 +3,11 @@
 use af_core::error::{DETAIL_DATABASE_ERROR, DETAIL_DATABASE_UNAVAILABLE};
 
 use super::super::{
-    DETAIL_BUDGET_EXHAUSTED, DETAIL_CONFIG_UNREADABLE, DETAIL_CONNECTOR_MINT_FAILED,
-    DETAIL_CONNECTOR_RECONNECT, DETAIL_GITHUB_RECONNECT, DETAIL_GRANT_REQUIRED,
-    DETAIL_INTEGRATION_NOT_CONNECTED, DETAIL_MESSAGE_NO_CHANNEL, DETAIL_MINT_FAILED,
-    DETAIL_MINT_UNCONFIGURED, DETAIL_REGISTRATION_FAILED, DETAIL_RENEWAL_NO_CREDITS,
-    DETAIL_RUN_LOST, DETAIL_RUN_NOT_FOUND, DETAIL_STALE_FENCE, DETAIL_VAULT_DATA_INVALID, Error,
-    ErrorKind,
+    DETAIL_CONFIG_UNREADABLE, DETAIL_CONNECTOR_MINT_FAILED, DETAIL_CONNECTOR_RECONNECT,
+    DETAIL_GITHUB_RECONNECT, DETAIL_GRANT_REQUIRED, DETAIL_INTEGRATION_NOT_CONNECTED,
+    DETAIL_MESSAGE_NO_CHANNEL, DETAIL_MINT_FAILED, DETAIL_MINT_UNCONFIGURED,
+    DETAIL_REGISTRATION_FAILED, DETAIL_RENEWAL_NO_CREDITS, DETAIL_RUN_LOST, DETAIL_RUN_NOT_FOUND,
+    DETAIL_STALE_FENCE, DETAIL_VAULT_DATA_INVALID, Error, ErrorKind,
 };
 
 impl Error {
@@ -29,7 +28,6 @@ impl Error {
         match self.inner.kind {
             ErrorKind::DurableTaskStorage { .. } | ErrorKind::DurableTaskStorageSigning { .. } | ErrorKind::DurableTaskStorageSigningParameters { .. } | ErrorKind::DurableTaskStorageRequest { .. } => crate::durable_task::DurableTaskRefusal::StorageUnavailable.detail(),
             ErrorKind::DurableTaskRemote { .. } | ErrorKind::DurableTaskRemoteStatus { .. } | ErrorKind::DurableTaskRemoteCooldown { .. } => crate::durable_task::DurableTaskRefusal::EffectUncertain.detail(),
-            ErrorKind::DurableTaskMutation { ref source, .. } => source.detail(),
             ErrorKind::DecisionRequest { .. } | ErrorKind::DecisionDeadline { .. } => crate::durable_task::DurableTaskRefusal::DecisionUnavailable.detail(),
             // The one kind whose sentence the CALL SITE chose: a rejection
             // names the field it refused. Every other kind's sentence is
@@ -39,6 +37,7 @@ impl Error {
             ErrorKind::DurableTaskPrecondition { .. } => "the task resource version changed",
             ErrorKind::DurableTaskControlConflict { .. } => crate::durable_task::DurableTaskRefusal::StaleState.detail(),
             ErrorKind::DurableTaskRefused { reason } => reason.detail(),
+            ErrorKind::FleetRefused { reason } => reason.detail(),
             ErrorKind::TurnCheckpointRefused { reason } | ErrorKind::TurnCheckpointFailure { reason, .. } => reason.detail(),
             ErrorKind::Memory { ref source } => source.detail(),
             ErrorKind::Runner { ref source } => source.detail(),
@@ -68,17 +67,17 @@ impl Error {
             ErrorKind::Billing { ref source } => source.detail(),
             ErrorKind::Credential { ref source } => source.detail(),
             ErrorKind::Gate { ref source } => source.detail(),
+            ErrorKind::Approval { ref source } => source.detail(),
             ErrorKind::Mint { .. } | ErrorKind::Entropy { .. } => DETAIL_REGISTRATION_FAILED,
             ErrorKind::Scrub { .. } => af_core::error::DETAIL_OPERATION_FAILED,
             ErrorKind::VaultDataInvalid => DETAIL_VAULT_DATA_INVALID,
             ErrorKind::ConfigUnreadable { .. } => DETAIL_CONFIG_UNREADABLE,
-            ErrorKind::SetupUnavailable => "The fleet needs a reviewed native setup before it can run",
+            ErrorKind::FleetRowUnreadable => "The fleet's stored network setting cannot be read",
             ErrorKind::StaleFence => DETAIL_STALE_FENCE,
             ErrorKind::RunNotFound => DETAIL_RUN_NOT_FOUND,
             ErrorKind::RunLost => DETAIL_RUN_LOST,
             ErrorKind::RunCancelled => super::super::DETAIL_RUN_CANCELLED,
             ErrorKind::RenewalNoCredits => DETAIL_RENEWAL_NO_CREDITS,
-            ErrorKind::BudgetExhausted => DETAIL_BUDGET_EXHAUSTED,
             ErrorKind::MessageNoChannel => DETAIL_MESSAGE_NO_CHANNEL,
             ErrorKind::IntegrationNotConnected => DETAIL_INTEGRATION_NOT_CONNECTED,
             ErrorKind::MintUnconfigured => DETAIL_MINT_UNCONFIGURED,

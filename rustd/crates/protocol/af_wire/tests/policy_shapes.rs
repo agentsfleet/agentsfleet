@@ -67,17 +67,17 @@ fn test_an_open_rule_omits_permitted_fields_and_a_closed_one_carries_it() {
     assert_eq!(nulled.permitted_fields, None);
 }
 
-// Value: protects=older policy payloads retain restricted HTTP destinations;
+// Value: protects=a policy that names no scope keeps restricted HTTP destinations;
 // fails_when=an omitted setting widens access or a misspelled mode is accepted.
 #[test]
 fn http_destination_scope_defaults_and_round_trips() {
-    let payload = serde_json::json!({"allow":[],"read_only":true,"read_post_paths":[]});
+    let payload = serde_json::json!({"allow":[]});
     let encoded = payload.to_string();
-    let restricted: NetworkPolicy<'_> = serde_json::from_str(&encoded).expect("old payload");
+    let restricted: NetworkPolicy<'_> = serde_json::from_str(&encoded).expect("bare payload");
     assert_eq!(restricted.http_egress, HttpEgress::Restricted);
     assert!(!restricted.package_manager_domains);
     for mode in [HttpEgress::Restricted, HttpEgress::Public] {
-        let payload = serde_json::json!({"allow":[],"read_only":true,"read_post_paths":[],
+        let payload = serde_json::json!({"allow":[],
             "http_egress":mode,"package_manager_domains":true});
         let encoded = payload.to_string();
         let policy: NetworkPolicy<'_> = serde_json::from_str(&encoded).expect("HTTP policy");
@@ -85,7 +85,7 @@ fn http_destination_scope_defaults_and_round_trips() {
         assert!(policy.package_manager_domains);
         assert_eq!(serde_json::to_value(policy).expect("round trip"), payload);
     }
-    let invalid = serde_json::json!({"allow":[],"read_only":true,"read_post_paths":[],"http_egress":"unknown"});
+    let invalid = serde_json::json!({"allow":[],"http_egress":"unknown"});
     let encoded = invalid.to_string();
     let error = serde_json::from_str::<NetworkPolicy<'_>>(&encoded).expect_err("unknown mode");
     assert_eq!(error.classify(), serde_json::error::Category::Data);

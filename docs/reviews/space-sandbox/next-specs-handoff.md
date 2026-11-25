@@ -7,9 +7,9 @@
 - Production launch follows written M23x specs and demonstrated development autonomy; this is not release authority.
 - M224 retains its reduced manual-first evidence scope. Development rollout identity verification, full Linux acceptance and the Elasticsearch-dependent incident demonstration are descoped.
 
-The [durable repair scenario](../../architecture/scenarios/durable-repair.md) is the canonical proposed flow and combined acceptance owner.
+The [durable repair scenario](../../architecture/durable_tasks.md) is the canonical proposed flow and combined acceptance owner.
 It covers the Codex-opened Linkwarden PR, later CI, worker replacement, human steering, concise progress, soft failures and Grafana/scheduler variant.
-The [sandbox evaluation](../../architecture/sandbox_evaluation.md) owns save/restore/backend mechanics; avoid copying those decisions here.
+The [sandbox evaluation](sandbox_evaluation.md) owns save/restore/backend mechanics; avoid copying those decisions here.
 
 ## Review status
 

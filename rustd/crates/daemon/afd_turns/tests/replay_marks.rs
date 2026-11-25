@@ -73,7 +73,6 @@ impl Seeded {
         )
         .name("replay-fixture-fleet")
         .at(SEEDED_AT)
-        .native_setup()
         .insert(
             &mut *seeded
                 .database

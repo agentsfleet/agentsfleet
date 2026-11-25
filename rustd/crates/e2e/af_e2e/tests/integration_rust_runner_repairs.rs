@@ -38,12 +38,12 @@ const AGENTSFLEET: Repo = Repo {
     name: "agentsfleet/agentsfleet",
     base: "main",
 };
-/// The incident repairer's telemetry hosts, as its policy lists them.
+/// The incident repairer's telemetry hosts, each its approved secret's `host`.
 const ELASTIC: &str = "demo.es.us-east-1.aws.elastic.cloud";
 const GRAFANA: &str = "demo-grafana.internal";
 const QUERY: &str = "/_query";
 const ANNOTATIONS: &str = "/api/annotations";
-/// A write the read-only telemetry policy admits nowhere.
+/// Where the misdirected Elastic key is aimed, on Grafana's host.
 const BULK: &str = "/_bulk";
 /// The five Git Data writes and the draft, in the order a repair makes them.
 const WRITES: [&str; 5] = ["git/blobs", "git/trees", "git/commits", "git/refs", "pulls"];
@@ -118,10 +118,10 @@ fn telemetry() -> [Secret; 2] {
     ]
 }
 
-/// A write to the telemetry host that `read_only` with one listed query path
-/// must refuse before it leaves.
-fn bulk_write() -> Value {
-    json!({"url": format!("https://${{secrets.elastic.host}}{BULK}"), "method": "POST",
+/// Elastic's key sent to Grafana's host. An approved secret goes only to its
+/// own `host`, so the policy refuses this before it leaves.
+fn misdirected_key() -> Value {
+    json!({"url": format!("https://{GRAFANA}{BULK}"), "method": "POST",
            "headers": {"Authorization": "ApiKey ${secrets.elastic.api_key}"}, "body": "{}"})
 }
 
@@ -181,17 +181,20 @@ fn incident_upstream(contents: Reply) -> Vec<Route> {
 }
 
 /// After a full read the incident repairer ships five writes
-/// and one draft, its read-only telemetry hosts admitting only the listed
-/// query; after a partial read — the file answers 403 — it ends
-/// diagnosis-only and nothing is written.
+/// and one draft, each telemetry key going only to its own host; after a
+/// partial read — the file answers 403 — it ends diagnosis-only and nothing
+/// is written.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_incident_repairer_ships_or_stops() {
     let mut supervisor = Supervisor::new();
     let scene = install_definition(&mut supervisor, "incident-repairer", &telemetry(), None).await;
     let upstream = Upstream::serve(incident_upstream(file_at_head())).await;
-    let (model, transcript) =
-        FakeModel::deciding(script(AGENTSFLEET, incident_reads(), vec![bulk_write()]));
+    let (model, transcript) = FakeModel::deciding(script(
+        AGENTSFLEET,
+        incident_reads(),
+        vec![misdirected_key()],
+    ));
 
     let settled = run_event(&scene, &scene.turn_id, &upstream, model).await;
 
@@ -201,16 +204,16 @@ async fn test_incident_repairer_ships_or_stops() {
     let mut shipped = vec![QUERY.to_owned()];
     shipped.extend(writes(AGENTSFLEET));
     assert_eq!(posts(&seen), shipped);
-    let refused = format!("[{}]", ToolErrorCode::MethodNotAllowed.as_str());
+    let refused = format!("[{}]", ToolErrorCode::CredentialHostNotAllowed.as_str());
     assert!(
         (asked.iter().flat_map(|turn| &turn.results)).any(|result| result.starts_with(&refused)),
-        "the unlisted write was refused and the model read why: {asked:#?}"
+        "the misdirected key was refused and the model read why: {asked:#?}"
     );
     assert!(
         !seen
             .iter()
-            .any(|request| request.host == ELASTIC && request.path == BULK),
-        "the refused write never reached the host"
+            .any(|request| request.host == GRAFANA && request.path == BULK),
+        "the refused request never reached the host"
     );
     let key = seen
         .iter()

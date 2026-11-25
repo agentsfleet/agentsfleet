@@ -1,1023 +1,328 @@
-# Runner runtime: a trusted supervisor, a sandbox per run, a workspace that outlives the run
+---
+type: explanation
+audience: contributor
+verified: 2026-11-25
+product_version: 0.90.0
+executable: false
+---
 
-> Scope: how `agentsfleet-runner` runs one run, where its agent loop runs and what its sandbox is made of. The page also covers how a fleet's code and files survive from one run to the next. It covers how credentials and repository writes cross the sandbox wall too.
+# Runner runtime and sandbox
 
-> `agentsfleet-runner` is the one runner binary, with three entries: `run`, `probe` and `sandbox` (`rustd/crates/runner/main/src/main.rs`). The [runner guide](runner_protocol.md) owns connection, renewal, fencing and report recovery rules.
+## What it is
 
-## Facts
+`agentsfleet-runner` is one binary with three entries: `run`, `probe` and `sandbox` ([main](../../rustd/crates/runner/main/src/main.rs)). This page follows a run from the moment the daemon pushes it to the moment its report is acknowledged.
 
-| Fact | Value |
+| Part | What it is |
 |---|---|
-| Language | Rust, in the `rustd` workspace beside `agentsfleetd`, under the same principles: one error type per crate through `af_core::error_shell!`, one source per constant, pure logic apart from I/O. The wire is `af_wire` and nothing else. Native session messages reject unknown variants and fields |
-| Process model | A trusted **supervisor** runs the run loop and the agent loop; a per-run **sandbox** runs tool calls and nothing else |
-| Hosts | Bare metal or a virtual machine (VM), multi-tenant from the first release |
-| Sandbox engine | bubblewrap (Landlock, seccomp, cgroup v2, a per-run network namespace except under `allow_all`) is the one engine built, `BubblewrapEngine`, and stays as the engine for development, Continuous Integration (CI) and hosts without `/dev/kvm`. Firecracker microVMs, for code-running runs from many tenants on hosts that expose `/dev/kvm`, are the target and are not built |
-| Sandbox network | The runner's assigned `network_policy`: `allow_all` shares the host's network namespace, `deny_all_egress` gives loopback only, and `allow_list_egress` joins the sandbox to the host by one virtual ethernet (veth) pair whose host-side nf_tables rules admit only the run's allowlist ([Runner Fleet](./runner_fleet.md) §Egress model) |
-| Toolbox | A signed, read-only Enhanced Read-Only File System (EROFS) root filesystem built once per release from pinned Debian snapshots, downloaded before any run and verified by descriptor. No container image is pulled or unpacked on the run path |
-| Workspace disk | Per sandbox, a writable block image sized to the run's disk limit, attached with direct I/O, holding both `/workspace` and `/tmp`, deleted when its sandbox is destroyed |
-| Warm slot | A sandbox already started before any run arrives: cgroup made, workspace disk mounted, executor idle. It serves one run. Built but unwired: only the kernel lane and tests start one (`afr_sandbox/src/warm_slots/mod.rs`) |
-| Held sandbox | The sandbox of a run that ended processed, frozen through `cgroup.freeze` and kept for its fleet's next run for the daemon's idle window, `[runner.sandboxes] max_idle_hold_seconds`, ten minutes by default. The runner asks for up to a day and the report's acknowledgement narrows the hold to the daemon's window. Every other run's sandbox is destroyed when the run ends |
-| Workspace | Target, not built: per fleet, restored from and saved to R2 (or any S3-compatible store, such as a self-hosted RustFS), with only the supervisor moving bytes. No restore or save exists yet (§"A run's sandbox today") |
-| Model keys | Supervisor only; never inside a sandbox |
-| Coding engines | Codex first-class, split across the wall; Claude Code in the sandbox, its model calls through a supervisor relay |
-| Repository writes | Target: local commits inside the sandbox; the supervisor pushes under rules `agentsfleetd` compiles; draft Pull Request only. Not built: `propose_change` exists only as the `git` tool's refusal text (`guffbolt/src/tools/process/git.rs`) |
+| Supervisor | The trusted `run` process. It holds the stream, the agent loop, model keys and minted tokens |
+| Sandbox | One per run, built with bubblewrap. It runs tool calls and nothing else |
+| Toolbox | A signed, read-only Debian filesystem image every sandbox mounts as `/` |
+| Workspace disk | A per-run writable disk holding `/workspace` and `/tmp` |
+| Held sandbox | A finished run's sandbox, frozen and kept for its fleet's next run |
+| Network | The runner's assigned policy: the host's network, none, or an allowlist |
 
-## Run kinds
+## Why it exists
 
-A run (`Down::Run`) carries a fleet's turn or a draft's setup turn. A fleet run uses its admitted tools and an optional sandbox. A setup run gets no sandbox and one tool, `propose_setup` (`afr_supervisor/src/setup_run/mod.rs`).
+Fleets run tenant programs: build scripts, test suites, package installs and Python the model writes. The sandbox is the only wall between two tenants' processes on one kernel.
 
-A setup run carries the pinned model's key and no runtime credentials, repository checkout or tenant tools. The [runner guide](runner_protocol.md) owns connection authority, capacity and recovery. [API resources](api_resources.md#setup-runs) owns the setup payload, the proposal rules and the report check.
+The agent loop runs outside that wall. A prompt-injected command therefore cannot read a model key, a runner token or a minted credential, because none enters a sandbox.
 
-### Proposal correction and failure
+## How it behaves
 
-A refused proposal returns its kind and reason to the model as the tool result (`afr_tools/src/setup/mod.rs`). The model may correct it in the same run, and the refusal writes no candidate. A correction is one more model call inside the same run.
+### Process model
 
-The proposal loop has no call cap, and the run has no runtime ceiling. It renews as a fleet run does, until the payer's balance at a renewal or a person's Stop ends it (`afd_setup`'s `limits.rs`).
-
-The run reports the last proposal it kept, on the base it started from. A run that ends without an answer fails its message and writes no candidate. Save remains a separate human action.
-
-A Stop, a refused renewal or the runner's shutdown cuts the run. The cut run still sends its report, with its usage.
-
-## Private content and report retention
-
-`DELETE` on a draft returns 204 after one transaction deletes the draft, the proposals it still owns and its active setup runs (`afd_setup/src/privacy.rs`). After the commit, the daemon tells each deleted run's runner to stop. Usage lines name the run, never the draft, so billing records outlive the delete.
-
-Remove the private transcript from server-rendered and browser caches, and close its stream. The target stores no unsent text in browser local storage. In-memory text is scoped to account, workspace and subject, and cleared on logout, revocation or delete.
-
-| Copy | Owner / removal | Disclosed residual bound |
-|---|---|---|
-| Draft/message/candidate rows and private replay bodies | Daemon DELETE; no timed loop expires a draft, and a replay body goes when its key is claimed again past the replay window (`afd_setup`'s `replay/sql/expire.sql`); content-free receipts remain | Gone from ordinary reads at 204; database backups follow infrastructure retention, not an instant physical erase. |
-| Private progress channel / buffered deltas | Daemon drops draft-specific buffer and closes subscribers | No new private read after 204; buffered or already rendered client text cannot be recalled. |
-| Runner memory / in-flight request | Daemon deletes the active run and publishes a stop hint; the next renewal finds no run, and the runner cancels the turn and drops its local buffers | An online runner stops on the hint or at its next renewal round, one heartbeat interval at most; a disconnected runner's run expires within 38 seconds. Upstream completion may outlive local abort. |
-| Pending setup report | Worker memory holds the encoded report until the daemon acknowledges or refuses it; no report files are written (`afr_supervisor/src/setup_run/mod.rs`) | The report's bytes are zeroed when the worker drops them. Process loss discards pending memory. |
-| Logs / traces / metrics / crash diagnostics | Do not capture prompts, answers, proposal content, tokens, or secret values | No private text is intentionally written; test redaction and disabling automatic body/crash capture. |
-| Provider requests | Provider/service account policy, disclosed on delete | Local abort cannot establish upstream erasure. Provider-specific retention is shown, never claimed zero. |
-| Saved or applied fleet setup | Deliberately shared definition, independent authority | Draft deletion does not delete a saved fleet's setup; disclose this before Save. |
-| Backups / legal accounting | Infrastructure backup schedule; billing domain content-free ledger | Follow published retention; no invented physical-purge deadline. |
-
-A retried setup report keeps its run identity, as a fleet run's does.
-The [runner guide](runner_protocol.md#results-and-billing) owns delivery and shutdown limits.
-
-An offline runner does not delay the 204. A late report or context save from a deleted run finds no run and writes nothing.
-
-A closed draft is stamped with a private retention deadline 30 days after close (`afd_setup`'s `creation/mod.rs`). No timed loop deletes it at that deadline, so its private history stays until the draft is deleted.
-
-## The job it is built for
-
-The design centre is a fleet repairing a production outage, not a chat assistant:
-
-```
-alert fires
- → a repair fleet gets a run on a runner (a VM or a bare-metal host)
- → the runner restores the fleet's last workspace (code, notes, artifacts)
- → the fleet reads logs, runs command-line tools, writes Python, edits code, runs tests,
-   or hands the coding to Codex on the user's own subscription
- → it proposes a fix → the supervisor pushes a pinned branch and opens a draft Pull Request
- → the runner holds the sandbox frozen for the daemon's idle window, ten minutes by default, then destroys it
- → a follow-up ("also fix the retry") within the window thaws that same sandbox on the same runner
-```
-
-A run's inputs are the trigger payload, input files (logs, traces, exports) and the repository to fix. Its other inputs are reference repositories (read-only), the toolbox's command-line tools and the fleet's durable memory.
-
-Its outputs are the answer, a proposed change, files the user can download and memory updates. They also include the workspace snapshot the next run starts from.
-
-## Process model
-
-```
-agentsfleetd ◄── native runner connection (af_wire) and retained HTTP operations
+```text
+agentsfleetd ◄── native runner stream (af_wire) and fenced HTTP run verbs
    ▲
-agentsfleet-runner (one binary; a VM or a bare-metal host)
- ┌ supervisor — trusted, outside every sandbox ─────────────────────────┐
- │ run loop · renew · pending reports in memory · fleet memory        │
- │ agent loop + model providers            (model keys live only here)  │
- │ tool catalog · router · leak scan · events → activity frames         │
- │ workspace restore and save · git clone · credential minting · push   │
+agentsfleet-runner (one binary on a VM or a bare-metal host)
+ ┌ supervisor: trusted, outside every sandbox ──────────────────────────┐
+ │ stream · renewals · pending reports in memory · fleet memory         │
+ │ agent loop and model providers         (model keys live only here)   │
+ │ tool router · secret scrub · activity frames · git clone · minting   │
  └───────────────┬──────────────────────────────────────────────────────┘
-                 │ one executor connection per run (a Unix socket)
- ┌ sandbox — one per run ─────────────────────────────────────────────┐
+                 │ one executor connection per run (a socket pair)
+ ┌ sandbox: one per run ────────────────────────────────────────────────┐
  │ /            toolbox, read-only                                      │
- │ /workspace   restored, writable, disk quota                          │
- │ executor: processes on pseudo-terminals, files, apply_patch, Chromium│
- │ network per assigned policy · cgroups · seccomp · no caps            │
+ │ /workspace   the run's disk, writable                                │
+ │ executor: processes on pipes or pseudo-terminals, file calls         │
+ │ network per assigned policy · cgroups · seccomp · no capabilities    │
  └──────────────────────────────────────────────────────────────────────┘
 ```
 
-Workspace restore and save, and the supervisor's push, are drawn as the target; neither is built (the Workspace and Repository writes rows above).
+The executor is a small in-sandbox server: the same binary's `sandbox` entry, bound read-only into the sandbox. It spawns, writes to, reads and kills processes, and it serves the file calls the file tools use.
 
-**The agent loop runs outside the sandbox.** No model key ever enters a sandbox, so a prompt-injected command cannot read one.
+Every tool call ends exactly once. When a run ends for any reason, the supervisor closes each open call as `interrupted` and kills every command session still open.
 
-The sandbox is a plain in-sandbox server, so bubblewrap and a microVM sit behind one interface. A model call needs nothing from the sandbox, so once workspace restore exists (not built yet), a call will start during the restore.
-
-**The in-sandbox server is small and ours.** One process per run serves spawn, write, read and kill for processes on pseudo-terminals. It also serves the file calls (read, write, append, delete and list) that the supervisor's file tools and `apply_patch` edit through.
-
-Its methods mirror Codex's `exec-server` (`~/Projects/oss/rs/codex/codex-rs/exec-server/README.md`), so the Codex engine and our loop drive the same shapes.
-
-**Every call ends exactly once.** A run can end by answer, crash, kill or timeout. Whatever the reason, the supervisor closes each call still open as `interrupted`, live and in the trace ([Runner Fleet](./runner_fleet.md) §Live activity).
-
-A session's process outlives the call that started it. So the run's end also kills every session still open, and none reaches whatever the sandbox serves next.
-
-## One run, end to end
-
-`agentsfleet-runner run` probes the host, verifies the staged toolbox and builds one bubblewrap engine (`rustd/crates/runner/main/src/main.rs`).
-The native connection, heartbeat policy and worker pool run together until shutdown (`afr_supervisor/src/lib.rs`).
-
-Idle workers wait for pushed runs while the current heartbeat policy permits work.
-Each worker keeps its run and pending report until acknowledgement or a terminal refusal (`afr_supervisor/src/worker_pool/mod.rs`).
-
-```
- Down::Run
-   │
-   ├─ admit       the policy's tools and provider; an unhosted one refuses the run here
-   ├─ turn        one run per fleet on this runner; a second run for it waits
-   ├─ memory      the fleet's memory window, carried on the run; read through
-   │              agentsfleetd when the run has no window
-   ├─ admitted    only when a tool runs in a sandbox: size, egress and checkout plan
-   ├─ run         the agent loop in the supervisor; tool calls cross the executor socket
-   │  └─ build    beside it: the fleet's held sandbox, or a fresh one on the assigned
-   │              network, bound repositories checked out; a sandbox call waits for it
-   ├─ keep        a processed run's sandbox is frozen and held; any other is killed
-   ├─ settle      HTTP tool records, then a native report with memory and timing segments
-   │              retained in this worker until acknowledgement or terminal refusal
-   └─ release     a killed sandbox's disk, beside the live tail's drain of at most 5 s
-        renewal ticks alongside from the run's start until the report is answered
-```
-
-**One run per fleet per runner.** `FleetTurns` is a coordinator task that owns which fleets are busy (`afr_supervisor/src/turns/mod.rs`).
-
-A worker waits for its fleet's turn without a lock, and dropping the turn frees the fleet. The daemon's `thread.threads` row already admits one live run per fleet. It does so across runners ([Runner Fleet](./runner_fleet.md) §"Memory continuity: durable fleet memory rides the trusted plane").
-
-**A refusal ends the run with a report.** It ends as `startup_posture` before the turn runs (`afr_supervisor/src/run_loop/refusal.rs`). Refusals cover an unhosted tool or provider, unreadable memory, a size past the wire's bounds, unresolvable egress and a binding no checkout serves.
-
-A sandbox that cannot be built leaves the turn going, and its sandbox-side calls answer `sandbox_unavailable`. Nothing runs unsandboxed in a sandbox's place.
-
-**The report carries memory and timing.** The runner sends the current report with its memory deltas and timing segments (`afr_supervisor/src/run_loop/settle.rs`).
-The daemon captures memory under the run fence before committing settlement.
-
-**Run frames and memory deltas zero on drop.** Native run frames retain zeroing allocation owners through dispatch.
-`CapturedMemory` overwrites the strings it owns when dropped (`afr_supervisor/src/memory/mod.rs`).
-
-**The report is the record.** The worker retries the same report from memory after connection loss (`afr_supervisor/src/report/delivery/mod.rs`).
-A terminal refusal ends delivery; process loss can discard results or usage the daemon has not accepted.
-See [results and billing](runner_protocol.md#results-and-billing) for saved acknowledgements and shutdown limits.
-
-A renewal the daemon refuses, or a runner told to stop, cuts the run. The cut keeps the tokens and memory the run handed back, and reports why the run ended (`afr_supervisor/src/run_loop/mod.rs`).
-
-**Usage rides renewals and the report, every unrecorded line in each.** Both carry the provider requests the daemon has not yet recorded, one line per request, oldest first, with no count cap (`Meter::unrecorded` in `afr_agent/src/engine/meter.rs`).
-
-Each renewal answer acknowledges recorded lines through `recorded_through`, and the runner forgets only those.
-The report carries every line still unrecorded, so no backlog is renewed away first. A line sent twice is billed once, because the daemon keys lines on `(work, kind, seq)`.
-
-[Billing §3](./billing_and_provider_keys.md#3-one-debit-point-usage-settled-through-the-biller) has the full table, under **Request lines**.
-
-## Crates
-
-The runner's crates sit in `rustd/crates/runner/`, beside the shared `foundation/`, `protocol/` and `harness/` layers. Two standalone crates sit beside `crates/`, outside every layer: the agent harness `guffbolt` (`rustd/guffbolt/`) and its provider side `guffbolt-ai` (`rustd/guffbolt-ai/`). Each depends on no `crates/` crate and is publishable alone, so any layer may depend on either. `guffbolt` depends on `guffbolt-ai`, never the reverse (`rustd/Cargo.toml`). `af_wire` is the one wire `agentsfleetd` and the runner both speak.
-
-A crate depends on its own layer or a lower one, and `runner/` and `daemon/` never on each other, in any dependency table (`rustd/Cargo.toml`). Shared crates take the `af_` prefix; a layer's binary sits in `main/`. The `harness/` layer holds `af_providers`, the adapter that runs `guffbolt-ai`'s wires for a run, beside `af_egress` and `af_secrets`.
-
-A sixth folder, `e2e/`, holds `af_e2e`: the suites that drive the runner against a booted `agentsfleetd`, and the recovery bench. It may depend on every layer, and nothing depends on it. Its `tests/layers.rs` checks every rule in this section from the manifests. The kernel lane is an example of the runner binary (`runner/main/examples/kernel_lane`).
-
-The supervisor implements credential minting over the control plane for `af_egress`, and uses `af_crypto` for encrypted private reports. No runner crate links a datastore crate or `afd_api_wire`. `af_context` holds no store: the setup draft's Postgres checkpoint store is `afd_setup::context`.
-
-`guffbolt` is a library that knows no run, fleet or task. `drive` takes input before every model call and once more after an answer. A message that arrives while the model writes its answer runs one more turn.
-
-The embedder implements `Conversation`. `afr_agent`'s `Harness` supplies the input, each call's window, the request and what each call is lent. It also scrubs each turn before the transcript keeps it.
-
-Before each model call, `guffbolt` asks the embedder for that call's `Window`, the way pi runs `transformContext`. `afr_agent/src/loop/context` fits it with `af_context`, compacting old groups into notes when they no longer fit. Each window keeps the message the run answers, and the transcript stays whole.
-
-`guffbolt` makes the model call itself. It sends the request to a `Model`. `guffbolt_ai::wire::Connected` implements it over every wire, and `af_providers` wraps it with the run's error codes and log lines (`af_providers/src/turn/mod.rs`). It reads the stream into its own `Turn`, runs the turn's calls and keeps both in the `Transcript`.
-
-`guffbolt` opens, runs and ends each tool call itself, so every call ends once. A call the stop cuts short, or whose loop is dropped, ends `interrupted`.
-
-The harness hears this work through `Observe`, and each chunk through `Listen`. It sends the text live, meters the spend, and logs and counts each turn. Its ledger numbers each call and keeps its frames, trace row and record.
-
-The turn's vocabulary is `guffbolt`'s, and a failure is the embedder's own type, so `guffbolt` links no model client or secret store. A provider's record of its reasoning rides each turn as an opaque `Replay`, which only `guffbolt_ai::wire` reads.
-
-The tool vocabulary is `guffbolt`'s too. `Describe` names a tool to the model, and `Tool<Cx>` runs one call with what the embedder lends it. `Tools` looks a call up and refuses one it does not hold.
-
-A run's children are `guffbolt`'s as well, with the seven tools that start and steer them (§Tool catalog). `guffbolt::agents` keeps each child's transcript, inbox, tools and stop. It refuses a child past the run's caps, and drives each child's turns beside the root.
-
-`afr_agent` gives `guffbolt` only the loop a child's turn runs as: its own `Harness`, over the run's provider, sandbox, memory, ledger and meter. It keeps the caps' values and logs each turn's start and end. A checkpoint writes the children into the root's `DriveState` under a `Pause` that proves them quiet, so a recovered run brings them back.
-
-What a run of one kind adds is an `Extension`: a durable task is `afr_agent`'s `DurableTask`, and every other loop installs `Plain`. A message's media parts reach the model through a `MediaReader`; until one reads a kind, `Unread` names the part to the model.
-
-`afr_agent` keeps only what is `agentsfleet`'s own. That is the run and its durable task, recovery, the frames, trace rows and records each call leaves, and the catalog's tools behind its router.
-
-`afd_api_wire` owns the daemon's tenant, operator and ingress shapes. Changes there do not rebuild the runner protocol.
-
-One binary supplies both the host supervisor and its in-sandbox `sandbox` entry. The sandbox entry builds only the executor server, and each sandbox binds the binary read-only. The planned Firecracker guest receives it inside the root image or a second read-only disk (§Toolbox).
-
-A run carries the selected model's saved inference settings: API format, base URL, optional dialect and maximum output tokens. `af_providers::settings::Configured` validates them and builds a `guffbolt_ai::wire::Route`, and missing settings refuse admission. `Connector::connect` then builds the run's `Connected` over that route (`af_providers/src/connect/mod.rs`). [Billing and provider keys](./billing_and_provider_keys.md#9-provider-routing-saved-model-settings) owns configuration and credential matching.
-
-`rig-core` speaks the five supported API formats inside `guffbolt-ai`, at the version `rustd/Cargo.toml` pins: Chat Completions, Responses, Messages, Gemini and Ollama (`guffbolt-ai/src/wire/route/mod.rs`). The transport under rig is the runner's: one HTTP client per runner that follows no redirect. So a turn and its key reach the admitted host and no other.
-
-A bounded HTTP retry honours `Retry-After`.
-A separate reopening budget applies before visible output or known spend.
-The defaults allow three generation sends per opening and three eligible openings.
-
-Native token-count requests remain separate and send once per opening.
-Native decisions retain their single-send rule.
-
-The reasoning a provider signs goes back with the turn that made it. A call from a turn cut at the output limit is answered `output_limit_reached` and never runs.
-
-A call whose arguments are not JSON reaches its tool as the text the model wrote. The tool refuses it with a reason.
-
-rig traces every request and reply whole, before the scrub. So the shared log filter (`guffbolt_ai::log_filter`, re-exported as `af_providers::settings::log_filter`), installed by daemon and runner, holds rig to its warnings at any level. It also turns off the one warning that repeats a provider's error message.
-
-### Startup profiles
-
-Each binary owns its profile types and resolves them through the shared `af_config` loader.
-The loader depends on parsing and validation libraries, without depending on either binary.
+### One run, end to end
 
 ```text
-daemon TOML -> af_config -> checked daemon policies
-                            |-- stores and accepted attempt snapshots
-                            |-- telemetry clocks
-                            `-- provider pool; storage keeps its own timeout policy
-
-runner TOML -> af_config -> checked runner policies
-                            |-- shared guarded provider pool and retry budgets
-                            |-- native renewal cadence and daemon retries
-                            `-- shared file-operation admission
+Down::Run
+  ├─ admit      the policy's tools and provider; an unhosted one refuses the run
+  ├─ turn       one run per fleet on this runner; a second run for it waits
+  ├─ memory     the fleet's memory window, carried on the run
+  ├─ admitted   size, egress and checkout plan, before any model call
+  ├─ run        the agent loop in the supervisor; sandbox tool calls cross the socket
+  │  └─ build   beside it: the fleet's held sandbox, or a fresh one with repositories checked out
+  ├─ keep       a processed run's sandbox is frozen and held; any other is killed
+  ├─ settle     tool records, then the report with memory changes and timing
+  └─ release    a killed sandbox's disk, beside at most 5 s of live-activity drain
+       renewal runs alongside from the start until the report is acknowledged
 ```
 
-The runner selects its optional file with `AGENTSFLEET_RUNNER_CONFIG_FILE`.
-Managed host deployment installs `deploy/baremetal/agentsfleet-runner.toml` under `/etc/agentsfleet`; local acceptance mounts the same profile read-only.
-Without a selected file, the runner retains its existing defaults.
+A failed admission check ends the run as `startup_posture` before the turn starts. The checks cover an unhosted tool or provider, unreadable memory, a size past the wire's bounds, unresolvable egress and an unserved repository binding.
 
-Retry counts include the first send.
-The daemon pause ceiling bounds the exponential component before jitter; connection recovery also retains its compiled 30-second final clamp.
-Connection recovery and owed reports remain cancellable, without a retry-count limit.
+The sandbox builds beside the first model call. A sandbox call waits for the build, and `run_completed` logs that wait as `sandbox_wait_ms`.
 
-The shared file-operation default remains two across the whole runner.
-Required restores queue while renewal continues; optional captures skip a busy boundary before freezing.
-The existing four-transfer window and checkpoint wire ceilings remain compiled bounds.
+A failed build leaves the turn going: its sandbox calls answer `sandbox_unavailable`, and nothing runs unsandboxed instead. A build still running 20 seconds after the turn answered is stopped.
 
-The model key rides the one header its wire names. Everything the model is sent passes the secret scrub first: the instructions, the turn's message and the model's own earlier turns.
+The report carries the run's memory changes and timing segments. The worker keeps it in memory and retries it until acknowledgement ([runner protocol](runner_protocol.md#results-and-acknowledgements)).
 
-A chat run also carries the fleet's thread before its turn: every finished turn, each with the tool calls its run made (`thread.items`). No count or byte cap applies; an assignment that would not fit the 32 MiB run frame drops its oldest turns and logs `run_history_cut_to_frame`. The model's window is the in-run compaction's.
+Usage rides both renewals and the report, one line per provider request, with no count cap. The daemon bills a line sent twice only once ([billing](billing.md#how-a-run-is-charged)).
 
-The loop sends each turn as what was asked, each earlier call as the assistant step that made it and its tool result, and what was answered, ahead of the new message, through the same scrub. A run offered no tool leaves the calls out, since a provider refuses tool calls in a request that declares no tools. A fresh fleet chat opens on its thread's saved summary in place of the turns it covers, and saves the next one as its compactions cover earlier turns ([context lifecycle](context_lifecycle.md)). Webhook, cron and continuation runs carry none.
+### Crates
 
-The trusted repair context stays in the system prompt, and no turn enters it. A conversation repeats its prefix run after run. So the Messages wire marks the tools and the system prompt for caching at the five-minute default.
+The runner's crates sit in `rustd/crates/runner/` and import nothing from `daemon/`. No runner crate links a datastore crate ([layer rules](../../rustd/crates/e2e/af_e2e/tests/layers.rs)).
 
-The Responses wire sends the fleet id as `prompt_cache_key`.
+| Crate | Role |
+|---|---|
+| `guffbolt` | The agent loop as a library: model turns, tool calls, child agents. It knows no run, fleet or task |
+| `guffbolt-ai` | The model wires: Chat Completions, Responses, Messages, Gemini and Ollama |
+| `af_providers` | Runs a model wire for one run, with its error codes and logs |
+| `afr_agent` | Embeds `guffbolt` for a run: prompt, context window, checkpoints, frames and the tool router |
+| `afr_tools` | The tool catalog and the verbs that reach `agentsfleetd` |
+| `afr_supervisor` | The stream, worker pool, renewals, reports, holds, clones and checkpoint transfer |
+| `afr_sandbox`, `afr_executor` | The bubblewrap engine and the in-sandbox server |
+| `af_wire` | The one wire format the daemon and runner share |
 
-A turn reports its cache writes apart from its input, split by the lifetime the provider names (`guffbolt-ai/src/wire/usage/mod.rs`). Messages sends five minutes and one hour; Responses and Chat send a write with no lifetime. The daemon prices each class at its tier's write rate ([billing §11](./billing_and_provider_keys.md#11-one-billing-lifecycle-behind-a-biller-trait)).
+Model routing and saved model settings belong to [models](models.md#routing-from-saved-settings). The prompt belongs to [capabilities](capabilities.md), pinned memory to [memory](memory.md), and the context window to [context lifecycle](context_lifecycle.md).
 
-The wire still asks for the five-minute default, and asking for one hour is not decided. Spans and their export are in [Observability](./observability.md) §"`agentsfleet-runner` — a collector of its own".
+### Tool catalog
 
-## Tool catalog
+Every run is offered every published tool and the seven child-agent tools. A run's `ExecutionPolicy.tools` lists them; a tool the catalog does not host refuses the run.
 
-The runner is the harness, in Codex's shape. The catalog holds every tool the published tools page names, each with the runtime it runs in. The run's `ExecutionPolicy.tools` selects which of them the model is offered.
+A call to a name outside the policy returns a tool error, and the run continues. A call the daemon refuses returns as `[kind] sentence`, so the model can correct it.
 
-The model picks by function calling, and the router runs the handler where its runtime says. A policy naming a tool the catalog does not host refuses the run loudly. A quietly different tool set would not be the setup the fleet's author wrote.
-
-A model call to a name outside the policy is a tool error the model sees, and the run continues. The scheduling tools write rows in `fleet.schedules` through the daemon; nothing in the runner sleeps or ticks.
-
-The scheduling tools, `message`, `fleet_activity` and `fleet_steer` reach `agentsfleetd` through `afr_tools::RunVerbs`, which the supervisor implements over its control plane. The supervisor adds the run's id and fencing token to each call, one attempt each. A tool never holds the token, and the model decides whether to try again; no retry loop does.
-
-The generic tools are `guffbolt`'s, behind its `tools` feature (`rustd/guffbolt/src/tools/`). `afr_tools` keeps only what reaches `agentsfleetd`. Each tool takes its backend when it is built. A run builds its tools when it starts, through `afr_tools::Backends` and `guffbolt`'s `ToolsBuilder`:
-
-```text
- run start ─► Backends::new(run, executor, transport).with_agents(&children)
-                ├─ LazySandboxEnv ─► with_env, with_sessions    shell, exec_command, files, git, image
-                ├─ Egressed       ─► with_outbound              http_request, web_fetch
-                ├─ run.memory     ─► with_memory                memory_*
-                ├─ Fenced verbs   ─► with_scheduler, with_channel  schedule, cron_*, message
-                ├─ Pushover       ─► with_notifier              notify
-                └─ Agents         ─► with_agents                the seven subagent tools
-              tools(the policy's names) ─► RunTools
- each call ─► the router ─► guffbolt::tools::Context { call_ref, run_id, wake } ─► the tool
-```
-
-A runner run's tools are built only over the run's sandbox or with no environment at all. `LazySandboxEnv` waits for the run's build, then calls `SandboxEnv`. `guffbolt::tools::LocalEnv` runs commands on the host it runs on, and a runner host holds the provider key, so the runner never builds one. The translation is one to one: the same spawn plus the sandbox's git identity, the same `/workspace` root, the executor's own wire message and log code for a failure, the same egress refusal codes and `tool_refused` line, the same memory visibility and grants.
-
-The harness also carries tools this runner does not offer yet: an MCP client (`mcp__<server>__<tool>`, `list_mcp_resources`, `list_mcp_resource_templates`, `read_mcp_resource`), `tool_search`, `current_time`, `sleep`, `ls`, `find` and `grep`.
-
-`ask_user` is published (`afr_tools`' catalog). It ends a fleet run `waiting` once its turn's other calls ran, and the run saves a checkpoint first (`afr_agent`'s `loop/finish.rs`). The report raises a `question` gate on the turn in its own transaction (`afd_fleet`'s `run/commit/question.rs`). The gate's deadline is shown and never enforced, so an answer, early or late, resumes the turn. A setup run that asks fails with `the setup run asked a question no setup run delivers`.
-
-| Tool | Runtime | Needs |
+| Tool | Runs in | Notes |
 |---|---|---|
-| `http_request`, `web_fetch` | supervisor, `guffbolt::tools::web` through the run's guard as the outbound hook | the network policy, the origin rules, placeholders in `Authorization` only |
-| `notify` | supervisor, `guffbolt::tools::notify` over `afr_tools`' Pushover `Notifier` backend, which sends through the run's guard | the network policy and the fleet's Pushover credential |
-| `web_search` | the provider, as a hosted tool spec | a provider that offers one; a tool error with a code otherwise |
-| `memory_store`, `memory_recall`, `memory_list`, `memory_forget` | supervisor, `guffbolt::tools::memory` over the fleet's backend as the memory store | the loaded store and the fenced push |
-| `update_plan` | supervisor, `guffbolt::tools::plan` | nothing |
-| `message` | supervisor, through a runner verb, to the turn's thread | the messages verb |
-| `fleet_activity` | supervisor, through a runner verb | the fleets verb: the workspace's fleets, and one fleet's turns with 1 KiB excerpts, 25 a read unless asked and at most 100 |
-| `fleet_steer` | supervisor, through a runner verb, as a chat message on another fleet in the workspace | the steers verb: the target answers in the sender's thread and reads a first line naming the sender; never the sending fleet |
-| `schedule`, `cron_add`, `cron_list`, `cron_remove`, `cron_update`, `cron_run`, `cron_runs` | supervisor, through a runner verb onto the daemon's plane that QStash fires | the verb; QStash keeps the clock and the runner owns no timer |
-| `spawn_agent`, `send_input`, `followup_task`, `wait_agent`, `list_agents`, `close_agent`, `interrupt_agent` | supervisor, `guffbolt::tools::agents` over the run's `guffbolt::agents::Agents`; `guffbolt` drives each child beside the turn | depth 2 and six open per run, as Codex allows (`afr_agent/src/loop/shared.rs`) |
-| `shell`, `exec_command`, `write_stdin` | sandbox, `guffbolt::tools::process` through the executor as `SandboxEnv` | `shell`: one process on pipes, its group killed at its timeout, 10 seconds unless the model names one and at most 2,147,483,647 ms, about 24.8 days (`guffbolt/src/tools/process/oneshot.rs`); `exec_command` and `write_stdin`: a session per process, on a pseudo-terminal when asked, at most 64 per run. Every byte of output is forwarded as it arrives, behind a bounded queue a flooding process waits on, and drained for a bounded grace once the leader ends; what a call has not read is kept as a 512 KiB head and tail, the middle counted, and each call drains it. A call says when the output was still open at the end, a gap's marker sits where it fell, a write to a process gone by then says it was not delivered and answers its ending, or runs on until it lands, and a write the process would not take says so and runs on; the executor's own sentence stays on the host, and whatever an executor failure says to a model is rendered to at most 4 KiB (`WIRE_MESSAGE_MAX_BYTES`), a refusal's message and a result that would not decode alike, since the socket's other end is not trusted with the length of what a model reads |
-| `git` | sandbox, `guffbolt::tools::process::Git`, on a clone the supervisor made on the host side | the token it was fetched with stays in the supervisor; the push is `propose_change` |
-| `file_read`, `file_write`, `file_edit`, `apply_patch` | sandbox, `guffbolt::tools::files` through the executor's file calls | `/workspace`; `file_read` pages by line, `offset` and `limit`, and is cut to the same 10,000-token budget as a command's output; `file_edit` takes `edits`, each `old_text` held exactly once in the file as it was read, and writes nothing when one fails (`text_not_found`, `text_not_unique`); `apply_patch` deletes a file |
-| `image` | `guffbolt::tools::files::ImageTool` reads the file through the executor and attaches it to the next model turn; a picture longer than 2,048 px on a side is scaled to fit (Triangle filter, as Codex does) | a provider that takes images; a source file of at most 8 MiB and a shown image of at most 5 MiB (`guffbolt/src/tools/files/image.rs`) |
-| `browser`, `browser_open`, `screenshot` | sandbox under the Firecracker engine: Chromium from the toolbox, driven over the Chrome DevTools Protocol (CDP) through the process's pipes, as the environment's browser (`guffbolt::tools::env::Browser`); `SandboxEnv` on the bubblewrap engine has none, so each answers with a code | the Firecracker engine; Chromium in the toolbox; the sandbox allowlist for any host beyond loopback |
+| `http_request`, `web_fetch` | Supervisor, through the run's egress guard | The network policy applies; credentials go only in `Authorization` |
+| `notify` | Supervisor | Needs an approved `pushover` secret whose `host` is `api.pushover.net` |
+| `web_search` | The model provider | Needs a provider that offers it |
+| `memory_store`, `memory_recall`, `memory_list`, `memory_forget` | Supervisor | Only an explicit `core` category is pinned into later prompts |
+| `request_access` | Supervisor, through a fenced run verb | Ends the run waiting on an approval card unless a grant already covers it |
+| `ask_user` | Supervisor | Ends the run waiting on a question; a checkpoint is saved first |
+| `trigger_add`, `trigger_list`, `trigger_remove` | Supervisor, through fenced run verbs | Needs a connected provider and a signing secret ([wakes on](user_flow.md#wakes-on)) |
+| `task_start`, `task_input` | Supervisor, through the task binding verb | Only on a task-capable runner, and only from a person's message |
+| `propose_change` | Supervisor, inside a durable task | Publishes to the task's existing pull request; no merge, no new pull request |
+| `message`, `fleet_activity`, `fleet_steer` | Supervisor, through runner verbs | Post to the turn's thread, read the workspace's fleets, or message another fleet |
+| `schedule`, `cron_*` | Supervisor, through runner verbs | Schedules are daemon rows, and the runner owns no timer ([schedules](data_flow.md#schedules)) |
+| `update_plan` | Supervisor | Needs nothing |
+| Seven child-agent tools | Supervisor, through `guffbolt::agents` | Depth 2 and six open children per run |
+| `shell`, `exec_command`, `write_stdin` | Sandbox | `shell` times out at 10 seconds unless the model names a limit; at most 64 sessions per run |
+| `git` | Sandbox, on a clone the supervisor made | Remote subcommands (`push`, `fetch`, `pull`, `remote`, `clone`) are refused |
+| `file_read`, `file_write`, `file_edit`, `apply_patch` | Sandbox | Confined to `/workspace`; `file_edit` writes nothing when one edit fails |
+| `image` | Sandbox file read, attached to the next model turn | Source at most 8 MiB, shown at most 5 MiB, scaled to 2,048 pixels |
 
-### Subagents
+Unread command output is kept as a 512 KiB head and tail, and the middle is counted. A command that never ends returns `interrupted` with its output so far.
 
-Subagents are `guffbolt`'s. A fleet offers them by naming the seven tools in its policy, as it names any `guffbolt` tool. `afr_tools` publishes them under `guffbolt`'s own names and spells none of them. The tool names and their `fork_turns` values follow Codex's multi-agent tools.
+A tool that changes the fleet runs only when the person's newest message asks for it. For the two task tools, the daemon also checks who sent the turn.
 
-- `spawn_agent` starts a child on a task and answers its `agent_id`. The child holds the tools named in `tools`, each one its parent holds, or all of them. `fork_turns` says how much of the parent's history it starts from: `all` (the default), `none`, or a number of the parent's last turns.
-- `wait_agent` waits for a child's turn to end, up to `timeout_ms`, and reads its answer.
-- `send_input` queues a message for a child. A running child reads it on its next step; an idle one with its next task.
-- `followup_task` gives a child another task. An idle child runs again with its whole history.
-- `list_agents` lists every child with its status, depth and call count.
-- `interrupt_agent` stops a child's turn. The child stays open.
-- `close_agent` closes a child and every child it started. A closed child keeps nothing and frees its place.
+`git` runs hooks and aliases, so offering `git` offers what `shell` does. The sandbox is the boundary for both.
 
-Each tool names a child by `target`, the `agent_id` that `spawn_agent` answered. `guffbolt` keeps each child's transcript, inbox, tools and stop, and drives its turns beside the root. A child whose turn ends goes idle and keeps its transcript. Every open child ends interrupted when the run ends. A child at depth 2 holds none of the seven. A child's calls are rows of the run's one ledger, under one counter.
+### Sandbox engines
 
-Shell and Git commands bound their ending wait in `guffbolt/src/tools/process/oneshot.rs`, by the environment's `ending_grace`.
-`SandboxEnv` (`afr_tools/src/generic/env.rs`) answers native kill/drain grace with a named reply slack; compile-time checks there relate it to run and engine bounds.
-Spawn requests retain the native client's separate 30-second reply deadline.
+bubblewrap is the one engine built (`BubblewrapEngine`). Its layers are:
 
-A missing ending returns `interrupted`, retains available output and leaves the command's outcome unknown.
-Expiry invalidates the existing executor link; pending and subsequent calls refuse without waiting on that peer again.
-The tool performs no automatic repeat and does not claim remote death.
+- A fresh user, process, inter-process communication, hostname and mount namespace per run. It adds a network namespace unless the policy is `allow_all`.
+- The flags `--cap-drop ALL`, `--disable-userns`, `--clearenv`, `--die-with-parent` and `--new-session`. The last one blocks terminal-input injection.
+- `no_new_privs`, then Landlock, then a seccomp filter refusing 12 system calls, including `io_uring`, `ptrace`, `unshare`, `bpf` and `keyctl` ([hardening](../../rustd/crates/runner/afr_sandbox/src/harden/linux.rs)).
+- Control group (cgroup) v2 limits on memory, processor, process count and disk I/O, with whole-tree kill.
+- A workspace disk that answers `ENOSPC` when full, so `/tmp` never fills the run's memory.
 
-The ending wait consumes Tokio cooperative budget when output notifications are ready.
-Output reads take one finite buffer snapshot, including its ending and channel state, under the existing lock.
-Later arrivals cannot extend that read; zero-byte frames consume no buffer entries.
+The run's cgroup has two leaves. `sandbox` holds bubblewrap and the executor, and `tenant` holds every process the fleet starts.
 
-The warning `process_ending_deadline_exceeded` records run/process identities and both timeout durations, without command text.
-The existing `agentsfleet_runner_tool_call_duration_seconds` family records this returned tool failure and its elapsed time through the agent ledger.
+The tenant leaf's memory limit sits below the run's, so the out-of-memory killer picks only a tenant process. The call it ended reads `out_of_memory`.
 
-A run whose tools are all supervisor-side starts no sandbox. A run offered any sandbox tool gets its bound repositories checked out before its turn. So a run of file tools alone reads the repository, never an empty workspace.
+The executor runs as uid and gid 1000 in `/workspace`, started by its fixed path, never through `$PATH`. The supervisor keeps only the capabilities sandbox setup needs.
 
-git runs programs of its own accord, through hooks, `!` aliases and commands named in configuration. So a run offered `git` can run, inside the same sandbox, what a run offered `shell` can. The `git` tool refuses remote subcommands as an answer to the model; the sandbox is the boundary.
+Every sandbox gets the runner's defaults, and the wire carries no per-run size. The defaults are 2 GiB of memory with no swap, 2 cores and 512 processes. Disk I/O is capped at 200 MiB/s, and the disk holds 4 GiB.
 
-## Sandbox engines
+### Sandbox filesystem
 
-Fleets on shared hosts run their own programs: build scripts, test suites, package installs and Python the model writes. So the sandbox is the only thing between two tenants' processes and one kernel. Its layers are:
+bubblewrap builds the sandbox's mounts from a fixed set, in one order ([bubblewrap](../../rustd/crates/runner/afr_sandbox/src/bubblewrap/mod.rs)):
 
-- bubblewrap: a fresh user, PID, IPC, UTS and mount namespace per run. A fresh network namespace too, unless the policy is `allow_all`. It runs with `--cap-drop ALL`, `--disable-userns`, `--clearenv`, `--die-with-parent` and `--new-session`.
+| Inside | From | Mode |
+|---|---|---|
+| `/` | The verified toolbox image's mount | Read-only |
+| `/proc`, `/dev` | A fresh `/proc` and a minimal device tree | As bubblewrap mounts them |
+| `/dev/shm` | A private in-memory filesystem, a quarter of the run's memory | Read-write |
+| `/tmp`, `/workspace` | Directories on the run's workspace disk | Read-write |
+| `/run` | A private in-memory filesystem | Read-write |
+| `/opt/agentsfleet/agentsfleet-runner` | The runner binary | Read-only |
+| `/etc/hosts`, `/etc/resolv.conf` | The run's rendered files under `allow_list_egress`, or the host's under `allow_all` | Read-only |
 
-  `--new-session` detaches the sandbox from any terminal, which closes terminal-input injection (`TIOCSTI`). The entry runs as uid and gid 1000 in `/workspace`. It is bound read-only at `/opt/agentsfleet/agentsfleet-runner` and started by that path, never through `$PATH`.
+No other host file reaches a sandbox. Landlock then narrows writes to `/workspace`, `/tmp`, `/dev/pts` and `/dev/shm`, plus the few devices a shell opens.
 
-  The entry is told the tenant leaf's descriptors and its end of the executor's socket pair. It also gets the log level, when one is set (`afr_sandbox/src/bubblewrap/mod.rs`).
+### Network egress
 
-- `no_new_privs`, then Landlock, then seccomp. The seccomp filter refuses 12 calls: the three `io_uring` calls, `ptrace`, `process_vm_readv`/`writev`, `unshare`, `bpf`, `keyctl`, `add_key`, `request_key` and `perf_event_open` (`afr_sandbox/src/harden/linux.rs`). Codex's own filter leaves `unshare`, `bpf`, `keyctl` and `perf_event_open` open.
+Each runner is assigned one of three network policies:
 
-- cgroup v2 limits on memory, processor, process count and I/O, with whole-tree kill. The run cgroup has two leaves. `sandbox` holds bubblewrap and the executor, and `tenant` holds every process the fleet starts.
+| Policy | What a sandbox can reach |
+|---|---|
+| `allow_all` | Everything the host reaches; the sandbox shares the host's network namespace |
+| `deny_all_egress` | Nothing; its own namespace holds only loopback. A missing assignment gets this too |
+| `allow_list_egress` | Only the run's allowlist, through one virtual ethernet pair `afv<slot>` on `10.69.<slot>.0/30` |
 
-  bubblewrap is born in the `sandbox` leaf: its spawn writes itself into `cgroup.procs` before `exec` (`afr_sandbox/src/bubblewrap_engine/parts/mod.rs`). Each tenant process moves itself in before `exec`. It writes the tenant leaf's `cgroup.procs`, which the engine opened as the runner and handed in.
+Under `allow_list_egress`, the runner builds one nf_tables table, `inet afegress<slot>`, in the host namespace, over netlink. Its forward chain drops port 53, accepts the allowed IPv4 set and drops the rest.
 
-  The kernel checks that move against the opener's credentials and cgroup namespace. So no cgroup file system is mounted inside, and a move that fails refuses the spawn.
+The table lives outside the sandbox, so the sandbox cannot flush it. Each table matches only its own link, so one sandbox's rules never touch another's traffic.
 
-  The tenant leaf's memory limit sits `SANDBOX_MEMORY_RESERVE_BYTES` below the run's. So the out-of-memory killer picks only a tenant process, and the call it ended reads `out_of_memory`.
+The allowlist starts with the runner's `registry_allowlist`, or the default package registries when that list is empty. It adds the hosts of the fleet's approved secrets.
 
-  Its throttle, `tenant/memory.high`, sits an eighth below that limit. A tenant writing past its disk is slowed while its pages are written back, and reads `ENOSPC` rather than being killed first.
+The supervisor resolves those names to IPv4 and writes them into the sandbox's `/etc/hosts`. Its `/etc/resolv.conf` names no server, so a sandbox cannot tunnel data through Domain Name System (DNS) lookups.
 
-- An enforced disk quota. The runner's 4 GiB default sizes the workspace disk. The disk holds `/tmp` as well as `/workspace`, and answers `ENOSPC` when full.
+The run is refused when a name fails to resolve, resolves only to IPv6, or the netlink build fails. It is refused too when a secret's host resolves to a private or reserved address.
 
-  `/tmp` is never a tmpfs, because tmpfs pages stay charged to the run's memory until the sandbox ends. The disk attaches with direct I/O, so the host does not cache its writes a second time.
+At boot the runner builds one table and tears it down. A host that fails reports `egress_enforcement: false`, and the daemon marks an `allow_list_egress` runner degraded.
 
-  Its image file is `0600`, formatted ext4 with no journal, and its root is owned by the sandbox user (`afr_sandbox/src/workspace_disk/mod.rs`, `afr_sandbox/src/host/mod.rs`).
+A fleet's two network toggles decide what its HTTP tools reach under that ceiling. `http_egress` is `restricted` or `public`, and `package_domains` adds the package registries; both start off.
 
-- A run's size. The wire carries none: every run builds its sandbox with the runner host's own processor share, memory, disk and process limits.
+Restricted mode reaches only approved secrets' hosts, plus GitHub under an approved GitHub grant. Public mode reaches any public HTTPS host. Both modes refuse private and reserved addresses.
 
-  Nothing yet reserves host disk. No check holds live sandboxes' disk limits against the state disk, so runs can fill it.
+The toggles never widen the runner's policy. Only a signed-in person changes them; an API key gets `403`.
 
-- A supervisor whose capability set is only what sandbox setup needs (mounts, cgroups, namespaces). Tenant code never holds a capability.
+At `api.github.com`, the run's rules admit only requests that name their method, path and, where it matters, field values ([GitHub rules](../../rustd/crates/daemon/afd_gate/src/policy/egress/mod.rs)).
+A read grant admits `GET` and `HEAD` under `/repos/<owner>/<repo>/`. The trailing slash keeps a neighbour such as `<repo>-private` out.
 
-- A kernel patch cadence for runner hosts.
+A write grant that publishes an event draft binds one repository and one branch, `agentsfleet-repair/<base64 of the turn ID>`. It adds these rules:
 
-- The network the assigned `network_policy` names ([Runner Fleet](./runner_fleet.md) §Egress model).
+| Request | What it may carry |
+|---|---|
+| `POST …/git/blobs`, `…/git/trees` | Any body; an object nothing points at changes nothing |
+| `POST …/git/commits` | `message`, `tree` and `parents`; no author or committer |
+| `POST …/git/refs` | `ref` locked to `refs/heads/<branch>`, plus `sha` |
+| `POST …/pulls` | `head` locked to the branch, `base` to the grant's base, `draft: true`; plus `title`, `body`, `maintainer_can_modify` |
+| `PATCH …/git/refs/heads/<branch>` | `force: false` and `sha`, so it only fast-forwards |
 
-Chromium does not start inside a bubblewrap run. Its own sandbox needs a nested user namespace or a setuid helper.
+A locked rule admits no other key and no query string. A write grant with no branch or several repositories refuses the run.
 
-`--disable-userns` and the seccomp `unshare` refusal deny the first, and `nosuid` with no capabilities denies the second. `--no-sandbox` is never passed, so the browser tools run only under the Firecracker engine.
+`http_request` follows at most three redirects, and only for a bodyless GET ([redirects](../../rustd/crates/harness/af_egress/src/redirect/mod.rs)). Each hop repeats the egress check, and a change of origin drops every credential header.
 
-**The remaining risk is the shared kernel**, and Firecracker removes it. A kernel privilege-escalation bug escapes every namespace sandbox on the host at once, while a microVM gives each run its own kernel.
+### Model calls
 
-Firecracker does not remove the host. Host root, the host kernel and the virtual machine monitor stay inside the trust boundary under either engine.
+`af_providers` opens each model turn through `guffbolt_ai::wire::Connected`, which streams it as a `StreamTurn` over Rig.
+Bytes leave through `HttpTransport` and the runner's pooled client. Its guard refuses a private or reserved address, and no retry repeats that ([transport](../../rustd/crates/harness/af_providers/src/transport/mod.rs)).
 
-Firecracker needs read and write access to `/dev/kvm`. Bare metal has it, and cloud VMs expose it only where the provider offers nested virtualization.
+One reply may carry at most one runner frame, since a larger one could not reach the daemon.
 
-Both engines sit behind one interface and share everything outside the boundary itself:
+| Bound | Default | Setting |
+|---|---|---|
+| Connect | 10 s | `connect_timeout_seconds`, 1 to 120 |
+| Silence between stream events | 300 s | `stream_idle_timeout_seconds`, 1 to 3,600 |
 
-- the supervisor;
+`TurnControl` carries the caller's absolute deadline and cancellation; neither starts a second attempt.
+A turn may reopen only before spend is known or text is shown, so a retry never bills or prints twice.
+When a provider response omits usage, the runner decodes its raw document for the counts alone; the failed answer stays failed.
 
-- the in-sandbox server, which a microVM's vsock surfaces on the host as a Unix socket;
+### Credentials
 
-- the toolbox image, a microVM's read-only root disk;
+Model keys stay in the supervisor. The run carries them and the fleet's approved secret references; nothing is written to the runner's disk.
 
-- the workspace disk, a microVM's data disk;
+The supervisor clones repositories with the run's one-hour, repository-scoped token. The fetch sends it in an in-memory header, and the clone's configuration names the plain URL ([clone](../../rustd/crates/runner/afr_supervisor/src/workspace_clone/mod.rs)).
 
-- cgroups and the test lanes.
+A `${secrets.github.token}` placeholder resolves through `POST /v1/runners/me/credentials/mint`, which reads the fleet's current grants. The egress guard puts the token only into a request's `Authorization` header and masks it in the response.
 
-Firecracker's jailer applies the same cgroup and namespace barrier around each microVM before dropping privileges. The engine is a host attribute the control plane assigns ([Runner Fleet](./runner_fleet.md) §Assigned policy and reconciliation). Fleets that run processes run only to runners whose engine allows it; run assignment carries no such filter today.
+A revoked grant leaves a live run the token it already has. The next run and the next mint lack it.
 
-## Toolbox
+`message`, `cron_add`, `cron_update` and `schedule` mask minted tokens before text leaves the runner. The daemon then masks the fleet's static secrets before posting to Slack or storing a schedule.
 
-The toolbox is a minimal Debian root filesystem. Its pinned packages are `ca-certificates`, `coreutils`, git, Python 3, Node, ripgrep, jq, and curl. Vendored uv and uvx come from the same pinned uv release.
+### Workspace between runs
 
-It excludes Go and the Go-built GitHub command-line tool (`gh`); GitHub API calls use the supervisor's `http_request`. Chromium, Codex and Claude Code await their engine integrations.
+A run that ends processed leaves its sandbox held ([holds](../../rustd/crates/runner/afr_supervisor/src/holds/mod.rs)). The supervisor freezes its cgroup through `cgroup.freeze`.
 
-It ships as a compressed read-only EROFS image, mounted once per host and bound read-only into every run. Each run writes to its own workspace disk, mounted at `/workspace`. The capability report states whether the host kernel can mount the toolbox's filesystem and whether `/dev/kvm` is present.
+The hold is keyed by fleet, workspace, limits, network policy and repository binding. The fleet's next run within the hold window thaws it and continues with the files the last run left.
 
-A host that cannot mount the toolbox cannot build a sandbox, so it refuses every run.
-
-**Built from pinned inputs.** `make toolbox-image` runs mmdebstrap over `scripts/toolbox/manifest.txt` on a native builder for each architecture. `mkfs.erofs` compresses the result with LZ4 high compression (LZ4HC).
-
-The release record pins:
-
-- The snapshot.debian.org inputs for main, updates and security, and every package's version and hash.
-
-- The builder's mmdebstrap, apt, dpkg, erofs-utils and compression-library versions.
-
-- The upstream uv archive containing uv and uvx, the only vendored binaries, by URL and SHA-256.
-
-- The EROFS features enabled and the runner versions the image serves.
-
-- The digests of the image and its Software Bill of Materials (SBOM).
-
-Two builds of one record are byte-identical. A changed dependency is a new release, never an edit to an old one. Rebuilding proves we can build a release again; it does not prove an upstream binary came from its claimed source.
-
-**Signed and scanned.** The CI host installs Syft, Grype and cosign after the immutable image is built.
-
-Syft, Grype and cosign never enter the toolbox. Syft scans a read-only mount and writes the SBOM outside it.
-
-Syft and Grype use separate caches under the job's temporary directory, so a privileged scan cannot block the unprivileged database reader. Findings in Debian packages are reconciled against Debian's security tracker. A backported fix keeps a version number that a version-only scanner calls vulnerable.
-
-A fixable Critical blocks signing and deployment. cosign signs the release manifest. The runner checks that signature offline against a public key it is built with, so no run waits on Sigstore.
-
-The amd64 build refuses an image above 262,848,512 bytes, the existing image measured in dev run 38072785909. Vulnerabilities are evaluated daily and the snapshot is refreshed weekly. An actively exploited vulnerability with a usable fix gets a new release within 24 hours.
-
-**Downloaded before any run.** The image is published apart from the runner binary, with an offline bundle carrying both.
-
-A host downloads it at install or by background reconciliation, never at run time. The host keeps the current and previous images, plus any image a run still holds.
-
-A 1 GiB image at 100 Mbit/s is about 86 seconds of transfer. That cost lands at host setup. Every byte a run needs is local before the host takes the run.
-
-**Verified by descriptor.** A host becomes ready in this order:
-
-1. the release manifest is authenticated: architecture, length, digest, EROFS features, and the runner versions it serves;
-
-2. the image is staged in a private directory, verified, synced, and published with an atomic rename;
-
-3. the published image is opened once without following symbolic links, checked to be a regular file of the manifest's length, and that descriptor is hashed;
-
-4. the same descriptor is attached read-only to a buffered loop device with `LOOP_CONFIGURE` (Linux 5.8), then mounted `ro,nosuid,nodev`;
-
-5. only then does the host report ready.
-
-The toolbox device stays buffered, though direct I/O kept the host from caching the image twice: one image of at most 160 MB a host. Over 360 cold first uses a mode, direct I/O was 3 to 12% faster at p50 and 1.12 to 2.98 times slower at p99. Every first-use step regressed ([M237_002](../v2/done/M237_002_P2_DOCS_INFRA_OBS_SANDBOX_START_DROPS_POLLING_AND_DOUBLE_CACHE.md) Discovery).
-
-Nothing reopens the image by path after its hash is taken. A file substituted at that path therefore never reaches the kernel's filesystem parser.
-
-A mount found at startup is adopted only when it is EROFS, mounted `ro,nosuid,nodev`, on a loop device backed by the verified file. A directory named after a digest proves nothing.
-
-Each run holds the image it runs on. Past the current and previous releases, an image nothing holds is unmounted at the next verification or retention pass. The startup sweep removes whatever an interrupted stage left.
-
-Host root is inside the trust boundary. It controls the runner, the kernel and the mounts, and no integrity mechanism protects a tenant from it.
-
-**Runtime package set.** The image contains neither apt, dpkg, passwd-package commands nor Perl. The pinned Debian Git executable supports common repository workflows without Perl. Optional Perl helpers, including send-email, svn, request-pull and filter-branch, are unsupported.
-
-Python and Node remain available, and project dependencies install into the writable workspace.
-
-The existing signed release JSON records retained package versions, archive digests and copyright hashes. Its bounded compressed `package_metadata` preserves the final Debian status and package info records, including file lists, checksums and control files. The image commits to those records in `/etc/toolbox-inventory.sha256`.
-
-The build scanner verifies image identity and that commitment, reconstructs records in a temporary OverlayFS upper layer, and scans the complete view. The shipped image has no package database; toolbox verification keeps its existing signature, byte, digest, architecture and filesystem-feature checks (`scripts/toolbox/build.sh`, `.github/actions/build-toolbox/action.yml`).
-
-**Tools a fleet adds.** A self-contained tool ships as a prebuilt pack at `/opt/tools/<digest>`, mounted before the sandbox is made.
-
-The pack carries its own dependency closure, an explicit `PATH` entry and the toolbox digests it works with. A tool that changes system libraries gets a complete image profile instead.
-
-Project dependencies install into `/workspace` with locked versions and tenant-scoped caches, charged to the run's time and disk. No package is installed at run admission. Packs are built when a fleet first needs one.
-
-Trees that must merge use a read-only OverlayFS with several `lowerdir` entries and no `upperdir` or `workdir`. Two Debian installations assembled apart are never overlaid, because apt has not resolved the combination.
-
-**Format.** EROFS with LZ4HC stays the default, with its features pinned at build.
-
-A switch to zstd (Linux 6.10 and later), an uncompressed image or SquashFS must make the image at least 20% smaller. It may cost at most a 10% p99 regression in first use, on the same package tree and workload.
-
-**Under Firecracker.** The same EROFS bytes become the guest's read-only virtio root disk.
-
-The host's bind of `agentsfleet-runner` cannot reach a guest. So the binary and a small init travel inside the image or on a second read-only disk.
-
-The workspace disk is a separate ext4 data disk, never mounted by the host and a guest at once; ownership passes between them. A pack becomes another guest disk or is flattened into a profile at build.
-
-A guest keeps its own page cache and decompressed pages. So bubblewrap's page-cache sharing through one host mount does not carry over, and neither does its memory density.
-
-**Not taken.** fs-verity ties integrity to the host's filesystem. composefs shares content across image versions, and a host keeps only two. Nydus and eStargz fetch on first read, which puts the network in a command's path.
-
-A delta service waits until three consecutive releases show deltas cut transferred bytes by half. The apko, Nix, BuildKit, Guix, Buildroot and Yocto builders produce the same image and shorten no run start.
-
-The run path is fast because it pulls no image and unpacks no layer. Warm slots are sandboxes started ahead of a run, with an empty workspace disk mounted and the in-sandbox server idle. They are built but unwired (§"A run's sandbox today").
-
-A run that ends processed leaves its sandbox held for the fleet's next run, and every other run's sandbox is destroyed. The workspace restore stays on the run path and costs what the snapshot weighs, so the snapshot is kept small. Both are in §"Workspace between runs".
-
-A per-tenant git object cache on each host means a clone fetches only new commits. Hashing a whole image warms the host's cache, so a cold sandbox does not mean cold storage.
-
-The specs record measured start budgets, and this page asserts none. The specs measure host staging, sandbox readiness, the first useful command and the first browser screenshot separately. Each runs on cold and warm cache, at p95 and p99, with runs running concurrently.
-
-## A run's sandbox today
-
-This section records what the code builds, against the design above. Paths below start with their crate, which sits in its layer folder under `rustd/crates/`.
-
-`agentsfleet-runner run` builds one `BubblewrapEngine` per host through `BubblewrapConfig::for_host` (`rustd/crates/runner/main/src/main.rs`). Its inputs are the cgroup the service manager delegated, the admitted toolbox and the runner binary itself. The kernel lane builds its engine the same way (`runner/main/examples/kernel_lane/lane.rs`).
-
-**Only a run that needs a sandbox gets one.** A run whose tools all run in the supervisor starts none (`afr_agent/src/engine/mod.rs`, `afr_supervisor/src/run_loop/mod.rs`). `http_request` and the memory tools run in the supervisor, so a Pull Request reviewer built from them never builds a sandbox. Shell, git and file tools run in one (`afr_tools/src/catalog/mod.rs`).
-
-**A processed run holds its sandbox; other outcomes kill it before reporting and release its disk after.**
-
-```
- run start                                                 run end
-   ├─ mkdir <state>/<run_id>          0711, never reused        │
-   ├─ sparse workspace.img 4 GiB → mke2fs ext4 → mount(2), loop   │
-   ├─ cgroup: 2 GiB, no swap, 2 cores, 512 pids, 200 MiB/s io     │
-   ├─ bwrap: new user/pid/ipc/uts/cgroup ns, cap-drop ALL         │
-   │     net         the host's, its own, or its own + a veth     │
-   │     /           toolbox EROFS image, read-only, shared       │
-   │     /workspace  the loop-mounted ext4                        │
-   │     /tmp        a directory on the same ext4 disk            │
-   │     /run /dev/shm        tmpfs: RAM, charged to the cgroup   │
-   ├─ child: no_new_privs → Landlock → seccomp → executor         │
-   ├─ allow_list_egress: host-side nf_tables table for the veth   │
-   │              … the turn runs …                               ▼
-   └─ processed: frozen and held for the fleet, else killed, the report posted, then released
-      before the report: cgroup.kill, then populated 0 within 5 s
-      after the report:  the egress table and veth, when built
-                       → rm cgroup → umount → rm image → rm dir
+```text
+run ends processed ──► freeze ──► held (≤ 10 min, ≤ 1 per worker)
+                                      │
+   next run, same fleet and key ──────┼──► thaw ──► runs in the same sandbox
+   other key or a failed thaw ────────┼──► destroy ──► fresh sandbox
+   deadline · worker needed ·         │
+   shutdown · refused report ·        └──► destroy
+   fleet archived, deleted or held elsewhere
 ```
 
-The executor answers over one end of a socket pair the engine makes for the run, and no path names it. The supervisor waits at most 10 s for the executor to list the workspace over it before it refuses the run (`afr_sandbox/src/bubblewrap_engine/mod.rs`).
+Processes do not survive a hold, because the run's end closes every command session. The host never writes into a held clone, because a tenant-written `.git` could redirect a privileged write.
 
-A run's sandbox is killed before settle and torn down once the report posts (`afr_supervisor/src/run_loop/hold.rs`, `afr_sandbox/src/bubblewrap_engine/parts/teardown.rs`). A processed run's sandbox is frozen and held instead (§"Workspace between runs").
+A turn that moves to another runner restores its files from a [checkpoint](checkpoints.md), not from a hold. The daemon's hold rules are in [runner fleet](runner_fleet.md#capacity-and-sandbox-holds).
 
-Building the engine sweeps every leftover run directory in its state directory (`afr_sandbox/src/bubblewrap_engine/sweep.rs`), and every egress table and veth a crashed run left. So a host builds one engine per state directory: an engine per worker tears down its siblings' runs.
+### Toolbox
 
-Warm slots (`afr_sandbox/src/warm_slots/mod.rs`) are sandboxes started ahead of a run, one run each; only the kernel lane uses them so far.
+The toolbox is a minimal Debian root filesystem with git, Python 3, Node, ripgrep, jq, curl and uv. It holds no package manager, no Perl and no Go.
 
-**Cold start is milliseconds; the waits are elsewhere.**
+`make toolbox-image` builds it with mmdebstrap from pinned Debian snapshots ([manifest](../../scripts/toolbox/manifest.txt)). It ships as a read-only Enhanced Read-Only File System (EROFS) image with LZ4HC compression.
 
-In the kernel lane, a debug build went from run accept to executor ready in 23.6 ms cold, median of five. From a warm slot it took 0.66 ms ([M210_001](../v2/done/M210_001_P1_API_INFRA_RUST_RUNNER_SUPERVISOR_SANDBOX_FOUNDATION.md) Discovery). That lane kept its state under a tmpfs `/tmp`.
+Two builds of one release record are byte-identical. The amd64 build refuses an image above 262,848,512 bytes.
 
-On a disk under `/var/tmp`, with 100 runs 4 at once, executor ready took 100.8 ms cold at p50 before M237. The in-process disk took that under 50 ms. The specs' Discovery holds every figure ([run waits](../v2/done/M237_001_P1_API_DOCS_INFRA_OBS_SANDBOX_START_HIDES_BEHIND_MODEL.md), [start](../v2/done/M237_002_P2_DOCS_INFRA_OBS_SANDBOX_START_DROPS_POLLING_AND_DOUBLE_CACHE.md)).
+The Continuous Integration (CI) host scans the image with Syft and Grype, and a fixable Critical finding blocks signing. The tool cosign then signs the release manifest, and the runner checks that signature offline.
 
-Work arrives through a pushed run when the gateway can assign it to an available worker.
-Memory preparation and the first model call follow the run.
-The host fetches the toolbox before taking work.
+A host downloads the image at install, never at run time, and keeps the current and previous images. Each run holds the image it runs on.
 
-**Reading the run path's speed.** A regression should show as a moved percentile on a signal the runner exports. A fleet watching Grafana can then find it ([durable repair](scenarios/durable-repair.md)). Each question below has one:
+Before a host reports ready, it authenticates the manifest and opens the image once without following links. It hashes that open file and mounts the same file read-only, so a swapped path never reaches the kernel.
+
+### Sandbox lifecycle
+
+```text
+run start
+  ├─ mkdir <state>/<run_id>            mode 0711, never reused
+  ├─ sparse workspace.img 4 GiB → ext4 → loop mount with direct I/O
+  ├─ cgroup: sandbox and tenant leaves with the run's limits
+  ├─ bwrap: namespaces, mounts, then no_new_privs → Landlock → seccomp → executor
+  ├─ allow_list_egress only: veth pair and host nf_tables table
+  │            … the turn runs …
+  └─ processed: frozen and held; otherwise killed before the report
+     after the report: egress removed → cgroup removed → unmount → image and directory removed
+```
+
+The supervisor waits at most 10 seconds for the executor to answer before refusing the run. Building the engine sweeps every leftover run directory, egress table and virtual link a crashed runner left.
+
+The storage home is `/var/lib/agentsfleet-runner` unless `RUNNER_STORAGE_HOME` names another root. It holds the toolbox images, per-run sandboxes and one git mirror per workspace and repository.
 
 | Question | Signal |
 |---|---|
-| How long does a sandbox take to build? | `agentsfleet_runner_sandbox_start_duration_seconds`, by outcome |
-| Did a tool call wait on the build, and for how long? | `agentsfleet_runner_sandbox_wait_duration_seconds`; `sandbox_wait_ms` on `run_completed` |
-| How often does a build fail, and at which step? | `agentsfleet_runner_sandbox_builds_total`, by outcome |
+| How long does a sandbox take to build? | `agentsfleet_runner_sandbox_start_duration_seconds` |
+| Did a tool call wait on the build? | `agentsfleet_runner_sandbox_wait_duration_seconds`; `sandbox_wait_ms` on `run_completed` |
+| How often does a build fail, and where? | `agentsfleet_runner_sandbox_builds_total`, by outcome |
 | How long is the release after the report? | `agentsfleet_runner_sandbox_release_duration_seconds` |
 | Where did one run's setup time go? | `egress_ms`, `prepare_ms` and `checkout_ms` on `run_completed` |
-| How fast is the model? | `agentsfleet_runner_provider_turn_duration_seconds` |
 
-Three questions have no signal yet. Nothing times a turn's wait for its run, or a run's wait for its first model request. Nothing times each step inside a prepare either; the follow-up to M237 adds all three.
-
-**Where the bytes live.**
-
-| Thing | Lives in | Bound | Lifetime | Source |
-|---|---|---|---|---|
-| Toolbox image | a file on disk, loop-mounted read-only once per host, shared by every sandbox | the image's size | the host's | `afr_sandbox/src/toolbox/mod.rs` |
-| Toolbox blocks in use | the kernel page cache in RAM, shared and evictable | none of its own; memory pressure evicts it | while hot | kernel |
-| Workspace disk, with `/tmp` | `<state>/<run_id>/workspace.img`, sparse; `/tmp` is its `tmp/` directory | the run's `disk_bytes`, 4 GiB by default; a full disk answers `ENOSPC` | one run, or until its hold ends | `afr_sandbox/src/workspace_disk/mod.rs`, `afr_sandbox/src/engine/mod.rs` |
-| `/run`, `/dev/shm` | tmpfs in RAM, charged to the run's memory cgroup | the cgroup's 2 GiB | one run | `afr_sandbox/src/bubblewrap/mod.rs` |
-| Processes | the run's memory cgroup, no swap | 2 GiB | one command, unless it leaves the shell's process group; exec sessions close at run end | `afr_sandbox/src/cgroup/mod.rs`, `afr_executor/src/server/process/mod.rs`, `afr_agent/src/loop/finish.rs` |
-| Repository mirrors and run sandboxes | The storage home's `git/` and `sandboxes/`, under `/var/lib/agentsfleet-runner` unless `RUNNER_STORAGE_HOME` says otherwise | none found | Across runs; sandbox cleanup follows run end or the engine's boot sweep | `afr_supervisor/src/config/mod.rs`, `afr_supervisor/src/storage_home/mod.rs` |
-
-**What bounds a runner host.** The image does not, because its blocks sit in shared page cache that memory pressure evicts.
-
-The run limits bound memory, summed over the host's workers. A sandbox gets the host's limits: 2 GiB of memory by default.
-
-The worker count defaults to 1 and caps at 64 (`af_core/src/limits.rs`). So default limits reach 128 GiB at the cap, and nothing checks that sum against the host's memory. Disk holds 4 GiB per run, sparse, with no headroom reserved.
-
-**Where the code and this page differ today.**
-
-- In practice, every run gets the runner's defaults (`afr_sandbox/src/engine/mod.rs`, set in `afr_supervisor/src/lib.rs`). They are 2 GiB of memory, 2 cores, 512 processes and a 4 GiB disk. The wire carries no per-run size.
-
-- A held sandbox keeps its disk's bytes, and nothing reserves host disk for it: holds are bounded only by the runner's worker count.
-
-- No workspace restore exists yet, so the first model call waits for the sandbox and its repository checkout.
-
-- The operator's extra binds on the assigned policy are stored, validated and shown, but no runner binds them. The sandbox's host paths are the fixed set above (`afr_sandbox/src/bubblewrap/mod.rs`).
-
-The storage home is `/var/lib/agentsfleet-runner` unless `RUNNER_STORAGE_HOME` names another root (`afr_supervisor/src/config/mod.rs`). The bare-metal unit makes that directory writable under `ProtectSystem=strict` and delegates the `cpu io memory pids` controllers the probe requires (`deploy/baremetal/agentsfleet-runner.service`).
-
-`run` defaults to bubblewrap; `run --engine bubblewrap` selects it explicitly, and unsupported engine names refuse argument parsing.
-
-Before probing or verifying a toolbox, `afr_sandbox::boot` enables those controllers in the delegated service root (`afr_sandbox/src/cgroup/delegated.rs`). `DelegateSubgroup=runner` keeps the runner in its own leaf so that the root can distribute controllers to run children.
-
-Discovery refuses a process outside the expected `runner` subgroup. Activation writes only positive controller commands in that root; it never changes ancestors or moves processes. Unavailable controllers and kernel activation errors stop startup, with the original error cause preserved.
-
-The probe reports host facts, and `Backend::validate` interprets them before `Backend::start` admits resources. `BubblewrapBackend` keeps every shipping capability check through `BubblewrapRequirements`, and admits the signed toolbox.
-
-`Started` couples the engine to a `Resources` guard. The runner keeps that guard until serving and the runtime have ended, and the kernel lane closes it explicitly. The supervisor still receives `Box<dyn Engine>`.
-
-A new backend supplies startup policy and resources through these interfaces. No other backend ships.
-
-The kernel lane keeps its state under `/var/tmp`, on a disk as a host's is (`runner/main/examples/kernel_lane/lane.rs`). Its delegation trials boot from disabled controllers (`runner/main/examples/kernel_lane/delegation.rs`). They prove restart, child limits, missing-controller refusal and a populated-root failure.
-
-`make test-runner-startup` also runs the shipping binary under a copy of the deployed systemd unit (`scripts/test-runner-startup.sh`). Both engine selections must reach absent-toolbox verification after host preparation, and refuse invalid delegation, activation failures and missing capabilities. This matrix keeps the release key; healthy service startup with the signed release is a deployment acceptance proof.
-
-## Code walkthrough
-
-This section traces one runner from boot to a tool call inside bubblewrap.
-Paths start with their crate under `rustd/crates/`.
-Parts A to G follow the order the code runs in.
-
-Two facts frame the whole walk. Bubblewrap starts once per run, never once per tool call. A run gets a sandbox only when its policy offers a tool whose runtime is `Sandbox`.
-
-### Part A: host boot, once per runner process
-
-`agentsfleet-runner run` checks the host and verifies the toolbox before it dials the daemon. A host that fails any check exits with the reason and never runs a run unsandboxed.
-
-```
-systemd ─► /usr/local/bin/agentsfleet-runner run
- main.rs     main ─► run ─► supervise
-               ├─ afr_supervisor::boot(env)          config and storage home
-               ├─ EngineChoice::Bubblewrap.boot      engine.rs; the only engine today
-               │    └─ Host::production              host.rs
-               │         ├─ release = Release::signed_by_release(VERSION)
-               │         ├─ entry   = current_exe()  this same binary, bound into each sandbox
-               │         └─ afr_sandbox::boot(BubblewrapBackend, paths)      boot/mod.rs
-               │              ├─ enable_controllers  cpu io memory pids in the delegated root
-               │              ├─ probe               landlock, seccomp, bwrap, erofs, controllers
-               │              ├─ validate            Requirements::missing ─► refuse boot
-               │              └─ start               bubblewrap_engine/boot.rs
-               │                   ├─ Toolboxes::open + verify_incoming    see A.1
-               │                   ├─ BubblewrapConfig::for_host           bubblewrap_engine/config.rs
-               │                   │    entry_args ["sandbox"], host ids 65534, ready 10 s
-               │                   └─ BubblewrapEngine::new                bubblewrap_engine/mod.rs
-               │                        admissible ─► own the host egress ─► sweep leftovers
-               ├─ host::agent        afr_agent::Loop over the tool catalog and providers
-               └─ tokio runtime ─► serve                                   main.rs
-                    └─ afr_supervisor::run ─► compose ─► Lessee { engine, agent, plane }
-                         native connection, heartbeat policy and worker pool run together
-```
-
-The probe checks that `/usr/bin/bwrap` exists and is executable. It does not start a trial sandbox; the first run's `prepare` is the first real start.
-
-**A.1, toolbox verification.** It runs once per host, never per run.
-
-```
-verify_incoming                                               toolbox/incoming/mod.rs
-  ─► Release::verify (signature over the manifest bytes)
-  ─► stage, verify, sync, rename into images/
-  ─► KernelMounter::mount                                      toolbox/kernel_mounter.rs
-  ─► Toolbox::verify_now                                       toolbox/verify.rs
-       open_image(O_NOFOLLOW)  ─► fstat: regular file, manifest length
-       sha256 over that same descriptor
-       adopt an existing mount only if it is this file, read-only     toolbox/adopt/mod.rs
-       loop_device::attach(fd, ReadOnly): LOOP_CTL_GET_FREE ─► LOOP_CONFIGURE(ro, autoclear,
-         buffered, 4096-byte blocks)
-       mount /dev/loopN at <mounts>/<digest> as erofs, ro,nosuid,nodev
-       sandbox_toolbox_verify_completed names caching: buffered
-  ─► Arc<Toolbox> kept by the config; every sandbox clones the Arc
-```
-
-**Where the bytes sit on the host.** Paths below are under the storage home, `/var/lib/agentsfleet-runner` by default.
-
-```
-toolbox/images/toolbox-<digest>.erofs   one file per release; current and previous kept
-toolbox/mounts/<digest>/                a mount point; the kernel reads the image on demand
-sandboxes/<run_id>/workspace.img      one ext4 image per run, mode 0600
-sandboxes/<run_id>/workspace/         that image's mount; bound as /workspace and /tmp
-git/<workspace_id>/<owner>/<repo>.git   one mirror per workspace and repository
-```
-
-Nothing from the toolbox is unpacked to disk; mounting it adds a directory and no copy. Every sandbox on the host binds the one mount as `/`, whatever its fleet or tenant. The image holds Debian packages and vendored tools only, so tenants share code pages and never data.
-
-A run's own files live only on its workspace disk, which no other run can see. Fleets of one workspace share a mirror; fleets of different workspaces never do.
-
-### Part B: a run arrives, and the sandbox decision
-
-```
-Down::Run ─► worker_pool ─► RunPayload
-Lessee::run ─► run ─► Run::run        run_loop/mod.rs
-  renewal and the activity pump start alongside
-work
-  ├─ needs = agent.admit(policy)                   afr_agent/src/loop/mod.rs
-  │     catalog.select(policy.tools)?              an unhosted tool refuses the run
-  │     .needs_sandbox()                           afr_tools/src/selection.rs
-  ├─ turns.claim(fleet)                            one run per fleet per runner
-  ├─ memory::load(fleet)
-  └─ needs.sandbox ? sandboxed(…) : drive(slot = NoSandbox)
-```
-
-The decision reads what the policy offers, before the model runs. The model's later choices never change it.
-
-| Runtime | Tools | Runs in |
-|---|---|---|
-| `Supervisor` | `http_request`, `web_fetch`, `notify`, memory tools, `update_plan`, `message`, schedule tools, child-loop tools | the runner process |
-| `Provider` | `web_search` | the model provider |
-| `Sandbox` | `shell`, `exec_command`, `write_stdin`, `git`, file tools, `apply_patch`, `image`, browser tools | the executor inside bubblewrap |
-
-### Part C: `sandboxed`, the build beside the first model call
-
-```
-sandboxed                                          run_loop/workspace.rs
-  ├─ admitted, before any model request            refused ─► startup_posture
-  │     host limits (the wire carries no size)
-  │     bind egress                                allow_list resolves its host names
-  │     plan: checkouts(policy), workspace id      run_loop/checkout.rs
-  └─ beside, one task, both futures boxed
-       ├─ build                                    run_loop/build.rs
-       │    acquire: revive(hold key) or prepare   run_loop/hold.rs, Part D
-       │      resume_hold, reallow, thaw, executor answers within 2 s ─► reuse
-       │    check_out unless held                  mints the token, Mirrors::check_out
-       │    a stop ends the mint, a wait on the mirror and a fetch between git's steps
-       │    fill the ExecutorSlot: the executor, or Unavailable(prepare | checkout | stopped)
-       │    a failure or a stop fills the slot first, then destroys what it made
-       │    count it: sandbox_builds_total{outcome = ready | prepare | checkout | stopped}
-       └─ drive(slot)                              run_loop/drive.rs; first model call
-            a processed, uncut turn waits up to 20 s for the build; then, or on
-            any other ending, the build is stopped
-```
-
-The first model request waits for the size, egress and plan checks alone. A sandbox-side call waits on the slot for what is left of the build, and `run_completed` logs that wait as `sandbox_wait_ms`. A build that fails leaves the turn going: its sandbox-side calls answer `sandbox_unavailable` naming the class, and `sandbox_build_failed` is logged.
-
-A build still running 20 s after its turn answered is stopped and logged as `sandbox_build_outlasted_turn`. A stalled token mint, a wait on another run's mirror or a slow fetch cannot hold the run. The report goes with nothing held.
-
-A runner that stops running waits for no build, since nothing would hold its sandbox.
-
-### Part D: `prepare`, where bubblewrap is spawned
-
-```
-BubblewrapEngine::prepare ─► start ─► build         bubblewrap_engine/mod.rs
-  1 mkdir <state>/<run_id> 0711, never reused
-  2 WorkspaceDisk::create                           workspace_disk/mod.rs
-      sparse workspace.img ─► mke2fs (host program)
-      on the blocking pool: loop_device::attach(ReadWrite), direct I/O asked for,
-      autoclear ─► mount(2) ext4 nosuid,nodev ─► close the device handle
-      a start dropped mid-mount: the mount lands unheard and undoes itself
-      workspace/ 0755 and tmp/ 1777, owned by 65534
-  3 RunCgroup::create: sandbox and tenant leaves, memory, cpu and pids limits;
-    then cgroup.limit_io on the disk's loop device
-  4 TenantFiles::open: the tenant leaf's cgroup.procs and memory.events, opened by the runner
-  5 Handover::with_link: a socket pair, both ends close-on-exec       tenant/files.rs
-  6 Names::render: hosts and resolv.conf for an allow_list run
-  7 bubblewrap::arguments                           bubblewrap/mod.rs
-  8 Parts::spawn                                    bubblewrap_engine/parts/mod.rs
-      Command bwrap, env cleared, uid and gid 65534
-      pre_exec: write "0" to sandbox/cgroup.procs, clear close-on-exec on the
-        tenant fds and the entry's end of the pair, in this child alone
-      spawn ─► the bwrap process exists; the runner's copy of the entry's end closes
-  9 ready: list_dir(".") over the runner's end, for up to 10 s, nothing polled
-    or bwrap's exit with its error stream
- 10 allow_list only: veth pair and host nf_tables table
-```
-
-The argument list for an isolated run:
-
-```
-bwrap --unshare-user --unshare-pid --unshare-ipc --unshare-uts --unshare-cgroup --unshare-net
-      --disable-userns --cap-drop ALL --clearenv --die-with-parent --new-session
-      --ro-bind <mounts>/<digest> /            --proc /proc   --dev /dev
-      --perms 1777 --size <memory/4> --tmpfs /dev/shm
-      --bind <disk>/tmp /tmp     --tmpfs /run   --bind <disk>/workspace /workspace
-      --ro-bind <runner binary> /opt/agentsfleet/agentsfleet-runner
-      --uid 1000 --gid 1000 --chdir /workspace
-      -- /opt/agentsfleet/agentsfleet-runner sandbox
-         --tenant-procs <fd> --tenant-events <fd> --executor <fd>
-```
-
-### Part E: inside the sandbox
-
-```
-bwrap ─► namespaces and the mount tree above ─► pid 1 reaper
-  └─ exec /opt/agentsfleet/agentsfleet-runner sandbox     main.rs, serve/mod.rs
-       adopt the tenant leaf's descriptors and the link, close-on-exec again
-       harden: one thread only ─► no_new_privs ─► Landlock ─► seccomp ─► no capabilities
-       current-thread runtime ─► serve /workspace over the link, one connection
-```
-
-```
-agentsfleet-runner run       root           runner cgroup
- └─ bwrap                    65534          <run>/sandbox
-     └─ bwrap reaper         pid 1 inside
-         └─ agentsfleet-runner sandbox      the executor, <run>/sandbox
-             └─ sh -c "…"    <run>/tenant, moved in before exec
-```
-
-### Part F: one tool call
-
-```
-model tool call ─► Router::dispatch                 afr_agent/src/router/mod.rs
-  Supervisor ─► tool.call(executor None)            http_request: Egressed (egress guard), then HTTP
-  Sandbox    ─► slot.get(): waits for the build, then the executor, or
-               SandboxUnavailable naming why; a wait is recorded
-               Generic ─► guffbolt Context{env: SandboxEnv}  afr_tools/src/generic/
-               shell ─► oneshot::run_to_end            guffbolt/src/tools/process/oneshot.rs
-               ─► SandboxEnv::spawn ─► Client::spawn
-               "process/spawn" over the link ─► executor launcher
-               pre_exec joins the tenant leaf ─► sh -c
-               "process/output" chunks, then "process/exited"
-  Provider   ─► HostedToolUnavailable
-```
-
-### Part G: run end
-
-```
-settle_and_drain                                    run_loop/mod.rs
-  keep ─► Fate                                      run_loop/hold.rs
-    held when: ended processed, not cut, runner still running, bwrap still running
-      ─► freeze ─► park for up to ten minutes ─► Held
-      a failed freeze, or a park the keeper refuses ─► kill
-    otherwise ─► kill: cgroup.kill, then populated 0 within 5 s ─► Killed
-                 an unsettled kill posts anyway and logs sandbox_kill_unsettled
-  settle(&Fate)                                     run_loop/settle.rs
-    tool records posted over HTTP ─► usage flushed by native renewal
-    ─► native report with memory + segments
-    ─► retain the same report in worker memory until acknowledgement or terminal refusal
-  release, beside the live tail's drain
-    destroy: egress removed, cgroup removed, umount, image and directory removed
-    run returns after it, so a worker never holds two runs' disks
-```
-
-A cut run is never held, because `keep` requires the run to end on its own. Only a kill that settles proves no sandbox process remains.
-
-### Built by M237, and decided only
-
-M237_001 and M237_002 built the Nov 02, 2026 decision's five steps, and four stand. They are Parts C and G, and Part D's disk and socket pair. The fifth, a direct-I/O toolbox, was measured and reverted (§Toolbox).
-
-What follows is decided and not built.
-
-Workspace snapshots carry the recovery workspace and its matching root state; hosts share the toolbox by its verified digest.
-
-A restore writes into the new run's disk through the host's mount, inside the background build. It takes checkout's place for each repository it restores, so checkout never overwrites restored work. A live save requires an exclusive safe boundary, confirmed freeze and an empty tenant process group.
-
-An engine whose disk the host cannot mount, such as Firecracker, reports no host workspace. Its restore and checkout must run inside the guest, or write into the disk image before it attaches.
-
-## Workspace between runs
-
-Platform runners restore a complete committed generation before starting the model or tools. Native tasks and ordinary turns have separate durable owners.
-
-The recovery page owns capture boundaries, file safety, fencing, and runner-wide transfer admission. [Platform runner checkpoint recovery](runner_checkpoint_recovery.md) · [Durable repair scenario](scenarios/durable-repair.md)
-
-- **Held between messages.** A run that ends processed leaves its sandbox held (`afr_supervisor/src/holds/mod.rs`). The run cgroup is frozen through `cgroup.freeze` and settled on `frozen 1`. The hold is keyed by fleet, workspace, limits and policy (network policy plus repository binding).
-
-  No credential is in the held sandbox to empty, because none enters a sandbox. The fleet's next run within ten minutes thaws it and continues with the files the last run left.
-
-  The host never writes into the held clone, because a tenant-written `.git` under a privileged copy is a symbolic-link escape.
-
-  Processes are not promised. The in-sandbox server kills a command's process group when the command ends. The run's end closes every exec session, so only a process that left the group with `setsid` resumes.
-
-  Any of these destroys the hold:
-
-  - a key mismatch, or a run the daemon says does not resume it;
-
-  - a failed thaw, or the deadline;
-
-  - the keeper retiring oldest holds to preserve a free worker across fleet and setup work;
-
-  - the runner stopping running for any cause, or shutting down;
-
-  - a report refused or rejected for good, or a sandbox no longer running;
-
-  - a fleet the daemon names halted, deleted or held elsewhere.
-
-  The daemon's side of a hold, `held_until` and the skip other runners make, is in [Runner Fleet](./runner_fleet.md) §"Cold and warm execution".
-
-```
-run ends processed ──► freeze ──► held (≤ 10 min, ≤ 1 per worker)
-                                      │
-   next run, same fleet + key ──────┼──► thaw ──► runs in the same sandbox
-   other key / thaw fails ────────────┼──► destroy ──► fresh sandbox
-   deadline · cap · saturation ·      │
-   shutdown · refused report ·        └──► destroy
-   fleet halted or deleted
-```
-
-The compact resume context in `thread.threads.resume_context` remains a separate semantic record.
-It grants no file-restore or run authority.
-New chat turns still load recent finished thread turns; a replacement run of the same turn reads its committed recovery state.
-
-## Credentials
-
-- **Model keys** stay in the supervisor.
-
-- **Repository reads.** The supervisor clones with the run's own one-hour, repository-scoped token from the mint verb (`rustd/crates/daemon/afd_credential/src/credential/github/request.rs`). The token reads on a read binding and writes on a write binding.
-
-  The token never enters the sandbox. The fetch presents it in an in-memory header, and the clone's configuration names the plain URL (`rustd/crates/runner/afr_supervisor/src/workspace_clone/mod.rs`).
-
-- **Tools that need a login reuse today's mint path.** Fleets already name credentials and never hold them. A `${secrets.github.token}` placeholder resolves through `POST /v1/runners/me/credentials/mint`, which the supervisor calls.
-
-  Only where a token lands is new. Today the supervisor mints it once per run and keeps it in that run's egress guard until shortly before it expires. The guard substitutes it only into a request's `Authorization` header, and masks it in whatever the upstream sends back.
-
-  A command-line tool such as the GitHub one needs the token as a file or variable. The design writes it into a memory-only `/run/creds` for that run. That is not built, so a token stays in the egress guard and no sandbox command receives one.
-
-  Each token is bound to the hosts it is for, and the run's allowlist admits only those hosts.
-
-- **Thread lines and schedule messages are masked twice**. The `message`, `cron_add`, `cron_update` and `schedule` tools mask run-minted tokens before text leaves the runner.
-
-  `agentsfleetd` then masks the fleet's declared static secrets with the same `af_secrets::Scrub`. It does so before it posts a line through the outbound worker's Slack poster, or stores a schedule.
-
-  The runner never holds the channel credential.
-
-- **A placeholder-swap proxy can later replace the file without fleets noticing.** The mint path stays the same. The supervisor writes a placeholder into the planned `/run/creds` instead of the token.
-
-  Every connection an `allow_list_egress` sandbox makes already leaves through the host-side end of its veth pair. The toolbox's trust store has an empty slot for a proxy's certificate.
-
-  Adding the proxy reverses the no-interception rule in [Runner Fleet](./runner_fleet.md) §Traps, and that reversal is recorded when it ships.
-
-## Coding engines
-
-- **Codex is first-class, split across the wall.** `codex app-server` runs in the supervisor and holds the user's ChatGPT subscription or OpenAI key. `codex exec-server` runs in the sandbox and only runs commands, so the subscription never enters the sandbox.
-
-  App-server adds a remote exec server as an "environment" (`~/Projects/oss/rs/codex/codex-rs/exec-server/README.md`). Whether every tool call routes to that environment is proven before the engine ships. Codex's JSON Lines events (`codex exec --json`, `~/Projects/oss/rs/codex/codex-rs/exec/src/cli.rs`) map onto the same activity frames as our own loop.
-
-- **Claude Code** runs in the sandbox and reaches its model through a relay the supervisor serves. Its `ANTHROPIC_BASE_URL` names a loopback endpoint, and the supervisor adds the Anthropic API key outside the sandbox, so the key never enters it. Subscription use stays off until its terms are cleared.
-
-- Both run with their own sandbox off. Ours is the boundary, and nested user namespaces are disabled anyway.
-
-## Repository writes
-
-The fleet uses real git inside the sandbox: branches, several commits, the normal flow. `propose_change` hands the commits to the supervisor, which:
-
-1. checks them against the rules `agentsfleetd` compiled for the run: the pinned branch, no change under `.github/workflows`, and size caps;
-
-2. mints a write token for that one call and pushes;
-
-3. opens a draft Pull Request.
-
-When a fleet requires approval, the push runs in the continuation run after someone approves. The daemon compiles the rules (`rustd/crates/daemon/afd_gate/src/policy/egress/write.rs`), and the supervisor enforces them outside the sandbox.
-
-The loop renders the same rules into the prompt as a trusted repair context. That context names the one repository, the daemon-named repair branch and the trusted base. A write-bound fleet's instructions require that input before writing, and nothing else supplies it.
-
-A write token inside the sandbox would be readable by every program there, including a dependency's install hook. The rules' own module documentation says this about a repository-scoped write token. That token "can force-push to `main` as easily as it can open a draft Pull Request".
-
-## Why Rust
-
-- **Memory safety is checked by the compiler.** The runner this one replaced relied on rules a reviewer enforced by hand. They were one owner per resource, init and deinit pairing, idempotent cleanup, and draining before deinit. OWN is still in the [code standard](../../.orly/standards/code.md); DEINIT, DIDEM and DRAIN retired with that runner, which needed a memory-leak lane of its own.
-
-- **The language is stable.** The runner this one replaced was written in a pre-1.0 language. A standard-library list change cost the rulebook a rule (ZAL), and a process I/O change cost its engine a patched fork.
-
-- **One wire.** The runner speaks `af_wire`, the daemon's own types, so a mismatch between the two sides fails to compile.
-
-- **The next work already exists in Rust.** Pseudo-terminals, patch application, the bubblewrap helper, Landlock and seccomp bindings, S3 presigning and Firecracker itself.
-
-The costs are the rewrite, slower compiles, async complexity and larger binaries. Speed is not a reason: both compile to native code.
-
-## What comes from where
-
-| Piece | Source | Form |
-|---|---|---|
-| Loop shape: turns, tool router, every call ends once, typed events | Codex | Design |
-| Process control: groups, TERM then KILL, timeouts, output caps, pseudo-terminals | Codex `utils/pty` and its exec module | Copy the pseudo-terminal crate; port the design |
-| `apply_patch` parser, UTF-8-safe cuts, process hardening | Codex | Copy at a pinned commit, with its NOTICE |
-| bubblewrap-then-seccomp helper | Codex `linux-sandbox` | Adapt, adding the flags and filters above |
-| Anthropic streaming and caching, OpenAI-compatible chat, token usage split | ZeroClaw `zeroclaw-providers` | Mine |
-| Retry honouring `Retry-After`, failover, circuit breaker | IronClaw `ironclaw_llm` | Mine |
-| Per-fleet grants: effects, mounts, network, secrets, enforced ceilings | IronClaw `ironclaw_host_api` | Design; auto-approve off |
-| Leak scanning on tool output, model input and egress | IronClaw `ironclaw_safety` | Port |
-| Coding-engine runners | ZeroClaw `zeroclaw-tools` (Claude Code, Codex) | Mine |
-| Per-run transcript as JSON Lines | Codex rollout | Design; saved with the snapshot |
-| Docker lanes, WASM tools, `codex-core`, a TLS-intercepting egress proxy | — | Not taken |
-
-`codex-core` speaks only OpenAI's Responses API, so it cannot drive fleets on Anthropic keys, and its public surface changes weekly. ZeroClaw and IronClaw are whole personal-assistant products whose loops are welded to their channels. The loop and the provider layer are ours.
-
-## Decisions
-
-| Date | Decision | Source |
-|---|---|---|
-| Oct 02, 2026 | A fresh Rust runner, designed for this platform rather than ported from an earlier runner's structure | Indy: "The port is a fresh port, since we always have the last binary with us and running." |
-| Oct 02, 2026 | Fleets clone and work in a real repository; supersedes M157_001's "No working tree, no git binary" | Indy: "a fleet will have to clone the copy of code and so on and mug around with it" |
-| Oct 02, 2026 | No Docker on the run path; start time is a requirement | Indy: "preferrably avoiding Docker since its layer takes a while to load... I will need faster results as well" |
-| Oct 02, 2026 | Workspaces and artifacts carried in R2 or an S3-compatible store | Indy: "we could have the S3 compatible R2 pointing to code and artifacts if need be for the user" |
-| Oct 02, 2026 | Subscriptions and API keys; Codex first-class | Indy: "Subscripts and API keys, but support Codex as first class citizen, anthropic seems to have issues on terms and requests via API keys" |
-| Oct 02, 2026 | Multi-tenant on bare metal or VMs from the first release; Firecracker is an additional engine | Indy: "everyone can run isolated multiple tenants with fleets must use a baremetal host or have a runner run from a VM from day 1. To me firecracker is an additional approach to think on isolation." |
-| Oct 02, 2026 | Scoped short-lived tokens now; the placeholder-swap proxy later | Indy: "I would go for 1, with the focus on move to 2 later" |
-| Oct 02, 2026 | The supervisor pushes repository writes | Indy chose "Supervisor pushes (Recommended)" |
-| Oct 02, 2026 | Code-running runs from different tenants may share a host; hardening and kernel patching are the boundary until Firecracker | Indy chose "No, share freely" when asked whether a host should refuse a second tenant's code-running run |
-| Oct 02, 2026 | Firecracker is the production engine for code-running runs; bubblewrap ships first and stays for development, CI and hosts without `/dev/kvm` | Indy: "i think we must shoot for firecracker then", then "Yes bubblewrap first, and firecracker next." Firecracker is installed on production hosts later; every runner reports whether `/dev/kvm` exists |
-| Oct 02, 2026 | The Rust runner is independent: one copy of the wire, shared with the daemon, and it follows `rustd` principles | Indy: "A second copy of the wire will not be existing" and "the rust code is independent and follows our current rustd/ principles" |
-| Oct 02, 2026 | The runner carries every published tool; the loop stays in the supervisor and routes the code-running tools into the sandbox | Indy: "i need all the tools … the sandbox isnt just a sandbox but a harness that decide to operate like codex so that is critical to realize the fleets i plan to use"; chose "Supervisor loop, sandbox tools" |
-| Oct 02, 2026 | One binary: the in-sandbox entry is `agentsfleet-runner sandbox`, a sub-mode, not a second artifact | Indy: "why do we need two ? agentsfleet-runner, agentsfleet-executor … i thought its just one binary?" then "agentsfleet-runner"; chose `sandbox` for the sub-mode |
-| Oct 02, 2026 | `cron_*` and `schedule` become fleet tools through a runner verb onto the daemon's schedule plane; supersedes "Scheduled wakes are not a child tool" in [Capabilities](./capabilities.md) §"2. The platform tools the fleet can call" | Indy chose "Yes, runner verb onto daemon schedules" |
-| Oct 03, 2026 | Keep Debian, mmdebstrap and EROFS with LZ4HC. The toolbox is built from pinned snapshots, signed, scanned, downloaded before any run and admitted by descriptor, which replaces hashing the loop device after the mount. Fleet tools arrive as prebuilt packs or image profiles, never as packages installed at admission (§Toolbox) | Tarzy's review of the toolbox design; Indy chose "Approve as classified (Recommended)" |
-| Oct 03, 2026 | Not taken: fs-verity, composefs, Nydus and eStargz, a delta service, and the apko, Nix, BuildKit, Guix, Buildroot and Yocto builders | The same review and choice |
-| Oct 03, 2026 | Claude Code reaches its model through a supervisor relay, so no model key enters a sandbox; supersedes "Claude Code runs in the sandbox on an Anthropic API key" | Indy: "1 - if our current design spells that way". Four lines on this page already kept model keys out of the sandbox |
-| Oct 03, 2026 | Revoking a compromised toolbox is deferred; the toolbox works first, and rollback stays the previous release | Indy: "I dont want to focus on revocation of a compromised toolbox, first is to get the toolbox working" |
-| Oct 03, 2026 | Named model providers resolve through a local, versioned registry of name, wire and base URL, embedded as data the way IronClaw embeds its `providers.json`; unknown names are refused at admission; a `custom:<url>` provider is `https` only and the transport follows no redirect. No LLM framework's provider catalogue decides admission | Indy: "How does ironclaw does this? Can we review and steal from here", with Tarzy's recommendation to keep refusing unknown names and support every named provider whose wire was already implemented |
-| Oct 04, 2026 | The browser tools run only under the Firecracker engine. The bubblewrap engine answers each with a code and never passes `--no-sandbox`, and Chromium enters the toolbox with the Firecracker engine | Spike S1: Chromium's sandbox cannot start inside bubblewrap's. Indy chose "Refuse browser tools, defer §5 (Recommended)" |
-| Oct 05, 2026 | `/tmp` moves onto the workspace disk, the run cgroup splits into a `sandbox` and a `tenant` leaf, the workspace disk attaches with direct I/O, and a worker runs only with a state-disk reserve (M211_003) | Spike S6: filling `/tmp` ended in the out-of-memory killer taking `bwrap` every time. Indy: "Fix all fixes in this PR" |
-| Oct 05, 2026 | A processed run's sandbox is held, frozen, for its fleet's next run, and its holder claims that fleet first; supersedes "one run, then destroyed" (M211_004) | Indy: "I want to provide a seamless faster approach on chat?" (Oct 04), then "Fix all fixes in this PR, may be the 215_001 must be renamed to the next sequence in 211_00X and fix all that is needed" |
-| Oct 05, 2026 | A chat run carries the thread's recent turns, sent ahead of the message; the stable prefix is cached at the five-minute default, and the trusted repair context stays in the system prompt (M211_005) | Indy chose "Add M211_005, cached (recommended)". The one-hour lifetime waits because the daemon bills a cache write at the input rate |
-| Oct 06, 2026 | `file_read` pages by line and is cut to the output budget, instead of reading back up to 8 MiB | Indy chose "Budget + paging (Recommended)" |
-| Oct 06, 2026 | Offering `git` offers what `shell` does inside the sandbox; the sandbox is the boundary | Indy chose "git counts as shell (Rec.)" |
-| Oct 06, 2026 | Every sandbox tool gets the bound repositories checked out, not only the process tools | Indy chose "Clone for file tools (Rec.)" |
-| Oct 06, 2026 | The host mirror's hygiene is deferred: refreshing the default branch, dropping deleted branches, size caps and eviction, purging force-pushed objects, redirects with a token header, and transient open errors | Indy chose "Defer all" |
-| Oct 06, 2026 | The executor forwards every byte of a process's output live, behind a bounded queue, instead of a 512 KiB live head and a tail held to the end; the supervisor's side keeps what a caller has not read as a 512 KiB head and tail and counts the middle, as Codex's client does, so a session that printed past 512 KiB is still heard | Indy chose "Fix in this PR (recommended)" |
-| Oct 06, 2026 | Deferred: the toolbox trust hardening (the fixture key as trust root, a rewrite after hashing, an owner and mode check, a symlinked mount point, manifest expiry, the registry lock held over the hash), image support decided per model, zeroizing token header copies, the lchown ordering warm slots would break, and `file_read_hashed`'s 8 MiB read | Indy chose "Defer all (recommended)" |
-| Oct 06, 2026 | The long-session fix keeps its push design for now: a flood's decode cost and the unread store sit on the supervisor host, and the store bounds bytes, not chunks; the pull model (`process/read`, Codex's exec-server shape) waits on testing the user experience | Indy: "I think ignore this, i want test and find the user experience" |
-| Oct 06, 2026 | Deferred: a byte offset on `fs/read` for paging, and the checkout for a run whose only sandbox tools refuse | Indy chose "B: defer both with my quote" |
-| Oct 08, 2026 | The Zig runner is retired: this Rust runner is the only runner, and nothing in the repository builds, lints or tests Zig | M213_001, PR #738. Indy: "Yes remove zig related or mentioned its sunset after this PR#..." |
-| Oct 08, 2026 | The provider registry gains `glm` (Z.ai's general endpoint), `minimax` and `qwen` (DashScope's international endpoint) on the chat wire, and `kimi` dials Moonshot's international endpoint, where the model catalogue prices it. `gemini` stays out because its OpenAI-compatible endpoint wants Gemini 3's thought signatures back on every tool call, which the chat wire does not carry; `bedrock` stays out because it needs AWS Signature Version 4 and event-stream framing. The catalogue prices only names the registry routes | Indy: "Yes reconcile, and produce a table on what is supported. Ensure the api-dev is trimmed to the models we need." |
-| Oct 10, 2026 | Remove Go-built `gh` without replacement; scanners and signing tools run only on the CI host. Refuse an amd64 toolbox above the measured 262,848,512-byte image | Indy: "Well i dont want Go in the toolbox or grype in the toolbox image, that is stupid crap aiwa"; "I want the toolbox image size to be in limits as its now, not bump it with the crap you have". Dev run 38072785909 confirms the cache fix, the prior image size and the embedded Go Critical findings |
-| Oct 17, 2026 | Saved model inference settings replace the embedded provider routing JSON. Workspace-owner registrations and the active platform default supply credentialed choices; model output limits come from their saved catalogue row. Both inference hosts filter private SDK content. | Indy: "Also replace the JSON routing table with persistent provider configuration"; "have the persisted model details as the source of truth." |
-| Oct 19, 2026 | The runner reports cache writes apart from input, by the lifetime the provider names, and the daemon bills each class at its own rate instead of at the input rate (M229 Dimension 8.6) | Indy (2026-10-18): cache-write tokens are reported and billed by lifetime, "Bill them now" |
-| Nov 02, 2026 | A sandbox build that fails while the run is live leaves the run going; sandbox tools answer `sandbox_unavailable` naming the failure, and egress checks stay before the model call (M237_001) | Indy chose "B: model carries on", asking whether setup and the model are independent |
-| Nov 02, 2026 | Built by M237_001 and M237_002: the sandbox builds beside the first model call, the report posts before the disk is released, the toolbox loop device reads with direct I/O (reverted Nov 03), the executor speaks over an inherited socket pair, and the workspace disk mounts in-process | Indy: "1-5 seemed good fixes to do" and "Yes i am happy with it, along with the spec" |
-| Nov 03, 2026 | The toolbox loop device stays buffered, superseding Nov 02's direct I/O. A build waits at most 20 s past its answered turn. `sandbox_builds_total` counts builds by outcome | Direct I/O failed the 10% p99 rule on all 8 first-use steps. Indy chose "Revert to buffered", "Counter in this PR" and "Fold the build deadline in here" |
-| Nov 22, 2026 | The file tools are `file_read`, `file_write`, `file_edit` and `apply_patch`; `file_read_hashed`, `file_edit_hashed`, `file_append` and `file_delete` leave the catalog, and a fleet naming one is refused as naming an unhosted tool. `file_edit` takes several edits and refuses text the file holds more than once (`text_not_unique`) | Indy: "Yes, cut both (Recommended)" and "Keep in this PR" (M253_004 Discovery) |
+### What a fleet delete leaves
+
+Deleting a fleet stops its live runs and purges its rows ([data flow](data_flow.md)). These copies follow their own rules:
+
+| Copy | What happens |
+|---|---|
+| Usage lines | Kept; they name the run, never its content |
+| A live run on a runner | Stops at the Cancel or its next renewal, which finds no run |
+| Logs, traces and metrics | Never hold prompts, answers or secret values |
+| Provider requests | Follow the provider's retention; a local stop cannot erase them upstream |
+| Database backups | Follow the infrastructure's backup retention |
+
+## Limits
+
+- bubblewrap is the only engine. The Firecracker microVM engine is not built, and its review lives in [the sandbox evaluation](../reviews/space-sandbox/sandbox_evaluation.md).
+- The browser tools (`browser`, `browser_open`, `screenshot`) answer with a code. Chromium's own sandbox cannot start inside bubblewrap.
+- Tenants share the host kernel. A kernel privilege-escalation bug escapes every namespace sandbox on the host.
+- Nothing checks the sum of sandbox limits against the host. At 64 workers the default limits reach 128 GiB of memory, and no host disk is reserved for holds.
+- The operator's extra binds on the assigned policy are stored and shown, but no runner binds them.
+- Warm slots, sandboxes started before a run arrives, are built but used only by tests.
+- An ordinary run cannot push to a repository; only a durable task's `propose_change` publishes.
+- The address set matches destinations only. The default registries share front ends with other sites, so a hard boundary needs a mirror the operator owns.
+
+## Related pages
+
+- [Runner fleet](runner_fleet.md): registration, policy, tiers and failure recovery
+- [Runner protocol](runner_protocol.md): the stream, leases and report delivery
+- [Checkpoints](checkpoints.md): what a replacement runner restores
+- [Access](user_flow.md#access): where a grant and its secret hosts come from
+- [Configuration reference](config_reference.md): runner keys such as `[sandbox]`, `[tools]` and `[egress]`
+- [Observability](observability.md): runner metrics and logs

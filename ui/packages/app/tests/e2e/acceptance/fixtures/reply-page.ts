@@ -1,6 +1,7 @@
-/** A seeded fleet's chat whose live stream the test writes; history reads
- * empty, so every row on screen came from the frames a test sends or a send
- * it made from the composer. */
+/** A seeded fleet's chat whose live stream the test writes. A fleet is made by
+ * its first message, so the page opens on that one settled turn; the backfill
+ * reads empty, so every other row on screen came from the frames a test sends
+ * or a send it made from the composer. */
 import type { Locator, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
 import type { TurnsPage } from "@/lib/api/turns";
@@ -10,7 +11,9 @@ import { fixtureSubject, signInAs } from "./auth";
 import { FIXTURE_KEY } from "./constants";
 import { workspaceHref } from "./nav";
 import { pageEventStream, type ScheduledStream } from "./page-event-stream";
-import { getDefaultWorkspaceId, seedFleet, waitForFleetActive } from "./seed";
+import { awaitFirstTurnSettled, createFixtureFleet } from "./fleet-create";
+import { probeMessage } from "./probe";
+import { getDefaultWorkspaceId, expectFleetActive } from "./seed";
 import { assertDestructiveTargetIsSafe, purgeFixtureFleet } from "./teardown";
 
 const EMPTY_HISTORY: TurnsPage = { items: [], next_cursor: null };
@@ -41,7 +44,8 @@ export async function withReplyPage(
   body: (reply: ReplyPage) => Promise<void>,
 ): Promise<void> {
   const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
-  const fleet = await seedFleet(FIXTURE_KEY.regular, workspaceId, { name: purpose });
+  const created = await createFixtureFleet(FIXTURE_KEY.regular, workspaceId, { name: purpose, message: probeMessage(purpose) });
+  const fleet = created.fleet;
   const streamPath = `/live/v1/workspaces/${workspaceId}/fleets/${fleet.id}/turns/stream`;
   const historyPath = streamPath.replace(/\/stream$/, "");
   const stream = await pageEventStream(page, streamPath);
@@ -49,10 +53,13 @@ export async function withReplyPage(
   page.on("pageerror", (error) => errors.push(error.message));
   await page.route((url) => url.pathname === historyPath, (route) => route.fulfill({ json: EMPTY_HISTORY }));
   try {
-    await waitForFleetActive(FIXTURE_KEY.regular, workspaceId, fleet.id);
+    await expectFleetActive(FIXTURE_KEY.regular, workspaceId, fleet.id);
+    await awaitFirstTurnSettled(FIXTURE_KEY.regular, workspaceId, fleet.id, created.turnId);
     await signInAs(page, FIXTURE_KEY.regular);
     await page.goto(workspaceHref(workspaceId, `fleets/${fleet.id}`), { waitUntil: "domcontentloaded" });
-    const chat = page.getByLabel(CHAT_LABEL);
+    // Exact: the chat's loading placeholder is labelled "Loading fleet chat",
+    // and the chat is only visible once the thread itself has mounted.
+    const chat = page.getByLabel(CHAT_LABEL, { exact: true });
     await expect(chat).toBeVisible();
     await stream.connected;
     const ownActor = `${ACTOR.STEER_PREFIX}${fixtureSubject(FIXTURE_KEY.regular)}`;
@@ -81,6 +88,6 @@ async function sendFromComposer(page: Page, steerPath: string, text: string, tur
   await composer.getByRole("button", { name: SEND_LABEL, exact: true }).click();
   await admitted.promise;
   // The transcript alone: the composer mirrors its draft into its own text.
-  const transcript = page.getByLabel(CHAT_LABEL).getByRole("log", { name: TRANSCRIPT_LABEL });
+  const transcript = page.getByLabel(CHAT_LABEL, { exact: true }).getByRole("log", { name: TRANSCRIPT_LABEL });
   await expect(transcript.getByText(text, { exact: true })).toBeVisible();
 }

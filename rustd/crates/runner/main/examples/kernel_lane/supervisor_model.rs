@@ -24,8 +24,8 @@ use serde_json::{Value, json};
 use af_providers::testing::scripted as existing;
 pub(crate) use existing::Asked;
 
-/// The installed instructions accompanying the fixture's run.
-pub(crate) const INSTRUCTIONS: &str = "Read Grafana, remember findings, and report to the thread.";
+/// The fleet's name, which the run's fixed prompt introduces it by.
+pub(crate) const NAME: &str = "grafana-watch";
 pub(crate) const STEER: &str = "Check the fleet and commit the workspace fix.";
 pub(crate) const ANSWER: &str = "kernel caller proof complete";
 
@@ -115,11 +115,6 @@ fn grafana_call() -> Call {
 pub(crate) fn refused_calls() -> Vec<Call> {
     vec![
         call(PUSH, GIT, json!({ ARGS: [PUSH, ORIGIN, "main"] })),
-        call(
-            WRITE,
-            "http_request",
-            request("POST", "https://${secrets.grafana.host}/api/search"),
-        ),
         call(
             ORIGIN,
             "http_request",

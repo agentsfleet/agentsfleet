@@ -1,204 +1,34 @@
-//! What an ungranted park does, and what it says when it cannot ask.
-//!
-//! The Failure Mode this table exists for: an ungranted delivery has exactly one
-//! terminal outcome and every other reading must leave the work leasable. Ending
-//! an event on anything but a person's no throws away work nobody refused, and
-//! failing to REPORT an unwritten request hides the loop this milestone exists to
-//! end. Both halves are pure functions of the request's answer, so neither needs
-//! a datastore.
-//!
-//! Split from [`super`] on the LENGTH GATE: the module reached 324 lines and
-//! these tests would have carried it past the 350 cap.
+//! Which runs are given a branch, and what a delivery does when the grants it
+//! assembles from cannot be read.
 #![expect(
     clippy::expect_used,
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
-use super::{RunService, Ungranted, answers, written};
-use af_core::id::Uuid7;
-use af_core::money::NANOS_PER_USD;
-use af_fleet_runtime::FleetConfig;
-use afd_approval::Requested;
+use super::RunService;
+use af_fleet_runtime::config::RepositoryBinding;
 use afd_gate::policy::repair;
 use serde_json::json;
 
-#[test]
-fn a_denied_grant_is_the_only_outcome_that_ends_the_event() {
-    // The failure this milestone exists to end is an event that redelivers
-    // every second against a decision nobody can make. A denial IS that
-    // decision, so the loop stops here and the operator reads why.
-    assert_eq!(answers(Some(Requested::Denied)), Ungranted::Ends);
-}
-
-#[test]
-fn only_an_open_card_parks_the_delivery() {
-    // A raised card and a card already open both owe a person's answer, and
-    // that answer — or its expiry — re-marks the fleet, so the delivery parks
-    // until then rather than re-asking every second.
-    for still_open in [Requested::Raised, Requested::Pending] {
-        assert_eq!(
-            answers(Some(still_open)),
-            Ungranted::Parks,
-            "{still_open:?}"
-        );
+/// An approved GitHub scope over one repository at `access`.
+///
+/// Driven through the parser an approved grant's stored scope is read with,
+/// so the question is what a STORED scope resolves to.
+fn binding(access: &str) -> RepositoryBinding {
+    let mut scope = serde_json::Map::new();
+    scope.insert("repositories".to_owned(), json!(["acme/widgets"]));
+    scope.insert("access".to_owned(), json!(access));
+    if access == "write" {
+        // A write scope names the base it branches from, or the parser
+        // refuses it before this helper's caller sees it.
+        scope.insert("base".to_owned(), json!("main"));
     }
+    RepositoryBinding::parse(&serde_json::Value::Object(scope).to_string())
+        .expect("an approved scope the parser reads")
 }
 
-#[test]
-fn a_grant_approved_since_the_assembly_read_retries_rather_than_parking() {
-    // Nobody owes an answer any more, so nothing would re-mark a parked fleet:
-    // the delivery stays leasable and the next poll's assembly finds the grant.
-    assert_eq!(answers(Some(Requested::Approved)), Ungranted::Retries);
-}
-
-#[test]
-fn a_request_that_could_not_be_written_retries_rather_than_ending() {
-    // The fail-closed direction, and the one worth a test of its own: a
-    // Postgres that would not answer must never be read as a person's no.
-    // Ending here would destroy a delivery on an outage, and the outage is
-    // the one condition guaranteed to pass. Nor may it park: no card exists
-    // for anyone to answer, so the next poll has to ask again.
-    assert_eq!(answers(None), Ungranted::Retries);
-}
-
-/// The error `written` is handed when an identifier cannot be minted.
-///
-/// Built through the same `From` edge production uses: a refused mint from
-/// `Entropy::uuid7` lifts into `afd_approval::Error`, so this is the real
-/// variant with its real `code()`, not a stand-in.
-fn unwritable() -> afd_approval::Error {
-    let (entropy, control) = af_crypto::entropy::Entropy::new_mocked();
-    control.fail_next();
-    afd_approval::Error::from(
-        entropy
-            .uuid7(jiff::Timestamp::constant(1_767_225_600, 0))
-            .expect_err("a mocked source told to fail refuses the mint"),
-    )
-}
-
-#[test]
-fn a_written_request_passes_its_answer_through_untouched() {
-    // The reporting wrapper must not become a second decision point: every arm
-    // `settle` produced has to arrive at `answers` exactly as it left.
-    for answer in [
-        Requested::Raised,
-        Requested::Pending,
-        Requested::Approved,
-        Requested::Denied,
-    ] {
-        assert_eq!(
-            written(Ok(answer), &fleet(), "github"),
-            Some(answer),
-            "{answer:?}"
-        );
-    }
-}
-
-#[test]
-fn an_unwritten_request_reports_and_then_reads_as_no_answer() {
-    // The bug this catches is the one the milestone is about, reproduced on its
-    // own fix: `.ok()` dropped this error, so a Postgres or entropy failure left
-    // no line, no error_code, and a `no_work` identical to a healthy park — a
-    // failure with no error, redelivering every second. `written` must answer
-    // `None` (so the delivery is retried) AND emit the line that says why.
-    let log = af_core::test_util::trace::Capture::install();
-    assert_eq!(written(Err(unwritable()), &fleet(), "github"), None);
-
-    let line = log.only(super::EVENT_REQUEST_FAILED).fields;
-    assert_eq!(
-        line.get("error_code").map(String::as_str),
-        Some(unwritable().code().as_str()),
-        "the line names the failure's registry code"
-    );
-    assert_eq!(
-        line.get("fleet_id").map(String::as_str),
-        Some(fleet().as_str())
-    );
-    assert_eq!(line.get("service").map(String::as_str), Some("github"));
-    assert_eq!(
-        line.get("reason"),
-        Some(&unwritable().told()),
-        "the reason is the failure's sentence, its code only in `error_code`"
-    );
-}
-
-/// An open card parks the delivery; every other answer stops it.
-///
-/// Parking blocks the turn head, so only a card a person will
-/// answer may park: a retry that parked would wait on nobody.
-#[test]
-fn only_an_open_card_turns_the_answer_into_a_park() {
-    assert!(matches!(
-        Ungranted::Parks.ending::<String>(),
-        super::Step::Park
-    ));
-    assert!(matches!(
-        Ungranted::Retries.ending::<String>(),
-        super::Step::Stop
-    ));
-    assert!(matches!(
-        Ungranted::Ends.ending::<String>(),
-        super::Step::Stop
-    ));
-}
-
-#[test]
-fn an_unwritten_request_never_ends_the_event() {
-    // The composition that matters. Fail-closed here means keeping the event
-    // alive: a datastore that would not answer is this instance's problem, and
-    // reading its silence as a refusal would end deliveries on an outage — the
-    // one condition guaranteed to occur.
-    assert_eq!(
-        answers(written(Err(unwritable()), &fleet(), "github")),
-        Ungranted::Retries
-    );
-}
-
-/// A canonical v7 identifier, which `written` reads only for its log field.
-fn fleet() -> Uuid7 {
-    Uuid7::parse("01890a5d-ac96-774b-bcce-b302099a8057").expect("a valid v7 identifier")
-}
-
-/// A stored config declaring a repository binding at `access`, or none.
-///
-/// Driven through the real `parse` rather than a hand-built struct, for the
-/// reason the gate's own fixtures give: the question is what a STORED config
-/// resolves to, and a constructor that skipped validation would prove the
-/// helper rather than the path.
-///
-/// Built with `json!` rather than written as a string. A JSON document spelled
-/// as a literal repeats `:{` once per nested object, which RULE UFS reads as a
-/// duplicated literal and is right to — the repetition carries no meaning, and
-/// a serializer is what this crate uses everywhere else.
-fn config(access: Option<&str>) -> FleetConfig {
-    let mut agentsfleet = json!({
-        "triggers": [],
-        "tools": [],
-        "budget": { "daily_nanos": NANOS_PER_USD.to_string() },
-    });
-    if let Some(level) = access {
-        let declared = agentsfleet
-            .as_object_mut()
-            .expect("the fixture's own object");
-        declared.insert("repositories".into(), json!(["acme/widgets"]));
-        declared.insert("repository_access".into(), json!(level));
-        if level == "write" {
-            // A write binding must name the base it branches from, or the
-            // config refuses before this helper's caller sees it.
-            declared.insert("repository_base".into(), json!("main"));
-        }
-    }
-    let document = json!({ "name": "probe", "x-agentsfleet": agentsfleet }).to_string();
-    FleetConfig::stored(&document).expect("a stored document resolves")
-}
-
-/// An event identifier in the spelling the turn ledger mints: the
-/// intake instant and the sequence, which is what a producer's event key
-/// carries as TEXT.
-///
-/// It read `0197a4ba-8d3a-7f13-8abc-123456789abc` — a canonical v7, and a shape
-/// the ledger has never produced. Every test below passed against it while the
-/// branch was dropped for every real delivery.
+/// An event identifier in the spelling the turn ledger mints: the intake
+/// instant and the sequence.
 const MINTED_EVENT: &str = "1900000000000-1";
 
 /// A second identifier from the same ledger, one sequence later.
@@ -206,20 +36,21 @@ const NEXT_MINTED_EVENT: &str = "1900000000000-2";
 
 #[test]
 fn only_a_write_binding_is_given_a_branch() {
-    // A read binding needs no branch and a fleet with no binding has nothing to
-    // write to. Handing either one a branch would put a ref in the egress rules
-    // for a run that must not create one.
-    assert_eq!(RunService::repair_branch(MINTED_EVENT, &config(None)), None);
+    // A read binding needs no branch and a fleet with no approved scope has
+    // nothing to write to. Handing either one a branch would put a ref in the
+    // egress rules for a run that must not create one.
+    assert_eq!(RunService::repair_branch(MINTED_EVENT, None), None);
     assert_eq!(
-        RunService::repair_branch(MINTED_EVENT, &config(Some("read"))),
+        RunService::repair_branch(MINTED_EVENT, Some(&binding("read"))),
         None
     );
-    assert!(RunService::repair_branch(MINTED_EVENT, &config(Some("write"))).is_some());
+    assert!(RunService::repair_branch(MINTED_EVENT, Some(&binding("write"))).is_some());
 }
 
 #[test]
 fn the_branch_names_the_event_and_carries_nothing_else() {
-    let branch = RunService::repair_branch(MINTED_EVENT, &config(Some("write")))
+    let write = binding("write");
+    let branch = RunService::repair_branch(MINTED_EVENT, Some(&write))
         .expect("a write binding is given a branch");
 
     assert!(branch.starts_with(repair::PREFIX), "{branch}");
@@ -227,66 +58,44 @@ fn the_branch_names_the_event_and_carries_nothing_else() {
     // repository says when, never whose.
     assert!(!branch.contains("acme"), "{branch}");
     assert!(!branch.contains("widgets"), "{branch}");
-    // And it is the event's own identifier, not a fresh one per call.
     assert_eq!(
-        branch,
-        RunService::repair_branch(MINTED_EVENT, &config(Some("write")))
-            .expect("the same event resolves the same branch")
+        Some(branch),
+        RunService::repair_branch(MINTED_EVENT, Some(&write)),
+        "the same event resolves the same branch"
     );
 }
 
 #[test]
 fn two_events_are_never_given_one_branch() {
-    // The property that decided where this name comes from. The standing grant
-    // is one row per fleet and service, so naming the branch after it would put
-    // every event of a fleet's life on ONE branch, and the second run would
-    // force-update the first run's head.
+    // The GitHub grant is one row per fleet and service, so a branch named
+    // after it would put every event of a fleet's life on one branch, and the
+    // second run would force-update the first run's head.
+    let write = binding("write");
     assert_ne!(
-        RunService::repair_branch(MINTED_EVENT, &config(Some("write"))),
-        RunService::repair_branch(NEXT_MINTED_EVENT, &config(Some("write")))
+        RunService::repair_branch(MINTED_EVENT, Some(&write)),
+        RunService::repair_branch(NEXT_MINTED_EVENT, Some(&write))
     );
 }
 
-#[test]
-fn test_m202_001_every_identifier_the_ledger_mints_is_given_a_branch() {
-    // This asserted the opposite — that a non-v7 identifier gets no branch —
-    // and called it the fail-safe. It was the defect written down as intent.
-    // `afd_turns::admit` is the only thing that mints an event id and it
-    // spells `<millis>-<sequence>`, so "not a v7" described every real event
-    // and the branch was dropped for all of them.
-    //
-    // Whether a branch is named turns on the BINDING, which the test above
-    // covers. Given a write binding, the identifier is encoded whatever its
-    // shape, and two identifiers never share a name.
-    for id in [MINTED_EVENT, NEXT_MINTED_EVENT, "evt-cred-mint-fixture"] {
-        assert!(
-            RunService::repair_branch(id, &config(Some("write"))).is_some(),
-            "{id:?}"
-        );
-    }
-}
-
-// Value: protects=a delivery whose gates read lost its grants reads them itself,
-// and an outage on that read is raised rather than assembling a policy with no
-// grants; fails_when=the fallback read is skipped or its fault is swallowed;
-// why_new=no test delivered work whose grants were unread; seam=`deliver_with`
-// over datastores nobody answers on, for a fleet that declares no credential, so
-// the grants read is the first one asked.
+// Value: protects=a delivery reads the fleet's approved grants itself, and an
+// outage on that read is raised rather than assembling a policy with no
+// grants; fails_when=the grants read is skipped or its fault is swallowed;
+// seam=`deliver_with` over datastores nobody answers on, so the grants read
+// is the first one asked.
 #[cfg(feature = "test-util")]
 #[tokio::test]
-async fn unread_grants_are_read_again_and_an_outage_there_is_raised() {
+async fn unread_grants_are_raised_and_nothing_is_issued() {
     use crate::run::test_dead;
 
     let checked = super::CheckedFleetWork {
-        acquired: test_dead::acquired_installed(),
+        acquired: test_dead::acquired(),
         installed: crate::run::installed::Installed {
             workspace_id: test_dead::id(2),
             name: "Support triage".to_owned(),
-            config: config(None),
-            instructions: String::new(),
+            model_ref: "anthropic/claude-opus-5".to_owned(),
+            http_egress: af_fleet_runtime::config::HttpEgress::Restricted,
+            package_domains: false,
             context_json: crate::run::installed::FRESH_CONTEXT.to_owned(),
-            runtime_model_ref: "anthropic/claude-opus-5".to_owned(),
-            issue_revision: None,
         },
         event_type: af_wire::turn::TurnKind::Chat,
         resolved: afd_credential::provider::Resolved::new(
@@ -303,7 +112,6 @@ async fn unread_grants_are_read_again_and_an_outage_there_is_raised() {
             provider: "anthropic".into(),
             model: "claude-opus-5".into(),
         },
-        granted: None,
     };
     let mut emitted = 0;
 
@@ -318,10 +126,6 @@ async fn unread_grants_are_read_again_and_an_outage_there_is_raised() {
         .await;
 
     let fault = delivered.err().expect("the grants read meets the outage");
-    assert_eq!(
-        fault.code(),
-        af_core::error_code::INTERNAL_DB_UNAVAILABLE,
-        "the gate plane's own outage code: {fault}"
-    );
+    assert!(fault.is_datastore_unavailable(), "{fault}");
     assert_eq!(emitted, 0, "nothing is issued without its grants");
 }

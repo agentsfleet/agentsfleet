@@ -30,12 +30,10 @@ enum Fault {
 fn api_only() -> Checked<(RunPayload<'static>, TurnCheckpointSaved)> {
     let mut run = test_support::payload(RUN_ID, FLEET_ID);
     run.event.workspace_id = ID.into();
-    run.setup_revision_id = Some(ID.into());
     let scope = TurnScope {
         turn_id: CheckpointOperationId(run.event.turn_id.to_string()),
         fleet_id: CheckpointOperationId(run.event.fleet_id.to_string()),
         workspace_id: CheckpointOperationId(run.event.workspace_id.to_string()),
-        setup_revision_id: CheckpointOperationId(ID.to_owned()),
         workspace: TurnWorkspace::ApiOnly,
     };
     let page = CheckpointPage {

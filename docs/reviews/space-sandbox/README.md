@@ -16,7 +16,7 @@ Detailed design drafting, a dedicated implementation spec, their EGM reviews and
 
 SPACE means `Sandboxed Platform for Agentic Code Execution`.
 The proposed `agentsfleet` backend adapts useful SPACE source behind the existing Rust runner interfaces.
-The [sandbox evaluation](../../architecture/sandbox_evaluation.md#first-firecracker-wrapper) owns the technical proposal and first-build order.
+The [sandbox evaluation](sandbox_evaluation.md#first-firecracker-wrapper) owns the technical proposal and first-build order.
 
 ## Why it exists
 
@@ -78,11 +78,11 @@ KVM means Kernel-based Virtual Machine; Firecracker needs access to `/dev/kvm`.
 
 A container on a qualified Linux host can package the runner, but cannot supply missing hardware virtualization.
 The guest also needs a compatible kernel, startup image and proved command transport.
-See [local acceptance](../../development.md#local-acceptance) and [Firecracker prerequisites](https://github.com/firecracker-microvm/firecracker/blob/main/docs/getting-started.md#prerequisites).
+See [local acceptance](../../development.md#acceptance) and [Firecracker prerequisites](https://github.com/firecracker-microvm/firecracker/blob/main/docs/getting-started.md#prerequisites).
 
 ## Related pages
 
 - [Sandbox agent restart prompt](sandbox-handoff-prompt.md)
 - [Orly, EGM and Jev improvement prompt](orly-egm-jev-handoff-prompt.md)
-- [Sandbox evidence and proposed scenarios](../../architecture/sandbox_evaluation.md)
+- [Sandbox evidence and proposed scenarios](sandbox_evaluation.md)
 - [Existing runner and toolbox](../../architecture/runner_execution.md)

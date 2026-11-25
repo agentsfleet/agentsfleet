@@ -71,7 +71,7 @@ fn should_map_every_refusal_to_its_code() {
 async fn should_admit_an_mcp_connection_only_to_a_host_the_policy_allows() {
     use guffbolt::tools::outbound::Outbound as _;
 
-    let fixture = crate::testing::RunFixture::new(false);
+    let fixture = crate::testing::RunFixture::new();
     let run = fixture.run();
     let egressed = super::Egressed::new(None, &run);
 

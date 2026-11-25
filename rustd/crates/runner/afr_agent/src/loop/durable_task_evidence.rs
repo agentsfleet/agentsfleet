@@ -5,7 +5,7 @@
 use super::Harness;
 use crate::{
     Result,
-    decision::{exceeds_input, goal, interpretation, unavailable},
+    decision::{collect, exceeds_input, goal, unavailable},
 };
 use af_wire::{decision::DecisionAssignment, durable_task::DurableTaskReport};
 use guffbolt::{Message, Request};
@@ -107,7 +107,7 @@ impl Harness<'_, '_> {
             biased;
             () = self.stop.cancelled() => return Err(unavailable()),
             result = tokio::time::timeout(std::time::Duration::from_secs(30),
-                interpretation::collect(self.shared.provider, request, self.shared.meter)) => result.map_err(|source| crate::decision::boundary("task decision input or deadline", source))??,
+                collect(self.shared.provider, request, self.shared.meter)) => result.map_err(|source| crate::decision::boundary("task decision input or deadline", source))??,
         };
         let summary = self.shared.scrub.clean(summary).into_inner();
         if summary.trim().is_empty() {

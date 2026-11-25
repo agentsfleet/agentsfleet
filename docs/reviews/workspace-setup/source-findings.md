@@ -69,6 +69,6 @@ No builds, application tests, live exploit, provider fire, or fresh coverage mea
 
 ## Related pages
 
-- [Creation](../../architecture/data_flow.md#fleet-creation-and-setup-recovery)
-- [Runner admission](../../architecture/runner_fleet.md#authoring-leases)
+- [Creation](../../architecture/data_flow.md#create-and-recovery)
+- [Runner admission](../../architecture/runner_protocol.md#run-lease-and-renewal)
 - [API and gaps](api.md)

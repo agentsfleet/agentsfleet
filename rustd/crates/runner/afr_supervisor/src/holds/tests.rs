@@ -187,7 +187,7 @@ async fn test_saturation_releases_holds() {
     hold(&holds, &engine, FLEET_A).await;
     hold(&holds, &engine, FLEET_B).await;
 
-    let _first = holds.occupy(super::Occupant::Fleet {
+    let _first = holds.occupy(super::Occupant {
         run: id(FLEET_C),
         fleet: id(FLEET_C),
     });
@@ -196,7 +196,7 @@ async fn test_saturation_releases_holds() {
         [FLEET_B],
         "one free worker stays reserved"
     );
-    let _last = holds.occupy(super::Occupant::Fleet {
+    let _last = holds.occupy(super::Occupant {
         run: id(FLEET_D),
         fleet: id(FLEET_D),
     });
@@ -221,11 +221,11 @@ async fn test_the_last_free_worker_keeps_the_hold_of_the_fleet_it_serves() {
     hold(&holds, &engine, FLEET_A).await;
     hold(&holds, &engine, FLEET_B).await;
 
-    let _first = holds.occupy(super::Occupant::Fleet {
+    let _first = holds.occupy(super::Occupant {
         run: id(FLEET_A),
         fleet: id(FLEET_A),
     });
-    let _last = holds.occupy(super::Occupant::Fleet {
+    let _last = holds.occupy(super::Occupant {
         run: id(FLEET_C),
         fleet: id(FLEET_C),
     });
@@ -239,11 +239,11 @@ async fn test_a_finished_run_frees_its_worker() {
     let (holds, _clock) = holds(3);
     hold(&holds, &engine, FLEET_A).await;
 
-    drop(holds.occupy(super::Occupant::Fleet {
+    drop(holds.occupy(super::Occupant {
         run: id(FLEET_C),
         fleet: id(FLEET_C),
     }));
-    let _only = holds.occupy(super::Occupant::Fleet {
+    let _only = holds.occupy(super::Occupant {
         run: id(FLEET_D),
         fleet: id(FLEET_D),
     });

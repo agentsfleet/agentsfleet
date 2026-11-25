@@ -11,10 +11,10 @@ afterEach(cleanup);
 it("projects only explicitly saved repository policy and rejects malformed repository links", () => {
   for (const config of [null, [], "bad", {}, {repositories: true}]) expect(fleetSources(config)).toEqual({repositories: [], access: null, publication: null});
   const saved = fleetSources({repositories: ["agentsfleet/agentsfleet", "agentsfleet/agentsfleet", "a/b", "../bad", "a/..", "https://evil.test", "a/b/c", 9],
-    repository_access: "write", repository_publication: "existing_pr", installation_token: "secret", webhook_ingress: ["other/repo"]});
+    access: "write", publication: "existing_pr", installation_token: "secret", webhook_ingress: ["other/repo"]});
   expect(saved).toEqual({repositories: ["agentsfleet/agentsfleet", "a/b"], access: "write", publication: "existing_pr"});
-  expect(fleetSources({repository_access: "read", repository_publication: "event_draft"})).toEqual({repositories: [], access: "read", publication: "event_draft"});
-  expect(fleetSources({repository_access: "admin", repository_publication: "push"})).toEqual({repositories: [], access: null, publication: null});
+  expect(fleetSources({access: "read", publication: "event_draft"})).toEqual({repositories: [], access: "read", publication: "event_draft"});
+  expect(fleetSources({access: "admin", publication: "push"})).toEqual({repositories: [], access: null, publication: null});
 });
 
 it("labels sources as saved policy without claiming fresh connected permissions", () => {
@@ -33,7 +33,7 @@ it("labels sources as saved policy without claiming fresh connected permissions"
     [null, "event_draft", "Draft PRs"],
   ] as const;
   for (const [access, publication, label] of policies) {
-    view.rerender(<WorkSources sources={fleetSources({repositories: ["a/b"], repository_access: access, repository_publication: publication})} />);
+    view.rerender(<WorkSources sources={fleetSources({repositories: ["a/b"], access: access, publication: publication})} />);
     expect(screen.getByText(`Policy: ${label}`)).toBeTruthy();
   }
 });

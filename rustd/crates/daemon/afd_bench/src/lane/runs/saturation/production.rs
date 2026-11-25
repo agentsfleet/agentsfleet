@@ -4,22 +4,23 @@ use super::requester::{Assigned, Held, Host};
 use super::stage::WORKERS;
 use crate::lane::runs::{
     drain::{connection, native},
-    seed::RunnerIdentity,
+    seed::{self, RunnerIdentity},
 };
 use crate::{
     datastores::Datastores,
     error::{ErrorKind, Result},
 };
 use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
 use af_crypto::secret::Kek;
 use af_wire::{
     protocol::{Down, Renewal, Up},
     report::RenewRequest,
-    run::{AcceptedKinds, Owner, TaggedRun},
+    run::TaggedRun,
     usage::RequestLines,
 };
 use afd_gateway::{Gateway, test_util::RunnerConnection};
-use afd_setup::Drafts;
+use afd_setup::Creations;
 use std::{collections::BTreeMap, num::NonZeroU64, sync::Arc};
 use tokio::sync::{Mutex, watch};
 use tokio_util::sync::CancellationToken;
@@ -27,7 +28,7 @@ use tokio_util::sync::CancellationToken;
 #[derive(Debug)]
 pub(super) struct Production {
     gateway: Gateway,
-    pub(super) drafts: Drafts,
+    pub(super) creations: Creations,
 }
 
 pub(super) struct Connected {
@@ -43,8 +44,11 @@ struct ConnectedHost {
 
 impl Production {
     pub(super) fn new(stores: &Datastores, kek: &Arc<Kek>) -> Self {
-        let (gateway, drafts) = connection::gateway(stores, kek);
-        Self { gateway, drafts }
+        let gateway = connection::gateway(stores, kek);
+        let turns =
+            afd_turns::Turns::new(stores.database.clone(), stores.bus.clone(), Entropy::new());
+        let creations = Creations::new(stores.database.clone(), Entropy::new(), turns);
+        Self { gateway, creations }
     }
 
     pub(super) async fn connect(
@@ -57,13 +61,8 @@ impl Production {
         let listeners = wake.listen(&stores.bus, &stop).await?;
         let mut hosts = BTreeMap::new();
         for runner in runners {
-            let session = connection::open(
-                &self.gateway,
-                runner,
-                AcceptedKinds::ALL,
-                usize::try_from(WORKERS)?,
-            )
-            .await?;
+            let session =
+                connection::open(&self.gateway, runner, usize::try_from(WORKERS)?).await?;
             hosts.insert(
                 runner.id.clone(),
                 ConnectedHost {
@@ -112,17 +111,18 @@ impl Host for Connected {
         let Some(frame) = session.assign().await? else {
             return Ok(Assigned::Nothing);
         };
-        // A setup chat's turn rides the common run path as a run its draft owns.
+        // A chat fleet's first turn is a person's message; a ready fleet's
+        // turn is the seed's own, under its own actor.
         match native::decode(&frame)? {
             Down::Run {
                 run: TaggedRun::Fleet(run),
-            } => match run.owner {
-                Owner::Draft { .. } => Ok(Assigned::Chat(Held {
-                    run: Uuid7::parse(&run.run_id)?,
-                    fence: run.fencing_token.to_string(),
-                })),
-                Owner::Fleet { .. } => Ok(Assigned::Fleet),
-            },
+            } if run.event.actor == seed::BENCH_ACTOR => Ok(Assigned::Fleet),
+            Down::Run {
+                run: TaggedRun::Fleet(run),
+            } => Ok(Assigned::Chat(Held {
+                run: Uuid7::parse(&run.run_id)?,
+                fence: run.fencing_token.to_string(),
+            })),
             _ => Err(ErrorKind::StreamAnswer.into()),
         }
     }

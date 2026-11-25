@@ -273,6 +273,17 @@ function SummaryProbe(props: Parameters<typeof ChatView>[0]) {
   </>;
 }
 
+it("names the chat with a level-2 heading ahead of the thread, active or archived", () => {
+  // The page's h1 is the fleet's name and a reply's tool activity is an h3:
+  // without this heading the outline skips a level (axe `heading-order`).
+  for (const status of [STATUS_ACTIVE, STATUS_ARCHIVED]) {
+    const {container, unmount} = render(view(summary({status}), [turn()], ChatView));
+    const heading = screen.getByRole("heading", {level: 2, name: "Conversation"});
+    expect(container.querySelector("h2, h3")).toBe(heading);
+    unmount();
+  }
+});
+
 it("keeps ordinary chat free of the metrics strip and reveals approvals when attention is needed", () => {
   render(view(summary(), [turn()], ChatView));
   expect(screen.queryByLabelText("Fleet summary")).toBeNull();

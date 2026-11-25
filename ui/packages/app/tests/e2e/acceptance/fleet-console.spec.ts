@@ -1,6 +1,6 @@
 /**
  * fleet-console.spec.ts — the operator lives on the fleet console: a local
- * conversation with setup and saved memories reachable from its header.
+ * conversation with saved memories reachable from its header.
  *
  * The walk proves the two things a console must get right before anything
  * else: the composer is reachable without scrolling the page even when the
@@ -15,10 +15,9 @@
 import { expect, test, type Page } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
-import { getDefaultWorkspaceId, seedFleet, waitForFleetActive } from "./fixtures/seed";
+import { getDefaultWorkspaceId, seedFleet, expectFleetActive } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { fleetNavigation, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
-import { expectEditSetupAvailable } from "./fixtures/private-chat";
 
 const RENDER_TIMEOUT_MS = 15_000;
 const SEND_TIMEOUT_MS = 10_000;
@@ -34,7 +33,7 @@ test.describe("fleet console", () => {
     const ws = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
     const tag = Math.random().toString(36).slice(2, 8);
     const fleet = await seedFleet(FIXTURE_KEY.regular, ws, { name: `console-${tag}` });
-    await waitForFleetActive(FIXTURE_KEY.regular, ws, fleet.id);
+    await expectFleetActive(FIXTURE_KEY.regular, ws, fleet.id);
 
     await signInAs(page, FIXTURE_KEY.regular);
     await visitFleetAndCheckStream(page, ws, fleet.id);
@@ -80,7 +79,6 @@ test.describe("fleet console", () => {
     await expect(textarea).toBeFocused();
     await page.keyboard.type(FOLLOW_UP);
     await expect(textarea).toHaveValue(FOLLOW_UP);
-    await expectEditSetupAvailable(page);
     await expect(textarea).toHaveValue(FOLLOW_UP);
 
     await page.getByRole("button", {name: "Fleet actions", exact: true}).click();

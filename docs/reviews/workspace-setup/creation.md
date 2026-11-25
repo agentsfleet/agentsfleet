@@ -70,6 +70,6 @@ L8 provider content-revision identity and its sweep remain a follow-up; the inde
 
 ## Related pages
 
-- [Runner and private deletion](../../architecture/runner_fleet.md#authoring-leases)
-- [ASCII walkthrough](../../architecture/data_flow.md#fleet-setup-and-runtime-sequence)
+- [Runner and private deletion](../../architecture/runner_protocol.md#run-lease-and-renewal)
+- [ASCII walkthrough](../../architecture/data_flow.md#the-path-in-one-picture)
 - [Runtime preservation](runtime-baseline.md)

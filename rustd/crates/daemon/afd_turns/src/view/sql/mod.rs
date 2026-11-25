@@ -58,7 +58,8 @@
 /// database type, so mixing text and JSONB binary encodings corrupts later writes.
 pub const INSERT_TURN: &str = include_str!("insert_turn.sql");
 
-/// Access receipts: workspace, required service, actor, type, status, metadata.
+/// Access receipts on the fleets holding a grant or a trigger for a stored
+/// name: workspace, name, actor, type, status, metadata.
 pub(crate) const INSERT_ACCESS_ACTIVITY: &str = include_str!("insert_access_activity.sql");
 
 /// End an event at a gate, naming what refused it.

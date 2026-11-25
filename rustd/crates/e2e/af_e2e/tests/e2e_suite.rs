@@ -52,6 +52,8 @@ use af_providers::testing::scripted as fake_model;
 mod integration_cluster_outcomes;
 #[path = "integration_fleet_list_name.rs"]
 mod integration_fleet_list_name;
+#[path = "integration_runner_access.rs"]
+mod integration_runner_access;
 #[path = "integration_runner_activity/mod.rs"]
 mod integration_runner_activity;
 #[path = "integration_runner_activity_call_id.rs"]
@@ -92,6 +94,8 @@ mod integration_runner_steers_fence;
 #[path = "integration_runner_steers_refusals.rs"]
 mod integration_runner_steers_refusals;
 mod integration_runner_stream;
+#[path = "integration_runner_triggers.rs"]
+mod integration_runner_triggers;
 #[path = "integration_rust_runner.rs"]
 mod integration_rust_runner;
 #[path = "integration_rust_runner_definitions.rs"]
@@ -104,8 +108,6 @@ mod integration_rust_runner_nested;
 mod integration_rust_runner_repairs;
 #[path = "integration_rust_runner_reviews.rs"]
 mod integration_rust_runner_reviews;
-#[path = "integration_rust_runner_setup/mod.rs"]
-mod integration_rust_runner_setup;
 #[path = "integration_rust_runner_telemetry.rs"]
 mod integration_rust_runner_telemetry;
 #[path = "integration_tenant_registry.rs"]
@@ -118,8 +120,6 @@ mod integration_tool_call_details_lifecycle;
 mod integration_tool_call_refusals;
 #[path = "integration_tool_trace.rs"]
 mod integration_tool_trace;
-#[path = "integration_unreadable_config.rs"]
-mod integration_unreadable_config;
 #[path = "support/e2e_reads.rs"]
 mod reads;
 mod recovery_process;
@@ -139,6 +139,3 @@ mod tail;
 mod verbs;
 #[path = "support/e2e_wire.rs"]
 mod wire;
-
-#[path = "integration_grant_denial.rs"]
-mod integration_grant_denial;

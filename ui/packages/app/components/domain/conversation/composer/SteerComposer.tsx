@@ -14,15 +14,17 @@ import { fleetComposerText } from "@/lib/chat-message-text";
 import { parseChatAddress } from "@/lib/chat-address";
 import { ChatComposerFrame, ChatComposerHint } from "../../shared/chat/ChatComposerFrame";
 import { ChatStopButton } from "@/components/domain/shared/chat/ChatStopButton";
-import { useFleetSetup } from "../../setup/FleetSetupContext";
+import { useFleetModelChoice } from "../../models/FleetModelContext";
 import { FleetMentionButton } from "./FleetMentionButton";
 import { FleetModelSelect } from "../../models/FleetModelSelect";
 import { AddUploadPreview, ComposerUploadAttachments } from "./UploadAttachments";
 
 const PLACEHOLDER = "Message your fleet…";
+const NEW_FLEET_PLACEHOLDER = "What would you like your fleet to do?";
 const SEND_LABEL = "Send";
 const STOP_LABEL = "Stop";
 const COMPOSER_LABEL = "Chat composer";
+const NEW_FLEET_LABEL = "New fleet composer";
 const SESSION_EXPIRED = "Your session expired. Sign in again before sending this message.";
 const SEND_FAILED = "Message not sent.";
 const SEND_UNCONFIRMED = "Sending was interrupted.";
@@ -50,10 +52,13 @@ export type SteerComposerProps = {
   onDraft: (text: string) => void;
   /** Stop for the turn this fleet is working on; absent where no turn can be stopped. */
   turnStop?: TurnStop;
+  /** The message creates the fleet: there is no fleet yet to upload to or address from. */
+  creating?: boolean;
+  sendError?: string | null;
 };
 
-export function SteerComposer({ pending, onResend, onDismiss, onRestored, onDraft, turnStop, modelLabel = "Saved model" }: SteerComposerProps) {
-  const modelChanging = useFleetSetup()?.modelChanging ?? false;
+export function SteerComposer({ pending, onResend, onDismiss, onRestored, onDraft, turnStop, modelLabel = "Saved model", creating = false, sendError }: SteerComposerProps) {
+  const modelChanging = useFleetModelChoice()?.changing ?? false;
   const unresolved = useMemo(
     () => pending.filter((entry) => !NOT_NOTICED.has(entry.state)),
     [pending],
@@ -64,13 +69,20 @@ export function SteerComposer({ pending, onResend, onDismiss, onRestored, onDraf
   const draftRef = useRef<HTMLTextAreaElement>(null);
   return (
     <>
-    <ChatComposerFrame id="fleet-steer-composer" label={COMPOSER_LABEL} inputRef={draftRef} disabled={modelChanging}
-      input={<FleetAddressInput inputRef={draftRef} disabled={modelChanging} placeholder={PLACEHOLDER} />}
-      toolbar={<><AddUploadPreview /><FleetMentionButton input={draftRef} disabled={modelChanging} /><FleetModelSelect label={modelLabel} /></>}
+    <ChatComposerFrame id="fleet-steer-composer" label={creating ? NEW_FLEET_LABEL : COMPOSER_LABEL} inputRef={draftRef} disabled={modelChanging}
+      input={<FleetAddressInput inline={creating} inputRef={draftRef} disabled={modelChanging} placeholder={creating ? NEW_FLEET_PLACEHOLDER : PLACEHOLDER} />}
+      toolbar={<>
+        <div className="flex shrink-0 items-center gap-sm">
+          {creating ? null : <AddUploadPreview />}
+          <FleetMentionButton inline={creating} input={draftRef} disabled={modelChanging} />
+        </div>
+        <FleetModelSelect label={modelLabel} />
+      </>}
       actions={<>{turnStop?.visible ? <ChatStopButton label={STOP_LABEL} disabled={turnStop.stopping} onClick={turnStop.stop} /> : null}<SendButton draftRef={draftRef} /></>}>
-        <PendingSendNotices entries={unresolved} onResend={onResend} onDismiss={onDismiss} draftRef={draftRef} />
+        <PendingSendNotices entries={unresolved} onResend={onResend} onDismiss={onDismiss} draftRef={draftRef}
+          retryLabel={creating ? "Resend" : RETRY_LABEL} sendError={sendError} />
         <DraftReporter onDraft={onDraft} />
-        <ComposerUploadAttachments />
+        {creating ? null : <ComposerUploadAttachments />}
 
     </ChatComposerFrame>
     <ChatComposerHint />
@@ -119,7 +131,7 @@ function useRestoreRefusedTextOnMount(
  * a refused send comes back through the pending-send notice.
  */
 function SendButton({ draftRef }: { draftRef: RefObject<HTMLTextAreaElement | null> }) {
-  const modelChanging = useFleetSetup()?.modelChanging ?? false;
+  const modelChanging = useFleetModelChoice()?.changing ?? false;
   return (
     <ComposerPrimitive.Send asChild>
       <Button
@@ -127,7 +139,7 @@ function SendButton({ draftRef }: { draftRef: RefObject<HTMLTextAreaElement | nu
         variant="default"
         size="icon-row"
         aria-label={SEND_LABEL}
-        className="shrink-0 self-end rounded-full disabled:border-transparent disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100 [&_svg]:size-4.5"
+        className="shrink-0 self-end rounded-full disabled:border-transparent disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100 pointer-coarse:min-h-11 pointer-coarse:min-w-11 [&_svg]:size-4.5"
         onClick={() => draftRef.current?.focus({preventScroll: true})}
         {...(modelChanging ? { disabled: true } : {})}
       >
@@ -154,6 +166,8 @@ function useComposerPayload(): string {
 
 type NoticeProps = Pick<SteerComposerProps, "onResend" | "onDismiss"> & {
   draftRef: RefObject<HTMLTextAreaElement | null>;
+  retryLabel: string;
+  sendError?: string | null;
 };
 
 // Capped and scrolled, so a run of unsent messages never pushes the draft out
@@ -182,10 +196,10 @@ function PendingSendNotices({ entries, ...actions }: { entries: readonly Pending
 // the first, and nothing answered for the second. A conflict's id is spent, so
 // its button sends the text as a new message rather than offering a Resend
 // that could only be refused again.
-function PendingSendNotice({ entry, onResend, onDismiss, draftRef }: { entry: PendingSend } & NoticeProps) {
+function PendingSendNotice({ entry, onResend, onDismiss, draftRef, retryLabel, sendError }: { entry: PendingSend } & NoticeProps) {
   const aui = useAui();
   const draftMatches = useComposerPayload() === entry.text;
-  const modelChanging = useFleetSetup()?.modelChanging ?? false;
+  const modelChanging = useFleetModelChoice()?.changing ?? false;
   const textId = useId();
   // Sign-in returns to this fleet, where the notice's Resend is waiting.
   const pathname = usePathname();
@@ -207,13 +221,14 @@ function PendingSendNotice({ entry, onResend, onDismiss, draftRef }: { entry: Pe
   return (
     <Alert
       variant={unconfirmed ? "warning" : "destructive"}
-      className="items-center gap-md border-0 bg-transparent p-0 text-label text-muted-foreground [&>button]:focus-visible:ring-inset [&>button]:focus-visible:ring-offset-0"
+      className="items-start gap-md border-0 bg-transparent p-0 text-label text-muted-foreground [&>button]:focus-visible:ring-inset [&>button]:focus-visible:ring-offset-0"
       onDismiss={dismiss}
     >
-      <WarningCircleIcon className={cn("size-3.5 shrink-0", unconfirmed ? "text-warning" : "text-destructive")} aria-hidden="true" />
+      <WarningCircleIcon className={cn("mt-xs size-4 shrink-0", unconfirmed ? "text-warning" : "text-destructive")} aria-hidden="true" />
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-lg gap-y-xs">
         <span className="min-w-0">
           <span className="block">{sentenceFor(entry)}</span>
+          {sendError ? <span className="block wrap-anywhere">{sendError}</span> : null}
           <span id={textId} className={draftMatches ? "sr-only" : "block truncate text-foreground"}>{entry.text}</span>
         </span>
         {entry.state === PENDING_SEND_STATE.SESSION ? (
@@ -223,7 +238,7 @@ function PendingSendNotice({ entry, onResend, onDismiss, draftRef }: { entry: Pe
         ) : null}
         <Button type="button" variant="link" size="sm" className="min-h-8 px-sm text-primary pointer-coarse:min-h-11"
           disabled={modelChanging} onClick={resend} aria-describedby={textId}>
-          {conflict ? SEND_AS_NEW_LABEL : <><ClockClockwiseIcon size={16} aria-hidden="true" />{RETRY_LABEL}</>}
+          {conflict ? SEND_AS_NEW_LABEL : <><ClockClockwiseIcon size={16} aria-hidden="true" />{retryLabel}</>}
         </Button>
       </div>
     </Alert>

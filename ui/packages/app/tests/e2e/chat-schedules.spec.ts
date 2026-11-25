@@ -53,9 +53,10 @@ test("saved_schedule_summaries_and_activity_survive_reload", async ({page, chatP
 
 test("native scheduled composer preserves chat through edit, pause, resume and deletion", async ({page, chatProbe}, info) => {
   await page.setViewportSize(info.project.name === "chromium" ? {width: 1480, height: 1000} : {width: 390, height: 844});
-  const {SCHEDULE} = await import("@/tests/helpers/draft-fixtures");
-  let current = {...SCHEDULE, fleet_id: "linkwarden", source: "trigger", etag: '"wake-1"', description: "Every 30 minutes",
-    next_run_at: new Date(Date.now() + 30 * 60_000).toISOString(), override: {timezone: SCHEDULE.timezone, status: "active"}};
+  const {SCHEDULE} = await import("@/tests/helpers/fleet-fixtures");
+  // A schedule the fleet added is its own row: a change carries only the fields it changes.
+  let current = {...SCHEDULE, fleet_id: "linkwarden", source: "fleet", etag: '"wake-1"', description: "Every 30 minutes",
+    next_run_at: new Date(Date.now() + 30 * 60_000).toISOString()};
   const writes: {method: string; body: unknown}[] = [];
   await page.route(`**/live/v1/workspaces/workspace/fleets/linkwarden/schedules/${SCHEDULE.schedule_id}`, async route => {
     const request = route.request();
@@ -65,8 +66,8 @@ test("native scheduled composer preserves chat through edit, pause, resume and d
     }
     expect(request.headers()["if-match"]).toBe(current.etag);
     const body = request.postDataJSON();writes.push({method: request.method(), body});
-    current = {...current, ...body.override, override: body.override, etag: `"wake-${writes.length + 1}"`,
-      run_state: body.override.status === "paused" ? "paused" : "scheduled"};
+    current = {...current, ...body, etag: `"wake-${writes.length + 1}"`,
+      run_state: (body.status ?? current.status) === "paused" ? "paused" : "scheduled"};
     await route.fulfill({json: current});
   });
   await page.goto(`${chatProbe}?durable_tasks=1&wakeups=1`);
@@ -92,7 +93,8 @@ test("native scheduled composer preserves chat through edit, pause, resume and d
   await editor.getByLabel("What should the fleet do?").fill("Check the pull request and report failures");
   await editor.getByRole("button", {name: "Save", exact: true}).click();
   await expect(editor).toBeHidden();
-  expect(writes[2]?.body).toEqual({override: {timezone: SCHEDULE.timezone, status: "active", cron: "*/15 * * * *", message: "Check the pull request and report failures"}});
+  expect(writes.slice(0, 2).map(write => write.body)).toEqual([{status: "paused"}, {status: "active"}]);
+  expect(writes[2]?.body).toEqual({cron: "*/15 * * * *", message: "Check the pull request and report failures"});
   await footer.getByRole("button", {name: "Delete wake-up"}).click();
   let confirm = page.getByRole("alertdialog", {name: "Delete wake-up?"});
   await confirm.getByRole("button", {name: "Cancel", exact: true}).click();
@@ -119,8 +121,8 @@ async function expectPausedWakeupGeometry(footer: Locator) {
 }
 
 test("empty and invalid wake-up edits retain the saved schedule and unsent chat", async ({page, chatProbe}) => {
-  const {SCHEDULE} = await import("@/tests/helpers/draft-fixtures");
-  const saved = {...SCHEDULE, fleet_id: "linkwarden", source: "trigger", etag: '"unchanged"'};
+  const {SCHEDULE} = await import("@/tests/helpers/fleet-fixtures");
+  const saved = {...SCHEDULE, fleet_id: "linkwarden", source: "fleet", etag: '"unchanged"'};
   const writes: unknown[] = [];
   await page.route(`**/live/v1/workspaces/workspace/fleets/linkwarden/schedules/${SCHEDULE.schedule_id}`, route => {
     if (route.request().method() === "GET") return route.fulfill({json: saved});
@@ -147,7 +149,7 @@ test("empty and invalid wake-up edits retain the saved schedule and unsent chat"
   await expect(editor.getByRole("alert")).toContainText("Choose a valid cron schedule.");
   await expect(editor.getByLabel("Schedule", {exact: true})).toHaveValue("not-a-cron");
   await expect(editor.getByRole("button", {name: "Save", exact: true})).toBeEnabled();
-  expect(writes).toEqual([{override: {cron: "not-a-cron"}}]);
+  expect(writes).toEqual([{cron: "not-a-cron"}]);
   await editor.getByRole("button", {name: "Cancel", exact: true}).click();
   await expect(chat).toHaveValue("Keep this instruction while I correct the schedule");
 });

@@ -1,10 +1,8 @@
-//! The three answers a check that did not start the run can give.
+//! The two answers a check that did not start the run can give.
 //!
-//! Split from [`StartCheck`] because a caller acting on a stop has three arms
-//! to act on, not four: a type that also carried `Start` made every stop
+//! Split from [`StartCheck`] because a caller acting on a stop has two arms
+//! to act on, not three: a type that also carried `Start` made every stop
 //! handler carry an arm for a pass that had already let the event through.
-
-use afd_gate::gate::Waiting;
 
 use super::{Billed, Refusal, StartCheck, Transient};
 
@@ -15,8 +13,6 @@ pub enum Declined {
     Refuse(Refusal),
     /// Leave the delivery leasable; the next poll tries again.
     Retry(Transient),
-    /// Leave the delivery leasable; a person owes an answer.
-    Await(Waiting),
 }
 
 impl StartCheck {
@@ -29,7 +25,6 @@ impl StartCheck {
             Self::Start(billed) => Ok(billed),
             Self::Refuse(refusal) => Err(Declined::Refuse(refusal)),
             Self::Retry(transient) => Err(Declined::Retry(transient)),
-            Self::Await(waiting) => Err(Declined::Await(waiting)),
         }
     }
 }
@@ -39,7 +34,6 @@ impl From<Declined> for StartCheck {
         match declined {
             Declined::Refuse(refusal) => Self::Refuse(refusal),
             Declined::Retry(transient) => Self::Retry(transient),
-            Declined::Await(waiting) => Self::Await(waiting),
         }
     }
 }
@@ -51,22 +45,19 @@ mod tests {
         reason = "a test asserts by panicking; the restriction set is for the daemon"
     )]
 
-    use afd_gate::gate::Waiting;
-
     use super::{Declined, Refusal, StartCheck, Transient};
 
     /// Every stop the pass can answer, one per arm.
-    fn every_stop() -> [Declined; 3] {
+    fn every_stop() -> [Declined; 2] {
         [
             Declined::Refuse(Refusal::labelled("fixture_label")),
             Declined::Retry(Transient { at: "fixture_gate" }),
-            Declined::Await(Waiting::Pending),
         ]
     }
 
     /// A stop survives the trip through the public decision and back: no arm
-    /// is renamed into another on the way, which would turn a person's pending
-    /// answer into a retry or a refusal into a retry.
+    /// is renamed into another on the way, which would turn a refusal into a
+    /// retry.
     #[test]
     fn a_stop_round_trips_through_the_start_check_unchanged() {
         for stop in every_stop() {

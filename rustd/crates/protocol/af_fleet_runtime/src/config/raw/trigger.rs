@@ -18,7 +18,6 @@ use crate::name::is_slug_char;
 // carries only its own keys, where the compiler can check them. An
 // unrecognised `type` becomes a serde error that NAMES the accepted variants.
 #[derive(Debug, Deserialize, Validate)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema), schema(as = DefinitionTrigger))]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub(crate) enum Trigger {
     /// Starts on a signed delivery from an external provider.
@@ -30,7 +29,6 @@ pub(crate) enum Trigger {
             custom(charset(is_slug_char)),
             custom(is_not_reserved_source)
         ))]
-        #[cfg_attr(feature = "openapi", schema(required = true, nullable = false))]
         source: Option<String>,
         /// The event names that start a run. Omit it to accept every event.
         // A list that is PRESENT and names nothing would subscribe to nothing,
@@ -58,7 +56,6 @@ pub(crate) enum Trigger {
     Cron {
         /// The schedule, as a cron expression.
         #[garde(inner(length(chars, min = 1, max = MAX_REFERENCE_LEN)))]
-        #[cfg_attr(feature = "openapi", schema(required = true, nullable = false))]
         schedule: Option<String>,
         /// The time zone the schedule is read in.
         #[garde(inner(length(chars, min = 1, max = MAX_REFERENCE_LEN)))]
@@ -71,7 +68,6 @@ pub(crate) enum Trigger {
     Mention {
         /// The chat provider.
         #[garde(inner(length(chars, min = 1, max = MAX_REFERENCE_LEN)))]
-        #[cfg_attr(feature = "openapi", schema(required = true, nullable = false))]
         source: Option<String>,
         /// The channel identifier, as a list with exactly one entry.
         // A list so the key reads like `repositories`; exactly one entry, so a
@@ -81,7 +77,6 @@ pub(crate) enum Trigger {
             length(min = MENTION_CHANNELS, max = MENTION_CHANNELS),
             inner(length(chars, min = 1, max = MAX_CHANNEL_ID_LEN))
         ))]
-        #[cfg_attr(feature = "openapi", schema(required = true, nullable = false))]
         channels: Option<Vec<String>>,
     },
 }
@@ -89,14 +84,12 @@ pub(crate) enum Trigger {
 /// The complete signing recipe. Fixed-header recipes accept no extra fields.
 #[derive(Debug, Deserialize, Validate)]
 #[serde(tag = "scheme", deny_unknown_fields)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema), schema(as = DefinitionWebhookVerifier))]
 pub(crate) enum Verifier {
     /// Raw body with a prefixed hex digest.
     #[serde(rename = "body-hex-sha256")]
     BodyHexSha256 {
         /// Header holding the signature.
         #[garde(inner(length(chars, min = 1, max = MAX_HEADER_LEN), custom(charset(is_header_char))))]
-        #[cfg_attr(feature = "openapi", schema(required = true, nullable = false))]
         header: Option<String>,
     },
     /// Raw body with a bare hex digest.
@@ -104,7 +97,6 @@ pub(crate) enum Verifier {
     BodyHex {
         /// Header holding the signature.
         #[garde(inner(length(chars, min = 1, max = MAX_HEADER_LEN), custom(charset(is_header_char))))]
-        #[cfg_attr(feature = "openapi", schema(required = true, nullable = false))]
         header: Option<String>,
     },
     /// Raw body with a base64 digest.
@@ -112,7 +104,6 @@ pub(crate) enum Verifier {
     BodyBase64Sha256 {
         /// Header holding the signature.
         #[garde(inner(length(chars, min = 1, max = MAX_HEADER_LEN), custom(charset(is_header_char))))]
-        #[cfg_attr(feature = "openapi", schema(required = true, nullable = false))]
         header: Option<String>,
     },
     /// Fixed Slack headers with a signed timestamp.
@@ -142,10 +133,7 @@ impl<'de> Deserialize<'de> for ForbiddenHeader {
 }
 
 /// Bound on an authored signature header, in ASCII characters.
-pub(crate) const MAX_HEADER_LEN: usize = 128;
-/// HTTP token grammar; a header name cannot inject whitespace or delimiters.
-#[cfg(feature = "openapi")]
-pub(crate) const HEADER_PATTERN: &str = "^[!#$%&'*+.^_`|~0-9A-Za-z-]+$";
+const MAX_HEADER_LEN: usize = 128;
 
 const fn is_header_char(character: char) -> bool {
     character.is_ascii_alphanumeric()

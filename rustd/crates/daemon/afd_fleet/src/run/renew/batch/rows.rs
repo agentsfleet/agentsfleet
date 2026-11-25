@@ -29,7 +29,6 @@ pub(super) struct Found {
     pub(super) durable_task_id: Option<Uuid7>,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     pub(super) created_at: Timestamp,
-    pub(super) head_revision_id: Option<Uuid7>,
     pub(super) catalogue_version: i64,
 }
 
@@ -49,19 +48,19 @@ impl Found {
 }
 
 impl RunService {
-    /// The frame's rows from what the session kept and the versions the
-    /// replica last read, or `None` when any run or fleet lacks one: the
-    /// statement guards every fact taken here, and reads status and the cancel
-    /// mark itself under its locks.
-    pub(super) async fn kept_rows(
+    /// The frame's rows from what the session kept and the catalogue version
+    /// the replica last read, or `None` when any run lacks its facts or the
+    /// version is unknown: the statement guards every fact taken here, and
+    /// reads status and the cancel mark itself under its locks.
+    pub(super) fn kept_rows(
         &self,
         runs: &[(Uuid7, RenewRequest)],
         kept: &HashMap<Uuid7, crate::run::Reported>,
     ) -> Option<Vec<Found>> {
+        let catalogue_version = self.runs.latest().known()?;
         let mut rows = Vec::with_capacity(runs.len());
         for (run_id, _request) in runs {
             let facts = kept.get(run_id)?;
-            let (head, catalogue_version) = self.runs.latest().known(&facts.fleet_id).await?;
             rows.push(Found {
                 id: run_id.clone(),
                 status: sql::RUN_STATUS_ACTIVE.to_owned(),
@@ -74,7 +73,6 @@ impl RunService {
                 model: facts.model.clone(),
                 durable_task_id: None,
                 created_at: facts.run_created_at,
-                head_revision_id: Some(head),
                 catalogue_version,
             });
         }
@@ -82,7 +80,7 @@ impl RunService {
     }
 
     /// The frame's rows as the pre-read answers them, which also tells the
-    /// replica each fleet's versions.
+    /// replica the catalogue version.
     pub(super) async fn read_renewals(
         &self,
         runner_id: &Uuid7,
@@ -96,14 +94,7 @@ impl RunService {
             .await
             .map_err(query(CONTEXT_READ))?;
         for row in &found {
-            self.runs
-                .latest()
-                .observe(
-                    &row.fleet_id,
-                    row.head_revision_id.as_ref(),
-                    row.catalogue_version,
-                )
-                .await;
+            self.runs.latest().observe(row.catalogue_version);
         }
         Ok(found)
     }

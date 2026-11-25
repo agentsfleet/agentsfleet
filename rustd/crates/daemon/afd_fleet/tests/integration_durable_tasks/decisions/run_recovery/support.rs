@@ -65,6 +65,7 @@ pub(in super::super) async fn model(fixture: &Decisions<'_>, selected: Option<&U
 
 pub(in super::super) async fn expire(case: &Case) {
     chat_source(case).await;
+    continuation_turn(case).await;
     let mut connection = case
         .held
         .fixtures
@@ -98,29 +99,29 @@ pub(super) async fn assert_issued(case: &Case, task: &Uuid7, run: &Uuid7, fence:
     assert_eq!(rows, (2, 1));
 }
 
-pub(super) async fn assert_blocked(case: &Case, task: &Uuid7) {
-    let row: (String, i64, i64, i32, i64) = sqlx::query_as("SELECT status,generation,stop_generation,used_runs,(SELECT count(*) FROM thread.runs WHERE fleet_id=$2) FROM fleet.durable_tasks WHERE id=$1")
-        .bind(task).bind(&case.scope.fleet_id).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("refusal observer")).await.expect("blocked original task");
-    assert_eq!(row, ("blocked".to_owned(), 2, 1, 1, 1));
-    let live: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM thread.turns WHERE durable_task_id=$1 AND settled_at IS NULL",
+/// The fixture run stands in for its task's continuation run, so its turn
+/// carries the task as a continuation turn does: reassigning the turn issues
+/// the task again under the generation the turn names.
+async fn continuation_turn(case: &Case) {
+    let bound = sqlx::query(
+        "UPDATE thread.turns a SET durable_task_id = l.durable_task_id, \
+         durable_task_generation = l.durable_task_generation \
+         FROM thread.runs l WHERE l.id = $1 AND a.id = l.turn_id \
+         AND a.durable_task_id IS NULL AND l.durable_task_id IS NOT NULL",
     )
-    .bind(task)
-    .fetch_one(
+    .bind(&case.held.run_key)
+    .execute(
         &mut *case
             .held
             .fixtures
             .database
             .acquire()
             .await
-            .expect("continuation observer"),
+            .expect("continuation fixture"),
     )
     .await
-    .expect("preserved original human source");
-    assert_eq!(
-        live, 1,
-        "original human source is not falsely settled by an authority refusal"
-    );
+    .expect("the run's turn takes its task");
+    assert_eq!(bound.rows_affected(), 1, "the fixture run holds a task");
 }
 
 async fn chat_source(case: &Case) {

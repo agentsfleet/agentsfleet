@@ -17,7 +17,7 @@ Each run targets `ENV=dev` or `ENV=prod`; the gate refuses `all`.
 
 Both environments share one Grafana stack, namespace, datasource and ingest credential.
 No series carries `deployment.environment`, so a production apply adds a second dashboard over the same mixed series.
-Never claim development and production isolation; see `docs/architecture/observability.md` §Service Level Objectives.
+Never claim development and production isolation; see [observability limits](../../../docs/architecture/observability.md#limits).
 
 ## Before you begin
 

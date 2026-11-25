@@ -1,4 +1,4 @@
-//! Choices use the same eligibility the setup run's model check reads.
+//! Choices carry the runtime eligibility a model's saved facts allow.
 
 use afd_credential::provider::ModelFacts;
 
@@ -21,7 +21,6 @@ pub(super) struct Row {
 
 pub(super) fn eligible(row: Row, purpose: Option<ModelPurpose>) -> Option<WorkspaceModel> {
     let eligible = ModelFacts {
-        model: &row.model,
         inference: row.inference.as_ref().map(|settings| &settings.0),
         endpoint: row.base_url.as_deref(),
         context_window_tokens: row.context,
@@ -30,9 +29,7 @@ pub(super) fn eligible(row: Row, purpose: Option<ModelPurpose>) -> Option<Worksp
     }
     .eligibility();
     let runtime = row.has_key && eligible.runtime;
-    let setup = row.has_key && eligible.tools;
     let allowed = match purpose {
-        Some(ModelPurpose::Setup) => setup,
         Some(ModelPurpose::Runtime) => runtime,
         None => true,
     };
@@ -46,7 +43,7 @@ pub(super) fn eligible(row: Row, purpose: Option<ModelPurpose>) -> Option<Worksp
             .inference
             .as_ref()
             .map(|settings| i64::from(settings.0.max_output_tokens)),
-        eligibility: ModelEligibility { setup, runtime },
+        eligibility: ModelEligibility { runtime },
         pricing: ModelPricing {
             input_nanos_per_million: row.input.to_string(),
             output_nanos_per_million: row.output.to_string(),

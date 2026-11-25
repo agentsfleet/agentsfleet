@@ -1,35 +1,29 @@
-//! Root-only coordination: native identity, accounted judgments and complete plans.
+//! Root-only coordination of a task-bound run: its native inputs read before
+//! the sandbox, and the accounted goal judgments its action groups end with.
+//!
+//! A run is a task run only when its payload carries a bound task. Nothing
+//! here interprets a person's message: the fleet's own model binds a message
+//! to a task with `task_start` or `task_input`, and the decision model only
+//! judges whether a task is done (`goal`).
 
 pub(crate) mod goal;
-pub(crate) mod interpretation;
-#[cfg(test)]
-mod interpretation_tests;
-mod reply;
-mod routing;
-#[cfg(test)]
-mod routing_tests;
 
-use crate::{Meter, Result};
-use af_wire::{
-    durable_task::{
-        DecisionAssessment, DecisionDurableTaskVersion, DecisionReservationInput,
-        DurableTaskBindingItem, DurableTaskBindingsInput, DurableTaskBindingsResponse,
-        DurableTaskContext, DurableTaskInputAction, DurableTaskInputsQuery,
-        DurableTaskInputsResponse, DurableTaskItemBinding,
-    },
-    run::RunPayload,
+use crate::Result;
+use af_providers::Provider;
+use af_wire::durable_task::{
+    DecisionDurableTaskVersion, DurableTaskContext, DurableTaskInputsQuery,
+    DurableTaskInputsResponse,
 };
 use afr_tools::RunVerbs;
+use guffbolt::{Request, Step};
 
-/// Native inputs and accepted meaning prepared before any sandbox is built.
+/// A task run's native inputs, read before any sandbox is built.
 #[derive(Debug, Clone)]
 pub struct PreparedDurableTask {
-    /// Immutable native run execution ceiling, narrowed by accepted task binding.
+    /// Immutable native run execution ceiling, narrowed by the task's binding.
     pub execution_deadline: Option<jiff::Timestamp>,
-    /// Complete native read, including current ownership and recovery cursors.
+    /// Complete native read, including the bound task and recovery cursors.
     pub inputs: DurableTaskInputsResponse<'static>,
-    /// True only when native binding permits an action on this run's task.
-    pub allow_actions: bool,
 }
 
 pub(crate) fn unavailable() -> crate::Error {
@@ -67,183 +61,46 @@ pub(crate) fn identity() -> Result<String> {
         .to_string())
 }
 
+/// The task-bound run's inputs, read under its fence.
+///
+/// # Errors
+/// The read was refused or unanswered, or it carries no current task: the
+/// daemon issued the run bound, so a read that names none is not one the run
+/// may act on.
 pub(crate) async fn prepare(
-    run: &RunPayload<'_>,
+    fencing_token: u64,
     verbs: &dyn RunVerbs,
-    provider: &af_providers::Provider,
-    meter: &Meter,
-    stop: &tokio_util::sync::CancellationToken,
 ) -> Result<PreparedDurableTask> {
     let inputs = verbs
         .durable_task_inputs(DurableTaskInputsQuery {
-            fencing_token: run.fencing_token,
+            fencing_token,
             starting_after: None,
             after_input_sequence: None,
             limit: 4,
         })
         .await
         .map_err(native)?;
-    let mut prepared = PreparedDurableTask {
+    if inputs.current_durable_task.is_none() {
+        return Err(unavailable());
+    }
+    Ok(PreparedDurableTask {
         execution_deadline: inputs.execution_deadline,
-        allow_actions: inputs.current_message.is_none() && inputs.current_durable_task.is_some(),
         inputs,
-    };
-    if let Some(accepted) = &prepared.inputs.current_interpretation {
-        prepared.allow_actions = accepted.items.iter().any(|item| actionable(&item.binding));
-        return Ok(prepared);
-    }
-    let Some(message) = prepared.inputs.current_message.as_deref() else {
-        return Ok(prepared);
-    };
-    let accepted = Intake {
-        run,
-        verbs,
-        provider,
-        meter,
-        stop,
-    }
-    .bind(&prepared.inputs, &prepared.inputs.source_turn_id, message)
-    .await;
-    if let Ok(binding) = &accepted {
-        prepared.execution_deadline = binding.execution_deadline;
-    } else {
-        // A lost binding acknowledgement cannot extend the native execution budget.
-        prepared.execution_deadline = None;
-    }
-    if let Err(failure) = accepted {
-        if stop.is_cancelled() {
-            return Err(failure);
-        }
-        tracing::warn!(event = "task_intent_unavailable", error_code = %failure.code());
-        // A lost binding acknowledgement may already have committed. The
-        // native read below recovers that meaning before choosing clarification.
-        // No replay or unavailable classification grants action tools.
-    }
-    // Read the immutable interpretation back, including native item identities.
-    prepared.inputs = verbs
-        .durable_task_inputs(DurableTaskInputsQuery {
-            fencing_token: run.fencing_token,
-            starting_after: None,
-            after_input_sequence: None,
-            limit: 4,
-        })
-        .await
-        .map_err(native)?;
-    prepared.execution_deadline = prepared.inputs.execution_deadline;
-    prepared.allow_actions = prepared
-        .inputs
-        .current_interpretation
-        .as_ref()
-        .is_some_and(|accepted| accepted.items.iter().any(|item| actionable(&item.binding)));
-    Ok(prepared)
+    })
 }
 
-/// One root's existing coding/decision seams; no additional worker or queue.
-pub(crate) struct Intake<'a> {
-    pub(crate) run: &'a RunPayload<'a>,
-    pub(crate) verbs: &'a dyn RunVerbs,
-    pub(crate) provider: &'a af_providers::Provider,
-    pub(crate) meter: &'a Meter,
-    pub(crate) stop: &'a tokio_util::sync::CancellationToken,
-}
-
-impl Intake<'_> {
-    pub(crate) async fn bind(
-        &self,
-        inputs: &DurableTaskInputsResponse<'_>,
-        source: &str,
-        message: &str,
-    ) -> Result<DurableTaskBindingsResponse<'static>> {
-        let Self {
-            run,
-            verbs,
-            provider,
-            meter,
-            stop,
-        } = *self;
-        let assignment = run.decision.as_ref().ok_or_else(unavailable)?;
-        let evaluated = verbs
-            .durable_task_decision(DecisionReservationInput {
-                operation_id: identity()?,
-                fencing_token: run.fencing_token,
-                source_turn_id: source.to_owned(),
-                assessment: DecisionAssessment::Message,
-                durable_task: inputs.current_durable_task.as_ref().map(version),
-                retry_of: None,
-                evidence: serde_json::json!({}),
-            })
-            .await
-            .map_err(native)?;
-        let answers = routing::answers(&evaluated)?;
-        let count = routing::multiplicity(answers, &assignment.intent)?;
-        let proposed = interpretation::propose(
-            run,
-            provider,
-            meter,
-            stop,
-            message,
-            &inputs.durable_tasks,
-            count,
-        )
-        .await?;
-        let mut binding = DurableTaskBindingsInput {
-            fencing_token: run.fencing_token,
-            source_turn_id: source.to_owned(),
-            accepted_revision_id: inputs
-                .accepted_revision_id
-                .clone()
-                .ok_or_else(unavailable)?,
-            plan_digest: String::new(),
-            message_decision_call_id: evaluated.call_id.clone(),
-            items: proposed
-                .into_iter()
-                .map(|proposed| DurableTaskBindingItem {
-                    proposed,
-                    decision_call_id: None,
-                })
-                .collect(),
-        };
-        let interpretation = serde_json::to_vec(&binding.interpretation())?;
-        binding.plan_digest = af_core::etag::sha256_hex(&interpretation);
-        // `propose` admits four items at most, so every one has a `u8` ordinal.
-        for (ordinal, item) in (0..=u8::MAX).zip(binding.items.iter_mut()) {
-            if count == routing::Multiplicity::Single {
-                routing::check(&evaluated, &item.proposed, &assignment.intent)?;
-            } else {
-                let item_call = verbs
-                    .durable_task_decision(DecisionReservationInput {
-                        operation_id: identity()?,
-                        fencing_token: run.fencing_token,
-                        source_turn_id: binding.source_turn_id.clone(),
-                        assessment: DecisionAssessment::Item {
-                            ordinal,
-                            interpretation_digest: binding.plan_digest.clone(),
-                            source_start: item.proposed.source_start,
-                            source_end: item.proposed.source_end,
-                        },
-                        durable_task: inputs.current_durable_task.as_ref().map(version),
-                        retry_of: None,
-                        evidence: serde_json::to_value(&item.proposed)?,
-                    })
-                    .await
-                    .map_err(native)?;
-                routing::check(&item_call, &item.proposed, &assignment.intent)?;
-                item.decision_call_id = Some(item_call.call_id);
-            }
-        }
-        verbs.durable_task_bindings(binding).await.map_err(native)
+/// The answer of one tool-free model step, read whole: a step that asks for a
+/// call, stops at its output limit or never ends answers nothing.
+pub(crate) async fn collect(
+    provider: &Provider,
+    request: Request<'_>,
+    meter: &crate::Meter,
+) -> Result<String> {
+    let step = Step::read(provider.stream(request), meter).await?;
+    if !step.finished || step.cut || !step.calls.is_empty() {
+        return Err(unavailable());
     }
-}
-
-const fn actionable(item: &DurableTaskItemBinding) -> bool {
-    item.applies_here
-        && item.durable_task_id.is_some()
-        && matches!(
-            item.action,
-            DurableTaskInputAction::NewWork
-                | DurableTaskInputAction::Steer
-                | DurableTaskInputAction::Refresh
-        )
+    Ok(step.text)
 }
 
 pub(crate) fn version(task: &DurableTaskContext<'_>) -> DecisionDurableTaskVersion {

@@ -1,4 +1,4 @@
-//! Stop: a person ends one turn of any thread, a fleet's or a setup draft's.
+//! Stop: a person ends one turn of a fleet's thread.
 //!
 //! One statement ([`STOP_TURN`]) decides everything in the caller's
 //! transaction: it cancels the turn, marks the live run serving it, cancels
@@ -9,9 +9,7 @@
 //! (`afd_bus/src/command.rs`).
 //!
 //! A fleet reaches this through [`History::stop`](crate::view::History::stop),
-//! which takes [`HOLD_THREAD`] first; a setup draft runs [`stop_on`] inside the
-//! transaction that already holds the draft and its thread, because its
-//! creator-private access is checked there.
+//! which takes [`HOLD_THREAD`] first.
 
 use af_core::id::Uuid7;
 use sqlx::PgConnection;
@@ -20,7 +18,7 @@ use sqlx::PgConnection;
 pub const STOP_TURN: &str = include_str!("stop_turn.sql");
 
 /// A fleet Stop's fleet and thread holds, run before [`STOP_TURN`] in the same
-/// transaction. A setup draft holds its thread through its own statement.
+/// transaction.
 pub const HOLD_THREAD: &str = include_str!("hold_thread.sql");
 
 /// Who a closed approval records as its resolver: the person's Stop, not a
@@ -78,8 +76,7 @@ pub enum Stop {
     Finished(String),
 }
 
-/// One Stop, and the sequence of the turn it named, which a setup draft's
-/// conversation names its turns by.
+/// One Stop, and the sequence of the turn it named.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Stopped {
     /// The turn's sequence on its thread.

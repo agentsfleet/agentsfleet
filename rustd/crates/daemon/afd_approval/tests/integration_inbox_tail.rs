@@ -7,8 +7,9 @@
 //! reads, so a publisher that drifted from its reader fails here.
 //!
 //! This file holds the ANNOUNCEMENT concern: that a frame goes out, what it
-//! counts, and what happens when the bus will not take it. The continuation
-//! and runless concerns are siblings.
+//! counts, and what happens when the bus will not take it. The answer turn is
+//! the sibling suite's. A denied question answers nothing, so its frame is the
+//! first and only one a tail hears.
 
 #![expect(
     clippy::expect_used,
@@ -34,8 +35,8 @@ async fn a_decision_is_announced_on_the_fleets_live_tail() {
 
     let mut tail = tail(&lane).await;
 
-    let answered = lane.seed_gate(Window::Open).await;
-    let _still_waiting = lane.seed_gate(Window::Open).await;
+    let answered = lane.seed_question(Window::Open).await;
+    let _still_waiting = lane.seed_question(Window::Open).await;
     lane.inbox
         .resolve(answered.as_str(), Decision::Denied, OPERATOR, NOTE, None)
         .await
@@ -74,8 +75,8 @@ async fn assert_decision_frame(
 
 /// A re-raised action's rows are answered together, and counted together.
 ///
-/// `action_id` carries no unique constraint: a park that re-raises an action
-/// writes a second pending row, and one decision moves both. The count on
+/// `action_id` carries no unique constraint: an action raised twice holds a
+/// second pending row, and one decision moves both. The count on
 /// the frame is read on the statement's own snapshot, where both rows still
 /// stand as pending — so it must leave out everything the statement moved,
 /// not the one row the caller happened to read back.
@@ -86,9 +87,9 @@ async fn a_re_raised_actions_rows_are_counted_out_together() {
 
     let mut tail = tail(&lane).await;
 
-    let re_raised = lane.seed_gate(Window::Open).await;
-    lane.seed_gate_for(&re_raised, Window::Open).await;
-    let _sibling = lane.seed_gate(Window::Open).await;
+    let re_raised = lane.seed_question(Window::Open).await;
+    lane.seed_question_for(&re_raised, Window::Open).await;
+    let _sibling = lane.seed_question(Window::Open).await;
     lane.inbox
         .resolve(re_raised.as_str(), Decision::Denied, OPERATOR, NOTE, None)
         .await
@@ -109,8 +110,8 @@ async fn a_re_raised_actions_rows_are_counted_out_together() {
 ///
 /// The row moved over live Postgres before the announcement ran, and a
 /// person's answer must not be reported as failed because nobody could be told
-/// about it. The denial arm proves the announcement alone; an approval also
-/// lands a continuation, which
+/// about it. A denied question proves the announcement alone; an approved card
+/// also lands its answer turn, which
 /// `an_approval_with_a_lost_notification_still_commits_its_continuation` proves.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -121,7 +122,7 @@ async fn a_bus_that_will_not_take_the_frame_does_not_fail_the_decision() {
         afd_bus::test_util::unreachable(),
         afd_turns::Turns::for_tests(lane.pool.clone(), afd_bus::test_util::unreachable()),
     );
-    let action = lane.seed_gate(Window::Open).await;
+    let action = lane.seed_question(Window::Open).await;
 
     let outcome = inbox
         .resolve(action.as_str(), Decision::Denied, OPERATOR, NOTE, None)

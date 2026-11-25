@@ -5,7 +5,6 @@
     reason = "integration preconditions must fail loudly"
 )]
 
-mod assigned;
 mod cancellation;
 mod connection;
 mod context_load;
@@ -15,6 +14,3 @@ mod holders;
 mod lock_wait;
 mod replica;
 mod replicas;
-mod seat;
-mod setup_run;
-mod stop;

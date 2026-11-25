@@ -46,17 +46,19 @@ fn cutoff_offsets_are_normalized_before_selecting_the_utc_day() {
 }
 
 #[test]
-fn fleet_and_setup_filters_select_their_work() {
+fn the_fleet_and_runtime_filters_select_their_work() {
     let input = parsed(&format!("fleet_id={FLEET}&activity_type=runtime"));
     assert_eq!(
         input.request.filter.fleet.map(String::from).as_deref(),
         Some(FLEET)
     );
     assert_eq!(input.request.filter.work_type, Some(work::FLEET_RUN));
-    assert_eq!(
-        parsed("activity_type=setup").request.filter.work_type,
-        Some(work::SETUP_RUN)
-    );
+}
+
+/// No setup run exists to bill, so its filter names nothing a report reads.
+#[test]
+fn a_setup_activity_filter_is_refused() {
+    assert!(refused("activity_type=setup"));
 }
 
 #[test]

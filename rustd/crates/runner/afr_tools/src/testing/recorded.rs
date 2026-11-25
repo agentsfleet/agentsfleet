@@ -22,6 +22,62 @@ pub(crate) enum Asked {
         /// The text, as masked.
         text: String,
     },
+    /// A triggers call, its trigger owned.
+    Triggers(OwnedTriggerCall),
+    /// An access request, as it left the runner.
+    Access(af_wire::access_verb::AccessRequest<'static>),
+    /// A binding, as it left the runner.
+    Bindings(af_wire::durable_task::DurableTaskBindingsInput),
+}
+
+/// A [`crate::verbs::TriggerCall`] with every field owned, compared whole.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum OwnedTriggerCall {
+    Add {
+        call_number: u64,
+        trigger: crate::verbs::NewTrigger<'static>,
+    },
+    List,
+    Remove(String),
+}
+
+/// `call` with every text it borrows owned.
+fn owned_trigger(call: crate::verbs::TriggerCall<'_>) -> OwnedTriggerCall {
+    use crate::verbs::{NewTrigger, TriggerCall};
+    use std::borrow::Cow;
+    let text = |text: Option<Cow<'_, str>>| text.map(|text| Cow::Owned(text.into_owned()));
+    let list = |list: Option<Vec<Cow<'_, str>>>| {
+        list.map(|texts| {
+            texts
+                .into_iter()
+                .map(|t| Cow::Owned(t.into_owned()))
+                .collect()
+        })
+    };
+    match call {
+        TriggerCall::Add {
+            call_number,
+            trigger,
+        } => OwnedTriggerCall::Add {
+            call_number,
+            trigger: NewTrigger {
+                kind: trigger.kind,
+                source: text(trigger.source),
+                events: list(trigger.events),
+                repositories: list(trigger.repositories),
+                verifier: trigger
+                    .verifier
+                    .map(|verifier| af_wire::trigger_verb::TriggerVerifier {
+                        scheme: Cow::Owned(verifier.scheme.into_owned()),
+                        header: text(verifier.header),
+                    }),
+                secret_name: text(trigger.secret_name),
+                channel: text(trigger.channel),
+            },
+        },
+        TriggerCall::List => OwnedTriggerCall::List,
+        TriggerCall::Remove { trigger } => OwnedTriggerCall::Remove(trigger.as_str().to_owned()),
+    }
 }
 
 /// A [`crate::verbs::FleetsCall`] with every field owned, compared whole.
@@ -134,12 +190,18 @@ impl From<crate::verbs::ScheduleCall<'_>> for OwnedCall {
     }
 }
 
+/// What a recorded binding answers with.
+type Bound =
+    Result<af_wire::durable_task::DurableTaskBindingsResponse<'static>, crate::verbs::Unanswered>;
+
 /// Run verbs answering every call with `answer`, recording what was asked.
 #[derive(Debug)]
 pub(crate) struct RecordingVerbs {
     answer: Result<String, crate::verbs::Unanswered>,
     delivered: Result<bool, crate::verbs::Unanswered>,
     steered: Result<af_wire::steer_verb::FleetSteerAccepted<'static>, crate::verbs::Unanswered>,
+    access: Result<crate::verbs::AccessAnswer, crate::verbs::Unanswered>,
+    bound: Bound,
     asked: std::sync::Mutex<Vec<Asked>>,
 }
 
@@ -160,8 +222,25 @@ impl RecordingVerbs {
                 turn_id: std::borrow::Cow::Borrowed(STEERED_EVENT),
                 replayed: false,
             }),
+            access: Ok(crate::verbs::AccessAnswer::Asked),
+            bound: Err(crate::verbs::Unanswered::Unreachable),
             asked: std::sync::Mutex::new(Vec::new()),
         }
+    }
+
+    /// The same verbs, answering an access request with `access`.
+    pub(crate) fn granting(
+        mut self,
+        access: Result<crate::verbs::AccessAnswer, crate::verbs::Unanswered>,
+    ) -> Self {
+        self.access = access;
+        self
+    }
+
+    /// The same verbs, answering a binding with `bound`.
+    pub(crate) fn binding(mut self, bound: Bound) -> Self {
+        self.bound = bound;
+        self
     }
 
     /// The same verbs, answering a steer with `steered`.
@@ -223,6 +302,34 @@ impl crate::verbs::RunVerbs for RecordingVerbs {
             text: text.to_owned(),
         });
         self.steered.clone()
+    }
+
+    async fn triggers(
+        &self,
+        call: crate::verbs::TriggerCall<'_>,
+    ) -> Result<String, crate::verbs::Unanswered> {
+        self.record(Asked::Triggers(owned_trigger(call)));
+        self.answer.clone()
+    }
+
+    async fn access(
+        &self,
+        request: af_wire::access_verb::AccessRequest<'_>,
+    ) -> Result<crate::verbs::AccessAnswer, crate::verbs::Unanswered> {
+        self.record(Asked::Access(af_wire::access_verb::AccessRequest {
+            fencing_token: request.fencing_token,
+            name: std::borrow::Cow::Owned(request.name.into_owned()),
+            scope: request.scope,
+        }));
+        self.access
+    }
+
+    async fn durable_task_bindings(
+        &self,
+        input: af_wire::durable_task::DurableTaskBindingsInput,
+    ) -> Bound {
+        self.record(Asked::Bindings(input));
+        self.bound.clone()
     }
 }
 

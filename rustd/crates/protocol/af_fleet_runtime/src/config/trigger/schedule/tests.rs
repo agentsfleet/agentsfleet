@@ -1,29 +1,20 @@
-//! A cron trigger's schedule: one check for the definition parse and the
+//! A cron trigger's schedule: one check for a trigger list's parse and the
 //! daemon's schedule routes.
 
 use garde::Unvalidated;
 use serde_json::json;
 
 use super::{CronSchedule, REASON_INVALID_SCHEDULE, check_schedule};
-use crate::Definition;
+use crate::config::parse_triggers;
 use crate::error::{Error, ErrorKind};
 
 /// The minute field spans 0 to 59, so minute 61 is outside it.
 const MINUTE_61: &str = "61 * * * *";
 
-/// A definition whose one cron trigger fires on `schedule`.
-fn definition(schedule: &str) -> String {
-    json!({
-        "schema_version": 1,
-        "description": "Checks the deploy every morning.",
-        "instructions_md": "Check the deploy and report what changed.",
-        "config": {"name": "deploy-check", "x-agentsfleet": {
-            "triggers": [{"type": "cron", "schedule": schedule, "timezone": "UTC", "message": "Daily check"}],
-            "tools": ["agentmail"],
-            "budget": {"daily_nanos": "1000000000"}
-        }}
-    })
-    .to_string()
+/// A trigger list whose one cron trigger fires on `schedule`.
+fn triggers(schedule: &str) -> String {
+    json!([{"type": "cron", "schedule": schedule, "timezone": "UTC", "message": "Daily check"}])
+        .to_string()
 }
 
 /// The verdict [`check_schedule`] gives `expression`, once its bound held.
@@ -56,19 +47,17 @@ fn is_schedule_refusal<T>(outcome: &Result<T, Error>) -> bool {
     )
 }
 
-/// The definition parse refuses minute 61 through the same function the
-/// daemon's schedule routes call, so a runner's proposal check and a schedule
-/// route reach one verdict.
+/// A trigger list's parse refuses minute 61 through the same function the
+/// daemon's schedule routes call, so a trigger and a schedule route reach one
+/// verdict.
 #[test]
 fn af_fleet_runtime_refuses_an_invalid_cron_schedule() -> Result<(), Error> {
-    assert!(is_schedule_refusal(&Definition::parse(&definition(
-        MINUTE_61
-    ))));
+    assert!(is_schedule_refusal(&parse_triggers(&triggers(MINUTE_61))));
     assert!(is_schedule_refusal(&checked(MINUTE_61)));
 
-    let accepted = Definition::parse(&definition("0 9 * * *"))?;
+    let accepted = parse_triggers(&triggers("0 9 * * *"))?;
     assert!(matches!(
-        accepted.runtime().triggers().first(),
+        accepted.first(),
         Some(crate::config::Trigger::Cron(cron)) if &*cron.schedule == "0 9 * * *"
     ));
     Ok(())
@@ -90,8 +79,8 @@ fn an_alias_or_a_named_field_is_refused_though_the_parser_reads_it() {
             "`{expression}` is not five numeric fields"
         );
         assert!(
-            is_schedule_refusal(&Definition::parse(&definition(expression))),
-            "the definition parse refuses `{expression}` too"
+            is_schedule_refusal(&parse_triggers(&triggers(expression))),
+            "the trigger list parse refuses `{expression}` too"
         );
     }
 }
@@ -147,12 +136,12 @@ fn a_long_cron_expression_is_judged_by_the_parser() {
     let valid = format!("{}7 * * * *", "7,".repeat(100));
     assert!(!breaks_the_bound(&valid), "300 characters hold the bound");
     assert!(
-        Definition::parse(&definition(&valid)).is_ok(),
+        parse_triggers(&triggers(&valid)).is_ok(),
         "a long valid list parses"
     );
     let junk = format!("{} * * * *", "x".repeat(200));
     assert!(!breaks_the_bound(&junk));
-    assert!(is_schedule_refusal(&Definition::parse(&definition(&junk))));
+    assert!(is_schedule_refusal(&parse_triggers(&triggers(&junk))));
     assert!(breaks_the_bound(""), "an empty expression holds no bound");
 }
 

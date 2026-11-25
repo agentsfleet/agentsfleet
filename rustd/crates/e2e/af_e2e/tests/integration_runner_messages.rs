@@ -25,7 +25,7 @@ use crate::speaking::Speaking;
 use crate::verbs::{CHANNEL, THREAD, posts};
 use crate::wire::post;
 
-/// The credential the scrub case's fleet declares, and the value it holds.
+/// The secret the scrub case's fleet holds, and the value in it.
 const CREDENTIAL: &str = "grafana";
 /// See [`CREDENTIAL`].
 const TOKEN: &str = "glsa_fixture_interim_secret";
@@ -36,16 +36,13 @@ const LONG_LINE_BYTES: usize = 10_000;
 /// How many lines the uncapped run says: past the eight it was once held to.
 const LINES: u32 = 10;
 
-/// A fleet that declares [`CREDENTIAL`].
-const DECLARING: &str = r#"{"name":"e2e-fleet","x-agentsfleet":{"triggers":[],"tools":[],"credentials":["grafana"],"budget":{"daily_nanos":"1000000000"}}}"#;
-
 /// A line reaches the event's Slack thread while the run is
 /// still held, under its own marker part.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_fleet_posts_a_message_mid_run() {
     let mut supervisor = Supervisor::new();
-    let speaking = Speaking::boot(&mut supervisor, crate::e2e_seed::FLEET_CONFIG_JSON).await;
+    let speaking = Speaking::boot(&mut supervisor).await;
     let (run_id, fence) = speaking.run_thread().await;
 
     let (status, posted) = speaking
@@ -80,7 +77,7 @@ async fn test_fleet_posts_a_message_mid_run() {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_a_run_posts_long_lines_past_eight() {
     let mut supervisor = Supervisor::new();
-    let speaking = Speaking::boot(&mut supervisor, crate::e2e_seed::FLEET_CONFIG_JSON).await;
+    let speaking = Speaking::boot(&mut supervisor).await;
     let (run_id, fence) = speaking.run_thread().await;
 
     let (status, refused) = speaking.say((&run_id, fence), "").await;
@@ -114,7 +111,7 @@ async fn test_a_run_posts_long_lines_past_eight() {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_message_without_channel_refused() {
     let mut supervisor = Supervisor::new();
-    let speaking = Speaking::boot(&mut supervisor, crate::e2e_seed::FLEET_CONFIG_JSON).await;
+    let speaking = Speaking::boot(&mut supervisor).await;
     let (run_id, fence) = speaking.run_seeded().await;
 
     let (status, refused) = speaking.say((&run_id, fence), "anyone there?").await;
@@ -153,13 +150,20 @@ async fn test_message_without_channel_refused() {
     speaking.finish(supervisor).await;
 }
 
-/// A secret value the fleet declared is masked before the line
-/// leaves the daemon.
+/// A value of a secret the fleet holds is masked before the line leaves the
+/// daemon.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_message_is_scrubbed() {
     let mut supervisor = Supervisor::new();
-    let speaking = Speaking::boot(&mut supervisor, DECLARING).await;
+    let speaking = Speaking::boot(&mut supervisor).await;
+    crate::e2e_seed::approve_secret(
+        &speaking.scene.booted,
+        &speaking.scene.fleet,
+        CREDENTIAL,
+        af_core::clock::now(),
+    )
+    .await;
     let body = json!({"host": "grafana.example.test", "token": TOKEN}).to_string();
     seal(
         &speaking.scene.booted,
@@ -186,7 +190,7 @@ async fn test_message_is_scrubbed() {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_message_refused_by_slack_is_undelivered() {
     let mut supervisor = Supervisor::new();
-    let speaking = Speaking::boot(&mut supervisor, crate::e2e_seed::FLEET_CONFIG_JSON).await;
+    let speaking = Speaking::boot(&mut supervisor).await;
     speaking
         .slack
         .post_answers(200, r#"{"ok":false,"error":"channel_not_found"}"#);
@@ -204,7 +208,7 @@ async fn test_message_refused_by_slack_is_undelivered() {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_message_to_a_stalled_slack_answers_at_the_deadline() {
     let mut supervisor = Supervisor::new();
-    let speaking = Speaking::boot(&mut supervisor, crate::e2e_seed::FLEET_CONFIG_JSON).await;
+    let speaking = Speaking::boot(&mut supervisor).await;
     speaking.slack.post_stalls();
     let (run_id, fence) = speaking.run_thread().await;
 

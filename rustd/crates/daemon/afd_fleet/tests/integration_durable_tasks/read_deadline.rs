@@ -64,7 +64,8 @@ async fn deadline(case: &Case) {
             .expect("same replica recovers"),
         before
     );
-    assert_eq!(case.counts().await, (1, 1, 1));
+    // The source turn and the task's staged continuation.
+    assert_eq!(case.counts().await, (1, 1, 2));
     database.close().await;
     admin.close().await;
 }

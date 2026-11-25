@@ -38,7 +38,7 @@ fn body_of(request: &Sent) -> Value {
 
 #[tokio::test]
 async fn pushover_backend_sends_through_the_egress_guard() {
-    let run = RunFixture::new(false);
+    let run = RunFixture::new();
 
     let (output, sent) = notify(
         &run,
@@ -68,7 +68,7 @@ async fn pushover_backend_sends_through_the_egress_guard() {
 /// refuses before anything leaves.
 #[tokio::test]
 async fn a_run_whose_policy_lacks_pushover_cannot_notify() {
-    let mut run = RunFixture::new(false);
+    let mut run = RunFixture::new();
     run.policy
         .network_policy
         .allow
@@ -85,7 +85,7 @@ async fn a_run_whose_policy_lacks_pushover_cannot_notify() {
 
 #[tokio::test]
 async fn a_low_priority_is_quiet_and_normal_names_none() {
-    let run = RunFixture::new(false);
+    let run = RunFixture::new();
 
     let (_output, low) = notify(&run, 200, json!({"message": "x", "priority": "low"})).await;
     let (_output, normal) = notify(&run, 200, json!({"message": "x"})).await;
@@ -98,7 +98,7 @@ async fn a_low_priority_is_quiet_and_normal_names_none() {
 
 #[tokio::test]
 async fn the_model_names_no_credential_and_no_vendor_priority() {
-    let run = RunFixture::new(false);
+    let run = RunFixture::new();
 
     for refused in [
         json!({"message": "x", "token": "model_supplied"}),
@@ -120,7 +120,7 @@ async fn the_model_names_no_credential_and_no_vendor_priority() {
 
 #[tokio::test]
 async fn a_fleet_without_a_pushover_secret_sends_nothing() {
-    let mut run = RunFixture::new(false);
+    let mut run = RunFixture::new();
     run.policy.secrets_map = Some(json!({}));
 
     let (output, sent) = notify(&run, 200, json!({"message": "x"})).await;
@@ -134,7 +134,7 @@ async fn a_fleet_without_a_pushover_secret_sends_nothing() {
 
 #[tokio::test]
 async fn a_pushover_refusal_reads_as_upstream_status() {
-    let run = RunFixture::new(false);
+    let run = RunFixture::new();
 
     let (output, sent) = notify(&run, 400, json!({"message": "x"})).await;
 
@@ -150,7 +150,7 @@ async fn a_pushover_refusal_reads_as_upstream_status() {
 /// hosted that way cannot notify, and says why.
 #[tokio::test]
 async fn a_notifier_without_a_transport_refuses() {
-    let fixture = RunFixture::new(false);
+    let fixture = RunFixture::new();
     let (run, slot) = (fixture.run(), no_sandbox());
     let backends = Backends::new(&run, &slot, None);
     let tools = backends.tools(&[NOTIFY]).expect("a run builds notify");

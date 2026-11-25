@@ -40,7 +40,7 @@ impl Harness<'_, '_> {
 
     pub(super) fn durable_task_yield_due(&self) -> bool {
         self.depth == 0
-            && self.task.as_ref().is_some_and(|task| task.allow_actions)
+            && self.task.is_some()
             && self
                 .durable_task_execution_budget()
                 .is_none_or(|remaining| remaining <= ASSESSMENT_RESERVE)

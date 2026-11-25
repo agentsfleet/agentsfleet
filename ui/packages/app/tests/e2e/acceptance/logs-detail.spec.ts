@@ -58,7 +58,7 @@ test.describe("fleet detail logs", () => {
         { timeout: RENDER_TIMEOUT_MS },
       )
       .toBe(true);
-    // Setup receipts share the timeline; inspect the turn this send admitted.
+    // The fleet's first message shares the timeline; inspect the turn this send admitted.
     const detail = await api.get<TurnDetail>(
       `/v1/workspaces/${ws}/fleets/${seeded.id}/turns/${settledTurnId}`,
     );

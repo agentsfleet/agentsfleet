@@ -24,7 +24,6 @@ impl Fixture {
             target: DurableTaskTarget::ApiOnly,
             generation: 7,
             stop_generation: 0,
-            accepted_revision_id: ID.into(),
             objective: "Restore the accepted repair".into(),
             goal_digest: "b".repeat(64).into(),
             questions: vec![],
@@ -42,7 +41,6 @@ impl Fixture {
             limits: af_wire::durable_task::DurableTaskLimits::default(),
             usage: af_wire::durable_task::DurableTaskUsage::default(),
         };
-        run.durable_tasks = true;
         run.decision = Some(Box::new(
             crate::run_loop::tests::recovery::fixture::assignment(),
         ));
@@ -65,7 +63,6 @@ impl Fixture {
                 execution_deadline: None,
                 inputs: DurableTaskInputsResponse {
                     source_turn_id: ID.to_owned(),
-                    accepted_revision_id: Some(ID.to_owned()),
                     current_message: None,
                     inputs: vec![],
                     accepted_inputs: vec![],
@@ -75,7 +72,6 @@ impl Fixture {
                     next_cursor: None,
                     execution_deadline: None,
                 },
-                allow_actions: true,
             },
             egress: test_support::assigned(af_wire::runner::NetworkPolicy::AllowAll, &[]),
             bound: Bound::Host,

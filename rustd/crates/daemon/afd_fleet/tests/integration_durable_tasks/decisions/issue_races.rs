@@ -6,8 +6,8 @@
 
 use af_core::{error_code, id::Uuid7, test_util::trace::Capture};
 use af_wire::durable_task::{
-    DecisionAssessment, DecisionCallState, DecisionReceipt, DecisionRetryDelay,
-    DecisionUnavailableCause, DurableTaskState,
+    DecisionCallState, DecisionReceipt, DecisionRetryDelay, DecisionUnavailableCause,
+    DurableTaskState,
 };
 use afd_db::Db;
 use afd_fleet::durable_task::DurableTaskLifecycle as _;
@@ -90,7 +90,7 @@ async fn a_reservation_that_waited_behind_a_takeover_issues_nothing() {
 
 async fn takeover(case: &Case, commits: bool) {
     let fixture = Decisions::create(case).await;
-    let input = fixture.reservation(DecisionAssessment::Message, None);
+    let input = fixture.call_input().await;
     let database = &case.held.fixtures.database;
     let mut holder = database.acquire().await.expect("a connection");
     let mut sibling = holder.begin().await.expect("the takeover's transaction");
@@ -164,7 +164,7 @@ async fn task_moved(case: &Case, moved: &'static str) {
 async fn a_retry_whose_call_was_receipted_in_the_wait_issues_nothing() {
     exercise(async |case: &Case| {
         let fixture = Decisions::create(case).await;
-        let input = fixture.reservation(DecisionAssessment::Message, None);
+        let input = fixture.call_input().await;
         let (issued, body) = fixture.reserve(&input).await;
         assert!(issued);
         let call = body
@@ -221,7 +221,7 @@ async fn a_retry_whose_call_was_receipted_in_the_wait_issues_nothing() {
 async fn a_fleet_delete_and_a_decision_reservation_both_finish() {
     exercise(async |case: &Case| {
         let fixture = Decisions::create(case).await;
-        let input = fixture.reservation(DecisionAssessment::Message, None);
+        let input = fixture.call_input().await;
         let database = &case.held.fixtures.database;
         let mut holder = database.acquire().await.expect("a connection");
         let mut deleting = holder.begin().await.expect("the delete's transaction");

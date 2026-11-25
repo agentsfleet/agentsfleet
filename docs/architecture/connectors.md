@@ -1,413 +1,221 @@
-# Connectors — the registry-driven connector platform
+---
+type: explanation
+audience: contributor
+verified: 2026-11-25
+product_version: 0.90.0
+executable: false
+---
 
-> Parent: [`README.md`](./README.md) · Sibling: [`../AUTH.md`](../AUTH.md) §"OAuth connectors" (flow behavior, trust anchors, error taxonomy). · User-facing setup: [docs.agentsfleet.net/fleets/connectors](https://docs.agentsfleet.net/fleets/connectors).
+# Connectors
 
-> Scope: the platform shape. The compile-time registry and archetype dispatch make a new provider a data entry. The callback and event-ingress trust anchors, the bounded-outbound rule for vendor calls and the connector-vs-integration terminology complete it.
+Read this when you add a provider, or trace how a workspace connects GitHub or Slack and how a GitHub event finds its fleets.
+How a fleet asks for access and adds triggers is in [fleets](user_flow.md). Slack mentions are in [Slack mentions](slack_mentions.md).
 
-> Read this before adding a provider or writing any connector outbound call. Flow behavior stays in AUTH.md; this page owns the invariants that make the flows generic.
+## What it is
 
-## Facts
+A connector is the sign-in plumbing between a workspace and an outside provider.
+It holds the connect, callback, status and disconnect routes, the saved credential handle and the platform's app secrets.
+An integration is what a fleet does with that credential, such as reading a repository or answering a mention.
 
-Every row is extracted from the sections below; the owner column names the section that carries the full story.
+| Question | Answer |
+|---|---|
+| Which providers exist? | Five: `slack`, `github`, `zoho` (Zoho Desk), `jira` and `linear`, declared once in `afd_connector` |
+| How does a workspace connect one? | A workspace administrator selects **Connect** once; the callback saves a handle in the workspace vault |
+| Where do the platform's app secrets live? | In the `agentsfleet-admin` workspace vault, one `<provider>-app` bag per provider |
+| Which URL receives GitHub events? | `POST /v1/ingress/github`, one App for every tenant |
+| Which URL receives Slack events? | `POST /v1/connectors/slack/events` ([Slack mentions](slack_mentions.md)) |
+| What does a fleet need to call a provider? | An approved grant ([access](user_flow.md#access)); receiving an event needs none |
 
-| Invariant | Value | Mechanism | Owner section |
+"Slack connector is broken" and "Slack integration is broken" name different layers.
+The first is the saved credential and its routes. The second is the feature built on it.
+
+## Why it exists
+
+A new provider should be a data entry, never new routes or new flow code.
+So the registry is one closed Rust enum, and every handler dispatches on the provider's archetype, the shape of its sign-in flow.
+A missing match arm is a compile error, so a new provider cannot land half-wired.
+
+A static vendor key, such as a Grafana or Fly token, is not a connector.
+It is a workspace secret created with `agentsfleet secrets create` and used as `${secrets.<name>.<field>}`.
+It has no browser round trip and no platform app secret to protect.
+
+## How it behaves
+
+### The registry
+
+`afd_connector`'s `catalogue!` macro declares the `Provider` enum and `Provider::ALL`.
+Each variant carries its id and display name. The id is the route segment, the registry id and the vault-key stem.
+
+| Archetype | Flow | Providers | Inbound events |
 |---|---|---|---|
-| Vocabulary | connector ≠ integration | connector = auth + credential plumbing; integration = a capability built ON the credential | §Terminology |
-| Registry | the closed `Provider` enum, 5 variants, declared once by `catalogue!` | adding a provider is one variant + its match arms; never new route or flow code | §The registry |
-| Dispatch | on archetype SHAPE, never provider id | exhaustive match on the `Archetype` enum; a missing arm is a compile error | §The registry |
-| Archetypes | 2: `oauth2` · `app_install` | `slack` / `zoho` (multi-data-center) / `jira` / `linear` · `github`; the `api_key` archetype was considered and dropped (M108_002) | §Archetypes |
-| Trust anchors | 6 | signed single-use state bound to workspace and starter identity (`UZ-CONN-002`) · user-authorization installation proof (`UZ-CONN-008`) · admin-vault `<provider>-app` bags (`UZ-CONN-001`) · provider signatures · signature proves origin, not producer · the standing integration grant | §Trust anchors |
-| GitHub App URLs | 2, different jobs | `/api/connectors/github/callback` on the dashboard (browser install) vs `/v1/ingress/github` on the API (machine events) | §GitHub App |
-| Disconnect | internal state only | `DELETE` removes the workspace handle and routing rows; provider authorization remains active | §The registry |
-| Binding writes | each operation is atomic; concurrent Connect and Disconnect are unordered | each commits its vault and routing changes together; a first-connect race can leave a partial binding | §The registry |
-| App replay identity | authenticated body digest, per fleet | the unsigned delivery header is diagnostic only; failed fan-out legs retry without duplicating others | §GitHub App |
-| Outbound HTTP | a deadline on every vendor call | refusal is `UZ-CONN-003` (502); token exchange 10 s · Slack post 5 s · thread re-read 1.5 s · answer check 3 s | §Bounded outbound |
-| Front-door failures | 404 vs 503 | unknown provider → `UZ-CONN-004`; registry id with no `<provider>-app` bag → `UZ-CONN-001`, fail-loud | §Unknown vs unconfigured |
+| `Oauth2` | Consent, then a code exchanged for a token | `slack`, `zoho`, `jira`, `linear` | Slack mentions only; the others have none |
+| `AppInstall` | A user authorization that proves an App installation | `github` | App deliveries at `/v1/ingress/github` |
 
-## Traps
+`Provider::parse(segment)` reads the route segment. An unknown id answers 404 `UZ-CONN-004`.
+A known id whose `<provider>-app` bag is missing answers 503 `UZ-CONN-001`.
 
-Each trap is enforced in its owner section; this list is the index.
+Unit tests pin what the compiler cannot.
+Every id parses back to its variant, no two display names match, and every OAuth provider asks for at least one scope.
+No two providers share a signed-state domain or nonce namespace.
 
-- "Slack integration is broken" and "Slack connector is broken" name different layers; keep the vocabulary straight (§Terminology).
+### Connecting a provider
 
-- No `if provider == "slack"` exists anywhere in the flow; adding one is a design regression (§The registry).
+1. A workspace administrator selects **Connect**. The daemon signs a single-use `state` bound to the workspace and the person.
+2. The provider redirects the browser to `/api/connectors/{provider}/callback` on the web app.
+3. The web app posts the code to the API's `/v1/connectors/{provider}/callback`, once, and never retries a spent code.
+4. The API checks the state, the person, `connector:write` and workspace access, then exchanges the code.
+5. The provider's `complete::read` arm parses the answer. The callback saves the vault handle and any routing row in one transaction.
 
-- A static vendor key (Datadog, Grafana, Fly) is a plain workspace secret, never a registry entry (§Archetypes).
+A failure rolls back that callback and shows a recovery page with a checked workspace link.
+Codes, state and vendor response bodies never appear there.
 
-- Generic connect plumbing does not imply generic event behavior: inbound routing follows the provider's real shape (§The registry).
+Jira, Linear and Zoho handles keep the refresh token and account metadata.
+The credential broker mints its own access tokens from them, so the first access token is not stored.
 
-- No pool slot rides a vendor call; credentials load under a short acquire released before the exchange (§Bounded outbound).
+`GET /v1/workspaces/{workspace_id}/connectors` lists every provider with its archetype, configured flag, connected flag and public account label.
+It returns no token and makes no provider call. "Connected" means a saved authorization, not a live token.
 
-- The App private key and webhook secret never enter the run, runner environment, sandbox, logs, or response frames (§GitHub App).
+**Disconnect** deletes the vault handle and routing rows in one transaction.
+A handle a model entry still names is kept, and Disconnect answers 409 `UZ-VAULT-004`.
 
-## Terminology (binding)
+### Trust anchors
 
-| Term | Means | Lives in |
-|---|---|---|
-| **connector** | auth + credential plumbing for a third-party provider: the connect/callback/status routes, the vaulted per-workspace credential handle, the platform app secrets | `afd_connector` (provider catalogue, connect flow, grant handle), `afd_credential` (token minting from the handle), and the connector routes in `afd_http` |
-| **integration** | a product-facing capability built ON a connector's credential (configured Slack fleet mentions, GitHub fleet triggers, future Zoho/Jira/Linear surfaces) | feature code that consumes the vault handle |
+1. **Signed state.** The `state` is keyed with the approval signing secret, checked in constant time and spent once. A forged, expired, replayed or mismatched state answers 400 `UZ-CONN-002`.
+2. **GitHub installation proof.** The callback trades the code for a user token and probes the claimed installation with it. Zero or several reachable installations answer 403 `UZ-CONN-008`.
+3. **Platform app secrets.** Each `<provider>-app` bag sits in the admin workspace vault. One app serves every tenant, so a leak would be catastrophic, and no tenant surface shows it.
+4. **Provider signatures.** GitHub App traffic is checked against `github-app.webhook_secret`, and Slack against `slack-app.signing_secret`. No inbound route falls back to a Bearer token.
+5. **A signature proves origin, not producer.** Anyone who can push to a mapped repository can create GitHub events. The daemon checks the App signature and installation routing, not which system made the event.
+6. **The grant.** A fleet calls a provider only through an approved grant ([access](user_flow.md#access)).
 
-A workspace *connects* a provider once (connector); everything fleets then do with that credential is *integration*. Specs, UI copy, and code comments follow this split. "Slack integration is broken" and "Slack connector is broken" name different layers.
+Detailed refusal codes live in [`../AUTH.md`](../AUTH.md) §"OAuth connectors".
 
-## The registry: a provider is a data entry
+### GitHub App: from install to a routed event
 
-The connector registry is the closed `Provider` enum in `afd_connector`, declared once by the `catalogue!` macro, which also generates `Provider::ALL`. `Provider::archetype()` says which flow each variant runs. Adding a provider is one variant plus its match arms, never new route or flow code.
+One GitHub App serves every tenant in an environment, with two URLs for two jobs.
 
-Each variant carries its id (the route segment and vault-key stem) and a display name. `Archetype` is a two-variant enum. `Oauth2` carries the authorize and token endpoints, scopes, delimiter, extra query and refresh rule; `AppInstall` carries the authorize and token endpoints.
-
-`event_ingress()` and `state_binding()` complete the per-provider facts.
-
-At runtime `Provider::parse(segment)` answers `None`, a 404 `UZ-CONN-004` whose body names the id, or `Some`, which dispatches on the archetype. The generic `{provider}` handlers are connect, callback, status and disconnect.
-
-The per-provider deltas are each provider's `complete::read` arm and GitHub's probe and ownership check. Zoho's multi-data-center token endpoint and Slack's mention events and replies are deltas too.
-
-- **Routes are generic over `{provider}`** (API reference › Connectors). The dashboard owns `/api/connectors/{provider}/callback`; Disconnect removes only `agentsfleet` state.
-
-- **Dispatch is on SHAPE, never on provider id.** The archetype tagged-union owns which flow runs. Handlers match exhaustively on it, so a new archetype cannot land half-wired. No `if provider == "slack"` exists anywhere in the flow.
-
-- **Invariants are compile-time facts or pinned tests.** Two variants cannot share a name. A variant with a missing arm does not compile.
-
-  Unit tests pin the rest. Every id parses back to its variant, no two display names match, and every OAuth connector asks for at least one scope. No two providers share a signed-state domain or nonce namespace.
-
-- **Each callback and Disconnect commits its own vault and routing changes together.** A failure rolls back that operation's changes. Neither takes a shared workspace lock (`afd_connector`'s grant module).
-
-Concurrent first Connect and Disconnect can leave a vaulted handle without its routing row.
-Complete a fresh Connect to restore the binding, or Disconnect again when removal is intended.
-
-- **Inbound routing follows the provider.** GitHub's app webhook uses `POST /v1/ingress/github` and its own routing statements in `afd_ingress`.
-
-  Slack keeps `POST /v1/connectors/slack/events` for its signature, challenge, retry, channel and thread rules.
-  Only a configured addressed fleet or sole eligible subscriber receives a `slack_mention` turn.
-  An unconfigured channel returns `channel_not_configured` without creating a fleet or calling a model.
-
-  [Slack mention routing](scenarios/slack-incident-responder.md#4-routing-a-mention) owns selection and fixed notices.
-  Jira and Linear have connected credentials but no inbound integration yet.
-  Shared connection storage does not imply shared event behavior.
-
-## Workspace connection reads and browser returns
-
-Connections belong to the workspace. An authorized
-`GET /v1/workspaces/{workspace_id}/connectors` returns every registered provider's
-identifier, display name, archetype, configured flag, connected flag and public
-account label. The service reads deployment app names and a bounded batch of that
-workspace's registered grant names concurrently.
-
-It checks each grant's matching
-connector marker and returns no tokens. A missing, unrelated or malformed handle
-is disconnected. Storage failures remain errors instead of invented disconnected
-states (`afd_connector`'s connection and grant catalogue modules).
-
-The connection page streams its heading before this single list finishes. It
-makes no separate GitHub or Slack status read. Connected means a saved
-authorization; status loading makes no provider call and cannot detect upstream
-revocation.
-
-The provider's granted permissions and implemented actions still
-limit what a fleet can do.
-
-Browser callbacks return to `/api/connectors/{provider}/callback` on the web app.
-The API's `/v1/connectors/{provider}/callback` requires an authenticated POST.
-The web relay waits for the API's answer and never retries the spent code.
-
-Failures lead to a safe recovery page with a validated workspace return link;
-codes, state and vendor response bodies do not appear there. The workspace cookie
-is a navigation hint and grants no access. The API still verifies state, starter
-identity and workspace access before saving a grant.
-
-Jira, Linear and Zoho handles retain refresh tokens and account metadata. Their
-initial access token and expiry are unused by the credential broker and are not
-stored. The broker mints its own access token and caches that token's expiry.
-
-This keeps a large initial vendor token from overflowing the vault's bounded
-credential object (`afd_connector`'s grant parser).
-
-## Archetypes
-
-| Archetype | Flow | Callback carries | Writes | Shipped instances |
-|---|---|---|---|---|
-| `oauth2` | authorize-redirect → code exchange (deadline-armed) → the provider's `complete::read` arm parses, then the grant is sealed | `code` + `state` | vault handle (+ provider-specific rows, e.g. Slack's `connector.installs`) | `slack`, `zoho` (multi-data-center: the callback's `location` resolves the effective token endpoint), `jira`, `linear` |
-| `app_install` | user authorization → discover or verify App installation → `complete::read` (GitHub arm); zero reachable installations REFUSE with `UZ-CONN-008` (no install-page continuation in this tree, see §GitHub App) | `code` + `state`; `installation_id` is optional | vault handle + non-secret connector-install routing row | `github` |
-
-**There is no `api_key` archetype.** One was considered for operator-pasted vendor keys (Datadog, Grafana, Fly) and dropped (M108_002).
-
-A static vendor key is a workspace secret referenced as `${secrets.<name>.<field>}`, not a connector. It never had a connect/callback round-trip or a platform app secret to protect.
-
-Those three providers are plain `agentsfleet secrets create` entries, never registry entries. The `catalogue!` macro declares five variants: five Open Authorization (OAuth) or app-install connectors, not eight.
-
-## Trust anchors
-
-1. **The signed single-use `state` binds workspace intent and starter identity**. It is keyed with the approval signing secret and carries a keyed identity tag instead of a raw subject.
-
-   The state verifies in constant time and is consumed exactly once. The authenticated callbacks endpoint checks the same identity, `connector:write`, and current workspace access before consuming state.
-
-   Forged, expired, replayed, or identity-mismatched state returns 400 `UZ-CONN-002`. State does not prove ownership of a provider installation.
-
-2. **GitHub user authorization proves installation access.** The callback exchanges the one-time `code` with the platform `client_id` and `client_secret`. A claimed `installation_id` is probed with the user token before it is saved, without exposing the token to the browser or provider URL.
-
-   With no claim, exactly one accessible installation repairs internal state loss. Zero returns 403 `UZ-CONN-008` (install the App, then connect again), and more than one returns 403 `UZ-CONN-008` too. The datastore also refuses to move an installation already bound to another workspace.
-
-3. **Platform app secrets live in the admin-workspace vault** as per-provider `<provider>-app` bags (`slack-app`, `github-app`, …). One app per provider is shared across all tenants, catastrophic if leaked, never on a per-tenant surface.
-
-   GitHub's bag carries its App identity, user-authorization client credentials and App-level webhook secret. A missing bag fails loud with 503 `UZ-CONN-001`.
-
-4. **Provider signatures authenticate inbound events.** GitHub App traffic is verified against the platform `github-app.webhook_secret`; manual per-fleet webhooks still use the workspace `<source>.webhook_secret`; Slack App events use the platform `slack-app.signing_secret`. No inbound route falls back to Bearer authentication.
-
-5. **A signature proves origin, never the producer**: GitHub permits every push-capable identity to create deployment statuses. Every such identity in a mapped repository sits inside the trusted producer boundary. The daemon verifies the App signature and the installation routing; it does not inspect `deployment_status.creator` or attest which system produced the status.
-
-   A scenario that depends on this says so and cites this anchor rather than restating it.
-
-6. **The standing integration grant authorises every mint, including a repository write**. `connector.integration_grants` holds one row per `(fleet_id, service)`, enforced by `UNIQUE (fleet_id, service)`, and only an `approved`, unrevoked row admits a mint. Save writes that row `pending` and raises one approval card.
-
-   A person's yes on that card is the answer. The reviewed Definition names the integration, and its binding names the repositories and the access level.
-
-   A repository write raises no per-event card. `agentsfleet fleet grants revoke` is the manual stop, taking effect on the next event before any provider call, and `budget.daily_nanos` bounds the money.
-
-The token is still narrowed to the declared repositories by `ScopedRequest::for_binding`, and `Granted::verify` still checks the response. The grant is the authorisation above that scoping, never a replacement for it.
-
-The connector registry owns callback dispatch; provider ingress handlers own event routing once the route segment has selected them. Detailed auth behavior and refusal codes live in [`../AUTH.md`](../AUTH.md) §"OAuth connectors".
-
-## GitHub App: platform setup to fleet runs
-
-One GitHub App serves every tenant in an environment. The platform operator configures two different URLs on that App:
-
-```
-browser install callback                    machine event ingress
-/api/connectors/github/callback             /v1/ingress/github
-          │                                      │
-          │ relays authenticated completion       │ wakes subscribed fleets
-          ▼                                      ▼
-identity-bound signed state               GitHub App signature
+```text
+browser install callback               machine event ingress
+/api/connectors/github/callback        /v1/ingress/github
+        |                                     |
+        | relays the signed-in completion     | wakes subscribed fleets
+        v                                     v
+signed single-use state                GitHub App signature
 ```
 
-The platform identity lives only in the `agentsfleet-admin` workspace, as the `github-app` bag:
+The `github-app` bag in the admin vault holds the App's identity.
 
 | Field | Role |
 |---|---|
-| `app_id` | public App identifier |
-| `app_slug` | public install-page handle (unread by `agentsfleetd`) |
-| `client_id` | public user-authorization client identifier |
-| `client_secret` | exchanges one-time user authorization codes |
-| `private_key_pem` | signs App JSON Web Tokens for outbound token minting |
-| `webhook_secret` | verifies inbound App deliveries |
+| `app_id` | Public App identifier |
+| `app_slug` | Public install-page handle; `agentsfleetd` does not read it |
+| `client_id`, `client_secret` | Trade a one-time user authorization code for a user token |
+| `private_key_pem` | Signs App JSON Web Tokens (JWTs) for token minting |
+| `webhook_secret` | Checks inbound App deliveries |
 
-A workspace administrator selects **Connect**. GitHub authorizes the user first. If the App is already installed and exactly one installation is accessible, `agentsfleet` restores the missing internal binding.
+The App must already be installed on GitHub, because the daemon reads no `app_slug` to send the browser there.
+With exactly one reachable installation, Connect restores the binding. An installation bound to another workspace answers 403 and changes nothing.
 
-If none exists, the connect REFUSES with `UZ-CONN-008`: the App must be installed on GitHub first. The daemon cannot send the browser there because it reads no `app_slug`.
+A successful callback writes two records on one connection:
 
-```
-signed state ──────────────────────────────── proves intended workspace and starter identity
-one-time code → GitHub user token
-              ├─ claimed id → GET /user/installations/{id}/repositories
-              └─ no claim   → GET /user/installations?per_page=2
-                               0 → 403 UZ-CONN-008 (install on GitHub first)
-                               1 → restore internal binding
-                              >1 → 403, no arbitrary organisation choice
-                                          │
-                                          ▼
-                         conditional datastore write
-                         same workspace: create/reconnect
-                         other workspace: 403, no mutation
-```
+| Record | Holds | Used for |
+|---|---|---|
+| Workspace vault entry `github` | The installation id | Minting outbound tokens |
+| `connector.installs` row | `installation_id` to workspace, no secret | Routing inbound events |
 
-A callback completion writes the vault handle and reverse-routing rows in one transaction.
-**Disconnect** deletes both in one transaction too.
-Concurrent operations remain unordered; see §"The registry: a provider is a data entry" for the partial-binding risk and recovery.
+Disconnect leaves the App and its repository access installed on GitHub.
+A later Connect therefore repairs internal state after a datastore rebuild.
 
-A handle a model entry still names is not deleted: Disconnect answers 409 `UZ-VAULT-004` with `current_state: "referenced"`. Disconnect leaves the GitHub App and repository access installed. A later **Connect** can therefore reconcile external and internal state after a datastore rebuild.
+An App delivery names an installation and a repository, never an `agentsfleet` workspace or fleet.
+The daemon routes it in this order:
 
-The user token is discarded after the current callback, always. The daemon carries no App slug, so there is no App-install continuation to hold it for. Zero reachable installations is a refusal (`UZ-CONN-008`), not a redirect to GitHub's install page, as M187_001's Discovery records.
-
-After the identity, workspace, and installation checks pass, the callbacks endpoint writes both records on one database connection:
-
-```
-workspace vault                          connector.installs
-github = {                               provider = github
-  integration: github,                   external_account_id = installation_id
-  installation_id                       workspace_id = connected workspace
-}                                        credentials = NONE
+```text
+GitHub                         agentsfleetd                              Postgres
+  |-- POST /v1/ingress/github -->|                                           |
+  |                              | check signature before reading fields     |
+  |                              | (a ping answers pong only after it)       |
+  |                              |-- installation.id -> connector.installs ->|
+  |                              |<----------------------- workspace W ------|
+  |                              |-- app_event rows in W, active fleets ---->|
+  |                              |   repositories names the repository       |
+  |                              |   events admits the event (none = all)    |
+  |                              |-- one queued turn per matching fleet ---->|
+  |<-- 202 {matched, enqueued} --|  then a best-effort wake per fleet        |
 ```
 
-The encrypted handle supports outbound token minting. The connector-install row is deliberately non-secret and supports inbound `installation.id → workspace` routing. Neither row alone is sufficient.
+The repository match ignores case. A row that names no repository receives nothing, so one App across an organisation wakes only the fleets that asked.
 
-A callback failure rolls back its changes, preserving the preceding state.
-
-### Repository and event subscriptions belong to fleets
-
-The App installation chooses the maximum repository set GitHub will permit. Each fleet then declares the smaller set it wants to receive:
-
-```yaml
-triggers:
-  - type: webhook
-    source: github
-    events: [pull_request]
-    repositories: [acme/payments]
-```
-
-For App traffic, `repositories` is fail-closed: omission means the fleet receives no App delivery. The omission remains valid for the existing manual per-fleet GitHub route, whose URL already identifies the target fleet. This distinction prevents an App installed across an organisation from waking every GitHub fleet for every repository.
-
-The repository match is case-insensitive, as GitHub's is. `events` answers the other way from `repositories`: a trigger with no `events` list admits every event (`afd_ingress`'s binding module).
-
-### What the event belongs to
-
-A GitHub App delivery belongs to a GitHub installation and repository. It does **not** arrive carrying an `agentsfleet` user, workspace, or fleet identifier. Those are derived inside `agentsfleet`:
-
-```
-GitHub account or organisation
-└── App installation 10250042
-    ├── repository: acme/payments
-    │   └── event: pull_request opened
-    └── repository: acme/catalog
-
-installation 10250042
-        │ callback-created reverse map
-        ▼
-agentsfleet workspace W
-        │ repository + event + approved-grant intersection
-        ├── fleet A subscribes to acme/payments + pull_request  → receives it
-        ├── fleet B subscribes to acme/payments + pull_request  → receives it
-        ├── fleet C subscribes to acme/catalog + pull_request   → does not receive it
-        └── fleet D has no approved GitHub grant                → does not receive it
-```
-
-The user matters during setup: they choose a workspace, authorize the App installation, install or configure a fleet, and approve its GitHub grant. Once setup is complete, event routing is machine-to-machine and uses saved relationships rather than the user's browser session.
-
-This gives each layer one job:
+Each matching fleet gets its own turn, keyed `{fleet}:github:{event_id}`. The event id is the SHA-256 of the signed body; the unsigned delivery header is only for logs.
 
 | Layer | Owns |
 |---|---|
-| GitHub App installation | Maximum repositories GitHub permits the App to see |
-| Workspace connection | Installation-to-workspace identity and the outbound credential handle |
-| Fleet trigger | Explicit repository and event subscription |
-| Integration grant | Whether that fleet may use GitHub |
-| Turn row (`thread.turns`) | Exactly-once enqueue per matching fleet for one GitHub delivery |
+| App installation on GitHub | The most repositories the App can see |
+| Workspace connection | Installation-to-workspace routing and the token handle |
+| Fleet trigger (`app_event` row) | The repositories and events one fleet wants |
+| Integration grant | Whether that fleet may call GitHub at all |
+| Turn row (`thread.turns`) | One queued turn per matching fleet per delivery |
 
-### Where a grant comes from
+When a fleet calls GitHub with `${secrets.github.token}`, the runner asks the daemon to mint a token.
+The daemon reads the fleet's approved grant and exchanges an installation token narrowed to its repositories ([credentials](runner_execution.md#credentials)).
 
-A grant is **requested at Save**. When a saved fleet's readiness review finds a declared credential's grant missing, setup activation asks for it (`afd_setup`'s creation activate). The request writes a `pending` `connector.integration_grants` row and raises an approval card in one transaction (`afd_approval`'s grant statements).
+A read grant asks for `contents` read, plus `actions` and `checks` read where the installation holds them. A write grant adds bounded write permissions and never `workflows`.
 
-The fleet stays `installing` until every readiness check, the grant included, is ready (`afd_setup`'s creation progress). The run path asks the same way the first time a delivery reaches a credential with no grant (`afd_fleet`'s run deliver).
+The App private key and webhook secret never enter a run, the runner, a sandbox, a log or a response.
 
-Either way, the decision belongs to the approval-gate machine this codebase already ships. That machine is an inbox and a detail page with an evidence tree. It also has resolve buttons, a webhook and an append-only audit. Nothing expires a gate: a read reports `timed_out` once its deadline passes, and the gate stays answerable (`afd_approval`'s inbox).
+### Webhook signing recipes
 
-**A gate is a per-turn decision; a grant is the standing answer that outlives the run.** The gate asks; the grant remembers.
+A fleet's own webhook trigger names how its deliveries are signed ([triggers](user_flow.md#wakes-on)).
+The registry sources `linear` and `slack` imply their recipe and refuse a `verifier`.
 
-Resolving the gate as approved flips the grant and the gate in one statement, so the two cannot disagree. Any non-approval outcome drives the grant to `revoked` rather than back to `pending`, which nothing would re-raise.
-
-Where origination runs is load-bearing. The App ingress query inner-joins on `status = 'approved'`. A fleet that cannot obtain a grant therefore writes no turn, takes no run and reports nothing.
-
-It goes silently inert rather than failing visibly.
-
-An origination path reachable only with a credential the fleet does not hold produces exactly that silence.
-
-A run is the last checkpoint. A credential with a mintable handle but no
-approved grant **parks the turn**.
-
-Parked turns stay out of run assignment until gate resolution clears the
-park stamp. A revoked grant ends the turn with `grant_denied`.
-
-An incoming delivery follows this order:
-
-```
-GitHub App delivery
-  installation.id + repository.full_name + event + diagnostic delivery identifier
-        │
-        ▼
-verify platform webhook signature BEFORE reading routing fields
-  (a `ping` answers `pong` only after the signature verifies)
-        │
-        ▼
-installation.id → connector.installs → workspace
-        │
-        ▼
-active fleets in that workspace
-  ∩ source=github
-  ∩ repositories contains repository.full_name
-  ∩ events admits the incoming event
-  ∩ approved GitHub integration grant
-        │
-        ▼
-commit queued thread.turns row (body digest + fleet)
-        │
-        ├── best-effort wake notification
-        ▼
-assignment pass → thread row fence → run → Down::Run on the runner connection
-```
-
-Multiple fleets may intentionally subscribe to the same repository and event. Replay protection is therefore per authenticated payload body and fleet, not global. The signature-covered body digest is the replay identity; the unsigned delivery header is diagnostic only.
-
-If one fan-out leg fails before its turn commits, redelivery retries that leg. Fleets already holding the turn answer `replayed`; redelivery writes turns only for the missing fleets. Every matching fleet is woken (`afd_ingress`'s App routing).
-
-**That redelivery is not GitHub's.** GitHub states plainly that it "does not automatically redeliver failed webhook deliveries".
-
-A delivery fails when the receiver is down or takes longer than **ten seconds** to answer. Recovering it is a manual click in the App's delivery log or an operator script walking the REST API for failed deliveries.
-
-This page previously credited the recovery to "GitHub's retry", which does not exist. The correction moves the boundary of what is recoverable:
-
-| Where the fan-out fails | What survives |
-|---|---|
-| After a leg's turn row commits | Durable. The committed queued turn stays available to the next run assignment; wake notifications are best effort. |
-| Before it commits (the failing leg, and every leg after it in the loop) | **Nothing.** No row, no entry, and no sender that will ask again. |
-
-So the durable-acceptance guarantee covers work this deployment ACCEPTED. The window before acceptance is the one place a GitHub event can be lost outright. Two consequences follow.
-
-The ten-second budget is a hard deadline rather than a target. It is shared across signature verification, fleet resolution, and one turn write per subscribed fleet, so fan-out width spends it.
-
-Deduplication is still worth every line. The redelivery it absorbs is a *human* clicking Redeliver with no idea whether the first attempt landed. That is exactly when a duplicate review would otherwise appear on a pull request.
-
-Signed workflow completions first match native task waits. `deployment_status` and other repair-branch deliveries are classified unsupported and dropped, so completion evidence never fans out an unrelated investigation (`afd_api_ingress`'s App route).
-
-Slack is the contrast and the reason this page cannot generalise: its retry semantics are load-bearing precisely because Slack does retry.
-
-### Credential use remains separate from event receipt
-
-Receiving a signed event does not give GitHub credentials to a fleet.
-When the fleet calls GitHub through `${secrets.github.token}`, its runner-token plane asks the daemon to mint a token.
-
-The daemon derives the fleet and workspace from the run and rechecks the approved integration grant.
-It loads the workspace installation handle, signs with the platform key and exchanges for a short-lived token.
-
-The runner caches that token for the run and refreshes it 30 seconds before expiry.
-It masks the token in tool responses (`af_egress`'s vault module).
-The App private key and webhook secret never enter the run, runner environment, sandbox, logs or response frames.
-
-The binding determines token scope (`afd_credential`'s GitHub request builder).
-Read bindings receive contents read without Pull Request permissions; repair bindings add bounded write permissions, never workflows.
-Actions/checks reads require installation permission; a missing permission returns 403 to the fleet.
-
-The shared HTTP client disables automatic redirects, but the tool supports guarded bodyless GET redirects.
-Each destination needs a current egress policy check; cross-origin modeled headers are stripped.
-See [guarded downloads](runner_fleet.md#guarded-tool-downloads); implementation support alone does not prove a complete fleet-owned log read.
-
-### Provider impact
-
-| Provider | Connect credential | Inbound events after M102_005 |
+| `verifier_scheme` | Reads | Needs `verifier_header` |
 |---|---|---|
-| <img src="https://cdn.simpleicons.org/github" width="14" alt="" /> GitHub | App installation handle | App ingress routes by installation + repository + event + grant; manual per-fleet webhook remains available |
-| <img src="https://api.iconify.design/logos/slack-icon.svg" width="14" alt="" /> Slack | bot token from OAuth | specialized events route: signature, challenge, and mention routing to one `slack_mention` event (`afd_api_ingress`'s mention handler) |
-| <img src="https://cdn.simpleicons.org/zoho" width="14" alt="" /> Zoho Desk | OAuth refresh handle, multi-data-center token endpoint | no inbound integration in this workstream |
-| <img src="https://cdn.simpleicons.org/jira" width="14" alt="" /> Jira | OAuth refresh handle | no inbound integration in this workstream |
-| <img src="https://cdn.simpleicons.org/linear" width="14" alt="" /> Linear | OAuth refresh handle | no inbound integration in this workstream |
+| `body-hex-sha256`, `body-hex`, `body-base64-sha256` | A signature over the body, in the named header | Yes: an HTTP token, 1 to 128 characters |
+| `slack-v0` | Slack's fixed signature and timestamp headers | No, refused |
+| `svix-v1` | Svix's fixed headers | No, refused |
 
-## Bounded outbound: every vendor call has a deadline
+`secret_name` names the workspace secret that signs the deliveries.
+That secret is a JSON object with a `webhook_secret` string, which holds the `whsec_` value for Svix.
 
-Every connector vendor call runs under a deadline set at its call site. A callback exchange past its deadline, or one that cannot reach the vendor, answers `UZ-CONN-003` (502); background paths log the same code and retry.
+### Bounded outbound calls
 
-- **Deadlines are named per call class.** Token exchange and credential mint: 10 s (`EXCHANGE_TIMEOUT` in the daemon binary's credentials module). That is a client-wide total timeout covering connect and the Transport Layer Security (TLS) handshake. Slack post: 5 s (`POST_DEADLINE`, `afd_outbound`); Slack thread re-read: 1.5 s (`READ_DEADLINE`, `afd_connector`); Slack answer check: 3 s (`ANSWER_CHECK_DEADLINE`, `afd_connector`).
+Every vendor call runs under a deadline set at its call site.
+A callback exchange past its deadline, or one that cannot reach the vendor, answers 502 `UZ-CONN-003`.
 
-- **The exchange and the mint hold separate clients.** A slow connect exchange cannot consume the connection slots a credential mint needs.
+| Call | Deadline | Constant |
+|---|---|---|
+| Token exchange and credential mint, connect and TLS included | 10 s | `EXCHANGE_TIMEOUT`, daemon credentials module |
+| Slack post | 5 s | `POST_DEADLINE`, `afd_outbound` |
+| Slack thread re-read | 1.5 s | `READ_DEADLINE`, `afd_connector` |
+| Slack answer check | 3 s | `ANSWER_CHECK_DEADLINE`, `afd_connector` |
 
-- **No pool slot rides a vendor call.** Credentials load under a short acquire released before the exchange. The events ingress pre-loads the bot token and returns its slot before the thread re-read. This closed a priority-1 review finding on merged Pull Request #468.
+Transport Layer Security (TLS) setup counts against the exchange deadline.
+The exchange and the mint use separate clients, so a slow connect cannot starve a mint.
+No pooled Postgres connection is held across a vendor call: credentials load under a short acquire released first.
 
-## Unknown vs unconfigured (the two front-door failures)
+### Adding a provider
 
-An unknown provider (`UZ-CONN-004`) and a registry id with no `<provider>-app` bag (`UZ-CONN-001`) are different failures ([error codes](https://docs.agentsfleet.net/api-reference/error-codes#UZ-CONN-004)).
+1. Add one `Provider` variant to `catalogue!`, with its id and display name.
+2. Add its arm to `Provider::archetype()`, as `Archetype::Oauth2(..)` or `Archetype::AppInstall(..)`, and to `state_binding()` and `event_ingress()`.
+3. Add its arm to `complete::read`, which parses the provider's answer into a saved handle.
+4. Create the `<provider>-app` bag in the admin vault.
+5. Add tests for the provider's parse and save; the generic route suites already cover the flow.
 
-## Adding a provider (the recipe)
+No route, OpenAPI or scope edit is needed, because the `{provider}` routes already cover the new id.
 
-1. One `Provider` variant in the `catalogue!` macro, with its id and display name (RULE UFS). The id is at once the route segment, the vault-key stem and the registry id. The vault-key stem is `<provider>-app` for the platform app and the bare `<provider>` for the workspace grant (`Provider::app_key` and `Provider::grant_key`).
-2. One arm in `Provider::archetype()`, either `Oauth2Flow` (endpoints, scopes, delimiter, extra query, refresh) or `AppInstall` (authorize + token endpoints), plus arms in `state_binding()` and `event_ingress()`.
-3. The provider's arm in `complete::read`, which is where its answer is parsed into a grant. The registry holds no per-provider hook functions: it dispatches on the archetype enum and matches per provider.
-4. Create the `<provider>-app` bag in the admin vault. An operator-supplied vendor key with no browser round-trip (Datadog/Grafana/Fly's shape) is not a connector at all. It is a plain workspace secret, `agentsfleet secrets create`, never a registry entry.
-5. Tests: the generic-route suites already cover the flow; add hook-level tests for the provider's parse/save deltas.
+## Limits
 
-No route, matcher, scope, invoke, or OpenAPI edit: the `{provider}` form already covers the new id.
+- Disconnect removes only `agentsfleet` state. The provider's own authorization stays until someone revokes it there.
+- Connect and Disconnect take no shared lock. A race on a first Connect can leave a vault handle with no routing row; a fresh Connect repairs it.
+- GitHub routes on the repository's name, so renaming a repository drops its events (`UZ-WH-022`) until the fleet's row names the new one.
+- GitHub never redelivers a failed delivery on its own, and fails one that takes over 10 seconds. A fan-out leg that fails before its turn commits is lost unless a person selects Redeliver.
+- A redelivery answers `replayed` for fleets that already hold the turn and writes turns only for the missing ones.
+- The App route drops `deployment_status` deliveries and the repair branch's own events, so a fleet's repair never wakes an investigation of itself.
+- Zoho Desk, Jira and Linear have no inbound connector events. Linear can still sign a fleet's own webhook trigger.
+- A read grant's token has no `pull_requests` permission. An installation that lacks `checks` read gets a token without it, and the fleet's annotation read answers 403.
+
+## Related pages
+
+- [Fleets](user_flow.md): how a fleet asks for access and adds triggers.
+- [Slack mentions](slack_mentions.md): how a mention reaches one fleet and its answer comes back.
+- [Data flow](data_flow.md): what happens to the turn an event writes.
+- [`../AUTH.md`](../AUTH.md): connector refusal codes and the sign-in surface.
+- [Runner runtime](runner_execution.md): how a minted token is used and masked in a run.

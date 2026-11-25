@@ -1,6 +1,6 @@
 WITH RECURSIVE held AS MATERIALIZED (
     SELECT l.id, l.runner_id, l.fleet_id, l.workspace_id, l.turn_id,
-           l.setup_revision_id, l.fencing_token AS fence,
+           l.fencing_token AS fence,
            l.run_expires_at, l.model, l.provider,
            s.fencing_token AS thread_fence, s.run_expires_at AS thread_expires_at,
            f.status AS fleet_status
@@ -29,7 +29,7 @@ asked AS (
 -- `turn_id` is the asking turn's, and `run_turn_id` the run's own.
 SELECT h.id, h.fleet_id, h.workspace_id,
        (SELECT s.id FROM asked s WHERE NOT s.is_cycle ORDER BY s.depth DESC LIMIT 1) AS turn_id,
-       h.turn_id AS run_turn_id, h.setup_revision_id,
+       h.turn_id AS run_turn_id,
        h.fence, h.run_expires_at, h.thread_fence, h.thread_expires_at, h.fleet_status,
        h.model, h.provider
 FROM held h

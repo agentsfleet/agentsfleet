@@ -2,12 +2,11 @@
 //! (`sql/issue.sql`) locks the rows these reads relied on and re-checks them in one statement.
 
 use af_core::id::Uuid7;
-use af_wire::{decision::DecisionPurpose, durable_task::DecisionReservationInput};
+use af_wire::durable_task::DecisionReservationInput;
 use sqlx::PgConnection;
 
 use super::{
     context::{AssessedContext, DurableTaskStamp},
-    prepare::Candidate,
     sql,
 };
 use crate::{
@@ -25,7 +24,6 @@ use crate::{
 
 pub(super) struct NativeContext {
     pub current: guard::RunRow,
-    pub scope: DurableTaskScope,
     pub task: Option<Execution>,
     pub source: source::Source,
 }
@@ -56,33 +54,15 @@ impl NativeContext {
         let task = execution(connection, &current, &scope, input).await?;
         let source_id = guard::id(&input.source_turn_id, "source_turn_id")?;
         let source = source::fetch(connection, &current, &source_id, sql::SOURCE).await?;
-        super::request::assessed(input, &source.message()?)?;
-        authorize_source(
-            connection,
-            run,
-            &current,
-            &source,
-            &source_id,
-            input.assessment.purpose(),
-        )
-        .await?;
+        // A goal check assesses the run's own head turn: the task's source.
+        if source_id.as_str() != current.source_turn_id {
+            return Err(DurableTaskRefusal::InvalidTarget.into());
+        }
         Ok(Self {
             current,
-            scope,
             task,
             source,
         })
-    }
-
-    pub(super) fn revision(&self, purpose: DecisionPurpose) -> Result<&str> {
-        if purpose == DecisionPurpose::Goal {
-            self.task
-                .as_ref()
-                .map(|task| task.snapshot.context.accepted_revision_id.as_ref())
-        } else {
-            self.current.revision_id.as_ref().map(Uuid7::as_str)
-        }
-        .ok_or_else(|| DurableTaskRefusal::StaleState.into())
     }
 
     pub(super) fn assessed(
@@ -90,22 +70,16 @@ impl NativeContext {
         input: &DecisionReservationInput,
         profile_revision: &str,
         questions_digest: String,
-        candidates: &[Candidate],
     ) -> Result<AssessedContext> {
         Ok(AssessedContext {
             source_turn_id: guard::wire(&input.source_turn_id)?,
             assessment: input.assessment.clone(),
-            accepted_revision_id: guard::wire(self.revision(input.assessment.purpose())?)?,
             profile_revision_id: guard::wire(profile_revision)?,
             questions_digest,
             execution: self
                 .task
                 .as_ref()
                 .and_then(|task| DurableTaskStamp::of(&task.snapshot.context)),
-            candidates: candidates
-                .iter()
-                .map(|candidate| candidate.stamp.clone())
-                .collect(),
         })
     }
 }
@@ -155,48 +129,6 @@ pub(super) async fn execution(
     }
 }
 
-pub(super) async fn authorize_source(
-    connection: &mut PgConnection,
-    run: DurableTaskRun<'_>,
-    current: &guard::RunRow,
-    input: &source::Source,
-    source_id: &Uuid7,
-    purpose: DecisionPurpose,
-) -> Result<()> {
-    if purpose == DecisionPurpose::Goal {
-        if source_id.as_str() != current.source_turn_id {
-            return Err(DurableTaskRefusal::InvalidTarget.into());
-        }
-        return Ok(());
-    }
-    source::check_human(input)?;
-    if source_id.as_str() != current.source_turn_id {
-        sqlx::query_scalar::<_, Uuid7>(sql::ASSIGN_SOURCE)
-            .bind(&current.fleet_id)
-            .bind(&current.workspace_id)
-            .bind(&current.source_turn_id)
-            .bind(afd_turns::Producer::Steer.as_str())
-            .bind(afd_turns::view::ACTOR_MACHINE)
-            .bind(format!("{}%", afd_turns::view::ACTOR_PREFIX))
-            .bind(0_i64)
-            .bind(1_i64)
-            .bind(run.run_id)
-            .bind(current.fence)
-            .bind(RUN_STATUS_ACTIVE)
-            .bind(source_id)
-            .bind(false)
-            .bind(afd_turns::Producer::SlackMention.as_str())
-            .bind(afd_connector::Provider::Slack.id())
-            .bind(afd_connector::slack::PERSON_ACTOR_PATTERN)
-            .bind(afd_connector::slack::PERSON_ACTOR_SEPARATOR)
-            .fetch_optional(connection)
-            .await
-            .map_err(query("assign the next native human decision source"))?
-            .ok_or(DurableTaskRefusal::StaleState)?;
-    }
-    Ok(())
-}
-
 /// The run as the reservation reads it, with no lock (`sql/context.sql`): what the
 /// locked guard answers for a run that is gone, moved or not this runner's.
 pub(super) async fn context(
@@ -234,7 +166,6 @@ async fn block_profile_switch(
         .as_ref()
         .ok_or(DurableTaskRefusal::DecisionUnavailable)?;
     let subject = super::context::subject(
-        &input.source_turn_id,
         &input.assessment,
         current
             .durable_task_id

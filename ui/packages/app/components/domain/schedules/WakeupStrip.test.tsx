@@ -1,20 +1,20 @@
 import {act, cleanup, fireEvent, render, screen, waitFor, within} from "@testing-library/react";
 import {afterEach, beforeEach, expect, it, vi} from "vitest";
 import {TooltipProvider} from "@agentsfleet/design-system";
-import {SCHEDULE, WORKSPACE, FLEET_ID} from "@/tests/helpers/draft-fixtures";
-import type {Schedule} from "@/lib/api/draft-types";
+import {SCHEDULE, WORKSPACE, FLEET_ID} from "@/tests/helpers/fleet-fixtures";
+import type {Schedule} from "@/lib/api/schedule-types";
 import {WakeupStrip} from "./WakeupStrip";
 
 const mocks = vi.hoisted(() => ({refresh: vi.fn(), view: {subject: "user", workspaceId: "", fleetId: "", schedules: [] as Schedule[]}}));
 vi.mock("next/navigation", () => ({useRouter: () => ({refresh: mocks.refresh})}));
 vi.mock("../tasks/FleetTaskProvider", () => ({useFleetDurableTaskView: () => mocks.view}));
-const current = {...SCHEDULE, source: "trigger", etag: '"one"', description: "Check release", next_run_at: "2099-11-12T13:30:00Z"};
+const current = {...SCHEDULE, source: "fleet", etag: '"one"', description: "Check release", next_run_at: "2099-11-12T13:30:00Z"};
 beforeEach(() => {mocks.refresh.mockClear(); mocks.view = {subject: "user", workspaceId: WORKSPACE, fleetId: FLEET_ID, schedules: [current]};});
 afterEach(() => {cleanup(); vi.unstubAllGlobals();});
 function mount() {return render(<WakeupStrip />, {wrapper: TooltipProvider});}
 
-it.each(["trigger", "api"])("changes only edited fields and preserves existing %s overrides", async source => {
-  const saved = {...current, source, timezone: "Europe/London", override: {timezone: "Europe/London", status: "active"}};
+it.each(["fleet", "api"])("changes only the edited field of a %s schedule", async source => {
+  const saved = {...current, source, timezone: "Europe/London"};
   const fetcher = vi.fn().mockImplementation(async () => Response.json(saved));
   vi.stubGlobal("fetch", fetcher); mount();
   for (const [label, value, field] of [
@@ -28,12 +28,12 @@ it.each(["trigger", "api"])("changes only edited fields and preserves existing %
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     const request = fetcher.mock.calls.at(-1)![1];
     const changed = {[field]: value};
-    expect(JSON.parse(request.body)).toEqual(source === "trigger" ? {override: {...saved.override, ...changed}} : changed);
+    expect(JSON.parse(request.body)).toEqual(changed);
     expect(request.headers["If-Match"]).toBe(saved.etag);
   }
 });
 
-it.each(["trigger", "api"])("closes an unchanged %s wake-up without a write or refresh", async source => {
+it.each(["fleet", "api"])("closes an unchanged %s wake-up without a write or refresh", async source => {
   const saved = {...current, source};
   const fetcher = vi.fn().mockImplementation(async () => Response.json(saved));
   vi.stubGlobal("fetch", fetcher); mount();
@@ -155,8 +155,8 @@ it("pauses and resumes against the latest saved version, then reconciles a serve
   fireEvent.click(screen.getByRole("button", {name: "Pause wake-up"}));
   fireEvent.click(await screen.findByRole("button", {name: "Resume wake-up"}));
   await screen.findByRole("button", {name: "Pause wake-up"});
-  expect(JSON.parse(fetcher.mock.calls[1]?.[1].body)).toEqual({override: {status: "paused"}});
-  expect(JSON.parse(fetcher.mock.calls[3]?.[1].body)).toEqual({override: {status: "active"}});
+  expect(JSON.parse(fetcher.mock.calls[1]?.[1].body)).toEqual({status: "paused"});
+  expect(JSON.parse(fetcher.mock.calls[3]?.[1].body)).toEqual({status: "active"});
   expect(fetcher.mock.calls[3]?.[1].headers["If-Match"]).toBe('"two"');
   mocks.view.schedules = [paused]; view.rerender(<WakeupStrip />);
   expect(screen.getByRole("button", {name: "Resume wake-up"})).toBeTruthy();
@@ -204,15 +204,15 @@ it.each([
   {before: "active", after: "paused", action: "Pause wake-up", confirmed: "Resume wake-up"},
   {before: "paused", after: "active", action: "Resume wake-up", confirmed: "Pause wake-up"},
 ])("confirms a committed $after change after a lost reply without writing it twice", async scenario => {
-  let saved = {...current, timezone: "Asia/Kolkata", status: scenario.before, override: {timezone: "Asia/Kolkata", status: scenario.before}};
+  let saved = {...current, timezone: "Asia/Kolkata", status: scenario.before};
   mocks.view.schedules = [saved];
   let writes = 0;
   const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
     if (init?.method === "PATCH") {
       writes++;
       if (typeof init.body !== "string") throw new Error("Expected a JSON request body");
-      expect(JSON.parse(init.body)).toEqual({override: {timezone: "Asia/Kolkata", status: scenario.after}});
-      saved = {...saved, status: scenario.after, etag: '"committed"', override: {...saved.override, status: scenario.after}};
+      expect(JSON.parse(init.body)).toEqual({status: scenario.after});
+      saved = {...saved, status: scenario.after, etag: '"committed"'};
       throw new TypeError("response lost after commit");
     }
     return Response.json(saved);

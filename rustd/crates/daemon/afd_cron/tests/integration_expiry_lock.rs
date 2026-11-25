@@ -18,10 +18,10 @@ use af_core::id::Uuid7;
 use std::time::Duration;
 
 use afd_api_wire::schedule::Patch;
-use afd_cron::{EditRequest, Recipe, RecipeSet};
+use afd_cron::EditRequest;
 use sqlx::{Connection as _, Postgres, Transaction};
 
-use self::support::{CronLane, SEED_AT};
+use self::support::CronLane;
 
 /// How long the sync run has left when the row lock is taken: long enough
 /// for the guard to queue behind the lock before the run lapses.
@@ -44,10 +44,6 @@ const RUN_LIVE: &str =
 /// Whether any backend is waiting on `$1`'s locks.
 const BLOCKING: &str =
     "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid)))";
-
-/// The one recipe-carrying schedule on the lane's fleet.
-const RECIPE_SCHEDULE: &str =
-    "SELECT id FROM fleet.schedules WHERE fleet_id = $1 AND recipe IS NOT NULL";
 
 /// Commits another syncer's run on `schedule`, lapsing in [`LAPSES_IN`],
 /// then takes the row's lock on `held`; answers the holder's backend.
@@ -111,28 +107,6 @@ async fn hold_past_deadline(
         .expect("the holder lets go without writing");
 }
 
-/// Replaces the fleet's recipes with one, on its own transaction.
-async fn replace_recipes(lane: &CronLane, recipes: &[Recipe]) -> afd_cron::Result<()> {
-    let (workspace, fleet) = (lane.workspace_id(), lane.fleet_id());
-    let mut connection = lane.connection().await;
-    let mut tx = connection.begin().await.expect("recipe transaction");
-    let _announcement = lane
-        .store
-        .replace_recipes_on(
-            &mut tx,
-            RecipeSet {
-                workspace: &workspace,
-                fleet: &fleet,
-                setup_revision: 1,
-                recipes,
-                now: SEED_AT,
-            },
-        )
-        .await?;
-    tx.commit().await.expect("commit the recipes");
-    Ok(())
-}
-
 #[tokio::test]
 #[ignore = "needs the lane's Postgres and NATS"]
 async fn test_expiry_checks_read_clock_after_lock() {
@@ -163,23 +137,4 @@ async fn test_expiry_checks_read_clock_after_lock() {
     let edited = edited.expect("a run that lapsed in the wait no longer holds the schedule");
     assert_eq!(edited.cron, "0 5 * * *");
     assert_eq!(edited.sync_token.as_ref(), Some(&editor));
-
-    // A recipe replacement: one locking read judges every inherited row.
-    let recipes =
-        [Recipe::parse("0 4 * * *", "UTC", "run the inherited repair").expect("a recipe")];
-    replace_recipes(&lane, &recipes)
-        .await
-        .expect("the first recipe lands");
-    let inherited: Uuid7 = sqlx::query_scalar(RECIPE_SCHEDULE)
-        .bind(&fleet)
-        .fetch_one(&mut *lane.connection().await)
-        .await
-        .expect("the recipe's schedule");
-    let mut held = holder.begin().await.expect("holder transaction");
-    let pid = lapse_and_lock(&lane, &mut held, &inherited).await;
-    let (replaced, ()) = tokio::join!(
-        replace_recipes(&lane, &recipes),
-        hold_past_deadline(&lane, held, pid, &inherited)
-    );
-    replaced.expect("a run that lapsed in the wait no longer holds the recipe");
 }

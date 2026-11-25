@@ -33,7 +33,9 @@
 
 use af_core::id::Uuid7;
 use afd_db::config::DbRole;
-use afd_db::test_util::{TenantSeed, TestDatabase, mint_id};
+use afd_db::test_util::{
+    FIXTURE_HTTP_EGRESS, FIXTURE_MODEL_REF, TenantSeed, TestDatabase, mint_id,
+};
 use afd_db::{Db, Migrator};
 use afd_turns::view::READ_TEXTS;
 use sqlx::{AssertSqlSafe, PgConnection, Row as _};
@@ -58,6 +60,7 @@ const DECOY_AT: jiff::Timestamp = jiff::Timestamp::constant(1_700_000_000, 0);
 /// Most events are steers and a quarter are fires of a few schedules per
 /// fleet, so the actor column has the spread a deployment's has: one value
 /// common and many rare, which is what an exact actor read is costed against.
+/// Every fleet runs model `$6` on network `$7`, the values a fresh fleet takes.
 const SEED_SPREAD: &str = "
 WITH workspaces AS (
     INSERT INTO identity.workspaces (id, tenant_id, name, created_at)
@@ -66,10 +69,10 @@ WITH workspaces AS (
     RETURNING id
 ), fleets AS (
     INSERT INTO fleet.fleets
-      (id, workspace_id, tenant_id, name, status, required_tags,
-       memory_reads_workspace, memory_publishes_workspace, resource_version,
+      (id, workspace_id, tenant_id, name, status, model_ref, http_egress, package_domains,
+       required_tags, memory_reads_workspace, memory_publishes_workspace, resource_version,
        created_at, updated_at)
-    SELECT uuidv7(), workspaces.id, $1, 'plan-probe-' || f, 'active',
+    SELECT uuidv7(), workspaces.id, $1, 'plan-probe-' || f, 'active', $6, $7, false,
            '{}'::text[], false, false, 1, $2::timestamptz, $2::timestamptz
       FROM workspaces, generate_series(1, $4) f
     RETURNING id, workspace_id
@@ -153,6 +156,8 @@ async fn generic_plans(
         .bind(workspaces)
         .bind(fleets)
         .bind(events)
+        .bind(FIXTURE_MODEL_REF)
+        .bind(FIXTURE_HTTP_EGRESS)
         .execute(&mut *connection)
         .await
         .expect("the decoy spread must insert");

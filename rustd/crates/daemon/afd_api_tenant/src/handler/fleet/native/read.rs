@@ -1,4 +1,4 @@
-//! Shared fleet reads expose current setup without the private conversation.
+//! A fleet as any member of its workspace reads it, from the moment it exists.
 
 use super::{access, render};
 use crate::{
@@ -16,9 +16,13 @@ use std::sync::Arc;
 
 #[cfg_attr(feature = "openapi", utoipa::path(
     get, path = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}", operation_id = "get_fleet",
-    tag = afd_http::openapi::tag::FLEETS, summary = "Read fleet setup and progress",
+    tag = afd_http::openapi::tag::FLEETS, summary = "Read a fleet",
+    description = concat!(
+        "Returns the fleet with its model, network toggles, schedules, triggers and grants. ",
+        "Every member of the workspace reads a fleet from the moment it is created.",
+    ),
     params(afd_http::openapi::path::Fleet),
-    responses((status = 200, body = afd_api_wire::fleet::FleetResponse, description = "Current fleet", headers(("ETag" = String))),
+    responses((status = 200, body = afd_api_wire::fleet::FleetResponse<'_>, description = "Current fleet", headers(("ETag" = String))),
         (status = 400, description = "Invalid identity"), (status = 404, description = "Fleet unavailable"),
         afd_http::openapi::GuardedFailures,
     )

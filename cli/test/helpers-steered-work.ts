@@ -7,8 +7,8 @@ export const HEAD = "a".repeat(40);
 export const COMMIT = "b".repeat(40);
 export const INSTANT = "2026-11-03T10:00:00Z";
 export function durableTaskDetail(): DurableTaskDetail {
-  return {title: "Repair the callback", resource_version: 1, setup_revision: 2, etag: `"${"a".repeat(64)}"`, context: {
-    durable_task_id: TASK, generation: 1, stop_generation: 0, state: "waiting", accepted_revision_id: TASK,
+  return {title: "Repair the callback", resource_version: 1, etag: `"${"a".repeat(64)}"`, context: {
+    durable_task_id: TASK, generation: 1, stop_generation: 0, state: "waiting",
     objective: "Repair", goal_digest: "goal", questions: [{name: "repair", question: {type: "noul", instructions: "Fixed?", criteria: {true: "Fixed", false: "Broken"}}}],
     covered_input_sequence: 1, effect_cursor: 1, confirmed_effect_watermark: 0, checkpoint_id: null, expires_at: INSTANT,
     target: {kind: "existing_pr", repository: "agentsfleet/agentsfleet", number: 803, branch: "work", head: HEAD, tree: HEAD,

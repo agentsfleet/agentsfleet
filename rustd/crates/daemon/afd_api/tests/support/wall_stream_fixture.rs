@@ -170,7 +170,6 @@ impl Fixture {
         )
         .name("streamed")
         .at(SEEDED_AT)
-        .native_setup()
         .insert(&mut *connection)
         .await
         .expect("the live fleet seeds");
@@ -187,7 +186,6 @@ impl Fixture {
         )
         .name("streamed-second")
         .at(jiff::Timestamp::constant(0, 2_000_000))
-        .native_setup()
         .insert(&mut *connection)
         .await
         .expect("the second live fleet seeds");

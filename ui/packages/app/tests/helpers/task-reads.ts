@@ -5,18 +5,17 @@ export const DURABLE_TASK_IDS = [
   "019a42b0-0000-7000-8000-000000000124",
   "019a42b0-0000-7000-8000-000000000125",
 ] as const;
-export const SETUP_ID = "019a42b0-0000-7000-8000-000000000001";
 export const INSTANT = "2026-11-03T10:00:00Z";
 
 /** Responses from the native task API, not evidence of task creation. */
 export function summary(id: string = DURABLE_TASK_IDS[0], status: DurableTaskStatus = "waiting", version = 1): DurableTaskSummary {
   return {id, title: `PR #${id.slice(-3)} repair`, status, resource_version: version, generation: 1,
-    accepted_revision_id: SETUP_ID, created_at: INSTANT, expires_at: INSTANT};
+    created_at: INSTANT, expires_at: INSTANT};
 }
 
 export function detail(task: DurableTaskSummary = summary(), checkpoint: string | null = null): DurableTaskDetail {
-  return {title: task.title, resource_version: task.resource_version, setup_revision: 2, context: {
-    durable_task_id: task.id, generation: task.generation, stop_generation: 0, accepted_revision_id: SETUP_ID,
+  return {title: task.title, resource_version: task.resource_version, context: {
+    durable_task_id: task.id, generation: task.generation, stop_generation: 0,
     objective: "Repair the callback redirect without weakening the check.", goal_digest: "goal-123",
     questions: [{name: "repair", question: {type: "noul", instructions: "Does the regression pass on the proposed head?",
       criteria: {true: "The exact proposed head passes the regression.", false: "The head has no passing regression evidence."}}}],

@@ -19,8 +19,8 @@ use std::sync::Arc;
     summary = "Permanently delete a fleet",
     description = concat!(
         "Permanently deletes the fleet, events, runs, approvals, grants, ",
-        "keys, and memory, in any status. A running fleet's setup and live ",
-        "work end first. This cannot be undone. Archive is a separate ",
+        "keys, and memory, in any status. A running fleet's live work ends ",
+        "first. This cannot be undone. Archive is a separate ",
         "operation: set the status to `archived` to keep the history instead. ",
     ),
     params(

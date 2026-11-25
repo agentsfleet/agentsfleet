@@ -7,7 +7,7 @@ use super::*;
 
 async fn stored(fixture: &Fixture) -> Value {
     let mut connection = fixture.database().acquire().await.expect("observer");
-    sqlx::query_scalar("SELECT jsonb_build_object('fleets', COALESCE((SELECT jsonb_agg(to_jsonb(f) ORDER BY f.id) FROM fleet.fleets f WHERE workspace_id=$1),'[]'::jsonb), 'revisions', COALESCE((SELECT jsonb_agg(to_jsonb(r) ORDER BY r.id) FROM fleet.revisions r JOIN fleet.fleets f ON f.id=r.fleet_id WHERE f.workspace_id=$1),'[]'::jsonb))")
+    sqlx::query_scalar("SELECT jsonb_build_object('fleets', COALESCE((SELECT jsonb_agg(to_jsonb(f) ORDER BY f.id) FROM fleet.fleets f WHERE workspace_id=$1),'[]'::jsonb), 'triggers', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM fleet.triggers t WHERE t.workspace_id=$1),'[]'::jsonb))")
         .bind(fixture.workspace()).fetch_one(&mut *connection).await.expect("fleet snapshot")
 }
 

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { z } from "zod";
-import { ModelsSchema, type WorkspaceModel } from "@/lib/api/draft-types";
+import { ModelsSchema, type WorkspaceModel } from "@/lib/api/workspace-models";
 import { FleetDetailSchema } from "@/lib/api/fleet-detail";
 import { clientFor } from "./fixtures/api-client";
 import { FIXTURE_KEY } from "./fixtures/constants";
@@ -14,20 +14,23 @@ const ENTRY = ENTRY_ID.extend({workspace_id: z.uuid()});
 const MESSAGE = "Keep my unsent question after the model changes";
 const MODEL_LABEL = "Fleet model";
 
-test("saving the fleet model preserves its unsent message and survives reload", async ({page}) => {
+test("changing the fleet model is one change that keeps its unsent message and survives reload", async ({page}) => {
   await withRuntimeChoice(async choice => {
     await withReplyPage(page, "incident-routing", async ({workspaceId, fleetId}) => {
       const composer = page.getByLabel("Chat composer", {exact: true}).getByRole("textbox");
       await composer.fill(MESSAGE);
       const postedMessages: string[] = [];
+      const fleetPatches: string[] = [];
       page.on("request", request => {
-        if (request.method() === "POST" && new URL(request.url()).pathname.endsWith("/messages")) postedMessages.push(request.url());
+        const path = new URL(request.url()).pathname;
+        if (request.method() === "POST" && path.endsWith("/messages")) postedMessages.push(request.url());
+        if (request.method() === "PATCH" && path.endsWith(`/fleets/${fleetId}`)) fleetPatches.push(request.postData() ?? "");
       });
       await page.getByRole("combobox", {name: MODEL_LABEL}).click();
       await page.getByRole("option", {name: choice.label, exact: true}).and(page.locator('[data-state="unchecked"]')).first().click();
-      await expect.poll(async () => (await readFleet(workspaceId, fleetId)).setup_revision).toBe("2");
+      await expect.poll(async () => (await readFleet(workspaceId, fleetId)).model_ref).toBe(choice.ref);
       await expect(page.getByRole("combobox", {name: MODEL_LABEL})).toContainText(choice.label);
-      expect((await readFleet(workspaceId, fleetId)).definition.config["x-agentsfleet"].model).toBe(choice.ref);
+      expect(fleetPatches.map(body => JSON.parse(body) as unknown)).toEqual([{model_ref: choice.ref}]);
       await expect(composer).toHaveValue(MESSAGE);
       expect(postedMessages).toEqual([]);
       await page.reload();

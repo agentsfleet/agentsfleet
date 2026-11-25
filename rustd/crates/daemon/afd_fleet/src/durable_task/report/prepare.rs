@@ -129,14 +129,8 @@ async fn snapshot(
                 .fetch_one(&mut *tx)
                 .await
                 .map_err(query("read native report target"))?;
-        let accepted = guard::wire(&owned.snapshot.context.accepted_revision_id)?;
-        for revision in [Some(&accepted), None] {
-            let config =
-                crate::run::Runs::stored_config_on(&mut tx, &owned.scope.fleet_id, revision)
-                    .await?
-                    .ok_or(crate::durable_task::DurableTaskRefusal::InvalidTarget)?;
-            target.within(&config)?;
-        }
+        let binding = crate::run::Runs::approved_binding_on(&mut tx, &owned.scope.fleet_id).await?;
+        target.within(binding.as_ref())?;
         crate::durable_task::Github::hold_authority(&mut tx, &owned.scope, target.installation_id)
             .await?;
         Some(target.0)

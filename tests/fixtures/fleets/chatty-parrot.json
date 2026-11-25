@@ -1,0 +1,24 @@
+{
+  "name": "chatty-parrot",
+  "journey": "slack",
+  "about": "Answers when it is mentioned in Slack. It replies in the thread it was mentioned in.",
+  "first_message": "You answer Slack mentions. Add a Slack trigger for the channel named in this message. When you are mentioned, reply in that thread with one short sentence that repeats the word you were given.",
+  "follow_ups": [],
+  "remembers": [
+    "Reply in the thread you were mentioned in."
+  ],
+  "asks_for": [],
+  "wakes_on": [
+    {
+      "kind": "mention",
+      "source": "slack"
+    }
+  ],
+  "steers": [],
+  "proves": [
+    "The fleet adds a Slack trigger for one channel.",
+    "A signed mention in that channel wakes the fleet, and the turn names Slack as its sender.",
+    "The fleet's reply is posted to Slack in the same thread.",
+    "A mention with a wrong signature is refused; a mention in another channel wakes nothing."
+  ]
+}

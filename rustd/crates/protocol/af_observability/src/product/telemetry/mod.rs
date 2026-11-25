@@ -1,5 +1,5 @@
-//! The product events, as one closed set: the eleven ported ones, then the
-//! invite email's, then the private-chat-to-fleet funnel's.
+//! The product events, as one closed set: the nine ported ones something
+//! sends, then the invite email's, then the first-message-to-fleet funnel's.
 //!
 //! # Why an enum where the daemon this ports has eleven structs
 //!
@@ -15,12 +15,11 @@
 //! place would split a funnel in the analytics without failing anything here
 //! (RULE UFS).
 
-mod setup;
+mod fleet;
 
-use af_core::id::Uuid7;
 use posthog::Event;
 
-pub use self::setup::SetupStep;
+pub use self::fleet::{AccessChange, FleetOrigin, FleetStep};
 
 /// One product event, with everything it reports.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -100,19 +99,6 @@ pub enum Telemetry {
         /// The request it was presented on.
         request_id: String,
     },
-    /// A fleet was woken.
-    FleetTriggered {
-        /// Who or what woke it.
-        actor: String,
-        /// The workspace it belongs to.
-        workspace_id: String,
-        /// The fleet.
-        fleet_id: String,
-        /// The stream entry that woke it.
-        turn_id: String,
-        /// What kind of producer that was.
-        source: String,
-    },
     /// A run finished, however it finished.
     FleetCompleted {
         /// Who the run is attributed to.
@@ -132,30 +118,6 @@ pub enum Telemetry {
         /// Milliseconds to the first token; zero when the runner did not say.
         time_to_first_token_ms: u64,
     },
-    /// A settlement took a tenant's credit balance to zero or below. Reported
-    /// once per crossing: debits while it stays there report nothing, and once
-    /// a debit leaves credit again the next crossing reports again.
-    WalletExhausted {
-        /// The tenant whose wallet it was, which the event is attributed to.
-        tenant_id: String,
-    },
-    /// A signup created a personal tenant and workspace, or replayed one.
-    SignupBootstrapped {
-        /// The identity subject, so a replayed webhook stitches to one person.
-        actor: String,
-        /// The tenant.
-        tenant_id: String,
-        /// Its first workspace.
-        workspace_id: String,
-        /// What that workspace was called.
-        workspace_name: String,
-        /// The email's domain — a cohort, where the address would be a person.
-        email_domain: String,
-        /// Whether this call created it, or found it already there.
-        created: bool,
-        /// The request that bootstrapped it.
-        request_id: String,
-    },
     /// An invite email was handed to the relay, refused, or not sent for want
     /// of one. Reported under one of three names, by [`InviteEmailOutcome`].
     InviteEmail {
@@ -171,16 +133,15 @@ pub enum Telemetry {
         /// What became of it.
         outcome: InviteEmailOutcome,
     },
-    /// One step of the private-chat-to-fleet funnel. Reported under one of
-    /// five names, by [`SetupStep`].
-    Setup {
-        /// The person whose chat or setup it is, as the OIDC subject the
-        /// browser identifies them under, so both halves join one funnel.
-        actor: String,
-        /// The workspace it happened in.
-        workspace_id: Uuid7,
+    /// One step of the first-message-to-fleet funnel. Reported under one of
+    /// two names, by [`FleetStep`].
+    Fleet {
+        /// The person who acted, as the OIDC subject the browser identifies
+        /// them under, so both halves join one funnel; `None` for a grant the
+        /// fleet itself asked for.
+        actor: Option<String>,
         /// Which step, and the opaque identifiers it carries.
-        step: SetupStep,
+        step: FleetStep,
     },
 }
 
@@ -223,16 +184,13 @@ impl Telemetry {
             Self::WorkspaceCreated { .. } => "workspace_created",
             Self::AuthLoginCompleted { .. } => "auth_login_completed",
             Self::AuthRejected { .. } => "auth_rejected",
-            Self::FleetTriggered { .. } => "fleet_triggered",
             Self::FleetCompleted { .. } => "fleet_completed",
-            Self::SignupBootstrapped { .. } => "signup_bootstrapped",
-            Self::WalletExhausted { .. } => "wallet_exhausted",
             Self::InviteEmail { outcome, .. } => match outcome {
                 InviteEmailOutcome::Sent { .. } => "invite_email_sent",
                 InviteEmailOutcome::Failed { .. } => "invite_email_failed",
                 InviteEmailOutcome::Unconfigured => "invite_email_unconfigured",
             },
-            Self::Setup { ref step, .. } => step.name(),
+            Self::Fleet { ref step, .. } => step.name(),
         }
     }
 
@@ -248,12 +206,9 @@ impl Telemetry {
             | Self::ApiError { actor, .. }
             | Self::WorkspaceCreated { actor, .. }
             | Self::AuthLoginCompleted { actor, .. }
-            | Self::FleetTriggered { actor, .. }
             | Self::FleetCompleted { actor, .. }
-            | Self::SignupBootstrapped { actor, .. }
-            | Self::InviteEmail { actor, .. }
-            | Self::Setup { actor, .. } => Some(actor),
-            Self::WalletExhausted { tenant_id } => Some(tenant_id),
+            | Self::InviteEmail { actor, .. } => Some(actor),
+            Self::Fleet { actor, .. } => actor.as_deref(),
             Self::ServerStarted { .. }
             | Self::WorkerStarted { .. }
             | Self::StartupFailed { .. }
@@ -280,4 +235,4 @@ mod tests;
 mod invite_tests;
 
 #[cfg(test)]
-mod setup_tests;
+mod fleet_tests;

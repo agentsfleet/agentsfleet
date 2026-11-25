@@ -12,7 +12,7 @@
 //! [`Visibility::Workspace`](af_wire::memory::Visibility); a fleet holding the
 //! read grant loads and recalls those entries from the workspace's other
 //! fleets, each naming its writer. No fleet overwrites or forgets another's.
-//! `docs/architecture/runner_fleet.md` §"Memory backends and scope" is the
+//! `docs/architecture/memory.md` §"Scope and sharing" is the
 //! decision; this crate is where it is enforced.
 
 #![forbid(unsafe_code)]

@@ -5,7 +5,6 @@ import Examples from "./Examples";
 import { DEFAULT_JOB, EXAMPLE_JOBS } from "../lib/example-jobs";
 
 const PRIVATE_REQUEST = "Investigate something else";
-const INSTALL_COMMAND = "curl -fsSL https://agentsfleet.dev | bash";
 const INCIDENT_LINK = /Investigate an incident.*Explore example run/;
 const BACK_LINK = "Back to examples";
 const CONTEXTUAL_EXAMPLES = [
@@ -24,8 +23,7 @@ describe("Example conversation entrance", () => {
     expect(screen.queryByRole("navigation", { name: "Conversation context" })).toBeNull();
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.queryByRole("button", { name: /Tools & setup|Use my tools/ })).toBeNull();
-    expect(screen.getByText(INSTALL_COMMAND)).toBeInTheDocument();
-    expect(screen.getByText(/Claude Code · Codex · OpenCode/)).toBeInTheDocument();
+    expect(screen.getByText("Example composer")).toBeInTheDocument();
     expect(screen.queryByText(/preview|release pending/i)).toBeNull();
   });
   it("opens the incident directly, hides the composer, and restores its private text on return", () => {
@@ -36,13 +34,12 @@ describe("Example conversation entrance", () => {
     expect(screen.queryByRole("textbox")).toBeNull();
     expect(screen.getByTestId("how-it-works")).toHaveTextContent(DEFAULT_JOB.request);
     expect(screen.getByTestId("how-it-works")).not.toHaveTextContent(PRIVATE_REQUEST);
-    expect(screen.getByText(INSTALL_COMMAND)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("link", { name: BACK_LINK }));
     expect(screen.queryByTestId("how-it-works")).toBeNull();
     expect(screen.getByRole("textbox")).toHaveValue(PRIVATE_REQUEST);
     expect(screen.getAllByRole("textbox")).toHaveLength(1);
   });
-  it.each(CONTEXTUAL_EXAMPLES)("keeps the $job.label example and private draft when returning home", ({ job, link }) => {
+  it.each(CONTEXTUAL_EXAMPLES)("keeps the $job.label example and unsent message when returning home", ({ job, link }) => {
     renderHome();
     fireEvent.change(screen.getByRole("textbox"), { target: { value: PRIVATE_REQUEST } });
     fireEvent.click(screen.getByRole("link", { name: new RegExp(job.label) }));
@@ -56,7 +53,7 @@ describe("Example conversation entrance", () => {
     fireEvent.click(screen.getByRole("link", { name: link }));
     expect(screen.getByRole("heading", { name: job.title })).toBeInTheDocument();
   });
-  it("opens the incident after another suggestion without overwriting the draft", () => {
+  it("opens the incident after another suggestion without overwriting the message", () => {
     renderHome();
     fireEvent.change(screen.getByRole("textbox"), { target: { value: PRIVATE_REQUEST } });
     fireEvent.click(screen.getByRole("link", { name: new RegExp(EXAMPLE_JOBS[1].label) }));

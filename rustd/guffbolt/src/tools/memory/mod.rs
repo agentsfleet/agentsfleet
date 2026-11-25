@@ -18,9 +18,12 @@ use crate::tools::{Context, Handler};
 
 pub use self::local::LocalMemory;
 
-/// The category a memory stored with none is kept under: read first by
-/// every later run.
+/// The category every later run reads first. A memory is kept under it only
+/// when the model names it, so a store that names nothing pins nothing.
 pub const CORE_CATEGORY: &str = "core";
+/// The category a memory stored with none is kept under: kept by recency and
+/// read back on recall, never pinned.
+pub const DEFAULT_CATEGORY: &str = "note";
 /// How many entries a recall answers with when the model names no limit.
 const RECALL_DEFAULT: usize = 5;
 /// What a recall that matched nothing reads back.
@@ -57,7 +60,7 @@ pub struct Memory {
     pub key: String,
     /// What to remember.
     pub content: String,
-    /// Its category: [`CORE_CATEGORY`] when the model named none.
+    /// Its category: [`DEFAULT_CATEGORY`] when the model named none.
     pub category: String,
     /// Who reads it.
     pub reach: Reach,
@@ -123,8 +126,10 @@ pub struct Store {
     key: String,
     /// What to remember.
     content: String,
-    /// `core` (the default) is read first by every later run; `daily` expires
-    /// after a retention sweep; any other label is kept by recency.
+    /// `core` is read first by every later run: name it only for standing
+    /// guidance the person's newest message asks you to keep. `daily` expires
+    /// after a retention sweep; `note` (the default) and any other label are
+    /// kept by recency.
     category: Option<String>,
     /// `private` (the default) keeps it to this agent; `shared` lets other
     /// agents granted shared memory recall it, naming the writer.
@@ -179,7 +184,7 @@ impl Handler for MemoryStoreTool<'_> {
         let memory = Memory {
             key,
             content,
-            category: category.unwrap_or_else(|| CORE_CATEGORY.to_owned()),
+            category: category.unwrap_or_else(|| DEFAULT_CATEGORY.to_owned()),
             reach: visibility.unwrap_or_default(),
         };
         match self.backend.store(memory).await {

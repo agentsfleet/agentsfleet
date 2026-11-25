@@ -1,59 +1,50 @@
-//! An inherited overlay is replaced as a whole; Restore reads only its base.
+//! An edit names the schedule's own fields, and at least one of them.
 
-use crate::{DesiredStatus, Inherited, Recipe, Result, Schedule, error::ErrorKind, validate};
-use afd_api_wire::schedule::{Override, Patch, Status};
+use crate::{DesiredStatus, Result, Schedule, error::ErrorKind, validate};
+use afd_api_wire::schedule::{Patch, Status};
 
-pub(super) fn replacement(row: &Schedule, patch: &Patch) -> Result<(Recipe, Option<Inherited>)> {
-    let independent = patch.cron.is_some()
+/// The schedule's intent once an edit is applied, every field validated.
+pub(super) struct Replacement {
+    pub(super) cron: String,
+    pub(super) timezone: String,
+    pub(super) message: String,
+    pub(super) status: Status,
+}
+
+/// What `row` becomes under `patch`: each field the patch names, the row's
+/// own value for every other.
+///
+/// # Errors
+/// `Patch` for a body that names no field; `Invalid` for a merged
+/// expression, zone or message the grammar refuses.
+pub(super) fn replacement(row: &Schedule, patch: &Patch) -> Result<Replacement> {
+    let named = patch.cron.is_some()
         || patch.timezone.is_some()
         || patch.message.is_some()
         || patch.status.is_some();
-    let (effective, inherited) = if let Some(mut base) = row.recipe.clone() {
-        let overlay = patch.overrides.clone().ok_or(ErrorKind::Patch)?;
-        if independent || overlay.as_ref().is_some_and(empty) {
-            return Err(ErrorKind::Patch.into());
-        }
-        base.overrides = overlay;
-        base.override_revision = base
-            .override_revision
-            .checked_add(1)
-            .ok_or(ErrorKind::Exhausted)?;
-        (base.effective(), Some(base))
+    if !named {
+        return Err(ErrorKind::Patch.into());
+    }
+    let current = if row.desired_status == DesiredStatus::Paused {
+        Status::Paused
     } else {
-        if patch.overrides.is_some() || !independent {
-            return Err(ErrorKind::Patch.into());
-        }
-        let status = if row.desired_status == DesiredStatus::Paused {
-            Status::Paused
-        } else {
-            Status::Active
-        };
-        (
-            Recipe {
-                cron: patch.cron.clone().unwrap_or_else(|| row.cron.clone()),
-                timezone: patch
-                    .timezone
-                    .clone()
-                    .unwrap_or_else(|| row.timezone.clone()),
-                message: patch.message.clone().unwrap_or_else(|| row.message.clone()),
-                status: patch.status.unwrap_or(status),
-            },
-            None,
-        )
+        Status::Active
+    };
+    let replaced = Replacement {
+        cron: patch.cron.clone().unwrap_or_else(|| row.cron.clone()),
+        timezone: patch
+            .timezone
+            .clone()
+            .unwrap_or_else(|| row.timezone.clone()),
+        message: patch.message.clone().unwrap_or_else(|| row.message.clone()),
+        status: patch.status.unwrap_or(current),
     };
     validate::Fields {
-        expression: Some(&effective.cron),
-        timezone: Some(&effective.timezone),
-        message: Some(&effective.message),
+        expression: Some(&replaced.cron),
+        timezone: Some(&replaced.timezone),
+        message: Some(&replaced.message),
     }
     .check()
     .map_err(|invalid| ErrorKind::Invalid { invalid })?;
-    Ok((effective, inherited))
-}
-
-const fn empty(overlay: &Override) -> bool {
-    overlay.cron.is_none()
-        && overlay.timezone.is_none()
-        && overlay.message.is_none()
-        && overlay.status.is_none()
+    Ok(replaced)
 }

@@ -147,7 +147,7 @@ pub const LOCK_CREDENTIAL_FOR_REFERENCE: &str = include_str!("lock_credential_fo
 /// must not bump anything.
 ///
 /// The table carries three unique indexes — the `id` primary key, the
-/// `(id, tenant_id)` pair setup drafts' foreign key targets, and the
+/// `(id, tenant_id)` pair a tenant-scoped reference targets, and the
 /// `(tenant_id, model_name, secret_ref)` domain key — and `ON CONFLICT` across
 /// several unique indexes is where Postgres's unprincipled deadlocks live. This
 /// is safe from that class for a reason worth stating rather than leaving to

@@ -64,14 +64,6 @@ impl From<Response> for Refusal {
 }
 
 impl Refusal {
-    /// A setup mutation must show the freshly computed review before retrying.
-    #[must_use]
-    pub fn review_changed(detail: &'static str, digest: &str) -> Self {
-        Self(Box::new(
-            ProblemResponse::review_changed(detail, RequestId::current(), digest).into_response(),
-        ))
-    }
-
     /// Renders `error` as the refusal for `event`.
     ///
     /// Curried so it reads as `.map_err(Refusal::at(EVENT))?` — the event is

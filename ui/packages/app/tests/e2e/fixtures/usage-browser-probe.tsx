@@ -10,7 +10,7 @@ import {ModelLabelsProvider} from "@/components/domain/models/ModelLabels";
 import {modelLabelsOf} from "@/lib/model-labels";
 import {BILLING_CATALOGUE} from "@/tests/helpers/billing-report";
 import {OWN_ACCOUNT} from "@/tests/helpers/workspace-fixtures";
-import {WORKSPACE} from "@/tests/helpers/draft-fixtures";
+import {WORKSPACE} from "@/tests/helpers/fleet-fixtures";
 import {RouteLoading} from "@/components/layout/RouteLoading";
 
 /** Real report decoder, loader and presentation; browser tests supply HTTP responses and the layout's labels come from the fixture catalogue. */

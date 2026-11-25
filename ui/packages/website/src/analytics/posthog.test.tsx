@@ -196,7 +196,7 @@ describe("website analytics", () => {
 
   it("keeps draining buffered clicks when the analytics client rejects one", async () => {
     mockedPosthog.capture.mockImplementationOnce(() => { throw new Error("blocked capture"); });
-    trackInteractionClicked({ source: "cli_install_copy" });
+    trackInteractionClicked({ source: "cli_quickstart_copy" });
     trackNavigationClicked({ source: "cli_install_guide" });
     await expect(flushAnalyticsForTests()).resolves.toBeUndefined();
     expect(mockedPosthog.capture).toHaveBeenCalledTimes(2);
@@ -208,7 +208,7 @@ describe("website analytics", () => {
     trackNavigationClicked({ source: "prime" });
     await flushAnalyticsForTests();
     mockedPosthog.capture.mockImplementationOnce(() => { throw new Error("blocked capture"); });
-    expect(() => trackInteractionClicked({ source: "cli_install_copy" })).not.toThrow();
+    expect(() => trackInteractionClicked({ source: "cli_quickstart_copy" })).not.toThrow();
     trackNavigationClicked({ source: "cli_install_guide" });
     expect(mockedPosthog.capture).toHaveBeenLastCalledWith(EVENT_NAVIGATION_CLICKED, expect.objectContaining({ source: "cli_install_guide" }));
   });

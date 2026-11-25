@@ -1,55 +1,18 @@
-export type FaqItem = {
-  question: string;
-  answer: string;
-  linkText?: string;
-  href?: string;
-};
-
-export const faq: FaqItem[] = [
-  {
-    question: "What is agentsfleet?",
-    answer:
-      "agentsfleet is open-source software for running AI agents. They can investigate support tickets and show your team what they found.",
-  },
+export const faq = [
   {
     question: "What is a fleet?",
-    answer:
-      "A fleet is an AI agent with a job, a budget, and tools you choose. It keeps a record of each run.",
-  },
-  {
-    question: "What starts a fleet run?",
-    answer:
-      "A message, a schedule, or a webhook from another tool can start a fleet run.",
-    linkText: "fleet run",
-    href: "https://docs.agentsfleet.net/fleets/running",
-  },
-  {
-    question: "Can fleets ask each other for help?",
-    answer:
-      "Yes. Mira handles the Slack thread and asks Scout to check Grafana. Each uses its own permissions.",
+    answer: "A fleet is an AI agent that works from a chat. Each fleet has its own conversation, model, and memory.",
   },
   {
     question: "Who controls access?",
-    answer:
-      "You choose which tools, repositories, and credentials a fleet can use. Set approval rules for actions you want to review.",
-    linkText: "approval rules",
-    href: "https://docs.agentsfleet.net/fleets/approvals",
+    answer: "The fleet asks when it needs a secret or a connection. You can approve the request once in chat or deny it.",
   },
   {
-    question: "What can a fleet check in Grafana?",
-    answer:
-      "With read access, it can check metrics in Prometheus and logs in Loki. Here, Scout checks when the connection dropped and how long people waited.",
+    question: "What wakes a fleet?",
+    answer: "A message wakes a fleet. You can also ask it to add a schedule or respond to GitHub, Slack, and webhook events.",
   },
   {
-    question: "Can I self-host agentsfleet?",
-    answer:
-      "Yes. Run the MIT-licensed source code on your own infrastructure and choose your model.",
-    linkText: "MIT-licensed source code",
-    href: "https://github.com/agentsfleet/agentsfleet",
+    question: "Can I choose my model?",
+    answer: "Yes. Use a hosted model or bring your own model key. You can change the model for a fleet later.",
   },
-  {
-    question: "How much does agentsfleet cost?",
-    answer:
-      "Fleet runtime starts at $0. If you use your own model key, you pay your provider directly.",
-  },
-];
+] as const;

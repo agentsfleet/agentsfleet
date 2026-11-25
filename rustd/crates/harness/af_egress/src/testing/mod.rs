@@ -244,8 +244,6 @@ static CLOSED: LazyLock<ExecutionPolicy<'static>> = LazyLock::new(|| ExecutionPo
     model_context_tokens: 0,
     network_policy: NetworkPolicy {
         allow: Vec::new(),
-        read_only: true,
-        read_post_paths: Vec::new(),
         ..NetworkPolicy::default()
     },
     tools: Vec::new(),

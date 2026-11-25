@@ -20,7 +20,7 @@ use crate::transport::{Outbound, Transport as _};
 
 #[tokio::test]
 async fn should_refuse_mixed_dns_after_the_public_http_policy_check() {
-    let mut policy = policy(true);
+    let mut policy = policy();
     policy.network_policy.http_egress = HttpEgress::Public;
     let allowed = EgressPolicy::new(&policy)
         .allow(Draft {

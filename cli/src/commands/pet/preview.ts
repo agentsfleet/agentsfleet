@@ -1,34 +1,29 @@
-import {Effect} from "effect";
-import {Output, OUTPUT_FORMAT} from "../../services/output.ts";
-import {PET_DISPLAY, PET_NAME, PET_PREVIEW_MS} from "../../constants/pet.ts";
-import {SIGINT, SIGTERM} from "../../constants/signals.ts";
-import {InterruptedError} from "../../errors/index.ts";
+import { Effect } from "effect";
+import { Output, OUTPUT_FORMAT } from "../../services/output.ts";
+import { Stdin } from "../../services/stdin.ts";
+import { PET_NAME } from "../../constants/pet.ts";
+import { InterruptedError, UnexpectedError } from "../../errors/index.ts";
+import { isOrbitInput, playOrbit } from "./play.ts";
+
+const PLAY = "Run `agentsfleet pet` in an interactive terminal to play Orbit.";
+const RETRY = "run `agentsfleet pet` to play again";
 
 export const petPreview = Effect.gen(function* () {
   const output = yield* Output;
   if (output.format === OUTPUT_FORMAT.json || !output.stdoutIsTty) {
     return yield* output.printJson({name: PET_NAME});
   }
-  yield* Effect.scoped(Effect.gen(function* () {
-    yield* output.progress(PET_NAME, PET_DISPLAY.preview);
-    const completed = yield* waitForPreview();
-    if (!completed) return yield* Effect.fail(new InterruptedError({detail: "pet preview canceled", suggestion: "run `agentsfleet pet` to watch Orbit again"}));
-  }));
-  yield* output.info("Orbit appears while a Platform request is running.");
+  const input = (yield* Stdin).stream;
+  const screen = output.screen;
+  if (!screen || !isOrbitInput(input)) return yield* output.info(PLAY);
+  const outcome = yield* Effect.tryPromise({
+    try: signal => playOrbit(input, screen, signal),
+    catch: () => new UnexpectedError({detail: "Could not draw Orbit", suggestion: RETRY}),
+  });
+  switch (outcome) {
+    case "quit": return;
+    case "small": return yield* output.info("Make your terminal larger to play Orbit.");
+    case "resized": return yield* output.info("Terminal resized. Run `agentsfleet pet` to play again.");
+    case "interrupted": return yield* Effect.fail(new InterruptedError({detail: "Orbit interrupted", suggestion: RETRY}));
+  }
 });
-
-function waitForPreview() {
-  return Effect.promise(owner => new Promise<boolean>(resolve => {
-    const finish = (completed: boolean): void => {
-      clearTimeout(timer);
-      process.removeListener(SIGINT, cancel); process.removeListener(SIGTERM, cancel);
-      owner.removeEventListener("abort", cancel);
-      resolve(completed);
-    };
-    const cancel = (): void => finish(false);
-    const timer = setTimeout(() => finish(true), PET_PREVIEW_MS);
-    process.once(SIGINT, cancel); process.once(SIGTERM, cancel);
-    owner.addEventListener("abort", cancel, {once: true});
-    if (owner.aborted) cancel();
-  }));
-}

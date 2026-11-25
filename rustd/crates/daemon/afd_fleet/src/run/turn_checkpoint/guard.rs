@@ -21,7 +21,6 @@ pub(super) struct Current {
     pub turn_id: Uuid7,
     /// The turn this run serves.
     pub run_turn_id: Uuid7,
-    pub setup_revision_id: Option<Uuid7>,
     pub fence: i64,
     pub thread_fence: i64,
     pub fleet_status: String,
@@ -39,7 +38,6 @@ struct HeldTurn {
     run_fence: Option<i64>,
     durable_task_id: Option<Uuid7>,
     durable_task_generation: Option<i64>,
-    parked: bool,
     settled: bool,
 }
 
@@ -47,7 +45,6 @@ struct HeldTurn {
 pub(super) struct TurnRunGuard<'a> {
     pub tx: Transaction<'a, Postgres>,
     pub current: Current,
-    pub setup: Uuid7,
     /// The deployment's checkpoint lifetimes, read from the run store.
     pub limits: crate::run::TurnCheckpointLimits,
 }
@@ -75,14 +72,9 @@ impl<'a> TurnRunGuard<'a> {
             return Err(run_cancelled());
         }
         hold_turn(&mut tx, &current).await?;
-        let setup = current
-            .setup_revision_id
-            .clone()
-            .ok_or(TurnCheckpointRefusal::Incompatible)?;
         let mut owner = Self {
             tx,
             current,
-            setup,
             limits: runs.limits().turn_checkpoints,
         };
         owner.fresh().await?;
@@ -119,7 +111,6 @@ impl<'a> TurnRunGuard<'a> {
             workspace_id: CheckpointOperationId(self.current.workspace_id.as_str().to_owned()),
             fleet_id: CheckpointOperationId(self.current.fleet_id.as_str().to_owned()),
             turn_id: CheckpointOperationId(self.current.turn_id.as_str().to_owned()),
-            setup_revision_id: CheckpointOperationId(self.setup.as_str().to_owned()),
             workspace,
         }
     }
@@ -173,7 +164,6 @@ async fn hold_turn(connection: &mut PgConnection, current: &Current) -> Result<(
         .ok_or_else(run_not_found)?;
     if held.id != current.run_turn_id
         || held.run_fence != Some(current.fence)
-        || held.parked
         || held.settled
         || held.durable_task_id.is_some()
         || held.durable_task_generation.is_some()

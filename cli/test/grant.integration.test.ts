@@ -16,10 +16,9 @@ describe("grant (integration grant) commands", () => {
         [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/integration-grants`]:
           () => jsonResponse(200, {
             items: [
-              { id: "01900000-0000-7000-8000-000000067a01", service: "github", status: "approved",
-                created_at: "2023-11-14T22:13:20Z", approved_at: "2023-11-14T22:13:20.5Z" },
-              { id: "grant_2", service: "slack", status: "pending",
-                created_at: "2023-11-14T22:13:21Z", approved_at: null },
+              { id: "01900000-0000-7000-8000-000000067a01", kind: "integration", name: "github", status: "approved",
+                approved_at: "2023-11-14T22:13:20.5Z" },
+              { id: "grant_2", kind: "secret", name: "sentry", status: "pending", approved_at: null },
             ],
           }),
       };
@@ -33,7 +32,9 @@ describe("grant (integration grant) commands", () => {
         expect(code).toBe(0);
         const text = out.read();
         expect(text).toContain("github");
-        expect(text).toContain("slack");
+        expect(text).toContain("integration");
+        expect(text).toContain("sentry");
+        expect(text).toContain("secret");
         expect(text).toContain("01900000-0000-7000-8000-000000067a01");
         expect(text).toContain("grant_2");
         expect(text).toContain("approved");
@@ -51,8 +52,8 @@ describe("grant (integration grant) commands", () => {
         [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/integration-grants`]:
           () => jsonResponse(200, {
             items: [
-              { id: "grant_bad", service: "github", status: "approved",
-                created_at: "2023-11-14T22:13:20Z", approved_at: "not-an-instant" },
+              { id: "grant_bad", kind: "integration", name: "github", status: "approved",
+                approved_at: "not-an-instant" },
             ],
           }),
       };
@@ -68,45 +69,6 @@ describe("grant (integration grant) commands", () => {
         expect(text).toContain("grant_bad");
         expect(text).toContain("—");
         expect(text).not.toContain("not-an-instant");
-      });
-    });
-  });
-
-  test("m202_001 `grant list --json` reports the install-time grant as approved", async () => {
-    // Dimension 4.1. Installing a fleet that declares a mintable credential
-    // writes an APPROVED grant and raises no card, so this is the row an
-    // operator sees the moment the install returns — not a pending question
-    // waiting for them. `approved_at` is what distinguishes the two, and a
-    // null there would read on the wire as a grant still owed an answer.
-    await authedScope(async () => {
-      const routes: MockRoutes = {
-        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/integration-grants`]:
-          () => jsonResponse(200, {
-            items: [
-              { id: "01900000-0000-7000-8000-000000067a01", service: "github", status: "approved",
-                created_at: "2023-11-14T22:13:20Z", approved_at: "2023-11-14T22:13:20Z" },
-            ],
-          }),
-      };
-      await withMockApi(routes, async (apiUrl) => {
-        const out = bufferStream();
-        const err = bufferStream();
-        const code = await runCli(
-          ["fleet", "grants", "list", "--fleet", FLEET_ID, "--json"],
-          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
-        );
-        expect(code).toBe(0);
-        const payload = JSON.parse(out.read()) as {
-          items: ReadonlyArray<{ service: string; status: string; created_at: string; approved_at: string | null }>;
-        };
-        expect(payload.items).toHaveLength(1);
-        const [grant] = payload.items;
-        expect(grant?.service).toBe("github");
-        expect(grant?.status).toBe("approved");
-        expect(grant?.approved_at).not.toBeNull();
-        // Answered at the instant it was written: nobody was asked, so the
-        // moment the row landed IS the moment it was answered.
-        expect(grant?.approved_at).toBe(grant?.created_at);
       });
     });
   });

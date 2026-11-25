@@ -2,8 +2,9 @@
 //! repositories, is refused before any GitHub read.
 
 use super::{
-    Case, Decisions, DurableTaskBindingsInput, DurableTaskRequestedTarget, checkpoint_server,
-    error_code, exercise, github_authority, github_server, proposed, sha256_hex, storage, valid,
+    Case, Decisions, DurableTaskBindingItem, DurableTaskBindingsInput, DurableTaskRequestedTarget,
+    checkpoint_server, error_code, exercise, github_authority, github_server, proposed, sha256_hex,
+    storage, valid,
 };
 use afd_fleet::durable_task::DurableTaskLifecycle as _;
 
@@ -13,15 +14,12 @@ fn retargeted(
     number: u32,
 ) -> DurableTaskBindingsInput {
     let mut input = input.clone();
-    input
-        .items
-        .first_mut()
-        .expect("one proposed item")
-        .proposed
-        .target = Some(DurableTaskRequestedTarget::ExistingPr {
-        repository: repository.to_owned(),
-        number,
-    });
+    if let Some(DurableTaskBindingItem::NewWork { target, .. }) = input.items.first_mut() {
+        *target = DurableTaskRequestedTarget::ExistingPr {
+            repository: repository.to_owned(),
+            number,
+        };
+    }
     let digest =
         sha256_hex(&serde_json::to_vec(&input.interpretation()).expect("exact interpretation"));
     input.plan_digest = digest;

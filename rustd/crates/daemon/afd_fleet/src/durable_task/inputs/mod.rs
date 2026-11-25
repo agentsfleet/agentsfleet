@@ -86,7 +86,6 @@ pub(super) async fn read(
     transaction::recycle(connection);
     Ok(DurableTaskInputsResponse {
         source_turn_id: current.source_turn_id.into(),
-        accepted_revision_id: current.revision_id.map(String::from),
         current_message,
         inputs,
         accepted_inputs,
@@ -171,13 +170,27 @@ async fn candidates(
     connection: &mut sqlx::PgConnection,
     current: &guard::RunRow,
 ) -> Result<Vec<DurableTaskInputCandidate>> {
+    unfinished(connection, &current.fleet_id, &current.workspace_id).await
+}
+
+/// `fleet`'s unfinished tasks, newest first: what a run's model names when a
+/// person's message steers one.
+///
+/// # Errors
+/// A statement that would not run, or a stored state or counter this build
+/// cannot read.
+pub(crate) async fn unfinished(
+    connection: &mut sqlx::PgConnection,
+    fleet: &Uuid7,
+    workspace: &Uuid7,
+) -> Result<Vec<DurableTaskInputCandidate>> {
     let candidates: Vec<Candidate> = sqlx::query_as(include_str!("../sql/input_candidates.sql"))
-        .bind(&current.fleet_id)
-        .bind(&current.workspace_id)
-        .fetch_all(&mut *connection)
+        .bind(fleet)
+        .bind(workspace)
+        .fetch_all(connection)
         .await
-        .map_err(query("read native input association candidates"))?;
-    let candidates = candidates
+        .map_err(query("read a fleet's unfinished tasks"))?;
+    candidates
         .into_iter()
         .map(|candidate| {
             Ok(DurableTaskInputCandidate {
@@ -187,8 +200,7 @@ async fn candidates(
                 generation: row::counter(candidate.generation, "generation")?,
             })
         })
-        .collect::<Result<Vec<_>>>()?;
-    Ok(candidates)
+        .collect()
 }
 
 async fn pending_humans(

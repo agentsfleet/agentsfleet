@@ -46,7 +46,7 @@ Each service follows the same split: `<name>.service.ts` declares the `Context.S
 
 Errors live in `src/errors/index.ts` as `Data.TaggedError` classes (e.g. `AuthError`, `NetworkError`, `ServerError`, `ValidationError`). Add a new class, then update the formatter in `src/lib/run-effect.ts`. Adding a variant without updating the formatter fails the type check.
 
-Server-relayed errors carry `UZ-<CAT>-<NNN>` codes from `docs/architecture/error_codes.md`. Match the variant to the category, not to a single endpoint.
+Server-relayed errors carry `UZ-<CAT>-<NNN>` codes from `rustd/crates/foundation/af_core/src/error_code/` (published at `https://docs.agentsfleet.net/errors/`). Match the variant to the category, not to a single endpoint.
 
 ## Testing
 

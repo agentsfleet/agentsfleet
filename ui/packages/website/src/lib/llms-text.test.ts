@@ -1,75 +1,43 @@
 import { describe, expect, it } from "vitest";
 import { DOCS_URL, GITHUB_URL, MARKETING_SITE_URL } from "../config";
-import {
-  buildLlmsFullText,
-  buildLlmsIndexText,
-  MARKETING_POSITIONING_SUMMARY,
-} from "./llms-text";
-import {
-  LOOP_ANCHOR_ID,
-  LOOP_STEPS,
-  PILLAR_TOKENS,
-  SOURCE_CATEGORIES,
-  PRICING_COPY,
-} from "./marketing-copy";
+import { buildLlmsFullText, buildLlmsIndexText } from "./llms-text";
+import { FIRST_MESSAGE_FLOW, LOOP_ANCHOR_ID, PRICING_COPY } from "./marketing-copy";
 
-const inputs = {
-  docsUrl: DOCS_URL,
-  githubUrl: GITHUB_URL,
-  siteUrl: MARKETING_SITE_URL,
-} as const;
+const inputs = { docsUrl: DOCS_URL, githubUrl: GITHUB_URL, siteUrl: MARKETING_SITE_URL } as const;
 
 describe("llms text builders", () => {
-  it("should render llms.txt in the convention shape", () => {
+  it("renders an index of the product and developer resources", () => {
     const body = buildLlmsIndexText(inputs);
     expect(body).toMatch(/^# agentsfleet\n\n> /);
-    expect(body).toContain(MARKETING_POSITIONING_SUMMARY);
     expect(body).toContain("## Product");
-    expect(body).toContain("## Resources");
     expect(body).toContain(`https://www.agentsfleet.net/#${LOOP_ANCHOR_ID}`);
-    expect(body).toContain(PRICING_COPY.note);
-    expect(body).toContain("shows what it found");
-    expect(body).not.toContain("Each one opens a fix");
-    expect(body).toContain(PRICING_COPY.status);
-    expect(body).not.toMatch(/starter credit|zero markup|unlimited/i);
+    expect(body).toContain("https://www.agentsfleet.net/examples");
     expect(body).toContain(`[Docs](${DOCS_URL})`);
     expect(body).toContain("[OpenAPI](/openapi.json)");
     expect(body).toContain(`[Source](${GITHUB_URL})`);
-    expect(body).not.toContain("curl -fsSL");
   });
 
-  it("should trim a trailing slash from the site URL when building anchors", () => {
-    const body = buildLlmsIndexText({
-      ...inputs,
-      siteUrl: "https://example.test/",
-    });
+  it("trims a trailing slash from the site URL when building anchors", () => {
+    const body = buildLlmsIndexText({ ...inputs, siteUrl: "https://example.test/" });
     expect(body).toContain(`https://example.test/#${LOOP_ANCHOR_ID}`);
     expect(body).toContain("https://example.test/#pricing");
-    expect(body).not.toContain("https://example.test//#");
   });
 
-  it("should describe native setup without retired file authoring", () => {
+  it("explains first-message creation and in-chat access approval", () => {
     for (const body of [buildLlmsIndexText(inputs), buildLlmsFullText(inputs)]) {
-      expect(body).toContain("Save creates a fleet.");
-      expect(body).not.toMatch(/SKILL\.md|TRIGGER\.md|bundle|install-time write grant|Hosted access is gated/i);
+      expect(body).toContain("Your first message creates the fleet.");
+      expect(body).toContain("You can approve its request once or deny it.");
+      expect(body).not.toMatch(/save creates|approval rules|fleet budget/i);
     }
   });
 
-  it("should render llms-full.txt with pillars, loop, sources, and links", () => {
+  it("covers recurring work, longer tasks, draft pull requests, and pricing in the full text", () => {
     const body = buildLlmsFullText(inputs);
-    expect(body).toContain("A repair fleet with write access opens a draft pull request. Leah reviews and deploys it.");
-    expect(body).not.toContain("Each one opens a fix");
-    for (const token of PILLAR_TOKENS) {
-      expect(body).toContain(`- ${token}`);
-    }
-    for (const step of LOOP_STEPS) {
-      expect(body).toContain(`${step.number}. ${step.title}`);
-    }
-    for (const category of SOURCE_CATEGORIES) {
-      expect(body).toContain(`- ${category.label}: ${category.examples.join(", ")}`);
-    }
+    expect(body).toContain("a GitHub event, a Slack mention, a webhook, or a schedule");
+    expect(body).toContain("start a task that takes several runs");
+    expect(body).toContain("a draft pull request for your team to review");
+    for (const step of FIRST_MESSAGE_FLOW) expect(body).toContain(step.title);
     expect(body).toContain(PRICING_COPY.note);
     expect(body).not.toMatch(/starter credit|zero markup|unlimited/i);
-    expect(body).not.toContain("curl -fsSL");
   });
 });

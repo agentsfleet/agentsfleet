@@ -21,7 +21,6 @@ use crate::{
 use af_core::id::Uuid7;
 use af_stream::Budget;
 use af_wire::{protocol::StreamKind, report::RenewRequest};
-use bytes::Bytes;
 use serde_json::{Value, json};
 use std::{collections::HashSet, task::Poll};
 use tokio::{
@@ -81,7 +80,7 @@ fn field<'a>(value: &'a mut Value, pointer: &str) -> serde_json::Result<&'a mut 
 
 #[async_trait::async_trait]
 impl RunnerApi for NoHttp {
-    async fn send(&self, _call: Call) -> Result<Bytes> {
+    async fn send(&self, _call: Call) -> Result<crate::client::Reply> {
         panic!("folds and renewals must stay on the native uplink")
     }
 }

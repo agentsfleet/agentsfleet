@@ -1,6 +1,5 @@
 //! Late source deliveries must revoke a goal report when acknowledgement fails.
 use super::*;
-use std::sync::atomic::AtomicUsize;
 
 #[derive(Debug)]
 struct LateReply {
@@ -52,8 +51,8 @@ impl RunVerbs for LateReply {
 async fn late_unacknowledged_reply_revokes_goal_report_and_retains_recovery() -> crate::Result<()> {
     let mut replies = replies_fixture::source(vec![replies_fixture::item(
         ITEM,
-        DurableTaskInputAction::Conversation,
-        false,
+        DurableTaskInputAction::NewWork,
+        true,
     )]);
     replies.wrong_ack = true;
     let native = LateReply {
@@ -61,20 +60,16 @@ async fn late_unacknowledged_reply_revokes_goal_report_and_retains_recovery() ->
         reads: AtomicUsize::new(0),
     };
     let tool = &afr_tools::catalog::EXEC_COMMAND;
-    let script = Script::new([
-        vec![
-            call("inspect", tool.name(), serde_json::json!({"cmd":"true"})),
-            ended(false),
-        ],
-        vec![say("Hello."), ended(false)],
-    ]);
+    let script = Script::new([vec![
+        call("inspect", tool.name(), serde_json::json!({"cmd":"true"})),
+        ended(false),
+    ]]);
     let engine =
         super::super::super::tests::engine(vec![Canned::boxed(tool, "inspected")], &script);
     let this_run = assigned_run(&[tool.name()], 16_384);
     let prepared = PreparedDurableTask {
         inputs: native.replies.goals.inputs.clone(),
         execution_deadline: native.replies.goals.inputs.execution_deadline,
-        allow_actions: true,
     };
     let output = run(&engine, &this_run, &native, &prepared).await?;
     assert_late_reply_outcome(&native, &script, &output);
@@ -106,11 +101,13 @@ fn assert_late_reply_outcome(native: &LateReply, script: &Script, output: &crate
     );
     let receipts = native.replies.receipts.lock().expect("source replies");
     assert_eq!(receipts.len(), 1);
-    assert_eq!(
+    assert!(
         receipts
             .first()
-            .and_then(|receipt| receipt.response_text.as_deref()),
-        Some("Hello.")
+            .and_then(|receipt| receipt.response_text.as_deref())
+            .is_some_and(|text| text.contains("accepted into the task")),
+        "{receipts:?}"
     );
-    assert_eq!(script.sent().len(), 2);
+    // The queued item's answer is fixed text: no model call writes it.
+    assert_eq!(script.sent().len(), 1);
 }

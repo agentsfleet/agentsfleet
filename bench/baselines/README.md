@@ -33,4 +33,4 @@ built as a refusal and never runs.
 
 Every file is a core NATS run: `stream.rig.json` and `runs.rig.json` re-measured at `6b0caea35` with the wake ladder and the streamed drain, the rest at `2bea47c3d`.
 `delivery.rig.json` and `idle.rig.json` are the median of three runs; the runs shapes and `intake.rig.json` ran once.
-[Scaling](../../docs/architecture/scaling.md#core-nats-baselines-m244) lists what moved.
+[Scaling](../../docs/architecture/scaling.md#current-measurements) lists what moved.

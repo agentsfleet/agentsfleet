@@ -38,10 +38,9 @@ af_crypto.workspace = true
 afd_vault.workspace = true
 # The Postgres pool every statement here runs on.
 afd_db.workspace = true
-# A fleet's declared credentials and provider selection, as its config spells
-# them.
+# The GitHub scope a grant records and the token mint narrows to.
 af_fleet_runtime.workspace = true
-# Reuse the ingress parser for raw Svix signing secrets during setup review.
+# Reuse the ingress parser for raw Svix signing secrets during inspection.
 af_webhook.workspace = true
 # The minted-credential shape the runner is answered with.
 af_wire.workspace = true

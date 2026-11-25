@@ -3,27 +3,11 @@
 
 use super::*;
 
-fn prepared(native: &Goals, allow_actions: bool) -> PreparedDurableTask {
+fn prepared(native: &Goals) -> PreparedDurableTask {
     PreparedDurableTask {
         execution_deadline: native.inputs.execution_deadline,
         inputs: native.inputs.clone(),
-        allow_actions,
     }
-}
-
-#[tokio::test]
-async fn a_root_without_action_authority_answers_without_a_goal_assessment() -> crate::Result<()> {
-    let script = Script::new([vec![say("Here is what I found."), ended(false)]]);
-    let engine = super::super::super::tests::engine(vec![], &script);
-    let this_run = assigned_run(&[], 16_384);
-    let native = goals([]);
-
-    let output = run(&engine, &this_run, &native, &prepared(&native, false)).await?;
-
-    assert_eq!(output.result.content, "Here is what I found.");
-    assert!(output.task.is_none(), "no assessment, no task report");
-    assert!(native.requests.lock().is_ok_and(|sent| sent.is_empty()));
-    Ok(())
 }
 
 #[tokio::test]
@@ -39,7 +23,7 @@ async fn a_completed_action_group_with_no_answer_reports_the_completion_it_was_g
     let this_run = assigned_run(&[tool.name()], 16_384);
     let native = goals([evaluation("DONE", Some(1.0), 1.0)]);
 
-    let output = run(&engine, &this_run, &native, &prepared(&native, true)).await?;
+    let output = run(&engine, &this_run, &native, &prepared(&native)).await?;
 
     let report = output.task.ok_or_else(crate::decision::unavailable)?;
     assert_eq!(report.disposition, DurableTaskDisposition::Complete);
@@ -66,7 +50,7 @@ async fn a_native_input_cursor_ahead_of_every_readable_page_stops_the_root_befor
         task.input_sequence = 1;
     }
 
-    let output = run(&engine, &this_run, &native, &prepared(&native, true)).await?;
+    let output = run(&engine, &this_run, &native, &prepared(&native)).await?;
 
     assert!(script.sent().is_empty(), "the model was called");
     assert!(output.task.is_none());
@@ -81,7 +65,7 @@ async fn inputs_naming_no_current_task_are_incorporated_but_stop_the_root_before
     let engine = super::super::super::tests::engine(vec![], &script);
     let this_run = assigned_run(&[], 16_384);
     let mut native = goals([evaluation("WAIT", Some(1.0), 0.0)]);
-    let prepared = prepared(&native, true);
+    let prepared = prepared(&native);
     native.inputs.current_durable_task = None;
 
     let output = run(&engine, &this_run, &native, &prepared).await?;

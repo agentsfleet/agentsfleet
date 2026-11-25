@@ -1,18 +1,15 @@
 WITH instant AS MATERIALIZED (
   SELECT statement_timestamp() AS read_at
 ), eligible AS MATERIALIZED (
-  SELECT z.id, s.last_runner_id, instant.read_at, z.head_revision_id, host.platform_owned AS host_platform,
+  SELECT z.id, s.last_runner_id, instant.read_at, z.model_ref, host.platform_owned AS host_platform,
          (host.durable_tasks_enabled AND COALESCE(host.capability_report @> jsonb_build_object($8::text, true), false)) AS durable_task_capable
   FROM fleet.fleets z
   CROSS JOIN instant
   JOIN runner.runners host ON host.id = $2
   LEFT JOIN thread.threads s ON s.fleet_id = z.id
-  LEFT JOIN fleet.revisions setup ON setup.id = z.head_revision_id AND setup.fleet_id = z.id
   WHERE z.status = $1 AND host.cordon_reason IS NULL
     -- A tenant's runner takes only its tenant's work; the assignment enforces it.
     AND (host.platform_owned OR host.tenant_id = z.tenant_id)
-    AND ((host.durable_tasks_enabled AND COALESCE(host.capability_report @> jsonb_build_object($8::text, true), false))
-         OR setup.definition #> $11::text[] IS NULL OR setup.definition #> $11::text[] = 'null'::jsonb)
     -- Table-wide: an empty ledger answers before any fleet is read.
     AND EXISTS (SELECT 1 FROM thread.turns WHERE settled_at IS NULL AND producer IS NOT NULL)
     -- Per fleet: only fleets with unsettled work reach the joins below, so the
@@ -38,7 +35,7 @@ WITH instant AS MATERIALIZED (
 SELECT z.id AS fleet_id, head.id AS turn_id, head.created_at AS turn_created_at
 FROM eligible z
 JOIN LATERAL (
-  SELECT a.id, a.parked_at, a.created_at, a.durable_task_id, a.head_checkpoint_id
+  SELECT a.id, a.created_at, a.durable_task_id, a.head_checkpoint_id
   FROM thread.turns a
   WHERE a.thread_id = z.id AND a.settled_at IS NULL
     AND ((a.durable_task_id IS NULL AND a.durable_task_generation IS NULL) OR (z.durable_task_capable AND EXISTS (
@@ -49,29 +46,16 @@ JOIN LATERAL (
         AND t.used_running_nanos < t.max_running_nanos)))
   ORDER BY a.sequence LIMIT 1
 
-) head ON (head.parked_at IS NULL OR NOT EXISTS (
-  (SELECT 1 FROM fleet.approval_gates g
-  WHERE g.fleet_id = z.id AND g.resolved_at IS NULL
-    AND g.turn_id IS NULL LIMIT 1)
-  UNION ALL
-  (SELECT 1 FROM fleet.approval_gates g
-  WHERE g.fleet_id = z.id AND g.resolved_at IS NULL
-    AND g.turn_id = head.id AND g.expires_at > z.read_at LIMIT 1)))
-  -- A tenant runner skips a fleet whose head runs on the platform model.
-  AND (z.host_platform OR EXISTS (
-    SELECT 1 FROM fleet.revisions r
-    WHERE r.fleet_id = z.id
-      AND r.id = COALESCE(
-        (SELECT t.accepted_revision_id FROM fleet.durable_tasks t WHERE t.id = head.durable_task_id AND t.fleet_id = z.id),
-        z.head_revision_id)
-      AND r.runtime_model_ref IS NOT NULL AND r.runtime_model_ref <> $16::text))
-WHERE ($13::timestamptz IS NULL OR (head.created_at, head.id)>($13, $14::uuid))
-  AND ($15::boolean OR head.durable_task_id IS NOT NULL OR head.head_checkpoint_id IS NULL)
+) head ON true
+WHERE ($12::timestamptz IS NULL OR (head.created_at, head.id)>($12, $13::uuid))
+  AND ($14::boolean OR head.durable_task_id IS NOT NULL OR head.head_checkpoint_id IS NULL)
+  -- A tenant runner skips a fleet that runs on the platform model.
+  AND (z.host_platform OR z.model_ref <> $15::text)
 -- Recovery pages keep the oldest eligible head per fleet and ignore locality.
-ORDER BY CASE WHEN $12 THEN head.created_at END,
-         CASE WHEN $12 THEN head.id END,
-         CASE WHEN NOT $12 THEN z.id = ANY($6) END DESC,
-         CASE WHEN NOT $12 THEN z.id = $7 END DESC NULLS LAST,
-         CASE WHEN NOT $12 THEN z.last_runner_id = $2 END DESC NULLS LAST,
-         CASE WHEN NOT $12 THEN random() END
+ORDER BY CASE WHEN $11 THEN head.created_at END,
+         CASE WHEN $11 THEN head.id END,
+         CASE WHEN NOT $11 THEN z.id = ANY($6) END DESC,
+         CASE WHEN NOT $11 THEN z.id = $7 END DESC NULLS LAST,
+         CASE WHEN NOT $11 THEN z.last_runner_id = $2 END DESC NULLS LAST,
+         CASE WHEN NOT $11 THEN random() END
 LIMIT $3

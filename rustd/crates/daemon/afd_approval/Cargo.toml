@@ -38,8 +38,8 @@ afd_db.workspace = true
 # The stored status spellings and the event type a continuation carries. Shared
 # with the runner plane rather than copied: two crates read this one column.
 afd_api_wire.workspace = true
-# The fleet status a setup request must find (`installing`), spelled where the
-# fleet's lifecycle declares it rather than again here.
+# The archived fleet status a resolve refuses, spelled where the fleet's
+# lifecycle declares it rather than again here.
 afd_fleet_lifecycle.workspace = true
 af_wire.workspace = true
 # Instants: `TIMESTAMPTZ(3)` columns decode to `jiff::Timestamp` through

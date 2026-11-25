@@ -225,6 +225,29 @@ export const openTurnTail = (
     });
   });
 
+// A saved turn's outcome once it has settled, after printing what it did; a
+// turn still running answers undefined.
+const settledOutcome = (
+  res: unknown,
+  turnId: string,
+  presentation: SteerPresentation,
+  printLine: (line: string) => void,
+): PolledSteerOutcome | undefined => {
+  if (!isRecord(res) || res.turn_id !== turnId) return undefined;
+  presentation.activity.history(res["durable_task_activity"]);
+  if (!isString(res.status) || !isTerminal(res.status)) return undefined;
+  presentation.tools.history(res["tool_calls"]);
+  if (isString(res["response_text"]) && res["response_text"]) printLine(`Final reply:\n${activityText(res["response_text"])}`);
+  return { kind: STATUS_COMPLETE, status: res.status };
+};
+
+const textPrinter = (output: Output) => (line: string): void => {
+  if (output.format === OUTPUT_FORMAT.text) Effect.runSync(output.info(line));
+};
+
+const notYetSaved = (error: CliError): boolean =>
+  error._tag === CLI_ERROR_TAG.server && error.status === 404 && error.code === TURN_NOT_FOUND_CODE;
+
 export const pollTurnTerminal = (
   wsId: string,
   fleetId: string,
@@ -236,11 +259,8 @@ export const pollTurnTerminal = (
   Effect.gen(function* () {
     const http = yield* HttpClient;
     const output = yield* Output;
-    const printLine = (line: string): void => {
-      if (output.format === OUTPUT_FORMAT.text) Effect.runSync(output.info(line));
-    };
-    const activity = presentation?.activity ?? new ActivityPrinter(printLine);
-    const tools = presentation?.tools ?? new ToolActivityPrinter(printLine);
+    const printLine = textPrinter(output);
+    const shown = presentation ?? {activity: new ActivityPrinter(printLine), tools: new ToolActivityPrinter(printLine)};
     printLine("Reading saved activity after the live stream ended.");
     // Turn IDs are opaque. The owned detail read avoids inferring a clock
     // from an ID or losing this turn behind a busy fleet's newest page.
@@ -251,16 +271,11 @@ export const pollTurnTerminal = (
     while (!signal?.aborted) { // oxlint-disable-line no-unmodified-loop-condition -- the external AbortSignal terminates it
       const res = yield* http.request<unknown>({ path, token, signal }).pipe(
         // The send can return before the exact turn reaches the read store.
-        Effect.catch((error) => signal?.aborted || (!observed &&
-          error._tag === CLI_ERROR_TAG.server && error.status === 404 && error.code === TURN_NOT_FOUND_CODE)
+        Effect.catch((error) => signal?.aborted || (!observed && notYetSaved(error))
           ? Effect.succeed(null) : Effect.fail(error)),
       );
-      if (isRecord(res) && res.turn_id === turnId) activity.history(res["durable_task_activity"]);
-      if (isRecord(res) && res.turn_id === turnId && isString(res.status) && isTerminal(res.status)) {
-        tools.history(res["tool_calls"]);
-        if (isString(res["response_text"]) && res["response_text"]) printLine(`Final reply:\n${activityText(res["response_text"])}`);
-        return { kind: STATUS_COMPLETE, status: res.status } as PolledSteerOutcome;
-      }
+      const settled = settledOutcome(res, turnId, shown, printLine);
+      if (settled) return settled;
       if (isRecord(res) && res.turn_id === turnId) observed = true;
       if (signal?.aborted) break;
       yield* Effect.tryPromise((owner) =>

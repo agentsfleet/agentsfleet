@@ -10,6 +10,10 @@
 use std::sync::mpsc;
 
 use af_wire::activity::ActivityFrame;
+use af_wire::decision::{
+    DecisionApi, DecisionAssignment, DecisionCapabilities, DecisionProfile, DecisionThreshold,
+    GoalDecisionPolicy, IntentDecisionPolicy,
+};
 use af_wire::run::RunPayload;
 use afr_tools::{CatalogTool, Entry, ToolContext};
 use guffbolt::tools::{NoArguments, Schema};
@@ -27,6 +31,10 @@ const CONTEXT_POINTER: &str = "/policy/context";
 /// The instant the fixture run expires at and its event was made at.
 const AT: &str = "1970-01-01T00:00:00.001Z";
 
+/// The name every fixture run's fleet carries.
+pub(crate) const FLEET_NAME: &str = "support-triage";
+/// The reviewed decision revision the fixture profile names.
+const DECISION_REVISION: &str = "019f0000-0000-7000-8000-000000000001";
 /// The provider key every fixture run carries.
 pub(crate) const API_KEY: &str = "sk-test-0123456789";
 /// The static credential every fixture run carries.
@@ -39,19 +47,59 @@ pub(crate) fn payload(tools: &[&str], budget: serde_json::Value) -> RunPayload<'
         "event": {"turn_id": "event-1", "fleet_id": "fleet-1", "workspace_id": "ws-1",
             "actor": "operator-1", "event_type": "chat",
             "request_json": "{\"message\":\"triage the failed run\"}", "created_at": AT},
-        "policy": {"network_policy": {"allow": [], "read_only": true, "read_post_paths": []},
+        "policy": {"network_policy": {"allow": []},
             "tools": tools,
             "secrets_map": {"github": {"token": GITHUB_TOKEN, "host": "api.github.com"}},
             "mintable": [], "provider": "anthropic", "api_key": API_KEY,
             "inference_host": "h", "base_url": null, "repository_binding": null,
             "http_origin_policies": [], "context": null},
-        "instructions": "Read the run.", "history": [], "resume_hold": false, "inputs_waiting": true,
+        "name": FLEET_NAME, "history": [], "resume_hold": false, "inputs_waiting": true,
         "owner": {"kind": "fleet", "fleet_id": "fleet-1"}
     });
     *document.pointer_mut(CONTEXT_POINTER).unwrap() = budget;
     // Leaked so the borrowed payload lives as long as the test that reads it.
     let text: &'static str = Box::leak(document.to_string().into_boxed_str());
     serde_json::from_str(text).unwrap()
+}
+
+/// The reviewed decision profile every task fixture runs under; it reads
+/// 24 KiB of state and questions.
+pub(crate) fn decision_assignment() -> DecisionAssignment {
+    let threshold = DecisionThreshold {
+        probability_bps: 9000,
+        confidence_bps: 9000,
+    };
+    DecisionAssignment {
+        revision_id: DECISION_REVISION.to_owned(),
+        profile: DecisionProfile {
+            model_id: DECISION_REVISION.to_owned(),
+            revision: "reviewed".to_owned(),
+            api: DecisionApi::Typesafe,
+            endpoint: "https://decision.example.test/v1".to_owned(),
+            model: "decision-model".to_owned(),
+            accepted_models: vec!["decision-model".to_owned()],
+            capabilities: DecisionCapabilities {
+                noul: true,
+                choice: true,
+                score: false,
+            },
+            input_max_bytes: 24576,
+        },
+        intent: IntentDecisionPolicy {
+            questions_revision: "dt-routing-v1".to_owned(),
+            intent: threshold,
+            association: threshold,
+            single_request_max_bps: 1000,
+            multiple_request_min_bps: 9000,
+        },
+        goal: GoalDecisionPolicy {
+            questions_revision: "dt-goal-v1".to_owned(),
+            statement_min_bps: 9000,
+            continue_action: threshold,
+            wait: threshold,
+            done: threshold,
+        },
+    }
 }
 
 /// The scrub of a run carrying the fixture secrets.

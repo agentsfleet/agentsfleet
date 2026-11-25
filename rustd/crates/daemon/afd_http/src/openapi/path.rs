@@ -232,13 +232,3 @@ pub struct GateDecision {
     /// What to do with the gate: `approve` or `deny`.
     pub decision: String,
 }
-
-/// One creator-private draft inside one workspace.
-#[derive(Debug, IntoParams)]
-#[into_params(parameter_in = Path)]
-pub struct Draft {
-    /// Workspace identifier (version 7 universally unique identifier, or UUID).
-    pub workspace_id: String,
-    /// Draft identifier (version 7 universally unique identifier, or UUID).
-    pub draft_id: String,
-}

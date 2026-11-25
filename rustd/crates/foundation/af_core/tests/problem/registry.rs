@@ -70,8 +70,8 @@ fn test_every_entry_holds_the_shape_a_client_can_act_on() {
     }
 }
 
-/// The entry's status is in the set `Problem` may answer with, and the two
-/// statuses only one code owns are answered by that code alone.
+/// The entry's status is in the set `Problem` may answer with, and the one
+/// status only one code owns is answered by that code alone.
 fn assert_status_is_one_a_client_handles(entry: &Problem) {
     let code = entry.code().as_str();
 
@@ -81,29 +81,12 @@ fn assert_status_is_one_a_client_handles(entry: &Problem) {
     assert!(
         matches!(
             entry.status(),
-            400 | 401
-                | 402
-                | 403
-                | 404
-                | 409
-                | 410
-                | 412
-                | 413
-                | 422
-                | 424
-                | 428
-                | 429
-                | 500
-                | 502
-                | 503
+            400 | 401 | 402 | 403 | 404 | 409 | 410 | 412 | 413 | 424 | 428 | 429 | 500 | 502 | 503
         ),
         "{code} answers {}, which is not a status this registry may use",
         entry.status()
     );
 
-    if entry.status() == 422 {
-        assert_eq!(entry.code(), error_code::SETUP_TOKEN);
-    }
     if entry.status() == 428 {
         assert_eq!(entry.code(), error_code::SETUP_PRECONDITION);
     }

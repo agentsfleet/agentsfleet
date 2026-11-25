@@ -82,13 +82,21 @@ pub(crate) enum Verb {
     FleetTurns,
     /// Work the held fleet puts on another fleet.
     FleetSteer,
+    /// A trigger added to the held fleet.
+    TriggerAdd,
+    /// The held fleet's triggers.
+    TriggerList,
+    /// A trigger of the held fleet, removed.
+    TriggerRemove,
+    /// A secret or integration the held fleet asks a person to approve.
+    Access,
     /// The messages a person sent while the run works, assigned to it.
     Folds,
     /// Native event-owned recovery command.
     TurnCheckpoint,
-    /// A setup run's read of its draft's compacted context.
+    /// A run's read of its fleet's compacted context.
     ContextLoad,
-    /// A setup run's fenced save of its draft's compacted context.
+    /// A run's fenced save of its fleet's compacted context.
     ContextSave,
     /// Complete native human input and recovered meaning.
     DurableTaskInputs,
@@ -128,7 +136,7 @@ impl Verb {
     /// Every verb, so a suite walks the whole vocabulary rather than a
     /// hand-kept list that a new verb can miss.
     #[cfg(test)]
-    pub(crate) const ALL: [Self; 41] = [
+    pub(crate) const ALL: [Self; 45] = [
         Self::Open,
         Self::Heartbeat,
         Self::Renew,
@@ -150,6 +158,10 @@ impl Verb {
         Self::FleetList,
         Self::FleetTurns,
         Self::FleetSteer,
+        Self::TriggerAdd,
+        Self::TriggerList,
+        Self::TriggerRemove,
+        Self::Access,
         Self::Folds,
         Self::TurnCheckpoint,
         Self::ContextLoad,
@@ -181,6 +193,7 @@ impl Verb {
             | Self::ScheduleRuns
             | Self::FleetList
             | Self::FleetTurns
+            | Self::TriggerList
             | Self::DurableTaskInputs
             | Self::DurableTaskEffects
             | Self::DurableTaskEffect
@@ -190,7 +203,7 @@ impl Verb {
             | Self::DurableTaskDecisionRecord
             | Self::DurableTaskCheckpointCommit
             | Self::DurableTaskCheckpointPin => Method::Patch,
-            Self::ScheduleDelete => Method::Delete,
+            Self::ScheduleDelete | Self::TriggerRemove => Method::Delete,
             Self::Open
             | Self::Heartbeat
             | Self::Renew
@@ -204,6 +217,8 @@ impl Verb {
             | Self::ScheduleRun
             | Self::Message
             | Self::FleetSteer
+            | Self::TriggerAdd
+            | Self::Access
             | Self::Folds
             | Self::TurnCheckpoint
             | Self::ContextLoad
@@ -243,6 +258,10 @@ impl Verb {
             Self::FleetList => "fleet_list",
             Self::FleetTurns => "fleet_turns",
             Self::FleetSteer => "fleet_steer",
+            Self::TriggerAdd => "trigger_add",
+            Self::TriggerList => "trigger_list",
+            Self::TriggerRemove => "trigger_remove",
+            Self::Access => "access",
             Self::Folds => "folds",
             Self::TurnCheckpoint => "turn_checkpoint",
             Self::ContextLoad => "context_load",
@@ -290,6 +309,10 @@ impl Verb {
             | Self::FleetList
             | Self::FleetTurns
             | Self::FleetSteer
+            | Self::TriggerAdd
+            | Self::TriggerList
+            | Self::TriggerRemove
+            | Self::Access
             | Self::Folds
             | Self::TurnCheckpoint
             | Self::ContextLoad

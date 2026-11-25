@@ -1,16 +1,16 @@
-//! Live setup services share their existing pools and keys with the gateway.
+//! The live run plane shares its existing pools and keys with the gateway.
 
 use super::super::*;
 use afd_fleet::run::{RunService, Runs};
 use afd_gateway::{Gateway, GatewayDependencies};
 
 impl Fleet {
-    pub(crate) fn with_native_setup(mut self, database: Db) -> Self {
+    pub(crate) fn with_native_gateway(mut self, database: Db) -> Self {
         self.native = Some(database);
         self
     }
 
-    fn setup_gateway(&self, database: Db) -> Gateway {
+    fn native_gateway(&self, database: Db) -> Gateway {
         let bus = self.runner_commands.clone();
         let biller = Arc::new(afd_billing::ledger::LedgerBiller::new(database.clone()));
         let key = Arc::new(Kek::from_bytes(FIXTURE_KEK));
@@ -20,7 +20,6 @@ impl Fleet {
                 &key,
             )),
             runs: Runs::new(database.clone(), bus.clone(), Entropy::new()),
-            gates: afd_gate::gate::Gates::new(database.clone(), bus.clone(), Entropy::new()),
             accounts: afd_billing::Accounts::new(database.clone()),
             biller,
             memories: Memories::new(database.clone(), Entropy::new()),
@@ -45,8 +44,6 @@ impl Fleet {
             database,
             runners: self.runners.clone(),
             runs,
-            drafts: self.drafts.clone(),
-            creations: self.creations.clone(),
             bus,
             stream_limit: self.live.stream_limit().clone(),
             wake: afd_bus::wake::Wake::default(),
@@ -67,7 +64,7 @@ impl afd_http::services::RunnerStreams for Fleet {
         use afd_http::services::RunnerStreams as _;
         match &self.native {
             Some(database) => {
-                self.setup_gateway(database.clone())
+                self.native_gateway(database.clone())
                     .open(runner, request)
                     .await
             }

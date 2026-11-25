@@ -34,7 +34,6 @@ async fn raw_evidence_within_the_models_limit_is_sent_whole() -> crate::Result<(
     let prepared = PreparedDurableTask {
         execution_deadline: native.inputs.execution_deadline,
         inputs: native.inputs.clone(),
-        allow_actions: true,
     };
     let output = run(&engine, &this_run, &native, &prepared).await?;
     assert_eq!(
@@ -81,7 +80,6 @@ async fn evidence_past_the_models_limit_is_summarised_and_retried() -> crate::Re
     let prepared = PreparedDurableTask {
         execution_deadline: native.inputs.execution_deadline,
         inputs: native.inputs.clone(),
-        allow_actions: true,
     };
     let output = run(&engine, &this_run, &native, &prepared).await?;
     assert_eq!(
@@ -136,7 +134,6 @@ async fn a_group_past_16_kib_within_the_models_limit_is_sent_whole() -> crate::R
     let prepared = PreparedDurableTask {
         execution_deadline: native.inputs.execution_deadline,
         inputs: native.inputs.clone(),
-        allow_actions: true,
     };
     let output = run(&engine, &this_run, &native, &prepared).await?;
     assert_eq!(
@@ -190,7 +187,6 @@ async fn empty_oversized_cut_or_tool_bearing_summary_blocks_goal_assessment() ->
         let prepared = PreparedDurableTask {
             execution_deadline: native.inputs.execution_deadline,
             inputs: native.inputs.clone(),
-            allow_actions: true,
         };
         let output = run(&engine, &this_run, &native, &prepared).await?;
         assert!(output.task.is_none());
@@ -229,7 +225,6 @@ async fn expiring_slice_assesses_continuation_before_starting_another_action() -
     let prepared = PreparedDurableTask {
         execution_deadline: native.inputs.execution_deadline,
         inputs: native.inputs.clone(),
-        allow_actions: true,
     };
     let output = run(&engine, &this_run, &native, &prepared).await?;
     assert_eq!(

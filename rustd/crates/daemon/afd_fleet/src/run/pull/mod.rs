@@ -13,14 +13,11 @@ use crate::error::Result;
 use crate::run::answer::no_work;
 use crate::run::envelope::{Acquired, HeadKind};
 use crate::run::installed::Installed;
-use crate::run::start_check::{
-    Billed as Started, GateFacts, Request, StartCheck, money_gates_with,
-};
+use crate::run::start_check::{Billed as Started, Request, StartCheck, money_gates_with};
 use crate::run::store::Runs;
 use af_core::turn::label;
 use afd_billing::Accounts;
 use afd_credential::provider::{Providers, Resolved};
-use afd_gate::gate::{Check, Gates};
 use afd_vault::Vault;
 
 #[cfg(feature = "test-util")]
@@ -54,10 +51,8 @@ pub struct RunService {
     pub durable_task_reports: Option<Arc<dyn crate::durable_task::DurableTaskReportOwner>>,
     /// Ordinary recovery uses the deployment key even when no file store is configured.
     pub turn_checkpoints: crate::run::turn_checkpoint::TurnCheckpoints,
-    /// Approval gates and standing integration grants.
-    pub gates: Gates,
-    /// The payer, the issue-time floor and a fleet's spend: the reads a money
-    /// gate makes before anything moves.
+    /// The payer and the issue-time floor: the reads a money gate makes before
+    /// anything moves.
     pub accounts: Accounts,
     /// Checks every run's funds as it renews; logging a line charges it.
     ///
@@ -82,14 +77,13 @@ pub struct RunService {
     /// clone that deep-copied it would give each cloned handle its own — which
     /// is a cache that never hits and a single-flight that never single-flights.
     pub broker: Arc<afd_credential::credential::Broker>,
-    /// The standing grants a fleet holds, and the only writer of them.
+    /// The grants a fleet asks for, and the only writer of them.
     ///
-    /// The run path READS grants through [`RunService::gates`] on every delivery
-    /// and writes one here only when it finds none — which is a different
-    /// question and, deliberately, a different crate. `afd_approval` owns the
-    /// table because its resolve moves a row in the same statement that answers
-    /// a gate; a second writer on this path is a row that statement would have
-    /// to trust.
+    /// The run path READS approved grants on every delivery and asks for one
+    /// here only when a run requests access — a different question and,
+    /// deliberately, a different crate. `afd_approval` owns the table because
+    /// its resolve moves a row in the same statement that answers the card; a
+    /// second writer on this path is a row that statement would have to trust.
     pub grants: afd_approval::IntegrationGrants,
     /// The fleet's thread, which a chat run carries its earlier turns from.
     pub thread: Arc<dyn crate::run::Thread>,
@@ -107,9 +101,6 @@ pub(super) struct CheckedFleetWork {
     pub(super) resolved: Resolved,
     /// What the money pass resolved.
     pub(super) billed: Started,
-    /// The standing integration grants the gates read returned, or `None`
-    /// when that read failed and the policy reads them itself.
-    pub(super) granted: Option<afd_gate::policy::grants::Grants>,
 }
 
 impl RunService {
@@ -165,8 +156,9 @@ impl RunService {
         self.billed(acquired, installed, runner_id, now).await
     }
 
-    /// The event's type, its payer, its provider and every gate, over a row
-    /// the pass has opened: the run passes its start check and is billed, or the pass ends.
+    /// The event's type, its payer, its provider and the money gate, over a
+    /// row the pass has opened: the run passes its start check and is billed,
+    /// or the pass ends.
     async fn billed(
         &self,
         acquired: Acquired,
@@ -191,12 +183,11 @@ impl RunService {
             .providers
             .resolve_observed(
                 &tenant,
-                &installed.runtime_model_ref,
+                &installed.model_ref,
                 acquired.opened.platform_key.as_ref(),
             )
             .await?;
-        let facts = self.runs.gate_facts(&acquired).await;
-        let gated = self.gated(&acquired, &installed, tenant, &resolved, &facts, now);
+        let gated = self.gated(&acquired, tenant, &resolved, now);
         let billed = match gated.await?.started() {
             Ok(billed) => billed,
             Err(declined) => return self.ended(&acquired, declined, runner_id).await,
@@ -207,7 +198,6 @@ impl RunService {
             event_type,
             resolved,
             billed,
-            granted: facts.granted(),
         }))
     }
 
@@ -231,42 +221,30 @@ impl RunService {
         Ok(Step::Stop)
     }
 
-    /// The money gates over the tenant the payer gate found, then — once they
-    /// pass — the approval gate.
+    /// The money gate over the tenant the payer gate found.
     async fn gated(
         &self,
         acquired: &Acquired,
-        installed: &Installed,
         tenant: Uuid7,
         resolved: &Resolved,
-        facts: &GateFacts,
         now: Timestamp,
     ) -> Result<StartCheck> {
         let request = Request {
             workspace_id: &acquired.workspace_id,
             fleet_id: &acquired.fleet_id,
             turn_id: &acquired.turn_id,
-            budget: installed.config.budget(),
             posture: resolved.posture,
             provider: resolved.provider.as_ref(),
             model: resolved.model.as_ref(),
         };
         let estimate = self.estimate(acquired, resolved, now).await;
-        let money = money_gates_with(
+        money_gates_with(
             self.biller.as_ref(),
             Ok(Some(tenant)),
             request,
-            facts.spend(),
             estimate.as_ref().copied().map_err(|fault| &**fault),
         )
-        .await?;
-        if !matches!(money, StartCheck::Start(_)) {
-            return Ok(money);
-        }
-        Ok(self
-            .judged(acquired, installed, facts, now)
-            .await
-            .unwrap_or(money))
+        .await
     }
 
     /// The credit gate's floor, priced from the book cached at the catalogue
@@ -290,32 +268,5 @@ impl RunService {
             .await?;
         Accounts::estimate_from(pricing.book(), resolved.posture, now)
             .map_err(|fault| Arc::new(crate::Error::from(fault)))
-    }
-
-    /// The approval gate, as a start-check answer.
-    async fn judged(
-        &self,
-        acquired: &Acquired,
-        installed: &Installed,
-        facts: &GateFacts,
-        now: Timestamp,
-    ) -> Option<StartCheck> {
-        let verdict = self
-            .gates
-            .judge(
-                Check {
-                    fleet_id: &acquired.fleet_id,
-                    workspace_id: &acquired.workspace_id,
-                    turn_id: &acquired.turn_id,
-                    event_type: &acquired.event_type,
-                    actor: &acquired.actor,
-                    request_json: &acquired.request_json,
-                    config: &installed.config,
-                },
-                facts.recorded(),
-                now,
-            )
-            .await;
-        StartCheck::of_gate(verdict)
     }
 }

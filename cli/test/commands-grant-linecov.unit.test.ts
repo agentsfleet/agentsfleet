@@ -126,7 +126,7 @@ describe("grantListEffectFromArgs json + empty branches", () => {
   test("jsonMode prints the raw response and skips the table render", async () => {
     const cap: PrintCapture = { json: [], info: [] };
     const body = {
-      items: [{ id: "g1", service: "github", status: "approved" }],
+      items: [{ id: "g1", kind: "integration", name: "github", status: "approved" }],
     };
     const exit = await Effect.runPromiseExit(
       provideAll(grantListEffectFromArgs(undefined, FLEET_ID), {

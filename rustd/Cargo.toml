@@ -280,8 +280,8 @@ afd_outbound = { path = "crates/daemon/afd_outbound" }
 # liveness, the assertion verdict, and the liveness and census sweepers. The two
 # meet at exactly one audit row, and that meeting is a vocabulary import.
 afd_runner = { path = "crates/daemon/afd_runner" }
-# Setup drafts and candidates, the daemon half of a setup run, and the draft's
-# context checkpoint store.
+# A fleet's create, read, change and delete, the workspace's model choices, and
+# a fleet chat's context checkpoint store.
 afd_setup = { path = "crates/daemon/afd_setup" }
 # One SSE connection's frames and the fan-in behind a workspace stream. Its own
 # crate rather than a module in `afd_api`: the frame shapes, the sequence
@@ -343,9 +343,6 @@ serde_with = { version = "3.25.0", default-features = false, features = ["std"] 
 # and every error it raises already carries the record and line it failed on.
 csv = "1.4.0"
 serde_json = { version = "1.0.154", default-features = false, features = ["std", "preserve_order", "raw_value"] }
-# Test-only Rust tokenization and literal decoding for the compiled-prompt guard.
-proc-macro2 = "=1.0.107"
-syn = { version = "=3.0.10", default-features = false, features = ["parsing"] }
 # A tool's parameters are the JSON Schema of the type its arguments parse into,
 # derived from that type so the two cannot drift. rig-core already builds it.
 schemars = { version = "1.2.3", default-features = false, features = ["derive", "std"] }

@@ -1,281 +1,170 @@
-# Web app — `ui/packages/app`
+---
+type: explanation
+audience: contributor
+verified: 2026-11-25
+product_version: 0.90.0
+executable: false
+---
 
-Five statements govern the dashboard (Next.js 16 App Router, React 19.3).
-Each one is falsifiable by grep; the migration table at the bottom is the
-scoreboard. The backend has had this kind of doctrine for a year
-(`runner_fleet.md`, `data_flow.md`); the front end gets its own here.
+# Web app: how the dashboard is built
 
-Stack facts this page assumes:
+> Read this when you change `ui/packages/app`: a page, a server read, the chat, or the fleet page. Parent: [`README.md`](./README.md) · Routes it calls: [API resources](./api_resources.md).
 
-- Turbopack dev/build.
+## What it is
 
-- The React Compiler in annotation mode, so only annotated components compile (`next.config.ts`).
+The dashboard is a Next.js App Router application in `ui/packages/app`.
+Its server holds every backend token; the browser holds none.
+Each fleet is one conversation, and a person's first message on **New fleet** creates the fleet.
 
-- Clerk for auth (`auth()` server-side).
+| Fact | Value | Where |
+|---|---|---|
+| Framework | Next.js 16.4.6, React 19.3.1, Turbopack | `package.json` |
+| Compiler | the React Compiler in annotation mode; only annotated components compile | `next.config.ts` |
+| Sign-in | Clerk; `auth()` on the server | `lib/auth/**` |
+| Backend address | `NEXT_PUBLIC_API_URL`; unset throws | `requireApiOrigin()` in `lib/api/client.ts` |
+| Live chat transport | same-origin `/live/v1/workspaces/{workspaceId}/…` route handlers | `app/live/` |
+| Generic proxy | `/backend/:path*` rewrite to the API | `next.config.ts` |
+| Stream lifetime | handshake 30 s; body rotated at 240 s | `StreamLifetime` in `lib/api/stream-lifetime.ts` |
+| Chat library | `@assistant-ui/react` 0.15.36 and `@assistant-ui/store` 0.3.23, pinned exactly and patched | root `package.json` |
 
-- All backend traffic through server reads, actions or authenticated same-origin `/live` route handlers.
-
-- The server uses `NEXT_PUBLIC_API_URL`, which throws when unset (`lib/api/client.ts` `requireApiOrigin()`); no silent backend guessing.
-
-## Chat workspace
-
-The [chat workspace design](../designs/chat-within-a-workspace.md) applies these server/client boundaries to one setup-and-runtime conversation.
-It retains assistant-ui, keys private draft/shared fleet adapters by account/workspace/subject, and loads configuration details on intent.
-
-Private chat **Save** and editor **Save changes** follow the [single resource reference](api_resources.md).
-The **Save** flap saves the reviewed setup directly, with elapsed progress and native retry.
-
-The setup API and workspace chat adapters are implemented. The [original API proposal](../reviews/workspace-setup/api.md) records design history; [API resources](api_resources.md) describes the current routes.
-
-## The five statements
-
-**1 · The server fetches. The client reacts.**
-
-Backend authentication happens in a Server Component, Server Action or
-authenticated route handler. The token comes from `auth()` on the server.
-Stateful setup requests use the browser's same-origin cookie through the
-whitelisted `/live/v1/workspaces/{workspaceId}/...` proxy; they carry no browser bearer.
-
-The proxy authenticates upstream requests, bounds their bodies and checks write origins
-(`lib/api/setup-proxy/`). Browser setup state lives in `lib/api/drafts.ts`.
-
-`app/cli-auth/[session_id]/page.tsx` is another deliberate browser transport, the command-line
-handoff. It derives an Elliptic-Curve Diffie-Hellman key in the browser and
-posts the encrypted result. The call cannot move to the server without moving
-the private key with it.
-
-It is the documented exception
-([`../AUTH.md`](../AUTH.md) §"Why the dashboard rides one token"), and it is
-separate from the setup proxy.
-
-Every server fetch makes one attempt and sets no deadline of its own: a
-caller that wants one passes its own signal. A failed request surfaces to the
-caller, who decides whether to send it again; a send carries its operation id,
-so a resend is answered with the first turn.
-
-**2 · `"use client"` marks a leaf, never a branch.**
-
-The directive goes on the smallest interactive unit: a button, a form, a
-menu. When a client file imports a component that renders data, the
-boundary is drawn too high. Everything below a client boundary ships to the
-browser whether it needs to or not.
-
-**3 · Every route paints a shell before it paints data.**
-
-`Suspense` uses the shared `RouteLoading` indicator around data-dependent regions.
-The header, navigation and frame render immediately.
-`force-dynamic` with no `Suspense` makes the whole page wait on the slowest call.
-
-The workspace fleet entry reads one fleet and redirects to its conversation. An empty workspace opens the new-fleet composer. The shared route fallback covers that lookup.
-
-**4 · Mutations feel instant.**
-
-Writes go through a Server Action wrapped in `useActionState`, with
-`useOptimistic` painting the result before the server confirms. React 19
-added these primitives so `useState` + `useEffect` + `fetch` chains stop
-reimplementing them badly.
-
-**5 · `useEffect` is for subscriptions, not for loading.**
-
-Event streams, timers, observers: yes. Fetching on mount: no. That is
-statement 1 in disguise, and it guarantees a blank frame plus a waterfall.
-
-## The two shapes
-
-Today, the client-heavy path:
-
-```
- Browser                      Next server                 agentsfleetd
-    │                              │                            │
-    │──── GET /w/x/fleets ────────▶│                            │
-    │                              │─── async page, await ─────▶│
-    │                              │◀────── fleets JSON ────────│   ← page blocks
-    │◀═══ full HTML, all at once ══│                            │
-    │  hydrate ~150 client files ──────────────────┐            │
-    │                                              ▼            │
-    │  useEffect fires ── second fetch from browser ───────────▶│   ← waterfall
-    │◀──────────────────────────────────────────────────────────│
-    ▼
-  first interaction ═══════════════════════════════▶ late
+```text
+┌────────────────────── SERVER ──────────────────────┐
+│  layouts · pages · server reads · Server Actions   │  ← tokens, fetches, secrets
+│  /live route handlers · Suspense boundaries        │
+└──────────────────────────┬─────────────────────────┘
+                           │  props: plain data only
+┌──────────────────────────▼───── CLIENT (leaves) ───┐
+│  RecentFleetList · SecretsList · menus · composer  │  ← useTransition, useOptimistic,
+│  cookie-only /live transport; no bearer, no key    │     subscriptions
+└────────────────────────────────────────────────────┘
 ```
 
-Target: shell first, stream the rest, mutate optimistically:
+## Why it exists
 
+A token in browser code can be read by any script on the page.
+Keeping every backend call on the server, or behind a same-origin handler, keeps the token there too.
+Small client leaves send less JavaScript and paint the page frame before its data arrives.
+
+## How it behaves
+
+### Five rules
+
+| Rule | What it means |
+|---|---|
+| The server fetches; the client reacts | Backend calls happen in a Server Component, a Server Action or an authenticated route handler, with the token from `auth()` |
+| `"use client"` marks a leaf | The directive goes on the smallest interactive unit: a button, a form, a menu |
+| A shell paints before data | `Suspense` with the shared `RouteLoading` indicator wraps data regions; header and navigation render at once |
+| Mutations feel instant | A Server Action, with `useOptimistic` where the result is known before the server confirms |
+| `useEffect` is for subscriptions | Event streams, timers and observers; never a fetch on mount |
+
+Every server fetch makes one attempt and sets no deadline of its own; a caller that wants one passes its own signal.
+A failed send surfaces to the caller, and a resend carries the same operation id, so the API answers with the first turn.
+A data region under `Suspense` never rejects, so a failed read shows a retry rather than an empty list.
+
+### How the browser reaches the API
+
+The `/live` handlers carry a fleet's messages, turns, turn streams, uploads and task reads.
+They authenticate each upstream request with the session's token, bound request bodies, and check the origin on writes.
+They are separate from the `/backend` rewrite, which cannot bypass their checks.
+
+`app/cli-auth/[session_id]/page.tsx` is the one other browser transport: the command-line sign-in handoff.
+It derives an Elliptic-Curve Diffie-Hellman key in the browser, so the call cannot move to the server ([`../AUTH.md`](../AUTH.md)).
+
+Models and billing resolve from the workspace owner's account; members get the owner-facing actions they are authorized for.
+[API resources](./api_resources.md) owns each route's scope.
+
+### New fleet
+
+**New fleet** (`/w/{workspaceId}/fleets/new`) renders the composer, and opening it creates nothing.
+Its suggestion buttons fill the composer with editable text from `public/fleet-starters.json`.
+`/w/{workspaceId}/fleets` redirects to the first fleet, or to **New fleet** when the workspace has none.
+
+Sending calls `POST /v1/workspaces/{workspace_id}/fleets`, and the browser replaces the URL with the fleet's page.
+A refused create returns the text to the composer with **Resend** and names the code, such as `UZ-SETUP-008` when no model is usable.
+[Data flow](./data_flow.md) owns the create transaction and its retry key.
+
+### The fleet page
+
+The sidebar's **Your Fleets** button shows or hides the workspace's fleet list (`components/layout/SidebarFleets.tsx`, `RecentFleetList.tsx`).
+**Fleet actions** holds **Archive**, permanent **Delete** and **Saved memories**.
+Beside the chat, three short lists show rows that exist (`components/domain/fleet/FleetListSections.tsx`).
+
+| List | Reads | A person's action |
+|---|---|---|
+| **Wakes on** | `GET F/schedules` and `GET F/triggers` | remove a schedule or trigger |
+| **Can access** | approved grants from `GET F/integration-grants` | **Remove** revokes the grant with `DELETE F/integration-grants/{id}` |
+| **Remembers** | pinned entries from `GET F/memories` | remove sends `DELETE F/memories/{key}` |
+
+The fleet adds its own schedules and triggers, pins its own memory and asks for its own access; the lists only show and remove.
+
+When the fleet calls `request_access`, an access card appears in the chat with **Approve** and **Deny**.
+A 403 leaves the card open with its message.
+
+The header's model picker sends one `PATCH F` with `model_ref`; the **Allow all** and **Packages** switches each send one `PATCH F` and start off.
+
+### The chat stream in the browser
+
+```text
+FleetThread
+  ├─ FleetStreams (one per account, workspace and signed-in person)
+  │    ├─ ChatConnection: EventSource, deadlines, reconnects, cleanup
+  │    └─ ReplyStream: stream order, gaps, final text ── ReplyStreamDecoder
+  └─ ChatThread · ChatMessageRow · ChatComposerFrame (shared with other chats)
 ```
- Browser                      Next server                 agentsfleetd
-    │                              │                            │
-    │──── GET /w/x/fleets ────────▶│                            │
-    │◀═ shell + loader (instant) ═══│                           │
-    │                              │─── Suspense boundary ─────▶│
-    │◀═══ streamed rows ════════════│◀───── fleets JSON ────────│
-    │  hydrate ~25 leaf client files (buttons, forms only)      │
-    ▼                                                           │
-  interactive early                                             │
-    │  user renames a fleet                                     │
-    │  useOptimistic paints new name          ← 0 ms            │
-    │  useActionState → Server Action ─────────────────────────▶│
-    │◀── revalidate; real value replaces optimistic ────────────│
-```
 
-The bar between the worlds:
+`FleetStreams` keys every stream by account, workspace and signed-in person (`lib/streaming/fleet-stream-registry.ts`).
+Turn frames carry one zero-based sequence; a gap stops appending preview text, and the adapter repairs from the durable turns list.
+The proxies forward `Last-Event-ID` unchanged, and the daemon ignores it for turn streams.
 
-```
-  ┌──────────────────── SERVER ────────────────────┐
-  │  layouts   pages   server reads   actions      │  ← tokens, fetches, secrets
-  │  Suspense boundaries drawn here                │
-  └────────────────────┬───────────────────────────┘
-                       │  props: plain data only
-  ┌────────────────────▼─── CLIENT (leaves) ───────┐
-  │  <RecentChats>         <SecretForm>  <Menu>    │  ← useTransition, useOptimistic,
-  │  cookie-only setup transport; no bearer/key    │     useActionState live here
-  └────────────────────────────────────────────────┘
-```
+React builds the stream objects without starting I/O during render; effects start them and dispose them on identity change or unmount.
+`useSyncExternalStore` reads stable, immutable snapshots, so earlier rows keep their object identity.
+Streaming updates share one animation-frame update, and unmount cancels queued work.
 
-## Scoreboard
+A message sent while the fleet's run is live folds into that run.
+Its row reads `Added to the current run` until the run answers it (`lib/streaming/fleet-stream-row.ts`).
+Logout and identity change close the streams and clear every cached reply (`lib/streaming/fleet-stream-registry.ts`).
 
-Run the greps, then move the numbers. Every row is measurable in one command,
-so a stale row is a choice. Re-measure at any milestone that touches the app
-and update this table in the same diff.
+### Sending and reconnecting
 
-Measured Nov 07, 2026 against `ui/packages/app`: 280 non-test `.tsx` files
-under `app` and `components`.
+Each send enters a ledger from the moment Send is pressed until the daemon's `202` is reconciled, one entry per operation ID (`lib/streaming/pending-sends.ts`).
+Resend posts the same operation ID, so the daemon answers the first turn instead of running a second.
+The ledger is keyed by signed-in person, workspace and fleet, mirrored to `localStorage` for reloads and other tabs, and expires after a day.
 
-| Signal | Today | Target | Grep |
-|---|---|---|---|
-| `"use client"` files | 204 | ~25 | `grep -rl '"use client"' app components \| wc -l` |
-| `useEffect` files | 53 | ~5 | `grep -rl useEffect app components hooks \| wc -l` |
-| `useActionState` | 0 | every form | `grep -rl useActionState app components \| wc -l` |
-| `useOptimistic` | 3 | every mutation surface | `grep -rl useOptimistic app components \| wc -l` |
-| `Suspense` files | 6 | every data route | `grep -rl Suspense app \| wc -l` |
+A dismissed send leaves a tombstone, so a tab that missed the dismissal cannot write it back.
+The next person on a shared browser never sees the last person's ledger.
 
-The first two keep moving away from target as the app grows. `useOptimistic`
-lives in three surfaces today: secrets delete, runner state and the fleet
-archive action, each reconciling inside the transition that set it.
+| Timer | Value | Source |
+|---|---|---|
+| Silence before a stream counts as lost, open or connecting | 45 s, three missed 15 s keep-alives | `stream-recovery-window.ts` |
+| Grace before a stable connection's loss is shown | 25 s; a connection is stable after 30 s of frames | `stream-recovery-window.ts` |
+| Fast reconnects | 5 attempts, 1 s doubling to a 15 s cap, with jitter | `fleet-stream-reconnect.ts` |
+| Retry after the fast attempts | every 30 s, shown as not live | `fleet-stream-reconnect.ts` |
+| Keep an unwatched stream open | 30 s after the last viewer leaves | `fleet-stream-registry.ts` |
 
-The chat's summary strip owns one `useEffect`, and it is statement 5 as written. It is a subscription to the fleet stream (`useFleetRunSummary`), never a load.
+Returning to the tab or coming back online retries at once.
 
-It selects the two identity-stable slices the strip reads, so a streaming
-reply's chunks re-render nothing. A completion frame carries the row and the
-fleet facts, so the strip moves with no request behind it.
+### Tasks in the chat
 
-`ChatView` itself has no effect left. `useActionState` has not moved, and
-`Suspense` covers six files. All of it is the point of keeping the table.
+`FleetThread` renders `DurableTaskPanel` (`components/domain/tasks/TaskPanel.tsx`) above the composer.
+It loads the fleet's unfinished tasks; expanding a row loads that task's completion statements.
+The fleet stream's `durable_task_changed` hints, its first hello and gap recovery each invalidate the task reads.
 
-The Models route is the worked example. `ModelCatalogueProvider` fetched the
-entire global model catalogue in a mount effect. Every visit to Models paid for
-data most visits never opened a dialog to use.
+A person edits a task's statements in that detail, sending one `PATCH F/durable_tasks/{id}` with `expected_generation`.
+A 404, 409, 412 or 428 answer reports the task as changed, so a second editor's change is never overwritten silently (`lib/api/tasks.ts`).
+[Durable tasks](./durable_tasks.md) owns what the statements mean.
 
-It now loads on intent: dialog open, focus, or an eligible hover.
+## Limits
 
-Model display names use one shared store.
-The layout starts one catalogue read per sign-in or refresh and passes its promise to `ModelLabelsProvider`.
-Next retains that layout across client navigation.
+- **No shared backend-for-frontend.** Only the chat's `/live` handlers form a checked boundary; other dashboard reads go through Server Actions or the `/backend` rewrite.
+- **Rules are not yet met everywhere.** Most components still carry `"use client"`, and only `SecretsList` uses `useOptimistic`.
+- **A compromised page can still ask Clerk for a token.** Keeping tokens out of app state does not stop that. Content security policy and subresource integrity are separate protections.
+- **Browser timing stays local.** The `agentsfleet.chat.submit_to_first_visible` measure is not exported.
+- **Patched chat library.** An `@assistant-ui` upgrade must keep the Bun patches and the browser checks for folding, resizing and scrolling back through history.
 
-Screens read names through `useModelLabels()` and `modelLabel`.
-Unknown, retired or ambiguous identifiers remain as recorded.
-Usage reads one report and no catalogue.
+## Related pages
 
-Only name consumers suspend: the Usage fleet table waits while the frame, totals and daily graph can stream.
-The server catches a label-read failure before forwarding the promise.
-Consumers then receive recorded identifiers rather than an unhandled rejection.
-
-Statement 3 covered the route too, which previously awaited every read before
-painting a pixel. It now renders its header immediately and streams an
-exported async data region under `Suspense`, matching `ApprovalsData`.
-
-One boundary worth recording, because it is easy to get backwards: those
-regions never REJECT. Suspense there buys latency, not error handling.
-
-A rejected promise throws in render and needs an ErrorBoundary. That would collapse "this read failed" and "this library is empty" into one
-undifferentiated fallback.
-
-Keeping them distinct is what lets a user whose read failed see a retry
-instead of being told they have nothing.
-
-Migration happens route by route inside normal milestone work. Statement
-compliance is checked for touched files at review, not by a big-bang
-refactor. The PLAN quality-ceiling line (operating model) is where a
-larger cut gets proposed when a route's patch fights these statements.
-
-## Where this is headed — a Backend-for-Frontend
-
-The dashboard server already obtains the customized Clerk session token for
-backend reads, actions and streams. Application code in the browser holds no
-backend bearer. [`../AUTH.md`](../AUTH.md) §"Why the dashboard rides one token"
-describes this boundary.
-
-Workspace setup uses a narrow Backend-for-Frontend today: its `/live` handler
-authenticates each allowed request and stream. Writes also require a matching
-origin. This handler is separate from the generic `/backend` rewrite, which
-cannot bypass its checks.
-
-A common boundary for every dashboard route remains future work, alongside
-scoped capability tokens. Backend authorization must continue to cover the
-command-line and tenant-key callers as well as the dashboard.
-
-Keeping tokens out of application state does not prevent a compromised page
-from calling Clerk's own token API. Content-Security-Policy and
-Subresource-Integrity remain separate browser protections.
-
-## Workspace setup and runtime subjects
-
-Opening New fleet allocates no resource; the first mutation creates a creator-private draft. Messages, pending sends, streams and caches bind account, workspace and subject. Durable messages recover progress; streams carry authorized hints.
-
-Subject disposal, logout, revocation and deletion clear private buffers. Hiding the instruction editor preserves local edits; [manual-edit recovery](shared_chat_verification.md#setup-and-runtime-stay-together) explains conflicts. Unsent draft text stays in memory; private drafts never broadcast across the workspace.
-
-The private setup, workspace activity and fleet activity proxies bound stream handshakes to 30 seconds and rotate established bodies at 240 seconds from request start.
-`StreamLifetime` forwards bytes on demand, ends rotation cleanly, and aborts the upstream request.
-Browser cancellation, request cancellation, upstream failure and ordinary completion release timers and the upstream reader.
-
-The proxies forward `Last-Event-ID` unchanged. Private setup reconnects retain the authorized subject and recover durable messages through the existing client. Runtime turn streams use connection-local counters; the daemon ignores the header and the client recovers gaps through the durable turns list.
-
-A shared Definition powers instruction edits, model proposals and checked saves. Save retains one fleet identity with visible setup checks and keeps setup open. When an initial run is requested, Pending remains until its committed turn is confirmed with its expected turn identity.
-
-Models and billing resolve from the workspace owner's account; joined members receive authorized owner-facing actions. Edit fleet starts a private draft against a pinned setup revision.
-
-Runtime controls and shared fleet history retain their existing authority. See [fleet_definitions.md](fleet_definitions.md#validated-definition), [data_flow.md](data_flow.md#fleet-creation-and-setup-recovery), and [API resources](api_resources.md).
-
-The **Instructions** dialog edits the current instructions before Save. Opening it requests no run and creates no fleet.
-
-The saved view separates setup readiness from the first run's acceptance; an accepted run can still be running.
-The inline receipt shows `Save done vN`; readiness remains separate from the saved version.
-
-The saved response supplies the Definition when present; otherwise the view retains the reviewed candidate's Definition. Unknown trigger or access data stays unconfirmed.
-
-### One fleet workspace
-
-New fleet keeps the private setup conversation open across multiple messages.
-The header shows the reviewed fleet name and the **Edit instructions** pencil.
-
-The **Save** flap saves the fleet. Sending **Save** in chat also saves it and opens its conversation.
-
-The sidebar's **Fleets** list shows authorized saved fleets.
-Private drafts appear under **Unfinished setups** on **New fleet**.
-
-Active fleet dots use the brand color; hover or keyboard focus reveals the delete control.
-
-Fleet **Edit setup** opens the setup page at its latest saved revision. **Archive** and permanent **Delete** live in **Fleet actions**.
-
-The **Edit instructions** pencil opens the tall instruction editor. Its **Save changes** action applies the reviewed edit.
-
-Saving a revision keeps setup open. An explicit chat Save shows `Saving setup...` through model finalization and the checked write, then `Save done vN`.
-
-Existing runs keep their pinned revision; new runs use the saved version.
-Fleet messages, setup receipts and integration activity share one chronological conversation. **Saved memories** opens from **Fleet actions**; **Your fleets** opens the listing.
-
-A message sent while the fleet's run is live folds into that run. The row shows `Added to the current run` until the run answers it, and the view waits on the message's own event.
-
-Both purposes use `ChatConnection`, `ReplyStream`, `ChatThread`, `ChatMessageRow` and `ChatComposerFrame`.
-Effects own connections and cleanup; render stays pure and Hooks remain static.
-Private history loading does not wait for model or sidebar lists.
-
-Fleet chat also renders `DurableTaskPanel` inline above its composer through `FleetThreadViewport`.
-Its scoped reads load compact unfinished work; expanding a row loads accepted criteria through `DurableTaskDetail`.
-The [DT owner](durable_tasks.md#status-and-ownership) distinguishes these implemented reads from pending task attempts and recovery.
-
-The existing fleet stream supplies `durable_task_changed` read hints through `durableTasksSeq`; its initial hello and gap recovery also invalidate task reads.
-Account or workspace changes abort old requests, and access loss clears private rows.
-Transient failures retain labelled confirmed data and expose retry without claiming fresh progress.
-
-An identity-owned cache retains at most five conversations and 1 MiB for 120 seconds, with access loss clearing its contents.
-See [shared chat implementation and verification](shared_chat_verification.md#browser-ownership) for the call graph and recovery rules.
+- [API resources](./api_resources.md): every route the app calls
+- [Data flow](./data_flow.md): fleet creation and the live tail
+- [Durable tasks](./durable_tasks.md): the task panel's data
+- [Product analytics](./product_analytics.md): dashboard events
+- [`../AUTH.md`](../AUTH.md): why the dashboard rides one token

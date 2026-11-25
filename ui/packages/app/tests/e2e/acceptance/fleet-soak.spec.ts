@@ -44,7 +44,7 @@ async function recordJourney(journey: SoakJourney, label: string, page: Page): P
 
 test.describe("final real fleet soak acceptance", () => {
   test.skip(process.env.AGENTSFLEET_ACCEPTANCE_SCOPE === "post-deploy", "Long soak runs locally or in the separate api-dev job");
-  test("one fleet retains 181 messages through four saved setups and home navigation", async ({page}) => {
+  test("one fleet keeps a long chat, three pinned rules and home navigation", async ({page}) => {
     test.setTimeout(SOAK.singleTimeoutMs);
     const {id: workspace} = await ensureSecondWorkspace(FIXTURE_KEY.regular, WORKSPACE_NAME);
     const [resume] = resumeManifests();
@@ -56,11 +56,11 @@ test.describe("final real fleet soak acceptance", () => {
     await withSoakEvidence([journey], () => journey.run(resume), async () => recordJourney(journey, "single", page));
   });
 
-  test("soak mini: two concurrent fleets keep separate histories and setup versions", {tag: "@soak-mini"}, async ({context}) => {
+  test("soak mini: two concurrent fleets keep separate histories and pinned memory", {tag: "@soak-mini"}, async ({context}) => {
     await concurrentSoak(context, SOAK.miniFleets, "mini");
   });
 
-  test("soak marathon: ten concurrent fleets keep separate histories and setup versions", {tag: ["@soak-marathon", "@ten-fleets"]}, async ({context}) => {
+  test("soak marathon: ten concurrent fleets keep separate histories and pinned memory", {tag: ["@soak-marathon", "@ten-fleets"]}, async ({context}) => {
     await concurrentSoak(context, SOAK.marathonFleets, "marathon");
   });
 });
@@ -72,7 +72,7 @@ async function concurrentSoak(context: BrowserContext, count: number, kind: stri
   const tag = uniqueTag();
   const entry = await context.newPage();
   await signInAs(entry, FIXTURE_KEY.regular);
-  // Every page shares one signed-in person, each with its own fleet, draft and stream.
+  // Every page shares one signed-in person, each with its own fleet and stream.
   const pages = await Promise.all(Array.from({length: count}, () => context.newPage()));
   await entry.close();
   const resumes = resumeManifests();

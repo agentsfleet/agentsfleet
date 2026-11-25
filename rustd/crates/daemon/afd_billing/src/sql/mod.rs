@@ -38,8 +38,6 @@ pub const SELECT_DECISION_PRICE_BOOK: &str = include_str!("select_decision_price
 pub mod work {
     /// A fleet run's run.
     pub const FLEET_RUN: &str = "fleet_run";
-    /// A draft-owned setup run.
-    pub const SETUP_RUN: &str = "setup_run";
 }
 
 /// The charges page's spelling for a fleet run's usage. Never stored: a usage
@@ -64,30 +62,20 @@ pub mod posture {
     pub const SELF_MANAGED: &str = "self_managed";
 }
 
-/// The charges page's spelling for a setup chat's settlement, beside the
-/// [`charge`] type a fleet run writes. Never stored: it names the source.
-pub const CHARGE_TYPE_SETUP: &str = "setup";
-
 /// The tenant's first charges page: newest first, no boundary.
 ///
 /// Every charge is a usage line in `billing.usage_lines`, one row per line,
-/// whether a fleet run or a setup chat logged it. The page is cut to its size
-/// by the `(tenant_id, created_at, id)` index in a `MATERIALIZED` CTE BEFORE
-/// any join, so the draft and fleet detail joins touch at most one page
-/// however long the history is. A setup line names its fleet only through its
-/// draft's saved fleet, which it may not have; a fleet line names its own.
-/// `cached_input_token_count` is not selected: the charges response does not
-/// carry it.
+/// read by the `(tenant_id, created_at, id)` index. A line names its own fleet,
+/// so the page joins nothing. `cached_input_token_count` is not selected: the
+/// charges response does not carry it.
 ///
-/// `$1` tenant · `$2` limit · `$3` [`CHARGE_TYPE_SETUP`] · `$4`
-/// [`work::FLEET_RUN`] · `$5` [`charge::STAGE`].
+/// `$1` tenant · `$2` limit · `$3` [`charge::STAGE`].
 pub(crate) const SELECT_TENANT_CHARGES_FIRST: &str =
     include_str!("select_tenant_charges_first.sql");
 
-/// A later charges page: strictly older than the cursor's boundary, the same
-/// two sources cut the same way.
+/// A later charges page: strictly older than the cursor's boundary.
 ///
-/// `$1` tenant · `$2` boundary instant · `$3` boundary id · `$4` limit · `$5`–`$7`
-/// as `$3`–`$5` above.
+/// `$1` tenant · `$2` boundary instant · `$3` boundary id · `$4` limit · `$5`
+/// [`charge::STAGE`].
 pub(crate) const SELECT_TENANT_CHARGES_AFTER: &str =
     include_str!("select_tenant_charges_after.sql");

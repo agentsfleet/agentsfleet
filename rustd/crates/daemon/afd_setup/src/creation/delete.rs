@@ -1,31 +1,27 @@
-//! Deleting a fleet: the teardown an archive runs, then the row, in one
-//! transaction.
-//!
-//! A delete takes a fleet in any status, so it can meet one that still holds
-//! setup grants, live runs and a saving draft. It ends all three as an archive
-//! does, closing the draft, and removes the row under one lock and one tag
-//! check, so a refused or failed delete changes nothing.
+//! Deleting a fleet: its live runs are marked cancelled and the row goes, in
+//! one transaction under one lock and one tag check, so a refused or failed
+//! delete changes nothing.
 
-use super::{CONTEXT, Creations, INSTALLING, etag, read};
+use af_core::id::Uuid7;
+use sqlx::Connection as _;
+
+use super::{CONTEXT, Creations, etag, read};
 use crate::{
     Access, Result, access,
     error::{ErrorKind, raise::query},
 };
-use af_core::id::Uuid7;
-use sqlx::Connection as _;
 
 impl Creations {
-    /// Ends `fleet`'s setup grants and live runs, closes its saving draft
-    /// and deletes the fleet, all under the tag `expected`.
+    /// Ends `fleet`'s live runs and deletes it, under the tag `expected`.
     ///
     /// Runners hear their Cancel only after the commit, so no runner stops for
     /// a delete that rolled back; the workspace's open walls hear after it too.
     ///
     /// # Errors
-    /// Refuses a caller who is not a current member, a fleet outside the
-    /// workspace, a stale tag, and datastore failures.
+    /// A caller who is not a current member, a fleet outside the workspace, a
+    /// stale tag, and datastore failures.
     pub async fn delete(&self, access: Access<'_>, fleet: &Uuid7, expected: &str) -> Result<()> {
-        let mut connection = self.setup.drafts.database.acquire().await?;
+        let mut connection = self.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
         access::current(&mut tx, access).await?;
         let row = read::lock(&mut tx, access.workspace, fleet).await?;
@@ -33,18 +29,11 @@ impl Creations {
         if expected != current {
             return Err(ErrorKind::Stale { etag: current }.into());
         }
-        let cancelled = self.cancel(&mut tx, fleet).await?;
-        let closed = super::activate::close_saved_drafts(&mut tx, fleet).await?;
+        let cancelled = super::cancel_runs(&mut tx, fleet).await?;
         afd_fleet_lifecycle::delete_locked(&mut tx, access.workspace, fleet).await?;
         tx.commit().await.map_err(query(CONTEXT))?;
-        for draft in &closed {
-            self.setup.drafts.changed(draft).await;
-        }
-        afd_turns::view::activity::fleets_changed(&self.activity_streams(), access.workspace).await;
+        afd_turns::view::activity::fleets_changed(&self.turns.streams(), access.workspace).await;
         self.announce_cancellations(cancelled).await;
-        if row.status == INSTALLING {
-            self.setup_cancelled(access, fleet);
-        }
         Ok(())
     }
 }

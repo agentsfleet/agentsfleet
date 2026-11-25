@@ -1,4 +1,4 @@
-//! Closed causes of a bus gap; no subject, fleet or draft becomes a series.
+//! Closed causes of a bus gap; no subject or fleet becomes a series.
 use super::closed_set;
 
 closed_set! {

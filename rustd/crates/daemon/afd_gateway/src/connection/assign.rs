@@ -149,13 +149,9 @@ impl ConnectionServices {
             .operation(Operation::Assign, async {
                 Ok(self
                     .runs
-                    .assign_with(
-                        &self.drafts,
-                        request,
-                        self.accepted,
-                        clock,
-                        |run, metadata| encode_assignment(encoder, run, metadata),
-                    )
+                    .assign_with(request, clock, |run, metadata| {
+                        encode_assignment(encoder, run, metadata)
+                    })
                     .await?)
             })
             .await?;

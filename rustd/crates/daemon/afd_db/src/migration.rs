@@ -138,7 +138,6 @@ pub static MIGRATIONS: &[Migration] = &[
     migration!("20261108121400_model_platform_defaults.sql"),
     migration!("20261108121500_model_tenant_models.sql"),
     migration!("20261108121900_fleet_fleets.sql"),
-    migration!("20261108122000_fleet_revisions.sql"),
     migration!("20261108122100_connector_integration_grants.sql"),
     migration!("20261108122200_connector_installs.sql"),
     migration!("20261108122300_connector_channels.sql"),
@@ -149,7 +148,6 @@ pub static MIGRATIONS: &[Migration] = &[
     migration!("20261108123100_runner_runners.sql"),
     migration!("20261108123200_thread_runs.sql"),
     migration!("20261108123400_runner_history.sql"),
-    migration!("20261108123600_setup_drafts.sql"),
     migration!("20261108123650_thread_threads.sql"),
     migration!("20261108123655_thread_compactions.sql"),
     migration!("20261108124400_billing_wallets.sql"),
@@ -177,6 +175,7 @@ pub static MIGRATIONS: &[Migration] = &[
     migration!("20261122090600_runner_checkpoint_object_refs.sql"),
     migration!("20261122090700_runner_checkpoint_pins.sql"),
     migration!("20261122090800_thread_replay_receipts.sql"),
+    migration!("20261124191105_fleet_triggers.sql"),
 ];
 
 /// Derives the version from the filename during constant evaluation: its UTC

@@ -1,18 +1,23 @@
 //! The runner plane's HTTP seam: what the run family of verbs acts through.
 
 use af_core::id::Uuid7;
+use af_wire::access_verb::AccessRequest;
 use af_wire::credentials::MintCredentialRequest;
 use af_wire::memory::{
     MemoryLoadResponse, MemoryPushRequest, MemoryRecallRequest, MemoryRecallResponse,
 };
 use af_wire::message_verb::MessageRequest;
 use af_wire::tool_detail::{ToolCallRecordsRequest, ToolCallRecordsStored};
+use af_wire::trigger_verb::TriggerAddRequest;
 use afd_credential::credential::Minted;
 use afd_fleet::run::Standing;
+use afd_fleet::run::access::AccessAsked;
 use afd_fleet::run::effect::{Claim, Effect};
 use afd_fleet::run::message::SteerSender;
+use afd_fleet::run::write_fence::WriteFence;
 use afd_memory::Captured;
 use afd_outbound::Interim;
+use afd_setup::trigger::TriggerRow;
 use jiff::Timestamp;
 
 /// The fenced HTTP operations that remain outside the host session.
@@ -149,6 +154,57 @@ pub trait RunPlane: Send + Sync + std::fmt::Debug + 'static {
         standing: &Standing,
         text: &str,
     ) -> impl Future<Output = afd_fleet::Result<SteerSender>> + Send;
+
+    /// Asks a person for `request`'s name on behalf of the run, or answers
+    /// that the fleet's approved grant already covers it.
+    ///
+    /// # Errors
+    /// Refuses as [`RunPlane::standing`] does, a name the workspace lacks, an
+    /// integration it has not connected, and a scope or host the request
+    /// cannot carry; every refusal writes no grant and raises no card.
+    fn request_access(
+        &self,
+        runner_id: &Uuid7,
+        run_id: Uuid7,
+        request: &garde::Valid<AccessRequest<'_>>,
+        now: Timestamp,
+    ) -> impl Future<Output = afd_fleet::Result<AccessAsked>> + Send;
+
+    /// Adds the trigger `request` names to the run's fleet, as the row
+    /// `item_id`, under the run's write fence.
+    ///
+    /// # Errors
+    /// A provider the workspace has not connected, a signing secret its vault
+    /// lacks, a shape the trigger parser refuses, a kind and source the fleet
+    /// already holds, and a run superseded before the write.
+    fn add_trigger(
+        &self,
+        standing: &Standing,
+        item_id: &Uuid7,
+        request: &TriggerAddRequest<'_>,
+        guard: &WriteFence,
+    ) -> impl Future<Output = afd_fleet::Result<TriggerRow>> + Send;
+
+    /// The run's fleet's triggers, oldest first.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer.
+    fn triggers(
+        &self,
+        standing: &Standing,
+    ) -> impl Future<Output = afd_fleet::Result<Vec<TriggerRow>>> + Send;
+
+    /// Removes one of the run's fleet's triggers; `false` when it holds no
+    /// such trigger.
+    ///
+    /// # Errors
+    /// A run superseded before the write, and datastore failures.
+    fn remove_trigger(
+        &self,
+        standing: &Standing,
+        trigger: &Uuid7,
+        guard: &WriteFence,
+    ) -> impl Future<Output = afd_fleet::Result<bool>> + Send;
 }
 
 mod run_service;

@@ -6,18 +6,14 @@
 -- $7 actor · $8 event type · $9 request JSON · $10 deployment ceiling ·
 -- $11 current deployment estimate · $12/$13 reply connector and address ·
 -- $14 earlier turn in this workspace to copy a reply from ·
--- $15 this build's setup policy stamp · $16 runnable status, or NULL for any ·
--- $17 the status a new turn waits in.
+-- $15 runnable status, or NULL for any · $16 the status a new turn waits in.
 
 -- 1. Lock the fleet row. One message per fleet is written at a time, so a
 --    later sender draws a later sequence. MATERIALIZED: runs once, first. The
 --    fleet's thread was written with the fleet, so the turn always has one.
 WITH locked_fleet AS MATERIALIZED (
-    SELECT f.id, f.status,
-           COALESCE(setup.policy_semantics = $15, false) AS setup_current
+    SELECT f.id, f.status
     FROM fleet.fleets f
-    LEFT JOIN fleet.revisions setup
-      ON setup.id = f.head_revision_id AND setup.fleet_id = f.id
     WHERE f.id = $2 AND f.workspace_id = $3
     FOR NO KEY UPDATE OF f
 ),
@@ -34,7 +30,7 @@ new_message AS (
       (id, thread_id, workspace_id, producer, producer_key, payload_digest,
        actor, kind, status, request_json,
        reply_provider, reply_address, created_at, updated_at)
-    SELECT $1, locked_fleet.id, $3, $4, $5, $6, $7, $8, $17, $9::jsonb,
+    SELECT $1, locked_fleet.id, $3, $4, $5, $6, $7, $8, $16, $9::jsonb,
            COALESCE($12::text, earlier.reply_provider),
            COALESCE($13::text, earlier.reply_address),
            now(), now()
@@ -43,8 +39,7 @@ new_message AS (
       ON earlier.id = $14 AND earlier.workspace_id = $3
      AND earlier.reply_provider IS NOT NULL
     WHERE NOT EXISTS (SELECT 1 FROM already_sent)
-      AND ($16::text IS NULL OR locked_fleet.status = $16::text)
-      AND locked_fleet.setup_current
+      AND ($15::text IS NULL OR locked_fleet.status = $15::text)
       AND $11::bigint < $10::bigint
     ON CONFLICT (producer, producer_key) DO UPDATE SET updated_at = EXCLUDED.updated_at
     RETURNING (xmax = 0) AS inserted, id, payload_digest AS digest,
@@ -53,7 +48,6 @@ new_message AS (
 -- 5. Exactly one answer row, whatever happened above.
 SELECT EXISTS (SELECT 1 FROM locked_fleet) AS fleet_found,
        (SELECT status FROM locked_fleet) AS status,
-       COALESCE((SELECT setup_current FROM locked_fleet), false) AS setup_current,
        COALESCE(n.inserted, false) AS inserted,
        COALESCE(n.id, s.id) AS id,
        COALESCE(n.digest, s.digest) AS digest,

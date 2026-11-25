@@ -3,8 +3,8 @@
 //! # Why this module cannot move money
 //!
 //! Only a usage line debits the wallet, in the statement that writes it:
-//! renewals, reports and a setup chat log their lines through the ledger or
-//! their own statements. Signup bootstrap adds the starter grant. This module
+//! renewals and reports log their lines through the ledger or their own
+//! statements. Signup bootstrap adds the starter grant. This module
 //! holds none of those writes; it is the read side those movements are
 //! audited through, and a compromise of the tenant plane's HTTP surface
 //! therefore cannot mint credit. That is a property of what is ABSENT here, so
@@ -104,7 +104,7 @@ impl Billing {
 /// through `wrap` first.
 ///
 /// The paging plan proof prefixes `EXPLAIN` here, so the plan it grades is the
-/// statement and the seven binds the store sends, never a copy of them.
+/// statement and the binds the store sends, never a copy of them.
 #[cfg(feature = "test-util")]
 pub fn charges_query<'q, O, S>(
     wrap: impl FnOnce(&'static str) -> S,
@@ -134,48 +134,41 @@ where
         None => sqlx::query_as(wrap(sql::SELECT_TENANT_CHARGES_FIRST))
             .bind(tenant)
             .bind(i64::from(limit))
-            .bind(sql::CHARGE_TYPE_SETUP)
-            .bind(sql::work::FLEET_RUN)
             .bind(sql::charge::STAGE),
         Some(after) => sqlx::query_as(wrap(sql::SELECT_TENANT_CHARGES_AFTER))
             .bind(tenant)
             .bind(after.created_at.to_sqlx())
             .bind(&after.id)
             .bind(i64::from(limit))
-            .bind(sql::CHARGE_TYPE_SETUP)
-            .bind(sql::work::FLEET_RUN)
             .bind(sql::charge::STAGE),
     }
 }
 
-/// One fleet charge or setup settlement, as the charges response shows it.
+/// One fleet charge, as the charges response shows it.
 ///
 /// Decoded by name through `FromRow`, so each field is its column's name.
 #[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
 pub struct ChargeRow {
-    /// The charge's or settlement's identifier.
+    /// The charge's identifier.
     pub id: Uuid7,
     /// Whose charge it is.
     pub tenant_id: Uuid7,
-    /// The workspace it was incurred in. No foreign key on either source, so
-    /// it outlives the workspace.
+    /// The workspace it was incurred in. No foreign key, so it outlives the
+    /// workspace.
     pub workspace_id: Uuid7,
     /// The fleet it was incurred by. A fleet charge always names it, and the
     /// name OUTLIVES the fleet: no foreign key, so a purged fleet's charges
-    /// still name themselves. A setup settlement names the fleet its draft was
-    /// saved as, and nothing while the draft has none.
+    /// still name themselves.
     pub fleet_id: Option<Uuid7>,
     /// That fleet's name. A fleet charge's is a snapshot taken when it was
     /// written, so a later rename never reaches it, and a fleet purged before
-    /// the charge landed leaves its identifier here, equal to `fleet_id`. A
-    /// setup settlement's is the saved fleet's current name.
+    /// the charge landed leaves its identifier here, equal to `fleet_id`.
     pub fleet_name: Option<String>,
-    /// The turn that triggered the work; a setup chat has none.
+    /// The turn that triggered the work.
     pub turn_id: Option<Uuid7>,
-    /// The setup run a settlement paid for; a fleet charge has none.
+    /// The run a line names; absent on a fleet line, which names its turn.
     pub run_id: Option<Uuid7>,
-    /// `stage` for one usage line of a fleet run, or
-    /// [`sql::CHARGE_TYPE_SETUP`] for a setup chat.
+    /// `stage`, one usage line of a fleet run.
     pub charge_type: String,
     /// Whose model bill the tokens landed on.
     pub posture: String,

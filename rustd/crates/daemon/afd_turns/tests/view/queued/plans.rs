@@ -16,6 +16,8 @@ async fn test_queued_read_plans_on_the_undelivered_index() {
         .bind(jiff_sqlx::ToSqlx::to_sqlx(SEEDED_AT))
         .bind(40_i32)
         .bind(500_i32)
+        .bind(afd_db::test_util::FIXTURE_MODEL_REF)
+        .bind(afd_db::test_util::FIXTURE_HTTP_EGRESS)
         .execute(&mut *connection)
         .await
         .expect("the ledger history inserts");

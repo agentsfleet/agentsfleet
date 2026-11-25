@@ -22,7 +22,7 @@ async fn simultaneous_report_clients_overlap_and_return_every_connection() {
     Migrator::new().run(&admin).await.unwrap();
     admin.close().await;
     let f = Fixture::open(&database).await;
-    fixture::seed(&f.admin, &[Line::setup(&f.tenant, 17)]).await;
+    fixture::seed(&f.admin, &[Line::call(&f.tenant, &f.fleet, 17)]).await;
     let before = fixture::written(&f.admin, &f.tenant).await;
     let api = database
         .open(

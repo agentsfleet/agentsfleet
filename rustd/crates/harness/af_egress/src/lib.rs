@@ -8,8 +8,7 @@
 //! through a [`Transport`] whose resolver never answers a private address. Only
 //! this crate builds an [`Outbound`], so nothing reaches a transport without
 //! the policy check. What comes back is masked for every minted token before a tool
-//! reads it (`docs/architecture/runner_fleet.md` §"Egress model: outbound is
-//! the only network surface").
+//! reads it (`docs/architecture/runner_execution.md` §"Network egress").
 
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 #![deny(clippy::self_named_module_files)]

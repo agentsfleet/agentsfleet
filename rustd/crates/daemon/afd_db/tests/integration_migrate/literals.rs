@@ -10,9 +10,8 @@ use super::*;
 
 /// The schemas whose objects are held to the rule. `audit` holds only sqlx's
 /// own ledger, which is not ours to shape.
-const PRODUCT_SCHEMAS: [&str; 10] = [
+const PRODUCT_SCHEMAS: [&str; 9] = [
     "identity",
-    "setup",
     "fleet",
     "runner",
     "thread",

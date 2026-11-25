@@ -79,14 +79,15 @@ impl Lane {
         .expect("the ledger reads")
     }
 
-    /// The continuation remains available for a ledger assignment.
+    /// The answer turn keyed on `action` remains available for a ledger
+    /// assignment.
     pub(crate) async fn continuation_is_unsettled(&self, action: &Uuid7) -> bool {
         let mut connection = self.connection().await;
         sqlx::query_scalar::<_, bool>(
             "SELECT settled_at IS NULL FROM thread.turns \
              WHERE producer = $1 AND producer_key = $2",
         )
-        .bind(afd_turns::Producer::GateContinuation.as_str())
+        .bind(afd_turns::Producer::QuestionAnswer.as_str())
         // The turn key is TEXT: the gate's action id, spelled out.
         .bind(action.as_str())
         .fetch_optional(&mut *connection)

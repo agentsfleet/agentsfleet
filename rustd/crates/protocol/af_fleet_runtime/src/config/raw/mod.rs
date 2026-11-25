@@ -1,5 +1,5 @@
-//! The stored document exactly as serde reads it, with every bound it must
-//! satisfy declared on the field it bounds.
+//! A trigger list or a repository scope exactly as serde reads it, with every
+//! bound it must satisfy declared on the field it bounds.
 //!
 //! # Three stages, and none of them is hand-written
 //!
@@ -8,67 +8,43 @@
 //! 2. **garde** does bounds: how long a list may be, how long an entry may be,
 //!    what form an entry takes.
 //! 3. [`super`] does meaning: that two webhook triggers may not share a source,
-//!    that a repository binding is optional as a whole, that a name is a slug.
-//!
-//! Stages 1 and 2 are entirely mechanical — fetch a key or fail, branch per
-//! value, write a bounds check per list, unwind a partial struct — and both
-//! are things a crate does from a declaration. Keeping them apart from stage 3
-//! is what stops the three interleaving.
+//!    that a repository scope is complete as a whole, that a channel is one.
 //!
 //! # Every field is an `Option`, and that is the mechanism
 //!
 //! Not a style choice. serde is never asked for a required field, so it can
 //! never raise "missing field" — a deserialize failure is therefore only ever a
 //! SHAPE failure. Requiredness is decided one layer up, where a `None` becomes
-//! [`Error::MissingRequiredField`]. The two failure classes have no code path
-//! to each other, so a wrong-typed value can never report as a missing key.
+//! a missing field. The two failure classes have no code path to each other,
+//! so a wrong-typed value can never report as a missing key.
 //!
-//! [`Error::MissingRequiredField`]: crate::error::Error::MissingRequiredField
+//! # An unknown key is named, not ignored
 //!
-//! # Why garde and not a checker of our own
-//!
-//! Because a bound belongs beside the field it bounds, and because garde makes
-//! forgetting one a COMPILE error: every field must carry an attribute, even if
-//! that attribute is `skip`. A hand-written checker cannot enforce that: a list
-//! it forgot would stay unbounded and nothing would notice. `garde::Report`
-//! also names the exact path it refused (`tools[3]`), which is more than a
-//! checker of ours would carry.
-//!
-//! # `flatten` is how an unknown key is caught
-//!
-//! `deny_unknown_fields` would reject one, but as a serde error indistinguishable
-//! from a type error — and the two need different answers, because a key at the
-//! wrong nesting level is a different author mistake from a typo. Collecting
-//! leftovers into an `extra` map instead lets [`super`] name the key AND say
-//! which of the two it is.
+//! [`strict`] reads through `serde_ignored`, so a key the schema does not read
+//! is refused by its path. A typo that parsed would configure nothing and
+//! report nothing.
 
-mod document;
-mod gates;
-#[cfg(feature = "openapi")]
-pub(crate) mod openapi;
-mod policy;
+use serde::de::DeserializeOwned;
+
+use crate::error::{ErrorKind, Result};
+
 mod predicate;
+mod repository;
 mod trigger;
 
-pub(crate) use self::document::{Document, Runtime};
-pub use self::gates::Access;
-pub(crate) use self::gates::{GateRule, Gates};
-pub(crate) use self::policy::{Budget, Context, Knob, Network};
+pub use self::repository::Access;
+pub(crate) use self::repository::Scope;
 pub(crate) use self::trigger::{Trigger, Verifier};
 
 /// Longest one event name may be.
 const MAX_EVENT_LEN: usize = 64;
 /// Longest one repository name may be.
 const MAX_REPOSITORY_LEN: usize = 255;
-/// Longest one tool name may be.
-const MAX_TOOL_LEN: usize = 128;
 /// Longest one credential reference may be.
 const MAX_CREDENTIAL_LEN: usize = 128;
-/// Longest one host or path may be.
-const MAX_ALLOW_LEN: usize = 255;
 /// Longest a base branch may be.
 const MAX_BASE_BRANCH_LEN: usize = 255;
-/// Longest a model reference, trigger source or other authored reference may be.
+/// Longest a trigger source or other authored reference may be.
 const MAX_REFERENCE_LEN: usize = 255;
 /// How many channels one mention trigger names: exactly one.
 ///
@@ -85,3 +61,20 @@ const REASON_WHITESPACE: &str = "it contains whitespace";
 const REASON_NOT_REPOSITORY: &str = "it is not `owner/name`";
 /// See [`REASON_WHITESPACE`].
 const REASON_RESERVED_SOURCE: &str = "`approval` is reserved for approval decisions";
+
+/// Reads `document` as `T`, refusing the first key the schema does not read.
+///
+/// # Errors
+/// A shape failure as `InvalidFieldType`, or an unread key as
+/// `UnsupportedKey` naming its path from the document root.
+pub(crate) fn strict<T: DeserializeOwned>(document: &str) -> Result<T> {
+    let mut ignored = None;
+    let mut decoder = serde_json::Deserializer::from_str(document);
+    let parsed: T = serde_ignored::deserialize(&mut decoder, |path| {
+        ignored.get_or_insert_with(|| path.to_string());
+    })?;
+    decoder.end()?;
+    ignored.map_or(Ok(parsed), |path| {
+        Err(ErrorKind::UnsupportedKey { path: path.into() }.into())
+    })
+}

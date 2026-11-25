@@ -104,7 +104,6 @@ impl Members {
         )
         .name("members")
         .at(afd_db::test_util::SEEDED_AT)
-        .native_setup()
         .insert(&mut *connection)
         .await
         .expect("John's fleet seeds");

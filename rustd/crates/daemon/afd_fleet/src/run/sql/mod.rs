@@ -6,10 +6,8 @@
 //! `vault`, `provider`, `memory` and `gate` each took their own the same way.
 
 pub mod context;
-pub mod draft;
 pub mod effect;
 pub mod fleet;
-pub mod gates;
 pub mod history;
 pub mod meter;
 pub mod renew;

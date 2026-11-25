@@ -93,8 +93,9 @@ describe("triggerBodyFor / replyBodyFor", () => {
   // Value: protects=durable receipts display only permitted activity fields, never private payload text;
   // fails_when=receipts fall through to trigger headlines or expose arbitrary messages; seam=none; no_claim=server filtering.
   it.each([
-    {payload: {kind: ACTIVITY_KIND.setupSaved, revision: "3", message: "private setup input"}, text: "Saved setup"},
-    {payload: {kind: "future_receipt", message: "private setup input"}, text: "Activity recorded"},
+    {payload: {kind: ACTIVITY_KIND.memorySharingChanged, read: true, publish: false, message: "private input"}, text: "Workspace memories: learning on, sharing off"},
+    {payload: {kind: ACTIVITY_KIND.accessSaved, service: "github", message: "private input"}, text: "Github access saved"},
+    {payload: {kind: "future_receipt", message: "private input"}, text: "Activity recorded"},
   ])("renders a safe receipt caption: $text", ({payload, text}) => {
     const receipt = row({actor: "config_reload", event_type: FLEET_ACTIVITY.type, status: FLEET_ACTIVITY.status,
       request_json: JSON.stringify(payload)});

@@ -1,5 +1,5 @@
 //! The two reads and the one write the credential plane makes under locks it
-//! holds: setup inspection under a share lock, and a rewrite of one row under
+//! holds: inspection under a share lock, and a rewrite of one row under
 //! its own `FOR UPDATE`.
 //!
 //! The rewrite is the refresh-token rotation's engine, so the cases that matter

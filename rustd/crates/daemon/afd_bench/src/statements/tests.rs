@@ -155,11 +155,6 @@ const CHAT_PATH_STATEMENTS: &[(&str, &str, Path)] = &[
         Path::Assign,
     ),
     (
-        "select_gates.sql",
-        afd_fleet::run::sql::gates::SELECT_GATES,
-        Path::Gates,
-    ),
-    (
         "insert_run_with_turn.sql",
         afd_fleet::run::sql::run::INSERT_RUN_WITH_TURN,
         Path::Issue,
@@ -167,11 +162,6 @@ const CHAT_PATH_STATEMENTS: &[(&str, &str, Path)] = &[
     (
         "select_renewals.sql",
         afd_fleet::run::sql::renew::SELECT_RENEWALS,
-        Path::Meter,
-    ),
-    (
-        "select_revision_documents.sql",
-        afd_fleet::run::sql::renew::SELECT_REVISION_DOCUMENTS,
         Path::Meter,
     ),
     (

@@ -187,5 +187,10 @@ impl Sandbox for Unconfined {
     }
 }
 
+#[cfg(feature = "test-util")]
+mod drill;
+#[cfg(feature = "test-util")]
+pub use self::drill::RecoveryDrillEngine;
+
 #[cfg(test)]
 mod tests;

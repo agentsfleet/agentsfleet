@@ -39,12 +39,6 @@ pub struct NetworkPolicy<'a> {
     /// Exact hostnames HTTP tools may reach.
     #[serde(borrow)]
     pub allow: Vec<Cow<'a, str>>,
-    /// Restrict tool requests to safe reads, keeping a credential from crossing
-    /// to a host other than its own declared endpoint.
-    pub read_only: bool,
-    /// Exact prefixes where a read-only tool may use POST for a query.
-    #[serde(borrow)]
-    pub read_post_paths: Vec<Cow<'a, str>>,
 }
 
 /// HTTP methods allowed by a server-defined request rule.

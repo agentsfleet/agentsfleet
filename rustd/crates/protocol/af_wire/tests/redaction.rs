@@ -28,8 +28,6 @@ fn policy() -> ExecutionPolicy<'static> {
         model_context_tokens: 0,
         network_policy: NetworkPolicy {
             allow: vec![],
-            read_only: true,
-            read_post_paths: vec![],
             ..NetworkPolicy::default()
         },
         tools: vec![],

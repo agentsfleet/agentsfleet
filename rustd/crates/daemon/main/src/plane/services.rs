@@ -177,16 +177,8 @@ impl TenantPlane for ServingPlane {
         &self.tasks
     }
 
-    fn drafts(&self) -> &afd_setup::Drafts {
-        &self.setup.drafts
-    }
-
-    fn setup(&self) -> &afd_setup::Setup {
-        &self.setup.setup
-    }
-
     fn creations(&self) -> &afd_setup::Creations {
-        &self.setup.creations
+        &self.creations
     }
 
     fn platform_admin_workspace(&self) -> Option<&af_core::id::Uuid7> {
@@ -254,6 +246,14 @@ impl afd_api_runner::services::RunnerPlane for ServingPlane {
 
     fn interjector(&self) -> &afd_outbound::Interjector {
         &self.outbound.interjector
+    }
+
+    fn analytics(&self) -> &af_observability::Analytics {
+        &self.analytics
+    }
+
+    fn deployment(&self) -> &str {
+        &self.login.api_url
     }
 }
 

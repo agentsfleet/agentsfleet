@@ -40,7 +40,6 @@ struct Case {
     foreign: Uuid7,
     acquired: Acquired,
     issued: Issued,
-    setup: Uuid7,
 }
 
 impl Case {
@@ -56,10 +55,8 @@ impl Case {
             .seed_wallet(&seeded.tenant, crate::report_seed::DEEP_POOL)
             .await;
         let acquired = required(seed::select_fleet(&runs, &runner, &seeded.fleet).await)?;
-        let installed = required(runs.installed(&seeded.fleet).await?)?;
-        let revision = required(installed.issue_revision)?;
         let issued = required(
-            runs.issue_for_revision(
+            runs.issue(
                 &runner,
                 &acquired,
                 Billed {
@@ -69,7 +66,6 @@ impl Case {
                     model: seed::MODEL,
                 },
                 fixtures.enrolled_at(),
-                Some(&revision),
             )
             .await?,
         )?;
@@ -80,7 +76,6 @@ impl Case {
             foreign,
             acquired,
             issued,
-            setup: revision.current,
         })
     }
 
@@ -181,7 +176,6 @@ async fn a_lost_begin_acknowledgement_reuses_the_exact_generation_and_pin() -> C
         first.scope.workspace_id.0,
         case.acquired.workspace_id.as_str()
     );
-    assert_eq!(first.scope.setup_revision_id.0, case.setup.as_str());
     assert_eq!(first.scope.workspace, TurnWorkspace::ApiOnly);
     assert_eq!(first.page_ids, Vec::<CheckpointOperationId>::new());
     assert!(first.pin.expires_at <= first.pin.operation_deadline);
@@ -263,27 +257,20 @@ async fn a_foreign_runner_or_wrong_fence_allocates_no_checkpoint() -> Checked {
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_parked_or_settled_source_cannot_begin_recovery() -> Checked {
+async fn a_settled_source_cannot_begin_recovery() -> Checked {
     let case = Case::new().await?;
-    for parked in [true, false] {
-        let mut connection = case.fixtures.database.acquire().await?;
-        sqlx::query(
-            "UPDATE thread.turns SET
-            parked_at=CASE WHEN $2 THEN clock_timestamp() ELSE NULL END,
-            settled_at=CASE WHEN $2 THEN NULL ELSE clock_timestamp() END WHERE id=$1",
-        )
+    let mut connection = case.fixtures.database.acquire().await?;
+    sqlx::query("UPDATE thread.turns SET settled_at=clock_timestamp() WHERE id=$1")
         .bind(&case.acquired.turn_id)
-        .bind(parked)
         .execute(&mut *connection)
         .await?;
-        drop(connection);
-        assert!(
-            case.runs
-                .begin_turn_checkpoint(case.run(), &valid(case.command())?)
-                .await
-                .is_err_and(|fault| fault.code() == error_code::RUN_LOST)
-        );
-    }
+    drop(connection);
+    assert!(
+        case.runs
+            .begin_turn_checkpoint(case.run(), &valid(case.command())?)
+            .await
+            .is_err_and(|fault| fault.code() == error_code::RUN_LOST)
+    );
     let mut connection = case.fixtures.database.acquire().await?;
     let count: i64 =
         sqlx::query_scalar("SELECT count(*) FROM thread.replay_receipts WHERE scope LIKE $1")

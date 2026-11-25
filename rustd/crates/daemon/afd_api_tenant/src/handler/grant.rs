@@ -1,10 +1,9 @@
 //! A fleet's integration grants over HTTP: read them, take one back.
 //!
 //! Two verbs, list and revoke. There is no create on this path: a grant is
-//! requested when a saved fleet's setup finds it missing, or by the run path
-//! the first time a delivery needs it, and a person approves it on the card
-//! that request raises, so no caller of this surface ever names a grant into
-//! being.
+//! requested by the fleet's own run with `request_access`, and a person
+//! approves it once on the card that request raises, so no caller of this
+//! surface ever names a grant into being. Only a signed-in person revokes one.
 //!
 //! # Reading a grant and revoking one are separate capabilities
 //!
@@ -27,7 +26,8 @@ use std::sync::Arc;
 
 use af_core::error_code;
 use af_core::id::Uuid7;
-use afd_api_wire::grant::{GrantSummary, GrantsResponse};
+use af_observability::{AccessChange, FleetStep, Telemetry};
+use afd_api_wire::grant::{Grant, GrantsResponse, grant_type};
 use afd_approval::{GrantRow, Revocation};
 use axum::Json;
 use axum::extract::{Path, State};
@@ -35,7 +35,7 @@ use axum::response::{IntoResponse as _, Response};
 use http::StatusCode;
 use serde::Deserialize;
 
-use crate::auth::WorkspaceContext;
+use crate::auth::{SignedInPerson, WorkspaceContext};
 use crate::handler::Refusal;
 use crate::handler::fleet::detail::{FleetPath, parse_fleet_id};
 use crate::services::{FleetGrants as _, TenantPlane};
@@ -109,17 +109,17 @@ pub(crate) async fn list<D: TenantPlane>(
         .ok_or_else(fleet_not_found)?;
 
     Ok(Json(GrantsResponse {
-        items: held.iter().map(summary).collect(),
-        total: held.len(),
+        items: held.iter().map(shown).collect(),
     })
     .into_response())
 }
 
 /// `DELETE /v1/workspaces/{ws}/fleets/{fleet_id}/integration-grants/{grant_id}`.
 ///
-/// A 204 and no body, matching `hx.noContent()`. What the revoke leaves behind
-/// is a row, not an absence — the grant keeps its `approved_at`, so the history
-/// still records that somebody once said yes.
+/// A 204 and no body. What the revoke leaves behind is a row, not an absence —
+/// the grant keeps its `approved_at`, so the history still records that
+/// somebody once said yes. Only a signed-in person revokes: an API key earns
+/// 403 and nothing changes.
 #[cfg_attr(feature = "openapi", utoipa::path(
     delete,
     path = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/integration-grants/{grant_id}",
@@ -127,8 +127,9 @@ pub(crate) async fn list<D: TenantPlane>(
     operation_id = "revoke_integration_grant",
     summary = "Revoke an integration grant",
     description = concat!(
-        "Immediately revokes a grant. A revoked grant blocks the fleet on its ",
-        "next call against the affected service. ",
+        "Revokes a grant. A live run keeps what it was issued; the fleet's next run and ",
+        "its next token mint do not hold it. Requires a signed-in person; an API key ",
+        "receives 403.",
     ),
     params(
         afd_http::openapi::path::Grant,
@@ -136,6 +137,7 @@ pub(crate) async fn list<D: TenantPlane>(
     responses(
         (status = 204, description = afd_http::openapi::NO_CONTENT),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 403, description = "An API key revoked a grant (`UZ-AUTH-001`)"),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         afd_http::openapi::GuardedFailures,
     ),
@@ -143,6 +145,7 @@ pub(crate) async fn list<D: TenantPlane>(
 pub(crate) async fn revoke<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
+    person: SignedInPerson,
     Path(GrantPath { fleet_id, grant_id }): Path<GrantPath>,
 ) -> Result<Response, Refusal> {
     let fleet = parse_fleet_id(&fleet_id)?;
@@ -155,7 +158,10 @@ pub(crate) async fn revoke<D: TenantPlane>(
         .map_err(Refusal::at(EVENT_REVOKE))?;
 
     match outcome {
-        Revocation::Revoked => Ok(StatusCode::NO_CONTENT.into_response()),
+        Revocation::Revoked => {
+            report_revoked(services.as_ref(), &owned.workspace, &fleet, &grant, &person).await;
+            Ok(StatusCode::NO_CONTENT.into_response())
+        }
         Revocation::GrantAbsent => Err(grant_not_found()),
         Revocation::FleetAbsent => Err(fleet_not_found()),
     }
@@ -182,15 +188,57 @@ fn grant_not_found() -> Refusal {
     Refusal::coded(error_code::GRANT_REVOKE_NOT_FOUND, DETAIL_GRANT_NOT_FOUND)
 }
 
+/// Reports a revoke after its commit, with the kind the revoked row holds.
+///
+/// The kind is read back rather than carried by the revoke, and a read that
+/// fails reports nothing: the revoke already stands and is the caller's
+/// answer, and an analytics gap is not worth refusing it over.
+async fn report_revoked<D: TenantPlane>(
+    services: &D,
+    workspace: &Uuid7,
+    fleet: &Uuid7,
+    grant: &Uuid7,
+    person: &SignedInPerson,
+) {
+    let held = services.grants().page(workspace, fleet).await;
+    let kind = held
+        .ok()
+        .flatten()
+        .and_then(|rows| rows.into_iter().find(|row| row.id == grant.as_str()))
+        .and_then(|row| stored_kind(&row.grant_type));
+    if let Some(kind) = kind {
+        services.analytics().report(&Telemetry::Fleet {
+            actor: Some(person.subject().to_owned()),
+            step: FleetStep::AccessChanged {
+                fleet_id: fleet.clone(),
+                kind,
+                change: AccessChange::Revoked,
+            },
+        });
+    }
+}
+
+/// The closed spelling a stored grant kind names, so an event never carries
+/// a stored string; `None` for a spelling this build does not write.
+pub(crate) fn stored_kind(stored: &str) -> Option<&'static str> {
+    [grant_type::SECRET, grant_type::INTEGRATION]
+        .into_iter()
+        .find(|known| *known == stored)
+}
+
 /// One stored grant, as the wire shows it.
-fn summary(held: &GrantRow) -> GrantSummary<'_> {
-    GrantSummary {
+///
+/// The scopes are stored `JSONB` rendered as text, so they always parse; one
+/// that did not would show as `null` rather than fail the fleet's read.
+pub(crate) fn shown(held: &GrantRow) -> Grant<'_> {
+    let scope = |text: &Option<String>| serde_json::from_str(text.as_deref()?).ok();
+    Grant {
         id: Cow::Borrowed(&held.id),
-        service: Cow::Borrowed(&held.service),
+        kind: Cow::Borrowed(&held.grant_type),
+        name: Cow::Borrowed(&held.service),
         status: Cow::Borrowed(&held.status),
-        created_at: held.created_at,
+        scope: scope(&held.scope),
+        requested_scope: scope(&held.requested_scope),
         approved_at: held.approved_at,
-        revoked_at: held.revoked_at,
-        reason: Cow::Borrowed(&held.reason),
     }
 }

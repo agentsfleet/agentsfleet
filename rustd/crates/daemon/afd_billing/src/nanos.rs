@@ -9,11 +9,6 @@
 //! the daemon is what charges a run, and a client renders the charge it was
 //! served rather than recomputing it, so a bump lands here and nowhere else.
 //!
-//! Authored ceilings are decimal strings of integer nanos. The runtime parser
-//! proves their bounds; conversion into ledger units preserves every nano.
-
-use af_fleet_runtime::config::BudgetCeiling;
-
 /// A quantity of credit, in nanos.
 ///
 /// A newtype rather than a bare `i64` because this crate also passes token
@@ -65,21 +60,13 @@ impl Nanos {
         self.0
     }
 
-    /// A declared ceiling, in nanos.
-    ///
-    /// Preserves an already validated ceiling without rounding.
-    #[must_use]
-    pub const fn from_ceiling(ceiling: BudgetCeiling) -> Self {
-        Self(ceiling.nanos())
-    }
-
     /// This quantity plus `other`, refusing to wrap.
     ///
     /// Saturating rather than checked: the sum of two ledger amounts has no
     /// meaningful failure answer at a call site, and an `i64` of nanos is nine
     /// billion dollars — a total that reached it is already a fault somewhere
     /// upstream, and clamping keeps it visible in the row instead of wrapping
-    /// it negative where a budget check would read it as credit.
+    /// it negative where a funds check would read it as credit.
     #[must_use]
     pub const fn saturating_add(self, other: Self) -> Self {
         Self(self.0.saturating_add(other.0))
@@ -95,62 +82,23 @@ impl Nanos {
     pub const fn covers(self, cost: Self) -> bool {
         self.0 >= cost.0
     }
-
-    /// Whether spending has reached `ceiling`.
-    ///
-    /// Refused AT equality, not past it: a fleet that has spent exactly its
-    /// `daily_nanos` runs no further.
-    #[must_use]
-    pub const fn has_reached(self, ceiling: Self) -> bool {
-        self.0 >= ceiling.0
-    }
 }
 
 #[cfg(test)]
 mod tests {
-    #![expect(
-        clippy::expect_used,
-        reason = "the validated budget is the conversion fixture precondition"
-    )]
-
     use super::Nanos;
-    use af_core::money::NANOS_PER_USD;
-
-    /// A declared ceiling converts to nanos without rounding.
-    ///
-    /// The scale factor's exactness in `f64` is `af_core::money`'s own
-    /// compile-time check; this proves the ceiling arrives in this crate's unit.
-    #[test]
-    fn a_declared_ceiling_converts_to_nanos_exactly() {
-        // A five-dollar daily ceiling is five billion nanos.
-        assert_eq!(NANOS_PER_USD * 5, 5_000_000_000);
-
-        let config = af_fleet_runtime::FleetConfig::stored(
-            r#"{"name":"b","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"5000000000"}}}"#,
-        )
-        .expect("the fixture document is well-formed");
-        assert_eq!(
-            Nanos::from_ceiling(config.budget().daily()),
-            Nanos::from_i64(5 * NANOS_PER_USD)
-        );
-    }
 
     #[test]
-    fn a_balance_covers_a_cost_it_equals_but_a_ceiling_refuses_one_it_equals() {
-        // An arbitrary amount compared against itself; the VALUE is immaterial,
-        // the direction of each comparison is the claim.
+    fn a_balance_covers_a_cost_it_equals_and_not_one_past_it() {
         let amount = Nanos::from_i64(1_000);
-        // The credit gate admits a run it can exactly afford...
+        // The credit gate admits a run it can exactly afford, and no more.
         assert!(amount.covers(amount));
-        // ...and the budget gate refuses one that has exactly reached the cap.
-        // Two comparisons that look alike and point opposite ways, which is why
-        // each is named after the question it answers.
-        assert!(amount.has_reached(amount));
+        assert!(!amount.covers(Nanos::from_i64(1_001)));
     }
 
     #[test]
     fn adding_ledger_amounts_clamps_rather_than_wrapping_negative() {
-        // A wrapped total would read as CREDIT to the budget gate, which is the
+        // A wrapped total would read as CREDIT to the funds check, which is the
         // one failure mode worth spending a branch on.
         let huge = Nanos::from_i64(i64::MAX);
         assert_eq!(huge.saturating_add(Nanos::from_i64(1)), huge);

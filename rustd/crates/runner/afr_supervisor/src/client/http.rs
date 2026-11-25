@@ -2,13 +2,12 @@
 
 use std::time::Duration;
 
-use bytes::Bytes;
 use reqwest::StatusCode;
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
 use url::Url;
 use zeroize::Zeroizing;
 
-use super::{Call, RunnerApi};
+use super::{Call, Reply, RunnerApi};
 use crate::config::Config;
 use crate::error::{self, Result};
 
@@ -69,7 +68,7 @@ impl HttpRunnerApi {
 
 #[async_trait::async_trait]
 impl RunnerApi for HttpRunnerApi {
-    async fn send(&self, call: Call) -> Result<Bytes> {
+    async fn send(&self, call: Call) -> Result<Reply> {
         if matches!(
             call.verb,
             super::Verb::Heartbeat
@@ -94,7 +93,10 @@ impl RunnerApi for HttpRunnerApi {
             .await
             .map_err(error::transport(call.verb))?;
         match status {
-            ok if ok.is_success() => Ok(body),
+            ok if ok.is_success() => Ok(Reply {
+                created: ok == StatusCode::CREATED,
+                bytes: body,
+            }),
             busy if busy.is_server_error() || busy == StatusCode::TOO_MANY_REQUESTS => {
                 Err(error::unavailable(call.verb, busy.as_u16()))
             }

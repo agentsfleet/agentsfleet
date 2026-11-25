@@ -2,7 +2,6 @@ WITH held AS MATERIALIZED (
     SELECT l.id AS run_id, l.fleet_id, l.workspace_id, l.tenant_id,
            l.turn_id AS source_turn_id, l.durable_task_id, l.durable_task_generation, l.durable_task_stop_generation,
            l.fencing_token AS fence, s.fencing_token AS live_fence,
-           f.head_revision_id AS revision_id,
            f.status AS fleet_status, f.name AS fleet_name,
            l.decision_snapshot, COALESCE(r.capability_report @> jsonb_build_object($4::text, true), false) AS capable,
            l.run_expires_at, s.run_expires_at AS thread_expires_at
@@ -18,7 +17,7 @@ WITH held AS MATERIALIZED (
 )
 SELECT held.run_id, held.fleet_id, held.workspace_id, held.tenant_id,
        held.source_turn_id,
-       held.durable_task_id, held.durable_task_generation, held.durable_task_stop_generation, held.fence, held.live_fence, held.revision_id,
+       held.durable_task_id, held.durable_task_generation, held.durable_task_stop_generation, held.fence, held.live_fence,
        held.fleet_status, held.fleet_name,
        held.decision_snapshot, held.capable, instant.checked_at, held.run_expires_at, held.thread_expires_at
 FROM held CROSS JOIN instant

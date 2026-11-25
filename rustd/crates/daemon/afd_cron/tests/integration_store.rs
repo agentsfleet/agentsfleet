@@ -201,7 +201,7 @@ async fn a_fleet_at_its_ceiling_refuses_the_next_schedule() {
 }
 
 /// Two creators for the last place under the ceiling, both started while a
-/// setup holds the fleet row: the fleet's writer turn lets one count and
+/// writer holds the fleet row: the fleet's writer turn lets one count and
 /// insert before the other counts, so one is admitted, the other is refused
 /// as over the ceiling, and the fleet holds exactly the ceiling. A create that
 /// counted before taking its turn would count 31 twice behind the holder and
@@ -215,11 +215,11 @@ async fn two_creators_at_the_cap_admit_one() {
     }
     let mut observer = lane.connection().await;
     let mut connection = lane.connection().await;
-    let mut setup = connection.begin().await.expect("the holder opens");
+    let mut held = connection.begin().await.expect("the holder opens");
     let holder: i32 =
         sqlx::query_scalar("SELECT pg_backend_pid() FROM fleet.fleets WHERE id = $1 FOR UPDATE")
             .bind(&lane.fleet)
-            .fetch_one(&mut *setup)
+            .fetch_one(&mut *held)
             .await
             .expect("the holder takes the fleet row");
     let release = async {
@@ -236,7 +236,7 @@ async fn two_creators_at_the_cap_admit_one() {
         })
         .await
         .expect("both creators queue behind the holder");
-        setup.rollback().await.expect("the holder lets go");
+        held.rollback().await.expect("the holder lets go");
     };
 
     let (first, second, ()) = tokio::join!(

@@ -73,7 +73,17 @@ struct OpenedRow {
     platform_secret_id: Option<Uuid7>,
     platform_secret_digest: Option<String>,
     inputs_waiting: bool,
+    #[sqlx(flatten)]
+    head: HeadRow,
+}
+
+/// What the assignment read about the head turn and the host that takes it.
+#[derive(Debug, sqlx::FromRow)]
+struct HeadRow {
+    /// Whether the head turn belongs to a durable task.
     tasked: bool,
+    /// Whether the host may judge the run's tasks.
+    judged: bool,
 }
 
 #[derive(sqlx::FromRow)]
@@ -112,7 +122,6 @@ impl Runs {
             .bind(af_wire::durable_task::CAPABILITY)
             .bind(af_wire::durable_task::DurableTaskState::Ready.as_str())
             .bind(af_wire::durable_task::DurableTaskState::Running.as_str())
-            .bind(crate::durable_task::DECISION_POLICY_PATH)
             .bind(recovery.is_some())
             .bind(after.map(|key| key.created.to_sqlx()))
             .bind(after.map(|key| &key.turn))
@@ -141,7 +150,7 @@ impl Runs {
         Ok(None)
     }
 
-    /// Roll back the thread too when the head is parked, locked, or gone.
+    /// Roll back the thread too when the head is locked or gone.
     async fn ledger_assign(
         &self,
         connection: &mut sqlx::PgConnection,
@@ -160,7 +169,6 @@ impl Runs {
             .bind(af_wire::durable_task::CAPABILITY)
             .bind(af_wire::durable_task::DurableTaskState::Ready.as_str())
             .bind(af_wire::durable_task::DurableTaskState::Running.as_str())
-            .bind(crate::durable_task::DECISION_POLICY_PATH)
             .bind(sql::FLEET_STATUS_ACTIVE)
             .bind(af_core::turn::status::RECEIVED)
             .bind(self.checkpoint_resume_enabled())
@@ -231,7 +239,7 @@ impl HeadTurn {
             platform_secret_id,
             platform_secret_digest,
             inputs_waiting,
-            tasked,
+            head: HeadRow { tasked, judged },
             ..
         } = self.opened;
         let platform_key = platform_secret_id
@@ -251,14 +259,17 @@ impl HeadTurn {
             tenant_id: self.tenant_id,
             catalogue_version,
             platform_key,
-            memory_reads_workspace: self.memory.memory_reads_workspace,
-            memory_publishes_workspace: self.memory.memory_publishes_workspace,
+            memory: afd_api_wire::fleet::MemoryAccess {
+                read: self.memory.memory_reads_workspace,
+                publish: self.memory.memory_publishes_workspace,
+            },
             inputs_waiting,
             head: if tasked {
                 HeadKind::DurableTask
             } else {
                 HeadKind::Plain
             },
+            judged,
             setup: self.setup,
         };
         Acquired {

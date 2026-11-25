@@ -35,13 +35,11 @@ impl Hello {
         match message {
             Up::Hello {
                 request_id,
-                accepted_kinds,
                 running,
                 credits,
                 unconfirmed_connection_id,
             } => Ok(Self {
                 request_id,
-                accepted: accepted_kinds,
                 credits,
                 running: running
                     .iter()

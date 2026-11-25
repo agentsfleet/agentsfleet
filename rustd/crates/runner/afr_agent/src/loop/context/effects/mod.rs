@@ -11,8 +11,7 @@ pub(super) async fn compact(
     task: Compaction,
     visible: bool,
 ) -> af_context::Result<Checkpoint> {
-    let mut trace =
-        af_context::Trace::start(shared.run_id.into(), af_context::Host::Runtime, &task);
+    let mut trace = af_context::Trace::start(shared.run_id.into(), &task);
     let mut progress = crate::events::compaction::Notifications::new(shared.events, &task, visible);
     let result = af_context::execute(
         task,

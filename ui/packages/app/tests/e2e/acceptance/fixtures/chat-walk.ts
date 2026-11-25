@@ -8,9 +8,8 @@
  * failure with a different owner, so each is its own bounded step here and the
  * verdicts come from `execution.ts`'s classifiers rather than from a timeout.
  *
- * The acknowledgement step is the one that looks redundant and is not: a send
- * rides a Server Action, and the optimistic row renders whether or not the
- * request survives. A walk that clicks Send and navigates away in the same beat
+ * The acknowledgement step is the one that looks redundant and is not: the
+ * optimistic row renders whether or not the request survives. A walk that clicks Send and navigates away in the same beat
  * can abort the delivery it is about to wait for.
  */
 import { expect, type Page } from "@playwright/test";
@@ -21,12 +20,14 @@ import {
   classifyReportMissing,
   classifyStillRunning,
   classifyIdle,
+  chatTurnIds,
   countChatTurns,
   failWith,
   findRunFor,
   JOURNEY_LEG,
   runIsSettled,
-  readTerminalChatTurn,
+  readTerminalTurn,
+  TURN_KIND_CHAT,
   type RunLocation,
 } from "./execution";
 import { workspaceHref } from "./nav";
@@ -47,15 +48,16 @@ const COMPOSER_LABEL = "Chat composer";
 const ASSISTANT_TURN = '[data-role="assistant"]';
 
 /** Send one message from the fleet's own composer, and return once the daemon
- * holds it. */
+ * holds it, with the chat turns the thread held before it: the fleet's first
+ * message among them, which `awaitTerminalTurn` must not mistake for this one. */
 export async function messageFleet(
   page: Page,
   workspaceId: string,
   fleetId: string,
   body: string,
-): Promise<void> {
-  const before = await observed(JOURNEY_LEG.execute, () =>
-    countChatTurns(FIXTURE_KEY.regular, workspaceId, fleetId),
+): Promise<ReadonlySet<string>> {
+  const seen = await observed(JOURNEY_LEG.execute, () =>
+    chatTurnIds(FIXTURE_KEY.regular, workspaceId, fleetId),
   );
   await page.goto(workspaceHref(workspaceId, `fleets/${fleetId}`));
   const composer = page.getByLabel(COMPOSER_LABEL);
@@ -70,11 +72,14 @@ export async function messageFleet(
         ),
       { timeout: SEND_ACK_TIMEOUT_MS },
     )
-    .toBeGreaterThan(before);
+    .toBeGreaterThan(seen.size);
+  return seen;
 }
 
 /**
- * Wait out the delivery and answer with its terminal row.
+ * Wait out the delivery and answer with its terminal row: a chat turn, or the
+ * `continuation` turn a person's answer on a card wrote, whose run resumes the
+ * turn that asked.
  *
  * Never returns for a delivery that did not finish: each way of not finishing
  * has its own verdict, because "no run at all", "a run that settled with no
@@ -83,21 +88,23 @@ export async function messageFleet(
 export async function awaitTerminalTurn(
   workspaceId: string,
   fleetId: string,
+  seen?: ReadonlySet<string>,
+  kind: string = TURN_KIND_CHAT,
 ): Promise<TurnDetail> {
   const run = await pollFor<RunLocation>(
-    () => observed(JOURNEY_LEG.run, () => findRunFor(fleetId)),
+    () => observed(JOURNEY_LEG.run, () => findRunFor(fleetId, seen)),
     RUN_TIMEOUT_MS,
   );
   if (run === null) failWith(classifyIdle(await anyRunnerLive()));
   const terminal = await pollFor<TurnDetail>(
     () =>
       observed(JOURNEY_LEG.execute, () =>
-        readTerminalChatTurn(FIXTURE_KEY.regular, workspaceId, fleetId),
+        readTerminalTurn(FIXTURE_KEY.regular, workspaceId, fleetId, seen, kind),
       ),
     EXECUTION_TIMEOUT_MS,
   );
   if (terminal !== null) return terminal;
-  const settled = await observed(JOURNEY_LEG.execute, () => findRunFor(fleetId));
+  const settled = await observed(JOURNEY_LEG.execute, () => findRunFor(fleetId, seen));
   if (settled !== null && runIsSettled(settled.outcome)) {
     failWith(classifyReportMissing(settled.outcome));
   }

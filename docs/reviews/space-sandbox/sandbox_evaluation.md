@@ -1,0 +1,951 @@
+# Coding sandbox evaluation
+
+> This page is an evaluation, not current architecture; the built system is described in [docs/architecture/](../../architecture/README.md).
+
+> Read this to evaluate SPACE (`Sandboxed Platform for Agentic Code Execution`) approaches and source for an `agentsfleet`-owned coding sandbox. The [working concept brief](../../../concepts_brief.md) records the brainstorming scope. [Runner behavior](../../architecture/runner_execution.md) owns implemented runtime behavior; [conversation compaction](../../architecture/context_lifecycle.md) owns model context. 
+
+Native sandbox alternatives below remain proposals. M236's Nov 05, 2026 source
+continuation adds durable workspace recovery to the existing supervisor and
+bubblewrap boundary. It has not been compiled or verified and remains disabled.
+
+Capture freezes the workspace, reads regular files through directory descriptors,
+validates complete relative-symlink graphs and publishes authenticated manifests.
+Restore validates base/overlay roots before writing a fresh workspace. Private
+conversation bytes share the saved generation; unknown effects require native
+readback.
+
+Uploads authorize up to 256 small objects per native page. They bound memory to
+four maximum-size ciphertexts and physical transfers to four concurrent requests.
+Restore reads at most four objects per batch.
+
+Manifest layout accounts bytes per entry. This source is not a benchmark or
+host-loss acceptance result.
+
+## Recommendation and decision criteria
+
+Build an `agentsfleet`-owned sandbox using selected SPACE approaches and source where they solve an observed problem.
+The owner requires control over sandbox performance and future changes.
+Finish shared compaction independently of sandbox implementation.
+
+Use SPACE as a studied reference, with each code selection reviewed against our existing runner boundaries.
+Keep its service as a comparison baseline; operating that service is outside the current direction.
+The first integration target is a small Firecracker wrapper using SPACE's runtime mechanisms and our existing executor.
+
+Exact copied files and their dependency set still need implementation review; no SPACE code has been copied by this brainstorm.
+
+Use isolation, recoverable work, authorization, end-to-end latency and operational ownership as the decision criteria. Isolation and authorization are pass/fail requirements. Compare performance only after each option satisfies the same recovery behavior. 
+
+No local SPACE runtime benchmark has been run for this evaluation.
+
+| Option | Benefit | Cost or gap | Recommendation |
+|---|---|---|---|
+| Improve the existing engine | Uses the existing runner and directly addresses repeated context work and repository contention. | The implemented bubblewrap engine shares the host kernel; durable remote workspace recovery remains a target. | Baseline and preparation work. |
+| Operate SPACE behind its HTTP API | Reuses its Firecracker lifecycle, storage and process transport. | Adds a platform to operate; requires authorization mapping, remote checkout and recovery integration. | Comparison baseline, outside the current direction. |
+| Adapt selected SPACE approaches and source | Keeps sandbox behavior and performance under our control within the existing runner. | We own integration, updates and every dependency brought in with copied code. | Owner-selected design direction; evaluate components individually. |
+| Copy its lifecycle/control plane broadly | Reuses more implementation at once. | Creates overlapping scheduling, tenancy and recovery ownership; effectively maintains a platform fork. | Outside the current direction. |
+
+The current implementation and missing capabilities are recorded in [runner behavior's Facts table](../../architecture/runner_execution.md#what-it-is).
+SPACE records desired state in PostgreSQL and reconciles workers directly or through Kubernetes; Kubernetes is optional.
+Its service compatibility policy excludes Rust crate interfaces, so internal source reuse carries a separate maintenance burden.
+
+See upstream [request flow](https://github.com/perplexityai/SPACE/blob/20d321385dac0855b39f86cd93c008ff5ec4ce3c/docs/architecture.md#request-and-execution-flow) and [versioning](https://github.com/perplexityai/SPACE/blob/20d321385dac0855b39f86cd93c008ff5ec4ce3c/docs/versioning.md).
+
+## First Firecracker wrapper
+
+The owner wants a small sandbox that can run the agreed scenarios and provide measured startup improvements.
+Use SPACE as the starting reference for low-level Firecracker control and reuse source where its behavior fits.
+Keep the existing runner's agent loop, executor, permissions and fleet turn intake.
+
+```text
+Fleet turn intake and agent loop
+             |
+Existing engine interface
+             |
+SPACE-derived Firecracker driver
+             |
+Verified read-only guest tools + private task disk
+             |
+Existing executor -> commands, file edits, test results
+```
+
+Start on one qualified Linux host with Kernel-based Virtual Machine (KVM) access and a pinned guest image.
+Use the existing engine boundary (`afr_sandbox`) for sandbox ownership and the in-sandbox server (`afr_executor`) for commands.
+The planned guest entry and separate writable disk already belong to [runner behavior](../../architecture/runner_execution.md#crates).
+
+### Reuse before adding another subsystem
+
+| Need | Starting source | Local integration |
+|---|---|---|
+| Launch and stop safely | SPACE [jailer launch](https://github.com/perplexityai/SPACE/blob/20d321385dac0855b39f86cd93c008ff5ec4ce3c/crates/libs/node/runtime/core/src/launch/os/linux.rs) and [owned launch/cleanup](https://github.com/perplexityai/SPACE/blob/20d321385dac0855b39f86cd93c008ff5ec4ce3c/crates/libs/node/runtime/supervisor/src/service.rs) | Adapt launch, limits, process ownership and partial-failure cleanup behind our engine. Preserve our run authority. |
+| Control Firecracker | SPACE [API client](https://github.com/perplexityai/SPACE/blob/20d321385dac0855b39f86cd93c008ff5ec4ce3c/crates/libs/node/runtime/core/src/fc_api.rs) and [behavior tests](https://github.com/perplexityai/SPACE/blob/20d321385dac0855b39f86cd93c008ff5ec4ce3c/crates/libs/node/runtime/core/src/fc_api/tests.rs) | Adapt the needed operations and tests; inspect imported types and map errors into our existing error model. |
+| Run commands and edit files | Existing executor server and client (`afr_executor`) | Carry the existing protocol across the guest boundary. Prove its connection handshake, output bounds, cancellation and file behavior on a real guest. |
+| Prepare repository contents | Existing trusted checkout (`afr_supervisor`) and [workspace design](../../architecture/runner_execution.md#workspace-between-runs) | Add private guest-disk preparation with exclusive host/guest ownership. Fetch credentials remain outside the guest; validate the exact selected revision. |
+| Reduce startup work | SPACE [base snapshots and optional local pools](https://github.com/perplexityai/SPACE/blob/20d321385dac0855b39f86cd93c008ff5ec4ce3c/docs/base-snapshots.md) | Compare cold boot with a clean template snapshot. Evaluate an idle pool only after measuring its benefit and resource cost. |
+
+Importing SPACE's runtime crates directly brings shared service, runtime and generated protocol dependencies.
+The [runtime manifest](https://github.com/perplexityai/SPACE/blob/20d321385dac0855b39f86cd93c008ff5ec4ce3c/crates/libs/node/runtime/core/Cargo.toml) makes that dependency set visible.
+Inspect the actual extracted set before choosing direct reuse or adaptation; a full dependency audit is not complete.
+
+### Build and test in this order
+
+1. Boot the pinned image through the adapted launcher, connect the existing executor, run a command and confirm complete shutdown.
+2. Prepare a private repository disk, edit code, run its tests and return the exact diff through the trusted runner.
+3. Save declared task files, release compute and restore those bytes under a fresh run, including an A-to-B-to-A task switch.
+4. Add clean-template snapshot startup, record the actual boot mode and compare the first useful command against cold boot.
+5. Run the [coding walkthrough](#walkthrough-to-build-and-test) and [repository and incident scenarios](#repository-revisions-across-events), recording remaining application integration gaps explicitly.
+
+For the first recovery proof, retain conversation progress and declared Git/file state, then start fresh guest compute.
+Interrupted commands require outcome verification before retry; resuming their memory is not required by this initial proof.
+Snapshot startup uses a clean template, separate from the saved work of an incident.
+
+Preserve staged edits, local commits, declared untracked files and necessary Git data through the [session save rules](#coding-sessions-and-worktrees-across-runs).
+Use bounded synthetic repositories and explicit cleanup for experiments; production retention and numerical service guarantees remain open.
+Those open budgets must not turn the first engine experiment into a new incident-management platform.
+
+### Challenge the speed claim
+
+Firecracker's isolation does not establish faster startup than the current engine.
+Measure request-to-repository-ready and the first useful command, including image staging, checkout and dependency setup.
+SPACE's base-snapshot path can fall back to cold boot; record the actual mode rather than reporting every request as a snapshot start.
+
+Cloning a template snapshot can duplicate guest identities and cached application state.
+Keep tenant files and credentials out of reusable templates, refresh per-instance identity and reconnect guest transport after restore.
+Firecracker documents these limits in [snapshot uniqueness and transport reset](https://github.com/firecracker-microvm/firecracker/blob/main/docs/snapshotting/snapshot-support.md#snapshot-security-and-uniqueness).
+
+No Firecracker startup benchmark has been run for this wrapper.
+Running real guests needs Linux KVM access, as the [Firecracker prerequisites](https://github.com/firecracker-microvm/firecracker/blob/main/docs/getting-started.md#prerequisites) specify.
+The existing `make test-runner-kernel` lane proves bubblewrap behavior; the selected guest engine needs its own real-backend evidence before support is claimed.
+
+The [design handoff](README.md) records the owner's delivery order and the separate implementation restart after pull request 784.
+It preserves the completed concept review without treating it as detailed design approval or runtime proof.
+
+## What the Claude session reference establishes
+
+The owner supplied an inside-the-guest report from Oct 22–24, 2026. It is useful evidence about one environment. Keep its observations separate from proposed explanations.
+
+| Evidence supplied | Supported reading | Still unproved by that observation |
+|---|---|---|
+| Hypervisor flag and a container detector reporting Docker | Virtualized execution and a detected container environment. | The hypervisor implementation, host placement and session-to-machine mapping. |
+| Kernel build name includes `fc` | Firecracker is a plausible explanation. | A kernel build label does not identify the running virtual machine monitor. |
+| New boot/kernel, same repository files | Files were preserved or reconstructed across that transition. | Disk reattachment versus snapshot restoration, synchronization or another mechanism. |
+| Proxy variables and a certificate bundle | Applications are configured to use a proxy. | Enforcement against direct sockets, alternate protocols or modified environment variables. |
+| Device size exceeds reported available space | Capacity accounting needs investigation. | The particular quota or storage layout. |
+| A long-lived agent process and `--stdin` supervisor flag | A resident process and an input-related supervisor option. | Message framing, durable acknowledgement and interruption ordering. |
+
+Anthropic's [cloud documentation](https://code.claude.com/docs/en/claude-code-on-the-web#security-and-isolation) separately describes isolated session virtual machines and a Git proxy that keeps credentials outside the guest. Its [expiry guidance](https://code.claude.com/docs/en/claude-code-on-the-web#environment-expired) restores conversation history into fresh compute while background work may have stopped. Neither identifies its hypervisor or disk recovery implementation.
+
+A container inside a microVM can make userland reproducible. It is an optional packaging choice for this proposal. A guest image with a restricted executor may satisfy that need without operating Docker inside every guest. 
+
+Test whichever packaging we select against actual tools and privileges.
+
+## Proposed ownership
+
+```text
+ User: repository + request + follow-ups
+                    |
+         agentsfleetd: turn intake and current authority
+                    |
+       trusted runner supervisor, outside tenant code
+          |                         |
+   shared context lifecycle    coding workspace preparation
+          |                         |
+   model calls and notes       Engine / Sandbox / Executor
+          |                      /                 \
+   guarded checkpoint       bubblewrap       native guest engine
+   publication                                      |
+                                          Firecracker guest
+                                          tools + private files
+
+   Git credentials remain in a trusted broker/proxy.
+   A sandbox handle never grants fleet or repository authority.
+```
+
+Keep the fleet as the durable runtime. A workspace handle is a runtime resource, not a second task scheduler. Preserve the existing one-active-run rule. 
+
+Independent coding tasks need independent writable checkouts; sharing an authorized read cache must not share mutable working trees.
+
+The existing engine interfaces (`afr_sandbox`) and in-sandbox server (`afr_executor`) already separate runtime effects. However, checkout (`afr_supervisor`) requires a host-visible workspace. A remote engine therefore needs a repository preparation path; implementing `Executor` alone is insufficient.
+
+Use traits for effects with distinct implementations. Use generics for known adapters and trait objects where the backend is selected at runtime. Use `Fn` for a repeatable cancellation observation, `FnMut` for progress accumulation and `FnOnce` for consuming prepared publication. 
+
+These choices express ownership; additional trait layers do not themselves improve concurrency.
+
+## Walkthrough to build and test
+
+Use a synthetic Git repository with a pinned base commit, a small build, an existing test and one requested behavior change. Keep real user repositories out of destructive recovery tests. Give each run its own namespace and retain only task-owned output.
+
+| Step | User action or injected event | Required observable result | Proof |
+|---|---|---|---|
+| 1 | Bind a repository and ask for the change. | Record the exact base commit and current repository permission; create one private writable checkout. | Repository hash, clean initial diff and denied foreign repository access. |
+| 2 | Start work and perform setup. | Report progress for checkout, environment setup and the first useful command separately. | Stage timings and a command result; a live machine alone is insufficient. |
+| 3 | Send a follow-up while a command is running. | Acknowledge the queued steer event; finish the current run before running that event. Show queued versus consumed status. | A controlled command barrier proves the follow-up does not start a second active run and runs after the first. Mid-run steering is a separate proposed behavior. |
+| 4 | Grow the fleet's conversation context through repeated compaction. | Continue with the goal, latest instructions and complete tool groups; retain original source history. | Forced compaction tests plus the acceptance soak journey. Turn count alone does not prove a compaction occurred. |
+| 5 | Edit tracked files, create an untracked file and leave a local commit unpushed. | Report which checkpoint durably protects each item and its recovery boundary. | Hashes, Git status and the committed workspace manifest; no assumption that Git commit captures all files. |
+| 6 | Suspend, then replace the worker after a completed durable save. | Restore the declared files and base commit under a new current run. Reject stale writers. Report processes as restored or stopped according to the chosen mechanism. | Restore on a different worker; compare hashes and reject an old run's mutation. |
+| 7 | Drop a command attachment after its side effect, then reconnect. | Reattach to the existing command or report uncertain outcome. Never automatically start the side effect again. | Append a unique marker once; interrupt transport after acknowledgement and count markers after reconnect. |
+| 8 | Review the diff and run verification. | Show only this task's changes and actual test output. Recheck current permission before any authorized push. | Exact diff, test result and a separate permission-revocation test. |
+
+Steps 5–7 describe required future workspace/backend behavior, not capabilities proved by the current compaction work. A supervisor restart additionally requires application conversation recovery; restoring a guest cannot restore an agent loop running outside it.
+
+[Existing steer semantics](../../architecture/data_flow.md#reports-and-folded-messages) queue a human message for the next run. The supplied Claude reference observes consumption during the current agent task. Adopting a sandbox backend does not change that product behavior. 
+
+Test the existing ordering first; changing it requires a decision about partial tool effects, ordering, interruption and model-request cancellation.
+
+Keep these recovery units distinct:
+
+| Recovery unit | Authority and purpose | Limit |
+|---|---|---|
+| Conversation checkpoint | Application-owned summary and validated source coverage. | Existing runtime notes are run/branch scoped. A replacement run needs an explicitly authorized recovery path; an old checkpoint cannot grant access. |
+| Workspace checkpoint | Proposed private file state, manifest, base commit and generation. | It protects only the last successfully published durable generation. A hard crash before that boundary can lose later writes. |
+| Resident pause | Backend keeps stopped compute and local files. | It consumes resources and does not establish host-loss durability. |
+| Machine snapshot | Backend saves memory, runtime state and disk according to its lifecycle. | It can contain stale credentials, sockets and ownership state; restore requires current authorization. |
+| Git push or file export | Explicit publication outside the temporary execution environment. | A Git push excludes untracked files, dependencies and process state. |
+
+SPACE distinguishes pause, which keeps a resident guest, from suspend, which saves guest state.
+It warns that acknowledged file writes may be lost before its lifecycle saves complete.
+
+Reflect those limits in our user-visible save status.
+See upstream [saved state](https://github.com/perplexityai/SPACE/blob/20d321385dac0855b39f86cd93c008ff5ec4ce3c/docs/architecture.md#lifecycle-and-persistence).
+
+### Conversation recovery working hypothesis
+
+The owner's working expectation is to recover the conversation and continue from its context, as during compaction.
+Treat conversation continuity as the primary recovery requirement while the remaining boundaries are clarified.
+
+Worker loss also requires checking the files available to the replacement runner.
+A summary can describe a completed edit without retaining its exact bytes.
+A command may have changed an external service even when its result never reached the conversation.
+
+The recovery design must distinguish conversation progress, available file state and confirmed command outcomes.
+For the proposed coding scenario, retain saved uncommitted work and local commits across ordinary run handoffs.
+Conversation context alone cannot replace those bytes; exact save coverage, recovery frequency and retention duration still need a decision.
+
+An uncertain external effect requires verification before any retry.
+
+Current runtime identity (`afr_agent`) binds notes to a run and branch.
+Cross-worker conversation recovery needs an authorized handoff and retained source history; compaction alone does not supply that path.
+
+### Coding sessions and worktrees across runs
+
+The proposed coding session owns a task's conversation and repository workspace across several runs.
+A run gives one runner temporary authority to work on that session; several model and tool turns can happen within one run.
+Renewing a run or compacting context must preserve that session's working files.
+
+Identify the session by its owning workspace, fleet, task or incident, and repository.
+Resuming incident A selects A's saved workspace; diagnosing incident B selects a separate workspace when local code tools are required.
+The session records work and recovery state, without assigning workers or replacing fleet scheduling.
+
+```text
+Incident A / coding session A / private Git workspace A
+      run 1 -> saved generation 1 -> approval wait
+                                      |
+      run 2 <-----------------------+ restore or verified reattach
+      run 2 -> saved generation 2 -> tested patch
+
+Incident B / coding session B / private Git workspace B
+```
+
+The current [workspace implementation](../../architecture/runner_execution.md#workspace-between-runs) keeps only a temporary fleet-scoped hold; durable save and restore are not built.
+Its hold key (`afr_supervisor`) names the fleet, workspace, limits and policy, without incident identity.
+The proposed session identity must participate in attachment checks so a same-fleet incident cannot inherit another incident's writable checkout.
+
+At a planned handoff, stop workspace writers before recording a consistent file checkpoint.
+Save the base commit, local commits, staged and unstaged edits, declared untracked files and the metadata needed to reconstruct the repository.
+Upload complete checkpoint content before publishing its manifest and current generation under the live run's authority.
+
+Linked Git worktrees refer to administrative data outside their working directory, as the [Git worktree details](https://git-scm.com/docs/git-worktree#_details) explain.
+Copying that directory alone can leave broken references after a host change.
+The save format must retain required Git objects and state, or reconstruct a private checkout with equivalent contents and index state.
+
+Record which conversation progress and command outcomes correspond to the saved workspace generation.
+A new run checks current authority and resumes that recorded point; it cannot reuse expired credentials or another run's write permission.
+Use current run fencing and workspace generation checks to refuse stale writes and checkpoint publication.
+
+The proposed daemon-owned recovery record selects the task, source history, saved files and confirmed command results together.
+Fleet memory can retain shared lessons, but cannot select another incident's files or grant repair authority.
+Keep current run-scoped compaction checks until a verified handoff supplies the continuing task's recovery state.
+
+The runner may reuse compatible compute or release it after a confirmed durable save.
+Ending a run, serving incident B or waiting for approval must not delete the only recoverable copy of A's saved work.
+Warm attachment is an optimization; recovery must also work after the old worker disappears.
+
+SPACE's resident pause and durable suspend distinction is useful here; select its save, publication and cleanup mechanisms individually.
+An adopted mechanism must satisfy our file recovery rules, regardless of whether it saves a filesystem or a complete guest snapshot.
+Restoring files does not promise that background commands are still running.
+
+If a planned save fails, mark the session as not durably saved and do not report a recoverable handoff.
+Retain the working copy where possible; a hard crash can still lose changes newer than the last completed checkpoint.
+Show the saved generation and any recovery loss instead of claiming the latest work survived.
+
+An authorized deletion or a declared retention policy removes durable session data.
+An idle compute timeout can release compute while retaining the session's saved work.
+Retention duration, retained file coverage and checkpoint frequency remain open; an unfinished task must not silently become an expired cache entry.
+
+The existing [three-snapshots-per-fleet target](../../architecture/runner_execution.md#workspace-between-runs) cannot protect several unfinished sessions without further rules.
+The proposed policy protects each retained session's referenced generation, with explicit session, byte, generation and time limits.
+Those limits, refusal behavior and expiry notices require owner decisions; this proposal does not amend the existing target silently.
+
+Extend the [coding walkthrough](#walkthrough-to-build-and-test) with an A-to-B-to-A handoff after hold expiry and replacement of the worker.
+Verify local commits, index state, file hashes and untracked files; inject a failed save and a stale run attempting publication or deletion.
+These are required acceptance proofs for the proposed integration, not capabilities already supplied by the current runner or compaction work.
+
+## Repository revisions across events
+
+These proposed sandbox walkthroughs start from two fleets a person could create: a pull request reviewer and a production deployment repairer.
+No fixture covers an incident; [`run_flow.md`](../../architecture/run_flow.md) walks a reviewer's path today.
+[Repeated review](../../architecture/run_flow.md#5-the-next-push) already describes a laptop push waking the same fleet through a new turn.
+
+Fleet identity, conversation continuity and repository revision have separate lifetimes.
+A continuing conversation must identify the exact code revision it describes.
+A cached sandbox cannot establish that its files match a new turn.
+
+### Review a pull request after another laptop push
+
+```text
+Branch A at commit 1 -> review commit 1 -> findings
+           |
+Author edits locally and pushes commit 2
+           |
+Signed synchronize event -> next fleet run -> review commit 2
+```
+
+Keep the existing same-fleet queue ordering; the next turn waits for the running run to finish.
+Before review, resolve the currently open pull request and its authorized repository, base and exact head commit.
+Record the turn's advertised head separately from the commit actually selected for review.
+
+For review requiring local tools, the trusted supervisor fetches and materializes that exact commit in a private checkout.
+Verify the checked-out commit before any tool runs; never merge a remote branch into an older review workspace.
+An HTTP-only review can read pinned code and diffs without starting a sandbox.
+
+Treat previous findings as review history scoped to the repository and pull request, with the reviewed commit recorded.
+Recheck each finding against the new code and inspect the complete current change.
+An incremental comparison may help, but cannot substitute for a full review after rewritten history or a changed base.
+
+Before posting a result, reread the current head and label which commit the findings cover.
+A result for an older commit cannot approve a newer commit.
+Read remote review state after an ambiguous post before repeating it.
+
+**Current gaps:** [Review posting is refused](../../architecture/run_flow.md#4-what-the-run-may-do), and prior review continuity across turns is not automatic.
+The ingress digest (`afd_api_ingress`) carries the head commit but omits the base commit.
+The proposed revision selection and publication checks need implementation and narrowly scoped posting authority.
+
+### Turn production evidence into a patch
+
+```text
+Scheduled Grafana scan or failed deployment workflow
+           |
+Diagnosis + verified environment and relevant commits
+           |
+Repair proposal in fleet chat or a configured Slack thread
+           |
+Workspace user approves that proposal
+           |
+Fresh authority/source checks -> repair run -> private repair checkout
+           |
+Reproduce -> bounded patch -> tests -> draft pull request
+           |
+Human merge -> existing deployment pipeline
+```
+
+This proposal keeps the responder and repairer independent.
+A diagnosis does not automatically wake the repairer; a failed workflow or human steer starts its run.
+The owner proposes an explicit human handoff: show the completed diagnosis and repair proposal, then wait for approval before producing a patch.
+
+For this proposed incident flow, a failed workflow supplies evidence and starts diagnosis; it does not approve patch generation.
+
+The repairer rereads evidence and verifies the repository, environment, workflow and relevant commit before changing code.
+A failed workflow commit may never have reached production.
+The latest `main` commit may differ from both the failed build and the deployed revision.
+
+Reproduce against the affected revision when evidence allows, then compare it with a freshly verified `main` revision.
+If the issue remains, create a private repair branch from that recorded target revision and test the fix there.
+Ambiguous deployment identity or a failure outside code ends diagnosis-only.
+
+Keep the approved repository, target base and daemon-issued repair branch as publication boundaries.
+Preserve the existing remote reconciliation before retrying a branch or draft creation.
+Existing repair publishes Git objects through bounded HTTP requests; publishing a locally tested sandbox patch still needs a trusted implementation.
+
+If `main` advances during work, compare the patch against its new head before presenting it as applicable to current `main`.
+Keep any validated patch and its original base available; do not silently overwrite local work.
+A changed base requires renewed testing and current permission checks.
+
+Human merge and the repository's deployment pipeline retain their existing roles.
+Incident linkage and post-deployment verification remain unimplemented.
+A successful workflow alone cannot certify that the original production symptom is resolved.
+
+### Continue an existing repair draft
+
+Current write runs can correct their own turn-derived branch with an exact, non-force PATCH.
+That same-turn operation does not implement the later-turn behavior below.
+See [the current write boundary](../../architecture/run_flow.md#3-one-run-end-to-end).
+
+**Owner-selected behavior:** Later approved fixes for the same incident continue its existing draft pull request, with fresh permission and code checks.
+Keep the incident, coding session, repair attempt, repository, branch and draft relationship in trusted application state.
+Each new turn receives current authority for that recorded attempt; conversation text cannot select a publication target.
+
+```text
+Incident A -> approved repair -> saved workspace A -> branch A -> draft A
+                                                      ^           ^
+Later approved fix -> fresh run -> restore A --------+-----------+
+
+Incident B -> separate workspace, branch and draft
+```
+
+Before continuing, verify that the recorded draft remains open in the approved repository and uses the recorded branch and target base.
+Read the remote branch head and compare it with the saved workspace generation and last confirmed publication.
+Preserve local work while incorporating any verified remote changes, then test the exact result intended for publication.
+
+If a person updates that branch from a laptop, fetch those changes before preparing the next patch.
+Reject an update if the remote head changed after the publication precondition was established.
+The approved [existing-PR publication design](../../architecture/durable_tasks.md#publishing-to-a-pull-request) uses `createCommitOnBranch` with `expectedHeadOid` and reconciles uncertain outcomes.
+
+Use current repository grants and narrowly scoped authority for the recorded branch and draft on every continuation.
+If the evidence, repository or intended change falls outside the approved proposal, refresh the proposal before patch work.
+For a closed or merged pull request, stop continuation and request an explicit next action.
+
+After an uncertain publication, inspect the recorded branch and draft before retrying.
+Repeated channel responses resolve to the same approved action and turn.
+Each later approved action remains distinct while continuing the same repair attempt.
+
+**Current implementation gap:** Repair branches (`afd_gate`) derive from the turn.
+The write rules (`afd_gate`) allow creation and non-force updates only on the current turn-owned repair branch.
+The selected design therefore needs a trusted continuation mapping and bounded update authority; restoring files alone cannot supply either.
+
+Required proof includes a new turn resuming the same draft after worker replacement and a laptop push racing publication.
+Also test duplicate approvals, lost update acknowledgements, revoked access, changed proposal scope and a merged or closed draft.
+Incident B must retain its own workspace and publication targets throughout those cases.
+
+### Durable Task checkpoints in R2
+
+M236 selects Cloudflare R2 for encrypted immutable coding checkpoints.
+[Durable Tasks (DTs)](../../architecture/durable_tasks.md) owns lifecycle and guarded manifest publication.
+Use Rust `object_store` 0.14.2 with its S3-compatible client in trusted daemon storage code.
+
+Use [`Signer::signed_url_opts`](https://docs.rs/object_store/0.14.2/object_store/signer/trait.Signer.html#method.signed_url_opts) and `SignedUrlOptions::with_signed_header` to bind mandatory transfer headers, including create-only `If-None-Match: *`.
+The SDK handles signing; native code owns object identity, scope, descriptors and authorization expiry.
+Native integration and service enforcement still require implementation and live proof.
+
+Its published dependency metadata uses reqwest 0.13, matching the workspace's transport line; build verification still checks features and crypto-provider compatibility.
+
+Capture logical repository files and Git state instead of copying a live mounted ext4 image.
+Quiesce writers and validate the save boundary before reading files.
+A settled kill or verified freeze can establish that boundary; an unsettled kill cannot.
+
+Include base identity, required Git objects/local commits, index, staged and unstaged edits, and declared untracked files.
+Exclude toolbox bytes, credentials, sockets, devices, caches and running-process state.
+Every host retains the shared read-only toolbox by digest; a checkpoint records compatibility without uploading that image.
+
+Reject hostile paths, escaping symlinks, unsupported file types and oversized expansions before attaching writable restored state.
+Encrypt checkpoint content before upload and verify immutable object digests before publishing a manifest.
+Keep bucket credentials in trusted daemon code and key references in native metadata.
+
+The trusted supervisor receives only scoped temporary object keys and exact-object authorizations.
+
+Restore into a fresh private workspace inside the joined sandbox build.
+Choose restore or fresh checkout; ordinary checkout must not overwrite recovered branch, index or edits.
+Publish ExecutorSlot readiness only after validation and required remote reconciliation.
+
+The host-mounted bubblewrap workspace supports this initial path.
+A later backend without a host workspace needs guest restoration or pre-attach image preparation; M236 does not add that backend.
+The checkpoint format must not encode host-only absolute worktree paths.
+
+```text
+verified writer quiescence -> logical capture -> encrypt/upload R2
+    -> verify objects -> publish compatible manifest under current fences
+    -> settle report/wait -> release thread -> destroy or retain compatible compute
+```
+
+A mounted raw-image copy would require separate filesystem freeze/unmount consistency handling.
+Failed capture or upload preserves the previous manifest and cannot claim the latest work is recoverable.
+After a crash, show the last completed generation and reconcile effects newer than that generation.
+
+Do not expire a live DT's only referenced checkpoint through idle-cache eviction.
+Deletion fences new access before asynchronous object cleanup; unreferenced uploads need bounded orphan collection.
+The limits and key protocol below are approved initial implementation targets; they have not been benchmarked or deployed.
+
+#### Large repositories and incremental checkpoints
+
+A six-gigabyte checkout must not become a six-gigabyte upload after each small edit.
+Separate repository acquisition, private checkout materialization, dependency setup and DT checkpoint transfer in measurements.
+Large history, large tracked files, Git LFS content and generated dependencies have different costs.
+
+Six gigabytes was Indy's example, not a required repository size or approved maximum.
+All size checks use measured bytes and declared capacity; the approved storage caps below are independent resource ceilings.
+Include smaller repositories and capacity-limit cases in acceptance, alongside the large-repository fixture.
+
+The current host mirror fetches missing Git objects on reuse rather than cloning every run.
+`afr_supervisor`'s workspace-clone fetch owns that behavior; its checkout still copies mirror objects into fresh private repositories.
+A replacement host with no mirror can still require a large cold transfer.
+
+```text
+Reusable source base B, pinned by verified Git identity
+  host mirror cache -----------> private checkout
+  retained R2 base if required -> cold replacement host
+                                      |
+DT checkpoint G1: base B + local Git objects + index + changed-file manifest
+DT checkpoint G2: base B + new changed chunks + complete logical manifest
+DT checkpoint G3: reuse existing chunks; upload only newly changed content
+
+Resume G3: obtain verified B -> overlay manifest -> restore index/Git state
+```
+
+Store immutable changed-file chunks and a complete manifest for each recoverable generation.
+Represent deletions and file modes explicitly; retain required local Git objects without copying all remote history into every checkpoint.
+Each manifest references a bounded base and chunks rather than an unbounded chain of earlier checkpoints.
+
+Repeated saves reuse unchanged chunks within the authorized workspace and repository scope.
+New large files need bounded chunking, encryption-compatible object identities and upload reservations; small text diffs do not predict their cost.
+Avoid cross-workspace deduplication that exposes content existence or couples deletion authority.
+
+A Git commit identifier alone is not a durable base copy.
+Before claiming cross-worker recovery, retain required base objects independently or prove their availability under a declared source-retention guarantee.
+The proposed R2 base is immutable, workspace-scoped and shared across authorized DT checkpoints referencing that repository base.
+
+Initial base retention can transfer substantial data once; report its bytes, cost and delay rather than hiding it in checkpoint time.
+Current grants still gate restore even when R2 contains the bytes.
+
+Garbage collection checks retained manifests, reader pins and upload/publication pins in one guarded native transition.
+Tombstoning and new pin acquisition serialize on the same object identity; tombstoned objects cannot acquire new references.
+Pins precede upload verification; manifest publication atomically converts live writer pins into durable references.
+
+An expired pin cannot publish a manifest.
+The runner must reacquire eligible pins and reverify objects, or abandon that checkpoint while retaining the prior generation.
+Deletion remains fenced against current readers and writers; orphan collection cannot race a live save.
+
+Warm attachment and host mirrors reduce repeated transfer but cannot guarantee a warm replacement host.
+Fetch the pinned base and required objects where supported; sparse or partial checkout is opt-in only when tools and tests tolerate it.
+Git LFS and submodules require declared capture/restore support or an explicit refusal, never an incomplete success.
+
+Reserve workspace capacity for materialized files, Git objects, capture staging and restore expansion.
+Stop before exhausting byte/inode limits; a sparse disk's nominal size does not prove free host capacity.
+Do not retry an oversized checkout or checkpoint indefinitely across wakes.
+
+Benchmark a controlled six-gigabyte fixture with small edits, a large binary edit and a large new untracked file.
+Measure first base retention, repeated uploaded bytes, scan/capture time, warm resume and cold-host resume separately.
+The proposed transfer, scanning, quota and restore budgets below are resource ceilings; no fast cold restore is assumed.
+
+Incremental uploads do not prove constant-time capture; checking a large dirty working tree can still require substantial scanning or hashing.
+Measure that cost separately and refuse unsafe shortcuts based only on tenant-controlled timestamps or claimed changed-file lists.
+
+M236 uses per-task referenced-generation retention and independently retained base custody as its proposed rules.
+The following protocol preserves run-scoped signed storage operations without giving a sandbox bucket access.
+
+#### Proposed storage authorization and encryption
+
+The daemon alone resolves the R2 endpoint, bucket and access credentials through platform configuration and vault references.
+Use an R2 bucket-scoped token for this deployment's private checkpoint bucket; disable public access.
+Do not grant the runner or sandbox a permanent bucket token, bucket listing or general delete permission.
+
+R2 keys use random native object identities beneath workspace/repository prefixes.
+The daemon assigns each missing chunk an exact random key, fixed nonce and one native upload owner under a live reservation.
+Reserve the object/key first; accept its immutable ciphertext digest and length before returning any PUT authorization.
+
+Return five-minute HTTPS URLs only for registered bytes; never log their query strings.
+
+Use conditional object creation and replay the identical ciphertext buffer when a retry is authorized.
+Before enabling R2, an integration proof must reject a second different write to the same object key.
+If the configured backend cannot enforce create-only writes, checkpoint publication stays disabled rather than accepting mutable referenced objects.
+
+For each new object, the daemon generates a fresh 256-bit data key through `af_crypto::entropy`.
+Wrap that key with the existing `af_crypto::envelope` under the daemon's configured versioned master key.
+Bind the wrapped key to workspace, repository, random object identity and checkpoint format through associated data.
+
+The trusted supervisor receives only the scoped temporary data key and its assigned nonce, never the master key.
+Encrypt each object with AES-256-GCM, its native fresh 96-bit nonce and the ownership/format binding.
+Save only ciphertext, nonce, authentication tag, wrapped key envelope and ciphertext digest; zero plaintext keys when buffers leave scope.
+
+`af_crypto::checkpoint` now defines scoped key wrapping and object encryption; vault envelope bytes remain compatible.
+Native registration, R2 transfer, manifests and restore remain pending.
+
+The key wrapper also binds the registered nonce and wrapping-key version.
+Object encryption excludes the wrapping version, allowing later authorized key rewrapping without changing ciphertext.
+The byte format starts with a zero-byte (NUL) domain prefix and ends each field with NUL:
+
+```text
+NUL agentsfleet.checkpoint.v1 NUL
+purpose NUL workspace_uuid NUL hex(repository_utf8) NUL object_uuid NUL
+format_decimal NUL wrapping_version_or_empty NUL nonce_hex_or_empty NUL
+```
+
+Key wrapping uses purpose `key`, its wrapping version and registered nonce; object bytes use purpose `data` with both final fields empty.
+Hex encoding protects repository field boundaries; native UUIDs and decimal numbers contain no NUL.
+
+The cipher consumes guarded key/plaintext buffers and keeps the object allocation through encryption and decryption.
+It wipes spare capacity before releasing ciphertext, since reused capture buffers can retain earlier plaintext beyond their current length.
+The AES-GCM dependency clears AES and authentication state on drop; the envelope's entropy destination also has a wiping guard.
+
+Deduplication reuses a registered encrypted object and its existing envelope within the same authorized scope.
+It does not use convergent encryption or share content identities across workspaces.
+
+Compute scoped keyed content identities in trusted daemon code; do not expose them as public object URLs or analytics.
+The supervisor checks capture bytes, encryption, upload size and response before attesting upload completion under its authenticated run.
+Verify stored length and a strong provider checksum matching the native ciphertext descriptor; an ETag alone is not a cryptographic proof.
+
+If the provider cannot supply that checksum, authorized trusted code reads and hashes the object before accepting its upload.
+Show the verification stage and measure its additional read bytes; do not hide readback cost in a claimed incremental-upload speedup.
+Restore also checks the ciphertext hash and authenticated decryption before returning writable files.
+
+Restore always verifies the recorded ciphertext digest, authentication tag and plaintext content identity before attaching writable state.
+Incomplete or mismatched objects preserve the prior manifest and block that restore.
+Presigned URLs are not immediately revocable; stopped tasks cannot publish manifests and no sandbox receives an outstanding URL or key.
+
+Record wrapping-key versions without changing the vault format or deployment master key under M236.
+The format permits later authorized rewrapping without changing object ciphertext or content identities.
+Authorized deletion removes access first, then references, wrapped keys and unreferenced storage through guarded collection.
+
+AES-256-GCM is the proposed strong symmetric encryption at rest.
+It is generally considered resistant to known quantum attacks on symmetric encryption; this proposal makes no end-to-end post-quantum security claim.
+HTTPS key exchange, credential setup and host key protection need separate verification before any broader quantum-safe claim.
+
+#### Proposed storage and recovery limits
+
+Use a gibibyte (GiB) as 1,073,741,824 bytes and a mebibyte (MiB) as 1,048,576 bytes.
+These are proposed limits, not observed throughput or latency promises.
+Charge reservations against unique stored bytes within a workspace; track logical expansion separately.
+
+| Bound | Proposed value and failure behavior |
+|---|---|
+| Base storage | At most 16 GiB of unique base bytes per repository base; reserve before retaining its objects. |
+| Incremental save | At most 1 GiB of newly uploaded content per checkpoint and 8 MiB plaintext per object; larger changes block durable handoff. |
+| Total private storage | 50 GiB unique bytes per workspace, including bases, chunks, in-progress uploads and retained generations. |
+| Logical restore | At most 24 GiB and 200,000 entries; refuse oversized expansion before attachment. |
+| Manifests | Complete logical manifest at most 64 MiB, sent in 1 MiB pages; at most 256 object operations per authorization page. |
+| Transfer concurrency | Four object transfers per task; eight per runner; retry transient storage errors twice within the overall deadline. |
+| Deadlines | Five minutes for capture/scan; 15 minutes each for initial base retention, checkpoint upload or cold restore. Timeout blocks that handoff and keeps the prior generation. |
+| Save trigger | At safe boundaries before waits, publication and worker release, plus after five minutes of dirty work between complete action groups. |
+| Live retention | Latest three compatible generations per DT plus any generation protected by a current input/effect dependency or reader; no expiry of a live task's sole recoverable state. |
+| Terminal retention | Seven days after terminal state; explicit authorized deletion starts cleanup immediately. |
+| Pins | Thirty-minute reader/writer pins renewed every minute; expired pins cannot publish or attach files. |
+| Collection | One-hour orphan grace after the last live pin, at most 256 objects per pass. The daemon runs no timed loop, so what starts a pass is undecided. Referenced objects never use blind bucket-expiry rules. |
+
+Before large checkout/restore, reserve the task's declared disk limit and available host capacity for staging and expanded files.
+The six-GiB acceptance fixture uses a 32-GiB workspace disk; fleet limits below required capacity produce an explicit refusal.
+The upper logical size does not permit crossing the actual disk-byte or inode limits.
+
+Tests compare exact recovered state at the same base across a small text edit, a large binary edit and a new large untracked file.
+After retaining a base, two identical saves upload zero content bytes; new manifests and bookkeeping remain bounded overhead.
+Record scan time, first base bytes and cold restore separately; no result may hide those costs behind the first model call.
+
+Keep `node_modules`, build caches, sockets, device files and toolbox contents outside the declared durable file set.
+Include ordinary project files, local Git objects, index and explicitly declared untracked work; unsupported LFS/submodule state blocks the promised full recovery.
+Preserve existing hostile-Git and secret-scanning requirements; never follow tenant hooks, helpers or escaping symlinks during capture or restore.
+
+Storage endpoint/bucket, vault references and a successful encryption/create-only round trip are activation prerequisites.
+The spec can be approved for implementation before those credentials exist; the deployment must refuse durable coding tasks until prerequisites pass.
+
+#### Keyed identity lifecycle and conditional-upload recovery
+
+The daemon generates one random 256-bit content-identity key per workspace/repository version and wraps it using native envelope primitives.
+Compute the identity as HMAC-SHA-256 over a domain tag, plaintext SHA-256 and size; keys never leave trusted daemon code.
+The plaintext SHA-256 descriptor comes from trusted capture and stays in private native metadata.
+
+Authorized restore receives that expected digest and compares it after authenticated decryption; the daemon alone retains the keyed-identity secret.
+
+Content-identity keys and object encryption keys have different roles and lifetimes.
+Master-key rewrapping preserves the content-identity key bytes and does not invalidate deduplication or re-upload stored chunks.
+Actual identity-key rotation creates a new native identity version; preserve old wrapped versions while retained objects require verification.
+
+M236 does not rotate the deployment's existing master key or assume old key versions remain loadable after an operator overwrites configuration.
+Activation and restore require every referenced wrapping-key version to be available; missing versions refuse restore explicitly.
+Broader master-key custody and migration remain with the separately assigned security work.
+
+A unique live-content index serializes concurrent reservations for the same scope, identity version and keyed content identity.
+One native upload owner gets the object key, nonce and data key; another task waits or reuses a verified object.
+No second worker may encrypt different bytes for the same object identity.
+
+The immutable ciphertext descriptor is saved before upload authorization and remains discoverable through the native checkpoint plan.
+After acknowledgement loss or a create-only precondition response, verify the existing remote object against that descriptor.
+Matching bytes complete the existing upload; mismatched bytes block publication and report a storage integrity failure.
+
+If the remote object is absent, only the current native owner can retry with the recorded key, nonce and descriptor.
+An expired owner can be atomically adopted by a fresh authorized run after native scope/generation checks.
+If the source bytes cannot reproduce the descriptor, abandon the incomplete plan; never overwrite its assigned object or attach a partial checkpoint.
+
+Tombstoned objects never acquire new references or revive.
+Reintroduced identical content receives a new random object identity after the live-content index releases the old tombstone.
+Retain historical rows and purge receipts until remote cleanup and outstanding authorization windows are resolved.
+
+Collection respects the last signed-URL expiry, bounded in-flight request window and orphan grace before deleting bytes.
+Keep purge receipts while a remote result remains uncertain; a stopped run cannot refresh authorization or publish a new manifest.
+Per-object transfer requests have a 60-second deadline inside the overall operation deadline.
+
+Manifest pages, URL refresh and one-minute pin renewal use the explicit [checkpoint APIs](../../architecture/durable_tasks.md#reading-and-controlling-a-task).
+Missing/conflicting pages, expired reservations or lost base custody refuse commit without replacing the prior recovery pointer.
+All renewal and adoption operations preserve original task budgets and hard deadlines.
+
+#### Parallel chunks and multipart uploads
+
+The initial format uses independent encrypted objects of at most 8 MiB, uploaded with bounded parallel PUT requests.
+Completed immutable objects survive a retry; manifest publication waits until every referenced object is verified.
+This is resumable chunk transfer, not one large S3 multipart object.
+
+Do not wrap every small checkpoint chunk in another multipart session.
+That adds initiate/complete/abort state without reducing the bytes that must cross the network.
+If measurements later justify larger aggregate objects, native multipart requires separately specified part receipts, completion integrity and abandoned-upload cleanup.
+
+Four per-task uploads and eight per-runner uploads limit pressure on the host and network.
+Parallelism can improve throughput but cannot guarantee a faster save when scanning, encryption or bandwidth is the bottleneck.
+Expose the real capture/upload/verification stages through [task progress](../../architecture/durable_tasks.md#reading-and-controlling-a-task).
+
+### Workspace approval in chat or Slack
+
+Present the diagnosis, evidence references, affected environment, repository, target revision, intended fix and planned tests before asking to start patch work.
+The proposal identifies the repair fleet and whether its scope includes opening or continuing the recorded draft pull request.
+Keep that proposal available after the diagnosis run ends; waiting for the owner must not keep a worker or guest occupied.
+
+Anyone with current access to the fleet's workspace can approve its repair proposal.
+This includes the account owner and invited members whose access has been granted, under existing capability and workspace checks.
+Use the existing [workspace authorization](../../AUTH.md#memberships-and-roles); no separate approver role or per-fleet list is required.
+
+An authorized person can approve in fleet chat or address the repair fleet in its configured Slack thread.
+An illustrative Slack reply is `@agentsfleet repairer fix this`, with the actual bot and fleet names supplied by that workspace.
+The [existing mention routing](../../architecture/slack_mentions.md#how-a-mention-is-routed) already requires an addressed request for a write-bound fleet.
+
+A diagnosis started from Slack uses its recorded reply thread.
+A scheduled diagnosis needs a configured notification destination before its proposal can appear in Slack.
+The [existing reply path](../../architecture/slack_mentions.md#how-the-answer-comes-back) keeps that destination outside model control.
+
+Both channels must resolve the same recorded proposal and admit at most one repair run for that approval.
+Repeated clicks, retried Slack events and a second answer through the other channel must return the existing decision.
+Record approval and the repair turn together, so an acknowledgement cannot leave approved work without a queued run.
+
+Resolve a typed approval or `fix this` against the exact proposal, fleet and conversation or Slack thread.
+If several proposals could match, request the intended proposal instead of guessing.
+Quoted thread content, a model summary or an unrelated mention cannot approve work.
+
+Verify the responding person's current access to the proposal's workspace before recording approval.
+Recheck that access and current repository grants before queued repair starts.
+Record who answered and which proposal and workspace the decision covers.
+
+The mention handler (`afd_api_ingress`) resolves team, channel and fleet; routing alone cannot establish workspace access.
+Slack approval needs a verified link from the responding Slack user to the person whose workspace access is checked.
+Channel presence, display names and quoted messages cannot substitute for that identity check.
+
+The Slack identity link and shared repair proposal record remain proposed work.
+Keep existing repository grants as the access ceiling; this proposed work approval cannot widen tools, repository reach or publication rights.
+
+On approval, recheck the diagnosis and selected revision before preparing a fresh repair run under current authority.
+If changed evidence or code invalidates the approved plan, refresh the proposal and request a new approval before patch work.
+Denial, expiry, deletion or revoked authority must prevent a new repair turn.
+
+The approved work is the stated patch, tests and any explicitly included draft creation or continuation.
+Merging and deployment retain their separate authorities.
+The proposal is a work handoff and does not add a new scheduler or sandbox control plane.
+
+### Several incidents under the same fleets
+
+Keep the configured responder and repairer fleets across outages.
+Each distinct outage gets a proposed incident record and its own conversation, evidence, repair proposal, approval and result.
+Approval for one incident cannot start work for another.
+
+One monitoring fleet handles diagnosis runs serially.
+If diagnosis A occupies its active run, diagnosis B waits until that run finishes.
+Separate incident conversations preserve context but do not add concurrent capacity to that fleet.
+
+The fleet can receive more work while its diagnosis run is active.
+Existing [intake](../../architecture/data_flow.md#intake) records each accepted job as a turn before acknowledging it; pickup waits until the fleet's thread has no live run.
+The [backlog budgets](../../architecture/datastore_scaling.md#the-turns-ledger-is-the-queue) bound acceptance, with a retryable refusal when capacity is exhausted.
+
+```text
+Diagnosis A running + alerts B and C arrive -> A keeps running; B and C queue
+Diagnosis A finishes                       -> B can start; C stays queued
+```
+
+Queued work does not interrupt diagnosis A or create another active run for that fleet.
+Durable arrival handling already exists; grouping those alerts into incidents and recovering each incident's conversation remain separate proposed capabilities.
+
+Further evidence from the same ongoing outage updates that incident.
+Use provider alert identity, service, environment and deployment evidence when deciding whether symptoms belong together; matching error text alone cannot merge incidents.
+Keep uncertain cases separate, and link a recurrence after confirmed resolution to the earlier incident.
+
+Logs continue growing in the observability provider.
+Each bounded monitoring sweep reads scoped evidence windows and saves progress after recording the relevant evidence.
+Keep evidence references and bounded excerpts in each incident conversation instead of appending the whole log stream.
+
+After recording a diagnosis and proposal, finish the responder turn and release its run.
+Waiting for approval must not park the responder's queue head, which can block later turns (`afd_fleet`).
+The saved proposal waits independently; approval admits the configured repairer's work.
+
+```text
+Responder sweep -> incident A -> proposal A -> member approves -> repairer run A
+Responder sweep -> incident B -> proposal B -> member approves -> repairer queue B
+More A evidence -> incident A
+```
+
+The responder can handle another outage while the separate repairer works on the first.
+The [one active run per fleet](../../architecture/data_flow.md#assignment-and-the-fence) rule still bounds each fleet.
+A busy responder delays its next sweep; scheduled monitoring does not promise continuous log tailing.
+
+For this proposal, another approved repair queues while the same repairer is busy.
+Separate, explicitly configured repairer fleets can work concurrently; an outage does not create a fleet by itself.
+Every repair needs its own checked source revision and private writable workspace.
+
+Evidence grouping is separate from repeated webhook delivery detection and does not replace existing turn ordering.
+Incident records, grouping rules and incident-scoped recovery remain proposed work, alongside the shared repair approval record.
+Monitoring delay, evidence limits and repair queue capacity still need explicit budgets before implementation.
+
+First set the maximum acceptable delay from an accepted critical alert to the start of its diagnosis.
+If serial diagnosis cannot meet that bound, revisit fleet concurrency explicitly before choosing a sandbox mechanism.
+
+### Several monitoring bots and their triggers
+
+Several monitoring fleets are a supported arrangement; one global monitoring fleet is not required.
+Each monitoring bot is a fleet with its own pinned memory, triggers, grants and queue; the payer's balance bounds them all.
+Independent fleets run concurrently when worker capacity and permission checks allow.
+
+| Monitoring arrangement | Work admitted and run |
+|---|---|
+| Several alerts target one fleet | Separate accepted jobs enter that fleet's queue; diagnosis runs happen one at a time. |
+| Different alerts target different fleets | Each fleet receives its own jobs and can run concurrently with the others. |
+| The same alert targets several fleets | Each targeted fleet can receive a job; several diagnoses may describe the same outage. |
+
+For example, a payments monitor and a database monitor can diagnose their respective outages at the same time.
+If both subscribe to the same broad alert feed, both can wake for one outage.
+Another outage does not create another fleet or notify every existing fleet by itself.
+
+A monitoring fleet can read Grafana on a schedule it adds with `cron_add`, using a secret a person approved for it.
+Each due schedule wakes its own fleet, even when another monitoring fleet is already running.
+Reading Grafana with a credential does not itself create an incoming alert subscription.
+
+For alert-driven monitoring, define which alert route targets which monitoring fleet before promising selective wakeups.
+The generic webhook route (`afd_api_ingress`) names one fleet and source; it does not infer alert kinds from arbitrary payloads.
+Grafana alert validation, routing and incident grouping need their own design and delivery proof.
+
+The proposed default is to assign a responsible monitor for each service and environment.
+Additional monitors can contribute evidence, but cross-fleet incident ownership must be explicit before their diagnoses can share one repair proposal.
+Existing delivery retry detection does not establish shared incident identity across fleets.
+
+### Checkout freshness and proof
+
+Current held sandbox reuse (`afr_supervisor`) skips checkout and retains the previous files.
+Fresh materialization (`afr_supervisor`) selects a branch tip rather than an event-pinned commit.
+The sandbox Git tool (`afr_tools`) refuses remote operations, so trusted preparation must own refresh.
+
+The proposed preparation path must verify the selected commit even when compute is reused.
+Use a fresh private checkout or a verified reusable view; preserve or refuse an incompatible dirty workspace.
+Reuse an authorized immutable source cache while keeping writable files private to the run.
+
+Required proofs include a push during review, rewritten branch history, a changed base and a dirty held workspace.
+Also inject duplicate deliveries, lost post acknowledgements, revoked repository access and a fork outside approved reach.
+For repair, test a failed build that never deployed, `main` advancing, ambiguous evidence and an already-created remote draft.
+
+Record the reviewed, affected, patch-base and published commits independently in every result.
+For proposal approval, test simultaneous chat and Slack replies, unauthorized responders, ambiguous threads, expired proposals and a changed diagnosis.
+Verify that account owners and invited members with workspace access can approve the same proposal through either supported channel.
+
+Reject a person from another workspace, an unlinked Slack identity and a queued repair whose approver has lost access.
+Restart after approval but before pickup and verify that the same repair turn remains available without creating another patch run.
+
+For overlapping incidents, prove another outage remains discoverable while the first waits for approval or occupies the repairer.
+Send several alerts while diagnosis A is active; verify accepted jobs remain queued and run within the chosen start-delay budget.
+
+Inject repeated alerts, late evidence, an approval naming the wrong incident and worker loss between evidence recording and progress updates.
+Verify bounded conversation input, separate incident recovery and progress through the repair queue.
+
+## Decisions raised by the independent concept review
+
+The Oct 25, 2026 Elephant-Goldfish Model (EGM) review examined the proposal through six independent lenses.
+The review covered ownership, cost, usability, operations, migration and maintenance.
+Its findings concern this concept; they do not replace the unresolved implementation review for pull request 784.
+
+The following decisions and implementation gaps remain relevant.
+The proposed daemon recovery owner above supplies a boundary, while its detailed storage and handoff design remains unwritten.
+
+| Decision | Required behavior or unresolved choice | Evidence |
+|---|---|---|
+| Select and resume a task | Chat and Slack must identify incident A after B without guessing from conversation prose. Bind its conversation coverage, file generation and command results together. | Current run-scoped context (`afr_agent`), fleet-scoped holds (`afr_supervisor`). |
+| Bound retained work | Set saved file coverage, acceptable crash loss, save/restore deadlines, retention during approval waits and storage limits. Protect each retained session's referenced generation. | [Existing retention target](../../architecture/runner_execution.md#workspace-between-runs) and [proposed session lifecycle](#coding-sessions-and-worktrees-across-runs). |
+| Continue an approved repair | Owner selected the same existing draft for later approved fixes to the same incident. The trusted attempt mapping, current authority and publication precondition still need implementation. | [Selected continuation behavior](#continue-an-existing-repair-draft), turn-derived branch (`afd_gate`) and turn-scoped write rules (`afd_gate`). |
+| Identify the approver | Owner selected existing workspace access, including invited members, without a separate approver list. Verified Slack identity and adoption across direct requests, queued work and running runs still need design. | [Workspace roles](../../AUTH.md#memberships-and-roles), [existing direct Slack request](../../../playbooks/operations/slack_incident_drill/001_playbook.md), [proposed approval flow](#workspace-approval-in-chat-or-slack). |
+| Discover and deliver proposals | Keep saved proposals discoverable when Slack notification fails. Track saved, delivered, uncertain and abandoned outcomes separately; retry the same proposal identity. | [Existing answer delivery](../../architecture/slack_mentions.md#how-the-answer-comes-back) and outbound abandonment (`afd_outbound`). |
+| Bound monitoring delay | Set critical-alert diagnosis delay and repair queue capacity. Track successful sweep freshness separately from accepted-alert queue time, including failed provider reads and evidence gaps. | [Ordered queue without a waiting-time guarantee](../../architecture/datastore_scaling.md#the-turns-ledger-is-the-queue), [serial diagnosis](#several-incidents-under-the-same-fleets). |
+| Report recoverable progress | Show which files were saved, which tests cover that generation and which command outcomes remain unknown. Give a verification step before retrying an uncertain effect. | [Command reconnect limits](#selective-space-reuse), [proposed recovery units](#walkthrough-to-build-and-test). |
+| Upgrade and roll back | Choose whether adoption starts with new sessions or imports verified in-progress work. Retained saves need compatible readers or a validated conversion before older workers resume them. | Current run payload (`af_wire`), upstream [versioning](https://github.com/perplexityai/SPACE/blob/20d321385dac0855b39f86cd93c008ff5ec4ce3c/docs/versioning.md). |
+| Choose bounded source reuse | Owner selected a small SPACE-derived Firecracker wrapper with the existing executor. Exact extraction, dependency closure and real Linux measurements still need proof. | [First wrapper](#first-firecracker-wrapper), local atomic report publication (`afr_supervisor`), [reuse criteria](#selective-space-reuse). |
+
+Guest resource limits do not bound supervisor compression, upload buffers or temporary storage.
+The integration needs host-wide save/restore admission, transfer limits, deadlines and cleanup reserve alongside per-session storage limits.
+Upstream [streaming upload](https://github.com/perplexityai/SPACE/blob/20d321385dac0855b39f86cd93c008ff5ec4ce3c/crates/libs/vol/mgr/server/src/executor/stream_push.rs) supplies a shared-buffer approach to evaluate.
+
+Treat sandbox commands, durable task recovery and incident approval as separate delivery slices with explicit integration proofs.
+Keep every scenario in the design, while selecting one bounded first integration.
+File checkpoints and full guest snapshots carry different compatibility costs; running-process restoration remains an unresolved scope choice.
+
+## Refactor order and files
+
+| Slice | Owning crate or existing area | Change and proof |
+|---|---|---|
+| Shared preparation | `af_context` (planner and ports, with the preparation-work and planner tests) | Reduce cumulative estimates, retain a final complete provider estimate and exact output safety, and reject stale source. A blocked summary must not block another conversation. |
+| Runtime history | `afr_agent` (loop, conversation and context modules); proposed history-index module | One owned encoded-history index and borrowed views; invalidate the affected tail when pending input changes. Preserve complete tool groups and native continuation rules. |
+| Compaction store | `afd_setup`'s `context` module (the thread's saved compaction), read by `afd_fleet`'s run context | Reuse prepared input only with an exact source witness. Funding and model access stay outside datastore locks. |
+| Repository preparation proposal | `afr_supervisor` (run-loop checkout and workspace clone, with the related checkout and concurrency tests) | Separate trusted repository acquisition from local or remote materialization. Preserve credential isolation; publish an immutable source before shortening mirror lock duration. |
+| Native backend experiment | Existing `afr_sandbox` engine/boot and `afr_executor` boundaries; proposed guest engine informed by SPACE | Map readiness, process identity, bounded streams, cancellation, network policy, quota and cleanup. Unsupported semantics must refuse explicitly. |
+| Recovery proposal | Existing `afr_supervisor` held-sandbox and run paths, plus a manifest/storage owner to be selected with the storage mechanism | Bind durable workspace generation to current fleet authority. Test host loss, source changes, deletion and revoked credentials. No new scheduler. |
+
+Do not extract a checkpoint-storage crate solely to anticipate SPACE. The Postgres checkpoint store lives in the daemon, as `afd_setup::context`, so `af_context` names no datastore client and no runner build links one. Extract only if a concrete caller or dependency boundary improves.
+
+## Selective SPACE reuse
+
+Copying source makes us responsible for its behavior, dependencies and future fixes.
+The [supervisor manifest](https://github.com/perplexityai/SPACE/blob/20d321385dac0855b39f86cd93c008ff5ec4ce3c/crates/libs/node/runtime/supervisor/Cargo.toml) already depends on shared service, runtime and core crates.
+Reading one launcher file is insufficient to establish the cost of adopting it.
+
+Each proposed reuse must name:
+
+- The observed problem, selected source revision and intended local boundary.
+- Every additional dependency and whether to retain, replace or remove it.
+- The owner of admission, runtime state, cleanup and durable publication.
+- The behavior and failure proofs that must survive adaptation.
+- Preparation, launch, command, save and recovery measurements relevant to the change.
+- Source provenance, applicable notices, local modifications and the upstream-fix review process.
+
+Control requires measured behavior and maintainable boundaries; copying more code does not establish either.
+Choose copying, adaptation or a fresh implementation separately for each mechanism after that review.
+
+| Source at inspected revision | Useful mechanism | Integration edge |
+|---|---|---|
+| Upstream [execution identity](https://github.com/perplexityai/SPACE/blob/20d321385dac0855b39f86cd93c008ff5ec4ce3c/crates/libs/node/runtime/supervisor/src/service/execution.rs) and [durable store](https://github.com/perplexityai/SPACE/blob/20d321385dac0855b39f86cd93c008ff5ec4ce3c/crates/libs/node/runtime/supervisor/src/execution_store.rs) | Fenced execution identity, quiescence checks and durable atomic publication. | Keep our fleet run fence as well; a sandbox execution generation is a different authority. |
+| Upstream [command streams](https://github.com/perplexityai/SPACE/blob/20d321385dac0855b39f86cd93c008ff5ec4ce3c/crates/libs/data/plane/server/src/native/streams.rs) | Derive process identity from session identity and reconnect after an ambiguous start. | Completed-process retention is bounded. Missing retention cannot authorize an automatic rerun. |
+| Upstream [Firecracker launcher](https://github.com/perplexityai/SPACE/blob/20d321385dac0855b39f86cd93c008ff5ec4ce3c/crates/libs/node/runtime/supervisor/src/service.rs) | Owned launch, bounded blocking work and cleanup after partial launch/publication failures. | The launcher depends on runtime, admission, process and storage support. Audit that dependency closure before copying. |
+| Upstream [PostgreSQL contention classification](https://github.com/perplexityai/SPACE/blob/20d321385dac0855b39f86cd93c008ff5ec4ce3c/crates/libs/postgres-contention/src/lib.rs) | Central classification of serialization, deadlock and lock-availability errors. | Retry an eligible transaction with bounded policy; never blindly replay external side effects. |
+| Upstream [benchmark methodology](https://github.com/perplexityai/SPACE/blob/20d321385dac0855b39f86cd93c008ff5ec4ce3c/scripts/benchmarks/README.md) | Cross-worker recovery checks, failure-inclusive latency and bystander measurements. | Extend the measured path through checkout, setup and useful tool work. |
+
+Inspect each copy against upstream revision `20d321385dac0855b39f86cd93c008ff5ec4ce3c`. Record provenance, retain applicable notices and mark modifications under the upstream [license](https://github.com/perplexityai/SPACE/blob/20d321385dac0855b39f86cd93c008ff5ec4ce3c/LICENSE). The comparison has not copied SPACE code.
+
+Keep session identity separate from attachment credentials: SPACE rotates attachment credentials on idempotent replay, and its stronger old-credential validity expectation remains unsettled. See [native recovery limits](https://github.com/perplexityai/SPACE/blob/20d321385dac0855b39f86cd93c008ff5ec4ce3c/docs/native-api-hardening.md).
+
+## Performance and failure measurements
+
+The fitting-history work test counts groups passed to estimators, not tokens, physical requests or actual elapsed time. For 40 pages of 64 groups, repeated cumulative estimates visit `64 × (1 + 2 + ... + 40) = 52,480` groups for 2,560 source groups. 
+
+It exposes repeated work. It does not quantify a throughput gain or a provider bill.
+
+Target bounded estimator visits in that fixture, then measure elapsed preparation time and allocations separately. Geometrically spaced probes must never send unchecked input; a complete provider estimate still precedes dispatch. An owned immutable prefix may reuse verified history evidence; an arbitrary stored watermark is insufficient.
+
+Repository performance needs its own comparison. The mirror lock (`afr_supervisor`) currently covers fetch and checkout; materialization (`afr_supervisor`) copies the mirror's objects. 
+
+Benchmark many checkouts of one repository separately from independent repositories. Moving the lock without making the source immutable can introduce inconsistent checkouts.
+
+Measure request-to-checkout-ready, first useful command, verified diff, durable save and cross-worker resume. Report model wait separately from local preparation, queueing, Git transfer, dependency installation and snapshot transfer. Compare cold and warm environments at concurrency 1, 10 and 100, with equal repository state, hardware, limits and cache policy.
+
+Report median, 95th and 99th percentiles, failure counts, memory, processor time, disk bytes, storage transfer and bystander latency. Include failures in latency reporting rather than dropping them. Adopt a candidate only after the same correctness workload passes and its measured latency/cost fits the product budget; there is no measured adoption winner yet.
+
+Inject cancellation, slow consumers, dropped acknowledgements, duplicate starts and worker death before and after save.
+Also test revoked repository access, stale run writes, full byte/inode quotas and cache poisoning.
+
+Reserve capacity for cleanup and control records, then verify actual recovery at capacity. Cache identities must include the appropriate tenant scope and build inputs; untrusted setup must not publish trusted shared cache state.
+
+## Evidence and implementation boundary
+
+Run repository claims through existing Make targets: `make lint-all`, `make test-unit-all`, `make test-integration-rustd`, `make check-version`, and the unchanged `make acceptance`. Use `make test-runner-kernel` for the implemented Linux sandbox; it does not prove Firecracker or SPACE behavior. A selected remote backend needs a distinct real-backend workload wired into the appropriate Make lane before support is claimed.
+
+Keep failure injection deterministic with barriers, controlled transport loss and synthetic repository contents. Preserve source hashes, process markers and sanitized stage timings. Clean up only the run's own resources.
+
+A browser mock, scripted provider or successful service creation cannot substitute for a real cross-worker recovery proof.
+
+The historical pre-optimization compaction regression failed while the independent blocked-summary proof passed. The [preparation record](README.md) now describes indexed preparation and its estimator-work regression. Use the owning spec's measurements rather than the historical failure.
+
+Full acceptance remains incomplete, so this evaluation makes no readiness or concurrent-throughput claim.
+
+The [proposed original-Pull-Request continuation](../../architecture/durable_tasks.md) records the requested existing-PR flow and future recovery proofs.
+M224 starts with the manually triggered fleet-owned draft demonstration; the broader runtime behavior remains unimplemented.

@@ -1,5 +1,5 @@
 import type { ThreadMessageLike } from "@assistant-ui/react";
-import { SCHEDULE } from "@/tests/helpers/draft-fixtures";
+import { SCHEDULE } from "@/tests/helpers/fleet-fixtures";
 import { useState } from "react";
 import { RENDER_KIND_KEY, RENDER_KIND } from "@/components/domain/conversation/thread/useFleetThreadEntries";
 import { ACTOR } from "@/lib/turns/turn-summary";

@@ -49,7 +49,6 @@ fn hold(cache: &RunCache, index: u32, after: Duration) -> crate::Result<Uuid7> {
             expires_at: clock::after(NOW, after),
             target: None,
             reported: None,
-            draft: None,
         },
         NOW,
     )?;

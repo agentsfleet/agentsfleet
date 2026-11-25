@@ -10,9 +10,11 @@
 use std::borrow::Cow;
 
 use af_core::id::Uuid7;
+use af_wire::access_verb::{AccessRequest, AccessRequested};
 use af_wire::message_verb::MessagePosted;
 use af_wire::steer_verb::FleetSteerAccepted;
 use afr_tools::FleetsCall;
+use afr_tools::verbs::{AccessAnswer, TriggerCall};
 use afr_tools::{ScheduleCall, Unanswered};
 
 use crate::client::ControlPlane;
@@ -96,6 +98,26 @@ impl afr_tools::RunVerbs for FencedVerbs<'_> {
             .await
             .map(|body| body.text())
             .map_err(|failure| unanswered(&failure))
+    }
+
+    async fn triggers(&self, call: TriggerCall<'_>) -> Result<String, Unanswered> {
+        self.plane
+            .triggers(self.run_id, self.fencing_token, call)
+            .await
+            .map(|body| body.text())
+            .map_err(|failure| unanswered(&failure))
+    }
+
+    async fn access(&self, request: AccessRequest<'_>) -> Result<AccessAnswer, Unanswered> {
+        let body = self
+            .plane
+            .access(self.run_id, self.fencing_token, request)
+            .await
+            .map_err(|failure| unanswered(&failure))?;
+        let requested = body
+            .decode::<AccessRequested<'_>>()
+            .map_err(|failure| unanswered(&failure))?;
+        Ok(access_answer(body.created(), &requested))
     }
 
     async fn message(&self, call_number: u64, text: &str) -> Result<bool, Unanswered> {
@@ -199,6 +221,17 @@ impl afr_tools::RunVerbs for FencedVerbs<'_> {
             .context_save(self.run_id, &request)
             .await
             .map_err(|failure| unanswered(&failure))
+    }
+}
+
+/// What an access request did: a 201 raised a card for this run's turn; a
+/// 200 found the fleet's approved grant covering it, or, naming a card, an
+/// earlier request's card still waiting on a person.
+const fn access_answer(created: bool, requested: &AccessRequested<'_>) -> AccessAnswer {
+    match (created, &requested.gate_id) {
+        (true, _) => AccessAnswer::Asked,
+        (false, None) => AccessAnswer::Covered,
+        (false, Some(_card)) => AccessAnswer::Pending,
     }
 }
 

@@ -3,9 +3,9 @@
 //! [`super::activity`] forwards the runner's mid-run frames; this module
 //! publishes the two the daemon owns — `turn_received` when the run verb
 //! opens the narrative log, `turn_complete` when a report or a gate refusal
-//! closes it. `docs/architecture/runner_fleet.md` §Live activity names them
-//! the bracket frames: open and close markers that reach a watcher even for a
-//! run the runner never forwarded a single frame from.
+//! closes it. They are the bracket frames: open and close markers that reach
+//! a watcher even for a run the runner never forwarded a single frame from
+//! (`docs/architecture/data_flow.md` §"Watching a fleet").
 //!
 //! # Best-effort, like every publish on this channel
 //!

@@ -1,10 +1,7 @@
 //! A private migrated database keeps absence assertions and statement counters scoped to one daemon.
 #![expect(clippy::expect_used, reason = "integration preconditions fail loudly")]
 
-use crate::{
-    e2e::{Scenario, scenario_with},
-    e2e_seed,
-};
+use crate::e2e::{Scenario, scenario_with};
 use afd_db::{Db, Migrator, config::DbRole, test_util::TestDatabase};
 use agentsfleetd::supervisor::Supervisor;
 
@@ -25,6 +22,6 @@ pub(super) async fn open(
     let api = database.api_url();
     let mut settings = vec![("DATABASE_URL_API", api.as_str())];
     settings.extend_from_slice(extra);
-    let scene = scenario_with(supervisor, None, &settings, e2e_seed::FLEET_CONFIG_JSON).await;
+    let scene = scenario_with(supervisor, None, &settings).await;
     (database, owner, scene)
 }

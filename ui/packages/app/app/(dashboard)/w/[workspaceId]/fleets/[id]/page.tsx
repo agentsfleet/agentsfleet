@@ -1,27 +1,25 @@
-import { runtimeModelLabel } from "@/lib/api/draft-list-types";
-import { fleetSources } from "@/lib/fleet-sources";
 import { claims, requireCredential } from "@/lib/auth/credential";
 import { hasScope } from "@/lib/auth/platform";
 import { SCOPE } from "@/lib/auth/scopes";
 import { notFound, redirect } from "next/navigation";
-import { fleetSetupPath, workspacePath } from "@/lib/workspace-routes";
+import { workspacePath } from "@/lib/workspace-routes";
 import { ApiError } from "@/lib/api/errors";
 import { getFleet } from "@/lib/api/fleets";
+import { GITHUB_GRANT, GRANT_STATUS } from "@/lib/api/fleet-detail";
+import { runtimeModelLabel, type WorkspaceModel } from "@/lib/api/workspace-models";
+import { fleetSources } from "@/lib/fleet-sources";
 import { listTenantWorkspacesCached } from "@/lib/workspace";
-import { FleetSetupWorkspace } from "@/components/domain/setup/FleetSetupWorkspace";
+import { FleetWorkspace } from "@/components/domain/fleet/FleetWorkspace";
+import { FleetListSections } from "@/components/domain/fleet/FleetListSections";
+import { FleetNetworkSection } from "@/components/domain/network/FleetNetworkSection";
 import { getTenantBillingCached } from "@/lib/api/tenant_billing";
 import { startChatData, type ChatViewData } from "./components/view-data";
 import { ChatView } from "./components/ChatView";
 import { FleetHeader } from "./components/FleetHeader";
 import { buildRunSummary } from "@/lib/turns/run-summary";
-import { FleetRecovery } from "./components/FleetRecovery";
 import { FleetViewedTracker } from "./components/FleetViewedTracker";
 import { namedMembers } from "@/lib/turns/sender-names";
-import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
-import { FleetPendingChat } from "./components/FleetPendingChat";
 import type { FleetDetail } from "@/lib/types";
-import { setupRequirements } from "@/lib/setup-requirements";
-import { ScheduledSetupSummary } from "./components/ScheduledSetupSummary";
 
 export const dynamic = "force-dynamic";
 
@@ -51,20 +49,15 @@ export default async function FleetDetailPage({
 
   const {fleet} = fleetResult;
   const account = workspaces?.items.find(item => item.id === workspaceId)?.account.tenant_id ?? null;
-  const pendingSetup = fleet.status === AGENTSFLEET_STATUS.INSTALLING;
   const viewer = typeof sessionClaims?.sub === "string" ? sessionClaims.sub : null;
-  const {content, latestRun} = pendingSetup
-    ? {content: <FleetPendingChat account={account} workspace={workspaceId} fleet={fleet} canGrant={canGrant} />, latestRun: null}
-    : await loadChatView(workspaceId, fleet, viewData, viewer);
+  const {content, latestRun, models} = await loadChatView(workspaceId, fleet, viewData, viewer);
   return <div data-fleet-workspace className="flex h-full min-h-0 flex-1 flex-col overflow-clip">
     <FleetViewedTracker fleetId={fleet.id} status={fleet.status} />
-    <FleetSetupWorkspace account={account} fleet={fleet.id} revision={fleet.setup_revision}
-      model={typeof fleet.definition.config["x-agentsfleet"].model === "string" ? fleet.definition.config["x-agentsfleet"].model : "platform-default"}
-      workspace={workspaceId} viewer={viewer}
-      header={pendingSetup ? null : <FleetHeader workspaceId={workspaceId} fleet={fleet} canGrant={canGrant} latestRun={latestRun}
-        exhaustedAt={billing?.is_exhausted ? billing.exhausted_at : undefined} />}>
+    <FleetWorkspace account={account} workspace={workspaceId} fleet={fleet} models={models} viewer={viewer}>
+      <FleetHeader workspaceId={workspaceId} fleet={fleet} canGrant={canGrant} latestRun={latestRun}
+        exhaustedAt={billing?.is_exhausted ? billing.exhausted_at : undefined} />
       <div className="page-entrance flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-clip">{content}</div>
-    </FleetSetupWorkspace>
+    </FleetWorkspace>
   </div>;
 }
 
@@ -89,21 +82,20 @@ async function loadChatView(
   const turns = threadResult?.items ?? [];
   const initialSummary = buildRunSummary(fleet.status, threadResult, fleet.pending_approvals);
   const approvalsHref = `${workspacePath(workspaceId, `fleets/${fleet.id}`)}#fleet-approvals`;
-  const modelLabel = runtimeModelLabel(models, fleet.definition.config["x-agentsfleet"].model);
-  const scheduled = fleet.status !== AGENTSFLEET_STATUS.ARCHIVED && fleet.schedules.some(schedule => schedule.status === "active" || schedule.status === "paused");
+  // The repositories a run may reach are the ones a person approved for GitHub.
+  const github = fleet.grants.find(grant => grant.name === GITHUB_GRANT && grant.status === GRANT_STATUS.approved);
+  const catalogue: readonly WorkspaceModel[] = models ?? [];
   return {
     latestRun: initialSummary.latest,
+    models: catalogue,
     content: <ChatView
       workspaceId={workspaceId}
       fleetId={fleet.id}
       schedules={fleet.schedules}
-      sources={fleetSources(fleet.definition.config["x-agentsfleet"])}
+      sources={fleetSources(github?.scope)}
       senderLabel={fleet.name}
-      setupRevision={fleet.setup_revision}
-      setup={<FleetRecovery key={`${workspaceId}:${fleet.id}:${fleet.etag}`} workspace={workspaceId} fleet={fleet} showSaved />}
-      setupSummary={scheduled ? <ScheduledSetupSummary requirements={setupRequirements(fleet.definition) ?? undefined} schedules={fleet.schedules}
-        ready editHref={fleetSetupPath(workspaceId, fleet.id, fleet.setup_revision)} /> : undefined}
-      modelLabel={modelLabel}
+      lists={<><FleetListSections /><FleetNetworkSection /></>}
+      modelLabel={runtimeModelLabel(models, fleet.model_ref)}
       initial={turns}
       initialSummary={initialSummary}
       approvalsHref={approvalsHref}
@@ -112,4 +104,3 @@ async function loadChatView(
     />,
   };
 }
-

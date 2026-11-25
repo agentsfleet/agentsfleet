@@ -1,6 +1,5 @@
-//! A conversation's context checkpoint store, one row per thread: a setup
-//! draft's chat or a fleet's. Callers prove authority on this connection's
-//! transaction.
+//! A fleet chat's context checkpoint store, one row per thread, whose id is
+//! the fleet's. Callers prove authority on this connection's transaction.
 //!
 //! A [`Repository::fenced`] save proves it in the statement instead: it writes
 //! only while the run it names holds the thread at its fence, so a run a
@@ -16,48 +15,11 @@ const FENCED_INSERT: &str = include_str!("fenced_insert.sql");
 const FENCED_UPDATE: &str = include_str!("fenced_update.sql");
 const HOLDS: &str = include_str!("holds.sql");
 
-/// The identity a setup conversation's checkpoint carries, assigned by the
-/// authorized host adapter: one erasable owner, the draft, so no account-wide
-/// or cross-host scope can be constructed.
-#[must_use]
-pub fn identity(draft: &Uuid7) -> String {
-    format!("draft:{draft}")
-}
-
 /// The identity a fleet chat's checkpoint carries: one erasable owner, the
-/// fleet, as [`identity`] is for a draft.
+/// fleet, so no account-wide or cross-host scope can be constructed.
 #[must_use]
 pub fn fleet_identity(fleet: &Uuid7) -> String {
     format!("fleet:{fleet}")
-}
-
-/// Whose conversation a checkpoint keeps: the owner of its thread, whose id
-/// the thread carries (`thread.threads.id`).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Owner {
-    /// A setup draft's chat.
-    Draft(Uuid7),
-    /// A fleet's chat.
-    Fleet(Uuid7),
-}
-
-impl Owner {
-    /// The thread the conversation is: the owner's own id.
-    #[must_use]
-    pub const fn thread(&self) -> &Uuid7 {
-        match self {
-            Self::Draft(id) | Self::Fleet(id) => id,
-        }
-    }
-
-    /// The scope every checkpoint of the conversation names.
-    #[must_use]
-    pub fn scope(&self) -> String {
-        match self {
-            Self::Draft(draft) => identity(draft),
-            Self::Fleet(fleet) => fleet_identity(fleet),
-        }
-    }
 }
 
 /// The run a fenced save names. The save writes only while `run` is
@@ -89,7 +51,8 @@ pub fn stored_fence(fence: u64) -> Result<i64> {
 /// Borrow the caller's connection; no pool acquisition or authority check is hidden.
 pub struct Repository<'a> {
     connection: &'a mut PgConnection,
-    owner: Owner,
+    /// The fleet whose thread the checkpoint keeps: `thread.threads.id`.
+    fleet: Uuid7,
     id: Uuid7,
     holder: Option<Holder<'a>>,
 }
@@ -97,38 +60,38 @@ pub struct Repository<'a> {
 impl std::fmt::Debug for Repository<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Repository")
-            .field("owner", &self.owner)
+            .field("fleet", &self.fleet)
             .field("holder", &self.holder)
             .finish_non_exhaustive()
     }
 }
 
 impl<'a> Repository<'a> {
-    /// `owner`'s store, which reads only: a save through it is refused as
+    /// `fleet`'s store, which reads only: a save through it is refused as
     /// stale-fenced. `id` is a newly minted checkpoint row identity, used
     /// only on first insert.
     #[must_use]
-    pub const fn new(connection: &'a mut PgConnection, owner: Owner, id: Uuid7) -> Self {
+    pub const fn new(connection: &'a mut PgConnection, fleet: Uuid7, id: Uuid7) -> Self {
         Self {
             connection,
-            owner,
+            fleet,
             id,
             holder: None,
         }
     }
 
-    /// `owner`'s store whose saves write only while `holder` holds the
+    /// `fleet`'s store whose saves write only while `holder` holds the
     /// thread at its fence; `id` as for [`Repository::new`].
     #[must_use]
     pub const fn fenced(
         connection: &'a mut PgConnection,
-        owner: Owner,
+        fleet: Uuid7,
         id: Uuid7,
         holder: Holder<'a>,
     ) -> Self {
         Self {
             connection,
-            owner,
+            fleet,
             id,
             holder: Some(holder),
         }
@@ -142,7 +105,7 @@ impl<'a> Repository<'a> {
     /// checkpoint.
     pub async fn load(&mut self) -> Result<Option<Checkpoint>> {
         let found: Option<sqlx::types::Json<Checkpoint>> = sqlx::query_scalar(LOAD)
-            .bind(self.owner.thread())
+            .bind(&self.fleet)
             .fetch_optional(&mut *self.connection)
             .await
             .map_err(Error::boundary)?;
@@ -160,7 +123,7 @@ impl<'a> Repository<'a> {
             return Err(Error::stale_fence());
         };
         checkpoint.validate_document()?;
-        if checkpoint.identity.scope != self.owner.scope()
+        if checkpoint.identity.scope != fleet_identity(&self.fleet)
             || expected.checked_add(1) != Some(checkpoint.generation)
         {
             return Err(Error::stale());
@@ -176,7 +139,7 @@ impl<'a> Repository<'a> {
             sqlx::query(FENCED_UPDATE)
         };
         let changed = statement
-            .bind(self.owner.thread())
+            .bind(&self.fleet)
             .bind(generation)
             .bind(sqlx::types::Json(&checkpoint))
             .bind(expected)
@@ -205,7 +168,7 @@ impl<'a> Repository<'a> {
     /// Whether `holder` still holds the thread at `fence`.
     async fn holds(&mut self, holder: Holder<'_>, fence: i64) -> Result<bool> {
         sqlx::query_scalar(HOLDS)
-            .bind(self.owner.thread())
+            .bind(&self.fleet)
             .bind(holder.run)
             .bind(holder.runner)
             .bind(fence)

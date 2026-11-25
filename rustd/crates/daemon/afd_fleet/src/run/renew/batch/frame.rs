@@ -7,18 +7,16 @@ use af_core::id::Uuid7;
 use af_wire::report::RenewRequest;
 use jiff::Timestamp;
 
-use super::ceilings::Read;
 use super::columns::{Bound, Columns};
 use super::rows::Found;
 use super::verdict::{Answer, Judged, Verdict, log_refused, refusal_of};
 use crate::error::{Result, query, renewal_no_credits, run_not_found};
-use crate::run::coverage::refuse_unreadable_budget;
 use crate::run::pull::RunService;
 
 /// What query failures name the batch statement as.
 const CONTEXT_RENEW: &str = "renewal batch";
 
-/// Logged when a run's prices or ceilings moved under its statement.
+/// Logged when a run's prices moved under its statement.
 const EVENT_REPRICED: &str = "renew_batch_repriced";
 
 impl RunService {
@@ -31,7 +29,7 @@ impl RunService {
         funds_due: bool,
         now: Timestamp,
     ) -> Result<HashMap<Uuid7, Answer>> {
-        let found = match self.kept_rows(runs, kept).await {
+        let found = match self.kept_rows(runs, kept) {
             Some(found) => found,
             None => self.read_renewals(runner_id, runs).await?,
         };
@@ -49,8 +47,7 @@ impl RunService {
     }
 
     /// Refuses, before the statement runs, a run whose payer is short of
-    /// funds or whose fleet's stored ceiling will not parse, and binds the rest
-    /// with the prices and ceilings the statement guards on.
+    /// funds, and binds the rest with the prices the statement guards on.
     async fn admit<'a>(
         &self,
         runner_id: &Uuid7,
@@ -60,35 +57,18 @@ impl RunService {
         answers: &mut HashMap<Uuid7, Answer>,
     ) -> Vec<Bound<'a>> {
         let short = self.refusals(&batch, funds_due, now).await;
-        let ceilings = self.ceilings(&batch).await;
         let mut bound = Vec::new();
         for (row, request) in batch {
-            let refusal = if short.contains(&(&row.tenant_id, &row.workspace_id)) {
-                Some(renewal_no_credits())
-            } else if let Some(Read::Unreadable(fault)) = ceilings.get(&row.fleet_id) {
-                Some(refuse_unreadable_budget(
-                    &row.fleet_id,
-                    row.id.as_str(),
-                    fault,
-                ))
-            } else {
-                None
-            };
-            if let Some(refusal) = refusal {
+            if short.contains(&(&row.tenant_id, &row.workspace_id)) {
                 self.known_lines(runner_id, row, request, now).await;
-                answers.insert(row.id.clone(), Answer::Done(Err(refusal)));
+                answers.insert(row.id.clone(), Answer::Done(Err(renewal_no_credits())));
                 continue;
             }
-            let ceilings = match ceilings.get(&row.fleet_id) {
-                Some(Read::Ceilings(ceilings)) => Some(*ceilings),
-                Some(Read::Unreadable(_) | Read::Unread) | None => None,
-            };
             match self.pricing_of(row).await {
                 Ok(pricing) => bound.push(Bound {
                     found: row,
                     request,
                     pricing,
-                    ceilings,
                 }),
                 Err(fault) => {
                     answers.insert(row.id.clone(), Answer::Done(Err(fault)));
@@ -165,12 +145,12 @@ impl RunService {
             };
             answers.insert(run_id, Answer::Done(answer));
         }
-        self.reprice(runner_id, &moved, answers).await;
+        self.reprice(runner_id, &moved, answers);
     }
 
-    /// Sends the runs whose prices or ceilings moved to the per-run path,
-    /// and has the replica read their fleets' versions again.
-    async fn reprice(
+    /// Sends the runs whose prices moved to the per-run path, and has the
+    /// replica read the catalogue version again.
+    fn reprice(
         &self,
         runner_id: &Uuid7,
         moved: &[Bound<'_>],
@@ -186,13 +166,13 @@ impl RunService {
                 &runner,
                 &EVENT_REPRICED,
                 format_args!(
-                    "prices or ceilings moved under the renewal statement; the runs take the per-run path"
+                    "prices moved under the renewal statement; the runs take the per-run path"
                 ),
             );
             tracing::info!(message, runner_id, runs, event);
         };
+        self.runs.latest().forget();
         for entry in moved {
-            self.runs.latest().forget(&entry.found.fleet_id).await;
             answers.insert(entry.found.id.clone(), Answer::PerRun);
         }
     }

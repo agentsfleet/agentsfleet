@@ -30,7 +30,6 @@ impl<'a> FileOwner<'a> {
         let mut owner = TurnRunGuard::lock(runs, connection, presented).await?;
         let head = allocation::head(&mut owner).await?;
         let plan = Plan::load(&mut owner, &guard::id(&reference.checkpoint_id)?).await?;
-        plan.scope(&owner)?;
         let pin = pins::exact(&mut owner, reference).await?;
         let kind = match purpose {
             CheckpointTransferPurpose::Upload => super::WRITER,

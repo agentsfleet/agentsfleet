@@ -147,7 +147,7 @@ Use a fresh fixture installation with its own provider credentials, webhook rout
 ## Upgrade or roll back
 
 1. Record current versions and digests, take a verified backup, and drain the runner before maintenance. Use [runner onboarding](../runner_onboarding/001_playbook.md) for runner replacement.
-2. Restore the backup on the isolated recovery host and migrate with the candidate daemon image. Verify readiness and the saved fleet there. Verify dashboard and CLI sign-in and the first setup and runtime replies on a fresh fixture installation with the matching candidate runner and signed toolbox.
+2. Restore the backup on the isolated recovery host and migrate with the candidate daemon image. Verify readiness there, and that `agentsfleet fleet list` shows the fleets the backup held. Verify dashboard and CLI sign-in and the [first fleet's reply](../../SELF_HOST.md#5-prove-the-first-fleet) on a fresh fixture installation with the matching candidate runner and signed toolbox.
 3. After approval for the target installation, deploy the candidate image, dashboard, CLI and runner together. Record migration and verification evidence before admitting new work.
 4. For a startup problem after migration, compare schema history with the prior binary and use the [failed migration guide](../failed_migration/001_playbook.md). For an incompatible schema, recover from the last matching backup into an isolated target before switching ingress. Record any writes that would be lost since that backup before approving a cutover.
 

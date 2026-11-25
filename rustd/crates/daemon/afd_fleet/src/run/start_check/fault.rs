@@ -26,14 +26,13 @@ use crate::run::start_check::{Declined, Transient};
 /// What a gate's own failure decides.
 ///
 /// Two arms and not three: a DATASTORE fault never ends an event permanently.
-/// Permanence comes from verdicts — an exhausted wallet, a breached ceiling, a
-/// workspace naming no tenant — and those arrive as `Ok`, not as `Err`. That
+/// Permanence comes from verdicts — an exhausted or missing wallet, a workspace
+/// naming no tenant — and those arrive as `Ok`, not as `Err`. That
 /// split is RULE ECL held at the type level rather than in a comment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum OnFault {
-    /// Start the event. The two MONEY gates take this posture: a metering
-    /// outage must not halt every fleet on the platform, and a gate stricter
-    /// than the platform's own credit pool would be an inconsistent guarantee.
+    /// Start the event. The MONEY gate takes this posture: a metering outage
+    /// must not halt every fleet on the platform.
     Start,
     /// Answer no-work. The delivery stays leasable and the next poll retries.
     Retry,
@@ -51,14 +50,6 @@ pub(super) struct Gate {
 /// The tenant's credit pool. Fails OPEN.
 pub(super) const BALANCE: Gate = Gate {
     event: "run_balance_unavailable",
-    on_fault: OnFault::Start,
-};
-
-/// The fleet's own declared ceiling. Fails OPEN, mirroring [`BALANCE`] — a
-/// budget gate stricter than the credit gate above it would be an inconsistent
-/// guarantee.
-pub(super) const BUDGET: Gate = Gate {
-    event: "run_budget_unavailable",
     on_fault: OnFault::Start,
 };
 
@@ -120,7 +111,7 @@ impl Gate {
 
 #[cfg(test)]
 mod tests {
-    use super::{BALANCE, BUDGET, OnFault, PAYER};
+    use super::{BALANCE, OnFault, PAYER};
     use crate::run::start_check::{Declined, Transient};
     use std::collections::BTreeSet;
 
@@ -135,12 +126,11 @@ mod tests {
     }
 
     #[test]
-    fn the_two_money_gates_fail_open_and_the_payer_gate_does_not() {
+    fn the_money_gate_fails_open_and_the_payer_gate_does_not() {
         // The asymmetry stated as a test rather than left to a reader
         // collecting `catch` sites: a metering outage starts, an unresolvable
         // payer does not.
         assert_eq!(BALANCE.on_fault, OnFault::Start);
-        assert_eq!(BUDGET.on_fault, OnFault::Start);
         assert_eq!(PAYER.on_fault, OnFault::Retry);
     }
 
@@ -148,7 +138,7 @@ mod tests {
     fn every_gate_logs_under_a_distinct_event() {
         // Two gates sharing an event name would make a dashboard unable to say
         // WHICH read failed, which is the only thing the line is for.
-        let events = [BALANCE.event, BUDGET.event, PAYER.event];
+        let events = [BALANCE.event, PAYER.event];
         let distinct: BTreeSet<_> = events.iter().collect();
         assert_eq!(
             distinct.len(),
@@ -167,7 +157,6 @@ mod tests {
     #[test]
     fn a_money_gate_absorbs_its_fault_and_the_pass_continues() {
         assert_eq!(BALANCE.absorb(&fault()), None);
-        assert_eq!(BUDGET.absorb(&fault()), None);
     }
 
     /// A fail-closed gate answers a retry naming itself.

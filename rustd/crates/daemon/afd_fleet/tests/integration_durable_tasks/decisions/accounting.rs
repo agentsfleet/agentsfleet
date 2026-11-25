@@ -2,8 +2,8 @@
 
 use af_core::error_code;
 use af_wire::durable_task::{
-    DecisionAssessment, DecisionCallState, DecisionNotSentCause, DecisionReceipt,
-    DecisionReceiptInput, DecisionRetryDelay, DecisionUnavailableCause,
+    DecisionCallState, DecisionNotSentCause, DecisionReceipt, DecisionReceiptInput,
+    DecisionRetryDelay, DecisionUnavailableCause,
 };
 use afd_fleet::durable_task::DurableTaskLifecycle as _;
 use serde_json::{Value, json};
@@ -21,7 +21,7 @@ async fn a_physical_timeout_cannot_turn_into_retry_evidence_or_free_usage() {
 
 async fn uncertain(case: &Case) {
     let fixture = Decisions::create(case).await;
-    let input = fixture.reservation(DecisionAssessment::Message, None);
+    let input = fixture.call_input().await;
     let (_, body) = fixture.reserve(&input).await;
     let call = body
         .get("call_id")
@@ -114,7 +114,7 @@ async fn a_throttled_retry_preserves_request_quote_deadline_and_one_attempt() {
 
 async fn throttled(case: &Case) {
     let fixture = Decisions::create(case).await;
-    let input = fixture.reservation(DecisionAssessment::Message, None);
+    let input = fixture.call_input().await;
     let (_, initial) = fixture.reserve(&input).await;
     let call = initial
         .get("call_id")

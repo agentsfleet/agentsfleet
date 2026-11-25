@@ -40,14 +40,14 @@ pub(in crate::run_loop) fn assignment() -> DecisionAssignment {
         },
     }
 }
-pub(super) fn inputs() -> Value {
-    let task = DurableTaskContext {
+/// The task the recovery run is bound to, as its payload and its inputs name it.
+pub(super) fn task() -> DurableTaskContext<'static> {
+    DurableTaskContext {
         durable_task_id: ID.into(),
         originating_item_id: ID.into(),
         target: DurableTaskTarget::ApiOnly,
         generation: 7,
         stop_generation: 0,
-        accepted_revision_id: ID.into(),
         objective: "Save accepted progress".into(),
         goal_digest: "a".repeat(64).into(),
         questions: vec![],
@@ -61,14 +61,15 @@ pub(super) fn inputs() -> Value {
         expires_at: deadline(),
         limits: DurableTaskLimits::default(),
         usage: DurableTaskUsage::default(),
-    };
+    }
+}
+pub(super) fn inputs() -> Value {
     serde_json::to_value(DurableTaskInputsResponse {
         source_turn_id: ID.to_owned(),
-        accepted_revision_id: Some(ID.to_owned()),
         current_message: None,
         inputs: vec![],
         accepted_inputs: vec![],
-        current_durable_task: Some(task),
+        current_durable_task: Some(task()),
         execution_deadline: Some(deadline()),
         current_interpretation: None,
         durable_tasks: vec![],

@@ -37,34 +37,14 @@ fn composed_failures_delegate_classification_and_keep_causes() -> Result<(), &'s
             .map(|(_kind, error)| error)
             .ok_or("database test utility has no outage kind")
     };
-    let identifier = af_core::id::Uuid7::parse("not-an-id")
+    let scope = af_fleet_runtime::config::RepositoryBinding::parse("{}")
         .err()
-        .ok_or("the malformed fixture unexpectedly parsed")?;
-    let (entropy, control) = af_crypto::entropy::Entropy::new_mocked();
-    control.fail_next();
-    let mut bytes = [0_u8; af_core::id::ENTROPY_LEN];
-    let entropy = entropy
-        .fill(&mut bytes)
-        .err()
-        .ok_or("the controlled entropy source unexpectedly answered")?;
+        .ok_or("an empty scope unexpectedly parsed")?;
 
     // The third column is whether the gate is a NEW causal link. Every variant
     // here wraps a failure that happened in another crate, and every one adds
-    // the fact that crate cannot carry: WHICH plane was using it. `afd_db`,
-    // `afd_credential`, `afd_billing`, `af_crypto` and
-    // `af_core` are each shared by many planes, so "entropy pool exhausted"
-    // alone leaves an operator without the one thing they need to act on.
-    //
-    // `Entropy` and `Identifier` used to be `#[error(transparent)]` and so
-    // carried no link, which read as a deliberate distinction and was not one:
-    // `code()` and `detail()` already answer for `Entropy` and `Identifier`
-    // in a single arm, so variants identical at the API boundary had two
-    // different internal shapes. They now say which plane and
-    // keep the inner error as their `source`, like their three siblings.
-    //
-    // What stays non-uniform is the SECOND column. Only a datastore failure is
-    // an availability signal; a refused entropy draw is not, however it is
-    // worded.
+    // the fact that crate cannot carry: WHICH plane was using it. Only a
+    // datastore failure is an availability signal, which is the second column.
     let cases = [
         ("database", Error::from(database()?), true, true),
         (
@@ -73,14 +53,7 @@ fn composed_failures_delegate_classification_and_keep_causes() -> Result<(), &'s
             true,
             true,
         ),
-        (
-            "billing",
-            Error::from(afd_billing::Error::from(database()?)),
-            true,
-            true,
-        ),
-        ("entropy", Error::from(entropy), false, true),
-        ("identifier", Error::from(identifier), false, true),
+        ("scope", Error::from(scope), false, true),
     ];
 
     for (name, failure, unavailable, has_cause) in cases {

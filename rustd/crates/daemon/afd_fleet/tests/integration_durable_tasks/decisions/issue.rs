@@ -6,7 +6,7 @@
 use std::time::Instant;
 
 use af_core::error_code;
-use af_wire::durable_task::{DecisionAssessment, DecisionCallState};
+use af_wire::durable_task::DecisionCallState;
 use afd_db::{config::DbRole, test_util::statements};
 use afd_fleet::{
     durable_task::{DurableTaskLifecycle as _, DurableTasks},
@@ -19,6 +19,7 @@ use super::{
     super::fixture::{Case, exercise},
     concurrency::{Operations, contend},
     fixture::{Decisions, known, request},
+    steps::another_operation,
 };
 
 #[tokio::test]
@@ -37,7 +38,7 @@ async fn a_replay_of_a_saved_call_answers_existing_when_funding_would_refuse() {
 /// assessment both answer `existing`: the lookups run before the wallet is read.
 async fn unfunded(fixture: &Decisions<'_>) {
     let case = fixture.case;
-    let input = fixture.reservation(DecisionAssessment::Message, None);
+    let input = fixture.call_input().await;
     let (issued, body) = fixture.reserve(&input).await;
     assert!(issued);
     let expected = json!({"status":"existing", "call_id":body.get("call_id"), "state":"issued"});
@@ -48,7 +49,7 @@ async fn unfunded(fixture: &Decisions<'_>) {
         .await
         .expect("a funded payer");
     case.held.fixtures.seed_wallet(&case.held.tenant, 0).await;
-    let another = fixture.reservation(DecisionAssessment::Message, None);
+    let another = another_operation(&input);
     for replay in [&input, &another] {
         assert_eq!(fixture.reserve(replay).await, (false, expected.clone()));
     }
@@ -75,11 +76,7 @@ async fn overcharged(fixture: &Decisions<'_>) {
     assert_eq!(recorded.state, DecisionCallState::Known);
     assert_eq!(recorded.overage_nanos.as_deref(), Some("20000002"));
 
-    let mut another = (*input).clone();
-    another.operation_id = afd_db::test_util::mint_id().into();
-    let another = garde::Unvalidated::new(another)
-        .validate()
-        .expect("another operation of the same assessment");
+    let another = another_operation(&input);
     for replay in [&input, &another] {
         let (issued, saved) = fixture.reserve(replay).await;
         assert!(!issued);
@@ -99,6 +96,9 @@ async fn overcharged(fixture: &Decisions<'_>) {
 async fn a_reservation_issues_while_a_reader_holds_the_thread() {
     exercise(async |case: &Case| {
         let fixture = Decisions::create(case).await;
+        // The goal check's task is bound, and its run attached, before the
+        // reader holds the thread: binding writes under the thread's lock.
+        let input = fixture.call_input().await;
         let mut holder = case
             .held
             .fixtures
@@ -113,7 +113,6 @@ async fn a_reservation_issues_while_a_reader_holds_the_thread() {
             .await
             .expect("a receipt's read holds the thread shared");
 
-        let input = fixture.reservation(DecisionAssessment::Message, None);
         let (issued, _body) = fixture.reserve(&input).await;
 
         assert!(issued, "a shared thread does not hold the reservation up");
@@ -141,7 +140,7 @@ async fn a_renewal_completes_during_a_reservation_storm() {
             case.turns.clone(),
             fixture.dependencies.clone(),
         );
-        let input = fixture.reservation(DecisionAssessment::Message, None);
+        let input = fixture.call_input().await;
         let runs = [&case.held.issued.run_id];
         let mut waits = Vec::new();
         let replies = {
@@ -179,7 +178,7 @@ async fn a_decision_reservation_runs_at_most_eighteen_statements() {
         let owner = case.held.fixtures.open_with(DbRole::Migrator, &[]).await;
         statements::install(&owner).await;
         let fixture = Decisions::create(case).await;
-        let input = fixture.reservation(DecisionAssessment::Message, None);
+        let input = fixture.call_input().await;
 
         let begun = statements::transactions_begun(&owner).await;
         let window = statements::Window::open(&owner).await;

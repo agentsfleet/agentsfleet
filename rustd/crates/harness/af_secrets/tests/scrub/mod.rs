@@ -22,7 +22,7 @@ const GITHUB_TOKEN: &str = "ghp_fixture_token_abcdef";
 /// The scrub of a policy carrying the fixture secrets.
 fn scrub() -> Scrub {
     let policy = serde_json::json!({
-        "network_policy": {"allow": [], "read_only": true, "read_post_paths": []},
+        "network_policy": {"allow": []},
         "tools": [],
         "secrets_map": {"github": {"token": GITHUB_TOKEN, "host": "api.github.com"}},
         "mintable": [], "provider": "anthropic", "api_key": API_KEY,

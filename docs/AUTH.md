@@ -167,7 +167,7 @@ The `read < write < admin` ladder is stored as data. Holding a higher scope sati
 | `runner:tenant` | register, list, read, change and retire the calling tenant's own runners under `/v1/tenants/me/runners`. Such a runner takes only that tenant's work. A platform admin grants it per account at the identity provider, and signup never does |
 | `stream:read` | reserved for an operator diagnostic of the live SSE streams open on an instance. No route in `rustd/crates/daemon/afd_http/src/route/` requires it today, so holding it reaches nothing |
 | `approval:read` / `approval:resolve` | view the approval inbox / decide (approve or deny) an approval gate. The one pair here with a ladder: `approval:resolve` includes `approval:read` (`HIERARCHY`, `scope.rs`) |
-| `billing:read` | Read the tenant balance, raw charges, settled report and activity charges. [Billing reporting](architecture/billing_reporting.md#public-reads) lists the reporting paths. Balance and raw charges retain `/v1/tenants/me/billing` and `/v1/tenants/me/billing/charges`. |
+| `billing:read` | Read the tenant balance, raw charges, settled report and activity charges. [Billing reporting](architecture/billing.md#the-usage-report) lists the reporting paths. Balance and raw charges retain `/v1/tenants/me/billing` and `/v1/tenants/me/billing/charges`. |
 | `workspace:admin` | create workspaces; list the tenant's workspaces; manage the account's invites and members (§Invites) |
 
 **Runner credential** (machine identity, minted onto the `agt_r` token and never granted to a human):
@@ -406,9 +406,9 @@ An identity read failure reaches the page's existing authentication or error han
 
 | Caller | Reaches | Refused |
 |---|---|---|
-| `owner` of the account | workspace routes, plus the account's invites and members | private drafts still require their creator; see §Fleet setup and credential boundary |
+| `owner` of the account | workspace routes, plus the account's invites and members | nothing in the account |
 | `member` of the account | every workspace in the account: fleets, steering, streams, schedules, approvals, secret names, and every stored secret through the fleets they write | routes needing `secret:write` or `connector:write`, with `403 UZ-AUTH-026` |
-| platform operator holding `workspace:any` | any account's workspace through the outer ownership check | setup additionally checks membership and creator identity; each crossing is logged (§Platform crossing) |
+| platform operator holding `workspace:any` | any account's workspace through the outer ownership check | the fleet routes still check current membership; each crossing is logged (§Platform crossing) |
 | anyone else | nothing | `403 UZ-AUTH-001`, `Workspace access denied` |
 
 ```
@@ -439,8 +439,8 @@ The role then withholds it inside somebody else's account
 members with no change to the route.
 
 **A member uses every secret, through fleets**. The role withholds writing a
-secret, not using one. A member who installs or edits a fleet can declare any
-workspace secret, and the runner receives it at run
+secret, not using one. A member who approves a fleet's access card can give it
+any workspace secret, and the fleet's runs receive it
 (`rustd/crates/daemon/afd_credential/src/secrets/mod.rs`).
 
 An invited member is
@@ -557,7 +557,7 @@ carry the address or the email body.
 ### Platform crossing
 
 A platform operator holding `workspace:any` passes the outer ownership check for any account's workspace.
-Setup still checks current membership and private-draft ownership (§Fleet setup and credential boundary).
+The fleet routes still check current membership (`rustd/crates/daemon/afd_setup/src/access.rs`).
 The ownership layer logs each crossing once, before the handler runs (`rustd/crates/daemon/afd_tenant/src/workspace/crossing.rs`).
 
 The connector callback authorizes outside that layer and calls the same audit.
@@ -687,9 +687,9 @@ The seven token-minting proxy routes (per-fleet and workspace `turns` + `turns/s
 
 Each route mints through `credential()` (`ui/packages/app/lib/auth/credential.ts`), the one place the dashboard resolves a bearer, the same way a Server Action does. The four JSON reads share `lib/api/live-json-proxy.ts`, so their dot-segment guard, bearer minting and error passthrough live once.
 
-The two streams share the upstream fetch and response helpers in `lib/api/event-stream-proxy.ts`. Each stream route still checks the session before opening its upstream connection.
+The two streams share the upstream fetch and response helpers in `lib/api/turn-stream-proxy.ts`. Each stream route still checks the session before opening its upstream connection.
 
-All three stream proxies, including private setup, bound the handshake to 30 seconds and rotate the body at 240 seconds from request start. Rotation ends cleanly and aborts upstream; the existing clients reconnect and refresh durable data. Cancellation, failure and ordinary completion release readers and timers.
+Both stream proxies bound the handshake to 30 seconds and rotate the body at 240 seconds from request start (`lib/api/stream-lifetime.ts`). Rotation ends cleanly and aborts upstream; the existing clients reconnect and refresh durable data. Cancellation, failure and ordinary completion release readers and timers.
 
 The chat's steer and detail read moved here from Server Actions. Next runs a tab's actions one at a time, so a hung steer held every later read and steer behind it. A `fetch` to a route runs concurrently and aborts.
 
@@ -876,7 +876,7 @@ Five rules hold this table in place.
 | Rule | Where it holds |
 |---|---|
 | A tenant runner takes only its own tenant's work | run assignment and the candidate scan read `runner.runners.tenant_id`; issue reads it again under the host lock and logs `runner_placement_refused` (`UZ-RUN-027`) on a miss |
-| It never receives the platform model key | a fleet whose revision runs on the platform default model is never assigned to it, and issue refuses it too |
+| It never receives the platform model key | a fleet whose model is the platform default is never assigned to it, and issue refuses it too |
 | It has no platform decision model | a check on `runner.runners` refuses `decision_platform_model_id` on a tenant row |
 | Its owner is explicit and never changes | `platform_owned` is stated at registration, a check ties it to `tenant_id`, and a trigger refuses any update of either |
 | Only its tenant rotates its token | a platform caller's rotate answers `409 UZ-RUN-026` |
@@ -1002,7 +1002,7 @@ The runner prepares intent before durable work and assesses completed action gro
 Native report preparation independently checks task authority and completion evidence.
 Live end-to-end verification remains pending.
 
-The [decision architecture](architecture/goal_evaluation.md) owns model selection, question ownership and runner integration.
+The [decision architecture](architecture/durable_tasks.md#goal-evaluation) owns model selection, question ownership and runner integration.
 
 ### The token never enters the sandboxed child
 
@@ -1014,43 +1014,30 @@ A prompt-injected fleet that reads `AGENTSFLEET_RUNNER_TOKEN` or its own `/proc/
 
 ---
 
-## Fleet setup and credential boundary
+## Fleet access and credential boundary
 
-A fleet's setup is a typed Definition written in chat and stored as an
-immutable revision ([fleet definitions](architecture/fleet_definitions.md)).
-Its configuration names the credentials the fleet needs, by name only: a setup
-cannot carry a secret value. The setup model never receives those runtime secrets.
+A fleet has no setup document. It holds only the credentials a person approved for it.
 
-Setup uses ordinary `Guard::Bearer` routes and `PersonIdentity`, admitting browser sessions, command-line credentials and tenant API keys acting as their creator.
+When a run needs one, the fleet calls `request_access` with the credential's name, and for GitHub the repositories and read or write.
+The daemon checks that the workspace holds that secret or has connected that integration, then raises an approval card ([connectors](architecture/user_flow.md#access)).
+
+A signed-in person approves the card once; an API key cannot.
+The routes use ordinary `Guard::Bearer` and `PersonIdentity`, and the card's approval route refuses a caller that is not a person.
 There is no upload or import route.
-Fresh-session restrictions remain on the login surfaces, including command-line credential minting.
-
-Private drafts require current account membership or personal ownership, plus the draft creator's identity.
-An account owner or `workspace:any` operator cannot read another person's private draft.
-Missing, foreign and creator-private drafts return the same nondisclosing 404.
 
 | Action | Required scope | Additional boundary |
 |---|---|---|
-| Read, edit, message or stream a private draft | `fleet:write` | Current membership and creator identity |
-| Save or Apply a reviewed setup | `fleet:write` | Current membership; a private candidate must belong to the caller |
+| Create a fleet or send it a message | `fleet:write` | Current membership |
+| Approve or deny an access card | the approvals route's scope | A signed-in person |
+| List or revoke a fleet's grants | `grant:read`, `grant:write` | Revoking needs a signed-in person |
 
 The route scopes live in `afd_http/src/route/{workspace,fleet}.rs`.
-`afd_setup/src/access.rs` and `sql/draft/lock.sql` enforce the inner identity boundary.
-[Fleet definitions](architecture/fleet_definitions.md) describes review, Save and Apply.
+A run's secret values resolve at run time inside `agentsfleetd` from the fleet's approved grants, and ride the runner run envelope described above.
+Each static secret is sent only to its own `host` field, whichever fleet uses it.
 
-The setup review is where credential presence matters: it reports each named
-credential and why the setup needs it (`rustd/crates/daemon/afd_setup/src/review/credentials/`).
-Named runtime secret values resolve at run time inside `agentsfleetd` and
-ride the runner run envelope described above. Capability comes from the
-server-built `ExecutionPolicy` and workspace credential grants.
-
-The setup model's inference key rides the setup run, as a fleet run's does.
-The assignment opens the pinned model's key in its own transaction and
-carries it in the run payload (`afd_fleet/src/run/draft/assign.rs`,
-`afd_credential/src/provider/registered/key.rs`). A tenant runner is never
-assigned a setup run on the platform model, so the platform key never
-reaches a host its tenant controls. The daemon makes no model call, and
-neither the browser nor a sandbox receives the key.
+The fleet's model key rides each run, as before.
+A tenant runner is never assigned a run on the platform model, so the platform key never reaches a host its tenant controls.
+Neither the browser nor a sandbox receives the key.
 
 ## Backend validation (the common path)
 
@@ -1254,11 +1241,14 @@ include `sid`, so a template token cannot double as the token
 
 Clerk's session-token claim customization ends the split. The session token now
 carries `aud`, `metadata.tenant_id`, and a `scopes` claim, so one JWT satisfies
-`clerkMiddleware()` and the audience check together. The dashboard mints it with
-server-side `credential()` and no template argument. Server Components,
-Server Actions and authenticated `/live/*` handlers attach it to backend calls.
-Workspace setup requests carry the browser's same-origin cookie to the narrow
-setup proxy; the proxy resolves the backend bearer on the server. The
+`clerkMiddleware()` and the audience check together.
+
+The dashboard mints it with server-side `credential()` and no template argument.
+Server Components, Server Actions and authenticated `/live/*` handlers attach it
+to backend calls.
+
+Workspace requests carry the browser's same-origin cookie to the narrow
+workspace proxy; the proxy resolves the backend bearer on the server. The
 command-line approval page has the separate handoff described below.
 
 Operator setup for the Clerk configuration is in
@@ -1294,7 +1284,7 @@ Customize session token** and reset to default. The next minted token has no
 refresh. Re-apply the claims to restore. No `agentsfleetd` or schema state is
 involved.
 
-**Workspace setup uses a narrow Backend-for-Frontend.** The `/live/*` setup
+**Workspace requests use a narrow Backend-for-Frontend.** The `/live/*` workspace
 handler authenticates allowed routes and checks write origins. Other dashboard
 reads and mutations use Server Components and Server Actions. A common boundary
 for every dashboard route remains future work alongside scoped capability
@@ -1342,7 +1332,7 @@ Slack reads `x-slack-request-timestamp`; Svix reads `svix-id` and `svix-timestam
 
 For example, a custom trigger declares `{"type":"webhook","source":"acme","credential_name":"acme-signing","verifier":{"scheme":"body-hex-sha256","header":"x-acme-signature"}}`. A Svix sender declares `{"type":"webhook","source":"clerk","credential_name":"clerk-signing","verifier":{"scheme":"svix-v1"}}`.
 
-Save advertises each source's own URL. The former `/v1/webhooks/svix/{fleet_id}` address is not served: `svix` is refused as a malformed fleet id.
+The fleet page shows each webhook trigger's own URL. The former `/v1/webhooks/svix/{fleet_id}` address is not served: `svix` is refused as a malformed fleet id.
 
 These recipes verify incoming signed deliveries. They do not connect an account, create a vendor subscription, or grant outbound application actions. App-level ingress keeps its platform secret and provider-specific handler.
 
@@ -1380,7 +1370,7 @@ The `UZ-WH-020` vs `UZ-WH-010` split matters: the first is a recoverable misconf
 ### Cross-references: manual fleet webhooks
 
 - Implementation: `rustd/crates/daemon/afd_http/src/route/webhook.rs` (route guards), `rustd/crates/daemon/afd_api_ingress/src/handler/webhook/verify.rs` (the check), `rustd/crates/daemon/afd_ingress/src/binding/mod.rs` and `secret.rs` (scheme and secret), `rustd/crates/protocol/af_webhook/src/scheme.rs` (the schemes).
-- Operator-facing data flow: [`architecture/data_flow.md`](./architecture/data_flow.md) §"B. TRIGGER  (steer / webhook / cron — three callers, ONE ingress)", [`architecture/user_flow.md`](./architecture/user_flow.md) §"§8.3 Triggering the Fleet".
+- Operator-facing data flow: [`architecture/data_flow.md`](./architecture/data_flow.md#intake) §"Intake", [`architecture/user_flow.md`](./architecture/user_flow.md#wakes-on) §"Wakes on".
 - Error registry: codes in `rustd/crates/foundation/af_core/src/error_code/request.rs`, HTTP status and hint per code in `rustd/crates/foundation/af_core/src/problem/request.rs`.
 
 ---
@@ -1399,7 +1389,9 @@ Scopes: `connector:write` gates connection and authenticated callback completion
 
 The provider returns to `GET https://<APP_HOST>/api/connectors/{provider}/callback`. The signed-in dashboard forwards its current Bearer token and the original query to `POST /v1/connectors/{provider}/callback`. That endpoint requires `connector:write`, the same identity that started the state, and current access to the state workspace. It checks those three conditions before consuming the nonce, exchanging a provider code, or writing a connector row. A copied provider URL therefore cannot bind the approving person's provider account to the starter's workspace. The API host serves no `GET` on that path, so a provider registration must name the dashboard URL.
 
-A missing state is malformed (`UZ-REQ-001`). A forged, expired, replayed, or identity-mismatched state returns `UZ-CONN-002 connector_state_invalid`. Vendor exchanges and ownership probes run deadline-armed ([`architecture/connectors.md`](./architecture/connectors.md) §"Bounded outbound: every vendor call has a deadline"); a stalled vendor returns 502 `UZ-CONN-003` with no vault write. The authenticated callbacks endpoint then hands provider-specific persistence to the registry hook:
+A missing state is malformed (`UZ-REQ-001`). A forged, expired, replayed, or identity-mismatched state returns `UZ-CONN-002 connector_state_invalid`.
+
+Vendor exchanges and ownership probes run deadline-armed ([`architecture/connectors.md`](./architecture/connectors.md#bounded-outbound-calls) §"Bounded outbound calls"); a stalled vendor returns 502 `UZ-CONN-003` with no vault write. The authenticated callbacks endpoint then hands provider-specific storage to the registry hook:
 
 - **Slack** exchanges the `code` for a bot token, then writes the vault handle and `connector.installs` routing row atomically.
   When OAuth supplies `authed_user.id`, the subject-checked callback also links that person through `connector.person_links`.
@@ -1556,7 +1548,7 @@ Slack's signature failures share the webhook codes (`UZ-WH-010`, `UZ-WH-011`, §
 | --- | --- | --- |
 | `UZ-CONN-001` (connector not configured) | platform app secrets missing at connect or at authenticated callback completion (the status read never emits it — it degrades to `not_connected`; the events ingress answers a missing signing secret with 401 `UZ-WH-020`) | **503** |
 | `UZ-CONN-002` (invalid connect state) | callback `state` forged / expired / replayed, or completed by a different identity (a *missing* state is `UZ-REQ-001`) | 400 on authenticated callback completion |
-| `UZ-CONN-003` (vendor deadline exceeded) | a connector vendor call hit its enforced deadline (vendor accepted, then stalled) or could not be deadline-armed and was refused — never runs unbounded (shape in [`architecture/connectors.md`](./architecture/connectors.md) §"Bounded outbound: every vendor call has a deadline") | **502** on the callback exchange; logged + retried on background paths |
+| `UZ-CONN-003` (vendor deadline exceeded) | a connector vendor call hit its enforced deadline (vendor accepted, then stalled) or could not be deadline-armed and was refused — never runs unbounded (shape in [`architecture/connectors.md`](./architecture/connectors.md#bounded-outbound-calls) §"Bounded outbound calls") | **502** on the callback exchange; logged + retried on background paths |
 | `UZ-CONN-004` (unknown connector provider) | the `{provider}` route segment resolves to no registry entry — connect, callback, and status answer identically, body names the id | 404 |
 | `UZ-CONN-008` (installation ownership denied) | GitHub user token cannot access the claimed installation, or another workspace already owns its route | **403** on the callback; no vault or routing-row mutation |
 | `UZ-CONN-006` (OAuth exchange failed) | the provider rejected the `code`→token exchange, or a forged refresh handle named a server outside the allowed list | **502** |

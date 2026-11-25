@@ -8,7 +8,7 @@ executable: false
 
 # M247 review and verification ledger
 
-This ledger records the baseline, review dispositions, benchmark evidence, and verification still due for platform runners. The implemented architecture lives in the [recovery guide](../../architecture/runner_checkpoint_recovery.md).
+This ledger records the baseline, review dispositions, benchmark evidence, and verification still due for platform runners. The implemented architecture lives in the [recovery guide](../../architecture/checkpoints.md).
 
 Base: `97224ed7432c9dd124ea8797d4324156b7022c07`; pre-refactor implementation: `86f481126c1aa053c34ef3bdaaa6f07baa1c74ab` plus candidate prefix `22ac73ab741b`. The frozen production baseline is `d4823563e80829b97589846a1c7997964fdf0274`.
 
@@ -1043,7 +1043,7 @@ The default seed gives each fleet a separate workspace and hides contention on s
 
 The measured baseline uses those registered sessions. The refactor checks below exercise F12 and S1 on PostgreSQL 19rc2.
 
-See [platform runner checkpoint recovery](../../architecture/runner_checkpoint_recovery.md) for the implemented design, limits, operator walkthrough and source map.
+See [platform runner checkpoint recovery](../../architecture/checkpoints.md) for the implemented design, limits, operator walkthrough and source map.
 
 ## Pre-refactor verification
 
@@ -1305,7 +1305,7 @@ Keep `ENCRYPTION_MASTER_KEY`, `AUTH_SESSION_CODE_PEPPER`, `DATABASE_URL_API`, `D
 | Recovery backstop and dispatch | 5 s probe per replica, 8 concurrent claims per drain and one per eligible session | Expose the probe interval and concurrent-claim cap with their current defaults. Prove the settings against the per-replica database pool and measure idle probes and burst time. Keep the SQL page size of 64 and the revisit rule together. [Probe](../../../rustd/crates/daemon/afd_gateway/src/scheduler/recovery/mod.rs) · [Drain](../../../rustd/crates/daemon/afd_gateway/src/scheduler/recovery/drain.rs) · [Cursor](../../../rustd/crates/daemon/afd_fleet/src/lease/assign/ledger.rs) |
 | Runner workers | Per-host `assigned_policy.worker_count`, shared bounds 1–64 | Set A and B to 16 in each runner's policy if the hosts can support it. `agentsfleet platform runners update <RUNNER_ID> --policy <FILE>` replaces the supplied policy, so use the complete policy. Fly CPU and replica count size the daemon's compute capacity. [Worker bounds](../../../rustd/crates/foundation/af_core/src/limits.rs) · [Runner update CLI](../../../cli/src/program/tree/platform-runners.command.ts) |
 | Other sweep and lifetime controls | 2 s expiry, 10 s host liveness, 30 s census, 5 min checkpoint cleanup, 12 h lease runtime, 10 min sandbox hold, 7 d terminal turn retention, 30 d settled runner history | Treat cadence and retention as separate follow-up settings with their own effect on database load, custody and cleanup. [Expiry](../../../rustd/crates/daemon/main/src/sweepers/expiry.rs) · [Checkpoint cleanup](../../../rustd/crates/daemon/main/src/sweepers/checkpoints.rs) · [Terminal retention](../../../rustd/crates/daemon/afd_fleet/src/lease/turn_checkpoint/maintenance.rs) · [Lease retention](../../../rustd/crates/daemon/afd_runner/src/sweep/retention/mod.rs) |
-| Storage and scheduler ceilings | 2 verify operations per session and 8 per daemon, 2 file recovery operations per runner, 4 chunks of up to 8 MiB each per window, 50 GiB workspace quota | Treat semaphore counts as performance parameters backed by measured memory and contention. Keep wire sizes, quota accounting, fence increments and retry caps in their owning rules. [Verification admission](../../../rustd/crates/daemon/afd_gateway/src/session/dispatch/turn_checkpoint.rs) · [Runner admission](../../../rustd/crates/runner/afr_supervisor/src/recovery/admission.rs) · [Storage and wire limits](../../architecture/runner_checkpoint_recovery.md) |
+| Storage and scheduler ceilings | 2 verify operations per session and 8 per daemon, 2 file recovery operations per runner, 4 chunks of up to 8 MiB each per window, 50 GiB workspace quota | Treat semaphore counts as performance parameters backed by measured memory and contention. Keep wire sizes, quota accounting, fence increments and retry caps in their owning rules. [Verification admission](../../../rustd/crates/daemon/afd_gateway/src/session/dispatch/turn_checkpoint.rs) · [Runner admission](../../../rustd/crates/runner/afr_supervisor/src/recovery/admission.rs) · [Storage and wire limits](../../architecture/checkpoints.md) |
 | Other daemon capacities | Database idle timeout 10 min and connection lifetime 30 min, admission backlog 100,000, SSE keepalive 15 s, daemon drain 15 s | Review with the owning database, API and deployment budgets. Authentication and token lifetimes require an identity policy decision. [Database pool](../../../rustd/crates/daemon/afd_db/src/pool/mod.rs) · [Backlog budget](../../../rustd/crates/daemon/afd_admission/src/budget/mod.rs) · [SSE keepalive](../../../rustd/crates/daemon/afd_sse/src/lib.rs) · [Daemon drain](../../../rustd/crates/daemon/main/src/serve/drain/mod.rs) |
 
 `ttl_seconds` passes through construction as one validated clock.
@@ -1500,7 +1500,7 @@ A file-backed check also needs a verified sandbox and private object storage. [D
 
 The operator drill still needs a recorded human run. The automated owned-rig command covers controlled API-only process failure.
 
-[Rig command](../../architecture/runner_checkpoint_recovery.md#operator-and-lab-checks)
+[Rig command](../../architecture/checkpoints.md#checking-recovery-on-a-rig)
 
 ## Historical drafts
 

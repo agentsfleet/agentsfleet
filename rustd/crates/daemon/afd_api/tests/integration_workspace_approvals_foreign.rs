@@ -3,14 +3,13 @@
 #![cfg(feature = "test-util")]
 
 use crate::harness;
-use crate::integration_workspace_approvals_fixture::Fixture;
+use crate::integration_workspace_approvals_fixture::{Fixture, SESSION};
 
 use af_core::error_code;
-use afd_auth::scope::{Scope, ScopeSet};
 use http::{Method, StatusCode};
 use serde_json::Value;
 
-use self::harness::{Fleet, json_body, send};
+use self::harness::{json_body, send};
 
 /// The workspace whose gate is answered.
 const OWNER_SUBJECT: &str = "user_live_approval_owner";
@@ -25,14 +24,7 @@ async fn a_member_of_another_workspace_cannot_answer_a_gate() {
     owner.seed().await;
     let foreign = Fixture::create_as(FOREIGN_SUBJECT).await;
     foreign.seed().await;
-    let router = Fleet::live(
-        foreign.database.clone(),
-        FOREIGN_SUBJECT,
-        ScopeSet::from_scopes(&Scope::ALL),
-    )
-    .with_owned_workspace(foreign.workspace.clone())
-    .with_approval_queue(foreign.database.clone(), harness::bus().await)
-    .router();
+    let router = foreign.signed_in().await;
 
     let decided = send(
         &router,
@@ -42,7 +34,7 @@ async fn a_member_of_another_workspace_cannot_answer_a_gate() {
             foreign.workspace.as_str(),
             owner.gate.as_str()
         ),
-        Some(&foreign.token),
+        Some(SESSION),
         "",
     )
     .await;

@@ -7,7 +7,7 @@ The official Command Line Interface (CLI) for [agentsfleet](https://agentsfleet.
 [![npm](https://img.shields.io/npm/v/@agentsfleet/cli?style=for-the-badge&color=cb3837)](https://www.npmjs.com/package/@agentsfleet/cli)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 
-Sign in, manage workspaces, create fleets from chat, and inspect their activity from your terminal.
+Sign in, manage workspaces, start a fleet with its first message, keep talking to it, and inspect its activity from your terminal.
 
 > **Pre-release** — agentsfleet is in pre-release. The Application Programming
 > Interface (API), the CLI, and behavior may change without notice before
@@ -36,7 +36,16 @@ agentsfleet workspace create my-workspace
 
 # Verify configuration and connectivity
 agentsfleet doctor
+
+# Start a fleet with your first message; it prints the fleet's id
+agentsfleet fleet create "Watch checkout errors and tell me when they spike"
+
+# Keep talking to it, by id or by @name; with no message it opens a prompt
+agentsfleet fleet steer <fleet_id> "check it now"
 ```
+
+A fleet asks for a secret or an integration when it needs one;
+`agentsfleet fleet approvals list` shows what waits for your answer.
 
 ## Usage
 
@@ -54,12 +63,13 @@ and is versioned with each release:
 `agentsfleet --help` and `agentsfleet <command> --help` print the same surface
 from the binary you actually have installed.
 
-Run `agentsfleet pet` to watch Orbit, the terminal jellyfish, for five seconds.
-The preview shows Orbit floating, working and celebrating. Press Ctrl+C to stop it.
+Run `agentsfleet pet` to play Orbit, a local paddle game. Press Space to serve,
+move with the arrows or A/D, and keep the ball in play. Press R to restart or
+Q to quit.
 
-Small terminals use a compact jellyfish, and `AGENTSFLEET_REDUCED_MOTION=1` disables animation.
-Resizing the terminal stops the full preview's redraws to protect surrounding output.
-`agentsfleet pet --json` returns `{"name":"Orbit"}` without signing in or making a request.
+The request loader shows a bouncing ball. Set `AGENTSFLEET_REDUCED_MOTION=1` for a static status.
+
+`agentsfleet pet --json` returns `{"name":"Orbit"}`. The game runs locally without signing in.
 
 ## Development
 

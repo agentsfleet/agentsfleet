@@ -14,7 +14,6 @@ use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::TestDatabase;
 use afd_fleet::run::Runs;
-use afd_gate::gate::Gates;
 use afd_runner::Runners;
 use jiff::Timestamp;
 use sqlx::AssertSqlSafe;
@@ -175,14 +174,6 @@ impl Fixtures {
             afd_bus::test_util::unreachable(),
             Entropy::new(),
         )
-    }
-
-    /// The approval-gate store over this fixture's database.
-    ///
-    /// Built per call for the same reason [`Fixtures::runs`] is: a handle
-    /// over the same `Arc`-backed pool.
-    pub(crate) fn gates(&self) -> Gates {
-        Gates::new(self.database.clone(), self.bus().clone(), Entropy::new())
     }
 
     /// The bus this fixture's stores publish on, for tests reading activity

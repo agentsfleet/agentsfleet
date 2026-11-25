@@ -1,4 +1,4 @@
-import { proxySetup } from "@/lib/api/setup-proxy";
+import { proxyWorkspace } from "@/lib/api/workspace-proxy";
 import { proxyJsonGet } from "@/lib/api/live-json-proxy";
 
 export const runtime = "nodejs";
@@ -13,5 +13,5 @@ export async function GET(req: Request, {params}: Params) {
 
 export async function PATCH(req: Request, {params}: Params) {
   const {workspaceId, fleetId, durableTaskId} = await params;
-  return proxySetup(req, {params: Promise.resolve({workspaceId, setupPath: ["fleets", fleetId, "durable_tasks", durableTaskId]})});
+  return proxyWorkspace(req, {params: Promise.resolve({workspaceId, resourcePath: ["fleets", fleetId, "durable_tasks", durableTaskId]})});
 }

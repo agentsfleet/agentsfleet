@@ -72,7 +72,6 @@ fn candidates<'q, O>(
         .bind(af_wire::durable_task::CAPABILITY)
         .bind(af_wire::durable_task::DurableTaskState::Ready.as_str())
         .bind(af_wire::durable_task::DurableTaskState::Running.as_str())
-        .bind(afd_fleet::durable_task::DECISION_POLICY_PATH)
         // The serving generation, as a poll sends it; recovery is the other.
         .bind(false)
         // No recovery scan, so no key to resume it after.

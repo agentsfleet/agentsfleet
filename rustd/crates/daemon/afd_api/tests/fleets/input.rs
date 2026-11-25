@@ -114,8 +114,8 @@ async fn a_patch_may_not_forge_a_status_the_platform_owns() {
 }
 
 /// A rename is bounded to 1..=64 bytes, checked on the body before the
-/// resource tag is asked for: outside the bound the patch is malformed, and at
-/// either edge it passes on to the tag.
+/// resource tag is asked for: outside the bound the patch is refused with a
+/// sentence naming `name`, and at either edge it passes on to the tag.
 #[tokio::test]
 async fn a_rename_outside_its_bounds_is_refused_before_the_resource_tag() {
     for name in [String::new(), "x".repeat(65), "界".repeat(22)] {
@@ -124,7 +124,7 @@ async fn a_rename_outside_its_bounds_is_refused_before_the_resource_tag() {
         assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{name}");
         assert_eq!(
             detail_of(response).await,
-            "Fleet setup input violates the supported shape or bounds",
+            "name must be 1 to 64 lower-case letters, digits or hyphens",
             "{name}"
         );
     }
@@ -168,42 +168,32 @@ async fn a_status_patch_requires_the_resource_tag_before_reaching_the_store() {
     );
 }
 
+/// A create names its first message and its retry key in the body: one
+/// missing either, or carrying a field a fleet no longer has, is refused
+/// before the store.
 #[tokio::test]
-async fn creation_requires_one_header_key_and_refuses_file_sources() {
+async fn a_create_without_a_message_or_key_is_refused_before_the_store() {
     let router = Fleet::new()
         .with_person(TENANT_KEY, SUBJECT, EVERY_FLEET_SCOPE)
         .router();
-    let body = serde_json::json!({"source":{"kind":"draft","draft_candidate_id":FLEET},
-        "name":"daily-digest","review_digest":"review","start":{"kind":"none"}})
-    .to_string();
-    let missing = harness::send(
-        &router,
-        Method::POST,
-        &collection(),
-        Some(TENANT_KEY),
-        &body,
-    )
-    .await;
-    assert_eq!(missing.status(), StatusCode::BAD_REQUEST);
     for invalid in [
-        r#"{"platform_plugin_id":"daily-digest"}"#,
-        // Plugins are gone, so a Plugin source is a shape Save does not know.
-        r#"{"source":{"kind":"plugin","plugin_id":"0199a801-1000-7000-8000-000000000001","revision_id":"0199a801-1000-7000-8000-000000000002"},"name":"daily-digest","review_digest":"review","start":{"kind":"none"}}"#,
-        r#"{"source":{"kind":"file","path":"setup.json"},"name":"file","review_digest":"review","start":{"kind":"none"}}"#,
+        format!(r#"{{"operation_id":"{FLEET}"}}"#),
+        r#"{"message":"Triage the failing deploy"}"#.to_owned(),
+        format!(r#"{{"message":"","operation_id":"{FLEET}"}}"#),
+        format!(r#"{{"message":"hi","operation_id":"{FLEET}","review_digest":"review"}}"#),
+        format!(
+            r#"{{"message":"hi","operation_id":"{FLEET}","source":{{"kind":"file","path":"setup.json"}}}}"#
+        ),
     ] {
-        let response = harness::send_with_headers(
+        let response = harness::send(
             &router,
             Method::POST,
             &collection(),
             Some(TENANT_KEY),
-            invalid,
-            &[(
-                http::header::HeaderName::from_static("idempotency-key"),
-                FLEET,
-            )],
+            &invalid,
         )
         .await;
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{invalid}");
     }
 }
 

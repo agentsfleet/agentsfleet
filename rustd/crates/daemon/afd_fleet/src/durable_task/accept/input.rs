@@ -1,13 +1,15 @@
-//! Existing-task inputs retain meaning without granting another task's execution.
+//! A steer joins a span of a person's message to an unfinished task without
+//! granting the calling run the task's execution: a waiting or blocked task's
+//! wait is cancelled and its continuation queued.
 
 use super::super::{
     DurableTaskBinding, DurableTaskRefusal, DurableTaskScope, DurableTasks, PreparedItem,
     continuation::Continuation, fetch, guard, row,
 };
-use super::{prepare::Wake, source::Source};
+use super::{NO_INTERPRETATION, prepare::Wake, source::Source};
 use crate::{Result, error::query};
 use af_core::id::Uuid7;
-use af_wire::durable_task::{DurableTaskInputAction, DurableTaskState};
+use af_wire::durable_task::DurableTaskState;
 use sqlx::PgConnection;
 
 #[derive(sqlx::FromRow)]
@@ -29,17 +31,8 @@ struct Locked {
 pub(super) async fn wake(
     tasks: &DurableTasks,
     scope: &DurableTaskScope,
-    item: &PreparedItem,
+    id: &Uuid7,
 ) -> Result<Option<Wake>> {
-    if !matches!(
-        item.action(),
-        DurableTaskInputAction::Steer | DurableTaskInputAction::Refresh
-    ) {
-        return Ok(None);
-    }
-    let id = item
-        .existing_durable_task()
-        .ok_or(DurableTaskRefusal::InvalidTarget)?;
     let origin: Origin = fetch::rows(
         tasks.runs.pool(),
         sqlx::query_as(include_str!("sql/input_origin.sql"))
@@ -99,13 +92,9 @@ pub(super) async fn accept(
         .map_err(query("lock accepted input target"))?
         .ok_or(DurableTaskRefusal::NotFound)?;
     let state = row::state(&locked.state)?;
-    if state.is_terminal()
-        && matches!(
-            item.action(),
-            DurableTaskInputAction::Steer | DurableTaskInputAction::Refresh
-        )
-    {
-        return Err(DurableTaskRefusal::StaleState.into());
+    // A finished task takes no more input: it is no longer one a run may name.
+    if state.is_terminal() {
+        return Err(DurableTaskRefusal::NotFound.into());
     }
     let queue = wake.is_some();
     if let Some(wake) = wake {
@@ -145,7 +134,7 @@ pub(super) async fn accept(
                 .get(span)
                 .ok_or(DurableTaskRefusal::InputAmbiguous)?,
         )
-        .bind(item.interpretation())
+        .bind(NO_INTERPRETATION)
         .execute(connection)
         .await
         .map_err(query("retain accepted text and input interpretation"))?;

@@ -113,7 +113,6 @@ async fn an_api_only_turn_whose_checkpoint_cannot_be_read_never_starts_its_model
             workspace_id: af_wire::run::CheckpointOperationId(run.event.workspace_id.to_string()),
             fleet_id: af_wire::run::CheckpointOperationId(run.event.fleet_id.to_string()),
             turn_id: af_wire::run::CheckpointOperationId(run.event.turn_id.to_string()),
-            setup_revision_id: af_wire::run::CheckpointOperationId(RUN_ID.to_owned()),
             workspace: af_wire::run::TurnWorkspace::ApiOnly,
         },
         manifest_root: "a".repeat(64),

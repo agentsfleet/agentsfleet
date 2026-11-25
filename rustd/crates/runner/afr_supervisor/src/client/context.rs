@@ -1,6 +1,5 @@
-//! A run's fenced context verb: its thread's compacted context, a setup
-//! draft's or a fleet chat's, read at the run's start and saved after its
-//! window compacts.
+//! A run's fenced context verb: its fleet chat's compacted context, read at
+//! the run's start and saved after its window compacts.
 //!
 //! A read is retried like any idempotent verb. A save is retried too: it is a
 //! compare-and-swap on the version it names, so a save that landed and lost

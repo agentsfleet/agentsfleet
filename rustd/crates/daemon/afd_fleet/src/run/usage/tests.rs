@@ -252,9 +252,7 @@ async fn a_slice_of_a_purged_fleet_names_it_by_its_identifier() {
         .settlement(&test_dead::id(4), slice(ONE_SECOND_MS, 0), &[])
         .expect("prices")
         .expect("runtime logs a line");
-    let Attribution::Fleet { fleet_name, .. } = &settlement.attribution else {
-        unreachable!("a run's line is attributed to its fleet");
-    };
+    let Attribution::Fleet { fleet_name, .. } = &settlement.attribution;
     assert_eq!(fleet_name.as_str(), test_dead::id(1).as_str());
 }
 
@@ -332,30 +330,5 @@ fn a_charge_past_a_signed_64_bit_count_is_refused_on_every_path() {
             .expect("no request prices to no line")
             .len(),
         0
-    );
-}
-
-// Value: protects=a setup run's pass with neither requests nor run time logs no
-// line and spends no line number; fails_when=the draft settlement answers an
-// empty settlement; why_new=only the fleet settlement's empty pass was tested;
-// seam=`Pricing::draft_settlement`.
-#[tokio::test]
-async fn an_empty_setup_pass_logs_no_line() {
-    let pricing = pricing(Posture::SelfManaged).await;
-    let slice = super::DraftSlice {
-        runtime_seq: 0,
-        checked_at: test_dead::AT,
-        started_at: test_dead::AT,
-        runtime_ms: 0,
-        tenant_id: test_dead::id(2),
-        workspace_id: test_dead::id(3),
-        message_id: test_dead::id(5),
-    };
-
-    assert!(
-        pricing
-            .draft_settlement(&test_dead::id(4), slice, &[])
-            .expect("prices")
-            .is_none()
     );
 }

@@ -1,7 +1,7 @@
 -- Takes the fleet's turn among its schedule writers until the transaction ends: an advisory
 -- lock, so intake, reports and items of the fleet never wait on a create. The row is held KEY
 -- SHARE first, the mode the insert's foreign key takes anyway, so a writer that holds the fleet
--- row exclusively (a setup applying its recipes) is waited out before the turn is taken.
+-- row exclusively (a purge deleting it) is waited out before the turn is taken.
 WITH fleet AS MATERIALIZED (
     SELECT f.id
       FROM fleet.fleets f

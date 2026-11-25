@@ -7,7 +7,7 @@ import { FRAME_KIND } from "@/lib/api/turns-types";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import { workspaceHref } from "./fixtures/nav";
-import { getDefaultWorkspaceId, seedFleet, waitForFleetActive } from "./fixtures/seed";
+import { getDefaultWorkspaceId, seedFleet, expectFleetActive } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { SSE_CONTENT_TYPE, sseFrame as frame } from "./fixtures/sse";
 
@@ -82,10 +82,11 @@ test("native fleet streaming deduplicates completion and backfills after disconn
     await route.fulfill({ json: history });
   });
   try {
-    await waitForFleetActive(FIXTURE_KEY.regular, workspaceId, fleet.id);
+    await expectFleetActive(FIXTURE_KEY.regular, workspaceId, fleet.id);
     await signInAs(page, FIXTURE_KEY.regular);
     await page.goto(href, { waitUntil: "domcontentloaded" });
-    const chat = page.getByLabel("Fleet chat");
+    // Exact: the loading placeholder's label, "Loading fleet chat", contains it.
+    const chat = page.getByLabel("Fleet chat", { exact: true });
     await expect(chat).toBeVisible();
     await connected.promise;
     recordRefreshes(page, href, counts);

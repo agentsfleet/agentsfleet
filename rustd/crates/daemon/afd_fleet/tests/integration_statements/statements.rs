@@ -20,7 +20,7 @@ use super::*;
 /// tail so the three variants cannot drift; the head alone is no statement, so
 /// only the joined whole can be prepared. Enumerate with
 /// `git grep -n 'concatcp!' -- rustd/crates/*/*/src` and keep the SQL ones here.
-const JOINED: [(&str, &str); 5] = [
+const JOINED: [(&str, &str); 4] = [
     (
         "afd_fleet::run::sql::standing::SELECT_STANDING",
         afd_fleet::run::sql::standing::SELECT_STANDING,
@@ -34,19 +34,18 @@ const JOINED: [(&str, &str); 5] = [
         afd_fleet::run::sql::tool_detail::SELECT_LIVE_RUN,
     ),
     (
-        "afd_fleet::durable_task::DECISION_BUDGET_STATEMENT",
-        afd_fleet::durable_task::DECISION_BUDGET_STATEMENT,
-    ),
-    (
         "afd_fleet::durable_task::LOCKED_DECISION_CALL_STATEMENT",
         afd_fleet::durable_task::LOCKED_DECISION_CALL_STATEMENT,
     ),
 ];
 
-/// A statement naming a column the rebuilt schema dropped.
+/// A column the rebuilt schema dropped, which the refusal must name.
+const DROPPED: &str = "head_revision_id";
+
+/// A statement naming [`DROPPED`].
 const DROPPED_COLUMN: (&str, &str) = (
     "seeded/dropped_column.sql",
-    "SELECT deletion_generation FROM setup.drafts WHERE id = $1",
+    const_format::concatcp!("SELECT ", DROPPED, " FROM fleet.fleets WHERE id = $1"),
 );
 
 /// `name: error` for every statement in `statements` that does not prepare.
@@ -151,10 +150,9 @@ async fn test_every_sql_file_prepares() {
         .filter_map(|line| line.split_once(": ").map(|(named, _)| named))
         .collect();
     assert_eq!(named, [name], "the refusal names the statement");
+    let missing = format!(r#"column "{DROPPED}" does not exist"#);
     assert!(
-        seeded
-            .iter()
-            .all(|line| line.contains(r#"column "deletion_generation" does not exist"#)),
+        seeded.iter().all(|line| line.contains(&missing)),
         "{seeded:?}"
     );
 

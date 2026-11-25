@@ -1,4 +1,5 @@
-//! Root execution preserves source replies and refuses uncertain initial intent.
+//! A task-bound run prepares by reading its inputs before its sandbox, and its
+//! root acts only within the native execution ceiling.
 
 use crate::{
     PreparedDurableTask,
@@ -7,7 +8,7 @@ use crate::{
 };
 use af_wire::durable_task::*;
 use afr_tools::{RunVerbs, ScheduleCall, verbs::Unanswered};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 mod behavior;
 
@@ -37,11 +38,7 @@ impl RunVerbs for Native {
             query.starting_after.is_none(),
             "unanswered source pages must not be skipped"
         );
-        let mut inputs = self.inputs.clone();
-        if self.answered.load(Ordering::Relaxed) {
-            inputs.inputs.clear();
-        }
-        Ok(inputs)
+        Ok(self.inputs.clone())
     }
     async fn durable_task_effects(
         &self,
@@ -56,17 +53,7 @@ impl RunVerbs for Native {
         &self,
         input: DurableTaskInputReceiptInput,
     ) -> Result<DurableTaskInputReceiptResult, Unanswered> {
-        assert_eq!(input.source_turn_id, PENDING);
-        assert_eq!(input.item_id, ITEM);
-        assert_eq!(input.mode, DurableTaskInputMode::Answered);
-        assert_eq!(
-            input.response_text.as_deref(),
-            Some("Hello; your repair is still running.")
-        );
-        assert!(
-            !self.answered.swap(true, Ordering::Relaxed),
-            "the original item is answered only once"
-        );
+        self.answered.store(true, Ordering::Relaxed);
         Ok(DurableTaskInputReceiptResult {
             item_id: input.item_id,
             mode: input.mode,
@@ -83,7 +70,6 @@ fn inputs() -> DurableTaskInputsResponse<'static> {
             std::time::Duration::from_mins(10),
         )),
         source_turn_id: SOURCE.to_owned(),
-        accepted_revision_id: Some(SOURCE.to_owned()),
         current_message: None,
         current_durable_task: None,
         current_interpretation: None,
@@ -101,7 +87,6 @@ fn task() -> DurableTaskContext<'static> {
         target: DurableTaskTarget::ApiOnly,
         generation: 1,
         stop_generation: 0,
-        accepted_revision_id: SOURCE.into(),
         objective: "Investigate the failure".into(),
         goal_digest: "a".repeat(64).into(),
         questions: vec![],
@@ -136,14 +121,14 @@ fn pending_inputs() -> DurableTaskInputsResponse<'static> {
             items: vec![DurableTaskRecoveredItem {
                 binding: DurableTaskItemBinding {
                     item_id: ITEM.to_owned(),
-                    durable_task_id: None,
-                    durable_task_generation: None,
-                    action: DurableTaskInputAction::Conversation,
-                    applies_here: false,
+                    durable_task_id: Some(SOURCE.to_owned()),
+                    durable_task_generation: Some(1),
+                    action: DurableTaskInputAction::Steer,
+                    applies_here: true,
                     input_sequence: None,
                 },
                 accepted_text: "hello".to_owned(),
-                interpretation: "Greet the person".to_owned(),
+                interpretation: "Steer the investigation".to_owned(),
                 response_text: None,
             }],
         }),
@@ -180,136 +165,13 @@ async fn run(
 }
 
 #[tokio::test]
-async fn unavailable_initial_intent_returns_clarification_without_a_tool_or_coding_request()
--> crate::Result<()> {
-    let script = Script::new([]);
-    let engine = super::tests::engine(Vec::new(), &script);
-    let mut this_run = payload(&[], unbounded());
-    this_run.durable_tasks = true;
-    let mut input = inputs();
-    input.current_message = Some("Please investigate".to_owned());
-    let native = Native {
-        inputs: input,
-        answered: AtomicBool::new(false),
-    };
-    let prepared = engine
-        .prepare_durable_task(
-            &this_run,
-            &native,
-            &Meter::default(),
-            &tokio_util::sync::CancellationToken::new(),
-        )
-        .await?
-        .ok_or_else(crate::decision::unavailable)?;
-    assert!(!prepared.allow_actions);
-    let output = run(&engine, &this_run, &native, &prepared).await?;
-    assert!(output.result.content.contains("Please clarify"));
-    assert!(output.task.is_none());
-    assert!(output.recovery.is_none());
-    assert!(script.sent().is_empty());
-    Ok(())
-}
-
-#[tokio::test]
-async fn pending_conversation_reply_precedes_actions_even_when_a_later_source_page_exists()
--> crate::Result<()> {
-    let tool = &afr_tools::catalog::UPDATE_PLAN;
-    let script = Script::new([
-        vec![say("Hello; your repair is still running."), ended(false)],
-        vec![
-            call("plan", tool.name(), serde_json::json!({})),
-            ended(false),
-        ],
-    ]);
-    let engine = super::tests::engine(vec![Canned::boxed(tool, "Plan updated")], &script);
-    let mut this_run = payload(&[tool.name()], unbounded());
-    this_run.durable_tasks = true;
-    // A resolved physical model context is required for the original-source reply.
-    // The fixture's unlimited operating cap does not resolve this provider bound.
-    this_run.policy.model_context_tokens = 16_384;
-    let input = pending_inputs();
-    let native = Native {
-        inputs: input.clone(),
-        answered: AtomicBool::new(false),
-    };
-    let prepared = PreparedDurableTask {
-        execution_deadline: Some(af_core::clock::after(
-            af_core::clock::now(),
-            std::time::Duration::from_mins(10),
-        )),
-        inputs: input,
-        allow_actions: true,
-    };
-    let output = run(&engine, &this_run, &native, &prepared).await?;
-    assert!(native.answered.load(Ordering::Relaxed));
-    let sent = script.sent();
-    assert_eq!(sent.len(), 2);
-    assert_eq!(
-        sent.first().map(|reply| reply.tools.as_slice()),
-        Some([].as_slice())
-    );
-    assert!(
-        sent.get(1)
-            .is_some_and(|action| action.tools.iter().any(|name| name == tool.name()))
-    );
-    assert!(
-        output.task.is_none(),
-        "no decision assignment can authorize a goal result"
-    );
-    assert!(
-        output.recovery.is_some(),
-        "an unavailable judgment still retains complete private work"
-    );
-    Ok(())
-}
-
-#[tokio::test]
-async fn unresolved_model_context_leaves_source_unanswered_and_blocks_actions() -> crate::Result<()>
-{
-    let tool = &afr_tools::catalog::UPDATE_PLAN;
-    let script = Script::new([]);
-    let engine = super::tests::engine(vec![Canned::boxed(tool, "Plan updated")], &script);
-    let mut this_run = payload(&[tool.name()], unbounded());
-    this_run.durable_tasks = true;
-    this_run.policy.model_context_tokens = 0;
-    let input = pending_inputs();
-    let native = Native {
-        inputs: input.clone(),
-        answered: AtomicBool::new(false),
-    };
-    let prepared = PreparedDurableTask {
-        inputs: input,
-        allow_actions: true,
-        execution_deadline: Some(af_core::clock::after(
-            af_core::clock::now(),
-            std::time::Duration::from_mins(10),
-        )),
-    };
-    let output = run(&engine, &this_run, &native, &prepared).await?;
-    assert!(!native.answered.load(Ordering::Relaxed));
-    assert!(
-        script.sent().is_empty(),
-        "unresolved context permits neither a reply nor an action request"
-    );
-    assert!(
-        output.task.is_none(),
-        "an unanswered source cannot authorize task completion"
-    );
-    assert!(
-        output.recovery.is_some(),
-        "pending deliveries remain recoverable"
-    );
-    Ok(())
-}
-
-#[tokio::test]
 async fn missing_or_spent_native_deadline_blocks_actions_but_retains_recovery() -> crate::Result<()>
 {
     for deadline in [None, Some(af_core::clock::now())] {
         let script = Script::new([]);
         let engine = super::tests::engine(Vec::new(), &script);
         let mut this_run = payload(&[], unbounded());
-        this_run.durable_tasks = true;
+        this_run.durable_task = Some(task());
         this_run.policy.model_context_tokens = 16_384;
         let mut input = pending_inputs();
         input.execution_deadline = deadline;
@@ -319,7 +181,6 @@ async fn missing_or_spent_native_deadline_blocks_actions_but_retains_recovery() 
         };
         let prepared = PreparedDurableTask {
             inputs: input,
-            allow_actions: true,
             execution_deadline: deadline,
         };
         let output = run(&engine, &this_run, &native, &prepared).await?;
@@ -332,4 +193,107 @@ async fn missing_or_spent_native_deadline_blocks_actions_but_retains_recovery() 
         assert!(output.recovery.is_some());
     }
     Ok(())
+}
+
+/// Verbs whose input read answers `read`, counting each read.
+#[derive(Debug)]
+struct Reads {
+    read: Result<DurableTaskInputsResponse<'static>, Unanswered>,
+    reads: AtomicUsize,
+}
+
+impl Reads {
+    fn answering(read: Result<DurableTaskInputsResponse<'static>, Unanswered>) -> Self {
+        Self {
+            read,
+            reads: AtomicUsize::new(0),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl RunVerbs for Reads {
+    async fn schedules(&self, _: ScheduleCall<'_>) -> Result<String, Unanswered> {
+        Err(Unanswered::Unreachable)
+    }
+    async fn message(&self, _: u64, _: &str) -> Result<bool, Unanswered> {
+        Err(Unanswered::Unreachable)
+    }
+    async fn durable_task_inputs(
+        &self,
+        query: DurableTaskInputsQuery,
+    ) -> Result<DurableTaskInputsResponse<'static>, Unanswered> {
+        assert_eq!(query.fencing_token, 7, "the run's own fence");
+        self.reads.fetch_add(1, Ordering::Relaxed);
+        self.read.clone()
+    }
+}
+
+/// A run bound to no task is an ordinary run: it prepares nothing and reads
+/// no input, whatever unfinished tasks the fleet has.
+#[tokio::test]
+async fn a_run_bound_to_no_task_prepares_nothing() -> crate::Result<()> {
+    let engine = super::tests::engine(Vec::new(), &Script::new([]));
+    let mut ordinary = payload(&[], unbounded());
+    ordinary.decision = Some(Box::new(crate::fixture::decision_assignment()));
+    ordinary.unfinished_tasks = vec![DurableTaskInputCandidate {
+        durable_task_id: SOURCE.to_owned(),
+        title: "Investigate the failure".to_owned(),
+        state: DurableTaskState::Waiting,
+        generation: 1,
+    }];
+    let native = Reads::answering(Ok(pending_inputs()));
+
+    let prepared = engine.prepare_durable_task(&ordinary, &native).await?;
+
+    assert!(prepared.is_none());
+    assert_eq!(native.reads.load(Ordering::Relaxed), 0);
+    Ok(())
+}
+
+/// A bound run reads its inputs once, before any sandbox, and keeps the
+/// native ceiling the read carried.
+#[tokio::test]
+async fn a_bound_run_prepares_from_its_native_inputs() -> crate::Result<()> {
+    let engine = super::tests::engine(Vec::new(), &Script::new([]));
+    let mut bound = payload(&[], unbounded());
+    bound.durable_task = Some(task());
+    let read = pending_inputs();
+    let native = Reads::answering(Ok(read.clone()));
+
+    let prepared = engine
+        .prepare_durable_task(&bound, &native)
+        .await?
+        .ok_or_else(crate::decision::unavailable)?;
+
+    assert_eq!(native.reads.load(Ordering::Relaxed), 1);
+    assert_eq!(prepared.execution_deadline, read.execution_deadline);
+    assert_eq!(
+        prepared
+            .inputs
+            .current_durable_task
+            .map(|task| task.durable_task_id.into_owned()),
+        Some(SOURCE.to_owned())
+    );
+    Ok(())
+}
+
+/// A bound run whose read names no current task, or whose read is refused,
+/// is not prepared: it never acts on a task the daemon did not name.
+#[tokio::test]
+async fn a_bound_run_without_a_readable_task_is_refused() {
+    let engine = super::tests::engine(Vec::new(), &Script::new([]));
+    let mut bound = payload(&[], unbounded());
+    bound.durable_task = Some(task());
+    let refused = af_core::error_code::DURABLE_TASK_NOT_FOUND;
+    for (read, code) in [
+        (Ok(inputs()), af_core::error_code::INTERNAL_OPERATION_FAILED),
+        (Err(Unanswered::Refused(Some(refused))), refused),
+    ] {
+        let native = Reads::answering(read);
+
+        let failure = engine.prepare_durable_task(&bound, &native).await.err();
+
+        assert_eq!(failure.map(|failure| failure.code()), Some(code));
+    }
 }

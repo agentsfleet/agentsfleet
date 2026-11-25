@@ -22,7 +22,6 @@ use crate::seed::{MODEL, POSTURE, PROVIDER};
 /// One funded, leasable fleet and the chat event at the head of its queue.
 async fn funded(fixtures: &Fixtures) -> (Ready, Uuid7) {
     let (fleet, workspace, tenant, [runner]) = seeded_parts::<1>(fixtures).await;
-    set_config(fixtures, &fleet, BUDGETED_CONFIG).await;
     let turn_id = chat(fixtures, &fleet, &workspace).await;
     let seeded = Ready {
         runner,

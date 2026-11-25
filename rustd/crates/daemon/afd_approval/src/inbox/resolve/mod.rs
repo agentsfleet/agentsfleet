@@ -2,11 +2,10 @@
 //!
 //! Split from [`super`] on the seam between READING the queue and MOVING a
 //! row. The read half is two statements and a decoder; this half is one
-//! guarded UPDATE plus the three things that follow from it — the tail is
-//! told, a parked delivery is woken, and an approval that held a run lands
-//! the continuation. They belong together because they share one
-//! invariant: the row moved first, so none of them may turn a durable
-//! decision back into a retry.
+//! guarded UPDATE plus the two things that follow from it — the tail is told,
+//! and an answer a waiting run is owed lands as its answer turn. They belong
+//! together because they share one invariant: the row moved first, so neither
+//! may turn a durable decision back into a retry.
 
 use std::borrow::Cow;
 
@@ -38,58 +37,74 @@ const CONTEXT_CONTINUE: &str = "gate.inbox.continuation";
 
 /// The actor a continuation event records.
 ///
-/// `continuation:<the event the gate blocked>`, so the history of a run reads
-/// forward: the blocked row says what was stopped, and this one says what it
-/// was stopped BY and resumed from. A reader following the chain never has to
-/// join back through the gate table.
+/// `continuation:<the turn that waited>`, so the history of a run reads
+/// forward: the waiting row says what was asked, and this one says what
+/// answered it. A reader following the chain never has to join back through
+/// the gate table.
 const CONTINUATION_ACTOR_PREFIX: &str = "continuation:";
 
-/// What continues the run a resolved gate held.
+/// The answer a run that asked for access reads when a person approved it.
+const ACCESS_APPROVED: &str = "approved";
+
+/// The answer a run that asked for access reads when a person denied it.
+const ACCESS_DENIED: &str = "denied";
+
+/// What answers the run a resolved gate kept waiting.
+///
+/// Both arms write the answer turn a question's answer writes, so the waiting
+/// run resumes its checkpoint whichever card it asked on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Continues {
-    /// An approved policy gate: the body is empty, since the runner re-reads
-    /// the blocked event's own body through `resumes_turn_id`, and a copy
-    /// here would make two rows that could disagree about what was asked.
-    Approval,
-    /// An answered question: the body is the answer, and the continuation's
-    /// runs resume the asking turn's checkpoint.
+    /// An answered question: the answer is the gate's detail.
     Answer,
+    /// An access card a person approved or denied: the answer says which, and
+    /// the resumed run's policy holds the grant only when it was approved.
+    Access {
+        /// Whether the person approved the access.
+        approved: bool,
+    },
 }
 
 impl Continues {
-    /// What `status` continues, if anything.
-    pub(super) fn of(status: &str) -> Option<Self> {
-        if status == status::APPROVED {
-            Some(Self::Approval)
-        } else if status == status::ANSWERED {
+    /// What a gate of `gate_type` resolved to `status` continues, if anything.
+    ///
+    /// A denied question continues nothing: the person declined to answer,
+    /// and the run that asked stays where it stopped.
+    pub(super) fn of(status: &str, gate_type: &str) -> Option<Self> {
+        if status == status::ANSWERED {
             Some(Self::Answer)
+        } else if gate_type != KIND_INTEGRATION_GRANT {
+            None
+        } else if status == status::APPROVED {
+            Some(Self::Access { approved: true })
+        } else if status == status::DENIED {
+            Some(Self::Access { approved: false })
         } else {
             None
         }
     }
 
-    /// The producer the continuation is keyed under.
-    pub(super) const fn producer(self) -> afd_turns::Producer {
-        match self {
-            Self::Approval => afd_turns::Producer::GateContinuation,
-            Self::Answer => afd_turns::Producer::QuestionAnswer,
-        }
-    }
-
-    /// The continuation's body, for the gate `resolved` that held `turn_id`.
+    /// The answer turn's body, for the gate `resolved` that kept `turn_id`
+    /// waiting.
     fn body(self, resolved: &Resolved, turn_id: &Uuid7) -> serde_json::Value {
-        match self {
-            Self::Approval => serde_json::json!({}),
-            Self::Answer => serde_json::json!(af_wire::turn::QuestionAnswer {
-                message: Cow::Borrowed(&resolved.detail),
-                asked_turn_id: Cow::Borrowed(turn_id.as_str()),
-            }),
-        }
+        let message = match self {
+            Self::Answer => resolved.detail.as_str(),
+            Self::Access { approved: true } => ACCESS_APPROVED,
+            Self::Access { approved: false } => ACCESS_DENIED,
+        };
+        serde_json::json!(af_wire::turn::QuestionAnswer {
+            message: Cow::Borrowed(message),
+            asked_turn_id: Cow::Borrowed(turn_id.as_str()),
+        })
     }
 }
 
+/// The producer every answer turn is keyed under, by the gate's action.
+pub(super) const ANSWER_PRODUCER: afd_turns::Producer = afd_turns::Producer::QuestionAnswer;
+
 impl Inbox {
-    /// Answers one gate, atomically.
+    /// Answers one gate, atomically, and lands the answer turn its waiting
+    /// run is owed.
     ///
     /// `fleet` narrows the decision to a fleet the caller proved from a trusted
     /// source. It must be `Some` wherever the action id and the fleet come from
@@ -103,7 +118,7 @@ impl Inbox {
     ///
     /// # Errors
     /// Reports a datastore that would not answer, and a queue that would not
-    /// take the continuation an approval lands.
+    /// take the answer turn.
     pub async fn resolve(
         &self,
         action: &str,
@@ -161,28 +176,26 @@ impl Inbox {
         })
     }
 
-    /// What winning the race owes: the continuation an approval lands, and
-    /// the announcement every answer does.
+    /// What winning the race owes: the answer turn a waiting run is owed,
+    /// and the announcement every answer does.
     ///
-    /// The announcement runs whatever the continuation did. The row moved
+    /// The announcement runs whatever the answer turn did. The row moved
     /// when the statement returned it, so a watcher owed the answer is owed
-    /// it even when the run could not be restarted — the count on the frame
-    /// is the one the statement read, and an error from the continuation is
+    /// it even when the run could not be resumed — the count on the frame
+    /// is the one the statement read, and an error from the answer turn is
     /// reported after the tail has heard.
     async fn won(&self, row: StoredWin) -> Result<Resolved> {
         let pending_approvals = row.pending_approvals;
         let mut resolved = Resolved::from(row.resolution);
-        // The continuation is part of RESOLVING, not something a caller
-        // remembers to do afterwards: an approval that landed without one is
-        // a run a person unblocked and nothing restarted.
-        let continuation = if let Some(continues) = Continues::of(&resolved.status)
+        // The answer turn is part of RESOLVING, not something a caller
+        // remembers to do afterwards: an answer that landed without one is a
+        // run a person answered and nothing resumed.
+        let continuation = if let Some(continues) =
+            Continues::of(&resolved.status, &resolved.gate_type)
             && let Some(turn_id) = resolved.turn_id.clone()
         {
             self.continue_from(&resolved, &turn_id, continues).await
         } else {
-            // Resolution already cleared the durable park. Notify a waiting
-            // poll that the original delivery is available again.
-            self.wake_parked_delivery(&resolved.fleet_id).await;
             Ok(None)
         };
         let counters =
@@ -201,16 +214,11 @@ impl Inbox {
         Ok(resolved)
     }
 
-    /// The answer already cleared the durable park in its own transaction.
-    pub(super) async fn wake_parked_delivery(&self, fleet: &Uuid7) {
-        afd_bus::wake::publish(&self.bus, fleet.clone()).await;
-    }
-
-    /// Lands the event that resumes the run an approved gate had blocked.
+    /// Lands the answer turn that resumes the run a gate kept waiting.
     ///
-    /// The blocked row is NEVER reopened. This is a new event carrying
-    /// `resumes_turn_id`, so the history keeps both the run that was stopped
-    /// and the run that followed from the answer — reopening the first would
+    /// The waiting row is NEVER reopened. This is a new turn carrying
+    /// `resumes_turn_id`, so the history keeps both the run that asked and
+    /// the run that followed from the answer — reopening the first would
     /// erase the fact that a person was ever asked.
     ///
     /// Idempotent on the gate's ACTION: the turn is keyed by it, and
@@ -234,7 +242,7 @@ impl Inbox {
         let admitted = self
             .turns
             .admit(afd_turns::IncomingTurn {
-                producer: continues.producer(),
+                producer: ANSWER_PRODUCER,
                 // The gate's ACTION, which a retried resolve repeats: two
                 // people answering one gate, or one person's retry, continue
                 // the run exactly once.
@@ -244,7 +252,7 @@ impl Inbox {
                 actor: actor.as_str(),
                 event_type: af_wire::turn::TurnKind::Continuation,
                 request_json: &request_json,
-                // The run a gate parked answers where it would have: a thread
+                // The run that waited answers where it would have: a thread
                 // that asked before the gate still gets the answer after it.
                 reply: afd_turns::Reply::Inherit { turn_id },
             })
@@ -325,6 +333,3 @@ mod stood;
 
 #[cfg(test)]
 mod tests;
-
-#[cfg(test)]
-mod wake_tests;

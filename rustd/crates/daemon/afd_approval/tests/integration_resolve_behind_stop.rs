@@ -12,14 +12,14 @@
 
 use std::pin::Pin;
 
-use af_core::id::Uuid7;
 use afd_api_wire::approval::status;
 use afd_approval::{Decision, Resolution};
+use afd_turns::Producer;
 use afd_turns::view::History;
 use afd_turns::view::stop::{Stop, hold_thread, stop_on};
 use sqlx::Connection as _;
 
-use crate::lane::{LOCK_FLEET, Lane, SETUP_CARD, Window};
+use crate::lane::{LOCK_FLEET, Lane, Window};
 
 const APPROVER: &str = "human:approver";
 
@@ -28,21 +28,6 @@ const NOTE: &str = "approved while stopping";
 /// Whether any backend is waiting on `$1`'s locks.
 const BLOCKING: &str =
     "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid)))";
-
-/// Fleet delete's close of its setup cards (`afd_approval/src/grant_sql/cancel_setup_cards.sql`).
-const CLOSE_SETUP_CARDS: &str = "UPDATE fleet.approval_gates SET status = $2, resolved_by = 'delete', \
-detail = '', resolved_at = now(), updated_at = now(), active_grant_id = NULL \
-WHERE fleet_id = $1 AND resolved_at IS NULL AND gate_type = $3";
-
-async fn still_parked(lane: &Lane, turn: &Uuid7) -> bool {
-    sqlx::query_scalar(
-        "SELECT parked_at IS NOT NULL AND settled_at IS NULL FROM thread.turns WHERE id = $1",
-    )
-    .bind(turn)
-    .fetch_one(&mut *lane.pool.acquire().await.expect("a connection"))
-    .await
-    .expect("the turn is readable")
-}
 
 /// Whether `work` queues behind `pid` before it finishes; `work` keeps running.
 async fn queues_behind<F: Future + Unpin>(lane: &Lane, pid: i32, work: &mut F) -> bool {
@@ -71,9 +56,8 @@ async fn queues_behind<F: Future + Unpin>(lane: &Lane, pid: i32, work: &mut F) -
 async fn a_gate_resolution_waits_for_a_stop_holding_the_thread() {
     let lane = Lane::isolated().await;
     let action = lane.seed_gate(Window::Open).await;
-    let gated = lane.parked_turn().await;
-    let other = lane.parked_turn().await;
-    lane.gate_turn(&action, Some(&gated), false).await;
+    let gated = lane.queued_turn().await;
+    lane.gate_turn(&action, Some(&gated)).await;
 
     let mut holder = lane.pool.acquire().await.expect("a connection");
     let mut stopping = holder.begin().await.expect("Stop's transaction");
@@ -113,24 +97,24 @@ async fn a_gate_resolution_waits_for_a_stop_holding_the_thread() {
     }
     .expect("Stop resolved the gate first");
     assert_eq!(stood.status, status::ARCHIVED);
-    assert!(
-        still_parked(&lane, &other).await,
-        "a resolution that lost unparks nothing"
+    assert_eq!(
+        lane.continuations(Producer::QuestionAnswer, &action).await,
+        0,
+        "a resolution that lost lands no answer turn"
     );
 }
 
 /// A resolution that waited on a thread holder still wins once the holder lets go:
 /// after a holder that wrote the thread row and committed, as a renewal or a report
-/// does, and after one that rolled back. Both parked turns of the fleet unpark.
+/// does, and after one that rolled back. The waiting turn gets its one answer turn.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_gate_resolution_that_waited_on_the_thread_wins_after_it() {
     for writes in [true, false] {
         let lane = Lane::isolated().await;
         let action = lane.seed_gate(Window::Open).await;
-        let gated = lane.parked_turn().await;
-        let other = lane.parked_turn().await;
-        lane.gate_turn(&action, Some(&gated), false).await;
+        let gated = lane.queued_turn().await;
+        lane.gate_turn(&action, Some(&gated)).await;
 
         let mut holder = lane.pool.acquire().await.expect("a connection");
         let mut holding = holder.begin().await.expect("the holder's transaction");
@@ -168,16 +152,22 @@ async fn a_gate_resolution_that_waited_on_the_thread_wins_after_it() {
         }
 
         let resolution = resolve.await.expect("the resolution answers");
-        assert!(
-            matches!(resolution, Resolution::Resolved(_)),
-            "writes={writes}: the waiting resolution wins: {resolution:?}"
+        let Resolution::Resolved(won) = resolution else {
+            unreachable!("writes={writes}: the waiting resolution wins: {resolution:?}");
+        };
+        let answer = won
+            .continuation_turn_id
+            .expect("the approval answers the waiting turn");
+        assert_eq!(
+            lane.event_column(answer.as_str(), "resumes_turn_id").await,
+            Some(gated.to_string()),
+            "writes={writes}: the answer resumes the turn that waited"
         );
-        for turn in [&gated, &other] {
-            assert!(
-                !still_parked(&lane, turn).await,
-                "writes={writes}: the turn unparks"
-            );
-        }
+        assert_eq!(
+            lane.continuations(Producer::QuestionAnswer, &action).await,
+            1,
+            "writes={writes}: one answer turn"
+        );
     }
 }
 
@@ -187,9 +177,8 @@ async fn a_fleet_delete_finishes_against_a_resolution_and_a_stop() {
     for stopping in [false, true] {
         let lane = Lane::isolated().await;
         let action = lane.seed_gate(Window::Open).await;
-        let gated = lane.parked_turn().await;
-        lane.gate_turn(&action, stopping.then_some(&gated), true)
-            .await;
+        let gated = lane.queued_turn().await;
+        lane.gate_turn(&action, Some(&gated)).await;
 
         let mut holder = lane.pool.acquire().await.expect("a connection");
         let mut deleting = holder.begin().await.expect("delete's transaction");
@@ -198,13 +187,6 @@ async fn a_fleet_delete_finishes_against_a_resolution_and_a_stop() {
             .fetch_one(&mut *deleting)
             .await
             .expect("delete holds the fleet");
-        sqlx::query(CLOSE_SETUP_CARDS)
-            .bind(&lane.fleet)
-            .bind(status::ARCHIVED)
-            .bind(SETUP_CARD)
-            .execute(&mut *deleting)
-            .await
-            .expect("delete closes its setup cards");
 
         let (fleet, action_id) = (lane.fleet.to_string(), action.to_string());
         let history = History::new(lane.pool.clone());

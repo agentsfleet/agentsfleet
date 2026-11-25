@@ -27,7 +27,6 @@ pub(super) fn turn(fixture: &Fixture) -> Result<RecoverySnapshot> {
             workspace_id: CheckpointOperationId(fixture.run.event.workspace_id.to_string()),
             fleet_id: CheckpointOperationId(fixture.run.event.fleet_id.to_string()),
             turn_id: CheckpointOperationId(fixture.run.event.turn_id.to_string()),
-            setup_revision_id: CheckpointOperationId(ID.to_owned()),
             workspace: TurnWorkspace::ApiOnly,
         },
         previous: None,

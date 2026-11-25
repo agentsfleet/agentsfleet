@@ -26,7 +26,7 @@ use sqlx::Row as _;
 
 use crate::definition_install::seal;
 use crate::e2e::{Scenario, scenario_with, unique_ids};
-use crate::e2e_seed::{FLEET_CONFIG_JSON, seed_fleet};
+use crate::e2e_seed::seed_fleet;
 use crate::tail::run;
 
 /// How long a held sync run outlives the database clock: past the case.
@@ -95,14 +95,10 @@ async fn seed_scheduler_bag(scene: &Scenario, admin: &Uuid7, qstash: &FakeQStash
 /// document `config`; no run is taken. The scheduler credentials are the
 /// admin workspace's `qstash` bag, read on use, as production reads them;
 /// nothing reaches the daemon by env.
-pub(crate) async fn scheduling(
-    supervisor: &mut Supervisor,
-    qstash: &FakeQStash,
-    config: &str,
-) -> Scenario {
+pub(crate) async fn scheduling(supervisor: &mut Supervisor, qstash: &FakeQStash) -> Scenario {
     let admin = unique_ids().0;
     let extra = [(PLATFORM_ADMIN_WORKSPACE_KNOB, admin.as_str())];
-    let scene = scenario_with(supervisor, None, &extra, config).await;
+    let scene = scenario_with(supervisor, None, &extra).await;
     seed_scheduler_bag(&scene, &admin, qstash).await;
     scene
 }
@@ -140,7 +136,7 @@ const OTHER_FLEET_NAME: &str = "e2e-other-fleet";
 
 impl Assigned {
     pub(crate) async fn boot(supervisor: &mut Supervisor, qstash: &FakeQStash) -> Self {
-        let scene = scheduling(supervisor, qstash, FLEET_CONFIG_JSON).await;
+        let scene = scheduling(supervisor, qstash).await;
         #[expect(
             clippy::disallowed_methods,
             reason = "a plain client calls the daemon this test booted; a proxy rule and a deadline are not what the test proves"
@@ -253,7 +249,6 @@ impl Assigned {
             OTHER_FLEET_NAME,
             &self.scene.workspace,
             &self.scene.tenant,
-            FLEET_CONFIG_JSON,
             now,
         )
         .await;

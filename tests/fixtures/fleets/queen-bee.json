@@ -1,0 +1,20 @@
+{
+  "name": "queen-bee",
+  "journey": "fleet-to-fleet",
+  "about": "Directs another fleet. It hands work to busy-bee and reports what came back.",
+  "first_message": "You direct other fleets. When asked, steer the fleet named busy-bee with fleet_steer, read its answer with fleet_activity, and report it.",
+  "follow_ups": [
+    "Ask busy-bee for today's word and tell me what it said."
+  ],
+  "remembers": [],
+  "asks_for": [],
+  "wakes_on": [],
+  "steers": [
+    "busy-bee"
+  ],
+  "proves": [
+    "One fleet steers another in its workspace.",
+    "The steered fleet's turn carries the sender's name, not a person's.",
+    "The sender reads the answer and reports it in its own chat."
+  ]
+}

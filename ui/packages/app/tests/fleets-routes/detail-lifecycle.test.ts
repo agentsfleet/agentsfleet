@@ -1,12 +1,8 @@
-import { FLEET_ID } from "../helpers/draft-fixtures";
+import { FLEET_ID } from "../helpers/fleet-fixtures";
 import { detailBody, happyBilling, mockFetchBilling } from "./harness";
 import { describe, expect, it, vi } from "vitest";
 import { renderToReadableStream, renderToStaticMarkup } from "react-dom/server";
 import { fetchMock } from "../helpers/dashboard-mocks";
-
-vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetPendingChat", () => ({
-  FleetPendingChat: ({fleet}: {fleet: {id: string}}) => `Setup conversation for ${fleet.id}`,
-}));
 
 describe("fleets routes — detail lifecycle states", () => {
   it("shows archived history and keeps destructive controls in the action menu", async () => {
@@ -62,8 +58,8 @@ describe("fleets routes — detail lifecycle states", () => {
     expect(markup).not.toContain("Balance exhausted");
   });
 
-  it("routes an installing fleet to its setup conversation instead of the execution composer", async () => {
-    mockFetchBilling(happyBilling, {fleet: {name: "fresh-bot", status: "installing"}});
+  it("opens a new fleet straight onto its chat, with nothing to set up", async () => {
+    mockFetchBilling(happyBilling, {fleet: {name: "fresh-bot", status: "active"}});
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const stream = await renderToReadableStream(
@@ -73,10 +69,9 @@ describe("fleets routes — detail lifecycle states", () => {
     );
     await stream.allReady;
     const markup = await new Response(stream).text();
-    expect(markup).toContain(`Setup conversation for ${FLEET_ID}`);
-    expect(markup).not.toContain('aria-label="Fleet status: installing"');
-    expect(markup).not.toContain(">Killed<");
-    expect(markup).not.toContain("Continue setup in chat");
+    expect(markup).toContain(">fresh-bot</h1>");
+    expect(markup).not.toContain("Fleet status:");
+    expect(markup.toLowerCase()).not.toContain("setup");
     expect(markup).not.toContain("Pending approvals");
   });
 

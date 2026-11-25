@@ -3,28 +3,23 @@
 use af_core::id::Uuid7;
 use af_wire::{
     decision::{
-        DecisionAnswer, DecisionAssignment, DecisionOutcome, DecisionPurpose, DecisionRequest,
-        DecisionResult, answer_matches,
+        DecisionAnswer, DecisionAssignment, DecisionOutcome, DecisionRequest, DecisionResult,
+        answer_matches,
     },
     durable_task::DecisionRecordDisposition,
 };
 use sqlx::{PgConnection, types::Json};
 use std::collections::BTreeMap;
 
-use super::{
-    context::{AssessedContext, DurableTaskStamp},
-    row::Call,
-    sql,
-};
+use super::{context::DurableTaskStamp, row::Call, sql};
 use crate::{
     Result,
-    durable_task::{DurableTaskScope, DurableTasks, transaction},
+    durable_task::{DurableTasks, transaction},
     error::query,
 };
 
 #[derive(sqlx::FromRow)]
 struct Owner {
-    revision_id: Option<Uuid7>,
     durable_task_id: Option<Uuid7>,
     decision_snapshot: Option<Json<DecisionAssignment>>,
 }
@@ -120,18 +115,7 @@ pub(super) async fn current_on(connection: &mut PgConnection, call: &Call) -> Re
         return Ok(false);
     }
     let execution = execution(&mut tx, call).await?;
-    if execution != saved.execution {
-        return Ok(false);
-    }
-    let revision = if saved.assessment.purpose() == DecisionPurpose::Goal {
-        execution.as_ref().map(|task| &task.accepted_revision_id)
-    } else {
-        owner.revision_id.as_ref()
-    };
-    if revision != Some(&saved.accepted_revision_id) {
-        return Ok(false);
-    }
-    candidates_match(&mut tx, call, saved).await
+    Ok(execution == saved.execution)
 }
 
 async fn execution(connection: &mut PgConnection, call: &Call) -> Result<Option<DurableTaskStamp>> {
@@ -151,21 +135,4 @@ async fn execution(connection: &mut PgConnection, call: &Call) -> Result<Option<
         .map_err(query(
             "read the assessed task generation and evidence cursors",
         ))
-}
-
-async fn candidates_match(
-    connection: &mut PgConnection,
-    call: &Call,
-    saved: &AssessedContext,
-) -> Result<bool> {
-    let scope = DurableTaskScope {
-        fleet_id: call.fleet_id.clone(),
-        workspace_id: call.workspace_id.clone(),
-    };
-    let candidates =
-        super::prepare::candidates(connection, &scope, saved.assessment.purpose()).await?;
-    Ok(candidates
-        .iter()
-        .map(|candidate| &candidate.stamp)
-        .eq(saved.candidates.iter()))
 }

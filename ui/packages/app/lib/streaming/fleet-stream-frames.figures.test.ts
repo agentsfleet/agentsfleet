@@ -197,11 +197,11 @@ describe("turn_complete — a row the timeline never opened", () => {
 describe("rowToTurn", () => {
   // Value: protects=backfilled receipts stay system activity without a fabricated completed run;
   // fails_when=recorded status gets the ordinary completion floor; seam=none; no_claim=live transport.
-  it("keeps a saved setup receipt separate from a completed fleet answer", () => {
+  it("keeps a recorded receipt separate from a completed fleet answer", () => {
     const receipt = {...row({actor: "config_reload", event_type: FLEET_ACTIVITY.type, status: FLEET_ACTIVITY.status,
       tokens: null, wall_ms: null, cost_nanos: null}),
-      request_json: JSON.stringify({kind: ACTIVITY_KIND.setupSaved, revision: "3"})};
-    expect(rowToTurn(receipt)).toMatchObject({role: "system", text: "Saved setup", reply: "", outcome: "",
+      request_json: JSON.stringify({kind: ACTIVITY_KIND.memorySharingChanged, read: false, publish: true})};
+    expect(rowToTurn(receipt)).toMatchObject({role: "system", text: "Workspace memories: learning off, sharing on", reply: "", outcome: "",
       status: FLEET_ACTIVITY.status, tokens: null, wallMs: null, costNanos: null});
     expect(rowToTurn(row()).outcome).toBe(OUTCOME.COMPLETED);
   });

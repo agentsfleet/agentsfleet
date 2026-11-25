@@ -45,12 +45,10 @@ const METADATA_ADDRESS: Ipv4Addr = Ipv4Addr::new(169, 254, 169, 254);
 const LAN_ADDRESS: Ipv4Addr = Ipv4Addr::new(10, 1, 2, 3);
 const TAILNET_ADDRESS: Ipv4Addr = Ipv4Addr::new(100, 101, 102, 103);
 
-/// A fleet's network block allowing `hosts`, read-only or not.
-fn fleet(hosts: &[&'static str], read_only: bool) -> FleetNetwork<'static> {
+/// A fleet's network block allowing `hosts`.
+fn fleet(hosts: &[&'static str]) -> FleetNetwork<'static> {
     FleetNetwork {
         allow: hosts.iter().copied().map(Cow::Borrowed).collect(),
-        read_only,
-        read_post_paths: Vec::new(),
         ..FleetNetwork::default()
     }
 }
@@ -88,21 +86,19 @@ fn names(hosts: &[(String, Named)]) -> Vec<&str> {
 }
 
 /// Registry hosts come first, then the fleet's, each once in the order first
-/// named; a read-only fleet adds none, and a registry left empty is the
-/// runner's default set.
+/// named, and a registry left empty is the runner's default set.
 #[test]
-fn test_egress_plan_merges_and_excludes_read_only() {
+fn test_egress_plan_merges_registry_and_fleet_hosts() {
     let egress = allow_list(&[A, B]);
 
     let (registry, from_fleet) = (Named::Registry, Named::Fleet);
     assert_eq!(
-        egress.hosts(&fleet(&[B, C], false)),
+        egress.hosts(&fleet(&[B, C])),
         [(A, registry), (B, registry), (C, from_fleet)]
             .map(|(host, named)| (host.to_owned(), named))
     );
-    assert_eq!(names(&egress.hosts(&fleet(&[B, C], true))), [A, B]);
     assert_eq!(
-        names(&allow_list(&[]).hosts(&fleet(&[], false))),
+        names(&allow_list(&[]).hosts(&fleet(&[]))),
         PACKAGE_MANAGER_DOMAINS,
         "an operator who named no registry gets the runner's own"
     );
@@ -115,10 +111,7 @@ fn test_egress_plan_merges_and_excludes_read_only() {
 #[test]
 fn an_entry_keeps_its_host_and_drops_its_port_scheme_and_path() {
     let egress = allow_list(&["a.example:443", "A.Example:8443", B]);
-    let authored = fleet(
-        &["https://c.example/v1", "c.example:443", "[::1]:80", "a b"],
-        false,
-    );
+    let authored = fleet(&["https://c.example/v1", "c.example:443", "[::1]:80", "a b"]);
 
     assert_eq!(names(&egress.hosts(&authored)), [A, B, C, "::1", "a b"]);
 }
@@ -128,7 +121,7 @@ fn an_entry_keeps_its_host_and_drops_its_port_scheme_and_path() {
 #[tokio::test]
 async fn each_policy_binds_to_its_network() {
     let resolver = resolver();
-    let fleet = fleet(&[C], false);
+    let fleet = fleet(&[C]);
     let bind = |egress: Egress| {
         let (fleet, resolver) = (&fleet, &resolver);
         async move { egress.bind(fleet, resolver).await.unwrap() }
@@ -156,7 +149,7 @@ async fn each_policy_binds_to_its_network() {
 #[tokio::test]
 async fn a_closed_egress_reaches_nothing() {
     let bound = Egress::closed()
-        .bind(&fleet(&[A], false), &resolver())
+        .bind(&fleet(&[A]), &resolver())
         .await
         .unwrap();
 
@@ -173,7 +166,7 @@ async fn test_egress_setup_failures_refuse_the_run() {
         let resolver = &resolver;
         async move {
             allow_list(&[host])
-                .bind(&fleet(&[], false), resolver)
+                .bind(&fleet(&[]), resolver)
                 .await
                 .unwrap_err()
         }
@@ -216,7 +209,7 @@ async fn test_a_fleet_host_at_a_blocked_address_refuses_the_run() {
 
     for (host, address) in cases {
         let failure = allow_list(&[A])
-            .bind(&fleet(&[host], false), &resolver)
+            .bind(&fleet(&[host]), &resolver)
             .await
             .unwrap_err();
 
@@ -243,7 +236,7 @@ async fn test_an_address_literal_in_network_allow_is_judged_as_an_address() {
         "169.254.169.254",
     ] {
         let failure = allow_list(&["localhost"])
-            .bind(&fleet(&[entry], false), &SystemResolver)
+            .bind(&fleet(&[entry]), &SystemResolver)
             .await
             .unwrap_err();
 
@@ -257,7 +250,7 @@ async fn test_an_address_literal_in_network_allow_is_judged_as_an_address() {
 #[tokio::test]
 async fn test_a_registry_host_at_a_private_address_is_admitted() {
     let bound = allow_list(&[LAN])
-        .bind(&fleet(&[LAN, A], false), &blocking_resolver())
+        .bind(&fleet(&[LAN, A]), &blocking_resolver())
         .await
         .unwrap();
 
@@ -282,7 +275,7 @@ async fn test_a_host_with_one_blocked_address_is_refused_on_both_egress_paths() 
         .unwrap();
 
     let bound = allow_list(&[A])
-        .bind(&fleet(&[MIXED], false), &resolver)
+        .bind(&fleet(&[MIXED]), &resolver)
         .await
         .unwrap_err();
     let sent = client
@@ -298,14 +291,9 @@ async fn test_a_host_with_one_blocked_address_is_refused_on_both_egress_paths() 
 #[test]
 fn should_keep_http_settings_out_of_the_sandbox_allowlist() {
     let assigned = allow_list(&[A]);
-    let mut policy = fleet(&[C], false);
+    let mut policy = fleet(&[C]);
     let original = assigned.hosts(&policy);
     policy.http_egress = HttpEgress::Public;
     policy.package_manager_domains = true;
     assert_eq!(assigned.hosts(&policy), original);
-    policy.read_only = true;
-    assert_eq!(
-        assigned.hosts(&policy),
-        vec![(A.to_owned(), Named::Registry)]
-    );
 }

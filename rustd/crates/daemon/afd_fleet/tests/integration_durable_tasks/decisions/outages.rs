@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use af_core::{error_code, test_util::trace::Capture};
 use af_wire::durable_task::{
-    DecisionAssessment, DecisionCallState, DecisionRecordDisposition, DecisionReservationInput,
+    DecisionCallState, DecisionRecordDisposition, DecisionReservationInput,
 };
 use afd_billing::{biller::FailOpen, ledger::LedgerBiller};
 use afd_db::test_util::unreachable_db;
@@ -16,6 +16,7 @@ use serde_json::{Value, json, value::RawValue};
 use super::{
     super::fixture::{Case, exercise},
     fixture::{Decisions, known, request},
+    steps::another_operation,
 };
 use crate::seed::{MODEL, PROVIDER};
 
@@ -28,7 +29,7 @@ async fn a_funding_outage_saves_no_call_and_recovery_reads_a_fresh_key() {
 
 async fn funding(case: &Case, capture: &Capture) {
     let mut fixture = Decisions::create(case).await;
-    let input = fixture.reservation(DecisionAssessment::Message, None);
+    let input = fixture.call_input().await;
     unpriced(&fixture, &input).await;
     unconfirmed(&fixture, &input).await;
     funding_events(capture, case);
@@ -44,7 +45,7 @@ async fn funding(case: &Case, capture: &Capture) {
         body.pointer("/dispatch/api_key"),
         Some(&json!("rotated-native-fixture"))
     );
-    let independent = fixture.reservation(DecisionAssessment::Message, None);
+    let independent = another_operation(&input);
     let (issued, replay) = fixture.reserve(&independent).await;
     assert!(!issued);
     assert_eq!(
@@ -52,7 +53,7 @@ async fn funding(case: &Case, capture: &Capture) {
         json!({"status":"existing", "call_id":original, "state":"issued"})
     );
     assert_eq!(fixture.counts().await, (1, 1, 0));
-    changed_evidence_conflicts(&fixture).await;
+    changed_evidence_conflicts(&fixture, &input).await;
     disabled_after_issue(&mut fixture, &input, &body).await;
     fixture
         .model
@@ -82,7 +83,7 @@ async fn unpriced(fixture: &Decisions<'_>, input: &garde::Valid<DecisionReservat
         .execute(&mut *case.held.fixtures.database.acquire().await.expect("owned rate injection"))
         .await.expect("remove this isolated fixture's coding price");
     assert_eq!(removed.rows_affected(), 1);
-    let independent = fixture.reservation(DecisionAssessment::Message, None);
+    let independent = another_operation(input);
     for candidate in [input, &independent] {
         let failure = fixture
             .tasks
@@ -100,9 +101,12 @@ async fn unpriced(fixture: &Decisions<'_>, input: &garde::Valid<DecisionReservat
 
 /// The same assessment from another operation with other evidence conflicts with the
 /// issued call and changes nothing.
-async fn changed_evidence_conflicts(fixture: &Decisions<'_>) {
+async fn changed_evidence_conflicts(
+    fixture: &Decisions<'_>,
+    input: &garde::Valid<DecisionReservationInput>,
+) {
     let saved = fixture.call_snapshot().await;
-    let mut changed = (*fixture.reservation(DecisionAssessment::Message, None)).clone();
+    let mut changed = (*another_operation(input)).clone();
     changed.evidence = json!({"observation":"a different tested head"});
     let changed = garde::Unvalidated::new(changed)
         .validate()

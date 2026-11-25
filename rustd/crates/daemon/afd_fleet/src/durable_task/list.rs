@@ -16,7 +16,6 @@ struct SummaryRow {
     state: String,
     resource_version: i64,
     generation: i64,
-    accepted_revision_id: Uuid7,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     created_at: jiff::Timestamp,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
@@ -56,7 +55,6 @@ pub(super) async fn read(
                 state: row::state(&stored.state)?,
                 resource_version: row::counter(stored.resource_version, "resource_version")?,
                 generation: row::counter(stored.generation, "generation")?,
-                accepted_revision_id: stored.accepted_revision_id,
                 created_at: stored.created_at,
                 expires_at: stored.expires_at,
             })

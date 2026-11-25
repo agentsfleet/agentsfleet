@@ -13,6 +13,7 @@ export const GATE_ID = "0192a3b4-c5d6-7e8f-9012-345678901235";
 export const SCHEDULE_ID = "0192a3b4-c5d6-7e8f-9012-345678901236";
 export const GRANT_ID = "0192a3b4-c5d6-7e8f-9012-345678901237";
 export const API_KEY_ID = "0192a3b4-c5d6-7e8f-9012-345678901238";
+export const TRIGGER_ID = "0192a3b4-c5d6-7e8f-9012-345678901239";
 
 const WS = `/v1/workspaces/${WORKSPACE_ID}`;
 const FLEET = `${WS}/fleets/${FLEET_ID}`;
@@ -25,13 +26,17 @@ export interface ParityRow {
 export const COMMAND_PARITY: ReadonlyArray<ParityRow> = [
   { argv: ["fleet", "list"], calls: [`GET ${WS}/fleets`] },
   { argv: ["fleet", "status"], calls: [`GET ${WS}/fleets`] },
-  // No earlier spelling exists for these two, so they record today's calls.
-  { argv: ["fleet", "activate", FLEET_ID], calls: [`GET ${FLEET}`] },
+  // No earlier spelling exists for these, so they record today's calls.
+  { argv: ["fleet", "create", "watch checkout errors"], calls: [`POST ${WS}/fleets`] },
   { argv: ["fleet", "archive", FLEET_ID], calls: [`GET ${FLEET}`] },
   { argv: ["fleet", "delete", FLEET_ID], calls: [`GET ${FLEET}`] },
   { argv: ["fleet", "steer", FLEET_ID, "check the release"], calls: [`POST ${FLEET}/messages`] },
   { argv: ["fleet", "logs", "--fleet", FLEET_ID], calls: [`GET ${FLEET}/turns`] },
   { argv: ["fleet", "turns", FLEET_ID], calls: [`GET ${FLEET}/turns`] },
+  { argv: ["fleet", "triggers", "list", FLEET_ID], calls: [`GET ${FLEET}/triggers`] },
+  { argv: ["fleet", "triggers", "delete", FLEET_ID, TRIGGER_ID], calls: [`DELETE ${FLEET}/triggers/${TRIGGER_ID}`] },
+  { argv: ["fleet", "model", "use", FLEET_ID, "owner/runtime"], calls: [`GET ${FLEET}`] },
+  { argv: ["fleet", "network", "use", FLEET_ID, "private"], calls: [`GET ${FLEET}`] },
   { argv: ["fleet", "approvals", "list"], calls: [`GET ${WS}/approvals`] },
   { argv: ["fleet", "approvals", "show", GATE_ID], calls: [`GET ${WS}/approvals/${GATE_ID}`] },
   { argv: ["fleet", "approvals", "approve", GATE_ID], calls: [`POST ${WS}/approvals/${GATE_ID}/approve`] },

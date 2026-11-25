@@ -1,8 +1,8 @@
 //! A Stop and an issue meet on the same thread. A Stop that committed before the
 //! issue's insert, or while the insert waited on the thread, leaves no run; a
 //! Stop that waited behind the issue names and marks the run it issued. These
-//! issue as delivery does, under the head's setup proof, which reads no task
-//! source for a plain turn and so leaves the insert as the only check.
+//! issue as delivery does, which reads no task source for a plain turn and so
+//! leaves the insert as the only check.
 //!
 //! Marked `#[ignore]`; `make test-integration-rustd` runs them.
 #![cfg(feature = "test-util")]
@@ -14,7 +14,6 @@
 
 use af_core::id::Uuid7;
 use afd_db::test_util::mint_id;
-use afd_fleet::run::installed::IssueRevision;
 use afd_fleet::run::{Acquired, Billed};
 use afd_turns::view::History;
 use afd_turns::view::stop::{Stop, hold_thread, stop_on};
@@ -35,24 +34,6 @@ const CANCEL_MARKED: &str = "SELECT cancel_requested_at IS NOT NULL FROM thread.
 
 /// The placement version the issue's insert compares.
 const RUN_VERSION: &str = "SELECT run_version FROM runner.runners WHERE id = $1";
-
-/// The fleet's head, which delivery's setup proof names.
-const HEAD_REVISION: &str = "SELECT head_revision_id FROM fleet.fleets WHERE id = $1";
-
-/// The setup proof delivery issues under: the head the assignment assembled.
-async fn head_proof(database: &afd_db::Db, fleet: &Uuid7) -> IssueRevision {
-    let mut probe = database.acquire().await.expect("a connection");
-    let head: Uuid7 = sqlx::query_scalar(HEAD_REVISION)
-        .bind(fleet)
-        .fetch_one(&mut *probe)
-        .await
-        .expect("the seeded fleet has a head");
-    IssueRevision {
-        accepted: head.clone(),
-        current: head,
-        durable_task_generation: None,
-    }
-}
 
 /// Whether `work` queues behind a lock `pid` holds before it finishes; `work` keeps
 /// running either way, so a statement that never waits fails the test, not hangs it.
@@ -95,11 +76,11 @@ fn billed(tenant: &Uuid7) -> Billed<'_> {
     }
 }
 
-/// The control for the two refusals below: the same fixture and proof, with nothing
-/// stopped, issue the head.
+/// The control for the two refusals below: the same fixture, with nothing
+/// stopped, issues the head.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_head_nothing_stopped_is_issued_under_its_proof() {
+async fn a_head_nothing_stopped_is_issued() {
     let fixtures = Fixtures::create().await;
     let Seeded {
         runners: [first, _second],
@@ -111,16 +92,9 @@ async fn a_head_nothing_stopped_is_issued_under_its_proof() {
     let held = seed::select_fleet(&runs, &first, &fleet)
         .await
         .expect("the fleet is leasable");
-    let proof = head_proof(&fixtures.database, &fleet).await;
 
     let issued = runs
-        .issue_for_revision(
-            &first,
-            &held,
-            billed(&tenant),
-            fixtures.enrolled_at(),
-            Some(&proof),
-        )
+        .issue(&first, &held, billed(&tenant), fixtures.enrolled_at())
         .await
         .expect("the issue answers");
 
@@ -154,16 +128,8 @@ async fn a_fleet_head_stopped_after_its_assignment_is_not_issued() {
         "no run served the turn when Stop committed: {:?}",
         stopped.stop
     );
-
-    let proof = head_proof(&fixtures.database, &fleet).await;
     let issued = runs
-        .issue_for_revision(
-            &first,
-            &held,
-            billed(&tenant),
-            fixtures.enrolled_at(),
-            Some(&proof),
-        )
+        .issue(&first, &held, billed(&tenant), fixtures.enrolled_at())
         .await
         .expect("the issue answers");
     assert!(issued.is_none(), "a stopped head is not issued");
@@ -185,8 +151,6 @@ async fn a_stop_committed_while_the_issue_waits_issues_no_run() {
     let held = seed::select_fleet(&runs, &first, &fleet)
         .await
         .expect("the fleet is leasable");
-
-    let proof = head_proof(&fixtures.database, &fleet).await;
     let mut holder = fixtures.database.acquire().await.expect("a connection");
     let mut stopping = holder.begin().await.expect("Stop's transaction");
     let pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
@@ -197,13 +161,7 @@ async fn a_stop_committed_while_the_issue_waits_issues_no_run() {
         .await
         .expect("Stop holds the fleet and its thread");
 
-    let mut issue = Box::pin(runs.issue_for_revision(
-        &first,
-        &held,
-        billed(&tenant),
-        fixtures.enrolled_at(),
-        Some(&proof),
-    ));
+    let mut issue = Box::pin(runs.issue(&first, &held, billed(&tenant), fixtures.enrolled_at()));
     assert!(
         queues_behind(&fixtures.database, pid, &mut issue).await,
         "the issue waits on the thread Stop holds"
@@ -312,9 +270,7 @@ async fn insert_run(
         kind: held.kind.as_str(),
         decision_snapshot: None,
         run_version,
-        run_kind: af_wire::run::RunKind::Fleet.as_str(),
         held_until: held.held_until,
-        setup_revision: None,
     }
     .insert(connection)
     .await

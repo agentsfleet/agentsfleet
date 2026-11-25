@@ -125,9 +125,7 @@ async fn the_durable_task_verbs_a_seam_leaves_out_refuse_without_a_code() {
     let bindings = DurableTaskBindingsInput {
         fencing_token: 1,
         source_turn_id: ID.to_owned(),
-        accepted_revision_id: ID.to_owned(),
         plan_digest: "0".repeat(64),
-        message_decision_call_id: ID.to_owned(),
         items: Vec::new(),
     };
     assert_eq!(CLOSED.durable_task_bindings(bindings).await.err(), refused);
@@ -149,7 +147,9 @@ async fn the_durable_task_verbs_a_seam_leaves_out_refuse_without_a_code() {
         operation_id: ID.to_owned(),
         fencing_token: 1,
         source_turn_id: ID.to_owned(),
-        assessment: DecisionAssessment::Message,
+        assessment: DecisionAssessment::Goal {
+            action_group_id: ID.to_owned(),
+        },
         durable_task: Some(durable_task_version()),
         retry_of: None,
         evidence: serde_json::Value::Null,
@@ -191,7 +191,7 @@ fn a_decision_evaluation_debug_view_omits_the_recorded_receipt() {
     );
 }
 
-/// The fleet and context verbs a seam leaves out refuse without a code, so a
+/// The fleet, trigger, access and context verbs a seam leaves out refuse without a code, so a
 /// tool reads `agentsfleetd` refused rather than a guessed answer.
 #[tokio::test]
 async fn the_fleet_and_context_verbs_a_seam_leaves_out_refuse_without_a_code() {
@@ -205,6 +205,14 @@ async fn the_fleet_and_context_verbs_a_seam_leaves_out_refuse_without_a_code() {
         .await;
     assert_eq!(listed.err(), refused);
     assert_eq!(CLOSED.fleet_steer(&fleet, "hello").await.err(), refused);
+    let triggers = CLOSED.triggers(super::TriggerCall::List).await;
+    assert_eq!(triggers.err(), refused);
+    let access = af_wire::access_verb::AccessRequest {
+        fencing_token: 1,
+        name: "sentry".into(),
+        scope: None,
+    };
+    assert_eq!(CLOSED.access(access).await.err(), refused);
     assert_eq!(CLOSED.context_load().await.err(), refused);
     let save = af_wire::context::ContextSaveRequest {
         fencing_token: 1,

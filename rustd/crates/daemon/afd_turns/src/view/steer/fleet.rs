@@ -86,7 +86,7 @@ impl Steer {
     ///
     /// # Errors
     /// Refuses a target this workspace does not hold, one that takes no new
-    /// work, a setup needing review, a spent deployment ceiling, and the same
+    /// work, a spent deployment ceiling, and the same
     /// key already holding other words. A guard that does not hold is not an
     /// error: it answers `Ok(Err(Unheld))` with nothing written.
     pub async fn append_from_fleet(

@@ -25,8 +25,6 @@ pub enum Producer {
     WebhookApp,
     /// A schedule fire, keyed by the scheduler's message id.
     ScheduleFire,
-    /// The event an approved gate continues with, keyed by the gate's action.
-    GateContinuation,
     /// A person's answer to a run's question, keyed by the question gate's
     /// action. Its runs resume the asking turn's checkpoint.
     QuestionAnswer,
@@ -46,7 +44,6 @@ impl Producer {
             Self::Webhook => "webhook",
             Self::WebhookApp => "webhook_app",
             Self::ScheduleFire => "schedule_fire",
-            Self::GateContinuation => "gate_continuation",
             Self::QuestionAnswer => "question_answer",
             Self::DurableTaskContinuation => "durable_task_continuation",
             Self::SlackMention => "slack_mention",
@@ -93,7 +90,7 @@ pub enum Key<'a> {
 /// Three states rather than an `Option`, for the reason [`Key`] gives: a
 /// continuation neither owns a reply surface nor lacks one — it answers where
 /// the event it resumes would have — and folding that into `None` would lose a
-/// thread's answer the moment a gate parked it.
+/// thread's answer the moment a run waited on a person.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Reply<'a> {
     /// This producer owns no reply surface, so no answer is ever owed.

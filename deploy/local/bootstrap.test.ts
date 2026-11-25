@@ -29,7 +29,10 @@ const GITHUB_FIELDS = ["app_id", "app_slug", "client_id", "client_secret", "priv
 const GITHUB_NAMES = GITHUB_FIELDS.map((field) => `LOCAL_GITHUB_${field.toUpperCase()}`);
 const LINEAR_FIELDS = ["client_id", "client_secret"];
 const LINEAR_NAMES = LINEAR_FIELDS.map((field) => `LOCAL_LINEAR_${field.toUpperCase()}`);
-const CONNECTOR_ENV = [...GITHUB_NAMES, ...LINEAR_NAMES, "ACCEPTANCE_LOCAL_CONNECTOR_VAULT", "TYPESAFE_API_KEY"];
+const SLACK_FIELDS = ["client_id", "client_secret", "signing_secret"];
+const SLACK_NAMES = SLACK_FIELDS.map((field) => `LOCAL_SLACK_${field.toUpperCase()}`);
+const APP_NAMES = [...GITHUB_NAMES, ...LINEAR_NAMES, ...SLACK_NAMES];
+const CONNECTOR_ENV = [...APP_NAMES, "ACCEPTANCE_LOCAL_CONNECTOR_VAULT", "TYPESAFE_API_KEY"];
 const DECISION_ID = "01900000-0000-7000-8000-0000000000d1";
 const MODELS_PATH = "/v1/admin/models";
 
@@ -140,6 +143,9 @@ describe("acceptance environment file", () => {
   });
 });
 
+describe("daemon environment file", () => {
+});
+
 describe("local target", () => {
   test("remote bootstrap targets are refused before provisioning", () => {
     const local = "http://127.0.0.1:30999";
@@ -217,7 +223,7 @@ describe("runner enrollment", () => {
       expect(await Bun.file(file).exists()).toBe(false);
       if (method === "GET") return { items: [], next_cursor: null };
       expect(await Bun.file(`${file}.enrolling`).exists()).toBe(true);
-      // The setup edit check runs only for a runner that names a decision model.
+      // The task goal check runs only for a runner that names a decision model.
       expect(body).toMatchObject({ assigned_policy: { decision_model_id: DECISION_ID } });
       writes++;
       return registration;
@@ -237,11 +243,11 @@ describe("runner enrollment", () => {
     await reuse();
     expect(verify).toHaveBeenCalledTimes(1);
     expect(writes).toBe(1);
-    // A runner enrolled before the edit check, or with another model, is refused rather than reported ready.
+    // A runner enrolled before the goal check, or with another model, is refused rather than reported ready.
     policy = {};
-    await expect(reuse()).rejects.toThrow(/setup edit check/);
+    await expect(reuse()).rejects.toThrow(/task goal check/);
     policy = { decision_model_id: "01900000-0000-7000-8000-0000000000ff" };
-    await expect(reuse()).rejects.toThrow(/setup edit check/);
+    await expect(reuse()).rejects.toThrow(/task goal check/);
   });
 });
 
@@ -344,29 +350,32 @@ describe("fixture secret bags", () => {
     const fromOp = (vault: string, bag: string, fields: string[]) =>
       ({ name: bag, data: Object.fromEntries(fields.map((field) => [field, `from-op:op://${vault}/${bag}/${field}`])) });
 
-    // A burst machine passes every field of both apps in: no 1Password at all.
-    for (const name of [...GITHUB_NAMES, ...LINEAR_NAMES]) process.env[name] = `given-${name}`;
+    // A burst machine passes every field of every app in: no 1Password at all.
+    for (const name of APP_NAMES) process.env[name] = `given-${name}`;
     await run();
     expect(calls).toEqual([]);
     expect(saved).toEqual([
       { name: "github-app", data: Object.fromEntries(GITHUB_FIELDS.map((field, index) => [field, `given-${GITHUB_NAMES[index]}`])) },
       { name: "linear-app", data: Object.fromEntries(LINEAR_FIELDS.map((field, index) => [field, `given-${LINEAR_NAMES[index]}`])) },
+      { name: "slack-app", data: Object.fromEntries(SLACK_FIELDS.map((field, index) => [field, `given-${SLACK_NAMES[index]}`])) },
     ]);
 
-    // One GitHub field missing: all six come from 1Password, never a mix; Linear stays the caller's.
+    // One GitHub field missing: all six come from 1Password, never a mix; Linear and Slack stay the caller's.
     delete process.env.LOCAL_GITHUB_WEBHOOK_SECRET;
     delete process.env.ACCEPTANCE_LOCAL_CONNECTOR_VAULT;
     await run();
     expect(calls[0]).toEqual(["item", "list", "--format", "json"]);
     expect(calls.slice(1)).toEqual(GITHUB_FIELDS.map((field) => ["read", "--no-newline", `op://vault-dev/github-app/${field}`]));
     expect(saved[0]).toEqual(fromOp("vault-dev", "github-app", GITHUB_FIELDS));
+    expect(saved.slice(1)).toMatchObject([{ name: "linear-app" }, { name: "slack-app" }]);
 
-    // A named vault skips discovery and serves both apps.
-    for (const name of [...GITHUB_NAMES, ...LINEAR_NAMES]) delete process.env[name];
+    // A named vault skips discovery and serves every app.
+    for (const name of APP_NAMES) delete process.env[name];
     process.env.ACCEPTANCE_LOCAL_CONNECTOR_VAULT = "chosen";
     await run();
-    expect(calls).toHaveLength(GITHUB_FIELDS.length + LINEAR_FIELDS.length);
-    expect(saved).toEqual([fromOp("chosen", "github-app", GITHUB_FIELDS), fromOp("chosen", "linear-app", LINEAR_FIELDS)]);
+    expect(calls).toHaveLength(GITHUB_FIELDS.length + LINEAR_FIELDS.length + SLACK_FIELDS.length);
+    expect(saved).toEqual([fromOp("chosen", "github-app", GITHUB_FIELDS), fromOp("chosen", "linear-app", LINEAR_FIELDS),
+      fromOp("chosen", "slack-app", SLACK_FIELDS)]);
   });
 });
 
@@ -385,7 +394,7 @@ describe("platform workspace record", () => {
   });
 });
 
-describe("setup edit check", () => {
+describe("task goal check", () => {
   const modelRow = { id: DECISION_ID, provider: "typesafe", model_id: "jev-latest" };
 
   test("the decision model is created once and its key saved once in the platform workspace", async () => {

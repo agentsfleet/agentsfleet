@@ -1,4 +1,4 @@
-//! One connection owner orchestrates existing runner, fleet and setup services.
+//! One connection owner orchestrates existing runner and fleet services.
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 #![deny(clippy::self_named_module_files)]
 
@@ -19,7 +19,6 @@ use af_stream::Budget;
 use afd_bus::{Handle, wake::Wake};
 use afd_fleet::run::RunService;
 use afd_runner::Runners;
-use afd_setup::Drafts;
 use afd_sse::StreamLimit;
 use tokio::time::Instant;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
@@ -47,10 +46,6 @@ pub struct GatewayDependencies {
     pub runners: Runners,
     /// Existing fleet placement, billing, activity and report owner.
     pub runs: RunService,
-    /// The setup drafts a setup run's assignment, preview and context read.
-    pub drafts: Drafts,
-    /// A setup run's report finishes its turn and any Save it asked for.
-    pub creations: afd_setup::Creations,
     /// The same bus used by every production publisher.
     pub bus: Handle,
     /// The same stream ceiling used by browser streams.

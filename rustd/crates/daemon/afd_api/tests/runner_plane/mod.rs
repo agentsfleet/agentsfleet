@@ -24,7 +24,6 @@
 
 use crate::harness;
 
-mod decision_lifecycle;
 use crate::harness::code_of;
 
 use afd_auth::directory::Liveness;
@@ -257,3 +256,5 @@ mod satellites;
 mod schedule_guard;
 
 mod durable_task_bounds;
+
+mod durable_task_routes;

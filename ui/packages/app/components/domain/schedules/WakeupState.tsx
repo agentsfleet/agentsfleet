@@ -2,8 +2,8 @@
 
 import {useEffect, useState} from "react";
 import {Button, Time, sameCalendarDay, nextLocalMidnight} from "@agentsfleet/design-system";
-import type {Schedule} from "@/lib/api/draft-types";
-import {SCHEDULE_RUN_STATE, SCHEDULE_SYNC} from "@/lib/api/draft-vocabulary";
+import type {Schedule} from "@/lib/api/schedule-types";
+import {SCHEDULE_RUN_STATE, SCHEDULE_SYNC} from "@/lib/api/schedule-types";
 import {scheduleStateText} from "@/lib/api/schedule-status";
 
 // setTimeout holds its delay in a signed 32-bit integer; a longer one fires at once.

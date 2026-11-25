@@ -21,7 +21,7 @@ pub enum Operation {
     Folds,
     /// Capture or restore ordinary event-owned recovery state.
     TurnCheckpoint,
-    /// Read or save a setup run's compacted draft context.
+    /// Read or save a run's compacted context.
     Context,
     /// Write and flush a complete frame.
     Write,

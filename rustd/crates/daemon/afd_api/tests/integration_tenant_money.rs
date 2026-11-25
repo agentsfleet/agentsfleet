@@ -19,16 +19,13 @@ use serde_json::Value;
 
 use self::harness::{Fleet, exchange, items, json_body, send, send_with_headers};
 
-#[path = "tenant_money/setup.rs"]
-mod setup;
-
 const SUBJECT: &str = "user_live_money_catalogue";
 const BALANCE: i64 = 42_000;
 /// What the fixture's two seeded charge rows cost, 7 nanos each: writing a
 /// line debits its payer's wallet, so the balance reads this much less.
 const SEEDED_SPEND: i64 = 14;
 
-/// The instant every seeded line is written at, setup's included.
+/// The instant every seeded line is written at.
 ///
 /// `billing.usage_lines` is append-only, so a tie is seeded, never stamped
 /// after: one instant makes a charge page order by UUID alone.

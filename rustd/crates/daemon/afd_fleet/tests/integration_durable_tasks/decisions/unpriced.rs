@@ -9,8 +9,8 @@ use af_core::{error_code, test_util::trace::Capture};
 use af_wire::{
     decision::DecisionUsage,
     durable_task::{
-        DecisionAssessment, DecisionCallState, DecisionNotSentCause, DecisionReceipt,
-        DecisionReceiptInput, DecisionRecordDisposition,
+        DecisionCallState, DecisionNotSentCause, DecisionReceipt, DecisionReceiptInput,
+        DecisionRecordDisposition,
     },
 };
 use afd_fleet::durable_task::DurableTaskLifecycle as _;
@@ -53,7 +53,7 @@ async fn unpriceable_usage_survives_catalogue_changes_and_conflicting_receipts_w
 async fn retained(case: &Case, rate: Option<i64>, usage: DecisionUsage, capture: &Capture) {
     let fixture = Decisions::create(case).await;
     set_rate(&fixture, rate).await;
-    let input = fixture.reservation(DecisionAssessment::Message, None);
+    let input = fixture.call_input().await;
     let (_, body) = fixture.reserve(&input).await;
     let call = body
         .get("call_id")

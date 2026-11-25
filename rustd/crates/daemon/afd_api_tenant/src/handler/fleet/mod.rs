@@ -1,4 +1,5 @@
-//! The shared workspace fleet directory; native setup lives in `native`.
+//! The shared workspace fleet directory; a fleet's create, read and change
+//! live in `native`.
 //!
 //! The item half — read, edit, purge — is [`detail`], split along the line the
 //! route table already draws: everything here is addressed by a workspace
@@ -26,12 +27,11 @@ use std::sync::Arc;
 
 use af_core::id::Uuid7;
 use af_core::paging::Cursor;
-use afd_api_wire::fleet::{FleetSummary, FleetsResponse, Triggers};
+use afd_api_wire::fleet::{FleetSummary, FleetsResponse};
 use afd_fleet_lifecycle::{After, FleetPage, FleetRow};
 use axum::Json;
 use axum::extract::{RawQuery, State};
 use axum::response::{IntoResponse as _, Response};
-use serde_json::value::RawValue;
 
 use af_fleet_runtime::FleetName;
 
@@ -195,20 +195,9 @@ fn summary(row: &FleetRow) -> FleetSummary<'_> {
         status: Cow::Borrowed(row.status.as_str()),
         created_at: row.created_at,
         updated_at: row.updated_at,
-        description: row.description.as_deref().map(Cow::Borrowed),
-        triggers: triggers(row.triggers.as_ref()),
         events_processed: row.events_processed.to_string(),
         budget_used_nanos: row.budget_used_nanos.to_string(),
     }
-}
-
-/// The stored trigger projection, spliced as raw JSON.
-///
-/// The projection is cast from a `JSONB` column, so it always parses; the
-/// `.ok()` is the conversion's error type, not a path a stored row takes.
-pub(super) fn triggers(stored: Option<&afd_fleet_lifecycle::Triggers>) -> Triggers {
-    let projection = stored?;
-    RawValue::from_string(projection.as_json_text().to_owned()).ok()
 }
 
 #[cfg(test)]

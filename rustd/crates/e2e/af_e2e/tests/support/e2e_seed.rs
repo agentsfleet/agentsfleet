@@ -8,19 +8,18 @@
 //!
 //! # Read this list before adding a scenario
 //!
-//! Six rows, and every one of them was discovered by a failing poll rather than
+//! Five rows, and every one of them was discovered by a failing poll rather than
 //! by reading the code, because the end-to-end suite is the first in this workspace to cross
 //! the pull path at all. The store suites next door call `Runs::select` and
 //! `issue` directly and reach none of these checks, which is why their fixtures
-//! can seed an empty config and an unsupported event type and stay green.
+//! can seed an unsupported event type and stay green.
 //!
 //! In the order the daemon consults them: the fleet must exist and be `active`;
-//! its head revision's `config` must PARSE; the tenant must hold a wallet; the model must
-//! be priced; a platform provider default must be active; and that default's
+//! the tenant must hold a wallet; the model must be priced; a platform provider default must be active; and that default's
 //! workspace must hold a sealed provider key.
 //!
 //! The sealed credentials — the provider key, the tenant's API key, and a key
-//! the activation ladder admits — are the sixth row and its tenant-plane
+//! the activation ladder admits — are the fifth row and its tenant-plane
 //! cousins, and live in `e2e_seed_keys.rs`: they change when the vault's
 //! envelope does, not when the pull path does.
 //!
@@ -44,11 +43,9 @@ use jiff::Timestamp;
 
 use crate::e2e::{MODEL, PROVIDER};
 use afd_db::test_util::{
-    DefaultSeed, FleetSeed, ModelSeed, PlatformDefault, TenantSeed, WorkspaceSeed,
+    DefaultSeed, FleetSeed, GrantSeed, ModelSeed, PlatformDefault, TenantSeed, WorkspaceSeed,
 };
 use jiff_sqlx::ToSqlx as _;
-
-use crate::e2e_native::Stored;
 
 /// Whether a scenario's workspace is already seeded, so a second fleet in it
 /// shares the account rather than refusing on the tenant's key.
@@ -76,29 +73,21 @@ const INPUT_NANOS_PER_MTOK: i64 = 3_000_000_000;
 const CACHED_INPUT_NANOS_PER_MTOK: i64 = 300_000_000;
 const OUTPUT_NANOS_PER_MTOK: i64 = 15_000_000_000;
 
-/// The fleet's stored configuration, as the daemon's parser reads it.
-///
-/// NOT `{}`. The store suites next door seed an empty object and never notice,
-/// because they call `Runs::select`/`issue` directly and only the PULL path
-/// resolves a configuration — `Plane::run` reads it through
-/// `FleetConfig::stored` and answers `UZ-INTERNAL-003`,
-/// "the fleet's stored configuration cannot be read", on anything that will not
-/// parse. An end-to-end suite is the first thing in this workspace to cross that seam,
-/// so it is the first that has to seed a document a fleet could really carry.
-///
-/// The minimum a stored document needs: a name, one trigger, a tool list, and
-/// a budget. The budget is a dollar because the run below charges under a
-/// thousandth of one — large enough that the ceiling never decides this test,
-/// small enough that a runaway charge would still trip it.
-pub(crate) const FLEET_CONFIG_JSON: &str = r#"{"name":"e2e-fleet","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"}}}"#;
-
-/// The context window a seeded catalogue row advertises. Unread; `NOT NULL`.
+/// The context window a seeded catalogue row advertises: the window a run
+/// plans its context in.
 const CONTEXT_CAP_TOKENS: i32 = 200_000;
 
 /// The saved inference settings the scenario's model routes through: the
 /// Messages API at the real base URL, with the output limit the runs assert on.
 const MODEL_INFERENCE: &str =
     r#"{"api":"messages","base_url":"https://api.anthropic.com/v1","max_output_tokens":8192}"#;
+
+/// [`MODEL_INFERENCE`] with an output limit a narrowed window still holds. A
+/// model whose output limit exceeds its window does not route
+/// (`guffbolt_ai::wire::Route::new`), so the daemon resolves no provider and
+/// no run opens.
+const NARROW_INFERENCE: &str =
+    r#"{"api":"messages","base_url":"https://api.anthropic.com/v1","max_output_tokens":1024}"#;
 
 /// The placement tag a scenario's fleet requires and only its own runner
 /// carries.
@@ -145,11 +134,8 @@ pub(crate) fn enrolment() -> RegisterRequest<'static> {
 /// the same workspace passes a name of its own.
 pub(crate) const FLEET_NAME: &str = "e2e-fleet";
 
-/// The instructions every directly seeded fleet runs.
-pub(crate) const FIXTURE_INSTRUCTIONS: &str = "# fixture";
-
 /// The tenant, workspace and fleet rows a run joins against, the fleet
-/// named `name` and selecting the native setup `config` describes.
+/// named `name`.
 ///
 /// Written directly because no store verb in this workspace creates a fleet —
 /// that is the tenant plane's (M178) — and inventing one to serve a test would
@@ -160,7 +146,6 @@ pub(crate) async fn seed_fleet(
     name: &str,
     workspace: &Uuid7,
     tenant: &Uuid7,
-    config: &str,
     now: Timestamp,
 ) {
     let tag = scenario_tag(fleet);
@@ -169,7 +154,7 @@ pub(crate) async fn seed_fleet(
         status: FLEET_STATUS_ACTIVE,
         tag: &tag,
     };
-    seed_fleet_as(booted, fleet, workspace, tenant, config, now, seed).await;
+    seed_fleet_as(booted, fleet, workspace, tenant, now, seed).await;
 }
 
 /// What a seeded fleet row carries beside its identity: its name, its status,
@@ -189,7 +174,6 @@ pub(crate) async fn seed_fleet_as(
     fleet: &Uuid7,
     workspace: &Uuid7,
     tenant: &Uuid7,
-    config: &str,
     now: Timestamp,
     seed: Seeded<'_>,
 ) {
@@ -218,12 +202,10 @@ pub(crate) async fn seed_fleet_as(
             .expect("the workspace row must insert");
     }
     let tags = [seed.tag];
-    let stored = Stored::of(&crate::e2e_native::definition(config, FIXTURE_INSTRUCTIONS));
     FleetSeed::new(fleet, workspace, tenant, seed.status)
         .name(seed.name)
         .tags(&tags)
         .at(now)
-        .setup(stored.revision())
         .insert(&mut *connection)
         .await
         .expect("the fleet row must insert");
@@ -256,6 +238,11 @@ pub(crate) async fn seed_wallet(booted: &Booted, tenant: &Uuid7, nanos: i64, now
 /// assertion downstream reads a charge of nothing — which would make the ledger
 /// row this scenario writes indistinguishable from one the gate never priced.
 pub(crate) async fn seed_model_rate(booted: &Booted, now: Timestamp) {
+    write_model(booted, CONTEXT_CAP_TOKENS, MODEL_INFERENCE, now).await;
+}
+
+/// Writes the shared catalogue row with window `cap` and `inference`.
+async fn write_model(booted: &Booted, cap: i32, inference: &str, now: Timestamp) {
     let mut connection = booted
         .database
         .acquire()
@@ -263,17 +250,46 @@ pub(crate) async fn seed_model_rate(booted: &Booted, now: Timestamp) {
         .expect("a pooled connection");
     let catalogue_row =
         Uuid7::parse(CATALOGUE_ROW).expect("the catalogue row is a canonical UUIDv7");
-    ModelSeed::new(&catalogue_row, PROVIDER, MODEL, CONTEXT_CAP_TOKENS)
+    ModelSeed::new(&catalogue_row, PROVIDER, MODEL, cap)
         .rates(
             INPUT_NANOS_PER_MTOK,
             CACHED_INPUT_NANOS_PER_MTOK,
             OUTPUT_NANOS_PER_MTOK,
         )
         .verified_at(now)
-        .inference(MODEL_INFERENCE)
+        .inference(inference)
         .insert(&mut *connection)
         .await
         .expect("the catalogue seed must scene");
+}
+
+/// Leaves `fleet` holding the workspace secret `name`, as a person's approval
+/// of its access card does.
+pub(crate) async fn approve_secret(booted: &Booted, fleet: &Uuid7, name: &str, now: Timestamp) {
+    let mut connection = booted
+        .database
+        .acquire()
+        .await
+        .expect("a pooled connection");
+    GrantSeed::new(
+        fleet,
+        name,
+        afd_approval::GrantKind::Secret.as_str(),
+        "approved",
+    )
+    .approved(now)
+    .at(now)
+    .insert(&mut *connection)
+    .await
+    .expect("the approved secret grant inserts");
+}
+
+/// Shrinks the scenario model's context window to `cap` tokens, its output
+/// limit with it ([`NARROW_INFERENCE`]; `cap` must hold it), for a suite whose
+/// fleet must compact within a few turns. The next scenario's
+/// [`seed_model_rate`] writes both back.
+pub(crate) async fn narrow_model_window(booted: &Booted, cap: i32, now: Timestamp) {
+    write_model(booted, cap, NARROW_INFERENCE, now).await;
 }
 
 /// Makes `(PROVIDER, MODEL)` the active platform default.

@@ -3,10 +3,10 @@
 pub(crate) mod approval;
 pub(crate) mod auth;
 pub(crate) mod connector;
-pub(crate) mod draft;
 pub mod fleet;
 pub(crate) mod grant;
 pub(crate) mod input;
+pub(crate) mod models;
 pub(crate) mod onboarding;
 pub(crate) mod paging;
 pub(crate) mod schedule;

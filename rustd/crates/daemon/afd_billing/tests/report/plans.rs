@@ -79,7 +79,7 @@ fn spread(first: &Line, count: usize) -> Vec<Line> {
     (0..count)
         .map(|slice| {
             let mut line = first.next(LineKind::Runtime, i64::try_from(slice).unwrap(), 1);
-            line.fleet = Some(fixture::id());
+            line.fleet = fixture::id();
             line
         })
         .collect()

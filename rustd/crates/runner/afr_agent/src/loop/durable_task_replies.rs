@@ -2,8 +2,7 @@
 
 use super::Harness;
 use af_wire::durable_task::{
-    DecisionDurableTaskVersion, DurableTaskInputAction, DurableTaskInputMode,
-    DurableTaskInputReceiptInput,
+    DecisionDurableTaskVersion, DurableTaskInputMode, DurableTaskInputReceiptInput,
 };
 
 impl Harness<'_, '_> {
@@ -11,13 +10,7 @@ impl Harness<'_, '_> {
         let Some(prepared) = self.task.as_mut() else {
             return Ok(());
         };
-        let intake = crate::decision::Intake {
-            run: self.shared.payload,
-            verbs: self.shared.run.verbs,
-            provider: self.shared.provider,
-            meter: self.shared.meter,
-            stop: &self.stop,
-        };
+        let verbs = self.shared.run.verbs;
         let sources: Vec<_> = prepared
             .inputs
             .current_interpretation
@@ -38,17 +31,7 @@ impl Harness<'_, '_> {
                     continue;
                 }
                 let binding = &item.binding;
-                let (mode, response_text) = if matches!(
-                    binding.action,
-                    DurableTaskInputAction::Conversation
-                        | DurableTaskInputAction::Status
-                        | DurableTaskInputAction::Clarify
-                ) {
-                    (
-                        DurableTaskInputMode::Answered,
-                        Some(intake.reply(&accepted, item, &prepared.inputs).await?),
-                    )
-                } else if !binding.applies_here {
+                let (mode, response_text) = if !binding.applies_here {
                     (DurableTaskInputMode::Queued, None)
                 } else if binding
                     .input_sequence
@@ -59,8 +42,7 @@ impl Harness<'_, '_> {
                     continue;
                 };
                 let task = reply_durable_task(&prepared.inputs, binding)?;
-                let saved = intake
-                    .verbs
+                let saved = verbs
                     .durable_task_input_receipt(DurableTaskInputReceiptInput {
                         fencing_token: self.shared.fencing_token,
                         operation_id: crate::decision::identity()?,
@@ -80,8 +62,7 @@ impl Harness<'_, '_> {
             }
         }
         if changed {
-            prepared.inputs = intake
-                .verbs
+            prepared.inputs = verbs
                 .durable_task_inputs(af_wire::durable_task::DurableTaskInputsQuery {
                     fencing_token: self.shared.fencing_token,
                     starting_after: None,
@@ -99,35 +80,12 @@ impl Harness<'_, '_> {
         Ok(())
     }
 
-    pub(super) fn accepted_answer(&self) -> Option<String> {
-        let prepared = self
-            .task
-            .as_ref()
-            .filter(|prepared| !prepared.allow_actions)?;
-        if prepared.inputs.current_message.is_some()
-            && prepared.inputs.current_interpretation.is_none()
-        {
-            return Some("I couldn't establish a reliable interpretation of this request, so I haven't started any work. Please clarify which task or action you want.".to_owned());
-        }
-        let source = prepared.inputs.current_interpretation.as_ref()?;
-        if source.items.is_empty() {
-            return None;
-        }
-        let answers: Option<Vec<_>> = source
-            .items
-            .iter()
-            .map(|item| item.response_text.as_deref())
-            .collect();
-        answers.map(|answers| answers.join("\n\n"))
-    }
-
-    /// A mixed source keeps its conversational and queued answers beside the
-    /// active task's final report, in the original interpretation order.
+    /// A source whose items bound several tasks keeps each queued answer
+    /// beside the active task's final report, in the source's order.
     pub(super) fn combined_durable_task_answer(&self, answer: String) -> String {
         let Some(source) = self
             .task
             .as_ref()
-            .filter(|task| task.allow_actions)
             .and_then(|task| task.inputs.current_interpretation.as_ref())
         else {
             return answer;
@@ -135,13 +93,7 @@ impl Harness<'_, '_> {
         let mut included = false;
         let mut parts = Vec::new();
         for item in &source.items {
-            let active = item.binding.applies_here
-                && matches!(
-                    item.binding.action,
-                    DurableTaskInputAction::NewWork
-                        | DurableTaskInputAction::Refresh
-                        | DurableTaskInputAction::Steer
-                );
+            let active = item.binding.applies_here;
             if active {
                 if !included {
                     parts.push(answer.as_str());

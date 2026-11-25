@@ -32,8 +32,6 @@ use std::time::Duration;
 
 use crate::error::{Result, query};
 use crate::run::envelope::Acquired;
-#[cfg(any(test, feature = "test-util"))]
-use crate::run::owner::RunOwner;
 use crate::run::sql;
 use crate::run::store::Runs;
 
@@ -146,11 +144,9 @@ impl Runs {
         runner_id: &Uuid7,
         ttl: Duration,
     ) -> Result<Option<WonAssignment>> {
-        let owner = RunOwner::Fleet(fleet_id.clone());
         let mut connection = self.pool().acquire().await?;
         let won: Option<Won> = sqlx::query_as(sql::shared::ASSIGN_THREAD)
-            .bind(owner.fleet_id())
-            .bind(owner.draft_id())
+            .bind(fleet_id)
             .bind(runner_id)
             .bind(ttl)
             .bind(self.clock().offline_after())

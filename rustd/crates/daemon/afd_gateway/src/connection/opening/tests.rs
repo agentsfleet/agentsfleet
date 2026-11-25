@@ -73,7 +73,7 @@ async fn refused(gateway: &Gateway, frames: &[Value]) -> TestResult<crate::Error
 }
 
 fn hello() -> Value {
-    json!({"type":"hello","request_id":1,"accepted_kinds":["fleet"],"running":[],"credits":1})
+    json!({"type":"hello","request_id":1,"running":[],"credits":1})
 }
 
 #[tokio::test]
@@ -93,7 +93,7 @@ async fn a_control_lane_that_opens_with_anything_but_hello_is_refused() -> TestR
 
 #[tokio::test]
 async fn a_hello_naming_a_malformed_running_run_is_refused() -> TestResult {
-    let hello = json!({"type":"hello","request_id":1,"accepted_kinds":["fleet"],
+    let hello = json!({"type":"hello","request_id":1,
         "running":["zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz"],"credits":1});
     let malformed = refused(&gateway()?, &[hello]).await?;
     assert!(

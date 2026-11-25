@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { FLEET } from "./helpers/draft-fixtures";
+import { FLEET_DETAIL } from "./helpers/fleet-fixtures";
 
 // ── Shared mocks ───────────────────────────────────────────────────────────
 // These actions are thin forwarders: each wraps withToken((t) => apiFn(args, t)).
@@ -100,9 +100,9 @@ describe("fleet server actions — thin token-forwarders", () => {
 
   it("deleteFleetAction preserves the observed version with token last", async () => {
     deleteFleetMock.mockResolvedValueOnce(undefined);
-    const r = await deleteFleetAction("ws1", "z1", FLEET.etag);
+    const r = await deleteFleetAction("ws1", "z1", FLEET_DETAIL.etag);
     expect(r).toEqual({ ok: true, data: undefined });
-    expect(deleteFleetMock).toHaveBeenCalledWith("ws1", "z1", FLEET.etag, "tok");
+    expect(deleteFleetMock).toHaveBeenCalledWith("ws1", "z1", FLEET_DETAIL.etag, "tok");
   });
 
   it("forgetMemoryAction forwards the memory key without exposing content", async () => {

@@ -1,6 +1,6 @@
 //! The two reads and the one write the credential plane makes under locks it
-//! holds: setup inspection on the caller's transaction, and a rewrite of one
-//! row under its own `FOR UPDATE`.
+//! holds: inspection of named secrets on the caller's transaction, and a
+//! rewrite of one row under its own `FOR UPDATE`.
 //!
 //! This crate owns the statements and the envelopes; the caller owns what the
 //! plaintext means. A refresh-token rotation is a [`Vault::rewrite`] whose edit

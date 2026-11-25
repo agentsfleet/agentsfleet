@@ -60,7 +60,8 @@ backed! {
 impl Handler for ScheduleOnce<'_> {
     const NAME: &'static str = "schedule";
     const DESCRIPTION: &'static str = "Schedule one more run at a given moment, with a message \
-        saying what to do then. It is removed after it runs.";
+        saying what to do then. It is removed after it runs. Call it only when the person's \
+        newest message asks for a later run.";
     type Arguments = At;
 
     async fn run(&self, arguments: At, context: Context<'_>) -> ToolOutput {

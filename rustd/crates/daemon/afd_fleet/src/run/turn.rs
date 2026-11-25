@@ -2,10 +2,10 @@
 //!
 //! The assignment statement opens the row (`sql/run/assign_turn_head.sql`):
 //! the first thing the run verb writes, before any gate and before any
-//! money. `data_flow.md` §C numbers it 1 for that reason — everything after it
-//! either amends this row or refers to it, and the reassignment path's INNER JOIN
-//! reads it to recover an event body without keeping a second copy on the
-//! run. It opens before the gates because a gate refusal has to have a row
+//! money. `data_flow.md` §"Assignment and the fence" opens it first for that
+//! reason — everything after it either amends this row or refers to it, and
+//! the reassignment path's INNER JOIN reads it to recover an event body
+//! without keeping a second copy on the run. It opens before the gates because a gate refusal has to have a row
 //! to mark `gate_blocked`.
 //!
 //! # The refusal write lives here

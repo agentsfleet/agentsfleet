@@ -16,7 +16,7 @@ export const structuredData = {
       url: "https://www.agentsfleet.net/",
       applicationCategory: "DeveloperApplication",
       description:
-        "Open-source software for running AI agents on engineering tasks. Agents can start on a message, a schedule, or an event and keep a record of each run.",
+        "A fleet is an AI agent for engineering work. Start one with a message, then ask it to work on tasks, schedules, or events.",
       sameAs: "https://github.com/agentsfleet/agentsfleet",
       license: "https://opensource.org/license/mit",
     },

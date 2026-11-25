@@ -31,7 +31,7 @@ fn post(url: &str, body: &str) -> Draft {
 /// What `draft` is refused with under the `ci-repairer`-shaped policy, or the
 /// `Authorization` it would carry.
 async fn prepare(draft: Draft) -> Result<String, Shown> {
-    let policy = policy(false);
+    let policy = policy();
     let clock = FixedClock::at(START);
     let mint = CountingMint::answering(MINTED, TOKEN_LIFETIME, clock.clone());
     let mut egress = Egress::new(RUN_ID, &policy, &mint, &clock);
@@ -128,7 +128,7 @@ async fn should_allow_nothing_through_a_closed_guard() {
 
 #[tokio::test]
 async fn should_print_no_secret_in_its_debug_after_a_mint() {
-    let policy = policy(false);
+    let policy = policy();
     let clock = FixedClock::at(START);
     let mint = CountingMint::answering(MINTED, TOKEN_LIFETIME, clock.clone());
     let mut egress = Egress::new(RUN_ID, &policy, &mint, &clock);

@@ -16,12 +16,13 @@ use afd_turns::error::one_of_each_kind;
 /// How many carry a `source()` — the chain an operator follows to the cause.
 /// Five: a lock or statement timeout keeps its cause.
 const WITH_SOURCE: usize = 5;
-/// How many distinct registry codes the kinds report between them. Six: a
-/// missing fleet (`UZ-AGT-009`) and a fleet that takes no work (`UZ-AGT-012`)
-/// are the ledger's refusals.
-const DISTINCT_CODES: usize = 6;
-/// How many sentences a caller can be handed: the two refusals added theirs.
-const SENTENCES: usize = 6;
+/// How many distinct registry codes the kinds report between them. Five: the
+/// three internal codes, a missing fleet (`UZ-AGT-009`) and a fleet that takes
+/// no work (`UZ-AGT-012`), which are the ledger's refusals.
+const DISTINCT_CODES: usize = 5;
+/// How many sentences a caller can be handed: the three shared ones and the
+/// two refusals'.
+const SENTENCES: usize = 5;
 /// The kinds a caller retries: an outage, capacity, and a statement that gave
 /// up waiting under the login's bounds.
 const RETRYABLE: usize = 4;

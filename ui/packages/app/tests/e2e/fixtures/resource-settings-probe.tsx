@@ -8,7 +8,7 @@ import {MembersView} from "@/app/(dashboard)/settings/members/components/Members
 import ModelsRegistryTable from "@/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryTable";
 import {ModelCatalogueProvider} from "@/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelCatalogueProvider";
 import {OWN_ACCOUNT} from "@/tests/helpers/workspace-fixtures";
-import {WORKSPACE} from "@/tests/helpers/draft-fixtures";
+import {WORKSPACE} from "@/tests/helpers/fleet-fixtures";
 import {SAMPLE_INVITES, SAMPLE_MEMBERS, SAMPLE_MODELS} from "./resource-settings-actions";
 
 const router = {bfcacheId: "resources-review", back() {}, forward() {}, refresh() {}, push() {}, replace() {}, async prefetch() {}};

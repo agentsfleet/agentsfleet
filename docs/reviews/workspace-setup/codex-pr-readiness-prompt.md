@@ -15,7 +15,7 @@ Read first, in order:
    Failure Modes, Invariants, Files Changed, and Discovery. Discovery holds owner decisions; do not reopen them.
 2. `docs/reviews/workspace-setup/decisions.md`: 21 locked decisions.
 3. `docs/architecture/api_resources.md`, `docs/architecture/data_flow.md#fleet-creation-and-setup-recovery`,
-   `docs/architecture/runner_fleet.md#authoring-leases`.
+   `docs/architecture/runner_protocol.md#run-lease-and-renewal`.
 4. `docs/reviews/workspace-setup/checks.md`, section "Oct 15, 2026: Dimension coverage map".
 5. Repository rules: `.orly/LOCAL.md`, `.orly/AGENTS.md`, `.orly/docs/REST_API_DESIGN_GUIDELINES.md`,
    `docs/RUST_ERROR_STANDARD.md`, `.orly/dispatch/write_rust.md`, and `.orly/docs/DOCUMENTATION_RULES.md`

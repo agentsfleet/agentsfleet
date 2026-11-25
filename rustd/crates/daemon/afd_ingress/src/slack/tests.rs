@@ -1,218 +1,97 @@
-//! Which stored fleets a mention in one channel reaches — decided from the
-//! document alone, so every rule is proven with no datastore.
+//! What a fleet subscribed to a channel is, as routing reads it — decided
+//! from its row alone, so every rule is proven with no datastore.
 
 #![expect(
     clippy::expect_used,
-    clippy::indexing_slicing,
-    reason = "a test asserts by panicking and builds its probe JSON by key; the restriction set \
-              is for the daemon"
+    reason = "a test asserts by panicking; the restriction set is for the daemon"
 )]
 
 use af_core::id::Uuid7;
-use af_core::money::NANOS_PER_USD;
-use af_fleet_runtime::FleetConfig;
-use af_fleet_runtime::config::ChannelId;
 use afd_fleet_lifecycle::FleetStatus;
-use serde_json::{Value, json};
+use serde_json::json;
 
 use super::{Subscriber, subscribed};
 
-/// The provider a mention arrives from.
-const SLACK: &str = "slack";
-/// The channel under test, and a second one.
-const CHANNEL: &str = "C0123456789";
-const OTHER_CHANNEL: &str = "C0987654321";
 /// The fleet every case reads.
 const FLEET: &str = "019feca5-bc9b-72e8-b71f-e2714f6b0120";
-
-fn channel(id: &str) -> ChannelId {
-    id.parse().expect("a well-formed channel identifier")
-}
 
 fn fleet() -> Uuid7 {
     Uuid7::parse(FLEET).expect("a v7 id")
 }
 
-/// The configuration a reviewed setup stores for a fleet attached to
-/// `channel`, optionally bound to a repository with `access`.
-fn stored(name: &str, channel: &str, access: Option<&str>) -> String {
-    let mut runtime = json!({
-        "triggers": [{"type": "mention", "source": SLACK, "channels": [channel]}],
-        "tools": [],
-        "budget": {"daily_nanos": NANOS_PER_USD.to_string()}
-    });
-    if let Some(access) = access {
-        runtime["repositories"] = json!(["acme/widgets"]);
-        runtime["repository_access"] = json!(access);
-        // A write binding opens a Pull Request, so it names a base; a read one
-        // opens nothing and may not.
-        if access == "write" {
-            runtime["repository_base"] = json!("main");
-        }
-    }
-    validated(&json!({"name": name, "x-agentsfleet": runtime}))
-}
-
-/// `document` as stored text, proven to be a configuration Save accepts.
-fn validated(document: &Value) -> String {
-    let text = document.to_string();
-    FleetConfig::authored(&text).expect("the probe configuration parses");
-    text
-}
-
-/// The subscription is the channel's identifier: the document
-/// names no channel NAME, so renaming the channel in Slack changes nothing,
-/// and editing the identifier moves the fleet from one channel to the other.
-#[test]
-fn subscription_follows_the_channel_id() {
-    let active = FleetStatus::Active.as_str();
-    let before = stored("incident", CHANNEL, None);
-    let after = stored("incident", OTHER_CHANNEL, None);
-
-    let reached = |document: &str, id: &str| {
-        subscribed(fleet(), "incident", active, document, SLACK, &channel(id))
-            .expect("a readable row")
-            .is_some()
+/// The GitHub scope a person approved, as the grant stores it.
+fn scope(access: &str) -> String {
+    // A write binding opens a Pull Request, so it names a base; a read one
+    // opens nothing and may not.
+    let scope = if access == "write" {
+        json!({"repositories": ["acme/widgets"], "access": access, "base": "main"})
+    } else {
+        json!({"repositories": ["acme/widgets"], "access": access})
     };
-    assert!(
-        reached(&before, CHANNEL),
-        "attached where the document says"
-    );
-    assert!(!reached(&before, OTHER_CHANNEL), "and nowhere else");
-    assert!(
-        reached(&after, OTHER_CHANNEL),
-        "the edited identifier moves it"
-    );
-    assert!(!reached(&after, CHANNEL), "and it leaves the old channel");
+    scope.to_string()
 }
 
-/// What routing needs from each subscriber: its name, whether it can run, and
-/// whether it takes only mentions addressed to it.
+/// What routing needs from each subscriber: its saved name, whether it can
+/// run, and whether it takes only mentions addressed to it.
 #[test]
 fn a_subscriber_carries_its_name_status_and_reach() {
     let read_bound = subscribed(
         fleet(),
         "responder",
         FleetStatus::Active.as_str(),
-        &stored("responder", CHANNEL, Some("read")),
-        SLACK,
-        &channel(CHANNEL),
+        Some(&scope("read")),
     )
     .expect("a readable row");
     assert_eq!(
         read_bound,
-        Some(Subscriber {
+        Subscriber {
             fleet: fleet(),
             name: "responder".to_owned(),
             runnable: true,
             addressed_only: false,
-        })
+        }
     );
 
     let write_bound = subscribed(
         fleet(),
         "repairer",
         FleetStatus::Archived.as_str(),
-        &stored("repairer", CHANNEL, Some("write")),
-        SLACK,
-        &channel(CHANNEL),
+        Some(&scope("write")),
     )
-    .expect("a readable row")
-    .expect("attached to the channel");
+    .expect("a readable row");
     assert!(!write_bound.runnable, "an archived fleet cannot run now");
     assert!(
         write_bound.addressed_only,
-        "a fleet that can write never takes an unaddressed mention"
+        "a fleet a person approved to write never takes an unaddressed mention"
     );
 }
 
-/// The provider is compared ignoring case, as a webhook source is; another
-/// provider's mention trigger does not reach this one.
+/// A fleet holding no approved GitHub scope may answer any mention in its
+/// channel: it can push nowhere.
 #[test]
-fn the_provider_must_match_ignoring_case() {
-    let document = stored("incident", CHANNEL, None);
-    let active = FleetStatus::Active.as_str();
-    let on = |provider: &str| {
-        subscribed(
-            fleet(),
-            "incident",
-            active,
-            &document,
-            provider,
-            &channel(CHANNEL),
-        )
-        .expect("a readable row")
-        .is_some()
-    };
-    assert!(on("SLACK"), "the spelling's case is nobody's authority");
-    assert!(
-        !on("discord"),
-        "another provider's channel is another channel"
-    );
+fn a_fleet_with_no_github_grant_takes_unaddressed_mentions() {
+    let subscriber = subscribed(fleet(), "incident", FleetStatus::Active.as_str(), None)
+        .expect("a readable row");
+
+    assert!(!subscriber.addressed_only);
 }
 
-/// A fleet with no mention trigger is not attached; a status this build
-/// cannot name and a document that no longer parses are refused, not skipped.
+/// A status this build cannot name and a stored scope the parser refuses are
+/// refused, not read as an unaddressed fleet.
 #[test]
-fn unattached_and_unreadable_rows_are_told_apart() {
-    let api_only = validated(&json!({"name": "api-only", "x-agentsfleet": {
-        "triggers": [], "tools": [],
-        "budget": {"daily_nanos": NANOS_PER_USD.to_string()}
-    }}));
-    assert_eq!(
-        subscribed(
-            fleet(),
-            "api-only",
-            FleetStatus::Active.as_str(),
-            &api_only,
-            SLACK,
-            &channel(CHANNEL)
-        )
-        .expect("a readable row"),
-        None
-    );
-
-    let document = stored("incident", CHANNEL, None);
+fn an_unreadable_status_or_scope_is_refused() {
     assert!(
-        subscribed(
-            fleet(),
-            "incident",
-            "hibernating",
-            &document,
-            SLACK,
-            &channel(CHANNEL)
-        )
-        .is_err(),
-        "a status this build cannot name is an incident, not an unattached fleet"
+        subscribed(fleet(), "incident", "installing", None).is_err(),
+        "a status this build cannot name is an incident"
     );
     assert!(
         subscribed(
             fleet(),
             "incident",
             FleetStatus::Active.as_str(),
-            "not json",
-            SLACK,
-            &channel(CHANNEL)
+            Some(r#"{"repositories": ["acme/widgets"]}"#),
         )
         .is_err(),
-        "a document that no longer parses is an incident too"
+        "a half-declared scope is a row nothing writes, never a read reach"
     );
-}
-
-/// A fleet saved under a name its document does not carry is
-/// addressed by the saved name, the one the dashboard and the command line
-/// show, so one fleet answers to one name on every surface.
-#[test]
-fn subscribed_names_a_fleet_by_its_saved_name() {
-    let subscriber = subscribed(
-        fleet(),
-        "ci-dev-repairer",
-        FleetStatus::Active.as_str(),
-        &stored("ci-repairer", CHANNEL, Some("write")),
-        SLACK,
-        &channel(CHANNEL),
-    )
-    .expect("a readable row")
-    .expect("attached to the channel");
-    assert_eq!(subscriber.name, "ci-dev-repairer");
 }

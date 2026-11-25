@@ -309,6 +309,8 @@ impl Body {
     pub(crate) fn encoded<T: Serialize>(verb: Verb, response: &T) -> Result<Self> {
         Ok(Self {
             verb,
+            // A stream answer carries no HTTP status, so it created nothing.
+            created: false,
             bytes: Zeroizing::new(serde_json::to_vec(response).map_err(error::encode)?),
         })
     }

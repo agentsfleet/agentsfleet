@@ -30,25 +30,6 @@ pub(crate) struct Slice {
     pub turn_id: Uuid7,
 }
 
-/// The run time one metering pass measured on a draft-owned run.
-#[derive(Debug)]
-pub(crate) struct DraftSlice {
-    /// As [`Slice::runtime_seq`].
-    pub runtime_seq: i64,
-    /// As [`Slice::checked_at`].
-    pub checked_at: Timestamp,
-    /// As [`Slice::started_at`].
-    pub started_at: Timestamp,
-    /// As [`Slice::runtime_ms`].
-    pub runtime_ms: i64,
-    /// Who pays.
-    pub tenant_id: Uuid7,
-    /// Where the work ran.
-    pub workspace_id: Uuid7,
-    /// The draft message the run ran.
-    pub message_id: Uuid7,
-}
-
 /// The slice columns of a metering statement's answer.
 ///
 /// Every column is nullable because the row comes from a `LEFT JOIN` on the
@@ -60,7 +41,6 @@ pub(crate) struct SliceColumns {
     d_ms: Option<i64>,
     tenant_id: Option<Uuid7>,
     workspace_id: Option<Uuid7>,
-    /// Absent from the shared statements, which read no owner's table.
     #[sqlx(default)]
     fleet_id: Option<Uuid7>,
     turn_id: Option<Uuid7>,
@@ -82,20 +62,6 @@ impl SliceColumns {
             fleet_id: self.fleet_id?,
             fleet_name: self.fleet_name,
             turn_id: self.turn_id?,
-        })
-    }
-
-    /// The measured slice of a draft-owned run, when the pass held the
-    /// fence: its event is the draft message.
-    pub(crate) fn into_draft_slice(self) -> Option<DraftSlice> {
-        Some(DraftSlice {
-            runtime_seq: self.runtime_seq?,
-            checked_at: self.checked_at?.to_jiff(),
-            started_at: self.started_at?.to_jiff(),
-            runtime_ms: self.d_ms?,
-            tenant_id: self.tenant_id?,
-            workspace_id: self.workspace_id?,
-            message_id: self.turn_id?,
         })
     }
 }

@@ -60,7 +60,14 @@ for (const width of [390, 320]) {
       await expect(rail.getByRole("link", {name, exact: true})).toBeVisible();
     }
     await expect(rail.getByRole("link", {name: "Plugins", exact: true})).toHaveCount(0);
-    const fleets = rail.locator("summary").filter({hasText: "Your Fleets"});
+    // On a phone the fleet list lives behind Open navigation, never in the rail.
+    await expect(rail.locator("summary").filter({hasText: "Your Fleets"})).toHaveCount(0);
+    const opener = rail.getByRole("button", {name: "Open navigation", exact: true});
+    await opener.focus();
+    await page.keyboard.press("Enter");
+    const expanded = page.getByRole("navigation", {name: "Expanded navigation", exact: true});
+    await expect(expanded).toBeVisible();
+    const fleets = expanded.locator("summary").filter({hasText: "Your Fleets"});
     const before = page.url();
     await fleets.focus();
     await page.keyboard.press("Enter");
@@ -68,6 +75,9 @@ for (const width of [390, 320]) {
     await expect(fleets.locator("..")).not.toHaveAttribute("open");
     await expectAccessible(page, "Mobile navigation");
     await expectNoPageOverflow(page);
+    await page.keyboard.press("Escape");
+    await expect(expanded).toBeHidden();
+    await expect(opener).toBeFocused();
     await expect(rail).toBeVisible();
   });
 }

@@ -7,12 +7,12 @@ import { rows, withKey } from "./helpers-discovery.ts";
 
 const SHELLS = ["bash", "zsh", "fish", "powershell"] as const;
 const DESCRIBED_SHELLS = ["zsh", "fish", "powershell"] as const;
-const MODELS_FAMILY = "Manage the shared model catalogue";
+const MODELS_FAMILY = "Manage the models every account can choose from";
 const HIDDEN_FAMILIES = [
   "Manage vault-backed platform defaults",
-  "Manage platform execution hosts",
+  "Manage the machines that run every account's fleets",
 ] as const;
-const PLATFORM_GROUP = "Administer platform resources with your existing operator scopes";
+const PLATFORM_GROUP = "Run the platform itself (for operators)";
 const WRITE_ONLY_LEAVES = ["rotate-token", "cordon", "self-test"] as const;
 
 const script = async (scopes: ReadonlyArray<string>, shell: string): Promise<string> =>

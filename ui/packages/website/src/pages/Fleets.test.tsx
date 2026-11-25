@@ -1,74 +1,30 @@
 import { render, screen } from "@testing-library/react";
-import { BrowserRouter } from "react-router-dom";
-import { describe, it, expect } from "vitest";
+import { expect, it } from "vitest";
 import Fleets from "./Fleets";
 
-function renderFleets() {
-  return render(
-    <BrowserRouter>
-      <Fleets />
-    </BrowserRouter>
-  );
-}
-
-describe("Fleets", () => {
-  it("renders the Fleet-first heading", () => {
-    renderFleets();
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
-      /this page is for agents/i,
-    );
-  });
-
-  it("renders install action links and no dashboard link", () => {
-    renderFleets();
-    expect(screen.getByRole("link", { name: /start a Fleet/i })).toHaveAttribute(
-      "href",
-      "https://docs.agentsfleet.net/quickstart",
-    );
-    expect(screen.getByRole("link", { name: /read the docs/i })).toHaveAttribute(
-      "href",
-      "https://docs.agentsfleet.net",
-    );
-    // "open dashboard" was removed — no dashboard link on the Fleet surface.
-    expect(screen.queryByRole("link", { name: /open dashboard/i })).toBeNull();
-  });
-
-  it("renders bootstrap commands", () => {
-    renderFleets();
-    const block = screen.getByLabelText(/bootstrap commands/i);
-    expect(block).toBeInTheDocument();
-    expect(block).toHaveTextContent(/npm install -g @agentsfleet\/cli/);
-    expect(block).toHaveTextContent(/agentsfleet login/);
-    expect(block).not.toHaveTextContent(/\bnpx\b/);
-    expect(block).toHaveTextContent("Create a fleet for incident response in my workspace.");
-    expect(block).not.toHaveTextContent("curl -fsSL https://agentsfleet.dev | bash");
-  });
-
-  it("renders machine surface table", () => {
-    renderFleets();
-    expect(screen.getByRole("heading", { name: /machine surface/i })).toBeInTheDocument();
-    expect(screen.getByTestId("fleets-openapi-link")).toHaveAttribute("href", "/openapi.json");
-  });
-
-  it("renders JSON-LD script", () => {
-    const { container } = renderFleets();
-    const script = container.querySelector('script[type="application/ld+json"]');
-    expect(script).not.toBeNull();
-    const data = JSON.parse(script!.textContent!);
-    expect(data["@type"]).toBe("SoftwareApplication");
-    expect(data.name).toBe("agentsfleet");
-  });
+it("shows how to create a fleet and keep talking to it in the terminal", () => {
+  render(<Fleets />);
+  expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Start a fleet from your terminal");
+  const block = screen.getByLabelText("Fleet commands");
+  expect(block).toHaveTextContent("agentsfleet login");
+  expect(block).toHaveTextContent('agentsfleet fleet create "Check my latest deploy and report what you find." --name deploy-watch');
+  expect(block).toHaveTextContent("agentsfleet fleet steer @deploy-watch");
+  expect(screen.getByRole("link", { name: "Read the docs" })).toHaveAttribute("href", "https://docs.agentsfleet.net");
 });
 
-it("puts installation before API steps and removes stale sections", () => {
-  renderFleets();
-  const installHeading = "Install agentsfleet";
-  const apiHeading = "Get started in four calls";
-  const headings = screen.getAllByRole("heading").map(heading => heading.textContent);
-  expect(headings).toContain(installHeading);
-  expect(headings).toContain(apiHeading);
-  expect(headings.indexOf(installHeading)).toBeLessThan(headings.indexOf(apiHeading));
-  expect(headings).not.toContain("Webhook ingest example");
-  expect(headings).not.toContain("Coming soon");
-  expect(headings).not.toContain("API operations");
+it("shows the first message and follow-ups as API calls", () => {
+  render(<Fleets />);
+  const api = screen.getByRole("region", { name: "Work with the API" });
+  expect(api).toHaveTextContent("POST /v1/workspaces/{workspace_id}/fleets");
+  expect(api).toHaveTextContent("Send the fleet’s first message with an operation ID.");
+  expect(api).toHaveTextContent("POST /v1/workspaces/{workspace_id}/fleets/{fleet_id}/messages");
+  expect(api).toHaveTextContent("GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/turns/stream");
+  expect(screen.getByRole("link", { name: "OpenAPI JSON" })).toHaveAttribute("href", "/openapi.json");
+});
+
+it("keeps the software metadata", () => {
+  const { container } = render(<Fleets />);
+  const script = container.querySelector('script[type="application/ld+json"]');
+  const data = JSON.parse(script?.textContent ?? "null");
+  expect(data).toMatchObject({ "@type": "SoftwareApplication", name: "agentsfleet" });
 });

@@ -1,7 +1,7 @@
 import { expect, type Route } from "@playwright/test";
 import { test } from "./fixtures/chat-probe";
 import { STOP_TURNS } from "./fixtures/fleet-stop-data";
-import { FLEET_ID, WORKSPACE } from "@/tests/helpers/draft-fixtures";
+import { FLEET_ID, WORKSPACE } from "@/tests/helpers/fleet-fixtures";
 
 // M253 §8, Dimension 8.6: the composer shows Stop only while a turn runs. The
 // fixture mounts the production thread, composer and Stop; these routes stand

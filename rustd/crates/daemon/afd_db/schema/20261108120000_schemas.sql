@@ -2,8 +2,6 @@
 -- because its own ledger lives there.
 CREATE SCHEMA identity;
 
-CREATE SCHEMA setup;
-
 CREATE SCHEMA fleet;
 
 CREATE SCHEMA runner;

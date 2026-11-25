@@ -28,7 +28,9 @@
 
 use af_core::id::Uuid7;
 use afd_db::config::DbRole;
-use afd_db::test_util::{TenantSeed, TestDatabase, mint_id};
+use afd_db::test_util::{
+    FIXTURE_HTTP_EGRESS, FIXTURE_MODEL_REF, TenantSeed, TestDatabase, mint_id,
+};
 use afd_db::{Db, Migrator};
 use afd_runner::sql::holds::CLEAR_DROPPED_HOLDS;
 use jiff::Timestamp;
@@ -47,7 +49,8 @@ const SPREADS: [(i32, i32, i32); 2] = [(8, 125, 20), (40, 250, 50)];
 const SEEDED_AT: Timestamp = Timestamp::constant(1_700_000_000, 0);
 
 /// Runners, a fleet per thread, and the threads, dealt round the runners, every
-/// `$5`th held: `$1` tenant, `$2` instant, `$3` runners, `$4` threads each.
+/// `$5`th held: `$1` tenant, `$2` instant, `$3` runners, `$4` threads each, and
+/// every fleet on model `$6` with network `$7`.
 const SEED_SPREAD: &str = "
 WITH workspace AS (
     INSERT INTO identity.workspaces (id, tenant_id, name, created_at)
@@ -66,10 +69,11 @@ WITH workspace AS (
     SELECT id, row_number() OVER (ORDER BY id) - 1 AS rank FROM runners
 ), fleets AS (
     INSERT INTO fleet.fleets
-      (id, workspace_id, tenant_id, name, status, required_tags, memory_reads_workspace,
-       memory_publishes_workspace, resource_version, created_at, updated_at)
-    SELECT uuidv7(), workspace.id, $1, 'hold-plan-' || f, 'active', '{}', false, false,
-           1, $2, $2
+      (id, workspace_id, tenant_id, name, status, model_ref, http_egress, package_domains,
+       required_tags, memory_reads_workspace, memory_publishes_workspace, resource_version,
+       created_at, updated_at)
+    SELECT uuidv7(), workspace.id, $1, 'hold-plan-' || f, 'active', $6, $7, false, '{}',
+           false, false, 1, $2, $2
       FROM workspace, generate_series(1, $3 * $4) f
     RETURNING id
 ), threads AS (
@@ -145,6 +149,8 @@ async fn generic_plan(
         .bind(runners)
         .bind(each)
         .bind(held_one_in)
+        .bind(FIXTURE_MODEL_REF)
+        .bind(FIXTURE_HTTP_EGRESS)
         .execute(&mut *connection)
         .await
         .expect("the spread must insert");

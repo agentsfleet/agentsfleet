@@ -3,27 +3,15 @@
 //!
 //! # Why a version key, and never a time to live
 //!
-//! A fleet's config is what the money gates price and the execution policy is
-//! built from, and an edit must reach the NEXT run on every replica. A cache
-//! that expired on a timer would make that "some later run", with a window
-//! nobody can see. Keyed by a revision id instead, a cached entry can never
-//! answer for a different document: `fleet.revisions` is append-only by
-//! trigger, so one id names one document for good, and a new head revision
-//! is a new key, which misses. No signal crosses between replicas, because
-//! none is needed.
-//!
-//! # Keys come from statements
-//!
-//! [`RevisionKey::observed`] is the only constructor, and only the run
-//! path's row decoders call it with an id their statement just returned. A
-//! lookup by a bare fleet id does not compile. A full cache evicts the least
-//! recently used entry; an evicted entry is parsed again, never a fault.
+//! A price edit must reach the NEXT run on every replica. A cache that expired
+//! on a timer would make that "some later run", with a window nobody can see.
+//! Keyed by the catalogue version instead, a cached book can never answer for
+//! a different catalogue: an edit moves the version, which misses. No signal
+//! crosses between replicas, because none is needed.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, Ordering};
 
-use af_core::id::Uuid7;
-use af_fleet_runtime::Definition;
 use af_observability::metrics::label::fleet::{CacheOutcome, RunCache};
 use af_observability::producers::fleet::cache::looked_up;
 use moka::future::Cache;
@@ -33,103 +21,6 @@ use afd_billing::rates::Posture;
 
 use crate::error::Result;
 use crate::run::usage::Pricing;
-
-#[cfg(test)]
-mod tests;
-
-/// The bytes of setup documents one replica's definition cache weighs.
-///
-/// A performance parameter: at 64 MiB a replica holds every definition of a
-/// few thousand busy fleets, and a fleet past it is parsed again.
-pub const DEFINITION_CAPACITY_BYTES: u64 = 64 * 1024 * 1024;
-
-/// A revision id exactly as a run-path statement returned it.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct RevisionKey(Uuid7);
-
-impl RevisionKey {
-    /// The key for `id`, which the caller's statement returned in this pass.
-    pub(in crate::run) const fn observed(id: Uuid7) -> Self {
-        Self(id)
-    }
-}
-
-/// A parsed definition and the size of the document it came from.
-#[derive(Debug)]
-struct Parsed {
-    definition: Arc<Definition>,
-    bytes: u32,
-}
-
-/// Parsed setup definitions, by the revision each was read from.
-#[derive(Debug, Clone)]
-pub struct Definitions {
-    entries: Cache<RevisionKey, Arc<Parsed>>,
-}
-
-impl Default for Definitions {
-    fn default() -> Self {
-        Self::with_capacity(DEFINITION_CAPACITY_BYTES)
-    }
-}
-
-impl Definitions {
-    /// A cache weighing at most `bytes` of documents.
-    #[must_use]
-    pub fn with_capacity(bytes: u64) -> Self {
-        Self {
-            entries: Cache::builder()
-                .max_capacity(bytes)
-                .weigher(|_key, parsed: &Arc<Parsed>| parsed.bytes)
-                .eviction_policy(EvictionPolicy::lru())
-                .build(),
-        }
-    }
-
-    /// The definition revision `key` holds, parsed from `document` on a miss.
-    ///
-    /// `parse` runs only on a miss, and a document that fails it is not
-    /// cached: the next run reads and refuses it again, as it does today.
-    ///
-    /// # Errors
-    /// Whatever `parse` returns for a document it refuses.
-    pub async fn get_or_parse(
-        &self,
-        key: &RevisionKey,
-        document: &str,
-        parse: impl FnOnce(&str) -> Result<Definition>,
-    ) -> Result<Arc<Definition>> {
-        if let Some(parsed) = self.entries.get(key).await {
-            looked_up(RunCache::Definition, CacheOutcome::Hit);
-            return Ok(Arc::clone(&parsed.definition));
-        }
-        looked_up(RunCache::Definition, CacheOutcome::Miss);
-        let definition = Arc::new(parse(document)?);
-        let parsed = Arc::new(Parsed {
-            definition: Arc::clone(&definition),
-            bytes: u32::try_from(document.len()).unwrap_or(u32::MAX),
-        });
-        self.entries.insert(key.clone(), parsed).await;
-        Ok(definition)
-    }
-
-    /// The definition `key` holds, if the cache has it. A hit is counted here;
-    /// on a miss the caller reads the document and parses it through
-    /// [`Self::get_or_parse`], which counts the miss.
-    pub(crate) async fn get(&self, key: &RevisionKey) -> Option<Arc<Definition>> {
-        let found = self.entries.get(key).await;
-        if found.is_some() {
-            looked_up(RunCache::Definition, CacheOutcome::Hit);
-        }
-        found.map(|parsed| Arc::clone(&parsed.definition))
-    }
-
-    /// Applies pending evictions, so a test reads the cache's settled state.
-    #[cfg(test)]
-    async fn settle(&self) {
-        self.entries.run_pending_tasks().await;
-    }
-}
 
 /// The price books one replica holds: a host's renewal prices every run of
 /// one model from one read, and the next tick reads none.
@@ -241,77 +132,64 @@ impl PriceBooks {
 /// serves every run of its model.
 pub(crate) const LABEL_BATCH: &str = "renew_batch";
 
-/// How many fleets' head revisions one replica remembers.
-pub const HEAD_CAPACITY: u64 = 16_384;
-
 /// A catalogue version no statement has answered yet.
 const UNKNOWN: i64 = i64::MIN;
 
-/// The newest catalogue version and each fleet's head revision this replica
-/// has read.
+/// The newest catalogue version this replica has read.
 ///
-/// Every assignment reads both, so a host's renewal frame can name them without
-/// its pre-read. The renewal statement guards on both, so a
-/// stale value writes nothing; the run takes the per-run path, and the
-/// fleet is forgotten until a read answers it again.
+/// Every assignment reads it, so a host's renewal frame can name it without
+/// its pre-read. The renewal statement guards on it, so a stale value writes
+/// nothing; the run takes the per-run path, and the version is forgotten
+/// until a read answers it again.
 ///
 /// One pointer wide: every run store carries it, and the store rides inside
 /// futures clippy bounds by size.
-#[derive(Debug, Clone)]
-pub struct Latest(Arc<Versions>);
+#[derive(Debug, Clone, Default)]
+pub struct Latest(Arc<Catalogue>);
 
 /// What [`Latest`] shares between its clones.
 #[derive(Debug)]
-struct Versions {
-    catalogue: AtomicI64,
-    heads: Cache<Uuid7, Uuid7>,
-}
+struct Catalogue(AtomicI64);
 
-impl Default for Latest {
+impl Default for Catalogue {
     fn default() -> Self {
-        Self::with_capacity(HEAD_CAPACITY)
+        Self(AtomicI64::new(UNKNOWN))
     }
 }
 
 impl Latest {
-    /// Versions remembering at most `heads` fleets' head revisions.
-    #[must_use]
-    pub fn with_capacity(heads: u64) -> Self {
-        Self(Arc::new(Versions {
-            catalogue: AtomicI64::new(UNKNOWN),
-            heads: Cache::builder()
-                .max_capacity(heads)
-                .eviction_policy(EvictionPolicy::lru())
-                .build(),
-        }))
+    /// A statement answered the catalogue as `catalogue`. Versions only move
+    /// forward, so the larger is kept.
+    pub(crate) fn observe(&self, catalogue: i64) {
+        self.0.0.fetch_max(catalogue, Ordering::Relaxed);
     }
 
-    /// A statement answered `fleet`'s head as `head` and the catalogue as
-    /// `catalogue`. Versions only move forward, so the larger is kept.
-    pub(crate) async fn observe(&self, fleet: &Uuid7, head: Option<&Uuid7>, catalogue: i64) {
-        self.0.catalogue.fetch_max(catalogue, Ordering::Relaxed);
-        match head {
-            // Boxed: a cache future is large, and every run path awaits this.
-            Some(head) => Box::pin(self.0.heads.insert(fleet.clone(), head.clone())).await,
-            None => Box::pin(self.0.heads.invalidate(fleet)).await,
-        }
+    /// The catalogue version, when one is known.
+    pub(crate) fn known(&self) -> Option<i64> {
+        Some(self.0.0.load(Ordering::Relaxed)).filter(|catalogue| *catalogue != UNKNOWN)
     }
 
-    /// `fleet`'s head revision and the catalogue version, when both are known.
-    pub(crate) async fn known(&self, fleet: &Uuid7) -> Option<(Uuid7, i64)> {
-        let catalogue = self.0.catalogue.load(Ordering::Relaxed);
-        if catalogue == UNKNOWN {
-            return None;
-        }
-        Box::pin(self.0.heads.get(fleet))
-            .await
-            .map(|head| (head, catalogue))
+    /// A guard found the version moved: it is not named again until a read
+    /// answers it.
+    pub(crate) fn forget(&self) {
+        self.0.0.store(UNKNOWN, Ordering::Relaxed);
     }
+}
 
-    /// A guard found `fleet`'s facts moved: neither is named again until a
-    /// read answers it.
-    pub(crate) async fn forget(&self, fleet: &Uuid7) {
-        self.0.catalogue.store(UNKNOWN, Ordering::Relaxed);
-        Box::pin(self.0.heads.invalidate(fleet)).await;
+#[cfg(test)]
+mod tests {
+    use super::Latest;
+
+    #[test]
+    fn the_catalogue_version_only_moves_forward_until_forgotten() {
+        let latest = Latest::default();
+        assert_eq!(latest.known(), None);
+
+        latest.observe(7);
+        latest.observe(3);
+        assert_eq!(latest.known(), Some(7));
+
+        latest.forget();
+        assert_eq!(latest.known(), None);
     }
 }

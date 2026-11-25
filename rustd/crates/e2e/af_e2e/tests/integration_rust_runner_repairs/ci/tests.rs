@@ -7,7 +7,7 @@ use serde_json::json;
 use super::{LINKWARDEN, assert_reconciled_for, assert_repaired_on_named_branch, writes};
 use crate::definition_install::install_definition;
 use crate::definition_repair::{
-    DIAGNOSIS_ONLY, DRAFT_URL, file_at_head, head_reads, routes, script,
+    DIAGNOSIS_ONLY, DRAFT_URL, file_at_head, github_auth, head_reads, routes, script,
 };
 use crate::definition_responder::{
     ATTEMPT, FAILING_SHA, JOB, JOB_LOG, JOB_LOG_LINE, JOBS, LOG_READER_HOST, RUN,
@@ -18,6 +18,7 @@ use crate::fake_model::FakeModel;
 use crate::https::{Seen, Upstream};
 use af_wire::turn::TurnKind;
 use afd_gate::policy::repair::branch_for;
+use afr_tools::ToolErrorCode;
 
 #[path = "continuation.rs"]
 mod continuation;
@@ -34,8 +35,10 @@ async fn test_addressed_repair_reads_evidence_before_draft() {
     let upstream = Upstream::serve(responder_upstream(200)).await;
     let mut reads = ci_evidence_reads();
     reads.extend(head_reads(LINKWARDEN));
+    // The minted GitHub token aimed at the log host: it goes only where
+    // GitHub's origin policy names it, so the request never leaves.
     let refused = vec![json!({"url":format!("https://{LOG_READER_HOST}/write"),
-        "method":"POST","body":"{}"})];
+        "method":"POST","headers":github_auth(),"body":"{}"})];
     let (model, transcript) = FakeModel::deciding(script(LINKWARDEN, reads, refused));
     let settled = run_event(&scene, &scene.turn_id, &upstream, model).await;
     assert!(settled.answer.contains(DRAFT_URL));
@@ -44,10 +47,12 @@ async fn test_addressed_repair_reads_evidence_before_draft() {
     assert_ci_reads_before_writes(&seen);
     let results = &asked.last().expect("the model completed").results;
     assert!(results.iter().any(|result| result.contains(JOB_LOG_LINE)));
+    let misdirected = format!("[{}]", ToolErrorCode::CredentialHostNotAllowed.as_str());
     assert!(
         results
             .iter()
-            .any(|result| result.starts_with("[method_not_allowed]"))
+            .any(|result| result.starts_with(&misdirected)),
+        "{results:#?}"
     );
     assert_reconciled_for(LINKWARDEN, &branch_for(scene.turn_id.as_str()), &seen);
     assert_repaired_on_named_branch(LINKWARDEN, scene.turn_id.as_str(), &seen, &asked);

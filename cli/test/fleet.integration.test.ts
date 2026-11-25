@@ -1,5 +1,4 @@
-// Integration tests for fleet.ts status / stop / resume / kill / delete
-// handlers. Each test exercises one CLI invocation against a mock API server
+// Integration tests for fleet.ts status / archive / delete handlers. Each test exercises one CLI invocation against a mock API server
 // and asserts the exit code, output text, and API calls recorded.
 
 import { describe, test, expect } from "bun:test";
@@ -7,14 +6,14 @@ import { describe, test, expect } from "bun:test";
 import { runCli } from "../src/cli.ts";
 import { bufferStream, withAuthedStateDir, cliEnv } from "./helpers-cli-state.ts";
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
-import { FLEET } from "./chat/fixture.ts";
+import { FLEET } from "./helpers-fleet.ts";
 import { AGENTSFLEET_STATUS } from "../src/constants/fleet-status.ts";
-import { FLEET_LIST_INVALID } from "../src/commands/fleet/read.ts";
+import { FLEET_LIST_INVALID, FLEET_RESPONSE_INVALID } from "../src/commands/fleet/read.ts";
 
 const WS_ID = "01900000-0000-7000-8000-000000b00b00";
 const FLEET_ID = "01900000-0000-7000-8000-000000c0ffee";
 const IDLE_ID = "01900000-0000-7000-8000-000000c0ffef";
-const CREATE_HINT = "Create reviewed setup with: agentsfleet chat";
+const CREATE_HINT = 'Start one with: agentsfleet fleet create "<message>"';
 const authedScope = <T>(fn: (stateDir: string) => Promise<T>): Promise<T> =>
   withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_fleet_test" }, fn);
 
@@ -180,7 +179,7 @@ describe("status", () => {
 });
 
 // ---------------------------------------------------------------------------
-// stop / resume / kill / delete — each reads the fleet for its current
+// archive / delete — each reads the fleet for its current
 // resource tag, then mutates under If-Match (public/openapi.json: patch_fleet
 // and delete_fleet both require the header).
 // ---------------------------------------------------------------------------
@@ -198,7 +197,6 @@ const run = (apiUrl: string, argv: ReadonlyArray<string>) => {
 };
 
 const LIFECYCLE = [
-  ["activate", AGENTSFLEET_STATUS.ACTIVE, "active"],
   ["archive", AGENTSFLEET_STATUS.ARCHIVED, "archived"],
 ] as const;
 
@@ -255,7 +253,7 @@ test("a fleet read that does not match the API shape refuses before any mutation
     await withMockApi(routes, async (apiUrl, calls) => {
       const result = await run(apiUrl, ["fleet", "archive", FLEET_ID]);
       expect(result.code).not.toBe(0);
-      expect(result.err).toContain("CHAT_RESPONSE_INVALID");
+      expect(result.err).toContain(FLEET_RESPONSE_INVALID);
       expect(calls.map((c) => c.method)).toEqual(["GET"]);
     });
   });

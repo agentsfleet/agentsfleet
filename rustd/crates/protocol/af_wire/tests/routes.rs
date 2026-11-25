@@ -23,6 +23,9 @@ fn test_route_templates_compose_from_their_segments() {
         ("schedules", paths::RUN_SCHEDULES),
         ("schedule", paths::RUN_SCHEDULE),
         ("schedule_runs", paths::RUN_SCHEDULE_RUNS),
+        ("triggers", paths::RUN_TRIGGERS),
+        ("trigger", paths::RUN_TRIGGER),
+        ("access", paths::RUN_ACCESS),
         ("messages", paths::RUN_MESSAGES),
         ("durable_task_inputs", paths::RUN_DURABLE_TASK_INPUTS),
         ("durable_task_effects", paths::RUN_DURABLE_TASK_EFFECTS),
@@ -46,6 +49,9 @@ fn test_route_templates_compose_from_their_segments() {
     schedules              /v1/runners/me/runs/{run_id}/schedules
     schedule               /v1/runners/me/runs/{run_id}/schedules/{schedule_id}
     schedule_runs          /v1/runners/me/runs/{run_id}/schedules/{schedule_id}/runs
+    triggers               /v1/runners/me/runs/{run_id}/triggers
+    trigger                /v1/runners/me/runs/{run_id}/triggers/{trigger_id}
+    access                 /v1/runners/me/runs/{run_id}/access
     messages               /v1/runners/me/runs/{run_id}/messages
     durable_task_inputs    /v1/runners/me/runs/{run_id}/durable_tasks/inputs
     durable_task_effects   /v1/runners/me/runs/{run_id}/durable_tasks/effects

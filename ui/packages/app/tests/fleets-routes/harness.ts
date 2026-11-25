@@ -1,4 +1,4 @@
-import { FLEET_ID, FLEET_DETAIL, response } from "../helpers/draft-fixtures";
+import { FLEET_ID, FLEET_DETAIL, response } from "../helpers/fleet-fixtures";
 import { afterEach, beforeEach, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
 import { NANOS_PER_USD } from "@/lib/types";
@@ -95,7 +95,6 @@ export function detailBody(over: Record<string, unknown> = {}) {
   return {
     ...FLEET_DETAIL,
     name: "platform-ops",
-    description: FLEET_DETAIL.definition.description,
     status: "active",
     events_processed: "0",
     budget_used_nanos: "0",

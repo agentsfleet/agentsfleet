@@ -1,4 +1,4 @@
-import { FLEET_ID } from "../helpers/draft-fixtures";
+import { FLEET_ID } from "../helpers/fleet-fixtures";
 import { detailBody, detailResponse, exhaustedBilling, happyBilling, mockFetchBilling } from "./harness";
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";

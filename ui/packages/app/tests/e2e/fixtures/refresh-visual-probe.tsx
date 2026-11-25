@@ -25,23 +25,17 @@ import { CONNECTION_STATUS, convertTurn } from "@/components/domain/conversation
 import { RENDER_KIND, RENDER_KIND_KEY, useFleetThreadEntries } from "@/components/domain/conversation/thread/useFleetThreadEntries";
 import { ACTOR } from "@/lib/turns/turn-summary";
 import { FleetDetailSchema } from "@/lib/api/fleet-detail";
-import { FLEET_DETAIL, WORKSPACE, FLEET_ID } from "@/tests/helpers/draft-fixtures";
+import { FLEET_DETAIL, MODEL, WORKSPACE, FLEET_ID } from "@/tests/helpers/fleet-fixtures";
 import { useFleetUploadPreviews } from "@/components/domain/conversation/composer/useFleetUploadPreviews";
 import { FLEET_CHAT_CONFIG } from "@/components/domain/activity/tools/FleetToolRegistry";
-import { FleetSetupWorkspace } from "@/components/domain/setup/FleetSetupWorkspace";
-import { SetupSummary } from "@/components/domain/setup/summary/SetupSummary";
-import { fleetSetupPath } from "@/lib/workspace-routes";
+import { FleetWorkspace } from "@/components/domain/fleet/FleetWorkspace";
+import { FleetListSections } from "@/components/domain/fleet/FleetListSections";
+import { FleetNetworkSection } from "@/components/domain/network/FleetNetworkSection";
 import { chatMessageText } from "@/lib/chat-message-text";
 import { latestFigures } from "@/lib/turns/run-summary";
 import {VisualLifecycleNotice} from "./visual-lifecycle-notice";
 
 const router = { bfcacheId: "visual-review", back() {}, forward() {}, refresh() {}, push() {}, replace() {}, async prefetch() {} };
-function scheduledDefinition(repository: string, secret: string) {
-  return {...FLEET_DETAIL.definition, config: {name: "merge-watch", "x-agentsfleet": {
-    repositories: [repository], tools: ["shell"], credentials: [secret],
-    budget: {daily_nanos: "1000000000"}, network: {http_egress: "public", package_manager_domains: true},
-  }}};
-}
 
 
 /** Current production conversation, activity, composer, and Summary; sample data. */
@@ -60,7 +54,6 @@ export function RefreshVisualFixture() {
   }, [phase, started]);
   const grouped = useFleetThreadEntries(turns, convertTurn);
   const fleetName = phase === "wake-up" ? "Merge watch" : phase === "activity" ? "Launch review" : phase === "error" ? "Deploy monitor" : "Release watch";
-  const scheduled = phase === "wake-up" && !archived;
   const schedules = phase === "wake-up" ? [visualWakeup(started)] : [];
   const [sent, setSent] = useState<ThreadMessageLike[]>([]);
   const onNew = useCallback(async (message: AppendMessage) => {
@@ -80,22 +73,23 @@ export function RefreshVisualFixture() {
         {VISUAL_SCENARIOS.map(value => <Button key={value} size="sm" variant={phase === value ? "secondary" : "ghost"} aria-pressed={phase === value} onClick={() => showScenario(value)}>{value === "empty" ? "Empty" : value === "running" ? "Working" : value === "completed" ? "Completed" : value === "activity" ? "Activity" : value === "wake-up" ? "Wake-up" : "Error"}</Button>)}
         <Button size="sm" variant="ghost" onClick={() => { document.documentElement.dataset.theme = document.documentElement.dataset.theme === "light" ? "dark" : "light"; }}>Theme</Button>
       </div>
-      <FleetSetupWorkspace account={OWN_ACCOUNT.account.tenant_id} workspace={WORKSPACE} fleet={FLEET_ID} revision={FLEET_DETAIL.setup_revision} viewer="fixture-owner" header={null}>
+      <FleetWorkspace account={OWN_ACCOUNT.account.tenant_id} workspace={WORKSPACE} fleet={FLEET_DETAIL} models={[{...MODEL, label: "MiniMax M3"}]} viewer="fixture-owner">
       {archived ? <VisualLifecycleNotice outcome="archived" /> : null}
       <FleetHeader latestRun={latestFigures(turns)} workspaceId={WORKSPACE} fleet={FleetDetailSchema.parse({ ...FLEET_DETAIL, name: fleetName, status: archived ? "archived" : "active", schedules, pending_approvals: !archived && phase === "completed" ? 1 : 0 })} />
       <AssistantRuntimeProvider runtime={runtime} config={FLEET_CHAT_CONFIG}><FleetScopeProvider workspaceId={WORKSPACE} fleetId={FLEET_ID}><SenderLabelProvider senderLabel={fleetName}><SenderNamesProvider names={senderNamesFrom("fixture-owner", [])}>
         <FleetDurableTaskProvider changeRepositories={phase === "activity" ? launchChangeRepositories(LAUNCH_REVIEW_ID, repositoryLabel) : undefined} files={phase === "activity" ? [{id: "brief", name: "launch-brief.md"}, {id: "reference", name: "mobile-reference.png"}] : previews.files} readOnly={archived} workspaceId={WORKSPACE} fleetId={FLEET_ID} subject="fixture-owner" revision={VISUAL_SCENARIOS.indexOf(phase)} turns={turns} schedules={schedules} sources={{repositories: phase === "empty" || phase === "activity" || phase === "error" ? [] : ["agentsfleet/platform-images"], access: "write", publication: "existing_pr"}}
           approvals={{count: phase === "completed" ? 1 : 0, href: `/w/${WORKSPACE}/fleets/${FLEET_ID}#fleet-approvals`}}>
-        <FleetConversationLayout summary={scheduled ? "setup" : "current-work"} work={scheduled
-          ? <SetupSummary definition={scheduledDefinition(repositoryLabel ?? "agentsfleet/agentsfleet", params.get("secretLabel") ?? "github")} schedules={schedules} editHref={fleetSetupPath(WORKSPACE, FLEET_ID, FLEET_DETAIL.setup_revision)} />
-          : <DurableTaskPanel workspaceId={WORKSPACE} fleetId={FLEET_ID} subject="fixture-owner" revision={VISUAL_SCENARIOS.indexOf(phase)} />}>
+        <FleetConversationLayout work={<>
+          <DurableTaskPanel workspaceId={WORKSPACE} fleetId={FLEET_ID} subject="fixture-owner" revision={VISUAL_SCENARIOS.indexOf(phase)} />
+          {archived ? null : <><FleetListSections /><FleetNetworkSection /></>}
+        </>}>
           <div className="flex min-h-0 flex-1 flex-col">
             <FleetThreadViewport archived={archived} modelLabel="MiniMax M3" turnsCount={messages.length} connectionStatus={CONNECTION_STATUS.LIVE}
               pending={[]} onRetry={() => {}} onResend={() => {}} onDismiss={() => {}} onRestored={() => {}} onDraft={() => {}} />
           </div>
         </FleetConversationLayout>
         </FleetDurableTaskProvider>
-      </SenderNamesProvider></SenderLabelProvider></FleetScopeProvider></AssistantRuntimeProvider></FleetSetupWorkspace>
+      </SenderNamesProvider></SenderLabelProvider></FleetScopeProvider></AssistantRuntimeProvider></FleetWorkspace>
     </div>
   </ReviewChrome></TooltipProvider></SearchParamsContext.Provider></PathnameContext.Provider></AppRouterContext>;
 }

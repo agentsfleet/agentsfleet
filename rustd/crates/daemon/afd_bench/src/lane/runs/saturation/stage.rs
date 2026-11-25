@@ -1,14 +1,15 @@
-//! The saturation population: chat drafts across tenants,
-//! ready fleets beside them, and hosts that hold several runs at once.
+//! The saturation population: fleets chat tenants start with a first
+//! message, ready fleets beside them, and hosts that hold several runs at once.
 //!
 //! # Seeded in the order the keys and the paths require
 //!
 //! 1. One tenant, workspace and owner per chat tenant, each funded deep, so
 //!    no wallet gate answers instead of the path under measurement.
-//! 2. The platform default every draft names, sealed into the first chat
-//!    tenant's workspace: `Drafts::create` refuses a model it cannot resolve.
-//! 3. The drafts, through `Drafts::create` itself, each with one queued
-//!    message — the state a person sending a first chat message leaves.
+//! 2. The platform default every create names, sealed into the first chat
+//!    tenant's workspace: `Creations::create` refuses a model it cannot
+//!    resolve.
+//! 3. The chat fleets, through `Creations::create` itself, each with its
+//!    queued first turn — the state a person sending a first message leaves.
 //! 4. One ready fleet per `BENCH_FLEETS`, its event admitted the way ingress
 //!    admits it, so a poll alternates between both kinds as it does in
 //!    production.
@@ -21,11 +22,10 @@ use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use af_crypto::secret::Kek;
 use af_wire::turn::TurnKind;
+use afd_api_wire::fleet::CreateFleetRequest;
 use afd_credential::provider::PLATFORM_MODEL_REF;
 use afd_db::test_util::{UserSeed, WalletSeed};
-use afd_setup::Access;
-use afd_setup::Drafts;
-use afd_setup::types::{CreateDraft, Source};
+use afd_setup::{Access, Creations};
 
 use crate::datastores::Datastores;
 use crate::error::{Result, seed_refused};
@@ -38,14 +38,14 @@ use crate::lane::runs::seed::{self, ROWS_PER_FLEET, ROWS_PER_RUNNER, SEEDED_AT, 
 /// the contended window's.
 pub(super) const INDEX_BASE: u64 = 0x2000_0000;
 
-/// Tenants whose drafts compete for one poll.
+/// Tenants whose first messages compete for one poll.
 ///
 /// Several, because the assignment this shape exists to measure walks candidates
 /// across tenants, and one tenant would never show one stalling another.
 pub(super) const TENANTS: u64 = 5;
 
-/// Queued drafts per chat tenant.
-const DRAFTS_PER_TENANT: u64 = 8;
+/// Fleets each chat tenant starts with a first message.
+const CHATS_PER_TENANT: u64 = 8;
 
 /// Concurrent workers each saturation host declares.
 ///
@@ -73,7 +73,8 @@ const TAG_SUFFIX: &str = "saturation-tag";
 const HOST_SUFFIX: &str = "saturation-host";
 
 /// Rows a chat tenant inserts that the prefix sweep counts: its tenant,
-/// workspace and fleet. The owner, wallet and drafts cascade with them.
+/// workspace and fleet. The owner, wallet and created fleets cascade with
+/// them.
 const ROWS_PER_CHAT_TENANT: u64 = ROWS_PER_FLEET;
 
 /// What the shape seeded, and what it must release itself.
@@ -83,7 +84,7 @@ pub(super) struct Staged {
     pub(super) tenants: Vec<SeededFleet>,
     /// The ready fleets, one event each.
     pub(super) fleets: Vec<SeededFleet>,
-    /// Queued chat messages, one per draft.
+    /// Queued first messages, one per created fleet.
     pub(super) messages: u64,
     /// Hosts holding one native session each.
     pub(super) runners: Vec<seed::RunnerIdentity>,
@@ -101,16 +102,16 @@ impl Staged {
     }
 }
 
-/// Seed the saturation population and the platform rows its drafts resolve,
+/// Seed the saturation population and the platform rows its creates resolve,
 /// sealing the platform credential under `kek`.
 ///
 /// # Errors
 ///
-/// Whatever Postgres or the setup chat path refused, and a
+/// Whatever Postgres or the create path refused, and a
 /// platform default another run already holds.
 pub(super) async fn stage(
     stores: &Datastores,
-    drafts: &Drafts,
+    creations: &Creations,
     kek: &Arc<Kek>,
     prefix: &RunPrefix,
     parameters: Parameters,
@@ -132,7 +133,7 @@ pub(super) async fn stage(
     }
     platform::stage(stores, kek, INDEX_BASE).await?;
     for (index, tenant) in (0..TENANTS).zip(&staged.tenants) {
-        staged.messages += queue(drafts, tenant, index).await?;
+        staged.messages += queue(creations, tenant, index).await?;
     }
     for index in 0..parameters.fleets {
         let fleet = seed::identities(INDEX_BASE + TENANTS + index)?;
@@ -152,7 +153,7 @@ pub(super) async fn stage(
     Ok(staged)
 }
 
-/// The chat tenant's owner, whose subject the drafts are created under, and
+/// The chat tenant's owner, whose subject the fleets are created under, and
 /// its wallet.
 async fn owner(stores: &Datastores, tenant: &SeededFleet, index: u64) -> Result<()> {
     let user = subject(index)?;
@@ -175,27 +176,30 @@ async fn fund(stores: &Datastores, tenant: &SeededFleet) -> Result<()> {
         .map_err(seed_refused)
 }
 
-/// Queue [`DRAFTS_PER_TENANT`] first messages for one chat tenant, through
-/// the route's own create verb, answering how many were queued.
-async fn queue(drafts: &Drafts, tenant: &SeededFleet, index: u64) -> Result<u64> {
+/// Start [`CHATS_PER_TENANT`] fleets for one chat tenant with a first
+/// message each, through the route's own create verb, answering how many
+/// were queued.
+async fn queue(creations: &Creations, tenant: &SeededFleet, index: u64) -> Result<u64> {
     let workspace = tenant.workspace.clone();
     let user = subject(index)?.to_string();
     let access = Access {
         workspace: &workspace,
         subject: &user,
     };
-    for _ in 0..DRAFTS_PER_TENANT {
+    for _ in 0..CHATS_PER_TENANT {
         let now = clock::now();
-        let request = CreateDraft {
-            save: false,
-            source: Source::Blank,
-            setup_model_ref: PLATFORM_MODEL_REF.to_owned(),
-            message: Some(MESSAGE.to_owned()),
-            operation_id: Entropy::new().uuid7(now)?,
+        let request = CreateFleetRequest {
+            message: MESSAGE.to_owned(),
+            operation_id: Entropy::new().uuid7(now)?.to_string(),
+            model_ref: Some(PLATFORM_MODEL_REF.to_owned()),
+            name: None,
         };
-        drafts.create(access, request, now).await?;
+        let request = garde::Unvalidated::new(request)
+            .validate()
+            .map_err(afd_setup::Error::from)?;
+        creations.create(access, &request, now).await?;
     }
-    Ok(DRAFTS_PER_TENANT)
+    Ok(CHATS_PER_TENANT)
 }
 
 /// The owner's id, which is also the subject and address it signs in with.

@@ -9,7 +9,7 @@ import ApiKeysView from "@/app/(dashboard)/settings/security/components/ApiKeysV
 import { SecurityLayout } from "@/app/(dashboard)/settings/security/components/SecurityLayout";
 import { SessionSettingsView } from "@/components/account/SessionSettings";
 import { OWN_ACCOUNT } from "@/tests/helpers/workspace-fixtures";
-import { WORKSPACE } from "@/tests/helpers/draft-fixtures";
+import { WORKSPACE } from "@/tests/helpers/fleet-fixtures";
 
 const SESSIONS: AccountSession[] = [
   {id: "current", browser: "Chrome", device: "macOS", current: true, mobile: false, location: "Chennai, IN", lastActiveAt: "2026-11-11T16:00:00Z"},

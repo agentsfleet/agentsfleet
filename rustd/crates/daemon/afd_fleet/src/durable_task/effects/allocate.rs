@@ -161,18 +161,9 @@ async fn publication_context(
     {
         return Err(DurableTaskRefusal::StaleState.into());
     }
-    let config = crate::run::Runs::stored_config_on(connection, &owned.current.fleet_id, None)
-        .await?
-        .ok_or(DurableTaskRefusal::InvalidTarget)?;
-    target.target.within(&config)?;
-    let accepted = crate::run::Runs::stored_config_on(
-        connection,
-        &owned.current.fleet_id,
-        Some(&guard::wire(&owned.snapshot.context.accepted_revision_id)?),
-    )
-    .await?
-    .ok_or(DurableTaskRefusal::InvalidTarget)?;
-    target.target.within(&accepted)?;
+    let binding =
+        crate::run::Runs::approved_binding_on(connection, &owned.current.fleet_id).await?;
+    target.target.within(binding.as_ref())?;
     let free: bool = sqlx::query_scalar(include_str!("sql/available.sql"))
         .bind(&task)
         .bind("prepared")

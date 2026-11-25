@@ -10,9 +10,7 @@ use afd_runner::RunnerEdit;
 use garde::Validate as _;
 use sqlx::{Connection as _, types::Json};
 
-use super::{
-    READ_BOUND_CONFIG, Ready, assign, drive, ready, seed::seed_provider_resolution, set_config,
-};
+use super::{Ready, assign, bind, drive, read_bound, ready, seed::seed_provider_resolution};
 use crate::support::Fixtures;
 
 /// Bound a real lock-order regression instead of hanging the test process.
@@ -142,7 +140,7 @@ pub(super) async fn select(fixtures: &Fixtures, runner: &Uuid7, model: Option<&U
 }
 
 async fn prepare(fixtures: &Fixtures, case: &Ready) -> afd_db::test_util::PlatformDefault {
-    set_config(fixtures, &case.fleet, READ_BOUND_CONFIG).await;
+    bind(fixtures, &case.fleet, read_bound()).await;
     fixtures
         .seed_wallet(&case.tenant, crate::report_seed::DEEP_POOL)
         .await;

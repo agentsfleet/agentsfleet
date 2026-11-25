@@ -30,7 +30,7 @@ const RACERS: u32 = 12;
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_stale_fence_message_refused() {
     let mut supervisor = Supervisor::new();
-    let speaking = Speaking::boot(&mut supervisor, crate::e2e_seed::FLEET_CONFIG_JSON).await;
+    let speaking = Speaking::boot(&mut supervisor).await;
     let (run_id, fence) = speaking.run_thread().await;
 
     let (status, refused) = speaking.say((&run_id, fence - 1), "late").await;
@@ -49,7 +49,7 @@ async fn test_stale_fence_message_refused() {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_superseded_holder_of_a_thread_posts_nothing() {
     let mut supervisor = Supervisor::new();
-    let speaking = Speaking::boot(&mut supervisor, crate::e2e_seed::FLEET_CONFIG_JSON).await;
+    let speaking = Speaking::boot(&mut supervisor).await;
     let (run_id, fence) = speaking.run_thread().await;
     speaking.supersede().await;
 
@@ -68,7 +68,7 @@ async fn test_superseded_holder_of_a_thread_posts_nothing() {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_concurrent_messages_each_take_their_own_line() {
     let mut supervisor = Supervisor::new();
-    let speaking = Speaking::boot(&mut supervisor, crate::e2e_seed::FLEET_CONFIG_JSON).await;
+    let speaking = Speaking::boot(&mut supervisor).await;
     let (run_id, fence) = speaking.run_thread().await;
     let texts: Vec<String> = (1..=RACERS).map(|line| format!("line {line}")).collect();
 

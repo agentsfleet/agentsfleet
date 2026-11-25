@@ -4,7 +4,7 @@
 use std::{sync::Arc, time::Duration};
 
 use af_core::clock::Clock;
-use af_core::error_code::{self, RUN_BUDGET_EXCEEDED, RUN_CANCELLED};
+use af_core::error_code::{self, RUN_CANCELLED};
 use af_core::id::Uuid7;
 use af_core::timing::MAX_RUN_SECONDS;
 use af_wire::report::FailureClass;
@@ -67,8 +67,8 @@ impl<'a> Renewal<'a> {
     /// Renews on each round of the runner's clock and returns why the run ended.
     ///
     /// A transport failure or a 5xx keeps the run: the daemon may be briefly
-    /// unwell and the next tick may land. A 4xx ends it — revoked, lapsed, out
-    /// of budget. And whatever the failures were, the run ends once the last
+    /// unwell and the next tick may land. A 4xx ends it — revoked, lapsed, or
+    /// the payer out of credits. And whatever the failures were, the run ends once the last
     /// granted deadline, less [`EXPIRY_MARGIN`], has passed: past it the daemon
     /// may already have given the event to another runner.
     pub(crate) async fn keep(self) -> FailureClass {
@@ -133,11 +133,7 @@ impl<'a> Renewal<'a> {
         if refusal.refusal_code() == Some(RUN_CANCELLED) {
             self.plane.stream.running.cancel(self.run_id, true);
         }
-        if refusal.refusal_code() == Some(RUN_BUDGET_EXCEEDED) {
-            FailureClass::BudgetBreach
-        } else {
-            FailureClass::RenewalTerminate
-        }
+        FailureClass::RenewalTerminate
     }
 
     fn expired(&self) -> FailureClass {

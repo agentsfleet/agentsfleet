@@ -29,27 +29,23 @@ async fn test_fleet_cannot_touch_human_schedules() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
     let held = Box::pin(Assigned::boot(&mut supervisor, &qstash)).await;
-    for source in [Source::Api, Source::Trigger] {
-        let schedule = held
-            .seed(source, &format!("person-{}", source.as_str()))
-            .await;
-        let member = format!("/{schedule}");
-        let patch = itemized(json!({"fencing_token": held.fence, "message": "taken over"}));
-        let (status, refused) = held
-            .call(Method::PATCH, &held.path(&member), Some(&patch))
-            .await;
-        assert_eq!(
-            (status, &refused["error_code"]),
-            (403, &json!("UZ-SCHED-010")),
-            "{refused}"
-        );
-        let (status, refused) = held.call(Method::DELETE, &held.fenced(&member), None).await;
-        assert_eq!(
-            (status, &refused["error_code"]),
-            (403, &json!("UZ-SCHED-010")),
-            "{refused}"
-        );
-    }
+    let schedule = held.seed(Source::Api, "person-api").await;
+    let member = format!("/{schedule}");
+    let patch = itemized(json!({"fencing_token": held.fence, "message": "taken over"}));
+    let (status, refused) = held
+        .call(Method::PATCH, &held.path(&member), Some(&patch))
+        .await;
+    assert_eq!(
+        (status, &refused["error_code"]),
+        (403, &json!("UZ-SCHED-010")),
+        "{refused}"
+    );
+    let (status, refused) = held.call(Method::DELETE, &held.fenced(&member), None).await;
+    assert_eq!(
+        (status, &refused["error_code"]),
+        (403, &json!("UZ-SCHED-010")),
+        "{refused}"
+    );
     let (_status, listed) = held.call(Method::GET, &held.fenced(""), None).await;
     let messages: Vec<&Value> = listed["schedules"]
         .as_array()
@@ -59,8 +55,8 @@ async fn test_fleet_cannot_touch_human_schedules() {
         .collect();
     assert_eq!(
         messages,
-        [&json!("seeded"), &json!("seeded")],
-        "both rows unchanged"
+        [&json!("seeded")],
+        "the person's row is unchanged"
     );
     assert!(qstash.told().is_empty(), "{:?}", qstash.told());
     held.finish(supervisor).await;

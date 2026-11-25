@@ -8,7 +8,7 @@ use crate::definition_responder::{
     DIAGNOSIS, FAILED_STEP, FAILING_SHA, JOB_LOG_LINE, LOG_READER_HOST, LOG_SIGNATURE, MEMORY_KEY,
     RUN_URL, SOURCE_GAP, responder_stopping_turns, responder_turns, responder_upstream,
 };
-use crate::definition_run::{assert_token_stayed_on_the_wire, run_event};
+use crate::definition_run::{assert_token_stayed_on_the_wire, offered_catalog, run_event};
 use crate::fake_model::{FakeModel, say};
 use crate::https::{Seen, Upstream};
 use crate::integration_tool_trace::stored_trace;
@@ -31,7 +31,7 @@ async fn test_responder_reads_exact_ci_evidence() {
     let asked = transcript.asked();
     let mut offered = asked[0].tools.clone();
     offered.sort_unstable();
-    assert_eq!(offered, ["http_request", "memory_recall", "memory_store"]);
+    assert_eq!(offered, offered_catalog());
     let results = &asked.last().expect("the model was asked").results;
     let seen = upstream.seen();
     assert_ci_sources(&seen, results);

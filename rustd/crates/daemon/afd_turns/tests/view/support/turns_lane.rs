@@ -177,7 +177,6 @@ impl TurnsLane {
         FleetSeed::new(&self.fleet, &self.workspace, &self.tenant, FLEET_ACTIVE)
             .name("events-fixture-fleet")
             .at(SEEDED_AT)
-            .native_setup()
             .insert(&mut *connection)
             .await
             .expect("seeding a fleet");

@@ -12,7 +12,7 @@ export const SelectValue = SelectPrimitive.Value;
 
 const TRIGGER_APPEARANCE = {
   default: "min-h-11 w-full border border-border bg-background px-lg py-sm text-label",
-  composer: "h-9 w-auto min-w-0 max-w-full border-0 bg-transparent px-md py-0 text-eyebrow leading-label text-muted-foreground",
+  composer: "h-9 w-auto min-w-0 max-w-full border-0 bg-transparent px-sm py-0 text-eyebrow leading-eyebrow text-muted-foreground hover:bg-muted hover:text-foreground data-[state=open]:bg-muted sm:px-md",
   filter: [
     "h-10 min-h-10 w-auto min-w-36 border border-border bg-background py-sm pl-lg pr-xl",
     "text-label font-normal text-muted-foreground pointer-coarse:min-w-36",
@@ -53,7 +53,7 @@ export function SelectTrigger({
     >
       {children}
       <SelectPrimitive.Icon asChild>
-        <span className={CHEVRON_CLASS_NAME} data-slot="select-caret">
+        <span className={cn(CHEVRON_CLASS_NAME, appearance === "composer" && "ml-sm sm:ml-md")} data-slot="select-caret">
           <CaretDownIcon size={appearance === "composer" ? 14 : 16} aria-hidden="true" />
         </span>
       </SelectPrimitive.Icon>

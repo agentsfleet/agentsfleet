@@ -1,12 +1,12 @@
 DESCRIPTION
-  agentsfleet cli
+  Start and talk to your fleets from the terminal
 
 USAGE
   agentsfleet <subcommand> [flags]
 
 FLAGS
-  --api <url>    API base URL
-  --json         Machine-readable JSON output
+  --api <url>    Server address to talk to
+  --json         Print JSON instead of text
 
 GLOBAL FLAGS
   --help, -h
@@ -14,25 +14,22 @@ GLOBAL FLAGS
   --version, -v
       Show version information
   --completions <bash|zsh|fish|powershell|sh|pwsh>
-      Print a static completion script; write it to a file and regenerate after
-      login, a target change or a permission change (choices: bash, zsh, fish,
-      powershell, sh, pwsh)
+      Print a tab-completion script for your shell; save it to a file, and redo
+      it after you sign in (choices: bash, zsh, fish, powershell, sh, pwsh)
   --log-level <all|trace|debug|info|warn|warning|error|fatal|none>
       Sets the minimum log level (choices: all, trace, debug, info, warn,
       warning, error, fatal, none)
 
 SUBCOMMANDS
-  login          Authenticate via browser
-  logout         Sign out — revoke this machine's credential, abort unfinished
-                 sign-ins, and clear local state (other machines stay signed in)
-  whoami         Show who this terminal is signed in as
-  doctor         Diagnose CLI configuration and connectivity
-  workspace      Manage workspaces
-  chat           Create, resume, and review a private workspace chat
-  fleet          Run, steer and inspect fleets
-  models         Browse the model catalogue and choose the tenant's provider
-  secrets        Workspace secret vault
-  connections    Inspect workspace connectors
-  api-keys       Manage tenant API keys
-  usage          Balance and recent spend for this tenant
+  login          Sign in through your browser
+  logout         Sign out on this computer (other computers stay signed in)
+  whoami         Show which account you are signed in as
+  doctor         Check your setup and that the server is reachable
+  workspace      Create and switch between workspaces
+  fleet          Start fleets, talk to them and see what they do
+  models         See the AI models and choose which one your account uses
+  secrets        Save passwords and API keys your fleets can ask for
+  connections    See which apps, like GitHub and Slack, are connected
+  api-keys       Create and manage API keys for scripts
+  usage          See your balance and what your fleets cost
 Environment variables: https://docs.agentsfleet.net/cli/configuration

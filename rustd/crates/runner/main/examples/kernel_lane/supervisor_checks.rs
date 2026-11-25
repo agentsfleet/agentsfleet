@@ -15,7 +15,7 @@ use serde_json::json;
 
 use crate::run::expect;
 use crate::supervisor::Observed;
-use crate::supervisor_model::{ANSWER, INSTRUCTIONS, STEER};
+use crate::supervisor_model::{ANSWER, NAME, STEER};
 use crate::supervisor_plane::{GRAFANA, Received, SCHEDULE_ID, SCHEDULE_TURN_ID, TOKEN};
 
 pub(crate) fn received<'a>(observed: &'a Observed, suffix: &str) -> Result<&'a Received, Failed> {
@@ -45,8 +45,8 @@ pub(crate) fn finished(observed: &Observed, preparations: usize) -> Result<(), F
         )
     })?;
     expect(
-        asked.instructions.contains(INSTRUCTIONS) && asked.user.iter().any(|user| user == STEER),
-        format!("installed instructions and user steer reach the model: {asked:?}"),
+        asked.instructions.contains(NAME) && asked.user.iter().any(|user| user == STEER),
+        format!("the fleet's name and user steer reach the model: {asked:?}"),
     )?;
     let report = report(observed)?;
     expect(

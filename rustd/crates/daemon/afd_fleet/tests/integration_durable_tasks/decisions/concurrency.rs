@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use af_core::{error_code, id::Uuid7};
 use af_wire::{
-    durable_task::{DecisionAssessment, DecisionCallState, DecisionRecordDisposition},
+    durable_task::{DecisionCallState, DecisionRecordDisposition},
     usage::LineKind,
 };
 use afd_fleet::durable_task::DurableTaskLifecycle as _;
@@ -15,6 +15,7 @@ use tokio::sync::Barrier;
 use super::{
     super::fixture::{Case, exercise},
     fixture::{Decisions, known, request},
+    steps::another_operation,
 };
 
 #[derive(Clone, Copy)]
@@ -33,7 +34,7 @@ async fn concurrent_decision_replays_issue_one_key_and_account_one_complete_line
 
 async fn replays(case: &Case, operations: Operations) {
     let fixture = Decisions::create(case).await;
-    let input = fixture.reservation(DecisionAssessment::Message, None);
+    let input = fixture.call_input().await;
     let replies = contend(&fixture, &input, operations).await;
     assert_eq!(replies.iter().filter(|(issued, _)| *issued).count(), 1);
     let body = &replies
@@ -71,13 +72,18 @@ fn compiled_request(fixture: &Decisions<'_>, body: &Value) -> af_wire::decision:
         Some(&serde_json::to_value(&fixture.assignment).expect("frozen assignment"))
     );
     let request = request(body);
+    // A goal check asks the task's own statements, then the next action.
     assert_eq!(
         request
             .questions
             .iter()
             .map(|question| question.name.as_str())
             .collect::<Vec<_>>(),
-        ["intent", "association", "multiple_requests"]
+        [
+            "goal.defect-fixed",
+            "goal.verification-current",
+            "next_action"
+        ]
     );
     assert_eq!(
         request.state.get("message"),
@@ -102,7 +108,7 @@ pub(super) async fn contend(
     let peers = match operations {
         Operations::Same => Vec::new(),
         Operations::Independent => (1..CALLERS)
-            .map(|_| fixture.reservation(DecisionAssessment::Message, None))
+            .map(|_| another_operation(input))
             .collect::<Vec<_>>(),
     };
     let requests = match operations {

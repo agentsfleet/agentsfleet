@@ -71,5 +71,5 @@ The queue-placement refactor proposed in M226 is not a dependency: implement aga
 
 - [Canonical types and routes](../../architecture/api_resources.md)
 - [Decision ledger](decisions.md)
-- [Creation](../../architecture/data_flow.md#fleet-creation-and-setup-recovery)
-- [Runner](../../architecture/runner_fleet.md#authoring-leases)
+- [Creation](../../architecture/data_flow.md#create-and-recovery)
+- [Runner](../../architecture/runner_protocol.md#run-lease-and-renewal)

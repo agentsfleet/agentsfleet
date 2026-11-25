@@ -1,6 +1,6 @@
 //! Each gate kind against each way a gate ends that no other file pairs it with: a
-//! denial, a Stop of a turn, and a fleet delete. A tool gate and a question hang from
-//! the turn that raised them; a runless gate and a setup card hang from no turn.
+//! denial, a Stop of a turn, and a fleet delete. A question and an access card each
+//! hang from the turn whose run waits on them.
 //!
 //! Marked `#[ignore]`; `make test-integration-rustd` runs them.
 #![expect(
@@ -16,7 +16,7 @@ use afd_turns::view::stop::Stop;
 use sqlx::Connection as _;
 
 use crate::lane::{LOCK_FLEET, Lane, Window};
-use crate::tail_watch::{NOTE, OPERATOR, delivery_unparked, park_delivery};
+use crate::tail_watch::{NOTE, OPERATOR};
 
 /// The first answer to `action`, which wins.
 async fn deny(lane: &Lane, action: &af_core::id::Uuid7) -> Resolved {
@@ -45,49 +45,24 @@ async fn a_denied_question_continues_nothing() {
         "a denial continues nothing"
     );
     assert_eq!(lane.status_of(&question).await, status::DENIED);
-    for producer in [Producer::QuestionAnswer, Producer::GateContinuation] {
-        assert_eq!(
-            lane.continuations(producer, &question).await,
-            0,
-            "no {} turn",
-            producer.as_str()
-        );
-    }
-}
-
-/// A denied runless gate continues nothing and wakes the delivery it parked.
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn a_denied_runless_gate_continues_nothing_and_wakes_its_delivery() {
-    let lane = Lane::isolated().await;
-    park_delivery(&lane).await;
-    let runless = lane.seed_runless_gate(Window::Open).await;
-
-    let resolved = deny(&lane, &runless).await;
-
     assert_eq!(
-        resolved.continuation_turn_id, None,
-        "a denial continues nothing"
-    );
-    assert_eq!(lane.status_of(&runless).await, status::DENIED);
-    assert!(
-        delivery_unparked(&lane).await,
-        "a runless denial wakes the parked delivery"
+        lane.continuations(Producer::QuestionAnswer, &question)
+            .await,
+        0,
+        "no answer turn"
     );
 }
 
-/// A Stop closes the question its turn asked and continues nothing; a runless gate and
-/// a setup card, which hang from no turn, stay pending.
+/// A Stop closes the question its turn asked and continues nothing; an access card
+/// another turn waits on stays pending.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn a_stop_closes_its_turns_question_and_leaves_turnless_gates_pending() {
+async fn a_stop_closes_its_turns_question_and_leaves_another_turns_card_pending() {
     let lane = Lane::isolated().await;
-    let asking = lane.parked_turn().await;
+    let asking = lane.queued_turn().await;
     let question = lane.seed_question(Window::Open).await;
-    lane.gate_turn(&question, Some(&asking), false).await;
-    let runless = lane.seed_runless_gate(Window::Open).await;
-    let card = lane.seed_runless_gate(Window::Open).await;
-    lane.gate_turn(&card, None, true).await;
+    lane.gate_turn(&question, Some(&asking)).await;
+    let card = lane.seed_gate(Window::Open).await;
 
     let stopped = History::new(lane.pool.clone())
         .stop(&lane.workspace, &lane.fleet, &asking)
@@ -108,18 +83,16 @@ async fn a_stop_closes_its_turns_question_and_leaves_turnless_gates_pending() {
         0,
         "a stopped question is answered by nobody"
     );
-    for gate in [&runless, &card] {
-        assert_eq!(lane.status_of(gate).await, status::PENDING);
-    }
+    assert_eq!(lane.status_of(&card).await, status::PENDING);
 }
 
-/// A fleet delete takes its tool gates and questions with it, and a later answer finds
-/// no gate.
+/// A fleet delete takes its access cards and questions with it, and a later answer
+/// finds no gate.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn a_fleet_delete_takes_its_tool_gates_and_questions_with_it() {
+async fn a_fleet_delete_takes_its_cards_and_questions_with_it() {
     let lane = Lane::isolated().await;
-    let tool = lane.seed_gate(Window::Open).await;
+    let card = lane.seed_gate(Window::Open).await;
     let question = lane.seed_question(Window::Open).await;
 
     let mut connection = lane.pool.acquire().await.expect("a connection");
@@ -142,7 +115,7 @@ async fn a_fleet_delete_takes_its_tool_gates_and_questions_with_it() {
             .expect("the gates read");
     assert_eq!(left, 0, "the delete cascades to every gate");
     let fleet = lane.fleet.to_string();
-    for (gate, decision) in [(&tool, Decision::Approved), (&question, Decision::Answered)] {
+    for (gate, decision) in [(&card, Decision::Approved), (&question, Decision::Answered)] {
         let outcome = lane
             .inbox
             .resolve(gate.as_str(), decision, OPERATOR, NOTE, Some(&fleet))

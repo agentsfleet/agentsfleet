@@ -74,10 +74,8 @@ pub(super) async fn issue<'a>(
     {
         return Err(DurableTaskRefusal::StaleState.into());
     }
-    let config = crate::run::Runs::stored_config_on(&mut tx, &owned.current.fleet_id, None)
-        .await?
-        .ok_or(DurableTaskRefusal::InvalidTarget)?;
-    effect.target()?.within(&config)?;
+    let binding = crate::run::Runs::approved_binding_on(&mut tx, &owned.current.fleet_id).await?;
+    effect.target()?.within(binding.as_ref())?;
     super::super::Github::hold_authority(&mut tx, &owned.scope, effect.target()?.installation_id)
         .await?;
     let updated = sqlx::query(include_str!("sql/issue.sql"))

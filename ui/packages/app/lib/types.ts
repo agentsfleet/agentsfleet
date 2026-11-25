@@ -14,13 +14,6 @@ export type ApiError = {
 
 // ── Fleets ──
 
-// The server projects each trigger in the native definition into fleet list
-// rows, served as `FleetSummary` in rustd/crates/daemon/afd_api_wire/src/fleet/collection.rs.
-// Tagged union by `type` — webhook
-// carries source + events; cron carries the raw schedule expression; mention
-// carries the chat provider and the one channel it answers in.
-export const AGENT_TRIGGER_TYPE = {webhook: "webhook", cron: "cron", mention: "mention"} as const;
-
 export type Fleet = NativeFleetSummary;
 
 export type FleetDetail = NativeFleetDetail;

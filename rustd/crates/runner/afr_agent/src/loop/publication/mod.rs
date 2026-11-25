@@ -120,10 +120,7 @@ impl Harness<'_, '_> {
         {
             return None;
         }
-        let prepared = self
-            .task
-            .as_ref()
-            .filter(|prepared| prepared.allow_actions)?;
+        let prepared = self.task.as_ref()?;
         let task = prepared.inputs.current_durable_task.as_ref()?;
         match &task.target {
             DurableTaskTarget::ExistingPr {

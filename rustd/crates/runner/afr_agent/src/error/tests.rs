@@ -67,7 +67,7 @@ const PRIVATE_URL: &str = "https://127.0.0.1/v1";
 
 #[test]
 fn should_refuse_a_private_persisted_endpoint_without_mistaking_it_for_an_unhosted_provider() {
-    let mut policy = af_egress::fixture::policy(true);
+    let mut policy = af_egress::fixture::policy();
     policy.context.context_cap_tokens = 128_000;
     policy.inference = Some(ModelInference {
         api: InferenceApi::Chat,

@@ -1,7 +1,5 @@
 import { test } from "./fixtures/chat-probe";
 import { expect, type Locator, type Page } from "@playwright/test";
-import { DURABLE_TASK_IDS, detail, summary } from "@/tests/helpers/task-reads";
-import { DRAFT } from "@/tests/helpers/draft-fixtures";
 
 test("the chat row uses the design-system stream motion token", async ({page, chatProbe}) => {
   await page.emulateMedia({reducedMotion: "no-preference"});
@@ -12,8 +10,8 @@ test("the chat row uses the design-system stream motion token", async ({page, ch
   await expect(reply).toHaveCSS("transition-duration", "0.2s");
 });
 
-test("setup and fleet status text has a muted-to-foreground sweep with accessible motion fallbacks", async ({page, chatProbe}) => {
-  for (const route of ["?loading=1", "?activity=1"]) {
+test("fleet status text has a muted-to-foreground sweep with accessible motion fallbacks", async ({page, chatProbe}) => {
+  for (const route of ["?loading=thinking", "?activity=1"]) {
     await page.emulateMedia({reducedMotion: "no-preference", forcedColors: "none"});
     await page.goto(`${chatProbe}${route}`);
     const label = page.locator('[data-chat-loading="true"]').first();
@@ -128,7 +126,9 @@ test("opens at the latest turn, lifts a sent turn to the top and holds it while 
     const scrollTo = Reflect.get(Element.prototype, "scrollTo") as Element["scrollTo"];
     Element.prototype.scrollTo = new Proxy(scrollTo, {
       apply(scrollTo, element, args) {
-        if (element instanceof Element && element.classList.contains("fleet-thread-viewport")) mark(`scrollTo ${args[0]?.top ?? args[1]}`);
+        if (element instanceof Element && element.classList.contains("fleet-thread-viewport")) {
+          mark(`scrollTo ${args[0]?.top ?? args[1]} ${args[0]?.behavior ?? "auto"}`);
+        }
         return Reflect.apply(scrollTo, element, args);
       },
     });
@@ -153,6 +153,7 @@ test("opens at the latest turn, lifts a sent turn to the top and holds it while 
     throw new Error(`Opening scroll timeline\n${timeline.join("\n")}`, {cause});
   }
   await input.fill("Check the canary rollout.");
+  await page.evaluate(() => performance.clearMarks());
   await page.getByRole("button", {name: "Send", exact: true}).click();
   const sent = page.locator("[data-aui-top-anchor-user]");
   await expect(sent).toContainText("Check the canary rollout.");
@@ -162,6 +163,12 @@ test("opens at the latest turn, lifts a sent turn to the top and holds it while 
     return anchor === null ? Number.NaN : anchor.getBoundingClientRect().top - element.getBoundingClientRect().top;
   });
   await expect.poll(async () => Math.abs(await sentTop())).toBeLessThanOrEqual(1);
+  const sendScrolls = await page.evaluate(() => performance.getEntriesByType("mark")
+    .map(mark => mark.name)
+    .filter(name => name.startsWith("chat-opening:scrollTo"))
+    .map(name => name.split(" ").at(-1)));
+  expect(sendScrolls).toContain("instant");
+  expect(sendScrolls).not.toContain("smooth");
   // The reserve is the room below a short reply that lets the sent turn reach the top.
   expect(await page.locator("[data-aui-top-anchor-reserve]").evaluate(element => element.getBoundingClientRect().height)).toBeGreaterThan(0);
   const held = await scrollTop();
@@ -218,62 +225,9 @@ test("conversation and composer use the approved Manrope scale", async ({page, c
   await info.attach("chat-manrope-fixture", {path: screenshot, contentType: "image/png"});
 });
 
-test("the pull request starter remains editable and readable before any setup request", async ({page, chatProbe}, info) => {
-  const writes: string[] = [];
-  const errors: string[] = [];
-  page.on("pageerror", error => errors.push(error.message));
-  page.on("request", request => {
-    if (!["GET", "HEAD"].includes(request.method())) writes.push(request.method());
-  });
-  await page.goto(`${chatProbe}?starters=1`);
-  await expect(page.getByRole("heading", {name: "What should your fleet do?"})).toBeVisible();
-  const suggestion = page.getByRole("button", {name: "Watch a pull request", exact: true});
-  const input = page.getByRole("textbox", {name: "What would you like your fleet to do?"});
-  await expect(input).toHaveValue("");
-  const unfinished = page.getByRole("region", {name: "Unfinished setups", exact: true});
-  const resume = unfinished.locator(`a[href$="?draft=${DRAFT.id}"]`);
-  await expect(resume).toHaveAccessibleName(DRAFT.title);
-  const remove = unfinished.getByRole("button", {name: `Delete chat: ${DRAFT.title}`});
-  const composerBefore = await page.getByRole("form", {name: "Setup chat composer"}).boundingBox();
-  const row = await resume.boundingBox();
-  const action = await resume.getByText("Resume", {exact: true}).boundingBox();
-  if (!composerBefore || !row || !action) throw new Error("Unfinished setup and composer geometry must be available");
-  expect(Math.abs(row.x - composerBefore.x)).toBeLessThanOrEqual(1);
-  expect(Math.abs(row.x + row.width - composerBefore.x - composerBefore.width)).toBeLessThanOrEqual(1);
-  expect(Math.abs(row.x + row.width - action.x - action.width - 15)).toBeLessThanOrEqual(1);
-  await resume.hover(); await expect(remove).toHaveCSS("opacity", "1");
-  const removeBox = await remove.boundingBox();
-  if (!removeBox) throw new Error("The delete control must remain reachable");
-  expect(removeBox.x + removeBox.width).toBeLessThanOrEqual(action.x);
-  expect(await resume.getByText("Resume", {exact: true}).boundingBox()).toEqual(action);
-  await resume.focus(); await page.keyboard.press("Tab"); await expect(remove).toBeFocused();
-  await suggestion.focus(); await page.keyboard.press("Enter");
-  await expect(input).toHaveValue(/Does the review cover the requested pull request at its current head\?/);
-  await expect(input).toHaveValue(/Are the findings supported by concrete code or check evidence\?/);
-  const edited = `${await input.inputValue()}\n\nOnly review the API changes; preserve session expiry.`;
-  await input.fill(edited);
-  await expect(input).toHaveValue(edited);
-  await expect(input).toHaveCSS("font-size", info.project.name === "mobile-chromium" ? "16px" : "13px");
-  await expect(page.getByRole("button", {name: "New fleet from message", exact: true})).toBeEnabled();
-  expect(writes).toEqual([]);
-  expect(errors).toEqual([]);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  const composer = await page.getByRole("form", {name: "Setup chat composer"}).boundingBox();
-  expect(composer).not.toBeNull();
-  if (!composer) throw new Error("The starter must leave its editable composer visible");
-  expect(composer.y + composer.height).toBeLessThanOrEqual((page.viewportSize()?.height ?? 0) + 1);
-  const screenshot = info.outputPath("editable-pull-request-starter.png");
-  await page.screenshot({path: screenshot, scale: "css", animations: "disabled"});
-  await info.attach("editable-pull-request-starter", {path: screenshot, contentType: "image/png"});
-});
-
-test("a saved setup has one quiet receipt and incoming messages have readable details", async ({page, chatProbe}, info) => {
+test("incoming messages and failed requests have readable details", async ({page, chatProbe}, info) => {
   await page.emulateMedia({reducedMotion: "reduce"});
-  await page.goto(`${chatProbe}?setup=1`);
-  const receipt = page.getByRole("region", {name: "Saved fleet setup"});
-  await expect(receipt.getByRole("heading")).toHaveText("Saved setup");
-  await expect(receipt.getByRole("list")).toHaveCount(0);
-  await expect(receipt.locator("svg")).toHaveCount(0);
+  await page.goto(`${chatProbe}?messages=1`);
   await expect(page.getByText("Message received", {exact: true})).toBeVisible();
   const disclosure = page.getByRole("button", {name: "View message"});
   await disclosure.focus(); await page.keyboard.press("Enter");
@@ -288,9 +242,9 @@ test("a saved setup has one quiet receipt and incoming messages have readable de
   await expect(page.getByText("The connection to the model provider was lost mid-turn.")).toBeVisible();
   await page.keyboard.press("Enter");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  const screenshot = info.outputPath("setup-message-clarity.png");
+  const screenshot = info.outputPath("message-clarity.png");
   await page.screenshot({path: screenshot, scale: "css", animations: "disabled"});
-  await info.attach("setup-message-clarity", {path: screenshot, contentType: "image/png"});
+  await info.attach("message-clarity", {path: screenshot, contentType: "image/png"});
 });
 
 test("recorded actions stay visible and distinguish every terminal outcome", async ({page, chatProbe}, info) => {
@@ -333,54 +287,6 @@ test("recorded actions stay visible and distinguish every terminal outcome", asy
   expect(errors).toEqual([]);
 });
 
-test("work stays in a sidebar while the ordinary chat composer preserves its draft", async ({page, chatProbe}, info) => {
-  const work = [summary(), summary(DURABLE_TASK_IDS[1], "running"), summary(DURABLE_TASK_IDS[2], "ready")];
-  await page.route("**/live/v1/workspaces/workspace/fleets/linkwarden/durable_tasks**", async route => {
-    expect(route.request().headers()["authorization"]).toBeUndefined();
-    const pathname = new URL(route.request().url()).pathname;
-    const task = work.find(task => pathname.endsWith(task.id));
-    const saved = task ? detail(task) : null;
-    const target = task ? {kind: "existing_pr", repository: "linkwarden/linkwarden", number: Number(task.id.slice(-3)), branch: "repair", head: "a".repeat(40), tree: "b".repeat(40), url: `https://github.com/linkwarden/linkwarden/pull/${Number(task.id.slice(-3))}`, workflows: []} : null;
-    await route.fulfill({headers: {etag: `"${"a".repeat(64)}"`}, json: saved ? {...saved, context: {...saved.context, target}} : {items: work, next_cursor: null}});
-  });
-  await page.goto(`${chatProbe}?durable_tasks=1`);
-  const input = page.getByRole("textbox", {name: /^Message your fleet/});
-  await input.fill("Keep the redirect fix in the callback handler.");
-  for (const window of [{width: 1280, height: 800}, {width: 1280, height: 360}, {width: 390, height: 667}]) {
-    await page.setViewportSize(window);
-    await expect(page.getByRole("link", {name: /^Pull request #123 ·/})).toHaveAttribute("href", "https://github.com/linkwarden/linkwarden/pull/123");
-    const panel = page.getByRole("region", {name: "Current work"});
-    const durableTaskList = panel.getByRole("button", {name: /^Tasks/});
-    await expect(durableTaskList).toBeVisible();
-    if (await durableTaskList.getAttribute("aria-expanded") !== "true") await durableTaskList.click();
-    for (const section of ["Pull requests", "Sources"]) await expect(panel.getByRole("heading", {name: section, exact: true})).toBeAttached();
-    await expect(panel.getByRole("heading", {name: "Output", exact: true})).toHaveCount(0);
-    await expect(panel.getByRole("heading", {name: "Changes", exact: true})).toHaveCount(0);
-    await expect(panel.getByRole("region", {name: "Pull requests", exact: true})).toBeAttached();
-    await expectSourceHierarchy(panel);
-    if (window.height === 800) await page.screenshot({path: info.outputPath("context-sidebar-desktop.png"), scale: "css", animations: "disabled"});
-    const repair = panel.getByRole("button", {name: /PR #123 repair/});
-    if (await repair.getAttribute("aria-expanded") !== "true") {await repair.focus(); await page.keyboard.press("Enter");}
-    const selectedDetail = panel.getByLabel("PR #123 repair details", {exact: true});
-    await expect(selectedDetail.getByText("What counts as done?", {exact: true})).toBeVisible();
-    await expect(selectedDetail.getByText("Repair the callback redirect without weakening the check.", {exact: true})).toBeVisible();
-    expect(await panel.evaluate(node => !!node.closest(".ph-no-capture.ph-no-record"))).toBe(true);
-    expect(await page.getByTestId("fleet-chat-footer").evaluate(node => !!node.querySelector('[aria-label="Current work"]'))).toBe(false);
-    if (window.width < 1024) await page.keyboard.press("Escape");
-    await expect(input).toHaveValue("Keep the redirect fix in the callback handler.");
-    await expect(input).toHaveCSS("font-size", window.width <= 680 || info.project.name === "mobile-chromium" ? "16px" : "13px");
-    await input.focus();
-    await input.scrollIntoViewIfNeeded();
-    const composer = await page.getByRole("form", {name: "Chat composer"}).boundingBox();
-    expect(composer).not.toBeNull();
-    expect(composer!.y + composer!.height).toBeLessThanOrEqual(window.height + 1);
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  }
-  const screenshot = info.outputPath("fleet-sidebar-mobile.png");
-  await page.screenshot({path: screenshot, scale: "css", animations: "disabled"});
-  await info.attach("fleet-sidebar-mobile", {path: screenshot, contentType: "image/png"});
-});
-
 async function expectActivityGeometry(page: Page, action: Locator, tools: Locator, mobile: boolean) {
   for (const icon of await page.locator('[data-tool-bullet], [role="status"] > svg:has(.page-loading-stroke)').all()) {
     await expect(icon).toHaveCSS("width", "16px");
@@ -408,44 +314,3 @@ async function expectActivityGeometry(page: Page, action: Locator, tools: Locato
   await expect(row.locator("[data-tool-duration]")).toBeVisible();
 
 }
-
-async function expectSourceHierarchy(panel: Locator) {
-  const sourcesHeading = panel.getByRole("heading", {name: "Sources", exact: true});
-  expect(await sourcesHeading.locator("svg").count()).toBe(0);
-  const sources = panel.getByRole("region", {name: "Sources", exact: true});
-  const disclosure = sources.locator("summary");
-  const metrics = await disclosure.evaluate(node => {
-    const heading = node.closest("section")!.querySelector("h2")!;
-    return {heading: parseFloat(getComputedStyle(heading).fontSize), row: parseFloat(getComputedStyle(node).fontSize),
-      icon: node.querySelector("svg")!.getBoundingClientRect().width,
-      gap: node.getBoundingClientRect().top - heading.getBoundingClientRect().bottom};
-  });
-  expect(metrics.heading).toBe(12); expect(metrics.row).toBe(13);
-  expect(metrics.icon).toBe(16);
-  expect(metrics.gap).toBeGreaterThanOrEqual(4); expect(metrics.gap).toBeLessThanOrEqual(8);
-  if (!(await sources.locator("details").evaluate(node => node.hasAttribute("open")))) await disclosure.click();
-  await expect(sources.getByRole("link", {name: "linkwarden/linkwarden", exact: true})).toHaveAttribute("href", "https://github.com/linkwarden/linkwarden");
-  await expect(sources.getByText("Policy: Edit existing PRs", {exact: true})).toBeVisible();
-  await disclosure.click();
-}
-
-test("setup Summary retains full inline phone content and room for policy labels", async ({page, chatProbe}, info) => {
-  await page.setViewportSize(info.project.name === "chromium" ? {width: 1480, height: 1000} : {width: 390, height: 844});
-  for (const theme of ["dark", "light"]) {
-    await page.goto(chatProbe);
-    await page.evaluate(value => {document.documentElement.dataset.theme = value;}, theme);
-    const summary = page.getByRole("complementary", {name: "Summary", exact: true});
-    await expect(summary).toBeVisible();
-    const layout = await summary.evaluate(node => ({width: node.getBoundingClientRect().width,
-      scroll: node.scrollHeight, client: node.clientHeight, maxHeight: getComputedStyle(node).maxHeight}));
-    if (info.project.name === "chromium") expect(layout.width).toBe(248);
-    else {expect(layout.maxHeight).toBe("none"); expect(layout.scroll).toBeLessThanOrEqual(layout.client + 1);}
-    const footer = page.getByTestId("fleet-chat-footer");
-    expect(await footer.evaluate(node => {
-      const viewport = node.closest('[role="presentation"]');
-      if (!viewport) throw new Error("Native thread viewport is missing");
-      return Math.abs(node.getBoundingClientRect().bottom - viewport.getBoundingClientRect().bottom);
-    })).toBeLessThanOrEqual(1);
-    await page.screenshot({path: info.outputPath(`matched-summary-${theme}.png`), scale: "css", animations: "disabled"});
-  }
-});

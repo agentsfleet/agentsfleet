@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { FleetDetailSchema } from "./api/fleet-detail";
-import { FLEET_DETAIL, response } from "@/tests/helpers/draft-fixtures";
+import { FLEET_DETAIL, response } from "@/tests/helpers/fleet-fixtures";
 import { advanceFleetLifecycle } from "./fleet-lifecycle";
 
 const {archive, remove} = vi.hoisted(() => ({archive: vi.fn(), remove: vi.fn()}));
@@ -90,7 +90,7 @@ it("keeps malformed reads explicit and makes no mutation", async () => {
   expect(remove).not.toHaveBeenCalled(); expect(archive).not.toHaveBeenCalled();
 });
 
-it.each(["active", "installing", "archived"])("deletes a %s fleet without a preceding archive", async status => {
+it.each(["active", "archived"])("deletes a %s fleet without a preceding archive", async status => {
   network.mockResolvedValueOnce(response({...ACTIVE, status}));
   expect(await advanceFleetLifecycle(request(), START)).toEqual({kind: "completed", outcome: "deleted"});
   expect(remove).toHaveBeenCalledExactlyOnceWith("release", ACTIVE.id, ACTIVE.etag);

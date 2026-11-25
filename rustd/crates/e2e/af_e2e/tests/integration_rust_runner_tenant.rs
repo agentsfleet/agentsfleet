@@ -15,7 +15,7 @@ use std::time::Duration;
 
 use super::{assert_settled, rust_runner, scripted};
 use crate::e2e::{GOOD_KEK, MODEL, PROVIDER, Scenario, scenario_with_provider};
-use crate::e2e_seed::{FIXTURE_INSTRUCTIONS, FLEET_CONFIG_JSON, scenario_enrolment};
+use crate::e2e_seed::scenario_enrolment;
 use crate::e2e_seed_keys::seed_tenant_key;
 use crate::integration_tenant_registry::{mint_tenant_token, provider_granting};
 
@@ -71,9 +71,7 @@ async fn seat_tenant_model(scene: &Scenario) {
         .execute(&mut *connection)
         .await
         .expect("the tenant's model is registered");
-    let definition = crate::e2e_native::definition(FLEET_CONFIG_JSON, FIXTURE_INSTRUCTIONS);
-    crate::e2e_native::reselect_on(&mut connection, &scene.fleet, &definition, entry.as_str())
-        .await;
+    crate::e2e_native::select_model(&mut connection, &scene.fleet, entry.as_str()).await;
 }
 
 /// A runner the scenario's tenant registers for its fleet through

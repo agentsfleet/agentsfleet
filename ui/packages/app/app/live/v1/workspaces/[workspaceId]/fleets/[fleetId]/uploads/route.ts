@@ -3,7 +3,7 @@ import { credential } from "@/lib/auth/credential";
 import { getFleet } from "@/lib/api/fleets";
 import { ApiError } from "@/lib/api/errors";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
-import { sameOrigin } from "@/lib/api/setup-proxy/body";
+import { sameOrigin } from "@/lib/api/workspace-proxy/body";
 import { UPLOAD_PREVIEW_REPLY } from "@/lib/api/upload-preview";
 
 export const runtime = "nodejs";

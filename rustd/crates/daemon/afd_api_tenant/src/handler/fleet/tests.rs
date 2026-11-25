@@ -21,50 +21,43 @@ fn fleet_id() -> Uuid7 {
 /// When the fixture fleet was made.
 const CREATED_AT: jiff::Timestamp = jiff::Timestamp::constant(1_700_000_000, 42_000_000);
 
-/// One listed fleet carrying `description`.
-fn row(description: Option<&str>) -> FleetRow {
+/// One listed fleet.
+fn row() -> FleetRow {
     FleetRow {
         id: fleet_id().to_string(),
         name: "reviewer".to_owned(),
         status: FleetStatus::Active,
         created_at: CREATED_AT,
         updated_at: CREATED_AT,
-        description: description.map(str::to_owned),
-        triggers: None,
         events_processed: 7,
         budget_used_nanos: 11,
     }
 }
 
+/// A directory row names the fleet and its counters, and nothing a setup
+/// once wrote: there is no description and no trigger projection.
 #[test]
-fn a_summary_carries_the_saved_purpose_and_publishes_its_absence_as_null() {
-    for (description, expected) in [
-        (
-            Some("Reviews pull requests."),
-            serde_json::json!("Reviews pull requests."),
-        ),
-        (None, serde_json::Value::Null),
-    ] {
-        let page = FleetPage {
-            rows: vec![row(description)],
-            more: false,
-        };
+fn a_summary_carries_the_fleet_and_its_counters_only() {
+    let page = FleetPage {
+        rows: vec![row()],
+        more: false,
+    };
 
-        let wire = serde_json::to_value(page_response(&page))
-            .unwrap_or_else(|error| panic!("a page serializes: {error}"));
+    let wire = serde_json::to_value(page_response(&page))
+        .unwrap_or_else(|error| panic!("a page serializes: {error}"));
 
-        assert_eq!(
-            wire["items"][0]["description"], expected,
-            "the purpose is listed, and a fleet with no saved setup lists null rather than omitting it"
-        );
-    }
+    let item = &wire["items"][0];
+    assert_eq!(item["name"], "reviewer");
+    assert_eq!(item["events_processed"], "7");
+    assert!(item.get("description").is_none(), "{item}");
+    assert!(item.get("triggers").is_none(), "{item}");
 }
 
 #[test]
 fn a_page_cursor_names_the_last_returned_row() {
     let id = fleet_id().to_string();
     let page = FleetPage {
-        rows: vec![row(None)],
+        rows: vec![row()],
         more: true,
     };
 

@@ -47,6 +47,7 @@ pub(super) struct Context<'a> {
     pub(super) turn_resume: Option<af_wire::run::TurnResume>,
     pub(super) finished_calls: Vec<af_wire::run::EarlierCall<'static>>,
     pub(super) expires_at: jiff::Timestamp,
+    pub(super) unfinished_tasks: Vec<af_wire::durable_task::DurableTaskInputCandidate>,
 }
 
 /// Assemble the issued payload while its policy still borrows the admitted work.
@@ -61,10 +62,7 @@ pub(super) fn payload<'a>(
     RunPayload {
         run_id: run_id.as_str().into(),
         fencing_token: acquired.fence.as_u64(),
-        setup_revision_id: installed
-            .issue_revision
-            .as_ref()
-            .map(|proof| proof.current.as_str().into()),
+        name: installed.name.as_str().into(),
         turn_resume: context.turn_resume,
         run_expires_at: context.expires_at,
         event: TurnEnvelope {
@@ -77,13 +75,12 @@ pub(super) fn payload<'a>(
             created_at: acquired.turn_created_at,
         },
         policy,
-        instructions: installed.instructions.as_str().into(),
         history: context.history,
         finished_calls: context.finished_calls,
         resume_hold: acquired.resume_hold,
         decision: context.decision,
         durable_task: context.task,
-        durable_tasks: installed.config.decision_policy().is_some(),
+        unfinished_tasks: context.unfinished_tasks,
         memory: context.memory,
         inputs_waiting: acquired.opened.inputs_waiting,
         owner: Owner::Fleet {

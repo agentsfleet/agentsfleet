@@ -11,10 +11,9 @@ use af_core::error_code::{self, ErrorCode};
 use af_core::error::DETAIL_DATABASE_ERROR;
 
 use super::{
-    DETAIL_BUDGET_EXHAUSTED, DETAIL_GITHUB_RECONNECT, DETAIL_GRANT_REQUIRED,
-    DETAIL_INTEGRATION_NOT_CONNECTED, DETAIL_MINT_FAILED, DETAIL_MINT_UNCONFIGURED,
-    DETAIL_RENEWAL_NO_CREDITS, DETAIL_RUN_LOST, DETAIL_RUN_NOT_FOUND, DETAIL_STALE_FENCE,
-    DETAIL_VAULT_DATA_INVALID, Error,
+    DETAIL_GITHUB_RECONNECT, DETAIL_GRANT_REQUIRED, DETAIL_INTEGRATION_NOT_CONNECTED,
+    DETAIL_MINT_FAILED, DETAIL_MINT_UNCONFIGURED, DETAIL_RENEWAL_NO_CREDITS, DETAIL_RUN_LOST,
+    DETAIL_RUN_NOT_FOUND, DETAIL_STALE_FENCE, DETAIL_VAULT_DATA_INVALID, Error,
 };
 
 struct Expected {
@@ -49,11 +48,6 @@ fn run_and_memory_refusals_have_stable_wire_classification() {
             super::renewal_no_credits(),
             error_code::RUN_RENEWAL_NO_CREDITS,
             DETAIL_RENEWAL_NO_CREDITS,
-        ),
-        expected(
-            super::budget_exhausted(),
-            error_code::RUN_BUDGET_EXCEEDED,
-            DETAIL_BUDGET_EXHAUSTED,
         ),
     ];
 
@@ -212,17 +206,17 @@ fn assert_error(expected: &Expected) {
     assert!(expected.error.to_string().contains(expected.code.as_str()));
 }
 
-/// A fleet with no reviewed native setup is refused for good, with a sentence
-/// that sends its owner to review it rather than to retry.
+/// A fleet row whose stored network setting no daemon writes is refused for
+/// good, as a datastore fault rather than a request the caller could fix.
 #[test]
-fn a_fleet_without_a_reviewed_setup_is_told_to_review_it() {
-    let missing = Error::from(super::ErrorKind::SetupUnavailable);
+fn a_fleet_row_no_daemon_wrote_is_refused_for_good() {
+    let missing = Error::from(super::ErrorKind::FleetRowUnreadable);
 
-    assert_eq!(missing.code(), error_code::SETUP_POLICY);
+    assert_eq!(missing.code(), error_code::INTERNAL_DB_QUERY);
     // pin test: literal is the contract
     assert_eq!(
         missing.detail(),
-        "The fleet needs a reviewed native setup before it can run"
+        "The fleet's stored network setting cannot be read"
     );
     assert!(missing.is_config_permanent());
     assert!(!missing.is_datastore_unavailable());
@@ -371,27 +365,4 @@ async fn a_remote_request_that_times_out_is_a_remote_deadline() {
         assert_eq!(fault.remote_cooldown(), None);
         assert!(!fault.is_datastore_unavailable());
     }
-}
-
-// Value: protects=a task mutation refused because its datastore read ran out of
-// time is reported as an outage, with the inner fault's code; fails_when=the
-// mutation arm stops asking its source; why_new=no test wrapped an unavailable
-// fault in a mutation; seam=the kind the adoption path wraps its faults in.
-#[tokio::test]
-async fn a_mutation_over_an_unavailable_read_is_an_outage() {
-    let read = Error::from(elapsed().await);
-    let unavailable = Error::from(super::ErrorKind::DurableTaskMutation {
-        state: af_wire::durable_task::DurableTaskState::Running,
-        source: Box::new(read),
-    });
-    let refused = Error::from(super::ErrorKind::DurableTaskMutation {
-        state: af_wire::durable_task::DurableTaskState::Running,
-        source: Box::new(super::run_lost()),
-    });
-
-    assert!(unavailable.is_datastore_unavailable());
-    assert_eq!(unavailable.code(), error_code::INTERNAL_DB_UNAVAILABLE);
-    assert!(!refused.is_datastore_unavailable());
-    assert_eq!(refused.code(), error_code::RUN_LOST);
-    assert_eq!(refused.detail(), DETAIL_RUN_LOST);
 }

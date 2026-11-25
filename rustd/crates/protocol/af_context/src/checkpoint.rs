@@ -13,7 +13,7 @@ const MODEL_IDENTITY_BYTES: usize = 1024;
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(deny_unknown_fields)]
 pub struct Identity {
-    /// A private draft or runtime run/session scope, never an account-wide scope.
+    /// A fleet's own scope, never an account-wide scope.
     #[garde(
         length(bytes, min = 1, max = 256),
         custom(af_validate::rules::nul_free)

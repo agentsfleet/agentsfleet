@@ -23,7 +23,9 @@ mod set;
 mod verifier;
 
 pub use self::schedule::{CronSchedule, check_schedule};
-pub(crate) use self::set::parse_set;
+#[cfg(test)]
+use self::set::parse_set;
+pub use self::set::{parse_triggers, prove_unique};
 pub use self::verifier::WebhookVerifier;
 
 /// Where a cron trigger's schedule is read, when it names no zone.

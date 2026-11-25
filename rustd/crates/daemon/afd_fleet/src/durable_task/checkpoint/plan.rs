@@ -188,9 +188,6 @@ async fn allocate(
             input.durable_task.generation,
             "checkpoint task generation",
         )?)
-        .bind(durable_task_guard::wire(
-            &owned.snapshot.context.accepted_revision_id,
-        )?)
         .bind(sql_counter(
             owned.snapshot.context.stop_generation,
             "checkpoint stop generation",

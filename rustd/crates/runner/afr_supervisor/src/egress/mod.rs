@@ -11,10 +11,8 @@
 //! range, link-local and the cloud metadata service, reserved), the
 //! predicate `http_request` and the daemon's endpoint check refuse by too; a
 //! registry host is the operator's to point at its own mirror, so it is not
-//! held to it. A fleet that sets `read_only` keeps its hosts out
-//! of the kernel set, because a rule on an address cannot hold a method; it
-//! reaches them through `http_request` alone. The inference endpoint is never
-//! in the set: models are called from the supervisor, outside every sandbox.
+//! held to it. The inference endpoint is never in the set: models are called
+//! from the supervisor, outside every sandbox.
 
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -67,20 +65,16 @@ impl Egress {
     }
 
     /// The hosts an `allow_list_egress` run under `fleet` reaches, each with
-    /// who named it: the registry, then the fleet's own unless it is
-    /// read-only, each cut to its host and named once, in the order first
-    /// named. A host named by both is the registry's.
+    /// who named it: the registry, then the fleet's own, each cut to its host
+    /// and named once, in the order first named. A host named by both is the
+    /// registry's.
     pub(crate) fn hosts(&self, fleet: &FleetNetwork<'_>) -> Vec<(String, Named)> {
-        let fleet_hosts = if fleet.read_only {
-            &[][..]
-        } else {
-            fleet.allow.as_slice()
-        };
         let registry = self
             .registry
             .iter()
             .map(|host| (host.to_string(), Named::Registry));
-        let fleet_named = fleet_hosts
+        let fleet_named = fleet
+            .allow
             .iter()
             .map(|entry| (host_of(entry).into_owned(), Named::Fleet));
         let mut seen = HashSet::new();

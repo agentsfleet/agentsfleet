@@ -1,7 +1,7 @@
 //! The one change a person makes to a turn: Stop.
 //!
-//! A `PATCH` of the turn's `status` (HTTP-VERB), on a fleet's turn and a setup
-//! draft's alike. The only status a caller may write is `cancelled`, so the
+//! A `PATCH` of the turn's `status` (HTTP-VERB) on a fleet's turn. The only
+//! status a caller may write is `cancelled`, so the
 //! field is a one-variant enum: any other word fails to parse, and the refusal
 //! is the body's, with no hand-written check beside it.
 

@@ -1,7 +1,7 @@
-//! Shared schedule views and explicit instance override inputs.
+//! Shared schedule views and edit inputs.
 
-mod overrides;
+mod patch;
 mod view;
 
-pub use overrides::{Override, Patch, Status};
+pub use patch::{Patch, Status};
 pub use view::{Page, RunState, View};

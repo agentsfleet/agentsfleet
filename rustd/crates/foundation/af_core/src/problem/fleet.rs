@@ -52,10 +52,8 @@ pub(super) const FLEET: &[Problem] = &[
     },
     Problem {
         code: error_code::RUN_RENEWAL_NO_CREDITS,
-        // 402, and load-bearing for the reason the entry below it is: the stock
-        // runner classifies a renew refusal by status AND code. Both 402s stop
-        // the run; the code is what says which pool ran dry, and therefore
-        // whether an operator tops up a balance or edits a ceiling.
+        // 402, and load-bearing: the stock runner classifies a renew refusal
+        // by status AND code, and stops the run on this pair.
         status: 402,
         title: "Run renewal blocked: no credits",
         hint: "The tenant balance cannot cover another run slice. The run does not renew, and the run stops cleanly.",
@@ -87,20 +85,6 @@ pub(super) const FLEET: &[Problem] = &[
         title: "Active runner must be revoked before deletion",
         hint: "Revoke the runner first with `PATCH /v1/admin/runners/{runner_id}` body `{\"action\": \"revoke\"}`, then retry DELETE.",
         user_message: Some("This runner is still live. Revoke it first, then delete it."),
-    },
-    Problem {
-        code: error_code::RUN_BUDGET_EXCEEDED,
-        // 402, and the status is load-bearing rather than decorative: the stock
-        // runner classifies a renew refusal by BOTH status and code, and a
-        // UZ-RUN-015 arriving on any other terminal status is NOT a budget
-        // breach to it. A 403 here would leave the runner treating an
-        // exhausted ceiling as an auth failure.
-        status: 402,
-        title: "Run renewal blocked: fleet budget exhausted",
-        hint: "The fleet reached its daily_nanos or monthly_nanos limit from its reviewed setup, so the run stops. The tenant balance is fine; this is the fleet's own budget.",
-        // Not dashboard-facing: this rides the runner-to-control-plane wire
-        // protocol.
-        user_message: None,
     },
     Problem {
         code: error_code::RUN_SELFTEST_REFUSED,
@@ -196,20 +180,18 @@ pub(super) const FLEET: &[Problem] = &[
         code: error_code::AGENTSFLEET_NAME_EXISTS,
         status: 409,
         title: "Fleet name already exists",
-        hint: "A Fleet with this name already exists. Find its id with `agentsfleet fleet list`, run `agentsfleet fleet delete <fleet_id>`, then deploy again.",
+        hint: "A Fleet with this name already exists. Find its id with `agentsfleet fleet list`, choose another name or run `agentsfleet fleet delete <fleet_id>`, then create again.",
         // No dashboard sentence: an explicit name is a command-line and
-        // API-key surface, because the dashboard's one-step install names
-        // nothing and takes the re-drawn suffix instead of ever seeing this.
+        // API-key surface, because the dashboard's create names nothing and
+        // takes the id-derived name instead of ever seeing this.
         user_message: None,
     },
     Problem {
         code: error_code::AGENTSFLEET_INVALID_CONFIG,
         status: 400,
         title: "Invalid fleet config",
-        hint: "Config JSON is malformed. Check the trigger, tools, credentials, and budget fields in the fleet's setup configuration. See the [Authoring a fleet](/fleets/authoring) guide.",
-        user_message: Some(
-            "That fleet's config isn't valid. Check the trigger, tools, credentials, and budget fields, then try again.",
-        ),
+        hint: "The configuration is malformed. Check the field the log line names beside the request id, then try again.",
+        user_message: Some("That fleet's configuration isn't valid. Check it, then try again."),
     },
     Problem {
         code: error_code::AGENTSFLEET_NOT_FOUND,
@@ -236,7 +218,7 @@ pub(super) const FLEET: &[Problem] = &[
         code: error_code::AGENTSFLEET_NOT_ACTIVE,
         status: 409,
         title: "Fleet is not active",
-        hint: "This fleet is not active and refuses new work: it is still installing, or it was archived. Check it with `agentsfleet fleet show <fleet>`.",
+        hint: "This fleet was archived and refuses new work. Check it with `agentsfleet fleet show <fleet>`.",
         user_message: Some("This Fleet isn't active, so it can't take new work."),
     },
     Problem {
@@ -281,6 +263,38 @@ pub(super) const FLEET: &[Problem] = &[
         user_message: Some(
             "This message conflicts with one already sent. Send it again as a new message.",
         ),
+    },
+    Problem {
+        code: error_code::FLEET_ACCESS_NAME_NOT_FOUND,
+        status: 404,
+        title: "Requested access not in workspace",
+        hint: "Store the secret in the workspace vault or connect the integration, then ask again with its exact name.",
+        // Not dashboard-facing: a run's `request_access` tool reads it.
+        user_message: None,
+    },
+    Problem {
+        code: error_code::FLEET_PROVIDER_NOT_CONNECTED,
+        status: 409,
+        title: "Provider not connected",
+        hint: "Connect the provider in the workspace's integrations, then ask again.",
+        // Not dashboard-facing: a run's access and trigger tools read it.
+        user_message: None,
+    },
+    Problem {
+        code: error_code::FLEET_TRIGGER_EXISTS,
+        status: 409,
+        title: "Trigger already exists",
+        hint: "The fleet already holds a trigger of this kind on this source. Remove it first, or keep it.",
+        // Not dashboard-facing: a run's `trigger_add` tool reads it.
+        user_message: None,
+    },
+    Problem {
+        code: error_code::FLEET_TRIGGER_SECRET_NOT_FOUND,
+        status: 404,
+        title: "Trigger signing secret not in workspace",
+        hint: "Store the webhook's signing secret in the workspace vault under the named key, then add the trigger again.",
+        // Not dashboard-facing: a run's `trigger_add` tool reads it.
+        user_message: None,
     },
     Problem {
         code: error_code::FLEET_STEER_SELF,

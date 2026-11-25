@@ -1,4 +1,4 @@
-//! Targets come from an exact human-assigned PR under accepted and live setup.
+//! Targets come from an exact human-assigned PR inside the fleet's approved GitHub scope.
 
 use super::{
     BoundPr, Github,
@@ -10,10 +10,7 @@ use crate::{
     Result,
     durable_task::{DurableTaskRefusal, DurableTaskRun},
 };
-use af_fleet_runtime::{
-    FleetConfig,
-    config::{Access, RepositoryPublication},
-};
+use af_fleet_runtime::config::{Access, RepositoryBinding, RepositoryPublication};
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -47,14 +44,12 @@ impl Github {
     pub(in crate::durable_task) async fn prepare(
         &self,
         run: DurableTaskRun<'_>,
-        config: &FleetConfig,
+        binding: Option<&RepositoryBinding>,
         repository: &str,
         number: u32,
         human_message: &str,
     ) -> Result<BoundPr> {
-        let binding = config
-            .repository_binding()
-            .ok_or(DurableTaskRefusal::InvalidTarget)?;
+        let binding = binding.ok_or(DurableTaskRefusal::InvalidTarget)?;
         if binding.publication() != RepositoryPublication::ExistingPr
             || binding.access() != Access::Write
             || !binding
@@ -150,10 +145,13 @@ fn check(pr: &PullRequest, repository: &str, base: &str) -> Result<()> {
 }
 
 impl BoundPr {
-    pub(in crate::durable_task) fn within(&self, config: &FleetConfig) -> Result<()> {
-        let binding = config
-            .repository_binding()
-            .ok_or(DurableTaskRefusal::InvalidTarget)?;
+    /// Whether the target still lies inside `binding`, the fleet's approved
+    /// GitHub scope as it stands now.
+    pub(in crate::durable_task) fn within(
+        &self,
+        binding: Option<&RepositoryBinding>,
+    ) -> Result<()> {
+        let binding = binding.ok_or(DurableTaskRefusal::InvalidTarget)?;
         if binding.publication() != RepositoryPublication::ExistingPr
             || binding.access() != Access::Write
             || binding.reach().base() != Some(self.base.as_str())

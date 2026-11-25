@@ -296,7 +296,7 @@ async fn test_a_run_on_the_last_free_worker_releases_other_holds() {
     let (rig, _counted) = holding(healthy, FakeEngine::default(), Behaviour::Answer);
     rig.lessee.holds.resize(3);
     rig.run(&payload(RUN_ID, FLEET_ID)).await.unwrap();
-    let _other_worker = rig.lessee.holds.occupy(crate::holds::Occupant::Fleet {
+    let _other_worker = rig.lessee.holds.occupy(crate::holds::Occupant {
         run: Uuid7::parse(BUSY_FLEET).unwrap(),
         fleet: Uuid7::parse(BUSY_FLEET).unwrap(),
     });

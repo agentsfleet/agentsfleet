@@ -4,7 +4,6 @@ CREATE TABLE fleet.durable_tasks (
     workspace_id            UUID NOT NULL,
     tenant_id               UUID NOT NULL,
     originating_durable_task_item_id UUID NOT NULL,
-    accepted_revision_id    UUID NOT NULL,
     title                   TEXT NOT NULL,
     objective               TEXT NOT NULL,
     questions               JSONB NOT NULL,
@@ -38,8 +37,6 @@ CREATE TABLE fleet.durable_tasks (
         REFERENCES fleet.fleets (id, workspace_id, tenant_id) ON DELETE CASCADE,
     CONSTRAINT fk_durable_tasks_item FOREIGN KEY (originating_durable_task_item_id, fleet_id, workspace_id)
         REFERENCES fleet.durable_task_items (id, fleet_id, workspace_id) ON DELETE CASCADE,
-    CONSTRAINT fk_durable_tasks_revision FOREIGN KEY (accepted_revision_id, fleet_id)
-        REFERENCES fleet.revisions (id, fleet_id),
     CONSTRAINT uq_durable_tasks_originating_item UNIQUE (originating_durable_task_item_id),
     CONSTRAINT uq_durable_tasks_id_scope UNIQUE (id, fleet_id, workspace_id),
     CONSTRAINT ck_durable_tasks_reply_both_or_neither

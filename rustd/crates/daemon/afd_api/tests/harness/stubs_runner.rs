@@ -186,6 +186,46 @@ impl RunPlane for NoWork {
     ) -> impl Future<Output = afd_fleet::Result<afd_fleet::run::message::SteerSender>> + Send {
         std::future::ready(Err(afd_fleet::Error::run_not_found()))
     }
+
+    /// Refused for the reason [`NoWork::standing`] is.
+    fn request_access(
+        &self,
+        _runner_id: &Uuid7,
+        _run_id: Uuid7,
+        _request: &garde::Valid<af_wire::access_verb::AccessRequest<'_>>,
+        _now: Timestamp,
+    ) -> impl Future<Output = afd_fleet::Result<afd_fleet::run::access::AccessAsked>> + Send {
+        std::future::ready(Err(afd_fleet::Error::run_not_found()))
+    }
+
+    /// Refused for the reason [`NoWork::standing`] is.
+    fn add_trigger(
+        &self,
+        _standing: &afd_fleet::run::Standing,
+        _item_id: &Uuid7,
+        _request: &af_wire::trigger_verb::TriggerAddRequest<'_>,
+        _guard: &afd_fleet::run::write_fence::WriteFence,
+    ) -> impl Future<Output = afd_fleet::Result<afd_setup::trigger::TriggerRow>> + Send {
+        std::future::ready(Err(afd_fleet::Error::run_not_found()))
+    }
+
+    /// Refused for the reason [`NoWork::standing`] is.
+    fn triggers(
+        &self,
+        _standing: &afd_fleet::run::Standing,
+    ) -> impl Future<Output = afd_fleet::Result<Vec<afd_setup::trigger::TriggerRow>>> + Send {
+        std::future::ready(Err(afd_fleet::Error::run_not_found()))
+    }
+
+    /// Refused for the reason [`NoWork::standing`] is.
+    fn remove_trigger(
+        &self,
+        _standing: &afd_fleet::run::Standing,
+        _trigger: &Uuid7,
+        _guard: &afd_fleet::run::write_fence::WriteFence,
+    ) -> impl Future<Output = afd_fleet::Result<bool>> + Send {
+        std::future::ready(Err(afd_fleet::Error::run_not_found()))
+    }
 }
 
 impl afd_http::services::RunnerStreams for NoWork {

@@ -10,19 +10,13 @@ pub(crate) fn invalid(detail: &'static str) -> Error {
     ErrorKind::Invalid { detail }.into()
 }
 
-/// Stored drafts, messages and candidates hold private text, and serde quotes
-/// the value it refused, so the cause keeps only its position and expected type.
+/// A stored row may hold private text, and serde quotes the value it refused,
+/// so the cause keeps only its position and expected type.
 pub(crate) fn stored(source: serde_json::Error) -> Error {
     ErrorKind::Stored {
         source: af_core::json::Unreadable::from(source),
     }
     .into()
-}
-
-/// A stored count in `column` that does not parse as one, keeping the parser's
-/// cause, which never quotes the text it refused.
-pub(crate) fn stored_number(column: &'static str) -> impl FnOnce(std::num::ParseIntError) -> Error {
-    move |source| ErrorKind::StoredNumber { column, source }.into()
 }
 
 /// A column every write of this crate fills read back empty: a stored fault,

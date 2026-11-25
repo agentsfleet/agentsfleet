@@ -12,21 +12,20 @@ import type { Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
-import { getDefaultWorkspaceId, seedFleet, waitForFleetActive } from "./fixtures/seed";
+import { getDefaultWorkspaceId, seedFleet, expectFleetActive } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { openFleetFromSidebar, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 import { SSE_CONTENT_TYPE, sseFrame } from "./fixtures/sse";
 import { auditStream, documentIsMarked, markDocument, streamCount } from "./fixtures/soft-navigation";
 import { FRAME_KIND, streamFleetTurnsUrl } from "@/lib/api/turns-types";
-import { expectEditSetupAvailable } from "./fixtures/private-chat";
 
 const CHAT_LABEL = "Fleet chat";
 const COMPOSER_LABEL = "Chat composer";
 
 // One seed prefix per test, declared beside the name generators so the seeder
 // and the afterEach sweep share a single literal and can never drift. The
-// sweep is not optional hygiene: every seeded fleet carries a live cron
-// trigger, so an unswept row keeps waking runners long after the run ends.
+// sweep is not optional hygiene: an unswept row stays in the shared workspace
+// long after the run ends.
 const THREAD_PREFIX = "thread-spec-";
 const REVISIT_PREFIX = "thread-revisit-";
 const STEER_PROBE_PREFIX = "steer-probe-";
@@ -75,7 +74,7 @@ test.describe("fleet thread surface", () => {
     const fleet = await seedFleet(FIXTURE_KEY.regular, workspaceId, {
       name: `${THREAD_PREFIX}${tag}`,
     });
-    await waitForFleetActive(FIXTURE_KEY.regular, workspaceId, fleet.id);
+    await expectFleetActive(FIXTURE_KEY.regular, workspaceId, fleet.id);
 
     await page.goto(workspaceHref(workspaceId, `fleets/${fleet.id}`));
     await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${fleet.id}`));
@@ -88,11 +87,10 @@ test.describe("fleet thread surface", () => {
 
     // The thread card mounts client-side and consumes the shared stream registry.
     // Its accessible label is stable across visual changes.
-    const threadCard = page.getByLabel(CHAT_LABEL);
+    const threadCard = page.getByLabel(CHAT_LABEL, { exact: true });
     await expect(threadCard).toBeVisible({ timeout: 10_000 });
 
     await expect(page.getByRole("navigation", { name: "Fleet sections" })).toHaveCount(0);
-    await expectEditSetupAvailable(page);
     await expect(threadCard.getByRole("link", { name: "Steer" })).toHaveCount(0);
 
     // The conversation carries role="log" + aria-live=polite.
@@ -116,7 +114,7 @@ test.describe("fleet thread surface", () => {
     const fleet = await seedFleet(FIXTURE_KEY.regular, workspaceId, {
       name: `${LAYOUT_PREFIX}${Math.random().toString(36).slice(2, 8)}`,
     });
-    await waitForFleetActive(FIXTURE_KEY.regular, workspaceId, fleet.id);
+    await expectFleetActive(FIXTURE_KEY.regular, workspaceId, fleet.id);
     const streamPath = `/live/v1/workspaces/${workspaceId}/fleets/${fleet.id}/turns/stream`;
     const release = Promise.withResolvers<void>();
     let streamRequests = 0;
@@ -227,11 +225,11 @@ test.describe("fleet thread surface", () => {
     const fleet = await seedFleet(FIXTURE_KEY.regular, workspaceId, {
       name: `${REVISIT_PREFIX}${tag}`,
     });
-    await waitForFleetActive(FIXTURE_KEY.regular, workspaceId, fleet.id);
+    await expectFleetActive(FIXTURE_KEY.regular, workspaceId, fleet.id);
     await auditStream(page, streamFleetTurnsUrl(workspaceId, fleet.id));
 
     await page.goto(workspaceHref(workspaceId, `fleets/${fleet.id}`));
-    await expect(page.getByLabel(CHAT_LABEL)).toBeVisible({ timeout: ROUND_TRIP_TIMEOUT_MS });
+    await expect(page.getByLabel(CHAT_LABEL, { exact: true })).toBeVisible({ timeout: ROUND_TRIP_TIMEOUT_MS });
     await expect.poll(() => streamCount(page), { timeout: ROUND_TRIP_TIMEOUT_MS }).toEqual(ONE_OPEN_STREAM);
     await markDocument(page);
 
@@ -241,7 +239,7 @@ test.describe("fleet thread surface", () => {
     await openFleetFromSidebar(page, workspaceId, fleet.id);
     await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${fleet.id}`));
 
-    await expect(page.getByLabel(CHAT_LABEL)).toBeVisible({ timeout: ROUND_TRIP_TIMEOUT_MS });
+    await expect(page.getByLabel(CHAT_LABEL, { exact: true })).toBeVisible({ timeout: ROUND_TRIP_TIMEOUT_MS });
     await expect(page.getByLabel(COMPOSER_LABEL)).toBeVisible();
     expect(await documentIsMarked(page)).toBe(true);
     await expect.poll(() => streamCount(page)).toEqual({created: 2, open: 1});
@@ -258,7 +256,7 @@ test.describe("fleet thread surface", () => {
     const fleet = await seedFleet(FIXTURE_KEY.regular, workspaceId, {
       name: `${STEER_PROBE_PREFIX}${tag}`,
     });
-    await waitForFleetActive(FIXTURE_KEY.regular, workspaceId, fleet.id);
+    await expectFleetActive(FIXTURE_KEY.regular, workspaceId, fleet.id);
 
     const seen: { method: string; url: string; auth: boolean }[] = [];
     page.on("request", (req) => {
@@ -272,7 +270,7 @@ test.describe("fleet thread surface", () => {
 
     await page.goto(workspaceHref(workspaceId, `fleets/${fleet.id}`));
     const appOrigin = new URL(page.url()).origin;
-    const threadCard = page.getByLabel(CHAT_LABEL);
+    const threadCard = page.getByLabel(CHAT_LABEL, { exact: true });
     await expect(threadCard).toBeVisible({ timeout: 10_000 });
 
     const composer = page.getByLabel(COMPOSER_LABEL);

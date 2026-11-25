@@ -41,7 +41,7 @@ const STATEMENTS_PER_STEER: i64 = 2;
 /// One operation id, sent twice.
 const OPERATION: &str = "019feca5-bc9b-72e8-b71f-e2714f6b0c01";
 
-/// A private database holding one active fleet with a current setup, its
+/// A private database holding one active fleet, its
 /// owner pool, and a steer over the API login.
 struct Private {
     lane: afd_db::test_util::TestDatabase,
@@ -64,7 +64,6 @@ impl Private {
             .insert(&mut *connection)
             .await?;
         FleetSeed::new(&fleet, &workspace, &tenant, "active")
-            .native_setup()
             .insert(&mut *connection)
             .await?;
         drop(connection);

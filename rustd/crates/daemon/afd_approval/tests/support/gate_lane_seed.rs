@@ -9,6 +9,8 @@
 use af_core::id::Uuid7;
 use std::time::Duration;
 
+use afd_api_wire::approval::GATE_TYPE_QUESTION;
+use afd_approval::KIND_INTEGRATION_GRANT;
 use afd_db::test_util::{SEEDED_TURN, TurnSeed};
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
@@ -31,53 +33,50 @@ pub(crate) enum Window {
     Lapsed,
 }
 
-/// The kind a fixture gate carries.
-///
-/// Deliberately NOT `integration_grant`: that kind makes the resolve write a
-/// second table, and these tests are about the gate row's own transition.
-const KIND: &str = "repository_write";
-
-/// The gate kind of a setup card: an integration grant's, which fleet delete closes
-/// before it deletes the fleet.
-pub(crate) const SETUP_CARD: &str = "integration_grant";
-
 /// Fleet delete's first hold (`afd_setup/src/creation/sql/lock.sql`).
 pub(crate) const LOCK_FLEET: &str =
     "SELECT pg_backend_pid() FROM fleet.fleets WHERE id = $1 FOR UPDATE";
 
-/// A queued fleet turn parked behind its approval, as a run's park leaves it.
-const PARKED_TURN: &str = "INSERT INTO thread.turns (id,thread_id,workspace_id,producer,producer_key,\
-payload_digest,actor,kind,status,request_json,created_at,updated_at,parked_at) VALUES \
-($1,$2,$3,'steer',$1,'fixture','steer:fixture','chat','queued','{}',now(),now(),now())";
+/// A queued fleet turn a run is answering, as admission leaves it.
+const QUEUED_TURN: &str = "INSERT INTO thread.turns (id,thread_id,workspace_id,producer,producer_key,\
+payload_digest,actor,kind,status,request_json,created_at,updated_at) VALUES \
+($1,$2,$3,'steer',$1,'fixture','steer:fixture','chat','queued','{}',now(),now())";
 
 impl Lane {
-    /// Seeds one pending gate, returning its action id.
+    /// Seeds one pending access card on a turn of its own, returning its
+    /// action id.
     ///
-    /// `window` is a parameter because the sweeper tests need a deadline in
-    /// the past and the race tests need one that has not arrived — a fixture
-    /// that fixed it would make one of the two impossible to write.
+    /// The card a person approves or denies, which is the shape most inbox
+    /// verbs answer. It names no service, so its answer moves no grant: these
+    /// tests are about the gate row and the answer turn, and the grant suites
+    /// raise their cards through the request verb instead.
+    ///
+    /// `window` is a parameter because the late-answer tests need a deadline
+    /// in the past and the race tests need one that has not arrived.
     pub(crate) async fn seed_gate(&self, window: Window) -> Uuid7 {
         let action = mint();
-        self.seed_gate_for(&action, window).await;
+        self.seed_row(&action, window, NOW, KIND_INTEGRATION_GRANT)
+            .await;
         action
     }
 
-    /// One pending gate that held no run: `turn_id` is NULL, the shape of a
-    /// standing grant raised at install time rather than by an event.
-    pub(crate) async fn seed_runless_gate(&self, window: Window) -> Uuid7 {
+    /// One pending `question` gate on a turn of its own, the shape a run's
+    /// `waiting` report raises, returning its action id.
+    pub(crate) async fn seed_question(&self, window: Window) -> Uuid7 {
         let action = mint();
-        self.seed_row(&action, window, NOW, None).await;
+        self.seed_question_for(&action, window).await;
         action
     }
 
-    /// One pending gate row for an action that may already have one — a
-    /// re-raised action, which the park writes as a second row rather than
-    /// reopening the first.
-    pub(crate) async fn seed_gate_for(&self, action: &Uuid7, window: Window) {
-        self.seed_row(action, window, NOW, Some(mint())).await;
+    /// One pending question row for an action that may already have one — a
+    /// re-raised action, written as a second row rather than reopening the
+    /// first.
+    pub(crate) async fn seed_question_for(&self, action: &Uuid7, window: Window) {
+        self.seed_row(action, window, NOW, GATE_TYPE_QUESTION).await;
     }
 
-    /// Seeds one pending gate raised at `created_at`, returning its action id.
+    /// Seeds one pending access card raised at `created_at`, returning its
+    /// action id.
     ///
     /// Every other seeder stamps [`NOW`], which is what the ordering and keyset
     /// tests need control of: one proves the page walks newest-first and
@@ -85,50 +84,32 @@ impl Lane {
     /// comparison and therefore needs several rows sharing one.
     pub(crate) async fn seed_gate_at(&self, created_at: Timestamp, window: Window) -> Uuid7 {
         let action = mint();
-        self.seed_row(&action, window, created_at, Some(mint()))
+        self.seed_row(&action, window, created_at, KIND_INTEGRATION_GRANT)
             .await;
         action
     }
 
-    /// One pending `question` gate, the shape a run's `waiting` report
-    /// raises, returning its action id.
-    pub(crate) async fn seed_question(&self, window: Window) -> Uuid7 {
-        let action = self.seed_gate(window).await;
-        sqlx::query("UPDATE fleet.approval_gates SET gate_type = $1 WHERE action_id = $2")
-            .bind(afd_api_wire::approval::GATE_TYPE_QUESTION)
-            .bind(&action)
-            .execute(&mut *self.connection().await)
-            .await
-            .expect("the gate becomes a question");
-        action
-    }
-
-    /// A queued turn of the lane's fleet, parked behind its approval.
-    pub(crate) async fn parked_turn(&self) -> Uuid7 {
+    /// A queued turn of the lane's fleet, as admission leaves it.
+    pub(crate) async fn queued_turn(&self) -> Uuid7 {
         let id = mint();
-        sqlx::query(PARKED_TURN)
+        sqlx::query(QUEUED_TURN)
             .bind(&id)
             .bind(&self.fleet)
             .bind(&self.workspace)
             .execute(&mut *self.connection().await)
             .await
-            .expect("the parked turn inserts");
+            .expect("the queued turn inserts");
         id
     }
 
-    /// Points `action`'s gate at `turn`, as a setup card when `card` is set.
-    pub(crate) async fn gate_turn(&self, action: &Uuid7, turn: Option<&Uuid7>, card: bool) {
-        sqlx::query(
-            "UPDATE fleet.approval_gates SET turn_id = $2, \
-             gate_type = CASE WHEN $3 THEN $4 ELSE gate_type END WHERE action_id = $1",
-        )
-        .bind(action)
-        .bind(turn)
-        .bind(card)
-        .bind(SETUP_CARD)
-        .execute(&mut *self.connection().await)
-        .await
-        .expect("the gate moves");
+    /// Points `action`'s gate at `turn`.
+    pub(crate) async fn gate_turn(&self, action: &Uuid7, turn: Option<&Uuid7>) {
+        sqlx::query("UPDATE fleet.approval_gates SET turn_id = $2 WHERE action_id = $1")
+            .bind(action)
+            .bind(turn)
+            .execute(&mut *self.connection().await)
+            .await
+            .expect("the gate moves");
     }
 
     /// Moves `action`'s deadline to `ago` before the database's clock.
@@ -154,8 +135,8 @@ impl Lane {
             .expect("the fleet archives");
     }
 
-    /// Seeds the turn a gate held a run for: a continuation resumes it, and
-    /// `fk_turns_resumes_turn_id` refuses a continuation of no turn.
+    /// Seeds the turn a gate keeps waiting: its answer turn resumes it, and
+    /// `fk_turns_resumes_turn_id` refuses an answer to no turn.
     pub(crate) async fn seed_turn(&self, turn: &Uuid7) {
         TurnSeed::new(&self.fleet, &self.workspace, turn, SEEDED_TURN)
             .insert(&mut *self.connection().await)
@@ -163,7 +144,15 @@ impl Lane {
             .expect("the gated turn must insert");
     }
 
-    /// Inserts one pending gate row: what every seeder above writes through.
+    /// A fresh turn of the lane's fleet for a run to ask on.
+    pub(crate) async fn asking_turn(&self) -> Uuid7 {
+        let turn = mint();
+        self.seed_turn(&turn).await;
+        turn
+    }
+
+    /// Inserts one pending gate row of `gate_type` on a fresh turn: what every
+    /// seeder above writes through.
     ///
     /// The deadline is `now()` plus or minus [`WINDOW`], on the clock the
     /// sweeper reads; the raised-at instant is the caller's, because only the
@@ -173,18 +162,16 @@ impl Lane {
         action: &Uuid7,
         window: Window,
         created_at: Timestamp,
-        turn_id: Option<Uuid7>,
+        gate_type: &str,
     ) {
-        if let Some(turn) = &turn_id {
-            self.seed_turn(turn).await;
-        }
+        let turn = self.asking_turn().await;
         sqlx::query(
             "INSERT INTO fleet.approval_gates
                (id, fleet_id, workspace_id, action_id, tool_name, action_name,
                 gate_type, proposed_action, evidence, blast_radius, expires_at,
                 status, detail, created_at, updated_at, turn_id)
-             VALUES ($1, $2, $3, $4, 'git', 'push',
-                     $5, 'open a pull request', '{}'::jsonb, 'one repository',
+             VALUES ($1, $2, $3, $4, 'fixture', 'fixture',
+                     $5, 'use the workspace secret fixture', '{}'::jsonb, '',
                      CASE WHEN $6 THEN now() - $7::interval ELSE now() + $7::interval END,
                      $8, '', $9, $9, $10)",
         )
@@ -192,12 +179,12 @@ impl Lane {
         .bind(&self.fleet)
         .bind(&self.workspace)
         .bind(action)
-        .bind(KIND)
+        .bind(gate_type)
         .bind(window == Window::Lapsed)
         .bind(WINDOW)
         .bind(afd_api_wire::approval::status::PENDING)
         .bind(created_at.to_sqlx())
-        .bind(turn_id)
+        .bind(turn)
         .execute(&mut *self.connection().await)
         .await
         .expect("the gate row must insert");

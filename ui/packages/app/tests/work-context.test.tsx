@@ -41,7 +41,7 @@ it("attributes actions only to explicit task identities and retains recorded pro
 it("explains saved dependencies without inventing a next action from status", () => {
   const value = detail();
   const view = render(<DurableTaskNextStep detail={value} />);
-  expect(screen.getByText(/No active check dependency/)).toBeTruthy();
+  expect(screen.getByText("Follow the chat for the next update.")).toBeTruthy();
   const dependency = {active: true, head: "a".repeat(40), updated_at: "2026-11-03T10:00:00Z", checks: []};
   view.rerender(<DurableTaskNextStep detail={{...value, dependency}} />);
   expect(screen.getByText(/continuation is not yet confirmed/)).toBeTruthy();

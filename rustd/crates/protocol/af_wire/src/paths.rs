@@ -59,6 +59,14 @@ pub const RUN_ITEMS_SUFFIX: &str = "items";
 /// bare segment.
 pub const RUN_SCHEDULES_SUFFIX: &str = "schedules";
 
+/// Trailing segment of the per-run triggers sub-resource: what may wake the
+/// fleet the run runs. See [`RUN_ITEMS_SUFFIX`] for why it is a bare segment.
+pub const RUN_TRIGGERS_SUFFIX: &str = "triggers";
+
+/// Trailing segment of the per-run access sub-resource: a request for one
+/// secret or integration a person approves. See [`RUN_ITEMS_SUFFIX`].
+pub const RUN_ACCESS_SUFFIX: &str = "access";
+
 /// Trailing segment of one schedule's runs: its history, and where a run is
 /// created to fire it now. Bare, beneath `{RUN_SCHEDULES_SUFFIX}/{schedule_id}`.
 pub const SCHEDULE_RUNS_SUFFIX: &str = "runs";
@@ -102,6 +110,15 @@ pub const RUN_SCHEDULE: &str = concatcp!(RUN_SCHEDULES, "/{schedule_id}");
 /// `GET`/`POST` — one schedule's runs.
 pub const RUN_SCHEDULE_RUNS: &str = concatcp!(RUN_SCHEDULE, "/", SCHEDULE_RUNS_SUFFIX);
 
+/// `GET`/`POST` — the held fleet's triggers.
+pub const RUN_TRIGGERS: &str = concatcp!(RUN, RUN_TRIGGERS_SUFFIX);
+
+/// `DELETE` — one trigger the held fleet holds.
+pub const RUN_TRIGGER: &str = concatcp!(RUN_TRIGGERS, "/{trigger_id}");
+
+/// `POST` — the held fleet asks for one secret or integration.
+pub const RUN_ACCESS: &str = concatcp!(RUN, RUN_ACCESS_SUFFIX);
+
 /// `POST` — a line said to the held event's thread.
 pub const RUN_MESSAGES: &str = concatcp!(RUN, RUN_MESSAGES_SUFFIX);
 
@@ -122,7 +139,7 @@ pub const RUN_DURABLE_TASK_DECISION: &str = concatcp!(RUN_DURABLE_TASK_DECISIONS
 
 /// Complete pending human messages under the current run.
 pub const RUN_DURABLE_TASK_INPUTS: &str = concatcp!(RUN, "durable_tasks/inputs");
-/// Complete immutable interpretation of an admitted human message.
+/// One span of a person's message bound to a new or unfinished task.
 pub const RUN_DURABLE_TASK_BINDINGS: &str = concatcp!(RUN, "durable_tasks/bindings");
 /// Immutable native publication collection and recovery watermark reads.
 pub const RUN_DURABLE_TASK_EFFECTS: &str = concatcp!(RUN, "durable_tasks/effects");

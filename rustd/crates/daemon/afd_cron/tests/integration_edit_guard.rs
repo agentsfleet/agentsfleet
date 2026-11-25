@@ -1,8 +1,10 @@
-//! A person's schedule edit, against a row that is not free to take it, and
-//! against a one-off whose instant the edit moves.
+//! A person's schedule edit, against a row that is not free to take it, with a
+//! body that is not the schedule's own fields, and against a one-off whose
+//! instant the edit moves.
 //!
-//! The two refusals are proved with the tag the caller would really hold, so a
-//! pass means the row's state refused the edit and not a stale version.
+//! The refusals are proved with the tag the caller would really hold, so a
+//! pass means the row's state or the body refused the edit and not a stale
+//! version.
 
 #![expect(
     clippy::expect_used,
@@ -12,8 +14,9 @@
 #[path = "support/cron_lane.rs"]
 mod support;
 
+use af_core::error_code::INVALID_REQUEST;
 use afd_api_wire::schedule::Patch;
-use afd_cron::error::detail::{DELETING, SYNC_HELD};
+use afd_cron::error::detail::{DELETING, INVALID_PATCH, SYNC_HELD};
 use afd_cron::{Change, DesiredStatus, EditRequest, NewSchedule, Schedule, Source};
 use jiff::tz::TimeZone;
 
@@ -25,15 +28,20 @@ const ONCE_CRON: &str = "5 9 15 3 *";
 /// The same day at 09:10, where the edit moves it.
 const MOVED_CRON: &str = "10 9 15 3 *";
 
-fn patch(cron: &str) -> Patch {
-    serde_json::from_value(serde_json::json!({ "cron": cron })).expect("an edit")
-}
-
 /// Edits `schedule`'s expression to `cron`, with the tag it carries now.
 async fn edit(lane: &CronLane, schedule: &Schedule, cron: &str) -> afd_cron::Result<Schedule> {
+    edit_body(lane, schedule, serde_json::json!({ "cron": cron })).await
+}
+
+/// Edits `schedule` with the PATCH body `body`, with the tag it carries now.
+async fn edit_body(
+    lane: &CronLane,
+    schedule: &Schedule,
+    body: serde_json::Value,
+) -> afd_cron::Result<Schedule> {
     let (workspace, fleet) = (lane.workspace_id(), lane.fleet_id());
     let etag = schedule.etag();
-    let patch = patch(cron);
+    let patch: Patch = serde_json::from_value(body).expect("a body the wire type decodes");
     lane.store
         .edit(
             EditRequest {
@@ -105,6 +113,50 @@ async fn an_edit_to_a_schedule_being_removed_is_refused() {
     let stored = reread(&lane, &deleting).await;
     assert_eq!(stored.desired_status, DesiredStatus::Deleting);
     assert_eq!(stored.cron, "0 3 * * *");
+}
+
+/// Every schedule is an independent row with no recipe under it: an
+/// `override` body is not an edit at all, whatever rides beside it, and a body
+/// naming no field is refused as a malformed patch and writes nothing, while
+/// the same change sent as the schedule's own field is taken.
+#[tokio::test]
+#[ignore = "needs the lane's Postgres and NATS"]
+async fn an_edit_that_names_no_field_is_refused() {
+    let lane = CronLane::open().await;
+    let settled = lane.settled("key-edit-override", "0 3 * * *").await;
+
+    for body in [
+        serde_json::json!({ "override": { "cron": "0 4 * * *" } }),
+        serde_json::json!({ "override": null }),
+        serde_json::json!({ "override": { "message": "東京 🦉" }, "cron": "0 4 * * *" }),
+    ] {
+        let undecoded = serde_json::from_value::<Patch>(body.clone())
+            .expect_err("an `override` body is not a schedule edit");
+        assert!(
+            undecoded
+                .to_string()
+                .starts_with("unknown field `override`"),
+            "{body}: {undecoded}"
+        );
+    }
+    let refused = edit_body(&lane, &settled, serde_json::json!({}))
+        .await
+        .expect_err("a body that names no field is refused");
+    assert_eq!(
+        (refused.code(), refused.detail()),
+        (INVALID_REQUEST, INVALID_PATCH)
+    );
+    let stored = reread(&lane, &settled).await;
+    assert_eq!(
+        (stored.cron.as_str(), stored.resource_version),
+        ("0 3 * * *", settled.resource_version),
+        "a refused body changes nothing"
+    );
+
+    let edited = edit(&lane, &stored, "0 4 * * *")
+        .await
+        .expect("the schedule's own field is taken");
+    assert_eq!(edited.cron, "0 4 * * *");
 }
 
 #[tokio::test]

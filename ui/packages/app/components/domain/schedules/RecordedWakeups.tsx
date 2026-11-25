@@ -3,15 +3,15 @@
 import {useState} from "react";
 import {ClockIcon, PencilSimpleIcon, PauseIcon, PlayIcon, TrashIcon} from "@phosphor-icons/react/ssr";
 import {Button, Collapsible, CollapsibleContent, CollapsibleTrigger, ConfirmDialog} from "@agentsfleet/design-system";
-import type {Schedule} from "@/lib/api/draft-types";
+import type {Schedule} from "@/lib/api/schedule-types";
 import {changeSchedule, deleteSchedule, readSchedule, type ScheduleDetail} from "@/lib/api/schedule-controls";
 import {WakeupState} from "./WakeupState";
 import {useWakeupControl} from "./use-wakeup-control";
 import {WakeupEditor} from "./WakeupEditor";
 
 /** The editor belongs to the fleet, so changing which schedule is next cannot discard a draft. */
-export function RecordedWakeups({workspace, schedules, onRefresh}: {workspace: string; schedules: readonly Schedule[]; onRefresh?: () => void}) {
-  const control = useWakeupControl(onRefresh);
+export function RecordedWakeups({workspace, schedules}: {workspace: string; schedules: readonly Schedule[]}) {
+  const control = useWakeupControl();
   const [applied, setApplied] = useState(new Map<string, {base: string; value: Schedule | null}>());
   const [editing, setEditing] = useState<ScheduleDetail | null>(null);
   const [deleting, setDeleting] = useState<Schedule | null>(null);

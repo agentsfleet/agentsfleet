@@ -229,10 +229,10 @@ mod tests {
     /// Fixture fleets seeded through `afd_db` run on this reference, so the
     /// two spellings are one.
     #[test]
-    fn the_fixture_setup_runs_on_the_platform_default() {
+    fn a_fixture_fleet_runs_on_the_platform_default() {
         assert_eq!(
             super::PLATFORM_MODEL_REF,
-            afd_db::test_util::FIXTURE_SETUP_MODEL_REF
+            afd_db::test_util::FIXTURE_MODEL_REF
         );
     }
 }

@@ -1,18 +1,21 @@
-//! The `agentsfleetd` verbs a run's tools reach through: the fleet's own
-//! schedules, a line said to the event's thread, and the workspace's other
-//! fleets.
+//! The `agentsfleetd` verbs a run's tools reach through.
+//!
+//! The fleet's own schedules and triggers, a line said to the event's thread,
+//! the workspace's other fleets, a request for access, and the durable tasks
+//! a person's message starts or steers.
 //!
 //! ```text
 //!   cron_* / schedule ─► Scheduler ─┐
 //!   message ───────────► Channel ───┴─► Fenced ─┐
-//!   fleet_steer ────────────────────────────────┼──► RunVerbs ──► agentsfleetd,
-//!   fleet_activity ─────────────────────────────┘        ▲         fenced by the run
-//!                                                        └── the supervisor's control plane
+//!   fleet_steer, fleet_activity ────────────────┤
+//!   trigger_add, trigger_list, trigger_remove ──┼──► RunVerbs ──► agentsfleetd,
+//!   request_access ─────────────────────────────┤        ▲         fenced by the run
+//!   task_start, task_input ─────────────────────┘        └── the supervisor's control plane
 //! ```
 //!
 //! The cron tools, `schedule` and `message` are `guffbolt`'s, built over
-//! [`Fenced`], the run's verbs as their scheduler and channel; `fleet_steer`
-//! and `fleet_activity` are this crate's own.
+//! [`Fenced`], the run's verbs as their scheduler and channel; the rest are
+//! this crate's own.
 //!
 //! # The runner keeps no clock and no channel credential
 //!
@@ -36,21 +39,30 @@ use std::fmt;
 use af_core::error_code::{self, ErrorCode};
 use af_core::id::Uuid7;
 use af_core::problem::Problem;
+use af_wire::access_verb::AccessRequest;
 use af_wire::steer_verb::FleetSteerAccepted;
 use guffbolt::ToolOutput;
 
 use crate::runtime::ToolErrorCode;
 
+mod access;
+mod calls;
 mod durable_task;
 mod fenced;
 mod fleet_steer;
 mod fleets;
+mod tasks;
+mod triggers;
 
 pub use durable_task::DecisionEvaluation;
 
+pub(crate) use self::access::RequestAccess;
+pub use self::calls::{AccessAnswer, FleetsCall, NewTrigger, ScheduleCall, TriggerCall};
 pub use self::fenced::Fenced;
 pub(crate) use self::fleet_steer::FleetSteer;
 pub(crate) use self::fleets::FleetActivity;
+pub(crate) use self::tasks::{TaskInput, TaskStart};
+pub(crate) use self::triggers::{TriggerAdd, TriggerList, TriggerRemove};
 
 /// What the model reads when `agentsfleetd` could not be reached.
 const DETAIL_UNREACHABLE: &str = "agentsfleetd did not answer; try again shortly";
@@ -61,85 +73,6 @@ const DETAIL_REFUSED: &str = "agentsfleetd refused the request";
 /// What the model reads for a success that answered no body, such as a
 /// schedule removed outright.
 const DONE: &str = "done";
-
-/// One schedules call, as a tool asks it: the fleet is the run's, so none
-/// names one.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ScheduleCall<'a> {
-    /// Create a schedule for the fleet.
-    Create {
-        /// The call's number in its run, which names its item.
-        call_number: u64,
-        /// A five-field cron expression.
-        cron: &'a str,
-        /// The zone it is read in; UTC when absent.
-        timezone: Option<&'a str>,
-        /// What the fleet is asked to do when it fires.
-        message: &'a str,
-        /// Whether it retires after its first fire.
-        once: bool,
-    },
-    /// List every schedule of the fleet.
-    List,
-    /// Change the named fields of a schedule the fleet made.
-    Update {
-        /// The call's number in its run, which names its item.
-        call_number: u64,
-        /// The schedule.
-        schedule: &'a Uuid7,
-        /// A new expression.
-        cron: Option<&'a str>,
-        /// A new zone.
-        timezone: Option<&'a str>,
-        /// A new message.
-        message: Option<&'a str>,
-        /// Whether it should stop firing.
-        paused: Option<bool>,
-    },
-    /// Delete a schedule the fleet made.
-    Delete {
-        /// The schedule.
-        schedule: &'a Uuid7,
-    },
-    /// Fire a schedule now.
-    Run {
-        /// The call's number in its run, which names its item.
-        call_number: u64,
-        /// The schedule.
-        schedule: &'a Uuid7,
-    },
-    /// Read a schedule's runs, newest first.
-    Runs {
-        /// The schedule.
-        schedule: &'a Uuid7,
-        /// How many to read.
-        limit: Option<u32>,
-        /// The `next_cursor` of the page before.
-        starting_after: Option<&'a str>,
-    },
-}
-
-/// One fleets read, as `fleet_activity` asks it: the workspace is the run's,
-/// so none names one.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FleetsCall<'a> {
-    /// List the workspace's fleets, newest first.
-    List {
-        /// How many to read.
-        limit: Option<u32>,
-        /// The `next_cursor` of the page before.
-        starting_after: Option<&'a str>,
-    },
-    /// Read one fleet's events, newest first.
-    Events {
-        /// The fleet.
-        fleet: &'a Uuid7,
-        /// How many to read.
-        limit: Option<u32>,
-        /// The `next_cursor` of the page before.
-        starting_after: Option<&'a str>,
-    },
-}
 
 /// Why `agentsfleetd` did not do what a tool asked.
 ///
@@ -230,6 +163,17 @@ pub trait RunVerbs: Send + Sync + fmt::Debug {
         Err(Unanswered::Refused(None))
     }
 
+    /// Sends one triggers call and answers the reply body of a success.
+    async fn triggers(&self, _call: TriggerCall<'_>) -> Result<String, Unanswered> {
+        Err(Unanswered::Refused(None))
+    }
+
+    /// Asks a person to approve `request`'s name for the fleet, fenced by the
+    /// run whatever fence `request` names, and answers what the request did.
+    async fn access(&self, _request: AccessRequest<'_>) -> Result<AccessAnswer, Unanswered> {
+        Err(Unanswered::Refused(None))
+    }
+
     /// Puts `text` on another fleet in the workspace and answers the event it
     /// became.
     async fn fleet_steer(
@@ -248,7 +192,8 @@ pub trait RunVerbs: Send + Sync + fmt::Debug {
         Err(Unanswered::Refused(None))
     }
 
-    /// Freeze the complete interpretation once, with native decision proofs.
+    /// Binds one span of a person's message to a new or unfinished task,
+    /// fenced by the run whatever fence `input` names.
     async fn durable_task_bindings(
         &self,
         _input: af_wire::durable_task::DurableTaskBindingsInput,

@@ -10,22 +10,16 @@ use crate::refusal::Refusal;
 #[test]
 fn should_put_a_credentials_own_host_in_place_of_a_whole_host_placeholder() {
     assert_eq!(
-        allow(
-            false,
-            draft(
-                "GET",
-                "https://${secrets.grafana.host}/api/datasources",
-                &[],
-                None
-            )
-        ),
+        allow(draft(
+            "GET",
+            "https://${secrets.grafana.host}/api/datasources",
+            &[],
+            None
+        )),
         Ok(format!("https://{GRAFANA}/api/datasources"))
     );
     assert_eq!(
-        refused(
-            false,
-            draft("GET", "https://${secrets.missing.host}/x", &[], None)
-        ),
+        refused(draft("GET", "https://${secrets.missing.host}/x", &[], None)),
         Some(shown(&Error::secret_not_found("missing", "host")))
     );
 }
@@ -35,50 +29,38 @@ fn should_send_a_static_credential_only_to_its_own_host() {
     let grafana = [("Authorization", "Bearer ${secrets.grafana.token}")];
 
     assert!(
-        allow(
-            false,
-            draft(
-                "GET",
-                "https://demo-grafana.internal/api/search",
-                &grafana,
-                None
-            )
-        )
+        allow(draft(
+            "GET",
+            "https://demo-grafana.internal/api/search",
+            &grafana,
+            None
+        ))
         .is_ok_and(|url| url.contains(GRAFANA))
     );
     assert_eq!(
-        refused(
-            false,
-            draft("GET", "https://demo.es.example/", &grafana, None)
-        ),
+        refused(draft("GET", "https://demo.es.example/", &grafana, None)),
         Some(shown(&raise::credential_host_not_allowed(
             "grafana", ELASTIC
         )))
     );
     assert_eq!(
-        refused(
-            false,
-            draft(
-                "GET",
-                "https://demo.es.example/",
-                &[("Authorization", "${secrets.unbound.token}")],
-                None
-            )
-        ),
+        refused(draft(
+            "GET",
+            "https://demo.es.example/",
+            &[("Authorization", "${secrets.unbound.token}")],
+            None
+        )),
         Some(shown(&raise::credential_host_not_allowed(
             "unbound", ELASTIC
         )))
     );
     assert_eq!(
-        refused(
-            false,
-            draft(
-                "GET",
-                "https://demo.es.example/",
-                &[("Authorization", "${secrets.nobody.token}")],
-                None
-            )
-        ),
+        refused(draft(
+            "GET",
+            "https://demo.es.example/",
+            &[("Authorization", "${secrets.nobody.token}")],
+            None
+        )),
         Some(shown(&Error::secret_not_found("nobody", "token")))
     );
 }
@@ -88,36 +70,32 @@ fn should_send_a_minted_credential_only_where_an_origin_policy_names_it() {
     let github = [("Authorization", "Bearer ${secrets.github.token}")];
 
     assert!(
-        allow(
-            false,
-            draft(
-                "GET",
-                "https://api.github.com/repos/acme/widgets/pulls",
-                &github,
-                None
-            )
-        )
+        allow(draft(
+            "GET",
+            "https://api.github.com/repos/acme/widgets/pulls",
+            &github,
+            None
+        ))
         .is_ok_and(|url| url.contains(GITHUB))
     );
     assert_eq!(
-        refused(
-            false,
-            draft("GET", "https://demo-grafana.internal/", &github, None)
-        ),
+        refused(draft(
+            "GET",
+            "https://demo-grafana.internal/",
+            &github,
+            None
+        )),
         Some(shown(&raise::credential_host_not_allowed(
             "github", GRAFANA
         )))
     );
     assert_eq!(
-        refused(
-            false,
-            draft(
-                "GET",
-                "https://api.github.com/repos/acme/widgets/",
-                &[("Authorization", "${secrets.github.password}")],
-                None
-            )
-        ),
+        refused(draft(
+            "GET",
+            "https://api.github.com/repos/acme/widgets/",
+            &[("Authorization", "${secrets.github.password}")],
+            None
+        )),
         Some((
             Some(Refusal::SecretNotFound),
             "this fleet's secret github has no field password; its fields are token".to_owned()
@@ -130,15 +108,12 @@ fn should_send_a_minted_credential_only_where_an_origin_policy_names_it() {
 /// and none of their values.
 #[test]
 fn should_name_a_static_credentials_fields_for_a_field_it_lacks() {
-    let refusal = refused(
-        false,
-        draft(
-            "GET",
-            "https://demo-grafana.internal/api/health",
-            &[("Authorization", "${secrets.grafana.password}")],
-            None,
-        ),
-    );
+    let refusal = refused(draft(
+        "GET",
+        "https://demo-grafana.internal/api/health",
+        &[("Authorization", "${secrets.grafana.password}")],
+        None,
+    ));
 
     assert_eq!(
         refusal,
@@ -154,7 +129,7 @@ fn should_name_a_static_credentials_fields_for_a_field_it_lacks() {
 /// as a secret the fleet does not have, never with an empty field list.
 #[test]
 fn should_refuse_a_credential_with_no_string_field_as_absent() {
-    let mut policy = crate::fixture::policy(false);
+    let mut policy = crate::fixture::policy();
     policy.secrets_map = Some(serde_json::json!({"numbers": {"ttl": 30}}));
     let refused = super::EgressPolicy::new(&policy)
         .allow(draft(
@@ -184,13 +159,13 @@ fn should_refuse_every_placeholder_when_the_tool_carries_no_credential() {
     authorized.placement = Placement::Nowhere;
 
     assert_eq!(
-        refused(false, fetch),
+        refused(fetch),
         Some(misplaced(
             "a placeholder in the URL, or credentials in its userinfo"
         ))
     );
     assert_eq!(
-        refused(false, authorized),
+        refused(authorized),
         Some(misplaced("the Authorization header as written"))
     );
 }
@@ -201,7 +176,7 @@ fn should_refuse_a_host_placeholder_that_smuggles_another_host() {
         "https://${secrets.grafana.host}:@evil.example/x",
         "https://${secrets.grafana.host}@evil.example/x",
     ] {
-        let refusal = refused(false, draft("GET", smuggled, &[], None));
+        let refusal = refused(draft("GET", smuggled, &[], None));
 
         assert!(
             matches!(
@@ -218,7 +193,7 @@ fn should_refuse_a_host_placeholder_that_smuggles_another_host() {
 
 #[test]
 fn should_refuse_a_secret_host_that_names_more_than_a_host() {
-    let mut policy = crate::fixture::policy(false);
+    let mut policy = crate::fixture::policy();
     if let Some(grafana) = policy
         .secrets_map
         .as_mut()

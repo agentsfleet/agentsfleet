@@ -6,9 +6,10 @@ use sqlx::Connection as _;
 
 const POPULATION: i32 = 20_000;
 const IDLE_FLEETS: &str = "INSERT INTO fleet.fleets \
-    (id,workspace_id,tenant_id,name,status,required_tags,memory_reads_workspace, \
-     memory_publishes_workspace,resource_version,created_at,updated_at) \
-    SELECT uuidv7(),workspace_id,tenant_id,'idle-'||n,status,required_tags,false,false,1,now(),now() \
+    (id,workspace_id,tenant_id,name,status,model_ref,http_egress,package_domains,required_tags, \
+     memory_reads_workspace,memory_publishes_workspace,resource_version,created_at,updated_at) \
+    SELECT uuidv7(),workspace_id,tenant_id,'idle-'||n,status,model_ref,http_egress,package_domains, \
+           required_tags,false,false,1,now(),now() \
     FROM fleet.fleets CROSS JOIN generate_series(1,$2) n WHERE id=$1";
 
 // Value: protects=empty-ledger idle cost; fails_when=discovery visits every idle

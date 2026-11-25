@@ -44,18 +44,14 @@ async fn terminal_settlement_propagates_a_database_outage() {
     assert!(refused.is_datastore_unavailable(), "{refused}");
 }
 
-/// A fleet whose unreadable config cannot even be recorded is answered no
-/// work, and neither the config's reason nor the write's failure carries a
-/// code.
+/// A fleet whose unreadable row cannot even be recorded is answered no work,
+/// and neither the row's reason nor the write's failure carries a code.
 #[tokio::test]
 async fn an_unreadable_config_refusal_reason_carries_no_code_prefix() {
     use af_core::test_util::trace::Capture;
 
     let log = Capture::install();
-    let fault = crate::Error::from(
-        af_fleet_runtime::FleetConfig::stored("not a document")
-            .expect_err("a document that is not JSON does not parse"),
-    );
+    let fault = crate::Error::from(crate::error::ErrorKind::FleetRowUnreadable);
 
     test_dead::plane()
         .refuse_unreadable_config(&test_dead::acquired(), &test_dead::id(9), &fault)
@@ -113,7 +109,7 @@ async fn a_gate_that_could_not_decide_answers_no_work_and_writes_nothing() {
 async fn a_fleet_no_longer_active_is_answered_no_work() {
     use af_core::test_util::trace::Capture;
 
-    let mut acquired = test_dead::acquired_installed();
+    let mut acquired = test_dead::acquired();
     "archived".clone_into(&mut acquired.opened.setup.status);
     let log = Capture::install();
 

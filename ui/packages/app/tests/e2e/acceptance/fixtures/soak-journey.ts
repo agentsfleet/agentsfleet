@@ -1,30 +1,27 @@
 import { expect, type Page } from "@playwright/test";
-import { FleetSchema, type Definition } from "@/lib/api/draft-types";
+import { FleetDetailSchema } from "@/lib/api/fleet-detail";
 import { clientFor, type ClientHandle } from "./api-client";
-import { SoakSetup } from "./soak-setup";
 import { SoakRuntime } from "./soak-runtime";
-import { draftHistory, runtimeHistory } from "./soak-history";
-import { SOAK, SOAK_KIND, SOAK_STEPS, UNICODE_SAVED } from "./soak-scenario";
-import { CHAT_COPY, privateSaveButton, NEW_FLEET, draftHref, editSetupAction, openSavedFleet } from "./private-chat";
+import { runtimeHistory } from "./soak-history";
+import { PINNED_RULES, SOAK_KIND, SOAK_STEPS, firstMessage } from "./soak-scenario";
 import { writeFile } from "node:fs/promises";
 import { APPLICATION_FAILURE, outageLedger, trackRequests } from "./soak-outage";
+import { awaitFirstTurnSettled, createFixtureFleet } from "./fleet-create";
 import { fleetNavigation, openFleetFromSidebar, workspaceHref } from "./nav";
 import { purgeFixtureFleet } from "./teardown";
 
-/** Where a journey stands: step -1 is the first setup chat; turn is the next turn to send. */
+/** Where a journey stands: step -1 is the fleet's first message; turn is the next turn to send. */
 export type SoakManifest = {workspace: string; name: string; marker: string; fleet: string | null;
-  drafts: string[]; revision: number; step: number; turn: number};
-const AUTHOR_STEP = -1;
+  pins: number; step: number; turn: number};
+const CREATE_STEP = -1;
 
 export class SoakJourney {
-  readonly drafts: SoakSetup[] = [];
   fleetId = "";
-  private revision = 1;
-  private definition: Definition | undefined;
+  private pins = 0;
   private runtime: SoakRuntime | undefined;
   private readonly client;
 
-  private step = AUTHOR_STEP;
+  private step = CREATE_STEP;
 
   constructor(private readonly page: Page, private readonly handle: ClientHandle,
     private readonly workspace: string, readonly name: string, readonly marker: string,
@@ -38,28 +35,20 @@ export class SoakJourney {
     this.step = step;
     if (!this.checkpointPath) return;
     const manifest: SoakManifest = {workspace: this.workspace, name: this.name, marker: this.marker,
-      fleet: this.fleetId || null, drafts: this.drafts.map(draft => draft.draftId).filter(Boolean),
-      revision: this.revision, step, turn};
+      fleet: this.fleetId || null, pins: this.pins, step, turn};
     await writeFile(this.checkpointPath, JSON.stringify(manifest, null, 1));
   }
 
-  private watch(chat: SoakSetup | SoakRuntime): void {
+  private watch(chat: SoakRuntime): void {
     chat.onTurn = async next => this.checkpoint(this.step, next);
   }
 
   /** Rebuild every record a previous process created, from durable state only. */
   private async restore(from: SoakManifest): Promise<void> {
     expect(from.name, "the resumed manifest names this journey").toBe(this.name);
-    for (const id of from.drafts) {
-      const chat = new SoakSetup(this.page, this.client, this.workspace, this.page.locator("main"));
-      await chat.hydrate(id);
-      this.drafts.push(chat);
-    }
-    this.revision = from.revision;
+    this.pins = from.pins;
     if (from.fleet) {
       this.fleetId = from.fleet;
-      this.definition = FleetSchema.parse(await this.client.get<unknown>(
-        `/v1/workspaces/${this.workspace}/fleets/${this.fleetId}`)).definition;
       this.runtime = new SoakRuntime(this.page, this.client, this.workspace, this.fleetId);
       this.watch(this.runtime);
       await this.runtime.hydrate();
@@ -69,86 +58,52 @@ export class SoakJourney {
 
   async run(from?: SoakManifest): Promise<void> {
     if (from) await this.restore(from);
-    const start = from ? {step: from.step, turn: from.turn} : {step: AUTHOR_STEP, turn: 0};
-    if (start.step === AUTHOR_STEP) await this.author(start.turn);
-    if (start.step >= 0 && !this.fleetId) throw new Error(`${this.name} has no saved fleet; later steps cannot run`);
-    // A resumed process starts on a blank page; every later step begins on the saved fleet.
-    if (from && start.step >= 0) await this.page.goto(workspaceHref(this.workspace, `fleets/${this.fleetId}`));
+    const start = from ? {step: from.step, turn: from.turn} : {step: CREATE_STEP, turn: 0};
+    if (start.step === CREATE_STEP && !this.fleetId) await this.create();
+    if (!this.fleetId) throw new Error(`${this.name} has no fleet; later steps cannot run`);
+    await this.page.goto(workspaceHref(this.workspace, `fleets/${this.fleetId}`));
     for (let index = Math.max(start.step, 0); index < SOAK_STEPS.length; index++) {
       const step = SOAK_STEPS[index]!;
       const turn = index === start.step ? start.turn : 0;
       await this.checkpoint(index, turn);
       if (step.kind === SOAK_KIND.runtime) {
         if (turn > 0) await this.page.goto(workspaceHref(this.workspace, `fleets/${this.fleetId}`));
-        await this.runtime!.converse(step.count, this.revision, this.name, turn);
+        await this.runtime!.converse(step.count, index, this.name, turn);
       } else if (step.kind === SOAK_KIND.reopen) await this.reopen();
-      else await this.edit(step.revision, turn);
+      else await this.pin(step.rule, turn);
     }
     await this.checkpoint(SOAK_STEPS.length, 0);
     await this.page.reload();
-    await this.runtime!.assertHistory(this.revision);
-    for (const draft of this.drafts) await draft.assertHistory();
-    await this.assertSaved(4);
-    await this.assertUnicodeSaved();
+    await this.runtime!.assertHistory();
+    await this.runtime!.assertPinned(PINNED_RULES.slice(0, this.pins));
+    await this.assertFleet();
     // Failed turns were moved past so the run could finish; only outages are excused.
     const failed = outageLedger.filter(entry => entry.fleet === this.name && entry.classification === APPLICATION_FAILURE);
     expect(failed, `${this.name} recorded failed turns that no outage explains`).toEqual([]);
   }
 
-  /** Read from the saved definition itself, never from a model reply. */
-  private async assertUnicodeSaved(): Promise<void> {
-    const fleet = FleetSchema.parse(await this.client.get<unknown>(
-      `/v1/workspaces/${this.workspace}/fleets/${this.fleetId}`));
-    const instructions = fleet.definition?.instructions_md ?? "";
-    for (const rule of UNICODE_SAVED) expect(instructions, `saved setup keeps ${rule}`).toContain(rule);
-    expect(instructions, "the replaced text is gone").not.toContain("東京");
-  }
-
-  private async author(from: number): Promise<void> {
-    await this.checkpoint(AUTHOR_STEP, from);
-    let chat: SoakSetup;
-    // No stored draft means no stored turn: the chat starts fresh without resending anything.
-    if (from > 0 && this.drafts.length > 0) {
-      chat = this.drafts.at(-1)!;
-      await this.page.goto(draftHref(this.workspace, chat.draftId));
-    } else {
-      await this.page.goto(workspaceHref(this.workspace, NEW_FLEET));
-      chat = new SoakSetup(this.page, this.client, this.workspace, this.page.locator("main"));
-      this.drafts.push(chat);
-      // Without a stored draft the creating message never landed, so the chat begins at its first turn.
-      from = 0;
-    }
-    this.watch(chat);
-    await chat.converse(SOAK.authoredMessages, 1, this.name, from);
-    this.definition = chat.definition;
-    await (await privateSaveButton(this.page)).click();
-    this.fleetId = FleetSchema.shape.id.parse(await openSavedFleet(this.page, {handle: this.handle, workspaceId: this.workspace}));
+  /** The fleet and its first turn, made by one message; the chat starts once that turn has its answer. */
+  private async create(): Promise<void> {
+    await this.checkpoint(CREATE_STEP, 0);
+    const {fleet, turnId} = await createFixtureFleet(this.handle, this.workspace, {name: this.name, message: firstMessage(this.name)});
+    expect(fleet.name, "the soak fleet keeps its own name").toBe(this.name);
+    this.fleetId = fleet.id;
+    await awaitFirstTurnSettled(this.handle, this.workspace, fleet.id, turnId);
     console.log(JSON.stringify({soakIdentifiers: this.identifiers()}));
     this.runtime = new SoakRuntime(this.page, this.client, this.workspace, this.fleetId);
     this.watch(this.runtime);
-    await this.assertSaved(1);
+    await this.runtime.hydrate();
+    await this.assertFleet();
   }
 
-  private async edit(revision: number, from: number): Promise<void> {
-    let chat: SoakSetup;
-    // The author chat plus one per earlier edit precede this one; fewer means it was never created.
-    if (from > 0 && this.drafts.length >= revision) {
-      chat = this.drafts.at(-1)!;
-      await this.page.goto(draftHref(this.workspace, chat.draftId));
-    } else {
-      if (from > 0) await this.page.goto(workspaceHref(this.workspace, `fleets/${this.fleetId}`));
-      await (await editSetupAction(this.page)).click();
-      chat = new SoakSetup(this.page, this.client, this.workspace, this.page.locator("main"), this.definition);
-      this.drafts.push(chat);
+  /** One pin is one chat message; a resumed run past it does not ask twice. */
+  private async pin(rule: number, from: number): Promise<void> {
+    if (from === 0) {
+      await this.runtime!.pin(PINNED_RULES[rule]!);
+      await this.checkpoint(this.step, 1);
     }
-    await expect(this.page.getByLabel(CHAT_COPY.composer)).toBeVisible();
-    this.watch(chat);
-    await chat.converse(SOAK.setupMessages, revision, this.name, from);
-    this.definition = chat.definition;
-    await (await privateSaveButton(this.page)).click();
-    expect(await openSavedFleet(this.page, {handle: this.handle, workspaceId: this.workspace, revision: String(revision)})).toBe(this.fleetId);
-    this.revision = revision;
-    await this.assertSaved(revision);
+    this.pins = rule + 1;
+    await this.runtime!.assertPinned(PINNED_RULES.slice(0, this.pins));
   }
 
   private async reopen(): Promise<void> {
@@ -158,34 +113,27 @@ export class SoakJourney {
     await expect(conversation.getByText(this.name, {exact: true})).toBeVisible();
     await openFleetFromSidebar(this.page, this.workspace, this.fleetId);
     await expect(this.page).toHaveURL(new RegExp(`/fleets/${this.fleetId}$`));
-    await this.assertSaved(this.revision);
-    await this.runtime!.assertHistory(this.revision);
+    await this.assertFleet();
+    await this.runtime!.assertHistory();
   }
 
-  private async assertSaved(revision: number): Promise<void> {
-    const fleet = FleetSchema.parse(await this.client.get<unknown>(
+  private async assertFleet(): Promise<void> {
+    const fleet = FleetDetailSchema.parse(await this.client.get<unknown>(
       `/v1/workspaces/${this.workspace}/fleets/${this.fleetId}`));
     expect(fleet.name).toBe(this.name);
-    expect(fleet.setup_revision).toBe(String(revision));
-    expect(this.definition, "the setup saved a validated candidate").toBeDefined();
-    expect(fleet.definition, "the saved setup matches the candidate before and after navigation").toEqual(this.definition);
+    expect(fleet.status).toBe("active");
   }
 
   async snapshot() {
-    const drafts = await Promise.all(this.drafts.filter(draft => draft.draftId).map(async draft => ({
-      definition: await this.client.get<unknown>(draft.scope),
-      messages: await draftHistory(this.client, draft.scope),
-    })));
     const scope = `/v1/workspaces/${this.workspace}/fleets/${this.fleetId}`;
-    return {name: this.name, marker: this.marker, drafts,
-      fleet: this.fleetId ? FleetSchema.parse(await this.client.get<unknown>(scope)) : null,
+    return {name: this.name, marker: this.marker,
+      fleet: this.fleetId ? FleetDetailSchema.parse(await this.client.get<unknown>(scope)) : null,
       messages: this.fleetId ? await runtimeHistory(this.client, scope) : [],
     };
   }
 
   identifiers() {
-    return {workspace: this.workspace, name: this.name, fleet: this.fleetId || null,
-      drafts: this.drafts.map(draft => draft.draftId).filter(Boolean)};
+    return {workspace: this.workspace, name: this.name, fleet: this.fleetId || null};
   }
 
   async assertIsolated(otherMarkers: readonly string[]): Promise<void> {
@@ -195,8 +143,5 @@ export class SoakJourney {
 
   async cleanup(): Promise<void> {
     if (this.fleetId) await purgeFixtureFleet(this.handle, this.workspace, this.fleetId);
-    for (const draft of this.drafts) {
-      if (draft.draftId) await this.client.delete(`/v1/workspaces/${this.workspace}/drafts/${draft.draftId}`);
-    }
   }
 }

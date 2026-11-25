@@ -7,14 +7,13 @@
 )]
 
 use crate::harness;
-use crate::integration_workspace_approvals_fixture::Fixture;
+use crate::integration_workspace_approvals_fixture::{Fixture, SESSION};
 
 use af_core::error_code;
-use afd_auth::scope::{Scope, ScopeSet};
 use http::{Method, StatusCode};
 use serde_json::Value;
 
-use self::harness::{Fleet, json_body, send};
+use self::harness::{json_body, send};
 
 /// This file's own signed-in person; the approval files run concurrently.
 const SUBJECT: &str = "user_live_approval_answers";
@@ -30,7 +29,7 @@ async fn decide(
         "/v1/workspaces/{}/approvals/{gate}/{verb}",
         fixture.workspace.as_str()
     );
-    let response = send(router, Method::POST, &route, Some(&fixture.token), body).await;
+    let response = send(router, Method::POST, &route, Some(SESSION), body).await;
     (response.status(), json_body(response).await)
 }
 
@@ -46,14 +45,7 @@ async fn a_question_takes_an_answer_that_stands_and_an_archived_fleet_takes_none
     let question = fixture
         .seed_gate(afd_api_wire::approval::GATE_TYPE_QUESTION, 3)
         .await;
-    let router = Fleet::live(
-        fixture.database.clone(),
-        SUBJECT,
-        ScopeSet::from_scopes(&Scope::ALL),
-    )
-    .with_owned_workspace(fixture.workspace.clone())
-    .with_approval_queue(fixture.database.clone(), harness::bus().await)
-    .router();
+    let router = fixture.signed_in().await;
     let tool = fixture.gate.as_str().to_owned();
     // A setup card and a runless gate hang from no turn, and are no question either.
     let card = fixture.seed_gate("integration_grant", 4).await;

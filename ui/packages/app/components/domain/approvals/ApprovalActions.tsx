@@ -10,8 +10,9 @@ import { useApprovalDecision } from "./use-approval-decision";
 import { ApprovalRequestDetails } from "./ApprovalRequestDetails";
 import { FleetPayloadDisclosure } from "../activity/messages/FleetPayloadDisclosure";
 import { PersonLabel } from "../shared/identity/PersonLabel";
+import { AccessRequest } from "./AccessRequest";
 
-type Props = {gate: SummaryApproval; inSetup: boolean; onStart: () => void; onNext: () => void; onResolved: (fleetId: string) => void};
+type Props = {gate: SummaryApproval; onStart: () => void; onNext: () => void; onResolved: (fleetId: string) => void};
 
 const BUTTON = "min-h-11 summary:min-h-10";
 const SECONDARY_BUTTON = `${BUTTON} border-border`;
@@ -20,7 +21,7 @@ const SECONDARY_BUTTON = `${BUTTON} border-border`;
  * Approval is the decision itself; the action remains in this fleet's conversation.
  * An expired deadline leaves the recorded request actionable.
  */
-export function ApprovalActions({gate, inSetup, onStart, onNext, onResolved}: Props) {
+export function ApprovalActions({gate, onStart, onNext, onResolved}: Props) {
   const answerId = useId();
   const [outcome, setOutcome] = useState<ResolveOutcome | null>(null);
   const [reason, setReason] = useState("");
@@ -28,13 +29,15 @@ export function ApprovalActions({gate, inSetup, onStart, onNext, onResolved}: Pr
   const {pending, error, resolve} = useApprovalDecision(gate.workspace_id, gate.gate_id, result => {setOutcome(result); onResolved(gate.fleet_id);});
   const title = gate.proposed_action || `${gate.tool_name}:${gate.action_name}`;
   const question = gate.gate_type === APPROVAL_GATE_TYPE.QUESTION;
+  const access = gate.gate_type === APPROVAL_GATE_TYPE.ACCESS;
   const decide = (decision: ApprovalDecision, text: string) => {onStart(); void resolve(decision, text);};
-  const expandedControls = inSetup || question;
+  const expandedControls = access || question;
   const deny = expandedControls && <Button variant="outline" className={SECONDARY_BUTTON} disabled={pending} aria-busy={pending}
     onClick={() => decide(APPROVAL_DECISION.DENY, reason)}>{question ? "Dismiss" : "Deny"}</Button>;
   return <div className="space-y-md" data-approval-gate={gate.gate_id}>
-    <p className="break-words text-label font-medium leading-label">{title}</p>
+    <p className={cn("wrap-anywhere text-label leading-label", access ? "font-semibold" : "font-medium")}>{title}</p>
     {gate.blast_radius ? <p className="break-words text-label leading-label text-muted-foreground">{gate.blast_radius}</p> : null}
+    {access ? <AccessRequest gate={gate} /> : null}
     {gate.status === APPROVAL_STATUS.TIMED_OUT && !outcome ? <p className="text-label leading-label text-muted-foreground">Deadline passed</p> : null}
     {expandedControls ? (
       <ApprovalRequestDetails gate={gate} title={title} pending={pending} decided={outcome !== null} reason={reason} onReasonChange={setReason} />
@@ -55,11 +58,11 @@ export function ApprovalActions({gate, inSetup, onStart, onNext, onResolved}: Pr
           {deny}
         </div>
       </div> :
-      <div className={cn("grid gap-md", inSetup && "grid-cols-2")}>
+      <div className={cn("grid gap-md", access && "grid-cols-2")}>
         <Button className={BUTTON} disabled={pending} aria-busy={pending}
           onClick={() => decide(APPROVAL_DECISION.APPROVE, reason)}>Approve</Button>
         {deny}
       </div>}
-    {error ? <><Alert variant="destructive">{error}</Alert><Button variant="ghost" size="sm" onClick={onNext} disabled={pending}>Check status</Button></> : null}
+    {error ? <><Alert variant="destructive" className="wrap-anywhere px-lg py-md">{error}</Alert><Button variant="ghost" size="sm" onClick={onNext} disabled={pending}>Check status</Button></> : null}
   </div>;
 }

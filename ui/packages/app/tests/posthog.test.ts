@@ -429,17 +429,19 @@ describe("app analytics", () => {
     });
 
     await mod.initAnalytics();
-    mod.captureProductEvent(EVENTS.runner_token_minted, {
-      runner_id: "r1",
-      sandbox_tier: "landlock_full",
+    mod.captureProductEvent(EVENTS.approval_resolved, {
+      gate_id: "g1",
+      decision: "approve",
+      has_reason: true,
     });
 
     // Event-specific keys are NOT in the legacy ALLOWED_PROP_KEYS allowlist —
     // they must survive the emit path untouched.
-    expect(client.capture).toHaveBeenCalledWith(EVENTS.runner_token_minted, {
+    expect(client.capture).toHaveBeenCalledWith(EVENTS.approval_resolved, {
       path: "/fleets/new",
-      runner_id: "r1",
-      sandbox_tier: "landlock_full",
+      gate_id: "g1",
+      decision: "approve",
+      has_reason: true,
     });
   });
 
@@ -490,7 +492,7 @@ describe("app analytics", () => {
     });
 
     await mod.initAnalytics();
-    mod.captureProductEvent(EVENTS.fleet_created, { fleet_id: "zom_1" });
+    mod.captureProductEvent(EVENTS.fleet_viewed, { fleet_id: "zom_1", status: "running" });
     mod.identifyAnalyticsUser({ id: "user_1", email: null });
     mod.resetAnalyticsIdentity();
 
@@ -730,7 +732,7 @@ describe("app analytics", () => {
 
     // The session degrades to analytics-off without throwing, and the sweep's
     // marker survives so the reset retries on the next load.
-    mod.captureProductEvent(EVENTS.fleet_created, { fleet_id: "zom_1" });
+    mod.captureProductEvent(EVENTS.fleet_viewed, { fleet_id: "zom_1", status: "running" });
     expect(mod.hasStaleAnalyticsIdentity()).toBe(true);
   });
 
@@ -760,12 +762,13 @@ describe("app analytics", () => {
     await mod.initAnalytics();
 
     // Excess-property checks only cover object literals — a widened bag compiles.
-    const widened = { fleet_id: "zom_1", runner_token: "agt_rsmuggled" } as { fleet_id: string };
-    mod.captureProductEvent(EVENTS.fleet_created, widened);
+    const widened = { fleet_id: "zom_1", status: "running", runner_token: "agt_rsmuggled" } as { fleet_id: string; status: string };
+    mod.captureProductEvent(EVENTS.fleet_viewed, widened);
 
-    expect(client.capture).toHaveBeenCalledWith(EVENTS.fleet_created, {
+    expect(client.capture).toHaveBeenCalledWith(EVENTS.fleet_viewed, {
       path: "/fleets/new",
       fleet_id: "zom_1",
+      status: "running",
     });
     expect(JSON.stringify(client.capture.mock.calls)).not.toContain("agt_rsmuggled");
   });
@@ -945,7 +948,7 @@ describe("app analytics", () => {
     // Fire well past the cap (20) while the chunk is still in flight; the FIFO
     // drops the overflow rather than growing without bound.
     for (let i = 0; i < 50; i++) {
-      mod.captureProductEvent(EVENTS.fleet_created, { fleet_id: `zom_${i}` });
+      mod.captureProductEvent(EVENTS.fleet_viewed, { fleet_id: `zom_${i}`, status: "running" });
     }
     resolveImport({ default: client });
     await initPromise;

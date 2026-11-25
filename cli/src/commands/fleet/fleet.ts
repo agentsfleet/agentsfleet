@@ -1,6 +1,7 @@
-// Fleet CLI top-level command Effects — status / activate / archive / delete. Creation and improvement use terminal chat; list/logs/turns/
-// steer/secret leaves live in sibling files (fleet_list.ts,
-// fleet_logs.ts, fleet_turns.ts, fleet_steer.ts, fleet_secret.ts).
+// Fleet CLI top-level command Effects — status / show / archive / delete.
+// Create, list, logs, turns, steer, triggers and settings live in sibling
+// files (create.ts, list.ts, logs.ts, turns.ts, steer.ts, triggers.ts,
+// settings.ts).
 //
 // Each command yields services from the MainLayer (CliConfig, Output,
 // HttpClient, Credentials, Workspaces, Analytics) and emits one of the
@@ -14,14 +15,12 @@ import { HttpClient } from "../../services/http-client.ts";
 import { OUTPUT_FORMAT, Output } from "../../services/output.ts";
 import { Workspaces } from "../../services/workspaces.ts";
 import { requireValidId, requireWorkspaceId, resolveAuthToken } from "../workspace/guards.ts";
-import { wsFleetsPath, wsFleetPath } from "../../lib/api-paths.ts";
+import { HEADER_IF_MATCH, wsFleetsPath, wsFleetPath } from "../../lib/api-paths.ts";
 import { ui, EMPTY_CELL } from "../../output/index.ts";
 import { pendingGateCounts } from "../approvals/pending.ts";
 import { AGENTSFLEET_STATUS } from "../../constants/fleet-status.ts";
 import { formatDollars } from "../../constants/billing.ts";
-import { decode, FleetSchema } from "../chat/protocol.ts";
-import { decodeFleetList, type FleetsRead } from "./read.ts";
-import { IF_MATCH } from "../chat/transport.ts";
+import { decodeFleet, decodeFleetList, type FleetsRead } from "./read.ts";
 import type { CliError } from "../../errors/index.ts";
 
 const FLEET_SHOW_USAGE = "agentsfleet fleet show <fleet_id>" as const;
@@ -29,7 +28,6 @@ const FLEET_ID_FIELD = "fleet_id" as const;
 
 type FleetServices = CliConfig | Credentials | HttpClient | Output | Workspaces;
 
-const FLEET_ACTIVATE_USAGE = "agentsfleet fleet activate <fleet_id>" as const;
 const FLEET_ARCHIVE_USAGE = "agentsfleet fleet archive <fleet_id>" as const;
 const FLEET_DELETE_USAGE = "agentsfleet fleet delete <fleet_id>" as const;
 
@@ -106,53 +104,29 @@ export const fleetShowEffectFromId = (
   fleetId: string | undefined,
 ): Effect.Effect<void, CliError, FleetServices> => statusEffectFromId(fleetId);
 
-type LifecycleTarget = typeof AGENTSFLEET_STATUS.ACTIVE | typeof AGENTSFLEET_STATUS.ARCHIVED;
-
-// One PATCH under the tag the GET just read. The line reports the status the
-// server answered, never the one asked for: activate leaves a fleet whose
-// setup still waits `installing`, and the reader needs the next step for that.
-const setStatusEffect = (
+// Archive is terminal: the server cancels the fleet's live work and keeps its
+// history, and the fleet never runs again. One PATCH under the tag the GET
+// just read; the line reports the status the server answered.
+export const archiveEffectFromId = (
   fleetId: string | undefined,
-  status: LifecycleTarget,
-  usage: string,
 ): Effect.Effect<void, CliError, FleetServices> =>
   Effect.gen(function* () {
     const output = yield* Output;
     const http = yield* HttpClient;
     const wsId = yield* requireWorkspaceId;
-    const id = yield* requireValidId(fleetId, FLEET_ID_FIELD, `usage: ${usage}`);
+    const id = yield* requireValidId(fleetId, FLEET_ID_FIELD, `usage: ${FLEET_ARCHIVE_USAGE}`);
     const token = yield* resolveAuthToken;
     const path = wsFleetPath(wsId, id);
-    const observed = yield* http.request<unknown>({ path, token }).pipe(
-      Effect.flatMap((body) => decode(FleetSchema, body)),
-    );
+    const observed = yield* http.request<unknown>({ path, token }).pipe(Effect.flatMap(decodeFleet));
     const res = yield* http.request<unknown>({
       path,
       method: "PATCH",
-      body: { status },
-      headers: {[IF_MATCH]: observed.etag},
+      body: { status: AGENTSFLEET_STATUS.ARCHIVED },
+      headers: {[HEADER_IF_MATCH]: observed.etag},
       token,
-    }).pipe(Effect.flatMap((body) => decode(FleetSchema, body)));
-    const line = res.status === AGENTSFLEET_STATUS.INSTALLING
-      ? `${id} ${res.status}; setup is still waiting. See what it needs with: agentsfleet fleet show ${id}`
-      : `${id} ${res.status}.`;
-    yield* output.success(line, { ...res });
+    }).pipe(Effect.flatMap(decodeFleet));
+    yield* output.success(`${id} ${res.status}.`, { ...res });
   });
-
-// Activate re-checks a fleet's setup and activates it once every check
-// passes: the step to take after fixing a missing secret, connector, model or
-// balance. An approved grant runs the same step on its own.
-export const activateEffectFromId = (
-  fleetId: string | undefined,
-): Effect.Effect<void, CliError, FleetServices> =>
-  setStatusEffect(fleetId, AGENTSFLEET_STATUS.ACTIVE, FLEET_ACTIVATE_USAGE);
-
-// Archive is terminal: the server cancels the fleet's live work and keeps its
-// history, and the fleet never runs again.
-export const archiveEffectFromId = (
-  fleetId: string | undefined,
-): Effect.Effect<void, CliError, FleetServices> =>
-  setStatusEffect(fleetId, AGENTSFLEET_STATUS.ARCHIVED, FLEET_ARCHIVE_USAGE);
 
 export const deleteEffectFromId = (
   fleetId: string | undefined,
@@ -165,13 +139,11 @@ export const deleteEffectFromId = (
     const token = yield* resolveAuthToken;
 
     const path = wsFleetPath(wsId, id);
-    const observed = yield* http.request<unknown>({path, token}).pipe(
-      Effect.flatMap((body) => decode(FleetSchema, body)),
-    );
+    const observed = yield* http.request<unknown>({path, token}).pipe(Effect.flatMap(decodeFleet));
     yield* http.request<unknown>({
       path,
       method: "DELETE",
-      headers: {[IF_MATCH]: observed.etag},
+      headers: {[HEADER_IF_MATCH]: observed.etag},
       token,
     });
 
@@ -181,7 +153,7 @@ export const deleteEffectFromId = (
 const FLEETS_SHOWN = "Fleet status" as const;
 
 const NO_FLEETS_HINT =
-  "No fleets running. Create reviewed setup with: agentsfleet chat" as const;
+  'No fleets running. Start one with: agentsfleet fleet create "<message>"' as const;
 
 // A Fleet with a waiting gate does nothing until someone decides it, so the
 // status that reports the wait also names the command that ends it.

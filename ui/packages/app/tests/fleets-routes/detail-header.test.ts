@@ -1,37 +1,43 @@
-import { FLEET_ID, MODEL_REF, response } from "../helpers/draft-fixtures";
+import { FLEET_ID, GRANT_ID, MODEL_REF, response } from "../helpers/fleet-fixtures";
 import { detailBody, happyBilling, mockFetchBilling } from "./harness";
 import { describe, expect, it } from "vitest";
 import { Children, createElement, isValidElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { TooltipProvider } from "@agentsfleet/design-system";
 import { fetchMock } from "../helpers/dashboard-mocks";
-import { FleetSetupWorkspace } from "@/components/domain/setup/FleetSetupWorkspace";
+import { FleetWorkspace } from "@/components/domain/fleet/FleetWorkspace";
 import { chatProps } from "./page-parts";
 
 const FLEET_TITLE_MARKUP = ">platform-ops</h1>";
 
 describe("fleets routes — detail header and summary", () => {
-  it.each([undefined, MODEL_REF])("passes the saved model or platform fallback to the chat workspace (%s)", async (model) => {
-    const {definition} = detailBody();
-    mockFetchBilling(happyBilling, {fleet: {definition: {...definition, config: {...definition.config,
-      "x-agentsfleet": {model},
-    }}}});
+  it.each([MODEL_REF, "model:other"])("hands the fleet's model and network to its workspace and labels the composer (%s)", async (model) => {
+    mockFetchBilling(happyBilling, {fleet: {model_ref: model, http_egress: "public", package_domains: true}});
     const {default: Page} = await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const page = await Page({
       params: Promise.resolve({workspaceId: "ws_1", id: FLEET_ID}),
     });
     const workspace = Children.toArray(page.props.children).find(child =>
-      isValidElement(child) && child.type === FleetSetupWorkspace);
+      isValidElement(child) && child.type === FleetWorkspace);
     expect(workspace).toEqual(expect.objectContaining({props: expect.objectContaining({
-      model: model ?? "platform-default",
+      workspace: "ws_1", fleet: expect.objectContaining({id: FLEET_ID, model_ref: model, http_egress: "public", package_domains: true}),
     })}));
+    expect(chatProps(page).modelLabel).toBe(model);
+  });
+
+  it("reads the repositories a run may reach from the approved GitHub grant, and from no pending one", async () => {
+    const scope = {repositories: ["org/app"], access: "write"};
+    mockFetchBilling(happyBilling, {fleet: {grants: [{id: GRANT_ID, kind: "integration", name: "github", status: "approved", scope}]}});
+    const {default: Page} = await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
+    expect(chatProps(await Page({params: Promise.resolve({workspaceId: "ws_1", id: FLEET_ID})})).sources)
+      .toEqual({repositories: ["org/app"], access: "write", publication: null});
+    mockFetchBilling(happyBilling, {fleet: {grants: [{id: GRANT_ID, kind: "integration", name: "github", status: "pending", requested_scope: scope}]}});
+    expect(chatProps(await Page({params: Promise.resolve({workspaceId: "ws_1", id: FLEET_ID})})).sources)
+      .toEqual({repositories: [], access: null, publication: null});
   });
 
   it("shows one fleet title with the archived state", async () => {
-    const { definition } = detailBody();
-    mockFetchBilling(happyBilling, {fleet: {status: "archived", definition: {
-      ...definition, config: {...definition.config, name: "support-triage"},
-    }}});
+    mockFetchBilling(happyBilling, {fleet: {status: "archived"}});
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
@@ -45,16 +51,12 @@ describe("fleets routes — detail header and summary", () => {
     );
     expect(markup).toContain(FLEET_TITLE_MARKUP);
     expect(markup).not.toContain(`>agt-${FLEET_ID}</p>`);
-    expect(markup).not.toContain(">support-triage</p>");
     expect(markup).not.toContain(">archived</p>");
     expect(markup).not.toContain("data-live");
   });
 
-  it.each([undefined, "", 42])("keeps the fleet title independent of the definition name (%s)", async (name) => {
-    const { definition } = detailBody();
-    mockFetchBilling(happyBilling, {fleet: {definition: {
-      ...definition, config: {...definition.config, name},
-    }}});
+  it("keeps the fleet title to the fleet's own name", async () => {
+    mockFetchBilling(happyBilling);
     const { default: Page } = await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(createElement(TooltipProvider, null, await Page({
       params: Promise.resolve({ workspaceId: "ws_1", id: FLEET_ID }),

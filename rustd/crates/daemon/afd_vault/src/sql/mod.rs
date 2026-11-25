@@ -171,7 +171,7 @@ pub(crate) const DELETE_SECRET: &str = include_str!("delete_secret.sql");
 pub(crate) const SELECT_NAMED_ENVELOPES: &str = include_str!("select_named_envelopes.sql");
 
 /// The named envelopes under a share lock, each with a generation digest bound
-/// to its ciphertext: what setup inspection reads on its caller's transaction.
+/// to its ciphertext: what inspection reads on its caller's transaction.
 ///
 /// `$1` workspace · `$2` the names.
 pub(crate) const SELECT_SHARED_GENERATIONS: &str = include_str!("select_shared_generations.sql");

@@ -2,7 +2,7 @@ use af_core::id::Uuid7;
 
 /// Signal addresses; each adapter owns their physical spelling.
 ///
-/// A thread is a fleet or a setup draft, named by its own id.
+/// Each thread belongs to one fleet and is named by the fleet's id.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Subject {
     /// A queued turn is waiting on this thread. Every replica reads every

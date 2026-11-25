@@ -1,4 +1,4 @@
-SELECT id AS durable_task_id, generation, stop_generation, accepted_revision_id,
+SELECT id AS durable_task_id, generation, stop_generation,
        goal_digest, status AS state, covered_input_sequence, effect_cursor,
        confirmed_effect_watermark
 FROM fleet.durable_tasks

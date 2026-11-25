@@ -11,8 +11,9 @@ executable: false
 ## What this does
 
 A person walks the development dashboard and records a verdict file for one build.
-The `deploy-dev / acceptance` job and `fleet-execution.spec.ts` gate every deploy; this pass adds human judgement on whether the pages read as trustworthy.
+The `deploy-dev / acceptance` job and the prime set in `tests/fixtures/fleets/` gate every deploy; this pass adds human judgement on whether the pages read as trustworthy.
 Neither replaces the other.
+
 The Human walks and records; the agent checks the verdict file before the Pull Request (PR) closes.
 
 | Dashboard | API | Verdict file |
@@ -33,10 +34,10 @@ The Human walks and records; the agent checks the verdict file before the Pull R
 Each step names what you must see.
 If you do not see it, stop and record the step as a defect.
 
-1. Open **Fleets → New fleet**, give the setup chat a job, review the setup, and press **Save fleet**.
-   You must see **Open fleet →**.
-2. Press **Open fleet →**.
-   You must see the fleet on **Chat**, status **ACTIVE**, marked **Live**.
+1. Open **New fleet**, type a first message into the composer, and press **Send**.
+   You must see the browser open the new fleet's chat, with your message and an assistant turn with text.
+2. Look at the sidebar.
+   You must see the new fleet listed there.
 3. In the second tab, open **Fleets**.
    You must see this fleet's tile reading **Waiting for the next event.** with a live dot.
 4. In the third tab, open **Approvals**.

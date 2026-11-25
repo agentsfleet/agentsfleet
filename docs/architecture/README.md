@@ -1,225 +1,143 @@
-# Architecture — v2 Operational Outcome Runner
+---
+type: reference
+audience: contributor
+verified: 2026-11-25
+product_version: 0.90.0
+executable: false
+---
+
+# Architecture index
 
 > [!TIP]
-> **Using agentsfleet?** Start at **[docs.agentsfleet.net](https://docs.agentsfleet.net)** for login, first-fleet setup, and runner installation. This directory explains the implementation for contributors.
+> **Using `agentsfleet`?** Start at **[docs.agentsfleet.net](https://docs.agentsfleet.net)** for login, your first fleet and runner installation. This folder explains the implementation for contributors.
 
-This directory is the canonical reference for the v2 problem, thesis, runtime model, fleet and runner interaction, capabilities and context lifecycle. Every v2 spec in `docs/v2/` builds on these topic files.
+This folder explains how `agentsfleet` is built. Each page owns one topic, and every other page links to it.
+Find your question below, open that one section, and stop there.
 
-Product thesis: [`high_level.md`](./high_level.md).
+Why the product exists, and for whom, is in the [product thesis](../product/thesis.md).
+Reviews and evaluations live under `docs/reviews/` and define no architecture.
 
-## How the system fits together
+## Question index
 
-`agentsfleetd` replicas serve the API and push work to runners. Each runner host holds one stream to one replica.
+Each row answers one question, and no two rows share a section.
 
-Postgres holds every durable fact: threads, turns, runs, items, outbound deliveries and usage. Core NATS carries disposable signals only, such as live items and thread wakes.
-
-A lost signal costs latency, never work, because every reader can rebuild its view from Postgres. [`high_level.md`](./high_level.md#how-the-runtime-fits-together) draws the picture, and [`datastore_scaling.md`](./datastore_scaling.md) owns the details.
-
----
-
-## Why the doc is split this way
-
-Each file holds one topic. A change then lands in one small diff, and a reader
-(human or agent) loads only the file that answers their question.
-
-This README is the lookup page. Find your topic in the table below, open that
-one file and search inside it. Do not read the whole directory to answer one
-question.
-
-## Shared topic ownership
-
-Browser and terminal setup, saved revisions and runtime setup use the same topic owners below. [`fleet_definitions.md`](./fleet_definitions.md) owns the Definition and its revisions, and [`data_flow.md`](./data_flow.md) owns activation and recovery. [`api_resources.md`](./api_resources.md) owns exact wire shapes.
-
-The runner protocol, `runner_execution`, billing, concurrency and web app pages keep their existing responsibilities. Review files live under `docs/reviews/` and define no other architecture.
-
-## Question → anchor index
-
-Start here. Find the question, then jump to the one §-section that answers it.
-
-The larger topic files open with a Facts table, so the answer is usually on the first screen. Short files, such as `direction.md`, fit on one screen already.
-
-| Question | Where |
+| Question | Section |
 |---|---|
-| How do several unfinished jobs share one fleet? | [Durable Tasks](durable_tasks.md) |
-| Who routes intent and judges goal progress? | [Configurable decision models](goal_evaluation.md) |
-| Which settings does `agentsfleetd` read from its file, and what are their defaults? | [`config_reference.md`](./config_reference.md) |
-| How long can a fleet run before its run expires? | [`runner_fleet.md`](./runner_fleet.md) §"Per-run renewal: how a long fleet keeps its run" |
-| What happens when a runner dies mid-turn? | [`runner_fleet.md`](./runner_fleet.md) §"Failure recovery model" |
-| Where are checkpoints saved, and how do many failed fleets resume? | [Platform runner checkpoint recovery](runner_checkpoint_recovery.md) |
-| How is a stale runner's late report rejected? | [`runner_fleet.md`](./runner_fleet.md) §"System guarantees (read this first)" |
-| How does work get assigned, run, and reported? | [`data_flow.md`](./data_flow.md) §"C. EXECUTE  (run → runner → report)" |
-| Can two runners hold the same fleet at once? | [`data_flow.md`](./data_flow.md) §"One active run per fleet: the ownership model" |
-| How does a new runner get enrolled? | [`runner_fleet.md`](./runner_fleet.md) §"Registering a runner" |
-| What are the runner protocol verbs? | [API reference](https://docs.agentsfleet.net/api-reference/introduction) › Runner plane |
-| What replaces runner polling, and how do HTTP/3 and HTTP/2 coexist? | [Runner connection and recovery](runner_protocol.md) |
-| What sandbox does a held turn run in? | [`runner_fleet.md`](./runner_fleet.md) §"Running one event" |
-| How does the Rust runner run a run, and what survives to the next one? | [`runner_execution.md`](./runner_execution.md) §"Process model", §"Workspace between runs" |
-| How should we evaluate SPACE and test a recoverable coding session? | [Coding sandbox evaluation](sandbox_evaluation.md) |
-| How do three assigned repairs survive later CI and worker replacement, then verify a Grafana/Slack outcome? | [Durable repair scenario](scenarios/durable-repair.md) |
-| What network can a sandboxed fleet reach? | [`runner_fleet.md`](./runner_fleet.md) §"Egress model: outbound is the only network surface" |
-| Which sandbox tier may run whose work? | [`runner_fleet.md`](./runner_fleet.md) §"Sandbox tiers" |
-| How do steer, archive, and delete propagate? | [`runner_fleet.md`](./runner_fleet.md) §"Steer, archive, delete" |
-| Where does a webhook / steer / cron fire end up? | [`data_flow.md`](./data_flow.md) §"B. TRIGGER  (steer / webhook / cron — three callers, ONE ingress)" |
-| What does one turn write, in what order? | [`data_flow.md`](./data_flow.md) §"Steer flow end-to-end" |
-| Which table answers "what did this fleet do"? | [`data_flow.md`](./data_flow.md) §"The five durable stores: who owns what" |
-| How does the live tail work — and can it lose frames? | [`data_flow.md`](./data_flow.md) §"D. WATCH  (user-side: how the live tail surfaces)" |
-| What happens if the datastore blips during install? | [`data_flow.md`](./data_flow.md) §"The install failure scenario, visually" |
-| Why was my webhook rejected, and what do I fix? | [error codes](https://docs.agentsfleet.net/api-reference/error-codes#UZ-WH-020) |
-| Who owns cron scheduling? | [`data_flow.md`](./data_flow.md) §"QStash owns the clock" |
-| What is memory keyed by, and what survives? | [`memory.md`](./memory.md) §"1. Scope: written by one fleet, shared with the workspace only by grant" |
-| How does memory travel between runs? | [`runner_fleet.md`](./runner_fleet.md) §"Memory continuity: durable fleet memory rides the trusted plane" |
-| What should a fleet store so it survives a new run? | [`capabilities.md`](./capabilities.md) §"Memory hygiene — what to store so it survives" |
-| How does a long incident outlive one context window? | [Conversation compaction](./context_lifecycle.md) |
-| What shared compaction work is approved for setup chat and execution? | [Shared conversation compaction](context_lifecycle.md) |
-| What can a fleet do, and what is merely advisory? | [`capabilities.md`](./capabilities.md) §"1. Reasoning + tool inventory (declared in the fleet's own files)" |
-| When and how is a tenant charged? | [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"3. One debit point: usage, settled through the biller" |
-| What does one turn cost, by shape? | [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"4.2 What an event costs: by shape, not by number" |
-| What happens when credits run out? | [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"6. The credit-exhausted user experience" |
-| What free usage does a new tenant get? | [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"2.3 Free usage is a balance, never a window" |
-| Where may the provider `api_key` exist? | [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"8.2 The api_key visibility boundary" |
-| How does a per-fleet budget cap work? | [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"5.1 The per-fleet budget gate: a second, independent ceiling" |
-| Where do model rates and context caps come from? | [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"10. The model library: catalogue table + authenticated read" |
-| How does a cold machine reach a running fleet? | [`user_flow.md`](./user_flow.md) §"§8.0 The wedge surface", §"§8.2.1 Cold-machine bootstrap (run once per machine)" |
-| Where do model and cap originate, per posture? | [`user_flow.md`](./user_flow.md) §"§8.7 Model and context-cap origin (platform vs. self-managed)" |
-| What triggers can a fleet's setup declare? | [`user_flow.md`](./user_flow.md) §"§8.3 Triggering the Fleet" |
-| What does the Slack bot do — and never do? | [`user_flow.md`](./user_flow.md) §"§8.8 Slack mentions and configured fleets" |
-| How many datastore connections does a deployment need? | [`scaling.md`](./scaling.md) §"Connection budget after the cutover" |
-| What is the datastore target, and what has moved so far? | [`datastore_scaling.md`](./datastore_scaling.md) |
-| How will a message reach a runner at 20,000 fleets, and in which milestones? | [`push_scheduler.md`](./push_scheduler.md) |
-| What drives idle request volume? | [`scaling.md`](./scaling.md) §"Idle request volume" |
-| Which knob do I turn, and when? | [`scaling.md`](./scaling.md) §"Tuneup knobs and when to turn them" |
-| Where is the next bottleneck? | [`scaling.md`](./scaling.md) §"Where the next ceiling actually lives" |
-| Where does a signal go, and who owns it? | [`observability.md`](./observability.md) §"The three signal paths" |
-| What does metric family X mean? | [`observability.md`](./observability.md) §"Metric family census — what to watch, and what it means" |
-| Which locks exist, and what does each protect? | [`concurrency.md`](./concurrency.md) §"Lock-invariant registry" |
-| What order does shutdown happen in? | [`concurrency.md`](./concurrency.md) §"Shutdown choreography" |
-| How do I add a connector provider? | [`connectors.md`](./connectors.md) §"Adding a provider (the recipe)" |
-| How does a GitHub event find its fleet? | [`connectors.md`](./connectors.md) §"GitHub App: platform setup to fleet runs" |
-| How do drafts and saved fleets relate? | [Fleet definitions and revisions](fleet_definitions.md#drafts-and-fleets) |
-| What does one run write, end to end, and when is its sandbox destroyed? | [`run_flow.md`](./run_flow.md) — one run walked end to end against the Rust source, with its open gaps |
-| What is the proposed chat-to-fleet flow? | [`docs/architecture/high_level.md#fleet-setup-and-runtime`](high_level.md#fleet-setup-and-runtime) |
-| Where is the complete workspace chat review packet? | [`docs/reviews/workspace-setup/review-packet.md`](../reviews/workspace-setup/review-packet.md) |
-| Which documents changed in the chat cutover rewrite? | [Rewrite report](../reviews/workspace-setup/rewrite-report.md) |
-| What is the detailed signup-to-result ASCII flow? | [`docs/architecture/data_flow.md#fleet-setup-and-runtime-sequence`](data_flow.md#fleet-setup-and-runtime-sequence) |
-| What are all the proposed workspace screens and options? | [`workspace-chat-options.md`](../designs/workspace-chat-options.md) |
-| What setup format do both chat clients save? | [Validated Definition](fleet_definitions.md#validated-definition) |
-| How does this design compare with the run-pickup runtime? | [`docs/reviews/workspace-setup/runtime-baseline.md`](../reviews/workspace-setup/runtime-baseline.md) |
-| Which resources support fleet setup and runtime? | [API resources](api_resources.md) |
-| What are the exact new API inputs, outputs, and missing pieces? | [`docs/architecture/api_resources.md`](api_resources.md) |
-| How can creation retry without duplicate fleets or lost schedule fires? | [`docs/architecture/data_flow.md#fleet-creation-and-setup-recovery`](data_flow.md#fleet-creation-and-setup-recovery) |
-| How would a runner refine a private draft? | [`docs/architecture/runner_fleet.md#setup-runs`](runner_fleet.md#setup-runs) |
-| Which streaming code do setup and fleet chat share? | [Shared chat implementation and verification](shared_chat_verification.md) |
-| What should Claude Agent Aiwa challenge before agreement? | [`docs/reviews/workspace-setup/claude-review-prompt.md`](../reviews/workspace-setup/claude-review-prompt.md) |
-| What prompt should ChatGPT use as CTO AIWA? | [`docs/reviews/workspace-setup/chatgpt-review-prompt.md`](../reviews/workspace-setup/chatgpt-review-prompt.md) |
-| Which owner decisions and source answers govern the cutover? | [Decision ledger](../reviews/workspace-setup/decisions.md) and [source findings](../reviews/workspace-setup/source-findings.md) |
-| What specs make this one product PR? | [M227_001](../v2/done/M227_001_P0_API_CLI_DOCS_UI_WORKSPACE_CHAT_CUTOVER.md) and [folded M227_002](../v2/done/M227_002_P1_CLI_DOCS_UI_WEBSITE_BRANDING_BATCH.md) |
-| Which public changes need a documentation branch? | [Public handoff](../reviews/workspace-setup/public-changes.md) |
-| Which test root owns my component? | [`testing.md`](./testing.md) §"Component ownership" |
-| When should Rust code use a shared owner or a crate? | [`rust-ownership.md`](./rust-ownership.md) §"Review rubric" |
-| What rules govern a client analytics event? | [`product_analytics.md`](./product_analytics.md) §"Client event rules" |
-| Who may call what, with which token? | [`../AUTH.md`](../AUTH.md) |
-| Where is the user-facing version of this page? | the `User-facing:` pointer in each file's header block |
+| How do the pieces fit together? | [high_level.md#the-pieces](./high_level.md#the-pieces) |
+| Which page owns a topic? | [high_level.md#where-each-topic-lives](./high_level.md#where-each-topic-lives) |
+| What is a fleet made of? | [user_flow.md#what-a-fleet-is-made-of](./user_flow.md#what-a-fleet-is-made-of) |
+| How does a first message create a fleet? | [user_flow.md#starting-a-fleet](./user_flow.md#starting-a-fleet) |
+| How does a fleet get a secret or GitHub access? | [user_flow.md#access](./user_flow.md#access) |
+| What can wake a fleet? | [user_flow.md#wakes-on](./user_flow.md#wakes-on) |
+| How does a person or another fleet message a fleet? | [user_flow.md#talking-to-it](./user_flow.md#talking-to-it) |
+| How can a create retry without making a second fleet? | [data_flow.md#create-and-recovery](./data_flow.md#create-and-recovery) |
+| How does a message become a turn? | [data_flow.md#intake](./data_flow.md#intake) |
+| Who fires a schedule? | [data_flow.md#schedules](./data_flow.md#schedules) |
+| How is work assigned, and can two runners hold one fleet? | [data_flow.md#assignment-and-the-fence](./data_flow.md#assignment-and-the-fence) |
+| What happens to a message sent during a live run? | [data_flow.md#reports-and-folded-messages](./data_flow.md#reports-and-folded-messages) |
+| How does a viewer watch a fleet live? | [data_flow.md#watching-a-fleet](./data_flow.md#watching-a-fleet) |
+| How does one pull request review run, end to end? | [run_flow.md#3-one-run-end-to-end](./run_flow.md#3-one-run-end-to-end) |
+| What does every run's prompt carry? | [capabilities.md#the-fixed-prompt](./capabilities.md#the-fixed-prompt) |
+| What guards every tool call? | [capabilities.md#guarantees-around-every-tool-call](./capabilities.md#guarantees-around-every-tool-call) |
+| Which tools can a run call? | [runner_execution.md#tool-catalog](./runner_execution.md#tool-catalog) |
+| Which files does a sandbox see? | [runner_execution.md#sandbox-filesystem](./runner_execution.md#sandbox-filesystem) |
+| What can a sandbox reach on the network? | [runner_execution.md#network-egress](./runner_execution.md#network-egress) |
+| Which memory reaches the model? | [memory.md#what-reaches-the-model](./memory.md#what-reaches-the-model) |
+| How does a long conversation stay inside the model's window? | [context_lifecycle.md#deciding-to-compact](./context_lifecycle.md#deciding-to-compact) |
+| How does a fleet keep one objective across runs? | [durable_tasks.md#how-a-task-starts](./durable_tasks.md#how-a-task-starts) |
+| Who judges whether a durable task is done? | [durable_tasks.md#goal-evaluation](./durable_tasks.md#goal-evaluation) |
+| How does a Slack mention reach a fleet? | [slack_mentions.md#how-a-mention-is-routed](./slack_mentions.md#how-a-mention-is-routed) |
+| How does a GitHub App event reach a fleet? | [connectors.md#github-app-from-install-to-a-routed-event](./connectors.md#github-app-from-install-to-a-routed-event) |
+| How does a custom webhook prove its signature? | [connectors.md#webhook-signing-recipes](./connectors.md#webhook-signing-recipes) |
+| How is a new provider added? | [connectors.md#adding-a-provider](./connectors.md#adding-a-provider) |
+| Which model does a run use? | [models.md#resolving-a-runs-model](./models.md#resolving-a-runs-model) |
+| Where does a provider key live? | [models.md#where-the-provider-key-lives](./models.md#where-the-provider-key-lives) |
+| How is a run charged? | [billing.md#how-a-run-is-charged](./billing.md#how-a-run-is-charged) |
+| What happens when the balance runs out? | [billing.md#when-the-balance-runs-out](./billing.md#when-the-balance-runs-out) |
+| Which route takes which body? | [api_resources.md#fleet-routes](./api_resources.md#fleet-routes) |
+| Who may call a route? | [api_resources.md#authorization](./api_resources.md#authorization) |
+| How does a runner register? | [runner_fleet.md#registering-a-runner](./runner_fleet.md#registering-a-runner) |
+| What happens when a runner dies mid-turn? | [runner_fleet.md#failure-recovery-model](./runner_fleet.md#failure-recovery-model) |
+| How does a long run keep its lease? | [runner_protocol.md#run-lease-and-renewal](./runner_protocol.md#run-lease-and-renewal) |
+| What crosses the runner stream? | [runner_protocol.md#four-streams-on-one-connection](./runner_protocol.md#four-streams-on-one-connection) |
+| How does a run resume on a replacement runner? | [checkpoints.md#restore-on-a-replacement-runner](./checkpoints.md#restore-on-a-replacement-runner) |
+| What does each thread table hold? | [thread_model.md#how-it-behaves](./thread_model.md#how-it-behaves) |
+| Which schema holds which table? | [postgres_schemas.md#layout](./postgres_schemas.md#layout) |
+| What does deleting a fleet remove? | [postgres_schemas.md#deletion-matrix](./postgres_schemas.md#deletion-matrix) |
+| Where is the work queue? | [datastore_scaling.md#the-turns-ledger-is-the-queue](./datastore_scaling.md#the-turns-ledger-is-the-queue) |
+| What if a NATS signal is lost? | [datastore_scaling.md#when-a-signal-is-lost](./datastore_scaling.md#when-a-signal-is-lost) |
+| Which rows lock, and in what order? | [concurrency.md#row-lock-order](./concurrency.md#row-lock-order) |
+| What limits throughput first as load grows? | [scaling.md#what-binds-first](./scaling.md#what-binds-first) |
+| Which setting tunes performance? | [config_reference.md#tuning-for-performance](./config_reference.md#tuning-for-performance) |
+| Where does a log, metric or trace go? | [observability.md#signal-routing](./observability.md#signal-routing) |
+| What may a product analytics event carry? | [product_analytics.md#rules-for-every-event](./product_analytics.md#rules-for-every-event) |
+| How does the dashboard reach the API? | [web_app.md#how-the-browser-reaches-the-api](./web_app.md#how-the-browser-reaches-the-api) |
+| How does the browser recover a lost stream or send? | [web_app.md#sending-and-reconnecting](./web_app.md#sending-and-reconnecting) |
+| Which test lane proves a change? | [testing.md#lanes](./testing.md#lanes) |
+| How is a release promoted? | [release_candidates.md#the-jobs](./release_candidates.md#the-jobs) |
+| Which crate owns a mechanism? | [rust-ownership.md#how-it-behaves](./rust-ownership.md#how-it-behaves) |
 
-Read in this order if you've never seen the project:
+## Pages
 
-1. [`high_level.md`](./high_level.md): what the product is, what it isn't, and why it exists.
-2. [`user_flow.md`](./user_flow.md): how a user gets from "I want a Fleet" to "the Fleet is running on my repo."
-3. [`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md): follow one Slack mention to a fleet's answer in the thread.
-
-> [!IMPORTANT]
-> Active and shipped specs cite `user_flow.md` and `scenarios/` by `§`-anchor in acceptance criteria, and so do sibling architecture pages. Both stay here as **contributor-canonical** pages; docs.agentsfleet.net carries its own user coverage. Before moving any user-facing page, `git grep` the spec corpus for references to the file and its anchors.
-
-After that, dip into whichever of these matches the change you're making:
-
-| File | Topic |
+| Page | Owns |
 |---|---|
-| 🧭 [`high_level.md`](./high_level.md) | Product thesis, problem, and why it exists. |
-| 📐 [`direction.md`](./direction.md) | Design constants every spec must fit. |
-| 🧑‍💻 [`user_flow.md`](./user_flow.md) | How a user installs, triggers and supervises Fleets. |
-| 🔄 [`data_flow.md`](./data_flow.md) | Where a webhook, steer or cron fire lands. |
-| 📦 [`fleet_definitions.md`](./fleet_definitions.md) | Native Definition and immutable revisions. |
-| 🏃 [`runner_fleet.md`](./runner_fleet.md) | Control plane and runner: running, fencing, recovery. |
-| ⚙️ [`runner_execution.md`](./runner_execution.md) | How the runner runs one run. |
-| 🎟️ [`run_flow.md`](./run_flow.md) | One run, from install to sandbox teardown. |
-| 🧰 [`capabilities.md`](./capabilities.md) | What a fleet can do, and context lifecycle. |
-| 🧠 [`memory.md`](./memory.md) | Memory scope, isolation and durability. |
-| 📈 [`observability.md`](./observability.md) | Where each signal goes, and who owns it. |
-| 📊 [`product_analytics.md`](./product_analytics.md) | PostHog product events and their rules. |
-| 🧵 [`concurrency.md`](./concurrency.md) | Tasks, locks, channels and shutdown order. |
-| 📏 [`scaling.md`](./scaling.md) | Sizing the runtime and its tuning knobs. |
-| 🗄️ [`datastore_scaling.md`](./datastore_scaling.md) | Where state lives: Postgres facts, core NATS signals. |
-| 🗃️ [`postgres_schemas.md`](./postgres_schemas.md) | Which Postgres schema owns each table, and the naming rules. |
-| 🧬 [`schema_convergence.md`](./schema_convergence.md) | Which setup, chat and durable-task tables fold into threads, turns, runs and items. |
-| 🖥️ [`web_app.md`](./web_app.md) | The dashboard's server-client rules. |
-| [`shared_chat_verification.md`](./shared_chat_verification.md) | Shared provider reader, browser lifecycle, tracing, limits and verification evidence. |
-| [`docs/architecture/high_level.md#fleet-setup-and-runtime`](high_level.md#fleet-setup-and-runtime) | Common validated fleet setup and reviewed lifecycle. |
-| 🧪 [`testing.md`](./testing.md) | Test ownership, lanes and the coverage bar. |
-| 🦀 [`rust-ownership.md`](./rust-ownership.md) | When Rust code shares an owner or crate. |
-| 🔌 [`connectors.md`](./connectors.md) | Provider connections, App ingress and fleet subscriptions. |
-| 💳 [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) | Credits, debit points, provider keys, model library. |
-| 🚨 [`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md) | An installed fleet answering one Slack channel. |
-| 🔐 [`../AUTH.md`](../AUTH.md) | Principals, tokens and bearer routing. |
+| [`high_level.md`](./high_level.md) | The pieces, the design rules and where each topic lives |
+| [`user_flow.md`](./user_flow.md) | What a fleet is, how it starts, what it may access and what wakes it |
+| [`data_flow.md`](./data_flow.md) | A message's path from intake to answer, schedules and the live view |
+| [`run_flow.md`](./run_flow.md) | One pull request review, end to end |
+| [`capabilities.md`](./capabilities.md) | What a fleet is told and what its run enforces |
+| [`memory.md`](./memory.md) | What a fleet remembers across runs |
+| [`context_lifecycle.md`](./context_lifecycle.md) | Compacting a conversation near the model's window |
+| [`durable_tasks.md`](./durable_tasks.md) | One objective kept going across runs |
+| [`connectors.md`](./connectors.md) | Provider connections, the GitHub App and webhook signing |
+| [`slack_mentions.md`](./slack_mentions.md) | Slack mentions, routing and answers |
+| [`models.md`](./models.md) | Which model a fleet uses and whose key pays |
+| [`billing.md`](./billing.md) | Charges, the funds check and the usage report |
+| [`api_resources.md`](./api_resources.md) | Fleet routes, access and run verbs |
+| [`runner_fleet.md`](./runner_fleet.md) | Registering runners, their state, placement and recovery |
+| [`runner_protocol.md`](./runner_protocol.md) | The runner stream, leases and refusals |
+| [`runner_execution.md`](./runner_execution.md) | The runner runtime, tools, sandbox and egress |
+| [`checkpoints.md`](./checkpoints.md) | Saving and restoring a run |
+| [`thread_model.md`](./thread_model.md) | The thread tables |
+| [`postgres_schemas.md`](./postgres_schemas.md) | Schemas, rules and deletion |
+| [`datastore_scaling.md`](./datastore_scaling.md) | Postgres facts and NATS signals |
+| [`concurrency.md`](./concurrency.md) | Tasks, channels, locks and shutdown |
+| [`scaling.md`](./scaling.md) | Limits, budgets, measurements and sizing |
+| [`config_reference.md`](./config_reference.md) | Every `agentsfleetd` and `agentsfleet-runner` setting |
+| [`observability.md`](./observability.md) | Logs, metrics and traces |
+| [`product_analytics.md`](./product_analytics.md) | PostHog events and what they may carry |
+| [`web_app.md`](./web_app.md) | How the dashboard is built |
+| [`testing.md`](./testing.md) | Which lane proves which change |
+| [`release_candidates.md`](./release_candidates.md) | Building once and promoting the same bytes |
+| [`rust-ownership.md`](./rust-ownership.md) | Which crate owns which mechanism |
 
----
-
-## Decision records (published Claude pages)
-
-Long-form decision write-ups live as published Claude pages outside this
-repository. Link to them instead of pasting them in. Each row names the
-decision it carries.
-
-| Page | Decision |
-|---|---|
-| [Index audit — slots 033 & 034](https://claude.ai/code/artifact/16b3fe3e-6a0f-47cf-a80f-03f34681ec85) | Which Postgres indexes earn their slots. |
-| [Error registry — inventory & curation](https://claude.ai/code/artifact/f5dd342f-633e-4a32-a7ee-579cd2db2427) | The `UZ-*` error-code inventory review. |
-| [M120_002 — Admin Model Library, as built](https://claude.ai/code/artifact/3add99c7-6ce3-4617-8656-bf371b658490) | The admin catalogue's final shape. |
-| [Fleet library: why your gallery was empty](https://claude.ai/code/artifact/a6b8c064-8643-444b-a43b-2fb2e7e82434) | Root cause of the empty-gallery incident. |
-| [Model configuration journeys](https://claude.ai/code/artifact/e0621bf7-7b01-4492-8862-38a43d6f46b3) | How users reach a working model configuration. |
-
----
+Authentication, tokens and scopes live in [`../AUTH.md`](../AUTH.md).
 
 ## Glossary
 
-One-line definitions for quick lookup. The full, canonical definition lives in the file linked at the end of each row. Drift between this table and that file is a bug.
+Each row is a one-line pointer; the linked section owns the definition.
 
 | Term | Meaning |
 |---|---|
-| **`agentsfleetd`** (control plane) | The daemon (`rustd/crates/daemon/main`) that serves the API, owns Postgres and its NATS connection, and hands work to runners. [(more)](./runner_fleet.md#the-split-two-binaries-no-sidecar) |
-| **`agentsfleet-runner`** | The host binary (`rustd/crates/runner/main`) that receives work from `agentsfleetd` and runs each run with its admitted tools. [(more)](./runner_execution.md#process-model) |
-| **Tenant** (`identity.tenants`) | The paying account: it owns one or more workspaces and one wallet (`billing.wallets`). [(more)](../AUTH.md#signup-what-usercreated-writes) |
+| **`agentsfleetd`** | The daemon (`rustd/crates/daemon/main`): it serves the API, owns Postgres and its NATS connection, and hands work to runners. [(more)](./runner_fleet.md#why-it-exists) |
+| **`agentsfleet-runner`** | The host binary (`rustd/crates/runner/main`) that runs each run with its admitted tools. [(more)](./runner_execution.md#process-model) |
+| **Tenant** (`identity.tenants`) | The paying account; it owns workspaces and one wallet. [(more)](../AUTH.md#signup-what-usercreated-writes) |
 | **Workspace** (`identity.workspaces`) | The space inside a tenant that fleets, secrets and connector installs belong to. [(more)](../AUTH.md#who-opens-a-workspace) |
-| **Fleet** (`fleet.fleets`, `fleet_id`) | A durable AI agent defined by a reviewed Definition, saved into one workspace. [(more)](./high_level.md#1-product-thesis) |
-| **Definition** | A validated description, instructions and fleet configuration stored in immutable revisions. [(more)](./fleet_definitions.md#validated-definition) |
-| **Producer** (`afd_turns::Producer`) | The ingress path that asked for work (`steer`, `webhook`, `webhook_app`, `schedule_fire`, `gate_continuation`, `durable_task_continuation` or `slack_mention`), stored on the turn with its dedup key. [(more)](./run_flow.md#intake-commits-the-queue-row) |
-| **Thread** (`thread.threads`) | One conversation, one per fleet and one per draft, keyed by its owner's id. It holds the fence, the sticky runner, the warm hold and the resume bookmark; one runner at a time can be assigned it, and an assignment raises `fencing_token` and holds until `run_expires_at`. [(more)](./thread_model.md#threadthreads) |
-| **Turn** (`thread.turns`) | One input on a thread and its answer. A fleet turn is unique per `(producer, producer_key)` so a retried delivery is not run twice, written `queued`, opened `received` when a run takes it, and settled by the report. [(more)](./run_flow.md#intake-commits-the-queue-row) |
-| **Turns queue** (`thread.turns`) | Unsettled turns ordered by `sequence` within each thread. Gateway assignment passes take the oldest head under the thread and turn fences. [(more)](./datastore_scaling.md#the-turns-ledger-is-the-queue) |
-| **Wake notification** (`af.thread.<thread_id>.wake`) | A thread hint on its own NATS subject, which each replica reads through one `af.thread.*.wake` wildcard. It starts a gateway assignment pass. A detected bus gap starts a recovery pass; a lost notification with no gap waits for the next wake or freed runner capacity. Idle runners send no run requests. [(more)](runner_protocol.md#recovery-and-availability) |
-| **Fencing token** | The thread's `fencing_token` a won assignment returns, copied onto the run's `fencing_token`; a report carrying an older one is refused. [(more)](./runner_fleet.md#system-guarantees-read-this-first) |
-| **Run** (`thread.runs`, `afd_fleet::run::Runs`) | One runner's time-limited right to run one turn, renewed while the run lasts. [(more)](./data_flow.md#one-active-run-per-fleet-the-ownership-model) |
-| **Item** (`thread.items`) | One tool call a run made, with its full arguments and output; a page reads it only through "show all". [(more)](./thread_model.md#threaditems) |
-| **Report** (`af_wire::protocol::Up::Report`) | The runner's terminal result for one run (`af_wire::report::ReportRequest`), carrying its run and fencing token. [(more)](./data_flow.md#c-execute--run--runner--report) |
-| **Delivery** (`thread.deliveries`) | An answer the fleet owes to a reply destination such as a Slack thread, written with the report and delivered by `afd_outbound`. [(more)](./run_flow.md#4-how-agent-bob-01-can-reply) |
-| **Items subject** (`af.thread.<thread_id>.items`) | The thread's NATS subject for live-tail frames: at most once, with no history. [(more)](./data_flow.md#two-streams--one-pubsub-channel-and-the-one-that-retired) |
-| **Subscription hub** (`afd_bus::nats`) | The one NATS connection in each `agentsfleetd` process; it subscribes each subject once and copies frames to every local reader, wake listeners included. [(more)](./data_flow.md#two-streams--one-pubsub-channel-and-the-one-that-retired) |
-| **guffbolt** (`rustd/guffbolt`) | The agent harness: the order one loop's steps run in, the window and the model call each step makes, and the transcript it keeps, over the embedder's conversation and the extension a run of one kind adds, the tools a loop offers, and the children a run starts. The runner embeds it. [(more)](./runner_execution.md#crates) |
-| **guffbolt-ai** (`rustd/guffbolt-ai`) | The harness's provider side: the `Model` trait and the request and chunk types guffbolt re-exports, and behind feature `wire`, every provider wire over rig. guffbolt depends on it, never the reverse. [(more)](./runner_execution.md#crates) |
-| **Providers** (`af_providers`) | The runner's adapter over `guffbolt-ai`: it builds a run's route from saved model settings, sends through the egress guard and names failures with registry codes. [(more)](./runner_execution.md#crates) |
-| **Supervisor** (`afr_supervisor`) | The trusted half of `agentsfleet-runner`, outside every sandbox: it speaks to `agentsfleetd`, holds the model keys and runs the agent loop. [(more)](./runner_execution.md#process-model) |
-| **Agent loop** (`afr_agent`) | The supervisor's model loop, outside the sandbox: `guffbolt` embedded over the run, with its durable task, recovery, window, frames and tools. [(more)](./runner_execution.md#crates) |
-| **Sandbox** (`afr_sandbox`) | The confined Linux environment, built per run by `BubblewrapEngine`, where that run's tool calls run with no credentials. [(more)](./runner_execution.md#sandbox-engines) |
-| **Egress guard** (`af_egress`) | The supervisor's outbound guard: it checks each request against the run's egress policy and puts secrets in at send time. [(more)](./runner_execution.md#credentials) |
-| **Vault** (`vault.secrets`) | Encrypted workspace secrets, one per `key_name`; `afd_vault` writes and lists them, and a run opens only the ones its fleet declares. [(more)](./capabilities.md#3-platform-level-guarantees-the-substrate-that-wraps-every-tool-call) |
-| **Grant** (`connector.integration_grants`) | A fleet's permission to use one service's credential, one row per `(fleet_id, service)` with a status. [(more)](./connectors.md#where-a-grant-comes-from) |
-| **Connector install** (`connector.installs`) | A workspace's link to one provider account, such as a GitHub App installation, unique per `(provider, external_account_id)`. [(more)](./connectors.md#terminology-binding) |
-| **Coding fleet** | The workstation tool a human types into. [(more)](./user_flow.md#80-the-wedge-surface) |
-| **Steer** | A human message; lands as `actor=steer:<user>`. [(more)](./user_flow.md#83-triggering-the-fleet) |
-| **Fleet steer** (M252) | One fleet's message to another fleet in its workspace, admitted as a steer with `actor=fleet:<fleet_id>`. [(more)](./scenarios/chief-of-staff.md) |
-| **App webhook trigger** | A provider App delivery; GitHub's lands as `actor=github-app`. [(more)](./connectors.md#github-app-platform-setup-to-fleet-execution) |
-| **Manual webhook trigger** | A post to `/v1/webhooks/{fleet_id}/{source}`, the URL Save returns for that trigger, signed with the fleet's own webhook secret. [(more)](./user_flow.md#83-triggering-the-fleet) |
-| **Trigger panel** | The card on a fleet's page (`/w/{workspaceId}/fleets/{id}`, `TriggerPanel`) showing trigger setup. [(more)](./user_flow.md#84-working-from-claude-or-the-dashboard) |
-| **Free usage** | The starter credit a new tenant gets: a balance that drains. [(more)](./billing_and_provider_keys.md#23-free-usage-is-a-balance-never-a-window) |
-| **Cron trigger** | An Upstash QStash schedule; QStash owns the clock. [(more)](./user_flow.md#83-triggering-the-fleet) |
-| **Run** | One agent-loop pass over one run. [(more)](./capabilities.md#4-context-lifecycle--keeping-a-long-incident-reasoning-past-the-models-working-memory-limit) |
-| **Self-managed provider keys** | The tenant stores and activates its own provider key. [(more)](./billing_and_provider_keys.md#1-the-two-postures) |
-| **Bastion** | Post-launch: one fleet for triage and customer comms. [(more)](./high_level.md#61-bastion--one-surface-for-internal-triage-and-customer-comms) |
+| **Fleet** (`fleet.fleets`) | A long-lived agent in one workspace with a name, a model and one thread. [(more)](./user_flow.md#what-a-fleet-is-made-of) |
+| **Pinned memory** | A fleet's `core` memory entries, carried in every run's prompt. [(more)](./memory.md#categories-and-the-load-window) |
+| **Thread** (`thread.threads`) | One fleet's conversation, keyed by the fleet's ID; it holds the fence. [(more)](./thread_model.md#threadthreads) |
+| **Turn** (`thread.turns`) | One input on a thread and its answer, unique per producer and key. [(more)](./thread_model.md#threadturns) |
+| **Fencing token** | The thread's counter an assignment raises; a report with an older one is refused. [(more)](./data_flow.md#assignment-and-the-fence) |
+| **Run** (`thread.runs`) | One runner's time-limited right to run one turn. [(more)](./thread_model.md#threadruns) |
+| **Item** (`thread.items`) | One tool call a run made, with its arguments and output. [(more)](./thread_model.md#threaditems) |
+| **Delivery** (`thread.deliveries`) | An answer the fleet owes to a destination such as a Slack thread. [(more)](./data_flow.md#outbound-deliveries) |
+| **Wake** | A NATS hint that starts an assignment pass; losing one costs latency, never work. [(more)](./datastore_scaling.md#the-turns-ledger-is-the-queue) |
+| **Supervisor** (`afr_supervisor`) | The trusted half of the runner, outside every sandbox; it holds model keys. [(more)](./runner_execution.md#crates) |
+| **Sandbox** (`afr_sandbox`) | The confined Linux environment where one run's tool calls run. [(more)](./runner_execution.md#sandbox-engines) |
+| **Egress guard** (`af_egress`) | The supervisor's outbound check, which also puts secrets in at send time. [(more)](./runner_execution.md#credentials) |
+| **Grant** (`connector.integration_grants`) | One fleet's approved credential: a workspace secret or an integration. [(more)](./user_flow.md#access) |
+| **Trigger** (`fleet.triggers`) | A row that lets a webhook, a GitHub App event or a Slack mention wake a fleet. [(more)](./user_flow.md#wakes-on) |
+| **Schedule** (`fleet.schedules`) | A cron row the fleet or a person adds. [(more)](./data_flow.md#schedules) |
+| **Durable task** (`fleet.durable_tasks`) | One bounded objective a fleet works on across runs. [(more)](./durable_tasks.md#what-it-is) |
+| **Steer** | A person's or another fleet's message to a fleet. [(more)](./user_flow.md#talking-to-it) |
+| **guffbolt** (`rustd/guffbolt`) | The agent harness the runner embeds. [(more)](./runner_execution.md#crates) |

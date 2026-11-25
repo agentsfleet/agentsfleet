@@ -9,7 +9,7 @@ import { ScheduleSync } from "@/components/domain/schedules/ScheduleSync";
 import { useFleetThreadEntries } from "@/components/domain/conversation/thread/useFleetThreadEntries";
 import { convertTurn } from "@/components/domain/conversation/stream/useFleetTurnStream";
 import { rowToTurn } from "@/lib/streaming/fleet-stream-row";
-import { FAILED_SCHEDULE, SCHEDULE } from "@/tests/helpers/draft-fixtures";
+import { FAILED_SCHEDULE, SCHEDULE } from "@/tests/helpers/fleet-fixtures";
 import { SCHEDULE_TURN, SCHEDULE_SNAPSHOT } from "@/tests/helpers/schedule-activity";
 
 const RECEIPTS = [

@@ -89,7 +89,6 @@ impl Fixtures {
             )),
             grants: afd_approval::IntegrationGrants::new(self.database.clone(), Entropy::new()),
             runs: self.runs(),
-            gates: self.gates(),
             accounts: Accounts::new(self.database.clone()),
             biller: Arc::new(LedgerBiller::new(self.database.clone())),
             memories: Memories::new(self.database.clone(), Entropy::new()),

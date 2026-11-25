@@ -1,4 +1,5 @@
-//! What a message, schedule write or run-now shares: it lands once per call.
+//! What a message, schedule write, run-now or trigger add shares: it lands
+//! once per call.
 //!
 //! The request names its call's item. A handler proves the run first, so a
 //! superseded holder is refused before any item is read; then [`claimed`]
@@ -29,6 +30,9 @@ pub(super) const SCHEDULE_UPDATE: &str = "schedule_update";
 
 /// The tool a run-now's item names.
 pub(super) const SCHEDULE_RUN: &str = "schedule_run";
+
+/// The tool a trigger add's item names.
+pub(super) const TRIGGER_ADD: &str = "trigger_add";
 
 /// The scoped event a claim or a record that failed is logged under.
 const EVENT_FAILED: &str = "runner_effect_failed";

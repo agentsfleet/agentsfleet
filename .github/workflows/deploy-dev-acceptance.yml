@@ -105,6 +105,14 @@ jobs:
           CLERK_PUBLISHABLE_KEY: op://${{ vars.VAULT_DEV }}/clerk-dev/publishable-key
           CLERK_WEBHOOK_SECRET: op://${{ vars.VAULT_DEV }}/clerk-dev/webhook-secret
           VERCEL_BYPASS_SECRET: op://${{ vars.VAULT_PROD }}/vercel-bypass-app/credential
+          # The live GitHub and Slack fleets (tests/fixtures/fleets/watch-dog.json,
+          # chatty-parrot.json): the daemon ignores events the platform caused
+          # itself, so a test account opens the pull request and a test person
+          # posts the mention. The GitHub App's own keys stay in the daemon's vault.
+          ACCEPTANCE_GITHUB_TOKEN: op://${{ vars.VAULT_DEV }}/github-acceptance/token
+          ACCEPTANCE_SLACK_CHANNEL_ID: op://${{ vars.VAULT_DEV }}/slack-acceptance/channel_id
+          ACCEPTANCE_SLACK_USER_TOKEN: op://${{ vars.VAULT_DEV }}/slack-acceptance/user_token
+          ACCEPTANCE_SLACK_BOT_USER_ID: op://${{ vars.VAULT_DEV }}/slack-acceptance/bot_user_id
 
       - name: Run short acceptance e2e against DEV
         run: make acceptance-e2e ACCEPTANCE_SCOPE=post-deploy
@@ -172,6 +180,14 @@ jobs:
           AUTH_E2E_ADMIN_EMAIL: op://${{ vars.VAULT_DEV }}/e2e-fixtures-email/admin
           # The handshake browser leg navigates the protected dev dashboard.
           VERCEL_BYPASS_SECRET: op://${{ vars.VAULT_PROD }}/vercel-bypass-app/credential
+          # The live GitHub and Slack fleets (tests/fixtures/fleets/watch-dog.json,
+          # chatty-parrot.json): the daemon ignores events the platform caused
+          # itself, so a test account opens the pull request and a test person
+          # posts the mention. The GitHub App's own keys stay in the daemon's vault.
+          ACCEPTANCE_GITHUB_TOKEN: op://${{ vars.VAULT_DEV }}/github-acceptance/token
+          ACCEPTANCE_SLACK_CHANNEL_ID: op://${{ vars.VAULT_DEV }}/slack-acceptance/channel_id
+          ACCEPTANCE_SLACK_USER_TOKEN: op://${{ vars.VAULT_DEV }}/slack-acceptance/user_token
+          ACCEPTANCE_SLACK_BOT_USER_ID: op://${{ vars.VAULT_DEV }}/slack-acceptance/bot_user_id
 
       - name: Run CLI acceptance suite against api-dev
         run: make acceptance-cli

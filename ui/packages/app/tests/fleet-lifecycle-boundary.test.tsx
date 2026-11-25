@@ -2,7 +2,7 @@ import { act, cleanup, render, screen, waitFor, within } from "@testing-library/
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { FleetLifecycleDialog } from "@/components/layout/FleetLifecycleDialog";
-import { FLEET_DETAIL, WORKSPACE, response } from "./helpers/draft-fixtures";
+import { FLEET_DETAIL, WORKSPACE, response } from "./helpers/fleet-fixtures";
 import { FleetNoticeProvider } from "@/components/layout/FleetNoticeProvider";
 import { advanceFleetLifecycle } from "@/lib/fleet-lifecycle";
 import { useState } from "react";

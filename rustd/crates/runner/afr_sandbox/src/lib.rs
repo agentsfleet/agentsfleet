@@ -86,6 +86,10 @@ pub use self::toolbox::{
     TOOLBOX_KEEP_RELEASES, TOOLBOX_PREFIX, TOOLBOX_RELEASE_PUBLIC_KEY, TOOLBOX_SUFFIX, Toolbox,
     ToolboxHome, Toolboxes,
 };
+/// The unconfined engine a recovery drill checkpoints and restores a
+/// workspace through (M-TEST-UTIL).
+#[cfg(feature = "test-util")]
+pub use self::unsandboxed::RecoveryDrillEngine;
 pub use self::unsandboxed::UnsandboxedEngine;
 pub use self::warm_slots::WarmSlots;
 pub use self::workspace_disk::{Caching, Mount, WorkspaceDisk};

@@ -3,8 +3,8 @@
 use af_core::id::{TEXT_LEN, Uuid7};
 use af_validate::Sentences;
 use afd_billing::report::{
-    BILLING_ACTIVITY_RUNTIME, BILLING_ACTIVITY_SETUP, BILLING_PERIOD_MONTH, BILLING_PERIOD_TODAY,
-    BILLING_PERIOD_WEEK, Filter, Request, Window,
+    BILLING_ACTIVITY_RUNTIME, BILLING_PERIOD_MONTH, BILLING_PERIOD_TODAY, BILLING_PERIOD_WEEK,
+    Filter, Request, Window,
 };
 use afd_billing::sql::work;
 use jiff::Timestamp;
@@ -126,7 +126,6 @@ fn work_type(kind: Option<&str>) -> Result<Option<&'static str>, Refusal> {
     match kind {
         None => Ok(None),
         Some(BILLING_ACTIVITY_RUNTIME) => Ok(Some(work::FLEET_RUN)),
-        Some(BILLING_ACTIVITY_SETUP) => Ok(Some(work::SETUP_RUN)),
         Some(_) => Err(Refusal::malformed(DETAIL_QUERY)),
     }
 }

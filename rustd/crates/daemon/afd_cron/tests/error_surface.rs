@@ -174,10 +174,10 @@ fn a_bag_read_the_vault_failed_answers_as_a_database_error() {
     );
 }
 
-/// An inherited schedule that will not encode is the stored row's fault, so it
-/// answers as a database error rather than a caller's mistake.
+/// A fire body that will not encode is this daemon's fault, never the
+/// caller's, so it answers as a database error rather than a caller's mistake.
 #[test]
-fn an_unencodable_inherited_schedule_answers_as_a_database_error() {
+fn an_unencodable_fire_body_answers_as_a_database_error() {
     let kinds = one_of_each_kind();
     let json = kinds
         .iter()

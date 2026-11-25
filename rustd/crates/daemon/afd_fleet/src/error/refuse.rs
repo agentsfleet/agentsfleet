@@ -52,11 +52,6 @@ pub(crate) fn renewal_no_credits() -> Error {
     Error::new(ErrorKind::RenewalNoCredits)
 }
 
-/// Refuses a renewal against the fleet's own declared ceiling.
-pub(crate) fn budget_exhausted() -> Error {
-    Error::new(ErrorKind::BudgetExhausted)
-}
-
 /// Refuses a message for an event that recorded no thread.
 pub(crate) fn message_no_channel() -> Error {
     Error::new(ErrorKind::MessageNoChannel)

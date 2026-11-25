@@ -17,8 +17,6 @@ use crate::test_support::{FLEET_ID, RUN_ID, payload};
 
 /// A host the fixture run does not reach.
 const HOST: &str = "api.github.com";
-/// A path a read-only tool may POST a query to.
-const QUERY_PATH: &str = "/graphql";
 /// A repository a binding names, and another.
 const REPOSITORY: &str = "agentsfleet/agentsfleet";
 const OTHER_REPOSITORY: &str = "agentsfleet/docs";
@@ -63,15 +61,10 @@ fn the_same_policy_files_the_same_key() {
 
 #[test]
 fn a_change_to_any_network_field_files_another_key() {
-    let changes: [Change; 5] = [
+    let changes: [Change; 3] = [
         |policy| policy.network_policy.http_egress = af_wire::policy::HttpEgress::Public,
         |policy| policy.network_policy.package_manager_domains = true,
         |policy| policy.network_policy.allow.push(Cow::Borrowed(HOST)),
-        |policy| policy.network_policy.read_only = !policy.network_policy.read_only,
-        |policy| {
-            let paths = &mut policy.network_policy.read_post_paths;
-            paths.push(Cow::Borrowed(QUERY_PATH));
-        },
     ];
 
     for (index, change) in changes.into_iter().enumerate() {

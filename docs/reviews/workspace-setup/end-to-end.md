@@ -385,6 +385,6 @@ Source inspection cannot prove the separate schedule fix, current coverage, live
 ## Related pages
 
 - [Resource reference](../../architecture/api_resources.md)
-- [Creation](../../architecture/data_flow.md#fleet-creation-and-setup-recovery)
-- [Private-copy limits](../../architecture/runner_fleet.md#authoring-leases)
-- [Layouts](../designs/workspace-chat-options.md)
+- [Creation](../../architecture/data_flow.md#create-and-recovery)
+- [Private-copy limits](../../architecture/runner_protocol.md#run-lease-and-renewal)
+- [Layouts](../../designs/workspace-chat-options.md)

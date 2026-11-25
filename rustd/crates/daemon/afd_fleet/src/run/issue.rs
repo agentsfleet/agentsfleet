@@ -18,7 +18,6 @@ use af_core::id::Uuid7;
 use af_observability::metrics::label::fleet::DeliveryStage;
 use af_observability::producers;
 use af_wire::decision::DecisionAssignment;
-use af_wire::run::RunKind;
 use jiff::Timestamp;
 use sqlx::Connection as _;
 
@@ -68,7 +67,6 @@ pub struct Issued {
 }
 
 impl Runs {
-    #[cfg(any(test, feature = "test-util"))]
     /// Write the run row for `acquired`, and the audit row that explains it.
     ///
     /// One statement lands the run, its `run_acquired` event and a fresh run's
@@ -80,34 +78,19 @@ impl Runs {
     /// hold the same entry. Nothing is written, and the assignment is not this
     /// pass's to release.
     ///
+    /// A plain turn reads no task source; a task's turn attaches its task
+    /// under the same transaction.
+    ///
     /// # Errors
     /// Reports a datastore that would not answer, and an entropy source that
-    /// could not produce an identifier.
+    /// could not produce an identifier. A full host, moved fence or moved
+    /// choice rolls back without issuing a run.
     pub async fn issue(
         &self,
         runner_id: &Uuid7,
         acquired: &Acquired,
         billed: Billed<'_>,
         now: Timestamp,
-    ) -> Result<Option<Issued>> {
-        self.issue_for_revision(runner_id, acquired, billed, now, None)
-            .await
-    }
-
-    /// [`Self::issue`] under the assignment's setup proof, as delivery issues: a
-    /// fleet whose head moved since the assignment gets no run, and a plain
-    /// turn reads no task source.
-    ///
-    /// # Errors
-    /// As [`Self::issue`].
-    /// A full host, moved fence or moved choice rolls back without issuing a run.
-    pub async fn issue_for_revision(
-        &self,
-        runner_id: &Uuid7,
-        acquired: &Acquired,
-        billed: Billed<'_>,
-        now: Timestamp,
-        revision: Option<&crate::run::installed::IssueRevision>,
     ) -> Result<Option<Issued>> {
         let mut connection = self.pool().acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_ISSUE))?;
@@ -143,9 +126,7 @@ impl Runs {
             kind: acquired.kind.as_str(),
             decision_snapshot: decision.as_deref(),
             run_version: host.run_version(),
-            run_kind: RunKind::Fleet.as_str(),
             held_until: acquired.held_until,
-            setup_revision: revision.map(|proof| &proof.current),
         })
         .insert(&mut transaction)
         .await?
@@ -156,7 +137,6 @@ impl Runs {
             &mut transaction,
             acquired,
             (runner_id, &run_id),
-            revision,
             self.limits().tasks.slice_seconds(),
         )
         .await?
@@ -187,12 +167,12 @@ impl Runs {
         if !host.can_assign()
             || !self
                 .ticket()
-                .is_none_or(|ticket| ticket.permits_revision(host.run_version(), RunKind::Fleet))
+                .is_none_or(|ticket| ticket.permits_revision(host.run_version()))
         {
             return false;
         }
         if let Some(refusal) = placement_refusal(host, billed) {
-            afd_runner::capacity::refused_placement(runner_id, refusal, RunKind::Fleet.as_str());
+            afd_runner::capacity::refused_placement(runner_id, refusal);
             return false;
         }
         true

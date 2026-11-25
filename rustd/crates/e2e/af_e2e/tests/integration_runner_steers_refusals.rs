@@ -17,7 +17,7 @@ use afd_turns::view::{Filter, History, Steer, prefix_to_like, steer_actor};
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
 
-use crate::steers::{ARCHIVED, Crew, INSTALLING};
+use crate::steers::{ARCHIVED, Crew};
 
 /// The person a direct message comes from.
 const PERSON: &str = "user_fixture_person";
@@ -25,9 +25,8 @@ const PERSON: &str = "user_fixture_person";
 /// How many characters of the digest a fleet's operation id keeps.
 const KEY_DIGEST_HEX: usize = 32;
 
-/// The sender itself, a fleet of another workspace, an archived
-/// or installing fleet, and one whose setup needs review are each refused,
-/// with no turn written.
+/// The sender itself, a fleet of another workspace and an archived fleet are
+/// each refused, with no turn written.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn fleet_steer_refuses_self_other_workspace_and_inactive_targets() {
@@ -35,9 +34,6 @@ async fn fleet_steer_refuses_self_other_workspace_and_inactive_targets() {
     let crew = Crew::boot(&mut supervisor).await;
     let foreign = crew.foreign("other-workspace-fleet").await;
     let archived = crew.sibling_as("archived-fleet", ARCHIVED).await;
-    let installing = crew.sibling_as("installing-fleet", INSTALLING).await;
-    let stale = crew.sibling("stale-setup-fleet").await;
-    crew.stale_setup(&stale).await;
     let (run, fence) = crew.speaking.run_seeded().await;
     let own = crew.run().fleet.clone();
     let own_rows = crew.turns(&own).await.len();
@@ -46,8 +42,6 @@ async fn fleet_steer_refuses_self_other_workspace_and_inactive_targets() {
         (&own, 409, "UZ-AGT-018", Some("self")),
         (&foreign, 404, "UZ-AGT-009", None),
         (&archived, 409, "UZ-AGT-012", Some("archived")),
-        (&installing, 409, "UZ-AGT-012", Some("installing")),
-        (&stale, 409, "UZ-SETUP-009", None),
     ];
     for (target, status, code, state) in cases {
         let (answered, refused) = crew.steer((&run, fence), target, "scene the check").await;
@@ -61,7 +55,7 @@ async fn fleet_steer_refuses_self_other_workspace_and_inactive_targets() {
         }
     }
     assert_eq!(crew.turns(&own).await.len(), own_rows);
-    for target in [&foreign, &archived, &installing, &stale] {
+    for target in [&foreign, &archived] {
         assert!(crew.turns(target).await.is_empty(), "{target} was written");
     }
     crew.finish(supervisor).await;

@@ -3,7 +3,7 @@ import type {Fleet} from "./fixtures/seed";
 import {signInAs} from "./fixtures/auth";
 import {FIXTURE_KEY} from "./fixtures/constants";
 import {fleetNavigation, openFleetFromSidebar, workspaceHref} from "./fixtures/nav";
-import {getDefaultWorkspaceId, seedFleet, waitForFleetActive} from "./fixtures/seed";
+import {getDefaultWorkspaceId, seedFleet, expectFleetActive} from "./fixtures/seed";
 import {assertDestructiveTargetIsSafe, purgeFixtureFleet} from "./fixtures/teardown";
 
 const PURPOSES = ["sidebar-release-review", "sidebar-issue-triage", "sidebar-deployment-watch"];
@@ -15,7 +15,7 @@ test("workspace entry opens the newest saved conversation and history opens an o
     for (const name of PURPOSES) {
       const fleet = await seedFleet(FIXTURE_KEY.regular, workspace, {name});
       fleets.push(fleet);
-      await waitForFleetActive(FIXTURE_KEY.regular, workspace, fleet.id);
+      await expectFleetActive(FIXTURE_KEY.regular, workspace, fleet.id);
     }
     const newest = fleets.at(-1);
     const first = fleets[0];

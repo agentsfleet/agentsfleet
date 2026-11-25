@@ -1,34 +1,29 @@
-//! `fleet.fleets` and its head revision, read the one way an unauthenticated
-//! delivery may read them.
+//! `fleet.fleets` and its `fleet.triggers` rows, read the one way an
+//! unauthenticated delivery may read them.
 //!
-//! # Why the statements select the document and stop
+//! # Why the statements select the row and stop
 //!
-//! A fleet's document is its head revision's `definition->'config'`.
-//! [`af_fleet_runtime::FleetConfig::stored`] already parses it on the assignment
-//! path, applies the schema bounds, and completes a trigger's signature block
-//! from the provider registry — so the statement here selects the document and
-//! stops, instead of walking the trigger array in SQL with
-//! `jsonb_array_elements`. That keeps the lookup to one round trip, keeps the
-//! "first webhook trigger" rule out of a sub-select nobody can test in
-//! isolation, leaves no second statement to disagree about WHICH trigger it
-//! read, and refuses a document that fails its bounds here rather than reading
-//! half of it.
+//! A trigger row is read back through `af_fleet_runtime`'s trigger parser,
+//! the one its add went through (`crate::binding`), so the statements select
+//! the columns and stop. Matching an event list or a repository list in SQL
+//! would be a second reader of one row nobody could test in isolation.
 //!
-//! A fleet with no head revision is still installing and has no document. The
-//! reads join the head revision, so such a fleet is absent from them: it has
-//! no trigger to fire and nothing to subscribe with.
+//! # Every read keeps its workspace predicate
+//!
+//! A trigger row carries its fleet's workspace, and each statement joins the
+//! fleet on both, so a delivery resolved through one workspace's install never
+//! reaches another workspace's fleet.
 
-/// Everything an ingress needs to decide about one fleet.
+/// The fleet a webhook delivery is addressed to, and its row for the source.
 ///
-/// `$1` fleet. Three columns: the owning workspace, the status, and the
-/// document. No filter beyond the identifier, and that is correct rather than
-/// lax — the caller is a provider holding no principal, so there is no scope to
-/// narrow by. What authorizes the delivery is the signature checked against the
-/// secret this row leads to, and never the row's own visibility.
+/// `$1` fleet, `$2` the webhook trigger type, `$3` the URL's source, lowercase. No
+/// filter beyond the identifier and the row, and that is correct rather than
+/// lax — the caller is a provider holding no principal, so there is no scope
+/// to narrow by. What authorizes the delivery is the signature checked
+/// against the secret this row leads to, and never the row's own visibility.
 ///
-/// `status` is read even though nothing in the trigger set mentions it: a
-/// delivery to a fleet that is not active is answered 200 and dropped rather than run, and
-/// a query that did not return the status would have no way to know.
+/// `status` is read even though no trigger mentions it: a delivery to a fleet
+/// that is not active is answered 200 and dropped rather than run.
 pub const SELECT_FLEET_INGRESS: &str = include_str!("select_fleet_ingress.sql");
 
 /// The workspace an App installation was connected to.
@@ -43,40 +38,29 @@ pub const SELECT_FLEET_INGRESS: &str = include_str!("select_fleet_ingress.sql");
 /// fleet and no principal. Without this index there is nothing to route it by.
 pub const SELECT_INSTALL_WORKSPACE: &str = include_str!("select_install_workspace.sql");
 
-/// Every fleet in a workspace that could take this provider's App delivery.
+/// Every active fleet in a workspace subscribed to this provider's App events.
 ///
-/// `$1` workspace, `$2` the status a fleet must hold, `$3` the granted service,
-/// `$4` the grant status. Four columns per row, which is exactly
-/// [`Binding::read_for_source`](crate::Binding::read_for_source)'s input.
+/// `$1` workspace, `$2` the status a fleet must hold, `$3` the App event trigger type,
+/// `$4` provider. No grant join: receiving an event needs no grant, and a
+/// grant governs only what the fleet may call.
 ///
-/// # What this asks, and what it deliberately does not
-///
-/// Matching the repository and the event in SQL would mean walking the
-/// document with `jsonb_array_elements` inside two nested `EXISTS` clauses —
-/// the document reader written in SQL that [`SELECT_FLEET_INGRESS`] also
-/// avoids. This statement asks only the RELATIONAL half — which fleets are in
-/// the workspace, running, and hold an approved grant — and the document half
-/// is answered by `Binding::serves_repository` and `Binding::admits`, where a
-/// test can reach both.
-///
-/// The candidate rows crossing the wire are not pre-filtered by repository, so
-/// a workspace pays for its active granted fleets rather than its subscribed
-/// ones.
+/// The statement asks the RELATIONAL half — which fleets in the workspace
+/// subscribed — and the row half, the repository and event lists, is answered
+/// by `Binding::serves_repository` and `Binding::admits`, where a test can
+/// reach both.
 ///
 /// Ordered by id so every replica fans out in the same order.
 pub const SELECT_APP_SUBSCRIBERS: &str = include_str!("select_app_subscribers.sql");
 
-/// The fleets in a workspace a chat mention could reach, for
+/// The fleets in a workspace subscribed to one chat channel, for
 /// [`crate::slack::subscribed`] to read.
 ///
-/// The relational half only, as [`SELECT_APP_SUBSCRIBERS`] is: whether a
-/// fleet's `mention` trigger names the channel is a question about its
-/// document, answered where a test can reach it. No grant join — a fleet
-/// answering a mention mints no chat credential; the daemon posts for it.
+/// `$1` workspace, `$2` the statuses a subscriber can be read in, `$3` the
+/// mention trigger type, `$4` provider, `$5` channel, `$6` the GitHub grant's name,
+/// `$7` the approved status. The approved GitHub scope rides along because a
+/// fleet that may write to a repository takes only mentions addressed to it.
 ///
 /// Ordered by id so every replica routes the same set the same way.
-///
-/// `$1` workspace, `$2` the statuses a subscriber can be read in.
 pub const SELECT_MENTION_CANDIDATES: &str = include_str!("select_mention_candidates.sql");
 
 /// Existing channel notice carrier, scoped to the resolved workspace.

@@ -18,23 +18,20 @@
 /// cannot be an oracle for which fleet identifiers are real.
 ///
 /// [`REQUEST_GRANT`] deliberately does NOT run it, and the reason is the caller
-/// rather than the statement: both of its callers derive the workspace and the
-/// fleet from ONE trusted row — the install from the fleet it just wrote into
-/// the authenticated workspace, the park from the `Acquired` run it is
-/// serving — so there is no untrusted pair to reject, and the park path would
-/// pay the round trip once per second to re-answer a question its own run
-/// row already settled. No endpoint takes a caller-supplied `(workspace,
+/// rather than the statement: its caller derives the workspace and the fleet
+/// from ONE trusted row — the fenced run it is serving — so there is no
+/// untrusted pair to reject. No endpoint takes a caller-supplied `(workspace,
 /// fleet)` pair into that statement; the precondition on
-/// `IntegrationGrants::request` is what keeps that true, and a third caller
+/// `IntegrationGrants::request` is what keeps that true, and another caller
 /// that cannot honour it must run this check itself before asking.
 pub(crate) const SELECT_FLEET_IN_WORKSPACE: &str = include_str!("select_fleet_in_workspace.sql");
 
-/// Every grant a fleet holds, newest first.
+/// Every grant a fleet holds, newest first, its scopes as JSON text.
 ///
-/// Unpaged and unfiltered: a fleet holds at most one grant per service — the
-/// unique constraint on `(fleet_id, service)` says so — and the
-/// supported-service count is what bounds the page. `requested_reason` is the
-/// wire's `reason`.
+/// Unpaged and unfiltered: a fleet holds at most one grant per name — the
+/// unique constraint on `(fleet_id, service)` says so — and the workspace's
+/// secrets and integrations bound the page. `requested_reason` is the wire's
+/// `reason`.
 ///
 /// `$1` fleet.
 pub(crate) const SELECT_FLEET_GRANTS: &str = include_str!("select_fleet_grants.sql");
@@ -56,28 +53,17 @@ pub(crate) const REVOKE_GRANT: &str = include_str!("revoke_grant.sql");
 
 /// Ensures the grant exists before the card statement takes its snapshot.
 /// Both statements run in one transaction: failure to raise rolls back the
-/// grant. `$1` grant, `$2` fleet, `$3` service, `$4` status, `$5` reason.
+/// grant. `$1` grant, `$2` fleet, `$3` name, `$4` grant type, `$5` status, `$6` reason.
 pub(crate) const ENSURE_GRANT: &str = include_str!("ensure_grant.sql");
 
-/// Raises a card using the existing grant's identity, including when a
-/// concurrent insert won. Locking the grant serializes requests with its
-/// approval/revocation; the unique active reference arbitrates cards without a
-/// status-dependent index. A NULL `turn_id` prevents approval from enqueueing
-/// duplicate delivery work. The card lapses `$13` after the database clock.
+/// Asks a person for the grant `ENSURE_GRANT` left in place, raising at most
+/// one card. Locking the grant serializes requests with its approval and its
+/// revocation; the unique active reference arbitrates cards. The card carries
+/// the asking turn, whose run waits on it, and lapses `$15` after the database
+/// clock.
 ///
-/// `$1` fleet, `$2` service, `$3` grant status, `$4` card, `$5` workspace,
-/// `$6` action, `$7` tool, `$8` action name, `$9` type, `$10` proposal,
-/// `$11` evidence, `$12` radius, `$13` decision window, `$14` card status.
+/// `$1` fleet, `$2` name, `$3` grant type, `$4` requested scope, `$5` pending,
+/// `$6` revoked, `$7` card, `$8` workspace, `$9` action, `$10` asking turn,
+/// `$11` card type, `$12` proposal, `$13` evidence, `$14` radius, `$15`
+/// decision window, `$16` card status.
 pub(crate) const REQUEST_GRANT: &str = include_str!("request_grant.sql");
-
-/// The fleet row a setup request holds while it writes, and its status.
-///
-/// The Kill takes the same row exclusively, which is what serialises a late
-/// setup retry against the cancel. `$1` fleet, `$2` workspace.
-pub(crate) const LOCK_FLEET_FOR_SETUP: &str = include_str!("lock_fleet_for_setup.sql");
-
-/// Closes a fleet's open grant cards, on the database clock.
-///
-/// `$1` fleet, `$2` closed status, `$3` resolver, `$4` detail, `$5` the grant
-/// gate type.
-pub(crate) const CANCEL_SETUP_CARDS: &str = include_str!("cancel_setup_cards.sql");

@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import type { DurableTaskPage, DurableTaskSummary } from "@/lib/api/tasks";
 import type { FleetSources } from "@/lib/fleet-sources";
 import type { FleetTurn } from "@/lib/streaming/fleet-stream-row";
-import type { Schedule } from "@/lib/api/draft-types";
+import type { Schedule } from "@/lib/api/schedule-types";
 import type { DurableTaskResource } from "./use-task-read";
 import type { DurableTaskDetails } from "./use-task-details";
 import type { RecordedChangeRepository } from "../conversation/summary/recorded-changes";

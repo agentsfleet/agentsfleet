@@ -1,14 +1,14 @@
-//! A slow writer: one tenant's drafts held locked, over and over, while the
+//! A slow writer: one tenant's fleets held locked, over and over, while the
 //! window runs.
 //!
 //! The failure this workstream exists to measure is a chat assignment arriving
-//! while some other write holds a draft's lock — a slow revision apply, a
-//! long edit — and waiting on it with its host row held, so every other
-//! tenant's message on that poll waits too. Production writes that slow are
-//! rare and unscheduled; this makes one deterministic. Every [`HOLD`] it takes
-//! the first chat tenant's draft rows `FOR UPDATE` on a connection of its own,
-//! keeps them, and lets go for [`GAP`]. An assignment that waits on them shows in the
-//! chat run tail; an assignment that skips them does not.
+//! while some other write holds a fleet's lock — a long change to the fleet
+//! row — and waiting on it with its host row held, so every other tenant's
+//! message on that poll waits too. Production writes that slow are rare and
+//! unscheduled; this makes one deterministic. Every [`HOLD`] it takes the
+//! first chat tenant's fleet rows `FOR UPDATE` on a connection of its own,
+//! keeps them, and lets go for [`GAP`]. An assignment that waits on them shows
+//! in the chat run tail; an assignment that skips them does not.
 //!
 //! The connection is outside the pool on purpose: a writer holding a pooled
 //! connection would also shrink the pool, and the two effects would read as
@@ -22,14 +22,14 @@ use sqlx::{Connection as _, PgConnection};
 use super::requester::Shared;
 use crate::error::{ErrorKind, Result};
 
-/// How long one hold keeps the tenant's drafts locked.
+/// How long one hold keeps the tenant's fleets locked.
 pub(super) const HOLD: Duration = Duration::from_secs(1);
 
 /// How long the writer lets go between holds.
 pub(super) const GAP: Duration = Duration::from_millis(250);
 
-/// Every draft row of one tenant, locked.
-const HOLD_DRAFTS: &str = include_str!("../sql/hold_drafts.sql");
+/// Every fleet row of one tenant, locked.
+const HOLD_FLEETS: &str = include_str!("../sql/hold_fleets.sql");
 
 /// Names the writer's session, so the hold sampler can leave its holds out.
 const NAME_WRITER: &str = include_str!("../sql/name_writer.sql");
@@ -53,7 +53,7 @@ pub(super) async fn named(mut connection: PgConnection) -> Result<PgConnection> 
 
 /// What the writer holds its locks through.
 pub(super) trait Locker {
-    /// Lock `tenant`'s drafts, keep them for `hold`, then commit.
+    /// Lock `tenant`'s fleets, keep them for `hold`, then commit.
     ///
     /// # Errors
     ///
@@ -65,7 +65,7 @@ impl Locker for PgConnection {
     async fn hold(&mut self, tenant: &Uuid7, hold: Duration) -> Result<()> {
         let unavailable = |source| ErrorKind::SamplerUnavailable { source };
         let mut tx = self.begin().await.map_err(unavailable)?;
-        sqlx::query(HOLD_DRAFTS)
+        sqlx::query(HOLD_FLEETS)
             .bind(tenant)
             .fetch_all(&mut *tx)
             .await
@@ -76,7 +76,7 @@ impl Locker for PgConnection {
     }
 }
 
-/// Hold `tenant`'s drafts every [`HOLD`] while the window is open, answering
+/// Hold `tenant`'s fleets every [`HOLD`] while the window is open, answering
 /// how many holds were taken.
 ///
 /// # Errors

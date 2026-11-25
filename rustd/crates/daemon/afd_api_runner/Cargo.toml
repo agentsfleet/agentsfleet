@@ -32,6 +32,12 @@ afd_cron.workspace = true
 # A schedule's runs are its events, read through the history listing.
 afd_turns.workspace = true
 afd_fleet.workspace = true
+# A trigger row, read and rendered the one way the tenant surface renders it.
+afd_setup.workspace = true
+# The access request's product event, `fleet_access_changed`.
+af_observability.workspace = true
+# What an access request did: raised a card, found one open, or was covered.
+afd_approval.workspace = true
 # Run-now refuses a fleet that is not taking work, as the QStash callback does.
 afd_fleet_lifecycle.workspace = true
 afd_http.workspace = true

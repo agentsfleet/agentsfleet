@@ -5,7 +5,7 @@ use super::super::{
     PreparedPlan, guard, transaction,
 };
 use super::{
-    CONTEXT, authorize, mark_interpreted,
+    CONTEXT, plan as source_plan,
     prepare::Wake,
     replay, source,
     write::{Writer, Written},
@@ -39,18 +39,16 @@ pub(super) async fn commit(
             queued: Vec::new(),
         });
     }
-    source::check(&source, &current, plan)?;
-    authorize(&mut tx, run, &current, plan).await?;
+    source::check(&source, plan)?;
+    source_plan::write(&mut tx, &current, plan, &identities).await?;
     let Written { bound, queued } = Writer {
         tasks,
         current: &current,
         source: &source,
         plan,
-        run,
     }
     .apply(&mut tx, &mut identities, continuations, prepared)
     .await?;
-    mark_interpreted(&mut tx, &current, plan).await?;
     let current_durable_task = match bound {
         Some(id) => Some(super::super::read::on(&mut tx, scope, &id).await?.context),
         None => None,

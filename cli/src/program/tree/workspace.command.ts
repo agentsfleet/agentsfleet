@@ -19,17 +19,17 @@ import { billingLimitFlag, cursorFlag, opt, VERB, workspaceFlag, workspaceIdArgu
 // ── workspace ───────────────────────────────────────────────────────
 
 const workspaceCreateCommand = Command.make(VERB.create, { name: workspaceNameArgument }).pipe(
-  Command.withDescription("Create a new workspace"),
+  Command.withDescription("Create a workspace"),
   guardedHandler(({ name }) => workspaceAddEffect(name)),
 );
 
 const workspaceListCommand = Command.make(VERB.list).pipe(
-  Command.withDescription("List workspaces"),
+  Command.withDescription("List your workspaces"),
   guardedHandler(() => workspaceListEffect),
 );
 
 const workspaceUseCommand = Command.make("use", { workspaceId: workspaceIdArgument }).pipe(
-  Command.withDescription("Set the active workspace"),
+  Command.withDescription("Switch to a workspace"),
   guardedHandler(({ workspaceId }) => workspaceUseEffectFromArgs(workspaceId, undefined)),
 );
 
@@ -39,19 +39,19 @@ const workspaceShowCommand = Command.make(VERB.show, {
   workspaceId: workspaceIdOptionalArgument,
   workspace: workspaceFlag,
 }).pipe(
-  Command.withDescription("Show workspace details"),
+  Command.withDescription("Show a workspace's details"),
   guardedHandler(({ workspaceId, workspace: fromFlag }) =>
     workspaceShowEffectFromArgs(opt(workspaceId), opt(fromFlag)),
   ),
 );
 
 const workspaceDeleteCommand = Command.make(VERB.delete, { workspaceId: workspaceIdArgument }).pipe(
-  Command.withDescription("Remove a workspace from local client state"),
+  Command.withDescription("Remove a workspace from this computer's list (it stays on the server)"),
   guardedHandler(({ workspaceId }) => workspaceDeleteEffectFromArgs(workspaceId, undefined)),
 );
 
 export const workspaceCommand = () => Command.make("workspace").pipe(
-  Command.withDescription("Manage workspaces"),
+  Command.withDescription("Create and switch between workspaces"),
   Command.withSubcommands([
     workspaceCreateCommand,
     workspaceListCommand,
@@ -67,13 +67,13 @@ const usageShowCommand = Command.make(VERB.show, {
   limit: billingLimitFlag,
   cursor: cursorFlag,
 }).pipe(
-  Command.withDescription("Balance and recent fleet and setup costs"),
+  Command.withDescription("Show your balance and what recent work cost"),
   guardedHandler(({ limit, cursor }) =>
     billingShowEffectFromArgs({ limit: opt(limit), cursor: opt(cursor) }),
   ),
 );
 
 export const usageCommand = () => Command.make("usage").pipe(
-  Command.withDescription("Balance and recent spend for this tenant"),
+  Command.withDescription("See your balance and what your fleets cost"),
   Command.withSubcommands([usageShowCommand]),
 );

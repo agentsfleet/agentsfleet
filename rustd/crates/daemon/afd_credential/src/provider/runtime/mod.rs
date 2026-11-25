@@ -1,4 +1,4 @@
-//! Runtime and setup chat read the same owner-scoped persisted model metadata.
+//! Every run reads the same owner-scoped persisted model metadata.
 
 mod resolve;
 
@@ -7,7 +7,7 @@ use af_core::id::Uuid7;
 use af_wire::inference::ModelInference;
 use sqlx::PgConnection;
 
-/// Non-secret runtime selection shown by human setup review.
+/// Non-secret runtime selection a fleet's model resolves to.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeModel {
     /// Workspace owner's registry reference or the explicit platform default.

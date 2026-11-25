@@ -4,8 +4,8 @@
 //! every event for every repository it can see to ONE endpoint, carrying no
 //! fleet, no workspace and no principal — so everything about where a delivery
 //! lands is looked up: `connector.installs` maps the installation to a
-//! workspace, and `connector.integration_grants` joined against each fleet's
-//! head `fleet.revisions` document decides which fleets in it subscribed.
+//! workspace, and each fleet's `app_event` row in `fleet.triggers` decides which
+//! fleets in it subscribed. No grant is read on the way.
 //!
 //! `app_ingress_route.rs` proves the route's policy against a scripted store,
 //! which is right for what the HANDLER decides and cannot be wrong about the
@@ -40,6 +40,9 @@ const PATH: &str = "/v1/ingress/github";
 /// The event kind the fixture delivery is.
 const EVENT_WORKFLOW_RUN: &str = "workflow_run";
 
+/// The actor an App delivery's turn is admitted from.
+const APP_ACTOR: &str = "github-app";
+
 /// One App delivery of `body`, signed with `secret`.
 async fn deliver(router: &axum::Router, body: &str, secret: &[u8]) -> axum::response::Response {
     let proof = signed::signature(Scheme::BodyHex, secret, body.as_bytes());
@@ -56,11 +59,11 @@ async fn deliver(router: &axum::Router, body: &str, secret: &[u8]) -> axum::resp
 
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn an_app_delivery_wakes_the_fleet_the_joins_route_it_to() {
+async fn a_github_trigger_routes_an_app_delivery() {
     // The whole lookup in one pass. The App secret is opened out of the PLATFORM
     // ADMIN workspace, the installation is resolved to a tenant workspace
-    // through `connector.installs`, and the fleets are narrowed by an
-    // approved grant and then by each stored document's repository list.
+    // through `connector.installs`, and the fleets are narrowed by their
+    // `app_event` row's repository list. The fleet holds no grant.
     let fixture = Fixture::create().await;
     fixture.seed(Mapped::ToWorkspace).await;
     let router = fixture.router();
@@ -83,11 +86,18 @@ async fn an_app_delivery_wakes_the_fleet_the_joins_route_it_to() {
          dropped after the routing said it belonged somewhere: {document}"
     );
 
+    assert_eq!(
+        fixture.turn_actors().await,
+        vec![APP_ACTOR.to_owned()],
+        "one turn, admitted from the App"
+    );
+
     let replay = deliver(&router, &body, APP_SECRET).await;
     let status = replay.status();
     let document = json_body(replay).await;
     assert_eq!(status, StatusCode::ACCEPTED, "{document}");
     assert_eq!(document.get("enqueued").and_then(Value::as_u64), Some(0));
+    assert_eq!(fixture.turn_actors().await.len(), 1, "a replay is no turn");
 
     fixture.cleanup().await;
 }
@@ -124,11 +134,11 @@ async fn an_installation_this_deployment_never_mapped_is_dropped_not_refused() {
 
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn a_repository_no_fleet_subscribed_to_wakes_nobody() {
-    // The document half of the narrowing, over a real row. The workspace maps,
-    // the grant is approved and the event kind is admitted — only the
-    // repository differs — so a fleet woken here would be one woken by another
-    // team's repository inside its own workspace.
+async fn an_app_delivery_outside_a_trigger_reaches_no_fleet() {
+    // The row half of the narrowing, over a real row. The workspace maps and
+    // the event kind is admitted — only the repository differs — so a fleet
+    // woken here would be one woken by another team's repository inside its
+    // own workspace.
     let fixture = Fixture::create().await;
     fixture.seed(Mapped::ToWorkspace).await;
     let router = fixture.router();
@@ -156,8 +166,27 @@ async fn a_repository_no_fleet_subscribed_to_wakes_nobody() {
         before,
         "a repository nobody subscribed to must wake nothing"
     );
-
     fixture.cleanup().await;
+
+    // The subscribed repository, from an install another workspace connected:
+    // that workspace holds no row, and this one's row is not read.
+    let crossed = Fixture::create().await;
+    crossed.seed(Mapped::ToOtherWorkspace).await;
+    let router = crossed.router();
+    let dropped = deliver(&router, &crossed.delivery(RUN_FAILURE_APP), APP_SECRET).await;
+    let status = dropped.status();
+    let document = json_body(dropped).await;
+    assert_eq!(status, StatusCode::OK, "{document}");
+    assert_eq!(
+        document.get("ignored").and_then(Value::as_str),
+        Some(error_code::WEBHOOK_SUBSCRIPTION_NOT_FOUND.as_str()),
+        "{document}"
+    );
+    assert!(
+        crossed.turn_actors().await.is_empty(),
+        "another workspace's install reaches no fleet of this one"
+    );
+    crossed.cleanup().await;
 }
 
 #[tokio::test]

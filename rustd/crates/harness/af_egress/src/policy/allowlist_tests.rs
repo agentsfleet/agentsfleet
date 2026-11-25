@@ -14,7 +14,7 @@ const PUBLIC_V6: &str = "[2606:4700:4700::1111]";
 /// The URL `url` is allowed to when `network.allow` lists `entries` alone, or
 /// why not.
 fn allow(entries: &[&str], url: &str) -> Result<String, Shown> {
-    let mut policy = policy(false);
+    let mut policy = policy();
     policy.network_policy.allow = entries.iter().map(|entry| (*entry).into()).collect();
     EgressPolicy::new(&policy)
         .allow(draft("GET", url, &[], None))

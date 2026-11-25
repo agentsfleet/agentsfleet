@@ -1,7 +1,7 @@
 //! One run's memory, read and written through `agentsfleetd`.
 //!
 //! [`Loaded`] is what the four memory tools read and write
-//! (`docs/architecture/runner_fleet.md` §"Memory backends and scope"),
+//! (`docs/architecture/memory.md` §"The four tools"),
 //! through `guffbolt`'s memory store: the [`Seed`] `agentsfleetd` loaded
 //! at run start — the fleet's own window, the workspace's shared entries for
 //! a fleet granted to read them, and whether it may publish — with the run's

@@ -2,38 +2,27 @@
 //! answer still owes.
 //!
 //! Split from [`super`] at the 350-line cap, along the seam between the
-//! answer that wins the row and a retry that reads it: the winner does the
-//! wake or the continuation once, and a retry redoes whichever the first
-//! call may have lost.
+//! answer that wins the row and a retry that reads it: the winner lands the
+//! answer turn once, and a retry lands it when the first call lost it.
 
 use af_core::id::Uuid7;
-use afd_api_wire::approval::status;
 
 use super::super::{Inbox, Resolved};
-use super::Continues;
+use super::{ANSWER_PRODUCER, Continues};
 use crate::Result;
 
 impl Inbox {
     /// What a gate answered before this call still owes, settled now.
     ///
-    /// A retry is the one caller left to notice the first answer's wake or
-    /// continuation never landed, so it redoes whichever the stored answer
-    /// owes: a wake for the original delivery, or a continuation for an
-    /// approved run. The continuation is keyed on the gate's action, and a
-    /// repeated wake changes no durable queue state.
+    /// A retry is the one caller left to notice the first answer's turn
+    /// never landed, so it lands the one the stored answer owes. The turn is
+    /// keyed on the gate's action, so a retry never lands a second.
     ///
     /// # Errors
-    /// Reports a ledger that would not answer, and a continuation that would
+    /// Reports a ledger that would not answer, and an answer turn that would
     /// not land.
     pub(super) async fn stood(&self, mut resolved: Resolved) -> Result<Resolved> {
-        if leaves_delivery_parked(
-            &resolved.status,
-            resolved.turn_id.as_ref().map(Uuid7::as_str),
-        ) {
-            self.wake_parked_delivery(&resolved.fleet_id).await;
-            return Ok(resolved);
-        }
-        if let Some(continues) = Continues::of(&resolved.status)
+        if let Some(continues) = Continues::of(&resolved.status, &resolved.gate_type)
             && let Some(turn_id) = resolved.turn_id.clone()
         {
             resolved.continuation_turn_id = self
@@ -43,7 +32,7 @@ impl Inbox {
         Ok(resolved)
     }
 
-    /// The continuation an approved run is owed: the one the ledger already
+    /// The answer turn a waiting run is owed: the one the ledger already
     /// holds, or one landed now because the answer that won the row failed
     /// before it could.
     ///
@@ -58,18 +47,11 @@ impl Inbox {
     ) -> Result<Option<Uuid7>> {
         let landed = self
             .turns
-            .find_repeated(continues.producer(), resolved.action_id.as_str())
+            .find_repeated(ANSWER_PRODUCER, resolved.action_id.as_str())
             .await?;
         match landed {
             Some(admitted) => Ok(Some(admitted.id)),
             None => self.continue_from(resolved, turn_id, continues).await,
         }
     }
-}
-
-/// Whether the next poll reads the original delivery: a gate that held no
-/// run, or a run the answer ended. An approved or answered run lands a
-/// continuation.
-pub(super) fn leaves_delivery_parked(answer: &str, turn_id: Option<&str>) -> bool {
-    turn_id.is_none() || answer == status::DENIED
 }

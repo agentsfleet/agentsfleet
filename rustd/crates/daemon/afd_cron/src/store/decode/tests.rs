@@ -47,7 +47,6 @@ fn row() -> ScheduleRow {
         created_at: CREATED,
         updated_at: UPDATED,
         fire_at: Some(FIRE_AT.to_sqlx()),
-        recipe: None,
     }
 }
 
@@ -75,12 +74,14 @@ fn a_word_this_build_does_not_know_is_refused_rather_than_defaulted() {
     assert!(refused.to_string().contains("sync_status"), "{refused}");
 }
 
+/// A trigger-sourced schedule no longer exists, so its word reads as a row
+/// this build cannot act on rather than as one of the two sources it knows.
 #[test]
-fn a_recipe_that_does_not_read_is_refused_on_its_column() {
+fn a_trigger_source_is_refused_on_its_column() {
     let mut stored = row();
-    stored.recipe = Some("{\"slot\":".to_owned());
-    let refused = stored.parse().expect_err("malformed recipe JSON");
-    assert!(refused.to_string().contains("recipe"), "{refused}");
+    stored.source = "trigger".to_owned();
+    let refused = stored.parse().expect_err("a retired source");
+    assert!(refused.to_string().contains("source"), "{refused}");
 }
 
 #[test]

@@ -42,7 +42,7 @@ Later reviewers should assess enforcement and missing proof without reopening se
 | L20 | Budget fields become `daily_nanos`/`monthly_nanos` across this milestone; money uses decimal strings on the wire. |
 | L21 | No compatibility code, aliases, deprecation windows, or old-client paths. Acceptance-test rows may be reset at an explicitly chosen release boundary. No live reset is performed by these documents. |
 
-Authoring admission is also settled: under one wallet-row lock, admit another running turn only when `balance >= (running + 1) * worst_case_turn_cost`. Draft count has no fixed cap. The [runner design](../../architecture/runner_fleet.md#authoring-leases) defines prices, outstanding attempts, and the assurance's limit.
+Authoring admission is also settled: under one wallet-row lock, admit another running turn only when `balance >= (running + 1) * worst_case_turn_cost`. Draft count has no fixed cap. The [runner design](../../architecture/runner_protocol.md#run-lease-and-renewal) defines prices, outstanding attempts, and the assurance's limit.
 
 ### Chat-only authoring amendment
 

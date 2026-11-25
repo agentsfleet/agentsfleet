@@ -17,7 +17,9 @@ use crate::tools::env::Env as _;
 use crate::tools::fake::Fake;
 use crate::tools::files::FileRead;
 use crate::tools::mcp::{ListMcpResourceTemplates, ListMcpResources, ReadMcpResource, Server};
-use crate::tools::memory::{Memory, MemoryForget, MemoryStoreTool, Reach};
+use crate::tools::memory::{
+    CORE_CATEGORY, DEFAULT_CATEGORY, Memory, MemoryForget, MemoryStoreTool, Reach,
+};
 use crate::tools::outbound::Allowlist;
 use crate::tools::process::Git;
 use crate::tools::search::{Deferred, ToolSearch};
@@ -249,6 +251,39 @@ async fn a_memory_is_private_unless_the_model_names_it_shared() {
             ("c".to_owned(), Reach::Private),
         ]
     );
+}
+
+/// A memory the model stores without a category is a note, kept by recency;
+/// only one it names `core` is pinned into every later run.
+#[tokio::test]
+async fn a_memory_is_a_note_unless_the_model_names_core() {
+    let local = local();
+    let store = Typed::new(MemoryStoreTool::new(&local.memory));
+
+    for arguments in [
+        json!({"key": "a", "content": "one"}),
+        json!({"key": "b", "content": "two", "category": "core"}),
+        json!({"key": "c", "content": "three", "category": "daily"}),
+    ] {
+        let at = first_call();
+        store.call(&arguments, local.context(&at)).await;
+    }
+
+    let categories: Vec<(String, String)> = local
+        .memory
+        .entries()
+        .into_iter()
+        .map(|memory| (memory.key, memory.category))
+        .collect();
+    assert_eq!(
+        categories,
+        [
+            ("a".to_owned(), DEFAULT_CATEGORY.to_owned()),
+            ("b".to_owned(), CORE_CATEGORY.to_owned()),
+            ("c".to_owned(), "daily".to_owned()),
+        ]
+    );
+    assert_eq!((DEFAULT_CATEGORY, CORE_CATEGORY), ("note", "core"));
 }
 
 #[tokio::test]

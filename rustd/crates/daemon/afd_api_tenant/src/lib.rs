@@ -20,7 +20,7 @@ pub use handler::{fleet, secret, tenant};
 
 use std::sync::Arc;
 
-use afd_http::handler::setup_input::{SETUP_BODY_BYTES_MAX, TEXT_BODY_BYTES_MAX};
+use afd_http::handler::setup_input::TEXT_BODY_BYTES_MAX;
 use axum::extract::DefaultBodyLimit;
 use axum::routing::{MethodRouter, delete, get, patch, post, put};
 use route::{AuthRoute, ConnectorRoute, FleetRoute, TenantRoute, WorkspaceRoute};
@@ -86,14 +86,9 @@ pub fn tenant_handler_for<D: TenantPlane>(verb: TenantRoute) -> Option<MethodRou
 /// Selects the handler for a workspace collection or item route.
 pub fn workspace_handler_for<D: TenantPlane>(verb: WorkspaceRoute) -> Option<MethodRouter<Arc<D>>> {
     match verb {
-        WorkspaceRoute::Models
-        | WorkspaceRoute::Drafts
-        | WorkspaceRoute::Draft
-        | WorkspaceRoute::DraftMessages
-        | WorkspaceRoute::DraftStream
-        | WorkspaceRoute::DraftTurn => draft_handler_for::<D>(verb).map(handler::draft::private),
+        WorkspaceRoute::Models => Some(handler::models::private(get(handler::models::list::<D>))),
         WorkspaceRoute::Fleets => Some(reading(
-            get(fleet::list::<D>).post(fleet::native::create::save::<D>),
+            get(fleet::list::<D>).post(fleet::native::create::create::<D>),
             TEXT_BODY_BYTES_MAX,
         )),
         WorkspaceRoute::Secrets => Some(get(secret::list::<D>).post(secret::store::<D>)),
@@ -108,42 +103,6 @@ pub fn workspace_handler_for<D: TenantPlane>(verb: WorkspaceRoute) -> Option<Met
     }
 }
 
-/// The private setup half of [`workspace_handler_for`], before the
-/// no-store marking every one of them carries. `None` for a route that is
-/// not a setup route.
-fn draft_handler_for<D: TenantPlane>(verb: WorkspaceRoute) -> Option<MethodRouter<Arc<D>>> {
-    use handler::draft::{message, models, patch, read, stream, write};
-    match verb {
-        WorkspaceRoute::Models => Some(get(models::list::<D>)),
-        WorkspaceRoute::Drafts => Some(reading(
-            get(read::list::<D>).post(write::create::<D>),
-            SETUP_BODY_BYTES_MAX,
-        )),
-        WorkspaceRoute::Draft => Some(reading(
-            get(read::one::<D>)
-                .patch(patch::patch::<D>)
-                .delete(write::delete::<D>),
-            SETUP_BODY_BYTES_MAX,
-        )),
-        WorkspaceRoute::DraftMessages => Some(reading(
-            get(message::list::<D>).post(message::send::<D>),
-            SETUP_BODY_BYTES_MAX,
-        )),
-        WorkspaceRoute::DraftStream => Some(get(stream::open::<D>)),
-        WorkspaceRoute::DraftTurn => Some(patch(handler::turn::stop::draft::<D>)),
-        WorkspaceRoute::Fleets
-        | WorkspaceRoute::Secrets
-        | WorkspaceRoute::Secret
-        | WorkspaceRoute::Turns
-        | WorkspaceRoute::TurnsStream
-        | WorkspaceRoute::Onboarding
-        | WorkspaceRoute::Approvals
-        | WorkspaceRoute::Approval
-        | WorkspaceRoute::ApprovalResolve
-        | WorkspaceRoute::Members => None,
-    }
-}
-
 /// Selects the handler for a route scoped to one fleet.
 pub fn fleet_handler_for<D: TenantPlane>(verb: FleetRoute) -> Option<MethodRouter<Arc<D>>> {
     match verb {
@@ -151,14 +110,7 @@ pub fn fleet_handler_for<D: TenantPlane>(verb: FleetRoute) -> Option<MethodRoute
             get(fleet::native::read::one::<D>)
                 .patch(fleet::native::patch::change::<D>)
                 .delete(fleet::detail::purge::<D>),
-            SETUP_BODY_BYTES_MAX,
-        )),
-        FleetRoute::SetupContext => Some(handler::draft::private(get(
-            fleet::native::context::read::<D>,
-        ))),
-        FleetRoute::Revisions => Some(reading(
-            post(fleet::native::revision::apply::<D>),
-            SETUP_BODY_BYTES_MAX,
+            TEXT_BODY_BYTES_MAX,
         )),
         FleetRoute::Turns => Some(get(handler::turn::fleet_list::<D>)),
         FleetRoute::DurableTasks => Some(get(fleet::durable_tasks::list::<D>)),
@@ -171,6 +123,8 @@ pub fn fleet_handler_for<D: TenantPlane>(verb: FleetRoute) -> Option<MethodRoute
         FleetRoute::Item => Some(get(handler::turn::tool_call::read::<D>)),
         FleetRoute::Grants => Some(get(handler::grant::list::<D>)),
         FleetRoute::Grant => Some(delete(handler::grant::revoke::<D>)),
+        FleetRoute::Triggers => Some(get(fleet::native::triggers::list::<D>)),
+        FleetRoute::Trigger => Some(delete(fleet::native::triggers::remove::<D>)),
         FleetRoute::Memories => Some(get(fleet::memory::list::<D>)),
         FleetRoute::Memory => Some(delete(fleet::memory::forget::<D>)),
         FleetRoute::MemoryAccess => Some(patch(fleet::memory_access::set::<D>)),

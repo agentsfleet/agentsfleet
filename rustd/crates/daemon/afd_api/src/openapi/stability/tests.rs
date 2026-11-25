@@ -45,7 +45,7 @@ fn every_beta_field_is_published_beta() {
 fn http_destination_settings_are_published_beta() {
     let document = crate::openapi::document();
     let value = serde_json::to_value(&document).expect("document serializes");
-    for schema in ["NetworkPolicy", "DefinitionNetwork"] {
+    for schema in ["NetworkPolicy"] {
         for property in ["http_egress", "package_manager_domains"] {
             assert_eq!(
                 published_class(&document, schema, property).as_deref(),

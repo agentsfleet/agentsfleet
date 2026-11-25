@@ -101,8 +101,8 @@ impl RunService {
     /// Refuses a fleet that is no longer installed. Reports a datastore or
     /// vault that would not answer, and a mask that could not be built.
     pub async fn masked(&self, standing: &Standing, text: &str) -> Result<String> {
-        let installed = self.installed_for(standing).await?;
-        self.mask_with(&installed, standing, text).await
+        self.installed_for(standing).await?;
+        self.mask_with(standing, text).await
     }
 
     /// The sender of a fleet's steer, from one read of the installed fleet:
@@ -114,7 +114,7 @@ impl RunService {
     /// a run that is not live.
     pub async fn sender(&self, standing: &Standing, text: &str) -> Result<SteerSender> {
         let installed = self.installed_for(standing).await?;
-        let text = self.mask_with(&installed, standing, text).await?;
+        let text = self.mask_with(standing, text).await?;
         let body = FleetSteerBody::new(
             &text,
             standing.fleet_id.as_str(),
@@ -139,14 +139,14 @@ impl RunService {
             .ok_or_else(run_not_found)
     }
 
-    /// `text` with `installed`'s declared static secrets masked.
-    async fn mask_with(
-        &self,
-        installed: &Installed,
-        standing: &Standing,
-        text: &str,
-    ) -> Result<String> {
-        let names = installed.credential_names();
+    /// `text` with the static secrets a person approved for the fleet masked.
+    async fn mask_with(&self, standing: &Standing, text: &str) -> Result<String> {
+        let approved = {
+            let mut connection = self.runs.pool().acquire().await?;
+            afd_gate::policy::approved::Approved::read_on(&mut connection, &standing.fleet_id)
+                .await?
+        };
+        let names = approved.names();
         if names.is_empty() {
             return Ok(text.to_owned());
         }

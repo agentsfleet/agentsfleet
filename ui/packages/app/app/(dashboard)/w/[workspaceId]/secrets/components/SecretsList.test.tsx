@@ -192,13 +192,13 @@ describe("the approved secret rows", () => {
     const cell = (name: string) => within(screen.getByText(name).closest("tr") as HTMLElement);
     expect(cell("two").getByText("Fleet 1, Fleet 2")).toBeTruthy();
     expect(cell("four").getByText("Fleet 1, Fleet 2 +2 more")).toBeTruthy();
-    expect(cell("none").getByText("No active fleets")).toBeTruthy();
+    expect(cell("none").getByText("No access approved")).toBeTruthy();
     for (const name of ["absent", "malformed", "blank", "scalar"]) expect(cell(name).getByText("Access details unavailable")).toBeTruthy();
     await userEvent.click(screen.getByRole("button", {name: "Manage four"}));
     expect(screen.getByText(/Available to Fleet 1, Fleet 2, Fleet 3, Fleet 4\./)).toBeTruthy();
     await userEvent.keyboard("{Escape}");
     await userEvent.click(screen.getByRole("button", {name: "Manage none"}));
-    expect(screen.getByText(/No active fleet's setup uses it\./)).toBeTruthy();
+    expect(screen.getByText(/No active fleet is approved to use it\./)).toBeTruthy();
     await userEvent.keyboard("{Escape}");
     await userEvent.click(screen.getByRole("button", {name: "Manage absent"}));
     expect(screen.getByText(/Fleet access details are not available here\./)).toBeTruthy();

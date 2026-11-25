@@ -117,13 +117,16 @@ impl RunService {
             .mint_scope(runner_id, &crate::error::wire_run(&request.run_id)?)
             .await?
             .ok_or_else(run_not_found)?;
+        // A run mints only what a person approved for its fleet. Refused
+        // before the vault is opened, and as the missing grant it is, so a
+        // runner tells "nobody approved it" from "nobody connected it".
         if purpose == Purpose::Runner
             && !scope
-                .runner_credentials
+                .integrations
                 .iter()
                 .any(|name| name.as_str() == request.integration)
         {
-            return Err(crate::error::integration_not_connected());
+            return Err(crate::error::grant_required());
         }
         if purpose == Purpose::DurableTaskPublish
             && !scope.binding.as_ref().is_some_and(|binding| {
@@ -161,7 +164,7 @@ impl RunService {
 }
 
 mod admission;
-mod claim;
+pub(in crate::run) mod claim;
 
 #[cfg(test)]
 mod tests;

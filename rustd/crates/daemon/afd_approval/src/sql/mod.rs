@@ -88,21 +88,12 @@ pub(crate) const SELECT_GATE_BY_ID: &str = include_str!("select_gate_by_id.sql")
 /// transaction, or a crash between them would leave a gate saying yes over a
 /// grant that never heard.
 ///
-/// **`r.turn_id IS NULL` is an authorisation predicate, not a filter.** Without
-/// it this arm trusts two columns a fleet controls. `gate_type` is copied
-/// verbatim from the matched rule (`afd_gate::gate::detail::Stated::under`) and
-/// the raw config validates it for length alone, while `evidence` is read out
-/// of the event body. A fleet could therefore declare `gate_kind:
-/// "integration_grant"` on any benign tool, emit an event carrying
-/// `{"evidence":{"service":"github"}}`, and have the ordinary-looking card that
-/// raises flip its own standing permission to mint that service's credentials —
-/// granted by an operator who was answering a different question.
-///
-/// The event column is the discriminator because it is the one thing on this
-/// row a fleet cannot reach. [`super::grant_sql::REQUEST_GRANT`] writes NULL
-/// there by construction, and every rules-path gate carries a real one:
-/// `afd_gate`'s insert binds `turn_id: &str`, not an `Option`, so a card raised
-/// from an event can never be NULL. A forged type moves no grant.
+/// The arm trusts `gate_type` and `evidence` because only daemon code writes
+/// them: [`super::grant_sql::REQUEST_GRANT`] is the one writer of the grant
+/// kind, and a run's question binds the fixed question type and no evidence.
+/// No fleet authors a card's type, so a card's turn is free to name
+/// the waiting run its answer resumes. Approve moves the asked scope into
+/// force; Deny revokes the grant, a wider ask included.
 ///
 /// The trailing count is how many of the fleet's gates still wait once this
 /// action is answered, read in the same statement so the frame announcing the
@@ -115,7 +106,8 @@ pub(crate) const SELECT_GATE_BY_ID: &str = include_str!("select_gate_by_id.sql")
 ///
 /// `$1` status, `$2` detail, `$3` resolver, `$4` action, `$5` fleet filter
 /// (empty disables), `$6` approved status, `$7` grant approved, `$8` grant
-/// revoked, `$9` grant gate type, `$10` the archived fleet status.
+/// revoked, `$9` grant gate type, `$10` the archived fleet status. It answers
+/// the gate's type beside its attribution, which decides what continues.
 pub(crate) const RESOLVE_GATE: &str = include_str!("resolve_gate.sql");
 
 /// The gate an action already holds, newest first.

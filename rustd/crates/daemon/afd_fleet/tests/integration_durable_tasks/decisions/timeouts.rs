@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use af_core::{error_code, test_util::trace::Capture};
-use af_wire::durable_task::{DecisionAssessment, DecisionReservationInput};
+use af_wire::durable_task::DecisionReservationInput;
 use afd_db::{Db, config::DbRole};
 use afd_fleet::{
     durable_task::{DurableTaskLifecycle as _, DurableTasks},
@@ -27,7 +27,7 @@ async fn blocked_and_cancelled_decisions_release_connections_and_preserve_native
 async fn blocked(case: &Case, capture: &Capture) {
     let fixture = Decisions::create(case).await;
     let (database, tasks) = single_connection(&fixture).await;
-    let input = fixture.reservation(DecisionAssessment::Message, None);
+    let input = fixture.call_input().await;
     let mut connection = case
         .held
         .fixtures

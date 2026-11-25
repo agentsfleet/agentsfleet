@@ -158,7 +158,6 @@ export type TurnFailurePresentation = {
 
 const FAILURE_PRESENTATION: Record<string, TurnFailurePresentation> = {
   startup_posture: { label: "Failed a startup safety check", guidance: "startup" },
-  budget_breach: { label: "Fleet budget limit reached", guidance: null },
   policy_deny: { label: "Blocked by fleet policy", guidance: null },
   timeout_kill: { label: "Timed out", guidance: null },
   oom_kill: { label: "Ran out of memory", guidance: null },

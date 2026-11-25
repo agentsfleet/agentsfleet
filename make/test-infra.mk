@@ -18,7 +18,13 @@ AGENTSFLEET_MAILPIT_UI_PORT ?= $(shell echo $$(( $(AGENTSFLEET_API_HOST_PORT) + 
 export AGENTSFLEET_MAILPIT_SMTP_PORT AGENTSFLEET_MAILPIT_UI_PORT
 
 # The services the suites read, by these exact names: `?=` so the environment
-# wins, `export` so a test reads what this file defines.
+# wins, `export` so a test reads what this file defines. The one service with
+# no local stand-in is defined nowhere here: the Linux-only recovery drill
+# (af_e2e `recovery_process`) checkpoints into the CI R2 bucket and reads
+# AGENTSFLEET_R2_CI_ACCOUNT_ID, _BUCKET, _ACCESS_KEY_ID and _SECRET_ACCESS_KEY
+# from the environment, the fields of the development vault item
+# `cloudflare-r2-ci`; CI's e2e shard loads them, and the drill fails naming
+# any that are unset.
 # sslmode=disable is in the default because local Postgres has no TLS; a hosted
 # URL from the environment keeps its own. 127.0.0.1, not `localhost`: on macOS
 # the name cost up to 6 s per connect against a 5 s budget.

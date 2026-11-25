@@ -8,7 +8,7 @@ test.describe("Footer navigation", () => {
     await page.getByRole("contentinfo").getByRole("link", { name: /^Agents$/i }).click();
     await expect(page).toHaveURL(/\/agents/);
     await expect(page.getByRole("heading", { level: 1 })).toContainText(
-      "This page is for agents.",
+      "Start a fleet from your terminal",
     );
   });
 
@@ -57,6 +57,6 @@ test("removed page URLs show not-found with working recovery links", async ({ pa
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("This page isn’t here.");
     await page.getByRole("link", { name: "Explore agents", exact: true }).click();
     await expect(page).toHaveURL(/\/agents$/);
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("This page is for agents.");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Start a fleet from your terminal");
   }
 });

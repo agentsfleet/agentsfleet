@@ -51,20 +51,22 @@ impl State {
 }
 
 /// The model and pinned digests a checkpoint of a run on `model`, under
-/// `inference` and a window of `context_tokens`, with `instructions` as its
-/// system prompt, carries: the run's own notes and the thread's saved ones
-/// alike.
+/// `inference` and a window of `context_tokens`, whose system prompt opens
+/// with `fixed`, carries: the run's own notes and the thread's saved ones
+/// alike. Only the fixed text is pinned: the memory, access and task blocks
+/// after it change between runs, and a summary written under one still reads
+/// under the next.
 pub(super) fn digests(
     model: &str,
     inference: Option<&af_wire::inference::ModelInference>,
     context_tokens: u32,
-    instructions: &str,
+    fixed: &str,
 ) -> af_context::Result<(String, String)> {
     let measured = serde_json::to_vec(&(ESTIMATOR, model, inference, context_tokens))
         .map_err(af_context::Error::boundary)?;
     Ok((
         hex::encode(Sha256::digest(measured)),
-        hex::encode(Sha256::digest(instructions.as_bytes())),
+        hex::encode(Sha256::digest(fixed.as_bytes())),
     ))
 }
 
@@ -165,7 +167,7 @@ impl Harness<'_, '_> {
             self.shared.model,
             self.shared.inference,
             self.shared.model_context_tokens,
-            &self.shared.instructions,
+            &self.shared.fixed,
         )?;
         let identity = Identity {
             scope: format!(

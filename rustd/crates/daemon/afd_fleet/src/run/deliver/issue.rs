@@ -33,7 +33,7 @@ impl RunService {
     {
         let Some(issued) = self
             .runs
-            .issue_for_revision(
+            .issue(
                 runner,
                 &checked.acquired,
                 Billed {
@@ -43,7 +43,6 @@ impl RunService {
                     model: &checked.billed.model,
                 },
                 now,
-                checked.installed.issue_revision.as_ref(),
             )
             .await?
         else {
@@ -56,16 +55,7 @@ impl RunService {
         }
         self.runs
             .latest()
-            .observe(
-                &checked.acquired.fleet_id,
-                checked
-                    .installed
-                    .issue_revision
-                    .as_ref()
-                    .map(|proof| &proof.current),
-                checked.acquired.opened.catalogue_version,
-            )
-            .await;
+            .observe(checked.acquired.opened.catalogue_version);
         af_observability::producers::fleet::runner::run_taken(runner.as_str());
         super::log_issued(
             runner,
@@ -81,7 +71,7 @@ impl RunService {
         &self,
         runner: &Uuid7,
         checked: &CheckedFleetWork,
-        policy: ExecutionPolicy<'_>,
+        mut policy: ExecutionPolicy<'_>,
         issued: Issued,
         emit: &mut F,
     ) -> Result<Step<Assigned<T>>>
@@ -89,6 +79,20 @@ impl RunService {
         T: Send,
         F: for<'a> FnMut(RunPayload<'a>, AssignedRun) -> T + Send,
     {
+        withhold_task_tools(&mut policy.tools, issued.decision.is_some());
+        let unfinished_tasks =
+            if issued.decision.is_some() && issued.task.is_none() && checked.acquired.opened.judged
+            {
+                let mut connection = self.runs.pool().acquire().await?;
+                crate::durable_task::inputs::unfinished(
+                    &mut connection,
+                    &checked.acquired.fleet_id,
+                    &checked.acquired.workspace_id,
+                )
+                .await?
+            } else {
+                Vec::new()
+            };
         let turn_resume = if issued.task.is_none() {
             self.runs
                 .turn_resume(super::super::turn_checkpoint::TurnRun {
@@ -128,6 +132,7 @@ impl RunService {
                 turn_resume,
                 finished_calls,
                 expires_at: issued.expires_at,
+                unfinished_tasks,
             },
         ));
         Ok(Step::Go(Assigned(emit(body, metadata))))
@@ -164,6 +169,48 @@ fn metadata(issued: &Issued, checked: &CheckedFleetWork) -> AssignedRun {
             turn_created_at: acquired.turn_created_at,
             catalogue_version: Some(acquired.opened.catalogue_version),
         }),
-        draft: None,
+    }
+}
+
+/// The task tools need a judge: a run that carries no decision profile — its
+/// host is not task-capable, or the profile went between the assignment and
+/// the issue — is offered none.
+fn withhold_task_tools(tools: &mut Vec<std::borrow::Cow<'_, str>>, judged: bool) {
+    if !judged {
+        tools.retain(|tool| !afd_gate::policy::catalog::TASK_TOOLS.contains(&tool.as_ref()));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use afd_gate::policy::catalog::{TASK_TOOLS, offered};
+
+    use super::withhold_task_tools;
+
+    fn task_tools(tools: &[std::borrow::Cow<'_, str>]) -> usize {
+        tools
+            .iter()
+            .filter(|tool| TASK_TOOLS.contains(&tool.as_ref()))
+            .count()
+    }
+
+    // Value: protects=a run with no judge is offered no task tool, whether its
+    // host is not task-capable or the run carries no decision profile;
+    // fails_when=the catalog offers task tools unjudged, or the issue keeps
+    // them for a run with no profile; seam=the catalog and the issue's filter.
+    #[test]
+    fn a_run_without_a_decision_profile_is_offered_no_task_tools() {
+        let mut incapable = offered(false);
+        let mut unprofiled = offered(true);
+        let mut judged = offered(true);
+
+        withhold_task_tools(&mut incapable, false);
+        withhold_task_tools(&mut unprofiled, false);
+        withhold_task_tools(&mut judged, true);
+
+        assert_eq!(task_tools(&incapable), 0);
+        assert_eq!(task_tools(&unprofiled), 0);
+        assert_eq!(task_tools(&judged), TASK_TOOLS.len());
+        assert_eq!(unprofiled.len(), incapable.len(), "only the task tools go");
     }
 }

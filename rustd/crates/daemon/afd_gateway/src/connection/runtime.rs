@@ -55,7 +55,6 @@ impl ConfirmedConnection {
             self.authority,
             self.cache,
             streams.writers,
-            self.hello.accepted,
         ));
         reconcile(&services, &self.hello.running).await?;
         streams
@@ -148,17 +147,13 @@ impl ConnectionServices {
         authority: afd_runner::capacity::authority::Authority,
         cache: super::cache::RunCache,
         output: super::StreamWriters,
-        accepted: af_wire::run::AcceptedKinds,
     ) -> Self {
         let dependencies = &gateway.inner.dependencies;
         Self {
             runs: dependencies.runs.clone().for_connection(authority.clone()),
-            drafts: dependencies.drafts.clone(),
-            creations: dependencies.creations.clone(),
             authority,
             cache,
             output,
-            accepted,
             checkpoint_verifications: tokio::sync::Semaphore::new(2),
             renewal_ticks: std::sync::atomic::AtomicU64::new(0),
             handle,

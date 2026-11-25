@@ -60,7 +60,7 @@ test.describe("signup first visit", () => {
       });
   });
 
-  test("a dashboard opened before signup's writeback reaches the workspace, waiting on setup and never on the error page", {tag: "@post-deploy"}, async ({ page }) => {
+  test("a dashboard opened before signup's writeback reaches the workspace, waiting on setup and never on the error page", async ({ page }) => {
     const email = uniqueEmail();
     createdEmail = email;
     const { sessionId, clerkUserId } = await createClerkAccount(page, email, PASSWORD);

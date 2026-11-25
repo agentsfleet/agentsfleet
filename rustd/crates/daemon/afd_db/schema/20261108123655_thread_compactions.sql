@@ -1,7 +1,7 @@
--- Private working state for one conversation, one row per thread: a setup draft's chat or a
--- fleet's. Only a compaction writes it: each run of the thread reads it at its start and saves
--- the summary its compaction writes, fenced by the run. `resource_version` mirrors the document's generation and is
--- written with it in the same statement. It goes with its thread, which goes with its owner.
+-- Private working state for one conversation, one row per thread: a fleet's chat. Only a
+-- compaction writes it: each run of the thread reads it at its start and saves the summary its
+-- compaction writes, fenced by the run. `resource_version` mirrors the document's generation and
+-- is written with it in the same statement. It goes with its thread, which goes with its fleet.
 CREATE TABLE thread.compactions (
     id                  UUID PRIMARY KEY,
     thread_id           UUID NOT NULL REFERENCES thread.threads(id) ON DELETE CASCADE,

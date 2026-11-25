@@ -1,6 +1,6 @@
 [package]
 name = "afd_setup"
-description = "Creator-private fleet drafts, immutable candidates, and the daemon half of setup runs."
+description = "A workspace's fleets: the create from a first message, read, change and delete, their trigger rows, and the fleet chat's compaction store."
 autotests = false
 version.workspace = true
 edition.workspace = true
@@ -13,67 +13,57 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-# A delete ends setup and live work and removes the row in one transaction.
+# A delete ends live work and removes the row in one transaction.
 afd_fleet_lifecycle.workspace = true
-# The draft's credential inspection reads the vault on the review transaction.
-afd_vault.workspace = true
+# The wake a new fleet's first turn rings, after its commit.
 afd_bus.workspace = true
 af_core = { workspace = true, features = ["sqlx"] }
+# The fleet chat's compaction store implements its checkpoint port.
 af_context.workspace = true
+# The runtime rate a model choice is priced at.
 afd_billing.workspace = true
 af_crypto.workspace = true
 afd_db.workspace = true
+# A fleet's model resolves through the owner's registry.
 afd_credential.workspace = true
-afd_connector.workspace = true
+# A fleet's name and its stored network scope.
 af_fleet_runtime.workspace = true
 af_validate.workspace = true
 af_wire.workspace = true
-afd_runner.workspace = true
-# The run and runner status spellings the setup statements bind.
+# The run status spelling an archive or a delete marks runs under.
 afd_state.workspace = true
 afd_turns.workspace = true
+# A fleet read lists its grants.
 afd_approval.workspace = true
-afd_cron.workspace = true
 afd_api_wire.workspace = true
-# The product-analytics reporter the private-chat-to-fleet funnel steps go to,
-# each after the commit that made it true.
-af_observability.workspace = true
 garde.workspace = true
 hex.workspace = true
 # Instants: `TIMESTAMPTZ(3)` columns decode to `jiff::Timestamp` through
 # jiff-sqlx.
 jiff.workspace = true
 jiff-sqlx.workspace = true
-moka.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
-futures-util.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["time"] }
-zeroize.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
-# The probe bus a running-cancellation proof stands in for the real one.
-async-trait.workspace = true
 afd_bus = { workspace = true, features = ["test-util"] }
-proc-macro2.workspace = true
-syn.workspace = true
+# A controlled entropy source, so a create's derived name is known before it runs.
+af_crypto = { workspace = true, features = ["test-util"] }
 # One isolated allocator observer also checks the runner's public secret owner.
 af_secrets.workspace = true
-afd_runner = { workspace = true, features = ["test-util"] }
 afd_approval = { workspace = true, features = ["test-util"] }
 afd_turns = { workspace = true, features = ["test-util"] }
 afd_db = { workspace = true, features = ["test-util"] }
-af_observability = { workspace = true, features = ["test-util"] }
-# The mocked entropy source, so a proof can make one draw fail.
-af_crypto = { workspace = true, features = ["test-util"] }
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "io-util", "test-util"] }
+# A credential refusal's vault cause, built from the vault's own name parser.
+afd_vault.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time"] }
 
 [features]
-test-util = ["afd_db/test-util", "afd_billing/test-util", "afd_bus/test-util"]
+test-util = ["afd_db/test-util", "afd_bus/test-util"]
 
 [lints]
 workspace = true

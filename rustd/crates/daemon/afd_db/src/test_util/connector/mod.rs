@@ -24,30 +24,49 @@ const CONTEXT_INSTALL: &str = "seed a connector install";
 /// The reason a seeded grant was requested for, when the suite names none.
 const FIXTURE_REASON: &str = "fixture";
 
-/// One fleet's grant over one service, in `status`. Neither approved nor
-/// revoked, and stamped by the database's `now()`, unless the suite says so.
+/// One fleet's grant over one service, of `grant_type`, in `status`. No scope,
+/// neither approved nor revoked, and stamped by the database's `now()`, unless
+/// the suite says so.
+///
+/// `grant_type` and `status` are arguments for the reason `FleetSeed`'s status is:
+/// their spellings live above this crate, in `afd_api_wire::grant`.
 #[derive(Debug, Clone, Copy)]
 #[must_use = "a seed writes nothing until `insert` runs"]
 pub struct GrantSeed<'a> {
     fleet_id: &'a Uuid7,
     service: &'a str,
+    grant_type: &'a str,
     status: &'a str,
+    scope: Option<&'a str>,
     approved_at: Option<Timestamp>,
     revoked_at: Option<Timestamp>,
     created_at: Option<Timestamp>,
 }
 
 impl<'a> GrantSeed<'a> {
-    /// A grant of `service` to `fleet_id`, in `status`.
-    pub const fn new(fleet_id: &'a Uuid7, service: &'a str, status: &'a str) -> Self {
+    /// A grant of `service` to `fleet_id`, of `grant_type`, in `status`.
+    pub const fn new(
+        fleet_id: &'a Uuid7,
+        service: &'a str,
+        grant_type: &'a str,
+        status: &'a str,
+    ) -> Self {
         Self {
             fleet_id,
             service,
+            grant_type,
             status,
+            scope: None,
             approved_at: None,
             revoked_at: None,
             created_at: None,
         }
+    }
+
+    /// The GitHub scope in force, as the JSON a grant stores.
+    pub const fn scope(mut self, scope: &'a str) -> Self {
+        self.scope = Some(scope);
+        self
     }
 
     /// When a person approved it.
@@ -79,7 +98,9 @@ impl<'a> GrantSeed<'a> {
             .bind(&id)
             .bind(self.fleet_id)
             .bind(self.service)
+            .bind(self.grant_type)
             .bind(self.status)
+            .bind(self.scope)
             .bind(FIXTURE_REASON)
             .bind(self.approved_at.map(Timestamp::to_sqlx))
             .bind(self.revoked_at.map(Timestamp::to_sqlx))

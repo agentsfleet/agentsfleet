@@ -27,8 +27,6 @@ type Props = {
   showValueNotice?: boolean;
   workspaceId: string;
   initialName?: string;
-  initialFields?: readonly string[];
-  initialHost?: string;
   /** Called after a successful submit — lets a dialog-hosted mount close itself. */
   onDone?: (name: string) => void;
   /** Called when a dialog-hosted mount should close without saving. */
@@ -57,18 +55,7 @@ const fieldSchema = z.object({
   value: z.string().min(1, "Value is required"),
 });
 
-const HOST_REQUIRED = "Enter the host allowed to receive this access";
-const HOST_INVALID = "Enter a host such as api.fly.io, without a URL path or port";
-const hostSchema = z.string().trim().min(1, HOST_REQUIRED).refine(value => {
-  try {
-    const url = new URL(`https://${value}`);
-    return url.hostname === value.toLowerCase() && url.port === "" && url.pathname === "/"
-      && url.search === "" && url.hash === "" && url.username === "" && url.password === "";
-  } catch {return false;}
-}, HOST_INVALID);
-
 const schema = z.object({
-  host: z.string().optional(),
   name: z
     .string()
     .trim()
@@ -95,15 +82,8 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
-function formSchema(mode: Props["mode"], host: boolean) {
-  const names = mode === SECRET_FORM_MODE.REPLACE ? schema.extend({name: z.string()}) : schema;
-  if (!host) return names;
-  return names.extend({host: hostSchema}).superRefine((values, context) => {
-    values.fields.forEach((field, index) => {
-      if (field.key === "host") context.addIssue({code: z.ZodIssueCode.custom,
-        path: ["fields", index, "key"], message: "Use Allowed host above instead of a host field"});
-    });
-  });
+function formSchema(mode: Props["mode"]) {
+  return mode === SECRET_FORM_MODE.REPLACE ? schema.extend({name: z.string()}) : schema;
 }
 
 const EMPTY_FIELD = { key: "", value: "" };
@@ -111,13 +91,12 @@ const EMPTY_FIELD = { key: "", value: "" };
 export default function AddSecretForm(props: Props) {
   const state = useSecretForm(props);
   const {form, pending, apiError, onSubmit} = state;
-  const [namedFields, setNamedFields] = useState(props.mode === SECRET_FORM_MODE.REPLACE || Boolean(props.initialFields?.length));
+  const [namedFields, setNamedFields] = useState(props.mode === SECRET_FORM_MODE.REPLACE);
   const submitLabel = props.mode === SECRET_FORM_MODE.REPLACE ? "Replace value" : ADD_SECRET_LABEL;
   return <Form {...form}>
     <form onSubmit={event => {void form.handleSubmit(onSubmit)(event);}}>
       <div className="space-y-xl">
         <SecretNameField form={form} readOnly={props.mode === SECRET_FORM_MODE.REPLACE} />
-        {props.initialHost !== undefined ? <SecretHostField form={form} /> : null}
         {namedFields ? <SecretFields form={form} /> : <>
           <FormField control={form.control} name="fields.0.value" render={({field}) => <FormItem>
             <FormLabel>Value</FormLabel><FormControl><Input type="password" autoComplete="off" spellCheck={false} {...field} /></FormControl><FormMessage />
@@ -138,19 +117,17 @@ export default function AddSecretForm(props: Props) {
   </Form>;
 }
 
-function useSecretForm({workspaceId, initialName = "", initialFields = [], initialHost, onDone, onPendingChange, mode = SECRET_FORM_MODE.CREATE}: Props) {
+function useSecretForm({workspaceId, initialName = "", onDone, onPendingChange, mode = SECRET_FORM_MODE.CREATE}: Props) {
   const router = useRouter();
   const [apiError, setApiError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const form = useForm<FormValues>({
-    resolver: zodResolver(formSchema(mode, initialHost !== undefined)),
-    defaultValues: {name: initialName, host: initialHost,
-      fields: initialFields.length ? initialFields.map(key => ({key, value: ""})) : [{key: mode === SECRET_FORM_MODE.CREATE ? "value" : "", value: ""}]},
+    resolver: zodResolver(formSchema(mode)),
+    defaultValues: {name: initialName, fields: [{key: mode === SECRET_FORM_MODE.CREATE ? "value" : "", value: ""}]},
   });
   const onSubmit = (values: FormValues): void => {
     setApiError(null);
     const data: Record<string, string> = Object.fromEntries(values.fields.map(entry => [entry.key.trim(), entry.value]));
-    if (values.host) data.host = values.host;
     onPendingChange?.(true);
     startTransition(async () => {
       try {
@@ -162,7 +139,7 @@ function useSecretForm({workspaceId, initialName = "", initialFields = [], initi
           return;
         }
         if (mode === SECRET_FORM_MODE.CREATE) captureProductEvent(EVENTS.secret_added, {secret_name: name});
-        form.reset({name: "", host: initialHost, fields: [{key: mode === SECRET_FORM_MODE.CREATE ? "value" : "", value: ""}]});
+        form.reset({name: "", fields: [{key: mode === SECRET_FORM_MODE.CREATE ? "value" : "", value: ""}]});
         onDone?.(name);
         router.refresh();
       } catch {
@@ -182,15 +159,6 @@ function SecretNameField({form, readOnly}: {form: SecretForm; readOnly: boolean}
     <p className="text-eyebrow leading-eyebrow text-text-dim">
       Reference its fields in instructions as <code className="font-mono">${"{secrets.name.field}"}</code>.
     </p>
-    <FormMessage />
-  </FormItem>} />;
-}
-
-function SecretHostField({form}: {form: SecretForm}) {
-  return <FormField control={form.control} name="host" render={({field}) => <FormItem>
-    <FormLabel>Allowed host</FormLabel>
-    <FormControl><Input placeholder="api.fly.io" autoComplete="off" spellCheck={false} {...field} /></FormControl>
-    <p className="text-body-sm text-muted-foreground">This access can only be sent to this host. Saving does not verify the token.</p>
     <FormMessage />
   </FormItem>} />;
 }

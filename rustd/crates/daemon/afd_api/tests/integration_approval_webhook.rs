@@ -18,7 +18,7 @@
 //! Two doors resolve one gate: a person clicking in the dashboard and a person
 //! clicking in Slack. They must leave the same row, or a gate's history depends
 //! on which button was nearer. `both_doors_leave_the_same_row` is that
-//! comparison, and it is the reason this file seeds two identical gates.
+//! comparison, and it is the reason this file seeds two identical access cards.
 
 #![cfg(feature = "test-util")]
 #![expect(
@@ -30,6 +30,7 @@ use crate::harness;
 
 use af_core::error_code;
 use af_webhook::Scheme;
+use afd_api_wire::grant::status as grant;
 use http::{Method, StatusCode};
 use serde_json::Value;
 
@@ -71,7 +72,7 @@ async fn callback(router: &axum::Router, fleet: &str, body: &str) -> axum::respo
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_approved_callback_resolves_the_gate_and_continues_the_run() {
-    let fixture = Fixture::create().await;
+    let mut fixture = Fixture::create().await;
     fixture.seed().await;
     let router = fixture.router();
 
@@ -99,6 +100,8 @@ async fn an_approved_callback_resolves_the_gate_and_continues_the_run() {
         by, BY_SLACK_WEBHOOK,
         "the audit column names the door, not the person Slack showed"
     );
+    // An approved card hands the fleet the access it asked for.
+    assert_eq!(fixture.grant_status(&fixture.fleet).await, grant::APPROVED);
     assert_eq!(
         fixture.continuations(&fixture.event).await,
         1,
@@ -115,7 +118,7 @@ async fn a_redelivered_callback_continues_the_run_exactly_once() {
     // case rather than an adversarial one. The gate is already resolved on the
     // second pass, which takes `AlreadyResolved` — the arm that answers 200
     // and must not write a second continuation.
-    let fixture = Fixture::create().await;
+    let mut fixture = Fixture::create().await;
     fixture.seed().await;
     let router = fixture.router();
     let body = payload(fixture.action.as_str(), "approve");
@@ -144,8 +147,8 @@ async fn a_redelivered_callback_continues_the_run_exactly_once() {
 
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn a_denial_resolves_the_gate_and_starts_nothing() {
-    let fixture = Fixture::create().await;
+async fn a_denial_resolves_the_gate_and_resumes_the_run_without_the_access() {
+    let mut fixture = Fixture::create().await;
     fixture.seed().await;
     let router = fixture.router();
 
@@ -160,10 +163,14 @@ async fn a_denial_resolves_the_gate_and_starts_nothing() {
     let (state, _by) = fixture.gate_state(&fixture.gate).await;
     assert_eq!(state, "denied");
     assert_eq!(
+        fixture.grant_status(&fixture.fleet).await,
+        grant::REVOKED,
+        "a denied card leaves the fleet without the access it asked for"
+    );
+    assert_eq!(
         fixture.continuations(&fixture.event).await,
-        0,
-        "a denial is the end of the run, so resuming it would run the very \
-         thing a person refused"
+        1,
+        "the run that asked resumes knowing it was refused"
     );
 
     fixture.cleanup().await;
@@ -177,7 +184,7 @@ async fn a_gate_of_another_fleet_is_not_resolvable_through_this_fleets_path() {
     // secret could resolve any gate in the deployment by naming its action —
     // and the secret is shared by every fleet, so "holding it" is the normal
     // state rather than a compromise.
-    let fixture = Fixture::create().await;
+    let mut fixture = Fixture::create().await;
     fixture.seed().await;
     let router = fixture.router();
 
@@ -206,7 +213,7 @@ async fn both_doors_leave_the_same_row() {
     // on afterwards is something that depends on which button was nearer, which
     // is what this asserts there is none of — beyond the audit columns, whose
     // whole job is to differ.
-    let fixture = Fixture::create().await;
+    let mut fixture = Fixture::create().await;
     fixture.seed().await;
     let router = fixture.router();
 
@@ -219,7 +226,7 @@ async fn both_doors_leave_the_same_row() {
         fixture.other_workspace.as_str(),
         fixture.other_gate
     );
-    let clicked = send(&router, Method::POST, &item, Some(&fixture.token), "").await;
+    let clicked = send(&router, Method::POST, &item, Some(fixture::SESSION), "").await;
     let status = clicked.status();
     let document = json_body(clicked).await;
     assert_eq!(status, StatusCode::OK, "{document}");
@@ -229,6 +236,11 @@ async fn both_doors_leave_the_same_row() {
     assert_eq!(
         slack_state, dashboard_state,
         "one gate's state cannot depend on which door answered it"
+    );
+    assert_eq!(
+        fixture.grant_status(&fixture.fleet).await,
+        fixture.grant_status(&fixture.other_fleet).await,
+        "nor can the access it hands the fleet"
     );
     assert_eq!(slack_by, BY_SLACK_WEBHOOK);
     assert_eq!(
@@ -261,7 +273,7 @@ async fn both_doors_leave_the_same_row() {
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_signed_callback_this_daemon_cannot_read_is_refused_after_it_verifies() {
-    let fixture = Fixture::create().await;
+    let mut fixture = Fixture::create().await;
     fixture.seed().await;
     let router = fixture.router();
 
@@ -302,7 +314,7 @@ async fn an_approval_for_an_archived_fleet_is_refused_and_the_gate_stays_pending
     // The resolving statement skips an archived fleet's gate, so the second
     // read finds it unanswered: the fleet is gone, not the gate. A continuation
     // here would restart a run on a fleet its owner retired.
-    let fixture = Fixture::create().await;
+    let mut fixture = Fixture::create().await;
     fixture.seed().await;
     let mut connection = fixture.database.acquire().await.expect("an API connection");
     sqlx::query("UPDATE fleet.fleets SET status = $2 WHERE id = $1")

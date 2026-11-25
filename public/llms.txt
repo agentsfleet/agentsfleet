@@ -10,20 +10,21 @@
 https://agentsfleet.net/v1
 
 ## Operations (operationId: method path)
-Status transitions ride PATCH on the fleet resource — body {status: "active"|"archived"}.
-A tripped gate archives the fleet; approving a setup grant retries setup without a PATCH.
-- create_fleet:        POST   /v1/workspaces/{workspace_id}/fleets     # body: {source, name, review_digest, start} — saves a reviewed draft
-- patch_fleet:         PATCH  /v1/workspaces/{workspace_id}/fleets/{fleet_id}     # body: {name?, status?}
-                       #   status "active"   — activate an installing fleet, retrying setup
+A fleet is a chat from its first message. Archiving rides PATCH on the fleet resource — body {status: "archived"}.
+A tripped gate archives the fleet.
+- create_fleet:        POST   /v1/workspaces/{workspace_id}/fleets     # body: {message, operation_id, model_ref?, name?} — an active fleet and its first turn
+- patch_fleet:         PATCH  /v1/workspaces/{workspace_id}/fleets/{fleet_id}     # body: {name?, status?, model_ref?, http_egress?, package_domains?}
                        #   status "archived" — cancel its work, keep history (irreversible)
-- apply_fleet_revision: POST  /v1/workspaces/{workspace_id}/fleets/{fleet_id}/revisions   # apply a reviewed setup improvement
+                       #   http_egress / package_domains — a signed-in person only; an API key is refused 403
+- list_fleet_triggers: GET    /v1/workspaces/{workspace_id}/fleets/{fleet_id}/triggers   # what may wake the fleet
+- remove_fleet_trigger: DELETE /v1/workspaces/{workspace_id}/fleets/{fleet_id}/triggers/{trigger_id}
 - delete_fleet:        DELETE /v1/workspaces/{workspace_id}/fleets/{fleet_id}     # hard-purge in any status
 - post_fleet_message:  POST   /v1/workspaces/{workspace_id}/fleets/{fleet_id}/messages   # steer / chat
 - list_fleet_turns:    GET    /v1/workspaces/{workspace_id}/fleets/{fleet_id}/turns
 - stream_fleet_turns:  GET    /v1/workspaces/{workspace_id}/fleets/{fleet_id}/turns/stream
 - ingest_connector_webhook: POST /v1/ingress/{provider}
 - ingest_qstash_schedule: POST /v1/ingress/qstash/schedules
-- receive_source_webhook: POST /v1/webhooks/{fleet_id}/{source}   # the URL Save returns per webhook trigger
+- receive_source_webhook: POST /v1/webhooks/{fleet_id}/{source}   # the URL a webhook trigger lists
 - get_tenant_billing:         GET /v1/tenants/me/billing
 - get_tenant_billing_charges: GET /v1/tenants/me/billing/charges
 - get_tenant_billing_report: GET /v1/tenants/me/billing/reports/current

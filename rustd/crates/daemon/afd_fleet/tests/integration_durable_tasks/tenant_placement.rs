@@ -1,23 +1,14 @@
-//! A tenant runner never takes work whose running revision is on the platform
-//! model, and a head it may not take blocks its fleet rather than being jumped.
+//! A tenant runner never takes a task run of a fleet on the platform model.
 
 use af_core::id::Uuid7;
-use af_fleet_runtime::definition::{POLICY_SEMANTICS, canonical_digest};
 use af_wire::runner::{HeartbeatRequest, HeldFleets, NetworkPolicy, SandboxTier};
 use afd_fleet::durable_task::DurableTaskLifecycle as _;
 use afd_fleet::run::Billed;
 use afd_runner::RunnerEdit;
-use afd_turns::Producer;
 
 use super::fixture::{Case, exercise};
 use crate::requests::{capable, enrolment_tagged, placement_tag};
 use crate::seed::{MODEL, PROVIDER, select_fleet};
-
-/// The tenant's own model: anything but the platform default.
-const TENANT_MODEL: &str = "tenant-own-model";
-
-/// The case's native setup, as `Case::create` saves it.
-const CONFIG: &str = r#"{"name":"pull-request-repair","x-agentsfleet":{"tools":[],"triggers":[],"budget":{"daily_nanos":"1000000000"}}}"#;
 
 /// A runner the case's tenant registered, tagged for its fleet, that reports
 /// the task capability and has durable tasks switched on by a platform admin.
@@ -77,18 +68,18 @@ async fn tenant_runner(case: &Case) -> Uuid7 {
     runner
 }
 
-/// Binds two goals, so the second queues a task-bound continuation, then
-/// retires the source and lapses the assignment: the continuation becomes the head.
+/// Binds one goal, which queues its task-bound continuation, then retires
+/// the source and lapses the assignment: the continuation becomes the head.
 /// Answers the continuation's turn.
 async fn queued_continuation(case: &Case) -> Uuid7 {
     let binding = case
         .tasks
-        .bind(case.run(), &case.plan("tenant-placement", 2))
+        .bind(case.run(), &case.plan("tenant-placement", 1))
         .await
         .expect("a real task continuation");
     let task = binding
         .items
-        .get(1)
+        .first()
         .expect("the queued goal")
         .durable_task_id
         .clone()
@@ -149,34 +140,14 @@ async fn lapse(case: &Case) {
     .await;
 }
 
-/// Moves the fleet's head revision onto the tenant's own model; the task keeps
-/// the revision it accepted, on the platform model.
-async fn head_on_tenant_model(case: &Case) {
-    let definition = crate::setup::definition(CONFIG);
-    let stored = serde_json::to_string(&definition).expect("definition JSON");
-    let digest = canonical_digest(&definition).expect("canonical digest");
-    case.held
-        .fixtures
-        .append_head(
-            &case.held.fleet,
-            &stored,
-            &digest,
-            POLICY_SEMANTICS,
-            Some(TENANT_MODEL),
-        )
-        .await;
-}
-
-// Value: protects=a task accepted on the platform model never runs on a tenant
-// runner, even with the fleet's head on the tenant's model; fails_when=the head
-// test reads the fleet's head instead of the task's revision; why_new=the model
-// filter; seam=an Acquired handed straight to issue.
+// Value: protects=a task of a fleet on the platform model never runs on a
+// tenant runner; fails_when=the tenant-runner clause stops reading the fleet
+// row's model; seam=an Acquired handed straight to issue.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn platform_durable_task_revision_never_runs_on_a_tenant_runner() {
+async fn a_platform_model_task_never_runs_on_a_tenant_runner() {
     exercise(async |case| {
         queued_continuation(case).await;
-        head_on_tenant_model(case).await;
         let tenant = tenant_runner(case).await;
         for poll in 1..=2 {
             let picked = select_fleet(&case.held.runs, &tenant, &case.held.fleet).await;
@@ -192,7 +163,7 @@ async fn platform_durable_task_revision_never_runs_on_a_tenant_runner() {
         let issued = case
             .held
             .runs
-            .issue_for_revision(
+            .issue(
                 &tenant,
                 &acquired,
                 Billed {
@@ -202,7 +173,6 @@ async fn platform_durable_task_revision_never_runs_on_a_tenant_runner() {
                     model: MODEL,
                 },
                 case.held.now,
-                None,
             )
             .await
             .expect("the issue answers");
@@ -221,48 +191,6 @@ async fn platform_durable_task_revision_never_runs_on_a_tenant_runner() {
             .await
             .expect("the count reads");
         assert_eq!(runs, 0);
-    })
-    .await;
-}
-
-// Value: protects=a head a tenant runner may not take blocks the fleet for it;
-// fails_when=the model test filters rows before `ORDER BY sequence LIMIT 1`, so
-// a later turn jumps the head; why_new=the model filter; seam=none.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn tenant_runner_never_jumps_a_platform_model_head() {
-    exercise(async |case| {
-        let continuation = queued_continuation(case).await;
-        head_on_tenant_model(case).await;
-        let chat = case
-            .source(
-                Producer::Steer,
-                &afd_turns::view::steer_actor("native_durable_task_owner"),
-            )
-            .await;
-        let tenant = tenant_runner(case).await;
-
-        let first = select_fleet(&case.held.runs, &tenant, &case.held.fleet).await;
-        assert!(
-            first.is_none(),
-            "the tenant runner takes neither the head nor the chat behind it"
-        );
-
-        let head = select_fleet(&case.held.runs, &case.held.runner, &case.held.fleet)
-            .await
-            .expect("a platform runner takes the head");
-        assert_eq!(
-            head.turn_id, continuation,
-            "the platform runner took the head"
-        );
-
-        execute(case, SETTLE, &continuation).await;
-        lapse(case).await;
-
-        let next = select_fleet(&case.held.runs, &tenant, &case.held.fleet)
-            .await
-            .expect("once the head settles, the tenant runner takes the chat");
-        assert_eq!(next.turn_id, chat);
     })
     .await;
 }

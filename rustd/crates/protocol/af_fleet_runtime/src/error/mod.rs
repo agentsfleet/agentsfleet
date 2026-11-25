@@ -1,59 +1,34 @@
-//! What a fleet's stored configuration can be wrong about.
+//! What a trigger list, a GitHub scope, a fleet name or a statement list can
+//! be wrong about.
 //!
 //! # Two failures that must not collapse into one
 //!
-//! A MISSING key means the document is incomplete and the fix is to add a
-//! line. A MALFORMED one means the line is there and its value is the wrong
-//! shape. Answering `name: 123`, a non-array `triggers`, a non-object `budget`
-//! or a non-object `network` with `MissingRequiredField` would tell an author
-//! to add a key they can plainly see.
+//! A MISSING key means the request is incomplete and the fix is to add a
+//! field. A MALFORMED one means the field is there and its value is the wrong
+//! shape. Answering a non-array `repositories` with `MissingRequiredField`
+//! would tell an author to add a key they can plainly see.
 //!
 //! Here the split is STRUCTURAL rather than a rule authors follow. Every field
-//! of the deserialized schema is an `Option`, so serde is never asked for a
+//! of a deserialized raw type is an `Option`, so serde is never asked for a
 //! required field and can never raise "missing field": a deserialize failure
 //! is therefore only ever a shape failure, and it becomes
-//! [`Error::InvalidFieldType`]. [`Error::MissingRequiredField`] is raised in
-//! exactly one place — where this crate turns the schema into a policy and
-//! finds a `None` it needs. Neither failure can drift into the other, because
-//! neither has a code path to the other's constructor.
+//! `InvalidFieldType`. `MissingRequiredField` is raised in exactly one place —
+//! where a raw type is resolved and a `None` it needs is found.
 //!
 //! A shape failure carries serde's position and the type it expected, through
 //! [`Unreadable`](af_core::json::Unreadable), and never the value it refused:
-//! serde quotes that value, and a setup sent in the wrong shape is private text.
+//! serde quotes that value, and a request sent in the wrong shape may be
+//! private text.
 //!
 //! # This crate declares no `UZ-` code, and that is the rule
 //!
-//! RULE ERR: registry codes are REFERENCED, never re-declared. The wire code a
-//! caller reads for every failure below is `UZ-AGT-008`
-//! (`ERR_AGENTSFLEET_INVALID_CONFIG`), which already exists and already carries
-//! its own message — *"Config JSON is not valid. Check trigger, tools, budget;
-//! `name:` must be kebab `^[a-z0-9-]+$`, 1-64 chars."* Nothing here adds a
-//! registry entry, so the ERROR REGISTRY gate does not fire.
-//!
-//! [`Error::code`] REFERENCES that constant — it does not declare one — so the
-//! `af_core::error_shell!` hull can render `[UZ-AGT-008] <what went wrong>` in a
-//! log line without this crate owning a registry entry. The choice of what a
-//! CALLER is told still happens at the HTTP boundary, and the split is the one
-//! `afd_fleet::error::detail` already draws: WHAT WENT WRONG is this
-//! type, rich and structured, for the daemon's own reasoning and its logs; WHAT
-//! THE CALLER IS TOLD is a code and a sentence chosen by the handler. Keeping
-//! them apart is what lets this crate say `budget.daily_nanos must be greater
-//! than zero` internally while the caller still reads one stable code.
-//!
-//! One code for the whole crate is deliberate. An author fixes a configuration
-//! document the same way whichever rule they broke, so a caller has no branch
-//! to write on a finer code — and the detail they need is in the message, which
-//! is where the structure below goes.
-//!
-//! # Two verdicts a reader might guess wrong
-//!
-//! 1. A wrong-typed `name`, `triggers`, `tools`, `network` or `budget` answers
-//!    [`InvalidFieldType`](Error::InvalidFieldType), never
-//!    `MissingRequiredField`: the key is there, so the fix is its value.
-//! 2. A non-string `model` answers [`InvalidFieldType`](Error::InvalidFieldType)
-//!    rather than being dropped, so a fleet never silently runs on a model its
-//!    author did not name. A non-string `description` answers the same shape
-//!    error for the identical input.
+//! Registry codes are REFERENCED, never re-declared. The code a caller reads
+//! for every failure below is `UZ-AGT-008`
+//! (`AGENTSFLEET_INVALID_CONFIG`), and [`Error::code`] references that
+//! constant so the `af_core::error_shell!` hull can render
+//! `[UZ-AGT-008] <what went wrong>` in a log line. What a CALLER is told is
+//! chosen at the boundary that called this crate: a run's tool reads the
+//! sentence, and a route answers its own code.
 
 use af_core::error_code::{self, ErrorCode};
 
@@ -70,30 +45,24 @@ pub use self::raise::one_of_each_kind;
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
 af_core::error_shell!(
-    /// A stored configuration that could not become a policy, with the
-    /// backtrace of where it was refused.
+    /// A configuration request that could not be read, with the backtrace of
+    /// where it was refused.
     pub struct Error(ErrorKind);
 );
 
-/// Why a stored fleet configuration could not become a policy.
+/// Why a configuration request could not be read.
 ///
 /// Crate-visible so a raise site can name the variant, and crate-PRIVATE so the
-/// vocabulary can grow without it being a breaking change for the thirteen
-/// call sites outside this crate that only propagate.
+/// vocabulary can grow without it being a breaking change for the call sites
+/// outside this crate that only propagate.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ErrorKind {
-    /// A typed definition or edit does not preserve the supported setup shape.
-    #[error("invalid fleet definition: {reason}")]
-    InvalidDefinition {
-        /// A bounded reason; private instructions are never rendered.
-        reason: &'static str,
-    },
     /// The document is not JSON, or a value in it is the wrong shape.
     ///
     /// One variant for both because serde makes no distinction a caller could
     /// act on differently: either way the document has to be edited, and the
     /// position serde reports is what says where.
-    #[error("the stored configuration could not be read")]
+    #[error("the configuration could not be read")]
     InvalidFieldType {
         /// What serde could not read: its position and expected type, without
         /// the refused value.
@@ -107,48 +76,24 @@ pub(crate) enum ErrorKind {
         field: &'static str,
     },
 
-    /// A runtime key was authored at the top level instead of under
-    /// `x-agentsfleet`.
-    ///
-    /// Distinct from an unknown key because the fix differs: the key is spelled
-    /// correctly and is one level too high. Left as an unknown key it would be
-    /// dropped in silence — `gates:` at the root would install no rate limiting
-    /// and say nothing.
-    #[error("`{field}` belongs under the `x-agentsfleet` block, not at the top level")]
-    RuntimeKeyOutsideBlock {
-        /// The key to indent.
-        field: Box<str>,
-    },
-
-    /// A key under `x-agentsfleet` is not one this daemon knows.
+    /// A key the schema does not read.
     ///
     /// Rigid on purpose: a typo that parsed would configure nothing and report
-    /// nothing. Named in document order, so one document always names one key.
-    #[error("`{field}` is not a known `x-agentsfleet` key")]
-    UnknownRuntimeKey {
-        /// The key that is not in the known set.
-        field: Box<str>,
-    },
-
-    /// A key nested inside a setting the schema reads, or beside `name`, that
-    /// the schema does not read.
-    ///
-    /// Named by its path because the fix is that one key: a gate rule field
-    /// that does not exist is not the same mistake as an unknown setting.
+    /// nothing. Named by its path from the document root, never a value.
     #[error("`{path}` is an unsupported configuration key")]
     UnsupportedKey {
         /// Keys and positions from the document root, such as
-        /// `x-agentsfleet.gates.rules.0.severity`; never a value.
+        /// `0.credential_name`.
         path: Box<str>,
-        /// The runtime setting the key sits in, when the path passes one.
-        setting: Option<&'static str>,
     },
 
-    /// The `x-agentsfleet` block is absent.
-    ///
-    /// Not a missing field: the fix is a whole namespaced block, not one key.
-    #[error("the `x-agentsfleet` block is required and was not found")]
-    RuntimeBlockRequired,
+    /// A completion statement list breaks a rule its schema cannot state:
+    /// criteria other than `true` and `false`, or two statements sharing an id.
+    #[error("the completion statements are not usable: {reason}")]
+    InvalidStatement {
+        /// Which rule it broke.
+        reason: &'static str,
+    },
 
     /// A fleet name is not a kebab slug within its length bound.
     #[error("`{name}` is not a fleet name: {reason}")]
@@ -164,15 +109,6 @@ pub(crate) enum ErrorKind {
     InvalidCredentialRef {
         /// What was authored.
         name: Box<str>,
-        /// Which rule it broke.
-        reason: &'static str,
-    },
-
-    /// A declared spend ceiling is non-positive, non-finite, or above its cap.
-    #[error("`{field}` is not a spend ceiling: {reason}")]
-    InvalidBudget {
-        /// Which ceiling.
-        field: &'static str,
         /// Which rule it broke.
         reason: &'static str,
     },
@@ -225,19 +161,20 @@ pub(crate) enum ErrorKind {
     /// A field is outside the bounds its schema declares.
     ///
     /// Carries `garde`'s report, which names the exact PATH it refused —
-    /// `x-agentsfleet.tools[3]` rather than "tools".
-    #[error("the stored configuration is outside its bounds")]
+    /// `[0].events[3]` rather than "events".
+    #[error("the configuration is outside its bounds")]
     OutOfBounds {
         /// Every bound the document broke, with the path of each.
         source: garde::Report,
     },
 
-    /// The repository egress binding is half-declared or names nothing.
+    /// A GitHub scope is half-declared, names nothing, or pairs its access and
+    /// base in a way that cannot hold.
     ///
     /// A list with no access level does not know how far to reach; an access
     /// level with no list does not know what to reach. Either would fall back
-    /// to the installation's full scope, which is what the binding prevents.
-    #[error("the repository binding is not usable: {reason}")]
+    /// to the installation's full scope, which is what a scope prevents.
+    #[error("the repository scope is not usable: {reason}")]
     InvalidRepositoryBinding {
         /// Which rule it broke.
         reason: &'static str,
@@ -248,9 +185,9 @@ impl Error {
     /// The registry code every failure in this crate is read under.
     ///
     /// One code for the whole crate, REFERENCED and not declared — see the
-    /// module note. An author fixes a configuration document the same way
-    /// whichever rule they broke, so a caller has no branch to write on a finer
-    /// code, and the structure they need is in the message.
+    /// module note. A caller fixes a request the same way whichever rule it
+    /// broke, so it has no branch to write on a finer code, and the structure
+    /// it needs is in the message.
     #[must_use]
     pub const fn code(&self) -> ErrorCode {
         error_code::AGENTSFLEET_INVALID_CONFIG
@@ -258,26 +195,21 @@ impl Error {
 
     /// The setting this failure concerns, spelled as this crate's own key and
     /// never as authored text, so a log may carry it. `None` where the failure
-    /// is the document's shape or bounds rather than one setting's rule.
+    /// is the request's shape, bounds or an unread key rather than one
+    /// setting's rule.
     #[must_use]
-    pub fn field(&self) -> Option<&'static str> {
+    pub const fn field(&self) -> Option<&'static str> {
         match self.kind() {
-            ErrorKind::MissingRequiredField { field } | ErrorKind::InvalidBudget { field, .. } => {
-                Some(*field)
-            }
-            ErrorKind::RuntimeKeyOutsideBlock { field } => crate::config::runtime_key(field),
-            ErrorKind::UnsupportedKey { setting, .. } => *setting,
-            ErrorKind::UnknownRuntimeKey { .. } | ErrorKind::RuntimeBlockRequired => {
-                Some(crate::definition::RUNTIME_BLOCK)
-            }
+            ErrorKind::MissingRequiredField { field } => Some(*field),
             ErrorKind::InvalidName { .. } => Some("name"),
             ErrorKind::InvalidCredentialRef { .. } => Some("credentials"),
             ErrorKind::InvalidTriggerSet { .. }
             | ErrorKind::UnverifiableWebhookSource { .. }
             | ErrorKind::InvalidSignatureConfig { .. } => Some("triggers"),
             ErrorKind::InvalidRepositoryBinding { .. } => Some("repositories"),
-            ErrorKind::InvalidDefinition { .. }
-            | ErrorKind::InvalidFieldType { .. }
+            ErrorKind::InvalidStatement { .. } => Some("statements"),
+            ErrorKind::InvalidFieldType { .. }
+            | ErrorKind::UnsupportedKey { .. }
             | ErrorKind::OutOfBounds { .. } => None,
         }
     }

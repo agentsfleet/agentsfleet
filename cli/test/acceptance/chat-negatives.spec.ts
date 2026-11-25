@@ -1,4 +1,5 @@
-// Negative terminal journeys refuse missing input, inaccessible sources and duplicate names.
+// Negative terminal journeys: a draft flag that is gone, a create with no
+// message, and a second fleet under a taken name.
 
 import { describe, it, beforeAll, afterAll } from "bun:test";
 import assert from "node:assert/strict";
@@ -12,13 +13,17 @@ import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { resolveAcceptanceEnv, resolveClerkSecret, resolveFixtureEmail } from "./global-setup.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
 import { readAuthContext, type AuthContext } from "./fixtures/native-api.ts";
-import { fixtureDefinition, createNativeDraft, inspectDraft, saveNativeFleet, setupModel } from "./fixtures/native-setup.ts";
+import { createFleetFromCli, PROBE_MESSAGE } from "./fixtures/fleet-create.ts";
 import { assertNoSecretLeak } from "./fixtures/negatives.ts";
 import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
+import { REJECTION_CODE } from "../../src/constants/rejection.ts";
+
+// af_core/src/error_code/fleet.rs: a name this workspace already holds.
+const CODE_NAME_TAKEN = "UZ-AGT-006" as const;
 
 const live = (process.env.AGENTSFLEET_ACCEPTANCE_TARGET ?? "").startsWith("https://");
 if (!live) describe("chat negatives", () => {it.skip("requires the preflighted live lane", () => {});});
-else describe("chat refuses unsafe creation", () => {
+else describe("chat and fleet create refuse what they cannot do", () => {
   let env: Record<string, string> = {};
   let context: AuthContext;
   let state = "";
@@ -35,27 +40,43 @@ else describe("chat refuses unsafe creation", () => {
     finally { if (state) await rm(state, {recursive: true, force: true}); }
   });
   async function run(args: string[]) {
-    const result = await runFleetctl(["--json", "chat", ...args], {env});
+    const result = await runFleetctl(["--json", ...args], {env});
     assertNoSecretLeak(result, context.token); return result;
   }
-  it("requires a message for a new noninteractive conversation", async () => {
-    const result = await run(["--no-input", "--model", await setupModel(context)]);
+  it("chat --save is refused, naming fleet create", async () => {
+    const result = await run(["chat", "--save"]);
+    assert.equal(result.code, 4);
+    const error = JSON.parse(result.stderr).error as {code: string; suggestion: string};
+    assert.equal(error.code, REJECTION_CODE.invalidArgument);
+    assert.match(error.suggestion, /agentsfleet fleet create "<message>"/);
+    assert.equal(result.stdout.trim(), "");
+  });
+  it("chat is removed, naming fleet create and fleet steer", async () => {
+    const result = await run(["chat"]);
+    assert.equal(result.code, 4);
+    const error = JSON.parse(result.stderr).error as {code: string; message: string; suggestion: string};
+    assert.equal(error.code, REJECTION_CODE.invalidArgument);
+    assert.match(error.message, /the chat command was removed/);
+    assert.match(error.suggestion, /agentsfleet fleet create "<message>"/);
+    assert.match(error.suggestion, /agentsfleet fleet steer <fleet_id\|@name>/);
+    assert.equal(result.stdout.trim(), "");
+  });
+  it("fleet create with no message is refused before any fleet exists", async () => {
+    const result = await run(["fleet", "create"]);
     assert.equal(result.code, 4);
     assert.match(result.stderr, /message is required/i);
+    assert.equal(result.stdout.trim(), "");
   });
-  it("cannot review another or nonexistent private draft", async () => {
-    const result = await run([uuidv7(), "--no-input", "--review"]);
-    assert.notEqual(result.code, 0); assert.equal(result.stdout.trim(), "");
-  });
-  it("refuses a taken explicit name without reporting a second fleet", async () => {
+  it("refuses a taken name without reporting a second fleet", async () => {
     const name = `${ACCEPTANCE_RUN_PREFIX}-duplicate-${uuidv7().slice(-8)}`;
-    const first = await saveNativeFleet(env, fixtureDefinition(name));
-    assert.equal(first.name, name);
-    const second = await createNativeDraft(context, fixtureDefinition(name));
-    const review = await inspectDraft(env, second.id);
-    const result = await run([second.id, "--no-input", "--save", "--review-digest", review.review_digest]);
-    assert.equal(result.code, 3);
-    assert.match(result.stderr, /UZ-AGT-006/);
-    assert.equal(result.stdout.includes('"setup_etag"'), false);
+    const first = await createFleetFromCli(env, {name});
+    const second = await run(["fleet", "create", PROBE_MESSAGE, "--name", name]);
+    assert.equal(second.code, 3);
+    assert.equal(JSON.parse(second.stderr).error.code, CODE_NAME_TAKEN);
+    assert.equal(second.stdout.trim(), "");
+    const listed = await run(["fleet", "list"]);
+    const named = (JSON.parse(listed.stdout) as {items: ReadonlyArray<{id: string; name: string}>}).items
+      .filter((fleet) => fleet.name === name);
+    assert.deepEqual(named.map((fleet) => fleet.id), [first.fleet_id]);
   }, 120_000);
 });

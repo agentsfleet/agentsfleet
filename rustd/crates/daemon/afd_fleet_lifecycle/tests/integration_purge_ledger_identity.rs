@@ -160,11 +160,13 @@ pub(crate) async fn seed_everything_the_purge_destroys(lane: &Lane, fleet: &Uuid
 
     sqlx::query(
         "INSERT INTO connector.integration_grants
-           (id, fleet_id, service, status, requested_reason, created_at, updated_at)
-         VALUES ($1, $2, 'github', 'requested', 'fixture', now(), now())",
+           (id, fleet_id, service, grant_type, status, requested_reason, created_at, updated_at)
+         VALUES ($1, $2, 'github', $3, $4, 'fixture', now(), now())",
     )
     .bind(mint())
     .bind(fleet)
+    .bind(afd_api_wire::grant::grant_type::INTEGRATION)
+    .bind(afd_api_wire::grant::status::PENDING)
     .execute(&mut *connection)
     .await
     .expect("seeding an integration grant");

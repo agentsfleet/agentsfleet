@@ -44,4 +44,6 @@ pub use self::error::{Error, Result};
 pub use self::export::{CountingExporter, CountingLogExporter, LogDrops, SpanDrops};
 #[cfg(feature = "test-util")]
 pub use self::product::Recorded;
-pub use self::product::{Analytics, InviteEmailOutcome, SetupStep, Telemetry};
+pub use self::product::{
+    AccessChange, Analytics, FleetOrigin, FleetStep, InviteEmailOutcome, Telemetry,
+};

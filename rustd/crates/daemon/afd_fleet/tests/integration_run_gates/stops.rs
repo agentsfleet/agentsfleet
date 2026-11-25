@@ -1,20 +1,12 @@
-//! A refusal frees the assignment; a gate parks its turn until the answer.
+//! A refusal frees the assignment.
 
-use super::seed::{seed_gate, seed_provider_resolution};
 use super::*;
-
-use af_crypto::entropy::Entropy;
-use afd_approval::{Decision, Inbox, Resolution};
-use afd_turns::Turns;
 
 use crate::rows::Row;
 use crate::run_reads::COLUMN_LAST_RUNNER;
 
 /// An event type this build does not know, refused before any money is read.
 const EVENT_TYPE_UNKNOWN: &str = "fixture-unknown";
-
-/// Who answers the fixture's gate.
-const REVIEWER: &str = "fixture:human";
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -24,7 +16,6 @@ async fn test_stop_releases_the_assignment() {
     crate::support::install_subscriber();
     let fixtures = Fixtures::create().await;
     let (fleet, workspace, tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
-    set_config(&fixtures, &fleet, BUDGETED_CONFIG).await;
     let turn_id = send(&fixtures, &fleet, &workspace, EVENT_TYPE_UNKNOWN).await;
     let seeded = Ready {
         runner,
@@ -59,97 +50,6 @@ async fn test_stop_releases_the_assignment() {
     fixtures.cleanup().await;
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_approval_resolution_runs_next_poll() {
-    // A park frees the thread. Resolution un-parks the same turn before
-    // landing its continuation, so the original delivery runs first.
-    crate::support::install_subscriber();
-    let fixtures = Fixtures::create().await;
-    let seeded = ready(&fixtures).await;
-    set_config(&fixtures, &seeded.fleet, BUDGETED_CONFIG).await;
-    let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
-    let action = seed_gate(&fixtures, &seeded, "pending").await;
-
-    let assigned = assign(&fixtures, &seeded).await;
-    let answer = drive(&fixtures, &seeded, assigned).await;
-    assert!(
-        answer.is_none(),
-        "an unanswered gate issued a run: {answer:?}"
-    );
-    assert!(
-        fixtures.thread_is_free(&seeded.fleet).await,
-        "the park freed the assignment"
-    );
-    assert!(
-        parked(&fixtures, &seeded.turn_id).await,
-        "the turn is durably parked"
-    );
-
-    approve_parked(&fixtures, &seeded, &action).await;
-    assert!(
-        !parked(&fixtures, &seeded.turn_id).await,
-        "the answer durably unparked the turn"
-    );
-
-    let held = crate::seed::select_fleet(&fixtures.runs(), &seeded.runner, &seeded.fleet)
-        .await
-        .expect("the answered delivery runs on the next poll");
-    assert_eq!(
-        held.turn_id, seeded.turn_id,
-        "the parked delivery comes back first, ahead of its continuation"
-    );
-
-    fixtures.cleanup().await;
-}
-
-/// Nothing expires a gate: an approval past its deadline keeps its turn
-/// parked and answerable, the fleet's later event waits behind it, and the
-/// late answer releases the turn on the next poll.
-#[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn an_expired_approval_keeps_its_parked_head_waiting_and_answerable() {
-    let fixtures = Fixtures::create().await;
-    let seeded = ready(&fixtures).await;
-    set_config(&fixtures, &seeded.fleet, BUDGETED_CONFIG).await;
-    let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
-    let action = seed_gate(&fixtures, &seeded, afd_api_wire::approval::status::PENDING).await;
-    let assigned = assign(&fixtures, &seeded).await;
-    assert!(drive(&fixtures, &seeded, assigned).await.is_none());
-    assert!(parked(&fixtures, &seeded.turn_id).await);
-    let workspace = seed::workspace_of(&fixtures, &seeded.fleet).await;
-    let later = send(&fixtures, &seeded.fleet, &workspace, EVENT_TYPE_CHAT).await;
-    sqlx::query("UPDATE fleet.approval_gates SET expires_at=clock_timestamp()-interval '1 second' WHERE action_id=$1")
-        .bind(&action).execute(&mut *fixtures.database.acquire().await.expect("deadline"))
-        .await.expect("elapsed approval deadline");
-    let resumed = assign(&fixtures, &seeded).await;
-    assert_eq!(resumed.turn_id, seeded.turn_id);
-    assert!(drive(&fixtures, &seeded, resumed).await.is_none());
-    assert_waiting(&fixtures, &seeded.turn_id, &action).await;
-
-    approve_parked(&fixtures, &seeded, &action).await;
-    let next = crate::seed::select_fleet(&fixtures.runs(), &seeded.runner, &seeded.fleet)
-        .await
-        .expect("the late answer releases the turn");
-    assert_eq!(
-        next.turn_id, seeded.turn_id,
-        "the answered head runs ahead of {later}"
-    );
-    fixtures.cleanup().await;
-}
-
-async fn assert_waiting(fixtures: &Fixtures, event: &Uuid7, action: &Uuid7) {
-    let state: (bool, bool) = sqlx::query_as("SELECT a.settled_at IS NULL, g.resolved_at IS NULL FROM thread.turns a JOIN fleet.approval_gates g ON g.fleet_id=a.thread_id WHERE a.id=$1 AND g.action_id=$2")
-        .bind(event).bind(action)
-        .fetch_one(&mut *fixtures.database.acquire().await.expect("waiting observer"))
-        .await.expect("unsettled turn and answerable approval");
-    assert_eq!(
-        state,
-        (true, true),
-        "the turn waits and the gate still takes an answer"
-    );
-}
-
 /// Ingress for one event of `event_type`, marking the fleet as ingress does.
 async fn send(fixtures: &Fixtures, fleet: &Uuid7, workspace: &Uuid7, event_type: &str) -> Uuid7 {
     crate::queue::enqueue(
@@ -162,35 +62,4 @@ async fn send(fixtures: &Fixtures, fleet: &Uuid7, workspace: &Uuid7, event_type:
         fixtures.enrolled_at(),
     )
     .await
-}
-
-async fn parked(fixtures: &Fixtures, event: &Uuid7) -> bool {
-    let mut connection = fixtures.database.acquire().await.expect("database");
-    sqlx::query_scalar("SELECT parked_at IS NOT NULL FROM thread.turns WHERE id = $1")
-        .bind(event)
-        .fetch_one(&mut *connection)
-        .await
-        .expect("park state")
-}
-
-async fn approve_parked(fixtures: &Fixtures, seeded: &Ready, action: &Uuid7) {
-    let resolved = Inbox::new(
-        fixtures.database.clone(),
-        fixtures.bus().clone(),
-        Turns::new(
-            fixtures.database.clone(),
-            fixtures.bus().clone(),
-            Entropy::new(),
-        ),
-    )
-    .resolve(
-        action.as_str(),
-        Decision::Approved,
-        REVIEWER,
-        "",
-        Some(seeded.fleet.as_str()),
-    )
-    .await
-    .expect("the resolve must not fault");
-    assert!(matches!(resolved, Resolution::Resolved(_)), "{resolved:?}");
 }

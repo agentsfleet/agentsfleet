@@ -166,13 +166,7 @@ fn exporting_to(endpoint: &str) -> [(&'static str, &str); 2] {
 
 /// One seeded event held through the gateway and reported.
 async fn one_chat(supervisor: &mut Supervisor, endpoint: &str) -> e2e::Scenario {
-    let scene = e2e::scenario_with(
-        supervisor,
-        None,
-        &exporting_to(endpoint),
-        e2e_seed::FLEET_CONFIG_JSON,
-    )
-    .await;
+    let scene = e2e::scenario_with(supervisor, None, &exporting_to(endpoint)).await;
     let (run_id, fence) = tail::run(&scene).await;
     let body = wire::report_body(&run_id, &scene.turn_id, fence);
     wire::report(&scene, &body)
@@ -322,13 +316,7 @@ async fn test_memory_verbs_record_their_spans() {
     let _owner = SERIAL.lock().await;
     let (endpoint, mut received) = collector().await;
     let mut supervisor = Supervisor::new();
-    let scene = e2e::scenario_with(
-        &mut supervisor,
-        None,
-        &exporting_to(&endpoint),
-        e2e_seed::FLEET_CONFIG_JSON,
-    )
-    .await;
+    let scene = e2e::scenario_with(&mut supervisor, None, &exporting_to(&endpoint)).await;
     let (run_id, fence) = tail::run(&scene).await;
     #[expect(
         clippy::disallowed_methods,

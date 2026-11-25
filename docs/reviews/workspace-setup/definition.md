@@ -90,5 +90,5 @@ Credential aliases, new child-role schemas, and automatic repository publication
 ## Related pages
 
 - [Exact resource types](../../architecture/api_resources.md)
-- [Creation](../../architecture/data_flow.md#fleet-creation-and-setup-recovery)
+- [Creation](../../architecture/data_flow.md#create-and-recovery)
 - [Runtime preservation](runtime-baseline.md)

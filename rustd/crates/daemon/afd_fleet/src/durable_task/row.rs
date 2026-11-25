@@ -19,8 +19,6 @@ pub(super) struct DurableTaskRow {
     pub target: String,
     pub dependency: Option<String>,
     pub publication: Option<String>,
-    pub accepted_revision_id: Uuid7,
-    pub accepted_revision_number: i64,
     pub title: String,
     pub objective: String,
     pub questions: String,
@@ -78,14 +76,12 @@ impl DurableTaskRow {
                 .map(|value| af_core::etag::sha256_hex(value.as_bytes())),
             title: self.title,
             resource_version: counter(self.resource_version, "resource_version")?,
-            accepted_revision_number: counter(self.accepted_revision_number, "revision")?,
             context: DurableTaskContext {
                 durable_task_id: Cow::Owned(self.id.into()),
                 originating_item_id: Cow::Owned(self.originating_item_id.into()),
                 target: target(&self.target)?,
                 generation: counter(self.generation, "generation")?,
                 stop_generation: counter(self.stop_generation, "stop_generation")?,
-                accepted_revision_id: Cow::Owned(self.accepted_revision_id.into()),
                 objective: Cow::Owned(self.objective),
                 goal_digest: Cow::Owned(self.goal_digest),
                 questions,
@@ -228,10 +224,10 @@ mod tests {
     fn a_stored_action_reads_back_and_an_unknown_spelling_is_a_datastore_fault() {
         assert_eq!(action("steer").ok(), Some(DurableTaskInputAction::Steer));
         assert_eq!(
-            action("refresh").ok(),
-            Some(DurableTaskInputAction::Refresh)
+            action("new_work").ok(),
+            Some(DurableTaskInputAction::NewWork)
         );
-        for stored in ["rewrite", "", "Steer"] {
+        for stored in ["refresh", "", "Steer"] {
             let unknown = action(stored).expect_err("an unknown spelling is refused");
             assert_eq!(unknown.code(), error_code::INTERNAL_DB_QUERY, "{stored:?}");
         }

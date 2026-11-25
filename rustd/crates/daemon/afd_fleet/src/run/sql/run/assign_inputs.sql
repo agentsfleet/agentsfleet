@@ -1,10 +1,9 @@
 -- Assigns, for a live run that is not a durable task, the messages a person
 -- sent in the run's conversation after the run's own, oldest first: the
 -- durable task's rule (pending_inputs.sql). It stops at the first message of
--- that conversation it must not fold: a parked one, whose approval gate must
--- not be passed; a task-bound one, which belongs to its durable task's
--- generation; and one no person sent, such as a webhook, a schedule fire or a
--- gate's continuation, which runs as a run of its own. Another conversation's
+-- that conversation it must not fold: a task-bound one, which belongs to its
+-- durable task's generation; and one no person sent, such as a webhook, a
+-- schedule fire or a question's answer, which runs as a run of its own. Another conversation's
 -- messages are neither assigned nor in the way. A message this run already
 -- assigned is returned again, so a retry after a lost answer reads the same
 -- messages.
@@ -59,18 +58,18 @@ WITH fleet AS MATERIALIZED (
 ), ahead AS MATERIALIZED (
     -- The conversation's next messages: an addressed conversation by equality,
     -- the unaddressed one by NULL, each in the index's own order.
-    SELECT w.id, w.sequence, w.parked_at, w.durable_task_id, w.durable_task_generation, w.producer, w.actor, w.workspace_id
+    SELECT w.id, w.sequence, w.durable_task_id, w.durable_task_generation, w.producer, w.actor, w.workspace_id
     FROM run
     CROSS JOIN instant i
     CROSS JOIN LATERAL (
-        (SELECT a.id, a.sequence, a.parked_at, a.durable_task_id, a.durable_task_generation, a.producer, a.actor, a.workspace_id
+        (SELECT a.id, a.sequence, a.durable_task_id, a.durable_task_generation, a.producer, a.actor, a.workspace_id
          FROM thread.turns a
          WHERE run.reply_provider IS NOT NULL AND a.thread_id = run.fleet_id
            AND a.reply_provider = run.reply_provider AND a.reply_address = run.reply_address
            AND a.settled_at IS NULL AND a.sequence > GREATEST(run.head_sequence, $5)
          ORDER BY a.sequence)
         UNION ALL
-        (SELECT a.id, a.sequence, a.parked_at, a.durable_task_id, a.durable_task_generation, a.producer, a.actor, a.workspace_id
+        (SELECT a.id, a.sequence, a.durable_task_id, a.durable_task_generation, a.producer, a.actor, a.workspace_id
          FROM thread.turns a
          WHERE run.reply_provider IS NULL AND a.thread_id = run.fleet_id
            AND a.reply_provider IS NULL AND a.reply_address IS NULL
@@ -83,7 +82,7 @@ WITH fleet AS MATERIALIZED (
     SELECT f.id, bool_and(f.foldable) OVER (ORDER BY f.sequence) AS clear
     FROM (
         SELECT id, sequence,
-               parked_at IS NULL AND durable_task_id IS NULL AND durable_task_generation IS NULL AND CASE
+               durable_task_id IS NULL AND durable_task_generation IS NULL AND CASE
                    WHEN producer = $6 THEN actor <> $7 AND actor LIKE $8
                    WHEN producer = $9 THEN COALESCE(
                        connector.slack_person_allowed(workspace_id, actor, $10, $11, $12), false)

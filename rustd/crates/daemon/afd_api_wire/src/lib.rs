@@ -37,7 +37,6 @@ mod page;
 mod redact;
 pub mod schedule;
 pub mod secret;
-pub mod setup;
 pub mod tail;
 pub mod team;
 pub mod tenant;
@@ -45,3 +44,12 @@ pub mod tenant_model_entry;
 pub mod tenant_provider;
 pub mod turn;
 pub mod workspace;
+pub mod workspace_model;
+
+/// Reads a present field, so an explicit `null` is refused as the wrong type
+/// rather than read as the field's absence.
+pub(crate) fn present<'de, T: serde::Deserialize<'de>, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<T>, D::Error> {
+    T::deserialize(deserializer).map(Some)
+}

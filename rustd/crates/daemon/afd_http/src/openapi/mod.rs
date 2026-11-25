@@ -158,8 +158,6 @@ pub mod tag {
     pub const USERS: &str = "Users";
     /// A fleet's lifecycle and its thread.
     pub const FLEETS: &str = "Fleets";
-    /// Creator-private workspace setup conversations.
-    pub const DRAFTS: &str = "Drafts";
     /// The runner plane and enrolment.
     pub const FLEET: &str = "Fleet";
     /// A runner speaking for itself.

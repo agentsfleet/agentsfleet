@@ -6,8 +6,7 @@ import { getStatus } from "./acceptance/fixtures/lifecycle.ts";
 
 const FLEET = {
   id: FLEET_ID, name: "counter-probe", status: "active", etag: '"resource"',
-  setup_etag: '"setup"', setup_revision: "1", setup_revision_id: "01910000-0000-7000-8000-000000000001", setup: {state: "ready", checks: []},
-  start: {}, schedules: [],
+  model_ref: "owner/runtime", http_egress: "restricted", package_domains: false, schedules: [], triggers: [], grants: [],
 };
 const COUNTERS = {events_processed: "9007199254740993", budget_used_nanos: "9223372036854775807"};
 
@@ -33,14 +32,27 @@ for (const field of Object.keys(COUNTERS)) {
   }
 }
 
-test("missing-message validation with a selected model makes no API request", async () => {
+test("fleet create with no message makes no API request", async () => {
   await authedScope(async (stateDir) => withMockApi({}, async (apiUrl, calls) => {
-    const result = await runFleetctl(["--json", "chat", "--no-input", "--model", "platform-default"], {
+    const result = await runFleetctl(["--json", "fleet", "create"], {
       env: composeEnv({AGENTSFLEET_API_URL: apiUrl, AGENTSFLEET_STATE_DIR: stateDir}),
     });
     expect(result.code).toBe(4);
-    expect(result.stderr).toMatch(/message is required/i);
+    expect(JSON.parse(result.stderr).error).toMatchObject({code: "INVALID_ARGUMENT", message: "message is required"});
     expect(result.stdout.trim()).toBe("");
+    expect(calls).toEqual([]);
+  }));
+});
+
+test("the built binary refuses the removed chat and names fleet create and fleet steer", async () => {
+  await authedScope(async (stateDir) => withMockApi({}, async (apiUrl, calls) => {
+    const result = await runFleetctl(["chat", "--save"], {
+      env: composeEnv({AGENTSFLEET_API_URL: apiUrl, AGENTSFLEET_STATE_DIR: stateDir, NO_COLOR: "1"}),
+    });
+    expect(result.code).toBe(4);
+    expect(result.stderr).toContain("the chat command was removed");
+    expect(result.stderr).toContain('agentsfleet fleet create "<message>"');
+    expect(result.stderr).toContain("agentsfleet fleet steer <fleet_id|@name>");
     expect(calls).toEqual([]);
   }));
 });

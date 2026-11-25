@@ -205,7 +205,7 @@ async fn prove<D: IngressPlane>(
 ///
 /// Both halves can stop a fire and they are different facts: the schedule
 /// being paused is the scheduler not yet knowing, and the fleet not being
-/// active means it is still installing or was archived.
+/// active means it was archived.
 async fn held<D: IngressPlane>(
     services: &D,
     schedule: &Uuid7,

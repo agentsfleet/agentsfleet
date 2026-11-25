@@ -20,7 +20,7 @@ mod unframed;
 use std::{num::NonZeroU64, sync::Arc};
 
 use af_core::id::Uuid7;
-use af_wire::{protocol::Down, run::AcceptedKinds};
+use af_wire::protocol::Down;
 use afd_auth::principal::Runner;
 use afd_runner::capacity::authority::{Authority, Prepared};
 use afd_sse::StreamPermit;
@@ -160,7 +160,6 @@ impl ConnectionHandle {
 /// Parsed opening data owns its identifiers after the charged input frame drops.
 struct Hello {
     request_id: NonZeroU64,
-    accepted: AcceptedKinds,
     running: Vec<Uuid7>,
     credits: usize,
     unconfirmed: Option<Uuid7>,
@@ -198,11 +197,8 @@ pub(crate) struct ConnectionServices {
     pub(crate) handle: Arc<ConnectionHandle>,
     authority: Authority,
     runs: afd_fleet::run::RunService,
-    drafts: afd_setup::Drafts,
-    creations: afd_setup::Creations,
     cache: cache::RunCache,
     output: StreamWriters,
-    accepted: AcceptedKinds,
     checkpoint_verifications: tokio::sync::Semaphore,
     /// Renewal frames this connection has answered, for
     /// [`afd_fleet::run::renew::funds_due`]'s cadence.

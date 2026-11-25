@@ -1,106 +1,118 @@
-//! Schedule observations and webhook addresses are projected from actual shared setup.
+//! A fleet as one read answers it: its row, its schedules, its trigger rows
+//! with a webhook's address, and its grants.
 
 use crate::{
     handler::Refusal,
     services::{FleetSchedules as _, TenantPlane},
 };
 use af_core::id::Uuid7;
-use af_fleet_runtime::FleetConfig;
-use af_fleet_runtime::config::Trigger;
-use afd_api_wire::fleet::{FleetResponse, WebhookUrl};
-use afd_setup::SavedFleet;
+use afd_api_wire::fleet::{CreatedFleet, FirstTurn, FirstTurnDisposition, FleetResponse};
+use afd_api_wire::schedule::View;
+use afd_setup::types::SavedFleet;
 use axum::{
     Json,
     response::{IntoResponse as _, Response},
 };
 use http::{StatusCode, header};
-use std::borrow::Cow;
 
-const EVENT_SCHEDULES: &str = "fleet_setup_schedules_read_failed";
+const EVENT_SCHEDULES: &str = "fleet_schedules_read_failed";
 
+/// A fleet as the wire shows it, its schedules rendered against the clock.
+type Shown<'s> = FleetResponse<'s, View<'s>>;
+
+/// One read or change, as `status` with the fleet's tag.
 pub(super) async fn response<D: TenantPlane>(
     services: &D,
     workspace: &Uuid7,
     saved: SavedFleet,
     status: StatusCode,
 ) -> Result<Response, Refusal> {
-    let location = format!("/v1/workspaces/{workspace}/fleets/{}", saved.id);
+    let schedules = schedules(services, workspace, &saved.id).await?;
     let etag = saved.etag.clone();
-    let schedules = services
-        .schedules()
-        .list(workspace, &saved.id)
-        .await
-        .map_err(Refusal::at(EVENT_SCHEDULES))?;
-    let payload = payload(services, saved, &schedules);
-    if status == StatusCode::CREATED {
-        return Ok((
-            status,
-            [(header::ETAG, etag), (header::LOCATION, location)],
-            Json(payload),
-        )
-            .into_response());
-    }
+    let payload = payload(services, &saved, &schedules);
     Ok((status, [(header::ETAG, etag)], Json(payload)).into_response())
 }
 
-pub(super) type NativeFleet<'s> = FleetResponse<
-    af_fleet_runtime::Definition,
-    afd_setup::SetupProgress,
-    afd_setup::types::StartOutcome,
-    afd_api_wire::schedule::View<'s>,
->;
-
-pub(super) fn payload<'s, D: TenantPlane>(
+/// A create: 201 with the fleet's address, or 200 for a repeat that made
+/// nothing new, with the first turn either way.
+pub(super) async fn created<D: TenantPlane>(
     services: &D,
-    saved: SavedFleet,
+    workspace: &Uuid7,
+    created: afd_setup::types::CreatedFleet,
+) -> Result<Response, Refusal> {
+    let saved = &created.fleet;
+    let schedules = schedules(services, workspace, &saved.id).await?;
+    let location = format!("/v1/workspaces/{workspace}/fleets/{}", saved.id);
+    let status = if created.replayed {
+        StatusCode::OK
+    } else {
+        StatusCode::CREATED
+    };
+    let body = CreatedFleet {
+        fleet: payload(services, saved, &schedules),
+        // Nothing waits ahead of a fleet's first turn and no run is live, so,
+        // as a steer with nothing ahead of it, it starts a run of its own.
+        accepted: FirstTurn {
+            turn_id: created.turn_id.to_string(),
+            disposition: FirstTurnDisposition::Started,
+        },
+        replayed: created.replayed,
+    };
+    Ok((
+        status,
+        [
+            (header::ETAG, saved.etag.clone()),
+            (header::LOCATION, location),
+        ],
+        Json(body),
+    )
+        .into_response())
+}
+
+async fn schedules<D: TenantPlane>(
+    services: &D,
+    workspace: &Uuid7,
+    fleet: &Uuid7,
+) -> Result<Vec<afd_cron::Schedule>, Refusal> {
+    services
+        .schedules()
+        .list(workspace, fleet)
+        .await
+        .map_err(Refusal::at(EVENT_SCHEDULES))
+}
+
+fn payload<'s, D: TenantPlane>(
+    services: &D,
+    saved: &'s SavedFleet,
     schedules: &'s [afd_cron::Schedule],
-) -> NativeFleet<'s> {
-    let webhook_urls = webhook_urls(services.deployment(), &saved.id, saved.definition.runtime());
+) -> Shown<'s> {
     FleetResponse {
         id: saved.id.to_string(),
-        name: saved.name,
-        status: saved.status,
-        etag: saved.etag,
-        setup_etag: saved.setup_etag,
-        setup_revision: saved.setup_revision,
-        setup_revision_id: saved.setup_revision_id.to_string(),
-        policy_semantics: saved.policy_semantics,
-        definition: saved.definition,
-        setup: saved.setup,
-        start: saved.start,
+        name: saved.name.clone(),
+        status: saved.status.clone(),
+        etag: saved.etag.clone(),
+        model_ref: saved.model_ref.clone(),
+        http_egress: saved.http_egress,
+        package_domains: saved.package_domains,
         schedules: crate::handler::schedule::views(schedules, services.now()),
-        webhook_urls,
-        created_at: saved.created_at,
-        updated_at: saved.updated_at,
-        events_processed: saved.events_processed,
-        budget_used_nanos: saved.budget_used_nanos,
-        pending_approvals: saved.pending_approvals,
+        triggers: saved
+            .triggers
+            .iter()
+            .map(|row| row.shown(services.deployment(), &saved.id))
+            .collect(),
+        grants: saved
+            .grants
+            .iter()
+            .map(crate::handler::grant::shown)
+            .collect(),
         memory_access: afd_api_wire::fleet::MemoryAccess {
             read: saved.memory_reads_workspace,
             publish: saved.memory_publishes_workspace,
         },
+        created_at: saved.created_at,
+        updated_at: saved.updated_at,
+        events_processed: saved.events_processed.clone(),
+        budget_used_nanos: saved.budget_used_nanos.clone(),
+        pending_approvals: saved.pending_approvals,
     }
 }
-
-/// Where each declared webhook trigger is delivered, on this deployment.
-///
-/// The source is a validated lowercase slug; each verifier uses this route.
-fn webhook_urls(deployment: &str, fleet: &Uuid7, config: &FleetConfig) -> Vec<WebhookUrl<'static>> {
-    config
-        .triggers()
-        .iter()
-        .filter_map(|trigger| match trigger {
-            Trigger::Webhook(webhook) => Some(WebhookUrl {
-                source: Cow::Owned(webhook.source.to_string()),
-                url: Cow::Owned(format!(
-                    "{deployment}/v1/webhooks/{fleet}/{}",
-                    webhook.source
-                )),
-            }),
-            Trigger::Cron(_) | Trigger::Mention(_) => None,
-        })
-        .collect()
-}
-
-#[cfg(test)]
-mod tests;

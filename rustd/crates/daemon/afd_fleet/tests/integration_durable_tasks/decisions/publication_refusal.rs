@@ -115,10 +115,16 @@ pub(super) async fn prepared(
         .await
         .expect("accepted publication fixture");
     let durable_task_id = id(&task.durable_task_id);
-    // Represents a preexisting accepted target with reviewed workflow under this revision.
+    // Represents a preexisting accepted target with a reviewed workflow.
     // The tested behavior is publication; this fixture does not claim target preflight ran.
-    sqlx::query("UPDATE fleet.durable_tasks t SET accepted_revision_id=f.head_revision_id,target=jsonb_set(t.target,ARRAY['workflows'],$2) FROM fleet.fleets f WHERE t.id=$1 AND f.id=t.fleet_id")
-        .bind(&durable_task_id).bind(Json(workflows)).execute(&mut *connection).await.expect("preexisting accepted binding");
+    sqlx::query(
+        "UPDATE fleet.durable_tasks SET target=jsonb_set(target,ARRAY['workflows'],$2) WHERE id=$1",
+    )
+    .bind(&durable_task_id)
+    .bind(Json(workflows))
+    .execute(&mut *connection)
+    .await
+    .expect("preexisting accepted binding");
     let (source, sequence): (Uuid7, i64) = sqlx::query_as(
         "SELECT originating_durable_task_item_id,input_sequence FROM fleet.durable_tasks WHERE id=$1",
     )

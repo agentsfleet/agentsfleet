@@ -19,12 +19,12 @@ fn payload(provider: &str) -> RunPayload<'static> {
         "run_id": "run-1", "fencing_token": 1, "run_expires_at": AT,
         "event": {"turn_id": "e", "fleet_id": "f", "workspace_id": "w", "actor": "a",
             "event_type": "chat", "request_json": "{}", "created_at": AT},
-        "policy": {"model_context_tokens": 200_000,"network_policy": {"allow": [], "read_only": true, "read_post_paths": []},
+        "policy": {"model_context_tokens": 200_000,"network_policy": {"allow": []},
             "tools": [], "secrets_map": null, "mintable": [], "provider": provider,
             "api_key": KEY, "inference_host": "", "base_url": null, "repository_binding": null,
             "http_origin_policies": [], "context": {"tool_window": 0, "memory_checkpoint_every": 0,
                 "stage_chunk_threshold": 0.75, "model": "m", "context_cap_tokens": 200_000}},
-        "instructions": "", "history": [], "resume_hold": false, "inputs_waiting": true,
+        "name": "fleet", "history": [], "resume_hold": false, "inputs_waiting": true,
         "owner": {"kind": "fleet", "fleet_id": "f"}
     });
     let text: &'static str = Box::leak(document.to_string().into_boxed_str());

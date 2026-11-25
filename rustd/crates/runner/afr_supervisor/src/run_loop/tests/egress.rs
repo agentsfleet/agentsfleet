@@ -130,9 +130,6 @@ async fn a_fleet_host_at_a_blocked_address_ends_the_run_at_startup() {
     let mut rig = rig(FakeEngine::default());
     let egress = assigned(NetworkPolicy::AllowListEgress, &[REGISTRY]);
     let mut payload = payload(RUN_ID, FLEET_ID);
-    // A read-only fleet keeps its hosts out of the kernel set, so the fixture's
-    // `read_only` is turned off to put the host where the check runs.
-    payload.policy.network_policy.read_only = false;
     payload.policy.network_policy.allow.push(INSIDE.into());
 
     rig.run_under(&payload, &egress).await.unwrap();

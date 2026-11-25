@@ -26,7 +26,6 @@ use crate::support::Fixtures;
 pub(crate) fn processed(held: &Held, held_until: Option<Timestamp>) -> ReportRequest<'_> {
     ReportRequest {
         folded_through_sequence: None,
-        setup: None,
         durable_task: None,
         run_id: Cow::Borrowed(held.issued.run_id.as_str()),
         turn_id: Cow::Borrowed(held.turn_id.as_str()),

@@ -2,13 +2,14 @@
 //! and the values the fixtures write.
 //!
 //! Split from `integration_inbox_tail.rs` when that file passed the 350-line
-//! cap. The suites divide by CONCERN — announcement, continuation, runless —
-//! and every one of them subscribes, waits for a frame, and answers as an
-//! operator, so the waiting and the spellings live here rather than three
-//! times over.
+//! cap. The suites divide by CONCERN — the announcement and the answer turn —
+//! and both subscribe, wait for a frame, and answer as an operator, so the
+//! waiting and the spellings live here rather than twice over.
 
+use std::borrow::Cow;
 use std::time::Duration;
 
+use af_core::id::Uuid7;
 use afd_bus::{Received, Subject, Subscription};
 use serde_json::Value;
 
@@ -20,16 +21,21 @@ pub(crate) const OPERATOR: &str = "human:fixture";
 /// The note an operator leaves.
 pub(crate) const NOTE: &str = "looks right";
 
-/// The actor prefix a continuation is recorded under.
+/// The actor prefix an answer turn is recorded under.
 ///
 /// Mirrored from `afd_approval::inbox`, which keeps it private. A fixture
-/// standing in for the run path must write the turn BYTE-identically
-/// or the payload digest diverges and the ledger mints a second id — which
-/// would prove the opposite of what the converged-continuation proof asserts.
+/// standing in for the run path writes the turn as the resolve would, so the
+/// converged-answer proof compares like with like.
 pub(crate) const CONTINUATION_ACTOR_PREFIX: &str = "continuation:";
 
-/// The body a continuation carries, mirrored from the same module.
-pub(crate) const CONTINUATION_BODY: &str = "{}";
+/// The body an answer turn carries: what the person decided, and the turn
+/// whose run waits on it, as a question's answer is written.
+pub(crate) fn answer_body(message: &str, asked: &Uuid7) -> Value {
+    serde_json::json!(af_wire::turn::QuestionAnswer {
+        message: Cow::Borrowed(message),
+        asked_turn_id: Cow::Borrowed(asked.as_str()),
+    })
+}
 
 /// How long a published frame is given to reach the subscriber.
 pub(crate) const FRAME_DEADLINE: Duration = Duration::from_secs(5);
@@ -52,20 +58,4 @@ pub(crate) async fn next_frame(tail: &mut Subscription) -> Option<Value> {
         return None;
     };
     serde_json::from_str(&message.payload).ok()
-}
-
-/// Seed the state a parked head leaves while its approval is pending.
-pub(crate) async fn park_delivery(lane: &Lane) {
-    let id = afd_db::test_util::mint_id();
-    sqlx::query("INSERT INTO thread.turns (id,thread_id,workspace_id,producer,producer_key,payload_digest,actor,kind,status,request_json,created_at,updated_at,parked_at) VALUES ($1,$2,$3,'steer',$1,'fixture','steer:fixture','chat','queued','{}',now(),now(),now())")
-        .bind(&id).bind(&lane.fleet).bind(&lane.workspace)
-        .execute(&mut *lane.pool.acquire().await.expect("runtime connection"))
-        .await.expect("parked turn");
-}
-
-/// No parked unsettled delivery remains after the gate answer commits.
-pub(crate) async fn delivery_unparked(lane: &Lane) -> bool {
-    sqlx::query_scalar("SELECT NOT EXISTS (SELECT 1 FROM thread.turns WHERE thread_id=$1 AND settled_at IS NULL AND parked_at IS NOT NULL)")
-        .bind(&lane.fleet).fetch_one(&mut *lane.pool.acquire().await.expect("runtime connection"))
-        .await.expect("durable park state")
 }

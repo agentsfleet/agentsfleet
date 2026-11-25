@@ -14,8 +14,7 @@
 //! one no-work reply rather than counting retries.
 //!
 //! A fleet's thread is keyed by the fleet's id, so the fleet's statements here
-//! read `thread.threads.fleet_id` and `thread.runs.fleet_id`, which a draft's
-//! rows leave NULL and so never match.
+//! read `thread.threads.fleet_id` and `thread.runs.fleet_id`.
 
 mod row;
 
@@ -24,7 +23,7 @@ pub use self::row::{INSERT_RUN_WITH_TURN, RunRow};
 /// Assigns to a live run the messages its fleet received after the
 /// run's own, oldest first.
 ///
-/// It stops at the first parked or task-bound message. `$1` run, `$2`
+/// It stops at the first task-bound message. `$1` run, `$2`
 /// runner, `$3` fence, `$4` active status, `$5` read-after sequence, `$6`
 /// limit.
 ///

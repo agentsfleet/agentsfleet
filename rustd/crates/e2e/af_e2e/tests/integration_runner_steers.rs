@@ -33,9 +33,6 @@ const RACERS: usize = 100;
 /// How many different steers one run sends in a row.
 const STEPS: usize = 20;
 
-/// A sender fleet that declares the `grafana` credential, for the mask.
-const DECLARING: &str = r#"{"name":"e2e-fleet","x-agentsfleet":{"triggers":[],"tools":[],"credentials":["grafana"],"budget":{"daily_nanos":"1000000000"}}}"#;
-
 /// The secret value the mask case's sender holds.
 const TOKEN: &str = "glsa_fixture_steer_secret";
 
@@ -232,7 +229,14 @@ async fn fleet_steer_body_reaches_the_target_turn() {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn fleet_steer_masks_secret_values() {
     let mut supervisor = Supervisor::new();
-    let crew = Crew::boot_with(&mut supervisor, DECLARING).await;
+    let crew = Crew::boot(&mut supervisor).await;
+    crate::e2e_seed::approve_secret(
+        &crew.run().booted,
+        &crew.run().fleet,
+        "grafana",
+        af_core::clock::now(),
+    )
+    .await;
     let secret = json!({"host": "grafana.example.test", "token": TOKEN}).to_string();
     seal(
         &crew.run().booted,

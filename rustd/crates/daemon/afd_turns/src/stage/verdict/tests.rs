@@ -14,12 +14,11 @@ fn refusal(answer: &Answer, bound: Bound) -> Result<Error, Box<dyn std::error::E
         .ok_or_else(|| "the answer was admitted, not refused".into())
 }
 
-/// An answer for a found, active, current fleet with no stored row.
+/// An answer for a found, active fleet with no stored row.
 fn open() -> Answer {
     Answer {
         fleet_found: true,
         status: Some(FleetStatus::Active.as_str().to_owned()),
-        setup_current: true,
         inserted: false,
         id: None,
         digest: None,
@@ -66,18 +65,10 @@ fn verdict_names_the_first_refusal_in_order() -> Outcome {
         "a stored row on an archived fleet answers the repeat"
     );
 
-    let mut foreign_marker = archived(open());
-    foreign_marker.setup_current = false;
     assert_eq!(
-        refusal(&foreign_marker, RUNNABLE_OPEN)?.not_runnable(),
-        Some(FleetStatus::Archived)
-    );
-
-    let mut policy = open();
-    policy.setup_current = false;
-    assert_eq!(
-        refusal(&policy, RUNNABLE_CLOSED)?.code(),
-        af_core::error_code::SETUP_POLICY
+        refusal(&archived(open()), RUNNABLE_CLOSED)?.not_runnable(),
+        Some(FleetStatus::Archived),
+        "a status refusal comes before the ceiling"
     );
 
     assert!(refusal(&open(), RUNNABLE_CLOSED)?.is_over_capacity());
@@ -87,14 +78,12 @@ fn verdict_names_the_first_refusal_in_order() -> Outcome {
 }
 
 #[test]
-fn an_unbound_status_admits_an_installing_fleet() -> Outcome {
-    let mut installing = stored(open(), true);
-    installing.status = Some(FleetStatus::Installing.as_str().to_owned());
-    let staged = Bound {
+fn an_unbound_status_admits_an_archived_fleet() -> Outcome {
+    let unbound = Bound {
         runnable: None,
         ..RUNNABLE_OPEN
     };
-    assert!(decide(&installing, staged)?.inserted);
+    assert!(decide(&archived(stored(open(), true)), unbound)?.inserted);
     Ok(())
 }
 

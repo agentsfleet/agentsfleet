@@ -156,7 +156,7 @@ impl Lessee {
             started: Instant::now(),
             timeline: Timeline::default(),
         };
-        let _busy = self.holds.occupy(crate::holds::Occupant::Fleet {
+        let _busy = self.holds.occupy(crate::holds::Occupant {
             run: run.ids.run.clone(),
             fleet: run.ids.fleet.clone(),
         });

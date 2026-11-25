@@ -71,7 +71,8 @@ async fn pause(case: &Case, task: &Uuid7, initial: DurableTaskSnapshot) -> Durab
             .expect("idempotent pause"),
         paused
     );
-    assert_eq!(case.counts().await, (3, 3, 3));
+    // The source turn and the continuation each new task was staged with.
+    assert_eq!(case.counts().await, (3, 3, 4));
 
     paused
 }
@@ -95,7 +96,7 @@ async fn resume(case: &Case, task: &Uuid7, paused: DurableTaskSnapshot) -> Durab
     assert_eq!(resumed, expected);
     assert_eq!(
         case.counts().await,
-        (3, 3, 4),
+        (3, 3, 5),
         "one generation-bound continuation"
     );
     assert_eq!(
@@ -122,7 +123,7 @@ async fn resume(case: &Case, task: &Uuid7, paused: DurableTaskSnapshot) -> Durab
         .await
         .expect_err("old version cannot repeat a transition");
     assert_eq!(stale.code(), error_code::DURABLE_TASK_PRECONDITION_FAILED);
-    assert_eq!(case.counts().await, (3, 3, 4));
+    assert_eq!(case.counts().await, (3, 3, 5));
 
     resumed
 }
@@ -192,5 +193,5 @@ async fn terminal_is_retained(case: &Case, task: &Uuid7, cancelled: &DurableTask
             .len(),
         2
     );
-    assert_eq!(case.counts().await, (3, 3, 4));
+    assert_eq!(case.counts().await, (3, 3, 5));
 }

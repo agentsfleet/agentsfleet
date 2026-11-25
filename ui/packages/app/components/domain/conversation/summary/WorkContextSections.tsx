@@ -7,6 +7,7 @@ import { ArrowUpRightIcon, CaretDownIcon, CaretRightIcon, GitBranchIcon, GitDiff
 import { SUMMARY_ICON, SUMMARY_ROW } from "@/components/domain/shared/summary/summary-row";
 import { confirmed } from "../../tasks/use-task-read";
 import { FleetApprovalSummary } from "../../approvals/FleetApprovalSummary";
+import { useFleetLists } from "../../fleet/FleetListsProvider";
 import { AttachedSources, PreviewOutputs } from "./RunResources";
 import { WorkSection } from "../../shared/summary/WorkSection";
 import type { RecordedChange, RecordedChangeRepository } from "./recorded-changes";
@@ -111,7 +112,9 @@ function repositoryPolicyLabel({access, publication}: FleetSources): string {
 }
 
 export function WorkApprovals({approvals, scope}: {approvals?: {count: number; href: string}; scope?: {workspaceId: string; fleetId: string; subject: string; revision: number}}) {
-  if (scope && approvals) return <FleetApprovalSummary key={`${scope.subject}:${scope.workspaceId}:${scope.fleetId}`} workspaceId={scope.workspaceId} fleetId={scope.fleetId} revision={scope.revision} count={approvals.count} />;
+  // An approved or denied access card changes what "Can access" lists.
+  const reloadLists = useFleetLists()?.reload;
+  if (scope && approvals) return <FleetApprovalSummary key={`${scope.subject}:${scope.workspaceId}:${scope.fleetId}`} workspaceId={scope.workspaceId} fleetId={scope.fleetId} revision={scope.revision} count={approvals.count} onResolved={reloadLists} />;
   if (!approvals?.count) return null;
   return <WorkSection title="Needs your approval" count={approvals.count} attention>
     <Button asChild size="sm" className="min-h-11 summary:min-h-10"><Link href={approvals.href} aria-label={`Open fleet with ${approvals.count} pending ${approvals.count === 1 ? "approval" : "approvals"}`}>Open fleet</Link></Button>

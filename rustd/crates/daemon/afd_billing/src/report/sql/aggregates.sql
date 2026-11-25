@@ -1,10 +1,10 @@
 -- Full-period totals, spending groups and filter choices from the daily rollup.
 -- A report covers every whole UTC day from the window's first through its last.
 -- Groups come from the unfiltered period, so they still name every choice;
--- their sums and counts cover only the selected fleet or setup work.
+-- their sums and counts cover only the selected fleet and work type.
 -- Fleet rows group cells and run counts together by `fleet_id` rather than
--- joining them: grouping matches a NULL fleet (setup) to itself and hashes,
--- where a NULL-safe join could only loop over every pair.
+-- joining them: grouping hashes, where a NULL-safe join could only loop over
+-- every pair.
 WITH cells AS (
     SELECT fleet_id, model, day, fleet_name, charged_nanos, input_token_count, output_token_count,
            runtime_ms, line_count, unpriced_token_count,

@@ -1,21 +1,22 @@
-//! A run's read of its thread's compacted context: the daemon half of
-//! `Up::ContextLoad`, for a setup draft's run and a fleet chat's alike.
+//! A run's read and save of its fleet chat's compacted context: the daemon
+//! half of `Up::ContextLoad` and `Up::ContextSave`.
 //!
 //! ```text
 //!  ContextLoad { run, fencing_token } ─► this runner's run, live at that fence?
 //!     no  ─► run not found, or the stale-fence refusal: nothing is read
 //!     yes ─► the thread's `thread.compactions` row, validated, and its scope
+//!  ContextSave { run, fencing_token, resource_version, checkpoint }
+//!         ─► `afd_setup::context`'s fenced compare-and-swap on that row
 //! ```
 //!
-//! The save is `afd_setup`'s (`Drafts::save_context`), which proves the fence
-//! in its statement. A read changes nothing, so a check before it is enough:
-//! a run superseded after the check reads a context it can no longer save
-//! over.
+//! The save proves the fence in its statement. A read changes nothing, so a
+//! check before it is enough: a run superseded after the check reads a
+//! context it can no longer save over.
 
-use af_context::Checkpoint;
+use af_context::{Checkpoint, CheckpointStore as _};
 use af_core::id::Uuid7;
 use af_wire::context::ContextLoadRequest;
-use afd_setup::context::{Owner, Repository};
+use afd_setup::context::{Holder, Repository, fleet_identity};
 use jiff::Timestamp;
 
 use crate::error::{Result, query, run_not_found, stale_fence};
@@ -42,17 +43,15 @@ impl std::fmt::Debug for ThreadContext {
 /// [`sql::context::SELECT_RUN_THREAD`]'s row, by column name.
 #[derive(Debug, sqlx::FromRow)]
 struct RunThread {
-    /// The fleet or the draft the run's thread belongs to.
-    owner_id: Uuid7,
-    /// Whether that owner is a fleet; otherwise it is a draft.
-    fleet_owned: bool,
+    /// The fleet the run's thread belongs to.
+    fleet_id: Uuid7,
     fencing_token: i64,
     status: String,
 }
 
 impl RunService {
-    /// The compacted context of the thread `run` runs, a draft's or a
-    /// fleet's, read for `runner` while the run is live at `request`'s fence.
+    /// The compacted context of the fleet thread `run` runs, read for
+    /// `runner` while the run is live at `request`'s fence.
     ///
     /// # Errors
     /// Refuses a run that is not this runner's, and one that is no longer
@@ -80,17 +79,67 @@ impl RunService {
         {
             return Err(stale_fence());
         }
-        let owner = if held.fleet_owned {
-            Owner::Fleet(held.owner_id)
-        } else {
-            Owner::Draft(held.owner_id)
-        };
-        let scope = owner.scope();
+        let scope = fleet_identity(&held.fleet_id);
         // The id names a row only a first save inserts; a read never uses it.
         let unused = self.runs.entropy().uuid7(now)?;
-        let checkpoint = Repository::new(&mut connection, owner, unused)
+        let checkpoint = Repository::new(&mut connection, held.fleet_id, unused)
             .load()
             .await?;
         Ok(ThreadContext { scope, checkpoint })
     }
+
+    /// Saves `save`'s checkpoint for the fleet thread `save.run_id` runs, as
+    /// `runner`'s context verb asks.
+    ///
+    /// # Errors
+    /// The stale-fence refusal when the run is not `runner`'s live run of its
+    /// thread at `save.fence`, and nothing is written. The stale-context
+    /// refusal when another save moved the row past `save.resource_version`,
+    /// or the checkpoint is not the thread's next one. A store that would not
+    /// answer, or an id that could not be minted.
+    pub async fn save_context(
+        &self,
+        runner: &Uuid7,
+        save: ContextSave,
+        now: Timestamp,
+    ) -> Result<()> {
+        let mut connection = self.runs.pool().acquire().await?;
+        let held: Option<RunThread> = sqlx::query_as(sql::context::SELECT_RUN_THREAD)
+            .bind(&save.run_id)
+            .bind(runner)
+            .fetch_optional(&mut *connection)
+            .await
+            .map_err(query("read a run's thread"))?;
+        // A run this runner never held, or one its fleet's deletion removed,
+        // holds no thread, so its save is refused as a superseded run's is.
+        let Some(held) = held else {
+            return Err(stale_fence());
+        };
+        let id = self.runs.entropy().uuid7(now)?;
+        let holder = Holder {
+            run: &save.run_id,
+            runner,
+            fence: save.fence,
+            active: sql::RUN_STATUS_ACTIVE,
+        };
+        Repository::fenced(&mut connection, held.fleet_id, id, holder)
+            .commit(save.resource_version, save.checkpoint)
+            .await?;
+        Ok(())
+    }
+}
+
+/// One save a run asks for, as the context verb carries it.
+#[derive(Debug)]
+pub struct ContextSave {
+    /// The run saving.
+    pub run_id: Uuid7,
+    /// The fencing token the run holds its thread at.
+    pub fence: u64,
+    /// The generation the save expects the stored row to hold: 0 before the
+    /// thread's first save.
+    pub resource_version: u64,
+    /// The compacted context, whose generation is one past
+    /// `resource_version`.
+    pub checkpoint: Checkpoint,
 }

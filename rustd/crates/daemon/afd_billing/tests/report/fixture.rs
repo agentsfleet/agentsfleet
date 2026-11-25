@@ -15,6 +15,8 @@ pub(super) use super::rollup::{ledger_daily, ledger_runs, runs_daily, usage_dail
 pub(super) const MODEL_A: &str = "report-model-a";
 pub(super) const MODEL_B: &str = "report-model-b";
 pub(super) const FLEET_NAME: &str = "Payment alerts";
+/// The name a fleet whose run logged only a model call carries.
+pub(super) const CALL_FLEET_NAME: &str = "Pull request review";
 pub(super) const AT: &str = "2026-10-25T12:00:00Z";
 pub(super) const FROM: &str = "2026-10-01T00:00:00Z";
 pub(super) const THROUGH: &str = "2026-10-25T12:01:00Z";
@@ -27,21 +29,19 @@ pub(super) const RUNTIME: i64 = 31;
 pub(super) const BALANCE: i64 = 1_000_000_000;
 
 /// Writes lines as a work's own statement logs them, a line already logged
-/// left as it is. A fleet line names its fleet and turn; a setup line names no
-/// fleet, the draft message its run answered as its turn, and the run as its
-/// `run_id`. Only a runtime slice carries run time, as in production.
+/// left as it is. Every line names its fleet and turn. Only a runtime slice
+/// carries run time, as in production.
 const INSERT_LINES: &str = "\
 INSERT INTO billing.usage_lines (
     id, work_type, work_id, seq, kind, tenant_id, workspace_id,
-    fleet_id, fleet_name, turn_id, run_id, provider, model, posture,
+    fleet_id, fleet_name, turn_id, provider, model, posture,
     requested_at, input_token_count, cached_input_token_count,
     cache_write_token_count, cache_write_5m_token_count, cache_write_1h_token_count,
     output_token_count, runtime_ms, unpriced_token_count, charged_nanos,
     created_at
 )
 SELECT id, work_kind, work_id, seq, kind, tenant, tenant,
-       fleet, name, turn, CASE WHEN fleet IS NULL THEN work_id END,
-       model, model, posture, at::timestamptz, $15, 0, 0, 0, 0, $16,
+       fleet, name, turn, model, model, posture, at::timestamptz, $15, 0, 0, 0, 0, $16,
        CASE WHEN kind = $18 THEN $17 ELSE 0 END,
        unpriced, money, at::timestamptz
   FROM unnest($1, $2::text[], $3, $4::bigint[], $5::text[],
@@ -111,10 +111,10 @@ pub(super) struct Line {
     pub(super) kind: LineKind,
     pub(super) sequence: i64,
     pub(super) tenant: Uuid7,
-    pub(super) fleet: Option<Uuid7>,
-    pub(super) name: Option<String>,
-    /// The turn the line names: its fleet run's turn, or the draft message its
-    /// setup run answered. Opaque, as the ledger keeps it.
+    pub(super) fleet: Uuid7,
+    pub(super) name: String,
+    /// The turn the line names: its fleet run's turn. Opaque, as the ledger
+    /// keeps it.
     pub(super) turn: Uuid7,
     pub(super) model: &'static str,
     pub(super) posture: &'static str,
@@ -136,8 +136,8 @@ impl Line {
             kind: LineKind::Runtime,
             sequence: 0,
             tenant: tenant.clone(),
-            fleet: Some(fleet.clone()),
-            name: Some(FLEET_NAME.to_owned()),
+            fleet: fleet.clone(),
+            name: FLEET_NAME.to_owned(),
             model: MODEL_A,
             posture: posture::PLATFORM,
             at: AT,
@@ -146,17 +146,15 @@ impl Line {
         }
     }
 
-    /// The first model call of a new setup run, answering a draft message of
-    /// its own.
-    pub(super) fn setup(tenant: &Uuid7, money: i64) -> Self {
-        let mut line = Self::runtime(tenant, &id(), money);
-        line.work_type = work::SETUP_RUN;
-        line.kind = LineKind::Model;
-        line.fleet = None;
-        line.name = None;
-        line.turn = id();
-        line.model = MODEL_B;
-        line
+    /// The first model call of a new run of `fleet`, whose runtime slice has
+    /// not landed: it carries no run time, so it counts no run.
+    pub(super) fn call(tenant: &Uuid7, fleet: &Uuid7, money: i64) -> Self {
+        Self {
+            kind: LineKind::Model,
+            name: CALL_FLEET_NAME.to_owned(),
+            model: MODEL_B,
+            ..Self::runtime(tenant, fleet, money)
+        }
     }
 
     /// Another line of this line's work, of `kind` at `sequence`.
@@ -197,7 +195,7 @@ pub(super) fn summary(report: &Report) -> &Aggregate {
         .unwrap()
 }
 
-/// The `dimension` group keyed `key`; `None` is the setup group or a total.
+/// The `dimension` group keyed `key`; `None` is a total or a daily group.
 pub(super) fn group<'a>(report: &'a Report, dimension: i32, key: Option<&str>) -> &'a Aggregate {
     let found = report
         .aggregates
@@ -237,12 +235,7 @@ pub(super) async fn seed(db: &Db, lines: &[Line]) {
                 .map(|line| line.fleet.clone())
                 .collect::<Vec<_>>(),
         )
-        .bind(
-            lines
-                .iter()
-                .map(|line| line.name.as_deref())
-                .collect::<Vec<_>>(),
-        )
+        .bind(column(|line| line.name.clone()))
         .bind(column(|line| line.model.to_owned()))
         .bind(column(|line| line.posture.to_owned()))
         .bind(column(|line| line.at.to_owned()))

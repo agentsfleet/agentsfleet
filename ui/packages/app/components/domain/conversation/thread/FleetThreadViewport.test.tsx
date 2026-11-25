@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, type RenderResult } from "@testing-library/react";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 import { useRef, type ReactNode } from "react";
 import type { ThreadMessageLike } from "@assistant-ui/react";
 import {
   AssistantRuntimeProvider,
   useExternalStoreRuntime,
 } from "@assistant-ui/react";
+import { LOG_PX, RESERVE, stubBrowserLayout, type Frame } from "@/tests/helpers/fleet-thread-layout";
 import { FleetConversationLayout } from "../../shared/summary/FleetWorkSidebar";
 import { FleetThreadViewport } from "./FleetThreadViewport";
 import { useOpenAtLatest } from "../../shared/chat/useOpenAtLatest";
@@ -21,7 +22,6 @@ const RUNNING_TURN: ThreadMessageLike[] = [
   { id: "turn-1:reply", role: "assistant", content: "" },
 ];
 const TOP_ANCHOR_USER = "[data-aui-top-anchor-user]";
-const RESERVE = "[data-aui-top-anchor-reserve]";
 const SETTLED_TURN = RUNNING_TURN.slice(0, 2);
 const TEAMMATE_REPLY = (text: string): ThreadMessageLike[] => [...SETTLED_TURN,
   { id: "turn-1", role: "user", content: "summarise the rollout" },
@@ -29,9 +29,6 @@ const TEAMMATE_REPLY = (text: string): ThreadMessageLike[] => [...SETTLED_TURN,
 const FIRST_SEND = (text: string): ThreadMessageLike[] => [
   { id: "turn-0", role: "user", content: "check the build" },
   { id: "turn-0:reply", role: "assistant", content: text, status: { type: "running" } }];
-// What a browser would report for the thread; happy-dom lays nothing out.
-const LOG_PX = 1_000;
-const FRAME_PX = 400;
 const SENT_TOP_PX = 820;
 const SENT_HEIGHT_PX = 40;
 
@@ -51,14 +48,12 @@ function Detached() {
   return null;
 }
 
-function View({ turnsCount = 0, messages = NO_MESSAGES, isRunning = false, connectionStatus = CONNECTION_STATUS.LIVE, setup, setupTurnId, work }: {
+function View({ turnsCount = 0, messages = NO_MESSAGES, isRunning = false, connectionStatus = CONNECTION_STATUS.LIVE, work }: {
   turnsCount?: number;
   messages?: ThreadMessageLike[];
   isRunning?: boolean;
   connectionStatus?: ConnectionStatus;
-  setup?: ReactNode;
   work?: ReactNode;
-  setupTurnId?: string;
 }) {
   const runtime = useExternalStoreRuntime<ThreadMessageLike>({
     messages,
@@ -69,7 +64,6 @@ function View({ turnsCount = 0, messages = NO_MESSAGES, isRunning = false, conne
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <FleetConversationLayout work={work}><FleetThreadViewport
-        setup={setup} setupTurnId={setupTurnId}
         turnsCount={turnsCount}
         connectionStatus={connectionStatus}
         onRetry={() => {}}
@@ -96,8 +90,8 @@ describe("FleetThreadViewport scroll", () => {
     expect(anchor?.textContent).toContain("deploy the canary");
   });
 
-  // The chat scrolls like Claude: it opens at its latest turn, a sent turn
-  // rises to the top, and nothing after that moves the view but the reader.
+  // The chat opens at the latest message and brings each new send to the top.
+  // The view stays there until the reader scrolls again.
   describe("over a laid-out frame", () => {
     afterEach(() => vi.unstubAllGlobals());
 
@@ -229,7 +223,7 @@ describe("FleetThreadViewport scroll", () => {
       if (sent === null) throw new Error("the sent turn is not the top anchor");
       Object.defineProperties(sent, { offsetTop: { value: SENT_TOP_PX }, offsetHeight: { value: SENT_HEIGHT_PX } });
       browser.layout(frame.log, frame.content);
-      expect(frame.scrollTo).toHaveBeenLastCalledWith({ top: SENT_TOP_PX, behavior: "smooth" });
+      expect(frame.scrollTo).toHaveBeenLastCalledWith({ top: SENT_TOP_PX, behavior: "instant" });
       expect(frame.viewport.scrollTop).toBe(SENT_TOP_PX);
       // Room below the short reply: the sent turn's top plus a frame, less the log.
       const reserve = view.container.querySelector<HTMLElement>(RESERVE);
@@ -298,25 +292,6 @@ describe("FleetThreadViewport layout", () => {
     const footerElement = view.getByTestId("fleet-chat-footer");
     expect(view.getByTestId("fleet-thread-root").querySelector('[role="presentation"]')?.contains(footerElement)).toBe(true);
   });
-  it("places the saved setup inside the log once, with the composer still available", () => {
-    const view = render(<View setup={<h2>Saved setup</h2>} />);
-    expect(view.getByRole("log").contains(view.getByRole("heading", {name: "Saved setup"}))).toBe(true);
-    expect(view.queryAllByText("Saved setup")).toHaveLength(1);
-    expect(view.queryByText("Saved v1")).toBeNull();
-    expect(view.getByRole("form", {name: "Chat composer"})).toBeTruthy();
-  });
-  it("replaces the saved receipt in sequence without repeating it above later messages", () => {
-    const messages: ThreadMessageLike[] = [
-      {id: "before", role: "user", content: "Save this setup"},
-      {id: "saved", role: "system", content: "Saved setup"},
-      {id: "after", role: "user", content: "Check performance"},
-    ];
-    const view = render(<View messages={messages} turnsCount={3} setupTurnId="saved" setup={<h2>Saved setup</h2>} />);
-    const history = view.getByRole("log").textContent ?? "";
-    expect(history.indexOf("Save this setup")).toBeLessThan(history.indexOf("Saved setup"));
-    expect(history.indexOf("Saved setup")).toBeLessThan(history.indexOf("Check performance"));
-    expect(view.getAllByText("Saved setup")).toHaveLength(1);
-  });
 });
 
  it("keeps work outside the composer and shows inline Summary without modifying its text", () => {
@@ -327,68 +302,3 @@ describe("FleetThreadViewport layout", () => {
   expect(view.getByRole("complementary", {name: "Summary"}).textContent).toContain("Saved PR evidence");
   expect(composer).toHaveProperty("value", "Keep session expiry unchanged");
  });
-
-type Frame = ReturnType<ReturnType<typeof stubBrowserLayout>["frameOf"]>;
-
-/**
- * Stands in for a browser's layout: animation frames, the resize observers of
- * each box a step resized, and the viewport's geometry. Install it before the
- * render, since the library observes the viewport as it mounts.
- */
-function stubBrowserLayout() {
-  const observers = new Set<{ targets: Set<Element>; notify: () => void }>();
-  const frames = new Map<number, FrameRequestCallback>();
-  let nextFrame = 0;
-  vi.stubGlobal("ResizeObserver", class {
-    readonly #targets = new Set<Element>();
-    constructor(callback: ResizeObserverCallback) {
-      observers.add({ targets: this.#targets, notify: () => callback([], this) });
-    }
-    observe(target: Element): void { this.#targets.add(target); }
-    unobserve(target: Element): void { this.#targets.delete(target); }
-    disconnect(): void { this.#targets.clear(); }
-  });
-  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
-    nextFrame += 1;
-    frames.set(nextFrame, callback);
-    return nextFrame;
-  });
-  vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
-  return {
-    /** One rendering step: queued animation frames, then the observers of every resized box. */
-    layout(...resized: Element[]): void {
-      act(() => {
-        const due = [...frames.values()];
-        frames.clear();
-        for (const callback of due) callback(0);
-        for (const observer of [...observers]) {
-          if (resized.some(target => observer.targets.has(target))) observer.notify();
-        }
-      });
-    },
-    frameOf(view: RenderResult) {
-      const viewport = view.getByTestId("fleet-thread-root").querySelector<HTMLElement>('[role="presentation"]');
-      // The thread's own column around the log, inside the viewport's content.
-      const log = view.getByRole("log").closest<HTMLElement>('[role="presentation"] > div > div');
-      const content = viewport?.firstElementChild;
-      if (!viewport || !log || !content) throw new Error("the thread viewport is not mounted");
-      const size = { log: LOG_PX, frame: FRAME_PX };
-      let scrollTop = 0;
-      const reserve = () => Number.parseFloat(viewport.querySelector<HTMLElement>(RESERVE)?.style.height ?? "") || 0;
-      Object.defineProperties(viewport, {
-        // The library sizes its reserve from scrollHeight less the reserve's
-        // offsetHeight, which happy-dom reports as 0: this is the log alone.
-        scrollHeight: { configurable: true, get: () => size.log },
-        clientHeight: { configurable: true, get: () => size.frame },
-        scrollTop: { configurable: true, get: () => scrollTop, set: (top: number) => { scrollTop = top; } },
-      });
-      const scrollTo = vi.fn((options?: ScrollToOptions | number) => {
-        if (typeof options !== "object") return;
-        scrollTop = Math.max(0, Math.min(options.top ?? scrollTop, size.log + reserve() - size.frame));
-      });
-      viewport.scrollTo = scrollTo;
-      return { viewport, log, content, size, scrollTo, footer: view.getByTestId("fleet-chat-footer"),
-        composer: view.getByRole("textbox", { name: "Message your fleet…" }) };
-    },
-  };
-}

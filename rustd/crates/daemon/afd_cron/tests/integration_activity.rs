@@ -11,7 +11,5 @@ mod lifecycle;
 mod locking;
 #[path = "activity/queued.rs"]
 mod queued;
-#[path = "activity/recipes.rs"]
-mod recipes;
 #[path = "support/cron_lane.rs"]
 mod support;

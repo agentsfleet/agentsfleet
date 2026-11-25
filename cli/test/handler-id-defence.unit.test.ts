@@ -14,7 +14,7 @@ import { HttpClient } from "../src/services/http-client.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
 
-import { activateEffectFromId, archiveEffectFromId } from "../src/commands/fleet/fleet.ts";
+import { archiveEffectFromId } from "../src/commands/fleet/fleet.ts";
 
 const MALFORMED = "not-a-uuid";
 const WORKSPACE_ID = "0192a3b4-c5d6-7e8f-9012-3456789abcde";
@@ -74,13 +74,6 @@ const refusalText = async (effect: Effect.Effect<unknown, unknown, never>): Prom
 };
 
 describe("handler id defence — a malformed id never reaches the wire", () => {
-  test("activate refuses a malformed fleet_id", async () => {
-    const text = await refusalText(
-      activateEffectFromId(MALFORMED) as Effect.Effect<unknown, unknown, never>,
-    );
-    expect(text).toContain("fleet_id");
-  });
-
   test("archive refuses a malformed fleet_id", async () => {
     const text = await refusalText(
       archiveEffectFromId(MALFORMED) as Effect.Effect<unknown, unknown, never>,

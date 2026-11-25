@@ -219,28 +219,6 @@ impl Default for ContextTuning {
     }
 }
 
-/// Fleet definitions.
-#[derive(Debug, Clone, Copy, Deserialize, Validate)]
-#[serde(default, deny_unknown_fields)]
-pub(crate) struct FleetsTuning {
-    /// Memory for parsed fleet definitions.
-    #[garde(range(min = 1))]
-    pub definition_cache_mib: u32,
-    /// Fleets whose latest revision is kept in memory.
-    #[garde(range(min = 1))]
-    pub head_cache_count: u64,
-}
-
-impl Default for FleetsTuning {
-    fn default() -> Self {
-        let run = afd_fleet::run::RunLimits::default();
-        Self {
-            definition_cache_mib: count(run.definition_cache_bytes / (1024 * 1024)),
-            head_cache_count: run.head_cache_count,
-        }
-    }
-}
-
 /// Money.
 #[derive(Debug, Clone, Copy, Deserialize, Validate)]
 #[serde(default, deny_unknown_fields)]
@@ -330,28 +308,20 @@ impl Default for DurableTaskCheckpointTuning {
     }
 }
 
-/// The setup chat.
+/// A fleet create from its first message.
 #[derive(Debug, Clone, Copy, Deserialize, Validate)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct SetupTuning {
-    /// How long one setup request may take before it is answered as busy.
-    #[garde(range(min = 1))]
-    pub request_timeout_seconds: u32,
-    /// A repeated setup request within this returns the first answer.
+    /// A repeated create within this returns the first answer.
     #[garde(range(min = 1))]
     pub replay_window_hours: u32,
-    /// Drafts read per page by setup maintenance.
-    #[garde(range(min = 1))]
-    pub maintenance_drafts_per_page: u32,
 }
 
 impl Default for SetupTuning {
     fn default() -> Self {
         let setup = afd_setup::tuning::SetupTuning::default();
         Self {
-            request_timeout_seconds: whole(setup.budget, SECOND),
             replay_window_hours: whole(setup.replay_window, HOUR),
-            maintenance_drafts_per_page: count(setup.scan_batch),
         }
     }
 }
@@ -539,7 +509,6 @@ pub(crate) struct Tuning {
     pub runners: RunnersTuning,
     pub turns: TurnsTuning,
     pub context: ContextTuning,
-    pub fleets: FleetsTuning,
     pub billing: BillingTuning,
     pub tasks: DurableTasksTuning,
     pub setup: SetupTuning,
@@ -614,7 +583,6 @@ impl From<&super::settings::ConfigToml> for Tuning {
             runners: settings.runners,
             turns: settings.turns,
             context: settings.context,
-            fleets: settings.fleets,
             billing: settings.billing,
             tasks: settings.durable_tasks,
             setup: settings.setup,

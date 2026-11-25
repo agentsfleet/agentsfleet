@@ -37,13 +37,13 @@ export interface LaneCounts {
   readonly skipped: number;
 }
 
+// Every file that needs the live service. The seven `prime-*` files are the
+// prime set's journeys, one per fixture fleet in tests/fixtures/fleets (queen-bee's
+// carries busy-bee); the rest prove one subject each against a fleet they prime.
 const LIVE_ACCEPTANCE_FILES: ReadonlyArray<string> = [
   "test/acceptance/api-key-rotation-live.spec.ts",
-  "test/acceptance/approval-deny-live.spec.ts",
-  "test/acceptance/approvals-live.spec.ts",
   "test/acceptance/concurrency.spec.ts",
   "test/acceptance/fleet-update-delete.spec.ts",
-  "test/acceptance/grant-approval-live.spec.ts",
   "test/acceptance/chat-negatives.spec.ts",
   "test/acceptance/lifecycle-after-login.spec.ts",
   "test/acceptance/lifecycle-with-token.spec.ts",
@@ -52,12 +52,18 @@ const LIVE_ACCEPTANCE_FILES: ReadonlyArray<string> = [
   "test/acceptance/memory-search-live.spec.ts",
   "test/acceptance/perf.spec.ts",
   "test/acceptance/platform-operator-live.spec.ts",
+  "test/acceptance/prime-careful-squirrel-live.spec.ts",
+  "test/acceptance/prime-chatty-parrot-live.spec.ts",
+  "test/acceptance/prime-morning-rooster-live.spec.ts",
+  "test/acceptance/prime-night-owl-live.spec.ts",
+  "test/acceptance/prime-queen-bee-live.spec.ts",
+  "test/acceptance/prime-stubborn-mule-live.spec.ts",
+  "test/acceptance/prime-watch-dog-live.spec.ts",
   "test/acceptance/referential-integrity.spec.ts",
-  "test/acceptance/refine-setup-live.spec.ts",
   "test/acceptance/schedule-live.spec.ts",
   "test/acceptance/secret-vault.spec.ts",
-  "test/acceptance/steer-live.spec.ts",
   "test/acceptance/tenant-provider-mutation.spec.ts",
+  "test/acceptance/usage-live.spec.ts",
   "test/acceptance/workspace-mutation.spec.ts",
 ];
 

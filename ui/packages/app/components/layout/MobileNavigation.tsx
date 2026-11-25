@@ -5,7 +5,7 @@ import { SidebarSimpleIcon } from "@phosphor-icons/react/ssr";
 import { Button, Dialog, DialogContent, DialogTitle, DialogTrigger, Nav } from "@agentsfleet/design-system";
 import { NavSection } from "./SidebarNavigationSections";
 import { PRIMARY_NAV, resolveActiveHref, resolveHref } from "./sidebar-navigation-data";
-import { DraftSidebarHistory } from "./DraftSidebarHistory";
+import { SidebarFleets } from "./SidebarFleets";
 
 export function MobileNavigation({pathname, workspaceId, account}: {pathname: string; workspaceId: string | null; account: string | null}) {
   const [open, setOpen] = useState(false);
@@ -18,7 +18,7 @@ export function MobileNavigation({pathname, workspaceId, account}: {pathname: st
       <DialogTitle className="mb-xl">Navigation</DialogTitle>
       <Nav aria-label="Expanded navigation" className="space-y-xl">
         <NavSection items={entries} activeHref={activeHref} workspaceId={workspaceId} collapsed={false} overlay onNavigate={close} />
-        <Suspense><DraftSidebarHistory account={account} workspace={workspaceId} onNavigate={close} overlay /></Suspense>
+        <Suspense><SidebarFleets account={account} workspace={workspaceId} onNavigate={close} overlay /></Suspense>
       </Nav>
     </DialogContent>
   </Dialog>;

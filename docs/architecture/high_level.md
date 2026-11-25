@@ -1,33 +1,44 @@
-# High-Level Thesis
+---
+type: explanation
+audience: contributor
+verified: 2026-11-25
+product_version: 0.90.0
+executable: false
+---
 
-> Parent: [`README.md`](./README.md) · User-facing: [docs.agentsfleet.net/concepts](https://docs.agentsfleet.net/concepts) states the same model for a user rather than a contributor.
+# How `agentsfleet` fits together
 
-The product, the problem, the wedge, the differentiation, and why the obvious alternatives don't make this product redundant. Read this first if you've never seen the project. Every other file in `docs/architecture/` and every spec under `docs/v2/` assumes you've internalized this one.
+> Parent: [`README.md`](./README.md) · User-facing: [docs.agentsfleet.net/concepts](https://docs.agentsfleet.net/concepts) states the same model for a user.
 
-## Facts
+## What it is
 
-Every row is extracted from the numbered sections below; the owner column names the section that carries the full story.
+`agentsfleet` runs AI agents, called fleets, that wake on events and keep working after a person leaves.
+A fleet is one chat plus its memory, its approved access and its wake-ups.
+A person's first message, in the browser or the terminal, creates the fleet, its thread and its first turn.
 
-| Claim | Value | Owner section |
-|---|---|---|
-| The product | a durable runtime for one operational outcome, shipped as AI agents that wake on production events | §1 |
-| The pillars | open source · self-managed provider keys · chat-authored | §1 |
-| Deployment | hosted-only in v2; self-host deferred to v3 | §1 |
-| The wedge | `platform-ops`: GitHub Actions deploy-failure responder + manual operator steer | §1, §2 |
-| The minimum viable product (MVP) promise | "Operational outcomes do not fall into limbo" | §4 |
-| The existence bar | if local Claude answers "what should I do next?" as well, v2 has not earned its existence | §1 |
-| The Slack bot | acquisition on-ramp, reactive only; agency, not memory, is the line to the durable agent | §5.2 |
-| The stores | Postgres holds every durable fact; core NATS carries disposable signals | §How the runtime fits together |
+`agentsfleetd` is the control plane: the API, the run assignment and the stores.
+`agentsfleet-runner` runs the agent loop, its model calls and its sandboxes on a runner host; the daemon makes no model call.
+The browser app and the `agentsfleet` command line talk only to `agentsfleetd`.
 
-## Traps
+| Question | Answer |
+|---|---|
+| What holds durable facts? | Postgres, every one of them |
+| What carries live signals? | Core NATS, three nodes in one region, storing nothing |
+| What wakes a fleet? | A person's message, a schedule, a webhook, a GitHub App event or a Slack mention |
+| How many runs can a fleet have at once? | One |
+| What can a fleet touch? | The published tools, plus access a person approved |
 
-- v2 is not a chat UI over tools, a general assistant, or an automate-anything platform (§1).
+The [product thesis](../product/thesis.md) says who it is for and what it deliberately does not do.
 
-- The §3 counterarguments are live risks, not strawmen; the MVP bar exists because the thesis can still fail (§3).
+## Why it exists
 
-- The reactive Slack bot converts to the durable agent; it is never a second product (§5.2).
+Operational work outlives the prompt that started it.
+It needs durable state, evidence from real systems and a person's approval before risky steps.
+So the runtime keeps a small typed core for safety and durability, and leaves behaviour to the conversation.
 
-## How the runtime fits together
+## How it behaves
+
+### The pieces
 
 ```text
    browser, command line, webhooks
@@ -50,330 +61,49 @@ Every row is extracted from the numbered sections below; the owner column names 
  +-----------------------+
 ```
 
-Postgres holds every durable fact. Threads, turns, runs, items, outbound deliveries and usage are all rows.
-
-Core NATS carries disposable signals on five subjects: thread wake, thread items, runner commands, delivery wake and bus gap. It stores nothing, because JetStream is off.
-
-A lost signal never loses work: the turn stays queued in Postgres. A detected bus gap starts a recovery pass; a silently lost wake waits for the next wake or freed runner capacity, because no timer polls. A viewer that misses frames gets `catching_up` and reloads from `thread.turns`.
-
-Runners never reach either store. Each runner host holds one stream to a replica, and work is pushed down it.
-
-[`datastore_scaling.md`](./datastore_scaling.md) owns the stores, and [`data_flow.md`](./data_flow.md) follows one turn through them.
-
----
-
-## 1. Product Thesis
-
-### What we are
-
-agentsfleet v2 is a durable runtime for one operational outcome.
-
-On the product surface, that runtime ships as AI agents that wake on production events. Each one starts on an event (a pull request, a deploy, an incident) and does the recurring engineering work. It holds at human approval before anything merges or ships.
-
-The marketing framing and this technical thesis describe the same thing from two ends. The operator buys "AI agents that wake when production breaks"; we build "a durable runtime for one operational outcome".
-
-It is meant for work that:
-
-- continues after the original human prompt is gone;
-
-- needs durable state across retries and failures;
-
-- must gather evidence from real systems;
-
-- may need approvals before acting;
-
-- benefits from natural-language reasoning instead of rigid typed branching.
-
-### What we are not
-
-agentsfleet v2 is not:
-
-- a general-purpose personal assistant in the cloud;
-
-- a generic coding-fleet coordination product;
-
-- a broad "AI can automate anything" platform;
-
-- just a chat UI over tools.
-
-If a user gets the same value by opening Claude locally and asking "what should I do next?", v2 has not earned existence.
-
-### How we differentiate
-
-Three structural pillars carry v2:
-
-- **Open source.** The runtime is open source. The operator can read the code that holds their credentials and runs against their infrastructure.
-
-- **Self-managed provider keys.** Operators can bring their own large-language-model provider key. New tenants start on the platform-managed default ([`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §1). The control plane resolves it and the runner's supervisor uses it for the inference call only, and it never enters a sandbox.
-
-  Supported providers are listed in [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §9, the single source of truth, and there is no vendor lock-in on inference cost.
-
-- **Chat-authored.** Browser or terminal chat produces one validated Definition containing instructions and policy. Save creates an independent fleet.
-
-**Self-host is deferred to v3.** v2 ships hosted-only on `api.agentsfleet.net`, signing users in through Clerk with Open Authorization (OAuth). The architecture admits self-host: the auth substrate, the key-management-service adapter, and process management are the only deployment-specific layers. Validating it on a clean Linux host outside Fly.io is a v3 workstream.
-
-The `agentsfleet` command-line interface (CLI) and dashboard, both over workspace chat, make the v2 pillars reachable from a cold start ([`user_flow.md`](./user_flow.md) §8.0).
-
-### The first problem we solve
-
-The first problem v2 solves is deploy and production failure handling. When a deploy fails, or production looks unhealthy, the operator should not have to bounce between tools by hand.
-
-Those tools are continuous integration (CI), logs, infra dashboards, chat and shell history. The operator also has to remember what they already tried.
-
-The fleet should take ownership of that outcome. It gathers evidence, explains what is wrong, preserves the timeline, requests approval when necessary, and continues until resolved or blocked.
-
-The flagship workflow is `platform-ops`. The wedge surface is **GitHub Actions deploy-failure responder + manual operator steer**.
-
-One fleet wakes on a failed deploy webhook (continuous-deployment failure), gathers evidence and posts a diagnosis to Slack. It is also reachable via `agentsfleet fleet steer` for manual investigation.
-
----
-
-## 2. Problem Statement
-
-Operational work falls into limbo.
-
-When a deploy fails, production looks unhealthy or a risky recovery like a database teardown is needed, the operator does everything by hand. They gather logs, inspect dashboards, remember prior attempts and decide the next step. The audit trail smears across terminals, chat, CI and infrastructure consoles.
-
-The work is fragmented, state is lost between attempts, and dangerous actions are performed ad hoc.
-
-Existing tooling captures pieces of the workflow but not the whole outcome:
-
-- A continuous-integration system can tell you a deploy failed.
-
-- Logging and observability can show symptoms.
-
-- Chat can deliver alerts.
-
-- Shell scripts and runbooks can perform actions.
-
-What is missing is a long-lived runtime that owns the outcome end-to-end.
-
-The v2 MVP solves that gap. A Fleet receives an operational trigger, reasons over it in natural language, and gathers evidence with the right tools.
-
-It saves the full attempt history and resumes if interrupted. It asks for approval when needed, and continues until the outcome is resolved or clearly blocked.
-
-The MVP wedge is:
-
-- an operational-outcome runner;
-
-- deploy and infrastructure recovery (GitHub Actions deploy-failure responder + manual steer);
-
-- durable history that records who or what triggered each event;
-
-- resumable runs with a bounded reasoning context;
-
-- approvals where needed;
-
-- one flagship workflow.
-
-The flagship workflow is `platform-ops`. When a GitHub Actions continuous-deployment (CD) pipeline fails, the fleet wakes from the webhook.
-
-It gathers the right evidence from Fly.io, NATS, Postgres and adjacent sources. It explains what is wrong and posts a remediation suggestion to Slack.
-
-The same fleet can also be steered by hand for "morning health check" investigations and follow-up reasoning after the webhook diagnosis.
-
----
-
-## 3. Why Now / Why Not the Alternatives
-
-### Why now
-
-Three shifts make this MVP plausible now:
-
-1. Large language models (LLMs) can reason over messy operational evidence. Paired with constrained tools and clear instructions, they choose the next step well enough.
-2. Operators already maintain personal assistants and prompt files locally, but those assistants are ephemeral and session-bound. They do not own outcomes across time, triggers, retries, approvals, and failures.
-3. The integration surface already exists in the real workflow. It spans deploy webhooks, cron checks, logs APIs, secret stores, approval policies and shell-accessible recovery tasks. The missing piece is a durable runtime around them.
-
-Stated plainly, many people now run a personal assistant in a terminal. The v2 runtime moves the useful part of that behaviour into a cloud-resident, durable, auditable runtime. That runtime can wait for events, wake itself up, keep state, and continue working after the original human session is gone.
-
-### Why not just use incident tooling
-
-Incident tooling is adjacent but incomplete for this problem.
-
-Incident products can: ingest alerts; manage timelines; route responders; collect notes; summarize incidents.
-
-They usually do not provide a natural-language-defined runtime that can continuously reason over the situation and use approved tools. Nor do they preserve their own checkpointed state and carry the operational task forward as an active worker.
-
-The v2 claim is "a durable operational runtime owns the outcome", rather than "better incident chat".
-
-### Why not just use typed automation and runbooks
-
-Typed automation solves repetitive known paths well, but it is weak when:
-
-- the evidence needed changes by incident;
-
-- the next step depends on interpretation, not a fixed branch;
-
-- the operator wants to iterate behavior by changing instructions and policy in chat instead of rewriting typed control flow.
-
-v2 should keep a minimal typed envelope for safety, durability, auth, approvals, and idempotency. The operational behavior itself should stay primarily natural-language-driven through each fleet's reviewed instructions and the consumer's own operating instructions.
-
-### Why this is not automatically a good business
-
-This thesis can still fail.
-
-Counterarguments:
-
-- A deterministic deploy watcher plus logs fetcher may solve enough of the problem without an LLM.
-
-- The hard part may be trust, approvals, and evidence quality, not reasoning.
-
-- The market is adjacent to incident automation and AI site-reliability-engineering (SRE) tooling, which already exist.
-
-- If the fleet mostly summarizes logs but does not move the outcome forward, the product will feel ornamental.
-
-That is why the MVP bar is strict. The fleet must make a real operational outcome faster and safer to complete, not merely easier to read about.
-
----
-
-## 4. MVP Thesis
-
-agentsfleet v2 should be judged on one promise:
-
-> Operational outcomes do not fall into limbo.
-
-For the MVP, that means:
-
-- a trigger arrives from webhook (GitHub Actions failure), cron, or operator steer;
-
-- the fleet gathers the right evidence;
-
-- the fleet reasons over the situation using LLM + constrained tools;
-
-- every step is saved with actor provenance;
-
-- the fleet context is bounded through [shared conversation compaction](context_lifecycle.md); semantic memory checkpoints supply facts for later runs;
-
-- risky steps are approval-gated;
-
-- the fleet can resume after interruption;
-
-- the operator resumes from state, not memory.
-
-If the product cannot prove that loop on a real GitHub Actions deploy failure and a real approval-gated destructive workflow, the thesis is not validated.
-
----
-
-## 5. Initial Use Cases
-
-### 5.1 Platform-Ops (wedge)
-
-Primary job:
-
-- investigate failed GitHub Actions deploys (webhook trigger);
-
-- investigate unhealthy production state on a schedule (cron trigger) or on operator request (steer trigger);
-
-- collect logs and health evidence from Fly.io, NATS, Postgres, GitHub Actions run logs, and adjacent systems;
-
-- summarize the likely cause;
-
-- recommend or run the next action depending on approval policy.
-
-Trigger modes:
-
-- **Webhook.** GitHub Actions posts a completed failed `workflow_run` to the shared GitHub App ingress (`POST /v1/ingress/github`). The ingress wakes only fleets subscribed to that repository and event ([`connectors.md`](./connectors.md) §"GitHub App: platform setup to fleet runs"). An App delivery lands as `actor=github-app`; the manual fleet-addressed route lands as `actor=webhook:github`.
-
-- **Cron.** A periodic production health check, stored by `agentsfleet` and mirrored to Upstash QStash. Each signed QStash fire arrives at `agentsfleetd` as a synthetic event with `actor=cron:<schedule_id>`. The runner owns no timer or local scheduler state ([`runner_execution.md`](./runner_execution.md#tool-catalog)).
-
-- **Steer.** A direct operator instruction via `agentsfleet fleet steer <fleet_id> <message>` or the dashboard chat widget; lands with `actor=steer:<user>`.
-
-All three flow through the same reasoning loop. The fleet does not branch on actor type. Its instructions describe the general outcome and the same `http_request` tool calls fire regardless of trigger source.
-
-### 5.2 Slack as a configured fleet surface
-
-Slack brings the existing fleet runtime into the channel where a person asks for work.
-A workspace administrator connects Slack, and a member reviews the fleet's channel subscription.
-The connector alone creates no answering fleet.
-
-[Slack mention routing](scenarios/slack-incident-responder.md#4-routing-a-mention) selects one configured fleet or records a fixed notice.
-Unconfigured channels return `channel_not_configured` without a model call.
-Tools, memory and unattended work require the configured fleet's existing authority.
-
-## 6. Where this points after v2
-
-Direction, not commitment. Recorded so a spec author does not foreclose it.
-
-### 6.1 Bastion — one surface for internal triage and customer comms
-
-Where the v2 wedge points after launch. Not part of v2; documented so spec authors don't foreclose it.
-
-The MVP ships an internal-only diagnosis posted to the operator's Slack. The longer-term play is the **bastion**: one durable surface where internal triage continues as today (Slack post, evidence trail, follow-up steers). External customer communication is derived from the *same* incident state (status-page updates, broadcast email or text message, embedded widgets).
-
-The same fleet owns both; the diagnosis and the customer-facing narrative come from one event log, not two. This is the structural competitor to manual status-page tools.
-
-Structural changes from MVP to bastion:
-
-1. **Per-fleet audience routing.** The setup's `config` (`x-agentsfleet`) gains `audiences: [internal_slack, customer_status, customer_email]`; the instructions draft per-audience summaries from the same evidence.
-2. **Status-page rendering surface.** A hosted page at `status.<customer-domain>` renders the latest `processed` event's customer-facing summary.
-3. **Broadcast channels.** The fleet's `tools:` grows `email_send`, `sms_send` (text message; approval-gated for a first incident), `webhook_post` (Statuspage / PagerDuty downstream).
-4. **Approval gating per audience**. The setup's `gates` can require human approval for customer-facing audiences while internal Slack flows without a gate. The M47 approval inbox handles the mechanic.
-5. **Per-actor retention**. Customer-facing communications carry stricter retention (Sarbanes-Oxley Act (SOX), General Data Protection Regulation (GDPR)); `thread.turns` retention becomes per-actor configurable.
-
-What does not change: the runtime architecture, the sandbox boundary and the trigger model. The secret vault, network policy, budget caps and context lifecycle stay as they are. Bastion audience routing applies to work-events only; worker-emitted `system:*` rows stay on the internal operator timeline.
-
-The bastion is an instructions authoring pattern plus a few tool primitives plus a rendering surface, not a different product.
-
-### 6.2 Slack Rung 1 — hired durable agents
-
-Where the human front door points after the CLI/dashboard wedge.
-
-M206 built the first hired-agent slice. It is a fleet attached to one channel whose writes are bounded to one draft Pull Request per request. Its live drill is pending.
-
-**The follow-on is direction, not a commitment.**
-
-[Configured Slack routing](scenarios/slack-incident-responder.md#4-routing-a-mention) supplies the human request surface. A channel mention creates no separate runtime or default agent.
-
-- **Rung 1, follow-on**. From the same Slack surface, a recurring need becomes a durable agent subscribed to a real source such as Zoho Desk.
-
-  It wakes unattended and takes **gated** write actions with approval. That is the existing event-driven runtime.
-
-  The Slack surface adds per-integration OAuth connectors and the Slack-user → `approval:resolve` allowlist. It depends on M105 (schedules).
-
-### 6.3 Security Reviewer: a prebuilt fleet
-
-A customer-facing prebuilt fleet whose job is **security testing on the customer's own code and infrastructure**. It is authorized and defensive, not red-teaming the fleet runtime itself, which is the platform's internal sandbox concern. It fits the existing evidence-plus-approval loop.
-
-It wakes on a pull request or a schedule, and scans the diff and dependencies for vulnerabilities and exposed secrets. It reproduces the finding as a scenario.
-
-It then opens a remediation pull request with the evidence attached. It **holds the fix at human approval** while flagging the team in Slack.
-
-Integrations: GitHub (code / pull requests) + Slack (alerts); no new credential class beyond what the review and incident fleets already use.
-
-Captured here because it surfaced as product direction (marketing showcase + customer ask) before any spec, so spec authors don't foreclose it. Not part of v2.0 scope.
-
-### 6.4 Still deferred, each owned elsewhere
-
-- **Flow-1 active man-in-the-middle (MITM) closure.** URL-fragment public-key binding + HMAC-based Key Derivation Function (HKDF) transcript binding. See [`../AUTH.md`](../AUTH.md) *threats this flow does NOT close*.
-
-- **Dashboard token model.** See [`web_app.md`](./web_app.md) §"Where this is headed".
-
-- **Open fleet (mode C).** Self-enrolling runners. See [`runner_fleet.md`](./runner_fleet.md).
-
-- **Trust-scoped sticky affinity.** Still deferred. Once runners can be local or low-trust (laptops, untrusted hosts), affinity selection must add **trust class + scope** (allowed tenants/workspaces). It must also add sandbox-tier eligibility.
-
-  Those come before the sticky preference: "prefer the last runner *among the eligible set*", never an override of eligibility.
-
-  M85_001 intentionally shipped labels only; the trust/scope/tier funnel remains its own security workstream.
-
-- **Fleet keys as a first-class principal.** Deferred to v2.1.
-
-## Fleet setup and runtime
-
-The same fleet lifecycle begins with a private setup chat. A creator describes the operational outcome, edits the shared validated Definition and reviews policy/access before Save. Save creates one resumable fleet.
-
-Setup has bounded inference and proposal authority: a setup run's only tool is `propose_setup`. The saved fleet gains runtime capabilities only through existing model, billing, connection and approval checks.
-
-The common architecture pages own this sequence:
+Threads, turns, runs, items, outbound deliveries and usage are all Postgres rows.
+Core NATS carries seven kinds of signal: thread wakes, thread items, runner commands, delivery wakes, member changes, fleet-list changes and bus gaps.
+Runners never reach either store; each runner host holds one stream to a replica, and work is pushed down it.
+
+### The design rules
+
+- **Every wake takes one path.** Each wake becomes a turn in `thread.turns`, stamped with its actor, such as `steer:<user>`, `cron:<schedule>` or `github-app`.
+- **One run per fleet.** Assignment hands out a fleet's thread to one runner at a time, guarded by a fencing token.
+- **Behaviour comes from words.** The prompt is fixed text, the conversation and the fleet's pinned memory.
+- **Capability comes from grants.** `agentsfleetd` builds each run's policy from the fleet row and its approved grants.
+- **Secrets stay outside the model.** The runner swaps `${secrets.NAME.FIELD}` for the value at send time, outside the sandbox.
+- **Approvals are rows.** A question or an access request raises a card; the turn waits, and an answer resumes it.
+- **Context fits the model.** Near the model's window, compaction summarizes older history and keeps the prompt, pinned memory and tools.
+
+### Where each topic lives
 
 | Topic | Owner |
 |---|---|
-| Setup and revisions | [Fleet definitions](fleet_definitions.md#validated-definition) |
-| Activation, intake and recovery | [Data flow](data_flow.md#fleet-setup-and-runtime-sequence) |
-| Setup runs | [Runner protocol](runner_fleet.md#setup-runs) |
-| Private copies | [Runner runtime](runner_execution.md#private-content-and-report-retention) |
-| Money | [Billing](billing_and_provider_keys.md#setup-run-funds-and-settlement) |
-| Interface | [Web app](web_app.md#workspace-setup-and-runtime-subjects) |
+| What a fleet is, from a person's side | [User flow](user_flow.md) |
+| One event from intake to report | [Data flow](data_flow.md) |
+| Postgres and NATS roles | [Datastore scaling](datastore_scaling.md) |
+| Turns, runs and actors | [Thread model](thread_model.md) |
+| Triggers, GitHub and Slack | [Connectors](connectors.md) |
+| Tools, questions and access cards | [Capabilities](capabilities.md) |
+| Pinned and semantic memory | [Memory](memory.md) |
+| Compaction | [Context lifecycle](context_lifecycle.md) |
+| Model calls and credentials on the runner | [Runner runtime](runner_execution.md) |
+| Money and model keys | [Billing](billing.md) and [models](models.md) |
+| Browser app | [Web app](web_app.md) |
 | Wire shapes | [API resources](api_resources.md) |
 
-Implementation verification and deployment acceptance evidence belong to the owning spec and review ledger.
+## Limits
+
+- A lost signal never loses work, because the turn stays queued in Postgres.
+- A detected bus gap starts a recovery pass; a silently lost wake waits for the next wake or a freed runner, because no timer polls.
+- A browser viewer that misses frames gets `catching_up` and reloads from `thread.turns`.
+- A message or a pinned memory entry grants nothing; only an approved grant adds access.
+- A fleet acts only with credentials a person approved; a GitHub grant bounds its repositories and its write reach.
+- Memory recall is a case-insensitive substring match, with no index or embeddings; the model judges relevance.
+- A dead run holder blocks its fleet until the run expires; then assignment runs again.
+
+## Related
+
+- [Product thesis](../product/thesis.md): who `agentsfleet` is for and why.
+- [Fixture fleets](../../tests/fixtures/fleets/README.md): eight example fleets, one per product path.
+- [Data flow](data_flow.md): follows one turn through the stores.

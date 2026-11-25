@@ -1,9 +1,9 @@
 //! A conversation's compacted context: the content-free progress of a
-//! summary, and the fenced verb a setup run reads and saves its draft's
-//! context through.
+//! summary, and the fenced verb a run reads and saves its fleet's context
+//! through.
 //!
 //! ```text
-//!  setup run start ─► ContextLoad { fencing_token } ─► { scope, resource_version, checkpoint? }
+//!  run start ─► ContextLoad { fencing_token } ─► { scope, resource_version, checkpoint? }
 //!  window compacted ─► ContextSave { fencing_token, resource_version, checkpoint }
 //!                        ─► { resource_version }   or refused: a superseded run writes nothing
 //! ```
@@ -43,28 +43,28 @@ pub struct ContextProgress {
     pub state: ContextState,
 }
 
-/// A setup run's read of its draft's compacted context.
+/// A run's read of its fleet's compacted context.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct ContextLoadRequest {
-    /// The fence the run holds its draft's thread at; a run a reassignment
+    /// The fence the run holds its fleet's thread at; a run a reassignment
     /// superseded is refused.
     #[garde(range(max = i64::MAX.unsigned_abs()))]
     pub fencing_token: u64,
 }
 
-/// The draft's compacted context, as a setup run starts from it.
+/// The fleet's compacted context, as a run starts from it.
 #[derive(Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ContextLoadResponse {
-    /// The scope every checkpoint of this draft names. The daemon assigns
+    /// The scope every checkpoint of this thread names. The daemon assigns
     /// it, so the run saves under the scope the daemon checks.
     pub scope: String,
-    /// The generation the stored context holds; zero before the draft's
+    /// The generation the stored context holds; zero before the thread's
     /// first save. The run's first save expects it.
     pub resource_version: u64,
     /// The stored `af_context` checkpoint document; absent before the
-    /// draft's first save.
+    /// thread's first save.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checkpoint: Option<serde_json::Value>,
 }
@@ -78,12 +78,12 @@ impl fmt::Debug for ContextLoadResponse {
     }
 }
 
-/// A setup run's save of its draft's compacted context: the output of the
+/// A run's save of its fleet's compacted context: the output of the
 /// window hook that compacted it.
 #[derive(Clone, PartialEq, Eq, Deserialize, Serialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct ContextSaveRequest {
-    /// The fence the run holds its draft's thread at; a run a reassignment
+    /// The fence the run holds its fleet's thread at; a run a reassignment
     /// superseded writes nothing.
     #[garde(range(max = i64::MAX.unsigned_abs()))]
     pub fencing_token: u64,

@@ -14,9 +14,9 @@ const APPROVALS = `/v1/workspaces/${WS_ID}/approvals`;
 const BLAST =
   "up to 32 write-credential requests, one branch, and one draft Pull Request in the bound repository";
 
-// A kind a fleet authors in its own Definition. It is deliberately not the
-// retired write kind: the daemon raises no such card any longer, so a
-// fixture spelling it would pin the client against a row the API cannot emit.
+// A kind other than the access card. It is deliberately not the retired write
+// kind: the daemon raises no such card any longer, so a fixture spelling it
+// would pin the client against a row the API cannot emit.
 const gate = (overrides: Record<string, unknown> = {}) => ({
   gate_id: GATE_ID,
   fleet_id: FLEET_ID,

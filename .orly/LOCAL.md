@@ -12,9 +12,9 @@ facts.
   `agentsfleet-runner`. API entities use `fleet`, `fleet_id`, and `/fleets`.
 - Postgres holds every durable fact; the message bus is core NATS and holds
   none, per [the datastore requirements](../docs/architecture/datastore_scaling.md)
-  (Indy, Nov 06, 2026, M244_001 Discovery). Three NATS nodes in one region,
-  clustered by routes, are the deployment target, with JetStream, KV and the
-  object store off everywhere. The crate is `afd_bus`; the boot knob is
+  (Indy, Nov 06, 2026, M244_001 Discovery). Production runs two NATS nodes
+  in one region, clustered by routes (`NATS_MACHINES: "2"` in `release.yml`;
+  Indy, Nov 25, 2026), with JetStream, KV and the object store off everywhere. The crate is `afd_bus`; the boot knob is
   `NATS_URL`, comma-separated seeds with credentials in the userinfo, declared
   at `rustd/crates/daemon/afd_bus/src/nats/config.rs`. Boot refuses, as
   `UZ-STARTUP-004`, a seed it cannot reach and a server that reports JetStream,
@@ -93,9 +93,11 @@ facts.
 - A new script (`scripts/**`, `deploy/**/*.sh`, a `make` recipe's helper) needs
   Indy's sign-off before it is committed; a one-off helper lives outside the
   repository and is deleted when the work ends.
-- Test fleets use purpose-driven display names, such as `Support triage` or
-  `Pull request review`. Keep run identifiers, timestamps, and cleanup keys out
-  of names shown in the sidebar; track fixture ownership by fleet identifier.
+- Fixture fleets are the prime set in `tests/fixtures/fleets/`, and each file says
+  what its fleet is. Name one memorably within the fleet-name rule, lowercase
+  with hyphens, such as `morning-rooster`; a test needing another fleet names
+  it for its purpose. Keep run identifiers, timestamps and cleanup keys out of
+  names; track fixture ownership by fleet identifier.
 
 ## Where the standards' generic words land here
 

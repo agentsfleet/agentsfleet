@@ -21,8 +21,6 @@ af_core = { workspace = true, features = ["sqlx"] }
 afd_db.workspace = true
 # The random half of a ledger row's UUIDv7.
 af_crypto.workspace = true
-# A fleet's declared budget and dollar ceilings, as its config spells them.
-af_fleet_runtime.workspace = true
 # The usage line a runner reports, which the rater prices.
 af_wire.workspace = true
 # The billing families: every funds check is counted where the biller is

@@ -16,7 +16,6 @@ const CLASSES: &[FailureClass] = &[
     FailureClass::LandlockDeny,
     FailureClass::OomKill,
     FailureClass::ResourceKill,
-    FailureClass::BudgetBreach,
     FailureClass::TimeoutKill,
 ];
 

@@ -9,10 +9,7 @@ use af_crypto::envelope::Sealer;
 use af_crypto::secret::Kek;
 use afd_db::test_util::{DefaultSeed, PlatformDefault, mint_id};
 
-use super::{
-    CONTEXT_CAP_TOKENS, GATE_WINDOW, KIND_EVENT, KIND_REPOSITORY_WRITE, PROVIDER_KEY_BODY,
-    PROVIDER_KEY_KIND, Ready, STATUS_APPROVED,
-};
+use super::{CONTEXT_CAP_TOKENS, PROVIDER_KEY_BODY, PROVIDER_KEY_KIND};
 use crate::report_seed::FIXTURE_KEK_HEX;
 use crate::seed::{MODEL, PROVIDER};
 use crate::support::Fixtures;
@@ -42,7 +39,7 @@ use crate::support::Fixtures;
 /// process inserted it, and left alone if it was already there. A row that
 /// outlived its run pointed at a workspace whose key was gone, and the next
 /// run's provider resolution failed on it.
-pub(super) async fn seed_provider_resolution(
+pub(crate) async fn seed_provider_resolution(
     fixtures: &Fixtures,
     fleet: &Uuid7,
 ) -> PlatformDefault {
@@ -116,123 +113,4 @@ pub(super) async fn workspace_of(fixtures: &Fixtures, fleet: &Uuid7) -> Uuid7 {
         .fetch_one(&mut *connection)
         .await
         .expect("a seeded fleet has a workspace")
-}
-
-/// Seeds one usage line costing `nanos` for `fleet`.
-pub(super) async fn seed_spend(fixtures: &Fixtures, ready: &Ready, tenant: &Uuid7, nanos: i64) {
-    let workspace = workspace_of(fixtures, &ready.fleet).await;
-    let mut connection = fixtures
-        .database
-        .acquire()
-        .await
-        .expect("a pooled connection");
-    sqlx::query(
-        "INSERT INTO billing.usage_lines \
-           (id, work_type, work_id, seq, kind, tenant_id, workspace_id, fleet_id, fleet_name, \
-            turn_id, provider, model, posture, requested_at, input_token_count, \
-            cached_input_token_count, cache_write_token_count, cache_write_5m_token_count, \
-            cache_write_1h_token_count, output_token_count, runtime_ms, unpriced_token_count, \
-            charged_nanos, created_at) \
-         VALUES ($7, $8, $7, 0, $9::text, $1, $2, $3, $3, $4, 'anthropic', \
-                 $5, 'platform', now(), 0, 0, 0, 0, 0, 0, 0, 0, $6, now())",
-    )
-    .bind(tenant)
-    .bind(&workspace)
-    .bind(&ready.fleet)
-    .bind(mint_id())
-    .bind(MODEL)
-    .bind(nanos)
-    .bind(mint_id())
-    .bind(afd_billing::sql::work::FLEET_RUN)
-    .bind(af_wire::usage::LineKind::Model.as_str())
-    .execute(&mut *connection)
-    .await
-    .expect("the spend seeds");
-}
-
-/// Raises one gate over `ready`'s event, answered as `status` names.
-///
-/// One write: the gate is a `fleet.approval_gates` row keyed by `action_id`,
-/// and the row is also the reference a poll follows: `Gates::recorded` finds
-/// the gate by its event.
-///
-/// The gate expires one [`GATE_WINDOW`] after the database's `now()`.
-pub(super) async fn seed_gate(fixtures: &Fixtures, ready: &Ready, status: &str) -> Uuid7 {
-    let workspace = workspace_of(fixtures, &ready.fleet).await;
-    let action_id = mint_id();
-
-    let mut connection = fixtures
-        .database
-        .acquire()
-        .await
-        .expect("a pooled connection");
-    sqlx::query(
-        "INSERT INTO fleet.approval_gates \
-           (id, fleet_id, workspace_id, action_id, tool_name, action_name, \
-            gate_type, proposed_action, evidence, blast_radius, expires_at, \
-            resolved_by, status, detail, created_at, updated_at, turn_id) \
-         VALUES ($1, $2, $3, $4, 'chat', 'run', \
-                 $5, 'run the event', '{}'::jsonb, 'one fleet', \
-                 now() + $6::interval, 'fixture:human', $7, '', now(), now(), $8)",
-    )
-    .bind(mint_id())
-    .bind(&ready.fleet)
-    .bind(&workspace)
-    .bind(&action_id)
-    .bind(KIND_EVENT)
-    .bind(GATE_WINDOW)
-    .bind(status)
-    .bind(&ready.turn_id)
-    .execute(&mut *connection)
-    .await
-    .expect("the gate row must insert");
-    action_id
-}
-
-/// Raises one APPROVED `repository_write` gate over `ready`'s event.
-///
-/// A different table read from [`seed_gate`]'s, despite the shared row: that
-/// one is answered through `Gates::check`, which finds the gate by its event
-/// association. This one is also
-/// read by `approved_write_gate` in SQL off `fleet.approval_gates`; its approval
-/// allows the event to proceed when the reference is absent.
-///
-/// `updated_at <= expires_at` is set rather than defaulted: a row past its
-/// deadline comes back as no row, which is indistinguishable from an
-/// unapproved gate and would make this fixture prove nothing.
-///
-/// Returns the gate's identifier, which is what the repair branch is named
-/// from — so the caller can assert the branch the delivery locked is THIS
-/// gate's and not merely well-formed.
-pub(super) async fn seed_write_gate(fixtures: &Fixtures, ready: &Ready) -> Uuid7 {
-    let workspace = workspace_of(fixtures, &ready.fleet).await;
-    let gate_id = mint_id();
-
-    let mut connection = fixtures
-        .database
-        .acquire()
-        .await
-        .expect("a pooled connection");
-    sqlx::query(
-        "INSERT INTO fleet.approval_gates \
-           (id, fleet_id, workspace_id, action_id, tool_name, action_name, \
-            gate_type, proposed_action, evidence, blast_radius, expires_at, \
-            resolved_by, status, detail, created_at, updated_at, turn_id) \
-         VALUES ($1, $2, $3, $4, 'chat', 'author', \
-                 $5, 'author a branch', '{}'::jsonb, 'one repository', \
-                 now() + $6::interval, 'fixture:human', $7, '', now(), now(), $8)",
-    )
-    .bind(&gate_id)
-    .bind(&ready.fleet)
-    .bind(&workspace)
-    .bind(mint_id())
-    .bind(KIND_REPOSITORY_WRITE)
-    .bind(GATE_WINDOW)
-    .bind(STATUS_APPROVED)
-    .bind(&ready.turn_id)
-    .execute(&mut *connection)
-    .await
-    .expect("the write gate row must insert");
-
-    gate_id
 }

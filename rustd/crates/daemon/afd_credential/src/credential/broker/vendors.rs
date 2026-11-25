@@ -140,7 +140,7 @@ impl Exchanger for Vendors {
 /// The stored handle already holds a usable credential, so this hands it back
 /// with no upstream expiry. It reaches the broker even though the run path
 /// delivers static credentials inline, because the runner may ask for anything
-/// its fleet declared and refusing here would be a refusal the tenant cannot
+/// its fleet was approved for and refusing here would be a refusal the tenant cannot
 /// act on.
 pub(super) fn stored(handle: &Value) -> Outcome {
     handle

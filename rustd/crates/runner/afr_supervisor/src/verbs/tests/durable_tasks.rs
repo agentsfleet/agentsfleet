@@ -3,9 +3,8 @@
 use super::*;
 use af_wire::durable_task::{
     DecisionDurableTaskVersion, DurableTaskBindingItem, DurableTaskBindingsInput,
-    DurableTaskEffectInput, DurableTaskEffectsQuery, DurableTaskFileChange, DurableTaskInputAction,
-    DurableTaskInputMode, DurableTaskInputReceiptInput, DurableTaskInputsQuery,
-    DurableTaskProposedItem,
+    DurableTaskEffectInput, DurableTaskEffectsQuery, DurableTaskFileChange, DurableTaskInputMode,
+    DurableTaskInputReceiptInput, DurableTaskInputsQuery,
 };
 use garde::Validate as _;
 
@@ -38,20 +37,11 @@ async fn bindings_use_the_supervisor_fence_without_retrying_failures() {
         let mut bindings = DurableTaskBindingsInput {
             fencing_token: 0,
             source_turn_id: ID.to_owned(),
-            accepted_revision_id: ID.to_owned(),
             plan_digest: "a".repeat(64),
-            message_decision_call_id: ID.to_owned(),
-            items: vec![DurableTaskBindingItem {
-                proposed: DurableTaskProposedItem {
-                    source_start: 0,
-                    source_end: 6,
-                    action: DurableTaskInputAction::Status,
-                    durable_task_id: Some(ID.to_owned()),
-                    title: "Status".to_owned(),
-                    interpretation: "Report progress".to_owned(),
-                    target: None,
-                },
-                decision_call_id: None,
+            items: vec![DurableTaskBindingItem::Steer {
+                source_start: 0,
+                source_end: 6,
+                durable_task_id: ID.to_owned(),
             }],
         };
         let digest =

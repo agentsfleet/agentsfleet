@@ -11,7 +11,7 @@ use afd_db::{
 use jiff::Timestamp;
 use sqlx::{Connection as _, Postgres, Transaction};
 
-use crate::rows::{self, POLICY, RunRow, SetupRunRow};
+use crate::rows::{self, POLICY, PlacedRunRow, RunRow};
 
 /// How long a live seeded run has left.
 pub(super) const LIVE_FOR: Duration = Duration::from_mins(1);
@@ -76,11 +76,12 @@ impl Fixture {
         fixture
     }
 
-    pub(super) async fn setup(&self, tx: &mut Transaction<'_, Postgres>, until: Timestamp) {
-        rows::setup_run(
+    /// Places a new fleet's run on this host inside `tx`, live until `until`.
+    pub(super) async fn place(&self, tx: &mut Transaction<'_, Postgres>, until: Timestamp) {
+        rows::placed_run(
             tx,
             (&self.runner, &self.workspace, &self.tenant),
-            SetupRunRow {
+            PlacedRunRow {
                 status: afd_state::sql::RUN_STATUS_ACTIVE,
                 run_expires_at: until,
             },
@@ -173,10 +174,12 @@ impl Fixture {
     pub(super) async fn try_assign(&self) -> bool {
         let mut connection = self.db.acquire().await.expect("assignment connection");
         let mut tx = connection.begin().await.expect("assignment transaction");
+        // A fleet with no hold on this host, so the assignment takes a worker.
+        let fleet = mint_id();
         let capacity = afd_runner::capacity::lock(
             &mut tx,
             &self.runner,
-            afd_runner::capacity::Work::Setup,
+            afd_runner::capacity::Work::Fleet(&fleet),
             None,
         )
         .await
@@ -184,7 +187,7 @@ impl Fixture {
         .expect("isolated host exists");
         let accepted = capacity.can_assign();
         if accepted {
-            self.setup(&mut tx, clock::after(capacity.now(), LIVE_FOR))
+            self.place(&mut tx, clock::after(capacity.now(), LIVE_FOR))
                 .await;
         }
         tx.commit().await.expect("commit the guarded assignment");

@@ -250,7 +250,6 @@ impl Holder {
         )
         .name("ownership-fleet")
         .at(afd_db::test_util::SEEDED_AT)
-        .native_setup()
         .insert(&mut *connection)
         .await
         .expect("the fleet seeds");

@@ -10,8 +10,9 @@ executable: false
 
 ## What this does
 
-Binds one read fleet (`ci-dev-responder`) and one addressed repair fleet (`ci-dev-repairer`) to one Slack channel.
+Creates one read fleet (`ci-dev-responder`) and one addressed repair fleet (`ci-dev-repairer`), each subscribed to one Slack channel.
 The daemon owns Slack replies; neither fleet holds a Slack credential.
+
 Run it on development first, then repeat for production only after the development drill passes.
 🤠 Indy changes Slack, GitHub and 1Password settings; 🦉 the agent audits, runs commands and records evidence.
 
@@ -19,13 +20,17 @@ Run it on development first, then repeat for production only after the developme
 
 The mention, delivery and evidence workstreams must be deployed to `api-dev.agentsfleet.net`.
 
+The workspace vault holds a `grafana` secret with a `host` and a Grafana Viewer `token`.
+The responder asks for that secret by name, and a request for a name the vault lacks is refused.
+
 ## Steps
 
 ### 1. Audit the repair-branch secret path
 
-Do this before saving a write fleet.
+Do this before approving any fleet's GitHub write access.
 The agent reads every workflow trigger, called workflow, `if` guard, environment and secret scope in `agentsfleet/linkwarden`, on both `main` and `dev` at the drill revision.
 A push or pull request from `agentsfleet-repair/*` must have no path to a deploy secret.
+
 Indy owns any workflow or environment change and confirms installation and organization secret scopes; the agent never edits `.github/workflows/**`.
 A new path to a deploy secret blocks the drill and goes to Indy.
 Record the verdict and revisions in the drill record, never credential values.
@@ -82,67 +87,94 @@ That observation is not a standing grant.
 
    Record the API base, account and workspace ID, never the session credential.
    Stop if any of them points at the wrong environment.
-2. Add a `mention` trigger for `<CHANNEL_ID>` (from step 2.1) to each fixture Definition.
-   The binding lives in the Definition; leave repository and base bindings unchanged.
+2. Create the responder from its first message.
+   The workspace's selected model runs it; add `--model <MODEL_REF>` to pick another eligible model from the Models page.
 
    ```bash
-   set -o pipefail
-   responder_json="$(mktemp)"; repairer_json="$(mktemp)"
-   for pair in "ci-responder:$responder_json" "ci-repairer:$repairer_json"; do
-     jq --arg channel '<CHANNEL_ID>' \
-       '.config["x-agentsfleet"].triggers += [{type: "mention", source: "slack", channels: [$channel]}]' \
-       "rustd/crates/protocol/af_fleet_runtime/tests/fixtures/fleets/${pair%%:*}/definition.json" > "${pair#*:}"
-   done
-   ```
-
-3. Open a private review draft for each.
-   `<MODEL_REF>` is a setup model the workspace owner enabled; a Definition draft makes no setup model call.
-
-   ```bash
-   agentsfleet --api <API_BASE> chat --definition "$responder_json" --model <MODEL_REF> \
-     --no-input --review --name ci-dev-responder
-   agentsfleet --api <API_BASE> chat --definition "$repairer_json" --model <MODEL_REF> \
-     --no-input --review --name ci-dev-repairer
+   agentsfleet --api <API_BASE> fleet create --json --name ci-dev-responder \
+     "You answer mentions in #ci-dev about failed agentsfleet/linkwarden CI runs. You only read. Cite one GitHub Actions job-log line and one Grafana Loki line, then propose a fix."
    ```
 
    ```text
-   Draft <DRAFT_ID> created
-   <varies: setup, required access, readiness checks>
-   Review digest: <DIGEST>
+   <varies: JSON with fleet_id and turn_id>
    ```
 
-   Check the one `mention` trigger for `<CHANNEL_ID>` and that repository bindings match the fixtures.
-4. Save each draft with its own digest and name.
+   Record the `fleet_id` as the responder's `<FLEET_ID>`.
+   A `409` naming `UZ-AGT-006` means the name is taken; a `409` naming `UZ-SETUP-008` means the workspace has no usable model.
+3. Create the repairer the same way.
 
    ```bash
-   agentsfleet --api <API_BASE> chat <DRAFT_ID> --no-input --save \
-     --name ci-dev-responder --review-digest <DIGEST>
+   agentsfleet --api <API_BASE> fleet create --json --name ci-dev-repairer \
+     "When addressed by name in #ci-dev, you open one draft fix pull request against agentsfleet/linkwarden dev for the failure in the thread. You never merge or deploy."
    ```
 
    ```text
-   Fleet ci-dev-responder: <STATUS>
+   <varies: JSON with fleet_id and turn_id>
    ```
 
-   A refused digest means the setup changed after review; review again and save with the new digest.
-5. Remove the temporary files.
+   Record the `fleet_id` as the repairer's `<FLEET_ID>`.
+4. Ask the responder to pin its job, subscribe to the channel and ask for its access.
+   `<CHANNEL_ID>` is the identifier from step 2.1.
 
    ```bash
-   rm -f -- "$responder_json" "$repairer_json"
+   agentsfleet --api <API_BASE> fleet steer @ci-dev-responder \
+     "Pin the job above as core memory. Add a Slack mention trigger for channel <CHANNEL_ID>. Request read access to github for agentsfleet/linkwarden, then request grafana."
    ```
+
+   ```text
+   <varies: the fleet's answer and one access card per request>
+   ```
+
+5. Ask the repairer for the same, with write access based on `dev`.
+
+   ```bash
+   agentsfleet --api <API_BASE> fleet steer @ci-dev-repairer \
+     "Pin the job above as core memory. Add a Slack mention trigger for channel <CHANNEL_ID>. Request write access to github for agentsfleet/linkwarden with base dev."
+   ```
+
+   ```text
+   <varies: the fleet's answer and one access card>
+   ```
+
+6. Indy approves each access card, in the fleet's chat with **Approve**, or from the command line.
+   `<GATE_ID>` is the card's identifier from the list.
+   Approve the repairer's write request only after step 1's audit passes.
+
+   ```bash
+   agentsfleet --api <API_BASE> fleet approvals list --fleet <FLEET_ID>
+   ```
+
+   ```text
+   <varies: the pending cards>
+   ```
+
+   ```bash
+   agentsfleet --api <API_BASE> fleet approvals approve <GATE_ID>
+   ```
+
+   ```text
+   <varies: the approved card>
+   ```
+
+   Each waiting run resumes holding the approved access. A request the fleet should not hold gets **Deny**, and its run resumes without it.
 
 ## Verify it works
 
-1. Run `agentsfleet --api <API_BASE> list` for each `<FLEET_ID>`, then `agentsfleet --api <API_BASE> fleet show <FLEET_ID>`.
-2. Confirm the one-channel `mention` trigger on both fleets.
-3. Confirm the responder has a read binding and a read-only network.
-4. Confirm the repairer has a write binding to `agentsfleet/linkwarden` with base `dev`, addressed by name.
-5. Stop if either fleet has another binding or an extra host.
+1. Run `agentsfleet --api <API_BASE> fleet show <FLEET_ID>` for each fleet.
+2. Run `agentsfleet --api <API_BASE> fleet triggers list @ci-dev-responder`, then the same for `@ci-dev-repairer`.
+   Confirm exactly one `mention` trigger for `<CHANNEL_ID>` on each; **Wakes on** in the dashboard lists the same row.
+3. Run `agentsfleet --api <API_BASE> fleet grants list --fleet <FLEET_ID>` for each fleet.
+   Confirm the responder holds `github` with read on `agentsfleet/linkwarden` and `grafana`, and nothing else.
+4. Confirm the repairer holds `github` with write on `agentsfleet/linkwarden` and base `dev`, so it answers only when addressed by name.
+5. Confirm **Allow all** and **Packages** are off on both fleets.
+6. Stop if either fleet has another trigger, another grant or an open network.
 
 ## Run the drill
 
 Once the dependent code reaches `api-dev`, Indy asks the agent to run this page.
 Before the repair request, the agent checks that deployed code passes the exact daemon-issued repair branch in trusted input.
-If it does not, the agent stops at the draft step and records the gap for the M206_003 owner.
+
+If it does not, the agent stops before the draft pull request and records the gap for the M206_003 owner.
 The agent never derives a branch from Slack text.
 
 The development drill passes only with all of these observed:

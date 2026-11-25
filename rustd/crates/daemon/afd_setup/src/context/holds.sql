@@ -6,7 +6,7 @@ SELECT EXISTS (
     SELECT 1
       FROM thread.runs r
       JOIN thread.threads t
-        ON t.id = COALESCE(r.fleet_id, r.draft_id) AND t.fencing_token = r.fencing_token
-     WHERE r.id = $2 AND COALESCE(r.fleet_id, r.draft_id) = $1 AND r.runner_id = $3
+        ON t.id = r.fleet_id AND t.fencing_token = r.fencing_token
+     WHERE r.id = $2 AND r.fleet_id = $1 AND r.runner_id = $3
        AND r.fencing_token = $4 AND r.status = $5
 )

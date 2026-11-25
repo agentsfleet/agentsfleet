@@ -22,21 +22,9 @@ use crate::report_seed::{Held, held_in};
 use crate::rows::Row;
 use crate::support::Fixtures;
 
-/// The seeded fleet's daily ceiling (`fleet_run_reads.rs`).
-pub(crate) const SEEDED_DAILY_NANOS: i64 = 1_000_000_000;
-
 /// The run's runtime lines, as `(seq, runtime_ms)`.
 const RUNTIME_LINES: &str = "SELECT seq, runtime_ms FROM billing.usage_lines \
      WHERE work_id = $1 AND kind = $2 ORDER BY seq";
-
-/// One spend line on `fleet`, charged `nanos` now: what the fleet's budget reads.
-const SPEND: &str = "INSERT INTO billing.usage_lines \
-     (id, work_type, work_id, kind, seq, tenant_id, workspace_id, fleet_id, fleet_name, turn_id, \
-      provider, model, posture, requested_at, input_token_count, cached_input_token_count, \
-      cache_write_token_count, cache_write_5m_token_count, cache_write_1h_token_count, \
-      output_token_count, runtime_ms, unpriced_token_count, charged_nanos, created_at) \
-     VALUES (uuidv7(), 'fleet_run', uuidv7(), $5, 0, $1, $2, $3, 'spend', uuidv7(), \
-             'fixture', 'fixture', 'platform', now(), 0, 0, 0, 0, 0, 0, 0, 0, $4, now())";
 
 /// Renews `runs` on `held`'s host in one frame, on a fresh run service.
 pub(crate) async fn frame(
@@ -83,24 +71,6 @@ async fn runtime_lines(held: &Held, run: &Uuid7) -> Vec<(i64, i64)> {
         .fetch_all(&mut *held.fixtures.database.acquire().await.expect("observer"))
         .await
         .expect("runtime lines")
-}
-
-pub(crate) async fn spend(
-    held: &Held,
-    tenant: &Uuid7,
-    workspace: &Uuid7,
-    fleet: &Uuid7,
-    nanos: i64,
-) {
-    sqlx::query(SPEND)
-        .bind(tenant)
-        .bind(workspace)
-        .bind(fleet)
-        .bind(nanos)
-        .bind(LineKind::Model.as_str())
-        .execute(&mut *held.fixtures.database.acquire().await.expect("writer"))
-        .await
-        .expect("the spend line writes");
 }
 
 // Value: protects=one statement renews a host's live runs, a run hours old

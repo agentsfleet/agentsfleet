@@ -1,8 +1,8 @@
 //! Routes addressed by a workspace alone.
 //!
 //! The fleet-addressed half lives in [`super::fleet`]. What is left here is
-//! the workspace's own surface: its secrets, its turn tail, its approval
-//! inbox, and its onboarding checklist.
+//! the workspace's own surface: its fleets, its model choices, its secrets, its
+//! turn tail, its approval inbox, and its onboarding checklist.
 
 use afd_auth::Scope;
 
@@ -21,17 +21,7 @@ const APPROVAL_RESOLVE: &[Scope] = &[Scope::ApprovalResolve];
 pub enum WorkspaceRoute {
     /// Supported model choices from the workspace's billing owner.
     Models,
-    /// The authenticated creator's private draft collection.
-    Drafts,
-    /// One creator-private draft and current candidate.
-    Draft,
-    /// Private user requests and assistant answers.
-    DraftMessages,
-    /// Creator-private, currently authorized setup progress.
-    DraftStream,
-    /// One turn of a creator-private draft: stop it.
-    DraftTurn,
-    /// The workspace's fleets.
+    /// The workspace's fleets: list them, or start one with its first message.
     Fleets,
     /// The workspace's secrets.
     Secrets,
@@ -57,11 +47,6 @@ impl WorkspaceRoute {
     /// Every workspace route.
     pub const ALL: &'static [Self] = &[
         Self::Models,
-        Self::Drafts,
-        Self::Draft,
-        Self::DraftMessages,
-        Self::DraftStream,
-        Self::DraftTurn,
         Self::Fleets,
         Self::Secrets,
         Self::Secret,
@@ -85,17 +70,12 @@ impl WorkspaceRoute {
             Self::Models
             | Self::Turns
             | Self::TurnsStream
-            | Self::DraftStream
             | Self::Onboarding
             | Self::Approvals
             | Self::Approval
             | Self::Members => &[Verb::Get],
             Self::ApprovalResolve => &[Verb::Post],
-            Self::Drafts | Self::DraftMessages | Self::Fleets | Self::Secrets => {
-                &[Verb::Get, Verb::Post]
-            }
-            Self::Draft => &[Verb::Get, Verb::Patch, Verb::Delete],
-            Self::DraftTurn => &[Verb::Patch],
+            Self::Fleets | Self::Secrets => &[Verb::Get, Verb::Post],
             Self::Secret => &[Verb::Put, Verb::Delete],
         }
     }
@@ -110,12 +90,8 @@ impl WorkspaceRoute {
     /// rather than a wildcard, so a new route has to say which it is.
     const fn class(self) -> RouteClass {
         match self {
-            Self::DraftStream | Self::TurnsStream => RouteClass::Stream,
+            Self::TurnsStream => RouteClass::Stream,
             Self::Models
-            | Self::Drafts
-            | Self::Draft
-            | Self::DraftMessages
-            | Self::DraftTurn
             | Self::Fleets
             | Self::Secrets
             | Self::Secret
@@ -132,11 +108,6 @@ impl WorkspaceRoute {
     const fn template(self) -> &'static str {
         match self {
             Self::Models => workspace_path!("/models"),
-            Self::Drafts => workspace_path!("/drafts"),
-            Self::Draft => workspace_path!("/drafts/{draft_id}"),
-            Self::DraftMessages => workspace_path!("/drafts/{draft_id}/messages"),
-            Self::DraftStream => workspace_path!("/drafts/{draft_id}/turns/stream"),
-            Self::DraftTurn => workspace_path!("/drafts/{draft_id}/turns/{turn_id}"),
             Self::Fleets => workspace_path!("/fleets"),
             Self::Secrets => workspace_path!("/secrets"),
             Self::Secret => workspace_path!("/secrets/{name}"),
@@ -158,6 +129,8 @@ impl WorkspaceRoute {
 
     /// Viewing the inbox and deciding a gate are separate capabilities on
     /// purpose: reading what is waiting is not the authority to resolve it.
+    /// Approving or denying also needs a signed-in person, which the handler
+    /// asks of the decision the path names.
     ///
     /// Onboarding carries none — its object is the caller's own workspace
     /// state, and ownership is the check that matters.
@@ -166,11 +139,6 @@ impl WorkspaceRoute {
             Self::Models | Self::Turns | Self::TurnsStream | Self::Members => {
                 Scopes::Always(FLEET_READ)
             }
-            Self::Drafts
-            | Self::Draft
-            | Self::DraftMessages
-            | Self::DraftStream
-            | Self::DraftTurn => Scopes::Always(FLEET_WRITE),
             Self::Fleets => Scopes::rw(FLEET_READ, FLEET_WRITE),
             Self::Secrets => Scopes::rw(SECRET_READ, SECRET_WRITE),
             Self::Secret => Scopes::Always(SECRET_WRITE),

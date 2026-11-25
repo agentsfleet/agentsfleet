@@ -18,11 +18,13 @@ fn lifecycle_errors_expose_only_bounded_codes_and_recovery_states() {
             error_code::AGENTSFLEET_NOT_FOUND,
             None,
         ),
+        (ErrorKind::Gone, error_code::SETUP_GONE, None),
         (
-            ErrorKind::Policy,
-            error_code::SETUP_POLICY,
-            Some("review_required"),
+            ErrorKind::Replay,
+            error_code::SETUP_REPLAY,
+            Some("accepted"),
         ),
+        (ErrorKind::Hidden, error_code::AUTH_FORBIDDEN, None),
         (
             ErrorKind::NameExists,
             error_code::AGENTSFLEET_NAME_EXISTS,
@@ -39,22 +41,17 @@ fn lifecycle_errors_expose_only_bounded_codes_and_recovery_states() {
         assert_eq!(error.current_state(), state);
         assert_eq!(error.detail(), af_core::problem::Problem::of(code).title());
         assert_eq!(error.etag(), None);
-        assert_eq!(error.review_digest(), None);
         assert!(!error.is_datastore_unavailable());
     }
 }
 
 // Value: protects=wrapped subsystem failures keep their codes and causes;
-// fails_when=setup flattens runner/turn/approval errors into a generic refusal;
+// fails_when=a fleet change flattens turn/approval errors into a generic refusal;
 // why_new=happy-path services never produce every subsystem failure;
 // seam=existing subsystem failure fixtures; no_claim=live datastore outages.
 #[test]
 fn subsystem_failures_retain_their_original_classification_and_typed_cause() {
     let mut samples: Vec<(Error, error_code::ErrorCode)> = Vec::new();
-    for (_, source) in afd_runner::error::one_of_each_kind() {
-        let code = source.code();
-        samples.push((source.into(), code));
-    }
     for (_, source) in afd_turns::error::one_of_each_kind() {
         let code = source.code();
         samples.push((source.into(), code));
@@ -99,50 +96,6 @@ fn credential_refusals_preserve_the_vault_code_and_original_cause() {
             .expect("credential cause")
             .is::<afd_credential::Error>()
     );
-}
-
-// Value: a stale checkpoint keeps its retry classification and typed context cause.
-#[test]
-fn context_refusals_preserve_the_shared_code_without_exposing_private_notes() {
-    let source = af_context::Error::stale();
-    let code = source.code();
-    let error = Error::from(source);
-    assert_eq!(error.code(), code);
-    assert_eq!(error.current_state(), None);
-    assert!(
-        error
-            .source()
-            .expect("context cause")
-            .is::<af_context::Error>()
-    );
-}
-
-// Value: protects=a biller that cannot answer keeps its own classification;
-// fails_when=setup reports a lost billing datastore as its own refusal;
-// why_new=fixture billers always answer; seam=the real ledger over an unreachable pool;
-// no_claim=which setup path surfaces it.
-#[tokio::test]
-async fn a_biller_fault_keeps_the_billing_code_and_its_cause() {
-    use afd_billing::biller::{Account, Biller as _};
-    let ledger = afd_billing::ledger::LedgerBiller::new(afd_db::test_util::unreachable_db());
-    let payer = Account {
-        tenant: afd_db::test_util::mint_id(),
-        workspace: afd_db::test_util::mint_id(),
-    };
-    let fault = ledger
-        .balance(&payer)
-        .await
-        .expect_err("nobody answers the ledger's pool");
-    let code = fault.code();
-    let error = Error::from(fault);
-    assert_eq!(error.code(), code);
-    assert!(
-        error
-            .source()
-            .expect("the biller's fault is the cause")
-            .is::<afd_billing::Error>()
-    );
-    assert_eq!(error.current_state(), None);
 }
 
 // Value: protects=a fleet purge that cannot reach its store keeps the

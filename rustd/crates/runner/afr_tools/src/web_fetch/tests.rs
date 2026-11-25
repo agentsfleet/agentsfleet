@@ -12,7 +12,7 @@ use crate::testing::{MINTED, RunFixture, call, replying, sending};
 const PAGE: &str = "https://demo.es.example/docs";
 
 async fn fetch(transport: SharedTransport, arguments: Value) -> ToolOutput {
-    let run = RunFixture::new(false);
+    let run = RunFixture::new();
     let tool = sending(&WEB_FETCH, transport);
     let run = run.run();
     call(&tool, &run, arguments).await
@@ -79,7 +79,7 @@ async fn should_read_a_page_as_its_text() {
 
 #[tokio::test]
 async fn should_mask_a_minted_token_a_page_spells_in_entities() {
-    let run = RunFixture::new(false);
+    let run = RunFixture::new();
     let run = run.run();
     let (minting, _sent) = replying(200, "ok");
     let request = sending(&HTTP_REQUEST, minting);

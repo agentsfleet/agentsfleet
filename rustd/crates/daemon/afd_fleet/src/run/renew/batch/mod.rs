@@ -2,18 +2,17 @@
 //!
 //! The runner sends one renewal frame per host each tick, naming every live
 //! run. Before, each run ran the per-run path: a load, a funds check, a
-//! budget read, a price read, the host lock, a cancel read, the meter and a
-//! line log, about ten statements. Here the frame costs a pre-read and one
+//! price read, the host lock, a cancel read, the meter and a line log, about
+//! ten statements. Here the frame costs a pre-read and one
 //! statement ([`crate::run::sql::renew::RENEW_BATCH`]), plus a funds check per
 //! payer every [`FUNDS_CHECK_TICKS`] ticks and a read for whatever the caches
 //! miss.
 //!
 //! A run that runs a durable task keeps the per-run path, which checks task
-//! authority at commit. So does a run whose prices or ceilings moved under the
-//! statement: the per-run path reads them fresh, and the case is rare enough
-//! that its statements do not count.
+//! authority at commit. So does a run whose prices moved under the statement:
+//! the per-run path reads them fresh, and the case is rare enough that its
+//! statements do not count.
 
-mod ceilings;
 mod columns;
 mod frame;
 mod pricing;

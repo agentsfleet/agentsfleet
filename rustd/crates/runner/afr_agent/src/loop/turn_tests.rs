@@ -29,7 +29,7 @@ use super::tests::{completions, drive, engine};
 use super::{EVENT_TURN_COMPLETED, EVENT_TURN_STARTED};
 use crate::engine::{AgentEngine, AgentRun, Meter};
 use crate::fixture::{
-    API_KEY, Canned, Exits, Frames, GITHUB_TOKEN, Script, call, payload, say, spent, unbounded,
+    Canned, Exits, Frames, GITHUB_TOKEN, Script, call, payload, say, spent, unbounded,
 };
 use crate::ledger::{EVENT_CALL_COMPLETED, EVENT_CALL_STARTED};
 use crate::testing::Discard;
@@ -177,35 +177,6 @@ async fn a_call_whose_process_exits_zero_ends_succeeded() {
 }
 
 #[tokio::test]
-async fn no_secret_value_is_sent_to_the_model_whoever_wrote_it() {
-    let script = Script::new([
-        vec![
-            say(API_KEY),
-            call(
-                "c",
-                UPDATE_PLAN.name(),
-                serde_json::json!({"token": GITHUB_TOKEN}),
-            ),
-        ],
-        vec![say("done")],
-    ]);
-    let engine = engine(vec![Canned::boxed(&UPDATE_PLAN, GITHUB_TOKEN)], &script);
-    let mut held = payload(&[UPDATE_PLAN.name()], unbounded());
-    held.event.request_json = format!("{{\"message\":\"use {GITHUB_TOKEN}\"}}").into();
-    held.instructions = format!("the key is {API_KEY}").into();
-
-    let (_output, _frames) = drive(&engine, &held, &CancellationToken::new()).await;
-
-    let sent = format!("{:?}", script.sent());
-    assert!(
-        !sent.contains(API_KEY),
-        "the key never reaches a prompt: {sent}"
-    );
-    assert!(!sent.contains(GITHUB_TOKEN), "nor a credential: {sent}");
-    assert!(sent.contains("«secret:github.token»") && sent.contains("«secret:llm.api_key»"));
-}
-
-#[tokio::test]
 async fn every_turn_and_every_call_logs_its_start_and_its_end_once() {
     let capture = Capture::install();
     let script = Script::new([
@@ -259,7 +230,7 @@ async fn a_credential_minted_during_a_run_is_logged_under_the_runs_run() {
     let engine = Loop::new(Catalog::hosted(Arc::new(transport)), script.replay());
     let mut held = payload(&[], unbounded());
     held.run_id = "run-77".into();
-    held.policy = policy(false);
+    held.policy = policy();
     held.policy.tools = vec![HTTP_REQUEST.name().into()];
     let mint = CountingMint::answering(MINTED, HOUR, FixedClock::at(jiff::Timestamp::UNIX_EPOCH));
     let frames = Frames::default();

@@ -73,8 +73,6 @@ pub enum FailureClass {
     RunExpired,
     /// Renewal was refused and the child was terminated.
     RenewalTerminate,
-    /// The run exceeded its spend budget.
-    BudgetBreach,
     /// The run would not fit the runner protocol's frame
     /// (`crate::protocol::MESSAGE_BYTES_MAX`). Set by `agentsfleetd`, never a
     /// runner: the run is failed at assignment and never sent.
@@ -229,11 +227,6 @@ pub struct ReportRequest<'a> {
     /// past 262144 bytes in total are dropped and counted, never refused.
     #[serde(borrow, default, skip_serializing_if = "Vec::is_empty")]
     pub memory: Vec<crate::memory::MemoryDelta<'a>>,
-    /// A draft-owned run's setup outcome; present exactly on such a run's
-    /// report. The daemon re-checks its base and Definition in the report
-    /// transaction and writes at most one candidate.
-    #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
-    pub setup: Option<crate::run::SetupReport<'a>>,
 }
 
 /// The exact local hold the daemon accepted with a terminal report.

@@ -118,7 +118,7 @@ async fn an_empty_answer_reads_done() {
 /// handed to the scheduler.
 #[tokio::test]
 async fn a_minted_token_is_masked_out_of_a_schedule_message() {
-    let fixture = RunFixture::new(false);
+    let fixture = RunFixture::new();
     let verbs = RecordingVerbs::answering(Ok(ANSWER.to_owned()), Ok(true));
     let run = fixture.run_reaching(&verbs);
     let (minting, _sent) = replying(200, "ok");

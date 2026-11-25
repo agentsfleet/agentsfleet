@@ -44,11 +44,16 @@ async fn serve(arguments: Arguments) -> Result<()> {
         &arguments.model_root,
         arguments.model_address,
     ))?;
+    // Every run is offered the published catalog, so the fixture hosts it as
+    // the runner does; an empty catalog refuses the run before any model call.
+    let network = checked(af_egress::Network::new())?;
     let agent = afr_agent::Loop::new(
-        afr_tools::Catalog::new(Vec::new()),
+        afr_tools::Catalog::hosted(std::sync::Arc::new(network)),
         af_providers::Connector::with_client(client),
     );
-    let engine = checked(afr_sandbox::UnsandboxedEngine::new(home.sandboxes()))?;
+    // Every run holds a sandbox, so the respawn checkpoint is a workspace
+    // checkpoint: it needs a toolbox both processes name and a freeze.
+    let engine = checked(afr_sandbox::RecoveryDrillEngine::new(home.sandboxes()))?;
     let probe = afr_sandbox::probe(&afr_sandbox::ProbePaths::default());
     let shutdown = CancellationToken::new();
     let signal = shutdown.clone();

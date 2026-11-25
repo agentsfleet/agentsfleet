@@ -14,6 +14,7 @@ mod input_receipt;
 mod limits;
 mod report;
 mod state;
+mod statement;
 mod target;
 
 pub use assessment::{DecisionAssessment, DecisionRetryDelay, DecisionUnavailableCause};
@@ -36,8 +37,7 @@ pub use target::{DurableTaskTarget, DurableTaskWorkflow};
 mod dependency;
 pub use binding::{
     DurableTaskBindingItem, DurableTaskBindingsInput, DurableTaskBindingsResponse,
-    DurableTaskInputAction, DurableTaskItemBinding, DurableTaskProposedItem,
-    DurableTaskRequestedTarget,
+    DurableTaskInputAction, DurableTaskItemBinding, DurableTaskRequestedTarget,
 };
 pub use checkpoint::*;
 pub use dependency::{DurableTaskCheck, DurableTaskDependency};
@@ -47,6 +47,7 @@ pub use input_receipt::{
 pub use limits::{DurableTaskLimits, DurableTaskUsage};
 pub use report::{DurableTaskDisposition, DurableTaskReport};
 pub use state::DurableTaskState;
+pub use statement::{DurableTaskStatement, STATEMENT_ID_MAX_BYTES, unique_statement_ids};
 
 /// Linux's `PATH_MAX` (`linux/limits.h`): the longest path a system call
 /// takes. A checkpointed or published path names a file in a Linux

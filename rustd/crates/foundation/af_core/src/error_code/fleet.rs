@@ -3,7 +3,7 @@
 //! `UZ-RUN-*` is the runner-to-control-plane wire, where the stock runner
 //! classifies a refusal by BOTH status and code, so several entries here carry
 //! a note about which status is load-bearing. `UZ-AGT-*` is the fleet itself —
-//! its install, its configuration, its lifecycle. `UZ-MEM-*` is its memory,
+//! its create, its access, its triggers, its lifecycle. `UZ-MEM-*` is its memory,
 //! and `UZ-API-001` is the shed that happens before any of it.
 
 use super::ErrorCode;
@@ -50,10 +50,9 @@ pub const RUN_LOST: ErrorCode = ErrorCode::declare("UZ-RUN-011");
 
 /// The tenant's credit pool cannot fund another slice of this run.
 ///
-/// A 402, for the reason [`RUN_BUDGET_EXCEEDED`] is one: the runner classifies
-/// a renew refusal by status AND code. The two 402s are different pools — this
-/// is the TENANT's balance, that is the FLEET's own declared ceiling — and an
-/// operator tops up for one and revises the fleet's reviewed setup for the other.
+/// A 402, and the status is load-bearing: the runner classifies a renew
+/// refusal by status AND code. The payer's balance is the only ceiling a run
+/// has, so an operator tops it up and the next run proceeds.
 pub const RUN_RENEWAL_NO_CREDITS: ErrorCode = ErrorCode::declare("UZ-RUN-012");
 
 /// A renewal sent a body this daemon cannot read.
@@ -79,16 +78,6 @@ pub const RUNNER_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-RUN-014");
 /// already made inert, so a delete that arrives first is refused rather than
 /// escalated.
 pub const RUNNER_MUST_REVOKE_FIRST: ErrorCode = ErrorCode::declare("UZ-RUN-016");
-
-/// A fleet has reached a spend ceiling its own author declared.
-///
-/// One code for both ceilings and both gates. `daily_nanos` and
-/// `monthly_nanos` answer the same code because an operator acts identically
-/// on either, and the issue-time refusal shares it with the mid-run kill at
-/// `/renew` because they are the same fact observed at two moments. The verdict
-/// that distinguishes them rides the log line, where it can be read without
-/// making a client branch on it.
-pub const RUN_BUDGET_EXCEEDED: ErrorCode = ErrorCode::declare("UZ-RUN-015");
 
 /// An operator asked a revoked runner to self-test.
 ///
@@ -163,10 +152,9 @@ pub const AGENTSFLEET_CREDENTIAL_MISSING: ErrorCode = ErrorCode::declare("UZ-AGT
 
 /// This workspace already holds a fleet under the requested name.
 ///
-/// Only ever answered for a name the CALLER chose. An install that named
-/// nothing takes its setup's own name, and a collision there is
-/// re-drawn with a suffix rather than reported — "taken" would name a conflict
-/// the caller cannot see, on a value they never typed.
+/// Only ever answered for a name the CALLER chose. A create that names nothing
+/// takes `fleet-` and the last twelve hex digits of its own id, a value no
+/// caller typed and no other fleet holds.
 pub const AGENTSFLEET_NAME_EXISTS: ErrorCode = ErrorCode::declare("UZ-AGT-006");
 
 /// A fleet's authored configuration is not one this daemon can store.
@@ -206,7 +194,7 @@ pub const AGENTSFLEET_SOURCE_STALE: ErrorCode = ErrorCode::declare("UZ-AGT-014")
 /// A 409 carrying `current_state`, and the status is the whole point: a
 /// message accepted for a fleet that is not active would be a 202 whose run
 /// never happens, and a person watching for their answer would wait forever.
-/// The caller tells installing from archived without re-reading the fleet.
+/// The caller reads the archived state without re-reading the fleet.
 pub const AGENTSFLEET_NOT_ACTIVE: ErrorCode = ErrorCode::declare("UZ-AGT-012");
 
 /// No event under that identifier, in that fleet, in that workspace.
@@ -254,6 +242,34 @@ pub const AGENTSFLEET_ARCHIVED: ErrorCode = ErrorCode::declare("UZ-AGT-020");
 /// cancelled is not this refusal; Stop answers it 200, because a retried Stop
 /// must see the state it asked for.
 pub const TURN_FINISHED: ErrorCode = ErrorCode::declare("UZ-AGT-021");
+
+/// A run asked for a secret or an integration the workspace does not hold.
+///
+/// A 404: the name is not in the workspace vault and no connected integration
+/// answers to it, so there is nothing a person could approve. The fleet's
+/// `request_access` tool reads it back as a refusal and the run continues.
+pub const FLEET_ACCESS_NAME_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-AGT-022");
+
+/// A run asked for an integration, or added a trigger, for a provider the
+/// workspace has not connected.
+///
+/// A 409: the name is real, and connecting the provider in the workspace is
+/// what resolves it, so a retry after that succeeds.
+pub const FLEET_PROVIDER_NOT_CONNECTED: ErrorCode = ErrorCode::declare("UZ-AGT-023");
+
+/// The fleet already holds a trigger of this kind on this source.
+///
+/// A 409: one webhook per source, one GitHub App subscription and one Slack
+/// channel per fleet, which `fleet.triggers`' unique key holds. The fleet
+/// removes the old one first, or keeps it.
+pub const FLEET_TRIGGER_EXISTS: ErrorCode = ErrorCode::declare("UZ-AGT-024");
+
+/// A webhook trigger names a signing secret the workspace vault does not hold.
+///
+/// A 404: a trigger whose deliveries could never be verified would hand out
+/// a URL every delivery to fails, so the add is refused until the secret is
+/// stored.
+pub const FLEET_TRIGGER_SECRET_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-AGT-025");
 
 /// A fleet asked to steer itself.
 ///

@@ -16,13 +16,13 @@ use crate::report::{Latency, Report, count, latency, per_second};
 /// Parameter key: connections the pool may open.
 const POOL_SIZE: &str = "pool_size";
 
-/// Parameter key: chat tenants whose drafts compete.
+/// Parameter key: chat tenants whose first messages compete.
 const CHAT_TENANTS: &str = "chat_tenants";
 
 /// Parameter key: workers each host declares.
 const HOST_WORKERS: &str = "host_workers";
 
-/// Measurement key: setup chat runs issued.
+/// Measurement key: chat runs issued.
 const CHAT_RUNS: &str = "chat_runs";
 
 /// Measurement key: fleet runs issued.
@@ -43,13 +43,13 @@ const RUNS_PER_SECOND: &str = "runs_per_second";
 /// Measurement key: the tail of an assignment that issued a run.
 const RUN_P95_MS: &str = "run_p95_ms";
 
-/// Measurement key: the tail of an assignment that issued a setup chat run.
+/// Measurement key: the tail of an assignment that issued a chat run.
 const CHAT_RUN_P95_MS: &str = "chat_run_p95_ms";
 
-/// Measurement key: the longest assignment that issued a setup chat run.
+/// Measurement key: the longest assignment that issued a chat run.
 const CHAT_RUN_MAX_MS: &str = "chat_run_max_ms";
 
-/// Measurement key: holds the slow writer took on one tenant's drafts.
+/// Measurement key: holds the slow writer took on one tenant's fleets.
 const SLOW_HOLDS: &str = "slow_writer_holds";
 
 /// Measurement key: the tail of one pooled acquire.

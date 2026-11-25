@@ -1,0 +1,19 @@
+{
+  "name": "morning-rooster",
+  "journey": "first-message",
+  "about": "Answers its first message. The simplest fleet there is: one message creates it, and it replies in its own chat.",
+  "first_message": "You are a greeter. Reply to every message with one short, friendly sentence.",
+  "follow_ups": [
+    "Say hello to the team."
+  ],
+  "remembers": [],
+  "asks_for": [],
+  "wakes_on": [],
+  "steers": [],
+  "proves": [
+    "One message creates an active fleet and its first turn.",
+    "The reply streams into that fleet's chat.",
+    "The same works from the browser and from `agentsfleet fleet create`.",
+    "A later message is answered in the same chat."
+  ]
+}

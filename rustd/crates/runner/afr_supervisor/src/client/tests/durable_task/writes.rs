@@ -2,9 +2,8 @@
 use super::*;
 
 fn binding() -> Value {
-    json!({"fencing_token":FENCE,"source_turn_id":ID,"accepted_revision_id":ID,
-        "plan_digest":"a".repeat(64),"message_decision_call_id":EFFECT,
-        "items":[{"proposed":{"source_start":0,"source_end":5,"action":"conversation","durable_task_id":null,"title":"Reply","interpretation":"Answer the question","target":null},"decision_call_id":null}]})
+    json!({"fencing_token":FENCE,"source_turn_id":ID,"plan_digest":"a".repeat(64),
+        "items":[{"action":"steer","source_start":0,"source_end":5,"durable_task_id":ID}]})
 }
 fn receipt() -> Value {
     json!({"fencing_token":FENCE,"operation_id":EFFECT,"source_turn_id":ID,

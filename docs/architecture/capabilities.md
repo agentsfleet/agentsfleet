@@ -1,207 +1,119 @@
-# Capabilities (what the fleet has, what the platform guarantees)
-
-> Parent: [`README.md`](./README.md). User-facing: [docs.agentsfleet.net/fleets/tools](https://docs.agentsfleet.net/fleets/tools) (the tool inventory) and [docs.agentsfleet.net/concepts/context-lifecycle](https://docs.agentsfleet.net/concepts/context-lifecycle) (§4 as a user reads it).
-
-> **Scope:** the platform *guarantees* below are binding. The *mechanism* runs on the split. `agentsfleetd` (control plane) assigns work and resolves policy on `run`.
-
-> The host-resident `agentsfleet-runner` enforces the hard layer in its supervisor and the run's sandbox ([`runner_execution.md`](./runner_execution.md#process-model)). See [`runner_fleet.md`](./runner_fleet.md) and [`data_flow.md`](./data_flow.md).
-
-A Fleet's capabilities split into two layers. The soft layer is what the language model is told it can do, which the model can ignore or get wrong. The hard layer is what the platform enforces, which the model cannot escape from inside the sandbox.
-
-Both matter; the second is what makes the first safe.
-
+---
+type: explanation
+audience: contributor
+verified: 2026-11-25
+product_version: 0.90.0
+executable: false
 ---
 
-## Facts
+# Capabilities: what a fleet is told, and what its run enforces
 
-Every row is extracted from the numbered sections below; the owner column names the section that carries the full story.
+> Read this when you need to know what stops a fleet, as opposed to what its model was asked to do. Parent: [`README.md`](./README.md) · User-facing: [docs.agentsfleet.net/fleets/tools](https://docs.agentsfleet.net/fleets/tools).
 
-| Invariant | Value | Mechanism | Owner section |
-|---|---|---|---|
-| Capability layers | 2 | the Definition's `instructions_md` is advisory; its reviewed `config` plus approved grants are binding, enforced by the runner | §1 |
-| `trigger.type` vs `event_type` | orthogonal fields | different homes and meanings (the setup's `config` vs `thread.turns`); some values overlap | §1.1 |
-| Tool primitives | the runner's published catalog, e.g. `http_request` · the `file_*` tools · `git` · the four `memory_*` tools · `shell` (gated) | reachable only through the fleet's `tools:` allowlist | [`runner_execution.md`](./runner_execution.md) §"Tool catalog" |
-| Mintable integrations | short-lived tokens, minted per run | GitHub App: daemon-signed RS256 JSON Web Token (JWT) exchanged for a ≤ 1 h installation token; the App private key never leaves the daemon | §3 |
-| Vault secret shapes | 2 | static (stores the value, resolved at run) vs mintable (stores a handle, never a token) | §3 |
-| Context lifecycle | Shared conversation compaction; separate semantic memory | Compaction defaults to 90 percent; an authored operating threshold or output headroom can trigger earlier. Semantic memory pushes every five tool calls. `tool_window` remains accepted metadata. | §4 |
-| Continuation authority | guarded private checkpoint | Source and assignment checks guard saved working notes; valid compaction continues the same run with tool access. | §4 |
-| Runaway bound | `budget` caps + run runtime deadline | there is no enforced continuation-chain counter | §4 |
-| Memory hygiene | `core` pinned; `daily` expires | `daily` rows older than 72 h are deleted on the next capture push; re-storing a key is an upsert | §4 |
-| Cap resolution | saved catalogue window, read per run | the revision's `runtime_model_ref` selects the model; an absent or zero operating cap inherits its physical window | §4 |
+## What it is
 
-## Traps
+A fleet's capabilities sit in two layers.
+The soft layer is what the language model reads: the fixed prompt, its pinned memory and the conversation.
+The hard layer is the run's policy, which the runner's supervisor enforces outside the model's reach.
 
-Each trap is enforced in its owner section; this list is the index. §5 (What the platform never does) is the binding never-list.
-
-- Instructions are advisory and `config` is binding; never treat prose as enforcement (§1).
-
-- `trigger.type` and `event_type` have different meanings and homes; values such as `webhook` overlap (§1.1).
-
-- A fleet's own schedules go through a runner verb onto `agentsfleetd`'s schedule plane. Upstash QStash, the hosted scheduler (`afd_cron`), still owns the clock, and the runner receives only the resulting event ([`runner_execution.md`](./runner_execution.md) §"Tool catalog").
-
-- The runtime cannot force a chunk; do not design as if a mid-loop interrupt exists (§4).
-
-- A fleet that hoards everything as `core` defeats the pinning: once the `core` entries alone fill the load budget, the oldest ones stay in Postgres and do not load (§4).
-
-- The GitHub App private key never rides the run envelope, the `secrets_map`, or the runner (§3, §5).
-
-## 1. Reasoning + tool inventory (declared in the fleet's own files)
-
-A fleet's setup is one reviewed Definition (the `Definition` type in `af_fleet_runtime`). Its parts carry different weight:
-
-| Part | What it carries | Enforced by |
+| Part | What it carries | Who enforces it |
 |---|---|---|
-| `instructions_md` | Natural-language reasoning prompt: how to think, what's safe, what to gather, when to ask for approval. Free-form prose, required before Save. | The language model reading its own prompt, which is soft enforcement only. The model can drift; the platform-level guarantees below contain the consequences. |
-| `config` | The policy document. Under `x-agentsfleet` it carries `triggers` (`webhook` / `cron` / `mention`), `tools`, `credentials`, `network`, `budget` caps, `gates`, `repositories`, `context`, and `model`. One parser validates it into `FleetConfig`. | Code-enforced by the runner, outside the model's reach. The language model cannot escape these. |
-| `description` | One required line of display text saying what the fleet does. The fleet's name is `config.name`. | Nothing. Display text grants nothing and places nothing. |
+| Fixed prompt | `agentsfleet`'s own text, with the fleet's name filled in | The model only; it can drift |
+| Pinned memory | Every `core` entry the fleet stored ([memory](./memory.md#what-reaches-the-model)) | The model only; a pinned entry grants nothing |
+| Conversation | The thread's turns and the run's own tool results | The model only |
+| The run's policy | Tools, approved credentials, the GitHub repository binding and the allowed network | The runner's supervisor, in code |
 
-The split matters. The instructions are *advisory*: the model reads them and tries to comply. The reviewed `config` and the grants a person approved are *binding*.
+## Why it exists
 
-The runner offers the model only the policy's tools and refuses any call outside them, regardless of what the model wants ([`runner_execution.md`](./runner_execution.md#tool-catalog)).
+A model can misread its prompt, or a hostile web page can talk it into something.
+The soft layer is where a fleet learns what to do.
+The hard layer contains the damage when it does the wrong thing, so only a person's approval adds a credential.
 
-### 1.1 `trigger.type` vs `event_type` (orthogonal fields, common confusion)
+## How it behaves
 
-These are two different fields on two different tables. Mixing them up is the most common source of new-contributor confusion in this area:
+### The fixed prompt
+
+The prompt builder (`afr_agent`'s `prompt` module) writes this text, then the pinned memory under one heading:
+
+```text
+You are {name}, a fleet in agentsfleet: a long-lived agent a team talks to in one chat.
+Remember standing guidance with memory_store under the category core, only when the person's newest message asks you to.
+It is shown to you at the start of every run. Store anything else under another category.
+Schedule yourself with the cron tools, add a webhook, GitHub or Slack trigger with trigger_add, and start work that must
+keep going with task_start, each only when the person's newest message asks.
+You hold only the secrets and integrations a person approved for you. When you need one, call request_access with its name
+(and, for GitHub, the repositories and read or write); the person approves it once.
+```
+
+A fleet has no written job description beyond this text and its conversation.
+
+### The run's policy
+
+`afd_gate` builds each run's `ExecutionPolicy` from the fleet row and its approved grants.
+It travels in the run payload, and the runner's supervisor refuses any tool call outside it.
+The fleet's two network toggles set its policy inside the runner's posture: `allow_all`, `deny_all_egress` or `allow_list_egress`.
+
+Every run is offered every published tool and the seven sub-agent tools ([tool catalog](./runner_execution.md#tool-catalog)).
+`notify`, `git` and `message` fail until a person approves their credential.
+`task_start` and `task_input` appear only when the runner is task-capable and the run carries a decision profile ([durable tasks](./durable_tasks.md#how-a-task-starts)).
+
+Placeholders such as `${secrets.NAME.host}` resolve at send time in `af_egress`.
+They resolve in two places only: the `Authorization` header's value and the URL's whole host.
+
+### Tools that change the fleet
+
+Six tool calls change the fleet itself: `memory_store` under `core`, `cron_add`, `trigger_add`, `request_access`, `task_start` and `task_input`.
+Each tool's description tells the model to call it only when the person's newest message asks.
+A refused call returns to the model as `[kind] sentence`, and the model may correct it in the same run.
+
+### A trigger's `kind` and a turn's `event_type`
+
+These are two fields on two tables, and some values overlap.
 
 | Field | Where it lives | Values | What it tags |
 |---|---|---|---|
-| `trigger.type` | the setup's `config` (static, reviewed) | `webhook` / `cron` / `mention` | **How a Fleet gets triggered**: the wiring fixed at Save or a later reviewed revision. |
-| `event_type` | `thread.turns.kind` column (per turn), named `event_type` on the wire | `chat` / `webhook` / `cron` / `continuation` | **What an individual turn is**: the runtime label per input. |
+| `kind` | `fleet.triggers.trigger_type`, one row per trigger | `webhook`, `app_event`, `mention` | How the fleet gets woken, as added with `trigger_add` |
+| `event_type` | `thread.turns.kind`, named `event_type` on the wire (`TurnKind` in `af_wire`) | `chat`, `webhook`, `cron`, `continuation` | What one turn is |
 
-A fleet needs no declared trigger to receive `event_type: chat` from the steer API.
-A `trigger.type: webhook` fleet receives `event_type: webhook`.
-The fields describe different things; values such as `webhook` overlap.
+A fleet needs no trigger to receive a `chat` turn, and no trigger row holds a schedule; a schedule's fire arrives as `cron`.
+A person's answer to a question or an access card writes a `continuation` turn, whatever woke the original one.
 
-Resolving an approval gate creates `event_type: continuation`, regardless of the original trigger type (`afd_approval`'s inbox resolve).
+### Guarantees around every tool call
 
-Source of truth: `Trigger` in `af_fleet_runtime`'s config for `trigger.type`; `EventType` in `af_wire` for `event_type`.
+| Guarantee | Owner page |
+|---|---|
+| One run per fleet at a time, fenced, with status, model and grants read fresh per run | [`data_flow.md`](./data_flow.md) |
+| Every message, webhook and schedule fire becomes a queued `thread.turns` row with its actor | [`data_flow.md`](./data_flow.md) |
+| Webhooks are signature-checked, replay-refused and routed only inside the workspace | [`connectors.md`](./connectors.md) |
+| Vault rows are encrypted per row; a mintable integration stores a handle, never a token | [`connectors.md`](./connectors.md) |
+| The daemon mints short-lived GitHub tokens; the App private key never leaves it | [`connectors.md`](./connectors.md) |
+| A run asks a person with `ask_user` or `request_access`; the answer writes a continuation turn | [`connectors.md`](./user_flow.md#access) |
+| A provider key goes vault to policy to supervisor to HTTPS, never to a user-facing surface | [`models.md`](./models.md#where-the-provider-key-lives) |
+| A turn is refused `balance_exhausted` when the payer's balance is empty or no wallet row exists | [`billing.md`](./billing.md#the-funds-check) |
+| Long conversations compact and the same run continues | [`context_lifecycle.md`](./context_lifecycle.md) |
 
----
+## Limits
 
-## 2. The platform tools the fleet can call
+The platform never does any of these:
 
-The runner hosts every published tool; `tools:` selects which the model is offered ([`runner_execution.md`](./runner_execution.md) §"Tool catalog"). Placeholders resolve at send time in two places only. They are the `Authorization` header's value and the URL's whole host (`${secrets.NAME.host}`), in `af_egress` admission.
+- Logs raw secret bytes, echoes a secret into the fleet's context, or saves one in `thread.turns`.
+- Lets the GitHub App private key leave the daemon; the run envelope, the `secrets_map` and the runner never carry it.
+- Issues a run a credential no person approved for its fleet.
+- Sends a stored secret to any host but its own `host` field.
+- Lets a private fleet's HTTP tools reach a host outside its approved secrets' hosts and, once approved, GitHub.
+- Lets a fleet's network exceed the runner's assigned posture.
+- Starts a run for a payer whose balance is empty or who has no wallet row.
 
----
+The soft layer has its own limits:
 
-## 3. Platform-level guarantees (the substrate that wraps every tool call)
+- A pinned entry stays in every later prompt until a person removes it, including one a hostile page talked the fleet into ([memory](memory.md#what-reaches-the-model)).
+- No fleet has a budget of its own; the payer's balance and a person's Stop bound a runaway run.
+- A fleet's schedules go through a runner verb; the daemon and its hosted scheduler keep the clock ([schedules](data_flow.md#schedules)).
 
-| Capability | What it does | Primary owner |
-|---|---|---|
-| Work assignment + archive | `agentsfleetd` assigns the next turn as a run (atomic thread-row lock + monotonic fencing token; status/config resolved fresh from Postgres per run). Archive and delete stop new runs and send Cancel to a running one ([`runner_fleet.md`](./runner_fleet.md) §"Steer, archive, delete"). | agentsfleetd control plane |
-| Per-run policy | Each `Down::Run` frame's `RunPayload` carries an `ExecutionPolicy` (tools, secrets, allowed hosts, context knobs) that the runner's supervisor enforces outside the sandbox. The sandbox's network posture is the runner's assigned `allow_all`, `deny_all_egress` or `allow_list_egress` ([`runner_fleet.md`](./runner_fleet.md) §"Egress model"). | Run ExecutionPolicy |
-| Turns ledger + history | Every steer / webhook / cron input commits a queued `thread.turns` row with actor provenance. The turn is opened when a run first takes it and settled at completion. | Turn ingest + history path |
-| Webhook ingest (GitHub App + manual) | Both receivers verify the signature, bind the delivery to subscribed fleets and refuse replays before queueing. The App records actor `github-app`; the manual receiver records `webhook:<source>` ([`connectors.md`](./connectors.md) §"GitHub App: platform setup to fleet runs"). | App ingress + webhook receiver |
-| Secret vault (`vault.secrets`) | Stores opaque-JSON-object secrets. Each row is encrypted with its own data encryption key (DEK), which is sealed by the daemon's key encryption key (KEK), the `ENCRYPTION_MASTER_KEY` boot setting (`af_crypto`). Two shapes: a **static** secret stores the value itself (resolved at run, shipped inline); a **mintable integration** stores only a *handle* (e.g. `{integration:"github", installation_id}`), never a token, which the credential broker exchanges for a short-lived token on demand. The runner's supervisor substitutes it at send time. | Vault + secret resolution |
-| Integration credential broker | `agentsfleetd` mints a short-lived, workspace-scoped token per mintable integration on demand; the App private key never leaves the daemon ([`connectors.md`](./connectors.md) §"Credential use remains separate from event receipt"). | Credential broker (daemon-side) |
-| Provider config (self-managed) | A tenant chooses platform-managed inference or its own provider key. The api_key crosses vault → run `ExecutionPolicy` → runner's supervisor → outbound HTTPS and never reaches a user-facing surface ([`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"8.2 The api_key visibility boundary"). | Provider resolution path |
-| Approval gating | A gated event parks at run until a workspace member approves it in the dashboard, through the API, or with `agentsfleet fleet approvals approve`; gates judge whole events, never individual tool calls, and nothing is sent to Slack today (`afd_gate`'s `park.rs`, "No pending summary, no staged notification"). The state machine survives control-plane and runner restarts (it is durable in Postgres, gated at `run`). | Approval workflow |
-| Budget caps | Daily and monthly hard caps in integer nanos (`daily_nanos`, `monthly_nanos`), configured per fleet in the reviewed `config`, block further runs at the first trip ([`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"5.1 The per-fleet budget gate"). | Billing gate |
-| Per-run context lifecycle | Shared compaction and guarded working notes let the same run continue. See §4. | Context lifecycle |
+## Related
 
----
-
-## 4. Context lifecycle — keeping a long incident reasoning past the model's working-memory limit
-
-The runner compacts older conversation before a model request exhausts its working window, then continues the same run.
-Private setup and fleet runtime share this policy.
-Semantic memory has its own save cadence for facts used by later runs.
-
-### Context settings
-
-```json
-{
-  "x-agentsfleet": {
-    "model": "accounts/fireworks/models/kimi-k3",
-    "context": {
-      "tool_window": "auto",
-      "memory_checkpoint_every": 5,
-      "stage_chunk_threshold": 0.90,
-      "context_cap_tokens": 200000
-    }
-  }
-}
-```
-
-The block sits in the fleet's `config`:
-
-- `model` is parsed as setup metadata. The revision's `runtime_model_ref` selects the execution model at run time; authored model text cannot replace that identity.
-- `tool_window` remains accepted setup metadata. Whole tool call/result groups now follow shared compaction instead of count-based eviction.
-- `memory_checkpoint_every` pushes already-stored semantic memory every N tool calls. It does not ask the model to create a snapshot.
-- `stage_chunk_threshold` selects an earlier compaction threshold; values above 0.90 use 0.90.
-- `context_cap_tokens` sets the operating threshold. Zero or absence inherits the selected model's physical window.
-
-### How continuation works
-
-```text
-  Original history + current instructions + current request
-                            |
-                   Measure provider request
-                            |
-                    Fits working window?
-                      /             \
-                    yes              no
-                     |                |
-                Model turn      Summarize older groups
-                     |                |
-                Tool results    Save guarded checkpoint
-                     |                |
-                     +-------> measure again
-```
-
-Private setup and runtime use the same [conversation compaction engine](context_lifecycle.md).
-That page owns thresholds, summary validation, checkpoint ownership, source guards and native replay rules.
-
-The runner keeps complete tool call/result groups together.
-A summary disables tools and contributes real usage to the run's meter.
-A valid checkpoint lets the current run continue with its goal, current request and tool access.
-
-### Semantic memory remains separate
-
-Every `memory_checkpoint_every` completed tool calls, the runner pushes entries the model already stored.
-An empty pending set writes nothing.
-A failed push is logged; the final push before the report carries the entries again (`afr_agent`'s loop conversation).
-
-Semantic memory supplies facts for later runs.
-Conversation checkpoints retain working notes for the current run.
-Neither summary text nor quoted prior history can replace current instructions.
-
-### Limits and defaults
-
-The compaction threshold defaults to 90 percent; semantic memory pushes default to every five tool calls.
-An authored operating cap can trigger earlier compaction while the saved model still supplies physical headroom for the summary.
-
-Compaction consumes model calls and output tokens.
-Money, runtime, output and cancellation limits can still stop work.
-A pinned request that cannot fit the physical window fails before provider access.
-
-### Memory hygiene (what to store so it survives)
-
-Durable memory is selected rather than searched. Loading pins the `core` category first (newest-first, within the byte budget), then fills the remaining budget with the newest non-core entries. No entry count caps a fleet's memory; what does not fit the budget stays in Postgres and is not loaded (`afd_memory`'s `window.rs`; see [`runner_fleet.md`](./runner_fleet.md) §"Memory continuity").
-
-Four habits make that selection work for the fleet instead of against it:
-
-- **Store load-bearing facts as `core`**. Owner, deploy target, customer plan and standing constraints belong in `core`, as does anything the fleet must still know once newer entries fill the budget. `daily`, `conversation`, and any custom category are windowed by recency and are the first to age out of loading.
-
-  `daily` additionally expires outright: rows older than the 72-hour retention window are deleted on the fleet's next capture push (`afd_memory`). Every other category stays until a store under its key replaces it; `memory_forget` hides a key for the current run only (`afr_memory`).
-
-- **Reuse stable keys.** Re-storing a key is an upsert, so it refreshes the entry instead of duplicating it. `deploy_target` beats a dated `deploy_target_jun12`.
-
-- **Replace what's stale**. A store under the same key replaces the stored copy, while `memory_forget` only hides a key for the rest of the run.
-
-  A Fleet that hoards everything as `core` defeats the pinning. When the `core` entries alone pass the budget, the oldest `core` entries stay unloaded.
-
-- **Keep entries small.** The loading budget is bytes rather than entries, so one bloated entry crowds out many small ones. Snapshot conclusions, never transcripts.
-
-The selection is deterministic and documented, so "why does my fleet remember X but not Y?" has a checkable answer. Y was windowed (or oversized), and X was `core`.
-
----
-
-## 5. What the platform never does
-
-- Never logs raw secret bytes
-- Never echoes secrets in the fleet's context
-- Never saves secrets in `thread.turns`
-- Never lets the GitHub App private key leave the daemon. The key is platform-side, and the run envelope, the `secrets_map`, and the runner never carry it
-- Never lets the fleet reach a host outside its `network.allow` list
-- Never lets the fleet exceed its `budget` caps without trip-blocking
+- [`runner_execution.md`](./runner_execution.md#tool-catalog): the tool catalog.
+- [`memory.md`](./memory.md): categories, pinning and the load window.
+- [`context_lifecycle.md`](./context_lifecycle.md): compaction near the model's window.
+- [`connectors.md`](./connectors.md): grants, triggers and the credential broker.
+- [`runner_fleet.md`](./runner_execution.md#network-egress): the egress model.

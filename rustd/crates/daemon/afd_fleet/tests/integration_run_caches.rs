@@ -26,8 +26,8 @@ async fn window_of(
     acquired: &Acquired,
 ) -> af_wire::memory::MemoryLoadResponse<'static> {
     let grants = MemoryAccess {
-        read: acquired.opened.memory_reads_workspace,
-        publish: acquired.opened.memory_publishes_workspace,
+        read: acquired.opened.memory.read,
+        publish: acquired.opened.memory.publish,
     };
     memories
         .load_scoped(&acquired.fleet_id, &acquired.workspace_id, grants)
@@ -89,7 +89,7 @@ async fn memory_scope_follows_grant_change() {
     let first = select_fleet(&runs, &runner, &reader)
         .await
         .expect("the reader's first run");
-    assert!(!first.opened.memory_reads_workspace);
+    assert!(!first.opened.memory.read);
     assert!(
         window_of(&memories, &first).await.shared.is_empty(),
         "no read grant, no shared entry"
@@ -112,10 +112,7 @@ async fn memory_scope_follows_grant_change() {
     let second = select_fleet(&runs, &runner, &reader)
         .await
         .expect("the reader's next run");
-    assert!(
-        second.opened.memory_reads_workspace,
-        "the assignment read the grant"
-    );
+    assert!(second.opened.memory.read, "the assignment read the grant");
     let window = window_of(&memories, &second).await;
     assert_eq!(
         window.shared.len(),

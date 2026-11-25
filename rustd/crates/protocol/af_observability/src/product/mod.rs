@@ -30,7 +30,7 @@ use std::sync::{Mutex, PoisonError};
 
 use posthog::{Client, ClientOptions};
 
-pub use self::telemetry::{InviteEmailOutcome, SetupStep, Telemetry};
+pub use self::telemetry::{AccessChange, FleetOrigin, FleetStep, InviteEmailOutcome, Telemetry};
 
 /// Where this daemon's product events go.
 ///

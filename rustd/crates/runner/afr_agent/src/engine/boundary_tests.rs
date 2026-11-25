@@ -106,7 +106,6 @@ fn an_ordinary_receipt_never_answers_a_durable_task_snapshot() -> crate::Result<
                 workspace_id: id(1),
                 fleet_id: id(2),
                 turn_id: id(0x11),
-                setup_revision_id: id(4),
                 workspace: TurnWorkspace::ApiOnly,
             },
             manifest_root: af_core::etag::sha256_hex(b"manifest"),

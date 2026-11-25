@@ -6,7 +6,7 @@ mod access;
 mod control;
 mod deadline;
 mod fixture;
-mod revision;
+mod transition;
 
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_db::test_util::{TestDatabase, mint_id};
@@ -102,7 +102,7 @@ async fn detail(router: &axum::Router, fixture: &DurableTasks<'_>) {
         .to_owned();
     let body = json_body(response).await;
     assert_eq!(body.get("title"), Some(&json!("PR #124 repair")));
-    assert_eq!(body.get("setup_revision"), Some(&json!(1)));
+    assert!(body.get("setup_revision").is_none(), "{body}");
     assert_eq!(body.pointer("/context/state"), Some(&json!("waiting")));
     assert_eq!(
         body.pointer("/context/target"),
@@ -121,14 +121,6 @@ async fn detail(router: &axum::Router, fixture: &DurableTasks<'_>) {
         Some(&json!("12000000"))
     );
     assert_eq!(body.pointer("/context/limits/runs"), Some(&json!(12)));
-    revision::advance(fixture).await;
-    let pinned = send(router, Method::GET, &path, Some(&fixture.base.token), "").await;
-    assert_eq!(pinned.status(), StatusCode::OK);
-    assert_eq!(
-        json_body(pinned).await,
-        body,
-        "new fleet setup does not replace the task's accepted revision or criteria"
-    );
     let same = send_with_headers(
         router,
         Method::GET,
@@ -147,7 +139,7 @@ async fn detail(router: &axum::Router, fixture: &DurableTasks<'_>) {
         .await
         .expect("empty 304 body");
     assert!(bytes.is_empty());
-    revision::change(router, fixture, &tag, &body).await;
+    transition::change(router, fixture, &tag, &body).await;
     let done = send(
         router,
         Method::GET,

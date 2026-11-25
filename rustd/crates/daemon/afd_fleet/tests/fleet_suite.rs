@@ -6,10 +6,6 @@
 //! linking, and its own datastore connections. The support modules are
 //! declared once here and reached as `crate::<name>` from each suite,
 //! which is the shape `afd_api` already uses for its four planes.
-#![expect(
-    clippy::print_stderr,
-    reason = "a suite's helpers print their measured evidence into the lane log"
-)]
 
 mod installed;
 mod integration_durable_tasks;
@@ -18,8 +14,8 @@ mod integration_turn_checkpoints;
 mod issue_lifecycle;
 mod run_renewal;
 
-#[path = "support/fleet_setup.rs"]
-mod setup;
+#[path = "support/fleet_grants.rs"]
+mod grants;
 
 #[path = "support/fleet_queue.rs"]
 mod queue;
@@ -61,8 +57,6 @@ mod integration_issue_host;
 #[path = "integration_item_retention.rs"]
 mod integration_item_retention;
 mod integration_ledger_queue;
-#[path = "integration_ledger_reads.rs"]
-mod integration_ledger_reads;
 #[path = "integration_memory_capture.rs"]
 mod integration_memory_capture;
 #[path = "integration_memory_load_order.rs"]
@@ -79,8 +73,6 @@ mod integration_renew_caches;
 mod integration_renew_clamp;
 #[path = "integration_renew_coverage/mod.rs"]
 mod integration_renew_coverage;
-#[path = "integration_renew_gate_edges.rs"]
-mod integration_renew_gate_edges;
 #[path = "integration_renew_lock_order.rs"]
 mod integration_renew_lock_order;
 #[path = "integration_renew_refusals.rs"]
@@ -142,6 +134,8 @@ mod integration_run_plan;
 mod integration_run_release;
 #[path = "integration_run_started.rs"]
 mod integration_run_started;
+#[path = "integration_run_triggers.rs"]
+mod integration_run_triggers;
 #[path = "integration_run_verbs.rs"]
 mod integration_run_verbs;
 #[path = "integration_runner_admin.rs"]

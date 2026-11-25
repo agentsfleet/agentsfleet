@@ -15,7 +15,7 @@
 //! live replica rather than holding a dead one open.
 //!
 //! [`Link`] is the one retry state machine. The fleet tail waits out each
-//! backoff; the draft stream checks between its durable reads instead.
+//! backoff.
 
 use std::time::Duration;
 

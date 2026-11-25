@@ -1,4 +1,4 @@
-import { FLEET_DETAIL, FLEET_ID, SCHEDULE } from "../helpers/draft-fixtures";
+import { FLEET_ID, SCHEDULE } from "../helpers/fleet-fixtures";
 import { happyBilling, mockFetchBilling } from "./harness";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -6,7 +6,6 @@ import { authMock } from "../helpers/dashboard-mocks";
 import { ACCOUNT_ROLE } from "@/lib/api/workspaces-types";
 import type { WorkspaceMember } from "@/lib/api/tenant-members";
 import type { SenderName } from "@/lib/turns/sender-names";
-import { fleetSetupPath } from "@/lib/workspace-routes";
 
 const VIEWER = "user_viewer";
 const WORKSPACE_ID = "ws_1";
@@ -15,7 +14,7 @@ const BOB_NAME = "Bob";
 const BOB: WorkspaceMember = { user_id: "user_bob", display_name: BOB_NAME, role: ACCOUNT_ROLE.member, actor: "steer:user_bob" };
 const NAMELESS: WorkspaceMember = { user_id: "user_anon", display_name: null, role: ACCOUNT_ROLE.member, actor: "steer:user_anon" };
 
-type ChatViewProps = { viewer: string | null; senderNames: readonly SenderName[]; setupSummary?: unknown };
+type ChatViewProps = { viewer: string | null; senderNames: readonly SenderName[]; lists?: unknown; schedules?: unknown };
 
 // What the page hands the chat, captured instead of rendered: the unsent-message
 // ledger is keyed by `viewer` before Clerk loads in the browser, so the page is
@@ -48,14 +47,10 @@ async function renderChat(fleet?: Record<string, unknown>): Promise<ChatViewProp
   return chatViewProps.at(-1);
 }
 
-it.each(["active", "paused", "removed"] as const)("displays saved setup alongside a %s wake-up only while it can recur", async status => {
-  const definition = status === "paused" ? {...FLEET_DETAIL.definition, config: {name: "repairer", "x-agentsfleet": {}}} : FLEET_DETAIL.definition;
-  const props = await renderChat({definition, schedules: [{...SCHEDULE, status}]});
-  if (status === "removed") expect(props?.setupSummary).toBeUndefined();
-  else expect(props?.setupSummary).toMatchObject({props: {
-    requirements: status === "active" ? expect.objectContaining({budget: expect.any(Object)}) : undefined,
-    editHref: fleetSetupPath(WORKSPACE_ID, FLEET_ID, FLEET_DETAIL.setup_revision),
-  }});
+it.each(["active", "paused", "removed"] as const)("hands the chat the fleet's lists and its %s wake-up as it stands", async status => {
+  const props = await renderChat({schedules: [{...SCHEDULE, status}]});
+  expect(props?.lists).toBeTruthy();
+  expect(props?.schedules).toEqual([{...SCHEDULE, status}]);
 });
 
 describe("fleets routes — the chat's viewer", () => {

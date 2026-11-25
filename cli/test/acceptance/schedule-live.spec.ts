@@ -8,6 +8,10 @@
  * update with nothing in it never leaves the machine, and a deleted schedule
  * answers as unknown.
  *
+ * The fleet is a morning-rooster, the prime set's plainest fleet: it adds no
+ * schedule of its own, so every row here is one this file wrote. A schedule a
+ * fleet adds for itself is prime-night-owl-live.spec.ts's to prove.
+ *
  * # Where the scheduler comes from
  *
  * The daemon owns no timer. It stores a schedule and registers it with an
@@ -24,33 +28,27 @@
  * an https URL, matching every other live spec in this lane.
  */
 
-import { describe, it, beforeAll, afterAll } from "bun:test";
+import { describe, it, beforeAll } from "bun:test";
 import assert from "node:assert/strict";
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
 import { Schema } from "effect";
 
-import { ACCEPTANCE_RUN_PREFIX, ACCEPTANCE_TARGET_ENV } from "./fixtures/constants.ts";
-import { composeEnv, runFleetctl } from "./fixtures/cli.js";
-import type { RunResult } from "./fixtures/cli.js";
-import { assertNoSecretLeak, refusalCode } from "./fixtures/negatives.ts";
-import { resolveAcceptanceEnv, resolveClerkSecret, resolveFixtureEmail } from "./global-setup.ts";
-import { attachJwt } from "./fixtures/clerk-admin.ts";
-import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
-import { saveSteerProbeFleet } from "./fixtures/seed.ts";
-import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
-import { SCHEDULE_SYNC } from "../../src/commands/chat/protocol.ts";
+import { ACCEPTANCE_TARGET_ENV } from "./fixtures/constants.ts";
+import { refusalCode } from "./fixtures/negatives.ts";
+import { primeFleet as primeFixture } from "./fixtures/prime-fleets.ts";
+import { isLive, ownWorkspace, primeFleet, primeSession } from "./fixtures/prime-session.ts";
 import { SCHEDULE_STATUS } from "../../src/commands/schedule/read.ts";
 import { REJECTION_CODE } from "../../src/constants/rejection.ts";
 import { EXIT_CODE } from "../../src/errors/index.ts";
 import { instantMs } from "../../src/lib/instant.ts";
 
-const target = process.env[ACCEPTANCE_TARGET_ENV] ?? "";
-const isLive = target.startsWith("https://");
+const fixture = primeFixture("morning-rooster");
+// This file's own workspace: other files create a morning-rooster too, and a
+// workspace holds one fleet of a name.
+const WORKSPACE = "fixture-cli-schedules";
 
-const STATE_DIR_PREFIX = "agentsfleet-schedule-" as const;
-const NO_COLOR = "1" as const;
+// A schedule the daemon registered with the external scheduler.
+const SCHEDULE_SYNCED = "synced" as const;
+
 const JSON_FLAG = "--json" as const;
 const SCHEDULE = ["fleet", "schedule"] as const;
 const SETUP_TIMEOUT_MS = 180_000;
@@ -89,19 +87,11 @@ if (!isLive) {
   });
 } else {
   describe("schedule-live — create, list, update, sync and delete a morning schedule", () => {
-    let sessionJwt = "";
-    let stateDir = "";
-    let env: Record<string, string> = {};
-    let workspaceId = "";
+    const session = primeSession(ownWorkspace(WORKSPACE));
+    const run = session.run;
     let fleetId = "";
     let scheduleId = "";
     let scheduleDeleted = false;
-
-    async function run(args: ReadonlyArray<string>): Promise<RunResult> {
-      const result = await runFleetctl(args, { env });
-      assertNoSecretLeak(result, sessionJwt);
-      return result;
-    }
 
     async function view(args: ReadonlyArray<string>): Promise<typeof ViewSchema.Type> {
       const result = await run([...SCHEDULE, ...args, JSON_FLAG]);
@@ -116,30 +106,14 @@ if (!isLive) {
     }
 
     beforeAll(async () => {
-      const apiUrl = resolveAcceptanceEnv().apiUrl;
-      const minted = await attachJwt(resolveClerkSecret(), { email: resolveFixtureEmail("regular") });
-      sessionJwt = minted.sessionJwt;
-      stateDir = await fs.mkdtemp(path.join(os.tmpdir(), STATE_DIR_PREFIX));
-      env = composeEnv({ AGENTSFLEET_API_URL: apiUrl, AGENTSFLEET_STATE_DIR: stateDir, NO_COLOR });
-      workspaceId = (await hydrateWorkspacesForToken({ apiUrl, token: sessionJwt, stateDir }))
-        .currentWorkspaceId;
-      fleetId = (await saveSteerProbeFleet({ env })).id;
+      fleetId = (await primeFleet(session, fixture)).fleet_id;
+      // Unregister first: a fleet deleted under a live registration leaves
+      // the scheduler calling a callback nothing resolves. Teardown runs its
+      // steps newest first, so this one runs before the fleet's delete.
+      session.onClose(async () => {
+        if (scheduleId && !scheduleDeleted) await session.json([...SCHEDULE, "delete", fleetId, scheduleId]);
+      });
     }, SETUP_TIMEOUT_MS);
-
-    afterAll(async () => {
-      try {
-        // Unregister first: a fleet deleted under a live registration leaves
-        // the scheduler calling a callback nothing resolves.
-        if (scheduleId && !scheduleDeleted) {
-          await runFleetctl([...SCHEDULE, "delete", fleetId, scheduleId, JSON_FLAG], { env });
-        }
-        if (workspaceId) {
-          await cleanWorkspaceFleets(env, { workspaceId, runPrefix: ACCEPTANCE_RUN_PREFIX });
-        }
-      } finally {
-        if (stateDir) await fs.rm(stateDir, { recursive: true, force: true });
-      }
-    });
 
     it("`schedule create` saves a morning schedule for the fleet", async () => {
       assert.ok(fleetId, "the fleet was not saved in beforeAll");
@@ -178,7 +152,7 @@ if (!isLive) {
     it("`schedule sync` registers it with the scheduler, which names the next run", async () => {
       assert.ok(scheduleId, "no schedule was created");
       const synced = await view(["sync", fleetId, scheduleId]);
-      assert.equal(synced.sync, SCHEDULE_SYNC.synced,
+      assert.equal(synced.sync, SCHEDULE_SYNCED,
         `the scheduler did not take the registration: ${JSON.stringify(synced)}`);
       assert.equal(synced.run_state, RUN_STATE_SCHEDULED);
       assert.notEqual(instantMs(synced.next_run_at), null,

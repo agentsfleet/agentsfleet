@@ -2,7 +2,6 @@
 //! tenant runners have none of it to take.
 
 use af_core::id::Uuid7;
-use afd_setup::types::{DraftState, MessageState};
 
 use super::sql;
 use crate::Result;
@@ -32,8 +31,8 @@ impl Waiting {
     }
 }
 
-/// Reads waiting fleet and setup work once, naming the idle tenant runners
-/// among `runners`. An empty `runners` asks only whether anything waits.
+/// Reads waiting fleet work once, naming the idle tenant runners among
+/// `runners`. An empty `runners` asks only whether anything waits.
 ///
 /// # Errors
 /// Reports the datastore's failure.
@@ -43,11 +42,8 @@ pub async fn waiting(
     resume_from_checkpoint: bool,
 ) -> Result<Waiting> {
     sqlx::query_as::<_, Waiting>(sql::queue::SELECT_WAITING_WORK)
-        .bind(DraftState::Editing.as_str())
-        .bind(MessageState::Queued.as_str())
         .bind(runners)
         .bind(resume_from_checkpoint)
-        .bind(MessageState::Running.as_str())
         .fetch_one(connection)
         .await
         .map_err(query(CONTEXT_WAITING))

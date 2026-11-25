@@ -5,7 +5,6 @@
 export const CHARGE_TYPE = Object.freeze({
   receive: "receive",
   stage: "stage",
-  setup: "setup",
 });
 
 export const PROVIDER_MODE = Object.freeze({

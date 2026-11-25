@@ -156,5 +156,5 @@ Future-only pause, credential aliases, independent child roles, placeholder sett
 ## Related pages
 
 - [Approved interface](chat-within-a-workspace.md)
-- [Detailed ASCII flow](../architecture/data_flow.md#fleet-setup-and-runtime-sequence)
+- [Detailed ASCII flow](../architecture/data_flow.md#the-path-in-one-picture)
 - [Resource reference](../architecture/api_resources.md)

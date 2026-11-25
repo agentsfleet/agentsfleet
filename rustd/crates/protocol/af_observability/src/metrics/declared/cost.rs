@@ -1,9 +1,9 @@
 //! What a run cost, in the vocabulary the standard already has for it.
 //!
 //! The five dotted families, and the only ones that are not `agentsfleet_`
-//! prefixed. Two of the names are the standard's own and three are ours, and
-//! `docs/architecture/observability.md` §Metrics stay semantic carries why each
-//! divergence exists: a `ReportRequest` counts tokens cumulatively over a whole
+//! prefixed. Two of the names are the standard's own and three are ours
+//! (`docs/architecture/observability.md` §"Cost families"). Each divergence
+//! exists because a `ReportRequest` counts tokens cumulatively over a whole
 //! agent run rather than one provider call, so run totals cannot honestly wear
 //! the `GenAI` client-call names.
 //!

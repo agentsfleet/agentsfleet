@@ -17,10 +17,10 @@ const REPORT: &str = "/v1/tenants/me/billing/reports/current";
 const MODEL: &str = "billing-report-model";
 const NOW: &str = "2026-10-25T12:01:00Z";
 
-/// Setup-run lines as the run's own transaction logs them: the run as their
-/// work and run, the draft message it answered as their turn, and the fleet
-/// and model they are attributed to. A line's references are opaque, so none
-/// needs a row. A model line carries no run time, as production's never does.
+/// Run lines as the run's own transaction logs them: the run as their work
+/// and run, the message it answered as their turn, and the fleet and model
+/// they are attributed to. A line's references are opaque, so none needs a
+/// row. A model line carries no run time, as production's never does.
 const INSERT_LINES: &str = "\
 INSERT INTO billing.usage_lines (
     id, work_type, work_id, seq, kind, tenant_id, workspace_id, fleet_id, fleet_name, turn_id,
@@ -37,7 +37,7 @@ SELECT id, $5, id, 0, 'model', $2, $3, $9, $10, message, id, $4, $11, $6,
 
 #[tokio::test]
 #[ignore = "requires live Postgres: make test-integration-rustd"]
-async fn report_returns_exact_full_totals_without_private_setup_content() {
+async fn report_returns_exact_full_totals_without_private_content() {
     let members = Members::create().await;
     seed(&members, &members.john, 4, 17).await;
     seed(&members, &members.stranger, 3, 999).await;
@@ -61,15 +61,18 @@ async fn report_returns_exact_full_totals_without_private_setup_content() {
     let totals = report.get("totals").expect("report totals");
     assert_eq!(text(totals, "charged_nanos"), Some("68"));
     assert_eq!(totals.get("line_count"), Some(&json!(4)));
-    // No setup line here is a runtime slice, so no run is counted.
+    // No line here is a runtime slice, so no run is counted.
     assert_eq!(totals.get("activity_count"), Some(&json!(0)));
     assert!(report.get("activities").is_none(), "{report}");
-    let setup = report
+    let unattributed = report
         .pointer("/spending/by_fleet/0")
-        .expect("the setup group");
-    assert_eq!(setup.get("key"), Some(&Value::Null));
-    assert_eq!(setup.get("models"), Some(&json!([MODEL])));
-    assert_eq!(setup.pointer("/totals/activity_count"), Some(&json!(0)));
+        .expect("the group of lines no fleet is named on");
+    assert_eq!(unattributed.get("key"), Some(&Value::Null));
+    assert_eq!(unattributed.get("models"), Some(&json!([MODEL])));
+    assert_eq!(
+        unattributed.pointer("/totals/activity_count"),
+        Some(&json!(0))
+    );
     let model = report
         .pointer("/spending/by_model/0")
         .expect("the model group");
@@ -169,6 +172,7 @@ async fn served_daily_report_includes_zero_days_and_complete_models() {
     let path = format!("{REPORT}?period=week");
     let body = harness::json_body(get(&members, &members.john, &path).await).await;
     assert_week_projection(&body);
+    // Every seeded line is a fleet run's, so the runtime filter keeps them all.
     let runtime = harness::json_body(
         get(
             &members,
@@ -178,13 +182,24 @@ async fn served_daily_report_includes_zero_days_and_complete_models() {
         .await,
     )
     .await;
+    assert_week_projection(&runtime);
+    // None of them names John's fleet, so a filter on it selects nothing.
+    let other = harness::json_body(
+        get(
+            &members,
+            &members.john,
+            &format!("{path}&fleet_id={}", members.fleet),
+        )
+        .await,
+    )
+    .await;
     assert_eq!(
-        runtime.pointer("/daily/6/totals/charged_nanos"),
+        other.pointer("/daily/6/totals/charged_nanos"),
         Some(&json!("0"))
     );
-    assert_eq!(runtime.pointer("/spending/by_fleet"), Some(&json!([])));
+    assert_eq!(other.pointer("/spending/by_fleet"), Some(&json!([])));
     assert!(
-        runtime
+        other
             .pointer("/filters/fleets")
             .and_then(Value::as_array)
             .is_some_and(|fleets| !fleets.is_empty()),
@@ -231,7 +246,7 @@ fn now() -> Timestamp {
     NOW.parse().expect("a fixed instant")
 }
 
-/// What [`seed_as`] logs: `count` one-line setup runs, each charged `money`,
+/// What [`seed_as`] logs: `count` one-line runs, each charged `money`,
 /// attributed to `fleet` (its id and name) and `model`.
 #[derive(Clone, Copy)]
 struct Lines<'a> {
@@ -241,7 +256,7 @@ struct Lines<'a> {
     model: &'a str,
 }
 
-/// Logs `count` one-line setup runs for `person`, each answering a draft
+/// Logs `count` one-line runs for `person`, each answering a
 /// message of its own and naming no fleet; logging charges them.
 async fn seed(members: &Members, person: &Person, count: usize, money: i64) {
     let lines = Lines {
@@ -262,7 +277,7 @@ async fn seed_as(members: &Members, person: &Person, lines: Lines<'_>) {
         .bind(&person.tenant)
         .bind(&person.workspace)
         .bind(MODEL)
-        .bind(work::SETUP_RUN)
+        .bind(work::FLEET_RUN)
         .bind(posture::PLATFORM)
         .bind(lines.money)
         .bind(&messages)

@@ -9,7 +9,9 @@
 use super::*;
 
 /// The bot's own message mentioning itself is dropped, identified by the user
-/// id its grant records, and admits nothing.
+/// id its grant records, and admits nothing. Slack stamps `bot_id` on every
+/// app post, the bot's own included, so the case carries one: the user id is
+/// what drops it.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_mention_by_the_bot_itself_is_dropped() {
@@ -29,6 +31,7 @@ async fn a_mention_by_the_bot_itself_is_dropped() {
         BOT_USER,
         &format!("<@{BOT_USER}> done"),
     );
+    let body = posted_by_an_app(&body);
     let document = json_body(deliver(&router, &body).await).await;
     assert_eq!(
         document.get("ignored").and_then(Value::as_str),
@@ -212,9 +215,9 @@ async fn a_connected_long_team_identity_does_not_create_an_implicit_fleet() {
     fixture.cleanup().await;
 }
 
-async fn unconfigured_state(fixture: &Fixture) -> (i64, i64, i64, i64) {
-    sqlx::query_as("SELECT (SELECT count(*) FROM fleet.fleets WHERE workspace_id=$1), (SELECT count(*) FROM fleet.revisions r JOIN fleet.fleets f ON f.id=r.fleet_id WHERE f.workspace_id=$1), (SELECT count(*) FROM connector.channels WHERE provider=$2 AND external_account_id=$3), (SELECT count(*) FROM thread.deliveries WHERE workspace_id=$1)")
+async fn unconfigured_state(fixture: &Fixture) -> (i64, i64, i64) {
+    sqlx::query_as("SELECT (SELECT count(*) FROM fleet.fleets WHERE workspace_id=$1), (SELECT count(*) FROM connector.channels WHERE provider=$2 AND external_account_id=$3), (SELECT count(*) FROM thread.deliveries WHERE workspace_id=$1)")
         .bind(fixture.workspace()).bind(PROVIDER.id()).bind(&fixture.team)
         .fetch_one(&mut *fixture.database().acquire().await.expect("side effect observer"))
-        .await.expect("fleets, revisions, channel bindings and deliveries")
+        .await.expect("fleets, channel bindings and deliveries")
 }

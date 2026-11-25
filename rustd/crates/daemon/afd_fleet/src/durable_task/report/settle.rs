@@ -18,7 +18,6 @@ struct Current {
     stop_generation: i64,
     durable_task_generation: Option<i64>,
     durable_task_stop_generation: Option<i64>,
-    accepted_revision_id: Uuid7,
     goal_digest: String,
     covered_input_sequence: i64,
     input_sequence: i64,
@@ -145,7 +144,6 @@ impl Current {
             && self.durable_task_id == old.durable_task_id
             && u64::try_from(self.generation).ok() == Some(old.generation)
             && u64::try_from(self.stop_generation).ok() == Some(old.stop_generation)
-            && self.accepted_revision_id == old.accepted_revision_id
             && self.goal_digest == old.goal_digest
             && self.effect_cursor.unsigned_abs() == old.effect_cursor
             && self.confirmed_effect_watermark.unsigned_abs() == old.confirmed_effect_watermark
@@ -175,12 +173,9 @@ async fn action(
         }
     }
     if let Some(target) = &plan.target {
-        let Some(config) =
-            crate::run::Runs::stored_config_on(connection, &plan.scope.fleet_id, None).await?
-        else {
-            return Ok(None);
-        };
-        if target.within(&config).is_err() {
+        let binding =
+            crate::run::Runs::approved_binding_on(connection, &plan.scope.fleet_id).await?;
+        if target.within(binding.as_ref()).is_err() {
             return Ok(None);
         }
         if let Err(fault) =
@@ -223,7 +218,6 @@ async fn action(
                 run_id: &plan.run_id,
                 generation: current.generation,
                 stop_generation: current.stop_generation,
-                revision_id: &current.accepted_revision_id,
                 covered_input_sequence: current.covered_input_sequence,
                 effect_watermark: current.confirmed_effect_watermark,
                 head: plan.target.as_ref().map(|target| target.head.as_str()),
@@ -300,9 +294,7 @@ async fn continue_ready(
         .map_err(query("begin task continuation savepoint"))?;
     let admitted = match plan.tasks.turns.stage(&mut savepoint, turn).await {
         Ok(admitted) => admitted,
-        Err(fault)
-            if fault.is_over_capacity() || fault.code() == af_core::error_code::SETUP_POLICY =>
-        {
+        Err(fault) if fault.is_over_capacity() => {
             savepoint.rollback().await.map_err(query(
                 "roll back refused continuation without discarding measured usage",
             ))?;

@@ -1,4 +1,4 @@
-//! Both run kinds occupy capacity only while their original expiry is live.
+//! A run occupies capacity only while its original expiry is live.
 
 use super::Fixture;
 use std::time::Duration;
@@ -16,16 +16,16 @@ const LAPSES_IN: Duration = Duration::from_millis(200);
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn test_runtime_and_setup_runs_count_together() {
+async fn test_live_runs_of_two_fleets_count_together() {
     let fixture = Fixture::create(2).await;
     fixture.runtime(clock::after(clock::now(), LIVE_FOR)).await;
     assert!(
         fixture.try_assign().await,
-        "one remaining worker accepts setup"
+        "one remaining worker accepts another fleet"
     );
     assert!(
         !fixture.try_assign().await,
-        "runtime plus setup exhaust the host"
+        "the two live runs exhaust the host"
     );
     fixture.cleanup().await;
 }
@@ -37,17 +37,12 @@ async fn test_expired_status_active_rows_do_not_occupy_capacity() {
     fixture
         .runtime(clock::before(clock::now(), LAPSED_BY))
         .await;
-    let mut connection = fixture.db.acquire().await.expect("setup seed connection");
-    let mut tx = connection
-        .begin()
-        .await
-        .expect("expired setup run transaction");
+    let mut connection = fixture.db.acquire().await.expect("run seed connection");
+    let mut tx = connection.begin().await.expect("expired run transaction");
     fixture
-        .setup(&mut tx, clock::before(clock::now(), LAPSED_BY))
+        .place(&mut tx, clock::before(clock::now(), LAPSED_BY))
         .await;
-    tx.commit()
-        .await
-        .expect("expired status-active setup run seeds");
+    tx.commit().await.expect("expired status-active run seeds");
     drop(connection);
     assert!(
         fixture.try_assign().await,

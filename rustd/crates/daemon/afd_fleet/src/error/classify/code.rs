@@ -69,6 +69,7 @@ impl Error {
             ErrorKind::Context { ref source } => source.code(),
             ErrorKind::Credential { ref source } => source.code(),
             ErrorKind::Gate { ref source } => source.code(),
+            ErrorKind::Approval { ref source } => source.code(),
             ErrorKind::Events { ref source } => source.code(),
             ErrorKind::Outbound { ref source } => source.code(),
             ErrorKind::Memory { ref source } => source.code(),
@@ -79,17 +80,17 @@ impl Error {
             | ErrorKind::DurableTaskState { .. }
             | ErrorKind::DurableTaskDocument { .. }
             | ErrorKind::SequenceCorrupt
-            | ErrorKind::PostureCorrupt => error_code::INTERNAL_DB_QUERY,
+            | ErrorKind::PostureCorrupt
+            | ErrorKind::FleetRowUnreadable => error_code::INTERNAL_DB_QUERY,
             ErrorKind::Rejected { .. } => error_code::INVALID_REQUEST,
             ErrorKind::DurableTaskPrecondition { .. } => {
                 error_code::DURABLE_TASK_PRECONDITION_FAILED
             }
-            ErrorKind::DurableTaskMutation { ref source, .. } => source.code(),
             ErrorKind::DurableTaskControlConflict { .. } => error_code::DURABLE_TASK_STALE_STATE,
             ErrorKind::DurableTaskRefused { reason } => reason.code(),
+            ErrorKind::FleetRefused { reason } => reason.code(),
             ErrorKind::TurnCheckpointRefused { reason }
             | ErrorKind::TurnCheckpointFailure { reason, .. } => reason.code(),
-            ErrorKind::SetupUnavailable => error_code::SETUP_POLICY,
             ErrorKind::Mint { .. }
             | ErrorKind::Entropy { .. }
             | ErrorKind::ConfigUnreadable { .. }
@@ -100,7 +101,6 @@ impl Error {
             ErrorKind::RunLost => error_code::RUN_LOST,
             ErrorKind::RunCancelled => error_code::RUN_CANCELLED,
             ErrorKind::RenewalNoCredits => error_code::RUN_RENEWAL_NO_CREDITS,
-            ErrorKind::BudgetExhausted => error_code::RUN_BUDGET_EXCEEDED,
             ErrorKind::MessageNoChannel => error_code::MESSAGE_NO_CHANNEL,
             ErrorKind::IntegrationNotConnected => error_code::CRED_INTEGRATION_NOT_CONNECTED,
             ErrorKind::MintUnconfigured => error_code::CRED_BROKER_NOT_CONFIGURED,

@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import type { Schedule } from "@/lib/api/draft-types";
+import type { Schedule } from "@/lib/api/schedule-types";
 import {RecordedWakeups} from "./RecordedWakeups";
 import { TooltipProvider } from "@agentsfleet/design-system";
 

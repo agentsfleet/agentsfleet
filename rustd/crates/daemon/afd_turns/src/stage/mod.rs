@@ -37,7 +37,7 @@ impl Turns {
     ///
     /// # Errors
     /// Preserves a failed statement, a fleet outside the caller's workspace,
-    /// a setup needing review, or the deployment ceiling's refusal.
+    /// or the deployment ceiling's refusal.
     pub async fn stage(
         &self,
         connection: &mut PgConnection,

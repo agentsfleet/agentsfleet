@@ -57,13 +57,6 @@ impl ConnectionServices {
             }
             ids.push(run_id);
         }
-        // A draft's run renews on its own path; the fleet batch reads fleet rows.
-        let (drafts, entries): (Vec<Entry>, Vec<Entry>) = entries
-            .into_iter()
-            .partition(|entry| self.cache.draft(&entry.run_id).is_some());
-        if !drafts.is_empty() {
-            self.answer_drafts(drafts, deadline, &mut replies).await;
-        }
         if !entries.is_empty() {
             self.answer_batch(entries, funds_due, deadline, &mut replies)
                 .await;
@@ -146,45 +139,6 @@ impl ConnectionServices {
                         *reply = Some(refused.clone());
                     }
                 }
-            }
-        }
-    }
-}
-
-impl ConnectionServices {
-    /// Renews each draft-owned run of the frame on the draft path, under the
-    /// frame's deadline, and fills its reply.
-    async fn answer_drafts(
-        &self,
-        entries: Vec<Entry>,
-        deadline: Instant,
-        replies: &mut [Option<Answer<'static, RenewResponse>>],
-    ) {
-        for entry in entries {
-            let now = self.gateway.inner.dependencies.wall_clock.now();
-            let outcome: Result<RenewResponse> = self
-                .operation_until(Operation::Renewal, deadline, async {
-                    Ok(self
-                        .runs
-                        .renew_draft(&self.handle.runner, &entry.run_id, &entry.request, now)
-                        .await?)
-                })
-                .await
-                .map(|run_expires_at| RenewResponse {
-                    run_expires_at,
-                    recorded_through: entry.recorded_through,
-                });
-            match &outcome {
-                Ok(response) => self.cache.renew(&entry.run_id, response.run_expires_at),
-                // `operation_until` observed the failure.
-                Err(error) => {
-                    if !error.retryable() {
-                        self.cache.forget(&entry.run_id);
-                    }
-                }
-            }
-            if let Some(reply) = replies.get_mut(entry.index) {
-                *reply = Some(answer(outcome));
             }
         }
     }

@@ -17,7 +17,7 @@ Do not rewrite history, weaken gates or assume a historical passing check covers
 Read these inputs:
 
 - `concepts_brief.md` for the current direction and accepted owner decisions.
-- `docs/architecture/sandbox_evaluation.md` for source reuse, first-build order, recovery and incident scenarios.
+- `docs/reviews/space-sandbox/sandbox_evaluation.md` for source reuse, first-build order, recovery and incident scenarios.
 - `docs/reviews/space-sandbox/README.md` and `review-evidence.json` for completed concept review and its frozen inputs.
 - `docs/architecture/runner_execution.md` and `runner_fleet.md` for the existing runner, toolbox and leases.
 - `docs/architecture/context_lifecycle.md` for shared compaction and checkpoint ownership.

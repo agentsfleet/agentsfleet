@@ -12,21 +12,21 @@ import { forceFlag, logoutAllFlag, opt, tokenNameFlag } from "./flags.ts";
 // and the description says so, because a person deciding whether a lost
 // laptop is signed out reads exactly this line.
 const LOGOUT_DESCRIPTION =
-  "Sign out — revoke this machine's credential, abort unfinished sign-ins, and clear local state (other machines stay signed in)" as const;
+  "Sign out on this computer (other computers stay signed in)" as const;
 
 const loginCommand = Command.make("login", {
   tokenName: tokenNameFlag,
   force: forceFlag,
   noOpen: Flag.Boolean("no-open").pipe(
-    Flag.withDescription("Skip auto-opening the browser on login"),
+    Flag.withDescription("Don't open the browser on its own"),
     Flag.withDefault(false),
   ),
   noInput: Flag.Boolean("no-input").pipe(
-    Flag.withDescription("Disable interactive prompts"),
+    Flag.withDescription("Never stop to ask you a question"),
     Flag.withDefault(false),
   ),
 }).pipe(
-  Command.withDescription("Authenticate via browser"),
+  Command.withDescription("Sign in through your browser"),
   guardedHandler(({ tokenName, force, noOpen, noInput }) =>
     loginEffectFromFlags({ noOpen, noInput, force, tokenName: opt(tokenName) }),
   ),
@@ -38,7 +38,7 @@ const logoutCommand = Command.make("logout", { all: logoutAllFlag }).pipe(
 );
 
 const whoamiCommand = Command.make("whoami").pipe(
-  Command.withDescription("Show who this terminal is signed in as"),
+  Command.withDescription("Show which account you are signed in as"),
   guardedHandler(() => whoamiEffect),
 );
 

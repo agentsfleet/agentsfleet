@@ -10,7 +10,7 @@ import { PRIMARY_NAV, resolveActiveHref, resolveHref } from "./sidebar-navigatio
 
 import { Suspense, useEffect } from "react";
 import { setAnalyticsContext } from "@/lib/analytics/posthog";
-import { CollapsedFleetListTrigger, DraftSidebarHistory } from "./DraftSidebarHistory";
+import { CollapsedFleetListTrigger, SidebarFleets } from "./SidebarFleets";
 import WorkspaceSwitcher from "./WorkspaceSwitcher";
 import type { TenantBilling } from "@/lib/types";
 import { BalanceLink } from "./BalanceLink";
@@ -72,7 +72,7 @@ export function SidebarNavigation({ pathname, workspaceId, collapsed, onNavigate
     <ShellControls workspaceId={workspaceId} collapsed={collapsed} />
     <div className="min-h-0 shrink overflow-y-auto"><NavSection items={entries} {...shared} /></div>
     {!collapsed && desktop ? <div className="hidden min-h-0 flex-1 overflow-y-auto md:block">
-      <Suspense><DraftSidebarHistory account={workspaces.find(item => item.id === workspaceId)?.account.tenant_id ?? null} workspace={workspaceId} onNavigate={onNavigate} /></Suspense>
+      <Suspense><SidebarFleets account={workspaces.find(item => item.id === workspaceId)?.account.tenant_id ?? null} workspace={workspaceId} onNavigate={onNavigate} /></Suspense>
     </div> : <div className="flex flex-1 flex-col">{collapsed && desktop && workspaceId ? <CollapsedFleetListTrigger /> : null}</div>}
     <div className="mt-auto flex shrink-0 flex-col gap-md px-sm md:px-lg">
       {!collapsed && billing ? <div className="hidden md:block"><BalanceLink balanceNanos={billing.balance_nanos} isExhausted={billing.is_exhausted} /></div> : null}

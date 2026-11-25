@@ -5,10 +5,9 @@
 //!
 //! # Two sides of one table, and they are not symmetric
 //!
-//! [`crate::gate::Gates`] is the RUNNER's side — it parks a run behind a gate
-//! and reads the durable answer back. This is the PERSON's side, and the
-//! asymmetry is deliberate: a runner asks about one action it already holds,
-//! where an operator browses a queue they did not raise and answers rows they
+//! The runner plane raises a run's question on the turn it holds. This is the
+//! PERSON's side, and the asymmetry is deliberate: a run asks about one turn,
+//! where a person browses a queue they did not raise and answers rows they
 //! have to be authorised for. Different questions, different scoping, so
 //! different types over one table.
 //!
@@ -20,13 +19,13 @@
 //! this" from "somebody already had". A read-then-write would let both believe
 //! they won and both tell their person so.
 //!
-//! # A resolved gate never reopens the row it blocked
+//! # A resolved gate never reopens the turn that waited
 //!
-//! Nothing here writes back to the blocked turn. The blocked row is
-//! terminal by design: a resolved gate lands a NEW event carrying
-//! `actor=continuation:<original>`, so the history keeps both the run that was
-//! stopped and the run that followed from the answer. Re-opening the first
-//! would erase the fact that a person was ever asked.
+//! Nothing here writes back to the waiting turn. It is terminal by design: a
+//! resolved gate lands a NEW turn carrying `actor=continuation:<original>`, so
+//! the history keeps both the run that asked and the run that followed from
+//! the answer. Re-opening the first would erase the fact that a person was
+//! ever asked.
 
 mod announce;
 mod resolve;
@@ -60,7 +59,7 @@ const CONTEXT_ONE: &str = "gate.inbox.one";
 pub struct Inbox {
     database: Db,
     bus: Handle,
-    /// Where an approved gate's continuation is accepted, before anything is
+    /// Where an answered gate's answer turn is accepted, before anything is
     /// queued. Distinct from [`Self::bus`], which still publishes the
     /// answer frame a watcher sees.
     turns: Turns,

@@ -1,472 +1,224 @@
-# Concurrency architecture — threads, channels, locks, shutdown
-
-Canonical concurrency model for `agentsfleetd` (control plane) and
-`agentsfleet-runner` (runner plane). Consult this page before naming a
-thread, channel, or lock, or asserting a shutdown ordering. It is a sibling of
-[`data_flow.md`](./data_flow.md) (the same runtime traced per turn) and
-[`runner_fleet.md`](./runner_fleet.md) (the control/runner split).
-
-Channel and stream **names** are canonical in `data_flow.md`; this page
-owns the thread/lock/shutdown layer on top of them.
-
-The concurrency rules `C1–C5` are the product's concrete invariants and bind both
-planes. Both planes are Rust on tokio, where the compiler carries three of the
-five.
-
+---
+type: reference
+audience: contributor
+verified: 2026-11-25
+product_version: 0.90.0
+executable: false
 ---
 
-## Facts
+# Concurrency
 
-Every row is extracted from the sections below; the owner column names the section that carries the full story.
+## What it is
 
-| Invariant | Value | Mechanism | Owner section |
+This page lists every long-lived task, cross-task channel and lock in `agentsfleetd` and `agentsfleet-runner`.
+It also gives the five rules that bind them, the shutdown order, and the row-lock order of daemon SQL statements.
+Read it before adding a task, a channel or a lock.
+
+Both binaries are Rust on tokio, an asynchronous runtime.
+[Data flow](./data_flow.md) owns channel and NATS subject names; this page owns who owns them and how they stop.
+
+## Why it exists
+
+A task with no owner leaks, and a lock taken in two orders deadlocks.
+Listing each one in one place lets a reviewer check a new one against the rest.
+
+## How it behaves
+
+### The five rules
+
+1. **C1: one producer, one consumer, and the receiver owns the payload.** A channel with several consumers gives each a copy.
+   It tells a slow consumer what it missed.
+2. **C2: stop, then join, then drop.** Shutdown signals stop, waits for the task, and only then frees shared state.
+3. **C3: no blocking work under a lock the consumer needs.** A socket write never happens while holding such a lock.
+4. **C4: one documented lock per shared aggregate.** Its doc comment says what it protects and any ordering rule.
+5. **C5: confined by default.** State one task touches carries no lock, and an exclusive borrow says so.
+
+The compiler proves C1's ownership move, C2's no-free-while-borrowed, and C5's exclusive borrow.
+C3 and C4 hold at review; no checker enforces them.
+
+The primitives are tokio's on both planes.
+`CancellationToken` stops a task, `tokio::select!` races I/O against it, and `tokio::time::timeout` bounds a call.
+`broadcast` and `mpsc` carry fan-out and commands.
+
+`tokio::sync::Mutex` guards state held across an await; `std::sync::Mutex` guards a leaf map that is not.
+The runner adds a `watch` channel for the heartbeat's assignment and a `JoinSet` for its workers.
+
+### Daemon tasks
+
+`Supervisor::spawn` in the daemon binary gives each process-lifetime task a cancellation token and keeps its handle.
+`test_boot_to_ready_on_compose` compares a booted daemon's task inventory against `BACKGROUND_TASKS` (`daemon/main/src/inventory.rs`).
+The daemon runs no timed loop; every task waits on a socket, a bus message, a runner connection or cancellation.
+
+| Task | Spawned by | Shared state and its guard | Stop path |
 |---|---|---|---|
-| Concurrency rules | C1–C5 | declared producer/consumer, receiver owns the payload · stop→join→drop · no blocking under a consumer's lock · one documented lock per aggregate · task/thread-confined by default | §The five invariants |
-| Long-lived work | supervised control-plane tasks, async connections, and runner tasks | each with a declared spawn point, protection, and stop path | §Thread map |
-| Shutdown flags | none | the half-dead-node window the two flags protected is an ordering here, not shared mutable state | §Why there is no signal watcher |
-| Shared-state locks | inventoried below | the NATS client sits behind the adapter's read/write lock: operations share read guards, and only shutdown takes the write guard | §Lock-invariant registry |
-| Deadline ownership | one deadline per call site, on both planes | `tokio::time::timeout` or the HTTP client's own timeout; no shared registration map | §The deadline-ownership invariant |
-| Shutdown order | decide why → cancel and join → drop | teardown is in the outer `run`, so every early return still tears down | §Shutdown choreography |
-| Cancellation reach | every long-lived task selects its own I/O against the token | a genuinely blocked `accept()` is interrupted mid-read, not at the next poll interval | §Shutdown choreography |
-| Test handshake | handshakes, never sleeps | channels, `Notify` and `CancellationToken` on both planes; `start_paused` pays no wall clock for a join timeout | §Shutdown choreography |
-| Setup chat assignment | never waits on a draft | it reads the draft without a lock; a conditional thread upsert and a conditional turn update decide, so no draft is skipped as busy | §Runner capacity and setup lock order |
-| Discipline scope | no roster | C1–C5 hold at review; RULE NLR owns cleanup of the files a change touches | §Expanding the discipline base |
+| `accept_loop` | `serve::listen` | The listener; the router is cloned per connection | `select!` on the token and a blocked `accept()`, then joined |
+| One connection per socket | The accept loop | Its own request stream | The same token |
+| SSE response body | An HTTP handler | A stream permit and hub receivers, owned by the body | Dropping the body releases both |
+| `connector:outbound` | `outbound::spawn` | Lane heads of `thread.deliveries`, under a per-lane advisory lock, `SKIP LOCKED` and the holder's token | `select!` on the token, a ping and a finished lane; lanes drain, then joined |
+| NATS hub pump, one per subject with readers | `Bus::subscribe`, for the first local reader | The subject's one native subscription | The last reader's drop aborts it; `Bus::shutdown` joins every pump |
+| NATS gap watcher | `afd_bus::nats::connect` | Client events and the publish debt, under a short mutex | `Bus::shutdown` joins it before the client drains |
+| `bus_shutdown` | The supervisor | The NATS adapter | Calls `Bus::shutdown` on cancellation |
+| Runner wake listener | `Wake::listen`, from the gateway scheduler | One `af.thread.*.wake` subscription and a queue of 64 fleets | The stop token, or a closed subscription, after which the scheduler resubscribes |
+| `runner_stream_scheduler` | `serve::runner_stream::spawn` | The connection registry; Postgres through the API pool | A child token, then joined |
+| `runner_stream_listener` | `serve::runner_stream::spawn` | The runner listener and one gateway connection per runner | Stops accepting, then joined |
+| `otlp_export` | `serve::open_telemetry`, only when an OpenTelemetry Protocol (OTLP) endpoint is set | The telemetry providers' batch queues | Force-flushes every provider, then joined |
+| `analytics_flush` | `serve::open`, last | The product-analytics client's queue | Flushes on cancellation |
 
-## Traps
+New process-lifetime work belongs to the supervisor.
+Request-owned work keeps an abortable handle and a bounded completion path.
 
-Each trap is enforced in its owner section; this list is the index.
+### Runner tasks
 
-- Every spawned task needs a lifetime owner and stop path, including request-owned private preview publishers (§Thread map).
+`afr_supervisor::run` composes the connection, heartbeat policy and worker pool.
+No runner crate links a datastore crate ([runner crates](./runner_execution.md#crates)).
 
-- Never open a second native subscription for a subject that already has local readers. The first reader opens it and starts its pump; later readers join the channel and wait until that subscription is queued (§Lock-invariant registry).
-
-- Never await a round trip on a subject's pump. It forwards every frame for that subject, so a wait there holds them all (§Thread map).
-
-- Never do a blocking wire send while holding the map lock. That is the C3 fix that ended the hub hazard (§Lock-invariant registry).
-
-- Never free shared state before its tasks and threads have joined; a timed-out drain never proceeds to free (§Shutdown choreography).
-
-- New cross-boundary channels declare one producer and one consumer, and the payload's ownership at the boundary. Reshaping existing ones is a separate judgment with this page as input (§Channel inventory).
-
-- Channel and stream *names* are canonical in `data_flow.md`, not here (preamble).
-
-- Never let a setup chat assignment lock a draft or its creator while it holds the host row. Every other tenant on that poll would wait behind it, and a skip loses the wake. Read the draft unlocked and let the thread and turn claims decide (§Runner capacity and setup lock order).
-
-## The five invariants (rules C1–C5)
-
-1. **C1: declared producer and consumer, receiver owns the payload**. Every
-   channel that crosses a task or thread boundary has a single declared producer
-   and a declared consumer. Ownership at the boundary is unambiguous: on both
-   planes the value moves to the receiver and the compiler is the proof.
-
-   A channel read by several consumers hands each of them its own copy and tells a slow one what it missed.
-2. **C2: stop → join → drop.** Shutdown signals stop, joins the worker, and
-   only then releases shared state. A bounded drain that times out never frees
-   state a straggler can still touch.
-3. **C3: no blocking work under a lock the consumer needs**. A blocking socket
-   write or push is never done while holding a lock the consumer must acquire to
-   make progress. Lock state is an explicit parameter, not an ambient assumption.
-4. **C4: one documented lock per shared aggregate**. Each shared aggregate has
-   exactly one lock whose doc comment states precisely what it protects and any
-   ordering constraint. The guard's scope is visible where it is taken.
-5. **C5: confined by default**. State touched by one task or thread carries no lock but says so. On both planes an exclusive borrow is the statement.
-
-The control plane's primitives are tokio's. `CancellationToken` stops,
-`tokio::select!` races I/O against it, and `tokio::time::timeout` bounds a
-deadline. `broadcast` and `mpsc` carry fan-out and commands.
-
-`tokio::sync::Mutex` guards state held across an await and `std::sync::Mutex`
-a leaf map that is not.
-
-The runner uses the same primitives: `CancellationToken` for stop, and a `watch` channel for the heartbeat's assignment. The runner also uses a `JoinSet` for its workers (`afr_supervisor`'s worker pool).
-
----
-
-## Thread map
-
-Every long-lived task and thread, who spawns it, the shared state it touches,
-how that state is protected, and how it is stopped and joined.
-
-### `agentsfleetd` (control plane)
-
-The supervisor in the daemon binary (`rustd/crates/daemon/main`) owns process-lifetime daemon tasks. Connection handlers, hub workers and bounded request-owned work have their own owners.
-
-`Supervisor::spawn` supplies a cancellation token and retains each handle. Shutdown waits for each handle and reports tasks exceeding the ten-second join deadline. The supervised `bus_shutdown` task shuts the NATS connection down on cancellation.
-
-Private answer previews use a request-owned publisher (`afd_setup`'s preview publisher). Its `AbortOnDropHandle` aborts the task on cancellation or unwind; normal completion allows a two-second drain. Publication rechecks access before sending each preview.
-
-The inventory is asserted, not described. `test_boot_to_ready_on_compose`
-(the daemon's `integration_serve` test) compares a booted
-daemon's whole inventory against the names below. A task added to boot without
-a name, or a named task that boot no longer spawns, is a failing test. The daemon runs no timed loop: every task below waits on a socket, a bus message, a runner connection or cancellation.
-
-| Task | Spawned by | Touches | Protection | Stop path |
-|---|---|---|---|---|
-| accept loop (`accept_loop`) | `serve::listen` | the listener; the shared `Router` by clone | none shared mutable | `select!` over `token.cancelled()` and a genuinely blocked `accept()` → loop breaks → joined |
-| connection (one per socket) | the accept loop | one connection's request stream | none shared mutable; the router is cloned per connection | the same token: `select!` over `cancelled()` and the served connection |
-| Server-Sent Events (SSE) response body | HTTP handler | stream permit and hub subscription receivers | owned by the body; no dedicated operating-system thread | dropping the body releases its permit and receivers; hub closure ends a fleet tail |
-| outbound answer worker (`connector:outbound`) | `agentsfleetd::outbound::spawn` | claims lane heads from `thread.deliveries`, at most as many as its lanes have free delivery slots, and hands each row to the outbound lanes. A claim runs at start, on an `af.delivery.wake` ping and on a finished lane; no timed pass claims. | a per-lane `pg_try_advisory_xact_lock` taken before the heads are chosen, `FOR UPDATE SKIP LOCKED`, and the holder's token, which the attempt count re-proves before each post; no in-process lock shared with other tasks | `select!` over `cancelled()`, the ping and a finished lane → loop breaks → the lanes drain → joined |
-| NATS hub pump (one per subject with readers, `afd_bus::nats`'s hub) | `Bus::subscribe`, for a subject's first local reader | that subject's one native subscription: frames out to every local reader, and an `Af-Gap` marker turned into `Gap` | the channel map under its own mutex; the pump never takes it to forward a frame | the last reader's drop aborts the pump, which unsubscribes; `Bus::shutdown` aborts and joins every pump |
-| NATS gap watcher (`afd_bus::nats`'s signals watcher) | `afd_bus::nats::connect`, once per process | client events (reconnect, slow consumer), the publish debt, and the `af.bus.gap` broadcast | the debt under a short mutex the client's event callback also takes; the callback only sets flags and wakes the watcher | `Bus::shutdown` aborts and joins it before the client drains; the supervised `bus_shutdown` calls that shutdown on cancellation |
-| runner wake listener (`afd_bus::wake`) | `Wake::listen`, from the gateway scheduler (`afd_gateway/src/scheduler/subscriptions.rs`) | one `af.thread.*.wake` wildcard subscription; one shared queue of at most 64 thread IDs by default | leaf mutex; never held across an await | the stop token, or a closed subscription; the scheduler then resubscribes with backoff |
-| runner-stream scheduler (`runner_stream_scheduler`) | `serve::runner_stream::spawn` | the gateway's connection registry and Postgres through the API pool; starts an assignment pass on a wake ring, a detected bus gap or a subscription restored, and resubscribes the wake listener with backoff | none shared mutable; each connection's assignment runs on its own supervisor | the stop token's child → its notification and repair loops return → joined |
-| runner-stream listener (`runner_stream_listener`) | `serve::runner_stream::spawn` | the runner listener socket and one gateway connection service per runner | each connection enters the drain | the stop signal → the listener stops accepting → joined |
-| telemetry flush (`otlp_export`) | `serve::open_telemetry`, and only where an OpenTelemetry Protocol (OTLP) endpoint is configured; a normal boot without one supervises six tasks, the accept loop included | the four software development kit (SDK) providers (tracer, cumulative and delta meters, logger); the exporting itself happens on the SDK's own batch threads and periodic readers, never on this task | the SDK's batch queues; spans and metric cycles it failed to deliver are counted on atomics | samples the resident-set gauge on each collection tick until cancelled, then `telemetry::flush_within` force-flushes every provider before the pools they describe are dropped → joined |
-| analytics flush (`analytics_flush`) | `serve::open`, last | the product-analytics client's queued events | none shared mutable | awaits cancellation, then flushes before the client is dropped |
-
-New process-lifetime background work belongs to the supervisor. Request-owned work must retain an abortable handle and a bounded completion path.
-
-### `agentsfleet-runner` (runner plane)
-
-Rooted at the runner binary (`rustd/crates/runner/main`); no runner crate links a
-datastore crate ([`runner_execution.md`](./runner_execution.md#crates)).
-`afr_supervisor::run` composes the native connection, heartbeat policy and worker pool.
-Workers retain pending reports in memory; no report files or spool drains remain.
-
-| Task | Spawned by | Touches | Protection | Stop path |
-|---|---|---|---|---|
-| Native connection | `afr_supervisor::run` | Four streams, request correlation, assigned runs and reconnect | Bounded channels, permits and cancellation owners | Remains available while accepted workers settle; cancellation joins its tasks |
-| Heartbeat policy | `afr_supervisor::run`, beside the worker pool | Current assignment | A `watch` channel | Halt → return → joined |
-| workers (N) | `worker_pool::serve`, one `JoinSet` | each worker owns its run and that run's sandbox | none shared mutable (C5); which fleet is busy belongs to one coordinator task, reached by message | New runs stop; accepted work has thirty seconds, then five seconds for cleanup before abort and join |
-| hold keeper | `Holds::start` | the frozen sandboxes held for their fleet's next run | owned by the keeper task, reached by message | `holds.shutdown()` after the join destroys every hold |
-| executor link (one per sandbox) | `afr_executor`'s client | one sandbox's executor connection | owned by the link task | ends with its sandbox |
-
----
-
-## Channel inventory
-
-Cross-task and cross-process channels, with producer/consumer roles and payload
-ownership. NATS subject **names** are canonical in
-[`data_flow.md`](./data_flow.md) §"Two streams + one pub/sub channel"; the roles
-below are the concurrency view.
-
-| Channel | Kind | Producer → Consumer | Payload ownership |
+| Task | Spawned by | Shared state and its guard | Stop path |
 |---|---|---|---|
-| client events | the `async-nats` event callback | the NATS client → the gap watcher | the callback sets a flag per cause (reconnect, slow consumer) and wakes the watcher. A burst coalesces into one gap per cause, and the callback never waits on I/O. |
-| channel fan-out | `broadcast`, 256 messages per channel (`Tuning::channel_capacity`) | the subject's pump (producer) → every local reader of that subject | every reader receives the same `Arc<Message>`, so a frame is one allocation however many watch it. A reconnect, a slow consumer or a gap marker is a `Gap` item. A reader that falls 256 behind is told the count it missed (C1). |
-| cancellation | `CancellationToken` | the supervisor → every supervised task and every live connection | edge-triggered; a task selects it against its own I/O, so it is interrupted mid-read |
-| `thread.turns` | PostgreSQL queue | producers commit turns; assignment passes take the oldest unsettled turn per eligible fleet | thread and turn fences; reports settle in the usage transaction |
-| `thread.deliveries` | PostgreSQL rows claimed per lane | the report path writes the row in its transaction → any replica's outbound worker claims the lane head | durable; the claim's token names the holder, and a lapsed holder's late write matches no row |
-| `af.delivery.wake` | core NATS subject (at most once) | the report path after its commit → every replica's outbound worker | the payload names the delivery, but the worker reads only the ping and claims from Postgres. A ping the bus failed to send is owed as a gap; one dropped silently waits for the next ping, a finished lane or a lapsed claim on some replica; no timed pass claims. |
-| `af.tenant.<tenant_id>.members`, `af.workspace.<workspace_id>.fleets` | core NATS subjects (at most once), payload-free | a member removal, or a fleet insert or delete, after its commit → every open stream in the account or workspace | a stream reads Postgres on the notice, a gap or a lag, and on no timer; every booting daemon publishes one gap (`afd_bus::announce_boot`), so a notice a dead daemon never sent costs one re-read |
-| `af.thread.<thread_id>.items` | core NATS subject (at most once) | `agentsfleetd` publishers (+ runner-forwarded frames) → each process's one native subscription per subject, fanned out by reference | ephemeral; every SSE stream shares the published frame, and the response body writes its payload from that one allocation |
-| `af.thread.<thread_id>.wake` | core NATS subject, read through the `af.thread.*.wake` wildcard | intake and gate-answer commits publish thread IDs to every replica | ephemeral; a detected gap (lag, lost subscription, unreadable payload) starts a recovery pass that reads PostgreSQL; a silently lost ring waits for the next ring or freed runner capacity |
+| Native connection | `afr_supervisor::run` | Four streams and request correlation, behind bounded channels and permits | Stays up while accepted workers settle; then joined |
+| Heartbeat policy | `afr_supervisor::run` | The current assignment, in a `watch` channel | Halt, then joined |
+| Workers (N) | `worker_pool::serve`, one `JoinSet` | Each owns its run and sandbox (C5); one coordinator task tracks busy fleets | New runs stop; accepted work gets 30 s, cleanup 5 s, then abort and join |
+| Hold keeper | `Holds::start` | Frozen sandboxes kept for a fleet's next run, owned by the task | `holds.shutdown()` after the join destroys every hold |
+| Executor link, one per sandbox | `afr_executor`'s client | One sandbox's executor connection | Ends with its sandbox |
 
-Each process holds exactly **one** NATS connection for all viewers and
-publishers, with one native subscription per subject that has local readers
-(`rustd/crates/daemon/afd_bus/src/nats/hub/mod.rs`).
-`readers_share_one_channel_and_one_payload` and
-`concurrent_openers_make_exactly_one_pump` hold it.
+Workers keep unacknowledged reports in memory; no report is written to disk.
 
-New cross-boundary channels declare one producer and one consumer and say who owns
-the payload (C1). Reshaping the existing ones is a separate judgment with this
-page as input.
+### Channels
 
-SSE response bodies share the hub; they do not each open a NATS connection or reserve a thread.
-The daemon listener supports HTTP/1.1 and h2c independently of the browser-facing connection.
-[Data Flow, section D (WATCH)](./data_flow.md#d-watch--user-side-how-the-live-tail-surfaces) owns the Next.js proxy and per-hop protocol description.
+| Channel | Kind | Producer to consumer | Payload |
+|---|---|---|---|
+| Client events | `async-nats` event callback | The NATS client to the gap watcher | The callback sets a flag per cause and wakes the watcher; a burst becomes one gap |
+| Subject fan-out | `broadcast`, 256 messages (`Tuning::channel_capacity`) | A subject's pump to every local reader | Each reader gets the same `Arc<Message>`; a reader 256 behind is told how many it missed |
+| Cancellation | `CancellationToken` | The supervisor to every task and connection | Edge-triggered, so it interrupts a blocked read |
+| Turn queue | Postgres rows, `thread.turns` | Intake to assignment passes | Thread and turn fences; the report settles the turn |
+| Delivery queue | Postgres rows, `thread.deliveries` | The report to any replica's outbound worker | The claim token names the holder |
+| NATS subjects | Core NATS, at most once | Daemon publishers to each process's hub | Lossy; [Datastores](./datastore_scaling.md#when-a-signal-is-lost) names each subject's backstop |
 
----
+Each process holds one NATS connection for every publisher and viewer, with one native subscription per subject that has local readers.
+`readers_share_one_channel_and_one_payload` and `concurrent_openers_make_exactly_one_pump` prove it (`afd_bus/src/nats/hub/mod.rs`).
 
-## Lock-invariant registry
+### Locks
 
-Every lock in the discipline base, exactly what it protects, and its ordering
-constraint. Each is documented at its declaration (C4).
+Each lock is documented where it is declared (C4).
 
 | Lock | Declared at | Protects | Ordering |
 |---|---|---|---|
-| bus adapter state | `afd_bus::nats`'s `Adapter::live` (tokio `RwLock`) | the live client, channel map, signals and watcher, or `None` after shutdown | every publish and subscribe holds a read guard for its own call; `shutdown` takes the write guard, so nothing opens after the drain begins |
-| hub channel map | `afd_bus::nats`'s hub `Channels` | the `subject → (broadcast sender, reader count, generation, pump)` map and **nothing else** | leaf mutex, never held across an await. The work under it is a map edit, a pump abort, or a broadcast send for a gap; none can block. |
-| publish debt | `afd_bus::nats`'s `Signals` | the subjects published inside the 2 s debt window, the subjects owed an `Af-Gap` marker, and the overflow flag, each bounded at 4,096 subjects | leaf mutex; taken by the publish path, the client's event callback and the watcher, never across an await |
-| outbound lane map | `afd_outbound`'s `lanes::Inner` | destination membership and publication against lane retirement | reserve capacity before locking; verify channel identity and publish under one guard; retirement checks for queued work and removes an empty lane under that same guard; no await while held |
-| runner series table | `af_observability`'s `RunnerMetrics` | the `runner_id → counters` map, up to 4096 series | read lock for LOOKUP only; the counters are atomics incremented after the guard is released, so a slow recorder never blocks a fast one |
-| wake queue | `afd_bus::wake::Wake` | at most 64 distinct recent fleet IDs by default (`AGENTSFLEET_RUNNER_WAKE_QUEUE_CAPACITY`) | leaf mutex; no database or network calls while held |
-| metric instruments | `af_observability`'s instrument registry | the family names already claimed, and the observable gauge handles kept alive | leaf, held alone |
-| Capability caches | `afd_identity`'s `ProviderCapabilities` | separate Moka stores for fresh claims and last confirmed claims; each is bounded to 4096 subjects | conditional per-key invalidation precedes `try_get_with`, which coalesces concurrent fetches; failed refreshes retain the original stale timestamp, and unknown subjects clear the fallback |
-| JSON Web Key Set (JWKS) cache | `afd_identity`'s `KeyCache` | the held key set (read/write lock) and the single-flight gate (mutex) | the flight gate is held across the fetch with the key-set lock **released**, so a cache hit never queues behind a slow provider |
-| run ledger | `afr_agent`'s `Ledger` | one run's open calls and the counter they share | taken to open a call and again to end it, never across its handler, so a child's call can open and end inside its parent's `wait_agent` |
-| child registry | `afr_agent`'s nested `Registry` | one run's children, and the running and started counts that bound them | leaf, held alone |
-| process events | `afr_executor`'s events `Shared` | one process's output state, shared by its two ends | leaf, held alone |
-| verified toolboxes | `afr_sandbox`'s `Toolboxes` | the images one host has verified, oldest first | leaf, held alone |
-| run memory | `afr_tools`'s `Run::memory` (tokio) | the fleet's memory backend for one run | held for one read or write, never across a call |
-| run egress | `afr_tools`'s `Run::egress` (tokio) | the run's policy and the credentials it has minted | held to admit or mask, never across a send |
-| exec sessions | `afr_tools`'s `Sessions` | one run's open sessions and the places reserved for those still starting | leaf; each session's process sits behind its own tokio lock, held by the one call reading it |
-| mirror locks | `afr_supervisor`'s `Mirrors` | the map of one lock per repository mirror | held only to fetch that mirror's tokio lock, which is held across the mirror's fetch and checkout |
-| run clock and run timeline | `afr_supervisor`'s `RunClock` and `Timeline` | the clock one run's frames are read against, and one run's segment timings | each a leaf, held alone |
-| egress host lock | `afr_sandbox`'s egress `HELD` | the host egress lock file this process holds once taken, shared by every engine it builds | leaf, held alone |
-
-The load-bearing ordering rule is C3: no wire send happens under the channel
-map's lock. `Channels::open` hands the pump half to a subject's first reader.
-That reader calls the NATS client's `subscribe` only after the lock is released.
-
-A later reader of the same subject waits on the channel's `subscribed` signal.
-It returns only once the first reader's subscription is queued on the
-connection. A first reader that fails drops the signal, and its joiners fail
-with it (`rustd/crates/daemon/afd_bus/src/nats/mod.rs`).
-
-### The deadline-ownership invariant
-
-Every network call is bounded, and both planes bound it at the call site. On the
-control plane that is a `tokio::time::timeout` around the operation, and a
-`select!` against the cancellation token for anything long-lived. So there is no
-shared registration map to keep consistent and no generation check to get wrong.
-
-Postgres stays outside any scheduler on purpose. The pool's acquire and connect
-timeouts bound the connection. The API login's lock and statement bounds cover
-every statement (§"Every daemon statement runs under the API login's bounds").
-
-The runner bounds each call in the HTTP client that makes it:
-
-- the control-plane client's `CALL_TIMEOUT` (`afr_supervisor`);
-- the egress transport's request and connect timeouts (`af_egress`);
-- the model providers' connect and read timeouts (`af_providers`).
-
----
-
-## Shutdown choreography
-
-The stop → join → drop sequence (C2). Three steps on the control plane, and the
-reduction is the result rather than the goal. Most of a longer list is orderings
-that a teardown had to hold by hand.
-
-1. **Decide why.** `Daemon::run` awaits whichever of the server or the signal
-   finishes first, and names it `Signalled` or `ServerStopped`. Both are
-   modelled because a daemon that waits solely for a signal hangs when its
-   listener dies of something else. That includes a lost bind, an accept loop
-   that returned and a runtime that shut its I/O driver.
-
-   That process is unkillable except by SIGKILL and reports nothing on its way
-   out. The `select!` is `biased`, so the answer is a fact about the futures
-   rather than about tokio's branch order.
-
-2. **Cancel and join, unconditionally.** The teardown is in the outer `run`, not
-   inside the loop. That is exonum's `ApiManager::run`/`run_inner` split, taken
-   for its one property: every early return still tears down.
-
-   `Supervisor::shutdown` cancels the token, then joins every handle with a
-   `JOIN_TIMEOUT` deadline. It reports any task that would not stop by name
-   instead of hanging the process.
-
-   Cancellation is edge-triggered and reaches
-   into a blocked read. A task is interrupted where it is waiting rather
-   than at the next poll interval.
-
-   `test_task_inventory_and_cancellation` proves that for a real blocked
-   `accept()`, and carries a control so the negative is not vacuous.
-
-   Streaming stops here too. `Bus::shutdown` drains the channel map and aborts
-   every pump, so a reader parked on a subscription gets `Closed`, which it can
-   act on. The client drains only after every pump has joined.
-
-3. **Drop after shutdown returns.** The caller drops its pools after `Supervisor::shutdown` finishes.
-   Successful joins establish stopped tasks; timeout records an abandoned task and drops its join handle (the daemon binary's supervisor).
-   Dropping that handle detaches the task, so timeout does not prove every task stopped.
-
-A detached task retains its owned references until it ends. The intended C2 discipline therefore requires tasks to observe cancellation before the join deadline. Treat an abandoned-task report as incomplete shutdown, even though the supervisor returns.
-
-The runner joins its heartbeat and worker pool (`afr_supervisor::run`); each worker holds its own unacknowledged report. After they return, shutdown destroys every held sandbox.
-
-Workers finish their current run before leaving the pool. Run deadlines, renewal refusals and the running halt token can interrupt that work.
-
-Handshakes, not sleeps, in every one of these tests: channels, `Notify` and
-`CancellationToken` on both planes. The abandoned-task assertions run under
-`#[tokio::test(start_paused)]`, so a ten-second join timeout costs no wall
-clock. With every task parked the runtime advances to the next deadline itself.
-
-### Why there is no signal watcher and no shutdown flags
-
-Two flags kept apart, a raw signal flag and a background-stop flag, protect one
-window. A SIGTERM arriving during boot must not kill the background stack while
-the server may still come up and briefly serve. That is the half-dead-node
-window.
-
-It needs two flags only where a watcher thread polls. There "the signal arrived" and "the server stopped" are events that genuinely race.
-
-They cannot race in `Daemon::run`, because they are statements in order. The
-daemon awaits whichever of server-or-signal finishes first, then cancels the
-supervisor, then lets the caller drop the pools. A signal during boot leaves an
-already-resolved future; the server comes up, sees it resolved, and stops.
-
-Same property, one less piece of shared mutable state, and no 100 ms of shutdown
-latency paid on every task. `test_boot_window_sigterm` fails if the `select!`
-arms are swapped.
-
-### Why neither plane has a central deadline scheduler
-
-A treap-backed registration map and a worker thread exist so one thread can
-interrupt another's blocked socket. On tokio, `tokio::time::timeout` or a
-client's own timeout at the call site is the same guarantee. There is no shared
-map to keep consistent and no generation check to get wrong.
-
-`CancellationToken` is edge-triggered, so a task selecting over its own I/O and
-`cancelled()` is interrupted mid-read.
-
-Per-call timeouts stay where they are. The daemon runs no recurring deadline
-pass. A run that expired unreported is marked expired by the assignment that
-next takes its turn (`afd_fleet/src/run/sql/shared/expire_prior_run.sql`), and
-its last runtime slice is not billed. The runner arms one host timer for its
-runs' deadlines.
-
-The daemon arms one-shot timers only, each from one event, and none repeats.
-A runner connection that ends with no successor and no replica drain arms two
-(`afd_gateway`'s `connection/departure/mod.rs`). At the latest deadline of the
-runs it held, the first requests one recovery pass.
-
-The second runs one statement at the runner's last beat plus the offline window
-(`afd_runner`'s `silence.rs`). That statement records `runner_offline` once,
-cordons an `active` runner for missed heartbeats and finishes a requested drain.
-After a later beat moves `last_seen_at`, the statement writes nothing.
-
-Daemon boot arms one more, at the latest outstanding run deadline
-(`afd_gateway`'s `scheduler/lapse/mod.rs`). A replica drain or a stop ends any
-of these that still wait.
-
----
-
-## Expanding the discipline base (roster)
-
-**No check mechanises C1–C5 beyond the compiler.** The compiler carries three
-of the five on both planes; the other two hold at review.
-
-**There is no roster to append to.** Every folder under `rustd/` is in scope and
-none is checked by a roster. RULE NLR (touch-it-fix-it) owns cleanup of the
-individual files a change touches.
-
-**A mechanical half is real work, not a line of data.** It needs three things.
-A checker reads `rustd/`, a make target invokes it, and a Continuous
-Integration (CI) job runs the target.
-
-## Runner capacity and setup lock order
-
-Every assignment holds the runner row while counting live capacity and writing a run. Runtime renewal holds the runner row only shared. One statement per host takes it `FOR SHARE` first, then each run's thread and row in fleet order, and samples database time once after them.
-
-Renewals never wait on each other. A credential rotation fences every renewal behind it. A run issue, which holds the row exclusively, waits for an in-flight renewal statement and the reverse.
-
-The funds check reads the wallet without a lock, once per payer every third tick.
-
-A setup run's renewal takes the runner row exclusively while it counts capacity (`afd_fleet`'s draft renewal). It then takes the run's thread and row, and never a draft row, so a busy draft never holds it.
-
-The setup assignment holds a host and then reads a draft without a lock (below).
-
-Retiring a revoked runner (`afd_runner`'s `delete_revoked`) holds the runner row while its foreign keys set that runner's `thread.runs.runner_id` and `thread.threads.last_runner_id` to NULL. Assignment and both renewal kinds take the runner row first, and no report takes it, so they lock in the delete's order. The delete also refuses a runner with a live run or an unbilled runtime tail (`delete_runner_if_in_state.sql`).
-
-Runtime reports take the run row and never the runner or setup rows. The statement that logs a report's or a renewal's usage lines also writes their daily rollup rows in key order, then debits the payer's wallet row, last and in tenant order (the `billing.usage_lines` triggers). The wallet row stays locked from that statement to the commit, so a tenant's concurrent writes of usage take turns on it.
-
-Verify two-replica expiry races and lock-order timeouts before claiming these guarantees.
-
-The setup assignment gate reads the balance without a lock (`afd_setup`'s setup-run model gate, `afd_billing`'s `select_wallet.sql`). A setup run's renewal and report lock the owner's wallet row only through the debit their usage lines write. Activation at Save takes no wallet lock: the balance it locked was never read.
-
-Stop and delete take the draft, then its thread in a statement of its own, then its turn or runs, and never take the runner row (`afd_setup`'s `message/stop.rs` and `privacy.rs`).
-
-### A fleet Stop, the issue, a fold retry and a gate answer
-
-Each takes the fleet's thread before a turn, a gate or a run. They queue on the thread instead of locking a turn and a gate in opposite orders:
-
-```
- fleet Stop     hold_thread.sql: fleet KEY SHARE ─► thread NO KEY UPDATE
-                then stop_turn.sql: turn ─► run ─► the turn's gate
- issue          fleet KEY SHARE ─► host ─► thread (held) ─► head turn FOR SHARE, unsettled, at the fence
- fold retry     assign_inputs.sql: fleet KEY SHARE ─► thread NO KEY UPDATE ─► run FOR SHARE ─► the folds
- gate answer    resolve_gate.sql: fleet KEY SHARE ─► thread NO KEY UPDATE ─► gate ─► turns
- fleet delete   fleet FOR UPDATE ─► setup cards ─► cascade to gates and thread
-```
-
-The Stop's holds are a statement of their own (`afd_turns`'s `view/stop/hold_thread.sql`). Stop's statement starts after an issue that held the thread commits, and marks the run it issued. The issue reads its head with a lock after its thread wait, so a Stop that committed meanwhile leaves no run (`afd_fleet`'s `integration_run_issue_stop.rs`).
-
-A Stop and a gate answer take the fleet first, because fleet delete holds it `FOR UPDATE` and then cascades to the thread. Holding the thread first met delete at a gate: Stop deadlocked with it before Nov 23, 2026 (`afd_approval`'s `integration_resolve_behind_stop.rs`).
-
-Every other holder of the fleet `FOR UPDATE` delays a Stop and a gate answer too, up to the login's lock bound. Those holders are activation, a setup save, an archive and a recovered start (`afd_setup`'s `creation/`).
-
-A gate answer holds the thread for its one statement even when it loses. An assignment pass that meets it skips the fleet, as it skips any held thread. The losing answer rings nothing, so the turn waits for the fleet's next ring, as after a dropped wake.
-
-### A decision reservation locks in one statement
-
-A reservation reads its run, task, source turn, budget and wallet with no lock, one round trip each. Then one statement takes its locks in the fleet writers' order, re-checks the rows, and inserts the issued call with its payload (`afd_fleet`'s `durable_task/decision/sql/issue.sql`):
-
-```
- reads, no lock ─► issue.sql: workspace, fleet KEY SHARE ─► thread, run, named task,
-                   source turn, each FOR SHARE ─► clock ─► INSERT call + payload
-```
-
-A share lock makes Postgres re-read a row that changed while the statement waited. So a takeover, a task cancel or a Stop that committed meanwhile issues nothing. Rows the statement only joins (the runner, the model, its revision) are read as of the statement's start.
-
-The statement does not repeat the money reads. Two overlapping reservations of one fleet can each pass a money check the other's call would fail, by one call's reservation each.
-
-The share locks let reservations of one fleet run together. A renewal, a report or a Stop of that fleet waits for the statements in flight.
-
-With 100 reservations of one operation released together, a renewal of the same run waited at most 0.6 s for its locks. The login's bound is 2 s (`integration_durable_tasks/decisions/issue.rs`, `a_renewal_completes_during_a_reservation_storm`, four runs on the lane's Postgres).
-
-### A run's verbs on the fleet row and the run row
-
-Every `thread.items` insert and every schedule insert checks its foreign key with `FOR KEY SHARE` on the fleet row, and an item insert does the same on its run row. Only `FOR UPDATE` refuses that mode, so a lock that only puts writers in turn takes `FOR NO KEY UPDATE`, or no row lock at all.
-
-Memory capture and a grant change take the fleet row `FOR NO KEY UPDATE` (`afd_fleet`'s `run/fence/lock_memory_fleet.sql`, `afd_memory`'s `lock_capture.sql` and `lock_access.sql`). Under `FOR UPDATE` a capture and a tool-call post of one run deadlocked:
-
-```
- capture (run/memory.rs)                 tool-call post (run/tool_detail/store.rs)
-  1 fleet.fleets  FOR UPDATE              1 thread.runs  FOR NO KEY UPDATE
-  2 thread.runs   FOR SHARE  ── waits     2 thread.items insert: fleet KEY SHARE ── waits
-```
-
-The post's key share now passes the capture's hold, the post commits, and the capture takes the run after it (`integration_memory_capture_race.rs`, `a_capture_and_a_tool_post_of_one_run_both_commit`).
-
-The messages verb reads its run's standing unlocked and writes nothing to the run, so a line never waits on a report, a renewal or a tool-call post.
-
-A refused renewal or report still bills the requests the runner reported (`afd_fleet`'s `run/usage/original.rs`). Its first statement takes the run `FOR NO KEY UPDATE` (`original_request_owner.sql`). The usage key, not this lock, stops a second charge. The lock keeps the order every metering pass takes: run, then wallet, then the durable task, whose runtime cursor on the run it advances last. With no run lock first, a task's run deadlocks with a pass holding the run and asking for the wallet.
-
-A schedule create, a schedule edit and a setup's recipe replacement take the fleet's writer turn (`afd_cron`'s `lock_fleet.sql` and `lock_fleet_in_workspace.sql`). The turn is a transaction-scoped advisory lock keyed by `uuid_hash(fleet_id)`, taken after `FOR KEY SHARE` on the fleet row. Intake, reports and items of the fleet never wait on it.
-
-The key share comes first so that a setup holding the fleet row `FOR UPDATE` is waited out before the turn. Otherwise a create holding the turn would wait on that setup's row in its insert, while the setup waits for the turn.
-
-The schedule cap is a count under that turn. A unique slot per schedule was weighed and not used. The recipe replacement writes many rows into the same cap, in place, and must also take turns with edits of its schedules.
+| Bus adapter state | `afd_bus::nats`'s `Adapter::live`, tokio `RwLock` | The live client, channel map and watcher | Each publish and subscribe holds a read guard; only shutdown takes the write guard |
+| Hub channel map | `afd_bus::nats`'s hub `Channels` | The subject-to-sender map only | Leaf; never held across an await |
+| Publish debt | `afd_bus::nats`'s `Signals` | Subjects published in the last 2 s and those owed a gap, up to 4,096 | Leaf; never held across an await |
+| Outbound lane map | `afd_outbound`'s `lanes::Inner` | Lane membership against lane retirement | Reserve capacity before locking; no await while held |
+| Runner series table | `af_observability`'s `RunnerMetrics` | Up to 4,096 per-runner series | Read lock for lookup; counters are atomics bumped after release |
+| Wake queue | `afd_bus::wake::Wake` | Up to 64 recent fleet ids (`AGENTSFLEET_RUNNER_WAKE_QUEUE_CAPACITY`) | Leaf; no I/O while held |
+| Metric instruments | `af_observability`'s instrument registry | Claimed family names and live gauge handles | Leaf |
+| Capability caches | `afd_identity`'s `ProviderCapabilities` | Two Moka caches of 4,096 subjects each | `try_get_with` coalesces concurrent fetches |
+| JSON Web Key Set (JWKS) cache | `afd_identity`'s `KeyCache` | The key set (`RwLock`) and a single-flight gate (mutex) | The gate is held across a fetch with the key-set lock released |
+| Run ledger | `afr_agent`'s `Ledger` | One run's open calls | Taken to open and to end a call, never across its handler |
+| Child registry | `guffbolt`'s `agents::registry` `Shared::book` | One run's child agents and their counts | Leaf |
+| Process events | `afr_executor`'s events `Shared` | One process's output state | Leaf |
+| Verified toolboxes | `afr_sandbox`'s `Toolboxes` | Images one host has verified | Leaf |
+| Run memory | `afr_tools`'s `RunMemory`, tokio `RwLock` | The fleet's memory for one run | Held for one read or write |
+| Run egress | `afr_tools`'s `Run::egress`, tokio mutex | The run's network policy and minted credentials | Held to admit or mask, never across a send |
+| Exec sessions | `guffbolt`'s `tools::process::Sessions` | One run's open shell sessions | Leaf; each session's process has its own lock |
+| Mirror locks | `afr_supervisor`'s `Mirrors` | One lock per repository mirror | The map lock fetches the mirror's lock, which spans fetch and checkout |
+| Run clock, run timeline | `afr_supervisor`'s `RunClock`, `Timeline` | One run's frame clock and segment timings | Leaf |
+| Egress host lock | `afr_sandbox`'s egress `HELD` | The host egress lock file | Leaf |
+
+C3's load-bearing case is the hub.
+A subject's first reader subscribes only after the map lock is released.
+
+Later readers wait on that channel's `subscribed` signal until the subscription is queued.
+If the first reader fails, its joiners fail with it.
+
+### Deadlines
+
+Every network call is bounded at its call site, by `tokio::time::timeout` or the client's own timeout.
+There is no shared deadline map.
+
+Postgres is bounded by the pool's acquire and connect timeouts and by the API login's bounds below.
+The runner bounds calls with `CALL_TIMEOUT` (`afr_supervisor`), the egress transport's timeouts (`af_egress`) and the provider clients' timeouts (`af_providers`).
+
+The daemon arms only one-shot timers, each from one event.
+When a runner connection ends with no successor, `afd_gateway`'s `connection/departure/mod.rs` arms two.
+
+One requests a recovery pass at the latest deadline of the runs it held.
+The other runs `afd_runner`'s silence statement after the offline window, which records `runner_offline` and cordons the runner.
+Boot arms one more, at the latest outstanding run deadline (`afd_gateway`'s `scheduler/lapse/mod.rs`).
+
+### Shutdown order
+
+1. **Decide why.** `Daemon::run` awaits whichever finishes first, the server or a signal, with a `biased` `select!`.
+   A daemon waiting only on a signal would hang when its listener dies.
+   `test_boot_window_sigterm` fails if the two arms are swapped.
+2. **Cancel and join.** The teardown lives in the outer `run`, so every early return still tears down.
+   `Supervisor::shutdown` cancels the token and joins each handle within a ten-second `JOIN_TIMEOUT`, naming any task that would not stop.
+   `Bus::shutdown` aborts every pump so a parked reader gets `Closed`; the client drains after the pumps join.
+3. **Drop.** The caller drops its pools after `Supervisor::shutdown` returns.
+
+A task that misses the join deadline is detached and reported as abandoned.
+It keeps its references until it ends, so treat that report as an incomplete shutdown.
+
+The runner joins its heartbeat and worker pool, then destroys every held sandbox.
+Tests use handshakes, not sleeps; `#[tokio::test(start_paused)]` makes the join timeout cost no wall-clock time.
+`test_task_inventory_and_cancellation` proves cancellation interrupts a blocked `accept()`.
+
+### Row-lock order
+
+Each write takes its row locks in one order, so two writes queue instead of deadlocking.
+A fleet's writers take the fleet `KEY SHARE`, then the thread, then turns, runs or gates.
+
+| Operation | Locks, in order | Statement |
+|---|---|---|
+| Stop | Fleet `KEY SHARE`, thread `NO KEY UPDATE`; then turn, run, the turn's gate | `afd_turns`'s `view/stop/hold_thread.sql`, `stop_turn.sql` |
+| Run issue | Fleet `KEY SHARE`, runner, thread, head turn `FOR SHARE` at the fence | `afd_fleet`'s `run/sql/run/insert_run_with_turn.sql` |
+| Fold retry | Fleet `KEY SHARE`, thread `NO KEY UPDATE`, run `FOR SHARE`, the folded turns | `afd_fleet`'s `run/sql/run/assign_inputs.sql` |
+| Gate answer | Fleet `KEY SHARE`, thread `NO KEY UPDATE`, gate, turns | `afd_approval`'s `sql/resolve_gate.sql` |
+| Fleet `PATCH`, archive | Fleet `FOR UPDATE` | `afd_setup`'s `creation/sql/lock.sql` |
+| Fleet delete | Fleet `FOR UPDATE`, then a cascade to gates and thread | `afd_fleet_lifecycle`'s `sql/delete_fleet.sql` |
+| Assignment | Runner row, thread, earlier run, head turn | `afd_fleet`'s `run/sql/run/assign_turn_head.sql` |
+| Renewal batch | Runner `FOR SHARE`, then each run's thread and row in fleet order | `afd_fleet`'s `run/renew/batch/` |
+| Report | Run row; usage lines, daily rollups in key order, then the wallet last | `afd_fleet`'s `run/sql/commit_report.sql` and the `billing.usage_lines` triggers |
+| Refused-run usage | Run `FOR NO KEY UPDATE`, wallet, then the durable task | `afd_fleet`'s `run/sql/original_request_owner.sql` |
+| Decision reservation | Workspace, fleet `KEY SHARE`, then thread, run, task and source turn `FOR SHARE` | `afd_fleet`'s `durable_task/decision/sql/issue.sql` |
+| Memory capture, grant change | Fleet `FOR NO KEY UPDATE` | `afd_fleet`'s `run/fence/lock_memory_fleet.sql`, `afd_memory`'s `lock_capture.sql`, `lock_access.sql` |
+| Schedule create or edit | Fleet `KEY SHARE`, then an advisory lock on `uuid_hash(fleet_id)` | `afd_cron`'s `lock_fleet.sql`, `lock_fleet_in_workspace.sql` |
+| Revoked runner retire | Runner row; foreign keys clear its runs and threads | `afd_runner`'s `delete_runner_if_in_state.sql` |
+
+Stop and a gate answer take the fleet before the thread, because delete holds the fleet `FOR UPDATE` and cascades to the thread.
+Taking the thread first would meet delete in the opposite order (`afd_approval`'s `integration_resolve_behind_stop.rs`).
+
+A gate answer holds the thread for its one statement even when it loses.
+An assignment pass skips any held thread; the turn waits for the fleet's next wake.
+
+Every item insert and schedule insert checks its foreign key with `FOR KEY SHARE` on the fleet row.
+Only `FOR UPDATE` blocks that, so memory capture takes `FOR NO KEY UPDATE`.
+`a_capture_and_a_tool_post_of_one_run_both_commit` proves a capture and a tool-call post both commit.
+
+Renewals never wait on each other, because they hold the runner row only shared.
+A run issue holds it exclusively, so it and a renewal statement wait for each other.
+
+The renewal funds check reads the wallet without a lock, once per payer every third renewal (`FUNDS_CHECK_TICKS`).
+A decision reservation does not repeat the money reads.
+Two overlapping reservations of one fleet can each pass a money check by one call's reservation.
 
 ### Every daemon statement runs under the API login's bounds
 
-The API login carries two bounds through `ALTER ROLE` (`afd_db::login`). A lock wait ends after 2 s with `55P03`, and a statement after 5 s with `57014`. They reach every statement `agentsfleetd` sends, because the daemon opens one pool as that login.
+The API login carries two bounds through `ALTER ROLE` (`afd_db/src/login.rs`).
+A lock wait ends after 2 s with `55P03`, and a statement after 5 s with `57014`.
+The daemon opens one pool as that login, so both bounds reach every statement.
 
-No product transaction sets its own with `set_config`. The four that did were removed on Nov 07, 2026; each repeated or loosened the login's bounds.
+No transaction sets its own bounds with `set_config`.
+`afd_db::error::is_bound_reached` reads both codes as "not now", and callers answer with a retryable unavailability.
 
-Both codes mean "not now", so one predicate reads them (`afd_db::error::is_bound_reached`). A caller answers a reached bound as retryable unavailability. The fleet task paths answer 503, billing counts it as an unanswered read, and setup activation reads it as still installing.
+## Limits
 
-### The setup chat claim never waits on a draft
+- No checker enforces C3 or C4; review does.
+- A detached task after a join timeout may still hold references when the process exits.
+- Two-replica expiry races and lock-wait timeouts are not measured.
+- A reservation's money check can overshoot by one call per concurrent reservation.
 
-An assignment walks up to 64 queued drafts, oldest first, one transaction per draft (`afd_fleet`'s draft assignment). Each locks the host row, then reads the draft without a lock. Two conditional writes decide what it takes:
+## Related
 
-```
- assignment pass (host row R held)        what decides
-   │
-   ├─ creator, draft, head message         hints, read unlocked (setup_run/creator.rs,
-   │                                       head.sql): a reader or writer holding the
-   │                                       draft delays nothing
-   ├─ thread claim  assign_thread.sql      conditional upsert on thread.threads, keyed
-   │     no row → pass, next draft         by the draft's id: one pass gets the row
-   ├─ turn claim    running.sql            head still unsettled, draft still editing
-   │     no row → roll back, next draft    the fence bump rolls back with it
-   └─ issue the run, commit
-```
-
-Neither claim is refused by a lock another transaction holds, so a draft has no busy outcome. It is assigned, passed for a committed reason, or rolled back. A committed reason publishes its own event: a live run's report or lapse, a Stop, a deletion.
-
-Before Nov 23, 2026 the pass took the creator and the draft `NOWAIT` in a savepoint and skipped a held draft with no log. The draft's own page reads held that lock, so a skipped Save waited for the next wake, once for 64 s.
-
-A draft deleted after the read took its thread with it. The thread claim's insert then fails `threads_draft_id_fkey`, and the pass rolls back and moves on (`run/draft/take.rs`).
-
-A deletion and a Stop each take the thread in a statement of their own before their deletes or the shared Stop statement (`afd_setup`'s `privacy.rs`, `message/stop.rs`). Those statements then start after an in-flight assignment commits, so they see the run it issued: the deletion deletes it, and the Stop marks it.
-
-An assignment's second update of its thread re-checks the thread's draft key under `FOR KEY SHARE` (Postgres re-checks a foreign key on any row its own transaction wrote). Draft writers therefore lock the draft `FOR NO KEY UPDATE` (`sql/draft/lock.sql`, `setup_run/sql/lock_report.sql`), which that key share passes. Under `FOR UPDATE` a writer holding the draft and waiting for the thread deadlocked with the assignment.
-
-The reads take no lock either. A draft's page, its message page and each stream frame run on one `REPEATABLE READ, READ ONLY` snapshot (`afd_setup`'s `sql/snapshot.sql`). Postgres refuses a locking read inside it.
-
-The draft review and the saved-setup read run read committed, with lock-free twins of the person, install and grant reads. They cannot run on that snapshot yet: the credential inspection opens its secrets `FOR SHARE` (`afd_vault`'s `select_shared_generations.sql`). Writers keep the draft lock, and a write's review keeps its share locks on installs and grants until the write commits.
-
-`make bench-runs BENCH_SHAPE=saturation` measured the wait the savepoint skip replaced, with 40 hosts on a 20-connection pool. One writer held a tenant's drafts for 1 s in every 1.25 s. The bench has not run on the claims.
-
-| Median of three runs | Waiting | Skipping |
-|---|---|---|
-| Open-transaction age p95 | 959 ms | 17 ms |
-| Chat run p95 | 3 006 ms | 707 ms |
-| Throughput | 41.7 runs/s | 62.7 runs/s |
-
-No run was doubled and no host exceeded its workers either way. The full row is in [Measured ceilings](./scaling.md#measured-ceilings).
-
-An assignment still waits on the thread, the earlier run and the turn. A fleet Stop takes the fleet and then the thread, and a report and a renewal take the thread first. So each queues behind an assignment rather than locking against it in the other order.
+- [Data flow](./data_flow.md): channel and subject names, and the live tail.
+- [Datastores](./datastore_scaling.md): what each NATS subject costs when lost.
+- [Runner fleet](./runner_fleet.md): runner capacity and departure.
+- [Runner runtime](./runner_execution.md): the runner's process model.
+- [Billing](./billing.md): the usage line triggers and wallet debit.

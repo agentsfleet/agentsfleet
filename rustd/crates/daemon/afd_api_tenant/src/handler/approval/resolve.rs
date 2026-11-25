@@ -2,16 +2,25 @@
 //!
 //! Split from [`super`] because it is the half that WRITES. The two reads
 //! beside it render rows; this one takes a person's answer, and carries the
-//! rules that answer has to meet — which decision the path spells, how long a
-//! note may be, and what the second answerer is told.
+//! rules that answer has to meet — which decision the path spells, who may
+//! approve or deny, how long a note may be, and what the second answerer is
+//! told.
+//!
+//! # Only a signed-in person approves or denies
+//!
+//! An access card hands the fleet a credential, so its approval must come
+//! from a person, never from an API key the fleet's own tools could be handed.
+//! A deny is held to the same rule so the two answers cannot be told apart by
+//! who may give them. A question's answer is unchanged.
 
 use garde::Validate as _;
 use std::borrow::Cow;
 use std::sync::Arc;
 
 use af_core::error_code;
+use af_observability::{AccessChange, FleetStep, Telemetry};
 use afd_api_wire::approval::{GATE_TYPE_QUESTION, ResolveApprovalRequest, ResolvedResponse};
-use afd_approval::{Decision, Resolution};
+use afd_approval::{Decision, GateRow, KIND_INTEGRATION_GRANT, Resolution};
 use afd_http::envelope;
 use axum::Json;
 use axum::body::Bytes;
@@ -19,8 +28,8 @@ use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};
 
 use super::{DETAIL_ALREADY_RESOLVED, DETAIL_NOT_FOUND, EVENT_RESOLVE, ResolvePath, read_gate};
-use crate::auth::{PersonIdentity, WorkspaceContext};
-use crate::handler::Refusal;
+use crate::auth::{PersonIdentity, SignedInClass, WorkspaceContext};
+use crate::handler::{Refusal, grant::stored_kind};
 use crate::services::{TenantPlane, WorkspaceApprovals as _};
 
 /// The refusal a decision the path does not spell earns.
@@ -58,7 +67,8 @@ const DETAIL_MALFORMED_JSON: &str = "Request body is not valid JSON";
         "deadline still takes a decision. If two callers resolve it, the first ",
         "result wins. A repeat of the standing decision receives 200 with the ",
         "same result; any other caller receives 409 with the existing result ",
-        "and resolver. A request whose fleet is archived receives 409.",
+        "and resolver. A request whose fleet is archived receives 409. Approve and ",
+        "deny need a signed-in person; an API key receives 403 and nothing changes.",
     ),
     request_body = ResolveApprovalRequest<'_>,
     params(
@@ -67,6 +77,7 @@ const DETAIL_MALFORMED_JSON: &str = "Request body is not valid JSON";
     responses(
         (status = 200, description = afd_http::openapi::OK, body = ResolvedResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 403, description = "An API key approved or denied (`UZ-AUTH-001`)"),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 409, description = afd_http::openapi::CONFLICT),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
@@ -81,6 +92,9 @@ pub(crate) async fn resolve<D: TenantPlane>(
     body: Bytes,
 ) -> Result<Response, Refusal> {
     let outcome = parse_decision(&decision)?;
+    if outcome != Decision::Answered {
+        person.narrow::<SignedInClass>()?;
+    }
     let detail = read_detail(&body, outcome)?;
 
     // The read is the workspace scoping AND the source of the action id the
@@ -105,8 +119,40 @@ pub(crate) async fn resolve<D: TenantPlane>(
         .await
         .map_err(Refusal::at(EVENT_RESOLVE))?;
 
-    super::setup::after_resolution(&services, &gate, outcome, &resolution, &person).await;
+    report_access(services.as_ref(), &gate, outcome, &resolution, &person);
     answered(resolution, outcome, &detail)
+}
+
+/// Reports an access card's approval or denial, once, for the request whose
+/// decision moved the grant.
+fn report_access<D: TenantPlane>(
+    services: &D,
+    gate: &GateRow,
+    outcome: Decision,
+    resolution: &Resolution,
+    person: &PersonIdentity,
+) {
+    let change = match outcome {
+        Decision::Approved => AccessChange::Approved,
+        Decision::Denied => AccessChange::Denied,
+        Decision::Answered => return,
+    };
+    let kind = serde_json::from_str::<serde_json::Value>(&gate.evidence_json)
+        .ok()
+        .and_then(|evidence| evidence.get("kind")?.as_str().and_then(stored_kind));
+    let (Resolution::Resolved(_), true, Some(kind)) =
+        (resolution, gate.gate_type == KIND_INTEGRATION_GRANT, kind)
+    else {
+        return;
+    };
+    services.analytics().report(&Telemetry::Fleet {
+        actor: Some(person.subject().to_owned()),
+        step: FleetStep::AccessChanged {
+            fleet_id: gate.fleet_id.clone(),
+            kind,
+            change,
+        },
+    });
 }
 
 /// The response a resolution earns. A repeat of the decision that stands —

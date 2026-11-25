@@ -1,16 +1,12 @@
-import { EXECUTION_REPLY_PREFIX, executionInstructions, fixtureDefinition, fixtureConfig, webhookConfig } from "./e2e/acceptance/fixtures/definition";
 /**
- * The execution journey's classifier and its place in the release gate.
+ * The acceptance journeys' classifier, and the messages they send.
  *
  * The classifier decides what a red run MEANS — a defect to open, or an
  * environment condition to wait out — so every branch is made red here, with
- * the row that trips it. The config pin is the other half of Dimension 1.5: the
- * journeys project takes the whole acceptance directory minus a named ignore
- * list, and this asserts the execution journey is not on that list, so a green
- * `acceptance-e2e` is a claim that includes it.
+ * the row that trips it.
  */
 import { describe, expect, it } from "vitest";
-import { NANOS_PER_USD } from "@/lib/types";
+import { probeMessage, probeReply, tokenMessage } from "./e2e/acceptance/fixtures/probe";
 import { RunOutcome } from "@/tests/helpers/runner-control-types";
 import {
   classifyApiFailure,
@@ -25,6 +21,7 @@ import {
   failWith,
   JOURNEY_LEG,
   runIsSettled,
+  turnHasSettled,
   PRODUCT_FAILURE_CLASSES,
   VERDICT_KIND,
   type TerminalObservation,
@@ -74,6 +71,23 @@ describe("the terminal row is classified before it is trusted", () => {
     expect(classifyTerminalTurn({ ...failed(null), status: TURN_STATUS.gateBlocked }).kind).toBe(
       VERDICT_KIND.product,
     );
+  });
+
+  it("a turn that ended waiting on a person is a product defect, named as the wait it is", () => {
+    // `request_access` and a question settle the asking turn `waiting`; a walk
+    // that reads it as the delivery's end met no answer, not an unknown class.
+    const verdict = classifyTerminalTurn({ ...failed(null), status: TURN_STATUS.waiting });
+    expect(verdict).toMatchObject({ kind: VERDICT_KIND.product, leg: JOURNEY_LEG.execute });
+    expect(verdict.kind === VERDICT_KIND.passed ? "" : verdict.detail).toContain("waiting");
+  });
+
+  it("a queued or running turn has not settled; every status a run ends in has", () => {
+    for (const status of [TURN_STATUS.queued, TURN_STATUS.received]) {
+      expect(turnHasSettled(status), status).toBe(false);
+    }
+    for (const status of [TURN_STATUS.processed, TURN_STATUS.fleetError, TURN_STATUS.gateBlocked, TURN_STATUS.waiting, "cancelled"]) {
+      expect(turnHasSettled(status), status).toBe(true);
+    }
   });
 
   it("the failure line carries the class and the runner's own detail", () => {
@@ -130,19 +144,17 @@ describe("the terminal row is classified before it is trusted", () => {
   });
 });
 
-describe("native execution fixtures", () => {
-  it("keeps executable instructions separate from typed setup metadata", () => {
-    const definition = fixtureDefinition("exec-check", executionInstructions());
-    expect(definition.config.name).toBe("exec-check");
-    expect(definition.instructions_md).toContain(EXECUTION_REPLY_PREFIX);
-    expect(definition.instructions_md).toContain("Do not call any tool");
-    expect(definition.instructions_md).not.toContain("---");
+describe("probe messages", () => {
+  it("never spell the reply they ask for, so the person's own message cannot pass for it", () => {
+    expect(probeReply("tok-7")).toBe("ACK tok-7");
+    expect(probeMessage("tok-7")).toContain("tok-7");
+    expect(probeMessage("tok-7")).not.toContain(probeReply("tok-7"));
+    expect(probeMessage("tok-7")).toContain("Do not call any tool");
   });
-  it.each([fixtureConfig("trigger-check"), webhookConfig("trigger-check", "gh-secret")])(
-    "declares nanos and complete native runtime keys", (config) => {
-      expect(config).toMatchObject({name: "trigger-check", "x-agentsfleet": {
-        triggers: expect.any(Array), tools: expect.any(Array), budget: {daily_nanos: String(NANOS_PER_USD)},
-      }});
-      expect(JSON.stringify(config)).not.toContain("daily_dollars");
-    });
+  it("keep a fixture fleet's own words and add the token its reply must end with", () => {
+    const sent = tokenMessage("Say hello to the team.", "tok-8");
+    expect(sent.startsWith("Say hello to the team. ")).toBe(true);
+    expect(sent).toContain("tok-8");
+    expect(sent).not.toContain(probeReply("tok-8"));
+  });
 });

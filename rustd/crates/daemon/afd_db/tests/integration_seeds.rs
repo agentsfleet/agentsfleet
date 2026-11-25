@@ -187,6 +187,10 @@ const ACTIVE: &str = "active";
 /// The status a revoked grant holds.
 const REVOKED: &str = "revoked";
 
+/// The grant kind a seeded integration grant takes, as
+/// `afd_api_wire::grant::grant_type::INTEGRATION` spells it.
+const INTEGRATION: &str = "integration";
+
 /// Why the seeded runner may not take work, as the column holds it.
 const DEGRADED: &str = "seed fixture: cgroup controller missing";
 
@@ -217,7 +221,7 @@ async fn the_optional_builders_write_the_column_they_name() {
         .insert(&mut *connection)
         .await
         .expect("the fleet seed");
-    let grant = GrantSeed::new(&fleet, &scene.provider, REVOKED)
+    let grant = GrantSeed::new(&fleet, &scene.provider, INTEGRATION, REVOKED)
         .revoked(SEEDED_AT)
         .insert(&mut *connection)
         .await

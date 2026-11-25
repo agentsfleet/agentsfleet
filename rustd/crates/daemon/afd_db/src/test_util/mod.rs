@@ -72,10 +72,7 @@ mod unreachable;
 
 pub use self::billing::WalletSeed;
 pub use self::connector::{GrantSeed, InstallSeed};
-pub use self::fleet::{
-    FIXTURE_SETUP_DEFINITION, FIXTURE_SETUP_DIGEST, FIXTURE_SETUP_MODEL_REF,
-    FIXTURE_SETUP_SEMANTICS, FleetSeed, SetupRevision,
-};
+pub use self::fleet::{FIXTURE_HTTP_EGRESS, FIXTURE_MODEL_REF, FleetSeed};
 pub use self::identity::{ApiKeySeed, TenantSeed, UserSeed, WorkspaceSeed};
 pub use self::platform_default::{DefaultSeed, PlatformDefault};
 pub use self::platform_model::ModelSeed;

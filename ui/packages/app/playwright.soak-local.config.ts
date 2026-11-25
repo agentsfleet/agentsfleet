@@ -1,6 +1,6 @@
 // Local-only run of the final soak journeys against a deployed build.
 // Differs from playwright.acceptance.config.ts in one way: no global teardown,
-// so a failed fleet and its drafts stay live for inspection. Passing journeys
+// so a failed fleet and its conversation stay live for inspection. Passing journeys
 // delete their own fixtures unless SOAK_KEEP=1; the operator runs
 // global-teardown.ts by hand once every failure has been examined.
 import { defineConfig } from "@playwright/test";

@@ -9,7 +9,7 @@ test("Launch review interleaves eight keyboard disclosures with the answer and r
   if (!isMobile) await page.setViewportSize({width: 1440, height: 1024});
   await page.emulateMedia({reducedMotion: "reduce"});
   await page.goto(`${chatProbe}?visual=1&state=activity`);
-  if (!isMobile) await expect(page.getByRole("link", {name: "Edit Launch review", exact: true})).toBeVisible();
+  if (!isMobile) await expect(page.getByRole("navigation", {name: "Primary"}).getByRole("link", {name: "Launch review", exact: true})).toBeVisible();
   const chat = page.getByRole("log", {name: "Chat"});
   const reply = chat.locator('[data-role="assistant"]').last();
   const groups = reply.getByRole("list", {name: "Work activity"});

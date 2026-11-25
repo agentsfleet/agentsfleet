@@ -1,5 +1,5 @@
 SELECT t.id AS durable_task_id, t.status, t.generation, t.stop_generation,
-       l.durable_task_generation, l.durable_task_stop_generation, t.accepted_revision_id,
+       l.durable_task_generation, l.durable_task_stop_generation,
        t.goal_digest, t.covered_input_sequence, t.input_sequence, t.effect_cursor, t.confirmed_effect_watermark,
        t.checkpoint_id, t.used_runs < t.max_runs AS can_resume,
        t.expires_at > clock_timestamp() AND t.used_model_nanos < t.max_model_nanos

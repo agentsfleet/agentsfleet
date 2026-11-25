@@ -18,14 +18,14 @@ export type RunnerKind = {
 
 export const PLATFORM_RUNNERS: RunnerKind = {
   path: ADMIN_RUNNERS_PATH,
-  description: "Manage platform execution hosts",
+  description: "Manage the machines that run every account's fleets",
   scopes: {read: "runner:read", write: "runner:write", register: "runner:register"},
   history: true,
 };
 
 export const TENANT_RUNNERS: RunnerKind = {
   path: TENANT_RUNNERS_PATH,
-  description: "Manage your tenant's own runners, which take only its work",
+  description: "Manage your own machines that run only your fleets",
   scopes: {read: "runner:tenant", write: "runner:tenant", register: "runner:tenant"},
   history: false,
 };

@@ -13,7 +13,7 @@ use agentsfleetd::supervisor::Supervisor;
 use serde_json::Value;
 
 use crate::e2e::{Scenario, unique_ids};
-use crate::e2e_seed::{FLEET_CONFIG_JSON, Seeded, scenario_tag, seed_fleet_as};
+use crate::e2e_seed::{Seeded, scenario_tag, seed_fleet_as};
 use crate::integration_tool_trace::{tenant_get, tenant_reader};
 
 /// The fleet ids a list page names; the tenant list calls the field `id`.
@@ -47,16 +47,7 @@ async fn seed_named(scene: &Scenario, name: &str, own: bool) -> Uuid7 {
         tag: &tag,
     };
     let now = af_core::clock::now();
-    seed_fleet_as(
-        &scene.booted,
-        &fleet,
-        &workspace,
-        &tenant,
-        FLEET_CONFIG_JSON,
-        now,
-        seed,
-    )
-    .await;
+    seed_fleet_as(&scene.booted, &fleet, &workspace, &tenant, now, seed).await;
     fleet
 }
 

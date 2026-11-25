@@ -75,11 +75,11 @@ agentsfleet platform models default use --provider <PROVIDER> --model <MODEL_ID>
 agentsfleet platform models default list
 ```
 
-The selected provider shows status `Default`. Setup chat needs a model with tool support.
+The selected provider shows status `Default`. A fleet's chat needs a model with tool support.
 
 ## Seed the decision model
 
-The setup edit check calls TypeSafe, a decision-only model the snapshot above does not carry.
+A durable task's goal check calls TypeSafe, a decision-only model the snapshot above does not carry.
 Catalogue applies keep this row: an apply deletes only rows with no decision revision.
 Sync the `typesafe` bag first, and skip this section when `models list` already shows the row.
 
@@ -119,7 +119,7 @@ Sync the `typesafe` bag first, and skip this section when `models list` already 
 
    ```text
    ID        NAME              PROVIDER  MODEL
-   <varies>  Setup edit check  typesafe  jev-latest
+   <varies>  Task goal check   typesafe  jev-latest
    ```
 
 ## Change connection settings or prices

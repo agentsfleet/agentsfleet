@@ -2,8 +2,8 @@
 //!
 //! Shaped like the `ci-repairer` bundle's run: GitHub minted and bound by
 //! origin rules that lock the repair branch and the draft, Grafana and Elastic
-//! static with their own hosts, an Elastic query path `read_only` allows, and
-//! the Pushover credential its handler reads for itself. Built from the wire's
+//! static with their own hosts, and the Pushover credential its handler reads
+//! for itself. Built from the wire's
 //! own types, so a renamed field fails to compile rather than to parse.
 
 use std::borrow::Cow;
@@ -44,8 +44,6 @@ pub const GRAFANA: &str = "demo-grafana.internal";
 pub const ELASTIC: &str = "demo.es.example";
 /// The Grafana token.
 pub const GRAFANA_TOKEN: &str = "glsa_live_token";
-/// The Elastic query path `read_only` allows a `POST` to.
-pub const ELASTIC_QUERY: &str = "https://demo.es.example/_query";
 /// Pushover's host.
 pub const PUSHOVER: &str = "api.pushover.net";
 /// The Pushover application token.
@@ -58,9 +56,9 @@ const GITHUB_CREDENTIAL: &str = "github";
 /// An address literal the allowlist lists, which the egress policy still refuses.
 const LOOPBACK: &str = "127.0.0.1";
 
-/// The policy, with `read_only` as given.
+/// The policy every suite checks requests under.
 #[must_use]
-pub fn policy(read_only: bool) -> ExecutionPolicy<'static> {
+pub fn policy() -> ExecutionPolicy<'static> {
     ExecutionPolicy {
         inference: None,
         model_context_tokens: 0,
@@ -68,8 +66,6 @@ pub fn policy(read_only: bool) -> ExecutionPolicy<'static> {
             allow: [GITHUB, GRAFANA, ELASTIC, PUSHOVER, LOOPBACK]
                 .map(Cow::Borrowed)
                 .into(),
-            read_only,
-            read_post_paths: vec![Cow::Borrowed(ELASTIC_QUERY)],
             ..NetworkPolicy::default()
         },
         tools: Vec::new(),

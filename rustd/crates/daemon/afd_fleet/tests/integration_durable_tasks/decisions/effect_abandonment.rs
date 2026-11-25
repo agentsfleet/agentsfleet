@@ -97,7 +97,8 @@ async fn assert_unspent(case: &Case, task: &Uuid7) {
         .bind(task).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("publication accounting observer"))
         .await.expect("unissued original allocation");
     assert_eq!(row, (0, 1, 1, true));
-    assert_eq!(case.counts().await, (1, 1, 1));
+    // The source turn and the continuation the binding staged.
+    assert_eq!(case.counts().await, (1, 1, 2));
 }
 
 async fn assert_replay(

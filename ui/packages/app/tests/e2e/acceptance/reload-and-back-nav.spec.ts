@@ -12,9 +12,9 @@
  *      returning to /w/<id>/fleets/<id>. The document mark proves neither leg
  *      fell back to a full page load.
  *
- * Seeds a fleet via API for speed (install-form coverage already lives
- * in login-install-lifecycle.spec.ts); the signal here is the navigation
- * mechanics, not the install action.
+ * Seeds a fleet via API for speed (typing a first message on New fleet is
+ * prime-morning-rooster.spec.ts's); the signal here is the navigation
+ * mechanics, not how the fleet was made.
  */
 import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";

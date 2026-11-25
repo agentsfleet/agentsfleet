@@ -30,7 +30,6 @@ fn every_failure_class_has_its_stable_storage_label() {
         (FailureClass::LandlockDeny, "landlock_deny"),
         (FailureClass::RunExpired, "run_expired"),
         (FailureClass::RenewalTerminate, "renewal_terminate"),
-        (FailureClass::BudgetBreach, "budget_breach"),
         (FailureClass::FrameTooLarge, "frame_too_large"),
     ] {
         let verdict = Verdict::of(Outcome::FleetError, Some(class), "detail");
@@ -49,16 +48,6 @@ fn an_unclassified_or_empty_failure_stores_no_invented_cause() {
 
     let empty = Verdict::of(Outcome::FleetError, Some(FailureClass::PolicyDeny), "");
     assert_eq!(empty.detail(), None);
-}
-
-#[test]
-fn a_breached_budget_is_stored_as_the_gate_spells_its_refusal() {
-    let verdict = Verdict::of(Outcome::FleetError, Some(FailureClass::BudgetBreach), "");
-
-    assert_eq!(
-        verdict.label().as_deref(),
-        Some(af_core::turn::label::BUDGET_BREACH)
-    );
 }
 
 #[test]

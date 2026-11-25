@@ -49,9 +49,8 @@ export async function getFleet(
   return { fleet, etag: fleet.etag };
 }
 
-// `active` retries setup of an installing fleet; `archived` is terminal, and a
-// PATCH on an archived fleet answers 409 `UZ-AGT-020`.
-export type FleetStatusSettable = "active" | "archived";
+// `archived` is terminal, and a PATCH on an archived fleet answers 409 `UZ-AGT-020`.
+export type FleetStatusSettable = "archived";
 
 export type FleetStatusUpdate = FleetDetail;
 

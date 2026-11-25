@@ -8,7 +8,7 @@ use afd_fleet::run::{AssignedRun, Reported, Target};
 use jiff::Timestamp;
 use std::collections::HashMap;
 
-/// A target exists only for fleet work; a draft's run names its draft instead.
+/// A live run and the fleet turn it serves.
 #[derive(Debug, Clone)]
 pub(super) struct RunRecord {
     pub(super) id: Uuid7,
@@ -17,9 +17,6 @@ pub(super) struct RunRecord {
     pub(super) cancelled: bool,
     /// What the run's report reads, kept from the assignment.
     pub(super) reported: Option<Reported>,
-    /// The draft a draft-owned run runs a turn of: its renewals, report and
-    /// live answer take the draft's path.
-    pub(super) draft: Option<Uuid7>,
 }
 
 impl From<AssignedRun> for RunRecord {
@@ -30,7 +27,6 @@ impl From<AssignedRun> for RunRecord {
             target: assigned.target,
             cancelled: false,
             reported: assigned.reported,
-            draft: assigned.draft.map(|target| target.draft_id),
         }
     }
 }
@@ -45,7 +41,6 @@ struct LiveRunRow {
     turn_created_at: Option<jiff_sqlx::Timestamp>,
     fencing_token: i64,
     cancelled: bool,
-    draft_id: Option<Uuid7>,
 }
 
 impl TryFrom<&LiveRunRow> for RunRecord {
@@ -61,8 +56,6 @@ impl TryFrom<&LiveRunRow> for RunRecord {
                 timing_eligible: !row.cancelled,
                 fence: row.fencing_token,
             }),
-            // A draft's run: it names its draft, never a fleet.
-            (None, None, None) if row.draft_id.is_some() => None,
             _ => return Err(ErrorKind::Protocol.into()),
         };
         Ok(Self {
@@ -71,7 +64,6 @@ impl TryFrom<&LiveRunRow> for RunRecord {
             target,
             cancelled: row.cancelled,
             reported: None,
-            draft: row.draft_id.clone(),
         })
     }
 }
@@ -142,7 +134,7 @@ impl RunSnapshot {
 
 #[cfg(test)]
 mod tests {
-    //! A rebuild's rows are either fleet work, a draft's turn, or refused whole.
+    //! A rebuild's rows are fleet work, or refused whole.
 
     use super::{LiveRunRow, RunSnapshot};
     use crate::error::ErrorKind;
@@ -155,7 +147,7 @@ mod tests {
         Uuid7::parse(&format!("019a3c00-0000-7000-8000-{index:012x}"))
     }
 
-    /// A run row with no fleet, no turn and no draft: half of no shape.
+    /// A run row with no fleet and no turn: half of no shape.
     fn bare(run: Uuid7) -> LiveRunRow {
         LiveRunRow {
             run_id: run,
@@ -166,35 +158,36 @@ mod tests {
             turn_created_at: None,
             fencing_token: 7,
             cancelled: false,
-            draft_id: None,
         }
     }
 
     #[test]
-    fn a_draft_run_names_its_draft_and_no_fleet_target() -> TestResult {
+    fn a_fleet_run_carries_its_target_and_its_cancellation() -> TestResult {
         let run = id(1)?;
-        let draft = id(2)?;
         let mut row = bare(run.clone());
-        row.draft_id = Some(draft.clone());
+        row.fleet_id = Some(id(2)?);
+        row.turn_id = Some(id(3)?);
+        row.turn_created_at = Some(Timestamp::UNIX_EPOCH.into());
         row.cancelled = true;
         let snapshot = RunSnapshot::try_from(vec![row])?;
         assert_eq!(snapshot.cancellations(), std::slice::from_ref(&run));
         let records = snapshot.into_records();
-        let record = records.get(&run).ok_or("the draft run was dropped")?;
-        assert_eq!(record.draft.as_ref(), Some(&draft));
-        assert!(record.target.is_none());
+        let record = records.get(&run).ok_or("the fleet run was dropped")?;
+        let target = record
+            .target
+            .as_ref()
+            .ok_or("a fleet run carries its target")?;
+        assert_eq!(target.fence, 7);
+        assert!(!target.timing_eligible, "a cancelled run is not timed");
         assert_eq!(record.expires_at, Timestamp::MAX);
         Ok(())
     }
 
     #[test]
     fn a_row_with_part_of_a_fleet_target_refuses_the_whole_snapshot() -> TestResult {
-        let fleet = id(3)?;
-        let mut draft = bare(id(4)?);
-        draft.draft_id = Some(id(5)?);
         let mut half = bare(id(6)?);
-        half.fleet_id = Some(fleet);
-        let refused = RunSnapshot::try_from(vec![draft, half]).err();
+        half.fleet_id = Some(id(3)?);
+        let refused = RunSnapshot::try_from(vec![half]).err();
         assert!(
             refused
                 .as_ref()

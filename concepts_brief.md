@@ -22,7 +22,7 @@ Read-only guest tools + private task files
 Existing executor -> commands -> tested diff
 ```
 
-The [first-build plan](docs/architecture/sandbox_evaluation.md#first-firecracker-wrapper) owns the source map, build order and evidence requirements.
+The [first-build plan](docs/reviews/space-sandbox/sandbox_evaluation.md#first-firecracker-wrapper) owns the source map, build order and evidence requirements.
 The owner authorizes adapting SPACE source and wants the simplest design that can test the agreed scenarios.
 No SPACE code or native engine has been implemented by this brainstorm.
 
@@ -36,7 +36,7 @@ Our existing executor, agent loop, repository authority and fleet admission rema
 
 The adversarial question is whether extraction saves work after accounting for guest startup, transport, storage, networking and updates.
 A launcher file alone does not supply a working agent sandbox.
-The [reuse map](docs/architecture/sandbox_evaluation.md#reuse-before-adding-another-subsystem) explains where existing code fits and where proof is still needed.
+The [reuse map](docs/reviews/space-sandbox/sandbox_evaluation.md#reuse-before-adding-another-subsystem) explains where existing code fits and where proof is still needed.
 
 ### The smallest useful build
 
@@ -65,7 +65,7 @@ A completed task save protects declared bytes; a hard crash can lose newer unsav
 | Several runs or worker loss | Restore task A after serving B, including saved local commits and declared uncommitted files, without importing B's workspace or authority. |
 | Long conversations | Keep shared compaction application-owned and independent of the guest backend; retain original history. |
 
-The [revision walkthroughs](docs/architecture/sandbox_evaluation.md#repository-revisions-across-events) retain the details and current application gaps.
+The [revision walkthroughs](docs/reviews/space-sandbox/sandbox_evaluation.md#repository-revisions-across-events) retain the details and current application gaps.
 A working guest does not complete review-posting authority, proposal handoff, Slack identity or post-deployment verification by itself.
 Run the full scenarios after their required integration is implemented; report partial results explicitly.
 
@@ -77,7 +77,7 @@ Firecracker alone does not establish a performance improvement over the current 
 
 Use real guests for cancellation, resource-limit, network-denial, command-disconnection and worker-loss proofs.
 Protect each retained task's referenced save; fleet-wide cleanup must not evict another unfinished incident's only generation.
-The [review decisions](docs/architecture/sandbox_evaluation.md#decisions-raised-by-the-independent-concept-review) retain unresolved production limits and compatibility deliveries.
+The [review decisions](docs/reviews/space-sandbox/sandbox_evaluation.md#decisions-raised-by-the-independent-concept-review) retain unresolved production limits and compatibility deliveries.
 
 ## Goals vs. Non-Goals
 
@@ -92,7 +92,7 @@ The first build is a small Firecracker wrapper informed by SPACE source, behind 
 Workspace access controls approval, including invited members.
 Later approved fixes for the same incident continue its existing draft under current permission and code checks.
 
-Build in the [recorded order](docs/architecture/sandbox_evaluation.md#build-and-test-in-this-order): guest command, repository edit/test, task recovery, snapshot startup, complete scenario acceptance.
+Build in the [recorded order](docs/reviews/space-sandbox/sandbox_evaluation.md#build-and-test-in-this-order): guest command, repository edit/test, task recovery, snapshot startup, complete scenario acceptance.
 Choose exact source extraction and dependencies during implementation review.
 Numerical production budgets and retention remain open; collect baseline measurements without inventing service guarantees.
 

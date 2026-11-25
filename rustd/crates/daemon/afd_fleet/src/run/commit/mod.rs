@@ -278,14 +278,17 @@ impl Runs {
         if report.outcome.verdict.waiting()
             && let Some(closed) = settled.closed.as_mut()
         {
-            self.raise_question(
-                &mut transaction,
-                report.run,
-                report.outcome.response_text,
-                report.now,
-            )
-            .await?;
-            closed.pending_approvals = closed.pending_approvals.saturating_add(1);
+            let raised = self
+                .raise_question(
+                    &mut transaction,
+                    report.run,
+                    report.outcome.response_text,
+                    report.now,
+                )
+                .await?;
+            if raised {
+                closed.pending_approvals = closed.pending_approvals.saturating_add(1);
+            }
         }
         let succeeded = report.outcome.verdict.succeeded();
         // A failed or stopped run's folds settle nothing: each message stays

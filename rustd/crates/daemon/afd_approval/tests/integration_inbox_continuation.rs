@@ -1,9 +1,9 @@
-//! What an approval lands, and what it leaves untouched.
+//! What an approved access card lands, and what it leaves untouched.
 //!
-//! The continuation row is a NEW event carrying `resumes_turn_id`; the
-//! blocked row is never reopened. Both halves are proven here over live
-//! Postgres: the row that appears, the row that does not change, and the
-//! idempotence that keeps a second answer from continuing the run twice.
+//! The answer turn is a NEW turn carrying `resumes_turn_id`; the waiting row
+//! is never reopened. Both halves are proven here over live Postgres: the row
+//! that appears, the row that does not change, and the idempotence that keeps
+//! a second answer from resuming the run twice.
 #![expect(
     clippy::expect_used,
     reason = "test target: an unmet precondition should fail the test loudly"
@@ -22,7 +22,8 @@ const OTHER_OPERATOR: &str = "human:somebody-else";
 /// The note an operator leaves.
 const NOTE: &str = "looks right";
 
-/// An approval lands a continuation that resumes the blocked run.
+/// An approval lands an answer turn that resumes the waiting run and tells it
+/// the access was approved.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_approved_gate_lands_a_continuation_naming_what_it_resumes() {
@@ -66,30 +67,14 @@ async fn an_approved_gate_lands_a_continuation_naming_what_it_resumes() {
     assert_eq!(actor, format!("continuation:{held}"));
     assert_eq!(kind, "continuation");
     assert_eq!(resumes.as_deref(), Some(held));
-}
-
-/// A denial continues nothing.
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn a_denied_gate_continues_nothing() {
-    let lane = Lane::isolated().await;
-    let action = lane.seed_gate(Window::Open).await;
-    let before = lane.event_count().await;
-
-    let outcome = lane
-        .inbox
-        .resolve(action.as_str(), Decision::Denied, OPERATOR, NOTE, None)
+    let body = lane
+        .event_column(continuation.as_str(), "request_json")
         .await
-        .expect("the resolve must not fault");
-
-    match outcome {
-        Resolution::Resolved(resolved) => assert!(
-            resolved.continuation_turn_id.is_none(),
-            "a refusal is the end of the run, not a pause in it"
-        ),
-        other => unreachable!("the first answer wins, got {other:?}"),
-    }
-    assert_eq!(before, lane.event_count().await, "a denial writes no event");
+        .expect("an answer turn carries a body");
+    let answer: af_wire::turn::QuestionAnswer<'_> =
+        serde_json::from_str(&body).expect("the body is a question's answer");
+    assert_eq!(answer.message, "approved");
+    assert_eq!(answer.asked_turn_id, held);
 }
 
 /// A re-answered gate does not continue the run twice.
@@ -128,53 +113,55 @@ async fn a_second_answer_does_not_continue_the_run_again() {
     );
 }
 
-/// The negative half — resolving a gate leaves the blocked row alone.
+/// The negative half — answering a gate leaves the waiting row alone.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn resolving_a_gate_does_not_reopen_the_event_it_blocked() {
+async fn resolving_a_gate_does_not_reopen_the_turn_that_waited() {
     let lane = Lane::isolated().await;
     let action = lane.seed_gate(Window::Open).await;
-
+    let waited = Uuid7::parse(&lane.gate_column(&action, "turn_id").await)
+        .expect("the card names the turn that waits on it");
+    let row_before = waiting_row(&lane, &waited).await;
     let before = lane.event_count().await;
+
     lane.inbox
-        .resolve(action.as_str(), Decision::Denied, OPERATOR, NOTE, None)
+        .resolve(action.as_str(), Decision::Approved, OPERATOR, NOTE, None)
         .await
         .expect("the resolve must not fault");
 
-    // A denial writes no event at all, so the count is the cleanest proof that
-    // answering a gate never REOPENS the row it blocked. The approval's
-    // continuation is a new row, asserted above; what neither does is bring the
-    // blocked event back, which would erase that a person was ever asked.
+    // The answer is a new row and the only new one; the waiting row keeps the
+    // status and settlement it had, so the history still shows a person was
+    // asked.
+    assert_eq!(lane.event_count().await, before + 1, "one answer turn");
     assert_eq!(
-        before,
-        lane.event_count().await,
-        "answering a gate never rewrites the event it blocked"
+        waiting_row(&lane, &waited).await,
+        row_before,
+        "answering a gate never rewrites the turn that waited"
     );
+}
+
+/// The waiting turn's status and settlement instant, as text.
+async fn waiting_row(lane: &Lane, turn: &Uuid7) -> (String, Option<String>) {
+    sqlx::query_as("SELECT status, settled_at::text FROM thread.turns WHERE id = $1")
+        .bind(turn)
+        .fetch_one(&mut *lane.pool.acquire().await.expect("the lane must answer"))
+        .await
+        .expect("the waiting turn is readable")
 }
 
 /// A gate nobody answered inside its window is still answerable HOURS later,
 /// and answering it still resumes the run.
 ///
-/// The worked case is the one an operator actually meets: a fleet asks to write
-/// to a repository at 10:00 under the default one-hour window
-/// (`af_fleet_runtime::config::DEFAULT_TIMEOUT`), nobody is at their
-/// desk, and a person approves it at 14:00 — three hours after the window
-/// closed. That approval lands, and the run it blocked continues.
+/// The worked case is the one an operator actually meets: a fleet asks for a
+/// secret at 10:00, nobody is at their desk, and a person approves it after
+/// the card's window closed. That approval lands, and the run that waited
+/// resumes.
 ///
 /// # Nothing sweeps a gate
 ///
-/// A sweep would take the 10:00 gate at 11:00 and make the 14:00 approval
-/// answer `AlreadyResolved` instead of resuming anything. A read reports
-/// `timed_out` past the deadline and the gate stays answerable (`M253_003` §2).
-///
-/// # The late-answer inconsistency this used to name is gone
-///
-/// `repository_write` alone once carried a second predicate at the point of
-/// USE, so a late approval of one flipped the row and continued the run while
-/// the branch write was then declined. That kind is retired — the standing
-/// integration grant authorises a repository write and no card is raised per
-/// event — so every gate kind now honours its answer end to end, which is the
-/// behaviour this test pins.
+/// A sweep would take the gate when its window closed and make the later
+/// approval answer `AlreadyResolved` instead of resuming anything. A read
+/// reports `timed_out` past the deadline and the gate stays answerable.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_gate_answered_long_after_its_window_still_resumes_the_run() {

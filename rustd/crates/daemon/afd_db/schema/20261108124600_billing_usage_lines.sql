@@ -1,8 +1,7 @@
 -- One priced provider request or runtime slice, charged by the statement that writes it (below,
 -- and the daily rollups' files). No foreign keys: a line outlives what it names, so references are
 -- opaque and `fleet_name` is the name at write time. Amounts are nanodollars.
--- By `work_type`: a fleet line sets `fleet_id` and `turn_id`; a setup line sets `run_id`, and
--- `turn_id` to the draft message its run answered.
+-- `work_type` is `fleet_run`, the only kind, and `work_id` is that run. A line names its fleet and turn.
 CREATE TABLE billing.usage_lines (
     id                          UUID   PRIMARY KEY,
     work_type                   TEXT   NOT NULL,
@@ -43,8 +42,8 @@ CREATE TABLE billing.usage_lines (
 CREATE INDEX idx_usage_lines_tenant_id_created_at_id
     ON billing.usage_lines (tenant_id, created_at DESC, id DESC);
 
--- INCLUDE lets the spend check sum a fleet's window without visiting the table
--- (`afd_billing/src/limits/select_fleet_spend.sql`).
+-- One fleet's lines by time; INCLUDE carries the workspace and charge, so a sum over a window
+-- never visits the table.
 CREATE INDEX idx_usage_lines_fleet_id_created_at
     ON billing.usage_lines (fleet_id, created_at) INCLUDE (workspace_id, charged_nanos)
     WHERE fleet_id IS NOT NULL;

@@ -1,30 +1,136 @@
-//! The installed fleet: its native rows read from the corpus, its approved
-//! GitHub grant, and the runner enrolled to run it.
+//! The installed fleet: its row, the access a person approved for it, its
+//! Slack channel when a scenario names one, and the runner enrolled to run it.
+//!
+//! A fleet holds no setup; what a corpus scenario needs is the grants a person
+//! approved and the network it may reach, so each corpus name maps to those.
 
 use std::borrow::Cow;
 
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
-use af_fleet_runtime::Definition;
 use af_wire::runner::NetworkPolicy;
+use af_wire::trigger_verb::TriggerKind;
 use afd_db::test_util::{FleetSeed, GrantSeed};
 use afd_runner::Runners;
+use afd_setup::trigger::NewTrigger;
 use afd_state::sql::FLEET_STATUS_ACTIVE;
 use agentsfleetd::serve::Booted;
 use jiff::Timestamp;
+use serde_json::json;
 
 use crate::e2e::unique_ids;
-use crate::e2e_native::Stored;
 use crate::e2e_seed::{enrolment, scenario_tag};
 
-/// The connector whose declared credential mints, and so needs a grant.
+/// The connector whose grant mints, and so carries a repository scope.
 const GITHUB_SERVICE: &str = "github";
 
 /// The status a person's approval leaves on a grant.
 const GRANT_APPROVED: &str = "approved";
 
-/// Installs the corpus fleet `fleet_name` as the native rows a reviewed Save
-/// writes.
+/// The kinds a grant's channel is stored as.
+const KIND_SECRET: &str = afd_approval::GrantKind::Secret.as_str();
+const KIND_INTEGRATION: &str = afd_approval::GrantKind::Integration.as_str();
+
+/// What a corpus scenario's fleet holds: the GitHub reach a person approved,
+/// the workspace secrets approved beside it, and whether its network is open.
+struct Holding {
+    name: &'static str,
+    repository: &'static str,
+    access: &'static str,
+    base: Option<&'static str>,
+    secrets: &'static [&'static str],
+    public: bool,
+}
+
+/// The holding each corpus fleet runs with.
+const HOLDINGS: [Holding; 7] = [
+    held(
+        "ci-repairer",
+        "agentsfleet/linkwarden",
+        "write",
+        Some("dev"),
+        &[],
+        true,
+    ),
+    held(
+        "ci-responder",
+        "agentsfleet/linkwarden",
+        "read",
+        None,
+        &[],
+        true,
+    ),
+    held(
+        "delegating-triager",
+        "agentsfleet/greeter",
+        "read",
+        None,
+        &[],
+        false,
+    ),
+    held(
+        "github-log-reader",
+        "agentsfleet/linkwarden",
+        "read",
+        None,
+        &[],
+        true,
+    ),
+    held(
+        "github-pr-reviewer",
+        "agentsfleet/linkwarden",
+        "write",
+        Some("main"),
+        &[],
+        false,
+    ),
+    held(
+        "incident-repairer",
+        "agentsfleet/agentsfleet",
+        "write",
+        Some("main"),
+        &["elastic", "grafana"],
+        true,
+    ),
+    held(
+        "test-fixer",
+        "agentsfleet/greeter",
+        "read",
+        None,
+        &[],
+        false,
+    ),
+];
+
+/// One row of [`HOLDINGS`].
+const fn held(
+    name: &'static str,
+    repository: &'static str,
+    access: &'static str,
+    base: Option<&'static str>,
+    secrets: &'static [&'static str],
+    public: bool,
+) -> Holding {
+    Holding {
+        name,
+        repository,
+        access,
+        base,
+        secrets,
+        public,
+    }
+}
+
+/// The holding of the corpus fleet `fleet_name`.
+fn holding(fleet_name: &str) -> &'static Holding {
+    HOLDINGS
+        .iter()
+        .find(|holding| holding.name == fleet_name)
+        .expect("a corpus fleet the table names")
+}
+
+/// Installs the corpus fleet `fleet_name` as the rows a first message and a
+/// person's approvals leave.
 pub(super) async fn install(
     booted: &Booted,
     workspace: &Uuid7,
@@ -33,42 +139,31 @@ pub(super) async fn install(
     now: Timestamp,
     channel: Option<&str>,
 ) -> Uuid7 {
-    let mut definition = read_definition(fleet_name);
-    if let Some(channel) = channel {
-        let mut value = serde_json::to_value(&definition).expect("the definition is JSON");
-        *value
-            .pointer_mut("/config/x-agentsfleet/triggers")
-            .expect("the fixture declares trigger setup") = serde_json::json!([
-            {"type": "mention", "source": "slack", "channels": [channel]}
-        ]);
-        definition = Definition::parse(&value.to_string()).expect("the producer setup parses");
-    }
+    let holding = holding(fleet_name);
     let fleet = unique_ids().0;
     let mut connection = booted
         .database
         .acquire()
         .await
         .expect("a pooled connection");
-    insert_fleet_row(&mut connection, &definition, &fleet, workspace, tenant, now).await;
-    if definition
-        .runtime()
-        .credentials()
-        .iter()
-        .any(|name| name.as_str() == GITHUB_SERVICE)
-    {
-        approve(&mut connection, &fleet, now).await;
+    insert_fleet_row(
+        &mut connection,
+        fleet_name,
+        holding,
+        &fleet,
+        workspace,
+        tenant,
+        now,
+    )
+    .await;
+    approve(&mut connection, &fleet, holding, now).await;
+    if let Some(channel) = channel {
+        subscribe(&mut connection, &fleet, workspace, channel).await;
     }
     fleet
 }
 
-/// The corpus fleet's native setup, parsed.
-fn read_definition(fleet_name: &str) -> Definition {
-    let text = af_fleet_runtime::test_util::corpus_definition(fleet_name)
-        .expect("af_fleet_runtime embeds the corpus setup");
-    Definition::parse(text).expect("the corpus setup is a valid Definition")
-}
-
-/// The fleet row a Save writes, named for the runtime and selecting its setup.
+/// The fleet row a first message writes, named for the scenario.
 ///
 /// Placed on its own scenario tag, so only the runner [`enrol`] labels for it
 /// is handed its work. The shared unplaced tag would not do: `enrol` copies
@@ -77,32 +172,90 @@ fn read_definition(fleet_name: &str) -> Definition {
 /// them.
 async fn insert_fleet_row(
     connection: &mut sqlx::PgConnection,
-    definition: &Definition,
+    fleet_name: &str,
+    holding: &Holding,
     fleet: &Uuid7,
     workspace: &Uuid7,
     tenant: &Uuid7,
     at: Timestamp,
 ) {
-    let stored = Stored::of(definition);
     let tag = scenario_tag(fleet);
+    let egress = if holding.public {
+        "public"
+    } else {
+        "restricted"
+    };
     FleetSeed::new(fleet, workspace, tenant, FLEET_STATUS_ACTIVE)
-        .name(definition.runtime().name().as_str())
+        .name(fleet_name)
         .at(at)
         .tags(&[tag.as_str()])
-        .setup(stored.revision())
+        .network(egress, false)
         .insert(&mut *connection)
         .await
         .expect("the corpus fleet's row inserts");
 }
 
-/// The GitHub grant, as a person's approval on the setup check leaves it.
-async fn approve(connection: &mut sqlx::PgConnection, fleet: &Uuid7, at: Timestamp) {
-    GrantSeed::new(fleet, GITHUB_SERVICE, GRANT_APPROVED)
+/// The grants a person's approvals leave: GitHub at the scenario's scope, and
+/// each workspace secret it reads.
+async fn approve(
+    connection: &mut sqlx::PgConnection,
+    fleet: &Uuid7,
+    holding: &Holding,
+    at: Timestamp,
+) {
+    // A read scope names no base, since it opens no Pull Request.
+    let (repositories, access) = ([holding.repository], holding.access);
+    let scope = holding
+        .base
+        .map_or_else(
+            || json!({"repositories": repositories, "access": access}),
+            |base| json!({"repositories": repositories, "access": access, "base": base}),
+        )
+        .to_string();
+    GrantSeed::new(fleet, GITHUB_SERVICE, KIND_INTEGRATION, GRANT_APPROVED)
+        .scope(&scope)
         .approved(at)
         .at(at)
-        .insert(connection)
+        .insert(&mut *connection)
         .await
-        .expect("the approved grant inserts");
+        .expect("the approved GitHub grant inserts");
+    for name in holding.secrets {
+        GrantSeed::new(fleet, name, KIND_SECRET, GRANT_APPROVED)
+            .approved(at)
+            .at(at)
+            .insert(&mut *connection)
+            .await
+            .expect("the approved secret grant inserts");
+    }
+}
+
+/// The `mention` row a fleet's `trigger_add` writes for `channel`.
+async fn subscribe(
+    connection: &mut sqlx::PgConnection,
+    fleet: &Uuid7,
+    workspace: &Uuid7,
+    channel: &str,
+) {
+    let id = unique_ids().0;
+    afd_setup::trigger::insert(
+        connection,
+        NewTrigger {
+            id: &id,
+            fleet,
+            workspace,
+            trigger_type: TriggerKind::Mention,
+            source: "slack",
+            events: None,
+            repositories: None,
+            verifier_scheme: None,
+            verifier_header: None,
+            secret_name: None,
+            channel: Some(channel),
+        },
+    )
+    .await
+    .expect("the mention row inserts")
+    .expect("the fleet held no mention row");
 }
 
 /// Enrols a runner labelled with every tag the installed fleet's row requires —

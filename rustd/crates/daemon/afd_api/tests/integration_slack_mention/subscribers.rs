@@ -1,8 +1,9 @@
-//! Which fleets a channel's mention can reach, read from their documents.
+//! Which fleets a channel's mention can reach, read from their `mention`
+//! rows, and the route that delivers to them.
 //!
-//! Split from the route cases beside it: this drives the subscriber read on
-//! its own, below the route, so what it asserts is the read's answer — every
-//! fleet attached to the channel, with its flags — and not a routing verdict.
+//! The first case drives the subscriber read on its own, below the route, so
+//! what it asserts is the read's answer — every fleet subscribed to the
+//! channel, with its flags — and not a routing verdict.
 
 #![cfg(feature = "test-util")]
 
@@ -13,12 +14,12 @@ use super::*;
 /// A channel no fixture fleet is attached to but one.
 const OTHER_CHANNEL: &str = "C0987654321";
 
-/// The subscriber read returns every fleet in the workspace
-/// whose document attaches it to the channel, with whether it can run and
-/// whether it is addressed-only, and nothing attached elsewhere.
+/// The subscriber read returns every fleet in the workspace whose `mention`
+/// row names the channel, with whether it can run and whether its approved
+/// GitHub reach makes it addressed-only, and nothing subscribed elsewhere.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn subscribers_are_read_from_the_document() {
+async fn subscribers_are_read_from_their_rows() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
     let responder = fixture
@@ -72,5 +73,64 @@ async fn subscribers_are_read_from_the_document() {
         ],
         "both attached fleets, and not the one attached elsewhere"
     );
+    fixture.cleanup().await;
+}
+
+/// A mention reaches the one fleet whose row names its channel, not one
+/// subscribed elsewhere; with two fleets on the channel, the named one.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_mention_reaches_the_fleet_subscribed_to_its_channel() {
+    let fixture = Fixture::create().await;
+    fixture.seed().await;
+    let responder = fixture
+        .fleet(
+            &document("responder", CHANNEL, None),
+            FleetStatus::Active.as_str(),
+        )
+        .await;
+    fixture
+        .fleet(
+            &document("elsewhere", OTHER_CHANNEL, None),
+            FleetStatus::Active.as_str(),
+        )
+        .await;
+    let router = fixture.router();
+
+    let alone = mention(
+        &fixture.team,
+        "EvRowed01",
+        PERSON,
+        &format!("<@{BOT_USER}> is checkout up?"),
+    );
+    assert_eq!(deliver(&router, &alone).await.status(), StatusCode::OK);
+    let admitted = fixture
+        .turn(&key(&fixture.team, "EvRowed01"))
+        .await
+        .expect("the mention was admitted");
+    assert_eq!(
+        admitted.fleet, responder,
+        "the channel's only fleet takes it"
+    );
+
+    let triage = fixture
+        .fleet(
+            &document("triage", CHANNEL, None),
+            FleetStatus::Active.as_str(),
+        )
+        .await;
+    let named = mention(
+        &fixture.team,
+        "EvRowed02",
+        PERSON,
+        &format!("<@{BOT_USER}> Triage: why did it fail?"),
+    );
+    assert_eq!(deliver(&router, &named).await.status(), StatusCode::OK);
+    let admitted = fixture
+        .turn(&key(&fixture.team, "EvRowed02"))
+        .await
+        .expect("the named mention was admitted");
+    assert_eq!(admitted.fleet, triage, "two on one channel: the name picks");
+    assert_eq!(fixture.turns().await, 2, "one turn per mention, no more");
     fixture.cleanup().await;
 }

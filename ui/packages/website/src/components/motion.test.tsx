@@ -49,7 +49,7 @@ it("types and appends a looping journey while retaining earlier messages", () =>
   render(<HowItWorks job={DEFAULT_JOB} />);
   visible(true); tick(INITIAL_TYPING_MS);
   const conversation = screen.getByRole("figure");
-  expect(conversation).toHaveTextContent("Watch agentsfleet/linkwarden");
+  expect(conversation).toHaveTextContent("Check agentsfleet/linkwarden");
   expect(conversation).not.toHaveTextContent(DEFAULT_JOB.finding);
   tick(8000);
   expect(conversation).toHaveTextContent(DEFAULT_JOB.request);
@@ -76,19 +76,19 @@ it("freezes text offscreen, in hidden tabs, and on manual pause", () => {
 it("shows meaningful loader text before a fleet response", () => {
   const story = createChatStory(DEFAULT_JOB);
   const reply = story.steps[1];
-  if (!reply) throw new Error("Missing setup reply");
+  if (!reply) throw new Error("Missing first reply");
   render(<HowItWorks job={DEFAULT_JOB} />);
   visible(true); tick(reply.startsAt + 50);
-  expect(screen.getByText("Understanding the job…")).toBeInTheDocument();
-  tick(2000);
-  expect(screen.queryByText("Understanding the job…")).toBeNull();
-  expect(screen.getByRole("figure")).toHaveTextContent(DEFAULT_JOB.question);
+  expect(screen.getByText("Reading your message…")).toBeInTheDocument();
+  tick(reply.endsAt - reply.startsAt);
+  expect(screen.queryByText("Reading your message…")).toBeNull();
+  expect(screen.getByRole("figure")).toHaveTextContent(DEFAULT_JOB.firstReply);
 });
 it("keeps the journey running when ordinary wheel or touch reaches the chat", () => {
   render(<HowItWorks job={DEFAULT_JOB} />);
   const story = createChatStory(DEFAULT_JOB);
   const reply = story.steps[1];
-  if (!reply) throw new Error("Missing setup reply");
+  if (!reply) throw new Error("Missing first reply");
   visible(true); tick(reply.startsAt + 50);
   const conversation = screen.getByRole("log", { name: CONVERSATION_LABEL });
   fireEvent.wheel(conversation, { deltaY: 12 });
@@ -177,12 +177,17 @@ it("does not animate a missing element or empty intersection entry", () => {
   act(() => intersect([], currentObserver));
   expect(result.current.active).toBe(false);
 });
+it("keeps playback available when the browser lacks an intersection observer", () => {
+  vi.stubGlobal("IntersectionObserver", undefined);
+  const { result } = renderHook(() => useMotionEnvironment(createRef<Element>()));
+  expect(result.current.active).toBe(true);
+});
 it("does not erase previous replies when the next answer is still pending", () => {
   const story = createChatStory(DEFAULT_JOB);
-  const reply = story.steps[3];
-  if (!reply) throw new Error("Missing refined setup");
+  const reply = story.steps.find(({ step }) => step.activity === DEFAULT_JOB.activity);
+  if (!reply) throw new Error("Missing investigation reply");
   const frame = storyFrame(story, reply.startsAt + 50);
-  expect(frame.pending?.activity).toBe("Preparing the setup");
+  expect(frame.pending?.activity).toBe(DEFAULT_JOB.activity);
   expect(frame.entries.map((entry) => entry.text)).toContain(DEFAULT_JOB.request);
-  expect(frame.entries).toHaveLength(3);
+  expect(frame.entries.map((entry) => entry.text)).toContain(DEFAULT_JOB.firstReply);
 });

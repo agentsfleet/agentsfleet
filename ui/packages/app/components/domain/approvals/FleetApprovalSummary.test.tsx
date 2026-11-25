@@ -12,6 +12,8 @@ vi.mock("@/lib/analytics/posthog", () => ({captureProductEvent: mocks.capture}))
 const PROPS = {workspaceId: "workspace", fleetId: "fleet", revision: 1, count: 1, href: "/w/workspace/fleets/fleet#fleet-approvals"};
 const GATE = {gate_id: "gate-one", workspace_id: PROPS.workspaceId, fleet_id: PROPS.fleetId, status: "pending", gate_type: "destructive_action",
   proposed_action: "Publish runner image", tool_name: "registry", action_name: "publish", blast_radius: "Production registry · Release tag"};
+// An access card: the fleet asked for a credential, named by the evidence's service.
+const ACCESS = {...GATE, gate_type: "integration_grant", proposed_action: "mint short-lived credentials for sentry", evidence: {service: "sentry"}};
 const page = (items: Array<typeof GATE & {detail?: string; evidence?: Record<string, unknown>; expires_at?: string}> = [GATE]) => ({ok: true, data: {items, next_cursor: null}});
 beforeEach(() => {vi.clearAllMocks(); mocks.list.mockReset(); mocks.deny.mockReset(); mocks.approve.mockReset(); mocks.answer.mockReset(); mocks.list.mockResolvedValue(page());});
 afterEach(cleanup);
@@ -26,10 +28,28 @@ it("shows only Approve for this fleet's pending action", async () => {
   expect(screen.getAllByRole("button").map(button => button.textContent)).toEqual(["Approve"]);
 });
 
+it("approving an access card sends one approve", async () => {
+  mocks.list.mockResolvedValue(page([ACCESS]));
+  mocks.approve.mockResolvedValue({ok: false, status: 403, error: "Only a signed-in person can approve access.", errorCode: "UZ-AUTH-001"});
+  render(<FleetApprovalSummary {...PROPS} />);
+  const approve = await screen.findByRole("button", {name: "Approve"});
+  expect(screen.getByRole("button", {name: "Deny"})).toBeTruthy();
+  expect(screen.getByText("sentry", {selector: "dd"})).toBeTruthy();
+  fireEvent.click(approve); fireEvent.click(approve);
+  const refusal = await screen.findByRole("alert");
+  expect(mocks.approve).toHaveBeenCalledExactlyOnceWith("workspace", "gate-one", undefined);
+  expect(mocks.deny).not.toHaveBeenCalled();
+  expect(refusal.textContent).toBe("Couldn't approve this request — Only a signed-in person can approve access.");
+  expect(screen.getByRole("button", {name: "Approve"})).toHaveProperty("disabled", false);
+  expect(screen.queryByText("Request approved.")).toBeNull();
+  expect(screen.getByRole("region", {name: "Needs your approval"})).toBeTruthy();
+});
+
 it("denies directly, blocks repeat submissions, then shows the confirmed outcome in place", async () => {
   const decision = Promise.withResolvers<ActionResult<ResolveOutcome>>();
   mocks.deny.mockReturnValue(decision.promise);
-  render(<FleetApprovalSummary {...PROPS} inSetup />);
+  mocks.list.mockResolvedValue(page([ACCESS]));
+  render(<FleetApprovalSummary {...PROPS} />);
   const deny = await screen.findByRole("button", {name: "Deny"});
   fireEvent.click(deny); fireEvent.click(deny);
   expect(screen.queryByRole("alertdialog")).toBeNull();
@@ -49,7 +69,8 @@ it("denies directly, blocks repeat submissions, then shows the confirmed outcome
 
 it("shows a competing approval without reporting that Deny succeeded", async () => {
   mocks.deny.mockResolvedValue({ok: true, data: {kind: "already_resolved", data: {gate_id: "gate-one", action_id: "publish", outcome: "approved", resolved_at: "2026-11-12T10:00:00Z", resolved_by: "reviewer", error_code: "UZ-APPROVAL-006", detail: "Decided elsewhere"}}});
-  render(<FleetApprovalSummary {...PROPS} inSetup />);
+  mocks.list.mockResolvedValue(page([ACCESS]));
+  render(<FleetApprovalSummary {...PROPS} />);
   fireEvent.click(await screen.findByRole("button", {name: "Deny"}));
   expect(await screen.findByText(/Request approved/)).toBeTruthy();
   expect(screen.getByRole("region", {name: "Approval decision"})).toBeTruthy();
@@ -176,11 +197,11 @@ it("approves the exact request directly and reads the next pending request on de
   expect(screen.getByRole("button", {name: "Approve"})).toBeTruthy();
 });
 
-it("keeps evidence and a reason in Setup and retains authorization errors", async () => {
-  mocks.list.mockResolvedValue(page([{...GATE, detail: "Only the release tag", evidence: {image: "runner:release"}, expires_at: "2026-11-12T12:00:00Z"}]));
+it("keeps an access card's evidence and reason behind its details and retains authorization errors", async () => {
+  mocks.list.mockResolvedValue(page([{...ACCESS, detail: "Only the release tag", evidence: {service: "sentry", image: "runner:release"}, expires_at: "2026-11-12T12:00:00Z"}]));
   mocks.approve.mockResolvedValue({ok: false, status: 403, error: "Not permitted", errorCode: "UZ-AUTH-022"});
-  render(<FleetApprovalSummary {...PROPS} inSetup />);
-  await screen.findByText(GATE.proposed_action);
+  render(<FleetApprovalSummary {...PROPS} />);
+  await screen.findByText(ACCESS.proposed_action);
   fireEvent.click(screen.getByRole("button", {name: "View exact action"}));
   expect(screen.getByRole("dialog", {name: "Exact action"})).toBeTruthy();
   expect(screen.getByText("Only the release tag")).toBeTruthy();

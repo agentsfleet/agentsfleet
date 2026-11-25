@@ -15,15 +15,11 @@
 
 import * as path from "node:path";
 
-// Matches afr_tools/src/catalog/mod.rs:HTTP_REQUEST so fixture bundles pass native admission.
-export const HTTP_REQUEST = "http_request";
-
 // Where global setup caches the minted fixture JWTs. It must sit outside every
 // folder Playwright uploads as a CI artifact, or live session tokens ride along.
 export const JWT_CACHE_PATH = path.join(process.cwd(), ".fixture-jwts.json");
 
 export const AGENTSFLEET_STATUS = {
-  installing: "installing",
   active: "active",
   archived: "archived",
 } as const;
@@ -72,3 +68,14 @@ export const SECOND_WORKSPACE_NAME = "fixture-secondary";
 // suite runs every test carrying this tag alone, after the parallel groups.
 export const FRAME_BUDGET_TAG = "@frame-budget";
 
+// Tags a prime journey: the fixture fleets an environment is proved with when
+// it is primed or deployed. `make acceptance-e2e ACCEPTANCE_SCOPE=post-deploy`
+// selects by this tag, and the acceptance config holds that scope to them.
+export const POST_DEPLOY_TAG = "@post-deploy";
+
+/** The words a person reads on New fleet (`SteerComposer` with `creating`). */
+export const NEW_FLEET_COPY = {
+  composer: "New fleet composer",
+  placeholder: "What would you like your fleet to do?",
+  send: "Send",
+} as const;

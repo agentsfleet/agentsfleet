@@ -73,5 +73,5 @@ Page filenames in the separate docs repository must be selected by its maintaine
 ## Related pages
 
 - [Exact resource inputs/outputs](../../architecture/api_resources.md)
-- [Creation and CLI outcomes](../../architecture/data_flow.md#fleet-creation-and-setup-recovery)
+- [Creation and CLI outcomes](../../architecture/data_flow.md#create-and-recovery)
 - [Owner decisions](decisions.md)

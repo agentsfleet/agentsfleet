@@ -38,7 +38,7 @@ async fn one_slack_request_is_one_attempt() {
     crate::support::install_subscriber();
     let fixtures = Fixtures::create().await;
     let (fleet, workspace, tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
-    set_config(&fixtures, &fleet, WRITE_BOUND_CONFIG).await;
+    bind(&fixtures, &fleet, write_bound()).await;
     let _default = seed_provider_resolution(&fixtures, &fleet).await;
 
     let ledger = ledger(&fixtures);

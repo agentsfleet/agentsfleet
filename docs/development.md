@@ -144,7 +144,10 @@ This recovery applies only after a database reset you deliberately initiated. An
 
 The machine environment and `AGENTSFLEET_UI_ENV_FILE` supply development Clerk credentials.
 Initial setup uses the machine's `FIREWORKS_API_KEY` and the development GitHub App to populate the local encrypted vault.
+
 On a fresh acceptance database, bootstrap takes the app's six fields from `LOCAL_GITHUB_*` when all are set, and otherwise reads them with `op`.
+It takes the Slack app's `client_id`, `client_secret` and `signing_secret` from `LOCAL_SLACK_*` the same way.
+
 
 The setup edit check uses `TYPESAFE_API_KEY`, which bootstrap stores as the platform workspace's `typesafe` key.
 Bootstrap adds a decision model that asks for `jev-latest`, accepts only the reviewed `jev-1.14.0` answer and names it in the runner's policy.
@@ -247,9 +250,10 @@ Lock waits are bounded separately: 6 minutes for infrastructure, 20 minutes for 
 
 Run `bash scripts/local-dev-test.sh` for launcher regression checks; success prints `OK` and exits 0.
 Set `<SIBLING_CHECKOUT>` to an existing sibling checkout's absolute path; its `local-dev.sh` and `local-dev-state.sh` must match this checkout.
+
 Run `bash scripts/local-dev-test.sh --live "<SIBLING_CHECKOUT>"` for the two-worktree proof; success prints `OK` and exits 0.
 `make test-integration-rustd` retains its own disposable stack and destructive reset behavior.
-See [datastore scaling](architecture/datastore_scaling.md#shared-local-development) for the isolation boundaries.
+See [shared development worktrees](#shared-development-worktrees) for the isolation boundaries.
 
 ## TypeScript checks and builds
 
@@ -358,7 +362,7 @@ not in any contributor's dotfiles. Hook fixes are normal repo PRs.
 
 The lane definitions, the toolchain reason both cargo lanes `cd` into `rustd/`,
 and the coverage bar are canonical in
-[`architecture/testing.md`](./architecture/testing.md) §"Public lanes". What
+[`architecture/testing.md`](./architecture/testing.md#lanes) §"Lanes". What
 follows is the repo-workflow half that page does not carry.
 
 - **"Live e2e" / acceptance = the Playwright ladder**, not backend integration:

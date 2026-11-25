@@ -14,7 +14,7 @@ const MINTED: &str = "ghs_minted_token";
 
 #[tokio::test]
 async fn should_fill_a_static_placeholder_from_secrets_map() {
-    let policy = policy(false);
+    let policy = policy();
     let clock = FixedClock::at(START);
     let mint = CountingMint::answering(MINTED, TOKEN_LIFETIME, clock.clone());
     let mut vault = Vault::new(RUN_ID, &mint, &clock);
@@ -37,7 +37,7 @@ async fn should_fill_a_static_placeholder_from_secrets_map() {
 
 #[tokio::test]
 async fn should_mint_once_and_reuse_until_shortly_before_expiry() {
-    let policy = policy(false);
+    let policy = policy();
     let egress_policy = EgressPolicy::new(&policy);
     let clock = FixedClock::at(START);
     let mint = CountingMint::answering(MINTED, TOKEN_LIFETIME, clock.clone());
@@ -77,7 +77,7 @@ async fn should_mint_once_and_reuse_until_shortly_before_expiry() {
 
 #[tokio::test]
 async fn should_refuse_with_the_daemons_words_when_the_mint_is_refused() {
-    let policy = policy(false);
+    let policy = policy();
     let clock = FixedClock::at(START);
     let mint = CountingMint::refusing("UZ-REPAIR-004: grant revoked", clock.clone());
     let mut vault = Vault::new(RUN_ID, &mint, &clock);
@@ -97,7 +97,7 @@ async fn should_refuse_with_the_daemons_words_when_the_mint_is_refused() {
 
 #[tokio::test]
 async fn should_mask_every_minted_token_and_nothing_before_a_mint() {
-    let policy = policy(false);
+    let policy = policy();
     let clock = FixedClock::at(START);
     let mint = CountingMint::answering(MINTED, TOKEN_LIFETIME, clock.clone());
     let mut vault = Vault::new(RUN_ID, &mint, &clock);
@@ -119,7 +119,7 @@ async fn should_mask_every_minted_token_and_nothing_before_a_mint() {
 
 #[tokio::test]
 async fn should_refuse_a_minted_credentials_field_other_than_its_token() {
-    let policy = policy(false);
+    let policy = policy();
     let clock = FixedClock::at(START);
     let mint = CountingMint::answering(MINTED, TOKEN_LIFETIME, clock.clone());
     let mut vault = Vault::new(RUN_ID, &mint, &clock);

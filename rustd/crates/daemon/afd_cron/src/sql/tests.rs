@@ -7,8 +7,7 @@ use super::{
 /// spells them.
 const ROW_COLUMNS: &str = "id, fleet_id, source, provider_schedule_id, \
      cron_expression, timezone, message, once, desired_status, sync_status, resource_version, \
-     sync_token, sync_run_expires_at, last_error, created_at, updated_at, fire_at, \
-     recipe::text";
+     sync_token, sync_run_expires_at, last_error, created_at, updated_at, fire_at";
 
 /// `text` with every run of whitespace folded to one space.
 fn folded(text: &str) -> String {

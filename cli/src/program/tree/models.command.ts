@@ -18,16 +18,16 @@ import { modelOverrideFlag, opt, providerFlag, secretNameFlag, workspaceFlag } f
 const modelsListCommand = Command.make("list", {
   provider: providerFlag,
   advanced: Flag.Boolean("advanced").pipe(
-    Flag.withDescription("Include advanced models"),
+    Flag.withDescription("Also show advanced models"),
     Flag.withDefault(false),
   ),
 }).pipe(
-  Command.withDescription("List the model catalogue this server serves"),
+  Command.withDescription("List the AI models you can use"),
   guardedHandler(({ provider, advanced }) => modelsEffectFromFlags({ provider: opt(provider), advanced })),
 );
 
 const modelsCurrentCommand = Command.make("current").pipe(
-  Command.withDescription("Show the provider and model this tenant runs"),
+  Command.withDescription("Show which AI provider and model your account uses"),
   guardedHandler(() => tenantProviderShowEffect),
 );
 
@@ -36,17 +36,17 @@ const modelsUseCommand = Command.make("use", {
   workspace: workspaceFlag,
   model: modelOverrideFlag,
 }).pipe(
-  Command.withDescription("Run a self-managed provider secret"),
+  Command.withDescription("Use your own provider API key, saved as a secret"),
   guardedHandler(({ secret, model, workspace }) => tenantProviderAddEffectFromArgs(opt(secret), opt(model), opt(workspace))),
 );
 
 const modelsResetCommand = Command.make("reset").pipe(
-  Command.withDescription("Return to the platform default"),
+  Command.withDescription("Go back to the default model that comes with your account"),
   guardedHandler(() => tenantProviderDeleteEffect),
 );
 
 export const modelsCommand = () => Command.make("models").pipe(
-  Command.withDescription("Browse the model catalogue and choose the tenant's provider"),
+  Command.withDescription("See the AI models and choose which one your account uses"),
   Command.withSubcommands([
     modelsListCommand,
     modelsCurrentCommand,

@@ -30,18 +30,14 @@
 mod declined;
 mod fault;
 mod gates;
-pub(crate) use self::gates::GateFacts;
-mod verdict;
 
 pub use self::declined::Declined;
 
 use af_core::id::Uuid7;
-use af_fleet_runtime::config::Budget;
 
 use crate::error::Result;
 use afd_billing::biller::Biller;
 use afd_billing::rates::Posture;
-use afd_gate::gate::Waiting;
 
 use self::fault::PAYER;
 
@@ -50,18 +46,9 @@ const EVENT_TENANT_UNRESOLVED: &str = "run_tenant_lookup_failed";
 
 /// What the pass decided.
 ///
-/// Four arms because the runner plane genuinely has four answers, and three of
-/// them look alike from outside — all end in a no-work reply. They differ in
-/// the two ways that matter: whether the event can ever run again, and what an
-/// operator should do about it.
-///
-/// [`StartCheck::Await`] is durably identical to [`StartCheck::Retry`] — no row,
-/// delivery left leasable — and it is a separate arm anyway, because the two
-/// mean opposite things to whoever is watching. A retry says this daemon could
-/// not decide and will try again shortly. An await says it decided perfectly
-/// well: a human owes an answer, and no amount of retrying will produce one.
-/// Collapsing them would put a queue waiting on people into the same graph as a
-/// datastore falling over.
+/// Three arms because the runner plane genuinely has three answers, and two of
+/// them look alike from outside — both end in a no-work reply. They differ in
+/// whether the event can ever run again.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StartCheck {
     /// Issue the run, billed as described.
@@ -72,12 +59,6 @@ pub enum StartCheck {
     Refuse(Refusal),
     /// Answer no-work and write nothing. The delivery stays leasable.
     Retry(Transient),
-    /// A human has been asked and has not answered.
-    ///
-    /// Answer no-work, write nothing, and leave the delivery leasable — the
-    /// next poll re-reads the recorded gate. No thread waits: the deadline is a
-    /// NUMBER carried in the reference, compared against the caller's clock.
-    Await(Waiting),
 }
 /// What the gates resolved, for the run row and the policy.
 ///
@@ -125,18 +106,16 @@ pub struct Transient {
 
 /// What the money pass needs to decide.
 ///
-/// A parameter bundle rather than eight positional arguments: four of them are
+/// A parameter bundle rather than six positional arguments: four of them are
 /// identifiers or strings of the same shape, which compile clean in any order.
 #[derive(Debug, Clone, Copy)]
 pub struct Request<'a> {
     /// The workspace the work belongs to.
     pub workspace_id: &'a Uuid7,
-    /// The fleet whose ceiling applies.
+    /// The fleet the run serves.
     pub fleet_id: &'a Uuid7,
     /// The event being checked.
     pub turn_id: &'a Uuid7,
-    /// The fleet's declared ceiling, from the config resolved this run.
-    pub budget: Budget,
     /// Who supplies the provider key.
     pub posture: Posture,
     /// The provider resolved for this run.
@@ -178,11 +157,10 @@ pub fn payer_gate(
 #[cfg(any(test, feature = "test-util"))]
 /// Run the money gates in the worker's order.
 ///
-/// Payer → balance → fleet budget. Every gate that can refuse permanently
-/// runs before the run is issued, so a refused event is never charged. The
-/// payer gate judges the read the caller made; it reads nothing itself. Nothing
-/// is charged here: the run's usage is charged as it runs, when each line is
-/// logged.
+/// Payer → balance. Every gate that can refuse permanently runs before the
+/// run is issued, so a refused event is never charged. The payer gate judges
+/// the read the caller made; it reads nothing itself. Nothing is charged here:
+/// the run's usage is charged as it runs, when each line is logged.
 ///
 /// # Errors
 /// Datastore faults do NOT reach the caller as `Err` — each gate absorbs its
@@ -195,34 +173,21 @@ pub async fn money_gates(
     request: Request<'_>,
     now: jiff::Timestamp,
 ) -> Result<StartCheck> {
-    let spend = accounts.spend(request.workspace_id, request.fleet_id).await;
     let estimate = accounts
         .estimate(request.posture, request.provider, request.model, now)
         .await;
-    money_gates_with(
-        biller,
-        payer,
-        request,
-        spend.as_ref().copied(),
-        estimate.as_ref().copied(),
-    )
-    .await
+    money_gates_with(biller, payer, request, estimate.as_ref().copied()).await
 }
 
-/// [`money_gates`] over a spend the caller already read — the run path's
-/// one gates read — and an estimate it priced from its cached book
-///, or the fault either met.
+/// [`money_gates`] over an estimate the caller priced from its cached book,
+/// or the fault that read met.
 ///
 /// # Errors
 /// As [`money_gates`].
-pub async fn money_gates_with<
-    E: af_core::error_code::Coded + Sync,
-    F: af_core::error_code::Coded + Sync,
->(
+pub async fn money_gates_with<F: af_core::error_code::Coded + Sync>(
     biller: &dyn Biller,
     payer: Payer,
     request: Request<'_>,
-    spend: core::result::Result<afd_billing::budget::Spend, &E>,
     estimate: core::result::Result<afd_billing::rates::Estimate, &F>,
 ) -> Result<StartCheck> {
     let tenant_id = match payer_gate(payer, request.workspace_id)? {
@@ -231,9 +196,6 @@ pub async fn money_gates_with<
     };
 
     if let Some(stop) = gates::balance(estimate, biller, &request, &tenant_id).await {
-        return Ok(stop.into());
-    }
-    if let Some(stop) = gates::fleet_budget(&request, spend) {
         return Ok(stop.into());
     }
 

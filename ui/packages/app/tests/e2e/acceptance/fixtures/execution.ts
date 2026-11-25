@@ -1,5 +1,5 @@
 /**
- * execution.ts — what the fleet-execution journey observes, and how it names
+ * execution.ts — what a journey that crosses a run observes, and how it names
  * what it saw.
  *
  * Two halves. The polls read the operator plane and the tenant thread until a
@@ -19,19 +19,36 @@ import { RunOutcome } from "@/tests/helpers/runner-control-types";
 import { clientFor, type ClientHandle } from "./api-client";
 import { FIXTURE_KEY } from "./constants";
 
+/** No turn seen yet: every run and turn of the fleet counts. */
+const NONE_SEEN: ReadonlySet<string> = new Set();
+
 // One spelling each for the statuses and failure classes this module reads
-// (RULE UFS). The turn statuses mirror `lib/api/turns.ts:TurnStatus`; the
+// (RULE UFS). The turn statuses mirror `af_core::turn::status`
+// (rustd/crates/foundation/af_core/src/turn.rs); the
 // failure labels mirror `af_wire::report::FailureClass`
 // (rustd/crates/protocol/af_wire/src/report/mod.rs), serialised snake_case — the one type
 // the daemon and the runner both build against.
 export const TURN_STATUS = {
+  queued: "queued",
   received: "received",
   processed: "processed",
   fleetError: "fleet_error",
   gateBlocked: "gate_blocked",
+  // A run that asked a person — a question, or `request_access` — settles its turn here.
+  waiting: "waiting",
 } as const;
 
+/** The statuses a turn holds while its work is still owed: admitted, or taken by a run. */
+const UNSETTLED_STATUSES: readonly string[] = [TURN_STATUS.queued, TURN_STATUS.received];
+
+/** Whether a turn in `status` has left the queue and its run: whatever it ended as. */
+export function turnHasSettled(status: string): boolean {
+  return !UNSETTLED_STATUSES.includes(status);
+}
+
 export const TURN_KIND_CHAT = "chat";
+// The turn a person's answer on a card writes; its run resumes the turn that asked (`af_wire::turn::TurnKind`).
+export const TURN_KIND_CONTINUATION = "continuation";
 
 export const FAILURE_CLASS = {
   startupPosture: "startup_posture",
@@ -44,17 +61,15 @@ export const FAILURE_CLASS = {
   landlockDeny: "landlock_deny",
   runExpired: "run_expired",
   renewalTerminate: "renewal_terminate",
-  budgetBreach: "budget_breach",
 } as const;
 
-// The product decided these: the fleet's own instructions, a policy the
-// author wrote, the sandbox the platform assigned, the budget the author set.
-// Each one is a defect or a configuration the journey must not paper over.
+// The product decided these: a startup check, a policy refusal and the sandbox
+// the platform assigned. Each one is a defect or a configuration the journey
+// must not paper over.
 export const PRODUCT_FAILURE_CLASSES: readonly string[] = [
   FAILURE_CLASS.startupPosture,
   FAILURE_CLASS.policyDeny,
   FAILURE_CLASS.landlockDeny,
-  FAILURE_CLASS.budgetBreach,
 ];
 
 // The host, the provider path or the clock decided these. A runner that
@@ -106,6 +121,7 @@ const API_STATUS_PATTERN = /→ (\d{3}):/;
 
 const DETAIL_NO_REPLY = "the run finished without a reply";
 const DETAIL_GATE_BLOCKED = "the delivery is waiting on an approval no journey granted";
+const DETAIL_WAITING = "the run ended waiting on a person's answer that no journey gave";
 const DETAIL_RUNNER_OFFLINE = "no runner was online to run the delivery";
 const DETAIL_NEVER_ASSIGNED = "an online runner never held the delivery";
 const DETAIL_REPORT_MISSING = "the run settled and no terminal row followed";
@@ -161,6 +177,9 @@ export function classifyTerminalTurn(row: TerminalObservation): ExecutionVerdict
   }
   if (row.status === TURN_STATUS.gateBlocked) {
     return { kind: VERDICT_KIND.product, leg: JOURNEY_LEG.execute, detail: DETAIL_GATE_BLOCKED };
+  }
+  if (row.status === TURN_STATUS.waiting) {
+    return { kind: VERDICT_KIND.product, leg: JOURNEY_LEG.execute, detail: DETAIL_WAITING };
   }
   const label = row.failure_label ?? "";
   const detail = row.failure_detail?.trim() || label || DETAIL_UNKNOWN_CLASS;
@@ -237,16 +256,17 @@ export interface RunLocation {
 /**
  * The run an online runner took for this fleet, wherever the scheduler put
  * it. The read is per runner, so the walk visits every runner's first run
- * page; the fleet is fresh, so its first run is the one.
+ * page. A fleet's first message runs at create, so a walk that sent a later
+ * message names the turns it already saw in `seen` and finds only the new run.
  */
-export async function findRunFor(fleetId: string): Promise<RunLocation | null> {
+export async function findRunFor(fleetId: string, seen: ReadonlySet<string> = NONE_SEEN): Promise<RunLocation | null> {
   const operator = clientFor(FIXTURE_KEY.operator);
   const runners = await operator.get<RunnerListResponse>(FLEET_RUNNERS_PATH);
   for (const runner of runners.items) {
     const runs = await operator.get<RunnerRunResponse>(
       `${FLEET_RUNNERS_PATH}/${runner.id}/runs?limit=${RUN_PAGE_SIZE}`,
     );
-    const run = runs.items.find((item) => item.fleet_id === fleetId);
+    const run = runs.items.find((item) => item.fleet_id === fleetId && !seen.has(item.turn_id));
     if (run) return { runnerId: runner.id, hostId: runner.host_id, outcome: run.outcome };
   }
   return null;
@@ -261,6 +281,18 @@ export async function anyRunnerLive(): Promise<boolean> {
 /** Whether a run outcome is one the runner has finished reporting. */
 export function runIsSettled(outcome: string): boolean {
   return outcome !== RunOutcome.Running;
+}
+
+/** The chat turns the thread holds now, whatever their status: what a walk names `seen` before it sends. */
+export async function chatTurnIds(
+  handle: ClientHandle,
+  workspaceId: string,
+  fleetId: string,
+): Promise<ReadonlySet<string>> {
+  const page = await clientFor(handle).get<ThreadPage>(
+    `/v1/workspaces/${workspaceId}/fleets/${fleetId}/messages`,
+  );
+  return new Set(page.items.filter((item) => item.event_type === TURN_KIND_CHAT).map((item) => item.turn_id));
 }
 
 /**
@@ -282,21 +314,35 @@ export async function countChatTurns(
   return page.items.filter((item) => item.event_type === TURN_KIND_CHAT).length;
 }
 
-/**
- * The newest chat turn on the fleet's thread that has left `received`, or
- * `null` while the delivery is still in flight. Reads the messages route
- * because it is the one read that carries `response_text`.
- */
-export async function readTerminalChatTurn(
+/** Every turn the thread holds now, of any kind: what a walk names `seen` before a person answers a card. */
+export async function threadTurnIds(
   handle: ClientHandle,
   workspaceId: string,
   fleetId: string,
+): Promise<ReadonlySet<string>> {
+  const page = await clientFor(handle).get<ThreadPage>(
+    `/v1/workspaces/${workspaceId}/fleets/${fleetId}/messages`,
+  );
+  return new Set(page.items.map((item) => item.turn_id));
+}
+
+/**
+ * The newest turn of `kind` on the fleet's thread that has settled, or `null`
+ * while the delivery is still queued or running. Reads the messages route
+ * because it is the one read that carries `response_text`.
+ */
+export async function readTerminalTurn(
+  handle: ClientHandle,
+  workspaceId: string,
+  fleetId: string,
+  seen: ReadonlySet<string> = NONE_SEEN,
+  kind: string = TURN_KIND_CHAT,
 ): Promise<TurnDetail | null> {
   const page = await clientFor(handle).get<ThreadPage>(
     `/v1/workspaces/${workspaceId}/fleets/${fleetId}/messages`,
   );
   const turn = page.items.find(
-    (item) => item.event_type === TURN_KIND_CHAT && item.status !== TURN_STATUS.received,
+    (item) => item.event_type === kind && turnHasSettled(item.status) && !seen.has(item.turn_id),
   );
   return turn ?? null;
 }

@@ -252,11 +252,11 @@ pub(crate) struct RunFixture {
 }
 
 impl RunFixture {
-    /// The fixture policy, with `read_only` as given.
-    pub(crate) fn new(read_only: bool) -> Self {
+    /// The fixture policy.
+    pub(crate) fn new() -> Self {
         let clock = FixedClock::at(START);
         Self {
-            policy: policy(read_only),
+            policy: policy(),
             mint: CountingMint::answering(MINTED, HOUR, clock.clone()),
             clock,
         }
@@ -287,5 +287,5 @@ pub(crate) fn replying(status: u16, body: &str) -> (SharedTransport, Receiver<Se
 mod recorded;
 
 pub(crate) use recorded::{
-    Asked, OwnedCall, OwnedFleetsCall, RecordingVerbs, STEERED_EVENT, run_with,
+    Asked, OwnedCall, OwnedFleetsCall, OwnedTriggerCall, RecordingVerbs, STEERED_EVENT, run_with,
 };

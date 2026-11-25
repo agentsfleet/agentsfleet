@@ -5,10 +5,9 @@ import type { DurableTaskResource } from "./use-task-read";
 import { Button } from "@agentsfleet/design-system";
 import { DurableTaskNextStep } from "./TaskNextStep";
 import { useFleetDurableTaskView } from "./FleetTaskProvider";
-import { DurableTaskGoalAdoption } from "./TaskGoalAdoption";
 import { DurableTaskControls } from "./TaskControls";
 import { DurableTaskRepositoryProgress } from "./TaskRepositoryProgress";
-import { QuestionDetails } from "../setup/summary/SetupQuestions";
+import { DurableTaskStatements } from "./TaskStatements";
 import { confirmed } from "./use-task-read";
 
 type Props = {workspaceId: string; fleetId: string; task: DurableTaskSummary; onChanged: () => void};
@@ -26,12 +25,8 @@ export function DurableTaskDetailView({workspaceId, fleetId, task, onChanged, re
       <DurableTaskNextStep detail={detail} />
       {!readOnly ? <DurableTaskControls workspaceId={workspaceId} fleetId={fleetId} detail={detail} enabled={resource.kind === "ready"} onChanged={onChanged} /> : null}
       <DurableTaskRepositoryProgress detail={detail} />
-      <div className="space-y-sm">
-        <h3 className="font-medium">What counts as done?</h3>
-        <p className="text-eyebrow text-muted-foreground">Uses the success criteria saved in setup v{detail.setup_revision}.</p>
-        {!readOnly ? <DurableTaskGoalAdoption workspaceId={workspaceId} fleetId={fleetId} detail={detail} enabled={resource.kind === "ready"} onChanged={onChanged} /> : null}
-        {detail.context.questions.map(({name, question}, index) => <QuestionDetails key={name} number={index + 1} question={{question: question.instructions, criteria: question.criteria}} />)}
-      </div>
+      <DurableTaskStatements workspaceId={workspaceId} fleetId={fleetId} detail={detail} enabled={resource.kind === "ready"}
+        readOnly={readOnly === true} onChanged={onChanged} />
       <p className="text-eyebrow text-muted-foreground">{detail.context.usage.runs} of {detail.context.limits.runs} attempts used. {detail.context.checkpoint_id ? "Saved recovery point available." : "No recovery point has been saved."}</p>
     </> : null}
   </div>;

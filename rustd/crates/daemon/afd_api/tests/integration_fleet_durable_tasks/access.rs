@@ -1,12 +1,11 @@
-//! A secret's "available to" list is exactly the credential list a run resolves.
+//! A secret's "available to" list is exactly the credential list a run
+//! resolves: the names a person approved for each runnable fleet.
 #![expect(clippy::expect_used, reason = "test preconditions fail loudly")]
 
 use af_wire::durable_task::DurableTaskState;
+use afd_api_wire::grant::{grant_type, status};
 use afd_auth::scope::{Scope, ScopeSet};
-use afd_db::test_util::{
-    FIXTURE_SETUP_DEFINITION, FIXTURE_SETUP_SEMANTICS, FleetSeed, SetupRevision, TestDatabase,
-    mint_id,
-};
+use afd_db::test_util::{FleetSeed, GrantSeed, TestDatabase, mint_id};
 use afd_fleet_lifecycle::FleetStatus;
 use axum::Router;
 use http::{Method, StatusCode};
@@ -15,40 +14,15 @@ use serde_json::{Value, json};
 use super::fixture::{DurableTasks, SUBJECT};
 use crate::harness::{Fleet, json_body, send};
 
-/// Declared only by a revision unfinished tasks accepted before the head moved on.
+/// Asked for by the fleet and waiting on a person: it grants nothing yet.
 const ALPHA: &str = "alpha_key";
-/// Declared by the fleet's current head.
+/// Approved for the fleet.
 const BETA: &str = "beta_key";
-/// Only mentioned in instructions, never declared.
+/// Never asked for.
 const GAMMA: &str = "gamma_key";
-/// A provider key the head also declares by name. A provider key reaches a run
-/// through the fleet's model, so declared names cannot say who uses it.
+/// A provider key. It reaches a run through the fleet's model, so a grant
+/// list cannot say who uses it.
 const DELTA: &str = "delta_key";
-
-/// A valid native definition declaring `credentials` and mentioning `GAMMA` in prose.
-fn definition(credentials: &[&str]) -> (Value, String) {
-    let mut value: Value =
-        serde_json::from_str(FIXTURE_SETUP_DEFINITION).expect("native fixture definition");
-    value
-        .pointer_mut("/config/x-agentsfleet")
-        .and_then(Value::as_object_mut)
-        .expect("native runtime extension")
-        .insert("credentials".to_owned(), json!(credentials));
-    value.as_object_mut().expect("definition object").insert(
-        "instructions_md".to_owned(),
-        json!(format!("Use {GAMMA} only if the operator asks.")),
-    );
-    let parsed = af_fleet_runtime::definition::Definition::parse(
-        &serde_json::to_string(&value).expect("fixture document"),
-    )
-    .expect("a definition declaring credentials stays valid");
-    let digest =
-        af_fleet_runtime::definition::canonical_digest(&parsed).expect("native content identity");
-    (
-        serde_json::to_value(parsed).expect("typed definition"),
-        digest,
-    )
-}
 
 async fn run(
     fixture: &DurableTasks<'_>,
@@ -71,30 +45,29 @@ async fn run(
         .expect("fixture statement");
 }
 
-/// Appends a head revision declaring `credentials`, as Apply would.
-async fn append(fixture: &DurableTasks<'_>, credentials: &[&str]) {
-    let (definition, digest) = definition(credentials);
+/// The fleet's grant of `name` in `status`, as a person's decision leaves it.
+async fn grant(fixture: &DurableTasks<'_>, fleet: &af_core::id::Uuid7, name: &str, at: &str) {
     let mut connection = fixture
         .base
         .database
         .acquire()
         .await
-        .expect("history connection");
-    let _revision: i64 = sqlx::query_scalar(include_str!("fixtures/advance_revision.sql"))
-        .bind(mint_id())
-        .bind(&fixture.base.fleet)
-        .bind(definition)
-        .bind(digest)
-        .fetch_one(&mut *connection)
+        .expect("grant connection");
+    let seed = GrantSeed::new(fleet, name, grant_type::SECRET, at);
+    let seed = if at == status::APPROVED {
+        seed.approved(afd_db::test_util::SEEDED_AT)
+    } else {
+        seed
+    };
+    seed.insert(&mut *connection)
         .await
-        .expect("history and head commit together");
+        .expect("the grant seeds");
 }
 
-/// A fleet in another workspace of the same account that declares `ALPHA`.
+/// A fleet in another workspace of the same account approved for `ALPHA`.
 async fn foreign_fleet(fixture: &DurableTasks<'_>) {
     let workspace = fixture.base.other_workspace().await;
-    let (definition, digest) = definition(&[ALPHA]);
-    let stored = definition.to_string();
+    let fleet = mint_id();
     let mut connection = fixture
         .base
         .database
@@ -102,21 +75,17 @@ async fn foreign_fleet(fixture: &DurableTasks<'_>) {
         .await
         .expect("foreign connection");
     FleetSeed::new(
-        &mint_id(),
+        &fleet,
         &workspace,
         fixture.base.tenant(),
         FleetStatus::Active.as_str(),
     )
     .name("Foreign reader")
-    .setup(SetupRevision {
-        definition: &stored,
-        digest: &digest,
-        semantics: FIXTURE_SETUP_SEMANTICS,
-        model_ref: None,
-    })
     .insert(&mut *connection)
     .await
     .expect("foreign fleet seeds");
+    drop(connection);
+    grant(fixture, &fleet, ALPHA, status::APPROVED).await;
 }
 
 fn router(fixture: &DurableTasks<'_>, scopes: &[Scope]) -> Router {
@@ -172,17 +141,12 @@ async fn access(router: &Router, fixture: &DurableTasks<'_>) -> Vec<(String, Opt
 async fn secret_access_projection_matches_execution_policy() {
     let lane = TestDatabase::shared();
     let fixture = DurableTasks::create(&lane).await;
-    // Unfinished tasks accept a revision declaring ALPHA; the head then moves to
-    // BETA. Those tasks cannot install any more, since their credentials differ
-    // from the head's, so ALPHA grants nothing even while they wait.
-    append(&fixture, &[ALPHA]).await;
-    run(
-        &fixture,
-        include_str!("fixtures/accept_head.sql"),
-        (&fixture.base.fleet, None),
-    )
-    .await;
-    append(&fixture, &[BETA, DELTA]).await;
+    // The fleet asked for ALPHA and a person has not answered; a person
+    // approved BETA. Another workspace's fleet holds ALPHA, which this
+    // workspace's list never shows.
+    let fleet = fixture.base.fleet.clone();
+    grant(&fixture, &fleet, ALPHA, status::PENDING).await;
+    grant(&fixture, &fleet, BETA, status::APPROVED).await;
     foreign_fleet(&fixture).await;
     let owner = router(
         &fixture,
@@ -217,9 +181,8 @@ async fn secret_access_projection_matches_execution_policy() {
             (DELTA.into(), None),
             (GAMMA.into(), Some(vec![]))
         ],
-        "only the head grants: a waiting task on a revision whose credentials differ \
-         cannot install; prose and other workspaces grant nothing, and a provider key \
-         claims no access either way"
+        "only an approved grant lists access: a pending request and another \
+         workspace's grant list nothing, and a provider key claims no access either way"
     );
     let secrets_only = router(&fixture, &[Scope::SecretRead]);
     assert!(
@@ -243,7 +206,7 @@ async fn secret_access_projection_matches_execution_policy() {
             (DELTA.into(), None),
             (GAMMA.into(), Some(vec![]))
         ],
-        "finishing the tasks changes nothing; the head still grants"
+        "finishing the tasks changes nothing; the approved grant still lists"
     );
     run(
         &fixture,

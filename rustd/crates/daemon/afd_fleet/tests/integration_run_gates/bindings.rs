@@ -27,7 +27,7 @@
 //! becomes different on the next poll, so an event that retried it would
 //! redeliver forever against a config nobody is going to fix by waiting.
 
-use super::seed::{seed_gate, seed_provider_resolution, seed_write_gate};
+use super::seed::seed_provider_resolution;
 use super::*;
 
 use af_core::turn::label;
@@ -52,9 +52,8 @@ async fn test_a_write_binding_it_cannot_enforce_ends_the_event() {
     crate::support::install_subscriber();
     let fixtures = Fixtures::create().await;
     let seeded = ready(&fixtures).await;
-    set_config(&fixtures, &seeded.fleet, MULTI_REPOSITORY_WRITE_CONFIG).await;
+    bind(&fixtures, &seeded.fleet, multi_repository_write()).await;
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
-    seed_gate(&fixtures, &seeded, STATUS_APPROVED).await;
 
     let assigned = assign(&fixtures, &seeded).await;
     let answer = drive(&fixtures, &seeded, assigned).await;
@@ -90,9 +89,8 @@ async fn test_a_refused_delivery_marks_the_issue_stage_and_none_after_it() {
     crate::support::install_subscriber();
     let fixtures = Fixtures::create().await;
     let seeded = ready(&fixtures).await;
-    set_config(&fixtures, &seeded.fleet, MULTI_REPOSITORY_WRITE_CONFIG).await;
+    bind(&fixtures, &seeded.fleet, multi_repository_write()).await;
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
-    seed_gate(&fixtures, &seeded, STATUS_APPROVED).await;
 
     let mut clock = VerbClock::<AssignStage>::start();
     let mut assigned = 0;
@@ -147,10 +145,8 @@ async fn test_an_approved_write_binding_locks_its_egress_to_that_gates_branch() 
     crate::support::install_subscriber();
     let fixtures = Fixtures::create().await;
     let seeded = ready(&fixtures).await;
-    set_config(&fixtures, &seeded.fleet, WRITE_BOUND_CONFIG).await;
+    bind(&fixtures, &seeded.fleet, write_bound()).await;
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
-    seed_gate(&fixtures, &seeded, STATUS_APPROVED).await;
-    let _gate = seed_write_gate(&fixtures, &seeded).await;
 
     let assigned = assign(&fixtures, &seeded).await;
     let answer = drive(&fixtures, &seeded, assigned).await;
@@ -186,7 +182,7 @@ async fn test_a_read_binding_is_delivered_without_asking_for_an_approval() {
     crate::support::install_subscriber();
     let fixtures = Fixtures::create().await;
     let seeded = ready(&fixtures).await;
-    set_config(&fixtures, &seeded.fleet, READ_BOUND_CONFIG).await;
+    bind(&fixtures, &seeded.fleet, read_bound()).await;
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
 
     let assigned = assign(&fixtures, &seeded).await;

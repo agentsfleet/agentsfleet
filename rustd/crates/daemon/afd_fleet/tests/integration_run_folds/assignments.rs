@@ -3,7 +3,7 @@
 use afd_turns::{Producer, Reply};
 
 use super::support::{
-    Checked, STEER_JSON, STEER_TEXT, WEBHOOK_JSON, assign, assign_as_holder, park, send, send_as,
+    Checked, STEER_JSON, STEER_TEXT, WEBHOOK_JSON, assign, assign_as_holder, send, send_as,
     stamp_assignment, workspace_of,
 };
 use crate::report_seed::held;
@@ -33,7 +33,7 @@ async fn test_a_live_run_is_assigned_a_persons_messages_oldest_first() -> Checke
 }
 
 /// A message no person sent is never folded and never passed: a webhook, a
-/// gate's continuation or a machine's steer runs as a run of its own, and a
+/// question's answer or a machine's steer runs as a run of its own, and a
 /// person's steer behind it waits, and reads as waiting.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -41,7 +41,7 @@ async fn test_a_message_no_person_sent_stops_the_fold() -> Checked {
     let machine = afd_turns::view::ACTOR_MACHINE;
     for (producer, actor) in [
         (Producer::Webhook, crate::seed::ACTOR),
-        (Producer::GateContinuation, crate::seed::ACTOR),
+        (Producer::QuestionAnswer, crate::seed::ACTOR),
         (Producer::Steer, machine),
     ] {
         let held = held().await;
@@ -69,29 +69,6 @@ async fn test_a_message_no_person_sent_stops_the_fold() -> Checked {
         );
         held.fixtures.cleanup().await;
     }
-    Ok(())
-}
-
-/// A parked message is never passed: nothing after it is assigned, and a
-/// send behind it answers that it waits.
-#[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_a_parked_message_stops_the_fold() -> Checked {
-    let held = held().await;
-    let workspace = workspace_of(&held).await?;
-    let before = send(&held, &workspace, Producer::Steer, STEER_JSON).await?;
-    let gated = send(&held, &workspace, Producer::Steer, STEER_JSON).await?;
-    park(&held, &gated.id).await?;
-    let behind = send(&held, &workspace, Producer::Steer, STEER_JSON).await?;
-    assert!(
-        behind.run.earlier_waiting,
-        "the parked message waits ahead of this send"
-    );
-    assert_eq!(
-        assign_as_holder(&held, 0).await?,
-        [before.assigned(STEER_TEXT)]
-    );
-    held.fixtures.cleanup().await;
     Ok(())
 }
 

@@ -16,20 +16,20 @@
 //!   installation.id ──► connector.installs ──► workspace
 //!                       (SELECT_INSTALL_WORKSPACE)  │
 //!                                                   ▼
-//!                       fleet.fleets ⋈ head revision ⋈ integration_grants
-//!                       (SELECT_APP_SUBSCRIBERS: active, granted)
+//!                       fleet.triggers (app_event) ⋈ fleet.fleets
+//!                       (SELECT_APP_SUBSCRIBERS: same workspace, active)
 //!                                                       │
 //!                                                       ▼
-//!                       Binding::read_for_source, then
+//!                       Binding::read, then
 //!                       serves_repository + admits          ──► fan-out
 //! ```
 
 use af_core::id::Uuid7;
-use afd_api_wire::grant::status;
+use af_wire::trigger_verb::TriggerKind;
 use afd_fleet_lifecycle::FleetStatus;
 use sha2::{Digest as _, Sha256};
 
-use crate::binding::Binding;
+use crate::binding::{Binding, StoredTrigger};
 use crate::error::{self, Result};
 use crate::{Ingress, sql};
 
@@ -85,17 +85,17 @@ impl Ingress {
     /// The fleets in `workspace` that subscribed to this repository and event.
     ///
     /// The relational narrowing is [`sql::SELECT_APP_SUBSCRIBERS`]'s and the
-    /// document match is [`Binding`]'s — see that statement's note on why the
-    /// split falls there.
+    /// repository and event match is [`Binding`]'s — see that statement's note
+    /// on why the split falls there.
     ///
-    /// A fleet whose row is readable but whose stored document is not stops the
-    /// whole delivery rather than being skipped. Silently dropping it would
+    /// A fleet whose trigger row the parser refuses stops the whole delivery
+    /// rather than being skipped. Silently dropping it would
     /// leave a fleet that quietly never runs again after a bad write, which is
     /// the failure an operator cannot see; the raised error is one they can.
     ///
     /// # Errors
     /// Reports a datastore that would not answer, a row this build cannot read,
-    /// and a stored document that no longer parses.
+    /// and a stored trigger row the parser refuses.
     pub async fn subscribers(
         &self,
         workspace: &Uuid7,
@@ -107,8 +107,8 @@ impl Ingress {
         let rows: Vec<SubscriberRow> = sqlx::query_as(sql::SELECT_APP_SUBSCRIBERS)
             .bind(workspace)
             .bind(FleetStatus::Active.as_str())
+            .bind(TriggerKind::AppEvent.as_str())
             .bind(provider)
-            .bind(status::APPROVED)
             .fetch_all(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_SUBSCRIBERS))?;
@@ -123,11 +123,8 @@ impl Ingress {
             // defensive re-test of a filter one layer up (RULE FN-RS). The
             // per-fleet route DOES ask, because its URL reaches an archived fleet
             // on purpose and owes that sender a reason.
-            let subscribed =
-                Binding::read_for_source(fleet, owner, &row.status, &row.document, provider)?
-                    .filter(|binding| {
-                        binding.serves_repository(repository) && binding.admits(event)
-                    });
+            let subscribed = Binding::read(fleet, owner, &row.status, &row.trigger)?
+                .filter(|binding| binding.serves_repository(repository) && binding.admits(event));
 
             matched.extend(subscribed);
         }
@@ -159,17 +156,18 @@ pub fn replay_id(body: &[u8]) -> String {
     hex::encode(Sha256::digest(body))
 }
 
-/// [`sql::SELECT_APP_SUBSCRIBERS`]'s row: one active, granted fleet.
+/// [`sql::SELECT_APP_SUBSCRIBERS`]'s row: one active, subscribed fleet.
 #[derive(Debug, sqlx::FromRow)]
 struct SubscriberRow {
-    /// The fleet, as text.
+    /// The fleet.
     fleet_id: Uuid7,
-    /// Its workspace, as text.
+    /// Its workspace.
     workspace_id: Uuid7,
     /// The stored status word.
     status: String,
-    /// The head revision's configuration, as JSON text.
-    document: String,
+    /// Its App subscription row.
+    #[sqlx(flatten)]
+    trigger: StoredTrigger,
 }
 
 /// The matched set, as the two answers a route can act on.

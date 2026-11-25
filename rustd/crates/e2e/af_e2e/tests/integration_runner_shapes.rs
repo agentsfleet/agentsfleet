@@ -36,7 +36,6 @@ const RUN_SHAPE: &[&str] = &[
     "status",
     "created_at",
     "updated_at",
-    "setup_revision_id",
 ];
 
 /// The columns the narrative log's rows carry.

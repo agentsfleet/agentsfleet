@@ -1,21 +1,22 @@
-//! A complete interpretation and all its task bindings commit together.
+//! A source turn's plan and all its task bindings commit together.
 
 mod commit;
 mod input;
 mod insert;
+mod plan;
 mod prepare;
 mod replay;
 pub(in crate::durable_task) mod source;
 mod write;
 
-use sqlx::types::Json;
-
-use super::{
-    DurableTaskBindings, DurableTaskRun, DurableTasks, PreparedPlan, decision, guard, transaction,
-};
+use super::{DurableTaskBindings, DurableTaskRun, DurableTasks, PreparedPlan, guard, transaction};
 use crate::error::{Result, query};
 
-const CONTEXT: &str = "bind durable interpretation";
+const CONTEXT: &str = "bind a task plan";
+
+/// What an accepted input stores as its interpretation: a tool sends none, so
+/// the accepted text is the input's whole meaning.
+pub(in crate::durable_task) const NO_INTERPRETATION: &str = "";
 
 /// [`bind`] under the operation's trace and outcome label: the lifecycle's
 /// test-only entry point, kept beside what it wraps.
@@ -106,27 +107,6 @@ pub(super) async fn existing(
     Ok(saved)
 }
 
-async fn authorize(
-    connection: &mut sqlx::PgConnection,
-    run: DurableTaskRun<'_>,
-    current: &guard::RunRow,
-    plan: &PreparedPlan,
-) -> Result<()> {
-    if let Some(authorization) = &plan.authorization {
-        decision::authorize::binding(connection, run, authorization).await?;
-        sqlx::query(include_str!("sql/interpretation.sql"))
-            .bind(&plan.source_turn_id)
-            .bind(&current.fleet_id)
-            .bind(&current.workspace_id)
-            .bind(Json(authorization))
-            .bind(&plan.digest)
-            .execute(&mut *connection)
-            .await
-            .map_err(query(CONTEXT))?;
-    }
-    Ok(())
-}
-
 async fn announce(
     tasks: &DurableTasks,
     run: DurableTaskRun<'_>,
@@ -147,23 +127,6 @@ async fn announce(
             run_id = run.run_id.as_str(),
             reason = "admitted"
         );
-    }
-    Ok(())
-}
-
-async fn mark_interpreted(
-    connection: &mut sqlx::PgConnection,
-    current: &guard::RunRow,
-    plan: &PreparedPlan,
-) -> Result<()> {
-    if plan.authorization.is_some() {
-        sqlx::query(include_str!("sql/interpreted.sql"))
-            .bind(&plan.source_turn_id)
-            .bind(&current.fleet_id)
-            .bind(&current.workspace_id)
-            .execute(&mut *connection)
-            .await
-            .map_err(query(CONTEXT))?;
     }
     Ok(())
 }

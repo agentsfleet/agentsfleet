@@ -20,7 +20,6 @@ use afd_credential::credential::{Broker, Vendors};
 use afd_credential::provider::Providers;
 use afd_credential::secrets::Registry;
 use afd_db::Db;
-use afd_gate::gate::Gates;
 use afd_vault::Vault;
 use jiff::Timestamp;
 
@@ -59,7 +58,6 @@ pub(crate) fn plane() -> RunService {
         durable_task_reports: None,
         turn_checkpoints: crate::run::turn_checkpoint::TurnCheckpoints::new(Arc::clone(&kek)),
         runs: runs(),
-        gates: Gates::new(database(), bus(), Entropy::new()),
         accounts: Accounts::new(database()),
         biller: Arc::new(biller()),
         memories: Memories::new(database(), Entropy::new()),
@@ -84,22 +82,8 @@ pub(crate) fn id(seed: u8) -> Uuid7 {
     Uuid7::encode(AT, [seed; ENTROPY_LEN]).expect("a fixed instant encodes")
 }
 
-/// An assigned fresh event on fleet `id(1)`, as a poll would have handed it.
-/// Held by every unit test that looks a definition up through a cache, while
-/// `cache_lookups_counted_by_outcome` reads the process-wide lookup counters:
-/// an unrelated lookup in its window would move them.
-pub(crate) static CACHE_LOOKUPS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
-
-/// [`acquired`], for a fleet whose setup is installed, so a pass reaches the
-/// reads after it.
-pub(crate) fn acquired_installed() -> Acquired {
-    Acquired {
-        predecessor_run_id: None,
-        opened: crate::run::envelope::Opened::installed(id(2), id(3), id(7)),
-        ..acquired()
-    }
-}
-
+/// An assigned fresh event on the active fleet `id(1)`, as a poll would have
+/// handed it.
 pub(crate) fn acquired() -> Acquired {
     Acquired {
         predecessor_run_id: None,

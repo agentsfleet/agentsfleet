@@ -227,6 +227,23 @@ pub(crate) fn assert_token_stayed_on_the_wire(seen: &[Seen], asked: &[Asked]) {
     }
 }
 
+/// Every tool a run with no decision profile offers its model, sorted: the
+/// runner's published catalog less the provider-run tool and the two task
+/// tools, and `guffbolt`'s sub-agent tools. Read from the runner's catalog,
+/// so a daemon list that drifts from it fails the suite that compares them.
+pub(crate) fn offered_catalog() -> Vec<&'static str> {
+    let mut offered: Vec<&'static str> = (afr_tools::catalog::PUBLISHED.into_iter())
+        .filter(|entry| {
+            entry.runtime() != afr_tools::Runtime::Provider
+                && !afr_tools::catalog::is_task_tool(entry.name())
+        })
+        .map(afr_tools::Entry::name)
+        .chain(guffbolt::agents::TOOLS)
+        .collect();
+    offered.sort_unstable();
+    offered
+}
+
 /// The path of every `POST` the upstreams received, in arrival order.
 pub(crate) fn posts(seen: &[Seen]) -> Vec<&str> {
     (seen.iter())

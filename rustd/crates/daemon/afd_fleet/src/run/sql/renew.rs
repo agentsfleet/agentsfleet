@@ -29,11 +29,8 @@
 pub const SELECT_RUN_FOR_RENEW: &str = include_str!("select_run_for_renew.sql");
 
 /// A host's runs before its renewal statement: pricing facts, payer, task,
-/// cancel mark, start, head revision and catalogue version.
+/// cancel mark, start and catalogue version.
 pub const SELECT_RENEWALS: &str = include_str!("select_renewals.sql");
 
 /// Every renewal one host's frame names, in one statement.
 pub const RENEW_BATCH: &str = include_str!("renew_batch.sql");
-
-/// Setup documents for the revisions the definitions cache missed.
-pub const SELECT_REVISION_DOCUMENTS: &str = include_str!("select_revision_documents.sql");

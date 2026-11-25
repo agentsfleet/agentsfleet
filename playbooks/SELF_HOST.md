@@ -7,7 +7,7 @@ executable: false
 
 # Install agentsfleet on your infrastructure
 
-Give the setup agent this page at the revision you intend to install. Follow it through a saved fleet’s first reply. On a repeat run, read the evidence from the earlier run and resume at the first missing check.
+Give the setup agent this page at the revision you intend to install. Follow it through the first fleet’s first reply. On a repeat run, read the evidence from the earlier run and resume at the first missing check.
 
 For an existing, migrated installation, start at [PRIME.md](./PRIME.md). For agentsfleet.net, use [Hosted operations](./hosted/README.md).
 
@@ -23,7 +23,7 @@ Each deployment stage below has a check to record before proceeding.
 | Hosts | Linux server with Docker Compose v2 and Caddy, Debian 13 runner host, host architecture for each artifact |
 | Origins | HTTPS dashboard and API domains, private runner listener IP and DNS name |
 | Owners | Clerk project administrator, model provider administrator, deployment operator, backup destination |
-| Capabilities | Setup and runtime chat, plus any optional capabilities from the [operations index](./operations/README.md#optional-capabilities) |
+| Capabilities | Fleet chat, plus any optional capabilities from the [operations index](./operations/README.md#optional-capabilities) |
 
 Use the release workflow outputs for the daemon image provenance, runner archive and signed toolbox. The runner verifies the toolbox against its embedded release public key. Keep the archive and toolbox set from the same release.
 
@@ -144,19 +144,57 @@ Place the matching CLI release on the operator's PATH or run `bun cli/dist/bin/a
 
 ## 5. Prove the first fleet
 
-1. As the primed operator, open **New fleet** in the dashboard. Ask for a fleet that formats supplied release notes into a checklist. Choose an eligible setup model and wait for an assistant reply.
+The first fleet is `morning-rooster`, one of the [fixture fleets](../tests/fixtures/fleets/README.md).
+Its [fixture file](../tests/fixtures/fleets/morning-rooster.json) holds the two messages you send and what they prove.
+The acceptance suites run the full prime set; this step runs `morning-rooster` only.
 
-   Inspect the setup and its access. Give the saved fleet the display name **Release checklist**, using the deployment's naming rules for its instance identifier.
-2. Save the reviewed setup and open the fleet. Send a short sample release note and wait for a complete streamed response. Refresh in a fresh browser session to prove the saved turn is present.
+1. As the primed operator, open **New fleet** in the dashboard. Type the fixture's `first_message` and select **Send**.
 
-   Take the runner ID from priming or look it up with `agentsfleet platform runners list`. Confirm assignment with `agentsfleet platform runners runs <RUNNER_ID> --fleet <FLEET_ID> --json`.
-3. In the CLI with the same account and workspace, check `agentsfleet doctor`, `agentsfleet chat list --json`, `agentsfleet fleet list --json` and `agentsfleet platform runners show <RUNNER_ID>`. Use the chat list to cross-check the setup draft, and the fleet list to identify the saved fleet. If you rerun this check, reuse the existing fixture and send a new sample note.
+   ```text
+   You are a greeter. Reply to every message with one short, friendly sentence.
+   ```
 
-**Evidence** Save the workspace, draft, fleet, turn and runner IDs, along with acceptance, assignment, first visible reply and completion times where observed. Record live provider and runner checks separately from health and readiness. Keep the fixture for future tests.
+   The browser opens the new fleet's chat at `/w/<WORKSPACE_ID>/fleets/<DASHBOARD_FLEET_ID>`. Wait for a complete streamed reply.
+
+   The dashboard names this fleet `fleet-` plus the end of its ID. Record `<DASHBOARD_FLEET_ID>` from the address bar.
+2. Refresh the fleet's page in a fresh browser session. The first message and its reply are still there.
+3. In the CLI with the same account and workspace, run `agentsfleet doctor`. Every check passes.
+4. Create `morning-rooster` from the CLI with the same first message.
+
+   ```bash
+   agentsfleet fleet create --name morning-rooster --json \
+     "You are a greeter. Reply to every message with one short, friendly sentence."
+   ```
+
+   ```text
+   {
+     "fleet_id": "<varies>",
+     "turn_id": "<varies>"
+   }
+   ```
+
+   Record `fleet_id` as `<FLEET_ID>`. On a repeat run the name is taken and the create answers `UZ-AGT-006`. Find the existing fleet with `agentsfleet fleet list --json` and continue with it.
+5. Send the fixture's follow-up, and wait for the reply to finish.
+
+   ```bash
+   agentsfleet fleet steer @morning-rooster "Say hello to the team."
+   ```
+
+   ```text
+   <varies>
+   ```
+
+   The reply is one short, friendly sentence.
+6. Run `agentsfleet fleet turns <FLEET_ID> --json`. It lists the first message and the follow-up, each with its reply.
+7. Take the runner ID from priming, or look it up with `agentsfleet platform runners list`. Confirm assignment with `agentsfleet platform runners runs <RUNNER_ID> --fleet morning-rooster --json`.
+
+**Evidence** Save the workspace, runner and both fleet IDs, and the turn ID of each message. Record acceptance, assignment, first visible reply and completion times where observed. Record live provider and runner checks separately from health and readiness.
+
+Keep both fleets for future checks.
 
 ## 6. Hand off and resume
 
-Record each check as passed, failed, or skipped and include a command result, request ID or operator evidence. After restarting the dashboard and daemon, confirm the saved fleet and a new reply. Follow [recovery](./operations/recovery/README.md) for a backup and isolated restore, upgrade, and key rotation.
+Record each check as passed, failed, or skipped and include a command result, request ID or operator evidence. After restarting the dashboard and daemon, confirm `morning-rooster` is listed and answers a new message. Follow [recovery](./operations/recovery/README.md) for a backup and isolated restore, upgrade, and key rotation.
 
 The standard hosted release and teardown procedures live in [Hosted operations](./hosted/README.md).
 
@@ -166,4 +204,4 @@ The Compose profile was exercised on Linux x86-64 with Docker 28.4, Compose 2.40
 
 A repeat diff was empty, and a fresh restore preserved the counts and migration history.
 
-Complete the identity, signed runner and provider checks on the intended deployment to certify a live setup and runtime reply. [First fleet verification](#5-prove-the-first-fleet)
+Complete the identity, signed runner and provider checks on the intended deployment to certify a live first reply. [First fleet verification](#5-prove-the-first-fleet)

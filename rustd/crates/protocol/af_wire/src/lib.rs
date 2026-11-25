@@ -51,6 +51,7 @@
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 #![deny(clippy::self_named_module_files)]
 
+pub mod access_verb;
 pub mod activity;
 pub mod context;
 pub mod credentials;
@@ -71,11 +72,11 @@ pub mod report;
 pub mod run;
 pub mod runner;
 pub mod schedule_verb;
-pub mod setup;
 pub mod steer_verb;
 #[cfg(feature = "test-util")]
 pub mod test_util;
 pub mod tool_detail;
 pub mod tool_trace;
+pub mod trigger_verb;
 pub mod turn;
 pub mod usage;

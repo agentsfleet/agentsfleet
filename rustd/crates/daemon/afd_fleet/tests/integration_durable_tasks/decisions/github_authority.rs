@@ -27,14 +27,12 @@ async fn configured(
     // Each installation belongs to one workspace, including concurrent fixture cases.
     let installation = installation();
     install(fixture, installation).await;
-    let config = json!({"name":"pull-request-repair","x-agentsfleet":{"tools":[],"triggers":[],
-        "budget":{"daily_nanos":"1000000000"},"decision_policy":super::fixture::policy(),
-        "repositories":["example/linkwarden"],
-        "repository_access":"write","repository_base":"main","repository_publication":"existing_pr",
-        "repository_validation_workflows":[{"path":".github/workflows/test.yml","sha256":af_core::etag::sha256_hex(WORKFLOW.as_bytes())}]}});
+    let scope = json!({"repositories":["example/linkwarden"],
+        "access":"write","base":"main","publication":"existing_pr",
+        "validation_workflows":[{"path":".github/workflows/test.yml","sha256":af_core::etag::sha256_hex(WORKFLOW.as_bytes())}]});
     case.held
         .fixtures
-        .native_config(&case.held.fleet, &config.to_string())
+        .approve_github(&case.held.fleet, &scope)
         .await;
     let mut plane = case.held.fixtures.plane();
     let platform = platform(fixture, server, installation, access).await;
@@ -111,8 +109,8 @@ async fn install(fixture: &Decisions<'_>, installation: u32) {
         .expect("authority fixture");
     sqlx::query("INSERT INTO connector.installs (id,provider,external_account_id,workspace_id,scopes,created_at,updated_at) VALUES ($1,'github',$2,$3,'{}',now(),now())")
         .bind(mint_id()).bind(installation.to_string()).bind(&case.scope.workspace_id).execute(&mut *connection).await.expect("workspace-owned installation");
-    sqlx::query("INSERT INTO connector.integration_grants (id,fleet_id,service,status,requested_reason,created_at,updated_at) VALUES ($1,$2,'github','approved','fixture',now(),now())")
-        .bind(mint_id()).bind(&case.held.fleet).execute(&mut *connection).await.expect("standing approval");
+    // The fleet's approved GitHub grant, with its scope, is `configured`'s
+    // `approve_github`; a fleet holds one grant per service.
     sqlx::query("UPDATE fleet.durable_tasks SET target=jsonb_set(target,'{installation_id}',to_jsonb($2::bigint)) WHERE fleet_id=$1")
         .bind(&case.held.fleet).bind(i64::from(installation)).execute(&mut *connection).await.expect("fixture target installation");
 }

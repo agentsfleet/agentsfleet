@@ -19,9 +19,8 @@ use super::*;
 const INSUFFICIENT_PRIVILEGE: &str = "42501";
 
 /// The schemas the product's tables live in.
-const PRODUCT_SCHEMAS: [&str; 10] = [
+const PRODUCT_SCHEMAS: [&str; 9] = [
     "identity",
-    "setup",
     "fleet",
     "runner",
     "thread",
@@ -53,7 +52,7 @@ const EVERY_VERB: [Verb; 5] = [
 const READ_WRITE: &[Verb] = &[Verb::Select, Verb::Insert, Verb::Update, Verb::Delete];
 /// Rows edited in place and never removed by a request; a purge cascades them.
 const KEPT: &[Verb] = &[Verb::Select, Verb::Insert, Verb::Update];
-/// Immutable rows a request may remove: revisions, swept receipts.
+/// Immutable rows a request may remove: swept receipts, consumed nonces.
 const WRITE_ONCE: &[Verb] = &[Verb::Select, Verb::Insert, Verb::Delete];
 /// Accounting and replay proof: appended and read, never edited or removed.
 const APPEND_ONLY: &[Verb] = &[Verb::Select, Verb::Insert];
@@ -68,7 +67,7 @@ const READ_BUMP: &[Verb] = &[Verb::Select, Verb::Update];
 /// so do `fleet.durable_task_items` and `fleet.durable_task_inputs` on their
 /// receipt columns and `fleet.durable_task_effects` on its acknowledgement and
 /// private target.
-const GRANTS: [(&str, &str, &[Verb]); 54] = [
+const GRANTS: [(&str, &str, &[Verb]); 53] = [
     ("identity.tenants", "api_runtime", WRITE_ONCE),
     ("identity.workspaces", "api_runtime", WRITE_ONCE),
     ("identity.users", "api_runtime", WRITE_ONCE),
@@ -85,7 +84,6 @@ const GRANTS: [(&str, &str, &[Verb]); 54] = [
     ("model.platform_defaults", "api_runtime", READ_WRITE),
     ("model.tenant_models", "api_runtime", READ_WRITE),
     ("fleet.fleets", "api_runtime", READ_WRITE),
-    ("fleet.revisions", "api_runtime", READ_WRITE),
     ("fleet.durable_task_items", "api_runtime", WRITE_ONCE),
     ("fleet.durable_tasks", "api_runtime", READ_WRITE),
     ("fleet.durable_task_inputs", "api_runtime", WRITE_ONCE),
@@ -100,6 +98,7 @@ const GRANTS: [(&str, &str, &[Verb]); 54] = [
     ("fleet.approval_gates", "api_runtime", KEPT),
     ("thread.deliveries", "api_runtime", KEPT),
     ("fleet.schedules", "api_runtime", READ_WRITE),
+    ("fleet.triggers", "api_runtime", WRITE_ONCE),
     ("fleet.activity_counters", "api_runtime", READ_ONLY),
     ("runner.runners", "api_runtime", READ_WRITE),
     ("thread.runs", "api_runtime", READ_WRITE),
@@ -116,7 +115,6 @@ const GRANTS: [(&str, &str, &[Verb]); 54] = [
     ("runner.checkpoint_objects", "api_runtime", READ_WRITE),
     ("runner.checkpoint_object_refs", "api_runtime", WRITE_ONCE),
     ("runner.checkpoint_pins", "api_runtime", READ_WRITE),
-    ("setup.drafts", "api_runtime", READ_WRITE),
     ("thread.replay_receipts", "api_runtime", WRITE_ONCE),
     ("billing.wallets", "api_runtime", READ_WRITE),
     ("billing.usage_lines", "api_runtime", APPEND_ONLY),

@@ -9,7 +9,7 @@
 use posthog::Event;
 use sha2::{Digest as _, Sha256};
 
-use super::{SetupStep, Telemetry};
+use super::{FleetStep, Telemetry};
 
 /// The workspace an event happened in.
 const KEY_WORKSPACE_ID: &str = "workspace_id";
@@ -41,10 +41,12 @@ const KEY_INVITE_ID: &str = "invite_id";
 const KEY_ATTEMPT: &str = "attempt";
 /// The relay's SMTP reply code.
 const KEY_REPLY: &str = "reply";
-/// The private draft a funnel step is about.
-const KEY_DRAFT_ID: &str = "draft_id";
-/// The terminal state an accepted message reached.
-const KEY_STATE: &str = "state";
+/// Where a fleet's first message came from.
+const KEY_ORIGIN: &str = "origin";
+/// Which channel a grant reaches a run through.
+const KEY_KIND: &str = "kind";
+/// What happened to a grant.
+const KEY_CHANGE: &str = "change";
 /// `PostHog`'s own deduplication key.
 ///
 /// Not ours to rename: ingestion drops a second event carrying an `$insert_id`
@@ -139,18 +141,6 @@ impl Telemetry {
                 put(KEY_REASON, reason.as_str().into());
                 put(KEY_REQUEST_ID, request_id.as_str().into());
             }
-            Self::FleetTriggered {
-                workspace_id,
-                fleet_id,
-                turn_id,
-                source,
-                ..
-            } => {
-                put(KEY_WORKSPACE_ID, workspace_id.as_str().into());
-                put(KEY_FLEET_ID, fleet_id.as_str().into());
-                put(KEY_TURN_ID, turn_id.as_str().into());
-                put("source", source.as_str().into());
-            }
             Self::FleetCompleted {
                 workspace_id,
                 fleet_id,
@@ -170,25 +160,6 @@ impl Telemetry {
                 put("time_to_first_token_ms", (*time_to_first_token_ms).into());
                 put(KEY_INSERT_ID, insert_id(fleet_id, turn_id).into());
             }
-            Self::SignupBootstrapped {
-                tenant_id,
-                workspace_id,
-                workspace_name,
-                email_domain,
-                created,
-                request_id,
-                ..
-            } => {
-                put(KEY_TENANT_ID, tenant_id.as_str().into());
-                put(KEY_WORKSPACE_ID, workspace_id.as_str().into());
-                put("workspace_name", workspace_name.as_str().into());
-                put("email_domain", email_domain.as_str().into());
-                put("created", (*created).into());
-                put(KEY_REQUEST_ID, request_id.as_str().into());
-            }
-            Self::WalletExhausted { tenant_id } => {
-                put(KEY_TENANT_ID, tenant_id.as_str().into());
-            }
             Self::InviteEmail {
                 tenant_id,
                 invite_id,
@@ -203,28 +174,28 @@ impl Telemetry {
                     put(KEY_REPLY, reply.into());
                 }
             }
-            Self::Setup {
-                workspace_id, step, ..
-            } => {
-                put(KEY_WORKSPACE_ID, workspace_id.as_str().into());
-                step.describe(&mut put);
-            }
+            Self::Fleet { step, .. } => step.describe(&mut put),
         }
     }
 }
 
-impl SetupStep {
+impl FleetStep {
     /// The step's own keys: identifiers as text, words as written. Nothing
     /// else is a field, so nothing else can be written.
     fn describe(&self, put: &mut impl FnMut(&'static str, serde_json::Value)) {
         match self {
-            Self::MessageAccepted { draft_id } => put(KEY_DRAFT_ID, draft_id.as_str().into()),
-            Self::MessageFinished { draft_id, state } => {
-                put(KEY_DRAFT_ID, draft_id.as_str().into());
-                put(KEY_STATE, (*state).into());
-            }
-            Self::SetupFinished { fleet_id } | Self::SetupCancelled { fleet_id } => {
+            Self::Created { fleet_id, origin } => {
                 put(KEY_FLEET_ID, fleet_id.as_str().into());
+                put(KEY_ORIGIN, origin.as_str().into());
+            }
+            Self::AccessChanged {
+                fleet_id,
+                kind,
+                change,
+            } => {
+                put(KEY_FLEET_ID, fleet_id.as_str().into());
+                put(KEY_KIND, (*kind).into());
+                put(KEY_CHANGE, change.as_str().into());
             }
         }
     }

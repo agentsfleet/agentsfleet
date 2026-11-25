@@ -26,9 +26,8 @@
 //! an isolation boundary that is not there.
 //!
 //! Each lane's connection to the integration lane's NATS carries activity
-//! frames and wake notifications, and a test subscribes through the same
-//! handle the inbox publishes on.
-//! Continuations commit to the turn ledger; notification failure cannot
+//! frames, and a test subscribes through the same handle the inbox publishes
+//! on. Answer turns commit to the turn ledger; notification failure cannot
 //! undo them.
 #![expect(
     clippy::expect_used,
@@ -54,7 +53,7 @@ mod read;
 #[path = "gate_lane_seed.rs"]
 mod seed;
 
-pub(crate) use self::seed::{LOCK_FLEET, SETUP_CARD, Window};
+pub(crate) use self::seed::{LOCK_FLEET, Window};
 
 /// The instant a fixture row is raised at, and identifiers are minted at.
 ///
@@ -164,7 +163,6 @@ impl Lane {
             FleetStatus::Active.as_str(),
         )
         .name("fixture-fleet")
-        .native_setup()
         .insert(&mut *connection)
         .await
         .expect("seeding a fleet");

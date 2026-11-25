@@ -12,11 +12,10 @@
 //! claim in the turns ledger exactly as the daemon does it.
 
 use af_core::id::Uuid7;
-use af_core::money::NANOS_PER_USD;
-use af_fleet_runtime::test_util::FixtureSetup;
+use af_wire::trigger_verb::TriggerKind;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{FIXTURE_SETUP_MODEL_REF, FleetSeed, SetupRevision, TestDatabase, mint_id};
+use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};
 use afd_tenant::test_util::{Signup, sign_up};
 use afd_vault::{SecretBody, SecretName};
 
@@ -131,12 +130,13 @@ impl Fixture {
         }
     }
 
-    /// The tenant, its workspace, its person, and the fleet a delivery names.
+    /// The tenant, its workspace, its person, the fleet a delivery names, and
+    /// its webhook rows.
     ///
-    /// The document declares ONE webhook trigger naming [`SOURCE`] and
-    /// [`CREDENTIAL`], because that is what makes the row resolve to a binding
-    /// at all — a fleet whose document declares no webhook trigger is
-    /// `Ok(None)` and answers `UZ-WH-001`, which is a different test.
+    /// A row for [`SOURCE`] naming [`CREDENTIAL`] is what makes a delivery
+    /// resolve to a binding at all — a fleet with no webhook row for the
+    /// URL's source is `Ok(None)` and answers `UZ-WH-001`, which is a
+    /// different test.
     async fn seed_rows(&self, runnable: Runnable) {
         sign_up(
             &self.database,
@@ -151,7 +151,6 @@ impl Fixture {
             },
         )
         .await;
-        let setup = FixtureSetup::new(&document());
         FleetSeed::new(
             &self.fleet,
             &self.workspace,
@@ -159,15 +158,12 @@ impl Fixture {
             runnable.stored(),
         )
         .name("ingress-live-fleet")
-        .unplaced_setup(SetupRevision {
-            definition: &setup.definition,
-            digest: &setup.digest,
-            semantics: setup.semantics(),
-            model_ref: Some(FIXTURE_SETUP_MODEL_REF),
-        })
         .insert(&mut *self.database.acquire().await.expect("an API connection"))
         .await
         .expect("the fleet seeds");
+        for seeded in rows() {
+            harness::triggers::seed(&self.database, &self.fleet, &self.workspace, seeded).await;
+        }
     }
 
     /// Seals `body` into this workspace under `key`, through the real vault.
@@ -175,7 +171,7 @@ impl Fixture {
     /// A row hand-written here would be one the reader could not open, and the
     /// wall answers `UZ-WH-020` for that — indistinguishable from having stored
     /// nothing, so the acceptance test would pass for the wrong reason.
-    async fn seal(&self, key: &str, body: &str) {
+    pub(super) async fn seal(&self, key: &str, body: &str) {
         let raw = serde_json::value::RawValue::from_string(body.to_owned())
             .expect("the fixture credential is an object");
         let sealed = harness::vault(self.database.clone())
@@ -187,6 +183,28 @@ impl Fixture {
             )
             .await;
         assert!(sealed.is_ok(), "the fixture credential seals: {sealed:?}");
+    }
+
+    /// The database a case writes its own rows through.
+    pub(super) const fn database(&self) -> &Db {
+        &self.database
+    }
+
+    /// Who each of the fixture fleet's turns was admitted from, oldest first.
+    ///
+    /// The history-only receipts storing a signing secret writes on a fleet
+    /// whose trigger names it are not admitted work, so they are left out.
+    pub(super) async fn turn_actors(&self) -> Vec<String> {
+        let mut connection = self.database.acquire().await.expect("an API connection");
+        sqlx::query_scalar(
+            "SELECT actor FROM thread.turns WHERE thread_id = $1 AND kind <> $2 \
+             ORDER BY created_at, id",
+        )
+        .bind(&self.fleet)
+        .bind(afd_turns::view::activity::EVENT_TYPE_ACTIVITY)
+        .fetch_all(&mut *connection)
+        .await
+        .expect("the fleet's turns read")
     }
 
     pub(super) async fn cleanup(self) {
@@ -210,24 +228,31 @@ impl Fixture {
     }
 }
 
-/// The second verifiable source the stored document declares.
+/// The second verifiable source the fleet's rows name.
 pub(super) const SECOND_SOURCE: &str = "linear";
 
-/// Registry and declared recipes sharing one stored fleet.
-fn document() -> String {
-    format!(
-        r#"{{
-          "name": "ingress-live-fleet",
-          "x-agentsfleet": {{
-            "triggers": [
-              {{"type":"webhook","source":"{SOURCE}","credential_name":"{CREDENTIAL}"}},
-              {{"type":"webhook","source":"{SECOND_SOURCE}","credential_name":"{CREDENTIAL}"}},
-              {{"type":"webhook","source":"clerk","verifier":{{"scheme":"svix-v1"}}}},
-              {{"type":"webhook","source":"acme","credential_name":"{CREDENTIAL}","verifier":{{"scheme":"body-hex-sha256","header":"x-acme-signature"}}}}
-            ],
-            "tools": ["bash"],
-            "budget": {{ "daily_nanos": "{NANOS_PER_USD}" }}
-          }}
-        }}"#
-    )
+/// Registry and declared recipes sharing one stored fleet, as its rows. The
+/// `github` row is one a run's `trigger_add` refuses; the per-fleet GitHub
+/// route still reads a webhook row for its source.
+fn rows() -> [harness::triggers::Seeded<'static>; 4] {
+    use harness::triggers::Seeded;
+    [
+        Seeded {
+            secret_name: Some(CREDENTIAL),
+            ..Seeded::new(TriggerKind::Webhook, SOURCE)
+        },
+        Seeded {
+            secret_name: Some(CREDENTIAL),
+            ..Seeded::new(TriggerKind::Webhook, SECOND_SOURCE)
+        },
+        Seeded {
+            verifier: Some(("svix-v1", None)),
+            ..Seeded::new(TriggerKind::Webhook, "clerk")
+        },
+        Seeded {
+            secret_name: Some(CREDENTIAL),
+            verifier: Some(("body-hex-sha256", Some("x-acme-signature"))),
+            ..Seeded::new(TriggerKind::Webhook, "acme")
+        },
+    ]
 }

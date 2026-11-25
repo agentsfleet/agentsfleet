@@ -9,40 +9,22 @@
 use super::{
     API_HOST, CREDENTIAL_GITHUB, DETAIL_NO_REPAIR_BRANCH, DETAIL_NOT_EXACTLY_ONE_REPOSITORY, build,
 };
-use af_core::money::NANOS_PER_USD;
-use af_fleet_runtime::FleetConfig;
 use af_fleet_runtime::config::RepositoryBinding;
 use af_wire::policy::{HttpMethod, HttpPathMatch, HttpRequestRule};
 
 const BRANCH: &str = "agentsfleet-repair/run-123";
 
-/// A stored config document carrying the binding under test.
-fn document(repositories: &[&str], access: &str, base: Option<&str>) -> String {
-    let list = repositories
-        .iter()
-        .map(|name| format!("\"{name}\""))
-        .collect::<Vec<_>>()
-        .join(",");
-    let base = base.map_or_else(String::new, |base| {
-        format!(r#","repository_base":"{base}""#)
-    });
+/// The GitHub scope a grant records for the binding under test.
+fn scope(repositories: &[&str], access: &str, base: Option<&str>) -> String {
+    let base = base.map_or_else(String::new, |base| format!(r#","base":"{base}""#));
     format!(
-        r#"{{"name":"probe","x-agentsfleet":{{"triggers":[],"tools":[],
-           "budget":{{"daily_nanos":"{NANOS_PER_USD}"}},"repositories":[{list}],
-           "repository_access":"{access}"{base}}}}}"#
+        r#"{{"repositories":{},"access":"{access}"{base}}}"#,
+        serde_json::json!(repositories)
     )
 }
 
-/// A stored config carrying the binding under test.
-fn config(repositories: &[&str], access: &str, base: Option<&str>) -> FleetConfig {
-    FleetConfig::stored(&document(repositories, access, base)).expect("a stored document resolves")
-}
-
 fn binding(repositories: &[&str], access: &str, base: Option<&str>) -> RepositoryBinding {
-    config(repositories, access, base)
-        .repository_binding()
-        .expect("the document declares one")
-        .clone()
+    RepositoryBinding::parse(&scope(repositories, access, base)).expect("the scope parses")
 }
 
 /// The rules for a binding, or a panic naming what refused.
@@ -271,9 +253,9 @@ fn a_write_binding_this_cannot_bound_is_refused_by_kind() {
     // fault without reading a message. Every available default here is a
     // WIDENING — no branch would mean any branch, several repositories any of
     // them — which is why both refuse. A write binding with no base never
-    // reaches this builder: the config parser refuses it, and `Reach::Write`
+    // reaches this builder: the scope parser refuses it, and `Reach::Write`
     // cannot be built without one.
-    FleetConfig::stored(&document(&["acme/payments"], "write", None))
+    RepositoryBinding::parse(&scope(&["acme/payments"], "write", None))
         .expect_err("a write binding without a base never becomes a binding");
     let bounded = binding(&["acme/payments"], "write", Some("main"));
     let several = binding(&["acme/payments", "acme/widgets"], "write", Some("main"));

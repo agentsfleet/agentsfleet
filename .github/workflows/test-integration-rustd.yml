@@ -127,6 +127,20 @@ jobs:
           bun-version-file: package.json
       - name: Install the seeder's dependencies
         run: bun install --frozen-lockfile
+      # The recovery drill checkpoints its workspace into the CI R2 bucket, so
+      # only the e2e shard reads it. After every install, so no install script
+      # runs with the access pair in its environment.
+      - name: Load the CI R2 bucket from 1Password
+        if: matrix.shard == 'e2e'
+        uses: 1password/load-secrets-action@70062d7a876d3eb6334754fa26efd2fbd90c32f2 # v5.0.1
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          AGENTSFLEET_R2_CI_ACCOUNT_ID: op://${{ vars.VAULT_DEV }}/cloudflare-r2-ci/account-id
+          AGENTSFLEET_R2_CI_BUCKET: op://${{ vars.VAULT_DEV }}/cloudflare-r2-ci/bucket
+          AGENTSFLEET_R2_CI_ACCESS_KEY_ID: op://${{ vars.VAULT_DEV }}/cloudflare-r2-ci/access-key-id
+          AGENTSFLEET_R2_CI_SECRET_ACCESS_KEY: op://${{ vars.VAULT_DEV }}/cloudflare-r2-ci/secret-access-key
       # `_reset-test-db` brings compose up, waits for healthchecks, drops
       # schemas. KEEP_TEST_STATE is never set here: a
       # green run under it would prove nothing about a clean checkout.

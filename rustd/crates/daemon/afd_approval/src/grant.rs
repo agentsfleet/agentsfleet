@@ -2,11 +2,11 @@
 //!
 //! # Why this is here and not in `afd_gate`
 //!
-//! `afd_gate::gate::grants` reads the same table and asks a different question.
-//! A runner asks "may this fleet mint against this service", once per run,
-//! and the only answer it can act on is `approved` — absent, pending and
-//! revoked are one word to it. An operator browses every row a fleet holds,
-//! including the ones the runner is blind to, and answers them.
+//! `afd_gate`'s policy build reads the same table and asks a different
+//! question: what this fleet's run may hold, once per run, and the only answer
+//! it can act on is `approved` — absent, pending and revoked are one word to
+//! it. A person browses every row a fleet holds, including the ones the run is
+//! blind to, and answers them.
 //!
 //! That is the split [`crate::Inbox`] already makes over
 //! `fleet.approval_gates`, and it is the same split for the same reason.
@@ -51,10 +51,16 @@ const CONTEXT_REVOKE: &str = "grant.revoke";
 pub struct GrantRow {
     /// The grant's own row id — what a revoke addresses it by.
     pub id: String,
-    /// The third party the grant is about.
+    /// The vault key or integration the fleet asked for.
     pub service: String,
+    /// The channel it reaches a run through, from [`afd_api_wire::grant::grant_type`].
+    pub grant_type: String,
     /// Where the decision stands, from [`afd_api_wire::grant::status`].
     pub status: String,
+    /// The approved GitHub scope, as stored JSON text.
+    pub scope: Option<String>,
+    /// A scope waiting on a person, as stored JSON text.
+    pub requested_scope: Option<String>,
     /// When the grant was raised.
     pub created_at: Timestamp,
     /// When a person approved it, if one has.
@@ -87,9 +93,9 @@ pub enum Revocation {
 /// A workspace's view of the grants its fleets hold.
 ///
 /// Postgres and nothing else. The gate inbox beside it needs a queue as well —
-/// an approval CONTINUES the run it blocked — where a grant decision continues
-/// nothing: revoking withdraws a standing permission that the next mint will
-/// consult, so there is no parked event waiting on this answer.
+/// an answered card resumes the run that asked — where a revoke continues
+/// nothing: it withdraws a standing permission that the next run and the next
+/// mint consult, so no run waits on it.
 #[derive(Debug, Clone)]
 pub struct IntegrationGrants {
     database: Db,
@@ -124,8 +130,8 @@ impl IntegrationGrants {
     /// `Ok(None)` means `workspace` holds no fleet by that id — which covers a
     /// fleet that never existed and one that is another workspace's, because
     /// those must be one answer to a caller probing identifiers. It is
-    /// deliberately NOT the same as an empty list: a fleet declaring no
-    /// mintable credential holds no grants and still exists.
+    /// deliberately NOT the same as an empty list: a fleet that never asked
+    /// for access holds no grants and still exists.
     ///
     /// # Errors
     /// Reports a datastore that would not answer.
@@ -213,7 +219,10 @@ async fn holds(
 struct StoredGrant {
     id: Uuid7,
     service: String,
+    grant_type: String,
     status: String,
+    scope: Option<String>,
+    requested_scope: Option<String>,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     created_at: Timestamp,
     approved_at: Option<jiff_sqlx::Timestamp>,
@@ -226,7 +235,10 @@ impl From<StoredGrant> for GrantRow {
         Self {
             id: stored.id.into(),
             service: stored.service,
+            grant_type: stored.grant_type,
             status: stored.status,
+            scope: stored.scope,
+            requested_scope: stored.requested_scope,
             created_at: stored.created_at,
             approved_at: stored.approved_at.map(jiff_sqlx::Timestamp::to_jiff),
             revoked_at: stored.revoked_at.map(jiff_sqlx::Timestamp::to_jiff),

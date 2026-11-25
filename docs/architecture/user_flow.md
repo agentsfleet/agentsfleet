@@ -1,335 +1,219 @@
-# User Flow — how a user uses the system
-
-> Parent: [`README.md`](./README.md) · User-facing: [docs.agentsfleet.net/quickstart](https://docs.agentsfleet.net/quickstart) walks the same path in five minutes; [docs.agentsfleet.net/fleets/overview](https://docs.agentsfleet.net/fleets/overview) is its reference.
-
-Read this to learn how a real human gets from "I want a Fleet" to a Fleet running on their repo. The §-numbered subsections are stable anchors that other specs reference. Do not rename them without sweeping cross-references.
-
-The initial user assumption is simple:
-
-- the user is already working inside Claude (or Amp, Codex command-line interface (CLI), OpenCode), or in the `agentsfleet` dashboard
-- the user is already working on their own project or infrastructure
-- the user wants operational work to continue without babysitting an endless terminal loop
-
-Workspace chat, in the browser or the terminal, is where the user describes, reviews, saves, improves, and supervises Fleets. The Fleet runtime is where long-lived operational outcomes continue after the chat ends.
-
-For the full end-to-end setup and first-trigger walkthroughs (platform-managed and self-managed), see [`scenarios/`](./scenarios/).
-
-## Facts
-
-Every row is extracted from the §-numbered sections below; the owner column names the section that carries the full story.
-
-| Invariant | Value | Mechanism | Owner section |
-|---|---|---|---|
-| The wedge surface | `agentsfleet` CLI and dashboard, both over workspace chat | `curl -fsSL https://agentsfleet.dev \| bash` → `login` → `chat` | §8.0 |
-| List output shape | name, identifier, domain columns, `AGO` | one helper owns the order for every entity list the CLI prints, and appends the age itself, so a call site has neither a position to choose nor a column to forget; a catalogue with no age of its own declares that rather than rendering an empty column | §8.4 |
-| Save input | a reviewed draft candidate | C1 `POST W/fleets` names it and the review digest; changes later arrive as reviewed setup revisions (N11) | §8.2.2 |
-| Deployment posture | hosted-only in v2 | no `--self-host` flag, no self-host runbook; validation on non-Fly hosts is v3 | §8.0.1 |
-| Fleet definition | one typed JSON Definition | a `description`, `instructions_md`, and the `config` policy document; one parser validates every source | §8.1 |
-| Preflight | `agentsfleet doctor --json`, health only | `server_reachable` · `workspace_selected` · `workspace_binding_valid`; the only sanctioned preflight surface | §8.2.2 |
-| Activation guarantee | readiness checks and committed activation before `active` | run-now activation commits the initial turn in the same transaction | §8.2.2 |
-| Trigger declarations | 0–8 entries, unique on `(type, source)`; none is a fleet woken only by messages | GitHub App triggers require explicit `repositories` (fail-closed); at most one declarative cron | §8.3 |
-| Cron authority | QStash (Upstash's hosted scheduler) owns the clock | Save stores the schedule intent in the same transaction; `afd_cron` mirrors it to QStash; the runner owns no timer | §8.3 |
-| Steer | always accepted | same single ingress as webhook and cron: a committed queued turn in `thread.turns` with `actor=steer:<user>`; the answer names a disposition (`started`, `folded`, `queued`) | §8.3 |
-| Model identity | selected at run time | the revision's `runtime_model_ref` resolves to a credentialed saved model; authored model text cannot replace it | §8.7 |
-| Context limits | saved physical window and separate operating cap | each run reads the saved model window; an absent or zero operating cap inherits it, without a provider lookup | §8.7 |
-| Conversation compaction | Defaults to 90 percent of the selected physical window | An authored operating threshold or output headroom can trigger earlier; valid checkpoints let the same run continue with tools. | §8.7 |
-| Slack surface | Configured fleet routing | Only configured Addressed/Sole fleets receive turns; unconfigured channels return `channel_not_configured`. | §8.8 |
-
-## Traps
-
-Each trap is enforced in its owner section; this list is the index.
-
-- The §-numbered subsections are stable anchors; never rename them without sweeping cross-references (preamble).
-- Doctor carries no provider or billing posture; read `tenant provider show` and `billing show` separately once health passes (§8.2.2).
-- Omitting `repositories` on a GitHub App trigger is fail-closed: no delivery, never every repository (§8.3).
-- The fleet's in-run loop never branches on actor; its instructions dictate behaviour (§8.3).
-- Never resolve context caps at trigger time (§8.7).
-- The dashboard never asks for or stores a user's provider Personal Access Token (§8.2.2, §8.4).
-- The browser never repeats a failed workspace POST on its own (§8.4).
-- Readiness never blocks Save; a fleet short of a credential, grant, or funds waits in `installing` (§8.2.2).
-- Instructions are prose and grant nothing; capability comes only from the reviewed `config` and approved grants (§8.1).
-- A Slack mention creates no default fleet and grants no unattended work authority (§8.8).
-
-## Topology
-
-The dual-posture model/cap resolution diagram lives in §8.7; it is that section's proof and stays there.
-
-## Decisions
-
-| Decision | Reason | Where |
-|---|---|---|
-| Hosted-only v2 | launch claim is "open-source software (OSS) + self-managed + chat-authored", not "self-hostable"; integration burden earns v3 | §8.0.1 |
-| Browser and terminal share one draft API | one validator, one review digest, one Save; neither client has a private path | §8.1 |
-| Private drafts are the setup surface | Native Definition JSON can initialize a draft; retired bundle and GitHub archive imports stay unsupported | §8.1 |
-| Zero or absent operating cap inherits the saved window | model identity stays bound to the reviewed selection while setup can select an earlier compaction threshold | §8.7 |
-| `/credentials` page removed outright, not redirected | provider keys live on `/settings/models`; custom secrets on `/secrets` | §8.7 |
-
+---
+type: explanation
+audience: contributor
+verified: 2026-11-25
+product_version: 0.90.0
+executable: false
 ---
 
-## Detail
+# Fleets
 
-Everything below is the full reference. Headings are stable because specs cite them by §-number; insert new sections, never rename or renumber existing ones.
+Read this when you need to know what a fleet is made of, how it starts, how it gets access and what wakes it.
+This is the person's view. [Data flow](data_flow.md) owns the mechanism behind each step, and [run flow](run_flow.md) walks one example end to end.
 
-## §8.0 The wedge surface
+The [fixture fleets](../../tests/fixtures/fleets/README.md) are the examples.
 
-The minimum viable product (MVP)'s user-facing wedge is the **`agentsfleet` Command-Line Interface (CLI) and dashboard, both over workspace chat**. A user goes from cold machine to a running fleet by describing the job, reviewing the setup, and saving it:
+## What it is
 
-```bash
-curl -fsSL https://agentsfleet.dev | bash   # installs the agentsfleet CLI
-agentsfleet login                            # Clerk OAuth
-agentsfleet chat --model <MODEL_REF>          # describe the job, review it, then Save
-```
+A fleet is a long-lived AI agent in a workspace. A person starts it with one message, and it keeps working after the chat closes.
 
-Choose `<MODEL_REF>` from the `ref` values returned by `GET /v1/workspaces/{ws}/models?purpose=setup`. New drafts require this setup model; resumed drafts keep their existing model. A draft starts from three sources:
+| Question | Answer |
+|---|---|
+| How does a fleet start? | A person's first message creates it, in the browser or with `agentsfleet fleet create` |
+| What does it hold at birth? | A name, a model, a thread and nothing else: no credential, no trigger, no schedule |
+| How does it get access? | It asks with `request_access`; a signed-in person approves the card once |
+| What wakes it? | Messages, plus the triggers and schedules it adds when a person asks |
+| Who can see it? | Every member of its workspace, from the moment it exists |
+| What bounds its spending? | The payer's balance ([billing](billing.md)) |
 
-- **Nothing.** `agentsfleet chat --model <MODEL_REF>` creates a private draft when the first message is sent.
-- **A saved fleet.** `agentsfleet chat --fleet <FLEET_ID> --setup-revision <N> --model <MODEL_REF>` drafts an improvement to that exact setup revision.
-- **Native JSON.** `agentsfleet chat --definition <PATH> --model <MODEL_REF>` reads one native Definition from a local file, bounded at 6,400 KiB.
+### What a fleet is made of
 
-Fleet IDs and setup revisions come from fleet reads. `<PATH>` names your native JSON file.
+| Part | Where it lives | Who sets it |
+|---|---|---|
+| Name | `fleet.fleets.name`, unique in the workspace | The create body, else `fleet-` and the last 12 hex digits of its ID; a person can rename it |
+| Model | `fleet.fleets.model_ref` | The create body, else the workspace's selected model; a person changes it ([models](models.md)) |
+| Thread | `thread.threads`, whose ID is the fleet's | Written with the fleet; every message, delivery and schedule fire is a turn on it ([thread model](thread_model.md)) |
+| Pinned memory | `memory.entries`, category `core` | The fleet, with `memory_store`, when a person asks ([memory](memory.md)) |
+| Grants | `connector.integration_grants` | The fleet asks; a person approves (see [Access](#access)) |
+| Triggers | `fleet.triggers` | The fleet, with `trigger_add`; a person can remove them (see [Wakes on](#wakes-on)) |
+| Schedules | `fleet.schedules` | The fleet, with `cron_add`, or a person ([schedules](data_flow.md#schedules)) |
+| Network | `fleet.fleets.http_egress` and `package_domains` | Off at birth; only a signed-in person turns on "Allow all" or "Packages" ([network egress](runner_execution.md#network-egress)) |
 
-`--review` shows the full setup, access, readiness, and review digest. `--save` saves the reviewed setup as an independent fleet. The dashboard does the same through the same routes ([`api_resources.md`](./api_resources.md) N1–N17, C1–C7).
+## Why it exists
 
-Configuration such as a Slack channel, a production-branch glob, or a cron schedule lives in the reviewed setup. The conversation changes it; the review shows exactly what Save will store.
+Nothing about a fleet's job is written down before it works.
+The fleet learns what it needs while it works, and asks for each credential at that moment.
+A person decides each request once, on a card that names the credential and its scope.
 
-## §8.0.1 Deployment posture: hosted-only in v2
+Messages and pinned memory are prose, and they grant nothing.
+A run holds only the published tool catalog, the credentials a person approved for its fleet, and the network its toggles allow ([capabilities](capabilities.md)).
 
-v2 ships **hosted-only** on `api.agentsfleet.net`. The skill detects no choice point: it defaults to the hosted endpoint, prompts Clerk OAuth via `agentsfleet login` if the CLI is not authenticated, and proceeds. There is no self-host runbook in v2 and no `--self-host` flag.
+## How it behaves
 
-This is a deliberate scope cut. The auth substrate (Clerk OAuth), the key management service (KMS) adapter, and process control (Fly.io machines) are the only deployment-specific layers. The worker, runner, sandbox, event stream, and reasoning loop are all posture-agnostic.
+### Starting a fleet
 
-Validating that on a clean non-Fly Linux host is a v3 workstream. It waits until v2 has earned the trust to justify the integration burden.
-
-That validation covers a Clerk shim or local-token auth, a portable KMS adapter and systemd process control. The validation also covers the runner's Landlock+cgroups+bwrap on a vanilla VM.
-
-Practically, this means:
-
-- v2 launch claim is **OSS + self-managed + chat-authored**. Not "self-hostable."
-- The `/self-host` runbook page does not exist on `docs.agentsfleet.net` for v2.
-- Users who need self-host today are out of scope. The AI-infra / GPU-cloud / regulated mid-market P1 personas are v3 customers, not v2.
-- self-managed still ships in v2. It sits on top of the hosted posture and removes the inference-cost lock-in independently of where the runtime runs. See [`capabilities.md`](./capabilities.md) and [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §1.
-
-## §8.1 Setting up the Fleet
-
-The user describes the Fleet in a private draft. Browser and terminal chat share the draft API, N1–N10 in [`api_resources.md`](./api_resources.md). The draft is visible only to its creator.
-
-The conversation produces one typed JSON Definition, parsed by `af_fleet_runtime`:
-
-- `description` is required display text saying what the Fleet does; line breaks are allowed and line endings are normalized. The Fleet's name is `config.name`. Any top-level key besides `schema_version`, `description`, `instructions_md` and `config` is refused.
-- `instructions_md` describes how the Fleet should think, what its job is, what "good" looks like, what evidence to gather, and what actions require caution. Plain English. The run receives it as its instructions.
-- `config` is the policy document. Under `x-agentsfleet` it declares `triggers`, `tools`, `credentials`, `network`, `budget` (`daily_nanos` and `monthly_nanos`, decimal strings), `gates`, `repositories`, `context`, and `model`.
-
-The user iterates in natural language:
-
-- "tighten the deploy-failure diagnosis prompt"
-- "add a periodic health check every 15 minutes"
-- "require approval before teardown"
-- "include Fly logs and NATS health in the first pass"
-
-This keeps the operational logic editable by changing instructions, without rewriting a typed workflow engine for every variation.
-
-Instructions grant no access. Runs use only reviewed `config` and approved grants ([capabilities](capabilities.md#1-reasoning--tool-inventory-declared-in-the-fleets-own-files)).
-
-Native JSON may initialize a private draft. GitHub/template-bundle import and Markdown export stay unsupported.
-
-## §8.2 Creating the Fleet
-
-Once the candidate is reviewed, the user saves the Fleet in the workspace.
-
-### §8.2.1 Cold-machine bootstrap (run once per machine)
-
-The canonical entry is the one-liner served from `https://agentsfleet.dev`, which installs the `agentsfleet` CLI:
+In the terminal, install the command-line interface (CLI), sign in and send the first message:
 
 ```bash
-curl -fsSL https://agentsfleet.dev | bash   # installs the agentsfleet CLI (npm under the hood)
+curl -fsSL https://agentsfleet.dev | bash
+agentsfleet login
+agentsfleet fleet create "<MESSAGE>" --name <NAME>
 ```
 
-Or run the chain explicitly (skip any step already in place):
+`<MESSAGE>` is the fleet's first job, and `<NAME>` is optional. With `--json`, the create prints `{fleet_id, turn_id}`.
+`agentsfleet fleet steer @<NAME>` with no message opens an interactive chat, one turn per line.
 
-```bash
-npm install -g @agentsfleet/cli   # CLI binary
-agentsfleet login                  # Clerk OAuth → credential in ~/.config/agentsfleet/credentials.json
-agentsfleet whoami                 # who that credential belongs to
-agentsfleet connections show github --json
-```
+In the browser, the person types the same message on **New fleet** and selects Send.
+The suggestion buttons there load editable text from `ui/packages/app/public/fleet-starters.json`.
 
-Login proves the new credential against `GET /v1/users/me`, which needs no capability scope ([API reference](https://docs.agentsfleet.net/api-reference/introduction) › Users).
+Both paths call `POST /v1/workspaces/{workspace_id}/fleets`:
 
-`agentsfleet doctor --json` is the readiness gate (§8.2.2 step 2): on any miss it prints the explicit fix commands and stops. The commands are deliberately separate so a user with most of the chain already in place skips what they already have.
+1. The daemon writes the fleet, its thread and its first turn in one transaction.
+2. The first turn runs like any other, with no credential yet.
+3. The fleet reads the message and calls tools to shape itself, each only when the person's newest message asks.
+4. Later messages land on the same thread, so the chat that created the fleet stays its chat.
 
-### §8.2.2 Per-Fleet create flow
+A retry with the same `operation_id` answers the same fleet. A refused create writes nothing ([create and recovery](data_flow.md#create-and-recovery)).
+`agentsfleet doctor --json` checks that the server is reachable and a workspace is selected; it checks no model or balance.
 
-1. The user drafts a setup in chat (§8.1).
-2. **`agentsfleet doctor --json` runs first** as the deterministic readiness gate after login. Doctor is fast and verifies connectivity and workspace health only: `server_reachable`, `workspace_selected`, and `workspace_binding_valid`. It is the only sanctioned preflight surface for health; no parallel `preflight` command exists.
-   - Doctor does **not** carry provider posture or balance. Those live in `agentsfleet models current --json` (mode/provider/model/context cap) and `agentsfleet usage show` (balance and exhaustion state), read separately once health passes.
-   - The CLI (and any caller) reads `doctor`'s JSON output verbatim and aborts on failure with the user-facing message.
-3. **Review.** `GET` on the draft returns the effective setup, the access it needs, live readiness, and a `review_digest` (N4). The user picks the instance name and runtime model on the draft before reviewing.
-4. **Save.** `POST /v1/workspaces/{ws}/fleets` (C1) names the reviewed draft candidate and the review digest. `afd_setup` writes the fleet row, its first immutable revision in `fleet.revisions`, and any inherited schedule in one transaction. `fleet.fleets.head_revision_id` selects that revision, and ingress reads the setup from it; the fleet row keeps no config copy.
-5. **Readiness.** The saved fleet starts in `installing` with one check per need: definition, model, wallet, credential, connection, and grant. A missing credential or unapproved grant is a pending check, never a refused Save.
-   - Repeating Save with the same idempotency key retries the same fleet.
-   - The fleet turns `active` once every check passes and activation commits; run-now activation commits its initial turn in the same transaction. See [`data_flow.md`](./data_flow.md#fleet-creation-and-setup-recovery).
-6. **Provider wiring follows the trigger surface**: a GitHub App trigger needs a one-time workspace connection. A custom webhook keeps its per-fleet URL, which the saved fleet's response lists in `webhook_urls`. The platform holds its own App secrets, never a user's Personal Access Token (PAT) ([`connectors.md`](./connectors.md) §"GitHub App: platform setup to fleet runs").
-7. Future triggers are served with no restart and no watcher thread. Each trigger commits a queued turn to `thread.turns`. The control plane assigns that turn to an eligible `agentsfleet-runner` as a run, pushed as `Down::Run` on the runner's connection.
-   - [`data_flow.md`](./data_flow.md) §"Steer flow end-to-end" carries the full path.
-8. **Improve.** A change to a saved fleet is a new draft from `--fleet <id> --setup-revision <n>`, reviewed, then applied as the next immutable revision (N11).
+### Standing guidance
 
-After Save, the Fleet is no longer tied to the conversation that created it.
+"Always link the evidence" is standing guidance.
+The fleet pins it with `memory_store` under category `core`, and every later run's prompt carries it ([memory](memory.md)).
+A refused tool call returns to the model, which may correct it ([capabilities](capabilities.md#tools-that-change-the-fleet)).
 
-### §8.2.3 First scenarios
+### Access
 
-Two first scenarios anchor the product flow:
-
-- **GitHub Pull Request reviewer.** Wakes on GitHub pull request events and reads diff/context through `api.github.com`. Posting review comments stays blocked by repository egress policy.
-- **Zoho Recruit outreach.** Reads Zoho Recruit data and optionally sends mail through a separate secret; its provider-specific guidance lives in its instructions.
-
-## §8.3 Triggering the Fleet
-
-A Fleet's setup declares `triggers: [...]` under `config.x-agentsfleet`: an array of up to 8 trigger entries, unique on the `(type, source)` tuple. It may be empty or omitted: a fleet with no trigger is woken only by the messages sent to it. Each entry is one of:
-
-- **GitHub App trigger**. Type `webhook`, `source: github`, explicit `repositories` and `events`. Omitting `repositories` is fail-closed for App traffic ([`connectors.md`](./connectors.md) §"GitHub App: platform setup to fleet runs").
-- **Manual/custom webhook trigger.** Type `webhook` with a lowercase-slug `source` (never `approval`, whose segment is the approval route). Registry sources `github`, `linear` and `slack` use their fixed signing recipes and refuse overrides.
-  - Other sources declare `verifier.scheme` using one of the five [webhook recipes](fleet_definitions.md#webhook-declarations). Each trigger's `credential_name` selects a workspace JSON credential with a `webhook_secret` string; the name defaults to its source.
-  - Save returns `POST /v1/webhooks/{fleet_id}/{source}` for every webhook trigger, including Svix. The operator registers the URL and signing secret with the provider. This path does not infer a fleet from an App installation and does not require `repositories`.
-- **Cron trigger.** Type `cron`, `schedule` as a 5-field cron expression, plus `timezone` and `message`. Save copies it into the fleet's inherited schedule in the same transaction. `afd_cron` mirrors that intent to QStash under a stable identifier.
-  - QStash owns the clock and sends each signed fire to `agentsfleetd`, which writes one queued turn to `thread.turns` with `actor=cron:<schedule_id>`. The runner owns no timer.
-  - A setup allows at most one cron trigger; the schedule API can manage additional explicit schedules within the per-Fleet limit.
-
-In addition to the declared triggers, every Fleet always accepts:
-
-- **User steer.** The user asks Claude to run an operational task. Claude invokes `agentsfleet fleet steer {id} "<message>"` or uses the dashboard's composer on `/fleets/{id}`, which POSTs to `/v1/workspaces/{ws}/fleets/{id}/messages`.
-
-  `afd_turns::Steer::append` commits a queued turn with `actor=steer:<user>` and sends a best-effort wake notification. Webhook and cron write the same `thread.turns` rows.
-
-  The 202 answer names a disposition. A message sent while the fleet's run is live is `folded` into that run, which takes it at its next model call. Otherwise the message has `started` a run of its own, or is `queued` behind the work ahead of it.
-
-  The dashboard names every send with an `operation_id`, a version 7 universally unique identifier (UUID v7). It keeps unresolved sends in a per-user, per-fleet ledger mirrored to `localStorage` until the 202 response arrives. **Try again** carries the same identifier, including after reload.
-
-  Retrying with that identifier returns the first turn ([API reference](https://docs.agentsfleet.net/api-reference/introduction) › Fleet messages). A send unanswered after 30 seconds shows “Sending was interrupted.” beside **Try again**.
-
-  Another tab's send stays hidden while that tab holds its Web Lock, then shows **Try again** once the tab is gone. Every tab keeps a dismissal tombstone for one day, so a late write cannot restore a dismissed send. A final `UZ-AGT-016` refusal offers **Send as new** under a fresh identifier.
-
-  A replayed answer for a turn the page never loaded reads that turn's detail and settles its row. A turn already loaded settles from its own frames. A running turn unheard from for 45 seconds is read once, so a lost completion still ends its row.
-
-All actors flow through the same runtime path. The Fleet's in-run loop does not branch on actor type. The same `http_request`-driven evidence gathering and Slack post happen however the work was triggered.
-
-A "morning health check" steer produces a real first-pass evidence sweep; the fleet's instructions dictate behaviour, never the actor field.
-
-A fleet that declares no trigger is valid: steers reach every fleet, whatever it declares.
-
-## §8.4 Working from Claude or the dashboard
-
-The user experience inside Claude (or Amp / Codex CLI / OpenCode) feels like this:
-
-1. The user is already in their project.
-2. The user asks Claude to create or refine an operational fleet.
-3. Claude drives `agentsfleet chat`: it sends the description, reads the review, and saves only after the user agrees.
-4. For GitHub App triggers, the setup carries explicit `repositories` and `events`; the workspace's existing App installation supplies the event source. For a custom webhook, the saved fleet's response carries `webhook_urls` for operator registration.
-5. Claude can also manually invoke the fleet via `agentsfleet fleet steer` for one-off user-triggered tasks.
-6. Later, the fleet wakes on webhook or a QStash fire without the user staying in the terminal or any `agentsfleet` cron daemon running.
-7. When the user returns to Claude, they inspect what happened from durable history (`agentsfleet fleet turns {id}` or the dashboard Events tab) instead of reconstructing it from memory.
-
-The dashboard equivalent surface on `/fleets/{id}` matches the CLI path:
-
-- The **Trigger panel** renders one card per declared trigger. A GitHub App card shows connector state plus repository/event subscriptions and routes a disconnected workspace to Connect GitHub. Custom providers keep registration guidance and copyable per-fleet URLs; the dashboard never asks for or stores a user's provider PAT.
-- The **chat surface** shows trigger turns as system chips and each reply as its thinking, its tool calls and its answer. It reads the live frames while the fleet works and the turn's saved trace after a reload. A send the server refuses leaves the thread, and its text returns to the composer with **Try again**.
-- The **workspace switcher** requires a name while the server owns workspace identity. The browser never repeats a failed POST on its own. It reports the failure and walks the tenant workspace endpoint's stable cursor pages to refresh the complete list.
-- The CLI handles an uncertain response or registered name conflict with one encoded exact-name GET. It then selects the authoritative match without replaying the POST. A deliberate same-name retry cannot create another row because the tenant/name unique index returns a registered `409 Conflict`.
-- For login tokens, both create and list resolve the database subject mapping before a stale signed tenant claim and return that tenant identifier. Tenant API keys instead stay bound to the tenant recorded on the key, even if the creator's user mapping later changes. These rules keep local state from mixing tenants without letting an API key cross its issuing boundary.
-- The **authenticated frame** is shell-first ([`web_app.md`](./web_app.md) §"The five statements").
-
-The fleet extends Claude from an interactive assistant into a durable operational worker. The dashboard mirrors the same primitives, so a user who lives in the browser sees an equivalent surface.
-
-## §8.5 Example: Production deploy repair
-
-The current `platform-ops` flow wakes when GitHub Actions reports a failed production deployment. The fleet reads deployment evidence and posts a diagnosis.
-
-The approved target adds a bounded code fix and a draft Pull Request (PR). A human still reviews and merges the PR.
-
-The existing deployment pipeline deploys the merge. A later production-health verifier stays a target, not implemented runtime behavior.
-
-
-## §8.6 Why Claude is the starting point
-
-Starting with Claude is the right constraint because it matches how technical users already work today.
-
-They are already:
-
-- iterating prompts
-- editing project docs
-- asking for automation help
-- supervising tools from the terminal
-
-The v2 product meets them there first.
-
-Later, other entrypoints exist (the dashboard chat widget, direct API calls). But the MVP assumes:
-
-- the user authors and supervises from Claude
-- the fleet runs durably outside that transient chat session
-
-## §8.7 Model and context-cap origin (platform vs. self-managed)
-
-The draft selects a credentialed model, and Save pins its reference on the immutable revision as `runtime_model_ref`. Both platform-managed and self-managed runs resolve that reference at run time. The selected row in `model.platform_models` supplies the model identity, endpoint, API format, physical context window and maximum output length.
-
-Authored `config` model text cannot replace that selection.
-
-The setup flow starts with `agentsfleet doctor --json` for connectivity and workspace health (§8.2.2 step 2). Model selection uses the workspace's available-model list: owner registrations with credentials and the enabled platform default. A catalogue row without saved inference settings or a matching credential is not an eligible model.
-
-`agentsfleet models current --json` describes the account's provider posture; it does not override a revision's selected model.
+A fleet asks for a credential when it needs one, with `request_access {name, scope?}`.
+A workspace secret, GitHub and every other connected provider go through the same card.
 
 ```text
-Reviewed revision: runtime_model_ref
-                  |
-          Resolve the exact reference
-                  |
-        +---------+------------------------+
-        |                                  |
-Owner model registration           Enabled platform default
-model.tenant_models          model.platform_defaults
-        |                                  |
-Owner workspace vault              Admin workspace vault
-        |                                  |
-        +----------------+-----------------+
-                         |
-              Selected model.platform_models row
-              model + endpoint + API format
-              physical window + maximum output
-                         |
-                  ExecutionPolicy
-                         |
-        +----------------+-----------------+
-        |                                  |
-Saved model_context_tokens         context.context_cap_tokens
-Physical request limit             Authored nonzero operating cap,
-                                   otherwise saved physical window
-        |                                  |
-Final output bounded by            Compaction triggers at 90 percent
-remaining physical headroom        of the window by default; an
-and saved maximum output           authored threshold can be earlier
+Run                     agentsfleetd                         Person
+ |-- request_access ------>|                                    |
+ |   {name, scope?}        | is it a vault secret or a          |
+ |                         | connected provider? a GitHub       |
+ |                         | scope? a readable host?            |
+ |<-- [kind] sentence -----| refused: no row, no card           |
+ |<-- granted -------------| already covered: no card           |
+ |                         | else: grant pending + one card --->|
+ |   run ends waiting      |                                    |
+ |                         |<------------- Approve or Deny -----|
+ |                         | grant approved or revoked,         |
+ |                         | answer turn written                |
+ |<== new run resumes, holding the credential or knowing no ====|
 ```
 
-**Model identity and context limits have separate jobs.** `afd_credential`'s `Providers::resolve_reference` loads the exact owner registration or active platform default. It also loads the saved model metadata and the vault credential.
+The daemon checks a request before it writes anything:
 
-`afd_gate` carries that metadata into `ExecutionPolicy`; its context resolver always uses the selected model. Credentials stay in the daemon and runner supervisor, outside the sandbox and browser.
+- The name must be a workspace vault secret or a connected provider.
+- A `github` request must name a scope: the repositories, and read or write.
+- A secret's `host` must be one the egress allowlist can read, because the secret is sent only there.
 
-An absent or zero `context_cap_tokens` inherits the saved physical window. A nonzero authored cap can trigger earlier [conversation compaction](context_lifecycle.md); it leaves `ExecutionPolicy.model_context_tokens` unchanged.
+A refused request returns `[kind] sentence`, and the run continues with no row and no card.
+A second request while one is pending raises no second card.
 
-A valid checkpoint lets the same run continue with tools. Output stays bounded by the saved maximum and remaining physical headroom, planned by `af_context`.
-The other `x-agentsfleet.context.*` settings keep their authored values or use the defaults in [`capabilities.md`](./capabilities.md) §4.
+Otherwise the grant goes `pending`, with the asked-for scope kept as `requested_scope`, and one approval card appears in the chat.
+The run ends waiting, and its turn settles `waiting`, so the fleet's later messages are not held behind it.
 
-The run reads saved catalogue metadata instead of querying the inference provider for limits. Updating provider configuration is an explicit settings change; it does not require a deployment or a JSON routing file ([`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §10).
+Only a signed-in person answers the card; an API key gets 403.
+Approve moves `requested_scope` into `scope`. Deny sets the grant `revoked`, and a later request raises a new card.
 
-**Dashboard equivalent: the Models page (`/w/{workspace_id}/settings/models`).** A browser user can use the platform default or connect a provider through the owner registry.
+Either answer writes a new turn that resumes the waiting work ([waiting on a person](data_flow.md#waiting-on-a-person)).
 
-The draft's model picker lists eligible configured models and selects a default. The platform administrator manages the shared catalogue and default; users manage their own registrations and credentials.
+`agentsfleet fleet grants revoke`, or **Remove** under **Can access**, revokes a grant.
+A live run keeps what it was issued, and the next run and the next token mint do not.
+Each request, approval, denial and revoke emits the product event `fleet_access_changed` ([product analytics](product_analytics.md)).
 
-Saved credentials are never returned to the browser. The former `/credentials` page stays removed; custom secrets live on `/secrets`.
+One grant row exists per fleet and service, unique on `(fleet_id, service)`.
 
-## §8.8 Slack mentions and configured fleets
+A run's policy reads only approved grants. Their names fill the run's secrets map, and a GitHub scope builds the repository binding.
+Each approved secret's host joins the run's network allowlist.
 
-A workspace administrator connects Slack, then a member reviews and saves the fleet's channel subscription.
-Only a configured addressed fleet or sole eligible subscriber receives a mention turn.
-An unconfigured channel returns `channel_not_configured` without a model call or fleet creation.
+### Wakes on
 
-[Slack mention routing](scenarios/slack-incident-responder.md#4-routing-a-mention) owns name matching, notice-only channel bindings and current workspace checks.
-The configured fleet's tools, grants and accepted task determine its permitted work.
-Historical stored fleets stay unchanged and supply no fallback model route.
+A fleet wakes on messages, on its triggers and on its schedules.
+A trigger is a `fleet.triggers` row the fleet adds with `trigger_add` when a person asks. A fleet with none wakes only on messages.
+
+| Kind | `source` | Fields | One per fleet | The turn it writes |
+|---|---|---|---|---|
+| `webhook` | The sender's lowercase name, never `approval` or `github` | `events`, `verifier_scheme`, `verifier_header`, `secret_name` | Per source | Actor `webhook:<source>`, from `POST /v1/webhooks/{fleet_id}/{source}` |
+| `app_event` | `github` | `repositories`, `events` | One | Actor `github-app` ([GitHub App](connectors.md#github-app-from-install-to-a-routed-event)) |
+| `mention` | `slack` | `channel`, a Slack channel ID | One | Actor `slack:<team_id>:<user>` ([Slack mentions](slack_mentions.md)) |
+
+A webhook row's signature follows one of the [signing recipes](connectors.md#webhook-signing-recipes). The fleet page shows its URL to register with the sender.
+The [`night-owl` fixture](../../tests/fixtures/fleets/night-owl.json) wakes on a schedule and a signed webhook.
+
+A run adds, lists and removes rows with `trigger_add`, `trigger_list` and `trigger_remove`.
+Each posts a fenced run verb on `/v1/runners/me/runs/{run_id}/triggers`, so a runner that lost its run writes nothing.
+
+An add is refused, with `[kind] sentence` back to the model, when:
+
+- the workspace has not connected the provider, for an `app_event` or `mention` row;
+- `secret_name` names no secret in the workspace vault;
+- a webhook row's source is `approval` or `github`;
+- the fleet already holds a row of that kind and source.
+
+A person lists rows with `agentsfleet fleet triggers list` and removes one with `agentsfleet fleet triggers delete`.
+The fleet page's **Wakes on** list calls the same routes. Each add or remove writes the operator log `trigger_changed`.
+
+Each delivery route reads `fleet.triggers` with a `workspace_id` predicate, so a delivery never reaches another workspace's fleet.
+A delivery needs no grant. A grant governs only what the fleet may call.
+
+### Talking to it
+
+A person sends a message with `agentsfleet fleet steer` or the chat composer. Each message is a turn, and the answer names a disposition:
+
+| Disposition | When |
+|---|---|
+| `folded` | The fleet's run is live; the run takes the message at its next model call |
+| `started` | No run is live, so the message starts one |
+| `queued` | Work ahead of it holds the fleet's one run |
+
+The dashboard names every send with an `operation_id`, so **Try again** never sends twice ([web app](web_app.md)).
+
+A person reaches any fleet by name, written `@<NAME>`. The CLI and dashboard look the name up with `GET …/fleets?name=`, then send an ordinary message.
+In Slack, the first word after the bot names the fleet ([Slack mentions](slack_mentions.md)).
+
+A fleet hands work to another fleet in its workspace with `fleet_steer`, and hears back the same way.
+The [`queen-bee` and `busy-bee`](../../tests/fixtures/fleets/README.md) fixtures are the pair for this path.
+
+```text
+person, in queen-bee's chat: "Ask busy-bee for today's word and tell me what it said."
+
+queen-bee   fleet_activity()                          finds busy-bee's ID
+            fleet_steer(<busy-bee ID>, "what is today's word?")
+            answers at once: "asked busy-bee"         it does not wait
+busy-bee    runs under its own grants; its message begins
+            [from fleet queen-bee, fleet_id <ID>; ...]
+            fleet_steer(<queen-bee ID>, "today's word is ...")
+queen-bee   wakes for a second run: "busy-bee said ..."
+```
+
+A fleet's steer lands as actor `fleet:<fleet_id>` and never folds into a live run.
+`fleet_activity()` lists every fleet with its status, so a fleet can read a digest without steering.
+
+### What the fleet page shows
+
+Beside the chat, **Wakes on** lists triggers and schedules, **Can access** lists approved grants and **Remembers** lists pinned memory. Each entry has a remove control.
+
+The model picker and the "Allow all" and "Packages" toggles each send one `PATCH` to the fleet. [Web app](web_app.md) owns the page.
+
+## Limits
+
+- A name grants nothing. An unknown `@<NAME>` is refused and never falls back to the open chat's fleet.
+- A fleet starts with no credential. A missing one is a card the fleet raises, never a refused create.
+- Nothing caps how many triggers a fleet adds, beyond one per trigger type and source and what the workspace has connected.
+- A GitHub row that names no repository receives nothing.
+- Any fleet may steer any active fleet in its workspace, as often as the payer's balance allows. Nothing lists targets, limits the chain or caps the count.
+- A steer carries text, never access. A fleet that reads untrusted text can be told to steer another fleet. Each target's own grants and the payer's balance bound the damage.
+- Fleet steering has no wait. The receiver steers back, or the sender reads `fleet_activity`.
+- Connecting Slack creates no default fleet. A channel with no `mention` row answers `channel_not_configured`.
+
+## Related pages
+
+- [Data flow](data_flow.md): what each message, delivery and fire does inside the daemon.
+- [Run flow](run_flow.md): the `watch-dog` fixture, from first message to a pull request's answer.
+- [Connectors](connectors.md): how a workspace connects GitHub and Slack.
+- [Capabilities](capabilities.md): what a run is told and what it holds.
+- [Durable tasks](durable_tasks.md): work that continues across runs until it is done.
+- [Web app](web_app.md): the fleet page and the chat.

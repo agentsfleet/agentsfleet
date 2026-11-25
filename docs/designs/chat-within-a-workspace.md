@@ -18,7 +18,9 @@ Users should describe work, review setup, save a fleet, and return to results wi
 
 ## How it behaves
 
-[The layout record](workspace-chat-options.md) gives all screens and controls; [the ASCII flow](../architecture/data_flow.md#fleet-setup-and-runtime-sequence) gives the full lifecycle. The sidebar groups workspace entry, fleets, private drafts, Library, Activity/Approvals, and supported settings. Account owns Models, API Keys, and Billing. Failed workspace discovery offers Retry.
+[The layout record](workspace-chat-options.md) gives all screens and controls; [the ASCII flow](../architecture/data_flow.md#the-path-in-one-picture) gives the full lifecycle.
+
+The sidebar groups workspace entry, fleets, private drafts, Library, Activity/Approvals, and supported settings. Account owns Models, API Keys, and Billing. Failed workspace discovery offers Retry.
 
 New fleet creates no row on open. First Send/edit/Customize/Improve creates a private draft. A contextual drawer edits the same validated setup the model proposes. Review shows exact job, model, tools/access, triggers, and budgets, alongside live readiness. Idle setup-model replacement survives reload; earlier turns keep their pins. Failed messages retain safe recovery actions after reload.
 

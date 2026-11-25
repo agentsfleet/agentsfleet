@@ -19,7 +19,6 @@ impl Error {
             | ErrorKind::Invalid { .. }
             | ErrorKind::Refused { .. }
             | ErrorKind::Held
-            | ErrorKind::Exhausted
             | ErrorKind::Datastore { .. }
             | ErrorKind::Query { .. }
             | ErrorKind::Identifier { .. }
@@ -51,7 +50,6 @@ impl Error {
             | ErrorKind::Stale { .. }
             | ErrorKind::Json { .. }
             | ErrorKind::Invalid { .. }
-            | ErrorKind::Exhausted
             | ErrorKind::Datastore { .. }
             | ErrorKind::Query { .. }
             | ErrorKind::Identifier { .. }

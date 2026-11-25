@@ -32,7 +32,7 @@ async fn test_two_worker_hold_transfers_count_each_sandbox_once() {
     let engine = FakeEngine::default();
     let (holds, _clock) = holds(2);
     hold(&holds, &engine, FLEET_A).await.unwrap();
-    let guard = holds.occupy(Occupant::Fleet {
+    let guard = holds.occupy(Occupant {
         run: id(RUN),
         fleet: id(FLEET_A),
     });
@@ -55,14 +55,19 @@ async fn test_two_worker_hold_transfers_count_each_sandbox_once() {
     holds.shutdown().await;
 }
 
+/// Another fleet's run takes a worker, so a hold it cannot transfer into is
+/// released to keep the reserve.
 #[tokio::test]
-async fn test_setup_occupancy_preserves_the_keeper_reserve() {
+async fn test_another_fleets_occupancy_preserves_the_keeper_reserve() {
     let engine = FakeEngine::default();
     let (holds, _clock) = holds(2);
     hold(&holds, &engine, FLEET_A).await.unwrap();
-    let setup = holds.occupy(Occupant::Setup { run: id(FLEET_B) });
+    let other = holds.occupy(Occupant {
+        run: id(RUN),
+        fleet: id(FLEET_B),
+    });
     assert_eq!(fleets(&holds).await, Vec::<String>::new());
-    drop(setup);
+    drop(other);
     assert!(hold(&holds, &engine, FLEET_A).await.is_some());
     holds.shutdown().await;
 }
@@ -71,7 +76,7 @@ async fn test_setup_occupancy_preserves_the_keeper_reserve() {
 async fn cancelled_park_and_guard_drop_leave_no_busy_reservation() {
     let engine = FakeEngine::default();
     let (holds, _clock) = holds(2);
-    let busy = holds.occupy(Occupant::Fleet {
+    let busy = holds.occupy(Occupant {
         run: id(RUN),
         fleet: id(FLEET_A),
     });
@@ -92,10 +97,13 @@ async fn cancelled_park_and_guard_drop_leave_no_busy_reservation() {
 }
 
 #[tokio::test]
-async fn concurrent_setup_guard_drops_release_only_their_own_runs() {
+async fn concurrent_guard_drops_release_only_their_own_runs() {
     let engine = FakeEngine::default();
     let (holds, _clock) = holds(2);
-    let keeper = holds.occupy(Occupant::Setup { run: id(RUN) });
+    let keeper = holds.occupy(Occupant {
+        run: id(RUN),
+        fleet: id(FLEET_B),
+    });
     let barrier = Arc::new(Barrier::new(100));
     let mut workers = tokio::task::JoinSet::new();
     for _ in 0..100 {
@@ -105,7 +113,10 @@ async fn concurrent_setup_guard_drops_release_only_their_own_runs() {
             let run = af_crypto::entropy::Entropy::new()
                 .uuid7(af_core::clock::now())
                 .unwrap();
-            let guard = holds.occupy(Occupant::Setup { run });
+            let guard = holds.occupy(Occupant {
+                run,
+                fleet: id(FLEET_B),
+            });
             barrier.wait().await;
             drop(guard);
         });
@@ -115,7 +126,7 @@ async fn concurrent_setup_guard_drops_release_only_their_own_runs() {
     }
     assert!(
         hold(&holds, &engine, FLEET_A).await.is_none(),
-        "the original setup run still owns a worker"
+        "the original run still owns a worker"
     );
     drop(keeper);
     assert!(hold(&holds, &engine, FLEET_A).await.is_some());

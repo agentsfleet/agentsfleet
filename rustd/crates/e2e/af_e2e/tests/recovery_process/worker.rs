@@ -5,6 +5,12 @@ use crate::e2e::Scenario;
 use std::{path::Path, process::Stdio};
 use tokio::process::{Child, Command};
 
+/// The prefix of the CI bucket's variables, which stay with the daemon.
+///
+/// By prefix rather than by `custody`'s names, so the recovery bench that reuses
+/// this file needs no storage module.
+pub(super) const STORAGE_KNOB_PREFIX: &str = "AGENTSFLEET_R2_CI_";
+
 pub(super) struct Worker {
     pub(super) child: Child,
     pub(super) home: tempfile::TempDir,
@@ -26,7 +32,15 @@ impl Worker {
             .disable_cleanup(true)
             .tempdir_in("/tmp")?;
         let log = std::fs::File::create(home.path().join("runner.log"))?;
-        let child = Command::new(binary)
+        let mut command = Command::new(binary);
+        // A runner holds no storage credential: it moves checkpoint bytes
+        // only through the daemon's presigned transfers.
+        for (knob, _) in std::env::vars_os() {
+            if knob.to_string_lossy().starts_with(STORAGE_KNOB_PREFIX) {
+                command.env_remove(knob);
+            }
+        }
+        let child = command
             .arg("--model-address")
             .arg(model.address.to_string())
             .arg("--model-root")

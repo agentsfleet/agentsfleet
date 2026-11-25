@@ -1,5 +1,5 @@
-//! What a mint asks GitHub for: the fleet's declared reach, trimmed to what
-//! the installation can grant.
+//! What a mint asks GitHub for: the reach a person approved on the fleet's
+//! grant, trimmed to what the installation can grant.
 
 use std::collections::BTreeMap;
 
@@ -57,7 +57,7 @@ impl Installed {
     }
 }
 
-/// The body that narrows an installation token to one fleet's declared reach.
+/// The body that narrows an installation token to one fleet's approved reach.
 ///
 /// # Repositories go by BARE name, and that is GitHub's rule, not a choice
 ///

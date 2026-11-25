@@ -4,7 +4,6 @@
 use af_crypto::aad::Aad;
 use af_crypto::envelope::Sealer;
 use af_crypto::secret::Kek;
-use af_fleet_runtime::definition::{POLICY_SEMANTICS, canonical_digest};
 use af_wire::runner::{NetworkPolicy, SandboxTier};
 use afd_db::test_util::mint_id;
 
@@ -22,9 +21,6 @@ const TENANT_KEY: &str = "sk-tenant-fixture-key";
 
 /// Where the tenant's registered model finds its credential.
 const TENANT_SECRET: &str = "tenant-runner-model";
-
-/// A native setup the fleet is moved onto, naming the tenant's model.
-const CONFIG: &str = r#"{"name":"tenant-model","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"}}}"#;
 
 const TENANT_MODEL_ENTRY: &str = "INSERT INTO model.tenant_models \
     (id, tenant_id, model_name, secret_ref, workspace_id, selected, created_at, updated_at) \
@@ -97,18 +93,7 @@ async fn seat_tenant_model(fixtures: &Fixtures, tenant: &Uuid7, fleet: &Uuid7) {
         .execute(&mut *connection)
         .await
         .expect("the tenant's model is registered");
-    let definition = crate::setup::definition(CONFIG);
-    let stored = serde_json::to_string(&definition).expect("definition JSON");
-    let digest = canonical_digest(&definition).expect("canonical digest");
-    fixtures
-        .append_head(
-            fleet,
-            &stored,
-            &digest,
-            POLICY_SEMANTICS,
-            Some(entry.as_str()),
-        )
-        .await;
+    fixtures.set_model(fleet, entry.as_str()).await;
 }
 
 /// The delivered policy's provider key.

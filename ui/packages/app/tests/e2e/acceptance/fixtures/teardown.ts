@@ -13,7 +13,7 @@
  * global-teardown's backstop sweep (sweepLeakedFixtureFleets) lives here
  * too, next to the destructive-target guard every deletion must share.
  */
-import { FleetSchema } from "@/lib/api/draft-types";
+import { FleetDetailSchema } from "@/lib/api/fleet-detail";
 import { clientFor } from "./api-client";
 import type { ClientHandle } from "./api-client";
 import { listFleets, listWorkspaces } from "./seed";
@@ -230,6 +230,6 @@ async function revokeAndDeleteKey(
 export async function purgeFixtureFleet(handle: ClientHandle, workspaceId: string, fleetId: string): Promise<void> {
   const client = clientFor(handle);
   const endpoint = `/v1/workspaces/${encodeURIComponent(workspaceId)}/fleets/${encodeURIComponent(fleetId)}`;
-  const current = FleetSchema.parse(await client.get<unknown>(endpoint));
+  const current = FleetDetailSchema.parse(await client.get<unknown>(endpoint));
   await client.delete(endpoint, {"If-Match": current.etag});
 }

@@ -127,7 +127,6 @@ pub(super) async fn publish(
     let prepared = PreparedDurableTask {
         execution_deadline: native.goals.inputs.execution_deadline,
         inputs: native.goals.inputs.clone(),
-        allow_actions: true,
     };
     engine
         .run(AgentRun {

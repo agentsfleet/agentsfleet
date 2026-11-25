@@ -1,7 +1,7 @@
 import {rowToTurn, type FleetTurn} from "@/lib/streaming/fleet-stream-row";
-import {SCHEDULE, WORKSPACE, FLEET_ID} from "@/tests/helpers/draft-fixtures";
+import {SCHEDULE, WORKSPACE, FLEET_ID} from "@/tests/helpers/fleet-fixtures";
 import {SCHEDULE_TURN} from "@/tests/helpers/schedule-activity";
-import type {Schedule} from "@/lib/api/draft-types";
+import type {Schedule} from "@/lib/api/schedule-types";
 
 export function visualWakeup(started: number): Schedule {
   return {...SCHEDULE, fleet_id: FLEET_ID, status: "active", sync: "synced", run_state: "scheduled",

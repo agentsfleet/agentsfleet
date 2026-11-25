@@ -30,18 +30,18 @@ impl From<serde_json::Error> for Error {
 
 /// A required key that deserialized to `None`.
 ///
-/// Raised in exactly one place — where this crate turns the schema into a policy
-/// and finds a `None` it needs — which is what keeps it from drifting into
-/// [`ErrorKind::InvalidFieldType`], as the module note explains.
+/// Raised only where a raw type is resolved and a `None` it needs is found —
+/// which is what keeps it from drifting into [`ErrorKind::InvalidFieldType`],
+/// as the module note explains.
 pub(crate) fn missing(field: &'static str) -> Error {
     ErrorKind::MissingRequiredField { field }.into()
 }
 
 /// The two kinds this crate lifts, each still carrying its cause.
 ///
-/// Apart from [`one_of_each_kind`] only because that list is at its length
-/// cap. These are the kinds that are NOT transparent, so they are the ones a
-/// stringify could silently strip a `source()` from.
+/// Apart from [`one_of_each_kind`] because these are the kinds that are NOT
+/// transparent, so they are the ones a stringify could silently strip a
+/// `source()` from.
 #[cfg(feature = "test-util")]
 fn lifted_kinds() -> Vec<(&'static str, Error)> {
     use serde::de::Error as _;
@@ -49,7 +49,7 @@ fn lifted_kinds() -> Vec<(&'static str, Error)> {
     let unreadable_field = serde_json::Error::custom("a string where an integer belongs");
     let mut out_of_bounds = garde::Report::new();
     out_of_bounds.append(
-        garde::Path::new("tools"),
+        garde::Path::new("events"),
         garde::Error::new("more entries than the bound allows"),
     );
 
@@ -81,36 +81,17 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
     const REASON: &str = "the fixture breaks this rule";
 
     let mut kinds = vec![
-        ("missing required field", missing("name")),
-        (
-            "invalid definition",
-            ErrorKind::InvalidDefinition { reason: REASON }.into(),
-        ),
-        (
-            "runtime key outside block",
-            ErrorKind::RuntimeKeyOutsideBlock {
-                field: "gates".into(),
-            }
-            .into(),
-        ),
+        ("missing required field", missing("criteria")),
         (
             "unsupported key",
             ErrorKind::UnsupportedKey {
-                path: "x-agentsfleet.gates.rules.0.severity".into(),
-                setting: Some("gates"),
+                path: "0.credential_name".into(),
             }
             .into(),
         ),
         (
-            "unknown runtime key",
-            ErrorKind::UnknownRuntimeKey {
-                field: "not-a-key".into(),
-            }
-            .into(),
-        ),
-        (
-            "runtime block required",
-            ErrorKind::RuntimeBlockRequired.into(),
+            "invalid statement",
+            ErrorKind::InvalidStatement { reason: REASON }.into(),
         ),
         (
             "invalid name",
@@ -124,14 +105,6 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             "invalid credential ref",
             ErrorKind::InvalidCredentialRef {
                 name: "not a ref".into(),
-                reason: REASON,
-            }
-            .into(),
-        ),
-        (
-            "invalid budget",
-            ErrorKind::InvalidBudget {
-                field: "budget.daily_nanos",
                 reason: REASON,
             }
             .into(),

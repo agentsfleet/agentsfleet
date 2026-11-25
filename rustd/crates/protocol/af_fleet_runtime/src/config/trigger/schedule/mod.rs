@@ -1,6 +1,5 @@
 //! A cron trigger's schedule: what this product will register, decided in one
-//! place for the runner's proposal check, the daemon's definition parse and the
-//! schedule routes alike.
+//! place for a trigger list's parse and the schedule routes alike.
 //!
 //! # The parser is the crate's; the policy is this product's
 //!
@@ -11,7 +10,7 @@
 //!
 //! - **Aliases and names.** `@daily` and `MON` are read by the crate and are
 //!   not what the daemon registers upstream. Refused here so the author sees
-//!   it when the definition is checked, rather than storing an expression that
+//!   it when the schedule is checked, rather than storing an expression that
 //!   fails when it is pushed.
 //! - **A step wider than its field's span.** `*/61` in a minute field means
 //!   "every 61st minute of 60", which is not a schedule.
@@ -73,8 +72,8 @@ pub struct CronSchedule<'a> {
 
 /// Whether a proved expression is one this product will register.
 ///
-/// The daemon's schedule routes and the definition parse both call this, so a
-/// schedule the runner's proposal check accepts is one the daemon registers.
+/// The daemon's schedule routes and a trigger list's parse both call this, so
+/// a schedule either accepts is one the daemon registers.
 ///
 /// # Errors
 /// [`Error::InvalidTriggerSet`] naming `schedule`, for an expression the parser

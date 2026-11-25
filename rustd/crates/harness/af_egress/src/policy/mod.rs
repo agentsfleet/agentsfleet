@@ -2,11 +2,11 @@
 //!
 //! One pipeline, each step refusing with what it found: the method; where
 //! each placeholder stands; HTTPS; the host in the allowlist; an address
-//! literal outside the private ranges; each credential bound to this host; the
-//! host's origin rules; and `read_only`. Two steps are strict because one host
-//! serves many tenants: a misplaced placeholder refuses under every policy,
-//! not only under `read_only`, and an allowlisted host still never reaches a
-//! private address (the resolver in `network.rs` holds that line for names).
+//! literal outside the private ranges; each credential bound to this host; and
+//! the host's origin rules. Two steps are strict because one host serves many
+//! tenants: a misplaced placeholder refuses under every policy, and an
+//! allowlisted host still never reaches a private address (the resolver in
+//! `network.rs` holds that line for names).
 
 use std::borrow::Cow;
 use std::fmt;
@@ -34,9 +34,6 @@ const METHODS: [Method; 7] = [
     Method::DELETE,
     Method::OPTIONS,
 ];
-
-/// The methods `read_only` allows everywhere.
-const READS: [Method; 2] = [Method::GET, Method::HEAD];
 
 /// The only scheme sent.
 const HTTPS: &str = "https";
@@ -149,8 +146,7 @@ impl<'p> EgressPolicy<'p> {
         credentials
             .into_iter()
             .try_for_each(|secret| self.bound(secret, host))?;
-        let matched = self.allows_origin(&method, &url, draft.body.as_deref())?;
-        self.allows_read_only(&method, &url, matched)?;
+        self.allows_origin(&method, &url, draft.body.as_deref())?;
         Ok(Allowed {
             method,
             url,
@@ -247,13 +243,14 @@ impl<'p> EgressPolicy<'p> {
             .find(|origin| origin.host.eq_ignore_ascii_case(host))
     }
 
-    /// Whether a rule allowed the request: `false` for a host with no rules,
-    /// a refusal for a host whose rules allow nothing of this shape.
-    fn allows_origin(self, method: &Method, url: &Url, body: Option<&str>) -> Result<bool> {
+    /// Whether the host's origin rules allow the request: a host with no
+    /// rules allows it, and a host whose rules allow nothing of this shape
+    /// refuses it.
+    fn allows_origin(self, method: &Method, url: &Url, body: Option<&str>) -> Result<()> {
         let host = url.host_str().unwrap_or_default();
         match self.origin(host) {
-            None => Ok(false),
-            Some(origin) if origin::allows(origin, method, url, body) => Ok(true),
+            None => Ok(()),
+            Some(origin) if origin::allows(origin, method, url, body) => Ok(()),
             Some(origin) => Err(raise::request_policy_not_allowed(
                 host,
                 method.as_str(),
@@ -261,26 +258,6 @@ impl<'p> EgressPolicy<'p> {
                 origin::closed_refusal(origin, method, url, body),
             )),
         }
-    }
-
-    /// Under `read_only`: reads, matched POST/PATCH rules, and listed query POSTs.
-    fn allows_read_only(self, method: &Method, url: &Url, matched: bool) -> Result<()> {
-        let allowed = !self.network.read_only
-            || READS.contains(method)
-            || (matched && (*method == Method::POST || *method == Method::PATCH))
-            || (*method == Method::POST && self.read_post(url));
-        allowed
-            .then_some(())
-            .ok_or_else(|| raise::method_not_allowed(method.as_str()))
-    }
-
-    /// Whether `url` is a listed query path, ending there or at its query.
-    fn read_post(self, url: &Url) -> bool {
-        self.network.read_post_paths.iter().any(|prefix| {
-            url.as_str()
-                .strip_prefix(prefix.as_ref())
-                .is_some_and(|rest| rest.is_empty() || rest.starts_with('?'))
-        })
     }
 }
 

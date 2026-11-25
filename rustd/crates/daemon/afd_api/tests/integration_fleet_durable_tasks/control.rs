@@ -1,7 +1,6 @@
 //! Public conditional controls fence concurrent writes without resetting work.
 #![expect(clippy::expect_used, reason = "test preconditions fail loudly")]
 
-mod adoption;
 mod resume;
 
 use std::sync::{
@@ -224,7 +223,6 @@ fn spawn_controls(
 pub(super) fn preserved(before: &Value, after: &Value) {
     for field in [
         "durable_task_id",
-        "accepted_revision_id",
         "objective",
         "goal_digest",
         "questions",

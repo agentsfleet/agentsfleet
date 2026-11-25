@@ -18,25 +18,30 @@ import { wsGrantsListPath, wsGrantPath } from "../../lib/api-paths.ts";
 
 const GRANT_ID_FIELD = "id";
 
+// `Grant` in `GET F/integration-grants`: one secret or integration the fleet
+// asked for, and whether a person approved it.
 interface GrantRow {
-  readonly service?: string | null;
-  readonly status?: string | null;
-  readonly created_at?: string | null;
-  readonly approved_at?: string | null;
   readonly id?: string | null;
+  readonly kind?: string | null;
+  readonly name?: string | null;
+  readonly status?: string | null;
+  readonly approved_at?: string | null;
 }
 
 interface GrantListResponse {
   readonly items?: ReadonlyArray<GrantRow>;
 }
 
+// A grant carries no creation time, so the table has no age column.
 const GRANT_SPEC = {
-  name: { key: "service", label: "SERVICE" },
+  name: { key: "name", label: "NAME" },
   id: { key: GRANT_ID_FIELD },
   domain: [
+    { key: "kind", label: "KIND" },
     { key: "status", label: "STATUS" },
     { key: "approved_at", label: "APPROVED_AT" },
   ],
+  ageKey: null,
 } as const;
 
 const NO_GRANTS = "no integration grants found" as const;
@@ -77,9 +82,9 @@ export const grantListEffectFromArgs = Effect.fn("grant.list")(function* (
   yield* output.printEntityTable(
     GRANT_SPEC,
     grants.map((g) => ({
-      service: g.service ?? "",
+      name: g.name ?? "",
+      kind: g.kind ?? "",
       status: g.status ?? "",
-      created_at: g.created_at,
       approved_at: instantCell(g.approved_at),
       id: g.id ?? "",
     })),

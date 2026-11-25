@@ -1,3 +1,4 @@
-//! Native setup boundary proofs, grouped by observable behavior.
+//! A fleet made from a person's first message, and the person's edits of it,
+//! grouped by observable behavior.
 
-mod draft;
+mod fleet;

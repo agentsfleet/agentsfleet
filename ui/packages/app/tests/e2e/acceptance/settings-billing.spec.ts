@@ -76,15 +76,23 @@ test.describe("settings billing", () => {
         }
         await page.getByRole(ROLE.combobox, { name: FILTER_LABEL.fleet, exact: true }).scrollIntoViewIfNeeded();
         await expect(page.getByRole(ROLE.combobox, { name: FILTER_LABEL.fleet, exact: true })).toBeInViewport();
-        const totals = await page.locator('[aria-label="Period totals"] > div').evaluateAll(nodes =>
-          nodes.map(node => ({top: node.getBoundingClientRect().top, left: node.getBoundingClientRect().left})));
+        const totals = await page.locator('[aria-label="Period totals"] > div').evaluateAll(nodes => nodes.map(node => {
+          const box = node.getBoundingClientRect();
+          return {top: box.top, left: box.left, right: box.right};
+        }));
         expect(totals).toHaveLength(3);
+        const [charge, activities, tokens] = totals;
+        if (charge === undefined || activities === undefined || tokens === undefined) throw new Error("Period totals lost a metric");
         if (layout.viewport.width >= VIEWPORT.intermediate.width) {
           expect(Math.max(...totals.map(metric => metric.top)) - Math.min(...totals.map(metric => metric.top))).toBeLessThan(1);
         } else {
-          expect(totals[1]!.top).toBeGreaterThan(totals[0]!.top);
-          expect(totals[2]!.top).toBeGreaterThan(totals[1]!.top);
-          expect(Math.max(...totals.map(metric => metric.left)) - Math.min(...totals.map(metric => metric.left))).toBeLessThan(1);
+          // Below the summary breakpoint the charge spans the first row and
+          // Activities and Tokens share the second, one column each.
+          expect(activities.top).toBeGreaterThan(charge.top);
+          expect(Math.abs(tokens.top - activities.top)).toBeLessThan(1);
+          expect(Math.abs(activities.left - charge.left)).toBeLessThan(1);
+          expect(tokens.left).toBeGreaterThan(activities.right - 1);
+          expect(Math.abs(tokens.right - charge.right)).toBeLessThan(1);
         }
         const activity = page.getByRole("table", { name: "Spending by fleet", exact: true });
         await expect(activity.getByRole("columnheader")).toHaveCount(4);

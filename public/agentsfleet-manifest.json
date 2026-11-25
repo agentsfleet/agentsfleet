@@ -17,14 +17,14 @@
       "operationId": "create_fleet",
       "method": "POST",
       "path": "/v1/workspaces/{workspace_id}/fleets",
-      "description": "Provision a new Fleet in the given workspace. Returns the fleet_id used for subsequent operations.",
+      "description": "Start an active Fleet in the given workspace from its first message, which becomes its first turn. Body: message, operation_id, and optional model_ref and name. Returns the fleet_id used for subsequent operations; a retry with the same operation_id and body returns the same Fleet.",
       "actionClass": "sensitive"
     },
     {
       "operationId": "patch_fleet",
       "method": "PATCH",
       "path": "/v1/workspaces/{workspace_id}/fleets/{fleet_id}",
-      "description": "Partial update of a Fleet. Body fields are optional and presence-based: name (rename the instance) and/or status (\"active\" activates a Fleet still installing and retries its setup, \"archived\" cancels its work and keeps its history; archived is terminal). Setup changes go through apply_fleet_revision. Approving a setup grant retries setup without a PATCH.",
+      "description": "Partial update of a Fleet. Body fields are optional and presence-based: name (rename the instance), model_ref (the model its next run uses), http_egress and package_domains (its network; a signed-in person only, an API key is refused), and status (\"archived\" cancels its work and keeps its history; archived is terminal).",
       "actionClass": "sensitive"
     },
     {
@@ -54,6 +54,20 @@
       "path": "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/turns/stream",
       "description": "Server-Sent Events stream of new turns as they arrive.",
       "actionClass": "safe"
+    },
+    {
+      "operationId": "list_fleet_triggers",
+      "method": "GET",
+      "path": "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/triggers",
+      "description": "List what may wake the Fleet: its webhooks with their delivery URLs, its GitHub App subscriptions and its Slack mentions. No signing secret is returned.",
+      "actionClass": "safe"
+    },
+    {
+      "operationId": "remove_fleet_trigger",
+      "method": "DELETE",
+      "path": "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/triggers/{trigger_id}",
+      "description": "Remove one of the Fleet's triggers; deliveries to it are refused from then on. Returns 204, also when it is already gone.",
+      "actionClass": "sensitive"
     },
     {
       "operationId": "get_tenant_billing",
@@ -87,7 +101,7 @@
       "operationId": "receive_source_webhook",
       "method": "POST",
       "path": "/v1/webhooks/{fleet_id}/{source}",
-      "description": "Deliver an inbound event to the Fleet's webhook trigger whose source the URL names; this is the URL Save returns for each webhook trigger. The body must be Hash-Based Message Authentication Code with Secure Hash Algorithm 256 (HMAC-SHA256) signed with the workspace credential matching that trigger's source (e.g. vault row fleet:github, field webhook_secret); the provider-specific signature header is verified before the body is read. Idempotent within 24h via event_id.",
+      "description": "Deliver an inbound event to the Fleet's webhook trigger whose source the URL names; this is the URL list_fleet_triggers shows for each webhook trigger. The body must be Hash-Based Message Authentication Code with Secure Hash Algorithm 256 (HMAC-SHA256) signed with the vault secret that trigger names (field webhook_secret); the provider-specific signature header is verified before the body is read. Idempotent within 24h via event_id.",
       "actionClass": "sensitive"
     },
     {

@@ -15,7 +15,6 @@ fn scope() -> TurnScope {
         workspace_id: CheckpointOperationId(ID.into()),
         fleet_id: CheckpointOperationId(ID.into()),
         turn_id: CheckpointOperationId(ID.into()),
-        setup_revision_id: CheckpointOperationId(ID.into()),
         workspace: TurnWorkspace::ApiOnly,
     }
 }
@@ -36,13 +35,12 @@ fn saved_roots_bind_the_issued_model_and_each_scope_dimension() -> crate::Result
         &[],
         Some(("accepted-model", "accepted-provider")),
     )?;
-    for field in 0..4 {
+    for field in 0..3 {
         let mut changed = original.clone();
         match field {
             0 => changed.workspace_id = CheckpointOperationId(OTHER.into()),
             1 => changed.fleet_id = CheckpointOperationId(OTHER.into()),
-            2 => changed.turn_id = CheckpointOperationId(OTHER.into()),
-            _ => changed.setup_revision_id = CheckpointOperationId(OTHER.into()),
+            _ => changed.turn_id = CheckpointOperationId(OTHER.into()),
         }
         assert!(
             root::validate(&bytes, &changed, &[], None)

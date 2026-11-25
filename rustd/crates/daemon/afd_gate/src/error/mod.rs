@@ -52,25 +52,11 @@ pub(crate) enum ErrorKind {
         source: afd_credential::Error,
     },
 
-    /// The entropy a gate reference is minted from could not be drawn.
-    #[error("the entropy source could not answer for the gate plane")]
-    Entropy {
+    /// A fleet's approved GitHub scope would not parse back into a binding.
+    #[error("the fleet's approved GitHub scope could not be read")]
+    Scope {
         #[source]
-        source: af_crypto::error::Error,
-    },
-
-    /// An identifier could not be minted from the current instant.
-    #[error("an identifier could not be minted for the gate plane")]
-    Identifier {
-        #[source]
-        source: af_core::error::Error,
-    },
-
-    /// A money read a gate is priced against failed.
-    #[error("the billing store could not answer for the gate plane")]
-    Billing {
-        #[source]
-        source: afd_billing::Error,
+        source: af_fleet_runtime::Error,
     },
 }
 
@@ -82,16 +68,13 @@ impl Error {
             ErrorKind::Datastore { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
             ErrorKind::Query { .. } => error_code::INTERNAL_DB_QUERY,
             ErrorKind::Rejected { .. } => error_code::INVALID_REQUEST,
-            // A daemon that cannot draw random bytes or name an instant is THIS
-            // process failing, not the caller's request being wrong.
-            ErrorKind::Entropy { .. } | ErrorKind::Identifier { .. } => {
-                error_code::INTERNAL_OPERATION_FAILED
-            }
-            // Delegated rather than restated: each plane already decides which
-            // of its own failures is an outage and which is a fault, and a
-            // second copy of that mapping here is what drifts.
+            // A stored row this daemon wrote that will not read back is THIS
+            // daemon failing, not the caller's request being wrong.
+            ErrorKind::Scope { .. } => error_code::INTERNAL_OPERATION_FAILED,
+            // Delegated rather than restated: the credential plane already
+            // decides which of its own failures is an outage and which is a
+            // fault, and a second copy of that mapping here is what drifts.
             ErrorKind::Credential { source } => source.code(),
-            ErrorKind::Billing { source } => source.code(),
         }
     }
 
@@ -101,11 +84,8 @@ impl Error {
         match self.kind() {
             ErrorKind::Rejected { detail } => detail,
             ErrorKind::Datastore { .. } => DETAIL_UNAVAILABLE,
-            ErrorKind::Query { .. } | ErrorKind::Entropy { .. } | ErrorKind::Identifier { .. } => {
-                DETAIL_OPERATION_FAILED
-            }
+            ErrorKind::Query { .. } | ErrorKind::Scope { .. } => DETAIL_OPERATION_FAILED,
             ErrorKind::Credential { source } => source.detail(),
-            ErrorKind::Billing { source } => source.detail(),
         }
     }
 
@@ -115,11 +95,9 @@ impl Error {
         match self.kind() {
             ErrorKind::Datastore { .. } => true,
             ErrorKind::Credential { source } => source.is_datastore_unavailable(),
-            ErrorKind::Billing { source } => source.is_datastore_unavailable(),
             _served @ (ErrorKind::Query { .. }
             | ErrorKind::Rejected { .. }
-            | ErrorKind::Entropy { .. }
-            | ErrorKind::Identifier { .. }) => false,
+            | ErrorKind::Scope { .. }) => false,
         }
     }
 
@@ -133,17 +111,17 @@ impl Error {
     ///
     /// Delegated to the credential plane where it owns the answer: a stored
     /// endpoint the guard refused does not become safe by being retried, while
-    /// a datastore that would not answer recovers on its own.
+    /// a datastore that would not answer recovers on its own. An approved
+    /// scope that will not read back stays unreadable until a person asks for
+    /// the access again.
     #[must_use]
     pub const fn is_config_permanent(&self) -> bool {
         match self.kind() {
             ErrorKind::Credential { source } => source.is_config_permanent(),
+            ErrorKind::Scope { .. } => true,
             _transient @ (ErrorKind::Datastore { .. }
             | ErrorKind::Query { .. }
-            | ErrorKind::Rejected { .. }
-            | ErrorKind::Entropy { .. }
-            | ErrorKind::Identifier { .. }
-            | ErrorKind::Billing { .. }) => false,
+            | ErrorKind::Rejected { .. }) => false,
         }
     }
 }
@@ -157,9 +135,7 @@ const DETAIL_OPERATION_FAILED: &str = "The operation could not be completed";
 af_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
     afd_credential::Error => Credential,
-    afd_billing::Error => Billing,
-    af_crypto::error::Error => Entropy,
-    af_core::error::Error => Identifier,
+    af_fleet_runtime::Error => Scope,
 );
 
 /// Reports a statement that would not run, naming what it was doing.

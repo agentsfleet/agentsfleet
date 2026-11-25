@@ -12,7 +12,7 @@ use af_core::error_code::{Coded as _, Logged};
 use af_core::id::Uuid7;
 use af_core::turn::label;
 
-use super::step::{Step, waited};
+use super::step::Step;
 use super::{CheckedFleetWork, RunService};
 use crate::error::{Error, Result};
 use crate::run::answer::{EVENT_ABANDONED, EVENT_REFUSED, no_work};
@@ -30,19 +30,18 @@ pub(super) const EVENT_CONFIG_REFUSAL_UNRECORDED: &str = "config_refusal_unrecor
 impl RunService {
     /// The installed fleet behind an assignment, or the answer that ends the pass.
     ///
-    /// Three of the four arms end it, which is why this is a
-    /// [`Step`](super::step::Step) rather than an `Option`: an archived fleet, a
-    /// task setup current authority no longer fits and an unreadable document
-    /// are different endings, and the caller should not have to tell them apart
-    /// to know the pass is over. The installed read parses the row the
-    /// assignment already read and asks no datastore, so every other fault it
-    /// raises is the stored document's.
+    /// Two of the three arms end it, which is why this is a
+    /// [`Step`](super::step::Step) rather than an `Option`: an archived fleet
+    /// and an unreadable row are different endings, and the caller should not
+    /// have to tell them apart to know the pass is over. The installed read
+    /// reads the row the assignment already read and asks no datastore, so
+    /// every fault it raises is the stored row's.
     pub(super) async fn resolve_installed(
         &self,
         acquired: &Acquired,
         runner_id: &Uuid7,
     ) -> Result<Step<Installed>> {
-        match self.runs.installed_assigned(&acquired.opened).await {
+        match crate::run::store::Runs::installed_assigned(&acquired.opened) {
             Ok(Some(installed)) => Ok(Step::Go(installed)),
             // The selection pass filters on status, so reaching here with a
             // fleet that is not active means it was archived in the window
@@ -52,16 +51,8 @@ impl RunService {
                 no_work(runner_id, FLEET_ARCHIVED);
                 Ok(Step::Stop)
             }
-            // One fleet's unreadable document is that fleet's fault and not
-            // this runner's, which is the whole of `refuse_unreadable_config`.
-            Err(changed) if changed.code() == af_core::error_code::DURABLE_TASK_INVALID_TARGET => {
-                self.runs.block_changed_durable_task_setup(acquired).await?;
-                no_work(
-                    runner_id,
-                    "the task's accepted setup no longer fits current authority",
-                );
-                Ok(Step::Stop)
-            }
+            // One fleet's unreadable row is that fleet's fault and not this
+            // runner's, which is the whole of `refuse_unreadable_config`.
             Err(unreadable) => self
                 .refuse_unreadable_config(acquired, runner_id, &unreadable)
                 .await
@@ -69,10 +60,10 @@ impl RunService {
         }
     }
 
-    /// Apply a stop the payer, money or approval gate declined with.
+    /// Apply a stop the payer or money gate declined with.
     ///
-    /// A wait on a person parks; a refusal ends the event; a retry leaves the
-    /// delivery leasable for the next poll.
+    /// A refusal ends the event; a retry leaves the delivery leasable for the
+    /// next poll.
     pub(super) async fn ended(
         &self,
         acquired: &Acquired,
@@ -80,7 +71,6 @@ impl RunService {
         runner_id: &Uuid7,
     ) -> Result<Step<CheckedFleetWork>> {
         match declined {
-            Declined::Await(waiting) => Ok(waited(runner_id, waiting)),
             Declined::Refuse(refusal) => self
                 .refused(acquired, refusal.label, runner_id, "")
                 .await

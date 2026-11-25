@@ -1,12 +1,9 @@
-//! Complete authored questions are bounded before becoming immutable setup.
+//! The bounds garde calls back into for a statement's text and key.
 
 use std::collections::BTreeMap;
 
 use af_validate::TEXT_MAX_CHARS;
 use garde::Validate;
-
-use super::raw;
-use crate::Result;
 
 #[derive(Validate)]
 struct Text<'a> {
@@ -16,12 +13,6 @@ struct Text<'a> {
         custom(af_validate::rules::nul_free)
     )]
     value: &'a str,
-}
-
-#[derive(Validate)]
-struct Statements<'a> {
-    #[garde(length(min = 1))]
-    values: &'a [raw::Statement],
 }
 
 pub(super) fn nonblank<C: ?Sized>(value: &str, _context: &C) -> garde::Result {
@@ -49,10 +40,5 @@ pub(super) fn criteria<C: ?Sized>(
             ));
         }
     }
-    Ok(())
-}
-
-pub(super) fn statements(values: &[raw::Statement]) -> Result<()> {
-    garde::Unvalidated::new(Statements { values }).validate()?;
     Ok(())
 }

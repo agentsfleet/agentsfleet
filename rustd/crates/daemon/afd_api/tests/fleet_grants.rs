@@ -33,8 +33,9 @@ use serde_json::Value;
 
 use self::harness::{Fleet, OWNED_WORKSPACE};
 
-/// A tenant api-key, shaped as the authenticator classifies one.
-const TENANT_KEY: &str = "agt_tfacefeeddecafbaddecafbaddecafbaddecafbaddecafbaddecafbaddecafbad";
+/// A signed-in person's browser session: a revoke needs a person, so the
+/// suite signs in as one.
+const SESSION: &str = "fixture.header.payload";
 
 /// The subject the fixture credential resolves to.
 const SUBJECT: &str = "user_2grants";
@@ -75,14 +76,14 @@ async fn send(
     credential: Option<&str>,
 ) -> axum::response::Response {
     let router = Fleet::new()
-        .with_person(TENANT_KEY, SUBJECT, scopes)
+        .with_dashboard_holding(SUBJECT, scopes)
         .router();
     harness::send(&router, method, path, credential, "").await
 }
 
 /// One fully authorised request, for the tests isolating another axis.
 async fn authorised(method: Method, path: &str) -> axum::response::Response {
-    send(EVERY_GRANT_SCOPE, method, path, Some(TENANT_KEY)).await
+    send(EVERY_GRANT_SCOPE, method, path, Some(SESSION)).await
 }
 
 /// Seeing a fleet's grants does not confer the authority to revoke one.
@@ -93,14 +94,14 @@ async fn authorised(method: Method, path: &str) -> axum::response::Response {
 /// suite would notice.
 #[tokio::test]
 async fn reading_the_grants_does_not_confer_the_authority_to_revoke_one() {
-    let listed = send(GRANT_READ, Method::GET, &collection(), Some(TENANT_KEY)).await;
+    let listed = send(GRANT_READ, Method::GET, &collection(), Some(SESSION)).await;
     assert_ne!(
         listed.status(),
         StatusCode::FORBIDDEN,
         "a reader may see the fleet's grants"
     );
 
-    let revoked = send(GRANT_READ, Method::DELETE, &item(), Some(TENANT_KEY)).await;
+    let revoked = send(GRANT_READ, Method::DELETE, &item(), Some(SESSION)).await;
     assert_eq!(
         revoked.status(),
         StatusCode::FORBIDDEN,
@@ -117,7 +118,7 @@ async fn reading_the_grants_does_not_confer_the_authority_to_revoke_one() {
 /// pair would refuse a revoker their own list.
 #[tokio::test]
 async fn revoking_a_grant_carries_the_authority_to_read_them() {
-    let listed = send(GRANT_WRITE, Method::GET, &collection(), Some(TENANT_KEY)).await;
+    let listed = send(GRANT_WRITE, Method::GET, &collection(), Some(SESSION)).await;
     assert_ne!(
         listed.status(),
         StatusCode::FORBIDDEN,

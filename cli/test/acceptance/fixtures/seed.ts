@@ -1,81 +1,37 @@
-// Native fixture setup exercises the terminal Review and explicit Save commands.
+// A probe fleet started from its first message with `fleet create`, named for
+// this run so prefix-scoped teardown finds it. A fleet is active from that
+// message, so there is nothing to wait for before steering it.
 
 import crypto from "node:crypto";
 
-import {
-  ACCEPTANCE_RUN_PREFIX,
-  AGENTSFLEET_STATUS,
-  TERMINAL_STATUSES,
-} from "./constants.ts";
-import { FleetNotFoundError, getStatus } from "./lifecycle.ts";
+import { ACCEPTANCE_RUN_PREFIX } from "./constants.ts";
 import { ensurePlatformSecretsSeeded } from "./platform-secrets.ts";
-import { fixtureDefinition, saveNativeFleet } from "./native-setup.ts";
+import { createFleetFromCli } from "./fleet-create.ts";
 
-export interface SaveOptions {
+export interface ProbeOptions {
   readonly env: Readonly<Record<string, string>>;
   readonly timeoutMs?: number;
   readonly seedFixtureSecrets?: boolean;
   readonly runPrefix?: string;
-  // An explicit runtime reference for refusal/recovery journeys.
-  readonly model?: string;
 }
 
-export interface SavedFleet {
+export interface ProbeFleet {
   readonly id: string;
-  readonly [key: string]: unknown;
+  readonly name: string;
+  /** The first message's turn, already queued or running when this returns. */
+  readonly turn_id: string;
 }
 
-const FLEET_READY_POLL_MS = 1_000;
-const DEFAULT_SAVE_TIMEOUT_MS = 120_000;
+const DEFAULT_CREATE_TIMEOUT_MS = 120_000;
 
 function uniqueName(runPrefix: string, fixtureName: string): string {
   return `${runPrefix}-${fixtureName}-${crypto.randomBytes(3).toString("hex")}`;
 }
 
-function remainingTimeoutMs(deadline: number): number {
-  return Math.max(1, deadline - Date.now());
-}
-
-function fleetReachedActive(fleetId: string, status: string | undefined): boolean {
-  if (status === AGENTSFLEET_STATUS.active) return true;
-  if (status !== undefined && TERMINAL_STATUSES.includes(status)) {
-    throw new Error(`fleet ${fleetId} entered terminal status=${status} before becoming active`);
-  }
-  return false;
-}
-
-function fleetReadErrorIsRetryable(error: unknown): boolean {
-  return error instanceof FleetNotFoundError;
-}
-
-export async function waitForFleetActive(
-  env: Readonly<Record<string, string>>,
-  fleetId: string,
-  deadline: number,
-): Promise<void> {
-  let lastStatus: string | undefined;
-  while (Date.now() < deadline) {
-    try {
-      const fleet = await getStatus(env, fleetId, remainingTimeoutMs(deadline));
-      lastStatus = fleet.status;
-      if (fleetReachedActive(fleetId, lastStatus)) return;
-    } catch (error) {
-      if (!fleetReadErrorIsRetryable(error)) throw error;
-    }
-    await Bun.sleep(Math.min(FLEET_READY_POLL_MS, remainingTimeoutMs(deadline)));
-  }
-  throw new Error(`fleet ${fleetId} did not become active; last status=${lastStatus ?? "unknown"}`);
-}
-
-export async function saveProbeFleet(opts: SaveOptions): Promise<SavedFleet> {
-  if (opts.seedFixtureSecrets) await ensurePlatformSecretsSeeded(opts.env, () => opts.timeoutMs ?? DEFAULT_SAVE_TIMEOUT_MS);
+export async function createProbeFleet(opts: ProbeOptions): Promise<ProbeFleet> {
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_CREATE_TIMEOUT_MS;
+  if (opts.seedFixtureSecrets) await ensurePlatformSecretsSeeded(opts.env, () => timeoutMs);
   const name = uniqueName(opts.runPrefix ?? ACCEPTANCE_RUN_PREFIX, "probe");
-  return saveNativeFleet(opts.env, fixtureDefinition(name), opts.model);
-}
-
-export async function saveSteerProbeFleet(opts: SaveOptions): Promise<SavedFleet> {
-  const fleet = await saveProbeFleet(opts);
-  const deadline = Date.now() + (opts.timeoutMs ?? DEFAULT_SAVE_TIMEOUT_MS);
-  await waitForFleetActive(opts.env, fleet.id, deadline);
-  return fleet;
+  const created = await createFleetFromCli(opts.env, { name, timeoutMs });
+  return { id: created.fleet_id, name, turn_id: created.turn_id };
 }

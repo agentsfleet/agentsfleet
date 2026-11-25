@@ -2,7 +2,7 @@
 //!
 //! # Why this is not part of `afd_fleet`
 //!
-//! Three modules answer one question between them — a fleet DECLARES a
+//! Three modules answer one question between them — a fleet HOLDS an approved
 //! credential ([`secrets`]), a provider is DIALLED with what came out of the
 //! vault ([`provider`]), and a broker MINTS a short-lived token for the child
 //! that will use it ([`credential`]) — and none of them asks anything of a
@@ -17,10 +17,10 @@
 //! # The vault is `afd_vault`'s
 //!
 //! This crate opens no envelope of its own. It decides what a stored credential
-//! MEANS — which declared name is a connector handle, which refresh token is
+//! MEANS — which approved name is a connector handle, which refresh token is
 //! still the one that was posted, which provider a key belongs to — and asks
-//! `afd_vault` for the bytes: `load_many` for a fleet's declared set,
-//! `open_shared_on` for setup inspection under the caller's transaction,
+//! `afd_vault` for the bytes: `load_many` for a fleet's approved set,
+//! `open_shared_on` for inspection under the caller's transaction,
 //! `rewrite` for the refresh-token compare-and-swap, and `bag` for the
 //! platform's own documents. The rows activation locks and the registry joins
 //! are read here, and their envelopes go to `afd_vault` to be opened.

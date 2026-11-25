@@ -4,7 +4,7 @@ import {
 } from "@/lib/api/turns";
 import { listWorkspaceMembers, type WorkspaceMember } from "@/lib/api/tenant-members";
 import { request } from "@/lib/api/client";
-import { ModelsSchema, type WorkspaceModel } from "@/lib/api/draft-types";
+import { ModelsSchema, type WorkspaceModel } from "@/lib/api/workspace-models";
 
 /** Turns the chat view opens with — one thread request, bodies included. */
 export const CHAT_TURNS = 20;
@@ -23,12 +23,12 @@ export function startChatData(args: {workspaceId: string; fleetId: string; token
   return {
     thread: listFleetMessages(args.workspaceId, args.fleetId, args.token, {limit: CHAT_TURNS}).catch(() => null),
     members: listWorkspaceMembers(args.workspaceId, args.token).catch(() => null),
-    models: readModels(args.workspaceId, args.token).catch(() => null),
+    models: readWorkspaceModels(args.workspaceId, args.token).catch(() => null),
   };
 }
 
 /** Every page of the workspace's models, at the deployment's page size. */
-async function readModels(workspaceId: string, token: string): Promise<WorkspaceModel[]> {
+export async function readWorkspaceModels(workspaceId: string, token: string): Promise<WorkspaceModel[]> {
   const path = `/v1/workspaces/${encodeURIComponent(workspaceId)}/models`;
   const models: WorkspaceModel[] = [];
   const seen = new Set<string>();

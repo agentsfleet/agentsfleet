@@ -40,6 +40,9 @@ test-util = [
 # graph stays a fact rustc checks rather than a claim.
 [dependencies]
 afd_bus.workspace = true
+# The one reader of a host an access request's secret names, as the runner's
+# egress guard reads it.
+af_egress.workspace = true
 # Shared boundary validation for private checkpoint storage configuration.
 af_validate.workspace = true
 afd_vault.workspace = true

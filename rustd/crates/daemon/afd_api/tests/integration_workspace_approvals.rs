@@ -2,14 +2,13 @@
 #![cfg(feature = "test-util")]
 
 use crate::harness;
-use crate::integration_workspace_approvals_fixture::Fixture;
+use crate::integration_workspace_approvals_fixture::{Fixture, SESSION};
 
 use af_core::error_code;
-use afd_auth::scope::{Scope, ScopeSet};
 use http::{Method, StatusCode};
 use serde_json::Value;
 
-use self::harness::{Fleet, json_body, send};
+use self::harness::{json_body, send};
 
 pub(crate) const SUBJECT: &str = "user_live_approval_inbox";
 
@@ -28,25 +27,11 @@ const UNKNOWN_SUBJECT: &str = "user_live_approval_unknown";
 async fn approval_inbox_reads_and_resolves_a_live_gate() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let router = Fleet::live(
-        fixture.database.clone(),
-        SUBJECT,
-        ScopeSet::from_scopes(&Scope::ALL),
-    )
-    .with_owned_workspace(fixture.workspace.clone())
-    .with_approval_queue(fixture.database.clone(), harness::bus().await)
-    .router();
+    let router = fixture.signed_in().await;
     let collection = format!("/v1/workspaces/{}/approvals", fixture.workspace.as_str());
     let item = format!("{collection}/{}", fixture.gate);
     assert_approval_reads(&router, &fixture, &collection, &item).await;
-    assert_approval_resolution(
-        &router,
-        &fixture.token,
-        &item,
-        fixture.gate.as_str(),
-        &collection,
-    )
-    .await;
+    assert_approval_resolution(&router, SESSION, &item, fixture.gate.as_str(), &collection).await;
     fixture.cleanup().await;
 }
 
@@ -59,14 +44,7 @@ async fn approval_inbox_reads_and_resolves_a_live_gate() {
 async fn an_unknown_gate_and_an_unknown_fleet_are_each_absent() {
     let fixture = Fixture::create_as(UNKNOWN_SUBJECT).await;
     fixture.seed().await;
-    let router = Fleet::live(
-        fixture.database.clone(),
-        UNKNOWN_SUBJECT,
-        ScopeSet::from_scopes(&Scope::ALL),
-    )
-    .with_owned_workspace(fixture.workspace.clone())
-    .with_approval_queue(fixture.database.clone(), harness::bus().await)
-    .router();
+    let router = fixture.signed_in().await;
     let workspace = fixture.workspace.as_str();
     let nowhere = afd_db::test_util::mint_id();
 
@@ -74,7 +52,7 @@ async fn an_unknown_gate_and_an_unknown_fleet_are_each_absent() {
         &router,
         Method::POST,
         &format!("/v1/workspaces/{workspace}/approvals/{nowhere}/approve"),
-        Some(&fixture.token),
+        Some(SESSION),
         r#"{"reason":"reviewed"}"#,
     )
     .await;
@@ -91,7 +69,7 @@ async fn an_unknown_gate_and_an_unknown_fleet_are_each_absent() {
         &router,
         Method::DELETE,
         &format!("/v1/workspaces/{workspace}/fleets/{nowhere}/integration-grants/{grant}"),
-        Some(&fixture.token),
+        Some(SESSION),
         "",
     )
     .await;
@@ -123,14 +101,7 @@ const VANISH_SUBJECT: &str = "user_live_approval_vanish";
 async fn a_gate_that_vanishes_mid_decision_is_absent() {
     let fixture = Fixture::create_as(VANISH_SUBJECT).await;
     fixture.seed().await;
-    let router = Fleet::live(
-        fixture.database.clone(),
-        VANISH_SUBJECT,
-        ScopeSet::from_scopes(&Scope::ALL),
-    )
-    .with_owned_workspace(fixture.workspace.clone())
-    .with_approval_queue(fixture.database.clone(), harness::bus().await)
-    .router();
+    let router = fixture.signed_in().await;
 
     let mut editor = fixture
         .database
@@ -158,10 +129,9 @@ async fn a_gate_that_vanishes_mid_decision_is_absent() {
         fixture.workspace.as_str(),
         fixture.gate
     );
-    let token = fixture.token.clone();
     let decision = tokio::spawn({
         let router = router.clone();
-        async move { send(&router, Method::POST, &path, Some(&token), "").await }
+        async move { send(&router, Method::POST, &path, Some(SESSION), "").await }
     });
 
     let mut watcher = fixture

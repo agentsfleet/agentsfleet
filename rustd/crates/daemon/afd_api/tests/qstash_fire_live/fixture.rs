@@ -100,7 +100,6 @@ impl Fixture {
         FleetSeed::new(&self.fleet, &self.workspace, &self.tenant, fleet.as_str())
             .name("qstash-fire-fleet")
             .at(afd_db::test_util::SEEDED_AT)
-            .native_setup()
             .insert(&mut *connection)
             .await
             .expect("the fleet seeds");

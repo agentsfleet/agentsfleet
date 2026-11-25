@@ -27,7 +27,7 @@ pub(super) struct DurableTask;
 
 impl<'s, 'run> guffbolt::Extension<Harness<'s, 'run>> for DurableTask {
     fn budget(&self, root: &Harness<'s, 'run>) -> Budget {
-        if !root.task.as_ref().is_some_and(|task| task.allow_actions) {
+        if root.task.is_none() {
             return Budget::Unbounded;
         }
         root.durable_task_execution_budget()
@@ -50,9 +50,6 @@ impl<'s, 'run> guffbolt::Extension<Harness<'s, 'run>> for DurableTask {
             || root.answer_durable_task_inputs().await.is_err()
         {
             return Some(Ending::Stopped);
-        }
-        if let Some(answer) = root.accepted_answer() {
-            return Some(Ending::Answered(answer));
         }
         if number == 1
             && root.shared.recovered_durable_task.is_some()
@@ -102,9 +99,7 @@ impl<'s, 'run> guffbolt::Extension<Harness<'s, 'run>> for DurableTask {
 
 impl Harness<'_, '_> {
     pub(super) async fn assess_durable_task(&mut self, answer: &str) -> Option<Ending> {
-        self.task
-            .as_ref()
-            .filter(|prepared| prepared.allow_actions)?;
+        self.task.as_ref()?;
         let Some(assignment) = self.shared.decision else {
             return Some(Ending::Stopped);
         };
@@ -140,49 +135,21 @@ impl Harness<'_, '_> {
     }
 
     pub(super) async fn incorporate_durable_task_inputs(&mut self) -> crate::Result<()> {
-        let Some(prepared) = self.task.as_mut().filter(|prepared| prepared.allow_actions) else {
+        let Some(prepared) = self.task.as_mut() else {
             return Ok(());
         };
         let verbs = self.shared.run.verbs;
         // Always read the oldest unsettled source page. Advancing the message
         // cursor before all mixed-source replies are acknowledged can strand
         // an accepted conversation item while a later action completes.
+        // Only inputs an ordinary run bound with `task_input` reach the task;
+        // a message nobody bound is that run's to answer, never this one's.
         let mut inputs = read_inputs(
             verbs,
             self.shared.fencing_token,
             self.incorporated_input_sequence,
         )
         .await?;
-        let pending: Vec<_> = inputs
-            .inputs
-            .iter()
-            .filter(|input| input.accepted.is_none())
-            .cloned()
-            .collect();
-        for input in pending {
-            let binding = crate::decision::Intake {
-                run: self.shared.payload,
-                verbs,
-                provider: self.shared.provider,
-                meter: self.shared.meter,
-                stop: &self.stop,
-            }
-            .bind(&inputs, &input.source_turn_id, &input.message)
-            .await?;
-            prepared.execution_deadline =
-                match (prepared.execution_deadline, binding.execution_deadline) {
-                    (Some(previous), Some(current)) => Some(previous.min(current)),
-                    _ => None,
-                };
-            // Each atomic plan can advance the native generation. Never classify
-            // another queued message against the previous generation's authority.
-            inputs = read_inputs(
-                verbs,
-                self.shared.fencing_token,
-                self.incorporated_input_sequence,
-            )
-            .await?;
-        }
         // A saved conversation can precede several native application receipts.
         // Read every immutable page before permitting another action; never jump
         // the local cursor to the latest native cursor without incorporation.

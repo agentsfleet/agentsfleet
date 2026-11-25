@@ -91,11 +91,8 @@ pub(in crate::durable_task) fn check_human(source: &Source) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn check(source: &Source, current: &RunRow, plan: &PreparedPlan) -> Result<()> {
+pub(super) fn check(source: &Source, plan: &PreparedPlan) -> Result<()> {
     check_human(source)?;
-    if current.revision_id.as_ref() != Some(&plan.accepted_revision_id) {
-        return Err(DurableTaskRefusal::StaleState.into());
-    }
     let message = source.message()?;
     for item in &plan.items {
         let start = usize::try_from(item.span().start).map_err(|source| {

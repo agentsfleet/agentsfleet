@@ -1,9 +1,9 @@
--- Every retry key: a setup operation (create draft, send message, save, apply) and a checkpoint
--- allocation (a turn's or a durable task's capture plan). `scope` names the workspace and the
--- owner the key belongs to (`<workspace>:turn:<turn>:checkpoint`, `<workspace>:fleet:create:<person>`),
--- so `(scope, operation_id)` is the natural key every statement addresses. `request_digest`
--- covers the request and, for setup, its actor; `resource_id` is what the first request created.
--- Setup answers a key for its replay window and then reuses it; a checkpoint key answers for
+-- Every retry key: a fleet's create and a checkpoint allocation (a turn's or a durable task's
+-- capture plan). `scope` names the workspace and the owner the key belongs to
+-- (`<workspace>:turn:<turn>:checkpoint`, `<workspace>:fleet:create:<person>`), so
+-- `(scope, operation_id)` is the natural key every statement addresses. `request_digest` covers
+-- the request and, for a create, its actor; `resource_id` is what the first request created. A
+-- create answers a key for its replay window and then reuses it; a checkpoint key answers for
 -- its owner's life. Append-only, and no foreign keys: a key must outlive erasure of what it
 -- created, or a late retry would create it again.
 CREATE TABLE thread.replay_receipts (

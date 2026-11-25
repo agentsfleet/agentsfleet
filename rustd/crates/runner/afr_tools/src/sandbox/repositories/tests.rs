@@ -14,7 +14,7 @@ use crate::runtime::Runtime;
 
 /// The fixture policy offering `tools`.
 fn offering(tools: &[&'static str]) -> ExecutionPolicy<'static> {
-    let mut policy = policy(false);
+    let mut policy = policy();
     policy.tools = tools.iter().map(|tool| Cow::Borrowed(*tool)).collect();
     policy
 }

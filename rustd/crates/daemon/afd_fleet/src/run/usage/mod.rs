@@ -25,7 +25,7 @@ use jiff::Timestamp;
 
 use crate::error::{Result, posture_corrupt, sequence_corrupt};
 
-pub(crate) use self::slice::{DraftSlice, Slice, SliceColumns, log_measured};
+pub(crate) use self::slice::{Slice, SliceColumns, log_measured};
 
 /// Logged when a pass could not read its prices and logged its tokens
 /// unpriced.
@@ -237,47 +237,6 @@ impl Pricing {
         }))
     }
 
-    /// [`Self::settlement`] for a draft-owned run: its lines are a setup
-    /// run's (`setup_run`), name the run as their work and the draft
-    /// message as their event, and bump no fleet's budget.
-    ///
-    /// # Errors
-    /// As [`Self::settlement`].
-    pub(crate) fn draft_settlement(
-        &self,
-        run_id: &Uuid7,
-        slice: DraftSlice,
-        requests: &[RequestUsage],
-    ) -> Result<Option<Settlement>> {
-        let measured = Measured {
-            runtime_seq: slice.runtime_seq,
-            runtime_ms: slice.runtime_ms,
-            started_at: slice.started_at,
-            checked_at: slice.checked_at,
-        };
-        let Some(priced) = self.priced(&measured, requests)? else {
-            return Ok(None);
-        };
-        Ok(Some(Settlement {
-            work: WorkKey::SetupRun(run_id.clone()),
-            payer: Account {
-                tenant: slice.tenant_id,
-                workspace: slice.workspace_id,
-            },
-            attribution: Attribution::SetupRun {
-                message: slice.message_id,
-            },
-            provider: self.provider.clone(),
-            model: self.model.clone(),
-            posture: self.posture,
-            lines: priced,
-        }))
-    }
-
-    /// `requests` and the measured run time priced as one pass's lines: one
-    /// per request, at its own tier and time, plus a runtime-only line
-    /// numbered by its slice's start when the slice measured run time. `None`
-    /// when there is neither: logging nothing spends no line number.
     fn priced(
         &self,
         measured: &Measured,

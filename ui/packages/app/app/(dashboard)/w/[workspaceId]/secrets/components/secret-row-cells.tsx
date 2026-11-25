@@ -20,7 +20,7 @@ const VISIBLE_FLEETS = 2;
 export function SecretAccessCell({secret}: {secret: Secret}) {
   const fleets = fleetAccessOf(secret);
   if (fleets === null) return <span className="text-text-dim">{ACCESS_UNAVAILABLE}</span>;
-  if (fleets.length === 0) return <span className="text-text-dim">No active fleets</span>;
+  if (fleets.length === 0) return <span className="text-text-dim">No access approved</span>;
   const more = fleets.length - VISIBLE_FLEETS;
   return <span className="break-words">{fleets.slice(0, VISIBLE_FLEETS).map(fleet => fleet.name).join(", ")}{more > 0 ? ` +${more} more` : ""}</span>;
 }
@@ -28,7 +28,7 @@ export function SecretAccessCell({secret}: {secret: Secret}) {
 function accessSentence(secret: Secret): string {
   const fleets = fleetAccessOf(secret);
   if (fleets === null) return "Fleet access details are not available here.";
-  if (fleets.length === 0) return "No active fleet's setup uses it.";
+  if (fleets.length === 0) return "No active fleet is approved to use it.";
   return `Available to ${fleets.map(fleet => fleet.name).join(", ")}.`;
 }
 

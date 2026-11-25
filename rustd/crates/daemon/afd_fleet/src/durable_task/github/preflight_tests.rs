@@ -6,7 +6,7 @@
     reason = "a fixture definition or target the test builds fails the test loudly"
 )]
 
-use af_fleet_runtime::FleetConfig;
+use af_fleet_runtime::config::RepositoryBinding;
 use serde_json::json;
 
 use crate::{
@@ -43,16 +43,14 @@ fn target() -> BoundPr {
     }
 }
 
-/// The fleet's stored definition, binding `repository` for write publication
-/// into `base` with the one reviewed workflow.
-fn config(repository: &str, base: &str) -> FleetConfig {
-    let document = json!({"name": "pull-request-repair", "x-agentsfleet": {
-        "tools": [], "triggers": [], "budget": {"daily_nanos": "1000000000"},
-        "repositories": [repository], "repository_access": "write",
-        "repository_base": base, "repository_publication": "existing_pr",
-        "repository_validation_workflows": [
-            {"path": ".github/workflows/ci.yml", "sha256": DIGEST}]}});
-    FleetConfig::stored(&document.to_string()).expect("a stored repository binding")
+/// The fleet's approved GitHub scope, binding `repository` for write
+/// publication into `base` with the one reviewed workflow.
+fn config(repository: &str, base: &str) -> RepositoryBinding {
+    let scope = json!({
+        "repositories": [repository], "access": "write", "base": base,
+        "publication": "existing_pr",
+        "validation_workflows": [{"path": ".github/workflows/ci.yml", "sha256": DIGEST}]});
+    RepositoryBinding::parse(&scope.to_string()).expect("an approved repository scope")
 }
 
 fn refusal<T>(result: Result<T>) -> Option<DurableTaskRefusal> {
@@ -70,7 +68,9 @@ fn refusal<T>(result: Result<T>) -> Option<DurableTaskRefusal> {
 fn a_target_outside_the_fleets_repository_binding_is_refused() {
     let target = target();
     assert!(
-        target.within(&config("Example/Linkwarden", "main")).is_ok(),
+        target
+            .within(Some(&config("Example/Linkwarden", "main")))
+            .is_ok(),
         "the bound repository matches without regard to case"
     );
     let mut moved = target.clone();
@@ -84,7 +84,7 @@ fn a_target_outside_the_fleets_repository_binding_is_refused() {
         (&moved, config("example/linkwarden", "main")),
     ] {
         assert_eq!(
-            refusal(refused.within(&config)),
+            refusal(refused.within(Some(&config))),
             Some(DurableTaskRefusal::InvalidTarget)
         );
     }
