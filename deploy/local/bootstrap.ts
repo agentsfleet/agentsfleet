@@ -29,6 +29,7 @@ const PLATFORM_KEYS = "/v1/admin/platform-keys";
 const CONNECTOR_APPS: Readonly<Record<string, readonly string[]>> = {
   "github-app": ["app_id", "app_slug", "client_id", "client_secret", "private_key_pem", "webhook_secret"],
   "linear-app": ["client_id", "client_secret"],
+  "slack-app": ["client_id", "client_secret", "signing_secret"],
 };
 const SIGNING_SECRET = "approval-signing";
 const SIGNING_BYTES = 32;

@@ -227,7 +227,10 @@
       "LOCAL_GITHUB_PRIVATE_KEY_PEM": "op://ZMB_CD_DEV/github-app/private_key_pem",
       "LOCAL_GITHUB_WEBHOOK_SECRET": "op://ZMB_CD_DEV/github-app/webhook_secret",
       "LOCAL_LINEAR_CLIENT_ID": "op://ZMB_CD_DEV/linear-app/client_id",
-      "LOCAL_LINEAR_CLIENT_SECRET": "op://ZMB_CD_DEV/linear-app/client_secret"
+      "LOCAL_LINEAR_CLIENT_SECRET": "op://ZMB_CD_DEV/linear-app/client_secret",
+      "LOCAL_SLACK_CLIENT_ID": "op://ZMB_CD_DEV/slack-app/client_id",
+      "LOCAL_SLACK_CLIENT_SECRET": "op://ZMB_CD_DEV/slack-app/client_secret",
+      "LOCAL_SLACK_SIGNING_SECRET": "op://ZMB_CD_DEV/slack-app/signing_secret"
     },
     "artifacts": [
       "ui/packages/app/playwright-acceptance-results",

@@ -29,7 +29,10 @@ const GITHUB_FIELDS = ["app_id", "app_slug", "client_id", "client_secret", "priv
 const GITHUB_NAMES = GITHUB_FIELDS.map((field) => `LOCAL_GITHUB_${field.toUpperCase()}`);
 const LINEAR_FIELDS = ["client_id", "client_secret"];
 const LINEAR_NAMES = LINEAR_FIELDS.map((field) => `LOCAL_LINEAR_${field.toUpperCase()}`);
-const CONNECTOR_ENV = [...GITHUB_NAMES, ...LINEAR_NAMES, "ACCEPTANCE_LOCAL_CONNECTOR_VAULT", "TYPESAFE_API_KEY"];
+const SLACK_FIELDS = ["client_id", "client_secret", "signing_secret"];
+const SLACK_NAMES = SLACK_FIELDS.map((field) => `LOCAL_SLACK_${field.toUpperCase()}`);
+const APP_NAMES = [...GITHUB_NAMES, ...LINEAR_NAMES, ...SLACK_NAMES];
+const CONNECTOR_ENV = [...APP_NAMES, "ACCEPTANCE_LOCAL_CONNECTOR_VAULT", "TYPESAFE_API_KEY"];
 const DECISION_ID = "01900000-0000-7000-8000-0000000000d1";
 const MODELS_PATH = "/v1/admin/models";
 
@@ -137,6 +140,22 @@ describe("acceptance environment file", () => {
     expect(result.exitCode, result.stderr).toBe(0);
     expect(readFileSync(file, "utf8")).toContain("ENCRYPTION_MASTER_KEY=original-private-value");
     expect(result.stdout + result.stderr).not.toContain("original-private-value");
+  });
+});
+
+describe("daemon environment file", () => {
+  test("the daemon is pointed at the loopback Slack stand-in", () => {
+    const script = ["set -euo pipefail", 'source "$1/deploy/local/bootstrap.sh"', "acceptance_daemon_environment", ""].join("\n");
+    const result = Bun.spawnSync(["bash", "-c", script, "--", ROOT], {
+      env: { ...process.env, LOCAL_ACCEPTANCE_STATE: root, LOCAL_DEV_ENV_FILE: join(root, "acceptance.env"),
+        LOCAL_ACCEPTANCE_RUNNER_STREAM_PORT: "40003", LOCAL_SLACK_STUB_PORT: "40004" },
+      stdin: "ignore", stdout: "pipe", stderr: "pipe", timeout: SHELL_TIMEOUT_MS,
+    });
+    expect(result.exitCode, result.stderr.toString()).toBe(0);
+    const lines = readFileSync(join(root, "daemon.env"), "utf8").split("\n");
+    expect(lines[0]).toBe(`source ${join(root, "acceptance.env")}`);
+    expect(lines).toContain("AGENTSFLEET_RUNNER_STREAM_LISTEN_ADDR=127.0.0.1:40003");
+    expect(lines).toContain("SLACK_API_URL=http://127.0.0.1:40004");
   });
 });
 
@@ -344,29 +363,32 @@ describe("fixture secret bags", () => {
     const fromOp = (vault: string, bag: string, fields: string[]) =>
       ({ name: bag, data: Object.fromEntries(fields.map((field) => [field, `from-op:op://${vault}/${bag}/${field}`])) });
 
-    // A burst machine passes every field of both apps in: no 1Password at all.
-    for (const name of [...GITHUB_NAMES, ...LINEAR_NAMES]) process.env[name] = `given-${name}`;
+    // A burst machine passes every field of every app in: no 1Password at all.
+    for (const name of APP_NAMES) process.env[name] = `given-${name}`;
     await run();
     expect(calls).toEqual([]);
     expect(saved).toEqual([
       { name: "github-app", data: Object.fromEntries(GITHUB_FIELDS.map((field, index) => [field, `given-${GITHUB_NAMES[index]}`])) },
       { name: "linear-app", data: Object.fromEntries(LINEAR_FIELDS.map((field, index) => [field, `given-${LINEAR_NAMES[index]}`])) },
+      { name: "slack-app", data: Object.fromEntries(SLACK_FIELDS.map((field, index) => [field, `given-${SLACK_NAMES[index]}`])) },
     ]);
 
-    // One GitHub field missing: all six come from 1Password, never a mix; Linear stays the caller's.
+    // One GitHub field missing: all six come from 1Password, never a mix; Linear and Slack stay the caller's.
     delete process.env.LOCAL_GITHUB_WEBHOOK_SECRET;
     delete process.env.ACCEPTANCE_LOCAL_CONNECTOR_VAULT;
     await run();
     expect(calls[0]).toEqual(["item", "list", "--format", "json"]);
     expect(calls.slice(1)).toEqual(GITHUB_FIELDS.map((field) => ["read", "--no-newline", `op://vault-dev/github-app/${field}`]));
     expect(saved[0]).toEqual(fromOp("vault-dev", "github-app", GITHUB_FIELDS));
+    expect(saved.slice(1)).toMatchObject([{ name: "linear-app" }, { name: "slack-app" }]);
 
-    // A named vault skips discovery and serves both apps.
-    for (const name of [...GITHUB_NAMES, ...LINEAR_NAMES]) delete process.env[name];
+    // A named vault skips discovery and serves every app.
+    for (const name of APP_NAMES) delete process.env[name];
     process.env.ACCEPTANCE_LOCAL_CONNECTOR_VAULT = "chosen";
     await run();
-    expect(calls).toHaveLength(GITHUB_FIELDS.length + LINEAR_FIELDS.length);
-    expect(saved).toEqual([fromOp("chosen", "github-app", GITHUB_FIELDS), fromOp("chosen", "linear-app", LINEAR_FIELDS)]);
+    expect(calls).toHaveLength(GITHUB_FIELDS.length + LINEAR_FIELDS.length + SLACK_FIELDS.length);
+    expect(saved).toEqual([fromOp("chosen", "github-app", GITHUB_FIELDS), fromOp("chosen", "linear-app", LINEAR_FIELDS),
+      fromOp("chosen", "slack-app", SLACK_FIELDS)]);
   });
 });
 

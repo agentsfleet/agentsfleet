@@ -105,6 +105,11 @@ jobs:
           FIREWORKS_API_KEY: op://${{ vars.VAULT_DEV }}/agentsfleet-fireworks-api-token/credential
           # The setup edit check's decision model (deploy/local/bootstrap.ts).
           TYPESAFE_API_KEY: op://${{ vars.VAULT_DEV }}/typesafe/credential
+          # The Slack app's bag (deploy/local/bootstrap.ts); the Slack journey
+          # signs its mention with the same signing secret.
+          LOCAL_SLACK_CLIENT_ID: op://${{ vars.VAULT_DEV }}/slack-app/client_id
+          LOCAL_SLACK_CLIENT_SECRET: op://${{ vars.VAULT_DEV }}/slack-app/client_secret
+          LOCAL_SLACK_SIGNING_SECRET: op://${{ vars.VAULT_DEV }}/slack-app/signing_secret
 
       # The owner-only machine environment files `make acceptance` reads.
       - name: Write the machine environment files
