@@ -19,13 +19,33 @@ const HOST: &str = guffbolt_ai::testing::tls::HOST;
 
 pub(super) struct Asked {
     pub body: Value,
-    answer: oneshot::Sender<String>,
+    answer: oneshot::Sender<Reply>,
+}
+
+/// One streamed assistant delta and the reason its turn ends.
+struct Reply {
+    delta: Value,
+    finish: &'static str,
 }
 
 impl Asked {
     pub(super) fn answer(self, text: &str) -> Checked {
+        self.reply(json!({"role":"assistant","content":text}), "stop")
+    }
+
+    /// Calls `name` once; the runner runs it, then asks again with its result.
+    pub(super) fn call(self, name: &str, arguments: &Value) -> Checked {
+        let call = json!({"index":0,"id":format!("call-{name}"),"type":"function",
+            "function":{"name":name,"arguments":arguments.to_string()}});
+        self.reply(
+            json!({"role":"assistant","tool_calls":[call]}),
+            "tool_calls",
+        )
+    }
+
+    fn reply(self, delta: Value, finish: &'static str) -> Checked {
         self.answer
-            .send(text.to_owned())
+            .send(Reply { delta, finish })
             .map_err(|_answer| io::Error::other("model request dropped"))?;
         Ok(())
     }
@@ -153,14 +173,14 @@ async fn answer(
     {
         return http::StatusCode::SERVICE_UNAVAILABLE.into_response();
     }
-    let Ok(text) = received.await else {
+    let Ok(Reply { delta, finish }) = received.await else {
         return http::StatusCode::SERVICE_UNAVAILABLE.into_response();
     };
     let id = afd_db::test_util::mint_id();
     let chunk = json!({"id":id,"object":"chat.completion.chunk","created":0,"model":"fixture",
-        "choices":[{"index":0,"delta":{"role":"assistant","content":text},"finish_reason":null}]});
+        "choices":[{"index":0,"delta":delta,"finish_reason":null}]});
     let end = json!({"id":id,"object":"chat.completion.chunk","created":0,"model":"fixture",
-        "choices":[{"index":0,"delta":{},"finish_reason":"stop"}],
+        "choices":[{"index":0,"delta":{},"finish_reason":finish}],
         "usage":{"prompt_tokens":321,"completion_tokens":123,"total_tokens":444}});
     (
         [(http::header::CONTENT_TYPE, "text/event-stream")],

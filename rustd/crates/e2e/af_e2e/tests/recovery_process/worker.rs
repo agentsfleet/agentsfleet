@@ -26,7 +26,13 @@ impl Worker {
             .disable_cleanup(true)
             .tempdir_in("/tmp")?;
         let log = std::fs::File::create(home.path().join("runner.log"))?;
-        let child = Command::new(binary)
+        let mut command = Command::new(binary);
+        // A runner holds no storage credential: it moves checkpoint bytes
+        // only through the daemon's presigned transfers.
+        for knob in super::custody::KNOBS {
+            command.env_remove(knob);
+        }
+        let child = command
             .arg("--model-address")
             .arg(model.address.to_string())
             .arg("--model-root")

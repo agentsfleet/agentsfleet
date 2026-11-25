@@ -1,11 +1,11 @@
 //! Assertions observe the committed checkpoint, original expiry and replacement settlement.
 
-use super::{ACCEPTED, COMPLETED, Checked};
+use super::{ACCEPTED, COMPLETED, Checked, NOTE, NOTE_PATH};
 use crate::e2e::Scenario;
 use af_core::id::Uuid7;
 use jiff_sqlx::ToSqlx as _;
 use serde_json::Value;
-use std::time::Duration;
+use std::{path::Path, time::Duration};
 
 pub(super) struct Winner {
     run: Uuid7,
@@ -36,6 +36,35 @@ pub(super) fn prefix(body: &Value, expected: &[&str]) {
             "the restored model input contains each accepted item once: {word}"
         );
     }
+}
+
+/// The first host's file call succeeded: its result reached the next request.
+pub(super) fn wrote(body: &Value) {
+    let result = format!("Wrote {} bytes to {NOTE_PATH}", NOTE.len());
+    assert!(
+        body.to_string().contains(&result),
+        "the file call's result reached the model: {result}"
+    );
+}
+
+/// The first host's file, read from the replacement host's own sandbox. That
+/// host's storage started empty, so only the checkpoint restore put it there.
+pub(super) fn restored(home: &Path) -> Checked {
+    let sandboxes = afr_supervisor::StorageHome::open(home)?.sandboxes();
+    let mut found = Vec::new();
+    for sandbox in std::fs::read_dir(sandboxes)? {
+        // The unconfined engine serves `<sandbox>/workspace` as `/workspace`.
+        let file = sandbox?.path().join("workspace").join(NOTE_PATH);
+        if file.is_file() {
+            found.push(std::fs::read_to_string(file)?);
+        }
+    }
+    assert_eq!(
+        found,
+        vec![NOTE.to_owned()],
+        "the replacement host's workspace holds the first host's file"
+    );
+    Ok(())
 }
 
 pub(super) async fn checkpoint(scene: &Scenario, covered: &Uuid7) -> Checked<Uuid7> {

@@ -51,7 +51,9 @@ async fn serve(arguments: Arguments) -> Result<()> {
         afr_tools::Catalog::hosted(std::sync::Arc::new(network)),
         af_providers::Connector::with_client(client),
     );
-    let engine = checked(afr_sandbox::UnsandboxedEngine::new(home.sandboxes()))?;
+    // Every run holds a sandbox, so the respawn checkpoint is a workspace
+    // checkpoint: it needs a toolbox both processes name and a freeze.
+    let engine = checked(afr_sandbox::RecoveryDrillEngine::new(home.sandboxes()))?;
     let probe = afr_sandbox::probe(&afr_sandbox::ProbePaths::default());
     let shutdown = CancellationToken::new();
     let signal = shutdown.clone();
