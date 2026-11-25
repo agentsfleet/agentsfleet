@@ -68,6 +68,7 @@ move with the arrows or A/D, and keep the ball in play. Press R to restart or
 Q to quit.
 
 The request loader shows a bouncing ball. Set `AGENTSFLEET_REDUCED_MOTION=1` for a static status.
+
 `agentsfleet pet --json` returns `{"name":"Orbit"}`. The game runs locally without signing in.
 
 ## Development
