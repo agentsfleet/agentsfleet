@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Date:** Nov 24, 2026
 
-**Status:** IN_PROGRESS
+**Status:** DONE
 
 **Priority:** P1, a new person meets a private draft, a setup card and a Save before a fleet does any work
 
@@ -144,7 +144,7 @@ Counts are from the worktree at `d79e88a46`.
 
 | File | Action | Why |
 |------|--------|-----|
-| `docs/v2/active/M256_001_P1_API_CLI_UI_FLEET_FROM_FIRST_MESSAGE.md` | EDIT | this spec, moved from `pending/`; moves to `done/` at close |
+| `docs/v2/done/M256_001_P1_API_CLI_UI_FLEET_FROM_FIRST_MESSAGE.md` | EDIT | this spec, moved from `pending/`; moves to `done/` at close |
 | `docs/architecture/*.md`, `docs/architecture/scenarios/*.md` (40 pages name a Definition, draft, revision or setup), `playbooks/operations/slack_incident_drill/001_playbook.md` | EDIT/DELETE | the design as ruled, in a doc-only commit before the code; `fleet_definitions.md` is deleted; `concurrency.md` loses the draft's locks |
 | `rustd/crates/daemon/afd_setup/**` (164 production files, 10,975 lines; 56 test files) | DELETE/EDIT | §2. **Kept:** `access.rs`, `error/**`, `paging.rs`, `limits.rs`, `tuning.rs`, `types/**` trimmed to the fleet and model types, `replay/**`, `context/**`, `catalogue/**` moved off `Drafts`, and `creation/{mod,read,patch,delete}.rs` with a new `creation/create.rs` and their statements. Everything else goes |
 | `rustd/crates/protocol/af_fleet_runtime/**` (6,763 production lines) | DELETE/EDIT | §2. **Kept:** `name/**`, `error/**`, `config/trigger/**` with the `raw` types it reads, `config/repository.rs` (the GitHub scope), `config/policy/http_egress.rs`, and the statement shape and bounds from `config/decision/`. `definition/**`, `setup/**` and the rest of `config/**` go |
@@ -313,13 +313,13 @@ The checks: the source turn is the run's head turn or one folded into it (`accep
 - **Dimension 6.5** — DONE — a refused toggle stays off → Test `a refused network toggle stays off` (unit, vitest, `ui/packages/app/components/domain/fleet/FleetLists.test.tsx`): switching "Allow all" on sends one `PATCH F {http_egress:"public"}`; a 403 leaves the switch off.
 - **Dimension 6.6** — DONE — a pin can be removed → Test `removing a pinned memory deletes it` (unit, vitest, `ui/packages/app/components/domain/fleet/FleetLists.test.tsx`): Remove on a "Remembers" row → one `DELETE F/memories/{key}` and the row leaves.
 - **Dimension 6.7** — DONE — a stale statement edit reloads → Test `a stale statement edit reloads the task` (unit, vitest, `ui/packages/app/components/domain/tasks/TaskStatements.test.tsx`): an edit sends one `PATCH F/durable_tasks/{id}`; a 412 reloads the task and keeps the person's text.
-- **Dimension 6.8** — the real path → Test `prime-careful-squirrel.spec.ts` (e2e, `make acceptance`, fixture `careful-squirrel`): a signed-in person types a first message, reads the answer, approves the fleet's request for a secret and sees the run resume with it.
+- **Dimension 6.8** — DONE (acceptance run 45604259479, Nov 25, 2026) — the real path → Test `prime-careful-squirrel.spec.ts` (e2e, `make acceptance`, fixture `careful-squirrel`): a signed-in person types a first message, reads the answer, approves the fleet's request for a secret and sees the run resume with it.
 
 ### §7 — The CLI: create, chat, and the lists
 
 `agentsfleet fleet create "<message>" [--name] [--model]` starts a fleet; `agentsfleet fleet steer <id|@name>` with no message is the interactive chat with it. `agentsfleet chat` is removed (Indy, Nov 25, 2026): it repeated those two, and running it exits 4 naming both. `fleet triggers list|delete`, `fleet model use <id|@name> <model_ref>` and `fleet network use <id|@name> allow-all|private [--packages|--no-packages]` join `fleet schedule`, `fleet memory`, `fleet grants list|revoke` and `fleet approvals list|approve|deny`, which stay. `--definition`, `--review`, `--save`, `--apply`, the draft subcommands and `fleet activate` go.
 
-- **Dimension 7.1** — create from the terminal → Test `prime-morning-rooster.spec.ts` (e2e, `make acceptance`, fixture `morning-rooster`): the built binary against a live daemon, `fleet create --json` with the fixture's first message → `{fleet_id, turn_id}`, exit 0, and the fleet shows in the browser.
+- **Dimension 7.1** — DONE (acceptance run 45604259479, Nov 25, 2026) — create from the terminal → Test `prime-morning-rooster.spec.ts` (e2e, `make acceptance`, fixture `morning-rooster`): the built binary against a live daemon, `fleet create --json` with the fixture's first message → `{fleet_id, turn_id}`, exit 0, and the fleet shows in the browser.
 - **Dimension 7.2** — DONE — chat is removed → Test `chat is removed and names fleet create and fleet steer` (unit, in-process): `agentsfleet chat` → exit 4, the message names `fleet create` and `fleet steer`, and no request is sent.
 - **Dimension 7.3** — DONE — a refused approval is a structured error → Test `fleet approvals approve prints the refusal as JSON` (unit, handler, `cli/test/approvals-decide.unit.test.ts`): a 403 → the JSON error with its code and a suggestion, exit 3, the server-refusal code in `cli/src/errors/index.ts`'s `EXIT_CODE`.
 - **Dimension 7.4** — DONE — a removed flag names its replacement → Test `chat --save is refused with the new command` (unit, in-process and against the built binary): exit 4, the validation code; the message names `fleet create`.

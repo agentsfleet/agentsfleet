@@ -109,7 +109,9 @@ impl Handler for TriggerAdd {
     const DESCRIPTION: &'static str = "Call this tool only when the person's newest message \
         asks for this fleet to wake on something outside it. Do not call it for a question, a \
         greeting or an approval; answer those in plain text. Adds a webhook, a GitHub App event \
-        or a Slack mention the workspace has connected; a webhook's URL is in the answer.";
+        or a Slack mention the workspace has connected; a webhook's URL is in the answer. A \
+        webhook's signing secret stays in the workspace vault, named by secret_name: \
+        agentsfleetd checks deliveries with it, so this fleet needs no access to it.";
     type Arguments = Add;
 
     async fn run(&self, arguments: Add, context: ToolContext<'_, '_>) -> ToolOutput {

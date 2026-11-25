@@ -166,9 +166,11 @@ impl AgentEngine for Loop {
                 root.folded_inputs = recovered.folds;
                 root.assignment_answered = false;
                 recovery_boundary::restored(&run);
-            }
-            if let Some(answer) = run.run.event.question_answer() {
-                root.answered(&answer.message);
+                // A fresh opening already ends on the answer as the turn's
+                // message; only a restored transcript still needs it.
+                if let Some(answer) = run.run.event.question_answer() {
+                    root.answered(&answer.message);
+                }
             }
             let ending = children.beside(&shared, root.drive()).await;
             // Every child is dropped before the ledger closes, so each one's
@@ -325,3 +327,6 @@ mod recovery_boundary_tests;
 
 #[cfg(test)]
 mod finished_tests;
+
+#[cfg(test)]
+mod answer_tests;

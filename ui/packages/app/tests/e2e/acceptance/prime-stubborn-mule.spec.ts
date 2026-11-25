@@ -38,6 +38,8 @@ const TASK_TIMEOUT_MS = 720_000;
 const TASK_START = "task_start";
 const TASK_INPUT = "task_input";
 const GOAL_CHECK = "goal";
+// A stored question is its statement's id under the goal namespace, apart from the constant `next_action` (afd_fleet durable_task/decision/compile.rs).
+const GOAL_QUESTION_PREFIX = "goal.";
 const PERSON_ACTOR_PREFIX = "steer:";
 // The statuses a task rests in once its runs are over.
 const FINISHED: readonly string[] = [DURABLE_TASK_STATUS.done, DURABLE_TASK_STATUS.blocked, DURABLE_TASK_STATUS.cancelled, DURABLE_TASK_STATUS.exhausted];
@@ -105,7 +107,7 @@ test.describe.serial(`prime fleet ${fixture.name}`, {tag: POST_DEPLOY_TAG}, () =
     // The objective is the person's own words: a span of the message that asked.
     expect(stored.length).toBeGreaterThan(0);
     expect(messageOf(task().asked)).toContain(stored);
-    expect(questions.map((question) => question.name)).toEqual(task().statements.map((statement) => statement.id));
+    expect(questions.map((question) => question.name)).toEqual(task().statements.map((statement) => `${GOAL_QUESTION_PREFIX}${statement.id}`));
     for (const [index, statement] of task().statements.entries()) {
       expect(questions[index]?.question.instructions).toContain(statement.question);
     }

@@ -131,6 +131,7 @@ export async function steerForReply(session: PrimeSession, fleet: string, messag
   assert.ok(at >= 0, `the terminal showed no final reply: ${result.stdout}`);
   const reply = result.stdout.slice(at + FINAL_REPLY.length);
   assert.match(reply, PROCESSED_LINE, `the terminal did not confirm the answered turn: ${result.stdout}`);
-  assert.doesNotMatch(result.stdout, /"turn_id"\s*:/u, "a conversation a person reads must not print the machine envelope");
+  // Only what follows the final reply: a tool the run called may answer with turn ids of its own above it.
+  assert.doesNotMatch(reply, /"turn_id"\s*:/u, "a conversation a person reads must not print the machine envelope");
   return reply;
 }
