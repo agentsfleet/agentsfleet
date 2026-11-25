@@ -2,21 +2,22 @@ import {expect, test} from "@playwright/test";
 
 const review = (view: string) => new URL(`../../../../../docs/ux.html#${view}`, import.meta.url).href;
 
-test("the populated navigation keeps edit targets inside the sidebar and credits in the footer", async ({page, isMobile}) => {
+test("the populated navigation lists fleet chats and keeps credits in the footer", async ({page, isMobile}) => {
   test.skip(isMobile, "The mobile sidebar uses an off-canvas fleet list");
   await page.setViewportSize({width: 1120, height: 660});
   await page.goto(review("chief"));
   const nav = page.getByRole("navigation", {name: "Main navigation"});
-  await expect(nav.getByRole("button", {name: "Edit Chief of Staff"})).toBeVisible();
+  await expect(nav.getByRole("button", {name: "Chief of Staff", exact: true})).toBeVisible();
+  await expect(nav.getByRole("button", {name: /Edit Chief of Staff/})).toHaveCount(0);
   await expect(nav.getByRole("button", {name: /Credits.*\$5\.00/})).toHaveCSS("border-top-width", "0px");
   await expect(page.getByRole("link", {name: /tightening review/i})).toHaveCount(0);
   await expect(page.getByRole("button", {name: "Model proposal"})).toHaveCount(0);
   expect(await page.locator(".review-links button[data-view]").evaluateAll(buttons =>
-    buttons.slice(0, 3).map(button => button.textContent))).toEqual(["App loading", "New fleet", "Fleet setup"]);
+    buttons.slice(0, 3).map(button => button.textContent))).toEqual(["App loading", "New fleet", "Fleet handoff"]);
   const geometry = await nav.evaluate(rail => {
     const {right, bottom} = rail.getBoundingClientRect();
     const footer = rail.querySelector(".rail-bottom")!.getBoundingClientRect();
-    const edges = Array.from(rail.querySelectorAll(".fleet-edit"), edit => edit.getBoundingClientRect().right);
+    const edges = Array.from(rail.querySelectorAll(".fleet-row"), row => row.getBoundingClientRect().right);
     return {right, bottom, footerBottom: footer.bottom, edges};
   });
   expect(geometry.edges.length).toBeGreaterThan(4);
@@ -25,26 +26,42 @@ test("the populated navigation keeps edit targets inside the sidebar and credits
   expect(geometry.footerBottom).toBeLessThan(geometry.bottom);
 });
 
-test("new fleet holds its composer position while unfinished setup history resolves", async ({page}) => {
+test("the reference opens a fleet chat from its first message", async ({page}) => {
   await page.emulateMedia({reducedMotion: "reduce"});
   await page.goto(review("empty"));
-  await page.evaluate(() => document.fonts.ready);
-  const scenario = page.getByRole("combobox", {name: "New fleet workspace example"});
-  const composer = page.locator(".empty-workspace .composer");
-  const drafts = page.getByRole("region", {name: "Unfinished setups"});
-  await scenario.selectOption("fresh");
-  await expect(drafts).toBeHidden();
-  const before = await composer.boundingBox();
-  await scenario.selectOption("unfinished");
-  await expect(drafts).toBeVisible();
-  expect(await composer.boundingBox()).toEqual(before);
-  await drafts.getByRole("button", {name: "Deployment checks"}).click();
-  await expect(page.locator("#page-title")).toHaveText("Deployment checks");
-  await expect(drafts).toHaveCount(0);
+  await expect(page.locator(".empty-heading h2")).toHaveText("New fleet");
+  await page.locator("#message").fill("Check the latest deploy.");
+  await page.getByRole("button", {name: "Send message", exact: true}).click();
+  await expect(page).toHaveURL(/#fleet-1$/);
+  await expect(page.locator("#page-title")).toHaveText("Fleet 1");
+  await expect(page.getByRole("region", {name: "Fleet conversation"}).getByText("Check the latest deploy.", {exact: true})).toBeInViewport();
+  await expect(page.getByRole("region", {name: "Wakes on"})).toContainText("Only a message");
+  await expect(page.getByRole("region", {name: "Can access"})).toContainText("No access approved yet");
+  await expect(page.getByRole("region", {name: "Remembers"})).toContainText("Nothing pinned yet");
+  await expect(page.getByRole("switch", {name: "Allow all"})).not.toBeChecked();
+  await expect(page.getByRole("switch", {name: "Packages"})).not.toBeChecked();
+});
+
+test("the reference keeps a refused first message and its model for Resend", async ({page}) => {
+  await page.emulateMedia({reducedMotion: "reduce"});
+  const url = new URL(review("empty"));
+  url.searchParams.set("refuse-first", "");
+  await page.goto(url.href);
+  const model = page.getByRole("combobox", {name: "Fleet model"});
+  await expect(model).toHaveValue("");
+  await model.selectOption("GPT-4.1");
+  const message = "Check the pending pull requests.";
+  await page.locator("#message").fill(message);
+  await page.getByRole("button", {name: "Send message", exact: true}).click();
+  await expect(page.getByRole("alert")).toContainText("Couldn’t start your fleet");
+  await expect(page.locator("#message")).toHaveValue(message);
+  await page.getByRole("button", {name: "Resend", exact: true}).click();
+  await expect(page.getByRole("region", {name: "Fleet conversation"}).getByText(message, {exact: true})).toBeVisible();
+  await expect(model).toHaveValue("GPT-4.1");
 });
 
 test("clicking the title edits it in place and blur saves it", async ({page}) => {
-  await page.goto(review("draft"));
+  await page.goto(review("conversation"));
   const title = page.locator("#page-title");
   const input = page.getByRole("textbox", {name: "Chat name"});
   const titleBox = await title.boundingBox();
@@ -162,10 +179,37 @@ test("the CLI tabs show sign-in progress and a delayed runner request", async ({
   await page.getByRole("button", {name: "Replay a slow request"}).click();
   await page.clock.fastForward(400);
   await expect(page.getByRole("status").filter({hasText: "Waiting for agentsfleet"})).toBeVisible();
-  await expect(page.locator(".mini-orbit")).toBeVisible();
+  await expect(page.locator(".orbit-ball")).toBeVisible();
   await page.clock.fastForward(1_050);
   await expect(page.locator("#runner-list-output")).toBeVisible();
   await expect(page.getByRole("status").filter({hasText: "Waiting for agentsfleet"})).toBeHidden();
   const color = (state: string) => page.locator(`#runner-list-output .${state}`).first().evaluate(node => getComputedStyle(node).color);
   expect(new Set(await Promise.all(["active", "online", "offline"].map(color))).size).toBe(3);
+});
+
+test("the reference shows requested scope and lets the user revoke approved access", async ({page}) => {
+  await page.goto(review("conversation"));
+  const request = page.getByRole("region", {name: "Needs your approval"});
+  await expect(request.getByText("agentsfleet/platform-images", {exact: true})).toBeVisible();
+  await expect(request.getByText("Read and write", {exact: true})).toBeVisible();
+  await expect(request.getByRole("button", {name: "Deny"})).toBeVisible();
+  await request.getByRole("button", {name: "Approve", exact: true}).click();
+  const access = page.getByRole("region", {name: "Can access"});
+  await access.getByRole("button", {name: "Revoke GitHub"}).click();
+  await page.getByRole("dialog", {name: "Revoke this access?"}).getByRole("button", {name: "Revoke access"}).click();
+  await expect(access).toContainText("No access approved yet");
+});
+
+test("the reference keeps completion editing in the fleet summary", async ({page}) => {
+  await page.goto(review("conversation"));
+  await page.locator("summary").filter({hasText: "Tasks"}).click();
+  const edit = page.getByRole("button", {name: "Edit statements"});
+  await edit.click();
+  const form = page.getByRole("form", {name: "Edit completion statements"});
+  await expect(form.getByRole("textbox", {name: "Statement 1"})).toBeFocused();
+  await form.getByRole("textbox").fill("The image builds on Linux.");
+  await form.getByRole("button", {name: "Save statements"}).click();
+  await expect(form).toBeHidden();
+  await expect(edit).toBeFocused();
+  await expect(page.getByText("The image builds on Linux.", {exact: true})).toBeVisible();
 });
