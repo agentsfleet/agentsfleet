@@ -7,21 +7,14 @@
 // key, credential payload, or free-text typed into a sensitive field.
 
 export const EVENTS = {
-  fleet_created: "fleet_created",
   workspace_switched: "workspace_switched",
-  runner_token_minted: "runner_token_minted",
   api_key_minted: "api_key_minted",
   model_added: "model_added",
   model_changed: "model_changed",
   key_rotated: "key_rotated",
   provider_reset: "provider_reset",
-  platform_default_set: "platform_default_set",
   secret_added: "secret_added",
   fleet_viewed: "fleet_viewed",
-  // A platform operator opened one runner's detail page (once per mount,
-  // mirroring fleet_viewed). Props carry the runner id and the coarse states
-  // — never the host identifier, a token, or label values.
-  runner_viewed: "runner_viewed",
   // An operator forgot a memory entry from the console right rail.
   // Props carry the fleet id and outcome — never the memory key or content.
   fleet_memory_forgotten: "fleet_memory_forgotten",
@@ -37,18 +30,14 @@ export const EVENTS = {
 export type EventName = (typeof EVENTS)[keyof typeof EVENTS];
 
 export type EventProps = {
-  [EVENTS.fleet_created]: { fleet_id: string };
   [EVENTS.workspace_switched]: { workspace_id: string };
-  [EVENTS.runner_token_minted]: { runner_id: string; sandbox_tier: string };
   [EVENTS.api_key_minted]: { api_key_id: string };
   [EVENTS.model_added]: { provider: string; mode: string; model?: string };
   [EVENTS.model_changed]: { provider: string; model: string };
   [EVENTS.key_rotated]: { provider: string };
   [EVENTS.provider_reset]: { from_provider: string };
-  [EVENTS.platform_default_set]: { provider: string; model: string; is_custom: boolean };
   [EVENTS.secret_added]: { secret_name: string };
   [EVENTS.fleet_viewed]: { fleet_id: string; status: string };
-  [EVENTS.runner_viewed]: { runner_id: string; liveness: string; admin_state: string };
   // Forgetting a memory is the operator's correction path. `outcome` is the
   // coarse success/failure. No memory `content`, no key text.
   [EVENTS.fleet_memory_forgotten]: { fleet_id: string; outcome: string };
@@ -71,18 +60,14 @@ export type EventProps = {
 // real prop keys, and the PII + emit-path tests assert against it (the type
 // alone is erased at runtime).
 export const EVENT_PROP_KEYS = {
-  [EVENTS.fleet_created]: ["fleet_id"],
   [EVENTS.workspace_switched]: ["workspace_id"],
-  [EVENTS.runner_token_minted]: ["runner_id", "sandbox_tier"],
   [EVENTS.api_key_minted]: ["api_key_id"],
   [EVENTS.model_added]: ["provider", "mode", "model"],
   [EVENTS.model_changed]: ["provider", "model"],
   [EVENTS.key_rotated]: ["provider"],
   [EVENTS.provider_reset]: ["from_provider"],
-  [EVENTS.platform_default_set]: ["provider", "model", "is_custom"],
   [EVENTS.secret_added]: ["secret_name"],
   [EVENTS.fleet_viewed]: ["fleet_id", "status"],
-  [EVENTS.runner_viewed]: ["runner_id", "liveness", "admin_state"],
   [EVENTS.fleet_memory_forgotten]: ["fleet_id", "outcome"],
   [EVENTS.integration_requested]: ["integration_id", "integration_name"],
   [EVENTS.approval_resolved]: ["gate_id", "decision", "has_reason"],

@@ -141,18 +141,6 @@ impl Telemetry {
                 put(KEY_REASON, reason.as_str().into());
                 put(KEY_REQUEST_ID, request_id.as_str().into());
             }
-            Self::FleetTriggered {
-                workspace_id,
-                fleet_id,
-                turn_id,
-                source,
-                ..
-            } => {
-                put(KEY_WORKSPACE_ID, workspace_id.as_str().into());
-                put(KEY_FLEET_ID, fleet_id.as_str().into());
-                put(KEY_TURN_ID, turn_id.as_str().into());
-                put("source", source.as_str().into());
-            }
             Self::FleetCompleted {
                 workspace_id,
                 fleet_id,
@@ -171,25 +159,6 @@ impl Telemetry {
                 put("exit_status", exit_status.as_str().into());
                 put("time_to_first_token_ms", (*time_to_first_token_ms).into());
                 put(KEY_INSERT_ID, insert_id(fleet_id, turn_id).into());
-            }
-            Self::SignupBootstrapped {
-                tenant_id,
-                workspace_id,
-                workspace_name,
-                email_domain,
-                created,
-                request_id,
-                ..
-            } => {
-                put(KEY_TENANT_ID, tenant_id.as_str().into());
-                put(KEY_WORKSPACE_ID, workspace_id.as_str().into());
-                put("workspace_name", workspace_name.as_str().into());
-                put("email_domain", email_domain.as_str().into());
-                put("created", (*created).into());
-                put(KEY_REQUEST_ID, request_id.as_str().into());
-            }
-            Self::WalletExhausted { tenant_id } => {
-                put(KEY_TENANT_ID, tenant_id.as_str().into());
             }
             Self::InviteEmail {
                 tenant_id,

@@ -14,11 +14,10 @@ import type { CaptureResult } from "posthog-js";
 // without bringing the runtime import along.
 type Posthog = typeof import("posthog-js").default;
 
-// Signup *completion* belongs server-side to agentsfleetd
-// (`Telemetry::SignupBootstrapped`,
-// rustd/crates/protocol/af_observability/src/product/telemetry/mod.rs) — the funnel is
-// redirect-based, so this origin can
-// never observe it. No completion or lead-capture events exist here by
+// Signup *completion* belongs server-side to agentsfleetd (the
+// `agentsfleet_signup_bootstrapped_total` counter,
+// rustd/crates/protocol/af_observability/src/metrics/declared/fleet.rs) — the
+// funnel is redirect-based, so this origin can never observe it. No completion or lead-capture events exist here by
 // design; see docs/architecture/product_analytics.md.
 export const EVENT_SIGNUP_STARTED = "signup_started";
 export const EVENT_NAVIGATION_CLICKED = "navigation_clicked";

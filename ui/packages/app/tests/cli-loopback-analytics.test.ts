@@ -46,7 +46,7 @@ describe("queued telemetry ownership before the first SDK load", () => {
     vi.doMock("posthog-js", async () => { loading(); await gate; return { default: client }; });
     const analytics = await import("../lib/analytics/posthog");
     const startup = analytics.initAnalytics(() => ({ id: "account-A" })); await started;
-    analytics.captureProductEvent(EVENTS.fleet_created, { fleet_id: "A-fleet" });
+    analytics.captureProductEvent(EVENTS.fleet_viewed, { fleet_id: "A-fleet", status: "running" });
     analytics.setAnalyticsContext({ workspaceId: "A-workspace", plan: "A-plan" });
     const replacement = analytics.initAnalytics(() => ({ id: "account-B" }));
     release(); await Promise.all([startup, replacement]);
@@ -60,15 +60,15 @@ describe("queued telemetry ownership before the first SDK load", () => {
     vi.stubGlobal("requestIdleCallback", (callback: () => void) => { resume = callback; return 1; });
     const analytics = await import("../lib/analytics/posthog");
     const startup = analytics.initAnalytics(() => ({ id: "account-A" }));
-    analytics.captureProductEvent(EVENTS.fleet_created, { fleet_id: "A-fleet" });
+    analytics.captureProductEvent(EVENTS.fleet_viewed, { fleet_id: "A-fleet", status: "running" });
     analytics.setAnalyticsContext({ workspaceId: "A-workspace" });
     void analytics.initAnalytics(() => undefined);
-    analytics.captureProductEvent(EVENTS.fleet_created, { fleet_id: "unowned-fleet" });
+    analytics.captureProductEvent(EVENTS.fleet_viewed, { fleet_id: "unowned-fleet", status: "running" });
     analytics.setAnalyticsContext({ workspaceId: "unowned-workspace", plan: "unowned-plan" });
     window.history.replaceState(null, "", "/workspaces/next");
     const replacement = analytics.initAnalytics(() => ({ id: "account-A" }));
     resume(); await Promise.all([startup, replacement]);
-    expect(client.capture).toHaveBeenCalledExactlyOnceWith(EVENTS.fleet_created, { path: "/workspaces", fleet_id: "A-fleet" });
+    expect(client.capture).toHaveBeenCalledExactlyOnceWith(EVENTS.fleet_viewed, { path: "/workspaces", fleet_id: "A-fleet", status: "running" });
     expect(client.group).toHaveBeenCalledExactlyOnceWith("workspace", "A-workspace");
     expect(client.setPersonProperties).not.toHaveBeenCalled();
   });
@@ -79,12 +79,12 @@ describe("queued telemetry ownership before the first SDK load", () => {
     const analytics = await import("../lib/analytics/posthog");
     const startup = analytics.initAnalytics(() => ({ id: "account-A" }));
     analytics.setAnalyticsContext({ workspaceId: "A-workspace", plan: "A-plan" });
-    analytics.captureProductEvent(EVENTS.fleet_created, { fleet_id: "A-fleet" });
+    analytics.captureProductEvent(EVENTS.fleet_viewed, { fleet_id: "A-fleet", status: "running" });
     const replacement = analytics.initAnalytics(() => ({ id: "account-B" }));
     analytics.setAnalyticsContext({ workspaceId: "B-workspace", workspaceCount: 2 });
-    analytics.captureProductEvent(EVENTS.fleet_created, { fleet_id: "B-fleet" });
+    analytics.captureProductEvent(EVENTS.fleet_viewed, { fleet_id: "B-fleet", status: "running" });
     resume(); await Promise.all([startup, replacement]);
-    expect(client.capture).toHaveBeenCalledExactlyOnceWith(EVENTS.fleet_created, { path: "/workspaces", fleet_id: "B-fleet" });
+    expect(client.capture).toHaveBeenCalledExactlyOnceWith(EVENTS.fleet_viewed, { path: "/workspaces", fleet_id: "B-fleet", status: "running" });
     expect(client.group).toHaveBeenCalledExactlyOnceWith("workspace", "B-workspace");
     expect(client.setPersonProperties).toHaveBeenCalledExactlyOnceWith({ workspace_count: 2 });
   });
@@ -95,12 +95,12 @@ describe("queued telemetry ownership before the first SDK load", () => {
     const analytics = await import("../lib/analytics/posthog");
     const startup = analytics.initAnalytics(owner === "unmanaged" ? undefined : () => ({ id: owner }));
     analytics.setAnalyticsContext({ workspaceId: "old-workspace" });
-    analytics.captureProductEvent(EVENTS.fleet_created, { fleet_id: "old-fleet" });
+    analytics.captureProductEvent(EVENTS.fleet_viewed, { fleet_id: "old-fleet", status: "running" });
     const replacement = analytics.initAnalytics(() => null);
     resume(); await Promise.all([startup, replacement]);
     expect(client.capture).not.toHaveBeenCalled(); expect(client.group).not.toHaveBeenCalled();
-    analytics.captureProductEvent(EVENTS.fleet_created, { fleet_id: "anonymous-fleet" });
-    expect(client.capture).toHaveBeenCalledExactlyOnceWith(EVENTS.fleet_created, { path: "/workspaces", fleet_id: "anonymous-fleet" });
+    analytics.captureProductEvent(EVENTS.fleet_viewed, { fleet_id: "anonymous-fleet", status: "running" });
+    expect(client.capture).toHaveBeenCalledExactlyOnceWith(EVENTS.fleet_viewed, { path: "/workspaces", fleet_id: "anonymous-fleet", status: "running" });
   });
 
   it("stops synchronization if the identity provider becomes unavailable during the ownership check", async () => {
