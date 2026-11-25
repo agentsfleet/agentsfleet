@@ -44,8 +44,11 @@ async fn serve(arguments: Arguments) -> Result<()> {
         &arguments.model_root,
         arguments.model_address,
     ))?;
+    // Every run is offered the published catalog, so the fixture hosts it as
+    // the runner does; an empty catalog refuses the run before any model call.
+    let network = checked(af_egress::Network::new())?;
     let agent = afr_agent::Loop::new(
-        afr_tools::Catalog::new(Vec::new()),
+        afr_tools::Catalog::hosted(std::sync::Arc::new(network)),
         af_providers::Connector::with_client(client),
     );
     let engine = checked(afr_sandbox::UnsandboxedEngine::new(home.sandboxes()))?;
