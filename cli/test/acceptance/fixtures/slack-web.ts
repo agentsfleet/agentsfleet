@@ -15,7 +15,6 @@ const MessageSchema = Schema.Struct({
   ts: Schema.String,
   text: Schema.optionalKey(Schema.String),
   user: Schema.optionalKey(Schema.String),
-  bot_id: Schema.optionalKey(Schema.String),
 });
 const PostedSchema = Schema.Struct({ ts: Schema.String, message: MessageSchema });
 const RepliesSchema = Schema.Struct({ messages: Schema.Array(MessageSchema) });

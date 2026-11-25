@@ -50,7 +50,7 @@ Person           Slack                 agentsfleetd                         Post
   |-- @bot ... -->|                         |                                   |
   |               |-- signed app_mention -->|                                   |
   |               |                         | check signature, 5-minute window  |
-  |               |                         | drop bot messages and replays     |
+  |               |                         | drop edits, own posts and replays |
   |               |                         |-- team_id -> connector.installs ->|
   |               |                         |<------------- workspace ----------|
   |               |                         |-- channel's mention rows -------->|
@@ -59,6 +59,11 @@ Person           Slack                 agentsfleetd                         Post
   |               |                         |-- one slack_mention turn -------->|
   |               |<-------- 200 -----------|                                   |
 ```
+
+Before any route, the daemon drops a message Slack marks with a `subtype`: an edit, a join, or a classic bot or webhook post.
+It drops a mention with no user, and any post by its own bot user, so a reply never wakes a fleet.
+
+A post with Slack's `bot_id` and a real user wakes a fleet like a person's. Alert apps and a person's own token through an app both post this way.
 
 The daemon reads only the subscription rows in the workspace the Slack install belongs to.
 A leading fleet name is matched without regard to case, and a `:` or `,` after it ends the name.
@@ -120,6 +125,9 @@ It skips the post only on its own bot's marker for that answer, and posts anyway
 - A destination that refuses a delivery for good, or one out of delivery cycles, is abandoned and never offered again.
 - No count or length cap applies to interim lines. Slack refuses what it cannot take, and the run reads that line as undelivered.
 - A channel has no mention per fleet, and a mention cannot reach a fleet in another workspace.
+- Any app in the channel can wake a fleet by mentioning it. Our own replies stay dropped.
+- Alert text carries outside content that reaches the model. Approved grants, the repair-branch write rule and egress policy still bound what the run can do.
+- A noisy or looping bot starts a paid run on each mention, bounded by the workspace wallet.
 
 ## Related pages
 

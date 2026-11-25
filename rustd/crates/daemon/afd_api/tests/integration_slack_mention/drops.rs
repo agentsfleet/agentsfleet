@@ -9,7 +9,9 @@
 use super::*;
 
 /// The bot's own message mentioning itself is dropped, identified by the user
-/// id its grant records, and admits nothing.
+/// id its grant records, and admits nothing. Slack stamps `bot_id` on every
+/// app post, the bot's own included, so the case carries one: the user id is
+/// what drops it.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_mention_by_the_bot_itself_is_dropped() {
@@ -29,6 +31,7 @@ async fn a_mention_by_the_bot_itself_is_dropped() {
         BOT_USER,
         &format!("<@{BOT_USER}> done"),
     );
+    let body = posted_by_an_app(&body);
     let document = json_body(deliver(&router, &body).await).await;
     assert_eq!(
         document.get("ignored").and_then(Value::as_str),

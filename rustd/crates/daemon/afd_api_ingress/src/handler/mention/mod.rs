@@ -97,6 +97,10 @@ enum Event {
 }
 
 /// An `app_mention`, with every field optional that Slack omits for bots.
+///
+/// Slack's `bot_id` is not read: Slack stamps it on every post an app makes,
+/// a person's own token through an app and an alert app alike, and either may
+/// wake a fleet.
 #[derive(Debug, Deserialize)]
 struct AppMention {
     user: Option<String>,
@@ -105,7 +109,6 @@ struct AppMention {
     ts: String,
     thread_ts: Option<String>,
     channel: String,
-    bot_id: Option<String>,
     subtype: Option<String>,
 }
 
@@ -170,10 +173,11 @@ pub(super) enum Outcome {
 
 /// Parses and filters one verified envelope.
 ///
-/// A message carrying `bot_id` or a `subtype` (an edit, a join, a bot post) is
-/// `bot_message`; a mention with no user, or a body missing a field Slack
-/// always sends, is `unreadable_body`; a direct message's channel, or any
-/// other event, is `unsupported_event`.
+/// A message carrying a `subtype` (an edit, a join, a classic bot or webhook
+/// post) is `bot_message`; a mention with no user, or a body missing a field
+/// Slack always sends, is `unreadable_body`; a direct message's channel, or any
+/// other event, is `unsupported_event`. An app's post with a user is a mention
+/// like any other; only this daemon's own bot user is dropped, in [`admit`].
 pub(super) fn parse(envelope: serde_json::Value) -> Parsed {
     let Ok(envelope) = serde_json::from_value::<Envelope>(envelope) else {
         return Parsed::Dropped(REASON_UNREADABLE);
@@ -186,7 +190,7 @@ pub(super) fn parse(envelope: serde_json::Value) -> Parsed {
     else {
         return Parsed::Dropped(REASON_UNSUPPORTED_EVENT);
     };
-    if mention.bot_id.is_some() || mention.subtype.is_some() {
+    if mention.subtype.is_some() {
         return Parsed::Dropped(REASON_BOT_MESSAGE);
     }
     let Some(user) = mention.user.filter(|user| !user.is_empty()) else {
@@ -233,6 +237,7 @@ pub(super) async fn admit<D: IngressPlane>(
     let Some((workspace, identity)) = answerer(services, provider, &asked.team_id).await? else {
         return Ok(Outcome::Dropped(REASON_TEAM_NOT_MAPPED));
     };
+    // The bot's own reply mentions itself; admitting it would loop.
     if identity.user_id.as_deref() == Some(asked.user.as_str()) {
         return Ok(Outcome::Dropped(REASON_BOT_MESSAGE));
     }

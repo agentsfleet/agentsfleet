@@ -51,15 +51,40 @@ fn a_persons_mention_parses_with_its_thread() {
     );
 }
 
-/// Bot, edited, user-less and field-missing mentions are each
+/// An app's post carries Slack's `bot_id` and a real user: an alert app, or a
+/// person's own token posting through an app. Either is a mention like any
+/// other; only this daemon's own bot user is dropped, after the grant is read.
+#[test]
+fn an_apps_mention_with_a_user_wakes() {
+    for (case, user) in [("an alert app", "U0PAGERDUTY"), ("a person's token", "U01")] {
+        let event = format!(
+            r#"{{"type":"app_mention","user":"{user}","bot_id":"B0ALERTS","text":"<@UBOT> disk full","ts":"1700000000.000400","channel":"C0123456789"}}"#
+        );
+        assert_eq!(
+            parse(envelope(&event)),
+            Parsed::Asked(Asked {
+                team_id: "T024BE7LD".to_owned(),
+                event_id: "Ev01".to_owned(),
+                user: user.to_owned(),
+                text: "<@UBOT> disk full".to_owned(),
+                channel: "C0123456789".parse().unwrap_or_else(|_| unreachable!()),
+                ts: "1700000000.000400".to_owned(),
+                thread_ts: "1700000000.000400".to_owned(),
+            }),
+            "{case}"
+        );
+    }
+}
+
+/// Classic bot, edited, user-less and field-missing mentions are each
 /// dropped with their reason; a direct message and another event are not
 /// mentions this route answers.
 #[test]
 fn non_human_mentions_are_dropped() {
     for (case, event, reason) in [
         (
-            "a bot's post",
-            r#"{"type":"app_mention","bot_id":"B01","text":"<@UBOT> hi","ts":"1","channel":"C0123456789"}"#,
+            "a classic bot or webhook post",
+            r#"{"type":"app_mention","subtype":"bot_message","bot_id":"B01","text":"<@UBOT> hi","ts":"1","channel":"C0123456789"}"#,
             REASON_BOT_MESSAGE,
         ),
         (

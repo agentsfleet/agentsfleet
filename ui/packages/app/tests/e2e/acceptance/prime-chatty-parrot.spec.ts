@@ -49,8 +49,7 @@ const HTTP_UNAUTHORIZED = 401;
 /** `UZ-WH-010`: a delivery whose signature does not verify (`af_core::error_code`). */
 const SIGNATURE_INVALID = "UZ-WH-010";
 const TriggersSchema = z.object({items: z.array(TriggerSchema)});
-// Slack stamps `bot_id` on a message it stores as an app's.
-const PostedSchema = z.object({ts: z.string().min(1), message: z.object({bot_id: z.string().optional()})});
+const PostedSchema = z.object({ts: z.string().min(1)});
 const RepliesSchema = z.object({messages: z.array(z.object({ts: z.string(), thread_ts: z.string().optional(), user: z.string().optional(), text: z.string().optional()}))});
 const RefusedSchema = z.object({error_code: z.string()});
 
@@ -109,11 +108,9 @@ test.describe.serial(`prime fleet ${fixture.name}`, {tag: POST_DEPLOY_TAG}, () =
   test(proof(1), async () => {
     expect(await fromSlack(), "no mention has reached the fleet yet").toEqual([]);
     // The fleet's name leads the words, so the mention is this fleet's whichever others listen on the channel.
+    // Slack may stamp the post with `bot_id` when the token is an app's; the daemon wakes on it all the same.
     const posted = await callSlack(token, "chat.postMessage", {channel, text: `<@${bot}> ${primed().name} the word is ${word}`}, PostedSchema);
     postedTs = posted.ts;
-    if (posted.message.bot_id !== undefined) {
-      throw new Error(`Slack stored the mention ${TOKEN_VARIABLE} posted as a bot's message, and the daemon drops a bot's post; the token must post as a person`);
-    }
     const woken = await settledTurn(workspaceId, primed().id, (turn) => turn.actor.startsWith(SLACK_ACTOR_PREFIX), WAKE_TIMEOUT_MS);
     if (woken === null) throw new Error(`the mention posted at ${posted.ts} woke no turn in ${WAKE_TIMEOUT_MS / 1000} s`);
     said = {ts: posted.ts, woken};

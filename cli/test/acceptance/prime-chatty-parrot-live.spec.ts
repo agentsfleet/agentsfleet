@@ -100,9 +100,8 @@ if (!isLive) {
     it("a person's mention in that channel wakes the fleet, in a turn Slack sent", async () => {
       assert.ok(triggerId, "the fleet added no Slack trigger");
       // Addressed by name, so the mention reaches this fleet whichever others answer in the channel.
+      // Slack may stamp the post with `bot_id` when the token is an app's; the daemon wakes on it all the same.
       posted = await postMessage(personToken, channel, `<@${bot}> ${fleetName}: the word is ${word}.`);
-      assert.equal(posted.bot_id, undefined,
-        "Slack stored the mention as an app's message, which the daemon drops as bot_message: the token must post as a person");
 
       const woken = await awaitTurn(session, fleetId,
         processed((turn) => turn.actor.startsWith(SLACK_ACTOR_PREFIX)), "answered turn sent from Slack");
@@ -112,7 +111,7 @@ if (!isLive) {
     it("the fleet's reply is posted in the thread the mention started, repeating the word it was given", async () => {
       assert.ok(posted, "no mention was posted");
       const reply = await awaitReply(personToken, channel, posted.ts,
-        (candidate) => candidate.bot_id !== undefined && (candidate.text ?? "").includes(word), REPLY_TIMEOUT_MS);
+        (candidate) => candidate.user === bot && (candidate.text ?? "").includes(word), REPLY_TIMEOUT_MS);
       assert.notEqual(reply.ts, posted.ts);
     }, STEP_TIMEOUT_MS);
 

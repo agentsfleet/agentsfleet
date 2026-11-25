@@ -107,6 +107,16 @@ fn app_mention(
     )
 }
 
+/// `body` as Slack delivers it when an app posted the message: the same event,
+/// stamped with the app's `bot_id`.
+fn posted_by_an_app(body: &str) -> String {
+    body.replacen(
+        r#""type":"app_mention","#,
+        r#""type":"app_mention","bot_id":"B0ANAPP01","#,
+        1,
+    )
+}
+
 /// One delivery of `body` signed with `secret` at `at`, plus `extra` headers.
 async fn deliver_at(
     router: &axum::Router,
@@ -174,6 +184,43 @@ async fn signed_mention_admits_one_event() {
     );
     assert_eq!(admitted.event_type, "chat");
     a_chat_is_owed_back_to_the_thread_it_was_asked_in(&admitted);
+
+    fixture.cleanup().await;
+}
+
+/// An alert app's mention carries Slack's `bot_id` and its own user, and wakes
+/// the channel's fleet as that user.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn an_apps_mention_admits_one_event() {
+    let fixture = Fixture::create().await;
+    fixture.seed().await;
+    let responder = fixture
+        .fleet(
+            &document("responder", CHANNEL, Some("read")),
+            FleetStatus::Active.as_str(),
+        )
+        .await;
+    let router = fixture.router();
+    let alerts = "U0ALERTS01";
+
+    let body = posted_by_an_app(&mention(
+        &fixture.team,
+        "EvApp01",
+        alerts,
+        &format!("<@{BOT_USER}> disk full on db-1"),
+    ));
+    assert_eq!(deliver(&router, &body).await.status(), StatusCode::OK);
+
+    let admitted = fixture
+        .turn(&key(&fixture.team, "EvApp01"))
+        .await
+        .expect("the app's mention was admitted");
+    assert_eq!(admitted.fleet, responder.as_str());
+    assert_eq!(
+        admitted.actor,
+        format!("{}:{}:{alerts}", PROVIDER.id(), fixture.team)
+    );
 
     fixture.cleanup().await;
 }
