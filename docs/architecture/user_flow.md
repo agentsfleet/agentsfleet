@@ -77,10 +77,11 @@ The minimum viable product (MVP)'s user-facing wedge is the **`agentsfleet` Comm
 ```bash
 curl -fsSL https://agentsfleet.dev | bash   # installs the agentsfleet CLI
 agentsfleet login                            # Clerk OAuth
-agentsfleet chat                             # the first line creates the fleet
+agentsfleet fleet create "<MESSAGE>"         # the first message creates the fleet
+agentsfleet fleet steer @<NAME>              # keep talking to it
 ```
 
-`agentsfleet chat` with no fleet creates one from its first line, then keeps talking to it. `agentsfleet chat <FLEET>` talks to an existing fleet, named by its id or as `@<NAME>`.
+`agentsfleet fleet steer <FLEET>` with no message is an interactive chat with an existing fleet, named by its id or as `@<NAME>`; each line is one turn.
 
 `agentsfleet fleet create "<MESSAGE>" [--name <NAME>] [--model <MODEL_REF>]` creates a fleet from one message. With `--json` it prints `{fleet_id, turn_id}`.
 
@@ -165,7 +166,7 @@ Login proves the new credential against `GET /v1/users/me`, which needs no capab
 1. **`agentsfleet doctor --json` runs first** as the deterministic readiness gate after login. Doctor is fast and verifies connectivity and workspace health only: `server_reachable`, `workspace_selected`, and `workspace_binding_valid`. It is the only sanctioned preflight surface for health; no parallel `preflight` command exists.
    - Doctor does **not** carry provider posture or balance. Those live in `agentsfleet models current --json` (mode/provider/model/context cap) and `agentsfleet usage show` (balance and exhaustion state), read separately once health passes.
    - The CLI (and any caller) reads `doctor`'s JSON output verbatim and aborts on failure with the user-facing message.
-2. **First message.** The person sends it with `agentsfleet chat`, `agentsfleet fleet create`, or Send on New fleet. Each calls `POST /v1/workspaces/{ws}/fleets` with `{message, operation_id, model_ref?, name?}` under scope `fleet:write`.
+2. **First message.** The person sends it with `agentsfleet fleet create` or Send on New fleet. Each calls `POST /v1/workspaces/{ws}/fleets` with `{message, operation_id, model_ref?, name?}` under scope `fleet:write`.
 3. **One transaction.** `afd_setup`'s create writes the fleet `active`, its thread, whose id is the fleet's, and turn #1 `queued` with actor `steer:<person>`. After the commit it publishes the wake and the per-tenant fleet notice.
    - A retry with the same `operation_id` answers the same fleet. [`data_flow.md`](./data_flow.md#fleet-creation-and-recovery) owns the retry key and recovery after a crash.
    - A refused create writes nothing: no usable model is `409 UZ-SETUP-008`, and a taken name is `409 UZ-AGT-006`. [`api_resources.md`](./api_resources.md) lists every code.
@@ -228,7 +229,7 @@ The user experience inside Claude (or Amp / Codex CLI / OpenCode) feels like thi
 
 1. The user is already in their project.
 2. The user asks Claude to create or refine an operational fleet.
-3. Claude drives `agentsfleet chat` or `agentsfleet fleet create`: it sends the first message, then keeps talking to the fleet.
+3. Claude drives `agentsfleet fleet create` to send the first message, then `agentsfleet fleet steer` to keep talking to the fleet.
 4. For a GitHub App trigger, the user names the repositories and events, and the fleet adds the row. The workspace's existing App installation supplies the event source. For a custom webhook, `agentsfleet fleet triggers list` and the fleet page show the URL to register.
 5. Claude can also manually invoke the fleet via `agentsfleet fleet steer` for one-off user-triggered tasks.
 6. Later, the fleet wakes on webhook or a QStash fire without the user staying in the terminal or any `agentsfleet` cron daemon running.

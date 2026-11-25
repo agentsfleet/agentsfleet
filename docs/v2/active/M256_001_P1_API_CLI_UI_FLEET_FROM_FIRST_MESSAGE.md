@@ -316,10 +316,10 @@ The checks: the source turn is the run's head turn or one folded into it (`accep
 
 ### §7 — The CLI: create, chat, and the lists
 
-`agentsfleet fleet create "<message>" [--name] [--model]`. `agentsfleet chat [<id|@name>]` talks to a fleet; with no fleet its first line creates one. `fleet triggers list|remove`, `fleet model set <id|@name> <ref>` and `fleet network set <id|@name> --allow-all|--private [--packages|--no-packages]` join `fleet schedule`, `fleet memory`, `fleet grants list|revoke` and `fleet approvals list|approve|deny`, which stay. `--definition`, `--review`, `--save`, `--apply`, the draft subcommands and `fleet activate` go.
+`agentsfleet fleet create "<message>" [--name] [--model]` starts a fleet; `agentsfleet fleet steer <id|@name>` with no message is the interactive chat with it. `agentsfleet chat` is removed (Indy, Nov 25, 2026): it repeated those two, and running it exits 4 naming both. `fleet triggers list|delete`, `fleet model use <id|@name> <model_ref>` and `fleet network use <id|@name> allow-all|private [--packages|--no-packages]` join `fleet schedule`, `fleet memory`, `fleet grants list|revoke` and `fleet approvals list|approve|deny`, which stay. `--definition`, `--review`, `--save`, `--apply`, the draft subcommands and `fleet activate` go.
 
 - **Dimension 7.1** — create from the terminal → Test `install-fleet-cli.spec.ts` (e2e, `make acceptance`): the built binary against a live daemon, `fleet create "watch checkout errors" --json` → `{fleet_id, turn_id}`, exit 0, and the fleet shows in the browser.
-- **Dimension 7.2** — DONE — chat creates on its first line → Test `chat with no fleet creates one on the first line` (unit, in-process, `cli/test/chat.unit.test.ts`): one `POST W/fleets`, then the fleet stream.
+- **Dimension 7.2** — DONE — chat is removed → Test `chat is removed and names fleet create and fleet steer` (unit, in-process): `agentsfleet chat` → exit 4, the message names `fleet create` and `fleet steer`, and no request is sent.
 - **Dimension 7.3** — DONE — a refused approval is a structured error → Test `fleet approvals approve prints the refusal as JSON` (unit, handler, `cli/test/approvals-decide.unit.test.ts`): a 403 → the JSON error with its code and a suggestion, exit 3, the server-refusal code in `cli/src/errors/index.ts`'s `EXIT_CODE`.
 - **Dimension 7.4** — DONE — a removed flag names its replacement → Test `chat --save is refused with the new command` (unit, in-process and against the built binary): exit 4, the validation code; the message names `fleet create`.
 - **Dimension 7.5** — DONE — a create needs a message → Test `fleet create with no message is a usage error` (unit, handler): no argument → exit 4 and no request sent.
@@ -440,7 +440,7 @@ The `SetupStep` events, `fleet_setup_finished`, `fleet_setup_cancelled`, `setup_
 | R6 | Triggers route from rows the fleet added, inside its workspace (§4) | `make test-integration-rustd` | exit 0; `a_webhook_trigger_admits_a_signed_delivery ... ok`, `an_app_delivery_outside_a_trigger_reaches_no_fleet ... ok`, `a_mention_reaches_the_fleet_subscribed_to_its_channel ... ok` | P0 | |
 | R7 | The fleet's model starts a task only under a person's message, and plain chat pays no decision call (§5) | `make test-integration-rustd` | exit 0; `a_task_start_writes_a_ready_task_and_its_continuation ... ok`, `a_task_start_under_a_webhook_turn_is_refused ... ok`, `a_plain_message_makes_no_decision_call ... ok` | P0 | |
 | R8 | The app is one chat with its lists (§6) | `make dry-app` | exit 0; `a first message opens the fleet's chat` passed | P0 | |
-| R9 | The CLI creates a fleet and approves access (§7) | `make test-unit-all` | exit 0; `chat with no fleet creates one on the first line` and `fleet approvals approve prints the refusal as JSON` pass | P1 | |
+| R9 | The CLI creates a fleet and approves access (§7) | `make test-unit-all` | exit 0; `chat is removed and names fleet create and fleet steer` and `fleet approvals approve prints the refusal as JSON` pass | P1 | |
 | R10 | The live path works for a signed-in person (§6, §7) | `make acceptance SUITE=all` | exit 0; `onboarding-chat-journey.spec.ts` and `install-fleet-cli.spec.ts` passed | P1 | |
 | S1 | Lint | `make lint-all` | exit 0 | P0 | |
 | S2 | Unit | `make test-unit-all` | exit 0 | P0 | |

@@ -1088,7 +1088,7 @@ The host needs nf_tables in its kernel, `net.ipv4.ip_forward=1`, which the runne
 
 ### HTTP destination settings
 
-Each fleet row carries two network toggles: `http_egress`, either `restricted` or `public`, and `package_domains`, a boolean. The app shows them as "Allow all" and "Packages", and `agentsfleet fleet network set` changes them too.
+Each fleet row carries two network toggles: `http_egress`, either `restricted` or `public`, and `package_domains`, a boolean. The app shows them as "Allow all" and "Packages", and `agentsfleet fleet network use` changes them too.
 
 Both are off at birth, so a new fleet is private. Only a signed-in person changes them, through one `PATCH` on the fleet. An API key gets `403`, and the fleet stays unchanged.
 

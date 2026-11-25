@@ -150,7 +150,7 @@ F3 deduplicates on the turn's producer key in `thread.turns`. Reuse its key with
 
 A message sent while the fleet's run is live folds into that run (`disposition: folded`). The live run takes it at its next model call, and the run's answer is its reply. A task-bound message ahead of it is a barrier, so the message queues instead.
 
-The browser and the terminal use the same routes, authorization, replay and billing rules. The terminal creates a fleet with W2 (`agentsfleet fleet create`, or the first line of `agentsfleet chat`) and then talks to it with F3.
+The browser and the terminal use the same routes, authorization, replay and billing rules. The terminal creates a fleet with W2 (`agentsfleet fleet create`) and then talks to it with F3 (`agentsfleet fleet steer`).
 
 ### Removed person routes
 

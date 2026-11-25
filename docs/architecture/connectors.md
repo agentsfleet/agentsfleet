@@ -441,7 +441,7 @@ An add is refused, and the model reads `[kind] sentence` and may correct the cal
 - a webhook row's source is `approval`, the approval route's segment, or `github`, which is an `app_event` row;
 - the fleet already holds a row of that kind and source.
 
-No count limit applies beyond what the workspace has connected. A person lists a fleet's rows with `GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/triggers` (`fleet:read`) and removes one with `DELETE` on `triggers/{id}` (`fleet:write`). The CLI's `agentsfleet fleet triggers list|remove` and the fleet page's "Wakes on" list call the same routes ([web app](web_app.md)).
+No count limit applies beyond what the workspace has connected. A person lists a fleet's rows with `GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/triggers` (`fleet:read`) and removes one with `DELETE` on `triggers/{id}` (`fleet:write`). The CLI's `agentsfleet fleet triggers list|delete` and the fleet page's "Wakes on" list call the same routes ([web app](web_app.md)).
 
 Each add or remove writes the operator log `trigger_changed` with `fleet_id`, `kind` and `by` (`run` or `person`). It carries no signing secret and no URL ([observability](observability.md)).
 

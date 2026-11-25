@@ -26,7 +26,7 @@
 - **Model choice** — use the platform model or an account model configured with your own provider key.
 - **Separate working instances** — each fleet keeps its own history and memory.
 
-You start a fleet by sending it your first message, in the app or with `agentsfleet chat`, and keep talking to it in that chat. It asks before it uses a secret or an integration, and you approve once. See [the user flow](docs/architecture/user_flow.md).
+You start a fleet by sending it your first message, in the app or with `agentsfleet fleet create`, and keep talking to it in that chat or with `agentsfleet fleet steer`. It asks before it uses a secret or an integration, and you approve once. See [the user flow](docs/architecture/user_flow.md).
 
 ---
 
