@@ -3,7 +3,7 @@ import { PageLayout } from "@agentsfleet/design-system";
 import { requireCredential } from "@/lib/auth/credential";
 import { listTenantWorkspacesCached } from "@/lib/workspace";
 import { readWorkspaceModels } from "../[id]/components/view-data";
-import { NewFleetChat } from "@/components/domain/fleet/NewFleetChat";
+import NewFleetChat from "@/components/domain/fleet/NewFleetChatDynamic";
 
 export const dynamic = "force-dynamic";
 

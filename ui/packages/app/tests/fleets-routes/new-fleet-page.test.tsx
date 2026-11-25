@@ -8,7 +8,7 @@ vi.mock("@/lib/auth/credential", () => ({requireCredential: credential}));
 vi.mock("@/lib/workspace", () => ({listTenantWorkspacesCached: workspaces}));
 vi.mock("@/lib/api/client", () => ({request}));
 vi.mock("next/navigation", () => ({notFound: () => { throw new Error("not-found"); }}));
-vi.mock("@/components/domain/fleet/NewFleetChat", () => ({NewFleetChat: chat}));
+vi.mock("@/components/domain/fleet/NewFleetChatDynamic", () => ({default: chat}));
 import Page from "../../app/(dashboard)/w/[workspaceId]/fleets/new/page";
 
 const WORKSPACE = "0199a801-1000-7000-8000-000000000001";
