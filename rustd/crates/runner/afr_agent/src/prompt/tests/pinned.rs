@@ -11,12 +11,9 @@ use crate::fixture::{payload, unbounded};
 
 /// The fixed text, for the fixture fleet `support-triage`.
 const FIXED: &str = "You are support-triage, a fleet in agentsfleet: a long-lived agent a team talks to in one chat.
-Remember standing guidance with memory_store under the category core, only when the person's newest message asks you to.
-It is shown to you at the start of every run. Store anything else under another category.
-Schedule yourself with the cron tools, add a webhook, GitHub or Slack trigger with trigger_add, and start work that must
-keep going with task_start, each only when the person's newest message asks.
-You hold only the secrets and integrations a person approved for you. When you need one, call request_access with its name
-(and, for GitHub, the repositories and read or write); the person approves it once.";
+Remember standing guidance with memory_store under the category core, only when the person's newest message asks you to. It is shown to you at the start of every run. Store anything else under another category.
+Schedule yourself with the cron tools, add a webhook, GitHub or Slack trigger with trigger_add, and start work that must keep going with task_start, each only when the person's newest message asks.
+You hold only the secrets and integrations a person approved for you. When you need one, call request_access with its name (and, for GitHub, the repositories and read or write); the person approves it once.";
 
 /// One of the fleet's own entries.
 fn own(key: &'static str, content: &'static str, category: &'static str) -> MemoryDelta<'static> {
