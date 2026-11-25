@@ -1,158 +1,90 @@
-import { useRef, type ReactNode } from "react";
-import { Button, cn } from "@agentsfleet/design-system";
-import { ScoutInvestigation } from "./ScoutInvestigation";
-import { Mention, SlackMessage, SlackThread } from "./SlackThread";
-import { DEMO_STAGES, useDemoPlayback } from "./useDemoPlayback";
+import { useRef, useState } from "react";
+import { BrandMark, Button, Card } from "@agentsfleet/design-system";
+import { GithubLogoIcon } from "@phosphor-icons/react/dist/ssr/GithubLogo";
+import { StackIcon } from "@phosphor-icons/react/dist/ssr/Stack";
+import { FleetSummary } from "./FleetSummary";
 
-function Scene({
-  active,
-  staticMode,
-  animate,
-  children,
-}: {
-  active: boolean;
-  staticMode: boolean;
-  animate: boolean;
-  children: ReactNode;
-}) {
+type Access = "pending" | "approved" | "denied";
+
+const ACCESS_STATUS: Record<Access, string> = {
+  pending: "GitHub access requested",
+  approved: "GitHub access approved",
+  denied: "GitHub access denied",
+};
+
+export function ProductDemo() {
+  const [access, setAccess] = useState<Access>("pending");
+
   return (
-    <div
-      data-active={active}
-      inert={!staticMode && !active}
-      className={cn(
-        "min-w-0",
-        staticMode
-          ? "snap-start"
-          : "col-start-1 row-start-1 data-[active=false]:invisible data-[active=false]:opacity-0",
-        animate && "transition-[opacity,visibility] duration-500",
-      )}
-    >
-      {children}
-    </div>
+    <Card asChild className="rounded-lg p-0">
+      <figure aria-label="Example fleet conversation">
+        <figcaption className="flex flex-wrap items-center justify-between gap-md border-b border-border px-xl py-lg sm:px-2xl">
+          <span className="inline-flex items-center gap-md font-semibold">
+            <StackIcon aria-hidden="true" className="size-4 text-text-muted" />
+            Release watch
+          </span>
+          <span className="text-eyebrow leading-eyebrow text-text-subtle">Interactive example</span>
+        </figcaption>
+        <div className="grid gap-xl bg-background p-xl sm:p-2xl">
+          <div className="grid gap-xl">
+            <div className="justify-self-end rounded-md bg-muted px-xl py-lg text-conversation leading-conversation">
+              <span className="sr-only">You: </span>
+              Tell me when a pull request merges in acme/web.
+            </div>
+            <div className="grid gap-md">
+              <p className="flex items-center gap-md text-label font-semibold">
+                <BrandMark className="size-4 text-pulse" />
+                Release watch
+              </p>
+              <p className="text-conversation leading-conversation text-text-chat">
+                I can watch for merges and report here. I’ll need access to the repository.
+              </p>
+            </div>
+          </div>
+          <AccessCard access={access} onAccess={setAccess} />
+        </div>
+        <FleetSummary approved={access === "approved"} />
+      </figure>
+    </Card>
   );
 }
 
-export function ProductDemo() {
-  const stage = useRef<HTMLDivElement>(null);
-  const demo = useDemoPlayback(stage);
-  const scenes = [
-    <SlackThread key="ticket" label="Slack ticket in customer-support">
-      <SlackMessage time="09:02">
-        <Mention /> mira: Chat froze again at 8:55. I hit Send twice. Any idea
-        why?
-      </SlackMessage>
-      <SlackMessage bot time="09:02">
-        I’ve asked Scout to check the connection.
-      </SlackMessage>
-    </SlackThread>,
-    <ScoutInvestigation key="investigation" onInspect={demo.pause} />,
-    <SlackThread key="draft" label="Draft fix in the Slack thread">
-      <SlackMessage time="09:08">
-        <Mention /> incident-repairer: Can you fix the connection and add a
-        test?
-      </SlackMessage>
-      <SlackMessage bot time="09:19">
-        <strong className="block">Draft fix ready for review</strong>
-        The runner sent packets that were too big. The fix sends smaller ones.
-        The test passes.
-      </SlackMessage>
-    </SlackThread>,
-    <SlackThread key="result" label="Verified result in the Slack thread">
-      <SlackMessage time="11:01">
-        I reviewed the fix and shipped it at 9:55. <Mention /> mira: Are replies
-        faster now?
-      </SlackMessage>
-      <SlackMessage bot time="11:02">
-        <strong className="block">
-          95% of replies started within 2.8 seconds, down from 15.1 seconds.
-        </strong>
-        Packet loss fell from 8% to 0.2%.
-        <small className="mt-md block font-mono text-xs/relaxed text-zinc-300">
-          Grafana · Similar traffic
-          <br />
-          08:00–09:00 and 10:00–11:00 IST
-        </small>
-      </SlackMessage>
-    </SlackThread>,
-  ];
-
+function AccessCard({ access, onAccess }: { access: Access; onAccess: (access: Access) => void }) {
+  const primary = useRef<HTMLButtonElement>(null);
+  const pending = access === "pending";
   return (
-    <figure
-      className="min-w-0"
-      id="product-demo"
-      aria-labelledby="film-heading"
-      data-animated={!demo.staticMode}
-    >
-      <figcaption className="mb-md flex flex-wrap justify-between gap-md">
-        <h2 id="film-heading" className="font-bold text-text">
-          Why did chat freeze?
-        </h2>
-        <span className="font-mono text-xs text-text-muted">
-          Example thread · IST
-        </span>
-      </figcaption>
-      <div className="flex flex-col gap-md">
-        {demo.staticMode ? (
-          <p className="flex min-h-11 items-center text-label text-text-muted md:order-last motion-reduce:hidden">
-            Scroll across to read the full story.
-          </p>
-        ) : (
-          <div className="flex min-h-11 flex-wrap items-center justify-between gap-x-lg gap-y-sm md:order-last">
-            <div className="min-w-32 flex-1">
-              <div className="mb-sm flex gap-1" aria-hidden="true">
-                {DEMO_STAGES.map(({ name }, index) => (
-                  <span
-                    key={name}
-                    className={cn(
-                      "h-0.5 flex-1 rounded-full",
-                      index <= demo.stage ? "bg-pulse" : "bg-border-strong",
-                    )}
-                  />
-                ))}
-              </div>
-              <p className="text-label text-text-muted">
-                {DEMO_STAGES[demo.stage].name}
-              </p>
-            </div>
+    <Card asChild className="grid gap-md p-xl">
+      <div>
+        <output className="flex items-center gap-md text-label font-semibold">
+          <GithubLogoIcon aria-hidden="true" className="size-4 shrink-0 text-text-muted" />
+          {ACCESS_STATUS[access]}
+        </output>
+        <p className="text-label text-text-muted">
+          <span className="font-mono">acme/web</span> · Read access
+        </p>
+        <div className="flex flex-wrap gap-md pt-sm">
+          <Button
+            ref={primary}
+            variant={pending ? "default" : "outline"}
+            size="compact"
+            onClick={() => onAccess(pending ? "approved" : "pending")}
+          >
+            {pending ? "Approve" : "Reset example"}
+          </Button>
+          {pending && (
             <Button
-              size="sm"
               variant="outline"
-              className="min-h-11"
-              onClick={demo.toggle}
+              size="compact"
+              onClick={() => {
+                primary.current?.focus({ preventScroll: true });
+                onAccess("denied");
+              }}
             >
-              {demo.finished
-                ? "Replay demo"
-                : demo.paused
-                  ? "Resume demo"
-                  : "Pause demo"}
+              Deny
             </Button>
-          </div>
-        )}
-        <div
-          ref={stage}
-          className={cn(
-            "grid md:motion-safe:min-h-116",
-            demo.staticMode &&
-              "gap-lg motion-safe:snap-x motion-safe:snap-mandatory motion-safe:auto-cols-[100%] motion-safe:grid-flow-col motion-safe:overflow-x-auto",
           )}
-          role={demo.staticMode ? "region" : undefined}
-          aria-label={demo.staticMode ? "Support investigation example" : undefined}
-          tabIndex={demo.staticMode ? 0 : undefined}
-          data-playing={demo.playing}
-          onFocus={demo.pause}
-        >
-          {scenes.map((scene, index) => (
-            <Scene
-              key={DEMO_STAGES[index].name}
-              active={index === demo.stage}
-              staticMode={demo.staticMode}
-              animate={!demo.staticMode && demo.stage > 0}
-            >
-              {scene}
-            </Scene>
-          ))}
         </div>
       </div>
-    </figure>
+    </Card>
   );
 }

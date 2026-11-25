@@ -9,7 +9,6 @@ import {
   REQUEST_MAX_LENGTH,
   type ExampleJob,
 } from "../lib/example-jobs";
-import { HERO_HEADLINE } from "../lib/marketing-copy";
 import { JobSuggestions } from "./JobSuggestions";
 import {
   trackNavigationClicked,
@@ -38,27 +37,26 @@ export function JobComposer({
         : "Explore an example run";
   return (
     <div id={JOBS_ANCHOR}>
-      <Card asChild className="border-border-strong p-lg ph-no-capture sm:p-xl">
+      <Card asChild className="rounded-lg p-lg ph-no-capture sm:p-xl">
         <div>
           <Label htmlFor={id} className="sr-only">
-            {HERO_HEADLINE}
+            What should your fleet handle?
           </Label>
           <Textarea
             id={id}
             value={request}
             onChange={(event) => onRequest(event.target.value)}
             rows={2}
-            placeholder="What needs doing? An incident, a failing test, a recurring job…"
+            placeholder="What would you like your fleet to do?"
             maxLength={REQUEST_MAX_LENGTH}
             aria-describedby={`${id}-privacy`}
-            className="min-h-18 max-h-50 resize-y border-0 bg-transparent p-sm leading-body shadow-none ph-no-capture"
+            className="min-h-chat-input resize-y border-0 bg-transparent p-md text-composer leading-composer shadow-none ph-no-capture"
           />
-          <div className="mt-lg flex items-center justify-between gap-xl text-label text-text-subtle">
-            <span>No tools connected</span>
-            <Button asChild size="icon" className="size-11 text-heading">
+          <div className="mt-lg flex flex-wrap items-center justify-between gap-md text-label text-text-subtle">
+            <span>Example composer</span>
+            <Button asChild wrap variant="outline" className="min-h-11">
               <a
                 href={PUBLIC_ACCESS_URL}
-                aria-label="Join waitlist"
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() =>
@@ -69,7 +67,7 @@ export function JobComposer({
                   })
                 }
               >
-                <span aria-hidden="true">↑</span>
+                Join waitlist
               </a>
             </Button>
           </div>
@@ -101,8 +99,7 @@ export function JobComposer({
         id={`${id}-privacy`}
         className="mx-md mt-sm text-label text-text-subtle"
       >
-        Keep requests general. The waitlist opens in a new tab; your text stays
-        on this page.
+        Your message stays on this page. Pick an example to see a fleet at work.
       </p>
     </div>
   );

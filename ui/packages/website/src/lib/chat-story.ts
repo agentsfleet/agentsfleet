@@ -23,11 +23,9 @@ export type ChatStory = { steps: TimedStep[]; duration: number };
 export function createChatStory(job: ExampleJob): ChatStory {
   const steps: StoryStep[] = [
     { role: STORY_ROLE.user, text: job.request },
-    { role: STORY_ROLE.fleet, activity: "Understanding the job", text: job.question },
-    { role: STORY_ROLE.user, text: job.setupReply },
-    { role: STORY_ROLE.fleet, activity: "Preparing the setup", text: job.setupReview },
-    { role: STORY_ROLE.user, text: "Save this setup and create the fleet." },
-    { role: STORY_ROLE.event, text: `${job.name} created. Waiting for its next scheduled check.` },
+    { role: STORY_ROLE.fleet, activity: "Reading your message", text: job.firstReply },
+    ...job.approvedAccess.map((source) => ({ role: STORY_ROLE.event, text: `Access approved · ${source}` })),
+    { role: STORY_ROLE.event, text: `Schedule added · ${job.schedule}` },
     { role: STORY_ROLE.event, text: job.check },
     { role: STORY_ROLE.fleet, activity: job.activity, text: job.investigation, detail: STORY_DETAIL.evidence },
     { role: STORY_ROLE.fleet, activity: "Tracing the cause", text: job.finding },

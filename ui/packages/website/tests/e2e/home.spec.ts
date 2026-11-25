@@ -7,13 +7,12 @@ const MOTION_VIEWPORT_HEIGHT = 1000;
 const MOTION_CLOCK_TIME = new Date("2026-10-14T00:00:00Z");
 const MOTION_STEP_MS = 1000;
 const HISTORY_SCROLL_DISTANCE = 120;
-const INSTALL_COMMAND = "curl -fsSL https://agentsfleet.dev | bash";
 const WAITLIST = "https://accounts.agentsfleet.net/waitlist";
 const INCIDENT_LINK = /Investigate an incident.*Explore example run/;
 const BACK_LINK = "Back to examples";
 const BROWSER_TIMEOUT_DEFAULT = "Number(process.env.BROWSER_TIMEOUT) || 5";
 const SAMPLE_TIMEOUT_LOG = "Browser has been open for more than 5 minutes.";
-const INCIDENT_REQUEST_PREFIX = "Watch agentsfleet/linkwarden";
+const INCIDENT_REQUEST_PREFIX = "Check agentsfleet/linkwarden";
 const CONTEXTUAL_EXAMPLES = [
   { job: EXAMPLE_JOBS[1], link: "Explore a test regression example" },
   { job: EXAMPLE_JOBS[2], link: "Explore a recurring work example" },
@@ -35,11 +34,10 @@ test("visitors inspect the full planned journey without connecting or running an
   const mutations: string[] = [];
   page.on("request", request => { if (request.method() === "POST") mutations.push(request.url()); });
   await expect(page.getByRole("textbox")).toHaveCount(0);
-  await expect(page.getByText(INSTALL_COMMAND, { exact: true })).toBeVisible();
   await expect(page.getByTestId("hero")).not.toContainText(/preview|release pending/i);
   await expect(page.getByRole("figure")).toContainText(DEFAULT_JOB.report);
-  await expect(page.getByRole("figure")).toContainText("/schedule every 15 minutes");
-  await expect(page.getByRole("figure")).toContainText(`${DEFAULT_JOB.name} created. Waiting for its next scheduled check.`);
+  await expect(page.getByRole("figure")).toContainText("Schedule added · Every 15 minutes");
+  await expect(page.getByRole("figure")).toContainText(DEFAULT_JOB.firstReply);
   await expect(page.getByRole("figure")).not.toContainText(/Saved to your fleet library/);
   await expect(page.getByTestId("how-it-works").getByRole("link", { name: "Join waitlist", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Replay" })).toHaveCount(0);
@@ -78,9 +76,9 @@ test("signup cancellation preserves private text without sending or storing it",
   await expect(page.getByRole("textbox")).toHaveValue(request);
   await expect(page.getByRole("figure")).toHaveCount(0);
 });
-test("browser back restores the examples composer and its private draft", async ({ page }) => {
+test("browser back restores the examples composer and its unsent message", async ({ page }) => {
   await page.goto("/examples");
-  const request = "Preserve this draft on return";
+  const request = "Preserve this message on return";
   await page.getByRole("textbox").fill(request);
   await page.getByRole("link", { name: INCIDENT_LINK }).click();
   await expect(page.getByRole("figure")).toBeVisible();
@@ -211,21 +209,19 @@ test("scrolling through earlier messages keeps the animation running without dra
   await expect(page.getByRole("button", { name: "Pause", exact: true })).toBeFocused();
 });
 for (const { job, link } of CONTEXTUAL_EXAMPLES) {
-  test(`${job.label} opens its own example and restores the private draft on return`, async ({ page }) => {
+  test(`${job.label} opens its own example and restores the unsent message on return`, async ({ page }) => {
     await page.goto("/examples");
     const composer = page.getByRole("textbox");
     const request = "Keep this request while exploring";
     await expect(composer).toHaveCount(1);
-    await expect(page.getByText(INSTALL_COMMAND, { exact: true })).toBeVisible();
-    await composer.fill(request);
+      await composer.fill(request);
     await page.getByRole("link", { name: new RegExp(job.label) }).click();
     await expect(composer).toHaveCount(0);
     await expect(page.getByRole("heading", { name: job.title, exact: true })).toBeVisible();
     await expect(page.getByRole("figure")).toContainText(job.report);
     await expect(page.getByRole("figure")).not.toContainText(DEFAULT_JOB.report);
     await expect(page.getByRole("figure")).not.toContainText(request);
-    await expect(page.getByText(INSTALL_COMMAND, { exact: true })).toBeVisible();
-    await page.getByRole("link", { name: BACK_LINK, exact: true }).click();
+      await page.getByRole("link", { name: BACK_LINK, exact: true }).click();
     await expect(page.getByTestId("how-it-works")).toHaveCount(0);
     await expect(composer).toHaveValue(request);
     await expect(page.getByRole("link", { name: link, exact: true })).toBeVisible();

@@ -9,16 +9,16 @@ afterEach(() => vi.restoreAllMocks());
 describe("Conversation example", () => {
   it("shows a complete, inspectable journey with reduced motion", () => {
     render(<HowItWorks job={DEFAULT_JOB} />);
-    expect(screen.getByRole("figure", { name: "Illustrated example investigation" })).toHaveTextContent("/schedule every 15 minutes");
+    expect(screen.getByRole("figure", { name: "Illustrated example investigation" })).toHaveTextContent("Schedule added · Every 15 minutes");
     expect(screen.getByText(DEFAULT_JOB.finding)).toBeInTheDocument();
     expect(screen.getByText(DEFAULT_JOB.report)).toBeInTheDocument();
-    expect(screen.getByText(`${DEFAULT_JOB.name} created. Waiting for its next scheduled check.`)).toBeInTheDocument();
+    expect(screen.getByText(DEFAULT_JOB.firstReply)).toBeInTheDocument();
     expect(screen.queryByText(/Saved to your fleet library/)).toBeNull();
     expect(screen.getByText(/Report ready · repository unchanged/i)).toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "Example stages" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Replay" })).toBeNull();
     expect(screen.getByRole("link", { name: "Join waitlist" })).toHaveAttribute("href", PUBLIC_ACCESS_URL);
-    expect(screen.getByText(/sample run, no changes applied/)).toBeInTheDocument();
+    expect(screen.getByText(/sample run/i)).toBeInTheDocument();
   });
   it("opens the exact evidence without navigating or claiming a live connection", () => {
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
@@ -30,7 +30,7 @@ describe("Conversation example", () => {
     fireEvent.click(citation);
     const evidence = screen.getByRole("region", { name: "Sample evidence" });
     expect(evidence).toHaveTextContent("Number(process.env.BROWSER_TIMEOUT) || 5");
-    expect(evidence).toHaveTextContent("Run output is illustrative; linked repository code is real.");
+    expect(evidence).toHaveTextContent("This example uses sample output.");
     expect(within(evidence).getByRole("link", { name: "View repository source" })).toHaveAttribute("href", DEFAULT_JOB.evidence[1].url);
     expect(conversation.scrollTop).toBe(180);
     const close = within(evidence).getByRole("button", { name: "Close evidence" });

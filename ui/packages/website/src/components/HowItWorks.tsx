@@ -61,7 +61,7 @@ export default function HowItWorks({
               <span className="text-label text-text-muted">
                 {frame.finished
                   ? "Report ready · repository unchanged"
-                  : "One conversation, from idea to work"}
+                  : "Example conversation"}
               </span>
               <div className="flex w-full flex-wrap gap-sm sm:w-auto">
                 {!motion.staticMode && (
@@ -130,7 +130,7 @@ export default function HowItWorks({
           >
             agentsfleet/linkwarden ↗
           </a>{" "}
-          · sample run, no changes applied.
+          · sample run.
         </p>
       </section>
     </Section>

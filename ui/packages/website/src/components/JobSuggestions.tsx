@@ -1,83 +1,39 @@
-import { BrandMark, Button } from "@agentsfleet/design-system";
+import type { ExampleJob } from "../lib/example-jobs";
+import { Button } from "@agentsfleet/design-system";
+import { ClockIcon } from "@phosphor-icons/react/dist/ssr/Clock";
+import { PulseIcon } from "@phosphor-icons/react/dist/ssr/Pulse";
+import { TestTubeIcon } from "@phosphor-icons/react/dist/ssr/TestTube";
 import { Link } from "react-router-dom";
-import {
-  EXAMPLE_ANCHOR,
-  EXAMPLE_JOBS,
-  JOB_ID,
-  type ExampleJob,
-  type JobId,
-} from "../lib/example-jobs";
 import { trackInteractionClicked } from "../analytics/posthog";
+import { EXAMPLE_ANCHOR, EXAMPLE_JOBS, JOB_ID } from "../lib/example-jobs";
 
-function trackSuggestion(job: ExampleJob) {
-  trackInteractionClicked({
-    source: `hero_suggestion_${job.id}`,
-    surface: "hero",
-    target: job.id,
-  });
-}
+const SUGGESTION_ICONS = {
+  [JOB_ID.incident]: PulseIcon,
+  [JOB_ID.tests]: TestTubeIcon,
+  [JOB_ID.agent]: ClockIcon,
+} as const;
 
-export function JobSuggestions({
-  onJob,
-}: {
-  onJob: (job: ExampleJob) => void;
-}) {
+export function JobSuggestions({ onJob }: { onJob: (job: ExampleJob) => void }) {
   return (
-    <div
-      className="mt-lg grid gap-md sm:grid-cols-3"
-      aria-label="Ideas for your fleet"
-    >
-      {EXAMPLE_JOBS.map((job) => (
-        <Button
-          key={job.id}
-          asChild
-          variant={job.id === JOB_ID.incident ? "default" : "outline"}
-          size="sm"
-          wrap
-          className="min-h-13 justify-start gap-md p-md text-left text-label sm:min-h-16"
-        >
-          <Link
-            to={`#${EXAMPLE_ANCHOR}`}
-            onClick={() => {
-              onJob(job);
-              trackSuggestion(job);
-            }}
-          >
-            <SuggestionIcon icon={job.id} />
-            <span className="grid gap-xs">
-              <span>{job.label}</span>
-              <span className="text-xs font-normal">Explore example run →</span>
-            </span>
-          </Link>
-        </Button>
-      ))}
+    <div className="mt-lg flex flex-wrap gap-md" aria-label="Ideas for your fleet">
+      {EXAMPLE_JOBS.map((job) => {
+        const Icon = SUGGESTION_ICONS[job.id];
+        return (
+          <Button key={job.id} asChild wrap variant="outline" className="min-h-11 rounded-full">
+            <Link
+              to={`#${EXAMPLE_ANCHOR}`}
+              aria-label={`${job.label} · Explore example run`}
+              onClick={() => {
+                onJob(job);
+                trackInteractionClicked({ source: `hero_suggestion_${job.id}`, surface: "hero", target: job.id });
+              }}
+            >
+              <Icon aria-hidden="true" />
+              {job.label}
+            </Link>
+          </Button>
+        );
+      })}
     </div>
-  );
-}
-
-function SuggestionIcon({ icon }: { icon: JobId }) {
-  if (icon === JOB_ID.agent) return <BrandMark className="size-5 shrink-0" />;
-  return (
-    <svg
-      className="size-5 shrink-0"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      {icon === JOB_ID.incident ? (
-        <>
-          <path d="M3 12h4l3-8 4 16 3-8h4" />
-          <circle cx="12" cy="12" r="10" />
-        </>
-      ) : (
-        <>
-          <path d="M8 4h8M9 4V2h6v2M6 4H4v18h16V4h-2M8 11l2 2 5-5M8 18h8" />
-        </>
-      )}
-    </svg>
   );
 }

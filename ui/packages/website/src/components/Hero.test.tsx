@@ -5,8 +5,6 @@ import { MemoryRouter } from "react-router-dom";
 import { DEFAULT_JOB } from "../lib/example-jobs";
 import { PUBLIC_ACCESS_URL } from "../config";
 
-const INSTALL_COMMAND = "curl -fsSL https://agentsfleet.dev | bash";
-
 it("keeps the incident request editable and opens signup without putting it in the URL", () => {
   const onRequest = vi.fn();
   const onJob = vi.fn();
@@ -23,16 +21,14 @@ it("keeps the incident request editable and opens signup without putting it in t
   expect(incident).toHaveAttribute("href", "/#how-it-works");
   fireEvent.click(incident);
   expect(onJob).toHaveBeenCalledWith(DEFAULT_JOB);
-  expect(screen.getByText(INSTALL_COMMAND)).toBeInTheDocument();
 });
 
-it("replaces the composer with example content while retaining the installer", () => {
+it("replaces the composer with an example conversation", () => {
   render(<MemoryRouter><Hero request={DEFAULT_JOB.request} onRequest={vi.fn()} job={DEFAULT_JOB} onJob={vi.fn()}>
     <p>Example content</p>
   </Hero></MemoryRouter>);
   expect(screen.getByText("Example content")).toBeInTheDocument();
   expect(screen.queryByRole("textbox")).toBeNull();
   expect(screen.queryByRole("link", { name: /Join waitlist/ })).toBeNull();
-  expect(screen.getByText(INSTALL_COMMAND)).toBeInTheDocument();
   expect(screen.queryByText(/preview|release pending/i)).toBeNull();
 });

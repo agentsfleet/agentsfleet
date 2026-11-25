@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "@agentsfleet/design-system/tokens.css";
+@import "@agentsfleet/design-system/app-tokens.css";
 @import "@agentsfleet/design-system/theme.css";
 
 @source "../../design-system/src/**/*.{ts,tsx}";
@@ -9,3 +10,7 @@
 @source not "../../design-system/src/**/*.test.{ts,tsx}";
 @source not "./landing";
 @source not "./pages/Home.tsx";
+
+@layer base {
+  body { @apply bg-background; }
+}

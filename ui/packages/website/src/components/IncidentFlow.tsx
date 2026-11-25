@@ -70,8 +70,8 @@ export function IncidentFlow({
           aria-live="off"
         >
           <div className="mx-auto max-w-chat">
-            <p className="mb-xl font-mono text-xs text-text-muted">
-              Describe → refine → save → work
+            <p className="mb-xl text-label text-text-muted">
+              The first message starts the fleet.
             </p>
             {frame.entries.map((entry, index) => (
               <StoryMessage
@@ -114,7 +114,7 @@ export function IncidentFlow({
                   </a>
                 )}
                 <p>
-                  Run output is illustrative; linked repository code is real.
+                  This example uses sample output.
                 </p>
               </section>
             )}

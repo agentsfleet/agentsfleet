@@ -1,18 +1,11 @@
-import { describe, it, expect } from "vitest";
-import { HERO_HEADLINE, PILLAR_TOKENS } from "./lib/marketing-copy";
+import { expect, it } from "vitest";
+import { createChatStory } from "./lib/chat-story";
+import { EXAMPLE_JOBS } from "./lib/example-jobs";
 
-/*
- * Guards the approved positioning copy.
- *
- * Test names follow RULE TST-NAM (no milestone IDs in test names).
- */
-
-// The literal pin of the headline and the wake-on-event lede phrase: the
-// other suites import those constants, so a revert of either would pass them.
-describe("marketing hero — approved wording pinned once", () => {
-  it("pins the approved headline and the wake-on-event lede phrase", () => {
-    expect(HERO_HEADLINE).toBe("What should your fleet handle?");
-    // pin test: literal is the contract
-    expect(PILLAR_TOKENS).toContain("wakes on a production event");
-  });
+it.each(EXAMPLE_JOBS)("opens $name from the first message and approves access before the check", (job) => {
+  const steps = createChatStory(job).steps.map(({ step }) => step.text);
+  expect(steps.slice(0, 2)).toEqual([job.request, job.firstReply]);
+  expect(steps.slice(2, 2 + job.approvedAccess.length)).toEqual(job.approvedAccess.map((access) => `Access approved · ${access}`));
+  expect(steps.indexOf(`Schedule added · ${job.schedule}`)).toBeLessThan(steps.indexOf(job.check));
+  expect(steps.join(" ")).not.toMatch(/save this setup|before saving/i);
 });

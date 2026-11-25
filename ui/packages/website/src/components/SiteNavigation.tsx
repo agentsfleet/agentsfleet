@@ -12,7 +12,7 @@ const EXTERNAL_LINK = { target: "_blank", rel: "noopener noreferrer" };
 function Wordmark({ surface }: { surface: "header" | "footer" }) {
   return (
     <a
-      className={cn(NAV_LINK, "shrink-0 gap-2 text-body font-bold text-text")}
+      className={cn(NAV_LINK, "shrink-0 gap-md text-body font-bold text-text")}
       href="/"
       aria-label="agentsfleet home"
       data-testid={surface === "header" ? "brand-link" : undefined}
@@ -40,7 +40,7 @@ export function SiteHeader({
       <div
         className={cn(
           SITE_CONTAINER,
-          "flex flex-wrap items-center justify-between gap-x-lg py-2 md:grid md:grid-cols-[1fr_auto_1fr] md:py-4",
+          "flex flex-wrap items-center justify-between gap-x-lg py-md md:grid md:grid-cols-[1fr_auto_1fr] md:py-lg",
         )}
       >
         <Wordmark surface="header" />
@@ -57,6 +57,13 @@ export function SiteHeader({
           </a>
           <a
             className={NAV_LINK}
+            href="/examples"
+            {...linkTracking("header_examples", "header", "examples")}
+          >
+            Examples
+          </a>
+          <a
+            className={NAV_LINK}
             href={`${home}#pricing`}
             {...linkTracking("header_pricing", "header", "pricing")}
           >
@@ -68,14 +75,6 @@ export function SiteHeader({
             {...linkTracking("header_nav_docs", "header", "docs")}
           >
             Docs
-          </a>
-          <a
-            className={NAV_LINK}
-            href={GITHUB_URL}
-            {...EXTERNAL_LINK}
-            {...linkTracking("header_nav_source", "header", "github")}
-          >
-            GitHub
           </a>
         </Nav>
         <Button asChild className="ml-auto min-h-11 justify-self-end">

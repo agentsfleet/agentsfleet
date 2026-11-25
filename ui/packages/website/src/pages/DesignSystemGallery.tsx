@@ -184,8 +184,8 @@ function GridInstallGallery() {
       <Section>
         <h2>InstallBlock</h2>
         <InstallBlock
-          title="Install agentsfleet"
-          command="npm install -g @agentsfleet/cli"
+          title="Start a fleet"
+          command={'agentsfleet fleet create "Check my latest deploy."'}
           actions={[
             { label: "Docs", to: DOCS_URL, external: true },
             { label: "Pricing", to: "/#pricing", variant: "ghost" },

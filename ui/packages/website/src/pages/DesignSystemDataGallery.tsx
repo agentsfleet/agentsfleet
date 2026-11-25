@@ -32,7 +32,7 @@ export function AppPrimitivesGallery() {
         <NavItem href="#app-fleets" active>Fleets</NavItem>
         <NavItem href="#app-events">Events</NavItem>
       </Nav>
-      <UsageBar label="Monthly run budget" pct={62} sublabel="Budget remaining for this month" />
+      <UsageBar label="Share of workspace charges" pct={62} sublabel="Checkout watch · Past 7 days" />
       <code className="font-mono text-mono">fleet_example</code>
     </Section>
     <Section id="data-table">
