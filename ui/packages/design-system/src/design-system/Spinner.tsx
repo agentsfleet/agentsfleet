@@ -1,7 +1,6 @@
 import type { ComponentProps, CSSProperties, ReactNode } from "react";
 
 import { cn } from "../utils";
-import { SignalSpinner } from "./BrandMark";
 
 export type SpinnerSize = "sm" | "md" | "lg";
 
@@ -44,13 +43,14 @@ export function Spinner({
   className,
   ...rest
 }: SpinnerProps) {
+  const inline = variant === "inline";
   return (
     <span
       role="status"
       aria-busy="true"
       className={cn(
         "inline-flex items-center",
-        variant === "inline" ? "gap-2" : "flex-col gap-lg",
+        inline ? "gap-2" : "flex-col gap-lg",
         "text-muted-foreground",
         label &&
           "font-sans text-label leading-label",
@@ -58,9 +58,9 @@ export function Spinner({
       )}
       {...rest}
     >
-      {variant === "inline" ? <SignalSpinner className={MARK_SIZE[size]} /> :
+      {inline ? <LoadingMark className={MARK_SIZE[size]} /> :
         <span aria-hidden="true" className="inline-flex items-center gap-md">
-          <PageLoadingMark />
+          <LoadingMark />
           {variant === "full-screen" && <span className="text-wordmark leading-none font-title text-foreground">agentsfleet</span>}
         </span>}
       {label ? <span>{label}</span> : <span className="sr-only">{srLabel}</span>}
@@ -68,9 +68,9 @@ export function Spinner({
   );
 }
 
-function PageLoadingMark() {
+function LoadingMark({ className }: { className?: string }) {
   return <svg viewBox="0 0 30 30" width={60} height={60} fill="none" aria-hidden="true" focusable="false"
-    className="shrink-0 text-pulse forced-colors:text-[CanvasText]">
+    className={cn("shrink-0 text-pulse forced-colors:text-[CanvasText]", className)}>
     <g transform="translate(15 15)" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round">
       {STROKE_PAIRS.map(({startY, rayX, rayY, angle}, index) => [1, -1].map(side => {
         const style: CSSProperties & Record<`--${string}`, string> = {

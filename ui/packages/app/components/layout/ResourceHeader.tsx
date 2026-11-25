@@ -21,7 +21,7 @@ export function ResourceHeader({workspaceId: selectedWorkspace = null}: {workspa
   const page = [...PRIMARY_NAV, ...ACCOUNT_PAGES].find(entry => entry.path !== "fleets/new" && pathname.endsWith(`/${entry.path}`));
   if (!page) return null;
   const Icon = page.icon;
-  return <PageHeader data-resource-header className="h-16 shrink-0 flex-row items-center gap-lg border-b border-border-subtle px-lg summary-medium:px-xl summary-wide:px-2xl" actions={workspaceId ? <NewFleetShortcut workspaceId={workspaceId} /> : null}>
+  return <PageHeader data-resource-header={page.path} className="h-16 shrink-0 flex-row items-center gap-lg border-b border-border-subtle px-lg summary-medium:px-xl summary-wide:px-2xl" actions={workspaceId ? <NewFleetShortcut workspaceId={workspaceId} /> : null}>
     <span className="flex items-center gap-md text-label summary-medium:gap-lg font-semibold"><Icon data-app-header-icon="" size={16} className="hidden summary:block" aria-hidden="true" /><span data-app-header-title="">{page.label}</span></span>
   </PageHeader>;
 }

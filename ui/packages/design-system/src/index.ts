@@ -42,7 +42,6 @@ export {
   InstallBlock,
   WakePulse,
   BrandMark,
-  SignalSpinner,
   type WakePulseProps,
   Badge,
   badgeVariants,

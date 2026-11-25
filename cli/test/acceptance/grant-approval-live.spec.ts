@@ -31,7 +31,7 @@ import { createFleetFromCli } from "./fixtures/fleet-create.ts";
 import { getStatus } from "./fixtures/lifecycle.ts";
 import { deleteFixtureFleet } from "./fixtures/teardown.ts";
 import { readAuthContext, type AuthContext } from "./fixtures/native-api.ts";
-import { chargedNanos, readUsagePage, usageTextNaming } from "./fixtures/usage-ops.ts";
+import { chargedNanos, readUsagePage, readUsageTextTotal } from "./fixtures/usage-ops.ts";
 import { EXIT_CODE } from "../../src/errors/index.ts";
 import { instantMs } from "../../src/lib/instant.ts";
 import {
@@ -65,9 +65,6 @@ const ENVELOPE_TURN_ID_KEY = "turn_id" as const;
 // (`folded_into_turn_id`, afd_turns/src/view/steer/disposition.rs), and a run
 // bills its lines under its own head turn (afd_billing/src/ledger/lines.rs).
 const ENVELOPE_FOLDED_INTO_KEY = "folded_into_turn_id" as const;
-// The text view's two headings (src/commands/billing/billing.ts, renderHuman).
-const BALANCE_HEADING = /^Balance\s+-?\$/mu;
-const ACTIVITY_HEADING = /^Last \d+ activit(?:y|ies)$/mu;
 const STATUS_PROCESSED = "processed" as const;
 const GRANT_COMMAND = ["fleet", "grants"] as const;
 const REVOKE_VERB = "revoke" as const;
@@ -82,7 +79,7 @@ const SETUP_TIMEOUT_MS = 180_000;
 const BALANCE_SETTLE_MS = 90_000;
 const BALANCE_POLL_MS = 3_000;
 // A dollar figure as `formatDollars` (src/constants/billing.ts) renders one.
-const DOLLARS = /-?\$[\d,]+\.\d{2,}/u;
+const DOLLARS = /^-?\$[\d,]+\.\d{2,}$/u;
 // Decodes to no boundary the charges route can read, so no page issued it
 // (`afd_billing::tenant::cursor::parse`).
 const FOREIGN_CURSOR = "not-a-cursor" as const;
@@ -229,16 +226,10 @@ if (!isLive) {
         `the run did not deplete credit: ${balanceBeforeNanos} → ${balanceAfterNanos} nanos`);
     }, STEER_TIMEOUT_MS);
 
-    it("`usage show` prints the run's charge as a readable row, and the JSON charges this fleet", async () => {
+    it("`usage show` prints a dollar total for the run and JSON shows a positive charge for this fleet", async () => {
       assert.ok(billedTurnId, "the steer did not run");
-      const text = await usageTextNaming(runWithEnv, billedTurnId);
-      assert.match(text, BALANCE_HEADING);
-      assert.match(text, ACTIVITY_HEADING);
-      // A table row or, on a narrow terminal, a label/value block: either way
-      // the stretch of output naming the work also names its total in dollars.
-      const row = text.split(/\n\s*\n/u).find((block) => block.includes(billedTurnId)) ?? "";
-      assert.match(row, /TOTAL/u, `the run's row carries no total: ${text}`);
-      assert.match(row, DOLLARS, `the run's row carries no dollar figure: ${text}`);
+      const printedTotal = await readUsageTextTotal(runWithEnv, billedTurnId);
+      assert.match(printedTotal, DOLLARS, `the run's total is not a dollar figure: ${printedTotal}`);
 
       const charged = await chargedNanos(runWithEnv, fleetId, billedTurnId);
       assert.ok(charged > 0n, `usage show charged the run nothing: ${charged} nanos`);

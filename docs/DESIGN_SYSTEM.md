@@ -511,7 +511,7 @@ Reduced motion displays the assembled mark immediately.
 
 On sign-in and sign-up the same mark appears in the form column until Clerk is ready. A failed load offers Reload page.
 
-Inside the dashboard it fills the content area while the header and sidebar remain visible. Do not add route-specific skeleton layouts. Buttons, table refreshes, and other local actions keep their own loading cues.
+Inside the dashboard it fills the content area while the header and sidebar remain visible. Do not add route-specific skeleton layouts. Inline spinners use the same mark at a compact size.
 
 ### Tables and record dates
 

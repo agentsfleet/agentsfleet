@@ -133,6 +133,10 @@ code, pre, kbd { font-family: var(--ff-mono); }
   scrollbar-gutter: auto;
   padding: var(--sp-2xl) var(--app-canvas-gutter);
 }
+.app-dashboard-canvas:has(> [data-resource-header="settings/billing"]) > div:not([data-resource-header]) {
+  /* The report can become scrollable after the Usage heading has painted. */
+  scrollbar-gutter: stable both-edges;
+}
 @media (min-width: 48rem) {
   .app-dashboard-canvas:has(> [data-resource-header]) > div:not([data-resource-header]) {
     padding-block: var(--sp-4xl);

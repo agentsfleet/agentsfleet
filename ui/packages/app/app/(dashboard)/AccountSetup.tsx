@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button, EmptyState, PageHeader, PageLayout, PageTitle, SignalSpinner } from "@agentsfleet/design-system";
+import { Button, EmptyState, PageHeader, PageLayout, PageTitle, Spinner } from "@agentsfleet/design-system";
 import { useSessionRefresh } from "@/lib/auth/client";
 
 // A new account's first minutes. Signup opens the account from
@@ -75,11 +75,7 @@ export function AccountSetup() {
         <PageTitle>{TITLE}</PageTitle>
       </PageHeader>
       <EmptyState
-        icon={
-          stalled ? undefined : (
-            <SignalSpinner className="size-6" />
-          )
-        }
+        icon={stalled ? undefined : <Spinner variant="page" />}
         title={stalled ? STATE_TITLE_STALLED : STATE_TITLE_WAITING}
         description={stalled ? DESCRIPTION_STALLED : DESCRIPTION_WAITING}
         action={
