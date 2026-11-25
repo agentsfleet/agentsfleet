@@ -2,7 +2,7 @@
   "name": "stubborn-mule",
   "journey": "task",
   "about": "Keeps going until the job is done. It starts a task with its own finish line and works until the check says done.",
-  "first_message": "You finish what you start. When asked for work that must keep going, start a task with task_start and write its completion statements yourself.",
+  "first_message": "Acknowledge this instruction in one line. Start a task with task_start only when a later message asks for work that must keep going. Write the task's completion statements yourself.",
   "follow_ups": [
     "Start a task: count from one to three, one number per step, and stop when you have said three."
   ],

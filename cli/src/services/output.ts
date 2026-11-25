@@ -10,10 +10,11 @@
 // driven by the command code, not by this service.
 
 import type { WritableStreamLike } from "../output/capability.ts";
+import type { StyleOpts } from "../output/palette.ts";
 import { Effect, Layer, Context, type Scope } from "effect";
 import { CliConfig } from "./config.ts";
 import { startProgress } from "../output/progress.ts";
-import { isTty } from "../output/capability.ts";
+import { detectColorMode, isTty } from "../output/capability.ts";
 import { BLOCK_SEVERITY, writeErrorBlock, type ErrorBlock } from "../output/error-block.ts";
 import {
   ui as defaultUi,
@@ -80,7 +81,7 @@ export interface OutputShape {
    */
   readonly stdoutIsTty: boolean;
   /** A local terminal session can reserve and redraw its own output rows. */
-  readonly screen?: WritableStreamLike;
+  readonly screen?: { readonly stream: WritableStreamLike; readonly style: StyleOpts };
   readonly intro: (msg: string) => Effect.Effect<void>;
   readonly info: (msg: string) => Effect.Effect<void>;
   readonly progress: (label: string) => Effect.Effect<void, never, Scope.Scope>;
@@ -142,7 +143,8 @@ export const makeStdioOutput = ({ stdout, stderr, format, env }: OutputConfig): 
   return {
     stdoutIsTty: isTty(stdout),
     format,
-    ...(isTty(stdout) && env?.TERM !== "dumb" ? {screen: stdout} : {}),
+    ...(isTty(stdout) && env?.TERM !== "dumb"
+      ? {screen: {stream: stdout, style: {mode: detectColorMode(env, stdout), warnStream: stderr}}} : {}),
     intro: (msg) => Effect.sync(() => writeLine(stdout, `\n${msg}`)),
     info: (msg) => Effect.sync(() => writeLine(stdout, msg)),
     progress: (label) => startProgress(stderr, label, format === OUTPUT_FORMAT.text && isTty(stdout), env),

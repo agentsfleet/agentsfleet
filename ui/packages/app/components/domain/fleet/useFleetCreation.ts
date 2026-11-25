@@ -23,6 +23,9 @@ export type FleetCreation = {
   dismiss: (operationId: string) => void;
 };
 
+type CreateOperation = {operationId: string; model: string | null};
+type PendingCreation = PendingSend & CreateOperation;
+
 const NO_PENDING: readonly PendingSend[] = [];
 const MINT_UNAVAILABLE = "This browser cannot name the message, so it was not sent. Try another browser.";
 
@@ -33,23 +36,23 @@ const MINT_UNAVAILABLE = "This browser cannot name the message, so it was not se
  * the daemon answers with the fleet it may already have made.
  */
 export function useFleetCreation(workspace: string, model: string | null): FleetCreation {
-  const {creating, unsent, error, latest, create, remember, setError} = useCreateRequest(workspace, model);
+  const {creating, unsent, error, latest, create, remember, setError} = useCreateRequest(workspace);
 
   const onNew = useCallback(async (message: AppendMessage): Promise<void> => {
     const text = fleetMessageText(message);
     if (text.length === 0) return;
-    const operationId = operationFor(latest.current, text);
-    if (operationId === null) {setError(MINT_UNAVAILABLE); throw new MessageNotSentError();}
-    if (!await create(operationId, text)) throw new MessageNotSentError();
-  }, [create, latest, setError]);
+    const operation = operationFor(latest.current, text, model);
+    if (operation === null) {setError(MINT_UNAVAILABLE); throw new MessageNotSentError();}
+    if (!await create(operation, text)) throw new MessageNotSentError();
+  }, [create, latest, model, setError]);
 
   const resend = useCallback((operationId: string): void => {
     const entry = latest.current;
     if (entry?.operationId !== operationId) return;
-    const sendAs = operationFor(entry, entry.text);
+    const sendAs = operationFor(entry, entry.text, model);
     if (sendAs === null) {setError(MINT_UNAVAILABLE); return;}
     void create(sendAs, entry.text);
-  }, [create, latest, setError]);
+  }, [create, latest, model, setError]);
 
   const dismiss = useCallback((operationId: string): void => {
     if (latest.current?.operationId !== operationId) return;
@@ -62,12 +65,12 @@ export function useFleetCreation(workspace: string, model: string | null): Fleet
 }
 
 /** One `POST W/fleets` at a time, cancelled with its page; a create that made no fleet stays as the unsent message. */
-function useCreateRequest(workspace: string, model: string | null) {
+function useCreateRequest(workspace: string) {
   const router = useRouter();
   const [creating, setCreating] = useState(false);
-  const [unsent, setUnsent] = useState<PendingSend | null>(null);
+  const [unsent, setUnsent] = useState<PendingCreation | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const latest = useRef<PendingSend | null>(null);
+  const latest = useRef<PendingCreation | null>(null);
   const busy = useRef(false);
   const owner = useRef(new AbortController());
   useEffect(() => {
@@ -75,8 +78,8 @@ function useCreateRequest(workspace: string, model: string | null) {
     owner.current = controller;
     return () => controller.abort();
   }, []);
-  const remember = useCallback((entry: PendingSend | null) => {latest.current = entry; setUnsent(entry);}, []);
-  const create = useCallback(async (operationId: string, text: string): Promise<boolean> => {
+  const remember = useCallback((entry: PendingCreation | null) => {latest.current = entry; setUnsent(entry);}, []);
+  const create = useCallback(async ({operationId, model}: CreateOperation, text: string): Promise<boolean> => {
     if (busy.current) return false;
     busy.current = true;
     setCreating(true); setError(null);
@@ -86,22 +89,22 @@ function useCreateRequest(workspace: string, model: string | null) {
       router.replace(workspacePath(workspace, `fleets/${encodeURIComponent(created.fleetId)}`));
       return true;
     } catch (cause) {
-      remember({operationId, text, submittedAtMs: Date.now(), state: outcomeOf(cause)});
+      remember({operationId, model, text, submittedAtMs: Date.now(), state: outcomeOf(cause)});
       setError(requestErrorMessage(cause));
       return false;
     } finally {
       busy.current = false;
       setCreating(false);
     }
-  }, [workspace, model, router, remember]);
+  }, [workspace, router, remember]);
   return {creating, unsent, error, latest, create, remember, setError};
 }
 
-// Only a create whose answer never came is sent again as itself; a refused one
-// names a request the daemon already said no to, so its words go out as new.
-function operationFor(previous: PendingSend | null, text: string): string | null {
-  if (previous?.state === PENDING_SEND_STATE.UNKNOWN && previous.text === text) return previous.operationId;
-  try {return mintOperationId();} catch {return null;}
+// An unconfirmed create may already exist. Replay the model and operation the
+// daemon saw so a switch in the picker keeps the original request recoverable.
+function operationFor(previous: PendingCreation | null, text: string, model: string | null): CreateOperation | null {
+  if (previous?.state === PENDING_SEND_STATE.UNKNOWN && previous.text === text) return previous;
+  try {return {operationId: mintOperationId(), model};} catch {return null;}
 }
 
 function outcomeOf(cause: unknown): PendingSend["state"] {

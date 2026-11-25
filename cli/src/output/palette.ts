@@ -20,8 +20,9 @@ const PALETTE_TOKEN_PULSE = "pulse" as const;
 const PALETTE_TOKEN_SUBTLE = "subtle" as const;
 const PALETTE_TOKEN_SUCCESS = "success" as const;
 const PALETTE_TOKEN_WARN = "warn" as const;
+const PALETTE_TOKEN_ACCENT = "accent" as const;
 
-export type Token = typeof PALETTE_TOKEN_PULSE | typeof PALETTE_TOKEN_EVIDENCE | typeof PALETTE_TOKEN_SUCCESS | typeof PALETTE_TOKEN_WARN | typeof STATUS_ERROR | typeof PALETTE_TOKEN_MUTED | typeof PALETTE_TOKEN_SUBTLE;
+export type Token = typeof PALETTE_TOKEN_PULSE | typeof PALETTE_TOKEN_EVIDENCE | typeof PALETTE_TOKEN_SUCCESS | typeof PALETTE_TOKEN_WARN | typeof STATUS_ERROR | typeof PALETTE_TOKEN_MUTED | typeof PALETTE_TOKEN_SUBTLE | typeof PALETTE_TOKEN_ACCENT;
 
 export interface StyleOpts {
   readonly env?: NodeJS.ProcessEnv;
@@ -37,6 +38,7 @@ const XTERM_256: Record<Token, number> = {
   success:   78,
   warn:      214,
   error:     210,
+  accent:    183,  // lilac for the arcade paddle and audio control
   muted:     102,  // grey53 — closest to --text-muted #8B9398
   // --text-subtle lifted from #5C6469 → #7A8085 for AA contrast.
   // xterm256 244 (#808080) is the new closest match (was 240 #585858).
@@ -52,6 +54,7 @@ const BASIC_16: Record<Token, string> = {
   success:  "32",  // green
   warn:     VALUE_33,  // yellow (warn lands on the same bin as evidence in 16-color terms)
   error:    "31",  // red
+  accent:   "95",  // bright magenta
   muted:    "2",   // dim
   subtle:   "2",   // dim (no separate subtle in 16-color)
 };
@@ -93,6 +96,7 @@ export interface Palette {
   readonly success: Painter;
   readonly warn: Painter;
   readonly error: Painter;
+  readonly accent: Painter;
   readonly muted: Painter;
   readonly subtle: Painter;
   readonly text: (text: unknown) => string;
@@ -107,6 +111,7 @@ export const palette: Palette = {
   success:  (text, opts) => styled(PALETTE_TOKEN_SUCCESS, text, opts),
   warn:     (text, opts) => styled(PALETTE_TOKEN_WARN, text, opts),
   error:    (text, opts) => styled(STATUS_ERROR, text, opts),
+  accent:   (text, opts) => styled(PALETTE_TOKEN_ACCENT, text, opts),
   muted:    (text, opts) => styled(PALETTE_TOKEN_MUTED, text, opts),
   subtle:   (text, opts) => styled(PALETTE_TOKEN_SUBTLE, text, opts),
   text:     (text)       => String(text),
@@ -115,6 +120,7 @@ export const palette: Palette = {
 
 /** Each redraw starts and ends at the reserved block's bottom, at column zero. */
 export const terminal = {
+  bell: "\u0007",
   reserveRows: (rows: number): string => "\r\n".repeat(rows),
   repaintRows: (lines: readonly string[]): string => `${ESC}${lines.length}A\r${lines.map(line => `${ESC}2K${line}`).join("\r\n")}\r\n`,
   clearRows: (rows: number): string => `${ESC}${rows}A\r${Array.from({ length: rows }, () => `${ESC}2K`).join("\r\n")}${ESC}${rows - 1}A\r`,

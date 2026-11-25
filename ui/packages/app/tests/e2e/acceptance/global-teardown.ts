@@ -22,13 +22,9 @@
  * 3. Leaked-fleet sweep. Per-spec afterEach cleanup misses whenever a run
  *    crashes or CI is interrupted, and a leaked fixture fleet is not inert:
  *    its seeded cron trigger keeps waking runners until the row is deleted.
- *    sweepLeakedFixtureFleets (fixtures/teardown.ts) empties every workspace
- *    a persistent fixture user owns, behind the same destructive-target guard
- *    the per-spec cleanup uses. It sweeps by ownership rather than by seed
- *    name: the listing is authenticated as the fixture user and global-setup
- *    seeds no persistent fleets, so every fleet it can reach is a test
- *    artifact — which means the sweep cannot fall behind the specs the way a
- *    hand-maintained prefix list did.
+ *    sweepLeakedFixtureFleets (fixtures/teardown.ts) cleans persistent fixture
+ *    workspaces on the isolated local stack. Hosted jobs clean their own fleets
+ *    in each spec so browser teardown cannot delete a running CLI fixture.
  *
  * Runs automatically as Playwright's globalTeardown, and directly by hand:
  *

@@ -1,8 +1,9 @@
-import {afterEach, beforeEach, expect, test} from "bun:test";
+import {afterEach, beforeEach, expect, spyOn, test} from "bun:test";
 import {mkdtempSync, rmSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {PassThrough} from "node:stream";
+import {stripVTControlCharacters} from "node:util";
 import {runCli} from "../src/cli.ts";
 import {playOrbit} from "../src/commands/pet/play.ts";
 import {SIGINT, SIGTERM} from "../src/constants/signals.ts";
@@ -13,7 +14,7 @@ let state: string;
 beforeEach(() => {state = mkdtempSync(join(tmpdir(), "agentsfleet-pet-"));});
 afterEach(() => rmSync(state, {recursive: true, force: true}));
 
-function harness(args: readonly string[], {tty = false, interactive = false, term = "xterm-256color", columns = 80} = {}) {
+function harness(args: readonly string[], {tty = false, interactive = false, term = "xterm-256color", columns = 80, noColor = ""} = {}) {
   let stdout = "";
   let stderr = "";
   let requests = 0;
@@ -23,7 +24,7 @@ function harness(args: readonly string[], {tty = false, interactive = false, ter
   const input = Object.assign(new PassThrough(), {isTTY: interactive, isRaw: false, setRawMode: (mode: boolean) => raw.push(mode)});
   const screen = {isTTY: tty, columns, rows: 24, write: (text: string) => {stdout += text; return true;}};
   const code = runCli(args, {
-    env: {AGENTSFLEET_STATE_DIR: state, TERM: term},
+    env: {AGENTSFLEET_STATE_DIR: state, TERM: term, NO_COLOR: noColor},
     stdin: input,
     stdout: screen,
     stderr: {isTTY: tty, columns: 80, rows: 24, write: text => {stderr += text; return true;}},
@@ -53,29 +54,59 @@ test("pet help names the paddle game without making a request", async () => {
 
 test("plays, scores, restarts and restores the terminal on Q", async () => {
   const game = harness(["pet"], {tty: true, interactive: true});
-  await appeared(game.read, "Press Space to serve.");
+  await appeared(game.read, "Space serve");
   game.input.write("\u001b[D");
   game.input.write("\u001b[C");
   game.input.write("A");
-  for (let move = 0; move < 7; move += 1) game.input.write("D");
+  game.input.write("D");
   game.input.write("z");
   game.input.write(" ");
-  await appeared(game.read, "Score 1");
+  const plain = () => stripVTControlCharacters(game.read());
+  await appeared(plain, "Score 00050 Best 00050");
   game.input.write("R");
-  expect(game.read().split("Score 1").at(-1)).toContain("Score 0");
+  expect(plain().split("Score 00050").at(-1)).toContain("Score 00000 Best 00050");
   game.input.write("Q");
   const result = await game.result();
   expect(result).toMatchObject({code: 0, requests: 0, stderr: ""});
   expect(result.stdout).toEndWith(terminal.clearRows(ORBIT_ROWS));
+  expect(result.stdout).toContain("\u001b[38;5;");
   expect(game.raw).toEqual([true, false]);
   expect(game.input.listenerCount("data")).toBe(0);
+});
+
+test("keeps the game readable in a terminal with color disabled", async () => {
+  const game = harness(["pet"], {tty: true, interactive: true, noColor: "1"});
+  await appeared(game.read, "Orbit  Score 00000 Best 00000");
+  game.input.write("q");
+  const result = await game.result();
+  expect(result.stdout).toContain("Lives [ooo]");
+  expect(result.stdout).not.toContain("\u001b[38;5;");
+});
+
+test("starts muted and plays a star effect after sound is enabled", async () => {
+  const lookup = spyOn(Bun, "which").mockReturnValue(null);
+  const game = harness(["pet"], {tty: true, interactive: true});
+  try {
+    await appeared(game.read, "S sound off");
+    expect(game.read()).not.toContain(terminal.bell);
+    game.input.write("s ");
+    await appeared(() => stripVTControlCharacters(game.read()), "Score 00050 Best 00050");
+    expect(game.read().split(terminal.bell)).toHaveLength(3);
+    expect(game.read()).toContain("S sound on");
+    game.input.write("s");
+    expect(game.read().split("S sound on").at(-1)).toContain("S sound off");
+  } finally {
+    game.input.write("q");
+    await game.result();
+    lookup.mockRestore();
+  }
 });
 
 test.each([SIGINT, SIGTERM, "keyboard"] as const)("restores the terminal after %s", async signal => {
   const beforeInterrupt = process.listenerCount(SIGINT);
   const beforeTerminate = process.listenerCount(SIGTERM);
   const game = harness(["pet"], {tty: true, interactive: true});
-  await appeared(game.read, "Press Space to serve.");
+  await appeared(game.read, "Space serve");
   if (signal === "keyboard") game.input.write("\u0003");
   else process.emit(signal);
   const result = await game.result();
@@ -99,11 +130,11 @@ test.each([
 
 test("finishes on input EOF and stops using cursor coordinates after resize", async () => {
   const ended = harness(["pet"], {tty: true, interactive: true});
-  await appeared(ended.read, "Press Space to serve.");
+  await appeared(ended.read, "Space serve");
   ended.input.end();
   expect(await ended.result()).toMatchObject({code: 0, requests: 0});
   const resized = harness(["pet"], {tty: true, interactive: true});
-  await appeared(resized.read, "Press Space to serve.");
+  await appeared(resized.read, "Space serve");
   resized.screen.columns = 26;
   expect(await resized.result()).toMatchObject({code: 0, stdout: expect.stringContaining("Terminal resized.")});
   expect(resized.read()).not.toContain(terminal.clearRows(ORBIT_ROWS));
@@ -113,7 +144,7 @@ test("finishes on input EOF and stops using cursor coordinates after resize", as
 test("resumes paused input and restores it after the game", async () => {
   const game = harness(["pet"], {tty: true, interactive: true});
   game.input.pause();
-  await appeared(game.read, "Press Space to serve.");
+  await appeared(game.read, "Space serve");
   game.input.write("q");
   expect(await game.result()).toMatchObject({code: 0, requests: 0});
   expect(game.input.isPaused()).toBe(true);
@@ -122,7 +153,7 @@ test("resumes paused input and restores it after the game", async () => {
 
 test("clears the game if input closes without EOF", async () => {
   const game = harness(["pet"], {tty: true, interactive: true});
-  await appeared(game.read, "Press Space to serve.");
+  await appeared(game.read, "Space serve");
   game.input.destroy();
   const result = await game.result();
   expect(result).toMatchObject({code: 0, requests: 0});
@@ -134,7 +165,7 @@ test("restores raw mode after a terminal write fails", async () => {
   const game = harness(["pet"], {tty: true, interactive: true});
   const write = game.screen.write;
   game.screen.write = text => {
-    if (text.includes("Score 0")) throw new Error("Screen unavailable");
+    if (stripVTControlCharacters(text).includes("Score 00000")) throw new Error("Screen unavailable");
     return write(text);
   };
   const result = await game.result();

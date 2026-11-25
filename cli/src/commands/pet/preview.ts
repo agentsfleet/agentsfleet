@@ -17,7 +17,7 @@ export const petPreview = Effect.gen(function* () {
   const screen = output.screen;
   if (!screen || !isOrbitInput(input)) return yield* output.info(PLAY);
   const outcome = yield* Effect.tryPromise({
-    try: signal => playOrbit(input, screen, signal),
+    try: signal => playOrbit(input, screen.stream, signal, screen.style),
     catch: () => new UnexpectedError({detail: "Could not draw Orbit", suggestion: RETRY}),
   });
   switch (outcome) {

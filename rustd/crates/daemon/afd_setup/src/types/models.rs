@@ -54,6 +54,8 @@ pub struct WorkspaceModel {
     /// Opaque explicit reference; it is not the provider's model identifier.
     #[serde(rename = "ref")]
     pub reference: String,
+    /// The workspace owner's default for a new fleet.
+    pub is_default: bool,
     /// Human selection label.
     pub label: String,
     /// Approved provider identifier.

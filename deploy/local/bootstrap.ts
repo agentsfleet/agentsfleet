@@ -11,6 +11,7 @@ const EXCLUSIVE_CREATE = "wx";
 const PROVIDER = "fireworks";
 const MODEL = "accounts/fireworks/models/minimax-m3p1-flash";
 const PLATFORM_SCOPES = ["runner:register", "runner:read", "model:read", "model:admin", "platform-key:read", "platform-key:admin"];
+const PLATFORM_SESSION_ATTEMPTS = 2;
 const RUNNERS = "/v1/admin/runners";
 const FLEET_RUNNERS = "/v1/admin/runners";
 const MODELS = "/v1/admin/models";
@@ -43,9 +44,12 @@ const registrationSchema = z.object({ runner_id: z.uuidv7(), runner_token: z.str
 const runnerSelfSchema = z.object({assigned_policy: z.object({decision_model_id: z.string().optional()})});
 const runnerPageSchema = z.object({items: z.array(z.object({host_id: z.string()})), next_cursor: z.string().min(1).nullable()});
 type Request = <T>(method: string, path: string, body?: unknown) => Promise<T>;
+type PlatformKey = { active: boolean };
 /** Runs the 1Password command line with these arguments and returns its output. */
 type Op = (args: string[]) => Promise<string>;
-class LocalBootstrapError extends Error {}
+class LocalBootstrapError extends Error {
+  constructor(message: string, readonly status?: number) { super(message); }
+}
 
 /** Refuse a remote target before creating identities or reading provider credentials. */
 export function localTarget(value: string, expected: string): string {
@@ -71,7 +75,7 @@ function api(base: string, token: string): Request {
       body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     // Response bodies can contain credentials. Only the status leaves this boundary.
-    if (!response.ok) throw new LocalBootstrapError(`local bootstrap ${method} ${path}: HTTP ${response.status}`);
+    if (!response.ok) throw new LocalBootstrapError(`local bootstrap ${method} ${path}: HTTP ${response.status}`, response.status);
     return response.json() as Promise<T>;
   };
 }
@@ -80,20 +84,32 @@ function clerkAdmin() {
   return import("../../ui/packages/app/tests/e2e/acceptance/fixtures/clerk-admin");
 }
 
-async function identity(namespace: string) {
+export async function platformSession() {
+  const base = localTarget(process.env.NEXT_PUBLIC_API_URL ?? "", process.env.LOCAL_ACCEPTANCE_API ?? "");
+  const namespace = z.string().regex(/^wt_[a-f0-9]{8}$/).parse(process.env.LOCAL_ACCEPTANCE_NAMESPACE);
   const { bootstrapTenant } = await import("../../ui/packages/app/tests/e2e/acceptance/fixtures/bootstrap");
-  const { attachJwt, finalizeFixtureMetadata, provisionUser } = await clerkAdmin();
-  const { clerkRequest } = await import("../../ui/packages/app/tests/e2e/acceptance/fixtures/clerk-request");
-  const fixture = await provisionUser({ key: FIXTURE_KEY.policyEditor,
+  const { attachJwt, finalizeFixtureMetadata, provisionUser, revokeSession } = await clerkAdmin();
+  const fixture = await provisionUser({ key: FIXTURE_KEY.operator,
     email: `local-platform-${namespace}@e2e.agentsfleet.net`, password: crypto.randomUUID() });
-  await bootstrapTenant(fixture);
-  await finalizeFixtureMetadata(fixture);
-  const path = `/users/${fixture.clerkUserId}/metadata`;
-  const user = await clerkRequest<{ public_metadata: { scopes: string | string[] } }>(HTTP_METHOD.get, `/users/${fixture.clerkUserId}`);
-  const current = user.public_metadata.scopes;
-  const scopes = typeof current === "string" ? current.split(/\s+/).filter(Boolean) : current;
-  await clerkRequest("PATCH", path, { public_metadata: { scopes: [...new Set([...scopes, ...PLATFORM_SCOPES])].join(" ") } });
-  return attachJwt(fixture);
+  for (let attempt = 1; ; attempt += 1) {
+    const delivery = await bootstrapTenant(fixture);
+    await finalizeFixtureMetadata(fixture, PLATFORM_SCOPES);
+    const { sessionId, sessionJwt } = await attachJwt(fixture);
+    const request = api(base, sessionJwt);
+    try {
+      const { keys } = await request<{ keys: PlatformKey[] }>(HTTP_METHOD.get, PLATFORM_KEYS);
+      const workspaceId = await workspace(request);
+      if (workspaceId !== delivery.workspace_id)
+        throw new LocalBootstrapError("platform fixture session belongs to a different workspace");
+      return { base, namespace, request, sessionId, workspaceId, keys };
+    } catch (error) {
+      await revokeSession(sessionId);
+      // Clerk's dev webhook can race the local replay and replace the fixture's
+      // metadata. Repeat the setup once before saving any provider credentials.
+      const refused = error instanceof LocalBootstrapError && (error.status === 401 || error.status === 403);
+      if (attempt === PLATFORM_SESSION_ATTEMPTS || !refused) throw error;
+    }
+  }
 }
 
 async function workspace(request: Request): Promise<string> {
@@ -126,8 +142,7 @@ async function catalogueModel(request: Request, provider: string, model: string)
   return undefined;
 }
 
-async function configureModel(request: Request, workspaceId: string): Promise<void> {
-  const { keys } = await request<{ keys: { provider: string; active: boolean }[] }>(HTTP_METHOD.get, PLATFORM_KEYS);
+async function configureModel(request: Request, workspaceId: string, keys: PlatformKey[]): Promise<void> {
   if (keys.some((key) => key.active)) return;
   const key = process.env.FIREWORKS_API_KEY;
   if (!key) throw new LocalBootstrapError("machine configuration must supply FIREWORKS_API_KEY for initial local setup");
@@ -306,16 +321,12 @@ export async function persistWorkspace(envFile: string, workspaceId: string): Pr
 }
 
 export async function bootstrap(): Promise<void> {
-  const base = localTarget(process.env.NEXT_PUBLIC_API_URL ?? "", process.env.LOCAL_ACCEPTANCE_API ?? "");
-  const namespace = z.string().regex(/^wt_[a-f0-9]{8}$/).parse(process.env.LOCAL_ACCEPTANCE_NAMESPACE);
   const record = z.string().min(1).parse(process.env.ACCEPTANCE_LOCAL_RUNNER_RECORD);
   const envFile = z.string().min(1).parse(process.env.LOCAL_DEV_ENV_FILE);
-  const session = await identity(namespace);
   const { revokeSession } = await clerkAdmin();
+  const { base, namespace, request, sessionId, workspaceId, keys } = await platformSession();
   try {
-    const request = api(base, session.sessionJwt);
-    const workspaceId = await workspace(request);
-    await configureModel(request, workspaceId);
+    await configureModel(request, workspaceId, keys);
     const decision = await configureDecisions(request, workspaceId, process.env.PLATFORM_ADMIN_WORKSPACE_ID);
     await configureSigning(request, workspaceId, process.env.PLATFORM_ADMIN_WORKSPACE_ID);
     await configureScheduler(request, workspaceId, process.env.AGENTSFLEET_QSTASH_HOST_PORT ?? "", process.env.PLATFORM_ADMIN_WORKSPACE_ID);
@@ -330,7 +341,7 @@ export async function bootstrap(): Promise<void> {
     await enroll(request, base, namespace, record, decision);
     console.log("Local platform model, decision model, connector, scheduler and runner configuration ready.");
   } finally {
-    await revokeSession(session.sessionId);
+    await revokeSession(sessionId);
   }
 }
 

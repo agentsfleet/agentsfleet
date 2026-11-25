@@ -20556,6 +20556,7 @@
               "description": "A priced explicit selection owned by the workspace's billing account.",
               "required": [
                 "ref",
+                "is_default",
                 "label",
                 "provider",
                 "model",
@@ -20572,6 +20573,11 @@
                 "eligibility": {
                   "$ref": "#/components/schemas/Eligibility",
                   "description": "Supported purposes."
+                },
+                "is_default": {
+                  "type": "boolean",
+                  "description": "Whether this is the default model for new fleets in the workspace.",
+                  "x-stability": "stable"
                 },
                 "label": {
                   "type": "string",
@@ -29249,6 +29255,7 @@
         "description": "A priced explicit selection owned by the workspace's billing account.",
         "required": [
           "ref",
+          "is_default",
           "label",
           "provider",
           "model",
@@ -29265,6 +29272,11 @@
           "eligibility": {
             "$ref": "#/components/schemas/Eligibility",
             "description": "Supported purposes."
+          },
+          "is_default": {
+            "type": "boolean",
+            "description": "Whether this is the default model for new fleets in the workspace.",
+            "x-stability": "stable"
           },
           "label": {
             "type": "string",

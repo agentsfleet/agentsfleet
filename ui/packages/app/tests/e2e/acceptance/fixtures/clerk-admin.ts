@@ -133,16 +133,20 @@ function scopeValues(raw: unknown): string[] {
   return [];
 }
 
-export async function finalizeFixtureMetadata(user: ProvisionedUser): Promise<void> {
+export async function finalizeFixtureMetadata(
+  user: ProvisionedUser,
+  additionalScopes: readonly string[] = [],
+): Promise<void> {
   await waitForTenantMetadata(user.clerkUserId);
   const current = await getUser(user.clerkUserId);
   const publicMetadata = fixtureMetadata(user);
   const platformScopes = PLATFORM_FIXTURE_SCOPES[user.key];
-  if (platformScopes) {
+  if (platformScopes || additionalScopes.length > 0) {
     publicMetadata.scopes = [
       ...new Set([
         ...scopeValues(current.public_metadata?.scopes),
-        ...platformScopes,
+        ...(platformScopes ?? []),
+        ...additionalScopes,
       ]),
     ].join(" ");
   }

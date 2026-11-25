@@ -1,4 +1,5 @@
 import type { AppendMessage } from "@assistant-ui/react";
+import type { WorkspaceModel } from "@/lib/api/workspace-models";
 import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@agentsfleet/design-system";
@@ -17,6 +18,7 @@ vi.mock("@/lib/streaming/operation-id", async original => {
 });
 
 const CREATE = `/live/v1/workspaces/${WORKSPACE}/fleets`;
+const DEFAULT_MODEL = {...MODEL, ref: "platform-default", label: "Default runtime model", is_default: true};
 const MESSAGE = "Watch checkout errors and tell me when the null-cart bug comes back 🦉";
 const CREATED = () => response({fleet: FLEET_DETAIL, accepted: {turn_id: TURN_ID, disposition: "queued"}, replayed: false}, 201);
 const REFUSED = () => response({user_message: "No model is available to this workspace. Choose one in Models.", error_code: "UZ-SETUP-008"}, 409);
@@ -34,7 +36,9 @@ beforeEach(() => {
 });
 afterEach(() => {cleanup(); vi.unstubAllGlobals();});
 
-function mount() {return render(<TooltipProvider><NewFleetChat workspace={WORKSPACE} models={[MODEL]} /></TooltipProvider>);}
+function mount(models: readonly WorkspaceModel[] = [MODEL, DEFAULT_MODEL]) {
+  return render(<TooltipProvider><NewFleetChat workspace={WORKSPACE} models={models} /></TooltipProvider>);
+}
 function composer(): HTMLTextAreaElement {return screen.getByRole("textbox", {name: "What would you like your fleet to do?"});}
 async function send(text: string) {
   fireEvent.change(composer(), {target: {value: text}});
@@ -42,18 +46,20 @@ async function send(text: string) {
 }
 
 describe("New fleet", () => {
-  it("sends a first message as one create and moves to the fleet it made", async () => {
+  it("preselects the workspace default by name and sends it with the first message", async () => {
     mount();
     expect(screen.getByRole("heading", {name: "New fleet"})).toBeTruthy();
+    expect(screen.getByRole("combobox", {name: "Fleet model"}).textContent).toBe(DEFAULT_MODEL.label);
     await send(MESSAGE);
     await waitFor(() => expect(navigation.replace).toHaveBeenCalledWith(`/w/${WORKSPACE}/fleets/${FLEET_ID}`));
-    expect(posts).toEqual([{message: MESSAGE, operation_id: expect.stringMatching(UUID_V7)}]);
+    expect(posts).toEqual([{message: MESSAGE, operation_id: expect.stringMatching(UUID_V7), model_ref: DEFAULT_MODEL.ref}]);
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("a refused create returns its text to the composer", async () => {
     answers.push(REFUSED);
-    mount();
+    mount([{...DEFAULT_MODEL, eligibility: {runtime: false}}, MODEL]);
+    expect(screen.getByRole("combobox", {name: "Fleet model"}).textContent).toBe("Choose model");
     await send(MESSAGE);
     const reason = await screen.findByText("No model is available to this workspace. Choose one in Models.");
     expect(reason.closest("[role=alert]")).toBeTruthy();
@@ -61,7 +67,7 @@ describe("New fleet", () => {
     const notices = screen.getByRole("list", {name: "Unsent messages"});
     expect(within(notices).getByText("Message not sent.")).toBeTruthy();
     expect(navigation.replace).not.toHaveBeenCalled();
-    expect(posts).toHaveLength(1);
+    expect(posts).toEqual([{message: MESSAGE, operation_id: expect.stringMatching(UUID_V7)}]);
     await act(async () => {fireEvent.click(within(notices).getByRole("button", {name: "Resend"}));});
     await waitFor(() => expect(navigation.replace).toHaveBeenCalledWith(`/w/${WORKSPACE}/fleets/${FLEET_ID}`));
     expect(posts.map(post => post.message)).toEqual([MESSAGE, MESSAGE]);
@@ -69,15 +75,18 @@ describe("New fleet", () => {
     expect(screen.queryByRole("list", {name: "Unsent messages"})).toBeNull();
   });
 
-  it("sends an unconfirmed create again as itself, so the daemon answers with the fleet it may hold", async () => {
+  it("replays an unconfirmed create with its original model after a picker change", async () => {
     answers.push(() => {throw new TypeError("connection reset");});
     mount();
     await send(MESSAGE);
     expect(await screen.findByText("Sending was interrupted.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("combobox", {name: "Fleet model"}));
+    fireEvent.click(await screen.findByRole("option", {name: MODEL.label}));
     await send(MESSAGE);
     await waitFor(() => expect(navigation.replace).toHaveBeenCalledOnce());
     expect(posts).toHaveLength(2);
-    expect(posts[1]?.operation_id).toBe(posts[0]?.operation_id);
+    expect(posts[0]?.model_ref).toBe(DEFAULT_MODEL.ref);
+    expect(posts[1]).toEqual(posts[0]);
   });
 
   it("sends changed words after an unconfirmed create as a new operation", async () => {
@@ -105,7 +114,7 @@ describe("New fleet", () => {
     const held = Promise.withResolvers<Response>();
     answers.push(() => held.promise);
     mount();
-    expect(screen.getByRole("combobox", {name: "Fleet model"}).textContent).toContain("Workspace model");
+    expect(screen.getByRole("combobox", {name: "Fleet model"}).textContent).toContain(DEFAULT_MODEL.label);
     fireEvent.click(screen.getByRole("combobox", {name: "Fleet model"}));
     fireEvent.click(await screen.findByRole("option", {name: MODEL.label}));
     expect(screen.getByRole("combobox", {name: "Fleet model"}).textContent).toContain(MODEL.label);

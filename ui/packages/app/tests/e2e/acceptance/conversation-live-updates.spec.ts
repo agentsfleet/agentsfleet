@@ -6,7 +6,7 @@ import {clientFor} from "./fixtures/api-client";
 import {FIXTURE_KEY} from "./fixtures/constants";
 import {assertPassed, classifyTerminalTurn, findRunFor} from "./fixtures/execution";
 import {awaitTerminalTurn, messageFleet} from "./fixtures/chat-walk";
-import { createFixtureFleet } from "./fixtures/fleet-create";
+import { awaitFirstTurnSettled, createFixtureFleet } from "./fixtures/fleet-create";
 import { createFleetViaUI } from "./fixtures/new-fleet";
 import { probeMessage } from "./fixtures/probe";
 import {workspaceHref} from "./fixtures/nav";
@@ -60,6 +60,7 @@ test("a real reply and its run figures reach another session without reloading o
     const control = created.fleet;
     fleetIds.push(control.id);
     await expectFleetActive(FIXTURE_KEY.regular, workspace, control.id);
+    await awaitFirstTurnSettled(FIXTURE_KEY.regular, workspace, control.id, created.turnId);
 
     const observing = await signedInContext(browser, FIXTURE_KEY.regular);
     observingContext = observing.context;
@@ -82,7 +83,8 @@ test("a real reply and its run figures reach another session without reloading o
     assertPassed(classifyTerminalTurn(terminal));
 
     const transcript = watching.getByLabel("Fleet chat", {exact: true}).getByRole("log", {name: "Chat", exact: true});
-    await expect(transcript.getByText(message, {exact: true})).toBeVisible({timeout: RENDER_TIMEOUT_MS});
+    const sentMessage = transcript.locator('[data-role="user"]').getByText(message, {exact: true});
+    await expect(sentMessage).toBeVisible({timeout: RENDER_TIMEOUT_MS});
     const reply = transcript.locator(`[data-message-id="${terminal.turn_id}:reply"]`);
     await expect(reply).toBeVisible({timeout: RENDER_TIMEOUT_MS});
     await expect(reply).toHaveAttribute("data-settled", "true", {timeout: RENDER_TIMEOUT_MS});

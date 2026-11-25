@@ -4,7 +4,7 @@ import { chmod, readFile, rm, stat, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { z } from "zod";
-import { configureConnector, configureDecisions, configureScheduler, configureSigning, enroll, localTarget, persistWorkspace, privateFile } from "./bootstrap";
+import { configureConnector, configureDecisions, configureScheduler, configureSigning, enroll, localTarget, persistWorkspace, platformSession, privateFile } from "./bootstrap";
 
 type BootstrapRequest = Parameters<typeof enroll>[0];
 type Handler = (method: string, path: string, body?: unknown) => unknown;
@@ -33,6 +33,8 @@ const SLACK_FIELDS = ["client_id", "client_secret", "signing_secret"];
 const SLACK_NAMES = SLACK_FIELDS.map((field) => `LOCAL_SLACK_${field.toUpperCase()}`);
 const APP_NAMES = [...GITHUB_NAMES, ...LINEAR_NAMES, ...SLACK_NAMES];
 const CONNECTOR_ENV = [...APP_NAMES, "ACCEPTANCE_LOCAL_CONNECTOR_VAULT", "TYPESAFE_API_KEY"];
+const BOOTSTRAP_ENV = [...CONNECTOR_ENV, "NEXT_PUBLIC_API_URL", "LOCAL_ACCEPTANCE_API", "LOCAL_ACCEPTANCE_NAMESPACE",
+  "CLERK_SECRET_KEY", "CLERK_WEBHOOK_SECRET"];
 const DECISION_ID = "01900000-0000-7000-8000-0000000000d1";
 const MODELS_PATH = "/v1/admin/models";
 
@@ -51,7 +53,7 @@ function fakeFetch(handler: (url: string | URL | Request, init?: RequestInit) =>
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "acceptance-bootstrap-"));
-  savedEnv = Object.fromEntries(CONNECTOR_ENV.map((name) => [name, process.env[name]]));
+  savedEnv = Object.fromEntries(BOOTSTRAP_ENV.map((name) => [name, process.env[name]]));
 });
 
 afterEach(async () => {
@@ -156,6 +158,65 @@ describe("local target", () => {
     }
     expect(() => localTarget("https://api-dev.agentsfleet.net", "https://api-dev.agentsfleet.net")).toThrow(/loopback API/);
   });
+
+  test("platform sessions refuse a remote target before contacting Clerk", async () => {
+    process.env.NEXT_PUBLIC_API_URL = "https://api-dev.agentsfleet.net";
+    process.env.LOCAL_ACCEPTANCE_API = LOCAL_API;
+    const fetch = spyOn(globalThis, "fetch").mockImplementation(fakeFetch(async () => {
+      throw new Error("unexpected request");
+    }));
+    await expect(platformSession()).rejects.toThrow(/loopback API/);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+test("local bootstrap refreshes the platform fixture when the first session loses its grant", async () => {
+  process.env.NEXT_PUBLIC_API_URL = LOCAL_API;
+  process.env.LOCAL_ACCEPTANCE_API = LOCAL_API;
+  process.env.LOCAL_ACCEPTANCE_NAMESPACE = "wt_1234abcd";
+  process.env.CLERK_SECRET_KEY = "clerk-test-value";
+  process.env.CLERK_WEBHOOK_SECRET = `whsec_${Buffer.alloc(32).toString("base64")}`;
+  const workspaceId = "01900000-0000-7000-8000-0000000000a1";
+  const metadata = { tenant_id: workspaceId, scopes: "workspace:admin" };
+  const operations: string[] = [];
+  let session = 0;
+
+  spyOn(globalThis, "fetch").mockImplementation(fakeFetch(async (input, init) => {
+    const url = new URL(String(input));
+    const route = `${init?.method ?? "GET"} ${url.pathname}`;
+    switch (route) {
+      case "GET /v1/users": return Response.json([]);
+      case "POST /v1/users": return Response.json({ id: "fixture-user" });
+      case "GET /v1/users/fixture-user": return Response.json({ public_metadata: metadata });
+      case "POST /v1/auth/identity-events/clerk":
+        operations.push("replay");
+        return Response.json({ workspace_id: workspaceId });
+      case "PATCH /v1/users/fixture-user/metadata": {
+        const body = JSON.parse(String(init?.body));
+        expect(body.public_metadata.role).toBe("operator");
+        expect(body.public_metadata.scopes.split(" ")).toContain("platform-key:read");
+        operations.push("grant");
+        return Response.json({});
+      }
+      case "POST /v1/sessions": return Response.json({ id: `fixture-session-${++session}` });
+      case "POST /v1/sessions/fixture-session-1/tokens": return Response.json({ jwt: "missing-grant" });
+      case "POST /v1/sessions/fixture-session-2/tokens": return Response.json({ jwt: "with-grant" });
+      case "POST /v1/sessions/fixture-session-1/revoke":
+        operations.push("revoke first session");
+        return Response.json({});
+      case "GET /v1/admin/platform-keys":
+        operations.push("check platform keys");
+        return new Headers(init?.headers).get("Authorization") === "Bearer with-grant"
+          ? Response.json({ keys: [] }) : new Response(null, { status: 403 });
+      case "GET /v1/tenants/me/workspaces": return Response.json({ items: [{ id: workspaceId, role: "owner" }] });
+      default: throw new Error(`unexpected fixture request ${route}`);
+    }
+  }));
+
+  const context = await platformSession();
+  expect(context.sessionId).toBe("fixture-session-2");
+  expect(context.workspaceId).toBe(workspaceId);
+  expect(operations).toEqual(["replay", "grant", "check platform keys", "revoke first session", "replay", "grant", "check platform keys"]);
 });
 
 describe("runner enrollment", () => {
