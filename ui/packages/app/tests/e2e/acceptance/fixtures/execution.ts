@@ -23,18 +23,32 @@ import { FIXTURE_KEY } from "./constants";
 const NONE_SEEN: ReadonlySet<string> = new Set();
 
 // One spelling each for the statuses and failure classes this module reads
-// (RULE UFS). The turn statuses mirror `lib/api/turns.ts:TurnStatus`; the
+// (RULE UFS). The turn statuses mirror `af_core::turn::status`
+// (rustd/crates/foundation/af_core/src/turn.rs); the
 // failure labels mirror `af_wire::report::FailureClass`
 // (rustd/crates/protocol/af_wire/src/report/mod.rs), serialised snake_case — the one type
 // the daemon and the runner both build against.
 export const TURN_STATUS = {
+  queued: "queued",
   received: "received",
   processed: "processed",
   fleetError: "fleet_error",
   gateBlocked: "gate_blocked",
+  // A run that asked a person — a question, or `request_access` — settles its turn here.
+  waiting: "waiting",
 } as const;
 
+/** The statuses a turn holds while its work is still owed: admitted, or taken by a run. */
+const UNSETTLED_STATUSES: readonly string[] = [TURN_STATUS.queued, TURN_STATUS.received];
+
+/** Whether a turn in `status` has left the queue and its run: whatever it ended as. */
+export function turnHasSettled(status: string): boolean {
+  return !UNSETTLED_STATUSES.includes(status);
+}
+
 export const TURN_KIND_CHAT = "chat";
+// The turn a person's answer on a card writes; its run resumes the turn that asked (`af_wire::turn::TurnKind`).
+export const TURN_KIND_CONTINUATION = "continuation";
 
 export const FAILURE_CLASS = {
   startupPosture: "startup_posture",
@@ -109,6 +123,7 @@ const API_STATUS_PATTERN = /→ (\d{3}):/;
 
 const DETAIL_NO_REPLY = "the run finished without a reply";
 const DETAIL_GATE_BLOCKED = "the delivery is waiting on an approval no journey granted";
+const DETAIL_WAITING = "the run ended waiting on a person's answer that no journey gave";
 const DETAIL_RUNNER_OFFLINE = "no runner was online to run the delivery";
 const DETAIL_NEVER_ASSIGNED = "an online runner never held the delivery";
 const DETAIL_REPORT_MISSING = "the run settled and no terminal row followed";
@@ -164,6 +179,9 @@ export function classifyTerminalTurn(row: TerminalObservation): ExecutionVerdict
   }
   if (row.status === TURN_STATUS.gateBlocked) {
     return { kind: VERDICT_KIND.product, leg: JOURNEY_LEG.execute, detail: DETAIL_GATE_BLOCKED };
+  }
+  if (row.status === TURN_STATUS.waiting) {
+    return { kind: VERDICT_KIND.product, leg: JOURNEY_LEG.execute, detail: DETAIL_WAITING };
   }
   const label = row.failure_label ?? "";
   const detail = row.failure_detail?.trim() || label || DETAIL_UNKNOWN_CLASS;
@@ -298,22 +316,35 @@ export async function countChatTurns(
   return page.items.filter((item) => item.event_type === TURN_KIND_CHAT).length;
 }
 
+/** Every turn the thread holds now, of any kind: what a walk names `seen` before a person answers a card. */
+export async function threadTurnIds(
+  handle: ClientHandle,
+  workspaceId: string,
+  fleetId: string,
+): Promise<ReadonlySet<string>> {
+  const page = await clientFor(handle).get<ThreadPage>(
+    `/v1/workspaces/${workspaceId}/fleets/${fleetId}/messages`,
+  );
+  return new Set(page.items.map((item) => item.turn_id));
+}
+
 /**
- * The newest chat turn on the fleet's thread that has left `received`, or
- * `null` while the delivery is still in flight. Reads the messages route
+ * The newest turn of `kind` on the fleet's thread that has settled, or `null`
+ * while the delivery is still queued or running. Reads the messages route
  * because it is the one read that carries `response_text`.
  */
-export async function readTerminalChatTurn(
+export async function readTerminalTurn(
   handle: ClientHandle,
   workspaceId: string,
   fleetId: string,
   seen: ReadonlySet<string> = NONE_SEEN,
+  kind: string = TURN_KIND_CHAT,
 ): Promise<TurnDetail | null> {
   const page = await clientFor(handle).get<ThreadPage>(
     `/v1/workspaces/${workspaceId}/fleets/${fleetId}/messages`,
   );
   const turn = page.items.find(
-    (item) => item.event_type === TURN_KIND_CHAT && item.status !== TURN_STATUS.received && !seen.has(item.turn_id),
+    (item) => item.event_type === kind && turnHasSettled(item.status) && !seen.has(item.turn_id),
   );
   return turn ?? null;
 }

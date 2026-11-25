@@ -185,6 +185,10 @@ test.describe("authenticated dashboard fluidity", () => {
       await page.setViewportSize({ width: 390, height: 844 });
       const mobileNavigation = page.getByRole("navigation", {name: "Primary", exact: true});
       await expect(mobileNavigation).toBeVisible();
+      // Cancel handed focus back to the switcher, and a focused trigger shows
+      // its tooltip; at this width it covers Open navigation. Escape dismisses it.
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("tooltip")).toHaveCount(0);
       await mobileNavigation.getByRole("button", {name: "Open navigation", exact: true}).click();
       const expanded = page.getByRole("navigation", {name: "Expanded navigation"});
       await expect(expanded.locator("summary").filter({hasText: "Your Fleets"})).toBeVisible();

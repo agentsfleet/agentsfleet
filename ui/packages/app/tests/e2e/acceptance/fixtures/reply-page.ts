@@ -57,7 +57,9 @@ export async function withReplyPage(
     await awaitFirstTurnSettled(FIXTURE_KEY.regular, workspaceId, fleet.id, created.turnId);
     await signInAs(page, FIXTURE_KEY.regular);
     await page.goto(workspaceHref(workspaceId, `fleets/${fleet.id}`), { waitUntil: "domcontentloaded" });
-    const chat = page.getByLabel(CHAT_LABEL);
+    // Exact: the chat's loading placeholder is labelled "Loading fleet chat",
+    // and the chat is only visible once the thread itself has mounted.
+    const chat = page.getByLabel(CHAT_LABEL, { exact: true });
     await expect(chat).toBeVisible();
     await stream.connected;
     const ownActor = `${ACTOR.STEER_PREFIX}${fixtureSubject(FIXTURE_KEY.regular)}`;
@@ -86,6 +88,6 @@ async function sendFromComposer(page: Page, steerPath: string, text: string, tur
   await composer.getByRole("button", { name: SEND_LABEL, exact: true }).click();
   await admitted.promise;
   // The transcript alone: the composer mirrors its draft into its own text.
-  const transcript = page.getByLabel(CHAT_LABEL).getByRole("log", { name: TRANSCRIPT_LABEL });
+  const transcript = page.getByLabel(CHAT_LABEL, { exact: true }).getByRole("log", { name: TRANSCRIPT_LABEL });
   await expect(transcript.getByText(text, { exact: true })).toBeVisible();
 }

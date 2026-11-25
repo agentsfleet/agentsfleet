@@ -19,6 +19,8 @@ import {
   failWith,
   findRunFor,
   JOURNEY_LEG,
+  threadTurnIds,
+  TURN_KIND_CONTINUATION,
   VERDICT_KIND,
   type FailedVerdict,
   type RunLocation,
@@ -110,7 +112,8 @@ async function requesting(name: string): Promise<WalkFleet> {
   return { id: fleet.id, callsign: fleetCallsign(fleet.id) };
 }
 
-/** One Approve on the fleet's own card moves its grant, and the run that asked resumes. */
+/** One Approve on the fleet's own card moves its grant, and the run that asked resumes.
+ *  The asking turn settles `waiting`; the answer lands as a new `continuation` turn, and its run is the one awaited. */
 async function approveRequest(page: Page, fleet: WalkFleet): Promise<void> {
   const gate = await pollFor(
     () => observed(JOURNEY_LEG.run, () => pendingGateFor(FIXTURE_KEY.regular, workspaceId, fleet.id)),
@@ -120,12 +123,13 @@ async function approveRequest(page: Page, fleet: WalkFleet): Promise<void> {
   const grant = standing(await connectorGrantFor(FIXTURE_KEY.regular, workspaceId, fleet.id), fleet.callsign);
   expect(grant.status).toBe(GRANT_STATUS.pending);
   expect(grant.approved_at ?? null).toBeNull();
+  const asked = await observed(JOURNEY_LEG.run, () => threadTurnIds(FIXTURE_KEY.regular, workspaceId, fleet.id));
   await approveFleetRequest(page, workspaceId, fleet.id, gate, RENDER_TIMEOUT_MS);
   const approved = standing(await connectorGrantFor(FIXTURE_KEY.regular, workspaceId, fleet.id), fleet.callsign);
   expect(approved.status).toBe(GRANT_STATUS.approved);
   expect(approved.approved_at ?? null).not.toBeNull();
   expect(await pendingGateFor(FIXTURE_KEY.regular, workspaceId, fleet.id)).toBeNull();
-  assertPassed(classifyTerminalTurn(await awaitTerminalTurn(workspaceId, fleet.id)));
+  assertPassed(classifyTerminalTurn(await awaitTerminalTurn(workspaceId, fleet.id, asked, TURN_KIND_CONTINUATION)));
 }
 
 /** No card inside the budget: no runner says the environment, a runner says the fleet never asked. */

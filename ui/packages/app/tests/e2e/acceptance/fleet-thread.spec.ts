@@ -87,7 +87,7 @@ test.describe("fleet thread surface", () => {
 
     // The thread card mounts client-side and consumes the shared stream registry.
     // Its accessible label is stable across visual changes.
-    const threadCard = page.getByLabel(CHAT_LABEL);
+    const threadCard = page.getByLabel(CHAT_LABEL, { exact: true });
     await expect(threadCard).toBeVisible({ timeout: 10_000 });
 
     await expect(page.getByRole("navigation", { name: "Fleet sections" })).toHaveCount(0);
@@ -229,7 +229,7 @@ test.describe("fleet thread surface", () => {
     await auditStream(page, streamFleetTurnsUrl(workspaceId, fleet.id));
 
     await page.goto(workspaceHref(workspaceId, `fleets/${fleet.id}`));
-    await expect(page.getByLabel(CHAT_LABEL)).toBeVisible({ timeout: ROUND_TRIP_TIMEOUT_MS });
+    await expect(page.getByLabel(CHAT_LABEL, { exact: true })).toBeVisible({ timeout: ROUND_TRIP_TIMEOUT_MS });
     await expect.poll(() => streamCount(page), { timeout: ROUND_TRIP_TIMEOUT_MS }).toEqual(ONE_OPEN_STREAM);
     await markDocument(page);
 
@@ -239,7 +239,7 @@ test.describe("fleet thread surface", () => {
     await openFleetFromSidebar(page, workspaceId, fleet.id);
     await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${fleet.id}`));
 
-    await expect(page.getByLabel(CHAT_LABEL)).toBeVisible({ timeout: ROUND_TRIP_TIMEOUT_MS });
+    await expect(page.getByLabel(CHAT_LABEL, { exact: true })).toBeVisible({ timeout: ROUND_TRIP_TIMEOUT_MS });
     await expect(page.getByLabel(COMPOSER_LABEL)).toBeVisible();
     expect(await documentIsMarked(page)).toBe(true);
     await expect.poll(() => streamCount(page)).toEqual({created: 2, open: 1});
@@ -270,7 +270,7 @@ test.describe("fleet thread surface", () => {
 
     await page.goto(workspaceHref(workspaceId, `fleets/${fleet.id}`));
     const appOrigin = new URL(page.url()).origin;
-    const threadCard = page.getByLabel(CHAT_LABEL);
+    const threadCard = page.getByLabel(CHAT_LABEL, { exact: true });
     await expect(threadCard).toBeVisible({ timeout: 10_000 });
 
     const composer = page.getByLabel(COMPOSER_LABEL);

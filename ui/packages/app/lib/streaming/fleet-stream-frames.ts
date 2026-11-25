@@ -22,6 +22,7 @@ import {
   rowToTurn,
   sameTurn,
   text,
+  withServedTrigger,
   type FleetTurn,
   type FleetTurnStatus,
 } from "./fleet-stream-row";
@@ -269,6 +270,7 @@ export function mergeBackfill(
   // still waiting, whose received frame fell in the gap the page recovers.
   const authoritative = new Map<string, TurnRow>();
   const progress = new Map(rows.map(row => [row.turn_id, readDurableTaskActivityHistory("durable_task_activity" in row ? row.durable_task_activity : undefined)]));
+  const served = new Map(rows.map(row => [row.turn_id, row]));
   const started = new Set<string>();
   for (const r of rows) {
     if (!seen.has(r.turn_id)) continue;
@@ -278,7 +280,9 @@ export function mergeBackfill(
   const kept = prev.map((e) => {
     const replacement = authoritative.get(e.id);
     if (!replacement) {
-      const running = started.has(e.id) ? startWaiting(e) : e;
+      // A still-running row keeps what the stream said, and gains the
+      // trigger body it never held from a row that carries one.
+      const running = withServedTrigger(started.has(e.id) ? startWaiting(e) : e, served.get(e.id));
       const durableTaskActivity = mergeDurableTaskActivity(e.durableTaskActivity, progress.get(e.id));
       return durableTaskActivity === running.durableTaskActivity ? running : {...running, durableTaskActivity};
     }

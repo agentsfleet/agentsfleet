@@ -223,6 +223,23 @@ export function rowToTurn(row: TurnRow | TurnDetail): FleetTurn {
   };
 }
 
+/** A row holding no trigger body — opened by a frame, or rebuilt from a list
+ * row, neither of which carries one — takes it from a served row that does.
+ * A turn's body is written once, with the turn, so the served copy is the one
+ * to show; nothing else on the row moves. */
+export function withServedTrigger(turn: FleetTurn, row: TurnRow | TurnDetail | undefined): FleetTurn {
+  const body = (row as Partial<TurnDetail> | undefined)?.request_json;
+  if (row === undefined || !carriesBody(body) || carriesBody(turn.custom?.requestJson)) return turn;
+  const filled: FleetTurn = {...turn, text: triggerBodyFor({actor: row.actor, event_type: row.event_type, request_json: body}), custom: {requestJson: body}};
+  // The served body is whole: a frame's mark that it held only the head goes.
+  delete filled.textTrimmed;
+  return filled;
+}
+
+function carriesBody(json: string | null | undefined): json is string {
+  return typeof json === "string" && json !== EMPTY_PAYLOAD;
+}
+
 /** Whether two rows render alike: every field equal, `createdAt` by its
  * instant and `custom` by the payload it carries. */
 export function sameTurn(a: FleetTurn, b: FleetTurn): boolean {

@@ -89,7 +89,7 @@ function isSteer(request: Request, message: string): boolean {
 }
 
 function chatParts(page: Page) {
-  const chat = page.getByLabel(CHAT_LABEL);
+  const chat = page.getByLabel(CHAT_LABEL, { exact: true });
   const composer = page.getByLabel(COMPOSER_LABEL);
   return {
     chat,

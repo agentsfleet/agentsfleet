@@ -11,7 +11,8 @@ import { interruptOpenCalls } from "./fleet-stream-tool-trace";
 const MAX_FENCE = "9223372036854775807";
 const FENCE = v.pipe(v.string(), v.regex(/^[1-9][0-9]{0,18}$/u),
   v.check(value => value.length < MAX_FENCE.length || value <= MAX_FENCE));
-const OUTPUT_KINDS: ReadonlySet<string> = new Set([
+/** The run's output frames: each carries the attempt's fence, and one without it is dropped. */
+export const OUTPUT_KINDS: ReadonlySet<string> = new Set([
   FRAME_KIND.CHUNK, FRAME_KIND.TOOL_CALL_STARTED, FRAME_KIND.TOOL_CALL_PROGRESS,
   FRAME_KIND.TOOL_CALL_COMPLETED, FRAME_KIND.CONTEXT_PROGRESS,
   FRAME_KIND.DURABLE_TASK_DECISION_STARTED, FRAME_KIND.DURABLE_TASK_DECISION_COMPLETED,

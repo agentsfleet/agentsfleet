@@ -54,7 +54,8 @@ test.describe("Security API keys", () => {
     await expect(page.getByText(name, { exact: true })).toBeVisible();
     const row = page.getByRole("listitem").filter({ hasText: name });
     await expect(row.getByText(`agt_t••••••••${raw.slice(-4)}`, { exact: true })).toBeVisible();
-    await expect(row.getByText("Last used: unavailable", { exact: true })).toBeVisible();
+    // The row carries no last-use line; it only ever read "unavailable".
+    await expect(row.getByText("Last used", { exact: false })).toHaveCount(0);
 
     // Revoke → the row flips to a revoked state exposing Delete.
     await page.getByRole("button", { name: new RegExp(`revoke api key ${name}`, "i") }).click();

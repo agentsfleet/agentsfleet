@@ -34,7 +34,7 @@ import {
   findRunFor,
   JOURNEY_LEG,
   runIsSettled,
-  readTerminalChatTurn,
+  readTerminalTurn,
   type JourneyLeg,
   type RunLocation,
 } from "./fixtures/execution";
@@ -187,7 +187,7 @@ test.describe("fleet execution", () => {
     const terminal = await pollFor<TurnDetail>(
       () =>
         observed(JOURNEY_LEG.execute, () =>
-          readTerminalChatTurn(FIXTURE_KEY.regular, workspaceId, fleetId, seen),
+          readTerminalTurn(FIXTURE_KEY.regular, workspaceId, fleetId, seen),
         ),
       EXECUTION_TIMEOUT_MS,
     );

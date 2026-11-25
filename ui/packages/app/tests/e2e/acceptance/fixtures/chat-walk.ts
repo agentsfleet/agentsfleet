@@ -26,7 +26,8 @@ import {
   findRunFor,
   JOURNEY_LEG,
   runIsSettled,
-  readTerminalChatTurn,
+  readTerminalTurn,
+  TURN_KIND_CHAT,
   type RunLocation,
 } from "./execution";
 import { workspaceHref } from "./nav";
@@ -76,7 +77,9 @@ export async function messageFleet(
 }
 
 /**
- * Wait out the delivery and answer with its terminal row.
+ * Wait out the delivery and answer with its terminal row: a chat turn, or the
+ * `continuation` turn a person's answer on a card wrote, whose run resumes the
+ * turn that asked.
  *
  * Never returns for a delivery that did not finish: each way of not finishing
  * has its own verdict, because "no run at all", "a run that settled with no
@@ -86,6 +89,7 @@ export async function awaitTerminalTurn(
   workspaceId: string,
   fleetId: string,
   seen?: ReadonlySet<string>,
+  kind: string = TURN_KIND_CHAT,
 ): Promise<TurnDetail> {
   const run = await pollFor<RunLocation>(
     () => observed(JOURNEY_LEG.run, () => findRunFor(fleetId, seen)),
@@ -95,7 +99,7 @@ export async function awaitTerminalTurn(
   const terminal = await pollFor<TurnDetail>(
     () =>
       observed(JOURNEY_LEG.execute, () =>
-        readTerminalChatTurn(FIXTURE_KEY.regular, workspaceId, fleetId, seen),
+        readTerminalTurn(FIXTURE_KEY.regular, workspaceId, fleetId, seen, kind),
       ),
     EXECUTION_TIMEOUT_MS,
   );

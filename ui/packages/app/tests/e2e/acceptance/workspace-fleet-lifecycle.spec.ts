@@ -13,7 +13,7 @@ import { expectDetailArchived, expectSidebarFleetState, archiveFleet, captureLif
 import { uniqueTag } from "./fixtures/observation";
 import { purgeFixtureFleet } from "./fixtures/teardown";
 import { FIXTURE_KEY, SECOND_WORKSPACE_NAME } from "./fixtures/constants";
-import { gotoWorkspace, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
+import { fleetNavigation, gotoWorkspace, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
 const SWITCH_TIMEOUT_MS = 10_000;
 const FLOW_TIMEOUT_MS = 120_000;
@@ -77,8 +77,10 @@ test.describe("multi-workspace + fleet lifecycle", () => {
     await expect(clientFor(FIXTURE_KEY.regular).get(`/v1/workspaces/${secondary.id}/fleets/${fleetId}`))
       .rejects.toMatchObject({status: 404});
     await captureLifecycleReview(page, info, "deleted");
-    await page.getByRole("navigation", {name: "Primary", exact: true})
-      .locator("summary").filter({hasText: "Your Fleets"}).click();
+    // The review leaves the page at phone width, where the fleet list sits
+    // behind Open navigation; on a desktop it is in the rail.
+    const navigation = await fleetNavigation(page);
+    await navigation.locator("summary").filter({hasText: "Your Fleets"}).click();
     await expect(page).toHaveURL(workspaceHref(secondary.id, "fleets/new"));
     await expect(page.locator(`a[href$="/fleets/${fleetId}"]`)).toHaveCount(0);
   });

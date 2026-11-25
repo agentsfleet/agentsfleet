@@ -186,7 +186,9 @@ test.describe("operator journey", () => {
     await switchWorkspace(page, primaryWorkspaceName);
     await switchWorkspace(page, secondaryWorkspaceName);
 
-    await clickSidebarLink(page, workspaceHref(wsId, "fleets"), workspaceUrlPattern("fleets/new"));
+    // New fleet is the workspace's entry in the rail; the fleet list has no page of its own.
+    await page.getByRole("navigation", {name: "Primary", exact: true}).getByRole("link", {name: "New fleet", exact: true}).click();
+    await expect(page).toHaveURL(workspaceHref(wsId, "fleets/new"), {timeout: ACTION_TIMEOUT_MS});
     await expect(page.getByRole("heading", {name: "What should your fleet do?", exact: true})).toBeVisible();
     const fleetId = await createFleetViaUI(page, wsId, probeMessage(crypto.randomBytes(4).toString("hex")));
     // The first message opens the fleet's chat.

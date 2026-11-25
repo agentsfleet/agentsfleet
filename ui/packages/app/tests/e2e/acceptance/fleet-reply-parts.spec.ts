@@ -257,7 +257,10 @@ test("test_streaming_reply_costs_no_long_tasks", { tag: FRAME_BUDGET_TAG }, asyn
 test("test_settled_row_keeps_its_focus_ring", async ({ page }) => {
   await withReplyPage(page, FLEET_NAME, async ({ chat, stream }) => {
     await stream.send(settledHistory(Date.now()).slice(0, FRAMES_PER_TURN));
-    const copy = chat.getByRole("button", { name: COPY_REPLY });
+    // The fleet's first answer has a Copy too, so the row is named by the answer these frames settled.
+    // `has` starts from the page: a chat-rooted locator looks for "Fleet chat" within the row.
+    const row = chat.locator('[data-settled="true"]').filter({ has: page.getByText("Settled answer 1", { exact: true }) });
+    const copy = row.getByRole("button", { name: COPY_REPLY });
     await expect(copy).toBeVisible();
     // Onto Copy by keyboard, so its focus ring is the one a keyboard user sees.
     await copy.focus();
@@ -265,9 +268,6 @@ test("test_settled_row_keeps_its_focus_ring", async ({ page }) => {
     await page.keyboard.press("Tab");
     await expect(copy).toBeFocused();
 
-    // `has` runs inside each row, so its locator starts from the page, not
-    // the chat: a chat-rooted one looks for "Fleet chat" within the row.
-    const row = chat.locator('[data-settled="true"]').filter({ has: page.getByRole("button", { name: COPY_REPLY }) });
     const [control, painted] = await Promise.all([copy.boundingBox(), row.boundingBox()]);
     expect(control).not.toBeNull();
     expect(painted).not.toBeNull();

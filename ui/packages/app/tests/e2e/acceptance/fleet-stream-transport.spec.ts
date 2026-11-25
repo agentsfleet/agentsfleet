@@ -85,7 +85,8 @@ test("native fleet streaming deduplicates completion and backfills after disconn
     await expectFleetActive(FIXTURE_KEY.regular, workspaceId, fleet.id);
     await signInAs(page, FIXTURE_KEY.regular);
     await page.goto(href, { waitUntil: "domcontentloaded" });
-    const chat = page.getByLabel("Fleet chat");
+    // Exact: the loading placeholder's label, "Loading fleet chat", contains it.
+    const chat = page.getByLabel("Fleet chat", { exact: true });
     await expect(chat).toBeVisible();
     await connected.promise;
     recordRefreshes(page, href, counts);

@@ -24,6 +24,7 @@ import {
   failWith,
   JOURNEY_LEG,
   runIsSettled,
+  turnHasSettled,
   PRODUCT_FAILURE_CLASSES,
   VERDICT_KIND,
   type TerminalObservation,
@@ -73,6 +74,23 @@ describe("the terminal row is classified before it is trusted", () => {
     expect(classifyTerminalTurn({ ...failed(null), status: TURN_STATUS.gateBlocked }).kind).toBe(
       VERDICT_KIND.product,
     );
+  });
+
+  it("a turn that ended waiting on a person is a product defect, named as the wait it is", () => {
+    // `request_access` and a question settle the asking turn `waiting`; a walk
+    // that reads it as the delivery's end met no answer, not an unknown class.
+    const verdict = classifyTerminalTurn({ ...failed(null), status: TURN_STATUS.waiting });
+    expect(verdict).toMatchObject({ kind: VERDICT_KIND.product, leg: JOURNEY_LEG.execute });
+    expect(verdict.kind === VERDICT_KIND.passed ? "" : verdict.detail).toContain("waiting");
+  });
+
+  it("a queued or running turn has not settled; every status a run ends in has", () => {
+    for (const status of [TURN_STATUS.queued, TURN_STATUS.received]) {
+      expect(turnHasSettled(status), status).toBe(false);
+    }
+    for (const status of [TURN_STATUS.processed, TURN_STATUS.fleetError, TURN_STATUS.gateBlocked, TURN_STATUS.waiting, "cancelled"]) {
+      expect(turnHasSettled(status), status).toBe(true);
+    }
   });
 
   it("the failure line carries the class and the runner's own detail", () => {

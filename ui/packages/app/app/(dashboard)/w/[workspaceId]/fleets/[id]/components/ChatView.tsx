@@ -47,6 +47,9 @@ export function ChatView({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-xs overflow-clip">
+      {/* The page's h1 is the fleet's name; this level-2 heading names the
+          chat, so a reply's tool activity (an h3) does not skip a level. */}
+      <h2 className="sr-only">Conversation</h2>
       <FleetThreadDynamic sources={sources} schedules={schedules} approvals={{count: summary.pendingApprovals, href: approvalsHref}} modelLabel={modelLabel}
         lists={archived ? undefined : lists}
         archived={archived}

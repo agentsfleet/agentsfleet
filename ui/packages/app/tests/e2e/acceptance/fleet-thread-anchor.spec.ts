@@ -89,7 +89,7 @@ test("final answer stays in place when a short reply completes", async ({ page }
     // Completion must keep the live row laid out, including in browsers that
     // happen to measure containment before the next paint and hide the jump.
     expect(await paragraph.evaluate(el => getComputedStyle(el.closest('[data-testid="fleet-message"]')!).contentVisibility)).toBe("visible");
-    await expect(chat.getByRole("button", { name: "Copy reply" })).toBeVisible();
+    await expect(replyTo(chat, ANSWER).getByRole("button", { name: "Copy reply" })).toBeVisible();
   });
 });
 
@@ -127,7 +127,7 @@ test("a metered completion preserves the answer position without adding a receip
       }),
     }]));
     expectHeld(tops);
-    await expect(chat.getByRole("button", {name: "Copy reply"})).toBeVisible();
+    await expect(replyTo(chat, ANSWER).getByRole("button", {name: "Copy reply"})).toBeVisible();
     await expect(chat.getByRole("button", {name: "Run details"})).toHaveCount(0);
     await expect(chat.getByText(/Worked for/)).toHaveCount(0);
   });
@@ -274,6 +274,12 @@ async function restAtBottom(viewport: Locator): Promise<void> {
     };
     requestAnimationFrame(tick);
   }), STILL_FRAMES);
+}
+
+// The fleet's first answer sits settled above with a Copy of its own, so a
+// reply is named by its answer. `has` starts from the page, not the chat.
+function replyTo(chat: Locator, text: string): Locator {
+  return chat.locator('[data-role="assistant"]').filter({ has: chat.page().getByText(text, { exact: true }) });
 }
 
 function expectHeld(tops: number[]): void {

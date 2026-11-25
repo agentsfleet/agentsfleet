@@ -5,6 +5,11 @@ import { getDefaultWorkspaceId } from "./fixtures/seed";
 import { expectAccessible, expectNoPageOverflow } from "./fixtures/accessibility";
 
 const VIEWPORTS = [1440, 390];
+// Type, Value and Available to are `hideOnMobile` columns, shown from Tailwind's
+// `sm` width (40rem); below it the row's Manage dialog carries them.
+const TABLE_COLUMNS_MIN_WIDTH = 640;
+const WIDE_SECRET_COLUMNS = ["Name", "Type", "Value", "Available to", "Actions"];
+const NARROW_SECRET_COLUMNS = ["Name", "Actions"];
 
 async function expectActionInViewport(page: Page, action: Locator) {
   await action.scrollIntoViewIfNeeded();
@@ -31,11 +36,14 @@ test("Secrets exposes hidden values, access limits and reachable management at b
       await page.setViewportSize({ width, height: 900 });
       await page.goto(`/w/${workspaceId}/secrets`);
       const table = page.getByRole("table");
-      await expect(table.getByRole("columnheader")).toHaveText(["Name", "Type", "Value", "Available to", "Actions"]);
+      const wide = width >= TABLE_COLUMNS_MIN_WIDTH;
+      await expect(table.getByRole("columnheader")).toHaveText(wide ? WIDE_SECRET_COLUMNS : NARROW_SECRET_COLUMNS);
       const row = table.getByRole("row").filter({hasText: name});
-      await expect(row.getByRole("cell").nth(2)).toHaveText("Hidden");
-      // A fixture secret no fleet declares is a recorded "none", never an unknown.
-      await expect(row.getByRole("cell").nth(3)).toHaveText("No active fleets");
+      if (wide) {
+        await expect(row.getByRole("cell").nth(2)).toHaveText("Hidden");
+        // A fixture secret no fleet declares is a recorded "none", never an unknown.
+        await expect(row.getByRole("cell").nth(3)).toHaveText("No active fleets");
+      }
       const manage = row.getByRole("button", {name: `Manage ${name}`, exact: true});
       await expectActionInViewport(page, manage);
       await expectAccessible(page, "Populated secrets table");
@@ -43,6 +51,9 @@ test("Secrets exposes hidden values, access limits and reachable management at b
         await manage.click();
         const management = page.getByRole("dialog");
         await expect(management).toContainText("Stored in this workspace");
+        // At every width the dialog says the value is hidden and who may use it.
+        await expect(management).toContainText("Value hidden");
+        await expect(management).toContainText("No active fleet");
         await expectAccessible(page, "Secret management");
         await management.getByRole("button", {name: action, exact: true}).click();
         // Both dialogs keep a fixed title and name the secret in their description.

@@ -30,11 +30,17 @@ import { clientFor } from "./fixtures/api-client";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import {
   anyRunnerLive,
+  chatTurnIds,
   classifyIdle,
+  classifyReportMissing,
+  classifyStillRunning,
+  findRunFor,
+  runIsSettled,
+  turnHasSettled,
   TURN_STATUS,
   failWith,
 } from "./fixtures/execution";
-import { pollFor } from "./fixtures/observation";
+import { POLL_INTERVAL_MS, pollFor } from "./fixtures/observation";
 import { getDefaultWorkspaceId, expectFleetActive } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 
@@ -85,11 +91,10 @@ const HTTP_ACCEPTED = 202;
 // Delivery → run → durable row rides the queue and the heartbeat cadence,
 // the same budget the other run-crossing journeys carry.
 const TURN_ROW_TIMEOUT_MS = 120_000;
-const POLL_INTERVAL_MS = 2_000;
 // Long enough for a second delivery to have become a second row if the
 // replay had not been suppressed; short enough not to be a wait. Derived
 // from the poll cadence rather than picked, so it moves with it instead of
-// silently becoming too short when the cadence slows.
+// silently becoming too short when `pollFor`'s cadence slows.
 const REPLAY_GRACE_POLLS = 5;
 const REPLAY_GRACE_MS = POLL_INTERVAL_MS * REPLAY_GRACE_POLLS;
 // The first message's run reaches a runner and calls trigger_add: the queue plus one provider round trip.
@@ -133,10 +138,18 @@ async function webhookTurns(workspaceId: string, fleetId: string) {
   return page.items.filter((item) => item.event_type === TURN_KIND_WEBHOOK);
 }
 
-/** What the fleet is asked to do with its first message: add the one trigger this journey delivers to. */
+// How the fleet is to answer a delivery. A fleet holds no instructions, so its job for every
+// later run is what it pins: unpinned, a failed-deploy payload sends a run with the whole tool
+// catalog investigating for minutes, and the row this journey counts stays running.
+const DELIVERY_GUIDANCE = "When a webhook delivery arrives, reply with exactly one line: the word DELIVERED, " +
+  "a space, then the event name. Call no tool for it.";
+
+/** What the fleet is asked to do with its first message: pin how to answer a delivery, then add the one trigger this journey delivers to. */
 function triggerMessage(): string {
-  return `Call trigger_add once with kind "webhook", source "${WEBHOOK_SOURCE}", events ["${WEBHOOK_EVENT_WORKFLOW_RUN}"], ` +
-    `verifier ${JSON.stringify(VERIFIER)} and secret_name "${CREDENTIAL_NAME}". Then reply with the single word done.`;
+  return "Remember this standing guidance with memory_store under the category core, exactly as written: " +
+    `${DELIVERY_GUIDANCE} Then call trigger_add once with kind "webhook", source "${WEBHOOK_SOURCE}", ` +
+    `events ["${WEBHOOK_EVENT_WORKFLOW_RUN}"], verifier ${JSON.stringify(VERIFIER)} and secret_name "${CREDENTIAL_NAME}". ` +
+    "Then reply with the single word done.";
 }
 
 /** The webhook row the fleet added, once it names the URL deliveries go to. */
@@ -166,41 +179,31 @@ async function arrangeWebhookFleet(workspaceId: string, tag: string) {
 }
 
 /**
- * Waits for a runner to take the event, or reports why nobody did.
+ * Waits for the event's row to settle, or reports why it did not.
  *
  * NO row exists until a runner runs the event. The ingress writes nothing to
- * the history — it admits the delivery as a queued turn and answers
- * 202, and the row is
- * written by the run (`afd_ingress::deliver`, module note: "the row appears
- * when the runner runs the event, and a daemon that inserted one at ingress
- * would be racing its own runner to describe the same event").
+ * the history — it admits the delivery as a queued turn and answers 202, and
+ * the row is written by the run (`afd_ingress::deliver`, module note: "the row
+ * appears when the runner runs the event, and a daemon that inserted one at
+ * ingress would be racing its own runner to describe the same event"). A row
+ * that exists is a delivery a runner held; it is `received` while that run
+ * goes on.
  *
- * This function read the opposite until Sep 8, 2026, and the cost was the
- * whole assertion: an absent row answered `null`, `null` is not `received`, so
- * the wait passed at once on a delivery nobody had taken and the journey went
- * on to fail on a bare length mismatch that named neither side. An empty
- * listing is the WAITING state, which is why it reads as `received` here — and
- * a wait that runs out reaches the classifier below, which is the sentence
- * this journey exists to print (RULE ECL).
+ * So an unsettled row at the deadline is three different failures, told apart
+ * by the run a runner took for a turn outside `seen` (RULE ECL): no run is the
+ * runner fleet's when none is live and the product's when one is, a run still
+ * running is the provider or the clock, and a settled run with no settled row
+ * is a report that never landed.
  */
-async function awaitRun(workspaceId: string, fleetId: string): Promise<void> {
-  const held = await expect
-    .poll(
-      async () => {
-        const [current] = await webhookTurns(workspaceId, fleetId);
-        return current?.status ?? TURN_STATUS.received;
-      },
-      { timeout: TURN_ROW_TIMEOUT_MS, intervals: [POLL_INTERVAL_MS] },
-    )
-    .not.toBe(TURN_STATUS.received)
-    .then(() => true)
-    .catch(() => false);
-  if (!held) {
-    // A delivery nobody held is the runner fleet's fault when none is live
-    // and the product's when one is — the same split every other
-    // run-crossing journey reports, rather than a bare timeout.
-    failWith(classifyIdle(await anyRunnerLive()));
-  }
+async function awaitRun(workspaceId: string, fleetId: string, seen: ReadonlySet<string>): Promise<void> {
+  const settled = await pollFor(async () => {
+    const [current] = await webhookTurns(workspaceId, fleetId);
+    return current !== undefined && turnHasSettled(current.status) ? current : null;
+  }, TURN_ROW_TIMEOUT_MS);
+  if (settled !== null) return;
+  const run = await findRunFor(fleetId, seen);
+  if (run === null) failWith(classifyIdle(await anyRunnerLive()));
+  failWith(runIsSettled(run.outcome) ? classifyReportMissing(run.outcome) : classifyStillRunning(run.outcome));
 }
 
 test.describe("fleet webhook delivery", () => {
@@ -220,6 +223,8 @@ test.describe("fleet webhook delivery", () => {
     const { fleetId, webhookUrl, secret } = await arrangeWebhookFleet(workspaceId, tag);
 
     // ── One delivery, accepted and named ──
+    // The first message's turn is on the thread already; the run awaited below is the delivery's.
+    const seen = await chatTurnIds(FIXTURE_KEY.regular, workspaceId, fleetId);
     const body = new Uint8Array(fs.readFileSync(CAPTURED_DELIVERY));
     const delivery = crypto.randomUUID();
     const first = await deliver(webhookUrl, body, secret, delivery);
@@ -234,7 +239,7 @@ test.describe("fleet webhook delivery", () => {
     expect(replay.body.turn_id).toBe(first.body.turn_id);
 
     // ── One durable event, once a runner has taken it ──
-    await awaitRun(workspaceId, fleetId);
+    await awaitRun(workspaceId, fleetId, seen);
 
     // The replay had its chance to become a second row across the grace above
     // plus the whole run wait; a count taken now is what proves it did not.
