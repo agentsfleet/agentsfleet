@@ -167,7 +167,7 @@ The `read < write < admin` ladder is stored as data. Holding a higher scope sati
 | `runner:tenant` | register, list, read, change and retire the calling tenant's own runners under `/v1/tenants/me/runners`. Such a runner takes only that tenant's work. A platform admin grants it per account at the identity provider, and signup never does |
 | `stream:read` | reserved for an operator diagnostic of the live SSE streams open on an instance. No route in `rustd/crates/daemon/afd_http/src/route/` requires it today, so holding it reaches nothing |
 | `approval:read` / `approval:resolve` | view the approval inbox / decide (approve or deny) an approval gate. The one pair here with a ladder: `approval:resolve` includes `approval:read` (`HIERARCHY`, `scope.rs`) |
-| `billing:read` | Read the tenant balance, raw charges, settled report and activity charges. [Billing reporting](architecture/billing_reporting.md#public-reads) lists the reporting paths. Balance and raw charges retain `/v1/tenants/me/billing` and `/v1/tenants/me/billing/charges`. |
+| `billing:read` | Read the tenant balance, raw charges, settled report and activity charges. [Billing reporting](architecture/billing.md#the-usage-report) lists the reporting paths. Balance and raw charges retain `/v1/tenants/me/billing` and `/v1/tenants/me/billing/charges`. |
 | `workspace:admin` | create workspaces; list the tenant's workspaces; manage the account's invites and members (§Invites) |
 
 **Runner credential** (machine identity, minted onto the `agt_r` token and never granted to a human):
@@ -1002,7 +1002,7 @@ The runner prepares intent before durable work and assesses completed action gro
 Native report preparation independently checks task authority and completion evidence.
 Live end-to-end verification remains pending.
 
-The [decision architecture](architecture/goal_evaluation.md) owns model selection, question ownership and runner integration.
+The [decision architecture](architecture/durable_tasks.md#goal-evaluation) owns model selection, question ownership and runner integration.
 
 ### The token never enters the sandboxed child
 
@@ -1019,7 +1019,7 @@ A prompt-injected fleet that reads `AGENTSFLEET_RUNNER_TOKEN` or its own `/proc/
 A fleet has no setup document. It holds only the credentials a person approved for it.
 
 When a run needs one, the fleet calls `request_access` with the credential's name, and for GitHub the repositories and read or write.
-The daemon checks that the workspace holds that secret or has connected that integration, then raises an approval card ([connectors](architecture/connectors.md#where-a-grant-comes-from)).
+The daemon checks that the workspace holds that secret or has connected that integration, then raises an approval card ([connectors](architecture/user_flow.md#access)).
 
 A signed-in person approves the card once; an API key cannot.
 The routes use ordinary `Guard::Bearer` and `PersonIdentity`, and the card's approval route refuses a caller that is not a person.
@@ -1370,7 +1370,7 @@ The `UZ-WH-020` vs `UZ-WH-010` split matters: the first is a recoverable misconf
 ### Cross-references: manual fleet webhooks
 
 - Implementation: `rustd/crates/daemon/afd_http/src/route/webhook.rs` (route guards), `rustd/crates/daemon/afd_api_ingress/src/handler/webhook/verify.rs` (the check), `rustd/crates/daemon/afd_ingress/src/binding/mod.rs` and `secret.rs` (scheme and secret), `rustd/crates/protocol/af_webhook/src/scheme.rs` (the schemes).
-- Operator-facing data flow: [`architecture/data_flow.md`](./architecture/data_flow.md) §"B. TRIGGER  (steer / webhook / cron — three callers, ONE ingress)", [`architecture/user_flow.md`](./architecture/user_flow.md) §"§8.3 Triggering the Fleet".
+- Operator-facing data flow: [`architecture/data_flow.md`](./architecture/data_flow.md#intake) §"Intake", [`architecture/user_flow.md`](./architecture/user_flow.md#wakes-on) §"Wakes on".
 - Error registry: codes in `rustd/crates/foundation/af_core/src/error_code/request.rs`, HTTP status and hint per code in `rustd/crates/foundation/af_core/src/problem/request.rs`.
 
 ---
@@ -1389,7 +1389,9 @@ Scopes: `connector:write` gates connection and authenticated callback completion
 
 The provider returns to `GET https://<APP_HOST>/api/connectors/{provider}/callback`. The signed-in dashboard forwards its current Bearer token and the original query to `POST /v1/connectors/{provider}/callback`. That endpoint requires `connector:write`, the same identity that started the state, and current access to the state workspace. It checks those three conditions before consuming the nonce, exchanging a provider code, or writing a connector row. A copied provider URL therefore cannot bind the approving person's provider account to the starter's workspace. The API host serves no `GET` on that path, so a provider registration must name the dashboard URL.
 
-A missing state is malformed (`UZ-REQ-001`). A forged, expired, replayed, or identity-mismatched state returns `UZ-CONN-002 connector_state_invalid`. Vendor exchanges and ownership probes run deadline-armed ([`architecture/connectors.md`](./architecture/connectors.md) §"Bounded outbound: every vendor call has a deadline"); a stalled vendor returns 502 `UZ-CONN-003` with no vault write. The authenticated callbacks endpoint then hands provider-specific persistence to the registry hook:
+A missing state is malformed (`UZ-REQ-001`). A forged, expired, replayed, or identity-mismatched state returns `UZ-CONN-002 connector_state_invalid`.
+
+Vendor exchanges and ownership probes run deadline-armed ([`architecture/connectors.md`](./architecture/connectors.md#bounded-outbound-calls) §"Bounded outbound calls"); a stalled vendor returns 502 `UZ-CONN-003` with no vault write. The authenticated callbacks endpoint then hands provider-specific storage to the registry hook:
 
 - **Slack** exchanges the `code` for a bot token, then writes the vault handle and `connector.installs` routing row atomically.
   When OAuth supplies `authed_user.id`, the subject-checked callback also links that person through `connector.person_links`.
@@ -1546,7 +1548,7 @@ Slack's signature failures share the webhook codes (`UZ-WH-010`, `UZ-WH-011`, §
 | --- | --- | --- |
 | `UZ-CONN-001` (connector not configured) | platform app secrets missing at connect or at authenticated callback completion (the status read never emits it — it degrades to `not_connected`; the events ingress answers a missing signing secret with 401 `UZ-WH-020`) | **503** |
 | `UZ-CONN-002` (invalid connect state) | callback `state` forged / expired / replayed, or completed by a different identity (a *missing* state is `UZ-REQ-001`) | 400 on authenticated callback completion |
-| `UZ-CONN-003` (vendor deadline exceeded) | a connector vendor call hit its enforced deadline (vendor accepted, then stalled) or could not be deadline-armed and was refused — never runs unbounded (shape in [`architecture/connectors.md`](./architecture/connectors.md) §"Bounded outbound: every vendor call has a deadline") | **502** on the callback exchange; logged + retried on background paths |
+| `UZ-CONN-003` (vendor deadline exceeded) | a connector vendor call hit its enforced deadline (vendor accepted, then stalled) or could not be deadline-armed and was refused — never runs unbounded (shape in [`architecture/connectors.md`](./architecture/connectors.md#bounded-outbound-calls) §"Bounded outbound calls") | **502** on the callback exchange; logged + retried on background paths |
 | `UZ-CONN-004` (unknown connector provider) | the `{provider}` route segment resolves to no registry entry — connect, callback, and status answer identically, body names the id | 404 |
 | `UZ-CONN-008` (installation ownership denied) | GitHub user token cannot access the claimed installation, or another workspace already owns its route | **403** on the callback; no vault or routing-row mutation |
 | `UZ-CONN-006` (OAuth exchange failed) | the provider rejected the `code`→token exchange, or a forged refresh handle named a server outside the allowed list | **502** |

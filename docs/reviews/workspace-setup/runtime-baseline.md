@@ -71,4 +71,4 @@ No new authoring API, migration, installer, or runner capability is implemented 
 ## Related pages
 
 - [API gaps](api.md)
-- [ASCII flow](../../architecture/data_flow.md#fleet-setup-and-runtime-sequence)
+- [ASCII flow](../../architecture/data_flow.md#the-path-in-one-picture)

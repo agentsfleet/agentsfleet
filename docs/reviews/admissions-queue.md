@@ -177,7 +177,7 @@ The median completed-event rate was 142.37/s; lease and report p95 were 43.679 m
 Idle discovery cost one statement per poll.
 
 The tenfold population increase required 8.28 times the drain statements, a client-work measurement rather than a server CPU bound.
-The [scaling table](../architecture/scaling.md#admissions-ledger-measurements) retains all five population medians and the benchmark command.
+The [scaling table](../architecture/scaling.md#current-measurements) retains all five population medians and the benchmark command.
 The measured source was `ab66bb2ec992c87f0158470672a33bab30a58f38`, including the integrated base and coverage repairs.
 
 Runtime sources stayed unchanged throughout; documentation edits were pending.
@@ -252,6 +252,6 @@ No history backfill is included.
 
 ## Related pages
 
-- [Queue design](../architecture/datastore_scaling.md#the-admissions-ledger-is-the-queue)
-- [Lease flow](../architecture/lease_flow.md)
+- [Queue design](../architecture/datastore_scaling.md#the-turns-ledger-is-the-queue)
+- [Lease flow](../architecture/runner_protocol.md#run-lease-and-renewal)
 - [Concurrency rules](../architecture/concurrency.md)

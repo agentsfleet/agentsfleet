@@ -1,118 +1,86 @@
-# Postgres schemas — layout, tables, and naming
+---
+type: reference
+audience: contributor
+verified: 2026-11-25
+product_version: 0.90.0
+executable: false
+---
 
-> Canonical for which Postgres schema a table lives in, what each table is for, and how
-> tables link. Indy signed the design off table by table on Oct 17, 2026, and milestone
-> M229 rebuilt `rustd/crates/daemon/afd_db/schema/*.sql` from it. Each schema file describes what is deployed.
+# Postgres schemas
 
-## Why this exists
+## What it is
 
-Tables had accumulated in `core` until it held 33 of 47, while one feature's tables alone spread
-across `core`, `fleet` and `billing`. Columns were added with no reader, the same fact was stored
-in two or three places, and timestamps multiplied. This file fixes placement and naming so a new
-table has one obvious home and one obvious shape.
+This page says which Postgres schema each table lives in, what each table is for, and how tables link and delete.
+Each table's columns live only in its file under `rustd/crates/daemon/afd_db/schema/`.
 
-## Rules
+## Why it exists
 
-1. **Placement.** A table lives in the schema of the product area that owns it. Its name is a
-   plural noun that never repeats the schema name: `fleet.schedules`, never with the schema name repeated as a prefix.
-   A singleton is named for its one row (`model.revision`) and says so in its slot.
-2. **Foreign keys** end `_id` and name the table they point at (`user_id`, `fleet_id`). A prefix
-   names the role when the column alone would not say it (`invited_by_user_id`, `active_grant_id`,
-   `source_workspace_id`, `last_runner_id`). A deliberately missing foreign key is explained in the
-   slot comment (money outlives an account; a charge outlives a purged fleet).
-3. **Status** columns are named `status`; categories are `<thing>_type`. RULE STS applies in full:
-   no literal that names a value or identifier the application also names. That rules out:
-   - a `DEFAULT`, a CHECK value list, or a trigger comparison against a column;
-   - a `current_setting()` name, or `RAISE EXCEPTION` text a caller matches on;
-   - a state literal in a predicate: a predicate that needs a state reads a NULL marker column;
-   - a session setting for a privileged path; such a path is a grant, which is why
-     `fleet.approval_gates` carries no DELETE grant. A gate goes only through its fleet's cascade;
-   - anything beyond the UUID version nibble `'7'`, `TG_OP` values, and exception text no caller
-     matches on, which are the only literals left.
-4. **Timestamps.** Every instant is `TIMESTAMPTZ(3)`, and every instant column ends `_at`; no other
-   column is a timestamp. Rust holds them as `jiff::Timestamp` and the API emits RFC 3339 in UTC.
+A new table needs one obvious home and one obvious shape.
+Placement, naming and deletion are decided here once, so no two features store the same fact.
 
-   Statements write `created_at` and `updated_at` as `now()`. The clock rule for expiry checks is
-   SQL-DEADLINE in the [SQL standard](../../.orly/standards/domains/sql.md).
+## How it behaves
 
-   Per SQL-TIMECOL, every table has `created_at`, and every table whose rows change has
-   `updated_at`. Any other time column is one of four kinds:
+### Rules
 
-   - a deadline, named `*expires_at`;
-   - a NULL marker an index or trigger reads;
-   - a domain instant the API returns that `updated_at` cannot carry;
-   - an accounting cursor billing reads (`thread.runs.last_metered_at`).
-5. **One fact, one home.** No JSON blob copies a column; no counter restates another table's number.
-   Named exceptions, each with its consistency rule stated in the slot:
-   - an aggregate maintained under the same lock or trigger as its source;
-   - a delivery snapshot that must outlive its source;
-   - a non-secret projection of encrypted content;
-   - a scope copy a restricted role needs to filter alone.
-6. **Retry keys** (`operation_id` + request digest) are enforced only by receipt tables. When an API
-   returns a key for longer than its receipt lives, the row may keep that key as a plain column.
-   That column decides no replay.
-7. **Every column names its reader** before it is created. Accounting and audit records are exempt
-   when the slot names the export or verification that reads them.
-8. **A new table** carries a written answer to "why not a column, or an existing table".
-9. **Immutable tables** carry no `updated_at`, no UPDATE grant, and a trigger that refuses UPDATE.
-   DELETE stays governed by grants and the deletion matrix below, so cascades keep working.
+The [SQL standard](../../.orly/standards/domains/sql.md) owns every schema rule.
+That covers placement (SQL-PLACE), column names (SQL-FKNAME, SQL-STATUS, SQL-COUNTER), time columns (SQL-TIMECOL, SQL-TSTYPE) and one fact per home (SQL-ONEFACT).
+It also covers retry keys (SQL-RETRYKEY), immutable tables (SQL-IMMUTABLE) and the deletion matrix (SQL-ERASE).
 
-### Counter and pointer names
+Schema files hold no status or value literals: no `CHECK` value list and no string `DEFAULT`.
+Status words are named constants in Rust.
 
-| Kind | Name |
-|---|---|
-| Position within a parent (1, 2, 3…) | `sequence` |
-| Pointer to another table's position | `<thing>_sequence` |
-| Highest position so far | `last_<thing>_sequence` |
-| "Everything up to N" watermark | `<verb>_through_sequence` |
-| Global insertion order | `sequence` (identity column) |
-| Frozen content version | `revision`; pointer `<x>_revision_id` (`decision_revision_id`) |
-| Compare-and-swap edit counter | `resource_version`, or `<scope>_version` when it covers one action |
-| Run epoch | `fencing_token` |
-| Tally | `<thing>_count` |
-| Deadline | `*expires_at` |
+Constraint names follow one pattern, so a refusal is matched by name (SQL-FKSTATE).
+`<table>` is the bare table name, without its schema.
 
-Wire field names (API and runner protocol) are not renamed by these rules.
+| Object | Name | Example |
+|---|---|---|
+| Foreign key | `fk_<table>_<column>` | `fk_turns_thread_id` |
+| Composite foreign key | `fk_<table>_<first column>_scope` | `fk_turns_durable_task_id_scope` |
+| Unique | `uq_<table>_<columns>` | `uq_turns_thread_id_sequence` |
+| Index | `idx_<table>_<columns>` | `idx_turns_thread_id_created_at_id` |
+| Partial index | `idx_<table>_<columns>_<state>` | `idx_turns_thread_id_sequence_unsettled` |
+| Check | `ck_<table>_<rule>` | `ck_checkpoints_one_owner` |
+| Trigger | `trg_<table>_<what>` | `trg_history_refuse_update` |
 
-## Layout
+Every foreign-key column gets an index unless it leads another index or unique key.
+Postgres indexes neither side of a foreign key on its own, and every `ON DELETE CASCADE` scans the child.
 
-Each table's columns live in its `rustd/crates/daemon/afd_db/schema/` slot, the only copy kept.
+### Files and migrations
+
+Each table has one file, `<UTC yyyymmddHHMMSS>_<schema>_<table>.sql`, holding its whole `CREATE`.
+That includes columns, constraints, indexes, grants, functions and triggers.
+Files apply in foreign-key order from the list in `afd_db/src/migration.rs`.
+
+The only `ALTER` adds a foreign key that closes a cycle, in the later table's file.
+Three exist: `thread.turns` to `runner.checkpoints`, `fleet.durable_tasks` to `runner.checkpoints`, and `fleet.durable_task_items` to `fleet.durable_tasks`.
+A fourth closes `model.platform_models` to `model.decision_revisions`.
+
+SQLx's `Migrator` applies the files under a bounded advisory lock and keeps checksums in the `audit` schema, so an edited applied file is refused.
+Until the first production deploy, a change to a table edits its file.
+
+### Runtime SQL
+
+Every static statement is a `.sql` file beside the use case that runs it.
+A typed Rust function loads it with `include_str!` and states its parameters, authorization and locks.
+
+One integration test `PREPARE`s every `.sql` file against the rebuilt schema, so a stale column fails before merge.
+A domain store takes the caller's connection or transaction; there is no generic repository trait.
+
+### Layout
 
 | Schema | Owns |
 |---|---|
 | `identity` | Accounts, people, membership, credentials |
 | `fleet` | Fleets, their triggers, schedules, approval cards and durable tasks |
-| `thread` | Every conversation: threads, turns, runs, items and deliveries |
-| `runner` | Enrolled hosts, their history and counters |
+| `thread` | Every conversation: threads, turns, runs, items, deliveries, compactions and retry keys |
+| `runner` | Enrolled hosts, their history, decision calls and the checkpoint system |
 | `connector` | Outside accounts, channel bindings, fleet-to-service grants |
 | `model` | Model catalogue, prices, platform defaults, tenant models |
 | `billing` | The wallet and every charge against it |
 | `vault` | Encrypted secrets |
 | `memory` | Fleet memory, behind its own database role |
 
-`audit` holds the migration ledger. SQLx's `Migrator` applies `rustd/crates/daemon/afd_db/schema/*.sql` from the explicit
-list in `afd_db`'s migration module. It keeps checksums, so an edited applied file is refused, and
-runs inside our bounded advisory lock.
-
-Each table has one file, `<UTC yyyymmddHHMMSS>_<schema>_<table>.sql`, applied in foreign-key
-order and holding the table's whole `CREATE`: columns, constraints, indexes, grants, functions and
-triggers. The only `ALTER` is a foreign key that closes a cycle, kept in the later table's file.
-Until the first production deploy, a change to a table edits its file; after it, a change is a new
-`<UTC>_<schema>_<table>_<what>.sql`.
-
-## Runtime SQL
-
-Every static statement lives in a `.sql` file beside the use case that runs it (for example
-`afd_fleet_lifecycle`'s `sql/select_fleet_page.sql`). A typed Rust function loads it with `include_str!` and states its
-parameters, authorization and locks. Rows decode into named `FromRow` types; `Json<T>` is for
-real JSON columns only.
-
-One integration test `PREPARE`s every `.sql` file against the rebuilt schema, so a stale table or
-column fails before merge. A statement that must be assembled at run time is named in its module
-and covered by its own test. Domain stores keep taking the caller's connection or transaction;
-there is no generic repository trait.
-
-## identity
+### identity
 
 ```
  tenants ◀── workspaces
@@ -124,289 +92,161 @@ there is no generic repository trait.
 
 | Table | Purpose | Notes |
 |---|---|---|
-| `tenants` | Billing and ownership root | immutable (rule 9); `identity.lock_tenant` takes its row lock for model selection writes |
-| `workspaces` | Isolation unit inside a tenant | `UNIQUE(id, tenant_id)` for composite references |
-| `users` | One person, bound to a sign-in subject; `tenant_id` is the personal account made at signup | immutable (rule 9); `identity.lock_user` holds a person against deletion |
-| `memberships` | Person ↔ tenant with a role; a role change is delete + insert |  |
-| `invites` | Emailed offer to join a tenant |  |
-| `api_keys` | Tenant automation tokens, digest plus nullable public display suffix; outlive the admin who made them |  |
-| `cli_credentials` | One live CLI login per machine, hash only | (metadata columns are in §Settled) |
-| `device_sessions` | One CLI device login in flight; ciphertext sealed to the CLI, code kept as a peppered HMAC | no foreign key: a session exists before any user does; operator roles revoked (M244) |
+| `tenants` | Billing and ownership root | Immutable; `identity.lock_tenant` locks it for model selection writes |
+| `workspaces` | Isolation unit inside a tenant | Immutable; `UNIQUE (id, tenant_id)` for composite references |
+| `users` | One person, bound to a sign-in subject | Immutable; `identity.lock_user` holds a person against deletion |
+| `memberships` | Person to tenant, with a role | Immutable; a role change is a delete and an insert |
+| `invites` | An emailed offer to join a tenant | `resolved_at` is NULL while pending |
+| `api_keys` | Tenant automation tokens: a digest and a display suffix | Outlive the admin who made them |
+| `cli_credentials` | One live command-line login per machine, hash only | |
+| `device_sessions` | One command-line device login in flight | No foreign key: a session exists before any user does |
 
-`invites.resolved_at` is NULL while an invite is pending and is set on accept or revoke. The
-"one pending invite per address" unique index and the "what is waiting for me" index read
-`resolved_at IS NULL`. That is the marker pattern `fleet.approval_gates` uses (rule 3).
-
-## fleet
+### fleet
 
 ```
  identity.workspaces ◀── fleets
- fleets ◀── triggers, schedules, activity_counters (1:1), thread.threads (1:1, id = fleet_id),
+ fleets ◀── triggers, schedules, activity_counters (1:1), thread.threads (1:1),
             approval_gates ──▶ connector.integration_grants,
-            durable_task_items ◀── tasks ◀── durable_task_inputs
+            durable_tasks ◀── durable_task_items, durable_task_inputs, durable_task_effects
 ```
 
 | Table | Purpose | Notes |
 |---|---|---|
-| `fleets` | The agent a workspace talks to: its name, `model_ref`, `http_egress` and `package_domains` | `UNIQUE (workspace_id, name)`; `status` is `active` or `archived`; the create writes `http_egress` restricted and `package_domains` false; no column holds instructions or a configuration document |
-| `triggers` | What wakes a fleet besides its messages: one webhook source, GitHub App subscription or Slack channel per row | `kind` (`webhook`, `app_event` or `mention`) and `source` (the webhook's slug, `github` or `slack`); `events`, `repositories`, `verifier_scheme`, `verifier_header`, `secret_name` and `channel` are set per kind; `UNIQUE (fleet_id, kind, source)`; indexes `(workspace_id, kind, source)` and `(workspace_id, kind, channel)` serve ingress; cascades with its fleet; the grants `schedules` has |
-| `durable_task_items` | Immutable interpretation receipts survive turn cleanup, each with its one reply receipt | append-only item; task association closes a deferred cycle; the reply (`queued` or `answered`, its operation, digest and private text) is written once and goes with the item |
-| `durable_tasks` | One durable objective, its completion statements (`questions`), cumulative limits, lifecycle and its one exact-head wait | one originating task item; the `wait_*` columns hold the generation, arming run, expected head and the checks read when it was armed |
-| `durable_task_inputs` | Accepted task input and its consumption order, separate from queue delivery, with its one apply receipt | unique task/item and task/sequence; the apply receipt is written once; one operation answers one receipt per fleet across items and inputs |
-| `durable_task_effects` | Native expected-head publication authority, its acknowledgement and confirmed remote commit, and its private repository/branch/workflow target | kept opaque task/ordinal and task/operation identities; the request is written once by trigger and only the acknowledgement and target are granted UPDATE; a task's purge clears the target and keeps the effect |
-| `schedules` | Cron or one-shot runs, synced to the external scheduler | each row stands alone; `source` is `api` for a person's schedule and `fleet` for one the fleet added with `cron_add` |
-| `approval_gates` | A card waiting for a person: a run's question or a fleet's access request | `turn_id` names the asking turn, with no foreign key yet |
-| `activity_counters` | Trigger-maintained dashboard totals | `thread.turns` triggers count each turn once, when it opens |
+| `fleets` | The agent a workspace talks to: name, `model_ref`, `http_egress`, `package_domains` | `UNIQUE (workspace_id, name)`; `status` is `active` or `archived`; no instructions column |
+| `triggers` | One webhook source, GitHub App subscription or Slack channel that wakes a fleet | `kind` and `source` select the row; `UNIQUE (fleet_id, kind, source)` |
+| `schedules` | Cron or one-shot runs, synced to the external scheduler | `source` is `api` for a person's schedule, `fleet` for one added by `cron_add` |
+| `approval_gates` | A card waiting for a person: a run's question or a fleet's access request | No `DELETE` grant; goes only with its fleet |
+| `activity_counters` | Dashboard totals maintained by triggers | `thread.turns` triggers count each turn once, when it opens |
+| `durable_tasks` | One durable objective, its limits, lifecycle and one exact-head wait | `checkpoint_id` points at its recovery generation |
+| `durable_task_items` | Immutable interpretation receipts, each with one reply receipt | Survive turn cleanup |
+| `durable_task_inputs` | Accepted task input and its consumption order, with one apply receipt | Immutable; unique per task and item, and per task and sequence |
+| `durable_task_effects` | A publication's authority, acknowledgement, confirmed commit and private target | Only the acknowledgement and target may change; a purge clears the target |
 
-A durable task's checkpoints, pages, pins, bases and objects live in the one checkpoint system in `runner`; `durable_tasks.checkpoint_id` points at its recovery generation. Its plan receipts live in `thread.replay_receipts`. The accepted plan a task was read from is its source turn's `thread.turns.plan`.
+`triggers` is a table, because a run adds and removes one row at a time and ingress looks rows up by workspace, kind and source.
+A durable task's accepted plan is its source turn's `thread.turns.plan`, and its retry keys live in `thread.replay_receipts`.
 
-`fleets.model_ref` is the model resolved when the fleet is created or its model changes. A run's
-policy reads the fleet row and its approved `connector.integration_grants`; ingress reads `triggers`
-([what a fleet is](user_flow.md#81-what-a-fleet-is)).
-
-`triggers` is a table, not a column, because a run adds and removes one row at a time with its own
-tools. Ingress also finds a row by workspace, kind and source or channel, which a column on `fleets`
-cannot index.
-
-## thread
+### thread
 
 ```
  fleet.fleets ◀── threads (1:1, id = fleet_id) ──▶ runner.runners (last_runner_id)
- threads ◀── turns ◀── items; threads ◀── compactions (1:1)
- turns ◀── runner.checkpoints; turns.head_checkpoint_id ──▶ runner.checkpoints
- replay_receipts (no FKs: a retry key outlives erasure)
- turns ◀── turns (resumes_turn_id); turns ──▶ fleet.durable_tasks, fleet.durable_task_items (composite scope)
- runs ──▶ runner.runners; ··▶ fleets, turns: opaque, no FK
- deliveries ──▶ fleet.fleets; ··▶ turns (turn_id): opaque, no FK yet
+ threads ◀── turns ◀── items;  threads ◀── compactions (1:1)
+ turns ◀── turns (resumes_turn_id);  turns ──▶ fleet.durable_tasks (composite scope)
+ turns.head_checkpoint_id ──▶ runner.checkpoints
+ runs ──▶ runner.runners;  runs ··▶ fleets, turns: no foreign key
+ deliveries ──▶ fleet.fleets;  deliveries ··▶ turns: no foreign key
+ replay_receipts: no foreign keys
 ```
 
-[Thread model](thread_model.md) owns each column, foreign key and the mapping from the tables these replace.
+[Thread model](thread_model.md) owns every column and key of these tables.
 
-| Table | Purpose | Notes |
-|---|---|---|
-| `threads` | One conversation per fleet: next fencing token, sticky runner, warm sandbox hold, resume bookmark | `fleet_id NOT NULL`, and a check holds `id = fleet_id`; `resume_context` is the report's resume bookmark |
-| `turns` | One input on a thread and its answer; the fleet's sole work queue | `UNIQUE (producer, producer_key)` so retries cannot duplicate work; `UNIQUE (thread_id, sequence)`; assignments and reports fence each row; `input_run_id` and `input_fence` stamp a message a live run took; `durable_task_activity` keeps at most 128 public stages / 120 KB; `head_checkpoint_id` and `next_checkpoint_generation` are the turn's private recovery head, shared by its replacement runs (folded from `runner.turn_recovery` in M253_004) |
-| `runs` | One turn handed to one runner. Settled history outlives a purge; the insert proves scope in the same transaction | `fleet_id NOT NULL`; non-secret decision snapshot; no foreign key to fleet, turn, task or historical model revision |
-| `items` | Full arguments and output of each tool call a run made | `UNIQUE (turn_id, fencing_token, sequence)`; cascades with its turn |
-| `compactions` | Private working notes, one row per fleet thread; written only by a compaction and deleted with the fleet (`memory.context_checkpoints` until M253_004) | `api_runtime` reaches it like every thread table; the memory schema stays behind `memory_runtime` |
-| `replay_receipts` | Every retry key: the fleet create, and each turn or durable task checkpoint allocation | primary key `(scope, operation_id)`; the scope names workspace and owner (`<workspace>:fleet:create:<person>`, `<workspace>:turn:<turn>:checkpoint`, `<workspace>:durable_task:<task>:checkpoint`); append-only (rule 9); no foreign key, so a receipt outlives the resource it created. A create key is reused after its replay window; turn retention deletes a terminal turn's keys before its head; a task's keys stay |
-| `deliveries` | An answer owed to a destination until delivered or abandoned | The outbound queue: a worker claims lane heads with its token in `receipt` until `claim_expires_at`; a delivery whose inline attempts fail is abandoned |
+| Table | Purpose |
+|---|---|
+| `threads` | One conversation per fleet: fence, sticky runner, sandbox hold, resume state |
+| `turns` | One input on a thread and its answer; the fleet's work queue |
+| `runs` | One try at a turn by one runner; settled runs outlive a fleet purge |
+| `items` | Full arguments and output of each tool call a run made |
+| `deliveries` | An answer owed to a destination until delivered or abandoned |
+| `compactions` | One fleet's private working summary, written only by a compaction |
+| `replay_receipts` | Every retry key, keyed `(scope, operation_id)`; append-only |
 
-A create's receipt answers its key for 24 hours from `created_at` by default (`[setup] replay_window_hours`, [configuration reference](./config_reference.md); `afd_setup`'s `DEFAULT_REPLAY_WINDOW`). Inside the window, the same key and body return the first result, and a deleted fleet returns Gone. At or after the boundary the key is new: the next claim deletes the expired receipt and files its own (`afd_setup`'s `replay/sql/expire.sql`).
+A fleet create answers its retry key for 24 hours by default (`[setup] replay_window_hours`; `afd_setup`'s `DEFAULT_REPLAY_WINDOW`).
+After that, the next claim deletes the expired receipt and files its own (`afd_setup`'s `replay/sql/expire.sql`).
 
-`runs.turn_created_at` is the producer's instant billing uses, copied so billing reads it without a join.
-The run's `actor` and turn `kind` come from a join to `thread.turns`, as reassignment already does.
-
-## runner
+### runner
 
 ```
- runners ◀── history
- runners ◀── thread.runs, thread.threads (last_runner_id)
- runners ──▶ identity.tenants (tenant_id, NULL for a platform runner)   ON DELETE CASCADE
- checkpoints ──▶ thread.turns XOR fleet.durable_tasks; checkpoints ──▶ checkpoint_bases
+ runners ◀── history;  runners ◀── thread.runs, thread.threads (last_runner_id)
+ runners ──▶ identity.tenants (NULL for a platform runner)
+ checkpoints ──▶ thread.turns XOR fleet.durable_tasks;  checkpoints ──▶ checkpoint_bases
  checkpoints, checkpoint_bases ◀── checkpoint_pages, checkpoint_object_refs ──▶ checkpoint_objects
- checkpoints ◀── checkpoint_pins; checkpoint_objects ──▶ checkpoint_identity_keys
- checkpoint_purges: no FK, written by the object delete trigger
+ checkpoints ◀── checkpoint_pins;  checkpoint_objects ──▶ checkpoint_identity_keys
+ checkpoint_purges: no foreign key, written by the object delete trigger
 ```
 
 | Table | Purpose | Notes |
 |---|---|---|
-| `runners` | An enrolled host: policy, health, self-test, and the tenant that owns it | `platform_owned` says who owns it and `tenant_id` is set exactly when it is false; both fixed after insert by a trigger; unique `(tenant_id, host_id)` with nulls not distinct, so each owner, the platform included, registers a host once; a check refuses a decision model on a tenant row; optional reviewed decision-model selection; referenced models cannot be deleted |
-| `decision_calls` | Kept physical-call identity, frozen prices, reservations and canonical usage | opaque original ownership survives deletion; unresolved rows prevent whole-reservation release |
-| `decision_payloads` | Bounded private evidence and answers for a call | fleet deletion removes payloads while accounting stays |
-| `checkpoints` | One checkpoint system: a turn's or a durable task's capture plan and recoverable generation | exactly one owner (`ck_checkpoints_one_owner`, `num_nonnulls(turn_id, durable_task_id) = 1`); unique owner/generation and one pending capture per owner; a turn row carries its sealed root and folded prefix, a task row its generations, mode, repository, cursors and base, all or none |
-| `checkpoint_pages` | Bounded immutable manifest pages | owner is a checkpoint or a base, exactly one; one freeze trigger; identical replay is read without update |
-| `checkpoint_bases` | Independently kept verified repository base | exact repository/commit/format/toolbox identity; outlives its first task |
-| `checkpoint_objects` | The one encrypted object custody for turn and task checkpoints | one live keyed-content identity; erasure records purge custody |
-| `checkpoint_identity_keys` | Wrapped workspace/repository content-identity versions | immutable (rule 9); one per workspace/repository; written and removed under `identity.lock_workspace_storage`; independent of object encryption keys and master-key rewrapping |
-| `checkpoint_object_refs` | Workspace-scoped checkpoint/object or base/object edges | one owner per edge; referenced objects cannot be collected; append-only (rule 9) |
-| `checkpoint_pins` | A capture or restore's bounded custody of one checkpoint | turn shape keys its reader by operation, task shape carries the generations its guard compares, exactly one (`ck_checkpoint_pins_shape`); a deadline never past its operation's |
-| `checkpoint_purges` | Durable remote-delete custody for a removed object | opaque object/workspace/identity/location; no owner foreign key |
-| `history` | Append-only runner history | unique `(runner_id, last_seen_at) WHERE last_seen_at IS NOT NULL`: an offline event stamps the heartbeat it observed, so one stale episode is one row |
+| `runners` | An enrolled host: policy, health, self-test and owner | `ck_runners_owner`: `tenant_id` is set exactly when `platform_owned` is false; `uq_runners_tenant_id_host_id` registers a host once per owner |
+| `history` | Append-only runner events | One row per offline episode, keyed by the heartbeat it observed |
+| `decision_calls` | A decision call's identity, frozen prices, reservation and usage | Survives deletion of its run and turn |
+| `decision_payloads` | Private evidence and answers for a call | Fleet deletion removes them; accounting stays |
+| `checkpoints` | A turn's or a durable task's capture plan and recoverable generation | `ck_checkpoints_one_owner`: exactly one of `turn_id`, `durable_task_id` |
+| `checkpoint_pages` | Immutable manifest pages | Owned by a checkpoint or a base |
+| `checkpoint_bases` | A verified repository base kept on its own | Outlives its first task |
+| `checkpoint_objects` | Encrypted object custody for every checkpoint | Erasure records a purge |
+| `checkpoint_identity_keys` | Wrapped content-identity keys per workspace and repository | Immutable; written under `identity.lock_workspace_storage` |
+| `checkpoint_object_refs` | Checkpoint-to-object and base-to-object edges | Immutable; a referenced object is never collected |
+| `checkpoint_pins` | A capture's or restore's hold on one checkpoint | `ck_checkpoint_pins_shape` |
+| `checkpoint_purges` | Remote-delete custody for a removed object | No owner foreign key |
 
-Run counts per runner are a metric, `agentsfleet_runner_runs_total`, and no table holds them.
+`idx_runs_run_expires_at_unbilled` lets a runner's retirement refuse a runner that still owes an unbilled runtime tail (`delete_runner_if_in_state.sql`).
+Run counts per runner are the metric `agentsfleet_runner_runs_total`; no table holds them.
 
-`sandbox_config` holds tier-specific knobs as JSON validated in the application. Namespace tiers use `{"extra_binds": [...]}` today, and microVM keys arrive with the tier that reads them.
-Degraded and self-test pass are derived on read (`degraded_reason IS NOT NULL`, every check passed),
-keeping "no self-test yet" distinct from "self-test failed".
-
-`idx_runs_run_expires_at_unbilled`, `(runner_id, run_expires_at)` partial on
-`last_metered_at < run_expires_at`, served the metering sweep that billed an expired run's
-unbilled tail. That sweep went in M253_003, and a dead run's last slice after its final renewal
-is not billed. A runner's retirement reads the index now: it refuses a runner that still owes
-such a tail (`delete_runner_if_in_state.sql`).
-
-## connector
+### connector
 
 | Table | Purpose |
 |---|---|
-| `installs` | Outside account (Slack team, GitHub installation) → workspace; credentials stay in the vault |
-| `person_links` | OAuth-proved Slack person → current workspace member; installation deletion cascades the link |
-| `channels` | Stable Slack channel notice owner; current workspace/team checks reject stale bindings |
-| `integration_grants` | A fleet's request to use one workspace secret or integration, and a person's answer: `kind`, the approved `scope` and the `requested_scope` waiting for Approve. Unique `(fleet_id, service)`; a deny is stored as revoked |
-| `oauth_nonces` | A connect's single-use state nonce, as its SHA-256 under its provider; spent by `DELETE … RETURNING`, refused after ten minutes (M244) |
+| `installs` | An outside account (Slack team, GitHub installation) bound to a workspace; credentials stay in the vault |
+| `person_links` | An OAuth-proved Slack person bound to a workspace member; cascades with the install |
+| `channels` | The Slack channel that owns a fleet's notices |
+| `integration_grants` | A fleet's request for one secret or integration and a person's answer; `UNIQUE (fleet_id, service)` |
+| `oauth_nonces` | A connect's single-use state nonce, stored as a digest; spent by `DELETE … RETURNING` |
 
-## model
+### model
 
 | Table | Purpose |
 |---|---|
-| `platform_models` | Curated identities, context evidence and current decision selection |
-| `platform_model_prices` | Prices per prompt-size tier and effective date range, in integer nanos per million tokens; a separate table because one model has many prices. A NULL `decision_revision_id` is a coding price; otherwise the row is that decision revision's quote, its ownership proved by a composite revision/model reference |
-| `decision_revisions` | Immutable reviewed decision definitions; a model/revision label cannot acquire different bytes |
-| `revision` | Singleton edit counter for the catalogue: `number` is bumped by every catalogue edit and read with each runtime model resolution |
-| `platform_defaults` | Default model per provider and the admin workspace holding its key |
-| `tenant_models` | A tenant's own models, each pointing at a vault key; `selected` marks the tenant's default, at most one per tenant, and none means the platform default |
+| `platform_models` | Curated model identities, context limits and the current decision selection |
+| `platform_model_prices` | Prices per prompt-size tier and date range, in integer nanos per million tokens |
+| `decision_revisions` | Immutable reviewed decision definitions |
+| `revision` | Singleton counter, bumped by every catalogue edit |
+| `platform_defaults` | Default model per provider, and the admin workspace holding its key |
+| `tenant_models` | A tenant's own models, each pointing at a vault key; at most one `selected` |
 
-The current decision pointer uses a deferred identity reference and an ownership constraint trigger.
-The trigger checks final rows and locks their immutable revision, without granting update access or public access to the trigger function.
+`model_name` is the provider's name for a model and never a foreign key.
+[Models](models.md#routing-from-saved-settings) owns provider routing.
 
-`model_name` is the provider's name for a model and never a foreign key. `installs.scopes` holds the
-scopes the provider granted the install.
-
-`platform_models.inference` holds the saved API format, endpoint, dialect and output limit.
-Routing follows those settings; credential endpoint restrictions must match them.
-[Billing §9](billing_and_provider_keys.md#9-provider-routing-saved-model-settings) owns provider routing.
-
-## billing
+### billing
 
 | Table | Purpose | Notes |
 |---|---|---|
-| `wallets` | The tenant's balance; the only row money moves on; what every funds check reads | `balance_nanos` is signed: negative while the tenant owes a debt · debited by `trg_usage_lines_debit_wallets` as each line is written |
-| `usage_lines` | One priced provider request or runtime slice of billed work; what the charges page and the fleet list's `budget_used_nanos` read | `UNIQUE (work_type, work_id, kind, seq)` · fleet runs write it (billing §11) · each insert statement charges its new lines through three statement-level triggers (billing §3) |
-| `usage_daily` | Usage per tenant, UTC day, work type, fleet and model; what the Usage report reads | natural key `UNIQUE NULLS NOT DISTINCT (tenant_id, day, work_type, fleet_id, model)` · written by `trg_usage_lines_add_daily` in the lines' insert · rebuildable from `usage_lines` |
-| `runs_daily` | Runs per tenant, UTC day, work type and fleet; what the Usage report counts | natural key `UNIQUE NULLS NOT DISTINCT (tenant_id, day, work_type, fleet_id)` · written by `trg_usage_lines_count_runs` · a run counts once, on its first runtime slice |
+| `wallets` | The tenant's balance, the only row money moves on | `balance_nanos` goes negative while the tenant owes |
+| `usage_lines` | One priced request or runtime slice | Immutable; `UNIQUE (work_type, work_id, kind, seq)`; triggers debit the wallet |
+| `usage_daily` | Usage per tenant, day, work type, fleet and model | Written by a `usage_lines` trigger; rebuildable |
+| `runs_daily` | Runs per tenant, day, work type and fleet | A run counts once, on its first runtime slice |
 
-Nothing is set aside before work runs. A funds check reads the wallet's balance, which every
-logged line has already debited, and no `holds` table exists (billing §11).
+Money outlives every deletion.
+These tables hold tenant, workspace, fleet and run ids with no foreign key.
+[Billing](billing.md) owns the write path and trigger order.
 
-Money outlives every deletion. `usage_lines` carries opaque `tenant_id`, `workspace_id`,
-`fleet_id` and `run_id` values with no foreign key, and `usage_daily` and
-`runs_daily` carry opaque `tenant_id` and `fleet_id` the same way.
-
-Erasing a fleet, workspace or account therefore never deletes a charge. The slots name the export
-that reads them (rule 7).
-
-## Deletion matrix
-
-| Root deleted | Goes with it | Stays | Scrubbed immediately |
-|---|---|---|---|
-| User | memberships, CLI credentials | api keys they created, usage lines | none |
-| Fleet (purge) | its thread, turns, items, gates, deliveries, schedules, triggers, grants, channels, memory, live (`active`) runs; task objectives, interpreted text, input replies, private effect targets (cleared on the kept effect), turn and task checkpoints with their pages, pins and refs | usage lines; settled runs, kept until a retention policy is chosen; opaque decision/effect receipts and the create and checkpoint-allocation replay receipts; independently kept workspace repository bases/objects | Unreferenced objects enter guarded storage collection; remote purge stays tracked through acknowledgement |
-| Workspace | fleets (as above, which is how its items and deliveries go: neither table holds a workspace foreign key), installs, secrets; private repository bases/pages, identity keys, object keys/metadata | usage lines; opaque task/effect receipts, replay receipts and checkpoint purges | Each removed object first records its location for remote cleanup |
-| Tenant (account erasure) | workspaces (as above), users, wallet, tenant models, selection, invites, api keys, runners with their history (their runs stay, naming no runner) | usage lines, daily usage and run rows, registration receipts (opaque identifiers only) | none |
-| Device session (past `expires_at`) | nothing: the row stays, and every read refuses it | none | none; the row holds a sealed ciphertext and a code digest |
-| OAuth nonce (spent at the callback, or presented past `expires_at`) | the row, at its spend; one never presented stays | none | none; the row holds only a digest |
-| Runner (record retired after revoke) | history | usage lines; its settled runs (`runner_id` set NULL); threads (`last_runner_id` set NULL) | none |
-
-## vault and memory
+### vault and memory
 
 | Table | Purpose |
 |---|---|
-| `vault.secrets` | One encrypted secret per (workspace, key_name), with a plain projection |
-| `memory.entries` | A fleet's durable memory, behind role `memory_runtime` |
+| `vault.secrets` | One encrypted secret per workspace and key name |
+| `memory.entries` | A fleet's durable memory, reached only through the `memory_runtime` role |
 
-## Settled while implementing
+### Deletion matrix
 
-Each item is decided from the rebuilt slots and the statements that read them. A kept column
-names its slot and a reader; a dropped one names the slot that declares its table without it.
-A column kept with no reader still owes a drop under rule 7.
+- **User.** Goes: memberships, command-line credentials. Stays: API keys they made, usage lines.
+- **Fleet purge.** Goes: thread, turns, items, gates, deliveries, schedules, triggers, grants, channels, memory, active runs, task rows and checkpoints.
+  Stays: usage lines, settled runs, retry receipts, decision and effect receipts, and repository bases.
+  Unreferenced objects enter storage collection; remote purges stay tracked.
+- **Workspace.** Goes: its fleets as above, installs, secrets, private bases, pages and identity keys.
+  Stays: usage lines, task and effect receipts, retry receipts, checkpoint purges.
+- **Tenant (account erasure).** Goes: workspaces as above, users, wallet, tenant models, invites, API keys, and runners with their history.
+  Stays: usage lines and daily rows; runs, naming no runner.
+- **Runner retired after revoke.** Goes: its history. Stays: usage lines and settled runs, with `runner_id` set NULL; threads lose `last_runner_id`.
+- **Device session or OAuth nonce.** An expired session stays and every read refuses it; a nonce is deleted when spent.
 
-- **`identity.api_keys.description`: dropped (M253_004).** The file `20261108120700_identity_api_keys.sql` declares the table without it.
-  Nothing read it: the key list selects `id, name, created_at, revoked_at`, and
-  `MintApiKeyRequest` no longer takes a description.
-- **`identity.cli_credentials.credential_prefix`, `deployment`, `created_from_address`: dropped.**
-  The file `20261108120800_identity_cli_credentials.sql` declares the table without them. The
-  table's one read, `afd_state`'s `select_cli_credential.sql`, selected none of them, and the mint
-  response echoes the deployment answering the request.
-- **`identity.cli_credentials.tenant_id`: kept.** The file `20261108120800_identity_cli_credentials.sql` declares it and
-  `select_cli_credential.sql` reads it during authentication. The mint copies the user's tenant,
-  and the reading statement already joins `identity.users`. The column therefore restates
-  `identity.users.tenant_id` (rule 5) with no consistency rule in its slot.
+## Limits
 
-Settled by review on Oct 17, 2026, and checked against the rebuilt slots:
+- `identity.cli_credentials.tenant_id` restates `identity.users.tenant_id` with no consistency rule in its file.
+- `fleet.approval_gates.turn_id` and `thread.deliveries.turn_id` hold a turn id with no foreign key.
+- No retention policy exists; nothing deletes settled runs or runner history.
 
-- **`model.platform_defaults.base_url`: kept.** The file `20261108121400_model_platform_defaults.sql` declares it; `afd_credential`'s
-  `select_active_platform_default.sql` reads it.
-- **`thread.runs.last_metered_at`: kept.** The file `20261108123200_thread_runs.sql` declares it as the run's runtime cursor
-  (rule 4 (d)). Renewal and report meter from it and advance it (`afd_fleet`'s `renew_batch.sql` and `commit_report.sql`). Nothing bills an expired run's last slice since M253_003 removed the expiry sweep.
+## Related
 
-  The review listed it as dropped. Per-request billing kept this one
-  cursor and dropped the run's token cursors and the slot's cursors instead.
-- **`runner.runners.selftest_all_ok`: dropped.** Derived from `selftest_checks` (the file `20261108123100_runner_runners.sql`), read
-  by `afd_runner`'s `runner_detail.sql`.
-- **`runner.runners.capability_reported_at`: dropped.** The file `20261108123100_runner_runners.sql` declares the table with
-  `capability_report` and no instant beside it.
-
-Added by this milestone:
-
-- **`billing.usage_lines.kind`: added by M245.** What the line bills is one of three kinds. `model` is a call the runner reported, numbered by its
-  request. `runtime` is a slice the daemon measured, numbered by the milliseconds from its work's start to the slice's start.
-
-  `decision` is a native decision call, numbered by its call. The unique key is `(work_type, work_id, kind, seq)`, so no
-  kind's numbers are carved out of another's. The `u32` bands `DAEMON_SEQ_BASE` and `DECISION_SEQ_BASE` that kept them
-  apart are gone.
-
-  Spellings are `af_wire::usage::LineKind`.
-
-- **`runner.runners.platform_owned` and `tenant_id`: added by M246.** A tenant registers
-  runners of its own, and a runner takes only its tenant's work. Ownership is stated at insert, and
-  `ck_runners_owner` requires `platform_owned = (tenant_id IS NULL)`, so a missing tenant never reads as the platform. The partial index
-  `idx_runners_tenant_id_created_at_id` serves a tenant's list and the erasure cascade.
-- **`uq_runners_tenant_id_host_id` replaced `runner.registration_receipts` in M253.** A retried
-  registration answers `409` naming the host's runner, and its owner rotates its token. Nulls
-  are not distinct, so the platform registers each host once too.
-- **`idx_runners_created_at_id`: added by M246.** The runner list pages newest first. A volume bench measured the list at
-  3.7 ms before the index and 0.1 ms after.
-- **Unused indexes dropped by the M246 audit.** `idx_durable_task_effects_source_item`, `idx_durable_task_effect_states_reconcile` and
-  `idx_durable_task_checkpoints_expiry`: no statement filters or orders on them, and each cost a write per row.
-- **Write-only columns dropped by the M246 audit.** Each was written by a statement and read by none.
-  - `fleet.approval_gates`: `spend_count`, `spend_ceiling`, `stated_binding`.
-  - `identity.cli_credentials`: `credential_prefix`, `deployment`, `created_from_address`.
-  - `thread.deliveries.abandon_reason`, `fleet.durable_task_bases.retained_bytes`.
-  - The effect state's `confirmed_at`, the task wait's `consumed_admission_id`, `fleet.durable_tasks.last_transition_at`.
-  - `fleet.durable_task_inputs` and the task interpretation: `accepting_run_id`, `accepting_fence`.
-  - `fleet.durable_task_storage_purges.delete_after_at`.
-- **Write-only columns dropped by the M253 audit.** Each was written by a statement and read by none, or written by none.
-  - `connector.channels.binding_type`, always `notice_owner`; `thread.deliveries.next_attempt_at`.
-  - `thread.runs.posted_message_count`: the messages verb counted every interim line under a run
-    row lock after the line cap went, and no statement read the count.
-  - `setup.replay_receipts.workspace_id`: every `scope` begins with the workspace.
-  - `thread.turns.durable_task_item_id`, with its foreign key and index.
-  - `fleet.durable_task_inputs.generation`, the effect state's `issued_at`, the effect payload's `request`.
-  - `fleet.durable_task_checkpoint_operations`: `fleet_id`, `workspace_id`.
-  - The task wait: the polling and claim columns the passes M253_003 removed kept up. They are
-    `durable_task_generation`, `stop_generation`, `github_installation_id`, `github_repository_id`, `pull_request_number`,
-    `baseline_digest`, `due_at`, `expires_at`, `cooldown_expires_at`, `fallback_count`, `initial_read_at`, `signalled_at`,
-    `signal_sequence`, `observed_signal_sequence`, `claim_id` and `claim_expires_at`. Their indexes
-    `idx_durable_task_wait_due` and `idx_durable_task_wait_completion` and the check `ck_durable_task_wait_claim` went with them.
-- **Duplicates dropped by the M253 audit.** `fleet.durable_task_bases.page_count` and `runner.turn_checkpoints.page_count`
-  restated `cardinality(page_ids)`, and each check now reads the array.
-- **One checkpoint system (M253_004).** Turn and durable-task checkpoints became one set in `runner`: `checkpoints`,
-  `checkpoint_pages`, `checkpoint_bases`, `checkpoint_objects`, `checkpoint_identity_keys`, `checkpoint_object_refs`,
-  `checkpoint_pins` and `checkpoint_purges`, from 14 tables. Every retry key moved into `thread.replay_receipts`, keyed
-  `(scope, operation_id)`; setup's `id` and `user_id` went, the actor folded into `request_digest`. Duplicates went
-  with the merge: `turn_checkpoints.has_workspace` (the toolbox digest's presence), `durable_task_checkpoints.page_count`
-  (`cardinality(page_ids)`), `durable_task_checkpoints.transfer_expires_at` (always `expires_at`), the pins' task scope
-  copies, and the receipts' owner columns. `durable_task_storage_purges.accounted_bytes` and `stored` were written and
-  never read. `fleet.durable_task_inputs.updated_at` always equalled `created_at`, so the table was immutable (rule 9)
-  until its apply receipt folded in.
-- **Three durable-task tables folded into existing ones (M253).** A task's one wait became the `wait_*` columns on
-  `fleet.durable_tasks`; its partial unique index was the one-current-wait rule a single set of columns already holds.
-  An adoption's retry key became a `thread.replay_receipts` row scoped `<workspace>:durable_task:<task>:adoption`,
-  written and read through the turn checkpoint's receipt statements. An interpretation became its source turn's
-  `plan` and `plan_digest`; its message and sender copies went, because the turn already holds both and never changes them.
-- **Three more folded into their own groups (M253).** An effect's state and private payload became `status`,
-  `commit_oid`, `target` and `updated_at` on `fleet.durable_task_effects`. A trigger keeps the request write-once,
-  and a column-level grant lets only those four change. `trg_durable_tasks_purge_effect_target` clears the
-  target in the statement that deletes its task, where the payload row used to cascade. An input receipt split
-  by the row it is one-to-one with: an apply is the input's (`fleet.durable_task_inputs`), and a reply is the
-  item's (`fleet.durable_task_items`). Each is written once, with the receipt's own column names.
-- **Write-only by name, kept by evidence.** `identity.api_keys.display_suffix` is read by the key list and shown in the API
-  and the dashboard. `fleet.durable_task_effects.source_item_id` is a field of the public task-effect input.
-
-## Public interface changes
-
-- The runner protocol carries no `deletion_generation` (run payload, activity, model calls, renew, report); a spooled report written before the change still decodes.
-  The one development runner restarts on the new release; no fleets exist when it does.
-- `agentsfleet models use` writes through `model.tenant_models`; its output is unchanged.
-- The 24-hour retry window is documented in the public docs.
+- [Thread model](thread_model.md): the conversation tables column by column.
+- [Billing](billing.md): the money tables' write path.
+- [Checkpoints](checkpoints.md): the checkpoint system.
+- [SQL standard](../../.orly/standards/domains/sql.md): every schema rule.

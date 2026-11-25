@@ -1,423 +1,166 @@
-# How a run works, from "start a fleet" to a sandbox being nuked
-
-Read this when you want one run's whole path on one page. The path starts with a fleet created from a first message and a pull request (PR) opened. It continues through the turn queued and its run, and ends with the report settled and the sandbox held or destroyed.
-
-The page walks the path and links each step to the page that owns it.
-
-[`data_flow.md`](./data_flow.md) owns ingress, turn intake and settlement. [`runner_protocol.md`](./runner_protocol.md) owns the connection, renewal and recovery rules. [`runner_execution.md`](./runner_execution.md) owns the runner's side.
-
-Where a step's facts live on one of those pages, this page links rather than restates them.
-Crate names refer to crates under `rustd/crates/`.
-Expanded acronyms: Hash-based Message Authentication Code (HMAC), Server-Sent Events (SSE), Time To Live (TTL).
-
-This example is a fleet named `pr-review` that a person started to review pull requests on `agentsfleet/linkwarden`, with a write grant on that repository.
-The `watch-dog` fixture ([`tests/fixtures/fleets/watch-dog.json`](../../tests/fixtures/fleets/watch-dog.json)) runs the same path with a read grant.
-
-Section 1 covers the daemon, section 2 the runner, and section 3 the complete example.
-Sections 6 and 7 cover the sandbox and host.
-
+---
+type: explanation
+audience: contributor
+verified: 2026-11-25
+product_version: 0.90.0
+executable: false
 ---
 
-## 1. From "start a fleet" to a run
+# Run flow: one pull request, end to end
+
+Read this when you want one real fleet's whole path, from its first message to its answer about a pull request (PR).
+The example is the [`watch-dog` fixture](../../tests/fixtures/fleets/watch-dog.json).
+Each step links to the page that owns its mechanism: [fleets](user_flow.md), [data flow](data_flow.md), [connectors](connectors.md) and [the runner](runner_execution.md).
+
+## What it is
+
+`watch-dog` watches one GitHub repository, `agentsfleet/linkwarden`.
+It asks for read access to that repository, subscribes to its pull request events, and says the PR's number when one opens.
+
+| Part | Value in the fixture |
+|---|---|
+| First message | "You watch one GitHub repository. Ask for read access … then add a GitHub trigger for its pull request events. When a pull request wakes you, say its number." |
+| Access it asks for | `github`, scope `agentsfleet/linkwarden`, read |
+| Trigger it adds | Kind `app_event`, source `github`, events `pull_request` |
+| What it pins | "Say the pull request's number when one wakes you." |
+| What a run proves | One card, one approval, one wake per opened PR, and a reply naming the PR's number |
+
+The workspace has already connected GitHub, and the platform's GitHub App is installed on the repository ([GitHub App](connectors.md#github-app-from-install-to-a-routed-event)).
+
+## Why it exists
+
+Each other page tells one slice of this path at one zoom level.
+This page follows one fixture through all of them, so a reader can see where each slice begins and ends.
+The acceptance suite runs the same fixture against a real GitHub event.
+
+## How it behaves
+
+### 1. The first message shapes the fleet
 
 ```text
- FIRST MESSAGE           POST /v1/workspaces/{ws}/fleets {message, name: "pr-review"}
-   (once)                fleet.fleets (active) + thread.threads + turn #1     Postgres
-                         its runs, each when the person's message asks:
-                           memory_store, category core ⇒ pinned guidance      Postgres
-                           request_access github {agentsfleet/linkwarden,
-                             write, base main} ⇒ grant pending + a card;
-                             a person approves once ⇒ approved                Postgres
-                           trigger_add app_event github {pull_request,
-                             agentsfleet/linkwarden} ⇒ fleet.triggers row     Postgres
-
- PR OPENED               POST /v1/ingress/github
-   GitHub ──signed──►    1 verify HMAC vs vault "github-app".webhook_secret
-                         2 installation.id ─► connector.installs ─► workspace
-                         3 body ─► 12-field PullRequestDigest (not GitHub's payload)
-                         4 fleet.triggers rows in that workspace, kind app_event,
-                           active fleet ∩ repositories ∋ repo
-                                        ∩ events ∋ pull_request
-                         5 per matched fleet:
-                             INSERT thread.turns status=queued (producer=webhook_app,
-                                 key = "{fleet}:{sha256(body)}")           Postgres  ← the acceptance
-                             publish af.thread.<id>.wake (best effort)     NATS
-                         6 202 {matched, enqueued}
-
- GATEWAY ASSIGN PASS     native connection has advertised worker capacity
-                         a Postgres: oldest unsettled head per eligible fleet
-                         b prefer held fleets, wake notifications and previous placement; ≤64
-                         c lock thread row and exact head turn with SKIP LOCKED
-                         d raise thread fence, stamp turn run_fence; decode before commit
-                         e same UPDATE opens the turn: status=received, opened_at
-                         f publish turn_received bracket on af.thread.<id>.items
-                         g payer → balance (nothing charged)
-                         h fleet row + approved grants ⇒ ExecutionPolicy (the catalog,
-                             mintable "github", network.allow, origin rules for api.github.com)
-                         i INSERT thread.runs        status=active, fencing_token, expires  ← THE RUN ROW
-                         j push Down::Run{run:{run_id,fencing_token,run_expires_at,
-                                                  event{digest},policy,
-                                                  name="pr-review"}}
+Person            agentsfleetd                    Runner (model)
+  |-- first message -->|                                |
+  |                    | fleet + thread + turn 1        |
+  |                    |-- run 1 ---------------------->|
+  |                    |<-- request_access github ------| scope: linkwarden, read
+  |<-- access card ----| grant pending                  |
+  |                    |                                | run 1 ends waiting
+  |-- Approve -------->| grant approved                 |
+  |                    | answer turn (continuation)     |
+  |                    |-- run 2 ---------------------->|
+  |                    |<-- trigger_add app_event ------| pull_request, linkwarden
+  |                    |<-- memory_store core ----------| "say its number"
+  |<-- answer ---------| turn settles processed         |
 ```
 
-### A first message creates the fleet
+1. The person sends the first message on **New fleet**. One transaction writes the fleet, its thread and turn 1 ([create and recovery](data_flow.md#create-and-recovery)).
+2. Run 1 calls `request_access` for `github` with a read scope on the repository. The card names the repository and read.
+3. Run 1 ends waiting, and turn 1 settles `waiting` ([access](user_flow.md#access)).
+4. The person selects Approve once. The grant becomes `approved`, and the daemon writes a continuation turn.
+5. Run 2 resumes the work. It adds the `app_event` row and pins its standing guidance.
 
-A person types the job on New fleet, or runs `agentsfleet fleet create`. `POST /v1/workspaces/{ws}/fleets` commits the fleet, its thread and its first turn in one transaction ([creation and recovery](data_flow.md#fleet-creation-and-recovery)).
+The `app_event` row names `repositories: ["agentsfleet/linkwarden"]` and `events: ["pull_request"]` ([wakes on](user_flow.md#wakes-on)).
+`trigger_add` would refuse the row if the workspace had not connected GitHub.
 
-That message saves nothing about the job. The fleet's own runs set it up by tool, each only when the person's newest message asks.
+### 2. A pull request opens
 
-`memory_store` under `core` pins the standing guidance, which every later prompt carries. `request_access` raises the card a person approves once, and `trigger_add` writes the GitHub subscription ([triggers](connectors.md#fleet-triggers)).
+A person opens a PR on `agentsfleet/linkwarden`, and GitHub posts the signed event to `POST /v1/ingress/github`.
 
-The fleet's display name ("pr-review") is `fleet.fleets.name`. The run payload carries it into the prompt's fixed text; nothing in routing reads it.
+1. The daemon checks the body against `github-app.webhook_secret` before reading any field.
+2. It maps `installation.id` to the workspace through `connector.installs`.
+3. It reads the body into a 12-field `PullRequestDigest`: action, repo, number, title, url, state, draft, author, head_ref, base_ref, head_sha and received_at.
+4. It finds the active fleets whose `app_event` row names the repository and admits the event. `watch-dog` matches.
+5. It writes one queued turn per matching fleet, keyed `{fleet}:github:{event_id}`, then answers 202 `{matched, enqueued}`.
 
-### Ingress: how a PR on `agentsfleet/linkwarden` finds the fleet
+The turn has actor `github-app` and no reply destination.
+Every `pull_request` action wakes the fleet, except one on a fleet's own repair branch.
 
-The App webhook route (`afd_api_ingress`) serves only `github`. It checks the body cap before anything is hashed and requires the `X-GitHub-Event` header. It then verifies the body against the platform App's `webhook_secret` under the vault key `github-app` (`APP_IDENTITY_GITHUB`).
-
-A `ping` is answered only after verification.
-
-The route reads the body once with `github::Delivery::read`. It takes `installation.id` and `repository.full_name`, resolves the installation to a workspace with `SELECT_INSTALL_WORKSPACE` (`afd_ingress`), and classifies under `Policy::AppIngress`. It then asks `subscribers`.
-
-`subscribers` (`afd_ingress`) reads the `fleet.triggers` rows of kind `app_event` in that workspace whose fleet is `active`. The statement keeps its `workspace_id` predicate, and a delivery needs no grant on the fleet.
-
-The repository match is fail-closed: a row with no `repositories` subscribes to nothing, and the match is case-insensitive. The event match is the opposite: no `events` means every event. Every match gets the delivery.
-
-The fleet `pr-review` receives the request through linkwarden's installation, which maps to Indy's workspace.
-Each active fleet there whose row names the repository and the event receives one turn.
-
-This fleet's row has `source: github`, `events: [pull_request]` and `repositories: [agentsfleet/linkwarden]`.
-Two fleets with matching rows both run ([triggers](connectors.md#fleet-triggers)).
-
-The digest the fleet reasons over is twelve fields (`afd_api_wire`'s `PullRequestDigest`). The fields are action, repo, number, title, url, state, draft, author, head_ref, base_ref, head_sha, received_at.
-
-Under `Policy::AppIngress` every `pull_request` action wakes the fleet except one on a repair branch (`is_repair_branch`). The manual per-fleet route narrows to opened, reopened, synchronize and ready_for_review.
-
-### Intake commits the queue row
-
-Each producer calls `Turns::admit`, which writes a `thread.turns` row as `queued`. The row carries producer identity, payload, intake time and any reply destination.
-An accepted message costs one write (`admit_one.sql`) and holds no fleet-row lock across round trips; a steer adds one read.
-
-Repeated producer identities return the existing turn.
-After commit, a bounded wake publish on `af.thread.<thread_id>.wake` starts a gateway assign pass for hosts with available capacity.
-
-### The gateway claims a turn and its thread
-
-The gateway assigns a queued turn and its fleet's thread.
-
-1. Read the oldest unsettled turn for each eligible fleet through `idx_turns_thread_id_sequence_unsettled`.
-2. Prefer held fleets and recent wake notifications, then try a bounded candidate set.
-3. Lock a candidate's `thread.threads` row and exact oldest turn with `SKIP LOCKED`. A locked head blocks later rows.
-4. Raise the thread's fence and stamp it on the turn as `run_fence`. Decode the envelope before committing, so malformed stored data rolls back both fences.
-5. The same update opens the turn: it sets `opened_at` and moves `queued` to `received`.
-6. Read the fleet row and its approved grants, and resolve the payer and balance. An empty wallet, or a payer with no wallet row, refuses the turn `balance_exhausted`.
-7. Assemble credentials and policy, then insert the `thread.runs` row under the raised fence.
-
-An expired run leaves its turn unsettled. The next assignment of that turn marks the run expired in the same statement (`afd_fleet`'s `sql/run/assign_turn_head.sql`); no daemon timer does it. Redelivery keeps its turn id, intake time and prior billing identity.
-
-A report settles the turn in the transaction that records usage, terminal state, checkpoint, thread release and any owed delivery.
-See [the queue design](./datastore_scaling.md#the-turns-ledger-is-the-queue) for budgets, notifications and recovery limits.
-
----
-
-## 2. The runner's side of one run
-
-`agentsfleet-runner run` reads its API address, native stream origin and runner token before opening its storage home.
-The home holds sandboxes, repository mirrors and the toolbox.
-Host checks and the engine's cleanup sweep run before the runner takes work (`afr_supervisor::boot`, `afr_sandbox`'s engine).
-
-The native connection, heartbeat policy and worker pool run together (`afr_supervisor/src/lib.rs`).
-Idle workers wait for pushed runs and advertise their free capacity.
-The [runner guide](runner_protocol.md) owns connection setup, heartbeat timing, cancellation, renewal and reconnect behavior.
-
-Each fleet run follows these steps:
-
-1. Admit its tools, provider and policy; take the fleet's local turn.
-2. Load the run's memory window, or read memory through the retained HTTP route when the window is absent.
-3. Prepare or thaw a sandbox when tools need one. A resumed ordinary run retires its warm hold and restores into an empty workspace.
-4. Restore and validate a supplied checkpoint, then adopt covered folds before model or tools.
-5. Request folded inputs before model calls, skipping the first ask when the run says none waits, and send bounded activity over the native connection.
-6. Freeze and hold a completed sandbox, or kill it; post full tool records through the retained HTTP route.
-7. Send the report with every usage line no renewal recorded, memory, timing segments and folded-input progress.
-8. Retain the report in the worker's memory until acknowledgement or a terminal refusal, then finish sandbox cleanup and drain activity.
-
-The daemon captures reported memory under the run fence before the settlement transaction.
-
-A plain chat's report then commits in one statement, `commit_report.sql`, under the run row lock with no host lock. Its runtime line is a `runtime`-kind usage line numbered by its slice's start, read from the locked run row. Each host's renewals run as one fenced statement per tick.
-
-Settlement records usage, the turn's outcome, the resume context, thread release and any owed delivery.
-Only a successful report settles folded messages through `folded_through_sequence`.
-
-Connection loss preserves pending reports in memory while the runner reconnects.
-Process loss can discard results or usage the daemon has not accepted.
-[Results and billing](runner_protocol.md#results-and-billing) covers retries, shutdown and saved acknowledgements.
-
----
-
-## 3. `pr-review` end to end
+### 3. One run, end to end
 
 ```text
- GitHub                  agentsfleetd                       agentsfleet-runner
- ──────                  ────────────                       ──────────────────
- PR opened on
- agentsfleet/linkwarden
-   │ POST /v1/ingress/github
-   ├────────────────────► verify HMAC (github-app.webhook_secret)
-   │                      installation → workspace W
-   │                      digest{action:"opened", repo:"agentsfleet/linkwarden", number, ...}
-   │                      app_event rows in W: active fleet
-   │                        ∩ repositories ∋ agentsfleet/linkwarden
-   │                        ∩ events ∋ pull_request          ⇒ pr-review (and any twin)
-   │                      commit queued turn + best-effort wake
-   │◄──── 202 ────────────┤
-   │                      gateway sees available capacity on the native connection
-   │                      assign: thread fence+1, turn received, wallet, grants, policy:
-   │                        tools: the published catalog + the sub-agent tools
-   │                        network.allow: [api.github.com]
-   │                        mintable: github; binding: linkwarden, write, base main
-   │                        origin api.github.com rules: GET/HEAD /repos/agentsfleet/linkwarden/*
-   │                           POST /git/blobs|trees|commits, POST /git/refs{ref locked},
-   │                           POST /pulls{head,base locked, draft:true}
-   │                           PATCH own event ref{force:false, sha only}
-   │                      ├──── Down::Run{run:{name,event=digest}} ────────────────────►
-   │                      │                                  admit: the catalog holds sandbox tools
-   │                      │                                  ⇒ prepare a sandbox, check out linkwarden
-   │                      │◄──── GET memory/{fleet} ─────────────────────────────────────┤
-   │                      │                                  prompt: fixed text + pinned memory
-   │                      │                                    + repair context;
-   │                      │                                  user turn = the 12-field digest JSON
-   │                      │                                  model turn 1 → http_request GET .../pulls/{n}
-   │                      │◄──── POST credentials/mint {run_id, "github"} ─────────────┤
-   │                      ├──── installation token, scoped to linkwarden ──────────────►
-   │◄── GET /repos/agentsfleet/linkwarden/pulls/{n}  Accept: vnd.github.diff ───────────┤  ADMITTED
-   ├── 200 diff ──────────────────────────────────────────────────────────────────────►
-   │                      │◄──── activity: tool_call_started/completed(succeeded) ───────┤
-   │                      │                                  model turn 2 → http_request POST .../pulls/{n}/reviews
-   │                      │                                  egress: origin has rules, none match
-   │      ✗ never sent    │                                  ⇒ [request_policy_not_allowed] to the model
-   │                      │◄──── activity: tool_call_completed(failed) ──────────────────┤
-   │                      │                                  model turn 3 → final answer text
-   │                      │◄──── HTTP tool records; native report with memory ───────────┤
-   │                      settle: thread.turns processed, answer_text = the answer
-   │                      turn settled, turn_complete frame → dashboard thread
+GitHub                  agentsfleetd                          agentsfleet-runner
+  | PR opened              |                                       |
+  |-- signed POST -------->| check signature, route to watch-dog   |
+  |<-- 202 ----------------| queued turn + wake                    |
+  |                        | assign: fence + 1, turn received,     |
+  |                        | balance, grants -> policy:            |
+  |                        |   GET/HEAD /repos/agentsfleet/        |
+  |                        |   linkwarden/* on api.github.com      |
+  |                        |-- Down::Run {digest, policy} -------->|
+  |                        |                                       | sandbox; clone linkwarden
+  |                        |                                       | from the host side
+  |                        |<-- memory window ---------------------|
+  |                        |                                       | prompt: fixed text
+  |                        |                                       |  + pinned memory
+  |                        |                                       | user turn: digest JSON
+  |                        |<-- activity frames -------------------| model answers with
+  |                        |                                       | the PR's number
+  |                        |<-- report ----------------------------|
+  |                        | settle processed, answer saved,       |
+  |                        | thread released; no delivery owed     |
 ```
 
-**What the run carries for this fleet.** The run holds every published tool, one approved credential and one network host.
+The assignment reads the fleet row and its approved grant, then builds the run's policy ([assignment](data_flow.md#assignment-and-the-fence)).
+The approved read scope becomes a repository binding. The egress rules admit `GET` and `HEAD` under `/repos/agentsfleet/linkwarden/` and nothing else on `api.github.com`.
 
-The approved GitHub scope gives the write binding on `agentsfleet/linkwarden` with base `main`. No budget applies: the payer's balance is the only ceiling.
+The runner clones the bound repository into the run's workspace from outside the sandbox, so the token never enters it.
+The system prompt is the fixed text with the fleet's name, then its pinned memory ([capabilities](capabilities.md)).
+The first user turn is the digest JSON, because the digest has no `message` field.
 
-The catalog holds sandbox tools, so every run prepares a sandbox ([`runner_execution.md`](./runner_execution.md) §"A run's sandbox today"). A run offered a sandbox tool gets its bound repositories checked out (`afr_supervisor`'s checkout), so this sandbox holds `agentsfleet/linkwarden`.
+The digest already holds `number`, so the model can answer without calling GitHub.
+The answer settles the turn `processed`. A person reads it in the fleet's chat, and the live view shows `turn_complete`.
 
-**The prompt.** The system prompt is the fixed text with the fleet's name, then its pinned memory (`afr_agent`'s prompt). [Capabilities](capabilities.md#1-what-the-model-is-told-and-what-the-run-holds) owns the text.
+### 4. What the run may do
 
-Because the binding is write, a `## Trusted repair context` block follows, naming the repository, the locked repair branch and the base. The first user turn is the whole digest JSON, because the `PullRequestDigest` has no `message` field.
+| Request | Outcome |
+|---|---|
+| `GET` or `HEAD` under `/repos/agentsfleet/linkwarden/` | Admitted; the runner asks the daemon to mint a token at the first call |
+| Any path outside that repository | Refused before it leaves the runner |
+| `POST …/pulls/{n}/reviews`, an issue comment or a PR comment | Refused: `[request_policy_not_allowed]` returns to the model |
+| Any write | Refused: a read grant compiles no write rule |
 
-The guidance the fleet pinned tells it to read `repo` and `number` from exactly that digest.
+The minted token carries the read permissions [connectors](connectors.md#github-app-from-install-to-a-routed-event) lists.
+It carries no `pull_requests` permission, because a read binding asks for none.
 
-**Step 2, the diff read.** `http_request` drafts `GET https://api.github.com/repos/agentsfleet/linkwarden/pulls/{n}` with `Authorization: Bearer ${secrets.github.token}` (`afr_tools`' `http_request`).
+Pinned memory and messages are prose. "Post a review" changes what the model tries, never what the policy admits.
 
-`EgressPolicy::allow` (`af_egress`) checks: method listed, HTTPS and no placeholder in the URL, placeholder only in `Authorization`, host in `network_policy.allow`. The credential is bound to this host because the `api.github.com` origin names `github` in `credential_names` (`afd_gate`'s egress policy).
+A write grant adds bounded write rules: Git objects, one repair-branch ref and one draft PR (`afd_gate`'s egress write rules). It still admits no review or comment ([network egress](runner_execution.md#network-egress)).
 
-A read rule matches: `GET` with prefix `/repos/agentsfleet/linkwarden/`.
+### 5. The next push
 
-The vault then mints. `RunMint` calls `POST /v1/runners/me/credentials/mint`. `Plane::mint` resolves the run scope, checks the approved grant and opens the workspace's `github` handle (`afd_fleet`'s run mint; `docs/architecture/connectors.md`).
+A push to the PR sends a `synchronize` event. Its body differs, so its digest and turn key differ, and it writes a new turn.
 
-It exchanges an installation token narrowed to the binding. The token is kept per run until expiry and masked out of responses (`af_egress`; `afr_tools`' egress).
+| If the fleet's run is | The new turn |
+|---|---|
+| Idle | Starts a run of its own |
+| Live | Queues, then runs on its own once the live run reports |
 
-**Step 4, the review post.** `POST .../pulls/{n}/reviews` matches none of the rules for `api.github.com`.
-The write binding permits the exact paths below, prefixed by `/repos/{repo}`.
+Only a person's message folds into a live run. An event such as `synchronize` never does (`afd_fleet`'s `assign_inputs.sql`).
 
-| Method | Path | Body boundary |
-| --- | --- | --- |
-| POST | `/git/blobs`, `/git/trees` | Unreferenced objects; open bodies |
-| POST | `/git/commits` | Only `message`, `tree` and `parents` |
-| POST | `/git/refs` | Exact event-derived `ref`; only `sha` beside it |
-| POST | `/pulls` | Locked `head`, `base`, `draft:true`; only `title`, `body`, `maintainer_can_modify` beside them |
-| PATCH | `/git/refs/heads/{event_branch}` | Required boolean `force:false`; only `sha` beside it |
+The next run's assignment prefers the last runner, then any eligible runner at random.
+A runner holding the fleet's sandbox checks that fleet first, and other runners skip it while the hold lasts ([sandbox holds](runner_fleet.md#capacity-and-sandbox-holds)).
 
-Closed rules reject other fields, duplicate fields and query strings.
-The compiler is `afd_gate`'s egress write rules.
-The runner matches these rules in `af_egress`'s origin module.
+| Carried to the next run | Not carried |
+|---|---|
+| Fleet memory: up to 256 KiB, with every `core` entry first ([memory](memory.md)) | The previous run's answer, for an event-triggered run |
+| The held sandbox, while its hold lasts and its key matches | A sandbox whose hold ended |
 
-The PATCH supports bounded corrections within the same event's branch and existing draft.
-GitHub rejects non-fast-forward updates when `force:false`; this is not an expected-old-head comparison.
+A run started by a chat message also carries the thread's finished turns with their tool calls.
+An event-triggered run like this one carries none.
 
-Fresh ref and draft reads, with the observed branch head as the correction commit's sole parent, come from the fleet's pinned guidance.
-A later turn cannot select an earlier event's draft through these rules.
+## Limits
 
-Compatible runners must precede runs carrying the new `patch` method; older readers reject it.
+- No daemon path answers on GitHub. The App route writes the turn with no reply destination, and only Slack posters exist, so the answer stays in the fleet's chat.
+- No egress rule admits a review or a comment, even with a write grant.
+- GitHub never redelivers a failed event on its own. An event lost before its turn commits wakes nothing ([connectors](connectors.md#limits)).
+- Renaming the repository stops routing until the fleet's row names the new name.
+- Recovery after a dead runner resumes from the last saved checkpoint; actions after it can repeat ([checkpoints](checkpoints.md)).
+- A sandbox takes the runner host's own size limits; a run carries no size of its own ([the runner](runner_execution.md)).
 
-The reviews path remains denied by `allows_origin` in `af_egress`'s policy module.
-The tool returns `ToolErrorCode::RequestPolicyNotAllowed`, with `[request_policy_not_allowed]` visible to the model.
-The run loop can continue after a refusal; a fleet's pinned guidance can ask it to stop.
+## Related pages
 
-The error advises against trying another path, API or credential because one development run tried sixteen alternatives after a denied post.
-The same guidance accompanies `secret_not_found` (`af_egress`'s error module).
-The platform has no refusal-count ceiling; that remains open scope.
-
-The daemon's `integration_rust_runner_reviews` test verifies zero review POSTs reach GitHub and preserves the final denial code.
-
-**What the operator sees.** The live tail carries `turn_received`, `tool_call_started`, `tool_call_completed`, streamed text chunks and `turn_complete` ([Runner Fleet](./runner_fleet.md) §"Live activity (the SSE tail)"). The completed frame has `status: failed`, and its output head carries the code.
-
-Durably, the `thread.turns` row is `processed`. Its `answer_text` is the model's final answer and its `tool_calls` the trace summary (`afd_fleet`'s run finalize). `thread.items` serves "show all" (`afd_api_runner`).
-
-On GitHub: nothing. Memory: whatever `memory_store` wrote, pushed before the report.
-
----
-
-## 4. How `pr-review` can reply
-
-**Pinned guidance is prose and cannot widen anything.** The prompt's fixed text and pinned memory are soft reasoning input.
-
-Hard tool and secret policy stays in `policy`. The daemon compiles the egress rules from the binding alone (`afd_gate`'s policy build and egress modules). The runner evaluates them as written (`af_egress`'s admission).
-
-So pinning "post the review" changes the model's intent, not the egress policy check.
-
-**A chat message uses the same intake path.** `POST /v1/workspaces/{ws}/fleets/{id}/messages` creates its own `chat` turn (`afd_turns`'s steer module).
-
-The 202 names a `disposition`: `started`, `folded` or `queued`. With no run live, the message waits for the fleet's one thread (`queue::ASSIGN_HEAD`, `afd_fleet`'s run queue). It then starts a run of its own.
-
-With a run live, the message folds into it, and the 202 also carries `folded_into_turn_id`.
-The run takes it through the native `folds` request before its next model call; the run's answer becomes its reply.
-A parked or task-bound message ahead of it is a barrier, so the new message queues instead.
-
-The web app shows a folded message as "Added to the current run" and waits on the message's own turn. The CLI `steer` command waits on the message's own turn id the same way.
-
-The message runs with the same policy. The fleet's pinned guidance decides whether a message with no PR is chat, and which operator facts it stores.
-
-A chat message cannot add an egress rule.
-
-**What the code admits today for this fleet (one-repository write binding):** reads under `/repos/agentsfleet/linkwarden/` (the read rules), and the five writes above. In principle the fleet could create blobs, trees and commits, create one ref `refs/heads/agentsfleet-repair/<event>`, and open one draft PR from it against `main`. What is refused: a review (`/pulls/{n}/reviews`), an issue comment, a PR comment, approve, request changes, any other ref, a non-draft PR.
-
-The write rules admit a fix on the repair branch and one draft PR, and no comment (`afd_gate`'s egress write rules).
-
-**The deferral.** The agent-loop workstream parked the review post, and its spec records the owner's words ([M210_002](../v2/done/M210_002_P1_API_INFRA_RUST_RUNNER_AGENT_LOOP_AND_HOSTED_TOOLS.md), Discovery).
-No `afd_gate` rule admits `POST …/pulls/{number}/reviews`, so the runner refuses the post before it leaves.
-
-**The other reply path, also not for GitHub.** The report owes a `thread.deliveries` delivery only when the turn recorded a reply destination. That is `afd_fleet`'s run commit and `rustd/crates/daemon/afd_db/schema/20261108125100_thread_turns.sql`.
-
-A failed run that wrote no answer owes that destination one fixed notice. So does a turn refused before it runs, and one ended after its runs kept lapsing (`afd_fleet`'s run `unanswered` module). A clean run that wrote nothing still owes nothing.
-
-The App webhook admits with `Reply::None` (`afd_ingress`'s deliver). Only Slack posters exist (`afd_outbound`'s posters), so there is no daemon-side "answer back to the PR" either.
-
-**The sandbox does not change this.** The sandbox `git` tool refuses `push`, `fetch`, `pull`, `remote` and `clone`. A change is meant to leave through `propose_change`, which is not written (`afr_tools`' sandbox git; [`runner_execution.md`](./runner_execution.md) §"Repository writes").
-
-Unblocking the review is a one-rule change in `afd_gate`'s egress write rules: an exact `POST /repos/{repo}/pulls/{n}/reviews` with `event` locked to `COMMENT`. Indy parked it until he runs the test.
-
----
-
-## 5. The PR is fixed and pushed again
-
-```text
- push ──► pull_request "synchronize" ──► new signed body ──► new sha256 ──► new turn row
-                                                                           new queued turn
- thread.turns        [opened: running]  [synchronize: waiting]  [labeled]  [edited] ...
-                       one active run per fleet (one thread) ⇒ strictly one at a time
- next gateway assignment after the report frees the thread:
-   assign fence+1 (sticky: last_runner_id sorts first, random tie-break)
-   new run row, new run_id, new fencing_token
-   load: fleet memory window (≤256 KiB, core pinned) ⇒ what memory_store saved last run
-   NOT carried: the previous answer; a sandbox only while its hold lasts
-```
-
-**Same fleet, new turn, new run.** The body digest is the dedupe key (`afd_ingress`'s App routing). A `synchronize` body differs and creates a new turn.
-
-Every pull-request action wakes the fleet under `Policy::AppIngress`. An action that arrives while no run is live, such as `labeled` or `edited`, queues a run of its own.
-
-An action that arrives while a run that is not a durable task is live folds into it. That run reads it at its next model call, and its answer settles the action (§2).
-
-The fleet's thread allows one active run. On the runner, `FleetTurns` allows one run per fleet ([Runner loop](./runner_execution.md) §"One run, end to end"). A turn the live run did not fold waits until that run reports and the settle transaction frees the thread.
-
-**Same runner?** The candidate scan prefers the last runner, and the assignment records the hint (`afd_fleet`'s `select_ledger_candidates.sql`). Any eligible runner can win.
-
-A runner with a held sandbox checks that fleet first. Other runners skip the fleet while the hold lasts ([Runner fleet holds](./runner_fleet.md#cold-and-warm-execution)).
-
-**What carries over.** Fleet memory: the memory window is `LOAD_WINDOW_BYTES`, 256 KiB, with every `core` entry pinned first.
-
-A recall reads as many entries past the window as it asks for (`af_wire`'s memory module; [Runner Fleet](./runner_fleet.md) §"Memory continuity"). Memory belongs to the fleet, not the PR.
-
-The second review knows the first only if its pinned guidance has it read the existing reviews or recall what it stored.
-
-A chat run also carries every finished turn of the thread, with each turn's tool calls. A webhook run like this one carries none (`afd_fleet`'s run answer).
-
-Every run prepares a sandbox, so the fleet continues in its held sandbox when the hold is still live and its key matches.
-
-**What does not carry over.** The resume context is written to `thread.threads.resume_context` and loaded with the fleet.
-
-That semantic record grants no recovery authority.
-A replacement run of the same turn uses its committed task or ordinary checkpoint, as described in [workspace recovery](runner_execution.md#workspace-between-runs).
-
----
-
-## 6. Sandbox lifecycle
-
-Layout: [runner_fleet.md](./runner_fleet.md) §"The sandbox filesystem rules". Build and teardown: [runner_execution.md](./runner_execution.md) §"A run's sandbox today". Hold: [runner_execution.md](./runner_execution.md) §"Workspace between runs".
-
----
-
-## 7. Where the image lives, and what bounds a bare-metal host
-
-The toolbox image, its page cache and what bounds a host's memory and disk: [runner_execution.md](./runner_execution.md) §"Toolbox" and §"A run's sandbox today".
-
-**The numbers the code declares.**
-
-- `Limits::default()`: 2 GiB of memory, two cores, 512 processes and a 4 GiB disk (`afr_sandbox`'s engine). Disk input and output: 200 MiB/s each way, swap off (`afr_sandbox`'s cgroup).
-
-- Workers per host: default 1, between 1 and 64 (`af_core`'s limits).
-
-- Activity: 64 KiB batches, 4 held (`afr_supervisor`'s activity). Memory: a 256 KiB memory window (`af_wire`'s memory module).
-
-- Timers in `afd_runner`'s `timing`: a grant lasts 38 seconds, and each heartbeat round renews it.
-  A run renews at any age; its tenant's balance or a person's Stop ends it.
-  Heartbeats run every 10 seconds, a runner counts as offline after 114 seconds, and a sandbox hold lasts 10 minutes.
-
-- Assignment and intake: `[runners] assign_batch_size` candidate turns per assignment pass ([configuration reference](./config_reference.md)); no per-fleet turn cap.
-  [Queue limits](./datastore_scaling.md#the-turns-ledger-is-the-queue) describe the sampled deployment budget.
-
----
-
-## 8. Gaps still open
-
-Each gap names what would close it.
-
-1. **The review post is refused.** No write rule admits `/pulls/{n}/reviews`, and Indy parked it until he runs the test. A one-rule change in `afd_gate`'s egress write rules, an exact path with `event` locked to `COMMENT`, closes it.
-2. **No daemon path answers a PR**. The App webhook admits with `Reply::None` (`afd_ingress`'s deliver), and only Slack posters exist (`afd_outbound`'s posters). A GitHub poster in the outbound worker closes it.
-3. **Recovery stops at the saved boundary.** The paired file/root checkpoint resumes committed work; later external actions can repeat. A retried `message` or schedule request lands once, and a replacement run is told which calls the dead run finished ([Runner Fleet](./runner_fleet.md) §"Failure recovery model"). [Workspace recovery](runner_execution.md#workspace-between-runs) owns the limits.
-4. **Semantic resume context is separate.** `thread.threads.resume_context` supplies no recovery cursor. Task and ordinary recovery descriptors name the state a replacement can restore.
-5. **`propose_change` and the supervisor push are not written.** The sandbox `git` tool refuses `push` (`afr_tools`' sandbox git). The push path in [`runner_execution.md`](./runner_execution.md) §"Repository writes" closes it.
-6. **Browser tools are refused** under the bubblewrap engine ([`runner_execution.md`](./runner_execution.md) §"Sandbox engines"). A Firecracker engine closes it.
-7. **Warm slots are not wired into the supervisor.** Wiring `WarmSlots` around the host's engine closes it.
-8. **Limits are not per fleet.** The run carries no size, so every sandbox gets the runner host's own limits. A per-fleet size would be a new wire field.
-9. **Nothing checks memory or disk against the host.** 2 GiB × workers and 4 GiB × live and held runs go unchecked. A reserve the worker checks before it runs closes it.
-10. **An operator's extra binds are never bound**. The assigned policy carries them and no runner reads them ([Runner Fleet](./runner_fleet.md) §"The sandbox filesystem rules"). Binding them in the sandbox's layout, or dropping the field, closes it.
-11. **A rotating-CDN host can fail mid-run under `allow_list_egress`.** The set is pinned at run bind. The DNS-answer name layer in [Runner Fleet](./runner_fleet.md) §"Egress model" closes it.
-12. **GitHub never auto-redelivers and gives ten seconds;** a leg that fails before its turn row commits is lost outright ([`connectors.md`](./connectors.md)). Answering 202 before intake, with a durable inbox, closes it.
-13. **`deployment_status` and repair-branch deliveries are acknowledged and dropped,** because repair evidence has a reader and no writer (`afd_api_ingress`'s App route). A writer for that evidence closes it.
-
-
-## Original Pull Request repair
-
-The [combined repair acceptance](durable_tasks.md#combined-repair-acceptance) owns the combined flow: an authorized externally opened PR, later-CI continuation, worker recovery and configured goal decisions.
-Native task bindings and publication receipts retain the authorized PR and expected head across requests. Combined live acceptance remains pending.
-
-Task continuations use the existing turn and run path.
-A task wake requests fresh exact-head evidence; it does not grant authority or certify CI success.
-[Durable tasks](durable_tasks.md#state-authority-and-transaction-boundaries) covers target binding and cumulative limits; [sandbox evaluation](sandbox_evaluation.md#coding-sessions-and-worktrees-across-runs) covers workspace recovery mechanics.
-
-M224 proves the reduced manual-first path separately.
-A dedicated reviewed implementation spec and development autonomy proof remain outstanding.
-
-## Proposed Durable Tasks across runs
-
-A fleet receives many runs over time and retains at most one active run.
-Several [Durable Tasks](durable_tasks.md) can remain unfinished while only one runs.
-Waiting releases the fleet's thread without abandoning the accepted objective.
-
-```text
-DT A: run A1 -> waiting for checks ----------> run A2
-DT B:                 run B1 -> done
-thread: [A1]          [B1]       [idle]         [A2]
-```
-
-The worker is a slot in `agentsfleet-runner`'s pool, not the conversational model or a subagent.
-A replacement worker receives a fresh run and compatible DT state under current authority.
-DT recovery must use the joined sandbox build and existing workspace readiness boundary.
+- [Fleets](user_flow.md): access, triggers and talking to a fleet.
+- [Data flow](data_flow.md): intake, assignment, reports and deliveries for every producer.
+- [Connectors](connectors.md): the GitHub App and how a delivery finds its fleets.
+- [Runner runtime](runner_execution.md): the sandbox, egress rules and repository writes.
+- [Durable tasks](durable_tasks.md): work on an existing PR that continues across runs.

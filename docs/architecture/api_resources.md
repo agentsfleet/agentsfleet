@@ -1,30 +1,53 @@
 ---
-type: reference
+type: explanation
 audience: contributor
-verified: 2026-11-07
-product_version: 0.75.0
+verified: 2026-11-25
+product_version: 0.90.0
 executable: false
 ---
 
-# API resources: fleets, their access and the runner verbs
+# API resources: fleets, their access and the run verbs
 
-## Synopsis
+> Read this when you need the HTTP route that creates or changes a fleet, or the run verb a fleet's tool calls. Parent: [`README.md`](./README.md) · Wire types live in `af_wire` and `afd_api_wire`; routes in `rustd/crates/daemon/afd_http/src/route/`.
 
-This reference lists the person routes that create and change a fleet, and the run verbs a fleet's run calls. [What a fleet is](user_flow.md#81-what-a-fleet-is) owns the record, and [fleet creation and recovery](data_flow.md#fleet-creation-and-recovery) owns the create transaction.
+## What it is
 
-Prefixes: `W=/v1/workspaces/{workspace_id}`, `F=W/fleets/{fleet_id}`, `L=/v1/runners/me/runs/{run_id}`. Workspace, fleet, turn, grant, trigger, task and run identifiers are UUIDv7.
+Two kinds of caller change a fleet.
+A person (or their API key) uses the person routes under a workspace.
+A running fleet uses the run verbs, which its tools call through the runner and which are fenced to that one run.
 
-Person routes authorize through workspace membership, resolved by the existing layer. Fleet reads need `fleet:read`, writes need `fleet:write`, and deletion keeps `fleet:admin` in every state. Every member reads a new fleet and its messages at once, before any run.
+| Prefix | Path | Caller |
+|---|---|---|
+| `W` | `/v1/workspaces/{workspace_id}` | a person or an API key |
+| `F` | `W/fleets/{fleet_id}` | a person or an API key |
+| `L` | `/v1/runners/me/runs/{run_id}` | a runner, for one run it holds |
 
-Four writes need a signed-in person, not an API key. They approve or deny an access card, revoke a grant, open a fleet's network and edit a task's statements.
+Every identifier this system mints is a UUIDv7.
+The committed OpenAPI document, `public/openapi.json`, is generated from the code and lists every route; this page explains the fleet routes and run verbs.
 
-Each of those routes reads the caller through `afd_http`'s person extractor (`afd_http/src/auth/person.rs`). An API key on them gets 403 `UZ-AUTH-001`, and nothing changes.
+## Why it exists
 
-Revalidate current access on every read, write and stream reconnect.
+A fleet is created by its first message and grows by asking: it adds its own schedules and triggers and requests its own access.
+The person routes let a person read, steer, approve and remove; the run verbs let the fleet ask.
+Keeping both on one page shows which side may do what.
 
-## Example with output
+## How it behaves
 
-The example omits authorization headers. The model comes from the workspace's selected model, because the body names none.
+### Authorization
+
+Person routes authorize through workspace membership.
+Fleet reads need `fleet:read`, writes need `fleet:write`, and deleting a fleet needs `fleet:admin`.
+Schedules take `schedule:read` and `schedule:write`; grants take `grant:read` and `grant:write`.
+
+Four writes need a signed-in person, never an API key.
+They approve or deny an access card, revoke a grant, open a fleet's network, or edit a task's statements.
+An API key on one of them gets `403 UZ-AUTH-001`, and nothing changes (`afd_http/src/auth/person.rs`).
+
+Access is checked again on every read, write and stream reconnect.
+
+### Example: creating a fleet
+
+The example omits authorization headers. The body names no model, so the fleet takes the workspace's selected model.
 
 ```http
 POST /v1/workspaces/0199a801-1000-7000-8000-000000000001/fleets
@@ -32,8 +55,6 @@ Content-Type: application/json
 
 {"message":"Watch failed checkout deployments.","operation_id":"0199a801-1000-7000-8000-000000000002"}
 ```
-
-The fleet object is shortened here; `Fleet` under Options lists every field.
 
 ```text
 201 Created
@@ -53,214 +74,158 @@ The fleet object is shortened here; `Fleet` under Options lists every field.
 }
 ```
 
-The name is `fleet-` and the last 12 hex digits of the fleet id, because the body named none. Sending the same body with the same `operation_id` again answers 200 with the same fleet and `"replayed": true`.
-
-## Options
+With no `name`, the name is `fleet-` and the last 12 hex digits of the fleet id.
+Sending the same body with the same `operation_id` again answers `200` with the same fleet and `"replayed": true`.
 
 ### Shared wire rules
 
-- JSON requests reject unknown fields. Omit absent optional success fields. Page envelopes always include `items`, `total:null`, and `next_cursor` (null on the last page).
+| Topic | Rule |
+|---|---|
+| Unknown fields | JSON requests refuse them |
+| Numbers as strings | money, message sequences, fences and event counts; spend uses `Nanos`, balances `SignedNanos` |
+| Times | RFC 3339 instants in UTC, millisecond precision |
+| Paging | `limit` and `starting_after`; default 50, at most 100; a page is `{items, total: null, next_cursor}` |
+| Versions | `GET F` returns a strong entity tag (ETag) in the `ETag` header and the `etag` field; compression may weaken the header, so clients match the body's tag |
+| Conditional writes | every `PATCH` and `DELETE F` sends the strong tag in `If-Match` |
+| Retry keys | `POST W/fleets` and `POST F/messages` take the key only as the body's `operation_id` |
 
-- Money, message sequences and fences use decimal strings. Charges, costs, rates and a fleet's spend use unsigned `Nanos` decimal strings; wallet balances use `SignedNanos`, allowing negative debt (`af_wire`'s nanos module).
+A create's receipt is scoped to the workspace and the person, and authorization runs before replay.
+The same key with another body is `409 UZ-SETUP-005`, and a repeat after that fleet was deleted is `410 UZ-SETUP-013`.
+The receipt holds for `[setup] replay_window_hours`, 24 hours by default ([configuration](./config_reference.md)).
 
-- Times are RFC 3339 instants in UTC at millisecond precision under REST guide §4 (`af_wire`'s instant type). Narrow caps and limits use safe JSON integers.
+Every message is 1 to 1,048,576 characters (`af_validate::TEXT_MAX_CHARS`); a longer one is refused `UZ-REQ-004`.
+A body carrying one text may be up to `TEXT_BODY_BYTES_MAX` bytes (`afd_http/src/handler/setup_input.rs`).
+A run carrying that text reaches its runner in one frame of at most 32 MiB.
 
-- Lists accept `limit` and `starting_after` using `af_core::paging::Cursor`. General lists default to 50 and allow at most 100.
+### Types
 
-- Fleet-message cursors carry position. The authorized workspace, fleet and `event_type` filter are reapplied on every read.
+| Type | Fields | Notes |
+|---|---|---|
+| `Fleet` | `id, name, status, etag, model_ref, http_egress, package_domains, schedules[], triggers[], grants[], memory_access, created_at, updated_at, events_processed, budget_used_nanos, pending_approvals` | `status` is `active` or `archived` |
+| `FleetSummary` | `id, name, status, created_at, updated_at, events_processed, budget_used_nanos` | one row of `GET W/fleets` |
+| `Grant` | `id, kind, name, status, scope?, requested_scope?, approved_at?` | one `connector.integration_grants` row |
+| `Trigger` | `id, kind, source, events?, repositories?, channel?, url?, created_at` | one `fleet.triggers` row |
+| `Schedule` | `schedule_id, fleet_id, cron, timezone, message, source, once, status, sync, etag, description, run_state, next_run_at` | one schedule row |
 
-- An entity tag (ETag) is a strong opaque version. GET F returns its resource tag in `ETag` and `etag`. Compression may weaken the response header to `W/"value"`; the body keeps the strong `"value"` tag.
+`http_egress` is `restricted` or `public`, `package_domains` is a boolean, and both start off.
+`memory_access` is `{read, publish}`; `budget_used_nanos` is what the fleet's runs have spent, never a cap ([billing](./billing.md)).
+`pending_approvals` counts the fleet's unanswered approval cards.
 
-- Fleet clients accept that header only when its opaque value matches the strong body tag. Conditional writes send the strong body tag in `If-Match`.
+A name is 1 to 64 bytes of lowercase ASCII letters, digits and hyphens, unique in its workspace.
+A taken name is `409 UZ-AGT-006` with nothing written.
+`GET W/fleets?name=<name>` answers that one fleet, archived included, or no item; the dashboard's and the command line's `@name` use it.
 
-- `POST W/fleets` and `POST F/messages` take their retry key only as the body `operation_id`. `PATCH` routes use `If-Match`, and Stop uses its monotone cutoff.
+A grant's `kind` is `secret` for a workspace secret or `integration` for a mintable token.
+Its `status` is `pending`, `approved` or `revoked`, and a deny is stored as `revoked`.
 
-- The create's receipt is scoped `<workspace>:fleet:create:<person>`, so one key binds one workspace and one person. Authorization runs before replay.
+`scope` and `requested_scope` are set for GitHub only, naming the repositories and read or write.
+A trigger's `kind` is `webhook`, `app_event` or `mention`; a webhook's `url` is `/v1/webhooks/{fleet_id}/{source}`.
 
-- The same key, body and person get the first result back, with `replayed: true`. Another body under the key is 409 `UZ-SETUP-005`. A repeat after that fleet is deleted is 410 `UZ-SETUP-013`.
-
-- The receipt answers its key for 24 hours from its creation by default. After that the key no longer prevents a second fleet, so read the fleet list before sending the create again.
-
-### Fleet and common types
-
-`Fleet = {id,name,status,etag,model_ref,http_egress,package_domains,schedules[],triggers[],grants[],memory_access,created_at,updated_at,events_processed,budget_used_nanos}`. The event count and the nanos are strings.
-
-`status` is `active` or `archived`. `http_egress` is `restricted` or `public`, and `package_domains` is a boolean; both are off when the fleet is created ([the egress model](runner_fleet.md#egress-model-outbound-is-the-only-network-surface)). `memory_access` is `{read,publish}`.
-
-`model_ref` is the body's `model_ref`, else the workspace's selected model, resolved at create and stored on the fleet. `budget_used_nanos` is what the fleet's runs have spent. No fleet has a budget: the payer's balance is the only ceiling ([billing](billing_and_provider_keys.md)).
-
-**The fleet name.** The name is the body's `name`, else `fleet-` and the last 12 hex digits of the fleet id. A name is 1 to 64 bytes of lowercase ASCII letters, digits and hyphens, checked by `af_fleet_runtime`'s name module. Names are unique per workspace (`uq (workspace_id, name)`), and a taken name is 409 `UZ-AGT-006` with nothing written.
-
-`FleetSummary = {id,name,status,created_at,updated_at,events_processed,budget_used_nanos}` is one row of `GET W/fleets`. The page reads it in the same statement as the counters (`afd_fleet_lifecycle`'s `select_fleet_page.sql`).
-
-`?name=<name>` answers the one fleet with exactly that name in the workspace, archived included, or no item; `total` and `next_cursor` are `null`. A name outside the name rule is a 400. The dashboard's and the command line's `@name` resolve through it (`select_fleet_by_name.sql`).
-
-`Grant = {id,kind,name,status,scope?,requested_scope?,approved_at?}` is one row of `connector.integration_grants`. `kind` says whether `name` is a static workspace secret (`secret`) or a mintable integration; the daemon derives it from the vault entry. `status` is `pending`, `approved` or `revoked`, and a deny is stored as `revoked`.
-
-`scope` and `requested_scope` are set for GitHub only: the repositories, and read or write. `af_fleet_runtime`'s `config/repository.rs` parses them. `requested_scope` waits for Approve, and the approved `scope` stays in force until then ([where a grant comes from](connectors.md#where-a-grant-comes-from)).
-
-`Trigger = {id,kind,source,events?,repositories?,channel?,url?,created_at}` is one row of `fleet.triggers`. `kind` is `webhook`, `app_event` or `mention`. A webhook's `url` is `/v1/webhooks/{fleet_id}/{source}` ([fleet triggers](connectors.md#fleet-triggers)).
-
-`Schedule = {schedule_id,fleet_id,cron,timezone,message,source,once,status,sync,etag,description,run_state,next_run_at}`. `source` is `api` for a person's schedule and `fleet` for one the fleet added with `cron_add`. Each schedule is an independent row.
-
-The last three fields are the server's reading at the request's instant (`afd_cron`'s run module). `description` is the expression in words from the scheduler's own cron parser, with its zone.
-
-`run_state` is `scheduled|paused|activation_pending|next_run_unavailable`; `next_run_at` is set only when `run_state` is `scheduled`. Paused wins over sync state, and `deleting` or a `failed` sync never runs. `syncing` is activation pending, and a one-off runs at its stored instant or not at all.
-
-Sync is `syncing|synced|failed` (`afd_cron`'s model); status is `active|paused|deleting`. A fleet with no schedule has an empty `schedules[]`.
-
-**The text ceiling.** A first message and every later message are 1 to 1,048,576 characters, the one text ceiling `af_validate::TEXT_MAX_CHARS`. A longer one is refused `UZ-REQ-004`, reading "Input exceeds the maximum length of 1,048,576 characters."
-
-A body carrying one text, such as a fleet message, may be 12,599,296 bytes (`TEXT_BODY_BYTES_MAX`). The daemon reads that much on those routes, and the app's proxies read the same (`afd_http/tests/fixtures/body_limits.json`).
-
-A run carrying that text reaches its runner in one frame of at most 32 MiB (`af_wire::protocol::MESSAGE_BYTES_MAX`).
+A schedule's `source` is `api` for a person's schedule and `fleet` for one the fleet added.
+`run_state` is `scheduled`, `paused`, `activation_pending` or `next_run_unavailable`; `next_run_at` is set only when it is `scheduled`.
+`sync` is `syncing`, `synced` or `failed`, and `status` is `active`, `paused` or `deleting`.
 
 ### Workspace routes
 
-| # | Method and resource | Exact input / preconditions | Success output | Specific failures |
-|---|---|---|---|---|
-| W1 | GET W/models | No body; `purpose=runtime` optional, list paging; workspace authorization | 200 Page of `{ref,label,provider,model,context_window_tokens,max_output_tokens,eligibility:{runtime},pricing:{input_nanos_per_million,output_nanos_per_million,runtime_nanos_per_second}}`; the owner's eligible enabled entries only | AUTH, INPUT, CURSOR, DEPENDENCY |
-| W2 | POST W/fleets | `{message,operation_id,model_ref?,name?}`; `fleet:write`; message within the text ceiling; body UUIDv7 key only | 201 `{fleet:Fleet,accepted:{turn_id,disposition:"started"|"queued"},replayed:false}`; a repeat answers 200 with `replayed:true` | INPUT, REPLAY, GONE, MODEL, NAME, AUTH, DEPENDENCY |
-| W3 | GET W/fleets | No body; `fleet:read`; list paging; optional `?name=` | 200 Page of FleetSummary | INPUT, CURSOR, AUTH, DEPENDENCY |
+| Route | Input | Success | Failures |
+|---|---|---|---|
+| `GET W/models` | optional `purpose=runtime`; paging | 200 page of `{ref, label, provider, model, context_window_tokens, max_output_tokens, eligibility: {runtime}, pricing}` | AUTH, INPUT, CURSOR, DEPENDENCY |
+| `POST W/fleets` | `{message, operation_id, model_ref?, name?}`; `fleet:write` | 201 `{fleet, accepted: {turn_id, disposition}, replayed: false}`; a repeat answers 200 | INPUT, REPLAY, GONE, MODEL, NAME, AUTH, DEPENDENCY |
+| `GET W/fleets` | paging; optional `?name=` | 200 page of `FleetSummary` | INPUT, CURSOR, AUTH, DEPENDENCY |
 
-W2 writes the fleet (`active`), its thread and its first turn (`queued`, actor `steer:<person>`) in one transaction. With no usable model, W2 answers 409 `UZ-SETUP-008` and writes no fleet, thread or turn. The fleet's answer arrives on `GET F/turns/stream`, which [the live tail](data_flow.md#d-watch--user-side-how-the-live-tail-surfaces) owns.
+`POST W/fleets` writes the fleet, its thread and its first turn in one transaction.
+With no usable model it answers `409 UZ-SETUP-008` and writes nothing.
+[Data flow](./data_flow.md) owns the create transaction and its recovery.
+
+`W/secrets`, `W/turns`, `W/turns/stream` and `W/approvals` also stand.
+`POST W/approvals/{gate_id}/{decision}` takes `approve`, `deny` or `answer`; approve and deny need a person.
 
 ### Fleet routes
 
-| # | Method and resource | Exact input / preconditions | Success output | Specific failures |
+| Route | Scope | Input | Success | Failures |
 |---|---|---|---|---|
-| F1 | GET F | No body; `fleet:read` | 200 Fleet and ETag | existing 404 `UZ-AGT-009`, AUTH, DEPENDENCY |
-| F2 | PATCH F | Required If-Match resource tag; `{status?:"archived",name?,model_ref?,http_egress?,package_domains?}`; at least one; `http_egress` and `package_domains` need a person | 200 Fleet and ETag; a model change writes one `model_changed` turn | PRECONDITION, STALE, INPUT, MODEL, NAME, PERSON, AUTH, DEPENDENCY; an archived fleet returns 409 `UZ-AGT-020` with `current_state: archived` after write preconditions pass; a fleet that does not exist returns 404 `UZ-AGT-009` |
-| F3 | POST F/messages | `{message,operation_id?}`; message within the text ceiling; operation_id 1..200 bytes when supplied; neither permits NUL; no header key | 202 `{status:"accepted",turn_id,replayed,disposition,folded_into_turn_id?}`; `disposition` is `started`, `folded` or `queued`, and `folded_into_turn_id` names the live run a folded message joined; Location F/messages; recovery through the existing message read and stream | INPUT (a message past the ceiling is `UZ-REQ-004`), REPLAY (`UZ-AGT-016`), lifecycle/state, AUTH, DEPENDENCY |
-| F4 | GET F/messages | limit default 25, max 100, starting_after; optional event_type, 1..64 bytes without NUL; `fleet:read` | 200 message page, filtered before limit; `event_type=activity` excludes runtime bodies and queued turns | INPUT, CURSOR, AUTH, DEPENDENCY |
-| F5 | GET F/integration-grants | No body; `grant:read` | 200 `{items:Grant[]}` | AUTH, DEPENDENCY |
-| F6 | DELETE F/integration-grants/{id} | No body; `grant:write`; a person | 204; a live run keeps what it was issued, and the next run and the next token mint do not | PERSON, existing grant 404, AUTH, DEPENDENCY |
-| F7 | GET F/triggers | No body; `fleet:read` | 200 `{items:Trigger[]}` | AUTH, DEPENDENCY |
-| F8 | DELETE F/triggers/{id} | No body; `fleet:write` | 204; a delivery to its URL then answers 404 and writes no turn | AUTH, DEPENDENCY |
-| F9 | PATCH F/durable_tasks/{id} | Required If-Match task tag; `{state,expected_generation}` or `{questions,expected_generation}`; a statement edit needs a person | 200; a statement edit writes new `questions` and `goal_digest` and raises the generation by 1 | stale 412 `UZ-DT-013`, PERSON, AUTH, DEPENDENCY |
-| F10 | PATCH F/schedules/{schedule_id} | Required If-Match schedule tag; its own fields `{cron?,timezone?,message?,status?}`; an `override` body is 400 | 200 Schedule and ETag | PRECONDITION, STALE, INPUT, STATE, existing schedule 404 `UZ-SCHED-002`, DEPENDENCY |
+| `GET F` | `fleet:read` | none | 200 `Fleet` and ETag | 404 `UZ-AGT-009`, AUTH, DEPENDENCY |
+| `PATCH F` | `fleet:write` | `If-Match`; at least one of `{status: "archived", name, model_ref, http_egress, package_domains}`; the last two need a person | 200 `Fleet`; a model change writes one `model_changed` turn | PRECONDITION, STALE, INPUT, MODEL, NAME, PERSON; archived 409 `UZ-AGT-020` |
+| `DELETE F` | `fleet:admin` | `If-Match` | 204; deletes the fleet and its history in any status | PRECONDITION, STALE, 404 |
+| `POST F/messages` | `fleet:write` | `{message, operation_id?}` | 202 `{status, turn_id, replayed, disposition, folded_into_turn_id?}` | INPUT, REPLAY (`UZ-AGT-016`), STATE, AUTH |
+| `GET F/messages` | `fleet:read` | paging, default 25; optional `event_type` | 200 message page | INPUT, CURSOR, AUTH |
+| `GET F/turns`, `GET F/turns/stream` | `fleet:read` | paging, or a stream | the turn history, or the live tail | AUTH |
+| `GET`/`PATCH F/turns/{turn_id}` | `fleet:read` / `fleet:write` | `PATCH` body `{status: "cancelled"}` | the turn; `PATCH` stops it | AUTH, 404 |
+| `GET F/turns/{turn_id}/items/{item_id}` | `fleet:read` | none | one tool call in full | AUTH, 404 |
+| `GET F/memories`, `DELETE F/memories/{key}` | `fleet:read` / `fleet:write` | optional search | the entries; delete forgets one | AUTH, 404 |
+| `PATCH F/memory-access` | `fleet:write` | `{read?, publish?}` | 200 `{read, publish}` | INPUT, AUTH |
+| `GET F/integration-grants` | `grant:read` | none | 200 `{items: Grant[]}` | AUTH |
+| `DELETE F/integration-grants/{id}` | `grant:write`, a person | none | 204; a live run keeps what it was issued | PERSON, 404 |
+| `GET F/triggers`, `DELETE F/triggers/{id}` | `fleet:read` / `fleet:write` | none | the triggers; after delete its URL answers 404 | AUTH |
+| `GET`/`POST F/schedules` | `schedule:read` / `schedule:write` | `POST` body `{cron, timezone, message, …}` | the schedules, or 201 `Schedule` | INPUT, AUTH |
+| `GET`/`PATCH`/`DELETE F/schedules/{id}` | `schedule:read` / `schedule:write` | `PATCH` needs `If-Match`; an `override` body is 400 | the `Schedule` and ETag | PRECONDITION, STALE, STATE, 404 `UZ-SCHED-002` |
+| `POST F/schedules/{id}/sync` | `schedule:write` | none | forces a sync now | AUTH, 404 |
+| `GET F/durable_tasks`, `GET F/durable_tasks/{id}` | `fleet:read` | paging, default 20, at most 100 | unfinished tasks, or one task with an ETag | AUTH, 404 |
+| `PATCH F/durable_tasks/{id}` | `fleet:write`; a statement edit needs a person | `If-Match`; `{state, expected_generation}` or `{questions, expected_generation}` | 200; a statement edit raises the generation by 1 | stale 412 `UZ-DT-013`, PERSON |
 
-The routes the spec keeps as they are also stand: `F/memories`, `W/secrets`, and `W/approvals` with its approve, deny and answer routes (`POST W/approvals/{gate_id}/approve|deny|answer`). Approve and deny need a person. On an access card they flip the grant and write the answer turn that resumes the asking run ([where a grant comes from](connectors.md#where-a-grant-comes-from)).
+A message sent while the fleet's run is live folds into that run (`disposition: folded`), and the run's answer is its reply.
+A message behind a task-bound message queues instead.
+`POST F/messages` deduplicates on its key; omitting the key creates new work on every request.
 
-The existing GET F/messages includes queued steer turns alongside opened history in one statement snapshot (`afd_turns`'s thread-page statements). It keeps the queued-message shape, turn ID, ordering, cursor and authorization across opening and settlement.
+A deleted fleet takes its turns, runs, approvals, grants, keys and memory with it, and cannot be undone.
+To keep the history, set `status` to `archived` instead.
+Task reads answer `private, no-store` for the list and `private, no-cache` with `If-None-Match` support for one task.
 
-A message that folded into a live run keeps its own turn. Once the run's report succeeds, that turn carries `resumes_turn_id`, naming the run's turn, and the run's answer as its reply.
+### Run verbs
 
-F3 deduplicates on the turn's producer key in `thread.turns`. Reuse its key with the same message and sender; omitting it creates new work on every request.
+Each verb is fenced to its run and carries the run's `fencing_token`.
+A refusal returns to the model as a tool result of the form `[kind] sentence`, and the run continues.
 
-A message sent while the fleet's run is live folds into that run (`disposition: folded`). The live run takes it at its next model call, and the run's answer is its reply. A task-bound message ahead of it is a barrier, so the message queues instead.
+| Verb | Tool | Input | Success | Refusals |
+|---|---|---|---|---|
+| `POST L/access` | `request_access` | `{name, scope?}` | 201 `{grant_id, gate_id}`; 200 when a grant or request already covers it | 404 name not in the vault or integrations; 409 integration not connected; a GitHub request with no or bad scope |
+| `POST L/triggers` | `trigger_add` | `{kind, source?, events?, repositories?, verifier?, secret_name?, channel?}` | 201 `Trigger` | 409 provider not connected; 404 signing secret missing; 409 trigger exists; a webhook source of `approval` or `github` |
+| `GET L/triggers`, `DELETE L/triggers/{id}` | `trigger_list`, `trigger_remove` | none | the triggers, or 204 | the fence only |
+| `GET`/`POST L/schedules`; `PATCH`/`DELETE L/schedules/{id}`; `GET`/`POST L/schedules/{id}/runs` | the schedule tools, such as `cron_add` | schedule fields | the schedule or its runs | the fence; schedule validation |
+| `POST L/messages` | a message to the thread | `{fencing_token, item_id, call_number, text}` | the line said to the held turn's thread | the fence; the text ceiling |
+| `POST L/steers` | a steer to another fleet | `{fencing_token, fleet_id, text}` | work put on another fleet in the workspace; a resend answers the first turn | the fence; the text ceiling |
+| `GET L/fleets`, `GET L/fleets/{fleet_id}/turns` | reading other fleets | paging | fleets in the workspace, or one fleet's turns | the fence |
+| `POST L/items` | none; the runner records finished calls | the calls' full records | 200 | the fence |
+| `POST L/durable_tasks/bindings` | `task_start`, `task_input` | `{fencing_token, source_turn_id, plan_digest, items: [one]}` | 201 the bindings; a repeat answers 200 | `UZ-DT-004`, `UZ-DT-005`, `UZ-DT-003`, `UZ-DT-001`; 400 a new item with no statement |
 
-The browser and the terminal use the same routes, authorization, replay and billing rules. The terminal creates a fleet with W2 (`agentsfleet fleet create`) and then talks to it with F3 (`agentsfleet fleet steer`).
+`POST L/access` ends the run waiting on a card, as a run's question does.
+The other `L/durable_tasks/*` verbs (decisions, inputs, effects and checkpoints) belong to [durable tasks](./durable_tasks.md).
+The runner's stream, renewals, folds and reports are not HTTP verbs; [runner protocol](./runner_protocol.md) owns them.
 
-### Removed person routes
+### Errors
 
-| # | Removed method and resource | Replacement |
-|---|---|---|
-| R1 | GET W/library-entries | None |
-| R2 | DELETE W/library-entries/{entry_id} | None |
-| R3 | /v1/admin/fleet-libraries and its members | None |
-| R4 | W/fleet-libraries and its members, including /owned | None |
-| R5 | W/plugins and its members (M253 removed the Plugin library) | None |
+Every failure is `application/problem+json`: `{docs_uri, title, detail, error_code, request_id, user_message?}`.
+A 409 adds `current_state`, and a 412 adds the current `etag`.
 
-Removal is immediate; there is no alias. The following are absent:
-
-- `/v1/operations` and public turn-status.
-
-- Fleet creation/attempt resources.
-
-- Deletion resources.
-
-### Runner routes and wire
-
-Runner route identities live in `afd_http`; path constants and native message types live in `af_wire`.
-Each host opens one authenticated connection through `POST /v1/runners/me/stream` on the private listener.
-The [runner guide](runner_protocol.md) owns connection setup, trust and recovery.
-
-The daemon assigns fleet runs when the host advertises capacity, against the daemon-enforced worker limit.
-Heartbeats, renewal batches, activity, folded inputs and reports use that connection.
-
-Fleet renewal and report messages carry every provider usage record the daemon has not yet recorded, oldest first, with no count cap.
-Each renewal answer includes its run's `recorded_through` acknowledgement.
-The report carries the remaining records and uses its original run identity when retried.
-
-The native `folds` request carries `fencing_token` and `after_sequence`. Its reply holds every pending input, oldest first, cut to one frame; the next fold returns the rest.
-Only a successful report settles inputs through its `folded_through_sequence`.
-
-`RunPayload` carries the fleet's `name` and no instructions; the runner writes the prompt from fixed text and the fleet's pinned memory ([capabilities](capabilities.md#1-what-the-model-is-told-and-what-the-run-holds)). When the runner is task-capable and the run carries a decision profile, an ordinary run's payload lists the fleet's unfinished tasks.
-
-`NetworkPolicy` is built from the fleet's two toggles and the hosts of its approved secrets, and has no read-only mode. The turn checkpoint's scope names the turn and no fleet version, and the runner protocol has one `VERSION`.
-
-A run loads and saves its thread's compacted context with `context_load` and `context_save`, under its fence.
-A save is a compare-and-swap on `resource_version` over the thread's `thread.compactions` row.
-A superseded run's save is refused with `UZ-RUN-005`, and the row stays as it was.
-
-### Run verbs a fleet's tools call
-
-Each verb is fenced to its run. The trigger verbs carry `item_id`, `call_number` and `fencing_token`, as the schedule verb (`POST L/schedules`) does.
-
-| # | Verb | Tool | Input | Success output | Refusals |
-|---|---|---|---|---|---|
-| V1 | POST L/access | `request_access` | `{name,scope?}` | 201 `{grant_id,gate_id}`; 200 when an approved grant already covers it or a request is pending | 404 name not in the workspace vault or connected integrations; 409 integration not connected; a GitHub request with no scope, or one the parser refuses; a secret whose `host` `af_egress::allowlist_host` cannot read |
-| V2 | POST L/triggers | `trigger_add` | `{kind:"webhook"|"app_event"|"mention",source?,events?,repositories?,verifier?,secret_name?,channel?}` | 201 Trigger | 409 provider not connected; 404 signing secret not in the workspace vault; 409 trigger exists; a webhook source of `approval` or `github`; a shape the kept trigger checks refuse |
-| V3 | GET L/triggers | `trigger_list` | none | 200 `{items:Trigger[]}` | none beyond the fence |
-| V4 | DELETE L/triggers/{id} | `trigger_remove` | none | 204 | none beyond the fence |
-| V5 | POST L/durable_tasks/bindings | `task_start`, `task_input` | `{fencing_token,source_turn_id,plan_digest,items:[one]}`; a new-work item is `{title,source_start,source_end,target,statements[]}`, a steer item `{durable_task_id,source_start,source_end}` | 201 the bindings; a repeat answers 200 | `UZ-DT-004` a source turn that is not a person's message; `UZ-DT-005` the unfinished-task cap; `UZ-DT-003` a different plan for a turn that has one; `UZ-DT-001` a finished or foreign task; 400 a new item with no statement |
-
-A refusal returns to the model as a tool result of the form `[kind] sentence`, and the run continues. V1 ends the run waiting when it raises a card, as a run's question does ([where a grant comes from](connectors.md#where-a-grant-comes-from)). V2 to V4 are owned by [fleet triggers](connectors.md#fleet-triggers), and V5 by [how a task starts](durable_tasks.md#how-a-task-starts).
-
-V5 carries no decision call of its own and no fleet version. `POST L/durable_tasks/decisions` carries goal checks only, which judge whether a task is done ([goal evaluation](goal_evaluation.md#goal-evaluation)).
-
-### Current task reads
-
-The existing tenant plane serves these `FleetRead` routes under `/v1/workspaces/{workspace_id}/fleets/{fleet_id}`.
-The [DT API target](durable_tasks.md#proposed-native-api) describes the remaining planned fields and mutations.
-
-| Method and suffix | Current response and behavior |
-|---|---|
-| `GET /durable_tasks?starting_after=<cursor>&limit=20` | `{items,next_cursor}`; unfinished titles, states, versions and timestamps. Maximum page size 100; newest `(created_at,id)` first. Owned empty fleets return 200; missing or foreign scoped fleets return 404. |
-| `GET /durable_tasks/{durable_task_id}` | `{title,resource_version,context}`; accepted objective, completion statements (`questions`), cumulative usage, limits and cursors. Strong ETag supports `If-None-Match` and empty 304; completed tasks remain readable. |
-
-Collection responses use `private, no-store`; detail responses use `private, no-cache` with revalidation.
-Dashboard proxies keep the resource tag and apply `no-store` without exposing bearer credentials to browser code.
-
-Native reads run under one five-second client deadline that covers acquisition and commit (`afd_fleet`'s task fetch). The API login's statement bound applies beneath it ([concurrency](concurrency.md#every-daemon-statement-runs-under-the-api-logins-bounds)).
-
-## Errors
-
-Routine dependency and authorization failures and the named failure symbols apply to each table row. All failures use the existing `application/problem+json`: `{docs_uri,title,detail,error_code,request_id,user_message?}`. The extensions `current_state` on 409 and `etag` on 412 come from `afd_http`'s envelope.
-
-The following codes name the route tables' error categories. Read the operation's response description for its precise refusal conditions; registration alone does not prove a live outcome.
-
-| Symbol | Code | HTTP | Meaning / action |
+| Symbol | Code | HTTP | Meaning |
 |---|---|---|---|
-| AUTH | Existing `UZ-AUTH-002` / `UZ-AUTH-022` | 401 / 403 | Invalid authentication or insufficient scope. |
-| PERSON | Existing `UZ-AUTH-001` | 403 | An API key on a write that needs a signed-in person; nothing changes. |
-| INPUT | Existing `UZ-REQ-001` / `UZ-UUIDV7-009` | 400 | Invalid body shape, key, bound or unknown field; path UUIDv7 validation uses `UZ-UUIDV7-009`. |
-| STATE | `UZ-SETUP-002` | 409 | Wrong lifecycle state, such as a schedule being deleted; includes `current_state`. |
-| STALE | `UZ-SETUP-003` | 412 | The `If-Match` version differs; includes the current `etag`. |
-| PRECONDITION | `UZ-SETUP-004` | 428 | Required `If-Match` absent; read the resource before writing. |
-| REPLAY | `UZ-SETUP-005` | 409 | A create key was accepted with another body or person; fleet messages keep `UZ-AGT-016`. |
-| MODEL | `UZ-SETUP-008` | 409 | No usable model: the named model, or the workspace's selection when none is named, is missing, disabled or ineligible. No fallback; nothing is written. |
-| CURSOR | `UZ-SETUP-011` | 400 | Cursor malformed or bound to another query or subject. |
-| GONE | `UZ-SETUP-013` | 410 | The fleet a create key made was deleted; recreation is refused within the replay window. |
-| NAME | `UZ-AGT-006` | 409 | The name is taken in the workspace; nothing is written. |
-| TASK | `UZ-DT-001` / `UZ-DT-003` / `UZ-DT-004` / `UZ-DT-005` / `UZ-DT-013` | 404 / 409 / 409 / 429 / 412 | In order: a finished or foreign task, a second plan for one turn, a source turn that is not a person's message, the unfinished-task cap, a stale task tag. |
-| DEPENDENCY | Existing `UZ-INTERNAL-001` | 503 | Required datastore unavailable; no guessed success. |
+| AUTH | `UZ-AUTH-002` / `UZ-AUTH-022` | 401 / 403 | invalid authentication, or a missing scope |
+| PERSON | `UZ-AUTH-001` | 403 | an API key on a write that needs a signed-in person |
+| INPUT | `UZ-REQ-001` / `UZ-UUIDV7-009` | 400 | bad body, bound or unknown field; a bad path UUIDv7 |
+| STATE | `UZ-SETUP-002` | 409 | wrong lifecycle state, such as a schedule being deleted |
+| STALE | `UZ-SETUP-003` | 412 | the `If-Match` tag is stale |
+| PRECONDITION | `UZ-SETUP-004` | 428 | `If-Match` is missing; read the resource first |
+| REPLAY | `UZ-SETUP-005` | 409 | a create key reused with another body or person |
+| MODEL | `UZ-SETUP-008` | 409 | no usable model; nothing is written |
+| CURSOR | `UZ-SETUP-011` | 400 | a cursor that is malformed or bound to another query |
+| GONE | `UZ-SETUP-013` | 410 | the fleet a create key made was deleted |
+| NAME | `UZ-AGT-006` | 409 | the name is taken in the workspace |
+| TASK | `UZ-DT-001` / `003` / `004` / `005` / `013` | 404 / 409 / 409 / 429 / 412 | finished or foreign task; second plan; source not a person's message; unfinished-task cap; stale tag |
+| DEPENDENCY | `UZ-INTERNAL-001` | 503 | a required datastore is unavailable |
 
-Four codes in `af_core`'s fleet error family serve the run verbs, each with its `REGISTRY` row and problem entry:
+An oversized body is `413 UZ-REQ-002`.
+Validation detail names the field and never echoes private message content.
 
-- a requested name not in the workspace (404);
-- an integration or provider not connected (409);
-- a trigger that already exists (409);
-- a trigger's signing secret not in the workspace vault (404).
+## Limits
 
-Oversized HTTP envelopes use the existing `UZ-REQ-002` with its registered 413. Validation detail names the offending field without echoing private message content.
+- **A create key expires.** After the replay window, a repeated create makes a second fleet, so read `GET W/fleets` before resending.
+- **A revoked grant does not reach into a live run.** The run keeps what it was issued. The next run and the next token mint do not.
 
 ## Related pages
 
-- [What a fleet is](user_flow.md#81-what-a-fleet-is)
-- [Fleet creation and recovery](data_flow.md#fleet-creation-and-recovery)
-- [Where a grant comes from](connectors.md#where-a-grant-comes-from)
-- [Fleet triggers](connectors.md#fleet-triggers)
-- [How a task starts](durable_tasks.md#how-a-task-starts)
-- [Runner connection and recovery](runner_protocol.md)
+- [User flow](./user_flow.md): what a fleet is
+- [Data flow](./data_flow.md): the create transaction and recovery
+- [Connectors](./connectors.md): grants and triggers
+- [Durable tasks](./durable_tasks.md): task verbs and reads
+- [Runner protocol](./runner_protocol.md): the runner connection
+- [`../AUTH.md`](../AUTH.md): scopes and tokens

@@ -930,7 +930,7 @@ Keep the original history.
 If compaction fails or pinned input still cannot fit, show the recorded failure and recovery action.
 [Conversation compaction](architecture/context_lifecycle.md) owns the shared behavior and limits.
 
-These boundaries follow the [model instructions](../rustd/crates/protocol/af_fleet_runtime/src/setup/mod.rs), [save implementation](../rustd/crates/daemon/afd_setup/src/creation/reserve.rs), and [resource reference](architecture/api_resources.md).
+These boundaries follow the [resource reference](architecture/api_resources.md).
 
 ### Example playback
 
@@ -1090,7 +1090,7 @@ Use recorded action verbs in collapsed tool groups, retain failures explicitly a
 
 ## Proposed Durable Task work panel
 
-M236 supplies work details; [Durable Tasks](architecture/durable_tasks.md#work-panel-and-notifications) owns their behavior.
+M236 supplies work details; [Durable Tasks](architecture/durable_tasks.md#reading-and-controlling-a-task) owns their behavior.
 Present that content through the approved inline Summary and its detail views, without adding a competing sidebar.
 Rows show title, current state, next dependency and confirmed result links.
 

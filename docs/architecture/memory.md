@@ -1,135 +1,156 @@
-# Memory: scope, isolation, and durability
-
-> Parent: [`README.md`](./README.md) · Transport mechanics: [`runner_fleet.md`](./runner_fleet.md) §"Memory continuity" · In-run tools + lifecycle: [`capabilities.md`](./capabilities.md) §4 · User-facing: [docs.agentsfleet.net/memory](https://docs.agentsfleet.net/memory).
-
-What a fleet *learned* from prior events, so it behaves like a teammate who's been here before. This file is the canonical answer to **"what is memory keyed by, what's isolated, and what survives"**. Other docs and specs cite these facts.
-
-The deep load/capture transport lives in `runner_fleet.md`; the categories, selection and tools live in `capabilities.md` and the user docs.
-
+---
+type: explanation
+audience: contributor
+verified: 2026-11-25
+product_version: 0.90.0
+executable: false
 ---
 
-## 1. Scope: written by one fleet, shared with the workspace only by grant
+# Memory: what a fleet remembers across runs
 
-Every memory row belongs to **one fleet**, its writer, and to that fleet's **workspace**. The identity is `(workspace_id, fleet_id, key)`, held by the unique `(key, fleet_id)` because a fleet has one workspace. A row is fleet-visible unless its writer held the publish grant and its `memory_store` call named `visibility: shared`.
+> Read this when you ask what a fleet remembers, who can read it and when it is lost. Parent: [`README.md`](./README.md) · User-facing: [docs.agentsfleet.net/memory](https://docs.agentsfleet.net/memory).
 
-A fleet holding the read grant then loads and recalls such a row, naming the writer. No fleet overwrites or forgets another's row. Both grants are a workspace setting on the fleet, false by default ([`runner_fleet.md`](./runner_fleet.md) §"Memory backends and scope").
+## What it is
 
-| Fact | Where it's enforced |
-|---|---|
-| Store columns are `fleet_id`, `workspace_id` and `workspace_visible`; the upsert key is the unique constraint `(fleet_id, key)` | `rustd/crates/daemon/afd_db/schema/20261108124700_memory_entries.sql` |
-| Every read and write goes through one store, scoped `WHERE fleet_id = $1`, plus the workspace's shared rows only for a granted reader | `afd_memory`: `Memories`, the Postgres store (`PgStore`), and the grants |
-| The grants are read and set as the api role on `fleet.fleets`, never by the store | `rustd/crates/daemon/afd_db/schema/20261108121900_fleet_fleets.sql` and `afd_memory`'s access module |
-| `fleet_id` is **server-derived from the run**, never client-supplied (Insecure-Direct-Object-Reference guard) | `afd_api_runner`'s runner memory handler hands the path's fleet to `afd_fleet`'s `Plane::load` / `Plane::capture`, which refuse a runner holding no live run on that fleet |
-| Private rows remain writer-scoped; granted readers can read other fleets' workspace-visible rows, but cannot overwrite or forget them | shared-memory grants + workspace predicate + the `(key, fleet_id)` key |
+Fleet memory is what a fleet chose to keep from earlier runs, so it behaves like a teammate who has been here before.
+The model writes it on purpose with `memory_store`; nothing is saved behind its back.
+Each entry is a key, its content and a category, stored as one row in `memory.entries` in Postgres.
 
-> [!NOTE]
-> **Terminology.** The scope column is `fleet_id`, and the column, the wire path and the code use it end to end. A doc or spec that says `instance_id` or `zombie_id` is stale.
-
-## 2. Isolation: a Postgres role, not the workspace
-
-Memory lives in its own `memory` schema behind the `memory_runtime` Postgres role, with zero grants outside that schema (`rustd/crates/daemon/afd_db/schema/20261108120100_roles_and_privileges.sql`).
-`api_runtime` takes it with `SET LOCAL ROLE memory_runtime` inside each memory transaction.
-Postgres restores the role at commit or rollback (`afd_memory`'s Postgres store).
-
-`fleet_id` references `fleet.fleets` with `ON DELETE CASCADE`, so deleting a fleet erases its memory (`rustd/crates/daemon/afd_db/schema/20261108124700_memory_entries.sql`).
-Postgres checks the foreign key and cascade with the table owner's authority.
-That grants `memory_runtime` no access to `fleet.fleets`.
-
-The database role isolates storage; workspace authorization and shared-memory grants decide access above it.
-Tenant reads and forgetting require workspace access to the fleet (API reference › Fleet memories).
-
-## 3. Durable store vs ephemeral compute: why "ephemeral fleets" lose memory
-
-Two layers, deliberately split:
-
-- **Durable** — the `fleet_id`-keyed rows in `memory.entries` (Postgres), the default backend. This is what survives, and Postgres is the only store. A second store, and the flip that migrates a workspace onto it, come with the first vendor store ([`runner_fleet.md`](./runner_fleet.md) §"Memory backends and scope").
-
-- **Ephemeral** — the *compute*. Each run holds its memory in the runner's supervisor, seeded at run start and pushed, fenced, before the report. It is gone when the run ends ([`runner_execution.md`](./runner_execution.md#crates)).
-
-Continuity is the load/capture loop bridging the two. `GET /v1/runners/me/memory/{fleet_id}` seeds the run at its start; `POST` captures deltas back at run end (fencing-verified, like `/reports`). Transport detail: [`runner_fleet.md`](./runner_fleet.md) §"Memory continuity".
-
-**The load-bearing consequence**. The writer is in the key, so a new fleet is a new `fleet_id` with an empty namespace of its own. Spinning a *new ephemeral fleet per event* gives each one nothing of its own to load.
-
-Memory continuity **requires reusing the same `fleet_id`** across events. The alternative is granting the new fleet read on the workspace's shared memory, which seeds it with what publishing fleets learned.
-
-## 4. Slack threads and fleet memory
-
-Memory belongs to a fleet, not to a Slack thread.
-A mention routed to a fleet through its `mention` trigger runs with that fleet's memory, like any other turn.
-A fleet identifier alone proves neither a read nor a save.
-
-The runner reads or saves memory only under the current run fence.
-[Slack routing](connectors.md#routing-a-mention) selects the subscribed fleet; an unconfigured channel never creates a memory-owning fallback fleet.
-
-## 5. Categories, selection, tools: see the topic docs
-
-The four tools (`memory_store` / `memory_recall` / `memory_list` / `memory_forget`) and the categories live in [`capabilities.md`](./capabilities.md) §4 and the user-facing memory doc. The categories are `core` pinned into every prompt, `note` the default, `daily` 72h auto-prune and `conversation` windowed. The byte-budget category-pinned loading window and cap eviction live there too.
-
-No vector search, no scoring. Recall is a case-insensitive substring match on `key` and content. Key matches come first (`afr_memory`'s in-run store and `afd_memory`'s search statements).
-
-## 6. What reaches the model
-
-At run start, the supervisor loads the fleet's saved entries into the runner's memory tool store.
-Workspace entries join that store only when the reader holds the shared-memory grant.
-
-The prompt builder (`afr_agent`'s `prompt` module) writes the [fixed prompt text](capabilities.md#1-what-the-model-is-told-and-what-the-run-holds). Under one heading after it, it writes every `core` entry of the fleet's own that the load carried. With no pinned entry, the heading is absent.
-
-Other categories and other fleets' shared entries stay recall-only. The model reads them through `memory_recall` and `memory_list`; returned content enters the conversation as tool output.
-
-The pinned block is bounded by the load's byte budget, `af_wire::memory::LOAD_WINDOW_BYTES`. The context planner counts it against the model's window, and the saved compaction's digest covers the fixed text only.
-
-`memory_store` stores under category `note` unless the call names one, so only an explicit `core` is pinned. The fixed text tells the model to pin only when the person's newest message asks.
-
-A pinned entry stays in every later prompt until a person removes it. The fleet page's Remembers list, `agentsfleet fleet memory` and `DELETE F/memories/{key}` remove one.
-
-The implemented scopes are fleet-private and workspace-shared. There is no account-wide memory scope in `memory.entries` or the runner's loading path.
-
-## 7. Two checkpoint mechanisms
-
-| Mechanism | Trigger and content | Next run or request |
+| Fact | Value | Source |
 |---|---|---|
-| Semantic memory capture | After every five completed tool calls by default, push pending `memory_store` changes; push again before the final report | A later run of the same fleet loads saved entries into its tool store; granted readers also load workspace-shared entries |
-| Conversation compaction | Near the model's working-window limit, a metered model call summarizes selected conversation groups into `thread.compactions` | Preparation uses the fleet chat's checkpoint (any other run keeps its own in memory), original source checks and retained conversation suffix |
+| Owner of a row | One fleet, its writer, inside that fleet's workspace | `20261108124700_memory_entries.sql` |
+| Unique key | `(fleet_id, key)`; a store under an existing key replaces it | `uq_entries_fleet_id_key` |
+| Database role | `memory_runtime`, with no grant outside the `memory` schema | `20261108120100_roles_and_privileges.sql` |
+| Load window | 256 KiB of the fleet's own entries (`LOAD_WINDOW_BYTES`) | `af_wire::memory` |
+| Shared window | A quarter of that, 64 KiB, of other fleets' shared entries (`LOAD_SHARED_BYTES`) | `af_wire::memory` |
+| Capture cadence | Every five completed tool calls, plus the final deltas in the run's report | `afd_gate` context policy |
+| `daily` retention | 72 hours, removed on the fleet's next capture | `afd_memory::window` |
+| Entry count cap | None | `afd_memory::window` |
 
-Semantic capture skips empty changes and makes no summary model call.
-A failed mid-run push is logged; final capture retries before reporting, as described in [runner transport](runner_fleet.md#memory-continuity-durable-fleet-memory-rides-the-trusted-plane).
-Child loops do not run the periodic capture counter.
+## Why it exists
 
-Conversation summaries remain separate from saved semantic entries and filesystem state.
-See [conversation compaction](context_lifecycle.md) for summary generation, token measurement, publication checks and the current progress-event gap.
+A run is short-lived compute, and the runner keeps nothing between runs.
+A fleet still has to remember its owner, its deploy target and its standing rules.
+So memory lives behind `agentsfleetd`, and the runner loads it into each run and sends changes back.
 
-## 8. What a chat remembers, and what each table is for
+## How it behaves
 
-Four stores keep four different things. Each answers one question.
+### Scope and sharing
 
-| Store | The question it answers | Written by | Read by | Lives until |
-|---|---|---|---|---|
-| `thread.turns` | What was said in this chat? | Every message, as it arrives | Every run of the chat, at its start | The chat is deleted |
-| `thread.compactions` | What has a long chat been about? | A compaction, only when the chat outgrows the model's window | The next run of the same chat | Replaced by the next compaction |
-| `memory.entries` | What should this fleet remember across runs? | The model, on purpose, with `memory_store` | Every run's prompt (`core` entries) and the model, with `memory_recall` | Deleted |
-| Turn checkpoints | How does a replacement run carry on mid-turn? | The runner, while a turn runs | A replacement run, if the first one dies | The turn finishes |
+Every row belongs to one fleet and that fleet's workspace, so its identity is `(workspace_id, fleet_id, key)`.
+A row is private to its writer unless the writer holds the publish grant and its `memory_store` call named `visibility: shared`.
+A fleet holding the read grant then loads and recalls that row, which names its writer.
 
-A run reads its own chat back on every turn, so short chats need no compaction:
+Both grants are workspace settings on the fleet, `memory_reads_workspace` and `memory_publishes_workspace` on `fleet.fleets`, false by default.
+A person sets them with `PATCH F/memory-access` under `fleet:write`, where `F` is `/v1/workspaces/{workspace_id}/fleets/{fleet_id}`.
+No fleet overwrites or forgets another fleet's row, because the writer is part of the key.
+
+The daemon derives `fleet_id` from the run it issued, never from the client.
+`afd_fleet`'s `RunService::load` and `RunService::capture` refuse a runner that holds no live run on that fleet.
+
+### Isolation
+
+Memory sits in its own `memory` schema behind the `memory_runtime` Postgres role.
+The daemon's `api_runtime` role takes it with `SET LOCAL ROLE memory_runtime` inside each memory transaction, and Postgres restores the role at commit or rollback.
+The role isolates storage; workspace access and the sharing grants decide who reads what.
+
+`fleet_id` references `fleet.fleets` with `ON DELETE CASCADE`, so deleting a fleet erases its memory.
+Postgres checks that cascade with the table owner's authority, which grants `memory_runtime` nothing on `fleet.fleets`.
+
+### Categories and the load window
+
+| Category | Loaded how | Expires |
+|---|---|---|
+| `core` | First, newest first, and pinned into every prompt | Never; a person removes it |
+| `note` | The default when a call names no category; windowed by recency | Never; replaced by a store under its key |
+| `daily` | Windowed by recency | After 72 hours, on the next capture |
+| `conversation` and any custom name | Windowed by recency | Never |
+
+Loading is a pure function of the rows and the byte budget.
+Every `core` entry that fits loads first, then the newest other entries fill what remains.
+Each tier takes a prefix of its own order, so an older small entry never slips in behind a rejected newer one.
+
+What does not fit stays in Postgres and is not loaded.
+A fleet that pins everything as `core` crowds its own prompt, and its oldest `core` entries then stay unloaded.
+A non-empty fleet always loads at least one entry, even when that entry alone passes the budget.
+
+### The four tools
+
+The memory tools run in the runner's supervisor, never in the sandbox.
+
+| Tool | What it does |
+|---|---|
+| `memory_store` | Writes a key under a category, `note` by default; an existing key is replaced |
+| `memory_recall` | Finds entries by a case-insensitive substring of key or content, key matches first |
+| `memory_list` | Lists the loaded entries, optionally one category |
+| `memory_forget` | Hides a key for the rest of the current run only |
+
+A recall the loaded window cannot answer asks `POST /v1/runners/me/memory/{fleet_id}/recall`, at most three times per run (`RECALL_MISS_CAP`).
+There is no vector search and no scoring.
+
+### How memory travels with a run
 
 ```text
-turn 1    "I am Indy"          ─► thread.turns row 1
-turns 2–14 …                   ─► thread.turns rows 2–14
-turn 15   "who am i"
-  the run builds: fixed text + pinned memory + tools + [compaction, if any] + turns 1–14 + "who am i"
-  no compaction was needed, so the model reads turn 1 itself ─► "You're Indy"
+assign run ──► run payload carries the fleet's window (run.memory)
+                  │  (absent when the read failed: the runner calls
+                  │   GET /v1/runners/me/memory/{fleet_id} itself)
+                  ▼
+supervisor seeds afr_memory::Loaded (in memory, no disk file)
+                  │
+every 5 tool calls ──► POST /v1/runners/me/memory/{fleet_id}   (fenced)
+                  │
+report ──► carries the final deltas ──► daemon captures them,
+                                        then commits the settle
 ```
 
-A fleet's chat owns one thread, whose id is the fleet's.
-A new fleet starts with an empty thread and no memory of its own.
-When a fleet's model changes, the old compaction is not reused; the next run reads the turns themselves.
+The daemon captures a report's deltas under the run's own fencing token, in the memory role's transaction, before it commits the settle.
+The settle frees the thread, so no other run of the fleet can start between capture and commit.
+A failed capture is logged as `memory_capture_failed`, and the report still settles.
 
-## Code pointers
+Capture locks the fleet, rechecks the run's fence, reads the grants, then upserts and removes expired `daily` rows in one transaction.
+A final database-clock check refuses a capture that outlived its run while waiting.
+A share from a fleet without the publish grant is refused by `memory_store` and skipped at capture.
 
-| Concern | Owner |
-|---|---|
-| Schema (table, `(fleet_id, key)` unique constraint, role grants, `fleet_id` foreign key + cascade) | `rustd/crates/daemon/afd_db/schema/20261108124700_memory_entries.sql` |
-| The only write/read adapter (`WHERE fleet_id = $1`, `ON CONFLICT (key, fleet_id)`) | `afd_memory`'s Postgres store and its SQL statements |
-| Runner load/capture endpoints (run-derived `fleet_id`, fencing) | `afd_api_runner`'s runner memory handler |
-| Tenant read and forget (ownership-gated) | `afd_api_tenant`'s fleet memory handler |
-| The pinned block in each run's prompt | `afr_agent`'s `prompt` module |
-| A run's memory, seeded at run start and pushed before the report | `afr_memory`'s `Loaded` store |
+### Why one fleet's memory has one writer at a time
+
+The fleet's thread row admits one live run, and capture checks that run's fencing token.
+A slow old run can briefly coexist with its replacement, but only the current holder's writes land.
+A runner's concurrent runs are always different fleets, so they write different namespaces.
+
+### What reaches the model
+
+The prompt builder writes the [fixed prompt text](./capabilities.md#the-fixed-prompt), then every loaded `core` entry of the fleet's own under one heading.
+With no pinned entry, the heading is absent.
+Other categories and other fleets' shared entries stay recall-only; the model reads them as tool output.
+
+The context planner counts the pinned block against the model's window.
+A pinned entry stays in every later prompt until a person removes it, from the fleet page's Remembers list or with `DELETE F/memories/{key}`.
+The command line reads memory with `agentsfleet fleet memory list` and `search`; it cannot remove an entry.
+
+### Slack threads
+
+Memory belongs to a fleet, never to a Slack thread.
+A mention routed to a fleet through its `mention` trigger runs with that fleet's memory, like any other turn.
+An unconfigured channel never creates a fallback fleet that owns memory ([Slack routing](./slack_mentions.md#how-a-mention-is-routed)).
+
+## Limits
+
+- A new fleet is a new `fleet_id` with empty memory; continuity needs the same fleet, or the read grant on shared memory.
+- The only scopes are fleet-private and workspace-shared; there is no account-wide memory.
+- Postgres is the only store; no vendor memory store is built.
+- A runner crash loses at most the memory stored since the last push, five tool calls back.
+- Shared memory lets one fleet plant a fact another trusts; the recorded writer keeps each shared entry traceable.
+
+Habits that make the window work for a fleet:
+
+- Pin standing guidance as `core` only when a person asks.
+- Reuse stable keys: `deploy_target` beats a dated `deploy_target_jun12`.
+- Keep entries small; the budget counts bytes, so one large entry crowds out many small ones.
+
+## Related
+
+- [`context_lifecycle.md`](./context_lifecycle.md): conversation compaction, which is separate from memory.
+- [`thread_model.md`](./thread_model.md): the turns a chat reads back on every run.
+- [`checkpoints.md`](./checkpoints.md): how a replacement run resumes a turn.
+- [`capabilities.md`](./capabilities.md): why pinned memory is advisory, never enforcement.
+- [`runner_fleet.md`](./runner_fleet.md): the runner plane memory travels over.

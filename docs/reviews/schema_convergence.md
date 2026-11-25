@@ -1,6 +1,8 @@
 # Schema convergence
 
-Chat and durable tasks each write their own tables. This page asks, table by table, whether each should fold into the thread model: threads, turns, runs and items ([`thread_model.md`](./thread_model.md)).
+> Review notes moved out of `docs/architecture/`. The M256_002 spec will take this page as its Discovery.
+
+Chat and durable tasks each write their own tables. This page asks, table by table, whether each should fold into the thread model: threads, turns, runs and items ([`thread_model.md`](../architecture/thread_model.md)).
 
 Indy ruled on every row on Nov 24, 2026, in `M256_001`: fourteen tables become eight. He chose the reviews' end state after the Fable review's objections were put to him. `M256_002` builds the folds.
 
@@ -27,7 +29,7 @@ Facts are read from the schema files under `rustd/crates/daemon/afd_db/schema/` 
  runner.decision_calls                         runner.decision_calls    (stays: a ledger)
 ```
 
-Fourteen tables become nine, and the six durable-task tables become two. Zero is rejected: one long-lived turn per task would block the queue head ([`durable_tasks.md`](./durable_tasks.md), "A wait is separate from its settled turn").
+Fourteen tables become nine, and the six durable-task tables become two. Zero is rejected: one long-lived turn per task would block the queue head ([`durable_tasks.md`](../architecture/durable_tasks.md), "A wait is separate from its settled turn").
 
 ## One row per table
 

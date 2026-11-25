@@ -1,272 +1,148 @@
-# Shared conversation compaction
+---
+type: explanation
+audience: contributor
+verified: 2026-11-25
+product_version: 0.90.0
+executable: false
+---
 
-> Read this when a fleet run approaches the selected model's working window. Parent: [Architecture](README.md).
+# Context lifecycle: compacting a conversation near the model's window
 
-## Approved behavior
+> Read this when a fleet's run approaches the selected model's context window. Parent: [`README.md`](./README.md) · User-facing: [docs.agentsfleet.net/concepts/context-lifecycle](https://docs.agentsfleet.net/concepts/context-lifecycle).
+
+## What it is
+
+Compaction replaces the older part of a long conversation with a model-written summary, so the same run keeps going.
+The runner does it before a model request would overflow the model's context window, the most input the model accepts.
+The `af_context` crate plans it; the runner makes the model call; the daemon only stores the result.
+
+| Fact | Value | Source |
+|---|---|---|
+| Compaction fires at | 90 percent of the window, or earlier when input plus reserved output passes 95 percent | `af_context::window` |
+| History read in pages of | 64 complete groups | `af_context::plan` |
+| Recent groups kept verbatim | Up to 2 | `af_context::plan` |
+| Summary output | At most 2,048 tokens; at most 32,768 bytes after validation | `af_context::summary` |
+| Saved summaries | One `thread.compactions` row per thread | `20261108123655_thread_compactions.sql` |
+| Who saves one | A fleet chat's root run, through the `context_load` and `context_save` stream verbs | `afr_agent` loop context |
+
+A group is one complete exchange: an assistant message with its tool results, or one authored message.
+
+## Why it exists
+
+A fleet chat can run for weeks, and no model window holds all of it.
+Cutting old messages by count loses decisions and breaks tool call and result pairs.
+A checked summary keeps the goal, the decisions and the open work, and the run continues with its tools.
+
+## How it behaves
+
+### Deciding to compact
 
 ```text
-                 Fleet run
-                     |
-                 af_context
-                  /      \
-          summarize      checkpoint
-              |              |
-        metered call   guarded daemon storage
-              |              |
-              +------+-------+--> continue the same work
+history + fixed prompt + pinned memory + current request
+                        │
+            measure the provider request
+                        │
+                fits the window? ──yes──► send the model call
+                        │ no
+                        ▼
+    summarize an older prefix of groups (one model call, tools off)
+                        │
+       validate ──► save under the run's fence (fleet chat only)
+                        │
+                        └──► measure again, then send
 ```
 
-The selected model supplies its physical window. Preflight compacts at 90 percent input fill, or earlier when input plus reserved output would exceed 95 percent.
+The planner checks every physical request: ordinary turns, tool continuations and summary calls.
+After a summary is published, it measures the shorter request again before sending it.
 
-Preparation measures the serialized provider request. This covers request fields but does not reproduce every model's native token framing.
+### Producing a summary
 
-Finite output, money, physical-call, runtime and cancellation limits still apply.
-No independent 32,768-token input allowance or lifetime 64-message refusal remains.
+The planner reads history oldest first, in pages of 64 groups, and never splits a group.
+At the end of history, it keeps up to two recent groups verbatim and summarizes an older prefix.
+At least one group must go into the summary.
 
-`af_context` owns history selection, summary format, checkpoint validation and restoration.
-`HistorySource`, `TokenEstimator`, `Summarizer` and `CheckpointStore` adapt effects.
-Known adapters use generics; selected runtime effects use object-safe trait objects.
+Selection follows time order; nothing ranks messages by keyword or importance.
 
-Cancellation uses `Fn`; progress observations use `FnMut`; an owned prepared publication consumes a `FnOnce` callback.
-Database generation and source guards make repeated writes idempotent.
+If the summary request itself is too large, the planner halves the prefix until it fits.
+Groups left out stay in the original history for the next compaction.
+If no complete group fits, preparation returns a window error and sends nothing.
 
-Original history remains available. The fixed prompt text, the pinned memory, authoritative state and the current request are never summarized.
-Summaries and quoted prior conversation are untrusted data.
+The selected conversation model gets one request with tools turned off and fixed instructions from `af_context`'s summary module.
+The input quotes the previous summary and the selected groups as JSON.
+The instructions ask for the goal, constraints, decisions, completed work, remaining work and exact references, with open failures kept.
 
-Whole tool call/result groups remain atomic; opaque native continuations never replay against a changed prefix.
-Retained tool results keep their image blocks. A prefix change clears native replay from existing assistant messages; replay produced afterward stays with its turn.
+The reply must hold only the expected JSON fields and pass validation.
+A partial reply, a tool call, a malformed summary or missing usage publishes nothing.
+Validation proves shape and source identity, never that every relevant fact survived.
 
-Summarization disables tools and uses the normal physical-request meter.
-Unknown usage cannot become zero or authorize a resend.
+### Measuring tokens
 
-## How a summary is produced
+`guffbolt_ai::wire::input_tokens` counts tokens with `tiktoken-rs` for models whose encoding it knows.
+Any other model gets the `o200k_base` count plus a quarter, rounded up (`PROXY_HEADROOM_PERCENT`).
+The count covers the serialized request, including tools and replay data, plus 32 tokens per history message.
 
-The planner reads chronological history in pages of at most 64 complete groups, preserving each assistant/tool-result group.
-This page size does not limit conversation lifetime.
-After checking an existing checkpoint against its source, preparation measures the remaining groups with that summary and current request.
+Near the limit, the run can ask the provider's own count endpoint, through the Responses, Messages or Gemini API.
+That check starts at 80 percent of input plus reserved output and has a ten-second deadline.
+A failed count stops that request; it never becomes a zero count or a paid retry.
 
-When preparation reaches the end of history, compaction retains up to two recent groups verbatim and summarizes an older prefix.
-At least one group must enter a summary.
+The estimate only decides fit; provider-reported usage is what the payer is charged.
+The `model_input_calibration` trace records each call's estimate beside the provider's reported input.
 
-If the threshold is reached before history ends, the selected prefix can contain all groups read so far.
-Selection follows chronology; it does not rank messages by keywords or importance.
+### What the model sees after compaction
 
-The planner measures the summary request separately, including its reserved output.
-An oversized request repeatedly halves the selected prefix until it fits; material beyond that prefix remains in original history for subsequent preparation.
-If no complete group fits, preparation returns a window error and sends no summary request.
+The summary goes in as untrusted conversation data, before the retained groups and the current request.
+The fixed prompt text, the pinned memory and the current request are never summarized.
+Image blocks in retained tool results stay; native replay recorded before the new prefix is dropped.
 
-The selected conversation model receives one tools-disabled request with fixed instructions from `af_context`'s summary module.
-The input quotes the previous summary and selected complete conversation groups as JSON.
-The instructions request the goal, constraints, decisions, completed work, remaining work and exact references, preserving uncertainty and unresolved failures.
+### Where a summary is saved
 
-The model writes the summary. The shared Rust planner selects its source material; a local text-shortening algorithm does not generate the notes.
-The response must contain only the expected JSON fields and pass bounded validation.
+Only a fleet chat's root run saves: a `chat` turn not bound to a durable task or a recovery.
+It loads its thread's row with `context_load` before its first model call and skips the turns that row covers.
+Each later compaction that covers earlier turns whole saves the next row with `context_save`.
 
-Output is capped at 2,048 tokens, subject to the remaining host allowance; the validated summary is limited to 32,768 bytes.
-An incomplete response, tool call, malformed summary or missing usage cannot publish a checkpoint.
+Every other run keeps its summary in its own memory and stores none.
+A loaded row is used only when its fleet, model and prompt identity match, so a model change starts from the turns.
+A failed load keeps the run's summaries in memory and saves nothing.
 
-Validation proves the document's shape and source identity; it cannot prove that the model preserved every relevant fact.
+The save is a compare-and-swap on the row's `resource_version`, written only while the run holds the fleet's thread at its fence.
+A superseded run's save is refused with `RUN_STALE_FENCING_TOKEN`, which fails that run; any other failed save is logged.
+The checkpoint store lives in `afd_setup`'s `context` module, and the row is deleted with its thread.
 
-Token measurement uses `tiktoken-rs` through `guffbolt_ai::wire::input_tokens` (`guffbolt-ai/src/wire/budget.rs`) for recognized model encodings.
-Other models get the `o200k_base` count plus a quarter, rounded up (`PROXY_HEADROOM_PERCENT`).
+### What a person sees
 
-That headroom is temporary. The `model_input_calibration` trace records each call's estimate beside the provider's reported input. Per-model ratios read from it replace the single number.
+The runner sends `context_progress` on the fleet's activity stream, with a generation and one of three states.
 
-Measurement covers the serialized provider request, including tools and replay data, plus 32 tokens per history message.
+| State | Label in the browser |
+|---|---|
+| `summarizing` | Compacting context · This can take a few minutes |
+| `resuming` | Context compacted · Continuing… |
+| `interrupted` | Context compaction interrupted. |
 
-This estimate only decides whether the request fits; provider-reported usage determines accounting.
-Each physical request is checked, including ordinary turns, tool continuations and summary calls.
-After publishing a summary, preparation measures the shorter continuation again before sending it.
+The browser takes notices only for a known running message and ignores older generations.
+Reconnect, cancellation or completion clears the label, and reply text replaces it.
+Summary text never reaches the browser.
 
-An OpenAI-compatible transport does not establish a model's tokenizer: an unrecognized model gets the `o200k_base` estimate, never an exact count.
+### Traces
 
-Serialized JSON tokenization and the `o200k_base` estimate are not proven upper bounds on the provider's formatted input.
-A model whose vocabulary makes about a third more tokens than `o200k_base` can pass its working window before compaction fires.
-The [token counting decision rubric](../reviews/pr784-tokenizer-evaluation.md) records the candidate comparison and required model/request tests.
+`af_context::Trace` opens a `context.compact` span around each summary and its save.
+The events are `context_compaction_started`, `context_compaction_completed` and `context_compaction_failed`; completion is recorded only after the save commits.
+They carry the operation identifier, generations, group count, reserved output, elapsed time and error code, never prompts or summary text.
 
-Near capacity, the run can confirm the prepared request through the selected native Responses, Messages or Gemini API.
-Confirmation starts at 80 percent of input plus reserved output and has a ten-second deadline.
-Other routes retain their local estimate; a routed request is never forwarded elsewhere for counting.
+## Limits
 
-Each count binds to the request bytes, model, route settings, physical window and counting revision.
-Count failure stops that request; it cannot become a zero count or an automatic paid retry.
+- Compaction spends model calls and output tokens, metered like any other call; a refused save keeps its charge.
+- The payer's balance, output limits and a person's Stop still end work.
+- A request that cannot fit even after compaction fails before any provider call.
+- The `o200k_base` estimate is not an upper bound; a model whose tokenizer makes a third more tokens can pass its window first.
+- Saved summaries are ordinary database JSON, not encrypted per document.
+- Debug output omits summary contents, but ordinary strings holding conversation text are not wiped on release.
+- A summary cannot select a pull request, authorize a write or prove a remote action finished.
+- Compaction does not depend on the sandbox engine.
 
-After publication, preparation inserts the summary as explicitly untrusted conversation data before the retained suffix and current request.
-The fixed prompt text, the pinned memory and authoritative state stay separate from it.
+## Related
 
-A fleet chat's run loads its thread's checkpoint with `Up::ContextLoad` before its first model call ([checkpoint ownership](#checkpoint-ownership-and-storage)).
-Any other run keeps its compaction summary in its own state and stores none, so it never inherits another run's conversation checkpoint.
-
-## User-visible progress
-
-The engine offers `Read`, `Summarizing` and `Committed` observations in `af_context`'s compact module.
-Fleet runs send `context_progress` through the authenticated activity stream.
-Each notice contains a generation and a closed state: `summarizing`, `resuming` or `interrupted`.
-
-React announces “Context summarizing…” and, after the checkpoint commits, “Context summarized, resuming…”.
-An unsuccessful operation can announce “Context summarization interrupted.”
-Runtime child summaries remain private; root summaries announce progress without publishing generated notes.
-
-The browser accepts notices only for a known running message, rejects older generations and clears visible hints on reconnect, cancellation or completion.
-
-Ordinary reply text replaces the interim status. Saved history remains authoritative.
-
-## Operational traces
-
-`af_context::Trace` creates a `context.compact` span around a physical summary and its guarded publication.
-The paired events are `context_compaction_started`, `context_compaction_completed` and `context_compaction_failed`.
-Dropping unfinished work records failure; completion is recorded only after the durable commit succeeds.
-
-Fields include the caller-owned operation identifier, expected and committed generation, group count, reserved output, elapsed milliseconds and registry error code.
-Prompts, generated notes, source history and private error prose are excluded.
-
-Each finished model turn with reported input usage also emits `model_input_calibration`.
-It compares the input allowance with actual usage and records the measurement method, revision, provider API, request kind and hashed model/route identities.
-
-Missing usage produces no fabricated zero; prompts, credentials, URLs and request digests are excluded.
-
-## Checkpoint ownership and storage
-
-The `thread.compactions` table holds a conversation's working state, one row per thread, separate from semantic memory.
-A row belongs to its thread, and so to the fleet whose id the thread carries.
-
-A fleet chat's run loads its thread's row through the fenced `context_load` verb, opens on the summary in place of the turns it covers, and saves the next summary through `context_save` whenever its in-run compaction covers earlier turns whole.
-Any other run holds its compaction summary in the loop's own state. It stores no row, calls no route and holds no datastore credential for it.
-
-Checkpoint restoration checks model/inference identity, trusted pinned-state identity, source coverage, source digest and generation.
-
-A foreign key removes a checkpoint with its thread, and so with its fleet, workspace or tenant.
-
-The save is a compare-and-swap on the row's `resource_version`.
-It is written only while the run holds the fleet's thread at its fence (`afd_setup`'s `context` statements).
-
-A superseded run's save is refused with `RUN_STALE_FENCING_TOKEN` and writes nothing. A stale generation cannot replace current state either.
-An incurred charge survives a refused save.
-
-The run skips the turns a loaded checkpoint covers.
-When the window fills, guffbolt's window hook compacts the oldest turns, and the run saves the hook's output.
-The daemon makes no model call for compaction.
-
-## Tenant boundaries and sensitive buffers
-
-A fleet run reads its thread's checkpoint only while it holds that thread at its fence.
-
-The checkpoint table uses the shared daemon database role; these application checks enforce tenant access.
-
-Runtime credential wrappers use `Zeroizing<String>`, and the run's secret scrubber cleans model-written summary output before decoding.
-Debug formatting for groups, summaries and checkpoints omits private contents.
-These protections do not cover every conversation allocation.
-
-Groups and summary fields use ordinary strings and vectors, and compaction serialization returns an ordinary string.
-The checkpoint layer does not guarantee overwriting those allocations or tokenizer temporaries when they are released.
-
-Saved checkpoint documents are ordinary database JSON; this layer does not encrypt individual documents.
-Access isolation, buffer wiping and protection against a compromised daemon or host require separate evidence.
-
-## Implementation scope
-
-The shared engine is the `af_context` crate. Its window, planner, compaction, checkpoint, summary and trace modules sit beside adapters in the daemon's repository modules.
-The checkpoint table is `rustd/crates/daemon/afd_db/schema/20261108123655_thread_compactions.sql`, registered in `afd_db`'s migration list.
-
-The checkpoint store lives in `afd_setup`'s `context` module.
-The runner protocol lives in `af_wire` (run payloads, the context load and save payloads, and runner route declarations) and the generated `public/openapi.json`.
-
-Runtime use lives in `afr_agent` (context and loop modules, provider request estimation) and `afd_gate`'s context policy.
-
-Status and traces reach the browser through shared activity payloads.
-The app's fleet stream reducers, projections and accessible status components render them.
-Evidence lives in host unit and integration tests, the unchanged continuity acceptance, and the architecture pages this one links.
-
-## Required proof
-
-Run `make acceptance` after integration. Its soak test keeps one fleet through a long chat and three pinned rules, then runs it on several fleets at once (`ui/packages/app/tests/e2e/acceptance/fixtures/soak-scenario.ts`). Record that result separately from focused proofs that force repeated compactions.
-
-Retain the historical failed run.
-
-Prove source paging past 64 turns and input past 32,768 when the physical window fits.
-Test exact trigger/output boundaries, repeated compaction and restore, model changes, atomic tool groups and native replay.
-
-Also test private scope isolation and deletion, stale authority/generation, cancellation, output and physical-call budgets, known/unknown usage and the funds check. The separate concurrent-browser failure remains an independent acceptance concern.
-
-## Preparation and future sandbox boundary
-
-[Durable tasks](durable_tasks.md#combined-repair-acceptance) add task-bound recovery and Jev goal evaluation. Compaction remains the model-input mechanism; a summary cannot select a PR, authorize a write or prove that a remote action completed.
-
-**Owner request, Oct 24, 2026: 10:21 PM:**
-
-```text
-i request you to do a large refactor of this area considering the fact that we will support or may move to use SPACE
-```
-
-This extends the approved compaction implementation in PR #784.
-
-**Goal:** A run's context lifecycle stays storage-independent, and its preparation work grows linearly with retained history. Independent conversations make progress concurrently.
-
-**Owner-selected direction:** Use SPACE (`Sandboxed Platform for Agentic Code Execution`) approaches and selected source in an `agentsfleet`-owned sandbox. Retain control over performance and future changes. Broad platform integration and operating SPACE as a service are outside this direction.
-
-No copied component or native backend implementation has been selected. Conversation notes remain application-owned behind the daemon's authenticated checkpoint API. The [sandbox evaluation](sandbox_evaluation.md) owns the source-reuse criteria and proposed Git/recovery walkthrough; the [working brief](../../concepts_brief.md) records brainstorming inputs.
-
-**Reference checked:** Local SPACE revision `20d321385dac0855b39f86cd93c008ff5ec4ce3c`, README, architecture request flow and lifecycle, native command-session recovery, and PostgreSQL contention classification. Accepted sandbox operations require readiness checks. Command sessions, attachment credentials and sandbox snapshots have separate lifetimes.
-
-**Golden path:** Read the current authority and model. Read original conversation groups or verify an owned immutable prefix. Prepare complete provider input.
-
-Funds are checked at assignment and at each renewal, outside the model call.
-
-Save known usage and the compacted notes under the run's fence. Continue through the same executor interface, independently of sandbox backend.
-
-**Implemented preparation:** The shared planner uses geometrically spaced probes and a final complete provider estimate.
-Each runtime conversation owns an encoded-history index with prefix digests.
-The index re-encodes the mutable final group and newly appended history.
-
-The estimator-work regression measures linear encoding work.
-
-**Future sandbox work:** Checkpoint storage remains behind the daemon API; the optional PostgreSQL feature keeps database dependencies out of runtime builds.
-Git worktree recovery across runs and a Go/Firecracker backend remain separate proposal and implementation work.
-
-**Concurrency:** No global conversation lock or shared mutable history cache. One runtime loop owns its index.
-
-Database writes retain generation checks and live-run fencing. Cancellation and failed publication retain accounted model work.
-
-**Quality ceiling:** Measure work with deterministic counters before claiming throughput improvements. The full browser scenario and real storage races remain required. A native guest engine informed by SPACE needs its own implementation and real-backend evidence.
-
-**Files**: the `af_context` planner, ports and tests. The files also include the runtime context index and estimator, affected workspace manifests and this page. Existing in-sandbox server and sandbox interfaces provide part of the backend boundary.
-
-Repository preparation still requires a host-visible path.
-
-A new checkpoint-storage crate is conditional on a demonstrated dependency benefit. No acceptance limits or gate implementation changes.
-
-## Proposed DT handoff and steering
-
-M236 adds an authorized cross-run handoff through [Durable Task (DT) manifests](durable_tasks.md).
-The manifest binds conversation coverage, source digest, file/Git generation and confirmed effects together.
-Keep current run-scoped validation until that explicit handoff succeeds.
-
-A new chat run currently carries up to eight finished question/answer turns. They are bounded by 65,536 bytes overall and 16,384 bytes per text. See `afd_fleet`'s run history and `af_wire`'s run payload.
-
-That window does not replay every previous tool record or inherit another run's summary.
-
-```text
-Current request: fixed text + pinned memory + bounded prior chat + newest turn
-Within run:   prepared history + assistant calls + matching tool results
-After compact:  fixed text + pinned memory + validated summary + retained groups + new input
-DT resume:      compatible handoff + accepted input beyond checkpoint cursor
-```
-
-Codex source comparison uses `openai/codex` revision `05c08d76552371400d273d4539c2a116d6340755`.
-Codex [turn handling](https://github.com/openai/codex/blob/05c08d76552371400d273d4539c2a116d6340755/codex-rs/core/src/session/turn.rs) drains eligible pending input before prompt assembly and prepares history with current tools.
-Its `client.rs` can send a full prepared request or an eligible WebSocket continuation with `previous_response_id` and incremental input.
-
-That transport shortcut preserves logical context and does not establish hidden server behavior.
-Its `compact.rs` replaces and saves working history through an explicit compaction path.
-These observations come from source inspection, not a captured request from Indy's desktop session.
-
-A message sent while its fleet's run is live now folds into that run.
-The send answers disposition `folded` with `folded_into_turn_id`, and the running run claims the fold at its next model call (a native `folds` request).
-The folded message's own turn receives the run's reply when the run reports succeeded.
-
-Dispositions are `started`, `folded` and `queued`.
-A folded message joins a task only when the fleet's model calls `task_input` on it ([how a task starts](durable_tasks.md#how-a-task-starts)).
-The next request would carry the task's statements, DT state, compatible history, current tools and accepted input beyond the checkpoint cursor.
-
-Removing a steer from the queue does not mark its meaning or effects checkpointed.
-Recovery replays accepted input and reconciles recorded effects before another action.
+- [`memory.md`](./memory.md): saved facts across runs, separate from summaries.
+- [`runner_execution.md`](./runner_execution.md): the chat history each run carries.
+- [`runner_fleet.md`](./runner_fleet.md): steering, and how a message folds into a live run.
+- [`durable_tasks.md`](./durable_tasks.md): how a task's run resumes from a checkpoint.
+- [`../reviews/pr784-tokenizer-evaluation.md`](../reviews/pr784-tokenizer-evaluation.md): the token-counting comparison.

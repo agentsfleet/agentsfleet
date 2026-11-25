@@ -264,7 +264,7 @@ impl Loaded<'_> {
     /// fleet's own ahead of the workspace's shared ones, at most `limit`; an
     /// empty query holds in every entry. The model reads what comes back and
     /// decides what is relevant: a substring match is the ceiling on search
-    /// (`docs/architecture/direction.md`).
+    /// (`docs/architecture/memory.md` §"The four tools").
     ///
     /// # Errors
     /// The query cannot be searched for.

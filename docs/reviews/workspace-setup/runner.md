@@ -100,6 +100,6 @@ A wallet lock does not reserve funds; a fence does not cancel upstream billing; 
 ## Related pages
 
 - [Resource reference](../../architecture/api_resources.md)
-- [Creation](../../architecture/data_flow.md#fleet-creation-and-setup-recovery)
+- [Creation](../../architecture/data_flow.md#create-and-recovery)
 - [Runtime baseline](runtime-baseline.md)
-- [End-to-end flow](../../architecture/data_flow.md#fleet-setup-and-runtime-sequence)
+- [End-to-end flow](../../architecture/data_flow.md#the-path-in-one-picture)

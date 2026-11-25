@@ -28,7 +28,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Provenance:** LLM-drafted (Claude Opus 5.5, Nov 17, 2026), moved out of the Nov 06 M246_001 draft at Indy's request; §2 is the former pending M240_001 audit, written at Indy's explicit audit request (Nov 04, 2026, baseline `1920ff345`)
 
-**Canonical architecture:** `docs/architecture/runner_protocol.md` §"Certificates and configuration" and §"Connection direction and deployment" own the stream route §1 changes; `docs/AUTH.md` §"Runner token (`agt_r`) — the machine principal" owns the trust model
+**Canonical architecture:** `docs/architecture/runner_protocol.md` §"Settings and certificates" and §"Transports and fallback" own the stream route §1 changes; `docs/AUTH.md` §"Runner token (`agt_r`) — the machine principal" owns the trust model
 
 ---
 
@@ -111,7 +111,7 @@ rotate: current ← new digest, previous ← old digest until now + RUNNER_TOKEN
 | `ui/packages/app/lib/api/tenant_runners.ts`, `lib/auth/scopes.ts`, `lib/analytics/events.ts` | CREATE, EDIT | §6 |
 | `ui/packages/app/app/(dashboard)/admin/runners/components/RunnerTile.tsx`, `AddRunnerDialog.tsx` | EDIT | §6: tenant badge; the dialog takes its server action |
 | `ui/packages/app/tests/runners-settings-*.test.tsx`, `tests/e2e/acceptance/settings-runners.spec.ts` | CREATE | §6 |
-| `docs/AUTH.md`, `docs/architecture/runner_protocol.md`, `runner_fleet.md`, `billing_and_provider_keys.md`, `runner_execution.md`, `postgres_schemas.md`, `observability.md` | EDIT | §7; `runner_execution.md` also records §2's observed results |
+| `docs/AUTH.md`, `docs/architecture/runner_protocol.md`, `runner_fleet.md`, `billing.md`, `runner_execution.md`, `postgres_schemas.md`, `observability.md` | EDIT | §7; `runner_execution.md` also records §2's observed results |
 | `public/openapi.json` | EDIT (regenerated with `--no-banner`) | §7 |
 | `~/Projects/docs`, branch `chore/m251-tenant-runners-changelog` | EDIT | §7 |
 
@@ -224,7 +224,7 @@ Settings → Runners (`app/(dashboard)/settings/runners/`) shows only with `runn
 
 ### §7 — The docs follow
 
-`runner_protocol.md` documents the public route, its trust and the external runner's prerequisites. `docs/AUTH.md` adds overlap rotation, the token file and proxied model access. `runner_fleet.md` adds the placement setting. `billing_and_provider_keys.md` states that proxied usage is metered by the daemon. `runner_execution.md` records §2's observed results and notes that a proxied lease's supervisor holds no key. `public/openapi.json` is regenerated. The docs repository's "Run your own runner" page gains the public URL, the token file and SIGHUP.
+`runner_protocol.md` documents the public route, its trust and the external runner's prerequisites. `docs/AUTH.md` adds overlap rotation, the token file and proxied model access. `runner_fleet.md` adds the placement setting. `billing.md` states that proxied usage is metered by the daemon. `runner_execution.md` records §2's observed results and notes that a proxied lease's supervisor holds no key. `public/openapi.json` is regenerated. The docs repository's "Run your own runner" page gains the public URL, the token file and SIGHUP.
 
 - **Dimension 7.1** — the pages read clean → Test `orly gate verify` (integration): zero `docs.language` findings on the changed pages.
 

@@ -1,5 +1,5 @@
 //! The two server steps of the first-message-to-fleet funnel
-//! (`docs/architecture/product_analytics.md` §"First message to fleet funnel").
+//! (`docs/architecture/product_analytics.md` §"Daemon events").
 //!
 //! # No field can hold what a person wrote
 //!

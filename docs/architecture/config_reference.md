@@ -1,14 +1,53 @@
-# `agentsfleetd` and `agentsfleet-runner` configuration reference
+---
+type: explanation
+audience: operator
+verified: 2026-11-25
+product_version: 0.90.0
+executable: false
+---
 
-`agentsfleetd` reads one TOML file, named by `--config FILE` or `AGENTSFLEET_CONFIG_FILE`.
-`agentsfleet-runner` reads one TOML file, named by `AGENTSFLEET_RUNNER_CONFIG_FILE`.
-Every key is optional, and each default below is the value in code today.
+# Configuration reference: `agentsfleetd` and `agentsfleet-runner`
 
-The daemon's parser is `rustd/crates/daemon/main/src/config/` (`settings.rs`, `tuning.rs`, `mod.rs`).
-The runner's parser is `rustd/crates/runner/main/src/config/` (`mod.rs`, `tuning.rs`).
-The Fly files in `deploy/fly/` and `deploy/baremetal/agentsfleet-runner.toml` carry the tuning knobs below with comments.
+> Read this when you change a daemon or runner configuration key, or when a deployment is slow or refuses work under load. Parent: [`README.md`](./README.md).
 
-## Tuning for performance
+## What it is
+
+Each binary reads one TOML file, and every key in it is optional.
+
+| Binary | File named by | Parser |
+|---|---|---|
+| `agentsfleetd` | `--config FILE` or `AGENTSFLEET_CONFIG_FILE` | `rustd/crates/daemon/main/src/config/` (`settings.rs`, `tuning.rs`, `mod.rs`) |
+| `agentsfleet-runner` | `AGENTSFLEET_RUNNER_CONFIG_FILE` | `rustd/crates/runner/main/src/config/` (`mod.rs`, `tuning.rs`) |
+
+Each default below is the value in code today.
+The Fly files in `deploy/fly/` and `deploy/baremetal/agentsfleet-runner.toml` carry the tuning keys with comments.
+
+A minimal daemon file that raises the request ceiling and names a smaller pool:
+
+```toml
+[server]
+max_in_flight_requests = 512
+
+[database]
+max_connections = 10
+```
+
+A file with an unknown key, such as a retired `[fleets]` section, stops boot before any socket opens:
+
+```text
+agentsfleetd cannot boot: 1 environment fault
+  AGENTSFLEET_CONFIG_FILE is set but unusable <varies>
+```
+
+## Why it exists
+
+Every limit in code is a constant first, so a deployment with no file runs on tested defaults.
+The file exists for the numbers an operator must move for one deployment: pool sizes, ceilings and timeouts.
+Boot refuses a bad value instead of guessing, so a typo never ships silently.
+
+## How it behaves
+
+### Tuning for performance
 
 Start here when a deployment is slow or refusing work under load.
 Each row reads as: what you see, the key, which way to move it, and what the move costs.
@@ -34,15 +73,13 @@ Each row reads as: what you see, the key, which way to move it, and what the mov
 | Long model replies fail mid-stream after a silence | Runner `[inference] stream_idle_timeout_seconds` (300) | Raise | A stuck provider holds the run longer |
 | Decision calls time out on a slow model | Runner `[provider] decision_call_timeout_seconds` (12) | Raise | A stuck call holds the run longer |
 
-Two knobs people look for have no file key today.
-A runner's worker count comes from the daemon over the runner link (`afr_supervisor/src/worker_pool/mod.rs`).
-Command output is cut to 512 kibibytes (KiB) from each end by a constant shared by `guffbolt` and the in-sandbox process (`EDGE_BYTES`).
+A runner's worker count has no file key; the daemon sends it over the runner link (`afr_supervisor/src/worker_pool/mod.rs`).
 
-## `agentsfleetd` keys
+### `agentsfleetd` keys
 
 Sizes use mebibytes (MiB) and kibibytes (KiB). A count, size or timeout refuses `0` unless the table says otherwise.
 
-### `[server]`
+#### `[server]`
 
 | Key | Default | Change it when… |
 |---|---|---|
@@ -57,7 +94,7 @@ Sizes use mebibytes (MiB) and kibibytes (KiB). A count, size or timeout refuses 
 | `max_request_body_mib` | 1 | Senders get `413` for bodies they need to send, such as webhook deliveries; lower it when large bodies use too much memory. A route that carries chat text or a runner frame reads the larger size that text or frame needs |
 | `read_timeout_seconds` | 300 | Clients on slow links are dropped while still sending a request; lower it when stalled connections hold sockets too long. It is the time a client gets to send a request's headers, and then its body; past it the connection is dropped. It never cuts a response, so live streams are unaffected. An idle HTTP/1 keep-alive connection closes after the same time |
 
-### `[api]`
+#### `[api]`
 
 | Key | Default | Change it when… |
 |---|---|---|
@@ -66,9 +103,9 @@ Sizes use mebibytes (MiB) and kibibytes (KiB). A count, size or timeout refuses 
 | `default_thread_page_size` | 25 | The chat view loads too few or too many messages at first |
 | `max_thread_page_size` | 100 | Large chat reads slow the database |
 
-### `[database]`
+#### `[database]`
 
-These are defaults for both roles. The environment and the role sections can win over them; see Boot checks.
+These are defaults for both roles. The environment and the role sections can win over them; see Precedence.
 
 | Key | Default | Change it when… |
 |---|---|---|
@@ -79,7 +116,7 @@ These are defaults for both roles. The environment and the role sections can win
 | `idle_timeout_minutes` | 10 | Idle connections crowd Postgres, or reconnects are frequent |
 | `max_connection_lifetime_minutes` | 30 | A Postgres failover takes too long to be picked up |
 
-### `[database.api]` and `[database.migrator]`
+#### `[database.api]` and `[database.migrator]`
 
 Each key overrides `[database]` and the environment for that role only.
 
@@ -93,14 +130,14 @@ Each key overrides `[database]` and the environment for that role only.
 | `max_lifetime_seconds` | from `[database]` | One role should pick up a failover sooner |
 | `ping_after_idle_ms` | 1,000 | Connections that sat idle fail on first use |
 
-### `[database.migration]`
+#### `[database.migration]`
 
 | Key | Default | Change it when… |
 |---|---|---|
 | `lock_max_attempts` | 30 | Deploys fail because another replica holds the migration lock |
 | `lock_retry_interval_ms` | 1,000 | You want lock polls closer together or further apart |
 
-### `[runner.listener]`
+#### `[runner.listener]`
 
 | Key | Default | Change it when… |
 |---|---|---|
@@ -109,14 +146,14 @@ Each key overrides `[database]` and the environment for that role only.
 | `tls_key_file` | required | The private key moves |
 | `max_udp_payload_bytes` | 1,232 | The network path carries larger packets than a 1,280-byte IPv6 path |
 
-### `[runner.stream.control]` and `[runner.stream.data]`
+#### `[runner.stream.control]` and `[runner.stream.data]`
 
 | Key | Default | Change it when… |
 |---|---|---|
 | `control.max_buffered_bytes` | 16 MiB | Heartbeats and renewals queue behind each other under many runners |
 | `data.max_buffered_bytes` | 64 MiB | Work offers and reports queue under many busy runners |
 
-### `[runner.run]`, `[runner.health]`, `[runner.sandboxes]`
+#### `[runner.run]`, `[runner.health]`, `[runner.sandboxes]`
 
 | Key | Default | Change it when… |
 |---|---|---|
@@ -126,14 +163,14 @@ Each key overrides `[database]` and the environment for that role only.
 | `health.healthy_before_uncordon_seconds` | 30 | A recovered runner should get work sooner or later |
 | `sandboxes.max_idle_hold_seconds` | 600 | Frozen sandboxes hold host resources too long, or follow-ups miss a warm sandbox |
 
-### `[runner.recovery]` and `[runner.scheduling]`
+#### `[runner.recovery]` and `[runner.scheduling]`
 
 | Key | Default | Change it when… |
 |---|---|---|
 | `recovery.resume_from_checkpoint` | `false` | You want a lost run to resume from its checkpoint |
 | `scheduling.max_concurrent_recovery_assignments` | 8 | Catch-up after a wake link restart is slow, or loads the database |
 
-### `[runners]`
+#### `[runners]`
 
 | Key | Default | Change it when… |
 |---|---|---|
@@ -144,7 +181,7 @@ Each key overrides `[database]` and the environment for that role only.
 
 The daemon sends `max_message_mib` and `max_control_message_mib` to each runner when it connects.
 
-### `[nats]`
+#### `[nats]`
 
 | Key | Default | Change it when… |
 |---|---|---|
@@ -153,19 +190,19 @@ The daemon sends `max_message_mib` and `max_control_message_mib` to each runner 
 | `default_wake_queue_size` | 64 | You want another queue size when neither of the above names one |
 | `max_wake_queue_size` | 65,536 | You need a wake queue larger than 65,536 |
 
-### `[turns]` and `[turns.checkpoints]`
+#### `[turns]` and `[turns.checkpoints]`
 
 | Key | Default | Change it when… |
 |---|---|---|
 | `max_runs_per_turn` | 3 | Turns fail after runner crashes that a further try would survive |
 | `max_queued_turns` | 100,000 | New messages are refused in a burst, or a backlog waits too long |
 | `history_turns_per_page` | 100 | Loading chat history for a run is slow |
-| `checkpoints.retention_days` | 7 | No effect today; see below |
+| `checkpoints.retention_days` | 7 | No effect today; see Limits |
 | `checkpoints.transfer_window_minutes` | 15 | Large checkpoint uploads or restores run out of time |
 | `checkpoints.restore_pin_minutes` | 2 | A restore loses its checkpoint to deletion mid-way |
 | `checkpoints.orphan_after_minutes` | 60 | Uploads that never finished hold storage too long |
 
-### `[context]`
+#### `[context]`
 
 | Key | Default | Change it when… |
 |---|---|---|
@@ -175,32 +212,29 @@ The daemon sends `max_message_mib` and `max_control_message_mib` to each runner 
 | `default_tool_window_count` | 20 | Mid-size models run out of context, or forget recent tool calls |
 | `large_tool_window_count` | 30 | Large models could keep more tool history |
 
-### `[billing]`
+#### `[billing]`
 
 | Key | Default | Change it when… |
 |---|---|---|
 | `billing.price_book_cache_count` | 1,024 | You meter more models than the cache holds |
 
-### `[durable_tasks]` and `[durable_tasks.checkpoints]`
+#### `[durable_tasks]` and `[durable_tasks.checkpoints]`
 
 | Key | Default | Change it when… |
 |---|---|---|
 | `slice_seconds` | 600 | Tasks should check their funds more or less often |
 | `operation_timeout_seconds` | 30 | GitHub reads or storage calls inside a task time out |
-| `terminal_retention_days` | 7 | No effect today; see below |
-| `checkpoints.keep_generations` | 3 | No effect today; see below |
+| `terminal_retention_days` | 7 | No effect today; see Limits |
+| `checkpoints.keep_generations` | 3 | No effect today; see Limits |
 | `checkpoints.upload_link_ttl_minutes` | 5 | Runners' upload links expire before large uploads start |
 | `checkpoints.download_link_ttl_minutes` | 5 | Runners' download links expire before large downloads start |
 | `checkpoints.transfer_window_minutes` | 15 | Large task checkpoints run out of time |
 | `checkpoints.restore_pin_minutes` | 30 | A restore loses its checkpoint to deletion mid-way |
 | `checkpoints.orphan_after_minutes` | 60 | Uploads that never finished hold storage too long |
-| `checkpoints.objects_per_delete_call` | 256 | No effect today; see below |
+| `checkpoints.objects_per_delete_call` | 256 | No effect today; see Limits |
 
-Four checkpoint keys are read only by checkpoint maintenance, and no daemon code starts that maintenance today.
-They are `[turns.checkpoints] retention_days`, `[durable_tasks] terminal_retention_days`, `keep_generations` and `objects_per_delete_call`.
-Only the integration tests call `maintain_checkpoints`, so setting these keys changes nothing in a running daemon.
 
-### `[fleet.durable_tasks]` and `[fleet.durable_tasks.defaults]`
+#### `[fleet.durable_tasks]` and `[fleet.durable_tasks.defaults]`
 
 Unset, each `[fleet.durable_tasks]` limit allows any amount. The defaults apply to new objectives only.
 
@@ -221,15 +255,16 @@ Unset, each `[fleet.durable_tasks]` limit allows any amount. The defaults apply 
 | `defaults.max_publication_attempts` | 8 | New objectives need more or fewer publication tries |
 | `defaults.max_decision_calls` | 128 | New objectives need more or fewer decision calls |
 
-### `[setup]`
+#### `[setup]`
 
 | Key | Default | Change it when… |
 |---|---|---|
 | `replay_window_hours` | 24 | A repeated fleet create should replay its first answer for longer or shorter |
 
-The section takes its name from `afd_setup`, the crate that creates a fleet. Within the window, a create that repeats its `operation_id` answers the first fleet (`afd_setup/src/creation/create.rs`).
+The section takes its name from `afd_setup`, the crate that creates a fleet.
+Within the window, a create that repeats its `operation_id` answers the first fleet ([API resources](./api_resources.md#shared-wire-rules)).
 
-### `[auth]`
+#### `[auth]`
 
 | Key | Default | Change it when… |
 |---|---|---|
@@ -243,7 +278,7 @@ The section takes its name from `afd_setup`, the crate that creates a fleet. Wit
 | `jwks_stale_grace_minutes` | 15 | Sign-in fails during a short identity provider outage |
 | `jwks_min_refresh_seconds` | 30 | Unknown keys cause too many refetches |
 
-### `[credentials]`
+#### `[credentials]`
 
 | Key | Default | Change it when… |
 |---|---|---|
@@ -251,7 +286,7 @@ The section takes its name from `afd_setup`, the crate that creates a fleet. Wit
 | `platform_key_cache_minutes` | 5 | A rotated platform model key should reach runs sooner |
 | `assumed_token_ttl_minutes` | 5 | A provider's tokens without an expiry live longer or shorter |
 
-### `[connectors]`
+#### `[connectors]`
 
 | Key | Default | Change it when… |
 |---|---|---|
@@ -266,7 +301,7 @@ The section takes its name from `afd_setup`, the crate that creates a fleet. Wit
 | `qstash.max_attempts` | 3 | QStash calls fail on short outages |
 | `qstash.max_retry_delay_ms` | 800 | QStash tries should wait longer between each other |
 
-### `[outbound.retries]`
+#### `[outbound.retries]`
 
 | Key | Default | Change it when… |
 |---|---|---|
@@ -274,7 +309,7 @@ The section takes its name from `afd_setup`, the crate that creates a fleet. Wit
 | `initial_backoff_ms` | 200 | The first retry comes too soon or too late |
 | `max_backoff_ms` | 800 | Retries wait too long; each wait delays the answers behind it |
 
-### `[identity]`
+#### `[identity]`
 
 | Key | Default | Change it when… |
 |---|---|---|
@@ -284,7 +319,7 @@ The section takes its name from `afd_setup`, the crate that creates a fleet. Wit
 | `clerk_api_base` | `CLERK_API_BASE` | The Clerk API address changes |
 | `platform_admin_workspace_id` | `PLATFORM_ADMIN_WORKSPACE_ID` | The platform admin workspace changes |
 
-### `[telemetry]` and `[telemetry.otlp]`
+#### `[telemetry]` and `[telemetry.otlp]`
 
 OpenTelemetry Protocol (OTLP) is the export format for traces, logs and metrics.
 
@@ -305,7 +340,7 @@ OpenTelemetry Protocol (OTLP) is the export format for traces, logs and metrics.
 | `otlp.log_queue_capacity` | 2,048 | Log records are dropped under load |
 | `otlp.log_batch_size` | 512 | The collector refuses large batches |
 
-### `[checkpoint.storage]`
+#### `[checkpoint.storage]`
 
 Unset, the daemon stores no task checkpoints in R2, Cloudflare's object storage.
 
@@ -315,9 +350,9 @@ Unset, the daemon stores no task checkpoints in R2, Cloudflare's object storage.
 | `bucket` | none | You turn on checkpoint storage |
 | `credential_name` | none | The vault row holding the R2 credentials changes |
 
-## `agentsfleet-runner` keys
+### `agentsfleet-runner` keys
 
-### `[inference]`, `[provider]`, `[provider_retries]`
+#### `[inference]`, `[provider]`, `[provider_retries]`
 
 | Key | Default | Change it when… |
 |---|---|---|
@@ -332,7 +367,7 @@ Unset, the daemon stores no task checkpoints in R2, Cloudflare's object storage.
 | `provider_retries.initial_backoff_ms` | 1,000 | The first retry comes too soon or too late |
 | `provider_retries.max_retry_after_seconds` | 60 | Providers ask for longer waits that you want to honor |
 
-### `[supervisor]` and `[daemon]`
+#### `[supervisor]` and `[daemon]`
 
 | Key | Default | Change it when… |
 |---|---|---|
@@ -344,7 +379,7 @@ Unset, the daemon stores no task checkpoints in R2, Cloudflare's object storage.
 | `daemon.max_activity_batches_held` | 4 | Live activity is dropped while the daemon is busy |
 | `daemon.max_activity_batch_kib` | 64 | Live activity updates are split too finely |
 
-### `[sandbox]`
+#### `[sandbox]`
 
 | Key | Default | Change it when… |
 |---|---|---|
@@ -353,7 +388,7 @@ Unset, the daemon stores no task checkpoints in R2, Cloudflare's object storage.
 | `io_mib_per_second` | 200 | Disk-heavy runs are slow, or one run starves the others |
 | `ready_timeout_seconds` | 10 | New sandboxes fail to start in time on a slow host |
 
-### `[tools]`
+#### `[tools]`
 
 | Key | Default | Change it when… |
 |---|---|---|
@@ -371,7 +406,7 @@ Unset, the daemon stores no task checkpoints in R2, Cloudflare's object storage.
 | `max_file_read_mib` | 8 | File tools refuse or cut files the model needs whole, or one read holds too much memory |
 | `output_edge_kib` | 512 | Command output loses the middle the model needs, or each running command holds too much memory |
 
-### `[executor]`
+#### `[executor]`
 
 The runner starts each sandbox's executor with these sizes and holds its own end of the link to the same.
 
@@ -379,7 +414,7 @@ The runner starts each sandbox's executor with these sizes and holds its own end
 |---|---|---|
 | `max_frame_mib` | 64 | File writes are refused as longer than the executor reads, or a hostile sandbox could make the runner buffer too much |
 
-### `[egress]` and `[telemetry]`
+#### `[egress]` and `[telemetry]`
 
 | Key | Default | Change it when… |
 |---|---|---|
@@ -389,51 +424,64 @@ The runner starts each sandbox's executor with these sizes and holds its own end
 | `egress.max_secret_mask_mib` | 10 | Redirected downloads carrying many signed URLs are refused because the matcher that masks their secrets ran out of room |
 | `telemetry.max_spans_per_run` | 256 | Long runs lose trace detail, or export too much |
 
-## Boot checks
+### Boot checks
 
-`agentsfleetd` refuses a bad file before it opens a socket.
-It names the key as `AGENTSFLEET_CONFIG_FILE is set but unusable` with `UZ-STARTUP-001`.
-`agentsfleet-runner run` prints the same code and exits before it exports or dials the daemon.
+`agentsfleetd` refuses a bad file before it opens a socket, naming `AGENTSFLEET_CONFIG_FILE` with `UZ-STARTUP-001`.
+`agentsfleet-runner run` prints the same code and exits before it exports telemetry or dials the daemon.
 
-Both binaries refuse:
-
-- an unknown key or section, including the retired `[maintenance]`, `[inference]`, `[authoring.turn]` and `[fleets]` daemon sections;
-- a count, size or timeout of `0`;
-- a default above its ceiling: page sizes, wake queue sizes, and `min_connections` above `max_connections`;
-- `small_model_max_tokens` at or above `large_model_min_tokens`;
-- a URL that is not absolute HTTP or HTTPS, or that embeds a user or password.
-
-The daemon also refuses:
-
-- `max_in_flight_requests` or `max_sse_streams` over 65,536, and `max_concurrent_recovery_assignments` over 64;
-- `drain_timeout_seconds` under 6, and `background_task_join_timeout_seconds` under 9;
-- `max_message_mib` over 32, and `max_control_message_mib` over 2;
-- `ttl_seconds` outside 29 to 3,600, or an uncordon time outside the heartbeat and offline times;
-- a heartbeat above the least of 24 seconds, `ttl_seconds` − 28, a third of `ttl_seconds` − 1 and half the offline time − 1. Each heartbeat is also the runner's renewal round;
-- `max_udp_payload_bytes` outside 1,200 to 65,507, a control buffer under 12 MiB, or a data buffer under 64 MiB;
-- `lock_max_attempts` over 1,000, or attempts times `lock_retry_interval_ms` over 300,000;
-- `[outbound.retries]` with more than 10 attempts or a backoff over 30,000 ms;
-- `[connectors.qstash]` tries and waits that cannot end inside `call_budget_seconds`, a budget of 30 seconds or more, or `max_retry_delay_ms` under 200;
-- `[auth]` values that weaken sign-in: lifetimes over one day, provider calls over 60 seconds, or more than 10 wrong codes;
-- `installation_token_ttl_minutes` over 60, GitHub's own ceiling.
-
-The runner also refuses:
-
-- `min_command_output_wait_ms` above `max_command_output_wait_ms`, and `[egress] connect_timeout_seconds` above `request_timeout_seconds`;
-- `default_shell_timeout_seconds` over 2,147,483, the longest timer tokio holds;
-- `max_shell_processes_per_run` of 8 or fewer, since the 8 newest shells are never closed to make room;
-- `max_subagent_depth` over 2, and `[daemon] call_timeout_seconds` of 12 or less;
-- `max_activity_batches_held` under 2, one in flight and one queued;
-- `[executor] max_frame_mib` under 7, the longest a full directory listing serializes to, or at most four thirds of `[tools] max_file_read_mib`, since one read travels as base64.
+| Binary | Refused | Why |
+|---|---|---|
+| both | an unknown key or section, including the retired `[maintenance]`, `[inference]`, `[authoring.turn]` and `[fleets]` daemon sections | a typo must not pass as a default |
+| both | a count, size or timeout of `0` | zero disables the limit it names |
+| both | a default above its ceiling: page sizes, wake queue sizes, `min_connections` above `max_connections` | the default could never be served |
+| both | `small_model_max_tokens` at or above `large_model_min_tokens` | the model classes would overlap |
+| both | a URL that is not absolute HTTP or HTTPS, or that embeds a user or password | credentials never ride a URL |
+| daemon | `max_in_flight_requests` or `max_sse_streams` over 65,536; `max_concurrent_recovery_assignments` over 64 | bounds on one process |
+| daemon | `drain_timeout_seconds` under 6; `background_task_join_timeout_seconds` under 9 | shutdown needs time to finish in-flight work |
+| daemon | `max_message_mib` over 32; `max_control_message_mib` over 2 | the runner frame sizes |
+| daemon | `ttl_seconds` outside 29 to 3,600, or an uncordon time outside the heartbeat and offline times | a lease must outlive several heartbeats |
+| daemon | a heartbeat above the least of 24 seconds, `ttl_seconds` − 28, `ttl_seconds` / 3 − 1 and half the offline time − 1 | each heartbeat is also the run's renewal round |
+| daemon | `max_udp_payload_bytes` outside 1,200 to 65,507; a control buffer under 12 MiB; a data buffer under 64 MiB | the network path and the largest frame |
+| daemon | `lock_max_attempts` over 1,000, or attempts × `lock_retry_interval_ms` over 300,000 | a migration wait must end |
+| daemon | `[outbound.retries]` over 10 attempts or a backoff over 30,000 ms | retries delay the answers queued behind them |
+| daemon | `[connectors.qstash]` tries that cannot end inside `call_budget_seconds`, a budget of 30 seconds or more, or `max_retry_delay_ms` under 200 | the schedule service's call budget |
+| daemon | `[auth]` lifetimes over one day, provider calls over 60 seconds, or more than 10 wrong codes | each would weaken sign-in |
+| daemon | `installation_token_ttl_minutes` over 60 | GitHub's own ceiling |
+| runner | `min_command_output_wait_ms` above `max_command_output_wait_ms`; `[egress] connect_timeout_seconds` above `request_timeout_seconds` | the pair would contradict itself |
+| runner | `default_shell_timeout_seconds` over 2,147,483 | the longest timer tokio holds |
+| runner | `max_shell_processes_per_run` of 8 or fewer | the 8 newest shells are never closed to make room |
+| runner | `max_subagent_depth` over 2; `[daemon] call_timeout_seconds` of 12 or less | nesting depth; a daemon answer needs time |
+| runner | `max_activity_batches_held` under 2 | one batch in flight and one queued |
+| runner | `[executor] max_frame_mib` under 7, or at most four thirds of `[tools] max_file_read_mib` | a full directory listing, and one file read sent as base64, must fit |
 
 ### Precedence
 
-The runner reads only its file. An unset runner key takes the constant in code.
+The runner reads only its file, and an unset runner key takes the constant in code.
+Most daemon keys work the same way.
 
-Most daemon keys work the same way: the file sets the value, and the constant is only the default.
-Some older daemon keys also have an environment variable, shown in their Default column.
-For those keys the file wins, then the variable, then the constant (`config/values.rs`, `config/mod.rs`).
+A few daemon keys also have an environment variable, shown in their Default column.
+For those, the file wins, then the variable, then the constant (`config/values.rs`, `config/mod.rs`).
 
 `[database]` is the exception, because deployments still set pool sizes in the environment.
-The order is `[database.api]` or `[database.migrator]`, then `DATABASE_POOL_SIZE`, `DATABASE_MIN_POOL_SIZE` and `DATABASE_ACQUIRE_TIMEOUT_MS` with their `_API` and `_MIGRATOR` forms, then `[database]`.
+
+| Order | Source |
+|---|---|
+| 1 | `[database.api]` or `[database.migrator]` |
+| 2 | `DATABASE_POOL_SIZE`, `DATABASE_MIN_POOL_SIZE` and `DATABASE_ACQUIRE_TIMEOUT_MS`, in their `_API` or `_MIGRATOR` form |
+| 3 | the same variables without a role suffix |
+| 4 | `[database]` |
+| 5 | the constant in code |
+
 When nothing names `min_connections`, a quarter of the resolved pool stays open.
+
+## Limits
+
+- **Four keys have no effect today.** `[turns.checkpoints] retention_days`, `[durable_tasks] terminal_retention_days`, `keep_generations` and `objects_per_delete_call` are read only by checkpoint maintenance, and only the integration tests call `maintain_checkpoints`.
+- **No worker-count key.** A runner's worker count comes from the daemon.
+
+## Related pages
+
+- [Scaling](./scaling.md): sizing replicas, Postgres and runners
+- [Observability](./observability.md): the telemetry keys in use
+- [Runner protocol](./runner_protocol.md): run lease and heartbeat timing
+- [Checkpoints](./checkpoints.md): the checkpoint keys

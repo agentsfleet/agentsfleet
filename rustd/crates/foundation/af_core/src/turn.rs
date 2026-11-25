@@ -81,7 +81,7 @@ pub mod status {
 /// One ownership site (RULE UFS) — the webhook path, the steer path and the
 /// dashboard all read these strings, and a second spelling at a second write
 /// site is a label that silently stops matching. `balance_exhausted`'s spelling
-/// is pinned by `billing_and_provider_keys.md`.
+/// is pinned by `docs/architecture/billing.md`.
 pub mod label {
     /// The tenant's credit pool cannot cover the estimate.
     pub const BALANCE_EXHAUSTED: &str = "balance_exhausted";

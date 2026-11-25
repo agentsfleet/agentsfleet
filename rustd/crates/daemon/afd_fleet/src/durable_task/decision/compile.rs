@@ -1,8 +1,8 @@
 //! What a goal check asks the decision model: the task's own completion
 //! statements, and the one next-action question every check adds.
 //!
-//! The next-action wording is a constant: the question and the four criteria
-//! of `docs/architecture/goal_evaluation.md`'s repair example. A fleet's model
+//! The next-action wording is a constant: one question and four criteria
+//! (`docs/architecture/durable_tasks.md` §"Goal evaluation"). A fleet's model
 //! writes the statements when it starts a task, and a person may edit them;
 //! nobody writes the next action.
 

@@ -1,8 +1,7 @@
 //! What an authenticated catalogue read cost, stage by stage.
 //!
 //! Six stages behind three surfaces, recorded as fixed-cardinality counters
-//! rather than spans. `docs/architecture/observability.md` §Library read stages
-//! carries the reasoning: a six-stage read emitting spans would spend most of a
+//! rather than spans, because a six-stage read emitting spans would spend most of a
 //! second's span admission on its own timing and evict the server-error spans
 //! the budget protects.
 //!

@@ -1,6 +1,8 @@
 # Coding sandbox evaluation
 
-> Read this to evaluate SPACE (`Sandboxed Platform for Agentic Code Execution`) approaches and source for an `agentsfleet`-owned coding sandbox. The [working concept brief](../../concepts_brief.md) records the brainstorming scope. [Runner behavior](runner_execution.md) owns implemented runtime behavior; [conversation compaction](context_lifecycle.md) owns model context. 
+> This page is an evaluation, not current architecture; the built system is described in [docs/architecture/](../../architecture/README.md).
+
+> Read this to evaluate SPACE (`Sandboxed Platform for Agentic Code Execution`) approaches and source for an `agentsfleet`-owned coding sandbox. The [working concept brief](../../../concepts_brief.md) records the brainstorming scope. [Runner behavior](../../architecture/runner_execution.md) owns implemented runtime behavior; [conversation compaction](../../architecture/context_lifecycle.md) owns model context. 
 
 Native sandbox alternatives below remain proposals. M236's Nov 05, 2026 source
 continuation adds durable workspace recovery to the existing supervisor and
@@ -42,7 +44,7 @@ No local SPACE runtime benchmark has been run for this evaluation.
 | Adapt selected SPACE approaches and source | Keeps sandbox behavior and performance under our control within the existing runner. | We own integration, updates and every dependency brought in with copied code. | Owner-selected design direction; evaluate components individually. |
 | Copy its lifecycle/control plane broadly | Reuses more implementation at once. | Creates overlapping scheduling, tenancy and recovery ownership; effectively maintains a platform fork. | Outside the current direction. |
 
-The current implementation and missing capabilities are recorded in [runner behavior's Facts table](runner_execution.md#facts).
+The current implementation and missing capabilities are recorded in [runner behavior's Facts table](../../architecture/runner_execution.md#what-it-is).
 SPACE records desired state in PostgreSQL and reconciles workers directly or through Kubernetes; Kubernetes is optional.
 Its service compatibility policy excludes Rust crate interfaces, so internal source reuse carries a separate maintenance burden.
 
@@ -68,7 +70,7 @@ Existing executor -> commands, file edits, test results
 
 Start on one qualified Linux host with Kernel-based Virtual Machine (KVM) access and a pinned guest image.
 Use the existing engine boundary (`afr_sandbox`) for sandbox ownership and the in-sandbox server (`afr_executor`) for commands.
-The planned guest entry and separate writable disk already belong to [runner behavior](runner_execution.md#crates).
+The planned guest entry and separate writable disk already belong to [runner behavior](../../architecture/runner_execution.md#crates).
 
 ### Reuse before adding another subsystem
 
@@ -77,7 +79,7 @@ The planned guest entry and separate writable disk already belong to [runner beh
 | Launch and stop safely | SPACE [jailer launch](https://github.com/perplexityai/SPACE/blob/20d321385dac0855b39f86cd93c008ff5ec4ce3c/crates/libs/node/runtime/core/src/launch/os/linux.rs) and [owned launch/cleanup](https://github.com/perplexityai/SPACE/blob/20d321385dac0855b39f86cd93c008ff5ec4ce3c/crates/libs/node/runtime/supervisor/src/service.rs) | Adapt launch, limits, process ownership and partial-failure cleanup behind our engine. Preserve our run authority. |
 | Control Firecracker | SPACE [API client](https://github.com/perplexityai/SPACE/blob/20d321385dac0855b39f86cd93c008ff5ec4ce3c/crates/libs/node/runtime/core/src/fc_api.rs) and [behavior tests](https://github.com/perplexityai/SPACE/blob/20d321385dac0855b39f86cd93c008ff5ec4ce3c/crates/libs/node/runtime/core/src/fc_api/tests.rs) | Adapt the needed operations and tests; inspect imported types and map errors into our existing error model. |
 | Run commands and edit files | Existing executor server and client (`afr_executor`) | Carry the existing protocol across the guest boundary. Prove its connection handshake, output bounds, cancellation and file behavior on a real guest. |
-| Prepare repository contents | Existing trusted checkout (`afr_supervisor`) and [workspace design](runner_execution.md#workspace-between-runs) | Add private guest-disk preparation with exclusive host/guest ownership. Fetch credentials remain outside the guest; validate the exact selected revision. |
+| Prepare repository contents | Existing trusted checkout (`afr_supervisor`) and [workspace design](../../architecture/runner_execution.md#workspace-between-runs) | Add private guest-disk preparation with exclusive host/guest ownership. Fetch credentials remain outside the guest; validate the exact selected revision. |
 | Reduce startup work | SPACE [base snapshots and optional local pools](https://github.com/perplexityai/SPACE/blob/20d321385dac0855b39f86cd93c008ff5ec4ce3c/docs/base-snapshots.md) | Compare cold boot with a clean template snapshot. Evaluate an idle pool only after measuring its benefit and resource cost. |
 
 Importing SPACE's runtime crates directly brings shared service, runtime and generated protocol dependencies.
@@ -114,7 +116,7 @@ No Firecracker startup benchmark has been run for this wrapper.
 Running real guests needs Linux KVM access, as the [Firecracker prerequisites](https://github.com/firecracker-microvm/firecracker/blob/main/docs/getting-started.md#prerequisites) specify.
 The existing `make test-runner-kernel` lane proves bubblewrap behavior; the selected guest engine needs its own real-backend evidence before support is claimed.
 
-The [design handoff](../reviews/space-sandbox/README.md) records the owner's delivery order and the separate implementation restart after pull request 784.
+The [design handoff](README.md) records the owner's delivery order and the separate implementation restart after pull request 784.
 It preserves the completed concept review without treating it as detailed design approval or runtime proof.
 
 ## What the Claude session reference establishes
@@ -185,7 +187,7 @@ Use a synthetic Git repository with a pinned base commit, a small build, an exis
 
 Steps 5–7 describe required future workspace/backend behavior, not capabilities proved by the current compaction work. A supervisor restart additionally requires application conversation recovery; restoring a guest cannot restore an agent loop running outside it.
 
-[Existing steer semantics](runner_fleet.md#steer-archive-delete) queue a human message for the next run. The supplied Claude reference observes consumption during the current agent task. Adopting a sandbox backend does not change that product behavior. 
+[Existing steer semantics](../../architecture/data_flow.md#reports-and-folded-messages) queue a human message for the next run. The supplied Claude reference observes consumption during the current agent task. Adopting a sandbox backend does not change that product behavior. 
 
 Test the existing ordering first; changing it requires a decision about partial tool effects, ordering, interruption and model-request cancellation.
 
@@ -243,7 +245,7 @@ Incident A / coding session A / private Git workspace A
 Incident B / coding session B / private Git workspace B
 ```
 
-The current [workspace implementation](runner_execution.md#workspace-between-runs) keeps only a temporary fleet-scoped hold; durable save and restore are not built.
+The current [workspace implementation](../../architecture/runner_execution.md#workspace-between-runs) keeps only a temporary fleet-scoped hold; durable save and restore are not built.
 Its hold key (`afr_supervisor`) names the fleet, workspace, limits and policy, without incident identity.
 The proposed session identity must participate in attachment checks so a same-fleet incident cannot inherit another incident's writable checkout.
 
@@ -279,7 +281,7 @@ An authorized deletion or a declared retention policy removes durable session da
 An idle compute timeout can release compute while retaining the session's saved work.
 Retention duration, retained file coverage and checkpoint frequency remain open; an unfinished task must not silently become an expired cache entry.
 
-The existing [three-snapshots-per-fleet target](runner_execution.md#workspace-between-runs) cannot protect several unfinished sessions without further rules.
+The existing [three-snapshots-per-fleet target](../../architecture/runner_execution.md#workspace-between-runs) cannot protect several unfinished sessions without further rules.
 The proposed policy protects each retained session's referenced generation, with explicit session, byte, generation and time limits.
 Those limits, refusal behavior and expiry notices require owner decisions; this proposal does not amend the existing target silently.
 
@@ -290,8 +292,8 @@ These are required acceptance proofs for the proposed integration, not capabilit
 ## Repository revisions across events
 
 These proposed sandbox walkthroughs start from two fleets a person could create: a pull request reviewer and a production deployment repairer.
-No fixture covers an incident; [`run_flow.md`](run_flow.md) walks a reviewer's path today.
-[Repeated review](run_flow.md#5-the-pr-is-fixed-and-pushed-again) already describes a laptop push waking the same fleet through a new turn.
+No fixture covers an incident; [`run_flow.md`](../../architecture/run_flow.md) walks a reviewer's path today.
+[Repeated review](../../architecture/run_flow.md#5-the-next-push) already describes a laptop push waking the same fleet through a new turn.
 
 Fleet identity, conversation continuity and repository revision have separate lifetimes.
 A continuing conversation must identify the exact code revision it describes.
@@ -323,7 +325,7 @@ Before posting a result, reread the current head and label which commit the find
 A result for an older commit cannot approve a newer commit.
 Read remote review state after an ambiguous post before repeating it.
 
-**Current gaps:** [Review posting is refused](run_flow.md#4-how-pr-review-can-reply), and prior review continuity across turns is not automatic.
+**Current gaps:** [Review posting is refused](../../architecture/run_flow.md#4-what-the-run-may-do), and prior review continuity across turns is not automatic.
 The ingress digest (`afd_api_ingress`) carries the head commit but omits the base commit.
 The proposed revision selection and publication checks need implementation and narrowly scoped posting authority.
 
@@ -375,7 +377,7 @@ A successful workflow alone cannot certify that the original production symptom 
 
 Current write runs can correct their own turn-derived branch with an exact, non-force PATCH.
 That same-turn operation does not implement the later-turn behavior below.
-See [the current write boundary](run_flow.md#3-pr-review-end-to-end).
+See [the current write boundary](../../architecture/run_flow.md#3-one-run-end-to-end).
 
 **Owner-selected behavior:** Later approved fixes for the same incident continue its existing draft pull request, with fresh permission and code checks.
 Keep the incident, coding session, repair attempt, repository, branch and draft relationship in trusted application state.
@@ -395,7 +397,7 @@ Preserve local work while incorporating any verified remote changes, then test t
 
 If a person updates that branch from a laptop, fetch those changes before preparing the next patch.
 Reject an update if the remote head changed after the publication precondition was established.
-The approved [existing-PR publication design](durable_tasks.md#existing-pull-request-publication) uses `createCommitOnBranch` with `expectedHeadOid` and reconciles uncertain outcomes.
+The approved [existing-PR publication design](../../architecture/durable_tasks.md#publishing-to-a-pull-request) uses `createCommitOnBranch` with `expectedHeadOid` and reconciles uncertain outcomes.
 
 Use current repository grants and narrowly scoped authority for the recorded branch and draft on every continuation.
 If the evidence, repository or intended change falls outside the approved proposal, refresh the proposal before patch work.
@@ -416,7 +418,7 @@ Incident B must retain its own workspace and publication targets throughout thos
 ### Durable Task checkpoints in R2
 
 M236 selects Cloudflare R2 for encrypted immutable coding checkpoints.
-[Durable Tasks (DTs)](durable_tasks.md) owns lifecycle and guarded manifest publication.
+[Durable Tasks (DTs)](../../architecture/durable_tasks.md) owns lifecycle and guarded manifest publication.
 Use Rust `object_store` 0.14.2 with its S3-compatible client in trusted daemon storage code.
 
 Use [`Signer::signed_url_opts`](https://docs.rs/object_store/0.14.2/object_store/signer/trait.Signer.html#method.signed_url_opts) and `SignedUrlOptions::with_signed_header` to bind mandatory transfer headers, including create-only `If-None-Match: *`.
@@ -667,7 +669,7 @@ Collection respects the last signed-URL expiry, bounded in-flight request window
 Keep purge receipts while a remote result remains uncertain; a stopped run cannot refresh authorization or publish a new manifest.
 Per-object transfer requests have a 60-second deadline inside the overall operation deadline.
 
-Manifest pages, URL refresh and one-minute pin renewal use the explicit [checkpoint APIs](durable_tasks.md#proposed-native-api).
+Manifest pages, URL refresh and one-minute pin renewal use the explicit [checkpoint APIs](../../architecture/durable_tasks.md#reading-and-controlling-a-task).
 Missing/conflicting pages, expired reservations or lost base custody refuse commit without replacing the prior recovery pointer.
 All renewal and adoption operations preserve original task budgets and hard deadlines.
 
@@ -683,7 +685,7 @@ If measurements later justify larger aggregate objects, native multipart require
 
 Four per-task uploads and eight per-runner uploads limit pressure on the host and network.
 Parallelism can improve throughput but cannot guarantee a faster save when scanning, encryption or bandwidth is the bottleneck.
-Expose the real capture/upload/verification stages through [task progress](durable_tasks.md#user-visible-decisions-and-transfer-progress).
+Expose the real capture/upload/verification stages through [task progress](../../architecture/durable_tasks.md#reading-and-controlling-a-task).
 
 ### Workspace approval in chat or Slack
 
@@ -693,15 +695,15 @@ Keep that proposal available after the diagnosis run ends; waiting for the owner
 
 Anyone with current access to the fleet's workspace can approve its repair proposal.
 This includes the account owner and invited members whose access has been granted, under existing capability and workspace checks.
-Use the existing [workspace authorization](../AUTH.md#memberships-and-roles); no separate approver role or per-fleet list is required.
+Use the existing [workspace authorization](../../AUTH.md#memberships-and-roles); no separate approver role or per-fleet list is required.
 
 An authorized person can approve in fleet chat or address the repair fleet in its configured Slack thread.
 An illustrative Slack reply is `@agentsfleet repairer fix this`, with the actual bot and fleet names supplied by that workspace.
-The [existing mention routing](connectors.md#routing-a-mention) already requires an addressed request for a write-bound fleet.
+The [existing mention routing](../../architecture/slack_mentions.md#how-a-mention-is-routed) already requires an addressed request for a write-bound fleet.
 
 A diagnosis started from Slack uses its recorded reply thread.
 A scheduled diagnosis needs a configured notification destination before its proposal can appear in Slack.
-The [existing reply path](connectors.md#how-the-answer-comes-back) keeps that destination outside model control.
+The [existing reply path](../../architecture/slack_mentions.md#how-the-answer-comes-back) keeps that destination outside model control.
 
 Both channels must resolve the same recorded proposal and admit at most one repair run for that approval.
 Repeated clicks, retried Slack events and a second answer through the other channel must return the existing decision.
@@ -741,8 +743,8 @@ If diagnosis A occupies its active run, diagnosis B waits until that run finishe
 Separate incident conversations preserve context but do not add concurrent capacity to that fleet.
 
 The fleet can receive more work while its diagnosis run is active.
-Existing [intake](run_flow.md#intake-commits-the-queue-row) records each accepted job as a turn before acknowledging it; pickup waits until the fleet's thread has no live run.
-The [backlog budgets](datastore_scaling.md#the-turns-ledger-is-the-queue) bound acceptance, with a retryable refusal when capacity is exhausted.
+Existing [intake](../../architecture/data_flow.md#intake) records each accepted job as a turn before acknowledging it; pickup waits until the fleet's thread has no live run.
+The [backlog budgets](../../architecture/datastore_scaling.md#the-turns-ledger-is-the-queue) bound acceptance, with a retryable refusal when capacity is exhausted.
 
 ```text
 Diagnosis A running + alerts B and C arrive -> A keeps running; B and C queue
@@ -771,7 +773,7 @@ More A evidence -> incident A
 ```
 
 The responder can handle another outage while the separate repairer works on the first.
-The [one active run per fleet](data_flow.md#one-active-run-per-fleet-the-ownership-model) rule still bounds each fleet.
+The [one active run per fleet](../../architecture/data_flow.md#assignment-and-the-fence) rule still bounds each fleet.
 A busy responder delays its next sweep; scheduled monitoring does not promise continuous log tailing.
 
 For this proposal, another approved repair queues while the same repairer is busy.
@@ -852,11 +854,11 @@ The proposed daemon recovery owner above supplies a boundary, while its detailed
 | Decision | Required behavior or unresolved choice | Evidence |
 |---|---|---|
 | Select and resume a task | Chat and Slack must identify incident A after B without guessing from conversation prose. Bind its conversation coverage, file generation and command results together. | Current run-scoped context (`afr_agent`), fleet-scoped holds (`afr_supervisor`). |
-| Bound retained work | Set saved file coverage, acceptable crash loss, save/restore deadlines, retention during approval waits and storage limits. Protect each retained session's referenced generation. | [Existing retention target](runner_execution.md#workspace-between-runs) and [proposed session lifecycle](#coding-sessions-and-worktrees-across-runs). |
+| Bound retained work | Set saved file coverage, acceptable crash loss, save/restore deadlines, retention during approval waits and storage limits. Protect each retained session's referenced generation. | [Existing retention target](../../architecture/runner_execution.md#workspace-between-runs) and [proposed session lifecycle](#coding-sessions-and-worktrees-across-runs). |
 | Continue an approved repair | Owner selected the same existing draft for later approved fixes to the same incident. The trusted attempt mapping, current authority and publication precondition still need implementation. | [Selected continuation behavior](#continue-an-existing-repair-draft), turn-derived branch (`afd_gate`) and turn-scoped write rules (`afd_gate`). |
-| Identify the approver | Owner selected existing workspace access, including invited members, without a separate approver list. Verified Slack identity and adoption across direct requests, queued work and running runs still need design. | [Workspace roles](../AUTH.md#memberships-and-roles), [existing direct Slack request](connectors.md#write-reach-from-a-mention), [proposed approval flow](#workspace-approval-in-chat-or-slack). |
-| Discover and deliver proposals | Keep saved proposals discoverable when Slack notification fails. Track saved, delivered, uncertain and abandoned outcomes separately; retry the same proposal identity. | [Existing answer delivery](connectors.md#how-the-answer-comes-back) and outbound abandonment (`afd_outbound`). |
-| Bound monitoring delay | Set critical-alert diagnosis delay and repair queue capacity. Track successful sweep freshness separately from accepted-alert queue time, including failed provider reads and evidence gaps. | [Ordered queue without a waiting-time guarantee](datastore_scaling.md#the-turns-ledger-is-the-queue), [serial diagnosis](#several-incidents-under-the-same-fleets). |
+| Identify the approver | Owner selected existing workspace access, including invited members, without a separate approver list. Verified Slack identity and adoption across direct requests, queued work and running runs still need design. | [Workspace roles](../../AUTH.md#memberships-and-roles), [existing direct Slack request](../../../playbooks/operations/slack_incident_drill/001_playbook.md), [proposed approval flow](#workspace-approval-in-chat-or-slack). |
+| Discover and deliver proposals | Keep saved proposals discoverable when Slack notification fails. Track saved, delivered, uncertain and abandoned outcomes separately; retry the same proposal identity. | [Existing answer delivery](../../architecture/slack_mentions.md#how-the-answer-comes-back) and outbound abandonment (`afd_outbound`). |
+| Bound monitoring delay | Set critical-alert diagnosis delay and repair queue capacity. Track successful sweep freshness separately from accepted-alert queue time, including failed provider reads and evidence gaps. | [Ordered queue without a waiting-time guarantee](../../architecture/datastore_scaling.md#the-turns-ledger-is-the-queue), [serial diagnosis](#several-incidents-under-the-same-fleets). |
 | Report recoverable progress | Show which files were saved, which tests cover that generation and which command outcomes remain unknown. Give a verification step before retrying an uncertain effect. | [Command reconnect limits](#selective-space-reuse), [proposed recovery units](#walkthrough-to-build-and-test). |
 | Upgrade and roll back | Choose whether adoption starts with new sessions or imports verified in-progress work. Retained saves need compatible readers or a validated conversion before older workers resume them. | Current run payload (`af_wire`), upstream [versioning](https://github.com/perplexityai/SPACE/blob/20d321385dac0855b39f86cd93c008ff5ec4ce3c/docs/versioning.md). |
 | Choose bounded source reuse | Owner selected a small SPACE-derived Firecracker wrapper with the existing executor. Exact extraction, dependency closure and real Linux measurements still need proof. | [First wrapper](#first-firecracker-wrapper), local atomic report publication (`afr_supervisor`), [reuse criteria](#selective-space-reuse). |
@@ -941,9 +943,9 @@ Keep failure injection deterministic with barriers, controlled transport loss an
 
 A browser mock, scripted provider or successful service creation cannot substitute for a real cross-worker recovery proof.
 
-The historical pre-optimization compaction regression failed while the independent blocked-summary proof passed. The [preparation record](context_lifecycle.md#preparation-and-future-sandbox-boundary) now describes indexed preparation and its estimator-work regression. Use the owning spec's measurements rather than the historical failure.
+The historical pre-optimization compaction regression failed while the independent blocked-summary proof passed. The [preparation record](README.md) now describes indexed preparation and its estimator-work regression. Use the owning spec's measurements rather than the historical failure.
 
 Full acceptance remains incomplete, so this evaluation makes no readiness or concurrent-throughput claim.
 
-The [proposed original-Pull-Request continuation](run_flow.md#original-pull-request-repair) records the requested existing-PR flow and future recovery proofs.
+The [proposed original-Pull-Request continuation](../../architecture/durable_tasks.md) records the requested existing-PR flow and future recovery proofs.
 M224 starts with the manually triggered fleet-owned draft demonstration; the broader runtime behavior remains unimplemented.

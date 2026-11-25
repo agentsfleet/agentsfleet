@@ -28,8 +28,8 @@
 #   bounds       comma-joined histogram bucket bounds in `unit`, or -
 #   policy       fixed:<max_series> | runner:<slots> | shared:cost
 #   live_read    yes | no   (yes → observable instrument fed by a snapshot)
-#   category     latency | traffic | errors | saturation | health (operator legend
-#                in docs/architecture/observability.md §Metric family census)
+#   category     latency | traffic | errors | saturation | health (see
+#                docs/architecture/observability.md §Metric families)
 #   watch_for    one line of operator guidance — what a change in this family means
 #
 name	kind	number	unit	temporality	labels	bounds	policy	live_read	category	watch_for

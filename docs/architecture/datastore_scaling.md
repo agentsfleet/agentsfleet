@@ -1,234 +1,144 @@
 ---
 type: explanation
 audience: contributor
-verified: 2026-11-09
-product_version: 0.75.0
+verified: 2026-11-25
+product_version: 0.90.0
 executable: false
 ---
 
-# Datastore scaling requirements and target design
-
-## Decision: core NATS carries signals, Postgres holds every fact
-
-Indy chose core NATS for the bus on 2026-11-06.
-He said, "Yes i agree on NATS."
-The M244_001 spec's Discovery records that approval and the measurements it depended on.
-
-Postgres owns every durable fact and every compare-and-swap transition.
-Core NATS carries live activity, wake notifications, runner commands and the outbound ping.
-NATS runs without JetStream and without a key-value store, so it holds no state.
-
-Each signal is disposable because its durable authority and its recovery path live in Postgres.
-The [scheduler decisions](push_scheduler.md#decisions) list each subject and its backstop.
-
-M244 measured both buses on the same laptop and code ([baselines](push_scheduler.md#m244-previous-broker-against-nats)).
-NATS met the bar on 15 of 16 tail rungs, and Indy accepted the one miss on 2026-11-09.
-
-In the kill drills, NATS viewers received `catching_up` within 0.3 s of a node stop.
-
-| Decision | Requirement |
-|---|---|
-| Bus | Core NATS, routed as one cluster in one region, with JetStream off. Boot refuses a server that fails any of these. |
-| Durable state | Postgres: turns, outbound deliveries, device-login sessions, OAuth nonces and approval gates. |
-| Deployment | The Fly apps `agentsfleet-nats-prod` and `agentsfleet-nats-dev` each run two nodes, both in `iad`, with no volume (`.github/workflows/release.yml`, `deploy-dev-fly.yml`). |
-| Rust client | `async-nats` 0.52.0 without default features, so its JetStream module does not compile (`rustd/Cargo.toml`). |
-| Evidence | Compare before and after each change on the same rig and workload. |
-| Scale | Report measured capacity against an explicit workload; fleet population alone proves no throughput guarantee. |
-
-Changing the bus or moving a durable fact out of Postgres requires an explicit decision from Indy, recorded on this page.
+# Datastores: Postgres facts and NATS signals
 
 ## What it is
 
-This page records where `agentsfleetd` keeps each kind of state, and the target design for scaling it.
-Postgres is the only datastore. Core NATS is a message bus that stores nothing.
+`agentsfleetd` uses two datastores.
+Postgres holds every durable fact and every compare-and-swap change.
+Core NATS, a message bus with JetStream, its key-value store and its object store all off, carries signals and stores nothing.
 
-The runtime pages ([`data_flow.md`](./data_flow.md), [`runner_fleet.md`](./runner_fleet.md)) describe the same running system from the request's side.
+| Fact | Store | Copies, and how they are repaired |
+|---|---|---|
+| A message accepted, in order | `thread.turns` | The runner's pending input, re-read before each model call |
+| A run assigned, and its fence | `thread.threads`, `thread.runs` | The runner connection, rebuilt from Postgres on reconnect |
+| A message folded into a live run | `thread.turns.input_run_id`, `input_fence` | None |
+| A run deadline | `thread.runs.run_expires_at` | None |
+| Usage and money | `billing.usage_lines`, written by the report | None |
+| An outbound reply owed | `thread.deliveries` | None; a NATS ping only wakes a worker |
+| A device login, an OAuth nonce | `identity.device_sessions`, `connector.oauth_nonces` | None |
+| A question or access request awaiting a person | `fleet.approval_gates` | None |
+| Live tail, wake-ups, runner commands | Core NATS subjects | Lossy; [When a signal is lost](#when-a-signal-is-lost) names each cost |
 
 ## Why it exists
 
 A lost bus node must cost latency, never accepted work or an owed reply.
-Keeping every fact in Postgres makes that true: a viewer backfills from `thread.turns`, and a worker claims from `thread.deliveries`.
-
-Before M244, the bus also held durable jobs, and all its nodes ran on one machine per environment.
-One machine loss froze every viewer's tail with no signal.
-
-## Target design
-
-Each `agentsfleetd` process opens one NATS connection at boot (`rustd/crates/daemon/afd_bus/src/nats/mod.rs`).
-It reads `NATS_URL`, comma-separated seeds that share one user and password in the userinfo (`afd_bus/src/nats/config.rs`).
-An unset or malformed `NATS_URL` refuses boot as `UZ-STARTUP-001`.
-
-Boot refuses, as `UZ-STARTUP-004`, a seed that does not answer within five seconds.
-It also refuses a server reporting JetStream, no cluster, no headers, or a `max_payload` under the largest frame (`afd_bus/src/nats/preflight.rs`).
-
-The largest frame the preflight checks is 128 KiB: the tail's 64 KiB batch (`afd_bus::TAIL_BATCH_BYTES`) plus a 64 KiB envelope.
-NATS's default 1 MiB `max_payload`, which no server here overrides, holds it.
-
-The deploy workflows bring the NATS app up before the daemon.
-`scripts/ensure_fly_app.sh` waits until every NATS machine passes its `/healthz` check, so a daemon never deploys against a bus that refuses it.
-The daemon reaches NATS over Fly's private network in plaintext `nats://`.
-
-### The turns ledger is the queue
-
-The heading keeps its old words because other pages link to it. The queue is the unsettled rows of `thread.turns`.
-
-```text
-producer -> commit queued thread.turns row -> publish af.thread.<thread_id>.wake
-                         |
-wake ring, bus gap or freed capacity -> assignment pass -> Postgres head probe
-                         |
-              thread row lock + head turn opened
-                         |
-        fenced run sent down the runner connection as Down::Run
-                         |
-report -> usage + terminal turn status + settlement + delivery
-```
-
-A producer commits its identity and payload before reporting acceptance. A failed wake publish leaves that acceptance intact.
-
-A wake ring starts an assignment pass, and the pass reads Postgres (`afd_gateway/src/scheduler/mod.rs`). A bus gap the replica detects, such as a lagged or lost wake subscription, starts a recovery pass over every eligible connection (`afd_bus/src/wake/mod.rs`).
-
-A runner connection that reports more free capacity asks for its own assignment (`afd_gateway/src/connection/dispatch/mod.rs`). No timer asks Postgres for pending work.
-A lost ring leaves the turn queued in Postgres until the next ring on that replica or the next runner that reports free capacity.
-
-The candidate query first checks whether any unsettled fleet turn exists. An empty queue skips fleet scans.
-When work exists, it reads each eligible fleet's oldest unsettled turn through `idx_turns_thread_id_sequence_unsettled` on `(thread_id, sequence)`.
-
-Writing a turn holds the fleet row lock within its one statement, before allocating its sequence and through commit. A transaction that inserts later therefore stays behind unfinished work.
-
-No approval holds a head. A run that asks a question or asks for access settles its turn `waiting`, so the fleet's later turns still run (`af_core/src/turn.rs`).
-
-The card waits in `fleet.approval_gates`, so a long bus outage cannot erase it. The answer or the approval writes a new turn that continues the work.
-
-Assignment locks the thread row and the exact head turn with `SKIP LOCKED`, then checks whether that head can run.
-One statement raises the thread's fence, stamps the turn's `run_fence` and opens the turn.
-A blocked or unavailable head returns no work, and the caller rolls back the thread-row update.
-
-Assignments keep held-sandbox preference and spread other candidates randomly. They provide order within each fleet, with no global waiting-time guarantee.
-
-`opened_at` records the turn's entry into runtime history. `settled_at` removes a row from the queue.
-A report settles the turn in the transaction that records usage, terminal state, checkpoint, thread-row release and any outbound delivery.
-
-An expired run leaves the same unsettled head to another runner. The original billing identity survives redelivery.
-
-Writing a turn is one statement, `afd_turns/src/sql/admit_one.sql`, that holds the fleet row `NO KEY UPDATE` until it commits.
-One fleet's messages therefore commit in sequence order.
-
-That lock still lets concurrent foreign-key checks on the fleet row proceed. No per-fleet cap exists; the deployment ceiling bounds the total.
-
-The deployment ceiling estimates unsettled turns against `[turns] max_queued_turns` ([`config_reference.md`](./config_reference.md)). It refreshes every 1,000 turns or five seconds, and every 500 milliseconds while refusing.
-
-Each process adds its own accepted turns between samples. Concurrent replicas can overshoot this estimate; one fleet's sequence stays serialized.
-
-### Signals on core NATS, facts in Postgres
-
-The live tail publishes on `af.thread.<thread_id>.items`. After a reconnect, a slow consumer or a gap marker, viewers receive `catching_up` and reload durable history.
-
-Wake notifications publish on `af.thread.<thread_id>.wake`, and each replica reads them all through one `af.thread.*.wake` wildcard subscription (`afd_bus/src/wake/mod.rs`).
-Each replica keeps a local queue of at most 64 threads by default (`afd_bus/src/wake/config.rs`).
-A full queue evicts its oldest thread. That thread's work stays queued in Postgres, and the next assignment pass reads it.
-
-The report path writes the `thread.deliveries` row in its own transaction, then publishes `af.delivery.wake`.
-A worker claims the head row of each `(provider, workspace_id)` lane with `FOR UPDATE SKIP LOCKED` (`afd_outbound/src/delivery/sql/claim_heads.sql`).
-
-A claim lasts 30 s and the holder renews it every 10 s (`afd_outbound/src/delivery/mod.rs`). A worker claims at start, on a ping, when a lane finishes, and once when another holder's earliest claim lapses. No timed pass claims.
-
-A ping the bus failed to send is owed as a gap, and the worker answers the gap with a claim. A reconnect keeps the subscription and gaps it; once the bus shuts down, the worker claims on finished deliveries and lapses alone.
-
-Up to eight deliveries run at once across lanes; each lane holds at most 32 jobs (`afd_outbound/src/lanes/mod.rs`).
-Every write after a claim matches the holder's token, so a lapsed holder's late write changes nothing.
-
-Device-login sessions are `identity.device_sessions` rows: by default 300 s of life, a 60 s replay window, and five verify attempts (`afd_tenant/src/session/store.rs`; the `[auth]` keys in [`config_reference.md`](./config_reference.md)).
-OAuth nonces are `connector.oauth_nonces` rows that live 600 s and are spent once by `DELETE … RETURNING`.
-
-Nothing sweeps expired sessions or nonces. Every read refuses them by `expires_at`, and spending an expired nonce removes it.
-
-A run's question and a fleet's access request are `fleet.approval_gates` rows (`afd_gate/src/gate/sql/insert_gate.sql`, `afd_approval/src/grant_sql/request_grant.sql`).
-
-See [Shared local development](#shared-local-development) for ownership and reset rules.
+Keeping every fact in Postgres makes that true.
+A viewer backfills from `thread.turns`, and a worker claims from `thread.deliveries`.
 
 ## How it behaves
 
+### Connecting to NATS
+
+Each `agentsfleetd` process opens one NATS connection at boot (`afd_bus/src/nats/mod.rs`).
+It reads `NATS_URL`: comma-separated seeds sharing one user and password in the userinfo (`afd_bus/src/nats/config.rs`).
+An unset or malformed `NATS_URL` refuses boot as `UZ-STARTUP-001`.
+
+Boot refuses, as `UZ-STARTUP-004`, a seed that does not answer within five seconds.
+It also refuses a server that reports JetStream, no cluster, no headers, or a small `max_payload` (`afd_bus/src/nats/preflight.rs`).
+
+The largest frame is 128 KiB: the live tail's 64 KiB batch (`afd_bus::TAIL_BATCH_BYTES`) plus a 64 KiB envelope.
+NATS's default 1 MiB `max_payload` holds it.
+
+### Deployment
+
+| Lane | Nodes | Where |
+|---|---|---|
+| Production | Two, in the Fly app `agentsfleet-nats-prod` | `iad`, no volume (`deploy/fly/nats-prod/fly.toml`; `NATS_MACHINES` in `.github/workflows/release.yml`) |
+| Development | Two, in the Fly app `agentsfleet-nats-dev` | `iad`, no volume (`NATS_MACHINES` in `.github/workflows/deploy-dev-fly.yml`) |
+| Local and test | Three compose nodes, `ant`, `bee` and `elk`, routed as one cluster | `docker-compose.yml` |
+
+The deploy workflows bring NATS up before the daemon.
+`scripts/ensure_fly_app.sh` waits until every NATS machine passes `/healthz`, so a daemon never deploys against a bus that refuses it.
+The daemon reaches NATS in plaintext `nats://` over Fly's private network, which WireGuard already encrypts.
+
+The Rust client is `async-nats` 0.53.0 without default features, so its JetStream module does not compile (`rustd/Cargo.toml`).
+
+### The turns ledger is the queue
+
+The queue is the unsettled rows of `thread.turns`; there is no separate queue table.
+Intake writes a turn with one statement, `afd_turns/src/sql/admit_one.sql`.
+That statement holds the fleet row `FOR NO KEY UPDATE` until commit, so one fleet's turns commit in sequence order.
+
+The turn commits before any wake is published, so a failed publish loses no accepted work.
+A wake, a detected bus gap or a runner reporting free capacity starts an assignment pass that reads Postgres.
+No timer reads Postgres for waiting work; a silently lost wake leaves the turn queued until the next event.
+
+No per-fleet cap exists.
+A deployment ceiling, `[turns] max_queued_turns` in [the configuration reference](./config_reference.md), bounds the total.
+
+The estimate refreshes every 1,000 turns or five seconds, and every 500 ms while it refuses (`afd_turns/src/budget/ceiling/mod.rs`).
+Replicas can overshoot it between samples.
+[Data flow](./data_flow.md) traces the assignment and report that follow.
+
+### Outbound replies
+
+The report writes a `thread.deliveries` row in its transaction, then publishes `af.delivery.wake`.
+A worker claims the head row of each `(provider, workspace_id)` lane with `FOR UPDATE SKIP LOCKED` (`afd_outbound/src/delivery/sql/claim_heads.sql`).
+
+A claim lasts 30 s, and the holder renews it every 10 s (`afd_outbound/src/delivery/mod.rs`).
+A worker claims at start, on a ping, when a lane finishes, and once when another holder's earliest claim lapses.
+Up to eight deliveries run at once, and each lane holds at most 32 jobs (`afd_outbound/src/lanes/mod.rs`).
+
+### Sessions and nonces
+
+A device login is an `identity.device_sessions` row.
+By default it lives 300 s, replays for 60 s and survives five wrong codes (`afd_tenant/src/session/store.rs`).
+
+An OAuth nonce is a `connector.oauth_nonces` row that lives 600 s and is spent once by `DELETE … RETURNING`.
+Nothing sweeps expired rows; every read refuses them by `expires_at`.
+
+### When a signal is lost
+
 Core NATS delivers each message at most once and acknowledges nothing.
-The adapter turns every loss it can see into a `Gap` for the subscriber, which backfills from Postgres.
+Each subject has a Postgres backstop, or none is needed.
 
-- **Reconnect.** The client reconnects to another seed by itself, and every local subscription receives one `Gap`.
-- **Slow consumer.** Every subscription on that client receives `Gap`, because the client keeps the subscription id private.
-- **Failed or recent publish.** A failed publish is owed an `Af-Gap: 1` marker on reconnect. So is every subject published in the 2 s before a disconnect.
+| Subject | A lost message costs | Backstop |
+|---|---|---|
+| `af.thread.<id>.items` | Frames missing on screen | A gap, then a backfill from Postgres |
+| `af.thread.<id>.wake` | Work waits for the next wake, a credit increase or a reconnect | The turn stays in `thread.turns` |
+| `af.runner.<id>.cmd` | A cancel or folded input arrives late | The cancel mark on the run, and pending input read before each model call |
+| `af.delivery.wake` | A reply waits for the next ping, a gap or a worker start | The row stays in `thread.deliveries` |
+| `af.tenant.<id>.members`, `af.workspace.<id>.fleets` | An open stream keeps a stale viewer or fleet set | A gap makes every stream re-read; each booting daemon publishes one |
 
-From a disconnect until those markers are paid, every publish fails at once, so no frame reaches a subscriber ahead of its gap.
-Past 4,096 owed subjects, one marker on `af.bus.gap` gaps every subscription in every process (`afd_bus/src/nats/debt.rs`).
+The bus adapter turns every loss it can see into a `Gap` for the subscriber, which then reads Postgres.
 
-After boot, `/readyz` reports the bus in its `queue` field and does not gate on it (`rustd/crates/daemon/main/src/probes.rs`).
-A bus outage costs latency, and pulling every replica out of service would turn it into a full outage.
-Steers are still accepted, because acceptance is a Postgres commit.
+- **Reconnect.** The client reconnects to another seed, and every local subscription receives one `Gap`.
+- **Slow consumer.** Every subscription on that client receives a `Gap`, because the client hides which one fell behind.
+- **Failed or recent publish.** After a reconnect, each subject published in the last 2 s gets one gap marker (`afd_bus/src/nats/debt.rs`).
+
+Until those markers are sent, every publish fails at once, so no frame overtakes its gap.
+Past 4,096 such subjects, one message on `af.bus.gap` makes every reader in every process re-read Postgres.
+
+### Readiness
+
+After boot, `/readyz` reports the bus in its `queue` field and does not fail on it (`rustd/crates/daemon/main/src/probes.rs`).
+Messages are still accepted during a bus outage, because acceptance is a Postgres commit.
 
 A NATS restart loses nothing durable, because NATS stored nothing.
-Accepted work stays recoverable while Postgres survives, including pending inbound work and owed outbound answers.
-Third-party side effects keep their documented retry and idempotency limits; this page promises no exactly-once delivery to external services.
-
-A deployment replaces application processes and neither datastore. A retry reuses the operation's identity, because a timeout does not prove an operation failed.
+A deployment replaces application processes, never either datastore.
 
 ## Limits
 
-A node that dies silently, from a host crash or a network split, resets no connection.
-The client notices only when its pings go unanswered: one ping every 60 s, stale after two, so about 2 to 3 minutes.
-Frames published before the debt window in that span reach no reader and carry no gap; a viewer sees their rows at its next `catching_up`.
+- A node that dies silently, from a host crash or a network split, resets no connection.
+  The client notices after two unanswered pings, 60 s apart, so in 2 to 3 minutes.
+  Frames sent before the 2 s window in that span carry no gap; the viewer sees them at its next reload.
+- The compose cluster runs three nodes on one host. It proves node loss, not host loss.
+- External side effects keep their own retry limits; no exactly-once delivery to outside services is promised.
+- One million stored fleets is a target with no measurement behind it.
+  A report must state stored fleets, active fleets, concurrent runs and runner processes separately.
 
-The compose cluster runs three nodes on one host. It proves node loss, but not host loss or real DNS between nodes.
+## Related
 
-One million stored fleets, active fleets, concurrent runs, and runner processes are separate workload dimensions. Reports must state all four, together with offered load, completion rate, queue age, memory, and database cost. Small deployment probes prove behavior at their tested load; they do not prove the million-fleet target.
-
-Fault injection and saturation testing use isolated datastores and synthetic destinations. Shared deployments use bounded fixture traffic and cleanup that only removes the run's own records. No shared database reset, node stop, failover exercise, or provider switch follows from spec approval alone.
-
-## Shared local development
-
-`make up` shares one infrastructure project across a repository's linked Git worktrees.
-`docker-compose.yml` contains Postgres, three NATS nodes (`ant`, `bee` and `elk`), Mailpit and Upstash QStash.
-The first caller saves a canonical Compose snapshot; later callers reuse healthy services without replacing that snapshot.
-
-Each worktree starts its own native `agentsfleetd`, compiled from that checkout.
-A repository build lock protects the shared Cargo cache and the copy to each worktree's separate binary path.
-The daemon port, database name and development namespace come from the worktree's absolute path checksum.
-
-| Resource | Development boundary |
-|---|---|
-| Postgres | One database per worktree; existing schemas and tenant checks remain intact |
-| NATS | `AGENTSFLEET_DEV_NAMESPACE` adds `dev.<namespace>.` to every subject, the `af.bus.gap` broadcast included |
-| QStash | Each daemon supplies its own callback port through the existing `API_URL` setting |
-| Mailpit | Shared inbox; use distinct recipient addresses to identify each worktree's mail |
-| Linux runner | Separate binary, registered token, `AGENTSFLEET_API_URL` and `RUNNER_STORAGE_HOME` per worktree |
-
-The namespace accepts at most 64 ASCII letters, digits, underscores or hyphens.
-An unset namespace keeps the deployed subject spelling; production and deployed `api-dev` set none.
-Replicas in one deployment use the same database and namespace so they can process the same deployment's work.
-
-`afd_bus::nats::Config` reads the namespace once at boot and refuses one outside its charset as `UZ-STARTUP-001` (`afd_bus/src/nats/config.rs`).
-The adapter applies the prefix to every publish and subscribe, so callers name only logical subjects.
-
-`make down` stops only the verified daemon belonging to the current worktree.
-Shared snapshots and registered roots live under `${XDG_STATE_HOME:-$HOME/.local/state}/agentsfleet`, outside Git metadata.
-`make status` lists saved stacks, live or gone worktree roots, and container states.
-
-`make down DEV_STACK=<COMPOSE_PROJECT>` refuses existing registered roots and removes an orphan stack's containers and volumes using its saved port settings.
-Teardown deletes that stack's databases and pending QStash deliveries; the NATS nodes keep nothing to delete.
-
-The disposable stack used by `make test-integration-rustd` has separate project names, ports and volumes.
-Its schema resets and node-stop tests (`TEST_NATS_CONTROL`) must never use the shared development project.
-The [development notes](../development.md#shared-development-worktrees) explain startup, runner setup and failure recovery.
-
-## Upstash QStash
-
-QStash is the cron trigger and stays in service. Mentions of Upstash in the cron sections of these pages are correct.
-
-## Related pages
-
-- [Scaling](./scaling.md) describes existing capacity assumptions that measurements must verify.
-
-- [Data flow](./data_flow.md) and [runner fleet](./runner_fleet.md) describe the running topology; each Section updates them with its code.
-
-- [Push scheduler](./push_scheduler.md) holds the subjects, their backstops and the M244 measurements.
-
-- [Test isolation on a shared datastore (rules ISO-1 to ISO-3)](./testing.md#test-isolation-on-a-shared-datastore-rules-iso-1-to-iso-3) governs isolation on the shared lane datastores.
-
-- [async-nats](https://docs.rs/async-nats/0.52.0/async_nats/) documents the client's events and server information, checked against the pinned version.
+- [Scaling](./scaling.md): sizing replicas, Postgres and runners.
+- [Data flow](./data_flow.md): assignment, report and the live tail end to end.
+- [Thread model](./thread_model.md): the turn, run and delivery tables.
+- [Development notes](../development.md#shared-development-worktrees): the shared local stack and `AGENTSFLEET_DEV_NAMESPACE`.
+- [Testing](./testing.md): test isolation on the shared lane datastores.
+- [async-nats](https://docs.rs/async-nats/0.53.0/async_nats/): the client's events and server information.

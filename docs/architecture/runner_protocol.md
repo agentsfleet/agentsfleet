@@ -1,8 +1,8 @@
 ---
 type: explanation
 audience: operator
-verified: 2026-11-09
-product_version: 0.75.0
+verified: 2026-11-25
+product_version: 0.90.0
 executable: false
 ---
 
@@ -10,271 +10,163 @@ executable: false
 
 ## What it is
 
-Each runner opens one outbound connection to `agentsfleetd` for work, cancellation, progress and results.
-The runner prefers HTTP/3 and uses HTTP/2 when an eligible transport failure prevents HTTP/3.
+Each runner opens one outbound connection to `agentsfleetd`. It carries work, cancellation, lease renewals, progress and results for every run on that host.
 
-Read this page to connect a runner, set certificate trust or understand reconnect behavior.
-The [certificate guide](../../playbooks/operations/runner_stream_tls/001_playbook.md) gives the generation and vault steps.
+The runner prefers HTTP/3 and falls back to HTTP/2. The daemon never dials the runner, so the runner needs no inbound listener.
+
+```text
+agentsfleet-runner ── private network ──> agentsfleetd stream listener
+                      HTTP/3 over UDP port 4443
+                      HTTP/2 over TCP port 4443
+```
+
+User Datagram Protocol (UDP) carries HTTP/3 through the QUIC transport. Transmission Control Protocol (TCP) carries HTTP/2.
 
 ## Why it exists
 
-The daemon pushes work to available workers, so idle workers send no run requests.
-One authenticated connection carries every fleet run.
+The daemon pushes each run to a runner with a free worker, so idle workers send no requests. One authenticated connection replaces a request per verb.
+
+The runner holds a runner token and no datastore credential. Everything it does reaches Postgres through the daemon ([runner fleet](runner_fleet.md)).
 
 ## How it behaves
 
-### Certificates and configuration
-
-Use separate certificates in development and production.
-The certificate must cover the hostname in `AGENTSFLEET_RUNNER_STREAM_URL`, including a private hostname when using Fly networking.
-
-| Environment | 1Password vault | Certificate hostname |
-|---|---|---|
-| Development | `ZMB_CD_DEV` | `agentsfleetd-dev.internal` |
-| Production | `ZMB_CD_PROD` | `agentsfleetd-prod.internal` |
-
-The daemon needs its leaf certificate chain and matching private key as protected files.
-Runners need the issuer's public certificate when their operating system does not trust that issuer.
-Runners keep their existing bearer tokens and need no client certificates.
-
-| Item | Fields | Runtime use |
-|---|---|---|
-| `agentsfleet-runner-stream` | `ca-certificate`, concealed `ca-private-key`, `certificate-chain`, concealed `private-key`, `server-name` | `ca-certificate`: public runner trust; `ca-private-key`: signing only, never runtime; `certificate-chain` and `private-key`: daemon files; `server-name`: hostname metadata |
-
-Each environment's vault holds one `agentsfleet-runner-stream` item.
-The CA signing key sits beside runtime material, where the Continuous Integration (CI) service account can read it.
-Indy accepted this access on Nov 09, 2026.
-
-The DEV item also holds concealed `wireguard-config`, used only to restore the runner host's private route.
-PROD has no tunnel configuration or machines yet.
-
-Certificate files use Privacy-Enhanced Mail (PEM) encoding.
-The issuer is a certificate authority (CA).
-
-The application reads file paths, never 1Password references, for certificate material.
-The development and release workflows load these fields through `op://<vault>/agentsfleet-runner-stream/<field>` references.
-They stage the daemon chain and leaf key as Fly file secrets before deployment; Fly writes them under `/etc/agentsfleet/runner-stream/` at boot.
-
-The runner bootstrap installs public trust at `/etc/agentsfleet/runner-stream-trust.pem` and sets the stream URL in its existing protected environment file.
-No deployment reads `ca-private-key`.
+### Settings and certificates
 
 | Process | Setting | Effect and default |
 |---|---|---|
-| Daemon | `AGENTSFLEET_RUNNER_STREAM_LISTEN_ADDR` | TCP and UDP bind address; default `[::]:4443`; valid IP address and port |
-| Daemon | `AGENTSFLEET_RUNNER_STREAM_TLS_CERT_FILE` | Required PEM leaf certificate followed by its issuer chain; no default |
-| Daemon | `AGENTSFLEET_RUNNER_STREAM_TLS_KEY_FILE` | Required PEM private key matching the leaf certificate; no default |
-| Runner | `AGENTSFLEET_RUNNER_STREAM_URL` | Required HTTPS origin; no credentials, path, query or fragment; no default |
-| Runner | `AGENTSFLEET_RUNNER_STREAM_TLS_CA_CERT_FILE` | Optional public CA bundle added to operating-system trust; default operating-system trust |
-| Runner | `AGENTSFLEET_RUNNER_TOKEN` | Required existing `agt_r` runner credential; no default |
-| Runner | `AGENTSFLEET_API_URL` | Required HTTP or HTTPS base URL for the remaining HTTP operations; no default |
+| Daemon | `AGENTSFLEET_RUNNER_STREAM_LISTEN_ADDR` | TCP and UDP bind address; default `[::]:4443` |
+| Daemon | `AGENTSFLEET_RUNNER_STREAM_TLS_CERT_FILE` | Required Privacy-Enhanced Mail (PEM) leaf certificate followed by its issuer chain; no default |
+| Daemon | `AGENTSFLEET_RUNNER_STREAM_TLS_KEY_FILE` | Required PEM private key for that leaf; no default |
+| Runner | `AGENTSFLEET_RUNNER_STREAM_URL` | Required HTTPS origin with no credentials, path, query or fragment; no default |
+| Runner | `AGENTSFLEET_RUNNER_STREAM_TLS_CA_CERT_FILE` | Optional issuer bundle added to operating-system trust; default operating-system trust |
+| Runner | `AGENTSFLEET_RUNNER_TOKEN` | Required `agt_r` runner token; no default |
+| Runner | `AGENTSFLEET_API_URL` | Required base URL for the fenced HTTP run verbs; no default |
 
-For development, the native origin is `https://agentsfleetd-dev.internal:4443`.
-The client adds `/v1/runners/me/stream`; configure only the origin.
+The client adds `/v1/runners/me/stream` to the origin. In development the origin is `https://agentsfleetd-dev.internal:4443`.
 
-The configuration readers are [daemon preflight](../../rustd/crates/daemon/main/src/preflight/runner_listener/mod.rs) and [runner configuration](../../rustd/crates/runner/afr_supervisor/src/config/stream.rs).
+The daemon's file keys, such as `[runner.listener]` and the stream memory budgets, are in the [configuration reference](config_reference.md). The readers are [daemon preflight](../../rustd/crates/daemon/main/src/preflight/runner_listener/mod.rs) and [runner configuration](../../rustd/crates/runner/afr_supervisor/src/config/stream.rs).
 
-### Connection direction and deployment
+The certificate must cover the hostname in the stream URL. Runners need the issuer's public certificate when the operating system does not trust that certificate authority (CA). Runners use their bearer token and need no client certificate.
 
-The runner needs outbound access to the configured daemon endpoint.
-The daemon never dials the runner, and the runner needs no inbound listener.
+The runner bootstrap installs that trust at `/etc/agentsfleet/runner-stream-trust.pem`. The [certificate playbook](../../playbooks/operations/runner_stream_tls/001_playbook.md) gives the generation and vault steps.
 
-```text
-Runner ── private network ──> agentsfleetd listener
-         HTTP/3: UDP 4443
-         HTTP/2: TCP 4443
-```
+### Transports and fallback
 
-User Datagram Protocol (UDP) carries HTTP/3 through QUIC.
-Transmission Control Protocol (TCP) carries HTTP/2.
-The port above is the default; both listeners use the configured address.
+Both transports require Transport Layer Security (TLS) 1.3 with `X25519MLKEM768` hybrid key exchange. A classical-only peer is refused, during fallback too.
 
-Each UDP datagram that carries QUIC holds at most 1232 bytes of payload.
-That size fits the 1280-byte minimum Internet Protocol version 6 (IPv6) maximum transmission unit (MTU), after the IPv6 and UDP headers.
-No setting changes the [ceiling](../../rustd/crates/protocol/af_stream/src/mtu.rs).
+Network failures and transport timeouts allow fallback to HTTP/2. Certificate, credential, protocol and policy refusals fail closed. An explicit HTTP `CONNECT` proxy selects HTTP/2.
 
-[Fly documents](https://fly.io/docs/networking/app-services/) that `[::]` also accepts private IPv6 traffic.
-Direct private access needs no public `[[services]]` entry.
+A healthy HTTP/2 connection stays on HTTP/2; nothing upgrades it in place. UDP failure history starts only when HTTP/3 fails and HTTP/2 then connects. For the next 30 seconds, a new connection skips HTTP/3.
 
-The DEV OVH runner reaches Fly through `wg-quick@fly-dev`.
-Preparation installs WireGuard; deployment restores `/etc/wireguard/fly-dev.conf` from the DEV vault through SSH input, with root ownership and mode `0600`.
+Each QUIC datagram carries at most 1,232 bytes of payload by default. That fits the 1,280-byte minimum Internet Protocol version 6 (IPv6) maximum transmission unit (MTU) after headers.
 
-The tunnel carries only the Fly organization prefix; split DNS sends `*.internal` lookups to Fly.
-An external runner needs equivalent routing, name resolution and permitted TCP/UDP traffic.
+`[runner.listener] max_udp_payload_bytes` changes the ceiling, and the peer's advertised limit also applies ([datagram limit](../../rustd/crates/protocol/af_stream/src/mtu.rs)).
 
-A tenant's own runner is an external runner too. It needs the stream URL, the public trust file and a route to the daemon.
-Certificate delivery alone creates no route.
+Permit both UDP and TCP to the stream port, so HTTP/2 can take over when UDP is blocked. Any intermediary must pass duplex streaming.
 
-Permit both transports to allow HTTP/2 fallback when UDP is unavailable.
-Any intermediary must pass duplex streaming and retain native connection ownership across packets.
-Cloudflare is not required.
+A tenant's own runner needs the stream URL, the trust file and a network route to the daemon. The development runner reaches Fly through the `wg-quick@fly-dev` WireGuard tunnel, with split DNS for `*.internal` names.
 
-### One session and two transports
+### Four streams on one connection
 
-The heading keeps its old words so links to it stay stable. The session is the runner's connection.
+The connection authenticates once on the control stream. Three more streams then bind to that confirmed connection, each a duplex `POST /v1/runners/me/stream`.
 
-Both transports require Transport Layer Security (TLS) 1.3 and `X25519MLKEM768` hybrid key exchange.
-Classical-only peers are refused, including during fallback.
-Certificate signatures remain conventional; handshake keys need no vault entry.
+| Stream | Carries |
+|---|---|
+| `control` | Hello, credits, heartbeats, renewals, cancellation and drain |
+| `work` | Runs (`Down::Run`), folded input, and a chat run's context load and save |
+| `reports` | Run completion and its acknowledgement |
+| `activity` | Live progress frames, with no acknowledgement |
 
-Network failures and bounded transport timeouts permit fallback.
-Certificate, credential, protocol and policy refusals fail closed.
-An explicit HTTP CONNECT proxy selects HTTP/2; HTTP/3 never bypasses that policy.
+Each message is a four-byte big-endian length followed by UTF-8 JSON. Wrong-stream messages, unknown fields and conflicting bindings are refused.
 
-A healthy HTTP/2 connection stays on HTTP/2.
-The runner tries HTTP/3 again during a later permitted connection setup, after recent UDP failure history allows another attempt.
-There is no periodic transport upgrade or hot switch.
+Control frames hold at most 2 MiB (`CONTROL_MESSAGE_BYTES_MAX`). Work, report and activity frames hold at most 32 MiB (`MESSAGE_BYTES_MAX`). At most 256 requests wait for answers at once.
 
-UDP failure history starts only when HTTP/3 fails to connect and HTTP/2 then connects.
-If neither carrier connects, no new history starts, so a daemon restart alone does not send the runner to HTTP/2.
+Each stream kind draws on its own memory pool, split evenly between sending and receiving. Accepted runs keep a separate allowance of one full frame each, so busy workers cannot block report acknowledgements.
 
-### Recovery and availability
+A run whose payload would exceed the frame is never sent. The daemon fails its turn at assignment with `frame_too_large` and `UZ-RUN-032` ([unframed](../../rustd/crates/daemon/afd_gateway/src/connection/unframed.rs)).
 
-Reconnect rebuilds live work from Postgres.
-Each running run keeps its last confirmed expiry and stops when that deadline expires.
-A reconnect or report retry cannot extend that deadline.
+### Opening and protocol version
 
-Fleet work starts stopping nine seconds before expiry.
-This leaves time to stop the engine and reap its processes.
+The runner opens with `Hello`, naming the runs it still holds and its idle worker count. The daemon answers with `Welcome` and the runner's assigned policy.
+
+The protocol has one version, `af_wire::protocol::VERSION`, today `agentsfleet.runner.v5`. A runner naming any other version is refused at hello with `UZ-RUN-023` and gets no run.
+
+### Run lease and renewal
+
+Each run holds a lease: a deadline after which another runner may take its turn. A heartbeat round renews every live run on the host at once.
 
 | Timing | Value | Meaning |
 |---|---|---|
-| Round | Every heartbeat interval, 10 seconds by default | The runner's one clock: each round sends the heartbeat and one renewal frame naming every live run on the host; each answer has its own 5-second deadline. A round refused for now is retried 5 seconds after it was sent |
-| Heartbeat | Each round | No heartbeat for two intervals closes the connection; an unanswered heartbeat fails after 5 seconds. No ping is sent |
-| Run grant | 38 seconds | One round, its answer, the reconnect budget and the renewal margin, plus one second |
-| Offline threshold | 114 seconds | Three run lifetimes of silence; a read derives the host `offline` and its sandbox hold stops protecting its fleet |
-| Recovery attempt | 7 seconds total | HTTP/3 setup 2 seconds, HTTP/2 setup 2 seconds, authenticated opening and rebuild 3 seconds |
-| Reconnect delay | Jittered exponential backoff, capped at 30 seconds | Failed openings and unanswered connections retain retry history |
-| Backoff reset | First answer | A connection the daemon answered a request on resets reconnect backoff |
-| UDP failure history | 30 seconds | How long a new connection skips HTTP/3 after HTTP/3 failed to connect and HTTP/2 connected |
+| Round | Every heartbeat interval, 10 seconds by default | Sends the heartbeat and one renewal frame naming every live run; each answer has a 5-second deadline |
+| Run lease | 38 seconds | One round (10) plus the answer (5), the reconnect budget (7), the renewal window (15) and one second |
+| Silence | Two heartbeat intervals | Closes the connection |
+| Offline | 114 seconds | Three leases of silence; the host reads `offline` |
+| Reconnect budget | 7 seconds | HTTP/3 setup 2 seconds, HTTP/2 setup 2 seconds, opening and rebuild 3 seconds |
+| Reconnect delay | Jittered exponential backoff, capped at 30 seconds | The first answered request resets it |
 
-[The run clock's constants](../../rustd/crates/daemon/afd_runner/src/timing/mod.rs) assert the renewal relationship, and [the shared stream spans](../../rustd/crates/foundation/af_core/src/timing/mod.rs) assert the recovery budget.
-Repeated outages can exceed the recovery window; confirmed run expiry still stops the running run.
-Reconnect starts renewal immediately; it never waits for the next periodic tick.
+[The run clock](../../rustd/crates/daemon/afd_runner/src/timing/mod.rs) and [the shared spans](../../rustd/crates/foundation/af_core/src/timing/mod.rs) assert these relationships at compile time.
 
-An archive or delete saves cancellation before sending its notification.
-Renewal and reconnect read that saved decision if the notification is lost.
-Revocation and token rotation fence new grants before an old socket detects the change.
+A renewal checks the fence, a person's Stop and, every third frame, the payer's balance (`FUNDS_CHECK_TICKS`). A refused renewal answers an error code, a detail and a retryable flag.
 
-During drain, the daemon stops assigning runs, answers accepted requests, then sends `go_away` and closes the connection.
-The runner reconnects with its pending results still in memory.
+A durable task's run is never renewed past its task deadline; a renewal past it answers `UZ-RUN-011`. No other clock ends a run.
 
-### Ownership during reconnect
+The runner starts stopping fleet work nine seconds before its last confirmed deadline. That leaves time to stop the sandbox and reap its processes.
 
-One database marker identifies the current connection owner.
-Preparation and confirmation compare the previous owner and credential under the host lock before a new connection becomes authoritative.
-The marker survives network disconnects.
+A reconnect or a report retry cannot extend a deadline. Reconnect starts renewal at once, without waiting for the next round.
 
-A fresh process using the same token can replace an older process.
-The older process receives UZ-RUN-021 and halts; stop the duplicate process before restarting the intended runner.
+### Reconnect, ownership and drain
+
+Reconnect rebuilds live work from Postgres. One database marker names the connection that owns the runner, and it survives network loss.
+
+A fresh process using the same token replaces an older one. The older process receives `UZ-RUN-021` and halts.
+
+Archive and delete save the cancellation before sending it. Renewal and reconnect read that saved decision if the message is lost. Revoking or rotating a token fences new grants before the old socket notices.
+
+During a daemon drain, the daemon stops assigning runs and answers accepted requests. It then sends `go_away` and closes. The runner reconnects with its pending results still in memory.
+
+### Results and acknowledgements
+
+Postgres owns saved results, acknowledgements and billing records. A worker retries an unacknowledged report from memory under its original identity.
+
+A result holds its worker until acknowledgement or a terminal refusal. A lost acknowledgement never causes a second charge.
+
+On shutdown the runner gives accepted work and result delivery 35 seconds. Workers then get a five-second cleanup grace before forced cancellation.
+
+### Run payload and fenced verbs
+
+Every `Down::Run` carries one turn of a fleet's thread. Its payload holds the fleet's name, unfinished tasks, memory window, thread history and network policy.
+
+The field `inputs_waiting` says whether a later message is already queued. When false, the run skips the fold request before its first model call.
+
+A chat run reads and saves its thread's compacted context on the work stream, under its fence ([context lifecycle](context_lifecycle.md)). The runner makes every model call; the daemon makes none.
+
+Some run verbs stay HTTP routes under `/v1/runners/me/runs/{run_id}`, fenced by the run's token. They include access requests, trigger rows, task bindings and full tool records ([API resources](api_resources.md)).
 
 ### Refusals
 
 | Code | Cause | Next action |
 |---|---|---|
-| [UZ-RUN-001](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-001) | Missing, changed or invalid runner token | Set the intended runner's current token; re-register if necessary |
-| [UZ-RUN-009](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-009) | Administrative state blocks access | Check cordon, drain or revocation; re-enroll when required |
-| [UZ-RUN-021](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-021) | A newer connection owns the runner | Stop the duplicate process; keep one intended process per token |
-| [UZ-RUN-022](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-022) | The fleet was archived or deleted | Stop that run and report its final result |
-| [UZ-RUN-023](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-023) | Runner and daemon use different protocols | Upgrade the runner and daemon together |
-| [UZ-RUN-024](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-024) | The stream ended or stopped answering | None; the runner reconnects. If it repeats, check UDP and TCP reachability of the stream URL |
+| [UZ-RUN-001](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-001) | Missing, changed or invalid runner token | Set the runner's current token; re-register if needed |
+| [UZ-RUN-009](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-009) | Operator state blocks access | Check cordon, drain or revocation |
+| [UZ-RUN-021](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-021) | A newer connection owns the runner | Stop the duplicate process; run one process per token |
+| [UZ-RUN-022](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-022) | The fleet was archived or deleted | Stop the run and report its final result |
+| [UZ-RUN-023](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-023) | Runner and daemon speak different protocol versions | Deploy the runner and daemon from one release |
+| [UZ-RUN-024](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-024) | The stream ended or stopped answering | None; the runner reconnects. If it repeats, check UDP and TCP reach to the stream URL |
+| [UZ-RUN-032](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-032) | A run's payload exceeds the frame | None; the turn fails at assignment and is not retried |
 
-### Results and billing
-
-Postgres owns saved results, acknowledgements and billing records.
-Workers retry unacknowledged reports and task-decision receipts from memory using their original identities.
-Caller shutdown allows accepted work and result delivery thirty-five seconds, then stops remaining work.
-
-Workers receive the existing five-second cleanup grace before forced cancellation and joining.
-Process exit after that grace can lose reports or usage that the daemon has not acknowledged.
-A lost acknowledgement does not authorize another charge or physical provider call.
-
-An unacknowledged result occupies its worker until acknowledgement or a terminal refusal.
-Process loss before the database commit can lose that unsent result and usage.
-The runner writes no report spool and replays no files from an earlier process.
-
-### First model call
-
-A run carries `inputs_waiting`, which the assignment sets when its conversation holds a later unsettled turn.
-A run whose payload says false skips the fold ask before its first model call. The field is required: a run without it is refused.
-
-The ask after every answer is unconditional, so a message landing after the assignment folds into the next model call.
-
-A run keeps its compaction summary in its own state. It mints every branch it writes, so a load could only answer nothing, and nothing outside the run reads a summary.
-The runner sends no context checkpoint and the daemon serves no context route.
-
-### Run payload and protocol version
-
-Every `Down::Run` carries one turn of a fleet's thread. Its `RunPayload` carries the fleet's `name` and its unfinished tasks. Its `NetworkPolicy` comes from the fleet's toggles and approved grants ([egress model](runner_fleet.md#egress-model-outbound-is-the-only-network-surface)).
-
-A fleet chat run reads and saves its thread's compacted context on the work stream, under its fence. The messages are `context_load` and `context_save` (`afr_agent`'s `loop/context/saved.rs`).
-The runner makes every model call; the daemon makes none.
-
-A run's fenced verbs are HTTP routes under `/v1/runners/me/runs/{run_id}`, outside this stream. They include `POST …/access` for an access request, `POST`, `GET` and `DELETE …/triggers` for trigger rows, and `POST …/durable_tasks/bindings` for a task start or input. [API resources](api_resources.md) owns their shapes.
-
-The protocol has one version, `af_wire::protocol::VERSION`, and a wire change moves it.
-A runner that names any other version is refused at hello with `UZ-RUN-023`, so it owns no connection and is assigned no run.
-
-### Session protocol
-
-The heading keeps its old words so links to it stay stable.
-
-The connection authenticates once, then binds four independently bounded streams to the same physical connection.
-Control stays available while reports or activity are waiting.
-Wrong-stream messages, unknown fields and conflicting connection bindings are refused.
-
-Each stream is a duplex `POST /v1/runners/me/stream` on the same physical connection.
-The control stream authenticates and confirms ownership; secondary streams bind to that confirmed connection.
-
-| Kind | Carries |
-|---|---|
-| `control` | Opening, credits, heartbeat, ping, renewals, cancellation and drain |
-| `work` | Runs (`Down::Run`), folded input, and a chat run's context load and save |
-| `reports` | Run completion with matching acknowledgements |
-| `activity` | Fleet progress without application acknowledgements |
-
-Messages use a four-byte big-endian length followed by UTF-8 JSON.
-Connection-local request identifiers correlate answers; cancellation and disconnect remove waiting callers, so late answers cannot reach another request.
-
-The [wire types](../../rustd/crates/protocol/af_wire/src/protocol/mod.rs) define messages and bounds.
-The [gateway](../../rustd/crates/daemon/afd_gateway/src/connection/mod.rs) and [runner](../../rustd/crates/runner/afr_supervisor/src/downlink/mod.rs) own task cleanup and connection state.
-
-#### Memory configuration
-
-| Setting | Default | Bounds |
-|---|---|---|
-| `AGENTSFLEET_RUNNER_CONTROL_MEMORY_MIB` | 16 MiB per replica | 12 MiB or more |
-| `AGENTSFLEET_RUNNER_DATA_MEMORY_MIB` | 64 MiB per replica | 64 MiB or more |
-| `AGENTSFLEET_RUNNER_WAKE_QUEUE_CAPACITY` | 64 thread identifiers | 1–65,536 identifiers |
-
-Receive and send pools are separate; each receives half the configured totals.
-Invalid values refuse startup before allocation.
-
-The data budget can also be set in bytes, as `runner.stream.data.max_buffered_bytes` or `AGENTSFLEET_RUNNER_DATA_BUFFER_BYTES`.
-Its floor is 67,108,864 bytes, so each direction holds one maximum frame (`af_stream/src/framing/memory.rs`).
-
-Work, report and progress frames carry at most 32 MiB (`af_wire::protocol::MESSAGE_BYTES_MAX`).
-Control frames carry the opening, heartbeats, renewals, cancellation and small replies, at most 2 MiB each (`CONTROL_MESSAGE_BYTES_MAX`).
-A frame is charged to its stream's pool at its measured length, with no second reservation for serialization (`af_stream/src/framing/writer.rs`).
-
-Accepted runs use a separate allowance of one maximum frame for each of 64 runs, so workers holding runs cannot block report acknowledgements.
-The frame ceilings and the 256 pending-request limit are fixed protocol bounds.
-
-A run whose assignment would pass the frame is not sent. The daemon measures it first and fails its turn at assignment with `frame_too_large` and `UZ-RUN-032`, so it neither lapses nor is reassigned (`afd_gateway/src/connection/unframed.rs`).
-A fleet's message to another stores its words once, in `message`.
-
-### Observability
-
-Connection records identify transport, failure reason, fallback and recovery duration.
-Queue-pressure and dropped-activity counters expose congestion; ping and renewal timings expose a delayed application path.
-Metric labels remain finite; tokens, private keys, payloads and tenant text never enter logs.
+Connection signals, such as `agentsfleet_runner_stream_connect_total` and the fallback counter, are listed in [observability](observability.md). Logs never carry tokens, private keys, payloads or tenant text.
 
 ## Limits
 
-Repository tests cover native behavior; they cannot prove the deployed Fly route.
-After deployment, the DEV runner gate checks private DNS, private API readiness, separate HTTP/2 and HTTP/3 TLS connections, and a recent native heartbeat.
+- The runner keeps no report spool. A process that dies before an acknowledgement can lose that report and its usage.
+- Repeated outages can outlast the 7-second reconnect budget. The run then stops at its confirmed deadline, and another runner may take the turn.
+- Cordon and drain refuse the runner's authentication, renewals included ([runner fleet](runner_fleet.md#limits)).
+- Repository tests prove the protocol, not the deployed Fly route. After a deploy, the development runner gate checks private DNS, both transports and a recent heartbeat.
 
 ## Related pages
 
 - [Generate and store listener certificates](../../playbooks/operations/runner_stream_tls/001_playbook.md)
+- [Runner fleet](runner_fleet.md): registration, policy, state and failure recovery
+- [Runner runtime](runner_execution.md): what the runner does with a run
+- [Configuration reference](config_reference.md): every daemon and runner key
 - [Authentication rules](../AUTH.md)
-- [Work scheduling](push_scheduler.md)

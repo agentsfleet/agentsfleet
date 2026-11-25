@@ -4,7 +4,7 @@
 //! daemon relies on — the worker pool, renewal, the report retained in memory
 //! until acknowledged, the bounded activity sender, memory
 //! load and fenced push, native instructions and the capability report
-//! (`docs/architecture/runner_fleet.md` §The control protocol). Model keys live
+//! (`docs/architecture/runner_protocol.md`). Model keys live
 //! only here; no sandbox ever holds one. The boot sweep of what a crashed
 //! runner's sandboxes left is the engine's, built on [`StorageHome::sandboxes`].
 //!

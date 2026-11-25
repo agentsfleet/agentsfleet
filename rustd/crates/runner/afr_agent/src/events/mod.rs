@@ -5,7 +5,7 @@
 //! Answer and reasoning text share one run-wide `stream_seq` from 0, the first
 //! chunk alone carries `stream_start` and its time since the run started, and
 //! each kind keeps its own scrub carry so a secret split across chunks is never
-//! sent (`docs/architecture/runner_fleet.md` §"Live activity (the SSE tail)").
+//! sent (`docs/architecture/data_flow.md` §"Watching a fleet").
 
 pub(crate) mod compaction;
 

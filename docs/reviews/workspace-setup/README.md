@@ -45,9 +45,9 @@ Source checks are complete. Backend implementation, repository tests, fresh cove
 ## Related pages
 
 - [API and gaps](api.md)
-- [Definition](../../architecture/fleet_definitions.md#validated-definition)
-- [Creation](../../architecture/data_flow.md#fleet-creation-and-setup-recovery)
-- [Runner](../../architecture/runner_fleet.md#authoring-leases)
-- [ASCII flow](../../architecture/data_flow.md#fleet-setup-and-runtime-sequence)
-- [Layouts and options](../designs/workspace-chat-options.md)
+- [Definition](../../architecture/user_flow.md#what-a-fleet-is-made-of)
+- [Creation](../../architecture/data_flow.md#create-and-recovery)
+- [Runner](../../architecture/runner_protocol.md#run-lease-and-renewal)
+- [ASCII flow](../../architecture/data_flow.md#the-path-in-one-picture)
+- [Layouts and options](../../designs/workspace-chat-options.md)
 - [Review packet](review-packet.md)

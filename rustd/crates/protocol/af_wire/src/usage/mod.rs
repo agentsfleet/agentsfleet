@@ -2,7 +2,7 @@
 //! line the daemon makes of it.
 //!
 //! The daemon prices each request on its own
-//! (`docs/architecture/billing_and_provider_keys.md`): a context tier
+//! (`docs/architecture/billing.md` §"How a line is priced"): a context tier
 //! prices the WHOLE request, so a run's cumulative totals cannot say which
 //! requests crossed a tier, and a price can change at a date mid-run. The
 //! runner reports one [`RequestUsage`] per provider request; the daemon turns

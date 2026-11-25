@@ -37,8 +37,8 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 /// runtime's own — which leaves room for 256 and not for the next rung.
 ///
 /// The stream path holds up well past that. `make bench-stream PROFILE=rig` on
-/// NATS (Nov 09, 2026, `docs/architecture/push_scheduler.md` §Baselines) burst
-/// 4,096 streams at a p99 of 9.83 ms with no frame undelivered, so a host with
+/// NATS (`docs/architecture/scaling.md` §"Current measurements") burst
+/// 4,096 streams at a p95 of 12.4 ms with no frame undelivered, so a host with
 /// a raised descriptor limit can set the knob far higher. That lane refuses a
 /// default above the highest rung it measured inside its bounds.
 pub const MAX_STREAMS_DEFAULT: usize = 256;

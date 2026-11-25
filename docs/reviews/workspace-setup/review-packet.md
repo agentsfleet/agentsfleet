@@ -25,14 +25,14 @@ Chief Technology Officer (CTO) AIWA reviewers should assess one consistent desig
 |1|[Owner decisions](decisions.md)|Do not reopen L1–L21; one-PR packaging.|
 |2|[Five source findings](source-findings.md)|Agree/rebut each remaining backend question with source.|
 |3|[Resolution ledger](codex-response.md)|Agreement, evidence, costs; dark/pessimistic/optimistic reasoning.|
-|4|[Overview](../../architecture/high_level.md#fleet-authoring-and-runtime)|User goal and selected architecture.|
-|5|[Definition](../../architecture/fleet_definitions.md#validated-definition)|Existing typed policy, small edits, nanos, review/manifest/marker.|
+|4|[Overview](../../architecture/high_level.md#where-each-topic-lives)|User goal and selected architecture.|
+|5|[Definition](../../architecture/user_flow.md#what-a-fleet-is-made-of)|Existing typed policy, small edits, nanos, review/manifest/marker.|
 |6|[Resource reference](../../architecture/api_resources.md)|Exact17 new/7 changed/2 removed person routes; one claim plus 4 machine routes.|
 |7|[API gaps](api.md)|What exists and what is missing, source-backed.|
-|8|[Creation](../../architecture/data_flow.md#fleet-creation-and-setup-recovery)|Retained installing identity, approvals, activation, initial run, retry/Kill/CLI.|
-|9|[Runner](../../architecture/runner_fleet.md#authoring-leases)|Capacity, authority, tokens, spend, unknown usage, Stop/delete/copies.|
+|8|[Creation](../../architecture/data_flow.md#create-and-recovery)|Retained installing identity, approvals, activation, initial run, retry/Kill/CLI.|
+|9|[Runner](../../architecture/runner_protocol.md#run-lease-and-renewal)|Capacity, authority, tokens, spend, unknown usage, Stop/delete/copies.|
 |10|[Runtime map](runtime-baseline.md)|Preserved inspected runtime and corrected claims.|
-|11|[ASCII flow](../../architecture/data_flow.md#fleet-setup-and-runtime-sequence)|Sixteen complete journey/failure panels.|
+|11|[ASCII flow](../../architecture/data_flow.md#the-path-in-one-picture)|Sixteen complete journey/failure panels.|
 |12|[Layouts/options](../../designs/workspace-chat-options.md)|Navigation, drawers, models, review, Save, mobile, recovery.|
 |13|[Approved interface](../../designs/chat-within-a-workspace.md)|Visual direction and necessary copy changes.|
 |14|[Owning M227_001 spec](../../v2/done/M227_001_P0_API_CLI_DOCS_UI_WORKSPACE_CHAT_CUTOVER.md)|Sections, failure assumptions, proof mapping and final gates.|

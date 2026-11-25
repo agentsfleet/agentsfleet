@@ -1,146 +1,115 @@
-# Product analytics (PostHog)
+---
+type: explanation
+audience: contributor
+verified: 2026-11-25
+product_version: 0.90.0
+executable: false
+---
 
-PostHog is the product-analytics plane, kept apart from the OpenTelemetry
-Protocol (OTLP) export of logs, traces and metrics and from the Postgres
-execution-telemetry store. Two halves write into one PostHog project:
+# Product analytics: the PostHog events and what they may carry
 
-| Half | Owner | Captures |
+> Read this when you add, rename or read a product event in the daemon, the dashboard or the marketing site. Parent: [`README.md`](./README.md) · Operations telemetry: [observability](./observability.md).
+
+## What it is
+
+PostHog holds product events: what people do and which steps they finish.
+It is separate from the OpenTelemetry Protocol (OTLP) logs, traces and metrics, and from the money in Postgres.
+Three producers write into one PostHog project.
+
+| Producer | Library | Captures | Declared in |
+|---|---|---|---|
+| `agentsfleetd` | `posthog-rs` | conversions that complete on the server | `af_observability`'s `product` module |
+| Dashboard, `ui/packages/app` | `posthog-js` | dashboard actions, autocapture, pageviews, `identify` and `reset` | `ui/packages/app/lib/analytics/events.ts` |
+| Marketing site, `ui/packages/website` | `posthog-js` | signup, navigation and interaction clicks | `ui/packages/website/src/analytics/posthog.ts` |
+
+## Why it exists
+
+Browser events get blocked by ad blockers and lost when a tab closes.
+So every conversion that completes on the server, such as creating a fleet, is captured by the daemon alone.
+Dashboard events add what only the browser sees, stitched to the same person by `identify`.
+
+## How it behaves
+
+### Rules for every event
+
+- **Names** are snake_case, object first, past tense, such as `api_key_minted`.
+- **Properties** are identifiers, fixed words and enum values only. Never send a token, a key, message text, a name, pinned memory, a URL or a secret.
+- **Typing.** Dashboard call sites import `EVENTS` and call `captureProductEvent`, whose event parameter is typed `EventName`, so a misspelled event fails the typecheck.
+- **Allowlist.** The dashboard's emit path also filters every payload against `EVENT_PROP_KEYS`, so a widened argument cannot add fields.
+- **Success only.** Mutation events fire after success; a validation failure or an aborted action sends nothing.
+- **Never blocking.** A capture failure never breaks the action it records.
+
+### Daemon events
+
+The client is optional: with no project key, `Analytics::silent` sends nothing.
+With a key, `posthog-rs` flushes every 100 events or 5 s, and a full 10,000-event queue drops new events with one warning.
+`capture` returns once the event is queued, so code says `submitted`, never `delivered`.
+
+| Event | Fires when | Properties |
 |---|---|---|
-| **Client activation events** | `ui/packages/app` (`posthog-js`) | User-driven dashboard actions (catalog below), autocapture, pageviews, `identify` on Clerk sign-in, `reset` on sign-out. |
-| **Server conversion truth** | agentsfleetd (`posthog-rs`, `af_observability`'s product telemetry) | Server events: [observability.md](./observability.md) §"PostHog is product analytics, not operations telemetry". |
+| `fleet_created` | the create commits, once per fleet; a replayed create sends nothing | `fleet_id`, `origin` (`cli` or `dashboard`) |
+| `fleet_access_changed` | a grant is requested, approved, denied or revoked | `fleet_id`, `kind` (`secret` or `integration`), `change` |
+| `fleet_completed` | a run's report settles for the first time; a repeated report sends nothing | `workspace_id`, `fleet_id`, `turn_id`, `tokens`, `wall_ms`, `exit_status`, `time_to_first_token_ms`; `$insert_id` is the SHA-256 of `fleet_id`, a zero byte and `turn_id` |
+| `server_started`, `worker_started` | the daemon or a worker starts | `port`, or `concurrency` |
+| `startup_failed` | boot fails | `command`, `reason`, `error_code` |
+| `workspace_created` | a workspace is created | `workspace_id`, `tenant_id`, `request_id` |
+| `auth_login_completed`, `auth_rejected` | sign-in succeeds, or a token is refused | `session_id` or `reason`, and `request_id` |
+| `entitlement_rejected` | a request is refused at an entitlement boundary | `workspace_id`, `boundary`, `reason_code`, `request_id` |
+| `api_error` | a request fails | `error_code`, `message`, `workspace_id`, `request_id` |
+| `invite_email_sent`, `invite_email_failed`, `invite_email_unconfigured` | an invite email is sent, fails, or has no mail service | `tenant_id`, `invite_id`, `attempt` |
+The daemon reports each event after the commit that made it true, attributed to the person's identity-provider subject.
+Scheduler mechanics, logs, spans, heartbeats, renewals and activity frames never become product events.
+A trigger added or removed is the operator log line `trigger_changed`, not a product event ([observability](./observability.md#the-chat-paths-signals)).
 
-Client events stitch to the same person via `identify(clerk_user_id)`. A
-conversion that completes server-side (workspace creation, fleet runs) is
-captured server-side only. Browser events get ad-blocked and lost on tab
-close, so the backend is authoritative for them.
+### Dashboard events
 
-## Client event rules
+`EVENTS` in `events.ts` is the list, and it grows with the dashboard; read it rather than a copy.
+It covers workspaces, API keys, models and provider keys, secrets, fleets, fleet memory, integrations, approvals and the error boundary (`dashboard_error_shown`).
+The browser adds its pathname to each event and never captures query strings or fragments.
 
-Single-sourced in `ui/packages/app/lib/analytics/events.ts` (`EVENTS`,
-`EventProps`, and the `EVENT_PROP_KEYS` runtime mirror). Naming: snake_case,
-object-first past tense (`fleet_created`, `api_key_minted`).
+`AnalyticsBootstrap` supplies the signed-in Clerk identity and the current route to `lib/analytics/posthog.ts`.
+The PostHog software development kit (SDK) loads after an idle delay, and its loaded callback sets the identity before any buffered event is released.
+Authentication routes and sensitive destinations are excluded from capture.
 
-Props carry IDs, names, and enum values only, never a token, raw API key,
-credential payload, or free-text from a sensitive field. Call sites import
-`EVENTS` + `captureProductEvent`, whose event parameter is typed `EventName`
-(`ui/packages/app/lib/analytics/posthog.ts`), so a misspelt event name fails
-the typecheck.
+`AnalyticsIdentityGate` records which person owns buffered events, and a different person discards the buffer.
+A `uz_analytics_identified` mark in local storage detects a previous identity after a hard navigation, and sign-out resets it.
+`setAnalyticsContext`, called from `ShellControls`, binds the active workspace with `group("workspace", …)` and sets `workspace_count` and `workspace_plan`.
 
-Catalog captures bypass the legacy `sanitizeProps` allowlist, whose closed key
-set would silently drop event-specific keys. The `EventProps` types are the
-compile-time guard instead. The emit path also allowlists every payload against
-the `EVENT_PROP_KEYS` runtime mirror, so a spread or widened argument cannot
-smuggle extra fields.
-
-Capture is exception-contained: analytics can never break the product flow it
-instruments.
-
-`EVENTS` is the list. It names the dashboard's events across fleets, runners,
-keys, secrets, models, approvals and onboarding, and it grows with
-the dashboard. Reading it beats reading a copy here that stops being true the
-next time someone adds a surface.
-
-Mutation events fire on success only; validation failures and aborted actions
-emit nothing.
-
-## First message to fleet funnel
-
-A person's first message creates the fleet, and the fleet asks for the access it needs.
-The daemon reports both steps as product events:
-
-| Event | Owner | Fires when | Properties allowed | Never attached |
-|---|---|---|---|---|
-| `fleet_created` | Daemon | The create commits, once per fleet; a replayed create sends nothing | `fleet_id`, `origin` (`cli` or `dashboard`) | the message text, the fleet's name |
-| `fleet_access_changed` | Daemon | A grant is requested, approved, denied or revoked | `fleet_id`, `kind`, `change` | a secret's name or value, a repository name |
-
-Creation and access counts must come from the daemon. Terminal-client
-activity, closed browser tabs, and blocked analytics scripts cannot then turn
-a browser click into conversion truth. Join only through opaque identifiers
-within the authorized workspace.
-
-The daemon reports each event after the commit that made it true, attributed to
-the person's identity-provider subject. Every property is a UUID or a fixed
-word. Never attach message text, names, pinned memory, URLs or secret values.
-
-A trigger added or removed is an operator log line, `trigger_changed`, never a product event.
-[Observability](observability.md) owns it; it carries `fleet_id`, `kind` and `by` (`run` or `person`), and no signing secret or URL.
-
-The browser uses the existing event catalog's runtime property allowlist and
-automatic pathname context; it does not capture query strings or fragments.
-
-## Identity lifecycle
-
-`AnalyticsBootstrap` supplies the committed Clerk identity and current route to
-[`posthog.ts`](../../ui/packages/app/lib/analytics/posthog.ts).
-An unresolved identity or expired component effect prevents event delivery.
-
-The PostHog software development kit (SDK) loads after an idle delay.
-Its loaded callback synchronizes the current identity before releasing workspace context, buffered events and the initial pageview.
-Authentication routes and sensitive navigation destinations are excluded during initialization, capture and delivery.
-
-[`AnalyticsIdentityGate`](../../ui/packages/app/lib/analytics/identity-gate.ts) records the owner before buffering events or workspace context.
-A different resolved owner discards both queues; same-account navigation retains owned data.
-Unresolved identities cannot add new unowned telemetry.
-
-A localStorage marker (`uz_analytics_identified`) detects a prior identity after a hard navigation or session expiry.
-A signed-out identity resets that state before telemetry resumes; failed resets retain the marker for retry.
-Clearing localStorage while keeping cookies can leave a PostHog identity without this marker, since PostHog uses both stores by default.
-
-## Workspace group + person context
-
-`setAnalyticsContext`, called from `ShellControls`, binds the active workspace through `group("workspace", …)`.
-It also supplies `workspace_count` and `workspace_plan` through `setPersonProperties`.
-Both operations wait for the current identity before buffered product events are released.
-
-Repeated context for the same workspace skips another `group()` call.
-Identity reset clears the group, so the next session binds its workspace again.
-
-## Website (marketing)
-
-`ui/packages/website` emits `signup_started`, `navigation_clicked`, and
-`interaction_clicked`. Each explicit event includes a stable `source`, its
-`surface`, a fixed `target` or `mode`, and the current pathname.
-
-The property allowlist drops private input; request text, clipboard text,
-query parameters, and hashes are never supplied by these handlers. The
-composer excludes automatic capture. Capture failures cannot interrupt the
-visitor's action.
-
-PostHog enriches events before sending them. The final `before_send` filter
-removes URL, referrer, campaign, element and person-property payloads after
-that enrichment. It retains pathname, catalog properties and required
-ingestion fields.
-
-Unused feature-flag and remote-configuration requests are disabled because
-those requests bypass the event filter and can carry initial URLs.
+### Website events
 
 | Event | Sources | Meaning |
 |---|---|---|
-| `signup_started` | `header_signup`, `hero_signup`, `pricing_signup`, `footer_signup`, `composer_create_fleet`, `example_create_fleet`, `source_early_access`, `pricing_early_access` | Click intent to enter app signup; count each entrance separately |
-| `interaction_clicked` | `hero_suggestion_incident`, `hero_suggestion_tests`, `hero_suggestion_agent` | Click one of the three job suggestions; `target` is the fixed example identifier |
-| `interaction_clicked` | `cli_install_copy` | Click Copy on the installer Terminal, including a denied clipboard write |
+| `signup_started` | `header_signup`, `hero_signup`, `pricing_signup`, `footer_signup`, `composer_create_fleet`, `example_create_fleet`, `source_early_access`, `pricing_early_access` | a click into the waitlist; count each entrance separately |
+| `interaction_clicked` | `hero_suggestion_incident`, `hero_suggestion_tests`, `hero_suggestion_agent` | one of the three job suggestions; `target` names the example |
+| `interaction_clicked` | `cli_install_copy` | Copy on the installer terminal, including a denied clipboard write |
 | `interaction_clicked` | `example_read_full` | Read full conversation |
-| `navigation_clicked` | `hero_github`, `pricing_quickstart` | Homepage repository link and quickstart guide |
-| `navigation_clicked` | `cli_install_guide`, `cli_self_hosted` | Installation guide and repository self-hosting links |
-| `navigation_clicked` | `source_github`, `source_self_hosted`, `continuity_docs` | Source-strip and product-documentation links |
-| `navigation_clicked` | `composer_example`, `example_back`, `example_repository` | Explore an example, return home, or inspect its real repository |
+| `navigation_clicked` | `hero_github`, `pricing_quickstart`, `cli_install_guide`, `cli_self_hosted` | repository, quickstart, installation and self-hosting links |
+| `navigation_clicked` | `source_github`, `source_self_hosted`, `continuity_docs` | source-strip and documentation links |
+| `navigation_clicked` | `composer_example`, `example_back`, `example_repository` | open an example, return home, or view its repository |
 | `navigation_clicked` | `pricing_contact` | Tell us about your workflow |
-| `navigation_clicked` | `header_home`, `header_nav_product`, `header_pricing`, `header_nav_docs`, `header_nav_source` | Shared header links |
-| `navigation_clicked` | `footer_home`, `footer_examples`, `footer_docs`, `footer_agents`, `footer_openapi_json`, `footer_github`, `footer_discord`, `footer_contact`, `footer_privacy`, `footer_terms` | Footer destinations |
+| `navigation_clicked` | `header_home`, `header_nav_product`, `header_pricing`, `header_nav_docs`, `header_nav_source` | header links |
+| `navigation_clicked` | `footer_home`, `footer_examples`, `footer_docs`, `footer_agents`, `footer_openapi_json`, `footer_github`, `footer_discord`, `footer_contact`, `footer_privacy`, `footer_terms` | footer links |
 
-Filter the explicit event by `source` to count a particular button or link.
-Automatic capture remains enabled for general website exploration; do not add
-its click count to the explicit count for the same action.
-The “$0 to start” banner has no custom handler and uses `ph-no-capture`.
+Each event carries its `source`, `surface`, a fixed `target` or `mode`, and the pathname.
+A `before_send` filter strips URL, referrer, campaign, element and person-property data after PostHog enriches the event.
+Feature-flag and remote-configuration requests are off, because they bypass that filter and can carry the first URL.
 
-Use `header_signup` for the current header waitlist. The example page still uses `source_early_access` and `pricing_early_access`.
-Current signup labels and destinations belong to [Website job entrance](website-job-entrance.md#signup-and-installer-boundaries).
+The visitor's typed request stays in React memory, and a reload clears it.
+It never enters URL parameters, analytics, session storage or local storage, and nothing hands it to the app.
+The pricing banner has no handler and is marked `ph-no-capture`, and the composer is excluded from autocapture.
 
-The website reads `VITE_POSTHOG_KEY` and `VITE_POSTHOG_HOST` from the existing deployment configuration.
-The [bootstrap mapping](../../playbooks/founding/01_bootstrap/02_vercel_env.sh) selects the same development and production PostHog projects as the app.
+Count a button by filtering its explicit event on `source`; never add the autocapture count for the same click.
+The site reads `VITE_POSTHOG_KEY` and `VITE_POSTHOG_HOST`, mapped to the app's projects by `playbooks/founding/01_bootstrap/02_vercel_env.sh`.
+`VITE_WAITLIST_URL` overrides the waitlist, `https://accounts.agentsfleet.net/waitlist` by default.
 
-The funnel is redirect-based. Signup completes on the app origin under Clerk.
-The deliberate localStorage-only storage (the cookie-less posture) does not
-cross subdomains, so signup *completion* has no client event.
+## Limits
 
-Server events: [observability.md](./observability.md) §"PostHog is product analytics, not operations telemetry".
+- **No signup-completion event.** Signup finishes on the app's origin under Clerk, and the site's local-storage-only analytics cannot cross subdomains.
+- **One free-text property.** `api_error` carries the error's `message`, so an error sentence must never hold private input.
+- **Local storage is half the identity.** Clearing local storage while keeping cookies can leave a PostHog identity without the `uz_analytics_identified` mark.
+
+## Related pages
+
+- [Observability](./observability.md): logs, traces and metrics
+- [Web app](./web_app.md): the dashboard that sends client events
+- [Billing](./billing.md): money, which never rides an event

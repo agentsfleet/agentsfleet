@@ -124,4 +124,4 @@ Never paste private keys into chat or repository files.
 
 ## Related pages
 
-- [Listener settings and trust](../../../docs/architecture/runner_protocol.md#certificates-and-configuration)
+- [Listener settings and trust](../../../docs/architecture/runner_protocol.md#settings-and-certificates)

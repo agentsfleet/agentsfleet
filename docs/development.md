@@ -250,9 +250,10 @@ Lock waits are bounded separately: 6 minutes for infrastructure, 20 minutes for 
 
 Run `bash scripts/local-dev-test.sh` for launcher regression checks; success prints `OK` and exits 0.
 Set `<SIBLING_CHECKOUT>` to an existing sibling checkout's absolute path; its `local-dev.sh` and `local-dev-state.sh` must match this checkout.
+
 Run `bash scripts/local-dev-test.sh --live "<SIBLING_CHECKOUT>"` for the two-worktree proof; success prints `OK` and exits 0.
 `make test-integration-rustd` retains its own disposable stack and destructive reset behavior.
-See [datastore scaling](architecture/datastore_scaling.md#shared-local-development) for the isolation boundaries.
+See [shared development worktrees](#shared-development-worktrees) for the isolation boundaries.
 
 ## TypeScript checks and builds
 
@@ -361,7 +362,7 @@ not in any contributor's dotfiles. Hook fixes are normal repo PRs.
 
 The lane definitions, the toolchain reason both cargo lanes `cd` into `rustd/`,
 and the coverage bar are canonical in
-[`architecture/testing.md`](./architecture/testing.md) §"Public lanes". What
+[`architecture/testing.md`](./architecture/testing.md#lanes) §"Lanes". What
 follows is the repo-workflow half that page does not carry.
 
 - **"Live e2e" / acceptance = the Playwright ladder**, not backend integration:

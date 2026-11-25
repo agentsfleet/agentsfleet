@@ -45,17 +45,17 @@ Document checks validate references and line bounds; they do not independently p
 
 | Document | Comparison | Change and review purpose |
 |---|---|---|
-| [chat_authoring.md](../../architecture/high_level.md#fleet-authoring-and-runtime) | Rewritten | Selects one private authoring flow, explicit publication, retained setup identity, and a coordinated cutover. |
+| [chat_authoring.md](../../architecture/high_level.md#where-each-topic-lives) | Rewritten | Selects one private authoring flow, explicit publication, retained setup identity, and a coordinated cutover. |
 | [chat_authoring_decisions.md](decisions.md) | New | Records all locked owner decisions, one-PR packaging, and the separate schedule follow-up. |
 | [chat_authoring_source_findings.md](source-findings.md) | New | Answers five backend questions with source evidence, corrections, and stated limits. |
 | [chat_authoring_codex_response.md](codex-response.md) | Rewritten | Replaces earlier alternatives with the selected design, disagreement costs, hostile cases, and expected operational costs. |
-| [chat_authoring_definition.md](../../architecture/fleet_definitions.md#validated-definition) | Rewritten | Wraps existing typed policy, uses small atomic edits, binds human review, and moves budget readers to nanos. |
+| [chat_authoring_definition.md](../../architecture/user_flow.md#what-a-fleet-is-made-of) | Rewritten | Wraps existing typed policy, uses small atomic edits, binds human review, and moves budget readers to nanos. |
 | [chat_authoring_api_resources.md](../../architecture/api_resources.md) | Rewritten | Defines the sole target route/type surface, exact preconditions, replay rules, wire strings, private streams, and proposed errors. |
 | [chat_authoring_api.md](api.md) | Rewritten | Separates source-backed gaps from reusable behavior and states schedule prerequisites and provider limits. |
-| [chat_authoring_creation.md](../../architecture/data_flow.md#fleet-creation-and-setup-recovery) | Rewritten | Uses installing fleets, actual grants, guarded activation, one initial admission, explicit retry/Kill, and command-line interface (CLI) partial outcomes. |
-| [chat_authoring_runner.md](../../architecture/runner_fleet.md#authoring-leases) | Rewritten | Shares one claim/capacity limit; bounds tokens, time, authority, spending, uncertain usage, and private copies. |
+| [chat_authoring_creation.md](../../architecture/data_flow.md#create-and-recovery) | Rewritten | Uses installing fleets, actual grants, guarded activation, one initial admission, explicit retry/Kill, and command-line interface (CLI) partial outcomes. |
+| [chat_authoring_runner.md](../../architecture/runner_protocol.md#run-lease-and-renewal) | Rewritten | Shares one claim/capacity limit; bounds tokens, time, authority, spending, uncertain usage, and private copies. |
 | [chat_authoring_runtime_baseline.md](runtime-baseline.md) | Rewritten | Preserves source-backed runtime behavior and corrects install, steer recovery, budget renewal, ordering, and delivery claims. |
-| [chat_authoring_end_to_end.md](../../architecture/data_flow.md#fleet-setup-and-runtime-sequence) | Rewritten | Shows sixteen detailed entry, review, setup, runtime, recovery, deletion, and release panels. |
+| [chat_authoring_end_to_end.md](../../architecture/data_flow.md#the-path-in-one-picture) | Rewritten | Shows sixteen detailed entry, review, setup, runtime, recovery, deletion, and release panels. |
 | [workspace-chat-options.md](../../designs/workspace-chat-options.md) | Rewritten | Reconciles navigation, contextual drawers, Save choices, setup progress, Library actions, mobile behavior, and recovery copy. |
 | [chat-within-a-workspace.md](../../designs/chat-within-a-workspace.md) | Rewritten | Retains the approved appearance while updating ownership, sharing, controls, statuses, and cleanup behavior. |
 | [chat_authoring_file_inventory.md](file-inventory.md) | New | Lists discovered rename paths, planned additions, historical exceptions, and carried work without treating planned files as source. |
@@ -73,10 +73,10 @@ The Astra update extends the existing report and proposal; it does not edit runt
 | Document | Change |
 |---|---|
 | [README.md](../../architecture/README.md) | Adds questions pointing to the proposal, designs, specs, public handoff, and this report. |
-| [fleet_definitions.md](../../architecture/fleet_definitions.md) | Connects typed definitions, shared parsing/export, support-file pins, nanos, and proposed resumable creation. |
+| [fleet_definitions.md (now user_flow.md)](../../architecture/user_flow.md#what-a-fleet-is-made-of) | Connects typed definitions, shared parsing/export, support-file pins, nanos, and proposed resumable creation. |
 | [runner_execution.md](../../architecture/runner_execution.md) | Connects private authoring to shared runner capacity while keeping existing fleet execution authoritative. |
 | [web_app.md](../../architecture/web_app.md) | Connects approved chat layouts to existing server/client boundaries and subject-scoped recovery. |
-| [billing_and_provider_keys.md](../../architecture/billing_and_provider_keys.md) | Separates proposed bounded authoring admission from funds reservation and preserves key visibility. |
+| [billing_and_provider_keys.md (now billing.md)](../../architecture/billing.md) | Separates proposed bounded authoring admission from funds reservation and preserves key visibility. |
 | [data_flow.md](../../architecture/data_flow.md) | Adds the proposed setup sequence and corrects admission identity, secret preflight/classification, and install-versus-work ordering. |
 
 ### Implementation specs
@@ -104,7 +104,7 @@ Their inclusion supplies review context. The website journey diagram now follows
 | [CLI readme](../../../cli/README.md) | CLI entry and shared branding. |
 | [Design system](../../DESIGN_SYSTEM.md) | Approved typography, tokens, components, and assets. |
 | [Product analytics](../../architecture/product_analytics.md) | Explicit click allowlists and private-input exclusions. |
-| [Website entrance](../../architecture/website-job-entrance.md) | Approved website journey and entry behavior. |
+| [Website entrance](../../architecture/product_analytics.md#website-events) | Approved website journey and entry behavior. |
 
 ### Astra review update
 
