@@ -96,10 +96,10 @@ pub(crate) fn refused_with_body(verb: Verb, status: u16, body: &[u8]) -> Error {
 }
 
 fn problem_code(body: &[u8]) -> Option<ErrorCode> {
-    af_core::json::object_from_slice::<Problem<'_>>(body)
-        .ok()
-        .and_then(|problem| problem.error_code)
-        .and_then(|named| ErrorCode::lookup(&named))
+    let named = af_core::json::object_from_slice::<Problem<'_>>(body)
+        .ok()?
+        .error_code?;
+    ErrorCode::lookup(&named)
 }
 
 /// Reports a runner that stopped because the daemon refused its token.
