@@ -28,7 +28,7 @@ export function SecretAccessCell({secret}: {secret: Secret}) {
 function accessSentence(secret: Secret): string {
   const fleets = fleetAccessOf(secret);
   if (fleets === null) return "Fleet access details are not available here.";
-  if (fleets.length === 0) return "No active fleet's setup uses it.";
+  if (fleets.length === 0) return "No active fleet is approved to use it.";
   return `Available to ${fleets.map(fleet => fleet.name).join(", ")}.`;
 }
 

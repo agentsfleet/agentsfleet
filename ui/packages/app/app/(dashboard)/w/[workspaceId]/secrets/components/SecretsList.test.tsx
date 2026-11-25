@@ -198,7 +198,7 @@ describe("the approved secret rows", () => {
     expect(screen.getByText(/Available to Fleet 1, Fleet 2, Fleet 3, Fleet 4\./)).toBeTruthy();
     await userEvent.keyboard("{Escape}");
     await userEvent.click(screen.getByRole("button", {name: "Manage none"}));
-    expect(screen.getByText(/No active fleet's setup uses it\./)).toBeTruthy();
+    expect(screen.getByText(/No active fleet is approved to use it\./)).toBeTruthy();
     await userEvent.keyboard("{Escape}");
     await userEvent.click(screen.getByRole("button", {name: "Manage absent"}));
     expect(screen.getByText(/Fleet access details are not available here\./)).toBeTruthy();

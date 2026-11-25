@@ -1,9 +1,8 @@
 // Read-only `agentsfleet usage show [--limit N] [--cursor TOKEN] [--json]`.
 //
 // Calls GET /v1/tenants/me/billing for the balance card and GET
-// /v1/tenants/me/billing/charges for runtime and settled setup costs. Runtime
-// receive/stage rows on the same page group by (fleet_id,turn_id); setup rows
-// retain their independent run identity. Keep every returned cost before
+// /v1/tenants/me/billing/charges for runtime costs. Receive/stage rows on the
+// same page group by (fleet_id,turn_id). Keep every returned cost before
 // forwarding the server cursor, or pagination would silently skip money.
 
 import { Effect } from "effect";
@@ -28,8 +27,6 @@ const LIMIT_LITERAL = /^\d+$/;
 interface WorkSummary {
   fleet_id: string | null | undefined;
   turn_id: string | null | undefined;
-  run_id?: string;
-  setup_nanos?: string;
   posture: string | undefined;
   model: string | undefined;
   recorded_at: string | null;
@@ -82,9 +79,7 @@ const parseCursor = (
 // them because daemon identifiers cannot contain one, unlike an ambiguous
 // plain concatenation.
 const groupKey = (row: ChargeRow): string =>
-  row.run_id != null
-    ? `${CHARGE_TYPE.setup}\u0000${row.run_id}`
-    : `${row.fleet_id ?? ""}\u0000${row.turn_id ?? ""}`;
+  `${row.fleet_id ?? ""}\u0000${row.turn_id ?? ""}`;
 
 const addNanos = (a: string, b: string): string => String(BigInt(a) + BigInt(b));
 const addCount = (a: number | null, b: number | null | undefined): number | null =>
@@ -93,13 +88,8 @@ const addCount = (a: number | null, b: number | null | undefined): number | null
 const applyCharge = (entry: WorkSummary, row: ChargeRow): void => {
   if (row.charge_type === CHARGE_TYPE.receive) {
     entry.receive_nanos = addNanos(entry.receive_nanos, row.credit_deducted_nanos);
-  } else if (row.charge_type === CHARGE_TYPE.stage || row.charge_type === CHARGE_TYPE.setup) {
-    if (row.charge_type === CHARGE_TYPE.setup) {
-      if (row.run_id != null) entry.run_id = row.run_id;
-      entry.setup_nanos = addNanos(entry.setup_nanos ?? "0", row.credit_deducted_nanos);
-    } else {
-      entry.stage_nanos = addNanos(entry.stage_nanos, row.credit_deducted_nanos);
-    }
+  } else if (row.charge_type === CHARGE_TYPE.stage) {
+    entry.stage_nanos = addNanos(entry.stage_nanos, row.credit_deducted_nanos);
     entry.token_count_input = addCount(entry.token_count_input, row.token_count_input);
     entry.token_count_output = addCount(entry.token_count_output, row.token_count_output);
   }
@@ -155,21 +145,19 @@ const renderActivities = (output: Output, events: ReadonlyArray<WorkSummary>) =>
         { key: "out_tok", label: "OUT_TOK" },
         { key: "receive", label: "RECEIVE" },
         { key: "stage", label: "STAGE" },
-        { key: "setup", label: "SETUP" },
         { key: "total", label: "TOTAL" },
       ],
       // The table groups several ledger rows under one work identifier.
       ageKey: null,
     },
     events.map((e) => ({
-      turn_id: e.run_id ?? e.turn_id ?? "",
+      turn_id: e.turn_id ?? "",
       posture: e.posture ?? "",
       model: e.model ?? "",
       in_tok: e.token_count_input != null ? String(e.token_count_input) : EMPTY_CELL,
       out_tok: e.token_count_output != null ? String(e.token_count_output) : EMPTY_CELL,
       receive: formatDollars(e.receive_nanos),
       stage: formatDollars(e.stage_nanos),
-      setup: formatDollars(e.setup_nanos ?? "0"),
       total: formatDollars(e.total_nanos),
     })),
   );
@@ -222,7 +210,7 @@ export const billingShowEffectFromArgs = (
     const cursor = yield* parseCursor(args.cursor);
 
     // Limit the raw page and keep every returned row. Overfetch followed by
-    // slicing grouped rows would discard setup costs before the next cursor.
+    // slicing grouped rows would discard costs before the next cursor.
     const query = new URLSearchParams();
     if (limit !== null) query.set("limit", String(limit));
     if (cursor) query.set("cursor", cursor);
