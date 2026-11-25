@@ -286,7 +286,7 @@ Slack brings the existing fleet runtime into the channel where a person asks for
 A workspace administrator connects Slack, and a fleet subscribes to a channel with a `mention` trigger when a person asks.
 The connector alone creates no answering fleet.
 
-[Slack mention routing](scenarios/slack-incident-responder.md#4-routing-a-mention) selects one subscribed fleet or records a fixed notice.
+[Slack mention routing](connectors.md#routing-a-mention) selects one subscribed fleet or records a fixed notice.
 Unconfigured channels return `channel_not_configured` without a model call.
 Credentials and unattended work require the fleet's approved grants.
 
@@ -322,7 +322,7 @@ M206 built the first hired-agent slice. It is a fleet attached to one channel wh
 
 **The follow-on is direction, not a commitment.**
 
-[Configured Slack routing](scenarios/slack-incident-responder.md#4-routing-a-mention) supplies the human request surface. A channel mention creates no separate runtime or default agent.
+[Configured Slack routing](connectors.md#routing-a-mention) supplies the human request surface. A channel mention creates no separate runtime or default agent.
 
 - **Rung 1, follow-on**. From the same Slack surface, a recurring need becomes a durable agent subscribed to a real source such as Zoho Desk.
 

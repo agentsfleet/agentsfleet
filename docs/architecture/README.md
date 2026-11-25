@@ -64,7 +64,10 @@ The larger topic files open with a Facts table, so the answer is usually on the 
 | What sandbox does a held turn run in? | [`runner_fleet.md`](./runner_fleet.md) §"Running one event" |
 | How does the Rust runner run a run, and what survives to the next one? | [`runner_execution.md`](./runner_execution.md) §"Process model", §"Workspace between runs" |
 | How should we evaluate SPACE and test a recoverable coding session? | [Coding sandbox evaluation](sandbox_evaluation.md) |
-| How do three assigned repairs survive later CI and worker replacement, then verify a Grafana/Slack outcome? | [Durable repair scenario](scenarios/durable-repair.md) |
+| How do three assigned repairs survive later CI and worker replacement, then verify a Grafana/Slack outcome? | [`durable_tasks.md`](./durable_tasks.md#combined-repair-acceptance) §"Combined repair acceptance" |
+| How does a Slack mention find its fleet, and how does the answer come back? | [`connectors.md`](./connectors.md#slack-mentions) §"Slack mentions" |
+| How does a person reach a fleet by name, and how does one fleet direct another? | [`user_flow.md`](./user_flow.md#831-reaching-a-fleet-by-name-and-fleet-to-fleet-steering) §"§8.3.1 Reaching a fleet by name and fleet to fleet steering" |
+| Which fleets do a primed environment and the acceptance suites use? | [Fixture fleets](../../tests/fixtures/fleets/README.md) |
 | What network can a sandboxed fleet reach? | [`runner_fleet.md`](./runner_fleet.md) §"Egress model: outbound is the only network surface" |
 | Which sandbox tier may run whose work? | [`runner_fleet.md`](./runner_fleet.md) §"Sandbox tiers" |
 | How do steer, archive, and delete propagate? | [`runner_fleet.md`](./runner_fleet.md) §"Steer, archive, delete" |
@@ -116,10 +119,17 @@ Read in this order if you've never seen the project:
 
 1. [`high_level.md`](./high_level.md): what the product is, what it isn't, and why it exists.
 2. [`user_flow.md`](./user_flow.md): how a user gets from "I want a Fleet" to "the Fleet is running on my repo."
-3. [`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md): follow one Slack mention to a fleet's answer in the thread.
+3. [Fixture fleets](../../tests/fixtures/fleets/README.md): eight small fleets, each a worked example of one path through the product.
 
 > [!IMPORTANT]
-> Active and shipped specs cite `user_flow.md` and `scenarios/` by `§`-anchor in acceptance criteria, and so do sibling architecture pages. Both stay here as **contributor-canonical** pages; docs.agentsfleet.net carries its own user coverage. Before moving any user-facing page, `git grep` the spec corpus for references to the file and its anchors.
+> Active and shipped specs cite `user_flow.md` by `§`-anchor in acceptance criteria, and so do sibling architecture pages.
+> It stays here as a **contributor-canonical** page; docs.agentsfleet.net carries its own user coverage.
+> Before moving any user-facing page, `git grep` the spec corpus for references to the file and its anchors.
+
+> [!NOTE]
+> The `scenarios/` folder is retired.
+> Its mechanism facts live on the pages that own them, and the fixture fleets are the worked examples.
+> Shipped specs under `docs/v2/done/` may still cite a retired scenario page by name; those specs are history and stay as written.
 
 After that, dip into whichever of these matches the change you're making:
 
@@ -150,7 +160,6 @@ After that, dip into whichever of these matches the change you're making:
 | 🦀 [`rust-ownership.md`](./rust-ownership.md) | When Rust code shares an owner or crate. |
 | 🔌 [`connectors.md`](./connectors.md) | Provider connections, App ingress, access grants and fleet triggers. |
 | 💳 [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) | Credits, debit points, provider keys, model library. |
-| 🚨 [`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md) | A fleet answering one Slack channel. |
 | 🔐 [`../AUTH.md`](../AUTH.md) | Principals, tokens and bearer routing. |
 
 ---
@@ -209,7 +218,7 @@ One-line definitions for quick lookup. The full, canonical definition lives in t
 | **Connector install** (`connector.installs`) | A workspace's link to one provider account, such as a GitHub App installation, unique per `(provider, external_account_id)`. [(more)](./connectors.md#terminology-binding) |
 | **Coding fleet** | The workstation tool a human types into. [(more)](./user_flow.md#80-the-wedge-surface) |
 | **Steer** | A human message; lands as `actor=steer:<user>`. [(more)](./user_flow.md#83-triggering-the-fleet) |
-| **Fleet steer** (M252) | One fleet's message to another fleet in its workspace, admitted as a steer with `actor=fleet:<fleet_id>`. [(more)](./scenarios/chief-of-staff.md) |
+| **Fleet steer** (M252) | One fleet's message to another fleet in its workspace, admitted as a steer with `actor=fleet:<fleet_id>`. [(more)](./user_flow.md#831-reaching-a-fleet-by-name-and-fleet-to-fleet-steering) |
 | **App webhook trigger** | A provider App delivery to the fleets whose `app_event` trigger names it; GitHub's lands as `actor=github-app`. [(more)](./connectors.md#github-app-platform-setup-to-fleet-runs) |
 | **Manual webhook trigger** | A post to `/v1/webhooks/{fleet_id}/{source}`, the URL the fleet page shows for a `webhook` trigger, signed with the workspace secret the trigger names. [(more)](./connectors.md#webhook-signing-recipes) |
 | **Wakes on** | The list on a fleet's page (`/w/{workspaceId}/fleets/{id}`) of its schedules and triggers, with remove and each webhook's URL. [(more)](./user_flow.md#84-working-from-claude-or-the-dashboard) |

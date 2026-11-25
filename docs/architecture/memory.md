@@ -59,7 +59,7 @@ A mention routed to a fleet through its `mention` trigger runs with that fleet's
 A fleet identifier alone proves neither a read nor a save.
 
 The runner reads or saves memory only under the current run fence.
-[Slack routing](scenarios/slack-incident-responder.md#4-routing-a-mention) selects the subscribed fleet; an unconfigured channel never creates a memory-owning fallback fleet.
+[Slack routing](connectors.md#routing-a-mention) selects the subscribed fleet; an unconfigured channel never creates a memory-owning fallback fleet.
 
 ## 5. Categories, selection, tools: see the topic docs
 

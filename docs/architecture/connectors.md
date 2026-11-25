@@ -23,6 +23,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | App replay identity | authenticated body digest, per fleet | the unsigned delivery header is diagnostic only; failed fan-out legs retry without duplicating others | §GitHub App |
 | Grants | one row per `(fleet_id, service)`, asked for by the fleet | `request_access` raises the approval card; a signed-in person approves once; a run holds only approved grants | §Where a grant comes from |
 | Triggers | rows the fleet adds, kinds `webhook` · `app_event` · `mention` | `fleet.triggers`, unique `(fleet_id, kind, source)`; `trigger_add` / `trigger_list` / `trigger_remove`; every read keeps its `workspace_id` predicate | §Fleet triggers |
+| Slack mentions | one fleet per mention, or a fixed notice | the addressed fleet or the sole eligible subscriber gets one `slack_mention` turn; the daemon posts the answer in the thread | §Slack mentions |
 | Outbound HTTP | a deadline on every vendor call | refusal is `UZ-CONN-003` (502); token exchange 10 s · Slack post 5 s · thread re-read 1.5 s · answer check 3 s | §Bounded outbound |
 | Front-door failures | 404 vs 503 | unknown provider → `UZ-CONN-004`; registry id with no `<provider>-app` bag → `UZ-CONN-001`, fail-loud | §Unknown vs unconfigured |
 
@@ -90,7 +91,7 @@ Complete a fresh Connect to restore the binding, or Disconnect again when remova
   Among fleets with a `mention` row for the channel, only the addressed fleet or the sole subscriber receives a `slack_mention` turn.
   A channel no row names returns `channel_not_configured` without creating a fleet or calling a model.
 
-  [Slack mention routing](scenarios/slack-incident-responder.md#4-routing-a-mention) owns selection and fixed notices.
+  [Slack mention routing](#routing-a-mention) owns selection and fixed notices.
   Jira and Linear have connected credentials but no inbound integration yet.
   Shared connection storage does not imply shared event behavior.
 
@@ -337,7 +338,9 @@ The ten-second budget is a hard deadline rather than a target. It is shared acro
 
 Deduplication is still worth every line. The redelivery it absorbs is a *human* clicking Redeliver with no idea whether the first attempt landed. That is exactly when a duplicate review would otherwise appear on a pull request.
 
-Signed workflow completions first match native task waits. `deployment_status` and other repair-branch deliveries are classified unsupported and dropped, so completion evidence never fans out an unrelated investigation (`afd_api_ingress`'s App route).
+No delivery wakes a durable task's wait today ([event delivery](durable_tasks.md#event-delivery)).
+`deployment_status` and other repair-branch deliveries are classified unsupported and dropped (`afd_api_ingress`'s App route).
+Completion evidence therefore never fans out an unrelated investigation.
 
 Slack is the contrast and the reason this page cannot generalise: its retry semantics are load-bearing precisely because Slack does retry.
 
@@ -458,6 +461,235 @@ The registry sources `linear` and `slack` imply their own signing recipe and ref
 The three body recipes need a header, stored as `verifier_header`: an HTTP token of 1 to 128 characters. `slack-v0` and `svix-v1` read fixed headers and refuse one (`af_fleet_runtime`'s `config/trigger` verifier).
 
 `secret_name` names the workspace secret that signs the deliveries. That secret is a JSON object with a `webhook_secret` string, which holds the `whsec_` value for Svix. One fleet can hold rows on registry and declared recipes side by side.
+
+## Slack mentions
+
+A Slack mention reaches one fleet that holds a `mention` row for the channel.
+The daemon posts that fleet's answer in the thread the mention came from.
+The [`chatty-parrot` fixture](../../tests/fixtures/fleets/chatty-parrot.json) is the prime set's fleet for this path.
+
+```text
+Person -> Slack thread: @agentsfleet-dev why did this fail?
+Slack -> agentsfleetd: signed app_mention
+agentsfleetd -> connector install: resolve team and current workspace
+agentsfleetd -> the channel's mention trigger rows: choose the subscribed fleet
+    no subscriber -> channel_not_configured; no fleet or model call
+    ambiguous / archived / needs name -> fixed notice through existing outbound ledger
+    addressed or sole eligible fleet -> one slack_mention turn
+Subscribed fleet -> its approved grants: read what the request needs
+Fleet report -> recorded Slack thread: answer through existing outbound poster
+```
+
+A channel's fleets are long-lived subscribers.
+A mention never creates a fleet, because a fleet created per mention would start with empty memory ([memory](memory.md)).
+Each mention gets one run.
+
+Slack's bot token and the GitHub App act as service accounts, with no per-user linking.
+No fleet holds the Slack bot token; the daemon posts.
+
+### Connector, notice owner and subscription
+
+| | Slack connector | Channel notice owner | Channel subscription |
+|---|---|---|---|
+| What it is | Workspace Slack credential and team routing. | Stable owner for fixed routing notices only. | A fleet's trigger row naming the channel. |
+| Where it lives | Vault handle and `connector.installs`. | Existing `connector.channels` binding; no new schema. | A `fleet.triggers` row: kind `mention`, source `slack`, one channel identifier. |
+| Created by | Workspace administrator connects Slack. | First eligible notice binds an existing subscriber when no valid owner exists. | The fleet, with `trigger_add`, when a person asks; a person removes it from **Wakes on**. |
+| Proves | The daemon can use the workspace's connector. | Notice ownership only; never model or turn authority. | This fleet is a candidate for mention routing. |
+
+A connected card proves only the first column.
+The catalogue's "Connected" is vault-key membership, and the per-provider status reads a JSON handle with an `integration` field (`afd_connector/src/grant/holding.rs`).
+Neither checks that a token is alive, that an event subscription exists or that a channel is bound.
+
+### GitHub App and Slack mention compared
+
+| Question | GitHub App | Slack mention |
+|---|---|---|
+| Ceiling | the repositories the App installation covers | the channels the bot user is a member of |
+| Workspace routing | `installation.id` → `connector.installs` (`SELECT_INSTALL_WORKSPACE`, `afd_ingress/src/sql/mod.rs`) | `team_id` → the same table and statement |
+| Subscription | `app_event` trigger row: source `github`, `repositories`, `events` | `mention` trigger row: source `slack`, one `channel` |
+| Subscription identity | repository full name, compared case-insensitively (`serves_repository`, `afd_ingress/src/binding/mod.rs`); a rename stops routing | channel identifier (ID); a rename changes nothing |
+| Who receives it | every matching fleet (fan-out) | one configured fleet, a fixed notice, or an unconfigured drop |
+| Replay key | producer `webhook_app`, `<fleet>:<body digest>` (`afd_ingress/src/deliver.rs`) | producer `slack_mention`, `<team_id>:<event_id>` (`afd_ingress/src/slack/admit.rs`) |
+| Credential | the fleet mints an installation token behind an approved `github` grant | the fleet holds no Slack credential; the daemon posts |
+
+The GitHub subscription keys on a repository's name, so renaming a repository silently drops its events (`UZ-WH-022`).
+That weakness is recorded here and is not fixed.
+
+### Routing a mention
+
+The handler admits only an `Addressed` or `Sole` subscriber.
+An unconfigured channel returns `channel_not_configured` without creating a fleet, scheduling a run or calling a model.
+The route does not use historical channel fleets as fallback responders.
+
+1. Validate the signed event and resolve its Slack team to the current workspace.
+2. Drop bot messages, unsupported event types and replayed deliveries through the existing ingress rules.
+3. Read the channel's `mention` trigger rows, only in the workspace the install belongs to.
+4. Match a leading fleet name against each subscriber's name, or choose the sole eligible unaddressed subscriber.
+5. Admit the selected fleet or record the fixed routing notice described below.
+
+| Subscription state | Native outcome |
+|---|---|
+| No subscribers | `Unconfigured`; return `channel_not_configured`, without a model or fleet creation. |
+| One matching name, runnable | `Addressed`; admit that fleet. |
+| Matching name archived | `Archived` notice from the channel's carrier, its oldest active fleet; no model call. With no active fleet in the channel, the notice is dropped as `no_active_notice_carrier`. |
+| Several names match ignoring case | `Ambiguous` notice; no arbitrary selection. |
+| No matching name, one eligible unaddressed subscriber | `Sole`; admit that configured fleet. |
+| No matching name, no eligible unaddressed subscriber | `AddressIt` notice naming configured candidates. |
+| No matching name, several eligible unaddressed subscribers | `Choose` notice; ask which fleet should receive the request. |
+
+A fleet whose approved GitHub scope can write is addressed-only: it needs its name even when it is the channel's only subscriber.
+The [native route](../../rustd/crates/daemon/afd_ingress/src/slack/route.rs) owns eligibility and name matching.
+The [mention handler](../../rustd/crates/daemon/afd_api_ingress/src/handler/mention/mod.rs) owns turn intake and the unconfigured outcome.
+
+Fixed ambiguity, archived and addressing notices use the existing outbound ledger and Slack poster.
+The existing `connector.channels` row supplies a stable notice-only owner.
+If no valid binding exists, notice handling binds an existing subscribed candidate and creates no fleet.
+
+The binding must match the current workspace and installed team.
+Deleted owners and moved-team bindings cannot supply stale authority.
+Concurrent notices converge on the channel's existing unique binding.
+
+An archived fleet is never chosen as a carrier, because it cannot acquire another outbound delivery.
+When no active fleet can carry a notice, the notice is dropped as `no_active_notice_carrier`.
+That includes a bound carrier that was later archived.
+
+[Notice ownership](../../rustd/crates/daemon/afd_api_ingress/src/handler/mention/notice.rs) owns those checks and the recorded thread destination.
+Slack retries reuse the existing deterministic notice identity.
+A channel binding carries notices only when current ownership checks permit it, and the route never runs a bound fleet as a fallback.
+
+A subscribed fleet uses its memory tools across threads, and its pinned memory is in every run's prompt.
+The thread remains a reply destination; [memory](memory.md#4-slack-threads-and-fleet-memory) owns the memory scope.
+Connecting Slack or saving a notice binding proves no memory capture or recall.
+
+### What the fleet is told
+
+Slack's mention event carries the mention and nothing else.
+The daemon re-reads the thread before admitting the event, with `conversations.replies` for the thread root (`afd_connector/src/slack/replies/mod.rs`).
+It reads every message in thread order, each told whole, under a 1.5 second deadline.
+
+The daemon loads the bot token and releases the pool connection before that call.
+Attachment and block text are flattened into the message, so a link in the thread's parent survives.
+
+The runner reads the request's `message` string and falls back to the whole body (`af_wire/src/turn/message.rs`).
+The daemon therefore composes one `message`: the mention text, then the thread under a fixed heading that labels it untrusted data.
+A failed or forbidden re-read degrades to the mention alone, and the message says so.
+
+A private channel needs `groups:history`, which the app does not request.
+
+### How the answer comes back
+
+The producer that owns a reply surface records the reply destination on the turn.
+The provider is `slack`, and the address is `{team_id, channel_id, thread_ts}`; the poster requires `channel_id` and `thread_ts`.
+The `thread_ts` is the mention's `thread_ts`, or its `ts` when the mention started the thread.
+
+The destination travels with the turn.
+An answer to a question, an access card's included, inherits the destination from the turn it resumes.
+The report transaction owes a delivery only when the turn carries a destination, and the Slack poster reads the address from the delivery row.
+
+The report parses the recorded connector once, so the run's model provider never reaches the delivery ledger (`afd_fleet/src/run/delivery.rs`).
+A job its destination refuses for good, or one out of delivery cycles, is stamped abandoned.
+No scan offers an abandoned job again (`afd_outbound/src/abandon.rs`).
+
+A run may say interim lines before its answer, through `POST /v1/runners/me/runs/{run_id}/messages` (`af_wire/src/message_verb/mod.rs`).
+No count or length cap applies.
+The channel's own limit refuses what it cannot take, and the run reads that line as undelivered.
+
+The run plane fences each line on the run's standing, read without a lock, and writes nothing to the run (`afd_fleet/src/run/message/mod.rs`).
+It names each line by the call's number in its run.
+A retried call is therefore the same line, and a reclaimed run numbers its calls afresh.
+
+The daemon posts every Slack text, interim line and answer alike, as literal text.
+It sends `&`, `<` and `>` as Slack entities (`afd_outbound/src/slack/escape/mod.rs`).
+Each interim line is stamped `agentsfleet_interim` with `{run_id, line}`, so a repeat finds only its own line and never silences the answer (`afd_connector/src/slack/answered/mod.rs`).
+
+### Write reach from a mention
+
+The incident drill in the [drill playbook](../../playbooks/operations/slack_incident_drill/001_playbook.md) uses one read fleet and one repair fleet.
+Each stage has its own authority.
+
+| Stage | Who acts | Credential | Approval |
+|---|---|---|---|
+| Diagnosis | the responder fleet, on a mention | GitHub token with `contents`, `actions` and `checks` read; Grafana Viewer token | one Approve on each access card it raised; its GitHub scope reads and its Grafana token is a Viewer's, so it cannot write |
+| Draft fix pull request | the repairer fleet, addressed by name | GitHub token for one repository, writing one daemon-issued branch and one draft pull request against the approved base (`afd_gate/src/policy/egress/write.rs`) | one Approve, when the repairer asked for `github` write; none per request |
+| Merge | a person in GitHub | their own | the repository's branch protection |
+| Deploy | the repository's pipeline | the pipeline's | the release process; the drill's audit checks that `agentsfleet-repair/*` branches cannot reach deploy secrets |
+
+A Slack-requested run stays within its fleet's approved grants.
+The repairer's turn-owned ref permits bounded corrections through `PATCH` with `force:false`.
+Other ref updates, merge, deletion and GraphQL remain refused.
+
+The runner rejects unmatched requests on ruled hosts (`allows_origin` in `af_egress/src/policy/mod.rs`), and its token has no workflow permission.
+Write-bound fleets never receive unaddressed mentions.
+A branch push runs repository workflows, so the drill audits secret paths for `agentsfleet-repair/*` branches.
+
+A scheduled diagnosis needs a configured notification destination and explicit repair authority.
+The fleet receives no implicit cross-fleet handoff or arbitrary channel routing.
+An explicit handoff is `fleet_steer` ([fleet to fleet steering](user_flow.md#831-reaching-a-fleet-by-name-and-fleet-to-fleet-steering)).
+
+### Evidence a fleet reads
+
+| Source | How a fleet reads it | Known gaps |
+|---|---|---|
+| GitHub run | the fleet reads the linked run, failed jobs, steps and annotations through `http_request` under the repository's read prefix, as its pinned guidance and the request direct; it also reads commits and compare there (`afd_gate/src/policy/egress/read.rs`) | A mint reads the installation's permissions first and asks for `contents` read plus whichever of `actions` and `checks` read it holds (`for_binding`, `afd_credential/src/credential/github/request.rs`). The App registration lists Checks: read-only and each installation accepts it before the drill (`playbooks/operations/github_app_registration/001_playbook.md`); until one does, the mint succeeds without it and the fleet's annotation read answers 403. Job logs can redirect to storage. The tool follows at most three guarded bodyless GET redirects, readmitting each destination and stripping modeled headers on an origin change. The fleet's network toggles must admit the storage host, and a private fleet reaches only GitHub and its approved secrets' hosts ([egress model](runner_fleet.md#egress-model-outbound-is-the-only-network-surface)). A denied or truncated required log still produces a named source gap. See [guarded downloads](runner_fleet.md#guarded-tool-downloads). |
+| Grafana | workspace secret `grafana = {host, token}`, approved once when the fleet asks with `request_access`; `Bearer ${secrets.grafana.token}`; Loki and alert reads over GET | No connector, by design ([connector archetypes](#archetypes)). The host must resolve publicly, because the tool rejects private addresses. No network setting limits Grafana to reads; the Viewer token's role does. |
+| Memory | the fleet's own namespace, loaded only under a live run for that fleet that no reclaim has moved past (`Plane::load` in `afd_fleet/src/run/memory.rs`) | none for this path |
+
+### Integration map
+
+| Integration | Connector (auth) | Events in | Actions out |
+|---|---|---|---|
+| GitHub | App install; per-run installation token, repository-scoped, 1 hour | App ingress: `pull_request`; `workflow_run` completed with `failure`, `timed_out` or `startup_failure`; `deployment_status` dropped (`afd_api_ingress/src/handler/webhook/github/mod.rs`) | fleet `http_request` inside egress rules |
+| Slack | OAuth bot token: `app_mentions:read`, `chat:write`, `channels:history` | `app_mention` | daemon `chat.postMessage` |
+| Grafana | none; workspace secret | none | fleet reads |
+| Zoho Desk | OAuth refresh, multi-data-center, `Desk.*.READ` | none | none |
+| Zoho Recruit fleet | static secret `zoho_recruit`, never refreshed | none | fleet `http_request` |
+| Zoho Sprints fleet | rides the Desk grant, whose Desk scopes cannot read Sprints | none | fleet `http_request` |
+| Linear | OAuth refresh: `read`, `comments:create` | no connector ingress; a per-fleet signed webhook exists | none from the daemon |
+| Jira | OAuth refresh plus site lookup | none | none |
+
+### What is built and what is pending
+
+| Capability | Rust daemon today | Still required |
+|---|---|---|
+| Signed Slack delivery | signature, 5-minute window, `url_verification` echo (`afd_api_ingress/src/handler/events/mod.rs`, `afd_connector/src/registry/mod.rs`) | nothing |
+| Mention becomes a turn | one `slack_mention` turn per Slack event, keyed `<team_id>:<event_id>` (`afd_ingress/src/slack/admit.rs`, `afd_turns/src/incoming.rs`) | nothing |
+| Channel → fleet | `mention` trigger rows route only Addressed or Sole subscribers. Unconfigured channels return `channel_not_configured`; existing bindings carry fixed notices only. | The combined live drill. |
+| Thread context | `conversations.replies` under 1.5 s, parent plus replies, under a fixed untrusted-data heading (`afd_connector/src/slack/replies/mod.rs`, `afd_ingress/src/slack/message.rs`) | nothing |
+| Answer delivery | owed only to a recorded destination; a failed run with no text, a refused turn, or a turn ended after its runs lapsed owes a fixed notice (`afd_fleet/src/run/sql/commit_report.sql`, `afd_fleet/src/run/turn.rs`); abandoned when refused or out of cycles | nothing |
+| Slack poster | `chat.postMessage` from the job's own address; reads no turn row (`afd_outbound/src/slack/mod.rs`) | nothing |
+| Write reach from Slack | one ref and one draft pull request, proven for a Slack-requested run with no per-request approval (`afd_gate/src/policy/egress/tests/slack.rs`) | nothing |
+| Continuous Integration (CI) evidence reach | the read mint asks for `actions` and `checks` read where the installation holds them, and the read rule covers the CI paths; guarded GET log redirects exist, and live access depends on the fleet's network toggles | Every installation accepts the required App permissions, and the fleet's network admits the log destinations. |
+| External steps | not in code | The playbook: apps, channels, App permissions and the Grafana secret. Each fleet adds its own subscription and asks for its own access. |
+
+Nothing here is proven live.
+The Slack registration playbook's live check, a threaded reply to a mention, has not been recorded against the Rust daemon (`playbooks/operations/slack_app_registration/001_playbook.md`).
+The [drill playbook](../../playbooks/operations/slack_incident_drill/001_playbook.md) records the development and production drills.
+
+### Drill channels and environments
+
+| Channel | Slack app | Deployment | Bound fleets |
+|---|---|---|---|
+| `#ci-dev` | `agentsfleet-dev` | `api-dev.agentsfleet.net` | `ci-dev-responder` (read), `ci-dev-repairer` (write, addressed only) |
+| `#ci-prod` | `agentsfleet` | `api.agentsfleet.net` | `ci-prod-responder`, `ci-prod-repairer` |
+| `#release-dev`, `#release-prod` | not invited | none | none; rollout verdicts and release discussion stay human |
+
+Development runs first.
+The production app and `#ci-prod` follow only after the development drill passes, the order the Slack registration playbook sets.
+Both channels subscribe to `agentsfleet/linkwarden`: development selects pull requests targeting `dev`, and production selects `main` pushes.
+
+The repairer in either workspace opens a draft against Linkwarden `dev`.
+
+### Slack mention invariants
+
+- One Slack event writes at most one turn or one notice, across retries.
+- A fleet answers in a channel only when it holds a `mention` trigger row for that channel's ID.
+- A delivery is owed only to a destination its producer recorded; a model provider never reaches the delivery ledger.
+- A delivery the destination permanently refuses is abandoned and never re-offered.
+- Memory is private by default. A mention grants no shared-memory access; explicit read grants can expose workspace-visible memory from other fleets ([memory](memory.md)).
+- A Slack-requested write run reaches one daemon-issued branch and one draft pull request, and never merges or deploys.
+- A write-bound fleet never receives an unaddressed mention.
+- A fleet reads CI evidence only inside its bound repository.
+- A fleet cites a job log line only if its own `http_request` returned that text; a redirect it cannot follow becomes a named gap.
 
 ## Bounded outbound: every vendor call has a deadline
 

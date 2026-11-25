@@ -42,7 +42,7 @@ Principles. Each links to where it's enforced; when a spec contradicts one of th
 
   See [`capabilities.md`](./capabilities.md) §4 (memory checkpoint layer).
 
-- **Slack uses the existing runtime.** A fleet's `mention` trigger row selects the recipient; connecting Slack creates no fallback agent. [Mention routing](scenarios/slack-incident-responder.md#4-routing-a-mention) owns intake and fixed notices.
+- **Slack uses the existing runtime.** A fleet's `mention` trigger row selects the recipient; connecting Slack creates no fallback agent. [Mention routing](connectors.md#routing-a-mention) owns intake and fixed notices.
 
 The runtime keeps only a thin typed envelope:
 

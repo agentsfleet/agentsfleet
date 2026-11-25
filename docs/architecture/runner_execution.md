@@ -573,7 +573,7 @@ Work arrives through a pushed run when the gateway can assign it to an available
 Memory preparation and the first model call follow the run.
 The host fetches the toolbox before taking work.
 
-**Reading the run path's speed.** A regression should show as a moved percentile on a signal the runner exports. A fleet watching Grafana can then find it ([durable repair](scenarios/durable-repair.md)). Each question below has one:
+**Reading the run path's speed.** A regression should show as a moved percentile on a signal the runner exports. A fleet watching Grafana can then find it ([durable performance investigations](durable_tasks.md#durable-performance-investigations)). Each question below has one:
 
 | Question | Signal |
 |---|---|
@@ -864,7 +864,7 @@ An engine whose disk the host cannot mount, such as Firecracker, reports no host
 
 Platform runners restore a complete committed generation before starting the model or tools. Native tasks and ordinary turns have separate durable owners.
 
-The recovery page owns capture boundaries, file safety, fencing, and runner-wide transfer admission. [Platform runner checkpoint recovery](runner_checkpoint_recovery.md) · [Durable repair scenario](scenarios/durable-repair.md)
+The recovery page owns capture boundaries, file safety, fencing, and runner-wide transfer admission. [Platform runner checkpoint recovery](runner_checkpoint_recovery.md) · [Combined repair acceptance](durable_tasks.md#combined-repair-acceptance)
 
 - **Held between messages.** A run that ends processed leaves its sandbox held (`afr_supervisor/src/holds/mod.rs`). The run cgroup is frozen through `cgroup.freeze` and settled on `frozen 1`. The hold is keyed by fleet, workspace, limits and policy (network policy plus repository binding).
 

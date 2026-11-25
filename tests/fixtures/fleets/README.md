@@ -1,9 +1,9 @@
 # Fixture fleets
 
-The prime set: the eight fleets, for seven journeys, that a newly primed environment, the acceptance suites and
-the scenario pages all use. One file per fleet; the file says what the fleet is.
+These eight fleets are the prime set. A newly primed environment and both acceptance suites use them.
+Each file says what its fleet is and what running it proves.
 
-| Fleet | Journey | What it is |
+| Fleet | Covers | What it is |
 |---|---|---|
 | `morning-rooster` | first message | Answers its first message. |
 | `careful-squirrel` | access | Asks before it touches a secret. |
@@ -13,11 +13,20 @@ the scenario pages all use. One file per fleet; the file says what the fleet is.
 | `watch-dog` | GitHub | Asks for one repository, and wakes on its pull requests. |
 | `chatty-parrot` | Slack | Answers a mention in the thread it came from. |
 
-Each file carries: `name` (the fleet's name), `journey`, `about`, `first_message`
-(what a person types to create it), `follow_ups` (what they type next),
-`remembers` (what it is told to pin), `asks_for` (access it requests),
-`wakes_on` (schedules and triggers it adds), `steers` (fleets it directs) and
-`proves` (what the journey shows end to end).
+## Fields
 
-A journey that needs a unique value per run adds it to the message it sends;
-the fleet's name and purpose stay as written here.
+| Field | Holds |
+|---|---|
+| `name` | The fleet's name. |
+| `journey` | What the fleet covers, as in the table above. |
+| `about` | What the fleet is, in one or two sentences. |
+| `first_message` | What a person types to create it. |
+| `follow_ups` | What they type next. |
+| `remembers` | What it is told to pin. |
+| `asks_for` | The access it requests. |
+| `wakes_on` | The schedules and triggers it adds. |
+| `steers` | The fleets it directs. |
+| `proves` | What running it shows, end to end. |
+
+A test that needs a unique value per run adds it to the message it sends.
+The fleet's name and purpose stay as written here.

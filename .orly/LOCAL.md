@@ -93,9 +93,11 @@ facts.
 - A new script (`scripts/**`, `deploy/**/*.sh`, a `make` recipe's helper) needs
   Indy's sign-off before it is committed; a one-off helper lives outside the
   repository and is deleted when the work ends.
-- Test fleets use purpose-driven display names, such as `Support triage` or
-  `Pull request review`. Keep run identifiers, timestamps, and cleanup keys out
-  of names shown in the sidebar; track fixture ownership by fleet identifier.
+- Fixture fleets are the prime set in `tests/fixtures/fleets/`, and each file says
+  what its fleet is. Name one memorably within the fleet-name rule, lowercase
+  with hyphens, such as `morning-rooster`; a test needing another fleet names
+  it for its purpose. Keep run identifiers, timestamps and cleanup keys out of
+  names; track fixture ownership by fleet identifier.
 
 ## Where the standards' generic words land here
 

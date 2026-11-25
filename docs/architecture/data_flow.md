@@ -437,7 +437,7 @@ Workspace connection proofs: [connectors.md](./connectors.md) §"GitHub App: pla
 
        actor         steer:<user> | steer:api | webhook:<source> | github-app
                      | cron:<schedule_id> | continuation:<turn_id> | slack:<user>
-                     | fleet:<fleet_id>  (scenarios/chief-of-staff.md)
+                     | fleet:<fleet_id>  (user_flow.md §8.3.1)
        kind          chat | webhook | cron | continuation
        workspace_id  <uuid>
        request       <opaque JSON — the message + metadata>
@@ -457,7 +457,7 @@ Workspace connection proofs: [connectors.md](./connectors.md) §"GitHub App: pla
                  A folded message is taken by the live run at its next
                  model call and its turn gets the run's reply.
 
-   FLEET      (scenarios/chief-of-staff.md): a fleet's run calls
+   FLEET      (user_flow.md §8.3.1): a fleet's run calls
    STEER        fleet_steer → POST /v1/runners/me/runs/{run_id}/steers
                → the same INSERT: actor=fleet:<sender_fleet_id>  kind=chat
                  key <target_fleet_id>:<sender_turn_id>:<text digest>
@@ -536,7 +536,7 @@ Workspace connection proofs: [connectors.md](./connectors.md) §"GitHub App: pla
    > handler). One more producer into THIS same ingress; the assign/run path
    > does not change. A mention reaches the fleet whose fleet.triggers row of
    > kind mention names its channel. Routing lives in
-   > scenarios/slack-incident-responder.md §4;
+   > connectors.md §"Routing a mention";
    > memory continuity in [`runner_fleet.md`](./runner_fleet.md) §"Memory
    > continuity". Spec: docs/v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md
 
@@ -562,7 +562,7 @@ An accepted fire stores its message and resolved schedule description on the ori
 The app renders the message and recorded outcome directly; native run details become available once the turn opens.
 Historical receipt snapshots stay separate from current registration and retry controls.
 
-The [durable repair scenario](scenarios/durable-repair.md) uses this existing scheduling path for Grafana observations. CI continuation needs a durable task wait and matching completion/fallback wake through the same intake path. A cron does not keep PR ownership or task limits.
+The [combined repair acceptance](durable_tasks.md#combined-repair-acceptance) uses this existing scheduling path for Grafana observations. CI continuation needs a durable task wait and matching completion/fallback wake through the same intake path. A cron does not keep PR ownership or task limits.
 
 `agentsfleetd` stores the desired schedule, pushes each mutation to QStash synchronously, and receives the fires. The runner owns no schedule timer ([`runner_execution.md`](./runner_execution.md#tool-catalog)).
 
@@ -625,7 +625,7 @@ See [provider key boundaries](./billing_and_provider_keys.md#82-the-api_key-visi
 The [runner sequence](./runner_execution.md#one-run-end-to-end) owns sandbox startup, agent runs and teardown.
 
 A recorded reply destination creates an outbound delivery with the report.
-The outbound worker posts that answer to its connector thread; [the Slack flow](./scenarios/slack-incident-responder.md#6-how-the-answer-comes-back) shows the destination.
+The outbound worker posts that answer to its connector thread; [the Slack flow](./connectors.md#how-the-answer-comes-back) shows the destination.
 
 ### D. WATCH  (user-side: how the live tail surfaces)
 

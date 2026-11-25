@@ -59,8 +59,10 @@ fleet -> existing turn -> existing run -> existing agent -> existing report
 ```
 
 This page owns lifecycle, storage rows, scheduling and native APIs.
-[Decision models](goal_evaluation.md) owns the provider trait/configuration; [durable repair](scenarios/durable-repair.md) owns the combined three-task worked example.
-Do not merge the complete example into this page or duplicate its API definitions; keep diagrams linked to their canonical mechanisms.
+
+[Decision models](goal_evaluation.md) owns the provider trait/configuration.
+[Combined repair acceptance](#combined-repair-acceptance) owns the three-task worked example and its remaining proof.
+The [`stubborn-mule` fixture](../../tests/fixtures/fleets/stubborn-mule.json) is the prime set's fleet for a task that finishes.
 
 ### Simplification decisions
 
@@ -222,6 +224,14 @@ Retry deduplicates each turn/item pair, and a different plan for the same turn i
 Status and conversation can be answered at the next safe boundary.
 Neither claims that an in-flight remote action was interrupted.
 
+A greeting receives a brief greeting without restarting an investigation.
+A status question uses recorded evidence and states its freshness.
+An explicit request for fresh status may read current evidence within the existing authority and limits.
+
+A `task_input` changes the method within the accepted objective; it grants no new repository access and no new completion statements.
+A new request cannot inherit an older task's publication authority.
+Neither a sidebar selection nor a new chat mode supplies DT authority.
+
 Pause and cancellation must fence new effects natively.
 A remote request issued before the cutoff can still complete and requires reconciliation.
 Fleet deletion fences access immediately; checkpoint cleanup follows the authorized deletion policy.
@@ -233,6 +243,10 @@ The initial existing-Pull-Request (PR) mode accepts an exact open same-repositor
 Native target preparation reuses the current run-plane credential mint, standing grants and repository binding.
 It refuses fork heads, default/protected target branches and workflow edits.
 Repository workflow review must establish validation-only push effects for the controlled demonstration.
+
+The initial write scope also excludes force pushes, merge and deployment.
+A push with privileged or deployment effects needs separate review before the daemon accepts it.
+The PR's author may use any coding tool; authorship grants the fleet no authority.
 
 Use a native publisher around GitHub `createCommitOnBranch` with `expectedHeadOid`.
 The publisher owns credentials, branch, expected old head and allowed file changes; the model supplies a bounded candidate change.
@@ -653,6 +667,14 @@ Replacement:    authorize + pin -> read manifest pages
 The run authorizes the current worker; a storage pin protects the bytes that worker is transferring.
 A pin does not permit coding, extend the task budget or grant repository write authority.
 
+Each DT restores its own compatible state or starts a fresh checkout.
+A shared fleet policy never makes one task's writable checkout another's.
+API-only DTs need no mandatory checkout, and recovery grants no incidental GitHub access.
+
+A failed save keeps the previous recoverable generation and exposes possible unsaved work loss.
+An unsettled worker kill grants no fresh capture authority.
+The replacement reconciles uncertain remote effects before resuming local work.
+
 ### URL conventions and replay
 
 Follow the repository's [HTTP rules](../../.orly/standards/domains/http.md): versioned plural resources, explicit owning scope and typed identifiers.
@@ -747,10 +769,16 @@ Workspace authorization and repository grants are checked again on every continu
 
 ### Event delivery
 
-A matching signed completion makes the DT eligible immediately; the next run still needs the fleet's thread (`afd_fleet`'s `task/waits/completion.rs`).
-Arming a wait records the dependency status read at that moment, which closes the event-before-registration race (`task/waits/mod.rs`).
+Nothing wakes a wait on a GitHub run today, and a webhook-driven wake is not built yet.
+A DT that waits on a run stays waiting until its owner steps in; a `task_input` cancels the wait and queues the continuation.
+Arming a wait records the dependency status read at that moment (`afd_fleet`'s `durable_task/waits/mod.rs`).
 
-No fallback check reads GitHub on a timer: M253_003 deleted the wait polling with the task pass. A wait whose signed completion never arrives stays armed; once the task's deadline passes, the task is no longer assigned.
+No fallback check reads GitHub on a timer: M253_003 deleted the wait polling with the task pass.
+M253_004 removed the completion tables nothing read.
+A wait stays armed until it is cancelled; once the task's deadline passes, the task is no longer assigned.
+
+Each continuation rechecks current workspace access, repository grants, target identity and remaining DT limits.
+Duplicate events, old heads and replaced wait generations cannot complete newer work, and a missed event costs no model call or restore.
 
 The cap of 16 unfinished DTs bounds stored work and the task list an ordinary run carries, not simultaneous workers or expected everyday workload.
 It is a proposed initial product limit and needs workload evidence before any claim that it is optimal.
@@ -828,6 +856,176 @@ Missing telemetry blocks that demonstration with its missing evidence; it does n
 
 Development repair approval does not authorize merge, deployment or production changes.
 Existing deployment authority remains separate even when the proposed DT tracks post-deploy observation.
+
+### Combined repair acceptance
+
+The combined demonstration is unfinished; the sequence below states required observations, not a completed run.
+Three hypothetical repairs pass through ordinary chat, shared worker capacity, a lost publication acknowledgement, later checks and a controlled incident check.
+Unit tests, browser fixtures and successful provider calls cannot replace the linked run evidence.
+
+| Scope | Current status |
+|---|---|
+| Source | M236 contains native DT, decision, publication, recovery, CLI and browser implementations. |
+| Live evidence | The [acceptance ledger](../../playbooks/operations/acceptance/baselines/M236_001-autonomy.md) owns actual bindings, measurements and remaining proof. |
+| Authority | The fleet's approved GitHub grant, explicit existing-PR targets, bounded DT limits and configured notification destinations. |
+| Exclusions | Fleet merge or deployment, arbitrary repository writes and an unreviewed monitoring-to-repair handoff. |
+
+Indy supplies three actual PR URLs from a controlled Linkwarden development repository.
+The names, defects and commit letters below are hypothetical and diagnose no real Linkwarden code.
+Each PR needs an unchanged regression that exposes its assigned defect.
+
+| DT name | Accepted objective | Target |
+|---|---|---|
+| Import repair | Fix a missing-title import crash while retaining the existing fallback behavior. | PR X, same-repository branch, initial head A. |
+| Search repair | Remove pagination duplicates without weakening the regression. | PR Y and its distinct branch. |
+| Export repair | Correct Unicode export while preserving the accepted format. | PR Z and its distinct branch. |
+
+The fleet needs a GitHub grant a person approved with write scope and existing-PR publication ([where a grant comes from](connectors.md#where-a-grant-comes-from)).
+Each task's completion statements require the unchanged regression and required CI checks at the current head.
+The example uses Jev; [decision models](goal_evaluation.md) owns provider selection and assessment rules.
+
+```text
+Indy                    Fleet turn intake                Current fleet run
+ |                                |                               |
+ | Repair import PR X             |                               |
+ |------------------------------->| save source message A1        |
+ |                                |------------------------------>| task_start
+ |                                |<------------------------------| Import repair ready
+ | Repair search PR Y             |                               |
+ |------------------------------->| save source message A2        |
+ |                                |------------------------------>| task_start
+ |                                |<------------------------------| Search repair ready
+ | Repair export PR Z             |                               |
+ |------------------------------->| save source message A3        |
+ |                                |------------------------------>| task_start
+ |                                |<------------------------------| Export repair ready
+ | Keep import's fallback title   |                               |
+ |------------------------------->| save source message A4        |
+ |                                |------------------------------>| task_input (Import)
+ |                                |<------------------------------| save input and cursor
+ |                                |                               | apply at safe boundary
+```
+
+Indy names the work by its purpose or PR URL, never by an internal DT identifier.
+An ambiguous instruction such as "cancel that" requires clarification.
+Replaying A2's call must return the Search task and create no duplicate repair.
+
+The human-input view reads messages in source order while machine work waits.
+A steer for Search stays queued while Import owns the run.
+Import cannot write Search's PR or attach Search's writable files.
+
+```text
+Import run             Native publication          Saved state / GitHub
+     |                            |                            |
+ read PR X at A                   |                            |
+ reproduce -> patch -> test       |                            |
+ save compatible generation G1 ------------------------------>|
+ publish tested candidate B ----->| record effect E1           |
+                                  | append only if head = A -->| B accepted
+     |<--- acknowledgement lost --|                            |
+ accept steer A4 beyond G1 cursor |                            |
+ worker disappears                |                            |
+     |                            |                            |
+ replacement run                  |                            |
+ fresh authority + restore G1 <-------------------------------|
+ read E1 and exact PR history --->| confirm B already exists   |
+ replay accepted A4               |                            |
+ test correction C -> save G2     |                            |
+ publish C, record CI(C) wait ----|--------------------------->|
+ settle report and release        |                            |
+ Search run -> own files -> head Y1 -> wait -> release         |
+ Export run -> own files -> head Z1 -> wait -> release         |
+```
+
+The lost acknowledgement and the worker replacement are deliberate failure conditions for the controlled run.
+The replacement reconciles E1 before attempting another publication.
+Saved input A4 remains available beyond G1's covered-input cursor.
+
+A publication prepared against head A must be rejected once a human push moves that head.
+The fleet keeps saved work and reads fresh evidence, and does not overwrite that push.
+The repository's size must come from measurement; this example assumes no fixed checkout size.
+
+```text
+CI(Y1) passes -> one Search continuation -> current-head proof -> done
+CI(C) fails  -> one Import continuation -> correction D -> wait for CI(D)
+CI(Z1) event missed -> wait stays armed, no inference
+                       a later signed event -> Export continuation -> proof -> done
+CI(D) passes -> Import continuation -> accepted goal + native proof -> done
+```
+
+Jev proposes a goal result against the task's completion statements and current evidence.
+Native proof checks decide whether the DT may finish.
+[Goal evaluation](goal_evaluation.md#goal-evaluation) owns malformed, unavailable, contradictory and stale judgments.
+
+A pause, cancellation, deadline or revoked grant must prevent prohibited new effects and later restarts.
+An already issued publication still needs reconciliation.
+Cancelling Import while Search and Export finish is a required negative case, not the successful outcome shown above.
+
+A controlled symptom connects the repair to an observable development outcome.
+
+```text
+Existing schedule -> bounded Grafana observation
+                          |
+                quiet ----+---- failing symptom
+                  |                  |
+             no incident       correlated Slack report
+                                     |
+                          human-approved PR repair scope
+                                     |
+                          three-DT repair sequence above
+                                     |
+                          separate human merge/deploy approval
+                                     |
+                          fresh scheduled Grafana observation
+                                     |
+                     recovered / still failing / insufficient evidence
+                                     |
+                          configured Slack destination
+```
+
+The scheduled observer uses a configured Slack destination and stable incident correlation.
+Repeated failing observations must not create duplicate notices or repair DTs.
+Detection alone grants no permission to repair, and an approved grant does not imply unlimited standing work approval.
+
+An authorized human approves the repair scope ([workspace approval](sandbox_evaluation.md#workspace-approval-in-chat-or-slack)).
+Separate observer and repair fleets cannot impersonate one another or attach another incident's workspace.
+Green CI establishes repair validation only.
+
+A separately authorized development deployment precedes the fresh Grafana observation that can establish symptom recovery.
+Missing or inconclusive telemetry must produce an explicit unknown result.
+Elasticsearch and a new scheduler are not prerequisites for this controlled Grafana demonstration.
+
+[Scheduler flow](data_flow.md) owns due delivery, busy fleets, overlapping ticks and cancelled queued work.
+[Slack mentions](connectors.md#slack-mentions) owns notification routing and reply threads.
+
+| Surface | Expected observation |
+|---|---|
+| Ordinary chat | Brief action/results, saved status with freshness, natural-language steering and clarification only for ambiguous targets. |
+| PR badge | Standard pull-request icon and actual PR number, linked through one explicit native DT identity. |
+| Durable tasks | DT purpose and recorded action or wait reason; accepted objective, editable completion statements and controls behind a disclosure. |
+| Outputs | Native PR targets, including bounded history from saved DT activity; local edits do not prove publication. |
+| Changes | Recorded file writes with expandable details; no new diff service. |
+| Sources | The fleet's approved GitHub scope, without claiming fresh remote grants. |
+| CLI | Native DT identity and decision/transfer observations through the existing attached turn stream. |
+| Recovery | Restoration, uncertain publication readback and confirmed resumed work remain distinguishable. |
+
+A waiting summary can name the actual CI run and head when native evidence supplies them.
+A timed-out publication must remain uncertain until readback confirms its effect.
+Neither interface invents completed work from a status label or model prose.
+
+The composer remains reachable while evidence expands.
+Typing and reading older messages must preserve the unsent text and reading position.
+A late PR badge stays on the sender line without moving the visible reply.
+
+| Proof | Evidence to retain |
+|---|---|
+| Three assigned repairs | Actual PR URLs, accepted objectives and statements, stable DT identities and one active fleet run. |
+| Conversation and steering | Greeting with a complete empty tool-call inventory; saved status; accepted A4; ambiguous-target clarification; duplicate A2 replay. |
+| Publication and recovery | Exact tested trees/heads, unknown E1 readback, worker replacement, compatible G1/G2 coverage and accepted-input replay. |
+| CI continuation | Signed, duplicate, stale, fast and missed completion cases; one effective wake; final current-head checks and unchanged regressions. |
+| Authority and limits | Human advancement, revoked grants, closed PRs, pause/cancel, deadlines and exhausted limits stop prohibited effects. |
+| Grafana and Slack | Quiet/failing/recovered windows, deployed revision, bounded queries, stable incident identity and configured destination receipts. |
+| User surfaces | Actual CLI capture and browser evidence for native DT attribution, reconnection, readable progress, preserved unsent text and stable scrolling. |
 
 ### Ordered public observations
 

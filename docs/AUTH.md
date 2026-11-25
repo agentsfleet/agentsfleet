@@ -1017,6 +1017,7 @@ A prompt-injected fleet that reads `AGENTSFLEET_RUNNER_TOKEN` or its own `/proc/
 ## Fleet access and credential boundary
 
 A fleet has no setup document. It holds only the credentials a person approved for it.
+
 When a run needs one, the fleet calls `request_access` with the credential's name, and for GitHub the repositories and read or write.
 The daemon checks that the workspace holds that secret or has connected that integration, then raises an approval card ([connectors](architecture/connectors.md#where-a-grant-comes-from)).
 

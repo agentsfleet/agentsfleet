@@ -12,7 +12,8 @@ The initial user assumption is simple:
 
 A fleet's chat, in the browser or the terminal, is where a person starts a fleet, talks to it and supervises it. The Fleet runtime is where long-lived operational outcomes continue after the chat ends.
 
-For end-to-end walkthroughs from a first message to a first trigger (platform-managed and self-managed), see [`scenarios/`](./scenarios/).
+The [fixture fleets](../../tests/fixtures/fleets/README.md) are the worked examples.
+Each file says what one fleet is, what a person types to it and what that proves.
 
 ## Facts
 
@@ -223,6 +224,65 @@ A "morning health check" steer produces a real first-pass evidence sweep; the co
 
 A fleet with no trigger is valid: messages reach every fleet.
 
+### §8.3.1 Reaching a fleet by name and fleet to fleet steering
+
+A person reaches any fleet by its name, and a fleet hands work to any fleet in its workspace and hears back.
+Nobody copies a UUID, and nobody relays between fleets.
+The [`queen-bee`](../../tests/fixtures/fleets/queen-bee.json) and [`busy-bee`](../../tests/fixtures/fleets/busy-bee.json) fixtures are the prime set's pair for this path.
+
+```text
+command line   agentsfleet fleet steer @busy-bee "What is today's word?"
+dashboard      in any fleet's chat:   @busy-bee What is today's word?
+                                      the browser opens busy-bee's chat
+Slack          @agentsfleet-dev busy-bee: What is today's word?
+```
+
+The name is the fleet's name, the one the sidebar shows.
+The command line and the dashboard look it up with `GET …/fleets?name=`, then send an ordinary message.
+Slack has one bot for every fleet, so there the first word after the bot names the fleet.
+
+In the dashboard, type `@` to see active fleets in the current workspace.
+Use the arrow keys and Enter, or tap a fleet; the composer keeps the rest of the message.
+Fleet conversations are stacked in the sidebar.
+
+In an interactive named CLI conversation, the prompt shows the recipient, for example `@busy-bee> `.
+
+```text
+person, in queen-bee's chat:  "Ask busy-bee for today's word and tell me what it said."
+
+queen-bee   fleet_activity()                        find busy-bee's id
+            fleet_steer(<busy-bee id>, "what is today's word?")
+            answers at once: "asked busy-bee"       it does not wait
+
+busy-bee    runs under its own grants
+            its message begins: [from fleet queen-bee, fleet_id <id>; …]
+            writes its answer, then
+            fleet_steer(<queen-bee id>, "today's word is …")
+
+queen-bee   wakes for a second run:  "busy-bee said …"
+```
+
+On the receiving fleet, the incoming message shows `@queen-bee`.
+Back in the sender's conversation, the report shows the other fleet's name and the sender's summary.
+Expand the **Worked** row to see **Sent fleet message** or **Read fleet activity**, then the tool's recorded input and output.
+
+The [interactive design reference](../ux.html#chief) illustrates the exchange.
+A digest is the same fleet reading without steering.
+`fleet_activity()` lists every fleet with its status, and one more read per fleet gives its latest result.
+
+These rules bound it:
+
+- A name grants nothing. A person's message passes the message route's own guard, or a channel's `mention` trigger row.
+- An unknown `@name` is refused. It never falls back to the fleet whose chat was open.
+- A fleet's target is another fleet in its own workspace, and active.
+- Any fleet may steer any fleet in its workspace, as often as the payer's balance allows. Nothing lists targets, limits the chain or caps the count.
+- A steer carries text, never access: the target runs under its own grants. A fleet with no access can still ask a fleet that holds access to act.
+- A fleet's steer runs as its own run. A resent steer admits once. A runner that lost its run writes none.
+- Prompt injection is accepted, and stated. A fleet that reads untrusted text can be told to steer any fleet in its workspace. Each target's own grants and the payer's balance bound the damage.
+
+Fleet steering has no wait primitive: the receiver steers back, or the sender reads with `fleet_activity`.
+Slack has no mention per fleet, and a fleet cannot reach a fleet in another workspace.
+
 ## §8.4 Working from Claude or the dashboard
 
 The user experience inside Claude (or Amp / Codex CLI / OpenCode) feels like this:
@@ -341,6 +401,6 @@ A workspace administrator connects Slack. A fleet subscribes to a channel when a
 Only an addressed fleet or the sole subscriber receives a mention turn.
 An unsubscribed channel returns `channel_not_configured` without a model call or fleet creation.
 
-[Slack mention routing](scenarios/slack-incident-responder.md#4-routing-a-mention) owns name matching, notice-only channel bindings and current workspace checks.
+[Slack mention routing](connectors.md#routing-a-mention) owns name matching, notice-only channel bindings and current workspace checks.
 The fleet's approved grants and network toggles determine its permitted work.
 Connecting Slack creates no fallback fleet and no fallback model route.

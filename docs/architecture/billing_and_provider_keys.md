@@ -8,7 +8,7 @@ This is a cross-cutting topic. The data model lives in the tenant provider recor
 
 A fleet's model is its `fleet.fleets.model_ref`, stored when the fleet is created and changed with one `PATCH` ([user flow §8.7](./user_flow.md#87-model-and-context-cap-origin-platform-vs-self-managed)).
 
-The end-to-end walkthroughs are in [`scenarios/`](./scenarios/). This file is the canonical concept reference: it describes shape and behaviour.
+The [fixture fleets](../../tests/fixtures/fleets/README.md) are the worked examples. This file is the canonical concept reference: it describes shape and behaviour.
 
 The billing model is **credit-based, Amp-style**. Every tenant has a single credit balance in nanos (1 USD = 1,000,000,000 nanos). A run deducts credits for the usage it logs, and the gate trips when the balance hits zero.
 
@@ -16,7 +16,7 @@ There are no plan tiers in the cost function and no "included turns" tier ladder
 
 The **run** charge depends on the posture. The platform default subsidises inference; a self-managed run costs less because the user pays their own provider for tokens.
 
-> **Where the live values are.** The authenticated billing surface reports the current runtime rate. The public early-access page does not publish launch pricing. This doc and the scenarios in this directory deliberately quote no dollar amounts, because they go stale when a rate moves.
+> **Where the live values are.** The authenticated billing surface reports the current runtime rate. The public early-access page does not publish launch pricing. This doc deliberately quotes no dollar amounts, because they go stale when a rate moves.
 
 Server-authoritative constants are declared once, in `afd_billing`'s `nanos` module; no client recomputes a fee it is served. Public documentation mirrors belong in `~/Projects/docs/snippets/rates.mdx` and require a coordinated docs Pull Request when used.
 

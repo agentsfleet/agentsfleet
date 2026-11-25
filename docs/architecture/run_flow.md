@@ -398,7 +398,7 @@ Each gap names what would close it.
 
 ## Original Pull Request repair
 
-The [durable repair scenario](scenarios/durable-repair.md) owns the combined flow: an authorized externally opened PR, later-CI continuation, worker recovery and configured goal decisions.
+The [combined repair acceptance](durable_tasks.md#combined-repair-acceptance) owns the combined flow: an authorized externally opened PR, later-CI continuation, worker recovery and configured goal decisions.
 Native task bindings and publication receipts retain the authorized PR and expected head across requests. Combined live acceptance remains pending.
 
 Task continuations use the existing turn and run path.
