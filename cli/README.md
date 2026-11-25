@@ -64,8 +64,10 @@ and is versioned with each release:
 from the binary you actually have installed.
 
 Run `agentsfleet pet` to play Orbit, a local paddle game. Press Space to
-serve and move with the arrows or A/D. Aim with the paddle edges, collect
-stars, and build a streak as the court speeds up. You get three lives.
+serve and move with the arrows or A/D. Hit the center for a straight rebound
+or aim with the paddle edges.
+
+Collect stars and build a streak as the court speeds up. You get three lives.
 Press R to restart with your session best or Q to quit.
 
 Press S to toggle the sound effects. Sound starts off. Orbit uses your
