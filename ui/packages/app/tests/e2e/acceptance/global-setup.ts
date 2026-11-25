@@ -36,7 +36,7 @@ import {
   type MintedFixture,
 } from "./fixtures/clerk-admin";
 import { bootstrapTenant } from "./fixtures/bootstrap";
-import { cleanWorkspaceFleets } from "./fixtures/teardown";
+import { cleanWorkspaceFleets, hasIsolatedFixtureDatabase } from "./fixtures/teardown";
 import { ensureSecondWorkspace, getDefaultWorkspaceId } from "./fixtures/seed";
 import {
   FIXTURE_KEY,
@@ -63,10 +63,7 @@ const REQUIRED_ENV = [
   "CLERK_WEBHOOK_SECRET",
 ] as const;
 
-// Fixture emails — opt-in env override. The CI workflows resolve these
-// from op:// vault items. Defaults live on e2e.agentsfleet.net — an owned,
-// MX-less subdomain, undeliverable by construction. Nobody can receive a
-// login code for these addresses, unlike the old public mailinator inbox.
+// Defaults live on the owned, undeliverable e2e.agentsfleet.net domain.
 const DEFAULT_REGULAR_EMAIL = "regular-fixture@e2e.agentsfleet.net";
 const DEFAULT_ADMIN_EMAIL = "admin-fixture@e2e.agentsfleet.net";
 const DEFAULT_OPERATOR_EMAIL = "operator-fixture@e2e.agentsfleet.net";
@@ -193,17 +190,12 @@ export default async function globalSetup(): Promise<void> {
     fixtures.push(await attachJwt(user));
   }
   writeCache(fixtures);
-  // One unscoped sweep of the shared fixture workspace while no worker is
-  // running yet. Per-spec cleanups are scoped to their own seed prefix (a
-  // parallel worker must never delete a sibling's fleet mid-test), so this
-  // is the only place leftovers from interrupted runs get cleared — without
-  // it they accumulate ahead of the current run's saved history.
-  // API failures here are environment problems, not product drift — surface
-  // them as the typed redacted diagnosis (error code + recovery playbook)
-  // instead of a raw wire error, and never echo response bodies.
+  // A shared development account can have CLI tests running before the first
+  // browser worker starts. Only the local stack can sweep the whole workspace.
   try {
-    const regularWs = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
-    const swept = await cleanWorkspaceFleets(FIXTURE_KEY.regular, regularWs);
+    const swept = hasIsolatedFixtureDatabase()
+      ? await cleanWorkspaceFleets(FIXTURE_KEY.regular, await getDefaultWorkspaceId(FIXTURE_KEY.regular))
+      : null;
     // Provision the shared secondary workspace before any worker exists —
     // parallel specs racing ensureSecondWorkspace's list-then-create would
     // otherwise collide on the (tenant, name) uniqueness during a first run.
@@ -212,8 +204,8 @@ export default async function globalSetup(): Promise<void> {
       `[e2e:auth] env present (api=${process.env.NEXT_PUBLIC_API_URL}); ` +
         `${fixtures.length} fixture users provisioned in Clerk + bootstrapped in agentsfleetd; ` +
         `JWTs cached to ${JWT_CACHE_PATH}; ` +
-        `${swept.removed} leftover fleet(s) swept from the shared workspace` +
-        (swept.failed > 0 ? `, ${swept.failed} could not be deleted` : ""),
+        (swept ? `${swept.removed} local leftover fleet(s) removed, ${swept.failed} failed`
+          : "shared API uses per-spec fleet cleanup"),
     );
   } catch (error) {
     throw diagnoseApiError(error, "global setup");

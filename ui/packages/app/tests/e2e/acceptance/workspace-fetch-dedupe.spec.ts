@@ -7,7 +7,6 @@ import {
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import { ensureSecondWorkspace, getDefaultWorkspaceId } from "./fixtures/seed";
-import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { expectSelectedWorkspace, expectWorkspaceEntry, openWorkspaceMenu, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
 const AUDIT_URL = "/acceptance-audit/workspace-fetches";
@@ -65,10 +64,5 @@ test.describe("workspace fetch dedupe", () => {
     await expect(page).toHaveURL(new RegExp(`/w/${secondary.id}/secrets$`), {timeout: SWITCH_TIMEOUT_MS});
     await expectSelectedWorkspace(page, secondary.name ?? "Unnamed workspace");
     await expectWorkspaceFetchesWithinLimit(page, "workspace switch");
-  });
-
-  test.afterEach(async () => {
-    const ws = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
-    await cleanWorkspaceFleets(FIXTURE_KEY.regular, ws);
   });
 });
