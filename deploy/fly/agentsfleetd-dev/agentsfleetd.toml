@@ -126,6 +126,14 @@ max_runs = 12
 max_publication_attempts = 8
 max_decision_calls = 128
 
+# Workspace and durable-task checkpoints live in the dev R2 bucket. The
+# credential is the platform admin workspace's `cloudflare-r2` bag
+# (playbooks/lib/platform_secret_sync.sh cloudflare-r2).
+[checkpoint.storage]
+endpoint = "https://01c407cca9985209ef671a75657fe62e.r2.cloudflarestorage.com"
+bucket = "agentsfleet-checkpoints-dev"
+credential_name = "cloudflare-r2"
+
 [nats]
 # Raise it when agentsfleet_fleet_ready_wake_queue_events_total shows evicted wake-ups;
 # lower it to hold less in memory. Evicted work is not lost: it stays in Postgres.

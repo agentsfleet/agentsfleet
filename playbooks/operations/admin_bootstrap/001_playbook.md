@@ -78,6 +78,7 @@ No value reaches process arguments or output; an HTTP 403 or 404 means the key's
 | `slack-app` | `slack-app`: `client_id`, `client_secret`, `signing_secret` | Per request |
 | `linear-app`, `jira-app`, `zoho-app` | Same-named item: `client_id`, `client_secret` | At startup |
 | `typesafe` | `typesafe`: `credential`, stored as `api_key` | Per decision call |
+| `cloudflare-r2` | `cloudflare-r2`: `access-key-id`, `secret-access-key`, stored as `access_key_id`, `secret_access_key` | Per task checkpoint, named by `[checkpoint.storage]` `credential_name` |
 
 A startup-read bag takes effect at the next restart, such as the runner redeploy.
 
