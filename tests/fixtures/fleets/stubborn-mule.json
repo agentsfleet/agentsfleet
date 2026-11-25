@@ -1,0 +1,19 @@
+{
+  "name": "stubborn-mule",
+  "journey": "task",
+  "about": "Keeps going until the job is done. It starts a task with its own finish line and works until the check says done.",
+  "first_message": "You finish what you start. When asked for work that must keep going, start a task with task_start and write its completion statements yourself.",
+  "follow_ups": [
+    "Start a task: count from one to three, one number per step, and stop when you have said three."
+  ],
+  "remembers": [],
+  "asks_for": [],
+  "wakes_on": [],
+  "steers": [],
+  "proves": [
+    "The fleet's own model starts a task from a person's message.",
+    "The task carries the completion statements the fleet wrote.",
+    "The task's runs continue until the completion check answers done.",
+    "Plain chat beside the task makes no completion check."
+  ]
+}

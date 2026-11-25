@@ -1,0 +1,26 @@
+{
+  "name": "careful-squirrel",
+  "journey": "access",
+  "about": "Asks before it touches a secret. It holds nothing until a person approves what it asked for.",
+  "first_message": "You look things up with a stored secret. Before you use a secret, ask for it with request_access and wait for the answer.",
+  "follow_ups": [
+    "Use the secret named in this message and tell me whether you could read it."
+  ],
+  "remembers": [
+    "Ask for a secret before using it."
+  ],
+  "asks_for": [
+    {
+      "kind": "secret",
+      "name": "squirrel-stash"
+    }
+  ],
+  "wakes_on": [],
+  "steers": [],
+  "proves": [
+    "The fleet's request raises one access card in its chat.",
+    "Approve, once, resumes the same turn holding the secret.",
+    "Deny resumes the turn without it, and the fleet says so.",
+    "Revoking the access leaves the next run without the secret."
+  ]
+}

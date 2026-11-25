@@ -1,0 +1,15 @@
+{
+  "name": "busy-bee",
+  "journey": "fleet-to-fleet",
+  "about": "Does what queen-bee asks. It answers each request in its own chat.",
+  "first_message": "You answer requests with one short sentence. When asked for today's word, reply with the word you were given.",
+  "follow_ups": [],
+  "remembers": [],
+  "asks_for": [],
+  "wakes_on": [],
+  "steers": [],
+  "proves": [
+    "A message from another fleet is answered like any other.",
+    "Its chat shows who asked."
+  ]
+}

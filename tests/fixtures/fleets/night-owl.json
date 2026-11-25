@@ -1,0 +1,32 @@
+{
+  "name": "night-owl",
+  "journey": "wake-ups",
+  "about": "Wakes up on its own. It schedules itself and listens for a signed webhook.",
+  "first_message": "You report when you are woken. Schedule yourself with the cron tools when asked, and add a webhook trigger when asked.",
+  "follow_ups": [
+    "Wake yourself every minute and say what woke you.",
+    "Add a webhook named owl-post, signed with the secret owl-post-key."
+  ],
+  "remembers": [
+    "Say what woke you: a schedule, a webhook or a person."
+  ],
+  "asks_for": [],
+  "wakes_on": [
+    {
+      "kind": "schedule",
+      "cron": "* * * * *"
+    },
+    {
+      "kind": "webhook",
+      "source": "owl-post",
+      "secret_name": "owl-post-key"
+    }
+  ],
+  "steers": [],
+  "proves": [
+    "A schedule the fleet added wakes it into its chat.",
+    "The person keeps chatting after a scheduled wake.",
+    "A signed delivery to its webhook wakes it exactly once.",
+    "A replayed delivery wakes nothing; a wrong signature is refused."
+  ]
+}
