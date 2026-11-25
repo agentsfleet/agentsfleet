@@ -63,4 +63,7 @@ export const listApiKeysAction = refuse;
 export const revokeApiKeyAction = refuse;
 export const deleteApiKeyAction = refuse;
 export const startConnectAction = refuse;
-export const disconnectConnectorAction = refuse;
+export async function disconnectConnectorAction() {
+  if (new URLSearchParams(location.search).has("disconnectRoute")) await fetch("/fixture/disconnect");
+  return refuse();
+}

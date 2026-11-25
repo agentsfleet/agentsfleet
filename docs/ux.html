@@ -800,6 +800,7 @@ const icon = name => `<i data-icon="${name}"></i>`;
 const appState = {
   view: 'conversation', approved: false, retrying: false, retried: false, schedules: {scheduled:{state:'active',wake:'12:30'}},
   inputs: {}, messages: {}, removed: {}, network: {}, statements: {},
+  connections: {github:true,slack:true},
   secrets: [
     {name: 'REGISTRY_TOKEN', scope: 'Release watch'},
     {name: 'SUPPORT_API_KEY', scope: 'Support triage'},
@@ -879,6 +880,7 @@ function authLoadingView(label) {
 }
 window.FLEET_ICONS.info = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-40a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,0-16,16,16,0,0,1,16,16v40A8,8,0,0,1,144,176ZM112,84a12,12,0,1,1,12,12A12,12,0,0,1,112,84Z\"></path></svg>";
 window.FLEET_ICONS["circle-notch"] = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M232,128a104,104,0,0,1-208,0c0-41,23.81-78.36,60.66-95.27a8,8,0,0,1,6.68,14.54C60.15,61.59,40,93.27,40,128a88,88,0,0,0,176,0c0-34.73-20.15-66.41-51.34-80.73a8,8,0,0,1,6.68-14.54C208.19,49.64,232,87,232,128Z\"></path></svg>";
+window.FLEET_ICONS.hash = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 256 256"><path d="M224,88H175.4l8.47-46.57a8,8,0,0,0-15.74-2.86l-9,49.43H111.4l8.47-46.57a8,8,0,0,0-15.74-2.86L95.14,88H48a8,8,0,0,0,0,16H92.23L83.5,152H32a8,8,0,0,0,0,16H80.6l-8.47,46.57a8,8,0,0,0,6.44,9.3A7.79,7.79,0,0,0,80,224a8,8,0,0,0,7.86-6.57l9-49.43H144.6l-8.47,46.57a8,8,0,0,0,6.44,9.3A7.79,7.79,0,0,0,144,224a8,8,0,0,0,7.86-6.57l9-49.43H208a8,8,0,0,0,0-16H163.77l8.73-48H224a8,8,0,0,0,0-16Zm-76.5,64H99.77l8.73-48h47.73Z"></path></svg>`;
 function summaryNameLabel(name, focusable=false){return `<span ${focusable?'class="summary-scroll-label" tabindex="0"':'class="summary-action-label"'}><span>${esc(name)}</span></span>`;}
 function icons(root = document) { $$('[data-icon]', root).forEach(el => { const key = el.dataset.icon + (el.closest('.rail-button.selected') ? '_bold' : ''); el.innerHTML = window.FLEET_ICONS[key] || window.FLEET_ICONS[el.dataset.icon] || ''; el.setAttribute('aria-hidden','true'); }); }
 function setSidebarExpanded(expanded) {
@@ -1143,6 +1145,22 @@ const fleetStarters = [
 ];
 function emptyView() { return `<div class="empty-workspace"><div class="empty-content"><div class="empty-heading"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0Ij4KICA8dGl0bGU+YWdlbnRzZmxlZXQ8L3RpdGxlPgogIDxyZWN0IHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCIgcng9IjEyIiBmaWxsPSIjMTUxNzE2Ii8+CiAgPGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoOCA4KSBzY2FsZSgyKSIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjYjhmMGNlIiBzdHJva2Utd2lkdGg9IjEuNCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIj4KICAgIDxwYXRoIGQ9Ik0xMiAydjZtMCA4djZNMiAxMmg2bTggMGg2TTQuOTMgNC45M2w0LjI0IDQuMjRtNS42NiA1LjY2IDQuMjQgNC4yNE00LjkzIDE5LjA3bDQuMjQtNC4yNG01LjY2LTUuNjYgNC4yNC00LjI0Ii8+CiAgICA8Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSIxLjUiIGZpbGw9IiNiOGYwY2UiIHN0cm9rZT0ibm9uZSIvPgogIDwvZz4KPC9zdmc+Cg==" alt=""><h2>New fleet</h2><p>Send a message to start your fleet.</p></div>${composer(true)}<div class="empty-suggestions">${fleetStarters.map(starter=>`<button data-prompt="${esc(starter.prompt)}">${icon(starter.icon)}${esc(starter.title)}</button>`).join('')}</div></div></div>`; }
 function pageHeading(title,copy,action='') {return `<div class="page-heading"><div><h2>${title}</h2><p>${copy}</p></div>${action}</div>`;}
+const previewConnections = [
+  {id:'github',name:'GitHub',icon:'git-branch',account:'Release workspace'},
+  {id:'slack',name:'Slack',icon:'hash',account:'agentsfleet',hint:'Invite the app to the Slack channels your fleets use.'},
+];
+function connectionRow(app) {
+  const connected = appState.connections[app.id], action = connected ? 'Disconnect' : 'Connect';
+  return `<div class="resource-row"><span class="resource-icon">${icon(app.icon)}</span>
+    <div class="resource-copy"><strong>${app.name}</strong><p>${connected ? `Connected · ${app.account}` : 'Not connected'}</p>
+      ${connected && app.hint ? `<p>${app.hint}</p>` : ''}</div>
+    <button class="secondary" data-toggle-connection="${app.id}" aria-label="${action} ${app.name}">${action}</button></div>`;
+}
+function connectionsView() {
+  return `<div class="page">${pageHeading('Connected apps','Connect your workspace’s apps. Fleets ask you for access in chat.')}
+    <div class="panel">${previewConnections.map(connectionRow).join('')}
+    <div class="resource-row"><span class="resource-icon">${icon('cloud')}</span><div class="resource-copy"><strong>Deploy account</strong><p>${appState.retried?'Recovered':'Connection expired · Deploy monitor is waiting'}</p></div><button class="secondary" data-action="reconnect">${appState.retried?'View recovery':'Reconnect'}</button></div></div></div>`;
+}
 function pageView(view) {
   if(view==='cli-sign-in') return signInView();
   if(view==='terminal') return terminalView();
@@ -1152,7 +1170,7 @@ function pageView(view) {
   if(view==='security') return securityView();
   if(view==='review') return reviewView();
   if(view==='secrets') return secretsView();
-  if(view==='connections') return `<div class="page">${pageHeading('Connected apps','Choose the accounts your fleets can use. Access stays scoped to each fleet.')}<div class="panel"><div class="resource-row"><span class="resource-icon">${icon('git-branch')}</span><div class="resource-copy"><strong>GitHub</strong><p>Connected · 3 repositories available</p></div><button class="secondary" data-action="connection-details">Manage</button></div><div class="resource-row"><span class="resource-icon">${icon('bell')}</span><div class="resource-copy"><strong>Slack</strong><p>Connected · #releases</p></div><button class="secondary" data-action="connection-details">Manage</button></div><div class="resource-row"><span class="resource-icon">${icon('cloud')}</span><div class="resource-copy"><strong>Deploy account</strong><p>${appState.retried?'Connected':'Connection expired · Deploy monitor is waiting'}</p></div><button class="secondary" data-action="reconnect">${appState.retried?'View recovery':'Reconnect'}</button></div></div></div>`;
+  if(view==='connections') return connectionsView();
   return '';
 }
 function usageView() {
@@ -1287,6 +1305,16 @@ document.addEventListener('click', e=>{
   if(b.dataset.address){selectAddress(b.dataset.address);return;}
   if(b.dataset.view){if(matchMedia('(max-width:680px)').matches)setSidebarExpanded(false);showView(b.dataset.view,true);return;}
   if(b.dataset.prompt){insertText(b.dataset.prompt);return;}
+  if(b.dataset.toggleConnection){
+    const app = previewConnections.find(item => item.id === b.dataset.toggleConnection);
+    if(!app)return;
+    appState.connections[app.id] = !appState.connections[app.id];
+    b.closest('.resource-row').outerHTML = connectionRow(app);
+    const action = $(`[data-toggle-connection="${app.id}"]`);
+    icons(action.closest('.resource-row'));
+    action.focus({preventScroll:true});
+    return;
+  }
   if(b.dataset.resource){
     const choices = {
       schedule: ['Delete this schedule?', 'The fleet stops waking on this schedule. Earlier activity stays in the chat.', 'Delete schedule'],
@@ -1386,7 +1414,6 @@ Waiting for requests…</pre></div>`+previewNote('This is a sample process, not 
       insertText('> '+text+'\n\n');break;
     }
     case 'copy-reply':{const text=b.closest('.assistant-turn')?.innerText||'';navigator.clipboard?.writeText(text).then(()=>{b.setAttribute('aria-label','Response copied');b.title='Copied';}).catch(()=>dialog('Copy response',`<p>Select and copy this text.</p><pre>${esc(text)}</pre>`));break;}
-    case 'connection-details':dialog('Connection access','<p>Manage connected accounts and the fleets that can use them.</p>'+previewNote());break;
     case 'add-secret':dialog('Add secret',`<form id="secret-form"><label class="field">Name<input id="variable-name" placeholder="MY_VARIABLE" pattern="[A-Za-z_][A-Za-z0-9_]*" required><small>Letters, numbers, and underscores.</small></label><label class="field">Value<input id="variable-value" type="password" autocomplete="off" required placeholder="Use a sample value"></label><p class="subtle">Secret values are hidden after saving.</p>${previewNote('Use sample values. Nothing is stored on a server.')} ${modalActions('<button class="primary" type="submit">Add</button>')}</form>`);break;
   }
 });
