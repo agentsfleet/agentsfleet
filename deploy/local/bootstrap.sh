@@ -59,8 +59,6 @@ acceptance_daemon_environment() (
   printf 'AGENTSFLEET_RUNNER_STREAM_LISTEN_ADDR=%q\n' "127.0.0.1:$LOCAL_ACCEPTANCE_RUNNER_STREAM_PORT" >>"$pending"
   printf 'AGENTSFLEET_RUNNER_STREAM_TLS_CERT_FILE=%q\n' "$LOCAL_ACCEPTANCE_STATE/runner-stream/server-chain.pem" >>"$pending"
   printf 'AGENTSFLEET_RUNNER_STREAM_TLS_KEY_FILE=%q\n' "$LOCAL_ACCEPTANCE_STATE/runner-stream/server.key" >>"$pending"
-  # Plain http passes the daemon's preflight only on a loopback host.
-  printf 'SLACK_API_URL=%q\n' "http://127.0.0.1:$LOCAL_SLACK_STUB_PORT" >>"$pending"
   mv "$pending" "$LOCAL_ACCEPTANCE_STATE/daemon.env"
 )
 

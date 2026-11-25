@@ -144,19 +144,6 @@ describe("acceptance environment file", () => {
 });
 
 describe("daemon environment file", () => {
-  test("the daemon is pointed at the loopback Slack stand-in", () => {
-    const script = ["set -euo pipefail", 'source "$1/deploy/local/bootstrap.sh"', "acceptance_daemon_environment", ""].join("\n");
-    const result = Bun.spawnSync(["bash", "-c", script, "--", ROOT], {
-      env: { ...process.env, LOCAL_ACCEPTANCE_STATE: root, LOCAL_DEV_ENV_FILE: join(root, "acceptance.env"),
-        LOCAL_ACCEPTANCE_RUNNER_STREAM_PORT: "40003", LOCAL_SLACK_STUB_PORT: "40004" },
-      stdin: "ignore", stdout: "pipe", stderr: "pipe", timeout: SHELL_TIMEOUT_MS,
-    });
-    expect(result.exitCode, result.stderr.toString()).toBe(0);
-    const lines = readFileSync(join(root, "daemon.env"), "utf8").split("\n");
-    expect(lines[0]).toBe(`source ${join(root, "acceptance.env")}`);
-    expect(lines).toContain("AGENTSFLEET_RUNNER_STREAM_LISTEN_ADDR=127.0.0.1:40003");
-    expect(lines).toContain("SLACK_API_URL=http://127.0.0.1:40004");
-  });
 });
 
 describe("local target", () => {

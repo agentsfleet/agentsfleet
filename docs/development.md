@@ -148,8 +148,6 @@ Initial setup uses the machine's `FIREWORKS_API_KEY` and the development GitHub 
 On a fresh acceptance database, bootstrap takes the app's six fields from `LOCAL_GITHUB_*` when all are set, and otherwise reads them with `op`.
 It takes the Slack app's `client_id`, `client_secret` and `signing_secret` from `LOCAL_SLACK_*` the same way.
 
-The stack starts the daemon with `SLACK_API_URL` on the loopback port it exports as `LOCAL_SLACK_STUB_PORT`.
-The dashboard suite serves a Slack stand-in on that port. It signs its mention with `LOCAL_SLACK_SIGNING_SECRET`, which the Slack test needs.
 
 The setup edit check uses `TYPESAFE_API_KEY`, which bootstrap stores as the platform workspace's `typesafe` key.
 Bootstrap adds a decision model that asks for `jev-latest`, accepts only the reviewed `jev-1.14.0` answer and names it in the runner's policy.
@@ -170,7 +168,7 @@ The [runner authorization rules](AUTH.md) describe operator access; the bootstra
 An existing registration with the same host name also blocks fresh enrollment.
 
 The tests select model references and make real provider calls through the backend; they do not need a provider API key.
-Optional `ACCEPTANCE_LOCAL_UI_PORT`, `ACCEPTANCE_LOCAL_TLS_PORT` and `ACCEPTANCE_LOCAL_SLACK_STUB_PORT` select ports; an occupied port causes a refusal rather than stopping its owner.
+Optional `ACCEPTANCE_LOCAL_UI_PORT` and `ACCEPTANCE_LOCAL_TLS_PORT` select ports; an occupied port causes a refusal rather than stopping its owner.
 Startup logs live under `<WORKTREE_STATE>/acceptance/`.
 
 The runner starts in an owned privileged Docker container, using the shipping binary, sandbox and toolbox verification.
