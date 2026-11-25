@@ -64,6 +64,8 @@ export default defineConfig(({ mode }) => {
       },
     },
     test: {
+      // Keep Vitest workers on threads under the pinned Bun runtime.
+      pool: "threads",
       environment: "jsdom",
       globals: true,
       setupFiles: ["../design-system/src/test-setup.ts", "./src/test-setup.ts"],

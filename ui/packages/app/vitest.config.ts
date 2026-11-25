@@ -21,6 +21,8 @@ export default defineConfig({
     },
   },
   test: {
+    // Bun 1.4.5 and Vitest 5.1.1 disagree on listener counts on fork shutdown.
+    pool: 'threads',
     // Vitest's default exclude is `['**/node_modules/**', '**/dist/**', ...]`.
     // Overriding `exclude` REPLACES the default — losing the node_modules
     // skip — so the workspace symlink `node_modules/@agentsfleet/design-system`

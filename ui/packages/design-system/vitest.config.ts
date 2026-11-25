@@ -9,6 +9,8 @@ process.env.TZ = "UTC";
 
 export default defineConfig({
   test: {
+    // Keep Vitest workers on threads under the pinned Bun runtime.
+    pool: "threads",
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/test-setup.ts"],
