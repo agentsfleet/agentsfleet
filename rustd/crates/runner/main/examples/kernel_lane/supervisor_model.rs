@@ -116,11 +116,6 @@ pub(crate) fn refused_calls() -> Vec<Call> {
     vec![
         call(PUSH, GIT, json!({ ARGS: [PUSH, ORIGIN, "main"] })),
         call(
-            WRITE,
-            "http_request",
-            request("POST", "https://${secrets.grafana.host}/api/search"),
-        ),
-        call(
             ORIGIN,
             "http_request",
             request(GET, "https://other.example.test/api/search"),

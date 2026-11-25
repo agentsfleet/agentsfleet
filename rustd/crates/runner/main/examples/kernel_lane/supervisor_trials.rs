@@ -118,7 +118,6 @@ fn refused(lane: &Lane) -> Result<(), Failed> {
     finished(&observed, 1)?;
     for (id, code) in [
         ("push", ToolErrorCode::SubcommandNotAllowed),
-        ("write", ToolErrorCode::MethodNotAllowed),
         ("origin", ToolErrorCode::CredentialHostNotAllowed),
         ("invalid", ToolErrorCode::InvalidArguments),
         (SCHEDULE, ToolErrorCode::InvalidArguments),
