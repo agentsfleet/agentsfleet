@@ -1,4 +1,4 @@
-import {afterEach, beforeEach, expect, test} from "bun:test";
+import {afterEach, beforeEach, expect, spyOn, test} from "bun:test";
 import {mkdtempSync, rmSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
@@ -54,7 +54,7 @@ test("pet help names the paddle game without making a request", async () => {
 
 test("plays, scores, restarts and restores the terminal on Q", async () => {
   const game = harness(["pet"], {tty: true, interactive: true});
-  await appeared(game.read, "Press Space to serve.");
+  await appeared(game.read, "Space serve");
   game.input.write("\u001b[D");
   game.input.write("\u001b[C");
   game.input.write("A");
@@ -79,15 +79,34 @@ test("keeps the game readable in a terminal with color disabled", async () => {
   await appeared(game.read, "Orbit  Score 00000 Best 00000");
   game.input.write("q");
   const result = await game.result();
-  expect(result.stdout).toContain("LEVEL 1 == LIVES [ooo]");
+  expect(result.stdout).toContain("Lives [ooo]");
   expect(result.stdout).not.toContain("\u001b[38;5;");
+});
+
+test("starts muted and plays a star effect after sound is enabled", async () => {
+  const lookup = spyOn(Bun, "which").mockReturnValue(null);
+  const game = harness(["pet"], {tty: true, interactive: true});
+  try {
+    await appeared(game.read, "S sound off");
+    expect(game.read()).not.toContain(terminal.bell);
+    game.input.write("s ");
+    await appeared(() => stripVTControlCharacters(game.read()), "Score 00050 Best 00050");
+    expect(game.read().split(terminal.bell)).toHaveLength(3);
+    expect(game.read()).toContain("S sound on");
+    game.input.write("s");
+    expect(game.read().split("S sound on").at(-1)).toContain("S sound off");
+  } finally {
+    game.input.write("q");
+    await game.result();
+    lookup.mockRestore();
+  }
 });
 
 test.each([SIGINT, SIGTERM, "keyboard"] as const)("restores the terminal after %s", async signal => {
   const beforeInterrupt = process.listenerCount(SIGINT);
   const beforeTerminate = process.listenerCount(SIGTERM);
   const game = harness(["pet"], {tty: true, interactive: true});
-  await appeared(game.read, "Press Space to serve.");
+  await appeared(game.read, "Space serve");
   if (signal === "keyboard") game.input.write("\u0003");
   else process.emit(signal);
   const result = await game.result();
@@ -111,11 +130,11 @@ test.each([
 
 test("finishes on input EOF and stops using cursor coordinates after resize", async () => {
   const ended = harness(["pet"], {tty: true, interactive: true});
-  await appeared(ended.read, "Press Space to serve.");
+  await appeared(ended.read, "Space serve");
   ended.input.end();
   expect(await ended.result()).toMatchObject({code: 0, requests: 0});
   const resized = harness(["pet"], {tty: true, interactive: true});
-  await appeared(resized.read, "Press Space to serve.");
+  await appeared(resized.read, "Space serve");
   resized.screen.columns = 26;
   expect(await resized.result()).toMatchObject({code: 0, stdout: expect.stringContaining("Terminal resized.")});
   expect(resized.read()).not.toContain(terminal.clearRows(ORBIT_ROWS));
@@ -125,7 +144,7 @@ test("finishes on input EOF and stops using cursor coordinates after resize", as
 test("resumes paused input and restores it after the game", async () => {
   const game = harness(["pet"], {tty: true, interactive: true});
   game.input.pause();
-  await appeared(game.read, "Press Space to serve.");
+  await appeared(game.read, "Space serve");
   game.input.write("q");
   expect(await game.result()).toMatchObject({code: 0, requests: 0});
   expect(game.input.isPaused()).toBe(true);
@@ -134,7 +153,7 @@ test("resumes paused input and restores it after the game", async () => {
 
 test("clears the game if input closes without EOF", async () => {
   const game = harness(["pet"], {tty: true, interactive: true});
-  await appeared(game.read, "Press Space to serve.");
+  await appeared(game.read, "Space serve");
   game.input.destroy();
   const result = await game.result();
   expect(result).toMatchObject({code: 0, requests: 0});

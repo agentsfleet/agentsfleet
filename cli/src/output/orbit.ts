@@ -28,16 +28,12 @@ const STARTING_LIVES = 3;
 const POINTS_PER_RETURN = 10;
 const STAR_POINTS = 50;
 const RETURNS_PER_LEVEL = 4;
-const LEVELS = [
-  {tickMs: 145, accent: palette.pulse},
-  {tickMs: 120, accent: palette.success},
-  {tickMs: 95, accent: palette.evidence},
-  {tickMs: 75, accent: palette.warn},
-] as const;
-const STARS = [{x: 20, y: 1}, {x: 8, y: 3}, {x: 25, y: 2}, {x: 15, y: 4}] as const;
+const LEVEL_TICK_MS = [135, 115, 95, 80] as const;
+const STARS = [{x: 20, y: 1}, {x: 8, y: 3}, {x: 27, y: 2}, {x: 15, y: 4}] as const;
 const BORDER = `+${"-".repeat(WIDTH)}+`;
+const LIVES_LABEL = "+= Lives ";
 const CONTROLS = "Arrows/A/D move  R restart  Q quit";
-const READY_HINT = "Press Space to serve.";
+const READY_HINT = "Space serve";
 const PLAIN: StyleOpts = {mode: ColorMode.NONE};
 const COMPACT_SCORE = new Intl.NumberFormat("en-US", {notation: "compact", maximumFractionDigits: 0});
 export const ORBIT_COLUMNS = Math.max(WIDTH + 2, CONTROLS.length);
@@ -61,11 +57,11 @@ export function moveOrbit(state: Orbit, distance: Direction): Orbit {
 }
 
 function levelIndex(state: Orbit): number {
-  return Math.min(LEVELS.length - 1, Math.floor(state.returns / RETURNS_PER_LEVEL));
+  return Math.min(LEVEL_TICK_MS.length - 1, Math.floor(state.returns / RETURNS_PER_LEVEL));
 }
 
 export function orbitTickMs(state: Orbit): number {
-  return (LEVELS[levelIndex(state)] ?? LEVELS[0]).tickMs;
+  return LEVEL_TICK_MS[levelIndex(state)] ?? LEVEL_TICK_MS[0];
 }
 
 function points(state: Orbit, value: number): Orbit {
@@ -102,30 +98,29 @@ function scoreText(score: number): string {
 }
 
 function orbitHint(state: Orbit, style: StyleOpts): string {
-  if (state.phase === "over") return palette.error("Game over. Press R to restart.", style);
-  if (state.phase === "ready") return palette.evidence(READY_HINT, style);
-  return palette.success(`Rally x${Math.max(1, state.streak)}   Star * +${STAR_POINTS}`, style);
+  if (state.phase === "over") return palette.error("Game over", style);
+  if (state.phase === "ready") return READY_HINT;
+  return palette.success(`Rally x${COMPACT_SCORE.format(Math.max(1, state.streak))}`, style);
 }
 
-export function orbitFrame(state: Orbit, style: StyleOpts = PLAIN): readonly string[] {
-  const stage = levelIndex(state);
-  const {accent} = LEVELS[stage] ?? LEVELS[0];
+export function orbitFrame(state: Orbit, style: StyleOpts = PLAIN, sound = false): readonly string[] {
   const ball = state.phase === "ready" ? {x: state.paddle + PADDLE_CENTER, y: COURT_BOTTOM - 1}
     : {x: state.ballX, y: state.ballY};
   const star = STARS[state.target] ?? STARS[0];
-  const lifeBar = "o".repeat(state.lives) + ".".repeat(STARTING_LIVES - state.lives);
-  const status = `== LEVEL ${stage + 1} == LIVES [${lifeBar}] `.padEnd(WIDTH, "=");
-  const boundary = accent("|", style);
+  const lives = `[${"o".repeat(state.lives)}${".".repeat(STARTING_LIVES - state.lives)}]`;
+  const top = palette.muted(LIVES_LABEL, style) + palette.error(lives, style)
+    + palette.muted(` ${"=".repeat(WIDTH - LIVES_LABEL.length - lives.length)}+`, style);
+  const wall = palette.muted("|", style);
   const rows = Array.from({length: HEIGHT}, (_, y) => {
     const cells = Array.from({length: WIDTH}, (_, x) => {
       if (x === ball.x && y === ball.y) return palette.pulse("o", style);
       if (x === star.x && y === star.y) return palette.evidence("*", style);
       const paddleCell = y === COURT_BOTTOM ? PADDLE[x - state.paddle] : undefined;
-      if (paddleCell) return palette.pulse(paddleCell, style);
-      return (x * 11 + y * 13) % 23 === 3 ? palette.subtle(".", style) : " ";
+      return paddleCell ? palette.accent(paddleCell, style) : " ";
     });
-    return `${boundary}${cells.join("")}${boundary}`;
+    return `${wall}${cells.join("")}${wall}`;
   });
   const scores = `${palette.pulse(PET_NAME, style)}  Score ${palette.evidence(scoreText(state.score), style)} Best ${palette.success(scoreText(state.best), style)}`;
-  return [scores, accent(`+${status}+`, style), ...rows, accent(BORDER, style), CONTROLS, orbitHint(state, style)];
+  const hint = `${orbitHint(state, style)}  ${palette.accent(sound ? "S sound on" : "S sound off", style)}`;
+  return [scores, top, ...rows, palette.muted(BORDER, style), CONTROLS, hint];
 }

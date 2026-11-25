@@ -5,6 +5,7 @@ import { PassThrough } from "node:stream";
 import { SIGINT, SIGTERM } from "../../constants/signals.ts";
 import { moveOrbit, orbitFrame, orbitTickMs, ORBIT_COLUMNS, ORBIT_ROWS, serveOrbit, startOrbit, stepOrbit } from "../../output/orbit.ts";
 import { terminal, type StyleOpts } from "../../output/palette.ts";
+import { orbitAudio, type OrbitSound } from "./audio.ts";
 
 type RawInput = NodeJS.ReadableStream & {
   readonly isTTY: boolean;
@@ -42,7 +43,8 @@ export async function playOrbit(input: RawInput, screen: WritableStreamLike, own
       finished.reject(cause);
     }
   };
-  const game = orbitControls(draw, finished.resolve, style);
+  const audio = orbitAudio(screen);
+  const game = orbitControls(draw, finished.resolve, audio, style);
   const tick = () => {
     if (resized()) {
       finished.resolve("resized");
@@ -70,20 +72,29 @@ export async function playOrbit(input: RawInput, screen: WritableStreamLike, own
     try {
       controls();
     } finally {
-      if (reserved) screen.write(resized() ? "\r\n" : terminal.clearRows(ORBIT_ROWS));
+      try {audio.stop();}
+      finally {if (reserved) screen.write(resized() ? "\r\n" : terminal.clearRows(ORBIT_ROWS));}
     }
   }
 }
 
-function orbitControls(render: (frame: readonly string[]) => void, finish: (outcome: Outcome) => void, style?: StyleOpts) {
+function orbitControls(
+  render: (frame: readonly string[]) => void, finish: (outcome: Outcome) => void,
+  audio: ReturnType<typeof orbitAudio>, style?: StyleOpts,
+) {
   let state = startOrbit();
-  const frame = () => orbitFrame(state, style);
+  let sound = false;
+  const frame = () => orbitFrame(state, style, sound);
   return {
     frame,
     delay: () => orbitTickMs(state),
     tick() {
       const next = stepOrbit(state);
       if (next === state) return;
+      if (sound) {
+        const effect = orbitEffect(state, next);
+        if (effect) audio.play(effect);
+      }
       state = next;
       render(frame());
     },
@@ -93,6 +104,11 @@ function orbitControls(render: (frame: readonly string[]) => void, finish: (outc
         case "c": if (pressed.ctrl) finish("interrupted"); return;
         case "space": state = serveOrbit(state); break;
         case "r": state = startOrbit(state.best); break;
+        case "s":
+          sound = !sound;
+          if (sound) audio.play("bounce");
+          else audio.stop();
+          break;
         case "left": case "a": state = moveOrbit(state, -1); break;
         case "right": case "d": state = moveOrbit(state, 1); break;
         default: return;
@@ -100,6 +116,13 @@ function orbitControls(render: (frame: readonly string[]) => void, finish: (outc
       render(frame());
     },
   };
+}
+
+function orbitEffect(previous: ReturnType<typeof startOrbit>, next: ReturnType<typeof startOrbit>): OrbitSound | undefined {
+  if (next.lives < previous.lives) return "miss";
+  if (next.target !== previous.target) return "star";
+  if (next.returns > previous.returns) return "bounce";
+  return undefined;
 }
 
 function captureKeys(input: RawInput, owner: AbortSignal, controls: Controls): () => void {
