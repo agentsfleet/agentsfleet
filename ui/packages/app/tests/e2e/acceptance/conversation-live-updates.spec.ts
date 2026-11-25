@@ -82,7 +82,8 @@ test("a real reply and its run figures reach another session without reloading o
     assertPassed(classifyTerminalTurn(terminal));
 
     const transcript = watching.getByLabel("Fleet chat", {exact: true}).getByRole("log", {name: "Chat", exact: true});
-    await expect(transcript.getByText(message, {exact: true})).toBeVisible({timeout: RENDER_TIMEOUT_MS});
+    const sentMessage = transcript.locator('[data-role="user"]').getByText(message, {exact: true});
+    await expect(sentMessage).toBeVisible({timeout: RENDER_TIMEOUT_MS});
     const reply = transcript.locator(`[data-message-id="${terminal.turn_id}:reply"]`);
     await expect(reply).toBeVisible({timeout: RENDER_TIMEOUT_MS});
     await expect(reply).toHaveAttribute("data-settled", "true", {timeout: RENDER_TIMEOUT_MS});
