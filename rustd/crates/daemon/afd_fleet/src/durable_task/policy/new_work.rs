@@ -154,4 +154,36 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn a_plan_with_no_item_is_refused() {
+        let refused = DurableTaskPolicy::default()
+            .items(&[])
+            .expect_err("a plan names at least one item");
+
+        assert_eq!(refused.code(), error_code::DURABLE_TASK_LIMIT_EXHAUSTED);
+    }
+
+    #[test]
+    fn an_edit_past_the_statement_count_or_authored_size_is_refused() {
+        let counted = policy(DurableTaskSettings {
+            max_completion_questions: 1,
+            ..DurableTaskSettings::default()
+        });
+        let sized = policy(DurableTaskSettings {
+            max_authored_question_bytes: 16,
+            ..DurableTaskSettings::default()
+        });
+
+        for (bounded, count, bound) in [(counted, 2, "count"), (sized, 1, "authored size")] {
+            let refused = bounded
+                .statements(&statements(count))
+                .expect_err("one bound is broken");
+            assert_eq!(
+                refused.code(),
+                error_code::DURABLE_TASK_LIMIT_EXHAUSTED,
+                "{bound}"
+            );
+        }
+    }
 }

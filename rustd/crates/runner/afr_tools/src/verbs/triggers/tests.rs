@@ -152,3 +152,31 @@ async fn a_removal_names_its_trigger_and_an_id_that_is_not_one_is_refused() {
     );
     assert_eq!(asked, []);
 }
+
+/// A GitHub App subscription leaves as an App event with its repositories and
+/// no source, which the daemon fills in as GitHub.
+#[tokio::test]
+async fn an_app_event_add_leaves_as_a_github_subscription() {
+    let (_output, asked) = called(
+        TriggerAdd,
+        Ok(r#"{"id":"t","kind":"app_event","source":"github"}"#.to_owned()),
+        json!({"kind": "app_event", "events": ["pull_request"], "repositories": ["org/app"]}),
+    )
+    .await;
+
+    assert_eq!(
+        asked,
+        [Asked::Triggers(OwnedTriggerCall::Add {
+            call_number: 1,
+            trigger: NewTrigger {
+                kind: TriggerKind::AppEvent,
+                source: None,
+                events: Some(vec![Cow::Borrowed("pull_request")]),
+                repositories: Some(vec![Cow::Borrowed("org/app")]),
+                verifier: None,
+                secret_name: None,
+                channel: None,
+            },
+        })]
+    );
+}

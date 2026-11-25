@@ -185,3 +185,34 @@ fn a_scrub_that_cannot_be_built_is_an_operation_failure() -> Result<(), &'static
     );
     Ok(())
 }
+
+/// An approval-store failure answers with the code, the sentence and the
+/// outage class `afd_approval` decided, for every kind the database layer has:
+/// a run's access request restates none of them.
+#[test]
+fn an_approval_store_failure_keeps_the_approval_crates_classification() {
+    let mut outages = 0;
+    for (kind, database) in afd_db::error::one_of_each_kind() {
+        let approval = afd_approval::Error::from(database);
+        let decided = (
+            approval.code(),
+            approval.detail(),
+            approval.is_datastore_unavailable(),
+        );
+
+        let lifted = Error::from(approval);
+
+        let read = (
+            lifted.code(),
+            lifted.detail(),
+            lifted.is_datastore_unavailable(),
+        );
+        assert_eq!(read, decided, "{kind}");
+        assert!(lifted.source().is_some(), "{kind} keeps its cause");
+        outages += usize::from(read.2);
+    }
+    assert!(
+        outages > 0,
+        "an outage sample proves the class is carried, not defaulted"
+    );
+}

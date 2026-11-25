@@ -5,7 +5,8 @@
 
 use af_core::error_code;
 use af_core::id::Uuid7;
-use afd_api_wire::fleet::PatchFleetRequest;
+use af_wire::policy::HttpEgress;
+use afd_api_wire::fleet::{PatchFleetRequest, PatchStatus};
 
 use super::fixture::{Fixture, patch, valid};
 use super::mint;
@@ -64,5 +65,121 @@ async fn an_ineligible_model_ref_changes_nothing() {
     assert_eq!(read.model_ref, fleet.model_ref);
     assert_eq!(read.etag, fleet.etag);
     assert_eq!(model_changes(&f, &fleet.id).await, 0);
+    f.cleanup().await;
+}
+
+// Value: protects=a patch that names no field is refused before any row is
+// read; fails_when=an empty patch bumps the fleet's tag; seam=`Creations::patch`
+// over live Postgres.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn an_empty_patch_is_refused() {
+    let f = Fixture::create().await;
+    let fleet = created(&f).await;
+
+    let refused = f
+        .creations
+        .patch(f.access(), &fleet.id, Some(&fleet.etag), &valid(patch()))
+        .await
+        .expect_err("a patch names a field");
+
+    assert_eq!(refused.code(), error_code::INVALID_REQUEST);
+    let read = f
+        .creations
+        .read(f.access(), &fleet.id)
+        .await
+        .expect("the fleet reads");
+    assert_eq!(read.etag, fleet.etag);
+    f.cleanup().await;
+}
+
+// Value: protects=an archived fleet takes no further change, and a rename onto
+// a name another fleet holds is refused; fails_when=either patch writes the
+// row; seam=`Creations::patch` over live Postgres.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn an_archived_fleet_and_a_taken_name_change_nothing() {
+    let f = Fixture::create().await;
+    let (taken, fleet) = (created(&f).await, created(&f).await);
+    let rename = |name: &str| PatchFleetRequest {
+        name: Some(name.to_owned()),
+        ..patch()
+    };
+
+    let clash = f
+        .creations
+        .patch(
+            f.access(),
+            &fleet.id,
+            Some(&fleet.etag),
+            &valid(rename(&taken.name)),
+        )
+        .await
+        .expect_err("another fleet holds the name");
+    let archive = PatchFleetRequest {
+        status: Some(PatchStatus::Archived),
+        ..patch()
+    };
+    let archived = f
+        .creations
+        .patch(f.access(), &fleet.id, Some(&fleet.etag), &valid(archive))
+        .await
+        .expect("the owner archives the fleet");
+    let late = f
+        .creations
+        .patch(
+            f.access(),
+            &fleet.id,
+            Some(&archived.etag),
+            &valid(rename("support-triage")),
+        )
+        .await
+        .expect_err("an archived fleet is final");
+
+    assert_eq!(clash.code(), error_code::AGENTSFLEET_NAME_EXISTS);
+    assert_eq!(late.code(), error_code::AGENTSFLEET_ARCHIVED);
+    assert_eq!(
+        archived.name, fleet.name,
+        "the clashing rename wrote nothing"
+    );
+    f.cleanup().await;
+}
+
+// Value: protects=a person's network toggle opens the fleet and closes it
+// again; fails_when=the closing patch leaves the fleet public;
+// seam=`Creations::patch` over live Postgres.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_network_toggle_opens_and_closes_the_fleet() {
+    let f = Fixture::create().await;
+    let fleet = created(&f).await;
+    let toggle = |egress| PatchFleetRequest {
+        http_egress: Some(egress),
+        ..patch()
+    };
+
+    let opened = f
+        .creations
+        .patch(
+            f.access(),
+            &fleet.id,
+            Some(&fleet.etag),
+            &valid(toggle(HttpEgress::Public)),
+        )
+        .await
+        .expect("the owner opens the fleet");
+    let closed = f
+        .creations
+        .patch(
+            f.access(),
+            &fleet.id,
+            Some(&opened.etag),
+            &valid(toggle(HttpEgress::Restricted)),
+        )
+        .await
+        .expect("the owner closes it again");
+
+    assert_eq!(opened.http_egress, HttpEgress::Public);
+    assert_eq!(closed.http_egress, HttpEgress::Restricted);
     f.cleanup().await;
 }

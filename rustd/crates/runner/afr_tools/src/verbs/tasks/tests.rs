@@ -239,3 +239,29 @@ async fn a_task_input_posts_one_steer_item() {
     );
     assert_eq!(asked, []);
 }
+
+/// The same input again reads as already handed over, and an answer that
+/// bound nothing says so rather than naming a task.
+#[tokio::test]
+async fn a_replayed_input_and_an_empty_binding_read_as_what_happened() {
+    let steer = json!({"durable_task_id": TASK, "source_turn_id": SOURCE,
+        "source_start": 0, "source_end": 12});
+    let empty = DurableTaskBindingsResponse {
+        items: Vec::new(),
+        ..answered(DurableTaskInputAction::Steer, false)
+    };
+
+    let (replayed, _asked) = called(
+        TaskInput,
+        Ok(answered(DurableTaskInputAction::Steer, true)),
+        steer.clone(),
+    )
+    .await;
+    let (unbound, _asked) = called(TaskInput, Ok(empty), steer).await;
+
+    assert_eq!(
+        replayed.text,
+        format!("This message was already handed to task {TASK}.")
+    );
+    assert_eq!(unbound.text, "agentsfleetd bound nothing for this call");
+}

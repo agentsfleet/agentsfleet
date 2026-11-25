@@ -38,7 +38,6 @@ pub struct GrantSeed<'a> {
     kind: &'a str,
     status: &'a str,
     scope: Option<&'a str>,
-    requested_scope: Option<&'a str>,
     approved_at: Option<Timestamp>,
     revoked_at: Option<Timestamp>,
     created_at: Option<Timestamp>,
@@ -58,7 +57,6 @@ impl<'a> GrantSeed<'a> {
             kind,
             status,
             scope: None,
-            requested_scope: None,
             approved_at: None,
             revoked_at: None,
             created_at: None,
@@ -68,12 +66,6 @@ impl<'a> GrantSeed<'a> {
     /// The GitHub scope in force, as the JSON a grant stores.
     pub const fn scope(mut self, scope: &'a str) -> Self {
         self.scope = Some(scope);
-        self
-    }
-
-    /// A wider GitHub scope waiting on a person, as the JSON a grant stores.
-    pub const fn requested_scope(mut self, scope: &'a str) -> Self {
-        self.requested_scope = Some(scope);
         self
     }
 
@@ -109,7 +101,6 @@ impl<'a> GrantSeed<'a> {
             .bind(self.kind)
             .bind(self.status)
             .bind(self.scope)
-            .bind(self.requested_scope)
             .bind(FIXTURE_REASON)
             .bind(self.approved_at.map(Timestamp::to_sqlx))
             .bind(self.revoked_at.map(Timestamp::to_sqlx))

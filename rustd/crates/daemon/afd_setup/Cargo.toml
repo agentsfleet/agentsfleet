@@ -51,6 +51,8 @@ tracing.workspace = true
 
 [dev-dependencies]
 afd_bus = { workspace = true, features = ["test-util"] }
+# A controlled entropy source, so a create's derived name is known before it runs.
+af_crypto = { workspace = true, features = ["test-util"] }
 # One isolated allocator observer also checks the runner's public secret owner.
 af_secrets.workspace = true
 afd_approval = { workspace = true, features = ["test-util"] }

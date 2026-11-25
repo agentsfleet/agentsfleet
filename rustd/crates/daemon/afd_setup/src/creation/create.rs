@@ -331,4 +331,16 @@ mod tests {
             "019a0000-0000-7000-8000-000000000001:019a0000-0000-7000-8000-000000000002"
         );
     }
+
+    #[test]
+    fn a_receipts_fleet_deleted_before_its_read_answers_gone() {
+        let missing = super::gone_when_missing(super::ErrorKind::FleetMissing.into());
+        let other = super::gone_when_missing(super::ErrorKind::Replay.into());
+
+        assert_eq!(missing.code(), af_core::error_code::SETUP_GONE);
+        assert!(
+            matches!(other.kind(), super::ErrorKind::Replay),
+            "{other:?}"
+        );
+    }
 }

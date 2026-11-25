@@ -195,3 +195,37 @@ async fn a_removed_trigger_admits_nothing() {
     assert_eq!(rows(&held).await.len(), 0);
     held.fixtures.cleanup().await;
 }
+
+// Value: protects=an add or a removal proves the run again on the write's own
+// transaction, so a holder superseded after its standing was read changes
+// nothing; fails_when=the write lands under a fence the run no longer holds;
+// seam=`RunService::{add_trigger, remove_trigger}` under a stale `WriteFence`
+// over live Postgres.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_write_under_a_superseded_fence_changes_no_trigger() {
+    let held = held().await;
+    store_signing_secret(&held).await;
+    let row = add(&held, &sentry_webhook("sentry"))
+        .await
+        .expect("the webhook is added");
+    let (standing, _guard) = fenced(&held).await;
+    let stale = WriteFence::new(
+        held.runner.clone(),
+        held.run_key.clone(),
+        held.fence.as_u64() + 1,
+    );
+    let plane = held.fixtures.plane();
+    let request = sentry_webhook("sentry");
+    let item = Uuid7::parse(&request.item_id).expect("a minted item");
+
+    let added = plane.add_trigger(&standing, &item, &request, &stale).await;
+    let removed = plane.remove_trigger(&standing, &row.id, &stale).await;
+
+    let refused = Some(afd_fleet::Error::stale_fence().code());
+    assert_eq!(code(added), refused);
+    assert_eq!(removed.err().map(|refusal| refusal.code()), refused);
+    let kept: Vec<Uuid7> = rows(&held).await.into_iter().map(|kept| kept.id).collect();
+    assert_eq!(kept, [row.id], "neither write landed");
+    held.fixtures.cleanup().await;
+}

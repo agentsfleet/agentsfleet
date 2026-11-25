@@ -78,6 +78,7 @@ mod tests {
 
         assert_eq!(codes.len(), every.len(), "{codes:?}");
         for refusal in every {
+            assert_eq!(refusal.to_string(), refusal.detail());
             let error = crate::Error::from(refusal);
             assert_eq!(error.code(), refusal.code());
             assert_eq!(error.detail(), refusal.detail());

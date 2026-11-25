@@ -39,6 +39,7 @@
 mod access;
 mod access_later;
 mod access_refusals;
+mod access_scopes;
 mod bare;
 mod bindings;
 mod chat;
