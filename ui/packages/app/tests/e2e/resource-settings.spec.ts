@@ -128,7 +128,7 @@ test("remaining resource pages and New fleet retain the approved frame", async (
       }
       if (label === "New fleet") {
         const composer = page.getByRole("textbox", {name: "What would you like your fleet to do?"});
-        await expect(page.getByRole("heading", {name: "What should your fleet do?"})).toBeVisible();
+        await expect(page.getByRole("heading", {name: "New fleet"})).toBeVisible();
         await expect(composer).toBeVisible();
         await expect(page.getByRole("complementary", {name: "Summary"})).toHaveCount(0);
         const box = await composer.boundingBox();

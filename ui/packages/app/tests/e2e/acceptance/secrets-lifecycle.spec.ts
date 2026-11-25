@@ -75,7 +75,7 @@ test.describe("secrets lifecycle", () => {
 
     // Nothing holds it: a recorded "none", not an unknown.
     const row = await secretRow(page, name);
-    await expect(row.getByRole("cell").nth(ACCESS_COLUMN)).toHaveText("No active fleets");
+    await expect(row.getByRole("cell").nth(ACCESS_COLUMN)).toHaveText("No access approved");
 
     // Replace keeps the name and hides the value.
     await manage(page, name, "Replace value");

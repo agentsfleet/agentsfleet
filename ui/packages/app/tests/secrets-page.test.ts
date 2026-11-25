@@ -116,7 +116,7 @@ describe("Secrets page", () => {
     const markup = renderToStaticMarkup(await renderPage(Page));
 
     expect(markup).toContain("Secrets");
-    expect(markup).toContain("Keep credentials private.");
+    expect(markup).toContain("A fleet uses one only after it asks and a person approves it once.");
     expect(markup).not.toContain("text-info");
     expect(markup).not.toContain("Encrypted and hidden");
     expect(markup).toContain('data-testid="add-secret-dialog"');
