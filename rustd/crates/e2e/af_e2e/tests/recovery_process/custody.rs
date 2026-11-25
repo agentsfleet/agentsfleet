@@ -132,3 +132,13 @@ fn malformed(report: &garde::Report) -> std::io::Error {
         faults.join(" and ")
     ))
 }
+
+#[test]
+fn every_storage_knob_is_kept_from_the_runners() {
+    for knob in KNOBS {
+        assert!(
+            knob.starts_with(super::worker::STORAGE_KNOB_PREFIX),
+            "{knob} would reach a runner process"
+        );
+    }
+}

@@ -3,6 +3,7 @@
 #![cfg(all(target_os = "linux", debug_assertions))]
 
 mod custody;
+mod handoff;
 mod model;
 mod population;
 mod process;

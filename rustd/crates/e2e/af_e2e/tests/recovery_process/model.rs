@@ -33,17 +33,9 @@ impl Asked {
         self.reply(json!({"role":"assistant","content":text}), "stop")
     }
 
-    /// Calls `name` once; the runner runs it, then asks again with its result.
-    pub(super) fn call(self, name: &str, arguments: &Value) -> Checked {
-        let call = json!({"index":0,"id":format!("call-{name}"),"type":"function",
-            "function":{"name":name,"arguments":arguments.to_string()}});
-        self.reply(
-            json!({"role":"assistant","tool_calls":[call]}),
-            "tool_calls",
-        )
-    }
-
-    fn reply(self, delta: Value, finish: &'static str) -> Checked {
+    /// Streams `delta` and ends the turn for `finish`. Shared with the drill's
+    /// tool call in `handoff.rs`, which the recovery bench does not include.
+    pub(super) fn reply(self, delta: Value, finish: &'static str) -> Checked {
         self.answer
             .send(Reply { delta, finish })
             .map_err(|_answer| io::Error::other("model request dropped"))?;
