@@ -91,6 +91,10 @@ The command line selects with `agentsfleet models use`, and `agentsfleet models 
 No selected row means `platform`.
 Changing the selection rewrites no fleet; it only sets what the next create stores.
 
+`GET /v1/workspaces/{workspace_id}/models` marks the workspace owner's default with `is_default`.
+The **New fleet** picker shows that model's name when it is eligible for fleet runs.
+Choosing another model on that page applies to the new fleet.
+
 Activation refuses a key with no `api_key`, and a model the catalogue lacks.
 Deleting a vault key that an entry still references is refused.
 Removing the key's workspace clears `workspace_id` and keeps the row; resolution then refuses it until the owner selects a usable model.

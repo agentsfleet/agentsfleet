@@ -1,7 +1,7 @@
 import { expect } from "@playwright/test";
 import { test } from "./fixtures/chat-probe";
 import { NEW_FLEET } from "./fixtures/new-fleet-data";
-import { WORKSPACE } from "@/tests/helpers/fleet-fixtures";
+import { MODEL, WORKSPACE } from "@/tests/helpers/fleet-fixtures";
 
 // The probe mounts New fleet and the fleet page under a router that moves the
 // address bar; its server stands in for `POST W/fleets` and the new fleet's thread read.
@@ -19,13 +19,14 @@ test("a first message opens the fleet's chat", async ({page, chatProbe, isMobile
   page.on("request", request => {if (/\/(?:drafts|setup-context|revisions)\b/.test(request.url())) forbidden.push(request.url());});
   await page.goto(`${chatProbe}?newFleet=1`);
   const composer = page.getByRole("form", {name: "New fleet composer"});
+  await expect(composer.getByRole("combobox", {name: "Fleet model"})).toHaveText(MODEL.label);
   const input = composer.getByRole("textbox", {name: "What would you like your fleet to do?"});
   await input.fill(MESSAGE);
   await input.press("Enter");
 
   await expect(page).toHaveURL(new RegExp(`/w/${WORKSPACE}/fleets/${NEW_FLEET.id}\\?newFleet=1$`));
   expect(creates).toHaveLength(1);
-  expect(creates[0]).toEqual({message: MESSAGE, operation_id: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-/)});
+  expect(creates[0]).toEqual({message: MESSAGE, model_ref: MODEL.ref, operation_id: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-/)});
   const chat = page.getByRole("log", {name: "Chat"});
   await expect(chat.getByText(MESSAGE, {exact: true})).toBeVisible();
   await expect(chat.getByText(NEW_FLEET.answer, {exact: true})).toBeVisible();

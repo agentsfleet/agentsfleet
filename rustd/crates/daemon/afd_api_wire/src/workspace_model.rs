@@ -36,6 +36,9 @@ pub struct WorkspaceModel {
     /// unchanged as a fleet's `model_ref`.
     #[serde(rename = "ref")]
     pub reference: String,
+    /// Whether this is the default model for new fleets in the workspace.
+    #[cfg_attr(feature = "openapi", schema(extensions(("x-stability" = json!("stable")))))]
+    pub is_default: bool,
     /// Display label.
     pub label: String,
     /// Approved provider identifier.

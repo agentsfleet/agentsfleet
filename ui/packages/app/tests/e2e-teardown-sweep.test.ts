@@ -3,7 +3,7 @@
  *
  * The sweep only ever runs at the end of a real end-to-end job, so its own
  * failure modes are exactly the ones nobody watches. These tests drive it
- * against stubbed fixtures so the four claims that matter are checked on every
+ * against stubbed fixtures so its scope and outcomes are checked on every
  * `make test-coverage-app` instead of being inferred from a green suite:
  * it reaps regardless of fleet name, it reports what it could not delete,
  * one dead fixture user does not shield another's leaks, and it refuses a
@@ -15,6 +15,7 @@ import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import { SOAK_FLEET_PREFIX } from "./e2e/acceptance/fixtures/soak-scenario";
 
 const DEV_API_URL = "https://api-dev.agentsfleet.net";
+const LOCAL_API_URL = "https://localhost:7400";
 const PROD_API_URL = "https://api.agentsfleet.net";
 
 type StubFleet = { id: string; name: string; status: string };
@@ -51,7 +52,7 @@ function fleets(...names: readonly string[]): StubFleet[] {
 beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
-  process.env.NEXT_PUBLIC_API_URL = DEV_API_URL;
+  process.env.NEXT_PUBLIC_API_URL = LOCAL_API_URL;
   del.mockResolvedValue(undefined);
   get.mockResolvedValue({...FLEET_DETAIL, status: AGENTSFLEET_STATUS.ACTIVE});
 });
@@ -61,6 +62,16 @@ afterEach(() => {
 });
 
 describe("sweepLeakedFixtureFleets", () => {
+  it("leaves fleets used by parallel jobs on the shared dev API alone", async () => {
+    process.env.NEXT_PUBLIC_API_URL = DEV_API_URL;
+    const {sweepLeakedFixtureFleets} = await loadSweep();
+
+    expect(await sweepLeakedFixtureFleets()).toEqual({removed: 0, failed: 0});
+    expect(listWorkspaces).not.toHaveBeenCalled();
+    expect(listFleets).not.toHaveBeenCalled();
+    expect(del).not.toHaveBeenCalled();
+  });
+
   it("preserves soak evidence while removing unrelated leaked fleets", async () => {
     listWorkspaces.mockResolvedValue([{id: "ws-1", name: "fixture-workspace"}]);
     listFleets.mockResolvedValue(fleets(`${SOAK_FLEET_PREFIX}single-preserved`, UNLISTED_NAMES[0]));
@@ -147,6 +158,7 @@ describe("sweepLeakedFixtureFleets", () => {
 
 describe("cleanWorkspaceFleets", () => {
   it("test_per_spec_cleanup_still_scopes_by_prefix", async () => {
+    process.env.NEXT_PUBLIC_API_URL = DEV_API_URL;
     // The behaviour §1 must NOT break: parallel workers share one fixture
     // workspace, so a per-spec afterEach that stopped scoping would delete a
     // sibling spec's fleet mid-test.

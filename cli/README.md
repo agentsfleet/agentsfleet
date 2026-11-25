@@ -63,9 +63,13 @@ and is versioned with each release:
 `agentsfleet --help` and `agentsfleet <command> --help` print the same surface
 from the binary you actually have installed.
 
-Run `agentsfleet pet` to play Orbit, a local paddle game. Press Space to serve,
-move with the arrows or A/D, and keep the ball in play. Press R to restart or
-Q to quit.
+Run `agentsfleet pet` to play Orbit, a local paddle game. Press Space to
+serve and move with the arrows or A/D. Aim with the paddle edges, collect
+stars, and build a streak as the court speeds up. You get three lives.
+Press R to restart with your session best or Q to quit.
+
+Press S to toggle the sound effects. Sound starts off. Orbit uses your
+terminal's bell when a system audio player is unavailable.
 
 The request loader shows a bouncing ball. Set `AGENTSFLEET_REDUCED_MOTION=1` for a static status.
 

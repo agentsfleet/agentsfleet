@@ -24,7 +24,8 @@ import { POST_DEPLOY_TAG } from "./fixtures/constants";
 import { assertPassed, classifyTerminalTurn, JOURNEY_LEG } from "./fixtures/execution";
 import { observed, pollFor, uniqueTag } from "./fixtures/observation";
 import { createPrimeFleet, entry, PRIME_FLEET, primeFleet, proofs, type PrimedFleet } from "./fixtures/prime-fleets";
-import { callTo, messageOf, PRIME_PERSON, say, threadOf, toolsCalled } from "./fixtures/prime-walk";
+import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
+import { messageOf, PRIME_PERSON, say, threadOf, toolsCalled } from "./fixtures/prime-walk";
 import { probeMessage, probeReply } from "./fixtures/probe";
 import { getDefaultWorkspaceId } from "./fixtures/seed";
 import { purgeFixtureFleet } from "./fixtures/teardown";
@@ -92,10 +93,12 @@ test.describe.serial(`prime fleet ${fixture.name}`, {tag: POST_DEPLOY_TAG}, () =
     expect(await tasks(), "a new fleet has no task").toEqual([]);
     // The task's objective is the fixture's own sentence: the first bytes of the message, before what this run adds.
     const asked = await say(page, workspaceId, primed().id, `${objective} Call ${TASK_START} with the target api_only. ` +
+      "Copy source_turn_id verbatim from the current message in the run input. " +
       `Its objective is the first sentence of this message: source_start 0 and source_end ${Buffer.byteLength(objective)}.`);
     assertPassed(classifyTerminalTurn(asked));
     expect(asked.actor).toBe(`${PERSON_ACTOR_PREFIX}${fixtureSubject(PRIME_PERSON)}`);
-    const call = StartedSchema.parse(callTo(asked, TASK_START));
+    const accepted = asked.tool_calls?.calls.find(call => call.name === TASK_START && call.status === TOOL_CALL_STATUS.SUCCEEDED);
+    const call = StartedSchema.parse(accepted?.arguments);
     expect(call.source_turn_id).toBe(asked.turn_id);
     const listed = await tasks();
     expect(listed, "one message starts one task").toHaveLength(1);

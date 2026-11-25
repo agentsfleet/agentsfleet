@@ -6,6 +6,7 @@ import { nanosSchema } from "./nanos";
 
 export const ModelsSchema = z.object({items: z.array(z.object({
   ref: z.string(), label: z.string(), provider: z.string(), model: z.string(),
+  is_default: z.boolean().optional(),
   context_window_tokens: z.number().int().positive(), max_output_tokens: z.number().int().positive().optional(),
   eligibility: z.object({runtime: z.boolean()}),
   pricing: z.object({input_nanos_per_million: nanosSchema, output_nanos_per_million: nanosSchema, runtime_nanos_per_second: nanosSchema}),

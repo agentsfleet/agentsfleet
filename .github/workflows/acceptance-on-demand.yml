@@ -43,6 +43,9 @@ jobs:
       - name: Check the kernel for the runner sandbox
         run: |
           set -euo pipefail
+          # Match the Rust integration runner. Bubblewrap enters a user
+          # namespace as the sandbox user when it restores a checkpoint.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           sudo modprobe erofs
           grep -qw erofs /proc/filesystems
           grep -qw securityfs /proc/filesystems

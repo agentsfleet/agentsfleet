@@ -32,17 +32,25 @@ import { SOAK_FLEET_PREFIX } from "./soak-scenario";
 // real environment, combined with real fixture credentials, would otherwise
 // wipe live fleets. Refuse anything that isn't localhost or an explicit
 // -dev / e2e host.
-const SAFE_API_HOST = /(^|\.)localhost$|(^|\.)(api-dev|e2e)[.-]|(^|\.)dev\./;
+const LOCAL_API_HOST = /(^|\.)localhost$/;
+const SAFE_DEV_API_HOST = /(^|\.)(api-dev|e2e)[.-]|(^|\.)dev\./;
+
+function apiHostname(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
+  }
+}
+
+/** The local stack owns its database. Hosted browser and CLI jobs share fixture accounts. */
+export function hasIsolatedFixtureDatabase(url = process.env.NEXT_PUBLIC_API_URL ?? ""): boolean {
+  return LOCAL_API_HOST.test(apiHostname(url));
+}
 
 export function assertDestructiveTargetIsSafe(): void {
-  const url = process.env.NEXT_PUBLIC_API_URL ?? "";
-  let host = "";
-  try {
-    host = new URL(url).hostname;
-  } catch {
-    host = url;
-  }
-  if (!SAFE_API_HOST.test(host)) {
+  const host = apiHostname(process.env.NEXT_PUBLIC_API_URL ?? "");
+  if (!LOCAL_API_HOST.test(host) && !SAFE_DEV_API_HOST.test(host)) {
     throw new Error(
       `[e2e:teardown] refusing to mass-delete fleets against non-dev API host "${host}". ` +
         `Fleet teardown only runs against localhost / *-dev / e2e targets.`,
@@ -87,39 +95,16 @@ export async function cleanWorkspaceFleets(
 }
 
 /**
- * Backstop sweep for global-teardown: reap every fleet in every workspace a
- * persistent fixture user owns.
- *
- * It sweeps by OWNERSHIP, not by name. The predecessor matched a
- * hand-maintained list of six seed prefixes while the specs mint roughly
- * twenty-two, so most leaked fleets were never reaped and the list had to be
- * edited every time a spec was added — a check that silently covered less
- * than it appeared to. Nothing scopes the sweep now, so it cannot fall behind
- * the specs.
- *
- * Deleting everything visible is safe here by construction: the listing runs
- * through an authenticated fixture handle and returns only workspaces that
- * user owns, and `global-setup` seeds no persistent fleets — so every fleet
- * reachable from here is a test artifact. Prefix scoping remains load-bearing
- * in the per-spec `afterEach` path, where parallel workers share one
- * workspace; at global teardown no test is running and that reason is gone.
- *
- * Per-fixture and per-workspace failures log and continue — one dead tenant
- * must not shield another tenant's leaks — and the same destructive-target
- * guard as cleanWorkspaceFleets runs before any listing or deletion.
- *
- * KNOWN BLAST RADIUS, accepted deliberately: "every workspace the fixture user
- * owns" is only equivalent to "every workspace of test fixtures" while the
- * fixture users own nothing else. Add a fixture user to a shared or human-owned
- * workspace and this empties it, where the old prefix scoping would have spared
- * anything not matching a seed name. Two things bound that: the destructive
- * target guard refuses any host that is not localhost / *-dev / e2e, so the
- * reach is a disposable environment by construction; and the fixture users are
- * provisioned solely by `global-setup`. If a fixture user ever needs to join a
- * real workspace, this sweep has to be re-scoped first.
+ * Remove leaked test fleets only on the local acceptance stack.
+ * Hosted jobs retain the same connected fixture accounts and clean the fleets
+ * they created through their per-spec teardown.
  */
 export async function sweepLeakedFixtureFleets(): Promise<SweepCounts> {
   assertDestructiveTargetIsSafe();
+  if (!hasIsolatedFixtureDatabase()) {
+    console.log("[e2e:sweep] shared API uses per-spec fleet cleanup");
+    return { removed: 0, failed: 0 };
+  }
   const total: SweepCounts = { removed: 0, failed: 0 };
   for (const key of FIXTURE_KEYS) {
     const workspaces = await listWorkspaces(key).catch((err: unknown) => {

@@ -112,11 +112,9 @@ test.describe.serial(`prime fleet ${fixture.name}`, {tag: POST_DEPLOY_TAG}, () =
     const token = uniqueTag();
     // What each wake is asked: the fixture's standing guidance, with this run's token.
     const wakeMessage = tokenMessage(entry(fixture, fixture.remembers, 0, "memory"), token);
-    // The wake message ends in an instruction of its own, so it rides as one JSON string: a model
-    // read the bare text as an order to itself and stored the message without its token sentence.
+    const scheduleArgs = {cron: schedule.cron, timezone: "UTC", message: wakeMessage};
     const asked = await say(page, workspaceId, primed().id, `${entry(fixture, fixture.follow_ups, 0, "follow-up")} ` +
-      `Call ${CRON_ADD} once with the cron expression ${schedule.cron}, the timezone UTC and, as its message argument, ` +
-      `this JSON string verbatim, every sentence included: ${JSON.stringify(wakeMessage)}`);
+      `Call ${CRON_ADD} once with these exact arguments. Copy the entire message into the tool call.\n${JSON.stringify(scheduleArgs)}`);
     assertPassed(classifyTerminalTurn(asked));
     expect(toolsCalled(asked)).toContain(CRON_ADD);
     const synced = await pollFor(async () => {

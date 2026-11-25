@@ -1,4 +1,4 @@
-import { cp, mkdir, rm } from "node:fs/promises";
+import { chmod, cp, mkdir, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dir, "..");
@@ -8,6 +8,7 @@ const TARGET_DIR = resolve(ROOT, Bun.env.CARGO_TARGET_DIR ?? "rustd/target");
 const BUILD_TIMEOUT_MS = 30 * 60_000;
 const DAEMON = "agentsfleetd";
 const RUNNER = "agentsfleet-runner";
+const EXECUTABLE_MODE = 0o755;
 const STDIO_INHERIT = "inherit";
 const BUILD = "build";
 const CLI_DIR = "cli";
@@ -24,7 +25,10 @@ for (const directory of [CLI_DIR, "ui/packages/app"]) {
 
 async function buildNative(binary: string): Promise<void> {
   await run(["cargo", BUILD, "--locked", "--bin", binary, "--target-dir", TARGET_DIR], RUST_ROOT);
-  await cp(resolve(TARGET_DIR, "debug", binary), resolve(OUTPUT_DIR, binary));
+  const staged = resolve(OUTPUT_DIR, binary);
+  await cp(resolve(TARGET_DIR, "debug", binary), staged);
+  // Bubblewrap starts the read-only bound runner as the sandbox user.
+  await chmod(staged, EXECUTABLE_MODE);
 }
 
 async function run(command: string[], cwd: string): Promise<void> {

@@ -14,18 +14,17 @@ import { FleetModelContext, type FleetModelChoice } from "../models/FleetModelCo
 import { useFleetCreation } from "./useFleetCreation";
 
 const STARTERS: readonly {title: string; prompt: string}[] = starters;
-/** With no model chosen the daemon uses the workspace's selected model. */
-const WORKSPACE_MODEL = "Workspace model";
 const NO_MESSAGES: readonly ThreadMessage[] = [];
 const ignore = (): void => undefined;
 
 /** New fleet: the first message creates the fleet and its first turn, then the page becomes that fleet's chat. */
 export function NewFleetChat({workspace, models}: {workspace: string; models: readonly WorkspaceModel[]}) {
-  const [model, setModel] = useState<string | null>(null);
+  const [modelOverride, setModelOverride] = useState<string | null>(null);
+  const model = modelOverride ?? models.find(choice => choice.is_default && choice.eligibility.runtime)?.ref ?? null;
   const creation = useFleetCreation(workspace, model);
   const choice = useMemo<FleetModelChoice>(() => ({
-    models, selected: model, label: model === null ? WORKSPACE_MODEL : runtimeModelLabel(models, model),
-    changing: false, error: null, select: setModel,
+    models, selected: model, label: model === null ? "Choose model" : runtimeModelLabel(models, model),
+    changing: false, error: null, select: setModelOverride,
   }), [models, model]);
   const adapter = useMemo(() => ({messages: NO_MESSAGES, isRunning: creation.creating, onNew: creation.onNew}),
     [creation.creating, creation.onNew]);
