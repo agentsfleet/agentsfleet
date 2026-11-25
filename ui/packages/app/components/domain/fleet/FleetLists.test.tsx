@@ -76,18 +76,18 @@ describe("the fleet page's lists", () => {
       "githuborg/app, org/web · Read and write", "githuborg/docs · Read only", "sentry"]);
     expect(within(access).queryByText("grafana")).toBeNull();
     expect(within(await screen.findByRole("list", {name: "Remembers"})).getByText("Always link the evidence.")).toBeTruthy();
-    expect(screen.getByRole("button", {name: `Remove wake-up: ${SCHEDULE.description}`})).toBeTruthy();
-    expect(screen.getByRole("button", {name: "Remove trigger: Webhook · sentry"})).toBeTruthy();
-    expect(screen.getByRole("button", {name: "Remove access: sentry"})).toBeTruthy();
-    expect(screen.getByRole("button", {name: "Forget pinned memory: evidence"})).toBeTruthy();
+    expect(screen.getByRole("button", {name: `Delete schedule: ${SCHEDULE.description}`})).toBeTruthy();
+    expect(screen.getByRole("button", {name: "Delete trigger: Webhook · sentry"})).toBeTruthy();
+    expect(screen.getByRole("button", {name: "Revoke access: sentry"})).toBeTruthy();
+    expect(screen.getByRole("button", {name: "Remove pinned memory: evidence"})).toBeTruthy();
   });
 
   it("says what each empty list means", async () => {
     lists({schedules: [], triggers: [], grants: [PENDING], pinned: []});
     page();
     expect(await screen.findByText("Only a message wakes this fleet.")).toBeTruthy();
-    expect(await screen.findByText("Nothing yet. The fleet asks when it needs access.")).toBeTruthy();
-    expect(await screen.findByText("Nothing pinned. Ask the fleet to remember standing guidance.")).toBeTruthy();
+    expect(await screen.findByText("No access approved yet. The fleet asks when it needs access.")).toBeTruthy();
+    expect(await screen.findByText("Nothing pinned yet. Ask the fleet to remember something.")).toBeTruthy();
   });
 
   it("shows a list that could not be read with a retry, and reads all four again", async () => {
@@ -108,14 +108,14 @@ describe("the fleet page's lists", () => {
     lists();
     serve("DELETE", `${BASE}/memories/evidence`, () => response(null, 204));
     page();
-    fireEvent.click(await screen.findByRole("button", {name: "Forget pinned memory: evidence"}));
+    fireEvent.click(await screen.findByRole("button", {name: "Remove pinned memory: evidence"}));
     const dialog = await screen.findByRole("alertdialog");
     expect(calls.some(call => call.method === "DELETE")).toBe(false);
-    fireEvent.click(within(dialog).getByRole("button", {name: "Forget"}));
+    fireEvent.click(within(dialog).getByRole("button", {name: "Remove"}));
     await waitFor(() => expect(screen.queryByText("Always link the evidence.")).toBeNull());
     expect(calls.filter(call => call.method === "DELETE").map(call => call.path)).toEqual([`${BASE}/memories/evidence`]);
     expect(screen.queryByRole("alertdialog")).toBeNull();
-    expect(await screen.findByText("Nothing pinned. Ask the fleet to remember standing guidance.")).toBeTruthy();
+    expect(await screen.findByText("Nothing pinned yet. Ask the fleet to remember something.")).toBeTruthy();
   });
 
   it("removes a trigger and an approved grant with one delete each", async () => {
@@ -123,12 +123,12 @@ describe("the fleet page's lists", () => {
     serve("DELETE", `${BASE}/triggers/${TRIGGER_ID}`, () => response(null, 204));
     serve("DELETE", `${BASE}/integration-grants/${GRANT_ID}`, () => response(null, 204));
     page();
-    fireEvent.click(await screen.findByRole("button", {name: "Remove trigger: Webhook · sentry"}));
-    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", {name: "Remove trigger"}));
+    fireEvent.click(await screen.findByRole("button", {name: "Delete trigger: Webhook · sentry"}));
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", {name: "Delete trigger"}));
     await waitFor(() => expect(screen.queryByText("Webhook · sentry")).toBeNull());
-    fireEvent.click(screen.getByRole("button", {name: "Remove access: github"}));
-    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", {name: "Remove access"}));
-    await waitFor(() => expect(screen.queryByRole("button", {name: "Remove access: github"})).toBeNull());
+    fireEvent.click(screen.getByRole("button", {name: "Revoke access: github"}));
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", {name: "Revoke access"}));
+    await waitFor(() => expect(screen.queryByRole("button", {name: "Revoke access: github"})).toBeNull());
     expect(calls.filter(call => call.method === "DELETE").map(call => call.path)).toEqual([`${BASE}/triggers/${TRIGGER_ID}`, `${BASE}/integration-grants/${GRANT_ID}`]);
   });
 
@@ -139,8 +139,8 @@ describe("the fleet page's lists", () => {
     lists();
     serve("DELETE", `${BASE}/schedules/${SCHEDULE.schedule_id}`, () => answer.clone());
     page();
-    fireEvent.click(await screen.findByRole("button", {name: `Remove wake-up: ${SCHEDULE.description}`}));
-    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", {name: "Remove wake-up"}));
+    fireEvent.click(await screen.findByRole("button", {name: `Delete schedule: ${SCHEDULE.description}`}));
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", {name: "Delete schedule"}));
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     const wakes = screen.getByRole("list", {name: "Wakes on"});
     if (left) expect(within(wakes).getByText(left)).toBeTruthy();
@@ -178,14 +178,14 @@ describe("the fleet page's lists", () => {
     lists();
     serve("DELETE", `${BASE}/integration-grants/${GRANT_ID}`, () => response({user_message: "Only a signed-in person can remove access."}, 403));
     page();
-    fireEvent.click(await screen.findByRole("button", {name: "Remove access: github"}));
+    fireEvent.click(await screen.findByRole("button", {name: "Revoke access: github"}));
     const dialog = await screen.findByRole("alertdialog");
-    fireEvent.click(within(dialog).getByRole("button", {name: "Remove access"}));
+    fireEvent.click(within(dialog).getByRole("button", {name: "Revoke access"}));
     expect(await within(dialog).findByText(/doesn’t have access here/)).toBeTruthy();
-    expect(screen.getByRole("button", {name: "Remove access: github", hidden: true})).toBeTruthy();
+    expect(screen.getByRole("button", {name: "Revoke access: github", hidden: true})).toBeTruthy();
     fireEvent.click(within(dialog).getByRole("button", {name: "Cancel"}));
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
-    fireEvent.click(screen.getByRole("button", {name: "Remove access: github"}));
+    fireEvent.click(screen.getByRole("button", {name: "Revoke access: github"}));
     expect(within(await screen.findByRole("alertdialog")).queryByText(/doesn’t have access here/)).toBeNull();
   });
 });

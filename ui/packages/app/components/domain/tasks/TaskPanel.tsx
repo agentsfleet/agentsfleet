@@ -50,7 +50,7 @@ function CurrentWork() {
       <h2 className="text-eyebrow font-medium leading-eyebrow text-warning">Needs attention</h2>
       {tasks.filter(task => task.status === "blocked" || task.status === "exhausted").map(task => <Button key={task.id} variant="ghost" size="sm"
         className="h-auto min-h-11 w-full justify-start whitespace-normal px-0 text-left summary:min-h-9" aria-expanded={workOpen && expandedDurableTask === task.id}
-        title="View durable task details" onClick={() => {setWorkOpen(true); setExpandedDurableTask(task.id);}}><WarningIcon size={14} className="shrink-0 text-warning" aria-hidden="true" /><span className="min-w-0 flex-1">{task.title} · {task.status === "blocked" ? "Blocked" : "Attempts exhausted"}</span><CaretDownIcon size={14} className="shrink-0 text-muted-foreground" aria-hidden="true" /></Button>)}
+        title="View task details" onClick={() => {setWorkOpen(true); setExpandedDurableTask(task.id);}}><WarningIcon size={14} className="shrink-0 text-warning" aria-hidden="true" /><span className="min-w-0 flex-1">{task.title} · {task.status === "blocked" ? "Blocked" : "Attempts exhausted"}</span><CaretDownIcon size={14} className="shrink-0 text-muted-foreground" aria-hidden="true" /></Button>)}
     </section> : null}
     <WorkChanges turns={turns} repositories={view.changeRepositories} />
     <WorkOutputs previews={[...new Set(resources.flatMap(run => run.previews))]} details={read.details} expectedDetails={read.references.length} hideEmpty={turns.length > 0} />

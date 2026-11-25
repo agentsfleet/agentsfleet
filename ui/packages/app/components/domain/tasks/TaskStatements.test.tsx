@@ -46,7 +46,7 @@ it("a stale statement edit reloads the task", async () => {
   const before = calls.filter(call => call.method === "GET").length;
   edit(MINE);
   fireEvent.click(screen.getByRole("button", {name: "Save statements"}));
-  expect(await screen.findByText(/This task changed while you edited it/)).toBeTruthy();
+  expect(await screen.findByText(/This task changed while you were editing/)).toBeTruthy();
   const patches = calls.filter(call => call.method === "PATCH");
   expect(patches).toHaveLength(1);
   expect(patches[0]).toMatchObject({path: TASK_PATH, headers: expect.objectContaining({"If-Match": TAG})});
@@ -93,9 +93,11 @@ describe("a task's completion statements", () => {
     expect(screen.getByRole("button", {name: "Edit statements"})).toHaveProperty("disabled", true);
     view.rerender(<DurableTaskStatements workspaceId="workspace" fleetId="fleet" detail={ready} enabled readOnly={false} onChanged={vi.fn()} />);
     edit("   ");
+    expect(document.activeElement).toBe(screen.getByRole("textbox", {name: "Statement 1"}));
     expect(screen.getByRole("button", {name: "Save statements"})).toHaveProperty("disabled", true);
     fireEvent.click(screen.getByRole("button", {name: "Cancel"}));
     expect(screen.queryByRole("form", {name: "Edit completion statements"})).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole("button", {name: "Edit statements"}));
     expect(calls).toEqual([]);
   });
 
@@ -108,6 +110,7 @@ describe("a task's completion statements", () => {
     fireEvent.change(screen.getByRole("textbox", {name: "Statement 2"}), {target: {value: MINE}});
     fireEvent.click(screen.getByRole("button", {name: "Save statements"}));
     await waitFor(() => expect(onChanged).toHaveBeenCalledOnce());
+    expect(document.activeElement).toBe(screen.getByRole("button", {name: "Edit statements"}));
     expect(calls.find(call => call.method === "PATCH")?.body).toEqual({questions: [first, {...second, question: {...second.question, instructions: MINE}}], expected_generation: 1});
   });
 

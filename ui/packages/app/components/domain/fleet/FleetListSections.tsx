@@ -4,8 +4,8 @@ import type { ReactNode } from "react";
 import type { FleetGrant, FleetTrigger } from "@/lib/api/fleet-detail";
 import type { ListResource, Removal } from "./FleetListsProvider";
 import { useState } from "react";
-import { Button, ConfirmDialog, IconAction, List, ListItem } from "@agentsfleet/design-system";
-import { BrainIcon, ClockIcon, KeyIcon, LightningIcon, TrashIcon } from "@phosphor-icons/react/ssr";
+import { Alert, Button, ConfirmDialog, IconAction, List, ListItem, Spinner } from "@agentsfleet/design-system";
+import { BrainIcon, ClockIcon, KeyIcon, LightningIcon, LockKeyIcon, TrashIcon, XIcon } from "@phosphor-icons/react/ssr";
 import { GRANT_STATUS, GITHUB_GRANT, TRIGGER_KIND, githubScope } from "@/lib/api/fleet-detail";
 import { SCHEDULE_SYNC, type Schedule } from "@/lib/api/schedule-types";
 import { scheduleStateText } from "@/lib/api/schedule-status";
@@ -16,11 +16,12 @@ import { useFleetLists } from "./FleetListsProvider";
 
 type Row = {key: string; icon: ReactNode; label: string; detail?: string; removal: Removal; removeLabel: string};
 const DIALOG: Record<Removal["kind"], {title: string; description: string; confirm: string}> = {
-  schedule: {title: "Remove this wake-up?", description: "The fleet stops waking on this schedule. Its earlier runs stay in the chat.", confirm: "Remove wake-up"},
-  trigger: {title: "Remove this trigger?", description: "Deliveries to it stop reaching the fleet. Its earlier runs stay in the chat.", confirm: "Remove trigger"},
-  grant: {title: "Remove this access?", description: "The fleet's next run no longer holds it. A run already working keeps what it was issued.", confirm: "Remove access"},
-  memory: {title: "Forget this pinned memory?", description: "Later runs no longer see it at the start of their prompt.", confirm: "Forget"},
+  schedule: {title: "Delete this schedule?", description: "The fleet stops waking on this schedule. Earlier activity stays in the chat.", confirm: "Delete schedule"},
+  trigger: {title: "Delete this trigger?", description: "This trigger will stop waking the fleet. Earlier activity stays in the chat.", confirm: "Delete trigger"},
+  grant: {title: "Revoke this access?", description: "Work already in progress keeps access. The change applies to future work.", confirm: "Revoke access"},
+  memory: {title: "Remove this pinned memory?", description: "Future work will continue without this note.", confirm: "Remove"},
 };
+const REMOVAL_ICON = {schedule: TrashIcon, trigger: TrashIcon, grant: LockKeyIcon, memory: XIcon};
 
 /** "Wakes on", "Can access" and "Remembers": what the fleet set up or was given, each row removable by a person. */
 export function FleetListSections() {
@@ -44,16 +45,16 @@ export function FleetListSections() {
     <ListSection title="Wakes on" empty="Only a message wakes this fleet." retry={lists.reload} onRemove={ask}
       resource={merge(lists.schedules, lists.triggers, schedule => ({key: schedule.schedule_id, icon: <ClockIcon className={SUMMARY_ICON} aria-hidden="true" />,
         label: schedule.description, detail: schedule.status === "active" && schedule.sync === SCHEDULE_SYNC.synced ? undefined : scheduleStateText(schedule),
-        removal: {kind: "schedule", schedule}, removeLabel: `Remove wake-up: ${schedule.description}`}), triggerRow)}
+        removal: {kind: "schedule", schedule}, removeLabel: `Delete schedule: ${schedule.description}`}), triggerRow)}
       footer={lists.schedules.kind === "ready" ? <>
         <ScheduleSync compact schedules={lists.schedules.items} busy={retry.busy} onRetry={schedule => {void register(schedule);}} />
-        {retry.error ? <p role="alert" className="text-eyebrow text-destructive">{retry.error}</p> : null}
+        {retry.error ? <Alert variant="destructive" className="mt-md wrap-anywhere px-lg py-md">{retry.error}</Alert> : null}
       </> : null} />
-    <ListSection title="Can access" empty="Nothing yet. The fleet asks when it needs access." retry={lists.reload} onRemove={ask}
+    <ListSection title="Can access" empty="No access approved yet. The fleet asks when it needs access." retry={lists.reload} onRemove={ask}
       resource={rows(lists.grants, grant => grant.status === GRANT_STATUS.approved ? [grantRow(grant)] : [])} />
-    <ListSection title="Remembers" empty="Nothing pinned. Ask the fleet to remember standing guidance." retry={lists.reload} onRemove={ask}
+    <ListSection title="Remembers" empty="Nothing pinned yet. Ask the fleet to remember something." retry={lists.reload} onRemove={ask}
       resource={rows(lists.pinned, memory => [{key: memory.key, icon: <BrainIcon className={SUMMARY_ICON} aria-hidden="true" />, label: memory.content,
-        removal: {kind: "memory", memory}, removeLabel: `Forget pinned memory: ${memory.key}`}])} />
+        removal: {kind: "memory", memory}, removeLabel: `Remove pinned memory: ${memory.key}`}])} />
     <ConfirmDialog open={removing !== null} onOpenChange={() => setRemoving(null)} title={dialog.title}
       description={dialog.description} confirmLabel={dialog.confirm} intent="destructive" errorMessage={error}
       onConfirm={removing ? () => confirm(removing) : undefined} />
@@ -62,20 +63,31 @@ export function FleetListSections() {
 
 function ListSection({title, empty, resource, retry, onRemove, footer = null}: {title: string; empty: string; resource: ListResource<Row>; retry: () => void; onRemove: (removal: Removal) => void; footer?: ReactNode}) {
   return <WorkSection title={title}>
-    {resource.kind === "loading" ? <output data-chat-loading="true" className="text-eyebrow text-muted-foreground">Loading…</output>
-      : resource.kind === "failed" ? <div className="space-y-sm"><p className="text-eyebrow text-muted-foreground">{resource.message}</p>
-        <Button variant="ghost" size="sm" onClick={retry}>Try again</Button></div>
-      : resource.items.length === 0 ? <p className="text-eyebrow leading-eyebrow text-muted-foreground">{empty}</p>
-      : <List variant="plain" aria-label={title} className="space-y-sm text-label leading-label">{resource.items.map(row => <ListItem key={row.key} className={`${SUMMARY_ROW} group min-h-9`}>
-        {row.icon}
-        <span className="min-w-0 flex-1 break-words"><span className="block">{row.label}</span>
-          {row.detail ? <span className="block break-all text-eyebrow text-text-dim">{row.detail}</span> : null}</span>
-        <IconAction variant="ghost" label={row.removeLabel} className="shrink-0" onClick={() => onRemove(row.removal)}>
-          <TrashIcon size={14} aria-hidden="true" />
-        </IconAction>
-      </ListItem>)}</List>}
+    {resource.kind === "loading" ? <Spinner size="sm" label="Loading…" data-chat-loading="true" className="text-eyebrow leading-eyebrow" />
+      : resource.kind === "failed" ? <div className="space-y-md">
+        <Alert variant="destructive" className="wrap-anywhere px-lg py-md">{resource.message}</Alert>
+        <Button variant="outline" size="compact" onClick={retry}>Try again</Button>
+      </div>
+      : resource.items.length === 0 ? <p className="text-label leading-label text-muted-foreground">{empty}</p>
+      : <List variant="plain" aria-label={title} className="space-y-sm text-label leading-label">
+        {resource.items.map(row => <ResourceRow key={row.key} row={row} onRemove={onRemove} />)}
+      </List>}
     {footer}
   </WorkSection>;
+}
+
+function ResourceRow({row, onRemove}: {row: Row; onRemove: (removal: Removal) => void}) {
+  const RemoveIcon = REMOVAL_ICON[row.removal.kind];
+  return <ListItem className={`${SUMMARY_ROW} min-h-9 items-start gap-sm pointer-coarse:min-h-11`}>
+    <span className="flex h-9 shrink-0 items-center pointer-coarse:h-11">{row.icon}</span>
+    <span className="min-w-0 flex-1 wrap-anywhere py-md">
+      <span className="block font-medium">{row.label}</span>
+      {row.detail ? <span className="block text-eyebrow leading-eyebrow text-muted-foreground">{row.detail}</span> : null}
+    </span>
+    <IconAction variant="ghost" label={row.removeLabel} className="shrink-0" onClick={() => onRemove(row.removal)}>
+      <RemoveIcon size={16} aria-hidden="true" />
+    </IconAction>
+  </ListItem>;
 }
 
 function triggerRow(trigger: FleetTrigger): Row {
@@ -84,14 +96,14 @@ function triggerRow(trigger: FleetTrigger): Row {
     : trigger.kind === TRIGGER_KIND.appEvent ? `GitHub · ${(trigger.repositories ?? []).join(", ") || "every repository"}`
     : trigger.kind === TRIGGER_KIND.mention ? `Slack · ${trigger.channel ?? "any channel"}` : `${trigger.kind} · ${trigger.source}`;
   const events = trigger.events?.length ? trigger.events.join(", ") : undefined;
-  return {key: trigger.id, icon, label, detail: trigger.url ?? events, removal: {kind: "trigger", trigger}, removeLabel: `Remove trigger: ${label}`};
+  return {key: trigger.id, icon, label, detail: trigger.url ?? events, removal: {kind: "trigger", trigger}, removeLabel: `Delete trigger: ${label}`};
 }
 
 function grantRow(grant: FleetGrant): Row {
   const scope = grant.name === GITHUB_GRANT ? githubScope(grant.scope) : null;
   return {key: grant.id, icon: <KeyIcon className={SUMMARY_ICON} aria-hidden="true" />, label: grant.name,
     detail: scope ? `${scope.repositories.join(", ")} · ${scope.access === "write" ? "Read and write" : "Read only"}` : undefined,
-    removal: {kind: "grant", grant}, removeLabel: `Remove access: ${grant.name}`};
+    removal: {kind: "grant", grant}, removeLabel: `Revoke access: ${grant.name}`};
 }
 
 function rows<T>(resource: ListResource<T>, toRows: (item: T) => Row[]): ListResource<Row> {
