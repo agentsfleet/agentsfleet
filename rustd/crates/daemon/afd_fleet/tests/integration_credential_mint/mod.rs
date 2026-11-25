@@ -258,7 +258,7 @@ async fn seed_scoped_grant(
         .expect("a pooled connection");
     sqlx::query(
         "INSERT INTO connector.integration_grants
-           (id, fleet_id, service, kind, status, scope, requested_reason, created_at, updated_at)
+           (id, fleet_id, service, grant_type, status, scope, requested_reason, created_at, updated_at)
          VALUES ($1, $2, $3, $5, $4, $6::jsonb, 'fixture', now(), now())
          ON CONFLICT (fleet_id, service) DO UPDATE SET status = EXCLUDED.status",
     )
@@ -266,7 +266,7 @@ async fn seed_scoped_grant(
     .bind(fleet)
     .bind(service)
     .bind(status)
-    .bind(afd_api_wire::grant::kind::INTEGRATION)
+    .bind(afd_api_wire::grant::grant_type::INTEGRATION)
     .bind(scope)
     .execute(&mut *connection)
     .await

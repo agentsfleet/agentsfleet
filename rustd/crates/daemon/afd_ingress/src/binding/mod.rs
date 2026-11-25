@@ -20,7 +20,7 @@
 //!
 //! `/v1/webhooks/{fleet_id}/{source}` and `/v1/ingress/{provider}` carry it,
 //! and the statement selects the row for that source. `fleet.triggers` holds
-//! one row per (fleet, kind, source), so the match is unambiguous.
+//! one row per (fleet, `trigger_type`, source), so the match is unambiguous.
 
 use af_core::id::Uuid7;
 use af_fleet_runtime::config::{Trigger, Webhook, WebhookVerifier, parse_triggers};

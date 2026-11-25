@@ -188,7 +188,7 @@ const ACTIVE: &str = "active";
 const REVOKED: &str = "revoked";
 
 /// The grant kind a seeded integration grant takes, as
-/// `afd_api_wire::grant::kind::INTEGRATION` spells it.
+/// `afd_api_wire::grant::grant_type::INTEGRATION` spells it.
 const INTEGRATION: &str = "integration";
 
 /// Why the seeded runner may not take work, as the column holds it.

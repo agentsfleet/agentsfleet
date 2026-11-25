@@ -53,8 +53,8 @@ pub struct GrantRow {
     pub id: String,
     /// The vault key or integration the fleet asked for.
     pub service: String,
-    /// The channel it reaches a run through, from [`afd_api_wire::grant::kind`].
-    pub kind: String,
+    /// The channel it reaches a run through, from [`afd_api_wire::grant::grant_type`].
+    pub grant_type: String,
     /// Where the decision stands, from [`afd_api_wire::grant::status`].
     pub status: String,
     /// The approved GitHub scope, as stored JSON text.
@@ -219,7 +219,7 @@ async fn holds(
 struct StoredGrant {
     id: Uuid7,
     service: String,
-    kind: String,
+    grant_type: String,
     status: String,
     scope: Option<String>,
     requested_scope: Option<String>,
@@ -235,7 +235,7 @@ impl From<StoredGrant> for GrantRow {
         Self {
             id: stored.id.into(),
             service: stored.service,
-            kind: stored.kind,
+            grant_type: stored.grant_type,
             status: stored.status,
             scope: stored.scope,
             requested_scope: stored.requested_scope,

@@ -62,7 +62,7 @@ Person           Slack                 agentsfleetd                         Post
 
 Before any route, the daemon drops a message Slack marks with a `subtype`: an edit, a join, or a classic bot or webhook post.
 It drops a mention with no user, and any post by its own bot user, so a reply never wakes a fleet.
-A grant that recorded no bot user id cannot tell its own replies apart, so every mention in that workspace is dropped as `bot_user_unknown` and logged until Slack is reconnected.
+A grant that recorded no bot user id cannot tell its own replies apart. Every mention in that workspace is then dropped as `bot_user_unknown` and logged, until Slack is reconnected.
 
 A post with Slack's `bot_id` and a real user wakes a fleet like a person's. Alert apps and a person's own token through an app both post this way.
 

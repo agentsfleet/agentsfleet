@@ -24256,7 +24256,7 @@
           },
           "kind": {
             "type": "string",
-            "description": "`secret` or `integration`, from [`kind`]."
+            "description": "`secret` or `integration`, from [`grant_type`]."
           },
           "name": {
             "type": "string",

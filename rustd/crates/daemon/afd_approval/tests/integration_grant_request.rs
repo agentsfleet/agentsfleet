@@ -55,7 +55,7 @@ async fn a_first_request_writes_a_pending_grant_and_one_card_on_its_turn() {
     );
     assert_eq!(
         (
-            held.kind.as_str(),
+            held.grant_type.as_str(),
             held.status.as_str(),
             held.reason.as_str()
         ),

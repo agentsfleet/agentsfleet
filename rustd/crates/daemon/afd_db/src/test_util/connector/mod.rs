@@ -24,18 +24,18 @@ const CONTEXT_INSTALL: &str = "seed a connector install";
 /// The reason a seeded grant was requested for, when the suite names none.
 const FIXTURE_REASON: &str = "fixture";
 
-/// One fleet's grant over one service, of `kind`, in `status`. No scope,
+/// One fleet's grant over one service, of `grant_type`, in `status`. No scope,
 /// neither approved nor revoked, and stamped by the database's `now()`, unless
 /// the suite says so.
 ///
-/// `kind` and `status` are arguments for the reason `FleetSeed`'s status is:
+/// `grant_type` and `status` are arguments for the reason `FleetSeed`'s status is:
 /// their spellings live above this crate, in `afd_api_wire::grant`.
 #[derive(Debug, Clone, Copy)]
 #[must_use = "a seed writes nothing until `insert` runs"]
 pub struct GrantSeed<'a> {
     fleet_id: &'a Uuid7,
     service: &'a str,
-    kind: &'a str,
+    grant_type: &'a str,
     status: &'a str,
     scope: Option<&'a str>,
     approved_at: Option<Timestamp>,
@@ -44,17 +44,17 @@ pub struct GrantSeed<'a> {
 }
 
 impl<'a> GrantSeed<'a> {
-    /// A grant of `service` to `fleet_id`, of `kind`, in `status`.
+    /// A grant of `service` to `fleet_id`, of `grant_type`, in `status`.
     pub const fn new(
         fleet_id: &'a Uuid7,
         service: &'a str,
-        kind: &'a str,
+        grant_type: &'a str,
         status: &'a str,
     ) -> Self {
         Self {
             fleet_id,
             service,
-            kind,
+            grant_type,
             status,
             scope: None,
             approved_at: None,
@@ -98,7 +98,7 @@ impl<'a> GrantSeed<'a> {
             .bind(&id)
             .bind(self.fleet_id)
             .bind(self.service)
-            .bind(self.kind)
+            .bind(self.grant_type)
             .bind(self.status)
             .bind(self.scope)
             .bind(FIXTURE_REASON)

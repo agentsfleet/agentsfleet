@@ -202,7 +202,7 @@ The model picker and the "Allow all" and "Packages" toggles each send one `PATCH
 
 - A name grants nothing. An unknown `@<NAME>` is refused and never falls back to the open chat's fleet.
 - A fleet starts with no credential. A missing one is a card the fleet raises, never a refused create.
-- Nothing caps how many triggers a fleet adds, beyond one per kind and source and what the workspace has connected.
+- Nothing caps how many triggers a fleet adds, beyond one per trigger type and source and what the workspace has connected.
 - A GitHub row that names no repository receives nothing.
 - Any fleet may steer any active fleet in its workspace, as often as the payer's balance allows. Nothing lists targets, limits the chain or caps the count.
 - A steer carries text, never access. A fleet that reads untrusted text can be told to steer another fleet. Each target's own grants and the payer's balance bound the damage.

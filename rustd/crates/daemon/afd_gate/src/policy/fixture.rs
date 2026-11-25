@@ -5,7 +5,7 @@
 //! one place.
 
 use af_crypto::secret::SecretString;
-use afd_api_wire::grant::kind;
+use afd_api_wire::grant::grant_type;
 use afd_billing::rates::Posture;
 use afd_credential::provider::{Dialled, Resolved};
 
@@ -45,19 +45,19 @@ pub(super) fn approved(
     integrations: &[&str],
     github_scope: Option<&str>,
 ) -> Approved {
-    let grant = |name: &str, kind: &str, scope: Option<&str>| ApprovedGrant {
+    let grant = |name: &str, grant_type: &str, scope: Option<&str>| ApprovedGrant {
         name: name.to_owned(),
-        kind: kind.to_owned(),
+        grant_type: grant_type.to_owned(),
         scope: scope.map(str::to_owned),
     };
     secrets
         .iter()
-        .map(|name| grant(name, kind::SECRET, None))
+        .map(|name| grant(name, grant_type::SECRET, None))
         .chain(
             integrations
                 .iter()
-                .map(|name| grant(name, kind::INTEGRATION, None)),
+                .map(|name| grant(name, grant_type::INTEGRATION, None)),
         )
-        .chain(github_scope.map(|scope| grant("github", kind::INTEGRATION, Some(scope))))
+        .chain(github_scope.map(|scope| grant("github", grant_type::INTEGRATION, Some(scope))))
         .collect()
 }

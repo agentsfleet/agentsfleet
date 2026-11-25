@@ -12,7 +12,7 @@
 use af_core::id::Uuid7;
 use af_fleet_runtime::config::{Reach, RepositoryBinding};
 use af_wire::access_verb::AccessRequest;
-use afd_api_wire::grant::kind;
+use afd_api_wire::grant::grant_type;
 use afd_approval::{GrantKind, Requested, Wanted};
 use afd_credential::secrets::connector;
 use afd_gate::policy::approved::Approved;
@@ -188,7 +188,7 @@ impl RunService {
             Approved::read_on(&mut connection, &standing.fleet_id).await?
         };
         let held = approved
-            .holds(GITHUB, kind::INTEGRATION)
+            .holds(GITHUB, grant_type::INTEGRATION)
             .then(|| approved.repository_binding().ok().flatten())
             .flatten()
             .filter(|held| covers(held, &asked));

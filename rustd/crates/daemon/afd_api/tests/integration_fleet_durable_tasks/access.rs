@@ -3,7 +3,7 @@
 #![expect(clippy::expect_used, reason = "test preconditions fail loudly")]
 
 use af_wire::durable_task::DurableTaskState;
-use afd_api_wire::grant::{kind, status};
+use afd_api_wire::grant::{grant_type, status};
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_db::test_util::{FleetSeed, GrantSeed, TestDatabase, mint_id};
 use afd_fleet_lifecycle::FleetStatus;
@@ -53,7 +53,7 @@ async fn grant(fixture: &DurableTasks<'_>, fleet: &af_core::id::Uuid7, name: &st
         .acquire()
         .await
         .expect("grant connection");
-    let seed = GrantSeed::new(fleet, name, kind::SECRET, at);
+    let seed = GrantSeed::new(fleet, name, grant_type::SECRET, at);
     let seed = if at == status::APPROVED {
         seed.approved(afd_db::test_util::SEEDED_AT)
     } else {

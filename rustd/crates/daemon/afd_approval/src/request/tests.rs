@@ -5,7 +5,7 @@
 //! the statement returned, and the card copy of the wanted grant.
 
 use af_core::id::Uuid7;
-use afd_api_wire::grant::kind;
+use afd_api_wire::grant::grant_type;
 
 use super::ask::RequestRow;
 use super::{GrantKind, KIND_INTEGRATION_GRANT, Requested, Wanted};
@@ -122,8 +122,8 @@ fn a_secret_request_carries_no_scope() -> Outcome {
 
 #[test]
 fn each_kind_spells_the_column_and_names_its_channel_on_the_card() {
-    assert_eq!(GrantKind::Secret.as_str(), kind::SECRET);
-    assert_eq!(GrantKind::Integration.as_str(), kind::INTEGRATION);
+    assert_eq!(GrantKind::Secret.as_str(), grant_type::SECRET);
+    assert_eq!(GrantKind::Integration.as_str(), grant_type::INTEGRATION);
     let (secret, _) = GrantKind::Secret.card("sentry");
     let (integration, _) = GrantKind::Integration.card("github");
     assert_eq!(secret, "use the workspace secret sentry");

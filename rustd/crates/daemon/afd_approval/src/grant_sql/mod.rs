@@ -53,7 +53,7 @@ pub(crate) const REVOKE_GRANT: &str = include_str!("revoke_grant.sql");
 
 /// Ensures the grant exists before the card statement takes its snapshot.
 /// Both statements run in one transaction: failure to raise rolls back the
-/// grant. `$1` grant, `$2` fleet, `$3` name, `$4` kind, `$5` status, `$6` reason.
+/// grant. `$1` grant, `$2` fleet, `$3` name, `$4` grant type, `$5` status, `$6` reason.
 pub(crate) const ENSURE_GRANT: &str = include_str!("ensure_grant.sql");
 
 /// Asks a person for the grant `ENSURE_GRANT` left in place, raising at most
@@ -62,7 +62,7 @@ pub(crate) const ENSURE_GRANT: &str = include_str!("ensure_grant.sql");
 /// the asking turn, whose run waits on it, and lapses `$15` after the database
 /// clock.
 ///
-/// `$1` fleet, `$2` name, `$3` kind, `$4` requested scope, `$5` pending,
+/// `$1` fleet, `$2` name, `$3` grant type, `$4` requested scope, `$5` pending,
 /// `$6` revoked, `$7` card, `$8` workspace, `$9` action, `$10` asking turn,
 /// `$11` card type, `$12` proposal, `$13` evidence, `$14` radius, `$15`
 /// decision window, `$16` card status.

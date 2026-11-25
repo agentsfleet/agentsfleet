@@ -10,7 +10,7 @@ use std::sync::Arc;
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use af_crypto::secret::Kek;
-use afd_api_wire::grant::{kind, status};
+use afd_api_wire::grant::{grant_type, status};
 use afd_db::test_util::{GrantSeed, InstallSeed};
 use afd_vault::{SecretBody, SecretName, Vault};
 use serde_json::Value;
@@ -28,13 +28,13 @@ impl Fixtures {
     /// carries.
     pub(crate) async fn approve_github(&self, fleet: &Uuid7, scope: &Value) {
         let scope = scope.to_string();
-        self.approve(fleet, GITHUB, kind::INTEGRATION, Some(&scope))
+        self.approve(fleet, GITHUB, grant_type::INTEGRATION, Some(&scope))
             .await;
     }
 
     /// Approves `fleet`'s grant of the workspace secret `name`.
     pub(crate) async fn approve_secret(&self, fleet: &Uuid7, name: &str) {
-        self.approve(fleet, name, kind::SECRET, None).await;
+        self.approve(fleet, name, grant_type::SECRET, None).await;
     }
 
     async fn approve(&self, fleet: &Uuid7, service: &str, of: &str, scope: Option<&str>) {

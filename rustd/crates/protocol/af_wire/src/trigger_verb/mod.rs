@@ -35,7 +35,7 @@ impl TriggerKind {
     /// Every kind, in declaration order.
     pub const ALL: [Self; 3] = [Self::Webhook, Self::AppEvent, Self::Mention];
 
-    /// The spelling `fleet.triggers.kind` stores.
+    /// The spelling `fleet.triggers.trigger_type` stores.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {

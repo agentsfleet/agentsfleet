@@ -81,7 +81,7 @@ pub(crate) async fn answer(lane: &Lane, action: &Uuid7, decision: Decision) -> R
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct GrantState {
     pub(crate) id: Uuid7,
-    pub(crate) kind: String,
+    pub(crate) grant_type: String,
     pub(crate) status: String,
     pub(crate) scope: Option<Value>,
     pub(crate) requested_scope: Option<Value>,
@@ -94,7 +94,7 @@ pub(crate) struct GrantState {
 #[derive(sqlx::FromRow)]
 struct GrantRow {
     id: Uuid7,
-    kind: String,
+    grant_type: String,
     status: String,
     scope: Option<String>,
     requested_scope: Option<String>,
@@ -107,7 +107,7 @@ struct GrantRow {
 /// The lane's fleet's grant for `name`, read straight from the table.
 pub(crate) async fn grant(lane: &Lane, name: &str) -> GrantState {
     let row: GrantRow = sqlx::query_as(
-        "SELECT id, kind, status, scope::text AS scope, requested_scope::text AS requested_scope,
+        "SELECT id, grant_type, status, scope::text AS scope, requested_scope::text AS requested_scope,
                 requested_reason, approved_at, revoked_at, updated_at
            FROM connector.integration_grants WHERE fleet_id = $1 AND service = $2",
     )
@@ -118,7 +118,7 @@ pub(crate) async fn grant(lane: &Lane, name: &str) -> GrantState {
     .expect("the fleet holds a grant for the name");
     GrantState {
         id: row.id,
-        kind: row.kind,
+        grant_type: row.grant_type,
         status: row.status,
         scope: row.scope.as_deref().map(json),
         requested_scope: row.requested_scope.as_deref().map(json),

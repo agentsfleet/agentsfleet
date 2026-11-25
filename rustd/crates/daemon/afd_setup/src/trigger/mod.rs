@@ -36,7 +36,7 @@ pub struct TriggerRow {
     /// The row's identity: what a remove names.
     pub id: Uuid7,
     /// What wakes the fleet.
-    pub kind: TriggerKind,
+    pub trigger_type: TriggerKind,
     /// A webhook's source slug, `github` for an App event, `slack` for a mention.
     pub source: String,
     /// The event names that wake the fleet; `None` wakes it on every event.
@@ -61,11 +61,11 @@ impl TriggerRow {
     /// signing secret's name or its recipe.
     #[must_use]
     pub fn shown(&self, deployment: &str, fleet: &Uuid7) -> Trigger<'_> {
-        let url = (self.kind == TriggerKind::Webhook)
+        let url = (self.trigger_type == TriggerKind::Webhook)
             .then(|| Cow::Owned(format!("{deployment}/v1/webhooks/{fleet}/{}", self.source)));
         Trigger {
             id: Cow::Owned(self.id.to_string()),
-            kind: self.kind,
+            kind: self.trigger_type,
             source: Cow::Borrowed(&self.source),
             events: self.events.as_deref().map(borrowed),
             repositories: self.repositories.as_deref().map(borrowed),
@@ -93,7 +93,7 @@ pub struct NewTrigger<'a> {
     /// The fleet's workspace, which every delivery route matches on.
     pub workspace: &'a Uuid7,
     /// What wakes the fleet.
-    pub kind: TriggerKind,
+    pub trigger_type: TriggerKind,
     /// See [`TriggerRow::source`].
     pub source: &'a str,
     /// See [`TriggerRow::events`].
@@ -114,7 +114,7 @@ pub struct NewTrigger<'a> {
 #[derive(sqlx::FromRow)]
 struct Stored {
     id: Uuid7,
-    kind: String,
+    trigger_type: String,
     source: String,
     events: Option<Vec<String>>,
     repositories: Option<Vec<String>>,
@@ -129,7 +129,7 @@ struct Stored {
 impl Stored {
     fn decode(self) -> Result<TriggerRow> {
         Ok(TriggerRow {
-            kind: stored_kind(&self.kind)?,
+            trigger_type: stored_kind(&self.trigger_type)?,
             id: self.id,
             source: self.source,
             events: self.events,
@@ -162,7 +162,7 @@ pub async fn list(connection: &mut PgConnection, fleet: &Uuid7) -> Result<Vec<Tr
 }
 
 /// Writes `new`, or answers `None` when the fleet already holds a trigger of
-/// its kind and source.
+/// its type and source.
 ///
 /// # Errors
 /// A statement that would not run.
@@ -174,7 +174,7 @@ pub async fn insert(
         .bind(new.id)
         .bind(new.fleet)
         .bind(new.workspace)
-        .bind(new.kind.as_str())
+        .bind(new.trigger_type.as_str())
         .bind(new.source)
         .bind(new.events)
         .bind(new.repositories)
@@ -199,14 +199,14 @@ pub async fn remove_on(
     fleet: &Uuid7,
     trigger: &Uuid7,
 ) -> Result<Option<TriggerKind>> {
-    let kind: Option<String> = sqlx::query_scalar(sql::REMOVE)
+    let trigger_type: Option<String> = sqlx::query_scalar(sql::REMOVE)
         .bind(trigger)
         .bind(fleet)
         .bind(workspace)
         .fetch_optional(connection)
         .await
         .map_err(query(CONTEXT))?;
-    kind.as_deref().map(stored_kind).transpose()
+    trigger_type.as_deref().map(stored_kind).transpose()
 }
 
 impl Creations {

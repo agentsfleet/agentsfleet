@@ -238,7 +238,7 @@ No code. Indy reads the report as the dry run of the change and approves it, or 
 
 ### §3 — The fleet asks for access, and a person approves it once
 
-`request_access {name, scope?}` is a supervisor tool every run is offered. It posts `POST L/access`. The daemon checks that the name is in the workspace vault or is a connected integration, derives the grant's `kind` from the vault entry as `afd_credential/src/secrets/mod.rs:166-185` routes it today, requires a scope for `github` and parses it with `af_fleet_runtime/src/config/repository.rs`, and checks a secret's `host` with `af_egress::allowlist_host`. A refusal returns `[kind] sentence` and the run continues. A request the approved grant already covers answers at once with no card.
+`request_access {name, scope?}` is a supervisor tool every run is offered. It posts `POST L/access`. The daemon checks that the name is in the workspace vault or is a connected integration, derives the grant's `grant_type` from the vault entry as `afd_credential/src/secrets/mod.rs:166-185` routes it today, requires a scope for `github` and parses it with `af_fleet_runtime/src/config/repository.rs`, and checks a secret's `host` with `af_egress::allowlist_host`. A refusal returns `[kind] sentence` and the run continues. A request the approved grant already covers answers at once with no card.
 
 Otherwise the daemon sets the grant `pending` with the requested scope and raises today's card through `request_grant.sql`, now carrying the asking turn. The tool ends the run waiting, as `ask_user` does (`afr_agent/src/loop/finish.rs:110-113`), and the commit raises no question for it. The turn settles as waiting, so the fleet's later turns are not held (`assign_turn_head.sql:97-105` holds only a parked head).
 
@@ -248,7 +248,7 @@ The policy build reads approved grants: their names go to `secrets::declared`, t
 
 **Deleted here.** The install-time request (`Origin::Install`, `request_for_setup`), the park at assignment (`afd_gate/src/policy/grants.rs` and the ungranted path in `afd_fleet/src/run/deliver/mod.rs`), and `Producer::GateContinuation`, which only the gate rules used. The card, Approve, Deny, the answer route and the approval webhook stay.
 
-- **Dimension 3.1** — DONE — a request raises one card → Test `a_request_access_raises_one_card_and_waits` (integration): a run headed by a person's message posts `{name:"sentry"}` → 201; the grant `pending` with kind `secret`; one card carrying the turn; the turn settles waiting. A second request while pending → 200 and no second card.
+- **Dimension 3.1** — DONE — a request raises one card → Test `a_request_access_raises_one_card_and_waits` (integration): a run headed by a person's message posts `{name:"sentry"}` → 201; the grant `pending` with `grant_type` `secret`; one card carrying the turn; the turn settles waiting. A second request while pending → 200 and no second card.
 - **Dimension 3.2** — DONE — Approve resumes with the access → Test `an_approved_request_resumes_the_turn_with_the_secret` (integration): Approve → the grant `approved`, one answer turn; the resumed run's `secrets_map` holds `sentry` and no other workspace secret, and `allow` holds its host.
 - **Dimension 3.3** — DONE — Deny resumes without it → Test `a_denied_request_resumes_the_turn_without_access` (integration): Deny → the grant `revoked`; the resumed run's policy lacks the secret.
 - **Dimension 3.4** — DONE — a denied name can be asked again → Test `a_request_after_a_deny_raises_a_new_card` (integration): a later request for the denied name → the grant `pending` again and one new card.
@@ -384,8 +384,8 @@ You hold only the secrets and integrations a person approved for you. When you n
 | `thread.runs` | − `draft_id`, `idx_runs_draft_id_status_fencing_token`, `ck_runs_one_owner`, `setup_revision_id`; `fleet_id` is `NOT NULL` | §2 |
 | `fleet.durable_tasks` | − `accepted_revision_id` and `fk_durable_tasks_revision` | §2 |
 | `runner.checkpoints` | − `revision_id`, `fk_checkpoints_revision` and `idx_checkpoints_revision_id` | §2 |
-| `connector.integration_grants` | + `kind TEXT NOT NULL`, `scope JSONB`, `requested_scope JSONB`; unique `(fleet_id, service)` stays | §3 |
-| `fleet.triggers`, new | `id UUID` key, `fleet_id` (cascade), `workspace_id`, `kind TEXT NOT NULL` (`webhook`, `app_event` or `mention`), `source TEXT NOT NULL` (the webhook's slug, `github` or `slack`), `events TEXT[]`, `repositories TEXT[]`, `verifier_scheme`, `verifier_header`, `secret_name`, `channel` (nullable, set per kind), `created_at`; unique `(fleet_id, kind, source)`; indexes on `(workspace_id, kind, source)` and `(workspace_id, kind, channel)`; append-only: a `BEFORE UPDATE` trigger refuses every update, and `api_runtime` holds `SELECT`, `INSERT` and `DELETE` | §4 |
+| `connector.integration_grants` | + `grant_type TEXT NOT NULL`, `scope JSONB`, `requested_scope JSONB`; unique `(fleet_id, service)` stays | §3 |
+| `fleet.triggers`, new | `id UUID` key, `fleet_id` (cascade), `workspace_id`, `trigger_type TEXT NOT NULL` (`webhook`, `app_event` or `mention`), `source TEXT NOT NULL` (the webhook's slug, `github` or `slack`), `events TEXT[]`, `repositories TEXT[]`, `verifier_scheme`, `verifier_header`, `secret_name`, `channel` (nullable, set per trigger type), `created_at`; unique `(fleet_id, trigger_type, source)`; indexes on `(workspace_id, trigger_type, source)` and `(workspace_id, trigger_type, channel)`; append-only: a `BEFORE UPDATE` trigger refuses every update, and `api_runtime` holds `SELECT`, `INSERT` and `DELETE` | §4 |
 | `fleet.schedules` | − `recipe` | §4 |
 
 ## Failure Modes

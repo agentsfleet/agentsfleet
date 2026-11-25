@@ -33,8 +33,8 @@ pub const HOLD_APPROVED_GRANT: &str = include_str!("sql/hold_approved_grant.sql"
 pub struct ApprovedGrant {
     /// The vault key or integration the fleet asked for.
     pub name: String,
-    /// The channel it reaches a run through, from `afd_api_wire::grant::kind`.
-    pub kind: String,
+    /// The channel it reaches a run through, from `afd_api_wire::grant::grant_type`.
+    pub grant_type: String,
     /// The approved GitHub scope, as the JSON
     /// `af_fleet_runtime::config::RepositoryBinding::recorded` writes.
     pub scope: Option<String>,
@@ -76,12 +76,12 @@ impl Approved {
         self.0.iter().map(|grant| grant.name.as_str()).collect()
     }
 
-    /// Whether `name` was approved as `kind`.
+    /// Whether `name` was approved as `grant_type`.
     #[must_use]
-    pub fn holds(&self, name: &str, kind: &str) -> bool {
+    pub fn holds(&self, name: &str, grant_type: &str) -> bool {
         self.0
             .iter()
-            .any(|grant| grant.name == name && grant.kind == kind)
+            .any(|grant| grant.name == name && grant.grant_type == grant_type)
     }
 
     /// The repository binding the approved GitHub scope builds, or `None`

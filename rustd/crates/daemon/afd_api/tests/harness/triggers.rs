@@ -63,7 +63,7 @@ pub(crate) async fn seed(
             id: &id,
             fleet,
             workspace,
-            kind: seeded.kind,
+            trigger_type: seeded.kind,
             source: seeded.source,
             events: seeded.events,
             repositories: seeded.repositories,

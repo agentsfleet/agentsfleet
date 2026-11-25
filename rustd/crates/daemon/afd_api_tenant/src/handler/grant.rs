@@ -27,7 +27,7 @@ use std::sync::Arc;
 use af_core::error_code;
 use af_core::id::Uuid7;
 use af_observability::{AccessChange, FleetStep, Telemetry};
-use afd_api_wire::grant::{Grant, GrantsResponse, kind};
+use afd_api_wire::grant::{Grant, GrantsResponse, grant_type};
 use afd_approval::{GrantRow, Revocation};
 use axum::Json;
 use axum::extract::{Path, State};
@@ -205,7 +205,7 @@ async fn report_revoked<D: TenantPlane>(
         .ok()
         .flatten()
         .and_then(|rows| rows.into_iter().find(|row| row.id == grant.as_str()))
-        .and_then(|row| stored_kind(&row.kind));
+        .and_then(|row| stored_kind(&row.grant_type));
     if let Some(kind) = kind {
         services.analytics().report(&Telemetry::Fleet {
             actor: Some(person.subject().to_owned()),
@@ -221,7 +221,7 @@ async fn report_revoked<D: TenantPlane>(
 /// The closed spelling a stored grant kind names, so an event never carries
 /// a stored string; `None` for a spelling this build does not write.
 pub(crate) fn stored_kind(stored: &str) -> Option<&'static str> {
-    [kind::SECRET, kind::INTEGRATION]
+    [grant_type::SECRET, grant_type::INTEGRATION]
         .into_iter()
         .find(|known| *known == stored)
 }
@@ -234,7 +234,7 @@ pub(crate) fn shown(held: &GrantRow) -> Grant<'_> {
     let scope = |text: &Option<String>| serde_json::from_str(text.as_deref()?).ok();
     Grant {
         id: Cow::Borrowed(&held.id),
-        kind: Cow::Borrowed(&held.kind),
+        kind: Cow::Borrowed(&held.grant_type),
         name: Cow::Borrowed(&held.service),
         status: Cow::Borrowed(&held.status),
         scope: scope(&held.scope),

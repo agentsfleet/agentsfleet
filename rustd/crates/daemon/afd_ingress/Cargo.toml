@@ -60,7 +60,7 @@ af_webhook.workspace = true
 # The event type and stream field names a delivery is appended under, and the
 # grant status a mention's GitHub scope is read under.
 afd_api_wire.workspace = true
-# The trigger kinds `fleet.triggers.kind` stores.
+# The trigger kinds `fleet.triggers.trigger_type` stores.
 af_wire.workspace = true
 # A stored credential's `webhook_secret` field, read as an `afd_vault::bag::Bag`.
 serde.workspace = true

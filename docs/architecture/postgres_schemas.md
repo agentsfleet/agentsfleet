@@ -113,7 +113,7 @@ A domain store takes the caller's connection or transaction; there is no generic
 | Table | Purpose | Notes |
 |---|---|---|
 | `fleets` | The agent a workspace talks to: name, `model_ref`, `http_egress`, `package_domains` | `UNIQUE (workspace_id, name)`; `status` is `active` or `archived`; no instructions column |
-| `triggers` | One webhook source, GitHub App subscription or Slack channel that wakes a fleet | `kind` and `source` select the row; `UNIQUE (fleet_id, kind, source)` |
+| `triggers` | One webhook source, GitHub App subscription or Slack channel that wakes a fleet | `trigger_type` and `source` select the row; `UNIQUE (fleet_id, trigger_type, source)` |
 | `schedules` | Cron or one-shot runs, synced to the external scheduler | `source` is `api` for a person's schedule, `fleet` for one added by `cron_add` |
 | `approval_gates` | A card waiting for a person: a run's question or a fleet's access request | No `DELETE` grant; goes only with its fleet |
 | `activity_counters` | Dashboard totals maintained by triggers | `thread.turns` triggers count each turn once, when it opens |
@@ -122,7 +122,7 @@ A domain store takes the caller's connection or transaction; there is no generic
 | `durable_task_inputs` | Accepted task input and its consumption order, with one apply receipt | Immutable; unique per task and item, and per task and sequence |
 | `durable_task_effects` | A publication's authority, acknowledgement, confirmed commit and private target | Only the acknowledgement and target may change; a purge clears the target |
 
-`triggers` is a table, because a run adds and removes one row at a time and ingress looks rows up by workspace, kind and source.
+`triggers` is a table, because a run adds and removes one row at a time and ingress finds rows by workspace, trigger type and source.
 A durable task's accepted plan is its source turn's `thread.turns.plan`, and its retry keys live in `thread.replay_receipts`.
 
 ### thread

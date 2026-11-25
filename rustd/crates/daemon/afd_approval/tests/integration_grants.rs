@@ -21,7 +21,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_api_wire::grant::{kind, status};
+use afd_api_wire::grant::{grant_type, status};
 use afd_approval::{IntegrationGrants, REASON_ASKED_BY_THE_FLEET, Revocation};
 use std::time::Duration;
 
@@ -71,14 +71,14 @@ async fn seed_grant(lane: &Lane, service: &str, state: &str, created_at: Timesta
     let scope = (service == SERVICE_GITHUB).then_some(GITHUB_SCOPE);
     sqlx::query(
         "INSERT INTO connector.integration_grants
-           (id, fleet_id, service, kind, status, scope, requested_reason,
+           (id, fleet_id, service, grant_type, status, scope, requested_reason,
             approved_at, revoked_at, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $10)",
     )
     .bind(&id)
     .bind(&lane.fleet)
     .bind(service)
-    .bind(kind::INTEGRATION)
+    .bind(grant_type::INTEGRATION)
     .bind(state)
     .bind(scope)
     .bind(REASON)
@@ -207,10 +207,10 @@ async fn the_list_shows_every_status_newest_first() {
     assert_eq!(revoked.approved_at, None);
     assert_eq!(pending.reason, REASON);
 
-    // The kind and both scopes ride beside the status, the scope as the JSON
+    // The grant type and both scopes ride beside the status, the scope as the JSON
     // the grant stored.
     let github = held.get(1).expect("three rows were seeded");
-    assert_eq!(github.kind, kind::INTEGRATION);
+    assert_eq!(github.grant_type, grant_type::INTEGRATION);
     let scope: Option<serde_json::Value> = github
         .scope
         .as_deref()

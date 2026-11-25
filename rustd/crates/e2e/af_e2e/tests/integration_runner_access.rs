@@ -97,10 +97,10 @@ async fn rows(held: &Assigned) -> (i64, i64) {
     .expect("grant and card counts")
 }
 
-/// The stored `(kind, status)` of the held fleet's grant of `name`.
+/// The stored `(grant_type, status)` of the held fleet's grant of `name`.
 async fn grant(held: &Assigned, name: &str) -> (String, String) {
     sqlx::query_as(
-        "SELECT kind, status FROM connector.integration_grants \
+        "SELECT grant_type, status FROM connector.integration_grants \
          WHERE fleet_id = $1 AND service = $2",
     )
     .bind(&held.scene.fleet)

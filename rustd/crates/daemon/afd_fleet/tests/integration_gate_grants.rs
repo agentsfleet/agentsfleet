@@ -18,7 +18,7 @@
 use crate::seed;
 use crate::support;
 use af_core::id::Uuid7;
-use afd_api_wire::grant::{kind, status};
+use afd_api_wire::grant::{grant_type, status};
 use afd_db::test_util::GrantSeed;
 use afd_gate::policy::approved::Approved;
 
@@ -62,38 +62,52 @@ async fn test_only_approved_grants_reach_the_set() {
         &fixtures,
         &fleet,
         "github",
-        kind::INTEGRATION,
+        grant_type::INTEGRATION,
         status::APPROVED,
     )
     .await;
-    grant(&fixtures, &fleet, "sentry", kind::SECRET, status::APPROVED).await;
-    grant(&fixtures, &fleet, "zoho", kind::SECRET, status::PENDING).await;
+    grant(
+        &fixtures,
+        &fleet,
+        "sentry",
+        grant_type::SECRET,
+        status::APPROVED,
+    )
+    .await;
+    grant(
+        &fixtures,
+        &fleet,
+        "zoho",
+        grant_type::SECRET,
+        status::PENDING,
+    )
+    .await;
     grant(
         &fixtures,
         &fleet,
         "slack",
-        kind::INTEGRATION,
+        grant_type::INTEGRATION,
         status::REVOKED,
     )
     .await;
 
     let granted = approved(&fixtures, &fleet).await;
 
-    assert!(granted.holds("github", kind::INTEGRATION));
-    assert!(granted.holds("sentry", kind::SECRET));
+    assert!(granted.holds("github", grant_type::INTEGRATION));
+    assert!(granted.holds("sentry", grant_type::SECRET));
     assert!(
-        !granted.holds("sentry", kind::INTEGRATION),
+        !granted.holds("sentry", grant_type::INTEGRATION),
         "a grant is of its kind"
     );
     assert!(
-        !granted.holds("zoho", kind::SECRET),
+        !granted.holds("zoho", grant_type::SECRET),
         "a pending grant is not a grant"
     );
     assert!(
-        !granted.holds("slack", kind::INTEGRATION),
+        !granted.holds("slack", grant_type::INTEGRATION),
         "a revoked grant is not a grant"
     );
-    assert!(!granted.holds("stripe", kind::SECRET));
+    assert!(!granted.holds("stripe", grant_type::SECRET));
 }
 
 #[tokio::test]
@@ -118,7 +132,7 @@ async fn test_another_fleets_grant_is_not_this_fleets() {
         &fixtures,
         &theirs,
         "github",
-        kind::INTEGRATION,
+        grant_type::INTEGRATION,
         status::APPROVED,
     )
     .await;
@@ -126,6 +140,6 @@ async fn test_another_fleets_grant_is_not_this_fleets() {
     assert!(
         !approved(&fixtures, &mine)
             .await
-            .holds("github", kind::INTEGRATION)
+            .holds("github", grant_type::INTEGRATION)
     );
 }

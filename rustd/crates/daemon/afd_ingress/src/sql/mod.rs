@@ -16,7 +16,7 @@
 
 /// The fleet a webhook delivery is addressed to, and its row for the source.
 ///
-/// `$1` fleet, `$2` the webhook kind, `$3` the URL's source, lowercase. No
+/// `$1` fleet, `$2` the webhook trigger type, `$3` the URL's source, lowercase. No
 /// filter beyond the identifier and the row, and that is correct rather than
 /// lax — the caller is a provider holding no principal, so there is no scope
 /// to narrow by. What authorizes the delivery is the signature checked
@@ -40,7 +40,7 @@ pub const SELECT_INSTALL_WORKSPACE: &str = include_str!("select_install_workspac
 
 /// Every active fleet in a workspace subscribed to this provider's App events.
 ///
-/// `$1` workspace, `$2` the status a fleet must hold, `$3` the App event kind,
+/// `$1` workspace, `$2` the status a fleet must hold, `$3` the App event trigger type,
 /// `$4` provider. No grant join: receiving an event needs no grant, and a
 /// grant governs only what the fleet may call.
 ///
@@ -56,7 +56,7 @@ pub const SELECT_APP_SUBSCRIBERS: &str = include_str!("select_app_subscribers.sq
 /// [`crate::slack::subscribed`] to read.
 ///
 /// `$1` workspace, `$2` the statuses a subscriber can be read in, `$3` the
-/// mention kind, `$4` provider, `$5` channel, `$6` the GitHub grant's name,
+/// mention trigger type, `$4` provider, `$5` channel, `$6` the GitHub grant's name,
 /// `$7` the approved status. The approved GitHub scope rides along because a
 /// fleet that may write to a repository takes only mentions addressed to it.
 ///

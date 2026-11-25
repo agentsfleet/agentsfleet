@@ -28,7 +28,7 @@ use std::time::Duration;
 
 use af_core::id::Uuid7;
 use af_core::timing::DAY;
-use afd_api_wire::grant::kind;
+use afd_api_wire::grant::grant_type;
 use jiff::Timestamp;
 use sqlx::Acquire as _;
 
@@ -87,12 +87,12 @@ pub enum GrantKind {
 }
 
 impl GrantKind {
-    /// The spelling `connector.integration_grants.kind` stores.
+    /// The spelling `connector.integration_grants.grant_type` stores.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::Secret => kind::SECRET,
-            Self::Integration => kind::INTEGRATION,
+            Self::Secret => grant_type::SECRET,
+            Self::Integration => grant_type::INTEGRATION,
         }
     }
 

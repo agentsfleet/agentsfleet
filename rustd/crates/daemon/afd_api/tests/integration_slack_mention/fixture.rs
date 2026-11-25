@@ -13,7 +13,7 @@
 
 use af_core::id::Uuid7;
 use af_wire::trigger_verb::TriggerKind;
-use afd_api_wire::grant::{kind, status as grant_status};
+use afd_api_wire::grant::{grant_type, status as grant_status};
 use afd_connector::Provider;
 use afd_db::Db;
 use afd_db::config::DbRole;
@@ -215,12 +215,17 @@ impl Fixture {
             .await
             .expect("the fleet row seeds");
         if let Some(scope) = config.scope() {
-            GrantSeed::new(&fleet, GITHUB, kind::INTEGRATION, grant_status::APPROVED)
-                .scope(&scope)
-                .approved(afd_db::test_util::SEEDED_AT)
-                .insert(&mut *connection)
-                .await
-                .expect("the approved GitHub grant seeds");
+            GrantSeed::new(
+                &fleet,
+                GITHUB,
+                grant_type::INTEGRATION,
+                grant_status::APPROVED,
+            )
+            .scope(&scope)
+            .approved(afd_db::test_util::SEEDED_AT)
+            .insert(&mut *connection)
+            .await
+            .expect("the approved GitHub grant seeds");
         }
         drop(connection);
         harness::triggers::seed(

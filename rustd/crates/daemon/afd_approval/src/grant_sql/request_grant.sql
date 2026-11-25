@@ -19,7 +19,7 @@ WITH requested AS MATERIALIZED (
 ), reopened AS (
   UPDATE connector.integration_grants g
   SET status          = CASE WHEN a.status = $6 THEN $5 ELSE g.status END,
-      kind            = $3,
+      grant_type      = $3,
       requested_scope = CASE WHEN EXISTS (SELECT 1 FROM open_card) THEN g.requested_scope
                              ELSE $4::jsonb END,
       approved_at     = CASE WHEN a.status = $6 THEN NULL ELSE g.approved_at END,

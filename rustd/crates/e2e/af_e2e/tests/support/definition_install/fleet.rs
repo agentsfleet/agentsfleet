@@ -243,7 +243,7 @@ async fn subscribe(
             id: &id,
             fleet,
             workspace,
-            kind: TriggerKind::Mention,
+            trigger_type: TriggerKind::Mention,
             source: "slack",
             events: None,
             repositories: None,

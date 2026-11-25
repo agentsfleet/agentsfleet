@@ -95,7 +95,7 @@ impl RunService {
                 id: item_id,
                 fleet: &standing.fleet_id,
                 workspace: &standing.workspace_id,
-                kind: checked.kind,
+                trigger_type: checked.kind,
                 source: checked.source,
                 events: events.as_deref(),
                 repositories: repositories.as_deref(),
@@ -111,7 +111,7 @@ impl RunService {
             None => replayed(&mut tx, standing, item_id).await?,
         };
         tx.commit().await.map_err(query(CONTEXT))?;
-        log_changed(standing, row.kind, "added");
+        log_changed(standing, row.trigger_type, "added");
         Ok(row)
     }
 

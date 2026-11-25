@@ -19,7 +19,7 @@
 use af_core::error_code::{Coded as _, Logged};
 use af_core::id::Uuid7;
 use af_fleet_runtime::config::RepositoryBinding;
-use afd_api_wire::grant::kind;
+use afd_api_wire::grant::grant_type;
 use afd_gate::policy::approved::Approved;
 
 use crate::error::{Result, query};
@@ -81,7 +81,7 @@ impl Runs {
         let integrations = approved
             .names()
             .into_iter()
-            .filter(|name| approved.holds(name, kind::INTEGRATION))
+            .filter(|name| approved.holds(name, grant_type::INTEGRATION))
             .map(str::to_owned)
             .collect();
         Ok(Some(MintScope {
@@ -180,7 +180,7 @@ mod tests {
         let log = af_core::test_util::trace::Capture::install();
         let approved: Approved = std::iter::once(ApprovedGrant {
             name: "github".to_owned(),
-            kind: afd_api_wire::grant::kind::INTEGRATION.to_owned(),
+            grant_type: afd_api_wire::grant::grant_type::INTEGRATION.to_owned(),
             scope: Some("not a scope".to_owned()),
         })
         .collect();

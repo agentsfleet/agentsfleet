@@ -77,7 +77,7 @@ pub enum FleetStep {
     AccessChanged {
         /// The fleet the grant is for.
         fleet_id: Uuid7,
-        /// `secret` or `integration`, as `connector.integration_grants.kind`
+        /// `secret` or `integration`, as `connector.integration_grants.grant_type`
         /// spells it.
         kind: &'static str,
         /// What happened to it.

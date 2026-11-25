@@ -72,7 +72,7 @@ These are two fields on two tables, and some values overlap.
 
 | Field | Where it lives | Values | What it tags |
 |---|---|---|---|
-| `kind` | `fleet.triggers.kind`, one row per trigger | `webhook`, `app_event`, `mention` | How the fleet gets woken, as added with `trigger_add` |
+| `kind` | `fleet.triggers.trigger_type`, one row per trigger | `webhook`, `app_event`, `mention` | How the fleet gets woken, as added with `trigger_add` |
 | `event_type` | `thread.turns.kind`, named `event_type` on the wire (`TurnKind` in `af_wire`) | `chat`, `webhook`, `cron`, `continuation` | What one turn is |
 
 A fleet needs no trigger to receive a `chat` turn, and no trigger row holds a schedule; a schedule's fire arrives as `cron`.

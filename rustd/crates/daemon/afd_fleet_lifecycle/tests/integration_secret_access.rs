@@ -9,7 +9,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_api_wire::grant::{kind, status};
+use afd_api_wire::grant::{grant_type, status};
 use afd_db::test_util::GrantSeed;
 
 use crate::support::Lane;
@@ -31,7 +31,7 @@ async fn only_an_approved_grant_on_a_runnable_fleet_lists_access() {
         (&revoked, status::REVOKED),
         (&archived, status::APPROVED),
     ] {
-        GrantSeed::new(fleet, SECRET, kind::SECRET, grant_status)
+        GrantSeed::new(fleet, SECRET, grant_type::SECRET, grant_status)
             .insert(&mut *lane.connection().await)
             .await
             .expect("seeding a grant");
@@ -62,7 +62,7 @@ async fn another_workspaces_grant_lists_no_access_here() {
     let lane = Lane::create().await;
     let elsewhere = lane.another_workspace().await;
     let foreign = lane.fleet_at(&elsewhere, crate::support::NOW).await;
-    GrantSeed::new(&foreign, SECRET, kind::SECRET, status::APPROVED)
+    GrantSeed::new(&foreign, SECRET, grant_type::SECRET, status::APPROVED)
         .insert(&mut *lane.connection().await)
         .await
         .expect("seeding a grant");

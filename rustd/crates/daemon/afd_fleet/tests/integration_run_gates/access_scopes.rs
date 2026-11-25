@@ -82,8 +82,8 @@ async fn an_unowned_integration_handle_raises_one_card() {
         .expect("a stored integration is asked for");
 
     assert!(matches!(asked, Requested::Raised { .. }), "{asked:?}");
-    let (kind, scope): (String, Option<String>) = sqlx::query_as(
-        "SELECT kind, scope::text FROM connector.integration_grants \
+    let (grant_type, scope): (String, Option<String>) = sqlx::query_as(
+        "SELECT grant_type, scope::text FROM connector.integration_grants \
          WHERE fleet_id = $1 AND service = $2",
     )
     .bind(&live.ready.fleet)
@@ -91,7 +91,7 @@ async fn an_unowned_integration_handle_raises_one_card() {
     .fetch_one(&mut *fixtures.database.acquire().await.expect("a connection"))
     .await
     .expect("the fleet's grant");
-    assert_eq!((kind.as_str(), scope), ("integration", None));
+    assert_eq!((grant_type.as_str(), scope), ("integration", None));
     assert_eq!(rows(&fixtures, &live.ready.fleet).await, (1, 1));
     fixtures.cleanup().await;
 }

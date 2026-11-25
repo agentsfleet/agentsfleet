@@ -182,9 +182,9 @@ pub(super) async fn answer(fixtures: &Fixtures, fleet: &Uuid7, gate: &Uuid7, dec
     assert!(matches!(resolved, Resolution::Resolved(_)), "{resolved:?}");
 }
 
-/// The grant's stored `(kind, status)`.
+/// The grant's stored `(grant_type, status)`.
 async fn grant(fixtures: &Fixtures, fleet: &Uuid7, name: &str) -> (String, String) {
-    sqlx::query_as("SELECT kind, status FROM connector.integration_grants WHERE fleet_id = $1 AND service = $2")
+    sqlx::query_as("SELECT grant_type, status FROM connector.integration_grants WHERE fleet_id = $1 AND service = $2")
         .bind(fleet)
         .bind(name)
         .fetch_one(&mut *fixtures.database.acquire().await.expect("a connection"))

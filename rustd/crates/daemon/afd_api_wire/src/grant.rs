@@ -8,7 +8,7 @@
 //!
 //! # Why the spellings live here rather than beside either reader
 //!
-//! `afd_gate` reads `connector.integration_grants.status` and `kind` on the
+//! `afd_gate` reads `connector.integration_grants.status` and `grant_type` on the
 //! policy and mint paths, `afd_approval` writes them, and the API renders
 //! them. This crate is the one they already share, so a spelling declared
 //! here cannot drift into a row one plane writes and another cannot read. It
@@ -40,9 +40,9 @@ pub mod status {
     pub const REVOKED: &str = "revoked";
 }
 
-/// The spellings `connector.integration_grants.kind` stores: which channel the
+/// The spellings `connector.integration_grants.grant_type` stores: which channel the
 /// approved credential reaches a run through.
-pub mod kind {
+pub mod grant_type {
     /// A workspace vault entry the run's tools address by field.
     pub const SECRET: &str = "secret";
     /// A connected integration whose token is minted per run, such as GitHub.
@@ -55,7 +55,7 @@ pub mod kind {
 pub struct Grant<'a> {
     /// The grant's own row id — what a revoke addresses it by.
     pub id: Cow<'a, str>,
-    /// `secret` or `integration`, from [`kind`].
+    /// `secret` or `integration`, from [`grant_type`].
     pub kind: Cow<'a, str>,
     /// The vault key or integration the fleet asked for.
     pub name: Cow<'a, str>,
@@ -90,7 +90,7 @@ mod tests {
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
 
-    use super::{Grant, GrantsResponse, kind, status};
+    use super::{Grant, GrantsResponse, grant_type, status};
     use std::borrow::Cow;
 
     #[test]
@@ -108,7 +108,7 @@ mod tests {
         // value in it.
         let body = serde_json::to_string(&Grant {
             id: Cow::Borrowed("01924f4e-0000-7000-8000-0000000000a1"),
-            kind: Cow::Borrowed(kind::SECRET),
+            kind: Cow::Borrowed(grant_type::SECRET),
             name: Cow::Borrowed("sentry"),
             status: Cow::Borrowed(status::PENDING),
             scope: None,
@@ -127,7 +127,7 @@ mod tests {
     fn a_wider_github_request_shows_beside_the_scope_in_force() {
         let body = serde_json::to_value(Grant {
             id: Cow::Borrowed("01924f4e-0000-7000-8000-0000000000a2"),
-            kind: Cow::Borrowed(kind::INTEGRATION),
+            kind: Cow::Borrowed(grant_type::INTEGRATION),
             name: Cow::Borrowed("github"),
             status: Cow::Borrowed(status::APPROVED),
             scope: Some(serde_json::json!({"repositories": ["org/app"], "access": "read"})),
@@ -152,7 +152,7 @@ mod tests {
         assert_eq!(status::PENDING, "pending");
         assert_eq!(status::APPROVED, "approved");
         assert_eq!(status::REVOKED, "revoked");
-        assert_eq!(kind::SECRET, "secret");
-        assert_eq!(kind::INTEGRATION, "integration");
+        assert_eq!(grant_type::SECRET, "secret");
+        assert_eq!(grant_type::INTEGRATION, "integration");
     }
 }

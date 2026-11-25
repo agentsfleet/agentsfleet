@@ -10,7 +10,7 @@
 )]
 
 use af_core::id::Uuid7;
-use afd_api_wire::grant::{kind, status};
+use afd_api_wire::grant::{grant_type, status};
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{FleetSeed, GrantSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
@@ -69,15 +69,25 @@ impl Lane {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn only_the_fleets_approved_grants_are_read() {
     let lane = Lane::seed().await;
-    lane.grant(&lane.fleet, "sentry", kind::SECRET, status::APPROVED)
+    lane.grant(&lane.fleet, "sentry", grant_type::SECRET, status::APPROVED)
         .await;
-    lane.grant(&lane.fleet, "github", kind::INTEGRATION, status::APPROVED)
+    lane.grant(
+        &lane.fleet,
+        "github",
+        grant_type::INTEGRATION,
+        status::APPROVED,
+    )
+    .await;
+    lane.grant(&lane.fleet, "grafana", grant_type::SECRET, status::PENDING)
         .await;
-    lane.grant(&lane.fleet, "grafana", kind::SECRET, status::PENDING)
-        .await;
-    lane.grant(&lane.fleet, "linear", kind::INTEGRATION, status::REVOKED)
-        .await;
-    lane.grant(&lane.other, "stripe", kind::SECRET, status::APPROVED)
+    lane.grant(
+        &lane.fleet,
+        "linear",
+        grant_type::INTEGRATION,
+        status::REVOKED,
+    )
+    .await;
+    lane.grant(&lane.other, "stripe", grant_type::SECRET, status::APPROVED)
         .await;
 
     let mut connection = lane.database.acquire().await.expect("a connection");
@@ -88,12 +98,12 @@ async fn only_the_fleets_approved_grants_are_read() {
     let expected: Approved = [
         ApprovedGrant {
             name: "github".to_owned(),
-            kind: kind::INTEGRATION.to_owned(),
+            grant_type: grant_type::INTEGRATION.to_owned(),
             scope: Some(r#"{"access": "read", "repositories": ["acme/widgets"]}"#.to_owned()),
         },
         ApprovedGrant {
             name: "sentry".to_owned(),
-            kind: kind::SECRET.to_owned(),
+            grant_type: grant_type::SECRET.to_owned(),
             scope: None,
         },
     ]
@@ -112,12 +122,27 @@ async fn only_the_fleets_approved_grants_are_read() {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn only_an_approved_grant_is_held() {
     let lane = Lane::seed().await;
-    lane.grant(&lane.fleet, "github", kind::INTEGRATION, status::APPROVED)
-        .await;
-    lane.grant(&lane.fleet, "zoho", kind::INTEGRATION, status::PENDING)
-        .await;
-    lane.grant(&lane.other, "linear", kind::INTEGRATION, status::APPROVED)
-        .await;
+    lane.grant(
+        &lane.fleet,
+        "github",
+        grant_type::INTEGRATION,
+        status::APPROVED,
+    )
+    .await;
+    lane.grant(
+        &lane.fleet,
+        "zoho",
+        grant_type::INTEGRATION,
+        status::PENDING,
+    )
+    .await;
+    lane.grant(
+        &lane.other,
+        "linear",
+        grant_type::INTEGRATION,
+        status::APPROVED,
+    )
+    .await;
 
     let mut connection = lane.database.acquire().await.expect("a connection");
     for (name, held) in [

@@ -16,7 +16,7 @@
 //! through a channel nobody approved.
 
 use af_wire::policy::{ExecutionPolicy, Mintable};
-use afd_api_wire::grant::kind;
+use afd_api_wire::grant::grant_type;
 use afd_credential::provider::Resolved;
 use afd_credential::secrets::Declared;
 use serde_json::{Map, Value};
@@ -74,7 +74,7 @@ pub fn assemble(inputs: Inputs<'_>) -> crate::Result<ExecutionPolicy<'_>> {
             .declared
             .mintable()
             .iter()
-            .filter(|minted| inputs.approved.holds(&minted.name, kind::INTEGRATION))
+            .filter(|minted| inputs.approved.holds(&minted.name, grant_type::INTEGRATION))
             .map(|granted| Mintable {
                 name: granted.name.as_ref().into(),
                 integration: granted.integration.as_ref().into(),
@@ -108,7 +108,7 @@ fn approved_statics(approved: &Approved, declared: &Declared) -> Map<String, Val
     declared
         .secrets_map()
         .iter()
-        .filter(|(name, _stored)| approved.holds(name, kind::SECRET))
+        .filter(|(name, _stored)| approved.holds(name, grant_type::SECRET))
         .map(|(name, stored)| (name.clone(), stored.clone()))
         .collect()
 }

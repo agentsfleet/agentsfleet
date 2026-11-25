@@ -12,10 +12,10 @@ const DEPLOYMENT: &str = "https://api.example.test";
 /// The fleet every address names.
 const FLEET: &str = "01920000-0000-7000-8000-000000000001";
 
-fn row(kind: TriggerKind, source: &str) -> TriggerRow {
+fn row(trigger_type: TriggerKind, source: &str) -> TriggerRow {
     TriggerRow {
         id: Uuid7::parse("01920000-0000-7000-8000-0000000000a1").expect("a UUIDv7"),
-        kind,
+        trigger_type,
         source: source.to_owned(),
         events: Some(vec!["issue".to_owned()]),
         repositories: None,
