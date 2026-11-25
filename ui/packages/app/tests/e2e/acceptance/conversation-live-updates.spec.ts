@@ -6,7 +6,7 @@ import {clientFor} from "./fixtures/api-client";
 import {FIXTURE_KEY} from "./fixtures/constants";
 import {assertPassed, classifyTerminalTurn, findRunFor} from "./fixtures/execution";
 import {awaitTerminalTurn, messageFleet} from "./fixtures/chat-walk";
-import { createFixtureFleet } from "./fixtures/fleet-create";
+import { awaitFirstTurnSettled, createFixtureFleet } from "./fixtures/fleet-create";
 import { createFleetViaUI } from "./fixtures/new-fleet";
 import { probeMessage } from "./fixtures/probe";
 import {workspaceHref} from "./fixtures/nav";
@@ -60,6 +60,7 @@ test("a real reply and its run figures reach another session without reloading o
     const control = created.fleet;
     fleetIds.push(control.id);
     await expectFleetActive(FIXTURE_KEY.regular, workspace, control.id);
+    await awaitFirstTurnSettled(FIXTURE_KEY.regular, workspace, control.id, created.turnId);
 
     const observing = await signedInContext(browser, FIXTURE_KEY.regular);
     observingContext = observing.context;
