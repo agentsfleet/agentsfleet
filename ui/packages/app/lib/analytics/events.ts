@@ -22,10 +22,6 @@ export const EVENTS = {
   // mirroring fleet_viewed). Props carry the runner id and the coarse states
   // — never the host identifier, a token, or label values.
   runner_viewed: "runner_viewed",
-  // An operator saved fleet setup from private chat. Props carry the
-  // fleet id, which part of the setup changed, and the coarse outcome — never
-  // the instructions or runtime config.
-  fleet_source_saved: "fleet_source_saved",
   // An operator forgot a memory entry from the console right rail.
   // Props carry the fleet id and outcome — never the memory key or content.
   fleet_memory_forgotten: "fleet_memory_forgotten",
@@ -53,10 +49,6 @@ export type EventProps = {
   [EVENTS.secret_added]: { secret_name: string };
   [EVENTS.fleet_viewed]: { fleet_id: string; status: string };
   [EVENTS.runner_viewed]: { runner_id: string; liveness: string; admin_state: string };
-  // Saving setup is the one edit that changes what the fleet does on
-  // its next wake. `field` names which part moved (instructions|config);
-  // `outcome` is the coarse success/failure. No setup text, no credential material.
-  [EVENTS.fleet_source_saved]: { fleet_id: string; field: string; outcome: string };
   // Forgetting a memory is the operator's correction path. `outcome` is the
   // coarse success/failure. No memory `content`, no key text.
   [EVENTS.fleet_memory_forgotten]: { fleet_id: string; outcome: string };
@@ -91,7 +83,6 @@ export const EVENT_PROP_KEYS = {
   [EVENTS.secret_added]: ["secret_name"],
   [EVENTS.fleet_viewed]: ["fleet_id", "status"],
   [EVENTS.runner_viewed]: ["runner_id", "liveness", "admin_state"],
-  [EVENTS.fleet_source_saved]: ["fleet_id", "field", "outcome"],
   [EVENTS.fleet_memory_forgotten]: ["fleet_id", "outcome"],
   [EVENTS.integration_requested]: ["integration_id", "integration_name"],
   [EVENTS.approval_resolved]: ["gate_id", "decision", "has_reason"],

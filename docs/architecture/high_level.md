@@ -318,7 +318,9 @@ The bastion is a pinned-memory pattern plus a few tool primitives plus a renderi
 
 Where the human front door points after the CLI/dashboard wedge.
 
-M206 built the first hired-agent slice. It is a fleet attached to one channel whose writes are bounded to one draft Pull Request per request. Its live drill is pending.
+M206 built the first hired-agent slice: a fleet that subscribes to one channel with a `mention` trigger. Its live drill is pending.
+
+Its writes reach only what a person approved on its access card. A write grant admits one branch and one draft Pull Request per turn.
 
 **The follow-on is direction, not a commitment.**
 

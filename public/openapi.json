@@ -6967,7 +6967,7 @@
           "Runners"
         ],
         "summary": "List the workspace's fleets",
-        "description": "Lists the fleets in the running fleet's workspace, newest first, archived and installing fleets included with their status. Continue with `starting_after` and `limit`.",
+        "description": "Lists the fleets in the running fleet's workspace, newest first, archived fleets included with their status. Continue with `starting_after` and `limit`.",
         "operationId": "runner_list_fleets",
         "parameters": [
           {
@@ -9402,7 +9402,7 @@
           {
             "name": "activity_type",
             "in": "query",
-            "description": "runtime or setup; absent selects both.",
+            "description": "`runtime`, a fleet run's usage; absent selects every line.",
             "required": false,
             "schema": {
               "type": "string"
@@ -17105,7 +17105,7 @@
           {
             "name": "purpose",
             "in": "query",
-            "description": "setup or runtime; omit for either",
+            "description": "runtime keeps only models a fleet can run on; omit for every model",
             "required": false,
             "schema": {
               "type": "string"
@@ -18729,7 +18729,7 @@
               "string",
               "null"
             ],
-            "description": "Fleet or model identifier; null identifies private setup usage."
+            "description": "Fleet or model identifier."
           },
           "label": {
             "type": [
@@ -18756,7 +18756,7 @@
             "items": {
               "$ref": "#/components/schemas/BillingFleetChoice"
             },
-            "description": "Runtime fleets and private setup, without private draft labels."
+            "description": "The fleets the period's usage names."
           }
         }
       },
@@ -18814,7 +18814,7 @@
               "string",
               "null"
             ],
-            "description": "Runtime fleet identifier; null identifies setup chat."
+            "description": "Fleet identifier."
           },
           "name": {
             "type": [
@@ -18918,7 +18918,7 @@
             "items": {
               "$ref": "#/components/schemas/BillingFleetBreakdown"
             },
-            "description": "Grouped runtime fleets and private setup."
+            "description": "Spending grouped by fleet."
           },
           "by_model": {
             "type": "array",
@@ -23424,19 +23424,14 @@
       },
       "Eligibility": {
         "type": "object",
-        "description": "Eligibility for each supported purpose is independent.",
+        "description": "What a model's saved settings support.",
         "required": [
-          "setup",
           "runtime"
         ],
         "properties": {
           "runtime": {
             "type": "boolean",
             "description": "Runtime provider resolution is supported."
-          },
-          "setup": {
-            "type": "boolean",
-            "description": "Bounded setup generation is supported."
           }
         }
       },

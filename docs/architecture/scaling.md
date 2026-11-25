@@ -181,12 +181,9 @@ The real-database test in `afd_fleet`'s run-plan suite asserts that every fleet 
 
 The process prioritizes recent notification hints, held fleets and previous holders, then randomizes the rest.
 An absent or stale notification leaves work queued in Postgres. No timer rereads it; the next ring, detected bus gap or freed runner capacity starts the pass that finds it.
-A parked oldest turn blocks later turns while standing access awaits an answer or a turn approval stays within its deadline.
 
-The partial `(fleet_id, turn_id, expires_at)` gate index serves both probes over unresolved rows.
-The approval-history plan test grows resolved, expired and unrelated gates from 2,000 to 16,000 rows. It runs both statements through `EXPLAIN (ANALYZE, BUFFERS)` with custom and generic prepared plans.
-
-It checks fleet and turn index bounds, deadline bounds for turn approvals, and early stopping when many gates match. Total discovery still grows with the eligible fleet population.
+No approval blocks a fleet's oldest turn. A run that waits on a person settles its turn `waiting`, so discovery and assignment read no gate.
+Total discovery still grows with the eligible fleet population.
 
 Assignment locks the thread row and exact head turn, stamps their fence, and commits before returning the run.
 An uncontended successful assignment takes discovery, begin, the assignment statement and commit; contended attempts add work.
@@ -479,7 +476,9 @@ Step 4: Emit configuration
 
 A runner that dies holds no datastore or bus connection to leak and no subscription to reclaim. Its in-flight run expires at `run_expires_at`.
 
-The next assignment re-issues the turn as a new run with a higher fencing token and marks the lapsed run expired in the same statement (`afd_fleet/src/run/sql/shared/expire_prior_run.sql`; [`runner_fleet.md`](./runner_fleet.md) §"Failure recovery model"). A disconnected run expires before another runner can be assigned the turn. No timer re-offers it: the next wake ring, detected bus gap or runner reporting free capacity starts that assignment.
+The next assignment re-issues the turn as a new run with a higher fencing token. The same statement marks the lapsed run expired (`afd_fleet/src/run/sql/run/assign_turn_head.sql`; [`runner_fleet.md`](./runner_fleet.md) §"Failure recovery model").
+
+A disconnected run expires before another runner can be assigned the turn. No timer re-offers it: the next wake ring, detected bus gap or runner reporting free capacity starts that assignment.
 
 Surviving hosts keep their existing connections; the gateway pushes newly available work.
 A silent host has no open connection, so the gateway pushes it no work; its run deadlines stay as they were.

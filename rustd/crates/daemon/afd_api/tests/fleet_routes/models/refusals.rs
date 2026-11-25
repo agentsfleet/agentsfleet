@@ -11,6 +11,7 @@ async fn model_choices_refuse_invalid_filters_and_bound_their_cursors() {
     let router = f.router();
     for query in [
         "?purpose=other",
+        "?purpose=setup",
         "?limit=0",
         "?limit=101",
         "?page=2",
@@ -23,7 +24,7 @@ async fn model_choices_refuse_invalid_filters_and_bound_their_cursors() {
     let first = list(&f, "?limit=1").await;
     if let Some(cursor) = first["next_cursor"].as_str() {
         let path = format!(
-            "/v1/workspaces/{}/models?limit=1&purpose=setup&starting_after={cursor}",
+            "/v1/workspaces/{}/models?limit=1&purpose=runtime&starting_after={cursor}",
             f.workspace
         );
         let response = send(&router, Method::GET, &path, Some(&f.token), "").await;

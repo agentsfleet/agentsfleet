@@ -73,7 +73,7 @@ pub(crate) use afd_api_wire::ingress::{Accepted, Ignored};
 
 /// The reason a delivery to a fleet nobody is running is dropped.
 ///
-/// A webhook to a fleet that is installing or archived answers 200
+/// A webhook to an archived fleet answers 200
 /// `{"ignored":"fleet_not_active"}`, because a sender's retry queue adds no
 /// value for a fleet that is not running.
 pub(crate) const REASON_FLEET_NOT_ACTIVE: &str = "fleet_not_active";

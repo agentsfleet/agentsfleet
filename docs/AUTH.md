@@ -406,9 +406,9 @@ An identity read failure reaches the page's existing authentication or error han
 
 | Caller | Reaches | Refused |
 |---|---|---|
-| `owner` of the account | workspace routes, plus the account's invites and members | private drafts still require their creator; see §Fleet setup and credential boundary |
+| `owner` of the account | workspace routes, plus the account's invites and members | nothing in the account |
 | `member` of the account | every workspace in the account: fleets, steering, streams, schedules, approvals, secret names, and every stored secret through the fleets they write | routes needing `secret:write` or `connector:write`, with `403 UZ-AUTH-026` |
-| platform operator holding `workspace:any` | any account's workspace through the outer ownership check | setup additionally checks membership and creator identity; each crossing is logged (§Platform crossing) |
+| platform operator holding `workspace:any` | any account's workspace through the outer ownership check | the fleet routes still check current membership; each crossing is logged (§Platform crossing) |
 | anyone else | nothing | `403 UZ-AUTH-001`, `Workspace access denied` |
 
 ```
@@ -439,8 +439,8 @@ The role then withholds it inside somebody else's account
 members with no change to the route.
 
 **A member uses every secret, through fleets**. The role withholds writing a
-secret, not using one. A member who installs or edits a fleet can declare any
-workspace secret, and the runner receives it at run
+secret, not using one. A member who approves a fleet's access card can give it
+any workspace secret, and the fleet's runs receive it
 (`rustd/crates/daemon/afd_credential/src/secrets/mod.rs`).
 
 An invited member is
@@ -557,7 +557,7 @@ carry the address or the email body.
 ### Platform crossing
 
 A platform operator holding `workspace:any` passes the outer ownership check for any account's workspace.
-Setup still checks current membership and private-draft ownership (§Fleet setup and credential boundary).
+The fleet routes still check current membership (`rustd/crates/daemon/afd_setup/src/access.rs`).
 The ownership layer logs each crossing once, before the handler runs (`rustd/crates/daemon/afd_tenant/src/workspace/crossing.rs`).
 
 The connector callback authorizes outside that layer and calls the same audit.
@@ -687,9 +687,9 @@ The seven token-minting proxy routes (per-fleet and workspace `turns` + `turns/s
 
 Each route mints through `credential()` (`ui/packages/app/lib/auth/credential.ts`), the one place the dashboard resolves a bearer, the same way a Server Action does. The four JSON reads share `lib/api/live-json-proxy.ts`, so their dot-segment guard, bearer minting and error passthrough live once.
 
-The two streams share the upstream fetch and response helpers in `lib/api/event-stream-proxy.ts`. Each stream route still checks the session before opening its upstream connection.
+The two streams share the upstream fetch and response helpers in `lib/api/turn-stream-proxy.ts`. Each stream route still checks the session before opening its upstream connection.
 
-All three stream proxies, including private setup, bound the handshake to 30 seconds and rotate the body at 240 seconds from request start. Rotation ends cleanly and aborts upstream; the existing clients reconnect and refresh durable data. Cancellation, failure and ordinary completion release readers and timers.
+Both stream proxies bound the handshake to 30 seconds and rotate the body at 240 seconds from request start (`lib/api/stream-lifetime.ts`). Rotation ends cleanly and aborts upstream; the existing clients reconnect and refresh durable data. Cancellation, failure and ordinary completion release readers and timers.
 
 The chat's steer and detail read moved here from Server Actions. Next runs a tab's actions one at a time, so a hung steer held every later read and steer behind it. A `fetch` to a route runs concurrently and aborts.
 
@@ -876,7 +876,7 @@ Five rules hold this table in place.
 | Rule | Where it holds |
 |---|---|
 | A tenant runner takes only its own tenant's work | run assignment and the candidate scan read `runner.runners.tenant_id`; issue reads it again under the host lock and logs `runner_placement_refused` (`UZ-RUN-027`) on a miss |
-| It never receives the platform model key | a fleet whose revision runs on the platform default model is never assigned to it, and issue refuses it too |
+| It never receives the platform model key | a fleet whose model is the platform default is never assigned to it, and issue refuses it too |
 | It has no platform decision model | a check on `runner.runners` refuses `decision_platform_model_id` on a tenant row |
 | Its owner is explicit and never changes | `platform_owned` is stated at registration, a check ties it to `tenant_id`, and a trigger refuses any update of either |
 | Only its tenant rotates its token | a platform caller's rotate answers `409 UZ-RUN-026` |
@@ -1241,11 +1241,14 @@ include `sid`, so a template token cannot double as the token
 
 Clerk's session-token claim customization ends the split. The session token now
 carries `aud`, `metadata.tenant_id`, and a `scopes` claim, so one JWT satisfies
-`clerkMiddleware()` and the audience check together. The dashboard mints it with
-server-side `credential()` and no template argument. Server Components,
-Server Actions and authenticated `/live/*` handlers attach it to backend calls.
-Workspace setup requests carry the browser's same-origin cookie to the narrow
-setup proxy; the proxy resolves the backend bearer on the server. The
+`clerkMiddleware()` and the audience check together.
+
+The dashboard mints it with server-side `credential()` and no template argument.
+Server Components, Server Actions and authenticated `/live/*` handlers attach it
+to backend calls.
+
+Workspace requests carry the browser's same-origin cookie to the narrow
+workspace proxy; the proxy resolves the backend bearer on the server. The
 command-line approval page has the separate handoff described below.
 
 Operator setup for the Clerk configuration is in
@@ -1281,7 +1284,7 @@ Customize session token** and reset to default. The next minted token has no
 refresh. Re-apply the claims to restore. No `agentsfleetd` or schema state is
 involved.
 
-**Workspace setup uses a narrow Backend-for-Frontend.** The `/live/*` setup
+**Workspace requests use a narrow Backend-for-Frontend.** The `/live/*` workspace
 handler authenticates allowed routes and checks write origins. Other dashboard
 reads and mutations use Server Components and Server Actions. A common boundary
 for every dashboard route remains future work alongside scoped capability
@@ -1329,7 +1332,7 @@ Slack reads `x-slack-request-timestamp`; Svix reads `svix-id` and `svix-timestam
 
 For example, a custom trigger declares `{"type":"webhook","source":"acme","credential_name":"acme-signing","verifier":{"scheme":"body-hex-sha256","header":"x-acme-signature"}}`. A Svix sender declares `{"type":"webhook","source":"clerk","credential_name":"clerk-signing","verifier":{"scheme":"svix-v1"}}`.
 
-Save advertises each source's own URL. The former `/v1/webhooks/svix/{fleet_id}` address is not served: `svix` is refused as a malformed fleet id.
+The fleet page shows each webhook trigger's own URL. The former `/v1/webhooks/svix/{fleet_id}` address is not served: `svix` is refused as a malformed fleet id.
 
 These recipes verify incoming signed deliveries. They do not connect an account, create a vendor subscription, or grant outbound application actions. App-level ingress keeps its platform secret and provider-specific handler.
 

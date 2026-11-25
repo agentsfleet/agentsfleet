@@ -73,8 +73,6 @@ pub enum FailureClass {
     RunExpired,
     /// Renewal was refused and the child was terminated.
     RenewalTerminate,
-    /// The run exceeded its spend budget.
-    BudgetBreach,
     /// The run would not fit the runner protocol's frame
     /// (`crate::protocol::MESSAGE_BYTES_MAX`). Set by `agentsfleetd`, never a
     /// runner: the run is failed at assignment and never sent.

@@ -84,7 +84,7 @@ Serialized JSON tokenization and the `o200k_base` estimate are not proven upper 
 A model whose vocabulary makes about a third more tokens than `o200k_base` can pass its working window before compaction fires.
 The [token counting decision rubric](../reviews/pr784-tokenizer-evaluation.md) records the candidate comparison and required model/request tests.
 
-Near capacity, both hosts can confirm the prepared request through the selected native Responses, Messages or Gemini API.
+Near capacity, the run can confirm the prepared request through the selected native Responses, Messages or Gemini API.
 Confirmation starts at 80 percent of input plus reserved output and has a ten-second deadline.
 Other routes retain their local estimate; a routed request is never forwarded elsewhere for counting.
 
@@ -117,7 +117,7 @@ Ordinary reply text replaces the interim status. Saved history remains authorita
 The paired events are `context_compaction_started`, `context_compaction_completed` and `context_compaction_failed`.
 Dropping unfinished work records failure; completion is recorded only after the durable commit succeeds.
 
-Fields include host, caller-owned operation identifier, expected and committed generation, group count, reserved output, elapsed milliseconds and registry error code.
+Fields include the caller-owned operation identifier, expected and committed generation, group count, reserved output, elapsed milliseconds and registry error code.
 Prompts, generated notes, source history and private error prose are excluded.
 
 Each finished model turn with reported input usage also emits `model_input_calibration`.
@@ -179,7 +179,7 @@ Evidence lives in host unit and integration tests, the unchanged continuity acce
 
 ## Required proof
 
-Run the original unchanged `make acceptance` after integration. Its single-fleet continuity scenario must continue past the former turn-42 failure and retain its original 181-message and four-save assertions. Record that result separately from focused proofs that force repeated compactions in each host.
+Run `make acceptance` after integration. Its soak test keeps one fleet through a long chat and three pinned rules, then runs it on several fleets at once (`ui/packages/app/tests/e2e/acceptance/fixtures/soak-scenario.ts`). Record that result separately from focused proofs that force repeated compactions.
 
 Retain the historical failed run.
 
@@ -200,7 +200,7 @@ i request you to do a large refactor of this area considering the fact that we w
 
 This extends the approved compaction implementation in PR #784.
 
-**Goal:** Both hosts share a storage-independent context lifecycle whose preparation work grows linearly with retained history. Independent conversations make progress concurrently.
+**Goal:** A run's context lifecycle stays storage-independent, and its preparation work grows linearly with retained history. Independent conversations make progress concurrently.
 
 **Owner-selected direction:** Use SPACE (`Sandboxed Platform for Agentic Code Execution`) approaches and selected source in an `agentsfleet`-owned sandbox. Retain control over performance and future changes. Broad platform integration and operating SPACE as a service are outside this direction.
 

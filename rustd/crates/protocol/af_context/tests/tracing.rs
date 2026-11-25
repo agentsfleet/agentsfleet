@@ -1,5 +1,5 @@
 //! Paired operational traces exclude private history on every ending.
-use af_context::{Compaction, Group, Host, Identity, Result, Trace};
+use af_context::{Compaction, Group, Identity, Result, Trace};
 use af_core::{error_code, test_util::trace::Capture};
 
 fn task() -> Compaction {
@@ -25,7 +25,7 @@ fn committed_summary_has_one_paired_trace_with_only_operation_metadata()
 -> Result<(), Box<dyn std::error::Error>> {
     let task = task();
     let capture = Capture::install();
-    let mut trace = Trace::start("dispatch-one".into(), Host::Setup, &task);
+    let mut trace = Trace::start("dispatch-one".into(), &task);
     trace.completed(1);
     trace.failed(error_code::INTERNAL_OPERATION_FAILED);
     drop(trace);
@@ -53,7 +53,6 @@ fn assert_span_metadata(
     assert_eq!(spans.len(), 1);
     let span = spans.first().ok_or("missing compaction span")?;
     assert_eq!(span.name, "context.compact");
-    assert_eq!(span.field("host"), Some("setup"));
     assert_eq!(span.field("expected_generation"), Some("0"));
     assert_eq!(span.field("generation"), Some("1"));
     assert_eq!(
@@ -80,7 +79,7 @@ fn assert_span_metadata(
 fn refused_summary_records_one_failure_without_a_false_commit() {
     let task = task();
     let capture = Capture::install();
-    let mut trace = Trace::start("run-one".into(), Host::Runtime, &task);
+    let mut trace = Trace::start("run-one".into(), &task);
     trace.failed(error_code::INTERNAL_OPERATION_FAILED);
     trace.completed(1);
     drop(trace);
@@ -91,10 +90,6 @@ fn refused_summary_records_one_failure_without_a_false_commit() {
         Some(error_code::INTERNAL_OPERATION_FAILED.as_str())
     );
     assert_eq!(failed.field("reason"), Some("operation_failed"));
-    assert_eq!(
-        capture.spans().first().and_then(|span| span.field("host")),
-        Some("runtime")
-    );
     assert_eq!(
         capture
             .spans()
@@ -108,7 +103,7 @@ fn refused_summary_records_one_failure_without_a_false_commit() {
 fn dropping_an_unfinished_summary_closes_the_trace_without_claiming_success() {
     let task = task();
     let capture = Capture::install();
-    drop(Trace::start("aborted-dispatch".into(), Host::Setup, &task));
+    drop(Trace::start("aborted-dispatch".into(), &task));
     assert_eq!(capture.events().len(), 2);
     let failed = capture.only("context_compaction_failed");
     assert_eq!(failed.field("reason"), Some("cancelled_or_dropped"));

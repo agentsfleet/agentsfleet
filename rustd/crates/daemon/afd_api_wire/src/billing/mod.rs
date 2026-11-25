@@ -13,7 +13,7 @@ use std::borrow::Cow;
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[cfg_attr(feature = "openapi", schema(as = BillingBreakdown))]
 pub struct Breakdown<'a> {
-    /// Fleet or model identifier; null identifies private setup usage.
+    /// Fleet or model identifier.
     pub key: Option<Cow<'a, str>>,
     /// Recorded fleet label, when available.
     pub label: Option<Cow<'a, str>>,
@@ -52,7 +52,7 @@ pub struct Daily {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[cfg_attr(feature = "openapi", schema(as = BillingFleetChoice))]
 pub struct FleetChoice<'a> {
-    /// Runtime fleet identifier; null identifies setup chat.
+    /// Fleet identifier.
     pub id: Option<Cow<'a, str>>,
     /// Recorded fleet name, when available.
     pub name: Option<Cow<'a, str>>,
@@ -63,7 +63,7 @@ pub struct FleetChoice<'a> {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[cfg_attr(feature = "openapi", schema(as = BillingChoices))]
 pub struct Choices<'a> {
-    /// Runtime fleets and private setup, without private draft labels.
+    /// The fleets the period's usage names.
     pub fleets: Vec<FleetChoice<'a>>,
 }
 
@@ -72,7 +72,7 @@ pub struct Choices<'a> {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[cfg_attr(feature = "openapi", schema(as = BillingSpending))]
 pub struct Spending<'a> {
-    /// Grouped runtime fleets and private setup.
+    /// Spending grouped by fleet.
     pub by_fleet: Vec<FleetBreakdown<'a>>,
     /// Grouped model identifiers.
     pub by_model: Vec<Breakdown<'a>>,

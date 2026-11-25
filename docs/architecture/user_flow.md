@@ -21,7 +21,7 @@ Every row is extracted from the §-numbered sections below; the owner column nam
 
 | Invariant | Value | Mechanism | Owner section |
 |---|---|---|---|
-| The wedge surface | `agentsfleet` CLI and dashboard, both over a fleet's chat | `curl -fsSL https://agentsfleet.dev \| bash` → `login` → `chat` | §8.0 |
+| The wedge surface | `agentsfleet` CLI and dashboard, both over a fleet's chat | `curl -fsSL https://agentsfleet.dev \| bash` → `login` → `fleet create` | §8.0 |
 | List output shape | name, identifier, domain columns, `AGO` | one helper owns the order for every entity list the CLI prints, and appends the age itself, so a call site has neither a position to choose nor a column to forget; a catalogue with no age of its own declares that rather than rendering an empty column | §8.4 |
 | Create input | a person's first message | `POST W/fleets {message, operation_id, model_ref?, name?}` writes the fleet, its thread and its first turn in one transaction | §8.2.2 |
 | Deployment posture | hosted-only in v2 | no `--self-host` flag, no self-host runbook; validation on non-Fly hosts is v3 | §8.0.1 |
@@ -180,10 +180,9 @@ The chat that created the Fleet is the Fleet's own chat; later messages land on 
 
 ### §8.2.3 First scenarios
 
-Two first scenarios anchor the product flow:
-
-- **GitHub Pull Request reviewer.** Wakes on GitHub pull request events and reads diff/context through `api.github.com`. Posting review comments needs a GitHub grant whose scope a person approved for write.
-- **Zoho Recruit outreach.** Reads Zoho Recruit data and optionally sends mail through a separate secret; its provider-specific guidance lives in its pinned memory.
+The eight fleets in [`tests/fixtures/fleets/`](../../tests/fixtures/fleets/README.md) anchor the product flow.
+Together they cover a first message, access, wake-ups, fleet-to-fleet steering, a durable task, GitHub and Slack.
+`watch-dog`, for one, asks for read access to one repository and wakes when a pull request opens there.
 
 ## §8.3 Triggering the Fleet
 
@@ -266,7 +265,6 @@ On the receiving fleet, the incoming message shows `@queen-bee`.
 Back in the sender's conversation, the report shows the other fleet's name and the sender's summary.
 Expand the **Worked** row to see **Sent fleet message** or **Read fleet activity**, then the tool's recorded input and output.
 
-The [interactive design reference](../ux.html#chief) illustrates the exchange.
 A digest is the same fleet reading without steering.
 `fleet_activity()` lists every fleet with its status, and one more read per fleet gives its latest result.
 
@@ -330,10 +328,10 @@ They are already:
 
 The v2 product meets them there first.
 
-Later, other entrypoints exist (the dashboard chat widget, direct API calls). But the MVP assumes:
+The dashboard's composer and direct API calls are equal entry points beside it. Whichever one a person uses:
 
-- the user authors and supervises from Claude
-- the fleet runs durably outside that transient chat session
+- the person starts and supervises the fleet by sending it messages
+- the fleet runs durably outside that chat session
 
 ## §8.7 Model and context-cap origin (platform vs. self-managed)
 
@@ -394,7 +392,7 @@ The fleet page's model picker lists eligible configured models, and a change sen
 
 Saved credentials are never returned to the browser. The former `/credentials` page stays removed; custom secrets live on `/secrets`.
 
-## §8.8 Slack mentions and configured fleets
+## §8.8 Slack mentions and subscribed fleets
 
 A workspace administrator connects Slack. A fleet subscribes to a channel when a person asks, by adding a `mention` trigger row with `trigger_add`.
 

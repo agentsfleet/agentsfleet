@@ -64,10 +64,9 @@ pub mod status {
 
     /// The status Stop writes: a person ended the turn before it finished.
     ///
-    /// Terminal and settled, on a fleet's turn and a setup draft's alike, so
-    /// no assignment takes it again. A report for the run that served it finds it
-    /// cancelled and leaves it so: the turn gets no answer (`commit_report.sql`
-    /// closes only a [`RECEIVED`] turn).
+    /// Terminal and settled, so no assignment takes it again. A report for
+    /// the run that served it finds it cancelled and leaves it so: the turn
+    /// gets no answer (`commit_report.sql` closes only a [`RECEIVED`] turn).
     pub const CANCELLED: &str = "cancelled";
 
     /// The status a run that asked the person a question settles its turn
@@ -90,14 +89,6 @@ pub mod label {
     /// The workspace resolves to no tenant — a broken foreign key, not a blip.
     pub const TENANT_RESOLVE_FAILED: &str = "tenant_resolve_failed";
 
-    /// The fleet's own declared ceiling is reached.
-    ///
-    /// Spelled identically to the runner-reported `budget_breach` failure
-    /// class, which carries the same verdict for the mid-run kill — one label
-    /// for two gates, so an operator greps one string whether the run was
-    /// refused at issue or stopped in flight.
-    pub const BUDGET_BREACH: &str = "budget_breach";
-
     /// A human refused the action.
     pub const APPROVAL_DENIED: &str = "approval_denied";
 
@@ -114,8 +105,8 @@ pub mod label {
     /// re-running it.
     ///
     /// Spelled identically to the runner-reported `run_expired` failure
-    /// class, as [`BUDGET_BREACH`] is to its own: one label whether a run
-    /// reported its lapse or the daemon ended an event nobody reported on.
+    /// class: one label whether a run reported its lapse or the daemon ended
+    /// an event nobody reported on.
     pub const RUN_EXPIRED: &str = "run_expired";
 
     /// The event names a type this daemon has no execution path for.

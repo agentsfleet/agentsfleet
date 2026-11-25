@@ -11,15 +11,6 @@ const STARTED: &str = "context_compaction_started";
 const COMPLETED: &str = "context_compaction_completed";
 const FAILED: &str = "context_compaction_failed";
 
-/// The production host, independent of customer content or model names.
-#[derive(Debug, Clone, Copy)]
-pub enum Host {
-    /// Creator-private setup conversation.
-    Setup,
-    /// One fleet execution branch.
-    Runtime,
-}
-
 /// One physical summary and its guarded checkpoint publication.
 #[derive(Debug)]
 pub struct Trace {
@@ -32,18 +23,13 @@ pub struct Trace {
 impl Trace {
     /// Starts after preparation; identifiers must be caller-owned operation IDs.
     #[must_use]
-    pub fn start(correlation: Arc<str>, host: Host, task: &Compaction) -> Self {
-        let host = match host {
-            Host::Setup => "setup",
-            Host::Runtime => "runtime",
-        };
+    pub fn start(correlation: Arc<str>, task: &Compaction) -> Self {
         let correlation_id = correlation.as_ref();
         let expected_generation = task.expected_generation;
         let group_count = task.groups.len();
         let reserved_output_tokens = task.output_tokens;
         let span = tracing::info_span!(
             "context.compact",
-            host,
             correlation_id,
             expected_generation,
             group_count,

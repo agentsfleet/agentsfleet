@@ -223,7 +223,7 @@ describe("runner enrollment", () => {
       expect(await Bun.file(file).exists()).toBe(false);
       if (method === "GET") return { items: [], next_cursor: null };
       expect(await Bun.file(`${file}.enrolling`).exists()).toBe(true);
-      // The setup edit check runs only for a runner that names a decision model.
+      // The task goal check runs only for a runner that names a decision model.
       expect(body).toMatchObject({ assigned_policy: { decision_model_id: DECISION_ID } });
       writes++;
       return registration;
@@ -243,11 +243,11 @@ describe("runner enrollment", () => {
     await reuse();
     expect(verify).toHaveBeenCalledTimes(1);
     expect(writes).toBe(1);
-    // A runner enrolled before the edit check, or with another model, is refused rather than reported ready.
+    // A runner enrolled before the goal check, or with another model, is refused rather than reported ready.
     policy = {};
-    await expect(reuse()).rejects.toThrow(/setup edit check/);
+    await expect(reuse()).rejects.toThrow(/task goal check/);
     policy = { decision_model_id: "01900000-0000-7000-8000-0000000000ff" };
-    await expect(reuse()).rejects.toThrow(/setup edit check/);
+    await expect(reuse()).rejects.toThrow(/task goal check/);
   });
 });
 
@@ -394,7 +394,7 @@ describe("platform workspace record", () => {
   });
 });
 
-describe("setup edit check", () => {
+describe("task goal check", () => {
   const modelRow = { id: DECISION_ID, provider: "typesafe", model_id: "jev-latest" };
 
   test("the decision model is created once and its key saved once in the platform workspace", async () => {

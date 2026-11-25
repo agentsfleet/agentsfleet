@@ -119,7 +119,7 @@ A run carrying that text reaches its runner in one frame of at most 32 MiB (`af_
 
 | # | Method and resource | Exact input / preconditions | Success output | Specific failures |
 |---|---|---|---|---|
-| W1 | GET W/models | No body; `purpose=setup|runtime` optional, list paging; workspace authorization | 200 Page of `{ref,label,provider,model,context_window_tokens,max_output_tokens,eligibility:{setup,runtime},pricing:{input_nanos_per_million,output_nanos_per_million,runtime_nanos_per_second}}`; the owner's eligible enabled entries only | AUTH, INPUT, CURSOR, DEPENDENCY |
+| W1 | GET W/models | No body; `purpose=runtime` optional, list paging; workspace authorization | 200 Page of `{ref,label,provider,model,context_window_tokens,max_output_tokens,eligibility:{runtime},pricing:{input_nanos_per_million,output_nanos_per_million,runtime_nanos_per_second}}`; the owner's eligible enabled entries only | AUTH, INPUT, CURSOR, DEPENDENCY |
 | W2 | POST W/fleets | `{message,operation_id,model_ref?,name?}`; `fleet:write`; message within the text ceiling; body UUIDv7 key only | 201 `{fleet:Fleet,accepted:{turn_id,disposition:"started"|"queued"},replayed:false}`; a repeat answers 200 with `replayed:true` | INPUT, REPLAY, GONE, MODEL, NAME, AUTH, DEPENDENCY |
 | W3 | GET W/fleets | No body; `fleet:read`; list paging; optional `?name=` | 200 Page of FleetSummary | INPUT, CURSOR, AUTH, DEPENDENCY |
 

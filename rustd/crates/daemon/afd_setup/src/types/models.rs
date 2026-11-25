@@ -6,8 +6,6 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ModelPurpose {
-    /// Bounded private setup generation.
-    Setup,
     /// Shared fleet execution.
     Runtime,
 }
@@ -35,8 +33,6 @@ pub struct ModelsQuery {
 /// Independent support facts, not permission receipts.
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct ModelEligibility {
-    /// This deployment can run setup with the selection.
-    pub setup: bool,
     /// Existing runtime provider resolution accepts the selection.
     pub runtime: bool,
 }

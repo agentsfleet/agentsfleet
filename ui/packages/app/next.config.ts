@@ -39,12 +39,12 @@ const nextConfig: NextConfig = {
     // https://github.com/vercel/next.js/issues/100326
     ...(process.env.VERCEL === "1" && {turbopackFileSystemCacheForBuild: false}),
     useTypeScriptCli: true,
-    // `proxy.ts` matches the setup and message routes, so Next buffers their
+    // `proxy.ts` matches the create and message routes, so Next buffers their
     // bodies, and past its 10 MiB default it truncates them silently. The
-    // number is lib/api/body-limits.ts's PROXY_BODY_LIMIT_BYTES, written out
+    // number is lib/api/body-limits.ts's TEXT_BODY_LIMIT_BYTES, written out
     // because a local import breaks `next start <dir>` under Bun from another
     // directory; tests/body-limits.test.ts pins the two equal.
-    proxyClientMaxBodySize: 25_640_960,
+    proxyClientMaxBodySize: 12_599_296,
     optimizePackageImports: ["@phosphor-icons/react", "@phosphor-icons/react/ssr"],
   },
 

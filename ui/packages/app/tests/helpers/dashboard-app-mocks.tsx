@@ -50,9 +50,6 @@ export const listFleetsActionMock = vi.fn<
 export const deleteFleetActionMock = vi.fn<(ws: string, fleetId: string, ifMatch: string) => Promise<ActionResult<void>>>(
   async () => ({ ok: true, data: undefined }),
 );
-export const installFleetActionMock = vi.fn<
-  () => Promise<ActionResult<{ fleet_id: string }>>
->(async () => ({ ok: true, data: { fleet_id: "z_test" } }));
 
 // ── Module factories (delegated to from each shard's vi.mock call) ───────────
 export function fleetsApiMock() {
@@ -60,9 +57,8 @@ export function fleetsApiMock() {
     listFleets: listFleetsMock,
     setFleetStatus: setFleetStatusMock,
     getFleet: vi.fn(),
-    installFleet: vi.fn(),
     deleteFleet: vi.fn(),
-    AGENTSFLEET_STATUS: { ACTIVE: "active", ARCHIVED: "archived", INSTALLING: "installing" },
+    AGENTSFLEET_STATUS: { ACTIVE: "active", ARCHIVED: "archived" },
   };
 }
 
@@ -71,7 +67,6 @@ export function fleetActionsMock() {
     setFleetStatusAction: setFleetStatusActionMock,
     listFleetsAction: listFleetsActionMock,
     deleteFleetAction: deleteFleetActionMock,
-    installFleetAction: installFleetActionMock,
   };
 }
 
@@ -138,7 +133,7 @@ export function resetDashboardMocks() {
   listFleetsMock.mockResolvedValue({
     items: [
       { id: "zom_1", name: "alpha-bot", status: "active", created_at: "2026-04-22T00:00:00Z" },
-      { id: "zom_2", name: "beta-bot", status: "installing", created_at: "2026-04-22T00:00:01Z" },
+      { id: "zom_2", name: "beta-bot", status: "active", created_at: "2026-04-22T00:00:01Z" },
       { id: "zom_3", name: "gamma-bot", status: "archived", created_at: "2026-04-22T00:00:02Z" },
     ],
     total: 3,

@@ -32,7 +32,7 @@ Each rule below holds until the milestone named beside it lands; that milestone'
 | A runner polls; there is no cancel channel | `runner_fleet.md` | M243 |
 | The run path is not a general scheduler | `runner_fleet.md` | M243 |
 | Config is never cached | `runner_fleet.md` | M245, done. The assignment reads the fleet row and its approved grants on every run |
-| Timers have no central deadline scheduler | `concurrency.md` | M245, done. Since M253_003 the daemon runs no expiry clock: the assignment that takes a lapsed run's work expires that run (`afd_fleet`'s `expire_prior_run.sql`) |
+| Timers have no central deadline scheduler | `concurrency.md` | M245, done. Since M253_003 the daemon runs no expiry clock: the assignment that takes a lapsed run's work expires that run (`afd_fleet`'s `assign_turn_head.sql`) |
 
 ## Where each fact lives
 

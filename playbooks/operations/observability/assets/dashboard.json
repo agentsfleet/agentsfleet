@@ -401,11 +401,6 @@
       },
       "targets": [
         {
-          "expr": "max(agentsfleet_fleets{status=\"installing\"})",
-          "legendFormat": "installing",
-          "refId": "A"
-        },
-        {
           "expr": "max(agentsfleet_fleets{status=\"active\"})",
           "legendFormat": "active",
           "refId": "B"

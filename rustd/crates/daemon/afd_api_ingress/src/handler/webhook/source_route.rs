@@ -1,12 +1,11 @@
 //! `POST /v1/webhooks/{fleet_id}/{source}` — one fleet's deliveries from the
 //! source its URL names.
 //!
-//! The URL Save hands back for a webhook trigger whose provider this daemon
-//! ships a scheme for (`afd_api_tenant`'s `render::webhook_urls`). The trigger
-//! is chosen by the name in the URL, so a fleet that declares two webhook
-//! sources gives each one an address of its own, and the scheme its signature
-//! is checked under comes from that declaration rather than from anything the
-//! sender said.
+//! The URL of a webhook trigger the fleet added, for a provider this daemon
+//! ships a scheme for. The trigger is chosen by the source in the URL, so a
+//! fleet with two webhook triggers gives each one an address of its own, and
+//! the scheme its signature is checked under comes from that trigger's row
+//! rather than from anything the sender said.
 //!
 //! The literal `/github` and `/approval` templates beside this one are matched
 //! first, so those two names never arrive here. Neither can be declared as a

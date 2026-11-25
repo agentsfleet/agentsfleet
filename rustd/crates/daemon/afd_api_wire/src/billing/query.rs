@@ -13,10 +13,10 @@ pub struct Filters {
     pub through_at: Option<String>,
 }
 
-/// Reports can select runtime or setup usage, or keep both.
+/// Reports can select one kind of work; every line today is a fleet run's.
 #[derive(Debug, utoipa::IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct ReportKind {
-    /// runtime or setup; absent selects both.
+    /// `runtime`, a fleet run's usage; absent selects every line.
     pub activity_type: Option<String>,
 }

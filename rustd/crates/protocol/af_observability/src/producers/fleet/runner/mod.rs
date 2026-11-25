@@ -111,7 +111,6 @@ const fn class_label(class: FailureClass) -> &'static str {
         FailureClass::LandlockDeny => "landlock_deny",
         FailureClass::RunExpired => "run_expired",
         FailureClass::RenewalTerminate => "renewal_terminate",
-        FailureClass::BudgetBreach => "budget_breach",
         FailureClass::FrameTooLarge => "frame_too_large",
     }
 }

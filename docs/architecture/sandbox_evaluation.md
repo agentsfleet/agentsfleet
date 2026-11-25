@@ -177,7 +177,7 @@ Use a synthetic Git repository with a pinned base commit, a small build, an exis
 | 1 | Bind a repository and ask for the change. | Record the exact base commit and current repository permission; create one private writable checkout. | Repository hash, clean initial diff and denied foreign repository access. |
 | 2 | Start work and perform setup. | Report progress for checkout, environment setup and the first useful command separately. | Stage timings and a command result; a live machine alone is insufficient. |
 | 3 | Send a follow-up while a command is running. | Acknowledge the queued steer event; finish the current run before running that event. Show queued versus consumed status. | A controlled command barrier proves the follow-up does not start a second active run and runs after the first. Mid-run steering is a separate proposed behavior. |
-| 4 | Grow the fleet's conversation context through repeated compaction. | Continue with the goal, latest instructions and complete tool groups; retain original source history. | Forced host tests plus the unchanged full continuity scenario. Turn count alone does not prove a compaction occurred. |
+| 4 | Grow the fleet's conversation context through repeated compaction. | Continue with the goal, latest instructions and complete tool groups; retain original source history. | Forced compaction tests plus the acceptance soak journey. Turn count alone does not prove a compaction occurred. |
 | 5 | Edit tracked files, create an untracked file and leave a local commit unpushed. | Report which checkpoint durably protects each item and its recovery boundary. | Hashes, Git status and the committed workspace manifest; no assumption that Git commit captures all files. |
 | 6 | Suspend, then replace the worker after a completed durable save. | Restore the declared files and base commit under a new current run. Reject stale writers. Report processes as restored or stopped according to the chosen mechanism. | Restore on a different worker; compare hashes and reject an old run's mutation. |
 | 7 | Drop a command attachment after its side effect, then reconnect. | Reattach to the existing command or report uncertain outcome. Never automatically start the side effect again. | Append a unique marker once; interrupt transport after acknowledgement and count markers after reconnect. |
@@ -289,8 +289,8 @@ These are required acceptance proofs for the proposed integration, not capabilit
 
 ## Repository revisions across events
 
-These proposed sandbox walkthroughs extend existing scenarios; their current behavior remains owned by those pages.
-The pull request reviewer and production deployment repair fleets provide the starting points.
+These proposed sandbox walkthroughs start from two fleets a person could create: a pull request reviewer and a production deployment repairer.
+No fixture covers an incident; [`run_flow.md`](run_flow.md) walks a reviewer's path today.
 [Repeated review](run_flow.md#5-the-pr-is-fixed-and-pushed-again) already describes a laptop push waking the same fleet through a new turn.
 
 Fleet identity, conversation continuity and repository revision have separate lifetimes.
@@ -323,7 +323,7 @@ Before posting a result, reread the current head and label which commit the find
 A result for an older commit cannot approve a newer commit.
 Read remote review state after an ambiguous post before repeating it.
 
-**Current gaps:** [Review posting is refused](run_flow.md#4-how-agent-bob-01-can-reply), and prior review continuity across turns is not automatic.
+**Current gaps:** [Review posting is refused](run_flow.md#4-how-pr-review-can-reply), and prior review continuity across turns is not automatic.
 The ingress digest (`afd_api_ingress`) carries the head commit but omits the base commit.
 The proposed revision selection and publication checks need implementation and narrowly scoped posting authority.
 
@@ -345,7 +345,7 @@ Reproduce -> bounded patch -> tests -> draft pull request
 Human merge -> existing deployment pipeline
 ```
 
-The existing incident design keeps the responder and repairer independent.
+This proposal keeps the responder and repairer independent.
 A diagnosis does not automatically wake the repairer; a failed workflow or human steer starts its run.
 The owner proposes an explicit human handoff: show the completed diagnosis and repair proposal, then wait for approval before producing a patch.
 
@@ -357,7 +357,7 @@ The latest `main` commit may differ from both the failed build and the deployed 
 
 Reproduce against the affected revision when evidence allows, then compare it with a freshly verified `main` revision.
 If the issue remains, create a private repair branch from that recorded target revision and test the fix there.
-Ambiguous deployment identity or a failure outside code ends diagnosis-only, following the existing scenario.
+Ambiguous deployment identity or a failure outside code ends diagnosis-only.
 
 Keep the approved repository, target base and daemon-issued repair branch as publication boundaries.
 Preserve the existing remote reconciliation before retrying a branch or draft creation.
@@ -375,7 +375,7 @@ A successful workflow alone cannot certify that the original production symptom 
 
 Current write runs can correct their own turn-derived branch with an exact, non-force PATCH.
 That same-turn operation does not implement the later-turn behavior below.
-See [the current write boundary](run_flow.md#3-github-pr-reviewer-end-to-end).
+See [the current write boundary](run_flow.md#3-pr-review-end-to-end).
 
 **Owner-selected behavior:** Later approved fixes for the same incident continue its existing draft pull request, with fresh permission and code checks.
 Keep the incident, coding session, repair attempt, repository, branch and draft relationship in trusted application state.
@@ -801,7 +801,7 @@ For example, a payments monitor and a database monitor can diagnose their respec
 If both subscribe to the same broad alert feed, both can wake for one outage.
 Another outage does not create another fleet or notify every existing fleet by itself.
 
-The existing incident design describes scheduled Grafana reads.
+A monitoring fleet can read Grafana on a schedule it adds with `cron_add`, using a secret a person approved for it.
 Each due schedule wakes its own fleet, even when another monitoring fleet is already running.
 Reading Grafana with a credential does not itself create an incoming alert subscription.
 

@@ -103,9 +103,7 @@ impl<'a> Verdict<'a> {
     ///
     /// The wire enum's own `snake_case` serde spelling, so a stored class
     /// reads the same as the reported one and a new class is spelled the
-    /// moment it is declared. `budget_breach` is also the gate's refusal label
-    /// (`af_core::turn::label::BUDGET_BREACH`): one string for the ceiling
-    /// hit at issue and the ceiling hit mid-run, so an operator greps once.
+    /// moment it is declared.
     pub(super) fn label(self) -> Option<String> {
         match self {
             Self::Succeeded | Self::Stopped | Self::Waiting | Self::Failed { class: None, .. } => {

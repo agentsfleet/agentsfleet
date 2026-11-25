@@ -160,7 +160,6 @@ fn test_every_runner_producer_runs_its_body() {
         FailureClass::LandlockDeny,
         FailureClass::RunExpired,
         FailureClass::RenewalTerminate,
-        FailureClass::BudgetBreach,
         FailureClass::FrameTooLarge,
     ] {
         producers::fleet::runner::failed(RUNNER, Some(class));

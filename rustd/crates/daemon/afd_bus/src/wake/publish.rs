@@ -6,8 +6,7 @@ use crate::{Handle, Subject};
 /// Publish only after commit; failure cannot reject work already accepted. The bus
 /// bounds the publish at its configured `publish_deadline_ms`.
 ///
-/// `owner` is the waiting work's thread, a fleet or a setup draft, named by
-/// its own id: one wake subject serves both kinds.
+/// `owner` is the waiting work's thread, named by its fleet's id.
 pub async fn publish(bus: &Handle, owner: Uuid7) {
     let payload = owner.to_string();
     let Err(failure) = bus.publish(&Subject::ThreadWake(owner), &payload).await else {

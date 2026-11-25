@@ -222,7 +222,7 @@ fn test_every_write_names_the_body_it_reads() {
 // fails_when=an annotation spells 401, 403 or 500 by hand, as ten did
 // ("Unauthorized", "Internal failure"); why_new=GuardedFailures; seam=none.
 // 429 and 503 stay free: a route may name the limit or dependency it hit, as
-// readiness and the draft stream do.
+// readiness does.
 #[test]
 fn test_shared_refusals_keep_their_shared_sentences() {
     use afd_http::openapi::{

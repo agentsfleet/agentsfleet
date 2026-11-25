@@ -14,7 +14,7 @@ pub(crate) enum ErrorKind {
     Window,
     #[error("the context source or checkpoint changed")]
     Stale,
-    #[error("the run saving the context no longer holds its draft at that fence")]
+    #[error("the run saving the context no longer holds its thread at that fence")]
     StaleFence,
     #[error("context preparation was cancelled")]
     Cancelled,
@@ -61,14 +61,14 @@ impl Error {
     }
 
     /// Whether a fenced save was refused because its run no longer holds the
-    /// draft at the fence it named.
+    /// thread at the fence it named.
     #[must_use]
     pub const fn is_stale_fence(&self) -> bool {
         matches!(self.kind(), ErrorKind::StaleFence)
     }
 
     /// A fenced save whose run a reassignment superseded, or that holds no
-    /// draft at all: nothing was written.
+    /// thread at all: nothing was written.
     #[must_use]
     pub fn stale_fence() -> Self {
         ErrorKind::StaleFence.into()

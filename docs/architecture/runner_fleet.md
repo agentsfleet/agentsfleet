@@ -428,7 +428,9 @@ No timed sweep cordons a host or writes a `runner_offline` row: the liveness swe
 
 A host silent past the offline window, 114 seconds by default, also reads `offline` when a read derives its liveness (`afd_runner`'s `view/decode.rs`). Its sandbox hold stops protecting its fleet from other runners' assignments (`assign_turn_head.sql`).
 
-A row that already carries `missed_heartbeats` still returns. Healthy heartbeats from the current connection must continue for 30 seconds before the heartbeat lifts it and writes `runner_uncordoned`. A gap of at least two heartbeat intervals or a failed health proof resets that interval. Lifting it preserves an operator's cordon, drain or revocation. New fleet and setup assignments refuse a cordoned host under its row lock.
+A row that already carries `missed_heartbeats` still returns. Healthy heartbeats from the current connection must continue for 30 seconds before the heartbeat lifts it and writes `runner_uncordoned`. A gap of at least two heartbeat intervals or a failed health proof resets that interval.
+
+Lifting it preserves an operator's cordon, drain or revocation. A new assignment refuses a cordoned host under its row lock.
 
 `afd_runner`'s `heartbeat/cordon.rs` and `heartbeat_with_transition_history.sql` own the lift.
 
@@ -733,7 +735,11 @@ Two decisions by Indy on 2026-10-03, after the options below were weighed.
 
    The flip shipped in M210_004 with no caller and was removed in M229 (Indy, 2026-10-18). No endpoint called it and no second store existed. The trait, the flip and the in-memory store it was proved against return with the first vendor store.
 
-2. **Memory carries both keys.** Every entry belongs to a workspace; a fleet-scoped entry also belongs to its fleet. A fleet reads and writes its own fleet-scoped memory as today. Workspace-scoped memory is shared by the workspace's fleets and reached only by a fleet granted that access. Indy: "we must have flexibility to have the memory have a key of the fleet_id, workspace_id as well. The workspace_id are restricted based on scope (access control)", refining an earlier "Workspace-wide only". A configured Slack fleet keeps private memory fleet-scoped unless its reviewed grants permit sharing.
+2. **Memory carries both keys.** Every entry belongs to a workspace; a fleet-scoped entry also belongs to its fleet. A fleet reads and writes its own fleet-scoped memory as today. Workspace-scoped memory is shared by the workspace's fleets and reached only by a fleet granted that access.
+
+   Indy: "we must have flexibility to have the memory have a key of the fleet_id, workspace_id as well. The workspace_id are restricted based on scope (access control)", refining an earlier "Workspace-wide only".
+
+   A Slack fleet keeps its memory fleet-scoped unless its `memory_reads_workspace` or `memory_publishes_workspace` toggle (`fleet_fleets.sql`) is on.
 
 | Option weighed | Who talks to the store | Credential the runner holds | `agentsfleetd` calls per run |
 |---|---|---|---|
@@ -1110,7 +1116,7 @@ The toggles never enlarge sandbox network access or change the runner's assigned
 
 The shared HTTP builder still disables automatic redirects. The tool composes continuations through the same run's egress policy check before each send (`afr_tools`' egress module and `af_egress`'s redirect module).
 
-HTTPS, reviewed destination scope, address and origin request rules remain authoritative at every hop.
+HTTPS, the destinations the fleet's network toggles and approved grants allow, and the address and origin request rules remain authoritative at every hop.
 
 The guarded resolver checks every returned address at connection time.
 

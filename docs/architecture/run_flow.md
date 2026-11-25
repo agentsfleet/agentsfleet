@@ -10,7 +10,8 @@ Where a step's facts live on one of those pages, this page links rather than res
 Crate names refer to crates under `rustd/crates/`.
 Expanded acronyms: Hash-based Message Authentication Code (HMAC), Server-Sent Events (SSE), Time To Live (TTL).
 
-This example is the `github-pr-reviewer` fleet, named "agent-bob-01", which watches `agentsfleet/linkwarden`.
+This example is a fleet named `pr-review` that a person started to review pull requests on `agentsfleet/linkwarden`, with a write grant on that repository.
+The `watch-dog` fixture ([`tests/fixtures/fleets/watch-dog.json`](../../tests/fixtures/fleets/watch-dog.json)) runs the same path with a read grant.
 
 Section 1 covers the daemon, section 2 the runner, and section 3 the complete example.
 Sections 6 and 7 cover the sandbox and host.
@@ -20,7 +21,7 @@ Sections 6 and 7 cover the sandbox and host.
 ## 1. From "start a fleet" to a run
 
 ```text
- FIRST MESSAGE           POST /v1/workspaces/{ws}/fleets {message, name: "agent-bob-01"}
+ FIRST MESSAGE           POST /v1/workspaces/{ws}/fleets {message, name: "pr-review"}
    (once)                fleet.fleets (active) + thread.threads + turn #1     Postgres
                          its runs, each when the person's message asks:
                            memory_store, category core ⇒ pinned guidance      Postgres
@@ -56,7 +57,7 @@ Sections 6 and 7 cover the sandbox and host.
                          i INSERT thread.runs        status=active, fencing_token, expires  ← THE RUN ROW
                          j push Down::Run{run:{run_id,fencing_token,run_expires_at,
                                                   event{digest},policy,
-                                                  name="agent-bob-01"}}
+                                                  name="pr-review"}}
 ```
 
 ### A first message creates the fleet
@@ -67,7 +68,7 @@ That message saves nothing about the job. The fleet's own runs set it up by tool
 
 `memory_store` under `core` pins the standing guidance, which every later prompt carries. `request_access` raises the card a person approves once, and `trigger_add` writes the GitHub subscription ([triggers](connectors.md#fleet-triggers)).
 
-The fleet's display name ("agent-bob-01") is `fleet.fleets.name`. The run payload carries it into the prompt's fixed text; nothing in routing reads it.
+The fleet's display name ("pr-review") is `fleet.fleets.name`. The run payload carries it into the prompt's fixed text; nothing in routing reads it.
 
 ### Ingress: how a PR on `agentsfleet/linkwarden` finds the fleet
 
@@ -81,7 +82,7 @@ The route reads the body once with `github::Delivery::read`. It takes `installat
 
 The repository match is fail-closed: a row with no `repositories` subscribes to nothing, and the match is case-insensitive. The event match is the opposite: no `events` means every event. Every match gets the delivery.
 
-The fleet slug `agent-bob-01` receives the request through linkwarden's installation, which maps to Indy's workspace.
+The fleet `pr-review` receives the request through linkwarden's installation, which maps to Indy's workspace.
 Each active fleet there whose row names the repository and the event receives one turn.
 
 This fleet's row has `source: github`, `events: [pull_request]` and `repositories: [agentsfleet/linkwarden]`.
@@ -111,7 +112,7 @@ The gateway assigns a queued turn and its fleet's thread.
 6. Read the fleet row and its approved grants, and resolve the payer and balance. An empty wallet, or a payer with no wallet row, refuses the turn `balance_exhausted`.
 7. Assemble credentials and policy, then insert the `thread.runs` row under the raised fence.
 
-An expired run leaves its turn unsettled. The next assignment of that turn marks the run expired in the same statement (`afd_fleet`'s `sql/shared/expire_prior_run.sql`); no daemon timer does it. Redelivery keeps its turn id, intake time and prior billing identity.
+An expired run leaves its turn unsettled. The next assignment of that turn marks the run expired in the same statement (`afd_fleet`'s `sql/run/assign_turn_head.sql`); no daemon timer does it. Redelivery keeps its turn id, intake time and prior billing identity.
 
 A report settles the turn in the transaction that records usage, terminal state, checkpoint, thread release and any owed delivery.
 See [the queue design](./datastore_scaling.md#the-turns-ledger-is-the-queue) for budgets, notifications and recovery limits.
@@ -152,7 +153,7 @@ Process loss can discard results or usage the daemon has not accepted.
 
 ---
 
-## 3. `github-pr-reviewer` end to end
+## 3. `pr-review` end to end
 
 ```text
  GitHub                  agentsfleetd                       agentsfleet-runner
@@ -165,7 +166,7 @@ Process loss can discard results or usage the daemon has not accepted.
    │                      digest{action:"opened", repo:"agentsfleet/linkwarden", number, ...}
    │                      app_event rows in W: active fleet
    │                        ∩ repositories ∋ agentsfleet/linkwarden
-   │                        ∩ events ∋ pull_request          ⇒ agent-bob-01 (and any twin)
+   │                        ∩ events ∋ pull_request          ⇒ pr-review (and any twin)
    │                      commit queued turn + best-effort wake
    │◄──── 202 ────────────┤
    │                      gateway sees available capacity on the native connection
@@ -263,7 +264,7 @@ On GitHub: nothing. Memory: whatever `memory_store` wrote, pushed before the rep
 
 ---
 
-## 4. How AGENT BOB 01 can reply
+## 4. How `pr-review` can reply
 
 **Pinned guidance is prose and cannot widen anything.** The prompt's fixed text and pinned memory are soft reasoning input.
 
@@ -289,11 +290,8 @@ A chat message cannot add an egress rule.
 
 The write rules admit a fix on the repair branch and one draft PR, and no comment (`afd_gate`'s egress write rules).
 
-**The deferral, verbatim** (the agent-loop workstream's spec, under Discovery, its Deferrals bullet):
-
-```text
-**Deferrals** — Dimension 6.3's review post: no `afd_gate` rule admits `POST …/pulls/{number}/reviews`, so the post is refused today. > Indy (2026-10-04 11:49): "6.3 The PR review gets posted from the runner? SKILL.md? I want to experience the test and decide, so make me record that and add this as parked." — context: the runner posts it, the `github-pr-reviewer/definition.json` instructions' step 4 sending `POST …/pulls/{number}/reviews` through `http_request`; a write binding admits only `/git/blobs`, `/git/trees`, `/git/commits`, the locked ref and the locked draft (`rustd/crates/daemon/afd_gate/src/policy/egress/write.rs`), so the runner refuses the post before it leaves and the test asserts that; Dimension 6.3 stays open until Indy runs it, and this supersedes the Oct 03 "move it to done" for 6.3. > Indy (2026-10-03 15:32): "you just tell me crap, increase the scope, so the refusal of review must be ignored for now. If that blocks the spec to move to done, then record Indys wording and move it to done."
-```
+**The deferral.** The agent-loop workstream parked the review post, and its spec records the owner's words ([M210_002](../v2/done/M210_002_P1_API_INFRA_RUST_RUNNER_AGENT_LOOP_AND_HOSTED_TOOLS.md), Discovery).
+No `afd_gate` rule admits `POST …/pulls/{number}/reviews`, so the runner refuses the post before it leaves.
 
 **The other reply path, also not for GitHub.** The report owes a `thread.deliveries` delivery only when the turn recorded a reply destination. That is `afd_fleet`'s run commit and `rustd/crates/daemon/afd_db/schema/20261108125100_thread_turns.sql`.
 
@@ -403,7 +401,7 @@ Native task bindings and publication receipts retain the authorized PR and expec
 
 Task continuations use the existing turn and run path.
 A task wake requests fresh exact-head evidence; it does not grant authority or certify CI success.
-See the scenario for target binding, publication races, cumulative limits and combined acceptance; see [sandbox evaluation](sandbox_evaluation.md#coding-sessions-and-worktrees-across-runs) for workspace recovery mechanics.
+[Durable tasks](durable_tasks.md#state-authority-and-transaction-boundaries) covers target binding and cumulative limits; [sandbox evaluation](sandbox_evaluation.md#coding-sessions-and-worktrees-across-runs) covers workspace recovery mechanics.
 
 M224 proves the reduced manual-first path separately.
 A dedicated reviewed implementation spec and development autonomy proof remain outstanding.

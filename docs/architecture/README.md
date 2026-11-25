@@ -91,7 +91,7 @@ The larger topic files open with a Facts table, so the answer is usually on the 
 | How does a cold machine reach a running fleet? | [`user_flow.md`](./user_flow.md) §"§8.0 The wedge surface", §"§8.2.1 Cold-machine bootstrap (run once per machine)" |
 | Where do model and cap originate, per posture? | [`user_flow.md`](./user_flow.md) §"§8.7 Model and context-cap origin (platform vs. self-managed)" |
 | What can wake a fleet besides a message? | [`user_flow.md`](./user_flow.md#83-triggering-the-fleet) §"§8.3 Triggering the Fleet" |
-| What does the Slack bot do — and never do? | [`user_flow.md`](./user_flow.md) §"§8.8 Slack mentions and configured fleets" |
+| What does the Slack bot do — and never do? | [`user_flow.md`](./user_flow.md) §"§8.8 Slack mentions and subscribed fleets" |
 | How many datastore connections does a deployment need? | [`scaling.md`](./scaling.md) §"Connection budget after the cutover" |
 | What is the datastore target, and what has moved so far? | [`datastore_scaling.md`](./datastore_scaling.md) |
 | How will a message reach a runner at 20,000 fleets, and in which milestones? | [`push_scheduler.md`](./push_scheduler.md) |
@@ -142,7 +142,7 @@ After that, dip into whichever of these matches the change you're making:
 | 🧶 [`thread_model.md`](./thread_model.md) | The thread, turn, run, item and delivery tables. |
 | 🏃 [`runner_fleet.md`](./runner_fleet.md) | Control plane and runner: running, fencing, recovery. |
 | ⚙️ [`runner_execution.md`](./runner_execution.md) | How the runner runs one run. |
-| 🎟️ [`run_flow.md`](./run_flow.md) | One run, from install to sandbox teardown. |
+| 🎟️ [`run_flow.md`](./run_flow.md) | One run, from a fleet's first message to sandbox teardown. |
 | 🧰 [`capabilities.md`](./capabilities.md) | What a fleet can do, and context lifecycle. |
 | 🧠 [`memory.md`](./memory.md) | Memory scope, isolation and durability. |
 | 📈 [`observability.md`](./observability.md) | Where each signal goes, and who owns it. |
@@ -201,7 +201,7 @@ One-line definitions for quick lookup. The full, canonical definition lives in t
 | **Run** (`thread.runs`, `afd_fleet::run::Runs`) | One runner's time-limited right to run one turn, renewed while the run lasts. [(more)](./data_flow.md#one-active-run-per-fleet-the-ownership-model) |
 | **Item** (`thread.items`) | One tool call a run made, with its full arguments and output; a page reads it only through "show all". [(more)](./thread_model.md#threaditems) |
 | **Report** (`af_wire::protocol::Up::Report`) | The runner's terminal result for one run (`af_wire::report::ReportRequest`), carrying its run and fencing token. [(more)](./data_flow.md#c-execute--run--runner--report) |
-| **Delivery** (`thread.deliveries`) | An answer the fleet owes to a reply destination such as a Slack thread, written with the report and delivered by `afd_outbound`. [(more)](./run_flow.md#4-how-agent-bob-01-can-reply) |
+| **Delivery** (`thread.deliveries`) | An answer the fleet owes to a reply destination such as a Slack thread, written with the report and delivered by `afd_outbound`. [(more)](./run_flow.md#4-how-pr-review-can-reply) |
 | **Items subject** (`af.thread.<thread_id>.items`) | The thread's NATS subject for live-tail frames: at most once, with no history. [(more)](./data_flow.md#two-streams--one-pubsub-channel-and-the-one-that-retired) |
 | **Subscription hub** (`afd_bus::nats`) | The one NATS connection in each `agentsfleetd` process; it subscribes each subject once and copies frames to every local reader, wake listeners included. [(more)](./data_flow.md#two-streams--one-pubsub-channel-and-the-one-that-retired) |
 | **guffbolt** (`rustd/guffbolt`) | The agent harness: the order one loop's steps run in, the window and the model call each step makes, and the transcript it keeps, over the embedder's conversation and the extension a run of one kind adds, the tools a loop offers, and the children a run starts. The runner embeds it. [(more)](./runner_execution.md#crates) |

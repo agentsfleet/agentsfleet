@@ -129,14 +129,16 @@ worse the better the budgets work.
 ### Why the runner objective excludes workload faults
 
 An error budget is a promise about what this control plane controls. `FailureClass` carries eleven
-members and only five of them are ours: `startup_posture`, `runner_crash`, `transport_loss`,
-`run_expired` and `renewal_terminate`. The other six (`policy_deny`, `landlock_deny`, `oom_kill`,
-`resource_kill`, `budget_breach` and `timeout_kill`) are the workload failing at something the
-platform delivered correctly.
+members, and five of them are ours: `startup_posture`, `runner_crash`, `transport_loss`,
+`run_expired` and `renewal_terminate`.
+
+Five (`policy_deny`, `landlock_deny`, `oom_kill`, `resource_kill` and `timeout_kill`) are the
+workload failing at something the platform delivered correctly. `agentsfleetd` sets the eleventh,
+`frame_too_large`, at assignment, never a runner.
 
 `agentsfleet_runner_failures_total` carries each failure's class as `reason`. The objective
-subtracts the six workload reasons from the failed runs that `agentsfleet_runner_runs_total`
-counts, so a workload failure leaves both the good and the valid events.
+subtracts the five workload reasons from the failed runs `agentsfleet_runner_runs_total` counts,
+so a workload failure leaves the good and valid events.
 
 Workload faults leave the denominator rather than counting as successes. Counting them good would
 let a noisy tenant dilute the ratio and hide real platform failures behind volume. Counting them bad

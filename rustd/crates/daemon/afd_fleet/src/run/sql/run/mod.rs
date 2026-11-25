@@ -14,8 +14,7 @@
 //! one no-work reply rather than counting retries.
 //!
 //! A fleet's thread is keyed by the fleet's id, so the fleet's statements here
-//! read `thread.threads.fleet_id` and `thread.runs.fleet_id`, which a draft's
-//! rows leave NULL and so never match.
+//! read `thread.threads.fleet_id` and `thread.runs.fleet_id`.
 
 mod row;
 

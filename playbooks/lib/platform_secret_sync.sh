@@ -84,9 +84,9 @@ case "$secret_name" in
     )
     ;;
   typesafe)
-    # The decision model's key: the setup edit check and durable-task decisions
-    # call TypeSafe with it. The daemon reads it only from this admin-workspace
-    # row, named after the decision API (`afd_credential::provider::decision`).
+    # The decision model's key: a durable task's goal check calls TypeSafe
+    # with it. The daemon reads it only from this admin-workspace row, named
+    # after the decision API (`afd_credential::provider::decision`).
     field_refs=(
       "api_key|typesafe/credential"
     )

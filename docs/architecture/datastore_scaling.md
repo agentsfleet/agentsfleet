@@ -61,9 +61,8 @@ An unset or malformed `NATS_URL` refuses boot as `UZ-STARTUP-001`.
 Boot refuses, as `UZ-STARTUP-004`, a seed that does not answer within five seconds.
 It also refuses a server reporting JetStream, no cluster, no headers, or a `max_payload` under the largest frame (`afd_bus/src/nats/preflight.rs`).
 
-The largest frame the preflight checks is 960 KiB, the larger of `afd_bus`'s two frame bounds.
-That is NATS's default 1 MiB `max_payload`, which no server here overrides, less a 64 KiB envelope.
-The tail's 64 KiB batch plus 64 KiB of envelope fits under it.
+The largest frame the preflight checks is 128 KiB: the tail's 64 KiB batch (`afd_bus::TAIL_BATCH_BYTES`) plus a 64 KiB envelope.
+NATS's default 1 MiB `max_payload`, which no server here overrides, holds it.
 
 The deploy workflows bring the NATS app up before the daemon.
 `scripts/ensure_fly_app.sh` waits until every NATS machine passes its `/healthz` check, so a daemon never deploys against a bus that refuses it.
@@ -97,13 +96,9 @@ When work exists, it reads each eligible fleet's oldest unsettled turn through `
 
 Writing a turn holds the fleet row lock within its one statement, before allocating its sequence and through commit. A transaction that inserts later therefore stays behind unfinished work.
 
-A parked head blocks later rows while standing access awaits an answer or an unresolved turn approval has a future deadline.
-Both discovery and assignment probe these two scopes through `idx_approval_gates_pending_scope_deadline`.
+No approval holds a head. A run that asks a question or asks for access settles its turn `waiting`, so the fleet's later turns still run (`af_core/src/turn.rs`).
 
-One `NOT EXISTS` over `UNION ALL` keeps the probes correlated to the chosen head. Each branch limits its search to one blocker, including when many approvals match.
-
-Expired turn approvals remain answerable; the resumed gate evaluation decides whether to proceed or refuse.
-A parked turn finds its gate in `fleet.approval_gates` alone, so a long bus outage cannot erase that decision.
+The card waits in `fleet.approval_gates`, so a long bus outage cannot erase it. The answer or the approval writes a new turn that continues the work.
 
 Assignment locks the thread row and the exact head turn with `SKIP LOCKED`, then checks whether that head can run.
 One statement raises the thread's fence, stamps the turn's `run_fence` and opens the turn.
@@ -148,7 +143,7 @@ OAuth nonces are `connector.oauth_nonces` rows that live 600 s and are spent onc
 
 Nothing sweeps expired sessions or nonces. Every read refuses them by `expires_at`, and spending an expired nonce removes it.
 
-Gate references come from `fleet.approval_gates` (`afd_gate/src/gate/store/mod.rs`).
+A run's question and a fleet's access request are `fleet.approval_gates` rows (`afd_gate/src/gate/sql/insert_gate.sql`, `afd_approval/src/grant_sql/request_grant.sql`).
 
 See [Shared local development](#shared-local-development) for ownership and reset rules.
 

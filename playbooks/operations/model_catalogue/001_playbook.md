@@ -119,7 +119,7 @@ Sync the `typesafe` bag first, and skip this section when `models list` already 
 
    ```text
    ID        NAME              PROVIDER  MODEL
-   <varies>  Setup edit check  typesafe  jev-latest
+   <varies>  Task goal check   typesafe  jev-latest
    ```
 
 ## Change connection settings or prices

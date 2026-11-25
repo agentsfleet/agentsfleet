@@ -143,13 +143,13 @@ async function configureModel(request: Request, workspaceId: string): Promise<vo
 
 /** Runs only on a fresh acceptance database, so later runs never touch 1Password. */
 /**
- * The setup edit check asks this model whether a chat message requests a setup
- * change, so a plain "Save" is never mistaken for an edit. Its key lives in the
- * platform workspace, the only place the daemon reads decision keys from.
+ * A durable task's goal check asks this model whether the task is done. Its key
+ * lives in the platform workspace, the only place the daemon reads decision
+ * keys from.
  */
 export async function configureDecisions(request: Request, workspaceId: string, configuredWorkspace?: string): Promise<string> {
   const key = process.env.TYPESAFE_API_KEY;
-  if (!key) throw new LocalBootstrapError("machine configuration must supply TYPESAFE_API_KEY for the setup edit check");
+  if (!key) throw new LocalBootstrapError("machine configuration must supply TYPESAFE_API_KEY for the task goal check");
   const id = await catalogueModel(request, DECISION_PROVIDER, DECISION_MODEL)
     // The created model's fields are flattened into the reply (AdminModelCreated).
     ?? z.object({ id: z.string() }).parse(await request<unknown>(HTTP_METHOD.post, MODELS, decisionModel())).id;
@@ -163,7 +163,7 @@ export function decisionModel() {
   const at = DECISION_VERIFIED_AT;
   return {
     provider: DECISION_PROVIDER, model_id: DECISION_MODEL, prices: [],
-    metadata: { display_name: "Setup edit check", advanced: true, context_cap_tokens: 8_192,
+    metadata: { display_name: "Task goal check", advanced: true, context_cap_tokens: 8_192,
       context_source_url: DECISION_DOCS, context_verified_at: at },
     decision: {
       enabled: true,
@@ -270,9 +270,9 @@ export async function enroll(request: Request, base: string, namespace: string, 
     const { runner_token } = registrationSchema.parse(await Bun.file(record).json());
     const self = runnerSelfSchema.parse(await api(base, runner_token)(HTTP_METHOD.get, "/v1/runners/me"));
     // Enrollment is the only place bootstrap sets the policy, so a runner
-    // enrolled earlier keeps running without the setup edit check.
+    // enrolled earlier keeps running without the task goal check.
     if (self.assigned_policy.decision_model_id !== decisionModelId)
-      throw new LocalBootstrapError("the reused acceptance runner names no setup edit check model; assign it the decision model in the runner configuration or recreate this acceptance database");
+      throw new LocalBootstrapError("the reused acceptance runner names no task goal check model; assign it the decision model in the runner configuration or recreate this acceptance database");
     return;
   }
   const pending = `${record}.enrolling`;

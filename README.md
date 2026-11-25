@@ -19,7 +19,7 @@
 
 </div>
 
-**[agentsfleet](https://agentsfleet.net)** is an open-source runtime for agents configured for recurring jobs. Each fleet has instructions, tools, triggers, access rules, and a budget. Events or messages wake the fleet; runners investigate with its permitted tools and save the results.
+**[agentsfleet](https://agentsfleet.net)** is an open-source runtime for agents that do recurring jobs. Each fleet has a model, tools, pinned memory, triggers, schedules, and the access a person approved for it. Events or messages wake the fleet; runners investigate with its permitted tools and save the results.
 
 - **Controlled access** — tools and network rules determine which actions a fleet can perform.
 - **Durable results** — event history records requests, outcomes, and reports; live activity shows work in progress.
@@ -48,7 +48,7 @@ bun ./dist/bin/agentsfleet.js login
 
 Sign in, check that the browser and terminal show the same code, then select **Authorize**. The terminal completes sign-in automatically. If the browser is on another computer, restart with `login --no-open` and enter its verification code in the terminal.
 
-See the [CLI install guide](https://docs.agentsfleet.net/cli/install) for installer and release instructions. The [quickstart](https://docs.agentsfleet.net/quickstart) covers writing a fleet in chat and connecting its tools and triggers.
+See the [CLI install guide](https://docs.agentsfleet.net/cli/install) for installer and release instructions. The [quickstart](https://docs.agentsfleet.net/quickstart) covers starting a fleet in chat and connecting its tools and triggers.
 
 ---
 

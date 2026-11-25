@@ -1,20 +1,15 @@
-//! What a model's saved facts let it do: run a fleet, and take a tool call.
+//! What a model's saved facts let it do: run a fleet.
 //!
-//! The workspace's model catalogue and a fleet's model check both read this,
-//! so a model the catalogue offers is one the assignment admits. The provider
-//! rules behind it are in `af_providers::settings`; this is the one place the
-//! daemon's fleet path reaches them, so `afd_setup` names no provider crate.
+//! The workspace's model catalogue reads this to mark the choices a fleet can
+//! run on. The provider rules behind it are in `af_providers::settings`; this
+//! is the one place the daemon's fleet path reaches them, so `afd_setup` names
+//! no provider crate.
 
 use af_wire::inference::ModelInference;
 
-use super::RegisteredModel;
-
-/// A model's saved facts, as the catalogue row and the registered model both
-/// carry them.
+/// A model's saved facts, as the catalogue row carries them.
 #[derive(Debug, Clone, Copy)]
 pub struct ModelFacts<'a> {
-    /// The provider's model identifier.
-    pub model: &'a str,
     /// The saved inference settings; none routes nowhere.
     pub inference: Option<&'a ModelInference>,
     /// The endpoint the model's key allows, if it names one.
@@ -32,9 +27,6 @@ pub struct ModelFacts<'a> {
 pub struct Eligibility {
     /// Its settings route to its endpoint, so a fleet can run on it.
     pub runtime: bool,
-    /// It routes and its provider takes a tool call, so a fleet's tools can
-    /// run on it.
-    pub tools: bool,
 }
 
 impl ModelFacts<'_> {
@@ -50,22 +42,6 @@ impl ModelFacts<'_> {
             .filter(|route| route.accepts_endpoint(self.endpoint));
         Eligibility {
             runtime: route.is_some(),
-            tools: route.is_some_and(|route| route.supports_tools(self.model)),
-        }
-    }
-}
-
-impl RegisteredModel {
-    /// This model's saved facts.
-    #[must_use]
-    pub fn facts(&self) -> ModelFacts<'_> {
-        ModelFacts {
-            model: &self.model,
-            inference: self.inference.as_ref(),
-            endpoint: self.base_url.as_deref(),
-            context_window_tokens: self.context_window_tokens,
-            input_nanos_per_million: self.input_nanos_per_million,
-            output_nanos_per_million: self.output_nanos_per_million,
         }
     }
 }
@@ -74,12 +50,10 @@ impl RegisteredModel {
 mod tests {
     use super::{Eligibility, ModelFacts};
 
-    /// A model with no saved settings routes nowhere, so no fleet may run on it
-    /// or call a tool through it.
+    /// A model with no saved settings routes nowhere, so no fleet may run on it.
     #[test]
     fn a_model_without_settings_is_eligible_for_nothing() {
         let facts = ModelFacts {
-            model: "gpt-4.1",
             inference: None,
             endpoint: None,
             context_window_tokens: 128_000,

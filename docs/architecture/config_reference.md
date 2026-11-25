@@ -175,11 +175,10 @@ The daemon sends `max_message_mib` and `max_control_message_mib` to each runner 
 | `default_tool_window_count` | 20 | Mid-size models run out of context, or forget recent tool calls |
 | `large_tool_window_count` | 30 | Large models could keep more tool history |
 
-### `[fleets]` and `[billing]`
+### `[billing]`
 
 | Key | Default | Change it when… |
 |---|---|---|
-| `fleets.head_cache_count` | 16,384 | You run more fleets than the cache holds |
 | `billing.price_book_cache_count` | 1,024 | You meter more models than the cache holds |
 
 ### `[durable_tasks]` and `[durable_tasks.checkpoints]`
@@ -398,7 +397,7 @@ It names the key as `AGENTSFLEET_CONFIG_FILE is set but unusable` with `UZ-START
 
 Both binaries refuse:
 
-- an unknown key or section, including the retired `[maintenance]`, `[inference]` and `[authoring.turn]` daemon sections;
+- an unknown key or section, including the retired `[maintenance]`, `[inference]`, `[authoring.turn]` and `[fleets]` daemon sections;
 - a count, size or timeout of `0`;
 - a default above its ceiling: page sizes, wake queue sizes, and `min_connections` above `max_connections`;
 - `small_model_max_tokens` at or above `large_model_min_tokens`;

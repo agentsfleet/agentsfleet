@@ -258,16 +258,16 @@ describe("TurnsList — the standard workspace turns table", () => {
           turn_id: "g",
           status: "gate_blocked",
           response_text: null,
-          failure_label: "budget_breach",
+          failure_label: "policy_deny",
         }),
       ],
       next_cursor: null,
     });
     for (const leaked of [
       "Ran out of memory",
-      "Fleet budget limit reached",
+      "Blocked by fleet policy",
       "oom_kill",
-      "budget_breach",
+      "policy_deny",
       "Engine configuration could not be assembled.",
     ]) {
       expect(screen.queryByText(leaked)).toBeNull();

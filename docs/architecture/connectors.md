@@ -165,7 +165,7 @@ Those three providers are plain `agentsfleet secrets create` entries, never regi
 
 5. **A signature proves origin, never the producer**: GitHub permits every push-capable identity to create deployment statuses. Every such identity in a mapped repository sits inside the trusted producer boundary. The daemon verifies the App signature and the installation routing; it does not inspect `deployment_status.creator` or attest which system produced the status.
 
-   A scenario that depends on this says so and cites this anchor rather than restating it.
+   A page that depends on this cites this anchor rather than restating it.
 
 6. **The standing integration grant authorises every mint, including a repository write**. `connector.integration_grants` holds one row per `(fleet_id, service)`, enforced by `UNIQUE (fleet_id, service)`, and only an `approved`, unrevoked row admits a mint. The fleet asks for it with `request_access`, which writes the row `pending` and raises one approval card.
 
@@ -667,7 +667,7 @@ The [drill playbook](../../playbooks/operations/slack_incident_drill/001_playboo
 
 ### Drill channels and environments
 
-| Channel | Slack app | Deployment | Bound fleets |
+| Channel | Slack app | Deployment | Subscribed fleets |
 |---|---|---|---|
 | `#ci-dev` | `agentsfleet-dev` | `api-dev.agentsfleet.net` | `ci-dev-responder` (read), `ci-dev-repairer` (write, addressed only) |
 | `#ci-prod` | `agentsfleet` | `api.agentsfleet.net` | `ci-prod-responder`, `ci-prod-repairer` |

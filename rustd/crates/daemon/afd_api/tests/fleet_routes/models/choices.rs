@@ -9,13 +9,13 @@ use serde_json::json;
 async fn model_choices_use_workspace_owner_and_exact_priced_eligibility() {
     let f = Fixture::create().await;
     let other = Fixture::create().await;
-    let page = list(&f, "?purpose=setup").await;
+    let page = list(&f, "?purpose=runtime").await;
     let items = page["items"].as_array().expect("bounded model page");
     let own = items
         .iter()
         .find(|item| item["ref"] == json!(f.model))
         .expect("owner's configured selection");
-    assert_eq!(own["eligibility"], json!({"setup":true,"runtime":true}));
+    assert_eq!(own["eligibility"], json!({"runtime":true}));
     assert_eq!(
         own["pricing"]["input_nanos_per_million"],
         INPUT_NANOS_PER_MTOK.to_string()
@@ -46,7 +46,7 @@ async fn missing_credential_metadata_removes_the_choice_without_fallback() {
         .execute(&mut *f.db.acquire().await.expect("fixture connection"))
         .await
         .expect("remove usable metadata");
-    let page = list(&f, "?purpose=setup").await;
+    let page = list(&f, "?purpose=runtime").await;
     assert!(
         !page["items"]
             .as_array()

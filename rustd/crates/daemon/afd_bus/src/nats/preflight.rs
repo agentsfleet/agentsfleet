@@ -4,21 +4,14 @@ use async_nats::ServerInfo;
 
 use crate::{Result, error::ErrorKind};
 
-use crate::{DRAFT_FRAME_BYTES, TAIL_BATCH_BYTES};
+use crate::TAIL_BATCH_BYTES;
 
 /// Room for the JSON envelope around the largest frame.
 const ENVELOPE_BYTES: usize = 64 * 1024;
 
-/// The smallest `max_payload` every publisher's frame fits under.
-pub(super) const LARGEST_FRAME_BYTES: usize =
-    if TAIL_BATCH_BYTES + ENVELOPE_BYTES > DRAFT_FRAME_BYTES {
-        TAIL_BATCH_BYTES + ENVELOPE_BYTES
-    } else {
-        DRAFT_FRAME_BYTES
-    };
-
-const _: () = assert!(LARGEST_FRAME_BYTES >= TAIL_BATCH_BYTES);
-const _: () = assert!(LARGEST_FRAME_BYTES >= DRAFT_FRAME_BYTES);
+/// The smallest `max_payload` every publisher's frame fits under: the tail's
+/// largest batch in its envelope.
+pub(super) const LARGEST_FRAME_BYTES: usize = TAIL_BATCH_BYTES + ENVELOPE_BYTES;
 
 /// Refuse `JetStream`, a lone server, a server without headers, or a payload
 /// limit under the largest frame. Each names the field that failed.

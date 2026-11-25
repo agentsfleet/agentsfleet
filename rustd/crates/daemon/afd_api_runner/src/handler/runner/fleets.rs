@@ -57,9 +57,8 @@ const DETAIL_CURSOR: &str = "The cursor is not valid";
     operation_id = "runner_list_fleets",
     summary = "List the workspace's fleets",
     description = concat!(
-        "Lists the fleets in the running fleet's workspace, newest first, archived and ",
-        "installing fleets included with their status. Continue with `starting_after` ",
-        "and `limit`.",
+        "Lists the fleets in the running fleet's workspace, newest first, archived ",
+        "fleets included with their status. Continue with `starting_after` and `limit`.",
     ),
     params(
         afd_http::openapi::path::Run,

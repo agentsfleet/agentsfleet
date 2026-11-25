@@ -62,7 +62,9 @@ The chart keeps nanodollars as integers until formatting or bounded display scal
 
 ## Public reads
 
-`GET /v1/tenants/me/billing/reports/current` returns the selected period, bounds, full-period summary, spending groups, daily spend and filter choices. Query parameters are `period`, `fleet_id`, `activity_type` and `through_at`, declared with `garde` before parsing; malformed values return the shared invalid-request response. It requires `billing:read`, and responses declare private, no-store caching.
+`GET /v1/tenants/me/billing/reports/current` returns the selected period, bounds, full-period summary, spending groups, daily spend and filter choices. It requires `billing:read`, and responses declare private, no-store caching.
+
+Query parameters are `period`, `fleet_id`, `activity_type` and `through_at`, declared with `garde` before parsing; malformed values return the shared invalid-request response. `activity_type` takes only `runtime`, a fleet run's usage.
 
 `GET /v1/tenants/me/billing/activities/{activity_id}/charges` stays in the route table and answers `410 Gone` with `UZ-REQ-003`, so a client still calling it learns the removal is permanent. `GET /v1/tenants/me/billing/charges` lists raw charges.
 

@@ -27,7 +27,7 @@ use std::sync::Arc;
         "returned.",
     ),
     params(afd_http::openapi::path::Workspace,
-        ("purpose" = Option<String>, Query, description = "setup or runtime; omit for either"),
+        ("purpose" = Option<String>, Query, description = "runtime keeps only models a fleet can run on; omit for every model"),
         ("limit" = Option<u32>, Query, description = "Rows scanned per page, 1..100; default 50"),
         ("starting_after" = Option<String>, Query, description = concat!(
             "Use the previous `next_cursor` unchanged, for the same owner, workspace, person, ",

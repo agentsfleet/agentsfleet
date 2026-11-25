@@ -52,7 +52,7 @@ Each trap is enforced in its owner section; this list is the index.
 - The Postgres pool has no ordering or fairness guarantee; do not assert one (§The Postgres pool).
 - No product statement sets its own lock or statement bound; the login role's bounds cover every daemon statement (§The Postgres pool).
 - `gate_blocked` rows are NEVER reopened; a person's answer writes a new turn (§B. TRIGGER).
-- A Pull Request reviewer cannot post a review or a comment: no egress write rule admits one ([`run_flow.md`](./run_flow.md) §"4. How AGENT BOB 01 can reply").
+- A Pull Request reviewer cannot post a review or a comment: no egress write rule admits one ([`run_flow.md`](./run_flow.md) §"4. How `pr-review` can reply").
 - Every push is its own turn. One that arrives while the fleet's run is live folds into that run; the rest queue behind it (§"C. EXECUTE").
 - Preserve the turn's identity across assignments and retries (§B. TRIGGER).
 - The continuation actor is FLAT: it never re-nests `continuation:` (§B. TRIGGER).
@@ -172,8 +172,11 @@ report transaction -> usage + turn answer + thread resume_context
        +-> af.delivery.wake ping -> outbound worker takes the row -> connector thread
 ```
 
-No timer re-reads the ledger. An assignment pass starts on a thread wake, on a full recheck when the bus reports a gap or the wake subscription reconnects, or when a runner connection gains free slots (`afd_gateway`'s scheduler and `connection/dispatch`). A notification the bus drops without a gap waits for the next of those events; the turn stays in Postgres.
-An expired run exposes the same unsettled turn with its original turn and billing identities. The next assignment that wins its thread marks the old run expired (`expire_prior_run.sql`).
+No timer re-reads the ledger. An assignment pass starts on a thread wake, a full recheck or a runner connection that gains free slots (`afd_gateway`'s scheduler and `connection/dispatch`).
+
+A full recheck runs when the bus reports a gap or the wake subscription reconnects. A notification the bus drops without a gap waits for the next of those events; the turn stays in Postgres.
+
+An expired run exposes the same unsettled turn with its original turn and billing identities. The next assignment that wins its thread marks the old run expired (`assign_turn_head.sql`).
 
 The outbound worker takes durable `thread.deliveries` rows from Postgres.
 The report writes each row with a fresh `receipt` token and a lapsed `claim_expires_at`, so any replica may take it at once.
@@ -748,7 +751,7 @@ Before the cutover, a single worker thread owned all work for a Fleet, and the c
 
 Failure mode: a dead run holder blocks its fleet until `run_expires_at`; reassignment then runs again with a higher fencing token. Recovery latency and its bound: [`runner_fleet.md`](./runner_fleet.md) §"Failure recovery model".
 
-One PR through one run: its records and timers in [run_flow.md §1](./run_flow.md#1-from-start-a-fleet-to-a-run), its reply limits in [§4](./run_flow.md#4-how-agent-bob-01-can-reply), and what bounds the host in [§7](./run_flow.md#7-where-the-image-lives-and-what-bounds-a-bare-metal-host).
+One PR through one run: its records and timers in [run_flow.md §1](./run_flow.md#1-from-start-a-fleet-to-a-run), its reply limits in [§4](./run_flow.md#4-how-pr-review-can-reply), and what bounds the host in [§7](./run_flow.md#7-where-the-image-lives-and-what-bounds-a-bare-metal-host).
 
 ## What the coding fleet never does
 

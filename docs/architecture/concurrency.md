@@ -299,10 +299,11 @@ map to keep consistent and no generation check to get wrong.
 `cancelled()` is interrupted mid-read.
 
 Per-call timeouts stay where they are. The daemon runs no recurring deadline
-pass. A run that expired unreported is marked expired by the assignment that
-next takes its turn (`afd_fleet/src/run/sql/shared/expire_prior_run.sql`), and
-its last runtime slice is not billed. The runner arms one host timer for its
-runs' deadlines.
+pass. The runner arms one host timer for its runs' deadlines.
+
+The assignment that next takes an unreported expired run's turn marks the run
+expired (`afd_fleet/src/run/sql/run/assign_turn_head.sql`). That run's last
+runtime slice is not billed.
 
 The daemon arms one-shot timers only, each from one event, and none repeats.
 A runner connection that ends with no successor and no replica drain arms two

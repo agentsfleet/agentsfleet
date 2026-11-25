@@ -4,12 +4,10 @@ use serde::Serialize;
 
 pub use crate::page::CursorPage;
 
-/// Eligibility for each supported purpose is independent.
+/// What a model's saved settings support.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct Eligibility {
-    /// Bounded setup generation is supported.
-    pub setup: bool,
     /// Runtime provider resolution is supported.
     pub runtime: bool,
 }

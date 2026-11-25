@@ -29,34 +29,34 @@ fn row() -> Row {
 
 #[test]
 fn a_configured_choice_keeps_its_catalogue_label_and_exact_identity() {
-    for purpose in [None, Some(ModelPurpose::Setup), Some(ModelPurpose::Runtime)] {
+    for purpose in [None, Some(ModelPurpose::Runtime)] {
         let choice = eligible(row(), purpose).expect("a priced supported route is eligible");
         assert_eq!(choice.label, "Provider supplied display name");
         assert_eq!(choice.model, "gpt-4.1");
         assert_eq!(choice.reference, "configured-reference");
-        assert!(choice.eligibility.setup && choice.eligibility.runtime);
+        assert!(choice.eligibility.runtime);
         assert_eq!(choice.pricing.input_nanos_per_million, "2000000000");
     }
 }
 
 #[test]
-fn setup_refuses_missing_keys_and_endpoints_the_saved_route_does_not_name() {
+fn runtime_refuses_missing_keys_and_endpoints_the_saved_route_does_not_name() {
     let mut missing = row();
     missing.has_key = false;
     let mut custom = row();
     custom.base_url = Some("https://customer.example/v1".into());
     for choice in [missing, custom] {
-        assert!(eligible(choice, Some(ModelPurpose::Setup)).is_none());
+        assert!(eligible(choice, Some(ModelPurpose::Runtime)).is_none());
     }
 }
 
 // Routing reads saved settings, never the model identifier: a model name the
-// catalogue has no family for still routes when its saved API carries tools.
+// catalogue has no family for still routes.
 #[test]
 fn a_model_name_alone_never_decides_eligibility() {
     let mut unfamiliar = row();
     unfamiliar.model = "gpt-6.1-sol".into();
-    assert!(eligible(unfamiliar, Some(ModelPurpose::Setup)).is_some());
+    assert!(eligible(unfamiliar, Some(ModelPurpose::Runtime)).is_some());
 }
 
 #[test]
@@ -69,5 +69,5 @@ fn an_invalid_runtime_route_is_refused_for_runtime_and_listed_as_ineligible() {
     assert!(eligible(invalid(), Some(ModelPurpose::Runtime)).is_none());
     let listed =
         eligible(invalid(), None).expect("an unfiltered listing shows every configured model");
-    assert!(!listed.eligibility.runtime && !listed.eligibility.setup);
+    assert!(!listed.eligibility.runtime);
 }

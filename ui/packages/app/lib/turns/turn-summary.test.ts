@@ -147,7 +147,7 @@ describe("failureSentenceFor", () => {
 
   it("only attaches startup guidance to the startup safety failure", () => {
     expect(failurePresentationFor("startup_posture").guidance).toBe("startup");
-    expect(failurePresentationFor("budget_breach").guidance).toBeNull();
+    expect(failurePresentationFor("policy_deny").guidance).toBeNull();
   });
 });
 

@@ -4,7 +4,7 @@
 /// workspaces and memberships are immutable and `api_runtime` holds no UPDATE
 /// on them (schema rule 9), and Postgres refuses any row lock without UPDATE.
 /// KEY SHARE is enough, because the only change an immutable row takes is a
-/// delete. A workspace delete still waits for a write, through the draft's
+/// delete. A workspace delete still waits for a write, through the fleet's
 /// foreign key.
 ///
 /// `$1` workspace, `$2` authenticated identity-provider subject.
