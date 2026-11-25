@@ -1,6 +1,6 @@
 # Fixture fleets
 
-The prime set: the fleets a newly primed environment, the acceptance suites and
+The prime set: the eight fleets, for seven journeys, that a newly primed environment, the acceptance suites and
 the scenario pages all use. One file per fleet; the file says what the fleet is.
 
 | Fleet | Journey | What it is |
@@ -10,6 +10,8 @@ the scenario pages all use. One file per fleet; the file says what the fleet is.
 | `night-owl` | wake-ups | Wakes on a schedule and a signed webhook. |
 | `queen-bee`, `busy-bee` | fleet to fleet | One fleet directs another. |
 | `stubborn-mule` | task | Keeps going until the job is done. |
+| `watch-dog` | GitHub | Asks for one repository, and wakes on its pull requests. |
+| `chatty-parrot` | Slack | Answers a mention in the thread it came from. |
 
 Each file carries: `name` (the fleet's name), `journey`, `about`, `first_message`
 (what a person types to create it), `follow_ups` (what they type next),
