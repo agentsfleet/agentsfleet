@@ -50,6 +50,7 @@ test("the reference keeps a refused first message and its model for Resend", asy
   const model = page.getByRole("combobox", {name: "Fleet model"});
   await expect(model).toHaveValue("");
   await model.selectOption("GPT-4.1");
+  await expect(model).toHaveCSS("align-items", "center");
   const message = "Check the pending pull requests.";
   await page.locator("#message").fill(message);
   await page.getByRole("button", {name: "Send message", exact: true}).click();
