@@ -12,9 +12,9 @@ facts.
   `agentsfleet-runner`. API entities use `fleet`, `fleet_id`, and `/fleets`.
 - Postgres holds every durable fact; the message bus is core NATS and holds
   none, per [the datastore requirements](../docs/architecture/datastore_scaling.md)
-  (Indy, Nov 06, 2026, M244_001 Discovery). Three NATS nodes in one region,
-  clustered by routes, are the deployment target, with JetStream, KV and the
-  object store off everywhere. The crate is `afd_bus`; the boot knob is
+  (Indy, Nov 06, 2026, M244_001 Discovery). Production runs two NATS nodes
+  in one region, clustered by routes (`NATS_MACHINES: "2"` in `release.yml`;
+  Indy, Nov 25, 2026), with JetStream, KV and the object store off everywhere. The crate is `afd_bus`; the boot knob is
   `NATS_URL`, comma-separated seeds with credentials in the userinfo, declared
   at `rustd/crates/daemon/afd_bus/src/nats/config.rs`. Boot refuses, as
   `UZ-STARTUP-004`, a seed it cannot reach and a server that reports JetStream,
