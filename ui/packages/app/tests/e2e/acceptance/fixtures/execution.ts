@@ -1,5 +1,5 @@
 /**
- * execution.ts — what the fleet-execution journey observes, and how it names
+ * execution.ts — what a journey that crosses a run observes, and how it names
  * what it saw.
  *
  * Two halves. The polls read the operator plane and the tenant thread until a

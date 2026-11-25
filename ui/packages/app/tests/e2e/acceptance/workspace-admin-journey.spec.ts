@@ -1,3 +1,7 @@
+/** Workspace administration, walked by an operator: workspaces made and
+ * switched from the switcher, an API key minted and revealed once, that key
+ * used from the command line, then revoked and deleted. The fleet the key
+ * lists is the prime set's first-message fleet, made through the shared helper. */
 import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
@@ -7,13 +11,7 @@ import { clientFor } from "./fixtures/api-client";
 import { listWorkspaces } from "./fixtures/seed";
 import { cleanWorkspaceFleets, purgeFixtureFleet } from "./fixtures/teardown";
 import { expectSelectedWorkspace, gotoWorkspace, openWorkspaceMenu, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
-import { createFleetViaUI } from "./fixtures/new-fleet";
-import { probeMessage } from "./fixtures/probe";
-import {
-  archiveFleet,
-  expectDetailArchived,
-  expectSidebarFleetState,
-} from "./fixtures/lifecycle";
+import { createPrimeFleet, PRIME_FLEET, primeFleet } from "./fixtures/prime-fleets";
 import {
   cliEnv,
   makeCliStateDir,
@@ -24,15 +22,13 @@ import {
 // This flow reveals a one-time credential; browser artifacts must never retain it.
 test.use({trace: "off", screenshot: "off", video: "off"});
 
-const JOURNEY_TIMEOUT_MS = 300_000;
+// The walk, plus the prime fleet's first turn settling before the key lists it.
+const JOURNEY_TIMEOUT_MS = 420_000;
 const ACTION_TIMEOUT_MS = 60_000;
 const MENU_CLICK_TIMEOUT_MS = 5_000;
 const MENU_CLICK_ATTEMPTS = 3;
-const TEMP_DIR_PREFIX = "agentsfleet-operator-journey-";
-// Shared by the fleet-name generator and the afterEach sweep — one literal,
-// so the sweep can never drift from what the journey actually names. The
-// seeded fleet carries a live cron trigger; a leaked row keeps waking
-// runners until something deletes it.
+const TEMP_DIR_PREFIX = "agentsfleet-workspace-admin-";
+const fixture = primeFleet(PRIME_FLEET.morningRooster);
 
 interface CliFleetListResponse {
   items?: Array<{ id?: string; name?: string; status?: string }>;
@@ -124,12 +120,12 @@ async function deleteFleetWithApiKey(
 async function workspaceIdByName(name: string): Promise<string> {
   const workspace = (await listWorkspaces(FIXTURE_KEY.admin)).find((w) => w.name === name);
   if (!workspace) {
-    throw new Error(`operator-journey: workspace '${name}' not found via API`);
+    throw new Error(`workspace '${name}' not found via API`);
   }
   return workspace.id;
 }
 
-test.describe("operator journey", () => {
+test.describe("workspace administration", () => {
   test.setTimeout(JOURNEY_TIMEOUT_MS);
 
   let createdApiKeyName: string | null = null;
@@ -138,8 +134,7 @@ test.describe("operator journey", () => {
 
   test.afterEach(async () => {
     // The fleet outlives more failure modes than the API key: it exists
-    // before the key is minted, and the first message can make it before its
-    // id is readable from the URL. Every workspace swept here is one this run
+    // before the key is minted. Every workspace swept here is one this run
     // created, so sweeping each whole with the admin fixture JWT depends on
     // neither, and a journey that fails anywhere after fleet creation still
     // tears down its rows.
@@ -159,7 +154,7 @@ test.describe("operator journey", () => {
     }
   });
 
-  test("operator switches workspace, starts a Fleet from its first message, visits settings, mints an API key, uses it from command line, then halts the Fleet", async ({ page }) => {
+  test("an operator creates and switches workspaces, mints an API key, lists a fleet with it from the command line, then revokes and deletes it", async ({ page }) => {
     page.setDefaultTimeout(ACTION_TIMEOUT_MS);
     const apiUrl = process.env.NEXT_PUBLIC_API_URL;
     if (!apiUrl) throw new Error("NEXT_PUBLIC_API_URL must be set");
@@ -190,9 +185,7 @@ test.describe("operator journey", () => {
     await page.getByRole("navigation", {name: "Primary", exact: true}).getByRole("link", {name: "New fleet", exact: true}).click();
     await expect(page).toHaveURL(workspaceHref(wsId, "fleets/new"), {timeout: ACTION_TIMEOUT_MS});
     await expect(page.getByRole("heading", {name: "What should your fleet do?", exact: true})).toBeVisible();
-    const fleetId = await createFleetViaUI(page, wsId, probeMessage(crypto.randomBytes(4).toString("hex")));
-    // The first message opens the fleet's chat.
-    await expect(page.getByLabel("Fleet chat")).toBeVisible({ timeout: 15_000 });
+    const fleetId = (await createPrimeFleet(FIXTURE_KEY.admin, wsId, fixture)).id;
 
     await page.goto(workspaceHref(wsId, "turns"));
     await expect(page).toHaveURL(workspaceUrlPattern("turns"));
@@ -241,11 +234,6 @@ test.describe("operator journey", () => {
     await clickSidebarLink(page, "/settings/billing", /\/settings\/billing(\?|$)/);
     await expect(page.getByLabel("Period totals")).toBeVisible();
 
-    await page.goto(workspaceHref(wsId, `fleets/${fleetId}`));
-    await archiveFleet(page);
-    await expectDetailArchived(page);
-    await page.goto(workspaceHref(wsId, "fleets"));
-    await expectSidebarFleetState(page, fleetId, "archived");
     await deleteFleetWithApiKey(apiUrl, rawApiKey, wsId, fleetId);
 
     await page.goto("/settings/security");

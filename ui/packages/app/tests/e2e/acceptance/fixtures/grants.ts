@@ -1,11 +1,7 @@
 /**
- * grants.ts — the wire side of the integration-grant walk.
- *
- * A fleet asks for the name-bound Linear handle with `request_access`, and a
- * person approves it once on the card that request raises. The journey's
- * fleets are only asked to answer, so its placeholder refresh value is never
- * sent upstream. The journey proves approval, delivery and billing, not OAuth
- * refresh.
+ * grants.ts — the wire side of access: the card a fleet's `request_access`
+ * raises, the grant a person's answer moves, the synthetic connector handles
+ * the Connected apps journeys seed, and the ledger a run's charge lands in.
  */
 import { z } from "zod";
 import { clientFor, type ClientHandle } from "./api-client";
@@ -20,9 +16,9 @@ import type { TenantBilling, TenantBillingChargesResponse } from "@/lib/types";
  * Cross-runtime pair of `afd_approval::KIND_INTEGRATION_GRANT`; the approve
  * statement joins on it, so a re-spelling here would silently match no row.
  */
-export const KIND_INTEGRATION_GRANT = "integration_grant";
+const KIND_INTEGRATION_GRANT = "integration_grant";
 
-export const CONNECTOR_SERVICE_LINEAR = "linear";
+const CONNECTOR_SERVICE_LINEAR = "linear";
 /** Mirrors `afd_credential::secrets::connector::SLACK_INTEGRATION`. */
 export const CONNECTOR_SERVICE_SLACK = "slack";
 
@@ -104,7 +100,7 @@ export async function ensureConnectorHandle(
 }
 
 /** Every gate the workspace holds for one fleet, newest first. */
-export async function listGatesForFleet(
+async function listGatesForFleet(
   handle: ClientHandle,
   workspaceId: string,
   fleetId: string,
@@ -155,39 +151,6 @@ export async function listGrantsForFleet(
   fleetId: string,
 ): Promise<IntegrationGrant[]> {
   return GrantsSchema.parse(await clientFor(handle).get<unknown>(GRANTS_PATH(workspaceId, fleetId))).items;
-}
-
-/**
- * The one grant the fleet's request wrote for the connector, or `null` while
- * its run has not asked yet.
- *
- * Singular for the reason `pendingGateFor` is: `uq_integration_grants_fleet_id_service`
- * permits one row per (fleet, service), so a second is a defect to surface.
- */
-export async function connectorGrantFor(
-  handle: ClientHandle,
-  workspaceId: string,
-  fleetId: string,
-): Promise<IntegrationGrant | null> {
-  const mine = (await listGrantsForFleet(handle, workspaceId, fleetId)).filter(
-    (grant) => grant.name === CONNECTOR_SERVICE_LINEAR,
-  );
-  if (mine.length > 1) {
-    throw new Error(
-      `fleet ${fleetId} holds ${mine.length} ${CONNECTOR_SERVICE_LINEAR} grants; ` +
-        "uq_integration_grants_fleet_id_service permits one",
-    );
-  }
-  return mine[0] ?? null;
-}
-
-/** One gate by id — how a walk reads back what the browser just decided. */
-export async function readGate(
-  handle: ClientHandle,
-  workspaceId: string,
-  gateId: string,
-): Promise<ApprovalGate> {
-  return clientFor(handle).get<ApprovalGate>(`${APPROVALS_PATH(workspaceId)}/${gateId}`);
 }
 
 /** The service an integration-grant card names, as the approve statement reads

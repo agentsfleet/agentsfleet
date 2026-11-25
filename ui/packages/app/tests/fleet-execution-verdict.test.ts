@@ -1,15 +1,12 @@
 /**
- * The execution journey's classifier and its place in the release gate.
+ * The acceptance journeys' classifier, and the messages they send.
  *
  * The classifier decides what a red run MEANS — a defect to open, or an
  * environment condition to wait out — so every branch is made red here, with
- * the row that trips it. The config pin is the other half of Dimension 1.5: the
- * journeys project takes the whole acceptance directory minus a named ignore
- * list, and this asserts the execution journey is not on that list, so a green
- * `acceptance-e2e` is a claim that includes it.
+ * the row that trips it.
  */
 import { describe, expect, it } from "vitest";
-import { accessMessage, accessReply, probeMessage, probeReply } from "./e2e/acceptance/fixtures/probe";
+import { probeMessage, probeReply, tokenMessage } from "./e2e/acceptance/fixtures/probe";
 import { RunOutcome } from "@/tests/helpers/runner-control-types";
 import {
   classifyApiFailure,
@@ -154,9 +151,10 @@ describe("probe messages", () => {
     expect(probeMessage("tok-7")).not.toContain(probeReply("tok-7"));
     expect(probeMessage("tok-7")).toContain("Do not call any tool");
   });
-  it("ask for a credential by name and name the reply that proves the run resumed with it", () => {
-    expect(accessReply("tok-8")).toBe("GRANTED tok-8");
-    expect(accessMessage("vendor_api", "tok-8")).toContain("request_access with the name vendor_api");
-    expect(accessMessage("vendor_api", "tok-8")).not.toContain(accessReply("tok-8"));
+  it("keep a fixture fleet's own words and add the token its reply must end with", () => {
+    const sent = tokenMessage("Say hello to the team.", "tok-8");
+    expect(sent.startsWith("Say hello to the team. ")).toBe(true);
+    expect(sent).toContain("tok-8");
+    expect(sent).not.toContain(probeReply("tok-8"));
   });
 });

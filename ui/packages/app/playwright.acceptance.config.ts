@@ -50,18 +50,32 @@ const SUITE_WORKERS = 2;
 const REMOTE_ENV_TEST_TIMEOUT_MS = 60_000;
 const REMOTE_ENV_EXPECT_TIMEOUT_MS = 10_000;
 
+// ── Scopes ───────────────────────────────────────────────────────────────────
+// `make acceptance-e2e ACCEPTANCE_SCOPE=…` names one. `full` is every group
+// below, on a stack this machine started. `post-deploy` is the prime journeys
+// alone: the fixture fleets of `tests/fixtures/fleets/`, run when an
+// environment is primed or deployed. The two soak scopes run the soak group.
+const SCOPE_POST_DEPLOY = "post-deploy";
+const SOAK_SCOPES = ["soak-mini", "ten-fleets"];
+const SCOPE = process.env.AGENTSFLEET_ACCEPTANCE_SCOPE ?? "full";
+const POST_DEPLOY = SCOPE === SCOPE_POST_DEPLOY;
+const PRIME_SPECS = "**/prime-*.spec.ts";
+// Woken by GitHub and Slack themselves, which deliver to a deployed stack and
+// never to one a machine started for itself: post-deploy only.
+const DEPLOYED_ONLY_SPECS = ["**/prime-watch-dog.spec.ts", "**/prime-chatty-parrot.spec.ts"];
+
 // ── Suite groups ─────────────────────────────────────────────────────────────
 // preflight  — environment prerequisites + auth wire (_smoke). Everything else
 //              depends on it: a dead prerequisite stops the run in seconds.
 // journeys   — fixture-isolated user journeys; files run across all workers.
-// operator journey — workspace administration exercised by an operator.
+// workspace admin — workspaces and an API key, exercised by an operator.
 // fleet-history → multi-fleet — workspace-entry and saved-sidebar journeys
 //              run after other regular-workspace seeds have settled.
 // frame-budget — tests that time the page's own frames (FRAME_BUDGET_TAG);
 //              they wait for both chains, so no other test shares the CPU.
 // fetch-audit — resets a global app-side fetch counter; runs strictly last.
 const PREFLIGHT_SPEC = "**/_smoke.spec.ts";
-const OPERATOR_JOURNEY_SPEC = "**/operator-journey.spec.ts";
+const WORKSPACE_ADMIN_SPEC = "**/workspace-admin-journey.spec.ts";
 const FLEET_HISTORY_SPEC = "**/fleet-sidebar.spec.ts";
 const MULTI_FLEET_SPEC = "**/multi-fleet.spec.ts";
 const FETCH_AUDIT_SPEC = "**/workspace-fetch-dedupe.spec.ts";
@@ -71,7 +85,7 @@ const SOAK_LOCAL_SPECS = ["**/soak-cli-smoke.spec.ts", "**/soak-hold.spec.ts"];
 
 const PROJECT_PREFLIGHT = "preflight";
 const PROJECT_JOURNEYS = "journeys";
-const PROJECT_OPERATOR_JOURNEY = "operator-journey";
+const PROJECT_WORKSPACE_ADMIN = "workspace-admin";
 const PROJECT_FLEET_HISTORY = "fleet-history";
 const PROJECT_MULTI_FLEET = "multi-fleet";
 const PROJECT_FRAME_BUDGET = "frame-budget";
@@ -122,22 +136,24 @@ export default defineConfig({
     },
     {
       name: PROJECT_JOURNEYS,
+      ...(POST_DEPLOY ? {testMatch: PRIME_SPECS} : {}),
       testIgnore: [
         PREFLIGHT_SPEC,
-        OPERATOR_JOURNEY_SPEC,
+        WORKSPACE_ADMIN_SPEC,
         FLEET_HISTORY_SPEC,
         MULTI_FLEET_SPEC,
         FETCH_AUDIT_SPEC,
         SOAK_SPEC,
         ...SOAK_LOCAL_SPECS,
+        ...(POST_DEPLOY ? [] : DEPLOYED_ONLY_SPECS),
       ],
       grepInvert: FRAME_BUDGET,
       dependencies: [PROJECT_PREFLIGHT],
       use: CHROMIUM,
     },
     {
-      name: PROJECT_OPERATOR_JOURNEY,
-      testMatch: OPERATOR_JOURNEY_SPEC,
+      name: PROJECT_WORKSPACE_ADMIN,
+      testMatch: WORKSPACE_ADMIN_SPEC,
       dependencies: [PROJECT_PREFLIGHT],
       use: CHROMIUM,
     },
@@ -157,14 +173,14 @@ export default defineConfig({
       name: PROJECT_FRAME_BUDGET,
       grep: FRAME_BUDGET,
       // After both chains, so every other worker is idle while it measures.
-      dependencies: [PROJECT_MULTI_FLEET, PROJECT_OPERATOR_JOURNEY],
+      dependencies: [PROJECT_MULTI_FLEET, PROJECT_WORKSPACE_ADMIN],
       use: CHROMIUM,
     },
     {
       name: PROJECT_FETCH_AUDIT,
       testMatch: FETCH_AUDIT_SPEC,
       // Strictly last: the audit reset touches an app-global counter, so it
-      // must outlast BOTH the fleet-history chain and the operator chain.
+      // must outlast BOTH the fleet-history chain and the workspace-admin chain.
       dependencies: [PROJECT_FRAME_BUDGET],
       use: CHROMIUM,
     },
@@ -173,7 +189,7 @@ export default defineConfig({
       testMatch: SOAK_SPEC,
       // A requested soak run needs preflight without replaying the bulk
       // browser suite. Full local acceptance retains its original ordering.
-      dependencies: [["soak-mini", "ten-fleets"].includes(process.env.AGENTSFLEET_ACCEPTANCE_SCOPE ?? "") ? PROJECT_PREFLIGHT : PROJECT_FETCH_AUDIT],
+      dependencies: [SOAK_SCOPES.includes(SCOPE) ? PROJECT_PREFLIGHT : PROJECT_FETCH_AUDIT],
       use: CHROMIUM,
     },
   ],

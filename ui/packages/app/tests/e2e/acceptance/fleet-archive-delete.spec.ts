@@ -1,27 +1,28 @@
-/** Secondary-workspace lifecycle journeys retain their exact workspace identity.
- * Archive leaves read-only history. Direct permanent deletion starts from an
- * active fleet with one confirmation. Each fleet is made by a first message on
- * New fleet and named by the daemon, so cleanup reaches exactly the fleets this
- * suite made, by their identities. */
+/** A fleet's two endings, in the workspace a person switched to. Archive leaves
+ * read-only history. Permanent deletion starts from an active fleet with one
+ * confirmation. Each fleet is the prime set's first-message fleet, made through
+ * the shared helper; that a first message makes a fleet is the prime journey's
+ * to prove. Cleanup reaches exactly the fleets this suite made, by identity. */
 import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
 import { clientFor, FixtureHttpError } from "./fixtures/api-client";
 import { ensureSecondWorkspace, getDefaultWorkspaceId, expectFleetActive } from "./fixtures/seed";
-import { createFleetViaUI } from "./fixtures/new-fleet";
-import { probeMessage } from "./fixtures/probe";
+import { createPrimeFleet, PRIME_FLEET, primeFleet } from "./fixtures/prime-fleets";
 import { expectDetailArchived, expectSidebarFleetState, archiveFleet, captureLifecycleReview } from "./fixtures/lifecycle";
-import { uniqueTag } from "./fixtures/observation";
 import { purgeFixtureFleet } from "./fixtures/teardown";
 import { FIXTURE_KEY, SECOND_WORKSPACE_NAME } from "./fixtures/constants";
-import { fleetNavigation, gotoWorkspace, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
+import { fleetNavigation, gotoWorkspace, workspaceHref } from "./fixtures/nav";
 
 const SWITCH_TIMEOUT_MS = 10_000;
-const FLOW_TIMEOUT_MS = 120_000;
-test.describe("multi-workspace + fleet lifecycle", () => {
+// The fleet's first turn settles before the walk starts: one run on a runner, behind the queue.
+const FLOW_TIMEOUT_MS = 300_000;
+const fixture = primeFleet(PRIME_FLEET.morningRooster);
+
+test.describe("a fleet is archived or permanently deleted", () => {
   test.setTimeout(FLOW_TIMEOUT_MS);
   const made: string[] = [];
 
-  test("operator switches workspace, starts a fleet, then archives it", async ({ page }, info) => {
+  test("a person switches workspace and archives a fleet there, leaving read-only history", async ({ page }, info) => {
     const primary = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
     const secondary = await ensureSecondWorkspace(FIXTURE_KEY.regular, SECOND_WORKSPACE_NAME);
     expect(secondary.id).not.toEqual(primary);
@@ -39,11 +40,9 @@ test.describe("multi-workspace + fleet lifecycle", () => {
       timeout: SWITCH_TIMEOUT_MS,
     });
 
-    // The first message goes to the secondary workspace — the one now active
-    // in the browser, so its New fleet is /w/<secondary>/fleets/new.
-    const fleetId = await createFleetViaUI(page, secondary.id, probeMessage(uniqueTag()));
+    // The fleet lives in the secondary workspace, the one now active in the browser.
+    const fleetId = (await createPrimeFleet(FIXTURE_KEY.regular, secondary.id, fixture)).id;
     made.push(fleetId);
-    await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${fleetId}`));
 
     await page.goto(workspaceHref(secondary.id, "fleets"));
     await expectSidebarFleetState(page, fleetId, "active");
@@ -61,10 +60,10 @@ test.describe("multi-workspace + fleet lifecycle", () => {
   test("an active fleet can be permanently deleted with one confirmation", async ({page}, info) => {
     const secondary = await ensureSecondWorkspace(FIXTURE_KEY.regular, SECOND_WORKSPACE_NAME);
     await signInAs(page, FIXTURE_KEY.regular);
-    const fleetId = await createFleetViaUI(page, secondary.id, probeMessage(uniqueTag()));
+    const fleetId = (await createPrimeFleet(FIXTURE_KEY.regular, secondary.id, fixture)).id;
     made.push(fleetId);
     await expectFleetActive(FIXTURE_KEY.regular, secondary.id, fleetId);
-    await page.reload();
+    await page.goto(workspaceHref(secondary.id, `fleets/${fleetId}`));
     await page.getByRole("button", {name: "Fleet actions", exact: true}).click();
     await page.getByRole("menuitem", {name: "Permanently delete", exact: true}).click();
     const confirmation = page.getByRole("alertdialog", {name: "Permanently delete fleet?", exact: true});

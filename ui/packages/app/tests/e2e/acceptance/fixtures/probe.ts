@@ -7,7 +7,6 @@
  */
 
 export const EXECUTION_REPLY_PREFIX = "ACK";
-export const ACCESS_REPLY_PREFIX = "GRANTED";
 
 /** A message the fleet answers with one known line and no tool call. */
 export function probeMessage(token: string): string {
@@ -15,18 +14,15 @@ export function probeMessage(token: string): string {
     "Do not call any tool. Do not add anything before or after that line.";
 }
 
-/** The line a probe answers `probeMessage(token)` with. */
+/** The line a probe answers `probeMessage(token)` with, and the line a reply to `tokenMessage` ends with. */
 export function probeReply(token: string): string {
   return `${EXECUTION_REPLY_PREFIX} ${token}`;
 }
 
-/** Asks the fleet to request a workspace credential, then to say it holds it once a person approves. */
-export function accessMessage(name: string, token: string): string {
-  return `Call request_access with the name ${name}. Once a person approves it, reply with exactly one line: ` +
-    `the word ${ACCESS_REPLY_PREFIX}, a space, then the token ${token}. Do not add anything before or after that line.`;
-}
-
-/** The line a fleet answers `accessMessage(name, token)` with once it holds the credential. */
-export function accessReply(token: string): string {
-  return `${ACCESS_REPLY_PREFIX} ${token}`;
+/**
+ * A fixture fleet's own message with this run's token. The fleet keeps the job
+ * the message gives it, and its reply ends with the one line a journey can find.
+ */
+export function tokenMessage(message: string, token: string): string {
+  return `${message} End your reply with the word ${EXECUTION_REPLY_PREFIX}, a space, then the token ${token}.`;
 }

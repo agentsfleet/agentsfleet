@@ -116,7 +116,10 @@ test("test_send_scrolls_once", async ({ page }) => {
 test("a metered completion preserves the answer position without adding a receipt", async ({page}) => {
   await withReplyPage(page, FLEET_NAME, async ({chat, stream, ownActor, sendOwn}) => {
     await sendOwn(OWN_TURN, TURN_ID);
-    await stream.send([opening(Date.now(), ownActor), answer()]);
+    // The answer is this turn's first chunk, so it opens the stream at sequence
+    // zero: `answer()` continues a reply whose reasoning came first, and alone
+    // it reads as a gap that holds the text back until the completion.
+    await stream.send([opening(Date.now(), ownActor), { afterMs: 0, body: chunkBody(0, "answer", ANSWER) }]);
     const reply = chat.getByText(ANSWER, {exact: true});
     await expect(reply).toBeVisible();
     const tops = await sampleTop(reply, SAMPLE_MS, () => stream.send([{

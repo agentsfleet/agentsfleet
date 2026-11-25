@@ -68,6 +68,11 @@ export const SECOND_WORKSPACE_NAME = "fixture-secondary";
 // suite runs every test carrying this tag alone, after the parallel groups.
 export const FRAME_BUDGET_TAG = "@frame-budget";
 
+// Tags a prime journey: the fixture fleets an environment is proved with when
+// it is primed or deployed. `make acceptance-e2e ACCEPTANCE_SCOPE=post-deploy`
+// selects by this tag, and the acceptance config holds that scope to them.
+export const POST_DEPLOY_TAG = "@post-deploy";
+
 /** The words a person reads on New fleet (`SteerComposer` with `creating`). */
 export const NEW_FLEET_COPY = {
   composer: "New fleet composer",

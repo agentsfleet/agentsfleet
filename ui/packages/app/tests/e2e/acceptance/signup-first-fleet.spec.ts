@@ -1,39 +1,31 @@
 /**
- * Full-lifecycle Scenario 1 — ephemeral signup → workspace auto-provision →
- * a first message on New fleet → observe → bill → halt.
+ * signup-first-fleet.spec.ts — a person who just signed up has a workspace
+ * that can hold a fleet.
  *
- * End-to-end UI-driven: the operator never leaves the browser. signup goes
- * through Clerk's hosted form, install goes through /w/<id>/fleets/new, every
- * lifecycle transition is a real click in the dashboard. No API short-cuts.
- * A fleet is made by the message typed on New fleet; nothing is set up first.
+ * Sign-up goes through Clerk's browser flow; the dashboard's route-guard chain
+ * (workspace auto-provision, starter credit, the empty state turning populated)
+ * only runs on a brand-new tenant, and this is the spec that walks it. The
+ * fleet is the prime set's first-message fleet, made through the shared helper
+ * with the new person's own session: that a first message makes a fleet is the
+ * prime journey's to prove, and archiving one is the archive spec's.
  *
  * DEV-only — Clerk PROD almost certainly does not have test mode enabled, so
  * the `+clerk_test` alias would not short-circuit OTP. Mirrors
  * the same isProdApi guard signup.spec.ts uses.
- *
- * Why this spec exists: the persistent-fixture suite covers each lifecycle
- * slice individually but no spec walks a fresh operator from "I just signed
- * up" through to "I just archived a fleet I observed running." The dashboard's
- * route-guard chain (workspace auto-provision, starter credit, empty-state →
- * populated transition) only runs on a brand-new tenant — that surface is
- * uncovered without this spec.
  */
 import * as crypto from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { deleteUser, findUserIdByEmail } from "./fixtures/clerk-admin";
-import { createFleetViaUI } from "./fixtures/new-fleet";
-import { probeMessage } from "./fixtures/probe";
-import {
-  archiveFleet,
-  expectDetailArchived,
-  expectSidebarFleetState,
-} from "./fixtures/lifecycle";
+import { expectSidebarFleetState } from "./fixtures/lifecycle";
+import { createPrimeFleet, PRIME_FLEET, primeFleet } from "./fixtures/prime-fleets";
 import { signUpAs } from "./fixtures/signup";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
-import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
+import { workspaceHref } from "./fixtures/nav";
 
 const PASSWORD = "SignupFixture!2026-stable";
-const FLOW_TIMEOUT_MS = 120_000;
+// Sign-up, then the prime fleet's first turn settling on a runner.
+const FLOW_TIMEOUT_MS = 300_000;
+const fixture = primeFleet(PRIME_FLEET.morningRooster);
 
 function uniqueEmail(): string {
   const tag = crypto.randomBytes(4).toString("hex");
@@ -42,8 +34,8 @@ function uniqueEmail(): string {
 
 const isProdApi = (process.env.NEXT_PUBLIC_API_URL ?? "").includes("api.agentsfleet.net");
 
-test.describe("signup → first message → lifecycle", () => {
-  test.skip(isProdApi, "Scenario 1 only runs against DEV/local — Clerk test mode is DEV-only");
+test.describe("a fresh signup's workspace", () => {
+  test.skip(isProdApi, "runs against DEV and local only: Clerk test mode is DEV-only");
   test.setTimeout(FLOW_TIMEOUT_MS);
 
   let createdEmail: string | null = null;
@@ -67,9 +59,7 @@ test.describe("signup → first message → lifecycle", () => {
     createdEmail = null;
   });
 
-  test("fresh signup walks a first message → observe → bill → halt entirely in the UI", {tag: "@post-deploy"}, async ({
-    page,
-  }) => {
+  test("a fresh signup lands in a workspace that opens New fleet, lists its first fleet and reads its bill", async ({page}) => {
     const email = uniqueEmail();
     createdEmail = email;
 
@@ -90,14 +80,9 @@ test.describe("signup → first message → lifecycle", () => {
     await expect(page.getByRole("heading", { name: "What should your fleet do?" })).toBeVisible();
     await expect(page.getByTestId("workspace-switcher")).toBeVisible();
 
-    // The first message makes the fleet. The fresh tenant has exactly one
-    // auto-provisioned workspace (signup.workspaceId) — the one active in the
-    // browser — so the fleet is made there.
-    const fleetId = await createFleetViaUI(page, workspaceId, probeMessage(crypto.randomBytes(4).toString("hex")));
-    await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${fleetId}`));
-    // The detail page opens on Chat — the conversation card is the
-    // post-install scaffolding assertion.
-    await expect(page.getByLabel("Fleet chat")).toBeVisible({ timeout: 15_000 });
+    // The fresh tenant has exactly one auto-provisioned workspace, the one
+    // active in the browser, so the fleet is made there with its own session.
+    const fleetId = (await createPrimeFleet({sessionJwt: signup.sessionJwt}, workspaceId, fixture)).id;
 
     // The sidebar lists the new fleet and its active status.
     await page.goto(workspaceHref(workspaceId, "fleets"));
@@ -106,12 +91,5 @@ test.describe("signup → first message → lifecycle", () => {
     // Billing page loads the report's period totals.
     await page.goto("/settings/billing");
     await expect(page.getByLabel("Period totals")).toBeVisible();
-
-    // Lifecycle: Archive via the AlertDialog confirm — terminal, history kept.
-    await page.goto(workspaceHref(workspaceId, `fleets/${fleetId}`));
-    await archiveFleet(page);
-    await expectDetailArchived(page);
-    await page.goto(workspaceHref(workspaceId, "fleets"));
-    await expectSidebarFleetState(page, fleetId, "archived");
   });
 });

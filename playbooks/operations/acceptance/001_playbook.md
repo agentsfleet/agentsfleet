@@ -11,7 +11,7 @@ executable: false
 ## What this does
 
 A person walks the development dashboard and records a verdict file for one build.
-The `deploy-dev / acceptance` job and `fleet-execution.spec.ts` gate every deploy; this pass adds human judgement on whether the pages read as trustworthy.
+The `deploy-dev / acceptance` job and the prime set in `tests/fixtures/fleets/` gate every deploy; this pass adds human judgement on whether the pages read as trustworthy.
 Neither replaces the other.
 The Human walks and records; the agent checks the verdict file before the Pull Request (PR) closes.
 

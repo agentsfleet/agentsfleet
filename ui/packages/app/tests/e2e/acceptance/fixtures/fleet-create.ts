@@ -13,8 +13,8 @@ import { v7 as uuidv7 } from "uuid";
 import { z } from "zod";
 import { FleetDetailSchema } from "@/lib/api/fleet-detail";
 import { ModelsSchema } from "@/lib/api/workspace-models";
-import { TERMINAL_STATUSES } from "@/lib/streaming/fleet-stream-row";
 import { clientFor, FixtureHttpError, type ClientHandle } from "./api-client";
+import { turnHasSettled } from "./execution";
 
 // The first message's run: the runner queue plus one provider round trip.
 const FIRST_TURN_TIMEOUT_MS = 180_000;
@@ -54,7 +54,8 @@ export async function createFixtureFleet(handle: ClientHandle, workspace: string
 /**
  * Waits out the fleet's first turn, so a spec that writes the page's stream
  * itself never meets a run still going behind it: a turn the page renders as
- * running would never settle on screen there.
+ * running would never settle on screen there. A turn that ended asking a
+ * person has settled too: no run is left behind it.
  */
 export async function awaitFirstTurnSettled(handle: ClientHandle, workspace: string, fleetId: string, turnId: string): Promise<void> {
   const client = clientFor(handle);
@@ -62,7 +63,7 @@ export async function awaitFirstTurnSettled(handle: ClientHandle, workspace: str
   for (;;) {
     const page = await client.get<ThreadPage>(`/v1/workspaces/${workspace}/fleets/${encodeURIComponent(fleetId)}/messages`);
     const status = page.items.find((item) => item.turn_id === turnId)?.status;
-    if (status !== undefined && TERMINAL_STATUSES.has(status)) return;
+    if (status !== undefined && turnHasSettled(status)) return;
     if (Date.now() > deadline) throw new Error(`fleet ${fleetId}'s first turn never settled; last status ${status ?? "absent"}`);
     await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
   }
