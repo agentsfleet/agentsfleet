@@ -51,7 +51,8 @@ EXIT_UNUSABLE = 2
 ROLLUP_ROWS = 12
 CRATES_SEGMENT = "/crates/"
 # Every crate sits one folder below `crates/`, in its layer (`rustd/Cargo.toml`).
-LAYERS = frozenset({"foundation", "protocol", "harness", "runner", "daemon", "e2e"})
+LAYER_ORDER = ("foundation", "protocol", "harness", "runner", "daemon", "e2e")
+LAYERS = frozenset(LAYER_ORDER)
 # The folder a layer's binary sits in.
 BINARY = "main"
 # The agent harness and its providers sit beside `crates/`, in no layer
@@ -183,6 +184,38 @@ def crate_of(path):
     if parts[0] not in LAYERS or len(parts) < 2:
         return parts[0]
     return f"{parts[0]}/{parts[1]}" if parts[1] == BINARY else parts[1]
+
+
+def layer_of(path):
+    """The folder a source path rolls up to: its layer under `crates/`, or the harness it is.
+
+    The per-layer table answers "which part of the tree is short" before the
+    per-crate list answers "which crate".
+    """
+    if CRATES_SEGMENT not in path:
+        return next((name for name in HARNESSES if f"/rustd/{name}/" in path), WORKSPACE_ROOT)
+    layer = path.split(CRATES_SEGMENT, 1)[1].split("/", 1)[0]
+    return layer if layer in LAYERS else WORKSPACE_ROOT
+
+
+def layer_grades(merged):
+    """[(folder, covered, total)] in layer order, then the harnesses, then anything else."""
+    tally = {}
+    for path, source in merged.items():
+        folder = layer_of(path)
+        covered, total = tally.get(folder, (0, 0))
+        tally[folder] = (covered + sum(1 for hits in source.lines.values() if hits > 0),
+                         total + len(source.lines))
+    order = {name: rank for rank, name in enumerate(LAYER_ORDER + HARNESSES)}
+    return [(folder, *tally[folder]) for folder in sorted(tally, key=lambda name: (order.get(name, len(order)), name))
+            if tally[folder][1]]
+
+
+def report_layers(grades):
+    """One line per folder, so a reader sees who is short without a floor of its own."""
+    print("  coverage by folder:")
+    for folder, covered, total in grades:
+        print(f"    {covered * 100 / total:8.4f}%  {covered:6d} of {total:6d} lines  {total - covered:5d} missed  {folder}")
 
 
 def missed_by_crate(merged):
@@ -407,6 +440,7 @@ def main(argv=None):
         return EXIT_UNUSABLE
     args.out.write_text(render(merged), encoding="utf-8")
     verdict = report(covered, total, floor, merged, args.out)
+    report_layers(layer_grades(merged))
     for crate, (crate_covered, crate_total) in crates.items():
         verdict = max(verdict, report_crate(crate, crate_covered, crate_total, floors[crate]))
     if changed is not None:

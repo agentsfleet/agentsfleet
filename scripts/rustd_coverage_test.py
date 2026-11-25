@@ -222,6 +222,23 @@ class CommandLine(unittest.TestCase):
         self.assertEqual(result.returncode, judge.EXIT_UNUSABLE)
         self.assertIn("--crate-floor ['guffbolt=most']", result.stderr)
 
+    def test_every_run_prints_coverage_by_folder_in_layer_order(self):
+        daemon = str(self.root / "rustd/crates/daemon/afd_x/src/lib.rs")
+        foundation = str(self.root / "rustd/crates/foundation/af_core/src/lib.rs")
+        harness = str(self.root / "rustd/guffbolt/src/drive/mod.rs")
+        result = self.judge({daemon: {1: 1, 2: 0}, foundation: {1: 1}, harness: {1: 1, 2: 1, 3: 0, 4: 1}})
+        self.assertEqual(result.returncode, 0, result.stdout)
+        rows = [line.split()[-1] for line in result.stdout.splitlines() if line.startswith("    ") and " lines " in line]
+        self.assertEqual(rows, ["foundation", "daemon", "guffbolt"])
+        self.assertIn(" 50.0000%       1 of      2 lines      1 missed  daemon", result.stdout)
+        self.assertIn(" 75.0000%       3 of      4 lines      1 missed  guffbolt", result.stdout)
+
+    def test_a_path_outside_the_layers_rolls_up_to_the_workspace_root(self):
+        self.assertEqual(judge.layer_of("/w/rustd/crates/runner/afr_x/src/lib.rs"), "runner")
+        self.assertEqual(judge.layer_of("/w/rustd/guffbolt-ai/src/lib.rs"), "guffbolt-ai")
+        self.assertEqual(judge.layer_of("/w/build.rs"), "(workspace root)")
+        self.assertEqual(judge.layer_of("/w/rustd/crates/vendor/x/src/lib.rs"), "(workspace root)")
+
     def test_an_e2e_crate_is_named_past_its_layer(self):
         self.assertEqual(judge.crate_of("/w/rustd/crates/e2e/af_e2e/src/lib.rs"), "af_e2e")
 

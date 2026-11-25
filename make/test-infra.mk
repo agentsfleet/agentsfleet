@@ -13,8 +13,18 @@ export AGENTSFLEET_PG_HOST_PORT
 export AGENTSFLEET_QSTASH_HOST_PORT
 export AGENTSFLEET_API_HOST_PORT
 # Mailpit SMTP and web, the next two ports in this worktree's slot.
-AGENTSFLEET_MAILPIT_SMTP_PORT ?= $(shell echo $$(( $(AGENTSFLEET_API_HOST_PORT) + 1 )))
-AGENTSFLEET_MAILPIT_UI_PORT ?= $(shell echo $$(( $(AGENTSFLEET_API_HOST_PORT) + 2 )))
+# Every `$(shell …)` default below is simply expanded, under an `origin` guard
+# so an override still wins as `?=` lets it. An exported recursive one reruns
+# its shell each time it is read, and make 4.4 reads every exported variable
+# into the environment of each `$(shell)` it spawns, so the coverage recipe's
+# manifest lookups cost the daemon shard 159,280 shells, and CI 133 s, before
+# its first line; simply expanded, 64.
+ifeq ($(origin AGENTSFLEET_MAILPIT_SMTP_PORT),undefined)
+AGENTSFLEET_MAILPIT_SMTP_PORT := $(shell echo $$(( $(AGENTSFLEET_API_HOST_PORT) + 1 )))
+endif
+ifeq ($(origin AGENTSFLEET_MAILPIT_UI_PORT),undefined)
+AGENTSFLEET_MAILPIT_UI_PORT := $(shell echo $$(( $(AGENTSFLEET_API_HOST_PORT) + 2 )))
+endif
 export AGENTSFLEET_MAILPIT_SMTP_PORT AGENTSFLEET_MAILPIT_UI_PORT
 
 # The services the suites read, by these exact names: `?=` so the environment
@@ -38,8 +48,12 @@ export TEST_DATABASE_URL TEST_DATABASE_URL_API
 # Three core NATS nodes advertise nothing, so clients take every node as a seed
 # and a test that stops one reconnects to a peer.
 AGENTSFLEET_NATS_BASE_PORT ?= $(or $(word 4,$(TEST_INFRA_PORTS)),4222)
-AGENTSFLEET_NATS_PORT_2 ?= $(shell echo $$(( $(AGENTSFLEET_NATS_BASE_PORT) + 1 )))
-AGENTSFLEET_NATS_PORT_3 ?= $(shell echo $$(( $(AGENTSFLEET_NATS_BASE_PORT) + 2 )))
+ifeq ($(origin AGENTSFLEET_NATS_PORT_2),undefined)
+AGENTSFLEET_NATS_PORT_2 := $(shell echo $$(( $(AGENTSFLEET_NATS_BASE_PORT) + 1 )))
+endif
+ifeq ($(origin AGENTSFLEET_NATS_PORT_3),undefined)
+AGENTSFLEET_NATS_PORT_3 := $(shell echo $$(( $(AGENTSFLEET_NATS_BASE_PORT) + 2 )))
+endif
 export AGENTSFLEET_NATS_BASE_PORT AGENTSFLEET_NATS_PORT_2 AGENTSFLEET_NATS_PORT_3
 TEST_NATS_URL ?= nats://agentsfleet:agentsfleet@127.0.0.1:$(AGENTSFLEET_NATS_BASE_PORT),nats://agentsfleet:agentsfleet@127.0.0.1:$(AGENTSFLEET_NATS_PORT_2),nats://agentsfleet:agentsfleet@127.0.0.1:$(AGENTSFLEET_NATS_PORT_3)
 # How the exclusive lane stops and restarts one node: compose plus the verb.
@@ -58,7 +72,9 @@ export TEST_MAILPIT_SMTP_PORT TEST_MAILPIT_URL
 # derived from its plain parts so no credential-shaped blob sits in the repo.
 # The base must carry `/v2`: without it every push 404s and reads as an outage.
 AGENTSFLEET_QSTASH_LIVE_URL ?= http://127.0.0.1:$(AGENTSFLEET_QSTASH_HOST_PORT)/v2
-AGENTSFLEET_QSTASH_LIVE_TOKEN ?= $(shell printf '{"UserID":"%s","Password":"%s"}' defaultUser defaultPassword | base64 | tr -d '\n')
+ifeq ($(origin AGENTSFLEET_QSTASH_LIVE_TOKEN),undefined)
+AGENTSFLEET_QSTASH_LIVE_TOKEN := $(shell printf '{"UserID":"%s","Password":"%s"}' defaultUser defaultPassword | base64 | tr -d '\n')
+endif
 export AGENTSFLEET_QSTASH_LIVE_URL AGENTSFLEET_QSTASH_LIVE_TOKEN
 
 # Idempotent: `up --wait` is a no-op when everything is healthy.
