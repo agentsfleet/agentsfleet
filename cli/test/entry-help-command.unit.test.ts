@@ -38,9 +38,12 @@ describe("the help command form", () => {
   });
 
   test.each([
-    [["fleet", "create"], "agentsfleet fleet create [flags] [<message>]", "Start a fleet with your first message"],
-    [["fleet", "steer"], "agentsfleet fleet steer [flags] <fleet_id> [<message>]", "Talk to a fleet: send one message, or chat if you give none"],
-    [["fleet", "triggers", "delete"], "agentsfleet fleet triggers delete [flags] <fleet_id> <trigger_id>", "Delete a trigger so it no longer wakes the fleet"],
+    [["fleet", "create"], "agentsfleet fleet create [flags] <message>", "Start a fleet by sending its first message"],
+    [["fleet", "steer"], "agentsfleet fleet steer [flags] <fleet_id> [<message>]", "Send a message to a fleet. In a terminal, omit the message to open chat."],
+    [["fleet", "model", "use"], "agentsfleet fleet model use [flags] <fleet_id> <model_ref>", "Use a model for the fleet's future work"],
+    [["fleet", "network", "use"], "agentsfleet fleet network use [flags] <fleet_id> <mode>", "Choose allow-all or private internet access"],
+    [["fleet", "triggers", "list"], "agentsfleet fleet triggers list [flags] <fleet_id>", "List a fleet's triggers"],
+    [["fleet", "triggers", "delete"], "agentsfleet fleet triggers delete [flags] <fleet_id> <trigger_id>", "Delete a fleet trigger"],
   ] as const)("`%p --help` prints that command's own usage, not the root's", async (path, usage, description) => {
     const { code, out } = await help([...path, "--help"]);
     expect(code).toBe(0);

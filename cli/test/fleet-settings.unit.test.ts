@@ -98,9 +98,10 @@ describe("fleet model use", () => {
 
 describe("fleet network use", () => {
   test.each([
-    [["allow-all"], { http_egress: "public" }, "Fleet argo: any public host, package registries blocked."],
-    [["private", "--packages"], { http_egress: "restricted", package_domains: true }, "Fleet argo: private, package registries allowed."],
-    [["allow-all", "--no-packages"], { http_egress: "public", package_domains: false }, "Fleet argo: any public host, package registries blocked."],
+    [["allow-all"], { http_egress: "public" }, "Fleet argo can reach any public site, including package registries."],
+    [["private", "--packages"], { http_egress: "restricted", package_domains: true }, "Fleet argo uses private access. Package downloads are allowed."],
+    [["private", "--no-packages"], { http_egress: "restricted", package_domains: false }, "Fleet argo uses private access. Package downloads are blocked."],
+    [["allow-all", "--no-packages"], { http_egress: "public", package_domains: false }, "Fleet argo can reach any public site, including package registries."],
   ] as const)("%p patches %p", async (words, change, line) => {
     const result = await run(["fleet", "network", "use", FLEET.id, ...words], patched(change));
     expect(result.code).toBe(0);

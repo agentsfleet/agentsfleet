@@ -34,7 +34,7 @@ const createCommand = Command.make(VERB.create, {
   name: fleetNameFlag,
   model: fleetModelFlag,
 }).pipe(
-  Command.withDescription("Start a fleet with your first message"),
+  Command.withDescription("Start a fleet by sending its first message"),
   guardedHandler(({ message, name, model }) =>
     fleetCreateEffect(opt(message), { name: opt(name), model: opt(model) }),
   ),
@@ -124,7 +124,7 @@ const steerCommand = Command.make("steer", {
     Flag.withDefault(false),
   ),
 }).pipe(
-  Command.withDescription("Talk to a fleet: send one message, or chat if you give none"),
+  Command.withDescription("Send a message to a fleet. In a terminal, omit the message to open chat."),
   guardedHandler((config) =>
     steerEffectFromArgs(config.fleetId, opt(config.message), {
       forceTty: config[OPT_TTY],
@@ -135,24 +135,24 @@ const steerCommand = Command.make("steer", {
 // ── what wakes a fleet, and what a person changes ───────────────────
 
 const triggersCommand = () => Command.make("triggers").pipe(
-  Command.withDescription("See and delete what can wake a fleet (webhooks, GitHub, Slack)"),
+  Command.withDescription("Manage webhooks, GitHub events and Slack mentions that wake a fleet"),
   Command.withSubcommands([
     Command.make(VERB.list, { fleetId: fleetIdOrNameArgument }).pipe(
-      Command.withDescription("List what can wake a fleet"),
+      Command.withDescription("List a fleet's triggers"),
       guardedHandler(({ fleetId }) => triggersListEffect(fleetId)),
     ),
     Command.make(VERB.delete, { fleetId: fleetIdOrNameArgument, triggerId: triggerIdArgument }).pipe(
-      Command.withDescription("Delete a trigger so it no longer wakes the fleet"),
+      Command.withDescription("Delete a fleet trigger"),
       guardedHandler(({ fleetId, triggerId }) => triggerDeleteEffect(fleetId, triggerId)),
     ),
   ]),
 );
 
 const modelCommand = () => Command.make("model").pipe(
-  Command.withDescription("Choose the AI model a fleet uses"),
+  Command.withDescription("Choose a fleet's model"),
   Command.withSubcommands([
     Command.make(USE, { fleetId: fleetIdOrNameArgument, modelRef: modelRefArgument }).pipe(
-      Command.withDescription("Use this model for the fleet's next replies"),
+      Command.withDescription("Use a model for the fleet's future work"),
       guardedHandler(({ fleetId, modelRef }) => fleetModelUseEffect(fleetId, modelRef)),
     ),
   ]),
@@ -161,16 +161,16 @@ const modelCommand = () => Command.make("model").pipe(
 // One mode word, so the closed setting is as easy to name as the open one.
 // `--packages` keeps the library's `--no-packages` negation.
 const networkCommand = () => Command.make("network").pipe(
-  Command.withDescription("Let a fleet reach any website, or keep it private"),
+  Command.withDescription("Control which sites a fleet can reach"),
   Command.withSubcommands([
     Command.make(USE, {
       fleetId: fleetIdOrNameArgument,
       mode: Argument.Literals("mode", NETWORK_MODES).pipe(
-        Argument.withDescription("allow-all: any website; private: only the sites of secrets you approved for it")),
+        Argument.withDescription("allow-all reaches any public site. private reaches approved sites.")),
       packages: Flag.Boolean("packages").pipe(
-        Flag.withDescription("Let it install packages (npm, PyPI and the like); --no-packages blocks them"), Flag.optional),
+        Flag.withDescription("In private mode, use --packages or --no-packages to allow or block package downloads."), Flag.optional),
     }).pipe(
-      Command.withDescription("Set a fleet's network to allow-all or private"),
+      Command.withDescription("Choose allow-all or private internet access"),
       guardedHandler(({ fleetId, mode, packages }) => fleetNetworkUseEffect(fleetId, { mode, packages: opt(packages) })),
     ),
   ]),
@@ -180,7 +180,7 @@ export const fleetCommand = () => Command.make("fleet").pipe(
   Command.withDescription(
     // The library indents only a description's first line, so the second
     // carries its own two spaces to sit under it.
-    "Start fleets, talk to them and see what they do.\n" +
+    "Start, chat with and manage fleets.\n" +
     '  Start one with: agentsfleet fleet create "<message>".',
   ),
   Command.withShortDescription("Start fleets, talk to them and see what they do"),

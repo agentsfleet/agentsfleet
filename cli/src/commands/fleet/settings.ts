@@ -48,8 +48,9 @@ export const fleetNetworkUseEffect = (
   patchFleet(fleetArgument, {
     http_egress: choice.mode === NETWORK_MODE.allowAll ? HTTP_EGRESS.public : HTTP_EGRESS.restricted,
     ...(choice.packages === undefined ? {} : { package_domains: choice.packages }),
-  }, (fleet) => `Fleet ${fleet.name}: ${fleet.http_egress === HTTP_EGRESS.public ? "any public host" : "private"}, ` +
-    `package registries ${fleet.package_domains ? "allowed" : "blocked"}.`);
+  }, (fleet) => fleet.http_egress === HTTP_EGRESS.public
+    ? `Fleet ${fleet.name} can reach any public site, including package registries.`
+    : `Fleet ${fleet.name} uses private access. Package downloads are ${fleet.package_domains ? "allowed" : "blocked"}.`);
 
 const patchFleet = (
   fleetArgument: string,
