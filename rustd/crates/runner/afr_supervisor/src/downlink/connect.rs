@@ -266,14 +266,8 @@ impl Opening<'_> {
     ) -> Result<Reader<IncomingReader>> {
         let status = response.status();
         if !status.is_success() {
-            if status.is_server_error() || status == http::StatusCode::TOO_MANY_REQUESTS {
-                return Err(error::unavailable(
-                    crate::client::Verb::Open,
-                    status.as_u16(),
-                ));
-            }
             let mut body = Vec::new();
-            tokio::time::timeout_at(
+            let read = tokio::time::timeout_at(
                 self.deadline,
                 response
                     .into_body()
@@ -281,7 +275,17 @@ impl Opening<'_> {
                     .take(4096)
                     .read_to_end(&mut body),
             )
-            .await??;
+            .await;
+            // A busy daemon stays retryable even when its body is cut short;
+            // the partial body then names no code.
+            if status.is_server_error() || status == http::StatusCode::TOO_MANY_REQUESTS {
+                return Err(error::unavailable_with_body(
+                    crate::client::Verb::Open,
+                    status.as_u16(),
+                    &body,
+                ));
+            }
+            read??;
             return Err(error::refused_with_body(
                 crate::client::Verb::Open,
                 status.as_u16(),

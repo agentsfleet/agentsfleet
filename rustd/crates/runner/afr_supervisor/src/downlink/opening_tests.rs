@@ -24,13 +24,16 @@ use crate::{
 
 type Proof<T = ()> = crate::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
+/// The problem a refused opening carries.
+const PROBLEM: &[u8] = br#"{"error_code":"UZ-RUN-011"}"#;
+
 /// The connection the scripted daemon proposes.
 const PROPOSED: &str = "019f0000-0000-7000-8000-0000000000a1";
 
 /// How the scripted daemon answers the control stream.
 #[derive(Clone, Copy, Debug)]
 enum Script {
-    /// Answers the opening with this status and no stream.
+    /// Answers the opening with this status, a problem body and no stream.
     Status(u16),
     /// Answers 200 without naming the protocol version it speaks.
     Unversioned,
@@ -110,7 +113,12 @@ impl Drop for Daemon {
 fn open(script: Script, request: Request<Incoming>, stop: CancellationToken) -> Response<Outgoing> {
     let (writer, body) = Outgoing::pipe();
     if let Script::Status(status) = script {
-        drop(writer);
+        tokio::spawn(async move {
+            let mut writer = writer;
+            tokio::io::AsyncWriteExt::write_all(&mut writer, PROBLEM)
+                .await
+                .unwrap();
+        });
         let mut response = Response::new(body);
         *response.status_mut() = StatusCode::from_u16(status).unwrap();
         return response;
@@ -236,6 +244,11 @@ async fn a_daemon_too_busy_to_open_a_stream_is_worth_another_attempt() -> Proof 
             "{status}: {failure:?}"
         );
         assert!(failure.is_retryable(), "{status}");
+        assert_eq!(
+            failure.code(),
+            af_core::error_code::RUN_LOST,
+            "{status}: the problem's code reaches the caller"
+        );
         assert!(resume.unconfirmed().is_none(), "{status}: nothing proposed");
     }
     Ok(())

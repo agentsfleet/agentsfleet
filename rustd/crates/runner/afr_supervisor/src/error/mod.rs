@@ -28,13 +28,13 @@ use crate::client::Verb;
 
 mod raise;
 
-#[cfg(test)]
-pub(crate) use self::raise::refused;
 pub(crate) use self::raise::{
     boundary, capture_limit, capture_unavailable, checkpoint_transfer, client, config, egress,
     egress_blocked, egress_no_ipv4, egress_unresolved, encode, git, malformed, refused_with_body,
-    stream_disconnected, stream_protocol, token_refused, transport, unavailable,
+    stream_disconnected, stream_protocol, token_refused, transport, unavailable_with_body,
 };
+#[cfg(test)]
+pub(crate) use self::raise::{refused, unavailable};
 
 /// The daemon refused the runner's token.
 pub(crate) const UNAUTHORIZED: u16 = StatusCode::UNAUTHORIZED.as_u16();
@@ -167,6 +167,8 @@ pub(crate) enum ErrorKind {
         verb: Verb,
         /// The status it answered.
         status: u16,
+        /// The registry code its problem body named, when it named one.
+        code: Option<ErrorCode>,
     },
 
     /// The daemon refused the call with a 4xx; retrying changes nothing.

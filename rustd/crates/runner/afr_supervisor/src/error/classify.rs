@@ -169,6 +169,9 @@ impl Error {
             ErrorKind::StreamRefused { code, .. }
             | ErrorKind::Refused {
                 code: Some(code), ..
+            }
+            | ErrorKind::Unavailable {
+                code: Some(code), ..
             } => *code,
             ErrorKind::Disconnected
             | ErrorKind::StreamTimeout { .. }

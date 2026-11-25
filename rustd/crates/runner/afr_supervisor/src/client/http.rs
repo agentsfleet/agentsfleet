@@ -97,9 +97,9 @@ impl RunnerApi for HttpRunnerApi {
                 created: ok == StatusCode::CREATED,
                 bytes: body,
             }),
-            busy if busy.is_server_error() || busy == StatusCode::TOO_MANY_REQUESTS => {
-                Err(error::unavailable(call.verb, busy.as_u16()))
-            }
+            busy if busy.is_server_error() || busy == StatusCode::TOO_MANY_REQUESTS => Err(
+                error::unavailable_with_body(call.verb, busy.as_u16(), &body),
+            ),
             refused => Err(error::refused_with_body(call.verb, refused.as_u16(), &body)),
         }
     }

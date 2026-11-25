@@ -93,6 +93,26 @@ fn a_blip_is_retryable_and_names_its_verb_family() {
     assert_eq!(busy.code(), error_code::MEM_UNAVAILABLE);
 }
 
+#[test]
+fn an_outage_carries_the_daemons_code_and_stays_retryable() {
+    let storage = raise::unavailable_with_body(
+        Verb::DurableTaskCheckpointPlan,
+        503,
+        br#"{"error_code":"UZ-DT-009","detail":"checkpoint storage is unavailable"}"#,
+    );
+    let unreadable = raise::unavailable_with_body(Verb::Load, 502, b"<html>");
+    let unnamed = raise::unavailable_with_body(Verb::Load, 503, br#"{"detail":"busy"}"#);
+
+    assert!(storage.is_retryable() && unreadable.is_retryable());
+    assert_eq!(unnamed.code(), error_code::MEM_UNAVAILABLE);
+    assert_eq!(storage.code(), error_code::DURABLE_TASK_STORAGE_UNAVAILABLE);
+    assert_eq!(
+        (storage.refusal_code(), storage.refusal_status()),
+        (None, None)
+    );
+    assert_eq!(unreadable.code(), error_code::MEM_UNAVAILABLE);
+}
+
 #[tokio::test]
 async fn a_transport_failure_is_retryable() {
     let unreachable = reqwest::Client::new()

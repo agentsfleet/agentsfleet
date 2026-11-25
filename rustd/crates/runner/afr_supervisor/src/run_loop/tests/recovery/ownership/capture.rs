@@ -224,6 +224,106 @@ async fn a_durable_task_capture_at_its_limit_skips_and_a_stale_one_stops_the_run
     Ok(())
 }
 
+/// Every record logged on this thread while the guard lives, as text.
+#[derive(Clone, Default)]
+struct Logs(Arc<parking_lot::Mutex<Vec<u8>>>);
+
+impl std::io::Write for Logs {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().extend_from_slice(buf);
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl Logs {
+    fn text(&self) -> String {
+        String::from_utf8_lossy(&self.0.lock()).into_owned()
+    }
+}
+
+#[tokio::test]
+async fn a_storage_outage_skips_the_durable_task_checkpoint_and_the_run_goes_on() -> Result<()> {
+    let outages: [fn(Verb) -> crate::Error; 2] = [
+        |verb| {
+            error::unavailable_with_body(
+                verb,
+                503,
+                br#"{"error_code":"UZ-DT-009","detail":"checkpoint storage is unavailable"}"#,
+            )
+        },
+        |verb| error::unavailable_with_body(verb, 502, b"<html>bad gateway</html>"),
+    ];
+    for outage in outages {
+        let mut fixture = Fixture::new(move |call: &Call| {
+            (call.verb == Verb::DurableTaskCheckpointPlan).then(|| Answer::Fail(outage(call.verb)))
+        })?;
+        let run = fixture.run()?;
+        let (_, mut owner) = BoundaryOwner::new(&run, Workspace::ApiOnly);
+        let logs = Logs::default();
+        let writer = logs.clone();
+        let _guard = tracing::subscriber::set_default(
+            tracing_subscriber::fmt()
+                .with_writer(move || writer.clone())
+                .with_ansi(false)
+                .finish(),
+        );
+
+        let saved = owner.capture(snapshot(&fixture)?).await;
+
+        assert!(matches!(
+            saved,
+            Ok(RecoverySave::Skipped(RecoverySkip::Unavailable))
+        ));
+        assert!(!run.interrupt.is_cancelled());
+        assert!(
+            logs.text().contains("task_checkpoint_skipped"),
+            "{}",
+            logs.text()
+        );
+        drop(owner);
+        drop(run);
+        assert!(
+            fixture
+                .rig
+                .calls()
+                .iter()
+                .any(|call| call.verb == Verb::DurableTaskCheckpointPlan),
+            "the plan was asked for"
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_durable_task_checkpoint_refused_without_a_code_still_stops_the_run() -> Result<()> {
+    let mut fixture = Fixture::new(|call: &Call| {
+        (call.verb == Verb::DurableTaskCheckpointPlan)
+            .then(|| Answer::Fail(error::refused_with_body(call.verb, 400, b"<html>")))
+    })?;
+    let run = fixture.run()?;
+    let (_, mut owner) = BoundaryOwner::new(&run, Workspace::ApiOnly);
+
+    let saved = owner.capture(snapshot(&fixture)?).await;
+
+    let refused = error::refused(Verb::DurableTaskCheckpointPlan, 400, None).code();
+    assert!(saved.is_err_and(|failure| failure.code() == refused));
+    assert!(run.interrupt.is_cancelled());
+    drop(owner);
+    drop(run);
+    assert!(
+        fixture
+            .rig
+            .calls()
+            .iter()
+            .any(|call| call.verb == Verb::DurableTaskCheckpointPlan),
+        "the plan was asked for"
+    );
+    Ok(())
+}
+
 #[tokio::test]
 async fn a_conflicting_turn_capture_skips_and_a_refused_one_stops_the_run() -> Result<()> {
     let conflict: fn() -> crate::Error = || {

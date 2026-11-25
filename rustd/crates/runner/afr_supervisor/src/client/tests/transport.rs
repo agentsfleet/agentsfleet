@@ -86,6 +86,19 @@ async fn the_http_client_classifies_every_status_class() {
 }
 
 #[tokio::test]
+async fn a_busy_daemons_problem_code_reaches_the_caller() {
+    let (base, _seen) = daemon().await;
+    let api = api(&base, "agt_r_token").unwrap();
+
+    for path in ["/status/503", "/status/500", "/status/429"] {
+        let busy = api.send(call(Verb::Mint, path, None)).await.unwrap_err();
+        assert!(busy.is_retryable(), "{path}");
+        assert_eq!(busy.code(), af_core::error_code::RUN_LOST, "{path}");
+        assert_eq!(busy.refusal_code(), None, "{path}");
+    }
+}
+
+#[tokio::test]
 async fn an_unreachable_daemon_is_a_transport_failure() {
     let api = api("http://127.0.0.1:1", "agt_r_token").unwrap();
 
