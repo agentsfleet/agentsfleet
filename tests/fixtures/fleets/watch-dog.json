@@ -1,9 +1,12 @@
 {
   "name": "watch-dog",
   "journey": "github",
-  "about": "Watches one repository. It asks for GitHub access to that repository only, and wakes when a pull request opens there.",
-  "first_message": "You watch one GitHub repository. Ask for read access to the repository named in this message with request_access, then add a GitHub trigger for its pull request events. When a pull request wakes you, say its number.",
-  "follow_ups": [],
+  "about": "Watches one repository. It asks for GitHub access to that repository only, opens a small pull request there, and wakes when the pull request opens.",
+  "first_message": "You watch one GitHub repository. Ask for read and write access to the repository named in this message with request_access, then add a GitHub trigger for its pull request events. When a pull request wakes you, say its number.",
+  "follow_ups": [
+    "Open a small pull request in that repository that adds one line to a file named after this message's token.",
+    "Close that pull request and delete its branch."
+  ],
   "remembers": [
     "Say the pull request's number when one wakes you."
   ],
@@ -12,7 +15,7 @@
       "kind": "integration",
       "name": "github",
       "scope": {
-        "access": "read"
+        "access": "write"
       }
     }
   ],
@@ -27,10 +30,11 @@
   ],
   "steers": [],
   "proves": [
-    "The fleet's request raises one access card naming the repository and read.",
-    "Approve, once, resumes the turn, and the grant's scope is that repository, read.",
-    "A token is minted only for that repository; another repository is refused.",
-    "A signed pull request event for that repository wakes the fleet once.",
-    "An event for another repository wakes nothing."
-  ]
+    "The fleet's request raises one access card naming the repository and write.",
+    "Approve, once, resumes the turn, and the grant's scope is that repository.",
+    "The fleet opens a real pull request with a token minted from the platform's GitHub App.",
+    "GitHub's real pull request event wakes the fleet once, and it says the pull request's number.",
+    "The fleet closes the pull request and deletes its branch."
+  ],
+  "repository": "agentsfleet/acceptance-playground"
 }

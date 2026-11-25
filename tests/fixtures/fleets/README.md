@@ -10,7 +10,7 @@ Each file says what its fleet is and what running it proves.
 | `night-owl` | wake-ups | Wakes on a schedule and a signed webhook. |
 | `queen-bee`, `busy-bee` | fleet to fleet | One fleet directs another. |
 | `stubborn-mule` | task | Keeps going until the job is done. |
-| `watch-dog` | GitHub | Asks for one repository, and wakes on its pull requests. |
+| `watch-dog` | GitHub | Asks for one repository, opens a pull request there, and wakes on it. |
 | `chatty-parrot` | Slack | Answers a mention in the thread it came from. |
 
 ## Fields
@@ -26,6 +26,7 @@ Each file says what its fleet is and what running it proves.
 | `asks_for` | The access it requests. |
 | `wakes_on` | The schedules and triggers it adds. |
 | `steers` | The fleets it directs. |
+| `repository` | For `watch-dog`, the test repository the platform's GitHub App is installed on. |
 | `proves` | What running it shows, end to end. |
 
 A test that needs a unique value per run adds it to the message it sends.
