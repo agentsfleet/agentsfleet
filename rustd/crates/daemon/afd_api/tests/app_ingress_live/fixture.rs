@@ -175,7 +175,6 @@ impl Fixture {
             afd_state::sql::FLEET_STATUS_ACTIVE,
         )
         .name("app-ingress-fleet")
-        .unplaced()
         .insert(&mut *connection)
         .await
         .expect("the fleet seeds");

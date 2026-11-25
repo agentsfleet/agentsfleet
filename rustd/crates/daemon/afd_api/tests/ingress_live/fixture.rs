@@ -158,7 +158,6 @@ impl Fixture {
             runnable.stored(),
         )
         .name("ingress-live-fleet")
-        .unplaced()
         .insert(&mut *self.database.acquire().await.expect("an API connection"))
         .await
         .expect("the fleet seeds");

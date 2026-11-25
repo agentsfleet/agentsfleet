@@ -15,8 +15,8 @@ impl Schedules {
     /// `updated_at`, read back after the write — see `store::fire_at`.
     ///
     /// # Errors
-    /// Refuses hidden resources, stale/missing tags, an `override` body,
-    /// invalid edits and live syncs.
+    /// Refuses hidden resources, stale/missing tags, a body that names no
+    /// field, invalid edits and live syncs.
     pub async fn edit(&self, request: EditRequest<'_>, token: &Uuid7) -> Result<Schedule> {
         let mut tx = sqlx::Transaction::begin(self.database.acquire().await?, None)
             .await

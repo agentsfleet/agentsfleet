@@ -25,9 +25,8 @@ pub(super) struct Fixture {
     pub(super) member_tenant: Uuid7,
     /// The owner's registered model a create names.
     pub(super) model: Uuid7,
-    /// A second registered model a patch moves a fleet to.
-    pub(super) other_model: Uuid7,
-    catalogue: [Uuid7; 2],
+    /// The catalogue model it registers.
+    catalogue: Uuid7,
     cleanup: OwnedRows,
     lane: TestDatabase,
 }
@@ -68,19 +67,12 @@ impl Fixture {
             tenant: mint(),
             member_tenant: mint(),
             model: mint(),
-            other_model: mint(),
-            catalogue: [mint(), mint()],
+            catalogue: mint(),
         };
         fixture.arm_cleanup();
         seed::people(&fixture).await;
         seed::credential(&fixture).await;
-        for (catalogue, entry) in fixture
-            .catalogue
-            .iter()
-            .zip([&fixture.model, &fixture.other_model])
-        {
-            seed::model(&fixture, catalogue, entry).await;
-        }
+        seed::model(&fixture, &fixture.catalogue, &fixture.model).await;
         fixture
     }
 
@@ -146,10 +138,10 @@ impl Fixture {
             self.cleanup
                 .record("DELETE FROM identity.tenants WHERE id=$1", tenant);
         }
-        for id in &self.catalogue {
-            self.cleanup
-                .record("DELETE FROM model.platform_models WHERE id=$1", id);
-        }
+        self.cleanup.record(
+            "DELETE FROM model.platform_models WHERE id=$1",
+            &self.catalogue,
+        );
     }
 
     pub(super) async fn cleanup(mut self) {

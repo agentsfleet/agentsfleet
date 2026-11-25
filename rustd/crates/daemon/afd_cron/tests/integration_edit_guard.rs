@@ -115,13 +115,13 @@ async fn an_edit_to_a_schedule_being_removed_is_refused() {
     assert_eq!(stored.cron, "0 3 * * *");
 }
 
-/// Every schedule is an independent row, so an `override` body has no recipe
-/// under it: it is refused as a malformed patch and writes nothing, whatever
-/// rides beside it, while the same change sent as the schedule's own field is
-/// taken.
+/// Every schedule is an independent row with no recipe under it: an
+/// `override` body is not an edit at all, whatever rides beside it, and a body
+/// naming no field is refused as a malformed patch and writes nothing, while
+/// the same change sent as the schedule's own field is taken.
 #[tokio::test]
 #[ignore = "needs the lane's Postgres and NATS"]
-async fn a_schedule_override_is_refused() {
+async fn an_edit_that_names_no_field_is_refused() {
     let lane = CronLane::open().await;
     let settled = lane.settled("key-edit-override", "0 3 * * *").await;
 
@@ -129,17 +129,23 @@ async fn a_schedule_override_is_refused() {
         serde_json::json!({ "override": { "cron": "0 4 * * *" } }),
         serde_json::json!({ "override": null }),
         serde_json::json!({ "override": { "message": "東京 🦉" }, "cron": "0 4 * * *" }),
-        serde_json::json!({}),
     ] {
-        let refused = edit_body(&lane, &settled, body.clone())
-            .await
-            .expect_err("a body that is not the schedule's own fields is refused");
-        assert_eq!(
-            (refused.code(), refused.detail()),
-            (INVALID_REQUEST, INVALID_PATCH),
-            "{body}"
+        let undecoded = serde_json::from_value::<Patch>(body.clone())
+            .expect_err("an `override` body is not a schedule edit");
+        assert!(
+            undecoded
+                .to_string()
+                .starts_with("unknown field `override`"),
+            "{body}: {undecoded}"
         );
     }
+    let refused = edit_body(&lane, &settled, serde_json::json!({}))
+        .await
+        .expect_err("a body that names no field is refused");
+    assert_eq!(
+        (refused.code(), refused.detail()),
+        (INVALID_REQUEST, INVALID_PATCH)
+    );
     let stored = reread(&lane, &settled).await;
     assert_eq!(
         (stored.cron.as_str(), stored.resource_version),

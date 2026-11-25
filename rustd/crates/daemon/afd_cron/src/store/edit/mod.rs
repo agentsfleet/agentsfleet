@@ -19,6 +19,6 @@ pub struct EditRequest<'a> {
     pub schedule: &'a Uuid7,
     /// Required version from the last resource read.
     pub expected: Option<&'a str>,
-    /// The fields to change; an `override` body is refused.
+    /// The fields to change.
     pub patch: &'a Patch,
 }

@@ -258,7 +258,7 @@ The policy build reads approved grants: their names go to `secrets::declared`, t
 - **Dimension 3.9** — a host must be readable → Test `a_secret_with_an_unreadable_host_cannot_be_requested` (integration): a `host` the allowlist helper cannot read → the refusal and no row.
 - **Dimension 3.10** — a refusal is a sentence → Test `a_refused_access_request_returns_its_kind_and_sentence` (unit, `afr_tools`): each refusal above → a tool result of the form `[kind] sentence`, and the run continues.
 - **Dimension 3.11** — a covered request needs no card → Test `a_request_inside_the_approved_scope_needs_no_card` (integration): `github` approved for `org/app` read; a request for the same → 200, no card, and the run continues.
-- **Dimension 3.12** — a wider scope asks again → Test `a_wider_github_request_keeps_the_old_scope_until_approved` (integration): a request for `org/app` write → one card; a write mint before Approve is refused, and after it succeeds.
+- **Dimension 3.12** — a wider scope asks again → Test `a_wider_github_request_keeps_the_old_scope_until_approved` (integration): a request for `org/app` write → one card; a mint before Approve carries read reach, and after it write reach. The mint request names no reach of its own: the token's reach is the approved scope's.
 - **Dimension 3.13** — a revoke takes effect at the next run → Test `a_revoked_grant_leaves_the_next_run_without_the_secret` (integration): `DELETE F/integration-grants/{id}` → 204; the next run holds no such secret, and a token mint for a revoked integration is refused.
 - **Dimension 3.14** — a waiting request holds no queue → Test `a_turn_after_a_waiting_request_runs` (integration): a card is open for turn #2; turn #3 arrives → it is assigned and answered.
 

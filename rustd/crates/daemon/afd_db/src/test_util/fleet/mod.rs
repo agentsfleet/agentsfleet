@@ -125,15 +125,6 @@ impl<'a> FleetSeed<'a> {
         self
     }
 
-    /// Takes [`UNPLACED`] back when the tags named are none, so no runner
-    /// from another suite is handed the fleet's work; named tags stay.
-    pub const fn unplaced(mut self) -> Self {
-        if self.required_tags.is_empty() {
-            self.required_tags = UNPLACED;
-        }
-        self
-    }
-
     /// The fleet's grants over workspace memory: reading it, and publishing to it.
     pub const fn memory(mut self, reads: bool, publishes: bool) -> Self {
         self.memory_reads_workspace = reads;

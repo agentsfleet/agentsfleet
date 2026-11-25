@@ -25487,49 +25487,6 @@
           }
         }
       },
-      "Override": {
-        "type": "object",
-        "description": "Instance fields overlaid on a fleet's pinned recipe.",
-        "properties": {
-          "cron": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Replacement five-field expression.",
-            "default": null
-          },
-          "message": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Replacement scheduled message.",
-            "default": null
-          },
-          "status": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/Status",
-                "description": "Replacement firing intent."
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null
-          },
-          "timezone": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Replacement timezone name.",
-            "default": null
-          }
-        },
-        "additionalProperties": false
-      },
       "Page": {
         "type": "object",
         "description": "A page of schedules.",
@@ -27390,38 +27347,27 @@
       },
       "SchedulePatch": {
         "type": "object",
-        "description": "Inherited schedules accept only `override`; independent schedules use fields.",
+        "description": "The fields a schedule edit changes. An unknown field is refused.",
         "properties": {
           "cron": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Independent-schedule expression."
+            "description": "Replacement five-field expression."
           },
           "message": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Independent-schedule message."
-          },
-          "override": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/Override",
-                "description": "Present null restores inherited setup; an object replaces the overlay."
-              },
-              {
-                "type": "null"
-              }
-            ]
+            "description": "Replacement scheduled message."
           },
           "status": {
             "oneOf": [
               {
                 "$ref": "#/components/schemas/Status",
-                "description": "Independent-schedule firing intent."
+                "description": "Replacement firing intent."
               },
               {
                 "type": "null"
@@ -27433,7 +27379,7 @@
               "string",
               "null"
             ],
-            "description": "Independent-schedule timezone."
+            "description": "Replacement timezone name."
           }
         },
         "additionalProperties": false
@@ -29161,7 +29107,7 @@
           },
           "etag": {
             "type": "string",
-            "description": "Current `ETag` covering the selected recipe, setup, and instance overrides."
+            "description": "The schedule's current `ETag`; send it in `If-Match` to change it."
           },
           "fleet_id": {
             "type": "string",
@@ -29190,17 +29136,6 @@
             "type": "boolean",
             "description": "Whether it retires after its first fire. Beta: this field may change shape before it is stable.",
             "x-stability": "beta"
-          },
-          "override": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/Override",
-                "description": "Explicit instance overlay, omitted when the pinned recipe is inherited."
-              },
-              {
-                "type": "null"
-              }
-            ]
           },
           "run_state": {
             "$ref": "#/components/schemas/RunState",

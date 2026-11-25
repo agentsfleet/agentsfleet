@@ -252,7 +252,6 @@ impl Schedule {
             status: Cow::Borrowed(self.desired_status.as_str()),
             sync: Cow::Borrowed(self.sync_status.as_str()),
             etag: self.etag(),
-            overrides: None,
             last_error: self.last_error.as_deref().map(Cow::Borrowed),
             description: crate::run::describe(&self.cron, &self.timezone),
             run_state,

@@ -6,7 +6,7 @@ use http::{Method, StatusCode};
 use serde_json::{Value, json};
 
 use super::{Fixture, NIGHTLY, create_with, field};
-use crate::harness::{Fleet, json_body, send, send_with_headers};
+use crate::harness::{Fleet, code_of, json_body, send, send_with_headers};
 
 /// The subject this case authenticates as; one per test, since a subject is
 /// globally unique and every case seeds its own tenant.
@@ -44,8 +44,8 @@ async fn patch(
     .await
 }
 
-/// `PATCH F/schedules/{id}` with an `override` body is 400 and changes
-/// nothing; with `{cron}` it is 200 and the schedule fires on the new
+/// `PATCH F/schedules/{id}` with an `override` body is 400 `UZ-REQ-001` and
+/// changes nothing; with `{cron}` it is 200 and the schedule fires on the new
 /// expression.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -76,6 +76,19 @@ async fn a_schedule_override_is_refused() {
     )
     .await;
     assert_eq!(refused.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        code_of(refused).await,
+        af_core::error_code::INVALID_REQUEST.as_str()
+    );
+    let unchanged = send(
+        &router,
+        Method::GET,
+        &fixture.one(&schedule),
+        Some(&fixture.token),
+        "",
+    )
+    .await;
+    assert_eq!(field(&json_body(unchanged).await, "cron"), NIGHTLY);
 
     let taken = patch(&router, &fixture, &schedule, &json!({ "cron": EARLIER })).await;
     assert_eq!(taken.status(), StatusCode::OK);

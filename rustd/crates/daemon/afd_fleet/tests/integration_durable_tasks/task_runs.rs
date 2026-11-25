@@ -4,6 +4,7 @@
 use af_core::id::Uuid7;
 use afd_fleet::run::{Billed, Issued};
 use afd_turns::Producer;
+use serde_json::Value;
 
 use super::fixture::{Case, exercise};
 use super::task_tools::{decision_calls, started};
@@ -75,6 +76,21 @@ async fn issue_next(case: &Case) -> (Uuid7, Issued) {
     (acquired.turn_id, issued)
 }
 
+/// Assigns the fleet's next head to the case's runner and delivers it through
+/// the gate chain, as a runner's poll does.
+async fn deliver_next(case: &Case) -> Value {
+    let acquired = select_fleet(&case.held.runs, &case.held.runner, &case.held.fleet)
+        .await
+        .expect("the fleet's next head is assigned");
+    case.held
+        .fixtures
+        .plane()
+        .assign_selected(acquired, &case.held.runner, af_core::clock::now())
+        .await
+        .expect("every gate verdict is a decision, not a fault")
+        .expect("the fleet's next head is delivered")
+}
+
 /// The task the issued run is bound to.
 fn bound(issued: &Issued) -> Option<String> {
     issued
@@ -83,20 +99,49 @@ fn bound(issued: &Issued) -> Option<String> {
         .map(|task| task.durable_task_id.to_string())
 }
 
-// Value: protects=a started task's continuation is assigned as the task's own
-// run; fails_when=the continuation runs unbound, or is held behind a check
-// that no longer exists; seam=assignment and issue over live Postgres;
-// no_claim=the delivered policy's tools, which the gate chain's suite proves.
+// Value: protects=a started task's continuation is delivered as the task's
+// own run, offered the published catalog; fails_when=the continuation runs
+// unbound, is held behind a check that no longer exists, or a task run loses
+// its tools; seam=assignment and the gate chain's delivery over live Postgres
+// and NATS.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_task_continuation_runs_with_tools() {
     exercise(async |case| {
         let task = started(case).await;
         finish_head(case).await;
+        let fixtures = &case.held.fixtures;
+        let _default = crate::integration_run_gates::seed::seed_provider_resolution(
+            fixtures,
+            &case.held.fleet,
+        )
+        .await;
 
-        let (_turn, issued) = issue_next(case).await;
+        let run = deliver_next(case).await;
 
-        assert_eq!(bound(&issued).as_deref(), Some(task.as_str()));
+        let delivered = run.pointer("/durable_task/durable_task_id");
+        assert_eq!(delivered.and_then(Value::as_str), Some(task.as_str()));
+        let run_id = run.get("run_id").and_then(Value::as_str);
+        let run_id = Uuid7::parse(run_id.expect("the run's id")).expect("an issued run id");
+        let held: Option<Uuid7> =
+            sqlx::query_scalar("SELECT durable_task_id FROM thread.runs WHERE id = $1")
+                .bind(&run_id)
+                .fetch_one(&mut *fixtures.database.acquire().await.expect("a connection"))
+                .await
+                .expect("the delivered run");
+        assert_eq!(held, Some(task), "the run row is bound to the task");
+        let tools: Vec<&str> = run
+            .pointer("/policy/tools")
+            .and_then(Value::as_array)
+            .expect("the offered tools")
+            .iter()
+            .filter_map(Value::as_str)
+            .collect();
+        let catalog = afd_gate::policy::catalog::offered(false);
+        assert!(
+            catalog.iter().all(|tool| tools.contains(&tool.as_ref())),
+            "the task's run is offered the published catalog: {tools:?}"
+        );
     })
     .await;
 }

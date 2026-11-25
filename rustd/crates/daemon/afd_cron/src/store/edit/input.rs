@@ -1,8 +1,4 @@
-//! An edit names the schedule's own fields, and nothing else.
-//!
-//! Every schedule is an independent row, so an `override` body has no recipe
-//! under it to overlay: it is refused rather than read as a field edit, which
-//! would silently apply a body written for a different shape.
+//! An edit names the schedule's own fields, and at least one of them.
 
 use crate::{DesiredStatus, Result, Schedule, error::ErrorKind, validate};
 use afd_api_wire::schedule::{Patch, Status};
@@ -19,14 +15,14 @@ pub(super) struct Replacement {
 /// own value for every other.
 ///
 /// # Errors
-/// `Patch` for an `override` body or a body that names no field; `Invalid`
-/// for a merged expression, zone or message the grammar refuses.
+/// `Patch` for a body that names no field; `Invalid` for a merged
+/// expression, zone or message the grammar refuses.
 pub(super) fn replacement(row: &Schedule, patch: &Patch) -> Result<Replacement> {
     let named = patch.cron.is_some()
         || patch.timezone.is_some()
         || patch.message.is_some()
         || patch.status.is_some();
-    if patch.overrides.is_some() || !named {
+    if !named {
         return Err(ErrorKind::Patch.into());
     }
     let current = if row.desired_status == DesiredStatus::Paused {

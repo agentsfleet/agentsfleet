@@ -90,22 +90,19 @@ fn the_seeded_network_is_a_new_fleets() {
 }
 
 /// A fleet whose seed names no tags requires the unplaced one, so no other
-/// suite's runner is handed its work; named tags replace it and stay, and an
-/// emptied list takes it back on `unplaced`.
+/// suite's runner is handed its work; named tags replace it, and an emptied
+/// list matches every runner.
 #[test]
 fn a_fleet_is_unplaced_until_its_seed_names_tags() -> af_core::error::Result<()> {
     let (id, workspace, tenant) = ids()?;
     let fresh = FleetSeed::new(&id, &workspace, &tenant, STATUS);
     assert_eq!(fresh.required_tags, ["fixture-unplaced"]);
 
-    let tagged = FleetSeed::new(&id, &workspace, &tenant, STATUS)
-        .tags(&["linux-runner"])
-        .unplaced();
+    let tagged = FleetSeed::new(&id, &workspace, &tenant, STATUS).tags(&["linux-runner"]);
     assert_eq!(tagged.required_tags, ["linux-runner"]);
 
     let emptied = FleetSeed::new(&id, &workspace, &tenant, STATUS).tags(&[]);
     assert_eq!(emptied.required_tags, [""; 0]);
-    assert_eq!(emptied.unplaced().required_tags, ["fixture-unplaced"]);
     Ok(())
 }
 

@@ -211,7 +211,6 @@ impl Fixture {
         FleetSeed::new(&fleet, workspace, &self.tenant, status)
             .name(saved.unwrap_or(&config.name))
             .at(afd_db::test_util::SEEDED_AT)
-            .unplaced()
             .insert(&mut *connection)
             .await
             .expect("the fleet row seeds");

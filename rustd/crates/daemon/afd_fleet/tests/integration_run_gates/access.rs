@@ -13,6 +13,7 @@ use af_crypto::entropy::Entropy;
 use af_wire::access_verb::AccessRequest;
 use afd_approval::{Decision, Inbox, KIND_INTEGRATION_GRANT, Requested, Resolution};
 use afd_db::test_util::PlatformDefault;
+use afd_fleet::run::{Committed, Terminal, Verdict};
 use afd_turns::{Producer, Turns};
 use serde_json::{Value, json};
 
@@ -22,6 +23,9 @@ const SENTRY_HOST: &str = "sentry.io";
 
 /// Who answers the cards.
 const REVIEWER: &str = "fixture:person";
+
+/// What a run that asked for access says as it ends.
+const ASKED: &str = "I asked for access to Sentry.";
 
 /// A fleet with one issued run, and what that run was delivered.
 pub(super) struct Live {
@@ -45,6 +49,12 @@ impl Live {
         }
     }
 
+    /// The issued run's id.
+    pub(super) fn run_id(&self) -> Uuid7 {
+        let run = self.payload.get("run_id").and_then(Value::as_str);
+        Uuid7::parse(run.expect("the run's id")).expect("an issued run id")
+    }
+
     /// The run's request for `name`, at `scope`.
     pub(super) async fn ask(
         &self,
@@ -52,29 +62,49 @@ impl Live {
         name: &str,
         scope: Option<Value>,
     ) -> afd_fleet::Result<Requested> {
+        let fence = self.payload.get("fencing_token").and_then(Value::as_u64);
         let request = AccessRequest {
-            fencing_token: self
-                .payload
-                .get("fencing_token")
-                .and_then(Value::as_u64)
-                .expect("the run's fence"),
+            fencing_token: fence.expect("the run's fence"),
             name: Cow::Owned(name.to_owned()),
             scope: scope.and_then(|scope| scope.as_object().cloned()),
         };
-        let run = self
-            .payload
-            .get("run_id")
-            .and_then(Value::as_str)
-            .expect("the run's id");
-        let run = Uuid7::parse(run).expect("an issued run id");
         let valid = garde::Unvalidated::new(request)
             .validate()
             .expect("a request inside its bounds");
         fixtures
             .plane()
-            .request_access(&self.ready.runner, run, &valid, fixtures.enrolled_at())
+            .request_access(
+                &self.ready.runner,
+                self.run_id(),
+                &valid,
+                fixtures.enrolled_at(),
+            )
             .await
             .map(|asked| asked.requested)
+    }
+
+    /// Reports the issued run as ending `Waiting`, through the report path a
+    /// run that asked the person takes.
+    pub(super) async fn report_waiting(&self, fixtures: &Fixtures) -> Committed {
+        let run = self.run_id();
+        let runs = fixtures.runs();
+        let reported = runs
+            .load_for_report(&run, &self.ready.runner)
+            .await
+            .expect("the run loads")
+            .expect("the run is the runner's");
+        let pricing = fixtures.pricing(&run).await;
+        let now = fixtures.metered_since(&self.ready.fleet).await;
+        let priced = (&run, &pricing);
+        let mut waiting =
+            crate::report_commit::report(&run, &self.ready.runner, &reported, priced, ASKED, now);
+        waiting.outcome = Terminal {
+            verdict: Verdict::Waiting,
+            ..waiting.outcome
+        };
+        runs.commit_report(waiting)
+            .await
+            .expect("the report reaches the datastore")
     }
 
     /// Ends the issued run as a report that waits would, and delivers the
@@ -117,17 +147,6 @@ async fn settle_and_lapse(fixtures: &Fixtures, ready: &Ready) {
     .execute(&mut *connection)
     .await
     .expect("the thread is free");
-}
-
-/// Seals `body` under `name` in `workspace`'s vault, as the plane reads it.
-pub(super) async fn store(fixtures: &Fixtures, workspace: &Uuid7, name: &str, body: &Value) {
-    fixtures.store_secret(workspace, name, body).await;
-}
-
-/// The Sentry secret a case's workspace holds.
-pub(super) async fn store_sentry(fixtures: &Fixtures, workspace: &Uuid7) {
-    let body = json!({"host": SENTRY_HOST, "token": "sentry-fixture-token"});
-    store(fixtures, workspace, SENTRY, &body).await;
 }
 
 /// `fleet`'s grants and the cards raised for them.
@@ -187,7 +206,8 @@ pub(super) fn holds_sentry(payload: &Value) -> (bool, bool) {
 
 /// Raises the Sentry card from a live run, and answers the card's id.
 pub(super) async fn raised(fixtures: &Fixtures, live: &Live) -> Uuid7 {
-    store_sentry(fixtures, &live.workspace).await;
+    let body = json!({"host": SENTRY_HOST, "token": "sentry-fixture-token"});
+    fixtures.store_secret(&live.workspace, SENTRY, &body).await;
     match live
         .ask(fixtures, SENTRY, None)
         .await
@@ -200,10 +220,11 @@ pub(super) async fn raised(fixtures: &Fixtures, live: &Live) -> Uuid7 {
 }
 
 // Value: protects=a run's request raises one card carrying its turn and leaves
-// the grant pending as a secret, and asking again raises no second card;
-// fails_when=a repeat raises another card or the card names no turn;
-// seam=`RunService::request_access` from an issued run over live Postgres;
-// no_claim=the waiting settlement, which the report's commit path writes.
+// the grant pending as a secret, asking again raises no second card, and the
+// run's `Waiting` report settles the turn waiting on that card alone;
+// fails_when=a repeat raises another card, the card names no turn, or the
+// report raises a question beside the card; seam=`RunService::request_access`
+// and `Runs::commit_report` from an issued run over live Postgres.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_request_access_raises_one_card_and_waits() {
@@ -233,6 +254,24 @@ async fn a_request_access_raises_one_card_and_waits() {
         Some(live.ready.turn_id.clone()),
         "the card carries the asking turn"
     );
+
+    let settled = live.report_waiting(&fixtures).await;
+    assert!(matches!(settled, Committed::Settled { .. }), "{settled:?}");
+    let (status, questions): (String, i64) = sqlx::query_as(
+        "SELECT status, (SELECT count(*) FROM fleet.approval_gates \
+           WHERE turn_id = $1 AND gate_type = $2) FROM thread.turns WHERE id = $1",
+    )
+    .bind(&live.ready.turn_id)
+    .bind(afd_api_wire::approval::GATE_TYPE_QUESTION)
+    .fetch_one(&mut *fixtures.database.acquire().await.expect("a connection"))
+    .await
+    .expect("the asking turn");
+    assert_eq!(
+        (status.as_str(), questions),
+        (af_core::turn::status::WAITING, 0),
+        "the turn waits on the card, with no question beside it"
+    );
+    assert_eq!(rows(&fixtures, &live.ready.fleet).await, (1, 1));
     fixtures.cleanup().await;
 }
 

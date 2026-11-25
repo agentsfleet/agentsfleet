@@ -45,11 +45,8 @@ pub struct View<'s> {
     /// state.
     #[serde(borrow)]
     pub sync: Cow<'s, str>,
-    /// Current `ETag` covering the selected recipe, setup, and instance overrides.
+    /// The schedule's current `ETag`; send it in `If-Match` to change it.
     pub etag: String,
-    /// Explicit instance overlay, omitted when the pinned recipe is inherited.
-    #[serde(rename = "override", skip_serializing_if = "Option::is_none")]
-    pub overrides: Option<super::Override>,
     /// Why the last push failed, when one did.
     #[serde(borrow)]
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -17,9 +17,8 @@ pub(crate) use af_core::error::DETAIL_OPERATION_FAILED as OPERATION_FAILED;
 /// A person may retry after the current schedule sync releases its fence.
 pub const SYNC_HELD: &str = "This schedule is being synchronised. Try again in a moment.";
 
-/// A schedule edit names its own fields; a schedule has no recipe to override.
-pub const INVALID_PATCH: &str =
-    "Send at least one of cron, timezone, message or status. A schedule has no override.";
+/// A schedule edit names at least one of its own fields.
+pub const INVALID_PATCH: &str = "Send at least one of cron, timezone, message or status.";
 /// A conditional edit requires the schedule tag from its last read.
 pub const TAG_REQUIRED: &str = "Send the current schedule tag in If-Match.";
 /// The caller must read the schedule again before replacing its intent.

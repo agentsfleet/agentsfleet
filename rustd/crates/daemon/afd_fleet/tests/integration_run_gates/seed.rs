@@ -39,7 +39,7 @@ use crate::support::Fixtures;
 /// process inserted it, and left alone if it was already there. A row that
 /// outlived its run pointed at a workspace whose key was gone, and the next
 /// run's provider resolution failed on it.
-pub(super) async fn seed_provider_resolution(
+pub(crate) async fn seed_provider_resolution(
     fixtures: &Fixtures,
     fleet: &Uuid7,
 ) -> PlatformDefault {

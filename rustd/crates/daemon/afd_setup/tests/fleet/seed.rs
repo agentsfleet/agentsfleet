@@ -1,4 +1,4 @@
-//! Real identities, joined membership, a sealed provider key and two models
+//! Real identities, joined membership, a sealed provider key and a model
 //! the workspace may run.
 
 use super::fixture::{Fixture, now};
