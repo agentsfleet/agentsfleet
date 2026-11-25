@@ -3,8 +3,9 @@ import { Link, useLocation } from "react-router-dom";
 import { Button } from "@agentsfleet/design-system";
 import Hero from "../components/Hero";
 import HowItWorks from "../components/HowItWorks";
-import Pricing from "../components/Pricing";
+import { Pricing } from "../components/Pricing";
 import { AudienceSection } from "../components/AdoptionSections";
+import { PUBLIC_ACCESS_URL } from "../config";
 import { DEFAULT_JOB, EXAMPLE_ANCHOR, JOBS_ANCHOR, type ExampleJob } from "../lib/example-jobs";
 import { trackNavigationClicked } from "../analytics/posthog";
 
@@ -27,7 +28,7 @@ export default function Examples() {
         {view.example && <HowItWorks key={job.id} job={job} navigation={<Button asChild variant="ghost" size="sm" className="min-h-11 text-pulse"><Link to={`#${JOBS_ANCHOR}`} onClick={() => trackNavigationClicked({ source: "example_back", surface: "example", target: "home" })}><span aria-hidden="true">←</span>Back to examples</Link></Button>} />}
       </Hero>
       <AudienceSection />
-      <Pricing />
+      <Pricing waitlistUrl={PUBLIC_ACCESS_URL} />
     </div>
   );
 }

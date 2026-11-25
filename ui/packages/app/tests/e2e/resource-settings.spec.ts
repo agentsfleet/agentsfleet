@@ -128,7 +128,7 @@ test("remaining resource pages and New fleet retain the approved frame", async (
       }
       if (label === "New fleet") {
         const composer = page.getByRole("textbox", {name: "What would you like your fleet to do?"});
-        await expect(page.getByRole("heading", {name: "What should your fleet do?"})).toBeVisible();
+        await expect(page.getByRole("heading", {name: "New fleet"})).toBeVisible();
         await expect(composer).toBeVisible();
         await expect(page.getByRole("complementary", {name: "Summary"})).toHaveCount(0);
         const box = await composer.boundingBox();
@@ -185,4 +185,58 @@ test("the Secrets prototype lists sample secrets and adds a new entry", async ({
   await expect(add).toBeHidden();
   await expect(secrets.getByText("SAMPLE_METRICS_KEY", {exact: true})).toBeVisible();
   expect(errors).toEqual([]);
+});
+
+test("a connector refusal stays on its row at desktop and phone widths", async ({page, chatProbe}, info) => {
+  for (const width of [1440, 390, 320]) {
+    await page.setViewportSize({width, height: width === 1440 ? 960 : 844});
+    for (const theme of ["dark", "light"]) {
+      await page.goto(`${chatProbe}?resourcePages=1&resource=integrations&disconnectRoute=1`);
+      await page.evaluate(value => {document.documentElement.dataset.theme = value;}, theme);
+      await page.evaluate(() => document.fonts.ready);
+      const github = page.getByTestId("integration-github");
+      const slack = page.getByTestId("integration-slack");
+      const disconnect = github.getByRole("button", {name: "Disconnect GitHub", exact: true});
+      await expect(disconnect).toBeVisible();
+      await expect(slack.getByRole("button", {name: "Connect Slack", exact: true})).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await page.screenshot({path: info.outputPath(`connected-apps-${width}-${theme}.png`), scale: "css", animations: "disabled"});
+      const release = Promise.withResolvers<void>();
+      await page.route("**/fixture/disconnect", async route => {
+        await release.promise;
+        await route.fulfill({status: 204});
+      }, {times: 1});
+      await disconnect.focus();
+      try {
+        await page.keyboard.press("Enter");
+        const pending = github.getByRole("button", {name: "Disconnecting…", exact: true});
+        await expect(pending).toBeDisabled();
+        await expect(pending).toBeFocused();
+      } finally {
+        release.resolve();
+      }
+      await expect(github.getByRole("alert")).toBeVisible();
+      await expect(github).toContainText("Connected · Release workspace");
+      await expect(disconnect).toBeEnabled();
+      await expect(disconnect).toBeFocused();
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+    }
+  }
+});
+
+test("the Connected apps prototype switches between Connect and Disconnect on the row", async ({page}) => {
+  await page.goto(new URL("../../../../../docs/ux.html#connections", import.meta.url).href);
+  const disconnect = page.getByRole("button", {name: "Disconnect Slack", exact: true});
+  await expect(disconnect).toBeVisible();
+  await expect(page.getByText("Invite the app to the Slack channels your fleets use.")).toBeVisible();
+  await disconnect.focus();
+  await page.keyboard.press("Enter");
+  const connect = page.getByRole("button", {name: "Connect Slack", exact: true});
+  await expect(connect).toBeFocused();
+  await expect(page.getByText("Not connected", {exact: true})).toBeVisible();
+  await expect(page.getByRole("button", {name: "Disconnect GitHub", exact: true})).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.keyboard.press("Enter");
+  await expect(disconnect).toBeFocused();
+  await expect(page.getByText("Connected · agentsfleet", {exact: true})).toBeVisible();
 });

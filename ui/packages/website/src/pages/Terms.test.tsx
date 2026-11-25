@@ -13,7 +13,7 @@ describe("Terms", () => {
     render(<Terms />);
     expect(screen.getByTestId("terms-page")).toHaveTextContent("Fleet runtime starts at $0.");
     expect(screen.getByTestId("terms-page")).not.toHaveTextContent(/included credit|credit included|\$25/i);
-    expect(screen.getByTestId("terms-page")).toHaveTextContent("If you bring your own key, usage is billed by your provider directly.");
+    expect(screen.getByTestId("terms-page")).toHaveTextContent("If you bring your own model key, your provider bills model usage directly.");
     expect(screen.getByTestId("terms-page")).not.toHaveTextContent(/early access|model credit|zero markup/i);
     expect(screen.getByTestId("terms-page")).not.toHaveTextContent(/enterprise tier/i);
   });

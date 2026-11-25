@@ -13,6 +13,6 @@ export function DurableTaskNextStep({detail}: {detail: DurableTaskDetail}) {
         ? target.workflows.find(workflow => workflow.id === check.workflow_id)?.path ?? `Workflow ${check.workflow_id}`
         : `Workflow ${check.workflow_id}`).join(", ")}.`
         : "The recorded wait is still active. Check results are shown below; continuation is not yet confirmed."
-      : "No active check dependency is recorded. Follow the activity and replies below for the next action."}</p>
+      : "Follow the chat for the next update."}</p>
   </div>;
 }

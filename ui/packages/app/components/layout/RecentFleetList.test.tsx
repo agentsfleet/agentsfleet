@@ -43,7 +43,7 @@ it("lists each fleet with its delete action and reads nothing but the fleet list
   expect(screen.queryByRole("link", {name: `Edit ${active.name}`})).toBeNull();
   const trash = screen.getByRole("button", {name: `Permanently delete fleet: ${active.name}`});
   expect(trash.classList.contains("group-focus-within:opacity-100")).toBe(true);
-  expect(trash.querySelector("svg")?.getAttribute("width")).toBe("14");
+  expect(trash.querySelector("svg")?.getAttribute("width")).toBe("16");
   fireEvent.click(fleet);
   expect(navigate).toHaveBeenCalledOnce();
   expect(calls.map(call => call.path)).toEqual([`/live/v1/workspaces/${WORKSPACE}/fleets?limit=50`]);

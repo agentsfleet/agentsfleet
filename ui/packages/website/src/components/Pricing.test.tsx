@@ -1,8 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { expect, it, vi } from "vitest";
 import { PUBLIC_ACCESS_URL } from "../config";
-import { SUPPORT_EMAIL } from "../lib/contact";
-import Pricing from "./Pricing";
+import { Pricing } from "./Pricing";
 
 const analytics = vi.hoisted(() => ({
   trackNavigationClicked: vi.fn(),
@@ -10,44 +9,25 @@ const analytics = vi.hoisted(() => ({
 }));
 vi.mock("../analytics/posthog", () => analytics);
 
-describe("Getting started and pricing", () => {
-  beforeEach(() => {
-    analytics.trackNavigationClicked.mockReset();
-    analytics.trackSignupStarted.mockReset();
-  });
+it("states the approved starting price and own-key billing", () => {
+  render(<Pricing waitlistUrl={PUBLIC_ACCESS_URL} />);
+  const section = screen.getByTestId("pricing-block");
+  expect(section).toHaveTextContent("Fleet runtime starts at $0.");
+  expect(section).toHaveTextContent("If you bring your own model key, your provider bills model usage directly.");
+  expect(section).not.toHaveTextContent(/included credit|credit included|\$25|unlimited|zero markup/i);
+  expect(within(section).queryByRole("link", { name: /buy|purchase|subscribe|upgrade/i })).toBeNull();
+});
 
-  it("states the approved starting price and own-key billing", () => {
-    render(<Pricing />);
-    const section = screen.getByTestId("pricing-block");
-    expect(screen.getByTestId("pricing-early-access-banner")).toHaveTextContent("$0 to start");
-    expect(section).not.toHaveTextContent(/included credit|credit included|\$25/i);
-    expect(section).toHaveTextContent("If you bring your own key, usage is billed by your provider directly.");
-    expect(section).not.toHaveTextContent(/early access|model credit|unlimited|zero markup|save \d/i);
-    expect(within(section).queryByRole("link", { name: /buy|purchase|subscribe|upgrade/i })).toBeNull();
-    expect(screen.queryByTestId("pricing-card-enterprise")).toBeNull();
-  });
-
-  it("opens hosted sign-up and preserves existing attribution", () => {
-    render(<Pricing />);
-    const action = screen.getByTestId("pricing-cta-early-access");
-    expect(action).toHaveAttribute("href", PUBLIC_ACCESS_URL);
-    expect(action).toHaveAttribute("target", "_blank");
-    expect(action).toHaveAttribute("rel", "noopener noreferrer");
-    expect(action).toHaveTextContent(/Join waitlist/);
-    fireEvent.click(action);
-    expect(analytics.trackSignupStarted).toHaveBeenCalledWith({
-      source: "pricing_early_access", surface: "pricing", mode: "humans",
-    });
-  });
-
-  it("provides a direct feedback path without pretending an enterprise plan exists", () => {
-    render(<Pricing />);
-    const link = screen.getByRole("link", { name: /tell us about your workflow/i });
-    expect(link).toHaveAttribute("href", `mailto:${SUPPORT_EMAIL}`);
-    expect(link).not.toHaveAttribute("target");
-    fireEvent.click(link);
-    expect(analytics.trackNavigationClicked).toHaveBeenCalledWith({
-      source: "pricing_contact", surface: "pricing", target: "email",
-    });
-  });
+it("links to the waitlist and terminal guide with attribution", () => {
+  render(<Pricing waitlistUrl={PUBLIC_ACCESS_URL} />);
+  const signup = screen.getByRole("link", { name: "Join waitlist" });
+  expect(signup).toHaveAttribute("href", PUBLIC_ACCESS_URL);
+  expect(signup).toHaveAttribute("target", "_blank");
+  expect(signup).toHaveAttribute("rel", "noopener noreferrer");
+  fireEvent.click(signup);
+  expect(analytics.trackSignupStarted).toHaveBeenCalledWith({ source: "pricing_signup", surface: "pricing", mode: "humans" });
+  const guide = screen.getByRole("link", { name: "Use the terminal" });
+  expect(guide).toHaveAttribute("href", "/agents");
+  fireEvent.click(guide);
+  expect(analytics.trackNavigationClicked).toHaveBeenCalledWith({ source: "pricing_terminal", surface: "pricing", target: "agents" });
 });

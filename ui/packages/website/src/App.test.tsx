@@ -9,7 +9,6 @@ const analytics = vi.hoisted(() => ({
 vi.mock("./analytics/posthog", () => analytics);
 
 import App from "./App";
-import { HERO_HEADLINE } from "./lib/marketing-copy";
 import { PUBLIC_ACCESS_URL } from "./config";
 
 async function renderApp(initialRoute = "/examples") {
@@ -61,7 +60,7 @@ describe("App", { timeout: APP_TEST_TIMEOUT_MS }, () => {
     const nav = screen.getByRole("navigation", { name: /primary/i });
     expect(within(nav).getByRole("link", { name: "Pricing" })).toHaveAttribute("href", "/#pricing");
     expect(within(nav).getByRole("link", { name: /^Product$/i })).toHaveAttribute("href", "/#how-it-works");
-    expect(within(nav).getByRole("link", { name: "GitHub" })).toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: "Examples" })).toHaveAttribute("href", "/examples");
     expect(within(nav).getByRole("link", { name: /docs/i })).toHaveAttribute(
       "href",
       "https://docs.agentsfleet.net",
@@ -104,7 +103,7 @@ describe("App", { timeout: APP_TEST_TIMEOUT_MS }, () => {
     await renderApp("/examples");
     expect(await screen.findByTestId("hero", {}, { timeout: LAZY_ROUTE_TIMEOUT_MS })).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { level: 1, name: HERO_HEADLINE }),
+      screen.getByRole("heading", { level: 1, name: "Try a fleet conversation" }),
     ).toBeInTheDocument();
   });
 

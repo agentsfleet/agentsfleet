@@ -63,12 +63,13 @@ and is versioned with each release:
 `agentsfleet --help` and `agentsfleet <command> --help` print the same surface
 from the binary you actually have installed.
 
-Run `agentsfleet pet` to watch Orbit, the terminal jellyfish, for five seconds.
-The preview shows Orbit floating, working and celebrating. Press Ctrl+C to stop it.
+Run `agentsfleet pet` to play Orbit, a local paddle game. Press Space to serve,
+move with the arrows or A/D, and keep the ball in play. Press R to restart or
+Q to quit.
 
-Small terminals use a compact jellyfish, and `AGENTSFLEET_REDUCED_MOTION=1` disables animation.
-Resizing the terminal stops the full preview's redraws to protect surrounding output.
-`agentsfleet pet --json` returns `{"name":"Orbit"}` without signing in or making a request.
+The request loader shows a bouncing ball. Set `AGENTSFLEET_REDUCED_MOTION=1` for a static status.
+
+`agentsfleet pet --json` returns `{"name":"Orbit"}`. The game runs locally without signing in.
 
 ## Development
 

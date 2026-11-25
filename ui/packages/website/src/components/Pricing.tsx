@@ -1,94 +1,39 @@
-import { Button, Card, DisplayLG, cn } from "@agentsfleet/design-system";
-import { PUBLIC_ACCESS_URL } from "../config";
-import {
-  trackNavigationClicked,
-  trackSignupStarted,
-} from "../analytics/posthog";
-import { SUPPORT_EMAIL } from "../lib/contact";
-import { HERO_PRIMARY_LABEL, PRICING_COPY } from "../lib/marketing-copy";
+import { useId } from "react";
+import { Button, DisplayLG, Section, cn } from "@agentsfleet/design-system";
+import { linkTracking } from "../analytics/link-tracking";
+import { PRICING_COPY } from "../lib/marketing-copy";
+import { SECTION_SPACING, SITE_CONTAINER } from "./site-classes";
 
-import { SECTION_SPACING, SITE_CONTAINER, TEXT_LINK } from "./site-classes";
-
-export default function Pricing() {
+export function Pricing({ waitlistUrl }: { waitlistUrl: string }) {
+  const heading = useId();
   return (
-    <section
-      id="pricing"
-      className={SECTION_SPACING}
-      data-testid="pricing-block"
-      aria-label="Getting started and pricing"
-    >
-      <div
-        className={cn(
-          SITE_CONTAINER,
-          "grid items-start gap-2xl lg:grid-cols-2 lg:gap-4xl",
-        )}
-      >
-        <div className="flex flex-col items-start gap-5">
-          <DisplayLG className="font-bold text-balance">
-            {PRICING_COPY.headline}
-          </DisplayLG>
-          <p className="text-body-lg leading-body-lg text-text-muted m-0 max-w-narrow">
-            {PRICING_COPY.lede}
+    <Section id="pricing" data-testid="pricing-block" aria-labelledby={heading} variant="divided" className="scroll-mt-xl bg-card">
+      <div className={cn(SITE_CONTAINER, SECTION_SPACING, "flex flex-wrap items-center justify-between gap-xl lg:gap-3xl")}>
+        <div className="grid gap-md">
+          <DisplayLG id={heading} className="font-title">Early access pricing</DisplayLG>
+          <p className="max-w-prose text-conversation leading-conversation text-text-muted">
+            {PRICING_COPY.runtime} {PRICING_COPY.note}
           </p>
-          <CreateFleetAction />
-          <a
-            href={`mailto:${SUPPORT_EMAIL}`}
-            onClick={() =>
-              trackNavigationClicked({
-                source: "pricing_contact",
-                surface: "pricing",
-                target: "email",
-              })
-            }
-            className={cn(
-              TEXT_LINK,
-              "inline-flex min-h-11 items-center text-body-sm text-pulse",
-            )}
-          >
-            Tell us about your workflow
-          </a>
         </div>
-        <Card className="flex flex-col gap-5">
-          <p
-            data-testid="pricing-early-access-banner"
-            className="m-0 text-body-sm font-medium text-pulse ph-no-capture"
-          >
-            {PRICING_COPY.status}
-          </p>
-          <h3 className="m-0 font-sans text-heading font-medium">
-            What to expect on cost
-          </h3>
-          <p className="m-0 border-t border-border pt-4 text-body-sm text-text">
-            {PRICING_COPY.note}
-          </p>
-        </Card>
+        <div className="flex flex-wrap gap-md">
+          <Button asChild wrap className="min-h-11">
+            <a
+              href={waitlistUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid="pricing-cta-early-access"
+              {...linkTracking("pricing_signup", "pricing", "signup")}
+            >
+              Join waitlist
+            </a>
+          </Button>
+          <Button asChild wrap variant="outline" className="min-h-11">
+            <a href="/agents" {...linkTracking("pricing_terminal", "pricing", "agents")}>
+              Use the terminal
+            </a>
+          </Button>
+        </div>
       </div>
-    </section>
-  );
-}
-
-function CreateFleetAction() {
-  return (
-    <Button
-      wrap
-      asChild
-      className="min-h-11"
-      data-testid="pricing-cta-early-access"
-    >
-      <a
-        href={PUBLIC_ACCESS_URL}
-        target="_blank"
-        rel="noopener noreferrer"
-        onClick={() =>
-          trackSignupStarted({
-            source: "pricing_early_access",
-            surface: "pricing",
-            mode: "humans",
-          })
-        }
-      >
-        {HERO_PRIMARY_LABEL} <span aria-hidden="true">→</span>
-      </a>
-    </Button>
+    </Section>
   );
 }

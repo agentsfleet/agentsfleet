@@ -10,6 +10,16 @@ import tailwindcss from "@tailwindcss/vite";
 
 const TEST_FILE_PATTERN = "src/**/*.test.{ts,tsx}" as const;
 
+// Set the palette before paint without a separate script request.
+const SYSTEM_THEME = `<script>
+  (() => {
+    const scheme = matchMedia("(prefers-color-scheme: light)");
+    const apply = () => { document.documentElement.dataset.theme = scheme.matches ? "light" : "dark"; };
+    apply();
+    scheme.addEventListener("change", apply);
+  })();
+</script>`;
+
 // The homepage ships its complete content as HTML. The other page URLs use
 // the React Router entry, just as they do behind the production rewrite.
 const routeApplication: Connect.NextHandleFunction = (
@@ -47,10 +57,11 @@ export default defineConfig(({ mode }) => {
           server.middlewares.use(routeApplication);
         },
         transformIndexHtml(html) {
-          if (!html.includes("<!--landing-page-->")) return html;
+          const themed = html.replace("<!--system-theme-->", () => SYSTEM_THEME);
+          if (!themed.includes("<!--landing-page-->")) return themed;
           const page = renderToString(createElement(Home, { waitlistUrl: signup }));
           const schema = JSON.stringify(structuredData).replaceAll("<", "\\u003c");
-          return html.replace("<!--landing-page-->", () => page)
+          return themed.replace("<!--landing-page-->", () => page)
             .replace("<!--landing-schema-->", () => `<script type="application/ld+json">${schema}</script>`);
         },
       },
@@ -64,6 +75,8 @@ export default defineConfig(({ mode }) => {
       },
     },
     test: {
+      // Keep Vitest workers on threads under the pinned Bun runtime.
+      pool: "threads",
       environment: "jsdom",
       globals: true,
       setupFiles: ["../design-system/src/test-setup.ts", "./src/test-setup.ts"],

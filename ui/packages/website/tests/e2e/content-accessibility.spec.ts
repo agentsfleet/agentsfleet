@@ -1,6 +1,5 @@
 import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import { DEMO_STAGES } from "../../src/landing/useDemoPlayback";
 const SCREENSHOT_HEIGHT = 1000;
 const BROWSER_TIMEOUT_DEFAULT = "Number(process.env.BROWSER_TIMEOUT) || 5";
 
@@ -64,35 +63,27 @@ test("captures desktop, tablet, and mobile evidence", async ({ page }) => {
   }
 });
 
-test("phone walkthrough pauses when someone focuses the Grafana evidence", async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 900 });
-  await page.emulateMedia({ reducedMotion: "no-preference" });
-  await page.clock.install();
-  await page.goto("/");
-  const demo = page.getByRole("figure", { name: "Why did chat freeze?" });
-  await demo.scrollIntoViewIfNeeded();
-  await expect(demo.getByRole("region", { name: "Slack ticket in customer-support" })).toBeVisible();
-  await expect(demo.locator("[data-playing]")).toHaveAttribute("data-playing", "true");
-  await page.clock.runFor(DEMO_STAGES[0].duration);
-
-  const scout = demo.getByRole("article", { name: "Scout investigates the recurring chat freeze" });
-  const evidence = scout.locator("summary").filter({ hasText: "Worked for 4s · 2 tools" });
-  await evidence.focus();
-  const resume = demo.getByRole("button", { name: "Resume demo" });
-  await expect(resume).toBeVisible();
-  await page.clock.runFor(DEMO_STAGES[1].duration);
-  await expect(evidence).toBeFocused();
-  await expect(scout.getByText("agentsfleet/agentsfleet", { exact: true })).toBeHidden();
-  await scout.getByText("Summary", { exact: true }).click();
-  await expect(scout.getByText("agentsfleet/agentsfleet", { exact: true })).toBeVisible();
-  await expect(scout.getByText("grafana", { exact: true })).toBeVisible();
-});
+for (const colorScheme of ["dark", "light"] as const) {
+  test(`the phone access example keeps keyboard focus in ${colorScheme} mode`, async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 900 });
+    await page.emulateMedia({ colorScheme, reducedMotion: "reduce" });
+    await page.goto("/");
+    const demo = page.getByRole("figure", { name: "Example fleet conversation" });
+    const deny = demo.getByRole("button", { name: "Deny" });
+    await deny.focus();
+    await page.keyboard.press("Enter");
+    await expect(demo.getByRole("status")).toHaveText("GitHub access denied");
+    await expect(demo.getByRole("button", { name: "Reset example" })).toBeFocused();
+    await expect(demo.getByRole("complementary")).toContainText("No access yet");
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  });
+}
 
 test("the homepage pricing buttons wrap at 320px with doubled text", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 900 });
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/#pricing");
   await page.evaluate(() => { document.documentElement.style.fontSize = "200%"; });
-  await expect(page.getByRole("link", { name: "Read the quickstart" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Use the terminal" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });

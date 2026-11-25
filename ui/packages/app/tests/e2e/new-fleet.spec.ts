@@ -31,6 +31,16 @@ test("a first message opens the fleet's chat", async ({page, chatProbe, isMobile
   await expect(chat.getByText(NEW_FLEET.answer, {exact: true})).toBeVisible();
   await expect(page.getByRole("heading", {name: NEW_FLEET.name, exact: true})).toBeVisible();
 
+  if (isMobile) {
+    await page.setViewportSize({width: 320, height: 840});
+    const model = page.getByRole("combobox", {name: "Fleet model"});
+    await expect(model).toHaveText("Runtime model");
+    expect(await model.getByText("Runtime model", {exact: true}).evaluate(label => label.scrollWidth <= label.clientWidth)).toBe(true);
+    await model.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("option", {name: "Runtime model"})).toBeVisible();
+    await page.keyboard.press("Escape");
+  }
   if (isMobile) await page.getByRole("button", {name: "Open navigation", exact: true}).click();
   const nav = page.getByRole("navigation", {name: isMobile ? "Expanded navigation" : "Primary"});
   await expect(nav.getByRole("link", {name: NEW_FLEET.name, exact: true})).toHaveAttribute("href", `/w/${WORKSPACE}/fleets/${NEW_FLEET.id}`);

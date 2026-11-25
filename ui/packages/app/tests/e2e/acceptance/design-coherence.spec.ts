@@ -42,7 +42,7 @@ test("Secrets exposes hidden values, access limits and reachable management at b
       if (wide) {
         await expect(row.getByRole("cell").nth(2)).toHaveText("Hidden");
         // A fixture secret no fleet declares is a recorded "none", never an unknown.
-        await expect(row.getByRole("cell").nth(3)).toHaveText("No active fleets");
+        await expect(row.getByRole("cell").nth(3)).toHaveText("No access approved");
       }
       const manage = row.getByRole("button", {name: `Manage ${name}`, exact: true});
       await expectActionInViewport(page, manage);

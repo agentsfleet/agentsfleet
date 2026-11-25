@@ -1,6 +1,8 @@
+import { useId } from "react";
+import { Button, DisplayLG, DisplayXL, List, ListItem, Section, cn } from "@agentsfleet/design-system";
+import { CliQuickstart } from "../components/CliQuickstart";
 import { SECTION_SPACING, SITE_CONTAINER } from "../components/site-classes";
-import { cn, Button, Card, DisplayLG, DisplayXL, SectionLabel, Terminal } from "@agentsfleet/design-system";
-import { DOCS_QUICKSTART_URL, DOCS_URL } from "../config";
+import { DOCS_URL } from "../config";
 
 const jsonLd = {
   "@context": "https://schema.org",
@@ -11,225 +13,63 @@ const jsonLd = {
   sameAs: ["https://www.agentsfleet.net/openapi.json"],
 };
 
-const bootstrapScript = `# 1. Shell — install the Command-Line Interface (CLI)
-npm install -g @agentsfleet/cli
-agentsfleet login
-
-# 2. Inside your coding agent (Claude Code / Amp / Codex CLI / OpenCode), ask:
-#    "Create a fleet for incident response in my workspace."
-#    Use the fleet_id returned when the fleet is created.
-
-# 3. Back in the shell — steer the Fleet
-agentsfleet fleet steer <fleet_id> "morning health check"`;
-
-const safetyLimits = [
-  { title: "Idempotency", body: "Inbound webhook events deduplicate on event_id within a 24-hour window. Workspace updates use monotonic versions to prevent lost updates." },
-  { title: "Audit trail", body: "Append-only Fleet event stream records every inbound trigger, steer, status change, and tool call with timestamps and actor identity." },
-  { title: "Secret management", body: "Vault secrets encrypted via BYTEA columns. Git hooks disabled during Fleet runs. Subprocess timeouts enforced." },
-  { title: "Policy enforcement", body: "Commands classified as safe, sensitive, or critical. Critical operations require explicit policy approval." },
-];
-
-const mono = "font-mono text-text";
-
-// The minimal authenticated call sequence a Fleet follows to go from zero to a
-// running, observable Fleet. Grounded in the OpenAPI surface: BearerAuth +
-// POST /v1/api-keys mint, Fleet CRUD, HMAC-signed webhook ingest, SSE stream.
-const getStartedSteps = [
+const FLEET_COLLECTION = "/v1/workspaces/{workspace_id}/fleets";
+const FLEET_PATH = `${FLEET_COLLECTION}/{fleet_id}`;
+const API_STEPS = [
   {
-    number: "01",
-    label: "authenticate",
-    body: (
-      <>
-        Mint a tenant key with <code className={mono}>POST /v1/api-keys</code> (returns an{" "}
-        <code className={mono}>agt_t…</code> key once), then send{" "}
-        <code className={mono}>Authorization: Bearer agt_t…</code> on every request.
-      </>
-    ),
+    title: "Create a fleet",
+    path: `POST ${FLEET_COLLECTION}`,
+    description: "Send the fleet’s first message with an operation ID. The response includes the fleet ID.",
   },
   {
-    number: "02",
-    label: "create a Fleet",
-    body: (
-      <>
-        Provision one with{" "}
-        <code className={mono}>POST /v1/workspaces/:workspace_id/fleets</code>.
-      </>
-    ),
+    title: "Send a follow-up",
+    path: `POST ${FLEET_PATH}/messages`,
+    description: "Send another message to the same fleet.",
   },
   {
-    number: "03",
-    label: "trigger it",
-    body: (
-      <>
-        Send an event to <code className={mono}>POST /v1/webhooks/:fleet_id</code> (HMAC-signed),
-        or steer it with <code className={mono}>POST …/fleets/:fleet_id/messages</code>.
-      </>
-    ),
+    title: "Read replies",
+    path: `GET ${FLEET_PATH}/turns/stream`,
+    description: "Follow the fleet’s replies as it works.",
   },
-  {
-    number: "04",
-    label: "watch it work",
-    body: (
-      <>
-        Stream the run over Server-Sent Events at{" "}
-        <code className={mono}>GET …/fleets/:fleet_id/turns/stream</code>.
-      </>
-    ),
-  },
-];
-
-// Row headers keep safety constraints readable to assistive technology.
-function ConstraintTable({
-  cols,
-  rows,
-}: {
-  cols: readonly [string, string];
-  rows: readonly { title: string; body: string }[];
-}) {
-  return (
-    <Card tabIndex={0} className="p-0 overflow-x-auto focus-visible:outline-2 focus-visible:outline-ring">
-      <table className="w-full min-w-narrow font-sans text-body-sm">
-        <thead>
-          <tr className="border-b border-border">
-            {cols.map((col) => (
-              <th
-                key={col}
-                className="text-left py-3 px-4 font-medium text-text-muted uppercase tracking-label text-label"
-              >
-                {col}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr
-              key={row.title}
-              className="border-b border-border last:border-b-0 align-top"
-            >
-              <th
-                scope="row"
-                className="text-left py-3 px-4 font-medium text-text whitespace-nowrap"
-              >
-                {row.title}
-              </th>
-              <td className="py-3 px-4 text-text-muted">{row.body}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </Card>
-  );
-}
+] as const;
 
 export default function Fleets() {
+  const apiHeading = useId();
   return (
     <div data-testid="fleets-page">
-      <section className={cn(SECTION_SPACING, "border-t border-border first:border-0")}>
-        <div className={cn(SITE_CONTAINER, "grid gap-xl")}>
-          <SectionLabel as="p" className="mb-0">Agent resources</SectionLabel>
-          <DisplayXL className="font-bold text-balance">This page is for agents.</DisplayXL>
-          <p className="font-sans text-body-lg leading-body-lg text-text-muted m-0 max-w-narrow">
-            Use <code className="font-mono">/openapi.json</code> as canonical surface. Docs are
-            secondary.
-          </p>
+      <Section className={cn(SECTION_SPACING, "block")} aria-label="Start a fleet from your terminal">
+        <div className={cn(SITE_CONTAINER, "grid items-start gap-2xl lg:grid-cols-[1fr_1.25fr] lg:gap-5xl")}>
+          <div className="grid gap-xl">
+            <DisplayXL className="text-fluid-display-lg leading-display-lg font-title text-balance">Start a fleet from your terminal</DisplayXL>
+            <p className="max-w-prose text-conversation leading-conversation text-text-muted">
+              Sign in with the command-line tool and choose a workspace. Send a first message to create a fleet, then keep talking with <code className="font-mono">fleet steer</code>.
+            </p>
+            <Button asChild wrap variant="outline" className="min-h-11 w-fit"><a href={DOCS_URL}>Read the docs</a></Button>
+          </div>
+          <CliQuickstart />
         </div>
-      </section>
-
-      <section className={cn(SECTION_SPACING, "border-t border-border first:border-0")}>
-        <div className={cn(SITE_CONTAINER, "grid gap-xl")}>
-          <DisplayLG className="font-bold">
-            Install agentsfleet
-          </DisplayLG>
-          <p className="font-sans text-body leading-body text-text-muted m-0 max-w-measure">
-            Install the command-line interface, then describe your fleet’s job
-            in chat.
-          </p>
-          <Terminal label="Bootstrap commands" copyable className="max-w-wide">
-            {bootstrapScript}
-          </Terminal>
-          <div className="flex flex-wrap items-center gap-3">
-            <Button asChild className="min-h-11">
-              <a href={DOCS_QUICKSTART_URL} target="_blank" rel="noopener noreferrer">
-                → start a Fleet
-              </a>
-            </Button>
-            <Button asChild variant="ghost" className="min-h-11">
-              <a href={DOCS_URL} target="_blank" rel="noopener noreferrer">
-                read the docs
-              </a>
+      </Section>
+      <Section variant="divided" className={cn(SECTION_SPACING, "bg-card")} aria-labelledby={apiHeading}>
+        <div className={cn(SITE_CONTAINER, "grid gap-2xl lg:grid-cols-[1fr_1.25fr] lg:gap-5xl")}>
+          <div className="grid content-start gap-lg">
+            <DisplayLG id={apiHeading} className="font-title">Work with the API</DisplayLG>
+            <p className="max-w-prose text-conversation leading-conversation text-text-muted">Use an API key with access to your workspace. The OpenAPI file lists the fields and permissions for each request.</p>
+            <Button asChild wrap variant="outline" className="min-h-11 w-fit">
+              <a href="/openapi.json" data-testid="fleets-openapi-link">OpenAPI JSON</a>
             </Button>
           </div>
+          <List variant="ordered" className="list-none space-y-0 divide-y divide-border border-y border-border pl-0">
+            {API_STEPS.map(({ title, path, description }) => (
+              <ListItem key={title} className="grid gap-md py-xl">
+                <h3 className="text-heading font-title">{title}</h3>
+                <code className="font-mono text-mono text-pulse">{path}</code>
+                <p className="text-conversation leading-conversation text-text-muted">{description}</p>
+              </ListItem>
+            ))}
+          </List>
         </div>
-      </section>
-
-      {/* Get started for a Fleet — the minimal authenticated call sequence.
-        * This page's audience is a machine, so the first thing it needs (how to
-        * authenticate) leads, then create / trigger / stream. Full schemas live
-        * in /openapi.json. */}
-      <section className={cn(SECTION_SPACING, "border-t border-border first:border-0")}>
-        <div className={cn(SITE_CONTAINER, "grid gap-xl")}>
-          <DisplayLG className="font-bold">
-            Get started in four calls
-          </DisplayLG>
-          <p className="font-sans text-body leading-body text-text-muted m-0 max-w-measure">
-            Authenticate, create a Fleet, trigger it, then stream what it does.
-            Full request and response schemas live in{" "}
-            <a href="/openapi.json" className="text-pulse underline underline-offset-4">
-              /openapi.json
-            </a>
-            .
-          </p>
-          <Card>
-            <ol className="m-0 flex list-none flex-col gap-4 p-0">
-              {getStartedSteps.map((step) => (
-                <li key={step.number} className="flex flex-col gap-1">
-                  <span className="font-mono text-eyebrow uppercase tracking-eyebrow text-pulse">
-                    {step.number} · {step.label}
-                  </span>
-                  <p className="font-sans text-body-sm leading-body text-text-muted m-0">
-                    {step.body}
-                  </p>
-                </li>
-              ))}
-            </ol>
-          </Card>
-        </div>
-      </section>
-
-      <section className={cn(SECTION_SPACING, "border-t border-border first:border-0")}>
-        <div className={cn(SITE_CONTAINER, "grid gap-xl")}>
-          <DisplayLG className="font-bold">
-            Machine surface
-          </DisplayLG>
-          <Card className="font-mono text-mono">
-            <a
-              href="/openapi.json"
-              className="text-pulse underline underline-offset-4"
-              data-testid="fleets-openapi-link"
-            >
-              /openapi.json
-            </a>
-            <span className="text-text-muted ml-3">
-              Canonical API surface (OpenAPI 3.1)
-            </span>
-          </Card>
-        </div>
-      </section>
-
-      <section className={cn(SECTION_SPACING, "border-t border-border first:border-0")}>
-        <div className={cn(SITE_CONTAINER, "grid gap-xl")}>
-          <DisplayLG className="font-bold">
-            Safety limits
-          </DisplayLG>
-          <ConstraintTable cols={["constraint", "rule"]} rows={safetyLimits} />
-        </div>
-      </section>
-
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-      />
+      </Section>
+      <script type="application/ld+json">{JSON.stringify(jsonLd)}</script>
     </div>
   );
 }

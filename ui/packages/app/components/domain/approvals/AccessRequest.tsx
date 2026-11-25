@@ -2,6 +2,7 @@
 
 import type { SummaryApproval } from "./use-fleet-approval";
 import { useEffect, useRef } from "react";
+import { DescriptionDetails, DescriptionList, DescriptionTerm } from "@agentsfleet/design-system";
 import { GITHUB_GRANT, GRANT_STATUS, githubScope } from "@/lib/api/fleet-detail";
 import { useFleetLists } from "../fleet/FleetListsProvider";
 
@@ -22,11 +23,13 @@ export function AccessRequest({gate}: {gate: SummaryApproval}) {
   }, [gate.gate_id, missing, reload]);
   if (!name) return null;
   const scope = name === GITHUB_GRANT ? githubScope(grant?.requested_scope) : null;
-  return <dl className="space-y-xs text-label leading-label" aria-label="Requested access">
-    <div><dt className="inline text-muted-foreground">Access: </dt><dd className="inline font-medium">{name}</dd></div>
+  return <DescriptionList layout="stacked" className="space-y-md text-label leading-label" aria-label="Requested access">
+    <div><DescriptionTerm className="text-eyebrow leading-eyebrow">Access</DescriptionTerm><DescriptionDetails className="wrap-anywhere font-medium">{name}</DescriptionDetails></div>
     {scope ? <>
-      <div className="break-words"><dt className="inline text-muted-foreground">Repositories: </dt><dd className="inline">{scope.repositories.join(", ")}</dd></div>
-      <div><dt className="inline text-muted-foreground">Reach: </dt><dd className="inline">{scope.access === "write" ? "Read and write" : "Read only"}</dd></div>
+      <div><DescriptionTerm className="text-eyebrow leading-eyebrow">Repositories</DescriptionTerm>
+        <DescriptionDetails className="wrap-anywhere">{scope.repositories.join(", ")}</DescriptionDetails></div>
+      <div><DescriptionTerm className="text-eyebrow leading-eyebrow">Permissions</DescriptionTerm>
+        <DescriptionDetails>{scope.access === "write" ? "Read and write" : "Read only"}</DescriptionDetails></div>
     </> : null}
-  </dl>;
+  </DescriptionList>;
 }

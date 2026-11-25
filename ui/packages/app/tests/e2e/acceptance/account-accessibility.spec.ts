@@ -39,7 +39,7 @@ for (const width of WIDTHS) for (const theme of ["dark", "light"]) {
     await page.evaluate(value => localStorage.setItem("theme", value), theme);
     await page.reload();
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
-    await expect(page.getByRole("heading", {name: "What should your fleet do?", exact: true})).toBeVisible();
+    await expect(page.getByRole("heading", {name: "New fleet", exact: true})).toBeVisible();
     const opener = page.getByRole("button", { name: /^Workspace and account menu(?::|$)/ });
     await expect(opener).toBeVisible();
     await opener.focus();

@@ -36,16 +36,16 @@ async function assertFooterLinks(page: Page) {
 test.describe("Cross-page link coverage", () => {
   test("Home page exposes expected internal and external links", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByRole("heading", { level: 1 })).toContainText("Find out why. Check the fix.");
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Start a fleet with one message.");
     const nav = page.getByRole("navigation", { name: "Primary" });
     await nav.getByRole("link", { name: "Product" }).click();
     await expect(page).toHaveURL(/\/#how-it-works$/);
-    await expect(page.getByRole("heading", { name: /work in a private network/ })).toBeInViewport();
+    await expect(page.getByRole("heading", { name: /How fleets work/ })).toBeInViewport();
     await expect(nav.getByRole("link", { name: "Docs" })).toHaveAttribute("href", "https://docs.agentsfleet.net");
-    const heroLinks = page.getByRole("region", { name: /Find out why\. Check the fix\./ }).getByRole("link");
-    await expect(heroLinks).toHaveText(["Join waitlist", "View on GitHub"]);
+    const heroLinks = page.getByRole("region", { name: /Start a fleet with one message\./ }).getByRole("link");
+    await expect(heroLinks).toHaveText(["Join waitlist", "See examples"]);
     await expect(heroLinks.first()).toHaveAttribute("href", WAITLIST);
-    await expect(heroLinks.last()).toHaveAttribute("href", "https://github.com/agentsfleet/agentsfleet");
+    await expect(heroLinks.last()).toHaveAttribute("href", "/examples");
     await expect(page.getByTestId("header-install-cta")).toHaveAttribute("href", WAITLIST);
     await expect(page.getByTestId("pricing-cta-early-access")).toHaveAttribute("href", WAITLIST);
     const footer = page.getByRole("contentinfo");
@@ -56,7 +56,7 @@ test.describe("Cross-page link coverage", () => {
   test("Fleets page exposes expected machine and install links", async ({ page }) => {
     await page.goto("/agents");
     await expect(page.getByRole("heading", { level: 1 })).toContainText(
-      "This page is for agents.",
+      "Start a fleet from your terminal",
     );
 
     const nav = page.getByRole("navigation", { name: /primary/i });
@@ -75,9 +75,6 @@ test.describe("Cross-page link coverage", () => {
       "https://docs.agentsfleet.net",
     );
 
-    await expect(
-      page.locator('a[href="https://docs.agentsfleet.net/quickstart"]').filter({ hasText: /start a Fleet/i }),
-    ).toHaveCount(1);
     await expect(
       page.locator('a[href="https://docs.agentsfleet.net"]').filter({ hasText: /read the docs/i }),
     ).toHaveCount(1);

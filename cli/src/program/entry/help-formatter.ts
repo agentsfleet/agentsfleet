@@ -18,6 +18,7 @@
 // renderer to keep in step with the tree.
 
 import { CliError, CliOutput } from "effect/cli";
+import type { HelpDoc } from "effect/cli/HelpDoc";
 import { visibleLength, wrapAt } from "../../output/text.ts";
 
 const MAX_WIDTH = 80;
@@ -120,7 +121,7 @@ export const helpFormatter = (): CliOutput.Formatter => {
   return {
     ...base,
     formatHelpDoc: (doc) =>
-      `${wrapDocument(base.formatHelpDoc(doc))}${helpTail()}`,
+      `${wrapDocument(base.formatHelpDoc(fleetCreateHelp(doc)))}${helpTail()}`,
     formatCliError: pointerFor(base.formatCliError),
     formatError: pointerFor(base.formatError),
     // The parser renders a parse failure through the PLURAL form, so this is
@@ -133,3 +134,13 @@ export const helpFormatter = (): CliOutput.Formatter => {
         : base.formatErrors(errors),
   };
 };
+
+function fleetCreateHelp(doc: HelpDoc): HelpDoc {
+  if (doc.commandPath?.join(" ") !== "agentsfleet fleet create" || !doc.args) return doc;
+  // The handler accepts a missing argument so it can print its own usage error.
+  return {
+    ...doc,
+    usage: doc.usage.replace("[<message>]", "<message>"),
+    args: doc.args.map(arg => arg.name === "message" ? {...arg, required: true} : arg),
+  };
+}

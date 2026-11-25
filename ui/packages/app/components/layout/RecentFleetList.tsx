@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
-import { NavItem, IconAction, Button } from "@agentsfleet/design-system";
+import { Alert, NavItem, IconAction, Button, Spinner } from "@agentsfleet/design-system";
 import { TrashIcon } from "@phosphor-icons/react/ssr";
 import { useRecentPage } from "@/lib/api/use-recent-page";
 import { FleetListSchema, type NativeFleetSummary } from "@/lib/api/fleet-detail";
@@ -33,9 +33,12 @@ function FleetItems({collection, workspace, onNavigate}: {collection: RecentColl
   return <>
     {page.items.map(fleet => <FleetRow key={fleet.id} fleet={fleet} workspace={workspace} pathname={pathname} onNavigate={onNavigate}
       deleting={selected !== null} onDelete={() => setSelected(fleet)} />)}
-    {page.loading && !page.items.length ? <output className="px-lg text-label text-muted-foreground">Loading fleets…</output> : null}
-    {!page.loading && !page.error && !page.items.length ? <p className="px-lg text-label text-muted-foreground">Your fleets will appear here.</p> : null}
-    {page.error ? <output className="px-lg py-sm text-label text-muted-foreground">{page.error} <Button variant="link" size="sm" disabled={page.loading} onClick={() => {void collection.load();}}>Refresh</Button></output> : null}
+    {page.loading && !page.items.length ? <Spinner size="sm" label="Loading fleets…" className="px-lg py-md text-eyebrow leading-eyebrow" /> : null}
+    {!page.loading && !page.error && !page.items.length ? <p className="px-lg py-md text-eyebrow leading-eyebrow text-muted-foreground">Your fleets will appear here.</p> : null}
+    {page.error ? <div className="space-y-sm px-lg py-md">
+      <Alert asChild variant="destructive" className="wrap-anywhere px-md py-sm text-eyebrow leading-eyebrow"><p>{page.error}</p></Alert>
+      <Button variant="ghost" size="compact" disabled={page.loading} onClick={() => {void collection.load();}}>Refresh</Button>
+    </div> : null}
     {page.more ? <Button variant="ghost" size="sm" disabled={page.loading} onClick={() => {void collection.load(true);}}>Load more fleets</Button> : null}
     {selected ? <FleetLifecycleDialog action="delete" fleet={selected} workspace={workspace} onRemoved={removed} onClose={() => setSelected(null)} /> : null}
   </>;
@@ -53,6 +56,6 @@ function FleetRow({fleet, workspace, pathname, onNavigate, deleting, onDelete}: 
     </NavItem>
     <IconAction revealOnRowFocus variant="ghost" label={`Permanently delete fleet: ${fleet.name}`} disabled={deleting}
       className="shrink-0"
-      onClick={onDelete}><TrashIcon size={14} aria-hidden="true" /></IconAction>
+      onClick={onDelete}><TrashIcon size={16} aria-hidden="true" /></IconAction>
   </div>;
 }

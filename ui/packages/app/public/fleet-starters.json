@@ -8,7 +8,7 @@
     "prompt": "Review GitHub pull requests for me.\n\nAsk me which repositories to review, when to run, and where I want your findings. Do not assume a repository or destination.\n\nReview the exact pull request I provide and its current head. Read the relevant diff, source, tests, and check results. Report concrete correctness, security, and regression risks with file/line or check evidence. A clean review is a valid result; do not invent findings.\n\nKeep the work unfinished when required evidence is missing or a required check is pending, and explain the next useful action.\n\nComment only. Do not push code, approve, merge, close, or deploy."
   },
   {
-    "title": "Set up a Chief of Staff",
-    "prompt": "Set up a Chief of Staff for my workspace. Have it read fleet activity, ask which fleet should take a request, and delegate the work to that fleet. For example, ask Bob for a deploy update and bring his report back to me."
+    "title": "Coordinate fleet work",
+    "prompt": "Act as Chief of Staff for my workspace. Read fleet activity, ask which fleet should take a request, and delegate the work to that fleet. For example, ask Bob for a deploy update and bring his report back to me."
   }
 ]

@@ -49,29 +49,24 @@ test.describe("connect an app", () => {
     await clientFor(FIXTURE_KEY.regular).delete(`/v1/workspaces/${workspaceId}/secrets/${GRANT_CREDENTIAL_NAME}`).catch(() => undefined);
   });
 
-  test("a connected app is managed, disconnected, reconnected through consent, and a failed callback explains itself", async ({ page, baseURL }) => {
+  test("a connected app is disconnected from its row, reconnected through consent, and a failed callback explains itself", async ({ page, baseURL }) => {
     workspaceId = (await ensureSecondWorkspace(FIXTURE_KEY.regular, JOURNEY_WORKSPACE)).id;
     await ensureConnectorHandle(FIXTURE_KEY.regular, workspaceId);
     await signInAs(page, FIXTURE_KEY.regular);
     await page.goto(workspaceHref(workspaceId, "integrations"));
     const row = page.getByTestId("integration-linear");
     await expect(row).toContainText("Connected");
-    const manage = row.getByRole("button", { name: `Manage ${PROVIDER}`, exact: true });
-    await expect(manage, "the deployment must configure the Linear app (sync the linear-app bag)").toBeVisible();
-
-    // Manage → Disconnect removes the workspace's authorization.
-    await manage.click();
-    const dialog = page.getByRole("dialog", { name: PROVIDER });
-    await expect(dialog).toContainText("Authorization saved");
-    await dialog.getByRole("button", { name: `Disconnect ${PROVIDER}`, exact: true }).click();
-    await expect(dialog).toBeHidden({ timeout: ACTION_TIMEOUT_MS });
+    await row.getByRole("button", { name: `Disconnect ${PROVIDER}`, exact: true }).click();
+    const connect = row.getByRole("button", { name: `Connect ${PROVIDER}`, exact: true });
+    await expect(connect, "the deployment must configure the Linear app (sync the linear-app bag)").toBeVisible({ timeout: ACTION_TIMEOUT_MS });
     await expect(row).toContainText("Not connected");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
     const stored = await clientFor(FIXTURE_KEY.regular).get<{ secrets: { name: string }[] }>(`/v1/workspaces/${workspaceId}/secrets`);
     expect(stored.secrets.map(secret => secret.name)).not.toContain(GRANT_CREDENTIAL_NAME);
 
     // Connect leaves for the provider's consent screen with this dashboard's callback.
     await page.route(PROVIDER_CONSENT, route => route.fulfill({ status: 200, contentType: "text/html", body: "<title>Provider consent</title>" }));
-    await row.getByRole("button", { name: `Connect ${PROVIDER}`, exact: true }).click();
+    await connect.click();
     await page.waitForURL(/^https:\/\/linear\.app\//, { timeout: ACTION_TIMEOUT_MS });
     const callback = new URL(new URL(page.url()).searchParams.get("redirect_uri") ?? "", "https://invalid.example");
     expect(callback.origin, "consent must return to this dashboard").toBe(new URL(baseURL ?? "").origin);
@@ -119,7 +114,7 @@ test.describe("connect Slack", () => {
     expect((await slackEntry(workspaceId)).connected).toBe(false);
   });
 
-  test("a configured Slack connection is managed, disconnected, and reconnected through consent", async ({ page, baseURL }) => {
+  test("a configured Slack connection is disconnected from its row and reconnected through consent", async ({ page, baseURL }) => {
     workspaceId = (await ensureSecondWorkspace(FIXTURE_KEY.regular, JOURNEY_WORKSPACE)).id;
     test.skip(!(await slackEntry(workspaceId)).configured, "this deployment has no slack-app bag; the unconfigured journey runs instead");
     await ensureConnectorHandle(FIXTURE_KEY.regular, workspaceId, SLACK_HANDLE);
@@ -129,13 +124,11 @@ test.describe("connect Slack", () => {
     // Slack labels its connection with the team it landed on.
     await expect(row).toContainText(`Connected · ${SLACK_TEAM_NAME}`);
 
-    await row.getByRole("button", { name: `Manage ${SLACK}`, exact: true }).click();
-    const dialog = page.getByRole("dialog", { name: SLACK });
-    await expect(dialog).toContainText(`Installed on ${SLACK_TEAM_NAME}.`);
-    await expect(dialog).toContainText("Channel mentions and bot replies.");
-    await dialog.getByRole("button", { name: `Disconnect ${SLACK}`, exact: true }).click();
-    await expect(dialog).toBeHidden({ timeout: ACTION_TIMEOUT_MS });
+    await expect(row).toContainText("Invite the app to the Slack channels your fleets use.");
+    await row.getByRole("button", { name: `Disconnect ${SLACK}`, exact: true }).click();
+    await expect(row.getByRole("button", { name: `Connect ${SLACK}`, exact: true })).toBeVisible({ timeout: ACTION_TIMEOUT_MS });
     await expect(row).toContainText("Not connected");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
     const stored = await clientFor(FIXTURE_KEY.regular).get<{ secrets: { name: string }[] }>(`/v1/workspaces/${workspaceId}/secrets`);
     expect(stored.secrets.map(secret => secret.name)).not.toContain(SLACK_HANDLE.name);
 

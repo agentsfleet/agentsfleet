@@ -164,7 +164,7 @@ test("archive and deletion confirmations lead to distinct readable sample states
       for (const name of ["Approve", "Deny"]) await expect(page.getByRole("button", {name, exact: true})).toHaveCount(0);
       await expect(page.getByRole("button", {name: "Quote reply", exact: true})).toBeDisabled();
     } else {
-      await expect(page.getByRole("heading", {name: "What should your fleet do?", exact: true})).toBeVisible();
+      await expect(page.getByRole("heading", {name: "New fleet", exact: true})).toBeVisible();
       await expect(page.getByRole("textbox")).toBeVisible();
       await expect(page.getByTestId("fleet-thread-root")).toHaveCount(0);
     }
@@ -177,6 +177,6 @@ test("archive and deletion confirmations lead to distinct readable sample states
     if (outcome === "archived") {
       await expect(page.getByLabel("Fleet status: archived")).toBeVisible({visible: headerStatusVisible});
       await expect(page.getByText("Archived · This fleet is permanently stopped. Its history is available to read.", {exact: true})).toBeVisible();
-    } else await expect(page.getByRole("heading", {name: "What should your fleet do?", exact: true})).toBeVisible();
+    } else await expect(page.getByRole("heading", {name: "New fleet", exact: true})).toBeVisible();
   }
 });

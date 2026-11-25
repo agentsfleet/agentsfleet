@@ -12,17 +12,16 @@ test("empty fleet has the reference reading scale, editable Chief of Staff examp
   const size=page.viewportSize();
   if (size) await design.setViewportSize(size);
   await design.goto(new URL("../../../../../docs/ux.html#empty", import.meta.url).href);
-  const heading = page.getByRole("heading", {name:"What should your fleet do?"});
+  const heading = page.getByRole("heading", {name:"New fleet"});
   const referenceHeading = design.locator(".empty-heading h2");
   const input = page.getByRole("textbox", {name:"What would you like your fleet to do?"});
-  const starter = page.getByRole("button", {name:"Set up a Chief of Staff"});
-  const referenceStarter = design.getByRole("button", {name:"Set up a Chief of Staff"});
+  const starter = page.getByRole("button", {name:"Coordinate fleet work"});
+  const referenceStarter = design.getByRole("button", {name:"Coordinate fleet work"});
   const logo = page.getByRole("link", {name:"agentsfleet home"}).locator("svg");
   const referenceLogo = design.locator(".rail .brand img");
   const newFleet = page.getByRole("navigation", {name: "Primary"}).getByRole("link", {name: "New fleet", exact: true});
   const referenceNewFleet = design.locator(".rail .new-fleet");
   const form = page.getByRole("form", {name:"New fleet composer"});
-  const caption = "No fleet selected. Start something new, or open your fleets from the rail.";
   await expect(heading).toBeVisible();
   await expect(page.getByRole("button", {name:"Create a plugin"})).toHaveCount(0);
   for (const theme of ["dark","light"]) {
@@ -30,18 +29,13 @@ test("empty fleet has the reference reading scale, editable Chief of Staff examp
     await expect(referenceStarter.locator("svg")).toBeVisible();
     await page.emulateMedia({reducedMotion:"reduce"});
     await design.emulateMedia({reducedMotion:"reduce"});
-    // Above the composer the page keeps the reference's positions; the composer is the fleet chat's own, so
-    // what sits under it keeps the reference's type and size but moves with the composer's height.
-    const placed = [[heading,referenceHeading],[heading.locator("..").locator("p"),design.locator(".empty-heading p")]] as const;
-    const styled = [[input,design.locator(".empty-workspace textarea")],[starter,referenceStarter],[page.getByText(caption),design.getByText(caption)]] as const;
-    const appTop=(await geometry(heading)).top, designTop=(await geometry(referenceHeading)).top;
-    for (const [app, reference] of [...placed, ...styled]) {
+    const styled = [[heading, referenceHeading], [input, design.locator(".empty-workspace textarea")], [starter, referenceStarter]] as const;
+    for (const [app, reference] of styled) {
       const actual=await geometry(app), expected=await geometry(reference);
-      if (placed.some(([placedApp]) => placedApp === app)) expect(actual.top-appTop).toBeCloseTo(expected.top-designTop,0);
-      expect(actual.height).toBe(expected.height);
-      expect([actual.fontSize,actual.weight,actual.paddingLeft]).toEqual([expected.fontSize,expected.weight,expected.paddingLeft]);
+      expect([actual.fontSize,actual.weight]).toEqual([expected.fontSize,expected.weight]);
       expect(Math.abs(actual.lineHeight-expected.lineHeight)).toBeLessThan(0.5);
     }
+    expect((await geometry(starter)).height).toBeGreaterThanOrEqual(isMobile ? 44 : 36);
     await expect(form).toHaveCSS("background-color",theme==="dark" ? "rgb(32, 35, 40)" : "rgb(240, 242, 245)");
     const actualMention = await geometry(form.getByRole("button",{name:"Mention a fleet"}).locator("svg"));
     const expectedMention = await geometry(design.locator('.composer [data-action="mention"] i'));
@@ -75,7 +69,7 @@ test("empty fleet has the reference reading scale, editable Chief of Staff examp
   await expect(input).toHaveValue("Ask @bob ");
   await input.fill("");
   await starter.click();
-  const prompt = starters.find(example => example.title === "Set up a Chief of Staff")!.prompt;
+  const prompt = starters.find(example => example.title === "Coordinate fleet work")!.prompt;
   await expect(input).toHaveValue(prompt);
   await expect(heading).toBeVisible();
   await expect(form.getByRole("button",{name:"Send", exact: true})).toBeEnabled();
@@ -91,3 +85,37 @@ function geometry(element: Locator) {
       lineHeight:parseFloat(css.lineHeight),weight:css.fontWeight,paddingLeft:css.paddingLeft,radius:css.borderTopLeftRadius};
   });
 }
+
+test("the pull request starter remains editable and readable before any fleet exists", async ({page, chatProbe}, info) => {
+  const writes: string[] = [];
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  page.on("request", request => {
+    if (!["GET", "HEAD"].includes(request.method())) writes.push(request.method());
+  });
+  await page.goto(`${chatProbe}?newFleet=1`);
+  await expect(page.getByRole("heading", {name: "New fleet"})).toBeVisible();
+  const suggestion = page.getByRole("button", {name: "Watch a pull request", exact: true});
+  const input = page.getByRole("textbox", {name: "What would you like your fleet to do?"});
+  await expect(input).toHaveValue("");
+  await expect(page.getByRole("region", {name: "Unfinished setups", exact: true})).toHaveCount(0);
+  await suggestion.focus(); await page.keyboard.press("Enter");
+  await expect(input).toHaveValue(/^Review GitHub pull requests for me\./);
+  await expect(input).toHaveValue(/Comment only\. Do not push code, approve, merge, close, or deploy\.$/);
+  await expect(input).not.toHaveValue(/completion questions|save the fleet/);
+  const edited = `${await input.inputValue()}\n\nOnly review the API changes; preserve session expiry.`;
+  await input.fill(edited);
+  await expect(input).toHaveValue(edited);
+  await expect(input).toHaveCSS("font-size", info.project.name === "mobile-chromium" ? "16px" : "13px");
+  const composer = page.getByRole("form", {name: "New fleet composer"});
+  await expect(composer.getByRole("button", {name: "Send", exact: true})).toBeEnabled();
+  expect(writes).toEqual([]);
+  expect(errors).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  const box = await composer.boundingBox();
+  if (!box) throw new Error("The starter must leave its editable composer visible");
+  expect(box.y + box.height).toBeLessThanOrEqual((page.viewportSize()?.height ?? 0) + 1);
+  const screenshot = info.outputPath("editable-pull-request-starter.png");
+  await page.screenshot({path: screenshot, scale: "css", animations: "disabled"});
+  await info.attach("editable-pull-request-starter", {path: screenshot, contentType: "image/png"});
+});

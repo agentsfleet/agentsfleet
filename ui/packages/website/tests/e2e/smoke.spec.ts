@@ -51,14 +51,14 @@ test.describe("Smoke", () => {
     const llmsFull = await page.request.get("/llms-full.txt");
     expect(llmsFull.status()).toBe(200);
     const llmsFullBody = await llmsFull.text();
-    expect(llmsFullBody).toContain("## Pillars");
+    expect(llmsFullBody).toContain("## How fleets work");
     expect(llmsFullBody).toContain(LLMS_FULL_INTRO);
   });
 
   test("fleets page loads", async ({ page }) => {
     await page.goto("/agents");
     await expect(page.getByRole("heading", { level: 1 })).toContainText(
-      "This page is for agents.",
+      "Start a fleet from your terminal",
     );
   });
 
@@ -77,7 +77,7 @@ test.describe("Smoke", () => {
     const nav = page.getByRole("navigation", { name: /primary/i });
     await expect(nav.getByRole("link", { name: /^Product$/i })).toBeVisible();
     await expect(nav.getByRole("link", { name: /^Pricing$/i })).toBeVisible();
-    await expect(nav.getByRole("link", { name: /^GitHub$/ })).toBeVisible();
+    await expect(nav.getByRole("link", { name: /^Examples$/ })).toBeVisible();
     await expect(nav.getByRole("link", { name: /^docs$/i })).toBeVisible();
     await expect(page.getByRole("link", { name: /^sign in$/i })).toHaveCount(0);
   });
@@ -102,69 +102,38 @@ test.describe("Smoke", () => {
       .toHaveAttribute("href", "mailto:agentsfleet@agentmail.to");
   });
 
-  test("reduced motion leaves the investigation static", async ({ page }) => {
-    await page.emulateMedia({ reducedMotion: "reduce" });
+  test("one message leads to access approval in the same chat", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByRole("button", { name: /pause demo/i })).toHaveCount(0);
-    for (const [role, name] of [
-      ["region", "Slack ticket in customer-support"],
-      ["article", "Scout investigates the recurring chat freeze"],
-      ["region", "Draft fix in the Slack thread"],
-      ["region", "Verified result in the Slack thread"],
-    ] as const) {
-      await expect(page.getByRole(role, { name })).toBeVisible();
-    }
-    await expect(page.getByRole("region", { name: "Verified result in the Slack thread" })).toContainText("95% of replies started within 2.8 seconds, down from 15.1 seconds.");
+    await expect(page.getByText("A fleet is an AI agent.", { exact: false }).first()).toBeVisible();
+    const demo = page.getByRole("figure", { name: "Example fleet conversation" });
+    await expect(demo).toContainText("Tell me when a pull request merges in acme/web.");
+    await expect(demo.getByRole("status")).toHaveText("GitHub access requested");
+    await expect(demo.getByRole("complementary")).toContainText("No access yet");
+    await demo.getByRole("button", { name: "Approve" }).click();
+    await expect(demo.getByRole("status")).toHaveText("GitHub access approved");
+    await expect(demo.getByRole("complementary")).toContainText("Pull request merges");
+    await demo.getByRole("button", { name: "Reset example" }).click();
+    await expect(demo.getByRole("status")).toHaveText("GitHub access requested");
   });
 
-  test("the incident stays readable if the playback script fails", async ({ page }) => {
-    await page.route("**/*", (route) =>
-      route.request().resourceType() === "script" ? route.abort() : route.continue(),
-    );
+  test("the site follows the system theme without a reload", async ({ page }) => {
+    await page.emulateMedia({ colorScheme: "dark" });
     await page.goto("/");
-    await expect(page.getByRole("button", { name: /pause demo/i })).toHaveCount(0);
-    await expect(page.getByRole("region", { name: "Slack ticket in customer-support" })).toBeVisible();
-    await expect(page.getByRole("article", { name: "Scout investigates the recurring chat freeze" })).toBeVisible();
-    const story = page.getByRole("region", { name: "Support investigation example" });
-    const result = story.getByRole("region", { name: "Verified result in the Slack thread" });
-    await story.focus();
-    await expect(story).toBeFocused();
-    await result.scrollIntoViewIfNeeded();
-    await expect(result).toBeInViewport();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    await page.emulateMedia({ colorScheme: "light" });
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   });
 
-  test("the story keeps its space when playback starts", async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 900 });
-    let startScripts!: () => void;
-    const scriptsAllowed = new Promise<void>((resolve) => { startScripts = resolve; });
-    await page.route("**/*", async (route) => {
-      if (route.request().resourceType() === "script") await scriptsAllowed;
-      await route.continue();
-    });
-    const story = page.getByRole("figure", { name: "Why did chat freeze?" });
-    try {
-      await page.goto("/", { waitUntil: "commit" });
-      await expect(story.getByText("Scroll across to read the full story.")).toBeVisible();
-      await page.evaluate(() => document.fonts.ready);
-      const before = await story.boundingBox();
-      startScripts();
-      await expect(story.getByRole("button", { name: "Pause demo" })).toBeVisible();
-      const after = await story.boundingBox();
-      expect(Math.abs(after!.height - before!.height)).toBeLessThanOrEqual(16);
-      await expect(story.locator("[data-active=false]").first()).toHaveCSS("transition-duration", "0s");
-    } finally {
-      startScripts();
-    }
-  });
 });
 
 test.describe("Crawler view", () => {
   test.use({ javaScriptEnabled: false });
-  test("the homepage explains the incident and exposes its answers without JavaScript", async ({ page }) => {
+  test("the homepage explains the creation flow and exposes its answers without JavaScript", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByRole("region", { name: "Slack ticket in customer-support" })).toContainText("@agentfleet");
-    await expect(page.getByRole("article", { name: "Scout investigates the recurring chat freeze" })).toContainText("Grafana");
-    await expect(page.getByRole("region", { name: "Verified result in the Slack thread" })).toContainText("95% of replies started within 2.8 seconds, down from 15.1 seconds.");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Start a fleet with one message.");
+    const demo = page.getByRole("figure", { name: "Example fleet conversation" });
+    await expect(demo).toContainText("I’ll need access to the repository.");
+    await expect(page.getByText("Your first message creates the fleet.", { exact: false }).first()).toBeVisible();
     const answers = await page.locator("#faq article").evaluateAll(items => items.map(item => ({
       question: item.querySelector("h3")!.innerText,
       answer: item.querySelector("p")!.innerText,

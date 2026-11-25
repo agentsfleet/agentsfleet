@@ -13,7 +13,7 @@ type Props = {
   onChange: (change: NetworkChange) => void;
 };
 const PACKAGE_LABEL = "Packages";
-const PACKAGE_HELP = "Allow standard package registries while public internet access is restricted.";
+const PACKAGE_HELP = "Let the fleet download packages while its internet access is restricted.";
 
 /** The fleet's two network switches. Both start off; the caller owns what a switch is confirmed as. */
 export function FleetNetworkPolicy({publicInternet, packages, disabled, onChange}: Props) {
@@ -40,13 +40,13 @@ export function FleetNetworkPolicy({publicInternet, packages, disabled, onChange
 function PackageManagerDomainsHelp() {
   return <Dialog>
     <DialogTrigger asChild>
-      <TooltipButton tooltip={PACKAGE_HELP} variant="ghost" size="icon-compact" className="pointer-coarse:min-h-11 pointer-coarse:min-w-9" aria-label="About package manager domains">
+      <TooltipButton tooltip={PACKAGE_HELP} variant="ghost" size="icon-compact" aria-label="About package downloads">
         <InfoIcon size={16} aria-hidden="true" />
       </TooltipButton>
     </DialogTrigger>
     <DialogContent>
-      <DialogHeader><DialogTitle>Package manager domains</DialogTitle><DialogDescription>{PACKAGE_HELP}</DialogDescription></DialogHeader>
-      <p className="text-label leading-label text-muted-foreground">This option is disabled when Allow all is on. Its selection is kept when Allow all is switched off.</p>
+      <DialogHeader><DialogTitle>Package downloads</DialogTitle><DialogDescription>{PACKAGE_HELP}</DialogDescription></DialogHeader>
+      <p className="text-label leading-label text-muted-foreground">Allow all includes package downloads. Turn it off to use your Packages setting again.</p>
       <DialogFooter><DialogClose asChild><Button>Done</Button></DialogClose></DialogFooter>
     </DialogContent>
   </Dialog>;

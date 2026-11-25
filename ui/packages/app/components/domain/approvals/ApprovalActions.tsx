@@ -35,7 +35,7 @@ export function ApprovalActions({gate, onStart, onNext, onResolved}: Props) {
   const deny = expandedControls && <Button variant="outline" className={SECONDARY_BUTTON} disabled={pending} aria-busy={pending}
     onClick={() => decide(APPROVAL_DECISION.DENY, reason)}>{question ? "Dismiss" : "Deny"}</Button>;
   return <div className="space-y-md" data-approval-gate={gate.gate_id}>
-    <p className="break-words text-label font-medium leading-label">{title}</p>
+    <p className={cn("wrap-anywhere text-label leading-label", access ? "font-semibold" : "font-medium")}>{title}</p>
     {gate.blast_radius ? <p className="break-words text-label leading-label text-muted-foreground">{gate.blast_radius}</p> : null}
     {access ? <AccessRequest gate={gate} /> : null}
     {gate.status === APPROVAL_STATUS.TIMED_OUT && !outcome ? <p className="text-label leading-label text-muted-foreground">Deadline passed</p> : null}
@@ -63,6 +63,6 @@ export function ApprovalActions({gate, onStart, onNext, onResolved}: Props) {
           onClick={() => decide(APPROVAL_DECISION.APPROVE, reason)}>Approve</Button>
         {deny}
       </div>}
-    {error ? <><Alert variant="destructive">{error}</Alert><Button variant="ghost" size="sm" onClick={onNext} disabled={pending}>Check status</Button></> : null}
+    {error ? <><Alert variant="destructive" className="wrap-anywhere px-lg py-md">{error}</Alert><Button variant="ghost" size="sm" onClick={onNext} disabled={pending}>Check status</Button></> : null}
   </div>;
 }

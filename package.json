@@ -16,14 +16,13 @@
   },
   "overrides": {
     "playwright-core": "1.65.1",
-    "@assistant-ui/store": "0.3.23"
+    "@assistant-ui/store": "0.3.25"
   },
   "version": "0.28.2",
   "dependencies": {
     "decimal.js": "^10.6.0"
   },
   "patchedDependencies": {
-    "@assistant-ui/store@0.3.23": "patches/@assistant-ui%2Fstore@0.3.23.patch",
-    "@assistant-ui/react@0.15.36": "patches/@assistant-ui%2Freact@0.15.36.patch"
+    "@assistant-ui/react@0.15.38": "patches/@assistant-ui%2Freact@0.15.38.patch"
   }
 }

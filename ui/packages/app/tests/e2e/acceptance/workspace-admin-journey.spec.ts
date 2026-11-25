@@ -184,7 +184,7 @@ test.describe("workspace administration", () => {
     // New fleet is the workspace's entry in the rail; the fleet list has no page of its own.
     await page.getByRole("navigation", {name: "Primary", exact: true}).getByRole("link", {name: "New fleet", exact: true}).click();
     await expect(page).toHaveURL(workspaceHref(wsId, "fleets/new"), {timeout: ACTION_TIMEOUT_MS});
-    await expect(page.getByRole("heading", {name: "What should your fleet do?", exact: true})).toBeVisible();
+    await expect(page.getByRole("heading", {name: "New fleet", exact: true})).toBeVisible();
     const fleetId = (await createPrimeFleet(FIXTURE_KEY.admin, wsId, fixture)).id;
 
     await page.goto(workspaceHref(wsId, "turns"));

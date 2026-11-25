@@ -29,14 +29,15 @@ it.each([["write", "Read and write"], ["read", "Read only"]] as const)("shows th
   grants = [{...GITHUB, requested_scope: {repositories: ["org/app", "org/web"], access: reach}}];
   card({service: "github"});
   expect(await screen.findByText(label)).toBeTruthy();
-  expect(field("Access:")).toBe("github");
-  expect(field("Repositories:")).toBe("org/app, org/web");
+  expect(field("Permissions")).toBe(label);
+  expect(field("Access")).toBe("github");
+  expect(field("Repositories")).toBe("org/app, org/web");
 });
 
 it("names a secret request alone, even with no lists to read", () => {
   card({service: "sentry"}, false);
   expect(screen.getByRole("definition").textContent).toBe("sentry");
-  expect(screen.queryByText("Repositories:")).toBeNull();
+  expect(screen.queryByText("Repositories")).toBeNull();
 });
 
 it("shows nothing for a card that names no service", () => {
@@ -51,6 +52,6 @@ it("reads the lists once more for a card raised after they were read, and no fur
   view.rerender(<FleetListsProvider workspace={WORKSPACE} fleet={FLEET_ID}><AccessRequest gate={{...GATE, evidence: {service: "github"}}} /></FleetListsProvider>);
   await new Promise(resolve => setTimeout(resolve, 20));
   expect(reads).toBe(2);
-  expect(screen.queryByText("Repositories:")).toBeNull();
-  expect(field("Access:")).toBe("github");
+  expect(screen.queryByText("Repositories")).toBeNull();
+  expect(field("Access")).toBe("github");
 });

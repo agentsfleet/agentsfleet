@@ -11,7 +11,7 @@ type ModelProps = { children: ReactNode; select?: false } | ({ select: true } & 
 
 /** Callers choose whether the model is editable; typography belongs here. */
 export function ChatComposerModel({ children, select, ...trigger }: ModelProps) {
-  const content = <span className="inline-flex min-w-0 items-center gap-md"><CpuIcon size={14} className="shrink-0" aria-hidden="true" /><span className="min-w-0 truncate">{children}</span></span>;
+  const content = <span className="inline-flex min-w-0 items-center gap-sm sm:gap-md"><CpuIcon size={14} className="shrink-0" aria-hidden="true" /><span className="min-w-0 truncate">{children}</span></span>;
   return select ? <SelectTrigger {...trigger} appearance="composer" data-composer-part="model">{content}</SelectTrigger>
     : <span data-composer-part="model" className="min-w-0 font-sans text-eyebrow leading-label text-muted-foreground">{content}</span>;
 }
@@ -32,14 +32,17 @@ type Props = {
 /** Both chat purposes use the same input, focus lifecycle and height limits. */
 export function ChatComposerFrame({id, label, inputRef, disabled, children, toolbar, actions, input}: Props) {
   useComposerFocus(inputRef, disabled);
-  return <DashboardPanel asChild padding="none" className="fleet-composer-surface relative min-h-0 shrink-0 rounded-lg bg-card px-xl pt-xl pb-[calc(var(--sp-lg)_+_1px)] transition-colors duration-150 focus-within:border-muted-foreground motion-reduce:transition-none">
+  return <DashboardPanel asChild padding="none" className="fleet-composer-surface relative min-h-0 shrink-0 rounded-lg bg-card px-md pt-xl pb-lg transition-colors duration-snap ease-snap has-[textarea:focus-visible]:outline-2 has-[textarea:focus-visible]:outline-ring motion-reduce:transition-none sm:px-xl">
     <ComposerPrimitive.Root id={id} className="flex min-h-0 flex-col gap-sm" aria-label={label}>
       <ComposerQuote />
       {children}
       <div className="flex min-h-chat-input flex-row items-stretch">
         {input}
       </div>
-      <div className="mt-md flex min-w-0 flex-wrap items-center justify-between gap-lg"><div className="flex min-w-0 flex-1 basis-36 items-center gap-sm">{toolbar}</div><div className="ml-auto flex shrink-0 items-center gap-sm">{actions}</div></div>
+      <div className="mt-md flex min-w-0 flex-wrap items-center gap-x-sm gap-y-md">
+        {toolbar}
+        <div className="ml-auto flex shrink-0 items-center gap-sm">{actions}</div>
+      </div>
     </ComposerPrimitive.Root>
   </DashboardPanel>;
 }
