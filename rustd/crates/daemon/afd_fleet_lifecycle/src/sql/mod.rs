@@ -64,6 +64,15 @@ pub(crate) const SELECT_FLEET_STATUS: &str = include_str!("select_fleet_status.s
 /// the exception: [`DELETE_ACTIVE_RUNS`] runs first, and settled ones stay.
 pub(crate) const DELETE_FLEET: &str = include_str!("delete_fleet.sql");
 
+/// Whether a fleet being purged still holds a schedule.
+///
+/// `$1` fleet · `$2` workspace. Schedules cascade from the fleet row, but the
+/// external scheduler holds a registration for each; the purge's caller
+/// removes those first, and a row still here is one it could not, or one
+/// written since. Read under the purge's row lock, so the answer stands until
+/// the row goes.
+pub(crate) const SELECT_FLEET_HAS_SCHEDULES: &str = include_str!("select_fleet_has_schedules.sql");
+
 /// Deletes one fleet's live runs inside its purge.
 ///
 /// `$1` fleet · `$2` the live run status. `thread.runs` holds no foreign key

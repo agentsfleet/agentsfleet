@@ -112,6 +112,7 @@ impl Error {
             ErrorKind::Replay => Some("accepted"),
             ErrorKind::NameExists => Some("name_exists"),
             ErrorKind::Model => Some("unavailable"),
+            ErrorKind::Lifecycle { source } => source.current_state(),
             _ => None,
         }
     }

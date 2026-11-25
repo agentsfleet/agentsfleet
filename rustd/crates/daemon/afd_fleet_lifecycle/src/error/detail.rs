@@ -12,3 +12,9 @@ pub(crate) use af_core::error::DETAIL_DATABASE_ERROR as DATABASE_ERROR;
 
 /// A fleet id this workspace does not hold.
 pub const NOT_FOUND: &str = "Fleet not found";
+
+/// A fleet whose purge found a schedule still registered with the external
+/// scheduler. Byte-identical to `afd_cron`'s copy, which answers the same
+/// state found before the purge.
+pub const SCHEDULES_REGISTERED: &str = "This fleet's schedules are still registered with the \
+     scheduler, so the fleet was not deleted. Repeat the delete in a moment.";

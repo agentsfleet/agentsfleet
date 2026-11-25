@@ -13550,7 +13550,7 @@
           "Fleets"
         ],
         "summary": "Permanently delete a fleet",
-        "description": "Permanently deletes the fleet, events, runs, approvals, grants, keys, and memory, in any status. A running fleet's live work ends first. This cannot be undone. Archive is a separate operation: set the status to `archived` to keep the history instead. ",
+        "description": "Permanently deletes the fleet, events, runs, approvals, grants, keys, and memory, in any status. A running fleet's live work ends first, and its schedules are removed from Upstash QStash before the fleet goes. This cannot be undone. Archive is a separate operation: set the status to `archived` to keep the history instead. ",
         "operationId": "delete_fleet",
         "parameters": [
           {
@@ -13617,6 +13617,16 @@
           },
           "404": {
             "description": "The resource was not found or is not accessible to you",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A schedule is still registered with the scheduler; repeat the delete",
             "content": {
               "application/problem+json": {
                 "schema": {

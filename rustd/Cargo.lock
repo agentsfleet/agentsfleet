@@ -810,6 +810,7 @@ dependencies = [
  "afd_api_wire",
  "afd_bus",
  "afd_db",
+ "afd_fleet_lifecycle",
  "afd_turns",
  "afd_vault",
  "async-trait",

@@ -27,6 +27,7 @@ impl Error {
             | ErrorKind::UpstreamRefused { .. }
             | ErrorKind::RowUnreadable { .. }
             | ErrorKind::RetireHeld
+            | ErrorKind::ReleaseHeld
             | ErrorKind::KeysMissing
             | ErrorKind::TokenMalformed
             | ErrorKind::SignatureInvalid { .. }
@@ -42,7 +43,7 @@ impl Error {
     #[must_use]
     pub const fn current_state(&self) -> Option<&'static str> {
         match self.kind() {
-            ErrorKind::Held | ErrorKind::RetireHeld => Some(STATE_SYNCING),
+            ErrorKind::Held | ErrorKind::RetireHeld | ErrorKind::ReleaseHeld => Some(STATE_SYNCING),
             ErrorKind::Deleting => Some(STATE_DELETING),
             ErrorKind::Refused { refusal } => refusal.current_state(),
             ErrorKind::Patch

@@ -33,14 +33,15 @@
 //! races; per-revision upstream ids are what close it.
 
 use af_core::id::Uuid7;
+use jiff::Timestamp;
 
-use crate::error::Result;
+use crate::error::{self, Result};
 use crate::model::{DesiredStatus, Schedule};
 use std::sync::Arc;
 
 use crate::qstash::Attempts;
 use crate::scheduler::Scheduler;
-use crate::store::Schedules as Store;
+use crate::store::{Change, Schedules as Store};
 use crate::upstream::upstream_id;
 
 /// What one reconcile did.
@@ -201,6 +202,56 @@ impl Schedules {
                 Ok(recorded.map_or(Reconciled::Superseded, Reconciled::Failed))
             }
         }
+    }
+
+    /// Removes every schedule of `fleet` upstream, then its row, ahead of the
+    /// fleet's own delete.
+    ///
+    /// Each schedule takes the path a single delete takes: claimed as
+    /// `deleting`, removed upstream, and its row deleted only once the
+    /// scheduler agrees. A fleet's delete runs this first, so the cascade that
+    /// follows removes no row whose registration still stands.
+    ///
+    /// Every scheduler call is sent once ([`Attempts::Once`]): one request
+    /// carries every schedule of the fleet under one deadline, and the
+    /// repeated delete is the retry. A schedule another syncer holds, or one
+    /// the scheduler would not remove, stays `deleting`, and the rest are
+    /// still removed.
+    ///
+    /// # Errors
+    /// `UZ-SCHED-006` when any schedule is still registered, so the fleet's
+    /// delete stops and is repeated. Reports a datastore that would not
+    /// answer and a row this build cannot read.
+    pub async fn release_fleet(&self, fleet: &Uuid7, now: Timestamp) -> Result<()> {
+        let mut held = false;
+        for schedule in self.store.list(fleet).await? {
+            held |= !self.release_one(fleet, &schedule.schedule_id, now).await?;
+        }
+        if held {
+            return Err(error::release_held());
+        }
+        Ok(())
+    }
+
+    /// Removes one schedule of a fleet being deleted; whether it is gone.
+    async fn release_one(&self, fleet: &Uuid7, schedule: &Uuid7, now: Timestamp) -> Result<bool> {
+        let token = self.store.mint(now)?;
+        let deleting = Change {
+            desired_status: Some(DesiredStatus::Deleting),
+            ..Change::default()
+        };
+        let Some(claimed) = self
+            .store
+            .claim_change(fleet, schedule, deleting, &token)
+            .await?
+        else {
+            // Not claimed: gone since the list, or held by another syncer.
+            return Ok(self.store.one(fleet, schedule).await?.is_none());
+        };
+        let reconciled = self
+            .reconcile_with(&claimed, &token, Attempts::Once)
+            .await?;
+        Ok(matches!(reconciled, Reconciled::Removed))
     }
 
     /// Removes `held`'s registration upstream, under the id derived from it.

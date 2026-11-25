@@ -67,6 +67,12 @@ pub fn retire_held() -> Error {
     ErrorKind::RetireHeld.into()
 }
 
+/// Reports a fleet's delete that found a schedule still registered upstream.
+#[must_use]
+pub(crate) fn release_held() -> Error {
+    ErrorKind::ReleaseHeld.into()
+}
+
 /// Refuses a fire on a deployment that holds no signing key.
 pub(crate) fn keys_missing() -> Error {
     ErrorKind::KeysMissing.into()
@@ -250,6 +256,7 @@ fn raised_kinds() -> Vec<(&'static str, Error)> {
             row_unreadable(super::COLUMN_DESIRED_STATUS),
         ),
         ("retire held", retire_held()),
+        ("release held", release_held()),
         ("keys missing", keys_missing()),
         ("token malformed", token_malformed()),
         (

@@ -170,6 +170,22 @@ pub trait FleetSchedules: Send + Sync + std::fmt::Debug + 'static {
         now: Timestamp,
     ) -> impl Future<Output = CronResult<Fired>> + Send;
 
+    /// Removes every schedule of `fleet` in `workspace` from the external
+    /// scheduler, and its row, ahead of the fleet's own delete.
+    ///
+    /// Nothing for a fleet outside `workspace`, as for [`Self::change`].
+    ///
+    /// # Errors
+    /// `UZ-SCHED-006` while any schedule is still registered, so the fleet's
+    /// delete stops and is repeated; see `afd_cron`'s `release_fleet`. As
+    /// [`Self::list`] otherwise.
+    fn release(
+        &self,
+        workspace: &Uuid7,
+        fleet: &Uuid7,
+        now: Timestamp,
+    ) -> impl Future<Output = CronResult<()>> + Send;
+
     /// Marks `fleet`'s `schedule` in `workspace` for deletion and removes it
     /// from `QStash`: a `once` schedule whose moment has come, fired or not.
     ///

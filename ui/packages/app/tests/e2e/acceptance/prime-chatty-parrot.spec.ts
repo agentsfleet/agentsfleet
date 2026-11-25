@@ -13,15 +13,16 @@
  * thread. The daemon drops a post by a bot, so the person's own token posts it.
  * The journey reads the channel from `ACCEPTANCE_SLACK_CHANNEL_ID`, the
  * person's token from `ACCEPTANCE_SLACK_USER_TOKEN`, and the member id the
- * connected app answers as from `ACCEPTANCE_SLACK_BOT_USER_ID`.
+ * connected app answers as from `ACCEPTANCE_SLACK_BOT_USER_ID`. It runs in the
+ * fixture person's workspace that connected Slack, and deletes only its fleet.
  */
 import * as crypto from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { z } from "zod";
-import type { ConnectorCatalogEntry } from "@/lib/api/connectors";
 import type { TurnDetail } from "@/lib/api/turns";
 import { TRIGGER_KIND, TriggerSchema } from "@/lib/api/fleet-detail";
 import { clientFor } from "./fixtures/api-client";
+import { connectedWorkspaceId } from "./fixtures/connected-workspace";
 import { POST_DEPLOY_TAG } from "./fixtures/constants";
 import { assertPassed, classifyTerminalTurn, JOURNEY_LEG } from "./fixtures/execution";
 import { CONNECTOR_SERVICE_SLACK } from "./fixtures/grants";
@@ -29,7 +30,6 @@ import { callSlack, requiredVariable, requiredVariables } from "./fixtures/live-
 import { observed, pollFor, uniqueTag } from "./fixtures/observation";
 import { createPrimeFleet, entry, PRIME_FLEET, primeFleet, proofs, wake, type PrimedFleet } from "./fixtures/prime-fleets";
 import { PRIME_PERSON, settledTurn, threadOf, toolsCalled } from "./fixtures/prime-walk";
-import { getDefaultWorkspaceId } from "./fixtures/seed";
 import { purgeFixtureFleet } from "./fixtures/teardown";
 
 const fixture = primeFleet(PRIME_FLEET.chattyParrot);
@@ -81,12 +81,8 @@ test.describe.serial(`prime fleet ${fixture.name}`, {tag: POST_DEPLOY_TAG}, () =
     channel = given[CHANNEL_VARIABLE];
     token = given[TOKEN_VARIABLE];
     bot = given[BOT_VARIABLE];
-    workspaceId = await getDefaultWorkspaceId(PRIME_PERSON);
-    const catalogue = await clientFor(PRIME_PERSON).get<ConnectorCatalogEntry[]>(`/v1/workspaces/${workspaceId}/connectors`);
-    // Connecting is a person's consent in Slack, done once for the fixture workspace; no journey can give it.
-    if (!catalogue.some((row) => row.id === CONNECTOR_SERVICE_SLACK && row.connected)) {
-      throw new Error("the fixture workspace has not connected Slack; connect the deployment's Slack app to it in Connected apps");
-    }
+    // Connecting is a person's consent in Slack, done once in a workspace the fixture person belongs to.
+    workspaceId = await connectedWorkspaceId(PRIME_PERSON, {id: CONNECTOR_SERVICE_SLACK, provider: "Slack"});
     fleet = await observed(JOURNEY_LEG.install, () =>
       createPrimeFleet(PRIME_PERSON, workspaceId, fixture, `${fixture.first_message} The channel is ${channel}.`));
   });

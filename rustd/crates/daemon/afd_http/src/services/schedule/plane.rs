@@ -147,6 +147,13 @@ impl FleetSchedules for SchedulePlane {
         Ok(fired)
     }
 
+    async fn release(&self, workspace: &Uuid7, fleet: &Uuid7, now: Timestamp) -> CronResult<()> {
+        if self.store().holds_fleet(workspace, fleet).await? {
+            self.service.release_fleet(fleet, now).await?;
+        }
+        Ok(())
+    }
+
     async fn retire(
         &self,
         workspace: &Uuid7,

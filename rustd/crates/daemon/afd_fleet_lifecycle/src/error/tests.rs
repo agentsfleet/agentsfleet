@@ -8,15 +8,33 @@ use super::{Error, ErrorKind, detail};
 
 #[test]
 fn data_only_refusals_have_stable_codes_details_and_no_causes() {
-    let errors = [expected(
-        ErrorKind::NotFound.into(),
-        error_code::AGENTSFLEET_NOT_FOUND,
-        detail::NOT_FOUND,
-    )];
+    let errors = [
+        expected(
+            ErrorKind::NotFound.into(),
+            error_code::AGENTSFLEET_NOT_FOUND,
+            detail::NOT_FOUND,
+        ),
+        expected(
+            ErrorKind::SchedulesRegistered.into(),
+            error_code::SCHEDULE_SYNCING,
+            detail::SCHEDULES_REGISTERED,
+        ),
+    ];
 
     for expected in &errors {
         assert_error(expected, false);
     }
+}
+
+#[test]
+fn only_a_purge_held_by_schedules_names_a_conflict_state() {
+    let held: Error = ErrorKind::SchedulesRegistered.into();
+    let missing: Error = ErrorKind::NotFound.into();
+    let row = super::row_malformed("status", "future-state");
+
+    assert_eq!(held.current_state(), Some("syncing"));
+    assert_eq!(missing.current_state(), None);
+    assert_eq!(row.current_state(), None);
 }
 
 #[test]

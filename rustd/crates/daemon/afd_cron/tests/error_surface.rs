@@ -50,7 +50,7 @@ fn the_error_surface_holds() {
     let samples = one_of_each_kind();
     assert_eq!(
         samples.len(),
-        21,
+        22,
         "a kind was added or dropped without its sample"
     );
     grade(
@@ -70,6 +70,7 @@ fn every_sentence_is_one_of_the_declared_details() {
         af_core::error::DETAIL_OPERATION_FAILED,
         detail::UPSTREAM_UNAVAILABLE,
         detail::RETIRE_HELD,
+        detail::RELEASE_HELD,
         detail::FIRE_UNVERIFIED,
         detail::DESTINATION_UNUSABLE,
         detail::DESTINATION_NOT_PLAIN_ORIGIN,

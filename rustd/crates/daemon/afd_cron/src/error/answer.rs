@@ -63,6 +63,7 @@ impl Error {
                 detail::DESTINATION_NOT_PLAIN_ORIGIN,
             ),
             ErrorKind::RetireHeld => (error_code::SCHEDULE_SYNCING, detail::RETIRE_HELD),
+            ErrorKind::ReleaseHeld => (error_code::SCHEDULE_SYNCING, detail::RELEASE_HELD),
             // One answer for every refusal of a fire: telling a prober which
             // check it failed would say whether this daemon is misconfigured.
             ErrorKind::KeysMissing

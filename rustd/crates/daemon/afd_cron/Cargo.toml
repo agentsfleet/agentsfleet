@@ -116,6 +116,9 @@ tokio = { workspace = true, features = ["net", "rt-multi-thread", "test-util"] }
 # The `tracing` capture `integration_fire.rs` reads the fire's log line back
 # through.
 af_core = { workspace = true, features = ["test-util"] }
+# The fleet purge `integration_release_fleet.rs` proves refuses a fleet whose
+# schedules are still registered.
+afd_fleet_lifecycle.workspace = true
 
 [lints]
 workspace = true

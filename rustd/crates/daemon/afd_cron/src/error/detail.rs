@@ -43,6 +43,15 @@ pub const UPSTREAM_UNAVAILABLE: &str =
 pub const RETIRE_HELD: &str = "The schedule ran, and is being synchronised, so it is not yet \
      removed. Repeat the request in a moment to finish removing it.";
 
+/// What a caller is told when a fleet's delete stopped because one of its
+/// schedules is still registered with the external scheduler.
+///
+/// Names the retry, because a repeat is what heals it: the delete removes the
+/// schedules it can again before it touches the fleet. Byte-identical to
+/// `afd_fleet_lifecycle`'s copy, which answers the same state found later.
+pub const RELEASE_HELD: &str = "This fleet's schedules are still registered with the scheduler, \
+     so the fleet was not deleted. Repeat the delete in a moment.";
+
 /// What a caller is told when a schedule fire did not prove it came from the
 /// external scheduler.
 ///

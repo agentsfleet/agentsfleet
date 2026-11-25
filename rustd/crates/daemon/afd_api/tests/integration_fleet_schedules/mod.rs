@@ -36,6 +36,7 @@ use crate::harness::{json_body, send};
 
 mod ceiling;
 mod fixture;
+mod fleet_delete;
 mod lifecycle;
 mod overrides;
 mod refusals;

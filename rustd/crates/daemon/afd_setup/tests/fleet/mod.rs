@@ -9,6 +9,7 @@
 )]
 
 mod create;
+mod delete;
 mod fixture;
 mod patch;
 mod seed;
