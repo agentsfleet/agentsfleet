@@ -14,7 +14,6 @@ describe("shared page loading", () => {
     { name: "(dashboard)/w/[workspaceId]/fleets/[id]/loading.tsx", load: () => import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/loading") },
     { name: "(dashboard)/w/[workspaceId]/fleets/loading.tsx", load: () => import("../app/(dashboard)/w/[workspaceId]/fleets/loading") },
     { name: "(dashboard)/w/[workspaceId]/fleets/new/loading.tsx", load: () => import("../app/(dashboard)/w/[workspaceId]/fleets/new/loading") },
-    { name: "(dashboard)/w/[workspaceId]/integrations/loading.tsx", load: () => import("../app/(dashboard)/w/[workspaceId]/integrations/loading") },
     { name: "(dashboard)/w/[workspaceId]/loading.tsx", load: () => import("../app/(dashboard)/w/[workspaceId]/loading") },
     { name: "(dashboard)/w/[workspaceId]/secrets/loading.tsx", load: () => import("../app/(dashboard)/w/[workspaceId]/secrets/loading") },
     { name: "(dashboard)/w/[workspaceId]/settings/models/loading.tsx", load: () => import("../app/(dashboard)/w/[workspaceId]/settings/models/loading") },
@@ -32,4 +31,18 @@ describe("shared page loading", () => {
       expect(host.querySelector("h1")).toBeNull();
     });
   }
+
+  it("renders the connected apps header and one loading region on first navigation", async () => {
+    const [{ default: Layout }, { default: Loading }] = await Promise.all([
+      import("../app/(dashboard)/w/[workspaceId]/integrations/layout"),
+      import("../app/(dashboard)/w/[workspaceId]/integrations/loading"),
+    ]);
+    const host = document.createElement("div");
+    host.innerHTML = renderToStaticMarkup(React.createElement(Layout, null, React.createElement(Loading)));
+    const page = within(host);
+    expect(page.getByRole("heading", { name: "Connected apps" })).toBeTruthy();
+    expect(page.getAllByRole("status")).toHaveLength(1);
+    expect(page.getByRole("status", { name: "Loading connected apps" }).getAttribute("aria-busy")).toBe("true");
+    expect(host.querySelector(".page-loading-stroke")).toBeNull();
+  });
 });
