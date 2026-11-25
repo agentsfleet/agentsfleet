@@ -23,7 +23,7 @@ index 1c79cb68c8ef35e48b63746e9372f90363f5f30c..157bb547c2d6f9a0d84c2356a0306be9
  	let observedViewport = null;
  	let observedAnchor = null;
 diff --git a/dist/primitives/thread/topAnchor/mountTopAnchorReserve.js b/dist/primitives/thread/topAnchor/mountTopAnchorReserve.js
-index d054826556100492005c41bcd1ad3426b5121b47..ad35ffd6f72fb0d8d55803c5b098c99c8af8c62d 100644
+index d054826556100492005c41bcd1ad3426b5121b47..a330c1d6fefcc6b64932220c05922edf30da1609 100644
 --- a/dist/primitives/thread/topAnchor/mountTopAnchorReserve.js
 +++ b/dist/primitives/thread/topAnchor/mountTopAnchorReserve.js
 @@ -27,7 +27,6 @@ const mountTopAnchorReserve = (store) => {
@@ -70,15 +70,21 @@ index d054826556100492005c41bcd1ad3426b5121b47..ad35ffd6f72fb0d8d55803c5b098c99c
  		const anchorId = getAnchorId(anchor);
  		const targetScrollTop = snapScrollTop(computeTopAnchorTargetScrollTop({
  			viewport,
-@@ -105,7 +101,6 @@ const mountTopAnchorReserve = (store) => {
+@@ -105,16 +101,14 @@ const mountTopAnchorReserve = (store) => {
  		}));
  		if (anchorId === void 0 || anchorId !== lastScrolledAnchorId) {
  			restoreScrollTop = null;
 -			restoredThisTurn = false;
- 			if (Math.abs(viewport.scrollTop - targetScrollTop) > 1) viewport.scrollTo({
- 				top: targetScrollTop,
- 				behavior: "smooth"
-@@ -114,7 +109,6 @@ const mountTopAnchorReserve = (store) => {
+-			if (Math.abs(viewport.scrollTop - targetScrollTop) > 1) viewport.scrollTo({
+-				top: targetScrollTop,
+-				behavior: "smooth"
+-			});
+-			if (anchorId !== void 0) lastScrolledAnchorId = anchorId;
++			if (Math.abs(viewport.scrollTop - targetScrollTop) > 1) viewport.scrollTo({
++				top: targetScrollTop,
++				behavior: "instant"
++			});
++			if (anchorId !== void 0) lastScrolledAnchorId = anchorId;
  		} else if (restoreScrollTop !== null && lastAppliedTarget !== null) {
  			const desired = snapScrollTop(restoreScrollTop + (targetScrollTop - lastAppliedTarget));
  			restoreScrollTop = null;
@@ -110,7 +116,7 @@ index 408a30546f768688cb6db79534ee6b47c2e1cc8e..1d4209514918d03c4e645fb8169ba709
  
    let observedViewport: HTMLElement | null = null;
 diff --git a/src/primitives/thread/topAnchor/mountTopAnchorReserve.ts b/src/primitives/thread/topAnchor/mountTopAnchorReserve.ts
-index 787754632270e8f290bae82b26e51b36c3cedadb..6893f6adb52675c0c30a795039190c853709f155 100644
+index 787754632270e8f290bae82b26e51b36c3cedadb..f91c5c079f0bdb31a264f4a8ee622d701710608c 100644
 --- a/src/primitives/thread/topAnchor/mountTopAnchorReserve.ts
 +++ b/src/primitives/thread/topAnchor/mountTopAnchorReserve.ts
 @@ -64,7 +64,6 @@ export const mountTopAnchorReserve = (store: TopAnchorStore) => {
@@ -158,14 +164,17 @@ index 787754632270e8f290bae82b26e51b36c3cedadb..6893f6adb52675c0c30a795039190c85
      const anchorId = getAnchorId(anchor);
      const targetScrollTop = snapScrollTop(
        computeTopAnchorTargetScrollTop({ viewport, anchor, ...clamp }),
-@@ -182,7 +177,6 @@ export const mountTopAnchorReserve = (store: TopAnchorStore) => {
+@@ -182,9 +177,8 @@ export const mountTopAnchorReserve = (store: TopAnchorStore) => {
  
      if (anchorId === undefined || anchorId !== lastScrolledAnchorId) {
        restoreScrollTop = null;
 -      restoredThisTurn = false;
        if (Math.abs(viewport.scrollTop - targetScrollTop) > 1) {
-         viewport.scrollTo({ top: targetScrollTop, behavior: "smooth" });
+-        viewport.scrollTo({ top: targetScrollTop, behavior: "smooth" });
++        viewport.scrollTo({ top: targetScrollTop, behavior: "instant" });
        }
+       if (anchorId !== undefined) lastScrolledAnchorId = anchorId;
+     } else if (restoreScrollTop !== null && lastAppliedTarget !== null) {
 @@ -196,7 +190,6 @@ export const mountTopAnchorReserve = (store: TopAnchorStore) => {
          restoreScrollTop + (targetScrollTop - lastAppliedTarget),
        );
