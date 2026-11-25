@@ -10,8 +10,10 @@
  *
  * The mention is a real message, posted in the channel as the test person;
  * Slack signs and delivers the event, and the reply is read back from the real
- * thread. The journey reads `ACCEPTANCE_SLACK_CHANNEL_ID` and
- * `ACCEPTANCE_SLACK_USER_TOKEN`, and finds the bot among the channel's members.
+ * thread. The daemon drops a post by a bot, so the person's own token posts it.
+ * The journey reads the channel from `ACCEPTANCE_SLACK_CHANNEL_ID`, the
+ * person's token from `ACCEPTANCE_SLACK_USER_TOKEN`, and the member id the
+ * connected app answers as from `ACCEPTANCE_SLACK_BOT_USER_ID`.
  */
 import * as crypto from "node:crypto";
 import { expect, test } from "@playwright/test";
@@ -23,7 +25,7 @@ import { clientFor } from "./fixtures/api-client";
 import { POST_DEPLOY_TAG } from "./fixtures/constants";
 import { assertPassed, classifyTerminalTurn, JOURNEY_LEG } from "./fixtures/execution";
 import { CONNECTOR_SERVICE_SLACK } from "./fixtures/grants";
-import { callSlack, requiredVariable } from "./fixtures/live-services";
+import { callSlack, requiredVariable, requiredVariables } from "./fixtures/live-services";
 import { observed, pollFor, uniqueTag } from "./fixtures/observation";
 import { createPrimeFleet, entry, PRIME_FLEET, primeFleet, proofs, wake, type PrimedFleet } from "./fixtures/prime-fleets";
 import { PRIME_PERSON, settledTurn, threadOf, toolsCalled } from "./fixtures/prime-walk";
@@ -35,6 +37,7 @@ const proof = proofs(fixture, 4);
 const subscription = wake(fixture, "mention");
 const CHANNEL_VARIABLE = "ACCEPTANCE_SLACK_CHANNEL_ID";
 const TOKEN_VARIABLE = "ACCEPTANCE_SLACK_USER_TOKEN";
+const BOT_VARIABLE = "ACCEPTANCE_SLACK_BOT_USER_ID";
 const STEP_TIMEOUT_MS = 480_000;
 // Slack's delivery, then one run on a runner, then the reply's own delivery.
 const WAKE_TIMEOUT_MS = 240_000;
@@ -46,31 +49,21 @@ const HTTP_UNAUTHORIZED = 401;
 /** `UZ-WH-010`: a delivery whose signature does not verify (`af_core::error_code`). */
 const SIGNATURE_INVALID = "UZ-WH-010";
 const TriggersSchema = z.object({items: z.array(TriggerSchema)});
-const MembersSchema = z.object({members: z.array(z.string())});
-const UserSchema = z.object({user: z.object({id: z.string(), is_bot: z.boolean().optional()})});
-const PostedSchema = z.object({ts: z.string().min(1)});
+// Slack stamps `bot_id` on a message it stores as an app's.
+const PostedSchema = z.object({ts: z.string().min(1), message: z.object({bot_id: z.string().optional()})});
 const RepliesSchema = z.object({messages: z.array(z.object({ts: z.string(), thread_ts: z.string().optional(), user: z.string().optional(), text: z.string().optional()}))});
 const RefusedSchema = z.object({error_code: z.string()});
-
-/** The one bot among the channel's members: the app this deployment's fleets speak as. */
-async function botIn(token: string, channel: string): Promise<string> {
-  const {members} = await callSlack(token, "conversations.members", {channel}, MembersSchema);
-  const bots: string[] = [];
-  for (const user of members) {
-    if ((await callSlack(token, "users.info", {user}, UserSchema)).user.is_bot) bots.push(user);
-  }
-  if (bots.length !== 1) throw new Error(`the channel in ${CHANNEL_VARIABLE} holds ${bots.length} bots; the journey needs exactly one to mention`);
-  return entry(fixture, bots, 0, "bot");
-}
 
 test.describe.serial(`prime fleet ${fixture.name}`, {tag: POST_DEPLOY_TAG}, () => {
   test.setTimeout(STEP_TIMEOUT_MS);
   let workspaceId = "";
   let channel = "";
   let token = "";
+  let bot = "";
   let fleet: PrimedFleet | null = null;
   const word = uniqueTag();
-  let said: {ts: string; bot: string; woken: TurnDetail} | null = null;
+  let postedTs = "";
+  let said: {ts: string; woken: TurnDetail} | null = null;
 
   const primed = (): PrimedFleet => {
     if (fleet === null) throw new Error(`${fixture.name} was not created; nothing to walk`);
@@ -85,8 +78,10 @@ test.describe.serial(`prime fleet ${fixture.name}`, {tag: POST_DEPLOY_TAG}, () =
 
   test.beforeAll(async () => {
     test.setTimeout(STEP_TIMEOUT_MS);
-    channel = requiredVariable(CHANNEL_VARIABLE);
-    token = requiredVariable(TOKEN_VARIABLE);
+    const given = requiredVariables([CHANNEL_VARIABLE, TOKEN_VARIABLE, BOT_VARIABLE]);
+    channel = given[CHANNEL_VARIABLE];
+    token = given[TOKEN_VARIABLE];
+    bot = given[BOT_VARIABLE];
     workspaceId = await getDefaultWorkspaceId(PRIME_PERSON);
     const catalogue = await clientFor(PRIME_PERSON).get<ConnectorCatalogEntry[]>(`/v1/workspaces/${workspaceId}/connectors`);
     // Connecting is a person's consent in Slack, done once for the fixture workspace; no journey can give it.
@@ -100,7 +95,7 @@ test.describe.serial(`prime fleet ${fixture.name}`, {tag: POST_DEPLOY_TAG}, () =
   test.afterAll(async () => {
     if (fleet) await purgeFixtureFleet(PRIME_PERSON, workspaceId, fleet.id);
     // The person's own message is removed; the fleet's reply under it is the bot's to remove and stays.
-    if (said) await callSlack(token, "chat.delete", {channel, ts: said.ts}, z.object({})).catch(() => undefined);
+    if (postedTs) await callSlack(token, "chat.delete", {channel, ts: postedTs}, z.object({})).catch(() => undefined);
   });
 
   test(proof(0), async () => {
@@ -112,20 +107,23 @@ test.describe.serial(`prime fleet ${fixture.name}`, {tag: POST_DEPLOY_TAG}, () =
   });
 
   test(proof(1), async () => {
-    const bot = await botIn(token, channel);
     expect(await fromSlack(), "no mention has reached the fleet yet").toEqual([]);
     // The fleet's name leads the words, so the mention is this fleet's whichever others listen on the channel.
     const posted = await callSlack(token, "chat.postMessage", {channel, text: `<@${bot}> ${primed().name} the word is ${word}`}, PostedSchema);
+    postedTs = posted.ts;
+    if (posted.message.bot_id !== undefined) {
+      throw new Error(`Slack stored the mention ${TOKEN_VARIABLE} posted as a bot's message, and the daemon drops a bot's post; the token must post as a person`);
+    }
     const woken = await settledTurn(workspaceId, primed().id, (turn) => turn.actor.startsWith(SLACK_ACTOR_PREFIX), WAKE_TIMEOUT_MS);
     if (woken === null) throw new Error(`the mention posted at ${posted.ts} woke no turn in ${WAKE_TIMEOUT_MS / 1000} s`);
-    said = {ts: posted.ts, bot, woken};
+    said = {ts: posted.ts, woken};
     assertPassed(classifyTerminalTurn(woken));
     expect(woken.response_text).toContain(word);
     expect((await fromSlack()).map((turn) => turn.turn_id), "one mention is one turn").toEqual([woken.turn_id]);
   });
 
   test(proof(2), async () => {
-    const {ts, bot} = mention();
+    const {ts} = mention();
     const reply = await pollFor(async () => {
       const {messages} = await callSlack(token, "conversations.replies", {channel, ts}, RepliesSchema);
       return messages.find((message) => message.ts !== ts && message.user === bot) ?? null;
@@ -138,7 +136,7 @@ test.describe.serial(`prime fleet ${fixture.name}`, {tag: POST_DEPLOY_TAG}, () =
   test(proof(3), async () => {
     const api = requiredVariable("NEXT_PUBLIC_API_URL");
     // A mention nobody signed: the daemon refuses it before it reads a word of it.
-    const forged = JSON.stringify({type: "event_callback", event: {type: "app_mention", channel, text: `<@${mention().bot}> ${primed().name}`}});
+    const forged = JSON.stringify({type: "event_callback", event: {type: "app_mention", channel, text: `<@${bot}> ${primed().name}`}});
     const response = await fetch(`${api}/v1/connectors/${CONNECTOR_SERVICE_SLACK}/events`, {
       method: "POST", body: forged, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       headers: {"content-type": "application/json", "x-slack-request-timestamp": String(Math.floor(Date.now() / 1000)),

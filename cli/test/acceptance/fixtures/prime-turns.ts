@@ -1,14 +1,16 @@
 // What a journey reads back once its fleet exists: the fleet's turns, as
-// `fleet turns --json` lists them, and a message sent with `fleet steer`.
+// `fleet turns --json` lists them, one turn's stored request and reply, and a
+// message sent with `fleet steer`.
 //
 // A journey asserts what a turn did (who sent it, how it ended), and reads the
-// model's words only to find a word this run made up.
+// model's words only to find a word or number this run made up.
 
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { Schema } from "effect";
 
 import { TURN_STATUS } from "../../../src/constants/turn-status.ts";
+import { nativeRequest, readAuthContext } from "./native-api.ts";
 import type { PrimeSession } from "./prime-session.ts";
 import { trailingJson } from "./steer-envelope.ts";
 
@@ -22,10 +24,18 @@ const TurnSchema = Schema.Struct({
   failure_detail: Schema.NullOr(Schema.String),
 });
 const TurnPageSchema = Schema.Struct({ items: Schema.Array(TurnSchema) });
+// `TurnDetail` in the same file, as far as a journey reads it.
+const TurnDetailSchema = Schema.Struct({
+  turn_id: Schema.String,
+  request_json: Schema.String,
+  response_text: Schema.NullOr(Schema.String),
+});
 const SteeredSchema = Schema.Struct({ turn_id: Schema.String, kind: Schema.String, status: Schema.String });
 
 export type Turn = typeof TurnSchema.Type;
-export type FindTurn = (turns: ReadonlyArray<Turn>) => Turn | undefined;
+export type TurnDetail = typeof TurnDetailSchema.Type;
+/** Picks a turn from the fleet's turns, or none yet; it may read more of each turn before it answers. */
+export type FindTurn = (turns: ReadonlyArray<Turn>) => Turn | undefined | Promise<Turn | undefined>;
 
 /** A turn whose run asked a person and ended there (`af_core::turn::status::WAITING`). */
 export const TURN_WAITING = "waiting";
@@ -57,6 +67,18 @@ export async function turnsOf(session: PrimeSession, fleetId: string): Promise<R
 }
 
 /**
+ * One turn's stored request and whole reply. `fleet turns` lists summaries
+ * that carry neither, and no command prints a turn the person did not send,
+ * so this reads the turn from the API with the CLI's own credential and
+ * workspace.
+ */
+export async function turnDetail(session: PrimeSession, fleetId: string, turnId: string): Promise<TurnDetail> {
+  const context = await readAuthContext(session.env());
+  const path = `/fleets/${encodeURIComponent(fleetId)}/turns/${encodeURIComponent(turnId)}`;
+  return Schema.decodeUnknownSync(TurnDetailSchema)(await nativeRequest(context, path));
+}
+
+/**
  * Finds the processed turn among those `pick` chooses. A chosen turn that
  * failed, was refused or was stopped fails the journey with its cause, so a
  * run that died is not waited out.
@@ -81,7 +103,7 @@ export async function awaitTurn(
   let turns: ReadonlyArray<Turn> = [];
   for (;;) {
     turns = await turnsOf(session, fleetId);
-    const found = find(turns);
+    const found = await find(turns);
     if (found !== undefined) return found;
     if (Date.now() >= deadline) break;
     await Bun.sleep(TURN_POLL_MS);
