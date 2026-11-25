@@ -13,7 +13,7 @@ test("draws a fixed-size colorful court with a readable plain-text fallback", ()
   expect(frame[1]).toContain("Lives [ooo]");
   expect(frame[2]).toBe("|" + " ".repeat(31) + "|");
   expect(frame[3]).toContain("*");
-  expect(frame[8]).toContain("o");
+  expect(frame[7]).toContain("o");
   expect(frame[9]).toContain("[===]");
   expect(frame.at(-1)).toBe("Space serve  S sound off");
   expect(frame.every(row => row.length <= ORBIT_COLUMNS && /^[ -~]+$/u.test(row))).toBe(true);
@@ -28,19 +28,37 @@ test("aims with the paddle, multiplies the score on a streak and speeds up on th
   const playing = serveOrbit(startOrbit());
   const right = stepOrbit({...playing, ballX: 16, vertical: 1});
   expect(right).toMatchObject({ballX: 17, ballY: 6, horizontal: 1, vertical: -1, streak: 1, score: 10});
-  const left = stepOrbit({...right, ballX: 13, vertical: 1, returns: 3});
-  expect(left).toMatchObject({ballX: 14, horizontal: -1, vertical: -1, streak: 2, score: 30, returns: 4});
+  const left = stepOrbit({...right, ballX: 13, ballY: 5, vertical: 1, returns: 3});
+  expect(left).toMatchObject({ballX: 14, horizontal: -0.5, vertical: -1, streak: 2, score: 30, returns: 4});
   expect(orbitTickMs(left)).toBeLessThan(orbitTickMs(playing));
   expect(orbitFrame(left)[1]).toBe(orbitFrame(playing)[1]);
   expect(orbitFrame(left).at(-1)).toBe("Rally x2  S sound off");
   expect(stepOrbit({...playing, ballX: 30, ballY: 1})).toMatchObject({ballX: 29, ballY: 0, horizontal: -1, vertical: 1});
-  expect(stepOrbit({...playing, ballX: 0})).toMatchObject({ballX: 1, horizontal: 1});
+  expect(stepOrbit({...playing, ballX: 0, horizontal: -1})).toMatchObject({ballX: 1, horizontal: 1});
+});
+
+test("a center hit lifts off immediately and a slow shot reflects from the wall", () => {
+  const playing = serveOrbit(startOrbit());
+  const contact = stepOrbit({...playing, ballX: 14, vertical: 1});
+  expect(contact).toMatchObject({ballX: 15, ballY: 6, horizontal: 0, returns: 1});
+  expect(stepOrbit(contact)).toMatchObject({ballX: 15, ballY: 5, returns: 1});
+  const wall = stepOrbit({...playing, ballX: 0, horizontal: -0.5});
+  expect(wall).toMatchObject({ballX: 0.5, horizontal: 0.5});
+});
+
+test("an edge hit uses the same ball column the player sees", () => {
+  const playing = serveOrbit(startOrbit());
+  const grazed = stepOrbit({...playing, ballX: 12, horizontal: 0.5, vertical: 1});
+  expect(grazed).toMatchObject({ballX: 12.5, returns: 1, lives: 3, horizontal: -1});
+  expect(orbitFrame(grazed)[8]?.[14]).toBe("o");
+  const missed = stepOrbit({...playing, ballX: 11.5, horizontal: 0.5, vertical: 1});
+  expect(missed).toMatchObject({phase: "ready", lives: 2, returns: 0});
 });
 
 test("collects the opening star for points and preserves the session best on restart", () => {
   let state = serveOrbit(startOrbit());
-  for (let tick = 0; tick < 5; tick += 1) state = stepOrbit(state);
-  expect(state).toMatchObject({ballX: 20, ballY: 1, target: 1, score: 50, best: 50});
+  for (let tick = 0; tick < 4; tick += 1) state = stepOrbit(state);
+  expect(state).toMatchObject({ballX: 19, ballY: 1, target: 1, score: 50, best: 50});
   expect(startOrbit(state.best)).toMatchObject({best: 50, score: 0, streak: 0, phase: "ready", target: 0});
 });
 
@@ -56,7 +74,7 @@ test("keeps the paddle on court and uses a life for each missed ball", () => {
   expect(moveOrbit({...startOrbit(), paddle: 0}, -1).paddle).toBe(0);
   expect(moveOrbit({...startOrbit(), paddle: 26}, 1).paddle).toBe(26);
   const lose = (state: ReturnType<typeof startOrbit>) => stepOrbit({
-    ...serveOrbit(state), ballX: 0, ballY: 6, vertical: 1,
+    ...serveOrbit(state), ballX: 0, vertical: 1,
   });
   const first = lose({...startOrbit(), streak: 2});
   expect(first).toMatchObject({phase: "ready", lives: 2, streak: 0});

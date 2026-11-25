@@ -128,6 +128,8 @@ agentsfleet --api "$(bash scripts/local-dev.sh url)" <COMMAND>
 export AGENTSFLEET_API_URL="$(bash scripts/local-dev.sh url)"
 ```
 
+Run `agentsfleet pet` to play Orbit in your terminal. The [CLI README](cli/README.md) lists the controls and sound settings.
+
 ---
 
 ## Contributing
