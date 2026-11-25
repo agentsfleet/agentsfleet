@@ -8,6 +8,7 @@ use crate::types::{ModelEligibility, ModelPricing, ModelPurpose, WorkspaceModel}
 #[derive(sqlx::FromRow)]
 pub(super) struct Row {
     pub(super) reference: String,
+    is_default: bool,
     provider: String,
     model: String,
     display_name: String,
@@ -36,6 +37,7 @@ pub(super) fn eligible(row: Row, purpose: Option<ModelPurpose>) -> Option<Worksp
     allowed.then(|| WorkspaceModel {
         label: row.display_name,
         reference: row.reference,
+        is_default: row.is_default,
         provider: row.provider,
         model: row.model,
         context_window_tokens: row.context,

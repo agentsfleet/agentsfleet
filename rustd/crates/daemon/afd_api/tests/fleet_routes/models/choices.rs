@@ -9,6 +9,11 @@ use serde_json::json;
 async fn model_choices_use_workspace_owner_and_exact_priced_eligibility() {
     let f = Fixture::create().await;
     let other = Fixture::create().await;
+    sqlx::query("UPDATE model.tenant_models SET selected=true WHERE id=$1")
+        .bind(&f.model)
+        .execute(&mut *f.db.acquire().await.expect("fixture connection"))
+        .await
+        .expect("select the owner's default");
     let page = list(&f, "?purpose=runtime").await;
     let items = page["items"].as_array().expect("bounded model page");
     let own = items
@@ -16,6 +21,12 @@ async fn model_choices_use_workspace_owner_and_exact_priced_eligibility() {
         .find(|item| item["ref"] == json!(f.model))
         .expect("owner's configured selection");
     assert_eq!(own["eligibility"], json!({"runtime":true}));
+    assert_eq!(own["is_default"], true);
+    assert!(
+        items
+            .iter()
+            .all(|item| item["is_default"] == (item["ref"] == json!(f.model)))
+    );
     assert_eq!(
         own["pricing"]["input_nanos_per_million"],
         INPUT_NANOS_PER_MTOK.to_string()

@@ -3,20 +3,24 @@ WITH configured AS (
            s.meta_provider AS provider,
            e.model_name AS model,
            s.meta_base_url AS base_url,
-           s.meta_has_key AS has_key
+           s.meta_has_key AS has_key,
+           e.selected
       FROM model.tenant_models e
       JOIN vault.secrets s ON s.workspace_id = e.workspace_id AND s.key_name = e.secret_ref
      WHERE e.tenant_id = $1
     UNION ALL
-    (SELECT $2::text, p.provider, m.model_name, s.meta_base_url, s.meta_has_key
+    (SELECT $2::text, p.provider, m.model_name, s.meta_base_url, s.meta_has_key, NULL::boolean
        FROM model.platform_defaults p
-       JOIN model.platform_models m ON m.id = p.platform_model_id
+       JOIN model.platform_models m ON m.id = p.platform_model_id AND m.provider = p.provider
        JOIN vault.secrets s ON s.workspace_id = p.source_workspace_id AND s.key_name = p.provider
-      WHERE p.active AND s.meta_provider = p.provider
+      WHERE p.active AND s.meta_has_key AND s.meta_provider = p.provider
       ORDER BY p.provider
       LIMIT 1)
 )
 SELECT c.reference, c.provider, c.model, c.base_url, c.has_key,
+       COALESCE(c.selected, NOT EXISTS (
+           SELECT 1 FROM model.tenant_models WHERE tenant_id = $1 AND selected
+       )) AS is_default,
        m.display_name, m.context_cap_tokens AS context,
        m.input_nanos_per_mtok AS input,
        m.output_nanos_per_mtok AS output,

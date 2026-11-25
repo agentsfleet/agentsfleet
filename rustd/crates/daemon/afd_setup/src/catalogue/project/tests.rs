@@ -10,6 +10,7 @@ use crate::types::ModelPurpose;
 fn row() -> Row {
     Row {
         reference: "configured-reference".into(),
+        is_default: true,
         provider: "openai".into(),
         model: "gpt-4.1".into(),
         display_name: "Provider supplied display name".into(),
@@ -34,6 +35,7 @@ fn a_configured_choice_keeps_its_catalogue_label_and_exact_identity() {
         assert_eq!(choice.label, "Provider supplied display name");
         assert_eq!(choice.model, "gpt-4.1");
         assert_eq!(choice.reference, "configured-reference");
+        assert!(choice.is_default);
         assert!(choice.eligibility.runtime);
         assert_eq!(choice.pricing.input_nanos_per_million, "2000000000");
     }

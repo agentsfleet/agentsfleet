@@ -38,7 +38,7 @@ export function NewFleetFixture() {
   return <AppRouterContext value={router}><PathnameContext value={path}><SearchParamsContext value={new URLSearchParams()}>
     <TooltipProvider><ShellFrame workspaces={WORKSPACES}>
       {fleet && fleet !== "new" ? <FleetRoute key={fleet} fleetId={fleet} />
-        : <PageLayout fullHeight className="flex min-h-0 flex-1 flex-col"><NewFleetChat workspace={WORKSPACE} models={[MODEL]} /></PageLayout>}
+        : <PageLayout fullHeight className="flex min-h-0 flex-1 flex-col"><NewFleetChat workspace={WORKSPACE} models={[{...MODEL, is_default: true}]} /></PageLayout>}
     </ShellFrame></TooltipProvider>
   </SearchParamsContext></PathnameContext></AppRouterContext>;
 }
