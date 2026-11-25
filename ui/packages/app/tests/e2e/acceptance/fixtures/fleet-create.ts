@@ -69,10 +69,6 @@ export async function awaitFirstTurnSettled(handle: ClientHandle, workspace: str
   }
 }
 
-export async function readFixtureFleet(handle: ClientHandle, workspace: string, fleetId: string): Promise<NativeFleetDetail> {
-  return FleetDetailSchema.parse(await clientFor(handle).get<unknown>(`/v1/workspaces/${workspace}/fleets/${encodeURIComponent(fleetId)}`));
-}
-
 /** Prefer the live platform model over entries other tests create with dummy keys. */
 export async function runtimeModelRef(handle: ClientHandle, workspace: string): Promise<string> {
   const client = clientFor(handle);

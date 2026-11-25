@@ -292,11 +292,11 @@ describe("delete", () => {
 
   test("API 4xx exits non-zero and surfaces the error code", async () => {
     await authedScope(async () => {
-      const refusal = () => jsonResponse(412, errorEnvelope("UZ-AGT-014", "The fleet changed; read it again"));
+      const refusal = () => jsonResponse(412, errorEnvelope("UZ-SETUP-003", "The fleet changed; read it again"));
       await withMockApi(routes(refusal), async (apiUrl) => {
         const result = await run(apiUrl, ["fleet", "delete", FLEET_ID]);
         expect(result.code).not.toBe(0);
-        expect(result.err).toContain("UZ-AGT-014");
+        expect(result.err).toContain("UZ-SETUP-003");
         expect(result.out).not.toContain("deleted");
       });
     });

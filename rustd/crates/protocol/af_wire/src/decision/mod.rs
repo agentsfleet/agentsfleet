@@ -13,7 +13,6 @@ pub use answer::answer_matches;
 pub use assignment::DecisionAssignment;
 pub use config::{
     DecisionConfiguration, DecisionModelSettings, DecisionThreshold, GoalDecisionPolicy,
-    IntentDecisionPolicy,
 };
 pub(crate) use question::state_bound;
 pub use question::{ChoiceOption, DecisionQuestion, DecisionRequest, NamedQuestion, NoulCriteria};
@@ -47,8 +46,6 @@ pub enum DecisionApi {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DecisionPurpose {
-    /// Interpret newest input against trusted fleet/task summaries.
-    Intent,
     /// Assess the accepted objective against current evidence.
     Goal,
 }
@@ -58,7 +55,6 @@ impl DecisionPurpose {
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::Intent => "intent",
             Self::Goal => "goal",
         }
     }

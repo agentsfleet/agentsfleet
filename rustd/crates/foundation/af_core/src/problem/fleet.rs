@@ -60,17 +60,6 @@ pub(super) const FLEET: &[Problem] = &[
         user_message: None,
     },
     Problem {
-        code: error_code::RUN_RENEW_BODY_MALFORMED,
-        // 400, and terminal to the runner, which ends a run on any 4xx. That
-        // is the intent: the one body answered with it is the retired
-        // cumulative shape, whose usage this daemon can never record.
-        status: 400,
-        title: "Renew body malformed",
-        hint: "The renew body carries cumulative token totals this daemon no longer reads, so the run does not renew. Upgrade the runner; it reports one line per provider request in `requests`.",
-        // Not dashboard-facing: this rides the runner-to-control-plane wire.
-        user_message: None,
-    },
-    Problem {
         code: error_code::RUNNER_NOT_FOUND,
         status: 404,
         title: "Runner not found",
@@ -203,15 +192,6 @@ pub(super) const FLEET: &[Problem] = &[
         hint: "Fleet not found. Verify the fleet_id and that it has not been deleted.",
         user_message: Some(
             "We couldn't find that Fleet. It may have been deleted, or the identifier doesn't match one in this workspace.",
-        ),
-    },
-    Problem {
-        code: error_code::AGENTSFLEET_SOURCE_STALE,
-        status: 412,
-        title: "Fleet source is stale",
-        hint: "Someone else saved first: `If-Match` names an old version. Re-read the fleet, re-apply your edit, and retry with the new `etag`.",
-        user_message: Some(
-            "Someone else edited this Fleet's source since you opened it. Reload to see their change, then re-apply your edit.",
         ),
     },
     Problem {

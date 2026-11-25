@@ -10,7 +10,7 @@ use af_core::error_code;
 use af_wire::decision::{
     ChoiceOption, DecisionApi, DecisionAssignment, DecisionCapabilities, DecisionProfile,
     DecisionPurpose, DecisionQuestion, DecisionRequest, DecisionThreshold, GoalDecisionPolicy,
-    IntentDecisionPolicy, NamedQuestion,
+    NamedQuestion,
 };
 
 use super::supported;
@@ -38,13 +38,6 @@ fn assignment(input_max_bytes: u32, choice: bool) -> DecisionAssignment {
                 score: false,
             },
             input_max_bytes,
-        },
-        intent: IntentDecisionPolicy {
-            questions_revision: "dt-routing-v1".to_owned(),
-            intent: threshold,
-            association: threshold,
-            single_request_max_bps: 1000,
-            multiple_request_min_bps: 9000,
         },
         goal: GoalDecisionPolicy {
             questions_revision: "dt-goal-v1".to_owned(),

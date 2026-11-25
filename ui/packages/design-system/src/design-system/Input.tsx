@@ -28,5 +28,3 @@ export function Input({ className, type, ref, ...props }: InputProps) {
     />
   );
 }
-
-export default Input;

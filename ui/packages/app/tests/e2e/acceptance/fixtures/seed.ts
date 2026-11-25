@@ -88,18 +88,6 @@ export async function expectFleetActive(
   }
 }
 
-/** The name the server stored for a fleet — the template's, or a suffixed one. */
-export async function readFleetName(
-  handle: ClientHandle,
-  workspaceId: string,
-  fleetId: string,
-): Promise<string> {
-  const fleet = await clientFor(handle).get<{ name: string }>(
-    `/v1/workspaces/${workspaceId}/fleets/${fleetId}`,
-  );
-  return fleet.name;
-}
-
 /** The fleet's durable lifetime totals, read independently of rounded UI figures. */
 export interface FleetCounters {
   budget_used_nanos: string;

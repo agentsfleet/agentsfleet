@@ -62,7 +62,6 @@ fn assert_every_named_code_is_registered() {
         error_code::RUNNER_HOST_REGISTERED,
         error_code::INPUT_TOO_LONG,
         error_code::RUN_RENEWAL_NO_CREDITS,
-        error_code::RUN_RENEW_BODY_MALFORMED,
         error_code::FLEET_ACCESS_NAME_NOT_FOUND,
         error_code::FLEET_PROVIDER_NOT_CONNECTED,
         error_code::FLEET_TRIGGER_EXISTS,

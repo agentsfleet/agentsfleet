@@ -118,8 +118,8 @@ describe("served billing page composition", () => {
 
   it("threads exact filters and cutoff to the report, and drops removed model and paging inputs", async () => {
     backend();
-    await markup({ period: "today", model: BILLING_MODEL, fleet: "setup", through_at: BILLING_AT, c: ["previous", "current"], cps: "50", ps: "50", activity: "old", dc: "old" });
+    await markup({ period: "today", model: BILLING_MODEL, fleet: BILLING_FLEET, through_at: BILLING_AT, c: ["previous", "current"], cps: "50", ps: "50", activity: "old", dc: "old" });
     expect(requests).toHaveLength(1);
-    expect(Object.fromEntries(reads("/reports/current")[0]?.searchParams ?? [])).toEqual({ period: "today", activity_type: "setup", through_at: BILLING_AT });
+    expect(Object.fromEntries(reads("/reports/current")[0]?.searchParams ?? [])).toEqual({ period: "today", fleet_id: BILLING_FLEET, through_at: BILLING_AT });
   });
 });

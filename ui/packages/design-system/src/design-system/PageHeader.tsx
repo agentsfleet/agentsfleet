@@ -32,5 +32,3 @@ export function PageHeader({
 export function PageDescription({ className, ...props }: ComponentProps<"p">) {
   return <p className={cn("mt-lg text-body leading-body text-muted-foreground", className)} {...props} />;
 }
-
-export default PageHeader;

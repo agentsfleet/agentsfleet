@@ -71,13 +71,6 @@ use self::last_seen::LastSeen;
 /// bounded-attribution decision; that is a bug indicator.
 pub const OVERFLOW_RUNNER: &str = "_other";
 
-/// The attribute key the SDK sets when its OWN cardinality cap is hit.
-///
-/// Named here so a test can assert it never appears. Nothing in this crate
-/// writes it; the SDK does, and only when admission upstream has already
-/// failed to do its job.
-pub const SDK_OVERFLOW_MARKER: &str = "otel.metric.overflow";
-
 /// How many distinct runners get their own series when nothing configures it.
 ///
 /// The number is not the point — the bound is. Four thousand is far past any
@@ -226,31 +219,6 @@ impl RunnerMetrics {
     #[must_use]
     pub fn series_count(&self) -> usize {
         self.series.len()
-    }
-
-    /// The `runner_id` label value this runner's measurements are recorded
-    /// under: its own identifier, or [`OVERFLOW_RUNNER`] once the table is full.
-    ///
-    /// This is the admission decision made READABLE. The bound already existed
-    /// — `with` silently routes an unadmitted runner to the overflow counters —
-    /// but the label that decision produces was never exposed, so the export
-    /// layer had no way to ask what a measurement should be attributed to
-    /// without duplicating the rule.
-    ///
-    /// Answering the identifier is not a promise it is admitted YET: a runner
-    /// with room is admitted by its first record, not by being asked about.
-    /// What is promised is the label a record made now would carry.
-    #[must_use]
-    pub fn label_for<'id>(&self, runner_id: &'id str) -> &'id str {
-        if self.existing(runner_id).is_some() || self.has_room() {
-            return runner_id;
-        }
-        OVERFLOW_RUNNER
-    }
-
-    /// Whether the table could still admit a runner it has not seen.
-    fn has_room(&self) -> bool {
-        self.admitted.load(Ordering::Relaxed) < self.capacity
     }
 
     /// How many records the overflow series absorbed.

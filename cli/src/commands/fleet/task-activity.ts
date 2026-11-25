@@ -6,7 +6,7 @@ const count = Schema.Number.check(Schema.makeFilter((value: number) => Number.is
 const Progress = Schema.Struct({
   sequence: Schema.optionalKey(count),
   activity_id: Schema.String.check(Schema.isPattern(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u)),
-  operation: Schema.Literals(["intent", "goal", "capture", "restore"]),
+  operation: Schema.Literals(["goal", "capture", "restore"]),
   phase: Schema.Literals(["starting", "recorded", "unavailable", "preparing", "scanning", "uploading", "verifying", "saved", "restoring", "restored", "failed"]),
   provider: Schema.NullOr(Schema.String), model: Schema.NullOr(Schema.String), completed: count, total: Schema.NullOr(count),
   bytes: Schema.optionalKey(Schema.Struct({acknowledged: count, missing: count, reused: count})),

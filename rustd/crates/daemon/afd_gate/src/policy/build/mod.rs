@@ -53,9 +53,8 @@ pub struct Inputs<'a> {
 ///
 /// # Errors
 /// A rejection, [`crate::Error::is_rejected`], when an approved write scope
-/// cannot be turned into egress rules that bound anything, and a permanent
-/// failure, [`crate::Error::is_config_permanent`], when the approved scope no
-/// longer reads back. Both end the event with [`crate::Error::detail`] rather
+/// cannot be turned into egress rules that bound anything, and an internal
+/// failure when the approved scope no longer reads back. Both end the event with [`crate::Error::detail`] rather
 /// than retrying it.
 pub fn assemble(inputs: Inputs<'_>) -> crate::Result<ExecutionPolicy<'_>> {
     let binding = inputs.approved.repository_binding()?;

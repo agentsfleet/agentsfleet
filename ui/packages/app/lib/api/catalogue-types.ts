@@ -34,4 +34,3 @@ export const inferenceSchema = z.object({
 });
 export type CatalogueMetadata = z.infer<typeof metadataSchema>;
 export type CataloguePrice = z.infer<typeof priceSchema>;
-export type ModelInference = z.infer<typeof inferenceSchema>;

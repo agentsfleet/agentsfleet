@@ -3,7 +3,6 @@
 
 import { TaggedCliError, TaggedRequestError } from "./base.ts";
 
-export const ERR_UNAUTHORIZED = "UZ-AUTH-002" as const;
 export const AUTH_FLOW_ERROR_TAG = {
   invalidSession: "InvalidSessionError",
   expiredSession: "ExpiredSessionError",

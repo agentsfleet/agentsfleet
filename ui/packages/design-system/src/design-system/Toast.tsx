@@ -116,5 +116,3 @@ export function Toast({
     </output>
   );
 }
-
-export default Toast;

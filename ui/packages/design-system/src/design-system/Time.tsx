@@ -103,14 +103,6 @@ export function Time({
   );
 }
 
-export {
-  formatTimeAbsolute,
-  formatTimeRelative,
-  type TimeFormat,
-} from "./time-utils";
-
-export default Time;
-
 const subscribeLocalTime = () => () => undefined;
 const clientTimeReady = () => true;
 const serverTimeReady = () => false;

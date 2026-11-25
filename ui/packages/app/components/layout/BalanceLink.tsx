@@ -51,5 +51,3 @@ export function BalanceLink({
     </Link>
   );
 }
-
-export default BalanceLink;

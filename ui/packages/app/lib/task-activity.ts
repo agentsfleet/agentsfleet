@@ -6,7 +6,7 @@ const label = v.pipe(v.string(), v.minLength(1));
 const progress = v.object({
   sequence: v.optional(count),
   activity_id: identity, durable_task_id: v.nullable(identity), source_turn_id: v.nullable(identity),
-  operation: v.picklist(["intent", "goal", "capture", "restore"]),
+  operation: v.picklist(["goal", "capture", "restore"]),
   phase: v.picklist(["starting", "recorded", "unavailable", "preparing", "scanning", "uploading", "verifying", "saved", "restoring", "restored", "failed"]),
   provider: v.nullable(label), model: v.nullable(label), completed: count, total: v.nullable(count),
   bytes: v.optional(v.object({acknowledged: count, missing: count, reused: count})),
@@ -93,6 +93,6 @@ const labels = {
 
 export function durableTaskActivityLabel(item: DurableTaskActivity): string {
   const p = item.progress;
-  const purpose = p.operation === "intent" ? "request intent" : p.operation === "goal" ? "goal progress" : "";
+  const purpose = p.operation === "goal" ? "goal progress" : "";
   return `${labels[p.phase]}${purpose ? ` · ${purpose}` : ""}${p.model ? ` · ${p.provider ?? ""} / ${p.model}` : ""}`;
 }

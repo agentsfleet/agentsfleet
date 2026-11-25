@@ -39,8 +39,7 @@ fn dispatch(api: &str, purpose: &str) -> serde_json::Value {
             "endpoint":"https://decision.invalid/v1","model":"fixture-model",
             "accepted_models":["fixture-model"],"capabilities":{"noul":true,"choice":true,"score":true},
             "input_max_bytes":24576
-        },"intent":{"questions_revision":"dt-routing-v1","intent":threshold,
-            "association":threshold,"single_request_max_bps":2000,"multiple_request_min_bps":8000},
+        },
         "goal":{"questions_revision":"dt-goal-v1","statement_min_bps":9000,
             "continue_action":threshold,"wait":threshold,"done":threshold}},
         "request":{"call_id":CALL,"purpose":purpose,"state":{"durable_task":{"durable_task_id":CALL},"source_turn_id":CALL},
@@ -58,9 +57,9 @@ fn acknowledged() -> serde_json::Value {
 async fn preflight_failures_are_recorded_and_never_return_semantic_authority() {
     for (api, purpose, fault) in [
         ("typesafe", "goal", "cancelled"),
-        ("openai", "intent", "expired"),
+        ("openai", "goal", "expired"),
         ("perplexity", "goal", "profile"),
-        ("cloudflare", "intent", "request"),
+        ("cloudflare", "goal", "request"),
         ("typesafe", "goal", "endpoint"),
     ] {
         assert_preflight(api, purpose, fault).await;

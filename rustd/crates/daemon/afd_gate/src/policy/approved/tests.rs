@@ -74,7 +74,6 @@ fn an_unreadable_stored_scope_fails_the_run_until_asked_again() -> Outcome {
         let Err(refused) = approved.repository_binding() else {
             return Err(format!("{stored:?} must not bind a repository").into());
         };
-        assert!(refused.is_config_permanent(), "{stored:?}");
         assert_eq!(
             refused.code(),
             af_core::error_code::INTERNAL_OPERATION_FAILED,

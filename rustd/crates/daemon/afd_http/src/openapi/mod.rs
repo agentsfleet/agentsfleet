@@ -22,7 +22,6 @@
 //! than in whichever plane happened to need them first.
 
 pub mod collector;
-pub mod header;
 pub mod path;
 pub mod problem;
 pub mod query;
@@ -67,10 +66,6 @@ pub const GONE: &str = "The resource is gone and will not return";
 /// The precondition the caller supplied does not hold.
 pub const PRECONDITION_FAILED: &str =
     "The resource no longer matches your request condition; reload it and try again";
-
-/// A conditional write arrived without the precondition it requires.
-pub const PRECONDITION_REQUIRED: &str =
-    "A required request condition is missing; check this endpoint's headers";
 
 /// The payload is over this route's ceiling.
 pub const PAYLOAD_TOO_LARGE: &str = "The request body exceeds this endpoint's size limit";

@@ -38,5 +38,3 @@ export function TooltipButton({
     </TooltipProvider>
   );
 }
-
-export default TooltipButton;

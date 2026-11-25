@@ -49,5 +49,3 @@ export function Badge({ asChild, className, variant, ref, ...props }: BadgeProps
     />
   );
 }
-
-export default Badge;

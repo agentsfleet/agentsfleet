@@ -110,10 +110,8 @@ fn measurements_match(
     purpose: DecisionPurpose,
     expected: &DecisionOutcome,
 ) {
-    let measured_purpose = if purpose == DecisionPurpose::Intent {
-        MeasuredPurpose::Intent
-    } else {
-        MeasuredPurpose::Goal
+    let measured_purpose = match purpose {
+        DecisionPurpose::Goal => MeasuredPurpose::Goal,
     };
     assert!(
         matches!(measured, [Observed::Decision(provider, actual_purpose, outcome, _)]

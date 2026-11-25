@@ -184,7 +184,6 @@ fn an_unreadable_approved_scope_fails_the_run_permanently() -> Outcome {
     let Err(refused) = assemble(inputs(&approved, &declared, &resolved)) else {
         return Err("a half-declared scope binds nothing".into());
     };
-    assert!(refused.is_config_permanent());
     assert!(!refused.is_rejected());
     Ok(())
 }

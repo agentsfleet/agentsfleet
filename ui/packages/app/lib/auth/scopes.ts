@@ -26,8 +26,6 @@ export const SCOPE = {
 
 } as const;
 
-export type Scope = (typeof SCOPE)[keyof typeof SCOPE];
-
 // Downward closure of the `read < write < admin` ladder — a verbatim mirror of
 // the backend `HIERARCHY` table (`rustd/crates/daemon/afd_auth/src/scope.rs`). The
 // backend expands a held scope to this closure at parse time, so a token

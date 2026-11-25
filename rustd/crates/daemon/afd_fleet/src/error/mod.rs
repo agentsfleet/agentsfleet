@@ -23,7 +23,6 @@ mod kind;
 pub(crate) use kind::ErrorKind;
 pub mod detail;
 pub mod lift;
-pub mod permanence;
 pub mod refuse;
 pub mod report;
 

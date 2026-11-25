@@ -26,5 +26,3 @@ export function Label({ appearance = "default", className, ref, ...props }: Labe
     />
   );
 }
-
-export default Label;

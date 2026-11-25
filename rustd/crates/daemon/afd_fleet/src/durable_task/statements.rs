@@ -28,15 +28,6 @@ struct Locked {
     generation: i64,
 }
 
-/// [`sql::CONTROL_ORIGIN`]'s row: the source the woken continuation answers.
-#[derive(sqlx::FromRow)]
-struct Origin {
-    source_turn_id: Uuid7,
-    reply_provider: Option<String>,
-    reply_address: Option<String>,
-    generation: i64,
-}
-
 pub(super) async fn apply(
     tasks: &DurableTasks,
     scope: &DurableTaskScope,
@@ -47,7 +38,7 @@ pub(super) async fn apply(
     let parsed = decision::compile::statements(&edit.questions)?;
     tasks.dependencies.policy.statements(&parsed)?;
     let questions = decision::compile::questions(&parsed)?;
-    let wake = continuation(tasks, scope, durable_task_id).await?;
+    let wake = Continuation::read_next(tasks, scope, durable_task_id, CONTEXT).await?;
     let prepared = tasks.turns.prepare(wake.turn()).await?;
     let mut connection = super::transaction::acquire(tasks.runs.pool()).await?;
     let mut transaction = super::transaction::begin(&mut connection).await?;
@@ -93,7 +84,7 @@ pub(super) async fn apply(
         super::waits::cancel(&mut transaction, durable_task_id).await?;
         super::continuation::retire(&mut transaction, durable_task_id).await?;
         let admitted = tasks.turns.stage(&mut transaction, prepared).await?;
-        sqlx::query(sql::CONTROL_TURN)
+        sqlx::query(sql::BIND_TURN)
             .bind(durable_task_id)
             .bind(&admitted.stored.id)
             .execute(&mut *transaction)
@@ -115,29 +106,4 @@ pub(super) async fn apply(
         generation = snapshot.context.generation
     );
     Ok(snapshot)
-}
-
-/// The continuation a woken task runs at its next generation, read before
-/// the edit's transaction so its ceiling sample holds no lock.
-async fn continuation(
-    tasks: &DurableTasks,
-    scope: &DurableTaskScope,
-    durable_task_id: &Uuid7,
-) -> Result<Continuation> {
-    let mut connection = tasks.runs.pool().acquire().await?;
-    let origin: Origin = sqlx::query_as(sql::CONTROL_ORIGIN)
-        .bind(durable_task_id)
-        .bind(&scope.fleet_id)
-        .bind(&scope.workspace_id)
-        .fetch_optional(&mut *connection)
-        .await
-        .map_err(query(CONTEXT))?
-        .ok_or(DurableTaskRefusal::NotFound)?;
-    let generation = row::counter(origin.generation, "generation")?
-        .checked_add(1)
-        .ok_or(DurableTaskRefusal::LimitExhausted)?;
-    Continuation::new(scope, durable_task_id, generation, &origin.source_turn_id).with_reply(
-        origin.reply_provider.as_deref(),
-        origin.reply_address.as_deref(),
-    )
 }

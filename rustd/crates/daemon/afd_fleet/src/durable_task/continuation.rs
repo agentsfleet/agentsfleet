@@ -4,7 +4,17 @@ use af_core::id::Uuid7;
 use af_wire::turn::TurnKind;
 use afd_turns::{IncomingTurn, Key, Producer, Reply};
 
-use super::{DurableTaskScope, DurableTasks};
+use super::{DurableTaskRefusal, DurableTaskScope, DurableTasks, row, sql};
+use crate::error::{Result, query};
+
+/// [`sql::CONTROL_ORIGIN`]'s row: the source the woken continuation answers.
+#[derive(sqlx::FromRow)]
+struct Origin {
+    source_turn_id: Uuid7,
+    reply_provider: Option<String>,
+    reply_address: Option<String>,
+    generation: i64,
+}
 
 #[derive(Debug)]
 pub(super) struct Continuation {
@@ -23,6 +33,32 @@ enum Destination {
 }
 
 impl Continuation {
+    /// The continuation a woken task runs at its next generation, read before
+    /// the caller's transaction so its ceiling sample holds no lock.
+    pub(super) async fn read_next(
+        tasks: &DurableTasks,
+        scope: &DurableTaskScope,
+        durable_task_id: &Uuid7,
+        context: &'static str,
+    ) -> Result<Self> {
+        let mut connection = tasks.runs.pool().acquire().await?;
+        let origin: Origin = sqlx::query_as(sql::CONTROL_ORIGIN)
+            .bind(durable_task_id)
+            .bind(&scope.fleet_id)
+            .bind(&scope.workspace_id)
+            .fetch_optional(&mut *connection)
+            .await
+            .map_err(query(context))?
+            .ok_or(DurableTaskRefusal::NotFound)?;
+        let generation = row::counter(origin.generation, "generation")?
+            .checked_add(1)
+            .ok_or(DurableTaskRefusal::LimitExhausted)?;
+        Self::new(scope, durable_task_id, generation, &origin.source_turn_id).with_reply(
+            origin.reply_provider.as_deref(),
+            origin.reply_address.as_deref(),
+        )
+    }
+
     pub(super) fn new(
         scope: &DurableTaskScope,
         durable_task_id: &Uuid7,
@@ -42,15 +78,15 @@ impl Continuation {
         mut self,
         provider: Option<&str>,
         address: Option<&str>,
-    ) -> crate::Result<Self> {
+    ) -> Result<Self> {
         self.destination = match (provider, address) {
             (None, None) => Destination::None,
             (Some(provider), Some(address)) => Destination::Recorded(
                 afd_connector::Provider::parse(provider)
-                    .ok_or(super::DurableTaskRefusal::InvalidTarget)?,
+                    .ok_or(DurableTaskRefusal::InvalidTarget)?,
                 address.to_owned(),
             ),
-            _ => return Err(super::DurableTaskRefusal::InvalidTarget.into()),
+            _ => return Err(DurableTaskRefusal::InvalidTarget.into()),
         };
         Ok(self)
     }
@@ -89,15 +125,13 @@ impl Continuation {
 }
 
 /// Retire superseded native work without settling an issued run or human reply.
-pub(super) async fn retire(connection: &mut sqlx::PgConnection, task: &Uuid7) -> crate::Result<()> {
+pub(super) async fn retire(connection: &mut sqlx::PgConnection, task: &Uuid7) -> Result<()> {
     sqlx::query(include_str!("sql/retire_continuations.sql"))
         .bind(task)
         .bind(Producer::DurableTaskContinuation.as_str())
         .execute(connection)
         .await
-        .map_err(crate::error::query(
-            "retire never-issued obsolete task continuations",
-        ))?;
+        .map_err(query("retire never-issued obsolete task continuations"))?;
     Ok(())
 }
 

@@ -13,14 +13,6 @@ use crate::error::{Result, query};
 const CONTEXT: &str = "control durable task";
 
 #[derive(sqlx::FromRow)]
-struct Origin {
-    source_turn_id: Uuid7,
-    reply_provider: Option<String>,
-    reply_address: Option<String>,
-    generation: i64,
-}
-
-#[derive(sqlx::FromRow)]
 struct Locked {
     state: String,
     resource_version: i64,
@@ -37,7 +29,7 @@ pub(super) async fn apply(
     control: DurableTaskControl,
 ) -> Result<DurableTaskSnapshot> {
     let continuation = if control == DurableTaskControl::Resume {
-        Some(prepare_resume(tasks, scope, durable_task_id).await?)
+        Some(Continuation::read_next(tasks, scope, durable_task_id, CONTEXT).await?)
     } else {
         None
     };
@@ -147,7 +139,7 @@ async fn queue(
                 state: previous,
                 source,
             })?;
-        sqlx::query(sql::CONTROL_TURN)
+        sqlx::query(sql::BIND_TURN)
             .bind(durable_task_id)
             .bind(&admitted.stored.id)
             .execute(&mut *connection)
@@ -177,29 +169,6 @@ async fn publish(
         state = control.requested().as_str(),
         reason = "human_control"
     );
-}
-
-async fn prepare_resume(
-    tasks: &DurableTasks,
-    scope: &DurableTaskScope,
-    durable_task_id: &Uuid7,
-) -> Result<Continuation> {
-    let mut connection = tasks.runs.pool().acquire().await?;
-    let origin: Origin = sqlx::query_as(sql::CONTROL_ORIGIN)
-        .bind(durable_task_id)
-        .bind(&scope.fleet_id)
-        .bind(&scope.workspace_id)
-        .fetch_optional(&mut *connection)
-        .await
-        .map_err(query(CONTEXT))?
-        .ok_or(DurableTaskRefusal::NotFound)?;
-    let generation = row::counter(origin.generation, "generation")?
-        .checked_add(1)
-        .ok_or(DurableTaskRefusal::LimitExhausted)?;
-    Continuation::new(scope, durable_task_id, generation, &origin.source_turn_id).with_reply(
-        origin.reply_provider.as_deref(),
-        origin.reply_address.as_deref(),
-    )
 }
 
 async fn update(

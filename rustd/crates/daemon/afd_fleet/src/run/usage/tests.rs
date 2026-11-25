@@ -183,7 +183,6 @@ async fn model_and_runtime_number_independently_and_refuse_an_unfit_slice() {
             )
             .expect_err("a slice start the wire cannot carry is refused");
         assert_eq!(failure.code(), af_core::error_code::INTERNAL_DB_QUERY);
-        assert!(!failure.is_config_permanent());
         assert_eq!(
             pricing
                 .settlement(&test_dead::id(4), slice(0, runtime_seq), &[])

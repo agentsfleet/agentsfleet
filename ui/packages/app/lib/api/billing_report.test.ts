@@ -14,14 +14,14 @@ describe("validated settled billing reads", () => {
   it("sends every exact filter through the authenticated read", async () => {
     respond(billingReport());
     const report = await getBillingReport("fixture-token", { period: "today", fleet_id: BILLING_FLEET,
-      activity_type: "runtime", through_at: BILLING_AT });
+      through_at: BILLING_AT });
     // pin test: literal is the contract
     expect(report.totals.charged_nanos).toBe("100000");
     const [input, init] = fetchMock.mock.calls[0] ?? [];
     const url = new URL(String(input), "https://example.test");
     expect(url.pathname).toBe("/backend/v1/tenants/me/billing/reports/current");
     expect(Object.fromEntries(url.searchParams)).toEqual({ period: "today", fleet_id: BILLING_FLEET,
-      activity_type: "runtime", through_at: BILLING_AT });
+      through_at: BILLING_AT });
     expect(init).toMatchObject({ method: "GET", headers: { Authorization: "Bearer fixture-token" } });
   });
 

@@ -63,7 +63,7 @@ pub(crate) async fn list<D: TenantPlane>(
     get, path = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/durable_tasks/{durable_task_id}",
     tag = afd_http::openapi::tag::FLEETS, operation_id = "get_fleet_durable_task",
     summary = "Read confirmed durable task progress and success criteria",
-    description = "Returns the accepted objective, immutable success criteria, generation and cumulative limits. The strong ETag identifies the current native resource version.",
+    description = "Returns the accepted objective, success criteria, generation and cumulative limits. The strong ETag identifies the current native resource version.",
     params(afd_http::openapi::path::Fleet,
         ("durable_task_id" = String, Path, description = "Durable task UUIDv7."),
         ("If-None-Match" = Option<String>, Header, description = "Previously returned resource tag.")),

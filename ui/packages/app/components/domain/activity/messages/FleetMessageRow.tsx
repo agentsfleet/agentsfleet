@@ -12,7 +12,7 @@ import {
 
 import { RelativeNowProvider, Timestamp } from "../../shared/identity/FleetTimestamp";
 import { ChatMessageRow } from "../../shared/chat/ChatMessageRow";
-export {ChatActivityRow as FleetActivityRow, type ChatActivityRowProps as FleetActivityRowProps} from "../../shared/chat/ChatActivityRow";
+export {ChatActivityRow as FleetActivityRow} from "../../shared/chat/ChatActivityRow";
 
 const ROW_ENTER =
   "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-stream";

@@ -18,19 +18,6 @@ export interface ResponseLike {
   body?: unknown;
 }
 
-/**
- * What Bun's fetch throws when the socket is lost after connecting: a
- * `TypeError` carrying the code on the error itself. Node's shape for the
- * same event puts `UND_ERR_SOCKET` on the cause; the parity table has a row
- * for each, and both read as sent.
- */
-export const socketDropped = (): TypeError =>
-  Object.assign(new TypeError("The socket connection was closed unexpectedly"), { code: "ECONNRESET" });
-
-/** What the client throws when it refuses to send at all: no code anywhere. */
-export const unsendableRequest = (): TypeError =>
-  new TypeError("Header 'Authorization' has invalid value");
-
 export const asFetchImpl = (
   impl: (url: string, init?: RequestInit) => Promise<ResponseLike>,
 ): FetchImpl => impl as unknown as FetchImpl;
@@ -59,11 +46,6 @@ export function makeHeaders(
 // strict types without an `as` cast at every assignment site.
 export type TestStream = Writable & { isTTY?: boolean };
 
-/** Discard-all writable stream (use one per test to avoid state leaks). */
-export function makeNoop(): TestStream {
-  return new Writable({ write(_c, _e, cb) { cb(); } });
-}
-
 /** Writable that buffers output; call .read() to inspect. */
 export function makeBufferStream(): { stream: TestStream; read: () => string } {
   let data = "";
@@ -72,23 +54,3 @@ export function makeBufferStream(): { stream: TestStream; read: () => string } {
     read: () => data,
   };
 }
-
-export interface UiTheme {
-  ok: (s: string) => string;
-  err: (s: string) => string;
-  info: (s: string) => string;
-  dim: (s: string) => string;
-  head: (s: string) => string;
-}
-
-/** Passthrough UI theme (no ANSI escapes). */
-export const ui: UiTheme = {
-  ok: (s) => s,
-  err: (s) => s,
-  info: (s) => s,
-  dim: (s) => s,
-  head: (s) => s,
-};
-
-export const WS_ID      = "0195b4ba-8d3a-7f13-8abc-000000000010";
-

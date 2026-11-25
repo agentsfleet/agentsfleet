@@ -36,7 +36,6 @@ import type { RunResult } from "./cli.js";
 type Env = Readonly<Record<string, string>>;
 
 export const WS_LIST_ITEMS_KEY = "workspaces" as const;
-export const WS_LIST_CURRENT_KEY = "current_workspace_id" as const;
 export const WS_ID_KEY = "workspace_id" as const;
 export const WS_SHOW_ACTIVE_KEY = "active" as const;
 export const WS_USE_ACTIVE_KEY = "active" as const;

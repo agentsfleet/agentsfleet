@@ -311,7 +311,7 @@ async fn continue_ready(
         Err(fault) => return Err(fault.into()),
     };
     transition(&mut savepoint, current, DurableTaskState::Ready, reason).await?;
-    sqlx::query(crate::durable_task::sql::CONTROL_TURN)
+    sqlx::query(crate::durable_task::sql::BIND_TURN)
         .bind(&current.durable_task_id)
         .bind(&admitted.stored.id)
         .execute(&mut *savepoint)

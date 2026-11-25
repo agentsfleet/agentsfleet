@@ -179,7 +179,6 @@ async fn revise_and_check(
         .configuration;
     configuration.profile.revision = "reviewed-2".into();
     configuration.profile.goal.statement_min_bps = 9600;
-    configuration.profile.intent.intent.probability_bps = 9000;
     assert!(
         model
             .models
@@ -193,7 +192,6 @@ async fn revise_and_check(
     assert_ne!(initial_profile.revision_id, revised_profile.revision_id);
     assert_eq!(revised_profile.profile.revision, "reviewed-2");
     assert_eq!(revised_profile.goal.statement_min_bps, 9600);
-    assert_eq!(revised_profile.intent.intent.probability_bps, 9000);
     assert_stored(&fixtures.database, &revised).await;
     assert_stored(&fixtures.database, initial).await;
     revised

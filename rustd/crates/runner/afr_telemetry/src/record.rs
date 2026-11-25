@@ -197,7 +197,7 @@ mod tests {
             af_providers::observe::retry(anthropic, RetryReason::Transport);
             af_providers::observe::decision(
                 DecisionProvider::Openai,
-                DecisionPurpose::Intent,
+                DecisionPurpose::Goal,
                 DecisionOutcome::Timeout,
                 elapsed,
             );
@@ -221,7 +221,7 @@ mod tests {
                 Recorded::Retry(anthropic, RetryReason::Transport),
                 Recorded::Decision(
                     DecisionProvider::Openai,
-                    DecisionPurpose::Intent,
+                    DecisionPurpose::Goal,
                     DecisionOutcome::Timeout,
                     elapsed,
                 ),

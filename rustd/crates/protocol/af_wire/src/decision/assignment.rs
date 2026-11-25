@@ -3,7 +3,7 @@
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-use super::{DecisionProfile, GoalDecisionPolicy, IntentDecisionPolicy};
+use super::{DecisionProfile, GoalDecisionPolicy};
 
 /// One reviewed catalogue revision, retained unchanged for this run.
 /// Provider keys are resolved separately for each reserved physical call.
@@ -17,9 +17,6 @@ pub struct DecisionAssignment {
     /// Protocol, endpoint, model and capabilities from that same revision.
     #[garde(dive)]
     pub profile: DecisionProfile,
-    /// Routing acceptance thresholds reviewed with the profile.
-    #[garde(dive)]
-    pub intent: IntentDecisionPolicy,
     /// Goal acceptance thresholds reviewed with the profile.
     #[garde(dive)]
     pub goal: GoalDecisionPolicy,

@@ -226,39 +226,6 @@ impl<S: Stage, C: Ticks> VerbClock<S, C> {
         self.stages.iter().map(|(stage, _)| *stage).collect()
     }
 
-    /// Records the span so far and starts a fresh one in its place, as one pass
-    /// that serves a second assignment needs. A clock that reached no stage has no
-    /// span to close, so it keeps its start and identity; an untimed clock
-    /// starts over without recording.
-    pub fn restart_if_staged(&mut self) {
-        self.restart_if_staged_on(|| opentelemetry::global::tracer(semconv::SCOPE_NAME));
-    }
-
-    /// [`Self::restart_if_staged`] on the tracer `tracer` returns. It is asked
-    /// for only when a span is to be recorded, so an untimed clock never reads
-    /// the global provider.
-    fn restart_if_staged_on<T: Tracer>(&mut self, tracer: impl FnOnce() -> T) {
-        if self.stages.is_empty() {
-            return;
-        }
-        if !self.discarded {
-            self.record_on(&tracer());
-            self.discarded = false;
-        }
-        self.reset();
-    }
-
-    /// Back to a fresh start, keeping whether this clock records.
-    fn reset(&mut self) {
-        let now = self.ticks.monotonic();
-        self.started_at = self.ticks.wall();
-        self.started = now;
-        self.last = now;
-        self.stages.clear();
-        self.turn_id = None;
-        self.agent_id = None;
-    }
-
     /// This clock records nothing more; dropping it writes no span.
     fn discard(&mut self) {
         self.discarded = true;

@@ -111,17 +111,3 @@ export async function awaitTerminalTurn(
   if (settled !== null) failWith(classifyStillRunning(settled.outcome));
   failWith(classifyIdle(await anyRunnerLive()));
 }
-
-/** A persisted terminal row can arrive before the browser paints its reply. */
-export async function expectAnsweredOnScreen(
-  page: Page,
-  workspaceId: string,
-  fleetId: string,
-): Promise<void> {
-  await page.goto(workspaceHref(workspaceId, `fleets/${fleetId}`));
-  const reply = page.getByLabel(CHAT_LABEL).locator(ASSISTANT_TURN).last();
-  await expect(reply).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
-  await expect(reply).not.toHaveText(/^\s*$/);
-  await expect(reply.getByRole("button", {name: "Copy reply"})).toBeVisible({timeout: RENDER_TIMEOUT_MS});
-  await expect(reply.getByRole("button", {name: "Run details"})).toHaveCount(0);
-}

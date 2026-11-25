@@ -1,6 +1,4 @@
 //! Scripted real TLS transport for the fixed GitHub origin; no production URL override.
-use rcgen::{BasicConstraints, CertificateParams, CertifiedIssuer, IsCa, KeyPair, KeyUsagePurpose};
-use rustls::pki_types::{PrivateKeyDer, PrivatePkcs8KeyDer};
 use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, VecDeque},
@@ -13,7 +11,7 @@ use tokio::{
     sync::oneshot,
     task::JoinHandle,
 };
-use tokio_rustls::{TlsAcceptor, server::TlsStream};
+use tokio_rustls::server::TlsStream;
 mod exchange;
 
 const HOST: &str = "api.github.com";
@@ -31,7 +29,7 @@ impl Server {
             .await
             .expect("private Github listener");
         let address = socket.local_addr().expect("listener address");
-        let (root, tls) = tls();
+        let (root, tls) = super::checkpoint_server::tls::server(HOST);
         #[expect(
             clippy::disallowed_methods,
             reason = "fixture pins a generated CA hostname to its own ephemeral listener"
@@ -295,33 +293,5 @@ fn headers(bytes: &[u8]) -> (usize, String, String, String) {
             .get("authorization")
             .cloned()
             .expect("native bearer authorization"),
-    )
-}
-
-fn tls() -> (reqwest::Certificate, TlsAcceptor) {
-    let mut authority = CertificateParams::new(Vec::<String>::new()).expect("CA parameters");
-    authority.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
-    authority.key_usages = vec![KeyUsagePurpose::KeyCertSign, KeyUsagePurpose::CrlSign];
-    let issuer = CertifiedIssuer::self_signed(authority, KeyPair::generate().expect("CA key"))
-        .expect("CA certificate");
-    let leaf_key = KeyPair::generate().expect("leaf key");
-    let leaf = CertificateParams::new(vec![HOST.to_owned()])
-        .expect("host parameters")
-        .signed_by(&leaf_key, &issuer)
-        .expect("leaf certificate");
-    let config = rustls::ServerConfig::builder_with_provider(Arc::new(
-        rustls::crypto::aws_lc_rs::default_provider(),
-    ))
-    .with_safe_default_protocol_versions()
-    .expect("TLS versions")
-    .with_no_client_auth()
-    .with_single_cert(
-        vec![leaf.der().clone()],
-        PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(leaf_key.serialize_der())),
-    )
-    .expect("TLS server");
-    (
-        reqwest::Certificate::from_der(issuer.der()).expect("CA trust"),
-        TlsAcceptor::from(Arc::new(config)),
     )
 }

@@ -10,7 +10,7 @@ use tokio_rustls::TlsAcceptor;
 
 mod delete;
 mod protocol;
-mod tls;
+pub(crate) mod tls;
 
 pub(crate) const HOST: &str = "00000000000000000000000000000000.r2.cloudflarestorage.com";
 
@@ -36,7 +36,7 @@ impl Server {
             .await
             .expect("private object listener");
         let address = socket.local_addr().expect("listener address");
-        let (root, tls) = tls::server();
+        let (root, tls) = tls::server(HOST);
         #[expect(
             clippy::disallowed_methods,
             reason = "fixture pins a generated CA hostname to its own ephemeral listener"

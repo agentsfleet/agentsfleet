@@ -80,5 +80,3 @@ export function StatusCard({
     </div>
   );
 }
-
-export default StatusCard;

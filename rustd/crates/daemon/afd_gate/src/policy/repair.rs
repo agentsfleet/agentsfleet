@@ -43,13 +43,6 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 /// The ref namespace every daemon-authored repair branch lives under.
 pub const PREFIX: &str = "agentsfleet-repair/";
 
-/// The shortest reference this encodes to, for a one-character identifier.
-///
-/// No longer a fixed width: event identifiers are variable-length text, so the
-/// reference grows with the id it names rather than sitting at the twenty-two
-/// characters sixteen raw bytes produced.
-pub const MIN_REFERENCE_LEN: usize = 2;
-
 /// The branch a run authorises for `turn_id`.
 ///
 /// Infallible, and total over any identifier the events table can hold: the
@@ -72,7 +65,7 @@ mod tests {
         clippy::expect_used,
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
-    use super::{MIN_REFERENCE_LEN, PREFIX, branch_for};
+    use super::{PREFIX, branch_for};
 
     /// An event identifier in the shape turn intake actually mints: the intake
     /// instant and the sequence, which is what the event id carries.
@@ -85,7 +78,7 @@ mod tests {
             .strip_prefix(PREFIX)
             .expect("the namespace is present");
 
-        assert!(reference.len() >= MIN_REFERENCE_LEN, "{branch}");
+        assert!(!reference.is_empty(), "{branch}");
         // Unpadded and URL-safe: a `=` or a `+` in a ref name is a branch git
         // will take and tooling will mangle.
         assert!(!branch.contains('='), "{branch}");

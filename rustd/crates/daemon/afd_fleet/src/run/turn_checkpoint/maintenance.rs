@@ -66,7 +66,7 @@ async fn retain(runs: &Runs, event: &Uuid7, fleet: &Uuid7, workspace: &Uuid7) ->
         .begin()
         .await
         .map_err(query("begin turn checkpoint retention"))?;
-    let parent: Option<Uuid7> = sqlx::query_scalar(include_str!("sql/lock_scope.sql"))
+    let parent: Option<Uuid7> = sqlx::query_scalar(crate::durable_task::sql::LOCK_SCOPE)
         .bind(fleet)
         .bind(workspace)
         .fetch_optional(&mut *tx)

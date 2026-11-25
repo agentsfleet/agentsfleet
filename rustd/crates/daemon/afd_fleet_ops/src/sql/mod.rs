@@ -1,6 +1,5 @@
 //! Every statement the operator projections run: `thread.runs` joined to the
-//! `thread.turns` and `fleet.fleets` rows it names. A setup draft's runs name
-//! no fleet, so each one reads fleet runs only (`fleet_id IS NOT NULL`).
+//! `thread.turns` and `fleet.fleets` rows it names.
 //!
 //! Each is a `.sql` file beside this module, schema-qualified (RULE NSQ), and
 //! checked against the rebuilt schema by `afd_db`'s

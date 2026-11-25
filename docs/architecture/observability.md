@@ -226,7 +226,6 @@ All three signals share one resource: `service.name`, `service.namespace=agentsf
 - **Runner logs stay on the host.** The runner collector carries traces and metrics only; log forwarding waits on an allowlist that is not built.
 - **Runner stream measurements are daemon-side only.** The daemon records the runner stream families; the runner side does not export them yet.
 - **No route policy for spans.** Daemon span volume grows with runner count, and the batch queue drops the excess without counting.
-- **Stale dashboard panels.** `dashboard.json` still queries `agentsfleet_turn_backlog` and `agentsfleet_turn_backlog_oldest_age_seconds`, which no family produces.
 - **Declared but unrecorded.** `agentsfleet.billing.credit.consumed` has no caller ([billing](./billing.md#limits)).
 
 ## Related pages

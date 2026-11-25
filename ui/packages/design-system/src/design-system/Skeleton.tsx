@@ -17,5 +17,3 @@ export function Skeleton({ className, ref, ...props }: SkeletonProps) {
     />
   );
 }
-
-export default Skeleton;

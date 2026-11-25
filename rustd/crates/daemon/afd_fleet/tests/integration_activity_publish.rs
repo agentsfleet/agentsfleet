@@ -143,7 +143,7 @@ async fn test_bracket_publish_bus_down_does_not_fail_the_closing() {
 
     let ended = plane
         .runs
-        .block(&run.acquired, Refusal::labelled(label::APPROVAL_DENIED))
+        .block(&run.acquired, Refusal::labelled(label::BALANCE_EXHAUSTED))
         .await
         .expect("the refusal writes over live Postgres whatever the bus does");
     let closed = match ended {
@@ -183,7 +183,7 @@ async fn test_a_closing_counts_the_fleets_pending_gates() {
         .fixtures
         .plane()
         .runs
-        .block(&run.acquired, Refusal::labelled(label::APPROVAL_DENIED))
+        .block(&run.acquired, Refusal::labelled(label::BALANCE_EXHAUSTED))
         .await
         .expect("the refusal writes over live Postgres");
     let closed = match ended {

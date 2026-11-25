@@ -3,7 +3,6 @@ export const OUTCOME = {
   success: "success",
   failure: "failure",
 } as const;
-export type Outcome = (typeof OUTCOME)[keyof typeof OUTCOME];
 
 export const MEMORY_PANEL_TITLE = "Memory";
 export const MEMORY_EMPTY_TITLE = "Nothing learned yet";

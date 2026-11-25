@@ -79,7 +79,7 @@ async fn durable_task_history_preserves_records_and_truncation_in_detail_and_thr
         "kind": "durable_task_decision_started",
         "progress": {
             "activity_id": event, "durable_task_id": null, "source_turn_id": null,
-            "operation": "intent", "phase": "starting", "provider": null,
+            "operation": "goal", "phase": "starting", "provider": null,
             "model": null, "completed": 0, "total": null, "sequence": 2
         }
     }]);

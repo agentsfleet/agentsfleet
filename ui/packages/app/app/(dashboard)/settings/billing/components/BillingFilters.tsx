@@ -5,8 +5,8 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Spinner } from "@agentsfleet/design-system";
 import type { BillingReport } from "@/lib/api/billing_report";
 import { BILLING_PERIOD_MONTH } from "@/lib/api/billing-report-values";
-import { ALL_FLEETS_LABEL, SETUP_LABEL } from "../lib/report-format";
-import { BILLING_ALL, BILLING_QUERY, BILLING_SETUP, changedFilter, selectedBillingMonth } from "../lib/report-query";
+import { ALL_FLEETS_LABEL } from "../lib/report-format";
+import { BILLING_ALL, BILLING_QUERY, changedFilter, selectedBillingMonth } from "../lib/report-query";
 import { BillingFilter } from "./BillingFilter";
 import { BillingPeriodFilter } from "./BillingPeriodFilter";
 
@@ -20,7 +20,7 @@ export function BillingFilters({report}: {report: BillingReport}) {
     item => item.id === null ? [] : [{value: item.id, label: item.name ?? item.id}],
   )];
   if (!fleets.some(choice => choice.value === fleet)) {
-    fleets.push({value: fleet, label: fleet === BILLING_SETUP ? SETUP_LABEL : fleet});
+    fleets.push({value: fleet, label: fleet});
   }
 
   function change(key: string, value: string, through?: string) {

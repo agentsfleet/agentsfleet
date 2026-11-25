@@ -39,28 +39,11 @@ impl Decision {
             Self::Answered => status::ANSWERED,
         }
     }
-
-    /// Whether this decision lets the blocked run continue.
-    ///
-    /// An approval and an answer do. A denial is the END of the run rather
-    /// than a pause in it, which is why the continuation is asked this
-    /// question rather than testing for `Approved` at the call site.
-    #[must_use]
-    pub const fn continues_the_run(self) -> bool {
-        matches!(self, Self::Approved | Self::Answered)
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn an_approval_and_an_answer_continue_the_run() {
-        assert!(Decision::Approved.continues_the_run());
-        assert!(Decision::Answered.continues_the_run());
-        assert!(!Decision::Denied.continues_the_run());
-    }
 
     #[test]
     fn every_decision_spells_a_status_the_reader_knows() {

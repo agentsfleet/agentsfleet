@@ -5,6 +5,8 @@
 
 use std::borrow::Cow;
 
+use garde::Validate as _;
+
 use super::{ActivityFrame, FleetResponseChunk, StreamTextKind};
 
 /// The wire chunk a runner sends, with only the fields a case varies named.
@@ -30,10 +32,18 @@ fn a_tool_frame_names_its_call_within_the_bound() {
             ..completed_frame()
         })
     };
-    assert!(completed("c".repeat(TEXT_MAX_CHARS)).call_id_usable());
-    assert!(!completed(String::new()).call_id_usable());
-    assert!(!completed("c".repeat(TEXT_MAX_CHARS + 1)).call_id_usable());
-    assert!(chunk("text", StreamTextKind::Answer).call_id_usable());
+    completed("c".repeat(TEXT_MAX_CHARS))
+        .validate()
+        .expect("a call id at the ceiling is usable");
+    completed(String::new())
+        .validate()
+        .expect_err("an empty call id is refused");
+    completed("c".repeat(TEXT_MAX_CHARS + 1))
+        .validate()
+        .expect_err("a call id past the ceiling is refused");
+    chunk("text", StreamTextKind::Answer)
+        .validate()
+        .expect("a frame that names no call is usable");
     assert_eq!(chunk("text", StreamTextKind::Answer).call_id(), None);
     let unnamed = serde_json::from_str::<ActivityFrame<'_>>(
         r#"{"tool_call_progress":{"name":"shell","elapsed_ms":1}}"#,
@@ -76,7 +86,8 @@ fn test_activity_frame_call_id_is_bounded() {
         frames(call_id).map(|body| {
             serde_json::from_str::<ActivityFrame<'_>>(&body)
                 .expect("a tool frame parses")
-                .call_id_usable()
+                .validate()
+                .is_ok()
         })
     };
     assert_eq!(usable(""), [false; 3]);

@@ -110,5 +110,5 @@ it("keeps authoritative observations above legacy arrivals and carries truncatio
   expect(mergeDurableTaskActivity({items: [legacy], truncated: true}, saved)?.truncated).toBe(true);
   const goal = {...legacy, progress: {...legacy.progress, operation: "goal" as const, phase: "recorded" as const, provider: "openai", model: "selected"}};
   expect(durableTaskActivityLabel(goal)).toBe("Assessment recorded · goal progress · openai / selected");
-  expect(durableTaskActivityLabel({...goal, progress: {...goal.progress, operation: "intent", provider: null}})).toBe("Assessment recorded · request intent ·  / selected");
+  expect(durableTaskActivityLabel({...goal, progress: {...goal.progress, operation: "capture", provider: null}})).toBe("Assessment recorded ·  / selected");
 });

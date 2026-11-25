@@ -240,7 +240,7 @@ async fn reject_unusable_profiles(models: &Models, id: &Uuid7, expected: &ModelU
                 .push('\0'),
             2 => profile.endpoint.push('\0'),
             3 => profile.evaluation_source_url.push('\0'),
-            _ => profile.intent.single_request_max_bps = 7000,
+            _ => profile.goal.done.probability_bps = 10_001,
         }
         let refused = models
             .update(id, replacement, NOW)

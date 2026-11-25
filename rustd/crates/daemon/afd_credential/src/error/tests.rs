@@ -19,7 +19,7 @@ fn configured_kinds() -> Vec<(&'static str, Error)> {
 #[test]
 fn stored_configuration_failures_are_permanent_and_actionable() {
     for (label, failure) in configured_kinds() {
-        assert!(failure.is_config_permanent(), "{label}");
+        assert!(!failure.is_retryable(), "{label}");
         assert!(!failure.is_datastore_unavailable(), "{label}");
         assert!(!failure.code().as_str().is_empty(), "{label}");
         assert!(!failure.detail().is_empty(), "{label}");
@@ -41,7 +41,6 @@ fn a_query_failure_keeps_its_cause_and_internal_mapping() {
     assert_eq!(failure.code(), error_code::INTERNAL_DB_QUERY);
     assert_ne!(failure.detail(), "");
     assert!(failure.source().is_some());
-    assert!(!failure.is_config_permanent());
     assert!(!failure.is_credential_missing());
 }
 
@@ -70,7 +69,6 @@ fn a_vault_failure_answers_with_the_vault_crates_own_code() -> Result<(), &'stat
     assert_eq!(unopened.code(), error_code::INTERNAL_OPERATION_FAILED);
     assert_ne!(unopened.code(), error_code::INTERNAL_DB_QUERY);
     assert!(!unopened.is_datastore_unavailable());
-    assert!(!unopened.is_config_permanent());
     assert!(unopened.source().is_some(), "the vault cause is preserved");
     Ok(())
 }
@@ -107,9 +105,5 @@ fn a_failed_mint_answers_the_internal_operation_code() -> Result<(), &'static st
     );
     assert!(drained.source().is_some(), "a failed mint keeps its cause");
     assert_ne!(drained.detail(), "");
-    assert!(
-        !drained.is_config_permanent(),
-        "a failed mint is not a stored-configuration fault an operator edits"
-    );
     Ok(())
 }

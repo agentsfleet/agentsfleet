@@ -155,7 +155,7 @@ describe("conditional fleet lifecycle", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
   it.each([409, 412])("preserves %i without rebasing and replaying a lifecycle change", async (status) => {
-    fetchMock.mockResolvedValue({ok: false, status, json: async () => ({detail: "changed", error_code: "UZ-AGT-014"})});
+    fetchMock.mockResolvedValue({ok: false, status, json: async () => ({detail: "changed", error_code: "UZ-SETUP-003"})});
     const {setFleetStatus} = await import("./fleets");
     await expect(setFleetStatus(WORKSPACE, FLEET_ID, "archived", ETAG, "tok")).rejects.toMatchObject({status});
     expect(fetchMock).toHaveBeenCalledTimes(1);

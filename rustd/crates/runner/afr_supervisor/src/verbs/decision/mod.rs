@@ -172,10 +172,10 @@ fn progress_of(
             .get("source_turn_id")
             .and_then(serde_json::Value::as_str)
             .map(str::to_owned),
-        operation: if request.purpose == af_wire::decision::DecisionPurpose::Goal {
-            af_wire::activity::DurableTaskActivityOperation::Goal
-        } else {
-            af_wire::activity::DurableTaskActivityOperation::Intent
+        operation: match request.purpose {
+            af_wire::decision::DecisionPurpose::Goal => {
+                af_wire::activity::DurableTaskActivityOperation::Goal
+            }
         },
         phase: af_wire::activity::DurableTaskActivityPhase::Starting,
         provider: Some(

@@ -185,11 +185,10 @@ impl RunService {
     ///
     /// # Why the ending is terminal rather than a retry
     ///
-    /// [`Error::is_config_permanent`] already classifies it, and the reasoning
-    /// is that module's: a document that will not parse does not become
-    /// parseable by being read again, so every poll would re-read the same
-    /// bytes and leave the delivery leasable forever. The terminal row is what
-    /// puts the fleet in front of a human, and the runner is answered the
+    /// A document that will not parse does not become parseable by being read
+    /// again, so every poll would re-read the same bytes and leave the delivery
+    /// leasable forever. The terminal row is what puts the fleet in front of a
+    /// human, and the runner is answered the
     /// documented no-work rather than an error it would count toward its own
     /// self-termination ceiling.
     ///

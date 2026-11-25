@@ -87,5 +87,5 @@ fn an_active_default_without_a_model_is_refused_as_corrupt() {
     let refused = row
         .into_default()
         .expect_err("an unpriced default is not a default");
-    assert!(refused.is_config_permanent());
+    assert!(!refused.is_retryable());
 }

@@ -5,8 +5,6 @@ const threshold = {probability_bps: 7000, confidence_bps: 5000};
 const profile = {
   revision: "reviewed-1", api: "typesafe", endpoint: "https://example.test/decide",
   accepted_models: ["reviewed-model"], capabilities: {noul: true, choice: true, score: true}, input_max_bytes: 16384,
-  intent: {questions_revision: "dt-routing-v1", intent: threshold, association: threshold,
-    single_request_max_bps: 4000, multiple_request_min_bps: 6000},
   goal: {questions_revision: "dt-goal-v1", statement_min_bps: 7000, continue_action: threshold, wait: threshold, done: threshold},
   evaluation_digest: "a".repeat(64), evaluation_source_url: "https://example.test/evaluation", evaluated_at: INSTANT,
 };
@@ -39,7 +37,6 @@ test.each([
   {...decision, profile: {...profile, accepted_models: []}},
   {...decision, profile: {...profile, goal: undefined}},
   {...decision, profile: {...profile, evaluation_digest: "invalid"}},
-  {...decision, profile: {...profile, intent: {...profile.intent, single_request_max_bps: 6000}}},
   {...decision, profile: {...profile, goal: {...profile.goal, statement_min_bps: 10001}}},
   {...decision, profile: {...profile, extra: true}},
 ])("refuses malformed decision definitions before HTTP", async invalid => {

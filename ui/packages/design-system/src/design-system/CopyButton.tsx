@@ -135,5 +135,3 @@ export function CopyButton({ value, label, showLabel = false, onOutcomeChange, c
     </Button>
   );
 }
-
-export default CopyButton;

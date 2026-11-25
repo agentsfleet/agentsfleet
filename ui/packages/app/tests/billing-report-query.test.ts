@@ -1,18 +1,17 @@
 import {describe, expect, it} from "vitest";
-import {BILLING_ALL, BILLING_QUERY, BILLING_SETUP, changedFilter, first, reportOptions, selectedBillingMonth} from "@/app/(dashboard)/settings/billing/lib/report-query";
+import {BILLING_ALL, BILLING_QUERY, changedFilter, first, reportOptions, selectedBillingMonth} from "@/app/(dashboard)/settings/billing/lib/report-query";
 import {reportingMonths} from "@/app/(dashboard)/settings/billing/lib/report-months";
 
 describe("billing report navigation", () => {
   it("requests the current month without removed filters or pagination", () => {
-    expect(reportOptions({})).toEqual({period: "month", fleet_id: undefined, activity_type: undefined, through_at: undefined});
+    expect(reportOptions({})).toEqual({period: "month", fleet_id: undefined, through_at: undefined});
     expect(reportOptions({model: "old", limit: "50", c: "old", ps: "50", activity: "old", dc: "old"})).toEqual(reportOptions({}));
     expect(first(["first", "second"])).toBe("first");
     expect(first(undefined)).toBeUndefined();
   });
-  it.each([BILLING_ALL, BILLING_SETUP, "fleet-id"])("maps fleet choice %s without widening explicit input", fleet => {
+  it.each([BILLING_ALL, "fleet-id"])("maps fleet choice %s without widening explicit input", fleet => {
     expect(reportOptions({fleet, through_at: "cutoff", period: "today"})).toEqual({period: "today", through_at: "cutoff",
-      fleet_id: fleet === BILLING_ALL || fleet === BILLING_SETUP ? undefined : fleet,
-      activity_type: fleet === BILLING_SETUP ? "setup" : undefined});
+      fleet_id: fleet === BILLING_ALL ? undefined : fleet});
   });
   it("passes explicit invalid filters to server validation", () => {
     expect(reportOptions({period: "year", fleet: "bad-id"})).toMatchObject({period: "year", fleet_id: "bad-id"});

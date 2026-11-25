@@ -6,11 +6,8 @@ use std::borrow::Cow;
 
 use af_core::id::Uuid7;
 use af_crypto::secret::SecretString;
-use af_wire::{
-    decision::DecisionPurpose,
-    durable_task::{
-        DecisionCallState, DecisionDispatch, DecisionReservationInput, DecisionReservationResult,
-    },
+use af_wire::durable_task::{
+    DecisionCallState, DecisionDispatch, DecisionReservationInput, DecisionReservationResult,
 };
 use jiff_sqlx::ToSqlx as _;
 use sqlx::types::Json;
@@ -221,10 +218,6 @@ impl Issuance<'_> {
     fn bind(&self) -> Result<Bound<'_>> {
         let (ready, run) = (self.ready, self.run);
         let (prepared, attempt) = (&ready.prepared, &ready.attempt);
-        let goal = prepared
-            .task
-            .as_ref()
-            .filter(|_task| prepared.request.purpose == DecisionPurpose::Goal);
         let named = prepared.task.as_ref();
         let parent = attempt.parent();
         Ok(sqlx::query_as(sql::ISSUE)
@@ -235,8 +228,8 @@ impl Issuance<'_> {
             .bind(&prepared.current.fleet_id)
             .bind(&prepared.current.workspace_id)
             .bind(&prepared.current.tenant_id)
-            .bind(goal.map(|task| &task.durable_task_id))
-            .bind(goal.map(|task| task.generation))
+            .bind(named.map(|task| &task.durable_task_id))
+            .bind(named.map(|task| task.generation))
             .bind(prepared.current.fence)
             .bind(guard::wire(&self.input.operation_id)?)
             .bind(self.digest)

@@ -19,8 +19,6 @@ use super::{
 };
 use crate::semconv;
 
-mod restart;
-
 /// A collector that keeps what it is handed.
 #[derive(Debug, Default, Clone)]
 struct Collected(Arc<Mutex<Vec<SpanData>>>);

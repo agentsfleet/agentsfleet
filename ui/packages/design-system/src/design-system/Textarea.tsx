@@ -30,5 +30,3 @@ export function Textarea({ appearance = "default", className, ref, ...props }: T
     />
   );
 }
-
-export default Textarea;

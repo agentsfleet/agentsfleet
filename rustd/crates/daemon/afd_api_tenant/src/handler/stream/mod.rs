@@ -116,7 +116,7 @@ const DETAIL_FLEET_NOT_FOUND: &str = "Fleet not found";
         "runners add a unique `call_id` per call, shared across its messages.\n",
         "- `durable_task_decision_started`, `durable_task_decision_completed`, and `durable_task_transfer_progress`: ",
         "`turn_id` and a `progress` object with operation identity, phase, selected model and bounded object counts. ",
-        "Turn details retain up to 128 steps in `durable_task_activity`; `truncated` marks an incomplete history. ",
+        "Turn details keep the latest step of each activity, operation and phase in `durable_task_activity`. ",
         "These observations never establish task completion or expose private recovery contents.\n",
         "- Completed tools from newer runners add `status` (`succeeded`, `failed`, or ",
         "`interrupted`), the first and last five output lines, and `output_line_count`. ",

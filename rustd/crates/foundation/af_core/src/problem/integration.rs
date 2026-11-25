@@ -253,27 +253,6 @@ pub(super) const INTEGRATION: &[Problem] = &[
         ),
     },
     Problem {
-        code: error_code::REPAIR_WRITE_UNAPPROVED,
-        status: 403,
-        title: "Write mint requires an approved gate",
-        hint: "No repository-write approval was answered for this event, so no write-scoped token issues. The run continues read-only.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::REPAIR_BINDING_DRIFT,
-        status: 403,
-        title: "Fleet binding changed since approval",
-        hint: "The fleet's repository binding no longer matches the approved card. Re-raise the approval so a human sees the current reach.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::REPAIR_SPEND_EXHAUSTED,
-        status: 403,
-        title: "Write request allowance exhausted",
-        hint: "This approval already funded 32 write-credential requests. Answer a new repository-write approval first.",
-        user_message: None,
-    },
-    Problem {
         code: error_code::API_BACKPRESSURE,
         status: 429,
         title: "Too many requests",
