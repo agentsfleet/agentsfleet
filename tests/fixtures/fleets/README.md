@@ -10,7 +10,7 @@ Each file says what its fleet is and what running it proves.
 | `night-owl` | wake-ups | Wakes on a schedule and a signed webhook. |
 | `queen-bee`, `busy-bee` | fleet to fleet | One fleet directs another. |
 | `stubborn-mule` | task | Keeps going until the job is done. |
-| `watch-dog` | GitHub | Asks for one repository, opens a pull request there, and wakes on it. |
+| `watch-dog` | GitHub | Asks for one repository, and wakes when a person opens a pull request there. |
 | `chatty-parrot` | Slack | Answers a mention in the thread it came from. |
 
 ## Fields
