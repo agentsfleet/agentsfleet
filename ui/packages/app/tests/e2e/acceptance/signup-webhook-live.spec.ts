@@ -64,7 +64,7 @@ test.describe("signup webhook live", () => {
 
     await page.goto(workspaceHref(signup.workspaceId, "fleets"));
     await expect(page).toHaveURL(workspaceHref(signup.workspaceId, "fleets/new"));
-    await expect(page.getByRole("heading", { name: "What should your fleet do?" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "New fleet" })).toBeVisible();
     await expect(page.getByTestId("workspace-switcher")).toBeVisible();
     const createLink = page.getByRole("navigation", {name: "Primary", exact: true}).getByRole("link", { name: "New fleet", exact: true });
     await expect(createLink).toBeVisible();

@@ -33,22 +33,24 @@ export function NewFleetChat({workspace, models}: {workspace: string; models: re
   // The marker gives New fleet the fleet chat's edge-to-edge canvas (`app/globals.css`).
   return <AssistantRuntimeProvider runtime={runtime}><FleetModelContext value={choice}><div data-fleet-workspace className="flex min-h-0 flex-1 flex-col">
     <ChatThread label="New fleet" centered footer={<>
-      {creation.error ? <Alert variant="destructive" className="mb-sm">{creation.error}</Alert> : null}
+      {creation.error && !creation.pending.length ? <Alert variant="destructive" className="mb-md">{creation.error}</Alert> : null}
       <SteerComposer creating modelLabel={choice.label} pending={creation.pending} onResend={creation.resend}
-        onDismiss={creation.dismiss} onRestored={ignore} onDraft={ignore} />
-      {creation.creating ? <output className="mt-sm text-center text-label text-muted-foreground">Starting your fleet…</output> : null}
-      <div className="mt-5 flex w-full flex-wrap justify-start gap-lg sm:justify-center">
+        onDismiss={creation.dismiss} onRestored={ignore} onDraft={ignore} sendError={creation.error} />
+      {creation.creating ? <output className="mt-md text-center text-label leading-label text-muted-foreground">Starting your fleet…</output> : null}
+      <div className="mt-xl flex w-full flex-wrap justify-center gap-md">
         {STARTERS.map(({title, prompt}, index) => <ThreadPrimitive.Suggestion key={title} prompt={prompt} send={false} asChild>
-          <Button variant="outline" size="sm" disabled={creation.creating} className="min-h-9.5 rounded-full border-border bg-transparent text-eyebrow font-semibold text-muted-foreground">{index === 0 ? <TerminalWindowIcon size={16} /> : index === 1 ? <GitPullRequestIcon size={16} /> : <UsersIcon size={16} />}{title}</Button>
+          <Button variant="outline" size="compact" wrap disabled={creation.creating}
+            className="rounded-full bg-transparent text-eyebrow font-semibold text-muted-foreground">
+            {index === 0 ? <TerminalWindowIcon size={16} /> : index === 1 ? <GitPullRequestIcon size={16} /> : <UsersIcon size={16} />}{title}
+          </Button>
         </ThreadPrimitive.Suggestion>)}
       </div>
-      <p className="mb-xl mt-5 text-center text-eyebrow leading-label text-text-dim">No fleet selected. Start something new, or open your fleets from the rail.</p>
     </>}>
       <div role="log" aria-live="off" className="mx-auto flex w-full max-w-chat flex-1 flex-col">
         <div className="content-entrance flex w-full flex-col items-center text-center">
           <BrandMark viewBox="-4 -4 32 32" className="mb-2xl size-11 rounded-brand bg-brand-tile text-brand-ray" aria-hidden="true" />
-          <PageTitle className="mb-lg text-new-fleet-title leading-new-fleet-title tracking-new-fleet-title">What should your fleet do?</PageTitle>
-          <p className="text-new-fleet-description text-muted-foreground">Give it a goal. Follow the work. Step in when you’re needed.</p>
+          <PageTitle className="mb-lg text-new-fleet-title leading-new-fleet-title tracking-new-fleet-title">New fleet</PageTitle>
+          <p className="text-new-fleet-description leading-label text-muted-foreground">Send a message to start your fleet.</p>
         </div>
       </div>
     </ChatThread>

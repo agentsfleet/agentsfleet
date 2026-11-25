@@ -146,7 +146,7 @@ async function waitForTenantWorkspace(page: Page, email: string, sessionJwt: str
     if (apiState.workspaceId) {
       await page.goto(`/w/${apiState.workspaceId}/fleets`);
       const rendered = await page
-        .getByRole("heading", { name: "What should your fleet do?" })
+        .getByRole("heading", { name: "New fleet" })
         .first()
         .waitFor({ timeout: 5_000 })
         .then(() => true)

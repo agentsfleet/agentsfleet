@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@agentsfleet/design-system";
 import { FLEET_DETAIL, FLEET_ID, MODEL, TURN_ID, WORKSPACE, response } from "@/tests/helpers/fleet-fixtures";
-import { RESEND_LABEL, SEND_LABEL, UUID_V7 } from "@/tests/fleet-thread/steer-copy";
+import { SEND_LABEL, UUID_V7 } from "@/tests/fleet-thread/steer-copy";
 import starters from "@/public/fleet-starters.json" with { type: "json" };
 import { NewFleetChat } from "./NewFleetChat";
 import { useFleetCreation } from "./useFleetCreation";
@@ -44,7 +44,7 @@ async function send(text: string) {
 describe("New fleet", () => {
   it("sends a first message as one create and moves to the fleet it made", async () => {
     mount();
-    expect(screen.getByRole("heading", {name: "What should your fleet do?"})).toBeTruthy();
+    expect(screen.getByRole("heading", {name: "New fleet"})).toBeTruthy();
     await send(MESSAGE);
     await waitFor(() => expect(navigation.replace).toHaveBeenCalledWith(`/w/${WORKSPACE}/fleets/${FLEET_ID}`));
     expect(posts).toEqual([{message: MESSAGE, operation_id: expect.stringMatching(UUID_V7)}]);
@@ -62,7 +62,7 @@ describe("New fleet", () => {
     expect(within(notices).getByText("Message not sent.")).toBeTruthy();
     expect(navigation.replace).not.toHaveBeenCalled();
     expect(posts).toHaveLength(1);
-    await act(async () => {fireEvent.click(within(notices).getByRole("button", {name: RESEND_LABEL}));});
+    await act(async () => {fireEvent.click(within(notices).getByRole("button", {name: "Resend"}));});
     await waitFor(() => expect(navigation.replace).toHaveBeenCalledWith(`/w/${WORKSPACE}/fleets/${FLEET_ID}`));
     expect(posts.map(post => post.message)).toEqual([MESSAGE, MESSAGE]);
     expect(posts[1]?.operation_id).not.toBe(posts[0]?.operation_id);

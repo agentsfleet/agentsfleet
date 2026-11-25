@@ -77,7 +77,7 @@ test.describe("a fresh signup's workspace", () => {
     // First-deploy regression surface lives here (route-guard chain on a
     // brand-new tenant, WorkspaceSwitcher with the auto-provisioned default).
     await page.goto(workspaceHref(workspaceId, "fleets"));
-    await expect(page.getByRole("heading", { name: "What should your fleet do?" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "New fleet" })).toBeVisible();
     await expect(page.getByTestId("workspace-switcher")).toBeVisible();
 
     // The fresh tenant has exactly one auto-provisioned workspace, the one
