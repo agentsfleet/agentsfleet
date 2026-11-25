@@ -44,13 +44,9 @@ pub const RETIRE_HELD: &str = "The schedule ran, and is being synchronised, so i
      removed. Repeat the request in a moment to finish removing it.";
 
 /// What a caller is told when a fleet's delete stopped because one of its
-/// schedules is still registered with the external scheduler.
-///
-/// Names the retry, because a repeat is what heals it: the delete removes the
-/// schedules it can again before it touches the fleet. Byte-identical to
-/// `afd_fleet_lifecycle`'s copy, which answers the same state found later.
-pub const RELEASE_HELD: &str = "This fleet's schedules are still registered with the scheduler, \
-     so the fleet was not deleted. Repeat the delete in a moment.";
+/// schedules is still registered with the external scheduler: the one
+/// sentence the purge answers too.
+pub const RELEASE_HELD: &str = af_core::error::DETAIL_SCHEDULES_REGISTERED;
 
 /// What a caller is told when a schedule fire did not prove it came from the
 /// external scheduler.

@@ -54,3 +54,19 @@ fn durable_task_preconditions_are_distinct_from_lifecycle_and_allowance_refusals
         assert!(REGISTRY.contains(&code));
     }
 }
+
+/// A fleet's delete that kept a registered schedule is a conflict to repeat,
+/// with its own code: a client told `UZ-SCHED-006` would retry one schedule's
+/// edit, where this one repeats the whole delete.
+#[test]
+fn a_delete_kept_by_a_registered_schedule_is_its_own_conflict() {
+    let problem = Problem::of(error_code::SCHEDULE_STILL_REGISTERED);
+
+    assert_eq!(problem.status(), 409);
+    assert_eq!(problem.title(), "Fleet schedules still registered");
+    assert_ne!(
+        error_code::SCHEDULE_STILL_REGISTERED,
+        error_code::SCHEDULE_SYNCING
+    );
+    assert!(REGISTRY.contains(&error_code::SCHEDULE_STILL_REGISTERED));
+}

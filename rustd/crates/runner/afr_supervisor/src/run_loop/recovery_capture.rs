@@ -221,8 +221,14 @@ impl BoundaryOwner<'_, '_> {
                             | error_code::RUN_CHECKPOINT_UNAVAILABLE
                     ) =>
             {
-                let error_code = failure.code();
-                tracing::warn!(event = "task_checkpoint_skipped", %error_code);
+                // The record is the skip; the outage that caused it is its cause.
+                let error_code = error_code::RUN_CHECKPOINT_UNAVAILABLE;
+                let cause_error_code = failure.code();
+                tracing::warn!(
+                    event = "task_checkpoint_skipped",
+                    %error_code,
+                    %cause_error_code
+                );
                 Ok(RecoverySave::Skipped(RecoverySkip::Unavailable))
             }
             Err(failure) => Err(failure),

@@ -38,7 +38,6 @@ struct StoredDetail {
     response_text: Option<String>,
     tool_calls: Option<String>,
     durable_task_activity: sqlx::types::Json<Vec<af_wire::activity::DurableTaskActivityRecord>>,
-    durable_task_activity_truncated: bool,
 }
 
 /// One event with everything recorded about it.
@@ -79,7 +78,6 @@ impl TurnDetailRow {
             tool_calls: stored.tool_calls,
             durable_task_activity: af_wire::activity::DurableTaskActivityHistory {
                 items: stored.durable_task_activity.0,
-                truncated: stored.durable_task_activity_truncated,
             },
         })
     }

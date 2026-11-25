@@ -9,7 +9,7 @@
 use af_core::id::Uuid7;
 use afd_cron::{
     Change, DesiredStatus, EditRequest, FireTarget, Fired, NewSchedule, Reconciled, Refused,
-    Result as CronResult, Schedule,
+    Released, Result as CronResult, Schedule,
 };
 use afd_db::Precondition;
 use jiff::Timestamp;
@@ -147,11 +147,17 @@ impl FleetSchedules for SchedulePlane {
         Ok(fired)
     }
 
-    async fn release(&self, workspace: &Uuid7, fleet: &Uuid7, now: Timestamp) -> CronResult<()> {
-        if self.store().holds_fleet(workspace, fleet).await? {
-            self.service.release_fleet(fleet, now).await?;
-        }
-        Ok(())
+    async fn release_on(
+        &self,
+        connection: &mut sqlx::PgConnection,
+        workspace: &Uuid7,
+        fleet: &Uuid7,
+        now: Timestamp,
+    ) -> CronResult<Released> {
+        let deadline = tokio::time::Instant::now() + afd_cron::qstash::CALL_BUDGET;
+        self.service
+            .release_fleet_on(connection, workspace, fleet, now, deadline)
+            .await
     }
 
     async fn retire(

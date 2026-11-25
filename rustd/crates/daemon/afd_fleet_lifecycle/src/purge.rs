@@ -14,10 +14,11 @@
 //!
 //! A schedule row cascades with the fleet, but the external scheduler holds a
 //! registration for it that no cascade reaches. The caller removes every
-//! schedule upstream, and its row, before the purge (`afd_cron`'s
-//! `release_fleet`); [`delete_locked`] refuses a fleet that still holds one,
-//! read under the row lock a schedule insert waits on, so a schedule written
-//! after that removal stops the purge instead of cascading away registered.
+//! schedule upstream, and its row, before the purge and on its transaction
+//! (`afd_cron`'s `release_fleet_on`); [`delete_locked`] refuses a fleet that
+//! still holds one, read under the row lock a schedule insert waits on, so a
+//! schedule the release did not remove stops the purge instead of cascading
+//! away registered.
 //!
 //! # What goes, and what stays
 //!
@@ -71,7 +72,7 @@ const CONTEXT_SCHEDULES: &str = "purge fleet schedule check";
 ///
 /// # Errors
 /// Reports a fleet that is not in `workspace`, a fleet that still holds a
-/// schedule (`UZ-SCHED-006`), and datastore failures.
+/// schedule (`UZ-SCHED-012`), and datastore failures.
 pub async fn delete_locked(
     connection: &mut sqlx::PgConnection,
     workspace: &Uuid7,

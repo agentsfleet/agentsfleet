@@ -185,13 +185,12 @@ async fn assert_completed(case: &Case, source: &Uuid7, reply: Reply<'_>) -> Valu
     assert_eq!(events.len(), 1);
     let event = events.first().expect("one completed event");
     assert_event(event);
-    let settled: bool = sqlx::query_scalar(
-        "SELECT settled_at IS NOT NULL AND parked_at IS NULL FROM thread.turns WHERE id=$1",
-    )
-    .bind(source)
-    .fetch_one(&mut *connection)
-    .await
-    .expect("settled original source");
+    let settled: bool =
+        sqlx::query_scalar("SELECT settled_at IS NOT NULL FROM thread.turns WHERE id=$1")
+            .bind(source)
+            .fetch_one(&mut *connection)
+            .await
+            .expect("settled original source");
     assert!(settled);
     let deliveries: Vec<(String, Option<String>, String)> = sqlx::query_as("SELECT provider,destination,answer FROM thread.deliveries WHERE fleet_id=$1 AND turn_id=$2")
         .bind(&case.scope.fleet_id).bind(source).fetch_all(&mut *connection).await.expect("original reply deliveries");

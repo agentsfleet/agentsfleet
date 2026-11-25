@@ -16,7 +16,7 @@
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use afd_cron::{
-    Change, EditRequest, Fire, FireTarget, Fired, NewSchedule, Reconciled, Refused,
+    Change, EditRequest, Fire, FireTarget, Fired, NewSchedule, Reconciled, Refused, Released,
     Result as CronResult, Schedule, ScheduleService, Schedules,
 };
 use afd_db::Precondition;
@@ -171,20 +171,26 @@ pub trait FleetSchedules: Send + Sync + std::fmt::Debug + 'static {
     ) -> impl Future<Output = CronResult<Fired>> + Send;
 
     /// Removes every schedule of `fleet` in `workspace` from the external
-    /// scheduler, and its row, ahead of the fleet's own delete.
+    /// scheduler, and its row, on `connection`, ahead of the fleet's own
+    /// delete on the same transaction.
     ///
-    /// Nothing for a fleet outside `workspace`, as for [`Self::change`].
+    /// The caller holds the fleet's row `FOR UPDATE` on `connection` and
+    /// commits what was released whether or not the fleet then goes; see
+    /// `afd_cron`'s `release_fleet_on`. Every removal runs inside the
+    /// scheduler's call budget. Nothing for a fleet outside `workspace`, as
+    /// for [`Self::change`].
     ///
     /// # Errors
-    /// `UZ-SCHED-006` while any schedule is still registered, so the fleet's
-    /// delete stops and is repeated; see `afd_cron`'s `release_fleet`. As
-    /// [`Self::list`] otherwise.
-    fn release(
+    /// Reports a datastore that would not answer; the caller's transaction
+    /// rolls back with it. A schedule still registered is not an error here:
+    /// [`afd_cron::Released::registered`] answers it.
+    fn release_on(
         &self,
+        connection: &mut sqlx::PgConnection,
         workspace: &Uuid7,
         fleet: &Uuid7,
         now: Timestamp,
-    ) -> impl Future<Output = CronResult<()>> + Send;
+    ) -> impl Future<Output = CronResult<Released>> + Send;
 
     /// Marks `fleet`'s `schedule` in `workspace` for deletion and removes it
     /// from `QStash`: a `once` schedule whose moment has come, fired or not.

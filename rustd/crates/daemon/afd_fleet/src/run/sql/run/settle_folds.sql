@@ -7,7 +7,7 @@
 --
 -- $1 fleet · $2 run · $3 fence · $4 read through sequence
 UPDATE thread.turns a
-SET settled_at = clock_timestamp(), parked_at = NULL, updated_at = now()
+SET settled_at = clock_timestamp(), updated_at = now()
 WHERE a.thread_id = $1
   AND a.input_run_id = $2 AND a.input_fence = $3
   AND a.settled_at IS NULL AND a.sequence <= $4

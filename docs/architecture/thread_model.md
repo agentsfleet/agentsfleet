@@ -55,7 +55,7 @@ It is written on the change's own transaction (`afd_turns::view::activity::recor
 | Retry key | `producer`, `producer_key`, `payload_digest` | All set or all NULL; `UNIQUE (producer, producer_key)` stops a duplicate |
 | Reply route | `reply_provider`, `reply_address` | Where a connector answer goes; both set or both NULL |
 | Run stamps | `run_fence`, `input_run_id`, `input_fence` | The run that took the turn as its head, and the run that folded it in |
-| Markers | `opened_at`, `interpreted_at`, `settled_at`, `parked_at` | Opened as an event, read by a durable task, finished; statements only clear `parked_at` |
+| Markers | `opened_at`, `interpreted_at`, `settled_at` | Opened as an event, read by a durable task, finished |
 | Answer | `status`, `answer_text`, `tool_calls`, `token_count`, `wall_ms`, `failure_reason`, `failure_detail` | The outcome; `tool_calls` is a summary, and `thread.items` holds the detail |
 | Continuation | `resumes_turn_id` | The turn this one continues; `ON DELETE SET NULL` |
 | Durable task | `durable_task_id`, `durable_task_generation`, `plan`, `plan_digest`, `durable_task_activity*` | Task link, its accepted plan (written once) and public progress |

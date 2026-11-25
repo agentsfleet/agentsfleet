@@ -21,6 +21,5 @@ export function DurableTaskActivityTimeline({value, running, attentionOnly = fal
         </p> : null}
       </li>)}
     </ol>
-    {history.truncated ? <p className="mt-sm text-eyebrow">Earlier progress stages are outside the retained activity window.</p> : null}
   </details>;
 }

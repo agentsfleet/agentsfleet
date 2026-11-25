@@ -156,11 +156,21 @@ async fn releasing_another_workspaces_fleet_removes_none_of_its_schedules() {
     let schedule = owner.schedule(&database).await;
     let plane = caller.services(&database);
 
-    plane
+    let mut transaction = begin(&database).await;
+    let foreign = plane
         .schedules()
-        .release(&caller.workspace, &owner.fleet, plane.now())
+        .release_on(
+            &mut transaction,
+            &caller.workspace,
+            &owner.fleet,
+            plane.now(),
+        )
         .await
+        .expect("the release reads the fleet's tenancy");
+    foreign
+        .registered()
         .expect("a fleet the workspace does not hold has nothing to release");
+    transaction.commit().await.expect("the release commits");
 
     assert_eq!(
         owner.read_back(&database, &schedule).await,
@@ -171,11 +181,20 @@ async fn releasing_another_workspaces_fleet_removes_none_of_its_schedules() {
     // The same fleet, under the workspace that holds it, does reach the row:
     // the answer above was the tenancy check, not a fleet with no schedules.
     let owners = owner.services(&database);
-    owners
+    let mut transaction = begin(&database).await;
+    let held = owners
         .schedules()
-        .release(&owner.workspace, &owner.fleet, owners.now())
+        .release_on(
+            &mut transaction,
+            &owner.workspace,
+            &owner.fleet,
+            owners.now(),
+        )
         .await
+        .expect("the release reads the owner's schedules");
+    held.registered()
         .expect_err("the fixture's scheduler is unreachable, so the row stays registered");
+    transaction.commit().await.expect("the release commits");
     assert_eq!(
         owner.read_back(&database, &schedule).await.1,
         "deleting",
@@ -185,6 +204,17 @@ async fn releasing_another_workspaces_fleet_removes_none_of_its_schedules() {
     caller.cleanup(&database).await;
     owner.cleanup(&database).await;
     let _ = lane;
+}
+
+/// A transaction on `database`, as the fleet's delete holds one.
+async fn begin(database: &Db) -> sqlx::Transaction<'static, sqlx::Postgres> {
+    let connection = database
+        .acquire()
+        .await
+        .expect("the lane's Postgres answers");
+    sqlx::Transaction::begin(connection, None)
+        .await
+        .expect("a transaction opens")
 }
 
 /// The owner's own router lists the one schedule it seeded, so the empty page

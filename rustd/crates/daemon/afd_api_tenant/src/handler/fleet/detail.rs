@@ -57,25 +57,33 @@ pub(crate) async fn purge<D: TenantPlane>(
         workspace: &owned.workspace,
         subject: person.subject(),
     };
-    // The schedules go upstream first, and only for a delete that would
-    // otherwise proceed: the cascade reaches their rows, never the scheduler.
-    services
-        .creations()
-        .confirm_delete(access, &fleet, expected)
+    // One transaction holds the fleet's row from the tag check to the purge,
+    // so a fleet change waits instead of refusing the delete after its
+    // schedules are gone. The schedules go upstream on that transaction
+    // first: the cascade reaches their rows, never the scheduler.
+    let creations = services.creations();
+    let mut held = creations
+        .hold_delete(access, &fleet, expected)
         .await
         .map_err(setup_refusal)?;
-    services
+    let released = services
         .schedules()
-        .release(&owned.workspace, &fleet, services.now())
+        .release_on(held.connection(), &owned.workspace, &fleet, services.now())
         .await
         .map_err(release_refusal)?;
-    // One transaction: the teardown an archive runs, then the row, under one
-    // tag check, so a refused delete changes nothing.
-    services
-        .creations()
-        .delete(access, &fleet, expected)
-        .await
-        .map_err(setup_refusal)?;
+    if let Err(registered) = released.registered() {
+        // The removals that landed upstream lose their rows; the fleet stays
+        // under the same tag, for the repeated delete.
+        creations
+            .keep(held, released.into_announcement())
+            .await
+            .map_err(setup_refusal)?;
+        return Err(release_refusal(registered));
+    }
+    // The schedule receipts go with the fleet's history; the workspace's
+    // walls hear the fleet set changed instead.
+    drop(released);
+    creations.delete(held).await.map_err(setup_refusal)?;
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
@@ -83,7 +91,8 @@ pub(crate) async fn purge<D: TenantPlane>(
 const EVENT_RELEASE: &str = "fleet_schedules_release_failed";
 
 /// A schedule removal that stopped the fleet's delete, as the caller reads it:
-/// a `409` naming the sync state while a schedule is still registered.
+/// a `409` naming the fleet's `deleting` state while a schedule is still
+/// registered.
 fn release_refusal(error: afd_cron::Error) -> Refusal {
     match error.current_state() {
         Some(state) => Refusal::conflict_at(EVENT_RELEASE, state)(error),

@@ -1,4 +1,4 @@
-//! What one settled run cost, in the five families the money dashboards read.
+//! What one settled run cost, in the families the money dashboards read.
 //!
 //! # Why the model attribution is bounded by the SDK rather than derived
 //!
@@ -9,12 +9,12 @@
 //! two reasons — an unmapped provider and a value too long to carry.
 
 use opentelemetry::KeyValue;
-use opentelemetry::metrics::{Counter, Histogram};
+use opentelemetry::metrics::Histogram;
 
 use crate::error::Result;
 use crate::metrics::declared::cost as declared;
 use crate::metrics::instrument::Instruments;
-use crate::metrics::label::cost::{ChargeClass, ErrorType, TokenType};
+use crate::metrics::label::cost::{ErrorType, TokenType};
 use crate::producers::installed;
 use crate::semconv;
 
@@ -47,7 +47,6 @@ pub struct Handles {
     duration: Histogram<f64>,
     tokens: Histogram<f64>,
     cache_read: Histogram<f64>,
-    credits: Counter<u64>,
 }
 
 impl Handles {
@@ -62,7 +61,6 @@ impl Handles {
             tokens: instruments.histogram_f64(&declared::INVOKE_AGENT_TOKEN_USAGE)?,
             cache_read: instruments
                 .histogram_f64(&declared::INVOKE_AGENT_CACHE_READ_TOKEN_USAGE)?,
-            credits: instruments.counter_u64(&declared::BILLING_CREDIT_CONSUMED)?,
         })
     }
 }
@@ -111,18 +109,4 @@ pub fn invocation(spend: &Spend<'_>) {
         .cost
         .cache_read
         .record(spend.cached_input_tokens as f64, &[model, posture]);
-}
-
-/// Records a debit against a tenant's wallet.
-pub fn credits_consumed(model: &str, posture: &str, class: ChargeClass, nanocredits: u64) {
-    if let Some(producers) = installed() {
-        producers.cost.credits.add(
-            nanocredits,
-            &[
-                KeyValue::new(semconv::ATTR_REQUEST_MODEL, model.to_owned()),
-                KeyValue::new(semconv::ATTR_EXECUTION_POSTURE, posture.to_owned()),
-                KeyValue::new(semconv::ATTR_CHARGE_TYPE, class.as_str()),
-            ],
-        );
-    }
 }

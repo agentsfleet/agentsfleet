@@ -4,6 +4,8 @@ use super::{Error, ErrorKind};
 
 /// The persisted sync state a held mutation names.
 pub const STATE_SYNCING: &str = "syncing";
+/// The state a removal names: a schedule being deleted, or a fleet whose
+/// delete stopped while one of its schedules is still registered.
 const STATE_DELETING: &str = "deleting";
 
 impl Error {
@@ -43,8 +45,8 @@ impl Error {
     #[must_use]
     pub const fn current_state(&self) -> Option<&'static str> {
         match self.kind() {
-            ErrorKind::Held | ErrorKind::RetireHeld | ErrorKind::ReleaseHeld => Some(STATE_SYNCING),
-            ErrorKind::Deleting => Some(STATE_DELETING),
+            ErrorKind::Held | ErrorKind::RetireHeld => Some(STATE_SYNCING),
+            ErrorKind::Deleting | ErrorKind::ReleaseHeld => Some(STATE_DELETING),
             ErrorKind::Refused { refusal } => refusal.current_state(),
             ErrorKind::Patch
             | ErrorKind::Precondition

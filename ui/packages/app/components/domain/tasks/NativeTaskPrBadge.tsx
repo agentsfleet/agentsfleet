@@ -13,7 +13,7 @@ export function NativeDurableTaskPrBadge({activity}: {activity: unknown}) {
   const history = readDurableTaskActivityHistory(activity);
   const ids = new Set(history?.items.flatMap(item => item.progress.durable_task_id ? [item.progress.durable_task_id] : []));
   const entry = ids.values().next();
-  if (history?.truncated || entry.done || ids.size > 1) return null;
+  if (entry.done || ids.size > 1) return null;
   const resource = details.get(entry.value);
   if (linked?.subject && waitingForLinkedWork(linked.read, entry.value)) {
     return <output className="mt-xl block" aria-label="Reading linked work"><Skeleton className="h-19.5 w-full rounded-md" aria-hidden="true" /></output>;

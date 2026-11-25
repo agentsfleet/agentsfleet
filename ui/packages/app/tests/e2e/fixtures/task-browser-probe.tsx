@@ -16,7 +16,7 @@ import { TooltipProvider } from "@agentsfleet/design-system";
 
 const router = {bfcacheId: "task-review", back() {}, forward() {}, refresh() {}, push() {}, replace() {}, async prefetch() {}};
 
-const DURABLE_TASK_ACTIVITY = {items: [{kind: "durable_task_transfer_progress", progress: {activity_id: DURABLE_TASK_IDS[0], durable_task_id: DURABLE_TASK_IDS[0], source_turn_id: null, operation: "capture", phase: "saved", provider: null, model: null, completed: 1, total: 1}}], truncated: false};
+const DURABLE_TASK_ACTIVITY = {items: [{kind: "durable_task_transfer_progress", progress: {activity_id: DURABLE_TASK_IDS[0], durable_task_id: DURABLE_TASK_IDS[0], source_turn_id: null, operation: "capture", phase: "saved", provider: null, model: null, completed: 1, total: 1}}]};
 const MESSAGES: ThreadMessageLike[] = [
   {id: "operator", role: "user", content: "Repair these three Linkwarden pull requests. Keep the regression checks.",
     metadata: {custom: {[RENDER_KIND_KEY]: RENDER_KIND.TRIGGER, actor: `${ACTOR.STEER_PREFIX}fixture-owner`}}},

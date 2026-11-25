@@ -105,11 +105,9 @@ fn the_gauge_sources_render_without_unfolding_their_readers() {
 /// unit suite never installs, so these calls take the no-op path.
 #[test]
 fn a_producer_before_install_is_a_no_op() {
-    use crate::metrics::label::cost::ChargeClass;
     use crate::metrics::label::fleet::{HeldAssignment, HistoryCut};
 
     super::billing::unpriced_tokens("provider", "model", 1_250);
-    super::cost::credits_consumed("model", "posture", ChargeClass::Settle, 1_000);
     super::fleet::history::cut(HistoryCut::Frame);
     super::fleet::history::read_failed();
     super::fleet::hold::assigned(HeldAssignment::Holder);

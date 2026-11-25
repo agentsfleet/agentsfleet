@@ -16,7 +16,7 @@
 use std::time::Duration;
 
 use af_core::env::MapEnv;
-use afd_db::config::{DbRole, EnvBool, PoolConfig, parse_env_bool};
+use afd_db::config::{DbRole, PoolConfig};
 
 const URL: &str = "postgres://agentsfleet:secret@localhost:5432/agentsfleetdb?sslmode=disable";
 
@@ -192,38 +192,6 @@ fn test_knob_values_are_trimmed() {
     ]);
     let config = PoolConfig::resolve(&env, DbRole::Default).unwrap();
     assert_eq!(config.max_connections(), 7);
-}
-
-/// The boolean grammar every knob in this product shares, including the third
-/// answer: a value that is neither is a misconfiguration, not a false.
-#[test]
-fn test_env_bool_grammar_has_three_answers() {
-    for yes in ["true", "TRUE", "True", "1", " true "] {
-        assert_eq!(parse_env_bool(yes), EnvBool::Yes, "{yes:?}");
-    }
-    for no in ["false", "FALSE", "0", " 0\t"] {
-        assert_eq!(parse_env_bool(no), EnvBool::No, "{no:?}");
-    }
-    for invalid in ["maybe", "yes", "on", "", "2"] {
-        assert_eq!(parse_env_bool(invalid), EnvBool::Invalid, "{invalid:?}");
-    }
-}
-
-/// `MIGRATE_ON_START` is off when unset and refuses a value it cannot read.
-///
-/// `yes` is the case worth naming: an operator who wrote it believes
-/// migrations are on. Reading it as `false` would leave a deployment silently
-/// un-migrated, which is why `afd_db::migrate_on_start` makes it a boot error.
-#[test]
-fn test_migrate_on_start_refuses_what_it_cannot_read() {
-    assert!(!afd_db::migrate_on_start(&env_with(&[])).unwrap());
-    assert!(afd_db::migrate_on_start(&env_with(&[("MIGRATE_ON_START", "1")])).unwrap());
-    assert!(!afd_db::migrate_on_start(&env_with(&[("MIGRATE_ON_START", "0")])).unwrap());
-
-    let error = afd_db::migrate_on_start(&env_with(&[("MIGRATE_ON_START", "yes")]))
-        .expect_err("an unreadable value is not a false");
-    assert!(error.is_config(), "got {error}");
-    assert!(error.to_string().contains("MIGRATE_ON_START"));
 }
 
 /// A URL with the right scheme that sqlx still cannot parse is refused, and the

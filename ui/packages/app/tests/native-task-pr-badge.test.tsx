@@ -12,7 +12,7 @@ const SCOPE = {workspaceId: "workspace", fleetId: "fleet", subject: "indy", revi
 afterEach(() => {cleanup(); vi.unstubAllGlobals();});
 function activity(ids: (string | null)[]): DurableTaskActivityHistory {
   return {items: ids.map(id => ({kind: "durable_task_transfer_progress", progress: {activity_id: DURABLE_TASK_IDS[0], durable_task_id: id, source_turn_id: null,
-    operation: "capture", phase: "saved", provider: null, model: null, completed: 1, total: 1}})), truncated: false};
+    operation: "capture", phase: "saved", provider: null, model: null, completed: 1, total: 1}}))};
 }
 function response() {
   const saved = detail();
@@ -52,11 +52,11 @@ it("shows the linked PR card before the mobile drawer opens, sharing reads and p
   expect(draft).toHaveProperty("value", "Keep this direction");
 });
 
-it("omits ambiguous, truncated, malformed, or unassociated activity instead of inferring a PR from text", async () => {
+it("omits ambiguous, malformed, or unassociated activity instead of inferring a PR from text", async () => {
   network();
   const view = render(<FleetDurableTaskProvider {...SCOPE}><NativeDurableTaskPrBadge activity={activity([DURABLE_TASK_IDS[0]])} /></FleetDurableTaskProvider>);
   await screen.findByRole("link");
-  for (const value of [activity([DURABLE_TASK_IDS[0], DURABLE_TASK_IDS[1]]), activity([null]), {...activity([DURABLE_TASK_IDS[0]]), truncated: true}, "PR #803", activity([DURABLE_TASK_IDS[2]])]) {
+  for (const value of [activity([DURABLE_TASK_IDS[0], DURABLE_TASK_IDS[1]]), activity([null]), "PR #803", activity([DURABLE_TASK_IDS[2]])]) {
     view.rerender(<FleetDurableTaskProvider {...SCOPE}><NativeDurableTaskPrBadge activity={value} /></FleetDurableTaskProvider>);
     expect(screen.queryByRole("link")).toBeNull();
   }

@@ -229,7 +229,7 @@ it("keeps open work details usable when another queued task arrives before its d
   });
   vi.stubGlobal("fetch", network);
   const turns: FleetTurn[] = [{id: "assessment", role: "assistant", actor: "fleet", text: "", reply: "", outcome: "", failureLabel: null, failureDetail: null,
-    createdAt: new Date(), status: "processed", durableTaskActivity: {truncated: false, items: [{kind: "durable_task_decision_completed" as const, progress: {
+    createdAt: new Date(), status: "processed", durableTaskActivity: {items: [{kind: "durable_task_decision_completed" as const, progress: {
       activity_id: DURABLE_TASK_IDS[0], durable_task_id: DURABLE_TASK_IDS[0], source_turn_id: null, operation: "goal" as const,
       phase: "recorded" as const, provider: null, model: null, completed: 1, total: 1}}]}}];
   const view = render(<DurableTaskPanel {...SCOPE} turns={turns} />);

@@ -94,3 +94,10 @@ pub const DETAIL_DATABASE_ERROR: &str = "Database error";
 /// tells whoever provoked it something about this deployment's stored state,
 /// and on a public endpoint that is exactly who must not learn it.
 pub const DETAIL_OPERATION_FAILED: &str = "Failed to complete the operation";
+
+/// The detail for a fleet's delete that stopped while one of its schedules is
+/// still registered with the external scheduler.
+///
+/// Declared here because two crates answer it, the schedule release and the
+/// purge that runs after it, and the caller reads one condition either way.
+pub const DETAIL_SCHEDULES_REGISTERED: &str = "Fleet schedules still registered; repeat the delete";

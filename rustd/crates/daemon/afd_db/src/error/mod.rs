@@ -39,7 +39,7 @@ mod samples;
 pub use self::answer::database_answer;
 
 #[cfg(feature = "test-util")]
-pub use self::samples::one_of_each_kind;
+pub use self::samples::{missing_url, one_of_each_kind};
 
 /// The result every fallible function in this crate returns.
 ///
@@ -79,7 +79,6 @@ impl Error {
                 | ErrorKind::InvalidDatabaseUrl { .. }
                 | ErrorKind::InvalidDatabaseUrlScheme { .. }
                 | ErrorKind::TlsCertFileUnreadable { .. }
-                | ErrorKind::InvalidBoolKnob { .. }
         )
     }
 
@@ -159,7 +158,6 @@ impl Error {
             | ErrorKind::InvalidDatabaseUrl { .. }
             | ErrorKind::InvalidDatabaseUrlScheme { .. }
             | ErrorKind::TlsCertFileUnreadable { .. }
-            | ErrorKind::InvalidBoolKnob { .. }
             | ErrorKind::InvalidPoolNumber { .. }
             | ErrorKind::InvalidPoolBudget { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
             ErrorKind::Query { .. } => error_code::INTERNAL_DB_QUERY,
@@ -244,13 +242,6 @@ const SQLSTATE_CONNECTION_EXCEPTION: &str = "08";
 
 /// Administrator shutdown, crash shutdown, and cannot-connect-now.
 const SQLSTATE_SHUTDOWN: [&str; 3] = ["57P01", "57P02", "57P03"];
-
-/// Builds the malformed-boolean-knob error, which callers outside this module
-/// need because the knobs they read are theirs, not this module's.
-#[must_use]
-pub fn invalid_bool_knob(knob: &'static str) -> Error {
-    Error::new(ErrorKind::InvalidBoolKnob { knob })
-}
 
 /// A datastore that never answered, reported as the outage it is.
 ///

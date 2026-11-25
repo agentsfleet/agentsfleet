@@ -84,7 +84,7 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
 
     const COLUMN_WORKSPACE: &str = "workspace_id";
 
-    let datastore = afd_db::error::invalid_bool_knob("MIGRATE_ON_START");
+    let datastore = afd_db::error::missing_url(afd_db::DbRole::Default);
     let vault = afd_vault::SecretName::parse("").expect_err("an empty secret name is refused");
     let config =
         af_fleet_runtime::FleetName::parse("").expect_err("an empty fleet name is refused");

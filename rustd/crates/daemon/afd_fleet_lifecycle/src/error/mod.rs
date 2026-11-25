@@ -78,8 +78,8 @@ pub(crate) enum ErrorKind {
     SchedulesRegistered,
 }
 
-/// The state a refused purge names: the fleet's schedules are mid-sync.
-const STATE_SYNCING: &str = "syncing";
+/// The state a refused purge names: the fleet's delete stopped part way.
+const STATE_DELETING: &str = "deleting";
 
 impl Error {
     /// The code and the sentence, decided together — see the module note.
@@ -96,9 +96,10 @@ impl Error {
                 (error_code::INTERNAL_DB_QUERY, detail::DATABASE_ERROR)
             }
             ErrorKind::NotFound => (error_code::AGENTSFLEET_NOT_FOUND, detail::NOT_FOUND),
-            ErrorKind::SchedulesRegistered => {
-                (error_code::SCHEDULE_SYNCING, detail::SCHEDULES_REGISTERED)
-            }
+            ErrorKind::SchedulesRegistered => (
+                error_code::SCHEDULE_STILL_REGISTERED,
+                detail::SCHEDULES_REGISTERED,
+            ),
         }
     }
 
@@ -138,7 +139,7 @@ impl Error {
     #[must_use]
     pub const fn current_state(&self) -> Option<&'static str> {
         match self.kind() {
-            ErrorKind::SchedulesRegistered => Some(STATE_SYNCING),
+            ErrorKind::SchedulesRegistered => Some(STATE_DELETING),
             ErrorKind::Datastore { .. }
             | ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }

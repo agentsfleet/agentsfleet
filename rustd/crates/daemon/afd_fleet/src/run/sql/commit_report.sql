@@ -167,7 +167,7 @@ WITH scope AS MATERIALIZED (
   -- one update, since one statement may change a row once. An event already closed keeps
   -- its result.
   UPDATE thread.turns a
-  SET settled_at = clock_timestamp(), parked_at = NULL, updated_at = now(),
+  SET settled_at = clock_timestamp(), updated_at = now(),
       status = CASE WHEN a.status = $34 THEN $27 ELSE a.status END,
       answer_text = CASE WHEN a.status = $34 THEN $28 ELSE a.answer_text END,
       token_count = CASE WHEN a.status = $34 THEN $29 ELSE a.token_count END,

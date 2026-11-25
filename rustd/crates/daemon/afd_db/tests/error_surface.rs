@@ -19,7 +19,7 @@ fn the_error_surface_holds() {
     let samples = one_of_each_kind();
     assert_eq!(
         samples.len(),
-        16,
+        15,
         "a kind was added or dropped without its sample"
     );
     grade(

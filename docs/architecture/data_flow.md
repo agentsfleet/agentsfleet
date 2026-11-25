@@ -133,12 +133,15 @@ QStash, Upstash's hosted scheduler, owns the clock. The runner owns no timer.
 - **A fire.** The daemon checks the signature with the current or next key from the admin workspace's `qstash` bag, then writes one `schedule_fire` turn.
 - **Run now.** A person's run-now goes through the same producer, keyed `run:<turn_id>`, so a reassigned run replays it rather than firing twice.
 - **A `once` schedule.** It retires after its fire is admitted. A retirement whose claim is held answers `UZ-SCHED-006`, so QStash repeats the fire.
-- **A fleet delete.** Each schedule is marked `deleting` and removed from QStash (`afd_cron`'s `release_fleet`).
-  Its row goes once QStash agrees, and only then does the fleet row go.
-  A schedule QStash keeps, or one another syncer holds, stays `deleting`.
+- **A fleet delete.** One transaction holds the fleet row `FOR UPDATE` from the `If-Match` check to the purge.
+  A concurrent change waits, so it cannot stale the tag after the schedules are gone.
 
-  The delete then answers `409` `UZ-SCHED-006`, and repeating it finishes the job.
-  The purge refuses a fleet that still holds a schedule (`delete_locked`), so a late schedule cannot cascade away registered.
+  On that transaction each schedule is marked `deleting` and removed from QStash (`afd_cron`'s `release_fleet_on`), within the scheduler's call budget.
+  Its row goes once QStash agrees, and only then does the fleet row go.
+  A schedule QStash keeps, one another syncer holds, or one the budget cut off stays `deleting`.
+
+  The delete then commits the removals that landed, keeps the fleet, and answers `409` `UZ-SCHED-012` with `current_state` `deleting`; repeating it finishes the job.
+  The purge refuses a fleet that still holds a schedule (`delete_locked`), so no schedule can cascade away registered.
   A stale `If-Match` is refused before any schedule is touched.
 
 The QStash signature covers the destination URL, the body and the message ID.

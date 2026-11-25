@@ -52,7 +52,7 @@ check_dashboard_shape() {
       dashboard-chat.json) expected='[38,40,41,42,43,44,45,46,47,103,104,105]' ;;
       dashboard-api-db.json) expected='[1,2,110,111,112,113,114,115]' ;;
       dashboard-scheduler.json) expected='[120,121,122,123,124,126]' ;;
-      dashboard-models.json) expected='[130,131,132,133,134,135,136,137,138,139,140,141]' ;;
+      dashboard-models.json) expected='[130,131,132,133,134,135,136,137,138,139,140]' ;;
       dashboard-sandbox.json) expected='[150,151,152,153,154,155,156,157]' ;;
       *) fail "unknown dashboard definition: $dashboard" ;;
     esac
@@ -158,8 +158,8 @@ check_thresholds_are_derived() {
 #
 # Checked against the census rather than by grepping the crates, because an
 # OTLP family is spelled with dots at the source and with underscores on the
-# wire: `agentsfleet.billing.credit.consumed` is declared that way in Rust and
-# arrives in the store as `agentsfleet_billing_credit_consumed`. Grepping for
+# wire: `agentsfleet.invoke_agent.token.usage` is declared that way in Rust and
+# arrives in the store as `agentsfleet_invoke_agent_token_usage`. Grepping for
 # the wire spelling could never find the declaration. The census is the right
 # authority anyway — a Rust registry test grades it against the registry in
 # BOTH directions, so a name in the census is a name the daemon produces or

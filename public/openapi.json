@@ -21970,8 +21970,7 @@
         "type": "object",
         "description": "Retained activity, kept apart from the task's private history.",
         "required": [
-          "items",
-          "truncated"
+          "items"
         ],
         "properties": {
           "items": {
@@ -21980,10 +21979,6 @@
               "$ref": "#/components/schemas/DurableTaskActivityRecord"
             },
             "description": "The newest fact of each operation and stage, in observed order."
-          },
-          "truncated": {
-            "type": "boolean",
-            "description": "Whether earlier stages were omitted when the history was bounded."
           }
         }
       },

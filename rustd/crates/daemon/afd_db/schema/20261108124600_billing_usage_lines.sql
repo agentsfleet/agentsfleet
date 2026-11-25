@@ -10,7 +10,7 @@ CREATE TABLE billing.usage_lines (
     seq                         BIGINT NOT NULL,
     tenant_id                   UUID   NOT NULL,
     workspace_id                UUID   NOT NULL,
-    fleet_id                    UUID,
+    fleet_id                    UUID   NOT NULL,
     fleet_name                  TEXT,
     turn_id                     UUID,
     run_id                      UUID,
@@ -42,19 +42,12 @@ CREATE TABLE billing.usage_lines (
 CREATE INDEX idx_usage_lines_tenant_id_created_at_id
     ON billing.usage_lines (tenant_id, created_at DESC, id DESC);
 
--- One fleet's lines by time; INCLUDE carries the workspace and charge, so a sum over a window
--- never visits the table.
-CREATE INDEX idx_usage_lines_fleet_id_created_at
-    ON billing.usage_lines (fleet_id, created_at) INCLUDE (workspace_id, charged_nanos)
-    WHERE fleet_id IS NOT NULL;
-
 -- INCLUDE lets a turn's cost be summed without visiting the table.
 CREATE INDEX idx_usage_lines_fleet_id_turn_id
-    ON billing.usage_lines (fleet_id, turn_id) INCLUDE (charged_nanos)
-    WHERE fleet_id IS NOT NULL;
+    ON billing.usage_lines (fleet_id, turn_id) INCLUDE (charged_nanos);
 
--- Only an insert moves the budget, because a line's price never changes. A setup-chat line and a
--- purged fleet write none.
+-- Only an insert moves the budget, because a line's price never changes. A purged fleet's line
+-- writes none.
 CREATE FUNCTION billing.usage_lines_bump_budget() RETURNS trigger
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO pg_catalog, fleet, billing
@@ -74,7 +67,7 @@ $$;
 
 CREATE TRIGGER trg_usage_lines_bump_budget
     AFTER INSERT ON billing.usage_lines
-    FOR EACH ROW WHEN (NEW.fleet_id IS NOT NULL)
+    FOR EACH ROW
     EXECUTE FUNCTION billing.usage_lines_bump_budget();
 
 -- A statement's new lines debit their payers' wallets, past zero if they must: a debt the next

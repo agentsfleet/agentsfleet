@@ -153,8 +153,13 @@ async fn a_repeated_create_after_delete_is_gone() {
         .create(f.access(), &request, super::fixture::now())
         .await
         .expect("the first create");
+    let held = f
+        .creations
+        .hold_delete(f.access(), &created.fleet.id, &created.fleet.etag)
+        .await
+        .expect("the owner holds the fleet for its delete");
     f.creations
-        .delete(f.access(), &created.fleet.id, &created.fleet.etag)
+        .delete(held)
         .await
         .expect("the owner deletes the fleet");
 

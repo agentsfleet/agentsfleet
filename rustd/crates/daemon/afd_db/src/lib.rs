@@ -50,39 +50,9 @@ pub mod statement;
 #[cfg(feature = "test-util")]
 pub mod test_util;
 
-pub(crate) use af_core::env::EnvSource;
-
 pub use crate::config::{DbRole, PoolConfig};
 pub use crate::error::{Error, Result};
 pub use crate::migrate::{Applied, Migrator};
 pub use crate::migration::{MIGRATIONS, Migration};
 pub use crate::pool::Db;
 pub use crate::precondition::Precondition;
-
-/// The knob that decides whether `serve` migrates before it listens.
-///
-/// Read here rather than in the boot path so the spelling lives beside the
-/// migrator it governs; the daemon's boot is what calls it.
-pub const MIGRATE_ON_START_KNOB: &str = "MIGRATE_ON_START";
-
-/// Whether this deployment migrates at boot.
-///
-/// Absent is false: a deployment that wants schema changes applied by whatever
-/// container happens to start first has to say so, because the alternative —
-/// defaulting to true — makes every replica a migrator during a rolling
-/// restart.
-///
-/// # Errors
-/// Returns a config error when the value is neither truthy nor falsy.
-/// `MIGRATE_ON_START=yes` is not "no"; it is an operator who believes
-/// migrations are on, and this refuses it for that reason.
-pub fn migrate_on_start<E: EnvSource + ?Sized>(source: &E) -> Result<bool> {
-    let Some(raw) = source.get(MIGRATE_ON_START_KNOB) else {
-        return Ok(false);
-    };
-    match config::parse_env_bool(&raw) {
-        config::EnvBool::Yes => Ok(true),
-        config::EnvBool::No => Ok(false),
-        config::EnvBool::Invalid => Err(error::invalid_bool_knob(MIGRATE_ON_START_KNOB)),
-    }
-}

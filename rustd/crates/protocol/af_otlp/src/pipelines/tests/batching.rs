@@ -162,7 +162,7 @@ async fn a_one_record_batch_exports_before_its_long_log_interval() {
 
 #[tokio::test]
 async fn the_metric_interval_exports_a_recorded_counter_without_a_forced_flush() {
-    use af_observability::metrics::declared::cost::BILLING_CREDIT_CONSUMED;
+    use af_observability::metrics::declared::http::API_BACKPRESSURE_REJECTIONS_TOTAL;
     let mut collector = Collector::start().await;
     let config = collector.config(PipelineSettings {
         metrics_export_interval_seconds: 1,
@@ -173,8 +173,8 @@ async fn the_metric_interval_exports_a_recorded_counter_without_a_forced_flush()
             .install()
             .expect("real exporters");
     instruments
-        .counter_u64(&BILLING_CREDIT_CONSUMED)
-        .expect("credit counter")
+        .counter_u64(&API_BACKPRESSURE_REJECTIONS_TOTAL)
+        .expect("rejection counter")
         .add(17, &[]);
     let frame = collector.receive("metrics").await;
     assert_eq!(

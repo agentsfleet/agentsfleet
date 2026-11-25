@@ -140,9 +140,6 @@ pub const ATTR_DELIVERY_COMPLETE_MS: &str = "agentsfleet.delivery.complete_ms";
 /// Which direction a token count is: prompt, or completion.
 pub const ATTR_TOKEN_TYPE: &str = "gen_ai.token.type";
 
-/// Which class of debit a charge was.
-pub const ATTR_CHARGE_TYPE: &str = "agentsfleet.billing.charge.type";
-
 /// The coarse verdict on a run that did not finish cleanly.
 ///
 /// Absent on success. The granular failure class stays off this key on

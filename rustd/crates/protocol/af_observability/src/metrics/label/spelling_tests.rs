@@ -36,7 +36,6 @@ fn every_closed_set() -> Vec<(&'static str, Vec<&'static str>)> {
         set!(crate::metrics::label::http::RequestMethod),
         set!(crate::metrics::label::http::ResponseClass),
         set!(crate::metrics::label::cost::TokenType),
-        set!(crate::metrics::label::cost::ChargeClass),
         set!(crate::metrics::label::cost::ErrorType),
         set!(crate::metrics::label::fleet::SignupFailure),
         set!(crate::metrics::label::fleet::HistoryCut),

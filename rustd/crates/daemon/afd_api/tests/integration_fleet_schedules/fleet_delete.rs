@@ -129,13 +129,12 @@ async fn a_fleet_delete_stops_while_a_schedule_is_still_registered() {
     assert_eq!(status, StatusCode::CONFLICT, "{refused}");
     assert_eq!(
         field(&refused, "error_code"),
-        error_code::SCHEDULE_SYNCING.as_str()
+        error_code::SCHEDULE_STILL_REGISTERED.as_str()
     );
-    assert_eq!(field(&refused, "current_state"), "syncing");
+    assert_eq!(field(&refused, "current_state"), "deleting");
     assert_eq!(
         field(&refused, "detail"),
-        "This fleet's schedules are still registered with the scheduler, so the fleet was \
-         not deleted. Repeat the delete in a moment."
+        "Fleet schedules still registered; repeat the delete"
     );
     assert_eq!(
         fleet_tag(&router, &fixture).await,

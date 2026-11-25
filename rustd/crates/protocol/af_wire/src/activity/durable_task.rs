@@ -146,6 +146,4 @@ impl DurableTaskActivityRecord {
 pub struct DurableTaskActivityHistory {
     /// The newest fact of each operation and stage, in observed order.
     pub items: Vec<DurableTaskActivityRecord>,
-    /// Whether earlier stages were omitted when the history was bounded.
-    pub truncated: bool,
 }

@@ -15,9 +15,9 @@ const COLUMNS: &str = "SELECT column_name::text, data_type::text, is_nullable::t
 /// The actual index expression, including its column order and partial predicate.
 const INDEX: &str = "SELECT indexdef FROM pg_indexes \
     WHERE schemaname = 'thread' AND indexname = 'idx_turns_thread_id_sequence_unsettled'";
-/// A zero-row update still checks privileges for all three new columns.
+/// A zero-row update still checks privileges for both queue columns.
 const UPDATE: &str = "UPDATE thread.turns \
-    SET run_fence = 1, parked_at = now(), settled_at = now() WHERE false";
+    SET run_fence = 1, settled_at = now() WHERE false";
 
 #[derive(sqlx::FromRow)]
 struct SchemaField {
@@ -40,13 +40,12 @@ async fn test_turns_queue_migration_bootstraps() {
     let api = lane.open(DbRole::Api, &[]).await;
     let mut connection = api.acquire().await.expect("runtime connection");
     let columns: Vec<SchemaField> = sqlx::query_as(COLUMNS)
-        .bind(&["run_fence", "parked_at", "settled_at"][..])
+        .bind(&["run_fence", "settled_at"][..])
         .fetch_all(&mut *connection)
         .await
         .expect("runtime sees queue columns");
     // In `ORDER BY column_name` order.
     let expected = [
-        ("parked_at", "timestamp with time zone", Some(3)),
         ("run_fence", "bigint", None),
         ("settled_at", "timestamp with time zone", Some(3)),
     ];

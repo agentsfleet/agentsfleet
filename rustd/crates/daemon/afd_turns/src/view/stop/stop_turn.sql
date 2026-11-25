@@ -45,7 +45,7 @@ WITH thread AS MATERIALIZED (
   RETURNING r.id, r.runner_id
 ), cancelled AS (
   UPDATE thread.turns t
-  SET status = $4, settled_at = clock_timestamp(), parked_at = NULL,
+  SET status = $4, settled_at = clock_timestamp(),
       opened_at = COALESCE(t.opened_at, now()),
       updated_at = now()
   FROM target

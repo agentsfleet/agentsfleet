@@ -57,7 +57,7 @@ fn the_error_surface_holds() {
         &samples,
         Expect {
             with_source: 10,
-            distinct_codes: 5,
+            distinct_codes: 6,
         },
     );
 }

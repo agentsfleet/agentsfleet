@@ -115,11 +115,13 @@ async fn go_live(lane: &TurnsLane, head: &str) -> Outcome {
     Ok(())
 }
 
-/// Parks `turn`, so a send behind it must wait for it.
-async fn park(lane: &TurnsLane, turn: &str) -> Outcome {
+/// Marks `turn` as sent by no person, a barrier the live run must not pass,
+/// so a send behind it must wait for it.
+async fn bar(lane: &TurnsLane, turn: &str) -> Outcome {
     let turn = Uuid7::parse(turn)?;
-    sqlx::query("UPDATE thread.turns SET parked_at = now() WHERE id = $1")
+    sqlx::query("UPDATE thread.turns SET actor = $2 WHERE id = $1")
         .bind(&turn)
+        .bind(afd_turns::view::activity::ACTOR_ACTIVITY)
         .execute(&mut *lane.connection().await)
         .await?;
     Ok(())
@@ -156,17 +158,17 @@ async fn a_send_behind_a_live_run_folds_into_it() -> Outcome {
     Ok(())
 }
 
-/// A parked message the run must not pass makes every later send wait, even
-/// while the run is live.
+/// A message no person sent, which the run must not pass, makes every later
+/// send wait, even while the run is live.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_send_behind_a_parked_message_waits_its_turn() -> Outcome {
+async fn a_send_behind_a_barrier_message_waits_its_turn() -> Outcome {
     let lane = TurnsLane::open().await;
     let steer = Steer::new(lane.turns());
     let head = send(&steer, &lane, None).await?;
     go_live(&lane, &head.turn_id).await?;
     let gated = send(&steer, &lane, None).await?;
-    park(&lane, &gated.turn_id).await?;
+    bar(&lane, &gated.turn_id).await?;
 
     let behind = send(&steer, &lane, None).await?;
     assert_eq!(behind.placed, placed(SteerDisposition::Queued, None));

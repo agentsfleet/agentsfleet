@@ -16,7 +16,7 @@ fn data_only_refusals_have_stable_codes_details_and_no_causes() {
         ),
         expected(
             ErrorKind::SchedulesRegistered.into(),
-            error_code::SCHEDULE_SYNCING,
+            error_code::SCHEDULE_STILL_REGISTERED,
             detail::SCHEDULES_REGISTERED,
         ),
     ];
@@ -32,7 +32,7 @@ fn only_a_purge_held_by_schedules_names_a_conflict_state() {
     let missing: Error = ErrorKind::NotFound.into();
     let row = super::row_malformed("status", "future-state");
 
-    assert_eq!(held.current_state(), Some("syncing"));
+    assert_eq!(held.current_state(), Some("deleting"));
     assert_eq!(missing.current_state(), None);
     assert_eq!(row.current_state(), None);
 }

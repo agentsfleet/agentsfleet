@@ -84,7 +84,7 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         (
             "ledger",
             ErrorKind::Ledger {
-                source: afd_db::error::invalid_bool_knob("MIGRATE_ON_START"),
+                source: afd_db::error::missing_url(afd_db::DbRole::Default),
             }
             .into(),
         ),

@@ -67,7 +67,7 @@ pub(crate) fn operation_conflict() -> Error {
     reason = "a sample builder whose own preconditions fail should stop the suite"
 )]
 pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
-    let datastore = afd_db::error::invalid_bool_knob("MIGRATE_ON_START");
+    let datastore = afd_db::error::missing_url(afd_db::DbRole::Default);
     let turn = crate::error::one_of_each_kind()
         .into_iter()
         .find(|(label, _error)| *label == "datastore")

@@ -12,7 +12,7 @@ const progress = v.object({
   bytes: v.optional(v.object({acknowledged: count, missing: count, reused: count})),
 });
 const record = v.object({kind: v.picklist(["durable_task_decision_started", "durable_task_decision_completed", "durable_task_transfer_progress"]), progress});
-const history = v.object({items: v.array(record), truncated: v.boolean()});
+const history = v.object({items: v.array(record)});
 export type DurableTaskActivity = v.InferOutput<typeof record>;
 export type DurableTaskActivityHistory = v.InferOutput<typeof history>;
 
@@ -54,7 +54,7 @@ export function addDurableTaskActivity(previous: DurableTaskActivityHistory | un
     || (existing.progress.bytes?.reused ?? 0) > (next.progress.bytes?.reused ?? 0)
     || JSON.stringify(existing) === JSON.stringify(next))) return previous;
   const updated = index < 0 ? [...items, next] : items.map((item, at) => at === index ? next : item);
-  return {items: updated.sort(activityOrder), truncated: previous?.truncated === true};
+  return {items: updated.sort(activityOrder)};
 }
 
 /** Saved windows lead. Historical live tails require a shared ordering anchor. */
@@ -70,7 +70,6 @@ export function mergeDurableTaskActivity(previous: DurableTaskActivityHistory | 
       merged = addDurableTaskActivity(merged, item);
     }
   }
-  if (previous.truncated && !merged.truncated) merged = {...merged, truncated: true};
   return JSON.stringify(merged) === JSON.stringify(previous) ? previous : merged;
 }
 

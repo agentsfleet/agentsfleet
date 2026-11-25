@@ -59,9 +59,5 @@ export class ActivityPrinter {
     for (const item of value["items"]) {
       if (isRecord(item) && isString(item["kind"])) this.frame(item["kind"], item);
     }
-    if (value["truncated"] === true && !this.#seen.has("truncated")) {
-      this.#seen.set("truncated", "yes");
-      this.#print("Earlier progress stages are outside the retained activity window.");
-    }
   }
 }

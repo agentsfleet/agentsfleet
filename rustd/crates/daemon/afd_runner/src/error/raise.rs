@@ -173,7 +173,7 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         ),
         (
             "datastore",
-            afd_db::error::invalid_bool_knob("MIGRATE_ON_START").into(),
+            afd_db::error::missing_url(afd_db::DbRole::Default).into(),
         ),
         // The ledger this crate asks for a sweep's cursor. Its code, its
         // sentence and its outage class are all read OFF the source rather

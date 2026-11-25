@@ -278,11 +278,18 @@ async fn a_storage_outage_skips_the_durable_task_checkpoint_and_the_run_goes_on(
             Ok(RecoverySave::Skipped(RecoverySkip::Unavailable))
         ));
         assert!(!run.interrupt.is_cancelled());
-        assert!(
-            logs.text().contains("task_checkpoint_skipped"),
-            "{}",
-            logs.text()
+        let text = logs.text();
+        assert!(text.contains("task_checkpoint_skipped"), "{text}");
+        let skip = format!(
+            "error_code={}",
+            af_core::error_code::RUN_CHECKPOINT_UNAVAILABLE.as_str()
         );
+        let cause = format!(
+            "cause_error_code={}",
+            outage(Verb::DurableTaskCheckpointPlan).code().as_str()
+        );
+        assert!(text.contains(&skip), "the record names the skip: {text}");
+        assert!(text.contains(&cause), "and the outage behind it: {text}");
         drop(owner);
         drop(run);
         assert!(

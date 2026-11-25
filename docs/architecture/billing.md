@@ -185,7 +185,7 @@ Usage on your own model key appears as run time only; your provider bills the to
 - **An expired run's last slice is not billed.** A run that ends unreported leaves its time since the last renewal unlogged. That gap is at most one run lifetime.
 - **No purchase flow.** Credits arrive only as the starter grant or a manual grant; the schema has no purchase table.
 - **No key test call.** A bad provider key surfaces at the first turn, when the provider refuses it.
-- **Declared but unrecorded.** `agentsfleet_billing_unpriced_tokens_total` and `agentsfleet.billing.credit.consumed` have no caller.
+- **Declared but unrecorded.** `agentsfleet_billing_unpriced_tokens_total` has no caller.
 
 ## Related pages
 

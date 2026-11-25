@@ -72,6 +72,7 @@ fn assert_every_named_code_is_registered() {
         error_code::AGENTSFLEET_CREDENTIAL_MISSING,
         error_code::API_BACKPRESSURE,
         error_code::TOOL_CALL_NOT_FOUND,
+        error_code::SCHEDULE_STILL_REGISTERED,
     ] {
         assert!(
             REGISTRY.contains(&named),

@@ -32,7 +32,7 @@
 use core::time::Duration;
 
 use af_observability::metrics::instrument::Instruments;
-use af_observability::metrics::label::cost::{ChargeClass, ErrorType};
+use af_observability::metrics::label::cost::ErrorType;
 use af_observability::metrics::label::fleet::{
     DeliveryStage, FoldOutcome, IncomingTurnOutcome, ReadyWake, RunnerRun, SignupFailure,
     SteerPlaced,
@@ -73,9 +73,6 @@ const RUNNER: &str = "runner-drive-fixture";
 /// A resident-set reading, in bytes. Any plausible magnitude does: the cell
 /// stores what it is handed and this test asserts it did not panic doing so.
 const RESIDENT_BYTES: u64 = 67_108_864;
-
-/// A spend, in nanocredits. Carried by the producer, never interpreted here.
-const NANOCREDITS: u64 = 1_000_000;
 
 /// Every fleet producer fires, including all six signup refusals.
 #[test]
@@ -252,11 +249,4 @@ fn test_every_cost_producer_runs_its_body() {
             error,
         });
     }
-
-    producers::cost::credits_consumed(
-        "claude-opus-5",
-        "sandboxed",
-        ChargeClass::Settle,
-        NANOCREDITS,
-    );
 }

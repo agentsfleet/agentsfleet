@@ -33,7 +33,7 @@ fn progress(id: &str, completed: u32) -> DurableTaskActivity {
 
 async fn saved(run: &Held) -> DurableTaskActivityHistory {
     let Json(history) = sqlx::query_scalar::<_, Json<DurableTaskActivityHistory>>(
-        "SELECT jsonb_build_object('items', durable_task_activity, 'truncated', durable_task_activity_truncated) \
+        "SELECT jsonb_build_object('items', durable_task_activity) \
          FROM thread.turns WHERE thread_id=$1 AND id=$2",
     )
     .bind(&run.fleet)
@@ -127,7 +127,6 @@ async fn history_retains_every_stage_in_monotonic_sequence() {
     }
     let history = saved(&run).await;
     assert_eq!(history.items.len(), 130, "nothing caps the history");
-    assert!(!history.truncated, "no stage was discarded");
     let sequences: Vec<_> = history
         .items
         .iter()

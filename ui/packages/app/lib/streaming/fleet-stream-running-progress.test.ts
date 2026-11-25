@@ -9,7 +9,7 @@ const TURN = "running-progress";
 const progress: DurableTaskActivityHistory = {items: [{kind: "durable_task_transfer_progress", progress: {
   activity_id: "019f0000-0000-7000-8000-000000000001", durable_task_id: null, source_turn_id: null,
   operation: "capture", phase: "uploading", provider: null, model: null, completed: 3, total: 10,
-}}], truncated: false};
+}}]};
 
 function entry(): LiveEntry {
   const current = createEntry(WS, [row({turn_id: TURN, status: "received"})]);

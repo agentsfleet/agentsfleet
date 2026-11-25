@@ -28,6 +28,35 @@ use crate::{
 /// turn, carrying the fleet's name and no installed instructions.
 const SPOKEN: &str = protocol::VERSION;
 
+/// The most of a refused opening's body read for its problem code: the
+/// protocol's control-frame ceiling, since no welcome has announced one yet
+/// and a problem document is the daemon's answer on the control stream.
+const REFUSAL_BODY_BYTES: u64 = protocol::CONTROL_MESSAGE_BYTES_MAX as u64;
+
+/// The event a busy daemon's refusal logs when its body could not be read.
+const EVENT_BODY_UNREAD: &str = "runner_open_body_unread";
+
+/// Logs a busy daemon's refusal whose body was not read to its end, so the
+/// missing code is explained: `timed_out` when the deadline fell first.
+fn log_body_unread(
+    unavailable: &crate::Error,
+    status: http::StatusCode,
+    kind: StreamKind,
+    timed_out: bool,
+) {
+    // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+    let error_code = unavailable.code();
+    let http_status = status.as_u16();
+    let stream = kind.as_str();
+    tracing::warn!(
+        event = EVENT_BODY_UNREAD,
+        %error_code,
+        http_status,
+        stream,
+        timed_out
+    );
+}
+
 /// Kept: a zero interval in a welcome would fire the runner's rounds back to back.
 pub(crate) const MIN_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(1);
 
@@ -272,18 +301,19 @@ impl Opening<'_> {
                 response
                     .into_body()
                     .reader()
-                    .take(4096)
+                    .take(REFUSAL_BODY_BYTES)
                     .read_to_end(&mut body),
             )
             .await;
             // A busy daemon stays retryable even when its body is cut short;
             // the partial body then names no code.
             if status.is_server_error() || status == http::StatusCode::TOO_MANY_REQUESTS {
-                return Err(error::unavailable_with_body(
-                    crate::client::Verb::Open,
-                    status.as_u16(),
-                    &body,
-                ));
+                let unavailable =
+                    error::unavailable_with_body(crate::client::Verb::Open, status.as_u16(), &body);
+                if !matches!(read, Ok(Ok(_))) {
+                    log_body_unread(&unavailable, status, kind, read.is_err());
+                }
+                return Err(unavailable);
             }
             read??;
             return Err(error::refused_with_body(

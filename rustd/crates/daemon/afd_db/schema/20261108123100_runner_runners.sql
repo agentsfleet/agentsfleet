@@ -31,7 +31,6 @@ CREATE TABLE runner.runners (
     selftest_sandbox_tier    TEXT,
     selftest_network_policy  TEXT,
     run_version            BIGINT  NOT NULL,
-    last_run_type          TEXT,
     created_at               TIMESTAMPTZ(3)  NOT NULL,
     updated_at               TIMESTAMPTZ(3)  NOT NULL,
     CONSTRAINT uq_runners_token_hash UNIQUE (token_hash),

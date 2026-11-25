@@ -158,7 +158,7 @@ impl sqlx::error::DatabaseError for LockWaitExpired {
     reason = "a sample builder whose own preconditions fail should stop the suite"
 )]
 pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
-    let datastore = afd_db::error::invalid_bool_knob("MIGRATE_ON_START");
+    let datastore = afd_db::error::missing_url(afd_db::DbRole::Default);
     let (entropy, ctrl) = af_crypto::entropy::Entropy::new_mocked();
     ctrl.fail_next();
     let entropy = entropy

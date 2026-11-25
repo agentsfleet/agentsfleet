@@ -35,7 +35,7 @@ export function visualTurns(scenario: VisualScenario, started: number, includeCo
     createdAt: new Date(started - 60_000), status: scenario === "running" ? "received" : "processed",
     wallMs: completed ? 138_000 : null, tokens: null, costNanos: completed ? "340000000" : null,
     custom: {requestJson: JSON.stringify({message: "Update the runner image using the release checklist. Run the scans, then ask me before publishing."})},
-    ...(completed ? {durableTaskActivity: {truncated: false, items: [{kind: "durable_task_decision_completed" as const, progress: {
+    ...(completed ? {durableTaskActivity: {items: [{kind: "durable_task_decision_completed" as const, progress: {
       activity_id: DURABLE_TASK_IDS[1], durable_task_id: DURABLE_TASK_IDS[0], source_turn_id: null, operation: "goal" as const,
       phase: "recorded" as const, provider: null, model: null, completed: 1, total: 1}}]}} : {})}];
 }

@@ -18,7 +18,7 @@ function activity(id: string | null): DurableTaskActivity {
     operation: "capture", phase: "saved", provider: null, model: null, completed: 1, total: 1}};
 }
 function history(...ids: (string | null)[]) {
-  return [evt({durableTaskActivity: {items: ids.map(activity), truncated: false}})];
+  return [evt({durableTaskActivity: {items: ids.map(activity)}})];
 }
 function path(input: RequestInfo | URL): string {return typeof input === "string" ? input : input instanceof URL ? input.href : input.url;}
 

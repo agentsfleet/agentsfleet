@@ -8,7 +8,7 @@
 -- A steer names no reply, so its conversation is the unaddressed one. With no
 -- live run, any earlier unsettled message waits ahead of it. With one, the
 -- message in the way is assign_inputs.sql's barrier: in that conversation,
--- after the run's own, parked, task-bound or sent by no person. Every message
+-- after the run's own, task-bound or sent by no person. Every message
 -- between the run's own and the steer is looked at, so a barrier anywhere in
 -- the backlog is found.
 --
@@ -42,14 +42,14 @@ SELECT r.run_turn_id,
                   AND a.sequence < m.sequence)
             ELSE EXISTS (
                 SELECT 1 FROM (
-                    SELECT a.parked_at, a.durable_task_id, a.producer, a.actor
+                    SELECT a.durable_task_id, a.producer, a.actor
                     FROM thread.turns a
                     WHERE a.thread_id = m.fleet_id
                       AND a.reply_provider IS NULL AND a.reply_address IS NULL
                       AND a.settled_at IS NULL
                       AND a.sequence > r.head_sequence AND a.sequence < m.sequence
                 ) ahead
-                WHERE NOT (ahead.parked_at IS NULL AND ahead.durable_task_id IS NULL
+                WHERE NOT (ahead.durable_task_id IS NULL
                            AND ahead.producer = $4 AND ahead.actor <> $5
                            AND ahead.actor LIKE $6))
        END AS earlier_waiting

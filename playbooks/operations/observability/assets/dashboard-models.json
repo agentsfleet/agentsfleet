@@ -723,58 +723,6 @@
           "sort": "desc"
         }
       }
-    },
-    {
-      "id": 141,
-      "title": "Credit usage rate",
-      "type": "timeseries",
-      "description": "Billing credits consumed per second; not currency or a per-provider invoice.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "__PROMETHEUS_UID__"
-      },
-      "gridPos": {
-        "x": 12,
-        "y": 40,
-        "w": 12,
-        "h": 8
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum(rate(agentsfleet_billing_credit_consumed[$__rate_interval])) / 1e9",
-          "legendFormat": "Credit usage rate",
-          "range": true,
-          "datasource": {
-            "type": "prometheus",
-            "uid": "__PROMETHEUS_UID__"
-          }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "suffix: credits/s",
-          "noValue": "No samples",
-          "links": [
-            {
-              "title": "Model traces",
-              "url": "/explore?left={%22datasource%22%3A%22${tempo}%22%2C%22queries%22%3A%5B{%22refId%22%3A%22A%22%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22{%20name%20%3D%20%5C%22chat%5C%22%20}%22}%5D%2C%22range%22%3A{%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22}}",
-              "targetBlank": true
-            }
-          ]
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      }
     }
   ],
   "refresh": "30s",

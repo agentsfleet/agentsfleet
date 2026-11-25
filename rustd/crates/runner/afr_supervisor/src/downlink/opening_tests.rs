@@ -35,6 +35,8 @@ const PROPOSED: &str = "019f0000-0000-7000-8000-0000000000a1";
 enum Script {
     /// Answers the opening with this status, a problem body and no stream.
     Status(u16),
+    /// Answers the opening with this status and a body that never arrives.
+    Stalls(u16),
     /// Answers 200 without naming the protocol version it speaks.
     Unversioned,
     /// Answers the hello with something other than a preparation.
@@ -50,6 +52,14 @@ enum Script {
 }
 
 impl Script {
+    /// How long the opening may take: a stalled body is cut off at it.
+    const fn deadline(self) -> Duration {
+        match self {
+            Self::Stalls(_) => Duration::from_millis(300),
+            _ => Duration::from_secs(7),
+        }
+    }
+
     /// What the daemon writes after the `seen`th control frame, if anything.
     fn reply(self, seen: usize) -> Option<Value> {
         let prepared = json!({"type":"prepared", "request_id":1,
@@ -112,6 +122,16 @@ impl Drop for Daemon {
 
 fn open(script: Script, request: Request<Incoming>, stop: CancellationToken) -> Response<Outgoing> {
     let (writer, body) = Outgoing::pipe();
+    if let Script::Stalls(status) = script {
+        // Held open until the daemon stops, so the body never ends.
+        tokio::spawn(async move {
+            let _held = writer;
+            stop.cancelled().await;
+        });
+        let mut response = Response::new(body);
+        *response.status_mut() = StatusCode::from_u16(status).unwrap();
+        return response;
+    }
     if let Script::Status(status) = script {
         tokio::spawn(async move {
             let mut writer = writer;
@@ -207,7 +227,7 @@ async fn attempt(script: Script) -> Proof<(crate::Result<Duration>, Resume)> {
         input: &input,
         output: &output,
         stop: &stop,
-        deadline: Instant::now() + Duration::from_secs(7),
+        deadline: Instant::now() + script.deadline(),
     };
     let mut resume = Resume::default();
     let attached = tokio::time::timeout(
@@ -289,6 +309,48 @@ async fn a_proposal_welcomed_out_of_turn_or_under_another_id_is_never_confirmed(
             Some(PROPOSED),
             "{script:?}: the proposal stays unconfirmed"
         );
+    }
+    Ok(())
+}
+
+#[derive(Clone, Default)]
+struct Logs(Arc<parking_lot::Mutex<Vec<u8>>>);
+
+impl std::io::Write for Logs {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().extend_from_slice(buf);
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+/// A busy daemon whose body never arrives is still worth another attempt, and
+/// the record says why its refusal names no code.
+#[tokio::test]
+async fn a_busy_refusal_whose_body_never_arrives_is_logged_and_retried() -> Proof {
+    for status in [503, 429] {
+        let logs = Logs::default();
+        let writer = logs.clone();
+        let _guard = tracing::subscriber::set_default(
+            tracing_subscriber::fmt()
+                .with_writer(move || writer.clone())
+                .with_ansi(false)
+                .finish(),
+        );
+
+        let (failure, _resume) = refusal(Script::Stalls(status)).await?;
+
+        assert!(
+            matches!(failure.kind(), ErrorKind::Unavailable { status: seen, code: None, .. } if *seen == status),
+            "{status}: {failure:?}"
+        );
+        assert!(failure.is_retryable(), "{status}");
+        let text = String::from_utf8_lossy(&logs.0.lock()).into_owned();
+        assert!(text.contains("runner_open_body_unread"), "{status}: {text}");
+        assert!(text.contains(&format!("http_status={status}")), "{text}");
+        assert!(text.contains("timed_out=true"), "{text}");
     }
     Ok(())
 }
