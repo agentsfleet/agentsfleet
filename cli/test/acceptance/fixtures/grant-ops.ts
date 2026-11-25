@@ -1,159 +1,162 @@
 /**
- * grant-ops.ts — the access-request surface, from the CLI's side of it.
+ * grant-ops.ts — a fleet's access request, as a terminal reads it.
  *
- * A fleet asks for a name-bound refresh handle with `request_access` when its
- * first message tells it to, and waits on the card for a person's answer. The
- * fleet calls no other tool, so this walk exercises permission and delivery
- * without attempting an upstream token exchange.
+ * A fleet asks for a secret or an integration with `request_access`. The
+ * request raises one card in `fleet approvals` and writes one grant in
+ * `fleet grants`; the asking turn ends waiting, and a person's answer on the
+ * card resumes the run in a turn sent by `continuation:<the turn that waited>`.
  */
 
-import { runFleetctl } from "./cli.js";
-import type { AuthContext } from "./native-api.ts";
+import assert from "node:assert/strict";
+import { Schema } from "effect";
 
-/**
- * The gate kind the daemon raises for a mintable credential. Cross-runtime pair
- * of `afd_approval::KIND_INTEGRATION_GRANT` and of the dashboard acceptance
- * suite's constant of the same name.
- */
+import { GATE_STATUS } from "../../../src/constants/approvals.ts";
+import type { PrimeSession } from "./prime-session.ts";
+import { TURN_TIMEOUT_MS, TURN_WAITING, awaitTurn, processed, type Turn } from "./prime-turns.ts";
+
+/** The gate kind an access request raises, as `afd_approval::KIND_INTEGRATION_GRANT` spells it. */
 export const KIND_INTEGRATION_GRANT = "integration_grant";
 
-/** The connector asked for, as `Connector::name()` spells it. */
-export const CONNECTOR_SERVICE_LINEAR = "linear";
-
-/**
- * On-demand handles must be stored under their connector's own name. Linear
- * needs no reverse-routing installation row, unlike GitHub and Slack.
- */
-export const GRANT_CREDENTIAL_NAME = CONNECTOR_SERVICE_LINEAR;
-
-/** The vault-handle field naming the connector. Mirrors
- * `afd_credential::secrets::connector::FIELD_INTEGRATION`. */
-const FIELD_INTEGRATION = "integration";
-const FIELD_REFRESH_TOKEN = "refresh_token";
-
-/** A first message that makes the fleet ask for the connector, and nothing else. */
-export const ACCESS_REQUEST_MESSAGE =
-  `Call request_access with the name ${GRANT_CREDENTIAL_NAME}. When it answers, reply DONE and stop. Call no other tool.`;
-
-/** Grant-row statuses, as `afd_api_wire::grant::status` spells them. */
+/** Grant statuses, as `afd_api_wire::grant::status` spells them. */
 export const GRANT_STATUS = {
   pending: "pending",
   approved: "approved",
   revoked: "revoked",
 } as const;
 
-/** Gate statuses, as `afd_api_wire::approval::status` spells them. */
-export const GATE_STATUS = {
-  pending: "pending",
-  approved: "approved",
+/** How an approved grant reaches a run, as `afd_api_wire::grant::kind` spells it. */
+export const GRANT_KIND = {
+  secret: "secret",
+  integration: "integration",
 } as const;
 
-const SECRET_CREATE_TIMEOUT_MS = 30_000;
-const HTTP_TIMEOUT_MS = 30_000;
-const GATE_POLL_MS = 2_000;
+/** The actor of the turn a person's answer writes (`afd_approval::inbox::resolve`). */
+const CONTINUATION_ACTOR_PREFIX = "continuation:";
+const CARD_POLL_MS = 2_000;
+// How long the asking send may run. The message is admitted at once; the bound
+// only ends a send that is still reading a turn that will never be processed.
+const ASK_SEND_TIMEOUT_MS = 90_000;
+const APPROVALS = ["fleet", "approvals"] as const;
+const FLEET_FLAG = "--fleet";
 
-/** `Grant` as `GET F/integration-grants` lists it. */
-export interface GrantRow {
-  readonly id?: string | null;
-  readonly kind?: string | null;
-  readonly name?: string | null;
-  readonly status?: string | null;
-  readonly approved_at?: number | string | null;
+// `Grant` in rustd/crates/daemon/afd_api_wire/src/grant.rs.
+const GrantSchema = Schema.Struct({
+  id: Schema.String,
+  kind: Schema.String,
+  name: Schema.String,
+  status: Schema.String,
+  scope: Schema.NullOr(Schema.Unknown),
+  approved_at: Schema.NullOr(Schema.String),
+});
+const GrantPageSchema = Schema.Struct({ items: Schema.Array(GrantSchema) });
+
+// `ApprovalSummary` in rustd/crates/daemon/afd_api_wire/src/approval.rs. The
+// evidence is what the request wrote: the name asked for, the kind and the scope.
+const CardSchema = Schema.Struct({
+  gate_id: Schema.String,
+  fleet_id: Schema.String,
+  gate_type: Schema.String,
+  status: Schema.String,
+  proposed_action: Schema.String,
+  blast_radius: Schema.String,
+  resolved_at: Schema.NullOr(Schema.String),
+  resolved_by: Schema.String,
+  evidence: Schema.NullOr(Schema.Struct({
+    service: Schema.String,
+    kind: Schema.String,
+    scope: Schema.NullOr(Schema.Unknown),
+  })),
+});
+const CardPageSchema = Schema.Struct({ items: Schema.Array(CardSchema) });
+const DecisionSchema = Schema.Struct({
+  gate_id: Schema.String,
+  outcome: Schema.String,
+  resolved_at: Schema.String,
+  resolved_by: Schema.String,
+});
+
+export type Grant = typeof GrantSchema.Type;
+export type Card = typeof CardSchema.Type;
+export type Decision = typeof DecisionSchema.Type;
+
+/** Every grant `fleet grants list` reports for the fleet. */
+export async function grantsOf(session: PrimeSession, fleetId: string): Promise<ReadonlyArray<Grant>> {
+  return Schema.decodeUnknownSync(GrantPageSchema)(await session.json(["fleet", "grants", "list", FLEET_FLAG, fleetId])).items;
 }
 
-export interface GateRow {
-  readonly gate_id: string;
-  readonly fleet_id: string;
-  readonly gate_type: string;
-  readonly status: string;
-  readonly proposed_action: string;
-  readonly resolved_by: string;
-  readonly evidence: Record<string, unknown>;
+/** The fleet's one grant for `name`; more than one row, or none, fails. */
+export async function grantFor(session: PrimeSession, fleetId: string, name: string): Promise<Grant> {
+  const grants = await grantsOf(session, fleetId);
+  const mine = grants.filter((grant) => grant.name === name);
+  assert.equal(mine.length, 1, `expected one grant for ${name}; fleet grants list shows ${JSON.stringify(grants)}`);
+  return mine[0] as Grant;
+}
+
+/** The access cards `fleet approvals list --fleet` holds for the fleet, decided or not. */
+export async function accessCards(session: PrimeSession, fleetId: string): Promise<ReadonlyArray<Card>> {
+  const page = Schema.decodeUnknownSync(CardPageSchema)(await session.json([...APPROVALS, "list", FLEET_FLAG, fleetId]));
+  assert.ok(page.items.every((card) => card.fleet_id === fleetId), `the filter let another fleet's card through: ${JSON.stringify(page)}`);
+  return page.items.filter((card) => card.gate_type === KIND_INTEGRATION_GRANT);
+}
+
+/** One card, as `fleet approvals show` prints it. */
+export async function showCard(session: PrimeSession, gateId: string): Promise<Card> {
+  return Schema.decodeUnknownSync(CardSchema)(await session.json([...APPROVALS, "show", gateId]));
+}
+
+/** `fleet approvals approve|deny`, answering the decision the daemon recorded. */
+export async function decide(session: PrimeSession, verb: "approve" | "deny", gateId: string): Promise<Decision> {
+  return Schema.decodeUnknownSync(DecisionSchema)(await session.json([...APPROVALS, verb, gateId]));
+}
+
+export interface Asked {
+  /** The one pending card the request raised. */
+  readonly card: Card;
+  /** The turn whose run asked, which ended waiting on the card. */
+  readonly waiting: Turn;
 }
 
 /**
- * Store the connector handle through the CLI's own vault verb.
- *
- * Through the CLI on purpose: this is the one step of the walk an operator
- * genuinely performs from the terminal today, so driving it over HTTP would
- * skip the surface under test.
+ * The one pending card the fleet's request raised, and the turn left waiting on
+ * it. `sent` says what became of the message that asked, for the failure a
+ * fleet that never asks ends in.
  */
-export async function ensureConnectorHandle(
-  env: Readonly<Record<string, string>>,
-): Promise<void> {
-  const data = JSON.stringify({ [FIELD_INTEGRATION]: CONNECTOR_SERVICE_LINEAR,
-    [FIELD_REFRESH_TOKEN]: GRANT_CREDENTIAL_NAME });
-  const result = await runFleetctl(
-    ["secrets", "create", GRANT_CREDENTIAL_NAME, "--data", data, "--json"],
-    { env, timeoutMs: SECRET_CREATE_TIMEOUT_MS },
-  );
-  if (result.code !== 0) {
-    throw new Error(
-      `secret create ${GRANT_CREDENTIAL_NAME} exited ${result.code}: ` +
-        `${result.stderr.trim() || result.stdout.trim()}`,
-    );
+export async function raisedCard(session: PrimeSession, fleetId: string, sent: Promise<string>): Promise<Asked> {
+  const deadline = Date.now() + TURN_TIMEOUT_MS;
+  let pending: ReadonlyArray<Card> = [];
+  while (pending.length === 0 && Date.now() < deadline) {
+    await Bun.sleep(CARD_POLL_MS);
+    pending = (await accessCards(session, fleetId)).filter((card) => card.status === GATE_STATUS.pending);
   }
+  if (pending.length === 0) {
+    const answered = await Promise.race([sent, Bun.sleep(CARD_POLL_MS).then(() => "the send is still running")]);
+    throw new Error(`fleet ${fleetId} raised no access card within ${TURN_TIMEOUT_MS}ms; ${answered}`);
+  }
+  assert.equal(pending.length, 1, `one request raises one card: ${JSON.stringify(pending)}`);
+  const waiting = await awaitTurn(session, fleetId,
+    (turns) => turns.find((turn) => turn.status === TURN_WAITING), "turn waiting on the card");
+  return { card: pending[0] as Card, waiting };
 }
 
-/** Every grant the CLI reports for one fleet. */
-export async function listGrants(
-  env: Readonly<Record<string, string>>,
-  fleetId: string,
-): Promise<ReadonlyArray<GrantRow>> {
-  const result = await runFleetctl(["fleet", "grants", "list", "--fleet", fleetId, "--json"], {
-    env,
-    timeoutMs: HTTP_TIMEOUT_MS,
-  });
-  if (result.code !== 0) {
-    throw new Error(`grant list exited ${result.code}: ${result.stderr.trim()}`);
-  }
-  const parsed = JSON.parse(result.stdout.trim()) as { items?: ReadonlyArray<GrantRow> };
-  return Array.isArray(parsed.items) ? parsed.items : [];
+/**
+ * Sends `message`, which makes the fleet ask for access, and answers with the
+ * card it raised and the turn left waiting on it.
+ *
+ * The asking turn ends `waiting`, which `fleet steer` does not read as an
+ * answer: told so by the live stream it exits non-zero naming the status, and
+ * on its polling fallback it keeps reading (src/commands/fleet/steer-turns.ts).
+ * So the send's own exit is not asserted. It is left running while the card
+ * is read from `fleet approvals`, and is collected when the file ends.
+ */
+export async function askForAccess(session: PrimeSession, fleetId: string, message: string): Promise<Asked> {
+  const sent = session.run(["fleet", "steer", fleetId, message, "--json"], ASK_SEND_TIMEOUT_MS)
+    .then((result) => `exit ${result.code}: ${result.stdout}${result.stderr}`, (error: unknown) => String(error));
+  session.onClose(async () => { await sent; });
+  return raisedCard(session, fleetId, sent);
 }
 
-async function approvals(ctx: AuthContext, query: string): Promise<ReadonlyArray<GateRow>> {
-  const res = await fetch(
-    `${ctx.apiUrl}/v1/workspaces/${encodeURIComponent(ctx.workspaceId)}/approvals?${query}`,
-    {
-      headers: { Authorization: `Bearer ${ctx.token}` },
-      signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
-    },
-  );
-  if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    throw new Error(`approvals read ${res.status}: ${detail.slice(0, 200)}`);
-  }
-  const body = (await res.json()) as { items?: ReadonlyArray<GateRow> };
-  return Array.isArray(body.items) ? body.items : [];
-}
-
-/** The one unanswered integration-grant card a fleet's request raised, or null
- * while the fleet's first run has not asked yet. */
-export async function pendingGateFor(
-  ctx: AuthContext,
-  fleetId: string,
-): Promise<GateRow | null> {
-  const query = new URLSearchParams({
-    fleet_id: fleetId,
-    gate_type: KIND_INTEGRATION_GRANT,
-    status: GATE_STATUS.pending,
-  });
-  const items = await approvals(ctx, query.toString());
-  return items[0] ?? null;
-}
-
-
-
-/** The card the fleet's `request_access` raises, once its first run asks. */
-export async function waitForPendingGate(
-  ctx: AuthContext,
-  fleetId: string,
-  deadline: number,
-): Promise<GateRow> {
-  while (Date.now() < deadline) {
-    const card = await pendingGateFor(ctx, fleetId);
-    if (card) return card;
-    await Bun.sleep(GATE_POLL_MS);
-  }
-  throw new Error(`fleet ${fleetId} raised no access request before the deadline`);
+/** The turn a person's answer wrote for the run `waiting` left, once that run has answered. */
+export async function resumedTurn(session: PrimeSession, fleetId: string, waiting: Turn): Promise<Turn> {
+  return awaitTurn(session, fleetId,
+    processed((turn) => turn.actor === `${CONTINUATION_ACTOR_PREFIX}${waiting.turn_id}`), "answered turn resuming the request");
 }

@@ -62,20 +62,27 @@ export const READ_ONLY_COMMANDS: ReadonlyArray<ReadOnlyCommandRow> = [
 
 export interface PerFleetReadOnlyCommandRow {
   readonly argsHead: ReadonlyArray<string>;
+  /** Where the fleet goes in argv: after `--fleet`, or as the command's positional. */
+  readonly fleetAs: "flag" | "positional";
   readonly isList?: boolean;
   readonly itemsKey?: string;
   readonly requiredKey?: string;
   readonly group?: string;
 }
 
-// Read-only commands scoped to a live fleet_id. The spec interpolates
-// the §4a-installed fleetId via `--fleet <id>` before running. Kept
-// separate from READ_ONLY_COMMANDS (which is workspace-scoped) because
-// `grant list` requires `--fleet <id>`; the §4b read-only sweep cannot
-// thread fixture state into a static argv.
+// Read-only commands scoped to one fleet. The spec threads the fleet it
+// primed into each row's argv, as `--fleet <id>` or as the positional the
+// command declares. Kept separate from READ_ONLY_COMMANDS (which is
+// workspace-scoped): a static argv cannot carry a fleet created at run time.
+//
+// Every list a fleet's page shows is here: what it can access (grants), what
+// it remembers (memory) and what wakes it (schedules and triggers). A fleet
+// that has added none answers each with an empty list.
 export const PER_AGENTSFLEET_READ_ONLY_COMMANDS: ReadonlyArray<PerFleetReadOnlyCommandRow> = [
-  { argsHead: ["fleet", "grants", "list"], isList: true, itemsKey: "items", group: "grant" },
-  { argsHead: ["fleet", "memory", "list"], isList: true, itemsKey: "items", group: "memory" },
+  { argsHead: ["fleet", "grants", "list"], fleetAs: "flag", isList: true, itemsKey: "items", group: "grant" },
+  { argsHead: ["fleet", "memory", "list"], fleetAs: "flag", isList: true, itemsKey: "items", group: "memory" },
+  { argsHead: ["fleet", "schedule", "list"], fleetAs: "positional", isList: true, itemsKey: "schedules" },
+  { argsHead: ["fleet", "triggers", "list"], fleetAs: "positional", isList: true, itemsKey: "items" },
 ];
 
 export interface RequiresIdentifierRow {

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { existsSync, readdirSync } from "node:fs";
 import { mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -29,6 +30,9 @@ const CLERK_WEBHOOK_SECRET = "fixture-clerk-webhook-secret";
 const REGULAR_EMAIL = "regular@example.test";
 const ADMIN_EMAIL = "admin@example.test";
 const CHILD_DEADLINE_MS = 35_000;
+const ACCEPTANCE_DIR = "test/acceptance";
+// A spec that needs the live service says so in its name.
+const LIVE_SPEC = /-live\.spec\.ts$/u;
 
 function completeLiveEnv(): NodeJS.ProcessEnv {
   return {
@@ -98,6 +102,21 @@ describe("CLI acceptance lane membership", () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+
+  it("names only files that exist in the live lane's plan", () => {
+    const plan = liveExecutionPlan();
+    const planned = [plan.handshake, ...plan.parallel, plan.serial];
+    expect(planned.filter((file) => !existsSync(path.join(CLI_ROOT, file)))).toEqual([]);
+  });
+
+  it("runs every spec named as live in the live lane", () => {
+    const plan = liveExecutionPlan();
+    const named = readdirSync(path.join(CLI_ROOT, ACCEPTANCE_DIR))
+      .filter((file) => LIVE_SPEC.test(file))
+      .map((file) => `${ACCEPTANCE_DIR}/${file}`);
+    expect(named.length).toBeGreaterThan(0);
+    expect(named.filter((file) => !plan.parallel.includes(file))).toEqual([]);
   });
 
   it("fails the deterministic lane when any test skips", () => {

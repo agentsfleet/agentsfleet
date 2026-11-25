@@ -13,49 +13,45 @@
  * asks. So the seed is one real run: a message asks the fleet to remember a
  * fact, and the search asks for it after.
  *
+ * The fleet is a night-owl, and the fact is what its fixture says it is told
+ * to pin (`remembers` in `tests/fixtures/fleets/night-owl.json`), with a word
+ * of this run's after it.
+ *
  * Live-only: registers real tests only when `AGENTSFLEET_ACCEPTANCE_TARGET` is
  * an https URL, matching every other live spec in this lane.
  */
 
-import { describe, it, beforeAll, afterAll } from "bun:test";
+import { describe, it, beforeAll } from "bun:test";
 import assert from "node:assert/strict";
-import crypto from "node:crypto";
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
 import { Schema } from "effect";
 
 import { ACCEPTANCE_TARGET_ENV } from "./fixtures/constants.ts";
-import { composeEnv, runFleetctl } from "./fixtures/cli.js";
-import type { RunResult } from "./fixtures/cli.js";
-import { assertNoSecretLeak, refusalCode } from "./fixtures/negatives.ts";
-import { resolveAcceptanceEnv, resolveClerkSecret, resolveFixtureEmail } from "./global-setup.ts";
-import { attachJwt } from "./fixtures/clerk-admin.ts";
-import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
-import { createFleetFromCli } from "./fixtures/fleet-create.ts";
-import { deleteFixtureFleet } from "./fixtures/teardown.ts";
+import { refusalCode } from "./fixtures/negatives.ts";
+import { entry, primeFleet as primeFixture } from "./fixtures/prime-fleets.ts";
+import { isLive, ownWorkspace, primeFleet, primeSession } from "./fixtures/prime-session.ts";
+import { awaitTurn, processed, runWord } from "./fixtures/prime-turns.ts";
 import { trailingJson } from "./fixtures/steer-envelope.ts";
 import { randomUuidv7 } from "./helpers-lifecycle-with-token.ts";
 import { EXIT_CODE } from "../../src/errors/index.ts";
 
-const target = process.env[ACCEPTANCE_TARGET_ENV] ?? "";
-const isLive = target.startsWith("https://");
+const fixture = primeFixture("night-owl");
+const guidance = entry(fixture.remembers, 0, "standing guidance");
+// This file's own workspace: the wake-ups journey creates a night-owl too, and
+// a workspace holds one fleet of a name.
+const WORKSPACE = "fixture-cli-memory";
 
-const STATE_DIR_PREFIX = "agentsfleet-memory-" as const;
-const NO_COLOR = "1" as const;
 const JSON_FLAG = "--json" as const;
 const FLEET_FLAG = "--fleet" as const;
 const MEMORY = ["fleet", "memory"] as const;
 // The SSE round trip falls back to a ~60s poll window before rendering; the
 // budget has to exceed the CLI's own internal cap.
 const STEER_TIMEOUT_MS = 180_000;
-const SETUP_TIMEOUT_MS = 180_000;
+const SETUP_TIMEOUT_MS = 360_000;
 // `afr_tools::catalog::MEMORY_STORE`, and the category the message names: only
 // an explicit `core` is pinned into every later prompt.
 const MEMORY_STORE_TOOL = "memory_store" as const;
 const PINNED_CATEGORY = "core" as const;
-const MEMORY_KEY = "release_freeze_owner" as const;
-const FLEET_NAME = "release-freeze-memory";
+const MEMORY_KEY = "standing_guidance" as const;
 const STATUS_PROCESSED = "processed" as const;
 // af_core/src/error_code/fleet.rs: memory asked of a fleet that is not there.
 const CODE_FLEET_NOT_FOUND = "UZ-MEM-002" as const;
@@ -71,10 +67,7 @@ const PageSchema = Schema.Struct({ items: Schema.Array(EntrySchema), total: Sche
 
 // A word nothing but this run's message contains, so a match can only be the
 // stored fact.
-const freshWord = (): string => `harbour${crypto.randomBytes(4).toString("hex")}`;
-
-// The fleet's first message asks for nothing it would store.
-const FIRST_MESSAGE = "Reply READY and stop. Call no tool." as const;
+const freshWord = (): string => runWord("harbour");
 
 // The message that asks for the store, carrying the fact as the content.
 function rememberThis(fact: string): string {
@@ -88,18 +81,11 @@ if (!isLive) {
   });
 } else {
   describe("memory-search-live — a fleet remembers what it was told, and search finds it", () => {
-    let sessionJwt = "";
-    let stateDir = "";
-    let env: Record<string, string> = {};
+    const session = primeSession(ownWorkspace(WORKSPACE));
+    const run = session.run;
     let fleetId = "";
     const word = freshWord();
-    const fact = `The release freeze owner this week is the ${word} rota.`;
-
-    async function run(args: ReadonlyArray<string>, timeoutMs?: number): Promise<RunResult> {
-      const result = await runFleetctl(args, timeoutMs === undefined ? { env } : { env, timeoutMs });
-      assertNoSecretLeak(result, sessionJwt);
-      return result;
-    }
+    const fact = `${guidance} The word for this run is ${word}.`;
 
     async function memoryPage(args: ReadonlyArray<string>): Promise<typeof PageSchema.Type> {
       const result = await run([...MEMORY, ...args, FLEET_FLAG, fleetId, JSON_FLAG]);
@@ -108,22 +94,12 @@ if (!isLive) {
     }
 
     beforeAll(async () => {
-      const apiUrl = resolveAcceptanceEnv().apiUrl;
-      const minted = await attachJwt(resolveClerkSecret(), { email: resolveFixtureEmail("regular") });
-      sessionJwt = minted.sessionJwt;
-      stateDir = await fs.mkdtemp(path.join(os.tmpdir(), STATE_DIR_PREFIX));
-      env = composeEnv({ AGENTSFLEET_API_URL: apiUrl, AGENTSFLEET_STATE_DIR: stateDir, NO_COLOR });
-      await hydrateWorkspacesForToken({ apiUrl, token: sessionJwt, stateDir });
-      fleetId = (await createFleetFromCli(env, { name: FLEET_NAME, message: FIRST_MESSAGE })).fleet_id;
+      // The first message asks for nothing the fleet would store, and its turn
+      // is waited out so the message that asks starts a run of its own.
+      const created = await primeFleet(session, fixture);
+      fleetId = created.fleet_id;
+      await awaitTurn(session, fleetId, processed((turn) => turn.turn_id === created.turn_id), "answered first turn");
     }, SETUP_TIMEOUT_MS);
-
-    afterAll(async () => {
-      try {
-        if (fleetId) await deleteFixtureFleet(env, fleetId);
-      } finally {
-        if (stateDir) await fs.rm(stateDir, { recursive: true, force: true });
-      }
-    });
 
     it("a run asked to remember one fact finishes processed", async () => {
       assert.ok(fleetId, "the fleet was not created in beforeAll");

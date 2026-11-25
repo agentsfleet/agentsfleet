@@ -1,14 +1,14 @@
 /**
- * logs-turns-live — live `fleet logs` + `fleet turns` read paths against a freshly
- * installed fleet (seeded-credentials session, mirrors
- * lifecycle-with-token.spec.ts).
+ * logs-turns-live — live `fleet logs` + `fleet turns` read paths against a
+ * morning-rooster, the prime set's plainest fleet (seeded-credentials session,
+ * mirrors lifecycle-with-token.spec.ts).
  *
  * Scenario:
  *   - mint a Clerk session JWT via the admin path
  *   - hydrate workspaces.json directly from the API (the CLI only
  *     hydrates inside the login flow)
- *   - install the platform-ops bundle (prefix-scoped name) — the install
- *     itself generates the first events on the fleet's timeline
+ *   - prime the fleet and wait out its first turn, the first row on the
+ *     fleet's timeline
  *   - `fleet logs --fleet <id> --json` returns a bounded, parseable
  *     `{items, next_cursor}` envelope; the read is time-bounded via
  *     `runFleetctl`'s `timeoutMs` so a wedged backend can't hang the suite
@@ -27,9 +27,7 @@
  *   - `fleet turns` with a missing `<fleet_id>` rejected by the parser
  *   - `fleet logs --limit` out of bounds rejected client-side (TURNS_LIMIT_BOUNDS)
  *
- * Teardown: prefix-scoped `cleanWorkspaceFleets` — only this run's fleets
- * are killed; shared-tenant residue from other runs is left untouched and
- * global emptiness is never asserted.
+ * Teardown: the session deletes the fleet it primed, by its id.
  *
  * The minted JWT must not appear in any spawn's stdout/stderr
  * (`assertNoSecretLeak` after every `runFleetctl`).
@@ -39,25 +37,14 @@
  * runs them live).
  */
 
-import { describe, it, beforeAll, afterAll } from "bun:test";
+import { describe, it, beforeAll } from "bun:test";
 import assert from "node:assert/strict";
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
 
-import { ACCEPTANCE_RUN_PREFIX, ACCEPTANCE_TARGET_ENV } from "./fixtures/constants.ts";
-import { composeEnv, runFleetctl } from "./fixtures/cli.js";
-import type { RunResult } from "./fixtures/cli.js";
+import { ACCEPTANCE_TARGET_ENV } from "./fixtures/constants.ts";
 import { assertNoSecretLeak, expectMissingArg } from "./fixtures/negatives.ts";
-import {
-  resolveAcceptanceEnv,
-  resolveClerkSecret,
-  resolveFixtureEmail,
-} from "./global-setup.ts";
-import { attachJwt } from "./fixtures/clerk-admin.ts";
-import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
-import { createProbeFleet } from "./fixtures/seed.ts";
-import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
+import { primeFleet as primeFixture } from "./fixtures/prime-fleets.ts";
+import { isLive, ownWorkspace, primeFleet, primeSession } from "./fixtures/prime-session.ts";
+import { awaitTurn, processed } from "./fixtures/prime-turns.ts";
 import {
   AGENT_FLAG,
   CURSOR_FLAG,
@@ -71,15 +58,14 @@ import {
   walkTurnsCursor,
 } from "./fixtures/logs-turns-ops.ts";
 import type { TurnItem, TurnsEnvelope } from "./fixtures/logs-turns-ops.ts";
-import { API_URL_ENV, NO_COLOR_ENV, STATE_DIR_ENV } from "../../src/constants/env.ts";
 import { isInstant } from "../../src/lib/instant.ts";
 
-const target = process.env[ACCEPTANCE_TARGET_ENV] ?? "";
-const isLive = target.startsWith("https://");
-
-// Wire/output literals (RULE UFS — each used >=2x or crosses a boundary).
-const STATE_DIR_PREFIX = "agentsfleet-logs-turns-" as const;
-const NO_COLOR_ON = "1" as const;
+const fixture = primeFixture("morning-rooster");
+// This file's own workspace: other files create a morning-rooster too, and a
+// workspace holds one fleet of a name.
+const WORKSPACE = "fixture-cli-logs-turns";
+// The create and its first turn's run.
+const SETUP_TIMEOUT_MS = 360_000;
 
 // `logs` is a single bounded HTTP read (not a follow/stream), but cap it
 // anyway so a wedged backend surfaces as a `runFleetctl` timeout rather
@@ -104,56 +90,21 @@ const CURSOR_ROUNDTRIP_TIMEOUT_MS = 30_000;
 
 if (!isLive) {
   describe("logs-turns-live.spec.ts", () => {
-    it.skip("requires AGENTSFLEET_ACCEPTANCE_TARGET to be an https URL", () => {});
+    it.skip(`requires ${ACCEPTANCE_TARGET_ENV} to be an https URL`, () => {});
   });
 } else {
   describe("logs-turns-live — logs tail + turns cursor walk", () => {
-    let apiUrl = "";
-    let sessionJwt = "";
-    let stateDir = "";
-    let env: Record<string, string> = {};
-    let workspaceId = "";
+    const session = primeSession(ownWorkspace(WORKSPACE));
+    const runWithEnv = session.run;
     let fleetId = "";
 
-    async function runWithEnv(
-      args: ReadonlyArray<string>,
-      timeoutMs?: number,
-    ): Promise<RunResult> {
-      const result = await runFleetctl(args, timeoutMs === undefined ? { env } : { env, timeoutMs });
-      assertNoSecretLeak(result, sessionJwt);
-      return result;
-    }
-
     beforeAll(async () => {
-      apiUrl = resolveAcceptanceEnv().apiUrl;
-      const clerkSecret = resolveClerkSecret();
-      const email = resolveFixtureEmail("regular");
-      const minted = await attachJwt(clerkSecret, { email });
-      sessionJwt = minted.sessionJwt;
-
-      stateDir = await fs.mkdtemp(path.join(os.tmpdir(), STATE_DIR_PREFIX));
-      env = composeEnv({
-        [API_URL_ENV]: apiUrl,
-        [STATE_DIR_ENV]: stateDir,
-        [NO_COLOR_ENV]: NO_COLOR_ON,
-      });
-      const hydrated = await hydrateWorkspacesForToken({ apiUrl, token: sessionJwt, stateDir });
-      workspaceId = hydrated.currentWorkspaceId;
-
-      // Install once for the whole suite — generates the timeline the logs
-      // tail and the events walk both read. Prefix-scoped name so teardown
-      // only reaps this run's fleet.
-      fleetId = (await createProbeFleet({ env, seedFixtureSecrets: false })).id;
-    });
-
-    afterAll(async () => {
-      if (env && workspaceId) {
-        try {
-          await cleanWorkspaceFleets(env, { workspaceId, runPrefix: ACCEPTANCE_RUN_PREFIX });
-        } catch { /* best-effort teardown — shared DEV tenant */ }
-      }
-      if (stateDir) await fs.rm(stateDir, { recursive: true, force: true });
-    });
+      // Primed once for the whole suite. Its first turn is waited out, so the
+      // logs tail and the turns walk both read a timeline that holds a row.
+      const created = await primeFleet(session, fixture);
+      fleetId = created.fleet_id;
+      await awaitTurn(session, fleetId, processed((turn) => turn.turn_id === created.turn_id), "answered first turn");
+    }, SETUP_TIMEOUT_MS);
 
     describe("logs tail (bounded)", () => {
       it("fleet logs --fleet <id> --json returns a parseable {items,next_cursor} envelope", async () => {
@@ -195,7 +146,7 @@ if (!isLive) {
         const parsed = JSON.parse(result.stdout.trim() || "{}") as { items?: unknown };
         assert.ok(Array.isArray(parsed.items), `fleet turns ${ITEMS_KEY} not an array: ${result.stdout}`);
         const rows = parsed.items as ReadonlyArray<TurnItem>;
-        assert.ok(rows.length > 0, `a saved fleet lists its setup turns: ${result.stdout}`);
+        assert.ok(rows.length > 0, `a fleet lists the turn its first message made: ${result.stdout}`);
         for (const row of rows) {
           const id = row[TURN_ID_KEY];
           assert.ok(typeof id === "string" && UUID_PATTERN.test(id),
@@ -206,7 +157,7 @@ if (!isLive) {
 
     describe("events cursor walk", () => {
       it("walks pages to exhaustion without an infinite loop", async () => {
-        const walk = await walkTurnsCursor(env, fleetId, (page, idx) => {
+        const walk = await walkTurnsCursor(session.env(), fleetId, (page, idx) => {
           assertEnvelopeShape(page, idx);
           assertTimestampsWellFormed(page, idx);
         });
@@ -221,7 +172,7 @@ if (!isLive) {
       }, WALK_TIMEOUT_MS);
 
       it("emitted cursors are strictly distinct (monotonic, no cycles)", async () => {
-        const walk = await walkTurnsCursor(env, fleetId);
+        const walk = await walkTurnsCursor(session.env(), fleetId);
         const unique = new Set(walk.cursors);
         assert.equal(unique.size, walk.cursors.length,
           `cursor sequence had duplicates: ${JSON.stringify(walk.cursors)}`);
@@ -254,8 +205,8 @@ if (!isLive) {
 
     describe("negative paths (no residue)", () => {
       it("fleet turns with no <fleet_id> is rejected before any request", async () => {
-        const result = await expectMissingArg([...TURNS_COMMAND], env);
-        assertNoSecretLeak(result, sessionJwt);
+        const result = await expectMissingArg([...TURNS_COMMAND], session.env());
+        assertNoSecretLeak(result, session.token());
       });
 
       it("fleet logs --limit out of bounds is rejected client-side", async () => {
