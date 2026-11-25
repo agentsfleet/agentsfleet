@@ -86,8 +86,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          run_id=$(gh run list --workflow deploy-dev.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId')
-          test -n "$run_id" || { echo "::error::no successful deploy-dev run on main to take a signed toolbox from"; exit 1; }
+          # The newest toolbox main's build signed: a deploy whose later
+          # acceptance failed still built one, and an artifact lives 3 days.
+          run_id=$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?name=runner-toolbox&per_page=30" \
+            --jq '[.artifacts[] | select((.expired | not) and .workflow_run.head_branch == "main")][0].workflow_run.id // empty')
+          test -n "$run_id" || { echo "::error::no unexpired runner-toolbox artifact from main's dev build"; exit 1; }
           gh run download "$run_id" --name runner-toolbox --dir "$RUNNER_TEMP/toolbox"
           echo "ACCEPTANCE_LOCAL_TOOLBOX_DIR=$RUNNER_TEMP/toolbox" >> "$GITHUB_ENV"
 
@@ -103,7 +106,7 @@ jobs:
           OIDC_ISSUER: op://${{ vars.VAULT_DEV }}/clerk-dev/issuer
           AUTH_SESSION_CODE_PEPPER: op://${{ vars.VAULT_DEV }}/auth-session-code-pepper/credential
           FIREWORKS_API_KEY: op://${{ vars.VAULT_DEV }}/agentsfleet-fireworks-api-token/credential
-          # The setup edit check's decision model (deploy/local/bootstrap.ts).
+          # The task goal check's decision model (deploy/local/bootstrap.ts).
           TYPESAFE_API_KEY: op://${{ vars.VAULT_DEV }}/typesafe/credential
           # The Slack app's bag (deploy/local/bootstrap.ts); the Slack journey
           # signs its mention with the same signing secret.
