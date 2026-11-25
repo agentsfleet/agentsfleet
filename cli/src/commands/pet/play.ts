@@ -3,8 +3,8 @@ import type { WritableStreamLike } from "../../output/capability.ts";
 import { emitKeypressEvents } from "node:readline";
 import { PassThrough } from "node:stream";
 import { SIGINT, SIGTERM } from "../../constants/signals.ts";
-import { moveOrbit, orbitFrame, ORBIT_COLUMNS, ORBIT_ROWS, startOrbit, stepOrbit } from "../../output/orbit.ts";
-import { terminal } from "../../output/palette.ts";
+import { moveOrbit, orbitFrame, orbitTickMs, ORBIT_COLUMNS, ORBIT_ROWS, serveOrbit, startOrbit, stepOrbit } from "../../output/orbit.ts";
+import { terminal, type StyleOpts } from "../../output/palette.ts";
 
 type RawInput = NodeJS.ReadableStream & {
   readonly isTTY: boolean;
@@ -14,36 +14,43 @@ type RawInput = NodeJS.ReadableStream & {
 };
 
 type Outcome = "quit" | "interrupted" | "resized" | "small";
-type OrbitState = ReturnType<typeof startOrbit>;
 type Controls = {
   key: (character: string | undefined, pressed: Key) => void;
   quit: () => void;
   interrupt: () => void;
   fail: (cause: unknown) => void;
 };
-const TICK_MS = 135;
 
 /** Only an input that supports raw mode can move the paddle without Enter. */
 export function isOrbitInput(input: NodeJS.ReadableStream | undefined): input is RawInput {
   return Boolean(input && "isTTY" in input && input.isTTY && "setRawMode" in input && typeof input.setRawMode === "function");
 }
 
-export async function playOrbit(input: RawInput, screen: WritableStreamLike, owner: AbortSignal): Promise<Outcome> {
+export async function playOrbit(input: RawInput, screen: WritableStreamLike, owner: AbortSignal, style?: StyleOpts): Promise<Outcome> {
   const {columns, rows} = screen;
   if (columns === undefined || rows === undefined || columns <= ORBIT_COLUMNS || rows <= ORBIT_ROWS) return "small";
   if (owner.aborted) return "interrupted";
   const finished = Promise.withResolvers<Outcome>();
   const resized = () => columns !== screen.columns || rows !== screen.rows;
   let reserved = false;
-  let interval: ReturnType<typeof setInterval> | undefined;
-  const game = orbitControls((state, started) => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const draw = (frame: readonly string[]) => {
     try {
       if (resized()) finished.resolve("resized");
-      else screen.write(terminal.repaintRows(orbitFrame(state, started)));
+      else screen.write(terminal.repaintRows(frame));
     } catch (cause) {
       finished.reject(cause);
     }
-  }, finished.resolve);
+  };
+  const game = orbitControls(draw, finished.resolve, style);
+  const tick = () => {
+    if (resized()) {
+      finished.resolve("resized");
+      return;
+    }
+    game.tick();
+    timer = setTimeout(tick, game.delay());
+  };
   const controls = captureKeys(input, owner, {
     quit: () => finished.resolve("quit"),
     interrupt: () => finished.resolve("interrupted"),
@@ -51,16 +58,15 @@ export async function playOrbit(input: RawInput, screen: WritableStreamLike, own
     key: game.key,
   });
   try {
+    // Resolve the palette's basic-color notice before reserving screen rows.
+    const opening = game.frame();
     screen.write(terminal.reserveRows(ORBIT_ROWS));
     reserved = true;
-    game.draw();
-    interval = setInterval(() => {
-      if (resized()) finished.resolve("resized");
-      else game.tick();
-    }, TICK_MS);
+    draw(opening);
+    timer = setTimeout(tick, game.delay());
     return await finished.promise;
   } finally {
-    clearInterval(interval);
+    clearTimeout(timer);
     try {
       controls();
     } finally {
@@ -69,29 +75,29 @@ export async function playOrbit(input: RawInput, screen: WritableStreamLike, own
   }
 }
 
-function orbitControls(render: (state: OrbitState, started: boolean) => void, finish: (outcome: Outcome) => void) {
+function orbitControls(render: (frame: readonly string[]) => void, finish: (outcome: Outcome) => void, style?: StyleOpts) {
   let state = startOrbit();
-  let started = false;
-  const draw = () => render(state, started);
+  const frame = () => orbitFrame(state, style);
   return {
-    draw,
+    frame,
+    delay: () => orbitTickMs(state),
     tick() {
-      const next = started ? stepOrbit(state) : state;
+      const next = stepOrbit(state);
       if (next === state) return;
       state = next;
-      draw();
+      render(frame());
     },
     key(_character: string | undefined, pressed: Key) {
       switch (pressed.name) {
         case "q": finish("quit"); return;
         case "c": if (pressed.ctrl) finish("interrupted"); return;
-        case "space": started = true; break;
-        case "r": state = startOrbit(); started = false; break;
+        case "space": state = serveOrbit(state); break;
+        case "r": state = startOrbit(state.best); break;
         case "left": case "a": state = moveOrbit(state, -1); break;
         case "right": case "d": state = moveOrbit(state, 1); break;
         default: return;
       }
-      draw();
+      render(frame());
     },
   };
 }

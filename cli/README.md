@@ -64,8 +64,9 @@ and is versioned with each release:
 from the binary you actually have installed.
 
 Run `agentsfleet pet` to play Orbit, a local paddle game. Press Space to serve,
-move with the arrows or A/D, and keep the ball in play. Press R to restart or
-Q to quit.
+and move with the arrows or A/D. Aim with the edges of the paddle, collect
+stars for bonus points, and build a streak as the court speeds up. You get
+three lives. Press R to restart with your session best or Q to quit.
 
 The request loader shows a bouncing ball. Set `AGENTSFLEET_REDUCED_MOTION=1` for a static status.
 
