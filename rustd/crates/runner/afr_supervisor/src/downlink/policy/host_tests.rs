@@ -15,7 +15,8 @@ use crate::test_support::{drain, plane};
 
 /// A beat reports the processors the runner may use, the free bytes of the
 /// file system that holds its sandboxes, and the host's memory where the host
-/// answers it; a sandbox root it cannot read reports no free disk, and says so.
+/// answers it; a sandbox root it cannot read reports no free disk, and says so
+/// once while it stays unread.
 #[tokio::test]
 async fn a_beat_carries_the_hosts_processors_memory_and_free_disk() {
     let (plane, mut calls) = plane(|_call| reply(KEEP_GOING, true));
@@ -28,11 +29,16 @@ async fn a_beat_carries_the_hosts_processors_memory_and_free_disk() {
         .beat()
         .await;
     let log = Capture::install();
-    let unread = Heartbeat::new(&plane, &probe, &held, &missing).beat().await;
+    let mut unreadable = Heartbeat::new(&plane, &probe, &held, &missing);
+    let unread = unreadable.beat().await;
+    let again = unreadable.beat().await;
     let unread_line = log.only("runner_host_fact_unread");
     drop(log);
 
-    assert!(read.is_ok() && unread.is_ok(), "{read:?} {unread:?}");
+    assert!(
+        read.is_ok() && unread.is_ok() && again.is_ok(),
+        "{read:?} {unread:?} {again:?}"
+    );
     let calls = drain(&mut calls);
     let (read, unread) = (&sent(&calls[0])["host"], &sent(&calls[1])["host"]);
     assert!(
