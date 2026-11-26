@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { RecentFleetList } from "./RecentFleetList";
 import { deleteFleetAction } from "@/app/(dashboard)/w/[workspaceId]/fleets/actions";
 import { FLEET_DETAIL, FLEET_ID, WORKSPACE, response } from "@/tests/helpers/fleet-fixtures";
+import { refreshRecentFleets } from "@/lib/api/use-recent-page";
 
 const navigation = vi.hoisted(() => ({path: "", query: "", replace: vi.fn(), refresh: vi.fn()}));
 vi.mock("next/navigation", () => ({useRouter: () => navigation, usePathname: () => navigation.path, useSearchParams: () => new URLSearchParams(navigation.query)}));
@@ -55,6 +56,20 @@ it("labels an archived fleet so retained history does not look active", async ()
   expect(within(link).getByText("Archived")).toBeTruthy();
   expect(link.getAttribute("title")).toBe(`${archived.name} · archived`);
   expect(link.querySelector(".bg-pulse")).toBeNull();
+});
+
+it("refreshes the mounted workspace's fleet names after a change", async () => {
+  const view = render(<RecentFleetList workspace={WORKSPACE} onNavigate={vi.fn()} />);
+  await screen.findByRole("link", {name: active.name});
+  act(() => refreshRecentFleets("another-workspace"));
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  fetcher.mockImplementationOnce(async () => response({items: [{...active, name: "release-review"}], next_cursor: null, total: null}));
+  act(() => refreshRecentFleets(WORKSPACE));
+  expect(await screen.findByRole("link", {name: "release-review"})).toBeTruthy();
+  expect(screen.queryByRole("link", {name: active.name})).toBeNull();
+  view.unmount();
+  act(() => refreshRecentFleets(WORKSPACE));
+  expect(fetcher).toHaveBeenCalledTimes(2);
 });
 
 async function openDelete(name = active.name) {

@@ -4,16 +4,12 @@ export const OUTCOME = {
   failure: "failure",
 } as const;
 
-export const MEMORY_PANEL_TITLE = "Memory";
-export const MEMORY_EMPTY_TITLE = "Nothing learned yet";
+export const MEMORY_EMPTY_TITLE = "No saved memories yet";
 export const MEMORY_EMPTY_DESCRIPTION =
-  "Durable lessons the fleet records appear here. Forget one to correct it.";
-export const MEMORY_FETCH_UNAVAILABLE = "Memory is temporarily unavailable. Try refreshing the page.";
+  "Ask this fleet to remember something for future conversations.";
 export const MEMORY_FORGET_LABEL = "Forget";
 export const MEMORY_FORGET_DIALOG_TITLE = "Forget this memory?";
-export const MEMORY_FORGET_DIALOG_DESCRIPTION =
-  "The fleet forgets this lesson on its next wake. This cannot be undone.";
-export const MEMORY_FORGET_CONFIRM_LABEL = "Forget";
+export const MEMORY_FORGET_CONFIRM_LABEL = "Forget memory";
 // Surfaced when the key was already gone (404) — the list is left unchanged.
 export const MEMORY_FORGET_MISSING =
   "That memory was already gone — nothing to forget.";

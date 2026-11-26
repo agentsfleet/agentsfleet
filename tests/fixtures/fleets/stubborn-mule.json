@@ -4,7 +4,7 @@
   "about": "Keeps going until the job is done. It starts a task with its own finish line and works until the check says done.",
   "first_message": "Acknowledge this instruction in one line. Start a task with task_start only when a later message asks for work that must keep going. Write the task's completion statements yourself.",
   "follow_ups": [
-    "Start a task: count from one to three, one number per step, and stop when you have said three."
+    "Start a task: count from one to three, and show all three numbered steps together in the final answer."
   ],
   "remembers": [],
   "asks_for": [],

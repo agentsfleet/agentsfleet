@@ -20,6 +20,13 @@ type Props = {
 export function FleetWorkspace({account, workspace, fleet, models, viewer, children}: Props) {
   const {userId, isLoaded} = useCurrentUser();
   const subject = isLoaded ? userId : viewer;
+  if (isLoaded && !userId) return null;
+  return <FleetWorkspaceContent key={`${account}:${workspace}:${subject}:${fleet.id}`} workspace={workspace} fleet={fleet} models={models}>
+    {children}
+  </FleetWorkspaceContent>;
+}
+
+function FleetWorkspaceContent({workspace, fleet, models, children}: Omit<Props, "account" | "viewer">) {
   const settings = useFleetSettingsOwner(workspace, fleet.id, fleet);
   const {value, pending, error, change} = settings;
   const choice = useMemo<FleetModelChoice>(() => ({
@@ -27,8 +34,7 @@ export function FleetWorkspace({account, workspace, fleet, models, viewer, child
     error: error?.kind === "model" ? error.message : null,
     select: ref => {void change("model", {model_ref: ref});},
   }), [models, value.model_ref, pending, error, change]);
-  if (isLoaded && !userId) return null;
-  return <FleetStreamProvider key={`${account}:${workspace}:${subject}`}>
+  return <FleetStreamProvider>
     <FleetSettingsProvider value={settings}><FleetModelContext value={choice}>
       <FleetListsProvider workspace={workspace} fleet={fleet.id}>{children}</FleetListsProvider>
     </FleetModelContext></FleetSettingsProvider>

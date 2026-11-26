@@ -18,7 +18,7 @@ const MEMORY_PAGE_LIMIT = 100;
 
 export type CreateFleet = {message: string; operation_id: string; model_ref?: string};
 export type CreatedFleet = {fleetId: string; turnId: string; replayed: boolean};
-export type FleetChange = {model_ref: string} | {http_egress: HttpEgress} | {package_domains: boolean};
+export type FleetChange = {name: string} | {model_ref: string} | {http_egress: HttpEgress} | {package_domains: boolean};
 export type PinnedMemory = z.infer<typeof MemoryEntrySchema>;
 
 // The answer names a whole fleet; the page reads that fleet itself, so only
@@ -41,6 +41,10 @@ export async function createFleet(workspace: string, body: CreateFleet, signal: 
 export function changeFleet(workspace: string, fleet: string, etag: string, change: FleetChange, signal: AbortSignal): Promise<NativeFleetDetail> {
   return liveRequest({path: livePath(workspace, fleet), method: REQUEST_METHOD.patch, headers: {"If-Match": etag}, body: change},
     FleetDetailSchema, signal);
+}
+
+export function readFleetDetail(workspace: string, fleet: string, signal: AbortSignal): Promise<NativeFleetDetail> {
+  return liveRequest({path: livePath(workspace, fleet)}, FleetDetailSchema, signal);
 }
 
 export async function readSchedules(workspace: string, fleet: string, signal: AbortSignal): Promise<Schedule[]> {

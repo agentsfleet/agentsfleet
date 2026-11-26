@@ -33,9 +33,6 @@ export const GRANT_KIND = {
 /** The actor of the turn a person's answer writes (`afd_approval::inbox::resolve`). */
 const CONTINUATION_ACTOR_PREFIX = "continuation:";
 const CARD_POLL_MS = 2_000;
-// How long the asking send may run. The message is admitted at once; the bound
-// only ends a send that is still reading a turn that will never be processed.
-const ASK_SEND_TIMEOUT_MS = 90_000;
 const APPROVALS = ["fleet", "approvals"] as const;
 const FLEET_FLAG = "--fleet";
 
@@ -136,23 +133,6 @@ export async function raisedCard(session: PrimeSession, fleetId: string, sent: P
   const waiting = await awaitTurn(session, fleetId,
     (turns) => turns.find((turn) => turn.status === TURN_WAITING), "turn waiting on the card");
   return { card: pending[0] as Card, waiting };
-}
-
-/**
- * Sends `message`, which makes the fleet ask for access, and answers with the
- * card it raised and the turn left waiting on it.
- *
- * The asking turn ends `waiting`, which `fleet steer` does not read as an
- * answer: told so by the live stream it exits non-zero naming the status, and
- * on its polling fallback it keeps reading (src/commands/fleet/steer-turns.ts).
- * So the send's own exit is not asserted. It is left running while the card
- * is read from `fleet approvals`, and is collected when the file ends.
- */
-export async function askForAccess(session: PrimeSession, fleetId: string, message: string): Promise<Asked> {
-  const sent = session.run(["fleet", "steer", fleetId, message, "--json"], ASK_SEND_TIMEOUT_MS)
-    .then((result) => `exit ${result.code}: ${result.stdout}${result.stderr}`, (error: unknown) => String(error));
-  session.onClose(async () => { await sent; });
-  return raisedCard(session, fleetId, sent);
 }
 
 /** The turn a person's answer wrote for the run `waiting` left, once that run has answered. */

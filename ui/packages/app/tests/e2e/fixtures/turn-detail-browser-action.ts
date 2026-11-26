@@ -1,4 +1,6 @@
 import type { TurnDetail } from "@/lib/api/turns";
+import type { MemoryEntry } from "@/lib/types";
+import { fleetPath } from "@/lib/api/fleet-paths";
 
 const READ_TIMEOUT_MS = 5_000;
 
@@ -14,6 +16,11 @@ export async function getFleetTurnAction(workspace: string, fleet: string, turn:
 // Lifecycle writes are deliberately unavailable in this visual fixture.
 export async function setFleetStatusAction() {return {ok: false, error: "Visual fixture does not change fleet state"};}
 export async function deleteFleetAction() {return {ok: false, error: "Visual fixture does not delete fleets"};}
-export async function listFleetMemoriesAction() {return {ok: false, error: "Visual fixture does not load memories"};}
+export async function listFleetMemoriesAction(workspace: string, fleet: string) {
+  const response = await fetch(`/live${fleetPath(workspace, fleet)}/memories`, {signal: AbortSignal.timeout(READ_TIMEOUT_MS)});
+  if (!response.ok) return {ok: false as const, error: "Saved memories unavailable"};
+  const data: {items: MemoryEntry[]} = await response.json();
+  return {ok: true as const, data};
+}
 export async function setMemoryAccessAction() {return {ok: false, error: "Visual fixture does not change memory access"};}
 export async function forgetMemoryAction() {return {ok: false, error: "Visual fixture does not remove memories"};}

@@ -56,7 +56,7 @@ function FleetRoute({fleetId}: {fleetId: string}) {
   const fleet = FleetDetailSchema.parse({...FLEET_DETAIL, id: fleetId, name: NEW_FLEET.name, pending_approvals: 0});
   return <div data-fleet-workspace className="flex h-full min-h-0 flex-1 flex-col overflow-clip">
     <FleetWorkspace account={OWN_ACCOUNT.account.tenant_id} workspace={WORKSPACE} fleet={fleet} models={[MODEL]} viewer={VIEWER}>
-      <FleetHeader workspaceId={WORKSPACE} fleet={fleet} />
+      <FleetHeader workspaceId={WORKSPACE} fleet={fleet} canGrant />
       <div className="page-entrance flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-clip">
         <ChatView workspaceId={WORKSPACE} fleetId={fleetId} schedules={fleet.schedules} senderLabel={fleet.name} modelLabel={MODEL.label}
           lists={<><FleetListSections /><FleetNetworkSection /></>} initial={page.items}

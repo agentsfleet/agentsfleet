@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import MemoryPanel, { MEMORY_SHARED_LABEL } from "./MemoryPanel";
+import MemoryPanel from "./MemoryPanel";
 import type { MemoryEntry } from "@/lib/types";
-import { MEMORY_EMPTY_TITLE, MEMORY_FETCH_UNAVAILABLE, MEMORY_FORGET_MISSING, OUTCOME } from "./console-copy";
+import { MEMORY_EMPTY_TITLE, MEMORY_FORGET_MISSING, OUTCOME } from "./console-copy";
 import { EVENTS } from "@/lib/analytics/events";
 
 const forgetMemoryAction = vi.fn();
@@ -35,22 +35,15 @@ afterEach(() => cleanup());
 describe("MemoryPanel", () => {
   it("test_memory_panel_lists_entries", () => {
     render(<MemoryPanel workspaceId="ws_1" fleetId="agt_1" entries={[ENTRY]} />);
-    // The field is `content`, not `text` — the entry body renders verbatim,
-    // alongside its category and an updated_at <time>.
-    expect(screen.getByText(ENTRY.content)).toBeTruthy();
-    expect(screen.getByText(ENTRY.category)).toBeTruthy();
+    const owned = within(screen.getByRole("region", {name: "Saved by this fleet"}));
+    expect(owned.getByText(ENTRY.content)).toBeTruthy();
+    expect(owned.getByText("Private")).toBeTruthy();
     expect(document.body.querySelector("time")).not.toBeNull();
   });
 
   it("renders the empty state when the fleet has learned nothing", () => {
     render(<MemoryPanel workspaceId="ws_1" fleetId="agt_1" entries={[]} />);
     expect(screen.getByText(MEMORY_EMPTY_TITLE)).toBeTruthy();
-  });
-
-  it("shows an unavailable state instead of claiming the fleet learned nothing", () => {
-    render(<MemoryPanel workspaceId="ws_1" fleetId="agt_1" entries={null} />);
-    expect(screen.getByText(MEMORY_FETCH_UNAVAILABLE)).toBeTruthy();
-    expect(screen.queryByText(MEMORY_EMPTY_TITLE)).toBeNull();
   });
 
   it("reconciles memories delivered by a server refresh", () => {
@@ -66,7 +59,7 @@ describe("MemoryPanel", () => {
     render(<MemoryPanel workspaceId="ws_1" fleetId="agt_1" entries={[ENTRY]} />);
 
     await user.click(screen.getByRole("button", { name: "Forget convention" }));
-    await user.click(screen.getByRole("button", { name: "Forget" })); // dialog confirm
+    await user.click(screen.getByRole("button", { name: "Forget memory" })); // dialog confirm
 
     await waitFor(() => expect(forgetMemoryAction).toHaveBeenCalledWith("ws_1", "agt_1", "convention"));
     await waitFor(() => expect(screen.queryByText(ENTRY.content)).toBeNull());
@@ -84,7 +77,7 @@ describe("MemoryPanel", () => {
     const user = userEvent.setup({ delay: null });
     const view = render(<MemoryPanel workspaceId="ws_1" fleetId="agt_1" entries={[ENTRY]} />);
     await user.click(screen.getByRole("button", { name: "Forget convention" }));
-    await user.click(screen.getByRole("button", { name: "Forget" }));
+    await user.click(screen.getByRole("button", { name: "Forget memory" }));
     await waitFor(() => expect(screen.queryByText(ENTRY.content)).toBeNull());
 
     view.rerender(<MemoryPanel workspaceId="ws_1" fleetId="agt_1" entries={[ENTRY]} />);
@@ -102,7 +95,7 @@ describe("MemoryPanel", () => {
     render(<MemoryPanel workspaceId="ws_1" fleetId="agt_1" entries={[ENTRY]} />);
     await user.click(screen.getByRole("button", { name: "Forget convention" }));
 
-    const confirm = screen.getByRole("button", { name: "Forget" });
+    const confirm = screen.getByRole("button", { name: "Forget memory" });
     await user.click(confirm);
     expect(confirm).toHaveProperty("disabled", true);
     await user.click(confirm);
@@ -129,7 +122,7 @@ describe("MemoryPanel", () => {
     render(<MemoryPanel workspaceId="ws_1" fleetId="agt_1" entries={[ENTRY]} />);
 
     await user.click(screen.getByRole("button", { name: "Forget convention" }));
-    await user.click(screen.getByRole("button", { name: "Forget" }));
+    await user.click(screen.getByRole("button", { name: "Forget memory" }));
 
     await waitFor(() => expect(screen.getByText(MEMORY_FORGET_MISSING)).toBeTruthy());
     // The entry stays — a mistyped/already-gone key does not blank the list.
@@ -146,7 +139,7 @@ describe("MemoryPanel", () => {
     render(<MemoryPanel workspaceId="ws_1" fleetId="agt_1" entries={[ENTRY]} />);
 
     await user.click(screen.getByRole("button", { name: "Forget convention" }));
-    await user.click(screen.getByRole("button", { name: "Forget" }));
+    await user.click(screen.getByRole("button", { name: "Forget memory" }));
 
     await waitFor(() => expect(screen.getByText(/Couldn't forget this memory/)).toBeTruthy());
     expect(screen.getByText(ENTRY.content)).toBeTruthy();
@@ -158,13 +151,19 @@ describe("MemoryPanel", () => {
 });
 
 describe("MemoryPanel shared memory", () => {
-  it("marks a shared entry, and offers no forget on another fleet's", () => {
+  it("explains the workspace-wide effect of forgetting a shared entry", async () => {
     const own = { ...ENTRY, visibility: "workspace" as const, writer_fleet_id: "agt_1" };
     const others = { ...ENTRY, key: "deploy_target", content: "deploy 812 broke iad", visibility: "workspace" as const, writer_fleet_id: "agt_2" };
     render(<MemoryPanel workspaceId="ws_1" fleetId="agt_1" entries={[own, others]} />);
 
-    expect(screen.getAllByText(MEMORY_SHARED_LABEL)).toHaveLength(2);
-    expect(screen.getByRole("button", { name: "Forget convention" })).toBeTruthy();
+    expect(within(screen.getByRole("region", {name: "Saved by this fleet"})).getByText("Shared")).toBeTruthy();
+    const shared = within(screen.getByRole("region", {name: "Shared by other fleets"}));
+    expect(shared.getByText(others.content)).toBeTruthy();
+    expect(shared.queryByRole("button")).toBeNull();
     expect(screen.queryByRole("button", { name: "Forget deploy_target" })).toBeNull();
+    await userEvent.setup().click(screen.getByRole("button", {name: "Forget convention"}));
+    const confirmation = screen.getByRole("alertdialog", {name: "Forget this memory?"});
+    expect(within(confirmation).getByText("Fleets in this workspace will lose access to this memory.")).toBeTruthy();
+    expect(within(confirmation).getByText(ENTRY.content)).toBeTruthy();
   });
 });

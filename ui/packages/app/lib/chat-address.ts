@@ -16,19 +16,25 @@ export type ChatAddress = { name: string; rest: string };
 const ADDRESS = /^\s*@([A-Za-z0-9-]+)(?:$|[\s:,]\s*)/;
 // A fleet name's bound (`FleetName` in the daemon). The name is ASCII, so its
 // bytes are its characters.
-const NAME_MAX_BYTES = 64;
+export const FLEET_NAME_MAX_BYTES = 64;
+
+/** Turn the header's human-entered label into the fleet address the daemon stores. */
+export function fleetNameFromLabel(label: string): string | null {
+  const name = label.trim().toLowerCase().replace(/\s+/g, "-");
+  return name.length <= FLEET_NAME_MAX_BYTES && /^[a-z0-9-]+$/.test(name) ? name : null;
+}
 
 /** The editable mention immediately before the caret, including an empty @ query. */
 export function activeFleetMention(prefix: string): string | undefined {
   const query = /(?:^|\s)@([a-z\d-]*)$/i.exec(prefix)?.[1];
-  return query !== undefined && query.length <= NAME_MAX_BYTES ? query : undefined;
+  return query !== undefined && query.length <= FLEET_NAME_MAX_BYTES ? query : undefined;
 }
 
 /** The address a message opens with, or null when it is ordinary words. */
 export function parseChatAddress(text: string): ChatAddress | null {
   const match = ADDRESS.exec(text);
   const name = match?.[1];
-  if (match === null || name === undefined || name.length > NAME_MAX_BYTES) return null;
+  if (match === null || name === undefined || name.length > FLEET_NAME_MAX_BYTES) return null;
   return { name: name.toLowerCase(), rest: text.slice(match[0].length) };
 }
 
