@@ -302,6 +302,7 @@ The executor can tear the inner environment down and build it again without rebo
 - Each VM has its own vsock device, and its context identifier reaches only its own host socket.
 - The toolbox drive is shared read-only, and the workspace and `/tmp` disks are never shared.
 - KSM, the kernel's same-page merging, stays off, so no page is shared between guests.
+- SMT stays on, by Indy's ruling ("On everywhere", Nov 26, 2026), so two VMs may share a physical core. `SECURITY.md` records the cross-VM cache-timing risk as accepted.
 - A pooled VM serves one run and is then destroyed (Dimension 8.3).
 
 **Only the host reaches the executor.** The guest kernel is built without `CONFIG_VSOCKETS_LOOPBACK`, so no guest process can dial the executor's port, as §1 found. The executor also refuses a connection whose peer is not the host's context identifier, 2. The host socket lives in the jail, owned by that jail's user.
