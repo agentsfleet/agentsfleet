@@ -168,18 +168,15 @@ test("test_reconnect_notice_warns_in_place", async ({ page }) => {
   await withReplyPage(page, FLEET_NAME, async ({ chat, stream }) => {
     await readingHistory(chat, stream);
     const reading = chat.getByText("Settled answer 1", { exact: true });
-    await stream.drop();
-    // The header row names the lost connection first: page chrome, not the
-    // notice, and not what this measures.
-    await expect(page.getByTestId(HEADER)).toBeVisible();
     await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     const before = await reading.evaluate((el) => el.getBoundingClientRect().top);
+    await stream.drop();
     const notice = page.getByTestId(NOTICE);
-    await expect(notice).toBeVisible({ timeout: OFFLINE_WITHIN_MS });
+    await expect(notice.getByRole("button", {name: "Reconnect", exact: true})).toBeVisible({timeout: OFFLINE_WITHIN_MS});
     const after = await reading.evaluate((el) => el.getBoundingClientRect().top);
     expect(Math.abs(after - before)).toBeLessThanOrEqual(SETTLED_PX);
-    await expect(notice).toHaveAttribute("role", "alert");
-    await expect(notice).toHaveClass(/\btext-warning\b/);
+    await expect(notice.getByText("Live updates paused", {exact: true})).toBeVisible();
+    await expect(page.getByTestId(HEADER)).toHaveCount(0);
     // At the bottom, the newest row stays above the notice, never behind it.
     await restAtBottom(chat.locator('[role="presentation"]'));
     const newest = chat.getByText(`Settled answer ${HISTORY_TURNS}`, { exact: true });

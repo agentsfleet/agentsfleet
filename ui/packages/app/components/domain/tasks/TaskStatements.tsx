@@ -35,8 +35,8 @@ export function DurableTaskStatements({workspaceId, fleetId, detail, enabled, re
     setStatus({kind: "stale"});
     onChanged();
   };
-  return <Section variant="divided" className="space-y-md pt-lg">
-    <h3 className="text-label font-semibold leading-label">What counts as done?</h3>
+  return <Section className="block space-y-xs">
+    <h3 className="text-label font-semibold leading-label text-text-dim">What counts as done?</h3>
     {editing ? <form className="space-y-md" aria-label="Edit completion statements" onSubmit={event => {event.preventDefault(); void save(editing);}}>
       {editing.map((statement, index) => <div key={statement.name} className="space-y-xs">
         <Label htmlFor={`${id}-${index}`}>Statement {index + 1}</Label>
@@ -57,7 +57,7 @@ export function DurableTaskStatements({workspaceId, fleetId, detail, enabled, re
       <List variant="plain" className="space-y-md">{detail.context.questions.map((statement, index) => <ListItem key={statement.name}>
         <TaskStatement number={index + 1} statement={statement} />
       </ListItem>)}</List>
-      {editable ? <Button ref={editButton} variant="outline" size="compact" wrap disabled={!enabled} onClick={() => setEditing(detail.context.questions)}>Edit statements</Button> : null}
+      {editable ? <Button ref={editButton} variant="ghost" size="compact" className="pointer-coarse:min-h-11" wrap disabled={!enabled} onClick={() => setEditing(detail.context.questions)}>Edit statements</Button> : null}
     </>}
     {status.kind === "stale" ? <Alert variant="warning" className="wrap-anywhere px-lg py-md">{STALE}</Alert> : null}
     {status.kind === "failed" ? <Alert variant="destructive" className="wrap-anywhere px-lg py-md">{status.message}</Alert> : null}

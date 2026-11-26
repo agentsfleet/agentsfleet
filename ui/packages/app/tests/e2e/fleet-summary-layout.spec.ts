@@ -20,9 +20,7 @@ test("work stays in a sidebar while the ordinary chat composer preserves its dra
     await page.setViewportSize(window);
     await expect(page.getByRole("link", {name: /^Pull request #123 ·/})).toHaveAttribute("href", "https://github.com/linkwarden/linkwarden/pull/123");
     const panel = page.getByRole("region", {name: "Current work"});
-    const durableTaskList = panel.getByRole("button", {name: /^Tasks/});
-    await expect(durableTaskList).toBeVisible();
-    if (await durableTaskList.getAttribute("aria-expanded") !== "true") await durableTaskList.click();
+    await expect(panel.getByRole("heading", {name: "Tasks", exact: true})).toBeVisible();
     for (const section of ["Pull requests", "Sources"]) await expect(panel.getByRole("heading", {name: section, exact: true})).toBeAttached();
     await expect(panel.getByRole("heading", {name: "Output", exact: true})).toHaveCount(0);
     await expect(panel.getByRole("heading", {name: "Changes", exact: true})).toHaveCount(0);
@@ -62,7 +60,7 @@ async function expectSourceHierarchy(panel: Locator) {
       icon: node.querySelector("svg")!.getBoundingClientRect().width,
       gap: node.getBoundingClientRect().top - heading.getBoundingClientRect().bottom};
   });
-  expect(metrics.heading).toBe(12); expect(metrics.row).toBe(13);
+  expect(metrics.heading).toBe(13); expect(metrics.row).toBe(13);
   expect(metrics.icon).toBe(16);
   expect(metrics.gap).toBeGreaterThanOrEqual(4); expect(metrics.gap).toBeLessThanOrEqual(8);
   if (!(await sources.locator("details").evaluate(node => node.hasAttribute("open")))) await disclosure.click();
@@ -80,7 +78,7 @@ test("fleet Summary retains full inline phone content and room for policy labels
     await expect(summary).toBeVisible();
     const layout = await summary.evaluate(node => ({width: node.getBoundingClientRect().width,
       scroll: node.scrollHeight, client: node.clientHeight, maxHeight: getComputedStyle(node).maxHeight}));
-    if (info.project.name === "chromium") expect(layout.width).toBe(248);
+    if (info.project.name === "chromium") expect(layout.width).toBeCloseTo(1480 * 0.23, 0);
     else {expect(layout.maxHeight).toBe("none"); expect(layout.scroll).toBeLessThanOrEqual(layout.client + 1);}
     const footer = page.getByTestId("fleet-chat-footer");
     expect(await footer.evaluate(node => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useRef } from "react";
 import { ThreadPrimitive } from "@assistant-ui/react";
 import { ArchiveIcon } from "@phosphor-icons/react/ssr";
 import { Skeleton } from "@agentsfleet/design-system";
@@ -17,11 +17,11 @@ const PANEL_TITLE = "Chat";
 const EMPTY_HINT = "Message this fleet or wait for its next trigger. Activity and outcomes appear here.";
 const BACKFILL_LABEL = "Loading recent activity";
 
-type FleetThreadViewportProps = SteerComposerProps & {
+type FleetThreadViewportProps = Omit<SteerComposerProps, "inputRef"> & {
   archived?: boolean;
   turnsCount: number;
   connectionStatus: ConnectionStatus;
-  /** Reconnects the live stream now, from the offline notice. */
+  /** Reconnects the live stream from the composer flap. */
   onRetry: () => void;
 };
 
@@ -30,10 +30,12 @@ type FleetThreadViewportProps = SteerComposerProps & {
 export const FleetThreadViewport = memo(function FleetThreadViewport({
   turnsCount, connectionStatus, onRetry, pending, onResend, onDismiss, onRestored, onDraft, turnStop, modelLabel, archived = false,
 }: FleetThreadViewportProps) {
+  const draft = useRef<HTMLTextAreaElement>(null);
   return <ChatThread testId="fleet-thread-root" label="Fleet chat" footer={<>
-    <FleetConnectionNotice status={connectionStatus} onRetry={onRetry} />
+    {archived ? null : <><ChangesStrip /><WakeupStrip /></>}
+    <FleetConnectionNotice status={connectionStatus} onRetry={onRetry} focusTarget={draft} />
     {archived ? <p className="flex items-center justify-center gap-md border-t border-border py-xl text-center text-label text-muted-foreground"><ArchiveIcon size={16} aria-hidden="true" />Archived · This fleet is permanently stopped. Its history is available to read.</p>
-      : <><ChangesStrip /><WakeupStrip /><SteerComposer modelLabel={modelLabel} pending={pending} onResend={onResend} onDismiss={onDismiss} onRestored={onRestored} onDraft={onDraft} turnStop={turnStop} /></>}
+      : <SteerComposer inputRef={draft} modelLabel={modelLabel} pending={pending} onResend={onResend} onDismiss={onDismiss} onRestored={onRestored} onDraft={onDraft} turnStop={turnStop} />}
   </>}>
     <SettledReplyStatus><ChatHistory turnsCount={turnsCount} connectionStatus={connectionStatus} /></SettledReplyStatus>
   </ChatThread>;

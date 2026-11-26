@@ -41,6 +41,7 @@ const NOT_NOTICED: ReadonlySet<PendingSend["state"]> = new Set([PENDING_SEND_STA
 // place. It never disables itself on the live feed's state — sending is an
 // authenticated write that does not touch the stream.
 export type SteerComposerProps = {
+  inputRef?: RefObject<HTMLTextAreaElement | null>;
   modelLabel?: string;
   /** The fleet's ledger of unresolved sends; the notice lists every one not in flight. */
   pending: readonly PendingSend[];
@@ -57,7 +58,7 @@ export type SteerComposerProps = {
   sendError?: string | null;
 };
 
-export function SteerComposer({ pending, onResend, onDismiss, onRestored, onDraft, turnStop, modelLabel = "Saved model", creating = false, sendError }: SteerComposerProps) {
+export function SteerComposer({ pending, onResend, onDismiss, onRestored, onDraft, turnStop, modelLabel = "Saved model", creating = false, sendError, inputRef }: SteerComposerProps) {
   const modelChanging = useFleetModelChoice()?.changing ?? false;
   const unresolved = useMemo(
     () => pending.filter((entry) => !NOT_NOTICED.has(entry.state)),
@@ -66,7 +67,8 @@ export function SteerComposer({ pending, onResend, onDismiss, onRestored, onDraf
   useRestoreRefusedTextOnMount(unresolved, onRestored);
   // A notice unmounts under its own Resend or Dismiss, so focus goes back to
   // the draft rather than falling to the page.
-  const draftRef = useRef<HTMLTextAreaElement>(null);
+  const localInput = useRef<HTMLTextAreaElement>(null);
+  const draftRef = inputRef ?? localInput;
   return (
     <>
     <ChatComposerFrame id="fleet-steer-composer" label={creating ? NEW_FLEET_LABEL : COMPOSER_LABEL} inputRef={draftRef} disabled={modelChanging}

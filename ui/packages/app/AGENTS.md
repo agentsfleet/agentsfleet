@@ -18,7 +18,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 ## Chat ownership
 
 - Use the installed Next.js docs and APIs before changing chat boundaries.
-- Keep native request ownership in `DraftClient` and its scoped transport helpers.
+- Keep native requests in the scoped fleet creation and message delivery hooks.
 - Model mutually exclusive request stages with typed states. Derive the existing view flags from those states.
 - Pass each stream's cancellation signal to its reconciliation reads. Stop must cancel those reads before starting cancellation requests.
 - Preserve retry identities after uncertain responses and isolate every account, workspace, creator and conversation.

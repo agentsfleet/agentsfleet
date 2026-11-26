@@ -61,7 +61,8 @@ function DurableTaskReadOwner({workspaceId, fleetId, revision, turns = EMPTY_TUR
   const {resource, retry} = useDurableTaskRead(load, revision);
   const page = confirmed(resource);
   const tasks = page?.items ?? EMPTY_DURABLE_TASKS;
-  const historyKey = page ? recentDurableTaskIds(turns, tasks).join(",") : "";
+  const hasPage = page !== null;
+  const historyKey = useMemo(() => hasPage ? recentDurableTaskIds(turns, tasks).join(",") : "", [hasPage, turns, tasks]);
   const references = useMemo<DurableTaskReference[]>(() => [...tasks.map(currentDurableTaskRef),
     ...historyKey.split(",").filter(Boolean).map(id => ({kind: "historical" as const, id}))], [tasks, historyKey]);
   const {details, retry: retryDetails} = useDurableTaskDetails(workspaceId, fleetId, references);

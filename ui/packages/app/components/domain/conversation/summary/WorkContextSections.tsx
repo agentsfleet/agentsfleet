@@ -1,6 +1,7 @@
 import type { FleetSources } from "@/lib/fleet-sources";
 import type { FleetTurn } from "@/lib/streaming/fleet-stream-row";
 import type { DurableTaskDetails } from "../../tasks/use-task-details";
+import { useMemo } from "react";
 import Link from "next/link";
 import { Button, List, ListItem, cn } from "@agentsfleet/design-system";
 import { ArrowUpRightIcon, CaretDownIcon, CaretRightIcon, GitBranchIcon, GitDiffIcon, GitPullRequestIcon } from "@phosphor-icons/react/ssr";
@@ -59,7 +60,8 @@ function PullRequestRows({records}: {records: PullRequestRecord[]}) {
 }
 
 export function WorkChanges({turns, repositories}: {turns: readonly FleetTurn[]; repositories?: readonly RecordedChangeRepository[]}) {
-  return <ChangesSummary changes={recordedChanges(turns, {repositories})} />;
+  const changes = useMemo(() => recordedChanges(turns, {repositories}), [turns, repositories]);
+  return <ChangesSummary changes={changes} />;
 }
 
 /** Explicit repository metadata is required for repository labels. */

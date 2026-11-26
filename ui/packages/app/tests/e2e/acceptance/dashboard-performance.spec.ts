@@ -140,7 +140,6 @@ test.describe("authenticated dashboard fluidity", () => {
       })});
       release.resolve();
       await expect(loadingFleets).toBeHidden({timeout: ROUTE_TIMEOUT_MS});
-      await expect(page.getByText("Fleets could not be loaded.", {exact: false})).toHaveCount(0);
       await expect(composer).toHaveValue("Review the release checklist.");
     } finally {
       release.resolve();

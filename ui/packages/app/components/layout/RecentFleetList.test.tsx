@@ -30,7 +30,7 @@ beforeEach(() => {
   vi.mocked(deleteFleetAction).mockReset().mockResolvedValue({ok: true, data: undefined});
   vi.stubGlobal("fetch", fetcher);
 });
-afterEach(() => {cleanup(); vi.unstubAllGlobals();});
+afterEach(() => {cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals();});
 
 it("lists each fleet with its delete action and reads nothing but the fleet list", async () => {
   const navigate = vi.fn();
@@ -111,25 +111,45 @@ it("aborts an in-flight version read when its owner unmounts and never deletes a
   expect(navigation.replace).not.toHaveBeenCalled();
 });
 
-it("recovers an unavailable fleet list through Refresh", async () => {
+it("keeps a failed list quiet and retries it when the operator navigates", async () => {
   fetcher.mockImplementationOnce(async () => response({}, 503));
-  render(<RecentFleetList workspace={WORKSPACE} onNavigate={() => {}} />);
-  fireEvent.click(await screen.findByRole("button", {name: "Refresh"}));
+  const view = render(<RecentFleetList workspace={WORKSPACE} onNavigate={() => {}} />);
+  await waitFor(() => expect(screen.queryByText("Loading fleets…")).toBeNull());
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(screen.queryByRole("button", {name: /refresh|retry/i})).toBeNull();
+  expect(screen.queryByText("Your fleets will appear here.")).toBeNull();
+  navigation.path = `/w/${WORKSPACE}/fleets/${SECOND_ID}`;
+  view.rerender(<RecentFleetList workspace={WORKSPACE} onNavigate={() => {}} />);
   expect(await screen.findByRole("link", {name: active.name})).toBeTruthy();
-  expect(screen.queryByRole("button", {name: "Refresh"})).toBeNull();
 });
 
-it("loads another fleet page and refreshes when navigation changes", async () => {
+it("switches among twelve loaded fleets without refetching or losing the next page", async () => {
+  const clock = vi.spyOn(performance, "now").mockReturnValue(0);
+  const others = Array.from({length: 10}, (_, index) => ({
+    ...active, id: `0199a801-1000-7000-8000-${String(index + 10).padStart(12, "0")}`, name: `fleet-${index + 3}`,
+  }));
   fetcher.mockImplementationOnce(async () => response({items: [active], total: null, next_cursor: "next"}))
-    .mockImplementationOnce(async () => response({items: [archived], total: null, next_cursor: null}));
+    .mockImplementationOnce(async () => response({items: [archived, ...others], total: null, next_cursor: null}));
   const view = render(<RecentFleetList workspace={WORKSPACE} onNavigate={() => {}} />);
   fireEvent.click(await screen.findByRole("button", {name: "Load more fleets"}));
-  expect(await screen.findByRole("link", {name: `${archived.name} Archived`})).toBeTruthy();
-  expect(fetcher.mock.calls.some(([input]) => (typeof input === "string" ? input : input instanceof URL ? input.href : input.url).includes("starting_after=next"))).toBe(true);
+  const second = await screen.findByRole("link", {name: `${archived.name} Archived`});
+  expect(screen.getAllByRole("link")).toHaveLength(12);
   navigation.path = `/w/${WORKSPACE}/fleets/${SECOND_ID}`;
-  const before = calls.length;
   view.rerender(<RecentFleetList workspace={WORKSPACE} onNavigate={() => {}} />);
-  await waitFor(() => expect(calls.length).toBeGreaterThan(before));
+  expect(second.getAttribute("data-active")).toBe("true");
+  expect(screen.getAllByRole("link")).toHaveLength(12);
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  fetcher.mockImplementationOnce(async () => response({items: [active], total: null, next_cursor: "fresh-next"}))
+    .mockImplementationOnce(async () => response({items: [{...archived, name: "archived-review"}, ...others], total: null, next_cursor: null}));
+  clock.mockReturnValue(30_001);
+  navigation.path = `/w/${WORKSPACE}/fleets/${FLEET_ID}`;
+  view.rerender(<RecentFleetList workspace={WORKSPACE} onNavigate={() => {}} />);
+  expect(await screen.findByRole("link", {name: "archived-review Archived"})).toBeTruthy();
+  expect(screen.getAllByRole("link")).toHaveLength(12);
+  const list = `/live/v1/workspaces/${WORKSPACE}/fleets?limit=50`;
+  expect(fetcher.mock.calls.map(([input]) => input)).toEqual([
+    list, `${list}&starting_after=next`, list, `${list}&starting_after=fresh-next`,
+  ]);
 });
 
 it("cancels confirmation and deletes an archived fleet without leaving another fleet page", async () => {

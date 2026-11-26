@@ -54,19 +54,29 @@ test("pet help names the paddle game without making a request", async () => {
 
 test("plays, scores, restarts and restores the terminal on Q", async () => {
   const game = harness(["pet"], {tty: true, interactive: true});
-  await appeared(game.read, "Space serve");
-  game.input.write("\u001b[D");
-  game.input.write("\u001b[C");
-  game.input.write("A");
-  game.input.write("D");
-  game.input.write("z");
-  game.input.write(" ");
-  const plain = () => stripVTControlCharacters(game.read());
-  await appeared(plain, "Score 00050 Best 00050");
-  game.input.write("R");
-  expect(plain().split("Score 00050").at(-1)).toContain("Score 00000 Best 00050");
-  game.input.write("Q");
-  const result = await game.result();
+  const finished = game.result();
+  try {
+    await appeared(game.read, "Space serve");
+    game.input.write("\u001b[D");
+    game.input.write("\u001b[C");
+    game.input.write("A");
+    game.input.write("D");
+    game.input.write("z");
+    game.input.write(" ");
+    const plain = () => stripVTControlCharacters(game.read());
+    await appeared(plain, "Score 00050 Best 00050");
+    await appeared(plain, "Missed! Space serve");
+    const frames = plain().split("Orbit  Score");
+    expect(frames.at(-2)).toContain("|                           o   |");
+    expect(frames.at(-1)).toContain("|        *      o               |");
+    expect(frames.at(-1)).toContain("Lives [oo.]");
+    game.input.write("R");
+    expect(plain().split("Score 00050").at(-1)).toContain("Score 00000 Best 00050");
+  } finally {
+    game.input.write("Q");
+    await finished;
+  }
+  const result = await finished;
   expect(result).toMatchObject({code: 0, requests: 0, stderr: ""});
   expect(result.stdout).toEndWith(terminal.clearRows(ORBIT_ROWS));
   expect(result.stdout).toContain("\u001b[38;5;");

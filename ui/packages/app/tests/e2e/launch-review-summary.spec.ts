@@ -89,6 +89,7 @@ test("repository Sources keeps each label on one line and opens with the keyboar
     page.goto(`${chatProbe}?visual=1&state=completed`),
     reference.goto(new URL("../../../../../docs/ux.html#conversation", import.meta.url).href),
   ]);
+  await reference.getByRole("button", {name: "Approve", exact: true}).click();
   const sources = page.getByRole("region", {name: "Sources", exact: true});
   const design = reference.locator(".summary-section").filter({has: reference.getByText("Sources", {exact: true})});
   const row = sources.locator("summary");
