@@ -35,15 +35,28 @@ The guest reported `PRETTY_NAME="Debian GNU/Linux 13 (trixie)"`, `6.18.62`, `2` 
 
 ## Dimension 1.1: the toolbox boots as a VM's root
 
-Passed. 20 boots in sequence, from process start until the guest printed that it listened on vsock, and until the executor answered `list_dir` through the host's vsock socket:
+Passed. The kernel version came from inside the guest twice. The guest's `/init` printed `kernel=6.18.62`, read from `/proc/sys/kernel/osrelease`, to the serial console. A command spawned through the executor over vsock printed `6.18.62` from `uname -r`. The host's own kernel is `6.12.111+deb13-amd64`, so neither answer can have come from the host.
+
+20 boots ran in sequence on a fresh workspace image, with no other VM running. Each was timed from process start until the guest printed that it listened on vsock, and until the executor answered `list_dir` through the host's vsock socket:
 
 | | guest ready | executor answers | VMM resident set size (RSS) |
 |---|---|---|---|
-| min | 184 ms | 188 ms | 111,524 KiB |
-| median | 200 ms | 206 ms | 115,604 KiB |
-| max | 210 ms | 221 ms | 113,556 KiB |
+| min | 175 ms | 186 ms | 115,600 KiB |
+| median | 194 ms | 201 ms | 115,608 KiB |
+| max | 218 ms | 230 ms | 109,464 KiB |
 
-Each row is the boot with the minimum, median or maximum executor time, and its RSS is that boot's. RSS is the Firecracker process's resident memory just after the answer, idle guest included: about 113 MiB against a 2048 MiB guest. Bubblewrap's documented start is "tens of milliseconds" (`afr_sandbox/src/engine/mod.rs:30-32`); a VM is about 200 ms.
+Each row is the boot with the minimum, median or maximum executor time, and its RSS is that boot's. Bubblewrap's documented start is "tens of milliseconds" (`afr_sandbox/src/engine/mod.rs:30-32`); a VM is about 200 ms.
+
+**Idle memory by guest size**, one VM at a time, read 2 s after the executor answered:
+
+| Guest memory | VMM RSS | Used inside the guest (MemTotal − MemFree) |
+|---|---|---|
+| 512 MiB | 80.9 MiB | 26.2 MiB |
+| 1024 MiB | 92.9 MiB | 45.9 MiB |
+| 2048 MiB | 110.9 MiB | 46.2 MiB |
+| 4096 MiB | 220.9 MiB | 51.6 MiB |
+
+The guest kernel already carries `CONFIG_VIRTIO_BALLOON=y` and `CONFIG_PAGE_REPORTING=y`. Whether a balloon device with free page reporting lowers the host's RSS was not measured.
 
 ## Dimension 1.2: the executor answers through the vsock handshake
 
@@ -53,23 +66,33 @@ The entry was a spike helper that links the real executor crate, not the runner'
 
 ## Dimension 1.3: a stopped VM loses no synced byte
 
-Passed. With `vdb` on `cache_type` `Writeback`:
+Passed, on a fresh image with no other VM running. With `vdb` on `cache_type` `Writeback`:
 
-1. The guest wrote 1 MiB of random bytes, `sha256sum` printed `b221506f…9b2a`, and the guest ran `sync`.
-2. The VMM was stopped with `SIGKILL`.
-3. A fresh VM booted on the same image and read `b221506f…9b2a  /workspace/probe.bin`.
+1. The guest wrote 1 MiB of random bytes, `sha256sum` printed `4d290fd2…deb2`, and the guest ran `sync`.
+2. The VMM was stopped with `SIGKILL`, and `e2fsck -fn` on the image reported no errors.
+3. A fresh VM booted on the same image and read `4d290fd2…deb2  /workspace/probe.bin`.
 
-An unsynced write, `bea65e2d…`, killed the same way, was gone after the reboot: `No such file or directory`. No boot made an API call; every VM ran from `--config-file`.
+An unsynced write, `cde50ee4…`, killed the same way, was gone after the reboot: `No such file or directory`. `e2fsck -fn` reported no errors after every kill. No boot made an API call; every VM ran from `--config-file`.
 
 A `Stop` hold must therefore sync the guest before the VMM stops, as §7's hold says.
+
+**A first run that does not count.** A VM left by a failed first script kept `workspace.ext4` mounted while the first 20 boots and both kills ran, so two VMs wrote one ext4 image. The guest console then read `EXT4-fs error (device vdb): ext4_lookup:1789: inode #13: … iget: checksum invalid`. That run was discarded, and every number above is from the re-run. It is also a finding: nothing stops a second VMM from attaching a workspace image a live VM holds, so §7 must.
+
+## Who can reach the executor
+
+- **On the host, only root.** The vsock socket Firecracker made was `srwxr-xr-x root:root`. Connecting to a Unix socket needs write permission on it, and `/root` is mode `700`.
+- **From inside the guest, nothing.** The guest kernel has `# CONFIG_VSOCKETS_LOOPBACK is not set`, so a guest process cannot dial the guest's own listener.
+- **From another VM or the network, nothing.** Each VM's vsock device is its own, and no TCP port was opened.
+
+Under §7 the socket lives in each jail, owned by that jail's user.
 
 ## What the spike did not cover
 
 - **The jailer.** Every boot ran Firecracker directly as root, so the jailer's user, chroot, cgroup leaf and network namespace are §7's to prove.
 - **Networking.** The VMs had no tap device, so egress is §4's and §7's to prove.
 - **Concurrent boots.** Boots were sequential, so start time under load is unmeasured.
-- **Memory under load.** Idle RSS was about 113 MiB per VM. §8's overcommit at 4 to 1 assumes running guests touch well under their 2 GiB, which no working set has measured yet.
+- **Memory under load.** Idle RSS was about 111 MiB per 2 GiB VM. §8's overcommit at 4 to 1 assumes running guests touch well under their 2 GiB, which no working set has measured yet.
 
 ## For D15, the pool
 
-A pooled VM saves about 200 ms of the start (median 206 ms to the executor's answer), and an idle pooled VM holds about 113 MiB. Indy ruled a pool of four (D15) with these numbers unmeasured. They are recorded here for any re-ruling.
+A pooled VM saves about 200 ms of the start (median 201 ms to the executor's answer), and an idle pooled 2 GiB VM holds about 111 MiB of host memory. Indy ruled a pool of four (D15) with these numbers unmeasured. They are recorded here for any re-ruling.

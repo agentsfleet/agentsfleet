@@ -293,11 +293,17 @@ The executor can tear the inner environment down and build it again without rebo
 
 **Egress** reuses `afr_firewall`'s per-slot table on a tap, dropping the reserved ranges ahead of the accept, with no IPv6 on the tap. No-network attaches no device. Firecracker filters nothing itself, so this table is the only enforcer.
 
+**One VM per workspace image.** §1's first run let two VMMs mount one ext4 image, and the guest read `checksum invalid` (`docs/v2/reviews/m258-firecracker-spike.md`). The engine takes an exclusive lock on a workspace image before it attaches it and holds it while the VMM runs, so a second attach is refused before any VMM starts.
+
+**Only the host reaches the executor.** The guest kernel is built without `CONFIG_VSOCKETS_LOOPBACK`, so no guest process can dial the executor's port, as §1 found. The executor also refuses a connection whose peer is not the host's context identifier, 2. The host socket lives in the jail, owned by that jail's user.
+
 - **Dimension 7.1** — Firecracker passes the same suite → Test `make test-runner-kernel ENGINE=firecracker` (integration, the dev host). Every trial passes or asserts `Unsupported` as declared, the verdict matrix, planted token and toolbox digest included. Counts go in the Session Notes.
 - **Dimension 7.2** — no KVM, no Firecracker, no fallback → Test `firecracker_refuses_a_host_without_usable_kvm` (unit, `afr_engine_firecracker`). With `Kvm::Denied` or `Kvm::Absent`, boot refuses naming `kvm`, and no engine starts. `--engine firecracker` parses.
 - **Dimension 7.3** — a crash leaves nothing → Test `a_runner_killed_mid_build_leaves_no_jail_tap_or_table` (integration, kernel lane, Firecracker). `SIGKILL` reaches the runner during `prepare`. The next boot's sweep leaves no jail directory, tap, table, VMM process or drive.
 - **Dimension 7.4** — a hold keeps the disk, not the VM → Test `a_stopped_hold_resumes_on_its_own_disk` (integration, kernel lane, Firecracker). A file is written, then a hold leaves no VMM running. On resume the file reads back, no earlier process remains, and the plan reads back in force.
 - **Dimension 7.5** — a restore needs no reboot → Test `a_restore_inside_a_running_vm_replaces_the_workspace` (integration, kernel lane, Firecracker). A background process runs and a file is written; then a different file checkpoint is restored in place. The workspace equals that checkpoint's tree, no process of the old inner environment survives, and the VMM's process identifier is unchanged.
+- **Dimension 7.7** — one VM per workspace image → Test `a_second_vmm_cannot_attach_a_held_workspace_image` (integration, kernel lane, Firecracker). With a sandbox running, a second `prepare` naming its workspace image is refused naming the image's lock, and no second VMM process starts.
+- **Dimension 7.8** — only the host reaches the executor → Test `a_guest_process_cannot_reach_the_executor` (integration, kernel lane, Firecracker). From the inner environment, dialing the executor's vsock port at context identifiers 1, 2 and 3 fails. A connection whose peer identifier is not 2 is refused, in a unit test over a fake listener.
 - **Dimension 7.6** — today's checkpoints still work on Firecracker → Test `test_supervisor_repository_durable_task_retains_base_then_incremental` (integration, `make test-runner-kernel ENGINE=firecracker`). This existing trial passes unchanged in what it asserts: a base, then an incremental checkpoint, saved and restored. So does `test_supervisor_api_durable_task_captures_frozen_workspace`, renamed only if its "frozen" no longer holds.
 
 ### §8 — Memory admission overcommitted 4 to 1, and a pool of four pre-booted VMs
@@ -362,6 +368,8 @@ Error kinds added: Unsupported{engine, operation} · Remote{engine, operation, s
 | Private or metadata dial | security | a tenant dials a reserved address | dropped before the accept | `the_verdict_matrix_refuses_every_unlisted_destination` |
 | False capability | failure | an engine claims a mode it lacks | the suite fails by name | `a_false_capability_fails_the_suite` |
 | Hold loses bytes | failure | the VMM stops with writes unflushed | guest sync and a `Writeback` drive | `a_stopped_hold_resumes_on_its_own_disk` |
+| Workspace attached twice | failure | a leftover or second VMM names a live image | the image's exclusive lock refuses the second attach; no VMM starts | `a_second_vmm_cannot_attach_a_held_workspace_image` |
+| Guest dials the executor | security | tenant code opens a vsock connection | no loopback in the guest kernel; the executor refuses a non-host peer | `a_guest_process_cannot_reach_the_executor` |
 | Old process outlives a restore | security | a tenant process escapes the teardown | the inner process namespace ends with its init; the restore refuses if any remains | `a_restore_inside_a_running_vm_replaces_the_workspace` |
 
 ## Invariants
