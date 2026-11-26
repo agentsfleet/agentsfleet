@@ -160,7 +160,7 @@ impl Run<'_> {
     /// the sandbox still serves.
     pub(super) async fn keep(&self, kept: Option<Kept>, ending: &mut Ending) -> Fate {
         let Some(Kept {
-            mut sandbox,
+            sandbox,
             key,
             recovery,
         }) = kept

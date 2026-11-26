@@ -211,6 +211,7 @@ fn supervise(args: RunArgs, settings: &config::Settings) -> Result<ExitCode, Exi
     // `resources` outlives the runtime and the engine it is moved into: every
     // sandbox is gone before its toolbox is unmounted.
     let host = args.host(&home, settings)?;
+    host.announce();
     let _resources = host.resources;
     let (engine, probe, warm_pool) = (host.engine, host.probe, host.warm_pool);
     let agent = host::agent(settings)?;

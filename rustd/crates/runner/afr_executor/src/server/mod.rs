@@ -29,7 +29,7 @@ use tokio::sync::mpsc;
 
 pub(crate) use self::files::MAX_LISTING_BYTES;
 use self::files::Workspace;
-pub use self::launch::Tenant;
+pub use self::launch::{Entry, InnerEnvironment, Tenant};
 use self::launch::{Inherit, Placement};
 use self::session::Session;
 use crate::client::transport::Stream;
@@ -89,6 +89,9 @@ pub struct Server {
     /// Where every process it starts is placed: where the executor runs,
     /// unless [`Server::with_tenant`] names a leaf.
     placement: Arc<dyn Placement>,
+    /// The environment every process it starts runs in: none, unless
+    /// [`Server::with_inner`] names one.
+    inner: Option<Arc<dyn InnerEnvironment>>,
     /// The read clamp and the frame cap: the defaults, unless
     /// [`Server::with_sizes`] names its starter's.
     sizes: Sizes,
@@ -133,7 +136,19 @@ impl Server {
         Self {
             link,
             placement: Arc::new(Inherit),
+            inner: None,
             sizes: Sizes::DEFAULT,
+        }
+    }
+
+    /// Starts every process inside `inner`, and renews `inner` when the
+    /// supervisor asks: the executor stays outside it, as the sandbox's root
+    /// service.
+    #[must_use]
+    pub fn with_inner(self, inner: Arc<dyn InnerEnvironment>) -> Self {
+        Self {
+            inner: Some(inner),
+            ..self
         }
     }
 
@@ -167,7 +182,7 @@ impl Server {
     pub async fn serve(self, root: &Path) -> Result<()> {
         let event = EVENT_SERVE_STARTED;
         tracing::info!(event, "the executor is waiting for its supervisor");
-        let served = accept(self.link, self.placement, self.sizes, root).await;
+        let served = accept(self.link, self.placement, self.inner, self.sizes, root).await;
         match &served {
             Ok(()) => {
                 let event = EVENT_SERVE_COMPLETED;
@@ -196,6 +211,7 @@ pub async fn serve(socket: &Path, root: &Path) -> Result<()> {
 async fn accept(
     link: Link,
     placement: Arc<dyn Placement>,
+    inner: Option<Arc<dyn InnerEnvironment>>,
     sizes: Sizes,
     root: &Path,
 ) -> Result<()> {
@@ -205,7 +221,7 @@ async fn accept(
     let (answers, answered) = mpsc::unbounded_channel();
     let (output, said) = mpsc::channel(OUTPUT_LINES_IN_FLIGHT);
     let writer = tokio::spawn(write_lines(write, answered, said));
-    Session::new(workspace, placement, answers, output, sizes)
+    Session::new(workspace, placement, inner, answers, output, sizes)
         .run(read)
         .await;
     // The session dropped the last senders, so the writer drains and ends.
@@ -235,3 +251,6 @@ async fn write_lines(
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod inner_tests;

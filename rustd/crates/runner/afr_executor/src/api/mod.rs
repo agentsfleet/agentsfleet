@@ -8,15 +8,17 @@ use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncWrite};
 
-use crate::error::{Result, file_calls_unsupported};
+use crate::error::{Result, file_calls_unsupported, no_inner_environment};
 use crate::events::Events;
 use crate::sizes::Sizes;
 
 mod ending;
+mod files;
 mod search;
 
 pub use self::ending::Ending;
 pub(crate) use self::ending::{SHELL_KILLED_EXIT, SIGKILL};
+pub use self::files::{DirEntry, EntryKind, FileContent, Imported, Listing};
 pub use self::search::{Found, Hit, Pattern, Search};
 
 /// A process the executor started, unique for the life of one executor.
@@ -204,58 +206,6 @@ impl Process {
     }
 }
 
-/// What a directory entry is.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum EntryKind {
-    /// A regular file.
-    File,
-    /// A directory.
-    Directory,
-    /// A symbolic link, not followed.
-    Symlink,
-    /// Anything else: a socket, a device, a pipe.
-    Other,
-}
-
-/// One entry of a listed directory.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct DirEntry {
-    /// The entry's name, without its directory.
-    pub name: String,
-    /// What it is.
-    pub kind: EntryKind,
-    /// Its size in bytes, as the file system reports it.
-    pub size: u64,
-}
-
-/// A directory's entries, up to the most one answer carries.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Listing {
-    /// The entries, in no particular order.
-    pub entries: Vec<DirEntry>,
-    /// Whether the directory held more than were listed.
-    pub truncated: bool,
-}
-
-/// What one import unpacked.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Imported {
-    /// The entries written: files, directories and links.
-    pub entries: u64,
-    /// The bytes of file content written.
-    pub bytes: u64,
-}
-
-/// A file's bytes, up to the limit the caller asked for.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FileContent {
-    /// The bytes read.
-    pub data: Bytes,
-    /// Whether the file held more than was read.
-    pub truncated: bool,
-}
-
 /// Processes and files inside one sandbox.
 ///
 /// Every path is inside `/workspace`; one that escapes it, through `..` or a
@@ -342,6 +292,18 @@ pub trait Executor: Send + Sync + fmt::Debug {
         _into: &mut (dyn AsyncWrite + Send + Unpin),
     ) -> Result<()> {
         Err(file_calls_unsupported())
+    }
+
+    /// Ends every process the sandbox's inner environment runs, empties the
+    /// workspace and builds the environment again, without restarting the
+    /// sandbox: a restore then imports its tree into the fresh workspace.
+    /// Answers once no process of the old environment remains.
+    ///
+    /// # Errors
+    /// The executor builds no inner environment, or it could not be torn
+    /// down or built again.
+    async fn renew(&self) -> Result<()> {
+        Err(no_inner_environment())
     }
 }
 

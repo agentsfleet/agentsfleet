@@ -82,6 +82,17 @@ pub(crate) fn file_calls_unsupported() -> Error {
     ErrorKind::FileCallsUnsupported.into()
 }
 
+/// A renewal to an executor that builds no inner environment.
+pub(crate) fn no_inner_environment() -> Error {
+    ErrorKind::NoInnerEnvironment.into()
+}
+
+/// The inner environment could not be entered, torn down or built again,
+/// for the reason `source` gives.
+pub(crate) fn inner_unavailable(source: std::io::Error) -> Error {
+    ErrorKind::InnerUnavailable { source }.into()
+}
+
 /// Parameters that decoded but cannot be used.
 pub(crate) fn invalid_params(detail: &'static str) -> Error {
     ErrorKind::InvalidParams { detail }.into()

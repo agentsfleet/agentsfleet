@@ -38,7 +38,7 @@ impl Parts {
             disk: self.disk.take(),
             cgroup: self.cgroup.take(),
             egress: self.egress.take(),
-            child: self.child.take(),
+            child: std::sync::Mutex::new(self.child().take()),
             stderr: self.stderr.take(),
         }
     }
@@ -59,7 +59,7 @@ impl Parts {
         if let Some(cgroup) = &self.cgroup {
             keep(cgroup.kill().map_err(Error::from));
         }
-        if let Some(mut child) = self.child.take() {
+        if let Some(mut child) = self.child().take() {
             // Usually already gone with its cgroup; a sandbox that died on its
             // own is not a teardown failure.
             if matches!(child.try_wait(), Ok(None)) {
@@ -93,7 +93,7 @@ impl Drop for Parts {
             || self.disk.is_some()
             || self.cgroup.is_some()
             || self.egress.is_some()
-            || self.child.is_some();
+            || self.child().is_some();
         if !held {
             return;
         }

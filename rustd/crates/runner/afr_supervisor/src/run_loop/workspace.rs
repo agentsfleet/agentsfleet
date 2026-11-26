@@ -10,8 +10,9 @@
 //! refuse it. Then the build and the turn run in one task: the turn's
 //! first model call never waits for the sandbox, and only a sandbox-side call
 //! does. A build that fails leaves the turn going; its sandbox-side calls
-//! answer `sandbox_unavailable`. The sandbox goes back to the run, which
-//! holds it for the fleet's next run or destroys it.
+//! answer `sandbox_unavailable`. A sandbox that ends under the turn ends the
+//! run (`lost`). The sandbox goes back to the run, which holds it for the
+//! fleet's next run or destroys it.
 
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -26,6 +27,7 @@ use tokio_util::sync::CancellationToken;
 use super::build::Build;
 use super::checkout::Plan;
 use super::hold::{Kept, Worked};
+use super::lost::Watched;
 use super::segments::Segment;
 use super::{Run, failed};
 use crate::activity::ActivitySink;
@@ -95,6 +97,7 @@ impl Run<'_> {
         let cell = OnceLock::new();
         let (ending, held) = {
             let slot = ExecutorSlot::pending();
+            let watched = Watched::new(&slot, &cell, &self.interrupt, self.ids.run.as_str());
             let (capture, owner) = super::recovery_boundary::BoundaryOwner::new(
                 self,
                 super::recovery_boundary::Workspace::Building {
@@ -118,7 +121,7 @@ impl Run<'_> {
                 }
                 self.drive(
                     memory,
-                    &slot,
+                    &watched,
                     sink,
                     prepared_durable_task,
                     super::drive::Recovered::from(recovery.get()),
@@ -127,7 +130,7 @@ impl Run<'_> {
                 .await
             });
             let ending = owner.beside(self.beside(building, driving, &stop)).await;
-            (ending, slot.held())
+            (watched.judged(ending), slot.held())
         };
         self.timeline.waited(held);
         Worked {

@@ -36,7 +36,7 @@ async fn test_an_unsandboxed_runs_a_process_and_is_removed() {
     let id = fresh_sandbox_id();
     let engine = UnsandboxedEngine::new(base.path().to_owned()).unwrap();
 
-    let mut sandbox = engine
+    let sandbox = engine
         .prepare(SandboxSpec::granted_by(&engine, &id, Limits::DEFAULT).unwrap())
         .await
         .unwrap();

@@ -70,7 +70,7 @@ async fn should_report_a_drill_sandbox_quiet() {
     let base = scratch();
     let id = fresh_sandbox_id();
     let engine = RecoveryDrillEngine::new(base.path().to_owned()).unwrap();
-    let mut sandbox = engine
+    let sandbox = engine
         .prepare(SandboxSpec::granted_by(&engine, &id, Limits::DEFAULT).unwrap())
         .await
         .unwrap();

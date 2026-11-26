@@ -36,11 +36,12 @@ impl Executor for Idle {
 }
 
 /// Every class a slot can be filled without an executor for.
-const CLASSES: [Unavailable; 4] = [
+const CLASSES: [Unavailable; 5] = [
     Unavailable::NoSandbox,
     Unavailable::Prepare,
     Unavailable::Checkout,
     Unavailable::Stopped,
+    Unavailable::Lost,
 ];
 /// How long the build takes in the waiting tests.
 const BUILD_TAKES: Duration = Duration::from_millis(40);
@@ -198,7 +199,10 @@ fn of_many_callers_racing_to_fill_exactly_one_does() {
 #[test]
 fn each_class_names_itself_and_reads_as_the_end_of_a_tool_sentence() {
     let names: Vec<&str> = CLASSES.iter().map(|class| class.as_str()).collect();
-    assert_eq!(names, ["no_sandbox", "prepare", "checkout", "stopped"]);
+    assert_eq!(
+        names,
+        ["no_sandbox", "prepare", "checkout", "stopped", "lost"]
+    );
     for class in CLASSES {
         let reason = class.reason();
         assert!(reason.starts_with("runs in the sandbox, and "), "{reason}");

@@ -6,7 +6,8 @@
 //! launcher takes the queue of writes for its process and drains it into the
 //! process's input itself, in order. Both place the process through the
 //! session's [`Placement`] before it execs, so a sandbox's tenant processes
-//! never share the executor's cgroup.
+//! never share the executor's cgroup, and then enter the plan's inner
+//! environment when the executor builds one.
 
 use std::collections::BTreeMap;
 use std::io;
@@ -66,6 +67,8 @@ pub(super) struct Plan {
     env: BTreeMap<String, String>,
     terminal: bool,
     timeout: Option<Duration>,
+    /// The environment it runs in; none runs it where the executor runs.
+    inner: Option<Arc<dyn InnerEnvironment>>,
 }
 
 impl Plan {
@@ -87,7 +90,19 @@ impl Plan {
             env,
             terminal: params.pty,
             timeout: params.timeout_ms.map(Duration::from_millis),
+            inner: None,
         })
+    }
+
+    /// The same plan, run inside `inner` when there is one.
+    pub(super) fn inside(self, inner: Option<Arc<dyn InnerEnvironment>>) -> Self {
+        Self { inner, ..self }
+    }
+
+    /// Has the process `command` starts enter this plan's inner environment
+    /// before it execs, when it has one.
+    fn enter(&self, command: &mut std::process::Command) -> Result<()> {
+        inner::enter(command, self.inner.as_deref(), &self.cwd)
     }
 
     /// Whether it runs on a pseudo-terminal.
@@ -128,9 +143,11 @@ pub(super) trait Launcher: Send + Sync {
     ) -> Result<Spawned>;
 }
 
+mod inner;
 mod tenant;
 mod terminal;
 
+pub use self::inner::{Entry, InnerEnvironment};
 pub use self::tenant::Tenant;
 pub(crate) use self::tenant::{Inherit, Placement};
 use self::terminal::Terminal;
@@ -164,6 +181,7 @@ impl Launcher for Pipes {
             // their leaders; a stop reaches the rest of the group.
             .kill_on_drop(true);
         tenant::place(command.as_std_mut(), placement)?;
+        plan.enter(command.as_std_mut())?;
         let mut child = command.spawn()?;
         let pid = leader(child.id())?;
         let (sender, output) = mpsc::channel(OUTPUT_BACKLOG);

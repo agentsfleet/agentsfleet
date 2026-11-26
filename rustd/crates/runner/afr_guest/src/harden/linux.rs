@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use landlock::{
     ABI, Access as _, AccessFs, CompatLevel, Compatible as _, Ruleset, RulesetAttr as _,
-    RulesetCreatedAttr as _, path_beneath_rules,
+    RulesetCreated, RulesetCreatedAttr as _, path_beneath_rules,
 };
 use seccompiler::{BpfProgram, SeccompAction, SeccompFilter, SeccompRule, TargetArch, sock_filter};
 
@@ -48,13 +48,20 @@ pub const X32_SYSCALL_BIT: u32 = 0x4000_0000;
 
 /// Reads everywhere; writes only beneath [`WRITABLE`] and to [`WRITABLE_DEVICES`].
 pub(super) fn restrict_file_system() -> Result<()> {
+    file_system_rules()?.restrict_self()?;
+    Ok(())
+}
+
+/// The ruleset [`restrict_file_system`] enforces, built and not yet
+/// enforced: a process that confines itself between fork and exec, where
+/// nothing may be allocated, enforces one built for it before the fork.
+pub(crate) fn file_system_rules() -> Result<RulesetCreated> {
     let read = AccessFs::from_read(LANDLOCK_ABI);
     let write = AccessFs::from_all(LANDLOCK_ABI);
     let rules = path_beneath_rules([ROOT], read)
         .chain(path_beneath_rules(WRITABLE, write))
         .chain(path_beneath_rules(WRITABLE_DEVICES, write));
-    ruleset()?.create()?.add_rules(rules)?.restrict_self()?;
-    Ok(())
+    Ok(ruleset()?.create()?.add_rules(rules)?)
 }
 
 /// Whether this kernel builds the ruleset every sandbox is confined by. It

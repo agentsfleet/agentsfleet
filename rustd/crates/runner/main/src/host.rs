@@ -17,6 +17,8 @@ use afr_supervisor::StorageHome;
 
 /// The event every failure that stops `run` is logged under.
 pub(crate) const EVENT_RUN_FAILED: &str = "run_failed";
+/// The event the engine this host admitted at boot is logged under.
+pub(crate) const EVENT_ENGINE_BOOTED: &str = "sandbox_engine_booted";
 /// Why `run` stopped when the host lacks a mechanism every sandbox needs.
 #[cfg(not(target_os = "linux"))]
 const CANNOT_SANDBOX: &str = "this host cannot build a sandbox";
@@ -213,6 +215,36 @@ impl<E: Engine + 'static> From<afr_engine::Booted<E>> for Host {
             Some(value.started.resources),
         )
     }
+}
+
+impl Host {
+    /// Logs the engine this host admitted, once, before any run: what it is,
+    /// what `/dev/kvm` allows, the most sandboxes its memory admits when it
+    /// reserves memory for each, and the most workers a daemon may assign,
+    /// which the credits it offers never pass either.
+    pub(crate) fn announce(&self) {
+        booted(
+            self.engine.capabilities(),
+            self.engine.memory_bound(),
+            &self.probe,
+        );
+    }
+}
+
+/// Logs `sandbox_engine_booted` for an engine stating `capabilities` and
+/// bounded by `bound`, on a host `probe` describes. Host facts only: no path,
+/// token or tenant identifier.
+fn booted(
+    capabilities: afr_engine::Capabilities,
+    bound: Option<afr_engine::MemoryBound>,
+    probe: &HostProbe,
+) {
+    let engine: &str = capabilities.engine.into();
+    let kvm: &str = probe.kvm.into();
+    let sandboxes_max = bound.map(|bound| bound.sandboxes_max);
+    let worker_count = af_core::limits::MAX_WORKERS;
+    let event = EVENT_ENGINE_BOOTED;
+    tracing::info!(engine, kvm, sandboxes_max, worker_count, event);
 }
 
 /// `engine` with `slots` sandboxes granted `limits` started ahead of their

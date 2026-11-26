@@ -39,6 +39,9 @@ pub enum Unavailable {
     Checkout,
     /// The run ended before its sandbox was ready.
     Stopped,
+    /// The sandbox ended while the run went on: the host ended it, or its
+    /// executor died, and the run ends with it.
+    Lost,
 }
 
 impl Unavailable {
@@ -50,6 +53,7 @@ impl Unavailable {
             Self::Prepare => "prepare",
             Self::Checkout => "checkout",
             Self::Stopped => "stopped",
+            Self::Lost => "lost",
         }
     }
 
@@ -63,6 +67,7 @@ impl Unavailable {
                 "runs in the sandbox, and this run's repositories could not be checked out into it"
             }
             Self::Stopped => "runs in the sandbox, and the run ended before its sandbox was ready",
+            Self::Lost => "runs in the sandbox, and this run's sandbox ended while the run went on",
         }
     }
 }

@@ -228,7 +228,7 @@ fn test_a_host_without_landlock_refuses_every_run() {
 async fn test_a_sandbox_that_dies_reports_it_is_no_longer_running() {
     let host = FakeHost::new(BRIEF);
     let server = serve_runs(host.config.state_dir.clone());
-    let mut sandbox = host.engine().prepare(spec(&id_of("run-10"))).await.unwrap();
+    let sandbox = host.engine().prepare(spec(&id_of("run-10"))).await.unwrap();
 
     let alive = sandbox.state() == SandboxState::Running;
     let died = tokio::time::timeout(PATIENCE, async {
@@ -334,7 +334,7 @@ async fn test_a_root_runner_starts_the_sandbox_as_its_own_user() {
     engine.run_as = Some(me);
     engine.owner = me;
 
-    let mut sandbox = engine.prepare(spec(&id_of("run-12"))).await.unwrap();
+    let sandbox = engine.prepare(spec(&id_of("run-12"))).await.unwrap();
     let running = sandbox.state() == SandboxState::Running;
     let _left = sandbox.destroy().await;
     server.abort();

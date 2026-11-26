@@ -135,6 +135,7 @@ fn start(plan: &Plan, placement: &Arc<dyn Placement>, far: OwnedFd) -> Result<Ch
         .stdout(Stdio::from(far.try_clone()?))
         .stderr(Stdio::from(far));
     tenant::place(&mut command, placement)?;
+    plan.enter(&mut command)?;
     // SAFETY: the hook runs in the child between fork and exec, where only
     // async-signal-safe calls are sound. `setsid` and the `TIOCSCTTY` ioctl
     // are single system calls, the second on a descriptor opened before the

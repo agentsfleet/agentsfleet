@@ -24,6 +24,9 @@ pub(super) struct FakeExecutor {
     pub(super) parking: Parking,
     /// Whether its sandbox was resumed.
     pub(super) resumed: AtomicBool,
+    /// Whether a turn listed a directory through it: the last of the calls
+    /// a fake turn makes.
+    pub(super) served: AtomicBool,
 }
 
 #[async_trait::async_trait]
@@ -62,6 +65,7 @@ impl Executor for FakeExecutor {
     }
 
     async fn list_dir(&self, _path: &str) -> afr_executor::Result<Listing> {
+        self.served.store(true, Ordering::SeqCst);
         let resumed = self.resumed.load(Ordering::SeqCst);
         if resumed && self.parking == Parking::ResumesSilent {
             std::future::pending::<()>().await;

@@ -211,7 +211,7 @@ impl Sandbox for Unconfined {
         &self.client
     }
 
-    fn state(&mut self) -> SandboxState {
+    fn state(&self) -> SandboxState {
         if self.server.is_finished() {
             SandboxState::Ended
         } else {

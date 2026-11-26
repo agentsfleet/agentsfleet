@@ -27,7 +27,7 @@ pub const SANDBOX_TMP: &str = "/tmp";
 
 /// The process status file the checks read.
 #[cfg(target_os = "linux")]
-const PROC_SELF_STATUS: &str = "/proc/self/status";
+pub(crate) const PROC_SELF_STATUS: &str = "/proc/self/status";
 /// Pseudo-terminals, which `--dev` mounts and an interactive process writes.
 const DEV_PTS: &str = "/dev/pts";
 
@@ -120,6 +120,8 @@ pub fn capabilities_dropped(status: &str) -> Result<()> {
 #[cfg(target_os = "linux")]
 mod linux;
 
+#[cfg(target_os = "linux")]
+pub(crate) use self::linux::{HIGH_NUMBERS, file_system_rules, program};
 #[cfg(target_os = "linux")]
 pub use self::linux::{REFUSED as REFUSED_SYSCALLS, X32_SYSCALL_BIT};
 

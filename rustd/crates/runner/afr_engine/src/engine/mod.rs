@@ -264,8 +264,10 @@ pub trait Sandbox: Send + Sync + fmt::Debug {
     fn executor(&self) -> &dyn Executor;
 
     /// Whether it can still serve. A warm slot whose sandbox ended while it
-    /// waited is discarded on claim rather than handed to a run.
-    fn state(&mut self) -> SandboxState;
+    /// waited is discarded on claim rather than handed to a run, and a run
+    /// whose sandbox ended under it ends unavailable. Read through `&self`, so
+    /// a run reads it while its turn borrows the executor.
+    fn state(&self) -> SandboxState;
 
     /// Whether any tenant process remains, read from the engine's own
     /// mechanism rather than remembered.

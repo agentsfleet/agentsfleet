@@ -45,6 +45,7 @@ mod drive;
 mod durable_task_workspace;
 mod hold;
 mod lessee;
+mod lost;
 mod recovery;
 mod recovery_boundary;
 mod recovery_capture;

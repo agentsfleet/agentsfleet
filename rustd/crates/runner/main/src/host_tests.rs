@@ -9,7 +9,8 @@ use tracing::field::{Field, Visit};
 use tracing_subscriber::layer::{Context, Layer, SubscriberExt as _};
 
 use super::{
-    EVENT_RUN_FAILED, EXIT_FAILED, EXIT_TOKEN_REFUSED, OrExit as _, exit_status, io_failed,
+    EVENT_ENGINE_BOOTED, EVENT_RUN_FAILED, EXIT_FAILED, EXIT_TOKEN_REFUSED, OrExit as _, booted,
+    exit_status, io_failed,
 };
 
 /// The field every runner log line names its event in.
@@ -129,6 +130,50 @@ fn test_an_io_failure_is_logged_as_the_system_tells_it() {
         Some("the runtime would not start")
     );
     assert_eq!(status, ExitCode::from(EXIT_FAILED));
+}
+
+/// The engine a host admitted is logged once, by its name, what `/dev/kvm`
+/// allows, the sandboxes its memory admits and the most workers a daemon may
+/// assign; an engine that reserves no memory names no bound.
+#[test]
+fn test_the_admitted_engine_is_logged_with_its_bound() {
+    use std::num::NonZeroU64;
+
+    use af_wire::runner::{Kvm, SandboxEngine};
+    use afr_engine::{Capabilities, MemoryBound};
+    use afr_engine_bubblewrap::BUBBLEWRAP_CAPABILITIES;
+
+    const GIB: u64 = 1024 * 1024 * 1024;
+    let mut probe = afr_engine_bubblewrap::probe(&afr_engine_bubblewrap::ProbePaths::default());
+    probe.kvm = Kvm::Usable;
+    let Some(sandbox_bytes) = NonZeroU64::new(2 * GIB + 16 * 1024 * 1024) else {
+        unreachable!("a non-zero reservation")
+    };
+    let bound = MemoryBound::overcommitted(28 * GIB, 4, sandbox_bytes);
+    let microvms = Lines::default();
+    let journal = tracing_subscriber::registry().with(microvms.clone());
+    tracing::subscriber::with_default(journal, || {
+        let microvm = Capabilities {
+            engine: SandboxEngine::Firecracker,
+            ..BUBBLEWRAP_CAPABILITIES
+        };
+        booted(microvm, Some(bound), &probe);
+    });
+    let processes = Lines::default();
+    let journal = tracing_subscriber::registry().with(processes.clone());
+    tracing::subscriber::with_default(journal, || {
+        booted(BUBBLEWRAP_CAPABILITIES, None, &probe);
+    });
+
+    let line = microvms.only(EVENT_ENGINE_BOOTED);
+    let workers = af_core::limits::MAX_WORKERS.to_string();
+    assert_eq!(line.get("engine").map(String::as_str), Some("firecracker"));
+    assert_eq!(line.get("kvm").map(String::as_str), Some("usable"));
+    assert_eq!(line.get("sandboxes_max").map(String::as_str), Some("55"));
+    assert_eq!(line.get("worker_count"), Some(&workers));
+    let line = processes.only(EVENT_ENGINE_BOOTED);
+    assert_eq!(line.get("engine").map(String::as_str), Some("bubblewrap"));
+    assert_eq!(line.get("sandboxes_max"), None, "no memory bound, no field");
 }
 
 /// Every line logged while it is the scoped subscriber, each field by name.

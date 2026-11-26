@@ -202,7 +202,7 @@ fn live_slot(
     refill: impl Fn(&mut JoinSet<()>),
 ) -> Option<Slot> {
     loop {
-        let mut slot = waiting.try_recv().ok()?;
+        let slot = waiting.try_recv().ok()?;
         refill(work);
         if slot.sandbox.state() == SandboxState::Running {
             return Some(slot);

@@ -21,13 +21,10 @@
 //! so the supervisor is never left waiting on a sandbox that will not speak.
 
 use std::borrow::Cow;
-use std::io;
-use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
 use af_core::clock::saturating_millis;
-use backon::{ConstantBuilder, Retryable as _};
 use bytes::Bytes;
 use serde::Serialize;
 use serde_json::value::RawValue;
@@ -41,14 +38,14 @@ use crate::api::{
 use crate::error::{self, Result};
 use crate::protocol::{
     KillParams, METHOD_DELETE_FILE, METHOD_KILL, METHOD_LIST_DIR, METHOD_READ_FILE,
-    METHOD_RECOVERY_IDLE, METHOD_SEARCH, METHOD_SPAWN, METHOD_WRITE, METHOD_WRITE_FILE, PathParams,
-    ReadParams, ReadResult, RecoveryParams, RecoveryProof, SpawnParams, WriteFileParams,
-    WriteParams, decoded, request,
+    METHOD_RECOVERY_IDLE, METHOD_RENEW, METHOD_SEARCH, METHOD_SPAWN, METHOD_WRITE,
+    METHOD_WRITE_FILE, PathParams, ReadParams, ReadResult, RecoveryParams, RecoveryProof,
+    RenewParams, RenewedWorkspace, SpawnParams, WriteFileParams, WriteParams, decoded, request,
 };
 use crate::sizes::Sizes;
-use crate::timing::CALL_DEADLINE;
 
 mod call;
+mod connect;
 mod link;
 pub mod transport;
 mod tree;
@@ -57,8 +54,6 @@ use self::call::{Call, CallIds, Reply};
 use self::link::{Linked, start};
 use self::transport::{Stream, Transport};
 
-/// The pause between attempts to reach a socket that is not listening yet.
-const CONNECT_RETRY_DELAY: Duration = Duration::from_millis(10);
 /// A call too long for the executor to read, refused before it is sent: the
 /// executor would answer it by closing the connection.
 const DETAIL_TOO_LONG: &str = "the call is longer than the executor reads";
@@ -81,62 +76,6 @@ pub struct Client {
 }
 
 impl Client {
-    /// Connects to the executor on `socket`, retrying until it listens or
-    /// `deadline` passes, holding the link to the `sizes` the executor was
-    /// started with.
-    ///
-    /// The executor binds its socket as it starts, so a supervisor that
-    /// starts one connects within the time a start takes rather than at once.
-    ///
-    /// # Errors
-    /// The last attempt's failure once `deadline` passes, or at once for a
-    /// failure that waiting cannot fix, such as a refused permission.
-    pub async fn connect_within(socket: &Path, deadline: Duration, sizes: Sizes) -> Result<Self> {
-        let attempts = deadline
-            .as_millis()
-            .div_euclid(CONNECT_RETRY_DELAY.as_millis());
-        let policy = ConstantBuilder::new()
-            .with_delay(CONNECT_RETRY_DELAY)
-            .with_max_times(usize::try_from(attempts).unwrap_or(usize::MAX));
-        let stream = (|| UnixStream::connect(socket))
-            .retry(policy)
-            .when(not_listening_yet)
-            .await?;
-        Ok(Self::over(stream, CALL_DEADLINE, sizes))
-    }
-
-    /// A client over `stream`, already connected to an executor: the engine's
-    /// end of the socket pair its sandbox inherited, started with `sizes`.
-    /// Nothing is retried, as nothing has to bind first, and a link that
-    /// closes is not dialled again: its one stream was this one.
-    ///
-    /// # Errors
-    /// The stream cannot be made non-blocking or join the runtime.
-    pub fn connected(stream: std::os::unix::net::UnixStream, sizes: Sizes) -> Result<Self> {
-        stream.set_nonblocking(true)?;
-        Ok(Self::over(
-            UnixStream::from_std(stream)?,
-            CALL_DEADLINE,
-            sizes,
-        ))
-    }
-
-    /// A client over whatever `transport` dials, dialled once now and again
-    /// whenever a call finds the link closed, holding the link to the `sizes`
-    /// the executor was started with.
-    ///
-    /// # Errors
-    /// The first dial fails.
-    pub async fn dial(transport: impl Transport + 'static, sizes: Sizes) -> Result<Self> {
-        let stream = transport.dial().await?;
-        Ok(Self::linked(
-            stream,
-            Some(Box::new(transport)),
-            CALL_DEADLINE,
-            sizes,
-        ))
-    }
-
     /// A client over a connected `stream` whose calls wait at most `deadline`,
     /// which dials no second link: once it closes, every call fails as the
     /// connection closed.
@@ -230,15 +169,6 @@ impl Client {
     async fn order<P: Serialize + Sync>(&self, method: &'static str, params: &P) -> Result<()> {
         self.ask(method, params, Reply::Value).await.map(drop)
     }
-}
-
-/// Whether a failed connect is an executor that has not bound its socket yet,
-/// or has a socket file and is not accepting yet — the two that waiting fixes.
-fn not_listening_yet(failure: &io::Error) -> bool {
-    matches!(
-        failure.kind(),
-        io::ErrorKind::NotFound | io::ErrorKind::ConnectionRefused
-    )
 }
 
 #[async_trait::async_trait]
@@ -335,6 +265,13 @@ impl Executor for Client {
         into: &mut (dyn AsyncWrite + Send + Unpin),
     ) -> Result<()> {
         self.export_tree(paths, into).await
+    }
+
+    async fn renew(&self) -> Result<()> {
+        let params = RenewParams {
+            workspace: RenewedWorkspace::Emptied,
+        };
+        self.order(METHOD_RENEW, &params).await
     }
 }
 

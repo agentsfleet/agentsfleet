@@ -35,9 +35,9 @@ mod raise;
 mod tests;
 
 pub(crate) use self::raise::{
-    connection_lost, file_calls_unsupported, input_backlog_full, input_closed, invalid_params,
-    launch_incomplete, not_a_file, not_found, path_refused, redial_failed, refused,
-    tenant_unavailable, unknown_process, unresponsive,
+    connection_lost, file_calls_unsupported, inner_unavailable, input_backlog_full, input_closed,
+    invalid_params, launch_incomplete, no_inner_environment, not_a_file, not_found, path_refused,
+    redial_failed, refused, tenant_unavailable, unknown_process, unresponsive,
 };
 
 af_core::error_shell!(
@@ -149,6 +149,20 @@ pub(crate) enum ErrorKind {
     #[error("this executor serves no file calls")]
     FileCallsUnsupported,
 
+    /// A renewal reached an executor that builds no inner environment: its
+    /// tenant processes run where it does.
+    #[error("this executor builds no inner environment")]
+    NoInnerEnvironment,
+
+    /// The inner environment tenant processes run in could not be entered,
+    /// torn down or built again.
+    #[error("the inner environment is unavailable")]
+    InnerUnavailable {
+        /// The operating system's reason.
+        #[source]
+        source: io::Error,
+    },
+
     /// A call's parameters were well-formed but unusable.
     #[error("{detail}")]
     InvalidParams {
@@ -228,7 +242,9 @@ impl Error {
             | ErrorKind::Task { .. }
             | ErrorKind::LaunchIncomplete
             | ErrorKind::TenantUnavailable { .. }
-            | ErrorKind::FileCallsUnsupported => INTERNAL_ERROR_CODE,
+            | ErrorKind::FileCallsUnsupported
+            | ErrorKind::NoInnerEnvironment
+            | ErrorKind::InnerUnavailable { .. } => INTERNAL_ERROR_CODE,
         }
     }
 }

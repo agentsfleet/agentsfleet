@@ -105,7 +105,7 @@ impl Sandbox for Drilled {
         self.unconfined.executor()
     }
 
-    fn state(&mut self) -> SandboxState {
+    fn state(&self) -> SandboxState {
         self.unconfined.state()
     }
 

@@ -10,6 +10,7 @@ use std::ffi::OsString;
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::sync::{Mutex, PoisonError};
 
 use afr_cgroup::error::cgroup;
 use afr_cgroup::{CGROUP_PROCS, Freezer, RunCgroup};
@@ -48,7 +49,8 @@ pub(super) struct Parts {
     disk: Option<WorkspaceDisk>,
     cgroup: Option<RunCgroup>,
     egress: Option<HostScope>,
-    child: Option<Child>,
+    /// Behind a lock so whether it still runs is read through `&self`.
+    child: Mutex<Option<Child>>,
     stderr: Option<JoinHandle<String>>,
 }
 
@@ -61,7 +63,7 @@ impl Parts {
             disk: None,
             cgroup: None,
             egress: None,
-            child: None,
+            child: Mutex::new(None),
             stderr: None,
         }
     }
@@ -203,13 +205,13 @@ impl Parts {
             .stderr
             .take()
             .map(|stream| tokio::spawn(drain(stream)));
-        self.child = Some(child);
+        *self.child() = Some(child);
         Ok(())
     }
 
     /// Resolves once bubblewrap exits, with the reason it gave.
     pub(super) async fn exited(&mut self) -> Error {
-        let Some(child) = self.child.as_mut() else {
+        let Some(child) = self.child().as_mut() else {
             return std::future::pending().await;
         };
         let waited = child.wait().await;
@@ -226,10 +228,18 @@ impl Parts {
     }
 
     /// Whether bubblewrap is still running.
-    pub(super) fn is_running(&mut self) -> bool {
+    pub(super) fn is_running(&self) -> bool {
         self.child
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
             .as_mut()
             .is_some_and(|child| matches!(child.try_wait(), Ok(None)))
+    }
+
+    /// Bubblewrap's process, when it was started and not yet reaped. Nothing
+    /// panics while the lock is held, so a poisoned one still holds it whole.
+    fn child(&mut self) -> &mut Option<Child> {
+        self.child.get_mut().unwrap_or_else(PoisonError::into_inner)
     }
 
     /// Ends every process in the sandbox and waits, bounded, for its cgroup

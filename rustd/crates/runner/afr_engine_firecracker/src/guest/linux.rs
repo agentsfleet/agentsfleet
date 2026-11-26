@@ -5,21 +5,28 @@
 //!               ─► vda erofs at /toolbox; its /usr and /etc bound in place
 //!               ─► vdb ext4 at /disk; its workspace/ and tmp/ at /workspace, /tmp
 //!               ─► vdc, when attached: /etc/hosts and /etc/resolv.conf
-//!               ─► fork ─► executor: the sandbox user, hardened, on vsock
+//!               ─► fork ─► executor: root, its files as the sandbox user, on vsock
+//!                          └─► the inner environment every tenant process runs in
 //!               ─► reaps until the executor ends, then powers the guest off
 //! ```
 //!
-//! The executor drops to the toolbox's sandbox user and puts today's
-//! confinement on itself — `no_new_privs`, Landlock and seccomp — before it
-//! reads a byte, so every tenant process it starts inherits both.
+//! The executor is the guest's root service and stays outside the inner
+//! environment it builds: a process namespace and a mount namespace of
+//! their own, where each tenant process becomes the toolbox's sandbox user
+//! and puts today's confinement on itself — `no_new_privs`, Landlock and
+//! seccomp — before it execs. The executor can end that environment and
+//! build it again while the guest runs on, so a restore needs no reboot.
 
 use std::ffi::CString;
 use std::fs::{self, DirBuilder, Permissions};
 use std::io;
 use std::os::unix::fs::{DirBuilderExt as _, PermissionsExt as _, symlink};
 use std::path::Path;
+use std::sync::Arc;
 
 use afr_engine::Result;
+use afr_executor::InnerEnvironment;
+use afr_guest::Namespaced;
 use rustix::fs::{Gid, Uid};
 use rustix::mount::{MountFlags, mount, mount_bind};
 use tokio_vsock::{VMADDR_CID_ANY, VsockAddr, VsockListener, VsockStream};
@@ -179,15 +186,11 @@ fn reap_until(executor: libc::pid_t) {
     }
 }
 
-/// The executor: the sandbox user, hardened, serving each host connection on
-/// vsock in turn.
+/// The executor: outside the inner environment it builds before any thread
+/// exists, serving each host connection on vsock in turn.
 fn executor(entry: GuestEntry) -> Result<()> {
-    let (uid, gid) = GUEST_USER;
-    let (uid, gid) = (Uid::from_raw(uid), Gid::from_raw(gid));
-    rustix::thread::set_thread_groups(&[]).map_err(io::Error::from)?;
-    rustix::thread::set_thread_res_gid(gid, gid, gid).map_err(io::Error::from)?;
-    rustix::thread::set_thread_res_uid(uid, uid, uid).map_err(io::Error::from)?;
-    afr_guest::harden()?;
+    let workspace = Path::new(afr_executor::WORKSPACE_ROOT);
+    let inner: Arc<dyn InnerEnvironment> = Arc::new(Namespaced::build(GUEST_USER, workspace)?);
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
@@ -199,7 +202,8 @@ fn executor(entry: GuestEntry) -> Result<()> {
         while let Ok(stream) = host_connection(&mut listener).await {
             afr_executor::streamed(stream)
                 .with_sizes(entry.sizes())
-                .serve(Path::new(afr_executor::WORKSPACE_ROOT))
+                .with_inner(Arc::clone(&inner))
+                .serve(workspace)
                 .await?;
         }
         Ok(())

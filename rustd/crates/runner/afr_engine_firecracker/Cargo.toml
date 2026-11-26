@@ -43,7 +43,8 @@ afr_firewall.workspace = true
 # The verified toolbox a guest's read-only drive is, and the workspace image
 # formatted for its data drive.
 afr_image.workspace = true
-# The confinement the guest's executor puts on itself before it serves.
+# The inner environment the guest's executor builds and confines every
+# tenant process in.
 afr_guest.workspace = true
 # The guest entry's fork, and the power-off that ends its virtual machine.
 libc.workspace = true

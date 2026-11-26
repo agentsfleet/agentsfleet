@@ -29,6 +29,7 @@ async fn a_file_worker_remains_busy_after_its_call_has_left_the_agent() -> TestR
     let mut session = Session::new(
         workspace,
         Arc::new(Inherit),
+        None,
         outbound,
         output,
         Sizes::DEFAULT,

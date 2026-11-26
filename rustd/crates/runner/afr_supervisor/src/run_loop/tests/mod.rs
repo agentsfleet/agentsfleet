@@ -50,6 +50,7 @@ mod build;
 mod build_endings;
 mod completion;
 mod failures;
+mod lost;
 mod renewal;
 mod usage;
 

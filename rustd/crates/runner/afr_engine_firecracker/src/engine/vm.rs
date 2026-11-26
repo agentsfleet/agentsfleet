@@ -50,7 +50,7 @@ impl Vm {
     /// Whether its monitor still runs. One the host ended while the engine
     /// held it running, which no kill of the engine's ended, is logged lost
     /// the first time it is found ended: its run's calls fail, and only it.
-    fn monitor(&mut self) -> SandboxState {
+    fn monitor(&self) -> SandboxState {
         let killed = self.killed.load(Ordering::Acquire);
         let running = self.parts.running(|how| {
             if !killed {
@@ -66,7 +66,7 @@ impl Vm {
 
     /// Stops the monitor and releases every piece of its boot; the disk and
     /// the directory stay. Hands back what a resume boots from.
-    pub(crate) async fn release(mut self: Box<Self>) -> Kept {
+    pub(crate) async fn release(self: Box<Self>) -> Kept {
         let _found = self.monitor();
         let Self {
             kept,
@@ -107,7 +107,7 @@ impl Sandbox for Vm {
         &self.client
     }
 
-    fn state(&mut self) -> SandboxState {
+    fn state(&self) -> SandboxState {
         self.monitor()
     }
 
@@ -148,12 +148,7 @@ impl Sandbox for Vm {
     /// Ends the monitor: nothing of the guest runs after it, so nothing
     /// writes to its disk.
     async fn kill(&self) -> Killed {
-        let Some(pid) = self
-            .parts
-            .child
-            .as_ref()
-            .and_then(tokio::process::Child::id)
-        else {
+        let Some(pid) = self.parts.monitor_pid() else {
             return Killed::Settled;
         };
         let pid = rustix::process::Pid::from_raw(i32::try_from(pid).unwrap_or(i32::MAX));

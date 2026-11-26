@@ -47,6 +47,9 @@ pub(crate) const METHOD_DELETE_FILE: &str = "fs/delete";
 pub(crate) const METHOD_SEARCH: &str = "fs/search";
 /// An ordered proof that no earlier file operation is still executing.
 pub(crate) const METHOD_RECOVERY_IDLE: &str = "fs/recovery_idle";
+/// `env/renew`: end the inner environment, empty the workspace, build it
+/// again.
+pub(crate) const METHOD_RENEW: &str = "env/renew";
 /// The notification carrying a chunk of a process's output.
 pub(crate) const NOTIFY_OUTPUT: &str = "process/output";
 /// The notification carrying a process's end; always its last.
@@ -155,6 +158,21 @@ pub(crate) struct PathParams<'a> {
 #[serde(deny_unknown_fields)]
 pub(crate) struct RecoveryParams {
     pub(crate) proof: RecoveryProof,
+}
+
+/// `env/renew` parameters: what becomes of the workspace.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct RenewParams {
+    pub(crate) workspace: RenewedWorkspace,
+}
+
+/// What a renewal leaves of the workspace: nothing, for a restore to import
+/// its tree into.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum RenewedWorkspace {
+    Emptied,
 }
 
 /// Each supported proof names the executor-owned work it actually inspects.

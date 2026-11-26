@@ -77,7 +77,7 @@ impl Sandbox for Named {
     fn executor(&self) -> &dyn Executor {
         &self.executor
     }
-    fn state(&mut self) -> SandboxState {
+    fn state(&self) -> SandboxState {
         if self.dead {
             SandboxState::Ended
         } else {

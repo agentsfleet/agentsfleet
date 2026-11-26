@@ -45,6 +45,11 @@ const START_BACKGROUND: &str =
     "setsid sleep 600 >/dev/null 2>&1 </dev/null & echo $! > /workspace/.background";
 const BACKGROUND_ALIVE: &str =
     "kill -0 \"$(cat /workspace/.background)\" 2>/dev/null && echo alive || echo gone";
+/// Whether that background process runs anywhere a new inner environment
+/// sees: its own `/proc` shows its own processes alone, so an old process
+/// that survived a restore would have to have been carried into it.
+const SURVIVOR: &str = "if cat /proc/[0-9]*/cmdline 2>/dev/null | tr '\\0' ' ' | \
+     grep -q '[s]leep 600'; then echo alive; else echo gone; fi";
 /// The vsock dial a guest makes at its own executor's port, at `$1`.
 const VSOCK_DIAL: &str = "python3 -c 'import socket,sys; s=socket.socket(socket.AF_VSOCK, \
      socket.SOCK_STREAM); s.settimeout(2); \
@@ -205,14 +210,17 @@ fn restored_in_place(lane: &Lane) -> Result<(), Failed> {
             .join(afr_cgroup::SANDBOX_LEAF)
             .join(afr_cgroup::CGROUP_PROCS);
         let monitor = fs::read_to_string(&procs)?;
-        let script = format!("echo before > /workspace/before && {START_BACKGROUND}");
-        run(sandbox.executor(), shell(&script)).await?;
         let executor = sandbox.executor();
-        executor.delete_file("before").await?;
         executor
             .write_file("restored", Bytes::from_static(b"checkpoint\n"))
             .await?;
-        let script = format!("ls /workspace; {BACKGROUND_ALIVE}");
+        let mut checkpoint = Vec::new();
+        executor.export(&["."], &mut checkpoint).await?;
+        let script = format!("echo before > /workspace/before && {START_BACKGROUND}");
+        run(executor, shell(&script)).await?;
+        executor.renew().await?;
+        executor.import(".", &mut checkpoint.as_slice()).await?;
+        let script = format!("ls -A /workspace; {SURVIVOR}");
         let said = run(executor, shell(&script)).await?.output;
         let after = fs::read_to_string(&procs)?;
         sandbox.destroy().await?;

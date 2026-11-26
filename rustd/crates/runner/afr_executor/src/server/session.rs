@@ -18,14 +18,14 @@ use tokio_util::codec::{AnyDelimiterCodec, AnyDelimiterCodecError, FramedRead};
 use tokio_util::sync::{CancellationToken, DropGuard};
 
 use super::files::Workspace;
-use super::launch::Placement;
-use super::launch::Plan;
+use super::launch::{InnerEnvironment, Placement, Plan};
 use super::process::ProcessRun;
 use crate::error::{self, Result};
 use crate::protocol::{
     DELIMITER, KillParams, METHOD_DELETE_FILE, METHOD_KILL, METHOD_LIST_DIR, METHOD_READ_FILE,
-    METHOD_RECOVERY_IDLE, METHOD_SEARCH, METHOD_SPAWN, METHOD_WRITE, METHOD_WRITE_FILE, PathParams,
-    ReadParams, RecoveryParams, SpawnParams, SpawnResult, WriteFileParams, WriteParams,
+    METHOD_RECOVERY_IDLE, METHOD_RENEW, METHOD_SEARCH, METHOD_SPAWN, METHOD_WRITE,
+    METHOD_WRITE_FILE, PathParams, ReadParams, RecoveryParams, SpawnParams, SpawnResult,
+    WriteFileParams, WriteParams,
 };
 use crate::sizes::Sizes;
 
@@ -62,6 +62,8 @@ pub(super) struct Session {
     workspace: Arc<Workspace>,
     /// Where every process the session starts is placed.
     placement: Arc<dyn Placement>,
+    /// The environment every process it starts runs in, when it builds one.
+    inner: Option<Arc<dyn InnerEnvironment>>,
     outbound: mpsc::UnboundedSender<Bytes>,
     /// Where each process's output and exit go, bounded.
     output: mpsc::Sender<Bytes>,
@@ -80,11 +82,12 @@ pub(super) struct Session {
 
 impl Session {
     /// A session answering through `outbound`, its processes placed by
-    /// `placement` and speaking through `output`, its reads and lines held to
-    /// `sizes`.
+    /// `placement`, run inside `inner` and speaking through `output`, its
+    /// reads and lines held to `sizes`.
     pub(super) fn new(
         workspace: Arc<Workspace>,
         placement: Arc<dyn Placement>,
+        inner: Option<Arc<dyn InnerEnvironment>>,
         outbound: mpsc::UnboundedSender<Bytes>,
         output: mpsc::Sender<Bytes>,
         sizes: Sizes,
@@ -92,6 +95,7 @@ impl Session {
         Self {
             workspace,
             placement,
+            inner,
             outbound,
             output,
             processes: HashMap::new(),
@@ -208,6 +212,7 @@ impl Session {
                 |workspace, list: PathParams<'static>| workspace.list(&list.path),
             ),
             METHOD_SEARCH => self.search(id, params(request)),
+            METHOD_RENEW => self.renew(id, params(request)),
             _other if self.transfer(id.clone(), request) => {}
             _unknown => self.refuse(id, METHOD_NOT_FOUND_CODE, DETAIL_NO_METHOD),
         }
@@ -217,6 +222,7 @@ impl Session {
     fn spawn(&mut self, id: Id<'static>, params: Result<SpawnParams<'static>>) {
         let started = params
             .and_then(|spawn| Plan::new(spawn, &self.workspace))
+            .map(|plan| plan.inside(self.inner.clone()))
             .and_then(|plan| ProcessRun::start(&plan, &self.placement));
         match started {
             Ok((run, input)) => {
@@ -317,6 +323,8 @@ impl Session {
 #[cfg(test)]
 #[path = "recovery_tests.rs"]
 mod recovery_tests;
+#[path = "session_renew.rs"]
+mod renew;
 #[path = "session_search.rs"]
 mod search;
 #[path = "session_transfer.rs"]

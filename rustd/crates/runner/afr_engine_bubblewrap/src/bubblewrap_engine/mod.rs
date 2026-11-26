@@ -419,7 +419,7 @@ impl Sandbox for Bubblewrapped {
         &self.client
     }
 
-    fn state(&mut self) -> SandboxState {
+    fn state(&self) -> SandboxState {
         if self.parts.is_running() {
             SandboxState::Running
         } else {

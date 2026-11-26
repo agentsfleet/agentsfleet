@@ -11,7 +11,7 @@ use std::fs;
 use std::io;
 use std::path::Path;
 use std::process::Stdio;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 
 use af_core::error_code::{Coded as _, Logged};
 use afr_cgroup::{CGROUP_PROCS, RunCgroup, SANDBOX_MEMORY_RESERVE_BYTES};
@@ -48,7 +48,9 @@ pub(crate) struct Parts {
     namespace: Option<GuestNamespace>,
     pub(super) scope: Option<HostScope>,
     cgroup: Option<RunCgroup>,
-    pub(super) child: Option<Child>,
+    /// The jailer's process, then the monitor's; behind a lock so whether it
+    /// still runs is read through `&self`.
+    child: Mutex<Option<Child>>,
 }
 
 /// Boots the sandbox `kept` describes on its kept disk, held to its plan,
@@ -127,7 +129,11 @@ async fn start(shared: &Shared, kept: &Kept, parts: &mut Parts) -> Result<Client
         owner,
         &config.tuning.binaries,
     );
-    let child = parts.child.insert(spawn(
+    let held = parts
+        .child
+        .get_mut()
+        .unwrap_or_else(PoisonError::into_inner);
+    let child = held.insert(spawn(
         &config.tuning.binaries.jailer,
         argv,
         &cgroup.procs(),
@@ -243,8 +249,9 @@ impl Parts {
     /// Whether the monitor still runs. The first look that finds it ended
     /// reaps it and tells `ended` how it ended; later looks say only that it
     /// does not run.
-    pub(super) fn running(&mut self, ended: impl FnOnce(&str)) -> bool {
-        let Some(child) = self.child.as_mut() else {
+    pub(super) fn running(&self, ended: impl FnOnce(&str)) -> bool {
+        let mut held = self.child.lock().unwrap_or_else(PoisonError::into_inner);
+        let Some(child) = held.as_mut() else {
             return false;
         };
         let how = match child.try_wait() {
@@ -252,16 +259,33 @@ impl Parts {
             Ok(Some(status)) => status.to_string(),
             Err(unread) => unread.to_string(),
         };
-        self.child = None;
+        *held = None;
+        drop(held);
         ended(&how);
         false
+    }
+
+    /// The monitor's process identifier, while it is held.
+    pub(super) fn monitor_pid(&self) -> Option<u32> {
+        self.child
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_ref()
+            .and_then(Child::id)
+    }
+
+    /// The monitor's process, when it was started and not yet reaped.
+    /// Nothing panics while the lock is held, so a poisoned one still holds
+    /// it whole.
+    fn child(&mut self) -> &mut Option<Child> {
+        self.child.get_mut().unwrap_or_else(PoisonError::into_inner)
     }
 
     /// Stops the monitor and releases every piece of the boot in the order
     /// they were made, last first; the image and the sandbox's directory stay.
     /// What could not be released is logged and left for the boot sweep.
     pub(super) async fn release(&mut self, kept: &Kept) {
-        if let Some(mut child) = self.child.take() {
+        if let Some(mut child) = self.child().take() {
             let _gone = child.start_kill();
             let _reaped = child.wait().await;
         }

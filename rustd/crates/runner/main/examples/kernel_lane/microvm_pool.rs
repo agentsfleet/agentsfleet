@@ -111,8 +111,8 @@ fn host_ends_one(lane: &Lane) -> Result<(), Failed> {
     let (doomed, spared) = (id_of("host-ended"), id_of("host-spared"));
     runtime().block_on(async {
         let engine = lane.microvms()?;
-        let mut ended = engine.prepare(isolated(&engine, &doomed)?).await?;
-        let mut other = engine.prepare(isolated(&engine, &spared)?).await?;
+        let ended = engine.prepare(isolated(&engine, &doomed)?).await?;
+        let other = engine.prepare(isolated(&engine, &spared)?).await?;
         let monitor = monitor_of(&engine, &doomed)?;
         let killed = Command::new("kill").args(["-KILL", &monitor]).status()?;
         expect(

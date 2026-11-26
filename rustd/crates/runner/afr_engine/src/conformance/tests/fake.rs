@@ -326,7 +326,7 @@ impl Sandbox for FakeSandbox {
         &self.executor
     }
 
-    fn state(&mut self) -> SandboxState {
+    fn state(&self) -> SandboxState {
         SandboxState::Running
     }
 
