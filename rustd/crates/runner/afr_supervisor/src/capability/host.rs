@@ -87,27 +87,26 @@ fn read(sandboxes: &Path) -> (HostFacts, HashMap<&'static str, String>) {
             .map(|disk| bytes(disk.f_bavail, disk.f_frsize))
             .map_err(std::io::Error::from),
     );
+    // Only Linux reports the host's total memory to this crate; off Linux,
+    // the fact is absent.
+    #[cfg(target_os = "linux")]
+    let memory_bytes = Some(memory_bytes());
+    #[cfg(not(target_os = "linux"))]
+    let memory_bytes = None;
     let facts = HostFacts {
         cpu_count,
-        memory_bytes: memory_bytes(),
+        memory_bytes,
         free_disk_bytes,
     };
     (facts, unread)
 }
 
-/// The host's total memory. Only Linux answers it through `sysinfo(2)`, and
-/// the runner runs on Linux, inside a virtual machine on a Mac.
+/// The host's total memory, through `sysinfo(2)`. The runner runs on Linux,
+/// inside a virtual machine on a Mac.
 #[cfg(target_os = "linux")]
-fn memory_bytes() -> Option<u64> {
+fn memory_bytes() -> u64 {
     let system = rustix::system::sysinfo();
-    Some(bytes(system.totalram, system.mem_unit))
-}
-
-/// The host's total memory, which no system call this crate reaches reports
-/// off Linux.
-#[cfg(not(target_os = "linux"))]
-const fn memory_bytes() -> Option<u64> {
-    None
+    bytes(system.totalram, system.mem_unit)
 }
 
 /// `count` units of `size` bytes, at whatever widths the platform gives them.
