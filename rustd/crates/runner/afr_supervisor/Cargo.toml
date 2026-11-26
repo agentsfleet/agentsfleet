@@ -55,7 +55,9 @@ af_providers.workspace = true
 afr_executor.workspace = true
 # The memory seed a run starts from, and the recall seam past its window.
 afr_memory.workspace = true
-afr_sandbox.workspace = true
+# The seam every sandbox engine meets: the supervisor names no engine and no
+# building block, only the traits and facts every engine states.
+afr_engine.workspace = true
 # Which bound repositories a run checks out, read from its tool policy.
 afr_tools.workspace = true
 # The runner token and every minted credential are held as one `Secret`.
@@ -114,7 +116,7 @@ af_egress = { workspace = true, features = ["test-util"] }
 # sandbox-side tool starts a sandbox, a supervisor-side one does not.
 afr_tools = { workspace = true, features = ["test-util"] }
 # A test engine answers a build of unknown outcome as a real engine would.
-afr_sandbox = { workspace = true, features = ["test-util"] }
+afr_engine = { workspace = true, features = ["test-util"] }
 # The fake engine's `Behaviour::Break` answers an executor failure, and the
 # lift from `afr_executor::Error` into `afr_agent::Error` exists only under
 # this feature; named here so the tests build when this crate is selected

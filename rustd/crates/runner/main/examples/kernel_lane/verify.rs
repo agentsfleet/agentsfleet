@@ -8,7 +8,7 @@ use std::process::Command;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use afr_sandbox::{Manifest, Toolbox, ToolboxHome, ToolboxRefusal};
+use afr_image::{Manifest, Toolbox, ToolboxHome, ToolboxRefusal};
 use libtest_mimic::Failed;
 use rustix::fs::{CWD, RenameFlags};
 
@@ -34,7 +34,7 @@ const TMPFS: &str = "tmpfs";
 const AS_VERIFIED: &str = "loop,ro,nosuid,nodev";
 
 /// Verifies `image` under `mounts` on a fresh runtime.
-fn verify(manifest: &Manifest, image: &Path, mounts: &Path) -> afr_sandbox::Result<Toolbox> {
+fn verify(manifest: &Manifest, image: &Path, mounts: &Path) -> afr_image::Result<Toolbox> {
     runtime().block_on(Toolbox::verify(manifest, image, mounts))
 }
 
@@ -97,7 +97,7 @@ pub(crate) fn path_swap(lane: &Lane) -> Result<(), Failed> {
 }
 
 /// Whether verification refused a file that was not the manifest's.
-fn is_decoy(error: &afr_sandbox::Error) -> bool {
+fn is_decoy(error: &afr_image::Error) -> bool {
     matches!(
         error.toolbox_refusal(),
         Some(ToolboxRefusal::Digest | ToolboxRefusal::Length)

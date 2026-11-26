@@ -11,13 +11,15 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use crate::lane::{id_of, spec};
+use afr_cgroup::SANDBOX_LEAF;
+use afr_engine::{Engine as _, Limits};
+use afr_engine_bubblewrap::BubblewrapEngine;
 use afr_executor::Ending;
-use afr_sandbox::{BubblewrapEngine, Engine as _, Limits, SANDBOX_LEAF};
 use libtest_mimic::Failed;
 
 use crate::exhaustion::{MEMORY_EVENTS, NO_OOM_KILLS, OK};
 use crate::lane::Lane;
+use crate::lane::{id_of, spec};
 use crate::run::{Outcome, expect, run as run_in, run_within, runtime, shell};
 use crate::trials::ENOSPC;
 
@@ -107,7 +109,7 @@ async fn fill(engine: &BubblewrapEngine, lane: &Lane, run_id: &str) -> Result<Se
 
 /// A failed step of `run_id`, with its cause: four runs run at once, and
 /// a bare error code says neither which one nor why.
-fn step(run_id: &str, name: &str, error: &afr_sandbox::Error) -> Failed {
+fn step(run_id: &str, name: &str, error: &afr_engine::Error) -> Failed {
     format!("{run_id} {name}: {error:?}").into()
 }
 

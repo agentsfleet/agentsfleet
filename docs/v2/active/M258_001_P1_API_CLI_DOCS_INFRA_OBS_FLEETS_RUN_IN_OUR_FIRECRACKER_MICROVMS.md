@@ -257,13 +257,13 @@ Indy asked for better crate management, with the runner using an engine crate. E
 - **Engines:** `afr_engine_bubblewrap`, deleted whole in M258_003; `afr_engine_unsandboxed`, the debug engine with the recovery-drill engine behind `test-util`, used by `main` and `af_e2e`; `afr_engine_firecracker` (§7).
 - **Next:** `afr_engine_sprites` arrives in M260_001 (O2). `afr_engine_bubblewrap` lives only inside this branch, and M258_003 deletes it before the Pull Request opens.
 
-`probe` splits by owner: each building block probes its own mechanism, and each engine's boot admission assembles its evidence. Only `main` names a concrete engine, behind one cargo feature per engine, all on by default. Each engine crate builds on every OS with its Linux code `cfg`-gated, so `--all-features` builds on a Mac.
+`probe` splits by owner: each building block probes its own mechanism, and each engine's boot admission assembles its evidence. The plain `HostProbe` facts, the `MECHANISM_*` names and `REQUIRED_CONTROLLERS` sit in `afr_engine`; bubblewrap's `Backend::measure` assembles them. A building block's error crosses the seam as `afr_engine::Error::engine(failure)`, keeping its code, sentence and causes. `EngineTuning` moved to `afr_engine_bubblewrap`. Only `main` names a concrete engine, behind one cargo feature per engine, all on by default. Each engine crate builds on every OS with its Linux code `cfg`-gated, so `--all-features` builds on a Mac.
 
 `layers.rs` gains one rule. No crate but `agentsfleet_runner` and `af_e2e` depends on an `afr_engine_` crate, and no engine crate depends on another.
 
-- **Dimension 5.1** — the layout passes the layer rules → Test `only_the_runner_binary_and_e2e_name_an_engine_crate` (unit, `af_e2e/tests/layers.rs`). The workspace's manifests pass it. They also pass `every_crate_depends_on_its_own_layer_or_lower` and `every_crate_runs_in_exactly_one_unit_shard`.
-- **Dimension 5.2** — a planted violation is named → Test `an_engine_crate_named_by_the_supervisor_or_another_engine_is_refused` (unit, `layers.rs`). Planted manifests have `afr_supervisor` depend on `afr_engine_x`, and `afr_engine_a` on `afr_engine_b`. Both edges are named.
-- **Dimension 5.3** — the supervisor names the seam alone → Test `the_supervisor_names_the_seam_alone` (unit, `layers.rs`). `afr_supervisor`'s manifest lists `afr_engine`. It lists no `afr_engine_` crate and none of `afr_image`, `afr_firewall`, `afr_cgroup` or `afr_guest`.
+- **Dimension 5.1** — ✅ DONE — the layout passes the layer rules → Test `only_the_runner_binary_and_e2e_name_an_engine_crate` (unit, `af_e2e/tests/layers.rs`). The workspace's manifests pass it. They also pass `every_crate_depends_on_its_own_layer_or_lower` and `every_crate_runs_in_exactly_one_unit_shard`.
+- **Dimension 5.2** — ✅ DONE — a planted violation is named → Test `an_engine_crate_named_by_the_supervisor_or_another_engine_is_refused` (unit, `layers.rs`). Planted manifests have `afr_supervisor` depend on `afr_engine_x`, and `afr_engine_a` on `afr_engine_b`. Both edges are named.
+- **Dimension 5.3** — ✅ DONE — the supervisor names the seam alone → Test `the_supervisor_names_the_seam_alone` (unit, `layers.rs`). `afr_supervisor`'s manifest lists `afr_engine`. It lists no `afr_engine_` crate and none of `afr_image`, `afr_firewall`, `afr_cgroup` or `afr_guest`.
 
 ### §6 — The conformance suite, which bubblewrap passes
 

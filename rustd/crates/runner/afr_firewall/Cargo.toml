@@ -1,0 +1,43 @@
+[package]
+name = "afr_firewall"
+description = "The host's egress table: the veth pair and nf_tables table that hold an allowlisted sandbox to its addresses, the slots they are named by, and the lock one runner process owns them under."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+af_core.workspace = true
+# The allowlist a scope admits and the seam's egress refusals.
+afr_engine.workspace = true
+thiserror.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# The egress scope: the veth pair, its addresses and its route over route
+# netlink, the host-side allowlist over nf_tables.
+libc.workspace = true
+netlink-sys.workspace = true
+netlink-packet-core.workspace = true
+netlink-packet-route.workspace = true
+netlink-packet-netfilter.workspace = true
+# The namespace calls a scope's thread makes, and the effective user a
+# suite reads.
+rustix.workspace = true
+tracing.workspace = true
+
+[features]
+# M-TEST-UTIL. What the kernel lane proves egress against: the host's egress
+# objects, a killed run's leftovers, and a host past the sandbox's link.
+test-util = []
+
+[dev-dependencies]
+af_core = { workspace = true, features = ["test-util"] }
+tempfile.workspace = true

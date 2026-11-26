@@ -33,8 +33,14 @@ fn probe_answers_with_the_report_and_every_check() {
         serde_json::from_slice(&probed.stdout).expect("probe prints JSON");
     let checks = answer["checks"].as_array().expect("probe names its checks");
     assert_eq!(checks.len(), 5, "{answer}");
-    assert!(checks.iter().all(|check| check["name"] != "kvm"), "{answer}");
-    assert_eq!(answer["capability_report"]["engine"], "bubblewrap", "{answer}");
+    assert!(
+        checks.iter().all(|check| check["name"] != "kvm"),
+        "{answer}"
+    );
+    assert_eq!(
+        answer["capability_report"]["engine"], "bubblewrap",
+        "{answer}"
+    );
     let all_mechanisms = checks.iter().all(|check| check["ok"] == true);
     assert_eq!(probed.status.success(), all_mechanisms, "{answer}");
 }
@@ -76,8 +82,8 @@ const NEVER_OPENED: i32 = 1_000_000;
 /// The descriptor flags the engine passes, so `sandbox` parses and runs
 /// rather than stopping at a usage error. Outside a sandbox none of the three
 /// was inherited, so adoption refuses before anything is hardened.
-const INHERITED: afr_sandbox::Inherited = afr_sandbox::Inherited {
-    tenant: afr_sandbox::TenantDescriptors {
+const INHERITED: afr_guest::Inherited = afr_guest::Inherited {
+    tenant: afr_guest::TenantDescriptors {
         tenant_procs: NEVER_OPENED + 1,
         tenant_events: NEVER_OPENED + 2,
     },
@@ -94,7 +100,7 @@ const REFUSED: i32 = 1;
 /// `sandbox` as the engine starts it, with `extra` in its environment.
 fn sandbox(extra: &[(&str, &str)]) -> Output {
     Command::new(BINARY)
-        .arg(afr_sandbox::bubblewrap::SANDBOX_SUBCOMMAND)
+        .arg(afr_engine_bubblewrap::bubblewrap::SANDBOX_SUBCOMMAND)
         .args(INHERITED.arguments())
         .env_remove(af_core::env::LOG_LEVEL_VAR)
         .envs(extra.iter().copied())
@@ -210,7 +216,7 @@ fn run_refuses_a_credential_naming_the_knob() {
 /// What this binary-level test can prove outside a sandbox. The entry adopts
 /// the descriptors it inherited before it hardens, and outside a sandbox that
 /// adoption refuses first, so both runs stop there. That the
-/// sequence hardens once bound is `afr_sandbox`'s own proof
+/// sequence hardens once bound is `afr_guest`'s own proof
 /// (`tests/confine.rs`, a child process confining itself); this one proves the
 /// entry never builds the export that would start a thread before it.
 #[test]

@@ -6,12 +6,13 @@ use std::fs;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use crate::lane::{id_of, spec};
-use afr_sandbox::{Engine, KernelMounter, Limits, ToolboxHome, Toolboxes};
+use afr_engine::{Engine, Limits};
+use afr_image::{KernelMounter, ToolboxHome, Toolboxes};
 use futures_util::future::try_join_all;
 use libtest_mimic::Failed;
 
 use crate::lane::Lane;
+use crate::lane::{id_of, spec};
 use crate::run::{self, expect, runtime};
 
 /// Runs started at once in each measured round.

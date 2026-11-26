@@ -85,13 +85,14 @@ mod tools;
 mod trials;
 #[cfg(target_os = "linux")]
 mod verify;
-#[cfg(target_os = "linux")]
-use af_egress::testing::upstream;
 
 use std::process::ExitCode;
 
+#[cfg(target_os = "linux")]
+use af_egress::testing::upstream;
+
 /// The sub-command that hardens and serves inside the sandbox.
-const SANDBOX: &str = afr_sandbox::bubblewrap::SANDBOX_SUBCOMMAND;
+const SANDBOX: &str = afr_engine_bubblewrap::bubblewrap::SANDBOX_SUBCOMMAND;
 
 fn main() -> ExitCode {
     let sub = std::env::args().nth(1);

@@ -30,7 +30,7 @@ async fn disabling_new_durable_work_keeps_software_capability_and_ordinary_worke
         let mut heartbeat = Heartbeat::new(
             &plane,
             &probe,
-            afr_sandbox::BUBBLEWRAP_CAPABILITIES,
+            crate::test_support::CAPABILITIES,
             &holds,
             std::path::Path::new("."),
         );

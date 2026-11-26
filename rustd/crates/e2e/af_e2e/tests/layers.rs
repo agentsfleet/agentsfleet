@@ -23,7 +23,7 @@ mod workspace;
 
 use std::collections::BTreeSet;
 
-use rules::{dev_cycles, folders, layer_edges, runner_datastores};
+use rules::{ENGINE_PREFIX, dev_cycles, engine_edges, folders, layer_edges, runner_datastores};
 use workspace::{Workspace, planted};
 
 #[test]
@@ -77,6 +77,63 @@ fn an_edge_to_a_higher_layer_or_into_e2e_is_refused() {
             .any(|line| line.starts_with("af_h ") && line.ends_with("nothing depends on e2e/"))
     );
     assert!(violations.iter().any(|line| line.starts_with("af_p ") && line.ends_with("its own layer or a lower one")));
+}
+
+#[test]
+fn only_the_runner_binary_and_e2e_name_an_engine_crate() {
+    let violations = engine_edges(&Workspace::load());
+    assert!(violations.is_empty(), "{violations:#?}");
+}
+
+#[test]
+fn an_engine_crate_named_by_the_supervisor_or_another_engine_is_refused() {
+    let workspace = planted(&[
+        (
+            "crates/runner/afr_supervisor",
+            "afr_supervisor",
+            "[dependencies]\nafr_engine.workspace = true\n[dev-dependencies]\nafr_engine_x.workspace = true\n",
+        ),
+        (
+            "crates/runner/afr_engine_a",
+            "afr_engine_a",
+            "[target.'cfg(unix)'.dependencies]\nafr_engine_b.workspace = true\n",
+        ),
+        (
+            "crates/runner/main",
+            "agentsfleet_runner",
+            "[dependencies]\nafr_engine_a = { workspace = true, optional = true }\n",
+        ),
+        ("crates/runner/afr_engine_b", "afr_engine_b", ""),
+        ("crates/runner/afr_engine_x", "afr_engine_x", ""),
+    ]);
+    assert_eq!(
+        engine_edges(&workspace),
+        [
+            "afr_engine_a (crates/runner/afr_engine_a) Normal → afr_engine_b: no engine crate depends on another",
+            "afr_supervisor (crates/runner/afr_supervisor) Dev → afr_engine_x: only agentsfleet_runner and af_e2e name an engine crate",
+        ]
+    );
+}
+
+#[test]
+fn the_supervisor_names_the_seam_alone() {
+    const BUILDING_BLOCKS: [&str; 4] = ["afr_image", "afr_firewall", "afr_cgroup", "afr_guest"];
+    let workspace = Workspace::load();
+    let supervisor = workspace
+        .members
+        .get("afr_supervisor")
+        .expect("the supervisor is a member");
+    let named: BTreeSet<&str> = supervisor
+        .deps
+        .iter()
+        .map(|dep| dep.name.as_str())
+        .collect();
+    assert!(named.contains("afr_engine"), "{named:?}");
+    let beyond: Vec<&&str> = named
+        .iter()
+        .filter(|name| name.starts_with(ENGINE_PREFIX) || BUILDING_BLOCKS.contains(name))
+        .collect();
+    assert!(beyond.is_empty(), "{beyond:?}");
 }
 
 #[test]

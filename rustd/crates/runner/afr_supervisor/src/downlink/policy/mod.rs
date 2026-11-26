@@ -11,7 +11,7 @@ use af_wire::{
         SandboxTier,
     },
 };
-use afr_sandbox::{Capabilities, HostProbe};
+use afr_engine::{Capabilities, HostProbe};
 use tokio::sync::watch;
 
 use crate::{

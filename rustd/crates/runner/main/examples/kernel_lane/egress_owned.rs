@@ -5,16 +5,16 @@
 
 use std::io;
 
-use crate::lane::{id_of, plan, spec};
-use afr_sandbox::egress_testing::{
+use afr_engine::{Engine, Limits, Network};
+use afr_firewall::far::{
     FAR_GREETING, FAR_PORT, FAR_UNLISTED, Far, delete_from_elsewhere, objects,
     probe_beside_a_dropping_forward_chain,
 };
-use afr_sandbox::{Engine, Limits, Network};
 use libtest_mimic::Failed;
 
 use crate::egress::{ERRNO, FAR_NAME, connect};
 use crate::lane::Lane;
+use crate::lane::{id_of, plan, spec};
 use crate::run::{expect, run, runtime, shell};
 
 /// The prefix every scope's table name carries.

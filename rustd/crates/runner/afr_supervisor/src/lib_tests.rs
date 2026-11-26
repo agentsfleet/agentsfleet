@@ -1,11 +1,13 @@
 #![expect(clippy::unwrap_used, reason = "test fixtures fail loudly")]
 
+use std::time::Duration;
+
+use af_wire::runner::Kvm;
+use afr_engine::HostProbe;
+use tokio_util::sync::CancellationToken;
+
 use super::run;
 use crate::test_support::{Behaviour, FakeAgent, FakeEngine, bounded};
-use af_wire::runner::Kvm;
-use afr_sandbox::HostProbe;
-use std::time::Duration;
-use tokio_util::sync::CancellationToken;
 
 fn probe() -> HostProbe {
     HostProbe {

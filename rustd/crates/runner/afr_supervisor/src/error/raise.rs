@@ -162,7 +162,7 @@ pub(crate) fn egress_blocked(host: &str) -> Error {
 }
 
 /// Reports a resolved allowlist the sandbox engine would not take.
-pub(crate) fn egress(source: afr_sandbox::Error) -> Error {
+pub(crate) fn egress(source: afr_engine::Error) -> Error {
     ErrorKind::Egress { source }.into()
 }
 

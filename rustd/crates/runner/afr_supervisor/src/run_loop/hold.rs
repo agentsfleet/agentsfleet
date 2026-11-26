@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 use af_core::clock::saturating_millis;
 use af_core::error_code::{Coded as _, ErrorCode, Logged};
 use af_observability::semconv::ATTR_SANDBOX_REUSED;
-use afr_sandbox::{Killed, Limits, Parked, Sandbox, SandboxState};
+use afr_engine::{Killed, Limits, Parked, Sandbox, SandboxState};
 use afr_telemetry::labels::{SandboxHold, SandboxRelease};
 use afr_telemetry::record;
 use jiff::Timestamp;
@@ -270,12 +270,12 @@ impl Run<'_> {
     ///
     /// # Errors
     /// The engine's own, once logged: what is left is the boot sweep's.
-    pub(super) async fn destroy(&self, sandbox: Box<dyn Sandbox>) -> afr_sandbox::Result<()> {
+    pub(super) async fn destroy(&self, sandbox: Box<dyn Sandbox>) -> afr_engine::Result<()> {
         self.logged_destroy(sandbox.destroy().await)
     }
 
     /// `destroyed`, logged when its teardown left something behind.
-    fn logged_destroy(&self, destroyed: afr_sandbox::Result<()>) -> afr_sandbox::Result<()> {
+    fn logged_destroy(&self, destroyed: afr_engine::Result<()>) -> afr_engine::Result<()> {
         if let Err(failure) = &destroyed {
             let code = failure.code().as_str();
             let run_id = self.ids.run.as_str();
@@ -308,7 +308,7 @@ async fn resume(
     bound: &Bound,
     run_id: &str,
 ) -> Result<Box<dyn Sandbox>, (GivenUp, Option<Box<dyn Sandbox>>)> {
-    let refused = |event, failure: afr_sandbox::Error| GivenUp {
+    let refused = |event, failure: afr_engine::Error| GivenUp {
         event,
         code: failure.code(),
         reason: failure.told(),

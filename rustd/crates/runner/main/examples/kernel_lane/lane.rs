@@ -9,12 +9,16 @@ use std::sync::Arc;
 use af_core::env::{EnvSource as _, ProcessEnv};
 use af_core::id::Uuid7;
 use af_wire::runner::SandboxEngine;
-use afr_sandbox::egress_testing::forwarding_on;
-use afr_sandbox::{
-    BubblewrapBackend, BubblewrapConfig, BubblewrapEngine, CGROUP_ROOT, EgressPlan, Generation,
-    HostPaths, Limits, Manifest, Network, ProbePaths, REQUIRED_CONTROLLERS, ResourceFacts,
-    Resources, SUBTREE_CONTROL, SandboxSpec, ToolboxHome, boot, probe,
+use afr_cgroup::{CGROUP_ROOT, SUBTREE_CONTROL};
+use afr_engine::{
+    EgressPlan, Generation, HostPaths, Limits, Network, REQUIRED_CONTROLLERS, ResourceFacts,
+    Resources, SandboxSpec, boot,
 };
+use afr_engine_bubblewrap::{
+    BubblewrapBackend, BubblewrapConfig, BubblewrapEngine, ProbePaths, probe,
+};
+use afr_firewall::far::forwarding_on;
+use afr_image::{Manifest, ToolboxHome};
 use libtest_mimic::Failed;
 
 use crate::release::Signer;
@@ -28,7 +32,7 @@ const SOURCE_VARIABLE: &str = "AFR_TOOLBOX_SOURCE";
 /// The delegated cgroup every run's cgroup is made under.
 const LANE_CGROUP: &str = "/sys/fs/cgroup/afr-kernel-lane";
 /// The unprivileged host user and group bubblewrap runs as, as on a host.
-pub(crate) const SANDBOX_IDS: (u32, u32) = afr_sandbox::SANDBOX_HOST_IDS;
+pub(crate) const SANDBOX_IDS: (u32, u32) = afr_engine_bubblewrap::SANDBOX_HOST_IDS;
 /// The cap on user namespaces; zero means bubblewrap cannot start.
 const MAX_USER_NAMESPACES: &str = "/proc/sys/user/max_user_namespaces";
 /// Ubuntu's `AppArmor` switch that forbids unprivileged user namespaces.
@@ -139,7 +143,7 @@ pub(crate) fn missing(paths: &ProbePaths, toolbox: Option<&str>, root: bool) -> 
     if !root {
         gaps.push("root: mounts and cgroups need it".to_owned());
     }
-    if let Some(mechanism) = afr_sandbox::BubblewrapRequirements::missing(&probe(paths)) {
+    if let Some(mechanism) = afr_engine_bubblewrap::BubblewrapRequirements::missing(&probe(paths)) {
         gaps.push(format!(
             "{mechanism}: the kernel lacks it or it is not delegated"
         ));
@@ -275,7 +279,7 @@ fn build(image: &Path, paths: ProbePaths) -> Result<Lane, Failed> {
         release: &release,
         home: &home,
         env: &ProcessEnv,
-        tuning: afr_sandbox::EngineTuning::DEFAULT,
+        tuning: afr_engine_bubblewrap::EngineTuning::DEFAULT,
     };
     let host_paths = HostPaths {
         cgroup_root: paths.cgroup_root,
@@ -330,7 +334,7 @@ fn delegate() -> std::io::Result<PathBuf> {
 /// The sandbox side: take the descriptors and sizes the engine named,
 /// harden, then serve the executor until the lane hangs up.
 pub(crate) fn serve() -> ExitCode {
-    let entry = match afr_sandbox::Entry::parse_from(std::env::args_os().skip(1)) {
+    let entry = match afr_guest::Entry::parse_from(std::env::args_os().skip(1)) {
         Ok(entry) => entry,
         Err(refused) => {
             // the sandbox side starts no subscriber; stderr is its only report
@@ -338,7 +342,7 @@ pub(crate) fn serve() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    match afr_sandbox::serve_sandboxed(entry) {
+    match afr_guest::serve_sandboxed(entry) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("the sandbox stopped: {error}");

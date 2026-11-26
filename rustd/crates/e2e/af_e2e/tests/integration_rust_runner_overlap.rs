@@ -10,9 +10,8 @@ use std::time::Duration;
 use af_core::turn::status::PROCESSED;
 use af_wire::tool_trace::ToolCallStatus;
 use afd_state::sql::RUN_STATUS_REPORTED;
-use afr_sandbox::{
-    Capabilities, Engine, Granted, Limits, Sandbox, SandboxSpec, Sweep, Swept, UnsandboxedEngine,
-};
+use afr_engine::{Capabilities, Engine, Granted, Limits, Sandbox, SandboxSpec, Sweep, Swept};
+use afr_engine_unsandboxed::UnsandboxedEngine;
 use agentsfleetd::supervisor::Supervisor;
 use tokio::time::Instant;
 
@@ -53,15 +52,15 @@ impl Engine for Stalled {
         self.inner.capabilities()
     }
 
-    fn grant(&self, limits: Limits) -> afr_sandbox::Result<Granted> {
+    fn grant(&self, limits: Limits) -> afr_engine::Result<Granted> {
         self.inner.grant(limits)
     }
 
-    async fn sweep(&self, scope: Sweep<'_>) -> afr_sandbox::Result<Swept> {
+    async fn sweep(&self, scope: Sweep<'_>) -> afr_engine::Result<Swept> {
         self.inner.sweep(scope).await
     }
 
-    async fn prepare(&self, spec: SandboxSpec<'_>) -> afr_sandbox::Result<Box<dyn Sandbox>> {
+    async fn prepare(&self, spec: SandboxSpec<'_>) -> afr_engine::Result<Box<dyn Sandbox>> {
         tokio::time::sleep(PREPARE_TAKES).await;
         let prepared = self.inner.prepare(spec).await;
         if prepared.is_ok() {

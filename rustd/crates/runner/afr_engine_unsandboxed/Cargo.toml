@@ -1,0 +1,39 @@
+[package]
+name = "afr_engine_unsandboxed"
+description = "The debug engine, which builds no sandbox and refuses to exist in a release build, and behind test-util the recovery-drill engine over it."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+af_core.workspace = true
+# The engine and isolation names its capabilities state.
+af_wire.workspace = true
+# The seam it meets.
+afr_engine.workspace = true
+# The executor each scratch directory is served by, in-process.
+afr_executor.workspace = true
+async-trait.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt", "time"] }
+
+[features]
+# M-TEST-UTIL. The recovery-drill engine: unconfined sandboxes that name one
+# toolbox and report no tenant process.
+test-util = []
+
+[dev-dependencies]
+af_core = { workspace = true, features = ["test-util"] }
+# A fresh sandbox identifier per test.
+afr_engine = { workspace = true, features = ["test-util"] }
+tempfile.workspace = true
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "sync", "test-util", "time"] }

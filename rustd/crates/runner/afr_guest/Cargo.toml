@@ -1,0 +1,56 @@
+[package]
+name = "afr_guest"
+description = "The process inside a sandbox: the descriptors it inherits from the engine, the confinement it puts on itself, and the executor it then serves."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+af_core.workspace = true
+# The tenant leaf's files the engine opens, named as the cgroup names them.
+afr_cgroup.workspace = true
+# The mechanism names a refusal shares with the capability report, and the
+# seam's refusals.
+afr_engine.workspace = true
+# The executor every sandbox serves.
+afr_executor.workspace = true
+# The sandbox entry's descriptor flags, parsed once here for the runner
+# binary and the kernel lane alike.
+clap.workspace = true
+# The process status a sandbox reads before it serves.
+procfs-core.workspace = true
+# The process calls the entry makes on itself.
+rustix.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt"] }
+tracing.workspace = true
+# The in-sandbox process logs to the error stream the supervisor drains.
+tracing-subscriber.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# The kernel interfaces a sandbox confines itself with.
+landlock.workspace = true
+libc.workspace = true
+seccompiler.workspace = true
+
+[dev-dependencies]
+# Confines a child process and retries its socket until it answers.
+backon.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
+
+# Confines a child process and reads back what it said; it has its own `main`
+# because confinement cannot be undone inside a harness with tests left to run.
+[[test]]
+name = "confine"
+path = "tests/confine.rs"
+harness = false

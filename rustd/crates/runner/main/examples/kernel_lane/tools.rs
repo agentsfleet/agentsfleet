@@ -2,9 +2,8 @@
 //! run's model calls, built as the runner builds a run's tools, over the
 //! executor bubblewrap serves.
 
-use crate::lane::{id_of, spec};
+use afr_engine::{Engine, Limits};
 use afr_executor::{Executor, ExecutorSlot};
-use afr_sandbox::{Engine, Limits};
 use afr_tools::catalog::SHELL;
 use afr_tools::{Backends, Run, ToolContext, ToolErrorCode};
 use guffbolt::{CallRef, ToolOutput};
@@ -12,6 +11,7 @@ use libtest_mimic::Failed;
 use serde_json::{Value, json};
 
 use crate::lane::Lane;
+use crate::lane::{id_of, spec};
 use crate::run::{REACH_OUT, UNREACHABLE, expect, runtime};
 
 /// A command that prints and then fails.
@@ -132,7 +132,7 @@ pub(crate) fn shell_inherits_sandbox(lane: &Lane) -> Result<(), Failed> {
     let calls = [shell(OWN_STATUS, None), shell(REACH_OUT, None)];
     let outputs = shell_calls(lane, "shell-confined", &calls)?;
     let [status, reach] = answers(&outputs)?;
-    afr_sandbox::capabilities_dropped(&status.text)?;
+    afr_guest::capabilities_dropped(&status.text)?;
     expect(
         reach.text.contains(UNREACHABLE),
         format!("no route out, got {:?}", reach.text),

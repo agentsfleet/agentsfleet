@@ -3,7 +3,7 @@
 use std::sync::OnceLock;
 
 use afr_agent::{RecoveryBoundarySink, RecoverySave, RecoverySkip, RecoverySnapshot};
-use afr_sandbox::Sandbox;
+use afr_engine::Sandbox;
 use tokio::sync::{Mutex, mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 

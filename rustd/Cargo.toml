@@ -51,9 +51,15 @@ members = [
     "crates/harness/af_secrets",
     # runner: `agentsfleet-runner` and the crates only it links
     "crates/runner/afr_agent",
+    "crates/runner/afr_cgroup",
+    "crates/runner/afr_engine",
+    "crates/runner/afr_engine_bubblewrap",
+    "crates/runner/afr_engine_unsandboxed",
     "crates/runner/afr_executor",
+    "crates/runner/afr_firewall",
+    "crates/runner/afr_guest",
+    "crates/runner/afr_image",
     "crates/runner/afr_memory",
-    "crates/runner/afr_sandbox",
     "crates/runner/afr_supervisor",
     "crates/runner/afr_telemetry",
     "crates/runner/afr_tools",
@@ -179,8 +185,19 @@ afr_agent = { path = "crates/runner/afr_agent" }
 afr_executor = { path = "crates/runner/afr_executor" }
 # One run's memory, loaded and pushed through agentsfleetd.
 afr_memory = { path = "crates/runner/afr_memory" }
-# The sandbox engines: the interface every engine meets, and bubblewrap.
-afr_sandbox = { path = "crates/runner/afr_sandbox" }
+# The seam every sandbox engine meets: traits, facts, admission, warm slots.
+afr_engine = { path = "crates/runner/afr_engine" }
+# Building blocks an engine composes: a run's cgroup and its tenant leaf; the
+# host's egress tables and links; the toolbox and workspace images; and what
+# the process inside a sandbox does to itself before it serves.
+afr_cgroup = { path = "crates/runner/afr_cgroup" }
+afr_firewall = { path = "crates/runner/afr_firewall" }
+afr_image = { path = "crates/runner/afr_image" }
+afr_guest = { path = "crates/runner/afr_guest" }
+# The engines, which only the runner binary and the e2e crate name: the
+# hardened bubblewrap engine, and the debug engine that confines nothing.
+afr_engine_bubblewrap = { path = "crates/runner/afr_engine_bubblewrap" }
+afr_engine_unsandboxed = { path = "crates/runner/afr_engine_unsandboxed" }
 # The trusted runner half: pool, renew, report, recovery, verbs, downlink.
 afr_supervisor = { path = "crates/runner/afr_supervisor" }
 # The runner's telemetry: the credential-free endpoint, the span budget and

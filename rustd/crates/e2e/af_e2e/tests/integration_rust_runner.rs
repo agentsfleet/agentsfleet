@@ -136,7 +136,7 @@ async fn test_rust_runner_run_roundtrip() {
     let home = tempfile::tempdir().expect("a storage home");
     let sandboxes = tempfile::tempdir_in("/tmp").expect("a short sandbox base");
     let shutdown = tokio_util::sync::CancellationToken::new();
-    let engine = afr_sandbox::UnsandboxedEngine::new(sandboxes.path().to_owned())
+    let engine = afr_engine_unsandboxed::UnsandboxedEngine::new(sandboxes.path().to_owned())
         .expect("a debug build permits the unsandboxed engine");
     let runner = tokio::spawn(rust_runner(
         &scene,
@@ -246,10 +246,7 @@ pub(crate) async fn allow_all_egress(scene: &crate::e2e::Scenario) {
 }
 
 /// What a runner builds sandboxes with, and what runs its turns.
-type Engines = (
-    Box<dyn afr_sandbox::Engine>,
-    Box<dyn afr_agent::AgentEngine>,
-);
+type Engines = (Box<dyn afr_engine::Engine>, Box<dyn afr_agent::AgentEngine>);
 
 /// The Rust runner's supervisor, pointed at the scenario's daemon as the runner
 /// `token` names, building with `engine` and running each turn on `agent`.
@@ -300,13 +297,11 @@ fn scripted() -> afr_agent::scripted::ScriptedEngine {
 }
 
 /// A host that can enforce everything the reassigned policy asks for.
-fn capable() -> afr_sandbox::HostProbe {
-    afr_sandbox::HostProbe {
+fn capable() -> afr_engine::HostProbe {
+    afr_engine::HostProbe {
         landlock: true,
         seccomp: true,
-        cgroup_controllers: afr_sandbox::REQUIRED_CONTROLLERS
-            .map(str::to_owned)
-            .to_vec(),
+        cgroup_controllers: afr_engine::REQUIRED_CONTROLLERS.map(str::to_owned).to_vec(),
         bubblewrap: true,
         kvm: af_wire::runner::Kvm::Absent,
         toolbox_filesystem: true,

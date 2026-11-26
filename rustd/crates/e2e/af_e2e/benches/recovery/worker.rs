@@ -1,13 +1,15 @@
 //! Only the controlled model is reachable. A file/tool workspace is an invalid fixture.
 
-use super::Checked;
+use std::{io, net::SocketAddr, path::Path};
+
 use af_core::env::ProcessEnv;
 use af_wire::runner::{Isolation, SandboxEngine};
-use afr_sandbox::{
+use afr_engine::{
     Cap, Capabilities, Engine, Granted, Limits, ResourceFacts, Sandbox, SandboxSpec, Sweep, Swept,
 };
-use std::{io, net::SocketAddr, path::Path};
 use tokio_util::sync::CancellationToken;
+
+use super::Checked;
 
 #[derive(Debug)]
 struct ApiOnly;
@@ -28,15 +30,15 @@ impl Engine for ApiOnly {
         }
     }
 
-    fn grant(&self, _limits: Limits) -> afr_sandbox::Result<Granted> {
+    fn grant(&self, _limits: Limits) -> afr_engine::Result<Granted> {
         Err(io::Error::other("API-only benchmark received a sandbox operation").into())
     }
 
-    async fn prepare(&self, _spec: SandboxSpec<'_>) -> afr_sandbox::Result<Box<dyn Sandbox>> {
+    async fn prepare(&self, _spec: SandboxSpec<'_>) -> afr_engine::Result<Box<dyn Sandbox>> {
         Err(io::Error::other("API-only benchmark received a sandbox operation").into())
     }
 
-    async fn sweep(&self, _scope: Sweep<'_>) -> afr_sandbox::Result<Swept> {
+    async fn sweep(&self, _scope: Sweep<'_>) -> afr_engine::Result<Swept> {
         Ok(Swept::default())
     }
 }
@@ -48,7 +50,7 @@ pub(super) async fn run(address: SocketAddr, root: &Path) -> Checked {
         afr_tools::Catalog::new(Vec::new()),
         af_providers::Connector::with_client(client),
     );
-    let probe = afr_sandbox::probe(&afr_sandbox::ProbePaths::default());
+    let probe = afr_engine_bubblewrap::probe(&afr_engine_bubblewrap::ProbePaths::default());
     let stop = CancellationToken::new();
     let signal = stop.clone();
     let handler = tokio::spawn(async move {

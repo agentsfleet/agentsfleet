@@ -1,14 +1,16 @@
 //! The real runner executes one metered subprocess; files synchronize only the external process boundary.
 #![expect(clippy::expect_used, reason = "integration preconditions fail loudly")]
 
-use crate::e2e::Scenario;
-use crate::e2e_clock::RUN_TTL;
+use std::{path::Path, time::Duration};
+
 use af_core::timing::STREAM_ANSWER_TIMEOUT;
 use afr_agent::scripted::{ScriptedEngine, Step};
 use afr_tools::ENGINE_STOP_GRACE;
 use guffbolt::Usage;
-use std::{path::Path, time::Duration};
 use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
+
+use crate::e2e::Scenario;
+use crate::e2e_clock::RUN_TTL;
 
 pub(super) const ANSWER: &str = "the interrupted native session recovered";
 const SCRIPT: &str = "printf '%s\\n' \"$$\" >> \"$1\"; while [ ! -f \"$2\" ]; do sleep 0.05; done";
@@ -29,7 +31,7 @@ impl Runner {
         let marker = tempfile::tempdir().expect("external command markers");
         let config = configuration(scene, origin, home.path());
         let (config, storage) = afr_supervisor::boot(&config).expect("runner configuration");
-        let engine = afr_sandbox::UnsandboxedEngine::new(sandboxes.path().to_owned())
+        let engine = afr_engine_unsandboxed::UnsandboxedEngine::new(sandboxes.path().to_owned())
             .expect("test-only sandbox engine");
         let agent = script(marker.path());
         let stop = CancellationToken::new();
@@ -139,13 +141,11 @@ fn script(marker: &Path) -> ScriptedEngine {
     ])
 }
 
-fn probe() -> afr_sandbox::HostProbe {
-    afr_sandbox::HostProbe {
+fn probe() -> afr_engine::HostProbe {
+    afr_engine::HostProbe {
         landlock: true,
         seccomp: true,
-        cgroup_controllers: afr_sandbox::REQUIRED_CONTROLLERS
-            .map(str::to_owned)
-            .to_vec(),
+        cgroup_controllers: afr_engine::REQUIRED_CONTROLLERS.map(str::to_owned).to_vec(),
         bubblewrap: true,
         kvm: af_wire::runner::Kvm::Absent,
         toolbox_filesystem: true,

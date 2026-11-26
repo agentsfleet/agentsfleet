@@ -1,0 +1,49 @@
+[package]
+name = "afr_engine"
+description = "The seam every sandbox engine meets: its traits, facts, egress plans, boot admission, warm slots and errors, with no operating-system code."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+af_core.workspace = true
+# A warm slot's sandbox identifier, minted the one way identifiers are.
+af_crypto.workspace = true
+# The engine, isolation and KVM names the seam states and the heartbeat
+# carries: one type in both places.
+af_wire.workspace = true
+# Every sandbox serves the same executor, which is what makes a second engine
+# an addition rather than a rewrite.
+afr_executor.workspace = true
+async-trait.workspace = true
+# A warm slot's refill and an egress plan's read-back wait without a
+# hand-written loop.
+backon.workspace = true
+# The park mode's log spelling, from one attribute rather than a match.
+strum.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
+tracing.workspace = true
+
+[features]
+# M-TEST-UTIL. A fresh sandbox identifier, and the build of unknown outcome a
+# test's engine answers.
+test-util = []
+
+[dev-dependencies]
+af_core = { workspace = true, features = ["test-util"] }
+# The warm-slot suite's fake executor takes the bytes a write carries.
+bytes.workspace = true
+# The warm-slot suite polls a claim once.
+futures-util.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "sync", "test-util", "time"] }

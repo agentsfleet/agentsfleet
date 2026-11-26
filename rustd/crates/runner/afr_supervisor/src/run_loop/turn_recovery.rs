@@ -1,14 +1,15 @@
 //! The same fresh sandbox supplies the file destination and the restored root witness;
 //! its files are restored into a stage and imported before anything is adopted.
 
-use super::{Run, build::Build, recovery::State};
-use crate::{Result, error, recovery::NativeTurn};
-use af_wire::run::TurnWorkspace;
-use afr_sandbox::Sandbox;
-use futures_util::FutureExt as _;
 use std::panic::AssertUnwindSafe;
 
+use af_wire::run::TurnWorkspace;
+use afr_engine::Sandbox;
+use futures_util::FutureExt as _;
+
 use super::recovery::prove_quiescent;
+use super::{Run, build::Build, recovery::State};
+use crate::{Result, error, recovery::NativeTurn};
 
 impl Run<'_> {
     pub(super) async fn prepare_turn_recovery(

@@ -43,8 +43,8 @@ pub(crate) use self::git_fixture::{FIRST_README, FIXTURE_BRANCH, commit, git, he
 pub(crate) use self::resolver::{Stalled, assigned};
 pub(crate) use self::rig::{Rig, daemon, position, reported};
 pub(crate) use self::sandbox::{
-    Builds, DESTROY, EXECUTOR_GONE, FakeEngine, KILL, Kill, NO_PARK, NO_REFILL, Parking,
-    STILL_RUNNING,
+    Builds, CAPABILITIES, DESTROY, EXECUTOR_GONE, FakeEngine, KILL, Kill, NO_PARK, NO_REFILL,
+    Parking, STILL_RUNNING,
 };
 pub(crate) use af_egress::testing::FakeResolver;
 

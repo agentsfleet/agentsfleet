@@ -14,7 +14,7 @@ use af_core::error_code::INTERNAL_OPERATION_FAILED;
 use af_egress::SystemResolver;
 use af_wire::policy::{HttpEgress, NetworkPolicy as FleetNetwork, PACKAGE_MANAGER_DOMAINS};
 use af_wire::runner::NetworkPolicy;
-use afr_sandbox::{Allowlist, Network};
+use afr_engine::{Allowlist, Network};
 
 use super::{Bound, Egress, Named};
 use crate::test_support::{FakeResolver, assigned};

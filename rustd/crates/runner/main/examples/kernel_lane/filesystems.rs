@@ -9,7 +9,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use af_core::test_util::trace::Capture;
-use afr_sandbox::{Caching, HostTools, ProbePaths, WorkspaceDisk, probe};
+use afr_engine_bubblewrap::{ProbePaths, probe};
+use afr_image::{Caching, HostTools, WorkspaceDisk};
 use libtest_mimic::Failed;
 use rustix::mount::{MountFlags, UnmountFlags};
 
@@ -207,7 +208,7 @@ pub(crate) fn refused_mount_leaves_nothing(lane: &Lane) -> Result<(), Failed> {
         cause == Some(rustix::io::Errno::INVAL),
         format!(
             "the mount refused an image with no file system, got {:?}",
-            refused.as_ref().map(afr_sandbox::Error::told)
+            refused.as_ref().map(afr_image::Error::told)
         ),
     )?;
     expect(

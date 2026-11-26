@@ -1,10 +1,21 @@
 use af_wire::runner::{Isolation, Kvm, NetworkPolicy, SandboxEngine, SandboxTier};
-use afr_sandbox::{
-    BUBBLEWRAP_CAPABILITIES, Capabilities, HostProbe, REQUIRED_CONTROLLERS, ResourceFacts,
-    UnsandboxedEngine,
-};
+use afr_engine::{Cap, Capabilities, HostProbe, REQUIRED_CONTROLLERS, ResourceFacts};
 
 use super::{CGROUP_OFF, CGROUP_ON, capability_report, probe_answer, selftest};
+use crate::test_support::CAPABILITIES as BUBBLEWRAP_CAPABILITIES;
+
+/// An engine that confines nothing, as the debug engine states itself.
+const UNCONFINED: Capabilities = Capabilities {
+    engine: SandboxEngine::Unsandboxed,
+    isolation: Isolation::Unconfined,
+    parks: &[],
+    resources: ResourceFacts {
+        memory: Cap::Absent,
+        cpu: Cap::Absent,
+        pids: Cap::Absent,
+        disk: Cap::Absent,
+    },
+};
 
 /// An engine behind a virtual machine, which relies on the KVM device.
 const MICROVM: Capabilities = Capabilities {
@@ -197,7 +208,7 @@ fn the_checks_are_only_those_the_engine_relies_on() {
     for (engine, bubblewrap, kvm) in [
         (BUBBLEWRAP_CAPABILITIES, true, false),
         (MICROVM, false, true),
-        (UnsandboxedEngine::CAPABILITIES, false, false),
+        (UNCONFINED, false, false),
     ] {
         let named = checked(&engine);
         assert_eq!(

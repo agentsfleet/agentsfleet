@@ -11,13 +11,14 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus};
 use std::time::{Duration, Instant};
 
-use crate::lane::{id_of, spec};
+use afr_cgroup::{RunCgroup, SANDBOX_LEAF};
+use afr_engine::{Engine as _, Limits, ParkMode, Sandbox};
 use afr_executor::WORKSPACE_ROOT;
-use afr_sandbox::{Engine as _, Limits, ParkMode, RunCgroup, SANDBOX_LEAF, Sandbox};
 use libtest_mimic::Failed;
 use rustix::process::Signal;
 
 use crate::lane::Lane;
+use crate::lane::{id_of, spec};
 use crate::run::{Outcome, expect, run as run_in, runtime, shell};
 
 /// The run whose sandbox is held.

@@ -15,37 +15,37 @@ use super::{
 /// The field every runner log line names its event in.
 const EVENT_FIELD: &str = "event";
 
-#[cfg(debug_assertions)]
+#[cfg(all(debug_assertions, feature = "unsandboxed"))]
 #[derive(Debug)]
 struct Held(Arc<std::sync::atomic::AtomicBool>);
 
-#[cfg(debug_assertions)]
+#[cfg(all(debug_assertions, feature = "unsandboxed"))]
 impl Drop for Held {
     fn drop(&mut self) {
         self.0.store(true, std::sync::atomic::Ordering::SeqCst);
     }
 }
 
-#[cfg(debug_assertions)]
-impl afr_sandbox::Resources for Held {
-    fn close(self: Box<Self>) -> afr_sandbox::Result<()> {
+#[cfg(all(debug_assertions, feature = "unsandboxed"))]
+impl afr_engine::Resources for Held {
+    fn close(self: Box<Self>) -> afr_engine::Result<()> {
         Ok(())
     }
 }
 
-#[cfg(debug_assertions)]
+#[cfg(all(debug_assertions, feature = "unsandboxed"))]
 #[tokio::test]
 #[expect(clippy::unwrap_used, reason = "test setup and assertions")]
 async fn test_booted_host_retains_resources_while_its_engine_serves() {
     use std::sync::atomic::{AtomicBool, Ordering};
 
-    use afr_sandbox::{
-        Booted, Limits, ProbePaths, SandboxSpec, Started, UnsandboxedEngine, fresh_sandbox_id,
-    };
+    use afr_engine::{Booted, Limits, SandboxSpec, Started, fresh_sandbox_id};
+    use afr_engine_bubblewrap::ProbePaths;
+    use afr_engine_unsandboxed::UnsandboxedEngine;
 
     let dir = tempfile::tempdir_in("/tmp").unwrap();
     let released = Arc::new(AtomicBool::new(false));
-    let probe = afr_sandbox::probe(&ProbePaths::default());
+    let probe = afr_engine_bubblewrap::probe(&ProbePaths::default());
     let host = super::Host::from(Booted {
         started: Started {
             engine: UnsandboxedEngine::new(dir.path().to_owned()).unwrap(),

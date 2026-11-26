@@ -1,0 +1,281 @@
+//! Sandboxes started before their run, so a run start skips the wait.
+//!
+//! [`WarmSlots`] wraps any [`Engine`] and is one itself. A single task owns the
+//! ready sandboxes; a run claims one through a channel and the task starts a
+//! replacement, so no lock guards the pool and no sandbox is handed out twice.
+//! A claimed sandbox is destroyed with its run and never returns. Slots are
+//! built with no network beyond loopback, so only a run asking for that
+//! gets one.
+
+use std::pin::Pin;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+use af_core::clock::saturating_millis;
+use af_core::error_code::{self, Coded as _, ErrorCode, Logged};
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
+use backon::{ExponentialBuilder, Retryable as _, Sleeper};
+use tokio::sync::{mpsc, oneshot};
+use tokio::task::{JoinHandle, JoinSet};
+
+use crate::engine::{
+    Capabilities, Engine, Granted, Limits, Sandbox, SandboxSpec, SandboxState, Sweep, Swept,
+};
+use crate::error::Result;
+use crate::network::Network;
+
+/// The event every run start is logged under, warm or cold.
+const EVENT_START: &str = "sandbox_start_completed";
+/// The event a slot that failed to start is logged under.
+const EVENT_SLOT_FAILED: &str = "sandbox_warm_slot_failed";
+/// The event a slot that failed to tear down is logged under.
+const EVENT_SLOT_LEFT: &str = "sandbox_warm_slot_left";
+/// The event a keeper that stopped abnormally is logged under.
+const EVENT_KEEPER_FAILED: &str = "sandbox_warm_keeper_failed";
+/// How a start served from a slot is labelled.
+const WARM: &str = "warm";
+/// The event a slot whose sandbox died while waiting is logged under.
+const EVENT_SLOT_DIED: &str = "sandbox_warm_slot_died";
+/// The code a slot that died, or a keeper that stopped, is logged under.
+const DIED_CODE: ErrorCode = error_code::INTERNAL_OPERATION_FAILED;
+/// The first wait after a failed start.
+const RETRY_MIN_DELAY: Duration = Duration::from_millis(100);
+/// The longest wait between two starts.
+const RETRY_MAX_DELAY: Duration = Duration::from_secs(30);
+/// How a start built on demand is labelled.
+const COLD: &str = "cold";
+
+/// A failed start: the slot's sandbox identifier, when one was minted, and
+/// why.
+type Failed = (Option<Uuid7>, crate::Error);
+
+/// A run's request for a ready slot; `None` when none is ready.
+type Claim = oneshot::Sender<Option<Slot>>;
+
+/// A sandbox started ahead of its run, under an identifier of its own that
+/// its cgroup and its directory carry, so a run served from it logs it.
+struct Slot {
+    sandbox: Box<dyn Sandbox>,
+}
+
+/// An engine that keeps `slots` sandboxes started ahead of their runs.
+#[derive(Debug)]
+pub struct WarmSlots {
+    inner: Arc<dyn Engine>,
+    limits: Limits,
+    claims: mpsc::Sender<Claim>,
+    keeper: JoinHandle<()>,
+}
+
+impl WarmSlots {
+    /// Starts `slots` sandboxes with `limits` from `inner`, and keeps that many
+    /// ready. Zero slots makes every start cold.
+    pub fn start(inner: Arc<dyn Engine>, slots: usize, limits: Limits) -> Self {
+        let (claims, requests) = mpsc::channel(1);
+        let keeper = tokio::spawn(keep(Arc::clone(&inner), requests, slots, limits));
+        Self {
+            inner,
+            limits,
+            claims,
+            keeper,
+        }
+    }
+
+    /// Stops refilling, waits for every start in flight, and destroys every
+    /// slot no run claimed.
+    pub async fn shutdown(self) {
+        drop(self.claims);
+        if let Err(stopped) = self.keeper.await {
+            let reason = stopped.to_string();
+            let event = EVENT_KEEPER_FAILED;
+            let error_code = DIED_CODE.as_str();
+            {
+                let message = format_args!("the warm-slot keeper stopped abnormally");
+                tracing::warn!(message, error_code, reason, event);
+            };
+        }
+    }
+
+    async fn claim(&self) -> Option<Slot> {
+        let (reply, answer) = oneshot::channel();
+        self.claims.send(reply).await.ok()?;
+        answer.await.ok().flatten()
+    }
+}
+
+#[async_trait::async_trait]
+impl Engine for WarmSlots {
+    fn capabilities(&self) -> Capabilities {
+        self.inner.capabilities()
+    }
+
+    fn grant(&self, limits: Limits) -> Result<Granted> {
+        self.inner.grant(limits)
+    }
+
+    async fn prepare(&self, spec: SandboxSpec<'_>) -> Result<Box<dyn Sandbox>> {
+        let started = Instant::now();
+        // Every slot is built isolated: a request for another network, which
+        // the namespace is chosen for at start, starts cold.
+        let warm =
+            if *spec.granted.limits() == self.limits && spec.egress.network == Network::Isolated {
+                self.claim().await
+            } else {
+                None
+            };
+        let (sandbox, start) = match warm {
+            Some(Slot { sandbox }) => (sandbox, WARM),
+            None => (self.inner.prepare(spec).await?, COLD),
+        };
+        let sandbox_id = sandbox.id().as_str();
+        let duration_ms = saturating_millis(started.elapsed());
+        let event = EVENT_START;
+        tracing::info!(sandbox_id, start, duration_ms, event);
+        Ok(sandbox)
+    }
+
+    async fn sweep(&self, scope: Sweep<'_>) -> Result<Swept> {
+        self.inner.sweep(scope).await
+    }
+}
+
+/// The task that owns every ready slot.
+async fn keep(
+    inner: Arc<dyn Engine>,
+    mut requests: mpsc::Receiver<Claim>,
+    slots: usize,
+    limits: Limits,
+) {
+    let (ready, mut waiting) = mpsc::channel(slots.max(1));
+    // Every start and every retirement in flight, owned here so shutdown can
+    // wait for each one: a start abandoned mid-way leaves its cgroup behind.
+    let mut work = JoinSet::new();
+    let refill = |work: &mut JoinSet<()>| {
+        work.spawn(fill(Arc::clone(&inner), ready.clone(), limits));
+    };
+    for _ in 0..slots {
+        refill(&mut work);
+    }
+    while let Some(reply) = requests.recv().await {
+        while work.try_join_next().is_some() {}
+        let slot = live_slot(&mut waiting, &mut work, refill);
+        if let Err(Some(unclaimed)) = reply.send(slot) {
+            // The run stopped waiting; this slot is still unused but no
+            // longer counted, so it goes the way every slot goes.
+            work.spawn(retire(unclaimed));
+        }
+    }
+    // Closed first, so a start still in flight stops retrying and retires its
+    // own sandbox rather than handing it to nobody.
+    waiting.close();
+    while let Some(slot) = waiting.recv().await {
+        retire(slot).await;
+    }
+    while work.join_next().await.is_some() {}
+}
+
+/// The next ready slot whose sandbox is still up. Every slot taken is
+/// replaced, the one handed out and each one that died while it waited, which
+/// is retired and never handed to a run; so the pool keeps its size.
+fn live_slot(
+    waiting: &mut mpsc::Receiver<Slot>,
+    work: &mut JoinSet<()>,
+    refill: impl Fn(&mut JoinSet<()>),
+) -> Option<Slot> {
+    loop {
+        let mut slot = waiting.try_recv().ok()?;
+        refill(work);
+        if slot.sandbox.state() == SandboxState::Running {
+            return Some(slot);
+        }
+        let event = EVENT_SLOT_DIED;
+        let error_code = DIED_CODE.as_str();
+        let sandbox_id = slot.sandbox.id().as_str();
+        {
+            let message = format_args!("a warm slot's sandbox died while it waited");
+            tracing::warn!(message, error_code, sandbox_id, event);
+        };
+        work.spawn(retire(slot));
+    }
+}
+
+/// Starts one slot and offers it to the keeper, retrying a failed start with
+/// backoff for as long as the keeper runs: a host that refused one start is
+/// not thereby a host with fewer slots for good. A closed keeper retires it.
+async fn fill(inner: Arc<dyn Engine>, ready: mpsc::Sender<Slot>, limits: Limits) {
+    let attempt = || {
+        let inner = Arc::clone(&inner);
+        async move {
+            // A fresh identifier per start, so a slot never meets a leftover
+            // of a previous one.
+            let id = Entropy::new()
+                .uuid7(af_core::clock::now())
+                .map_err(|error| (None, error.into()))?;
+            let granted = inner
+                .grant(limits)
+                .map_err(|error| (Some(id.clone()), error))?;
+            match inner.prepare(SandboxSpec::new(&id, granted)).await {
+                Ok(sandbox) => Ok(Slot { sandbox }),
+                Err(error) => Err((Some(id), error)),
+            }
+        }
+    };
+    let started = attempt
+        .retry(
+            ExponentialBuilder::default()
+                .with_min_delay(RETRY_MIN_DELAY)
+                .with_max_delay(RETRY_MAX_DELAY)
+                .without_max_times(),
+        )
+        .sleep(UntilClosed(ready.clone()))
+        .when(|_failed: &Failed| !ready.is_closed())
+        .notify(|(id, error): &Failed, delay: Duration| {
+            let Logged { error_code, reason } = error.logged();
+            let sandbox_id = id.as_ref().map(Uuid7::as_str);
+            let retry_ms = saturating_millis(delay);
+            let event = EVENT_SLOT_FAILED;
+            tracing::warn!(sandbox_id, error_code, reason, retry_ms, event);
+        })
+        .await;
+    if let Ok(sandbox) = started
+        && let Err(closed) = ready.send(sandbox).await
+    {
+        retire(closed.0).await;
+    }
+}
+
+/// A retry's wait, cut short when the keeper shuts down, so shutdown never
+/// waits out a backoff.
+struct UntilClosed(mpsc::Sender<Slot>);
+
+impl Sleeper for UntilClosed {
+    type Sleep = Pin<Box<dyn Future<Output = ()> + Send>>;
+
+    fn sleep(&self, dur: Duration) -> Self::Sleep {
+        let keeper = self.0.clone();
+        Box::pin(async move {
+            tokio::select! {
+                () = tokio::time::sleep(dur) => {}
+                () = keeper.closed() => {}
+            }
+        })
+    }
+}
+
+/// Destroys a slot no run will use.
+async fn retire(Slot { sandbox }: Slot) {
+    let id = sandbox.id().clone();
+    if let Err(error) = sandbox.destroy().await {
+        let Logged { error_code, reason } = error.logged();
+        let sandbox_id = id.as_str();
+        let event = EVENT_SLOT_LEFT;
+        {
+            let message = format_args!("an unused warm slot failed to tear down");
+            tracing::warn!(message, error_code, sandbox_id, reason, event);
+        };
+    }
+}
+
+#[cfg(test)]
+mod tests;

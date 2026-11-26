@@ -13,7 +13,7 @@ use af_core::id::Uuid7;
 use af_core::test_util::trace::Capture;
 use af_wire::runner::Kvm;
 use af_wire::runner::{HeartbeatStatus, NetworkPolicy};
-use afr_sandbox::{Engine as _, HostProbe, Limits, ParkMode, SandboxSpec};
+use afr_engine::{Engine as _, HostProbe, Limits, ParkMode, SandboxSpec};
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
@@ -139,7 +139,7 @@ async fn an_assignment_reaches_the_runs_and_labels_the_self_test_it_asks_for() {
     let mut heartbeat = Heartbeat::new(
         &plane,
         &probe,
-        afr_sandbox::BUBBLEWRAP_CAPABILITIES,
+        test_support::CAPABILITIES,
         &held,
         std::path::Path::new("."),
     );
@@ -210,7 +210,7 @@ async fn a_failed_beat_retries_and_a_stop_ends_runs_in_flight() {
     Heartbeat::new(
         &plane,
         &probe,
-        afr_sandbox::BUBBLEWRAP_CAPABILITIES,
+        test_support::CAPABILITIES,
         &held,
         std::path::Path::new("."),
     )
@@ -246,7 +246,7 @@ async fn a_refused_token_ends_the_runner_and_a_shutdown_ends_the_beat() {
     Heartbeat::new(
         &plane,
         &probe,
-        afr_sandbox::BUBBLEWRAP_CAPABILITIES,
+        test_support::CAPABILITIES,
         &held,
         std::path::Path::new("."),
     )
@@ -256,7 +256,7 @@ async fn a_refused_token_ends_the_runner_and_a_shutdown_ends_the_beat() {
     Heartbeat::new(
         &plane,
         &probe,
-        afr_sandbox::BUBBLEWRAP_CAPABILITIES,
+        test_support::CAPABILITIES,
         &held,
         std::path::Path::new("."),
     )
@@ -280,7 +280,7 @@ async fn test_a_released_hold_is_destroyed_as_inactive() {
     Heartbeat::new(
         &plane,
         &probe,
-        afr_sandbox::BUBBLEWRAP_CAPABILITIES,
+        test_support::CAPABILITIES,
         &holds,
         std::path::Path::new("."),
     )
@@ -326,7 +326,7 @@ async fn test_a_saturation_release_beats_at_once() {
     let beating = Heartbeat::new(
         &plane,
         &probe,
-        afr_sandbox::BUBBLEWRAP_CAPABILITIES,
+        test_support::CAPABILITIES,
         &holds,
         std::path::Path::new("."),
     )
@@ -362,7 +362,7 @@ async fn an_invalid_release_identifier_refuses_the_assignment() {
     let mut heartbeat = Heartbeat::new(
         &plane,
         &probe,
-        afr_sandbox::BUBBLEWRAP_CAPABILITIES,
+        test_support::CAPABILITIES,
         &holds,
         std::path::Path::new("."),
     );

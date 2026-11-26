@@ -1,0 +1,58 @@
+[package]
+name = "afr_image"
+description = "The images a sandbox is built from: the signed toolbox verified, staged, adopted and mounted read-only, and each run's workspace disk, with the loop devices, mounts and host programs behind them."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+af_core.workspace = true
+# The toolbox's file-system name, and the seam's refusal for a host with no
+# loop device to give.
+afr_engine.workspace = true
+# A loop device the kernel has not finished attaching is retried on a
+# constant delay without a hand-written loop.
+backon.workspace = true
+# The toolbox image is named by its SHA-256, streamed through the hasher.
+digest-io.workspace = true
+hex.workspace = true
+# A toolbox image is staged in a copy of its own and published with one
+# rename; a copy that is refused is removed when it drops.
+tempfile.workspace = true
+# A toolbox release: its manifest's signature checked against the key the
+# runner is built with (ECDSA P-256 over SHA-256, as `cosign` signs), the key
+# read from its PEM, the signature from its base64, and the manifest's fields
+# parsed and bounded before verification reads one.
+aws-lc-rs.workspace = true
+base64.workspace = true
+garde.workspace = true
+# The digest's charset, a rule garde does not ship.
+af_validate.workspace = true
+rustls-pki-types.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+# The mounts a toolbox adoption reads back.
+procfs-core.workspace = true
+# The mount, loop-device and ownership calls an image is made with.
+rustix.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["process", "rt"] }
+tracing.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# The loop device's ioctl numbers and the flags it is attached with.
+libc.workspace = true
+
+[dev-dependencies]
+af_core = { workspace = true, features = ["test-util"] }
+tokio = { workspace = true, features = ["macros", "process", "rt", "rt-multi-thread", "time"] }

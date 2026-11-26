@@ -6,10 +6,9 @@
 //!                                 a bare mirror per bound repository
 //!   <home>/staging/               each step's files on their way into or out
 //!                                 of a sandbox (`crate::staging`)
-//!   <home>/toolbox/incoming/      the release a deploy staged: image, manifest
-//!                                 and signature (`deploy/baremetal/toolbox.sh`)
-//!   <home>/toolbox/images/        admitted images, published by digest
-//!   <home>/toolbox/mounts/        where each admitted image is mounted
+//!   <home>/toolbox/               the toolbox an engine verifies and mounts:
+//!                                 its release, images and mounts beneath it
+//!                                 (`afr_image::ToolboxHome`)
 //! ```
 //!
 //! What a crashed runner left under `sandboxes` is swept by the engine built on
@@ -20,8 +19,6 @@
 
 use std::fs;
 use std::path::PathBuf;
-
-use afr_sandbox::ToolboxHome;
 
 use crate::error::Result;
 use crate::staging::Staging;
@@ -45,10 +42,9 @@ impl StorageHome {
     /// A directory that cannot be made, or staging that cannot be emptied.
     pub fn open(root: impl Into<PathBuf>) -> Result<Self> {
         let home = Self { root: root.into() };
-        for directory in [home.sandboxes(), home.mirrors()] {
+        for directory in [home.sandboxes(), home.mirrors(), home.toolbox()] {
             fs::create_dir_all(directory)?;
         }
-        ToolboxHome::open(home.root.join(TOOLBOX))?;
         Staging::sweep(&home.root.join(STAGING))?;
         Ok(home)
     }
@@ -72,10 +68,11 @@ impl StorageHome {
     }
 
     /// Where the toolbox is kept: the release a deploy stages, the images
-    /// admitted from it, and their mounts.
+    /// admitted from it, and their mounts, which the engine that verifies it
+    /// lays out beneath.
     #[must_use]
-    pub fn toolbox(&self) -> ToolboxHome {
-        ToolboxHome::at(self.root.join(TOOLBOX))
+    pub fn toolbox(&self) -> PathBuf {
+        self.root.join(TOOLBOX)
     }
 }
 

@@ -4,12 +4,13 @@
 use std::fs;
 use std::os::unix::fs::MetadataExt as _;
 
-use crate::lane::{id_of, spec};
+use afr_cgroup::{RunCgroup, SANDBOX_LEAF, TENANT_LEAF};
+use afr_engine::{Engine as _, Limits};
 use afr_executor::Ending;
-use afr_sandbox::{Engine as _, Limits, RunCgroup, SANDBOX_LEAF, TENANT_LEAF};
 use libtest_mimic::Failed;
 
 use crate::lane::Lane;
+use crate::lane::{id_of, spec};
 use crate::run::{expect, in_sandbox, in_sandbox_each, run as run_in, runtime, shell};
 use crate::trials::{ENOSPC, SMALL_DISK, TENANT_CGROUP, TWO_OUTCOMES};
 

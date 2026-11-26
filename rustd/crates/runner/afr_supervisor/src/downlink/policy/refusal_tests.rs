@@ -36,7 +36,7 @@ async fn closed_or_invalid_assignment_stream_never_advertises_a_worker() -> crat
             Heartbeat::new(
                 &plane,
                 &probe,
-                afr_sandbox::BUBBLEWRAP_CAPABILITIES,
+                test_support::CAPABILITIES,
                 &holds,
                 std::path::Path::new("."),
             )
@@ -71,7 +71,7 @@ async fn a_permanent_heartbeat_failure_stops_the_runner_without_retrying() {
         Heartbeat::new(
             &plane,
             &probe,
-            afr_sandbox::BUBBLEWRAP_CAPABILITIES,
+            test_support::CAPABILITIES,
             &holds,
             std::path::Path::new("."),
         )

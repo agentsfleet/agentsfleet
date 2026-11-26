@@ -11,7 +11,7 @@ use af_core::clock::{FixedClock, after};
 use af_core::id::Uuid7;
 use af_core::test_util::trace::Capture;
 use af_core::timing::DAY;
-use afr_sandbox::{Engine as _, Limits, ParkMode, Parked, SandboxSpec};
+use afr_engine::{Engine as _, Limits, ParkMode, Parked, SandboxSpec};
 use jiff::Timestamp;
 
 use super::{BuiltUnder, HoldKey, Holds, Release, Stowed};

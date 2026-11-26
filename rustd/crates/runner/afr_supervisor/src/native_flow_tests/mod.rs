@@ -4,15 +4,16 @@ mod pressure;
 
 use std::time::Duration;
 
+use af_core::{env::MapEnv, id::Uuid7, test_util::trace::Capture};
+use af_wire::activity::{ActivityFrame, ActivityRequest, ToolCallProgress};
+use tokio::{sync::mpsc, time::Instant};
+use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
+
 use crate::{
     config::{Config, ENV_API_URL, ENV_RUNNER_TOKEN, ENV_STREAM_CA, ENV_STREAM_URL},
     test_support::{Behaviour, FakeAgent, FakeEngine, healthy},
     test_util::{NativeDaemon, Session},
 };
-use af_core::{env::MapEnv, id::Uuid7, test_util::trace::Capture};
-use af_wire::activity::{ActivityFrame, ActivityRequest, ToolCallProgress};
-use tokio::{sync::mpsc, time::Instant};
-use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 
 type TestResult<T = ()> = crate::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
@@ -160,8 +161,8 @@ impl Native {
     }
 }
 
-fn probe() -> afr_sandbox::HostProbe {
-    afr_sandbox::HostProbe {
+fn probe() -> afr_engine::HostProbe {
+    afr_engine::HostProbe {
         landlock: true,
         seccomp: true,
         cgroup_controllers: vec!["cpu".to_owned()],

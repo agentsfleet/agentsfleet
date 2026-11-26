@@ -1,0 +1,34 @@
+[package]
+name = "afr_cgroup"
+description = "One cgroup v2 per sandbox: its limits, its two leaves, the freezer that parks it, the kill that ends its tree, and the delegated root it is made under."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+af_core.workspace = true
+# The limits a run's cgroup writes, the controllers they need, and the seam's
+# refusals: a host missing a controller refuses every run.
+afr_engine.workspace = true
+# A killed cgroup's removal and a freeze's settling retry on a constant delay
+# without a hand-written loop.
+backon.workspace = true
+# The runner's own cgroup line, read to find the root it was delegated.
+procfs-core.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["time"] }
+tracing.workspace = true
+
+[dev-dependencies]
+af_core = { workspace = true, features = ["test-util"] }
+tempfile.workspace = true
+tokio = { workspace = true, features = ["macros", "rt", "test-util", "time"] }

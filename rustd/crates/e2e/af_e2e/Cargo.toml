@@ -26,11 +26,14 @@ workspace = true
 # The booted daemon, its supervisor and the knobs its suites share.
 agentsfleetd = { workspace = true, features = ["test-util"] }
 # The Rust runner, driven end to end against that daemon: its supervisor and
-# native session, the scripted agent engine, the unsandboxed engine, the
-# executor's process request, the hosted catalog and the runner's export.
+# native session, the scripted agent engine, the seam, the unsandboxed engine
+# and the host probe bubblewrap reads, the executor's process request, the
+# hosted catalog and the runner's export.
 afr_agent = { workspace = true, features = ["test-util"] }
+afr_engine.workspace = true
+afr_engine_bubblewrap.workspace = true
+afr_engine_unsandboxed.workspace = true
 afr_executor.workspace = true
-afr_sandbox.workspace = true
 afr_supervisor = { workspace = true, features = ["test-util"] }
 afr_telemetry.workspace = true
 afr_tools.workspace = true

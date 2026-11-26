@@ -15,9 +15,9 @@ pub(crate) enum EngineChoice {
 
 impl EngineChoice {
     /// What the selected engine states, before it is built.
-    pub(crate) const fn capabilities(self) -> afr_sandbox::Capabilities {
+    pub(crate) const fn capabilities(self) -> afr_engine::Capabilities {
         match self {
-            Self::Bubblewrap => afr_sandbox::BUBBLEWRAP_CAPABILITIES,
+            Self::Bubblewrap => afr_engine_bubblewrap::BUBBLEWRAP_CAPABILITIES,
         }
     }
 
@@ -25,7 +25,7 @@ impl EngineChoice {
     pub(crate) fn boot(
         self,
         home: &StorageHome,
-        tuning: afr_sandbox::EngineTuning,
+        tuning: afr_engine_bubblewrap::EngineTuning,
     ) -> Result<Host, ExitCode> {
         match self {
             Self::Bubblewrap => Host::production(home, tuning),

@@ -25,17 +25,16 @@ use af_core::env::{EnvSource, ProcessEnv};
 use af_core::error_code::{Coded as _, Logged};
 use afr_supervisor::StorageHome;
 use afr_telemetry::{Endpoint, SpanLayer, Telemetry};
-use tokio_util::sync::CancellationToken;
-
-use self::host::{Host, OrExit as _};
-
 use clap::{Parser, Subcommand};
+use tokio_util::sync::CancellationToken;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::Layer as _;
 use tracing_subscriber::filter::Targets;
 use tracing_subscriber::fmt::MakeWriter;
 use tracing_subscriber::layer::SubscriberExt as _;
 use tracing_subscriber::util::SubscriberInitExt as _;
+
+use self::host::{Host, OrExit as _};
 
 /// Where a record goes when nobody chose.
 const DEFAULT_LEVEL: LevelFilter = LevelFilter::INFO;
@@ -61,7 +60,7 @@ enum Command {
     /// Harden this process and serve the executor; started inside each sandbox,
     /// told the descriptors it inherited, the tenant leaf's and its link's,
     /// and the sizes its executor serves with.
-    Sandbox(afr_sandbox::Entry),
+    Sandbox(afr_guest::Entry),
 }
 
 /// How `run` builds each run's sandbox.
@@ -73,7 +72,7 @@ struct RunArgs {
     /// Build no sandbox: every run's tools run unconfined in a scratch
     /// directory under the storage home. A debug build alone has the flag, so
     /// a suite can drive this binary end to end on a host without bubblewrap.
-    #[cfg(debug_assertions)]
+    #[cfg(all(debug_assertions, feature = "unsandboxed"))]
     #[arg(long, hide = true, conflicts_with = "engine")]
     unsandboxed: bool,
 }
@@ -89,8 +88,8 @@ fn main() -> ExitCode {
 }
 
 /// Hardens and serves; any refusal goes to stderr, which the engine reads.
-fn sandbox(entry: afr_sandbox::Entry) -> ExitCode {
-    exited(afr_sandbox::serve_sandboxed(entry))
+fn sandbox(entry: afr_guest::Entry) -> ExitCode {
+    exited(afr_guest::serve_sandboxed(entry))
 }
 
 /// SUCCESS for an entry that ended cleanly, otherwise its refusal.
@@ -117,7 +116,7 @@ fn refused(error: &impl std::fmt::Display) -> ExitCode {
 /// Prints the host's capability report and self-test checks as JSON, as the
 /// default engine reads them.
 fn probe() -> ExitCode {
-    let host = afr_sandbox::probe(&afr_sandbox::ProbePaths::default());
+    let host = afr_engine_bubblewrap::probe(&afr_engine_bubblewrap::ProbePaths::default());
     answer(
         &host,
         &engine::EngineChoice::default().capabilities(),
@@ -131,8 +130,8 @@ fn probe() -> ExitCode {
 /// Succeeds only when the whole answer was written and `host` can build a
 /// sandbox.
 fn answer(
-    host: &afr_sandbox::HostProbe,
-    engine: &afr_sandbox::Capabilities,
+    host: &afr_engine::HostProbe,
+    engine: &afr_engine::Capabilities,
     out: &mut impl std::io::Write,
 ) -> ExitCode {
     let report = afr_supervisor::capability::probe_answer(host, engine);
@@ -141,7 +140,9 @@ fn answer(
         .and_then(|()| writeln!(out));
     match written {
         Err(error) => refused(&error),
-        Ok(()) if afr_sandbox::BubblewrapRequirements::missing(host).is_none() => ExitCode::SUCCESS,
+        Ok(()) if afr_engine_bubblewrap::BubblewrapRequirements::missing(host).is_none() => {
+            ExitCode::SUCCESS
+        }
         Ok(()) => ExitCode::FAILURE,
     }
 }
@@ -236,8 +237,12 @@ impl RunArgs {
     ///
     /// # Errors
     /// The failure, already logged, as the exit status.
-    fn host(self, home: &StorageHome, tuning: afr_sandbox::EngineTuning) -> Result<Host, ExitCode> {
-        #[cfg(debug_assertions)]
+    fn host(
+        self,
+        home: &StorageHome,
+        tuning: afr_engine_bubblewrap::EngineTuning,
+    ) -> Result<Host, ExitCode> {
+        #[cfg(all(debug_assertions, feature = "unsandboxed"))]
         if self.unsandboxed {
             return Host::unsandboxed(home, tuning.sizes);
         }
@@ -249,9 +254,9 @@ impl RunArgs {
 async fn serve(
     config: &afr_supervisor::Config,
     home: StorageHome,
-    engine: Box<dyn afr_sandbox::Engine>,
+    engine: Box<dyn afr_engine::Engine>,
     agent: afr_agent::Loop,
-    probe: afr_sandbox::HostProbe,
+    probe: afr_engine::HostProbe,
 ) -> afr_supervisor::Result<()> {
     let shutdown = CancellationToken::new();
     let stopping = tokio::spawn({

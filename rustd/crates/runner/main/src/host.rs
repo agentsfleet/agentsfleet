@@ -12,7 +12,7 @@ use std::process::ExitCode;
 use std::sync::Arc;
 
 use af_core::error_code::{self, Coded, ErrorCode};
-use afr_sandbox::{Engine, HostProbe};
+use afr_engine::{Engine, HostProbe};
 use afr_supervisor::StorageHome;
 
 /// The event every failure that stops `run` is logged under.
@@ -38,18 +38,18 @@ pub(crate) struct Host {
     /// What this host's kernel can enforce, as every heartbeat states it.
     pub(crate) probe: HostProbe,
     /// Backend resources, released after serving and its runtime have ended.
-    pub(crate) resources: Option<Box<dyn afr_sandbox::Resources>>,
+    pub(crate) resources: Option<Box<dyn afr_engine::Resources>>,
 }
 
 impl Host {
     /// A host running with `engine`, on a kernel `probe` describes, its
     /// sandboxes using `resources`. A release build off Linux builds no
     /// engine at all, so it has no caller there.
-    #[cfg(any(target_os = "linux", debug_assertions))]
+    #[cfg(any(target_os = "linux", all(debug_assertions, feature = "unsandboxed")))]
     fn new(
         engine: impl Engine + 'static,
         probe: HostProbe,
-        resources: Option<Box<dyn afr_sandbox::Resources>>,
+        resources: Option<Box<dyn afr_engine::Resources>>,
     ) -> Self {
         Self {
             engine: Box::new(engine),
@@ -59,24 +59,24 @@ impl Host {
     }
 
     /// The bubblewrap engine this host builds sandboxes with, booted over the
-    /// release a deploy staged (`afr_sandbox::boot` with `BubblewrapBackend`).
+    /// release a deploy staged (`afr_engine::boot` with `BubblewrapBackend`).
     ///
     /// # Errors
     /// The reason it cannot, already logged, as the exit status.
     #[cfg(target_os = "linux")]
     pub(crate) fn production(
         home: &StorageHome,
-        tuning: afr_sandbox::EngineTuning,
+        tuning: afr_engine_bubblewrap::EngineTuning,
     ) -> Result<Self, ExitCode> {
         use std::fs::File;
         use std::io::BufReader;
         use std::path::Path;
 
         use af_core::env::ProcessEnv;
-        use afr_sandbox::{
-            BubblewrapBackend, CGROUP_ROOT, HostPaths, Release, SELF_CGROUP_PATH, boot,
-            delegated_root,
-        };
+        use afr_cgroup::{CGROUP_ROOT, SELF_CGROUP_PATH, delegated_root};
+        use afr_engine::{HostPaths, boot};
+        use afr_engine_bubblewrap::BubblewrapBackend;
+        use afr_image::{Release, ToolboxHome};
 
         let own = File::open(SELF_CGROUP_PATH).map_err(|error| io_failed(&error))?;
         let cgroup_root =
@@ -84,7 +84,7 @@ impl Host {
                 .or_exit()?;
         let release = Release::signed_by_release(env!("CARGO_PKG_VERSION")).or_exit()?;
         let entry = std::env::current_exe().map_err(|error| io_failed(&error))?;
-        let toolbox = home.toolbox();
+        let toolbox = ToolboxHome::open(home.toolbox()).map_err(|error| io_failed(&error))?;
         let backend = BubblewrapBackend {
             entry,
             release: &release,
@@ -107,12 +107,12 @@ impl Host {
     #[cfg(not(target_os = "linux"))]
     pub(crate) fn production(
         _home: &StorageHome,
-        _tuning: afr_sandbox::EngineTuning,
+        _tuning: afr_engine_bubblewrap::EngineTuning,
     ) -> Result<Self, ExitCode> {
-        let probe = afr_sandbox::probe(&afr_sandbox::ProbePaths::default());
+        let probe = afr_engine_bubblewrap::probe(&afr_engine_bubblewrap::ProbePaths::default());
         Err(cannot_sandbox(
-            afr_sandbox::BubblewrapRequirements::missing(&probe)
-                .unwrap_or(afr_sandbox::MECHANISM_BUBBLEWRAP),
+            afr_engine_bubblewrap::BubblewrapRequirements::missing(&probe)
+                .unwrap_or(afr_engine::MECHANISM_BUBBLEWRAP),
         ))
     }
 
@@ -123,22 +123,22 @@ impl Host {
     ///
     /// # Errors
     /// The engine refused, already logged, as the exit status.
-    #[cfg(debug_assertions)]
+    #[cfg(all(debug_assertions, feature = "unsandboxed"))]
     pub(crate) fn unsandboxed(
         home: &StorageHome,
         sizes: afr_executor::Sizes,
     ) -> Result<Self, ExitCode> {
-        let engine = afr_sandbox::UnsandboxedEngine::new(home.sandboxes())
+        let engine = afr_engine_unsandboxed::UnsandboxedEngine::new(home.sandboxes())
             .or_exit()?
             .with_sizes(sizes);
-        let probe = afr_sandbox::probe(&afr_sandbox::ProbePaths::default());
+        let probe = afr_engine_bubblewrap::probe(&afr_engine_bubblewrap::ProbePaths::default());
         Ok(Self::new(engine, probe, None))
     }
 }
 
-#[cfg(any(target_os = "linux", debug_assertions))]
-impl<E: Engine + 'static> From<afr_sandbox::Booted<E>> for Host {
-    fn from(value: afr_sandbox::Booted<E>) -> Self {
+#[cfg(any(target_os = "linux", all(debug_assertions, feature = "unsandboxed")))]
+impl<E: Engine + 'static> From<afr_engine::Booted<E>> for Host {
+    fn from(value: afr_engine::Booted<E>) -> Self {
         Self::new(
             value.started.engine,
             value.probe,

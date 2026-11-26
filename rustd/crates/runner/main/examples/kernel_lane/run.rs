@@ -2,12 +2,12 @@
 
 use std::time::Duration;
 
-use crate::lane::{id_of, spec};
+use afr_engine::{Engine, Limits, SandboxSpec};
 use afr_executor::{Ending, Executor, Spawn};
-use afr_sandbox::{Engine, Limits, SandboxSpec};
 use libtest_mimic::Failed;
 
 use crate::lane::Lane;
+use crate::lane::{id_of, spec};
 
 /// How long one command may run before the trial calls it hung.
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(60);

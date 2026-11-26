@@ -9,9 +9,12 @@
 use std::fs;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
+use std::time::Duration;
 
-use afr_sandbox::{Engine as _, Limits, RecoveryDrillEngine, Sandbox, SandboxSpec};
+use af_core::id::Uuid7;
+use afr_executor::{Client, Sizes};
 use afr_tools::sandbox::Checkout;
+use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use super::Staging;
@@ -75,12 +78,48 @@ fn digest(root: &Path, left_out: &str) -> String {
     af_core::etag::sha256_hex(&listing)
 }
 
-/// A drill sandbox: unconfined, with a real executor serving its workspace
-/// over a socket, and nothing handed to the host to reach it by.
-async fn sandbox(engine: &RecoveryDrillEngine) -> Box<dyn Sandbox> {
-    let id = afr_sandbox::fresh_sandbox_id();
-    let spec = SandboxSpec::granted_by(engine, &id, Limits::DEFAULT).unwrap();
-    engine.prepare(spec).await.unwrap()
+/// How long the executor may take to bind its socket.
+const BOUND_WITHIN: Duration = Duration::from_secs(1);
+
+/// A sandbox's workspace as the host meets it: a real executor serving a
+/// directory over a socket, and nothing handed to the host to reach it by.
+struct Served {
+    id: Uuid7,
+    client: Client,
+    server: JoinHandle<afr_executor::Result<()>>,
+}
+
+impl Served {
+    /// A fresh workspace under `base`, served.
+    async fn start(base: &Path) -> Self {
+        let id = afr_engine::fresh_sandbox_id();
+        let dir = base.join(id.as_str());
+        let workspace = dir.join("workspace");
+        fs::create_dir_all(&workspace).unwrap();
+        let socket = dir.join("executor.sock");
+        let server = tokio::spawn({
+            let socket = socket.clone();
+            async move { afr_executor::bind(&socket)?.serve(&workspace).await }
+        });
+        let client = Client::connect_within(&socket, BOUND_WITHIN, Sizes::DEFAULT)
+            .await
+            .unwrap();
+        Self { id, client, server }
+    }
+
+    const fn id(&self) -> &Uuid7 {
+        &self.id
+    }
+
+    const fn executor(&self) -> &Client {
+        &self.client
+    }
+
+    /// Hangs up, which ends the executor's session.
+    async fn stop(self) {
+        drop(self.client);
+        self.server.await.unwrap().unwrap();
+    }
 }
 
 // Value: protects=checkout and checkpoint files cross into the sandbox with no
@@ -107,13 +146,13 @@ async fn test_checkout_fills_a_workspace_the_host_cannot_see() {
         format!("file://{}/", origin.display()),
     );
     let staging = Staging::sweep(&root.path().join("staging")).unwrap();
-    let engine = RecoveryDrillEngine::new(root.path().join("sandboxes")).unwrap();
+    let sandboxes = root.path().join("sandboxes");
     let stop = CancellationToken::new();
     let today = root.path().join("today");
     fs::create_dir(&today).unwrap();
     mirrors.check_out(request(), &today, &stop).await.unwrap();
 
-    let first = sandbox(&engine).await;
+    let first = Served::start(&sandboxes).await;
     let staged = staging.stage(first.id()).unwrap();
     mirrors
         .land(request(), &staged, first.executor(), &stop)
@@ -122,13 +161,13 @@ async fn test_checkout_fills_a_workspace_the_host_cannot_see() {
     drop(staged);
     let captured = staging.stage(first.id()).unwrap();
     captured.export(first.executor()).await.unwrap();
-    let second = sandbox(&engine).await;
+    let second = Served::start(&sandboxes).await;
     captured.restore(second.executor()).await.unwrap();
     let restored = staging.stage(second.id()).unwrap();
     restored.export(second.executor()).await.unwrap();
     let refused = captured.restore(second.executor()).await;
-    first.destroy().await.unwrap();
-    second.destroy().await.unwrap();
+    first.stop().await;
+    second.stop().await;
 
     let copy = captured.path().join(NAME);
     // Read before git runs in the copy: `status` refreshes its index.

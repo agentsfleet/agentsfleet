@@ -54,7 +54,7 @@ async fn beats_and_workers_until(
     let beating = Heartbeat::new(
         &plane,
         &probe,
-        afr_sandbox::BUBBLEWRAP_CAPABILITIES,
+        crate::test_support::CAPABILITIES,
         &holds,
         std::path::Path::new("."),
     )

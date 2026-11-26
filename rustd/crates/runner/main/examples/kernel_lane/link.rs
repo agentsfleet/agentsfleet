@@ -7,11 +7,14 @@ use std::fs;
 use std::os::unix::fs::FileTypeExt as _;
 use std::path::{Path, PathBuf};
 
-use crate::lane::{id_of, spec};
-use afr_sandbox::{BubblewrapEngine, EXECUTOR_FLAG, Engine as _, Limits, SANDBOX_LEAF, probe};
+use afr_cgroup::SANDBOX_LEAF;
+use afr_engine::{Engine as _, Limits};
+use afr_engine_bubblewrap::{BubblewrapEngine, probe};
+use afr_guest::EXECUTOR_FLAG;
 use libtest_mimic::Failed;
 
 use crate::lane::{Lane, NOT_TOLD};
+use crate::lane::{id_of, spec};
 use crate::run::{expect, run, runtime, shell};
 use crate::trials::Body;
 

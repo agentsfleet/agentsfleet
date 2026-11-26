@@ -112,7 +112,7 @@ async fn test_leasing_stopped_ends_every_hold_and_beats_at_once() {
     let beating = Heartbeat::new(
         &plane,
         &probe,
-        afr_sandbox::BUBBLEWRAP_CAPABILITIES,
+        crate::test_support::CAPABILITIES,
         &holds,
         std::path::Path::new("."),
     )
@@ -159,7 +159,7 @@ async fn test_a_shutdown_ends_every_hold_and_says_so_in_a_last_beat() {
     let beating = Heartbeat::new(
         &plane,
         &probe,
-        afr_sandbox::BUBBLEWRAP_CAPABILITIES,
+        crate::test_support::CAPABILITIES,
         &holds,
         std::path::Path::new("."),
     )
@@ -204,7 +204,7 @@ async fn test_a_refused_runner_ends_its_holds_and_sends_no_last_beat() {
     Heartbeat::new(
         &plane,
         &probe,
-        afr_sandbox::BUBBLEWRAP_CAPABILITIES,
+        crate::test_support::CAPABILITIES,
         &holds,
         std::path::Path::new("."),
     )
@@ -243,7 +243,7 @@ async fn test_leasing_stopped_brings_one_beat_forward_and_no_more() {
     let beating = Heartbeat::new(
         &plane,
         &probe,
-        afr_sandbox::BUBBLEWRAP_CAPABILITIES,
+        crate::test_support::CAPABILITIES,
         &holds,
         std::path::Path::new("."),
     )
@@ -281,7 +281,7 @@ async fn test_a_token_refused_elsewhere_ends_every_hold_without_a_last_beat() {
     let beating = Heartbeat::new(
         &plane,
         &probe,
-        afr_sandbox::BUBBLEWRAP_CAPABILITIES,
+        crate::test_support::CAPABILITIES,
         &holds,
         std::path::Path::new("."),
     )
@@ -316,7 +316,7 @@ async fn last_beat_answered(failure: fn() -> crate::Error) -> Vec<af_core::id::U
     let beating = Heartbeat::new(
         &plane,
         &probe,
-        afr_sandbox::BUBBLEWRAP_CAPABILITIES,
+        crate::test_support::CAPABILITIES,
         &holds,
         std::path::Path::new("."),
     )

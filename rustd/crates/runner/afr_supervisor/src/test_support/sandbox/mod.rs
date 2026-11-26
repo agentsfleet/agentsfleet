@@ -8,20 +8,21 @@ use std::time::Duration;
 
 use af_core::id::Uuid7;
 use af_wire::runner::{Isolation, SandboxEngine};
-use afr_executor::Executor;
-use afr_sandbox::{
+use afr_engine::{
     Allowlist, Capabilities, Engine, Environment, Granted, Killed, Limits, Network, ParkMode,
     Parked, Quiescence, ResourceFacts, Root, Sandbox, SandboxSpec, SandboxState, Sweep, Swept,
 };
+use afr_executor::Executor;
 use bytes::Bytes;
 use tokio::sync::mpsc;
 
 use crate::egress::Bound;
+
 mod executor;
 use executor::FakeExecutor;
 
 /// What the fake engine states: every cap enforced, parking by pause.
-const CAPABILITIES: Capabilities = Capabilities {
+pub(crate) const CAPABILITIES: Capabilities = Capabilities {
     engine: SandboxEngine::Bubblewrap,
     isolation: Isolation::SharedKernel,
     parks: &[ParkMode::Pause],
@@ -146,7 +147,7 @@ pub(crate) struct FakeEngine {
 impl FakeEngine {
     /// A sandbox built for the fixture run with the default limits, named by
     /// the run as a run's own build names it.
-    pub(crate) async fn sandbox(&self) -> afr_sandbox::Result<Box<dyn Sandbox>> {
+    pub(crate) async fn sandbox(&self) -> afr_engine::Result<Box<dyn Sandbox>> {
         let run = Uuid7::parse(crate::test_util::RUN_ID).unwrap();
         let spec = SandboxSpec::granted_by(self, &run, Limits::default())?;
         self.prepare(spec).await
@@ -166,11 +167,11 @@ impl Engine for FakeEngine {
         }
     }
 
-    fn grant(&self, limits: Limits) -> afr_sandbox::Result<Granted> {
+    fn grant(&self, limits: Limits) -> afr_engine::Result<Granted> {
         CAPABILITIES.grant(limits)
     }
 
-    async fn sweep(&self, scope: Sweep<'_>) -> afr_sandbox::Result<Swept> {
+    async fn sweep(&self, scope: Sweep<'_>) -> afr_engine::Result<Swept> {
         if let Some(swept) = &self.swept {
             let named = match scope {
                 Sweep::Leftovers => None,
@@ -182,7 +183,7 @@ impl Engine for FakeEngine {
         Ok(Swept::default())
     }
 
-    async fn prepare(&self, spec: SandboxSpec<'_>) -> afr_sandbox::Result<Box<dyn Sandbox>> {
+    async fn prepare(&self, spec: SandboxSpec<'_>) -> afr_engine::Result<Box<dyn Sandbox>> {
         // A test that dropped its receiver is not watching these.
         if let Some(asked) = &self.asked {
             _ = asked.send(*spec.granted.limits());
@@ -199,7 +200,7 @@ impl Engine for FakeEngine {
         match self.build {
             Builds::Ready => {}
             Builds::Refused => return Err(std::io::Error::other("no landlock").into()),
-            Builds::Ambiguous => return Err(afr_sandbox::ambiguous(spec.id, "prepare")),
+            Builds::Ambiguous => return Err(afr_engine::ambiguous(spec.id, "prepare")),
         }
         let prepared = self.prepared.fetch_add(1, Ordering::SeqCst);
         if self.panic_once
@@ -281,7 +282,7 @@ impl FakeSandbox {
     }
 
     /// Removes what it held, counted.
-    async fn teardown(&self) -> afr_sandbox::Result<()> {
+    async fn teardown(&self) -> afr_engine::Result<()> {
         self.step(DESTROY);
         if !self.teardown_takes.is_zero() {
             tokio::time::sleep(self.teardown_takes).await;
@@ -295,7 +296,7 @@ impl FakeSandbox {
 
     /// Fails `detail` after the engine destroyed the sandbox, as a park or
     /// resume that would not finish does.
-    async fn destroyed_on(&self, detail: &'static str) -> afr_sandbox::Error {
+    async fn destroyed_on(&self, detail: &'static str) -> afr_engine::Error {
         let _left_for_the_sweep = self.teardown().await;
         std::io::Error::other(detail).into()
     }
@@ -327,7 +328,7 @@ impl Sandbox for FakeSandbox {
         }
     }
 
-    async fn quiesce(&self) -> afr_sandbox::Result<Quiescence> {
+    async fn quiesce(&self) -> afr_engine::Result<Quiescence> {
         self.quiesced.fetch_add(1, Ordering::SeqCst);
         if !self.quiesce_takes.is_zero() {
             tokio::time::sleep(self.quiesce_takes).await;
@@ -341,7 +342,7 @@ impl Sandbox for FakeSandbox {
         Ok(Quiescence::Quiet)
     }
 
-    async fn park(self: Box<Self>, mode: ParkMode) -> afr_sandbox::Result<Box<dyn Parked>> {
+    async fn park(self: Box<Self>, mode: ParkMode) -> afr_engine::Result<Box<dyn Parked>> {
         if self.parking == Parking::RefusesPark {
             return Err(self.destroyed_on(NO_PARK).await);
         }
@@ -354,7 +355,7 @@ impl Sandbox for FakeSandbox {
 
     /// Records an allowlist plan and refuses one as asked; a plan for the
     /// network the sandbox already reaches changes nothing.
-    async fn egress(&mut self, plan: afr_sandbox::EgressPlan<'_>) -> afr_sandbox::Result<()> {
+    async fn egress(&mut self, plan: afr_engine::EgressPlan<'_>) -> afr_engine::Result<()> {
         let Network::Allowed(allowlist) = plan.network else {
             return Ok(());
         };
@@ -377,7 +378,7 @@ impl Sandbox for FakeSandbox {
         Killed::Settled
     }
 
-    async fn destroy(self: Box<Self>) -> afr_sandbox::Result<()> {
+    async fn destroy(self: Box<Self>) -> afr_engine::Result<()> {
         self.teardown().await
     }
 }
@@ -399,7 +400,7 @@ impl Parked for FakeParked {
         self.mode
     }
 
-    async fn resume(self: Box<Self>) -> afr_sandbox::Result<Box<dyn Sandbox>> {
+    async fn resume(self: Box<Self>) -> afr_engine::Result<Box<dyn Sandbox>> {
         let sandbox = self.sandbox;
         sandbox.resume_attempts.fetch_add(1, Ordering::SeqCst);
         if !sandbox.resume_takes.is_zero() {
@@ -413,7 +414,7 @@ impl Parked for FakeParked {
         Ok(sandbox)
     }
 
-    async fn destroy(self: Box<Self>) -> afr_sandbox::Result<()> {
+    async fn destroy(self: Box<Self>) -> afr_engine::Result<()> {
         self.sandbox.teardown().await
     }
 }

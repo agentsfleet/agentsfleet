@@ -7,8 +7,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-use crate::lane::{id_of, spec};
-use afr_sandbox::{Engine, Limits, Sandbox};
+use afr_engine::{Engine, Limits, Sandbox};
 use afr_supervisor::staging::Staging;
 use afr_supervisor::workspace_clone::{Mirrors, Request};
 use afr_tools::Run;
@@ -20,6 +19,7 @@ use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
 use crate::lane::Lane;
+use crate::lane::{id_of, spec};
 use crate::run::{expect, runtime};
 use crate::tools::called;
 

@@ -18,9 +18,9 @@ use std::time::Duration;
 
 use af_core::error_code::{Coded as _, Logged};
 use af_wire::report::FailureClass;
+use afr_engine::Limits;
 use afr_executor::{ExecutorSlot, ExecutorSource as _};
 use afr_memory::Seed;
-use afr_sandbox::Limits;
 use tokio_util::sync::CancellationToken;
 
 use super::build::Build;

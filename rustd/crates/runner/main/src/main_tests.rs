@@ -8,13 +8,12 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use af_core::env::{LOG_LEVEL_VAR, MapEnv};
+use af_wire::runner::Kvm;
+use afr_engine::{HostProbe, REQUIRED_CONTROLLERS};
 use clap::Parser as _;
 use tracing::Level;
 use tracing_subscriber::Registry;
 use tracing_subscriber::layer::{Context, Layer};
-
-use af_wire::runner::Kvm;
-use afr_sandbox::{HostProbe, REQUIRED_CONTROLLERS};
 
 use super::{Cli, Command, RunArgs, answer, exited, log_filter};
 
@@ -23,8 +22,8 @@ use super::{Cli, Command, RunArgs, answer, exited, log_filter};
 /// two can never disagree.
 #[test]
 fn the_sandbox_entry_is_the_sub_command_the_engine_starts() {
-    let inherited = afr_sandbox::Inherited {
-        tenant: afr_sandbox::TenantDescriptors {
+    let inherited = afr_guest::Inherited {
+        tenant: afr_guest::TenantDescriptors {
             tenant_procs: 5,
             tenant_events: 6,
         },
@@ -34,10 +33,10 @@ fn the_sandbox_entry_is_the_sub_command_the_engine_starts() {
         max_read_bytes: 1024 * 1024,
         ..afr_executor::Sizes::DEFAULT
     };
-    let entry = afr_sandbox::Entry::new(inherited, sizes);
+    let entry = afr_guest::Entry::new(inherited, sizes);
     let argv = [
         "agentsfleet-runner",
-        afr_sandbox::bubblewrap::SANDBOX_SUBCOMMAND,
+        afr_engine_bubblewrap::bubblewrap::SANDBOX_SUBCOMMAND,
     ]
     .map(std::ffi::OsString::from)
     .into_iter()
@@ -54,7 +53,7 @@ fn the_sandbox_entry_is_the_sub_command_the_engine_starts() {
 fn a_sandbox_entry_without_its_tenant_leaf_does_not_parse() {
     let parsed = Cli::try_parse_from([
         "agentsfleet-runner",
-        afr_sandbox::bubblewrap::SANDBOX_SUBCOMMAND,
+        afr_engine_bubblewrap::bubblewrap::SANDBOX_SUBCOMMAND,
     ]);
 
     assert!(parsed.err().is_some(), "the tenant flags are required");
@@ -95,7 +94,7 @@ fn run_builds_a_sandbox_unless_a_debug_build_is_told_not_to() {
         Command::Run(RunArgs::default())
     );
     let unsandboxed = parse(&["agentsfleet-runner", "run", "--unsandboxed"]);
-    #[cfg(debug_assertions)]
+    #[cfg(all(debug_assertions, feature = "unsandboxed"))]
     assert_eq!(
         unsandboxed.unwrap(),
         Command::Run(RunArgs {
@@ -103,7 +102,7 @@ fn run_builds_a_sandbox_unless_a_debug_build_is_told_not_to() {
             ..RunArgs::default()
         })
     );
-    #[cfg(not(debug_assertions))]
+    #[cfg(not(all(debug_assertions, feature = "unsandboxed")))]
     assert!(unsandboxed.is_err(), "a release build has no such flag");
 }
 
@@ -123,7 +122,7 @@ fn default_and_explicit_bubblewrap_select_the_shipping_engine() {
             Cli::try_parse_from(["agentsfleet-runner", "run", "--engine", refused]).unwrap_err();
         assert_eq!(error.kind(), clap::error::ErrorKind::InvalidValue);
     }
-    #[cfg(debug_assertions)]
+    #[cfg(all(debug_assertions, feature = "unsandboxed"))]
     {
         let error = Cli::try_parse_from([
             "agentsfleet-runner",
@@ -271,7 +270,7 @@ fn the_probe_answer_succeeds_only_where_a_sandbox_can_be_built() {
 
         let answered = answer(
             &host(capable),
-            &afr_sandbox::BUBBLEWRAP_CAPABILITIES,
+            &afr_engine_bubblewrap::BUBBLEWRAP_CAPABILITIES,
             &mut out,
         );
 
@@ -307,7 +306,7 @@ fn a_probe_answer_that_cannot_be_written_fails() {
     assert_eq!(
         answer(
             &host(true),
-            &afr_sandbox::BUBBLEWRAP_CAPABILITIES,
+            &afr_engine_bubblewrap::BUBBLEWRAP_CAPABILITIES,
             &mut Full
         ),
         std::process::ExitCode::FAILURE

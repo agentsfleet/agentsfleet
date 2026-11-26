@@ -13,7 +13,7 @@ use af_wire::runner::{
     CapabilityReport, NetworkPolicy, SandboxTier, SelftestCheck, SelftestReport,
 };
 use af_wire::runner::{Isolation, Kvm, SandboxEngine};
-use afr_sandbox::{
+use afr_engine::{
     Capabilities, HostProbe, MECHANISM_BUBBLEWRAP, MECHANISM_LANDLOCK, MECHANISM_SECCOMP,
 };
 use serde::Serialize;
@@ -30,7 +30,7 @@ const SECCOMP_ON: &str = "Seccomp is available, so system calls can be filtered.
 const SECCOMP_OFF: &str = "Seccomp is not available; system calls cannot be filtered.";
 const BUBBLEWRAP_ON: &str = "The bubblewrap launcher is installed and runs.";
 const BUBBLEWRAP_OFF: &str = "The bubblewrap launcher is missing or does not run.";
-/// Each names every controller in `afr_sandbox::REQUIRED_CONTROLLERS`, which a
+/// Each names every controller in `afr_engine::REQUIRED_CONTROLLERS`, which a
 /// test holds them to.
 const CGROUP_ON: &str = "The cpu, io, memory and pids controllers are delegated to this runner.";
 const CGROUP_OFF: &str = "The cpu, io, memory or pids controller is not delegated to this runner.";

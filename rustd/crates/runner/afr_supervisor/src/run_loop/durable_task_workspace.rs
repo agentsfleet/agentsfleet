@@ -2,6 +2,11 @@
 //! Files cross through a stage on the host and the executor's `import` and
 //! `export`, never a host path into the workspace.
 
+use af_core::id::Uuid7;
+use af_wire::durable_task::{CheckpointMode, DurableTaskContext, DurableTaskTarget};
+use afr_engine::Sandbox;
+use zeroize::Zeroizing;
+
 use super::{
     Run,
     recovery::{State, recovered_history, verify_fresh_checkout},
@@ -11,10 +16,6 @@ use crate::{
     recovery::{Capture, Restore},
     staging::Staged,
 };
-use af_core::id::Uuid7;
-use af_wire::durable_task::{CheckpointMode, DurableTaskContext, DurableTaskTarget};
-use afr_sandbox::Sandbox;
-use zeroize::Zeroizing;
 
 impl Run<'_> {
     pub(super) async fn native_workspace(

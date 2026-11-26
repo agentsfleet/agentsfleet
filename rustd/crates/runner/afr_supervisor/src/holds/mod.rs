@@ -4,7 +4,7 @@
 //! A run that ends processed parks its sandbox here, frozen, for the fleet's
 //! next run: the files it wrote, the processes it left running and whatever
 //! it cached all stay. One task owns every hold and a run reaches it through
-//! a channel, the shape `afr_sandbox::WarmSlots` uses, so no lock guards the
+//! a channel, the shape `afr_engine::WarmSlots` uses, so no lock guards the
 //! holds and a sandbox moves by value from the run that used it to the one
 //! that takes it.
 //!
@@ -20,7 +20,7 @@ use std::time::Duration;
 
 use af_core::clock::Clock;
 use af_core::id::Uuid7;
-use afr_sandbox::{Limits, Parked};
+use afr_engine::{Limits, Parked};
 use afr_telemetry::labels::SandboxHold;
 use jiff::Timestamp;
 use tokio::sync::{Notify, mpsc, oneshot};

@@ -11,10 +11,10 @@
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 
-use af_core::id::Uuid7;
 use std::sync::Arc;
 use std::time::Duration;
 
+use af_core::id::Uuid7;
 use afr_supervisor::config::{
     ENV_API_URL, ENV_RUNNER_TOKEN, ENV_STORAGE_HOME, ENV_STREAM_CA, ENV_STREAM_URL,
 };
@@ -157,7 +157,7 @@ pub(crate) fn runner(
         (ENV_STORAGE_HOME, home.as_str()),
     ]);
     let (config, home) = afr_supervisor::boot(&env).expect("the scenario's env is valid");
-    let engine = afr_sandbox::UnsandboxedEngine::new(sandboxes.to_owned())
+    let engine = afr_engine_unsandboxed::UnsandboxedEngine::new(sandboxes.to_owned())
         .expect("a debug build permits the unsandboxed engine");
     let agent = afr_agent::Loop::new(afr_tools::Catalog::hosted(Arc::new(network)), model);
     async move {
@@ -181,13 +181,11 @@ pub(crate) fn runner(
 }
 
 /// A host that can enforce everything an allow-all policy asks for.
-fn capable() -> afr_sandbox::HostProbe {
-    afr_sandbox::HostProbe {
+fn capable() -> afr_engine::HostProbe {
+    afr_engine::HostProbe {
         landlock: true,
         seccomp: true,
-        cgroup_controllers: afr_sandbox::REQUIRED_CONTROLLERS
-            .map(str::to_owned)
-            .to_vec(),
+        cgroup_controllers: afr_engine::REQUIRED_CONTROLLERS.map(str::to_owned).to_vec(),
         bubblewrap: true,
         kvm: af_wire::runner::Kvm::Absent,
         toolbox_filesystem: true,

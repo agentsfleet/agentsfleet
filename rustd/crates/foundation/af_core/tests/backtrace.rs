@@ -56,7 +56,7 @@ fn should_render_the_backtrace_only_when_the_environment_asks_for_one() {
 }
 
 /// Two crates' shells, one wrapping the other, as `afr_supervisor` wraps an
-/// `afr_sandbox` refusal: each is `error_shell!` expanded in a module of its own,
+/// `afr_engine` refusal: each is `error_shell!` expanded in a module of its own,
 /// as it would be in a crate of its own.
 mod nested {
     /// The engine: a shelled error over a foreign cause.

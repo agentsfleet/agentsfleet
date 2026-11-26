@@ -13,14 +13,7 @@ fn opening_a_home_makes_its_directories_and_opening_it_again_keeps_them() {
     let home = StorageHome::open(root.path()).unwrap();
     let again = StorageHome::open(root.path()).unwrap();
 
-    let toolbox = home.toolbox();
-    for directory in [
-        home.sandboxes(),
-        home.mirrors(),
-        toolbox.incoming(),
-        toolbox.images(),
-        toolbox.mounts(),
-    ] {
+    for directory in [home.sandboxes(), home.mirrors(), home.toolbox()] {
         assert!(directory.is_dir(), "{}", directory.display());
     }
     assert_eq!(home, again);
@@ -33,19 +26,15 @@ fn a_root_that_is_a_file_refuses_to_open() {
     assert!(StorageHome::open(file.path()).is_err());
 }
 
-/// The toolbox's three directories sit apart under one `toolbox/`: the deploy
-/// stages into `incoming`, admission publishes into `images`, and nothing a
-/// deploy stages can land where an admitted image is published or mounted.
+/// The toolbox sits in one `toolbox/` under the home, where the engine that
+/// verifies it lays out its release, images and mounts.
 #[test]
-fn the_toolbox_directories_are_three_siblings_under_the_home() {
+fn the_toolbox_sits_under_the_home() {
     let root = tempfile::tempdir().unwrap();
 
     let home = StorageHome::open(root.path()).unwrap();
 
-    let (toolbox, under) = (home.toolbox(), root.path().join("toolbox"));
-    assert_eq!(toolbox.incoming(), under.join("incoming"));
-    assert_eq!(toolbox.images(), under.join("images"));
-    assert_eq!(toolbox.mounts(), under.join("mounts"));
+    assert_eq!(home.toolbox(), root.path().join("toolbox"));
 }
 
 /// Completed reports never create a runner-side disk outbox.

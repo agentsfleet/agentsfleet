@@ -15,23 +15,35 @@ categories.workspace = true
 [lints]
 workspace = true
 
+# The binary needs its production engine; the debug engine is optional.
 [[bin]]
 name = "agentsfleet-runner"
 path = "src/main.rs"
+required-features = ["bubblewrap"]
 
 [[bin]]
 name = "agentsfleet-recovery-fixture"
 path = "tests/recovery_process/main.rs"
-required-features = ["test-util"]
+required-features = ["test-util", "bubblewrap"]
 
 [features]
-# M-TEST-UTIL. The recovery fixture's scripted providers and the TLS client
-# trusting its fake provider, and the kernel lane's egress far host, killed-run
-# leftovers and supervisor fixtures.
+# Each engine this binary can build, one feature apiece and all on by default:
+# only this binary and the e2e crate name an engine crate.
+default = ["bubblewrap", "unsandboxed"]
+# The hardened bubblewrap engine, a release's only engine, with the cgroup
+# root and the toolbox it is booted over.
+bubblewrap = ["dep:afr_engine_bubblewrap", "dep:afr_cgroup", "dep:afr_image"]
+# The debug engine, which builds no sandbox and which a debug build alone
+# constructs.
+unsandboxed = ["dep:afr_engine_unsandboxed"]
+# M-TEST-UTIL. The recovery fixture's scripted providers, the TLS client
+# trusting its fake provider and its drill engine, and the kernel lane's
+# supervisor fixtures.
 test-util = [
     "af_providers/test-util",
     "dep:guffbolt-ai",
-    "afr_sandbox/test-util",
+    "unsandboxed",
+    "afr_engine_unsandboxed/test-util",
     "afr_supervisor/test-util",
     "afr_tools/test-util",
     "af_egress/test-util",
@@ -55,8 +67,18 @@ guffbolt.workspace = true
 # `probe` answers with the supervisor's own mapping of the host onto the wire,
 # so what the command prints is what a heartbeat would carry.
 afr_supervisor.workspace = true
-# `sandbox` hardens and serves; `probe` reads the host.
-afr_sandbox.workspace = true
+# The seam `run` serves runs through, whichever engine it built.
+afr_engine.workspace = true
+# `sandbox` hardens and serves inside every sandbox.
+afr_guest.workspace = true
+# The engines, each behind its feature; `probe` reads the host as bubblewrap
+# admits it.
+afr_engine_bubblewrap = { workspace = true, optional = true }
+afr_engine_unsandboxed = { workspace = true, optional = true }
+# The cgroup root the service manager delegated, and the toolbox a deploy
+# staged: what bubblewrap is booted over.
+afr_cgroup = { workspace = true, optional = true }
+afr_image = { workspace = true, optional = true }
 # The sizes the runner's `[tools]` and `[executor]` sections choose for every
 # executor link, spelled as the executor takes them.
 afr_executor.workspace = true
@@ -95,6 +117,8 @@ jiff.workspace = true
 # The fake daemon answers as the supervisor's own suites' healthy daemon does,
 # over the same fixture run.
 afr_supervisor = { workspace = true, features = ["test-util"] }
+# A fresh sandbox identifier for the host suite's built sandbox.
+afr_engine = { workspace = true, features = ["test-util"] }
 # The span, attribute and knob names the suite reads back, spelled once.
 af_observability.workspace = true
 af_otlp.workspace = true
@@ -120,14 +144,19 @@ sha2.workspace = true
 [target.'cfg(target_os = "linux")'.dev-dependencies]
 # The kernel calls the lane's confinement and delegation trials read back.
 libc.workspace = true
+# The egress far host, killed-run leftovers and host objects the kernel lane
+# proves egress against.
+afr_firewall = { workspace = true, features = ["test-util"] }
 
-# The kernel lane proves egress with the `test-util` far host; run without it,
-# it refuses to build rather than skip those trials. Linux only: elsewhere its
-# `main` reports the platform and exits.
+# The kernel lane drives bubblewrap and proves egress with the firewall's
+# `test-util` far host; run without them, it refuses to build rather than skip
+# those trials. Linux only: elsewhere its `main` reports the platform and exits.
 [[example]]
 name = "kernel_lane"
-required-features = ["test-util"]
+required-features = ["test-util", "bubblewrap"]
 
+# Drives the binary with `run --unsandboxed`, which needs both engines.
 [[test]]
 name = "runner_suite"
 path = "tests/runner_suite.rs"
+required-features = ["bubblewrap", "unsandboxed"]

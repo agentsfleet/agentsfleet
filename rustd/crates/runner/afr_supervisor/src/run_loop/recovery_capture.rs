@@ -10,7 +10,7 @@ use afr_agent::{
     CommittedRecovery, DurableTaskRecovery, FileRecoveryPermit, RecoveryReceipt, RecoverySave,
     RecoverySkip, RecoverySnapshot, RecoveryState, TurnSnapshot,
 };
-use afr_sandbox::{Quiescence, Sandbox};
+use afr_engine::{Quiescence, Sandbox};
 use futures_util::FutureExt as _;
 
 use super::{

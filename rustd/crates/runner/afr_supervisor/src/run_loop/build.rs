@@ -17,8 +17,8 @@ use std::time::Instant;
 
 use af_core::error_code::{Coded as _, Logged};
 use af_core::id::Uuid7;
+use afr_engine::{Limits, Sandbox, SandboxSpec, Sweep};
 use afr_executor::{ExecutorSlot, Unavailable};
-use afr_sandbox::{Limits, Sandbox, SandboxSpec, Sweep};
 use afr_telemetry::labels::{SandboxBuild, SandboxStart};
 use afr_telemetry::record;
 use tokio_util::sync::CancellationToken;
@@ -222,7 +222,7 @@ impl Run<'_> {
         let engine = self.lessee.engine.as_ref();
         let id = &self.ids.run;
         let refused =
-            |failure: afr_sandbox::Error| Ended::Failed(Unavailable::Prepare, failure.logged());
+            |failure: afr_engine::Error| Ended::Failed(Unavailable::Prepare, failure.logged());
         let spec = SandboxSpec::granted_by(engine, id, limits)
             .map_err(refused)?
             .with_egress(bound.plan());
@@ -263,7 +263,7 @@ impl Run<'_> {
 
 /// Destroys what a build of unknown outcome may have left of `id`, once,
 /// logging what it removed and what it left.
-async fn sweep_unknown(engine: &dyn afr_sandbox::Engine, id: &Uuid7) {
+async fn sweep_unknown(engine: &dyn afr_engine::Engine, id: &Uuid7) {
     let engine_name: &'static str = engine.capabilities().engine.into();
     match engine.sweep(Sweep::Sandbox(id)).await {
         Ok(swept) => {

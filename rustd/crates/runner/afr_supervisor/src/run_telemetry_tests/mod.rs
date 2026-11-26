@@ -11,7 +11,7 @@ use std::sync::{Arc, PoisonError};
 use af_core::env::MapEnv;
 use af_observability::semconv::{ATTR_RUN_ID, ATTR_TURN_ID, SPAN_RUNNER_RUN};
 use afr_agent::{AgentEngine, Loop};
-use afr_sandbox::Limits;
+use afr_engine::Limits;
 use afr_telemetry::labels::SandboxStart;
 use afr_telemetry::testing::{Recorded, Tally, scoped};
 use afr_telemetry::{Endpoint, Telemetry};
@@ -22,6 +22,8 @@ use tokio_util::sync::CancellationToken;
 use tracing::subscriber::DefaultGuard;
 use tracing_subscriber::layer::SubscriberExt as _;
 
+use self::collector::{Posted, collector, spans};
+use self::scripted::Scripted;
 use crate::egress::Egress;
 use crate::halt::Halt;
 use crate::identity::Whoami;
@@ -33,9 +35,6 @@ use crate::test_support::{
 };
 use crate::turns::FleetTurns;
 use crate::workspace_clone::{GITHUB_ORIGIN, Mirrors};
-
-use self::collector::{Posted, collector, spans};
-use self::scripted::Scripted;
 
 mod collector;
 mod scripted;

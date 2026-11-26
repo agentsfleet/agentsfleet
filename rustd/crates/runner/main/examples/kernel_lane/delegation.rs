@@ -6,10 +6,10 @@ use std::path::Path;
 use std::process::Command;
 
 use af_core::env::ProcessEnv;
-use afr_sandbox::{
-    Booted, BubblewrapBackend, BubblewrapEngine, HostPaths, Limits, REQUIRED_CONTROLLERS,
-    RunCgroup, SUBTREE_CONTROL, ToolboxHome, probe,
-};
+use afr_cgroup::{RunCgroup, SUBTREE_CONTROL};
+use afr_engine::{Booted, HostPaths, Limits, REQUIRED_CONTROLLERS};
+use afr_engine_bubblewrap::{BubblewrapBackend, BubblewrapEngine, probe};
+use afr_image::ToolboxHome;
 use libtest_mimic::Failed;
 
 use crate::lane::Lane;
@@ -50,9 +50,9 @@ fn boot(lane: &Lane, root: &Path, state: &Path) -> Result<Booted<BubblewrapEngin
         release: &release,
         home: &home,
         env: &ProcessEnv,
-        tuning: afr_sandbox::EngineTuning::DEFAULT,
+        tuning: afr_engine_bubblewrap::EngineTuning::DEFAULT,
     };
-    Ok(afr_sandbox::boot(
+    Ok(afr_engine::boot(
         backend,
         &HostPaths {
             cgroup_root: root.to_owned(),
@@ -80,7 +80,7 @@ pub(crate) fn boots_disabled(lane: &Lane) -> Result<(), Failed> {
         let mut paths = lane.config.probe_paths();
         root.clone_into(&mut paths.cgroup_root);
         expect(
-            afr_sandbox::BubblewrapRequirements::missing(&probe(&paths)) == Some(CPU),
+            afr_engine_bubblewrap::BubblewrapRequirements::missing(&probe(&paths)) == Some(CPU),
             "the original startup refusal",
         )?;
         // A second boot over the enabled root proves restart is idempotent.
@@ -88,7 +88,7 @@ pub(crate) fn boots_disabled(lane: &Lane) -> Result<(), Failed> {
             let host = boot(lane, root, state)?;
             let checks = (|| {
                 expect(
-                    afr_sandbox::BubblewrapRequirements::missing(&host.probe).is_none(),
+                    afr_engine_bubblewrap::BubblewrapRequirements::missing(&host.probe).is_none(),
                     "boot reports an enforceable host",
                 )?;
                 let run = RunCgroup::create(root, RUN, &Limits::default())?;
@@ -121,9 +121,9 @@ pub(crate) fn refuses_unavailable(lane: &Lane) -> Result<(), Failed> {
             release: &release,
             home: &home,
             env: &ProcessEnv,
-            tuning: afr_sandbox::EngineTuning::DEFAULT,
+            tuning: afr_engine_bubblewrap::EngineTuning::DEFAULT,
         };
-        let result = afr_sandbox::boot(
+        let result = afr_engine::boot(
             backend,
             &HostPaths {
                 cgroup_root: child.clone(),
@@ -155,9 +155,9 @@ pub(crate) fn refuses_populated(lane: &Lane) -> Result<(), Failed> {
                 release: &release,
                 home: &home,
                 env: &ProcessEnv,
-                tuning: afr_sandbox::EngineTuning::DEFAULT,
+                tuning: afr_engine_bubblewrap::EngineTuning::DEFAULT,
             };
-            let error = afr_sandbox::boot(
+            let error = afr_engine::boot(
                 backend,
                 &HostPaths {
                     cgroup_root: root.to_owned(),

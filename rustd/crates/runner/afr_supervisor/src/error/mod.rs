@@ -279,7 +279,7 @@ pub(crate) enum ErrorKind {
     Egress {
         /// The engine's reason.
         #[source]
-        source: afr_sandbox::Error,
+        source: afr_engine::Error,
     },
 }
 

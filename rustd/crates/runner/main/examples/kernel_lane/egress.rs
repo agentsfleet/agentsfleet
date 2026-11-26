@@ -2,11 +2,11 @@
 //! the host's network, nothing, or exactly its allowlist, held by rules the
 //! sandbox cannot touch.
 
-use crate::lane::{id_of, plan, spec};
-use afr_sandbox::egress_testing::{
+use afr_engine::{Engine, Limits, Network};
+use afr_engine_bubblewrap::probe;
+use afr_firewall::far::{
     DNS_PORT, FAR_GREETING, FAR_LISTED, FAR_PORT, FAR_UNLISTED, Far, leave, objects,
 };
-use afr_sandbox::{Engine, Limits, Network, probe};
 use libtest_mimic::Failed;
 
 use crate::egress_closed::allow_list_closes_dns_the_host_and_inbound;
@@ -17,6 +17,7 @@ use crate::egress_reallow::{
     reallow_keeps_an_address_both_sets_hold, reallow_swaps_the_set_in_place,
 };
 use crate::lane::Lane;
+use crate::lane::{id_of, plan, spec};
 use crate::run::{expect, in_sandbox_each, runtime, said};
 use crate::trials::Body;
 

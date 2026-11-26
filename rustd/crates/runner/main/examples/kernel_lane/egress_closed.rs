@@ -9,15 +9,15 @@ use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::thread;
 use std::time::Duration;
 
-use crate::lane::{id_of, plan, spec};
-use afr_sandbox::egress_testing::{
+use afr_engine::{Engine, Limits, Network};
+use afr_firewall::far::{
     DNS_PORT, FAR_GREETING, FAR_HOST_SIDE, FAR_LISTED, FAR_PORT, Far, objects,
 };
-use afr_sandbox::{Engine, Limits, Network};
 use libtest_mimic::Failed;
 
 use crate::egress::{ERRNO, FAR_NAME, connect};
 use crate::lane::Lane;
+use crate::lane::{id_of, plan, spec};
 use crate::run::{expect, run, runtime, shell};
 
 /// The port the runner's host answers on, on every address it holds.

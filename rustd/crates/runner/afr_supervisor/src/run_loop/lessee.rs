@@ -6,7 +6,7 @@ use std::sync::Arc;
 use af_core::clock::Clock;
 use af_egress::Resolve;
 use afr_agent::AgentEngine;
-use afr_sandbox::{Engine, Limits};
+use afr_engine::{Engine, Limits};
 
 use crate::client::ControlPlane;
 use crate::halt::Halt;

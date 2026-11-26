@@ -3,15 +3,13 @@
 //! the set, an address the set left is closed, and one both sets hold stays
 //! open through the refill.
 
-use crate::lane::{id_of, plan, spec};
-use afr_sandbox::egress_testing::{
-    FAR_GREETING, FAR_LISTED, FAR_PORT, FAR_SPARE, FAR_UNLISTED, Far,
-};
-use afr_sandbox::{Allowlist, Engine, Limits, Network, ParkMode};
+use afr_engine::{Allowlist, Engine, Limits, Network, ParkMode};
+use afr_firewall::far::{FAR_GREETING, FAR_LISTED, FAR_PORT, FAR_SPARE, FAR_UNLISTED, Far};
 use libtest_mimic::Failed;
 
 use crate::egress::{ERRNO, FAR_NAME, connect};
 use crate::lane::Lane;
+use crate::lane::{id_of, plan, spec};
 use crate::run::{expect, run, runtime, shell};
 
 /// The run each trial's sandbox is built and refilled under.

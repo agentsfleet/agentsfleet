@@ -11,7 +11,7 @@
 # refusal ends.
 #
 # The runner verifies the manifest's signature against the key it is built
-# with, stages the image and mounts it (`afr_sandbox::Toolboxes`). A host
+# with, stages the image and mounts it (`afr_image::Toolboxes`). A host
 # without an admitted toolbox refuses every run, so a set that is incomplete
 # is refused before the restart, where the cause is easy to read.
 

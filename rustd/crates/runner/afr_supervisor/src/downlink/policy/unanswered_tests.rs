@@ -37,7 +37,7 @@ async fn stops_in_bound(plane: &ControlPlane, shutdown: CancellationToken) -> bo
     let beating = Heartbeat::new(
         plane,
         &probe,
-        afr_sandbox::BUBBLEWRAP_CAPABILITIES,
+        crate::test_support::CAPABILITIES,
         &holds,
         std::path::Path::new("."),
     )

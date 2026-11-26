@@ -94,7 +94,7 @@ NoNewPrivileges=yes
 ProtectSystem=strict
 # Delegate only this service's subtree. The runner creates each run's cgroup
 # beneath it; it never receives a writable host-wide cgroup mount. The host probe
-# requires all four controllers (`afr_sandbox::REQUIRED_CONTROLLERS`): io bounds
+# requires all four controllers (`afr_engine::REQUIRED_CONTROLLERS`): io bounds
 # a run's workspace disk throughput.
 Delegate=cpu io memory pids
 DelegateSubgroup=runner

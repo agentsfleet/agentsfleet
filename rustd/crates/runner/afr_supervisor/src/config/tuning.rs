@@ -7,7 +7,7 @@
 use std::time::Duration;
 
 use af_providers::decision::DecisionTimeouts;
-use afr_sandbox::Limits;
+use afr_engine::Limits;
 
 use crate::activity::{MAX_BATCH_BYTES, MAX_BATCHES_HELD};
 use crate::client::CALL_TIMEOUT;

@@ -2,6 +2,7 @@
 //! tenant registered, takes a chat on the tenant's own model and settles it.
 
 use std::borrow::Cow;
+use std::time::Duration;
 
 use af_core::id::Uuid7;
 use af_crypto::aad::Aad;
@@ -11,7 +12,6 @@ use af_wire::runner::NetworkPolicy;
 use afd_db::test_util::mint_id;
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::Value;
-use std::time::Duration;
 
 use super::{assert_settled, rust_runner, scripted};
 use crate::e2e::{GOOD_KEK, MODEL, PROVIDER, Scenario, scenario_with_provider};
@@ -120,7 +120,7 @@ async fn tenant_runner_completes_a_tenant_model_chat() {
     let home = tempfile::tempdir().expect("a storage home");
     let sandboxes = tempfile::tempdir_in("/tmp").expect("a short sandbox base");
     let shutdown = tokio_util::sync::CancellationToken::new();
-    let engine = afr_sandbox::UnsandboxedEngine::new(sandboxes.path().to_owned())
+    let engine = afr_engine_unsandboxed::UnsandboxedEngine::new(sandboxes.path().to_owned())
         .expect("a debug build permits the unsandboxed engine");
     let runner = tokio::spawn(rust_runner(
         &scene,

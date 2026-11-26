@@ -68,7 +68,7 @@ use af_core::clock::{Clock, SystemClock};
 use af_core::env::EnvSource;
 use af_egress::SystemResolver;
 use afr_agent::AgentEngine;
-use afr_sandbox::{Engine, HostProbe, Limits};
+use afr_engine::{Engine, HostProbe, Limits};
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 

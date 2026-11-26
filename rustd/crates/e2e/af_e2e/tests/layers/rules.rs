@@ -11,6 +11,14 @@ pub(crate) const RUNNER_BINARY: &str = "agentsfleet_runner";
 /// The datastore clients no runner crate may name.
 const DATASTORE_CLIENTS: [&str; 2] = ["sqlx", "async-nats"];
 
+/// What every sandbox engine crate's name starts with; the seam they meet,
+/// `afr_engine`, does not.
+pub(crate) const ENGINE_PREFIX: &str = "afr_engine_";
+
+/// The crates that may name an engine: the runner binary, which builds the
+/// one its operator chose, and the e2e crate, which drives each.
+const ENGINE_NAMERS: [&str; 2] = [RUNNER_BINARY, "af_e2e"];
+
 /// Every workspace edge that points to a higher layer, crosses between
 /// `runner/` and `daemon/`, leads into `e2e/`, or touches the standalone
 /// harness the wrong way, in any table.
@@ -62,6 +70,34 @@ const fn rank(layer: Layer) -> u8 {
         Layer::Runner | Layer::Daemon => 3,
         Layer::E2e | Layer::Standalone => 4,
     }
+}
+
+/// Every edge to an engine crate from a crate other than the runner binary and
+/// the e2e crate, and every edge from one engine crate to another, in any
+/// table: everything else meets an engine through the seam.
+pub(crate) fn engine_edges(workspace: &Workspace) -> Vec<String> {
+    let mut violations = Vec::new();
+    for member in workspace.members.values() {
+        let engine = member.name.starts_with(ENGINE_PREFIX);
+        let named = member
+            .deps
+            .iter()
+            .filter(|dep| dep.name.starts_with(ENGINE_PREFIX) && dep.name != member.name);
+        for dep in named {
+            let why = if engine {
+                "no engine crate depends on another"
+            } else if ENGINE_NAMERS.contains(&member.name.as_str()) {
+                continue;
+            } else {
+                "only agentsfleet_runner and af_e2e name an engine crate"
+            };
+            violations.push(format!(
+                "{} ({}) {:?} → {}: {why}",
+                member.name, member.dir, dep.kind, dep.name
+            ));
+        }
+    }
+    violations
 }
 
 /// Every dev edge `a → b` where `b` reaches `a` back through normal and build

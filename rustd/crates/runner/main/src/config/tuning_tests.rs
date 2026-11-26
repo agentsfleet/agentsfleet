@@ -5,9 +5,8 @@ use std::io::Write as _;
 use std::path::Path;
 use std::time::Duration;
 
-use afr_executor::Executor as _;
-
 use af_core::env::MapEnv;
+use afr_executor::Executor as _;
 
 use super::{ENV_CONFIG_FILE, Settings, load, read};
 
@@ -49,7 +48,10 @@ fn refused_naming(text: &str, field: &str) -> Checked {
 fn an_empty_profile_selects_todays_values() -> Checked {
     let selected = settings("")?;
     assert_eq!(selected.tuning, afr_supervisor::config::Tuning::DEFAULT);
-    assert_eq!(selected.engine, afr_sandbox::EngineTuning::DEFAULT);
+    assert_eq!(
+        selected.engine,
+        afr_engine_bubblewrap::EngineTuning::DEFAULT
+    );
     assert_eq!(selected.run_limits, afr_agent::RunLimits::DEFAULT);
     assert_eq!(selected.egress, af_egress::Limits::DEFAULT);
     assert_eq!(selected.max_run_spans, afr_telemetry::MAX_RUN_SPANS);
@@ -121,30 +123,31 @@ async fn the_executor_uses_the_sizes_the_runner_sent() -> Checked {
     let selected = settings("[tools]\nmax_file_read_mib = 1\n")?;
     let sizes = selected.engine.sizes;
     // What the engine tells the sandbox entry, as the entry reads it back.
-    let inherited = afr_sandbox::Inherited {
-        tenant: afr_sandbox::TenantDescriptors {
+    let inherited = afr_guest::Inherited {
+        tenant: afr_guest::TenantDescriptors {
             tenant_procs: 3,
             tenant_events: 4,
         },
         executor: 5,
     };
-    let told = afr_sandbox::bubblewrap::arguments(&afr_sandbox::bubblewrap::Layout {
-        toolbox: Path::new("/t"),
-        workspace: Path::new("/w"),
-        tmp: Path::new("/tmp"),
-        entry: Path::new("/e"),
-        entry_args: &[],
-        inherited,
-        sizes,
-        shared_memory_bytes: 1,
-        log_level: None,
-        network: afr_sandbox::bubblewrap::NetworkLayout::Isolated,
-    });
+    let told =
+        afr_engine_bubblewrap::bubblewrap::arguments(&afr_engine_bubblewrap::bubblewrap::Layout {
+            toolbox: Path::new("/t"),
+            workspace: Path::new("/w"),
+            tmp: Path::new("/tmp"),
+            entry: Path::new("/e"),
+            entry_args: &[],
+            inherited,
+            sizes,
+            shared_memory_bytes: 1,
+            log_level: None,
+            network: afr_engine_bubblewrap::bubblewrap::NetworkLayout::Isolated,
+        });
     let entry_at = told
         .iter()
-        .rposition(|part| part == afr_sandbox::bubblewrap::SANDBOX_ENTRY)
+        .rposition(|part| part == afr_engine_bubblewrap::bubblewrap::SANDBOX_ENTRY)
         .ok_or("the entry is named")?;
-    let entry = afr_sandbox::Entry::parse_from(told.into_iter().skip(entry_at))?;
+    let entry = afr_guest::Entry::parse_from(told.into_iter().skip(entry_at))?;
     let scratch = tempfile::tempdir()?;
     let (socket, root) = (
         scratch.path().join("executor.sock"),

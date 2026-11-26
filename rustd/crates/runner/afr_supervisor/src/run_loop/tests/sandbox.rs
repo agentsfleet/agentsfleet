@@ -4,7 +4,7 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
-use afr_sandbox::Limits;
+use afr_engine::Limits;
 use tokio::sync::mpsc;
 
 use crate::test_support::{

@@ -53,8 +53,10 @@ async fn serve(arguments: Arguments) -> Result<()> {
     );
     // Every run holds a sandbox, so the respawn checkpoint is a workspace
     // checkpoint: it needs a toolbox both processes name and a freeze.
-    let engine = checked(afr_sandbox::RecoveryDrillEngine::new(home.sandboxes()))?;
-    let probe = afr_sandbox::probe(&afr_sandbox::ProbePaths::default());
+    let engine = checked(afr_engine_unsandboxed::RecoveryDrillEngine::new(
+        home.sandboxes(),
+    ))?;
+    let probe = afr_engine_bubblewrap::probe(&afr_engine_bubblewrap::ProbePaths::default());
     let shutdown = CancellationToken::new();
     let signal = shutdown.clone();
     let owner = tokio::spawn(async move {

@@ -154,8 +154,10 @@ dependencies = [
  "afd_turns",
  "afd_vault",
  "afr_agent",
+ "afr_engine",
+ "afr_engine_bubblewrap",
+ "afr_engine_unsandboxed",
  "afr_executor",
- "afr_sandbox",
  "afr_supervisor",
  "afr_telemetry",
  "afr_tools",
@@ -1395,6 +1397,75 @@ dependencies = [
 ]
 
 [[package]]
+name = "afr_cgroup"
+version = "0.90.0"
+dependencies = [
+ "af_core",
+ "afr_engine",
+ "backon",
+ "procfs-core 0.18.0",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "afr_engine"
+version = "0.90.0"
+dependencies = [
+ "af_core",
+ "af_crypto",
+ "af_wire",
+ "afr_executor",
+ "async-trait",
+ "backon",
+ "bytes",
+ "futures-util",
+ "strum",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "afr_engine_bubblewrap"
+version = "0.90.0"
+dependencies = [
+ "af_core",
+ "af_wire",
+ "afr_cgroup",
+ "afr_engine",
+ "afr_executor",
+ "afr_firewall",
+ "afr_guest",
+ "afr_image",
+ "async-trait",
+ "futures-util",
+ "rustix 1.1.6",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
+name = "afr_engine_unsandboxed"
+version = "0.90.0"
+dependencies = [
+ "af_core",
+ "af_wire",
+ "afr_engine",
+ "afr_executor",
+ "async-trait",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+]
+
+[[package]]
 name = "afr_executor"
 version = "0.90.0"
 dependencies = [
@@ -1424,6 +1495,71 @@ dependencies = [
 ]
 
 [[package]]
+name = "afr_firewall"
+version = "0.90.0"
+dependencies = [
+ "af_core",
+ "afr_engine",
+ "libc",
+ "netlink-packet-core",
+ "netlink-packet-netfilter",
+ "netlink-packet-route",
+ "netlink-sys",
+ "rustix 1.1.6",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tracing",
+]
+
+[[package]]
+name = "afr_guest"
+version = "0.90.0"
+dependencies = [
+ "af_core",
+ "afr_cgroup",
+ "afr_engine",
+ "afr_executor",
+ "backon",
+ "clap",
+ "landlock",
+ "libc",
+ "procfs-core 0.18.0",
+ "rustix 1.1.6",
+ "seccompiler",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "afr_image"
+version = "0.90.0"
+dependencies = [
+ "af_core",
+ "af_validate",
+ "afr_engine",
+ "aws-lc-rs",
+ "backon",
+ "base64 0.23.1",
+ "digest-io",
+ "garde",
+ "hex",
+ "libc",
+ "procfs-core 0.18.0",
+ "rustix 1.1.6",
+ "rustls-pki-types",
+ "serde",
+ "serde_json",
+ "sha2 0.11.2",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "afr_memory"
 version = "0.90.0"
 dependencies = [
@@ -1443,48 +1579,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "afr_sandbox"
-version = "0.90.0"
-dependencies = [
- "af_core",
- "af_crypto",
- "af_validate",
- "af_wire",
- "afr_executor",
- "async-trait",
- "aws-lc-rs",
- "backon",
- "base64 0.23.1",
- "bytes",
- "clap",
- "digest-io",
- "futures-util",
- "garde",
- "hex",
- "landlock",
- "libc",
- "netlink-packet-core",
- "netlink-packet-netfilter",
- "netlink-packet-route",
- "netlink-sys",
- "procfs-core 0.18.0",
- "rustix 1.1.6",
- "rustls-pki-types",
- "seccompiler",
- "serde",
- "serde_json",
- "sha2 0.11.2",
- "strum",
- "tempfile",
- "thiserror 2.0.21",
- "tokio",
- "tokio-util",
- "tracing",
- "tracing-subscriber",
- "uuid",
-]
-
-[[package]]
 name = "afr_supervisor"
 version = "0.90.0"
 dependencies = [
@@ -1498,9 +1592,9 @@ dependencies = [
  "af_validate",
  "af_wire",
  "afr_agent",
+ "afr_engine",
  "afr_executor",
  "afr_memory",
- "afr_sandbox",
  "afr_telemetry",
  "afr_tools",
  "async-trait",
@@ -1600,8 +1694,14 @@ dependencies = [
  "af_providers",
  "af_wire",
  "afr_agent",
+ "afr_cgroup",
+ "afr_engine",
+ "afr_engine_bubblewrap",
+ "afr_engine_unsandboxed",
  "afr_executor",
- "afr_sandbox",
+ "afr_firewall",
+ "afr_guest",
+ "afr_image",
  "afr_supervisor",
  "afr_telemetry",
  "afr_tools",

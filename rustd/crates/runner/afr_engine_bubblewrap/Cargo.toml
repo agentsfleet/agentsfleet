@@ -1,0 +1,52 @@
+[package]
+name = "afr_engine_bubblewrap"
+description = "The bubblewrap engine: one hardened sandbox per run on the host's kernel, composed from the cgroup, image, firewall and guest building blocks."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+af_core.workspace = true
+# The engine, isolation and KVM names the engine states and the probe reads.
+af_wire.workspace = true
+# The building blocks it composes, and the seam it meets.
+afr_cgroup.workspace = true
+afr_engine.workspace = true
+afr_firewall.workspace = true
+afr_guest.workspace = true
+afr_image.workspace = true
+# Every sandbox serves the same executor.
+afr_executor.workspace = true
+# Whether the probe may execute bubblewrap on every platform, and on Linux the
+# ownership and process calls a sandbox is built with.
+rustix.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+async-trait.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["io-util", "macros", "process", "rt", "sync", "time"] }
+tracing.workspace = true
+# The bubblewrap launcher's error stream, read a line at a time with a cap;
+# the launcher is Linux-only, so the library links these only there.
+futures-util.workspace = true
+tokio-util = { workspace = true, features = ["codec"] }
+
+[dev-dependencies]
+af_core = { workspace = true, features = ["test-util"] }
+# A fresh sandbox identifier per test.
+afr_engine = { workspace = true, features = ["test-util"] }
+tempfile.workspace = true
+tokio = { workspace = true, features = ["io-util", "macros", "process", "rt", "rt-multi-thread", "sync", "test-util", "time"] }
+
+# The kernel lane, which drives this crate with the supervisor, the tools and
+# the agent loop, is `agentsfleet_runner`'s example (`runner/main/examples`), so
+# this crate dev-depends on no crate that depends on it.

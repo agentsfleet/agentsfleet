@@ -8,8 +8,8 @@
 
 use af_core::error_code::{Coded, Logged};
 use af_core::id::Uuid7;
+use afr_engine::Sandbox;
 use afr_executor::Unavailable;
-use afr_sandbox::Sandbox;
 use afr_tools::sandbox::{CREDENTIAL_GITHUB, Checkout, checkouts};
 use tokio_util::sync::CancellationToken;
 

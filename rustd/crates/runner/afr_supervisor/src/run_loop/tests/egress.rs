@@ -13,7 +13,7 @@ use std::sync::atomic::Ordering;
 
 use af_core::test_util::trace::Capture;
 use af_wire::runner::NetworkPolicy;
-use afr_sandbox::Allowlist;
+use afr_engine::Allowlist;
 use tokio::sync::mpsc;
 
 use super::{DETAIL_EGRESS, DETAIL_EGRESS_BLOCKED, EVENT_EGRESS_REFUSED};

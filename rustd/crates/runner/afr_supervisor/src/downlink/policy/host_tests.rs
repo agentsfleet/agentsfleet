@@ -28,7 +28,7 @@ async fn a_beat_carries_the_hosts_processors_memory_and_free_disk() {
     let read = Heartbeat::new(
         &plane,
         &probe,
-        afr_sandbox::BUBBLEWRAP_CAPABILITIES,
+        crate::test_support::CAPABILITIES,
         &held,
         sandboxes.path(),
     )
@@ -38,7 +38,7 @@ async fn a_beat_carries_the_hosts_processors_memory_and_free_disk() {
     let mut unreadable = Heartbeat::new(
         &plane,
         &probe,
-        afr_sandbox::BUBBLEWRAP_CAPABILITIES,
+        crate::test_support::CAPABILITIES,
         &held,
         &missing,
     );

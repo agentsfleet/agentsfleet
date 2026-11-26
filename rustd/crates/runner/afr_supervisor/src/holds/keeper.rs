@@ -4,7 +4,7 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use af_core::clock::{self, Clock};
 use af_core::id::Uuid7;
-use afr_sandbox::Parked;
+use afr_engine::Parked;
 use afr_telemetry::labels::SandboxHold;
 use afr_telemetry::record;
 use jiff::Timestamp;

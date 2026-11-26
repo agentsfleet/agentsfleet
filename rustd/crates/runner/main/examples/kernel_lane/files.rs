@@ -2,8 +2,7 @@
 //! executor bubblewrap serves, what it writes is the sandbox user's, and a
 //! link out of the workspace is refused by the executor's handle inside it.
 
-use crate::lane::{id_of, spec};
-use afr_sandbox::{Engine, Limits};
+use afr_engine::{Engine, Limits};
 use afr_tools::catalog::{APPLY_PATCH, FILE_EDIT, FILE_READ, FILE_WRITE, IMAGE, SHELL};
 use afr_tools::{Run, ToolErrorCode};
 use guffbolt::ToolOutput;
@@ -11,6 +10,7 @@ use libtest_mimic::Failed;
 use serde_json::{Value, json};
 
 use crate::lane::Lane;
+use crate::lane::{id_of, spec};
 use crate::run::{expect, runtime};
 use crate::tools::called;
 

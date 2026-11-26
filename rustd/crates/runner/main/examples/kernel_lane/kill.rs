@@ -5,11 +5,12 @@
 use std::fs;
 use std::path::Path;
 
-use crate::lane::{id_of, spec};
-use afr_sandbox::{Engine as _, Killed, Limits, TENANT_LEAF};
+use afr_cgroup::TENANT_LEAF;
+use afr_engine::{Engine as _, Killed, Limits};
 use libtest_mimic::Failed;
 
 use crate::lane::Lane;
+use crate::lane::{id_of, spec};
 use crate::run::{expect, run as run_in, runtime, shell};
 use crate::verify::MOUNTINFO;
 

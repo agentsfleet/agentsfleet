@@ -7,7 +7,7 @@ use std::io::{self, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use afr_sandbox::{
+use afr_image::{
     MANIFEST_SUFFIX, Manifest, Release, SIGNATURE_SUFFIX, TOOLBOX_PREFIX, TOOLBOX_SUFFIX,
 };
 use aws_lc_rs::encoding::AsDer as _;

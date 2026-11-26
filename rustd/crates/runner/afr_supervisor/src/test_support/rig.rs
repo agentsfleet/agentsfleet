@@ -8,8 +8,8 @@ use af_egress::Resolve;
 use af_wire::run::RunPayload;
 use af_wire::runner::{AssignedPolicy, NetworkPolicy, SandboxTier};
 use afr_agent::AgentEngine;
+use afr_engine::Limits;
 use afr_executor::Unavailable;
-use afr_sandbox::Limits;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 

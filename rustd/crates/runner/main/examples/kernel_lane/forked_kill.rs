@@ -4,13 +4,14 @@
 
 use std::fs;
 
-use crate::lane::{id_of, spec};
+use afr_cgroup::{SANDBOX_LEAF, TENANT_LEAF};
+use afr_engine::{Engine as _, Limits};
 use afr_executor::Ending;
-use afr_sandbox::{Engine as _, Limits, SANDBOX_LEAF, TENANT_LEAF};
 use libtest_mimic::Failed;
 
 use crate::exhaustion::{MEMORY_EVENTS, NO_OOM_KILLS, SMALL_MEMORY};
 use crate::lane::Lane;
+use crate::lane::{id_of, spec};
 use crate::run::{expect, run as run_in, runtime, shell};
 
 /// The run the forked child is killed in.

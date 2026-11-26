@@ -5,13 +5,13 @@
 //! memory limit, one full `/dev/shm` would get every later command in the
 //! run killed for memory at its first allocation.
 
-use crate::lane::{id_of, spec};
+use afr_engine::Limits;
 use afr_executor::Ending;
-use afr_sandbox::Limits;
 use libtest_mimic::Failed;
 
 use crate::exhaustion::{OK, SMALL_MEMORY};
 use crate::lane::Lane;
+use crate::lane::{id_of, spec};
 use crate::run::{expect, in_sandbox_each};
 use crate::trials::{ENOSPC, TWO_OUTCOMES};
 

@@ -9,7 +9,7 @@ use std::borrow::Cow;
 use std::net::Ipv4Addr;
 
 use af_wire::policy::{ExecutionPolicy, RepositoryAccess, RepositoryBinding};
-use afr_sandbox::Allowlist;
+use afr_engine::Allowlist;
 
 use super::BuiltUnder;
 use crate::egress::Bound;

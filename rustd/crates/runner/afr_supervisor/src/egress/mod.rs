@@ -23,7 +23,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use af_egress::{Resolve, allowlist_host, unblocked};
 use af_wire::policy::{NetworkPolicy as FleetNetwork, PACKAGE_MANAGER_DOMAINS};
 use af_wire::runner::{AssignedPolicy, NetworkPolicy};
-use afr_sandbox::{Allowlist, EgressPlan, Generation, Network};
+use afr_engine::{Allowlist, EgressPlan, Generation, Network};
 use futures_util::future::try_join_all;
 
 use crate::error::{self, Result};

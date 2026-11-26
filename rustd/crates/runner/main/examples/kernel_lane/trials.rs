@@ -6,11 +6,9 @@ use std::process::Command;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use crate::lane::{id_of, spec};
-use afr_sandbox::{
-    BubblewrapEngine, Engine, Limits, MECHANISM_LANDLOCK as LANDLOCK, ProbePaths, Toolbox,
-    WarmSlots, probe,
-};
+use afr_engine::{Engine, Limits, MECHANISM_LANDLOCK as LANDLOCK, WarmSlots};
+use afr_engine_bubblewrap::{BubblewrapEngine, ProbePaths, probe};
+use afr_image::Toolbox;
 use libtest_mimic::{Arguments, Conclusion, Failed, Trial};
 
 use crate::budgets::start_budgets;
@@ -29,6 +27,7 @@ use crate::git::{git_runs_local_commands, token_never_enters};
 use crate::hold::{destroy_frozen, held_sandbox_resumes_where_it_stopped, sweep_frozen};
 use crate::kill::no_sandbox_process_outlives_the_report;
 use crate::lane::{Lane, missing, toolbox_source};
+use crate::lane::{id_of, spec};
 use crate::run::{REACH_OUT, UNREACHABLE, expect, in_sandbox, run as run_in, runtime, shell};
 use crate::shared_memory::full_shared_memory_spares_the_tenant;
 use crate::toolbox::toolbox_carries_the_tools;

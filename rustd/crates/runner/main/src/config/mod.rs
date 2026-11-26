@@ -1,9 +1,10 @@
 //! Runner-owned profile types over the application-independent TOML loader.
 
+use std::{path::PathBuf, process::ExitCode};
+
 use af_core::env::EnvSource;
 use garde::Validate;
 use serde::Deserialize;
-use std::{path::PathBuf, process::ExitCode};
 
 mod tuning;
 
@@ -47,7 +48,7 @@ pub(super) struct Settings {
     /// The supervisor's daemon link, decision calls and sandbox limits.
     pub(super) tuning: afr_supervisor::config::Tuning,
     /// How the engine starts and paces every sandbox.
-    pub(super) engine: afr_sandbox::EngineTuning,
+    pub(super) engine: afr_engine_bubblewrap::EngineTuning,
     /// What the agent loop holds every run to.
     pub(super) run_limits: afr_agent::RunLimits,
     /// The bounds every egress request is held to.

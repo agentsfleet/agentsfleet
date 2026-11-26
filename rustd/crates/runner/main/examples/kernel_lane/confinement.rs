@@ -5,13 +5,12 @@
 use std::fs;
 use std::os::unix::fs::MetadataExt as _;
 
-use crate::lane::{id_of, spec};
-use afr_sandbox::{
-    Engine, Limits, MECHANISM_LANDLOCK as LANDLOCK, REFUSED_SYSCALLS, X32_SYSCALL_BIT,
-};
+use afr_engine::{Engine, Limits, MECHANISM_LANDLOCK as LANDLOCK};
+use afr_guest::{REFUSED_SYSCALLS, X32_SYSCALL_BIT};
 use libtest_mimic::Failed;
 
 use crate::lane::{Lane, SANDBOX_IDS};
+use crate::lane::{id_of, spec};
 use crate::run::{expect, in_sandbox, run, runtime, shell};
 
 /// The run the planting trial runs as.
@@ -40,7 +39,7 @@ const PROBE_SYSCALLS: &str = "import ctypes, sys\nlibc = ctypes.CDLL(None, use_e
 
 pub(crate) fn no_capabilities(lane: &Lane) -> Result<(), Failed> {
     let status = in_sandbox(lane, "caps", Limits::default(), "cat /proc/self/status")?;
-    Ok(afr_sandbox::capabilities_dropped(&status.output)?)
+    Ok(afr_guest::capabilities_dropped(&status.output)?)
 }
 
 pub(crate) fn seccomp_refuses(lane: &Lane) -> Result<(), Failed> {
@@ -87,7 +86,7 @@ pub(crate) fn plants_nothing(lane: &Lane) -> Result<(), Failed> {
             format!("/run took a write: {said:?}"),
         )?;
         expect(
-            said.contains(&afr_sandbox::bubblewrap::SANDBOX_UID.to_string()),
+            said.contains(&afr_engine_bubblewrap::bubblewrap::SANDBOX_UID.to_string()),
             format!("runs as its own user, got {said:?}"),
         )?;
         expect(
