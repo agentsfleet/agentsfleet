@@ -189,9 +189,9 @@ Build order: §1 is the spike, committing only its record. §2 to §4 reshape th
 
 Boot one VM on the dev runner host before any code, with Firecracker and the jailer 1.18.x. The guest kernel is 6.18 from Firecracker's CI configuration, plus `CONFIG_EROFS_FS` with LZ4. The toolbox is a read-only drive and a workspace image the data drive; the record lands in `docs/v2/reviews/m258-firecracker-spike.md`.
 
-- **Dimension 1.1** — the toolbox boots as a VM's root → Test `firecracker_boots_the_toolbox_by_hand` (manual). Aiwa records `uname -r`, threads per core, the toolbox's SHA-256, idle resident set size (RSS), and create-to-ready as a median over a stated count of boots. A root other than our toolbox's digest is a false pass.
-- **Dimension 1.2** — the executor answers over vsock → Test `the_executor_answers_through_the_vsock_handshake` (manual). The runner's own binary is the guest entry, as an initramfs or a third drive, whichever boots. `CONNECT <port>` answers `OK` and `list_dir` answers; a wrong port answers no `OK`.
-- **Dimension 1.3** — a stopped VM loses no byte → Test `a_signal_stopped_vm_keeps_its_synced_disk` (manual). With the data drive's `cache_type` `Writeback`: write, sync in the guest, stop the VMM by signal, boot, and the file reads back. With `Unsafe` the record states what was lost, and no boot made an API call.
+- **Dimension 1.1** — ✅ DONE (Nov 26, 2026; `docs/v2/reviews/m258-firecracker-spike.md`) — the toolbox boots as a VM's root → Test `firecracker_boots_the_toolbox_by_hand` (manual). Aiwa records `uname -r`, threads per core, the toolbox's SHA-256, idle resident set size (RSS), and create-to-ready as a median over a stated count of boots. A root other than our toolbox's digest is a false pass.
+- **Dimension 1.2** — ✅ DONE (Nov 26, 2026; `docs/v2/reviews/m258-firecracker-spike.md`) — the executor answers over vsock → Test `the_executor_answers_through_the_vsock_handshake` (manual). The runner's own binary is the guest entry, as an initramfs or a third drive, whichever boots. `CONNECT <port>` answers `OK` and `list_dir` answers; a wrong port answers no `OK`.
+- **Dimension 1.3** — ✅ DONE (Nov 26, 2026; `docs/v2/reviews/m258-firecracker-spike.md`) — a stopped VM loses no byte → Test `a_signal_stopped_vm_keeps_its_synced_disk` (manual). With the data drive's `cache_type` `Writeback`: write, sync in the guest, stop the VMM by signal, boot, and the file reads back. With `Unsafe` the record states what was lost, and no boot made an API call.
 
 ### §2 — Lifecycle, identity and resources, named on every heartbeat
 
