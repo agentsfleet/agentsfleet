@@ -4,7 +4,7 @@ import { chmod, readFile, rm, stat, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { z } from "zod";
-import { configureConnector, configureDecisions, configureScheduler, configureSigning, enroll, localTarget, persistWorkspace, platformSession, privateFile } from "./bootstrap";
+import { configureConnector, configureDecisions, configureModel, configureScheduler, configureSigning, enroll, localTarget, persistWorkspace, platformSession, privateFile } from "./bootstrap";
 
 type BootstrapRequest = Parameters<typeof enroll>[0];
 type Handler = (method: string, path: string, body?: unknown) => unknown;
@@ -37,6 +37,7 @@ const BOOTSTRAP_ENV = [...CONNECTOR_ENV, "NEXT_PUBLIC_API_URL", "LOCAL_ACCEPTANC
   "CLERK_SECRET_KEY", "CLERK_WEBHOOK_SECRET"];
 const DECISION_ID = "01900000-0000-7000-8000-0000000000d1";
 const MODELS_PATH = "/v1/admin/models";
+const PLATFORM_KEYS_PATH = "/v1/admin/platform-keys";
 
 let root = "";
 let savedEnv: Record<string, string | undefined> = {};
@@ -502,5 +503,31 @@ describe("task goal check", () => {
     delete process.env.TYPESAFE_API_KEY;
     await expect(configureDecisions(fakeRequest(() => expect.unreachable("no key, no request")), FIXTURE_WORKSPACE))
       .rejects.toThrow(/TYPESAFE_API_KEY/);
+  });
+});
+
+describe("platform model", () => {
+  test("initial setup seeds Claude Haiku 5.5 with the machine's Anthropic key, and a missing key refuses before any write", async () => {
+    process.env.ANTHROPIC_API_KEY = "sk-ant-test-only";
+    let created: unknown;
+    let saved: unknown;
+    let chosen: unknown;
+    const request = fakeRequest((method, path, body) => {
+      if (method === "GET" && path === MODELS_PATH) return { models: [], next_cursor: null };
+      if (method === "POST" && path === MODELS_PATH) { created = body; return { id: "model-row", request_id: "req" }; }
+      if (method === "GET" && path === SECRETS_PATH) return { secrets: [] };
+      if (method === "POST" && path === SECRETS_PATH) { saved = SECRET_BAG.parse(body); return {}; }
+      if (method === "PUT" && path === PLATFORM_KEYS_PATH) { chosen = body; return {}; }
+      return expect.unreachable(`unexpected ${method} ${path}`);
+    });
+    await configureModel(request, FIXTURE_WORKSPACE, []);
+    expect(created).toMatchObject({ provider: "anthropic", model_id: "claude-haiku-5-5" });
+    expect(saved).toEqual({ name: "anthropic",
+      data: { provider: "anthropic", api_key: "sk-ant-test-only", model: "claude-haiku-5-5" } });
+    expect(chosen).toEqual({ provider: "anthropic", source_workspace_id: FIXTURE_WORKSPACE, model: "claude-haiku-5-5" });
+
+    delete process.env.ANTHROPIC_API_KEY;
+    await expect(configureModel(fakeRequest(() => expect.unreachable("no key, no request")), FIXTURE_WORKSPACE, []))
+      .rejects.toThrow(/ANTHROPIC_API_KEY/);
   });
 });

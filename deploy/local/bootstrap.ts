@@ -142,7 +142,7 @@ async function catalogueModel(request: Request, provider: string, model: string)
   return undefined;
 }
 
-async function configureModel(request: Request, workspaceId: string, keys: PlatformKey[]): Promise<void> {
+export async function configureModel(request: Request, workspaceId: string, keys: PlatformKey[]): Promise<void> {
   if (keys.some((key) => key.active)) return;
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new LocalBootstrapError("machine configuration must supply ANTHROPIC_API_KEY for initial local setup");
