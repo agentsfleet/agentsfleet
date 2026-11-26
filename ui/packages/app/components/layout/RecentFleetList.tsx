@@ -11,6 +11,9 @@ import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import type { RecentCollection } from "@/lib/api/recent-collection";
 import { FleetLifecycleDialog } from "./FleetLifecycleDialog";
 
+// Reuse a recent list during rapid switches and reconcile server-side changes on later navigation.
+const FLEET_LIST_FRESH_MS = 30_000;
+
 export function RecentFleetList({workspace, onNavigate}: {workspace: string; onNavigate: () => void}) {
   const collection = useRecentPage(`/live/v1/workspaces/${encodeURIComponent(workspace)}/fleets`, FleetListSchema);
   return collection ? <FleetItems collection={collection} workspace={workspace} onNavigate={onNavigate} /> : null;
@@ -22,9 +25,17 @@ function FleetItems({collection, workspace, onNavigate}: {collection: RecentColl
   const router = useRouter();
   const [selected, setSelected] = useState<NativeFleetSummary | null>(null);
   const previousPath = useRef(pathname);
-  // A first message lands on its new fleet's page; reading again on every
-  // navigation is what lists that fleet.
-  useEffect(() => {if (previousPath.current !== pathname) {previousPath.current = pathname; void collection.load();}}, [collection, pathname]);
+  useEffect(() => {
+    const previous = previousPath.current;
+    if (previous === pathname) return;
+    previousPath.current = pathname;
+    const fleetPath = `/w/${workspace}/fleets/`;
+    const {items} = collection.getSnapshot();
+    // A first message lands on a new fleet's page. Moving between loaded
+    // fleets can keep the existing pages and update only the selection.
+    const known = (path: string) => items.some(fleet => path === `${fleetPath}${fleet.id}`);
+    void collection.refresh(known(previous) && known(pathname) ? FLEET_LIST_FRESH_MS : 0);
+  }, [collection, pathname, workspace]);
   const removed = (id: string): void => {
     collection.remove(id); setSelected(null);
     if (pathname.includes(`/fleets/${id}`)) router.replace(`/w/${workspace}/fleets/new`);

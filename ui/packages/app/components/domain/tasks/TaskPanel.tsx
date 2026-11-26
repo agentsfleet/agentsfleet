@@ -43,7 +43,10 @@ export function DurableTaskPanel(props: FleetDurableTaskProps) {
 function CurrentWork() {
   const view = useFleetDurableTaskView();
   const turns = view?.turns ?? EMPTY_TURNS;
-  const resources = useMemo(() => turns.map(recordedRunResources), [turns]);
+  const resources = useMemo(() => {
+    const runs = turns.map(recordedRunResources);
+    return {rows: runs.flatMap(run => run.rows), previews: [...new Set(runs.flatMap(run => run.previews))]};
+  }, [turns]);
   if (!view?.subject) return null;
   const {workspaceId, fleetId, sources, files, read, approvals} = view;
   const page = read ? confirmed(read.resource) : null;
@@ -56,8 +59,8 @@ function CurrentWork() {
     {tasks.length ? <WorkSection title="Tasks"><DurableTaskRows workspaceId={workspaceId} fleetId={fleetId} tasks={tasks}
       details={read.details} retry={read.retry} retryDetails={read.retryDetails} /></WorkSection> : null}
     <WorkChanges turns={turns} repositories={view.changeRepositories} />
-    <WorkOutputs previews={[...new Set(resources.flatMap(run => run.previews))]} details={read.details} expectedDetails={read.references.length} hideEmpty={turns.length > 0} />
-    <RunResources rows={resources.flatMap(run => run.rows)} />
+    <WorkOutputs previews={resources.previews} details={read.details} expectedDetails={read.references.length} hideEmpty={turns.length > 0} />
+    <RunResources rows={resources.rows} />
     <WorkSources sources={sources} files={files} />
     </> : null}
   </section></Section>;
@@ -79,21 +82,22 @@ function DurableTaskRows({workspaceId, fleetId, tasks, details, retry, retryDeta
   const [selected, setSelected] = useState(first);
   const openTask = selected && !ordered.some(task => task.id === selected) ? first : selected;
   if (openTask !== selected) setSelected(openTask);
-  return <Accordion type="single" collapsible value={openTask} onValueChange={setSelected}>
+  return <Accordion type="single" collapsible value={openTask} onValueChange={setSelected} className="space-y-md">
     {ordered.map(task => {
       const status = TASK_STATUS[task.status];
       const resource = details.get(task.id) ?? {kind: "loading", previous: null} as const;
       const next = dependencySummary(resource, task.resource_version) ?? status.next;
-      return <AccordionItem key={task.id} value={task.id} className="not-last:border-b last:border-0">
-        <AccordionTrigger className="min-h-11 items-start gap-sm py-sm text-label leading-label hover:bg-muted summary:min-h-9 [&>svg:last-child]:ml-0 [&>svg]:mt-xs">
-          <span className={cn("mt-xs shrink-0", status.color)} aria-hidden="true"><status.Icon size={16} /></span>
+      return <AccordionItem key={task.id} value={task.id} className="rounded-md border border-border">
+        <AccordionTrigger className="min-h-11 min-w-0 items-start gap-md p-lg text-description leading-normal hover:bg-muted focus-visible:ring-inset focus-visible:ring-offset-0 summary:min-h-9 [&>svg:last-child]:ml-0 [&>svg]:mt-xs">
           <span className="min-w-0 flex-1 wrap-anywhere">
             <span className="block font-semibold">{task.title}</span>
-            <span className={cn("block text-eyebrow leading-eyebrow", status.color)}>{status.label}</span>
-            {next ? <span className="mt-xs block text-muted-foreground">{next}</span> : null}
+            <span className={cn("mt-xs flex items-center gap-xs text-eyebrow leading-eyebrow", status.color)}>
+              <status.Icon size={14} className="shrink-0" aria-hidden="true" />{status.label}
+            </span>
+            {next ? <span className="mt-md block text-label leading-label text-muted-foreground">{next}</span> : null}
           </span>
         </AccordionTrigger>
-        <AccordionContent className="border-t border-border pt-md"><DurableTaskDetailView workspaceId={workspaceId} fleetId={fleetId}
+        <AccordionContent className="mx-lg border-t border-border-subtle pt-lg pb-lg"><DurableTaskDetailView workspaceId={workspaceId} fleetId={fleetId}
           task={task} onChanged={retry} resource={resource} retry={retryDetails} /></AccordionContent>
       </AccordionItem>;
     })}

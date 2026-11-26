@@ -34,8 +34,11 @@ const history: ThreadMessageLike[] = exchanges.flatMap(([question, answer], inde
 
 /** Production header, transcript, composer and task reader; only API data is simulated. */
 export function ChatAlignmentFixture() {
-  const [messages, setMessages] = useState(history);
-  const [connectionStatus, setConnectionStatus] = useState(() => new URLSearchParams(location.search).has("offline") ? CONNECTION_STATUS.OFFLINE : CONNECTION_STATUS.LIVE);
+  const query = new URLSearchParams(location.search);
+  const [messages, setMessages] = useState(() => query.has("scale")
+    ? Array.from({length: 5}, (_, batch) => history.map(message => ({...message, id: `${batch}-${message.id}`}))).flat()
+    : history);
+  const [connectionStatus, setConnectionStatus] = useState(() => query.has("offline") ? CONNECTION_STATUS.OFFLINE : CONNECTION_STATUS.LIVE);
   const runtime = useExternalStoreRuntime({messages, convertMessage: (message: ThreadMessageLike) => message,
     onNew: async message => {setMessages(previous => [...previous, {id: `sent-${previous.length}`, role: "user", content: message.content,
       metadata: {custom: {[RENDER_KIND_KEY]: RENDER_KIND.TRIGGER, actor: `${ACTOR.STEER_PREFIX}fixture-owner`}}}]);}});

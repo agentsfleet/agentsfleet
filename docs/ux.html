@@ -417,18 +417,54 @@ button{font-weight:500}h1,h2,h3{font-weight:650}strong{font-weight:600}
 .connection-flap .text-button { min-height: 36px; color: var(--accent); }
 .connection-flap .text-button[aria-disabled=true] { color: var(--muted); cursor: default; }
 .connection-flap .text-button:focus-visible { outline-offset: -2px; }
-.summary-task > summary { cursor: pointer; list-style: none; border-radius: var(--radius-sm); }
+@media (min-width: 801px) {
+  .workspace { grid-template-columns: minmax(0, 1fr) clamp(304px, 23vw, 360px); gap: var(--s4); }
+  .workspace > .summary { width: 100%; margin-block: 24px; max-height: calc(100% - 48px); padding: var(--s5); }
+}
+@media (min-width: 681px) and (max-width: 800px) {
+  .workspace { grid-template-columns: minmax(0, 1fr) 248px; }
+}
+.workspace > .summary > h2,
+.workspace .summary-label {
+  color: var(--muted);
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+  font-weight: 600;
+}
+.workspace .summary-section { border-color: var(--soft-line); }
+.workspace .summary-section > p { margin: 0; }
+.workspace .access-details > div { display: grid; grid-template-columns: 5.5em minmax(0, 1fr); gap: var(--s2); }
+.workspace .access-details dd { overflow-wrap: anywhere; }
+.summary-task {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.summary-task > summary {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+  padding: var(--s3);
+  border-radius: inherit;
+  cursor: pointer;
+  list-style: none;
+}
 .summary-task > summary::-webkit-details-marker { display: none; }
 .summary-task > summary:hover { background: var(--raised); }
-.summary-task .summary-label { margin-bottom: var(--s1); }
-.summary-task .summary-row { align-items: flex-start; }
-.summary-task .summary-row > i { margin-top: 2px; }
-.summary-task[open] .summary-row > i:last-child { transform: rotate(180deg); }
-.summary-task .task-title { display: block; font-weight: 600; overflow-wrap: anywhere; }
-.summary-task .task-status { display: block; margin: 0; }
-.summary-task .task-next { display: block; margin-top: var(--s1); color: var(--secondary); }
-.summary-task-details { border-top: 1px solid var(--soft-line); margin-top: var(--s2); }
-.summary-task-details .text-button { min-height: 36px; }
+.summary-task > summary:focus-visible { outline-offset: -2px; }
+.summary-task > summary > span { flex: 1; min-width: 0; }
+.summary-task > summary > i { width: 16px; height: 16px; margin-top: 2px; color: var(--muted); }
+.summary-task[open] > summary > i { transform: rotate(180deg); }
+.summary-task .task-title { display: block; font-size: 0.875rem; line-height: 1.3125rem; font-weight: 700; overflow-wrap: anywhere; }
+.summary-task .task-status { display: flex; align-items: center; gap: var(--s1); margin-top: var(--s1); font-size: 0.75rem; line-height: 1.125rem; }
+.summary-task .task-status i { width: 14px; height: 14px; }
+.summary-task .task-next { display: block; margin-top: var(--s2); color: var(--secondary); font-size: 0.8125rem; line-height: 1.25rem; }
+.summary-task-details { margin-inline: var(--s3); padding-block: var(--s3); border-top: 1px solid var(--soft-line); }
+.task-detail-sections { display: grid; gap: var(--s3); }
+.task-detail-section h4 { margin: 0 0 var(--s1); color: var(--muted); font-size: 0.8125rem; line-height: 1.25rem; font-weight: 600; }
+.summary-task-details p { margin: 0; color: var(--text); font-size: 0.875rem; line-height: 1.3125rem; }
+.summary-task-details .text-button { margin-top: var(--s1); min-height: 36px; }
+#completion-text { display: block; width: 100%; margin-top: var(--s2); resize: vertical; }
 @media (max-width: 680px), (pointer: coarse) {
   .connection-flap .text-button, .summary-task-details .text-button { min-height: 44px; }
 }
@@ -1073,32 +1109,38 @@ function releaseTask() {
   const next = appState.accessDenied
     ? 'GitHub access was denied. The pull request is still pending.'
     : 'Approve GitHub access to open the pull request.';
-  return `<section class="summary-section" aria-label="Tasks">
+  return `<section class="summary-section" aria-labelledby="task-section-label">
+    <h3 id="task-section-label" class="summary-label">Tasks</h3>
     <details class="summary-task" open>
-      <summary aria-labelledby="task-section-label release-task-title" aria-describedby="release-task-status release-task-next">
-        <span id="task-section-label" class="summary-label">Tasks</span>
-        <span class="summary-row">
-          <i data-icon="warning-circle" class="attention"></i>
-          <span>
-            <strong id="release-task-title" class="task-title">Publish the runner update</strong>
-            <small id="release-task-status" class="task-status attention">Blocked</small>
-            <span id="release-task-next" class="task-next">${next}</span>
-          </span>
-          ${icon('caret-down')}
+      <summary aria-labelledby="release-task-title" aria-describedby="release-task-status release-task-next">
+        <span>
+          <strong id="release-task-title" class="task-title">Publish the runner update</strong>
+          <small id="release-task-status" class="task-status attention">${icon('warning-circle')}Blocked</small>
+          <span id="release-task-next" class="task-next">${next}</span>
         </span>
+        ${icon('caret-down')}
       </summary>
       <div class="summary-task-details">
         <div id="completion-unavailable" ${appState.taskDetailsUnavailable ? '' : 'hidden'}>
           <p>Couldn’t load task details.</p>
           <button class="text-button" data-action="reload-task-details">Reload details</button>
         </div>
-        <div id="completion-details" ${appState.taskDetailsUnavailable ? 'hidden' : ''}>
-          <p><strong>What counts as done?</strong></p>
-          <div id="completion-read"><p id="completion-value">${esc(statement)}</p><button class="text-button" data-action="edit-statements">Edit statements</button></div>
-          <form id="completion-form" aria-label="Edit completion statements" hidden>
-            <label class="field">Statement 1<textarea id="completion-text" rows="2" required>${esc(statement)}</textarea></label>
-            <div class="summary-actions"><button class="primary" type="submit">Save statements</button><button class="text-button" type="button" data-action="cancel-statements">Cancel</button></div>
-          </form>
+        <div id="completion-details" class="task-detail-sections" ${appState.taskDetailsUnavailable ? 'hidden' : ''}>
+          <div class="task-detail-section">
+            <h4>Task goal</h4>
+            <p>Build and scan the updated runner image, then publish the results in a pull request.</p>
+          </div>
+          <div class="task-detail-section">
+            <h4>What counts as done?</h4>
+            <div id="completion-read">
+              <p id="completion-value">${esc(statement)}</p>
+              <button class="text-button" data-action="edit-statements">Edit statements</button>
+            </div>
+            <form id="completion-form" aria-label="Edit completion statements" hidden>
+              <label class="field">Statement 1<textarea id="completion-text" rows="2" required>${esc(statement)}</textarea></label>
+              <div class="summary-actions"><button class="primary" type="submit">Save statements</button><button class="text-button" type="button" data-action="cancel-statements">Cancel</button></div>
+            </form>
+          </div>
         </div>
       </div>
     </details>

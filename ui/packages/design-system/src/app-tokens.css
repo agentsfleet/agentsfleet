@@ -71,18 +71,18 @@
   --r-control: 10px;
   --overlay: #0009;
   --elevation-dialog: 0 20px 80px #0006;
-  --summary-width: 248px;
+  --summary-width: clamp(19rem, 23vw, 22.5rem);
   --max-w-chat: 740px;
   --chat-input-height: 60px;
   --chat-inset: 32px;
 }
 
 @media (min-width: 42.5625rem) and (max-width: 68.75rem) {
-  :root { --summary-width: 228px; --chat-inset: 24px; }
+  :root { --chat-inset: 24px; }
 }
 
 @media (min-width: 42.5625rem) and (max-width: 50rem) {
-  :root { --summary-width: 216px; --chat-inset: 16px; }
+  :root { --summary-width: 15.5rem; --chat-inset: 16px; }
 }
 
 [data-theme="light"] {

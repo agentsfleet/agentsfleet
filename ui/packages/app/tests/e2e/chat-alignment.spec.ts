@@ -72,6 +72,32 @@ test("the reconnect flap stays centered above the draft in both themes", async (
   await expect(draft).toHaveValue("Keep this unsent draft");
 });
 
+test("reconnect leaves a fifty-message transcript and twelve loaded fleets in place", async ({page, chatProbe}, info) => {
+  const phone = info.project.name === "mobile-chromium";
+  const reads: string[] = [];
+  page.on("request", request => {
+    const {pathname} = new URL(request.url());
+    if (pathname.endsWith("/fleets") || pathname.includes("/durable_tasks")) reads.push(pathname);
+  });
+  await page.goto(`${chatProbe}?alignment=1&offline=1&scale=1`);
+  const transcript = page.getByRole("log");
+  await expect(transcript.getByTestId("fleet-message")).toHaveCount(50);
+  if (phone) await page.getByRole("button", {name: "Open navigation", exact: true}).click();
+  const nav = page.getByRole("navigation", {name: phone ? "Expanded navigation" : "Primary"});
+  await expect(nav.getByRole("link", {name: /^(ci-repairer|review-fleet-\d+)$/})).toHaveCount(12);
+  if (phone) await page.keyboard.press("Escape");
+  await expect(page.getByRole("heading", {name: "Task goal"})).toBeVisible();
+  const draft = page.getByRole("form", {name: "Chat composer"}).getByRole("textbox");
+  await draft.fill("Keep the pending message");
+  const before = reads.length;
+  await page.getByRole("button", {name: "Reconnect", exact: true}).click();
+  await expect(page.getByTestId("fleet-connection-notice")).toHaveCount(0);
+  await expect(draft).toBeFocused();
+  await expect(draft).toHaveValue("Keep the pending message");
+  await expect(transcript.getByTestId("fleet-message")).toHaveCount(50);
+  expect(reads).toHaveLength(before);
+});
+
 test("selected Secrets is the only filled destination in the primary navigation", async ({page, chatProbe}, info) => {
   const phone = info.project.name === "mobile-chromium";
   await page.goto(`${chatProbe}?alignment=1&secrets=1`);

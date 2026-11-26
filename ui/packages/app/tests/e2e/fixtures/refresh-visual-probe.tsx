@@ -31,7 +31,7 @@ import { FLEET_CHAT_CONFIG } from "@/components/domain/activity/tools/FleetToolR
 import { FleetWorkspace } from "@/components/domain/fleet/FleetWorkspace";
 import { FleetListSections } from "@/components/domain/fleet/FleetListSections";
 import { FleetNetworkSection } from "@/components/domain/network/FleetNetworkSection";
-import { chatMessageText } from "@/lib/chat-message-text";
+import { fleetMessageText } from "@/lib/chat-message-text";
 import { latestFigures } from "@/lib/turns/run-summary";
 import {VisualLifecycleNotice} from "./visual-lifecycle-notice";
 
@@ -57,7 +57,7 @@ export function RefreshVisualFixture() {
   const schedules = phase === "wake-up" ? [visualWakeup(started)] : [];
   const [sent, setSent] = useState<ThreadMessageLike[]>([]);
   const onNew = useCallback(async (message: AppendMessage) => {
-    setSent(previous => [...previous, {id: `local-${previous.length}`, role: "user", content: [{type: "text", text: chatMessageText(message)}], metadata: {custom: {[RENDER_KIND_KEY]: RENDER_KIND.TRIGGER, actor: `${ACTOR.STEER_PREFIX}fixture-owner`}}}]);
+    setSent(previous => [...previous, {id: `local-${previous.length}`, role: "user", content: [{type: "text", text: fleetMessageText(message)}], metadata: {custom: {[RENDER_KIND_KEY]: RENDER_KIND.TRIGGER, actor: `${ACTOR.STEER_PREFIX}fixture-owner`}}}]);
   }, []);
   const previews = useFleetUploadPreviews({workspaceId: WORKSPACE, fleetId: FLEET_ID, subject: "fixture-owner", turns, onNew});
   const messages = useMemo(() => [...(phase === "wake-up" || phase === "error" ? grouped.entries.map(grouped.convertEntry) : conversation(turns, started)), ...sent, ...previews.entries.map(entry => entry.message)], [turns, started, sent, previews.entries, phase, grouped.entries, grouped.convertEntry]);

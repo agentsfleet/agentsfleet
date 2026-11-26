@@ -8,7 +8,7 @@ import {
   type ExternalThreadQueueAdapter,
 } from "@assistant-ui/react";
 
-import { fleetComposerText, chatMessageDraft } from "@/lib/chat-message-text";
+import { chatMessageDraft } from "@/lib/chat-message-text";
 
 // The fleet's daemon is the queue: its turn ledger orders every steer, so
 // no lane here ever holds a message. Once a runtime has a queue, assistant-ui
@@ -46,7 +46,7 @@ export function useFleetSteerQueue(
         if (!isMessageNotSentError(error)) return;
         const composer = runtime.current?.thread.composer;
         if (composer === undefined || sends.current !== send) return;
-        const returned = chatMessageDraft(message, fleetComposerText);
+        const returned = chatMessageDraft(message);
         const current = composer.getState();
         // A newer quote keeps its native slot; retain the earlier quote in
         // the returned text so neither the failed message nor the new edit is lost.

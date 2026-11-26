@@ -271,9 +271,7 @@ Archived history is read-only. Pending operations, failures, and uncertain outco
 Never show a success notification while a request is pending or when only the stop portion of deletion succeeded.
 
 
-Conversation Summary occupies a 248px column on wide desktops. Use 228px at 801–1100px and 216px at 681–800px; stack at 680px and below. Use a 16px inner inset, 12px at the narrow intermediate step, and 12/16/32px conversation gutters at 681/801/1101px.
-
-Setup Summary uses its separate 320px desktop token so policy labels fit on one line.
+Conversation Summary takes 23% of the viewport width above 800px, bounded to 304–360px. Use 248px at 681–800px and place it inline at 680px and below. Use a 20px inner inset on wider screens and 12px at 681–800px.
 
 Phone shell edges are 4px and Summary outer insets 12px; transcript insets stay 16px.
 
@@ -283,15 +281,15 @@ Summary remains inline and visible without clicking. Show the current decision, 
 
 Insert pending approval or blocked work first. Other sections appear only for recorded content. Do not infer an Environment inventory, live background processes or child-agent state from tool calls.
 
-Show each task’s title, status and known next step in Summary, with blocked tasks first. The first task opens by default. Each task has one disclosure for its objective, criteria and controls.
+Show each task’s title, status and known next step in Summary, with blocked tasks first. The first task opens by default. Group the goal and completion criteria above the task controls in one disclosure.
 
 Sources shows one repository row or count. Its policy belongs inside the same disclosure.
 
 Loading and unavailable reads must not appear as confirmed empty outputs.
 
-Section labels use 12px/16px, with 4px label-to-content spacing, 8px between sections and 8px after each divider. Keep 36px desktop and 44px phone disclosure targets without adding a second spacer row. Conversation input starts at 60px; a 100px empty setup field is a separate composition.
+Use muted sentence-case labels at 13px/20px and task titles and detail text at 14px/21px. Keep 36px desktop and 44px phone disclosure targets. Conversation input starts at 60px.
 
-The header edit action opens the existing setup editor. User attachments precede prose in lighter bubbles; calendar boundaries and compact clocks follow the viewer's timezone and retain exact accessible instants.
+User attachments precede prose in lighter bubbles. Calendar boundaries and compact clocks follow the viewer's timezone and retain exact accessible instants.
 
 On phones, place Summary before the transcript inside the native assistant-ui viewport. Keep its complete content in the page flow, with no height cap or nested scroll area. The native viewport footer stays in the scroll flow and sticks to the bottom while reading.
 
@@ -387,8 +385,6 @@ The current invite flow accepts one email and creates a recipient-specific invit
 If email delivery fails after invitation creation, keep the invitation visible with resend and copy-link recovery.
 Keep delivery status separate from invitation status. Never show an empty membership list when its read failed.
 
-**Save** saves or updates the fleet setup through the native save path.
-
 Keep existing Secrets.
 
 A separate readable environment-variable feature is outside this delivery.
@@ -451,16 +447,14 @@ Reusable visual treatments belong in `ui/packages/design-system`. App widgets co
 
 Use Activity for the workspace feed. Fleet activity appears in its conversation. Individual records remain events; existing event URLs retain their meaning.
 
-The fleet header offers **Edit setup** and **Fleet actions**. **Edit setup** opens the setup page at the fleet's saved version.
+Fleet messages and integration activity share one chronological conversation.
 
-Fleet messages, setup receipts, and integration activity share one chronological conversation.
-
-**Save** sits on the flap above the composer. The header keeps the fleet name and **Edit instructions** pencil.
+The header keeps the fleet name beside **Fleet actions**.
 **Archive** and **Permanently Delete** live in **Fleet actions**.
 
 Archive and deletion use separate confirmations.
 
-Setup and saved chat share an aligned conversation and composer. Bound desktop content to the reviewed 740px maximum and keep the composer at the bottom.
+Align the conversation and composer. Bound desktop content to 740px and keep the composer at the bottom.
 Review prose line length at 13px; narrow text blocks when lines become difficult to follow, while allowing commands and diffs more width.
 
 User messages use a quiet bubble; assistant replies use plain prose and the fleet's name.
@@ -687,7 +681,7 @@ Appsmith's [widget registration](https://github.com/appsmithorg/appsmith/blob/65
 
 ### Shared composer controls
 
-Fleet chat and setup chat compose the same controls from `components/domain/shared/chat/ChatComposerFrame.tsx` in the app package.
+New fleet and fleet chat share controls from `components/domain/shared/chat/ChatComposerFrame.tsx` in the app package.
 `ChatComposerFrame` owns the input, boundary, spacing, height limits, and focus behavior.
 Place the model and contextual controls at the left of the footer, with the circular Send action at the right, matching the approved layout.
 
@@ -704,48 +698,7 @@ Callers supply content and actions. Callers must not override these controls' ty
 | Hint | Sans, eyebrow size, label line height | ChatComposerHint |
 | Send or stop | Shared icon button sizing and focus | Button |
 
-Fleet chat displays the saved runtime model. Setup chat selects the model that helps write the setup.
-
-These controls have different jobs and share typography. Changing the setup conversation's model does not change the fleet's runtime model.
-
-On the setup page for a saved fleet, the header offers Save changes.
-Reuse the reviewed draft's save action, including validation, pending state, and conflict handling. Do not add a second save action above the composer.
-
-Explain when changes affect the fleet in plain language. Show confirmed saved versions in the compact status above the composer.
-Keep full revision and access details in setup inspection.
-
-Use a labeled pencil action for editing an existing setup. Keep Summary visible without a toggle or drawer.
-Existing task providers retain request ownership; Summary reads their state without starting duplicate requests.
-
-Keep durable tasks visible and omit empty Outputs and Changes sections.
-The saved setup editor returns to its fleet conversation. Use the rail's fleet picker to switch fleets.
-
-### Setup-to-conversation transition
-
-Keep one visual shell through setup, confirmed save, and the fleet conversation. Preserve the title, reading width, composer position, and inline Summary.
-
-Label the setup state Fleet setup. Its flap action is Save.
-
-Show the reviewed runtime model, spending limit, repositories, internet access and secrets in the setup Summary.
-
-For a scheduled fleet conversation, show the spending limit and next wake-up at the top of Summary. The composer shows the runtime model and the wake-up controls.
-
-After the server confirms the fleet identity, open its conversation without an extra Open fleet action. Replace the draft URL with the saved fleet URL.
-Show confirmed readiness separately from saving.
-
-If setup needs attention after creation, retain the created fleet and expose recovery without repeating creation.
-
-Use Message fleet after the transition. Edit setup explicitly returns to the setup page within the same shell; normal runtime messages never silently rewrite setup.
-Save changes returns to the conversation after confirmed revision acceptance.
-
-Preserve version checks and conflict recovery.
-
-Retain unsent text and scroll position, with separate buffers for setup and runtime. Never submit a setup draft to the runtime endpoint during navigation.
-Keep the creator's setup transcript private.
-
-Other members see only setup facts and activity already authorized for them.
-
-Saving does not replay the setup prompt as a first run. Run now requires an explicit instruction; configured triggers retain their existing behavior.
+The composer shows the model the fleet uses. The first message creates the fleet and opens its conversation once the server confirms its identity. Keep unsent text available when creation fails.
 
 ### Chat state and activity
 
@@ -766,15 +719,6 @@ Load full output when requested. Pair loading and running labels with the shared
 Use react-window for output above 200 retained lines so long output mounts only the visible rows.
 Preserve wrapped lines, original line numbers, keyboard scrolling and literal text.
 Provide search across every retained line and copy the complete output, including lines outside the current viewport.
-
-The compact setup status shows actual reading, sending and saving progress.
-Show a success tick only for a confirmed saved version.
-A new setup request replaces the previous confirmation and its fleet action.
-
-Confirmed saving opens the fleet conversation.
-
-Attachable capabilities are deferred to the M252 discussion.
-Keep those navigation actions separate from the Save changes control.
 
 Completed replies keep the same markdown renderer and text nodes used while streaming.
 Reserve reply-action space before completion. Completing a live reply must not enable layout skipping or change its scroll position.
@@ -827,7 +771,7 @@ cannot determine whether arbitrary prose is a technical value; that remains a re
 
 ## Motion
 
-Fleet setup and Fleet conversation share a moving text highlight for active progress labels.
+Fleet conversation uses a moving text highlight for active progress labels.
 Use the existing `tool-shimmer` timing and `data-chat-loading` selector in `interactions.css`.
 Animate paint without changing text geometry, and remove the loading state when work settles.
 
@@ -872,19 +816,13 @@ An original, low-contrast dithered signal field may use an SVG gradient mask and
 brief entrance animation behind the hero. It cannot intercept input or carry essential information.
 Foreground surfaces stay readable. Use the shared palette and purposeful depth when choosing decorative treatments.
 
-The conversation types a problem, refines setup, shows a reviewed save, and continues into scheduled work.
-Save creates an independent fleet from the reviewed setup.
+The conversation starts work from its first message and continues in the created fleet.
 
-Improve and Apply revise an existing fleet through a new review rather than creating another fleet.
-Use native setup records throughout. Do not offer file imports, bundle exports, `SKILL.md`, or `TRIGGER.md` authoring.
+### Workspace fleets
 
-### Workspace fleets and setups
+**Your Fleets** lists authorized fleets by name and marks archived fleets. Reuse a list read within 30 seconds when switching between listed fleets. Refresh the loaded pages on a later switch.
 
-The **Fleets** picker lists saved, authorized fleets with names and status. Put Delete in Fleet actions, away from the main navigation target.
-
-Private drafts appear under **Unfinished setups** on **New fleet**. Each row offers **Resume** and a delete control.
-
-Keep private setup status available to screen readers and in the tooltip. Active fleet dots use the shared mint token.
+A temporary list failure leaves the last loaded names visible.
 
 App chat titles use Manrope 13px / 20px, with ellipsis and the full title available on hover or keyboard focus.
 Tool activity uses 16px icons with text for every outcome.
@@ -896,39 +834,13 @@ Keep 8px inner padding around activity controls; keyboard focus uses one solid i
 
 Distinguish loading, unavailable history, and a successful empty list. Failed loading must never look like an empty history.
 
-Keep every accepted message and saved assistant reply in the creator-private draft, subject to deletion and the documented retention rules. Do not select a subset of messages to retain based on model judgment.
-
-During conversation, the selected setup model turns the person's requirements into proposed instructions and configuration through `propose_setup`. The runner checks each proposal. The daemon checks the run's kept proposal again at report, then stores a new immutable candidate revision. Validation proves supported structure and policy; it does not prove that every conversational requirement was captured.
-
-Keep **Instructions** in the setup chat menu throughout the conversation.
-**Instructions** opens a tall side dialog on desktop and a full-screen editor on mobile.
-
-Questions and requested changes continue the conversation. A standalone Save command finalizes the current decisions with the model, then saves the checked setup. The transcript stays private.
-
-Saved fleets return to the same setup page through **Edit setup**. Instructions use the same menu control.
-
-Opening the editor creates no fleet and requests no run. Keep the composer mounted and retain unsent text while the dialog is open.
-
-The instruction editor offers **Save changes** and **Cancel**. Warn before discarding unsaved edits; a conflicting setup change retains the manual text.
-
 Failed replies retain partial answers and explain the next action in plain language.
 Keep diagnostic details behind **View details**. Unknown usage stays unknown; never substitute zero tokens or zero cost.
 
 **Try again** sends the original request. Saved chat offers it only for the signed-in person's own request.
 
-Show **Saving setup...** through chat finalization and saving, then one white **Save done vN** acknowledgement in chronological order. Readiness marks and access actions remain distinct.
-
-Saving changes updates the version from the server response. New runs use the saved setup, while runs already started keep their version. Accepted work can still be running.
-
-Sending **Save** in chat requests no first run. Configured automatic triggers can start work once setup is ready.
-
-Keep unfinished setup and first-run recovery, schedule registration warnings, and retry actions visible. Successful setup does not add an expandable report to the conversation.
-Show the saved acknowledgement and recovery actions within the conversation on narrow screens and short windows.
-
-Open the confirmed fleet conversation after saving; do not require another navigation action.
-
 Review dialogs use the shared viewport height limit and scroll within it.
-Setup and runtime compact older conversation near 90 percent of the selected model window, or earlier when operating limits or output headroom require it.
+Fleet chat compacts older conversation near 90 percent of the selected model window, or earlier when operating limits or output headroom require it.
 Keep the original history.
 
 If compaction fails or pinned input still cannot fit, show the recorded failure and recovery action.
@@ -997,9 +909,9 @@ Loading, success, and failure states remain visible where the action began.
 
 Reuse the signed-in session and server credential helper; preserve current access checks on every private read, write, and stream reconnect.
 
-Use one private Server-Sent Events (SSE) connection for active setup. Coalesce progress hints into durable-state refreshes and reconcile on reconnect. A healthy quiet stream must not become a polling loop.
+Use one private Server-Sent Events (SSE) connection for an active fleet conversation. Coalesce progress hints into durable-state refreshes and reconcile on reconnect. A healthy quiet stream must not become a polling loop.
 
-Abort streams and reads when the account, workspace, creator, or draft changes.
+Scope streams and reads to the active account, workspace, person and fleet.
 Keep private conversation responses uncached. Cache public assets and immutable reusable content only within the appropriate authorization scope; live readiness, permissions, and mutable Library heads require current reads.
 
 If navigation leaves an empty route slot, the shell shows a spinner until route content returns.
@@ -1133,8 +1045,6 @@ Use a compact, dismissible error notice for immediate feedback, with a small err
 
 Keep retries scoped to the original operation and prevent duplicate submissions. Errors needing access, configuration or sign-in show that specific recovery instead of a retry loop. This follows Indy's November 11, 2026 error reference.
 
-Setup-chat failures flash for six seconds, pausing while hovered or focused. Quiet recovery stays beside the composer after dismissal; private-data access refusals retain their lock and reload action.
-
 Identify failed model and chat-history reads separately, and retain safe backend guidance. A failed read never establishes that a workspace has no configured model.
 
 
@@ -1159,7 +1069,7 @@ The Usage metric uses the shared 32px role, a 27px line box, weight 750 and norm
 
 The chart section keeps its 206px minimum height and 32px gap before the fleet table section; its heading-to-table gap is 16px. Missing daily buckets render an unavailable state within that section.
 
-Saved fleet composers stay docked to the assistant-ui viewport at phone and desktop widths. Empty setup content remains scrollable in normal flow. Phone Summary stays in the conversation flow; the desktop Summary retains a 24px top inset while scrolling.
+Saved fleet composers stay docked to the assistant-ui viewport at phone and desktop widths. New fleet content remains scrollable in normal flow. Phone Summary stays in the conversation flow, and desktop Summary retains a 24px top inset.
 
 Comparison captures label top-of-thread and latest positions separately.
 
@@ -1207,41 +1117,17 @@ Summary and composer panels use 22px corners on all sides. Record all four radii
 
 The reported run cost uses Manrope at 13px/20px and weight 500 in the secondary text colour. It aligns with the header title baseline. Amounts retain their reported precision.
 
-The header shortcut starts a new fleet through the shared navigation intent on resource pages and saved conversations, including archived fleets. Edit setup remains in Fleet actions.
+The header shortcut starts a new fleet through the shared navigation intent on resource pages and saved conversations, including archived fleets.
 
-### Fleet setup review
+### Fleet conversation context
 
-Use a single divider after the setup metadata. Use the same 12px size for the amount and period, with weight 650 for the amount. Place the next wake-up on the same 28px row rhythm.
-
-Show the reviewed runtime model in Fleet setup.
-
-Align section headings and the leading edge of 16 px icons. Start row text 8 px after each icon. Use the same text column for Changes, Output, Sources and setup rows.
-
-The broader sections are Repositories, Public internet access and Secrets. Tools sit in a small row with repositories. Remove Purpose, repeated recurrence prose and the separate Review setup panel.
+Align section headings and the leading edge of 16px icons. Start row text 8px after each icon. Use the same text column for Changes, Output and Sources.
 
 Public internet access has Allow all and Packages. Keep the package label on one line and align the switches to the same right edge as the Summary values. When Allow all is enabled, disable the package option while preserving its selection.
-
-Setup and conversation use the shared responsive Summary widths of 248px, 228px and 216px on desktop. Keep existing domain rules in configuration; no additional domain editor appears in this Summary.
-
-Edits use the native creator-owned draft and preserve unrelated policy.
-
-Show each secret name beside the key icon and align its mask dots with the values column. Keep repository, secret and model names on one line. Longer names scroll on hover, with manual scrolling for touch, keyboard and reduced motion.
-
-A missing review stays unknown. Before a candidate exists, show only “Your setup will appear here as you chat.”
-
-The desktop Summary scrolls only when the viewport requires it; phone layouts place it inline.
 
 The composer flap owns Next wake-up and its edit, pause and removal controls. Display recorded instants in the viewer's timezone. Registration, pause and removal failures stay explicit with native retry.
 
 Proposed schedules remain pending until saved and registered. Omit the flap when a completed read confirms no schedules. Summary contains no duplicate wake-up row or “Not scheduled” label.
-
-**Save** is the flap above the composer, without a popup or a separate Save fleet button. It saves a fleet or updates its existing setup revision.
-
-The flap never starts a first run. Configured triggers retain their native behavior.
-
-While pending it shows a spinner, a muted-to-bright label and whole seconds. Only confirmed native receipts show success.
-
-Unconfirmed writes retain Retry and the original operation identity. Natural chat Save remains available through the same native fleet-saving path.
 
 Queued, thinking and working replies use three dots on one line with a stable accessible status label.
 
@@ -1255,8 +1141,8 @@ Team counts share their heading’s center line. The Fleets rail section can col
 
 ### Domain feature organization
 
-Group components under activity, approvals, conversation, events, models, schedules, setup, shared, tasks and usage. Setup editors load on intent.
+Group components under activity, approvals, conversation, events, fleet, models, schedules, shared, tasks and usage.
 
-Keep stream ownership in its existing provider and native requests in DraftClient. Avoid compatibility barrels that pull unrelated features into a route.
+Keep stream ownership in its provider and native requests in the scoped fleet creation and message delivery hooks.
 
 A directory's file count does not establish page-load cost. Compare static imports and production chunks before claiming a loading improvement. Appsmith's route/page loader structure informed this split; its state management and bundler are not transplanted into Next.js.

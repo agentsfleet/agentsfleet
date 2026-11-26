@@ -14,12 +14,19 @@ export class RecentCollection<T extends {id: string}> {
   #snapshot: Snapshot<T> = {items: [], more: false, loading: true, error: null};
   #cursor: string | null = null;
   #loading: Promise<void> | null = null;
+  #readAt = -Infinity;
+  #pageCount = 0;
 
   constructor(readonly path: string, readonly schema: z.ZodType<Page<T>>) {}
   readonly getSnapshot = (): Snapshot<T> => this.#snapshot;
   readonly subscribe = (listener: () => void): (() => void) => {this.#listeners.add(listener); return () => this.#listeners.delete(listener);};
   dispose(): void {this.#owner.abort(); this.#listeners.clear(); this.#removed.clear(); this.#snapshot = {items: [], more: false, loading: false, error: null};}
   remove(id: string): void {this.#removed.add(id); this.#update({items: this.#snapshot.items.filter(item => item.id !== id)});}
+  refresh(maxAgeMs: number): Promise<void> {
+    if (!this.#snapshot.error && performance.now() - this.#readAt < maxAgeMs) return Promise.resolve();
+    return this.load();
+  }
+
   load(append = false): Promise<void> {
     if (this.#loading) return this.#loading;
     const cursor = append ? this.#cursor : null;
@@ -31,20 +38,31 @@ export class RecentCollection<T extends {id: string}> {
     return pending;
   }
 
-  async #read(cursor: string | null, append: boolean): Promise<void> {
+  async #read(after: string | null, append: boolean): Promise<void> {
     this.#update({loading: true, error: null});
-    const query = new URLSearchParams({limit: String(LIST_PAGE_LIMIT)});
-    if (cursor) query.set("starting_after", cursor);
     try {
-      const page = await liveRequest({path: `${this.path}?${query}`}, this.schema, this.#owner.signal);
-      this.#owner.signal.throwIfAborted();
       const rows = new Map((append ? this.#snapshot.items : []).map(item => [item.id, item]));
-      for (const item of page.items) if (!this.#removed.has(item.id)) rows.set(item.id, item);
-      this.#cursor = page.next_cursor === cursor ? null : page.next_cursor;
-      this.#update({items: [...rows.values()], more: this.#cursor !== null});
+      // A refresh replaces the loaded pages together, using the new cursor
+      // chain. Never fetch a page the person hasn't already opened.
+      const limit = append ? 1 : Math.max(1, this.#pageCount);
+      let cursor = after;
+      let count = 0;
+      do {
+        const query = new URLSearchParams({limit: String(LIST_PAGE_LIMIT)});
+        if (cursor) query.set("starting_after", cursor);
+        const page = await liveRequest({path: `${this.path}?${query}`}, this.schema, this.#owner.signal);
+        this.#owner.signal.throwIfAborted();
+        for (const item of page.items) rows.set(item.id, item);
+        cursor = page.next_cursor === cursor ? null : page.next_cursor;
+        count += 1;
+      } while (cursor && count < limit);
+      this.#cursor = cursor;
+      this.#pageCount = append ? this.#pageCount + count : count;
+      if (!append) this.#readAt = performance.now();
+      this.#update({items: [...rows.values()].filter(item => !this.#removed.has(item.id)), more: cursor !== null});
     } catch (cause) {
       if (this.#owner.signal.aborted) return;
-      if (losesAccess(cause)) {this.#cursor = null; this.#update({items: [], more: false});}
+      if (losesAccess(cause)) {this.#cursor = null; this.#pageCount = 0; this.#update({items: [], more: false});}
       this.#update({error: "Fleets could not be loaded."});
     } finally {this.#update({loading: false});}
   }
