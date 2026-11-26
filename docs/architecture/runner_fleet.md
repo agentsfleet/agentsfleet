@@ -97,7 +97,9 @@ Capability flows up. At boot the runner probes Landlock, seccomp, its delegated 
 
 Every heartbeat carries that probe report. The daemon compares assigned against achievable and writes `degraded_reason` when the host falls short ([reconcile](../../rustd/crates/daemon/afd_runner/src/reconcile.rs)).
 
-Every heartbeat also carries `host`: the processors the runner may use, its total memory, and its free disk. The free disk is on the file system that holds its sandboxes ([host facts](../../rustd/crates/runner/afr_supervisor/src/capability/host.rs)). The daemon keeps the latest value of each on the runner row, and `agentsfleet platform runners list` and `show` print them. Memory comes from Linux's `sysinfo(2)`, so a runner built for another system reports none.
+Every heartbeat also carries `host`: the processors the runner may use, its total memory, and its free disk. The free disk is on the file system that holds its sandboxes ([host facts](../../rustd/crates/runner/afr_supervisor/src/capability/host.rs)).
+
+The daemon keeps the latest value of each on the runner row, and `agentsfleet platform runners list` and `show` print them. Memory comes from Linux's `sysinfo(2)`, so a runner built for another system reports none.
 
 The check fails closed on both sides. The daemon issues nothing to a degraded or unreadable row, and a runner with no readable policy takes no work.
 
