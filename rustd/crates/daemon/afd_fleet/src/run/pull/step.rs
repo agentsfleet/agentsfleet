@@ -125,9 +125,13 @@ mod tests {
         let line = log.only(super::EVENT_ASSIGNMENT_LOST);
         drop(log);
         // A connection that no longer proves its host rings nothing: the
-        // same connection's next pass would be refused the same way.
+        // same connection's next pass would be refused the same way. Its line
+        // names that guard, and carries no census, because none was read.
+        let log = Capture::install();
         let unproven =
             super::assignment_lost::<()>(&runner, &test_dead::acquired(), Refused::HostUnproven);
+        let other = log.only(super::EVENT_ASSIGNMENT_LOST);
+        drop(log);
 
         assert!(
             matches!((step, unproven), (Step::Lost, Step::Stop)),
@@ -141,6 +145,15 @@ mod tests {
                 line.field("worker_count"),
             ],
             [Some("census_full"), Some("3"), Some("1"), Some("4")]
+        );
+        assert_eq!(
+            [
+                other.field("reason"),
+                other.field("occupied"),
+                other.field("held"),
+                other.field("worker_count"),
+            ],
+            [Some("host_unproven"), None, None, None]
         );
     }
 

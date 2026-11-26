@@ -151,6 +151,34 @@ async fn a_turn_whose_assignment_was_lost_is_offered_before_newer_sticky_work() 
     fixtures.cleanup().await;
 }
 
+// Value: protects=fleets that tie on hold, hint and locality are offered oldest
+// turn first; fails_when=the tie-break is random, so which waiting fleet runs
+// next changes from pass to pass and an old turn can wait behind newer ones;
+// seam=the ledger selection and the assignment on live Postgres.
+#[tokio::test]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn fleets_that_tie_are_offered_oldest_turn_first() {
+    let fixtures = Fixtures::create().await;
+    let (first, workspace, tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
+    let runs = fixtures.runs_with_dead_bus();
+    let mut queued = vec![enqueue(&fixtures, &first, &workspace).await];
+    for _ in 0..4 {
+        let fleet = afd_db::test_util::mint_id();
+        fixtures
+            .seed_fleet(&fleet, &workspace, &tenant, &placement_tag(&first))
+            .await;
+        queued.push(enqueue(&fixtures, &fleet, &workspace).await);
+    }
+
+    let mut offered = Vec::with_capacity(queued.len());
+    while let Some(acquired) = next(&runs, &runner).await {
+        offered.push(acquired.turn_id);
+    }
+
+    assert_eq!(offered, queued, "each pass takes the oldest waiting turn");
+    fixtures.cleanup().await;
+}
+
 /// Ends `fleet`'s run on `turn` and frees its worker and thread, leaving the
 /// runner as the thread's last, as a processed report leaves it.
 async fn end_run(fixtures: &Fixtures, fleet: &Uuid7, turn: &Uuid7) {
