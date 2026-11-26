@@ -22,7 +22,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Categories:** API, CLI, DOCS, INFRA, OBS
 
-**Batch:** B1. One Pull Request carries M258_001, M258_002 and M258_003, built in that order (O1)
+**Batch:** B1. One Pull Request carries M258_001, M258_003 and M258_002, built in that order (O1; M258_002's D22 moves bubblewrap's deletion before it)
 
 **Depends on:** none. The web and harness milestone, M259, follows this one (assumption O5)
 
