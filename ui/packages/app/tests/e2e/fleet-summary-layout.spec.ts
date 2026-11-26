@@ -20,9 +20,7 @@ test("work stays in a sidebar while the ordinary chat composer preserves its dra
     await page.setViewportSize(window);
     await expect(page.getByRole("link", {name: /^Pull request #123 ·/})).toHaveAttribute("href", "https://github.com/linkwarden/linkwarden/pull/123");
     const panel = page.getByRole("region", {name: "Current work"});
-    const durableTaskList = panel.getByRole("button", {name: /^Tasks/});
-    await expect(durableTaskList).toBeVisible();
-    if (await durableTaskList.getAttribute("aria-expanded") !== "true") await durableTaskList.click();
+    await expect(panel.getByRole("heading", {name: "Tasks", exact: true})).toBeVisible();
     for (const section of ["Pull requests", "Sources"]) await expect(panel.getByRole("heading", {name: section, exact: true})).toBeAttached();
     await expect(panel.getByRole("heading", {name: "Output", exact: true})).toHaveCount(0);
     await expect(panel.getByRole("heading", {name: "Changes", exact: true})).toHaveCount(0);

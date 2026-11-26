@@ -20,15 +20,21 @@ describe("NavItem", () => {
     expect(link).toHaveAttribute("href", "/fleets");
   });
 
-  it("gives the New fleet rail action a quiet accent and preserves the compact fleet list", () => {
-    render(<>
+  it("accents New fleet only when its own destination is active", () => {
+    const {rerender} = render(<>
       <NavItem href="/fleets/new" appearance="rail" tone="accent">New fleet</NavItem>
-      <NavItem href="/fleets/review" appearance="list" active>Readiness review</NavItem>
+      <NavItem href="/secrets" appearance="rail" active>Secrets</NavItem>
+      <NavItem href="/fleets/review" appearance="list">Readiness review</NavItem>
     </>);
-    expect(screen.getByRole("link", {name: "New fleet"})).toHaveClass("min-h-11", "bg-primary/10");
+    const create = screen.getByRole("link", {name: "New fleet"});
+    expect(create).toHaveClass("min-h-11", "hover:bg-primary/6", "data-[active=true]:bg-primary/15");
+    expect(create).not.toHaveClass("bg-primary/10");
+    expect(create).not.toHaveAttribute("aria-current");
+    expect(screen.getByRole("link", {name: "Secrets"})).toHaveAttribute("aria-current", "page");
     const fleet = screen.getByRole("link", {name: "Readiness review"});
     expect(fleet).toHaveClass("text-label", "leading-label");
-    expect(fleet).toHaveAttribute("aria-current", "page");
+    rerender(<NavItem href="/fleets/new" appearance="rail" tone="accent" active>New fleet</NavItem>);
+    expect(screen.getByRole("link", {name: "New fleet"})).toHaveAttribute("aria-current", "page");
   });
 
   it("composes router links without nested anchors or losing click handlers", () => {

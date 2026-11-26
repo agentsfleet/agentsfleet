@@ -42,7 +42,7 @@ describe("fleet stream retry lifecycle", () => {
     unsubscribe();
   });
 
-  it("stops automatic retries and lets the operator start fresh", () => {
+  it("keeps an immediate retry in progress when the operator reopens the fleet", () => {
     const unsubscribe = subscribe("ws_1", FLEET_ID, [], () => {});
     for (let attempt = 0; attempt < 6; attempt += 1) {
       failCurrentConnection();
@@ -51,9 +51,13 @@ describe("fleet stream retry lifecycle", () => {
     expect(getSnapshot(FLEET_ID).connectionStatus).toBe(CONNECTION_STATUS.OFFLINE);
     const beforeRetry = FakeEventSource.instances.length;
     retryConnection(FLEET_ID);
-    expect(getSnapshot(FLEET_ID).connectionStatus).toBe(CONNECTION_STATUS.CONNECTING);
+    expect(getSnapshot(FLEET_ID).connectionStatus).toBe(CONNECTION_STATUS.RECONNECTING);
     expect(FakeEventSource.instances).toHaveLength(beforeRetry + 1);
     unsubscribe();
+    const release = subscribe("ws_1", FLEET_ID, [], () => {});
+    expect(getSnapshot(FLEET_ID).connectionStatus).toBe(CONNECTION_STATUS.RECONNECTING);
+    expect(FakeEventSource.instances).toHaveLength(beforeRetry + 1);
+    release();
   });
 
   it("cancels a scheduled reconnect before retrying immediately", () => {

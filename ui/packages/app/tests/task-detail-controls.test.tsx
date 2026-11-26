@@ -14,8 +14,6 @@ it("refreshes both saved task details and the parent after confirmed control and
   vi.mocked(controlDurableTask).mockResolvedValue({kind: "confirmed", value});
   vi.mocked(editDurableTaskStatements).mockResolvedValue({kind: "confirmed", value});
   render(<DurableTaskPanel workspaceId="w" fleetId="f" subject="person" revision={1} />);
-  fireEvent.click(await screen.findByRole("button", {name: /^Tasks/}));
-  fireEvent.click(await screen.findByRole("button", {name: new RegExp(task.title)}));
   await screen.findByRole("button", {name: "Pause"});
   fireEvent.click(screen.getByRole("button", {name: "Pause"}));
   await waitFor(() => expect(readDurableTasks).toHaveBeenCalledTimes(2));

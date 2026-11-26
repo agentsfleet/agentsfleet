@@ -31,8 +31,6 @@ afterEach(() => {cleanup(); vi.unstubAllGlobals();});
 
 async function openTask() {
   render(<DurableTaskPanel workspaceId="workspace" fleetId="fleet" subject="person" revision={0} />);
-  fireEvent.click(await screen.findByRole("button", {name: /^Tasks/}));
-  fireEvent.click(await screen.findByRole("button", {name: /PR #123 repair/}));
   await waitFor(() => expect(screen.getByRole("button", {name: "Edit statements"})).toHaveProperty("disabled", false));
 }
 function edit(text: string) {

@@ -3,7 +3,6 @@ import { cleanup, render, screen, waitFor, within } from "@testing-library/react
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import {FleetDurableTaskProvider} from "@/components/domain/tasks/FleetTaskProvider";
-import {DurableTaskDetailView} from "@/components/domain/tasks/TaskDetail";
 import { DurableTaskPanel } from "@/components/domain/tasks/TaskPanel";
 import { recentDurableTaskIds } from "@/components/domain/tasks/task-references";
 import { loadDurableTaskDetails } from "@/components/domain/tasks/task-detail-reader";
@@ -42,12 +41,12 @@ it("retains Outputs when current work finishes and recovers them after reload fr
   unfinished = false;
   view.rerender(<DurableTaskPanel {...SCOPE} revision={1} turns={turns} />);
   await waitFor(() => expect(network).toHaveBeenCalledTimes(4));
-  expect(screen.queryByRole("button", {name: /^Tasks/})).toBeNull();
+  expect(screen.queryByRole("region", {name: "Tasks"})).toBeNull();
   expect(outputs().getByRole("link")).toHaveProperty("href", TARGET.url);
   view.unmount();
   render(<DurableTaskPanel {...SCOPE} turns={turns} />);
   await waitFor(() => expect(network).toHaveBeenCalledTimes(6));
-  expect(screen.queryByRole("button", {name: /^Tasks/})).toBeNull();
+  expect(screen.queryByRole("region", {name: "Tasks"})).toBeNull();
   await screen.findByRole("region", {name: "Pull requests"});
   expect(await outputs().findByRole("link")).toHaveProperty("href", TARGET.url);
   expect(screen.queryByRole("button", {name: /PR #123 repair/})).toBeNull();
@@ -73,7 +72,7 @@ it("hides all metadata until list authorization, including loading after access 
   retry.resolve(new Response(null, {status: 403}));
   await screen.findByText("Current work is unavailable.");
   const pending = Promise.withResolvers<Response>(); network.mockReturnValue(pending.promise);
-  await userEvent.click(screen.getByRole("button", {name: "Retry connection"}));
+  await userEvent.click(screen.getByRole("button", {name: "Reload current work"}));
   for (const name of ["Sources", "Outputs", "Changes", "Tasks"]) expect(screen.queryByRole("region", {name})).toBeNull();
   expect(network).toHaveBeenCalledTimes(4);
   pending.resolve(Response.json({items: [], next_cursor: null}));
@@ -107,11 +106,9 @@ it("keeps archived task history readable without stale approval or task mutation
   vi.stubGlobal("fetch", network);
   render(<FleetDurableTaskProvider {...SCOPE} readOnly approvals={{count: 1, href: "/old-approvals"}}>
     <DurableTaskPanel {...SCOPE} />
-    <DurableTaskDetailView workspaceId={SCOPE.workspaceId} fleetId={SCOPE.fleetId} task={task}
-      resource={{kind: "ready", value: saved}} retry={vi.fn()} onChanged={vi.fn()} />
   </FleetDurableTaskProvider>);
-  await screen.findByRole("button", {name: /^Tasks/});
-  expect(screen.getByText("What counts as done?")).toBeTruthy();
+  await screen.findByRole("region", {name: "Tasks"});
+  expect(await screen.findByText("What counts as done?")).toBeTruthy();
   expect(screen.getByText(saved.context.objective)).toBeTruthy();
   for (const name of ["Approve", "Deny", "Pause", "Resume", "Stop", "Review latest saved criteria"])
     expect(screen.queryByRole("button", {name})).toBeNull();

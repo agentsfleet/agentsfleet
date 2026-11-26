@@ -22,20 +22,20 @@ function requestPath(input: RequestInfo | URL): string {
   return typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
 }
 
-it("reconciles stream readiness and keeps saved details closed until requested", async () => {
+it("reconciles stream readiness and opens the first task without a click", async () => {
   const network = vi.fn<typeof fetch>().mockResolvedValueOnce(page([]))
     .mockResolvedValueOnce(page([summary()])).mockResolvedValueOnce(Response.json(detail()));
   vi.stubGlobal("fetch", network);
   render(<LiveWork />, {wrapper: streamWrapper});
   await screen.findByText("No outputs yet.");
   act(() => {FakeEventSource.instances[0]!.open(); FakeEventSource.instances[0]!.emit({kind: FRAME_KIND.HELLO, fleet_ids: [SCOPE.fleetId]});});
-  await userEvent.click(await screen.findByRole("button", {name: /^Tasks/}));
   const task = await screen.findByRole("button", {name: /PR #123 repair/});
-  expect(task.getAttribute("aria-expanded")).toBe("false");
-  expect(screen.queryByText("What counts as done?")).toBeNull();
-  await userEvent.click(task);
+  expect(task.getAttribute("aria-expanded")).toBe("true");
   expect(await within(screen.getByLabelText("PR #123 repair details")).findByText(detail().context.objective)).toBeTruthy();
   expect(screen.queryByRole("button", {name: "Refresh current work"})).toBeNull();
+  await userEvent.click(task);
+  expect(task.getAttribute("aria-expanded")).toBe("false");
+  expect(screen.queryByText("What counts as done?")).toBeNull();
   expect(network).toHaveBeenCalledTimes(3);
 });
 
@@ -48,12 +48,11 @@ it("keeps work keyboard-expandable and rereads the shared evidence on native cha
   vi.stubGlobal("fetch", network);
   render(<LiveWork />, {wrapper: streamWrapper});
   await waitFor(() => expect(network).toHaveBeenCalledTimes(4));
-  const disclosure = screen.getByRole("button", {name: /^Tasks/});
-  expect(disclosure.getAttribute("aria-expanded")).toBe("false");
-  await userEvent.click(disclosure);
-  expect(screen.queryByText("What counts as done?")).toBeNull();
   const waiting = screen.getByRole("button", {name: /PR #123 repair/});
   waiting.focus(); await userEvent.keyboard("{Enter}");
+  expect(waiting.getAttribute("aria-expanded")).toBe("false");
+  await userEvent.keyboard("{Enter}");
+  expect(waiting.getAttribute("aria-expanded")).toBe("true");
   await waitFor(() => expect(network.mock.calls.some(([path]) => requestPath(path).endsWith(DURABLE_TASK_IDS[0]))).toBe(true));
   const before = network.mock.calls.length;
   act(() => {
@@ -73,15 +72,13 @@ it("retains confirmed work during a failed read, then clears it on access loss",
   const network = vi.fn<typeof fetch>().mockImplementation(async input => requestPath(input).includes("?limit=") ? list.clone() : Response.json(detail()));
   vi.stubGlobal("fetch", network);
   const view = render(<DurableTaskPanel {...SCOPE} />);
-  await userEvent.click(await screen.findByRole("button", {name: /^Tasks/}));
-  await userEvent.click(await screen.findByRole("button", {name: /PR #123 repair/}));
   await screen.findByText("What counts as done?");
   list = new Response(null, {status: 503});
   view.rerender(<DurableTaskPanel {...SCOPE} revision={1} />);
   expect(await screen.findByText(/Last confirmed progress is shown/)).toBeTruthy();
   expect(within(screen.getByLabelText("PR #123 repair details")).getByText(detail().context.objective)).toBeTruthy();
   list = new Response(null, {status: 403});
-  await userEvent.click(screen.getByRole("button", {name: "Retry connection"}));
+  await userEvent.click(screen.getByRole("button", {name: "Reload current work"}));
   expect(await screen.findByText("Current work is unavailable.")).toBeTruthy();
   expect(screen.queryByText("PR #123 repair")).toBeNull();
   list = page([]);
@@ -111,12 +108,12 @@ it.each([[1, "Request details unavailable."], [2, "Request details unavailable."
   view.rerender(<DurableTaskPanel {...SCOPE} revision={1} approvals={approvals} />);
   await waitFor(() => expect(screen.queryByText(label)).toBeNull());
   const pending = Promise.withResolvers<Response>(); network.mockReturnValue(pending.promise);
-  await userEvent.click(screen.getByRole("button", {name: "Retry connection"}));
+  await userEvent.click(screen.getByRole("button", {name: "Reload current work"}));
   expect(screen.queryByText(label)).toBeNull();
   await act(async () => pending.resolve(new Response(null, {status: 503})));
   expect(screen.queryByText(label)).toBeNull();
   network.mockResolvedValue(page([]));
-  await userEvent.click(screen.getByRole("button", {name: "Retry connection"}));
+  await userEvent.click(screen.getByRole("button", {name: "Reload current work"}));
   expect(await screen.findByText(label)).toBeTruthy();
   view.rerender(<DurableTaskPanel {...SCOPE} subject={null} approvals={approvals} />);
   expect(screen.queryByText(label)).toBeNull();
@@ -126,18 +123,16 @@ it("recovers failed details and preserves previous evidence until a missing resp
   let response = new Response(null, {status: 503});
   vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockImplementation(async input => requestPath(input).includes("?limit=") ? page([summary()]) : response.clone()));
   const view = render(<DurableTaskPanel {...SCOPE} />);
-  await userEvent.click(await screen.findByRole("button", {name: /^Tasks/}));
-  await userEvent.click(await screen.findByRole("button", {name: /PR #123 repair/}));
-  expect(await screen.findByText("Saved progress is unavailable.")).toBeTruthy();
+  expect(await screen.findByText("Couldn’t load task details.")).toBeTruthy();
   response = Response.json(detail());
-  await userEvent.click(screen.getByRole("button", {name: "Retry details"}));
+  await userEvent.click(screen.getByRole("button", {name: "Reload details"}));
   expect(await screen.findByText("What counts as done?")).toBeTruthy();
   response = new Response(null, {status: 503});
   view.rerender(<DurableTaskPanel {...SCOPE} revision={1} />);
   expect(await screen.findByText(/Last confirmed details are shown/)).toBeTruthy();
   response = new Response(null, {status: 404});
   view.rerender(<DurableTaskPanel {...SCOPE} revision={2} />);
-  expect(await screen.findByText("Saved progress is unavailable.")).toBeTruthy();
+  expect(await screen.findByText("Couldn’t load task details.")).toBeTruthy();
   expect(screen.queryByText("What counts as done?")).toBeNull();
 });
 
@@ -166,22 +161,34 @@ it("shares exact native target and wait evidence between closed rows and outputs
   const target = {kind: "existing_pr" as const, repository: "a/b", number: 123, branch: "repair", head: "a".repeat(40), tree: "b".repeat(40), url: "https://github.com/a/b/pull/123", workflows: []};
   const dependency = {active: true, head: target.head, updated_at: "2026-11-03T10:00:00Z", checks: [{workflow_id: 42, run_id: 84, run_number: 42, run_attempt: 1, status: "queued", conclusion: null}]};
   let saved = {...value, context: {...value.context, target}, dependency};
-  const network = vi.fn<typeof fetch>().mockImplementation(async input => requestPath(input).includes("?limit=") ? page([summary()]) : Response.json(saved));
+  let current = summary();
+  let refreshFailed = false;
+  const network = vi.fn<typeof fetch>().mockImplementation(async input => {
+    if (requestPath(input).includes("?limit=")) return page([current]);
+    return refreshFailed ? new Response(null, {status: 503}) : Response.json(saved);
+  });
   vi.stubGlobal("fetch", network);
   const view = render(<DurableTaskPanel {...SCOPE} />);
-  await userEvent.click(await screen.findByRole("button", {name: /^Tasks/}));
   const row = await screen.findByRole("button", {name: /Waiting for CI run #42 on aaaaaaa/});
-  expect(row.getAttribute("aria-expanded")).toBe("false");
+  expect(row.getAttribute("aria-expanded")).toBe("true");
   expect(within(screen.getByRole("region", {name: "Pull requests"})).getByRole("link").getAttribute("href")).toBe(target.url);
-  await userEvent.click(row);
   expect(await screen.findByText("What counts as done?")).toBeTruthy();
   expect(network).toHaveBeenCalledTimes(2);
+  await userEvent.click(row);
+  expect(row.getAttribute("aria-expanded")).toBe("false");
   saved = {...saved, dependency: {...dependency, checks: []}};
   view.rerender(<DurableTaskPanel {...SCOPE} revision={1} />);
-  expect(await screen.findByRole("button", {name: /Recorded check wait is still active/})).toBeTruthy();
+  expect(await screen.findByRole("button", {name: /Waiting for the fleet to confirm the checks/})).toBeTruthy();
   saved = {...saved, dependency: {...dependency, checks: [{...dependency.checks[0]!, run_number: 0}]}};
   view.rerender(<DurableTaskPanel {...SCOPE} revision={2} />);
   expect(await screen.findByRole("button", {name: /Waiting for recorded checks/})).toBeTruthy();
+  refreshFailed = true;
+  view.rerender(<DurableTaskPanel {...SCOPE} revision={3} />);
+  expect(await screen.findByRole("button", {name: /Last confirmed.*Waiting for recorded checks/})).toBeTruthy();
+  current = summary(DURABLE_TASK_IDS[0], "paused", 2);
+  view.rerender(<DurableTaskPanel {...SCOPE} revision={4} />);
+  const paused = await screen.findByRole("button", {name: /PR #123 repair.*Paused/});
+  expect(paused.textContent).not.toContain("Waiting");
 });
 
 it("distinguishes paused and attention-needed work while retaining a confirmed recovery point", async () => {
@@ -192,31 +199,30 @@ it("distinguishes paused and attention-needed work while retaining a confirmed r
   });
   vi.stubGlobal("fetch", network);
   render(<DurableTaskPanel {...SCOPE} />);
-  const disclosure = await screen.findByRole("button", {name: /^Tasks/});
-  expect(disclosure.querySelector('[aria-label="Needs attention"]')).toBeTruthy();
-  await userEvent.click(disclosure);
-  const paused = await screen.findByRole("button", {name: /PR #123 repair/});
-  expect(paused.querySelector('[aria-label="Paused"]')).toBeTruthy();
-  for (const title of ["PR #124 repair", "PR #125 repair"]) {
-    expect(within(screen.getByRole("region", {name: /^Tasks/})).getByRole("button", {name: new RegExp(title)}).querySelector('[aria-label="Needs attention"]')).toBeTruthy();
-  }
+  const taskList = await screen.findByRole("region", {name: "Tasks"});
+  const titles = within(taskList).getAllByRole("button", {name: /PR #\d+ repair/}).map(button => button.textContent);
+  expect(titles).toEqual([expect.stringMatching(/PR #124 repair.*Blocked/),
+    expect.stringMatching(/PR #125 repair.*Attempts exhausted/), expect.stringMatching(/PR #123 repair.*Paused/)]);
+  const paused = within(taskList).getByRole("button", {name: /PR #123 repair.*Paused/});
   await userEvent.click(paused);
   expect(await screen.findByText(/Saved recovery point available/)).toBeTruthy();
   expect(screen.queryByText(/No recovery point has been saved/)).toBeNull();
 });
 
 
-it("promotes a blocked task and opens its existing saved detail without another reader", async () => {
+it("shows one blocked task with its next step before opening details", async () => {
   const task = summary(DURABLE_TASK_IDS[0], "blocked");
   const network = vi.fn<typeof fetch>().mockImplementation(async input => requestPath(input).includes("?limit=") ? page([task]) : Response.json(detail(task)));
   vi.stubGlobal("fetch", network);
   render(<DurableTaskPanel {...SCOPE} />);
-  const attention = await screen.findByRole("region", {name: "Needs attention"});
+  const taskList = await screen.findByRole("region", {name: "Tasks"});
+  const row = within(taskList).getByRole("button", {name: /PR #123 repair.*Blocked.*Check the conversation/});
+  expect(row.getAttribute("aria-expanded")).toBe("true");
+  expect(screen.getAllByText(task.title)).toHaveLength(1);
   await waitFor(() => expect(network).toHaveBeenCalledTimes(2));
-  await userEvent.click(within(attention).getByRole("button", {name: /Blocked/}));
   expect(await screen.findByText("What counts as done?")).toBeTruthy();
   expect(network).toHaveBeenCalledTimes(2);
-  expect(within(attention).getByRole("button").getAttribute("aria-expanded")).toBe("true");
+  expect(row.getAttribute("aria-expanded")).toBe("true");
 });
 
 it("keeps open work details usable when another queued task arrives before its detail", async () => {
@@ -233,14 +239,15 @@ it("keeps open work details usable when another queued task arrives before its d
       activity_id: DURABLE_TASK_IDS[0], durable_task_id: DURABLE_TASK_IDS[0], source_turn_id: null, operation: "goal" as const,
       phase: "recorded" as const, provider: null, model: null, completed: 1, total: 1}}]}}];
   const view = render(<DurableTaskPanel {...SCOPE} turns={turns} />);
-  await userEvent.click(await screen.findByRole("button", {name: /^Tasks/}));
-  expect(await screen.findByText("Assessment recorded · goal progress")).toBeTruthy();
+  const first = await screen.findByRole("button", {name: /PR #123 repair/});
+  expect(await screen.findByText("Last activity · Assessment recorded · goal progress")).toBeTruthy();
   tasks = [...tasks, summary(DURABLE_TASK_IDS[1], "ready")];
   view.rerender(<DurableTaskPanel {...SCOPE} turns={turns} revision={1} />);
-  const queued = await screen.findByRole("button", {name: /PR #124 repair.*Reading saved progress/});
+  const queued = await screen.findByRole("button", {name: /PR #124 repair.*Queued/});
+  expect(first.getAttribute("aria-expanded")).toBe("true");
   expect(queued.getAttribute("aria-expanded")).toBe("false");
   await userEvent.click(queued);
-  expect(await within(screen.getByLabelText("PR #124 repair details")).findByText("Reading saved progress…")).toBeTruthy();
+  expect(await within(screen.getByLabelText("PR #124 repair details")).findByText("Loading task details…")).toBeTruthy();
   await act(async () => second.resolve(Response.json(detail(tasks[1]!))));
   expect(await within(screen.getByLabelText("PR #124 repair details")).findByText("What counts as done?")).toBeTruthy();
   expect(network).toHaveBeenCalledTimes(5);

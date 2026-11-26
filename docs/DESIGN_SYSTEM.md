@@ -283,7 +283,9 @@ Summary remains inline and visible without clicking. Show the current decision, 
 
 Insert pending approval or blocked work first. Other sections appear only for recorded content. Do not infer an Environment inventory, live background processes or child-agent state from tool calls.
 
-Detailed evidence opens from the relevant item; the Summary itself never becomes a drawer. Keep task objectives, criteria and controls behind a closed Tasks disclosure. Sources shows one repository row or count; its policy belongs inside the same disclosure.
+Show each task’s title, status and known next step in Summary, with blocked tasks first. The first task opens by default. Each task has one disclosure for its objective, criteria and controls.
+
+Sources shows one repository row or count. Its policy belongs inside the same disclosure.
 
 Loading and unavailable reads must not appear as confirmed empty outputs.
 
@@ -304,6 +306,8 @@ Conversation, output cards, and composer share horizontal edges. Align labels an
 
 Keep replies, tool activity, incoming messages, and wake-ups in one chronological conversation. Show the recorded outcome for each activity.
 The compact strip above the composer summarizes current changes or a scheduled wake-up; it does not replace the conversation's history.
+
+When live updates pause, center the connection flap above the composer. Show Reconnect there and announce the recovery state. Keep the draft and transcript usable during recovery.
 
 | Outcome | Visible summary | Inspectable detail |
 |---|---|---|

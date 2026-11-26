@@ -24,9 +24,10 @@ const WIDTH = 31;
 const HEIGHT = 8;
 const PADDLE = "[===]";
 const PADDLE_CENTER = Math.floor(PADDLE.length / 2);
-const COURT_BOTTOM = HEIGHT - 1;
-const CONTACT_ROW = COURT_BOTTOM - 1;
-const SERVE_ROW = CONTACT_ROW - 1;
+const PADDLE_ROW = HEIGHT - 2; // The last row lets a missed ball fall below the paddle.
+const SERVE_ROW = PADDLE_ROW - 1;
+const CENTER_ROW = Math.floor((HEIGHT - 1) / 2);
+const CENTER_COLUMN = Math.floor(WIDTH / 2);
 const PADDLE_AIM: readonly Horizontal[] = [-1, -0.5, 0, 0.5, 1];
 const REFLECTED_HORIZONTAL: Record<Horizontal, Horizontal> = {[-1]: 1, [-0.5]: 0.5, 0: 0, [0.5]: -0.5, 1: -1};
 const STARTING_LIVES = 3;
@@ -52,13 +53,13 @@ export function startOrbit(best = 0): Orbit {
 
 export function serveOrbit(state: Orbit): Orbit {
   if (state.phase !== "ready") return state;
-  return {...state, phase: "playing", ballX: state.paddle + PADDLE_CENTER, ballY: SERVE_ROW,
-    horizontal: 1, vertical: -1};
+  return {...state, phase: "playing", horizontal: 1, vertical: -1};
 }
 
 export function moveOrbit(state: Orbit, distance: Direction): Orbit {
   const paddle = Math.max(0, Math.min(WIDTH - PADDLE.length, state.paddle + distance));
-  return {...state, paddle};
+  const ballX = state.phase === "ready" && state.lives === STARTING_LIVES ? paddle + PADDLE_CENTER : state.ballX;
+  return {...state, paddle, ballX};
 }
 
 function levelIndex(state: Orbit): number {
@@ -74,31 +75,40 @@ function points(state: Orbit, value: number): Orbit {
   return {...state, score, best: Math.max(state.best, score)};
 }
 
-function landOnPaddle(state: Orbit, ballX: number, column: number): Orbit {
-  const horizontal = PADDLE_AIM[column - state.paddle];
-  if (horizontal === undefined) {
-    const lives = state.lives - 1;
-    return {...state, ballX, ballY: CONTACT_ROW, lives, streak: 0, phase: lives ? "ready" : "over"};
-  }
+function paddleAim(offset: number): Horizontal | undefined {
+  // Rounding includes the left half-cell edge. The right edge belongs to the last cell too.
+  return offset === PADDLE.length - 0.5 ? 1 : PADDLE_AIM[Math.round(offset)];
+}
+
+function landOnPaddle(state: Orbit, contactX: number): Orbit {
+  // A path that enters from the side after crossing the top can still touch the paddle.
+  const horizontal = paddleAim(contactX - state.paddle) ?? paddleAim(state.ballX - state.paddle);
+  if (horizontal === undefined) return state;
   const streak = state.streak + 1;
-  return points({...state, ballX, ballY: CONTACT_ROW, horizontal, vertical: -1, returns: state.returns + 1, streak},
+  return points({...state, ballY: SERVE_ROW, horizontal, vertical: -1, returns: state.returns + 1, streak},
     POINTS_PER_RETURN * streak);
+}
+
+function reflectX(proposedX: number): number {
+  const boundedX = Math.max(0, Math.min(WIDTH - 1, proposedX));
+  return boundedX + (boundedX - proposedX);
 }
 
 export function stepOrbit(state: Orbit): Orbit {
   if (state.phase !== "playing") return state;
   const proposedX = state.ballX + state.horizontal;
-  const boundedX = Math.max(0, Math.min(WIDTH - 1, proposedX));
-  const horizontal = proposedX === boundedX ? state.horizontal : REFLECTED_HORIZONTAL[state.horizontal];
-  // Reflect any part of the step that crosses a wall.
-  const ballX = boundedX + (boundedX - proposedX);
+  const ballX = reflectX(proposedX);
+  const horizontal = proposedX === ballX ? state.horizontal : REFLECTED_HORIZONTAL[state.horizontal];
   const ballY = state.ballY + state.vertical;
-  const column = Math.round(ballX);
-  // Contact is the last ball row. The next tick travels up immediately.
-  if (state.vertical === 1 && ballY === CONTACT_ROW) return landOnPaddle(state, ballX, column);
+  if (ballY === HEIGHT) {
+    const lives = state.lives - 1;
+    return {...state, ballX: CENTER_COLUMN, ballY: CENTER_ROW, lives, streak: 0, phase: lives ? "ready" : "over"};
+  }
   const next = {...state, ballX, ballY, horizontal, vertical: ballY === 0 ? 1 as const : state.vertical};
+  // The top of the paddle is half a cell above its row center.
+  if (state.vertical === 1 && ballY === PADDLE_ROW) return landOnPaddle(next, reflectX(state.ballX + state.horizontal / 2));
   const star = STARS[state.target] ?? STARS[0];
-  if (column !== star.x || ballY !== star.y) return next;
+  if (Math.round(ballX) !== star.x || ballY !== star.y) return next;
   return points({...next, target: (state.target + 1) % STARS.length}, STAR_POINTS);
 }
 
@@ -108,13 +118,12 @@ function scoreText(score: number): string {
 
 function orbitHint(state: Orbit, style: StyleOpts): string {
   if (state.phase === "over") return palette.error("Game over", style);
-  if (state.phase === "ready") return READY_HINT;
+  if (state.phase === "ready") return state.lives === STARTING_LIVES ? READY_HINT : `Missed! ${READY_HINT}`;
   return palette.success(`Rally x${COMPACT_SCORE.format(Math.max(1, state.streak))}`, style);
 }
 
 export function orbitFrame(state: Orbit, style: StyleOpts = PLAIN, sound = false): readonly string[] {
-  const ball = state.phase === "ready" ? {x: state.paddle + PADDLE_CENTER, y: SERVE_ROW}
-    : {x: Math.round(state.ballX), y: state.ballY};
+  const ballX = Math.round(state.ballX);
   const star = STARS[state.target] ?? STARS[0];
   const lives = `[${"o".repeat(state.lives)}${".".repeat(STARTING_LIVES - state.lives)}]`;
   const top = palette.muted(LIVES_LABEL, style) + palette.error(lives, style)
@@ -122,9 +131,9 @@ export function orbitFrame(state: Orbit, style: StyleOpts = PLAIN, sound = false
   const wall = palette.muted("|", style);
   const rows = Array.from({length: HEIGHT}, (_, y) => {
     const cells = Array.from({length: WIDTH}, (_, x) => {
-      if (x === ball.x && y === ball.y) return palette.pulse("o", style);
+      if (x === ballX && y === state.ballY) return palette.pulse("o", style);
       if (x === star.x && y === star.y) return palette.evidence("*", style);
-      const paddleCell = y === COURT_BOTTOM ? PADDLE[x - state.paddle] : undefined;
+      const paddleCell = y === PADDLE_ROW ? PADDLE[x - state.paddle] : undefined;
       return paddleCell ? palette.accent(paddleCell, style) : " ";
     });
     return `${wall}${cells.join("")}${wall}`;

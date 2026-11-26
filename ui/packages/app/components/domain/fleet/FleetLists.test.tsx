@@ -86,7 +86,7 @@ describe("the fleet page's lists", () => {
     lists({schedules: [], triggers: [], grants: [PENDING], pinned: []});
     page();
     expect(await screen.findByText("Only a message wakes this fleet.")).toBeTruthy();
-    expect(await screen.findByText("No access approved yet. The fleet asks when it needs access.")).toBeTruthy();
+    expect(await screen.findByText("No access approved yet.")).toBeTruthy();
     expect(await screen.findByText("Nothing pinned yet. Ask the fleet to remember something.")).toBeTruthy();
   });
 

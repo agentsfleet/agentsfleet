@@ -94,7 +94,8 @@ function OwnedFleetThread(props: FleetThreadProps) {
   const turnStop = useTurnStop(props.workspaceId, props.fleetId, stream.turns, stream.reconcileRows);
   const settledTurns = useMemo(() => stream.turns.filter(turn => TERMINAL_STATUSES.has(turn.status)).length, [stream.turns]);
   useReloadListsAfter(settledTurns);
-  const settledLive = stream.connectionStatus === CONNECTION_STATUS.LIVE && !arrived;
+  const {connectionStatus} = stream;
+  const showHeaderCue = connectionStatus === CONNECTION_STATUS.CONNECTING || (connectionStatus === CONNECTION_STATUS.LIVE && arrived);
   const durableTaskSubject = stream.connectionStatus === CONNECTION_STATUS.REVOKED ? null : subject;
   const {workTurns} = stream;
   const work = useMemo(() => <DurableTaskPanel workspaceId={props.workspaceId} fleetId={props.fleetId}
@@ -106,14 +107,14 @@ function OwnedFleetThread(props: FleetThreadProps) {
           <SenderNamesProvider names={names}>
             <DashboardPanel id="fleet-chat-transcript" padding="none"
               className="relative flex min-h-0 flex-1 flex-col overflow-clip rounded-none border-0 bg-background">
-              {settledLive ? null : <div data-testid="fleet-chat-header"
+              {showHeaderCue ? <div data-testid="fleet-chat-header"
                 className="pointer-events-none absolute right-lg top-sm z-20 rounded-md border border-border bg-background px-sm py-xs shadow-sm">
                 <FleetConnectionIndicator status={stream.connectionStatus} arrived={arrived} />
-              </div>}
+              </div> : null}
               <FleetDurableTaskProvider files={files} workspaceId={props.workspaceId} fleetId={props.fleetId} subject={durableTaskSubject} revision={stream.durableTasksSeq} turns={workTurns} sources={props.sources} schedules={props.schedules} approvals={props.approvals} approvalRevision={stream.approvalsSeq} readOnly={props.archived}>
               <FleetConversationLayout work={durableTaskSubject && props.lists ? <>{work}{props.lists}</> : work}><FleetThreadViewport modelLabel={props.modelLabel}
                 archived={props.archived}
-                turnsCount={stream.turns.length + previewCount} connectionStatus={stream.connectionStatus}
+                turnsCount={stream.turns.length + previewCount} connectionStatus={connectionStatus}
                 onRetry={stream.retryConnection} pending={ledger.pending} onResend={delivery.resend}
                 onDismiss={ledger.writers.dismiss} onRestored={delivery.noteRestored} onDraft={delivery.noteDraft} turnStop={turnStop} /></FleetConversationLayout>
               </FleetDurableTaskProvider>

@@ -111,12 +111,16 @@ it("aborts an in-flight version read when its owner unmounts and never deletes a
   expect(navigation.replace).not.toHaveBeenCalled();
 });
 
-it("recovers an unavailable fleet list through Refresh", async () => {
+it("keeps a failed list quiet and retries it when the operator navigates", async () => {
   fetcher.mockImplementationOnce(async () => response({}, 503));
-  render(<RecentFleetList workspace={WORKSPACE} onNavigate={() => {}} />);
-  fireEvent.click(await screen.findByRole("button", {name: "Refresh"}));
+  const view = render(<RecentFleetList workspace={WORKSPACE} onNavigate={() => {}} />);
+  await waitFor(() => expect(screen.queryByText("Loading fleets…")).toBeNull());
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(screen.queryByRole("button", {name: /refresh|retry/i})).toBeNull();
+  expect(screen.queryByText("Your fleets will appear here.")).toBeNull();
+  navigation.path = `/w/${WORKSPACE}/fleets/${SECOND_ID}`;
+  view.rerender(<RecentFleetList workspace={WORKSPACE} onNavigate={() => {}} />);
   expect(await screen.findByRole("link", {name: active.name})).toBeTruthy();
-  expect(screen.queryByRole("button", {name: "Refresh"})).toBeNull();
 });
 
 it("loads another fleet page and refreshes when navigation changes", async () => {

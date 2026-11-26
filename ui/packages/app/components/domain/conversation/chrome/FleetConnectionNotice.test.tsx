@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createRef } from "react";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FleetConnectionNotice } from "./FleetConnectionNotice";
 import { CONNECTION_STATUS } from "../stream/useFleetTurnStream";
 
-const RECONNECT_LABEL = "Retry now";
+const RECONNECT_LABEL = "Reconnect";
 const NOTICE = "fleet-connection-notice";
 
 afterEach(() => {
@@ -13,7 +14,7 @@ afterEach(() => {
 });
 
 describe("FleetConnectionNotice", () => {
-  it("stays silent while connecting or reconnecting", () => {
+  it("waits for an interruption, then shows the pending reconnect", () => {
     const view = render(
       <FleetConnectionNotice
         status={CONNECTION_STATUS.CONNECTING}
@@ -21,6 +22,8 @@ describe("FleetConnectionNotice", () => {
       />,
     );
     expect(screen.queryByTestId(NOTICE)).toBeNull();
+    const announcement = screen.getByRole("status");
+    expect(announcement.textContent).toBe("");
 
     view.rerender(
       <FleetConnectionNotice
@@ -28,7 +31,9 @@ describe("FleetConnectionNotice", () => {
         onRetry={vi.fn()}
       />,
     );
-    expect(screen.queryByTestId(NOTICE)).toBeNull();
+    expect(screen.getByRole("status")).toBe(announcement);
+    expect(announcement.textContent).toBe("Reconnecting live updates.");
+    expect(screen.getByRole("button", {name: "Reconnecting…"}).getAttribute("aria-disabled")).toBe("true");
   });
 
   it("stays silent while live", () => {
@@ -39,19 +44,16 @@ describe("FleetConnectionNotice", () => {
       />,
     );
     expect(screen.queryByTestId(NOTICE)).toBeNull();
+    expect(screen.getByRole("status").textContent).toBe("");
   });
 
-  it("speaks only when the connection is lost, and offers the way back", async () => {
+  it("announces the paused updates and offers a reconnect", async () => {
     const retry = vi.fn();
     render(<FleetConnectionNotice status={CONNECTION_STATUS.OFFLINE} onRetry={retry} />);
 
     const notice = screen.getByTestId(NOTICE);
-    // A warning for a state that heals itself, still spoken as it arrives.
-    expect(notice.getAttribute("role")).toBe("alert");
-    expect(notice.className).toMatch(/\btext-warning\b/);
-    expect(notice.className).not.toMatch(/destructive/);
-    expect(notice.textContent).not.toMatch(/history/i);
-    expect(notice.textContent).toMatch(/temporarily unavailable.*reconnecting automatically/i);
+    expect(notice.textContent).toContain("Live updates paused");
+    expect(screen.getByRole("status").textContent).toBe("Live updates paused");
 
     await userEvent.click(screen.getByRole("button", { name: RECONNECT_LABEL }));
     expect(retry).toHaveBeenCalledTimes(1);
@@ -76,5 +78,25 @@ describe("FleetConnectionNotice", () => {
     // Recovery is announced by the indicator's arrival cue, not by a second
     // band that outstays the news.
     expect(screen.queryByTestId(NOTICE)).toBeNull();
+  });
+
+  it("holds focus on retry while reconnecting and restores the draft input when live", async () => {
+    const input = createRef<HTMLTextAreaElement>();
+    const retry = vi.fn();
+    const renderState = (status: typeof CONNECTION_STATUS.OFFLINE | typeof CONNECTION_STATUS.RECONNECTING | typeof CONNECTION_STATUS.LIVE) => <>
+      <FleetConnectionNotice status={status} onRetry={retry} focusTarget={input} />
+      <textarea aria-label="Draft" ref={input} defaultValue="Keep my draft" />
+    </>;
+    const view = render(renderState(CONNECTION_STATUS.OFFLINE));
+    await userEvent.click(screen.getByRole("button", {name: RECONNECT_LABEL}));
+    view.rerender(renderState(CONNECTION_STATUS.RECONNECTING));
+    const busy = screen.getByRole("button", {name: "Reconnecting…"});
+    expect(document.activeElement).toBe(busy);
+    await userEvent.keyboard("{Enter}");
+    expect(retry).toHaveBeenCalledOnce();
+    view.rerender(renderState(CONNECTION_STATUS.LIVE));
+    expect(document.activeElement).toBe(input.current);
+    expect(input.current?.value).toBe("Keep my draft");
+    expect(screen.getByRole("status").textContent).toBe("Live updates restored.");
   });
 });

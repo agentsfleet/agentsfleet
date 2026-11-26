@@ -59,10 +59,12 @@ describe("FleetThread — header chrome", () => {
     expect(screen.getByText(/^Reconnecting…$/)).toBeTruthy();
   });
 
-  it("says a lost feed is not live, and keeps the composer usable", () => {
+  it("places the only reconnect control above an editable composer", () => {
     mockStream([], { connectionStatus: CONNECTION_STATUS.OFFLINE });
     renderThread();
-    expect(screen.getByText(/^Not live$/)).toBeTruthy();
+    const footer = screen.getByTestId("fleet-chat-footer");
+    expect(footer.contains(screen.getByRole("button", {name: "Reconnect"}))).toBe(true);
+    expect(screen.queryByTestId("fleet-chat-header")).toBeNull();
     const input = screen.getByPlaceholderText(
       /message your fleet/i,
     ) as HTMLTextAreaElement;

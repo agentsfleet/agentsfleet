@@ -35,14 +35,15 @@ const history: ThreadMessageLike[] = exchanges.flatMap(([question, answer], inde
 /** Production header, transcript, composer and task reader; only API data is simulated. */
 export function ChatAlignmentFixture() {
   const [messages, setMessages] = useState(history);
+  const [connectionStatus, setConnectionStatus] = useState(() => new URLSearchParams(location.search).has("offline") ? CONNECTION_STATUS.OFFLINE : CONNECTION_STATUS.LIVE);
   const runtime = useExternalStoreRuntime({messages, convertMessage: (message: ThreadMessageLike) => message,
     onNew: async message => {setMessages(previous => [...previous, {id: `sent-${previous.length}`, role: "user", content: message.content,
       metadata: {custom: {[RENDER_KIND_KEY]: RENDER_KIND.TRIGGER, actor: `${ACTOR.STEER_PREFIX}fixture-owner`}}}]);}});
   return <AppRouterContext value={router}><ChatFixtureShell>
     <FleetHeader workspaceId={WORKSPACE} fleet={FleetDetailSchema.parse({...FLEET_DETAIL, name: "ci-repairer", status: "active"})} />
     <AssistantRuntimeProvider runtime={runtime}><FleetConversationLayout work={<DurableTaskPanel workspaceId={WORKSPACE} fleetId={FLEET_ID} subject="fixture-owner" revision={0} sources={{repositories: ["agentsfleet/linkwarden"], access: "write", publication: "existing_pr"}} />}>
-      <FleetThreadViewport modelLabel="MiniMax M3.1 Flash" turnsCount={messages.length} connectionStatus={CONNECTION_STATUS.LIVE}
-        pending={[]} onRetry={() => {}} onResend={() => {}} onDismiss={() => {}} onRestored={() => {}} onDraft={() => {}} />
+      <FleetThreadViewport modelLabel="MiniMax M3.1 Flash" turnsCount={messages.length} connectionStatus={connectionStatus}
+        pending={[]} onRetry={() => setConnectionStatus(CONNECTION_STATUS.LIVE)} onResend={() => {}} onDismiss={() => {}} onRestored={() => {}} onDraft={() => {}} />
     </FleetConversationLayout></AssistantRuntimeProvider>
   </ChatFixtureShell></AppRouterContext>;
 }
@@ -92,7 +93,8 @@ export function LoadingReplyFixture({state}: {state: string}) {
 
 /** Render the production shell; only identity and API data are supplied by fixtures. */
 function ChatFixtureShell({children}: {children: ReactNode}) {
-  return <PathnameContext value={`/w/${WORKSPACE}/fleets/${FLEET_ID}`}><SearchParamsContext value={new URLSearchParams()}>
+  const path = new URLSearchParams(location.search).has("secrets") ? "secrets" : `fleets/${FLEET_ID}`;
+  return <PathnameContext value={`/w/${WORKSPACE}/${path}`}><SearchParamsContext value={new URLSearchParams()}>
     <TooltipProvider><ShellFrame workspaces={[{id: WORKSPACE, name: "Release workspace", created_at: "2026-01-01T00:00:00Z", ...OWN_ACCOUNT}]}>
       <SenderLabelProvider senderLabel="ci-repairer"><SenderNamesProvider names={senderNamesFrom("fixture-owner", [])}>
         <div data-fleet-workspace className="flex h-full min-h-0 flex-col">{children}</div>

@@ -46,6 +46,8 @@ export const test = base.extend<object, {chatProbe: string}>({
         const phase = source.searchParams.get("state");
         const name = phase === "wake-up" ? "Merge watch" : phase === "activity" ? "Launch review" : phase === "error" ? "Deploy monitor" : "Release watch";
         json({items: [{...FLEET_DETAIL, name, status: "active"}], total: null, next_cursor: null});
+      } else if (url.pathname === FLEET_LIST && request.method === "GET" && source.searchParams.has("alignment")) {
+        json({items: [{...FLEET_DETAIL, name: "ci-repairer", status: "active"}], total: null, next_cursor: null});
       } else if (child?.[2] === "turns/stream") {
         response.writeHead(200, {"content-type": "text/event-stream", "cache-control": "no-cache"});
         response.write(HEARTBEAT);

@@ -173,8 +173,8 @@ button{font-weight:500}h1,h2,h3{font-weight:650}strong{font-weight:600}
 @media(max-width:1100px){.review-caption{display:none}.review-bar{padding-left:12px;padding-right:12px}}
 @media(max-width:680px){.review-bar{height:auto;min-height:82px;flex-wrap:wrap;padding-top:8px;padding-bottom:8px}.review-bar>span{width:100%;justify-content:space-between}.review-links{width:100%}.app{height:calc(100dvh - 82px)}}
 
-.rail .new-fleet{background:color-mix(in oklab,var(--accent) 10%,transparent);color:var(--text)}
-.rail .new-fleet:is(:hover,.selected){background:color-mix(in oklab,var(--accent) 15%,transparent)}
+.rail .new-fleet.selected{background:color-mix(in oklab,var(--accent) 15%,transparent)}
+.rail .new-fleet:hover:not(.selected){background:color-mix(in oklab,var(--accent) 6%,transparent)}
 .fleet-history{display:none;min-height:0;overflow:auto;width:100%}
 .expanded.fleets-open .fleet-history{display:block}
 .expanded .fleet-toggle{height:auto;min-height:36px;padding:0 var(--rail-row-inset);color:var(--muted)}
@@ -409,6 +409,29 @@ button{font-weight:500}h1,h2,h3{font-weight:650}strong{font-weight:600}
 .retry-action i { width: 16px; height: 16px; }
 .retry-result { color: var(--success); }
 @media (pointer: coarse) { .retry-note .retry-action { min-height: 44px; } }
+.connection-flap {
+  min-height: 38px; max-width: 100%; padding: 0 var(--s1) 0 var(--s3);
+}
+.connection-flap > span { display: flex; align-items: center; gap: var(--s2); min-width: 0; }
+.connection-flap > span > i { width: 16px; height: 16px; color: var(--warning); }
+.connection-flap .text-button { min-height: 36px; color: var(--accent); }
+.connection-flap .text-button[aria-disabled=true] { color: var(--muted); cursor: default; }
+.connection-flap .text-button:focus-visible { outline-offset: -2px; }
+.summary-task > summary { cursor: pointer; list-style: none; border-radius: var(--radius-sm); }
+.summary-task > summary::-webkit-details-marker { display: none; }
+.summary-task > summary:hover { background: var(--raised); }
+.summary-task .summary-label { margin-bottom: var(--s1); }
+.summary-task .summary-row { align-items: flex-start; }
+.summary-task .summary-row > i { margin-top: 2px; }
+.summary-task[open] .summary-row > i:last-child { transform: rotate(180deg); }
+.summary-task .task-title { display: block; font-weight: 600; overflow-wrap: anywhere; }
+.summary-task .task-status { display: block; margin: 0; }
+.summary-task .task-next { display: block; margin-top: var(--s1); color: var(--secondary); }
+.summary-task-details { border-top: 1px solid var(--soft-line); margin-top: var(--s2); }
+.summary-task-details .text-button { min-height: 36px; }
+@media (max-width: 680px), (pointer: coarse) {
+  .connection-flap .text-button, .summary-task-details .text-button { min-height: 44px; }
+}
 .empty-content { position: relative; }
 .saved-key-progress { display: flex; align-items: center; gap: var(--s2); color: var(--secondary); margin: 0; }
 .sign-in-preview { display: grid; place-items: center; min-height: 100%; padding: var(--s5); }
@@ -799,6 +822,7 @@ const esc = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&
 const icon = name => `<i data-icon="${name}"></i>`;
 const appState = {
   view: 'conversation', approved: false, retrying: false, retried: false, schedules: {scheduled:{state:'active',wake:'12:30'}},
+  liveUpdates: 'offline', taskDetailsUnavailable: new URLSearchParams(location.search).get('task-details') === 'unavailable',
   inputs: {}, messages: {}, removed: {}, network: {}, statements: {},
   connections: {github:true,slack:true},
   secrets: [
@@ -1041,17 +1065,44 @@ function previewReplyBody(reply) {
   if(!reply.text)return replyProgress('Working');
   return `<p class="preview-reply-text">${esc(reply.text)}</p>${reply.status==='settled'?actions():''}`;
 }
-function releaseSourcesAndTasks() {
-  const statement = appState.statements.conversation || 'The runner image builds for both architectures and the security scans pass.';
-  return `<section class="summary-section"><div class="summary-label">Sources</div><details><summary class="summary-row">${icon("git-branch")}<span class="source-row-label" title="agentsfleet/platform-images"><strong>${summaryNameLabel('agentsfleet/platform-images')}</strong><small>Policy: Edit existing PRs</small></span>${icon("caret-down")}</summary><a class="summary-detail" href="https://github.com/agentsfleet/platform-images">agentsfleet/platform-images</a></details></section>
-    <section class="summary-section"><details><summary class="summary-row"><span>Tasks</span><small>1</small>${icon("caret-down")}</summary>
-      <p>Release readiness</p><p><strong>What counts as done?</strong></p>
-      <div id="completion-read"><p id="completion-value">${esc(statement)}</p><button class="text-button" data-action="edit-statements">Edit statements</button></div>
-      <form id="completion-form" aria-label="Edit completion statements" hidden>
-        <label class="field">Statement 1<textarea id="completion-text" rows="2" required>${esc(statement)}</textarea></label>
-        <div class="summary-actions"><button class="primary" type="submit">Save statements</button><button class="text-button" type="button" data-action="cancel-statements">Cancel</button></div>
-      </form>
-    </details></section>`;
+function releaseSources() {
+  return `<section class="summary-section"><div class="summary-label">Sources</div><details><summary class="summary-row">${icon("git-branch")}<span class="source-row-label" title="agentsfleet/platform-images"><strong>${summaryNameLabel('agentsfleet/platform-images')}</strong><small>Policy: Edit existing PRs</small></span>${icon("caret-down")}</summary><a class="summary-detail" href="https://github.com/agentsfleet/platform-images">agentsfleet/platform-images</a></details></section>`;
+}
+function releaseTask() {
+  const statement = appState.statements.conversation || 'A pull request contains the runner update and passing build and scan results.';
+  const next = appState.accessDenied
+    ? 'GitHub access was denied. The pull request is still pending.'
+    : 'Approve GitHub access to open the pull request.';
+  return `<section class="summary-section" aria-label="Tasks">
+    <details class="summary-task" open>
+      <summary aria-labelledby="task-section-label release-task-title" aria-describedby="release-task-status release-task-next">
+        <span id="task-section-label" class="summary-label">Tasks</span>
+        <span class="summary-row">
+          <i data-icon="warning-circle" class="attention"></i>
+          <span>
+            <strong id="release-task-title" class="task-title">Publish the runner update</strong>
+            <small id="release-task-status" class="task-status attention">Blocked</small>
+            <span id="release-task-next" class="task-next">${next}</span>
+          </span>
+          ${icon('caret-down')}
+        </span>
+      </summary>
+      <div class="summary-task-details">
+        <div id="completion-unavailable" ${appState.taskDetailsUnavailable ? '' : 'hidden'}>
+          <p>Couldn’t load task details.</p>
+          <button class="text-button" data-action="reload-task-details">Reload details</button>
+        </div>
+        <div id="completion-details" ${appState.taskDetailsUnavailable ? 'hidden' : ''}>
+          <p><strong>What counts as done?</strong></p>
+          <div id="completion-read"><p id="completion-value">${esc(statement)}</p><button class="text-button" data-action="edit-statements">Edit statements</button></div>
+          <form id="completion-form" aria-label="Edit completion statements" hidden>
+            <label class="field">Statement 1<textarea id="completion-text" rows="2" required>${esc(statement)}</textarea></label>
+            <div class="summary-actions"><button class="primary" type="submit">Save statements</button><button class="text-button" type="button" data-action="cancel-statements">Cancel</button></div>
+          </form>
+        </div>
+      </div>
+    </details>
+  </section>`;
 }
 function editCompletion(editing) {
   $('#completion-read').hidden=editing;
@@ -1096,7 +1147,7 @@ function fleetLists(view) {
   const memory = release && !hidden.has('memory') ? [['memory','file-text','Link the scan results in each release update.','','Remove','x']] : [];
   const network = appState.network[view] || {public:false,packages:false};
   return fleetList('Wakes on',wake,'Only a message wakes this fleet.')
-    + fleetList('Can access',access,'No access approved yet. The fleet asks when it needs access.')
+    + fleetList('Can access',access,'No access approved yet.')
     + fleetList('Remembers',memory,'Nothing pinned yet. Ask the fleet to remember something.')
     + `<section class="summary-section" aria-label="Network">
       <h3 class="summary-label">Network</h3>
@@ -1111,7 +1162,11 @@ function summary(view) {
   }
   if(view==='activity') return activitySummary();
   const decision=view==='conversation'&&!appState.approved&&!appState.accessDenied ? accessRequest() : view==='failure' ? `<section class="summary-section"><div class="summary-label ${appState.retried?'':'attention'}">${appState.retried?'Recovered':'Needs attention'}</div><strong>${appState.retried?'Health check passed':'Deploy connection expired'}</strong><p>${appState.retried?'Recovery recorded in the conversation.':'Reconnect in the conversation to continue.'}</p></section>` : `<section class="summary-section"><div class="summary-label">Status</div><strong>${view==='scheduled'?(scheduleFor().state==='active'?'Watching pull request #58':'Schedule '+scheduleFor().state):(view==='conversation' ? (appState.accessDenied ? 'Access denied' : appState.removed[view]?.has('github') ? 'Active' : 'Access approved') : 'Active')}</strong></section>`;
-  return `<aside class="summary" aria-label="Fleet summary"><h2>Summary ${icon('list-bullets')}</h2>${decision}${view==='conversation'?`<section class="summary-section"><div class="summary-label">Changes</div><button class="summary-row" data-action="changes">${icon('git-diff')}${summaryNameLabel('3 files changed')}<span class="diff-stat">At least +1 <b>−1</b></span>${icon('caret-right')}</button></section><section class="summary-section"><div class="summary-label">Output</div><button class="summary-row" data-action="output">${icon('git-pull-request')}<span>Pull request #58<small>Changes published</small></span>${icon('arrow-up-right')}</button></section>${releaseSourcesAndTasks()}`:''}${view==='scheduled'||['active','paused'].includes(scheduleFor().state)?`<section class="summary-section"><div class="summary-label">Next wake-up</div><button class="summary-row" data-action="schedule">${icon('clock')}<span>${scheduleFor().state==='active'?`${esc(scheduleFor().wake)} UTC`:'Not scheduled'}<small>${scheduleFor().state==='active'?'Every 30 minutes':scheduleFor().state==='paused'?'Paused by you':'Cancelled by you'}</small></span></button></section>${view==='scheduled'?`<section class="summary-section"><div class="summary-label">Watching</div><button class="summary-row" data-action="output">${icon('git-pull-request')}<span>Pull request #58<small>Open · Checks passed</small></span></button></section>`:''}`:''}${fleetLists(view)}</aside>`;
+  const output = appState.approved
+    ? `<button class="summary-row" data-action="output">${icon('git-pull-request')}<span>Pull request #58<small>Changes published</small></span>${icon('arrow-up-right')}</button>`
+    : '<p>No pull request yet.</p>';
+  const release = view === 'conversation' ? `${appState.approved ? '' : releaseTask()}<section class="summary-section"><div class="summary-label">Changes</div><button class="summary-row" data-action="changes">${icon('git-diff')}${summaryNameLabel('3 files changed')}<span class="diff-stat">At least +1 <b>−1</b></span>${icon('caret-right')}</button></section><section class="summary-section"><div class="summary-label">Output</div>${output}</section>${releaseSources()}` : '';
+  return `<aside class="summary" aria-label="Fleet summary"><h2>Summary ${icon('list-bullets')}</h2>${decision}${release}${view==='scheduled'||['active','paused'].includes(scheduleFor().state)?`<section class="summary-section"><div class="summary-label">Next wake-up</div><button class="summary-row" data-action="schedule">${icon('clock')}<span>${scheduleFor().state==='active'?`${esc(scheduleFor().wake)} UTC`:'Not scheduled'}<small>${scheduleFor().state==='active'?'Every 30 minutes':scheduleFor().state==='paused'?'Paused by you':'Cancelled by you'}</small></span></button></section>${view==='scheduled'?`<section class="summary-section"><div class="summary-label">Watching</div><button class="summary-row" data-action="output">${icon('git-pull-request')}<span>Pull request #58<small>Open · Checks passed</small></span></button></section>`:''}`:''}${fleetLists(view)}</aside>`;
 }
 // Stop shows beside Send only while a turn of this conversation runs or waits.
 function pendingPreviewReply(view) {return (appState.messages[view]||[]).findLast(message=>message.reply?.status==='running')?.reply;}
@@ -1125,12 +1180,22 @@ function composerModel(view) {
     ${options.map(model=>`<option value="${esc(model)}" ${model===selected?'selected':''}>${esc(model)}</option>`).join('')}
   </select>${icon('caret-down')}</span>`;
 }
+function connectionFlap(view) {
+  if (view !== 'conversation' || appState.liveUpdates === 'live') return '';
+  const reconnecting = appState.liveUpdates === 'reconnecting';
+  return `<div class="flap-wrap" id="connection-flap">
+    <div class="work-flap connection-flap">
+      <span id="connection-description">${icon('warning-circle')}<span>Live updates paused</span></span>
+      <button type="button" class="text-button" data-action="reconnect-live-updates" aria-describedby="connection-description" ${reconnecting ? 'aria-disabled="true"' : ''}>${reconnecting ? 'Reconnecting…' : 'Reconnect'}</button>
+    </div>
+  </div>`;
+}
 function composer(empty=false) {
   const view=appState.view;
   const wakeup=scheduleFor();
   const paused=wakeup.state==='paused';
   const nextWakeup=wakeupTime(wakeup);
-  return `<div class="composer-wrap">${view==='activity'?`<div class="flap-wrap"><button class="work-flap" data-action="activity-changes">${icon('git-diff')}<strong>6 files changed</strong><span class="diff-stat">+271 <b>−3</b></span>${icon('caret-up')}</button></div>`:''}${['active','paused'].includes(wakeup.state)?`<div class="wake-strip">${icon('clock')}<span><span class="wake-label-prefix">${paused?'Wake-up':'Next wake-up'} · </span>${paused?'<span class="wake-label-paused">Paused</span>':`<span title="${esc(wakeup.wake)} UTC">${esc(nextWakeup)}</span>`}</span><div class="wake-actions"><button class="icon-button" data-action="schedule" aria-label="Edit scheduled wake-up" title="Edit wake-up">${icon('pencil-simple')}</button><button class="icon-button" data-action="pause-schedule" aria-label="${paused?'Resume':'Pause'} scheduled wake-up" title="${paused?'Resume':'Pause'} wake-up">${icon(paused?'play':'pause')}</button><button class="icon-button" data-action="cancel-schedule" aria-label="Cancel scheduled wake-up" title="Cancel wake-up">${icon('trash')}</button></div></div>`:''}<div class="composer"><div class="attached-files">${(appState.files[view]||[]).map((f,i)=>`<span class="file-chip">${icon('file-text')}${esc(f)}<button class="attachment-remove" data-remove-file="${i}" aria-label="Remove ${esc(f)}">×</button></span>`).join('')}</div><label class="sr-only" for="message">${empty?'Describe your new fleet':'Message '+fleetNames[view]}</label>${(empty || workspaceFleets.some(fleet=>fleet.view===view))?'<div id="address-options" class="address-options" hidden></div>':''}<textarea id="message" ${(empty || workspaceFleets.some(fleet=>fleet.view===view))?'aria-autocomplete="list"':''} rows="2" placeholder="${empty?'What would you like your fleet to do?':'Message your fleet…'}"></textarea><div class="composer-footer">${empty ? '' : `<button class="icon-button" data-action="attach" aria-label="Attach a document" title="Attach document">${icon('paperclip')}</button>`}<button class="icon-button" data-action="mention" aria-label="${(empty || workspaceFleets.some(fleet=>fleet.view===view))?(empty?'Mention a fleet':'Address a workspace fleet'):'Mention a source'}" title="${(empty || workspaceFleets.some(fleet=>fleet.view===view))?(empty?'Mention a fleet':'Address a workspace fleet'):'Mention a source'}">${icon('at')}</button>${composerModel(view)}${empty?'':`<button class="icon-button stop-turn" data-action="stop-turn" aria-label="Stop" title="Stop" ${turnRuns(view)?'':'hidden'}><span aria-hidden="true" class="stop-glyph"></span></button>`}<button class="send" id="send-message" aria-label="Send message">${icon('arrow-up')}</button></div></div><div class="composer-caption"><span>Enter to send · Shift + Enter for a new line</span>${empty?'':'<span>Token budget: 18%</span>'}</div><p class="composer-status" id="composer-status" hidden></p>
+  return `<div class="composer-wrap">${connectionFlap(view)}${view==='activity'?`<div class="flap-wrap"><button class="work-flap" data-action="activity-changes">${icon('git-diff')}<strong>6 files changed</strong><span class="diff-stat">+271 <b>−3</b></span>${icon('caret-up')}</button></div>`:''}${['active','paused'].includes(wakeup.state)?`<div class="wake-strip">${icon('clock')}<span><span class="wake-label-prefix">${paused?'Wake-up':'Next wake-up'} · </span>${paused?'<span class="wake-label-paused">Paused</span>':`<span title="${esc(wakeup.wake)} UTC">${esc(nextWakeup)}</span>`}</span><div class="wake-actions"><button class="icon-button" data-action="schedule" aria-label="Edit scheduled wake-up" title="Edit wake-up">${icon('pencil-simple')}</button><button class="icon-button" data-action="pause-schedule" aria-label="${paused?'Resume':'Pause'} scheduled wake-up" title="${paused?'Resume':'Pause'} wake-up">${icon(paused?'play':'pause')}</button><button class="icon-button" data-action="cancel-schedule" aria-label="Cancel scheduled wake-up" title="Cancel wake-up">${icon('trash')}</button></div></div>`:''}<div class="composer"><div class="attached-files">${(appState.files[view]||[]).map((f,i)=>`<span class="file-chip">${icon('file-text')}${esc(f)}<button class="attachment-remove" data-remove-file="${i}" aria-label="Remove ${esc(f)}">×</button></span>`).join('')}</div><label class="sr-only" for="message">${empty?'Describe your new fleet':'Message '+fleetNames[view]}</label>${(empty || workspaceFleets.some(fleet=>fleet.view===view))?'<div id="address-options" class="address-options" hidden></div>':''}<textarea id="message" ${(empty || workspaceFleets.some(fleet=>fleet.view===view))?'aria-autocomplete="list"':''} rows="2" placeholder="${empty?'What would you like your fleet to do?':'Message your fleet…'}"></textarea><div class="composer-footer">${empty ? '' : `<button class="icon-button" data-action="attach" aria-label="Attach a document" title="Attach document">${icon('paperclip')}</button>`}<button class="icon-button" data-action="mention" aria-label="${(empty || workspaceFleets.some(fleet=>fleet.view===view))?(empty?'Mention a fleet':'Address a workspace fleet'):'Mention a source'}" title="${(empty || workspaceFleets.some(fleet=>fleet.view===view))?(empty?'Mention a fleet':'Address a workspace fleet'):'Mention a source'}">${icon('at')}</button>${composerModel(view)}${empty?'':`<button class="icon-button stop-turn" data-action="stop-turn" aria-label="Stop" title="Stop" ${turnRuns(view)?'':'hidden'}><span aria-hidden="true" class="stop-glyph"></span></button>`}<button class="send" id="send-message" aria-label="Send message">${icon('arrow-up')}</button></div></div><div class="composer-caption"><span>Enter to send · Shift + Enter for a new line</span>${empty?'':'<span>Token budget: 18%</span>'}</div><p class="composer-status" id="composer-status" hidden></p>
     ${empty?`<div class="fleet-create-refusal" id="fleet-create-refusal" hidden><span role="alert">Couldn’t start your fleet. Your message is still here.</span><button class="secondary" data-action="send-message">Resend</button></div>`:''}
   </div>`;
 }
@@ -1358,6 +1423,13 @@ document.addEventListener('click', e=>{
     case 'deny':appState.accessDenied=true;showView('conversation');break;
     case 'edit-statements':editCompletion(true);break;
     case 'cancel-statements':editCompletion(false);break;
+    case 'reload-task-details':
+      appState.taskDetailsUnavailable=false;
+      $('#completion-details').hidden=false;
+      $('[data-action="edit-statements"]').focus({preventScroll:true});
+      $('#completion-unavailable').hidden=true;
+      $('#action-announcement').textContent='Task details loaded.';
+      break;
     case 'activity-changes':dialog('Launch page changes',`<p>6 files changed across 2 repositories.</p><div class="tool-output"><header>web · 4 files · +248 −3</header><pre>src/components/LaunchPage.tsx
 src/styles/theme.css
 src/components/MobileNav.tsx
@@ -1371,6 +1443,7 @@ Waiting for requests…</pre></div>`+previewNote('This is a sample process, not 
     case 'changes':dialog('3 files changed',`<p>platform-images · Runner update</p><div class="tool-output"><header>Dockerfile</header><pre><span class="diff-remove">− FROM rust:1.97</span>\n<span class="diff-add">+ FROM rust:1.98</span></pre></div><p class="preview-note">Also changed: release.yml and README.md. Illustrative diff.</p>`);break;
     case 'output':dialog('Update runner image',`<p>Pull request #58 · platform-images</p><p>3 files changed. Build and security scans passed.</p>${previewNote('This is an illustrative pull request; it has no external destination.')}`);break;
     case 'reconnect':retryHealthCheck();break;
+    case 'reconnect-live-updates':reconnectLiveUpdates(b);break;
     case 'schedule':scheduleDialog();break;
     case 'stop-turn':{
       const view=appState.view,reply=pendingPreviewReply(view);
@@ -1601,6 +1674,22 @@ function retryConversation() {
     ? '<p class="retry-result" role="status">Reconnected. Release v2.8.1 is healthy.</p>'
     : `<div class="retry-note">${icon('warning-circle')}<span>The deployment connection expired before the health check.</span><button class="text-button retry-action" data-action="reconnect" ${appState.retrying?'disabled':''}>${icon('clock-clockwise')}${appState.retrying?'Retrying…':'Reconnect &amp; retry'}</button></div>`;
   return `<div class="day-marker">Today · Sample conversation</div>${userTurn('Check the latest deploy and tell me whether the service is healthy.','You · 11:48')}<article class="assistant-turn">${assistantMeta('Deploy monitor','11:48')}<p>I found release v2.8.1.</p>${result}${actions()}</article>${localMessages('failure')}`;
+}
+
+function reconnectLiveUpdates(button) {
+  if (appState.liveUpdates !== 'offline') return;
+  appState.liveUpdates = 'reconnecting';
+  button.setAttribute('aria-disabled', 'true');
+  button.textContent = 'Reconnecting…';
+  $('#action-announcement').textContent = 'Reconnecting live updates.';
+  setTimeout(() => {
+    appState.liveUpdates = 'live';
+    const flap = $('#connection-flap');
+    if (!flap) return;
+    if (flap.contains(document.activeElement)) $('#message').focus({preventScroll:true});
+    flap.remove();
+    $('#action-announcement').textContent = 'Live updates restored.';
+  }, 700);
 }
 
 function retryHealthCheck() {
