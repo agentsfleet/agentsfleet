@@ -224,9 +224,12 @@ async fn every_published_tool_is_offered_to_messages_as_an_object_schema() {
     let _ = run(&engine, &held).await;
 
     let body = &fake.seen()[0].body;
-    let tools = body["tools"].as_array().expect("the run offers tools");
-    let named = |tool: &serde_json::Value| tool["name"].as_str().map(str::to_owned);
-    let offered: Vec<String> = tools.iter().filter_map(named).collect();
+    // A request offering nothing fails the next assertion, which wants the
+    // browser among the offered tools.
+    let none = Vec::new();
+    let tools = body["tools"].as_array().unwrap_or(&none);
+    let label = |tool: &serde_json::Value| tool["name"].as_str().map(str::to_owned);
+    let offered: Vec<String> = tools.iter().filter_map(label).collect();
     assert!(
         offered.iter().any(|name| name == BROWSER.name()),
         "{offered:?}"
@@ -237,7 +240,7 @@ async fn every_published_tool_is_offered_to_messages_as_an_object_schema() {
             tool.get("input_schema")
                 .is_some_and(|schema| schema["type"] != "object")
         })
-        .filter_map(named)
+        .filter_map(label)
         .collect();
     assert!(untyped.is_empty(), "{untyped:?}");
 }

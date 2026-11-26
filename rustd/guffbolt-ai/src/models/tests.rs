@@ -11,7 +11,7 @@ use super::Models;
 use super::Spec;
 #[cfg(feature = "minimax")]
 use crate::Model as _;
-#[cfg(feature = "minimax")]
+#[cfg(any(feature = "minimax", feature = "gemini"))]
 use crate::providers;
 
 #[cfg(feature = "minimax")]
@@ -35,6 +35,27 @@ fn every_catalogue_row_parses_and_fits() {
             assert!(row.max_output_tokens > 0, "{} {}", provider.id(), row.id);
             assert!(ids.insert(row.id.as_str()), "{} {}", provider.id(), row.id);
         }
+    }
+}
+
+// Value: the Gemini list is what its wire serves: Neon resolves, a
+// computer-use or live model does not, and every Gemini 4 row states Google's
+// 65,536-token output limit rather than its context window.
+#[cfg(feature = "gemini")]
+#[test]
+fn the_gemini_list_serves_neon_and_caps_gemini_4_output() {
+    let rows = providers::gemini().specs().unwrap();
+    let named = |id: &str| rows.iter().any(|row| row.id == id);
+
+    assert!(named("gemini-4-neon"));
+    for gone in [
+        "gemini-2.5-computer-use-preview-10-2025",
+        "gemini-3.1-flash-live-preview",
+    ] {
+        assert!(!named(gone), "{gone}");
+    }
+    for row in rows.iter().filter(|row| row.id.starts_with("gemini-4")) {
+        assert_eq!(row.max_output_tokens, 65_536, "{}", row.id);
     }
 }
 
