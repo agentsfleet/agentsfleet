@@ -1,17 +1,17 @@
 {
-  "verified_at": "2026-10-18T13:32:07Z",
+  "verified_at": "2026-11-26T05:59:24Z",
   "pricing_unit": "USD per 1000000 tokens",
   "models": [
     {
-      "provider": "anthropic", "model_name": "claude-fable-5-1",
-      "display_name": "Fable 5.1", "advanced": false,
+      "provider": "anthropic", "model_name": "claude-fable-5-2",
+      "display_name": "Fable 5.2", "advanced": false,
       "inference": {"api": "messages", "base_url": "https://api.anthropic.com/v1", "max_output_tokens": 128000},
-      "context": { "tokens": 1000000, "source_url": "https://openrouter.ai/api/v1/models/anthropic/claude-fable-5.1/endpoints#anthropic", "verified_at": "2026-10-19T03:15:54Z" },
+      "context": { "tokens": 1000000, "source_url": "https://openrouter.ai/api/v1/models/anthropic/claude-fable-5.2/endpoints#anthropic", "verified_at": "2026-11-26T05:59:24Z" },
       "context_unverified_reason": null,
       "prices": [
-      { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
-        "input": "10", "cached_input": "0.25", "cache_write": null, "cache_write_5m": "12.5", "cache_write_1h": "20", "output": "50",
-        "source_url": "https://platform.claude.com/docs/en/about-claude/pricing", "verified_at": "2026-10-18T13:32:07Z",
+      { "effective_from": "2026-11-26T05:59:24Z", "effective_until": null, "prompt_tokens_above": 0,
+        "input": "8", "cached_input": "0.20", "cache_write": null, "cache_write_5m": "10", "cache_write_1h": "16", "output": "40",
+        "source_url": "https://platform.claude.com/docs/en/about-claude/pricing", "verified_at": "2026-11-26T05:59:24Z",
         "conditions": "Standard synchronous text inference; service-tier and regional modifiers excluded." }
       ]
     },
@@ -19,12 +19,12 @@
       "provider": "anthropic", "model_name": "claude-opus-5-5",
       "display_name": "Opus 5.5", "advanced": false,
       "inference": {"api": "messages", "base_url": "https://api.anthropic.com/v1", "max_output_tokens": 128000},
-      "context": { "tokens": 1000000, "source_url": "https://openrouter.ai/api/v1/models/anthropic/claude-opus-5.5/endpoints#anthropic", "verified_at": "2026-10-19T03:15:54Z" },
+      "context": { "tokens": 1000000, "source_url": "https://openrouter.ai/api/v1/models/anthropic/claude-opus-5.5/endpoints#anthropic", "verified_at": "2026-11-26T05:59:24Z" },
       "context_unverified_reason": null,
       "prices": [
       { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
         "input": "4", "cached_input": "0.20", "cache_write": null, "cache_write_5m": "5", "cache_write_1h": "8", "output": "20",
-        "source_url": "https://platform.claude.com/docs/en/about-claude/pricing", "verified_at": "2026-10-18T13:32:07Z",
+        "source_url": "https://platform.claude.com/docs/en/about-claude/pricing", "verified_at": "2026-11-26T05:59:24Z",
         "conditions": "Standard synchronous text inference; service-tier and regional modifiers excluded." }
       ]
     },
@@ -32,12 +32,12 @@
       "provider": "anthropic", "model_name": "claude-sonnet-5-5",
       "display_name": "Sonnet 5.5", "advanced": false,
       "inference": {"api": "messages", "base_url": "https://api.anthropic.com/v1", "max_output_tokens": 128000},
-      "context": { "tokens": 1000000, "source_url": "https://openrouter.ai/api/v1/models/anthropic/claude-sonnet-5.5/endpoints#anthropic", "verified_at": "2026-10-19T03:15:54Z" },
+      "context": { "tokens": 1000000, "source_url": "https://openrouter.ai/api/v1/models/anthropic/claude-sonnet-5.5/endpoints#anthropic", "verified_at": "2026-11-26T05:59:24Z" },
       "context_unverified_reason": null,
       "prices": [
       { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
         "input": "2", "cached_input": "0.10", "cache_write": null, "cache_write_5m": "2.5", "cache_write_1h": "4", "output": "10",
-        "source_url": "https://platform.claude.com/docs/en/about-claude/pricing", "verified_at": "2026-10-18T13:32:07Z",
+        "source_url": "https://platform.claude.com/docs/en/about-claude/pricing", "verified_at": "2026-11-26T05:59:24Z",
         "conditions": "Standard synchronous text inference; service-tier and regional modifiers excluded." }
       ]
     },
@@ -45,85 +45,85 @@
       "provider": "anthropic", "model_name": "claude-haiku-5-5",
       "display_name": "Haiku 5.5", "advanced": false,
       "inference": {"api": "messages", "base_url": "https://api.anthropic.com/v1", "max_output_tokens": 128000},
-      "context": { "tokens": 1000000, "source_url": "https://openrouter.ai/api/v1/models/anthropic/claude-haiku-5.5/endpoints#anthropic", "verified_at": "2026-10-19T03:15:54Z" },
+      "context": { "tokens": 1000000, "source_url": "https://openrouter.ai/api/v1/models/anthropic/claude-haiku-5.5/endpoints#anthropic", "verified_at": "2026-11-26T05:59:24Z" },
       "context_unverified_reason": null,
       "prices": [
       { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
         "input": "0.10", "cached_input": "0.01", "cache_write": null, "cache_write_5m": "0.125", "cache_write_1h": "0.20", "output": "0.50",
-        "source_url": "https://platform.claude.com/docs/en/about-claude/pricing", "verified_at": "2026-10-18T13:32:07Z",
+        "source_url": "https://platform.claude.com/docs/en/about-claude/pricing", "verified_at": "2026-11-26T05:59:24Z",
         "conditions": "Tier uses the whole prompt, including cached reads and all cache writes; applies to every token in that request." },
       { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 100000,
         "input": "0.50", "cached_input": "0.05", "cache_write": null, "cache_write_5m": "0.625", "cache_write_1h": "1", "output": "2.50",
-        "source_url": "https://platform.claude.com/docs/en/about-claude/pricing", "verified_at": "2026-10-18T13:32:07Z",
+        "source_url": "https://platform.claude.com/docs/en/about-claude/pricing", "verified_at": "2026-11-26T05:59:24Z",
         "conditions": "Tier uses the whole prompt, including cached reads and all cache writes; applies to every token in that request." }
       ]
     },
     {
-      "provider": "openai", "model_name": "gpt-6.1-sol",
-      "display_name": "GPT-6.1 Sol", "advanced": false,
+      "provider": "openai", "model_name": "gpt-6.2-sol",
+      "display_name": "GPT-6.2 Sol", "advanced": false,
       "inference": {"api": "responses", "base_url": "https://api.openai.com/v1", "dialect": "openai", "max_output_tokens": 128000},
-      "context": { "tokens": 1050000, "source_url": "https://openrouter.ai/api/v1/models/openai/gpt-6.1-sol/endpoints#openai", "verified_at": "2026-10-19T03:15:54Z" },
+      "context": { "tokens": 1050000, "source_url": "https://openrouter.ai/api/v1/models/openai/gpt-6.2-sol/endpoints#openai", "verified_at": "2026-11-26T05:59:24Z" },
       "context_unverified_reason": null,
       "prices": [
-      { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
+      { "effective_from": "2026-11-26T05:59:24Z", "effective_until": null, "prompt_tokens_above": 0,
         "input": "2", "cached_input": "0.10", "cache_write": "2.5", "cache_write_5m": null, "cache_write_1h": null, "output": "10",
-        "source_url": "https://developers.openai.com/api/docs/pricing", "verified_at": "2026-10-18T13:32:07Z",
-        "conditions": "Above 272,000 input tokens the upper tier prices the entire request; cache writes 1.25 times input. Batch, Flex, Fast, Ultrafast and regional modifiers excluded." },
-      { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 272000,
+        "source_url": "https://developers.openai.com/api/docs/pricing", "verified_at": "2026-11-26T05:59:24Z",
+        "conditions": "Above 272,000 input tokens the upper tier prices the entire request; cache writes use the default 30-minute lifetime, 1.25 times input, and 12-hour writes are never requested. Batch, Flex, Fast, Ultrafast and regional modifiers excluded." },
+      { "effective_from": "2026-11-26T05:59:24Z", "effective_until": null, "prompt_tokens_above": 272000,
         "input": "4", "cached_input": "0.20", "cache_write": "5", "cache_write_5m": null, "cache_write_1h": null, "output": "15",
-        "source_url": "https://developers.openai.com/api/docs/pricing", "verified_at": "2026-10-18T13:32:07Z",
-        "conditions": "Above 272,000 input tokens the upper tier prices the entire request; cache writes 1.25 times input. Batch, Flex, Fast, Ultrafast and regional modifiers excluded." }
+        "source_url": "https://developers.openai.com/api/docs/pricing", "verified_at": "2026-11-26T05:59:24Z",
+        "conditions": "Above 272,000 input tokens the upper tier prices the entire request; cache writes use the default 30-minute lifetime, 1.25 times input, and 12-hour writes are never requested. Batch, Flex, Fast, Ultrafast and regional modifiers excluded." }
       ]
     },
     {
-      "provider": "openai", "model_name": "gpt-6-astra",
-      "display_name": "GPT-6 Astra", "advanced": false,
+      "provider": "openai", "model_name": "gpt-6.2-astra",
+      "display_name": "GPT-6.2 Astra", "advanced": false,
       "inference": {"api": "responses", "base_url": "https://api.openai.com/v1", "dialect": "openai", "max_output_tokens": 128000},
-      "context": { "tokens": 1050000, "source_url": "https://openrouter.ai/api/v1/models/openai/gpt-6-astra/endpoints#openai", "verified_at": "2026-10-19T03:15:54Z" },
+      "context": { "tokens": 1050000, "source_url": "https://openrouter.ai/api/v1/models/openai/gpt-6.2-astra/endpoints#openai", "verified_at": "2026-11-26T05:59:24Z" },
       "context_unverified_reason": null,
       "prices": [
-      { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
-        "input": "10", "cached_input": "1", "cache_write": "12.5", "cache_write_5m": null, "cache_write_1h": null, "output": "50",
-        "source_url": "https://developers.openai.com/api/docs/pricing", "verified_at": "2026-10-18T13:32:07Z",
-        "conditions": "Above 272,000 input tokens the upper tier prices the entire request; cache writes 1.25 times input. Batch, Flex, Fast, Ultrafast and regional modifiers excluded." },
-      { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 272000,
-        "input": "20", "cached_input": "2", "cache_write": "25", "cache_write_5m": null, "cache_write_1h": null, "output": "75",
-        "source_url": "https://developers.openai.com/api/docs/pricing", "verified_at": "2026-10-18T13:32:07Z",
-        "conditions": "Above 272,000 input tokens the upper tier prices the entire request; cache writes 1.25 times input. Batch, Flex, Fast, Ultrafast and regional modifiers excluded." }
+      { "effective_from": "2026-11-26T05:59:24Z", "effective_until": null, "prompt_tokens_above": 0,
+        "input": "8", "cached_input": "0.40", "cache_write": "10", "cache_write_5m": null, "cache_write_1h": null, "output": "40",
+        "source_url": "https://developers.openai.com/api/docs/pricing", "verified_at": "2026-11-26T05:59:24Z",
+        "conditions": "Above 272,000 input tokens the upper tier prices the entire request; cache writes use the default 30-minute lifetime, 1.25 times input, and 12-hour writes are never requested. Batch, Flex, Fast, Ultrafast and regional modifiers excluded." },
+      { "effective_from": "2026-11-26T05:59:24Z", "effective_until": null, "prompt_tokens_above": 272000,
+        "input": "16", "cached_input": "0.80", "cache_write": "20", "cache_write_5m": null, "cache_write_1h": null, "output": "60",
+        "source_url": "https://developers.openai.com/api/docs/pricing", "verified_at": "2026-11-26T05:59:24Z",
+        "conditions": "Above 272,000 input tokens the upper tier prices the entire request; cache writes use the default 30-minute lifetime, 1.25 times input, and 12-hour writes are never requested. Batch, Flex, Fast, Ultrafast and regional modifiers excluded." }
       ]
     },
     {
       "provider": "openai", "model_name": "gpt-6-luna",
       "display_name": "GPT-6 Luna", "advanced": false,
       "inference": {"api": "responses", "base_url": "https://api.openai.com/v1", "dialect": "openai", "max_output_tokens": 128000},
-      "context": { "tokens": 1050000, "source_url": "https://openrouter.ai/api/v1/models/openai/gpt-6-luna/endpoints#openai", "verified_at": "2026-10-19T03:15:54Z" },
+      "context": { "tokens": 1050000, "source_url": "https://openrouter.ai/api/v1/models/openai/gpt-6-luna/endpoints#openai", "verified_at": "2026-11-26T05:59:24Z" },
       "context_unverified_reason": null,
       "prices": [
       { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
         "input": "0.10", "cached_input": "0.01", "cache_write": "0.125", "cache_write_5m": null, "cache_write_1h": null, "output": "0.50",
-        "source_url": "https://developers.openai.com/api/docs/pricing", "verified_at": "2026-10-18T13:32:07Z",
-        "conditions": "Above 272,000 input tokens the upper tier prices the entire request; cache writes 1.25 times input. Batch, Flex, Fast, Ultrafast and regional modifiers excluded." },
+        "source_url": "https://developers.openai.com/api/docs/pricing", "verified_at": "2026-11-26T05:59:24Z",
+        "conditions": "Above 272,000 input tokens the upper tier prices the entire request; cache writes use the default 30-minute lifetime, 1.25 times input, and 12-hour writes are never requested. Batch, Flex, Fast, Ultrafast and regional modifiers excluded." },
       { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 272000,
         "input": "0.20", "cached_input": "0.02", "cache_write": "0.25", "cache_write_5m": null, "cache_write_1h": null, "output": "0.75",
-        "source_url": "https://developers.openai.com/api/docs/pricing", "verified_at": "2026-10-18T13:32:07Z",
-        "conditions": "Above 272,000 input tokens the upper tier prices the entire request; cache writes 1.25 times input. Batch, Flex, Fast, Ultrafast and regional modifiers excluded." }
+        "source_url": "https://developers.openai.com/api/docs/pricing", "verified_at": "2026-11-26T05:59:24Z",
+        "conditions": "Above 272,000 input tokens the upper tier prices the entire request; cache writes use the default 30-minute lifetime, 1.25 times input, and 12-hour writes are never requested. Batch, Flex, Fast, Ultrafast and regional modifiers excluded." }
       ]
     },
     {
       "provider": "openai", "model_name": "gpt-5.6-terra",
       "display_name": "GPT-5.6 Terra", "advanced": true,
       "inference": {"api": "responses", "base_url": "https://api.openai.com/v1", "dialect": "openai", "max_output_tokens": 128000},
-      "context": { "tokens": 1050000, "source_url": "https://openrouter.ai/api/v1/models/openai/gpt-5.6-terra/endpoints#openai", "verified_at": "2026-10-19T03:15:54Z" },
+      "context": { "tokens": 1050000, "source_url": "https://openrouter.ai/api/v1/models/openai/gpt-5.6-terra/endpoints#openai", "verified_at": "2026-11-26T05:59:24Z" },
       "context_unverified_reason": null,
       "prices": [
       { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
         "input": "2", "cached_input": "0.20", "cache_write": "2.5", "cache_write_5m": null, "cache_write_1h": null, "output": "12",
-        "source_url": "https://developers.openai.com/api/docs/pricing", "verified_at": "2026-10-18T13:32:07Z",
-        "conditions": "Above 272,000 input tokens the upper tier prices the entire request; cache writes 1.25 times input. Batch, Flex, Fast, Ultrafast and regional modifiers excluded." },
+        "source_url": "https://developers.openai.com/api/docs/pricing", "verified_at": "2026-11-26T05:59:24Z",
+        "conditions": "Above 272,000 input tokens the upper tier prices the entire request; cache writes use the default 30-minute lifetime, 1.25 times input, and 12-hour writes are never requested. Batch, Flex, Fast, Ultrafast and regional modifiers excluded." },
       { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 272000,
         "input": "4", "cached_input": "0.40", "cache_write": "5", "cache_write_5m": null, "cache_write_1h": null, "output": "18",
-        "source_url": "https://developers.openai.com/api/docs/pricing", "verified_at": "2026-10-18T13:32:07Z",
-        "conditions": "Above 272,000 input tokens the upper tier prices the entire request; cache writes 1.25 times input. Batch, Flex, Fast, Ultrafast and regional modifiers excluded." }
+        "source_url": "https://developers.openai.com/api/docs/pricing", "verified_at": "2026-11-26T05:59:24Z",
+        "conditions": "Above 272,000 input tokens the upper tier prices the entire request; cache writes use the default 30-minute lifetime, 1.25 times input, and 12-hour writes are never requested. Batch, Flex, Fast, Ultrafast and regional modifiers excluded." }
       ]
     },
     {
@@ -154,7 +154,7 @@
           "cache_write_1h": null,
           "output": "0.60",
           "source_url": "https://fireworks.ai/models/fireworks/minimax-m3p1-flash",
-          "verified_at": "2026-10-23T07:42:54Z",
+          "verified_at": "2026-11-26T05:59:24Z",
           "conditions": "Standard serverless inference; priority and dedicated serving excluded. Output is capped at 32,768 tokens by this catalogue configuration."
         }
       ]
@@ -168,7 +168,7 @@
       "prices": [
       { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
         "input": "0.15", "cached_input": "0.03", "cache_write": null, "cache_write_5m": null, "cache_write_1h": null, "output": "0.50",
-        "source_url": "https://fireworks.ai/models/fireworks/glm-5p3-flash", "verified_at": "2026-10-18T13:32:07Z",
+        "source_url": "https://fireworks.ai/models/fireworks/glm-5p3-flash", "verified_at": "2026-11-26T05:59:24Z",
         "conditions": "Standard synchronous text inference; service-tier and regional modifiers excluded." }
       ]
     },
@@ -181,7 +181,7 @@
       "prices": [
       { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
         "input": "3", "cached_input": "0.30", "cache_write": null, "cache_write_5m": null, "cache_write_1h": null, "output": "15",
-        "source_url": "https://fireworks.ai/models/fireworks/kimi-k3", "verified_at": "2026-10-18T13:32:07Z",
+        "source_url": "https://fireworks.ai/models/fireworks/kimi-k3", "verified_at": "2026-11-26T05:59:24Z",
         "conditions": "Standard synchronous text inference; service-tier and regional modifiers excluded." }
       ]
     },
@@ -194,7 +194,7 @@
       "prices": [
       { "effective_from": "2026-11-05T03:57:16Z", "effective_until": null, "prompt_tokens_above": 0,
         "input": "2", "cached_input": "0.20", "cache_write": null, "cache_write_5m": null, "cache_write_1h": null, "output": "10",
-        "source_url": "https://fireworks.ai/models/fireworks/kimi-k3p1-pro", "verified_at": "2026-11-05T03:57:16Z",
+        "source_url": "https://fireworks.ai/models/fireworks/kimi-k3p1-pro", "verified_at": "2026-11-26T05:59:24Z",
         "conditions": "Standard synchronous text inference; service-tier and regional modifiers excluded." }
       ]
     },
@@ -207,7 +207,7 @@
       "prices": [
       { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
         "input": "0.30", "cached_input": "0.006", "cache_write": null, "cache_write_5m": null, "cache_write_1h": null, "output": "1.20",
-        "source_url": "https://fireworks.ai/models/deepseek-ai/deepseek-v4p1-flash", "verified_at": "2026-10-18T13:32:07Z",
+        "source_url": "https://fireworks.ai/models/deepseek-ai/deepseek-v4p1-flash", "verified_at": "2026-11-26T05:59:24Z",
         "conditions": "Standard synchronous text inference; service-tier and regional modifiers excluded." }
       ]
     },
@@ -215,51 +215,51 @@
       "provider": "openrouter", "model_name": "meta/muse-wonder",
       "display_name": "Muse Wonder", "advanced": false,
       "inference": {"api": "chat", "base_url": "https://openrouter.ai/api/v1", "dialect": "openrouter", "max_output_tokens": 943718},
-      "context": {"tokens":1048576,"source_url":"https://openrouter.ai/api/v1/models#meta/muse-wonder","verified_at":"2026-10-18T13:32:07Z"},
+      "context": {"tokens":1048576,"source_url":"https://openrouter.ai/api/v1/models#meta/muse-wonder","verified_at":"2026-11-26T05:59:24Z"},
       "context_unverified_reason": null,
       "prices": [
       { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
         "input": "4", "cached_input": "0.20", "cache_write": null, "cache_write_5m": null, "cache_write_1h": null, "output": "20",
-        "source_url": "https://openrouter.ai/api/v1/models", "verified_at": "2026-10-18T13:32:07Z",
+        "source_url": "https://openrouter.ai/api/v1/models", "verified_at": "2026-11-26T05:59:24Z",
         "conditions": "Standard synchronous text inference; exact rates from OpenRouter's models API." }
       ]
     },
     {
       "provider": "openrouter", "model_name": "google/gemini-4-argon",
       "display_name": "Gemini 4 Argon", "advanced": false,
-      "inference": {"api": "chat", "base_url": "https://openrouter.ai/api/v1", "dialect": "openrouter", "max_output_tokens": 943718},
-      "context": {"tokens":1048576,"source_url":"https://openrouter.ai/api/v1/models#google/gemini-4-argon","verified_at":"2026-10-18T13:32:07Z"},
+      "inference": {"api": "chat", "base_url": "https://openrouter.ai/api/v1", "dialect": "openrouter", "max_output_tokens": 65536},
+      "context": {"tokens":1048576,"source_url":"https://openrouter.ai/api/v1/models#google/gemini-4-argon","verified_at":"2026-11-26T05:59:24Z"},
       "context_unverified_reason": null,
       "prices": [
       { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
         "input": "2", "cached_input": "0.10", "cache_write": "0.1875", "cache_write_5m": null, "cache_write_1h": null, "output": "10",
-        "source_url": "https://openrouter.ai/api/v1/models", "verified_at": "2026-10-18T13:32:07Z",
-        "conditions": "OpenRouter's independently verified current rates; no future schedule published in this API. Implicit caching only; no cache-control sent." }
+        "source_url": "https://openrouter.ai/api/v1/models", "verified_at": "2026-11-26T05:59:24Z",
+        "conditions": "OpenRouter's independently verified current rates; no future schedule published in this API. Implicit caching only; no cache-control sent. Output is capped at 65,536 tokens, Google's documented per-request limit." }
       ]
     },
     {
-      "provider": "openrouter", "model_name": "qwen/qwen3.8-max-0902",
-      "display_name": "Qwen3.8 Max 0902", "advanced": false,
+      "provider": "openrouter", "model_name": "qwen/qwen4-max",
+      "display_name": "Qwen4 Max", "advanced": false,
       "inference": {"api": "chat", "base_url": "https://openrouter.ai/api/v1", "dialect": "openrouter", "max_output_tokens": 131072},
-      "context": {"tokens":1000000,"source_url":"https://openrouter.ai/api/v1/models#qwen/qwen3.8-max-0902","verified_at":"2026-10-18T13:32:07Z"},
+      "context": {"tokens":1000000,"source_url":"https://openrouter.ai/api/v1/models#qwen/qwen4-max","verified_at":"2026-11-26T05:59:24Z"},
       "context_unverified_reason": null,
       "prices": [
-      { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
-        "input": "2", "cached_input": "0.25", "cache_write": null, "cache_write_5m": null, "cache_write_1h": null, "output": "6",
-        "source_url": "https://openrouter.ai/api/v1/models", "verified_at": "2026-10-18T13:32:07Z",
-        "conditions": "Standard synchronous text inference; exact rates from OpenRouter's models API." }
+      { "effective_from": "2026-11-26T05:59:24Z", "effective_until": null, "prompt_tokens_above": 0,
+        "input": "1.425", "cached_input": "0.07125", "cache_write": "1.78125", "cache_write_5m": null, "cache_write_1h": null, "output": "4.275",
+        "source_url": "https://openrouter.ai/api/v1/models", "verified_at": "2026-11-26T05:59:24Z",
+        "conditions": "Standard synchronous text inference; exact rates from OpenRouter's models API, which applies a 5 percent discount to the undiscounted 1.50/0.075/1.875/4.50 USD per million. No discount end date published; no cache-control sent." }
       ]
     },
     {
       "provider": "groq", "model_name": "openai/gpt-oss-120b",
       "display_name": "GPT OSS 120B", "advanced": false,
       "inference": {"api": "chat", "base_url": "https://api.groq.com/openai/v1", "dialect": "groq", "max_output_tokens": 65536},
-      "context": { "tokens": 131072, "source_url": "https://openrouter.ai/api/v1/models/openai/gpt-oss-120b/endpoints#groq", "verified_at": "2026-10-19T03:15:54Z" },
+      "context": { "tokens": 131072, "source_url": "https://openrouter.ai/api/v1/models/openai/gpt-oss-120b/endpoints#groq", "verified_at": "2026-11-26T05:59:24Z" },
       "context_unverified_reason": null,
       "prices": [
       { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
         "input": "0.15", "cached_input": "0.075", "cache_write": null, "cache_write_5m": null, "cache_write_1h": null, "output": "0.60",
-        "source_url": "https://console.groq.com/docs/prompt-caching", "verified_at": "2026-10-18T13:32:07Z",
+        "source_url": "https://console.groq.com/docs/prompt-caching", "verified_at": "2026-11-26T05:59:24Z",
         "conditions": "Cached reads receive 50 percent discount; prompt caching adds no separate fee. Exact served context still requires the Groq models API." }
       ]
     },
@@ -270,10 +270,14 @@
       "context": { "tokens": 1048576, "source_url": "https://openrouter.ai/api/v1/models/mistralai/mistral-large-4-0/endpoints#mistral", "verified_at": "2026-10-19T03:15:54Z" },
       "context_unverified_reason": null,
       "prices": [
-      { "effective_from": "2026-10-18T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
+      { "effective_from": "2026-10-18T00:00:00Z", "effective_until": "2026-11-26T05:59:24Z", "prompt_tokens_above": 0,
         "input": "0.68", "cached_input": "0.07", "cache_write": null, "cache_write_5m": null, "cache_write_1h": null, "output": "2.09",
         "source_url": "https://docs.mistral.ai/inference/pricing", "verified_at": "2026-10-18T13:32:07Z",
-        "conditions": "Public preview promotion; undiscounted rates 1.36/0.14/4.18 USD per million. No promotion end date published." }
+        "conditions": "Public preview promotion; undiscounted rates 1.36/0.14/4.18 USD per million. No promotion end date published." },
+      { "effective_from": "2026-11-26T05:59:24Z", "effective_until": null, "prompt_tokens_above": 0,
+        "input": "0.70", "cached_input": "0.07", "cache_write": null, "cache_write_5m": null, "cache_write_1h": null, "output": "2.10",
+        "source_url": "https://docs.mistral.ai/inference/pricing", "verified_at": "2026-11-26T05:59:24Z",
+        "conditions": "Standard synchronous text inference; regional inference, 10 percent extra, excluded. The page lists no promotion; this row starts when the change was observed." }
       ]
     },
     {
@@ -292,18 +296,35 @@
     {
       "provider": "gemini", "model_name": "gemini-4-argon",
       "display_name": "Gemini 4 Argon", "advanced": false,
-      "inference": {"api": "gemini", "base_url": "https://generativelanguage.googleapis.com", "max_output_tokens": 943718},
-      "context": { "tokens": 1048576, "source_url": "https://openrouter.ai/api/v1/models/google/gemini-4-argon/endpoints#google-ai-studio", "verified_at": "2026-10-19T03:15:54Z" },
+      "inference": {"api": "gemini", "base_url": "https://generativelanguage.googleapis.com", "max_output_tokens": 65536},
+      "context": { "tokens": 1048576, "source_url": "https://openrouter.ai/api/v1/models/google/gemini-4-argon/endpoints#google-ai-studio", "verified_at": "2026-11-26T05:59:24Z" },
       "context_unverified_reason": null,
       "prices": [
       { "effective_from": "2026-10-18T00:00:00Z", "effective_until": "2026-12-01T00:00:00Z", "prompt_tokens_above": 0,
         "input": "2", "cached_input": "0.10", "cache_write": null, "cache_write_5m": null, "cache_write_1h": null, "output": "10",
-        "source_url": "https://ai.google.dev/gemini-api/docs/pricing", "verified_at": "2026-10-18T13:32:07Z",
-        "conditions": "Google native route, displayed Google. Implicit caching only; no explicit cache-control. December 1, 2026 rate change at UTC midnight. Output includes thinking tokens." },
+        "source_url": "https://ai.google.dev/gemini-api/docs/pricing", "verified_at": "2026-11-26T05:59:24Z",
+        "conditions": "Google native route, displayed Google. Implicit caching only; no explicit cache-control. December 1, 2026 rate change at UTC midnight. Output includes thinking tokens. Google Search grounding is never requested on this wire. Output is capped at 65,536 tokens, Google's per-request streaming limit." },
       { "effective_from": "2026-12-01T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
         "input": "4", "cached_input": "0.20", "cache_write": null, "cache_write_5m": null, "cache_write_1h": null, "output": "20",
-        "source_url": "https://ai.google.dev/gemini-api/docs/pricing", "verified_at": "2026-10-18T13:32:07Z",
-        "conditions": "Google native route, displayed Google. Implicit caching only; no explicit cache-control. December 1, 2026 rate change at UTC midnight. Output includes thinking tokens." }
+        "source_url": "https://ai.google.dev/gemini-api/docs/pricing", "verified_at": "2026-11-26T05:59:24Z",
+        "conditions": "Google native route, displayed Google. Implicit caching only; no explicit cache-control. December 1, 2026 rate change at UTC midnight. Output includes thinking tokens. Google Search grounding is never requested on this wire. Output is capped at 65,536 tokens, Google's per-request streaming limit." }
+      ]
+    },
+    {
+      "provider": "gemini", "model_name": "gemini-4-carbon",
+      "display_name": "Gemini 4 Carbon", "advanced": false,
+      "inference": {"api": "gemini", "base_url": "https://generativelanguage.googleapis.com", "max_output_tokens": 65536},
+      "context": { "tokens": 1048576, "source_url": "https://openrouter.ai/api/v1/models/google/gemini-4-carbon/endpoints#google-ai-studio", "verified_at": "2026-11-26T05:59:24Z" },
+      "context_unverified_reason": null,
+      "prices": [
+      { "effective_from": "2026-11-26T05:59:24Z", "effective_until": "2026-12-01T00:00:00Z", "prompt_tokens_above": 0,
+        "input": "2", "cached_input": "0.10", "cache_write": null, "cache_write_5m": null, "cache_write_1h": null, "output": "10",
+        "source_url": "https://ai.google.dev/gemini-api/docs/pricing", "verified_at": "2026-11-26T05:59:24Z",
+        "conditions": "Google native route, displayed Google. Implicit caching only; no explicit cache-control. December 1, 2026 rate change at UTC midnight. Output includes thinking tokens. Google Search grounding is never requested on this wire. Output is capped at 65,536 tokens, Google's per-request streaming limit." },
+      { "effective_from": "2026-12-01T00:00:00Z", "effective_until": null, "prompt_tokens_above": 0,
+        "input": "4", "cached_input": "0.20", "cache_write": null, "cache_write_5m": null, "cache_write_1h": null, "output": "20",
+        "source_url": "https://ai.google.dev/gemini-api/docs/pricing", "verified_at": "2026-11-26T05:59:24Z",
+        "conditions": "Google native route, displayed Google. Implicit caching only; no explicit cache-control. December 1, 2026 rate change at UTC midnight. Output includes thinking tokens. Google Search grounding is never requested on this wire. Output is capped at 65,536 tokens, Google's per-request streaming limit." }
       ]
     }
   ],

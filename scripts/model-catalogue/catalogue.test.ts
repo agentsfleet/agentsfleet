@@ -9,7 +9,7 @@ const VERIFIED = "2026-10-18T12:00:00Z";
 const CUTOVER = "2026-12-01T00:00:00Z";
 const BEFORE = "2026-11-30T23:59:59.999Z";
 const SOURCE = "https://developers.openai.com/api/docs/pricing";
-const MODEL = "gpt-6.1-sol";
+const MODEL = "gpt-6.2-sol";
 const PRICING_UNIT = "USD per 1000000 tokens";
 const FILES: string[] = [];
 
@@ -21,7 +21,7 @@ function price(overrides: Partial<Price> = {}): Price {
 }
 
 function model(overrides: Partial<Model> = {}): Model {
-  return { provider: "openai", model_name: MODEL, display_name: "GPT 6.1 Sol", advanced: false,
+  return { provider: "openai", model_name: MODEL, display_name: "GPT 6.2 Sol", advanced: false,
     inference: { api: "responses", base_url: "https://api.openai.com/v1", dialect: "openai", max_output_tokens: 128000 },
     context: null, context_unverified_reason: "Models API requires authentication.",
     prices: [price()], ...overrides };
