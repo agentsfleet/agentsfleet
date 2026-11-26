@@ -41,7 +41,7 @@ fn dispatch(api: &str, purpose: &str) -> serde_json::Value {
             "input_max_bytes":24576
         },
         "goal":{"questions_revision":"dt-goal-v1","statement_min_bps":9000,
-            "continue_action":threshold,"wait":threshold,"done":threshold}},
+            "continue_action":threshold,"wait":threshold}},
         "request":{"call_id":CALL,"purpose":purpose,"state":{"durable_task":{"durable_task_id":CALL},"source_turn_id":CALL},
             "questions":[{"name":"matches","question":{"type":"noul","instructions":"Does the evidence match?",
                 "criteria":{"true":"It matches","false":"It does not match"}}}]}

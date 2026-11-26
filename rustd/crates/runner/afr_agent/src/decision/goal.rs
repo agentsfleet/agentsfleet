@@ -2,14 +2,17 @@
 //!
 //! The decision model judges the task's own completion statements
 //! (`questions`) and the next action; it neither starts a task nor links a
-//! message to one.
+//! message to one. The statements alone decide done; the next action decides
+//! only whether unfinished work waits or continues.
 
 use std::collections::BTreeMap;
 
 use super::{PreparedDurableTask, identity, unavailable, version};
 use crate::Result;
 use af_wire::{
-    decision::{DecisionAnswer, DecisionAssignment, DecisionOutcome, DecisionThreshold},
+    decision::{
+        DecisionAnswer, DecisionAssignment, DecisionOutcome, DecisionThreshold, NamedQuestion,
+    },
     durable_task::{
         DecisionAssessment, DecisionCallState, DecisionRecordDisposition, DecisionReservationInput,
         DurableTaskDisposition, DurableTaskReport,
@@ -45,29 +48,26 @@ pub(crate) async fn assess(
         .await
         .map_err(crate::decision::native)?;
     let answers = answers(&evaluated)?;
-    let Some(DecisionAnswer::Choice { choice: next, .. }) = answers.get("next_action") else {
-        return Err(unavailable());
-    };
-    let (disposition, threshold) = match next.as_str() {
-        "DONE" => (DurableTaskDisposition::Complete, assignment.goal.done),
-        "WAIT" => (DurableTaskDisposition::Waiting, assignment.goal.wait),
-        "CONTINUE" => (
-            DurableTaskDisposition::Continue,
-            assignment.goal.continue_action,
-        ),
-        _ => return Err(unavailable()),
-    };
-    choice(answers, "next_action", threshold)?;
-    if disposition == DurableTaskDisposition::Complete
-        && (task.questions.is_empty()
-            || !task.questions.iter().all(|question| {
-                matches!(answers.get(&question.name),
-            Some(DecisionAnswer::Noul { noul }) if noul.is_finite()
-                && *noul >= f64::from(assignment.goal.statement_min_bps) / 10_000.0)
-            }))
-    {
-        return Err(unavailable());
-    }
+    let disposition =
+        if statements_hold(&task.questions, answers, assignment.goal.statement_min_bps) {
+            DurableTaskDisposition::Complete
+        } else {
+            let Some(DecisionAnswer::Choice { choice: next, .. }) = answers.get("next_action")
+            else {
+                return Err(unavailable());
+            };
+            let (disposition, threshold) = match next.as_str() {
+                "WAIT" => (DurableTaskDisposition::Waiting, assignment.goal.wait),
+                "CONTINUE" => (
+                    DurableTaskDisposition::Continue,
+                    assignment.goal.continue_action,
+                ),
+                // `DONE` without its statements, `BLOCKED` or anything else.
+                _ => return Err(unavailable()),
+            };
+            choice(answers, "next_action", threshold)?;
+            disposition
+        };
     Ok(DurableTaskReport {
         durable_task: version(task),
         disposition,
@@ -91,6 +91,21 @@ fn answers(evaluation: &DecisionEvaluation) -> Result<&BTreeMap<String, Decision
         DecisionOutcome::Answered { answers } => Ok(answers),
         DecisionOutcome::Refused | DecisionOutcome::Invalid { .. } => Err(unavailable()),
     }
+}
+
+/// Whether the task has completion statements and each one's Noul answer is
+/// finite and at least `min_bps`; `agentsfleetd` authorizes a completion by
+/// the same rule.
+fn statements_hold(
+    questions: &[NamedQuestion],
+    answers: &BTreeMap<String, DecisionAnswer>,
+    min_bps: u16,
+) -> bool {
+    !questions.is_empty()
+        && questions.iter().all(|question| {
+            matches!(answers.get(&question.name), Some(DecisionAnswer::Noul { noul })
+                if noul.is_finite() && *noul >= f64::from(min_bps) / 10_000.0)
+        })
 }
 
 /// The choice `name` answered, when its confidence and its own probability

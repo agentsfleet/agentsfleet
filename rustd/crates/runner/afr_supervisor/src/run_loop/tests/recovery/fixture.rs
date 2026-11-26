@@ -29,7 +29,6 @@ pub(in crate::run_loop) fn assignment() -> DecisionAssignment {
             statement_min_bps: 9000,
             continue_action: threshold,
             wait: threshold,
-            done: threshold,
         },
     }
 }

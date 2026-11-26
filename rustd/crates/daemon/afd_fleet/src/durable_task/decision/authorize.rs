@@ -10,7 +10,7 @@ use crate::{
 };
 use af_core::id::Uuid7;
 use af_wire::{
-    decision::{DecisionAnswer, DecisionThreshold},
+    decision::{DecisionAnswer, DecisionThreshold, NamedQuestion},
     durable_task::{DecisionAssessment, DecisionReceipt},
 };
 use sqlx::{PgConnection, types::Json};
@@ -75,7 +75,24 @@ pub(super) fn choice<'a>(
     Ok(choice)
 }
 
-/// A native report accepts only its recorded goal call and reviewed thresholds.
+/// Whether the task has completion statements and each one's Noul answer is
+/// finite and at least `min_bps`; the runner reports a completion by the same
+/// rule.
+fn statements_hold(
+    questions: &[NamedQuestion],
+    answers: &BTreeMap<String, DecisionAnswer>,
+    min_bps: u16,
+) -> bool {
+    !questions.is_empty()
+        && questions.iter().all(|question| {
+            matches!(answers.get(&question.name), Some(DecisionAnswer::Noul { noul })
+                if noul.is_finite() && *noul >= f64::from(min_bps) / 10_000.0)
+        })
+}
+
+/// A native report accepts only its recorded goal call and reviewed thresholds:
+/// a completion by the call's statements alone, a wait or a continuation by its
+/// next action.
 pub(in crate::durable_task) async fn goal(
     connection: &mut PgConnection,
     run: DurableTaskRun<'_>,
@@ -84,12 +101,12 @@ pub(in crate::durable_task) async fn goal(
 ) -> Result<()> {
     use af_wire::{decision::GoalDecisionPolicy, durable_task::DurableTaskDisposition};
     type Threshold = fn(&GoalDecisionPolicy) -> DecisionThreshold;
-    let (action, threshold): (&str, Threshold) = match input.disposition {
+    let next: Option<(&str, Threshold)> = match input.disposition {
         DurableTaskDisposition::Blocked => return Ok(()),
         DurableTaskDisposition::Continue if input.decision_call_id.is_none() => return Ok(()),
-        DurableTaskDisposition::Complete => ("DONE", |policy| policy.done),
-        DurableTaskDisposition::Waiting => ("WAIT", |policy| policy.wait),
-        DurableTaskDisposition::Continue => ("CONTINUE", |policy| policy.continue_action),
+        DurableTaskDisposition::Complete => None,
+        DurableTaskDisposition::Waiting => Some(("WAIT", |policy| policy.wait)),
+        DurableTaskDisposition::Continue => Some(("CONTINUE", |policy| policy.continue_action)),
     };
     let evaluated = load(
         connection,
@@ -111,16 +128,17 @@ pub(in crate::durable_task) async fn goal(
         return Err(DurableTaskRefusal::StaleState.into());
     }
     let policy = &evaluated.call.profile_snapshot.goal;
-    if choice(&evaluated.answers, "next_action", threshold(policy))? != action {
-        return Err(DurableTaskRefusal::InputAmbiguous.into());
-    }
-    if input.disposition == DurableTaskDisposition::Complete
-        && (task.questions.is_empty()
-            || !task.questions.iter().all(|question| {
-                matches!(evaluated.answers.get(&question.name), Some(DecisionAnswer::Noul { noul })
-            if noul.is_finite() && *noul >= f64::from(policy.statement_min_bps) / 10_000.0)
-            }))
-    {
+    let authorized = match next {
+        None => statements_hold(
+            &task.questions,
+            &evaluated.answers,
+            policy.statement_min_bps,
+        ),
+        Some((action, threshold)) => {
+            choice(&evaluated.answers, "next_action", threshold(policy))? == action
+        }
+    };
+    if !authorized {
         return Err(DurableTaskRefusal::InputAmbiguous.into());
     }
     Ok(())

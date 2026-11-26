@@ -22,7 +22,7 @@ pub(super) fn assignment() -> Result<DecisionAssignment, Failed> {
     let threshold = json!({"probability_bps":9000,"confidence_bps":9000});
     let assignment: DecisionAssignment = serde_json::from_value(json!({"revision_id":TASK,
         "profile":{"model_id":TASK,"revision":"reviewed","api":"typesafe","endpoint":"https://decision.fixture.test/v1","model":"decision-model","accepted_models":["decision-model"],"capabilities":{"noul":true,"choice":true,"score":false},"input_max_bytes":24576},
-        "goal":{"questions_revision":"dt-goal-v1","statement_min_bps":9000,"continue_action":threshold,"wait":threshold,"done":threshold}}))?;
+        "goal":{"questions_revision":"dt-goal-v1","statement_min_bps":9000,"continue_action":threshold,"wait":threshold}}))?;
     assignment.validate()?;
     Ok(assignment)
 }

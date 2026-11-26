@@ -474,10 +474,13 @@ describe("task goal check", () => {
       decision: { enabled: true, profile: { api: "typesafe", endpoint: "https://api.typesafe.ai/v1/systemone",
         accepted_models: ["jev-1.14.0"], capabilities: { noul: true } } } });
     const decision = z.object({ decision: z.object({
-      profile: z.object({ evaluation_digest: z.string().regex(/^[0-9a-f]{64}$/) }),
+      profile: z.object({ evaluation_digest: z.string().regex(/^[0-9a-f]{64}$/), goal: z.unknown() }),
       prices: z.array(z.object({ prompt_tokens_above: z.literal(0), output_nanos_per_mtok: z.literal("0") })).length(1),
     }) }).parse(created);
     expect(decision.decision.prices).toHaveLength(1);
+    // The statements decide done, so the profile carries thresholds for waiting and continuing only.
+    expect(decision.decision.profile.goal).toEqual({ questions_revision: "dt-goal-v1", statement_min_bps: 9500,
+      continue_action: { probability_bps: 8000, confidence_bps: 7000 }, wait: { probability_bps: 8500, confidence_bps: 7500 } });
     expect(saved).toEqual({ name: "typesafe", data: { api_key: "ts_test_only" } });
 
     // A rerun reuses both: no second model, no replaced key.

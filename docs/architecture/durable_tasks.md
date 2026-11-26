@@ -109,12 +109,16 @@ The runner stops starting new work with three minutes left: one minute for the g
 At the end of each attempt, the decision model answers the task's statements and picks the next action.
 The daemon then settles the task.
 
-| Next action | What the daemon does |
+When every statement passes, the task ends as done once native checks agree, whatever the next action says.
+When any statement falls short, the next action decides.
+
+| Next action | What the daemon does when a statement falls short |
 |---|---|
 | `CONTINUE` | Queues another continuation turn |
 | `WAIT` | Arms a wait on the bound pull request's current head and frees the thread |
-| `DONE` | Ends the task, once every statement passes and native checks agree |
-| `BLOCKED` | Holds the task for a named prerequisite, permission or piece of evidence |
+| `DONE` or `BLOCKED` | Blocks the task as `completion_unverified`, because the run stops without a goal report |
+
+A `CONTINUE` or `WAIT` below its own thresholds ends the run the same way.
 
 Waiting frees the fleet's thread, so other turns and tasks run meanwhile.
 A task holds one wait, stored on its own row (`fleet.durable_tasks.wait_*`) with the head and check results read when it was armed.
@@ -144,10 +148,15 @@ If the daemon refuses it as larger than the profile's `input_max_bytes` (`UZ-REQ
 A summary never satisfies a native publication or exact-head check.
 
 The daemon accepts a report only for its recorded goal call and that call's profile thresholds (`decision/authorize.rs`).
-The picked action must meet its probability and confidence thresholds, or the report is refused as ambiguous (`UZ-DT-007`).
-`DONE` also needs every statement's Noul at or above `statement_min_bps`, and current-head evidence a model's confidence cannot replace.
+A completion needs every statement's Noul at or above `statement_min_bps`, whatever the next action says.
+A task bound to a pull request also needs passing checks at its current head, which the daemon reads itself.
+
+A wait or a continuation needs its picked action to meet that action's probability and confidence thresholds.
+A report that misses its rule is refused as ambiguous (`UZ-DT-007`).
+The runner applies the same rules before it reports (`afr_agent/src/decision/goal.rs`).
 
 Thresholds live in the profile's `GoalDecisionPolicy`, as integer basis points under question revision `dt-goal-v1`.
+`statement_min_bps` decides done, and `continue_action` and `wait` each hold a probability and a confidence threshold.
 Each profile carries its own numbers; nothing in code sets a default.
 
 ### Decision profiles
@@ -165,6 +174,10 @@ operator PATCH /v1/admin/runners/{id} {assigned_policy.decision_model_id}
 An edit reaches later runs; a call in flight keeps its recorded profile.
 A run with no profile, or one the runner cannot serve, is offered no task tools.
 A replacement runner may use another profile without changing the task's objective, history or limits.
+
+Every read parses a stored profile strictly, so a field this build does not know fails the read.
+A run issue on a runner that selects the profile then fails, and so does every admin catalogue list and update.
+The [model catalogue playbook](../../playbooks/operations/model_catalogue/001_playbook.md#replace-the-decision-model) replaces such a profile without resetting the database.
 
 One `DecisionEvaluator` trait in `af_providers` has one implementation, `DecisionClient`, with four wire adapters: TypeSafe, OpenAI, Perplexity and Cloudflare.
 The daemon resolves the provider key from the platform-admin workspace's vault, chosen by `PLATFORM_ADMIN_WORKSPACE_ID`.

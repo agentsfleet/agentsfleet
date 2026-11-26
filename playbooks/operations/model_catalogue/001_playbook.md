@@ -122,6 +122,75 @@ Sync the `typesafe` bag first, and skip this section when `models list` already 
    <varies>  Task goal check   typesafe  jev-latest
    ```
 
+## Replace the decision model
+
+The daemon reads a stored decision profile only in the shape its build knows.
+After a change removes or renames a profile field, `models list` and `models update` fail on the old row.
+No run starts on a runner that selects that model, so replace the row without resetting the database.
+
+1. Read the selected model from the runner, because `models list` cannot read it.
+   `<RUNNER_ID>` is the runner's `ID` in `agentsfleet platform runners list`.
+
+   ```bash
+   agentsfleet platform runners show <RUNNER_ID> --json | jq -r '.assigned_policy.decision_model_id'
+   ```
+
+   ```text
+   <varies>
+   ```
+
+   The printed value is `<DECISION_MODEL_ID>`.
+
+2. Write the runner's policy with no decision model:
+
+   ```bash
+   agentsfleet platform runners show <RUNNER_ID> --json | jq '.assigned_policy | .decision_model_id = null' > policy.json
+   ```
+
+   The command prints nothing.
+
+3. Apply the policy. Runs on this runner start again, without task tools, and the old model is free to delete.
+
+   ```bash
+   agentsfleet platform runners update <RUNNER_ID> --policy policy.json --json
+   ```
+
+   ```text
+     "id": "<varies>",
+   ```
+
+4. Delete the old model.
+
+   > **Warning:** Deleting it also deletes its decision revisions and decision prices. Goal-check charges already recorded stay.
+
+   ```bash
+   agentsfleet platform models delete <DECISION_MODEL_ID> --json
+   ```
+
+   ```text
+     "deleted": true
+   ```
+
+5. Create the model again with step 1 or 2 of [Seed the decision model](#seed-the-decision-model).
+   The reply's `id` is `<NEW_DECISION_MODEL_ID>`.
+6. Write the runner's policy with the new model:
+
+   ```bash
+   agentsfleet platform runners show <RUNNER_ID> --json | jq --arg id "<NEW_DECISION_MODEL_ID>" '.assigned_policy | .decision_model_id = $id' > policy.json
+   ```
+
+   The command prints nothing.
+
+7. Apply the policy, so the runner's task runs use the new model's goal check:
+
+   ```bash
+   agentsfleet platform runners update <RUNNER_ID> --policy policy.json --json
+   ```
+
+   ```text
+     "id": "<varies>",
+   ```
+
 ## Change connection settings or prices
 
 Change the snapshot in `rustd/crates/protocol/af_observability/src/semconv/model-library-allowlist.json` and rerun the diff and apply above.
@@ -156,6 +225,8 @@ Unchanged applies keep identifiers, timestamps and the catalogue generation.
 | `NOT SEEDED` | No exact provider context evidence | Read the provider models API; never infer from marketing shorthand |
 | Refresh failed | Invalid data, unavailable database or refused write | Check input and database health, then rerun the diff |
 | `0 currently priced rows` | Priming failed or no proved identity has a current price | Repair the snapshot and rerun the apply |
+| `models list` fails, and no run starts on a runner that selects the decision model | The stored decision profile carries a field this build does not read | [Replace the decision model](#replace-the-decision-model) |
+| `models delete` refuses the decision model as in use | A runner still selects it | Clear the runner's `decision_model_id` first, as in [Replace the decision model](#replace-the-decision-model) |
 
 The seeder does not retry.
 A failed transaction keeps the prior catalogue and generation.

@@ -222,8 +222,7 @@ fn reviewed_decision() -> serde_json::Value {
             "goal":{
                 "questions_revision":"dt-goal-v1", "statement_min_bps":9500,
                 "continue_action":{"probability_bps":8000,"confidence_bps":7000},
-                "wait":{"probability_bps":8500,"confidence_bps":7500},
-                "done":{"probability_bps":9500,"confidence_bps":8500}
+                "wait":{"probability_bps":8500,"confidence_bps":7500}
             },
             "evaluation_digest":"ab".repeat(32),
             "evaluation_source_url":"https://example.test/decision-evaluation",
@@ -258,7 +257,7 @@ fn decision_configuration_bounds_name_the_decision_without_echoing_inputs() {
             serde_json::json!("private\u{0}value"),
         ),
         (
-            "/decision/profile/goal/done/probability_bps",
+            "/decision/profile/goal/wait/probability_bps",
             serde_json::json!(10001),
         ),
         ("/decision/prices", serde_json::json!([])),

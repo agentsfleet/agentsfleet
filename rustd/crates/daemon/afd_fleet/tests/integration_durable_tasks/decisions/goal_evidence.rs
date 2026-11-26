@@ -1,5 +1,6 @@
-//! A task's report is prepared only from its own goal decision, answered with
-//! the action the report claims at the reviewed thresholds.
+//! A task's report is prepared only from its own goal decision at the reviewed
+//! thresholds: a completion by its statements, a wait or a continuation by the
+//! action it claims.
 
 use af_core::{
     error_code::{self, ErrorCode},
@@ -100,27 +101,41 @@ async fn refused(fixture: &Decisions<'_>, semantic: DurableTaskReport, code: Err
     assert_eq!(event.field("error_code"), Some(code.as_str()));
 }
 
-// Value: protects=a completion is prepared only when the goal decision says DONE
-// and every accepted statement clears its floor; fails_when=the next-action
-// comparison or the statement floor is dropped; why_new=both refusals had no
-// case; seam=the production reserve, receipt and report-preparation verbs over
-// live Postgres; no_claim=settlement after a prepared report.
+/// The next action a dev goal check gave a finished task: muddled between
+/// `DONE` and `BLOCKED`, below every threshold, while the statements held.
+fn muddled(result: &mut DecisionResult) {
+    let answers = match &mut result.result {
+        DecisionOutcome::Answered { answers } => Some(answers),
+        _ => None,
+    }
+    .expect("the fixture answers every question");
+    answers.insert(
+        "next_action".to_owned(),
+        DecisionAnswer::Choice {
+            choice: "BLOCKED".to_owned(),
+            confidence: Some(0.62),
+            probabilities: std::collections::BTreeMap::from([
+                ("CONTINUE".to_owned(), 0.13),
+                ("WAIT".to_owned(), 0.0),
+                ("DONE".to_owned(), 0.38),
+                ("BLOCKED".to_owned(), 0.49),
+            ]),
+        },
+    );
+}
+
+// Value: protects=a completion is prepared when every accepted statement clears
+// its floor, whatever the next action says, and refused when one falls short;
+// fails_when=the statement floor is dropped or the next action still gates
+// completion; why_new=the statements alone now decide done; seam=the production
+// reserve, receipt and report-preparation verbs over live Postgres;
+// no_claim=settlement after a prepared report.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_completion_the_goal_decision_does_not_support_is_ambiguous() {
+async fn a_completion_is_prepared_by_its_statements_alone() {
     exercise(async |case: &Case| {
         let fixture = Decisions::create(case).await;
         let task = accepted(&fixture).await;
-        let waiting = decided(&fixture, goal(), &task, |result| {
-            next_action(result, "WAIT");
-        })
-        .await;
-        refused(
-            &fixture,
-            report(&task, DurableTaskDisposition::Complete, waiting),
-            error_code::DURABLE_TASK_INPUT_AMBIGUOUS,
-        )
-        .await;
         let unproved = decided(&fixture, goal(), &task, |result| {
             next_action(result, "DONE");
             if let DecisionOutcome::Answered { answers } = &mut result.result {
@@ -138,6 +153,18 @@ async fn a_completion_the_goal_decision_does_not_support_is_ambiguous() {
             error_code::DURABLE_TASK_INPUT_AMBIGUOUS,
         )
         .await;
+        // `known_result` answers every statement at 1.0, above the profile's floor.
+        let held = decided(&fixture, goal(), &task, muddled).await;
+        let semantic = report(&task, DurableTaskDisposition::Complete, held);
+        let prepared = fixture
+            .tasks
+            .prepare_report(
+                case.run(),
+                &report_settlement::request(case, Some(semantic)),
+            )
+            .await
+            .expect("a completion its statements support prepares");
+        assert!(prepared.is_some(), "the completion is prepared");
         fixture.model.finish().await.expect("model cleanup");
     })
     .await;

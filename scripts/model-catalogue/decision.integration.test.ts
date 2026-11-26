@@ -81,7 +81,6 @@ function definition() {
     goal: {
       questions_revision: "dt-goal-v1", statement_min_bps: 9500,
       continue_action: { probability_bps: 8000, confidence_bps: 7000 }, wait: { probability_bps: 8500, confidence_bps: 7500 },
-      done: { probability_bps: 9500, confidence_bps: 8500 },
     },
     evaluation_digest: "ab".repeat(32), evaluation_source_url: "https://example.test/decision-evaluation", evaluated_at: VERIFIED_AT,
   };

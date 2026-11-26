@@ -78,7 +78,7 @@ async fn reject_changed_revision(models: &Models, first: &Model) {
         .configuration
         .profile
         .goal
-        .done
+        .wait
         .probability_bps = 9900;
     let refused = models
         .update(&first.id, conflict, NOW)
@@ -101,7 +101,7 @@ async fn adopt_revision(models: &Models, id: &Uuid7) -> Model {
         .configuration
         .profile
         .goal
-        .done
+        .wait
         .probability_bps = 9900;
     assert!(
         models
@@ -240,7 +240,7 @@ async fn reject_unusable_profiles(models: &Models, id: &Uuid7, expected: &ModelU
                 .push('\0'),
             2 => profile.endpoint.push('\0'),
             3 => profile.evaluation_source_url.push('\0'),
-            _ => profile.goal.done.probability_bps = 10_001,
+            _ => profile.goal.wait.probability_bps = 10_001,
         }
         let refused = models
             .update(id, replacement, NOW)

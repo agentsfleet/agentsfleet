@@ -30,7 +30,9 @@ pub struct GoalDecisionPolicy {
     #[cfg_attr(feature = "openapi", schema(pattern = "^dt-goal-v1$"))]
     #[garde(custom(af_validate::exactly("dt-goal-v1")))]
     pub questions_revision: String,
-    /// Every required completion statement must meet this Noul threshold.
+    /// The task is done when every completion statement meets this Noul
+    /// threshold, whatever the next action says; independently checked native
+    /// evidence still applies.
     #[cfg_attr(feature = "openapi", schema(maximum = 10000))]
     #[garde(range(max = 10000))]
     pub statement_min_bps: u16,
@@ -40,9 +42,6 @@ pub struct GoalDecisionPolicy {
     /// Wait acceptance, subject to a concrete native dependency.
     #[garde(dive)]
     pub wait: DecisionThreshold,
-    /// Completion acceptance, subject to independently checked native evidence.
-    #[garde(dive)]
-    pub done: DecisionThreshold,
 }
 
 /// Editable, non-secret model settings; catalogue identity is supplied natively.

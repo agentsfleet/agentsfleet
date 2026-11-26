@@ -90,7 +90,6 @@ pub(crate) fn decision_assignment() -> DecisionAssignment {
             statement_min_bps: 9000,
             continue_action: threshold,
             wait: threshold,
-            done: threshold,
         },
     }
 }

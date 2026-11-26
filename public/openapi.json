@@ -24200,17 +24200,12 @@
           "questions_revision",
           "statement_min_bps",
           "continue_action",
-          "wait",
-          "done"
+          "wait"
         ],
         "properties": {
           "continue_action": {
             "$ref": "#/components/schemas/DecisionThreshold",
             "description": "Continue acceptance, subject to native remaining limits."
-          },
-          "done": {
-            "$ref": "#/components/schemas/DecisionThreshold",
-            "description": "Completion acceptance, subject to independently checked native evidence."
           },
           "questions_revision": {
             "type": "string",
@@ -24220,7 +24215,7 @@
           "statement_min_bps": {
             "type": "integer",
             "format": "int32",
-            "description": "Every required completion statement must meet this Noul threshold.",
+            "description": "The task is done when every completion statement meets this Noul\nthreshold, whatever the next action says; independently checked native\nevidence still applies.",
             "maximum": 10000,
             "minimum": 0
           },

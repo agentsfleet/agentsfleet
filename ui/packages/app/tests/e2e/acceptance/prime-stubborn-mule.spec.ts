@@ -34,7 +34,7 @@ const fixture = primeFleet(PRIME_FLEET.stubbornMule);
 const proof = proofs(fixture, 4);
 const objective = entry(fixture, fixture.follow_ups, 0, "follow-up");
 const STEP_TIMEOUT_MS = 900_000;
-// Three counted steps, each a run with a completion check behind it, on one runner queue.
+// The task's action groups, each with a completion check behind it, on one runner queue.
 const TASK_TIMEOUT_MS = 720_000;
 const TASK_START = "task_start";
 const TASK_INPUT = "task_input";
@@ -91,10 +91,10 @@ test.describe.serial(`prime fleet ${fixture.name}`, {tag: POST_DEPLOY_TAG}, () =
   test(proof(0), async ({page}) => {
     await signInAs(page, PRIME_PERSON);
     expect(await tasks(), "a new fleet has no task").toEqual([]);
-    // The task's objective is the fixture's own sentence: the first bytes of the message, before what this run adds.
+    // The task's objective is the fixture's own words: the first bytes of the message, before what this run adds.
     const asked = await say(page, workspaceId, primed().id, `${objective} Call ${TASK_START} with the target api_only. ` +
       "Copy source_turn_id verbatim from the current message in the run input. " +
-      `Its objective is the first sentence of this message: source_start 0 and source_end ${Buffer.byteLength(objective)}.`);
+      `Its objective is the text this message opens with, before these instructions: source_start 0 and source_end ${Buffer.byteLength(objective)}.`);
     assertPassed(classifyTerminalTurn(asked));
     expect(asked.actor).toBe(`${PERSON_ACTOR_PREFIX}${fixtureSubject(PRIME_PERSON)}`);
     const accepted = asked.tool_calls?.calls.find(call => call.name === TASK_START && call.status === TOOL_CALL_STATUS.SUCCEEDED);

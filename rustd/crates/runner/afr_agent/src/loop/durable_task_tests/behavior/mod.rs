@@ -14,6 +14,7 @@ mod assessment;
 mod effects;
 mod evidence;
 mod finish_boundary;
+mod goal_results;
 mod publication;
 mod publication_fixture;
 mod publication_guards;
@@ -173,14 +174,14 @@ fn goals(replies: impl IntoIterator<Item = DecisionEvaluation>) -> Goals {
 #[tokio::test]
 async fn complete_and_wait_reports_retain_native_goal_proof_and_private_history()
 -> crate::Result<()> {
-    for (choice, disposition) in [
-        ("DONE", DurableTaskDisposition::Complete),
-        ("WAIT", DurableTaskDisposition::Waiting),
+    for (choice, statement, disposition) in [
+        ("DONE", 1.0, DurableTaskDisposition::Complete),
+        ("WAIT", 0.0, DurableTaskDisposition::Waiting),
     ] {
         let script = Script::new([vec![say("Investigation recorded."), ended(false)]]);
         let engine = super::super::tests::engine(vec![], &script);
         let this_run = assigned_run(&[], 16_384);
-        let native = goals([evaluation(choice, Some(1.0), 1.0)]);
+        let native = goals([evaluation(choice, Some(1.0), statement)]);
         let prepared = PreparedDurableTask {
             execution_deadline: native.inputs.execution_deadline,
             inputs: native.inputs.clone(),
@@ -208,93 +209,6 @@ async fn complete_and_wait_reports_retain_native_goal_proof_and_private_history(
                 .get("answer")
                 .expect("goal evidence carries the answer")),
             Some(&serde_json::json!("Investigation recorded."))
-        );
-    }
-    Ok(())
-}
-
-/// The record `evaluation`, built by [`evaluation`], always carries.
-fn recorded(evaluation: &mut DecisionEvaluation) -> &mut DecisionRecorded {
-    evaluation
-        .recorded
-        .as_deref_mut()
-        .expect("the fixture's evaluation is recorded")
-}
-
-fn refused_goals() -> Vec<DecisionEvaluation> {
-    let mut stale = evaluation("DONE", Some(1.0), 1.0);
-    recorded(&mut stale).disposition = DecisionRecordDisposition::Stale;
-    let mut unknown = evaluation("DONE", Some(1.0), 1.0);
-    unknown.recorded = None;
-    let mut refused = evaluation("DONE", Some(1.0), 1.0);
-    recorded(&mut refused).result.result = DecisionOutcome::Refused;
-    let mut improbable = evaluation("DONE", Some(1.0), 1.0);
-    recorded(&mut improbable).result.result = DecisionOutcome::Answered {
-        answers: BTreeMap::from([
-            (
-                "next_action".to_owned(),
-                DecisionAnswer::Choice {
-                    choice: "DONE".to_owned(),
-                    confidence: Some(1.0),
-                    probabilities: BTreeMap::from([
-                        ("DONE".to_owned(), 0.89),
-                        ("WAIT".to_owned(), 0.0),
-                        ("CONTINUE".to_owned(), 0.11),
-                    ]),
-                },
-            ),
-            ("verified".to_owned(), DecisionAnswer::Noul { noul: 1.0 }),
-        ]),
-    };
-    let mut unchosen = evaluation("DONE", Some(1.0), 1.0);
-    recorded(&mut unchosen).result.result = DecisionOutcome::Answered {
-        answers: BTreeMap::from([
-            ("next_action".to_owned(), DecisionAnswer::Noul { noul: 1.0 }),
-            ("verified".to_owned(), DecisionAnswer::Noul { noul: 1.0 }),
-        ]),
-    };
-    vec![
-        evaluation("DONE", None, 1.0),
-        evaluation("DONE", Some(0.89), 1.0),
-        evaluation("ESCALATE", Some(1.0), 1.0),
-        unchosen,
-        evaluation("DONE", Some(1.0), 0.89),
-        stale,
-        unknown,
-        refused,
-        improbable,
-    ]
-}
-
-#[tokio::test]
-async fn untrusted_goal_results_never_authorize_completion() -> crate::Result<()> {
-    for result in refused_goals() {
-        let script = Script::new([vec![say("I claim this is complete."), ended(false)]]);
-        let engine = super::super::tests::engine(vec![], &script);
-        let this_run = assigned_run(&[], 16_384);
-        let native = goals([result]);
-        let prepared = PreparedDurableTask {
-            execution_deadline: native.inputs.execution_deadline,
-            inputs: native.inputs.clone(),
-        };
-        let output = run(&engine, &this_run, &native, &prepared).await?;
-        assert!(output.task.is_none());
-        assert!(output.recovery.is_some());
-        assert_eq!(
-            output.result.outcome,
-            crate::ResultOutcome::Failed(crate::Failure {
-                class: None,
-                detail: "the run was stopped before it finished".into(),
-            })
-        );
-        assert!(output.result.content.is_empty());
-        assert_eq!(
-            native
-                .requests
-                .lock()
-                .expect("fixture mutex is unpoisoned")
-                .len(),
-            1
         );
     }
     Ok(())

@@ -2,7 +2,7 @@
   "name": "careful-squirrel",
   "journey": "access",
   "about": "Asks before it touches a secret. It holds nothing until a person approves what it asked for.",
-  "first_message": "You look things up with a stored secret. Before you use a secret, ask for it with request_access and wait for the answer.",
+  "first_message": "Acknowledge this instruction in one line. You look things up with a stored secret. Before you use a secret, ask for it with request_access and wait for the answer. Ask for nothing until a later message names a secret.",
   "follow_ups": [
     "Use the secret named in this message and tell me whether you could read it."
   ],
