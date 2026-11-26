@@ -69,6 +69,7 @@ or aim with the paddle edges.
 
 Collect stars and build a streak as the court speeds up. You get three lives.
 A missed ball falls below the paddle, costs a life, and returns to the center.
+
 Press R to restart with your session best or Q to quit.
 
 Press S to toggle the sound effects. Sound starts off. Orbit uses your
