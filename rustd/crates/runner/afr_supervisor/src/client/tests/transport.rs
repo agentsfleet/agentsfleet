@@ -63,7 +63,11 @@ async fn the_http_client_classifies_every_status_class() {
     let api = api(&base, "agt_r_token").unwrap();
 
     let busy = api
-        .send(call(Verb::Mint, "/status/503", None))
+        .send(call(Verb::DurableTaskCheckpointPlan, "/status/503", None))
+        .await
+        .unwrap_err();
+    let gateway = api
+        .send(call(Verb::DurableTaskCheckpointPlan, "/status/502", None))
         .await
         .unwrap_err();
     let throttled = api
@@ -79,7 +83,15 @@ async fn the_http_client_classifies_every_status_class() {
         .await
         .unwrap_err();
 
-    assert!(busy.is_retryable() && throttled.is_retryable());
+    assert_eq!(
+        busy.code(),
+        af_core::error_code::DURABLE_TASK_STORAGE_UNAVAILABLE
+    );
+    assert_eq!(
+        gateway.code(),
+        af_core::error_code::INTERNAL_OPERATION_FAILED
+    );
+    assert!(busy.is_retryable() && gateway.is_retryable() && throttled.is_retryable());
     assert_eq!(lost.refusal_code(), Some(af_core::error_code::RUN_LOST));
     assert!(!lost.is_retryable());
     assert!(unauthorized.is_unauthorized());

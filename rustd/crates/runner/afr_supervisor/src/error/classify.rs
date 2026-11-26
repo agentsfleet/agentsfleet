@@ -167,6 +167,9 @@ impl Error {
             ErrorKind::CaptureUnavailable { .. } => error_code::RUN_CHECKPOINT_UNAVAILABLE,
             ErrorKind::Stream { source } => source.code(),
             ErrorKind::StreamRefused { code, .. }
+            | ErrorKind::Unavailable {
+                code: Some(code), ..
+            }
             | ErrorKind::Refused {
                 code: Some(code), ..
             } => *code,
