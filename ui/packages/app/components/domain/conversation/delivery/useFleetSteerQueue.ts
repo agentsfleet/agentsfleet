@@ -8,7 +8,7 @@ import {
   type ExternalThreadQueueAdapter,
 } from "@assistant-ui/react";
 
-import { chatMessageDraft } from "@/lib/chat-message-text";
+import { chatMessageDraft, fleetComposerText } from "@/lib/chat-message-text";
 
 // The fleet's daemon is the queue: its turn ledger orders every steer, so
 // no lane here ever holds a message. Once a runtime has a queue, assistant-ui
