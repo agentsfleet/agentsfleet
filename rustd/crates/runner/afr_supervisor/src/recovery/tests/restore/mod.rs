@@ -46,7 +46,7 @@ async fn restore_rejects_changed_identity_and_future_cursors_before_reading_page
             toolbox: &toolbox(),
             stop: &CancellationToken::new(),
         }
-        .run(None)
+        .run(None, std::future::ready(Ok(())))
         .await
         .unwrap_err();
         config_failure(
@@ -97,10 +97,10 @@ async fn corrupt_or_unordered_manifests_never_touch_the_destination() -> crate::
             toolbox: &toolbox(),
             stop: &CancellationToken::new(),
         }
-        .run(Some((
-            destination.path().to_owned(),
-            (owner.uid(), owner.gid()),
-        )))
+        .run(
+            Some((destination.path().to_owned(), (owner.uid(), owner.gid()))),
+            std::future::ready(Ok(())),
+        )
         .await
         .unwrap_err();
         config_failure(&error, expected);
@@ -137,7 +137,7 @@ async fn files_require_a_workspace_and_existing_files_are_never_overwritten() ->
             toolbox: &toolbox(),
             stop: &CancellationToken::new(),
         }
-        .run(destination_path)
+        .run(destination_path, std::future::ready(Ok(())))
         .await
         .unwrap_err();
         config_failure(
@@ -185,7 +185,7 @@ async fn cancellation_and_changed_pin_deadline_end_restore_custody() -> crate::R
             toolbox: &toolbox(),
             stop: &stop,
         }
-        .run(None)
+        .run(None, std::future::ready(Ok(())))
         .await
         .unwrap_err();
         config_failure(
@@ -224,7 +224,7 @@ async fn empty_api_recovery_requires_its_matching_history_root() -> crate::Resul
         toolbox: &toolbox(),
         stop: &stop,
     };
-    let restored = restore.run(None).await?;
+    let restored = restore.run(None, std::future::ready(Ok(()))).await?;
     assert_eq!(restored.history.expose(), b"");
     assert_eq!(restored.base_paths.len(), 0);
     assert_eq!(
@@ -240,7 +240,7 @@ async fn empty_api_recovery_requires_its_matching_history_root() -> crate::Resul
         permit: None,
         ..restore
     }
-    .run(None)
+    .run(None, std::future::ready(Ok(())))
     .await
     .unwrap_err();
     config_failure(&error, "checkpoint history root mismatch");

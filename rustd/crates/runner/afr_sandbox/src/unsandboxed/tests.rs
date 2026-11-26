@@ -68,43 +68,6 @@ async fn test_an_unsandboxed_runs_a_process_and_is_removed() {
     );
 }
 
-#[tokio::test]
-async fn should_show_the_host_the_workspace_its_executor_serves() {
-    let base = tempfile::Builder::new()
-        .prefix("afr")
-        .tempdir_in("/tmp")
-        .unwrap();
-    let id = fresh_sandbox_id();
-    let engine = UnsandboxedEngine::new(base.path().to_owned()).unwrap();
-    let sandbox = engine
-        .prepare(SandboxSpec::granted_by(&engine, &id, Limits::DEFAULT).unwrap())
-        .await
-        .unwrap();
-
-    let workspace = sandbox.workspace().unwrap();
-    std::fs::write(workspace.root.join("planted.txt"), "from the host").unwrap();
-    let owner = workspace.owner;
-    let read = sandbox
-        .executor()
-        .read_file("planted.txt", 64)
-        .await
-        .unwrap();
-    sandbox.destroy().await.unwrap();
-
-    assert_eq!(
-        read.data, "from the host",
-        "the executor reads what the host wrote"
-    );
-    assert_eq!(
-        owner,
-        (
-            rustix::process::getuid().as_raw(),
-            rustix::process::getgid().as_raw()
-        ),
-        "the files belong to whoever runs the engine"
-    );
-}
-
 /// Its processes run on the host under no cgroup, so nothing counts them or
 /// stops them together: quiescence is refused saying so, and a park is
 /// refused naming `park`, with the sandbox destroyed rather than kept.
@@ -250,7 +213,6 @@ async fn test_destroy_aborts_a_lingering_server_and_removes_its_directory() {
             root: crate::engine::Root::Host,
         },
         dir: dir.clone(),
-        workspace: dir.join(super::WORKSPACE_DIR),
         client,
         server,
     });

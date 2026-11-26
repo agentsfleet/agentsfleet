@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
+use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::error::{Result, file_calls_unsupported};
 use crate::events::Events;
@@ -237,6 +238,15 @@ pub struct Listing {
     pub truncated: bool,
 }
 
+/// What one import unpacked.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Imported {
+    /// The entries written: files, directories and links.
+    pub entries: u64,
+    /// The bytes of file content written.
+    pub bytes: u64,
+}
+
 /// A file's bytes, up to the limit the caller asked for.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileContent {
@@ -309,6 +319,28 @@ pub trait Executor: Send + Sync + fmt::Debug {
     /// its files, or the lines in them that hold its pattern, in path order,
     /// cut to one frame.
     async fn search(&self, _search: &Search) -> Result<Found> {
+        Err(file_calls_unsupported())
+    }
+
+    /// Unpacks the tar stream `tree` under `at`, made when absent, each entry
+    /// owned by the executor's user with its mode kept. One entry leaving the
+    /// workspace, by its name or a link's target, refuses the whole import
+    /// before anything is written.
+    async fn import(
+        &self,
+        _at: &str,
+        _tree: &mut (dyn AsyncRead + Send + Unpin),
+    ) -> Result<Imported> {
+        Err(file_calls_unsupported())
+    }
+
+    /// Writes `paths`, and everything below each, into `into` as a tar
+    /// stream; a link is packed as a link, never followed.
+    async fn export(
+        &self,
+        _paths: &[&str],
+        _into: &mut (dyn AsyncWrite + Send + Unpin),
+    ) -> Result<()> {
         Err(file_calls_unsupported())
     }
 }

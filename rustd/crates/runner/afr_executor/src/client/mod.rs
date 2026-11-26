@@ -1,11 +1,17 @@
-//! The supervisor's end of the executor socket.
+//! The supervisor's end of the executor link.
 //!
-//! One link task owns the socket, the calls awaiting an answer and the sender
+//! One link task owns the stream, the calls awaiting an answer and the sender
 //! of every open process's events; a [`Client`] encodes its call as a line in
 //! its own task, hands it to the link through a channel and waits on a
-//! one-shot reply. When the socket closes, every waiting call
+//! one-shot reply. When the stream closes, every waiting call
 //! fails and every open process ends `Interrupted` — once, because the link
 //! drops each sender as it ends it.
+//!
+//! The stream is whatever the client's [`Transport`] dials. A call that finds
+//! the link closed dials once more and goes over the new link; a call already
+//! sent is never sent again, since the executor may have run it. Processes
+//! the old link carried stay `Interrupted`: the executor that ran them ended
+//! them with its connection.
 //!
 //! A process's events that go before its ending was read kill it, so a caller
 //! that leaves mid-command — a cancelled tool call — leaves nothing running.
@@ -25,11 +31,13 @@ use backon::{ConstantBuilder, Retryable as _};
 use bytes::Bytes;
 use serde::Serialize;
 use serde_json::value::RawValue;
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::UnixStream;
-use tokio::sync::{mpsc, oneshot};
-use tokio_util::sync::CancellationToken;
+use tokio::sync::{Mutex, oneshot};
 
-use crate::api::{Executor, FileContent, Found, Listing, Process, ProcessId, Search, Spawn};
+use crate::api::{
+    Executor, FileContent, Found, Imported, Listing, Process, ProcessId, Search, Spawn,
+};
 use crate::error::{self, Result};
 use crate::protocol::{
     KillParams, METHOD_DELETE_FILE, METHOD_KILL, METHOD_LIST_DIR, METHOD_READ_FILE,
@@ -42,12 +50,13 @@ use crate::timing::CALL_DEADLINE;
 
 mod call;
 mod link;
+pub mod transport;
+mod tree;
 
 use self::call::{Call, CallIds, Reply};
-use self::link::Link;
+use self::link::{Linked, start};
+use self::transport::{Stream, Transport};
 
-/// How many calls may wait for the link to send them.
-const CALL_BACKLOG: usize = 64;
 /// The pause between attempts to reach a socket that is not listening yet.
 const CONNECT_RETRY_DELAY: Duration = Duration::from_millis(10);
 /// A call too long for the executor to read, refused before it is sent: the
@@ -59,9 +68,12 @@ const DETAIL_TOO_LONG: &str = "the call is longer than the executor reads";
 /// Dropping it closes the connection, which ends every process it started.
 #[derive(Debug)]
 pub struct Client {
-    calls: mpsc::Sender<Call>,
+    /// What dials a link again when a call finds it closed; none for a link
+    /// handed over connected, whose one stream was that one.
+    transport: Option<Box<dyn Transport>>,
+    /// The link calls go over now; replaced when a call finds it closed.
+    link: Mutex<Linked>,
     ids: Arc<CallIds>,
-    lost: CancellationToken,
     deadline: Duration,
     /// What both ends of the link hold to: the executor was started with the
     /// same.
@@ -95,7 +107,8 @@ impl Client {
 
     /// A client over `stream`, already connected to an executor: the engine's
     /// end of the socket pair its sandbox inherited, started with `sizes`.
-    /// Nothing is retried, as nothing has to bind first.
+    /// Nothing is retried, as nothing has to bind first, and a link that
+    /// closes is not dialled again: its one stream was this one.
     ///
     /// # Errors
     /// The stream cannot be made non-blocking or join the runtime.
@@ -108,21 +121,59 @@ impl Client {
         ))
     }
 
-    /// A client over a connected `stream` whose calls wait at most `deadline`.
+    /// A client over whatever `transport` dials, dialled once now and again
+    /// whenever a call finds the link closed, holding the link to the `sizes`
+    /// the executor was started with.
+    ///
+    /// # Errors
+    /// The first dial fails.
+    pub async fn dial(transport: impl Transport + 'static, sizes: Sizes) -> Result<Self> {
+        let stream = transport.dial().await?;
+        Ok(Self::linked(
+            stream,
+            Some(Box::new(transport)),
+            CALL_DEADLINE,
+            sizes,
+        ))
+    }
+
+    /// A client over a connected `stream` whose calls wait at most `deadline`,
+    /// which dials no second link: once it closes, every call fails as the
+    /// connection closed.
     pub(crate) fn over(stream: UnixStream, deadline: Duration, sizes: Sizes) -> Self {
-        let (calls, queue) = mpsc::channel(CALL_BACKLOG);
+        Self::linked(Box::new(stream), None, deadline, sizes)
+    }
+
+    /// A client whose first link runs over `stream`, and whose later ones
+    /// over what `transport` dials.
+    fn linked(
+        stream: Box<dyn Stream>,
+        transport: Option<Box<dyn Transport>>,
+        deadline: Duration,
+        sizes: Sizes,
+    ) -> Self {
         let ids = Arc::new(CallIds::default());
-        let lost = CancellationToken::new();
-        let outbox = calls.downgrade();
-        let link = Link::new(stream, queue, outbox, Arc::clone(&ids), lost.clone(), sizes);
-        tokio::spawn(link.run());
+        let link = Mutex::new(start(stream, &ids, sizes));
         Self {
-            calls,
+            transport,
+            link,
             ids,
-            lost,
             deadline,
             sizes,
         }
+    }
+
+    /// The link a call goes over: the current one, or, when it was found
+    /// closed, one dialled now. Callers that find it closed together dial
+    /// once between them, as the first holds the lock while it dials.
+    async fn live(&self) -> Result<Linked> {
+        let mut current = self.link.lock().await;
+        if !current.is_open() {
+            let transport = self.transport.as_ref().ok_or_else(error::connection_lost)?;
+            let stream = transport.dial().await.map_err(error::redial_failed)?;
+            *current = start(stream, &self.ids, self.sizes);
+        }
+        Ok(current.clone())
     }
 
     /// Sends one call and waits, until the deadline, for the reply `wrap`
@@ -134,15 +185,13 @@ impl Client {
         params: &P,
         wrap: impl FnOnce(oneshot::Sender<Result<T>>) -> Reply + Send,
     ) -> Result<T> {
-        if self.lost.is_cancelled() {
-            return Err(error::connection_lost());
-        }
         let id = self.ids.next();
         let line = request(id, method, params)?;
         // A frame the executor reads, and its delimiter.
         if line.len() > self.sizes.max_frame_bytes.saturating_add(1) {
             return Err(error::invalid_params(DETAIL_TOO_LONG));
         }
+        let Linked { calls, lost } = self.live().await?;
         let (reply, answer) = oneshot::channel();
         let call = Call {
             id,
@@ -152,16 +201,16 @@ impl Client {
         let answered = tokio::time::timeout(self.deadline, async {
             tokio::select! {
                 biased;
-                () = self.lost.cancelled() => Err(error::connection_lost()),
+                () = lost.cancelled() => Err(error::connection_lost()),
                 result = async {
-                    self.calls.send(call).await.map_err(|_closed| error::connection_lost())?;
+                    calls.send(call).await.map_err(|_closed| error::connection_lost())?;
                     answer.await.map_err(|_closed| error::connection_lost())?
                 } => result,
             }
         })
         .await;
         answered.unwrap_or_else(|_elapsed| {
-            self.lost.cancel();
+            lost.cancel();
             Err(error::unresponsive(method))
         })
     }
@@ -271,6 +320,22 @@ impl Executor for Client {
     async fn search(&self, search: &Search) -> Result<Found> {
         self.fetch(METHOD_SEARCH, search).await
     }
+
+    async fn import(
+        &self,
+        at: &str,
+        tree: &mut (dyn AsyncRead + Send + Unpin),
+    ) -> Result<Imported> {
+        self.import_tree(at, tree).await
+    }
+
+    async fn export(
+        &self,
+        paths: &[&str],
+        into: &mut (dyn AsyncWrite + Send + Unpin),
+    ) -> Result<()> {
+        self.export_tree(paths, into).await
+    }
 }
 
 #[cfg(test)]
@@ -278,3 +343,6 @@ mod tests;
 
 #[cfg(test)]
 mod invalidation_tests;
+
+#[cfg(test)]
+mod redial_tests;

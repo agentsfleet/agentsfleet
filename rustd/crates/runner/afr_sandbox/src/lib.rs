@@ -63,8 +63,8 @@ pub use self::cgroup::{
 pub use self::engine::fresh_sandbox_id;
 pub use self::engine::{
     Cap, Capabilities, DEFAULT_CPU_MILLIS, DEFAULT_DISK_BYTES, DEFAULT_MEMORY_BYTES, DEFAULT_PIDS,
-    Engine, EngineTuning, Environment, Granted, HostWorkspace, Killed, Limits, ParkMode, Parked,
-    Quiescence, ResourceFacts, Root, Sandbox, SandboxSpec, SandboxState, Sweep, Swept,
+    Engine, EngineTuning, Environment, Granted, Killed, Limits, ParkMode, Parked, Quiescence,
+    ResourceFacts, Root, Sandbox, SandboxSpec, SandboxState, Sweep, Swept,
 };
 #[cfg(feature = "test-util")]
 pub use self::error::ambiguous;

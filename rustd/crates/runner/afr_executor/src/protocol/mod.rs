@@ -19,6 +19,16 @@ use serde_json::value::RawValue;
 
 use crate::api::{Ending, Stream};
 
+mod transfer;
+
+pub use self::transfer::TRANSFER_CHUNK_BYTES;
+pub(crate) use self::transfer::{
+    ExportChunk, ExportOpenParams, ExportReadParams, ImportOpenParams, ImportWriteParams,
+    METHOD_EXPORT_OPEN, METHOD_EXPORT_READ, METHOD_IMPORT_COMMIT, METHOD_IMPORT_OPEN,
+    METHOD_IMPORT_WRITE, METHOD_TRANSFER_DROP, TransferOpened, TransferParams,
+    transfer_chunk_bytes,
+};
+
 /// `process/spawn`: start a process.
 pub(crate) const METHOD_SPAWN: &str = "process/spawn";
 /// `process/write`: queue bytes for a process's input.
@@ -44,7 +54,8 @@ pub(crate) const NOTIFY_EXITED: &str = "process/exited";
 
 /// The longest line either end reads when its starter names none
 /// ([`crate::Sizes`]): 64 MiB. A write of a file is the largest message, and
-/// this caps it before base64 expands it by a third.
+/// this caps it before base64 expands it by a third; a tree crosses in chunks
+/// cut to fit it ([`TRANSFER_CHUNK_BYTES`]).
 pub(crate) const MAX_FRAME_BYTES: usize = 64 * 1024 * 1024;
 /// What ends every message on the wire.
 pub(crate) const DELIMITER: u8 = b'\n';

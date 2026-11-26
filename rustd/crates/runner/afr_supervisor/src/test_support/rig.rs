@@ -144,6 +144,7 @@ impl Rig {
                 home.mirrors(),
                 format!("file://{}/", root.path().join(ORIGINS).display()),
             ),
+            staging: home.staging(),
             limits: Limits::default(),
             holds,
             clock: clock(),

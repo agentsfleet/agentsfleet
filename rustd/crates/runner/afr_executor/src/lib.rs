@@ -22,13 +22,15 @@
 //! link is split from serving so the sandbox takes it before it confines
 //! itself.
 //! [`Client`] is the supervisor's end and implements [`Executor`] over the
-//! socket. Both read the other's messages as untrusted.
+//! socket, or over any byte stream a [`Transport`] dials and dials again
+//! when the link closes. Both read the other's messages as untrusted.
 
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 #![deny(clippy::self_named_module_files)]
 
 pub mod error;
 pub mod timing;
+pub mod tree;
 
 mod api;
 mod client;
@@ -40,14 +42,15 @@ mod sizes;
 mod slot;
 
 pub use self::api::{
-    DirEntry, Ending, EntryKind, Executor, FileContent, Found, Hit, Listing, Pattern, Process,
-    ProcessEvent, ProcessId, Search, Spawn, Stream,
+    DirEntry, Ending, EntryKind, Executor, FileContent, Found, Hit, Imported, Listing, Pattern,
+    Process, ProcessEvent, ProcessId, Search, Spawn, Stream,
 };
 pub use self::client::Client;
+pub use self::client::transport::{self, Transport};
 pub use self::edges::EDGE_BYTES;
 pub use self::error::{Error, Result};
 pub use self::events::{Events, Feed};
-pub use self::protocol::{MAX_READ_BYTES, READ_CHUNK_BYTES};
+pub use self::protocol::{MAX_READ_BYTES, READ_CHUNK_BYTES, TRANSFER_CHUNK_BYTES};
 pub use self::server::{Server, Tenant, WORKSPACE_ROOT, bind, connected, serve};
 pub use self::sizes::Sizes;
 pub use self::slot::{ExecutorSlot, ExecutorSource, Outcome, Unavailable};

@@ -25,3 +25,5 @@ mod search;
 mod support;
 #[path = "terminal.rs"]
 mod terminal;
+#[path = "tree.rs"]
+mod tree;

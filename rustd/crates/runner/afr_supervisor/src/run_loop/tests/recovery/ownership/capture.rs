@@ -82,18 +82,12 @@ async fn a_repository_durable_task_without_a_ready_sandbox_stops_the_run_before_
 }
 
 #[tokio::test]
-async fn a_sandbox_without_a_workspace_or_toolbox_skips() -> Result<()> {
+async fn a_sandbox_without_a_toolbox_skips() -> Result<()> {
     let root = tempfile::tempdir()?;
-    for engine in [
-        FakeEngine {
-            toolbox: Some(api_toolbox()),
-            ..FakeEngine::default()
-        },
-        FakeEngine {
-            workspace: Some(root.path().to_owned()),
-            ..FakeEngine::default()
-        },
-    ] {
+    for engine in [FakeEngine {
+        workspace: Some(root.path().to_owned()),
+        ..FakeEngine::default()
+    }] {
         let mut fixture = Fixture::new(unavailable)?;
         let run = fixture.run()?;
         let sandbox = engine

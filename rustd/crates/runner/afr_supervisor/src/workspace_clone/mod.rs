@@ -1,30 +1,32 @@
-//! The fleet's repository, checked out into the run's workspace from the
-//! host side, so the token that fetched it never enters the sandbox.
+//! The fleet's repository, checked out on the host and imported into the
+//! run's workspace, so the token that fetched it never enters the sandbox.
 //!
 //! ```text
 //!   fetch into the workspace's mirror  (HTTPS; the token rides an in-memory header)
-//!     ─► copy the mirror's objects into <workspace>/<name>/.git
+//!     ─► copy the mirror's objects into <stage>/<name>/.git
 //!     ─► origin = the plain URL, the base branch checked out
-//!     ─► every file handed to the sandbox's user
+//!     ─► pack <stage>/<name> and import it at <name>: the executor's user owns it
 //! ```
 //!
 //! One mirror per workspace and repository lives under the runner's storage
-//! home, so a later run fetches only what changed. The workspace gets a copy,
-//! never a link: nothing outside the sandbox resolves inside it. Two workers
-//! never fetch into one mirror at once; each mirror has its own lock.
+//! home, so a later run fetches only what changed. The workspace gets a copy
+//! through the executor, never a link: nothing outside the sandbox resolves
+//! inside it, and no host path reaches it. Two workers never fetch into one
+//! mirror at once; each mirror has its own lock.
 
 use dashmap::DashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use afr_sandbox::HostWorkspace;
+use afr_executor::Executor;
 use afr_tools::sandbox::Checkout;
 use base64::Engine as _;
 use tokio_util::sync::CancellationToken;
 use zeroize::Zeroizing;
 
 use crate::error::{self, Result};
+use crate::staging::Staged;
 
 mod checkout;
 mod fetch;
@@ -64,8 +66,6 @@ pub struct Request<'a> {
     pub checkout: Checkout<'a>,
     /// The token the fetch presents; it stays on this host.
     pub token: &'a str,
-    /// The run's workspace, as the host sees it.
-    pub workspace: HostWorkspace<'a>,
 }
 
 impl std::fmt::Debug for Request<'_> {
@@ -74,7 +74,6 @@ impl std::fmt::Debug for Request<'_> {
             .field("scope", &self.scope)
             .field("checkout", &self.checkout)
             .field("token", &REDACTED)
-            .field("workspace", &self.workspace)
             .finish()
     }
 }
@@ -90,14 +89,33 @@ impl Mirrors {
         }
     }
 
+    /// Checks `request`'s repository out into `staged`, then imports it at
+    /// its name into the workspace `executor` serves; what the fetch found.
+    ///
+    /// # Errors
+    /// The fetch, the checkout or the import failed, or `interrupt` stopped
+    /// the first two.
+    pub async fn land(
+        &self,
+        request: Request<'_>,
+        staged: &Staged,
+        executor: &dyn Executor,
+        interrupt: &CancellationToken,
+    ) -> Result<Fetched> {
+        let fetched = self.check_out(request, staged.path(), interrupt).await?;
+        staged.import(executor, request.checkout.name).await?;
+        Ok(fetched)
+    }
+
     /// Brings `request`'s mirror up to date and checks the repository out
-    /// into the run's workspace; what the fetch found.
+    /// on the host as `<into>/<name>`; what the fetch found.
     ///
     /// # Errors
     /// The fetch or the checkout failed, or `interrupt` stopped it.
     pub async fn check_out(
         &self,
         request: Request<'_>,
+        into: &Path,
         interrupt: &CancellationToken,
     ) -> Result<Fetched> {
         let Checkout {
@@ -131,19 +149,11 @@ impl Mirrors {
             .await
             .map_err(error::git(repository, STEP_FETCH))?
         };
-        let destination = request.workspace.root.join(name);
-        let owner_ids = request.workspace.owner;
+        let destination = into.join(name);
         let base = base.to_owned();
         let stop_checkout = Arc::clone(&stop);
         blocking(interrupt, &stop, move || {
-            checkout::check_out(
-                &mirror,
-                &destination,
-                &url,
-                &base,
-                owner_ids,
-                &stop_checkout,
-            )
+            checkout::check_out(&mirror, &destination, &url, &base, &stop_checkout)
         })
         .await
         .map_err(error::git(repository, STEP_CHECKOUT))?;
@@ -168,7 +178,7 @@ fn authorization(token: &str) -> Zeroizing<String> {
 
 /// Runs `work` on a blocking thread. `interrupt` raises `stop`, which the git
 /// library reads between steps, and the work is still waited for, so nothing
-/// writes into a workspace being torn down.
+/// writes into a stage being removed.
 async fn blocking<T: Send + 'static>(
     interrupt: &CancellationToken,
     stop: &AtomicBool,

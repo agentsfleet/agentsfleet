@@ -43,9 +43,6 @@ impl Run<'_> {
             .current_durable_task
             .as_ref()
             .ok_or_else(|| error::config("durable workspace has no native task"))?;
-        let workspace = sandbox
-            .workspace()
-            .ok_or_else(|| error::config("sandbox has no trusted snapshot workspace"))?;
         let toolbox = sandbox
             .environment()
             .root
@@ -63,13 +60,7 @@ impl Run<'_> {
         // no partially restored executor enters the slot.
         prove_quiescent(sandbox).await?;
         let state: State = self
-            .native_workspace(
-                task,
-                (workspace.root.to_owned(), workspace.owner),
-                &scope,
-                toolbox,
-                permit.as_ref(),
-            )
+            .native_workspace(task, sandbox, &scope, toolbox, permit.as_ref())
             .await?;
         if build.recovery.set(state).is_err() {
             return Err(error::config("sandbox recovery was prepared twice"));
@@ -106,7 +97,7 @@ impl Run<'_> {
             toolbox: &toolbox,
             stop: &self.interrupt,
         }
-        .run(None)
+        .run(None, std::future::ready(Ok(())))
         .await?;
         Ok(Some(recovered_history(
             task,
@@ -131,15 +122,14 @@ impl Run<'_> {
             prove_quiescent(sandbox).await?;
             let state =
                 state.ok_or_else(|| error::config("task workspace has no recovery owner"))?;
-            let workspace = sandbox
-                .workspace()
-                .ok_or_else(|| error::config("task workspace is unavailable for capture"))?;
             let toolbox = sandbox
                 .environment()
                 .root
                 .toolbox()
                 .ok_or_else(|| error::config("task toolbox is unavailable for capture"))?;
             let scope = Uuid7::parse(&self.payload.event.workspace_id)?;
+            let staged = self.lessee.staging.stage(sandbox.id())?;
+            staged.export(sandbox.executor()).await?;
             let saved = Capture {
                 plane: &self.lessee.plane,
                 transfers: &self.lessee.recovery.transfers,
@@ -153,7 +143,7 @@ impl Run<'_> {
                 stop: &self.interrupt,
             }
             .run(
-                Some(workspace.root.to_owned()),
+                Some(staged.path().to_owned()),
                 recovery.history.clone(),
                 state.base_paths.clone(),
             )
@@ -235,8 +225,9 @@ pub(super) fn capture_unavailable(ending: &mut Ending) {
     }
 }
 
-/// Only a newly created checkout may be read by Git on the host.
-/// Recovered or tenant-modified repositories never take this path.
+/// Only a newly created checkout, exported into its stage, may be read by
+/// Git on the host. Recovered or tenant-modified repositories never take
+/// this path.
 pub(super) async fn verify_fresh_checkout(
     root: &std::path::Path,
     repository: &str,

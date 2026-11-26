@@ -4,10 +4,8 @@
 )]
 
 use std::fs;
-use std::os::unix::fs::MetadataExt as _;
 use std::path::{Path, PathBuf};
 
-use afr_sandbox::HostWorkspace;
 use afr_tools::sandbox::Checkout;
 use base64::Engine as _;
 use tokio_util::sync::CancellationToken;
@@ -46,7 +44,6 @@ pub(super) fn walk(path: &Path) -> Vec<PathBuf> {
 pub(super) struct Fixture {
     pub(super) root: tempfile::TempDir,
     pub(super) mirrors: Mirrors,
-    pub(super) owner: (u32, u32),
 }
 
 impl Fixture {
@@ -59,12 +56,7 @@ impl Fixture {
             root.path().join(MIRRORS),
             format!("file://{}/", origin.display()),
         );
-        let metadata = fs::metadata(root.path()).unwrap();
-        Self {
-            root,
-            mirrors,
-            owner: (metadata.uid(), metadata.gid()),
-        }
+        Self { root, mirrors }
     }
 
     pub(super) fn remote(&self) -> PathBuf {
@@ -80,7 +72,7 @@ impl Fixture {
             .join(bare())
     }
 
-    /// A fresh workspace for the run named `run`.
+    /// A fresh host directory for the run named `run` to check out under.
     pub(super) fn workspace(&self, run: &str) -> PathBuf {
         let workspace = self.root.path().join("workspaces").join(run);
         fs::create_dir_all(&workspace).unwrap();
@@ -112,19 +104,14 @@ impl Fixture {
                 base,
             },
             token: TOKEN,
-            workspace: HostWorkspace {
-                root: workspace,
-                owner: self.owner,
-            },
         };
-        self.mirrors.check_out(request, interrupt).await
+        self.mirrors.check_out(request, workspace, interrupt).await
     }
 }
 
 /// A checkout request printed for a log names everything but its token.
 #[test]
 fn a_request_prints_without_its_token() {
-    let root = Path::new("/workspace");
     let request = Request {
         scope: SCOPE,
         checkout: Checkout {
@@ -134,10 +121,6 @@ fn a_request_prints_without_its_token() {
             base: BASE,
         },
         token: TOKEN,
-        workspace: HostWorkspace {
-            root,
-            owner: (1000, 1000),
-        },
     };
 
     let printed = format!("{request:?}");
@@ -331,24 +314,6 @@ async fn a_tag_on_the_remote_reaches_the_working_copy() {
         git(&copy, &["describe", "--tags", "--exact-match"]),
         "v1.2.3"
     );
-}
-
-#[tokio::test]
-async fn every_file_is_handed_to_the_owner() {
-    let fixture = Fixture::new();
-    let workspace = fixture.workspace("run_1");
-
-    fixture.check_out(&workspace, BASE).await.unwrap();
-
-    for file in walk(&workspace.join(NAME)) {
-        let metadata = file.symlink_metadata().unwrap();
-        assert_eq!(
-            (metadata.uid(), metadata.gid()),
-            fixture.owner,
-            "{}",
-            file.display()
-        );
-    }
 }
 
 #[test]

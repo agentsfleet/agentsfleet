@@ -1,4 +1,5 @@
-//! The same fresh sandbox supplies the file destination and the restored root witness.
+//! The same fresh sandbox supplies the file destination and the restored root witness;
+//! its files are restored into a stage and imported before anything is adopted.
 
 use super::{Run, build::Build, recovery::State};
 use crate::{Result, error, recovery::NativeTurn};
@@ -15,9 +16,6 @@ impl Run<'_> {
         sandbox: &dyn Sandbox,
         build: &Build<'_>,
     ) -> Result<()> {
-        let workspace = sandbox
-            .workspace()
-            .ok_or_else(|| error::config("ordinary restore has no trusted workspace"))?;
         let toolbox = sandbox
             .environment()
             .root
@@ -27,6 +25,7 @@ impl Run<'_> {
             toolbox_digest: toolbox.to_owned(),
         };
         let permit = self.lessee.recovery.file(build.stop).await?;
+        let staged = self.lessee.staging.stage(sandbox.id())?;
         let restoring = async {
             prove_quiescent(sandbox).await?;
             NativeTurn::new(
@@ -38,7 +37,7 @@ impl Run<'_> {
             .restore(
                 self.payload,
                 actual,
-                Some((workspace.root.to_owned(), workspace.owner)),
+                Some((&staged, sandbox.executor())),
                 &self.interrupt,
                 Some(&permit),
             )

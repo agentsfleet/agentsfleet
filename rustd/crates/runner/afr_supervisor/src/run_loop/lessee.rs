@@ -27,6 +27,8 @@ pub(crate) struct Lessee {
     pub(crate) agent: Box<dyn AgentEngine>,
     /// Bound repositories' mirrors, fetched outside every sandbox.
     pub(crate) mirrors: Mirrors,
+    /// Where files wait on the host on their way into or out of a sandbox.
+    pub(crate) staging: crate::staging::Staging,
     /// What every sandbox enforces.
     pub(crate) limits: Limits,
     /// The wall clock the daemon's run deadlines are written in.

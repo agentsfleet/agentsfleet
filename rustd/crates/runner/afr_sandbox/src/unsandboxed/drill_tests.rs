@@ -78,7 +78,6 @@ async fn should_report_a_drill_sandbox_quiet() {
 
     let quiescence = sandbox.quiesce().await.unwrap();
     let idle = sandbox.executor().recovery_idle().await.unwrap();
-    let root = sandbox.workspace().unwrap().root.to_owned();
     let state = sandbox.state();
     sandbox.destroy().await.unwrap();
 
@@ -86,7 +85,6 @@ async fn should_report_a_drill_sandbox_quiet() {
         (quiescence, idle, state),
         (Quiescence::Quiet, true, SandboxState::Running)
     );
-    assert_eq!(root, base.path().join(id.as_str()).join("workspace"));
     assert!(
         !base.path().join(id.as_str()).exists(),
         "the sandbox's directory is gone"

@@ -16,8 +16,8 @@ use afr_executor::{Client, Executor, Sizes};
 use tokio::task::JoinHandle;
 
 use crate::engine::{
-    Cap, Capabilities, Engine, Environment, Granted, HostWorkspace, Killed, Limits, ParkMode,
-    Parked, Quiescence, ResourceFacts, Root, Sandbox, SandboxSpec, SandboxState, Sweep, Swept,
+    Cap, Capabilities, Engine, Environment, Granted, Killed, Limits, ParkMode, Parked, Quiescence,
+    ResourceFacts, Root, Sandbox, SandboxSpec, SandboxState, Sweep, Swept,
 };
 use crate::error::{
     EgressRefusal, ErrorKind, Result, egress_refused, sandbox_exists, unconfined, unsupported,
@@ -117,7 +117,6 @@ impl Engine for UnsandboxedEngine {
         })?;
         let workspace = dir.join(WORKSPACE_DIR);
         fs::create_dir_all(&workspace)?;
-        let workspace_root = workspace.clone();
         let socket = dir.join(SOCKET_NAME);
         let sizes = self.sizes;
         let server = tokio::spawn({
@@ -138,7 +137,6 @@ impl Engine for UnsandboxedEngine {
                     root: Root::Host,
                 },
                 dir,
-                workspace: workspace_root,
                 client,
                 server,
             })),
@@ -186,8 +184,6 @@ struct Unconfined {
     granted: Granted,
     environment: Environment,
     dir: PathBuf,
-    /// The directory the executor serves as its workspace.
-    workspace: PathBuf,
     client: Client,
     server: JoinHandle<afr_executor::Result<()>>,
 }
@@ -208,16 +204,6 @@ impl Sandbox for Unconfined {
 
     fn executor(&self) -> &dyn Executor {
         &self.client
-    }
-
-    fn workspace(&self) -> Option<HostWorkspace<'_>> {
-        Some(HostWorkspace {
-            root: &self.workspace,
-            owner: (
-                rustix::process::getuid().as_raw(),
-                rustix::process::getgid().as_raw(),
-            ),
-        })
     }
 
     fn state(&mut self) -> SandboxState {

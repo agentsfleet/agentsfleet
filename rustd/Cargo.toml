@@ -1036,6 +1036,13 @@ procfs-core = { version = "0.18.0", default-features = false }
 # it, through `..` or a symbolic link, on every platform — capability-based
 # confinement from the Bytecode Alliance rather than a hand-written resolver.
 cap-std = { version = "4.0.3", default-features = false }
+# The executor's spool for a tree crossing in chunks: an anonymous file opened
+# through the workspace's own handle, on the workspace disk rather than a
+# tmpfs that would hold a whole repository in memory.
+cap-tempfile = { version = "4.0.3", default-features = false }
+# A tree crosses the executor link as a tar stream: the reader and writer
+# every Rust archiver uses, rather than a hand-written header parser.
+tar = { version = "0.4.46", default-features = false }
 
 # The provider side of the agent harness: the types one model call reads and
 # writes, and the `Model` trait a provider implements. Its default build is

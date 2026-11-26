@@ -103,7 +103,14 @@ impl Restore<'_> {
         Ok(entries.into_keys().collect())
     }
 
-    pub(crate) async fn run(&self, destination: Option<(PathBuf, (u32, u32))>) -> Result<Restored> {
+    /// Restores into `destination`, then runs `install` (what moves the
+    /// restored files into the sandbox), and only then reports the restore
+    /// done: a restore whose install fails is reported failed.
+    pub(crate) async fn run<Installed>(
+        &self,
+        destination: Option<(PathBuf, (u32, u32))>,
+        install: impl Future<Output = Result<Installed>>,
+    ) -> Result<Restored> {
         let activity = af_crypto::entropy::Entropy::new()
             .uuid7(af_core::clock::now())?
             .to_string();
@@ -118,7 +125,10 @@ impl Restore<'_> {
         )
         .await;
         let mut progress = super::progress::Progress::default();
-        let restored = self.restore(&activity, &mut progress, destination).await;
+        let restored = match self.restore(&activity, &mut progress, destination).await {
+            Ok(restored) => install.await.map(|_installed| restored),
+            Err(failure) => Err(failure),
+        };
         let phase = if restored.is_ok() {
             Phase::Restored
         } else {

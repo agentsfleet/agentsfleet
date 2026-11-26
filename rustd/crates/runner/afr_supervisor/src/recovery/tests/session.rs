@@ -166,7 +166,7 @@ async fn history_download_requires_exact_object_scope_length_and_read_authority(
             toolbox: &toolbox(),
             stop: &CancellationToken::new(),
         }
-        .run(None)
+        .run(None, std::future::ready(Ok(())))
         .await
         .unwrap_err();
         config_failure(&error, expected);

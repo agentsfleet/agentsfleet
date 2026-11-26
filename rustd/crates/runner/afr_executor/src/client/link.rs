@@ -1,4 +1,4 @@
-//! The task that owns one executor socket.
+//! The task that owns one executor stream.
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -10,14 +10,13 @@ use jsonrpsee_types::{ErrorObject, Id};
 use serde::Deserialize;
 use serde::de::Error as _;
 use serde_json::value::RawValue;
-use tokio::io::AsyncWriteExt as _;
-use tokio::net::UnixStream;
-use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
+use tokio::io::{AsyncWriteExt as _, ReadHalf, WriteHalf};
 use tokio::sync::mpsc;
 use tokio_util::codec::{AnyDelimiterCodec, FramedRead};
 use tokio_util::sync::CancellationToken;
 
 use super::call::{self, Call, CallIds, Reply};
+use super::transport::Stream;
 use crate::api::{Ending, Process, ProcessId};
 use crate::error::{self, Result};
 use crate::events::{Events, Feed};
@@ -27,7 +26,9 @@ use crate::protocol::{
 };
 use crate::sizes::Sizes;
 
-/// The link took its socket.
+/// How many calls may wait for the link to send them.
+const CALL_BACKLOG: usize = 64;
+/// The link took its stream.
 const EVENT_LINK_STARTED: &str = "executor_link_started";
 /// The connection closed with nothing open.
 const EVENT_LINK_COMPLETED: &str = "executor_link_completed";
@@ -40,6 +41,31 @@ const EVENT_MESSAGE_UNREADABLE: &str = "executor_message_unreadable";
 const EVENT_OUTPUT_OVERSIZED: &str = "executor_output_oversized";
 /// What a message that is neither a notification nor an answer lacks.
 const FIELD_METHOD_OR_ID: &str = "method or id";
+
+/// Starts a link task over `stream`, numbering its own calls from `ids`.
+pub(super) fn start(stream: Box<dyn Stream>, ids: &Arc<CallIds>, sizes: Sizes) -> Linked {
+    let (calls, queue) = mpsc::channel(CALL_BACKLOG);
+    let lost = CancellationToken::new();
+    let outbox = calls.downgrade();
+    let link = Link::new(stream, queue, outbox, Arc::clone(ids), lost.clone(), sizes);
+    tokio::spawn(link.run());
+    Linked { calls, lost }
+}
+
+/// One link's ends the client keeps: where calls go, and the token that
+/// marks it lost.
+#[derive(Debug, Clone)]
+pub(super) struct Linked {
+    pub(super) calls: mpsc::Sender<Call>,
+    pub(super) lost: CancellationToken,
+}
+
+impl Linked {
+    /// Whether calls can still go over it.
+    pub(super) fn is_open(&self) -> bool {
+        !self.lost.is_cancelled() && !self.calls.is_closed()
+    }
+}
 
 /// Either message the executor sends, read in one pass: a notification names
 /// a method, an answer names the call it answers and carries a result or an
@@ -58,10 +84,10 @@ struct Incoming<'a> {
     error: Option<ErrorObject<'a>>,
 }
 
-/// The socket and everything waiting on it.
+/// The stream and everything waiting on it.
 pub(super) struct Link {
-    lines: FramedRead<OwnedReadHalf, AnyDelimiterCodec>,
-    write: OwnedWriteHalf,
+    lines: FramedRead<ReadHalf<Box<dyn Stream>>, AnyDelimiterCodec>,
+    write: WriteHalf<Box<dyn Stream>>,
     calls: mpsc::Receiver<Call>,
     /// Where a process's events queue their kill when their reader leaves;
     /// weak, so a process kept open never keeps the connection open.
@@ -83,14 +109,14 @@ impl Link {
     /// `outbox` each process's events queue their kill on, given up when
     /// `lost` is cancelled, reading lines and keeping output as `sizes` says.
     pub(super) fn new(
-        stream: UnixStream,
+        stream: Box<dyn Stream>,
         calls: mpsc::Receiver<Call>,
         outbox: mpsc::WeakSender<Call>,
         ids: Arc<CallIds>,
         lost: CancellationToken,
         sizes: Sizes,
     ) -> Self {
-        let (read, write) = stream.into_split();
+        let (read, write) = tokio::io::split(stream);
         let codec = AnyDelimiterCodec::new_with_max_length(
             vec![DELIMITER],
             vec![DELIMITER],
@@ -110,8 +136,10 @@ impl Link {
         }
     }
 
-    /// Sends calls and routes answers until the socket or the client closes,
-    /// or a call's deadline gives the link up.
+    /// Sends calls and routes answers until the stream or the client closes,
+    /// or a call's deadline gives the link up. The link is marked lost before
+    /// anything waiting on it is failed, so a call that hears the failure
+    /// finds the link closed and dials another.
     pub(super) async fn run(mut self) {
         let event = EVENT_LINK_STARTED;
         tracing::debug!(event, "the executor connection opened");
@@ -126,6 +154,7 @@ impl Link {
                 break;
             }
         }
+        lost.cancel();
         self.interrupt();
     }
 

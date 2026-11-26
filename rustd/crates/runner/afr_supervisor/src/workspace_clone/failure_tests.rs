@@ -282,14 +282,10 @@ async fn an_origin_that_is_not_a_url_fails_the_fetch_and_makes_no_mirror() {
             base: BASE,
         },
         token: TOKEN,
-        workspace: afr_sandbox::HostWorkspace {
-            root: &workspace,
-            owner: fixture.owner,
-        },
     };
 
     let refused = mirrors
-        .check_out(request, &CancellationToken::new())
+        .check_out(request, &workspace, &CancellationToken::new())
         .await
         .unwrap_err();
 

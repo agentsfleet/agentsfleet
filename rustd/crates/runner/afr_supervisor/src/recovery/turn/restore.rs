@@ -1,14 +1,14 @@
 //! Authenticate full root and matching files before adopting inputs or starting the model.
 
 use super::{NativeTurn, session::TurnSession};
-use crate::{Result, error};
+use crate::{Result, error, staging::Staged};
 use af_wire::run::{
     CheckpointOperationId, RunPayload, TurnCheckpointPinRelease, TurnCheckpointRead,
     TurnCheckpointRef, TurnCheckpointSaved, TurnWorkspace,
 };
 use afr_agent::TurnRecovery;
+use afr_executor::Executor;
 use garde::Validate as _;
-use std::path::PathBuf;
 use tokio_util::sync::CancellationToken;
 use zeroize::Zeroizing;
 
@@ -17,7 +17,7 @@ impl NativeTurn<'_> {
         &self,
         assignment: &RunPayload<'_>,
         workspace: TurnWorkspace,
-        destination: Option<(PathBuf, (u32, u32))>,
+        destination: Option<(&Staged, &dyn Executor)>,
         stop: &CancellationToken,
         permit: Option<&afr_agent::FileRecoveryPermit>,
     ) -> Result<Option<TurnRecovery>> {
@@ -42,7 +42,7 @@ impl NativeTurn<'_> {
         };
         let checked = async {
             validate(&saved, assignment, &workspace)?;
-            if let Some(destination) = destination {
+            if let Some((staged, executor)) = destination {
                 let mut session = TurnSession::new(
                     self,
                     &saved.descriptor.scope,
@@ -54,10 +54,11 @@ impl NativeTurn<'_> {
                     .restore_files(
                         &saved.page_ids,
                         &saved.descriptor.manifest_root,
-                        destination,
+                        (staged.path().to_owned(), Staged::owner()),
                         permit,
                     )
                     .await?;
+                staged.restore(executor).await?;
             } else {
                 require_empty_manifest(&saved)?;
             }

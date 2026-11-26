@@ -8,7 +8,6 @@
 
 use std::path::{Path, PathBuf};
 
-use afr_sandbox::HostWorkspace;
 use afr_tools::sandbox::Checkout;
 use tokio_util::sync::CancellationToken;
 
@@ -33,14 +32,10 @@ async fn check_out_in(fixture: &Fixture, scope: &str, workspace: &Path) -> Resul
             base: BASE,
         },
         token: TOKEN,
-        workspace: HostWorkspace {
-            root: workspace,
-            owner: fixture.owner,
-        },
     };
     fixture
         .mirrors
-        .check_out(request, &CancellationToken::new())
+        .check_out(request, workspace, &CancellationToken::new())
         .await
 }
 

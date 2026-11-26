@@ -19,10 +19,10 @@ async fn restore_verifies_base_and_overlay_before_writing_a_fresh_workspace() ->
         toolbox: &toolbox(),
         stop: &CancellationToken::new(),
     }
-    .run(Some((
-        destination.path().to_owned(),
-        (owner.uid(), owner.gid()),
-    )))
+    .run(
+        Some((destination.path().to_owned(), (owner.uid(), owner.gid()))),
+        std::future::ready(Ok(())),
+    )
     .await?;
     assert_eq!(restored.history.expose(), b"");
     assert_eq!(

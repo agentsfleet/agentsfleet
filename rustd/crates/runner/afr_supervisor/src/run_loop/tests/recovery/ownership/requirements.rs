@@ -1,18 +1,17 @@
-//! A durable build requires a trusted workspace, verified toolbox and proved quiescence.
+//! A durable build requires a verified toolbox and proved quiescence.
 
 use super::*;
 
 #[tokio::test]
 async fn untrusted_or_unproved_sandboxes_never_acquire_native_checkpoint_state() -> Result<()> {
     for (fault, expected) in [
-        ("workspace", "sandbox has no trusted snapshot workspace"),
         ("toolbox", "sandbox has no verified recovery toolbox"),
         ("quiescence", "cannot prove tenant quiescence"),
     ] {
         let mut fixture = Fixture::new(|_| None)?;
         let root = tempfile::tempdir()?;
         let engine = FakeEngine {
-            workspace: (fault != "workspace").then(|| root.path().to_owned()),
+            workspace: Some(root.path().to_owned()),
             toolbox: (fault != "toolbox").then(api_toolbox),
             parking: if fault == "quiescence" {
                 Parking::QuiescenceUnproved

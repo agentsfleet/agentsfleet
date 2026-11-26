@@ -15,7 +15,6 @@ use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use afr_sandbox::HostWorkspace;
 use afr_tools::sandbox::Checkout;
 use axum::body::{Body, Bytes};
 use axum::http::header::{AUTHORIZATION, CONTENT_TYPE, WWW_AUTHENTICATE};
@@ -25,9 +24,11 @@ use base64::Engine as _;
 use tokio_util::sync::CancellationToken;
 
 use super::tests::{BASE, Fixture, NAME, ORIGINS, OWNER, REPOSITORY, SCOPE, TOKEN};
-use super::{Fetched, Mirrors, Request};
+use super::{Fetched, Mirrors, Request, authorization};
 use crate::test_support::head;
 
+/// The sandbox the canary's stage is made for.
+const SCOPE_ID: &str = "01890a5d-ac96-774b-bcce-b302099a805a";
 /// The run each test checks out for first.
 const FIRST_RUN: &str = "run_1";
 /// The status line a CGI program writes in place of HTTP's.
@@ -131,11 +132,7 @@ fn backend(root: &Path, method: &Method, uri: &Uri, headers: &HeaderMap, body: &
 
 /// Checks [`REPOSITORY`] out into `workspace` from `mirrors`, presenting
 /// [`TOKEN`].
-async fn check_out(
-    fixture: &Fixture,
-    mirrors: &Mirrors,
-    workspace: &Path,
-) -> crate::error::Result<Fetched> {
+async fn check_out(mirrors: &Mirrors, workspace: &Path) -> crate::error::Result<Fetched> {
     let request = Request {
         scope: SCOPE,
         checkout: Checkout {
@@ -145,12 +142,10 @@ async fn check_out(
             base: BASE,
         },
         token: TOKEN,
-        workspace: HostWorkspace {
-            root: workspace,
-            owner: fixture.owner,
-        },
     };
-    mirrors.check_out(request, &CancellationToken::new()).await
+    mirrors
+        .check_out(request, workspace, &CancellationToken::new())
+        .await
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -162,8 +157,8 @@ async fn the_fetch_presents_the_token_as_basic_credentials() {
     let first = fixture.workspace(FIRST_RUN);
     let second = fixture.workspace("run_2");
 
-    let cloned = check_out(&fixture, &mirrors, &first).await.unwrap();
-    let fetched = check_out(&fixture, &mirrors, &second).await.unwrap();
+    let cloned = check_out(&mirrors, &first).await.unwrap();
+    let fetched = check_out(&mirrors, &second).await.unwrap();
 
     assert_eq!((cloned, fetched), (Fetched::Cloned, Fetched::Unchanged));
     assert_eq!(
@@ -185,11 +180,97 @@ async fn a_token_the_origin_refuses_fails_the_fetch() {
     let (url, seen) = origin(root, credentials("ghs_someOtherToken")).await;
     let mirrors = Mirrors::new(fixture.root.path().join("http"), url);
 
-    let refused = check_out(&fixture, &mirrors, &fixture.workspace(FIRST_RUN))
+    let refused = check_out(&mirrors, &fixture.workspace(FIRST_RUN))
         .await
         .unwrap_err();
 
     assert!(refused.to_string().contains("fetched"), "{refused}");
     assert!(seen.refused.load(Ordering::SeqCst) >= 1);
     assert_eq!(seen.served.load(Ordering::SeqCst), 0, "nothing was served");
+}
+
+/// An executor that keeps every byte imported into it, and runs nothing.
+#[derive(Debug, Default)]
+struct Recorder {
+    imported: parking_lot::Mutex<Vec<u8>>,
+}
+
+#[async_trait::async_trait]
+impl afr_executor::Executor for Recorder {
+    async fn spawn(
+        &self,
+        _spawn: &afr_executor::Spawn,
+    ) -> afr_executor::Result<afr_executor::Process> {
+        Err(std::io::Error::other("the recorder runs nothing").into())
+    }
+
+    async fn write(
+        &self,
+        _process: afr_executor::ProcessId,
+        _data: Bytes,
+    ) -> afr_executor::Result<()> {
+        Ok(())
+    }
+
+    async fn kill(&self, _process: afr_executor::ProcessId) -> afr_executor::Result<()> {
+        Ok(())
+    }
+
+    async fn import(
+        &self,
+        _at: &str,
+        tree: &mut (dyn tokio::io::AsyncRead + Send + Unpin),
+    ) -> afr_executor::Result<afr_executor::Imported> {
+        let mut stream = Vec::new();
+        tokio::io::AsyncReadExt::read_to_end(tree, &mut stream).await?;
+        self.imported.lock().extend_from_slice(&stream);
+        Ok(afr_executor::Imported::default())
+    }
+}
+
+// Value: protects=the fetch token stays in the host mirror; fails_when=any
+// imported byte, the working copy's `.git/config` included, carries the token
+// or the header it rides;
+#[tokio::test(flavor = "multi_thread")]
+async fn test_the_checkout_stream_carries_no_fetch_token() {
+    const CANARY: &str = "ghs_canaryTokenThatMustNeverCross";
+    let fixture = Fixture::new();
+    let (url, seen) = origin(fixture.root.path().join(ORIGINS), credentials(CANARY)).await;
+    let mirrors = Mirrors::new(fixture.root.path().join("http"), url);
+    let staging = crate::staging::Staging::sweep(&fixture.root.path().join("staging")).unwrap();
+    let staged = staging
+        .stage(&af_core::id::Uuid7::parse(SCOPE_ID).unwrap())
+        .unwrap();
+    let recorder = Recorder::default();
+    let request = Request {
+        scope: SCOPE,
+        checkout: Checkout {
+            repository: REPOSITORY,
+            owner: OWNER,
+            name: NAME,
+            base: BASE,
+        },
+        token: CANARY,
+    };
+
+    mirrors
+        .land(request, &staged, &recorder, &CancellationToken::new())
+        .await
+        .unwrap();
+
+    let stream = recorder.imported.into_inner();
+    assert!(
+        seen.served.load(Ordering::SeqCst) >= 1,
+        "the canary fetched it"
+    );
+    let holds = |needle: &[u8]| stream.windows(needle.len()).any(|window| window == needle);
+    assert!(holds(b".git/config"), "the working copy's config crossed");
+    assert!(holds(b"[remote \"origin\"]"), "with its origin in it");
+    for secret in [
+        CANARY.to_owned(),
+        credentials(CANARY),
+        authorization(CANARY).to_string(),
+    ] {
+        assert!(!holds(secret.as_bytes()), "the stream carries {secret}");
+    }
 }

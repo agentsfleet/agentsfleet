@@ -28,6 +28,11 @@ const NOTE: &str = "written before the hold";
 const NOTE_FILE: &str = "note";
 /// The workspace file the ticker appends to.
 const TICK_FILE: &str = "tick";
+/// Where bubblewrap mounts the run's workspace disk in its directory, and the
+/// directory on it the sandbox sees as `/workspace`: engine-internal, read
+/// here only because a frozen executor answers nothing.
+const DISK_MOUNT: &str = "workspace";
+const DISK_WORKSPACE: &str = "workspace";
 /// What the check prints for a ticker still running.
 const ALIVE: &str = "alive";
 /// How long the frozen sandbox is watched for a tick it should not make.
@@ -124,10 +129,11 @@ async fn park_and_resume(
 ) -> Result<(Seen, Box<dyn Sandbox>), Failed> {
     let started = run_in(sandbox.executor(), shell(&start_ticker())).await?;
     let pid = started.output.trim().to_owned();
-    let workspace = sandbox
-        .workspace()
-        .ok_or_else(|| Failed::from("the bubblewrap engine offers its workspace to the host"))?;
-    let tick = workspace.root.join(TICK_FILE);
+    let tick = lane
+        .run_dir(RUN)
+        .join(DISK_MOUNT)
+        .join(DISK_WORKSPACE)
+        .join(TICK_FILE);
     tokio::time::sleep(WATCH).await;
 
     let parked = sandbox.park(ParkMode::Pause).await?;

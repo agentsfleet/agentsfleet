@@ -59,7 +59,7 @@ fn assert_ran_without_the_sandbox(rig: &mut Rig, calls: &[Call], capture: &Captu
 }
 
 #[tokio::test]
-async fn a_sandbox_the_host_cannot_reach_leaves_the_run_without_it() {
+async fn a_workspace_that_refuses_the_import_leaves_the_run_without_it() {
     let capture = Capture::install();
     let mut rig = rig(None, |_| None);
     served(&rig);
@@ -68,11 +68,7 @@ async fn a_sandbox_the_host_cannot_reach_leaves_the_run_without_it() {
 
     let calls = rig.calls();
     assert_ran_without_the_sandbox(&mut rig, &calls, &capture);
-    assert_eq!(
-        mints(&calls),
-        0,
-        "nothing is minted for a checkout that cannot happen"
-    );
+    assert_eq!(mints(&calls), 1, "the fetch ran; the import was refused");
 }
 
 #[tokio::test]

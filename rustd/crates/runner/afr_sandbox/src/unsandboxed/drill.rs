@@ -16,8 +16,8 @@ use afr_executor::Executor;
 
 use super::UnsandboxedEngine;
 use crate::engine::{
-    Capabilities, Engine, Environment, Granted, HostWorkspace, Killed, Limits, ParkMode, Parked,
-    Quiescence, Root, Sandbox, SandboxSpec, SandboxState, Sweep, Swept,
+    Capabilities, Engine, Environment, Granted, Killed, Limits, ParkMode, Parked, Quiescence, Root,
+    Sandbox, SandboxSpec, SandboxState, Sweep, Swept,
 };
 use crate::error::Result;
 use crate::network::Allowlist;
@@ -100,10 +100,6 @@ impl Sandbox for Drilled {
 
     fn executor(&self) -> &dyn Executor {
         self.unconfined.executor()
-    }
-
-    fn workspace(&self) -> Option<HostWorkspace<'_>> {
-        self.unconfined.workspace()
     }
 
     fn state(&mut self) -> SandboxState {

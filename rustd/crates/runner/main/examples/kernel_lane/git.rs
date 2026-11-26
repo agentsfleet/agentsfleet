@@ -1,6 +1,7 @@
 //! `git` on a checkout the supervisor made: the runner's own
-//! `workspace_clone` fetches a repository on the host and hands it to the
-//! sandbox's user, and the `git` handler works it from inside the sandbox.
+//! `workspace_clone` fetches a repository on the host and imports it into the
+//! sandbox, owned by the sandbox's user, and the `git` handler works it from
+//! inside the sandbox.
 
 use std::fs;
 use std::path::Path;
@@ -8,6 +9,7 @@ use std::process::Command;
 
 use crate::lane::{id_of, spec};
 use afr_sandbox::{Engine, Limits, Sandbox};
+use afr_supervisor::staging::Staging;
 use afr_supervisor::workspace_clone::{Mirrors, Request};
 use afr_tools::Run;
 use afr_tools::catalog::{GIT, SHELL};
@@ -34,6 +36,8 @@ const TOKEN: &str = "ghs_kernelLaneTokenNeverInside";
 /// Where the host serves repositories from, and keeps their mirrors.
 const ORIGINS: &str = "origins";
 const MIRRORS: &str = "mirrors";
+/// Where the checkout waits on the host before it is imported.
+const STAGING: &str = "staging";
 /// The line the fixture's first commit writes, and the one a trial appends.
 const FIRST: &str = "first";
 const APPENDED: &str = "appended";
@@ -112,9 +116,6 @@ async fn work(
     sandbox: &dyn Sandbox,
     calls: &[(&str, Value)],
 ) -> Result<Vec<ToolOutput>, Failed> {
-    let workspace = sandbox
-        .workspace()
-        .ok_or("bubblewrap offers the host its workspace")?;
     let checkout = Checkout {
         repository: REPOSITORY,
         owner: OWNER,
@@ -129,10 +130,15 @@ async fn work(
         scope: SCOPE,
         checkout,
         token: TOKEN,
-        workspace,
     };
+    let staged = Staging::sweep(&root.join(STAGING))?.stage(sandbox.id())?;
     mirrors
-        .check_out(request, &CancellationToken::new())
+        .land(
+            request,
+            &staged,
+            sandbox.executor(),
+            &CancellationToken::new(),
+        )
         .await?;
     let run = Run::default().with_checkouts(vec![checkout]);
     let mut outputs = Vec::with_capacity(calls.len());

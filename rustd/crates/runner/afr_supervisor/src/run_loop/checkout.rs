@@ -1,6 +1,6 @@
-//! The fleet's bound repositories, checked out into the run's workspace from
-//! the host side, so the token that fetched them never enters the sandbox
-//! (`crate::workspace_clone`).
+//! The fleet's bound repositories, checked out on the host and imported into
+//! the run's workspace, so the token that fetched them never enters the
+//! sandbox (`crate::workspace_clone`).
 //!
 //! What can be checked without a sandbox is checked before the model starts,
 //! and refuses the run as it would every time: the plan. The checkout itself
@@ -22,9 +22,6 @@ use crate::workspace_clone::Request;
 
 /// What a run whose repositories would not check out reports.
 const DETAIL_CHECKOUT: &str = "a bound repository could not be checked out into the workspace";
-/// What an engine that keeps its workspace out of the host's reach is told.
-const DETAIL_NO_HOST_WORKSPACE: &str =
-    "the sandbox engine offers no host path to check a repository out into";
 const EVENT_CHECKOUT_REFUSED: &str = "repository_checkout_refused";
 const EVENT_CHECKOUT_STARTED: &str = "repository_checkout_started";
 const EVENT_CHECKOUT_COMPLETED: &str = "repository_checkout_completed";
@@ -82,18 +79,14 @@ impl Run<'_> {
     /// is read between repositories.
     ///
     /// # Errors
-    /// [`Ended`]: the stop, or what failed: an engine that offers no host
-    /// workspace, a token the daemon would not mint, or a repository that
-    /// would not check out.
+    /// [`Ended`]: the stop, or what failed: a token the daemon would not
+    /// mint, or a repository that would not check out or import.
     pub(super) async fn check_out(
         &self,
         sandbox: &dyn Sandbox,
         plan: &Plan<'_>,
         stop: &CancellationToken,
     ) -> Result<(), Ended> {
-        let workspace = sandbox
-            .workspace()
-            .ok_or_else(|| unfinished(&error::config(DETAIL_NO_HOST_WORKSPACE)))?;
         let minting = credentials::mint(&self.lessee.plane, &self.ids.run, CREDENTIAL_GITHUB, None);
         // A mint dropped mid-call leaves a short-lived token unused; it lapses.
         let token = tokio::select! {
@@ -105,10 +98,9 @@ impl Run<'_> {
                 scope: plan.scope.as_str(),
                 checkout: *checkout,
                 token: token.expose(),
-                workspace,
             };
             async move {
-                self.check_out_one(request, stop)
+                self.check_out_one(sandbox, request, stop)
                     .await
                     .map_err(|failure| unfinished(&failure))
             }
@@ -116,9 +108,11 @@ impl Run<'_> {
         .await
     }
 
-    /// Checks out one repository, logging it from start to end.
+    /// Checks out one repository through a stage of its own, logging it
+    /// from start to end.
     async fn check_out_one(
         &self,
+        sandbox: &dyn Sandbox,
         request: Request<'_>,
         stop: &CancellationToken,
     ) -> error::Result<()> {
@@ -126,7 +120,16 @@ impl Run<'_> {
         let repository = request.checkout.repository;
         let event = EVENT_CHECKOUT_STARTED;
         tracing::info!(run_id, repository, event);
-        match self.lessee.mirrors.check_out(request, stop).await {
+        let landed = match self.lessee.staging.stage(sandbox.id()) {
+            Ok(staged) => {
+                let mirrors = &self.lessee.mirrors;
+                mirrors
+                    .land(request, &staged, sandbox.executor(), stop)
+                    .await
+            }
+            Err(failure) => Err(failure),
+        };
+        match landed {
             Ok(fetched) => {
                 let fetched = fetched.as_str();
                 let event = EVENT_CHECKOUT_COMPLETED;

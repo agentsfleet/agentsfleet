@@ -58,9 +58,9 @@ async fn test_booted_host_retains_resources_while_its_engine_serves() {
     let id = fresh_sandbox_id();
     let spec = SandboxSpec::granted_by(host.engine.as_ref(), &id, Limits::DEFAULT).unwrap();
     let sandbox = host.engine.prepare(spec).await.unwrap();
-    assert_eq!(
-        sandbox.workspace().unwrap().root,
-        dir.path().join(id.as_str()).join("workspace")
+    assert!(
+        dir.path().join(id.as_str()).is_dir(),
+        "the host's engine builds under its base"
     );
     sandbox.destroy().await.unwrap();
     assert!(!released.load(Ordering::SeqCst));

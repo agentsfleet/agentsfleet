@@ -1,5 +1,6 @@
 //! A boundary's capture runs only when the executor is idle and no tenant
-//! process remains, so nothing writes the workspace while it is read.
+//! process remains, so nothing writes the workspace while it is exported into
+//! the stage the checkpoint reads.
 
 use std::panic::AssertUnwindSafe;
 
@@ -86,7 +87,7 @@ impl BoundaryOwner<'_, '_> {
         snapshot: RecoverySnapshot,
         ready: &Ready<'_>,
     ) -> Result<RecoverySave> {
-        let (root, toolbox, state) = match ready {
+        let (staged, toolbox, state) = match ready {
             Ready::ApiOnly => {
                 if matches!(&snapshot.state, RecoveryState::DurableTask(task)
                     if !matches!(task.task.target, DurableTaskTarget::ApiOnly))
@@ -102,15 +103,23 @@ impl BoundaryOwner<'_, '_> {
                 if quiescence == Quiescence::Busy {
                     return Ok(RecoverySave::Skipped(RecoverySkip::BusyProcesses));
                 }
-                let Some(workspace) = sandbox.workspace() else {
-                    return Ok(RecoverySave::Skipped(RecoverySkip::Unavailable));
-                };
                 let Some(toolbox) = sandbox.environment().root.toolbox() else {
                     return Ok(RecoverySave::Skipped(RecoverySkip::Unavailable));
                 };
-                (Some(workspace.root.to_owned()), toolbox.to_owned(), *state)
+                let staged = self.run.lessee.staging.stage(sandbox.id())?;
+                if let Err(failure) = staged.export(sandbox.executor()).await {
+                    // A workspace that cannot be read out skips this save, as
+                    // one the host could not scan did: the run goes on.
+                    let error_code = failure.code();
+                    tracing::warn!(event = "run_checkpoint_export_failed", %error_code);
+                    return Ok(RecoverySave::Skipped(RecoverySkip::Unavailable));
+                }
+                (Some(staged), toolbox.to_owned(), *state)
             }
         };
+        // The stage is the capture's byte source until it returns, uploads
+        // included, and goes with it.
+        let root = staged.as_ref().map(|staged| staged.path().to_owned());
         match snapshot.state {
             RecoveryState::DurableTask(task) => {
                 self.publish_durable_task(task, root, &toolbox, state).await

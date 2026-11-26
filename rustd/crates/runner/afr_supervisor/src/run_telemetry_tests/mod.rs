@@ -166,6 +166,7 @@ fn scripted_lessee(home: &StorageHome) -> Lessee {
         resolver: Box::new(FakeResolver::default()),
         agent,
         mirrors: Mirrors::new(home.mirrors(), GITHUB_ORIGIN),
+        staging: home.staging(),
         limits: Limits::default(),
         holds: crate::holds::Holds::start(clock()),
         clock: clock(),

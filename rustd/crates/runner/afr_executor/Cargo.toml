@@ -30,6 +30,9 @@ base64.workspace = true
 backon.workspace = true
 bytes.workspace = true
 cap-std.workspace = true
+# The anonymous spool a tree crossing in chunks lands in before it is unpacked
+# or read back.
+cap-tempfile.workspace = true
 futures-util = { workspace = true, features = ["sink"] }
 # `fs/search` walks the sandbox's own disk once: ripgrep's walker, which
 # skips what `.gitignore` names, its glob matcher, and its line searcher over
@@ -44,12 +47,16 @@ jsonrpsee-types.workspace = true
 rustix = { workspace = true, features = ["pty", "termios"] }
 serde.workspace = true
 serde_json.workspace = true
+# `import` and `export`: files cross the link as a tar stream.
+tar.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["fs", "io-util", "net", "process", "rt", "sync", "time", "macros"] }
 tokio-util = { workspace = true, features = ["codec", "io", "rt"] }
 tracing.workspace = true
 
 [dev-dependencies]
+# The digest a tree that crossed both ways is compared by.
+sha2.workspace = true
 # The log capture a test reads a process's end back through.
 af_core = { workspace = true, features = ["test-util"] }
 tempfile.workspace = true

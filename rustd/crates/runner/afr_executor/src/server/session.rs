@@ -8,9 +8,8 @@ use futures_util::StreamExt as _;
 use jsonrpsee_types::error::{
     INVALID_REQUEST_CODE, METHOD_NOT_FOUND_CODE, OVERSIZED_REQUEST_CODE, PARSE_ERROR_CODE,
 };
-use jsonrpsee_types::{ErrorObject, Id, Request, Response, ResponsePayload};
+use jsonrpsee_types::{Id, Request};
 use serde::Serialize;
-use serde::de::DeserializeOwned;
 use tokio::net::unix::OwnedReadHalf;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TrySendError;
@@ -26,8 +25,7 @@ use crate::error::{self, Result};
 use crate::protocol::{
     DELIMITER, KillParams, METHOD_DELETE_FILE, METHOD_KILL, METHOD_LIST_DIR, METHOD_READ_FILE,
     METHOD_RECOVERY_IDLE, METHOD_SEARCH, METHOD_SPAWN, METHOD_WRITE, METHOD_WRITE_FILE, PathParams,
-    ReadParams, RecoveryParams, SpawnParams, SpawnResult, WriteFileParams, WriteParams, decoded,
-    line,
+    ReadParams, RecoveryParams, SpawnParams, SpawnResult, WriteFileParams, WriteParams,
 };
 use crate::sizes::Sizes;
 
@@ -37,10 +35,6 @@ const DETAIL_UNREADABLE: &str = "the message is not a JSON-RPC request";
 const DETAIL_OVERSIZED: &str = "the message is longer than the executor reads";
 /// A method this executor does not serve.
 const DETAIL_NO_METHOD: &str = "no such method";
-/// A call that needs parameters and sent none.
-const DETAIL_NO_PARAMS: &str = "the method takes parameters";
-/// The executor refused a call; the code says why.
-const EVENT_CALL_REFUSED: &str = "executor_call_refused";
 /// A process's input closed; later writes are refused.
 const EVENT_INPUT_CLOSED: &str = "executor_input_closed";
 
@@ -73,8 +67,13 @@ pub(super) struct Session {
     output: mpsc::Sender<Bytes>,
     processes: HashMap<u64, Running>,
     running: JoinSet<u64>,
-    calls: JoinSet<()>,
+    /// File calls on the blocking pool; each answers with a transfer it
+    /// finished, for the session to forget.
+    calls: JoinSet<Option<u64>>,
     next_process: u64,
+    /// Trees crossing in chunks, by the number the client names them by.
+    transfers: HashMap<u64, Transfer>,
+    next_transfer: u64,
     /// The read clamp and the frame cap its starter chose.
     sizes: Sizes,
 }
@@ -99,6 +98,8 @@ impl Session {
             running: JoinSet::new(),
             calls: JoinSet::new(),
             next_process: 0,
+            transfers: HashMap::new(),
+            next_transfer: 0,
             sizes,
         }
     }
@@ -129,7 +130,9 @@ impl Session {
                         self.processes.remove(&process);
                     }
                 }
-                Some(_served) = self.calls.join_next(), if !self.calls.is_empty() => {}
+                Some(served) = self.calls.join_next(), if !self.calls.is_empty() => {
+                    self.forget(served.ok().flatten());
+                }
             }
         }
         // Dropping every hold is what tells each process to stop.
@@ -159,7 +162,9 @@ impl Session {
         match request.method.as_ref() {
             METHOD_RECOVERY_IDLE => {
                 let idle = params::<RecoveryParams>(request).map(|_params| {
-                    while self.calls.try_join_next().is_some() {}
+                    while let Some(served) = self.calls.try_join_next() {
+                        self.forget(served.ok().flatten());
+                    }
                     self.calls.is_empty()
                 });
                 self.answer(id, idle);
@@ -203,6 +208,7 @@ impl Session {
                 |workspace, list: PathParams<'static>| workspace.list(&list.path),
             ),
             METHOD_SEARCH => self.search(id, params(request)),
+            _other if self.transfer(id.clone(), request) => {}
             _unknown => self.refuse(id, METHOD_NOT_FOUND_CODE, DETAIL_NO_METHOD),
         }
     }
@@ -272,14 +278,27 @@ impl Session {
         T: Serialize + Clone + Send + 'static,
     {
         match params {
-            Ok(params) => {
-                let workspace = Arc::clone(&self.workspace);
-                let outbound = self.outbound.clone();
-                self.calls
-                    .spawn_blocking(move || post(&outbound, reply(id, call(&workspace, params))));
-            }
+            Ok(params) => self.blocking(id, move |workspace| (call(workspace, params), None)),
             Err(failure) => self.answer::<T>(id, Err(failure)),
         }
+    }
+
+    /// Runs `call` on the blocking pool and answers with its result; the
+    /// transfer it names, if any, is forgotten once it is done.
+    fn blocking<T>(
+        &mut self,
+        id: Id<'static>,
+        call: impl FnOnce(&Workspace) -> (Result<T>, Option<u64>) + Send + 'static,
+    ) where
+        T: Serialize + Clone + Send + 'static,
+    {
+        let workspace = Arc::clone(&self.workspace);
+        let outbound = self.outbound.clone();
+        self.calls.spawn_blocking(move || {
+            let (outcome, finished) = call(&workspace);
+            post(&outbound, reply(id, outcome));
+            finished
+        });
     }
 
     /// Queues a result or a refusal for `id`.
@@ -300,44 +319,10 @@ impl Session {
 mod recovery_tests;
 #[path = "session_search.rs"]
 mod search;
+#[path = "session_transfer.rs"]
+mod transfer;
+#[path = "session_wire.rs"]
+mod wire;
 
-/// A request's parameters, decoded through the object-only gate: whatever is
-/// on the other end of the socket is not trusted.
-fn params<T: DeserializeOwned>(request: &Request<'_>) -> Result<T> {
-    let raw = request
-        .params
-        .as_deref()
-        .ok_or_else(|| error::invalid_params(DETAIL_NO_PARAMS))?;
-    Ok(decoded(raw)?)
-}
-
-/// The line answering `id` with `outcome`.
-///
-/// A refusal is logged by its code alone: its sentence can quote what the
-/// call carried — an environment value, a path — and the sandbox's error
-/// stream reaches the host's journal.
-fn reply<T: Serialize + Clone>(id: Id<'static>, outcome: Result<T>) -> Bytes {
-    match outcome {
-        Ok(value) => line(&Response::new(ResponsePayload::success(value), id)),
-        Err(failure) => {
-            let event = EVENT_CALL_REFUSED;
-            let code = failure.rpc_code();
-            tracing::debug!(event, code, "the executor refused a call");
-            refusal(id, code, failure.wire_message())
-        }
-    }
-}
-
-/// The line refusing `id` with `code` and `message`.
-fn refusal(id: Id<'static>, code: i32, message: impl Into<String>) -> Bytes {
-    let refusal = ErrorObject::owned(code, message, None::<()>);
-    line(&Response::<()>::new(ResponsePayload::error(refusal), id))
-}
-
-/// Queues a line for the writer.
-///
-/// A send fails only once the writer has ended, which means the supervisor
-/// is gone and there is no one left to tell.
-fn post(outbound: &mpsc::UnboundedSender<Bytes>, line: Bytes) {
-    let _writer_gone = outbound.send(line);
-}
+use self::transfer::Transfer;
+use self::wire::{EVENT_CALL_REFUSED, params, post, refusal, reply};

@@ -30,6 +30,7 @@
 pub mod capability;
 pub mod config;
 pub mod error;
+pub mod staging;
 pub mod workspace_clone;
 
 mod activity;
@@ -214,6 +215,7 @@ async fn serve_from(runner: Runner, origin: &str, shutdown: CancellationToken) -
         resolver: Box::new(SystemResolver),
         agent,
         mirrors: Mirrors::new(home.mirrors(), origin),
+        staging: home.staging(),
         limits,
         holds: Holds::start(Arc::clone(&clock)),
         clock,

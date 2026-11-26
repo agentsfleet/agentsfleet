@@ -1,16 +1,25 @@
 //! A fake executor has explicit recovery proof and no hidden host work.
 
 use super::{EXECUTOR_GONE, Parking};
-use afr_executor::{Executor, FileContent, Listing, Process, ProcessId, Spawn};
+use afr_executor::{Executor, FileContent, Imported, Listing, Process, ProcessId, Spawn};
 use bytes::Bytes;
+use cap_std::ambient_authority;
+use cap_std::fs::Dir;
+use std::io::{Seek as _, SeekFrom};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
+use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt as _};
 use tokio::sync::mpsc;
 
-/// An executor that refuses to spawn, reports the files written into it, and
-/// answers everything else emptily, until its sandbox's parking says not.
+/// An executor that refuses to spawn, reports the files written into it,
+/// imports and exports over its workspace directory with the executor's own
+/// tree functions, and answers everything else emptily, until its sandbox's
+/// parking says not.
 #[derive(Debug, Default)]
 pub(super) struct FakeExecutor {
     pub(super) written: Option<mpsc::UnboundedSender<(String, Bytes)>>,
+    /// The directory it serves `import` and `export` over.
+    pub(super) workspace: Option<PathBuf>,
     /// What its sandbox does when resumed.
     pub(super) parking: Parking,
     /// Whether its sandbox was resumed.
@@ -64,5 +73,43 @@ impl Executor for FakeExecutor {
             entries: Vec::new(),
             truncated: false,
         })
+    }
+
+    async fn import(
+        &self,
+        at: &str,
+        tree: &mut (dyn AsyncRead + Send + Unpin),
+    ) -> afr_executor::Result<Imported> {
+        let root = self.served()?;
+        let mut spool = tokio::fs::File::from_std(tempfile::tempfile()?);
+        tokio::io::copy(tree, &mut spool).await?;
+        let spool = spool.into_std().await;
+        let dir = Dir::open_ambient_dir(root, ambient_authority())?;
+        afr_executor::tree::unpack(&dir, Path::new(at), &spool)
+    }
+
+    async fn export(
+        &self,
+        paths: &[&str],
+        into: &mut (dyn AsyncWrite + Send + Unpin),
+    ) -> afr_executor::Result<()> {
+        let dir = Dir::open_ambient_dir(self.served()?, ambient_authority())?;
+        let spool = tempfile::tempfile()?;
+        let inside: Vec<_> = paths.iter().map(Path::new).collect();
+        afr_executor::tree::pack(&dir, &inside, &spool)?;
+        let mut rewind = &spool;
+        rewind.seek(SeekFrom::Start(0))?;
+        tokio::io::copy(&mut tokio::fs::File::from_std(spool), into).await?;
+        Ok(into.flush().await?)
+    }
+}
+
+impl FakeExecutor {
+    /// The directory it serves, or the refusal an executor with no file
+    /// calls answers.
+    fn served(&self) -> afr_executor::Result<&Path> {
+        self.workspace
+            .as_deref()
+            .ok_or_else(|| std::io::Error::other("this fake serves no workspace").into())
     }
 }

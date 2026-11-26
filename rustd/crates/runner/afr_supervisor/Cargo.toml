@@ -39,6 +39,9 @@ af_validate.workspace = true
 # Provider credentials and encrypted recovery objects use the shared crypto types.
 af_crypto.workspace = true
 cap-std.workspace = true
+# Each step's stage on the host, made 0700 and removed when the step ends, and
+# the anonymous spool a tree crosses through beside it.
+tempfile.workspace = true
 # `system` for `sysinfo(2)`, the host memory a heartbeat reports.
 rustix = { workspace = true, features = ["system"] }
 # The one wire: every verb's request and reply, spelled once.
@@ -94,7 +97,6 @@ tracing.workspace = true
 futures-util.workspace = true
 
 [dev-dependencies]
-tempfile.workspace = true
 http-body-util.workspace = true
 af_stream = { workspace = true, features = ["test-util"] }
 # Verified local HTTPS object storage boundary for recovery transfer tests.

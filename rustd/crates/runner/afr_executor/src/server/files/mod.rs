@@ -14,16 +14,13 @@ use std::io::{self, Read as _, Write as _};
 use std::path::{Component, Path, PathBuf};
 
 use cap_std::ambient_authority;
-use cap_std::fs::{Dir, File, OpenOptions, OpenOptionsExt as _};
-use rustix::fs::OFlags;
-use rustix::io::Errno;
+use cap_std::fs::{Dir, File, OpenOptions};
 
 use crate::api::{DirEntry, EntryKind, Listing};
-use crate::error::{self, Error, Result};
+use crate::error::{self, Result};
 use crate::protocol::{MAX_FRAME_BYTES, ReadResult};
+use crate::tree::{CURRENT_DIRECTORY, Parents, confined, regular};
 
-/// The workspace itself, named relative to itself.
-const CURRENT_DIRECTORY: &str = ".";
 /// The most entries one listing carries.
 /// Kept: a listing past one executor frame would fail the whole call.
 pub(crate) const MAX_LIST_ENTRIES: usize = 4_096;
@@ -35,8 +32,6 @@ const MAX_ENTRY_JSON_BYTES: usize = 255 * 6 + 128;
 /// a starter choosing a frame keeps it longer than this.
 pub(crate) const MAX_LISTING_BYTES: usize = MAX_LIST_ENTRIES * MAX_ENTRY_JSON_BYTES;
 const _: () = assert!(MAX_LISTING_BYTES < MAX_FRAME_BYTES);
-/// Open without waiting: a pipe with no writer must not hold the call.
-const NONBLOCK: i32 = OFlags::NONBLOCK.bits().cast_signed();
 
 /// The workspace: its path, for working directories, and a handle that cannot
 /// see past it, for everything else.
@@ -130,11 +125,8 @@ impl Workspace {
         })
     }
 
-    /// Opens `path` without blocking and refuses anything but a regular file.
-    ///
-    /// With [`Parents::Make`], an open that fails because a directory is
-    /// missing makes the directories and tries once more. The open is always
-    /// tried first, so an escape is refused as one before anything is made.
+    /// Opens `path` without blocking and refuses anything but a regular file;
+    /// with [`Parents::Make`], makes its missing parent directories.
     fn regular(&self, path: &str, options: &mut OpenOptions, parents: Parents) -> Result<File> {
         self.regular_at(self.inside(path)?, options, parents)
     }
@@ -146,25 +138,7 @@ impl Workspace {
         options: &mut OpenOptions,
         parents: Parents,
     ) -> Result<File> {
-        options.custom_flags(NONBLOCK);
-        let file = match (self.dir.open_with(inside, options), parents) {
-            (Err(missing), Parents::Make) if missing.kind() == io::ErrorKind::NotFound => {
-                // `inside` is never empty (the workspace itself reads as `.`),
-                // so it always has a parent to make.
-                inside
-                    .parent()
-                    .map_or(Ok(()), |parent| self.dir.create_dir_all(parent))
-                    .map_err(confined)?;
-                self.dir.open_with(inside, options)
-            }
-            (opened, _either) => opened,
-        }
-        .map_err(confined)?;
-        if file.metadata()?.is_file() {
-            Ok(file)
-        } else {
-            Err(error::not_a_file())
-        }
+        regular(&self.dir, inside, options, parents)
     }
 
     /// `path` relative to the workspace: an absolute path must name a place
@@ -209,30 +183,8 @@ fn described(entry: &cap_std::fs::DirEntry) -> io::Result<DirEntry> {
     })
 }
 
-/// Whether opening a file may make its missing parent directories.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Parents {
-    /// Only what exists is opened: a read.
-    Keep,
-    /// Missing directories are made: a write.
-    Make,
-}
-
-/// Sorts a failed open. `cap_std` reports an escape as a permission refusal
-/// that no system call produced, which is how it is told from a real `EACCES`;
-/// a pipe with no reader refuses a non-blocking open for writing with
-/// `ENXIO`, and that is a file that is not a regular one; a name that is not
-/// there is the caller's, and gets the code a handler names to the model.
-fn confined(failure: io::Error) -> Error {
-    match failure.raw_os_error() {
-        None if failure.kind() == io::ErrorKind::PermissionDenied => error::path_refused(),
-        Some(code) if code == Errno::NXIO.raw_os_error() => error::not_a_file(),
-        _other if failure.kind() == io::ErrorKind::NotFound => error::not_found(failure),
-        _other => failure.into(),
-    }
-}
-
 mod search;
+mod tree;
 
 #[cfg(test)]
 mod delete_tests;

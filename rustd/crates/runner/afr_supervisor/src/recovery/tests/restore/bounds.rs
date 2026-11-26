@@ -135,10 +135,10 @@ async fn assert_bounded(archive: Archive, expected: &str) -> crate::Result<()> {
         toolbox: &toolbox(),
         stop: &CancellationToken::new(),
     }
-    .run(Some((
-        destination.path().to_owned(),
-        (owner.uid(), owner.gid()),
-    )))
+    .run(
+        Some((destination.path().to_owned(), (owner.uid(), owner.gid()))),
+        std::future::ready(Ok(())),
+    )
     .await
     .unwrap_err();
     config_failure(&error, expected);

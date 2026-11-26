@@ -1,4 +1,6 @@
 //! Native task files and base custody remain separate from event-owned recovery.
+//! Files cross through a stage on the host and the executor's `import` and
+//! `export`, never a host path into the workspace.
 
 use super::{
     Run,
@@ -7,21 +9,24 @@ use super::{
 use crate::{
     Result,
     recovery::{Capture, Restore},
+    staging::Staged,
 };
 use af_core::id::Uuid7;
 use af_wire::durable_task::{CheckpointMode, DurableTaskContext, DurableTaskTarget};
+use afr_sandbox::Sandbox;
 use zeroize::Zeroizing;
 
 impl Run<'_> {
     pub(super) async fn native_workspace(
         &self,
         task: &DurableTaskContext<'static>,
-        destination: (std::path::PathBuf, (u32, u32)),
+        sandbox: &dyn Sandbox,
         scope: &Uuid7,
         toolbox: &str,
         permit: Option<&afr_agent::FileRecoveryPermit>,
     ) -> Result<State> {
         if task.checkpoint_id.is_some() {
+            let staged = self.lessee.staging.stage(sandbox.id())?;
             let restored = Restore {
                 plane: &self.lessee.plane,
                 transfers: &self.lessee.recovery.transfers,
@@ -33,7 +38,10 @@ impl Run<'_> {
                 toolbox,
                 stop: &self.interrupt,
             }
-            .run(Some(destination))
+            .run(
+                Some((staged.path().to_owned(), Staged::owner())),
+                staged.restore(sandbox.executor()),
+            )
             .await?;
             return Ok(State {
                 turn: None,
@@ -46,9 +54,11 @@ impl Run<'_> {
             repository, head, ..
         } = &task.target
         {
-            verify_fresh_checkout(&destination.0, repository, head).await?;
+            let staged = self.lessee.staging.stage(sandbox.id())?;
+            staged.export(sandbox.executor()).await?;
+            verify_fresh_checkout(staged.path(), repository, head).await?;
             return self
-                .native_base(task, destination.0, scope, toolbox, permit)
+                .native_base(task, staged.path().to_owned(), scope, toolbox, permit)
                 .await;
         }
         Ok(State {

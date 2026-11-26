@@ -18,8 +18,8 @@ use crate::bubblewrap::{self, CAPABILITIES, Layout, NetworkLayout};
 use crate::cgroup::{Freezer, RunCgroup};
 use crate::egress::{self, Kernel};
 use crate::engine::{
-    Capabilities, Engine, Environment, Granted, HostWorkspace, Killed, Limits, ParkMode, Parked,
-    Quiescence, Root, Sandbox, SandboxSpec, SandboxState, Sweep, Swept,
+    Capabilities, Engine, Environment, Granted, Killed, Limits, ParkMode, Parked, Quiescence, Root,
+    Sandbox, SandboxSpec, SandboxState, Sweep, Swept,
 };
 use crate::error::{Result, not_ready, sandbox_exists, unconfined};
 use crate::network::{Allowlist, Network};
@@ -170,7 +170,6 @@ impl BubblewrapEngine {
                 },
                 client,
                 parts,
-                owner: self.owner,
                 _toolbox: Arc::clone(&self.config.toolbox),
             }),
             Err(error) => {
@@ -318,8 +317,6 @@ struct Bubblewrapped {
     environment: Environment,
     client: Client,
     parts: Parts,
-    /// Who owns the workspace disk's files, as the host names them.
-    owner: (u32, u32),
     /// The toolbox it runs on, kept only for its lifetime: retention never
     /// unmounts an image a live sandbox still owns.
     _toolbox: Arc<Toolbox>,
@@ -341,13 +338,6 @@ impl Sandbox for Bubblewrapped {
 
     fn executor(&self) -> &dyn Executor {
         &self.client
-    }
-
-    fn workspace(&self) -> Option<HostWorkspace<'_>> {
-        Some(HostWorkspace {
-            root: self.parts.workspace(),
-            owner: self.owner,
-        })
     }
 
     fn state(&mut self) -> SandboxState {

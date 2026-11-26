@@ -26,24 +26,15 @@ fn assigned() -> Result<Fixture> {
 }
 
 #[tokio::test]
-async fn an_ordinary_restore_needs_a_trusted_workspace_and_toolbox() -> Result<()> {
+async fn an_ordinary_restore_needs_a_verified_toolbox() -> Result<()> {
     let root = tempfile::tempdir()?;
-    for (engine, expected) in [
-        (
-            FakeEngine {
-                toolbox: Some(api_toolbox()),
-                ..FakeEngine::default()
-            },
-            "ordinary restore has no trusted workspace",
-        ),
-        (
-            FakeEngine {
-                workspace: Some(root.path().to_owned()),
-                ..FakeEngine::default()
-            },
-            "ordinary restore has no verified toolbox",
-        ),
-    ] {
+    for (engine, expected) in [(
+        FakeEngine {
+            workspace: Some(root.path().to_owned()),
+            ..FakeEngine::default()
+        },
+        "ordinary restore has no verified toolbox",
+    )] {
         let mut fixture = assigned()?;
         let sandbox = engine
             .sandbox()

@@ -36,8 +36,8 @@ mod tests;
 
 pub(crate) use self::raise::{
     connection_lost, file_calls_unsupported, input_backlog_full, input_closed, invalid_params,
-    launch_incomplete, not_a_file, not_found, path_refused, refused, tenant_unavailable,
-    unknown_process, unresponsive,
+    launch_incomplete, not_a_file, not_found, path_refused, redial_failed, refused,
+    tenant_unavailable, unknown_process, unresponsive,
 };
 
 af_core::error_shell!(
@@ -59,6 +59,14 @@ pub(crate) enum ErrorKind {
     /// The other end of the socket went away.
     #[error("the executor connection closed")]
     ConnectionLost,
+
+    /// The link was found closed and its transport would not dial again.
+    #[error("the executor connection closed and could not be dialled again")]
+    Redial {
+        /// The transport's reason.
+        #[source]
+        source: io::Error,
+    },
 
     /// The executor did not answer in time, so its connection is given up.
     #[error("the executor did not answer {method} in time")]
@@ -215,6 +223,7 @@ impl Error {
             ErrorKind::Io { source } if is_caller_mistake(source) => INVALID_PARAMS_CODE,
             ErrorKind::Io { .. }
             | ErrorKind::ConnectionLost
+            | ErrorKind::Redial { .. }
             | ErrorKind::Unresponsive { .. }
             | ErrorKind::Task { .. }
             | ErrorKind::LaunchIncomplete

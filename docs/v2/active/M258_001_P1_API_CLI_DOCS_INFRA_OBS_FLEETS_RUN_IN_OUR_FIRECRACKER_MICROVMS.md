@@ -219,7 +219,7 @@ Boot one VM on the dev runner host before any code, with Firecracker and the jai
 
 **(1) Storage.** The executor gains `import(at, tree)` and `export(paths)`: a tar stream, confined to `/workspace`, each entry owned by the sandbox user. It is chunked under the 64 MiB frame (`afr_executor/src/protocol/mod.rs:48`), so a repository of any size crosses.
 
-Checkout fetches into the host mirror with the token, packs the selected tree and imports it. `HostWorkspace` and `Sandbox::workspace()` go; the images stay engine-internal, loop-mounted by bubblewrap and attached as drives by a VM.
+Checkout fetches into the host mirror with the token, checks the tree out into a host stage, and imports it. Capture exports into a stage and today's catalog reads the stage; restore writes a stage and imports it. A stage is `<storage home>/staging/<sandbox id>-<random>/`, mode `0700`, owned by the runner, removed when its step ends and swept at boot. Host and executor share one confined `afr_executor::tree::{pack, unpack}` over a `cap-std` directory, so the host unpacks a tenant's tree with the same checks the executor does. An import spools on the workspace disk so it is checked whole before its first write; an export streams as it is read and spools nothing. `HostWorkspace` and `Sandbox::workspace()` go; the images stay engine-internal, loop-mounted by bubblewrap and attached as drives by a VM.
 
 **The snapshot interface.** The storage concern carries `Snapshots`: take a snapshot under a caller-minted id, restore one, forget one. Both VM engines implement it later: ours on M258_002's chunk map, Sprites on Fly's own checkpoints in M260_001. §6 holds every implementation to one observable behaviour, and this spec designs no mechanism behind it.
 
@@ -227,10 +227,10 @@ Checkout fetches into the host mirror with the token, packs the selected tree an
 
 **(4) Transport.** The executor client speaks the same JSON lines over any byte stream a `Transport` dials. It redials once when a call finds the link closed. Bubblewrap dials its socket pair once, Firecracker dials vsock after every boot, and a process the old link carried reads `Interrupted` (`afr_executor/src/client/mod.rs:1-8`).
 
-- **Dimension 3.1** — files cross with no host path → Test `import_then_export_returns_the_same_tree` (unit, unsandboxed engine). A fixture tree with modes, relative links and an empty directory is imported. The exported tree's SHA-256 digest equals the imported one.
-- **Dimension 3.2** — nothing lands outside the workspace → Test `an_import_entry_leaving_its_root_is_refused` (unit, `afr_executor`). `../x`, an absolute link and a link out of `/workspace` are each refused, and nothing is written.
-- **Dimension 3.3** — checkout and recovery need no host path → Test `checkout_fills_a_workspace_the_host_cannot_see` (integration, `afr_supervisor`). An engine with no host path checks out the fixture with today's tree digest. The recovery drill engine captures with today's checkpoint path through `export` and restores it byte for byte.
-- **Dimension 3.4** — the link redials after a park → Test `the_executor_link_redials_after_a_hold` (unit, over `tokio::io::duplex`). The far end closes, the client redials once, and the next call answers. A process the old link carried reads `Interrupted`.
+- **Dimension 3.1** — ✅ DONE — files cross with no host path → Test `test_import_then_export_returns_the_same_tree` (unit, unsandboxed engine). A fixture tree with modes, relative links and an empty directory is imported. The exported tree's SHA-256 digest equals the imported one.
+- **Dimension 3.2** — ✅ DONE — nothing lands outside the workspace → Test `test_an_import_entry_leaving_its_root_is_refused` (unit, `afr_executor`). `../x`, an absolute link and a link out of `/workspace` are each refused, and nothing is written.
+- **Dimension 3.3** — ✅ DONE — checkout and recovery need no host path → Test `test_checkout_fills_a_workspace_the_host_cannot_see` (integration, `afr_supervisor`). An engine with no host path checks out the fixture with today's tree digest. The recovery drill engine captures with today's checkpoint path through `export` and restores it byte for byte.
+- **Dimension 3.4** — ✅ DONE — the link redials after a park → Test `test_the_executor_link_redials_after_a_park` (unit, over `tokio::io::duplex`). The far end closes, the client redials once, and the next call answers. A process the old link carried reads `Interrupted`.
 
 ### §4 — Networking and credentials
 
@@ -243,7 +243,7 @@ Checkout fetches into the host mirror with the token, packs the selected tree an
 - **Dimension 4.1** — nothing runs before the plan is in force → Test `prepare_returns_only_after_the_plan_is_in_force` (unit, a fake enforcer). When read-back lags two calls, `prepare` waits and the executor sees no command. When the enforcer fails, `prepare` refuses and destroys the sandbox.
 - **Dimension 4.2** — an old plan cannot replace a newer one → Test `a_stale_generation_is_refused` (unit). With generation 4 in force, applying 3 is refused, and 4 reads back.
 - **Dimension 4.3** — every plan refuses the reserved ranges → Test `every_plan_refuses_the_reserved_ranges` (unit, the plan compiler). No-network compiles to no device. A listed or public plan drops private, `169.254.0.0/16`, `100.64.0.0/10`, loopback and IPv6 destinations before any accept.
-- **Dimension 4.4** — the fetch token never crosses → Test `the_checkout_stream_carries_no_fetch_token` (unit, `afr_supervisor`). A canary token fetches the fixture. No byte of the imported stream holds it, `.git/config` included.
+- **Dimension 4.4** — ✅ DONE — the fetch token never crosses → Test `test_the_checkout_stream_carries_no_fetch_token` (unit, `afr_supervisor`). A canary token fetches the fixture. No byte of the imported stream holds it, `.git/config` included.
 
 ### §5 — Crate layout: one seam crate, building blocks, one crate per engine
 

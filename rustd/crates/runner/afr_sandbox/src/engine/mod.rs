@@ -1,7 +1,6 @@
 //! The interface every engine meets.
 
 use std::fmt;
-use std::path::Path;
 use std::time::Duration;
 
 use af_core::id::Uuid7;
@@ -86,17 +85,6 @@ impl Limits {
     pub const fn shared_memory_bytes(&self) -> u64 {
         self.memory_bytes.div_euclid(SHARED_MEMORY_SHARE)
     }
-}
-
-/// A sandbox's workspace as the host sees it: where it is mounted, and the
-/// host user and group a file written into it must belong to so the
-/// sandbox's processes own it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct HostWorkspace<'a> {
-    /// The workspace's root on the host.
-    pub root: &'a Path,
-    /// The host user and group the sandbox's processes run as.
-    pub owner: (u32, u32),
 }
 
 /// What a sandbox is built for.
@@ -257,11 +245,6 @@ pub trait Sandbox: Send + Sync + fmt::Debug {
 
     /// The executor running inside it.
     fn executor(&self) -> &dyn Executor;
-
-    /// The workspace as the host sees it, so the supervisor can fill it
-    /// before the turn runs; none for an engine whose workspace the host
-    /// cannot reach.
-    fn workspace(&self) -> Option<HostWorkspace<'_>>;
 
     /// Whether it can still serve. A warm slot whose sandbox ended while it
     /// waited is discarded on claim rather than handed to a run.

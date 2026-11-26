@@ -76,9 +76,6 @@ impl Sandbox for Named {
     fn executor(&self) -> &dyn Executor {
         &self.executor
     }
-    fn workspace(&self) -> Option<crate::engine::HostWorkspace<'_>> {
-        None
-    }
     fn state(&mut self) -> SandboxState {
         if self.dead {
             SandboxState::Ended

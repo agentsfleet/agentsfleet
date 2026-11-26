@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use serde_json::{Value, json};
-use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
+use tokio::io::{AsyncBufReadExt as _, AsyncRead, AsyncWrite, AsyncWriteExt as _, BufReader};
 use tokio::net::UnixStream;
 
 use super::Client;
@@ -54,14 +54,14 @@ fn silent() -> (Client, UnixStream) {
 }
 
 /// The next call the client sent `executor`.
-pub(super) async fn next_call(executor: &mut BufReader<UnixStream>) -> Value {
+pub(super) async fn next_call(executor: &mut BufReader<impl AsyncRead + Unpin>) -> Value {
     let mut request = String::new();
     executor.read_line(&mut request).await.unwrap();
     serde_json::from_str(&request).unwrap()
 }
 
 /// Sends `message` from `executor`, as the one JSON-RPC line it is.
-async fn say(executor: &mut BufReader<UnixStream>, mut message: Value) {
+async fn say(executor: &mut BufReader<impl AsyncRead + AsyncWrite + Unpin>, mut message: Value) {
     message["jsonrpc"] = Value::from("2.0");
     executor
         .get_mut()
@@ -71,19 +71,25 @@ async fn say(executor: &mut BufReader<UnixStream>, mut message: Value) {
 }
 
 /// Answers the next call on `executor` with `result`, and hands the call back.
-async fn answer(executor: &mut BufReader<UnixStream>, result: Value) -> Value {
+pub(super) async fn answer(
+    executor: &mut BufReader<impl AsyncRead + AsyncWrite + Unpin>,
+    result: Value,
+) -> Value {
     let call = next_call(executor).await;
     say(executor, json!({ "result": result, "id": call[ID] })).await;
     call
 }
 
 /// Answers the next call on `executor` as a spawn of process `process`.
-pub(super) async fn answer_spawn(executor: &mut BufReader<UnixStream>, process: u64) {
+pub(super) async fn answer_spawn(
+    executor: &mut BufReader<impl AsyncRead + AsyncWrite + Unpin>,
+    process: u64,
+) {
     answer(executor, json!({ "process_id": process })).await;
 }
 
 /// What the fake executor answers a listing with.
-fn nothing_listed() -> Value {
+pub(super) fn nothing_listed() -> Value {
     json!({ "entries": [], "truncated": false })
 }
 

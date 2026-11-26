@@ -1404,6 +1404,7 @@ dependencies = [
  "base64 0.23.1",
  "bytes",
  "cap-std",
+ "cap-tempfile",
  "futures-util",
  "globset",
  "grep-regex",
@@ -1413,6 +1414,8 @@ dependencies = [
  "rustix 1.1.6",
  "serde",
  "serde_json",
+ "sha2 0.11.2",
+ "tar",
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
@@ -2486,6 +2489,20 @@ dependencies = [
  "io-extras",
  "io-lifetimes 3.0.1",
  "rustix 1.1.6",
+]
+
+[[package]]
+name = "cap-tempfile"
+version = "4.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "038b3f6a5d4b5641b1bb99d638eb7a22013de84f81c528d8930de06d7383fbd5"
+dependencies = [
+ "cap-std",
+ "rand 0.9.5",
+ "rustix 1.1.6",
+ "rustix-linux-procfs",
+ "uuid",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -8599,6 +8616,16 @@ name = "take_mut"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f764005d11ee5f36500a149ace24e00e3da98b0158b3e2d53a7495660d3f4d60"
+
+[[package]]
+name = "tar"
+version = "0.4.46"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f6221d9a6003c78398e3b239969f352578258df48c8eb051caadae0015bc840"
+dependencies = [
+ "filetime",
+ "libc",
+]
 
 [[package]]
 name = "task-killswitch"

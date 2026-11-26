@@ -1,9 +1,8 @@
 //! A working copy made from a mirror, without touching the network: the
-//! mirror's objects copied in, its branches recorded as `origin`'s, the base
-//! branch checked out, and every file handed to the sandbox's user.
+//! mirror's objects copied in, its branches recorded as `origin`'s, and the
+//! base branch checked out.
 
 use std::fs;
-use std::os::unix::fs::lchown;
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
 
@@ -47,14 +46,13 @@ const COMMITTER_NAME: &str = "committer.name";
 const COMMITTER_EMAIL: &str = "committer.email";
 
 /// Makes `destination` a working copy of `mirror` at `base`, whose origin is
-/// `url`, every file owned by `owner`. A read binding names no base, so an
-/// empty `base` checks out the remote's default branch (`branch_of`).
+/// `url`. A read binding names no base, so an empty `base` checks out the
+/// remote's default branch (`branch_of`).
 pub(super) fn check_out(
     mirror: &Path,
     destination: &Path,
     url: &str,
     base: &str,
-    owner: (u32, u32),
     stop: &AtomicBool,
 ) -> GitResult<()> {
     fs::create_dir(destination)?;
@@ -73,8 +71,7 @@ pub(super) fn check_out(
     let base = branch_of(&source, base)?;
     record_branches(&source, &repository, &base)?;
     configure_origin(&repository, url, &base)?;
-    write_worktree(&repository, &base, stop)?;
-    hand_over(destination, owner)
+    write_worktree(&repository, &base, stop)
 }
 
 /// `base`, or for a binding that names none, the branch the mirror's `HEAD`
@@ -199,17 +196,6 @@ fn copy_tree(from: &Path, to: &Path) -> GitResult<()> {
             copy_tree(&entry.path(), &target)?;
         } else {
             fs::copy(entry.path(), target)?;
-        }
-    }
-    Ok(())
-}
-
-/// Hands `path` and everything under it to `owner`, never following a link.
-fn hand_over(path: &Path, owner: (u32, u32)) -> GitResult<()> {
-    lchown(path, Some(owner.0), Some(owner.1))?;
-    if path.symlink_metadata()?.is_dir() {
-        for entry in fs::read_dir(path)? {
-            hand_over(&entry?.path(), owner)?;
         }
     }
     Ok(())

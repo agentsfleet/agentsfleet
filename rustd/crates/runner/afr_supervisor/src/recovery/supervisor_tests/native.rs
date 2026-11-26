@@ -5,7 +5,8 @@ use super::fixture::{self, Checked, ID};
 use crate::{
     Result, error,
     recovery::{NativeTurn, Transfers},
-    test_support::{self, Answer, FLEET_ID, RUN_ID},
+    staging::Staging,
+    test_support::{self, Answer, FLEET_ID, FakeEngine, RUN_ID},
 };
 use af_core::{clock, id::Uuid7};
 use af_wire::durable_task::CheckpointPage;
@@ -134,6 +135,7 @@ async fn an_api_only_restore_adopts_its_saved_inputs_and_releases_its_pin() -> C
 async fn an_ordinary_restore_without_its_actual_workspace_asks_nothing() -> Checked {
     let (assignment, saved) = api_only()?;
     let root = tempfile::tempdir()?;
+    let sandbox = FakeEngine::default().sandbox().await?;
     for workspace in [
         TurnWorkspace::Files {
             toolbox_digest: "b".repeat(64),
@@ -143,12 +145,13 @@ async fn an_ordinary_restore_without_its_actual_workspace_asks_nothing() -> Chec
         let (plane, mut calls) = owner(saved.clone(), None);
         let run = Uuid7::parse(RUN_ID)?;
         let transfers = Transfers::new()?;
+        let staged = Staging::new(root.path().to_owned()).stage(&run)?;
 
         let restored = NativeTurn::new(&plane, &run, assignment.fencing_token, &transfers)
             .restore(
                 &assignment,
                 workspace,
-                Some((root.path().to_owned(), (0, 0))),
+                Some((&staged, sandbox.executor())),
                 &CancellationToken::new(),
                 None,
             )

@@ -1,7 +1,6 @@
 //! A sandbox engine for the run tests: sandboxes that count their teardowns
 //! and an executor that reports what is written into the workspace.
 
-use std::os::unix::fs::MetadataExt as _;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -11,9 +10,8 @@ use af_core::id::Uuid7;
 use af_wire::runner::{Isolation, SandboxEngine};
 use afr_executor::Executor;
 use afr_sandbox::{
-    Allowlist, Capabilities, Engine, Environment, Granted, HostWorkspace, Killed, Limits, Network,
-    ParkMode, Parked, Quiescence, ResourceFacts, Root, Sandbox, SandboxSpec, SandboxState, Sweep,
-    Swept,
+    Allowlist, Capabilities, Engine, Environment, Granted, Killed, Limits, Network, ParkMode,
+    Parked, Quiescence, ResourceFacts, Root, Sandbox, SandboxSpec, SandboxState, Sweep, Swept,
 };
 use bytes::Bytes;
 use tokio::sync::mpsc;
@@ -121,8 +119,8 @@ pub(crate) struct FakeEngine {
     pub(crate) swept: Option<mpsc::UnboundedSender<Option<Uuid7>>>,
     /// Where each sandbox's executor reports the files written into it.
     pub(crate) written: Option<mpsc::UnboundedSender<(String, Bytes)>>,
-    /// The host directory each sandbox offers as its workspace, owned by
-    /// whoever owns it; none keeps the workspace out of the host's reach.
+    /// The host directory each sandbox's executor imports into and exports
+    /// from, as a real executor serves its workspace; none refuses both.
     pub(crate) workspace: Option<PathBuf>,
     /// The verified toolbox digest a durable-recovery sandbox's root is;
     /// none roots it on the host.
@@ -217,10 +215,6 @@ impl Engine for FakeEngine {
         if let Some(ready) = &self.ready {
             let _reader_gone = ready.send(tokio::time::Instant::now());
         }
-        let workspace = self.workspace.clone().map(|root| {
-            let metadata = std::fs::metadata(&root).unwrap();
-            (root, (metadata.uid(), metadata.gid()))
-        });
         let root = self
             .toolbox
             .clone()
@@ -241,7 +235,6 @@ impl Engine for FakeEngine {
             resume_takes: self.resume_takes,
             quiesce_takes: self.quiesce_takes,
             quiesced: Arc::clone(&self.quiesced),
-            workspace,
             destroyed: Arc::clone(&self.destroyed),
             parked: Arc::clone(&self.parked),
             resumed: Arc::clone(&self.resumed),
@@ -250,6 +243,7 @@ impl Engine for FakeEngine {
             parking: self.parking,
             executor: FakeExecutor {
                 written: self.written.clone(),
+                workspace: self.workspace.clone(),
                 parking: self.parking,
                 resumed: AtomicBool::default(),
             },
@@ -269,7 +263,6 @@ struct FakeSandbox {
     resume_takes: Duration,
     quiesce_takes: Duration,
     quiesced: Arc<AtomicUsize>,
-    workspace: Option<(PathBuf, (u32, u32))>,
     destroyed: Arc<AtomicUsize>,
     parked: Arc<AtomicUsize>,
     resumed: Arc<AtomicUsize>,
@@ -324,13 +317,6 @@ impl Sandbox for FakeSandbox {
 
     fn executor(&self) -> &dyn Executor {
         &self.executor
-    }
-
-    fn workspace(&self) -> Option<HostWorkspace<'_>> {
-        self.workspace.as_ref().map(|(root, owner)| HostWorkspace {
-            root,
-            owner: *owner,
-        })
     }
 
     fn state(&mut self) -> SandboxState {
