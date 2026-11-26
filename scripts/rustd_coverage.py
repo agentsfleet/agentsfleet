@@ -40,6 +40,7 @@ the union holds no line of is refused, as a shard that never reported is.
 Exit 0 when every floor holds, 1 when one does not, 2 when the inputs are unusable.
 """
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -211,11 +212,22 @@ def layer_grades(merged):
             if tally[folder][1]]
 
 
-def report_layers(grades):
-    """One line per folder, so a reader sees who is short without a floor of its own."""
+def report_layers(grades, summary=None):
+    """One line per folder, so a reader sees who is short without a floor of its own.
+
+    With `summary`, the same rows also go to that file as a Markdown table: GitHub Actions
+    names its run-page summary in GITHUB_STEP_SUMMARY, so the table shows without a log.
+    """
     print("  coverage by folder:")
     for folder, covered, total in grades:
         print(f"    {covered * 100 / total:8.4f}%  {covered:6d} of {total:6d} lines  {total - covered:5d} missed  {folder}")
+    if summary:
+        rows = ["### Rust coverage by folder", "", "| Folder | Coverage | Covered | Lines | Missed |",
+                "|---|---:|---:|---:|---:|"]
+        rows += [f"| {folder} | {covered * 100 / total:.4f}% | {covered} | {total} | {total - covered} |"
+                 for folder, covered, total in grades]
+        with open(summary, "a", encoding="utf-8") as out:
+            out.write("\n".join(rows) + "\n\n")
 
 
 def missed_by_crate(merged):
@@ -440,7 +452,7 @@ def main(argv=None):
         return EXIT_UNUSABLE
     args.out.write_text(render(merged), encoding="utf-8")
     verdict = report(covered, total, floor, merged, args.out)
-    report_layers(layer_grades(merged))
+    report_layers(layer_grades(merged), os.environ.get("GITHUB_STEP_SUMMARY"))
     for crate, (crate_covered, crate_total) in crates.items():
         verdict = max(verdict, report_crate(crate, crate_covered, crate_total, floors[crate]))
     if changed is not None:

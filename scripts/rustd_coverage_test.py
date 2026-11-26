@@ -31,7 +31,9 @@ def isolated_env():
     point every git call here at the hook's repository instead of the
     scratch one, and the scratch commits overwrite that repository's index.
     """
-    return {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
+    # GITHUB_STEP_SUMMARY too: run inside Actions, a fixture's table would land on the real run page.
+    return {name: value for name, value in os.environ.items()
+            if not name.startswith("GIT_") and name != "GITHUB_STEP_SUMMARY"}
 
 
 def lcov(records):
@@ -232,6 +234,22 @@ class CommandLine(unittest.TestCase):
         self.assertEqual(rows, ["foundation", "daemon", "guffbolt"])
         self.assertIn(" 50.0000%       1 of      2 lines      1 missed  daemon", result.stdout)
         self.assertIn(" 75.0000%       3 of      4 lines      1 missed  guffbolt", result.stdout)
+
+    def test_the_folder_table_reaches_the_actions_run_summary(self):
+        summary = self.root / "summary.md"
+        daemon = str(self.root / "rustd/crates/daemon/afd_x/src/lib.rs")
+        report = self.root / "lcov-all.info"
+        report.write_text(lcov({daemon: {1: 1, 2: 0}}))
+        command = [sys.executable, str(SCRIPT), "--floor", "0", "--out", str(self.root / "lcov.info"), str(report)]
+        env = dict(isolated_env(), GITHUB_STEP_SUMMARY=str(summary))
+        result = subprocess.run(command, cwd=self.root, capture_output=True, text=True, env=env)
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn("| daemon | 50.0000% | 1 | 2 | 1 |", summary.read_text())
+
+    def test_without_an_actions_summary_nothing_is_written(self):
+        result = self.judge({str(self.root / "rustd/crates/daemon/afd_x/src/lib.rs"): {1: 1}})
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertFalse((self.root / "summary.md").exists())
 
     def test_a_path_outside_the_layers_rolls_up_to_the_workspace_root(self):
         self.assertEqual(judge.layer_of("/w/rustd/crates/runner/afr_x/src/lib.rs"), "runner")
