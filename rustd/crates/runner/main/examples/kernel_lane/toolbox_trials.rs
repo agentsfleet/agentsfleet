@@ -6,7 +6,7 @@ use std::process::Command;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use afr_engine::{Engine, Limits, WarmSlots};
+use afr_engine::{Engine, Limits, NetworkKind, WarmSlots};
 use afr_engine_bubblewrap::{BubblewrapEngine, probe};
 use afr_image::Toolbox;
 use libtest_mimic::Failed;
@@ -85,6 +85,7 @@ pub(crate) fn warm_beats_cold(lane: &Lane) -> Result<(), Failed> {
         let engine: Arc<dyn Engine> = Arc::new(lane.engine());
         let cold = starts(&*engine, "cold").await?;
         let slots = WarmSlots::start(Arc::clone(&engine), 1, Limits::default());
+        slots.network_assigned(NetworkKind::Isolated);
         let warm = starts(&slots, "warm").await?;
         slots.shutdown().await;
         println!("run-accept to executor-ready, p50 of {STARTS}: cold {cold:?}, warm {warm:?}");

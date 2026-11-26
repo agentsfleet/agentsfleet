@@ -38,6 +38,32 @@ pub enum Network<'a> {
     Allowed(&'a Allowlist),
 }
 
+impl Network<'_> {
+    /// Its kind, the allowlist's addresses left out.
+    #[must_use]
+    pub const fn kind(&self) -> NetworkKind {
+        match self {
+            Self::Host => NetworkKind::Host,
+            Self::Isolated => NetworkKind::Isolated,
+            Self::Allowed(_) => NetworkKind::Allowed,
+        }
+    }
+}
+
+/// What kind of [`Network`] a sandbox is built for.
+///
+/// Every engine fixes the kind when it builds, its namespace and any host-side link chosen then, so
+/// a later plan may change an allowlist's addresses but never the kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NetworkKind {
+    /// The host's own network.
+    Host,
+    /// Nothing beyond loopback.
+    Isolated,
+    /// An allowlist's addresses.
+    Allowed,
+}
+
 /// One run's egress allowlist, resolved at bind: each name and the IPv4
 /// addresses it resolved to, names in the order they were merged.
 ///
@@ -46,7 +72,9 @@ pub enum Network<'a> {
 /// allowlist. Its names and its distinct addresses are read once, when it is
 /// made: everything else here is derived from `entries`, so two allowlists
 /// with equal entries are equal.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// The default admits nothing: no name, no address.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Allowlist {
     entries: Vec<(String, Ipv4Addr)>,
     /// Each name once, in the order merged.

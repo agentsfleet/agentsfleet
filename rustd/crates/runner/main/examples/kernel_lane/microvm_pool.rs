@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use af_core::test_util::trace::Capture;
-use afr_engine::{Engine, Limits, Network, SandboxSpec, SandboxState, WarmSlots};
+use afr_engine::{Engine, Limits, Network, NetworkKind, SandboxSpec, SandboxState, WarmSlots};
 use afr_engine_firecracker::FirecrackerEngine;
 use bytes::Bytes;
 use libtest_mimic::Failed;
@@ -64,6 +64,7 @@ fn pool_serves_once(lane: &Lane) -> Result<(), Failed> {
             POOL,
             Limits::default(),
         );
+        pool.network_assigned(NetworkKind::Isolated);
         let held = |at: &str| -> Result<(), Failed> {
             let built = built(&state)?;
             expect(

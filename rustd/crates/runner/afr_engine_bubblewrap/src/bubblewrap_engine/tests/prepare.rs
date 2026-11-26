@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use af_core::test_util::trace::Capture;
 use afr_cgroup::{CGROUP_PROCS, SANDBOX_LEAF};
-use afr_engine::{Engine, SandboxState, WarmSlots};
+use afr_engine::{Engine, NetworkKind, SandboxState, WarmSlots};
 use afr_executor::{Ending, Spawn};
 
 use super::super::{BubblewrapEngine, EVENT_DISK_BUFFERED};
@@ -253,6 +253,7 @@ async fn test_warm_slots_hand_out_a_bubblewrap_sandbox_started_ahead() {
     let server = serve_runs(host.config.state_dir.clone());
     let capture = Capture::install();
     let slots = WarmSlots::start(Arc::new(host.engine()), 1, LIMITS);
+    slots.network_assigned(NetworkKind::Isolated);
     // Bounded: this test holds the process's capture lock, so a wait that
     // never ends would stall every other capturing test with it.
     let ready = tokio::time::timeout(PATIENCE, async {
@@ -303,6 +304,7 @@ async fn test_a_warm_slot_that_died_is_discarded_and_the_run_starts_cold() {
     let server = serve_runs(host.config.state_dir.clone());
     let capture = Capture::install();
     let slots = WarmSlots::start(Arc::new(host.engine()), 1, LIMITS);
+    slots.network_assigned(NetworkKind::Isolated);
     tokio::time::sleep(Duration::from_millis(600)).await;
 
     let cold = slots.prepare(spec(&id_of("run-11"))).await.unwrap();

@@ -40,7 +40,9 @@ pub use self::engine::{
 #[cfg(feature = "test-util")]
 pub use self::error::ambiguous;
 pub use self::error::{EgressRefusal, Error, Failure, Result};
-pub use self::network::{Allowlist, Network, RESOLV_CONF, SANDBOX_HOSTS, SANDBOX_RESOLV_CONF};
+pub use self::network::{
+    Allowlist, Network, NetworkKind, RESOLV_CONF, SANDBOX_HOSTS, SANDBOX_RESOLV_CONF,
+};
 pub use self::probe::{
     HostProbe, MECHANISM_BUBBLEWRAP, MECHANISM_LANDLOCK, MECHANISM_SECCOMP,
     MECHANISM_TOOLBOX_FILESYSTEM, REQUIRED_CONTROLLERS,

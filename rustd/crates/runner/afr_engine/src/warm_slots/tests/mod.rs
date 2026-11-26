@@ -7,17 +7,16 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-use self::fakes::{Counting, settle};
-use super::WarmSlots;
+use self::fakes::{Counting, isolated, settle};
 use crate::engine::{Engine, Limits, SandboxSpec, fresh_sandbox_id};
-use crate::network::{Allowlist, Network};
 
 mod fakes;
+mod network;
 
 #[tokio::test]
 async fn test_warm_slot_single_use() {
     let inner = Arc::new(Counting::default());
-    let slots = WarmSlots::start(Arc::clone(&inner) as Arc<dyn Engine>, 1, Limits::default());
+    let slots = isolated(&inner, 1);
     settle().await;
     let (run_a, run_b) = (fresh_sandbox_id(), fresh_sandbox_id());
 
@@ -58,7 +57,7 @@ async fn test_warm_slot_single_use() {
 async fn test_a_request_with_other_limits_starts_cold() {
     let inner = Arc::new(Counting::default());
     let capture = af_core::test_util::trace::Capture::install();
-    let slots = WarmSlots::start(Arc::clone(&inner) as Arc<dyn Engine>, 1, Limits::default());
+    let slots = isolated(&inner, 1);
     settle().await;
     let run_c = fresh_sandbox_id();
     let other = Limits {
@@ -83,7 +82,7 @@ async fn test_a_request_with_other_limits_starts_cold() {
 #[tokio::test]
 async fn test_zero_slots_makes_every_start_cold() {
     let inner = Arc::new(Counting::default());
-    let slots = WarmSlots::start(Arc::clone(&inner) as Arc<dyn Engine>, 0, Limits::default());
+    let slots = isolated(&inner, 0);
 
     let run_d = fresh_sandbox_id();
     let cold = slots
@@ -105,7 +104,7 @@ async fn test_a_slot_that_keeps_failing_is_retried_until_shutdown() {
         ..Counting::default()
     });
     let capture = af_core::test_util::trace::Capture::install();
-    let slots = WarmSlots::start(Arc::clone(&inner) as Arc<dyn Engine>, 1, Limits::default());
+    let slots = isolated(&inner, 1);
     tokio::time::sleep(Duration::from_secs(5)).await;
 
     let run_e = fresh_sandbox_id();
@@ -135,7 +134,7 @@ async fn test_a_slot_that_failed_a_few_times_is_started_after_all() {
         refusals: AtomicU64::new(2),
         ..Counting::default()
     });
-    let slots = WarmSlots::start(Arc::clone(&inner) as Arc<dyn Engine>, 1, Limits::default());
+    let slots = isolated(&inner, 1);
     tokio::time::sleep(Duration::from_secs(5)).await;
 
     let run_g = fresh_sandbox_id();
@@ -157,7 +156,7 @@ async fn test_a_slot_that_died_is_never_handed_to_a_run() {
         ..Counting::default()
     });
     let capture = af_core::test_util::trace::Capture::install();
-    let slots = WarmSlots::start(Arc::clone(&inner) as Arc<dyn Engine>, 1, Limits::default());
+    let slots = isolated(&inner, 1);
     settle().await;
 
     let run_h = fresh_sandbox_id();
@@ -195,7 +194,7 @@ async fn test_shutdown_waits_for_a_start_still_in_flight() {
         delay: Duration::from_secs(1),
         ..Counting::default()
     });
-    let slots = WarmSlots::start(Arc::clone(&inner) as Arc<dyn Engine>, 1, Limits::default());
+    let slots = isolated(&inner, 1);
     settle().await;
     assert_eq!(
         inner.started.load(Ordering::SeqCst),
@@ -214,7 +213,7 @@ async fn test_shutdown_waits_for_a_start_still_in_flight() {
 async fn test_a_slot_whose_run_stopped_waiting_is_retired() {
     use futures_util::FutureExt as _;
     let inner = Arc::new(Counting::default());
-    let slots = WarmSlots::start(Arc::clone(&inner) as Arc<dyn Engine>, 1, Limits::default());
+    let slots = isolated(&inner, 1);
     settle().await;
 
     let run_f = fresh_sandbox_id();
@@ -240,7 +239,7 @@ async fn test_a_slot_whose_teardown_is_refused_is_logged_as_left() {
         ..Counting::default()
     });
     let capture = af_core::test_util::trace::Capture::install();
-    let slots = WarmSlots::start(Arc::clone(&inner) as Arc<dyn Engine>, 1, Limits::default());
+    let slots = isolated(&inner, 1);
     settle().await;
 
     slots.shutdown().await;
@@ -259,7 +258,7 @@ async fn test_a_keeper_that_dies_is_reported_at_shutdown() {
         ..Counting::default()
     });
     let capture = af_core::test_util::trace::Capture::install();
-    let slots = WarmSlots::start(Arc::clone(&inner) as Arc<dyn Engine>, 1, Limits::default());
+    let slots = isolated(&inner, 1);
     settle().await;
 
     slots.shutdown().await;
@@ -270,50 +269,6 @@ async fn test_a_keeper_that_dies_is_reported_at_shutdown() {
             .field("reason")
             .is_some_and(|reason| reason.contains("panicked"))
     );
-}
-
-/// A slot is built isolated, so a run that asks for the host's network or
-/// an allowlist is never handed one: its namespace was chosen when the slot
-/// started, under whatever the runner was assigned then.
-#[tokio::test]
-async fn test_warm_slot_serves_only_its_own_network() {
-    let inner = Arc::new(Counting::default());
-    let capture = af_core::test_util::trace::Capture::install();
-    let slots = WarmSlots::start(Arc::clone(&inner) as Arc<dyn Engine>, 1, Limits::default());
-    settle().await;
-    let allowlist = Allowlist::new(Vec::new()).unwrap();
-
-    for network in [Network::Host, Network::Allowed(&allowlist)] {
-        let asked = fresh_sandbox_id();
-        let spec = SandboxSpec::granted_by(&slots, &asked, Limits::DEFAULT)
-            .unwrap()
-            .with_egress(crate::EgressPlan {
-                generation: crate::Generation(1),
-                network,
-            });
-        let cold = slots.prepare(spec).await.unwrap();
-        assert_eq!(cold.id(), &asked);
-        cold.destroy().await.unwrap();
-    }
-    let run_i = fresh_sandbox_id();
-    let warm = slots
-        .prepare(SandboxSpec::granted_by(&slots, &run_i, Limits::DEFAULT).unwrap())
-        .await
-        .unwrap();
-
-    assert_ne!(warm.id(), &run_i, "warm: the slot's own identifier");
-    let starts: Vec<_> = capture
-        .events()
-        .iter()
-        .filter(|line| line.field("event") == Some("sandbox_start_completed"))
-        .map(|line| line.field("start").map(str::to_owned))
-        .collect();
-    assert_eq!(
-        starts,
-        ["cold", "cold", "warm"].map(|start| Some(start.to_owned()))
-    );
-    warm.destroy().await.unwrap();
-    slots.shutdown().await;
 }
 
 /// Slots kept ready each hold a reservation, so the bound offered beside
@@ -329,7 +284,7 @@ async fn test_the_pool_plus_live_runs_never_pass_the_memory_bound() {
         bound: Some(bound),
         ..Counting::default()
     });
-    let slots = WarmSlots::start(Arc::clone(&inner) as Arc<dyn Engine>, 4, Limits::default());
+    let slots = isolated(&inner, 4);
 
     let offered = slots.memory_bound().map(|bound| bound.sandboxes_max);
     slots.shutdown().await;

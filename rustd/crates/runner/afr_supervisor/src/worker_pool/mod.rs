@@ -29,27 +29,9 @@ pub(crate) async fn serve(
     let mut spawned = 0;
     loop {
         let policy = assignment.borrow_and_update().clone();
-        let workers_wanted = if policy.takes_work(0) {
-            policy.workers
-        } else {
-            0
+        let Some(workers_wanted) = offer(&lessee, &policy) else {
+            break;
         };
-        let wanted = usize::try_from(workers_wanted);
-        let wanted = match wanted {
-            Ok(wanted) => wanted,
-            Err(source) => {
-                let error_code = error_code::INTERNAL_OPERATION_FAILED.as_str();
-                tracing::error!(event = "runner_worker_capacity_refused", error_code, error = %source);
-                lessee.halt.stop();
-                break;
-            }
-        };
-        lessee.holds.resize(wanted);
-        lessee
-            .plane
-            .stream
-            .running
-            .capacity(wanted, lessee.engine.memory_bound());
         for number in spawned..workers_wanted {
             workers.spawn(
                 Worker {
@@ -69,6 +51,35 @@ pub(crate) async fn serve(
         }
     }
     finish_pool(&lessee, turns, coordinator, &mut workers).await;
+}
+
+/// The workers `policy` wants, offered as credits within the engine's memory
+/// bound. Only an assignment that takes work names the network its runs get,
+/// so only that one tells the engine. None, the runner halted, when the count
+/// does not fit.
+fn offer(lessee: &Lessee, policy: &Assignment) -> Option<u32> {
+    let workers_wanted = if policy.takes_work(0) {
+        lessee.engine.network_assigned(policy.egress.kind());
+        policy.workers
+    } else {
+        0
+    };
+    let wanted = match usize::try_from(workers_wanted) {
+        Ok(wanted) => wanted,
+        Err(source) => {
+            let error_code = error_code::INTERNAL_OPERATION_FAILED.as_str();
+            tracing::error!(event = "runner_worker_capacity_refused", error_code, error = %source);
+            lessee.halt.stop();
+            return None;
+        }
+    };
+    lessee.holds.resize(wanted);
+    lessee
+        .plane
+        .stream
+        .running
+        .capacity(wanted, lessee.engine.memory_bound());
+    Some(workers_wanted)
 }
 
 struct Worker {

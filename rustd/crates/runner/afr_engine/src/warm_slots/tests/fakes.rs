@@ -1,7 +1,7 @@
 //! The engine and sandbox the warm-slot tests count with.
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use af_core::id::Uuid7;
@@ -14,6 +14,8 @@ use crate::engine::{
     ResourceFacts, Root, Sandbox, SandboxSpec, SandboxState, Sweep, Swept,
 };
 use crate::error::Result;
+use crate::warm_slots::WarmSlots;
+use crate::{EgressPlan, Generation, NetworkKind};
 
 /// What the counting engine states: every cap enforced, nothing parked.
 const CAPABILITIES: Capabilities = Capabilities {
@@ -56,6 +58,7 @@ pub(super) struct Named {
     granted: Granted,
     environment: Environment,
     pub(super) destroyed: Arc<AtomicU64>,
+    plans: Arc<Plans>,
     executor: Idle,
 }
 
@@ -90,7 +93,11 @@ impl Sandbox for Named {
     async fn park(self: Box<Self>, _mode: ParkMode) -> Result<Box<dyn Parked>> {
         unreachable!("a warm slot is handed out or destroyed, never parked")
     }
-    async fn egress(&mut self, _plan: crate::EgressPlan<'_>) -> Result<()> {
+    async fn egress(&mut self, plan: EgressPlan<'_>) -> Result<()> {
+        if self.plans.refused {
+            return Err(crate::error::refused("nftables"));
+        }
+        self.plans.held.lock().unwrap().push(plan.generation);
         Ok(())
     }
     fn snapshots(&self) -> Option<&dyn crate::Snapshots> {
@@ -124,6 +131,19 @@ pub(super) struct Counting {
     pub(super) leaks: bool,
     /// The memory bound it reports, if any.
     pub(super) bound: Option<crate::MemoryBound>,
+    /// The kind of network each start was built for, in order.
+    pub(super) built: Mutex<Vec<NetworkKind>>,
+    /// The plans each sandbox it starts is held to after its build.
+    pub(super) plans: Arc<Plans>,
+}
+
+/// The plans the sandboxes of one engine were held to after their builds.
+#[derive(Debug, Default)]
+pub(super) struct Plans {
+    /// Each plan held, by number.
+    pub(super) held: Mutex<Vec<Generation>>,
+    /// Whether every sandbox refuses every plan.
+    pub(super) refused: bool,
 }
 
 #[async_trait::async_trait]
@@ -154,6 +174,7 @@ impl Engine for Counting {
             return Err(crate::error::refused("landlock"));
         }
         self.started.fetch_add(1, Ordering::SeqCst);
+        self.built.lock().unwrap().push(spec.egress.network.kind());
         // A zero sleep still waits for the timer, which the yields in
         // `settle` never turn; only a delayed start sleeps at all.
         if !self.delay.is_zero() {
@@ -170,9 +191,21 @@ impl Engine for Counting {
             panics: self.panics,
             leaks: self.leaks,
             dead: self.dead,
+            plans: Arc::clone(&self.plans),
             executor: Idle,
         }))
     }
+}
+
+/// A pool of `slots` over `inner`, assigned the isolated network.
+pub(super) fn isolated(inner: &Arc<Counting>, slots: usize) -> WarmSlots {
+    let pool = WarmSlots::start(
+        Arc::clone(inner) as Arc<dyn Engine>,
+        slots,
+        Limits::default(),
+    );
+    pool.network_assigned(NetworkKind::Isolated);
+    pool
 }
 
 pub(super) async fn settle() {

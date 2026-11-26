@@ -7,7 +7,7 @@ use af_core::id::Uuid7;
 use afr_executor::Executor;
 
 use crate::error::{Error, Result};
-use crate::network::Network;
+use crate::network::{Network, NetworkKind};
 
 mod bound;
 mod egress;
@@ -202,6 +202,11 @@ pub trait Engine: Send + Sync + fmt::Debug {
     /// it. A build past the bound is refused, and no sandbox starts.
     fn memory_bound(&self) -> Option<MemoryBound>;
 
+    /// The kind of network the daemon assigned this runner, told on each
+    /// assignment that takes work: what an engine building sandboxes ahead
+    /// of their runs builds them for. One that builds per run ignores it.
+    fn network_assigned(&self, _kind: NetworkKind) {}
+
     /// Builds the sandbox `spec` names, with its executor ready, or refuses.
     ///
     /// A sandbox that cannot be built refuses the run; nothing ever runs
@@ -237,6 +242,10 @@ impl<E: Engine + ?Sized> Engine for Arc<E> {
 
     fn memory_bound(&self) -> Option<MemoryBound> {
         (**self).memory_bound()
+    }
+
+    fn network_assigned(&self, kind: NetworkKind) {
+        (**self).network_assigned(kind);
     }
 
     async fn prepare(&self, spec: SandboxSpec<'_>) -> Result<Box<dyn Sandbox>> {

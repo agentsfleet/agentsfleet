@@ -23,7 +23,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use af_egress::{Resolve, allowlist_host, unblocked};
 use af_wire::policy::{NetworkPolicy as FleetNetwork, PACKAGE_MANAGER_DOMAINS};
 use af_wire::runner::{AssignedPolicy, NetworkPolicy};
-use afr_engine::{Allowlist, EgressPlan, Generation, Network};
+use afr_engine::{Allowlist, EgressPlan, Generation, Network, NetworkKind};
 use futures_util::future::try_join_all;
 
 use crate::error::{self, Result};
@@ -85,6 +85,15 @@ impl Egress {
             .collect()
     }
 
+    /// The kind of network every run under it is built for.
+    pub(crate) const fn kind(&self) -> NetworkKind {
+        match self.policy {
+            NetworkPolicy::AllowAll => NetworkKind::Host,
+            NetworkPolicy::DenyAllEgress => NetworkKind::Isolated,
+            NetworkPolicy::AllowListEgress => NetworkKind::Allowed,
+        }
+    }
+
     /// What a run under `fleet` reaches, resolved through `resolver`.
     ///
     /// # Errors
@@ -97,10 +106,10 @@ impl Egress {
         fleet: &FleetNetwork<'_>,
         resolver: &dyn Resolve,
     ) -> Result<Bound> {
-        match self.policy {
-            NetworkPolicy::AllowAll => Ok(Bound::Host),
-            NetworkPolicy::DenyAllEgress => Ok(Bound::Isolated),
-            NetworkPolicy::AllowListEgress => {
+        match self.kind() {
+            NetworkKind::Host => Ok(Bound::Host),
+            NetworkKind::Isolated => Ok(Bound::Isolated),
+            NetworkKind::Allowed => {
                 let hosts = self.hosts(fleet);
                 let addresses = try_join_all(
                     hosts
