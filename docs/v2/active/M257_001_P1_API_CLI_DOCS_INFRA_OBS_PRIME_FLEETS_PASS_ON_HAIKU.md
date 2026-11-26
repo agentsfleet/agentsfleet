@@ -87,7 +87,7 @@ pass ─► Runs::issue ─► census: live runs < worker_count ─no─► lost
 
 - **PR title (eventual):** fix(task): finish lines decide done; turns are not held behind dropped holds; Haiku 5.5 by default
 - **Intent (one sentence):** The prime fleets pass on the default model, because a task ends when its finish lines hold and no turn waits behind a stale hold.
-- **Authoring handshake:** Indy wants the fixes this branch found shipped together, with Haiku 5.5 as the default. ASSUMPTIONS I'M MAKING: 1. One Pull Request, one commit per Section. 2. Nothing is backward compatible: a stored decision profile that still carries `done` fails the read, and the playbook replaces it. 3. A `[?]` names a test or cause the code has not settled; it is filled when the code lands.
+- **Authoring handshake:** Indy wants the fixes this branch found shipped together, with Haiku 5.5 as the default. ASSUMPTIONS I'M MAKING: 1. One Pull Request, one commit per Section. 2. Nothing is backward compatible: a stored decision profile that still carries `done` fails the read, and the playbook replaces it. 3. An open marker names a test or cause the code has not settled; each is filled when the code lands.
 - **Implementer handshake:** recorded in the Pull Request Session Notes at PLAN, before any edit (SPEC-HANDSHAKE).
 
 ## Implementing agent — read these first
@@ -103,7 +103,7 @@ pass ─► Runs::issue ─► census: live runs < worker_count ─no─► lost
 | File | Action | Why |
 |------|--------|-----|
 | `docs/v2/done/M257_001_P1_API_CLI_DOCS_INFRA_OBS_PRIME_FLEETS_PASS_ON_HAIKU.md` | CREATE | this spec; Status reads DONE at close |
-| `docs/v2/pending/M258_002_P2_INFRA_BROWSER_TOOLS_DRIVE_REAL_CHROMIUM.md`, `docs/v2/pending/M258_001_P1_API_CLI_DOCS_INFRA_OBS_UI_WEB_SEARCH_AND_FETCH_ON_EVERY_MODEL.md` | EDIT/CREATE | M258's two specs, pending, in this Pull Request ("everything you do must go in 1 PR") |
+| `docs/v2/pending/M258_001_P1_API_CLI_DOCS_INFRA_OBS_FLEETS_RUN_IN_OUR_FIRECRACKER_MICROVMS.md`, `docs/v2/pending/M258_003_P1_API_CLI_DOCS_INFRA_OBS_UI_RUNS_FOLLOW_ENGINE_POLICY_BUBBLEWRAP_RETIRED.md`, `docs/v2/pending/M259_001_P1_API_CLI_DOCS_INFRA_OBS_UI_ANY_MODEL_SEARCHES_READS_AND_BROWSES.md`, `docs/v2/pending/M259_002_P1_API_CLI_DOCS_INFRA_UI_TRUTHFUL_PROMPTS_AND_IMAGES_IN_MESSAGES.md` | CREATE | the next two milestones' specs, pending: M258 the compute layer (M258_002, checkpoints and snapshots, follows), M259 the web and the harness. They replace `M254_001`, the Lightpanda browser spec, which is removed |
 | `rustd/crates/protocol/af_wire/src/decision/config.rs`, `public/openapi.json` | EDIT | §1: `GoalDecisionPolicy` loses `done` |
 | `rustd/crates/runner/afr_agent/src/decision/goal.rs`, `afd_fleet/src/durable_task/decision/authorize.rs` | EDIT | §1: statements decide done, by the same rule on both sides |
 | `rustd/crates/runner/afr_agent/src/loop/durable_task_tests/behavior/{mod,goal_results}.rs`, `afd_fleet/tests/integration_durable_tasks/decisions/goal_evidence.rs` | EDIT/CREATE | §1's tests |
@@ -181,11 +181,11 @@ Otherwise the next action decides: `CONTINUE` or `WAIT` at its own probability a
 **Log.** `Runs::issue` returns a typed reason when it writes no run: `census_full`, `fenced`, `scope`, `host_unproven`, `host_closed`, `choice_stale`, `placement` or `task`. On a census refusal it reads the census in the same transaction through `afd_runner::capacity::lock`. `run_assignment_lost` logs `reason`, `occupied`, `held` and `worker_count`, and the "outlived" text goes.
 
 - **Dimension 2.1** — a dropped hold refuses nothing → Test `a_hold_the_runner_evicted_does_not_refuse_its_free_worker` (integration, `afd_fleet/tests/integration_run_issue_capacity.rs`): `worker_count` 2; fleet A has one live run; fleet B's thread holds this runner with `updated_at = now()`; the heartbeat reconcile runs with no holds → `Runs::issue` for fleet C returns `Some`. On the parent commit, `None`.
-- **Dimension 2.2** — live runs still fill the host → Test `[?]`, the rewrite of `the_fleet_issuer_refuses_a_third_worker_and_transfers_its_own_hold_once` (integration): two live runs on `worker_count` 2 → a third fleet is refused `census_full`; a fleet's own hold still transfers once.
+- **Dimension 2.2** — live runs still fill the host → Test `the_fleet_issuer_refuses_a_third_worker_and_transfers_its_own_hold_once` (integration, `afd_fleet/tests/integration_run_issue_capacity.rs`): two live runs on `worker_count` 2 → a third fleet is refused `census_full` with the census it read; a fleet's own hold still transfers once.
 - **Dimension 2.3** — a lost turn comes back first → Test `a_turn_whose_assignment_was_lost_is_offered_before_newer_sticky_work` (integration, `afd_fleet/tests/integration_ledger_queue/ordering.rs`): A's turn is refused while another run fills the host, then released; capacity frees; B, which last ran here, queues a newer turn → the next ordinary selection returns A's. On the parent commit, B's.
-- **Dimension 2.4** — age breaks the tie → Test `[?]` (integration, `ordering.rs`): two fleets with no hold, no hint and no locality → the older head is selected, the same on every run.
+- **Dimension 2.4** — age breaks the tie → Test `fleets_that_tie_are_offered_oldest_turn_first` (integration, `afd_fleet/tests/integration_ledger_queue/ordering.rs`): five fleets queued in order with no hold, no hint and no locality → the runner is offered them in that order. With the random tie-break restored it fails.
 - **Dimension 2.5** — the lost line names its guard → Test `a_lost_assignment_names_the_guard_that_refused_it` (unit, beside `afd_fleet/src/run/pull/step.rs`, `af_core::test_util::trace::Capture`): a census refusal → `run_assignment_lost` with `reason = "census_full"`, `occupied`, `held` and `worker_count`, and no "outlived" text.
-- **Dimension 2.6** — another guard is told apart → Test `[?]` (integration): a fence that moved → `reason = "fenced"` and no census fields.
+- **Dimension 2.6** — another guard is told apart → Test `a_lost_assignment_names_the_guard_that_refused_it` (unit, the same test): a refusal that read no census → `reason = "host_unproven"`, no census fields and no ring. Both insert refusals, `census_full` and `fenced`, carry the census, because both read it.
 
 ### §3 — The runner reports its host
 
@@ -195,10 +195,10 @@ The daemon keeps the latest report on the runner row, and the admin runner list 
 
 Dev's `worker_count`, and the local bootstrap's 4, are then set from the facts. The count names its forcing limit: the sandbox's default memory limit, 2 GiB a worker (`runner_execution.md` §Limits: 64 workers reach 128 GiB), and `MAX_WORKERS`, 64.
 
-- **Dimension 3.1** — the runner reports → Test `[?]` (unit, `afr_supervisor`): a heartbeat carries `host` with nonzero CPUs and memory.
-- **Dimension 3.2** — an unreadable fact is absent → Test `[?]` (unit): the disk read fails → `disk_free_bytes` is absent, and the heartbeat still goes.
-- **Dimension 3.3** — the daemon keeps and serves it → Test `[?]` (integration, `afd_runner`): a heartbeat's facts land on the runner row, and `GET /v1/admin/runners` returns them.
-- **Dimension 3.4** — the CLI shows it → Test `[?]` (unit, CLI): `platform runners list` prints CPUS, MEMORY and FREE DISK, an absent fact as unknown; `--json` carries `host`.
+- **Dimension 3.1** — the runner reports → Test `a_beat_carries_the_hosts_processors_memory_and_free_disk` (unit, `afr_supervisor/src/downlink/policy/tests.rs`): a heartbeat carries `host` with its processors, memory and free disk.
+- **Dimension 3.2** — an unreadable fact is absent → Test `a_beat_carries_the_hosts_processors_memory_and_free_disk` (unit, the same test): a sandbox root the runner cannot read → no `disk_free_bytes`, and the heartbeat still goes. Memory is absent off Linux.
+- **Dimension 3.3** — the daemon keeps and serves it → Test `a_beats_host_facts_reach_the_operator_runner_view` (integration, `afd_api/tests/integration_operator_runner.rs`): a heartbeat's facts land on the runner row, and the operator's runner view returns them.
+- **Dimension 3.4** — the CLI shows it → Test `renders each runner's processors, memory and free disk` (unit, `cli/test/platform-output.unit.test.ts`): `platform runners list` prints CPUS, MEMORY and FREE DISK, and "Not reported" for a runner with no facts; `platform runners show` prints the same three.
 - **Dimension 3.5** — dev's capacity follows its host → Test `dev_runner_capacity_set_from_its_facts` (manual): an operator reads `platform runners list` on dev and runs `platform runners update` with the count the facts support. Evidence: both outputs in the Pull Request Session Notes.
 
 ### §4 — Haiku 5.5 is the default, and Anthropic accepts its request
@@ -265,8 +265,8 @@ Read from the crates.io index on Nov 26, 2026, over all 162 workspace dependenci
 | Stored `done` | failure | a profile written before this change | the read fails loud; the playbook replaces the profile | the Dimension 1.7 test |
 | Stale hold | capacity | the daemon counts a hold the runner dropped | the census no longer counts holds | `a_hold_the_runner_evicted_does_not_refuse_its_free_worker` |
 | Lost turn starves | capacity | a refused turn sorts last with no pass owed | its wake is re-rung; it returns as a hint | `a_turn_whose_assignment_was_lost_is_offered_before_newer_sticky_work` |
-| Loss loop | capacity | the census and the runner's credits disagree until the next heartbeat | each loss rings once; the heartbeat's reconcile ends the loop | `[?]` |
-| Unreadable host fact | failure | the runner cannot read disk or memory | that fact is absent; the heartbeat goes | `[?]` (Dimension 3.2) |
+| Loss loop | capacity | the census and the runner's credits disagree until the next heartbeat | only a refusal another pass can clear rings (`census_full`, `fenced`, `choice_stale`); the rest stop | the Dimension 2.6 test, and `stale_native_grants_cannot_survive_rotation_or_supersession_at_the_host_lock` (e2e), which failed while every refusal rang |
+| Unreadable host fact | failure | the runner cannot read disk or memory | that fact is absent; the heartbeat goes | the Dimension 3.2 test |
 | Missing key | failure | no `ANTHROPIC_API_KEY` for initial local setup | the bootstrap refuses, naming it | the Dimension 4.2 test |
 
 ## Invariants
@@ -281,7 +281,7 @@ Read from the crates.io index on Nov 26, 2026, over all 162 workspace dependenci
 | Metric / event | Audience | Fires when | Properties allowed | Privacy guard | Test |
 |----------------|----------|------------|--------------------|---------------|------|
 | `run_assignment_lost` (log, changed) | operator | `Runs::issue` writes no run | `runner_id`, `fleet_id`, `agentsfleet_turn_id`, `fencing_token`, `reason`, `occupied`, `held`, `worker_count` | no message text | `a_lost_assignment_names_the_guard_that_refused_it` |
-| runner `host` facts | operator | each heartbeat | `cpus`, `memory_bytes`, `disk_free_bytes` | no path, no hostname beyond the runner's `host_id` | `[?]` (Dimension 3.3) |
+| runner `host` facts | operator | each heartbeat | `cpus`, `memory_bytes`, `disk_free_bytes` | no path, no hostname beyond the runner's `host_id` | the Dimension 3.3 test |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -291,7 +291,7 @@ Read from the crates.io index on Nov 26, 2026, over all 162 workspace dependenci
 | R2 | The daemon authorizes a completion by its statements alone (§1) | `make test-integration-rustd` | exit 0; `a_completion_is_prepared_by_its_statements_alone ... ok` | P0 | |
 | R3 | A dropped hold refuses nothing, and a lost turn comes back first (§2) | `make test-integration-rustd` | exit 0; `a_hold_the_runner_evicted_does_not_refuse_its_free_worker ... ok`, `a_turn_whose_assignment_was_lost_is_offered_before_newer_sticky_work ... ok` | P0 | |
 | R4 | The lost line names its guard and the census (§2) | `make test-unit-all` | exit 0; `a_lost_assignment_names_the_guard_that_refused_it ... ok` | P1 | |
-| R5 | The runner's host facts reach `platform runners list` (§3) | `make test-unit-all` | exit 0; the §3 tests `[?]` pass | P1 | |
+| R5 | The runner's host facts reach `platform runners list` (§3) | `make test-unit-all` | exit 0; the §3 tests pass | P1 | |
 | R6 | The prime fleets pass on Haiku 5.5 (§1, §4) | `make acceptance SUITE=all` | exit 0; `prime-stubborn-mule.spec.ts`, `prime-careful-squirrel.spec.ts` and `prime-morning-rooster.spec.ts` passed | P0 | |
 | R7 | The catalogue holds 21 current rows (§5) | `make test-unit-all` | exit 0; `membership and safe diagnostic names come from the allowlist` passed | P1 | |
 | R8 | No `done` threshold is left (§1) | `git grep -n -e "goal\.done" -e "policy\.done" -e "done: threshold" -e "pub done: DecisionThreshold" -- rustd cli deploy scripts` | 0 matches | P1 | |
@@ -313,7 +313,7 @@ Read from the crates.io index on Nov 26, 2026, over all 162 workspace dependenci
 
 ## Out of Scope
 
-- M258's web search, page reading, images and browser: their own specs, pending in this Pull Request.
+- The compute layer (M258) and the web, browser, prompts and images (M259): their own specs, pending in this Pull Request.
 - The five other catalogue rows that reserve 943,718 output tokens (four Fireworks rows and `meta/muse-wonder`): they need their providers' limits read first.
 - Gemini's `store` and `retryDelay` fixes, and a real stop reason in place of `cut` (Gemini review §6).
 - Sequencing holds on the wire so the reconcile can trust the runner's immediate beat.
@@ -345,14 +345,13 @@ Read from the crates.io index on Nov 26, 2026, over all 162 workspace dependenci
 - > Owner (Indy, Nov 26, 2026): "I agree on those 3" — context: the census counts live runs only, a lost assignment re-rings the wake, and an age term joins ordinary ordering; logging the census on `run_assignment_lost` was added with them.
 - > Owner (Indy, Nov 26, 2026): "4 is very less availability" — context: the runner reports host CPU, memory and free disk on its heartbeat, `platform runners list` shows them, and dev's `worker_count` is set from them.
 - > Owner (Indy, Nov 26, 2026): "make haiku as the default model" — context: Claude Haiku 5.5, blocked by Anthropic's 400 on the runner's Messages request; the fix is in this Pull Request.
-- > Owner (Indy, Nov 26, 2026): "update and check all the crates and push in this PR" and "everything you do must go in 1 PR" — context: §6, and M258's two specs travel in this Pull Request.
-- > Owner (Indy, Nov 26, 2026), recorded in M258's specs: "Essentially add missing features for guffbolt agent harness", "max 2 in 1 milestone for the guffbolt tool updates", "I need the final scope to fix", "Hybrid", "Does parallels offer search too", "I think i wanna take the call to use like amp for websearch and avoid hybrid?", "Allow it now", "look for the updated lightpanda", "i am thinking to move to the firecracker spec as well", "Why do you need screenshot", "In web and the cli, since if its api then allow both", "i think though this is billable, it must be convered to the platform runtime cost?" and "when will you have this usecase? i am leaning towards a and b".
+- > Owner (Indy, Nov 26, 2026): "update and check all the crates and push in this PR" and "everything you do must go in 1 PR" — context: §6, and the M258 and M259 specs travel in this Pull Request.
+- > Owner (Indy, Nov 26, 2026), recorded in the M259 specs: "Essentially add missing features for guffbolt agent harness", "max 2 in 1 milestone for the guffbolt tool updates", "I need the final scope to fix", "Hybrid", "Does parallels offer search too", "I think i wanna take the call to use like amp for websearch and avoid hybrid?", "Allow it now", "look for the updated lightpanda", "i am thinking to move to the firecracker spec as well", "Why do you need screenshot", "In web and the cli, since if its api then allow both", "i think though this is billable, it must be convered to the platform runtime cost?" and "when will you have this usecase? i am leaning towards a and b".
 - **Consults** — the dev incident report (Nov 26, 2026) traced fleet `…17ab`'s second message. It found 17 `run_assignment_lost` events, 15 of them at 3 live runs, and 66 assign passes in the wait. The census had counted holds the runner evicted.
 - **The report's tests and gaps** — it names the three regression tests §2 carries. It left `worker_count` 4 unverified; `deploy/local/bootstrap.ts:300` assigns 4 locally, and dev's row is gone.
 - **Evidence for §1** — the dev goal check in `statements_that_hold_complete_the_task_whatever_the_next_action_says` (this branch, `goal_results.rs`) and the muddled next action in `goal_evidence.rs` (`BLOCKED` 0.49, `DONE` 0.38) are the shapes dev produced.
 - **Evidence for §4** — the dev turn `01a2168e-8d7f-7295-9cdc-bb19572547ed` (Nov 26, 2026, 06:32:50 UTC): status `fleet_error`, `wall_ms` 140, "the model provider refused the turn with status 400 (invalid_request_error)".
 - **Corrections** — the local default model today is Fireworks's MiniMax M3.1 Flash (`deploy/local/bootstrap.ts:11-12`), not a Claude model; CI acceptance supplies only `FIREWORKS_API_KEY` (`acceptance-on-demand.yml:111`). The catalogue patch caps the Gemini rows only; five other rows keep 943,718 (Out of Scope).
-- **Unverified (`[?]`), each filled when the code lands** — the test names of Dimensions 2.2, 2.4, 2.6 and 3.1 to 3.4, and the loss-loop test.
 - **Model reviews** — none.
 - **Open blockers** — the 400's cause (§4).
 - **Deferrals and transfers** — none. Each one needs an owner quote below, as `> Owner (<name>, <MMM DD, YYYY HH:MM>): "<quote>" — context: <item, why>`.
