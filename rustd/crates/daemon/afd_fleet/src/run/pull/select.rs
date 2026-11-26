@@ -50,7 +50,10 @@ impl RunService {
         };
         clock.mark(AssignStage::Select);
         let mut chosen = self.clone();
-        chosen.runs = chosen.runs.with_ticket(ticket);
+        chosen.runs = chosen
+            .runs
+            .with_ticket(ticket)
+            .with_credits(request.credits);
         chosen
             .run_assigned_with(
                 acquired,

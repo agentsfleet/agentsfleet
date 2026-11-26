@@ -126,7 +126,10 @@ Sync the `typesafe` bag first, and skip this section when `models list` already 
 
 The daemon reads a stored decision profile only in the shape its build knows.
 After a change removes or renames a profile field, `models list` and `models update` fail on the old row.
-No run starts on a runner that selects that model, so replace the row without resetting the database.
+A runner that selects that model takes no run: each issue is refused as `profile`, and its stream stays up.
+
+Replace the row without a reset only when the change edits no applied schema slot.
+A change that edits an applied slot in place makes `migrate` refuse with `migrate_refused_slot_edited`; tear the development database down instead.
 
 1. Read the selected model from the runner, because `models list` cannot read it.
    `<RUNNER_ID>` is the runner's `ID` in `agentsfleet platform runners list`.

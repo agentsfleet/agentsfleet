@@ -27,6 +27,8 @@ pub enum Refused {
     Fenced(Census),
     /// The turn's durable task could not be attached.
     Task,
+    /// The host's selected decision profile does not read in this build.
+    Profile,
 }
 
 impl Refused {
@@ -42,6 +44,7 @@ impl Refused {
             Self::CensusFull(_) => "census_full",
             Self::Fenced(_) => "fenced",
             Self::Task => "task",
+            Self::Profile => "profile",
         }
     }
 
@@ -92,7 +95,12 @@ impl Runs {
         tenant_id: &Uuid7,
     ) -> Result<Refused> {
         let census = self
-            .fleet_census(transaction, runner_id, &acquired.fleet_id, tenant_id)
+            .lock_host_capacity(
+                transaction,
+                runner_id,
+                afd_runner::capacity::Work::Fleet(&acquired.fleet_id),
+                Some(tenant_id),
+            )
             .await?;
         Ok(census.map_or(Refused::HostUnproven, |capacity| {
             let counted = Census {

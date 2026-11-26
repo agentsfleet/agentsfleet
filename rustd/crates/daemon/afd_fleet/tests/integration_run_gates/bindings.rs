@@ -101,6 +101,7 @@ async fn test_a_refused_delivery_marks_the_issue_stage_and_none_after_it() {
                 runner: &seeded.runner,
                 held: std::slice::from_ref(&seeded.fleet),
                 degraded: false,
+                credits: 1,
                 now: fixtures.enrolled_at(),
                 recovery: None,
             },

@@ -9,7 +9,7 @@ mod result;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-pub use answer::answer_matches;
+pub use answer::{answer_matches, statements_hold};
 pub use assignment::DecisionAssignment;
 pub use config::{
     DecisionConfiguration, DecisionModelSettings, DecisionThreshold, GoalDecisionPolicy,

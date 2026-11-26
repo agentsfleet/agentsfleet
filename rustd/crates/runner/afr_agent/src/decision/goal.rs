@@ -11,7 +11,7 @@ use super::{PreparedDurableTask, identity, unavailable, version};
 use crate::Result;
 use af_wire::{
     decision::{
-        DecisionAnswer, DecisionAssignment, DecisionOutcome, DecisionThreshold, NamedQuestion,
+        DecisionAnswer, DecisionAssignment, DecisionOutcome, DecisionThreshold, statements_hold,
     },
     durable_task::{
         DecisionAssessment, DecisionCallState, DecisionRecordDisposition, DecisionReservationInput,
@@ -91,21 +91,6 @@ fn answers(evaluation: &DecisionEvaluation) -> Result<&BTreeMap<String, Decision
         DecisionOutcome::Answered { answers } => Ok(answers),
         DecisionOutcome::Refused | DecisionOutcome::Invalid { .. } => Err(unavailable()),
     }
-}
-
-/// Whether the task has completion statements and each one's Noul answer is
-/// finite and at least `min_bps`; `agentsfleetd` authorizes a completion by
-/// the same rule.
-fn statements_hold(
-    questions: &[NamedQuestion],
-    answers: &BTreeMap<String, DecisionAnswer>,
-    min_bps: u16,
-) -> bool {
-    !questions.is_empty()
-        && questions.iter().all(|question| {
-            matches!(answers.get(&question.name), Some(DecisionAnswer::Noul { noul })
-                if noul.is_finite() && *noul >= f64::from(min_bps) / 10_000.0)
-        })
 }
 
 /// The choice `name` answered, when its confidence and its own probability

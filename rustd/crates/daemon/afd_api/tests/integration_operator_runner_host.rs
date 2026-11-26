@@ -95,6 +95,14 @@ async fn facts_past_their_bounds_keep_the_last_facts_and_the_beat_lands() {
     fixture.seed().await;
     let runners = Runners::new(fixture.database.clone(), Entropy::new());
     beat(&runners, &fixture, FACTS).await;
+    // A second back, so the next beat's millisecond stamp is strictly later.
+    sqlx::query(
+        "UPDATE runner.runners SET last_seen_at = last_seen_at - interval '1 second' WHERE id = $1",
+    )
+    .bind(&fixture.runner)
+    .execute(&mut *fixture.database.acquire().await.expect("an API connection"))
+    .await
+    .expect("the first beat ages");
     let first = stored(&fixture).await;
     let refused = HostFacts {
         cpu_count: Some(0),

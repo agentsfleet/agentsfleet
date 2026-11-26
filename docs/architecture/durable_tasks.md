@@ -176,8 +176,11 @@ A run with no profile, or one the runner cannot serve, is offered no task tools.
 A replacement runner may use another profile without changing the task's objective, history or limits.
 
 Every read parses a stored profile strictly, so a field this build does not know fails the read.
-A run issue on a runner that selects the profile then fails, and so does every admin catalogue list and update.
-The [model catalogue playbook](../../playbooks/operations/model_catalogue/001_playbook.md#replace-the-decision-model) replaces such a profile without resetting the database.
+An issue on a runner that selects the profile is refused as `profile`, logged once per revision, and its runner keeps its stream.
+Every admin catalogue list and update on that profile fails.
+
+The [model catalogue playbook](../../playbooks/operations/model_catalogue/001_playbook.md#replace-the-decision-model) replaces such a profile without a reset when the change edits no applied schema slot.
+A change that edits an applied slot in place makes `migrate` refuse with `migrate_refused_slot_edited`, so a development database needs a teardown.
 
 One `DecisionEvaluator` trait in `af_providers` has one implementation, `DecisionClient`, with four wire adapters: TypeSafe, OpenAI, Perplexity and Cloudflare.
 The daemon resolves the provider key from the platform-admin workspace's vault, chosen by `PLATFORM_ADMIN_WORKSPACE_ID`.

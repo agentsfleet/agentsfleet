@@ -49,7 +49,7 @@ pub mod validate;
 pub mod view;
 
 pub use self::admin::SelftestRequested;
-pub use self::decision_profile::{DecisionSelection, decision_assignment_on};
+pub use self::decision_profile::{DecisionSelection, UnreadableProfile, decision_assignment_on};
 pub use self::edit::{RunnerEdit, RunnerEdited};
 pub use self::error::{
     DETAIL_HOST_ID_BOUNDS, DETAIL_REGISTRY_ALLOWLIST, DETAIL_RUNNER_NOT_FOUND,

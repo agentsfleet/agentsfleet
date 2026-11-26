@@ -20,6 +20,7 @@ fn a_refusal_rerings_only_when_another_pass_can_run_the_turn() {
         (Refused::HostClosed, false),
         (Refused::Placement, false),
         (Refused::Task, false),
+        (Refused::Profile, false),
     ];
 
     for (refused, rerings) in cases {

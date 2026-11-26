@@ -56,7 +56,12 @@ impl Extension<'_> {
     async fn run(self, mut transaction: Transaction<'_, Postgres>) -> Result<Renewed> {
         let capacity = self
             .store
-            .lock_host_capacity(&mut transaction, self.run.runner_id)
+            .lock_host_capacity(
+                &mut transaction,
+                self.run.runner_id,
+                afd_runner::capacity::Work::Existing,
+                None,
+            )
             .await?;
         if !capacity.is_some_and(afd_runner::capacity::Capacity::can_renew) {
             return self.refuse(transaction, Renewed::Lost).await;

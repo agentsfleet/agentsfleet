@@ -15,8 +15,8 @@ pub(in crate::run) enum Step<T> {
     /// Stop: the issue refused a run the gates admitted for want of room, time
     /// or the placement choice it read. The turn is still its fleet's head, can
     /// run, and no pass is owed it, so once the assignment is let go the fleet's
-    /// wake is rung.
-    Lost,
+    /// wake is rung, for the refusal named.
+    Lost(Refused),
 }
 
 impl<T> Step<T> {
@@ -26,7 +26,7 @@ impl<T> Step<T> {
         match self {
             Self::Go(value) => Ok(value),
             Self::Stop => Err(Step::Stop),
-            Self::Lost => Err(Step::Lost),
+            Self::Lost(refused) => Err(Step::Lost(refused)),
         }
     }
 }
@@ -83,7 +83,7 @@ pub(in crate::run) fn assignment_lost<T>(
     };
     no_work(runner_id, ASSIGNMENT_LOST_REASON);
     if refused.rerings() {
-        Step::Lost
+        Step::Lost(refused)
     } else {
         Step::Stop
     }
@@ -100,6 +100,7 @@ mod tests {
     )]
 
     use super::Step;
+    use crate::run::issue::Refused;
 
     /// The line names the guard and the census it read, so a lost assignment
     /// can be told from a lapse without the database row.
@@ -110,7 +111,7 @@ mod tests {
         use af_core::test_util::trace::Capture;
         use jiff::Timestamp;
 
-        use crate::run::issue::{Census, Refused};
+        use crate::run::issue::Census;
         use crate::run::test_dead;
 
         let log = Capture::install();
@@ -134,7 +135,10 @@ mod tests {
         drop(log);
 
         assert!(
-            matches!((step, unproven), (Step::Lost, Step::Stop)),
+            matches!(
+                (step, unproven),
+                (Step::Lost(Refused::CensusFull(_)), Step::Stop)
+            ),
             "a lost assignment is never a run, and rings only when another pass can run it"
         );
         assert_eq!(
@@ -163,7 +167,7 @@ mod tests {
         assert!(matches!(Step::Go(7).proceed::<()>(), Ok(7)));
         let stopped = Step::<u8>::Stop.proceed::<()>();
         assert!(matches!(stopped, Err(Step::Stop)));
-        let lost = Step::<u8>::Lost.proceed::<()>();
-        assert!(matches!(lost, Err(Step::Lost)));
+        let lost = Step::<u8>::Lost(Refused::ChoiceStale).proceed::<()>();
+        assert!(matches!(lost, Err(Step::Lost(Refused::ChoiceStale))));
     }
 }

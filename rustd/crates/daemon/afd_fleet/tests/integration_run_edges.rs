@@ -251,6 +251,7 @@ async fn test_a_runner_with_no_run_or_no_host_row_gets_no_work() {
                 runner: &stranger,
                 held: &[],
                 degraded: false,
+                credits: 1,
                 now: held.now,
                 recovery: None,
             },

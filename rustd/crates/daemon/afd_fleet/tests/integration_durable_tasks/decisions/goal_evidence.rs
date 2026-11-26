@@ -199,3 +199,28 @@ async fn a_continuation_the_goal_decision_supports_is_prepared() {
     })
     .await;
 }
+
+// Value: protects=a wait is prepared only when the goal decision's next action
+// is WAIT; fails_when=the report's disposition is not compared with the
+// decision's next action; seam=the production reserve, receipt and
+// report-preparation verbs over live Postgres.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_wait_the_goal_decision_does_not_name_is_ambiguous() {
+    exercise(async |case: &Case| {
+        let fixture = Decisions::create(case).await;
+        let task = accepted(&fixture).await;
+        let continuing = decided(&fixture, goal(), &task, |result| {
+            next_action(result, "CONTINUE");
+        })
+        .await;
+        refused(
+            &fixture,
+            report(&task, DurableTaskDisposition::Waiting, continuing),
+            error_code::DURABLE_TASK_INPUT_AMBIGUOUS,
+        )
+        .await;
+        fixture.model.finish().await.expect("model cleanup");
+    })
+    .await;
+}

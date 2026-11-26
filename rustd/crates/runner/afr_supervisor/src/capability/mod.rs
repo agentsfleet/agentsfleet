@@ -155,7 +155,7 @@ fn spelling<'a, T: Serialize>(value: &T) -> Cow<'a, str> {
 }
 
 mod host;
-pub(crate) use self::host::host_facts;
+pub(crate) use self::host::HostReader;
 
 #[cfg(test)]
 mod tests;

@@ -15,7 +15,7 @@ use afr_sandbox::HostProbe;
 use tokio::sync::watch;
 
 use crate::{
-    capability::{capability_report, host_facts, selftest},
+    capability::{HostReader, capability_report, selftest},
     client::ControlPlane,
     egress::Egress,
     error::{ErrorKind, Result},
@@ -53,6 +53,7 @@ pub(crate) struct Heartbeat<'a> {
     holds: &'a Holds,
     /// Where run sandboxes live, whose file system's free bytes each beat reports.
     sandboxes: &'a Path,
+    host: HostReader,
     label: Option<(SandboxTier, NetworkPolicy)>,
     selftest_due: bool,
     last: Assignment,
@@ -71,6 +72,7 @@ impl<'a> Heartbeat<'a> {
             probe,
             holds,
             sandboxes,
+            host: HostReader::default(),
             label: None,
             selftest_due: false,
             last: Assignment::initial(),
@@ -84,6 +86,7 @@ impl<'a> Heartbeat<'a> {
             .filter(|_| self.selftest_due)
             .map(|(tier, network)| selftest(self.probe, tier, network));
         let held = self.holds.fleets().await;
+        let host = self.host.facts(self.sandboxes).await;
         let request = HeartbeatRequest {
             capability_report: Some(capability_report(self.probe)),
             selftest,
@@ -93,7 +96,7 @@ impl<'a> Heartbeat<'a> {
                     .collect(),
             ),
             closing: self.closed,
-            host: host_facts(self.sandboxes),
+            host,
         };
         let body = self.plane.heartbeat(&request).await?;
         self.apply(&body.decode::<HeartbeatResponse<'_>>()?)

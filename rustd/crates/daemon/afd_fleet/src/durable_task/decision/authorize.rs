@@ -10,7 +10,7 @@ use crate::{
 };
 use af_core::id::Uuid7;
 use af_wire::{
-    decision::{DecisionAnswer, DecisionThreshold, NamedQuestion},
+    decision::{DecisionAnswer, DecisionThreshold, statements_hold},
     durable_task::{DecisionAssessment, DecisionReceipt},
 };
 use sqlx::{PgConnection, types::Json};
@@ -73,21 +73,6 @@ pub(super) fn choice<'a>(
         return Err(DurableTaskRefusal::InputAmbiguous.into());
     }
     Ok(choice)
-}
-
-/// Whether the task has completion statements and each one's Noul answer is
-/// finite and at least `min_bps`; the runner reports a completion by the same
-/// rule.
-fn statements_hold(
-    questions: &[NamedQuestion],
-    answers: &BTreeMap<String, DecisionAnswer>,
-    min_bps: u16,
-) -> bool {
-    !questions.is_empty()
-        && questions.iter().all(|question| {
-            matches!(answers.get(&question.name), Some(DecisionAnswer::Noul { noul })
-                if noul.is_finite() && *noul >= f64::from(min_bps) / 10_000.0)
-        })
 }
 
 /// A native report accepts only its recorded goal call and reviewed thresholds:

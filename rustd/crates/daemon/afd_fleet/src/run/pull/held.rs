@@ -25,6 +25,7 @@ use crate::error::Result;
 use crate::run::AssignedRun;
 use crate::run::affinity::Fence;
 use crate::run::envelope::Acquired;
+use crate::run::issue::Refused;
 
 /// What a pass must let go of when it issues no run.
 struct Held {
@@ -87,10 +88,14 @@ impl RunService {
                 self.let_go(&held).await;
                 Ok(None)
             }
-            Ok(Step::Lost) => {
+            Ok(Step::Lost(refused)) => {
                 // The turn is still its fleet's head, and nothing else owes it
-                // a pass: once freed, it is the next pass's hint.
-                if self.let_go(&held).await {
+                // a pass: once freed, it is the next pass's hint. A full census
+                // while the runner still offers a worker is a disagreement its
+                // old runs' leases settle; a refused issue spends no credit, so
+                // a ring would hand this runner the same pass again.
+                let disputed = matches!(refused, Refused::CensusFull(_)) && self.runs.credits() > 0;
+                if self.let_go(&held).await && !disputed {
                     afd_bus::wake::publish(&self.runs.streams(), held.fleet_id).await;
                 }
                 Ok(None)

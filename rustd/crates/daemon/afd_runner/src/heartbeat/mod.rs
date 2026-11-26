@@ -171,7 +171,7 @@ impl Runners {
     ) -> Result<Decision<Beat>> {
         let authority = row.authority.as_ref();
         let incoming = bounded_report(beat);
-        let host = host::HostColumns::of(runner, beat.host);
+        let host = host::HostColumns::of(self.refused_facts(), runner, beat.host);
         let stored = capability(row.capability_report_json.as_deref());
         let assigned = row.assignment.decode()?;
         let verdict = reconcile(&assigned, incoming.or(stored.as_ref()));
@@ -332,6 +332,7 @@ fn report(event: &'static str, runner: &Uuid7, error: &Error) {
 mod cordon;
 pub mod holds;
 mod host;
+pub(crate) use host::RefusedFacts;
 mod policy;
 mod verdict;
 

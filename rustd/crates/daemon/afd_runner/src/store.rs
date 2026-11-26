@@ -50,6 +50,9 @@ pub struct Runners {
     clock: crate::timing::RunClock,
     database: Db,
     entropy: Entropy,
+    /// The host-fact fields each runner's last beat had refused, shared by
+    /// every clone, so a refusal is logged when it changes and not every beat.
+    refused_facts: crate::heartbeat::RefusedFacts,
 }
 
 impl Runners {
@@ -72,12 +75,18 @@ impl Runners {
 
     /// A store reading and writing through `database`.
     #[must_use]
-    pub const fn new(database: Db, entropy: Entropy) -> Self {
+    pub fn new(database: Db, entropy: Entropy) -> Self {
         Self {
             database,
             entropy,
             clock: crate::timing::RunClock::DEFAULT,
+            refused_facts: crate::heartbeat::RefusedFacts::default(),
         }
+    }
+
+    /// The host-fact refusals each runner's last beat logged.
+    pub(crate) const fn refused_facts(&self) -> &crate::heartbeat::RefusedFacts {
+        &self.refused_facts
     }
 
     /// The pool this store reads through, for the sibling modules that add

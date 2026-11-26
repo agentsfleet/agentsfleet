@@ -193,7 +193,12 @@ async fn fleets_that_tie_are_offered_oldest_turn_first() {
 }
 
 /// Queues one turn for `fleet`, received at `at`.
-async fn enqueue_at(fixtures: &Fixtures, fleet: &Uuid7, workspace: &Uuid7, at: Timestamp) -> Uuid7 {
+pub(super) async fn enqueue_at(
+    fixtures: &Fixtures,
+    fleet: &Uuid7,
+    workspace: &Uuid7,
+    at: Timestamp,
+) -> Uuid7 {
     let id = afd_db::test_util::mint_id();
     sqlx::query(super::INSERT)
         .bind(&id)

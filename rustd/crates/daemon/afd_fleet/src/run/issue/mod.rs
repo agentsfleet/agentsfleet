@@ -109,8 +109,17 @@ impl Runs {
             return Ok(Err(refused));
         }
         let (run_id, event_row_id) = self.mint(now)?;
-        let decision =
-            super::decision::freeze(&mut transaction, runner_id, host.decision_selected()).await?;
+        let decision = match super::decision::freeze(
+            &mut transaction,
+            runner_id,
+            host.decision_selected(),
+            self.unreadable_profiles(),
+        )
+        .await?
+        {
+            Ok(decision) => decision,
+            Err(refused) => return Ok(Err(refused)),
+        };
         let row = run_row(
             (runner_id, acquired, &billed),
             (&run_id, &event_row_id),

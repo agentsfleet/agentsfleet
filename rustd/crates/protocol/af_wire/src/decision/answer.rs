@@ -2,10 +2,28 @@
 
 use std::collections::BTreeMap;
 
-use super::{DecisionAnswer, DecisionQuestion};
+use super::{DecisionAnswer, DecisionQuestion, NamedQuestion};
 
 /// Provider-rounded probability totals may differ by at most one ten-thousandth.
 const ROUNDING_TOLERANCE: f64 = 0.0001;
+
+/// Whether a goal check's completion statements hold.
+///
+/// The task has some, and each one's Noul answer is finite and at least
+/// `min_bps` basis points. The runner reports a completion by this rule and
+/// the daemon authorizes it.
+#[must_use]
+pub fn statements_hold(
+    questions: &[NamedQuestion],
+    answers: &BTreeMap<String, DecisionAnswer>,
+    min_bps: u16,
+) -> bool {
+    !questions.is_empty()
+        && questions.iter().all(|question| {
+            matches!(answers.get(&question.name), Some(DecisionAnswer::Noul { noul })
+                if noul.is_finite() && *noul >= f64::from(min_bps) / 10_000.0)
+        })
+}
 
 /// Checks the complete typed distribution against its accepted question.
 /// This validates evidence shape; it grants no authority or completion.

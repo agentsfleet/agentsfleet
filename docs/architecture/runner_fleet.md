@@ -164,7 +164,9 @@ The holder reuses its hold only when the fleet's last run ran there, the hold is
 
 ### Placement
 
-The candidate query prefers held fleets, then a recent wake hint, then the runner's previous fleet. The rest go oldest turn first, by queued time and then turn id. Runners that read the same order skip each other's locked rows at the assignment.
+The candidate query prefers held fleets, then a recent wake hint, then the runner's previous fleet. The rest go by how long each head has waited while its thread was free. That age is the later of its queued time and its thread's last release.
+
+A head a pass freed without a run, after a fault or a refusal, so waits behind turns queued before that release. Runners that read the same order skip each other's locked rows at the assignment.
 
 A fleet's `required_tags` must be a subset of the runner's labels. Tenant ownership, cordon state and capacity are checked again under the host lock.
 

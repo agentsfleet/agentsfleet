@@ -190,7 +190,7 @@ fn compose(
 
 /// Runs a composed supervisor until `shutdown`, or until the daemon says stop.
 pub(crate) async fn serve(runner: Runner, shutdown: CancellationToken) -> Result<()> {
-    serve_from(runner, GITHUB_ORIGIN, shutdown).await
+    Box::pin(serve_from(runner, GITHUB_ORIGIN, shutdown)).await
 }
 
 /// [`serve`], with the bound repositories fetched from `origin`.
