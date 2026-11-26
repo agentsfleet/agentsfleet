@@ -9,6 +9,7 @@ use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::thread;
 use std::time::Duration;
 
+use afr_engine::conformance::{NO_ANSWER, datagram};
 use afr_engine::{Engine, Limits, Network};
 use afr_firewall::far::{
     DNS_PORT, FAR_GREETING, FAR_HOST_SIDE, FAR_LISTED, FAR_PORT, Far, objects,
@@ -27,8 +28,6 @@ const SANDBOX_PORT: u16 = 8445;
 /// What the host's listener and the sandbox's say to every connection.
 const HOST_GREETING: &str = "host";
 const SANDBOX_GREETING: &str = "inside";
-/// What [`DATAGRAM`] prints when nothing answers.
-const NO_ANSWER: &str = "timeout";
 /// What the sandbox's listener prints after its greeting when nothing from
 /// outside reached it.
 const NONE_INBOUND: &str = "inbound 0";
@@ -36,19 +35,6 @@ const NONE_INBOUND: &str = "inbound 0";
 const INBOUND_AFTER: Duration = Duration::from_millis(1500);
 /// The prefix of a scope's table name; the slot number follows it.
 const TABLE_PREFIX: &str = "afegress";
-/// Sends one datagram to `$1:$2` and prints the answer, `timeout`, or
-/// `errno <n>`.
-const DATAGRAM: &str = "python3 - \"$@\" <<'EOF'\nimport socket, sys\n\
-     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)\ns.settimeout(2)\ntry:\n    \
-     s.sendto(b'q', (sys.argv[1], int(sys.argv[2])))\n    print(s.recv(16).decode())\n\
-     except socket.timeout:\n    print('timeout')\nexcept OSError as e:\n    \
-     print('errno', e.errno)\nEOF";
-
-/// The command that sends one datagram to `host` on `port`.
-fn datagram(host: Ipv4Addr, port: u16) -> String {
-    format!("set -- {host} {port}; {DATAGRAM}")
-}
-
 /// Listens on [`SANDBOX_PORT`] in the foreground: proves itself alive by
 /// reading its own greeting back over loopback, then for six seconds counts
 /// every connection that reaches it, and prints both.
@@ -102,7 +88,7 @@ fn closed_paths() -> [String; 3] {
     [
         datagram(FAR_LISTED, DNS_PORT),
         datagram(FAR_LISTED, FAR_PORT),
-        connect(&FAR_HOST_SIDE.to_string(), HOST_PORT),
+        connect(FAR_HOST_SIDE, HOST_PORT),
     ]
 }
 

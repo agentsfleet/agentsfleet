@@ -1,6 +1,7 @@
-//! A sandbox held between two of its fleet's runs: frozen, it runs nothing
-//! and keeps everything; thawed, the next run finds the files and the
-//! processes the last one left.
+//! A sandbox held between two of its fleet's runs, as bubblewrap's cgroup
+//! freezer holds it: frozen, it runs nothing; thawed, it runs on. That the
+//! next run finds the files and processes the last one left is the
+//! conformance suite's pause trial, on every engine.
 //!
 //! Every observation while frozen is made from the host, because the executor
 //! is frozen with everything else and answers nothing until the thaw.
@@ -19,14 +20,10 @@ use rustix::process::Signal;
 
 use crate::lane::Lane;
 use crate::lane::{id_of, spec};
-use crate::run::{Outcome, expect, run as run_in, runtime, shell};
+use crate::run::{expect, run as run_in, runtime, shell};
 
 /// The run whose sandbox is held.
 const RUN: &str = "held";
-/// What the first run writes, for the next to read back, and the file in
-/// the workspace it writes it to.
-const NOTE: &str = "written before the hold";
-const NOTE_FILE: &str = "note";
 /// The workspace file the ticker appends to.
 const TICK_FILE: &str = "tick";
 /// Where bubblewrap mounts the run's workspace disk in its directory, and the
@@ -34,8 +31,6 @@ const TICK_FILE: &str = "tick";
 /// here only because a frozen executor answers nothing.
 const DISK_MOUNT: &str = "workspace";
 const DISK_WORKSPACE: &str = "workspace";
-/// What the check prints for a ticker still running.
-const ALIVE: &str = "alive";
 /// How long the frozen sandbox is watched for a tick it should not make.
 const WATCH: Duration = Duration::from_millis(500);
 /// What `cgroup.events` reads for a cgroup whose tree is all stopped.
@@ -58,16 +53,13 @@ const REAP_POLL: Duration = Duration::from_millis(10);
 
 /// What the host saw of the held sandbox.
 struct Seen {
-    pid: String,
     frozen_events: String,
     ticks_while_frozen: (u64, u64),
-    after: Outcome,
     ticks_after_thaw: (u64, u64),
 }
 
 /// A frozen sandbox's cgroup reads `frozen 1` and its processes make no
-/// progress; thawed, the file written before the hold reads back, the
-/// background process is alive, and it runs on.
+/// progress; thawed, they run on.
 pub(crate) fn held_sandbox_resumes_where_it_stopped(lane: &Lane) -> Result<(), Failed> {
     let seen = runtime().block_on(async {
         let engine = lane.engine();
@@ -87,17 +79,6 @@ pub(crate) fn held_sandbox_resumes_where_it_stopped(lane: &Lane) -> Result<(), F
         before == after,
         format!("a frozen ticker makes no progress: {before} bytes, then {after}"),
     )?;
-    expect(
-        seen.after.output.lines().next() == Some(NOTE),
-        format!("the next run reads the note back, got {:?}", seen.after),
-    )?;
-    expect(
-        seen.after.output.lines().any(|line| line == ALIVE),
-        format!(
-            "process {} is still running, got {:?}",
-            seen.pid, seen.after
-        ),
-    )?;
     let (thawed, later) = seen.ticks_after_thaw;
     expect(
         later > thawed,
@@ -105,9 +86,8 @@ pub(crate) fn held_sandbox_resumes_where_it_stopped(lane: &Lane) -> Result<(), F
     )
 }
 
-/// Writes the note, then starts a ticker that appends to the tick file every
-/// 50 ms in a session of its own, as a fleet's long-running server would be,
-/// and prints its pid.
+/// Starts a ticker that appends to the tick file every 50 ms in a session of
+/// its own, as a fleet's long-running server would be.
 ///
 /// The shell waits for the first tick before it ends: the executor kills the
 /// shell's process group as it ends, and `setsid` is in that group until it
@@ -115,21 +95,19 @@ pub(crate) fn held_sandbox_resumes_where_it_stopped(lane: &Lane) -> Result<(), F
 fn start_ticker() -> String {
     let tick = format!("{WORKSPACE_ROOT}/{TICK_FILE}");
     format!(
-        "echo '{NOTE}' > {WORKSPACE_ROOT}/{NOTE_FILE}; \
-         setsid sh -c 'while :; do echo x >> {tick}; sleep 0.05; done' \
-         >/dev/null 2>&1 </dev/null & pid=$!; \
-         until [ -s {tick} ]; do sleep 0.01; done; echo $pid"
+        "setsid sh -c 'while :; do echo x >> {tick}; sleep 0.05; done' \
+         >/dev/null 2>&1 </dev/null & \
+         until [ -s {tick} ]; do sleep 0.01; done"
     )
 }
 
-/// Starts the ticker, parks, watches, resumes, and asks the executor what the
-/// first run left; the resumed sandbox comes back for the caller to destroy.
+/// Starts the ticker, parks, watches and resumes; the resumed sandbox comes
+/// back for the caller to destroy.
 async fn park_and_resume(
     lane: &Lane,
     sandbox: Box<dyn Sandbox>,
 ) -> Result<(Seen, Box<dyn Sandbox>), Failed> {
-    let started = run_in(sandbox.executor(), shell(&start_ticker())).await?;
-    let pid = started.output.trim().to_owned();
+    run_in(sandbox.executor(), shell(&start_ticker())).await?;
     let tick = lane
         .run_dir(RUN)
         .join(DISK_MOUNT)
@@ -144,15 +122,11 @@ async fn park_and_resume(
     let ticks_while_frozen = (frozen_at, size(&tick));
     let sandbox = parked.resume().await?;
 
-    let check = format!("cat {WORKSPACE_ROOT}/{NOTE_FILE}; kill -0 {pid} && echo {ALIVE}");
-    let after = run_in(sandbox.executor(), shell(&check)).await?;
     let thawed = size(&tick);
     tokio::time::sleep(WATCH).await;
     let seen = Seen {
-        pid,
         frozen_events,
         ticks_while_frozen,
-        after,
         ticks_after_thaw: (thawed, size(&tick)),
     };
     Ok((seen, sandbox))

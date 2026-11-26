@@ -21,6 +21,7 @@ impl Engine for ApiOnly {
             engine: SandboxEngine::Unsandboxed,
             isolation: Isolation::Unconfined,
             parks: &[],
+            snapshots: false,
             resources: ResourceFacts {
                 memory: Cap::Absent,
                 cpu: Cap::Absent,

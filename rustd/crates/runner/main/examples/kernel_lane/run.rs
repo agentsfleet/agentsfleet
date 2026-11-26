@@ -1,28 +1,14 @@
 //! Running one command inside a sandbox and reading what it said.
 
-use std::time::Duration;
-
 use afr_engine::{Engine, Limits, SandboxSpec};
-use afr_executor::{Ending, Executor, Spawn};
 use libtest_mimic::Failed;
+
+pub(crate) use afr_engine::conformance::{
+    Outcome, REACH_OUT, UNREACHABLE, expect, run, run_within, shell,
+};
 
 use crate::lane::Lane;
 use crate::lane::{id_of, spec};
-
-/// How long one command may run before the trial calls it hung.
-const COMMAND_TIMEOUT: Duration = Duration::from_secs(60);
-/// What [`REACH_OUT`] prints when no connection could be opened.
-pub(crate) const UNREACHABLE: &str = "unreachable";
-/// Tries to open a connection outside loopback and prints whether it could.
-pub(crate) const REACH_OUT: &str = "python3 -c 'import socket; \
-     socket.create_connection((\"1.1.1.1\", 443), 3)' 2>/dev/null && echo reached || echo unreachable";
-
-/// What one command produced.
-#[derive(Debug)]
-pub(crate) struct Outcome {
-    pub(crate) ending: Ending,
-    pub(crate) output: String,
-}
 
 /// A single-threaded runtime: the trials drive one sandbox at a time.
 pub(crate) fn runtime() -> tokio::runtime::Runtime {
@@ -30,39 +16,6 @@ pub(crate) fn runtime() -> tokio::runtime::Runtime {
         .enable_all()
         .build()
         .unwrap_or_else(|error| unreachable!("a runtime always builds here: {error}"))
-}
-
-/// Runs `spawn` to its end and gathers its output.
-pub(crate) async fn run(executor: &dyn Executor, spawn: Spawn) -> Result<Outcome, Failed> {
-    run_within(executor, spawn, COMMAND_TIMEOUT).await
-}
-
-/// Runs `spawn` to its end, calling it hung past `timeout`, and gathers its
-/// output.
-pub(crate) async fn run_within(
-    executor: &dyn Executor,
-    spawn: Spawn,
-    timeout: Duration,
-) -> Result<Outcome, Failed> {
-    let process = executor.spawn(&spawn).await?;
-    let mut output = Vec::new();
-    let gathered = tokio::time::timeout(
-        timeout,
-        process.ended(|_stream, data| output.extend_from_slice(&data)),
-    )
-    .await;
-    let ending = gathered
-        .map_err(|_elapsed| "the command hung".to_owned())?
-        .ok_or_else(|| "the process ended without saying how".to_owned())?;
-    Ok(Outcome {
-        ending,
-        output: String::from_utf8_lossy(&output).into_owned(),
-    })
-}
-
-/// `sh -c script`.
-pub(crate) fn shell(script: &str) -> Spawn {
-    Spawn::program("/bin/sh").arg("-c").arg(script)
 }
 
 /// Runs `script` in a fresh sandbox with `limits`, then destroys it.
@@ -109,12 +62,4 @@ pub(crate) fn said(outcomes: Vec<Outcome>) -> Vec<String> {
         .into_iter()
         .map(|outcome| outcome.output.trim().to_owned())
         .collect()
-}
-
-pub(crate) fn expect(holds: bool, why: impl Into<String>) -> Result<(), Failed> {
-    if holds {
-        Ok(())
-    } else {
-        Err(Failed::from(why.into()))
-    }
 }

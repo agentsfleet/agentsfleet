@@ -10,9 +10,11 @@ use crate::network::Network;
 
 mod egress;
 mod facts;
+mod snapshots;
 
 pub use self::egress::{EgressPlan, Enforcer, Generation, enforce, until_in_force};
 pub use self::facts::{Cap, Capabilities, Environment, Granted, ParkMode, ResourceFacts, Root};
+pub use self::snapshots::{SnapshotRef, Snapshots};
 
 /// Memory a run's sandbox may use before its tree is killed.
 pub const DEFAULT_MEMORY_BYTES: u64 = 2 * 1024 * 1024 * 1024;
@@ -259,6 +261,10 @@ pub trait Sandbox: Send + Sync + fmt::Debug {
     /// reach, the mechanism refused it, or it never read back. A sandbox that
     /// refuses is destroyed.
     async fn egress(&mut self, plan: EgressPlan<'_>) -> Result<()>;
+
+    /// Its snapshots, when its engine offers them
+    /// ([`Capabilities::snapshots`]); none otherwise.
+    fn snapshots(&self) -> Option<&dyn Snapshots>;
 
     /// Ends every process inside and waits, bounded, for the tree to empty.
     /// The disk, the cgroup and the egress rules stay for

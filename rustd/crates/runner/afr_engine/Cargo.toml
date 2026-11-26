@@ -21,6 +21,12 @@ af_crypto.workspace = true
 # The engine, isolation and KVM names the seam states and the heartbeat
 # carries: one type in both places.
 af_wire.workspace = true
+# The conformance suite's file writes carry bytes (`test-util`).
+bytes = { workspace = true, optional = true }
+# The conformance suite's trials fail as the kernel lane's do (`test-util`).
+libtest-mimic = { workspace = true, optional = true }
+# The conformance suite's file trial packs and reads a tree (`test-util`).
+tar = { workspace = true, optional = true }
 # Every sandbox serves the same executor, which is what makes a second engine
 # an addition rather than a rewrite.
 afr_executor.workspace = true
@@ -35,9 +41,9 @@ tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
 tracing.workspace = true
 
 [features]
-# M-TEST-UTIL. A fresh sandbox identifier, and the build of unknown outcome a
-# test's engine answers.
-test-util = []
+# M-TEST-UTIL. A fresh sandbox identifier, the build of unknown outcome a
+# test's engine answers, and the conformance suite every engine passes.
+test-util = ["dep:bytes", "dep:libtest-mimic", "dep:tar"]
 
 [dev-dependencies]
 af_core = { workspace = true, features = ["test-util"] }
@@ -45,5 +51,9 @@ af_core = { workspace = true, features = ["test-util"] }
 bytes.workspace = true
 # The warm-slot suite polls a claim once.
 futures-util.workspace = true
+# The conformance suite, which its own tests run over fakes.
+libtest-mimic.workspace = true
+tar.workspace = true
 tempfile.workspace = true
-tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "sync", "test-util", "time"] }
+# `io-util`: the conformance fakes read an import and write an export.
+tokio = { workspace = true, features = ["io-util", "macros", "rt", "rt-multi-thread", "sync", "test-util", "time"] }

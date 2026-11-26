@@ -41,8 +41,6 @@ const STAGING: &str = "staging";
 /// The line the fixture's first commit writes, and the one a trial appends.
 const FIRST: &str = "first";
 const APPENDED: &str = "appended";
-/// The directory `mkfs` leaves on the workspace disk.
-const LOST_AND_FOUND: &str = "lost+found";
 /// The file the fixture commits and a trial edits.
 const README: &str = "README.md";
 /// Who the fixture's commit names, author and committer alike.
@@ -90,6 +88,56 @@ fn shell(command: &str) -> (&'static str, Value) {
     (SHELL.name(), json!({ "command": command }))
 }
 
+/// The repository the supervisor checks out, as a run names it.
+const CHECKOUT: Checkout<'static> = Checkout {
+    repository: REPOSITORY,
+    owner: OWNER,
+    name: NAME,
+    base: BASE,
+};
+
+/// The supervisor's own checkout of [`REPOSITORY`], served from a directory
+/// of its own: what the conformance suite's planted-token search runs after.
+pub(crate) struct LaneCheckout {
+    root: tempfile::TempDir,
+}
+
+impl LaneCheckout {
+    /// Serves [`REPOSITORY`] with one commit.
+    pub(crate) fn serve() -> Result<Self, Failed> {
+        let root = tempfile::tempdir()?;
+        serve(root.path())?;
+        Ok(Self { root })
+    }
+}
+
+#[async_trait::async_trait]
+impl afr_engine::conformance::Checkout for LaneCheckout {
+    /// Fetches into the host mirror with `token`, then imports the tree.
+    async fn check_out(&self, sandbox: &dyn Sandbox, token: &str) -> Result<(), Failed> {
+        let root = self.root.path();
+        let mirrors = Mirrors::new(
+            root.join(MIRRORS),
+            format!("file://{}/", root.join(ORIGINS).display()),
+        );
+        let request = Request {
+            scope: SCOPE,
+            checkout: CHECKOUT,
+            token,
+        };
+        let staged = Staging::sweep(&root.join(STAGING))?.stage(sandbox.id())?;
+        mirrors
+            .land(
+                request,
+                &staged,
+                sandbox.executor(),
+                &CancellationToken::new(),
+            )
+            .await?;
+        Ok(())
+    }
+}
+
 /// Checks [`REPOSITORY`] out into a fresh sandbox through the supervisor's
 /// clone, then makes `calls` in order; what each answered.
 fn checked_out(
@@ -97,14 +145,13 @@ fn checked_out(
     run_id: &str,
     calls: &[(&str, Value)],
 ) -> Result<Vec<ToolOutput>, Failed> {
-    let root = tempfile::tempdir()?;
-    serve(root.path())?;
+    let checkout = LaneCheckout::serve()?;
     runtime().block_on(async {
         let engine = lane.engine();
         let sandbox_id = id_of(run_id);
         let request = spec(&sandbox_id, Limits::default());
         let sandbox = engine.prepare(request).await?;
-        let outputs = work(root.path(), sandbox.as_ref(), calls).await;
+        let outputs = work(&checkout, sandbox.as_ref(), calls).await;
         sandbox.destroy().await?;
         outputs
     })
@@ -112,35 +159,12 @@ fn checked_out(
 
 /// The checkout and the calls, in a sandbox already built.
 async fn work(
-    root: &Path,
+    checkout: &LaneCheckout,
     sandbox: &dyn Sandbox,
     calls: &[(&str, Value)],
 ) -> Result<Vec<ToolOutput>, Failed> {
-    let checkout = Checkout {
-        repository: REPOSITORY,
-        owner: OWNER,
-        name: NAME,
-        base: BASE,
-    };
-    let mirrors = Mirrors::new(
-        root.join(MIRRORS),
-        format!("file://{}/", root.join(ORIGINS).display()),
-    );
-    let request = Request {
-        scope: SCOPE,
-        checkout,
-        token: TOKEN,
-    };
-    let staged = Staging::sweep(&root.join(STAGING))?.stage(sandbox.id())?;
-    mirrors
-        .land(
-            request,
-            &staged,
-            sandbox.executor(),
-            &CancellationToken::new(),
-        )
-        .await?;
-    let run = Run::default().with_checkouts(vec![checkout]);
+    afr_engine::conformance::Checkout::check_out(checkout, sandbox, TOKEN).await?;
+    let run = Run::default().with_checkouts(vec![CHECKOUT]);
     let mut outputs = Vec::with_capacity(calls.len());
     for (step, (name, arguments)) in (1_u64..).zip(calls) {
         if ![GIT.name(), SHELL.name()].contains(name) {
@@ -194,26 +218,5 @@ pub(crate) fn git_runs_local_commands(lane: &Lane) -> Result<(), Failed> {
     expect(
         last.text.trim() == format!("agentsfleet {APPENDED}"),
         format!("the commit is the sandbox's, got {:?}", last.text),
-    )
-}
-
-/// The token the supervisor fetched with, raw or as the credentials it
-/// presented, is in no file of the workspace and no variable of a process.
-/// `lost+found` is the workspace disk's own, root's and unreadable here; any
-/// other unreadable file is still reported, and fails the trial.
-pub(crate) fn token_never_enters(lane: &Lane) -> Result<(), Failed> {
-    let hits = format!(
-        "encoded=$(printf 'x-access-token:%s' {TOKEN} | base64 | tr -d '\\n'); \
-         (grep -rlF --exclude-dir={LOST_AND_FOUND} -e {TOKEN} -e \"$encoded\" .; env | grep -F -e {TOKEN} -e \"$encoded\") | wc -l"
-    );
-    let calls = [git(&[STATUS]), shell(&hits)];
-    let outputs = checked_out(lane, "git-token", &calls)?;
-    all_succeeded(&outputs)?;
-    let [_status, found] = outputs.as_slice() else {
-        return Err(format!("2 answers, got {outputs:?}").into());
-    };
-    expect(
-        found.text.trim() == "0",
-        format!("no file or variable holds the token, got {:?}", found.text),
     )
 }

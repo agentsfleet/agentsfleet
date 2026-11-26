@@ -29,10 +29,7 @@ pub(crate) fn host_cannot_delete_a_live_table(lane: &Lane) -> Result<(), Failed>
     let _far = Far::start()?;
     let allowlist = Far::allowlist(FAR_NAME)?;
     let before = objects()?;
-    let scripts = [
-        connect(&FAR_UNLISTED.to_string(), FAR_PORT),
-        connect(FAR_NAME, FAR_PORT),
-    ];
+    let scripts = [connect(FAR_UNLISTED, FAR_PORT), connect(FAR_NAME, FAR_PORT)];
 
     let (answers, survived, said) = runtime().block_on(async {
         let engine = lane.engine();

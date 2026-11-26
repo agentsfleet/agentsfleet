@@ -25,8 +25,8 @@ pub(crate) fn reallow_swaps_the_set_in_place(lane: &Lane) -> Result<(), Failed> 
     let moved = Far::allowlist(FAR_NAME)?;
     let scripts = [
         connect(FAR_NAME, FAR_PORT),
-        connect(&FAR_UNLISTED.to_string(), FAR_PORT),
-        connect(&FAR_LISTED.to_string(), FAR_PORT),
+        connect(FAR_UNLISTED, FAR_PORT),
+        connect(FAR_LISTED, FAR_PORT),
     ];
 
     let (before, after) = across_a_refill(lane, RUN, &first, &moved, &scripts)?;
@@ -51,8 +51,7 @@ pub(crate) fn reallow_keeps_an_address_both_sets_hold(lane: &Lane) -> Result<(),
     let at = |address| (FAR_NAME.to_owned(), address);
     let first = Allowlist::new(vec![at(FAR_LISTED), at(FAR_UNLISTED)])?;
     let moved = Allowlist::new(vec![at(FAR_LISTED), at(FAR_SPARE)])?;
-    let scripts = [FAR_LISTED, FAR_UNLISTED, FAR_SPARE]
-        .map(|address| connect(&address.to_string(), FAR_PORT));
+    let scripts = [FAR_LISTED, FAR_UNLISTED, FAR_SPARE].map(|address| connect(address, FAR_PORT));
 
     let (before, after) = across_a_refill(lane, OVERLAP_RUN, &first, &moved, &scripts)?;
 

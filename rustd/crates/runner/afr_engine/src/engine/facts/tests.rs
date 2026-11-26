@@ -59,6 +59,7 @@ fn test_a_park_mode_outside_the_table_is_unsupported() {
         engine: SandboxEngine::Firecracker,
         isolation: Isolation::HardwareVm,
         parks: &[ParkMode::Stop],
+        snapshots: false,
         resources: ResourceFacts::ENFORCED,
     };
 

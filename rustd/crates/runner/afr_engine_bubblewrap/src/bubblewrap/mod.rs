@@ -33,6 +33,7 @@ pub const CAPABILITIES: Capabilities = Capabilities {
     engine: SandboxEngine::Bubblewrap,
     isolation: Isolation::SharedKernel,
     parks: &[ParkMode::Pause],
+    snapshots: false,
     resources: ResourceFacts::ENFORCED,
 };
 

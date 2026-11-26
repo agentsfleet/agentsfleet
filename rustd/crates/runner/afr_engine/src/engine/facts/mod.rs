@@ -131,6 +131,8 @@ pub struct Capabilities {
     /// The park modes it offers; empty when a sandbox is destroyed rather
     /// than parked.
     pub parks: &'static [ParkMode],
+    /// Whether its sandboxes offer [`crate::Snapshots`].
+    pub snapshots: bool,
     /// How it meets each resource cap.
     pub resources: ResourceFacts,
 }

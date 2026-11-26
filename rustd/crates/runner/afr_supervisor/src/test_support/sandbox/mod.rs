@@ -26,6 +26,7 @@ pub(crate) const CAPABILITIES: Capabilities = Capabilities {
     engine: SandboxEngine::Bubblewrap,
     isolation: Isolation::SharedKernel,
     parks: &[ParkMode::Pause],
+    snapshots: false,
     resources: ResourceFacts::ENFORCED,
 };
 
@@ -376,6 +377,10 @@ impl Sandbox for FakeSandbox {
             return Killed::Unsettled(std::io::Error::other(STILL_RUNNING).into());
         }
         Killed::Settled
+    }
+
+    fn snapshots(&self) -> Option<&dyn afr_engine::Snapshots> {
+        None
     }
 
     async fn destroy(self: Box<Self>) -> afr_engine::Result<()> {

@@ -289,6 +289,7 @@ fn test_every_engine_states_its_capabilities() {
             engine: SandboxEngine::Unsandboxed,
             isolation: Isolation::Unconfined,
             parks: &[],
+            snapshots: false,
             resources: ResourceFacts {
                 memory: Cap::Absent,
                 cpu: Cap::Absent,

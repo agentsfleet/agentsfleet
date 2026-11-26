@@ -200,6 +200,16 @@ impl Error {
         }
     }
 
+    /// What was asked of an engine with no mechanism for it, when that is the
+    /// failure: `park`, or the cap it cannot `limit`.
+    #[must_use]
+    pub fn unsupported_operation(&self) -> Option<&'static str> {
+        match self.seam().kind() {
+            ErrorKind::Unsupported { operation, .. } => Some(operation),
+            _other => None,
+        }
+    }
+
     /// Why the run's egress was refused, when that is the failure.
     #[must_use]
     pub fn egress_refusal(&self) -> Option<&EgressRefusal> {

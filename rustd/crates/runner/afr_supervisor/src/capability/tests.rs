@@ -9,6 +9,7 @@ const UNCONFINED: Capabilities = Capabilities {
     engine: SandboxEngine::Unsandboxed,
     isolation: Isolation::Unconfined,
     parks: &[],
+    snapshots: false,
     resources: ResourceFacts {
         memory: Cap::Absent,
         cpu: Cap::Absent,
@@ -22,6 +23,7 @@ const MICROVM: Capabilities = Capabilities {
     engine: SandboxEngine::Firecracker,
     isolation: Isolation::HardwareVm,
     parks: &[],
+    snapshots: false,
     resources: ResourceFacts::ENFORCED,
 };
 

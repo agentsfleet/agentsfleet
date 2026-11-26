@@ -318,6 +318,7 @@ fn test_every_engine_states_its_capabilities() {
             engine: SandboxEngine::Bubblewrap,
             isolation: Isolation::SharedKernel,
             parks: &[ParkMode::Pause],
+            snapshots: false,
             resources: ResourceFacts::ENFORCED,
         }
     );

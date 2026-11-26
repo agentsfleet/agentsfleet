@@ -453,6 +453,10 @@ impl Sandbox for Bubblewrapped {
         self.parts.kill().await
     }
 
+    fn snapshots(&self) -> Option<&dyn afr_engine::Snapshots> {
+        None
+    }
+
     async fn destroy(self: Box<Self>) -> Result<()> {
         let Self { client, parts, .. } = *self;
         drop(client);

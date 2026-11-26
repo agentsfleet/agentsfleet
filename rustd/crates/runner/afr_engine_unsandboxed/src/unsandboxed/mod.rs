@@ -40,6 +40,7 @@ const CAPABILITIES: Capabilities = Capabilities {
     engine: SandboxEngine::Unsandboxed,
     isolation: Isolation::Unconfined,
     parks: &[],
+    snapshots: false,
     resources: ResourceFacts {
         memory: Cap::Absent,
         cpu: Cap::Absent,
@@ -239,6 +240,10 @@ impl Sandbox for Unconfined {
     /// can prove them gone. They end with the executor's session, at destroy.
     async fn kill(&self) -> Killed {
         Killed::Unsettled(unconfined(NO_CGROUP_KILL))
+    }
+
+    fn snapshots(&self) -> Option<&dyn afr_engine::Snapshots> {
+        None
     }
 
     async fn destroy(self: Box<Self>) -> Result<()> {

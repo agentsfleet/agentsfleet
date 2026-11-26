@@ -23,6 +23,10 @@ use libtest_mimic::Failed;
 
 use crate::release::Signer;
 
+/// The environment variable naming the engine the lane builds and holds to
+/// the conformance suite: `make test-runner-kernel ENGINE=…`, bubblewrap when
+/// unset.
+const ENGINE_VARIABLE: &str = "AFR_KERNEL_LANE_ENGINE";
 /// The environment variable naming the toolbox image to run against.
 pub(crate) const TOOLBOX_VARIABLE: &str = "AFR_TOOLBOX_IMAGE";
 /// The environment variable naming the toolbox source directory, which holds
@@ -172,6 +176,16 @@ pub(crate) fn missing(paths: &ProbePaths, toolbox: Option<&str>, root: bool) -> 
     gaps
 }
 
+/// Why the engine [`ENGINE_VARIABLE`] names cannot be built here, if it
+/// names one other than bubblewrap: no other engine's crate exists yet.
+fn unbuilt_engine() -> Option<String> {
+    let bubblewrap = <&str>::from(SandboxEngine::Bubblewrap);
+    ProcessEnv
+        .get(ENGINE_VARIABLE)
+        .filter(|named| named.as_str() != bubblewrap)
+        .map(|named| format!("{ENGINE_VARIABLE}: names {named}; the lane builds {bubblewrap}"))
+}
+
 /// The toolbox source directory [`SOURCE_VARIABLE`] names, if it names one.
 pub(crate) fn toolbox_source() -> Option<PathBuf> {
     ProcessEnv.get(SOURCE_VARIABLE).map(PathBuf::from)
@@ -214,7 +228,8 @@ pub(crate) fn main() -> ExitCode {
         cgroup_root: delegated.unwrap_or_else(|| PathBuf::from(LANE_CGROUP)),
         ..ProbePaths::default()
     };
-    let gaps = missing(&paths, toolbox.as_deref(), root);
+    let mut gaps = missing(&paths, toolbox.as_deref(), root);
+    gaps.extend(unbuilt_engine());
     if !gaps.is_empty() {
         eprintln!("the kernel lane refuses to run, rather than skip; this host lacks:");
         for gap in &gaps {
@@ -235,6 +250,11 @@ pub(crate) fn main() -> ExitCode {
     };
     let mut arguments = libtest_mimic::Arguments::from_args();
     arguments.test_threads = Some(1);
+    if let Err(failed) = crate::trials::differences(&lane) {
+        let reason = failed.message().unwrap_or_default();
+        eprintln!("the lane's engine could not state what may differ: {reason}");
+        return ExitCode::FAILURE;
+    }
     let lane = Arc::new(lane);
     let conclusion = crate::trials::run(&arguments, &lane);
     // The toolbox is mounted inside the lane's state, which cannot be removed

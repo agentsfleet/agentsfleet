@@ -123,6 +123,10 @@ impl Sandbox for Drilled {
         self.unconfined.kill().await
     }
 
+    fn snapshots(&self) -> Option<&dyn afr_engine::Snapshots> {
+        None
+    }
+
     async fn destroy(self: Box<Self>) -> Result<()> {
         self.unconfined.destroy().await
     }

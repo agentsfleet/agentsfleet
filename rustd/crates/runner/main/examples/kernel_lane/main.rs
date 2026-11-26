@@ -1,5 +1,7 @@
 //! The sandbox's kernel lane: every proof that needs a real Linux kernel,
-//! root, bubblewrap and the toolbox image.
+//! root, bubblewrap and the toolbox image. It prints what may differ on its
+//! engine, holds that engine to `afr_engine`'s conformance suite, then runs
+//! the trials only bubblewrap answers, each reported under its kind.
 //!
 //! `make test-runner-kernel` runs it; `cargo test` only builds it, so it never
 //! runs by accident and never rots. It refuses to start — exit 1, every missing
@@ -61,8 +63,6 @@ mod link;
 mod release;
 #[cfg(target_os = "linux")]
 mod run;
-#[cfg(target_os = "linux")]
-mod shared_memory;
 #[cfg(target_os = "linux")]
 mod supervisor;
 #[cfg(target_os = "linux")]

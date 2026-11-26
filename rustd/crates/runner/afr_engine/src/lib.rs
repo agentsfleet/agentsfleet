@@ -18,6 +18,8 @@
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 #![deny(clippy::self_named_module_files)]
 
+#[cfg(any(test, feature = "test-util"))]
+pub mod conformance;
 pub mod error;
 
 mod boot;
@@ -32,8 +34,8 @@ pub use self::engine::fresh_sandbox_id;
 pub use self::engine::{
     Cap, Capabilities, DEFAULT_CPU_MILLIS, DEFAULT_DISK_BYTES, DEFAULT_MEMORY_BYTES, DEFAULT_PIDS,
     EgressPlan, Enforcer, Engine, Environment, Generation, Granted, Killed, Limits, ParkMode,
-    Parked, Quiescence, ResourceFacts, Root, Sandbox, SandboxSpec, SandboxState, Sweep, Swept,
-    enforce, until_in_force,
+    Parked, Quiescence, ResourceFacts, Root, Sandbox, SandboxSpec, SandboxState, SnapshotRef,
+    Snapshots, Sweep, Swept, enforce, until_in_force,
 };
 #[cfg(feature = "test-util")]
 pub use self::error::ambiguous;

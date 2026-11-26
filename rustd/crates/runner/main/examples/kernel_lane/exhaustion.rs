@@ -15,7 +15,8 @@ use crate::run::{expect, in_sandbox, in_sandbox_each, run as run_in, runtime, sh
 use crate::trials::{ENOSPC, SMALL_DISK, TENANT_CGROUP, TWO_OUTCOMES};
 
 /// Memory a runaway trial exceeds.
-pub(crate) const SMALL_MEMORY: u64 = 256 * 1024 * 1024;
+pub(crate) use afr_engine::conformance::SMALL_MEMORY;
+
 /// Processes a fork-bomb trial exceeds.
 const FEW_PIDS: u32 = 64;
 /// A process that allocates, and touches, far more than [`SMALL_MEMORY`].
@@ -52,35 +53,6 @@ fn fork_bomb() -> String {
         "import os, time\nmade = 0\nfor _ in range({FORK_ATTEMPTS}):\n    try:\n        \
          if os.fork() == 0:\n            time.sleep({CHILD_SLEEP_SECS})\n            os._exit(0)\n        \
          made += 1\n    except OSError:\n        break\nprint(made)\n"
-    )
-}
-
-/// Filling `/tmp` ends in `ENOSPC`, the disk's answer, and the sandbox is
-/// still there to run the next command: a tmpfs would have taken the
-/// run's memory and its first process with it.
-pub(crate) fn full_tmp_answers_enospc(lane: &Lane) -> Result<(), Failed> {
-    let limits = Limits {
-        disk_bytes: SMALL_DISK,
-        ..Limits::default()
-    };
-    let outcomes = in_sandbox_each(
-        lane,
-        spec(&id_of("tmpfill"), limits),
-        &[
-            "dd if=/dev/zero of=/tmp/fill bs=1M count=80 2>&1",
-            "echo ok",
-        ],
-    )?;
-    let [filled, after] = outcomes.as_slice() else {
-        return Err(Failed::from(TWO_OUTCOMES));
-    };
-    expect(
-        filled.output.contains(ENOSPC),
-        format!("ENOSPC on /tmp, got {:?}", filled.output),
-    )?;
-    expect(
-        after.output.trim() == "ok" && after.ending == Ending::Exited(0),
-        format!("a command runs after the fill, got {after:?}"),
     )
 }
 

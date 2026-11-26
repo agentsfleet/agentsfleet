@@ -76,14 +76,17 @@ test-coverage-all:  ## Run coverage gates across app, website, agentsfleet, and 
 # (already root) falls back to `env`, because the runner must name a command.
 KERNEL_LANE_RUNNER ?= sudo -E
 # AFR_TOOLBOX_IMAGE reuses an image; unset, the lane builds one from the manifest.
+# ENGINE names the engine the lane builds and holds to the conformance suite.
+ENGINE ?= bubblewrap
 KERNEL_LANE_HOST = $(shell cd $(RUSTD_DIR) && rustc -vV | sed -n 's/^host: //p' | tr 'a-z-' 'A-Z_')
 
-test-runner-kernel:  ## Prove the Rust runner's sandbox on a real Linux kernel (root, bubblewrap, Landlock, cgroup v2); fails, never skips
+test-runner-kernel:  ## Hold the runner's ENGINE (default bubblewrap) to the conformance suite on a real Linux kernel, then its own trials; fails, never skips
 	@$(KERNEL_LANE_RUNNER) bash playbooks/operations/acceptance/test_toolbox_first_use.sh
 	@image="$${AFR_TOOLBOX_IMAGE:-}"; \
 	  if [ -z "$$image" ]; then image="$$($(KERNEL_LANE_RUNNER) bash scripts/toolbox/build.sh "$(TOOLBOX_DIR)")" || exit $$?; fi; \
 	  test -f "$$image" && image="$$(realpath "$$image")" && \
 	  cd $(RUSTD_DIR) && AFR_TOOLBOX_IMAGE="$$image" AFR_TOOLBOX_SOURCE="$(CURDIR)/scripts/toolbox" \
+	  AFR_KERNEL_LANE_ENGINE="$(ENGINE)" \
 	  CARGO_TARGET_$(KERNEL_LANE_HOST)_RUNNER="$(or $(KERNEL_LANE_RUNNER),env)" \
 	  cargo run --locked -p agentsfleet_runner --features test-util --example kernel_lane
 	@$(MAKE) --no-print-directory test-runner-startup

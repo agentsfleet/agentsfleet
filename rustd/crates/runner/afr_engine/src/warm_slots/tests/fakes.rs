@@ -20,6 +20,7 @@ const CAPABILITIES: Capabilities = Capabilities {
     engine: SandboxEngine::Bubblewrap,
     isolation: Isolation::SharedKernel,
     parks: &[],
+    snapshots: false,
     resources: ResourceFacts::ENFORCED,
 };
 
@@ -91,6 +92,9 @@ impl Sandbox for Named {
     }
     async fn egress(&mut self, _plan: crate::EgressPlan<'_>) -> Result<()> {
         Ok(())
+    }
+    fn snapshots(&self) -> Option<&dyn crate::Snapshots> {
+        None
     }
     async fn destroy(self: Box<Self>) -> Result<()> {
         assert!(!self.panics, "a teardown that panics");

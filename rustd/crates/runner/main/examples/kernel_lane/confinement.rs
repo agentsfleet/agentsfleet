@@ -1,11 +1,10 @@
 //! What a sandboxed process may not do: hold a capability, make a refused
-//! system call, write outside its workspace, or leave anything on the host
-//! that host root owns.
+//! system call, or leave anything on the host that host root owns.
 
 use std::fs;
 use std::os::unix::fs::MetadataExt as _;
 
-use afr_engine::{Engine, Limits, MECHANISM_LANDLOCK as LANDLOCK};
+use afr_engine::{Engine, Limits};
 use afr_guest::{REFUSED_SYSCALLS, X32_SYSCALL_BIT};
 use libtest_mimic::Failed;
 
@@ -52,17 +51,6 @@ pub(crate) fn seccomp_refuses(lane: &Lane) -> Result<(), Failed> {
         seen.output.split_whitespace().count() == numbers.len()
             && seen.output.split_whitespace().all(|errno| errno == eperm),
         format!("every refused call answers EPERM, got {:?}", seen.output),
-    )
-}
-
-pub(crate) fn landlock_denies(lane: &Lane) -> Result<(), Failed> {
-    let script = "echo x > /workspace/x && echo workspace-ok; \
-                  (echo y > /dev/landlock-probe) 2>/dev/null && echo dev-leaked || echo dev-denied; \
-                  (echo z > /opt/x) 2>/dev/null && echo opt-leaked || echo opt-denied";
-    let said = in_sandbox(lane, LANDLOCK, Limits::default(), script)?.output;
-    expect(
-        said.contains("workspace-ok") && said.contains("dev-denied") && said.contains("opt-denied"),
-        format!("writes land only in the workspace, got {said:?}"),
     )
 }
 
