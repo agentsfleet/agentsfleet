@@ -1,41 +1,32 @@
 //! What the lane needs before any trial runs, and the engine every trial uses.
 
 use std::fs;
-use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
-use std::process::ExitCode;
-use std::sync::Arc;
 
 use af_core::env::{EnvSource as _, ProcessEnv};
 use af_core::id::Uuid7;
 use af_wire::runner::SandboxEngine;
-use afr_cgroup::{CGROUP_ROOT, SUBTREE_CONTROL};
 use afr_engine::{
-    EgressPlan, Engine, Generation, HostPaths, Limits, Network, REQUIRED_CONTROLLERS,
-    ResourceFacts, Resources, SandboxSpec, boot,
+    EgressPlan, Engine, Generation, Limits, Network, ResourceFacts, Resources, SandboxSpec,
 };
-use afr_engine_bubblewrap::{
-    BubblewrapBackend, BubblewrapConfig, BubblewrapEngine, ProbePaths, probe,
-};
+use afr_engine_bubblewrap::{BubblewrapConfig, BubblewrapEngine, ProbePaths, probe};
 use afr_engine_firecracker::{FirecrackerConfig, FirecrackerEngine};
 use afr_firewall::far::forwarding_on;
-use afr_image::{Manifest, ToolboxHome};
+use afr_image::Manifest;
 use libtest_mimic::Failed;
 
+pub(crate) use self::boot::{main, serve};
 use crate::release::Signer;
 
-/// The environment variable naming the engine the lane builds and holds to
-/// the conformance suite: `make test-runner-kernel ENGINE=…`, bubblewrap when
-/// unset.
-const ENGINE_VARIABLE: &str = "AFR_KERNEL_LANE_ENGINE";
+#[path = "lane_boot.rs"]
+mod boot;
+
 /// The environment variable naming the toolbox image to run against.
 pub(crate) const TOOLBOX_VARIABLE: &str = "AFR_TOOLBOX_IMAGE";
 /// The environment variable naming the toolbox source directory, which holds
 /// the `manifest.txt` and `build.sh` the image was built from. It sits under
 /// `scripts/`, outside this crate, so the make lane names it.
 const SOURCE_VARIABLE: &str = "AFR_TOOLBOX_SOURCE";
-/// The delegated cgroup every run's cgroup is made under.
-const LANE_CGROUP: &str = "/sys/fs/cgroup/afr-kernel-lane";
 /// The unprivileged host user and group bubblewrap runs as, as on a host.
 pub(crate) const SANDBOX_IDS: (u32, u32) = afr_engine_bubblewrap::SANDBOX_HOST_IDS;
 /// The cap on user namespaces; zero means bubblewrap cannot start.
@@ -53,11 +44,6 @@ pub(crate) const NOT_TOLD: &str = "the sandbox was not told its descriptors";
 /// Where, under the lane's state, each run's directory is made; apart from
 /// the toolbox mount, so no run name can land on it.
 const RUNS_DIR: &str = "runs";
-/// Where, under the lane's state, the toolbox image is staged, kept and
-/// mounted, as a host keeps it.
-const TOOLBOX_DIR: &str = "toolbox";
-/// The lane binary's name where the sandbox binds it from.
-const ENTRY_NAME: &str = "agentsfleet-runner";
 /// Readable and executable by everyone, writable by nobody but root.
 pub(crate) const ENTRY_MODE: u32 = 0o755;
 /// Where the lane's state is made: on a disk, as a host's is. A tmpfs `/tmp`
@@ -71,15 +57,6 @@ const STATE_PARENT: &str = "/var/tmp";
 pub(crate) const STATE_FREE_BYTES_MIN: u64 = 6 << 30;
 /// Bytes in a mebibyte, for the free-space gap's numbers.
 const MIB: u64 = 1 << 20;
-/// The state directory: traversable, but listable and writable by root only.
-const STATE_MODE: u32 = 0o711;
-
-/// The engine the lane holds to the conformance suite.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LaneEngine {
-    Bubblewrap,
-    Firecracker,
-}
 
 /// Everything a trial builds sandboxes with.
 pub(crate) struct Lane {
@@ -207,22 +184,6 @@ pub(crate) fn missing(paths: &ProbePaths, toolbox: Option<&str>, root: bool) -> 
     gaps
 }
 
-/// The engine [`ENGINE_VARIABLE`] names, bubblewrap when unset, or why it
-/// names none the lane builds.
-fn lane_engine() -> Result<LaneEngine, String> {
-    let named = ProcessEnv.get(ENGINE_VARIABLE);
-    match named.as_deref() {
-        None => Ok(LaneEngine::Bubblewrap),
-        Some(name) if name == <&str>::from(SandboxEngine::Bubblewrap) => Ok(LaneEngine::Bubblewrap),
-        Some(name) if name == <&str>::from(SandboxEngine::Firecracker) => {
-            Ok(LaneEngine::Firecracker)
-        }
-        Some(other) => Err(format!(
-            "{ENGINE_VARIABLE}: names {other}; the lane builds bubblewrap or firecracker"
-        )),
-    }
-}
-
 /// The toolbox source directory [`SOURCE_VARIABLE`] names, if it names one.
 pub(crate) fn toolbox_source() -> Option<PathBuf> {
     ProcessEnv.get(SOURCE_VARIABLE).map(PathBuf::from)
@@ -252,170 +213,4 @@ pub(crate) fn short_of_disk(parent: &Path) -> Option<String> {
             STATE_FREE_BYTES_MIN / MIB,
         )
     })
-}
-
-/// Checks every prerequisite, builds the lane, and runs the trials.
-pub(crate) fn main() -> ExitCode {
-    let toolbox = ProcessEnv.get(TOOLBOX_VARIABLE);
-    let root = rustix::process::geteuid().is_root();
-    // The controllers are delegated first, so the probe reads the cgroup the
-    // runs are made under; a host that cannot delegate them is a gap too.
-    let delegated = if root { delegate().ok() } else { None };
-    let paths = ProbePaths {
-        cgroup_root: delegated.unwrap_or_else(|| PathBuf::from(LANE_CGROUP)),
-        ..ProbePaths::default()
-    };
-    let mut gaps = missing(&paths, toolbox.as_deref(), root);
-    let engine = lane_engine();
-    match &engine {
-        Ok(LaneEngine::Firecracker) => gaps.extend(crate::firecracker::gaps()),
-        Ok(LaneEngine::Bubblewrap) => {}
-        Err(gap) => gaps.push(gap.clone()),
-    }
-    if !gaps.is_empty() {
-        eprintln!("the kernel lane refuses to run, rather than skip; this host lacks:");
-        for gap in &gaps {
-            eprintln!("  - {gap}");
-        }
-        return ExitCode::FAILURE;
-    }
-    let microvms = engine == Ok(LaneEngine::Firecracker);
-    let lane = match build(
-        toolbox.as_deref().map_or_else(|| Path::new(""), Path::new),
-        paths,
-        microvms,
-    ) {
-        Ok(lane) => lane,
-        Err(reason) => {
-            let reason = reason.message().unwrap_or_default();
-            eprintln!("the kernel lane could not set up: {reason}");
-            return ExitCode::FAILURE;
-        }
-    };
-    let mut arguments = libtest_mimic::Arguments::from_args();
-    arguments.test_threads = Some(1);
-    if let Err(failed) = crate::trials::differences(&lane) {
-        let reason = failed.message().unwrap_or_default();
-        eprintln!("the lane's engine could not state what may differ: {reason}");
-        return ExitCode::FAILURE;
-    }
-    let lane = Arc::new(lane);
-    let conclusion = crate::trials::run(&arguments, &lane);
-    // The toolbox is mounted inside the lane's state, which cannot be removed
-    // while it is; a run that leaves nothing behind can run again. Every
-    // trial has ended, so the lane and its toolbox have one owner again.
-    let Some(Lane {
-        config,
-        firecracker,
-        resources,
-        state,
-        ..
-    }) = Arc::into_inner(lane)
-    else {
-        eprintln!("a trial still holds the lane; its toolbox stays mounted");
-        return ExitCode::FAILURE;
-    };
-    drop((config, firecracker));
-    let closed = resources.close();
-    drop(state);
-    if let Err(stayed) = closed {
-        eprintln!("the lane's toolbox stayed mounted: {stayed}");
-        return ExitCode::FAILURE;
-    }
-    conclusion.exit_code()
-}
-
-/// Boots the lane the way a host boots: the image staged as a deploy stages
-/// it, its manifest checked against the lane's key, the image verified by
-/// descriptor and the engine built over it, so the lane proves the boot
-/// production runs and not a second spelling of it.
-fn build(image: &Path, paths: ProbePaths, microvms: bool) -> Result<Lane, Failed> {
-    let state = tempfile::Builder::new()
-        .prefix(STATE_PREFIX)
-        .tempdir_in(STATE_PARENT)?;
-    let signer = Signer::new()?;
-    let manifest = signer.manifest_beside(image)?;
-    let home = ToolboxHome::open(state.path().join(TOOLBOX_DIR))?;
-    signer.stage(image, manifest.sha256(), &home.incoming())?;
-    let entry = install_entry(state.path())?;
-    let release = signer.release()?;
-    let backend = BubblewrapBackend {
-        entry,
-        release: &release,
-        home: &home,
-        env: &ProcessEnv,
-        tuning: afr_engine_bubblewrap::EngineTuning::DEFAULT,
-    };
-    let host_paths = HostPaths {
-        cgroup_root: paths.cgroup_root,
-        state_dir: state.path().join(RUNS_DIR),
-    };
-    let booted = boot(backend, &host_paths)?;
-    let image = LaneImage {
-        path: image.to_owned(),
-        digest: booted.started.engine.config().toolbox.digest().to_owned(),
-    };
-    let config = booted.started.engine.config().clone();
-    let firecracker = microvms
-        .then(|| crate::firecracker::config(state.path(), &host_paths.cgroup_root, &config));
-    Ok(Lane {
-        config,
-        firecracker,
-        image,
-        signer,
-        manifest,
-        resources: booted.started.resources,
-        state,
-    })
-}
-
-/// Copies this binary where the sandbox can read it, as a runner host keeps
-/// `agentsfleet-runner` under `/usr/local/bin`.
-///
-/// Root inside the sandbox's user namespace holds no capability over a file
-/// whose owner is unmapped there, so the build's own output, under a user's
-/// `0750` home, cannot be bound in.
-fn install_entry(state: &Path) -> std::io::Result<PathBuf> {
-    let entry = state.join(ENTRY_NAME);
-    fs::copy(std::env::current_exe()?, &entry)?;
-    fs::set_permissions(&entry, fs::Permissions::from_mode(ENTRY_MODE))?;
-    // The run directories live beside it, so the directory itself must be
-    // traversable from inside too.
-    fs::set_permissions(state, fs::Permissions::from_mode(STATE_MODE))?;
-    Ok(entry)
-}
-
-/// Makes the lane's own cgroup and delegates the run controllers to it,
-/// from the cgroup v2 root down.
-fn delegate() -> std::io::Result<PathBuf> {
-    let enable = REQUIRED_CONTROLLERS
-        .map(|controller| format!("+{controller}"))
-        .join(" ");
-    fs::write(Path::new(CGROUP_ROOT).join(SUBTREE_CONTROL), &enable)?;
-    let root = PathBuf::from(LANE_CGROUP);
-    if !root.exists() {
-        fs::create_dir(&root)?;
-    }
-    fs::write(root.join(SUBTREE_CONTROL), &enable)?;
-    Ok(root)
-}
-
-/// The sandbox side: take the descriptors and sizes the engine named,
-/// harden, then serve the executor until the lane hangs up.
-pub(crate) fn serve() -> ExitCode {
-    let entry = match afr_guest::Entry::parse_from(std::env::args_os().skip(1)) {
-        Ok(entry) => entry,
-        Err(refused) => {
-            // the sandbox side starts no subscriber; stderr is its only report
-            eprintln!("{NOT_TOLD}: {refused}");
-            return ExitCode::FAILURE;
-        }
-    };
-    match afr_guest::serve_sandboxed(entry) {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(error) => {
-            eprintln!("the sandbox stopped: {error}");
-            ExitCode::FAILURE
-        }
-    }
 }

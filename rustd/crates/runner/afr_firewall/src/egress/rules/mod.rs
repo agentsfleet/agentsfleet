@@ -24,31 +24,33 @@
 use std::io;
 use std::net::Ipv4Addr;
 
-use libc::c_int;
-use netlink_packet_core::{
-    NLM_F_ACK, NLM_F_APPEND, NLM_F_CREATE, NLM_F_EXCL, NLM_F_REQUEST, NetlinkMessage,
-};
+use netlink_packet_core::NetlinkMessage;
+#[cfg(feature = "test-util")]
+use netlink_packet_netfilter::NetfilterProtoFamily;
 use netlink_packet_netfilter::nftables::{
-    ChainAttribute, ChainMessage, Hook, InetHookNumber, NfTablesMessage, RuleAttribute,
-    RuleMessage, TableAttribute, TableFlags, TableMessage,
+    InetHookNumber, NfTablesMessage, TableAttribute, TableFlags, TableMessage,
 };
-use netlink_packet_netfilter::none::ControlMessage;
-use netlink_packet_netfilter::{
-    NetfilterHeader, NetfilterMessage, NetfilterMessageInner, NetfilterProtoFamily,
-};
+use netlink_packet_netfilter::{NetfilterMessage, NetfilterMessageInner};
 
-use self::expressions::{ACCEPT, Expression, forward, from, masquerade};
+use self::expressions::{ACCEPT, forward, from, masquerade};
+#[cfg(feature = "test-util")]
+use self::message::nf_in;
+use self::message::{base_chain, batch, new_rule, new_table, nf};
 use super::netlink::{Netlink, Wire};
 use super::slot::{PREFIX_LEN, Slot};
 
 mod expressions;
 mod host_chains;
+mod message;
 mod set;
 
 #[cfg(feature = "test-util")]
 pub(super) use self::expressions::DNS_PORT;
 pub(super) use self::expressions::DROP;
 pub(super) use self::host_chains::dropping_forward;
+#[cfg(test)]
+pub(super) use self::message::u16_of;
+pub(super) use self::message::{u8_of, u32_of};
 use self::set::{elements, new_set};
 pub(super) use self::set::{enforced, refill};
 
@@ -60,8 +62,6 @@ pub(super) const SET: &str = "allow";
 /// The set's number within the batch that makes it, so the rules made in the
 /// same batch find it.
 pub(super) const SET_ID: u32 = 1;
-/// The netfilter subsystem a batch is addressed to.
-const NFTABLES: u16 = u16_of(libc::NFNL_SUBSYS_NFTABLES);
 /// The chains, their hooks, kinds and priorities: filtering at the filter
 /// priority, address translation at source-NAT's.
 const FORWARD: &str = "forward";
@@ -141,34 +141,8 @@ fn install_flagged(
 ) -> Vec<Message> {
     let table = slot.table();
     let link = slot.link();
-    let mut messages = vec![
-        new_table(&table, flags),
-        new_set(&table),
-        base_chain(
-            &table,
-            FORWARD,
-            FILTER,
-            InetHookNumber::Forward,
-            FILTER_PRIORITY,
-            ACCEPT,
-        ),
-        base_chain(
-            &table,
-            INPUT,
-            FILTER,
-            InetHookNumber::LocalIn,
-            FILTER_PRIORITY,
-            ACCEPT,
-        ),
-        base_chain(
-            &table,
-            POSTROUTING,
-            NAT,
-            InetHookNumber::PostRouting,
-            SOURCE_NAT_PRIORITY,
-            ACCEPT,
-        ),
-    ];
+    let mut messages = vec![new_table(&table, flags), new_set(&table)];
+    messages.extend(slot_chains(&table));
     if !addresses.is_empty() {
         messages.push(elements(&table, addresses));
     }
@@ -184,6 +158,37 @@ fn install_flagged(
         masquerade(slot.network(), PREFIX_LEN, &link),
     ));
     batch(messages)
+}
+
+/// A slot's three base chains, each accepting by policy: forward and input at
+/// the filter priority, postrouting at source-NAT's.
+fn slot_chains(table: &str) -> [Message; 3] {
+    [
+        base_chain(
+            table,
+            FORWARD,
+            FILTER,
+            InetHookNumber::Forward,
+            FILTER_PRIORITY,
+            ACCEPT,
+        ),
+        base_chain(
+            table,
+            INPUT,
+            FILTER,
+            InetHookNumber::LocalIn,
+            FILTER_PRIORITY,
+            ACCEPT,
+        ),
+        base_chain(
+            table,
+            POSTROUTING,
+            NAT,
+            InetHookNumber::PostRouting,
+            SOURCE_NAT_PRIORITY,
+            ACCEPT,
+        ),
+    ]
 }
 
 /// The batch that builds the table a guest's namespace forwards through,
@@ -313,109 +318,7 @@ pub(super) fn names<W: Wire>(netfilter: &mut Netlink<W>, prefix: &str) -> io::Re
         .collect())
 }
 
-fn new_table(table: &str, flags: TableFlags) -> Message {
-    let attributes = vec![
-        TableAttribute::Name(table.to_owned()),
-        TableAttribute::Flags(flags),
-    ];
-    nf(
-        NfTablesMessage::NewTable(TableMessage { attributes }),
-        NLM_F_CREATE | NLM_F_EXCL,
-    )
-}
-
-fn base_chain(
-    table: &str,
-    name: &str,
-    kind: &str,
-    hook: InetHookNumber,
-    priority: u32,
-    policy: u32,
-) -> Message {
-    let attributes = vec![
-        ChainAttribute::Table(table.to_owned()),
-        ChainAttribute::Name(name.to_owned()),
-        ChainAttribute::Hook(vec![Hook::Number(hook.into()), Hook::Priority(priority)]),
-        ChainAttribute::Policy(policy),
-        ChainAttribute::Type(kind.to_owned()),
-    ];
-    nf(
-        NfTablesMessage::NewChain(ChainMessage { attributes }),
-        NLM_F_CREATE | NLM_F_EXCL,
-    )
-}
-
-fn new_rule(table: &str, chain: &str, expressions: Vec<Expression>) -> Message {
-    let attributes = vec![
-        RuleAttribute::Table(table.to_owned()),
-        RuleAttribute::Chain(chain.to_owned()),
-        RuleAttribute::Expressions(expressions),
-    ];
-    nf(
-        NfTablesMessage::NewRule(RuleMessage { attributes }),
-        NLM_F_CREATE | NLM_F_APPEND,
-    )
-}
-
-/// `inner`, addressed to the `inet` family, asking an acknowledgement.
-fn nf(inner: NfTablesMessage, flags: u16) -> Message {
-    nf_in(NetfilterProtoFamily::Inet, inner, flags)
-}
-
-/// `inner`, addressed to `family`, asking an acknowledgement.
-fn nf_in(family: NetfilterProtoFamily, inner: NfTablesMessage, flags: u16) -> Message {
-    let header = NetfilterHeader::new(family, 0, 0);
-    let mut message = NetlinkMessage::from(NetfilterMessage::new(header, inner));
-    message.header.flags = NLM_F_REQUEST | NLM_F_ACK | flags;
-    message
-}
-
-/// `messages` between a batch's begin and end, which ask no acknowledgement.
-fn batch(messages: Vec<Message>) -> Vec<Message> {
-    let control = |step| {
-        let header = NetfilterHeader::new(NetfilterProtoFamily::Unspec, 0, NFTABLES);
-        let mut message = NetlinkMessage::from(NetfilterMessage::new(header, step));
-        message.header.flags = NLM_F_REQUEST;
-        message
-    };
-    std::iter::once(control(ControlMessage::BatchBegin))
-        .chain(messages)
-        .chain([control(ControlMessage::BatchEnd)])
-        .collect()
-}
-
-/// A kernel number `libc` spells as a C `int`, in the one byte a netlink
-/// field holds it in.
-///
-/// # Panics
-/// When `number` does not fit, which fails the build: every caller is a
-/// `const`.
-pub(super) const fn u8_of(number: c_int) -> u8 {
-    let [low, rest @ ..] = number.to_le_bytes();
-    assert!(matches!(rest, [0, 0, 0]), "a kernel number past one byte");
-    low
-}
-
-/// [`u8_of`], for a two-byte field.
-///
-/// # Panics
-/// When `number` does not fit, which fails the build as [`u8_of`] does.
-pub(super) const fn u16_of(number: c_int) -> u16 {
-    let [low, high, rest @ ..] = number.to_le_bytes();
-    assert!(matches!(rest, [0, 0]), "a kernel number past two bytes");
-    u16::from_le_bytes([low, high])
-}
-
-/// [`u8_of`], for a four-byte field: every `int` fits, so only a negative one,
-/// a verdict such as `NFT_RETURN` among them, is refused rather than read as
-/// its magnitude.
-///
-/// # Panics
-/// When `number` is negative, which fails the build as [`u8_of`] does.
-pub(super) const fn u32_of(number: c_int) -> u32 {
-    assert!(number >= 0, "a negative kernel number in an unsigned field");
-    number.unsigned_abs()
-}
-
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod verdict_tests;

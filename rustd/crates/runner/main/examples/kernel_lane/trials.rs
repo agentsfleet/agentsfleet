@@ -1,16 +1,12 @@
 //! Each trial is one kernel-tier row of the sandbox's proof.
 
 use std::fs;
-use std::path::Path;
-use std::process::Command;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
 use afr_engine::conformance::{self, Context, FarHost};
-use afr_engine::{Engine, Limits, MECHANISM_LANDLOCK as LANDLOCK, WarmSlots};
+use afr_engine::{Limits, MECHANISM_LANDLOCK as LANDLOCK};
 use afr_engine_bubblewrap::{BubblewrapEngine, ProbePaths, probe};
 use afr_firewall::far::{FAR_GREETING, FAR_LISTED, FAR_PORT, FAR_UNLISTED, Far};
-use afr_image::Toolbox;
 use libtest_mimic::{Arguments, Conclusion, Failed, Trial};
 
 use crate::budgets::start_budgets;
@@ -28,17 +24,15 @@ use crate::forked_kill::forked_oom;
 use crate::git::{LaneCheckout, git_runs_local_commands};
 use crate::hold::{destroy_frozen, held_sandbox_resumes_where_it_stopped, sweep_frozen};
 use crate::kill::no_sandbox_process_outlives_the_report;
-use crate::lane::{Lane, missing, toolbox_source};
-use crate::lane::{id_of, spec};
-use crate::run::{expect, in_sandbox, run as run_in, runtime, shell};
+use crate::lane::{Lane, missing};
+use crate::run::{expect, in_sandbox, runtime};
 use crate::toolbox::toolbox_carries_the_tools;
+use crate::toolbox_trials::{reproducible, toolbox_read_only, warm_beats_cold};
 use crate::tools::{shell_exit_code, shell_inherits_sandbox, shell_timeout};
 use crate::verify::{MOUNTINFO, adoption, path_swap};
 
 pub(crate) use afr_engine::conformance::{ENOSPC, SMALL_DISK};
 
-/// Starts measured each way for the start-budget trial.
-const STARTS: usize = 5;
 /// The disk-limit trial's run name.
 const DISK: &str = "disk";
 /// Why a trial that ran two scripts and got another count fails.
@@ -273,105 +267,6 @@ fn unbuildable(lane: &Lane) -> Result<(), Failed> {
         !fake.path().join(RUNS).exists(),
         "nothing was built for a run",
     )
-}
-
-fn reproducible(lane: &Lane) -> Result<(), Failed> {
-    let out = tempfile::tempdir()?;
-    let script = toolbox_source()
-        .ok_or("the lane names no toolbox source")?
-        .join("build.sh");
-    let built = Command::new("bash").arg(script).arg(out.path()).output()?;
-    // A failed build prints no path, and hashing the empty path reported only
-    // "No such file or directory", which hid that the download had failed.
-    expect(
-        built.status.success(),
-        format!(
-            "the second build failed ({}): {}",
-            built.status,
-            String::from_utf8_lossy(&built.stderr).trim()
-        ),
-    )?;
-    let path = String::from_utf8_lossy(&built.stdout).trim().to_owned();
-    let second = crate::release::sha256_file(Path::new(&path))?;
-    expect(
-        second == lane.image.digest(),
-        format!("{second} != {}", lane.image.digest()),
-    )
-}
-
-/// `/usr` is the toolbox, read-only; a sandbox holds the toolbox it runs on
-/// until it is destroyed, so retention never unmounts one under a run. The
-/// trial counts holds on a toolbox handle of its own, since trials run at once.
-fn toolbox_read_only(lane: &Lane) -> Result<(), Failed> {
-    let mut config = lane.config.clone();
-    let shared = &lane.config.toolbox;
-    config.toolbox = Arc::new(Toolbox::at(
-        shared.root().to_owned(),
-        shared.digest().to_owned(),
-    ));
-    let toolbox = Arc::clone(&config.toolbox);
-    let (said, unheld, held) = runtime().block_on(async {
-        let engine = BubblewrapEngine::new(config, &probe(&lane.config.probe_paths()))?;
-        let unheld = Arc::strong_count(&toolbox);
-        let sandbox_id = id_of("toolbox");
-        let request = spec(&sandbox_id, Limits::default());
-        let sandbox = engine.prepare(request).await?;
-        let held = Arc::strong_count(&toolbox);
-        let script =
-            "git --version && (touch /usr/x 2>/dev/null && echo usr-leaked || echo usr-denied)";
-        let outcome = run_in(sandbox.executor(), shell(script)).await;
-        sandbox.destroy().await?;
-        let after = Arc::strong_count(&toolbox);
-        expect(
-            after == unheld,
-            format!("destroyed, the sandbox let go: {after} != {unheld}"),
-        )?;
-        Ok::<_, Failed>((outcome?.output, unheld, held))
-    })?;
-    expect(
-        held == unheld + 1,
-        format!("the sandbox holds its toolbox: {held} != {unheld} + 1"),
-    )?;
-    expect(
-        said.contains("git version") && said.contains("usr-denied"),
-        format!("git runs, /usr is read-only, got {said:?}"),
-    )
-}
-
-fn warm_beats_cold(lane: &Lane) -> Result<(), Failed> {
-    runtime().block_on(async {
-        let engine: Arc<dyn Engine> = Arc::new(lane.engine());
-        let cold = starts(&*engine, "cold").await?;
-        let slots = WarmSlots::start(Arc::clone(&engine), 1, Limits::default());
-        let warm = starts(&slots, "warm").await?;
-        slots.shutdown().await;
-        println!("run-accept to executor-ready, p50 of {STARTS}: cold {cold:?}, warm {warm:?}");
-        expect(
-            warm < cold,
-            format!("warm {warm:?} must beat cold {cold:?}"),
-        )
-    })
-}
-
-/// The median time `engine` takes to hand back a ready sandbox.
-async fn starts(engine: &dyn Engine, kind: &str) -> Result<Duration, Failed> {
-    let mut taken = Vec::with_capacity(STARTS);
-    for number in 0..STARTS {
-        // A warm slot refills in the background between runs, as on a host.
-        tokio::time::sleep(Duration::from_millis(500)).await;
-        let run_id = format!("{kind}-{number}");
-        let started = Instant::now();
-        let sandbox = engine
-            .prepare(spec(&id_of(&run_id), Limits::default()))
-            .await?;
-        taken.push(started.elapsed());
-        sandbox.destroy().await?;
-    }
-    taken.sort();
-    taken
-        .get(STARTS / 2)
-        .copied()
-        .ok_or_else(|| Failed::from("no starts measured"))
 }
 
 fn refuses_to_skip(_lane: &Lane) -> Result<(), Failed> {

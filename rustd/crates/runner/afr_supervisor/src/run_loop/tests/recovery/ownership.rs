@@ -178,6 +178,9 @@ mod turn_tests;
 #[path = "ownership/final_capture.rs"]
 mod final_capture_tests;
 
+#[path = "ownership/prepare.rs"]
+mod prepare_tests;
+
 #[path = "ownership/checkout.rs"]
 mod checkout_tests;
 

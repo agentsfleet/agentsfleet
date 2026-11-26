@@ -198,8 +198,8 @@ impl HostScope {
     ///
     /// # Errors
     /// The kernel refused the swap; the set holds what it held before.
-    pub fn reallow(&mut self, allowlist: &Allowlist) -> Result<()> {
-        self.0.reallow(allowlist)
+    pub fn refill(&mut self, allowlist: &Allowlist) -> Result<()> {
+        self.0.refill(allowlist)
     }
 
     /// The addresses the kernel holds this scope to, read back.

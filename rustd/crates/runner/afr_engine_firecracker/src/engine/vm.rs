@@ -181,7 +181,7 @@ impl Enforcer for Vm {
             self.parts.scope.as_mut(),
         ) {
             (Reach::Allowed(_), Network::Allowed(allowlist), Some(scope)) => {
-                scope.reallow(allowlist)?;
+                scope.refill(allowlist)?;
             }
             (Reach::Public, Network::Host, _) | (Reach::Isolated, Network::Isolated, _) => {}
             _other => return Err(egress_refused(EgressRefusal::NoScope)),

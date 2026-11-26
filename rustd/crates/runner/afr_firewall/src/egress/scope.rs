@@ -116,7 +116,7 @@ impl<W: Wire> Scope<W> {
     ///
     /// # Errors
     /// The kernel refused the swap; the set holds what it held before.
-    pub(crate) fn reallow(&mut self, allowlist: &Allowlist) -> Result<()> {
+    pub(crate) fn refill(&mut self, allowlist: &Allowlist) -> Result<()> {
         let slot = self.claim.slot();
         rules::refill(&mut self.netfilter, slot, allowlist.addresses())
             .map_err(netlink(Step::RefillRules))?;

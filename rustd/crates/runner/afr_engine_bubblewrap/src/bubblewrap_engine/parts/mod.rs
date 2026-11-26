@@ -125,11 +125,11 @@ impl Parts {
     /// # Errors
     /// No scope was built, the kernel refused the swap, the swap panicked, or
     /// the names would not render.
-    pub(super) async fn reallow(&mut self, allowlist: &Allowlist) -> Result<()> {
+    pub(super) async fn refill(&mut self, allowlist: &Allowlist) -> Result<()> {
         let span = tracing::Span::current();
         let next = allowlist.clone();
         off_runtime(&mut self.egress, move |scope| {
-            span.in_scope(|| scope.reallow(&next))
+            span.in_scope(|| scope.refill(&next))
         })
         .await?
         .ok_or_else(|| egress_refused(EgressRefusal::NoScope))??;

@@ -38,7 +38,7 @@ mod egress_closed;
 #[cfg(target_os = "linux")]
 mod egress_owned;
 #[cfg(target_os = "linux")]
-mod egress_reallow;
+mod egress_refill;
 #[cfg(target_os = "linux")]
 mod exhaustion;
 #[cfg(target_os = "linux")]
@@ -83,6 +83,8 @@ mod supervisor_trials;
 mod toolbox;
 #[cfg(target_os = "linux")]
 mod toolbox_size;
+#[cfg(target_os = "linux")]
+mod toolbox_trials;
 #[cfg(target_os = "linux")]
 mod tools;
 #[cfg(target_os = "linux")]

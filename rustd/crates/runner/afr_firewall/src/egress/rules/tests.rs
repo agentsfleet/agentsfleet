@@ -8,21 +8,19 @@ use std::net::Ipv4Addr;
 
 use netlink_packet_core::{NLM_F_ACK, NetlinkMessage};
 use netlink_packet_netfilter::nftables::{
-    Bitwise, ChainAttribute, Cmp, DataAttribute, ExpressionAttribute, Expressions, Immediate,
-    ListAttribute, Meta, MetaKey, NfTablesMessage, RuleAttribute, SetElementList, TableAttribute,
-    TableFlags, Verdict, VerdictAttribute,
+    Bitwise, ChainAttribute, Cmp, DataAttribute, ExpressionAttribute, Expressions, ListAttribute,
+    NfTablesMessage, RuleAttribute, SetElementList, TableAttribute, TableFlags,
 };
 use netlink_packet_netfilter::{NetfilterMessage, NetfilterMessageInner};
 
-use super::expressions::{ACCEPT, DROP};
-use super::{
-    FORWARD, INPUT, POSTROUTING, install, names, remove, u8_of, u16_of, u32_of, uninstall,
-};
+use super::{install, names, remove, u8_of, u16_of, u32_of, uninstall};
 use crate::egress::slot::Slot;
 use crate::egress::testing::{DELTABLE, Fake, Protocol, round_trip};
 
 /// Every message of a batch, as the kernel would read it back.
-fn read_back(batch: Vec<NetlinkMessage<NetfilterMessage>>) -> Vec<NetfilterMessageInner> {
+pub(super) fn read_back(
+    batch: Vec<NetlinkMessage<NetfilterMessage>>,
+) -> Vec<NetfilterMessageInner> {
     batch
         .into_iter()
         .map(|message| round_trip(message).inner)
@@ -30,7 +28,7 @@ fn read_back(batch: Vec<NetlinkMessage<NetfilterMessage>>) -> Vec<NetfilterMessa
 }
 
 /// The `nf_tables` messages between a batch's two ends.
-fn tables(inners: &[NetfilterMessageInner]) -> Vec<&NfTablesMessage> {
+pub(super) fn tables(inners: &[NetfilterMessageInner]) -> Vec<&NfTablesMessage> {
     inners
         .iter()
         .filter_map(|inner| match inner {
@@ -41,7 +39,7 @@ fn tables(inners: &[NetfilterMessageInner]) -> Vec<&NfTablesMessage> {
 }
 
 /// Each rule's chain and expressions, in order.
-fn rules(messages: &[&NfTablesMessage]) -> Vec<(String, Vec<Expressions>)> {
+pub(super) fn rules(messages: &[&NfTablesMessage]) -> Vec<(String, Vec<Expressions>)> {
     messages
         .iter()
         .filter_map(|message| match message {
@@ -88,6 +86,41 @@ fn compared(expression: &Expressions) -> Option<Vec<u8>> {
     }
 }
 
+/// Each chain's policy, in order.
+fn policies(messages: &[&NfTablesMessage]) -> Vec<u32> {
+    messages
+        .iter()
+        .filter_map(|message| match message {
+            NfTablesMessage::NewChain(chain) => {
+                chain
+                    .attributes
+                    .iter()
+                    .find_map(|attribute| match attribute {
+                        ChainAttribute::Policy(policy) => Some(*policy),
+                        _ => None,
+                    })
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// How many keys the batch fills the set with, when it fills it.
+fn filled(messages: &[&NfTablesMessage]) -> Option<usize> {
+    messages.iter().find_map(|message| match message {
+        NfTablesMessage::NewSetElement(elements) => {
+            elements
+                .attributes
+                .iter()
+                .find_map(|attribute| match attribute {
+                    SetElementList::Elements(keys) => Some(keys.len()),
+                    _ => None,
+                })
+        }
+        _ => None,
+    })
+}
+
 /// The batch builds one table whole: its set, filled; three chains accepting
 /// by policy; six forward rules, one input rule and one translation rule, each
 /// asking an acknowledgement and every one surviving the kernel's encoding.
@@ -123,35 +156,9 @@ fn test_the_table_is_built_in_one_batch() {
     );
     assert_eq!(asking.iter().filter(|&&asks| asks).count(), messages.len());
     assert!(matches!(messages[0], NfTablesMessage::NewTable(_)));
-    let policies = messages
-        .iter()
-        .filter_map(|message| match message {
-            NfTablesMessage::NewChain(chain) => {
-                chain
-                    .attributes
-                    .iter()
-                    .find_map(|attribute| match attribute {
-                        ChainAttribute::Policy(policy) => Some(*policy),
-                        _ => None,
-                    })
-            }
-            _ => None,
-        })
-        .collect::<Vec<_>>();
+    let policies = policies(&messages);
     assert_eq!(policies, [1, 1, 1], "every chain accepts by policy");
-    let keys = messages.iter().find_map(|message| match message {
-        NfTablesMessage::NewSetElement(elements) => {
-            elements
-                .attributes
-                .iter()
-                .find_map(|attribute| match attribute {
-                    SetElementList::Elements(keys) => Some(keys.len()),
-                    _ => None,
-                })
-        }
-        _ => None,
-    });
-    assert_eq!(keys, Some(2));
+    assert_eq!(filled(&messages), Some(2));
     assert_eq!(
         chains,
         [
@@ -222,63 +229,6 @@ fn test_every_rule_is_scoped_to_its_link() {
             (Some(vec![17]), Some(vec![0, 53]))
         ]
     );
-}
-
-/// The side of the link a rule reads: the first interface name it loads.
-fn side(expressions: &[Expressions]) -> Option<MetaKey> {
-    expressions.iter().find_map(|expression| match expression {
-        Expressions::Meta(parts) => parts.iter().find_map(|part| match part {
-            Meta::Key(key @ (MetaKey::Iifname | MetaKey::Oifname)) => Some(*key),
-            _ => None,
-        }),
-        _ => None,
-    })
-}
-
-/// The verdict a rule ends in, when it ends in one.
-fn ends_in(expressions: &[Expressions]) -> Option<u32> {
-    match expressions.last() {
-        Some(Expressions::Immediate(parts)) => parts.iter().find_map(|part| match part {
-            Immediate::Data(DataAttribute::Verdict(attributes)) => {
-                attributes.iter().find_map(|attribute| match attribute {
-                    VerdictAttribute::Code(Verdict::Other(code)) => Some(*code),
-                    _ => None,
-                })
-            }
-            _ => None,
-        }),
-        _ => None,
-    }
-}
-
-/// What keeps a sandbox contained is each rule's verdict on its side of the
-/// link, in order: from the sandbox, the resolver port is dropped on both
-/// transports, the set accepted and the rest dropped; into it, only answered
-/// traffic is accepted; and nothing from it reaches the host's own input. A
-/// verdict flipped, or a rule reading the other side, fails here.
-#[test]
-fn test_each_rule_ends_in_its_verdict_on_its_side_of_the_link() {
-    let messages = read_back(install(Slot::new(1).unwrap(), &[]));
-
-    let shape: Vec<_> = rules(&tables(&messages))
-        .into_iter()
-        .map(|(chain, expressions)| (chain, side(&expressions), ends_in(&expressions)))
-        .collect();
-
-    let from = Some(MetaKey::Iifname);
-    let to = Some(MetaKey::Oifname);
-    let expected = [
-        (FORWARD, from, Some(DROP)),
-        (FORWARD, from, Some(DROP)),
-        (FORWARD, from, Some(ACCEPT)),
-        (FORWARD, from, Some(DROP)),
-        (FORWARD, to, Some(ACCEPT)),
-        (FORWARD, to, Some(DROP)),
-        (INPUT, from, Some(DROP)),
-        (POSTROUTING, to, None),
-    ]
-    .map(|(chain, side, verdict)| (chain.to_owned(), side, verdict));
-    assert_eq!(shape, expected);
 }
 
 /// Translation takes only the slot's own `/30`, leaving another link: the

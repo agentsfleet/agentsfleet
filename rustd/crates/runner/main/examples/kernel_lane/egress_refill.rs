@@ -13,8 +13,8 @@ use crate::lane::{id_of, plan, spec};
 use crate::run::{expect, run, runtime, shell};
 
 /// The run each trial's sandbox is built and refilled under.
-const RUN: &str = "egress-reallow";
-const OVERLAP_RUN: &str = "egress-reallow-overlap";
+const RUN: &str = "egress-refill";
+const OVERLAP_RUN: &str = "egress-refill-overlap";
 
 /// Built to reach the far host's name at one address, then frozen and
 /// refilled to the other, as a held sandbox is when its next run's hosts

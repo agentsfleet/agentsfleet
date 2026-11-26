@@ -8,13 +8,13 @@
 //! the first checkout is safe only because the host made the directory it
 //! writes into (`crate::workspace_clone`).
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use af_core::clock::saturating_millis;
-use af_core::error_code::{Coded as _, ErrorCode, Logged};
+use af_core::error_code::ErrorCode;
 use af_observability::semconv::ATTR_SANDBOX_REUSED;
-use afr_engine::{Killed, Limits, Parked, Sandbox, SandboxState};
-use afr_telemetry::labels::{SandboxHold, SandboxRelease};
+use afr_engine::{Limits, Parked, Sandbox, SandboxState};
+use afr_telemetry::labels::SandboxHold;
 use afr_telemetry::record;
 use jiff::Timestamp;
 
@@ -34,10 +34,6 @@ const EVENT_REFILL_FAILED: &str = "sandbox_refill_failed";
 const EVENT_PARK_STARTED: &str = "sandbox_park_started";
 const EVENT_PARK_COMPLETED: &str = "sandbox_park_completed";
 const EVENT_PARK_FAILED: &str = "sandbox_park_failed";
-const EVENT_DESTROY_FAILED: &str = "sandbox_destroy_failed";
-const EVENT_KILL_STARTED: &str = "sandbox_kill_started";
-const EVENT_KILL_COMPLETED: &str = "sandbox_kill_completed";
-const EVENT_KILL_UNSETTLED: &str = "sandbox_kill_unsettled";
 /// The workspace's own top, as the executor reads a relative path whatever
 /// its root is mounted at.
 const WORKSPACE_TOP: &str = ".";
@@ -222,72 +218,6 @@ impl Run<'_> {
             Stowed::Gone => Fate::Gone,
         }
     }
-
-    /// Kills `sandbox` now, for its release after the report. A kill that
-    /// cannot prove the tree empty still lets the report post, and warns.
-    async fn kill(&self, sandbox: Box<dyn Sandbox>) -> Fate {
-        let run_id = self.ids.run.as_str();
-        let event = EVENT_KILL_STARTED;
-        tracing::debug!(run_id, event);
-        match sandbox.kill().await {
-            Killed::Settled => {
-                let event = EVENT_KILL_COMPLETED;
-                tracing::debug!(run_id, event);
-            }
-            Killed::Unsettled(failure) => {
-                let Logged { error_code, reason } = failure.logged();
-                let event = EVENT_KILL_UNSETTLED;
-                {
-                    let (message,) = (format_args!(
-                        "a sandbox's processes were not proved gone; the report posts anyway"
-                    ),);
-                    tracing::warn!(message, error_code, run_id, reason, event);
-                };
-            }
-        }
-        Fate::Killed(sandbox)
-    }
-
-    /// Releases what a killed sandbox held, after the report: its egress
-    /// rules, cgroup, mount, image and directory. Timed; a failure leaves its
-    /// directory for the boot sweep.
-    pub(super) async fn release(&self, fate: Fate) {
-        let started = Instant::now();
-        let destroyed = match fate {
-            Fate::Gone | Fate::Held(_) => return,
-            Fate::Killed(sandbox) => self.destroy(sandbox).await,
-            Fate::Unfiled(parked) => self.logged_destroy(parked.destroy().await),
-        };
-        let outcome = match destroyed {
-            Ok(()) => SandboxRelease::Released,
-            Err(_logged) => SandboxRelease::Failed,
-        };
-        record::sandbox_release(outcome, started.elapsed());
-    }
-
-    /// Ends every process in `sandbox` and removes it, logging a teardown
-    /// that left something behind.
-    ///
-    /// # Errors
-    /// The engine's own, once logged: what is left is the boot sweep's.
-    pub(super) async fn destroy(&self, sandbox: Box<dyn Sandbox>) -> afr_engine::Result<()> {
-        self.logged_destroy(sandbox.destroy().await)
-    }
-
-    /// `destroyed`, logged when its teardown left something behind.
-    fn logged_destroy(&self, destroyed: afr_engine::Result<()>) -> afr_engine::Result<()> {
-        if let Err(failure) = &destroyed {
-            let code = failure.code().as_str();
-            let run_id = self.ids.run.as_str();
-            let event = EVENT_DESTROY_FAILED;
-            {
-                let (error_code, message) =
-                    (&code, format_args!("a sandbox did not tear down cleanly"));
-                tracing::warn!(message, error_code, run_id, event);
-            };
-        }
-        destroyed
-    }
 }
 
 /// Why a held sandbox could not serve its fleet's next run: the event its
@@ -364,9 +294,6 @@ mod reassign_tests;
 #[cfg(test)]
 #[path = "tests/holds/refill.rs"]
 mod refill_tests;
-#[cfg(test)]
-#[path = "tests/release.rs"]
-mod release_tests;
 #[cfg(test)]
 #[path = "tests/holds/revive.rs"]
 mod revive_tests;

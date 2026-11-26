@@ -479,7 +479,7 @@ impl Enforcer for Bubblewrapped {
     async fn apply(&mut self, plan: EgressPlan<'_>) -> Result<()> {
         match (self.held.built, plan.network) {
             (Built::Allowed, Network::Allowed(allowlist)) => {
-                self.parts.reallow(allowlist).await?;
+                self.parts.refill(allowlist).await?;
                 self.held.addresses = Some(sorted(allowlist));
             }
             (Built::Host, Network::Host) | (Built::Isolated, Network::Isolated) => {}

@@ -50,6 +50,7 @@ mod recovery;
 mod recovery_boundary;
 mod recovery_capture;
 mod refusal;
+mod release;
 mod segments;
 mod settle;
 mod turn_recovery;

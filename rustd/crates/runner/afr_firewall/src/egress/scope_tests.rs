@@ -215,8 +215,8 @@ fn test_a_scope_takes_new_addresses_in_place() {
     )])
     .unwrap();
 
-    scope.reallow(&moved).unwrap();
-    let refused = stuck.reallow(&moved).unwrap_err();
+    scope.refill(&moved).unwrap();
+    let refused = stuck.refill(&moved).unwrap_err();
 
     assert!(
         kernel
@@ -261,7 +261,7 @@ fn test_a_removal_after_a_refused_refill_reads_its_own_answer() {
             None => kernel,
         };
 
-        let refill = scope.reallow(&allowlist()).unwrap_err();
+        let refill = scope.refill(&allowlist()).unwrap_err();
         let removal = scope.remove(&kernel);
 
         assert_eq!(refill.netlink_step(), Some(Step::RefillRules));

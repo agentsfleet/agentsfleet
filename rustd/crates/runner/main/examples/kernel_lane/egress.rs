@@ -11,7 +11,7 @@ use crate::egress_closed::allow_list_closes_dns_the_host_and_inbound;
 use crate::egress_owned::{
     host_cannot_delete_a_live_table, probe_refuses_a_dropping_forward_chain,
 };
-use crate::egress_reallow::{
+use crate::egress_refill::{
     reallow_keeps_an_address_both_sets_hold, reallow_swaps_the_set_in_place,
 };
 use crate::lane::Lane;
