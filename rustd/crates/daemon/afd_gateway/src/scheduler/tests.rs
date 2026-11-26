@@ -108,7 +108,7 @@ async fn a_one_ring_pass_ends_at_its_first_run() -> TestResult {
         .send(AssignOutcome::Issued)
         .map_err(|unsent| format!("pass lost its run answer {unsent:?}"))?;
     tokio::select! {
-        result = job => result??,
+        result = job => result?,
         extra = first.requests.recv() => assert!(extra.is_none(), "one ring issued a second assignment on its first host"),
         extra = second.requests.recv() => assert!(extra.is_none(), "one ring continued after its first run"),
     }
@@ -143,7 +143,7 @@ async fn an_empty_pass_over_five_sessions_makes_five_assignments() -> TestResult
             .map_err(|unsent| format!("pass lost its empty answer {unsent:?}"))?;
         assignments += 1;
     }
-    job.await??;
+    job.await?;
     assert_eq!(assignments, 5);
     assert!(connections.iter_mut().all(|connection| matches!(
         connection.requests.try_recv(),
@@ -172,11 +172,34 @@ async fn a_ring_reaches_a_later_eligible_host_when_the_first_assignment_is_empty
         .reply
         .send(AssignOutcome::Issued)
         .map_err(|unsent| format!("pass lost its run answer {unsent:?}"))?;
-    job.await??;
+    job.await?;
     assert!(matches!(
         second.requests.try_recv(),
         Err(mpsc::error::TryRecvError::Empty)
     ));
+    Ok(())
+}
+
+// Value: protects=one session's faulted assignment, such as a fleet whose gates
+// cannot be read, leaves the rest of the pass to the next session; fails_when=the
+// pass ends on the first fault; seam=the scheduler's walk over session handles.
+#[tokio::test(start_paused = true)]
+async fn a_faulted_assignment_leaves_the_pass_to_the_next_host() -> TestResult {
+    let mut first = ConnectionFixture::new(1)?;
+    let mut second = ConnectionFixture::new(2)?;
+    let job = tokio::spawn(pass(
+        vec![Arc::clone(&first.handle), Arc::clone(&second.handle)],
+        1,
+    ));
+    // A dropped reply is how a session's failed assignment reaches the pass.
+    drop(first.request().await?);
+    second
+        .request()
+        .await?
+        .reply
+        .send(AssignOutcome::Issued)
+        .map_err(|unsent| format!("pass lost its run answer {unsent:?}"))?;
+    job.await?;
     Ok(())
 }
 
@@ -208,26 +231,7 @@ async fn several_rings_spend_one_budget_across_connections() -> TestResult {
         .reply
         .send(AssignOutcome::Issued)
         .map_err(|unsent| format!("pass lost its run answer {unsent:?}"))?;
-    job.await??;
-    assert!(matches!(
-        second.requests.try_recv(),
-        Err(mpsc::error::TryRecvError::Empty)
-    ));
-    Ok(())
-}
-
-#[tokio::test(start_paused = true)]
-async fn an_unknown_assignment_outcome_stops_the_pass_before_another_host() -> TestResult {
-    let mut first = ConnectionFixture::new(1)?;
-    let mut second = ConnectionFixture::new(2)?;
-    let job = tokio::spawn(pass(
-        vec![Arc::clone(&first.handle), Arc::clone(&second.handle)],
-        1,
-    ));
-    drop(first.request().await?);
-    assert!(
-        matches!(job.await?, Err(error) if error.code() == af_core::error_code::INTERNAL_OPERATION_FAILED)
-    );
+    job.await?;
     assert!(matches!(
         second.requests.try_recv(),
         Err(mpsc::error::TryRecvError::Empty)

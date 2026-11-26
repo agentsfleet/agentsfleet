@@ -25,6 +25,12 @@ pub struct Runs {
     entropy: Entropy,
     wake: Wake,
     ticket: Option<afd_runner::capacity::choice::Ticket>,
+    /// Free workers the runner advertised for the pass this store serves.
+    credits: usize,
+    /// Stored decision revisions already logged as unreadable, shared by every
+    /// clone, so each is logged once.
+    unreadable_profiles:
+        std::sync::Arc<std::sync::Mutex<std::collections::HashSet<af_core::id::Uuid7>>>,
     authority: Option<afd_runner::capacity::authority::Authority>,
     /// Price books by model and catalogue version, shared by every clone of
     /// this store.
@@ -72,6 +78,8 @@ impl Runs {
             entropy,
             wake: Wake::default(),
             ticket: None,
+            credits: 0,
+            unreadable_profiles: std::sync::Arc::default(),
             authority: None,
             prices: crate::run::cache::PriceBooks::default(),
             latest: crate::run::cache::Latest::default(),
@@ -112,27 +120,21 @@ impl Runs {
         self
     }
 
-    /// Lock the runner row through this transaction and count its occupied workers.
-    /// Stream grants also recheck the opening credential and connection owner.
+    /// Lock the runner row through this transaction and count its occupied
+    /// workers, and the idle holds `work` reports. Stream grants also recheck
+    /// the opening credential and connection owner.
     pub(crate) async fn lock_host_capacity(
         &self,
         tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
         runner: &af_core::id::Uuid7,
+        work: afd_runner::capacity::Work<'_>,
+        work_tenant: Option<&af_core::id::Uuid7>,
     ) -> crate::Result<Option<afd_runner::capacity::Capacity>> {
         Ok(match &self.authority {
             Some(authority) => {
-                afd_runner::capacity::lock(
-                    tx,
-                    (runner, authority),
-                    afd_runner::capacity::Work::Existing,
-                    None,
-                )
-                .await?
+                afd_runner::capacity::lock(tx, (runner, authority), work, work_tenant).await?
             }
-            None => {
-                afd_runner::capacity::lock(tx, runner, afd_runner::capacity::Work::Existing, None)
-                    .await?
-            }
+            None => afd_runner::capacity::lock(tx, runner, work, work_tenant).await?,
         })
     }
 
@@ -194,6 +196,24 @@ impl Runs {
 
     pub(super) const fn ticket(&self) -> Option<afd_runner::capacity::choice::Ticket> {
         self.ticket
+    }
+
+    pub(super) const fn with_credits(mut self, credits: usize) -> Self {
+        self.credits = credits;
+        self
+    }
+
+    /// The decision revisions already logged as unreadable.
+    pub(super) fn unreadable_profiles(
+        &self,
+    ) -> &std::sync::Mutex<std::collections::HashSet<af_core::id::Uuid7>> {
+        &self.unreadable_profiles
+    }
+
+    /// Free workers the runner advertised for this pass; none for a call no
+    /// runner made.
+    pub(super) const fn credits(&self) -> usize {
+        self.credits
     }
 
     /// Share the replica's notification queue with placement and scheduling.

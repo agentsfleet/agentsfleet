@@ -27,6 +27,9 @@ use crate::run::runner_runs;
 use crate::run::sql;
 use crate::run::store::Runs;
 
+mod refused;
+pub use self::refused::{Census, Refused};
+
 /// Statement name, for the context a query failure carries.
 const CONTEXT_ISSUE: &str = "run issue";
 
@@ -73,10 +76,9 @@ impl Runs {
     /// meter reset, so an observer can never see a run with no audit row, or a
     /// fresh run metering from a previous run's cursor.
     ///
-    /// `None` when the assignment that earned `acquired` is no longer this pass's:
-    /// its fence was superseded or it lapsed, so another runner may already
-    /// hold the same entry. Nothing is written, and the assignment is not this
-    /// pass's to release.
+    /// [`Refused`] when a guard wrote no run, such as an assignment that is no
+    /// longer this pass's: its fence was superseded or it lapsed, so another
+    /// runner may already hold the same entry. Nothing is written.
     ///
     /// A plain turn reads no task source; a task's turn attaches its task
     /// under the same transaction.
@@ -91,47 +93,44 @@ impl Runs {
         acquired: &Acquired,
         billed: Billed<'_>,
         now: Timestamp,
-    ) -> Result<Option<Issued>> {
+    ) -> Result<core::result::Result<Issued, Refused>> {
         let mut connection = self.pool().acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_ISSUE))?;
         if !crate::durable_task::run::parents(&mut transaction, acquired).await? {
-            return Ok(None);
+            return Ok(Err(Refused::Scope));
         }
         let Some(host) = self
             .lock_host(&mut transaction, runner_id, billed.tenant_id)
             .await?
         else {
-            return Ok(None);
+            return Ok(Err(Refused::HostUnproven));
         };
-        if !self.permits_issue(host, runner_id, &billed) {
-            return Ok(None);
+        if let Err(refused) = self.permits_issue(host, runner_id, &billed) {
+            return Ok(Err(refused));
         }
         let (run_id, event_row_id) = self.mint(now)?;
-        let decision =
-            super::decision::freeze(&mut transaction, runner_id, host.decision_selected()).await?;
-        let Some(created_at) = (sql::run::RunRow {
-            run_id: &run_id,
+        let decision = match super::decision::freeze(
+            &mut transaction,
             runner_id,
-            fleet_id: &acquired.fleet_id,
-            workspace_id: &acquired.workspace_id,
-            tenant_id: billed.tenant_id,
-            turn_id: &acquired.turn_id,
-            turn_created_at: acquired.turn_created_at,
-            posture: billed.posture,
-            provider: billed.provider,
-            model: billed.model,
-            fencing_token: acquired.fence.as_i64(),
-            status: sql::RUN_STATUS_ACTIVE,
-            event_row_id: &event_row_id,
-            kind: acquired.kind.as_str(),
-            decision_snapshot: decision.as_deref(),
-            run_version: host.run_version(),
-            held_until: acquired.held_until,
-        })
-        .insert(&mut transaction)
+            host.decision_selected(),
+            self.unreadable_profiles(),
+        )
         .await?
-        else {
-            return Ok(None);
+        {
+            Ok(decision) => decision,
+            Err(refused) => return Ok(Err(refused)),
+        };
+        let row = run_row(
+            (runner_id, acquired, &billed),
+            (&run_id, &event_row_id),
+            decision.as_deref(),
+            host.run_version(),
+        );
+        let Some(created_at) = row.insert(&mut transaction).await? else {
+            let refused = self
+                .refused_insert(&mut transaction, runner_id, acquired, billed.tenant_id)
+                .await?;
+            return Ok(Err(refused));
         };
         let Some((task, expires_at)) = crate::durable_task::run::attach(
             &mut transaction,
@@ -141,13 +140,13 @@ impl Runs {
         )
         .await?
         else {
-            return Ok(None);
+            return Ok(Err(Refused::Task));
         };
         transaction.commit().await.map_err(query(CONTEXT_ISSUE))?;
         runner_runs::acquired(runner_id);
 
         record_issued(&run_id, runner_id, acquired, decision.as_deref());
-        Ok(Some(Issued {
+        Ok(Ok(Issued {
             run_id,
             created_at,
             decision,
@@ -163,19 +162,21 @@ impl Runs {
         host: afd_runner::capacity::Held,
         runner_id: &Uuid7,
         billed: &Billed<'_>,
-    ) -> bool {
-        if !host.can_assign()
-            || !self
-                .ticket()
-                .is_none_or(|ticket| ticket.permits_revision(host.run_version()))
+    ) -> core::result::Result<(), Refused> {
+        if !host.can_assign() {
+            return Err(Refused::HostClosed);
+        }
+        if !self
+            .ticket()
+            .is_none_or(|ticket| ticket.permits_revision(host.run_version()))
         {
-            return false;
+            return Err(Refused::ChoiceStale);
         }
         if let Some(refusal) = placement_refusal(host, billed) {
             afd_runner::capacity::refused_placement(runner_id, refusal);
-            return false;
+            return Err(Refused::Placement);
         }
-        true
+        Ok(())
     }
 
     /// Draw the independent run and audit identities.
@@ -183,6 +184,35 @@ impl Runs {
         let run_id = self.entropy().uuid7(now)?;
         let event_row_id = self.entropy().uuid7(now)?;
         Ok((run_id, event_row_id))
+    }
+}
+
+/// The run row the issue writes, from the assignment, the gates' billing, the
+/// minted identities and the host lock's placement revision.
+fn run_row<'a>(
+    (runner_id, acquired, billed): (&'a Uuid7, &'a Acquired, &Billed<'a>),
+    (run_id, event_row_id): (&'a Uuid7, &'a Uuid7),
+    decision_snapshot: Option<&'a DecisionAssignment>,
+    run_version: i64,
+) -> sql::run::RunRow<'a> {
+    sql::run::RunRow {
+        run_id,
+        runner_id,
+        fleet_id: &acquired.fleet_id,
+        workspace_id: &acquired.workspace_id,
+        tenant_id: billed.tenant_id,
+        turn_id: &acquired.turn_id,
+        turn_created_at: acquired.turn_created_at,
+        posture: billed.posture,
+        provider: billed.provider,
+        model: billed.model,
+        fencing_token: acquired.fence.as_i64(),
+        status: sql::RUN_STATUS_ACTIVE,
+        event_row_id,
+        kind: acquired.kind.as_str(),
+        decision_snapshot,
+        run_version,
+        held_until: acquired.held_until,
     }
 }
 

@@ -77,7 +77,7 @@ pub use self::delivery::{Owing, ReplyDestination};
 pub use self::envelope::{Acquired, Kind};
 pub use self::history::Thread;
 pub use self::installed::{FRESH_CONTEXT, Installed};
-pub use self::issue::{Billed, Issued};
+pub use self::issue::{Billed, Issued, Refused};
 pub use self::limits::{RunLimits, TurnCheckpointLimits};
 pub use self::pull::RunService;
 pub use self::renew::{Renewed, Renewing};

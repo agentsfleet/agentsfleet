@@ -62,6 +62,7 @@ pub(crate) fn capable_beat() -> Value {
         "selftest": null,
         "holds": [],
         "closing": false,
+        "host": {},
     })
 }
 

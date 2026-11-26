@@ -28,9 +28,17 @@ describe("curated catalogue bounds", () => {
     expect(() => parseCatalogue(catalogueFixture([modelFixture({ model_name: "unrequested-model" })]))).toThrow("not a curated identity");
   });
 
+  test("every Gemini 4 row states Google's 65,536-token output limit, not its context window", async () => {
+    const catalogue = await readCatalogue(CATALOGUE_URL);
+    const gemini = catalogue.models.filter(model => model.model_name.includes("gemini-4"));
+    expect(gemini.length).toBeGreaterThan(0);
+    // pin test: literal is the contract
+    for (const model of gemini) expect(model.inference.max_output_tokens).toBe(65_536);
+  });
+
   test("membership and safe diagnostic names come from the allowlist", async () => {
     const catalogue = await readCatalogue(CATALOGUE_URL);
-    expect(catalogue.models).toHaveLength(20);
+    expect(catalogue.models).toHaveLength(21);
     expect(catalogue.models.every(isCuratedModel)).toBe(true);
     expect([...catalogueModelNames]).toEqual([...new Set(catalogue.models.map((model) => model.model_name))]);
     expect(() => parseCatalogue(catalogueFixture([modelFixture(), modelFixture()])))

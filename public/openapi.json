@@ -8947,7 +8947,7 @@
             "schema": {
               "type": "string"
             },
-            "example": "agentsfleet.runner.v5"
+            "example": "agentsfleet.runner.v6"
           },
           {
             "name": "agentsfleet-runner-kind",
@@ -24200,17 +24200,12 @@
           "questions_revision",
           "statement_min_bps",
           "continue_action",
-          "wait",
-          "done"
+          "wait"
         ],
         "properties": {
           "continue_action": {
             "$ref": "#/components/schemas/DecisionThreshold",
             "description": "Continue acceptance, subject to native remaining limits."
-          },
-          "done": {
-            "$ref": "#/components/schemas/DecisionThreshold",
-            "description": "Completion acceptance, subject to independently checked native evidence."
           },
           "questions_revision": {
             "type": "string",
@@ -24220,7 +24215,7 @@
           "statement_min_bps": {
             "type": "integer",
             "format": "int32",
-            "description": "Every required completion statement must meet this Noul threshold.",
+            "description": "The task is done when every completion statement meets this Noul\nthreshold, whatever the next action says; independently checked native\nevidence still applies.",
             "maximum": 10000,
             "minimum": 0
           },
@@ -24296,6 +24291,43 @@
             "description": "The fleet's grants, newest first."
           }
         }
+      },
+      "HostFacts": {
+        "type": "object",
+        "description": "What the host offers its runs, as one beat read it. A fact the host could\nnot read is absent.",
+        "properties": {
+          "cpu_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Processors the runner may use.",
+            "maximum": 2147483647,
+            "minimum": 1
+          },
+          "free_disk_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Free bytes on the file system that holds the runner's sandboxes.",
+            "maximum": 9223372036854775807,
+            "minimum": 0
+          },
+          "memory_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The host's total memory, in bytes.",
+            "maximum": 9223372036854775807,
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
       },
       "HttpEgress": {
         "type": "string",
@@ -26904,7 +26936,8 @@
           "last_seen_at",
           "created_at",
           "assigned_policy",
-          "degraded"
+          "degraded",
+          "host"
         ],
         "properties": {
           "achievable": {
@@ -26948,6 +26981,15 @@
               "null"
             ],
             "description": "Stored explanation for a degraded verdict."
+          },
+          "host": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/HostFacts"
+              }
+            ],
+            "description": "The host's processors, memory and free sandbox disk, as its beats last\nread them; a fact no beat has read is absent. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
           },
           "host_id": {
             "type": "string",

@@ -46,15 +46,20 @@ fn held(count: usize, fleet: &str) -> HeldFleets<'_> {
 }
 
 #[test]
-fn test_a_beat_names_its_holds_and_whether_it_is_closing() {
-    for partial in ["{}", r#"{"holds":[]}"#, r#"{"closing":false}"#] {
+fn test_a_beat_names_its_holds_its_host_and_whether_it_is_closing() {
+    for partial in [
+        "{}",
+        r#"{"holds":[]}"#,
+        r#"{"closing":false}"#,
+        r#"{"holds":[],"closing":false}"#,
+    ] {
         assert!(
             serde_json::from_str::<HeartbeatRequest<'_>>(partial).is_err(),
             "{partial}"
         );
     }
     let beat: HeartbeatRequest<'_> =
-        serde_json::from_str(r#"{"holds":[],"closing":false}"#).unwrap();
+        serde_json::from_str(r#"{"holds":[],"closing":false,"host":{}}"#).unwrap();
     assert_eq!(beat.holds, HeldFleets::default());
     assert!(!beat.closing);
 }
@@ -139,7 +144,7 @@ fn test_every_held_fleet_is_an_identifiers_length() {
 
 #[test]
 fn a_heartbeat_names_its_holds_and_refuses_an_unknown_field() {
-    let body = format!(r#"{{"holds":["{FLEET}"],"closing":false}}"#);
+    let body = format!(r#"{{"holds":["{FLEET}"],"closing":false,"host":{{}}}}"#);
     let beat: HeartbeatRequest<'_> = serde_json::from_str(&body).unwrap();
     assert_eq!(beat.holds, held(1, FLEET));
     beat.holds.validate().unwrap();

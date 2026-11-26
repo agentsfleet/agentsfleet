@@ -35,7 +35,8 @@ fn runner_item() -> Value {
         },
         "achievable": null,
         "degraded": false,
-        "degraded_reason": null
+        "degraded_reason": null,
+        "host": {}
     })
 }
 

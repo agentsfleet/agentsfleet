@@ -17,7 +17,7 @@
 
 use crate::seed;
 use crate::support;
-use afd_fleet::run::{Billed, Delivery, Kind};
+use afd_fleet::run::{Billed, Delivery, Kind, Refused};
 
 use self::seed::{MODEL, POSTURE, PROVIDER, Seeded, seeded};
 use self::support::Fixtures;
@@ -203,7 +203,10 @@ async fn test_a_stale_assignment_writes_no_run() {
         .issue(&first, &held, billed, fixtures.enrolled_at())
         .await
         .expect("the fenced insert answers");
-    assert!(expired.is_none(), "a lapsed assignment writes no run");
+    assert!(
+        matches!(expired, Err(Refused::Fenced(_))),
+        "a lapsed assignment writes no run: {expired:?}"
+    );
 
     let won = runs
         .assign(&held.fleet_id, &second, afd_runner::timing::RUN_TTL)
@@ -217,7 +220,10 @@ async fn test_a_stale_assignment_writes_no_run() {
         .issue(&first, &held, billed, now)
         .await
         .expect("the fenced insert answers");
-    assert!(superseded.is_none(), "a superseded fence writes no run");
+    assert!(
+        matches!(superseded, Err(Refused::Fenced(_))),
+        "a superseded fence writes no run: {superseded:?}"
+    );
     let mut connection = fixtures.database.acquire().await.expect("database");
     let active: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM thread.runs WHERE fleet_id = $1 AND status = 'active'",

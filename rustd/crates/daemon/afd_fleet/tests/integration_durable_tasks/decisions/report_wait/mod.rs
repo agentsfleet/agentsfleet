@@ -191,17 +191,19 @@ async fn settle(
     );
 }
 
-// Value: protects=a pull-request completion finishes only on green checks at
-// the bound head, and blocks on red ones; fails_when=a completion settles Done
-// without its checks, or a red check completes it; why_new=completion against
-// a bound pull request had no case; seam=the production report over live
+// Value: protects=held statements against a bound pull request finish on green
+// checks at its head, wait re-armed while they run, and block on red ones;
+// fails_when=a completion settles Done without its checks, blocks while they
+// run, or completes on a red one; seam=the production report over live
 // Postgres, the GitHub fixture answering the head and its checks.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_pull_request_completion_finishes_only_on_green_checks() {
-    for (observation, expected) in [
-        (Observation::Success, DurableTaskState::Done),
-        (Observation::Failure, DurableTaskState::Blocked),
+async fn a_pull_request_completion_waits_for_running_checks_and_finishes_only_on_green() {
+    for (observation, expected, armed) in [
+        (Observation::Success, DurableTaskState::Done, 0),
+        (Observation::Pending, DurableTaskState::Waiting, 1),
+        (Observation::Missing, DurableTaskState::Waiting, 1),
+        (Observation::Failure, DurableTaskState::Blocked, 0),
     ] {
         exercise(async |case| {
             let fixture = Decisions::create(case).await;
@@ -210,8 +212,14 @@ async fn a_pull_request_completion_finishes_only_on_green_checks() {
             let tasks = github_authority::tasks(&fixture, &server).await;
             let _target = publication_refusal::prepared(case, task.clone()).await;
             let semantic = completion(&fixture, task.clone()).await;
+            let durable_task_id = id(&semantic.durable_task.durable_task_id);
             observe(&server, observation);
             assert_eq!(completed(case, &tasks, semantic).await, expected);
+            assert_eq!(
+                counts(case, &durable_task_id).await.2,
+                armed,
+                "a running check re-arms the wait: {expected:?}"
+            );
             server.finish().await;
             fixture.model.finish().await.expect("model cleanup");
         })

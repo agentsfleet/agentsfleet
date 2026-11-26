@@ -16,9 +16,11 @@ use crate::{seed::seeded_parts, support::Fixtures};
 
 mod contention;
 mod delivery;
+mod lost_rings;
 mod ordering;
 mod reassignment;
 mod recovery_page;
+mod released_heads;
 mod settlement;
 
 const WITHIN: Duration = Duration::from_secs(10);

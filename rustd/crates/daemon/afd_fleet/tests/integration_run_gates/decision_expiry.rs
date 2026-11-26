@@ -49,11 +49,9 @@ async fn a_profile_read_past_assignment_expiry_creates_no_run_or_audit() {
     })
     .await
     .expect("a blocked profile read has a bounded test lifetime");
-    assert!(
-        issued
-            .expect("expiry is a refusal, not a storage error")
-            .is_none()
-    );
+    issued
+        .expect("expiry is a refusal, not a storage error")
+        .expect_err("expiry writes no run");
     assert_no_issuance(&fixtures, &case.runner).await;
     select(&fixtures, &case.runner, None).await;
     model

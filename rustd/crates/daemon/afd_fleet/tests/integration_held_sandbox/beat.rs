@@ -152,6 +152,7 @@ async fn test_a_closing_beat_clears_a_hold_reported_inside_the_interval() {
     hold(&runs, &fixtures, &fleet, &holder, until(&fixtures)).await;
     let closing = HeartbeatRequest {
         closing: true,
+        host: af_wire::runner::HostFacts::default(),
         ..beat(&[])
     };
 

@@ -67,7 +67,8 @@ impl Case {
                 },
                 fixtures.enrolled_at(),
             )
-            .await?,
+            .await?
+            .ok(),
         )?;
         Ok(Self {
             fixtures,

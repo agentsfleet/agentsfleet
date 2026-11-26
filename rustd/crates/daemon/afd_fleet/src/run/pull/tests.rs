@@ -18,6 +18,7 @@ async fn should_answer_a_degraded_runner_without_touching_a_datastore() {
                 runner: &test_dead::id(9),
                 held: &[],
                 degraded: true,
+                credits: 1,
                 now: test_dead::AT,
                 recovery: None,
             },

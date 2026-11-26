@@ -65,7 +65,7 @@ pub(super) fn policy() -> serde_json::Value {
         "registry_allowlist": [], "worker_count": 3, "extra_binds": []})
 }
 
-fn reply(status: &str, selftest: bool) -> Answer {
+pub(super) fn reply(status: &str, selftest: bool) -> Answer {
     answer(status, &policy(), selftest, &[])
 }
 
@@ -134,7 +134,7 @@ async fn an_assignment_reaches_the_runs_and_labels_the_self_test_it_asks_for() {
     });
     let probe = probe();
     let held = idle_holds();
-    let mut heartbeat = Heartbeat::new(&plane, &probe, &held);
+    let mut heartbeat = Heartbeat::new(&plane, &probe, &held, std::path::Path::new("."));
 
     let assigned = heartbeat.beat().await.unwrap();
     let unassigned = heartbeat.beat().await;
@@ -199,7 +199,7 @@ async fn a_failed_beat_retries_and_a_stop_ends_runs_in_flight() {
     let started = tokio::time::Instant::now();
 
     let held = idle_holds();
-    Heartbeat::new(&plane, &probe, &held)
+    Heartbeat::new(&plane, &probe, &held, std::path::Path::new("."))
         .keep_beating(&published, &halt)
         .await;
 
@@ -229,11 +229,11 @@ async fn a_refused_token_ends_the_runner_and_a_shutdown_ends_the_beat() {
     stopped.cancel();
 
     let held = idle_holds();
-    Heartbeat::new(&plane, &probe, &held)
+    Heartbeat::new(&plane, &probe, &held, std::path::Path::new("."))
         .keep_beating(&published, &refused)
         .await;
     let held = idle_holds();
-    Heartbeat::new(&plane, &probe, &held)
+    Heartbeat::new(&plane, &probe, &held, std::path::Path::new("."))
         .keep_beating(&published, &Halt::new(stopped))
         .await;
 
@@ -251,7 +251,10 @@ async fn test_a_released_hold_is_destroyed_as_inactive() {
     let (plane, mut calls) = plane(|_call| releasing(KEEP_GOING, &[FLEET]));
     let probe = probe();
 
-    Heartbeat::new(&plane, &probe, &holds).beat().await.unwrap();
+    Heartbeat::new(&plane, &probe, &holds, std::path::Path::new("."))
+        .beat()
+        .await
+        .unwrap();
     let left = holds.fleets().await;
     holds.shutdown().await;
 
@@ -288,7 +291,8 @@ async fn test_a_saturation_release_beats_at_once() {
     let halt = Halt::new(CancellationToken::new());
     let started = tokio::time::Instant::now();
 
-    let beating = Heartbeat::new(&plane, &probe, &holds).keep_beating(&published, &halt);
+    let beating = Heartbeat::new(&plane, &probe, &holds, std::path::Path::new("."))
+        .keep_beating(&published, &halt);
     let saturating = async {
         watching.changed().await.unwrap();
         holds.occupy(crate::holds::Occupant {
@@ -317,7 +321,7 @@ async fn an_invalid_release_identifier_refuses_the_assignment() {
     let (plane, _calls) = plane(|_| releasing(KEEP_GOING, &[NOT_AN_ID]));
     let probe = probe();
     let holds = idle_holds();
-    let mut heartbeat = Heartbeat::new(&plane, &probe, &holds);
+    let mut heartbeat = Heartbeat::new(&plane, &probe, &holds, std::path::Path::new("."));
     let failure = heartbeat.beat().await.unwrap_err();
     assert_eq!(
         failure.code(),

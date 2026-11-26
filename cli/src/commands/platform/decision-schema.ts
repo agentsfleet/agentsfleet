@@ -6,7 +6,7 @@ const bps = Schema.Number.check(Schema.isInt(), Schema.isBetween({minimum: 0, ma
 const threshold = Schema.Struct({probability_bps: bps, confidence_bps: bps});
 const goal = Schema.Struct({
   questions_revision: Schema.Literal("dt-goal-v1"), statement_min_bps: bps,
-  continue_action: threshold, wait: threshold, done: threshold,
+  continue_action: threshold, wait: threshold,
 });
 export const DecisionProfileSchema = Schema.Struct({
   revision: text.check(Schema.isPattern(/^[A-Za-z0-9_.:-]+$/u)),

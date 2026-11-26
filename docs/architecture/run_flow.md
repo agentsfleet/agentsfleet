@@ -137,7 +137,7 @@ A push to the PR sends a `synchronize` event. Its body differs, so its digest an
 
 Only a person's message folds into a live run. An event such as `synchronize` never does (`afd_fleet`'s `assign_inputs.sql`).
 
-The next run's assignment prefers the last runner, then any eligible runner at random.
+The next run's assignment prefers the last runner. Another eligible runner takes the turn that has waited longest first.
 A runner holding the fleet's sandbox checks that fleet first, and other runners skip it while the hold lasts ([sandbox holds](runner_fleet.md#capacity-and-sandbox-holds)).
 
 | Carried to the next run | Not carried |

@@ -56,7 +56,8 @@ impl Selected {
                 },
                 self.fixtures.enrolled_at(),
             )
-            .await?)
+            .await?
+            .ok())
     }
 
     async fn archive(&self, connection: &mut PgConnection) -> TestResult {

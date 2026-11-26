@@ -5,6 +5,11 @@
 -- this statement's snapshot, taken after that lock, sees every earlier
 -- assignment's commit: the census below counts them. A full host, a moved thread
 -- fence, a moved placement choice or a stopped head writes nothing.
+--
+-- The census counts live runs only, so it admits what the runner's credits
+-- offer. A sandbox hold takes no worker: the runner keeps its holds below its
+-- free workers and drops one when a run starts, while the heartbeat clears a
+-- dropped hold a beat later, so a recorded hold may sit on a free worker.
 WITH instant AS MATERIALIZED (
   SELECT clock_timestamp() AS checked_at
 ), host AS MATERIALIZED (
@@ -14,11 +19,6 @@ WITH instant AS MATERIALIZED (
     AND (SELECT count(*) FROM thread.runs l
           WHERE l.runner_id = $2 AND l.status = $11
             AND l.run_expires_at > i.checked_at)
-      -- Every other fleet's live hold on this host: a thread's id is its fleet's.
-      + (SELECT count(*) FROM thread.threads s
-          WHERE s.last_runner_id = $2 AND s.id <> $3
-            AND s.hold_expires_at IS NOT NULL
-            AND s.hold_expires_at > i.checked_at)
       < r.worker_count
 ), held AS (
   UPDATE thread.threads

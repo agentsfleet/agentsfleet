@@ -122,7 +122,7 @@ async fn issue(
     )
     .await
     .expect("the issue answers")
-    .is_some()
+    .is_ok()
 }
 
 async fn scalar(fixtures: &Fixtures, statement: &'static str, id: &Uuid7) -> i64 {

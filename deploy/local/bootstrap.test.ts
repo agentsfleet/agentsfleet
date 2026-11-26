@@ -4,7 +4,7 @@ import { chmod, readFile, rm, stat, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { z } from "zod";
-import { configureConnector, configureDecisions, configureScheduler, configureSigning, enroll, localTarget, persistWorkspace, platformSession, privateFile } from "./bootstrap";
+import { configureConnector, configureDecisions, configureModel, configureScheduler, configureSigning, enroll, localTarget, persistWorkspace, platformSession, privateFile } from "./bootstrap";
 
 type BootstrapRequest = Parameters<typeof enroll>[0];
 type Handler = (method: string, path: string, body?: unknown) => unknown;
@@ -34,9 +34,10 @@ const SLACK_NAMES = SLACK_FIELDS.map((field) => `LOCAL_SLACK_${field.toUpperCase
 const APP_NAMES = [...GITHUB_NAMES, ...LINEAR_NAMES, ...SLACK_NAMES];
 const CONNECTOR_ENV = [...APP_NAMES, "ACCEPTANCE_LOCAL_CONNECTOR_VAULT", "TYPESAFE_API_KEY"];
 const BOOTSTRAP_ENV = [...CONNECTOR_ENV, "NEXT_PUBLIC_API_URL", "LOCAL_ACCEPTANCE_API", "LOCAL_ACCEPTANCE_NAMESPACE",
-  "CLERK_SECRET_KEY", "CLERK_WEBHOOK_SECRET"];
+  "CLERK_SECRET_KEY", "CLERK_WEBHOOK_SECRET", "ANTHROPIC_API_KEY"];
 const DECISION_ID = "01900000-0000-7000-8000-0000000000d1";
 const MODELS_PATH = "/v1/admin/models";
+const PLATFORM_KEYS_PATH = "/v1/admin/platform-keys";
 
 let root = "";
 let savedEnv: Record<string, string | undefined> = {};
@@ -474,10 +475,13 @@ describe("task goal check", () => {
       decision: { enabled: true, profile: { api: "typesafe", endpoint: "https://api.typesafe.ai/v1/systemone",
         accepted_models: ["jev-1.14.0"], capabilities: { noul: true } } } });
     const decision = z.object({ decision: z.object({
-      profile: z.object({ evaluation_digest: z.string().regex(/^[0-9a-f]{64}$/) }),
+      profile: z.object({ evaluation_digest: z.string().regex(/^[0-9a-f]{64}$/), goal: z.unknown() }),
       prices: z.array(z.object({ prompt_tokens_above: z.literal(0), output_nanos_per_mtok: z.literal("0") })).length(1),
     }) }).parse(created);
     expect(decision.decision.prices).toHaveLength(1);
+    // The statements decide done, so the profile carries thresholds for waiting and continuing only.
+    expect(decision.decision.profile.goal).toEqual({ questions_revision: "dt-goal-v1", statement_min_bps: 9500,
+      continue_action: { probability_bps: 8000, confidence_bps: 7000 }, wait: { probability_bps: 8500, confidence_bps: 7500 } });
     expect(saved).toEqual({ name: "typesafe", data: { api_key: "ts_test_only" } });
 
     // A rerun reuses both: no second model, no replaced key.
@@ -499,5 +503,31 @@ describe("task goal check", () => {
     delete process.env.TYPESAFE_API_KEY;
     await expect(configureDecisions(fakeRequest(() => expect.unreachable("no key, no request")), FIXTURE_WORKSPACE))
       .rejects.toThrow(/TYPESAFE_API_KEY/);
+  });
+});
+
+describe("platform model", () => {
+  test("initial setup seeds Claude Haiku 5.5 with the machine's Anthropic key, and a missing key refuses before any write", async () => {
+    process.env.ANTHROPIC_API_KEY = "sk-ant-test-only";
+    let created: unknown;
+    let saved: unknown;
+    let chosen: unknown;
+    const request = fakeRequest((method, path, body) => {
+      if (method === "GET" && path === MODELS_PATH) return { models: [], next_cursor: null };
+      if (method === "POST" && path === MODELS_PATH) { created = body; return { id: "model-row", request_id: "req" }; }
+      if (method === "GET" && path === SECRETS_PATH) return { secrets: [] };
+      if (method === "POST" && path === SECRETS_PATH) { saved = SECRET_BAG.parse(body); return {}; }
+      if (method === "PUT" && path === PLATFORM_KEYS_PATH) { chosen = body; return {}; }
+      return expect.unreachable(`unexpected ${method} ${path}`);
+    });
+    await configureModel(request, FIXTURE_WORKSPACE, []);
+    expect(created).toMatchObject({ provider: "anthropic", model_id: "claude-haiku-5-5" });
+    expect(saved).toEqual({ name: "anthropic",
+      data: { provider: "anthropic", api_key: "sk-ant-test-only", model: "claude-haiku-5-5" } });
+    expect(chosen).toEqual({ provider: "anthropic", source_workspace_id: FIXTURE_WORKSPACE, model: "claude-haiku-5-5" });
+
+    delete process.env.ANTHROPIC_API_KEY;
+    await expect(configureModel(fakeRequest(() => expect.unreachable("no key, no request")), FIXTURE_WORKSPACE, []))
+      .rejects.toThrow(/ANTHROPIC_API_KEY/);
   });
 });

@@ -107,29 +107,30 @@ async fn ordinary_notifications<F: Future<Output = Result<Probe>>>(
         tokio::select! {
             biased;
             () = stop.cancelled() => return,
-            result = pass(connections, budget) => {
-                if let Err(error) = result {
-                    Gateway::observe(&error, crate::Operation::Assign);
-                }
-            }
+            () = pass(connections, budget) => {}
         }
     }
 }
 
 /// Empty assignments advance the walk; successful ones spend the pass's run budget.
-async fn pass(connections: Vec<Arc<ConnectionHandle>>, mut budget: u64) -> Result<()> {
+/// A session's fault, such as a fleet whose gates cannot be read, is logged and
+/// ends only that session's turn in the walk.
+async fn pass(connections: Vec<Arc<ConnectionHandle>>, mut budget: u64) {
     for connection in connections {
         while budget > 0 {
-            if connection.assign(AssignMode::Ordinary).await? != AssignOutcome::Issued {
-                break;
+            match connection.assign(AssignMode::Ordinary).await {
+                Ok(AssignOutcome::Issued) => budget -= 1,
+                Ok(_) => break,
+                Err(error) => {
+                    Gateway::observe(&error, crate::Operation::Assign);
+                    break;
+                }
             }
-            budget -= 1;
         }
         if budget == 0 {
             break;
         }
     }
-    Ok(())
 }
 
 #[cfg(test)]

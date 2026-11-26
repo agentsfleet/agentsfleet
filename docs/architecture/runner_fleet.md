@@ -97,6 +97,10 @@ Capability flows up. At boot the runner probes Landlock, seccomp, its delegated 
 
 Every heartbeat carries that probe report. The daemon compares assigned against achievable and writes `degraded_reason` when the host falls short ([reconcile](../../rustd/crates/daemon/afd_runner/src/reconcile.rs)).
 
+Every heartbeat also carries `host`: the processors the runner may use, its total memory, and its free disk. The free disk is on the file system that holds its sandboxes ([host facts](../../rustd/crates/runner/afr_supervisor/src/capability/host.rs)).
+
+The daemon keeps the latest value of each on the runner row, and `agentsfleet platform runners list` and `show` print them. Memory comes from Linux's `sysinfo(2)`, so a runner built for another system reports none.
+
 The check fails closed on both sides. The daemon issues nothing to a degraded or unreadable row, and a runner with no readable policy takes no work.
 
 A policy change re-checks the stored report inside the same request. A tightening the host cannot meet degrades the row at once; runs already issued finish under their old policy.
@@ -148,7 +152,7 @@ agentsfleet platform runners show <RUNNER_ID>
 
 ### Capacity and sandbox holds
 
-An assignment locks the runner row, counts live runs plus valid sandbox holds, and inserts the run in that transaction. The daemon owns `worker_count`, from 1 to 64 (`af_core::limits::MAX_WORKERS`).
+An assignment locks the runner row, counts live runs, and inserts the run in that transaction. A sandbox hold takes no worker, so the issue admits the free workers the runner's credits offer. The daemon owns `worker_count`, from 1 to 64 (`af_core::limits::MAX_WORKERS`).
 
 Lowering the count below current occupancy stops new assignments and refuses renewals until occupancy fits. [Concurrency](concurrency.md) owns the lock order.
 
@@ -160,7 +164,9 @@ The holder reuses its hold only when the fleet's last run ran there, the hold is
 
 ### Placement
 
-The candidate query prefers held fleets, then a recent wake hint, then the runner's previous fleet. The rest are ordered at random.
+The candidate query prefers held fleets, then a recent wake hint, then the runner's previous fleet. The rest go by how long each head has waited while its thread was free. That age is the later of its queued time and its thread's last release.
+
+A head a pass freed without a run, after a fault or a refusal, so waits behind turns queued before that release. Runners that read the same order skip each other's locked rows at the assignment.
 
 A fleet's `required_tags` must be a subset of the runner's labels. Tenant ownership, cordon state and capacity are checked again under the host lock.
 
@@ -175,6 +181,7 @@ Every run carries a monotonic fencing token. A report from an older fence is ref
 | Runner dies mid-run | A later assignment takes the unsettled turn after the 38-second lease expires | The turn's fence rises; the old runner cannot write |
 | A turn's runs keep lapsing | After `[turns] max_runs_per_turn` runs, three by default, the next assignment ends the turn as `fleet_error` with `run_expired` | The same transaction settles the turn, so the fleet's next turn can run |
 | Wake notification lost | The turn waits for the next event that starts an assignment pass | The turn is already committed in Postgres |
+| The issue refuses an assigned run for a full host, a lapsed assignment or a moved placement choice | The release rings the fleet's wake, so the turn is the next pass's hint | `run_assignment_lost` names the guard as `reason`, with the host's census on a refused insert |
 | Report fails before commit | The runner retries the report | No charge or settlement without the report transaction |
 | Report answer lost | The runner retries and gets the stored outcome | A repeated report adds no usage |
 | Sandbox build fails | The turn keeps going; sandbox calls answer `sandbox_unavailable` | Nothing runs outside a sandbox |

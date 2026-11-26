@@ -17,7 +17,10 @@
 //! models rig-core 0.47's bundled catalogue lists for that provider with a
 //! context window and an output limit, deprecated ones left out. rig's
 //! catalogue has no Fireworks rows, so [`fireworks`] serves only the rows
-//! [`Provider::with_spec`] adds.
+//! [`Provider::with_spec`] adds. Gemini's rows follow Google's model and
+//! deprecation pages instead: they add `gemini-4-neon`, leave out the agent,
+//! Live, image and shut-down models, and stop Gemini 4 output at 65,536 tokens,
+//! the per-request limit of the streamed calls this crate sends.
 
 use crate::models::Provider;
 

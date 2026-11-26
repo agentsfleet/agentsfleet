@@ -136,8 +136,8 @@ fn unknown_stream_kinds_are_never_substituted() {
 }
 
 #[test]
-fn the_runner_protocol_is_v5_alone() {
-    assert_eq!(af_wire::protocol::VERSION, "agentsfleet.runner.v5");
+fn the_runner_protocol_is_v6_alone() {
+    assert_eq!(af_wire::protocol::VERSION, "agentsfleet.runner.v6");
 }
 
 /// The tags serde lists when it refuses `refused`'s unknown frame: every tag

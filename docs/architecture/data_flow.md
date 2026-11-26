@@ -152,7 +152,7 @@ Every schedule write proves the run again, so a runner that lost its run writes 
 
 1. Skip a runner whose isolation check is degraded or unreadable.
 2. Read each eligible active fleet's oldest unsettled turn through `idx_turns_thread_id_sequence_unsettled`.
-3. Prefer fleets with a held sandbox, recent wakes and the last runner; shuffle the rest. Try at most 64 candidates.
+3. Prefer fleets with a held sandbox, recent wakes and the last runner, then the turn that has waited longest. Try at most 64 candidates.
 4. Lock the fleet's `thread.threads` row and its oldest turn with `SKIP LOCKED`. A locked oldest turn blocks the turns behind it.
 5. In one statement, raise the thread's `fencing_token`, stamp it on the turn as `run_fence`, and open the turn (`received`). The same statement expires a lapsed prior run.
 6. Resolve the payer's balance. An empty wallet settles the turn `balance_exhausted` with no run.

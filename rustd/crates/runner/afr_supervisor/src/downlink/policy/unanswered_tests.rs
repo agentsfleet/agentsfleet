@@ -34,7 +34,8 @@ async fn stops_in_bound(plane: &ControlPlane, shutdown: CancellationToken) -> bo
     let (published, _watching) = watch::channel(Assignment::initial());
     let halt = Halt::new(shutdown.clone());
 
-    let beating = Heartbeat::new(plane, &probe, &holds).keep_beating(&published, &halt);
+    let beating = Heartbeat::new(plane, &probe, &holds, std::path::Path::new("."))
+        .keep_beating(&published, &halt);
     let stopping = async {
         tokio::time::sleep(STOP_AFTER).await;
         shutdown.cancel();

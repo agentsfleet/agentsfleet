@@ -44,7 +44,6 @@ fn assignment(input_max_bytes: u32, choice: bool) -> DecisionAssignment {
             statement_min_bps: 9000,
             continue_action: threshold,
             wait: threshold,
-            done: threshold,
         },
     }
 }

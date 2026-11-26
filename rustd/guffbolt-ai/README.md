@@ -72,9 +72,15 @@ async fn main() -> Result<(), guffbolt_ai::Error> {
 
 Each provider's models are rows in `catalog/<provider>.json`, compiled in.
 A row holds the model id, its context window, its output limit, and whether
-it reads images. The rows come from rig-core 0.47's bundled catalogue. They
-hold the tool-calling models with both limits, and no deprecated ones.
-rig has no Fireworks rows, so `Provider::with_spec` adds a Fireworks model.
+it reads images.
+
+The rows come from rig-core 0.47's bundled catalogue. They hold the
+tool-calling models with both limits, and no deprecated ones. rig has no
+Fireworks rows, so `Provider::with_spec` adds a Fireworks model.
+
+Gemini's rows follow Google's model and deprecation pages instead. They add
+`gemini-4-neon` and leave out the agent, Live, image and shut-down models.
+Gemini 4 output stops at 65,536 tokens per streamed request.
 
 A model no provider names is reached with `wire::Route::new`. It names the
 API, base URL, dialect and limits, and `wire::Connected::new` adds the key and

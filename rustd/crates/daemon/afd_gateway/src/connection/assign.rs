@@ -142,6 +142,7 @@ impl ConnectionServices {
             runner: &self.handle.runner,
             held: &state.held,
             degraded: state.degraded,
+            credits: state.credits,
             now: self.gateway.inner.dependencies.wall_clock.now(),
             recovery,
         };

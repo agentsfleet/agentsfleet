@@ -8,8 +8,8 @@ import { FIXTURE_KEY } from "../../ui/packages/app/tests/e2e/acceptance/fixtures
 const TIMEOUT_MS = 20_000;
 const HTTP_METHOD = {get: "GET", post: "POST"} as const;
 const EXCLUSIVE_CREATE = "wx";
-const PROVIDER = "fireworks";
-const MODEL = "accounts/fireworks/models/minimax-m3p1-flash";
+const PROVIDER = "anthropic";
+const MODEL = "claude-haiku-5-5";
 const PLATFORM_SCOPES = ["runner:register", "runner:read", "model:read", "model:admin", "platform-key:read", "platform-key:admin"];
 const PLATFORM_SESSION_ATTEMPTS = 2;
 const RUNNERS = "/v1/admin/runners";
@@ -142,10 +142,10 @@ async function catalogueModel(request: Request, provider: string, model: string)
   return undefined;
 }
 
-async function configureModel(request: Request, workspaceId: string, keys: PlatformKey[]): Promise<void> {
+export async function configureModel(request: Request, workspaceId: string, keys: PlatformKey[]): Promise<void> {
   if (keys.some((key) => key.active)) return;
-  const key = process.env.FIREWORKS_API_KEY;
-  if (!key) throw new LocalBootstrapError("machine configuration must supply FIREWORKS_API_KEY for initial local setup");
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key) throw new LocalBootstrapError("machine configuration must supply ANTHROPIC_API_KEY for initial local setup");
   const row = desiredRows(await readCatalogue(CATALOGUE_URL)).find((entry) => entry.provider === PROVIDER && entry.model_name === MODEL);
   if (!row) throw new LocalBootstrapError("local acceptance model is missing from the checked catalogue");
   if (!await catalogueModel(request, PROVIDER, MODEL)) {
@@ -186,8 +186,7 @@ export function decisionModel() {
         revision: `acceptance-${DECISION_ACCEPTED.join("+")}`, api: DECISION_PROVIDER, endpoint: "https://api.typesafe.ai/v1/systemone",
         accepted_models: DECISION_ACCEPTED, capabilities: { noul: true, choice: true, score: true }, input_max_bytes: 24_576,
         goal: { questions_revision: "dt-goal-v1", statement_min_bps: 9500,
-          continue_action: { probability_bps: 8000, confidence_bps: 7000 }, wait: { probability_bps: 8500, confidence_bps: 7500 },
-          done: { probability_bps: 9500, confidence_bps: 8500 } },
+          continue_action: { probability_bps: 8000, confidence_bps: 7000 }, wait: { probability_bps: 8500, confidence_bps: 7500 } },
         evaluation_digest: createHash("sha256").update(DECISION_EVIDENCE).digest("hex"),
         evaluation_source_url: DECISION_DOCS, evaluated_at: at,
       },

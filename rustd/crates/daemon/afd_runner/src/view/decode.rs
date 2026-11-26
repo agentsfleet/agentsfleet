@@ -12,7 +12,8 @@ use af_core::clock;
 use af_core::id::Uuid7;
 
 use af_wire::runner::{
-    AssignedPolicy, CapabilityReport, ExtraBind, RunnerLiveness, SelftestCheck, SelftestReport,
+    AssignedPolicy, CapabilityReport, ExtraBind, HostFacts, RunnerLiveness, SelftestCheck,
+    SelftestReport,
 };
 use afd_api_wire::admin::{RunnerEventItem, RunnerEventType};
 use jiff::Timestamp;
@@ -52,6 +53,9 @@ pub(super) struct ItemRow {
     capability_report: Option<String>,
     degraded_reason: Option<String>,
     sandbox_config: Option<String>,
+    host_cpu_count: Option<i32>,
+    host_memory_bytes: Option<i64>,
+    host_free_disk_bytes: Option<i64>,
 }
 
 /// The detail read: the item's columns, its counts and its last self-test.
@@ -116,6 +120,18 @@ impl ItemRow {
             achievable: policy::capability(self.capability_report.as_deref()).map(own_capability),
             degraded: self.degraded_reason.is_some(),
             degraded_reason: self.degraded_reason,
+            // The beat proved each fact non-negative before it was stored.
+            host: HostFacts {
+                cpu_count: self
+                    .host_cpu_count
+                    .and_then(|cpus| u32::try_from(cpus).ok()),
+                memory_bytes: self
+                    .host_memory_bytes
+                    .and_then(|bytes| u64::try_from(bytes).ok()),
+                free_disk_bytes: self
+                    .host_free_disk_bytes
+                    .and_then(|bytes| u64::try_from(bytes).ok()),
+            },
         })
     }
 }

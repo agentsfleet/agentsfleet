@@ -50,3 +50,29 @@ pub struct CapabilityReport<'a> {
     #[garde(skip)]
     pub egress_enforcement: bool,
 }
+
+/// What the host offers its runs, as one beat read it. A fact the host could
+/// not read is absent.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct HostFacts {
+    /// Processors the runner may use.
+    // At least one; at most the Postgres `INTEGER` column that stores it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(minimum = 1, maximum = 2_147_483_647_u32))]
+    #[garde(inner(range(min = 1, max = i32::MAX.unsigned_abs())))]
+    pub cpu_count: Option<u32>,
+    /// The host's total memory, in bytes.
+    // At most the Postgres `BIGINT` column that stores it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(maximum = 9_223_372_036_854_775_807_u64))]
+    #[garde(inner(range(max = i64::MAX.unsigned_abs())))]
+    pub memory_bytes: Option<u64>,
+    /// Free bytes on the file system that holds the runner's sandboxes.
+    // At most the Postgres `BIGINT` column that stores it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(maximum = 9_223_372_036_854_775_807_u64))]
+    #[garde(inner(range(max = i64::MAX.unsigned_abs())))]
+    pub free_disk_bytes: Option<u64>,
+}

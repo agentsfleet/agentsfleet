@@ -6,6 +6,7 @@ SELECT r.id AS id, r.host_id, r.sandbox_tier, r.status, r.cordon_reason, r.cordo
        r.sandbox_config::text AS sandbox_config,
        r.durable_tasks_enabled,
        r.decision_platform_model_id AS decision_model_id, r.tenant_id,
+       r.host_cpu_count, r.host_memory_bytes, r.host_free_disk_bytes,
        COALESCE(s.active_count, 0) AS active_run_count,
        COALESCE(s.active_fleets, 0) AS active_fleet_count,
        r.selftest_requested_at, r.selftest_completed_at,

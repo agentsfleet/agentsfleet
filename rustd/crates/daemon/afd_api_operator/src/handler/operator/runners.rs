@@ -135,6 +135,7 @@ fn item(row: &StoredItem) -> RunnerItem<'static> {
         degraded_reason: row
             .degraded_reason()
             .map(|reason| Cow::Owned(reason.to_owned())),
+        host: row.host(),
     }
 }
 

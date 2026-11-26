@@ -108,7 +108,7 @@ jobs:
           CLERK_WEBHOOK_SECRET: op://${{ vars.VAULT_DEV }}/clerk-dev/webhook-secret
           OIDC_ISSUER: op://${{ vars.VAULT_DEV }}/clerk-dev/issuer
           AUTH_SESSION_CODE_PEPPER: op://${{ vars.VAULT_DEV }}/auth-session-code-pepper/credential
-          FIREWORKS_API_KEY: op://${{ vars.VAULT_DEV }}/agentsfleet-fireworks-api-token/credential
+          ANTHROPIC_API_KEY: op://${{ vars.VAULT_DEV }}/agentsfleet-anthropic-api-token/credential
           # The task goal check's decision model (deploy/local/bootstrap.ts).
           TYPESAFE_API_KEY: op://${{ vars.VAULT_DEV }}/typesafe/credential
           # The Slack app's bag (deploy/local/bootstrap.ts); the Slack journey

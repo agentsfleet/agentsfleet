@@ -14,6 +14,10 @@ pub struct AssignRequest<'a> {
     pub held: &'a [Uuid7],
     /// An unreadable or degraded capability verdict refuses new work.
     pub degraded: bool,
+    /// Free workers the runner advertised for this pass. A full census while
+    /// the runner still offers one is a disagreement its old runs' leases
+    /// settle, so that refusal rings no wake.
+    pub credits: usize,
     /// Edge time used to mint durable identities.
     pub now: Timestamp,
     /// A recovery drain keeps its position across bounded candidate pages.

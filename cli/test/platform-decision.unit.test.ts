@@ -5,7 +5,7 @@ const threshold = {probability_bps: 7000, confidence_bps: 5000};
 const profile = {
   revision: "reviewed-1", api: "typesafe", endpoint: "https://example.test/decide",
   accepted_models: ["reviewed-model"], capabilities: {noul: true, choice: true, score: true}, input_max_bytes: 16384,
-  goal: {questions_revision: "dt-goal-v1", statement_min_bps: 7000, continue_action: threshold, wait: threshold, done: threshold},
+  goal: {questions_revision: "dt-goal-v1", statement_min_bps: 7000, continue_action: threshold, wait: threshold},
   evaluation_digest: "a".repeat(64), evaluation_source_url: "https://example.test/evaluation", evaluated_at: INSTANT,
 };
 const decision = {enabled: true, profile, prices: MODEL.prices};
@@ -38,6 +38,8 @@ test.each([
   {...decision, profile: {...profile, goal: undefined}},
   {...decision, profile: {...profile, evaluation_digest: "invalid"}},
   {...decision, profile: {...profile, goal: {...profile.goal, statement_min_bps: 10001}}},
+  // The statements alone decide done, so a saved profile's `done` threshold names nothing.
+  {...decision, profile: {...profile, goal: {...profile.goal, done: threshold}}},
   {...decision, profile: {...profile, extra: true}},
 ])("refuses malformed decision definitions before HTTP", async invalid => {
   const result = await fixture.run(["models", "create", "--file", "-", "--json"], JSON.stringify({

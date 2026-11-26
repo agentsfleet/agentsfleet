@@ -6,6 +6,11 @@
 //! stop added later cannot forget to. Each of those endings used to return
 //! with the assignment still held, and the fleet's next event waited out the
 //! assignment's whole lifetime behind an answer that had already been given.
+//!
+//! An assignment the issue refused for room, time or a moved placement choice
+//! also rings its fleet's wake once freed, as a released unsent run does: the
+//! scheduler runs no timer, so a turn nobody rings waits for whichever pass
+//! reaches it next.
 
 use std::time::Instant;
 
@@ -20,6 +25,7 @@ use crate::error::Result;
 use crate::run::AssignedRun;
 use crate::run::affinity::Fence;
 use crate::run::envelope::Acquired;
+use crate::run::issue::Refused;
 
 /// What a pass must let go of when it issues no run.
 struct Held {
@@ -82,6 +88,18 @@ impl RunService {
                 self.let_go(&held).await;
                 Ok(None)
             }
+            Ok(Step::Lost(refused)) => {
+                // The turn is still its fleet's head, and nothing else owes it
+                // a pass: once freed, it is the next pass's hint. A full census
+                // while the runner still offers a worker is a disagreement its
+                // old runs' leases settle; a refused issue spends no credit, so
+                // a ring would hand this runner the same pass again.
+                let disputed = matches!(refused, Refused::CensusFull(_)) && self.runs.credits() > 0;
+                if self.let_go(&held).await && !disputed {
+                    afd_bus::wake::publish(&self.runs.streams(), held.fleet_id).await;
+                }
+                Ok(None)
+            }
             Err(fault) => {
                 self.let_go(&held).await;
                 Err(fault)
@@ -90,9 +108,9 @@ impl RunService {
     }
 
     /// Frees the assignment through the one best-effort release every
-    /// run-less ending shares.
-    async fn let_go(&self, held: &Held) {
-        self.runs.let_go(&held.fleet_id, held.fence).await;
+    /// run-less ending shares, and answers whether it did.
+    async fn let_go(&self, held: &Held) -> bool {
+        self.runs.let_go(&held.fleet_id, held.fence).await
     }
 }
 

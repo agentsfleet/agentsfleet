@@ -3,7 +3,7 @@
 use af_core::id::Uuid7;
 use af_wire::runner::{HeartbeatRequest, HeldFleets, NetworkPolicy, SandboxTier};
 use afd_fleet::durable_task::DurableTaskLifecycle as _;
-use afd_fleet::run::Billed;
+use afd_fleet::run::{Billed, Refused};
 use afd_runner::RunnerEdit;
 
 use super::fixture::{Case, exercise};
@@ -38,6 +38,7 @@ async fn tenant_runner(case: &Case) -> Uuid7 {
         selftest: None,
         holds: HeldFleets::default(),
         closing: false,
+        host: af_wire::runner::HostFacts::default(),
     };
     let held = afd_runner::heartbeat::holds::prove(beat.holds.clone());
     fixtures
@@ -176,7 +177,10 @@ async fn a_platform_model_task_never_runs_on_a_tenant_runner() {
             )
             .await
             .expect("the issue answers");
-        assert!(issued.is_none(), "issue refuses the tenant runner too");
+        assert!(
+            matches!(issued, Err(Refused::Placement)),
+            "issue refuses the tenant runner too: {issued:?}"
+        );
         let runs: i64 = sqlx::query_scalar("SELECT count(*) FROM thread.runs WHERE runner_id = $1")
             .bind(&tenant)
             .fetch_one(

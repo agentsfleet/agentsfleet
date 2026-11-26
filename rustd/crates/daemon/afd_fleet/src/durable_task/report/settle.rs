@@ -201,13 +201,7 @@ async fn action(
             DurableTaskState::Blocked,
             Some("prerequisite_unavailable"),
         ))),
-        DurableTaskDisposition::Complete => Ok((plan.target.is_none()
-            || plan
-                .dependency
-                .as_ref()
-                .zip(plan.target.as_ref())
-                .is_some_and(|(status, target)| status.green(target)))
-        .then_some((DurableTaskState::Done, None))),
+        DurableTaskDisposition::Complete => Ok(completed(plan)),
         DurableTaskDisposition::Continue | DurableTaskDisposition::Waiting => {
             if input.checkpoint_id.as_deref() != current.checkpoint_id.as_ref().map(Uuid7::as_str) {
                 return Ok(None);
@@ -248,6 +242,27 @@ async fn action(
                 }))
         }
     }
+}
+
+/// Where held statements leave a task. Done with no bound pull request, or on
+/// green checks at its head. Statements decide done and checks are the
+/// independent evidence, so checks still running at that open head make the
+/// task wait, re-armed as a WAIT is; only finished checks that failed block it.
+fn completed(plan: &super::PreparedReport) -> Option<(DurableTaskState, Option<&'static str>)> {
+    let Some(target) = plan.target.as_ref() else {
+        return Some((DurableTaskState::Done, None));
+    };
+    let status = plan.dependency.as_ref()?;
+    if status.green(target) {
+        return Some((DurableTaskState::Done, None));
+    }
+    (status.open
+        && status.head == target.head
+        && status
+            .checks
+            .iter()
+            .any(|check| check.status != "completed"))
+    .then_some((DurableTaskState::Waiting, Some("validation_pending")))
 }
 
 async fn transition(

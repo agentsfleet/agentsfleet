@@ -9,7 +9,9 @@ mod history;
 mod store;
 
 use af_core::id::Uuid7;
-use af_wire::runner::{AssignedPolicy, CapabilityReport, RunnerLiveness, SelftestReport};
+use af_wire::runner::{
+    AssignedPolicy, CapabilityReport, HostFacts, RunnerLiveness, SelftestReport,
+};
 use afd_api_wire::admin::RunnerEventItem;
 use jiff::Timestamp;
 
@@ -72,6 +74,8 @@ pub struct RunnerItem {
     degraded: bool,
     /// Stored explanation for a degraded verdict.
     degraded_reason: Option<String>,
+    /// The host's processors, memory and free sandbox disk, as beats last read them.
+    host: HostFacts,
 }
 
 impl RunnerItem {
@@ -157,6 +161,12 @@ impl RunnerItem {
     #[must_use]
     pub fn degraded_reason(&self) -> Option<&str> {
         self.degraded_reason.as_deref()
+    }
+
+    /// The host's processors, memory and free sandbox disk, as beats last read them.
+    #[must_use]
+    pub const fn host(&self) -> HostFacts {
+        self.host
     }
 }
 

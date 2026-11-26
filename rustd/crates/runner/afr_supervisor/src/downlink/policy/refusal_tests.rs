@@ -33,7 +33,8 @@ async fn closed_or_invalid_assignment_stream_never_advertises_a_worker() -> crat
         }
         test_support::bounded(
             "invalid assignment shutdown",
-            Heartbeat::new(&plane, &probe, &holds).keep_beating(&published, &halt),
+            Heartbeat::new(&plane, &probe, &holds, std::path::Path::new("."))
+                .keep_beating(&published, &halt),
         )
         .await;
         assert!(halt.running().is_cancelled());
@@ -61,7 +62,8 @@ async fn a_permanent_heartbeat_failure_stops_the_runner_without_retrying() {
     let halt = Halt::new(CancellationToken::new());
     test_support::bounded(
         "permanent heartbeat shutdown",
-        Heartbeat::new(&plane, &probe, &holds).keep_beating(&published, &halt),
+        Heartbeat::new(&plane, &probe, &holds, std::path::Path::new("."))
+            .keep_beating(&published, &halt),
     )
     .await;
     assert!(halt.running().is_cancelled());

@@ -50,6 +50,7 @@ async fn test_a_beat_whose_writes_are_refused_still_answers_and_logs_each() {
         selftest: None,
         holds: HeldFleets(Vec::new()),
         closing: false,
+        host: af_wire::runner::HostFacts::default(),
     };
     let capture = Capture::install();
 

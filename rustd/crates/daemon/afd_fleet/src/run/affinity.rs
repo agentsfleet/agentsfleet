@@ -182,21 +182,24 @@ impl Runs {
     /// this runner, and a hint left behind would sort a fleet that keeps
     /// stopping first for it on every poll of the partition.
     ///
+    /// Answers whether it freed the thread: `false` when the token has moved on.
+    ///
     /// # Errors
     /// Reports a datastore that would not answer.
-    pub async fn release(&self, fleet_id: &Uuid7, fence: Fence) -> Result<()> {
+    pub async fn release(&self, fleet_id: &Uuid7, fence: Fence) -> Result<bool> {
         let mut connection = self.pool().acquire().await?;
         // A fleet's thread is keyed by the fleet's id.
-        sqlx::query(sql::shared::RELEASE_RUNLESS_THREAD)
+        let released = sqlx::query(sql::shared::RELEASE_RUNLESS_THREAD)
             .bind(fleet_id)
             .bind(fence.as_i64())
             .execute(&mut *connection)
             .await
             .map_err(query(CONTEXT_RELEASE))?;
-        Ok(())
+        Ok(released.rows_affected() > 0)
     }
 
-    /// Frees an assignment that issued no run, best-effort.
+    /// Frees an assignment that issued no run, best-effort, and answers whether
+    /// it did.
     ///
     /// The one place every post-assignment ending without a run lets go: the
     /// assignment pass's faults, and the pull's refusals, retries, parks and
@@ -204,19 +207,23 @@ impl Runs {
     /// changes nothing it can act on: the assignment lapses at its expiry, which is
     /// the cost every such ending paid before this existed. So the failure is
     /// logged and the answer stands.
-    pub(crate) async fn let_go(&self, fleet_id: &Uuid7, fence: Fence) {
-        if let Err(failure) = self.release(fleet_id, fence).await {
-            let Logged { error_code, reason } = failure.logged();
-            let fleet_id = fleet_id.as_str();
-            {
-                let (event, message) = (
-                    &EVENT_ASSIGNMENT_RELEASE_FAILED,
-                    format_args!(
-                        "an assignment that issued no run was not freed; it lapses at its expiry"
-                    ),
-                );
-                tracing::warn!(message, error_code, event, fleet_id, reason);
-            };
+    pub(crate) async fn let_go(&self, fleet_id: &Uuid7, fence: Fence) -> bool {
+        match self.release(fleet_id, fence).await {
+            Ok(freed) => freed,
+            Err(failure) => {
+                let Logged { error_code, reason } = failure.logged();
+                let fleet_id = fleet_id.as_str();
+                {
+                    let (event, message) = (
+                        &EVENT_ASSIGNMENT_RELEASE_FAILED,
+                        format_args!(
+                            "an assignment that issued no run was not freed; it lapses at its expiry"
+                        ),
+                    );
+                    tracing::warn!(message, error_code, event, fleet_id, reason);
+                };
+                false
+            }
         }
     }
 

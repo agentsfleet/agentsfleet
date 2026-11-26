@@ -14,7 +14,7 @@ export const POLICY = {
 export const RUNNER = {
   id: RUNNER_ID, host_id: "build-host", sandbox_tier: "landlock_full", status: "active", liveness: "online",
   labels: [], last_seen_at: INSTANT, created_at: INSTANT, assigned_policy: POLICY,
-  achievable: null, degraded: false, degraded_reason: null,
+  achievable: null, degraded: false, degraded_reason: null, host: {},
 };
 export const RUNNER_DETAIL = {
   ...RUNNER, active_run_count: 0, active_fleet_count: 0,

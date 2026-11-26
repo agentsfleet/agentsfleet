@@ -20,11 +20,13 @@ use serde_json::Value;
 
 use self::harness::{Fleet, json_body, send};
 
+#[path = "integration_operator_runner_host.rs"]
+mod host;
 #[path = "integration_operator_runner_retirement.rs"]
 mod retirement;
 
 pub(crate) const SUBJECT: &str = "user_live_runner_operator";
-const NOW: jiff::Timestamp = jiff::Timestamp::constant(1_760_000_000, 0);
+pub(crate) const NOW: jiff::Timestamp = jiff::Timestamp::constant(1_760_000_000, 0);
 const POLICY: &str = r#"{"assigned_policy":{"sandbox_tier":"dev_none","network_policy":"allow_all","registry_allowlist":[],"worker_count":99,"extra_binds":[],"durable_tasks_enabled":true}}"#;
 
 #[tokio::test]

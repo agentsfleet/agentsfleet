@@ -1,7 +1,7 @@
 //! Complete public requests reject ambiguous identities and unsafe recovery paths.
 use af_wire::{
     activity::DurableTaskActivity,
-    decision::{DecisionProfile, DecisionRequest},
+    decision::{DecisionProfile, DecisionRequest, GoalDecisionPolicy},
     durable_task::{CheckpointPageInput, CheckpointPlaintext, DurableTaskEffectInput},
 };
 use garde::Validate;
@@ -214,4 +214,28 @@ fn a_revision_past_its_index_row_is_refused() -> serde_json::Result<()> {
         vec!["revision".to_owned()]
     );
     Ok(())
+}
+
+// A stored profile that names `done` fails the read by naming the field, so
+// the playbook replaces it rather than a run guessing at a threshold.
+#[test]
+fn a_goal_policy_that_still_names_done_is_refused_by_name() {
+    let stored = json!({
+        "questions_revision": "dt-goal-v1",
+        "statement_min_bps": 9500,
+        "continue_action": {"probability_bps": 8000, "confidence_bps": 7000},
+        "wait": {"probability_bps": 8500, "confidence_bps": 7500},
+        "done": {"probability_bps": 9500, "confidence_bps": 8500},
+    });
+
+    let refused = serde_json::from_value::<GoalDecisionPolicy>(stored)
+        .err()
+        .map(|error| error.to_string());
+
+    assert!(
+        refused
+            .as_deref()
+            .is_some_and(|error| error.contains("unknown field `done`")),
+        "{refused:?}"
+    );
 }

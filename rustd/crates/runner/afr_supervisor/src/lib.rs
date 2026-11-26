@@ -161,7 +161,7 @@ pub async fn run_fetching_from(
     shutdown: CancellationToken,
 ) -> Result<()> {
     let runner = compose(config, home, engine, agent, probe)?;
-    serve_from(runner, origin, shutdown).await
+    Box::pin(serve_from(runner, origin, shutdown)).await
 }
 
 /// The runner a configuration, a storage home and the host's parts make.
@@ -190,7 +190,7 @@ fn compose(
 
 /// Runs a composed supervisor until `shutdown`, or until the daemon says stop.
 pub(crate) async fn serve(runner: Runner, shutdown: CancellationToken) -> Result<()> {
-    serve_from(runner, GITHUB_ORIGIN, shutdown).await
+    Box::pin(serve_from(runner, GITHUB_ORIGIN, shutdown)).await
 }
 
 /// [`serve`], with the bound repositories fetched from `origin`.
@@ -207,6 +207,7 @@ async fn serve_from(runner: Runner, origin: &str, shutdown: CancellationToken) -
         clock,
     } = runner;
     let recovery = recovery::RecoveryResources::configured(plane.runtime)?;
+    let sandboxes = home.sandboxes();
     let lessee = Arc::new(Lessee {
         plane,
         engine,
@@ -220,18 +221,18 @@ async fn serve_from(runner: Runner, origin: &str, shutdown: CancellationToken) -
         whoami: Whoami::default(),
         recovery,
     });
-    serve_composed(lessee, downlink, assignments, &probe).await
+    serve_composed(lessee, downlink, assignments, (&probe, &sandboxes)).await
 }
 
 async fn serve_composed(
     lessee: Arc<Lessee>,
     downlink: downlink::Downlink,
     assignments: tokio::sync::mpsc::Receiver<downlink::Assigned>,
-    probe: &HostProbe,
+    (probe, sandboxes): (&HostProbe, &std::path::Path),
 ) -> Result<()> {
     let (assignment, watching) = watch::channel(Assignment::initial());
-    let heartbeat =
-        Heartbeat::new(&lessee.plane, probe, &lessee.holds).keep_beating(&assignment, &lessee.halt);
+    let heartbeat = Heartbeat::new(&lessee.plane, probe, &lessee.holds, sandboxes)
+        .keep_beating(&assignment, &lessee.halt);
     let pool = worker_pool::serve(Arc::clone(&lessee), watching, assignments);
     let duties = shutdown::finish(&lessee.halt, async {
         tokio::join!(heartbeat, pool);

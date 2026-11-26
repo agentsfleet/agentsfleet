@@ -14,7 +14,7 @@
 
 use crate::seed;
 use crate::support;
-use afd_fleet::run::Billed;
+use afd_fleet::run::{Billed, Refused};
 
 use self::seed::{MODEL, POSTURE, PROVIDER, Seeded, seeded};
 use self::support::Fixtures;
@@ -72,8 +72,11 @@ async fn test_a_host_that_may_not_take_work_is_issued_no_run() {
         .await
         .expect("the healthy host's insert answers");
 
-    assert!(unknown.is_none(), "a host with no row takes no work");
-    assert!(degraded.is_none(), "a degraded host takes no work");
-    assert!(cleared.is_some(), "the assignment survived both refusals");
+    assert_eq!(
+        (unknown.err(), degraded.err()),
+        (Some(Refused::HostUnproven), Some(Refused::HostClosed)),
+        "a host with no row, and a degraded host, take no work"
+    );
+    assert!(cleared.is_ok(), "the assignment survived both refusals");
     fixtures.cleanup().await;
 }

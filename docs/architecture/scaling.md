@@ -84,7 +84,7 @@ When work waits, discovery reads each eligible fleet's oldest unsettled turn thr
 The 64-candidate limit bounds what returns, not how many active fleets Postgres examines.
 So size Postgres against active fleet count and pass rate together.
 
-Candidates come out in priority order: recent wakes, held fleets and previous holders first, then random.
+Candidates come out in priority order: recent wakes, held fleets and previous holders, then the turn that has waited longest.
 Assignment locks the thread row and head turn, stamps the fence and commits before pushing the run.
 
 Each recurring read below is served by an index.
@@ -158,7 +158,7 @@ Inputs: R replicas, N runner hosts, Z fleets, S peak SSE viewers, P_conn NATS co
 1. **Sizing bus connections by fleet or viewer count.** Each replica holds one connection.
 2. **Adding runners to fix run or report latency.** Scale replicas and Postgres.
 3. **Ignoring active fleet count in the Postgres budget.** One pass can do many indexed head lookups.
-4. **Replacing random candidate order with a fixed prefix.** A fixed order can starve eligible fleets.
+4. **Ordering candidates by a fixed key that ignores queue age.** Such an order can starve eligible fleets. The tie-break ages each head by how long it has waited while its thread was free, so the longest-waiting turn leads.
 5. **Raising `publish_deadline_ms` to ride out an outage.** The gap marker recovers the frame; a longer wait buys nothing.
 6. **Expecting a timer to recover a lost ping or wake.** None runs; the next event does.
 7. **Reading the backlog from a gauge.** Count unsettled `thread.turns` rows in Postgres.

@@ -30,6 +30,13 @@ CREATE TABLE runner.runners (
     selftest_checks          JSONB,
     selftest_sandbox_tier    TEXT,
     selftest_network_policy  TEXT,
+    -- The host's processors, total memory and free sandbox disk, as the latest
+    -- beat that read each reported it; NULL until one does. Written by the
+    -- heartbeat (`heartbeat_with_transition_history.sql`), read by the runner
+    -- views (`runner_detail.sql`, `list_runners_*.sql`).
+    host_cpu_count           INTEGER,
+    host_memory_bytes        BIGINT,
+    host_free_disk_bytes     BIGINT,
     run_version            BIGINT  NOT NULL,
     created_at               TIMESTAMPTZ(3)  NOT NULL,
     updated_at               TIMESTAMPTZ(3)  NOT NULL,

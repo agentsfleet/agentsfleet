@@ -45,6 +45,7 @@ mod bindings;
 mod chat;
 mod decision;
 mod decision_expiry;
+mod decision_unread;
 mod faults;
 mod history;
 mod lapses;

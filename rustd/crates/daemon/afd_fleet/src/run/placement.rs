@@ -57,6 +57,7 @@ mod tests {
                     runner: &test_dead::id(9),
                     held: &[],
                     degraded: true,
+                    credits: 1,
                     now: test_dead::AT,
                     recovery: None,
                 },

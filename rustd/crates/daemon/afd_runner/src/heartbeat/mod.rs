@@ -19,7 +19,7 @@
 use af_core::error_code::{self, Coded as _, Logged};
 use af_core::id::Uuid7;
 use af_observability::producers;
-use af_wire::runner::{CapabilityReport, HeartbeatRequest, HeldFleets, SelftestReport};
+use af_wire::runner::{CapabilityReport, HeartbeatRequest, HeldFleets, HostFacts, SelftestReport};
 use garde::{Valid, Validate as _};
 use jiff::Timestamp;
 use sqlx::{Executor as _, PgConnection};
@@ -48,6 +48,11 @@ pub const NO_REPORT: HeartbeatRequest<'static> = HeartbeatRequest {
     selftest: None,
     holds: HeldFleets(Vec::new()),
     closing: false,
+    host: HostFacts {
+        cpu_count: None,
+        memory_bytes: None,
+        free_disk_bytes: None,
+    },
 };
 
 /// What one beat resolved to, for the reply the host reads.
@@ -166,6 +171,7 @@ impl Runners {
     ) -> Result<Decision<Beat>> {
         let authority = row.authority.as_ref();
         let incoming = bounded_report(beat);
+        let host = host::HostColumns::of(self.refused_facts(), runner, beat.host);
         let stored = capability(row.capability_report_json.as_deref());
         let assigned = row.assignment.decode()?;
         let verdict = reconcile(&assigned, incoming.or(stored.as_ref()));
@@ -182,14 +188,7 @@ impl Runners {
         // After the capability write, so a malformed verdict cannot cost the
         // beat its reconciliation.
         let reported = persist_selftest(connection, runner, beat.selftest.as_ref()).await;
-        let valid = authority.is_some()
-            && !verdict.is_degraded()
-            && !beat.closing
-            && (beat.capability_report.is_none() || incoming.is_some())
-            && beat
-                .selftest
-                .as_ref()
-                .is_none_or(|report| bounds::accept(report).is_ok());
+        let valid = authority.is_some() && cordon::healthy(beat, incoming, verdict);
         if self
             .bump_liveness(
                 connection,
@@ -199,6 +198,7 @@ impl Runners {
                     authority,
                     valid,
                     policy: &row.witness,
+                    host,
                 },
             )
             .await
@@ -331,6 +331,8 @@ fn report(event: &'static str, runner: &Uuid7, error: &Error) {
 
 mod cordon;
 pub mod holds;
+mod host;
+pub(crate) use host::RefusedFacts;
 mod policy;
 mod verdict;
 

@@ -26,17 +26,20 @@ mod privacy;
 mod retries;
 mod turns;
 
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use af_core::test_util::trace::Capture;
+use af_egress::testing::RecordingTransport;
 use af_wire::report::FailureClass;
 use af_wire::tool_trace::ToolCallStatus;
 use afr_agent::ResultOutcome;
-use afr_tools::catalog::{UPDATE_PLAN, WEB_SEARCH};
+use afr_tools::Catalog;
+use afr_tools::catalog::{BROWSER, PUBLISHED, UPDATE_PLAN, WEB_SEARCH};
 use serde_json::json;
 
 use self::support::wires::{CACHED_TOKENS, PROMPT_TOKENS, Wire};
-use self::support::{Fake, RUN_ID, Reply, engine, payload, run};
+use self::support::{Fake, RUN_ID, Reply, engine, engine_hosting, payload, run};
 
 /// The answer every scripted run ends on.
 const ANSWER: &str = "It is 4.";
@@ -204,6 +207,43 @@ async fn test_web_search_is_a_hosted_spec() {
         output.trace.unwrap().calls[0].status,
         ToolCallStatus::Failed
     );
+}
+
+/// Anthropic's Messages API refuses a whole request when one function tool's
+/// `input_schema` names no type (`tools.N.custom.input_schema.type: Field
+/// required`). A tool that takes untyped arguments generates `{}`, so every
+/// offered function tool must name the object type. A hosted spec carries no
+/// schema.
+#[tokio::test]
+async fn every_published_tool_is_offered_to_messages_as_an_object_schema() {
+    let mut fake = Fake::serve(vec![Wire::Messages.answer(ANSWER)]).await;
+    let (transport, _sent) = RecordingTransport::replying(200, "");
+    let engine = engine_hosting(&fake, Catalog::hosted(Arc::new(transport)));
+    let names: Vec<&str> = PUBLISHED.iter().map(|entry| entry.name()).collect();
+    let held = payload(&Wire::Messages.provider(), &names, "search");
+
+    let _ = run(&engine, &held).await;
+
+    let body = &fake.seen()[0].body;
+    // A request offering nothing fails the next assertion, which wants the
+    // browser among the offered tools.
+    let none = Vec::new();
+    let tools = body["tools"].as_array().unwrap_or(&none);
+    let label = |tool: &serde_json::Value| tool["name"].as_str().map(str::to_owned);
+    let offered: Vec<String> = tools.iter().filter_map(label).collect();
+    assert!(
+        offered.iter().any(|name| name == BROWSER.name()),
+        "{offered:?}"
+    );
+    let untyped: Vec<String> = tools
+        .iter()
+        .filter(|tool| {
+            tool.get("input_schema")
+                .is_some_and(|schema| schema["type"] != "object")
+        })
+        .filter_map(label)
+        .collect();
+    assert!(untyped.is_empty(), "{untyped:?}");
 }
 
 #[tokio::test]

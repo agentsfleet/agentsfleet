@@ -59,6 +59,8 @@ pub(super) const BETA_FIELDS: &[(&str, &[&str])] = &[
     // runner release that reads the assignment.
     ("FoldResponse", &["inputs"]),
     ("FoldedInput", &["turn_id", "sequence", "text"]),
+    // A runner's host facts are new, and the facts a beat reads may grow.
+    ("RunnerItem", &["host"]),
     // The fleet-to-fleet verbs are new, and so is the runner release that
     // calls them; their replies may still reshape.
     (
