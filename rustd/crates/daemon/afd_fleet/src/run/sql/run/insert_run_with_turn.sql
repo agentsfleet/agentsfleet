@@ -8,8 +8,8 @@
 --
 -- The census counts live runs only, so it admits what the runner's credits
 -- offer. A sandbox hold takes no worker: the runner keeps its holds below its
--- free workers and drops one when a run starts, and the heartbeat clears that
--- hold only a beat later, so counting holds refused a worker the runner had free.
+-- free workers and drops one when a run starts, while the heartbeat clears a
+-- dropped hold a beat later, so a recorded hold may sit on a free worker.
 WITH instant AS MATERIALIZED (
   SELECT clock_timestamp() AS checked_at
 ), host AS MATERIALIZED (

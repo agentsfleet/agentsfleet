@@ -55,7 +55,7 @@ pub(super) struct ItemRow {
     sandbox_config: Option<String>,
     host_cpu_count: Option<i32>,
     host_memory_bytes: Option<i64>,
-    host_disk_free_bytes: Option<i64>,
+    host_free_disk_bytes: Option<i64>,
 }
 
 /// The detail read: the item's columns, its counts and its last self-test.
@@ -128,8 +128,8 @@ impl ItemRow {
                 memory_bytes: self
                     .host_memory_bytes
                     .and_then(|bytes| u64::try_from(bytes).ok()),
-                disk_free_bytes: self
-                    .host_disk_free_bytes
+                free_disk_bytes: self
+                    .host_free_disk_bytes
                     .and_then(|bytes| u64::try_from(bytes).ok()),
             },
         })

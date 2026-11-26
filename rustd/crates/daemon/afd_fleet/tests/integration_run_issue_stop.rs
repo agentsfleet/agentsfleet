@@ -14,7 +14,7 @@
 
 use af_core::id::Uuid7;
 use afd_db::test_util::mint_id;
-use afd_fleet::run::{Acquired, Billed};
+use afd_fleet::run::{Acquired, Billed, Refused};
 use afd_turns::view::History;
 use afd_turns::view::stop::{Stop, hold_thread, stop_on};
 use sqlx::Connection as _;
@@ -132,7 +132,10 @@ async fn a_fleet_head_stopped_after_its_assignment_is_not_issued() {
         .issue(&first, &held, billed(&tenant), fixtures.enrolled_at())
         .await
         .expect("the issue answers");
-    assert!(issued.is_err(), "a stopped head is not issued");
+    assert!(
+        matches!(issued, Err(Refused::Fenced(_))),
+        "a stopped head is not issued: {issued:?}"
+    );
     assert_eq!(runs_for_turn(&fixtures.database, &held.turn_id).await, 0);
     fixtures.cleanup().await;
 }
@@ -183,7 +186,10 @@ async fn a_stop_committed_while_the_issue_waits_issues_no_run() {
         Stop::Cancelled { running: false, .. }
     ));
     let issued = issued.expect("the issue answers");
-    assert!(issued.is_err(), "the issue re-read the turn Stop settled");
+    assert!(
+        matches!(issued, Err(Refused::Fenced(_))),
+        "the issue re-read the turn Stop settled: {issued:?}"
+    );
     assert_eq!(runs_for_turn(&fixtures.database, &held.turn_id).await, 0);
     fixtures.cleanup().await;
 }

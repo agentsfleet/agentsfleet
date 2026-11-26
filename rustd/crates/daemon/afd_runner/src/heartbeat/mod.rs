@@ -51,7 +51,7 @@ pub const NO_REPORT: HeartbeatRequest<'static> = HeartbeatRequest {
     host: HostFacts {
         cpu_count: None,
         memory_bytes: None,
-        disk_free_bytes: None,
+        free_disk_bytes: None,
     },
 };
 
@@ -171,8 +171,7 @@ impl Runners {
     ) -> Result<Decision<Beat>> {
         let authority = row.authority.as_ref();
         let incoming = bounded_report(beat);
-        // Facts past their bounds are not facts: the row keeps the last ones.
-        let host = garde::Unvalidated::new(beat.host).validate().ok();
+        let host = host::HostColumns::of(runner, beat.host);
         let stored = capability(row.capability_report_json.as_deref());
         let assigned = row.assignment.decode()?;
         let verdict = reconcile(&assigned, incoming.or(stored.as_ref()));
@@ -189,14 +188,7 @@ impl Runners {
         // After the capability write, so a malformed verdict cannot cost the
         // beat its reconciliation.
         let reported = persist_selftest(connection, runner, beat.selftest.as_ref()).await;
-        let valid = authority.is_some()
-            && !verdict.is_degraded()
-            && !beat.closing
-            && (beat.capability_report.is_none() || incoming.is_some())
-            && beat
-                .selftest
-                .as_ref()
-                .is_none_or(|report| bounds::accept(report).is_ok());
+        let valid = authority.is_some() && cordon::healthy(beat, incoming, verdict);
         if self
             .bump_liveness(
                 connection,
@@ -206,7 +198,7 @@ impl Runners {
                     authority,
                     valid,
                     policy: &row.witness,
-                    host: host.as_ref(),
+                    host,
                 },
             )
             .await
@@ -339,6 +331,7 @@ fn report(event: &'static str, runner: &Uuid7, error: &Error) {
 
 mod cordon;
 pub mod holds;
+mod host;
 mod policy;
 mod verdict;
 

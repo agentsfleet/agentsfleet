@@ -5,6 +5,8 @@ use af_crypto::entropy::Entropy;
 use afd_bus::wake::Wake;
 use afd_fleet::run::{Acquired, Kind, RunService, Runs};
 use afd_turns::{IncomingTurn, Key, Producer, Reply, Turns};
+use jiff::Timestamp;
+use jiff_sqlx::ToSqlx as _;
 use sqlx::Connection as _;
 use tokio_util::sync::CancellationToken;
 
@@ -152,8 +154,8 @@ async fn a_turn_whose_assignment_was_lost_is_offered_before_newer_sticky_work() 
 }
 
 // Value: protects=fleets that tie on hold, hint and locality are offered oldest
-// turn first; fails_when=the tie-break is random, so which waiting fleet runs
-// next changes from pass to pass and an old turn can wait behind newer ones;
+// turn first; fails_when=the tie-break is random or falls to the turn id, so
+// which waiting fleet runs next ignores how long its turn has queued;
 // seam=the ledger selection and the assignment on live Postgres.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -161,13 +163,23 @@ async fn fleets_that_tie_are_offered_oldest_turn_first() {
     let fixtures = Fixtures::create().await;
     let (first, workspace, tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
     let runs = fixtures.runs_with_dead_bus();
-    let mut queued = vec![enqueue(&fixtures, &first, &workspace).await];
+    let mut fleets = vec![first.clone()];
     for _ in 0..4 {
         let fleet = afd_db::test_util::mint_id();
         fixtures
             .seed_fleet(&fleet, &workspace, &tenant, &placement_tag(&first))
             .await;
-        queued.push(enqueue(&fixtures, &fleet, &workspace).await);
+        fleets.push(fleet);
+    }
+    // Each turn is minted after the one before it and queued a second
+    // earlier, so its id sorts later while its age sorts first.
+    let mut queued = Vec::with_capacity(fleets.len());
+    for (earlier, fleet) in (0_u64..).zip(&fleets) {
+        let at = af_core::clock::before(
+            fixtures.enrolled_at(),
+            std::time::Duration::from_secs(earlier),
+        );
+        queued.push(enqueue_at(&fixtures, fleet, &workspace, at).await);
     }
 
     let mut offered = Vec::with_capacity(queued.len());
@@ -175,8 +187,32 @@ async fn fleets_that_tie_are_offered_oldest_turn_first() {
         offered.push(acquired.turn_id);
     }
 
+    queued.reverse();
     assert_eq!(offered, queued, "each pass takes the oldest waiting turn");
     fixtures.cleanup().await;
+}
+
+/// Queues one turn for `fleet`, received at `at`.
+async fn enqueue_at(fixtures: &Fixtures, fleet: &Uuid7, workspace: &Uuid7, at: Timestamp) -> Uuid7 {
+    let id = afd_db::test_util::mint_id();
+    sqlx::query(super::INSERT)
+        .bind(&id)
+        .bind(fleet)
+        .bind(workspace)
+        .bind(Producer::Steer.as_str())
+        .bind(af_wire::turn::TurnKind::Chat.as_str())
+        .bind(at.to_sqlx())
+        .bind(af_core::turn::status::QUEUED)
+        .execute(
+            &mut *fixtures
+                .database
+                .acquire()
+                .await
+                .expect("runtime connection"),
+        )
+        .await
+        .expect("accepted fixture row");
+    id
 }
 
 /// Ends `fleet`'s run on `turn` and frees its worker and thread, leaving the

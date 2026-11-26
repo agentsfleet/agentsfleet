@@ -95,11 +95,15 @@ async fn untrusted_goal_results_authorize_no_report() -> crate::Result<()> {
     Ok(())
 }
 
-/// A goal check whose next action picks `choice` at `probability` and
-/// `confidence`, the rest split over the other options, and whose one
-/// statement scores `statement`.
-fn judged(choice: &str, probability: f64, confidence: f64, statement: f64) -> DecisionEvaluation {
-    let rest = (1.0 - probability) / 2.0;
+/// A goal check whose next action picks `choice` at `confidence`, with
+/// probabilities `[done, wait, continue]`, and whose one statement scores
+/// `statement`.
+fn judged(
+    choice: &str,
+    [done, wait, go]: [f64; 3],
+    confidence: f64,
+    statement: f64,
+) -> DecisionEvaluation {
     let mut judged = evaluation(choice, Some(confidence), statement);
     recorded(&mut judged).result.result = DecisionOutcome::Answered {
         answers: BTreeMap::from([
@@ -108,12 +112,9 @@ fn judged(choice: &str, probability: f64, confidence: f64, statement: f64) -> De
                 DecisionAnswer::Choice {
                     choice: choice.to_owned(),
                     confidence: Some(confidence),
-                    probabilities: ["DONE", "WAIT", "CONTINUE"]
+                    probabilities: [("DONE", done), ("WAIT", wait), ("CONTINUE", go)]
                         .into_iter()
-                        .map(|option| {
-                            let share = if option == choice { probability } else { rest };
-                            (option.to_owned(), share)
-                        })
+                        .map(|(option, share)| (option.to_owned(), share))
                         .collect(),
                 },
             ),
@@ -133,11 +134,12 @@ async fn statements_that_hold_complete_the_task_whatever_the_next_action_says() 
     // at 0.97 while DONE has probability 0.43 and confidence 0.24. A held
     // statement also outranks a CONTINUE that clears its own threshold.
     let dev = vec![
-        judged("CONTINUE", 0.96, 0.95, 0.03),
-        judged("CONTINUE", 0.97, 0.96, 0.26),
-        judged("DONE", 0.43, 0.24, 0.97),
+        judged("CONTINUE", [0.02, 0.02, 0.96], 0.95, 0.03),
+        judged("CONTINUE", [0.015, 0.015, 0.97], 0.96, 0.26),
+        judged("DONE", [0.43, 0.285, 0.285], 0.24, 0.97),
     ];
-    for checks in [dev, vec![judged("CONTINUE", 1.0, 1.0, 0.97)]] {
+    let cleared = judged("CONTINUE", [0.0, 0.0, 1.0], 1.0, 0.97);
+    for checks in [dev, vec![cleared]] {
         let groups = checks.len();
         let script = Script::new((0..groups).map(|_| vec![say("Recalled three."), ended(false)]));
         let engine = super::super::super::tests::engine(vec![], &script);

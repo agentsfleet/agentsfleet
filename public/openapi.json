@@ -8947,7 +8947,7 @@
             "schema": {
               "type": "string"
             },
-            "example": "agentsfleet.runner.v5"
+            "example": "agentsfleet.runner.v6"
           },
           {
             "name": "agentsfleet-runner-kind",
@@ -24302,16 +24302,18 @@
               "null"
             ],
             "format": "int32",
-            "description": "Processors the runner may use. Bounded by its Postgres `INTEGER` column.",
-            "minimum": 0
+            "description": "Processors the runner may use.",
+            "maximum": 2147483647,
+            "minimum": 1
           },
-          "disk_free_bytes": {
+          "free_disk_bytes": {
             "type": [
               "integer",
               "null"
             ],
             "format": "int64",
-            "description": "Free bytes on the file system that holds the runs' sandboxes. Bounded by\nits Postgres `BIGINT` column.",
+            "description": "Free bytes on the file system that holds the runner's sandboxes.",
+            "maximum": 9223372036854775807,
             "minimum": 0
           },
           "memory_bytes": {
@@ -24320,7 +24322,8 @@
               "null"
             ],
             "format": "int64",
-            "description": "The host's total memory, in bytes. Bounded by its Postgres `BIGINT` column.",
+            "description": "The host's total memory, in bytes.",
+            "maximum": 9223372036854775807,
             "minimum": 0
           }
         },
@@ -26933,7 +26936,8 @@
           "last_seen_at",
           "created_at",
           "assigned_policy",
-          "degraded"
+          "degraded",
+          "host"
         ],
         "properties": {
           "achievable": {
@@ -26979,8 +26983,13 @@
             "description": "Stored explanation for a degraded verdict."
           },
           "host": {
-            "$ref": "#/components/schemas/HostFacts",
-            "description": "The host's processors, memory and free sandbox disk, as its beats last\nread them; a fact no beat has read is absent."
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/HostFacts"
+              }
+            ],
+            "description": "The host's processors, memory and free sandbox disk, as its beats last\nread them; a fact no beat has read is absent. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
           },
           "host_id": {
             "type": "string",

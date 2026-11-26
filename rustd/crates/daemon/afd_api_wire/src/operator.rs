@@ -85,7 +85,6 @@ pub struct RunnerItem<'a> {
     pub degraded_reason: Option<Cow<'a, str>>,
     /// The host's processors, memory and free sandbox disk, as its beats last
     /// read them; a fact no beat has read is absent.
-    #[serde(default)]
     pub host: HostFacts,
 }
 

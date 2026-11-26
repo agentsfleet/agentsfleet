@@ -236,7 +236,6 @@ pub struct HeartbeatRequest<'a> {
     /// from `holds` is released immediately.
     pub closing: bool,
     /// The host's processors, memory and free sandbox disk, read for this beat.
-    #[serde(default)]
     pub host: HostFacts,
 }
 

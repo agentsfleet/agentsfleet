@@ -211,8 +211,9 @@ async fn test_web_search_is_a_hosted_spec() {
 
 /// Anthropic's Messages API refuses a whole request when one function tool's
 /// `input_schema` names no type (`tools.N.custom.input_schema.type: Field
-/// required`), which took every Claude model down while the browser tools
-/// were offered as `{}`. A hosted spec carries no schema.
+/// required`). A tool that takes untyped arguments generates `{}`, so every
+/// offered function tool must name the object type. A hosted spec carries no
+/// schema.
 #[tokio::test]
 async fn every_published_tool_is_offered_to_messages_as_an_object_schema() {
     let mut fake = Fake::serve(vec![Wire::Messages.answer(ANSWER)]).await;

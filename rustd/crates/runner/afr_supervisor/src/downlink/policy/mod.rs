@@ -255,6 +255,8 @@ mod closing_tests;
 #[cfg(test)]
 mod durable_policy_tests;
 #[cfg(test)]
+mod host_tests;
+#[cfg(test)]
 mod refusal_tests;
 #[cfg(test)]
 mod tests;

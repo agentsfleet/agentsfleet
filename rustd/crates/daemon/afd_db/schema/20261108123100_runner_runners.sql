@@ -36,7 +36,7 @@ CREATE TABLE runner.runners (
     -- views (`runner_detail.sql`, `list_runners_*.sql`).
     host_cpu_count           INTEGER,
     host_memory_bytes        BIGINT,
-    host_disk_free_bytes     BIGINT,
+    host_free_disk_bytes     BIGINT,
     run_version            BIGINT  NOT NULL,
     created_at               TIMESTAMPTZ(3)  NOT NULL,
     updated_at               TIMESTAMPTZ(3)  NOT NULL,

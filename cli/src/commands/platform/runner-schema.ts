@@ -22,7 +22,7 @@ const capability = Schema.Struct({
 });
 /** The host's processors, memory and free sandbox disk; a fact no beat has read is absent. */
 const host = Schema.Struct({
-  cpu_count: Schema.optionalKey(count), memory_bytes: Schema.optionalKey(count), disk_free_bytes: Schema.optionalKey(count),
+  cpu_count: Schema.optionalKey(count), memory_bytes: Schema.optionalKey(count), free_disk_bytes: Schema.optionalKey(count),
 });
 const runner = Schema.Struct({
   id: text, host_id: text, sandbox_tier: Schema.Enum(SandboxTier), status,

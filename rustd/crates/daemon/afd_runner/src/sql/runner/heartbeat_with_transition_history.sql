@@ -25,7 +25,7 @@ WITH locked AS MATERIALIZED (
     -- The host facts this beat read; one it could not read keeps the last.
     host_cpu_count = COALESCE($18::integer, r.host_cpu_count),
     host_memory_bytes = COALESCE($19::bigint, r.host_memory_bytes),
-    host_disk_free_bytes = COALESCE($20::bigint, r.host_disk_free_bytes)
+    host_free_disk_bytes = COALESCE($20::bigint, r.host_free_disk_bytes)
   FROM lifting p WHERE r.id = p.id
   RETURNING r.id, p.last_seen_at AS previous, p.checked_at, p.lift
 ), online AS (

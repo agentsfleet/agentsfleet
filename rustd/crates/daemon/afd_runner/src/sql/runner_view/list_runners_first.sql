@@ -10,7 +10,7 @@ SELECT r.id AS id, r.host_id, r.sandbox_tier, r.status, r.cordon_reason, r.cordo
        r.sandbox_config::text AS sandbox_config,
        r.durable_tasks_enabled,
        r.decision_platform_model_id AS decision_model_id, r.tenant_id,
-       r.host_cpu_count, r.host_memory_bytes, r.host_disk_free_bytes
+       r.host_cpu_count, r.host_memory_bytes, r.host_free_disk_bytes
 FROM runner.runners r
 WHERE ($4::boolean OR r.tenant_id = $3::uuid)
 ORDER BY r.created_at DESC, r.id DESC

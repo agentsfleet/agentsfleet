@@ -216,8 +216,8 @@ fn a_revision_past_its_index_row_is_refused() -> serde_json::Result<()> {
     Ok(())
 }
 
-// A profile stored before the goal policy lost `done` fails the read by
-// naming the field, so the playbook replaces it rather than a run guessing.
+// A stored profile that names `done` fails the read by naming the field, so
+// the playbook replaces it rather than a run guessing at a threshold.
 #[test]
 fn a_goal_policy_that_still_names_done_is_refused_by_name() {
     let stored = json!({

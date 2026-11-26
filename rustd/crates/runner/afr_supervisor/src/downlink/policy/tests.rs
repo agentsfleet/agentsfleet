@@ -65,7 +65,7 @@ pub(super) fn policy() -> serde_json::Value {
         "registry_allowlist": [], "worker_count": 3, "extra_binds": []})
 }
 
-fn reply(status: &str, selftest: bool) -> Answer {
+pub(super) fn reply(status: &str, selftest: bool) -> Answer {
     answer(status, &policy(), selftest, &[])
 }
 
@@ -329,41 +329,4 @@ async fn an_invalid_release_identifier_refuses_the_assignment() {
     );
     assert!(!heartbeat.last.takes_work(0));
     holds.shutdown().await;
-}
-
-/// Every beat reports the processors the runner may use and the free bytes of
-/// the file system that holds its sandboxes, and the host's memory where the
-/// host answers it; a sandbox root it cannot read reports no free disk.
-#[tokio::test]
-async fn a_beat_carries_the_hosts_processors_memory_and_free_disk() {
-    let (plane, mut calls) = plane(|_call| reply(KEEP_GOING, true));
-    let probe = probe();
-    let held = idle_holds();
-    let sandboxes = tempfile::tempdir().unwrap();
-    let missing = sandboxes.path().join("missing");
-
-    let read = Heartbeat::new(&plane, &probe, &held, sandboxes.path())
-        .beat()
-        .await;
-    let unread = Heartbeat::new(&plane, &probe, &held, &missing).beat().await;
-
-    assert!(read.is_ok() && unread.is_ok(), "{read:?} {unread:?}");
-    let calls = drain(&mut calls);
-    let (read, unread) = (&sent(&calls[0])["host"], &sent(&calls[1])["host"]);
-    assert!(
-        read["cpu_count"].as_u64().is_some_and(|cpus| cpus >= 1),
-        "{read}"
-    );
-    assert!(
-        read["disk_free_bytes"]
-            .as_u64()
-            .is_some_and(|free| free > 0),
-        "{read}"
-    );
-    assert_eq!(
-        read["memory_bytes"].as_u64().is_some(),
-        cfg!(target_os = "linux"),
-        "{read}"
-    );
-    assert!(unread.get("disk_free_bytes").is_none(), "{unread}");
 }

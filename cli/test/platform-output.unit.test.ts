@@ -35,7 +35,7 @@ test("renders a runner's identity, policy and checks for an interactive terminal
 });
 
 test("renders each runner's processors, memory and free disk", async () => {
-  const host = {cpu_count: 8, memory_bytes: 17_179_869_184, disk_free_bytes: 34_359_738_368};
+  const host = {cpu_count: 8, memory_bytes: 17_179_869_184, free_disk_bytes: 34_359_738_368};
   fixture.respond = () => Response.json({items: [{...RUNNER, host}, RUNNER], total: 2, next_cursor: null});
   const table = await fixture.run(["runners", "list"], "", true);
   expect(table.code).toBe(0);

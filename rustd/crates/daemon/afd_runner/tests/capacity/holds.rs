@@ -1,5 +1,7 @@
 //! Idle holds take no worker from new work and never renew an existing run.
 
+use std::sync::Arc;
+
 use af_core::clock;
 use afd_runner::capacity::Work;
 
@@ -35,4 +37,34 @@ async fn test_a_renewal_counts_no_holds() {
     assert!(fixture.capacity(Work::Existing).await.can_renew());
     assert!(!fixture.capacity(Work::Fleet(&other)).await.can_assign());
     fixture.cleanup().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_concurrent_assignments_fill_every_worker_beside_a_live_hold() {
+    let fixture = Arc::new(Fixture::create(2).await);
+    fixture.hold(clock::after(clock::now(), LIVE_FOR)).await;
+    let barrier = Arc::new(tokio::sync::Barrier::new(100));
+    let mut assignments = tokio::task::JoinSet::new();
+    for _ in 0..100 {
+        let fixture = Arc::clone(&fixture);
+        let barrier = Arc::clone(&barrier);
+        assignments.spawn(async move {
+            barrier.wait().await;
+            fixture.try_assign().await
+        });
+    }
+    let mut accepted = 0;
+    while let Some(assignment) = assignments.join_next().await {
+        if assignment.expect("assignment task completes") {
+            accepted += 1;
+        }
+    }
+
+    assert_eq!(accepted, 2, "the idle hold takes neither worker");
+    Arc::try_unwrap(fixture)
+        .ok()
+        .expect("assignments finished")
+        .cleanup()
+        .await;
 }

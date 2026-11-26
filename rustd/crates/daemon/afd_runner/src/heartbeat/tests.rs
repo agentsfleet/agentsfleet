@@ -32,6 +32,7 @@ fn beat_body(controllers: &[String]) -> String {
         "selftest": null,
         "holds": [],
         "closing": false,
+        "host": {},
     })
     .to_string()
 }

@@ -27,6 +27,9 @@ use crate::run::runner_runs;
 use crate::run::sql;
 use crate::run::store::Runs;
 
+mod refused;
+pub use self::refused::{Census, Refused};
+
 /// Statement name, for the context a query failure carries.
 const CONTEXT_ISSUE: &str = "run issue";
 
@@ -64,76 +67,6 @@ pub struct Issued {
     pub task: Option<af_wire::durable_task::DurableTaskContext<'static>>,
     /// Actual thread deadline after task limits were applied.
     pub expires_at: Timestamp,
-}
-
-/// Why the issue wrote no run: the guard that refused it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Refused {
-    /// The fleet is no longer active in its workspace.
-    Scope,
-    /// The host row is gone, or this connection no longer proves it.
-    HostUnproven,
-    /// The host is cordoned, draining, revoked or degraded.
-    HostClosed,
-    /// The placement choice moved since the assignment read it.
-    ChoiceStale,
-    /// The host may not take this tenant's work or this model key.
-    Placement,
-    /// Live runs fill every worker.
-    CensusFull(Census),
-    /// A worker was free, so the assignment no longer held: its thread
-    /// fence, its deadline or the head turn moved under the issue.
-    Fenced(Census),
-    /// The turn's durable task could not be attached.
-    Task,
-}
-
-impl Refused {
-    /// The log's `reason` value.
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Scope => "scope",
-            Self::HostUnproven => "host_unproven",
-            Self::HostClosed => "host_closed",
-            Self::ChoiceStale => "choice_stale",
-            Self::Placement => "placement",
-            Self::CensusFull(_) => "census_full",
-            Self::Fenced(_) => "fenced",
-            Self::Task => "task",
-        }
-    }
-
-    /// Whether another pass can run the turn: this one lost only for room,
-    /// time or the placement choice it read. A refusal of this host, or of the
-    /// work itself, would meet the same pass again.
-    #[must_use]
-    pub const fn rerings(self) -> bool {
-        matches!(
-            self,
-            Self::CensusFull(_) | Self::Fenced(_) | Self::ChoiceStale
-        )
-    }
-
-    /// The host's census, read when the guarded insert wrote nothing.
-    #[must_use]
-    pub const fn census(self) -> Option<Census> {
-        match self {
-            Self::CensusFull(census) | Self::Fenced(census) => Some(census),
-            _ => None,
-        }
-    }
-}
-
-/// The host's census beside a refused insert, under the same host lock.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Census {
-    /// Live runs on the host.
-    pub occupied: i64,
-    /// Other fleets' idle holds on the host, which take no worker.
-    pub held: i64,
-    /// The host's assigned worker limit.
-    pub worker_count: i32,
 }
 
 impl Runs {
@@ -178,28 +111,13 @@ impl Runs {
         let (run_id, event_row_id) = self.mint(now)?;
         let decision =
             super::decision::freeze(&mut transaction, runner_id, host.decision_selected()).await?;
-        let Some(created_at) = (sql::run::RunRow {
-            run_id: &run_id,
-            runner_id,
-            fleet_id: &acquired.fleet_id,
-            workspace_id: &acquired.workspace_id,
-            tenant_id: billed.tenant_id,
-            turn_id: &acquired.turn_id,
-            turn_created_at: acquired.turn_created_at,
-            posture: billed.posture,
-            provider: billed.provider,
-            model: billed.model,
-            fencing_token: acquired.fence.as_i64(),
-            status: sql::RUN_STATUS_ACTIVE,
-            event_row_id: &event_row_id,
-            kind: acquired.kind.as_str(),
-            decision_snapshot: decision.as_deref(),
-            run_version: host.run_version(),
-            held_until: acquired.held_until,
-        })
-        .insert(&mut transaction)
-        .await?
-        else {
+        let row = run_row(
+            (runner_id, acquired, &billed),
+            (&run_id, &event_row_id),
+            decision.as_deref(),
+            host.run_version(),
+        );
+        let Some(created_at) = row.insert(&mut transaction).await? else {
             let refused = self
                 .refused_insert(&mut transaction, runner_id, acquired, billed.tenant_id)
                 .await?;
@@ -252,41 +170,40 @@ impl Runs {
         Ok(())
     }
 
-    /// Which guard the insert met, from the host's census in the same
-    /// transaction: a full host, or an assignment that no longer held.
-    ///
-    /// The host row stays locked, so no other issue can fill a worker between
-    /// the insert and this read; a run that ended in between can only turn a
-    /// full census into [`Refused::Fenced`], never the reverse.
-    async fn refused_insert(
-        &self,
-        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-        runner_id: &Uuid7,
-        acquired: &Acquired,
-        tenant_id: &Uuid7,
-    ) -> Result<Refused> {
-        let census = self
-            .fleet_census(transaction, runner_id, &acquired.fleet_id, tenant_id)
-            .await?;
-        Ok(census.map_or(Refused::HostUnproven, |capacity| {
-            let counted = Census {
-                occupied: capacity.occupied(),
-                held: capacity.held(),
-                worker_count: capacity.workers(),
-            };
-            if capacity.can_assign() {
-                Refused::Fenced(counted)
-            } else {
-                Refused::CensusFull(counted)
-            }
-        }))
-    }
-
     /// Draw the independent run and audit identities.
     fn mint(&self, now: Timestamp) -> Result<(Uuid7, Uuid7)> {
         let run_id = self.entropy().uuid7(now)?;
         let event_row_id = self.entropy().uuid7(now)?;
         Ok((run_id, event_row_id))
+    }
+}
+
+/// The run row the issue writes, from the assignment, the gates' billing, the
+/// minted identities and the host lock's placement revision.
+fn run_row<'a>(
+    (runner_id, acquired, billed): (&'a Uuid7, &'a Acquired, &Billed<'a>),
+    (run_id, event_row_id): (&'a Uuid7, &'a Uuid7),
+    decision_snapshot: Option<&'a DecisionAssignment>,
+    run_version: i64,
+) -> sql::run::RunRow<'a> {
+    sql::run::RunRow {
+        run_id,
+        runner_id,
+        fleet_id: &acquired.fleet_id,
+        workspace_id: &acquired.workspace_id,
+        tenant_id: billed.tenant_id,
+        turn_id: &acquired.turn_id,
+        turn_created_at: acquired.turn_created_at,
+        posture: billed.posture,
+        provider: billed.provider,
+        model: billed.model,
+        fencing_token: acquired.fence.as_i64(),
+        status: sql::RUN_STATUS_ACTIVE,
+        event_row_id,
+        kind: acquired.kind.as_str(),
+        decision_snapshot,
+        run_version,
+        held_until: acquired.held_until,
     }
 }
 

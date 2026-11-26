@@ -21,9 +21,9 @@ const isOperator = (kind: RunnerKind): boolean => kind.path === ADMIN_RUNNERS_PA
 /** What a host fact no beat has read prints as. */
 const NOT_REPORTED = "Not reported";
 const BYTES_PER_GIGABYTE = 1e9;
-const GIGABYTES = new Intl.NumberFormat("en-US", {style: "unit", unit: "gigabyte", maximumFractionDigits: 1});
+const gigabyteFormat = new Intl.NumberFormat("en-US", {style: "unit", unit: "gigabyte", maximumFractionDigits: 1});
 const processors = (count: number | undefined): string => count === undefined ? NOT_REPORTED : String(count);
-const gigabytes = (bytes: number | undefined): string => bytes === undefined ? NOT_REPORTED : GIGABYTES.format(bytes / BYTES_PER_GIGABYTE);
+const gigabytes = (bytes: number | undefined): string => bytes === undefined ? NOT_REPORTED : gigabyteFormat.format(bytes / BYTES_PER_GIGABYTE);
 
 export const runnersList = Effect.fn("runners.list")(function* (kind: RunnerKind, options: RunnerPaging) {
   const path = kind.path + platformQuery({limit: options.limit, starting_after: options.startingAfter});
@@ -34,10 +34,10 @@ export const runnersList = Effect.fn("runners.list")(function* (kind: RunnerKind
     ...(isOperator(kind) ? [{key: "owner", label: "OWNER"}] : []),
     {key: "status", label: "STATE", tones: STATUS_TONES}, {key: "liveness", label: "CONNECTION", tones: STATUS_TONES},
     {key: "cordon", label: "AUTO CORDON"}, {key: "default_engine", label: "DEFAULT ENGINE"},
-    {key: "cpus", label: "CPUS"}, {key: "memory", label: "MEMORY"}, {key: "disk_free", label: "FREE DISK"},
+    {key: "cpus", label: "CPUS"}, {key: "memory", label: "MEMORY"}, {key: "free_disk", label: "FREE DISK"},
   ], ageKey: null}, page.items.map(({id, host_id, status, liveness, tenant_id, cordon, host}) =>
     ({id, host_id, owner: owner(tenant_id), status, liveness, cordon: cordon?.reason ?? "None", default_engine: DEFAULT_ENGINE,
-      cpus: processors(host.cpu_count), memory: gigabytes(host.memory_bytes), disk_free: gigabytes(host.disk_free_bytes)})));
+      cpus: processors(host.cpu_count), memory: gigabytes(host.memory_bytes), free_disk: gigabytes(host.free_disk_bytes)})));
   if (page.next_cursor) yield* output.info(`Next page: --starting-after ${page.next_cursor}`);
 });
 
@@ -49,7 +49,7 @@ export const runnerShow = Effect.fn("runners.show")(function* (kind: RunnerKind,
     "Isolation tier": runner.assigned_policy.sandbox_tier,
     "Network policy": runner.assigned_policy.network_policy, Workers: String(runner.assigned_policy.worker_count),
     CPUs: processors(runner.host.cpu_count), Memory: gigabytes(runner.host.memory_bytes),
-    "Free disk": gigabytes(runner.host.disk_free_bytes),
+    "Free disk": gigabytes(runner.host.free_disk_bytes),
     Labels: runner.labels.join(", ") || "None", "Last seen": runner.last_seen_at,
     Health: runner.degraded ? `Degraded: ${runner.degraded_reason ?? "unknown reason"}` : "Ready",
     "Active runs": String(runner.active_run_count), "Active fleets": String(runner.active_fleet_count),
