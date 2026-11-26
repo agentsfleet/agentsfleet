@@ -108,6 +108,7 @@ ISO-3 costs wall time, so prefer a private database or scoped labels where a tes
 
 The Rust lane measures the unit and live-datastore tiers together, in eight shards: `foundation`, `harness`, `runner`, `daemon-api`, `daemon`, `e2e-a`, `e2e-b` and `guffbolt`.
 `e2e-a` and `e2e-b` split `af_e2e` by test name: `e2e-a` runs the outage and recovery drills, and `e2e-b` skips them and runs the rest.
+
 Each shard resets its lane, runs with `--include-ignored` and writes `rustd/lcov-<shard>.info`; CI runs them in parallel.
 `make test-coverage-rustd-merge` merges the shards and the kernel lane's report, then grades the floor once over the union.
 
