@@ -17,6 +17,7 @@ use netlink_sys::Socket;
 
 use super::kernel::Kernel;
 use super::netlink::{Netlink, Wire};
+use super::rules::Policy;
 use super::slot::{Claim, Slot};
 use super::{link, rules};
 use crate::error::{Error, Result, Step, egress_refused, netlink};
@@ -49,6 +50,19 @@ impl<W: Wire> Scope<W> {
         netns: BorrowedFd<'_>,
         allowlist: &Allowlist,
     ) -> Result<Self> {
+        Self::build_held(kernel, netns, allowlist, Policy::LISTED)
+    }
+
+    /// [`Scope::build`], its table holding the sandbox to `policy`.
+    ///
+    /// # Errors
+    /// As [`Scope::build`].
+    pub(crate) fn build_held<K: Kernel<Wire = W>>(
+        kernel: &K,
+        netns: BorrowedFd<'_>,
+        allowlist: &Allowlist,
+        policy: Policy,
+    ) -> Result<Self> {
         let hosts = allowlist.hosts();
         let claim = Claim::any(kernel.slots())
             .ok_or_else(|| egress_refused(EgressRefusal::NoSlot))
@@ -62,7 +76,7 @@ impl<W: Wire> Scope<W> {
             .map_err(netlink(Step::OpenNetfilter))
             .inspect_err(|error| refused(Some(slot), hosts, error))?;
         let mut scope = Self { claim, netfilter };
-        match scope.attach(kernel, netns, allowlist) {
+        match scope.attach(kernel, netns, allowlist, policy) {
             Ok(()) => {
                 let slot = slot.index();
                 let event = EVENT_BUILT;
@@ -83,9 +97,10 @@ impl<W: Wire> Scope<W> {
         kernel: &K,
         netns: BorrowedFd<'_>,
         allowlist: &Allowlist,
+        policy: Policy,
     ) -> Result<()> {
         let slot = self.claim.slot();
-        rules::apply(&mut self.netfilter, slot, allowlist.addresses())
+        rules::apply(&mut self.netfilter, slot, allowlist.addresses(), policy)
             .map_err(netlink(Step::InstallRules))?;
         let mut route = kernel.route().map_err(netlink(Step::OpenRoute))?;
         link::join(&mut route, slot, netns).map_err(netlink(Step::Join))?;

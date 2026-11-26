@@ -39,7 +39,7 @@ use netlink_packet_netfilter::{
 
 use self::expressions::{ACCEPT, Expression, forward, from, masquerade};
 use super::netlink::{Netlink, Wire};
-use super::slot::Slot;
+use super::slot::{PREFIX_LEN, Slot};
 
 mod expressions;
 mod host_chains;
@@ -71,20 +71,74 @@ const FILTER: &str = "filter";
 const NAT: &str = "nat";
 const FILTER_PRIORITY: u32 = 0;
 const SOURCE_NAT_PRIORITY: u32 = 100;
+/// What a slot's sandbox reaches past its link.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Reach {
+    /// The addresses in its set, the resolver port closed.
+    Listed,
+    /// Every IPv4 destination.
+    Public,
+}
+
+/// How a slot's table holds its sandbox: what it reaches, and whether every
+/// reserved range is dropped before anything is accepted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Policy {
+    pub(crate) reach: Reach,
+    pub(crate) reserved_dropped: bool,
+}
+
+impl Policy {
+    /// The set alone, as a shared-kernel sandbox is held: an operator's
+    /// registry may resolve to a private address, and stays admitted.
+    pub(crate) const LISTED: Self = Self {
+        reach: Reach::Listed,
+        reserved_dropped: false,
+    };
+}
+
+/// Every IPv4 range `af_core::net::is_blocked` refuses, as a network and its
+/// prefix length: what a guarded slot drops before any accept, so no plan
+/// reaches the host's private networks, the metadata service, loopback or
+/// carrier-grade space whatever its set holds.
+pub(crate) const RESERVED: [(Ipv4Addr, u8); 9] = [
+    (Ipv4Addr::UNSPECIFIED, 8),
+    (Ipv4Addr::new(10, 0, 0, 0), 8),
+    (Ipv4Addr::new(100, 64, 0, 0), 10),
+    (Ipv4Addr::LOCALHOST, 8),
+    (Ipv4Addr::new(169, 254, 0, 0), 16),
+    (Ipv4Addr::new(172, 16, 0, 0), 12),
+    (Ipv4Addr::new(192, 0, 0, 0), 24),
+    (Ipv4Addr::new(192, 168, 0, 0), 16),
+    (Ipv4Addr::new(224, 0, 0, 0), 3),
+];
+
 /// The batch that builds `slot`'s table, set and chains, admitting `addresses`,
-/// owned by the socket that sends it.
+/// owned by the socket that sends it, as a shared-kernel sandbox's is.
+#[cfg(test)]
 pub(super) fn install(slot: Slot, addresses: &[Ipv4Addr]) -> Vec<Message> {
-    install_flagged(slot, addresses, TableFlags::Owner)
+    install_flagged(slot, addresses, TableFlags::Owner, Policy::LISTED)
+}
+
+/// The batch that builds `slot`'s table, set and chains under `policy`,
+/// admitting `addresses`, owned by the socket that sends it.
+pub(super) fn install_held(slot: Slot, addresses: &[Ipv4Addr], policy: Policy) -> Vec<Message> {
+    install_flagged(slot, addresses, TableFlags::Owner, policy)
 }
 
 /// [`install`] with no owner, so the table outlives the socket that sent it:
 /// the leftover a runner built before tables were owned leaves behind.
 #[cfg(feature = "test-util")]
 pub(super) fn install_unowned(slot: Slot, addresses: &[Ipv4Addr]) -> Vec<Message> {
-    install_flagged(slot, addresses, TableFlags::empty())
+    install_flagged(slot, addresses, TableFlags::empty(), Policy::LISTED)
 }
 
-fn install_flagged(slot: Slot, addresses: &[Ipv4Addr], flags: TableFlags) -> Vec<Message> {
+fn install_flagged(
+    slot: Slot,
+    addresses: &[Ipv4Addr],
+    flags: TableFlags,
+    policy: Policy,
+) -> Vec<Message> {
     let table = slot.table();
     let link = slot.link();
     let mut messages = vec![
@@ -118,10 +172,51 @@ fn install_flagged(slot: Slot, addresses: &[Ipv4Addr], flags: TableFlags) -> Vec
     if !addresses.is_empty() {
         messages.push(elements(&table, addresses));
     }
-    messages.extend(forward(&link).map(|rule| new_rule(&table, FORWARD, rule)));
+    messages.extend(
+        forward(&link, policy)
+            .into_iter()
+            .map(|rule| new_rule(&table, FORWARD, rule)),
+    );
     messages.push(new_rule(&table, INPUT, from(&link, Vec::new(), DROP)));
-    messages.push(new_rule(&table, POSTROUTING, masquerade(slot, &link)));
+    messages.push(new_rule(
+        &table,
+        POSTROUTING,
+        masquerade(slot.network(), PREFIX_LEN, &link),
+    ));
     batch(messages)
+}
+
+/// The batch that builds the table a guest's namespace forwards through,
+/// owned by no socket so it lives as long as the namespace: everything the
+/// tap's `network`/`prefix_len` sends leaves under the namespace's own
+/// address, and nothing from the tap reaches the namespace itself.
+pub(super) fn install_guest_side(
+    table: &str,
+    tap: &str,
+    network: Ipv4Addr,
+    prefix_len: u8,
+) -> Vec<Message> {
+    batch(vec![
+        new_table(table, TableFlags::empty()),
+        base_chain(
+            table,
+            INPUT,
+            FILTER,
+            InetHookNumber::LocalIn,
+            FILTER_PRIORITY,
+            ACCEPT,
+        ),
+        base_chain(
+            table,
+            POSTROUTING,
+            NAT,
+            InetHookNumber::PostRouting,
+            SOURCE_NAT_PRIORITY,
+            ACCEPT,
+        ),
+        new_rule(table, INPUT, from(tap, Vec::new(), DROP)),
+        new_rule(table, POSTROUTING, masquerade(network, prefix_len, tap)),
+    ])
 }
 
 /// The batch that deletes the table named `table`, its set and chains with it.
@@ -172,7 +267,7 @@ pub(super) fn every() -> Message {
     )
 }
 
-/// Builds `slot`'s table in one transaction.
+/// Builds `slot`'s table under `policy` in one transaction.
 ///
 /// # Errors
 /// The kernel refused the batch; nothing of it was applied.
@@ -180,8 +275,9 @@ pub(super) fn apply<W: Wire>(
     netfilter: &mut Netlink<W>,
     slot: Slot,
     addresses: &[Ipv4Addr],
+    policy: Policy,
 ) -> io::Result<()> {
-    netfilter.acknowledged(install(slot, addresses))
+    netfilter.acknowledged(install_held(slot, addresses, policy))
 }
 
 /// Deletes the table named `table`; one already gone is not a failure.

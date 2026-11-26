@@ -132,6 +132,27 @@ impl Toolbox {
     pub fn digest(&self) -> &str {
         &self.digest
     }
+
+    /// The `major:minor` of the loop device its mount reads: what verification
+    /// attached from the hashed descriptor, which a microVM engine hands its
+    /// guest as a read-only drive, so nothing reopens the image by path.
+    ///
+    /// # Errors
+    /// The mount cannot be read, or what is mounted there is no loop device.
+    #[cfg(target_os = "linux")]
+    pub fn device(&self) -> Result<(u32, u32)> {
+        let device = rustix::fs::stat(&self.root)?.st_dev;
+        let (major, minor) = (rustix::fs::major(device), rustix::fs::minor(device));
+        if major == loop_device::LOOP_MAJOR {
+            Ok((major, minor))
+        } else {
+            Err(io::Error::other(format!(
+                "{} is mounted from {major}:{minor}, which is no loop device",
+                self.root.display()
+            ))
+            .into())
+        }
+    }
 }
 
 #[cfg(target_os = "linux")]

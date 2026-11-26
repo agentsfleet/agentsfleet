@@ -11,12 +11,13 @@ use af_core::id::Uuid7;
 use af_wire::runner::SandboxEngine;
 use afr_cgroup::{CGROUP_ROOT, SUBTREE_CONTROL};
 use afr_engine::{
-    EgressPlan, Generation, HostPaths, Limits, Network, REQUIRED_CONTROLLERS, ResourceFacts,
-    Resources, SandboxSpec, boot,
+    EgressPlan, Engine, Generation, HostPaths, Limits, Network, REQUIRED_CONTROLLERS,
+    ResourceFacts, Resources, SandboxSpec, boot,
 };
 use afr_engine_bubblewrap::{
     BubblewrapBackend, BubblewrapConfig, BubblewrapEngine, ProbePaths, probe,
 };
+use afr_engine_firecracker::{FirecrackerConfig, FirecrackerEngine};
 use afr_firewall::far::forwarding_on;
 use afr_image::{Manifest, ToolboxHome};
 use libtest_mimic::Failed;
@@ -73,9 +74,19 @@ const MIB: u64 = 1 << 20;
 /// The state directory: traversable, but listable and writable by root only.
 const STATE_MODE: u32 = 0o711;
 
+/// The engine the lane holds to the conformance suite.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LaneEngine {
+    Bubblewrap,
+    Firecracker,
+}
+
 /// Everything a trial builds sandboxes with.
 pub(crate) struct Lane {
     pub(crate) config: BubblewrapConfig,
+    /// What the Firecracker engine boots from, over the same verified toolbox,
+    /// when the lane holds it to the suite.
+    pub(crate) firecracker: Option<FirecrackerConfig>,
     pub(crate) image: LaneImage,
     /// The key the lane's releases are signed with, and the manifest of the
     /// image it runs on.
@@ -108,6 +119,23 @@ impl Lane {
     pub(crate) fn engine(&self) -> BubblewrapEngine {
         BubblewrapEngine::new(self.config.clone(), &probe(&self.config.probe_paths()))
             .unwrap_or_else(|refused| unreachable!("{refused}"))
+    }
+
+    /// The engine the conformance suite holds to its trials: Firecracker when
+    /// the lane was told so, bubblewrap otherwise.
+    pub(crate) fn conformed(&self) -> Box<dyn Engine> {
+        match self.firecracker.clone() {
+            Some(config) => Box::new(FirecrackerEngine::new(config)),
+            None => Box::new(self.engine()),
+        }
+    }
+
+    /// The Firecracker engine, for a trial only it answers.
+    pub(crate) fn microvms(&self) -> Result<FirecrackerEngine, Failed> {
+        self.firecracker
+            .clone()
+            .map(FirecrackerEngine::new)
+            .ok_or_else(|| Failed::from("the lane was not told to boot Firecracker"))
     }
 
     /// Where the sandbox a trial names `name` keeps its directory.
@@ -176,14 +204,20 @@ pub(crate) fn missing(paths: &ProbePaths, toolbox: Option<&str>, root: bool) -> 
     gaps
 }
 
-/// Why the engine [`ENGINE_VARIABLE`] names cannot be built here, if it
-/// names one other than bubblewrap: no other engine's crate exists yet.
-fn unbuilt_engine() -> Option<String> {
-    let bubblewrap = <&str>::from(SandboxEngine::Bubblewrap);
-    ProcessEnv
-        .get(ENGINE_VARIABLE)
-        .filter(|named| named.as_str() != bubblewrap)
-        .map(|named| format!("{ENGINE_VARIABLE}: names {named}; the lane builds {bubblewrap}"))
+/// The engine [`ENGINE_VARIABLE`] names, bubblewrap when unset, or why it
+/// names none the lane builds.
+fn lane_engine() -> Result<LaneEngine, String> {
+    let named = ProcessEnv.get(ENGINE_VARIABLE);
+    match named.as_deref() {
+        None => Ok(LaneEngine::Bubblewrap),
+        Some(name) if name == <&str>::from(SandboxEngine::Bubblewrap) => Ok(LaneEngine::Bubblewrap),
+        Some(name) if name == <&str>::from(SandboxEngine::Firecracker) => {
+            Ok(LaneEngine::Firecracker)
+        }
+        Some(other) => Err(format!(
+            "{ENGINE_VARIABLE}: names {other}; the lane builds bubblewrap or firecracker"
+        )),
+    }
 }
 
 /// The toolbox source directory [`SOURCE_VARIABLE`] names, if it names one.
@@ -229,7 +263,12 @@ pub(crate) fn main() -> ExitCode {
         ..ProbePaths::default()
     };
     let mut gaps = missing(&paths, toolbox.as_deref(), root);
-    gaps.extend(unbuilt_engine());
+    let engine = lane_engine();
+    match &engine {
+        Ok(LaneEngine::Firecracker) => gaps.extend(crate::firecracker::gaps()),
+        Ok(LaneEngine::Bubblewrap) => {}
+        Err(gap) => gaps.push(gap.clone()),
+    }
     if !gaps.is_empty() {
         eprintln!("the kernel lane refuses to run, rather than skip; this host lacks:");
         for gap in &gaps {
@@ -237,9 +276,11 @@ pub(crate) fn main() -> ExitCode {
         }
         return ExitCode::FAILURE;
     }
+    let microvms = engine == Ok(LaneEngine::Firecracker);
     let lane = match build(
         toolbox.as_deref().map_or_else(|| Path::new(""), Path::new),
         paths,
+        microvms,
     ) {
         Ok(lane) => lane,
         Err(reason) => {
@@ -262,6 +303,7 @@ pub(crate) fn main() -> ExitCode {
     // trial has ended, so the lane and its toolbox have one owner again.
     let Some(Lane {
         config,
+        firecracker,
         resources,
         state,
         ..
@@ -270,7 +312,7 @@ pub(crate) fn main() -> ExitCode {
         eprintln!("a trial still holds the lane; its toolbox stays mounted");
         return ExitCode::FAILURE;
     };
-    drop(config);
+    drop((config, firecracker));
     let closed = resources.close();
     drop(state);
     if let Err(stayed) = closed {
@@ -284,7 +326,7 @@ pub(crate) fn main() -> ExitCode {
 /// it, its manifest checked against the lane's key, the image verified by
 /// descriptor and the engine built over it, so the lane proves the boot
 /// production runs and not a second spelling of it.
-fn build(image: &Path, paths: ProbePaths) -> Result<Lane, Failed> {
+fn build(image: &Path, paths: ProbePaths, microvms: bool) -> Result<Lane, Failed> {
     let state = tempfile::Builder::new()
         .prefix(STATE_PREFIX)
         .tempdir_in(STATE_PARENT)?;
@@ -310,8 +352,12 @@ fn build(image: &Path, paths: ProbePaths) -> Result<Lane, Failed> {
         path: image.to_owned(),
         digest: booted.started.engine.config().toolbox.digest().to_owned(),
     };
+    let config = booted.started.engine.config().clone();
+    let firecracker = microvms
+        .then(|| crate::firecracker::config(state.path(), &host_paths.cgroup_root, &config));
     Ok(Lane {
-        config: booted.started.engine.config().clone(),
+        config,
+        firecracker,
         image,
         signer,
         manifest,

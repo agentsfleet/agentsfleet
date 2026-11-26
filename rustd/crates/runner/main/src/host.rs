@@ -68,35 +68,55 @@ impl Host {
         home: &StorageHome,
         tuning: afr_engine_bubblewrap::EngineTuning,
     ) -> Result<Self, ExitCode> {
-        use std::fs::File;
-        use std::io::BufReader;
-        use std::path::Path;
-
         use af_core::env::ProcessEnv;
-        use afr_cgroup::{CGROUP_ROOT, SELF_CGROUP_PATH, delegated_root};
-        use afr_engine::{HostPaths, boot};
+        use afr_engine::boot;
         use afr_engine_bubblewrap::BubblewrapBackend;
-        use afr_image::{Release, ToolboxHome};
 
-        let own = File::open(SELF_CGROUP_PATH).map_err(|error| io_failed(&error))?;
-        let cgroup_root =
-            delegated_root(BufReader::new(own), Path::new(CGROUP_ROOT), RUNNER_SUBGROUP)
-                .or_exit()?;
-        let release = Release::signed_by_release(env!("CARGO_PKG_VERSION")).or_exit()?;
+        let staged = Staged::read(home)?;
         let entry = std::env::current_exe().map_err(|error| io_failed(&error))?;
-        let toolbox = ToolboxHome::open(home.toolbox()).map_err(|error| io_failed(&error))?;
         let backend = BubblewrapBackend {
             entry,
-            release: &release,
-            home: &toolbox,
+            release: &staged.release,
+            home: &staged.toolbox,
             env: &ProcessEnv,
             tuning,
         };
-        let paths = HostPaths {
-            cgroup_root,
-            state_dir: home.sandboxes(),
+        boot(backend, &staged.paths).map(Self::from).or_exit()
+    }
+
+    /// Our Firecracker engine, booted over the release a deploy staged
+    /// (`afr_engine::boot` with `FirecrackerBackend`): a host without a usable
+    /// KVM device is refused naming `kvm`, and no other engine starts.
+    ///
+    /// # Errors
+    /// The reason it cannot, already logged, as the exit status.
+    #[cfg(all(target_os = "linux", feature = "firecracker"))]
+    pub(crate) fn firecracker(
+        home: &StorageHome,
+        tuning: afr_engine_firecracker::FirecrackerTuning,
+    ) -> Result<Self, ExitCode> {
+        use afr_engine::boot;
+        use afr_engine_firecracker::FirecrackerBackend;
+
+        let staged = Staged::read(home)?;
+        let backend = FirecrackerBackend {
+            release: &staged.release,
+            home: &staged.toolbox,
+            tuning,
         };
-        boot(backend, &paths).map(Self::from).or_exit()
+        boot(backend, &staged.paths).map(Self::from).or_exit()
+    }
+
+    /// No Firecracker engine exists off Linux.
+    ///
+    /// # Errors
+    /// Always: the host has no KVM device, already logged, as the exit status.
+    #[cfg(all(not(target_os = "linux"), feature = "firecracker"))]
+    pub(crate) fn firecracker(
+        _home: &StorageHome,
+        _tuning: afr_engine_firecracker::FirecrackerTuning,
+    ) -> Result<Self, ExitCode> {
+        Err(cannot_sandbox(afr_engine_firecracker::MECHANISM_KVM))
     }
 
     /// No bubblewrap engine exists off Linux.
@@ -133,6 +153,47 @@ impl Host {
             .with_sizes(sizes);
         let probe = afr_engine_bubblewrap::probe(&afr_engine_bubblewrap::ProbePaths::default());
         Ok(Self::new(engine, probe, None))
+    }
+}
+
+/// What every engine on this host boots over: the cgroup the service manager
+/// delegated, the state directory its sandboxes live in, the release the
+/// runner is built to verify and the toolbox a deploy staged.
+#[cfg(target_os = "linux")]
+struct Staged {
+    paths: afr_engine::HostPaths,
+    release: afr_image::Release,
+    toolbox: afr_image::ToolboxHome,
+}
+
+#[cfg(target_os = "linux")]
+impl Staged {
+    /// This host's, read from `home` and the process's own cgroup.
+    ///
+    /// # Errors
+    /// The reason it cannot, already logged, as the exit status.
+    fn read(home: &StorageHome) -> Result<Self, ExitCode> {
+        use std::fs::File;
+        use std::io::BufReader;
+        use std::path::Path;
+
+        use afr_cgroup::{CGROUP_ROOT, SELF_CGROUP_PATH, delegated_root};
+        use afr_image::{Release, ToolboxHome};
+
+        let own = File::open(SELF_CGROUP_PATH).map_err(|error| io_failed(&error))?;
+        let cgroup_root =
+            delegated_root(BufReader::new(own), Path::new(CGROUP_ROOT), RUNNER_SUBGROUP)
+                .or_exit()?;
+        let release = Release::signed_by_release(env!("CARGO_PKG_VERSION")).or_exit()?;
+        let toolbox = ToolboxHome::open(home.toolbox()).map_err(|error| io_failed(&error))?;
+        Ok(Self {
+            paths: afr_engine::HostPaths {
+                cgroup_root,
+                state_dir: home.sandboxes(),
+            },
+            release,
+            toolbox,
+        })
     }
 }
 

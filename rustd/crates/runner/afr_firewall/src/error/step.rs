@@ -31,6 +31,8 @@ pub enum Step {
     ListTables,
     /// Listing egress links.
     ListLinks,
+    /// Making, addressing or raising a guest's tap in its namespace.
+    Tap,
     /// Building the far host the kernel lane connects from.
     #[cfg(feature = "test-util")]
     Far,
@@ -52,6 +54,7 @@ impl fmt::Display for Step {
             Self::ListChains => "listing the host's forward chains",
             Self::ListTables => "listing egress tables",
             Self::ListLinks => "listing egress links",
+            Self::Tap => "the guest's tap in its namespace",
             #[cfg(feature = "test-util")]
             Self::Far => "the far host's link",
         })

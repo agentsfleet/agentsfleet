@@ -23,8 +23,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use bytes::Bytes;
-use tokio::io::AsyncWriteExt as _;
-use tokio::net::unix::OwnedWriteHalf;
+use tokio::io::{AsyncWrite, AsyncWriteExt as _};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::mpsc;
 
@@ -33,6 +32,7 @@ use self::files::Workspace;
 pub use self::launch::Tenant;
 use self::launch::{Inherit, Placement};
 use self::session::Session;
+use crate::client::transport::Stream;
 use crate::error::Result;
 use crate::sizes::Sizes;
 
@@ -51,20 +51,33 @@ const EVENT_SERVE_COMPLETED: &str = "executor_serve_completed";
 const EVENT_SERVE_FAILED: &str = "executor_serve_failed";
 
 /// Where an executor's one supervisor connection comes from.
-#[derive(Debug)]
 enum Link {
     /// A bound socket: the connection is the first one accepted.
     Bound(std::os::unix::net::UnixListener),
     /// A stream whose other end the supervisor already holds.
     Connected(std::os::unix::net::UnixStream),
+    /// Any other byte stream the supervisor is already on the far end of: a
+    /// virtual machine's vsock connection.
+    Streamed(Box<dyn Stream>),
+}
+
+impl std::fmt::Debug for Link {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Bound(socket) => f.debug_tuple("Bound").field(socket).finish(),
+            Self::Connected(stream) => f.debug_tuple("Connected").field(stream).finish(),
+            Self::Streamed(_) => f.write_str("Streamed"),
+        }
+    }
 }
 
 impl Link {
     /// The supervisor's connection, waited for where the socket is bound.
-    async fn connection(self) -> Result<UnixStream> {
+    async fn connection(self) -> Result<Box<dyn Stream>> {
         Ok(match self {
-            Self::Bound(socket) => UnixListener::from_std(socket)?.accept().await?.0,
-            Self::Connected(stream) => UnixStream::from_std(stream)?,
+            Self::Bound(socket) => Box::new(UnixListener::from_std(socket)?.accept().await?.0),
+            Self::Connected(stream) => Box::new(UnixStream::from_std(stream)?),
+            Self::Streamed(stream) => stream,
         })
     }
 }
@@ -104,6 +117,14 @@ pub fn bind(socket: &Path) -> Result<Server> {
 pub fn connected(stream: std::os::unix::net::UnixStream) -> Result<Server> {
     stream.set_nonblocking(true)?;
     Ok(Server::over(Link::Connected(stream)))
+}
+
+/// Takes `stream`, a connection the supervisor already holds the far end of
+/// that is no Unix socket: a virtual machine's executor serves the host's
+/// vsock connection this way, the same lines over it.
+#[must_use]
+pub fn streamed(stream: impl Stream + 'static) -> Server {
+    Server::over(Link::Streamed(Box::new(stream)))
 }
 
 impl Server {
@@ -180,7 +201,7 @@ async fn accept(
 ) -> Result<()> {
     let workspace = Arc::new(Workspace::open(root)?);
     let stream = link.connection().await?;
-    let (read, write) = stream.into_split();
+    let (read, write) = tokio::io::split(stream);
     let (answers, answered) = mpsc::unbounded_channel();
     let (output, said) = mpsc::channel(OUTPUT_LINES_IN_FLIGHT);
     let writer = tokio::spawn(write_lines(write, answered, said));
@@ -195,7 +216,7 @@ async fn accept(
 /// Answers go first: one queued before a line of output is written before it.
 /// Each line is already delimited, so it goes to the socket as it is.
 async fn write_lines(
-    mut write: OwnedWriteHalf,
+    mut write: impl AsyncWrite + Unpin,
     mut answers: mpsc::UnboundedReceiver<Bytes>,
     mut output: mpsc::Receiver<Bytes>,
 ) {

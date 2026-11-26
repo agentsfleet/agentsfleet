@@ -29,10 +29,13 @@ required-features = ["test-util", "bubblewrap"]
 [features]
 # Each engine this binary can build, one feature apiece and all on by default:
 # only this binary and the e2e crate name an engine crate.
-default = ["bubblewrap", "unsandboxed"]
-# The hardened bubblewrap engine, a release's only engine, with the cgroup
-# root and the toolbox it is booted over.
+default = ["bubblewrap", "firecracker", "unsandboxed"]
+# The hardened bubblewrap engine, with the cgroup root and the toolbox it is
+# booted over.
 bubblewrap = ["dep:afr_engine_bubblewrap", "dep:afr_cgroup", "dep:afr_image"]
+# Our Firecracker microVM engine, booted over the same cgroup root and
+# toolbox, and the guest entry its microVMs start the binary as.
+firecracker = ["dep:afr_engine_firecracker", "dep:afr_cgroup", "dep:afr_image"]
 # The debug engine, which builds no sandbox and which a debug build alone
 # constructs.
 unsandboxed = ["dep:afr_engine_unsandboxed"]
@@ -74,6 +77,7 @@ afr_guest.workspace = true
 # The engines, each behind its feature; `probe` reads the host as bubblewrap
 # admits it.
 afr_engine_bubblewrap = { workspace = true, optional = true }
+afr_engine_firecracker = { workspace = true, optional = true }
 afr_engine_unsandboxed = { workspace = true, optional = true }
 # The cgroup root the service manager delegated, and the toolbox a deploy
 # staged: what bubblewrap is booted over.
@@ -140,6 +144,9 @@ digest-io.workspace = true
 hex.workspace = true
 rustix.workspace = true
 sha2.workspace = true
+# The Firecracker lane writes a restored checkpoint's file through the
+# executor, which takes its bytes as `Bytes`.
+bytes.workspace = true
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
 # The kernel calls the lane's confinement and delegation trials read back.
@@ -148,12 +155,13 @@ libc.workspace = true
 # proves egress against.
 afr_firewall = { workspace = true, features = ["test-util"] }
 
-# The kernel lane drives bubblewrap and proves egress with the firewall's
-# `test-util` far host; run without them, it refuses to build rather than skip
-# those trials. Linux only: elsewhere its `main` reports the platform and exits.
+# The kernel lane drives bubblewrap and Firecracker and proves egress with the
+# firewall's `test-util` far host; run without them, it refuses to build
+# rather than skip those trials. Linux only: elsewhere its `main` reports the
+# platform and exits.
 [[example]]
 name = "kernel_lane"
-required-features = ["test-util", "bubblewrap"]
+required-features = ["test-util", "bubblewrap", "firecracker"]
 
 # Drives the binary with `run --unsandboxed`, which needs both engines.
 [[test]]

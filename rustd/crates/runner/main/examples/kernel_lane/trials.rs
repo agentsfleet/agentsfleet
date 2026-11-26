@@ -51,6 +51,8 @@ const RUNS: &str = "runs";
 /// trial only bubblewrap answers, because it reads the host's view of it.
 const CONFORMANCE: &str = "conformance";
 const BUBBLEWRAP: &str = "bubblewrap";
+/// The kind of a trial only Firecracker answers.
+const FIRECRACKER: &str = "firecracker";
 /// The far host the verdict matrix dials.
 const FAR: FarHost = FarHost {
     name: FAR_NAME,
@@ -156,24 +158,29 @@ const TRIALS: &[(&str, Body)] = &[
     ("test_kernel_lane_refuses_to_skip", refuses_to_skip),
 ];
 
-/// Runs the conformance suite against the lane's engine, then bubblewrap's
+/// Runs the conformance suite against the lane's engine, then that engine's
 /// own trials, one at a time.
 pub(crate) fn run(arguments: &Arguments, lane: &Arc<Lane>) -> Conclusion {
     let suite = conformance::TRIALS.iter().map(|trial| {
         let lane = Arc::clone(lane);
         Trial::test(trial.name(), move || conformed(&lane, trial)).with_kind(CONFORMANCE)
     });
-    let own = TRIALS
-        .iter()
-        .chain(crate::egress::TRIALS)
-        .chain(crate::filesystems::TRIALS)
-        .chain(crate::link::TRIALS)
-        .chain(crate::toolbox_size::TRIALS)
-        .chain(crate::supervisor_trials::TRIALS)
-        .map(|&(name, body)| {
-            let lane = Arc::clone(lane);
-            Trial::test(name, move || body(&lane)).with_kind(BUBBLEWRAP)
-        });
+    let (kind, own): (_, Vec<&(&str, Body)>) = if lane.firecracker.is_some() {
+        (FIRECRACKER, crate::firecracker::TRIALS.iter().collect())
+    } else {
+        let bubblewrap = TRIALS
+            .iter()
+            .chain(crate::egress::TRIALS)
+            .chain(crate::filesystems::TRIALS)
+            .chain(crate::link::TRIALS)
+            .chain(crate::toolbox_size::TRIALS)
+            .chain(crate::supervisor_trials::TRIALS);
+        (BUBBLEWRAP, bubblewrap.collect())
+    };
+    let own = own.into_iter().map(|&(name, body)| {
+        let lane = Arc::clone(lane);
+        Trial::test(name, move || body(&lane)).with_kind(kind)
+    });
     libtest_mimic::run(arguments, suite.chain(own).collect())
 }
 
@@ -186,14 +193,14 @@ fn conformed(lane: &Lane, trial: &conformance::Trial) -> Result<(), Failed> {
         far: FAR,
         checkout: &checkout,
     };
-    let engine = lane.engine();
-    runtime().block_on(trial.run(&engine, &context))
+    let engine = lane.conformed();
+    runtime().block_on(trial.run(&*engine, &context))
 }
 
 /// Prints what may differ on the lane's engine, before any trial runs.
 pub(crate) fn differences(lane: &Lane) -> Result<(), Failed> {
-    let engine = lane.engine();
-    let differences = runtime().block_on(conformance::differences(&engine))?;
+    let engine = lane.conformed();
+    let differences = runtime().block_on(conformance::differences(&*engine))?;
     println!(
         "{}: {differences}",
         <&str>::from(engine.capabilities().engine)

@@ -7,8 +7,9 @@ use netlink_packet_netfilter::nftables::{
     Lookup, Meta, MetaKey, Operator, Payload, Register, Verdict, VerdictAttribute,
 };
 
-use super::{SET, SET_ID, u8_of, u32_of};
-use crate::egress::slot::{PREFIX_LEN, Slot};
+use std::net::Ipv4Addr;
+
+use super::{Policy, RESERVED, Reach, SET, SET_ID, u8_of, u32_of};
 
 /// One expression in a rule.
 pub(super) type Expression = ListAttribute<ExpressionAttribute>;
@@ -43,10 +44,11 @@ const ESTABLISHED_OR_RELATED: u32 = 0b110;
 /// The expression that rewrites a source to the outgoing link's address.
 const MASQUERADE: &str = "masq";
 
-/// The forward chain's rules, in order: the resolver port closed, the set
-/// reached, everything else from the sandbox dropped, and nothing reaching it
-/// that it did not start.
-pub(super) fn forward(link: &str) -> [Vec<Expression>; 6] {
+/// The forward chain's rules, in order: under `policy`, each reserved range
+/// dropped first; then the resolver port closed and the set reached, or every
+/// other IPv4 destination reached; everything else from the sandbox dropped,
+/// and nothing reaching it that it did not start.
+pub(super) fn forward(link: &str, policy: Policy) -> Vec<Vec<Expression>> {
     let port = |transport| {
         vec![
             meta(MetaKey::L4Proto),
@@ -55,25 +57,47 @@ pub(super) fn forward(link: &str) -> [Vec<Expression>; 6] {
             compare(Operator::Equal, DNS_PORT.to_be_bytes().to_vec()),
         ]
     };
-    let to_set = vec![
-        meta(MetaKey::Nfproto),
-        compare(Operator::Equal, vec![NFPROTO_IPV4]),
-        load(NETWORK_HEADER, DESTINATION_OFFSET, WORD),
-        in_set(),
-    ];
+    let ipv4 = || {
+        vec![
+            meta(MetaKey::Nfproto),
+            compare(Operator::Equal, vec![NFPROTO_IPV4]),
+        ]
+    };
     let answered = vec![
         connection_state(),
         mask(ESTABLISHED_OR_RELATED),
         compare(Operator::NotEqual, vec![0; 4]),
     ];
-    [
-        from(link, port(TCP), DROP),
-        from(link, port(UDP), DROP),
-        from(link, to_set, ACCEPT),
-        from(link, Vec::new(), DROP),
-        to(link, answered, ACCEPT),
-        to(link, Vec::new(), DROP),
-    ]
+    let reserved = policy
+        .reserved_dropped
+        .then_some(RESERVED.iter())
+        .into_iter()
+        .flatten()
+        .map(|&(network, prefix_len)| {
+            let mut matches = ipv4();
+            matches.extend(within(DESTINATION_OFFSET, network, prefix_len));
+            from(link, matches, DROP)
+        });
+    let reach = match policy.reach {
+        Reach::Listed => {
+            let mut to_set = ipv4();
+            to_set.extend([load(NETWORK_HEADER, DESTINATION_OFFSET, WORD), in_set()]);
+            vec![
+                from(link, port(TCP), DROP),
+                from(link, port(UDP), DROP),
+                from(link, to_set, ACCEPT),
+            ]
+        }
+        Reach::Public => vec![from(link, ipv4(), ACCEPT)],
+    };
+    reserved
+        .chain(reach)
+        .chain([
+            from(link, Vec::new(), DROP),
+            to(link, answered, ACCEPT),
+            to(link, Vec::new(), DROP),
+        ])
+        .collect()
 }
 
 /// `iifname link`, then `matches`, then `verdict`.
@@ -94,14 +118,36 @@ fn rule_on(key: MetaKey, link: &str, matches: Vec<Expression>, code: u32) -> Vec
         .collect()
 }
 
-/// `ip saddr <slot's /30> oifname != link masquerade`: the sandbox's traffic
-/// leaves under the host's address, and only when it leaves another link.
-pub(super) fn masquerade(slot: Slot, link: &str) -> Vec<Expression> {
-    let netmask = (u32::MAX << (32 - u32::from(PREFIX_LEN))).to_be_bytes();
-    vec![
+/// `ip saddr <network>/<prefix_len> oifname != link masquerade`: traffic
+/// from that network leaves under the outgoing link's address, and only when
+/// it leaves another link.
+pub(super) fn masquerade(network: Ipv4Addr, prefix_len: u8, link: &str) -> Vec<Expression> {
+    let mut rule = vec![
         meta(MetaKey::Nfproto),
         compare(Operator::Equal, vec![NFPROTO_IPV4]),
-        load(NETWORK_HEADER, SOURCE_OFFSET, WORD),
+    ];
+    rule.extend(within(SOURCE_OFFSET, network, prefix_len));
+    rule.extend([
+        meta(MetaKey::Oifname),
+        compare(Operator::NotEqual, interface(link)),
+        Expressions::Other {
+            expression_type: MASQUERADE.to_owned(),
+            attributes: Vec::new(),
+        }
+        .into(),
+    ]);
+    rule
+}
+
+/// The IPv4 address at `offset` in the network header, masked to
+/// `prefix_len` bits and compared with `network`.
+fn within(offset: u32, network: Ipv4Addr, prefix_len: u8) -> [Expression; 3] {
+    let netmask = u32::MAX
+        .checked_shl(32 - u32::from(prefix_len))
+        .unwrap_or(0)
+        .to_be_bytes();
+    [
+        load(NETWORK_HEADER, offset, WORD),
         Expressions::Bitwise(vec![
             Bitwise::SourceRegister(Register::Reg1),
             Bitwise::DestinationRegister(Register::Reg1),
@@ -110,14 +156,7 @@ pub(super) fn masquerade(slot: Slot, link: &str) -> Vec<Expression> {
             Bitwise::Xor(DataAttribute::Value(vec![0; 4])),
         ])
         .into(),
-        compare(Operator::Equal, slot.network().octets().to_vec()),
-        meta(MetaKey::Oifname),
-        compare(Operator::NotEqual, interface(link)),
-        Expressions::Other {
-            expression_type: MASQUERADE.to_owned(),
-            attributes: Vec::new(),
-        }
-        .into(),
+        compare(Operator::Equal, network.octets().to_vec()),
     ]
 }
 

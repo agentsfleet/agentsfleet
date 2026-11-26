@@ -344,3 +344,31 @@ fn test_a_kernel_number_narrows_unchanged_or_not_at_all() {
         let _refused = std::panic::catch_unwind(|| u32_of(negative)).unwrap_err();
     }
 }
+
+/// Every range a guarded slot drops is one the address rule blocks, at both
+/// its ends, and the addresses just outside each are ones it does not; so the
+/// table and the rule cannot disagree about a reserved address.
+#[test]
+fn test_every_dropped_range_is_one_the_address_rule_blocks() {
+    for (network, prefix_len) in super::RESERVED {
+        let first = u32::from(network);
+        let last = first | (u32::MAX >> prefix_len);
+        for inside in [first, last] {
+            let address = std::net::IpAddr::V4(inside.into());
+            assert!(af_core::net::is_blocked(address), "{address} is blocked");
+        }
+    }
+    for outside in [
+        [9, 255, 255, 255],
+        [11, 0, 0, 0],
+        [100, 63, 255, 255],
+        [100, 128, 0, 0],
+        [223, 255, 255, 255],
+    ] {
+        let address = std::net::IpAddr::V4(outside.into());
+        assert!(
+            !af_core::net::is_blocked(address),
+            "{address} is not blocked"
+        );
+    }
+}

@@ -1454,6 +1454,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "afr_engine_firecracker"
+version = "0.90.0"
+dependencies = [
+ "af_core",
+ "af_wire",
+ "afr_cgroup",
+ "afr_engine",
+ "afr_executor",
+ "afr_firewall",
+ "afr_guest",
+ "afr_image",
+ "async-trait",
+ "backon",
+ "clap",
+ "libc",
+ "rustix 1.1.6",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-vsock",
+ "tracing",
+]
+
+[[package]]
 name = "afr_engine_unsandboxed"
 version = "0.90.0"
 dependencies = [
@@ -1699,6 +1725,7 @@ dependencies = [
  "afr_cgroup",
  "afr_engine",
  "afr_engine_bubblewrap",
+ "afr_engine_firecracker",
  "afr_engine_unsandboxed",
  "afr_executor",
  "afr_firewall",
@@ -1711,6 +1738,7 @@ dependencies = [
  "aws-lc-rs",
  "axum",
  "base64 0.23.1",
+ "bytes",
  "clap",
  "digest-io",
  "futures-util",
@@ -9007,6 +9035,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokio-vsock"
+version = "0.7.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "676ade3d183052ca2703288b48f63a2e82633a24836ca279eb6724ab2a97b05d"
+dependencies = [
+ "bytes",
+ "futures",
+ "libc",
+ "tokio",
+ "vsock",
+]
+
+[[package]]
 name = "toml"
 version = "1.2.3+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9454,6 +9495,16 @@ name = "vsimd"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
+
+[[package]]
+name = "vsock"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9b7d4dba01e366e2ffbdf0700b1876f747c548db72dced534de41c54945c0148"
+dependencies = [
+ "libc",
+ "nix",
+]
 
 [[package]]
 name = "walkdir"

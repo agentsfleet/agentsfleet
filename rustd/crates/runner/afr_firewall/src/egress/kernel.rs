@@ -19,7 +19,7 @@ use crate::error::{Result as SandboxResult, Step, netlink};
 
 /// The network namespace of the calling thread, as a file another thread can
 /// join or a link can be moved into.
-const THREAD_NAMESPACE: &str = "/proc/thread-self/ns/net";
+pub(super) const THREAD_NAMESPACE: &str = "/proc/thread-self/ns/net";
 /// Why a thread sent into another namespace never came back.
 const PANICKED: &str = "the thread working inside a network namespace panicked";
 
@@ -148,7 +148,7 @@ impl Kernel for Host {
 /// that changes its namespace must not be one the caller goes on using. A
 /// thread the host will not give is a failure of this one call: the release
 /// profile aborts on panic, so `Scope::spawn`'s panic would end the runner.
-fn on_own_thread<T, E>(work: impl FnOnce() -> Result<T, E> + Send) -> Result<T, E>
+pub(super) fn on_own_thread<T, E>(work: impl FnOnce() -> Result<T, E> + Send) -> Result<T, E>
 where
     T: Send,
     E: From<io::Error> + Send,

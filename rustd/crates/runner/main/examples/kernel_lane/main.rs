@@ -48,6 +48,8 @@ mod files;
 #[cfg(target_os = "linux")]
 mod filesystems;
 #[cfg(target_os = "linux")]
+mod firecracker;
+#[cfg(target_os = "linux")]
 mod forked_kill;
 #[cfg(target_os = "linux")]
 mod git;

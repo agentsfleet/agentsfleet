@@ -21,7 +21,10 @@ mod egress;
 #[cfg(all(target_os = "linux", feature = "test-util"))]
 pub use self::egress::far;
 #[cfg(target_os = "linux")]
-pub use self::egress::{HostScope, enforceable, namespace_of, own_host, sweep};
+pub use self::egress::{
+    Destinations, GUEST_ADDRESS, GUEST_PREFIX_LEN, GuestNamespace, HostScope, TAP, TAP_ADDRESS,
+    enforceable, namespace_of, own_host, remove_namespace, sweep,
+};
 pub use self::error::{Error, Result};
 
 /// No other kernel has `nf_tables`, so no host here holds a sandbox to an

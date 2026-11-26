@@ -10,7 +10,7 @@ use jsonrpsee_types::error::{
 };
 use jsonrpsee_types::{Id, Request};
 use serde::Serialize;
-use tokio::net::unix::OwnedReadHalf;
+use tokio::io::AsyncRead;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TrySendError;
 use tokio::task::JoinSet;
@@ -109,7 +109,7 @@ impl Session {
     /// A line past the frame cap is answered, then ends the connection: the
     /// codec stops at the error, and a peer that sent one is not speaking the
     /// protocol.
-    pub(super) async fn run(mut self, read: OwnedReadHalf) {
+    pub(super) async fn run(mut self, read: impl AsyncRead + Unpin) {
         let codec = AnyDelimiterCodec::new_with_max_length(
             vec![DELIMITER],
             vec![DELIMITER],

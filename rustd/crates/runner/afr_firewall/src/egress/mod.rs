@@ -31,6 +31,7 @@ use crate::error::{Result, Step, egress_refused};
 
 #[cfg(feature = "test-util")]
 pub mod far;
+mod guest;
 mod kernel;
 mod link;
 mod lock;
@@ -39,8 +40,12 @@ mod rules;
 mod scope;
 mod slot;
 
+pub use self::guest::{
+    GUEST_ADDRESS, GUEST_PREFIX_LEN, GuestNamespace, TAP, TAP_ADDRESS, remove_namespace,
+};
 use self::kernel::{Host, Kernel};
 pub use self::lock::own_host;
+use self::rules::Policy;
 use self::scope::Scope;
 
 /// Whether the host forwards IPv4 between its links: an allowlisted sandbox's
@@ -143,6 +148,16 @@ pub fn sweep() -> Result<()> {
 #[derive(Debug)]
 pub struct HostScope(Scope);
 
+/// What a guarded scope lets its sandbox reach.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Destinations<'a> {
+    /// The allowlist's addresses, the resolver port closed.
+    Listed(&'a Allowlist),
+    /// Every public IPv4 address: every reserved range dropped before the
+    /// accept.
+    Public,
+}
+
 impl HostScope {
     /// Joins `netns` to the host through a slot of its own, admitting only
     /// `allowlist`'s addresses.
@@ -152,6 +167,30 @@ impl HostScope {
     /// removed before the refusal returns.
     pub fn join(netns: BorrowedFd<'_>, allowlist: &Allowlist) -> Result<Self> {
         Scope::build(&Host, netns, allowlist).map(Self)
+    }
+
+    /// Joins `netns` to the host through a slot of its own, admitting
+    /// `destinations`: a listed plan its set alone, as a bubblewrap scope
+    /// does, so an operator registry at a private address stays reachable;
+    /// a public plan every address once each reserved range — private,
+    /// loopback, link-local and carrier-grade among them — is dropped.
+    ///
+    /// # Errors
+    /// As [`HostScope::join`].
+    pub fn guarded(netns: BorrowedFd<'_>, destinations: Destinations<'_>) -> Result<Self> {
+        let empty;
+        let (allowlist, reach) = match destinations {
+            Destinations::Listed(allowlist) => (allowlist, rules::Reach::Listed),
+            Destinations::Public => {
+                empty = Allowlist::new(Vec::new())?;
+                (&empty, rules::Reach::Public)
+            }
+        };
+        let policy = Policy {
+            reach,
+            reserved_dropped: reach == rules::Reach::Public,
+        };
+        Scope::build_held(&Host, netns, allowlist, policy).map(Self)
     }
 
     /// Holds the scope to `allowlist`'s addresses from now on, in place of

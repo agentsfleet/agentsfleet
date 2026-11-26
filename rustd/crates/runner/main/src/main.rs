@@ -12,6 +12,8 @@
 //! - `sandbox` is started by the engine inside each sandbox: it hardens itself
 //!   before any thread exists, then serves the executor. The binary is bound
 //!   read-only into every sandbox, so there is no second artifact to ship.
+//! - `guest` is a Firecracker microVM's first process: it mounts the guest's
+//!   drives, then serves the executor on vsock.
 
 #![deny(clippy::self_named_module_files)]
 
@@ -40,6 +42,9 @@ use self::host::{Host, OrExit as _};
 const DEFAULT_LEVEL: LevelFilter = LevelFilter::INFO;
 /// Logged when a second SIGINT or SIGTERM ends a drain the first one began.
 const EVENT_STOP_FORCED: &str = "runner_stop_forced";
+/// Why the guest entry refuses off Linux: only a Linux guest kernel starts it.
+#[cfg(all(feature = "firecracker", not(target_os = "linux")))]
+const GUEST_OFF_LINUX: &str = "the guest entry runs only as a Linux microVM's first process";
 
 /// The runner's command line.
 #[derive(Debug, Parser)]
@@ -61,6 +66,10 @@ enum Command {
     /// told the descriptors it inherited, the tenant leaf's and its link's,
     /// and the sizes its executor serves with.
     Sandbox(afr_guest::Entry),
+    /// Mount a microVM's file systems and serve its executor on vsock; the
+    /// guest kernel starts this binary so, as its first process.
+    #[cfg(feature = "firecracker")]
+    Guest(afr_engine_firecracker::guest::GuestEntry),
 }
 
 /// How `run` builds each run's sandbox.
@@ -82,6 +91,8 @@ fn main() -> ExitCode {
         // First and alone: hardening refuses once a second thread exists, so
         // nothing may start one before it.
         Command::Sandbox(entry) => sandbox(entry),
+        #[cfg(feature = "firecracker")]
+        Command::Guest(entry) => guest(entry),
         Command::Probe => probe(),
         Command::Run(args) => run(args),
     }
@@ -90,6 +101,19 @@ fn main() -> ExitCode {
 /// Hardens and serves; any refusal goes to stderr, which the engine reads.
 fn sandbox(entry: afr_guest::Entry) -> ExitCode {
     exited(afr_guest::serve_sandboxed(entry))
+}
+
+/// Mounts and serves as a microVM's first process; any refusal goes to the
+/// guest's console, and the guest ends with it.
+#[cfg(all(feature = "firecracker", target_os = "linux"))]
+fn guest(entry: afr_engine_firecracker::guest::GuestEntry) -> ExitCode {
+    exited(afr_engine_firecracker::guest::serve_vm(entry))
+}
+
+/// Only a Linux guest kernel starts the guest entry.
+#[cfg(all(feature = "firecracker", not(target_os = "linux")))]
+fn guest(_entry: afr_engine_firecracker::guest::GuestEntry) -> ExitCode {
+    refused(&GUEST_OFF_LINUX)
 }
 
 /// SUCCESS for an entry that ended cleanly, otherwise its refusal.
@@ -219,7 +243,7 @@ fn supervise(args: RunArgs, settings: &config::Settings) -> Result<ExitCode, Exi
         .with_tuning(settings.tuning);
     // `resources` outlives the runtime and the engine it is moved into: every
     // sandbox is gone before its toolbox is unmounted.
-    let host = args.host(&home, settings.engine)?;
+    let host = args.host(&home, settings)?;
     let _resources = host.resources;
     let engine = host.engine;
     let probe = host.probe;
@@ -237,16 +261,12 @@ impl RunArgs {
     ///
     /// # Errors
     /// The failure, already logged, as the exit status.
-    fn host(
-        self,
-        home: &StorageHome,
-        tuning: afr_engine_bubblewrap::EngineTuning,
-    ) -> Result<Host, ExitCode> {
+    fn host(self, home: &StorageHome, settings: &config::Settings) -> Result<Host, ExitCode> {
         #[cfg(all(debug_assertions, feature = "unsandboxed"))]
         if self.unsandboxed {
-            return Host::unsandboxed(home, tuning.sizes);
+            return Host::unsandboxed(home, settings.engine.sizes);
         }
-        self.engine.boot(home, tuning)
+        self.engine.boot(home, settings)
     }
 }
 

@@ -1,0 +1,63 @@
+[package]
+name = "afr_engine_firecracker"
+description = "Our Firecracker engine: one microVM per run behind the stock jailer, the toolbox and the workspace image as its drives, its egress on a tap the host table holds, and the guest entry that serves the executor on vsock."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+af_core.workspace = true
+# The engine, isolation and KVM names the engine states and its boot judges.
+af_wire.workspace = true
+# The seam it meets.
+afr_engine.workspace = true
+# Every guest serves the same executor; the host dials it over vsock.
+afr_executor.workspace = true
+async-trait.workspace = true
+# The vsock handshake, retried while a guest boots, without a hand-written
+# loop.
+backon.workspace = true
+# The guest entry's flags, parsed once here for the runner binary.
+clap.workspace = true
+# The monitor's `--config-file`: one JSON document per boot.
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["io-util", "macros", "net", "process", "rt", "sync", "time"] }
+tracing.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# A guest's cgroup leaf under the delegated subtree.
+afr_cgroup.workspace = true
+# Its namespace, tap and host table.
+afr_firewall.workspace = true
+# The verified toolbox a guest's read-only drive is, and the workspace image
+# formatted for its data drive.
+afr_image.workspace = true
+# The confinement the guest's executor puts on itself before it serves.
+afr_guest.workspace = true
+# The guest entry's fork, and the power-off that ends its virtual machine.
+libc.workspace = true
+# The mount, ownership, device-node and identity calls a jail and a guest
+# are made with.
+rustix.workspace = true
+# The guest's executor listens on vsock.
+tokio-vsock.workspace = true
+
+[dev-dependencies]
+af_core = { workspace = true, features = ["test-util"] }
+tempfile.workspace = true
+tokio = { workspace = true, features = ["io-util", "macros", "net", "rt", "rt-multi-thread", "time"] }
+
+# The kernel lane, which boots this engine's microVMs, is `agentsfleet_runner`'s
+# example (`runner/main/examples`), so this crate dev-depends on no crate that
+# depends on it.

@@ -120,14 +120,7 @@ impl WorkspaceDisk {
         bytes: u64,
         owner: (u32, u32),
     ) -> Result<Caching> {
-        // Readable by root alone: the raw image is every file the run wrote.
-        fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(IMAGE_MODE)
-            .open(&self.image)?
-            .set_len(bytes)?;
-        tools.format_ext4(&self.image, owner).await?;
+        format_image(tools, &self.image, bytes, owner).await?;
         fs::create_dir(&self.mount_point)?;
         let (mount, disk) = (tools.mount, self.paths());
         // Off the async runtime: the run's build shares its task with the
@@ -260,6 +253,30 @@ impl WorkspaceDisk {
         fs::remove_file(&self.image).or_else(absent)?;
         Ok(())
     }
+}
+
+/// Makes and formats a sparse `bytes`-byte ext4 image at `image`.
+///
+/// The image is readable by its owner alone and its root writable by `owner`:
+/// a workspace disk no host mounts, which a microVM engine attaches as its
+/// guest's data drive.
+///
+/// # Errors
+/// The file exists already, cannot be made or sized, or `mke2fs` fails.
+pub async fn format_image(
+    tools: &HostTools,
+    image: &Path,
+    bytes: u64,
+    owner: (u32, u32),
+) -> Result<()> {
+    // Readable by its owner alone: the raw image is every file the run wrote.
+    fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(IMAGE_MODE)
+        .open(image)?
+        .set_len(bytes)?;
+    tools.format_ext4(image, owner).await
 }
 
 impl Mounted {

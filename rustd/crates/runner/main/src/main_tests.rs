@@ -117,7 +117,7 @@ fn default_and_explicit_bubblewrap_select_the_shipping_engine() {
         };
         assert_eq!(run.engine, super::engine::EngineChoice::Bubblewrap);
     }
-    for refused in ["firecracker", "unsandboxed", "unknown", ""] {
+    for refused in ["unsandboxed", "unknown", ""] {
         let error =
             Cli::try_parse_from(["agentsfleet-runner", "run", "--engine", refused]).unwrap_err();
         assert_eq!(error.kind(), clap::error::ErrorKind::InvalidValue);
@@ -134,6 +134,25 @@ fn default_and_explicit_bubblewrap_select_the_shipping_engine() {
         .unwrap_err();
         assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
     }
+}
+
+/// `--engine firecracker` selects our microVM engine, which states itself as
+/// a hardware wall; it never names bubblewrap's facts.
+#[cfg(feature = "firecracker")]
+#[test]
+fn engine_firecracker_selects_the_microvm_engine() {
+    let Command::Run(run) =
+        Cli::try_parse_from(["agentsfleet-runner", "run", "--engine", "firecracker"])
+            .unwrap()
+            .command
+    else {
+        unreachable!("the run entry");
+    };
+
+    assert_eq!(run.engine, super::engine::EngineChoice::Firecracker);
+    let stated = run.engine.capabilities();
+    assert_eq!(stated.engine, af_wire::runner::SandboxEngine::Firecracker);
+    assert_eq!(stated.isolation, af_wire::runner::Isolation::HardwareVm);
 }
 
 /// An unreadable level falls back rather than refusing: a typo in a debugging

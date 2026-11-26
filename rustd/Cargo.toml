@@ -54,6 +54,7 @@ members = [
     "crates/runner/afr_cgroup",
     "crates/runner/afr_engine",
     "crates/runner/afr_engine_bubblewrap",
+    "crates/runner/afr_engine_firecracker",
     "crates/runner/afr_engine_unsandboxed",
     "crates/runner/afr_executor",
     "crates/runner/afr_firewall",
@@ -195,8 +196,10 @@ afr_firewall = { path = "crates/runner/afr_firewall" }
 afr_image = { path = "crates/runner/afr_image" }
 afr_guest = { path = "crates/runner/afr_guest" }
 # The engines, which only the runner binary and the e2e crate name: the
-# hardened bubblewrap engine, and the debug engine that confines nothing.
+# hardened bubblewrap engine, our Firecracker microVM engine, and the debug
+# engine that confines nothing.
 afr_engine_bubblewrap = { path = "crates/runner/afr_engine_bubblewrap" }
+afr_engine_firecracker = { path = "crates/runner/afr_engine_firecracker" }
 afr_engine_unsandboxed = { path = "crates/runner/afr_engine_unsandboxed" }
 # The trusted runner half: pool, renew, report, recovery, verbs, downlink.
 afr_supervisor = { path = "crates/runner/afr_supervisor" }
@@ -1060,6 +1063,10 @@ cap-tempfile = { version = "4.0.3", default-features = false }
 # A tree crosses the executor link as a tar stream: the reader and writer
 # every Rust archiver uses, rather than a hand-written header parser.
 tar = { version = "0.4.46", default-features = false }
+# A Firecracker guest's executor listens on vsock, the device its host dials
+# through the monitor's Unix socket; the async listener over the kernel's
+# `AF_VSOCK`, rather than hand-written socket calls.
+tokio-vsock = { version = "0.7.3", default-features = false }
 
 # The provider side of the agent harness: the types one model call reads and
 # writes, and the `Model` trait a provider implements. Its default build is

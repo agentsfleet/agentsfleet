@@ -17,7 +17,9 @@
 //! # The two ends
 //!
 //! [`bind`] claims a socket path and [`connected`] takes a stream already
-//! connected, the end of a socket pair a sandbox inherits; [`Server::serve`]
+//! connected, the end of a socket pair a sandbox inherits; [`streamed`] takes
+//! any other connected byte stream, a virtual machine's vsock connection;
+//! [`Server::serve`]
 //! serves that one connection, owning every process it starts. Taking the
 //! link is split from serving so the sandbox takes it before it confines
 //! itself.
@@ -51,6 +53,6 @@ pub use self::edges::EDGE_BYTES;
 pub use self::error::{Error, Result};
 pub use self::events::{Events, Feed};
 pub use self::protocol::{MAX_READ_BYTES, READ_CHUNK_BYTES, TRANSFER_CHUNK_BYTES};
-pub use self::server::{Server, Tenant, WORKSPACE_ROOT, bind, connected, serve};
+pub use self::server::{Server, Tenant, WORKSPACE_ROOT, bind, connected, serve, streamed};
 pub use self::sizes::Sizes;
 pub use self::slot::{ExecutorSlot, ExecutorSource, Outcome, Unavailable};

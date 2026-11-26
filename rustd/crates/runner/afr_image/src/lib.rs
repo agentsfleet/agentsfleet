@@ -29,4 +29,4 @@ pub use self::toolbox::{
     TOOLBOX_KEEP_RELEASES, TOOLBOX_PREFIX, TOOLBOX_RELEASE_PUBLIC_KEY, TOOLBOX_SUFFIX, Toolbox,
     ToolboxHome, Toolboxes,
 };
-pub use self::workspace_disk::{Caching, Mount, WorkspaceDisk};
+pub use self::workspace_disk::{Caching, Mount, WorkspaceDisk, format_image};
