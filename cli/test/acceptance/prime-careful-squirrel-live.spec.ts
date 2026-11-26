@@ -58,7 +58,9 @@ if (!isLive) {
       const created = await primeFleet(session, fixture);
       await awaitTurn(session, created.fleet_id,
         processed((turn) => turn.turn_id === created.turn_id), "answered first turn");
-      const asked = await askForAccess(session, created.fleet_id, said(followUp, `The secret is named ${secret.name}.`));
+      const prompt = said(followUp, `The secret is named ${secret.name}. Call request_access and no other tool. ` +
+        "Once the person answers, call no tool and reply in one line saying whether you hold the secret. Never print its value.");
+      const asked = await askForAccess(session, created.fleet_id, prompt);
       return { fleetId: created.fleet_id, asked };
     }
 

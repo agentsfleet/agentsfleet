@@ -67,19 +67,13 @@ pub(crate) fn transport(verb: Verb) -> impl Fn(reqwest::Error) -> Error {
     move |source| ErrorKind::Transport { verb, source }.into()
 }
 
-/// Reports a 5xx or a 429 whose body named no code.
+/// Reports a 5xx or a 429 with no body: the tests' stand-in for a daemon that is down.
 #[cfg(test)]
 pub(crate) fn unavailable(verb: Verb, status: u16) -> Error {
-    ErrorKind::Unavailable {
-        verb,
-        status,
-        code: None,
-    }
-    .into()
+    unavailable_with_body(verb, status, &[])
 }
 
-/// Reports a 5xx or a 429, reading the code out of its problem body, so a
-/// storage outage stays distinguishable from a daemon that is down.
+/// Reports a retryable response while retaining its registered problem code.
 pub(crate) fn unavailable_with_body(verb: Verb, status: u16, body: &[u8]) -> Error {
     ErrorKind::Unavailable {
         verb,
@@ -95,14 +89,13 @@ pub(crate) fn refused(verb: Verb, status: u16, code: Option<ErrorCode>) -> Error
 }
 
 /// Reports a 4xx, reading the code out of its problem body.
+///
+/// A body that is not a problem document, or names a code this build does not
+/// declare, refuses with no code rather than guessing one.
 pub(crate) fn refused_with_body(verb: Verb, status: u16, body: &[u8]) -> Error {
     refused(verb, status, problem_code(body))
 }
 
-/// The code a problem body names.
-///
-/// A body that is not a problem document, or names a code this build does not
-/// declare, yields no code rather than a guessed one.
 fn problem_code(body: &[u8]) -> Option<ErrorCode> {
     let named = af_core::json::object_from_slice::<Problem<'_>>(body)
         .ok()?

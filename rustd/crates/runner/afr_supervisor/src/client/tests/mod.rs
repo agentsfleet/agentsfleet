@@ -23,7 +23,7 @@ struct Seen {
     body: AxumBytes,
 }
 
-/// A daemon that answers `/status/{code}` with that status and a problem body,
+/// A daemon that answers `/status/{code}` with that status and an error body,
 /// and everything else with 200 and the body it was sent.
 async fn daemon() -> (String, mpsc::UnboundedReceiver<Seen>) {
     let (seen, received) = mpsc::unbounded_channel();
@@ -42,10 +42,13 @@ async fn daemon() -> (String, mpsc::UnboundedReceiver<Seen>) {
                     .map_or(StatusCode::OK, |code| {
                         StatusCode::from_u16(code.parse().unwrap()).unwrap()
                     });
-                let reply = if status.is_success() {
-                    body.clone()
-                } else {
-                    AxumBytes::from_static(br#"{"error_code":"UZ-RUN-011"}"#)
+                let reply = match status {
+                    ok if ok.is_success() => body.clone(),
+                    StatusCode::SERVICE_UNAVAILABLE => {
+                        AxumBytes::from_static(br#"{"error_code":"UZ-DT-009"}"#)
+                    }
+                    StatusCode::BAD_GATEWAY => AxumBytes::from_static(b"<html>Bad gateway</html>"),
+                    _ => AxumBytes::from_static(br#"{"error_code":"UZ-RUN-011"}"#),
                 };
                 seen.send(Seen {
                     method,

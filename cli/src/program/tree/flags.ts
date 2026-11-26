@@ -238,7 +238,7 @@ export const modelOverrideFlag = textFlag(FLAG.model, "Use this model instead of
 export const fleetNameFlag = textFlag(FLAG.name, "Name for the fleet (default: fleet- plus the end of its ID)", METAVAR.name);
 export const fleetModelFlag = textFlag(
   FLAG.model,
-  "Model ID from `agentsfleet models list` (default: the workspace's model)",
+  "Model reference from the workspace model catalogue (default: the workspace's model)",
   METAVAR.ref,
 );
 
