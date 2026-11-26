@@ -315,8 +315,8 @@ fn every_crate_runs_in_exactly_one_unit_shard() {
         .collect();
     assert_eq!(
         listed,
-        measured.keys().cloned().collect(),
-        "RUSTD_SHARDS lists every coverage shard"
+        shards::runs(&integration, "RUSTD_COVER_", &measured),
+        "RUSTD_SHARDS lists every coverage shard, or the parts it is split into"
     );
     let violations = shards::coverage(&workspace, &measured);
     assert!(violations.is_empty(), "coverage shards: {violations:#?}");

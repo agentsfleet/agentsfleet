@@ -33,7 +33,7 @@ const NOTE: &str = "written on the first host before it died\n";
 async fn killed_runner_mid_turn_restarts_on_another_host() -> Checked {
     let custody = Custody::from_env()?;
     let mut supervisor = Supervisor::new();
-    let scene = crate::e2e::scenario_with(&mut supervisor, None, &custody.knobs()).await;
+    let scene = crate::e2e_clock::scenario_with(&mut supervisor, &custody.knobs()).await;
     custody.seed(&scene).await?;
     let mut model = Model::start().await?;
     let (replacement, token) = seed::configure(&scene, &model.base()).await?;

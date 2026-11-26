@@ -1,7 +1,7 @@
 //! The test shards in `make/`, read as the folder globs they are declared
 //! with, against the workspace's member folders.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::workspace::{Layer, Workspace, read, rustd};
 
@@ -32,6 +32,23 @@ pub(crate) fn words(text: &str, name: &str) -> Vec<String> {
         .map_or_else(Vec::new, |value| {
             value.split_whitespace().map(str::to_owned).collect()
         })
+}
+
+/// The shard names a lane runs for `groups`: each group's own name, or the
+/// parts its `<prefix><NAME>_PARTS := …` line splits it into by test name.
+pub(crate) fn runs(text: &str, prefix: &str, groups: &Shards) -> BTreeSet<String> {
+    groups
+        .keys()
+        .flat_map(|name| {
+            let line = format!("{prefix}{}_PARTS", name.to_uppercase().replace('-', "_"));
+            let parts = words(text, &line);
+            if parts.is_empty() {
+                vec![name.clone()]
+            } else {
+                parts
+            }
+        })
+        .collect()
 }
 
 /// The text of `make/<file>`.

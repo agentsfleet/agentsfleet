@@ -32,6 +32,8 @@ mod definition_responder;
 mod definition_run;
 #[path = "support/e2e.rs"]
 mod e2e;
+#[path = "support/e2e_clock.rs"]
+mod e2e_clock;
 #[path = "support/e2e_db.rs"]
 mod e2e_db;
 #[path = "support/e2e_event.rs"]

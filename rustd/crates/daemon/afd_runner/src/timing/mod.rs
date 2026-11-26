@@ -15,7 +15,7 @@ use af_core::timing::{
 };
 
 mod run;
-pub use run::{MIN_RUN_SECONDS, RunClock, RunSettings};
+pub use run::{MIN_HEARTBEAT_SECONDS, MIN_RUN_SECONDS, RunClock, RunSettings};
 
 /// How long an issued run or thread assignment stays valid before the thread
 /// becomes reassignable, and the increment each renewal adds.

@@ -4,25 +4,25 @@
 use af_core::timing::STREAM_ANSWER_TIMEOUT;
 use af_stream::Transport;
 use af_wire::protocol::StreamKind;
-use afd_runner::timing::HEARTBEAT_INTERVAL;
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
 use tokio::time::Instant;
 
 use super::raw::Native;
 use crate::e2e::scenario;
+use crate::e2e_clock::HEARTBEAT;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn application_pings_do_not_keep_a_heartbeat_silent_native_session_alive() {
     for transport in [Transport::H2, Transport::H3] {
         let mut supervisor = Supervisor::new();
-        let scene = scenario(&mut supervisor).await;
+        let scene = crate::e2e_clock::scenario(&mut supervisor).await;
         let mut native = Native::connect(&scene, transport).await;
         let last_heartbeat = Instant::now();
         native.heartbeat().await;
         for request_id in 4..=6 {
-            tokio::time::sleep(HEARTBEAT_INTERVAL / 2).await;
+            tokio::time::sleep(HEARTBEAT / 2).await;
             native
                 .send(
                     StreamKind::Control,
@@ -38,9 +38,9 @@ async fn application_pings_do_not_keep_a_heartbeat_silent_native_session_alive()
                 request_id
             );
         }
-        assert!(last_heartbeat.elapsed() < HEARTBEAT_INTERVAL * 2);
-        native.ended(HEARTBEAT_INTERVAL).await;
-        assert!(last_heartbeat.elapsed() >= HEARTBEAT_INTERVAL * 2);
+        assert!(last_heartbeat.elapsed() < HEARTBEAT * 2);
+        native.ended(HEARTBEAT).await;
+        assert!(last_heartbeat.elapsed() >= HEARTBEAT * 2);
         native.close().await;
         supervisor.shutdown().await;
         scene.cleanup().await;
