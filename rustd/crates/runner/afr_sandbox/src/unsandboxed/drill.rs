@@ -16,11 +16,10 @@ use afr_executor::Executor;
 
 use super::UnsandboxedEngine;
 use crate::engine::{
-    Capabilities, Engine, Environment, Granted, Killed, Limits, ParkMode, Parked, Quiescence, Root,
-    Sandbox, SandboxSpec, SandboxState, Sweep, Swept,
+    Capabilities, EgressPlan, Engine, Environment, Granted, Killed, Limits, ParkMode, Parked,
+    Quiescence, Root, Sandbox, SandboxSpec, SandboxState, Sweep, Swept,
 };
 use crate::error::Result;
-use crate::network::Allowlist;
 
 /// What every drill toolbox digest is taken over: a label rather than image
 /// bytes, so two processes agree on it without sharing a file.
@@ -116,8 +115,8 @@ impl Sandbox for Drilled {
         self.unconfined.park(mode).await
     }
 
-    async fn reallow(&mut self, allowlist: &Allowlist) -> Result<()> {
-        self.unconfined.reallow(allowlist).await
+    async fn egress(&mut self, plan: EgressPlan<'_>) -> Result<()> {
+        self.unconfined.egress(plan).await
     }
 
     async fn kill(&self) -> Killed {

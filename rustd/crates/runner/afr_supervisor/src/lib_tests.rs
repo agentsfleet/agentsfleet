@@ -2,7 +2,8 @@
 
 use super::run;
 use crate::test_support::{Behaviour, FakeAgent, FakeEngine, bounded};
-use afr_sandbox::{HostProbe, Kvm};
+use af_wire::runner::Kvm;
+use afr_sandbox::HostProbe;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 

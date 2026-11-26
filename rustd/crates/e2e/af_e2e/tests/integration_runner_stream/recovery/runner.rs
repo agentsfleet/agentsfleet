@@ -147,7 +147,7 @@ fn probe() -> afr_sandbox::HostProbe {
             .map(str::to_owned)
             .to_vec(),
         bubblewrap: true,
-        kvm: afr_sandbox::Kvm::Absent,
+        kvm: af_wire::runner::Kvm::Absent,
         toolbox_filesystem: true,
         workspace_direct_io: None,
         egress: false,

@@ -133,6 +133,18 @@ impl Parts {
         Names::rewrite(self.dir(), allowlist)
     }
 
+    /// The addresses the kernel holds this sandbox's egress set to, read
+    /// back; none when it was built with no scope.
+    ///
+    /// # Errors
+    /// The kernel refused the read.
+    pub(super) fn enforced(&self) -> Result<Option<Vec<std::net::Ipv4Addr>>> {
+        self.egress
+            .as_ref()
+            .map(|scope| scope.enforced(&crate::egress::Host))
+            .transpose()
+    }
+
     /// Starts bubblewrap inside the cgroup whose `cgroup.procs` is `procs`,
     /// as host user `ids` when given — what a root runner passes, so nothing
     /// the sandbox does happens as host root — inheriting `handover`'s

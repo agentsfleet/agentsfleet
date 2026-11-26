@@ -319,9 +319,9 @@ async fn resume(
         .resume()
         .await
         .map_err(|failure| (refused(EVENT_RESUME_FAILED, failure), None))?;
-    if let Bound::Allowed(allowlist) = bound
-        && let Err(failure) = sandbox.reallow(allowlist).await
-    {
+    // The next run's plan, numbered above the one the sandbox was parked
+    // under, reads back in force before its first command.
+    if let Err(failure) = sandbox.egress(bound.plan()).await {
         return Err((refused(EVENT_REFILL_FAILED, failure), Some(sandbox)));
     }
     match answered(sandbox.as_ref()).await {

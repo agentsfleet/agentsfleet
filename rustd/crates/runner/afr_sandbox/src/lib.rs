@@ -63,8 +63,9 @@ pub use self::cgroup::{
 pub use self::engine::fresh_sandbox_id;
 pub use self::engine::{
     Cap, Capabilities, DEFAULT_CPU_MILLIS, DEFAULT_DISK_BYTES, DEFAULT_MEMORY_BYTES, DEFAULT_PIDS,
-    Engine, EngineTuning, Environment, Granted, Killed, Limits, ParkMode, Parked, Quiescence,
-    ResourceFacts, Root, Sandbox, SandboxSpec, SandboxState, Sweep, Swept,
+    EgressPlan, Enforcer, Engine, EngineTuning, Environment, Generation, Granted, Killed, Limits,
+    ParkMode, Parked, Quiescence, ResourceFacts, Root, Sandbox, SandboxSpec, SandboxState, Sweep,
+    Swept, enforce, until_in_force,
 };
 #[cfg(feature = "test-util")]
 pub use self::error::ambiguous;
@@ -75,9 +76,9 @@ pub use self::harden::{WRITABLE, WRITABLE_DEVICES, capabilities_dropped, harden,
 pub use self::host::{HostTools, MKE2FS_PATH};
 pub use self::network::{Allowlist, Network, RESOLV_CONF, SANDBOX_HOSTS, SANDBOX_RESOLV_CONF};
 pub use self::probe::{
-    BWRAP_PATH, CGROUP_ROOT, FILESYSTEMS_PATH, HostProbe, KVM_PATH, Kvm, LSM_PATH,
-    MECHANISM_BUBBLEWRAP, MECHANISM_LANDLOCK, MECHANISM_SECCOMP, MECHANISM_TOOLBOX_FILESYSTEM,
-    ProbePaths, REQUIRED_CONTROLLERS, SECCOMP_ACTIONS_PATH, probe,
+    BWRAP_PATH, CGROUP_ROOT, FILESYSTEMS_PATH, HostProbe, KVM_PATH, LSM_PATH, MECHANISM_BUBBLEWRAP,
+    MECHANISM_LANDLOCK, MECHANISM_SECCOMP, MECHANISM_TOOLBOX_FILESYSTEM, ProbePaths,
+    REQUIRED_CONTROLLERS, SECCOMP_ACTIONS_PATH, probe,
 };
 pub use self::serve::{
     Entry, MAX_FRAME_BYTES_FLAG, MAX_READ_BYTES_FLAG, serve_confined, serve_sandboxed,

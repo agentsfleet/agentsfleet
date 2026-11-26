@@ -9,6 +9,7 @@ use netlink_packet_netfilter::nftables::{
     DataAttribute, ListAttribute, NfTablesMessage, SetAttribute, SetElementAttribute,
     SetElementList, SetElementMessage, SetMessage,
 };
+use netlink_packet_netfilter::{NetfilterMessage, NetfilterMessageInner};
 
 use super::expressions::WORD;
 use super::{Message, SET, SET_ID, batch, nf};
@@ -68,6 +69,59 @@ pub(in crate::egress) fn refill<W: Wire>(
     addresses: &[Ipv4Addr],
 ) -> io::Result<()> {
     netfilter.acknowledged(refilled(slot, addresses))
+}
+
+/// The addresses the kernel holds in `slot`'s set, read back through the
+/// socket that owns its table: what the slot enforces, never what was last
+/// asked of it.
+///
+/// # Errors
+/// The kernel refused the dump.
+pub(in crate::egress) fn enforced<W: Wire>(
+    netfilter: &mut Netlink<W>,
+    slot: Slot,
+) -> io::Result<Vec<Ipv4Addr>> {
+    let attributes = vec![
+        SetElementList::Table(slot.table()),
+        SetElementList::Set(SET.to_owned()),
+    ];
+    let asked = nf(
+        NfTablesMessage::GetSetElement(SetElementMessage { attributes }),
+        0,
+    );
+    let mut held: Vec<Ipv4Addr> = netfilter.dump(asked)?.into_iter().flat_map(keys).collect();
+    held.sort_unstable();
+    Ok(held)
+}
+
+/// The IPv4 keys one set-element message carries; none from any other.
+pub(super) fn keys(message: NetfilterMessage) -> Vec<Ipv4Addr> {
+    let NetfilterMessageInner::NfTables(NfTablesMessage::NewSetElement(elements)) = message.inner
+    else {
+        return Vec::new();
+    };
+    elements
+        .attributes
+        .into_iter()
+        .filter_map(|list| match list {
+            SetElementList::Elements(elements) => Some(elements),
+            _other => None,
+        })
+        .flatten()
+        .filter_map(|element| match element {
+            ListAttribute::Element(attributes) => Some(attributes),
+            _other => None,
+        })
+        .flatten()
+        .filter_map(|attribute| match attribute {
+            SetElementAttribute::Key(DataAttribute::Value(bytes)) => {
+                <[u8; 4]>::try_from(bytes.as_slice())
+                    .ok()
+                    .map(Ipv4Addr::from)
+            }
+            _other => None,
+        })
+        .collect()
 }
 
 /// `addresses` added to `table`'s set, found by the number its batch gave it

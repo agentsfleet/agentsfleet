@@ -297,3 +297,13 @@ fn should_keep_http_settings_out_of_the_sandbox_allowlist() {
     policy.package_manager_domains = true;
     assert_eq!(assigned.hosts(&policy), original);
 }
+
+/// Every plan this process gives out is numbered above the one before, so a
+/// parked sandbox's next plan is never mistaken for an older one.
+#[test]
+fn test_each_plan_is_numbered_above_the_last() {
+    let first = Bound::Isolated.plan().generation;
+    let second = Bound::Host.plan().generation;
+
+    assert!(second > first, "{second:?} after {first:?}");
+}

@@ -6,7 +6,7 @@
 use af_core::id::Uuid7;
 use af_wire::runner::SandboxEngine;
 
-use super::{Limits, ResourceFacts, SandboxSpec};
+use super::{EgressPlan, Generation, Limits, ResourceFacts, SandboxSpec};
 use crate::network::{Allowlist, Network};
 
 /// A spec names no network until it is told one, and then names that one,
@@ -20,12 +20,16 @@ fn test_a_spec_is_isolated_until_told_otherwise() {
     let allowlist = Allowlist::new(Vec::new()).expect("an empty allowlist is an allowlist");
     let isolated = SandboxSpec::new(&id, granted);
 
-    let shared = isolated.with_network(Network::Host);
-    let allowed = isolated.with_network(Network::Allowed(&allowlist));
+    let plan = |generation, network| EgressPlan {
+        generation: Generation(generation),
+        network,
+    };
+    let shared = isolated.with_egress(plan(1, Network::Host));
+    let allowed = isolated.with_egress(plan(2, Network::Allowed(&allowlist)));
 
-    assert_eq!(isolated.network, Network::Isolated);
-    assert_eq!(shared.network, Network::Host);
-    assert_eq!(allowed.network, Network::Allowed(&allowlist));
+    assert_eq!(isolated.egress, plan(0, Network::Isolated));
+    assert_eq!(shared.egress, plan(1, Network::Host));
+    assert_eq!(allowed.egress, plan(2, Network::Allowed(&allowlist)));
     assert_eq!(
         (allowed.id, allowed.granted),
         (isolated.id, isolated.granted)

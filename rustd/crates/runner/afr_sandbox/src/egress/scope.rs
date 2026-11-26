@@ -7,6 +7,7 @@
 
 use std::borrow::BorrowMut;
 use std::io;
+use std::net::Ipv4Addr;
 use std::os::fd::BorrowedFd;
 
 use af_core::error_code::{Coded as _, Logged};
@@ -107,6 +108,16 @@ impl<W: Wire> Scope<W> {
         let event = EVENT_REFILLED;
         tracing::info!(slot, hosts, event);
         Ok(())
+    }
+
+    /// The addresses the kernel holds this scope to, read back over a socket
+    /// of its own: a read needs no ownership of the table.
+    ///
+    /// # Errors
+    /// The kernel refused the socket or the read.
+    pub(crate) fn enforced<K: Kernel<Wire = W>>(&self, kernel: &K) -> Result<Vec<Ipv4Addr>> {
+        let mut netfilter = kernel.netfilter().map_err(netlink(Step::OpenNetfilter))?;
+        rules::enforced(&mut netfilter, self.claim.slot()).map_err(netlink(Step::ReadRules))
     }
 
     /// Deletes the link, then the table through the socket that owns it, and

@@ -2,7 +2,7 @@
 //! the host's network, nothing, or exactly its allowlist, held by rules the
 //! sandbox cannot touch.
 
-use crate::lane::{id_of, spec};
+use crate::lane::{id_of, plan, spec};
 use afr_sandbox::egress_testing::{
     DNS_PORT, FAR_GREETING, FAR_LISTED, FAR_PORT, FAR_UNLISTED, Far, leave, objects,
 };
@@ -99,7 +99,7 @@ fn said_under(
     scripts: &[String],
 ) -> Result<Vec<String>, Failed> {
     let sandbox_id = id_of(run_id);
-    let request = spec(&sandbox_id, Limits::default()).with_network(network);
+    let request = spec(&sandbox_id, Limits::default()).with_egress(plan(1, network));
     in_sandbox_each(lane, request, scripts).map(said)
 }
 
@@ -185,7 +185,7 @@ fn release_and_boot_sweep(lane: &Lane) -> Result<(), Failed> {
         let engine = lane.engine();
         let sandbox_id = id_of("egress-release");
         let request =
-            spec(&sandbox_id, Limits::default()).with_network(Network::Allowed(&allowlist));
+            spec(&sandbox_id, Limits::default()).with_egress(plan(1, Network::Allowed(&allowlist)));
         let sandbox = engine.prepare(request).await?;
         let during = objects()?;
         sandbox.destroy().await?;

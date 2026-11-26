@@ -23,7 +23,9 @@ use af_core::id::Uuid7;
 use crate::bubblewrap::CAPABILITIES;
 use crate::engine::{Limits, SandboxSpec};
 use crate::host::HostTools;
-use crate::probe::{HostProbe, Kvm, REQUIRED_CONTROLLERS};
+use af_wire::runner::Kvm;
+
+use crate::probe::{HostProbe, REQUIRED_CONTROLLERS};
 use crate::toolbox::Toolbox;
 use crate::workspace_disk::Caching;
 

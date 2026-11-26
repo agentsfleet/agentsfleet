@@ -1,6 +1,6 @@
-use af_wire::runner::{Isolation, NetworkPolicy, SandboxEngine, SandboxTier};
+use af_wire::runner::{Isolation, Kvm, NetworkPolicy, SandboxEngine, SandboxTier};
 use afr_sandbox::{
-    BUBBLEWRAP_CAPABILITIES, Capabilities, HostProbe, Kvm, REQUIRED_CONTROLLERS, ResourceFacts,
+    BUBBLEWRAP_CAPABILITIES, Capabilities, HostProbe, REQUIRED_CONTROLLERS, ResourceFacts,
     UnsandboxedEngine,
 };
 

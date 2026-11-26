@@ -89,7 +89,7 @@ impl Sandbox for Named {
     async fn park(self: Box<Self>, _mode: ParkMode) -> Result<Box<dyn Parked>> {
         unreachable!("a warm slot is handed out or destroyed, never parked")
     }
-    async fn reallow(&mut self, _allowlist: &crate::Allowlist) -> Result<()> {
+    async fn egress(&mut self, _plan: crate::EgressPlan<'_>) -> Result<()> {
         Ok(())
     }
     async fn destroy(self: Box<Self>) -> Result<()> {

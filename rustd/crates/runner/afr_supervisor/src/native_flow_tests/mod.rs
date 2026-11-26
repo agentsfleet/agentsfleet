@@ -166,7 +166,7 @@ fn probe() -> afr_sandbox::HostProbe {
         seccomp: true,
         cgroup_controllers: vec!["cpu".to_owned()],
         bubblewrap: true,
-        kvm: afr_sandbox::Kvm::Absent,
+        kvm: af_wire::runner::Kvm::Absent,
         toolbox_filesystem: true,
         workspace_direct_io: None,
         egress: false,

@@ -13,7 +13,8 @@ use tracing::Level;
 use tracing_subscriber::Registry;
 use tracing_subscriber::layer::{Context, Layer};
 
-use afr_sandbox::{HostProbe, Kvm, REQUIRED_CONTROLLERS};
+use af_wire::runner::Kvm;
+use afr_sandbox::{HostProbe, REQUIRED_CONTROLLERS};
 
 use super::{Cli, Command, RunArgs, answer, exited, log_filter};
 

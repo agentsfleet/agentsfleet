@@ -3,7 +3,7 @@
 //! the set, an address the set left is closed, and one both sets hold stays
 //! open through the refill.
 
-use crate::lane::{id_of, spec};
+use crate::lane::{id_of, plan, spec};
 use afr_sandbox::egress_testing::{
     FAR_GREETING, FAR_LISTED, FAR_PORT, FAR_SPARE, FAR_UNLISTED, Far,
 };
@@ -79,7 +79,8 @@ fn across_a_refill(
 ) -> Result<(Vec<String>, Vec<String>), Failed> {
     runtime().block_on(async {
         let sandbox_id = id_of(run_name);
-        let request = spec(&sandbox_id, Limits::default()).with_network(Network::Allowed(first));
+        let request =
+            spec(&sandbox_id, Limits::default()).with_egress(plan(1, Network::Allowed(first)));
         let mut sandbox = lane.engine().prepare(request).await?;
         let mut said = Vec::with_capacity(2 * scripts.len());
         for script in scripts {
@@ -87,7 +88,7 @@ fn across_a_refill(
         }
         let parked = sandbox.park(ParkMode::Pause).await?;
         sandbox = parked.resume().await?;
-        let refilled = sandbox.reallow(moved).await;
+        let refilled = sandbox.egress(plan(2, Network::Allowed(moved))).await;
         for script in scripts {
             said.push(run(sandbox.executor(), shell(script)).await);
         }

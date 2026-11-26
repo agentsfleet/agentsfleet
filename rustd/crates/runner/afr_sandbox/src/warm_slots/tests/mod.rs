@@ -287,7 +287,10 @@ async fn test_warm_slot_serves_only_its_own_network() {
         let asked = fresh_sandbox_id();
         let spec = SandboxSpec::granted_by(&slots, &asked, Limits::DEFAULT)
             .unwrap()
-            .with_network(network);
+            .with_egress(crate::EgressPlan {
+                generation: crate::Generation(1),
+                network,
+            });
         let cold = slots.prepare(spec).await.unwrap();
         assert_eq!(cold.id(), &asked);
         cold.destroy().await.unwrap();

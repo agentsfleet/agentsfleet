@@ -22,8 +22,9 @@ fn entry(word: &str) -> Output {
         .expect("the runner binary starts")
 }
 
-/// `probe` prints the capability report and every named check, and succeeds
-/// only where the host can build a sandbox.
+/// `probe` prints the capability report and every check its engine relies on,
+/// and succeeds only where the host can build a sandbox. Bubblewrap needs no
+/// KVM device, so none is judged.
 #[test]
 fn probe_answers_with_the_report_and_every_check() {
     let probed = entry("probe");
@@ -31,12 +32,10 @@ fn probe_answers_with_the_report_and_every_check() {
     let answer: serde_json::Value =
         serde_json::from_slice(&probed.stdout).expect("probe prints JSON");
     let checks = answer["checks"].as_array().expect("probe names its checks");
-    assert_eq!(checks.len(), 6, "{answer}");
-    assert!(answer["capability_report"].is_object(), "{answer}");
-    let all_mechanisms = checks
-        .iter()
-        .filter(|check| check["name"] != "kvm")
-        .all(|check| check["ok"] == true);
+    assert_eq!(checks.len(), 5, "{answer}");
+    assert!(checks.iter().all(|check| check["name"] != "kvm"), "{answer}");
+    assert_eq!(answer["capability_report"]["engine"], "bubblewrap", "{answer}");
+    let all_mechanisms = checks.iter().all(|check| check["ok"] == true);
     assert_eq!(probed.status.success(), all_mechanisms, "{answer}");
 }
 

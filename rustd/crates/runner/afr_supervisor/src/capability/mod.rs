@@ -12,9 +12,9 @@ use af_core::spelling::to_spelling;
 use af_wire::runner::{
     CapabilityReport, NetworkPolicy, SandboxTier, SelftestCheck, SelftestReport,
 };
-use af_wire::runner::{Isolation, SandboxEngine};
+use af_wire::runner::{Isolation, Kvm, SandboxEngine};
 use afr_sandbox::{
-    Capabilities, HostProbe, Kvm, MECHANISM_BUBBLEWRAP, MECHANISM_LANDLOCK, MECHANISM_SECCOMP,
+    Capabilities, HostProbe, MECHANISM_BUBBLEWRAP, MECHANISM_LANDLOCK, MECHANISM_SECCOMP,
 };
 use serde::Serialize;
 

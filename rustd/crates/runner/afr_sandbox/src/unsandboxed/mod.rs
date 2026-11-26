@@ -16,13 +16,13 @@ use afr_executor::{Client, Executor, Sizes};
 use tokio::task::JoinHandle;
 
 use crate::engine::{
-    Cap, Capabilities, Engine, Environment, Granted, Killed, Limits, ParkMode, Parked, Quiescence,
-    ResourceFacts, Root, Sandbox, SandboxSpec, SandboxState, Sweep, Swept,
+    Cap, Capabilities, EgressPlan, Engine, Environment, Granted, Killed, Limits, ParkMode, Parked,
+    Quiescence, ResourceFacts, Root, Sandbox, SandboxSpec, SandboxState, Sweep, Swept,
 };
 use crate::error::{
     EgressRefusal, ErrorKind, Result, egress_refused, sandbox_exists, unconfined, unsupported,
 };
-use crate::network::Allowlist;
+use crate::network::Network;
 
 /// The executor's socket in each run's scratch directory: with no sandbox
 /// to inherit a pair, the executor listens on a path.
@@ -226,10 +226,14 @@ impl Sandbox for Unconfined {
         Err(unsupported(SandboxEngine::Unsandboxed, "park"))
     }
 
-    /// Refused: it shares the host's network and confines nothing to an
-    /// allowlist.
-    async fn reallow(&mut self, _allowlist: &Allowlist) -> Result<()> {
-        Err(egress_refused(EgressRefusal::NoScope))
+    /// The host's network, which it shares, holds; any other plan is refused:
+    /// it confines nothing to an allowlist or a namespace.
+    async fn egress(&mut self, plan: EgressPlan<'_>) -> Result<()> {
+        if plan.network == Network::Host {
+            Ok(())
+        } else {
+            Err(egress_refused(EgressRefusal::NoScope))
+        }
     }
 
     /// Unsettled: its processes run on the host under no cgroup, so no kill

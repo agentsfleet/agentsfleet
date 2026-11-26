@@ -104,7 +104,13 @@ async fn should_refuse_new_addresses_and_never_settle_a_kill() {
         .await
         .unwrap();
 
-    let refused = sandbox.reallow(&Allowlist::new(Vec::new()).unwrap()).await;
+    let allowlist = Allowlist::new(Vec::new()).unwrap();
+    let refused = sandbox
+        .egress(crate::EgressPlan {
+            generation: crate::Generation(1),
+            network: crate::Network::Allowed(&allowlist),
+        })
+        .await;
     let killed = sandbox.kill().await;
     sandbox.destroy().await.unwrap();
 

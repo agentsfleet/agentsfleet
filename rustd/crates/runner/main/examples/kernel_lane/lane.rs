@@ -11,9 +11,9 @@ use af_core::id::Uuid7;
 use af_wire::runner::SandboxEngine;
 use afr_sandbox::egress_testing::forwarding_on;
 use afr_sandbox::{
-    BubblewrapBackend, BubblewrapConfig, BubblewrapEngine, CGROUP_ROOT, HostPaths, Limits,
-    Manifest, ProbePaths, REQUIRED_CONTROLLERS, ResourceFacts, Resources, SUBTREE_CONTROL,
-    SandboxSpec, ToolboxHome, boot, probe,
+    BubblewrapBackend, BubblewrapConfig, BubblewrapEngine, CGROUP_ROOT, EgressPlan, Generation,
+    HostPaths, Limits, Manifest, Network, ProbePaths, REQUIRED_CONTROLLERS, ResourceFacts,
+    Resources, SUBTREE_CONTROL, SandboxSpec, ToolboxHome, boot, probe,
 };
 use libtest_mimic::Failed;
 
@@ -115,6 +115,14 @@ pub(crate) fn id_of(name: &str) -> Uuid7 {
     let digest = af_core::etag::sha256_hex(name.as_bytes());
     Uuid7::parse(&format!("0198f0c2-7a3e-7c1d-9b2e-{}", &digest[..12]))
         .unwrap_or_else(|refused| unreachable!("{refused}"))
+}
+
+/// Plan `generation` reaching `network`.
+pub(crate) const fn plan(generation: u64, network: Network<'_>) -> EgressPlan<'_> {
+    EgressPlan {
+        generation: Generation(generation),
+        network,
+    }
 }
 
 /// A spec for `id` under `limits`, as bubblewrap grants them: every cap.

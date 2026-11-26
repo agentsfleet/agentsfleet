@@ -39,9 +39,7 @@ pub const REQUIRED_CONTROLLERS: [&str; 4] = ["cpu", "io", "memory", "pids"];
 /// The seccomp action every refused system call answers with.
 const SECCOMP_ERRNO_ACTION: &str = "errno";
 
-/// Whether `/dev/kvm` exists, and whether this process may open it: the
-/// wire's own type, so the probe and the heartbeat say it one way.
-pub use af_wire::runner::Kvm;
+use af_wire::runner::Kvm;
 
 /// One probe of the host, taken at boot and refreshed per heartbeat.
 #[expect(

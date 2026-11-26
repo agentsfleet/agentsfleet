@@ -5,7 +5,7 @@
 
 use std::io;
 
-use crate::lane::{id_of, spec};
+use crate::lane::{id_of, plan, spec};
 use afr_sandbox::egress_testing::{
     FAR_GREETING, FAR_PORT, FAR_UNLISTED, Far, delete_from_elsewhere, objects,
     probe_beside_a_dropping_forward_chain,
@@ -38,7 +38,7 @@ pub(crate) fn host_cannot_delete_a_live_table(lane: &Lane) -> Result<(), Failed>
         let engine = lane.engine();
         let sandbox_id = id_of("egress-owned");
         let request =
-            spec(&sandbox_id, Limits::default()).with_network(Network::Allowed(&allowlist));
+            spec(&sandbox_id, Limits::default()).with_egress(plan(1, Network::Allowed(&allowlist)));
         let sandbox = engine.prepare(request).await?;
         let table = objects()?
             .into_iter()

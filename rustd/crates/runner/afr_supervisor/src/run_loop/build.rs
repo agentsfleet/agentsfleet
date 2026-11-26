@@ -225,7 +225,7 @@ impl Run<'_> {
             |failure: afr_sandbox::Error| Ended::Failed(Unavailable::Prepare, failure.logged());
         let spec = SandboxSpec::granted_by(engine, id, limits)
             .map_err(refused)?
-            .with_network(bound.network());
+            .with_egress(bound.plan());
         let started = Instant::now();
         let prepared = engine.prepare(spec).await;
         let outcome = if prepared.is_ok() {

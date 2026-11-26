@@ -72,7 +72,7 @@ async fn test_a_park_mode_bubblewrap_lacks_is_refused_and_destroys() {
     assert!(!host.run_dir(RUN).exists(), "destroyed, not kept");
 }
 
-/// A sandbox built to no allowlist has no addresses to replace: asking it to
+/// A sandbox built to no allowlist has no set to refill: a plan asking it to
 /// take an allowlist is refused, never taken as done.
 #[tokio::test]
 async fn test_a_sandbox_built_to_no_allowlist_refuses_new_addresses() {
@@ -81,7 +81,13 @@ async fn test_a_sandbox_built_to_no_allowlist_refuses_new_addresses() {
     let id = id_of(RUN);
     let mut sandbox = host.engine().prepare(spec(&id)).await.unwrap();
 
-    let refused = sandbox.reallow(&Allowlist::new(Vec::new()).unwrap()).await;
+    let allowlist = Allowlist::new(Vec::new()).unwrap();
+    let refused = sandbox
+        .egress(crate::EgressPlan {
+            generation: crate::Generation(1),
+            network: Network::Allowed(&allowlist),
+        })
+        .await;
     let _left = sandbox.destroy().await;
     server.abort();
 

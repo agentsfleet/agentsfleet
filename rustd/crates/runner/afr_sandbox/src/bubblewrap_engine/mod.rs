@@ -4,6 +4,7 @@
 use std::ffi::OsString;
 use std::fs::{self, DirBuilder};
 use std::io;
+use std::net::Ipv4Addr;
 use std::os::unix::fs::DirBuilderExt as _;
 use std::os::unix::net::UnixStream;
 use std::sync::Arc;
@@ -18,10 +19,11 @@ use crate::bubblewrap::{self, CAPABILITIES, Layout, NetworkLayout};
 use crate::cgroup::{Freezer, RunCgroup};
 use crate::egress::{self, Kernel};
 use crate::engine::{
-    Capabilities, Engine, Environment, Granted, Killed, Limits, ParkMode, Parked, Quiescence, Root,
-    Sandbox, SandboxSpec, SandboxState, Sweep, Swept,
+    Capabilities, EgressPlan, Enforcer, Engine, Environment, Generation, Granted, Killed, Limits,
+    ParkMode, Parked, Quiescence, Root, Sandbox, SandboxSpec, SandboxState, Sweep, Swept,
 };
-use crate::error::{Result, not_ready, sandbox_exists, unconfined};
+use crate::engine::{enforce, until_in_force};
+use crate::error::{EgressRefusal, Result, egress_refused, not_ready, sandbox_exists, unconfined};
 use crate::network::{Allowlist, Network};
 use crate::probe::HostProbe;
 use crate::tenant::{Handover, Inherited, TenantFiles};
@@ -156,10 +158,17 @@ impl BubblewrapEngine {
             })?;
         let mut parts = Parts::new(spec.id.as_str(), dir);
         match self
-            .build(&mut parts, spec.id, *spec.granted.limits(), spec.network)
+            .build(
+                &mut parts,
+                spec.id,
+                *spec.granted.limits(),
+                spec.egress.network,
+            )
             .await
         {
             Ok(client) => Ok(Bubblewrapped {
+                held: Held::built(spec.egress),
+                ready_timeout: self.config.ready_timeout,
                 id: spec.id.clone(),
                 granted: spec.granted,
                 environment: Environment {
@@ -286,7 +295,22 @@ impl Engine for BubblewrapEngine {
         let sandbox_id = spec.id.as_str();
         let event = EVENT_PREPARE_STARTED;
         tracing::info!(sandbox_id, event);
-        match self.start(spec).await {
+        let started = match self.start(spec).await {
+            // Nothing runs before the plan reads back in force.
+            Ok(sandbox) => {
+                match until_in_force(&sandbox, spec.egress.generation, self.config.ready_timeout)
+                    .await
+                {
+                    Ok(()) => Ok(sandbox),
+                    Err(error) => {
+                        let _logged = Box::new(sandbox).destroy().await;
+                        Err(error)
+                    }
+                }
+            }
+            Err(error) => Err(error),
+        };
+        match started {
             Ok(sandbox) => {
                 let event = EVENT_PREPARE_COMPLETED;
                 tracing::info!(sandbox_id, event);
@@ -309,9 +333,54 @@ impl Engine for BubblewrapEngine {
     }
 }
 
+/// The plan a sandbox's egress was last given, and what its kernel set must
+/// hold for that plan to be in force.
+#[derive(Debug)]
+struct Held {
+    generation: Generation,
+    /// What it was built to reach, which no later plan may change.
+    built: Built,
+    /// The addresses the kernel set must hold, sorted; none without a set.
+    addresses: Option<Vec<Ipv4Addr>>,
+}
+
+/// What a sandbox was built to reach.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Built {
+    Host,
+    Isolated,
+    Allowed,
+}
+
+impl Held {
+    /// What a sandbox built to `plan` holds.
+    fn built(plan: EgressPlan<'_>) -> Self {
+        let (built, addresses) = match plan.network {
+            Network::Host => (Built::Host, None),
+            Network::Isolated => (Built::Isolated, None),
+            Network::Allowed(allowlist) => (Built::Allowed, Some(sorted(allowlist))),
+        };
+        Self {
+            generation: plan.generation,
+            built,
+            addresses,
+        }
+    }
+}
+
+/// `allowlist`'s addresses, sorted, as a read-back answers them.
+fn sorted(allowlist: &Allowlist) -> Vec<Ipv4Addr> {
+    let mut addresses = allowlist.addresses().to_vec();
+    addresses.sort_unstable();
+    addresses
+}
+
 /// A running sandbox and the connection to its executor.
 #[derive(Debug)]
 struct Bubblewrapped {
+    held: Held,
+    /// How long a plan may take to read back in force.
+    ready_timeout: Duration,
     id: Uuid7,
     granted: Granted,
     environment: Environment,
@@ -371,8 +440,9 @@ impl Sandbox for Bubblewrapped {
         }
     }
 
-    async fn reallow(&mut self, allowlist: &Allowlist) -> Result<()> {
-        self.parts.reallow(allowlist).await
+    async fn egress(&mut self, plan: EgressPlan<'_>) -> Result<()> {
+        let within = self.ready_timeout;
+        enforce(self, plan, within).await
     }
 
     async fn kill(&self) -> Killed {
@@ -383,6 +453,38 @@ impl Sandbox for Bubblewrapped {
         let Self { client, parts, .. } = *self;
         drop(client);
         parts.teardown().await
+    }
+}
+
+#[async_trait::async_trait]
+impl Enforcer for Bubblewrapped {
+    /// A new allowlist refills the set in one transaction; a plan reaching
+    /// what the sandbox was built to reach, with no set, changes nothing. A
+    /// plan for another kind of network is refused: the namespace was chosen
+    /// at build.
+    async fn apply(&mut self, plan: EgressPlan<'_>) -> Result<()> {
+        match (self.held.built, plan.network) {
+            (Built::Allowed, Network::Allowed(allowlist)) => {
+                self.parts.reallow(allowlist).await?;
+                self.held.addresses = Some(sorted(allowlist));
+            }
+            (Built::Host, Network::Host) | (Built::Isolated, Network::Isolated) => {}
+            _other => return Err(egress_refused(EgressRefusal::NoScope)),
+        }
+        self.held.generation = plan.generation;
+        Ok(())
+    }
+
+    /// The plan given last when the kernel set holds its addresses; with no
+    /// set, the namespace the sandbox was built with, which nothing changes.
+    async fn in_force(&self) -> Result<Option<Generation>> {
+        match &self.held.addresses {
+            Some(wanted) => {
+                let held = self.parts.enforced()?;
+                Ok((held.as_ref() == Some(wanted)).then_some(self.held.generation))
+            }
+            None => Ok(Some(self.held.generation)),
+        }
     }
 }
 

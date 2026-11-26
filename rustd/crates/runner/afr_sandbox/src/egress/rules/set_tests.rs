@@ -127,3 +127,19 @@ fn test_a_refill_is_acknowledged_or_refused_whole() {
     );
     assert_eq!(refused.raw_os_error(), Some(libc::ENOMEM));
 }
+
+/// What the kernel answers a set dump with is read back as the addresses it
+/// holds.
+#[test]
+fn test_a_set_dump_reads_back_its_addresses() {
+    use super::{elements, keys};
+
+    let addresses = [Ipv4Addr::new(140, 82, 112, 3), Ipv4Addr::new(10, 0, 0, 9)];
+    let netlink_packet_core::NetlinkPayload::InnerMessage(answered) =
+        elements("afegress3", &addresses).payload
+    else {
+        unreachable!("a set-element message")
+    };
+
+    assert_eq!(keys(answered), addresses);
+}

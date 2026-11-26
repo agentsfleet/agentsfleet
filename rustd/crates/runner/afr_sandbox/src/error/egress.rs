@@ -34,6 +34,18 @@ pub enum EgressRefusal {
     HeldElsewhere,
     /// A sandbox built to no allowlist was asked to replace its addresses.
     NoScope,
+    /// A plan older than the one in force was asked for, and refused.
+    Stale {
+        /// The plan asked for.
+        asked: u64,
+        /// The plan in force.
+        in_force: u64,
+    },
+    /// The enforcer never read back the plan it was given.
+    NotInForce {
+        /// The plan asked for.
+        asked: u64,
+    },
 }
 
 impl EgressRefusal {
@@ -47,6 +59,8 @@ impl EgressRefusal {
             Self::NoSlot => "no_slot",
             Self::HeldElsewhere => "held_elsewhere",
             Self::NoScope => "no_scope",
+            Self::Stale { .. } => "stale_plan",
+            Self::NotInForce { .. } => "plan_not_in_force",
         }
     }
 }
@@ -60,6 +74,15 @@ impl fmt::Display for EgressRefusal {
             Self::NoSlot => f.write_str(NO_SLOT),
             Self::HeldElsewhere => f.write_str(HELD_ELSEWHERE),
             Self::NoScope => f.write_str(NO_SCOPE),
+            Self::Stale { asked, in_force } => {
+                write!(
+                    f,
+                    "egress plan {asked} is older than plan {in_force}, which is in force"
+                )
+            }
+            Self::NotInForce { asked } => {
+                write!(f, "egress plan {asked} never read back in force")
+            }
         }
     }
 }
@@ -82,6 +105,8 @@ pub enum Step {
     RemoveRules,
     /// Replacing the addresses in the scope's set.
     RefillRules,
+    /// Reading back the addresses the scope's set holds.
+    ReadRules,
     /// Removing the veth pair.
     RemoveLink,
     /// Listing the host's forward chains.
@@ -107,6 +132,7 @@ impl fmt::Display for Step {
             Self::ConfigurePeer => "the sandbox side of its veth pair",
             Self::RemoveRules => "removing the egress table",
             Self::RefillRules => "refilling the egress set",
+            Self::ReadRules => "reading back the egress set",
             Self::RemoveLink => "removing the veth pair",
             Self::ListChains => "listing the host's forward chains",
             Self::ListTables => "listing egress tables",

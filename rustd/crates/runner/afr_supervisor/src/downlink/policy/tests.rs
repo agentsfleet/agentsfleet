@@ -11,8 +11,9 @@ use std::time::Duration;
 use af_core::clock::{FixedClock, SystemClock};
 use af_core::id::Uuid7;
 use af_core::test_util::trace::Capture;
+use af_wire::runner::Kvm;
 use af_wire::runner::{HeartbeatStatus, NetworkPolicy};
-use afr_sandbox::{Engine as _, HostProbe, Kvm, Limits, ParkMode, SandboxSpec};
+use afr_sandbox::{Engine as _, HostProbe, Limits, ParkMode, SandboxSpec};
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 

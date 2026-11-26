@@ -7,10 +7,12 @@ use af_core::id::Uuid7;
 use afr_executor::{Executor, Sizes};
 
 use crate::error::{Error, Result};
-use crate::network::{Allowlist, Network};
+use crate::network::Network;
 
+mod egress;
 mod facts;
 
+pub use self::egress::{EgressPlan, Enforcer, Generation, enforce, until_in_force};
 pub use self::facts::{Cap, Capabilities, Environment, Granted, ParkMode, ResourceFacts, Root};
 
 /// Memory a run's sandbox may use before its tree is killed.
@@ -96,20 +98,24 @@ pub struct SandboxSpec<'a> {
     pub id: &'a Uuid7,
     /// What it enforces, as its engine admitted.
     pub granted: Granted,
-    /// What its network reaches.
-    pub network: Network<'a>,
+    /// What its network reaches, numbered: the build returns only once its
+    /// enforcer reads this plan back in force.
+    pub egress: EgressPlan<'a>,
 }
 
 impl<'a> SandboxSpec<'a> {
     /// A sandbox named `id` enforcing `granted`, reaching nothing beyond
-    /// loopback until [`SandboxSpec::with_network`] says otherwise: an engine
+    /// loopback until [`SandboxSpec::with_egress`] says otherwise: an engine
     /// never opens a network no one asked for.
     #[must_use]
     pub const fn new(id: &'a Uuid7, granted: Granted) -> Self {
         Self {
             id,
             granted,
-            network: Network::Isolated,
+            egress: EgressPlan {
+                generation: Generation(0),
+                network: Network::Isolated,
+            },
         }
     }
 
@@ -122,10 +128,10 @@ impl<'a> SandboxSpec<'a> {
         Ok(Self::new(id, engine.grant(limits)?))
     }
 
-    /// The same spec, its network reaching what `network` names.
+    /// The same spec, held to `egress`.
     #[must_use]
-    pub const fn with_network(self, network: Network<'a>) -> Self {
-        Self { network, ..self }
+    pub const fn with_egress(self, egress: EgressPlan<'a>) -> Self {
+        Self { egress, ..self }
     }
 }
 
@@ -267,16 +273,16 @@ pub trait Sandbox: Send + Sync + fmt::Debug {
     /// confirmed. The engine has then destroyed it.
     async fn park(self: Box<Self>, mode: ParkMode) -> Result<Box<dyn Parked>>;
 
-    /// Confines the sandbox to `allowlist` from now on, in place of the
-    /// allowlist it was built to, and renders its names to match: what a
-    /// resumed sandbox takes when its next run's hosts resolved anew. The
-    /// addresses change in one transaction, so no connection meets half of
-    /// each set; call it before the run's first command.
+    /// Holds the sandbox to `plan` from now on, its names rendered to match,
+    /// and returns once its enforcer reads `plan` back in force: what a
+    /// resumed sandbox takes before its next run's first command. A plan
+    /// older than the one in force is refused.
     ///
     /// # Errors
-    /// The sandbox was built to no allowlist, the kernel refused the swap, or
-    /// its names would not render. A sandbox that refuses is destroyed.
-    async fn reallow(&mut self, allowlist: &Allowlist) -> Result<()>;
+    /// The plan is stale, asks for a network this sandbox was not built to
+    /// reach, the mechanism refused it, or it never read back. A sandbox that
+    /// refuses is destroyed.
+    async fn egress(&mut self, plan: EgressPlan<'_>) -> Result<()>;
 
     /// Ends every process inside and waits, bounded, for the tree to empty.
     /// The disk, the cgroup and the egress rules stay for

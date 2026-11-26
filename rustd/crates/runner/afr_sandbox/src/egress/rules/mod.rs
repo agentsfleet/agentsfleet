@@ -50,8 +50,8 @@ mod set;
 pub(super) use self::expressions::DNS_PORT;
 pub(super) use self::expressions::DROP;
 pub(super) use self::host_chains::dropping_forward;
-pub(super) use self::set::refill;
 use self::set::{elements, new_set};
+pub(super) use self::set::{enforced, refill};
 
 /// One `nf_tables` message.
 pub(super) type Message = NetlinkMessage<NetfilterMessage>;

@@ -18,11 +18,12 @@ use std::borrow::Cow;
 use std::collections::HashSet;
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use af_egress::{Resolve, allowlist_host, unblocked};
 use af_wire::policy::{NetworkPolicy as FleetNetwork, PACKAGE_MANAGER_DOMAINS};
 use af_wire::runner::{AssignedPolicy, NetworkPolicy};
-use afr_sandbox::{Allowlist, Network};
+use afr_sandbox::{Allowlist, EgressPlan, Generation, Network};
 use futures_util::future::try_join_all;
 
 use crate::error::{self, Result};
@@ -127,7 +128,19 @@ pub(crate) enum Bound {
     Allowed(Allowlist),
 }
 
+/// The last plan number this process gave out: a sandbox's plans only rise,
+/// and no sandbox outlives its process, which sweeps them all at boot.
+static PLANS: AtomicU64 = AtomicU64::new(0);
+
 impl Bound {
+    /// This bound as the next plan, numbered above every plan before it.
+    pub(crate) fn plan(&self) -> EgressPlan<'_> {
+        EgressPlan {
+            generation: Generation(PLANS.fetch_add(1, Ordering::Relaxed).saturating_add(1)),
+            network: self.network(),
+        }
+    }
+
     /// What it reaches by name, its addresses left out.
     pub(crate) fn reach(&self) -> Reach {
         match self {

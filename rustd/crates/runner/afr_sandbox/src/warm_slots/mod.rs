@@ -119,11 +119,12 @@ impl Engine for WarmSlots {
         let started = Instant::now();
         // Every slot is built isolated: a request for another network, which
         // the namespace is chosen for at start, starts cold.
-        let warm = if *spec.granted.limits() == self.limits && spec.network == Network::Isolated {
-            self.claim().await
-        } else {
-            None
-        };
+        let warm =
+            if *spec.granted.limits() == self.limits && spec.egress.network == Network::Isolated {
+                self.claim().await
+            } else {
+                None
+            };
         let (sandbox, start) = match warm {
             Some(Slot { sandbox }) => (sandbox, WARM),
             None => (self.inner.prepare(spec).await?, COLD),

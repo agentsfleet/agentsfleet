@@ -191,7 +191,7 @@ impl Engine for FakeEngine {
             drop(named.send(spec.id.clone()));
         }
         if let Some(reached) = &self.reached {
-            drop(reached.send(bound(spec.network)));
+            drop(reached.send(bound(spec.egress.network)));
         }
         if !self.prepare_takes.is_zero() {
             tokio::time::sleep(self.prepare_takes).await;
@@ -352,7 +352,12 @@ impl Sandbox for FakeSandbox {
         }))
     }
 
-    async fn reallow(&mut self, allowlist: &Allowlist) -> afr_sandbox::Result<()> {
+    /// Records an allowlist plan and refuses one as asked; a plan for the
+    /// network the sandbox already reaches changes nothing.
+    async fn egress(&mut self, plan: afr_sandbox::EgressPlan<'_>) -> afr_sandbox::Result<()> {
+        let Network::Allowed(allowlist) = plan.network else {
+            return Ok(());
+        };
         if self.parking == Parking::RefusesReallow {
             return Err(std::io::Error::other(NO_REFILL).into());
         }
