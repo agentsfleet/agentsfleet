@@ -45,7 +45,7 @@ export function NavItem({ asChild = false, active = false, appearance = "default
           : "w-full hover:bg-muted data-[active=true]:bg-muted data-[active=true]:text-foreground",
         appearance === "rail" && "min-h-11 gap-lg px-lg font-medium md:min-h-12",
         appearance === "list" && "text-label leading-label",
-        tone === "accent" && "bg-primary/10 text-foreground hover:bg-primary/15 data-[active=true]:bg-primary/15 data-[active=true]:text-foreground",
+        tone === "accent" && "hover:bg-primary/6 data-[active=true]:bg-primary/15 data-[active=true]:text-foreground",
         className,
       )}
     />

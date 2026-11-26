@@ -146,7 +146,6 @@ it("clears confirmed work and cancels its reads when the fleet stream revokes ac
     const view = render(thread());
     const draft = screen.getByRole("textbox", {name: /^Message your fleet/});
     fireEvent.change(draft, {target: {value: "Keep the existing redirect checks."}});
-    fireEvent.click(await screen.findByRole("button", {name: /^Tasks/}));
     expect(await screen.findByText("PR #123 repair")).toBeTruthy();
     expect(screen.getByText("Last confirmed answer")).toBeTruthy();
     fireEvent.click(screen.getByRole("region", {name: "Sources"}).querySelector("summary")!);

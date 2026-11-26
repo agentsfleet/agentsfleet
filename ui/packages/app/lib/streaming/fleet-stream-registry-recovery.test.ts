@@ -113,7 +113,7 @@ describe("fleet-stream-registry — a lost connection recovers itself", () => {
 
     document.dispatchEvent(new Event("visibilitychange"));
     expect(FakeEventSource.instances.length).toBe(opened + 1);
-    expect(getSnapshot(Z_A).connectionStatus).toBe(CONNECTION_STATUS.CONNECTING);
+    expect(getSnapshot(Z_A).connectionStatus).toBe(CONNECTION_STATUS.RECONNECTING);
     release();
   });
 

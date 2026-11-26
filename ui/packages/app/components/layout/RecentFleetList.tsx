@@ -3,13 +3,16 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Alert, NavItem, IconAction, Button, Spinner } from "@agentsfleet/design-system";
+import { NavItem, IconAction, Button, Spinner } from "@agentsfleet/design-system";
 import { TrashIcon } from "@phosphor-icons/react/ssr";
 import { useRecentPage } from "@/lib/api/use-recent-page";
 import { FleetListSchema, type NativeFleetSummary } from "@/lib/api/fleet-detail";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import type { RecentCollection } from "@/lib/api/recent-collection";
 import { FleetLifecycleDialog } from "./FleetLifecycleDialog";
+
+// Reuse a recent list during rapid switches and reconcile server-side changes on later navigation.
+const FLEET_LIST_FRESH_MS = 30_000;
 
 export function RecentFleetList({workspace, onNavigate}: {workspace: string; onNavigate: () => void}) {
   const collection = useRecentPage(`/live/v1/workspaces/${encodeURIComponent(workspace)}/fleets`, FleetListSchema);
@@ -22,9 +25,17 @@ function FleetItems({collection, workspace, onNavigate}: {collection: RecentColl
   const router = useRouter();
   const [selected, setSelected] = useState<NativeFleetSummary | null>(null);
   const previousPath = useRef(pathname);
-  // A first message lands on its new fleet's page; reading again on every
-  // navigation is what lists that fleet.
-  useEffect(() => {if (previousPath.current !== pathname) {previousPath.current = pathname; void collection.load();}}, [collection, pathname]);
+  useEffect(() => {
+    const previous = previousPath.current;
+    if (previous === pathname) return;
+    previousPath.current = pathname;
+    const fleetPath = `/w/${workspace}/fleets/`;
+    const {items} = collection.getSnapshot();
+    // A first message lands on a new fleet's page. Moving between loaded
+    // fleets can keep the existing pages and update only the selection.
+    const known = (path: string) => items.some(fleet => path === `${fleetPath}${fleet.id}`);
+    collection.refresh(known(previous) && known(pathname) ? FLEET_LIST_FRESH_MS : 0);
+  }, [collection, pathname, workspace]);
   const removed = (id: string): void => {
     collection.remove(id); setSelected(null);
     if (pathname.includes(`/fleets/${id}`)) router.replace(`/w/${workspace}/fleets/new`);
@@ -35,10 +46,6 @@ function FleetItems({collection, workspace, onNavigate}: {collection: RecentColl
       deleting={selected !== null} onDelete={() => setSelected(fleet)} />)}
     {page.loading && !page.items.length ? <Spinner size="sm" label="Loading fleets…" className="px-lg py-md text-eyebrow leading-eyebrow" /> : null}
     {!page.loading && !page.error && !page.items.length ? <p className="px-lg py-md text-eyebrow leading-eyebrow text-muted-foreground">Your fleets will appear here.</p> : null}
-    {page.error ? <div className="space-y-sm px-lg py-md">
-      <Alert asChild variant="destructive" className="wrap-anywhere px-md py-sm text-eyebrow leading-eyebrow"><p>{page.error}</p></Alert>
-      <Button variant="ghost" size="compact" disabled={page.loading} onClick={() => {void collection.load();}}>Refresh</Button>
-    </div> : null}
     {page.more ? <Button variant="ghost" size="sm" disabled={page.loading} onClick={() => {void collection.load(true);}}>Load more fleets</Button> : null}
     {selected ? <FleetLifecycleDialog action="delete" fleet={selected} workspace={workspace} onRemoved={removed} onClose={() => setSelected(null)} /> : null}
   </>;

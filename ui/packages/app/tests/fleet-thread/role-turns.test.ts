@@ -97,7 +97,7 @@ describe("FleetThread — role rendering: turns and connection", () => {
     expect(screen.queryByText(/saved history/i)).toBeNull();
   });
 
-  it("keeps saved history visible without adding a connection band", () => {
+  it("keeps saved history visible while the connection recovers", () => {
     const history = [
       ev({
         role: "assistant",
@@ -113,16 +113,20 @@ describe("FleetThread — role rendering: turns and connection", () => {
 
     mockStream(history, { connectionStatus: CONNECTION_STATUS.RECONNECTING });
     const reconnecting = renderThread();
-    expect(screen.queryByTestId("fleet-connection-notice")).toBeNull();
+    expect(screen.getByRole("button", {name: "Reconnecting…"}).getAttribute("aria-disabled")).toBe("true");
     expect(screen.getByText("Saved reply")).toBeTruthy();
     reconnecting.unmount();
   });
 
-  it("offers Retry now while automatic recovery continues", () => {
+  it("keeps recovery in the composer flap when a manual attempt connects", () => {
     mockStream([], { connectionStatus: CONNECTION_STATUS.OFFLINE });
-    renderThread();
+    const view = renderThread();
     expect(screen.getByTestId("fleet-connection-notice")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Retry now" })).toBeTruthy();
+    expect(screen.getByRole("button", {name: "Reconnect"})).toBeTruthy();
+    mockStream([], {connectionStatus: CONNECTION_STATUS.RECONNECTING});
+    view.rerender(threadElement());
+    expect(screen.getByRole("button", {name: "Reconnecting…"}).getAttribute("aria-disabled")).toBe("true");
+    expect(screen.queryByTestId("fleet-chat-header")).toBeNull();
   });
 
   it("announces arrival once, and only when it was actually waiting", async () => {

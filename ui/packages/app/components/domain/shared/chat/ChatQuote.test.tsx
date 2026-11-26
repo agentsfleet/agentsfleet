@@ -1,7 +1,7 @@
 import { AssistantRuntimeProvider, ComposerPrimitive, ThreadPrimitive, useExternalStoreRuntime, type AppendMessage, type ThreadMessageLike } from "@assistant-ui/react";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { chatMessageText } from "@/lib/chat-message-text";
+import { fleetMessageText } from "@/lib/chat-message-text";
 import { ComposerQuote, QuoteReply } from "./ChatQuote";
 
 afterEach(cleanup);
@@ -17,7 +17,7 @@ function Chat({onNew, disabled = false}: {onNew: (message: AppendMessage) => Pro
 
 it("uses the native composer quote state for preview, dismissal and the submitted message", async () => {
   const sent: string[] = [];
-  render(<Chat onNew={async message => {sent.push(chatMessageText(message));}} />);
+  render(<Chat onNew={async message => {sent.push(fleetMessageText(message));}} />);
   expect(screen.queryByRole("button", {name: "Remove quote"})).toBeNull();
   fireEvent.click(screen.getByRole("button", {name: "Quote reply"}));
   expect(await screen.findByText(ANSWER)).toBeTruthy();

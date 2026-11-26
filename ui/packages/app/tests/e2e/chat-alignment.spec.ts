@@ -31,16 +31,85 @@ test("fleet Summary is inline and the composer keeps the approved horizontal ali
   await expect(page.getByRole("menuitem", {name: "Edit setup", exact: true})).toHaveCount(0);
   await page.keyboard.press("Escape");
   await page.screenshot({path: info.outputPath("fleet-conversation.png"), scale: "css", animations: "disabled"});
-  const tasks = page.getByRole("button", {name: /^Tasks/});
-  await expect(tasks).toHaveAttribute("aria-expanded", "false");
-  await tasks.click();
-  await expect(page.getByRole("button", {name: /Validate the Linkwarden repair/})).toBeVisible();
+  const task = page.getByRole("region", {name: "Tasks"}).getByRole("button", {name: /Validate the Linkwarden repair/});
+  await expect(task).toBeVisible();
+  await expect(task).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByRole("heading", {name: "Task goal"})).toBeVisible();
   await expect(page.getByRole("button", {name: "Work context"})).toHaveCount(0);
-  await expect(tasks).toHaveAttribute("aria-expanded", "true");
+  await task.click();
+  await expect(task).toHaveAttribute("aria-expanded", "false");
+  await task.click();
+  await expect(task).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByRole("complementary", {name: "Summary"})).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.screenshot({path: info.outputPath("fleet-summary.png"), scale: "css", animations: "disabled"});
   await expect(input).toHaveValue("Keep my exact unsent instruction");
+});
+
+test("the reconnect flap stays centered above the draft in both themes", async ({page, chatProbe}, info) => {
+  const phone = info.project.name === "mobile-chromium";
+  await page.setViewportSize(phone ? {width: 390, height: 844} : {width: 1480, height: 900});
+  await page.goto(`${chatProbe}?alignment=1&offline=1`);
+  const form = page.getByRole("form", {name: "Chat composer"});
+  const draft = form.getByRole("textbox");
+  await draft.fill("Keep this unsent draft");
+  const flap = page.getByTestId("fleet-connection-notice");
+  const reconnect = flap.getByRole("button", {name: "Reconnect"});
+  await expect(reconnect).toHaveAccessibleDescription("Live updates paused");
+  for (const theme of ["dark", "light"]) {
+    await page.evaluate(value => {document.documentElement.dataset.theme = value;}, theme);
+    const [notice, composer] = await Promise.all([flap.boundingBox(), form.boundingBox()]);
+    if (!notice || !composer) throw new Error("The reconnect flap and composer should have visible bounds.");
+    expect(Math.abs(notice.x + notice.width / 2 - composer.x - composer.width / 2)).toBeLessThanOrEqual(1);
+    expect(notice.width).toBeLessThan(composer.width);
+    expect(composer.y - notice.y - notice.height).toBeCloseTo(8, 0);
+    if (phone) expect((await reconnect.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+    await page.screenshot({path: info.outputPath(`fleet-reconnect-${theme}.png`), scale: "css", animations: "disabled"});
+  }
+  await reconnect.click();
+  await expect(flap).toHaveCount(0);
+  await expect(draft).toBeFocused();
+  await expect(draft).toHaveValue("Keep this unsent draft");
+});
+
+test("reconnect leaves a fifty-message transcript and twelve loaded fleets in place", async ({page, chatProbe}, info) => {
+  const phone = info.project.name === "mobile-chromium";
+  const reads: string[] = [];
+  page.on("request", request => {
+    const {pathname} = new URL(request.url());
+    if (pathname.endsWith("/fleets") || pathname.includes("/durable_tasks")) reads.push(pathname);
+  });
+  await page.goto(`${chatProbe}?alignment=1&offline=1&scale=1`);
+  const transcript = page.getByRole("log");
+  await expect(transcript.getByTestId("fleet-message")).toHaveCount(50);
+  if (phone) await page.getByRole("button", {name: "Open navigation", exact: true}).click();
+  const nav = page.getByRole("navigation", {name: phone ? "Expanded navigation" : "Primary"});
+  await expect(nav.getByRole("link", {name: /^(ci-repairer|review-fleet-\d+)$/})).toHaveCount(12);
+  if (phone) await page.keyboard.press("Escape");
+  await expect(page.getByRole("heading", {name: "Task goal"})).toBeVisible();
+  const draft = page.getByRole("form", {name: "Chat composer"}).getByRole("textbox");
+  await draft.fill("Keep the pending message");
+  const before = reads.length;
+  await page.getByRole("button", {name: "Reconnect", exact: true}).click();
+  await expect(page.getByTestId("fleet-connection-notice")).toHaveCount(0);
+  await expect(draft).toBeFocused();
+  await expect(draft).toHaveValue("Keep the pending message");
+  await expect(transcript.getByTestId("fleet-message")).toHaveCount(50);
+  expect(reads).toHaveLength(before);
+});
+
+test("selected Secrets is the only filled destination in the primary navigation", async ({page, chatProbe}, info) => {
+  const phone = info.project.name === "mobile-chromium";
+  await page.goto(`${chatProbe}?alignment=1&secrets=1`);
+  if (phone) await page.getByRole("button", {name: "Open navigation", exact: true}).click();
+  const nav = page.getByRole("navigation", {name: phone ? "Expanded navigation" : "Primary"});
+  const secrets = nav.getByRole("link", {name: "Secrets", exact: true});
+  const create = nav.getByRole("link", {name: "New fleet", exact: true});
+  await expect(secrets).toHaveAttribute("aria-current", "page");
+  await expect(create).not.toHaveAttribute("aria-current");
+  await expect(create).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(secrets).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await nav.screenshot({path: info.outputPath("secrets-navigation.png"), scale: "css", animations: "disabled"});
 });
 
 test("the fleet disclosure retains loaded pages when collapsed and reopened", async ({page, chatProbe}, info) => {

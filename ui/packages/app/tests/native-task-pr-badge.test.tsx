@@ -1,5 +1,5 @@
 import type { DurableTaskActivityHistory } from "@/lib/task-activity";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import * as durableTaskActivity from "@/lib/task-activity";
 import { FleetDurableTaskProvider } from "@/components/domain/tasks/FleetTaskProvider";
@@ -84,8 +84,6 @@ it("marks retained PR evidence stale during a failed refresh, then clears the ca
   const content = <><NativeDurableTaskPrBadge activity={activity([DURABLE_TASK_IDS[0]])} /><DurableTaskPanel {...SCOPE} /></>;
   const view = render(<FleetDurableTaskProvider {...SCOPE}>{content}</FleetDurableTaskProvider>);
   expect((await screen.findByRole("link", {name: "Pull request #803 · a/b · Repair login redirect"})).textContent).not.toContain("last confirmed");
-  fireEvent.click(screen.getByRole("button", {name: /^Tasks/}));
-  fireEvent.click(screen.getByRole("button", {name: /PR #123 repair/}));
   let status = 503;
   fetcher.mockImplementation(async input => {
     const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;

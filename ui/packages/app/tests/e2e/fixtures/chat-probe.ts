@@ -46,6 +46,11 @@ export const test = base.extend<object, {chatProbe: string}>({
         const phase = source.searchParams.get("state");
         const name = phase === "wake-up" ? "Merge watch" : phase === "activity" ? "Launch review" : phase === "error" ? "Deploy monitor" : "Release watch";
         json({items: [{...FLEET_DETAIL, name, status: "active"}], total: null, next_cursor: null});
+      } else if (url.pathname === FLEET_LIST && request.method === "GET" && source.searchParams.has("alignment")) {
+        const extra = source.searchParams.has("scale") ? Array.from({length: 11}, (_, index) => ({
+          ...FLEET_DETAIL, id: `0199a801-1000-7000-8000-${String(index + 10).padStart(12, "0")}`, name: `review-fleet-${index + 2}`,
+        })) : [];
+        json({items: [{...FLEET_DETAIL, name: "ci-repairer"}, ...extra], total: null, next_cursor: null});
       } else if (child?.[2] === "turns/stream") {
         response.writeHead(200, {"content-type": "text/event-stream", "cache-control": "no-cache"});
         response.write(HEARTBEAT);
@@ -71,6 +76,7 @@ export const test = base.extend<object, {chatProbe: string}>({
         }
         if (source.searchParams.has("newFleet")) {json({items: [], next_cursor: null}); return;}
         const task = {...summary(undefined, "running"), title: "Validate the Linkwarden repair"};
+        if (!url.searchParams.has("limit")) response.setHeader("etag", `"${"a".repeat(64)}"`);
         json(request.url.includes("?limit=") ? {items: [task], next_cursor: null} : detail(task));
       } else if (request.url?.startsWith("/turn-details?")) {
         const query = url.searchParams;

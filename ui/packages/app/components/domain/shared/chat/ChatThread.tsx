@@ -28,7 +28,7 @@ export function ChatThread({children, footer, label, testId, centered = false}: 
       centered && "[--max-w-chat:var(--max-w-new-fleet)] [--chat-input-height:var(--new-fleet-input-height)] summary:[--chat-inset:var(--sp-3xl)]")}>
       <ThreadPrimitive.Viewport ref={viewport} turnAnchor="top" autoScroll={false} scrollToBottomOnInitialize={false}
         role="presentation" className={cn("fleet-thread-viewport flex min-h-0 flex-1 flex-col overflow-y-auto", summary &&
-          "summary:grid summary:grid-cols-[minmax(0,1fr)_var(--summary-width)] summary:grid-rows-[1fr_auto] summary:gap-x-lg summary:pr-lg summary-medium:gap-x-xl summary-medium:pr-xl summary-wide:gap-x-3xl summary-wide:pr-2xl")}>
+          "summary:grid summary:grid-cols-[minmax(0,1fr)_var(--summary-width)] summary:grid-rows-[1fr_auto] summary:gap-x-lg summary:pr-lg summary-medium:gap-x-xl summary-medium:pr-xl summary-wide:pr-2xl")}>
         <div className={cn("flex min-w-0 flex-1 flex-col",
           centered && "mt-4xl flex-none sm:mt-auto sm:-translate-y-xl", summary && "summary:contents")}>
           <div ref={log} className={cn("fleet-thread-log flex min-w-0 flex-1 flex-col",

@@ -6,13 +6,12 @@ export function DurableTaskNextStep({detail}: {detail: DurableTaskDetail}) {
   const target = detail.context.target;
   const outstanding = dependency?.checks.filter(check => check.status !== "completed") ?? [];
   return <div className="space-y-xs">
-    <h3 className="text-label font-medium">Working toward</h3>
+    <h3 className="text-label font-semibold leading-label text-text-dim">Task goal</h3>
     <p className="whitespace-pre-wrap break-words">{detail.context.objective}</p>
-    <p className="text-eyebrow text-muted-foreground">{dependency?.active
-      ? outstanding.length ? `Waiting on: ${outstanding.map(check => target?.kind === "existing_pr"
+    {dependency?.active ? <p className="text-eyebrow text-muted-foreground">{
+      outstanding.length ? `Waiting for ${outstanding.map(check => target?.kind === "existing_pr"
         ? target.workflows.find(workflow => workflow.id === check.workflow_id)?.path ?? `Workflow ${check.workflow_id}`
         : `Workflow ${check.workflow_id}`).join(", ")}.`
-        : "The recorded wait is still active. Check results are shown below; continuation is not yet confirmed."
-      : "Follow the chat for the next update."}</p>
+        : "Waiting for the fleet to confirm the checks."}</p> : null}
   </div>;
 }

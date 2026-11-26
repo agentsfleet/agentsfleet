@@ -40,16 +40,17 @@ it("attributes actions only to explicit task identities and retains recorded pro
 it("explains saved dependencies without inventing a next action from status", () => {
   const value = detail();
   const view = render(<DurableTaskNextStep detail={value} />);
-  expect(screen.getByText("Follow the chat for the next update.")).toBeTruthy();
+  expect(screen.getByText(value.context.objective)).toBeTruthy();
+  expect(screen.queryByText(/Waiting for/)).toBeNull();
   const dependency = {active: true, head: "a".repeat(40), updated_at: "2026-11-03T10:00:00Z", checks: []};
   view.rerender(<DurableTaskNextStep detail={{...value, dependency}} />);
-  expect(screen.getByText(/continuation is not yet confirmed/)).toBeTruthy();
+  expect(screen.getByText("Waiting for the fleet to confirm the checks.")).toBeTruthy();
   const check = {workflow_id: 42, run_id: null, run_number: null, run_attempt: null, status: "queued", conclusion: null};
   view.rerender(<DurableTaskNextStep detail={{...value, dependency: {...dependency, checks: [check]}}} />);
-  expect(screen.getByText("Waiting on: Workflow 42.")).toBeTruthy();
+  expect(screen.getByText("Waiting for Workflow 42.")).toBeTruthy();
   const target = {kind: "existing_pr" as const, repository: "a/b", number: 1, branch: "repair", head: "a".repeat(40), tree: "b".repeat(40), url: "https://github.com/a/b/pull/1", workflows: [{id: 42, path: "checks.yml", digest: "x"}]};
   view.rerender(<DurableTaskNextStep detail={{...value, context: {...value.context, target}, dependency: {...dependency, checks: [check]}}} />);
-  expect(screen.getByText("Waiting on: checks.yml.")).toBeTruthy();
+  expect(screen.getByText("Waiting for checks.yml.")).toBeTruthy();
 });
 
 it("hydrates the server-rendered Summary without mounting another reader", async () => {

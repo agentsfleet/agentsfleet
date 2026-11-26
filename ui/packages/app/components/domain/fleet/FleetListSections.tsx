@@ -50,7 +50,7 @@ export function FleetListSections() {
         <ScheduleSync compact schedules={lists.schedules.items} busy={retry.busy} onRetry={schedule => {void register(schedule);}} />
         {retry.error ? <Alert variant="destructive" className="mt-md wrap-anywhere px-lg py-md">{retry.error}</Alert> : null}
       </> : null} />
-    <ListSection title="Can access" empty="No access approved yet. The fleet asks when it needs access." retry={lists.reload} onRemove={ask}
+    <ListSection title="Can access" empty="No access approved yet." retry={lists.reload} onRemove={ask}
       resource={rows(lists.grants, grant => grant.status === GRANT_STATUS.approved ? [grantRow(grant)] : [])} />
     <ListSection title="Remembers" empty="Nothing pinned yet. Ask the fleet to remember something." retry={lists.reload} onRemove={ask}
       resource={rows(lists.pinned, memory => [{key: memory.key, icon: <BrainIcon className={SUMMARY_ICON} aria-hidden="true" />, label: memory.content,

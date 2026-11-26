@@ -1,7 +1,7 @@
 import type { AppendMessage, ThreadMessageLike } from "@assistant-ui/react";
 import { RENDER_KIND_KEY, RENDER_KIND } from "@/components/domain/conversation/thread/useFleetThreadEntries";
 import { ACTOR } from "@/lib/turns/turn-summary";
-import { chatMessageText } from "@/lib/chat-message-text";
+import { fleetMessageText } from "@/lib/chat-message-text";
 import { AssistantRuntimeProvider, useExternalStoreRuntime } from "@assistant-ui/react";
 import { useEffect, useState } from "react";
 import { FleetThreadViewport } from "@/components/domain/conversation/thread/FleetThreadViewport";
@@ -40,7 +40,7 @@ export function ChatScrollFixture() {
   const runtime = useExternalStoreRuntime({messages, isRunning: running,
     convertMessage: (message: ThreadMessageLike) => message, onNew: async (message: AppendMessage) => {
       setMessages(previous => [...previous,
-        {id: `sent-${previous.length}`, role: "user", content: chatMessageText(message), metadata: {custom: OWNER}},
+        {id: `sent-${previous.length}`, role: "user", content: fleetMessageText(message), metadata: {custom: OWNER}},
         {id: `sent-${previous.length}:reply`, role: "assistant", content: "", status: {type: "running"}}]);
       setRunning(true);
     }});

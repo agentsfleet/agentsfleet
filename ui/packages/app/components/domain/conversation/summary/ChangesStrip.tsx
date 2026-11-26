@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { CaretUpIcon, GitDiffIcon } from "@phosphor-icons/react/ssr";
 import { Button } from "@agentsfleet/design-system";
 import { useFleetDurableTaskView } from "../../tasks/FleetTaskProvider";
@@ -10,7 +11,10 @@ import { RecordedChangeCounts, RecordedChangesDialog } from "./RecordedChangesDi
 /** Only confirmed writes from this fleet's recorded turns enter the count. */
 export function ChangesStrip() {
   const view = useFleetDurableTaskView();
-  const changes = view?.subject ? recordedChanges(view.turns ?? [], {includeRunning: false, repositories: view.changeRepositories}) : [];
+  const subject = view?.subject;
+  const turns = view?.turns;
+  const repositories = view?.changeRepositories;
+  const changes = useMemo(() => subject && turns ? recordedChanges(turns, {includeRunning: false, repositories}) : [], [subject, turns, repositories]);
   return <ChangedFilesFlap changes={changes} />;
 }
 

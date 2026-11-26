@@ -48,7 +48,7 @@ export class ChatConnection {
     this.#interrupted ||= this.#source !== null && this.#opened;
     this.#disposeSource();
     this.#attempts = 0;
-    this.#report(CHAT_CONNECTION_STATUS.CONNECTING);
+    this.#report(this.#status === CHAT_CONNECTION_STATUS.CONNECTING ? CHAT_CONNECTION_STATUS.CONNECTING : CHAT_CONNECTION_STATUS.RECONNECTING);
     this.#open();
   }
 
@@ -65,7 +65,7 @@ export class ChatConnection {
     this.#retryTimer = null;
     this.#source?.close(); this.#source = null;
     // Browser wake accelerates the existing recovery; it does not renew its grace period.
-    if (this.#status !== CHAT_CONNECTION_STATUS.LIVE) this.#report(CHAT_CONNECTION_STATUS.CONNECTING);
+    if (this.#status === CHAT_CONNECTION_STATUS.OFFLINE) this.#report(CHAT_CONNECTION_STATUS.RECONNECTING);
     this.#open();
   }
 

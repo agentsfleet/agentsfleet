@@ -203,7 +203,7 @@ test("the reference shows requested scope and lets the user revoke approved acce
 
 test("the reference keeps completion editing in the fleet summary", async ({page}) => {
   await page.goto(review("conversation"));
-  await page.locator("summary").filter({hasText: "Tasks"}).click();
+  await expect(page.getByRole("region", {name: "Tasks"}).locator("details")).toHaveJSProperty("open", true);
   const edit = page.getByRole("button", {name: "Edit statements"});
   await edit.click();
   const form = page.getByRole("form", {name: "Edit completion statements"});
