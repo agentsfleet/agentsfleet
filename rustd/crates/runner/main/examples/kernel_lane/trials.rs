@@ -166,7 +166,10 @@ pub(crate) fn run(arguments: &Arguments, lane: &Arc<Lane>) -> Conclusion {
         Trial::test(trial.name(), move || conformed(&lane, trial)).with_kind(CONFORMANCE)
     });
     let (kind, own): (_, Vec<&(&str, Body)>) = if lane.firecracker.is_some() {
-        (FIRECRACKER, crate::firecracker::TRIALS.iter().collect())
+        let firecracker = crate::firecracker::TRIALS
+            .iter()
+            .chain(crate::microvm_pool::TRIALS);
+        (FIRECRACKER, firecracker.collect())
     } else {
         let bubblewrap = TRIALS
             .iter()

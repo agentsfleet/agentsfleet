@@ -246,6 +246,12 @@ async fn serve_composed(
         &lessee.holds,
         sandboxes,
     )
+    .with_sandboxes_max(
+        lessee
+            .engine
+            .memory_bound()
+            .map(|bound| bound.sandboxes_max),
+    )
     .keep_beating(&assignment, &lessee.halt);
     let pool = worker_pool::serve(Arc::clone(&lessee), watching, assignments);
     let duties = shutdown::finish(&lessee.halt, async {

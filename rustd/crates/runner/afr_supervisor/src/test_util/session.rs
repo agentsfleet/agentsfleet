@@ -60,7 +60,7 @@ impl Session {
 
     /// Advertise physical worker capacity; held registrations consume their own slots.
     pub fn capacity(&self, workers: usize) {
-        self.plane.stream.running.capacity(workers);
+        self.plane.stream.running.capacity(workers, None);
     }
 
     /// Observe the same cancellation token the received run's worker retains.

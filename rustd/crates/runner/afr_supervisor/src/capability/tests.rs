@@ -132,7 +132,7 @@ fn every_missing_mechanism_fails_its_own_check() {
 fn the_report_carries_the_wire_mechanisms() {
     let probe = probe(Kvm::Usable, true);
 
-    let report = capability_report(&probe, &BUBBLEWRAP_CAPABILITIES);
+    let report = capability_report(&probe, &BUBBLEWRAP_CAPABILITIES, None);
 
     assert!(report.landlock && report.seccomp && report.bubblewrap);
     assert_eq!(report.cgroup_controllers.len(), 4);
@@ -153,8 +153,8 @@ fn test_egress_probe_reports_enforcement() {
     };
 
     let engine = &BUBBLEWRAP_CAPABILITIES;
-    assert!(capability_report(&measured(true), engine).egress_enforcement);
-    assert!(!capability_report(&measured(false), engine).egress_enforcement);
+    assert!(capability_report(&measured(true), engine, None).egress_enforcement);
+    assert!(!capability_report(&measured(false), engine, None).egress_enforcement);
 }
 
 /// The probe command answers with the heartbeat's report and every check, so
@@ -167,7 +167,7 @@ fn the_probe_answer_is_the_report_plus_every_check() {
 
     assert_eq!(
         answer.capability_report,
-        capability_report(&host, &BUBBLEWRAP_CAPABILITIES)
+        capability_report(&host, &BUBBLEWRAP_CAPABILITIES, None)
     );
     let names: Vec<_> = answer
         .checks

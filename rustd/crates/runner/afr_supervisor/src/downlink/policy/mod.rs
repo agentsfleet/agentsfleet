@@ -52,6 +52,8 @@ pub(crate) struct Heartbeat<'a> {
     probe: &'a HostProbe,
     /// What the runner's engine states, which the report and self-test name.
     engine: Capabilities,
+    /// The engine's memory bound, which the report states.
+    sandboxes_max: Option<u32>,
     holds: &'a Holds,
     /// Where run sandboxes live, whose file system's free bytes each beat reports.
     sandboxes: &'a Path,
@@ -74,6 +76,7 @@ impl<'a> Heartbeat<'a> {
             plane,
             probe,
             engine,
+            sandboxes_max: None,
             holds,
             sandboxes,
             host: HostReader::default(),
@@ -84,6 +87,13 @@ impl<'a> Heartbeat<'a> {
         }
     }
 
+    /// The same heartbeat, stating `sandboxes_max` as the engine's memory
+    /// bound.
+    pub(crate) const fn with_sandboxes_max(mut self, sandboxes_max: Option<u32>) -> Self {
+        self.sandboxes_max = sandboxes_max;
+        self
+    }
+
     pub(crate) async fn beat(&mut self) -> Result<Assignment> {
         let selftest = self
             .label
@@ -92,7 +102,11 @@ impl<'a> Heartbeat<'a> {
         let held = self.holds.fleets().await;
         let host = self.host.facts(self.sandboxes).await;
         let request = HeartbeatRequest {
-            capability_report: Some(capability_report(self.probe, &self.engine)),
+            capability_report: Some(capability_report(
+                self.probe,
+                &self.engine,
+                self.sandboxes_max,
+            )),
             selftest,
             holds: HeldFleets(
                 held.iter()

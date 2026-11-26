@@ -24,6 +24,7 @@ use tokio::process::{Child, Command};
 
 use super::vm::Vm;
 use super::{Kept, Reach, Shared};
+use crate::admission::Reservation;
 use crate::error::{exited, not_ready, unrendered};
 use crate::guest::{EXECUTOR_PORT, GuestEntry};
 use crate::jail::{self, Furnishing, JailId};
@@ -41,6 +42,7 @@ const EVENT_RELEASE_FAILED: &str = "sandbox_teardown_failed";
 /// Everything one boot holds while its monitor runs; released once.
 #[derive(Debug, Default)]
 pub(crate) struct Parts {
+    reservation: Option<Reservation>,
     jail: Option<JailId>,
     lock: Option<ImageLock>,
     namespace: Option<GuestNamespace>,
@@ -51,12 +53,17 @@ pub(crate) struct Parts {
 
 /// Boots the sandbox `kept` describes on its kept disk, held to its plan,
 /// and returns once its executor answers and the plan reads back in force.
+/// It holds `reservation`, its share of the host's memory bound, until it is
+/// released.
 ///
 /// # Errors
 /// Any step failed; what the boot made is released before the error returns,
 /// and the sandbox's directory and image stay for the caller.
-pub(crate) async fn boot(shared: &Arc<Shared>, kept: Kept) -> Result<Vm> {
-    let mut parts = Parts::default();
+pub(crate) async fn boot(shared: &Arc<Shared>, kept: Kept, reservation: Reservation) -> Result<Vm> {
+    let mut parts = Parts {
+        reservation: Some(reservation),
+        ..Parts::default()
+    };
     let client = match start(shared, &kept, &mut parts).await {
         Ok(client) => client,
         Err(error) => {
@@ -165,7 +172,7 @@ fn names(reach: &Reach) -> Option<String> {
 /// The monitor's cgroup: the guest's memory and the room a monitor's own
 /// resident set takes beside it, the guest's processors, and the run's
 /// process cap over the monitor's threads.
-fn monitor_limits(granted: &Limits) -> Limits {
+pub(super) fn monitor_limits(granted: &Limits) -> Limits {
     Limits {
         memory_bytes: granted
             .memory_bytes
@@ -233,6 +240,23 @@ async fn ready(
 }
 
 impl Parts {
+    /// Whether the monitor still runs. The first look that finds it ended
+    /// reaps it and tells `ended` how it ended; later looks say only that it
+    /// does not run.
+    pub(super) fn running(&mut self, ended: impl FnOnce(&str)) -> bool {
+        let Some(child) = self.child.as_mut() else {
+            return false;
+        };
+        let how = match child.try_wait() {
+            Ok(None) => return true,
+            Ok(Some(status)) => status.to_string(),
+            Err(unread) => unread.to_string(),
+        };
+        self.child = None;
+        ended(&how);
+        false
+    }
+
     /// Stops the monitor and releases every piece of the boot in the order
     /// they were made, last first; the image and the sandbox's directory stay.
     /// What could not be released is logged and left for the boot sweep.
@@ -261,6 +285,7 @@ impl Parts {
         }
         self.lock = None;
         self.jail = None;
+        self.reservation = None;
     }
 }
 

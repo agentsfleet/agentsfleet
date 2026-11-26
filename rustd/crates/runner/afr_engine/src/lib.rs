@@ -33,9 +33,9 @@ pub use self::boot::{Backend, Booted, HostPaths, Resources, Started, boot};
 pub use self::engine::fresh_sandbox_id;
 pub use self::engine::{
     Cap, Capabilities, DEFAULT_CPU_MILLIS, DEFAULT_DISK_BYTES, DEFAULT_MEMORY_BYTES, DEFAULT_PIDS,
-    EgressPlan, Enforcer, Engine, Environment, Generation, Granted, Killed, Limits, ParkMode,
-    Parked, Quiescence, ResourceFacts, Root, Sandbox, SandboxSpec, SandboxState, SnapshotRef,
-    Snapshots, Sweep, Swept, enforce, until_in_force,
+    EgressPlan, Enforcer, Engine, Environment, Generation, Granted, Killed, Limits, MemoryBound,
+    ParkMode, Parked, Quiescence, ResourceFacts, Root, Sandbox, SandboxSpec, SandboxState,
+    SnapshotRef, Snapshots, Sweep, Swept, enforce, until_in_force,
 };
 #[cfg(feature = "test-util")]
 pub use self::error::ambiguous;

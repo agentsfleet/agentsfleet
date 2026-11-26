@@ -44,6 +44,10 @@ impl Engine for Counted {
         self.engine.grant(limits)
     }
 
+    fn memory_bound(&self) -> Option<afr_engine::MemoryBound> {
+        self.engine.memory_bound()
+    }
+
     async fn prepare(&self, spec: SandboxSpec<'_>) -> afr_engine::Result<Box<dyn Sandbox>> {
         self.prepared.fetch_add(1, Ordering::Relaxed);
         self.engine.prepare(spec).await

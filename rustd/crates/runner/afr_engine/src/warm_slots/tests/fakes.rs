@@ -122,6 +122,8 @@ pub(super) struct Counting {
     pub(super) panics: bool,
     /// Whether each sandbox it starts refuses its teardown.
     pub(super) leaks: bool,
+    /// The memory bound it reports, if any.
+    pub(super) bound: Option<crate::MemoryBound>,
 }
 
 #[async_trait::async_trait]
@@ -132,6 +134,10 @@ impl Engine for Counting {
 
     fn grant(&self, limits: Limits) -> Result<Granted> {
         CAPABILITIES.grant(limits)
+    }
+
+    fn memory_bound(&self) -> Option<crate::MemoryBound> {
+        self.bound
     }
 
     async fn sweep(&self, _scope: Sweep<'_>) -> Result<Swept> {

@@ -83,7 +83,7 @@ impl Backend for FirecrackerBackend<'_> {
             cgroup_root: paths.cgroup_root.clone(),
             state_dir: paths.state_dir.clone(),
             tools: HostTools::default(),
-        });
+        })?;
         Ok(Started {
             engine,
             resources: Box::new(resources),

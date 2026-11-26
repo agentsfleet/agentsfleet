@@ -37,6 +37,10 @@ impl Engine for TestEngine {
         Err(crate::error::refused("test engine grants nothing"))
     }
 
+    fn memory_bound(&self) -> Option<crate::MemoryBound> {
+        None
+    }
+
     async fn prepare(&self, _: SandboxSpec<'_>) -> Result<Box<dyn Sandbox>> {
         Err(crate::error::refused("test engine has no executor"))
     }

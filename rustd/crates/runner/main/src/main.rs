@@ -20,6 +20,7 @@
 mod config;
 mod engine;
 mod host;
+mod probe;
 
 use std::process::ExitCode;
 
@@ -93,7 +94,7 @@ fn main() -> ExitCode {
         Command::Sandbox(entry) => sandbox(entry),
         #[cfg(feature = "firecracker")]
         Command::Guest(entry) => guest(entry),
-        Command::Probe => probe(),
+        Command::Probe => probe::probe(),
         Command::Run(args) => run(args),
     }
 }
@@ -135,40 +136,6 @@ fn exited(ended: Result<(), impl std::fmt::Display>) -> ExitCode {
 fn refused(error: &impl std::fmt::Display) -> ExitCode {
     eprintln!("{error}");
     ExitCode::FAILURE
-}
-
-/// Prints the host's capability report and self-test checks as JSON, as the
-/// default engine reads them.
-fn probe() -> ExitCode {
-    let host = afr_engine_bubblewrap::probe(&afr_engine_bubblewrap::ProbePaths::default());
-    answer(
-        &host,
-        &engine::EngineChoice::default().capabilities(),
-        &mut std::io::stdout().lock(),
-    )
-}
-
-/// Writes `host`'s capability report and self-test checks under `engine` to
-/// `out` as JSON.
-///
-/// Succeeds only when the whole answer was written and `host` can build a
-/// sandbox.
-fn answer(
-    host: &afr_engine::HostProbe,
-    engine: &afr_engine::Capabilities,
-    out: &mut impl std::io::Write,
-) -> ExitCode {
-    let report = afr_supervisor::capability::probe_answer(host, engine);
-    let written = serde_json::to_writer_pretty(&mut *out, &report)
-        .map_err(std::io::Error::from)
-        .and_then(|()| writeln!(out));
-    match written {
-        Err(error) => refused(&error),
-        Ok(()) if afr_engine_bubblewrap::BubblewrapRequirements::missing(host).is_none() => {
-            ExitCode::SUCCESS
-        }
-        Ok(()) => ExitCode::FAILURE,
-    }
 }
 
 /// Starts the export when an endpoint is configured, serves runs until the
@@ -245,12 +212,11 @@ fn supervise(args: RunArgs, settings: &config::Settings) -> Result<ExitCode, Exi
     // sandbox is gone before its toolbox is unmounted.
     let host = args.host(&home, settings)?;
     let _resources = host.resources;
-    let engine = host.engine;
-    let probe = host.probe;
+    let (engine, probe, warm_pool) = (host.engine, host.probe, host.warm_pool);
     let agent = host::agent(settings)?;
     let runtime = tokio::runtime::Runtime::new().map_err(|error| host::io_failed(&error))?;
     runtime
-        .block_on(serve(&config, home, engine, agent, probe))
+        .block_on(serve(&config, home, engine, agent, probe, warm_pool))
         .map(|()| ExitCode::SUCCESS)
         .or_exit()
 }
@@ -270,14 +236,16 @@ impl RunArgs {
     }
 }
 
-/// Serves runs until SIGTERM or SIGINT, or until the daemon says stop.
+/// Serves runs, `warm_pool` sandboxes started ahead, until a signal or the daemon says stop.
 async fn serve(
     config: &afr_supervisor::Config,
     home: StorageHome,
     engine: Box<dyn afr_engine::Engine>,
     agent: afr_agent::Loop,
     probe: afr_engine::HostProbe,
+    warm_pool: usize,
 ) -> afr_supervisor::Result<()> {
+    let (engine, pool) = host::pooled(engine, warm_pool, config.tuning().limits);
     let shutdown = CancellationToken::new();
     let stopping = tokio::spawn({
         let shutdown = shutdown.clone();
@@ -303,6 +271,7 @@ async fn serve(
         }
     };
     stopping.abort();
+    host::retire(pool).await;
     served
 }
 

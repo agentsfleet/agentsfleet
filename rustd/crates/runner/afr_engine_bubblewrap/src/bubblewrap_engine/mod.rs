@@ -293,6 +293,12 @@ impl Engine for BubblewrapEngine {
         CAPABILITIES.grant(limits)
     }
 
+    /// Each run is held to its cgroup's cap on the host's own memory, and
+    /// nothing is reserved ahead of a build.
+    fn memory_bound(&self) -> Option<afr_engine::MemoryBound> {
+        None
+    }
+
     async fn prepare(&self, spec: SandboxSpec<'_>) -> Result<Box<dyn Sandbox>> {
         let sandbox_id = spec.id.as_str();
         let event = EVENT_PREPARE_STARTED;

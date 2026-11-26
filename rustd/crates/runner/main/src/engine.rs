@@ -33,7 +33,9 @@ impl EngineChoice {
         match self {
             Self::Bubblewrap => Host::production(home, settings.engine),
             #[cfg(feature = "firecracker")]
-            Self::Firecracker => Host::firecracker(home, settings.firecracker.clone()),
+            Self::Firecracker => {
+                Host::firecracker(home, settings.firecracker.clone(), settings.warm_pool)
+            }
         }
     }
 }

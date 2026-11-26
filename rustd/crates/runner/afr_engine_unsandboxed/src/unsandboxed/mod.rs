@@ -106,6 +106,11 @@ impl Engine for UnsandboxedEngine {
         Ok(Granted::unenforced(limits))
     }
 
+    /// It confines nothing, memory included.
+    fn memory_bound(&self) -> Option<afr_engine::MemoryBound> {
+        None
+    }
+
     async fn prepare(&self, spec: SandboxSpec<'_>) -> Result<Box<dyn Sandbox>> {
         fs::create_dir_all(&self.base)?;
         let dir = self.base.join(spec.id.as_str());

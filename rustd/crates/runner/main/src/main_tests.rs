@@ -15,7 +15,8 @@ use tracing::Level;
 use tracing_subscriber::Registry;
 use tracing_subscriber::layer::{Context, Layer};
 
-use super::{Cli, Command, RunArgs, answer, exited, log_filter};
+use super::probe::answer;
+use super::{Cli, Command, RunArgs, exited, log_filter};
 
 /// The engine starts the binary inside each sandbox by the sandbox crate's
 /// spelling of the sub-command, its descriptor flags and its sizes, so the

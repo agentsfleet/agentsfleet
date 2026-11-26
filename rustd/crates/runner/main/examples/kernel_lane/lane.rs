@@ -125,17 +125,20 @@ impl Lane {
     /// the lane was told so, bubblewrap otherwise.
     pub(crate) fn conformed(&self) -> Box<dyn Engine> {
         match self.firecracker.clone() {
-            Some(config) => Box::new(FirecrackerEngine::new(config)),
+            Some(config) => Box::new(
+                FirecrackerEngine::new(config).unwrap_or_else(|refused| unreachable!("{refused}")),
+            ),
             None => Box::new(self.engine()),
         }
     }
 
     /// The Firecracker engine, for a trial only it answers.
     pub(crate) fn microvms(&self) -> Result<FirecrackerEngine, Failed> {
-        self.firecracker
+        let config = self
+            .firecracker
             .clone()
-            .map(FirecrackerEngine::new)
-            .ok_or_else(|| Failed::from("the lane was not told to boot Firecracker"))
+            .ok_or_else(|| Failed::from("the lane was not told to boot Firecracker"))?;
+        Ok(FirecrackerEngine::new(config)?)
     }
 
     /// Where the sandbox a trial names `name` keeps its directory.

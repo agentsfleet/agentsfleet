@@ -45,7 +45,11 @@ pub(crate) async fn serve(
             }
         };
         lessee.holds.resize(wanted);
-        lessee.plane.stream.running.capacity(wanted);
+        lessee
+            .plane
+            .stream
+            .running
+            .capacity(wanted, lessee.engine.memory_bound());
         for number in spawned..workers_wanted {
             workers.spawn(
                 Worker {
@@ -145,7 +149,7 @@ async fn finish_pool(
     coordinator: tokio::task::JoinHandle<()>,
     workers: &mut JoinSet<()>,
 ) {
-    lessee.plane.stream.running.capacity(0);
+    lessee.plane.stream.running.capacity(0, None);
     crate::shutdown::workers(&lessee.halt, workers).await;
     drop(turns);
     if let Err(error) = coordinator.await {

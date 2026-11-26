@@ -56,6 +56,10 @@ impl Engine for Stalled {
         self.inner.grant(limits)
     }
 
+    fn memory_bound(&self) -> Option<afr_engine::MemoryBound> {
+        self.inner.memory_bound()
+    }
+
     async fn sweep(&self, scope: Sweep<'_>) -> afr_engine::Result<Swept> {
         self.inner.sweep(scope).await
     }

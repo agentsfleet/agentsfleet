@@ -20,7 +20,8 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::task::{JoinHandle, JoinSet};
 
 use crate::engine::{
-    Capabilities, Engine, Granted, Limits, Sandbox, SandboxSpec, SandboxState, Sweep, Swept,
+    Capabilities, Engine, Granted, Limits, MemoryBound, Sandbox, SandboxSpec, SandboxState, Sweep,
+    Swept,
 };
 use crate::error::Result;
 use crate::network::Network;
@@ -64,6 +65,8 @@ struct Slot {
 pub struct WarmSlots {
     inner: Arc<dyn Engine>,
     limits: Limits,
+    /// How many sandboxes it keeps ready, each holding a reservation.
+    slots: usize,
     claims: mpsc::Sender<Claim>,
     keeper: JoinHandle<()>,
 }
@@ -77,6 +80,7 @@ impl WarmSlots {
         Self {
             inner,
             limits,
+            slots,
             claims,
             keeper,
         }
@@ -112,6 +116,20 @@ impl Engine for WarmSlots {
 
     fn grant(&self, limits: Limits) -> Result<Granted> {
         self.inner.grant(limits)
+    }
+
+    /// The inner engine's: every slot is a sandbox it built, holding its
+    /// share of the bound while it waits.
+    /// The inner engine's bound less the slots kept ready: each holds a
+    /// reservation, so the runs offered beside them always fit a cold build,
+    /// and the slots plus live runs never pass the bound.
+    fn memory_bound(&self) -> Option<MemoryBound> {
+        self.inner.memory_bound().map(|bound| MemoryBound {
+            sandboxes_max: bound
+                .sandboxes_max
+                .saturating_sub(u32::try_from(self.slots).unwrap_or(u32::MAX)),
+            ..bound
+        })
     }
 
     async fn prepare(&self, spec: SandboxSpec<'_>) -> Result<Box<dyn Sandbox>> {

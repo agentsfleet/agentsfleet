@@ -49,8 +49,14 @@ const DIRECT_IO_OFF: &str = "The state file system refuses direct I/O, so a work
 /// Egress enforcement is what the boot probe measured: a host that built and
 /// removed an egress scope can hold a sandbox to its allowlist, and the
 /// daemon reads an `allow_list_egress` runner degraded on any other.
+/// `sandboxes_max` is the engine's memory bound, absent when it reserves no
+/// memory.
 #[must_use]
-pub fn capability_report<'a>(probe: &'a HostProbe, engine: &Capabilities) -> CapabilityReport<'a> {
+pub fn capability_report<'a>(
+    probe: &'a HostProbe,
+    engine: &Capabilities,
+    sandboxes_max: Option<u32>,
+) -> CapabilityReport<'a> {
     CapabilityReport {
         durable_tasks_v1: true,
         build_id: af_core::build::SOURCE_ID.map(Cow::Borrowed),
@@ -66,7 +72,7 @@ pub fn capability_report<'a>(probe: &'a HostProbe, engine: &Capabilities) -> Cap
         engine: engine.engine,
         isolation: engine.isolation,
         kvm: probe.kvm,
-        sandboxes_max: None,
+        sandboxes_max,
     }
 }
 
@@ -97,11 +103,12 @@ pub struct ProbeAnswer<'a> {
     pub checks: Vec<SelftestCheck<'a>>,
 }
 
-/// The probe command's answer for this host.
+/// The probe command's answer for this host. No engine is built to probe,
+/// so no memory bound is stated.
 #[must_use]
 pub fn probe_answer<'a>(probe: &'a HostProbe, engine: &Capabilities) -> ProbeAnswer<'a> {
     ProbeAnswer {
-        capability_report: capability_report(probe, engine),
+        capability_report: capability_report(probe, engine, None),
         checks: checks(probe, engine),
     }
 }

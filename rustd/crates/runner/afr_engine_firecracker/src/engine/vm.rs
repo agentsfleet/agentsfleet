@@ -3,6 +3,7 @@
 
 use std::fs;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use af_core::id::Uuid7;
 use afr_engine::error::egress_refused;
@@ -13,7 +14,7 @@ use afr_engine::{
 use afr_executor::{Client, Ending, Executor, Spawn};
 
 use super::build::{Parts, boot};
-use super::{Kept, Plan, Reach, Shared};
+use super::{Kept, Plan, Reach, Shared, lost};
 use crate::capabilities::CAPABILITIES;
 
 /// What flushes the guest's page cache to its drives before a stop: with the
@@ -29,6 +30,8 @@ pub(crate) struct Vm {
     kept: Kept,
     client: Client,
     parts: Parts,
+    /// Whether [`Sandbox::kill`] ended its monitor, so its end is not a loss.
+    killed: AtomicBool,
 }
 
 impl Vm {
@@ -40,12 +43,31 @@ impl Vm {
             kept,
             client,
             parts,
+            killed: AtomicBool::new(false),
+        }
+    }
+
+    /// Whether its monitor still runs. One the host ended while the engine
+    /// held it running, which no kill of the engine's ended, is logged lost
+    /// the first time it is found ended: its run's calls fail, and only it.
+    fn monitor(&mut self) -> SandboxState {
+        let killed = self.killed.load(Ordering::Acquire);
+        let running = self.parts.running(|how| {
+            if !killed {
+                lost(how);
+            }
+        });
+        if running {
+            SandboxState::Running
+        } else {
+            SandboxState::Ended
         }
     }
 
     /// Stops the monitor and releases every piece of its boot; the disk and
     /// the directory stay. Hands back what a resume boots from.
-    pub(crate) async fn release(self: Box<Self>) -> Kept {
+    pub(crate) async fn release(mut self: Box<Self>) -> Kept {
+        let _found = self.monitor();
         let Self {
             kept,
             client,
@@ -86,15 +108,7 @@ impl Sandbox for Vm {
     }
 
     fn state(&mut self) -> SandboxState {
-        match self
-            .parts
-            .child
-            .as_mut()
-            .map(tokio::process::Child::try_wait)
-        {
-            Some(Ok(None)) => SandboxState::Running,
-            _ended => SandboxState::Ended,
-        }
+        self.monitor()
     }
 
     /// The executor's own proof that nothing it accepted still runs.
@@ -143,6 +157,7 @@ impl Sandbox for Vm {
             return Killed::Settled;
         };
         let pid = rustix::process::Pid::from_raw(i32::try_from(pid).unwrap_or(i32::MAX));
+        self.killed.store(true, Ordering::Release);
         match pid.map(|pid| rustix::process::kill_process(pid, rustix::process::Signal::KILL)) {
             Some(Err(refused)) if refused != rustix::io::Errno::SRCH => {
                 Killed::Unsettled(std::io::Error::from(refused).into())
@@ -212,11 +227,17 @@ impl Parked for Stopped {
     }
 
     /// Boots a fresh guest on the kept disk, held to the plan given last,
-    /// and dials its executor again.
+    /// and dials its executor again. A host at its memory bound refuses
+    /// before any monitor starts, and the disk goes, as any refused resume's
+    /// does.
     async fn resume(self: Box<Self>) -> Result<Box<dyn Sandbox>> {
         let Self { shared, kept } = *self;
         let dir = kept.layout.dir().to_owned();
-        match boot(&shared, kept).await {
+        let booted = match shared.admission.admit() {
+            Ok(reservation) => boot(&shared, kept, reservation).await,
+            Err(refused) => Err(refused),
+        };
+        match booted {
             Ok(vm) => Ok(Box::new(vm)),
             Err(error) => {
                 let _left_for_the_sweep = fs::remove_dir_all(dir);

@@ -4,8 +4,9 @@
 //! `af_core::error_shell!` hull. The engine answers the seam's errors, into
 //! which every building block's failure lifts; this type holds what no
 //! building block raises: a host whose KVM device a microVM cannot open, a
-//! workspace image another monitor holds, a monitor that exited or never
-//! answered, a host whose every jail user is held. It crosses the seam as
+//! workspace image another monitor holds, a host whose memory bound is
+//! reached, a monitor that exited or never answered, a host whose every jail
+//! user is held. It crosses the seam as
 //! itself, and a refused KVM device still reads as the seam's missing
 //! mechanism. The code is the registry's existing one, as every runner
 //! crate's is (`docs/RUST_ERROR_STANDARD.md`).
@@ -43,6 +44,14 @@ pub(crate) enum ErrorKind {
     ImageHeld {
         /// The image.
         image: PathBuf,
+    },
+
+    /// The host's overcommitted memory bound is reached: that many microVMs
+    /// are built, and a parked one with only its disk kept holds none.
+    #[error("this host's memory admits {sandboxes_max} microVMs at once, and that many are built")]
+    MemoryBound {
+        /// The bound.
+        sandboxes_max: u32,
     },
 
     /// Every jail user this host hands out is held.
@@ -142,6 +151,11 @@ pub(crate) fn kvm_refused(kvm: Kvm) -> afr_engine::Error {
 /// Refuses a second attach of `image`.
 pub(crate) fn image_held(image: PathBuf) -> afr_engine::Error {
     Error::from(ErrorKind::ImageHeld { image }).into()
+}
+
+/// Refuses a microVM past the host's memory bound of `sandboxes_max`.
+pub(crate) fn memory_bound_reached(sandboxes_max: u32) -> afr_engine::Error {
+    Error::from(ErrorKind::MemoryBound { sandboxes_max }).into()
 }
 
 /// Refuses a microVM when every jail user is held.

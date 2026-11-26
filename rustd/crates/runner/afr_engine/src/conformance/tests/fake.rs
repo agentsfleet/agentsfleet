@@ -111,6 +111,10 @@ impl Engine for Fake {
         self.capabilities().grant(limits)
     }
 
+    fn memory_bound(&self) -> Option<crate::MemoryBound> {
+        None
+    }
+
     async fn prepare(&self, spec: SandboxSpec<'_>) -> Result<Box<dyn Sandbox>> {
         Ok(Box::new(FakeSandbox {
             id: spec.id.clone(),

@@ -12,7 +12,7 @@ use std::process::ExitCode;
 use std::sync::Arc;
 
 use af_core::error_code::{self, Coded, ErrorCode};
-use afr_engine::{Engine, HostProbe};
+use afr_engine::{Engine, HostProbe, Limits, WarmSlots};
 use afr_supervisor::StorageHome;
 
 /// The event every failure that stops `run` is logged under.
@@ -39,6 +39,8 @@ pub(crate) struct Host {
     pub(crate) probe: HostProbe,
     /// Backend resources, released after serving and its runtime have ended.
     pub(crate) resources: Option<Box<dyn afr_engine::Resources>>,
+    /// Sandboxes the engine starts ahead of their runs; none starts all cold.
+    pub(crate) warm_pool: usize,
 }
 
 impl Host {
@@ -55,6 +57,7 @@ impl Host {
             engine: Box::new(engine),
             probe,
             resources,
+            warm_pool: 0,
         }
     }
 
@@ -85,8 +88,9 @@ impl Host {
     }
 
     /// Our Firecracker engine, booted over the release a deploy staged
-    /// (`afr_engine::boot` with `FirecrackerBackend`): a host without a usable
-    /// KVM device is refused naming `kvm`, and no other engine starts.
+    /// (`afr_engine::boot` with `FirecrackerBackend`), with `warm_pool`
+    /// microVMs booted ahead of their runs: a host without a usable KVM
+    /// device is refused naming `kvm`, and no other engine starts.
     ///
     /// # Errors
     /// The reason it cannot, already logged, as the exit status.
@@ -94,6 +98,7 @@ impl Host {
     pub(crate) fn firecracker(
         home: &StorageHome,
         tuning: afr_engine_firecracker::FirecrackerTuning,
+        warm_pool: usize,
     ) -> Result<Self, ExitCode> {
         use afr_engine::boot;
         use afr_engine_firecracker::FirecrackerBackend;
@@ -104,7 +109,8 @@ impl Host {
             home: &staged.toolbox,
             tuning,
         };
-        boot(backend, &staged.paths).map(Self::from).or_exit()
+        let host = boot(backend, &staged.paths).map(Self::from).or_exit()?;
+        Ok(Self { warm_pool, ..host })
     }
 
     /// No Firecracker engine exists off Linux.
@@ -115,6 +121,7 @@ impl Host {
     pub(crate) fn firecracker(
         _home: &StorageHome,
         _tuning: afr_engine_firecracker::FirecrackerTuning,
+        _warm_pool: usize,
     ) -> Result<Self, ExitCode> {
         Err(cannot_sandbox(afr_engine_firecracker::MECHANISM_KVM))
     }
@@ -205,6 +212,32 @@ impl<E: Engine + 'static> From<afr_engine::Booted<E>> for Host {
             value.probe,
             Some(value.started.resources),
         )
+    }
+}
+
+/// `engine` with `slots` sandboxes granted `limits` started ahead of their
+/// runs, and the pool's own handle for [`retire`]; `engine` alone when
+/// `slots` is zero. Each pooled sandbox is one `engine` built, so it counts
+/// against the engine's memory bound. Called inside the runtime, where the
+/// pool's keeper runs.
+pub(crate) fn pooled(
+    engine: Box<dyn Engine>,
+    slots: usize,
+    limits: Limits,
+) -> (Box<dyn Engine>, Option<Arc<WarmSlots>>) {
+    if slots == 0 {
+        return (engine, None);
+    }
+    let pool = Arc::new(WarmSlots::start(Arc::from(engine), slots, limits));
+    (Box::new(Arc::clone(&pool)), Some(pool))
+}
+
+/// Destroys every pooled sandbox no run claimed, once the supervisor has let
+/// go of the engine, and before the toolbox every guest boots from is
+/// unmounted.
+pub(crate) async fn retire(pool: Option<Arc<WarmSlots>>) {
+    if let Some(pool) = pool.and_then(Arc::into_inner) {
+        pool.shutdown().await;
     }
 }
 

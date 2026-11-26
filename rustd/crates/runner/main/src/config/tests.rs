@@ -184,3 +184,22 @@ fn missing_profile_retains_the_read_failure_and_selected_path() -> Checked {
     assert_eq!(status, ExitCode::FAILURE);
     Ok(())
 }
+
+#[cfg(feature = "firecracker")]
+#[test]
+fn test_the_firecracker_section_overcommits_four_to_one_with_a_pool_of_four() -> Checked {
+    let selected = profile("")?;
+    assert_eq!(selected.firecracker.memory_overcommit, 4);
+    assert_eq!(selected.warm_pool, 4);
+    assert_eq!(selected.firecracker.limits, selected.tuning.limits);
+    let chosen = profile("[firecracker]\nmemory_overcommit = 2\nwarm_pool = 1\n")?;
+    assert_eq!(chosen.firecracker.memory_overcommit, 2);
+    assert_eq!(chosen.warm_pool, 1);
+    for zero in ["memory_overcommit = 0", "warm_pool = 0"] {
+        assert!(
+            profile(&format!("[firecracker]\n{zero}\n")).is_err(),
+            "{zero}"
+        );
+    }
+    Ok(())
+}

@@ -1,6 +1,7 @@
 //! The interface every engine meets.
 
 use std::fmt;
+use std::sync::Arc;
 
 use af_core::id::Uuid7;
 use afr_executor::Executor;
@@ -8,10 +9,12 @@ use afr_executor::Executor;
 use crate::error::{Error, Result};
 use crate::network::Network;
 
+mod bound;
 mod egress;
 mod facts;
 mod snapshots;
 
+pub use self::bound::MemoryBound;
 pub use self::egress::{EgressPlan, Enforcer, Generation, enforce, until_in_force};
 pub use self::facts::{Cap, Capabilities, Environment, Granted, ParkMode, ResourceFacts, Root};
 pub use self::snapshots::{SnapshotRef, Snapshots};
@@ -194,6 +197,11 @@ pub trait Engine: Send + Sync + fmt::Debug {
     /// A cap this engine has no mechanism for.
     fn grant(&self, limits: Limits) -> Result<Granted>;
 
+    /// The most sandboxes it builds at once under the host's memory, when it
+    /// reserves memory for each; `None` when only the worker count bounds
+    /// it. A build past the bound is refused, and no sandbox starts.
+    fn memory_bound(&self) -> Option<MemoryBound>;
+
     /// Builds the sandbox `spec` names, with its executor ready, or refuses.
     ///
     /// A sandbox that cannot be built refuses the run; nothing ever runs
@@ -213,6 +221,31 @@ pub trait Engine: Send + Sync + fmt::Debug {
     /// Nothing could be read; what it found and could not remove is counted
     /// in [`Swept::left`] instead.
     async fn sweep(&self, scope: Sweep<'_>) -> Result<Swept>;
+}
+
+/// A shared engine is that engine, so one owner can keep a handle the
+/// supervisor's box does not consume, as a pool's shutdown needs.
+#[async_trait::async_trait]
+impl<E: Engine + ?Sized> Engine for Arc<E> {
+    fn capabilities(&self) -> Capabilities {
+        (**self).capabilities()
+    }
+
+    fn grant(&self, limits: Limits) -> Result<Granted> {
+        (**self).grant(limits)
+    }
+
+    fn memory_bound(&self) -> Option<MemoryBound> {
+        (**self).memory_bound()
+    }
+
+    async fn prepare(&self, spec: SandboxSpec<'_>) -> Result<Box<dyn Sandbox>> {
+        (**self).prepare(spec).await
+    }
+
+    async fn sweep(&self, scope: Sweep<'_>) -> Result<Swept> {
+        (**self).sweep(scope).await
+    }
 }
 
 /// One run's sandbox, owned by the task running that run.

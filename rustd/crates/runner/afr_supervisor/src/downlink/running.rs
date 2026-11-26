@@ -4,6 +4,10 @@
 //! durable mark — is remembered beside the token it trips, so the run reports
 //! `stopped` rather than a failure. Every other cancellation (a refused
 //! session, a halt) trips the token alone.
+//!
+//! Credits never pass the engine's memory bound: a host whose memory admits
+//! fewer sandboxes than it has workers offers only as many credits as it
+//! admits.
 
 use std::{
     collections::{HashMap, HashSet},
@@ -13,11 +17,16 @@ use std::{
 
 use af_core::id::Uuid7;
 use af_wire::protocol::{RUNS_MAX, Up};
+use afr_engine::MemoryBound;
 use parking_lot::Mutex;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
 use crate::{Result, error::ErrorKind};
+
+/// The event a capacity the memory bound holds below the worker count is
+/// logged under.
+const EVENT_CAPACITY_BOUNDED: &str = "runner_capacity_bounded";
 
 #[derive(Debug, Default)]
 pub(crate) struct Running {
@@ -49,12 +58,21 @@ impl Default for State {
 }
 
 impl Running {
-    pub(crate) fn capacity(&self, workers: usize) {
+    /// Offers `workers` credits, or fewer: no more than the frame carries,
+    /// and no more than `bound` admits sandboxes. A bound below the worker
+    /// count is logged each time it changes what is offered.
+    pub(crate) fn capacity(&self, workers: usize, bound: Option<MemoryBound>) {
+        let admitted = bound.map_or(usize::MAX, |bound| {
+            usize::try_from(bound.sandboxes_max).unwrap_or(usize::MAX)
+        });
+        let capacity = workers.min(admitted).min(RUNS_MAX);
         let mut state = self.state.lock();
-        let capacity = workers.min(RUNS_MAX);
         if state.capacity != capacity {
             state.capacity = capacity;
             drop(state);
+            if let Some(bound) = bound.filter(|_| admitted < workers) {
+                bounded(workers, bound);
+            }
             self.changed.notify_one();
         }
     }
@@ -130,6 +148,23 @@ impl Running {
     }
 }
 
+/// Logs the host's memory bound holding its credits below `worker_count`.
+fn bounded(worker_count: usize, bound: MemoryBound) {
+    let MemoryBound {
+        sandboxes_max,
+        mem_available_bytes,
+        memory_overcommit,
+    } = bound;
+    let event = EVENT_CAPACITY_BOUNDED;
+    tracing::info!(
+        worker_count,
+        sandboxes_max,
+        mem_available_bytes,
+        memory_overcommit,
+        event
+    );
+}
+
 #[derive(Debug)]
 pub(crate) struct RunRegistration {
     running: Arc<Running>,
@@ -154,12 +189,46 @@ mod tests {
         reason = "test target: a fixture that cannot be built is a broken test"
     )]
 
+    use std::num::NonZeroU64;
     use std::sync::Arc;
 
     use af_core::id::Uuid7;
+    use af_wire::protocol::Up;
+    use afr_engine::MemoryBound;
 
     use super::Running;
     use crate::test_support::RUN_ID;
+
+    const MIB: u64 = 1024 * 1024;
+    const GIB: u64 = 1024 * MIB;
+
+    fn credits(running: &Running) -> Option<usize> {
+        match running.ready().unwrap() {
+            Up::Ready { credits, .. } => Some(credits),
+            _other => None,
+        }
+    }
+
+    #[test]
+    fn test_credits_stop_at_the_overcommitted_memory_bound() {
+        let sandbox = NonZeroU64::new(2 * GIB + 16 * MIB).unwrap();
+        let running = Running::default();
+
+        let overcommitted = MemoryBound::overcommitted(28 * GIB, 4, sandbox);
+        running.capacity(64, Some(overcommitted));
+        assert_eq!(overcommitted.sandboxes_max, 55);
+        assert_eq!(credits(&running), Some(55));
+
+        let exact = MemoryBound::overcommitted(28 * GIB, 1, sandbox);
+        running.capacity(64, Some(exact));
+        assert_eq!(exact.sandboxes_max, 13);
+        assert_eq!(credits(&running), Some(13));
+
+        running.capacity(8, Some(overcommitted));
+        assert_eq!(credits(&running), Some(8), "fewer workers than the bound");
+        running.capacity(64, None);
+        assert_eq!(credits(&running), Some(64), "no bound, the workers");
+    }
 
     #[test]
     fn only_a_daemon_stop_marks_a_run_stopped() {

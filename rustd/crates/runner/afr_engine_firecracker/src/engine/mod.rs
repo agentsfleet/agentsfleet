@@ -4,8 +4,9 @@
 use std::fs::{self, DirBuilder};
 use std::io;
 use std::net::Ipv4Addr;
+use std::num::NonZeroU64;
 use std::os::unix::fs::DirBuilderExt as _;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use af_core::error_code::{Coded as _, Logged};
@@ -13,11 +14,12 @@ use af_core::id::Uuid7;
 use af_wire::runner::SandboxEngine;
 use afr_engine::error::sandbox_exists;
 use afr_engine::{
-    Allowlist, Capabilities, EgressPlan, Engine, Environment, Generation, Granted, Limits, Network,
-    Result, Root, Sandbox, SandboxSpec, Sweep, Swept,
+    Allowlist, Capabilities, EgressPlan, Engine, Environment, Generation, Granted, Limits,
+    MemoryBound, Network, Result, Root, Sandbox, SandboxSpec, Sweep, Swept,
 };
 use afr_image::{HostTools, Toolbox};
 
+use crate::admission::{Admission, MEMINFO_PATH, mem_available};
 use crate::capabilities::CAPABILITIES;
 use crate::config::FirecrackerTuning;
 use crate::jail::{DIR_MODE, JailIds, Layout};
@@ -35,6 +37,9 @@ pub(crate) const GUEST_USER: (u32, u32) = (1000, 1000);
 /// the supervisor, which knows what the run was for, logs the refusal itself.
 const EVENT_PREPARE_STARTED: &str = "sandbox_prepare_started";
 const EVENT_PREPARE_FAILED: &str = "sandbox_prepare_failed";
+/// The event a monitor the host ended, which the engine did not stop, is
+/// logged under.
+const EVENT_SANDBOX_LOST: &str = "sandbox_lost";
 
 /// Everything the engine builds microVMs from.
 #[derive(Debug, Clone)]
@@ -57,6 +62,7 @@ pub struct FirecrackerConfig {
 pub(crate) struct Shared {
     pub(crate) config: FirecrackerConfig,
     pub(crate) jails: Arc<JailIds>,
+    pub(crate) admission: Admission,
 }
 
 impl Shared {
@@ -77,16 +83,26 @@ pub struct FirecrackerEngine {
 }
 
 impl FirecrackerEngine {
-    /// An engine building from `config`, once it has swept what a previous
+    /// An engine building from `config`, holding the host to the memory
+    /// bound its `MemAvailable` makes now, once it has swept what a previous
     /// runner left in its state directory.
-    #[must_use]
-    pub fn new(config: FirecrackerConfig) -> Self {
+    ///
+    /// # Errors
+    /// `/proc/meminfo` would not read or states no `MemAvailable`, or the
+    /// tuning's limits are not ones a microVM is granted.
+    pub fn new(config: FirecrackerConfig) -> Result<Self> {
+        let available = mem_available(Path::new(MEMINFO_PATH))?;
+        let admission = Admission::new(memory_bound(&config.tuning, available)?);
         let jails = JailIds::new(config.tuning.first_jail_id);
         let engine = Self {
-            shared: Arc::new(Shared { config, jails }),
+            shared: Arc::new(Shared {
+                config,
+                jails,
+                admission,
+            }),
         };
         let _logged = engine.swept(Sweep::Leftovers);
-        engine
+        Ok(engine)
     }
 
     /// What it builds microVMs from.
@@ -102,6 +118,8 @@ impl FirecrackerEngine {
 
     /// Makes sandbox `spec.id`'s directory and workspace image, then boots it.
     async fn start(&self, spec: SandboxSpec<'_>) -> Result<Box<dyn Sandbox>> {
+        // First: a host at its bound formats no image and starts no monitor.
+        let reservation = self.shared.admission.admit()?;
         let layout = self.shared.layout(spec.id);
         fs::create_dir_all(&self.shared.config.state_dir)?;
         // Fresh, never reused: a directory already there belongs to a live or
@@ -130,7 +148,7 @@ impl FirecrackerEngine {
                     plan: Plan::from(spec.egress),
                     layout: layout.clone(),
                 };
-                build::boot(&self.shared, kept).await
+                build::boot(&self.shared, kept, reservation).await
             }
             Err(refused) => Err(refused.into()),
         };
@@ -163,6 +181,10 @@ impl Engine for FirecrackerEngine {
         crate::grant(limits)
     }
 
+    fn memory_bound(&self) -> Option<MemoryBound> {
+        Some(self.shared.admission.bound())
+    }
+
     async fn prepare(&self, spec: SandboxSpec<'_>) -> Result<Box<dyn Sandbox>> {
         let sandbox_id = spec.id.as_str();
         let event = EVENT_PREPARE_STARTED;
@@ -177,6 +199,32 @@ impl Engine for FirecrackerEngine {
     async fn sweep(&self, scope: Sweep<'_>) -> Result<Swept> {
         Ok(self.swept(scope))
     }
+}
+
+/// The bound `available` bytes make under `tuning`: one microVM reserves what
+/// its monitor's cgroup holds, its guest's granted memory and
+/// `SANDBOX_MEMORY_RESERVE_BYTES` (64 MiB) beside it, which the kernel holds
+/// the monitor to. The spike measured a 2 GiB guest's idle monitor at
+/// 110.9 MiB resident with 46.2 MiB used inside the guest
+/// (`docs/v2/reviews/m258-firecracker-spike.md`), about 64.7 MiB its own.
+fn memory_bound(tuning: &FirecrackerTuning, available: u64) -> Result<MemoryBound> {
+    let granted = crate::grant(tuning.limits)?;
+    let reserved = build::monitor_limits(granted.limits()).memory_bytes;
+    // Never zero: the reserve alone is 64 MiB.
+    let reserved = NonZeroU64::new(reserved).unwrap_or(NonZeroU64::MAX);
+    Ok(MemoryBound::overcommitted(
+        available,
+        tuning.memory_overcommit,
+        reserved,
+    ))
+}
+
+/// Logs a monitor the host ended while the engine still held it running:
+/// out of memory, most likely, under overcommit. `reason` is how it ended.
+pub(crate) fn lost(reason: &str) {
+    let engine: &str = SandboxEngine::Firecracker.into();
+    let event = EVENT_SANDBOX_LOST;
+    tracing::warn!(engine, reason, event);
 }
 
 /// What a sandbox keeps across a park: everything but its monitor.

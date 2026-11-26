@@ -1469,6 +1469,7 @@ dependencies = [
  "backon",
  "clap",
  "libc",
+ "procfs-core 0.18.0",
  "rustix 1.1.6",
  "serde",
  "serde_json",

@@ -104,6 +104,8 @@ pub(crate) fn config(
             ready_timeout: paced.ready_timeout,
             io_bytes_per_second: paced.io_bytes_per_second,
             sizes: paced.sizes,
+            limits: Limits::default(),
+            memory_overcommit: afr_engine_firecracker::MEMORY_OVERCOMMIT,
         },
         toolbox: Arc::clone(&config.toolbox),
         cgroup_root: cgroup_root.to_owned(),

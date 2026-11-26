@@ -47,6 +47,9 @@ afr_image.workspace = true
 afr_guest.workspace = true
 # The guest entry's fork, and the power-off that ends its virtual machine.
 libc.workspace = true
+# The host's `MemAvailable`, parsed from `/proc/meminfo`, which the memory
+# bound is made from.
+procfs-core.workspace = true
 # The mount, ownership, device-node and identity calls a jail and a guest
 # are made with.
 rustix.workspace = true

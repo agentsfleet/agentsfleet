@@ -315,3 +315,24 @@ async fn test_warm_slot_serves_only_its_own_network() {
     warm.destroy().await.unwrap();
     slots.shutdown().await;
 }
+
+/// Slots kept ready each hold a reservation, so the bound offered beside
+/// them is the inner engine's less the slots: a cold build always fits.
+#[tokio::test]
+async fn test_the_pool_plus_live_runs_never_pass_the_memory_bound() {
+    let bound = crate::MemoryBound {
+        sandboxes_max: 55,
+        mem_available_bytes: 28 << 30,
+        memory_overcommit: 4,
+    };
+    let inner = Arc::new(Counting {
+        bound: Some(bound),
+        ..Counting::default()
+    });
+    let slots = WarmSlots::start(Arc::clone(&inner) as Arc<dyn Engine>, 4, Limits::default());
+
+    let offered = slots.memory_bound().map(|bound| bound.sandboxes_max);
+    slots.shutdown().await;
+
+    assert_eq!(offered, Some(51));
+}

@@ -4,6 +4,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use afr_engine::Limits;
 use afr_executor::Sizes;
 
 /// Where a runner host installs the monitor, by default.
@@ -21,6 +22,10 @@ pub const INITRD_PATH: &str = "/usr/local/lib/agentsfleet/guest.cpio";
 /// `SUB_GID_MAX`, 600100000, in `/etc/login.defs`), so no account or
 /// container range on the host owns one.
 pub const FIRST_JAIL_ID: u32 = 600_100_001;
+/// How many times its available memory a host admits in guest memory, by
+/// default: 4 is Indy's number (Indy, Nov 26, 2026: "Ratio 4"). A guest's
+/// memory is backed only as it is touched.
+pub const MEMORY_OVERCOMMIT: u32 = 4;
 
 /// The programs and guest artifacts every boot uses.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -62,4 +67,9 @@ pub struct FirecrackerTuning {
     /// What every guest's executor serves with and its client keeps the
     /// link to.
     pub sizes: Sizes,
+    /// What every run's microVM is granted, from which one microVM's memory
+    /// reservation is made.
+    pub limits: Limits,
+    /// How many times its available memory the host admits in guest memory.
+    pub memory_overcommit: u32,
 }

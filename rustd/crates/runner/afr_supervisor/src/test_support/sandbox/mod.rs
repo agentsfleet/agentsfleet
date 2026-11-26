@@ -172,6 +172,10 @@ impl Engine for FakeEngine {
         CAPABILITIES.grant(limits)
     }
 
+    fn memory_bound(&self) -> Option<afr_engine::MemoryBound> {
+        None
+    }
+
     async fn sweep(&self, scope: Sweep<'_>) -> afr_engine::Result<Swept> {
         if let Some(swept) = &self.swept {
             let named = match scope {

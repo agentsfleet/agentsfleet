@@ -57,6 +57,9 @@ pub(super) struct Settings {
     /// What our Firecracker engine boots every microVM with.
     #[cfg(feature = "firecracker")]
     pub(super) firecracker: afr_engine_firecracker::FirecrackerTuning,
+    /// The microVMs our Firecracker engine boots ahead of their runs.
+    #[cfg(feature = "firecracker")]
+    pub(super) warm_pool: usize,
     /// What the agent loop holds every run to.
     pub(super) run_limits: afr_agent::RunLimits,
     /// The bounds every egress request is held to.
@@ -79,7 +82,9 @@ pub(super) fn read(env: &impl EnvSource) -> Result<Settings, ExitCode> {
         tuning: tuning::supervisor(&profile.sandbox, &profile.provider, &profile.daemon),
         engine,
         #[cfg(feature = "firecracker")]
-        firecracker: profile.firecracker.tuning(engine),
+        firecracker: profile.firecracker.tuning(engine, profile.sandbox.limits()),
+        #[cfg(feature = "firecracker")]
+        warm_pool: profile.firecracker.warm_pool(),
         run_limits: profile.tools.run_limits(sizes),
         egress: profile.egress.limits(),
         max_run_spans: profile.telemetry.max_spans_per_run,
