@@ -18,11 +18,13 @@ use garde::Validate;
 use serde::{Deserialize, Serialize};
 
 mod capability;
+mod engine;
 mod holds;
 mod rules;
 mod selftest;
 
 pub use self::capability::{CapabilityReport, HostFacts};
+pub use self::engine::{Isolation, Kvm, SandboxEngine};
 pub use self::holds::{FLEET_ID_TEXT_BYTES, HOLDS_MAX, HeldFleets};
 pub use self::rules::{
     BIND_PATH_MAX_BYTES, BIND_PATH_MIN_BYTES, HOST_ID_MAX_BYTES, REGISTRY_ENTRY_MAX_BYTES,

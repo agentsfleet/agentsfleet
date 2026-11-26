@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import {CordonReason, BindMode, RunDestination, RunKind, RunOutcome, RunnerEventType, RunnerLiveness, RunnerNetworkPolicy, RunnerState, SandboxTier} from "./runner-vocabulary.ts";
+import {CordonReason, BindMode, Isolation, Kvm, RunDestination, RunKind, RunOutcome, RunnerEventType, RunnerLiveness, RunnerNetworkPolicy, RunnerState, SandboxEngine, SandboxTier} from "./runner-vocabulary.ts";
 import { instant } from "../../lib/instant.ts";
 
 const text = Schema.String.check(Schema.isMinLength(1));
@@ -19,6 +19,8 @@ const status = Schema.Enum(RunnerState);
 const capability = Schema.Struct({
   landlock: Schema.Boolean, seccomp: Schema.Boolean, bubblewrap: Schema.Boolean,
   cgroup_controllers: Schema.Array(Schema.String), egress_enforcement: Schema.Boolean,
+  engine: Schema.Enum(SandboxEngine), isolation: Schema.Enum(Isolation), kvm: Schema.Enum(Kvm),
+  sandboxes_max: Schema.optionalKey(count),
 });
 /** The host's processors, memory and free sandbox disk; a fact no beat has read is absent. */
 const host = Schema.Struct({

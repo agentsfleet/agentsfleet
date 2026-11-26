@@ -4,14 +4,14 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use af_core::clock::{self, Clock};
 use af_core::id::Uuid7;
-use afr_sandbox::Sandbox;
+use afr_sandbox::Parked;
 use afr_telemetry::labels::SandboxHold;
 use afr_telemetry::record;
 use jiff::Timestamp;
 use tokio::sync::{Notify, mpsc};
 use tokio::task::JoinSet;
 
-use super::{HoldKey, Parked, Release, Request, Taken};
+use super::{HoldKey, Release, Request, Stowed, Taken};
 
 /// The event a parked sandbox is logged under.
 const EVENT_HELD: &str = "sandbox_held";
@@ -26,7 +26,7 @@ struct Entry {
     key: HoldKey,
     /// The run that parked it, which alone may end it as superseded.
     run: Uuid7,
-    sandbox: Box<dyn Sandbox>,
+    sandbox: Box<dyn Parked>,
     since: Timestamp,
     until: Timestamp,
 }
@@ -80,25 +80,20 @@ impl Keeper {
                     match reply.send(self.park(key, run, sandbox)) {
                         // Nobody waits for a refused sandbox: its release is
                         // already counted, so it is only torn down here.
-                        Err(Parked::Refused(sandbox)) => {
+                        Err(Stowed::Refused(sandbox)) => {
                             self.destroying
                                 .spawn(async move { tear_down(&fleet, sandbox).await });
                         }
                         // Held for a run that stopped waiting: no report will
                         // name the hold, so it is superseded now, not at its
                         // lapse.
-                        Err(Parked::Held(_)) => self.release(&fleet, Release::Superseded),
-                        Ok(()) | Err(Parked::Gone) => {}
+                        Err(Stowed::Held(_)) => self.release(&fleet, Release::Superseded),
+                        Ok(()) | Err(Stowed::Gone) => {}
                     }
                 }
                 Request::Release { fleet, reason } => self.release(&fleet, reason),
                 Request::Supersede { run } => self.supersede(&run),
                 Request::Accepted { run, until } => self.accept(&run, until),
-                Request::Discard {
-                    fleet,
-                    sandbox,
-                    reason,
-                } => self.destroy(&fleet, sandbox, reason),
                 Request::Occupy { occupant } => {
                     self.busy.insert(occupant.run, occupant.fleet);
                     self.cap(self.room(), Release::Saturated);
@@ -145,10 +140,10 @@ impl Keeper {
     /// Holds `sandbox` for its fleet until the idle window lapses, after
     /// making room: an older hold of the same fleet goes, then the oldest
     /// until one fewer than the cap remain. A closed keeper holds nothing.
-    fn park(&mut self, key: HoldKey, run: Uuid7, sandbox: Box<dyn Sandbox>) -> Parked {
+    fn park(&mut self, key: HoldKey, run: Uuid7, sandbox: Box<dyn Parked>) -> Stowed {
         if self.closed {
             released(&key.fleet, Release::Shutdown);
-            return Parked::Refused(sandbox);
+            return Stowed::Refused(sandbox);
         }
         if let Some(at) = self.position(&key.fleet) {
             let stale = self.held.remove(at);
@@ -161,7 +156,7 @@ impl Keeper {
         let room = self.workers.saturating_sub(busy).saturating_sub(1);
         if room == 0 {
             released(&key.fleet, Release::Capped);
-            return Parked::Refused(sandbox);
+            return Stowed::Refused(sandbox);
         }
         if transfers {
             self.busy.remove(&run);
@@ -185,7 +180,7 @@ impl Keeper {
             since,
             until,
         });
-        Parked::Held(until)
+        Stowed::Held(until)
     }
 
     fn room(&self) -> usize {
@@ -265,7 +260,7 @@ impl Keeper {
     }
 
     /// Logs and counts the release, then tears the sandbox down off this task.
-    fn destroy(&mut self, fleet: &Uuid7, sandbox: Box<dyn Sandbox>, reason: Release) {
+    fn destroy(&mut self, fleet: &Uuid7, sandbox: Box<dyn Parked>, reason: Release) {
         released(fleet, reason);
         if !self.closed {
             self.saturated.notify_one();
@@ -292,12 +287,6 @@ impl Keeper {
     }
 }
 
-/// Releases a hold the task can no longer take, because the runner stopped.
-pub(super) async fn destroy_now(fleet: &Uuid7, sandbox: Box<dyn Sandbox>, reason: Release) {
-    released(fleet, reason);
-    tear_down(fleet, sandbox).await;
-}
-
 pub(super) fn released(fleet: &Uuid7, reason: Release) {
     let fleet_id = fleet.as_str();
     let outcome = reason.outcome();
@@ -307,7 +296,7 @@ pub(super) fn released(fleet: &Uuid7, reason: Release) {
     record::sandbox_hold(outcome);
 }
 
-async fn tear_down(fleet: &Uuid7, sandbox: Box<dyn Sandbox>) {
+async fn tear_down(fleet: &Uuid7, sandbox: Box<dyn Parked>) {
     if let Err(failure) = sandbox.destroy().await {
         let error_code = failure.code().as_str();
         let fleet_id = fleet.as_str();

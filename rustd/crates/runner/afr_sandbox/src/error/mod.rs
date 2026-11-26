@@ -27,9 +27,11 @@ mod toolbox;
 pub use self::egress::EgressRefusal;
 #[cfg(target_os = "linux")]
 pub use self::egress::Step;
+#[cfg(feature = "test-util")]
+pub use self::raise::ambiguous;
 pub(crate) use self::raise::{
     cgroup, cgroup_left, cgroup_unreadable, cgroup_unsettled, egress_refused, not_inherited,
-    program, refused, run_id_unsafe, toolbox_refused, toolbox_unreadable, unconfined,
+    program, refused, sandbox_exists, toolbox_refused, toolbox_unreadable, unconfined, unsupported,
 };
 #[cfg(target_os = "linux")]
 pub(crate) use self::raise::{netlink, not_ready};
@@ -174,11 +176,45 @@ pub(crate) enum ErrorKind {
         detail: &'static str,
     },
 
-    /// A run identifier that is not one plain path component.
-    #[error("the run identifier {run_id:?} is not a single path component")]
-    RunIdUnsafe {
-        /// The identifier as it arrived.
-        run_id: String,
+    /// The operating system refused the entropy an identifier needs.
+    #[error("an identifier could not be minted")]
+    Entropy {
+        /// Why.
+        #[source]
+        source: af_crypto::error::Error,
+    },
+
+    /// The engine has no mechanism for what was asked.
+    #[error("the {engine} engine cannot {operation}")]
+    Unsupported {
+        /// The engine's name.
+        engine: &'static str,
+        /// What was asked of it.
+        operation: &'static str,
+    },
+
+    /// A build or teardown whose outcome the engine cannot tell: something
+    /// may be left, and only a sweep may touch it.
+    #[cfg_attr(
+        not(feature = "test-util"),
+        expect(
+            dead_code,
+            reason = "the Firecracker engine raises it; until it lands only test engines do"
+        )
+    )]
+    #[error("the outcome of {operation} for sandbox {sandbox} is unknown")]
+    Ambiguous {
+        /// The sandbox's identifier.
+        sandbox: String,
+        /// What was under way.
+        operation: &'static str,
+    },
+
+    /// A build named a sandbox that is already live.
+    #[error("sandbox {sandbox} is already live")]
+    SandboxExists {
+        /// The sandbox's identifier.
+        sandbox: String,
     },
 
     /// The unsandboxed engine was asked for in a release build.
@@ -262,7 +298,10 @@ impl Error {
             | ErrorKind::Task { .. }
             | ErrorKind::NotInherited { .. }
             | ErrorKind::Unconfined { .. }
-            | ErrorKind::RunIdUnsafe { .. }
+            | ErrorKind::Entropy { .. }
+            | ErrorKind::Unsupported { .. }
+            | ErrorKind::Ambiguous { .. }
+            | ErrorKind::SandboxExists { .. }
             | ErrorKind::UnsandboxedInRelease
             | ErrorKind::EgressRefused { .. } => error_code::INTERNAL_OPERATION_FAILED,
             #[cfg(target_os = "linux")]
@@ -279,6 +318,13 @@ impl Error {
     #[must_use]
     pub fn detail(&self) -> String {
         self.kind().to_string()
+    }
+
+    /// Whether the engine could not tell how a build or teardown ended, so
+    /// the caller must sweep the sandbox and never build it again.
+    #[must_use]
+    pub const fn is_ambiguous(&self) -> bool {
+        matches!(self.kind(), ErrorKind::Ambiguous { .. })
     }
 
     /// The mechanism this host lacks, when the failure is that the host cannot
@@ -299,7 +345,10 @@ impl Error {
             | ErrorKind::Executor { .. }
             | ErrorKind::NotInherited { .. }
             | ErrorKind::Unconfined { .. }
-            | ErrorKind::RunIdUnsafe { .. }
+            | ErrorKind::Entropy { .. }
+            | ErrorKind::Unsupported { .. }
+            | ErrorKind::Ambiguous { .. }
+            | ErrorKind::SandboxExists { .. }
             | ErrorKind::UnsandboxedInRelease
             | ErrorKind::EgressRefused { .. } => None,
             #[cfg(target_os = "linux")]
@@ -330,7 +379,10 @@ impl Error {
             | ErrorKind::Executor { .. }
             | ErrorKind::NotInherited { .. }
             | ErrorKind::Unconfined { .. }
-            | ErrorKind::RunIdUnsafe { .. }
+            | ErrorKind::Entropy { .. }
+            | ErrorKind::Unsupported { .. }
+            | ErrorKind::Ambiguous { .. }
+            | ErrorKind::SandboxExists { .. }
             | ErrorKind::UnsandboxedInRelease
             | ErrorKind::EgressRefused { .. } => None,
             #[cfg(target_os = "linux")]
@@ -361,7 +413,10 @@ impl Error {
             | ErrorKind::Executor { .. }
             | ErrorKind::NotInherited { .. }
             | ErrorKind::Unconfined { .. }
-            | ErrorKind::RunIdUnsafe { .. }
+            | ErrorKind::Entropy { .. }
+            | ErrorKind::Unsupported { .. }
+            | ErrorKind::Ambiguous { .. }
+            | ErrorKind::SandboxExists { .. }
             | ErrorKind::UnsandboxedInRelease => None,
             #[cfg(target_os = "linux")]
             ErrorKind::NotReady { .. }

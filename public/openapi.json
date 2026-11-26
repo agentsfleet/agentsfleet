@@ -8947,7 +8947,7 @@
             "schema": {
               "type": "string"
             },
-            "example": "agentsfleet.runner.v6"
+            "example": "agentsfleet.runner.v7"
           },
           {
             "name": "agentsfleet-runner-kind",
@@ -19007,7 +19007,10 @@
           "seccomp",
           "cgroup_controllers",
           "bubblewrap",
-          "egress_enforcement"
+          "egress_enforcement",
+          "engine",
+          "isolation",
+          "kvm"
         ],
         "properties": {
           "bubblewrap": {
@@ -19036,9 +19039,31 @@
             "type": "boolean",
             "description": "Whether the operating system can restrict outgoing network access to allowed hosts."
           },
+          "engine": {
+            "$ref": "#/components/schemas/SandboxEngine",
+            "description": "The engine that builds this runner's sandboxes."
+          },
+          "isolation": {
+            "$ref": "#/components/schemas/Isolation",
+            "description": "The wall that engine puts between a sandbox's code and the host."
+          },
+          "kvm": {
+            "$ref": "#/components/schemas/Kvm",
+            "description": "What the host's virtualization device offers."
+          },
           "landlock": {
             "type": "boolean",
             "description": "Filesystem isolation is available."
+          },
+          "sandboxes_max": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "How many sandboxes the host's memory holds at once; absent where the\nengine reserves no memory per sandbox.",
+            "maximum": 2147483647,
+            "minimum": 1
           },
           "seccomp": {
             "type": "boolean",
@@ -24555,6 +24580,15 @@
           }
         }
       },
+      "Isolation": {
+        "type": "string",
+        "description": "The wall between a sandbox's code and the runner host.",
+        "enum": [
+          "unconfined",
+          "shared_kernel",
+          "hardware_vm"
+        ]
+      },
       "ItemKind": {
         "type": "string",
         "description": "What kind of thing one item of a run is.",
@@ -24569,6 +24603,15 @@
         "enum": [
           "succeeded",
           "failed"
+        ]
+      },
+      "Kvm": {
+        "type": "string",
+        "description": "What the runner host's virtualization device offers.",
+        "enum": [
+          "usable",
+          "denied",
+          "absent"
         ]
       },
       "Liveness": {
@@ -27281,6 +27324,15 @@
           }
         },
         "additionalProperties": false
+      },
+      "SandboxEngine": {
+        "type": "string",
+        "description": "The engine that builds a runner's sandboxes.",
+        "enum": [
+          "bubblewrap",
+          "firecracker",
+          "unsandboxed"
+        ]
       },
       "SandboxTier": {
         "type": "string",

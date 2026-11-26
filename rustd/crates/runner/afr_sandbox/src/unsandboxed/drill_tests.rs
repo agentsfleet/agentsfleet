@@ -5,7 +5,9 @@
 
 use super::RecoveryDrillEngine;
 use crate::UnsandboxedEngine;
-use crate::engine::{Engine, Killed, Limits, SandboxRequest};
+use crate::engine::{
+    Engine, Killed, Limits, Quiescence, SandboxSpec, SandboxState, fresh_sandbox_id,
+};
 use crate::error::EgressRefusal;
 use crate::network::Allowlist;
 
@@ -28,18 +30,24 @@ async fn should_name_one_toolbox_from_every_drill_engine() {
     let first = RecoveryDrillEngine::new(first_base.path().to_owned()).unwrap();
     let second = RecoveryDrillEngine::new(second_base.path().to_owned()).unwrap();
     let unconfined = UnsandboxedEngine::new(first_base.path().to_owned()).unwrap();
-    let request = SandboxRequest::new("drilled", Limits::default());
-    let killed = first.prepare(request).await.unwrap();
-    let replacement = second.prepare(request).await.unwrap();
+    let (drilled, bare) = (fresh_sandbox_id(), fresh_sandbox_id());
+    let killed = first
+        .prepare(SandboxSpec::granted_by(&first, &drilled, Limits::DEFAULT).unwrap())
+        .await
+        .unwrap();
+    let replacement = second
+        .prepare(SandboxSpec::granted_by(&second, &drilled, Limits::DEFAULT).unwrap())
+        .await
+        .unwrap();
     let bare = unconfined
-        .prepare(SandboxRequest::new("bare", Limits::default()))
+        .prepare(SandboxSpec::granted_by(&unconfined, &bare, Limits::DEFAULT).unwrap())
         .await
         .unwrap();
 
     let named = [
-        killed.toolbox_digest().map(str::to_owned),
-        replacement.toolbox_digest().map(str::to_owned),
-        bare.toolbox_digest().map(str::to_owned),
+        killed.environment().root.toolbox().map(str::to_owned),
+        replacement.environment().root.toolbox().map(str::to_owned),
+        bare.environment().root.toolbox().map(str::to_owned),
     ];
     for sandbox in [killed, replacement, bare] {
         sandbox.destroy().await.unwrap();
@@ -55,68 +63,46 @@ async fn should_name_one_toolbox_from_every_drill_engine() {
     );
 }
 
-/// A workspace checkpoint freezes, proves quiescence and thaws; each step
-/// answers, the executor serves on, and destroy still removes the run.
+/// A workspace checkpoint needs no tenant process left: a drill sandbox
+/// reports itself quiet, its executor idle, and it serves on until destroy
+/// removes it.
 #[tokio::test]
-async fn should_freeze_prove_quiescence_and_thaw_a_drill_sandbox() {
+async fn should_report_a_drill_sandbox_quiet() {
     let base = scratch();
+    let id = fresh_sandbox_id();
     let engine = RecoveryDrillEngine::new(base.path().to_owned()).unwrap();
     let mut sandbox = engine
-        .prepare(SandboxRequest::new("frozen", Limits::default()))
+        .prepare(SandboxSpec::granted_by(&engine, &id, Limits::DEFAULT).unwrap())
         .await
         .unwrap();
 
-    sandbox.freeze().await.unwrap();
-    let quiescent = sandbox.recovery_quiescent().await.unwrap();
-    sandbox.thaw().await.unwrap();
+    let quiescence = sandbox.quiesce().await.unwrap();
     let idle = sandbox.executor().recovery_idle().await.unwrap();
     let root = sandbox.workspace().unwrap().root.to_owned();
-    let serving = sandbox.is_running();
+    let state = sandbox.state();
     sandbox.destroy().await.unwrap();
 
-    assert_eq!((quiescent, idle, serving), (true, true, true));
-    assert_eq!(root, base.path().join("frozen").join("workspace"));
-    assert!(
-        !base.path().join("frozen").exists(),
-        "the run's directory is gone"
-    );
-}
-
-/// The run's name is checked by the unconfined engine beneath: a name that
-/// is not one path segment builds no sandbox.
-#[tokio::test]
-async fn should_refuse_a_run_id_that_is_not_one_segment() {
-    let base = scratch();
-    let engine = RecoveryDrillEngine::new(base.path().to_owned()).unwrap();
-
-    let refused = engine
-        .prepare(SandboxRequest::new("nested/run", Limits::default()))
-        .await
-        .unwrap_err();
-
     assert_eq!(
-        refused.code(),
-        af_core::error_code::INTERNAL_OPERATION_FAILED
+        (quiescence, idle, state),
+        (Quiescence::Quiet, true, SandboxState::Running)
     );
+    assert_eq!(root, base.path().join(id.as_str()).join("workspace"));
     assert!(
-        refused.to_string().contains("single path component"),
-        "{refused}"
-    );
-    assert!(
-        !base.path().join("nested").exists(),
-        "nothing is made under the base"
+        !base.path().join(id.as_str()).exists(),
+        "the sandbox's directory is gone"
     );
 }
 
-/// The drill names a toolbox and freezes, but still shares the host's
-/// network and runs under no cgroup: new addresses are refused as having no
-/// scope, and a kill is never settled.
+/// The drill names a toolbox, but still shares the host's network and runs
+/// under no cgroup: new addresses are refused as having no scope, and a kill
+/// is never settled.
 #[tokio::test]
 async fn should_refuse_new_addresses_and_never_settle_a_kill() {
     let base = scratch();
+    let id = fresh_sandbox_id();
     let engine = RecoveryDrillEngine::new(base.path().to_owned()).unwrap();
     let mut sandbox = engine
-        .prepare(SandboxRequest::new("unconfined", Limits::default()))
+        .prepare(SandboxSpec::granted_by(&engine, &id, Limits::DEFAULT).unwrap())
         .await
         .unwrap();
 

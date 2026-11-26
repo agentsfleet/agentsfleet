@@ -82,7 +82,7 @@ async fn a_repository_durable_task_without_a_ready_sandbox_stops_the_run_before_
 }
 
 #[tokio::test]
-async fn a_sandbox_without_a_workspace_or_toolbox_skips_after_thaw() -> Result<()> {
+async fn a_sandbox_without_a_workspace_or_toolbox_skips() -> Result<()> {
     let root = tempfile::tempdir()?;
     for engine in [
         FakeEngine {
@@ -97,7 +97,7 @@ async fn a_sandbox_without_a_workspace_or_toolbox_skips_after_thaw() -> Result<(
         let mut fixture = Fixture::new(unavailable)?;
         let run = fixture.run()?;
         let sandbox = engine
-            .prepare(SandboxRequest::new(test_support::RUN_ID, Limits::default()))
+            .sandbox()
             .await
             .map_err(|source| error::boundary("fixture sandbox", source))?;
         let cell = OnceLock::from(sandbox);
@@ -116,8 +116,11 @@ async fn a_sandbox_without_a_workspace_or_toolbox_skips_after_thaw() -> Result<(
             saved,
             Ok(RecoverySave::Skipped(RecoverySkip::Unavailable))
         ));
-        assert_eq!(engine.frozen.load(Ordering::SeqCst), 1);
-        assert_eq!(engine.thawed.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            engine.parked.load(Ordering::SeqCst),
+            0,
+            "a capture parks nothing"
+        );
         assert!(!run.interrupt.is_cancelled());
         drop(owner);
         drop(run);
@@ -127,11 +130,11 @@ async fn a_sandbox_without_a_workspace_or_toolbox_skips_after_thaw() -> Result<(
 }
 
 #[tokio::test]
-async fn an_executor_that_cannot_prove_idle_skips_without_freezing() -> Result<()> {
+async fn an_executor_that_cannot_prove_idle_skips_before_reading_the_tenant() -> Result<()> {
     let mut fixture = Fixture::new(unavailable)?;
     let run = fixture.run()?;
     let root = tempfile::tempdir()?;
-    let (engine, sandbox) = sandbox(root.path(), Freezer::ExecutorUnproved).await?;
+    let (engine, sandbox) = sandbox(root.path(), Parking::ExecutorUnproved).await?;
     let cell = OnceLock::from(sandbox);
     let state = OnceLock::new();
     let (_, mut owner) = BoundaryOwner::new(
@@ -148,8 +151,8 @@ async fn an_executor_that_cannot_prove_idle_skips_without_freezing() -> Result<(
         saved,
         Ok(RecoverySave::Skipped(RecoverySkip::Unavailable))
     ));
-    assert_eq!(engine.frozen.load(Ordering::SeqCst), 0);
-    assert_eq!(engine.thaw_attempts.load(Ordering::SeqCst), 0);
+    assert_eq!(engine.parked.load(Ordering::SeqCst), 0);
+    assert_eq!(engine.quiesced.load(Ordering::SeqCst), 0);
     assert!(!run.interrupt.is_cancelled());
     drop(owner);
     drop(run);
@@ -158,11 +161,11 @@ async fn an_executor_that_cannot_prove_idle_skips_without_freezing() -> Result<(
 }
 
 #[tokio::test]
-async fn an_unprovable_tenant_stops_the_run_after_thaw() -> Result<()> {
+async fn an_unprovable_tenant_stops_the_run() -> Result<()> {
     let mut fixture = Fixture::new(unavailable)?;
     let run = fixture.run()?;
     let root = tempfile::tempdir()?;
-    let (engine, sandbox) = sandbox(root.path(), Freezer::QuiescenceUnproved).await?;
+    let (engine, sandbox) = sandbox(root.path(), Parking::QuiescenceUnproved).await?;
     let cell = OnceLock::from(sandbox);
     let state = OnceLock::new();
     let (_, mut owner) = BoundaryOwner::new(
@@ -180,8 +183,11 @@ async fn an_unprovable_tenant_stops_the_run_after_thaw() -> Result<()> {
             .is_err_and(|failure| failure.code() == af_core::error_code::INTERNAL_OPERATION_FAILED)
     );
     assert!(run.interrupt.is_cancelled());
-    assert_eq!(engine.frozen.load(Ordering::SeqCst), 1);
-    assert_eq!(engine.thawed.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        engine.parked.load(Ordering::SeqCst),
+        0,
+        "a capture parks nothing"
+    );
     drop(owner);
     drop(run);
     assert_eq!(fixture.rig.calls().len(), 0, "nothing is published");
@@ -377,7 +383,7 @@ async fn a_terminal_capture_reserves_storage_only_for_an_idle_executor() -> Resu
     let run = fixture.run()?;
     let root = tempfile::tempdir()?;
 
-    let (_, idle) = sandbox(root.path(), Freezer::Works).await?;
+    let (_, idle) = sandbox(root.path(), Parking::Works).await?;
     assert!(matches!(
         run.reserve_terminal_capture(idle.as_ref(), false).await,
         Ok(None)
@@ -387,7 +393,7 @@ async fn a_terminal_capture_reserves_storage_only_for_an_idle_executor() -> Resu
         Ok(Some(_))
     ));
 
-    let (_, busy) = sandbox(root.path(), Freezer::BusyExecutor).await?;
+    let (_, busy) = sandbox(root.path(), Parking::BusyExecutor).await?;
     let refused = run.reserve_terminal_capture(busy.as_ref(), true).await;
     assert_eq!(
         test_support::detail(&refused),
@@ -399,7 +405,7 @@ async fn a_terminal_capture_reserves_storage_only_for_an_idle_executor() -> Resu
         )
     );
 
-    let (_, unproved) = sandbox(root.path(), Freezer::ExecutorUnproved).await?;
+    let (_, unproved) = sandbox(root.path(), Parking::ExecutorUnproved).await?;
     let refused = run.reserve_terminal_capture(unproved.as_ref(), true).await;
     assert_eq!(
         test_support::detail(&refused),
@@ -483,11 +489,11 @@ async fn a_save_whose_owner_is_dropped_mid_capture_reports_a_lost_reply() -> Res
     let engine = FakeEngine {
         workspace: Some(root.path().to_owned()),
         toolbox: Some(api_toolbox()),
-        thaw_takes: Duration::from_secs(10),
+        quiesce_takes: Duration::from_secs(10),
         ..FakeEngine::default()
     };
     let sandbox = engine
-        .prepare(SandboxRequest::new(test_support::RUN_ID, Limits::default()))
+        .sandbox()
         .await
         .map_err(|source| error::boundary("fixture sandbox", source))?;
     let cell = OnceLock::from(sandbox);
@@ -504,9 +510,9 @@ async fn a_save_whose_owner_is_dropped_mid_capture_reports_a_lost_reply() -> Res
 
     tokio::select! {
         _ending = &mut beside => return Err(error::config("the work never ends")),
-        _saved = &mut saving => return Err(error::config("the save must wait for thaw")),
+        _saved = &mut saving => return Err(error::config("the save must wait for quiescence")),
         () = async {
-            while engine.thaw_attempts.load(Ordering::SeqCst) == 0 {
+            while engine.quiesced.load(Ordering::SeqCst) == 0 {
                 tokio::task::yield_now().await;
             }
         } => {}

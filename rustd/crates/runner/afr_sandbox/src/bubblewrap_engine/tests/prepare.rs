@@ -15,10 +15,10 @@ use afr_executor::{Ending, Spawn};
 use super::super::{BubblewrapEngine, EVENT_DISK_BUFFERED};
 use super::support::{
     BRIEF, ENV_PROBE, ENV_PROBE_INHERITED, ENV_PROBE_REPORT, ENV_PROBE_VARIABLES, FAILER,
-    FAILER_REASON, FALSE, FakeHost, IMAGE, LIMITS, POLL, SLEEPER, request, serve_runs,
+    FAILER_REASON, FALSE, FakeHost, IMAGE, LIMITS, POLL, SLEEPER, id_of, serve_runs, spec,
 };
 use crate::cgroup::{CGROUP_PROCS, SANDBOX_LEAF};
-use crate::engine::Engine;
+use crate::engine::{Engine, SandboxState};
 use crate::warm_slots::WarmSlots;
 
 /// How long a test waits for something the fake host does on its own: past
@@ -30,7 +30,7 @@ async fn test_a_runs_through_the_engine_and_keeps_a_disk_it_cannot_unmount() {
     let host = FakeHost::new(SLEEPER);
     let server = serve_runs(host.config.state_dir.clone());
 
-    let sandbox = host.engine().prepare(request("run-1")).await.unwrap();
+    let sandbox = host.engine().prepare(spec(&id_of("run-1"))).await.unwrap();
     let process = sandbox
         .executor()
         .spawn(&Spawn::program("/bin/echo").arg("hi"))
@@ -41,7 +41,7 @@ async fn test_a_runs_through_the_engine_and_keeps_a_disk_it_cannot_unmount() {
         .ended(|_stream, data| output.extend_from_slice(&data))
         .await
         .unwrap();
-    let run_cgroup = host.config.cgroup_root.join("run-1");
+    let run_cgroup = host.config.cgroup_root.join(id_of("run-1").as_str());
     let joined = fs::read_to_string(run_cgroup.join(SANDBOX_LEAF).join(CGROUP_PROCS)).unwrap();
     let io_limit = fs::read_to_string(run_cgroup.join("io.max")).unwrap();
     let destroyed = sandbox.destroy().await;
@@ -71,13 +71,13 @@ async fn test_a_disk_without_a_loop_device_is_logged_buffered_under_its_run() {
     let server = serve_runs(host.config.state_dir.clone());
     let capture = Capture::install();
 
-    let sandbox = host.engine().prepare(request("run-13")).await.unwrap();
+    let sandbox = host.engine().prepare(spec(&id_of("run-13"))).await.unwrap();
     let _left = sandbox.destroy().await;
     server.abort();
 
     assert_eq!(
-        capture.only(EVENT_DISK_BUFFERED).field("run_id"),
-        Some("run-13")
+        capture.only(EVENT_DISK_BUFFERED).field("sandbox_id"),
+        Some(id_of("run-13").as_str())
     );
 }
 
@@ -98,7 +98,11 @@ async fn test_bubblewrap_starts_with_an_empty_environment() {
     );
     let host = FakeHost::new(ENV_PROBE);
 
-    let refused = host.engine().prepare(request("run-env")).await.unwrap_err();
+    let refused = host
+        .engine()
+        .prepare(spec(&id_of("run-env")))
+        .await
+        .unwrap_err();
 
     let quoted = refused.to_string();
     assert!(quoted.contains(ENV_PROBE_REPORT), "{quoted}");
@@ -110,7 +114,11 @@ async fn test_a_sandbox_that_exits_refuses_the_run_with_its_reason() {
     let host = FakeHost::new(FAILER);
     let capture = Capture::install();
 
-    let refused = host.engine().prepare(request("run-2")).await.unwrap_err();
+    let refused = host
+        .engine()
+        .prepare(spec(&id_of("run-2")))
+        .await
+        .unwrap_err();
 
     let quoted = refused.to_string();
     assert!(quoted.contains(FAILER_REASON), "{quoted}");
@@ -119,11 +127,11 @@ async fn test_a_sandbox_that_exits_refuses_the_run_with_its_reason() {
         "only the last lines: {quoted}"
     );
     let failed = capture.only("sandbox_prepare_failed");
-    assert_eq!(failed.field("run_id"), Some("run-2"));
+    assert_eq!(failed.field("sandbox_id"), Some(id_of("run-2").as_str()));
     assert!(failed.field("error_code").is_some());
     assert_eq!(
-        capture.only("sandbox_teardown_failed").field("run_id"),
-        Some("run-2")
+        capture.only("sandbox_teardown_failed").field("sandbox_id"),
+        Some(id_of("run-2").as_str())
     );
 }
 
@@ -132,7 +140,11 @@ async fn test_a_sandbox_that_never_answers_refuses_the_run() {
     let mut host = FakeHost::new(SLEEPER);
     host.config.ready_timeout = Duration::from_millis(20);
 
-    let refused = host.engine().prepare(request("run-3")).await.unwrap_err();
+    let refused = host
+        .engine()
+        .prepare(spec(&id_of("run-3")))
+        .await
+        .unwrap_err();
 
     assert!(refused.to_string().contains("did not answer"), "{refused}");
     assert!(
@@ -147,29 +159,16 @@ async fn test_a_run_never_inherits_a_directory_already_there() {
     let engine = host.engine();
     fs::create_dir_all(host.run_dir("run-4").join("workspace")).unwrap();
 
-    engine.prepare(request("run-4")).await.unwrap_err();
+    let refused = engine.prepare(spec(&id_of("run-4"))).await.unwrap_err();
 
+    assert_eq!(
+        refused.detail(),
+        format!("sandbox {} is already live", id_of("run-4"))
+    );
     assert!(
         host.run_dir("run-4").join("workspace").exists(),
-        "left for the boot sweep"
+        "left for a sweep"
     );
-}
-
-#[tokio::test]
-async fn test_a_run_identifier_that_escapes_is_refused_before_anything_is_built() {
-    let host = FakeHost::new(SLEEPER);
-
-    let refused = host
-        .engine()
-        .prepare(request("../run-5"))
-        .await
-        .unwrap_err();
-
-    assert!(
-        refused.to_string().contains("single path component"),
-        "{refused}"
-    );
-    assert!(!host.dir.path().join("run-5").exists());
 }
 
 #[tokio::test]
@@ -177,7 +176,11 @@ async fn test_a_workspace_disk_that_cannot_be_made_refuses_the_run_and_leaves_no
     let mut host = FakeHost::new(SLEEPER);
     host.config.tools.mke2fs = PathBuf::from(FALSE);
 
-    let refused = host.engine().prepare(request("run-6")).await.unwrap_err();
+    let refused = host
+        .engine()
+        .prepare(spec(&id_of("run-6")))
+        .await
+        .unwrap_err();
 
     assert!(refused.to_string().contains("mke2fs exited"), "{refused}");
     assert!(!host.run_dir("run-6").exists());
@@ -188,15 +191,22 @@ async fn test_a_launcher_that_cannot_start_refuses_the_run() {
     let mut host = FakeHost::new(SLEEPER);
     host.config.tools.bwrap = host.dir.path().join("absent-bwrap");
 
-    host.engine().prepare(request("run-7")).await.unwrap_err();
+    host.engine()
+        .prepare(spec(&id_of("run-7")))
+        .await
+        .unwrap_err();
 }
 
 #[tokio::test]
 async fn test_a_cgroup_that_cannot_be_made_refuses_the_run() {
     let host = FakeHost::new(SLEEPER);
-    fs::create_dir(host.config.cgroup_root.join("run-9")).unwrap();
+    fs::create_dir(host.config.cgroup_root.join(id_of("run-9").as_str())).unwrap();
 
-    let refused = host.engine().prepare(request("run-9")).await.unwrap_err();
+    let refused = host
+        .engine()
+        .prepare(spec(&id_of("run-9")))
+        .await
+        .unwrap_err();
 
     assert_eq!(
         refused.missing_mechanism(),
@@ -219,11 +229,11 @@ fn test_a_host_without_landlock_refuses_every_run() {
 async fn test_a_sandbox_that_dies_reports_it_is_no_longer_running() {
     let host = FakeHost::new(BRIEF);
     let server = serve_runs(host.config.state_dir.clone());
-    let mut sandbox = host.engine().prepare(request("run-10")).await.unwrap();
+    let mut sandbox = host.engine().prepare(spec(&id_of("run-10"))).await.unwrap();
 
-    let alive = sandbox.is_running();
+    let alive = sandbox.state() == SandboxState::Running;
     let died = tokio::time::timeout(PATIENCE, async {
-        while sandbox.is_running() {
+        while sandbox.state() == SandboxState::Running {
             tokio::time::sleep(POLL).await;
         }
     })
@@ -264,7 +274,7 @@ async fn test_warm_slots_hand_out_a_bubblewrap_sandbox_started_ahead() {
     // yield to the runtime's budget there: one yield lets the offer land.
     tokio::task::yield_now().await;
 
-    let warm = slots.prepare(request("run-8")).await.unwrap();
+    let warm = slots.prepare(spec(&id_of("run-8"))).await.unwrap();
     let _left = warm.destroy().await;
     slots.shutdown().await;
     server.abort();
@@ -296,7 +306,7 @@ async fn test_a_warm_slot_that_died_is_discarded_and_the_run_starts_cold() {
     let slots = WarmSlots::start(Arc::new(host.engine()), 1, LIMITS);
     tokio::time::sleep(Duration::from_millis(600)).await;
 
-    let cold = slots.prepare(request("run-11")).await.unwrap();
+    let cold = slots.prepare(spec(&id_of("run-11"))).await.unwrap();
     let _left = cold.destroy().await;
     slots.shutdown().await;
     server.abort();
@@ -325,8 +335,8 @@ async fn test_a_root_runner_starts_the_sandbox_as_its_own_user() {
     engine.run_as = Some(me);
     engine.owner = me;
 
-    let mut sandbox = engine.prepare(request("run-12")).await.unwrap();
-    let running = sandbox.is_running();
+    let mut sandbox = engine.prepare(spec(&id_of("run-12"))).await.unwrap();
+    let running = sandbox.state() == SandboxState::Running;
     let _left = sandbox.destroy().await;
     server.abort();
 

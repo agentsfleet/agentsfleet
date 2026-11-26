@@ -317,6 +317,14 @@ fn capable() -> CapabilityReport<'static> {
         cgroup_controllers: CGROUP_CONTROLLERS.map(Cow::Borrowed).to_vec(),
         bubblewrap: true,
         egress_enforcement: true,
+
+        engine: af_wire::runner::SandboxEngine::Bubblewrap,
+
+        isolation: af_wire::runner::Isolation::SharedKernel,
+
+        kvm: af_wire::runner::Kvm::Absent,
+
+        sandboxes_max: None,
     }
 }
 

@@ -24,6 +24,14 @@ async fn malformed_capability_cannot_complete_a_healthy_return() -> Checked {
             cgroup_controllers: Vec::new(),
             bubblewrap: true,
             egress_enforcement: true,
+
+            engine: af_wire::runner::SandboxEngine::Bubblewrap,
+
+            isolation: af_wire::runner::Isolation::SharedKernel,
+
+            kvm: af_wire::runner::Kvm::Absent,
+
+            sandboxes_max: None,
         }),
         ..afd_runner::NO_REPORT
     };

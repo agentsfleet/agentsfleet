@@ -8,7 +8,7 @@ use futures_util::FutureExt as _;
 use tokio::sync::Barrier;
 
 use super::tests::{FLEET_A, FLEET_B, RUN, fleets, hold, holds, id, key, sandbox};
-use super::{Occupant, Parked};
+use super::{Occupant, Stowed};
 use crate::test_support::FakeEngine;
 
 #[tokio::test]
@@ -44,7 +44,7 @@ async fn test_two_worker_hold_transfers_count_each_sandbox_once() {
     let taken = holds.take(&key(FLEET_A)).await.unwrap();
     assert!(matches!(
         holds.park(key(FLEET_A), id(RUN), taken.sandbox).await,
-        Parked::Held(_)
+        Stowed::Held(_)
     ));
     drop(guard);
     assert_eq!(
@@ -80,10 +80,10 @@ async fn cancelled_park_and_guard_drop_leave_no_busy_reservation() {
         run: id(RUN),
         fleet: id(FLEET_A),
     });
-    let frozen = sandbox(&engine).await;
+    let parked = sandbox(&engine).await;
     assert!(
         holds
-            .park(key(FLEET_A), id(RUN), frozen)
+            .park(key(FLEET_A), id(RUN), parked)
             .now_or_never()
             .is_none()
     );

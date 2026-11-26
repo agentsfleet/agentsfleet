@@ -2,8 +2,9 @@
 
 use std::time::Duration;
 
+use crate::lane::{id_of, spec};
 use afr_executor::{Ending, Executor, Spawn};
-use afr_sandbox::{Engine, Limits, SandboxRequest};
+use afr_sandbox::{Engine, Limits, SandboxSpec};
 use libtest_mimic::Failed;
 
 use crate::lane::Lane;
@@ -71,7 +72,7 @@ pub(crate) fn in_sandbox(
     limits: Limits,
     script: &str,
 ) -> Result<Outcome, Failed> {
-    in_sandbox_each(lane, SandboxRequest::new(run_id, limits), &[script])?
+    in_sandbox_each(lane, spec(&id_of(run_id), limits), &[script])?
         .pop()
         .ok_or_else(|| Failed::from("one script runs once"))
 }
@@ -81,7 +82,7 @@ pub(crate) fn in_sandbox(
 /// something is only seen on the same sandbox.
 pub(crate) fn in_sandbox_each(
     lane: &Lane,
-    request: SandboxRequest<'_>,
+    request: SandboxSpec<'_>,
     scripts: &[impl AsRef<str>],
 ) -> Result<Vec<Outcome>, Failed> {
     runtime().block_on(async {

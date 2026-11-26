@@ -114,21 +114,31 @@ fn refused(error: &impl std::fmt::Display) -> ExitCode {
     ExitCode::FAILURE
 }
 
-/// Prints the host's capability report and self-test checks as JSON.
+/// Prints the host's capability report and self-test checks as JSON, as the
+/// default engine reads them.
 fn probe() -> ExitCode {
     let host = afr_sandbox::probe(&afr_sandbox::ProbePaths::default());
-    answer(&host, &mut std::io::stdout().lock())
+    answer(
+        &host,
+        &engine::EngineChoice::default().capabilities(),
+        &mut std::io::stdout().lock(),
+    )
 }
 
-/// Writes `host`'s capability report and self-test checks to `out` as JSON.
+/// Writes `host`'s capability report and self-test checks under `engine` to
+/// `out` as JSON.
 ///
 /// Succeeds only when the whole answer was written and `host` can build a
 /// sandbox.
-fn answer(host: &afr_sandbox::HostProbe, out: &mut impl std::io::Write) -> ExitCode {
-    let written =
-        serde_json::to_writer_pretty(&mut *out, &afr_supervisor::capability::probe_answer(host))
-            .map_err(std::io::Error::from)
-            .and_then(|()| writeln!(out));
+fn answer(
+    host: &afr_sandbox::HostProbe,
+    engine: &afr_sandbox::Capabilities,
+    out: &mut impl std::io::Write,
+) -> ExitCode {
+    let report = afr_supervisor::capability::probe_answer(host, engine);
+    let written = serde_json::to_writer_pretty(&mut *out, &report)
+        .map_err(std::io::Error::from)
+        .and_then(|()| writeln!(out));
     match written {
         Err(error) => refused(&error),
         Ok(()) if afr_sandbox::BubblewrapRequirements::missing(host).is_none() => ExitCode::SUCCESS,

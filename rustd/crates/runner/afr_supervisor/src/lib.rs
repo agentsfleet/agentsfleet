@@ -221,7 +221,13 @@ async fn serve_from(runner: Runner, origin: &str, shutdown: CancellationToken) -
         whoami: Whoami::default(),
         recovery,
     });
-    serve_composed(lessee, downlink, assignments, (&probe, &sandboxes)).await
+    Box::pin(serve_composed(
+        lessee,
+        downlink,
+        assignments,
+        (&probe, &sandboxes),
+    ))
+    .await
 }
 
 async fn serve_composed(
@@ -231,8 +237,14 @@ async fn serve_composed(
     (probe, sandboxes): (&HostProbe, &std::path::Path),
 ) -> Result<()> {
     let (assignment, watching) = watch::channel(Assignment::initial());
-    let heartbeat = Heartbeat::new(&lessee.plane, probe, &lessee.holds, sandboxes)
-        .keep_beating(&assignment, &lessee.halt);
+    let heartbeat = Heartbeat::new(
+        &lessee.plane,
+        probe,
+        lessee.engine.capabilities(),
+        &lessee.holds,
+        sandboxes,
+    )
+    .keep_beating(&assignment, &lessee.halt);
     let pool = worker_pool::serve(Arc::clone(&lessee), watching, assignments);
     let duties = shutdown::finish(&lessee.halt, async {
         tokio::join!(heartbeat, pool);

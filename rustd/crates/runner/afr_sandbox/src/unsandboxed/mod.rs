@@ -6,14 +6,22 @@
 //! shipped runner executes ever runs outside a sandbox.
 
 use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use af_core::id::Uuid7;
+use af_wire::runner::{Isolation, SandboxEngine};
 use afr_executor::{Client, Executor, Sizes};
 use tokio::task::JoinHandle;
 
-use crate::engine::{Engine, HostWorkspace, Killed, Sandbox, SandboxRequest};
-use crate::error::{EgressRefusal, ErrorKind, Result, egress_refused, unconfined};
+use crate::engine::{
+    Cap, Capabilities, Engine, Environment, Granted, HostWorkspace, Killed, Limits, ParkMode,
+    Parked, Quiescence, ResourceFacts, Root, Sandbox, SandboxSpec, SandboxState, Sweep, Swept,
+};
+use crate::error::{
+    EgressRefusal, ErrorKind, Result, egress_refused, sandbox_exists, unconfined, unsupported,
+};
 use crate::network::Allowlist;
 
 /// The executor's socket in each run's scratch directory: with no sandbox
@@ -25,8 +33,21 @@ const WORKSPACE_DIR: &str = "workspace";
 const CONNECT_WITHIN: Duration = Duration::from_secs(1);
 /// How long a closed session may take to end its processes.
 const SERVER_GRACE: Duration = Duration::from_secs(5);
-/// Why an unconfined sandbox is never frozen.
-const NO_FREEZER: &str = "its processes run under no cgroup to freeze";
+/// Why an unconfined sandbox cannot say whether a tenant process remains.
+const NO_QUIESCENCE: &str = "its processes run under no cgroup to count";
+/// What it states: it confines nothing and parks nothing, so every cap is
+/// absent and every sandbox is destroyed between runs.
+const CAPABILITIES: Capabilities = Capabilities {
+    engine: SandboxEngine::Unsandboxed,
+    isolation: Isolation::Unconfined,
+    parks: &[],
+    resources: ResourceFacts {
+        memory: Cap::Absent,
+        cpu: Cap::Absent,
+        pids: Cap::Absent,
+        disk: Cap::Absent,
+    },
+};
 /// Why a kill here proves nothing.
 const NO_CGROUP_KILL: &str = "its processes run under no cgroup that a kill could prove empty";
 
@@ -39,6 +60,9 @@ pub struct UnsandboxedEngine {
 }
 
 impl UnsandboxedEngine {
+    /// What every unsandboxed engine states, before one is built.
+    pub const CAPABILITIES: Capabilities = CAPABILITIES;
+
     /// An engine whose runs live under `base`. Keep `base` short: a Unix
     /// socket's path is capped near a hundred bytes.
     ///
@@ -72,8 +96,25 @@ pub(crate) fn permitted(debug_build: bool) -> Result<()> {
 
 #[async_trait::async_trait]
 impl Engine for UnsandboxedEngine {
-    async fn prepare(&self, request: SandboxRequest<'_>) -> Result<Box<dyn Sandbox>> {
-        let dir = request.name()?.dir_in(&self.base);
+    fn capabilities(&self) -> Capabilities {
+        CAPABILITIES
+    }
+
+    /// Every ask, enforced by nothing: the debug engine says so rather than
+    /// refusing, since confining nothing is what it is for.
+    fn grant(&self, limits: Limits) -> Result<Granted> {
+        Ok(Granted::unenforced(limits))
+    }
+
+    async fn prepare(&self, spec: SandboxSpec<'_>) -> Result<Box<dyn Sandbox>> {
+        fs::create_dir_all(&self.base)?;
+        let dir = self.base.join(spec.id.as_str());
+        // One directory per identifier: a second build for a live one fails
+        // here, before anything else is made.
+        fs::create_dir(&dir).map_err(|error| match error.kind() {
+            io::ErrorKind::AlreadyExists => sandbox_exists(spec.id),
+            _other => error.into(),
+        })?;
         let workspace = dir.join(WORKSPACE_DIR);
         fs::create_dir_all(&workspace)?;
         let workspace_root = workspace.clone();
@@ -90,6 +131,12 @@ impl Engine for UnsandboxedEngine {
         });
         match connect(&socket, sizes).await {
             Ok(client) => Ok(Box::new(Unconfined {
+                id: spec.id.clone(),
+                granted: spec.granted,
+                environment: Environment {
+                    engine: SandboxEngine::Unsandboxed,
+                    root: Root::Host,
+                },
                 dir,
                 workspace: workspace_root,
                 client,
@@ -102,6 +149,28 @@ impl Engine for UnsandboxedEngine {
             }
         }
     }
+
+    async fn sweep(&self, scope: Sweep<'_>) -> Result<Swept> {
+        let dirs = match scope {
+            Sweep::Sandbox(id) => vec![self.base.join(id.as_str())],
+            Sweep::Leftovers => match fs::read_dir(&self.base) {
+                Ok(entries) => entries
+                    .map(|entry| entry.map(|entry| entry.path()))
+                    .collect::<io::Result<_>>()?,
+                Err(error) if error.kind() == io::ErrorKind::NotFound => Vec::new(),
+                Err(error) => return Err(error.into()),
+            },
+        };
+        let mut swept = Swept::default();
+        for dir in dirs {
+            match fs::remove_dir_all(&dir) {
+                Ok(()) => swept.destroyed += 1,
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                Err(_left) => swept.left += 1,
+            }
+        }
+        Ok(swept)
+    }
 }
 
 /// Connects once the executor has bound its socket, holding the link to the
@@ -113,6 +182,9 @@ async fn connect(socket: &Path, sizes: Sizes) -> Result<Client> {
 /// A scratch directory with an executor serving it.
 #[derive(Debug)]
 struct Unconfined {
+    id: Uuid7,
+    granted: Granted,
+    environment: Environment,
     dir: PathBuf,
     /// The directory the executor serves as its workspace.
     workspace: PathBuf,
@@ -122,6 +194,18 @@ struct Unconfined {
 
 #[async_trait::async_trait]
 impl Sandbox for Unconfined {
+    fn id(&self) -> &Uuid7 {
+        &self.id
+    }
+
+    fn environment(&self) -> &Environment {
+        &self.environment
+    }
+
+    fn granted(&self) -> &Granted {
+        &self.granted
+    }
+
     fn executor(&self) -> &dyn Executor {
         &self.client
     }
@@ -136,21 +220,27 @@ impl Sandbox for Unconfined {
         })
     }
 
-    fn is_running(&mut self) -> bool {
-        !self.server.is_finished()
+    fn state(&mut self) -> SandboxState {
+        if self.server.is_finished() {
+            SandboxState::Ended
+        } else {
+            SandboxState::Running
+        }
     }
 
-    /// Refused: its processes run on the host under no cgroup, so nothing can
-    /// stop them together. It is destroyed, never held.
-    async fn freeze(&self) -> Result<()> {
-        Err(unconfined(NO_FREEZER))
+    /// Refused: its processes run on the host under no cgroup, so nothing
+    /// counts them.
+    async fn quiesce(&self) -> Result<Quiescence> {
+        Err(unconfined(NO_QUIESCENCE))
     }
 
-    async fn thaw(&self) -> Result<()> {
-        Err(unconfined(NO_FREEZER))
+    /// Refused, and destroyed: nothing can stop its processes together.
+    async fn park(self: Box<Self>, _mode: ParkMode) -> Result<Box<dyn Parked>> {
+        self.destroy().await?;
+        Err(unsupported(SandboxEngine::Unsandboxed, "park"))
     }
 
-    /// Refused: it shares the host's network and holds nothing to an
+    /// Refused: it shares the host's network and confines nothing to an
     /// allowlist.
     async fn reallow(&mut self, _allowlist: &Allowlist) -> Result<()> {
         Err(egress_refused(EgressRefusal::NoScope))

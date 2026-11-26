@@ -27,7 +27,13 @@ async fn disabling_new_durable_work_keeps_software_capability_and_ordinary_worke
         });
         let probe = probe();
         let holds = Holds::start(Arc::new(SystemClock));
-        let mut heartbeat = Heartbeat::new(&plane, &probe, &holds, std::path::Path::new("."));
+        let mut heartbeat = Heartbeat::new(
+            &plane,
+            &probe,
+            afr_sandbox::BUBBLEWRAP_CAPABILITIES,
+            &holds,
+            std::path::Path::new("."),
+        );
         let assignment = heartbeat.beat().await.expect("saved assignment decodes");
         assert!(assignment.takes_work(0));
         assert!(!assignment.takes_work(1));

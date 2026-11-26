@@ -1,28 +1,28 @@
-//! A durable build requires a trusted workspace, verified toolbox and successful freeze.
+//! A durable build requires a trusted workspace, verified toolbox and proved quiescence.
 
 use super::*;
 
 #[tokio::test]
-async fn untrusted_or_unfreezable_sandboxes_never_acquire_native_checkpoint_state() -> Result<()> {
+async fn untrusted_or_unproved_sandboxes_never_acquire_native_checkpoint_state() -> Result<()> {
     for (fault, expected) in [
         ("workspace", "sandbox has no trusted snapshot workspace"),
         ("toolbox", "sandbox has no verified recovery toolbox"),
-        ("freeze", "sandbox could not freeze for recovery"),
+        ("quiescence", "cannot prove tenant quiescence"),
     ] {
         let mut fixture = Fixture::new(|_| None)?;
         let root = tempfile::tempdir()?;
         let engine = FakeEngine {
             workspace: (fault != "workspace").then(|| root.path().to_owned()),
             toolbox: (fault != "toolbox").then(api_toolbox),
-            freezer: if fault == "freeze" {
-                Freezer::RefusesFreeze
+            parking: if fault == "quiescence" {
+                Parking::QuiescenceUnproved
             } else {
-                Freezer::Works
+                Parking::Works
             },
             ..FakeEngine::default()
         };
         let sandbox = engine
-            .prepare(SandboxRequest::new(test_support::RUN_ID, Limits::default()))
+            .sandbox()
             .await
             .map_err(|source| error::boundary("fixture sandbox", source))?;
         let owner = OnceLock::new();
@@ -36,8 +36,7 @@ async fn untrusted_or_unfreezable_sandboxes_never_acquire_native_checkpoint_stat
         assert!(matches!(failure.kind(), error::ErrorKind::Config { detail }
             | error::ErrorKind::Boundary { detail, .. } if *detail == expected));
         assert!(owner.get().is_none());
-        assert_eq!(engine.frozen.load(Ordering::SeqCst), 0);
-        assert_eq!(engine.thaw_attempts.load(Ordering::SeqCst), 0);
+        assert_eq!(engine.parked.load(Ordering::SeqCst), 0);
         assert_eq!(fixture.rig.calls().len(), 0);
         assert_eq!(std::fs::read_dir(root.path())?.count(), 0);
     }

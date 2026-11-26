@@ -18,11 +18,26 @@ use std::ffi::{OsStr, OsString};
 use std::path::Path;
 
 use af_core::env::LOG_LEVEL_VAR;
+use af_wire::runner::{Isolation, SandboxEngine};
 use afr_executor::Sizes;
 
+use crate::engine::{Capabilities, ParkMode, ResourceFacts};
 use crate::network::{SANDBOX_HOSTS, SANDBOX_RESOLV_CONF};
 use crate::serve::Entry;
 use crate::tenant::Inherited;
+
+/// What the bubblewrap engine states.
+///
+/// Kernel confinement on the host's kernel, a cgroup for every cap, and a
+/// freezer that parks a sandbox with its memory kept. It sits beside the
+/// launcher's requirements so a build for any operating system can say what
+/// the engine is.
+pub const CAPABILITIES: Capabilities = Capabilities {
+    engine: SandboxEngine::Bubblewrap,
+    isolation: Isolation::SharedKernel,
+    parks: &[ParkMode::Pause],
+    resources: ResourceFacts::ENFORCED,
+};
 
 /// Where the workspace disk appears inside the sandbox: the root the executor
 /// confines every path to.

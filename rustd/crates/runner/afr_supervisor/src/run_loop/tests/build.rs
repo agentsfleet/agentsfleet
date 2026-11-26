@@ -18,7 +18,7 @@ use tokio::sync::mpsc;
 use super::super::EVENT_COMPLETED;
 use super::super::build::EVENT_BUILD_FAILED;
 use super::*;
-use crate::test_support::{FIXTURE_BRANCH, GRANTED_UNTIL, repository};
+use crate::test_support::{Builds, FIXTURE_BRANCH, GRANTED_UNTIL, repository};
 
 /// How long the stalled engine takes to prepare.
 const PREPARE_TAKES: Duration = Duration::from_millis(500);
@@ -124,12 +124,17 @@ async fn test_first_model_call_starts_before_the_sandbox_is_ready() {
 
 /// A build that fails while the turn runs leaves it going: the model answers,
 /// its sandbox call reads `prepare`, nothing is held, and the failure is
-/// logged once with its code.
+/// logged once with its code. The build asked for a sandbox named by the run,
+/// and a refusal whose outcome is known sweeps nothing.
 #[tokio::test(start_paused = true)]
 async fn test_build_failure_leaves_the_run_going() {
     let capture = Capture::install();
+    let (naming, mut built) = mpsc::unbounded_channel();
+    let (swept, mut sweeps) = mpsc::unbounded_channel();
     let engine = FakeEngine {
-        refuse: true,
+        build: Builds::Refused,
+        named: Some(naming),
+        swept: Some(swept),
         ..stalled()
     };
     let mut rig = rig(healthy, engine, Behaviour::Answer);
@@ -153,6 +158,35 @@ async fn test_build_failure_leaves_the_run_going() {
         "{:?}",
         failed.fields
     );
+    assert_eq!(built.try_recv().unwrap().as_str(), RUN_ID);
+    assert!(built.try_recv().is_err(), "built once, never retried");
+    assert!(sweeps.try_recv().is_err(), "a known refusal sweeps nothing");
+}
+
+/// A build whose outcome the engine cannot tell is swept once, by its own
+/// identifier, and never built again; the run goes on without a sandbox.
+#[tokio::test(start_paused = true)]
+async fn test_an_ambiguous_prepare_is_swept_never_retried() {
+    let capture = Capture::install();
+    let (naming, mut built) = mpsc::unbounded_channel();
+    let (swept, mut sweeps) = mpsc::unbounded_channel();
+    let engine = FakeEngine {
+        build: Builds::Ambiguous,
+        named: Some(naming),
+        swept: Some(swept),
+        ..stalled()
+    };
+    let mut rig = rig(healthy, engine, Behaviour::Answer);
+
+    rig.run(&payload(RUN_ID, FLEET_ID)).await.unwrap();
+
+    assert_eq!(rig.lent(), [Some(Unavailable::Prepare)]);
+    assert_eq!(built.try_recv().unwrap().as_str(), RUN_ID);
+    assert!(built.try_recv().is_err(), "built once, never retried");
+    let sweep = sweeps.try_recv().unwrap();
+    assert_eq!(sweep.as_ref().map(Uuid7::as_str), Some(RUN_ID));
+    assert!(sweeps.try_recv().is_err(), "swept once");
+    assert!(capture.only("sandbox_swept").field("destroyed").is_some());
 }
 
 /// A renewal refused while the checkout waits on its token stops the build at
@@ -163,7 +197,7 @@ async fn test_partial_checkout_is_never_held() {
     let capture = Capture::install();
     let workspace = tempfile::tempdir().unwrap();
     let engine = checking_out(workspace.path());
-    let frozen = Arc::clone(&engine.frozen);
+    let parked = Arc::clone(&engine.parked);
     let mut rig = rig(late_mint_and_lost_renewal, engine, Behaviour::Stops);
     served(&rig);
 
@@ -173,7 +207,7 @@ async fn test_partial_checkout_is_never_held() {
     assert_eq!(report[FAILURE_REASON], RENEWAL_TERMINATE, "{report}");
     assert!(report.get(HELD_UNTIL).is_none(), "{report}");
     assert_eq!(rig.destroyed.load(Ordering::SeqCst), 1, "destroyed once");
-    assert_eq!(frozen.load(Ordering::SeqCst), 0, "never frozen for a hold");
+    assert_eq!(parked.load(Ordering::SeqCst), 0, "never parked for a hold");
     assert!(
         std::fs::read_dir(workspace.path())
             .unwrap()
@@ -190,7 +224,7 @@ async fn test_partial_checkout_is_never_held() {
 async fn test_an_answer_mid_checkout_holds_the_whole_sandbox() {
     let workspace = tempfile::tempdir().unwrap();
     let engine = checking_out(workspace.path());
-    let frozen = Arc::clone(&engine.frozen);
+    let parked = Arc::clone(&engine.parked);
     let mut rig = rig(late_mint, engine, Behaviour::Talks);
     rig.lessee.holds.resize(2);
     served(&rig);
@@ -203,7 +237,7 @@ async fn test_an_answer_mid_checkout_holds_the_whole_sandbox() {
         report.get(HELD_UNTIL).is_some(),
         "the sandbox is held: {report}"
     );
-    assert_eq!(frozen.load(Ordering::SeqCst), 1);
+    assert_eq!(parked.load(Ordering::SeqCst), 1);
     let readme = workspace.path().join("widget").join("README.md");
     assert!(readme.is_file(), "the checkout finished before the hold");
 }

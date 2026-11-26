@@ -9,7 +9,7 @@ use self::{
     model::ObservingModel,
 };
 use super::TestHttpsServer;
-use crate::test_support::{self, Behaviour, FLEET_ID, FakeAgent, FakeEngine, Freezer, RUN_ID, Rig};
+use crate::test_support::{self, Behaviour, FLEET_ID, FakeAgent, FakeEngine, Parking, RUN_ID, Rig};
 use af_core::clock;
 use af_wire::{
     durable_task::{CheckpointEntry, CheckpointFile, CheckpointPage, CheckpointTransfer},
@@ -27,7 +27,7 @@ use std::{
 enum Outcome {
     Restored,
     Corrupt,
-    ThawRefused,
+    BusyTenant,
 }
 
 #[tokio::test]
@@ -41,8 +41,8 @@ async fn corrupt_ordinary_files_refuse_the_model_and_do_not_reuse_the_warm_hold(
 }
 
 #[tokio::test]
-async fn an_ordinary_restore_with_a_refused_thaw_never_starts_the_model() -> Checked {
-    run(Outcome::ThawRefused).await
+async fn an_ordinary_restore_into_a_busy_sandbox_never_starts_the_model() -> Checked {
+    run(Outcome::BusyTenant).await
 }
 
 async fn run(outcome: Outcome) -> Checked {
@@ -52,8 +52,8 @@ async fn run(outcome: Outcome) -> Checked {
         toolbox: Some("b".repeat(64)),
         ..FakeEngine::default()
     };
-    let thawed = Arc::clone(&engine.thawed);
-    let frozen = Arc::clone(&engine.frozen);
+    let resumed = Arc::clone(&engine.resumed);
+    let parked = Arc::clone(&engine.parked);
     let mut run = test_support::payload(RUN_ID, FLEET_ID);
     run.event.workspace_id = ID.into();
     run.policy.context.context_cap_tokens = 64_000;
@@ -74,8 +74,8 @@ async fn run(outcome: Outcome) -> Checked {
     warm(&mut rig, &run).await?;
     let model = ObservingModel {
         root: root.path().into(),
-        thawed,
-        frozen,
+        resumed,
+        parked,
         calls: Arc::default(),
     };
     install(&mut rig, &model, &server, outcome, root.path())?;
@@ -84,6 +84,14 @@ async fn run(outcome: Outcome) -> Checked {
     rig.lessee.holds.shutdown().await;
     assert_eq!(rig.prepared.load(Ordering::SeqCst), 2);
     assert_eq!(rig.destroyed.load(Ordering::SeqCst), 2);
+    if matches!(outcome, Outcome::BusyTenant) {
+        let mut server = server;
+        assert!(
+            server.seen.try_recv().is_err(),
+            "a busy sandbox is refused before any checkpoint object is fetched"
+        );
+        return Ok(());
+    }
     server.finish().await
 }
 
@@ -109,13 +117,13 @@ fn install(
     let lessee = Arc::get_mut(&mut rig.lessee).ok_or("shared test supervisor")?;
     lessee.agent = Box::new(agent);
     lessee.recovery.transfers = server.transfers();
-    if matches!(outcome, Outcome::ThawRefused) {
+    if matches!(outcome, Outcome::BusyTenant) {
         lessee.engine = Box::new(FakeEngine {
             workspace: Some(root.into()),
             toolbox: Some("b".repeat(64)),
             prepared: Arc::clone(&rig.prepared),
             destroyed: Arc::clone(&rig.destroyed),
-            freezer: Freezer::RefusesThaw,
+            parking: Parking::BusyTenant,
             ..FakeEngine::default()
         });
     }

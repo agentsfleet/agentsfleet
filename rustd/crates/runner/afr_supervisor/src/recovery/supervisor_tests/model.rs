@@ -1,4 +1,5 @@
-//! The model boundary observes restored history, bytes and a successful thaw.
+//! The model boundary observes restored history and bytes in a sandbox the
+//! restore never parked.
 use super::fixture::{CONTENT, FILE, PREFIX};
 use af_providers::{Connect, Provider};
 use af_wire::run::RunPayload;
@@ -14,8 +15,8 @@ use std::{
 #[derive(Debug, Clone)]
 pub(super) struct ObservingModel {
     pub(super) root: PathBuf,
-    pub(super) thawed: Arc<AtomicUsize>,
-    pub(super) frozen: Arc<AtomicUsize>,
+    pub(super) resumed: Arc<AtomicUsize>,
+    pub(super) parked: Arc<AtomicUsize>,
     pub(super) calls: Arc<AtomicUsize>,
 }
 
@@ -36,10 +37,10 @@ impl guffbolt::Model for ObservingModel {
     }
 
     fn stream<'a>(&'a self, request: Request<'a>) -> BoxStream<'a, af_providers::Result<Chunk>> {
-        let thawed = self.thawed.load(Ordering::SeqCst);
-        assert!(thawed >= 1);
-        // The retired warm hold accounts for the one freeze without a thaw.
-        assert_eq!(self.frozen.load(Ordering::SeqCst), thawed + 1);
+        // The retired warm hold is the one park; the restore parks nothing,
+        // and nothing resumes.
+        assert_eq!(self.parked.load(Ordering::SeqCst), 1);
+        assert_eq!(self.resumed.load(Ordering::SeqCst), 0);
         assert_eq!(
             std::fs::read(self.root.join(FILE)).ok().as_deref(),
             Some(CONTENT)

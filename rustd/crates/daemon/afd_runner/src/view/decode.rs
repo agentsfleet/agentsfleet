@@ -214,6 +214,10 @@ fn own_capability(report: CapabilityReport<'_>) -> CapabilityReport<'static> {
             .collect(),
         bubblewrap: report.bubblewrap,
         egress_enforcement: report.egress_enforcement,
+        engine: report.engine,
+        isolation: report.isolation,
+        kvm: report.kvm,
+        sandboxes_max: report.sandboxes_max,
     }
 }
 

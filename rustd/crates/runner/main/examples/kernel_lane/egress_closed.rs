@@ -9,10 +9,11 @@ use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::thread;
 use std::time::Duration;
 
+use crate::lane::{id_of, spec};
 use afr_sandbox::egress_testing::{
     DNS_PORT, FAR_GREETING, FAR_HOST_SIDE, FAR_LISTED, FAR_PORT, Far, objects,
 };
-use afr_sandbox::{Engine, Limits, Network, SandboxRequest};
+use afr_sandbox::{Engine, Limits, Network};
 use libtest_mimic::Failed;
 
 use crate::egress::{ERRNO, FAR_NAME, connect};
@@ -141,8 +142,8 @@ pub(crate) fn allow_list_closes_dns_the_host_and_inbound(lane: &Lane) -> Result<
     let before = objects()?;
     let runtime = runtime();
     let engine = lane.engine();
-    let request = SandboxRequest::new("egress-closed", Limits::default())
-        .with_network(Network::Allowed(&allowlist));
+    let sandbox_id = id_of("egress-closed");
+    let request = spec(&sandbox_id, Limits::default()).with_network(Network::Allowed(&allowlist));
     let sandbox = runtime.block_on(engine.prepare(request))?;
     let own = match sandbox_address(&before) {
         Ok(address) => SocketAddr::from((address, SANDBOX_PORT)),

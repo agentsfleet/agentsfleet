@@ -11,7 +11,7 @@ use af_wire::{
         SandboxTier,
     },
 };
-use afr_sandbox::HostProbe;
+use afr_sandbox::{Capabilities, HostProbe};
 use tokio::sync::watch;
 
 use crate::{
@@ -50,6 +50,8 @@ impl Assignment {
 pub(crate) struct Heartbeat<'a> {
     plane: &'a ControlPlane,
     probe: &'a HostProbe,
+    /// What the runner's engine states, which the report and self-test name.
+    engine: Capabilities,
     holds: &'a Holds,
     /// Where run sandboxes live, whose file system's free bytes each beat reports.
     sandboxes: &'a Path,
@@ -64,12 +66,14 @@ impl<'a> Heartbeat<'a> {
     pub(crate) fn new(
         plane: &'a ControlPlane,
         probe: &'a HostProbe,
+        engine: Capabilities,
         holds: &'a Holds,
         sandboxes: &'a Path,
     ) -> Self {
         Self {
             plane,
             probe,
+            engine,
             holds,
             sandboxes,
             host: HostReader::default(),
@@ -84,11 +88,11 @@ impl<'a> Heartbeat<'a> {
         let selftest = self
             .label
             .filter(|_| self.selftest_due)
-            .map(|(tier, network)| selftest(self.probe, tier, network));
+            .map(|(tier, network)| selftest(self.probe, &self.engine, tier, network));
         let held = self.holds.fleets().await;
         let host = self.host.facts(self.sandboxes).await;
         let request = HeartbeatRequest {
-            capability_report: Some(capability_report(self.probe)),
+            capability_report: Some(capability_report(self.probe, &self.engine)),
             selftest,
             holds: HeldFleets(
                 held.iter()

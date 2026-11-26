@@ -111,6 +111,8 @@ af_egress = { workspace = true, features = ["test-util"] }
 # Stub handlers, so the run suites admit through a real catalog: a
 # sandbox-side tool starts a sandbox, a supervisor-side one does not.
 afr_tools = { workspace = true, features = ["test-util"] }
+# A test engine answers a build of unknown outcome as a real engine would.
+afr_sandbox = { workspace = true, features = ["test-util"] }
 # The fake engine's `Behaviour::Break` answers an executor failure, and the
 # lift from `afr_executor::Error` into `afr_agent::Error` exists only under
 # this feature; named here so the tests build when this crate is selected

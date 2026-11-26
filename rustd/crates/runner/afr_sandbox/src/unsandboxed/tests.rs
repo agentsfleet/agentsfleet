@@ -6,7 +6,11 @@
 use afr_executor::{Ending, Spawn};
 
 use super::{UnsandboxedEngine, permitted};
-use crate::engine::{Engine, Limits, SandboxRequest};
+use std::sync::Arc;
+
+use af_core::id::Uuid7;
+
+use crate::engine::{Engine, Limits, ParkMode, SandboxSpec, SandboxState, fresh_sandbox_id};
 use crate::error::EgressRefusal;
 use crate::network::Allowlist;
 
@@ -30,13 +34,18 @@ async fn test_an_unsandboxed_runs_a_process_and_is_removed() {
         .prefix("afr")
         .tempdir_in("/tmp")
         .unwrap();
+    let id = fresh_sandbox_id();
     let engine = UnsandboxedEngine::new(base.path().to_owned()).unwrap();
 
     let mut sandbox = engine
-        .prepare(SandboxRequest::new("l1", Limits::default()))
+        .prepare(SandboxSpec::granted_by(&engine, &id, Limits::DEFAULT).unwrap())
         .await
         .unwrap();
-    assert!(sandbox.is_running(), "its executor is serving");
+    assert_eq!(
+        sandbox.state(),
+        SandboxState::Running,
+        "its executor is serving"
+    );
     let process = sandbox
         .executor()
         .spawn(&Spawn::program("/bin/echo").arg("hi"))
@@ -54,7 +63,7 @@ async fn test_an_unsandboxed_runs_a_process_and_is_removed() {
         (Ending::Exited(0), b"hi\n".as_slice())
     );
     assert!(
-        !base.path().join("l1").exists(),
+        !base.path().join(id.as_str()).exists(),
         "the run's directory is gone"
     );
 }
@@ -65,9 +74,10 @@ async fn should_show_the_host_the_workspace_its_executor_serves() {
         .prefix("afr")
         .tempdir_in("/tmp")
         .unwrap();
+    let id = fresh_sandbox_id();
     let engine = UnsandboxedEngine::new(base.path().to_owned()).unwrap();
     let sandbox = engine
-        .prepare(SandboxRequest::new("host-view", Limits::default()))
+        .prepare(SandboxSpec::granted_by(&engine, &id, Limits::DEFAULT).unwrap())
         .await
         .unwrap();
 
@@ -95,34 +105,79 @@ async fn should_show_the_host_the_workspace_its_executor_serves() {
     );
 }
 
-/// Its processes run on the host under no cgroup, so nothing stops them
-/// together: a freeze and a thaw are each refused, saying so, and the
-/// sandbox serves on, to be destroyed rather than held.
+/// Its processes run on the host under no cgroup, so nothing counts them or
+/// stops them together: quiescence is refused saying so, and a park is
+/// refused naming `park`, with the sandbox destroyed rather than kept.
 #[tokio::test]
-async fn test_an_unconfined_sandbox_refuses_to_freeze_or_thaw() {
+async fn test_an_unconfined_sandbox_neither_counts_nor_parks() {
     let base = tempfile::Builder::new()
         .prefix("afr")
         .tempdir_in("/tmp")
         .unwrap();
+    let id = fresh_sandbox_id();
     let engine = UnsandboxedEngine::new(base.path().to_owned()).unwrap();
-    let mut sandbox = engine
-        .prepare(SandboxRequest::new("l4", Limits::default()))
+    let sandbox = engine
+        .prepare(SandboxSpec::granted_by(&engine, &id, Limits::DEFAULT).unwrap())
         .await
         .unwrap();
 
-    let refused = [sandbox.freeze().await, sandbox.thaw().await]
-        .map(|step| step.err().map(|error| error.to_string()));
-    let serving = sandbox.is_running();
-    sandbox.destroy().await.unwrap();
+    let counted = sandbox.quiesce().await.unwrap_err().detail();
+    let parked = sandbox.park(ParkMode::Pause).await.unwrap_err().detail();
 
-    for said in &refused {
-        assert!(
-            said.as_deref()
-                .is_some_and(|said| said.contains(super::NO_FREEZER)),
-            "{refused:?}"
-        );
+    assert!(counted.contains(super::NO_QUIESCENCE), "{counted}");
+    assert_eq!(parked, "the unsandboxed engine cannot park");
+    assert!(
+        !base.path().join(id.as_str()).exists(),
+        "a sandbox that will not park is destroyed"
+    );
+}
+
+/// 100 builds released together for one identifier make one sandbox: one
+/// answers it, and 99 are refused naming it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn test_a_second_prepare_for_one_id_is_refused_naming_it() {
+    const CALLERS: usize = 100;
+    let base = tempfile::Builder::new()
+        .prefix("afr")
+        .tempdir_in("/tmp")
+        .unwrap();
+    let id = fresh_sandbox_id();
+    let engine = Arc::new(UnsandboxedEngine::new(base.path().to_owned()).unwrap());
+    let barrier = Arc::new(tokio::sync::Barrier::new(CALLERS));
+    let mut builds = tokio::task::JoinSet::new();
+    for _ in 0..CALLERS {
+        let (engine, barrier, id) = (Arc::clone(&engine), Arc::clone(&barrier), id.clone());
+        builds.spawn(async move {
+            let spec = SandboxSpec::granted_by(&*engine, &id, Limits::DEFAULT).unwrap();
+            barrier.wait().await;
+            engine.prepare(spec).await
+        });
     }
-    assert!(serving, "a refused freeze leaves the sandbox serving");
+
+    let mut built = Vec::new();
+    let mut refused = Vec::new();
+    while let Some(joined) = builds.join_next().await {
+        match joined.unwrap() {
+            Ok(sandbox) => built.push(sandbox),
+            Err(error) => refused.push(error.detail()),
+        }
+    }
+    let named = built
+        .iter()
+        .map(|sandbox| sandbox.id().clone())
+        .collect::<Vec<Uuid7>>();
+    for sandbox in built {
+        sandbox.destroy().await.unwrap();
+    }
+
+    assert_eq!(
+        named,
+        std::slice::from_ref(&id),
+        "one sandbox, under the asked identifier"
+    );
+    assert_eq!(refused.len(), CALLERS - 1);
+    let live = format!("sandbox {id} is already live");
+    assert!(refused.iter().all(|said| *said == live), "{refused:?}");
 }
 
 #[tokio::test]
@@ -131,11 +186,12 @@ async fn test_a_run_directory_that_cannot_be_made_is_refused() {
         .prefix("afr")
         .tempdir_in("/tmp")
         .unwrap();
-    std::fs::write(base.path().join("l2"), "").unwrap();
+    let id = fresh_sandbox_id();
+    std::fs::write(base.path().join(id.as_str()), "").unwrap();
     let engine = UnsandboxedEngine::new(base.path().to_owned()).unwrap();
 
     let refused = engine
-        .prepare(SandboxRequest::new("l2", Limits::default()))
+        .prepare(SandboxSpec::granted_by(&engine, &id, Limits::DEFAULT).unwrap())
         .await;
 
     refused.unwrap_err();
@@ -143,17 +199,17 @@ async fn test_a_run_directory_that_cannot_be_made_is_refused() {
 
 #[tokio::test]
 async fn test_an_executor_that_never_answers_refuses_the_run_and_cleans_up() {
+    // A base so long the executor's socket path passes the operating
+    // system's limit on one: it cannot bind, so nothing ever answers.
     let base = tempfile::Builder::new()
-        .prefix("afr")
+        .prefix(&"afr".repeat(40))
         .tempdir_in("/tmp")
         .unwrap();
-    // A directory where the socket goes: the executor cannot bind, so nothing
-    // ever answers.
-    std::fs::create_dir_all(base.path().join("l3").join("executor.sock")).unwrap();
+    let id = fresh_sandbox_id();
     let engine = UnsandboxedEngine::new(base.path().to_owned()).unwrap();
 
     let refused = engine
-        .prepare(SandboxRequest::new("l3", Limits::default()))
+        .prepare(SandboxSpec::granted_by(&engine, &id, Limits::DEFAULT).unwrap())
         .await;
 
     // The executor's own failure, logged under the executor's code.
@@ -163,8 +219,8 @@ async fn test_an_executor_that_never_answers_refuses_the_run_and_cleans_up() {
         af_core::error_code::INTERNAL_OPERATION_FAILED
     );
     assert!(
-        !base.path().join("l3").exists(),
-        "the run's directory is removed"
+        !base.path().join(id.as_str()).exists(),
+        "the sandbox's directory is removed"
     );
 }
 
@@ -175,7 +231,8 @@ async fn test_destroy_aborts_a_lingering_server_and_removes_its_directory() {
         .prefix("afr")
         .tempdir_in("/tmp")
         .unwrap();
-    let dir = base.path().join("lingering");
+    let id = fresh_sandbox_id();
+    let dir = base.path().join(id.as_str());
     std::fs::create_dir(&dir).unwrap();
     let socket = dir.join(super::SOCKET_NAME);
     let listener = tokio::net::UnixListener::bind(&socket).unwrap();
@@ -186,6 +243,12 @@ async fn test_destroy_aborts_a_lingering_server_and_removes_its_directory() {
     let server = tokio::spawn(std::future::pending());
     let abort = server.abort_handle();
     let sandbox = Box::new(super::Unconfined {
+        id: id.clone(),
+        granted: crate::engine::Granted::unenforced(Limits::DEFAULT),
+        environment: crate::engine::Environment {
+            engine: af_wire::runner::SandboxEngine::Unsandboxed,
+            root: crate::engine::Root::Host,
+        },
         dir: dir.clone(),
         workspace: dir.join(super::WORKSPACE_DIR),
         client,
@@ -199,18 +262,19 @@ async fn test_destroy_aborts_a_lingering_server_and_removes_its_directory() {
     assert!(!dir.exists(), "the run directory was removed");
 }
 
-/// An unsandboxed run shares the host's network and holds nothing to an
-/// allowlist, so a held one asked to take new addresses refuses as having no
-/// scope, and its run builds fresh: the refill is never taken as done.
+/// An unsandboxed run shares the host's network and confines nothing to an
+/// allowlist, so one asked to take new addresses refuses as having no scope,
+/// and its run builds fresh: the refill is never taken as done.
 #[tokio::test]
-async fn should_refuse_new_addresses_it_has_no_scope_to_hold() {
+async fn should_refuse_new_addresses_it_has_no_scope_for() {
     let base = tempfile::Builder::new()
         .prefix("afr")
         .tempdir_in("/tmp")
         .unwrap();
+    let id = fresh_sandbox_id();
     let engine = UnsandboxedEngine::new(base.path().to_owned()).unwrap();
     let mut sandbox = engine
-        .prepare(SandboxRequest::new("reallowed", Limits::default()))
+        .prepare(SandboxSpec::granted_by(&engine, &id, Limits::DEFAULT).unwrap())
         .await
         .unwrap();
 
@@ -231,9 +295,10 @@ async fn test_an_unsandboxed_kill_is_never_settled() {
         .prefix("afr")
         .tempdir_in("/tmp")
         .unwrap();
+    let id = fresh_sandbox_id();
     let engine = UnsandboxedEngine::new(base.path().to_owned()).unwrap();
     let sandbox = engine
-        .prepare(SandboxRequest::new("l9", Limits::default()))
+        .prepare(SandboxSpec::granted_by(&engine, &id, Limits::DEFAULT).unwrap())
         .await
         .unwrap();
 

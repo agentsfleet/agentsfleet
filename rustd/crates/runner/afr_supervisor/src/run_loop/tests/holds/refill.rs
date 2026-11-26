@@ -1,6 +1,7 @@
 //! A held sandbox whose allowlisted name resolved to a new address since its
 //! run parked it: the hold is kept, and the sandbox takes the new address
-//! while still frozen, or is given up for a fresh one when it will not.
+//! once it resumes, before the run's first command, or is given up for a
+//! fresh one when it will not.
 
 #![expect(
     clippy::unwrap_used,
@@ -17,7 +18,7 @@ use super::EVENT_REFILL_FAILED;
 use super::tests::{Counted, NEXT_RUN_ID, released, releases, resumed, settled};
 use crate::holds::Release;
 use crate::test_support::{
-    Behaviour, FLEET_ID, FakeAgent, FakeEngine, FakeResolver, Freezer, NO_REFILL, RUN_ID, Rig,
+    Behaviour, FLEET_ID, FakeAgent, FakeEngine, FakeResolver, NO_REFILL, Parking, RUN_ID, Rig,
     assigned, daemon, payload,
 };
 
@@ -54,9 +55,8 @@ async fn park_then_resume(rig: &Rig) {
         .unwrap();
 }
 
-/// The name moved, so the hold is kept: the held sandbox is told the mirror's
-/// new address while still frozen, then thawed, and serves the run. No
-/// sandbox is built fresh.
+/// The name moved, so the hold is kept: the held sandbox resumes, is told the
+/// mirror's new address, and serves the run. No sandbox is built fresh.
 #[tokio::test(start_paused = true)]
 async fn a_name_that_moved_keeps_the_hold_and_takes_its_new_address() {
     let (told, mut reallowed) = mpsc::unbounded_channel();
@@ -73,9 +73,9 @@ async fn a_name_that_moved_keeps_the_hold_and_takes_its_new_address() {
         (1, 2, 1, 0),
         "one sandbox, refilled and held"
     );
-    let (allowlist, thawed) = reallowed.recv().await.unwrap();
+    let (allowlist, resumed) = reallowed.recv().await.unwrap();
     assert_eq!(allowlist.addresses(), [MOVED]);
-    assert!(!thawed, "the addresses change while it is frozen");
+    assert!(resumed, "the addresses change once it resumes");
     assert!(reallowed.try_recv().is_err(), "the first run built fresh");
 }
 
@@ -86,7 +86,7 @@ async fn a_name_that_moved_keeps_the_hold_and_takes_its_new_address() {
 async fn a_hold_that_refuses_its_new_address_falls_back_fresh() {
     let capture = Capture::install();
     let engine = FakeEngine {
-        freezer: Freezer::RefusesReallow,
+        parking: Parking::RefusesReallow,
         ..FakeEngine::default()
     };
     let (rig, counted) = moving(engine);
@@ -96,8 +96,8 @@ async fn a_hold_that_refuses_its_new_address_falls_back_fresh() {
 
     assert_eq!(
         counted.read(),
-        (2, 2, 0, 2),
-        "never thawed, then built fresh"
+        (2, 2, 1, 2),
+        "resumed, refused its new address and destroyed, then built fresh"
     );
     let refused = capture.only(EVENT_REFILL_FAILED);
     assert!(

@@ -11,10 +11,10 @@ use af_core::clock::{FixedClock, after};
 use af_core::id::Uuid7;
 use af_core::test_util::trace::Capture;
 use af_core::timing::DAY;
-use afr_sandbox::{Engine, Limits, Sandbox, SandboxRequest};
+use afr_sandbox::{Engine as _, Limits, ParkMode, Parked, SandboxSpec};
 use jiff::Timestamp;
 
-use super::{BuiltUnder, HoldKey, Holds, Parked, Release};
+use super::{BuiltUnder, HoldKey, Holds, Release, Stowed};
 use crate::test_support::{FakeEngine, bounded};
 
 const START: Timestamp = Timestamp::constant(1_700_000_000, 0);
@@ -52,14 +52,17 @@ pub(super) fn holds(workers: usize) -> (Holds, FixedClock) {
     (holds, clock)
 }
 
-pub(super) async fn sandbox(engine: &FakeEngine) -> Box<dyn Sandbox> {
-    let request = SandboxRequest::new(RUN, Limits::default());
-    engine.prepare(request).await.unwrap()
+/// A fresh sandbox, parked, as a run hands it to the keeper.
+pub(super) async fn sandbox(engine: &FakeEngine) -> Box<dyn Parked> {
+    let run = id(RUN);
+    let spec = SandboxSpec::granted_by(engine, &run, Limits::default()).unwrap();
+    let sandbox = engine.prepare(spec).await.unwrap();
+    sandbox.park(ParkMode::Pause).await.unwrap()
 }
 
 /// Parks a fresh sandbox for `fleet`, and answers as the keeper did: a
 /// sandbox it refuses is still the caller's to end.
-pub(super) async fn park(holds: &Holds, engine: &FakeEngine, fleet: &str) -> Parked {
+pub(super) async fn park(holds: &Holds, engine: &FakeEngine, fleet: &str) -> Stowed {
     let parked = holds.park(key(fleet), id(RUN), sandbox(engine).await);
     bounded("the keeper's answer to a park", parked).await
 }
@@ -70,8 +73,8 @@ pub(super) async fn park(holds: &Holds, engine: &FakeEngine, fleet: &str) -> Par
 /// alone.
 pub(super) async fn hold(holds: &Holds, engine: &FakeEngine, fleet: &str) -> Option<Timestamp> {
     match park(holds, engine, fleet).await {
-        Parked::Held(until) => Some(until),
-        Parked::Refused(_) | Parked::Gone => None,
+        Stowed::Held(until) => Some(until),
+        Stowed::Refused(_) | Stowed::Gone => None,
     }
 }
 
@@ -315,19 +318,4 @@ async fn test_release_ends_one_fleets_hold_for_the_reason_given() {
 
     assert_eq!(fleets(&holds).await, [FLEET_B]);
     assert_eq!(releases(&capture), [released(FLEET_A, Release::Inactive)]);
-}
-
-#[tokio::test]
-async fn test_a_discarded_sandbox_is_logged_and_destroyed() {
-    let capture = Capture::install();
-    let engine = FakeEngine::default();
-    let (holds, _clock) = holds(2);
-
-    holds
-        .discard(id(FLEET_A), sandbox(&engine).await, Release::ThawFailed)
-        .await;
-    holds.shutdown().await;
-
-    assert_eq!(releases(&capture), [released(FLEET_A, Release::ThawFailed)]);
-    assert_eq!(engine.destroyed.load(Ordering::SeqCst), 1);
 }

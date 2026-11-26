@@ -21,7 +21,7 @@ use super::EVENT_DESTROY_FAILED;
 use crate::holds::tests::{
     FLEET_A, FLEET_B, RUN, fleets, hold, holds, id, key, park, released, releases, sandbox,
 };
-use crate::holds::{Holds, Parked, Release};
+use crate::holds::{Holds, Release, Stowed};
 use crate::test_support::{FakeEngine, bounded};
 
 /// How long a test waits for something that should already have happened.
@@ -96,27 +96,22 @@ async fn test_saturation_that_releases_nothing_does_not_ring() {
     assert!(rung.is_none(), "no beat for nothing released");
 }
 
-/// A stopped runner hands out nothing, and a sandbox discarded after it
-/// stopped is still logged and destroyed.
+/// A stopped runner hands out nothing and logs no release for it.
 #[tokio::test]
-async fn test_after_shutdown_a_take_finds_nothing_and_a_discard_still_destroys() {
+async fn test_after_shutdown_a_take_finds_nothing() {
     let capture = Capture::install();
-    let engine = FakeEngine::default();
     let (holds, _clock) = holds(2);
     bounded("the keeper's shutdown", holds.shutdown()).await;
 
     let taken = bounded("a take after the shutdown", holds.take(&key(FLEET_A))).await;
-    let late = sandbox(&engine).await;
-    let discarded = holds.discard(id(FLEET_A), late, Release::ThawFailed);
-    bounded("a discard after the shutdown", discarded).await;
 
     assert!(taken.is_none());
-    assert_eq!(releases(&capture), [released(FLEET_A, Release::ThawFailed)]);
-    assert_eq!(engine.destroyed.load(Ordering::SeqCst), 1);
+    let ended = releases(&capture);
+    assert!(ended.is_empty(), "{ended:?}");
 }
 
 /// A park is counted at once; a take is not, since whether the sandbox comes
-/// back is known only once it thaws and answers, which the run counts.
+/// back is known only once it resumes and answers, which the run counts.
 #[tokio::test]
 async fn test_a_park_is_counted_and_a_take_is_not() {
     let engine = FakeEngine::default();
@@ -149,9 +144,9 @@ async fn test_closed_holds_end_every_hold_and_refuse_a_later_park() {
     let left = fleets(&holds).await;
     bounded("the keeper's shutdown", holds.shutdown()).await;
 
-    let handed_back = matches!(late, Parked::Refused(_));
+    let handed_back = matches!(late, Stowed::Refused(_));
     let destroyed_by_the_keeper = engine.destroyed.load(Ordering::SeqCst);
-    if let Parked::Refused(sandbox) = late {
+    if let Stowed::Refused(sandbox) = late {
         sandbox.destroy().await.unwrap();
     }
     assert!(handed_back, "a closed keeper hands the sandbox back");
@@ -180,9 +175,9 @@ async fn test_a_runner_with_no_workers_holds_nothing() {
     let parked = park(&holds, &engine, FLEET_A).await;
     bounded("the keeper's shutdown", holds.shutdown()).await;
 
-    let handed_back = matches!(parked, Parked::Refused(_));
+    let handed_back = matches!(parked, Stowed::Refused(_));
     let destroyed_by_the_keeper = engine.destroyed.load(Ordering::SeqCst);
-    if let Parked::Refused(sandbox) = parked {
+    if let Stowed::Refused(sandbox) = parked {
         sandbox.destroy().await.unwrap();
     }
     assert!(handed_back, "a keeper with no room hands the sandbox back");

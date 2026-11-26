@@ -39,17 +39,9 @@ pub const REQUIRED_CONTROLLERS: [&str; 4] = ["cpu", "io", "memory", "pids"];
 /// The seccomp action every refused system call answers with.
 const SECCOMP_ERRNO_ACTION: &str = "errno";
 
-/// Whether `/dev/kvm` exists, and whether this process may open it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Kvm {
-    /// No such device: a microVM engine cannot run here.
-    Absent,
-    /// The device exists, but this process may not open it for reading and
-    /// writing.
-    Denied,
-    /// The device exists and opens: a microVM engine can run here.
-    Usable,
-}
+/// Whether `/dev/kvm` exists, and whether this process may open it: the
+/// wire's own type, so the probe and the heartbeat say it one way.
+pub use af_wire::runner::Kvm;
 
 /// One probe of the host, taken at boot and refreshed per heartbeat.
 #[expect(

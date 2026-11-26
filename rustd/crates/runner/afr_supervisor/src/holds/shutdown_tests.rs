@@ -12,7 +12,7 @@ use std::time::Duration;
 use af_core::test_util::trace::Capture;
 
 use super::tests::{FLEET_A, FLEET_B, fleets, hold, holds, park, released, releases};
-use super::{Parked, Release};
+use super::{Release, Stowed};
 use crate::test_support::{FakeEngine, bounded};
 
 #[tokio::test]
@@ -47,9 +47,9 @@ async fn test_a_park_after_shutdown_hands_the_sandbox_back() {
 
     let parked = park(&holds, &engine, FLEET_A).await;
 
-    let handed_back = matches!(parked, Parked::Refused(_));
+    let handed_back = matches!(parked, Stowed::Refused(_));
     let destroyed_by_the_keeper = engine.destroyed.load(Ordering::SeqCst);
-    if let Parked::Refused(sandbox) = parked {
+    if let Stowed::Refused(sandbox) = parked {
         sandbox.destroy().await.unwrap();
     }
     assert!(handed_back, "a stopped keeper hands the sandbox back");

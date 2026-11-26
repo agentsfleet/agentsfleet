@@ -5,9 +5,9 @@
 use std::fs;
 use std::os::unix::fs::MetadataExt as _;
 
+use crate::lane::{id_of, spec};
 use afr_sandbox::{
-    Engine, Limits, MECHANISM_LANDLOCK as LANDLOCK, REFUSED_SYSCALLS, SandboxRequest,
-    X32_SYSCALL_BIT,
+    Engine, Limits, MECHANISM_LANDLOCK as LANDLOCK, REFUSED_SYSCALLS, X32_SYSCALL_BIT,
 };
 use libtest_mimic::Failed;
 
@@ -75,7 +75,7 @@ pub(crate) fn plants_nothing(lane: &Lane) -> Result<(), Failed> {
     runtime().block_on(async {
         let engine = lane.engine();
         let sandbox = engine
-            .prepare(SandboxRequest::new(PLANT, Limits::default()))
+            .prepare(spec(&id_of(PLANT), Limits::default()))
             .await?;
         let said = run(sandbox.executor(), shell(PLANT_SCRIPT)).await;
         let run = lane.run_dir(PLANT);

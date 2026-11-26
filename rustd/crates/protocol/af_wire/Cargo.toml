@@ -36,6 +36,8 @@ jiff.workspace = true
 # the daemon carries verbatim. `preserve_order` is load-bearing: without it an
 # object's keys re-serialize in hash order and the byte comparison fails.
 serde_json.workspace = true
+# The engine enums' log spellings, from the same snake_case serde writes.
+strum.workspace = true
 # The schema compiler, off by default. `ToSchema` touches no `Serialize` impl,
 # so a build with this feature on emits the same bytes as one without it — the
 # round-trip suite re-proves that rather than asserting it.

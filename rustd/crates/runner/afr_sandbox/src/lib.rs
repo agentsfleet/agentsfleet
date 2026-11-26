@@ -49,6 +49,7 @@ mod egress;
 pub use self::egress::far as egress_testing;
 
 pub use self::boot::{Backend, Booted, HostPaths, Resources, Started, boot};
+pub use self::bubblewrap::CAPABILITIES as BUBBLEWRAP_CAPABILITIES;
 pub use self::bubblewrap::Requirements as BubblewrapRequirements;
 #[cfg(target_os = "linux")]
 pub use self::bubblewrap_engine::{
@@ -58,10 +59,15 @@ pub use self::cgroup::{
     DEFAULT_IO_BYTES_PER_SECOND, Freezer, MECHANISM_DELEGATED_CGROUP, RunCgroup, SANDBOX_LEAF,
     SANDBOX_MEMORY_RESERVE_BYTES, SELF_CGROUP_PATH, SUBTREE_CONTROL, TENANT_LEAF, delegated_root,
 };
+#[cfg(feature = "test-util")]
+pub use self::engine::fresh_sandbox_id;
 pub use self::engine::{
-    DEFAULT_CPU_MILLIS, DEFAULT_DISK_BYTES, DEFAULT_MEMORY_BYTES, DEFAULT_PIDS, Engine,
-    EngineTuning, HostWorkspace, Killed, Limits, Sandbox, SandboxRequest,
+    Cap, Capabilities, DEFAULT_CPU_MILLIS, DEFAULT_DISK_BYTES, DEFAULT_MEMORY_BYTES, DEFAULT_PIDS,
+    Engine, EngineTuning, Environment, Granted, HostWorkspace, Killed, Limits, ParkMode, Parked,
+    Quiescence, ResourceFacts, Root, Sandbox, SandboxSpec, SandboxState, Sweep, Swept,
 };
+#[cfg(feature = "test-util")]
+pub use self::error::ambiguous;
 pub use self::error::{Error, Result, ToolboxRefusal};
 #[cfg(target_os = "linux")]
 pub use self::harden::{REFUSED_SYSCALLS, X32_SYSCALL_BIT};

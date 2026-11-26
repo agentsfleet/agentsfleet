@@ -89,7 +89,7 @@ A run whose payload would exceed the frame is never sent. The daemon fails its t
 
 The runner opens with `Hello`, naming the runs it still holds and its idle worker count. The daemon answers with `Welcome` and the runner's assigned policy.
 
-The protocol has one version, `af_wire::protocol::VERSION`, today `agentsfleet.runner.v6`. A runner naming any other version is refused at hello with `UZ-RUN-023` and gets no run.
+The protocol has one version, `af_wire::protocol::VERSION`, today `agentsfleet.runner.v7`. A runner naming any other version is refused at hello with `UZ-RUN-023` and gets no run.
 
 ### Run lease and renewal
 

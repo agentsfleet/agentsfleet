@@ -77,7 +77,7 @@ supervisor (names afr_engine only)
      returns once egress generation N is in force and the executor answers
   checkout: fetch in the host mirror with the token ─► tar stream ─► executor import
   capture:  executor export ─► today's encrypted manifest ─► R2
-  hold:     quiesce, guest sync, VMM stopped, disk kept; resume boots a fresh VM on it
+  park:     quiesce, guest sync, VMM stopped, disk kept; resume boots a fresh VM on it
   restore:  the executor (the VM's root service) tears down the inner environment,
             swaps the workspace, builds it again; the VM never reboots
 ```
@@ -91,7 +91,7 @@ supervisor (names afr_engine only)
 **What changes for a fleet.** Each line is a behaviour Indy accepts by approving this spec.
 
 1. On a Firecracker runner, `allow_all` means the public internet with reserved ranges refused. Today the sandbox shares the host's network (`runner_execution.md:171`).
-2. A held sandbox keeps its disk, not its memory. Resume boots a fresh VM on the kept disk (O3).
+2. A parked sandbox keeps its disk, not its memory. Resume boots a fresh VM on the kept disk (O3).
 3. A Firecracker host overcommits memory 4 to 1, so the dev host runs about 55 runs of 2 GiB at once, not 64 (O3). If guests touch more memory than the host has, the host ends one VM, and its run resumes from its last checkpoint.
 4. A sandbox starts slower than bubblewrap's "tens of milliseconds" (`afr_sandbox/src/engine/mod.rs:30-32`). §1 records by how much.
 
@@ -102,7 +102,7 @@ supervisor (names afr_engine only)
 - **Authoring handshake:** Indy wants the engine replaced first and bubblewrap retired once a VM engine runs fleets. He wants SPACE's traits studied, storage and networking abstracted, better crates, and Fly's Sprites design adopted where it fits. ASSUMPTIONS I'M MAKING:
   1. O1, ruled: one Pull Request for all of M258. M258_002 designs the chunk map; this spec only carries its snapshot interface.
   2. O2, ruled: Sprites, the engine policy and burst are M260_001. Nothing here touches Sprites.
-  3. O3, ruled: admission overcommits VM memory 4 to 1, and holds keep the disk only.
+  3. O3, ruled: admission overcommits VM memory 4 to 1, and parking keeps the disk only.
   4. O4, ruled: SPACE's `fc_api.rs` is copied under Apache-2.0 only when a pause, snapshot or balloon first needs the API (§7).
   5. O5, ruled: the compute layer is M258, and web plus harness is M259.
   6. Nothing is backward compatible. The wire, the self-test and the crates change in place, with one runner protocol `VERSION` move, in §2.
@@ -129,7 +129,7 @@ supervisor (names afr_engine only)
 | `rustd/crates/runner/{afr_engine_bubblewrap,afr_engine_unsandboxed}/**` | CREATE | §5: today's engine as one crate; the debug engine and the recovery-drill engine |
 | `rustd/crates/runner/afr_engine_firecracker/**` | CREATE | §7 and §8 |
 | `rustd/crates/runner/afr_executor/**` | EDIT | §3: a transport over any byte stream, a redialling client, `import` and `export`; §7: the guest listens on vsock |
-| `rustd/crates/runner/afr_supervisor/**` | EDIT | §2 to §4, §8: holds by mode, files through the executor, the egress plan, the engine's evidence, credits capped by memory |
+| `rustd/crates/runner/afr_supervisor/**` | EDIT | §2 to §4, §8: parking by mode, files through the executor, the egress plan, the engine's evidence, credits capped by memory |
 | `rustd/crates/runner/main/**` | EDIT | §5, §7: features per engine, `EngineChoice::Firecracker`, the kernel lane over `&dyn Engine` |
 | `rustd/crates/protocol/af_wire/src/runner/capability.rs`, `af_wire/src/protocol/mod.rs` | EDIT | §2: the report names engine, isolation, KVM and the memory bound; `VERSION` moves once |
 | `rustd/crates/daemon/afd_runner/src/reconcile.rs` | EDIT | §2: `proven_by` reads hardware-VM evidence |
@@ -195,25 +195,25 @@ Boot one VM on the dev runner host before any code, with Firecracker and the jai
 
 ### §2 — Lifecycle, identity and resources, named on every heartbeat
 
-**(5) Lifecycle and identity.** `Engine` gains a required `kind()` and `capabilities()`. `Sandbox` gains a required `id()`, `environment()` and `granted()`, and its four defaults go.
+**(5) Lifecycle and identity.** `Engine` gains a required `capabilities()`, which names the engine itself. `Sandbox` gains a required `id()`, `environment()` and `granted()`, and its four defaults go.
 
-`environment()` replaces `toolbox_digest()`, which defaulted to none. It names the root, our toolbox by its SHA-256 or a vendor's image by name and version, beside the executor's digest. The toolbox is the root on our hosts only, bubblewrap's and Firecracker's, and today's check refuses a restore across roots (`docs/architecture/checkpoints.md:90`).
+`environment()` replaces `toolbox_digest()`, which defaulted to none. It names the engine and the root: our toolbox by its SHA-256, or the host's own file system for the debug engine. The executor's digest joins it in M258_002, where a snapshot first compares it (Indy: "Add it with its first reader"). Today's check refuses a restore across roots (`docs/architecture/checkpoints.md:90`).
 
-`prepare` takes a `SandboxSpec` whose `id` the supervisor mints with `af_core::id`, so a retried build names the same sandbox; `RunName` goes. `freeze`, `thaw` and `recovery_quiescent` become `hold(mode)`, `resume()` and `quiesce() -> Witness`. An engine's `sweep(keep)` destroys what a crash or an ambiguous build left.
+`prepare` takes a `SandboxSpec` whose `id` names every directory, cgroup and device the engine makes; the supervisor names a run's sandbox by the run's `Uuid7`, and warm slots mint theirs with `af_crypto::entropy`. `RunName` goes. `freeze` and `thaw` become `park(self, mode) -> Parked` and `Parked::resume(self) -> Sandbox`, so a parked sandbox is a type that can run nothing, and `recovery_quiescent` becomes `quiesce() -> Quiescence`. Capture and restore now read quiescence alone: the executor idle and no tenant process left, since only the supervisor starts one. `sweep(scope)` destroys what a crash (`Sweep::Leftovers`, at boot) or an ambiguous build (`Sweep::Sandbox(id)`) left.
 
-**State authority:** each engine's own per-id state, a directory, jail or remote name. **Guarded transition:** a second `prepare` for a live id answers that sandbox. **Failure assumption:** a build of unknown outcome answers `Ambiguous`, and the caller sweeps it, never repeating it.
+**State authority:** each engine's own per-id state, a directory, jail or remote name. **Guarded transition:** a second `prepare` for a live id is refused naming that sandbox, since only a redelivered assignment, a forbidden retry or a warm-slot race could ask. **Failure assumption:** a build of unknown outcome answers `Ambiguous`, and the caller sweeps it, never repeating it.
 
-**(3) Resources.** `admit(limits) -> Granted` states what the engine will enforce before anything is built, never less than asked. It refuses a cap the engine has no mechanism for, and `Granted`, not `Limits`, is what a run reports. **Implementation default:** bubblewrap grants exactly what it is asked, through cgroup files, because that is today's behaviour.
+**(3) Resources.** `grant(limits) -> Granted` states what the engine will enforce before anything is built, never less than asked. It refuses a cap the engine has no mechanism for, and `Granted`, not `Limits`, is what a run reports. **Implementation default:** bubblewrap grants exactly what it is asked, through cgroup files, because that is today's behaviour.
 
 **Heartbeat.** The capability report gains `engine`, `isolation`, `kvm` and `sandboxes_max`, edited in place. The self-test reads its checks from the engine's boot evidence, so only an engine that needs KVM judges it. `proven_by` maps a hardware-VM report onto the guarantees Landlock proves today (`afd_runner/src/reconcile.rs:6-26`), and the CLI prints the reported engine.
 
-- **Dimension 2.1** — every engine states its facts → Test `every_engine_states_its_capabilities` (unit, `afr_sandbox`). Each engine's `capabilities()` equals its stated table, and its `environment()` names a root. A hold mode outside the table answers `Unsupported` naming `hold`.
-- **Dimension 2.2** — one id, one sandbox → Test `a_second_prepare_for_one_id_answers_the_same_sandbox` (unit, unsandboxed engine). 100 callers released from a barrier with one id get one sandbox directory, and all 100 answers name it.
-- **Dimension 2.3** — an unknown outcome is swept, never retried → Test `an_ambiguous_prepare_is_swept_never_retried` (unit, the supervisor's fake engine). A build that times out answers `Ambiguous`, one `sweep` destroys it, no second `prepare` follows, and the run reads `sandbox_unavailable`.
-- **Dimension 2.4** — a cap the engine cannot meet is refused → Test `admit_refuses_a_limit_the_engine_cannot_enforce` (unit). A fake engine with no process cap, asked for 512 processes, refuses naming `pids`. Bubblewrap's `Granted` equals its `Limits`.
-- **Dimension 2.5** — only an engine that needs KVM judges it → Test `a_bubblewrap_host_without_kvm_passes_its_selftest` (unit, `afr_supervisor`). Bubblewrap evidence with `Kvm::Absent` reads `all_ok`. Firecracker evidence with `Kvm::Denied` does not, and its `kvm` check names the open failure.
-- **Dimension 2.6** — a VM report proves the cage → Test `a_hardware_vm_report_proves_the_cage_guarantees` (unit, `afd_runner`). `engine: firecracker` with `isolation: hardware_vm` under `landlock_full` reads healthy. `engine: unsandboxed` under it reads degraded with its own reason.
-- **Dimension 2.7** — the CLI prints what the runner reported → Test `platform runners show prints the reported engine` (unit, handler). A row whose report names `firecracker` prints it, and a row with no report prints `unknown`. Neither prints `Bubblewrap` from a constant.
+- **Dimension 2.1** — ✅ DONE — every engine states its facts → Test `test_every_engine_states_its_capabilities` and `test_a_park_mode_outside_the_table_is_unsupported` (unit, `afr_sandbox`). Each engine's capabilities equal its stated table, and its `environment()` names a root. A park mode outside the table answers `Unsupported` naming `park`.
+- **Dimension 2.2** — ✅ DONE — one id, one sandbox → Test `test_a_second_prepare_for_one_id_is_refused_naming_it` (unit, unsandboxed engine). 100 callers released from a barrier with one id get one sandbox, under that id, and the other 99 are refused naming it.
+- **Dimension 2.3** — ✅ DONE — an unknown outcome is swept, never retried → Test `test_an_ambiguous_prepare_is_swept_never_retried` (unit, the supervisor's fake engine). A build that times out answers `Ambiguous`, one `sweep` destroys it, no second `prepare` follows, and the run reads `sandbox_unavailable`.
+- **Dimension 2.4** — ✅ DONE — a cap the engine cannot meet is refused → Test `test_admit_refuses_a_limit_the_engine_cannot_enforce` and `test_a_grant_is_never_less_than_the_ask` (unit). A fake engine with no process cap, asked for 512 processes, refuses naming `pids`. Bubblewrap's `Granted` equals its `Limits`.
+- **Dimension 2.5** — ✅ DONE — only an engine that needs KVM judges it → Test `a_bubblewrap_host_without_kvm_passes_its_selftest` (unit, `afr_supervisor`). Bubblewrap evidence with `Kvm::Absent` reads `all_ok`. Firecracker evidence with `Kvm::Denied` does not, and its `kvm` check names the open failure.
+- **Dimension 2.6** — ✅ DONE — a VM report proves the cage → Test `test_a_hardware_vm_report_proves_the_cage_guarantees` (unit, `afd_runner`). `engine: firecracker` with `isolation: hardware_vm` under `landlock_full` reads healthy. `engine: unsandboxed` under it reads degraded with its own reason.
+- **Dimension 2.7** — ✅ DONE — the CLI prints what the runner reported → Test `platform runners show prints the reported engine` (unit, handler). A row whose report names `firecracker` prints it, and a row with no report prints `unknown`. Neither prints `Bubblewrap` from a constant.
 
 ### §3 — Storage and the executor's transport
 
@@ -230,7 +230,7 @@ Checkout fetches into the host mirror with the token, packs the selected tree an
 - **Dimension 3.1** — files cross with no host path → Test `import_then_export_returns_the_same_tree` (unit, unsandboxed engine). A fixture tree with modes, relative links and an empty directory is imported. The exported tree's SHA-256 digest equals the imported one.
 - **Dimension 3.2** — nothing lands outside the workspace → Test `an_import_entry_leaving_its_root_is_refused` (unit, `afr_executor`). `../x`, an absolute link and a link out of `/workspace` are each refused, and nothing is written.
 - **Dimension 3.3** — checkout and recovery need no host path → Test `checkout_fills_a_workspace_the_host_cannot_see` (integration, `afr_supervisor`). An engine with no host path checks out the fixture with today's tree digest. The recovery drill engine captures with today's checkpoint path through `export` and restores it byte for byte.
-- **Dimension 3.4** — the link redials after a hold → Test `the_executor_link_redials_after_a_hold` (unit, over `tokio::io::duplex`). The far end closes, the client redials once, and the next call answers. A process the old link carried reads `Interrupted`.
+- **Dimension 3.4** — the link redials after a park → Test `the_executor_link_redials_after_a_hold` (unit, over `tokio::io::duplex`). The far end closes, the client redials once, and the next call answers. A process the old link carried reads `Interrupted`.
 
 ### §4 — Networking and credentials
 
@@ -267,11 +267,11 @@ Indy asked for better crate management, with the runner using an engine crate. E
 
 `afr_engine::conformance`, behind `test-util`, is one list of named trials over `&dyn Engine`, in the kernel lane's shape. Today's trials join it once they take `&dyn Engine`, and `make test-runner-kernel` takes `ENGINE`, defaulting to bubblewrap. A trial for a mechanism an engine does not claim asserts `Unsupported`, so the lane fails and never skips (`make/test-unit.mk:81`).
 
-**What must match, and what may differ.** Network verdicts, granted caps, file transfer, command streams, exit codes, output bounds and the planted-token search must match on every engine. The root image, tool versions, start time and declared hold modes may differ. The suite prints that list beside each engine's environment, so a difference is stated, never hidden.
+**What must match, and what may differ.** Network verdicts, granted caps, file transfer, command streams, exit codes, output bounds and the planted-token search must match on every engine. The root image, tool versions, start time and declared park modes may differ. The suite prints that list beside each engine's environment, so a difference is stated, never hidden.
 
 **Snapshot trials.** Every engine that declares snapshots passes four trials. A save is taken and a restore made; no process of the old environment survives, and the files equal the save's. No engine declares snapshots in this spec, so the trials assert `Unsupported` until M258_002 implements them on our engine.
 
-- **Dimension 6.1** — bubblewrap passes the suite → Test `make test-runner-kernel` (integration, a real Linux kernel). Every trial passes, among them confinement, budgets, kill, hold, toolbox, files, git, shared memory and §2 to §4's trials. The lane prints each name and a zero failure count.
+- **Dimension 6.1** — bubblewrap passes the suite → Test `make test-runner-kernel` (integration, a real Linux kernel). Every trial passes, among them confinement, budgets, kill, park, toolbox, files, git, shared memory and §2 to §4's trials. The lane prints each name and a zero failure count.
 - **Dimension 6.2** — a false claim fails the suite → Test `a_false_capability_fails_the_suite` (unit, `afr_engine`). A fake claiming `Pause` that answers `Unsupported` fails that trial by name, and no trial reads skipped. A fake whose network verdict differs fails, though a differing root alone passes.
 - **Dimension 6.3** — only listed destinations connect → Test `the_verdict_matrix_refuses_every_unlisted_destination` (integration, kernel lane). A listed host connects. An unlisted host or literal, `10.0.0.5`, `169.254.169.254`, `100.64.0.1`, `::ffff:10.0.0.1`, an unlisted lookup and a QUIC dial on UDP 443 fail.
 - **Dimension 6.4** — no secret enters a sandbox → Test `no_secret_in_sandbox` (integration, kernel lane). A checkout runs with a canary fetch token, then `search` covers the guest's files, environment and `/proc`. It finds zero hits, and finds a canary planted on purpose.
@@ -289,7 +289,7 @@ The executor can tear the inner environment down and build it again without rebo
 
 **Implementation default:** the toolbox drive is the verified loop device, because it keeps "nothing reopens the image by path" with no new release format; in-guest dm-verity waits. Memory is the guest's size and processors are whole virtual CPUs, rounded up. The process cap is a declared `None`, because the VM is the wall.
 
-**Holds** are `Stop` only: quiesce, guest sync, VMM stopped, disk kept, and resume boots a fresh VM on it (O3). No API call is needed for this, so O4's copy waits until a pause, snapshot or balloon is ruled in.
+**Parking** is `Stop` only: quiesce, guest sync, VMM stopped, disk kept, and resume boots a fresh VM on it (O3). No API call is needed for this, so O4's copy waits until a pause, snapshot or balloon is ruled in.
 
 **Egress** reuses `afr_firewall`'s per-slot table on a tap, dropping the reserved ranges ahead of the accept, with no IPv6 on the tap. No-network attaches no device. Firecracker filters nothing itself, so this table is the only enforcer.
 
@@ -310,7 +310,7 @@ The executor can tear the inner environment down and build it again without rebo
 - **Dimension 7.1** — Firecracker passes the same suite → Test `make test-runner-kernel ENGINE=firecracker` (integration, the dev host). Every trial passes or asserts `Unsupported` as declared, the verdict matrix, planted token and toolbox digest included. Counts go in the Session Notes.
 - **Dimension 7.2** — no KVM, no Firecracker, no fallback → Test `firecracker_refuses_a_host_without_usable_kvm` (unit, `afr_engine_firecracker`). With `Kvm::Denied` or `Kvm::Absent`, boot refuses naming `kvm`, and no engine starts. `--engine firecracker` parses.
 - **Dimension 7.3** — a crash leaves nothing → Test `a_runner_killed_mid_build_leaves_no_jail_tap_or_table` (integration, kernel lane, Firecracker). `SIGKILL` reaches the runner during `prepare`. The next boot's sweep leaves no jail directory, tap, table, VMM process or drive.
-- **Dimension 7.4** — a hold keeps the disk, not the VM → Test `a_stopped_hold_resumes_on_its_own_disk` (integration, kernel lane, Firecracker). A file is written, then a hold leaves no VMM running. On resume the file reads back, no earlier process remains, and the plan reads back in force.
+- **Dimension 7.4** — a park keeps the disk, not the VM → Test `a_stopped_hold_resumes_on_its_own_disk` (integration, kernel lane, Firecracker). A file is written, then a park leaves no VMM running. On resume the file reads back, no earlier process remains, and the plan reads back in force.
 - **Dimension 7.5** — a restore needs no reboot → Test `a_restore_inside_a_running_vm_replaces_the_workspace` (integration, kernel lane, Firecracker). A background process runs and a file is written; then a different file checkpoint is restored in place. The workspace equals that checkpoint's tree, no process of the old inner environment survives, and the VMM's process identifier is unchanged.
 - **Dimension 7.7** — one VM per workspace image → Test `a_second_vmm_cannot_attach_a_held_workspace_image` (integration, kernel lane, Firecracker). With a sandbox running, a second `prepare` naming its workspace image is refused naming the image's lock, and no second VMM process starts.
 - **Dimension 7.8** — only the host reaches the executor → Test `a_guest_process_cannot_reach_the_executor` (integration, kernel lane, Firecracker). From the inner environment, dialing the executor's vsock port at context identifiers 1, 2 and 3 fails. A connection whose peer identifier is not 2 is refused, in a unit test over a fake listener.
@@ -323,14 +323,14 @@ A VM reserves address space for its guest memory, and Firecracker backs that spa
 
 At boot the engine reads `MemAvailable` from `/proc/meminfo` with `procfs-core`. `sandboxes_max` is the ratio times that, divided by one sandbox's reservation: guest memory plus the VMM overhead §1 measured, named beside its constant.
 
-The ratio is `memory_overcommit` in the runner's configuration file, default 4, with Indy's ruling cited beside the default. The supervisor's capacity becomes the lesser of `sandboxes_max` and `worker_count` (`afr_supervisor/src/downlink/running.rs:54-73`), and a `Stop` hold reserves nothing.
+The ratio is `memory_overcommit` in the runner's configuration file, default 4, with Indy's ruling cited beside the default. The supervisor's capacity becomes the lesser of `sandboxes_max` and `worker_count` (`afr_supervisor/src/downlink/running.rs:54-73`), and a `Stop` park reserves nothing.
 
 **When guests outgrow the host.** Under overcommit, the guests' touched memory can pass the host's, and the host kernel then ends one VMM. The engine reports that sandbox lost. Its run ends `sandbox_unavailable` and resumes from its last checkpoint, as a killed runner's run does today, and the other sandboxes run on.
 
 **A pool of pre-booted VMs**, four per host, as Indy ruled (D15). The size is `warm_pool` in the runner's configuration file, default 4. Every VM boots the one standard image, our toolbox, so a pooled VM serves any fleet. Today's `WarmSlots` wraps the engine (`runner_execution.md:317`). A claim applies the run's plan and imports its files, and each pooled VM counts against `sandboxes_max`.
 
 - **Dimension 8.1** — credits stop at the overcommitted bound → Test `credits_stop_at_the_overcommitted_memory_bound` (unit). `MemAvailable` of 28 GiB, 2 GiB runs, 16 MiB overhead, ratio 4 and `worker_count` 64 give `sandboxes_max` 55. The runner offers at most 55 credits, and ratio 1 gives 13.
-- **Dimension 8.2** — nothing is admitted past the bound → Test `a_sandbox_past_the_memory_bound_is_refused` (unit). With 55 admitted, the next `admit` refuses naming memory, and no VM starts. Once one sandbox goes to a `Stop` hold, the next `admit` succeeds.
+- **Dimension 8.2** — nothing is admitted past the bound → Test `a_sandbox_past_the_memory_bound_is_refused` (unit). With 55 admitted, the next `admit` refuses naming memory, and no VM starts. Once one sandbox is parked with `Stop`, the next `admit` succeeds.
 - **Dimension 8.3** — a pooled VM serves one run and leaves nothing behind → Test `a_claimed_pool_vm_serves_one_run_with_its_own_plan` (integration, kernel lane, Firecracker). A pool of four serves a run whose plan and files reach it, and the pool refills to four. The next claimant finds none of the first run's files or processes, and the pool plus live runs never pass `sandboxes_max`.
 - **Dimension 8.4** — a VM the host ends takes only its own run → Test `a_vmm_ended_by_the_host_ends_only_its_own_run` (integration, kernel lane, Firecracker). `SIGKILL` reaches one of two running VMMs. Its run ends `sandbox_unavailable` and `sandbox_lost` is logged, while the other run's next command answers.
 
@@ -343,22 +343,23 @@ The dev runner host restarts with `--engine firecracker` once §7 passes there. 
 
 ## Interfaces
 
-**The seam** (`afr_engine`), in outline.
+**The seam** (`afr_engine`), in outline. §2 built it in `afr_sandbox`; §5 moves it.
 
 ```text
-Engine:  kind() · capabilities() · admit(&Limits) -> Granted · prepare(&SandboxSpec) -> Box<dyn Sandbox> · sweep(keep) -> Swept
-Sandbox: id() · environment() · granted() · state() · executor() · egress() · snapshots() -> Option
-         quiesce() -> Witness · hold(HoldMode) · resume() · kill() -> Killed · destroy(self)
-SandboxSpec { id: Uuid7, run_id, granted: Granted, network: &NetworkSpec }      HoldMode: Pause | Suspend | Stop
-Capabilities { isolation, location, holds, snapshots, quiescence, egress: EgressFacts, resources: ResourceFacts }
-Environment { engine, root: Toolbox { digest } | Vendor { name, version }, executor: digest, kernel: Option<digest> }
-NetworkSpec { mode: None | Listed | Public, allow, generation: u64 }   Egress: apply(&NetworkSpec) · in_force()
-Executor: today's ten verbs + import(at, tree) · export(paths)          Transport: dial() -> byte stream
-Snapshots: take(id: Uuid7) -> SnapshotRef · restore(&SnapshotRef) · forget(&SnapshotRef)   (implemented in M258_002; Sprites in M260_001)
-Error kinds added: Unsupported{engine, operation} · Remote{engine, operation, status} · Ambiguous{sandbox, operation}
+Engine:  capabilities() · grant(Limits) -> Granted · prepare(SandboxSpec) -> Box<dyn Sandbox> · sweep(Sweep) -> Swept
+Sandbox: id() · environment() · granted() · workspace() · state() · executor() · quiesce() -> Quiescence
+         park(self, ParkMode) -> Box<dyn Parked> · reallow (until §4) · kill() -> Killed · destroy(self)
+Parked:  id() · mode() · resume(self) -> Box<dyn Sandbox> · destroy(self)
+SandboxSpec { id: &Uuid7, granted: Granted, network }      ParkMode: Pause | Stop      Sweep: Leftovers | Sandbox(&Uuid7)
+Capabilities { engine, isolation, parks, resources: ResourceFacts { memory, cpu, pids, disk: Enforced | Walled | Absent } }
+Environment { engine, root: Toolbox { digest } | Host }    executor digest: M258_002
+NetworkSpec { mode: None | Listed | Public, allow, generation: u64 }   Egress: apply(&NetworkSpec) · in_force()   (§4)
+Executor: today's ten verbs + import(at, tree) · export(paths)          Transport: dial() -> byte stream   (§3)
+Snapshots: take(id: Uuid7) -> SnapshotRef · restore(&SnapshotRef) · forget(&SnapshotRef)   (M258_002)
+Error kinds added: Unsupported{engine, operation} · Ambiguous{sandbox, operation} · SandboxExists{sandbox} · Entropy
 ```
 
-**Wire.** `CapabilityReport` gains `engine` (`bubblewrap`, `firecracker` or `unsandboxed`), `isolation` (`shared_kernel` or `hardware_vm`), `kvm` (`usable`, `denied` or `absent`) and `sandboxes_max`. `sandboxes_max` is absent where the engine reserves no memory. The five Linux booleans stay until M258_003, and the runner protocol `VERSION` moves once.
+**Wire.** `CapabilityReport` gains `engine` (`bubblewrap`, `firecracker` or `unsandboxed`), `isolation` (`unconfined`, `shared_kernel` or `hardware_vm`), `kvm` (`usable`, `denied` or `absent`) and `sandboxes_max`. `sandboxes_max` is absent where the engine reserves no memory. The five Linux booleans stay until M258_003, and the runner protocol `VERSION` moves once.
 
 **Runner.** `agentsfleet-runner run --engine bubblewrap|firecracker`; `make test-runner-kernel ENGINE=bubblewrap|firecracker`.
 
@@ -372,13 +373,13 @@ Error kinds added: Unsupported{engine, operation} · Remote{engine, operation, s
 | Plan not in force | security | the enforcer lags or fails | `prepare` waits, or refuses and destroys | `prepare_returns_only_after_the_plan_is_in_force` |
 | Stale plan | race | an older plan applied after a newer one | refused; the newer stays | `a_stale_generation_is_refused` |
 | Hostile tree | security | an import entry escapes `/workspace` | refused; nothing written | `an_import_entry_leaving_its_root_is_refused` |
-| Link dropped | failure | a hold or a closed socket | one redial; old processes `Interrupted` | `the_executor_link_redials_after_a_hold` |
+| Link dropped | failure | a park or a closed socket | one redial; old processes `Interrupted` | `the_executor_link_redials_after_a_hold` |
 | Memory bound reached | capacity | one more VM than the overcommitted bound | `admit` refuses; credits stop | `a_sandbox_past_the_memory_bound_is_refused` |
 | Guests outgrow the host | capacity | overcommitted guests touch more memory than the host has | the host ends one VMM; its run ends `sandbox_unavailable` and resumes from its last checkpoint; others run on | `a_vmm_ended_by_the_host_ends_only_its_own_run` |
 | Secret in a sandbox | security | a token in the tree or environment | the planted-token trial fails the lane | `no_secret_in_sandbox` |
 | Private or metadata dial | security | a tenant dials a reserved address | dropped before the accept | `the_verdict_matrix_refuses_every_unlisted_destination` |
 | False capability | failure | an engine claims a mode it lacks | the suite fails by name | `a_false_capability_fails_the_suite` |
-| Hold loses bytes | failure | the VMM stops with writes unflushed | guest sync and a `Writeback` drive | `a_stopped_hold_resumes_on_its_own_disk` |
+| Park loses bytes | failure | the VMM stops with writes unflushed | guest sync and a `Writeback` drive | `a_stopped_hold_resumes_on_its_own_disk` |
 | Workspace attached twice | failure | a leftover or second VMM names a live image | the image's exclusive lock refuses the second attach; no VMM starts | `a_second_vmm_cannot_attach_a_held_workspace_image` |
 | Guest dials the executor | security | tenant code opens a vsock connection | no loopback in the guest kernel; the executor refuses a non-host peer | `a_guest_process_cannot_reach_the_executor` |
 | One sandbox dials another | security | tenant code in VM A targets VM B | the tap table drops private destinations; vsock and files are per-jail | `one_sandbox_cannot_reach_another` |
@@ -430,6 +431,7 @@ Error kinds added: Unsupported{engine, operation} · Remote{engine, operation, s
 | the old crate | `git grep -n -w afr_sandbox -- rustd cli deploy make scripts playbooks .github` | no output |
 | the host-path seam | `git grep -n -w -e HostWorkspace -e recovery_quiescent -e reallow -e RunName -e run_id_unsafe -- rustd` | no output |
 | the method that defaulted the root to none | `git grep -n -e "fn toolbox_digest" -- rustd` | no output; the checkpoint wire field of that name stays |
+| the freeze and thaw verbs | `git grep -n -e "fn freeze" -e "fn thaw" -- rustd/crates/runner/afr_sandbox/src/engine` | no output |
 | the CLI's constant engine | `git grep -n -w DEFAULT_ENGINE -- cli` | no output |
 
 ## Out of Scope
@@ -438,19 +440,19 @@ Error kinds added: Unsupported{engine, operation} · Remote{engine, operation, s
 - Fly.io Sprites, the engine policy, burst and a Sprites rate: M260_001 (O2).
 - The browser, Chromium in a guest, and lifting the `unshare` refusal it needs: M259. "Chromium's own sandbox starts in a Firecracker guest" stays a hypothesis until its spike runs.
 - Checkpoint and snapshot rebuilt on a live chunk map, with R2 chunks and Postgres manifests as the workspace's truth: M258_002. This spec carries only the snapshot interface and its trials.
-- Memory snapshots, pause holds and balloon reporting: not planned until a measurement asks.
+- Memory snapshots, pause parking and balloon reporting: not planned until a measurement asks.
 
 ---
 
 ## Product Clarity (authoring record)
 
 1. **Successful user moment** — an operator reads `engine: firecracker` on the dev runner, and a fleet's run answers as it did on bubblewrap.
-2. **Preserved user behaviour** — every tool, hold, checkpoint and network policy works as today, and a fleet sees no new setting.
+2. **Preserved user behaviour** — every tool, park, checkpoint and network policy works as today, and a fleet sees no new setting.
 3. **Optimal-way check** — implement the existing trait once more. The gap is the host path, which §3 closes for every engine.
 4. **Rebuild-vs-iterate** — iterate on the trait and the executor. Rebuild the crate layout, which Indy asked for.
 5. **What we build** — the split seam, the crate layout, the suite, the Firecracker engine, overcommitted memory admission, a pool of four, the heartbeat fields and the dev host switch.
 6. **What we do NOT build** — memory snapshots, a second VMM, a Mac engine or SPACE's services. None is needed to retire bubblewrap.
-7. **Fit with existing features** — compounds with checkpoints in R2, holds and tenant runners. It must not destabilize the egress verdicts.
+7. **Fit with existing features** — compounds with checkpoints in R2, parked sandboxes and tenant runners. It must not destabilize the egress verdicts.
 8. **Surface order** — runner first, then the daemon's reconcile, then the operator CLI, because the report drives both.
 9. **Dashboard restraint** — the app shows nothing new. The operator CLI shows only what the heartbeat reported.
 10. **Confused-user next step** — a refused boot names `kvm` and the probe's reason. `agentsfleet-runner probe` and the self-test print the same.
@@ -478,7 +480,7 @@ Error kinds added: Unsupported{engine, operation} · Remote{engine, operation, s
 - **Owner decisions, ruled Nov 26, 2026** in AskUserQuestion dialogs; each quote is Indy's, verbatim.
   - **O1** one Pull Request for all of M258. > Owner (Indy, Nov 26, 2026): chose "One PR for all of M258" — "the reason i prefer 1 is cause your memory is fad, you will keep stale dead code of bubblewrap still in. That is the reason i need 1 PR supporting all." — context: the three Workstreams build in order on one branch.
   - **O2** Sprites leave M258. > Owner (Indy, Nov 26, 2026): "Also i think i prefer we move the sprites to M260 milestone_001 But the M259_003 becomes what ever we had sans sprites as a new engine" and "since sprites as a new engine is a separate scope doesnt yield any benefit"; asked again, chose "Production switch + delete bubblewrap (Recommended)" — context: M258_003 is production and the deletion; the engine policy, burst and a Sprites rate go to M260_001. On Fly's terms: "well customers will feed their own secrets of fly. they wont use our fly account."
-  - **O3** overcommit 4 to 1. > Owner (Indy, Nov 26, 2026): chose "Overcommit from the start", then "A fixed ratio you name" — "who will handle this?" — then "Ratio 4 (your earlier pick)" — context: `memory_overcommit = 4` in the runner's configuration file (§8). Holds keep the disk only.
+  - **O3** overcommit 4 to 1. > Owner (Indy, Nov 26, 2026): chose "Overcommit from the start", then "A fixed ratio you name" — "who will handle this?" — then "Ratio 4 (your earlier pick)" — context: `memory_overcommit = 4` in the runner's configuration file (§8). Parking keeps the disk only.
   - **O4** > Owner (Indy, Nov 26, 2026): chose "Approve, copy when needed (Recommended)" — context: SPACE's `fc_api.rs` is copied with its notices only when a pause, snapshot or balloon first needs the API.
   - **O5** > Owner (Indy, Nov 26, 2026): "M258 is the compute layer and lands first. M259 (web search, browse, guffbolt tools and prompts) follows." — context: the start message.
   - **D6** > Owner (Indy, Nov 26, 2026): chose "Stock 6.12, suite as proof (Recommended)" — context: the dev host keeps Debian 13's 6.12. For production: "in M258_003 just make assumptions around how you saw in dev machine = same kernel debian 13, kvm that you made it work with may be better ram, cpu cores and nvme disks."

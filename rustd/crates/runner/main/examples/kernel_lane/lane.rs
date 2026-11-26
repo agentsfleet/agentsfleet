@@ -7,10 +7,13 @@ use std::process::ExitCode;
 use std::sync::Arc;
 
 use af_core::env::{EnvSource as _, ProcessEnv};
+use af_core::id::Uuid7;
+use af_wire::runner::SandboxEngine;
 use afr_sandbox::egress_testing::forwarding_on;
 use afr_sandbox::{
-    BubblewrapBackend, BubblewrapConfig, BubblewrapEngine, CGROUP_ROOT, HostPaths, Manifest,
-    ProbePaths, REQUIRED_CONTROLLERS, Resources, SUBTREE_CONTROL, ToolboxHome, boot, probe,
+    BubblewrapBackend, BubblewrapConfig, BubblewrapEngine, CGROUP_ROOT, HostPaths, Limits,
+    Manifest, ProbePaths, REQUIRED_CONTROLLERS, ResourceFacts, Resources, SUBTREE_CONTROL,
+    SandboxSpec, ToolboxHome, boot, probe,
 };
 use libtest_mimic::Failed;
 
@@ -99,10 +102,27 @@ impl Lane {
             .unwrap_or_else(|refused| unreachable!("{refused}"))
     }
 
-    /// Where a run's directory goes.
-    pub(crate) fn run_dir(&self, run_id: &str) -> PathBuf {
-        self.state.path().join(RUNS_DIR).join(run_id)
+    /// Where the sandbox a trial names `name` keeps its directory.
+    pub(crate) fn run_dir(&self, name: &str) -> PathBuf {
+        self.state.path().join(RUNS_DIR).join(id_of(name).as_str())
     }
+}
+
+/// The sandbox identifier a trial names `name`: the same valid v7 identifier
+/// for the same name, so a trial finds the cgroup and directory it built by
+/// the name it used.
+pub(crate) fn id_of(name: &str) -> Uuid7 {
+    let digest = af_core::etag::sha256_hex(name.as_bytes());
+    Uuid7::parse(&format!("0198f0c2-7a3e-7c1d-9b2e-{}", &digest[..12]))
+        .unwrap_or_else(|refused| unreachable!("{refused}"))
+}
+
+/// A spec for `id` under `limits`, as bubblewrap grants them: every cap.
+pub(crate) fn spec(id: &Uuid7, limits: Limits) -> SandboxSpec<'_> {
+    let granted = ResourceFacts::ENFORCED
+        .grant(SandboxEngine::Bubblewrap, limits)
+        .unwrap_or_else(|refused| unreachable!("{refused}"));
+    SandboxSpec::new(id, granted)
 }
 
 /// Every prerequisite this host lacks, named; empty when the lane can run.

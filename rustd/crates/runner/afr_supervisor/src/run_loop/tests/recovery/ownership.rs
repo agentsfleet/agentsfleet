@@ -1,4 +1,4 @@
-//! A frozen sandbox and an API-only run share authenticated checkpoint ownership.
+//! A quiet sandbox and an API-only run share authenticated checkpoint ownership.
 
 use super::*;
 use crate::{
@@ -6,7 +6,7 @@ use crate::{
     egress::{Bound, Egress},
     holds::{BuiltUnder, HoldKey},
     run_loop::{Ids, segments::Timeline},
-    test_support::{self, Answer, Behaviour, FakeAgent, FakeEngine, Freezer, Rig},
+    test_support::{self, Answer, Behaviour, FakeAgent, FakeEngine, Parking, Rig},
 };
 use af_wire::{
     durable_task::{
@@ -15,7 +15,7 @@ use af_wire::{
     run::RunPayload,
 };
 use afr_agent::Meter;
-use afr_sandbox::{Engine as _, Limits, SandboxRequest};
+use afr_sandbox::Limits;
 use std::sync::{Arc, OnceLock, atomic::Ordering};
 use tokio_util::sync::CancellationToken;
 
@@ -48,19 +48,22 @@ async fn api_recovery_uses_manifest_cursors_and_current_durable_task_identity() 
 }
 
 #[tokio::test]
-async fn frozen_recovery_installs_history_only_after_a_successful_thaw() -> Result<()> {
-    for freezer in [Freezer::Works, Freezer::RefusesThaw] {
+async fn recovery_installs_history_only_into_a_quiet_sandbox() -> Result<()> {
+    for parking in [Parking::Works, Parking::BusyTenant] {
         let fixture = Fixture::new(saved)?;
         let root = tempfile::tempdir()?;
-        let (engine, sandbox) = sandbox(root.path(), freezer).await?;
+        let (engine, sandbox) = sandbox(root.path(), parking).await?;
         let owner = OnceLock::new();
         let result = fixture
             .run()?
             .prepare_recovery(sandbox.as_ref(), &fixture.build(&owner))
             .await;
-        assert_eq!(engine.frozen.load(Ordering::SeqCst), 1);
-        assert_eq!(engine.thaw_attempts.load(Ordering::SeqCst), 1);
-        if freezer == Freezer::Works {
+        assert_eq!(
+            engine.parked.load(Ordering::SeqCst),
+            0,
+            "a restore parks nothing"
+        );
+        if parking == Parking::Works {
             result?;
             let state = owner
                 .get()
@@ -77,31 +80,24 @@ async fn frozen_recovery_installs_history_only_after_a_successful_thaw() -> Resu
             );
             assert!(state.base.is_some());
             assert_eq!(state.base_paths.len(), 0);
-            assert_eq!(engine.thawed.load(Ordering::SeqCst), 1);
         } else {
             let Err(failure) = result else {
-                return Err(error::config("failed thaw was accepted"));
+                return Err(error::config("a busy sandbox was restored into"));
             };
             assert!(
-                matches!(failure.kind(), error::ErrorKind::Boundary { detail, .. }
-                if *detail == "sandbox could not thaw after recovery")
+                matches!(failure.kind(), error::ErrorKind::Config { detail }
+                if *detail == "a tenant process still owns the recovery workspace"),
+                "{failure:?}"
             );
-            let mut cause = std::error::Error::source(&failure);
-            let mut freezer_cause = false;
-            while let Some(source) = cause {
-                freezer_cause |= source.to_string().contains(test_support::NO_FREEZER);
-                cause = source.source();
-            }
-            assert!(freezer_cause, "{failure:?}");
             assert!(owner.get().is_none());
-            assert_eq!(engine.thawed.load(Ordering::SeqCst), 0);
+            assert_eq!(std::fs::read_dir(root.path())?.count(), 0);
         }
     }
     Ok(())
 }
 
 #[tokio::test]
-async fn a_restore_refusal_remains_primary_when_thaw_also_fails() -> Result<()> {
+async fn a_restore_refusal_installs_nothing_and_leaves_the_workspace_empty() -> Result<()> {
     let fixture = Fixture::new(|call| {
         (call.verb == Verb::DurableTaskCheckpointAuthorizations).then(|| {
             Answer::Fail(error::refused(
@@ -112,7 +108,7 @@ async fn a_restore_refusal_remains_primary_when_thaw_also_fails() -> Result<()> 
         })
     })?;
     let root = tempfile::tempdir()?;
-    let (engine, sandbox) = sandbox(root.path(), Freezer::RefusesThaw).await?;
+    let (engine, sandbox) = sandbox(root.path(), Parking::Works).await?;
     let owner = OnceLock::new();
     let result = fixture
         .run()?
@@ -126,9 +122,7 @@ async fn a_restore_refusal_remains_primary_when_thaw_also_fails() -> Result<()> 
         af_core::error_code::DURABLE_TASK_STALE_STATE
     );
     assert!(owner.get().is_none());
-    assert_eq!(engine.frozen.load(Ordering::SeqCst), 1);
-    assert_eq!(engine.thaw_attempts.load(Ordering::SeqCst), 1);
-    assert_eq!(engine.thawed.load(Ordering::SeqCst), 0);
+    assert_eq!(engine.parked.load(Ordering::SeqCst), 0);
     assert_eq!(std::fs::read_dir(root.path())?.count(), 0);
     Ok(())
 }
@@ -179,8 +173,8 @@ mod boundary_tests;
 #[path = "ownership/turn.rs"]
 mod turn_tests;
 
-#[path = "ownership/frozen.rs"]
-mod frozen_tests;
+#[path = "ownership/final_capture.rs"]
+mod final_capture_tests;
 
 #[path = "ownership/checkout.rs"]
 mod checkout_tests;
@@ -190,16 +184,16 @@ mod hold_tests;
 
 async fn sandbox(
     root: &std::path::Path,
-    freezer: Freezer,
+    parking: Parking,
 ) -> Result<(FakeEngine, Box<dyn Sandbox>)> {
     let engine = FakeEngine {
         workspace: Some(root.to_owned()),
         toolbox: Some(api_toolbox()),
-        freezer,
+        parking,
         ..FakeEngine::default()
     };
     let sandbox = engine
-        .prepare(SandboxRequest::new(test_support::RUN_ID, Limits::default()))
+        .sandbox()
         .await
         .map_err(|source| error::boundary("fixture sandbox", source))?;
     Ok((engine, sandbox))

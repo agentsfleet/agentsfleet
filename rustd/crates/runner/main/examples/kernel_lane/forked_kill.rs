@@ -4,8 +4,9 @@
 
 use std::fs;
 
+use crate::lane::{id_of, spec};
 use afr_executor::Ending;
-use afr_sandbox::{Engine as _, Limits, SANDBOX_LEAF, SandboxRequest, TENANT_LEAF};
+use afr_sandbox::{Engine as _, Limits, SANDBOX_LEAF, TENANT_LEAF};
 use libtest_mimic::Failed;
 
 use crate::exhaustion::{MEMORY_EVENTS, NO_OOM_KILLS, SMALL_MEMORY};
@@ -33,11 +34,12 @@ pub(crate) fn forked_oom(lane: &Lane) -> Result<(), Failed> {
         ..Limits::default()
     };
     let events = |leaf: &str| {
-        let path = lane.config.cgroup_root.join(RUN).join(leaf);
+        let path = lane.config.cgroup_root.join(id_of(RUN).as_str()).join(leaf);
         fs::read_to_string(path.join(MEMORY_EVENTS)).unwrap_or_default()
     };
     let (hog, sandbox_events, tenant_events) = runtime().block_on(async {
-        let request = SandboxRequest::new(RUN, limits);
+        let sandbox_id = id_of(RUN);
+        let request = spec(&sandbox_id, limits);
         let sandbox = lane.engine().prepare(request).await?;
         let hog = run_in(sandbox.executor(), shell(FORKED_HOG)).await;
         let counted = (events(SANDBOX_LEAF), events(TENANT_LEAF));

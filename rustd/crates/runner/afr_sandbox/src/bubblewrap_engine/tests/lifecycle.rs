@@ -13,7 +13,7 @@ use std::os::unix::fs::PermissionsExt as _;
 use std::time::{Duration, Instant};
 
 use super::super::parts::{Parts, in_child};
-use super::support::{CLOSER, FakeHost, SLEEPER, request, serve_runs};
+use super::support::{CLOSER, FakeHost, SLEEPER, id_of, serve_runs, spec};
 use crate::engine::{Engine as _, Killed};
 use crate::tenant::{Handover, TenantFiles};
 
@@ -52,11 +52,14 @@ fn handover(leaf: &std::path::Path) -> Handover {
 async fn test_a_kill_settles_only_once_the_cgroup_reads_empty() {
     let host = FakeHost::new(SLEEPER);
     let server = serve_runs(host.config.state_dir.clone());
-    let sandbox = host.engine().prepare(request("run-13")).await.unwrap();
+    let sandbox = host.engine().prepare(spec(&id_of("run-13"))).await.unwrap();
 
     let unread = sandbox.kill().await;
     fs::write(
-        host.config.cgroup_root.join("run-13").join("cgroup.events"),
+        host.config
+            .cgroup_root
+            .join(id_of("run-13").as_str())
+            .join("cgroup.events"),
         "populated 0\n",
     )
     .unwrap();
@@ -90,7 +93,11 @@ async fn test_a_sandbox_that_drops_its_link_is_refused_as_not_ready() {
     let host = FakeHost::new(CLOSER);
     let started = Instant::now();
 
-    let refused = host.engine().prepare(request("run-15")).await.unwrap_err();
+    let refused = host
+        .engine()
+        .prepare(spec(&id_of("run-15")))
+        .await
+        .unwrap_err();
 
     let took = started.elapsed();
     let said = refused.to_string();

@@ -39,7 +39,9 @@ impl afr_sandbox::Resources for Held {
 async fn test_booted_host_retains_resources_while_its_engine_serves() {
     use std::sync::atomic::{AtomicBool, Ordering};
 
-    use afr_sandbox::{Booted, Limits, ProbePaths, SandboxRequest, Started, UnsandboxedEngine};
+    use afr_sandbox::{
+        Booted, Limits, ProbePaths, SandboxSpec, Started, UnsandboxedEngine, fresh_sandbox_id,
+    };
 
     let dir = tempfile::tempdir_in("/tmp").unwrap();
     let released = Arc::new(AtomicBool::new(false));
@@ -53,14 +55,12 @@ async fn test_booted_host_retains_resources_while_its_engine_serves() {
     });
     assert_eq!(host.probe, probe);
     assert!(!released.load(Ordering::SeqCst));
-    let sandbox = host
-        .engine
-        .prepare(SandboxRequest::new("host-transfer", Limits::default()))
-        .await
-        .unwrap();
+    let id = fresh_sandbox_id();
+    let spec = SandboxSpec::granted_by(host.engine.as_ref(), &id, Limits::DEFAULT).unwrap();
+    let sandbox = host.engine.prepare(spec).await.unwrap();
     assert_eq!(
         sandbox.workspace().unwrap().root,
-        dir.path().join("host-transfer/workspace")
+        dir.path().join(id.as_str()).join("workspace")
     );
     sandbox.destroy().await.unwrap();
     assert!(!released.load(Ordering::SeqCst));

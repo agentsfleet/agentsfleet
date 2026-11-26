@@ -15,25 +15,26 @@ impl Parts {
     /// directory, off the async runtime: removing a cgroup waits for the
     /// kernel to reap.
     pub(in crate::bubblewrap_engine) async fn teardown(mut self) -> Result<()> {
-        let run_id = self.run_id.as_str();
+        let sandbox_id = self.sandbox_id.as_str();
         let event = EVENT_TEARDOWN_STARTED;
-        tracing::debug!(run_id, event);
+        tracing::debug!(sandbox_id, event);
         if let Some(drain) = self.stderr.take() {
             drain.abort();
         }
-        // The run's name comes back with the outcome, so the release is
+        // The sandbox identifier comes back with the outcome, so the release is
         // logged here, where the caller's subscriber is.
-        let (released, run_id) =
-            tokio::task::spawn_blocking(move || (self.release(), std::mem::take(&mut self.run_id)))
-                .await?;
-        log_release(&run_id, released.as_ref().err());
+        let (released, sandbox_id) = tokio::task::spawn_blocking(move || {
+            (self.release(), std::mem::take(&mut self.sandbox_id))
+        })
+        .await?;
+        log_release(&sandbox_id, released.as_ref().err());
         released
     }
 
     /// Moves everything still held into parts of its own, leaving these empty.
     fn take(&mut self) -> Self {
         Self {
-            run_id: std::mem::take(&mut self.run_id),
+            sandbox_id: std::mem::take(&mut self.sandbox_id),
             dir: self.dir.take(),
             disk: self.disk.take(),
             cgroup: self.cgroup.take(),
@@ -125,16 +126,16 @@ struct Release(Parts);
 impl Drop for Release {
     fn drop(&mut self) {
         let released = self.0.release();
-        log_release(&self.0.run_id, released.as_ref().err());
+        log_release(&self.0.sandbox_id, released.as_ref().err());
     }
 }
 
 /// Logs how a release ended.
-fn log_release(run_id: &str, failed: Option<&Error>) {
+fn log_release(sandbox_id: &str, failed: Option<&Error>) {
     match failed {
         None => {
             let event = EVENT_TEARDOWN_COMPLETED;
-            tracing::debug!(run_id, event);
+            tracing::debug!(sandbox_id, event);
         }
         Some(error) => {
             let Logged { error_code, reason } = error.logged();
@@ -143,7 +144,7 @@ fn log_release(run_id: &str, failed: Option<&Error>) {
                 let (message,) = (format_args!(
                     "a sandbox left something behind for the boot sweep"
                 ),);
-                tracing::warn!(message, run_id, error_code, reason, event);
+                tracing::warn!(message, sandbox_id, error_code, reason, event);
             };
         }
     }

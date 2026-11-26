@@ -1,7 +1,18 @@
-use af_wire::runner::{NetworkPolicy, SandboxTier};
-use afr_sandbox::{HostProbe, Kvm, REQUIRED_CONTROLLERS};
+use af_wire::runner::{Isolation, NetworkPolicy, SandboxEngine, SandboxTier};
+use afr_sandbox::{
+    BUBBLEWRAP_CAPABILITIES, Capabilities, HostProbe, Kvm, REQUIRED_CONTROLLERS, ResourceFacts,
+    UnsandboxedEngine,
+};
 
 use super::{CGROUP_OFF, CGROUP_ON, capability_report, probe_answer, selftest};
+
+/// An engine behind a virtual machine, which relies on the KVM device.
+const MICROVM: Capabilities = Capabilities {
+    engine: SandboxEngine::Firecracker,
+    isolation: Isolation::HardwareVm,
+    parks: &[],
+    resources: ResourceFacts::ENFORCED,
+};
 
 fn probe(kvm: Kvm, toolbox_filesystem: bool) -> HostProbe {
     HostProbe {
@@ -33,16 +44,19 @@ fn check(report: &af_wire::runner::SelftestReport<'_>, name: &str) -> (bool, Str
 fn test_capability_report_states_kvm_and_toolbox_fs() {
     let usable = selftest(
         &probe(Kvm::Usable, true),
+        &MICROVM,
         SandboxTier::LandlockFull,
         NetworkPolicy::AllowAll,
     );
     let denied = selftest(
         &probe(Kvm::Denied, true),
+        &MICROVM,
         SandboxTier::LandlockFull,
         NetworkPolicy::AllowAll,
     );
     let absent = selftest(
         &probe(Kvm::Absent, false),
+        &MICROVM,
         SandboxTier::DevNone,
         NetworkPolicy::DenyAllEgress,
     );
@@ -83,25 +97,35 @@ fn every_missing_mechanism_fails_its_own_check() {
         egress: false,
     };
 
-    let report = selftest(&bare, SandboxTier::DevNone, NetworkPolicy::AllowAll);
+    for engine in [BUBBLEWRAP_CAPABILITIES, MICROVM] {
+        let report = selftest(
+            &bare,
+            &engine,
+            SandboxTier::DevNone,
+            NetworkPolicy::AllowAll,
+        );
 
-    assert!(report.checks.iter().all(|check| !check.ok));
-    assert!(
-        report
-            .checks
-            .iter()
-            .all(|check| check.detail.chars().count() <= af_validate::TEXT_MAX_CHARS)
-    );
+        assert!(report.checks.iter().all(|check| !check.ok), "{engine:?}");
+        assert!(
+            report
+                .checks
+                .iter()
+                .all(|check| check.detail.chars().count() <= af_validate::TEXT_MAX_CHARS)
+        );
+    }
 }
 
 #[test]
 fn the_report_carries_the_wire_mechanisms() {
     let probe = probe(Kvm::Usable, true);
 
-    let report = capability_report(&probe);
+    let report = capability_report(&probe, &BUBBLEWRAP_CAPABILITIES);
 
     assert!(report.landlock && report.seccomp && report.bubblewrap);
     assert_eq!(report.cgroup_controllers.len(), 4);
+    assert_eq!(report.engine, SandboxEngine::Bubblewrap);
+    assert_eq!(report.isolation, Isolation::SharedKernel);
+    assert_eq!(report.kvm, Kvm::Usable);
 }
 
 /// Egress enforcement is the probe's measurement, never a constant: a host
@@ -115,8 +139,9 @@ fn test_egress_probe_reports_enforcement() {
         ..probe(Kvm::Usable, true)
     };
 
-    assert!(capability_report(&measured(true)).egress_enforcement);
-    assert!(!capability_report(&measured(false)).egress_enforcement);
+    let engine = &BUBBLEWRAP_CAPABILITIES;
+    assert!(capability_report(&measured(true), engine).egress_enforcement);
+    assert!(!capability_report(&measured(false), engine).egress_enforcement);
 }
 
 /// The probe command answers with the heartbeat's report and every check, so
@@ -125,9 +150,12 @@ fn test_egress_probe_reports_enforcement() {
 fn the_probe_answer_is_the_report_plus_every_check() {
     let host = probe(Kvm::Absent, false);
 
-    let answer = probe_answer(&host);
+    let answer = probe_answer(&host, &BUBBLEWRAP_CAPABILITIES);
 
-    assert_eq!(answer.capability_report, capability_report(&host));
+    assert_eq!(
+        answer.capability_report,
+        capability_report(&host, &BUBBLEWRAP_CAPABILITIES)
+    );
     let names: Vec<_> = answer
         .checks
         .iter()
@@ -140,7 +168,6 @@ fn the_probe_answer_is_the_report_plus_every_check() {
             "seccomp",
             "bubblewrap",
             "cgroup_controllers",
-            "kvm",
             "toolbox_filesystem"
         ]
     );
@@ -150,7 +177,65 @@ fn the_probe_answer_is_the_report_plus_every_check() {
         .filter(|check| !check.ok)
         .map(|check| check.name.as_ref())
         .collect();
-    assert_eq!(refused, ["kvm", "toolbox_filesystem"]);
+    assert_eq!(refused, ["toolbox_filesystem"]);
+}
+
+/// A host is judged only on what its engine relies on: the launcher for
+/// bubblewrap, the KVM device for an engine behind a virtual machine, and
+/// neither for the unsandboxed engine.
+#[test]
+fn the_checks_are_only_those_the_engine_relies_on() {
+    let host = probe(Kvm::Usable, true);
+    let checked = |engine: &Capabilities| -> Vec<String> {
+        probe_answer(&host, engine)
+            .checks
+            .iter()
+            .map(|check| check.name.to_string())
+            .collect()
+    };
+
+    for (engine, bubblewrap, kvm) in [
+        (BUBBLEWRAP_CAPABILITIES, true, false),
+        (MICROVM, false, true),
+        (UnsandboxedEngine::CAPABILITIES, false, false),
+    ] {
+        let named = checked(&engine);
+        assert_eq!(
+            named.iter().any(|name| name == "bubblewrap"),
+            bubblewrap,
+            "{named:?}"
+        );
+        assert_eq!(named.iter().any(|name| name == "kvm"), kvm, "{named:?}");
+    }
+}
+
+/// A bubblewrap host needs no KVM device: one without it passes its
+/// self-test, while the same host under an engine behind a virtual machine
+/// fails on the KVM check alone.
+#[test]
+fn a_bubblewrap_host_without_kvm_passes_its_selftest() {
+    let tier = SandboxTier::LandlockFull;
+    let network = NetworkPolicy::AllowAll;
+
+    let bubblewrap = selftest(
+        &probe(Kvm::Absent, true),
+        &BUBBLEWRAP_CAPABILITIES,
+        tier,
+        network,
+    );
+    let microvm = selftest(&probe(Kvm::Denied, true), &MICROVM, tier, network);
+
+    assert!(bubblewrap.all_ok, "{:?}", bubblewrap.checks);
+    assert!(!microvm.all_ok);
+    let failing: Vec<_> = microvm
+        .checks
+        .iter()
+        .filter(|check| !check.ok)
+        .map(|check| check.name.as_ref())
+        .collect();
+    assert_eq!(failing, ["kvm"]);
+    let (_, detail) = check(&microvm, "kvm");
+    assert_eq!(detail, super::KVM_DENIED);
 }
 
 #[test]
@@ -161,7 +246,12 @@ fn test_direct_io_check_follows_the_probe() {
             egress: false,
             ..probe(Kvm::Usable, true)
         };
-        selftest(&probe, SandboxTier::LandlockFull, NetworkPolicy::AllowAll)
+        selftest(
+            &probe,
+            &BUBBLEWRAP_CAPABILITIES,
+            SandboxTier::LandlockFull,
+            NetworkPolicy::AllowAll,
+        )
     };
 
     let unnamed = stated(None);

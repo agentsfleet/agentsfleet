@@ -7,10 +7,14 @@ use serde::{Deserialize, Serialize};
 
 use af_validate::TEXT_MAX_CHARS;
 
+use super::{Isolation, Kvm, SandboxEngine};
+
 /// What this host can actually enforce.
 //
-// Probed at startup and refreshed per beat. Each field is one enforcement
-// mechanism a degraded reason can name.
+// Probed at startup and refreshed per beat. Each Linux field is one
+// enforcement mechanism a degraded reason can name; the engine fields say what
+// builds the sandboxes, so the daemon reads a virtual machine's wall as proof
+// without asking for Linux mechanisms it does not use.
 ///
 // The flags stay separate booleans rather than collapsing into a bitset or an
 // enum: each names a distinct mechanism a degraded reason quotes back to an
@@ -49,6 +53,22 @@ pub struct CapabilityReport<'a> {
     /// Whether the operating system can restrict outgoing network access to allowed hosts.
     #[garde(skip)]
     pub egress_enforcement: bool,
+    /// The engine that builds this runner's sandboxes.
+    #[garde(skip)]
+    pub engine: SandboxEngine,
+    /// The wall that engine puts between a sandbox's code and the host.
+    #[garde(skip)]
+    pub isolation: Isolation,
+    /// What the host's virtualization device offers.
+    #[garde(skip)]
+    pub kvm: Kvm,
+    /// How many sandboxes the host's memory holds at once; absent where the
+    /// engine reserves no memory per sandbox.
+    // At least one; at most the Postgres `INTEGER` a count is stored in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(minimum = 1, maximum = 2_147_483_647_u32))]
+    #[garde(inner(range(min = 1, max = i32::MAX.unsigned_abs())))]
+    pub sandboxes_max: Option<u32>,
 }
 
 /// What the host offers its runs, as one beat read it. A fact the host could

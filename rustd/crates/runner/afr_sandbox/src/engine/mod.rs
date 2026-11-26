@@ -1,26 +1,31 @@
 //! The interface every engine meets.
 
 use std::fmt;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Duration;
 
+use af_core::id::Uuid7;
 use afr_executor::{Executor, Sizes};
 
 use crate::error::{Error, Result};
 use crate::network::{Allowlist, Network};
 
-/// Memory a run's sandbox may hold before its tree is killed.
+mod facts;
+
+pub use self::facts::{Cap, Capabilities, Environment, Granted, ParkMode, ResourceFacts, Root};
+
+/// Memory a run's sandbox may use before its tree is killed.
 pub const DEFAULT_MEMORY_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 /// Processor share, in thousandths of one core.
 pub const DEFAULT_CPU_MILLIS: u32 = 2_000;
-/// Processes and threads the sandbox's tree may hold at once.
+/// Processes and threads the sandbox's tree may run at once.
 pub const DEFAULT_PIDS: u32 = 512;
 /// Size of the run's workspace disk; a write past it answers `ENOSPC`.
 pub const DEFAULT_DISK_BYTES: u64 = 4 * 1024 * 1024 * 1024;
 /// The share of a sandbox's memory its `/dev/shm` may fill: one part in this
 /// many. Shared memory is a `tmpfs`, so its pages stay charged to the tenant
 /// after the process that wrote them dies; uncapped, one full `/dev/shm`
-/// leaves every later command in the run, and in a held sandbox the next
+/// leaves every later command in the run, and in a parked sandbox the next
 /// run too, killed for memory at its first allocation.
 const SHARED_MEMORY_SHARE: u64 = 4;
 
@@ -33,7 +38,7 @@ pub struct EngineTuning {
     pub ready_timeout: Duration,
     /// Disk bytes a run's sandbox may read, and write, per second.
     pub io_bytes_per_second: u64,
-    /// What every sandbox's executor serves with and its client holds the
+    /// What every sandbox's executor serves with and its client keeps the
     /// link to: the engine starts the one and connects the other with these.
     pub sizes: Sizes,
 }
@@ -96,87 +101,100 @@ pub struct HostWorkspace<'a> {
 
 /// What a sandbox is built for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SandboxRequest<'a> {
-    /// The run it serves, which names its workspace and cgroup.
-    pub run_id: &'a str,
-    /// What it enforces.
-    pub limits: Limits,
+pub struct SandboxSpec<'a> {
+    /// Its identifier, minted by the caller: every directory, cgroup and
+    /// device the engine makes for it carries this name, so a leftover of a
+    /// build that ended badly is found by it.
+    pub id: &'a Uuid7,
+    /// What it enforces, as its engine admitted.
+    pub granted: Granted,
     /// What its network reaches.
     pub network: Network<'a>,
 }
 
-impl<'a> SandboxRequest<'a> {
-    /// A sandbox for `run_id` enforcing `limits`, reaching nothing beyond
-    /// loopback until [`SandboxRequest::with_network`] says otherwise: an
-    /// engine never opens a network no one asked for.
+impl<'a> SandboxSpec<'a> {
+    /// A sandbox named `id` enforcing `granted`, reaching nothing beyond
+    /// loopback until [`SandboxSpec::with_network`] says otherwise: an engine
+    /// never opens a network no one asked for.
     #[must_use]
-    pub const fn new(run_id: &'a str, limits: Limits) -> Self {
+    pub const fn new(id: &'a Uuid7, granted: Granted) -> Self {
         Self {
-            run_id,
-            limits,
+            id,
+            granted,
             network: Network::Isolated,
         }
     }
 
-    /// The same request, its network reaching what `network` names.
+    /// The spec `engine` builds for `id`: `limits` as `engine` grants them,
+    /// and no network yet.
+    ///
+    /// # Errors
+    /// As [`Engine::grant`].
+    pub fn granted_by(engine: &dyn Engine, id: &'a Uuid7, limits: Limits) -> Result<Self> {
+        Ok(Self::new(id, engine.grant(limits)?))
+    }
+
+    /// The same spec, its network reaching what `network` names.
     #[must_use]
     pub const fn with_network(self, network: Network<'a>) -> Self {
         Self { network, ..self }
     }
-
-    /// The run's identifier, checked as a name its directory and its cgroup
-    /// can both carry.
-    ///
-    /// # Errors
-    /// The identifier is not exactly one plain path segment, so it could name
-    /// a directory outside its base or one shared with another run.
-    pub(crate) fn name(&self) -> Result<RunName<'a>> {
-        RunName::parse(self.run_id)
-    }
 }
 
-/// A run identifier that is one plain path segment: no separator, not empty,
-/// not `.` or `..`. Checked once, so the directory and the cgroup named by it
-/// are the same run's.
+/// A fresh sandbox identifier, minted the one way identifiers are, for a
+/// test that builds a sandbox.
 ///
-/// A segment is checked as text rather than through `Path::components`, which
-/// reads `x/` and `x/.` as the single segment `x`.
+/// # Panics
+/// When the operating system refuses entropy, which fails the test.
+#[cfg(any(test, feature = "test-util"))]
+#[must_use]
+#[expect(
+    clippy::expect_used,
+    reason = "test support: a host with no entropy fails the test loudly"
+)]
+pub fn fresh_sandbox_id() -> Uuid7 {
+    af_crypto::entropy::Entropy::new()
+        .uuid7(af_core::clock::now())
+        .expect("the operating system gives entropy")
+}
+
+/// Whether a sandbox can still serve.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct RunName<'a>(&'a str);
+pub enum SandboxState {
+    /// Its executor is up.
+    Running,
+    /// Its executor or its processes are gone; it serves nothing more and is
+    /// only destroyed.
+    Ended,
+}
 
-impl<'a> RunName<'a> {
-    /// The segments that name a directory without being one of their own.
-    const RELATIVE: [&'static str; 2] = [".", ".."];
+/// What [`Sandbox::quiesce`] read from the engine's own mechanism.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Quiescence {
+    /// No tenant process remains; only the resident executor may run, and
+    /// its memory is never captured.
+    Quiet,
+    /// A tenant process still runs, so the disk may still change.
+    Busy,
+}
 
-    /// `run_id` as a name, or a refusal.
-    fn parse(run_id: &'a str) -> Result<Self> {
-        let plain = !run_id.is_empty()
-            && !run_id.contains(std::path::MAIN_SEPARATOR)
-            && !run_id.contains('\0')
-            && !Self::RELATIVE.contains(&run_id);
-        if plain {
-            Ok(Self(run_id))
-        } else {
-            Err(crate::error::run_id_unsafe(run_id))
-        }
-    }
+/// What [`Engine::sweep`] looks for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Sweep<'a> {
+    /// Everything this engine made that a previous runner left: at boot,
+    /// when no sandbox is live.
+    Leftovers,
+    /// What a build of unknown outcome may have left of one sandbox.
+    Sandbox(&'a Uuid7),
+}
 
-    /// The name as given.
-    #[cfg_attr(
-        not(target_os = "linux"),
-        expect(
-            dead_code,
-            reason = "the bubblewrap engine, Linux only, names its cgroup by it"
-        )
-    )]
-    pub(crate) const fn as_str(self) -> &'a str {
-        self.0
-    }
-
-    /// The run's own directory under `base`.
-    pub(crate) fn dir_in(self, base: &Path) -> PathBuf {
-        base.join(self.0)
-    }
+/// What [`Engine::sweep`] removed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Swept {
+    /// Pieces destroyed: directories, cgroups, devices, processes.
+    pub destroyed: usize,
+    /// Pieces it found and could not remove.
+    pub left: usize,
 }
 
 /// What a [`Sandbox::kill`] proves about the processes inside.
@@ -194,77 +212,87 @@ pub enum Killed {
 /// Builds one sandbox per run.
 #[async_trait::async_trait]
 pub trait Engine: Send + Sync + fmt::Debug {
-    /// Builds a sandbox with its executor ready, or refuses.
+    /// What it is and guarantees every sandbox it builds.
+    fn capabilities(&self) -> Capabilities;
+
+    /// `limits` as this engine will enforce them, decided before anything is
+    /// built: what a run reports is the grant, never the ask.
+    ///
+    /// # Errors
+    /// A cap this engine has no mechanism for.
+    fn grant(&self, limits: Limits) -> Result<Granted>;
+
+    /// Builds the sandbox `spec` names, with its executor ready, or refuses.
     ///
     /// A sandbox that cannot be built refuses the run; nothing ever runs
-    /// unsandboxed in its place.
-    async fn prepare(&self, request: SandboxRequest<'_>) -> Result<Box<dyn Sandbox>>;
+    /// unsandboxed in its place. A build whose outcome the engine cannot
+    /// tell answers [`crate::Error::is_ambiguous`]; the caller then sweeps
+    /// it once and never builds that identifier again.
+    ///
+    /// # Errors
+    /// The build failed, the identifier names a live sandbox, or the outcome
+    /// is unknown.
+    async fn prepare(&self, spec: SandboxSpec<'_>) -> Result<Box<dyn Sandbox>>;
+
+    /// Destroys what `scope` names that this engine made and no live sandbox
+    /// owns.
+    ///
+    /// # Errors
+    /// Nothing could be read; what it found and could not remove is counted
+    /// in [`Swept::left`] instead.
+    async fn sweep(&self, scope: Sweep<'_>) -> Result<Swept>;
 }
 
 /// One run's sandbox, owned by the task running that run.
 #[async_trait::async_trait]
 pub trait Sandbox: Send + Sync + fmt::Debug {
-    /// Verified immutable toolbox image used by checkpoint compatibility.
-    fn toolbox_digest(&self) -> Option<&str> {
-        None
-    }
+    /// The identifier it was built under.
+    fn id(&self) -> &Uuid7;
+
+    /// What its code runs on, which a checkpoint must match to restore.
+    fn environment(&self) -> &Environment;
+
+    /// What it enforces.
+    fn granted(&self) -> &Granted;
 
     /// The executor running inside it.
     fn executor(&self) -> &dyn Executor;
 
     /// The workspace as the host sees it, so the supervisor can fill it
     /// before the turn runs; none for an engine whose workspace the host
-    /// cannot reach, such as a microVM's disk.
-    fn workspace(&self) -> Option<HostWorkspace<'_>> {
-        None
-    }
+    /// cannot reach.
+    fn workspace(&self) -> Option<HostWorkspace<'_>>;
 
-    /// Whether the sandbox is still up. A warm slot whose sandbox died while
-    /// it waited is discarded on claim rather than handed to a run; an
-    /// engine with no process to watch keeps the default.
-    fn is_running(&mut self) -> bool {
-        true
-    }
+    /// Whether it can still serve. A warm slot whose sandbox ended while it
+    /// waited is discarded on claim rather than handed to a run.
+    fn state(&mut self) -> SandboxState;
 
-    /// Stops every process inside where it stands, keeping its memory and its
-    /// workspace, until [`Sandbox::thaw`]; returns once nothing in it runs.
-    /// Between two runs of one fleet the runner holds its sandbox frozen.
+    /// Whether any tenant process remains, read from the engine's own
+    /// mechanism rather than remembered.
     ///
     /// # Errors
-    /// The engine cannot stop the sandbox's processes, or cannot confirm they
-    /// stopped. A sandbox that will not freeze is destroyed, never held.
-    async fn freeze(&self) -> Result<()>;
+    /// The engine cannot tell; a caller treats that as
+    /// [`Quiescence::Busy`].
+    async fn quiesce(&self) -> Result<Quiescence>;
 
-    /// Proves no tenant process remains after a confirmed freeze.
-    /// The resident executor may remain; its memory is never captured.
+    /// Parks it in `mode` between two runs of one fleet; returns once it is
+    /// parked. A parked sandbox runs nothing and answers nothing until
+    /// [`Parked::resume`], so it is a different type.
     ///
     /// # Errors
-    /// The engine cannot prove quiescence. Unsupported engines fail closed.
-    async fn recovery_quiescent(&self) -> Result<bool> {
-        Err(crate::error::unconfined(
-            "this engine cannot prove recovery quiescence",
-        ))
-    }
+    /// `mode` is not one its engine offers, or parking could not be
+    /// confirmed. The engine has then destroyed it.
+    async fn park(self: Box<Self>, mode: ParkMode) -> Result<Box<dyn Parked>>;
 
-    /// Lets every process a [`Sandbox::freeze`] stopped run on; returns once
-    /// none is still stopped.
-    ///
-    /// # Errors
-    /// As [`Sandbox::freeze`]. A sandbox that will not thaw is destroyed, and
-    /// its run gets a fresh one.
-    async fn thaw(&self) -> Result<()>;
-
-    /// Holds the sandbox to `allowlist` from now on, in place of the
-    /// allowlist it was built to, and renders its names to match: what a held
-    /// sandbox takes when its next run's hosts resolved anew. The addresses
-    /// change in one transaction, so no connection meets half of each set;
-    /// call it while the sandbox is frozen, so nothing reads its names
-    /// mid-write.
+    /// Confines the sandbox to `allowlist` from now on, in place of the
+    /// allowlist it was built to, and renders its names to match: what a
+    /// resumed sandbox takes when its next run's hosts resolved anew. The
+    /// addresses change in one transaction, so no connection meets half of
+    /// each set; call it before the run's first command.
     ///
     /// # Errors
     /// The sandbox was built to no allowlist, the kernel refused the swap, or
-    /// its names would not render. A sandbox that refuses is destroyed, never
-    /// resumed.
+    /// its names would not render. A sandbox that refuses is destroyed.
     async fn reallow(&mut self, allowlist: &Allowlist) -> Result<()>;
 
     /// Ends every process inside and waits, bounded, for the tree to empty.
@@ -276,6 +304,26 @@ pub trait Sandbox: Send + Sync + fmt::Debug {
     ///
     /// Takes the sandbox by value: a destroyed sandbox cannot be used again,
     /// and the type system, not a flag, is what says so.
+    async fn destroy(self: Box<Self>) -> Result<()>;
+}
+
+/// A sandbox parked between two runs of its fleet: it can only resume or go.
+#[async_trait::async_trait]
+pub trait Parked: Send + Sync + fmt::Debug {
+    /// The identifier it was built under.
+    fn id(&self) -> &Uuid7;
+
+    /// How it is parked.
+    fn mode(&self) -> ParkMode;
+
+    /// Serves again; returns once its executor answers.
+    ///
+    /// # Errors
+    /// It would not resume, and the engine has destroyed it; its run gets a
+    /// fresh sandbox.
+    async fn resume(self: Box<Self>) -> Result<Box<dyn Sandbox>>;
+
+    /// Removes what it held.
     async fn destroy(self: Box<Self>) -> Result<()>;
 }
 

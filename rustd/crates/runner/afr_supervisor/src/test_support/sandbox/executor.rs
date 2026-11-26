@@ -1,29 +1,29 @@
 //! A fake executor has explicit recovery proof and no hidden host work.
 
-use super::{EXECUTOR_GONE, Freezer};
+use super::{EXECUTOR_GONE, Parking};
 use afr_executor::{Executor, FileContent, Listing, Process, ProcessId, Spawn};
 use bytes::Bytes;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::mpsc;
 
 /// An executor that refuses to spawn, reports the files written into it, and
-/// answers everything else emptily, until its sandbox's freezer says not.
+/// answers everything else emptily, until its sandbox's parking says not.
 #[derive(Debug, Default)]
 pub(super) struct FakeExecutor {
     pub(super) written: Option<mpsc::UnboundedSender<(String, Bytes)>>,
-    /// What its sandbox does when thawed.
-    pub(super) freezer: Freezer,
-    /// Whether its sandbox was thawed.
-    pub(super) thawed: AtomicBool,
+    /// What its sandbox does when resumed.
+    pub(super) parking: Parking,
+    /// Whether its sandbox was resumed.
+    pub(super) resumed: AtomicBool,
 }
 
 #[async_trait::async_trait]
 impl Executor for FakeExecutor {
     async fn recovery_idle(&self) -> afr_executor::Result<bool> {
-        if self.freezer == Freezer::ExecutorUnproved {
+        if self.parking == Parking::ExecutorUnproved {
             return Err(std::io::Error::other(EXECUTOR_GONE).into());
         }
-        Ok(self.freezer != Freezer::BusyExecutor)
+        Ok(self.parking != Parking::BusyExecutor)
     }
 
     async fn spawn(&self, _spawn: &Spawn) -> afr_executor::Result<Process> {
@@ -53,11 +53,11 @@ impl Executor for FakeExecutor {
     }
 
     async fn list_dir(&self, _path: &str) -> afr_executor::Result<Listing> {
-        let thawed = self.thawed.load(Ordering::SeqCst);
-        if thawed && self.freezer == Freezer::ThawsSilent {
+        let resumed = self.resumed.load(Ordering::SeqCst);
+        if resumed && self.parking == Parking::ResumesSilent {
             std::future::pending::<()>().await;
         }
-        if thawed && self.freezer == Freezer::ThawsBroken {
+        if resumed && self.parking == Parking::ResumesBroken {
             return Err(std::io::Error::other(EXECUTOR_GONE).into());
         }
         Ok(Listing {

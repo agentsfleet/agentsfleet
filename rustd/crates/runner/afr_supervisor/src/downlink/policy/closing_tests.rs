@@ -22,7 +22,7 @@ use super::{Assignment, EVENT_LAST_FAILED, Heartbeat};
 use crate::client::{Call, Verb};
 use crate::error;
 use crate::halt::Halt;
-use crate::holds::{Holds, Parked, Release};
+use crate::holds::{Holds, Release, Stowed};
 use crate::test_support::{Answer, FakeEngine, drain, plane, plane_every};
 
 /// The beat the daemon answers `stop`, once running stopped two beats in.
@@ -56,9 +56,9 @@ async fn assert_closed(holds: &Holds, engine: &FakeEngine) {
     let parked = park(holds, engine).await;
     holds.shutdown().await;
 
-    let handed_back = matches!(parked, Parked::Refused(_));
+    let handed_back = matches!(parked, Stowed::Refused(_));
     let destroyed_by_the_keeper = engine.destroyed.load(Ordering::SeqCst);
-    if let Parked::Refused(sandbox) = parked {
+    if let Stowed::Refused(sandbox) = parked {
         sandbox.destroy().await.unwrap();
     }
     none_left(&left);
@@ -109,8 +109,14 @@ async fn test_leasing_stopped_ends_every_hold_and_beats_at_once() {
     let halt = Halt::new(CancellationToken::new());
     let started = tokio::time::Instant::now();
 
-    let beating = Heartbeat::new(&plane, &probe, &holds, std::path::Path::new("."))
-        .keep_beating(&published, &halt);
+    let beating = Heartbeat::new(
+        &plane,
+        &probe,
+        afr_sandbox::BUBBLEWRAP_CAPABILITIES,
+        &holds,
+        std::path::Path::new("."),
+    )
+    .keep_beating(&published, &halt);
     let stopping = async {
         watching.changed().await.unwrap();
         halt.taking_runs().cancel();
@@ -150,8 +156,14 @@ async fn test_a_shutdown_ends_every_hold_and_says_so_in_a_last_beat() {
     let shutdown = CancellationToken::new();
     let halt = Halt::new(shutdown.clone());
 
-    let beating = Heartbeat::new(&plane, &probe, &holds, std::path::Path::new("."))
-        .keep_beating(&published, &halt);
+    let beating = Heartbeat::new(
+        &plane,
+        &probe,
+        afr_sandbox::BUBBLEWRAP_CAPABILITIES,
+        &holds,
+        std::path::Path::new("."),
+    )
+    .keep_beating(&published, &halt);
     let stopping = async {
         watching.changed().await.unwrap();
         shutdown.cancel();
@@ -189,9 +201,15 @@ async fn test_a_refused_runner_ends_its_holds_and_sends_no_last_beat() {
     let (published, _watching) = watch::channel(Assignment::initial());
     let halt = Halt::new(CancellationToken::new());
 
-    Heartbeat::new(&plane, &probe, &holds, std::path::Path::new("."))
-        .keep_beating(&published, &halt)
-        .await;
+    Heartbeat::new(
+        &plane,
+        &probe,
+        afr_sandbox::BUBBLEWRAP_CAPABILITIES,
+        &holds,
+        std::path::Path::new("."),
+    )
+    .keep_beating(&published, &halt)
+    .await;
 
     assert!(halt.token_refused());
     assert_eq!(drain(&mut calls).len(), 1, "the refused beat alone");
@@ -222,8 +240,14 @@ async fn test_leasing_stopped_brings_one_beat_forward_and_no_more() {
     let halt = Halt::new(CancellationToken::new());
     let started = tokio::time::Instant::now();
 
-    let beating = Heartbeat::new(&plane, &probe, &holds, std::path::Path::new("."))
-        .keep_beating(&published, &halt);
+    let beating = Heartbeat::new(
+        &plane,
+        &probe,
+        afr_sandbox::BUBBLEWRAP_CAPABILITIES,
+        &holds,
+        std::path::Path::new("."),
+    )
+    .keep_beating(&published, &halt);
     let stopping = async {
         watching.changed().await.unwrap();
         halt.taking_runs().cancel();
@@ -254,8 +278,14 @@ async fn test_a_token_refused_elsewhere_ends_every_hold_without_a_last_beat() {
     let (published, mut watching) = watch::channel(Assignment::initial());
     let halt = Halt::new(CancellationToken::new());
 
-    let beating = Heartbeat::new(&plane, &probe, &holds, std::path::Path::new("."))
-        .keep_beating(&published, &halt);
+    let beating = Heartbeat::new(
+        &plane,
+        &probe,
+        afr_sandbox::BUBBLEWRAP_CAPABILITIES,
+        &holds,
+        std::path::Path::new("."),
+    )
+    .keep_beating(&published, &halt);
     let refusing = async {
         watching.changed().await.unwrap();
         assert!(halt.stops_on(&token_refusal()), "a refused token stops");
@@ -283,8 +313,14 @@ async fn last_beat_answered(failure: fn() -> crate::Error) -> Vec<af_core::id::U
     let shutdown = CancellationToken::new();
     let halt = Halt::new(shutdown.clone());
 
-    let beating = Heartbeat::new(&plane, &probe, &holds, std::path::Path::new("."))
-        .keep_beating(&published, &halt);
+    let beating = Heartbeat::new(
+        &plane,
+        &probe,
+        afr_sandbox::BUBBLEWRAP_CAPABILITIES,
+        &holds,
+        std::path::Path::new("."),
+    )
+    .keep_beating(&published, &halt);
     let stopping = async {
         watching.changed().await.unwrap();
         shutdown.cancel();

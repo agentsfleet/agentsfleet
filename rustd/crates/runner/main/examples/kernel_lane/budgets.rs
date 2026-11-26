@@ -6,7 +6,8 @@ use std::fs;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use afr_sandbox::{Engine, KernelMounter, Limits, SandboxRequest, ToolboxHome, Toolboxes};
+use crate::lane::{id_of, spec};
+use afr_sandbox::{Engine, KernelMounter, Limits, ToolboxHome, Toolboxes};
 use futures_util::future::try_join_all;
 use libtest_mimic::Failed;
 
@@ -137,7 +138,7 @@ async fn round_of_runs(
 async fn one_start(engine: &dyn Engine, run_id: &str) -> Result<Start, Failed> {
     let started = Instant::now();
     let sandbox = engine
-        .prepare(SandboxRequest::new(run_id, Limits::default()))
+        .prepare(spec(&id_of(run_id), Limits::default()))
         .await?;
     let ready = started.elapsed();
     let began = Instant::now();

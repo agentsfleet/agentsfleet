@@ -4,7 +4,9 @@ use std::fs;
 use std::sync::{Arc, Mutex};
 
 use super::{Backend, HostPaths, Resources, Started, boot};
-use crate::{Engine, HostProbe, Result, Sandbox, SandboxRequest};
+use crate::{
+    Capabilities, Engine, Granted, HostProbe, Limits, Result, Sandbox, SandboxSpec, Sweep, Swept,
+};
 
 #[derive(Debug)]
 struct Recorder(Arc<Mutex<Vec<&'static str>>>);
@@ -20,8 +22,20 @@ struct TestEngine(Recorder);
 
 #[async_trait::async_trait]
 impl Engine for TestEngine {
-    async fn prepare(&self, _: SandboxRequest<'_>) -> Result<Box<dyn Sandbox>> {
+    fn capabilities(&self) -> Capabilities {
+        unreachable!("boot never asks a test engine what it is")
+    }
+
+    fn grant(&self, _: Limits) -> Result<Granted> {
+        Err(crate::error::refused("test engine grants nothing"))
+    }
+
+    async fn prepare(&self, _: SandboxSpec<'_>) -> Result<Box<dyn Sandbox>> {
         Err(crate::error::refused("test engine has no executor"))
+    }
+
+    async fn sweep(&self, _: Sweep<'_>) -> Result<Swept> {
+        Ok(Swept::default())
     }
 }
 

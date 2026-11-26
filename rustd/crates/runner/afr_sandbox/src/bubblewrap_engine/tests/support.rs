@@ -18,7 +18,10 @@ use tempfile::TempDir;
 use tokio::task::JoinHandle;
 
 use super::super::{BubblewrapConfig, BubblewrapEngine};
-use crate::engine::{Limits, SandboxRequest};
+use af_core::id::Uuid7;
+
+use crate::bubblewrap::CAPABILITIES;
+use crate::engine::{Limits, SandboxSpec};
 use crate::host::HostTools;
 use crate::probe::{HostProbe, Kvm, REQUIRED_CONTROLLERS};
 use crate::toolbox::Toolbox;
@@ -192,8 +195,9 @@ impl FakeHost {
         BubblewrapEngine::new(self.config.clone(), &self.probe).unwrap()
     }
 
-    pub(super) fn run_dir(&self, run_id: &str) -> PathBuf {
-        self.config.state_dir.join(run_id)
+    /// The directory of the sandbox a test names `name`.
+    pub(super) fn run_dir(&self, name: &str) -> PathBuf {
+        self.config.state_dir.join(id_of(name).as_str())
     }
 
     /// The names of the run directories that exist right now.
@@ -253,6 +257,14 @@ fn taken(note: &str) -> UnixStream {
     UnixStream::from(end)
 }
 
-pub(super) fn request(run_id: &str) -> SandboxRequest<'_> {
-    SandboxRequest::new(run_id, LIMITS)
+/// The sandbox identifier a test names `name`: the same valid v7 identifier
+/// for the same name, so a test finds what it built by the name it used.
+pub(super) fn id_of(name: &str) -> Uuid7 {
+    let digest = af_core::etag::sha256_hex(name.as_bytes());
+    Uuid7::parse(&format!("0198f0c2-7a3e-7c1d-9b2e-{}", &digest[..12])).unwrap()
+}
+
+/// A spec for `id` under the test limits, as bubblewrap grants them.
+pub(super) fn spec(id: &Uuid7) -> SandboxSpec<'_> {
+    SandboxSpec::new(id, CAPABILITIES.grant(LIMITS).unwrap())
 }

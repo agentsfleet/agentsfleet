@@ -1,21 +1,24 @@
 //! An unconfined engine whose workspaces a recovery drill can checkpoint
 //! (M-TEST-UTIL).
 //!
-//! Every run holds a sandbox, and a workspace checkpoint names the sandbox's
-//! verified toolbox, freezes it and proves no tenant process remains. An
-//! unconfined sandbox verifies no toolbox and refuses the freeze, so a drill
-//! on it would skip every checkpoint. This wrapper names one toolbox from
-//! every engine, so a replacement process accepts the first one's checkpoint,
-//! and answers the freeze and the quiescence proof at once: the drill's turn
-//! calls only file tools, which the executor serves itself, so no tenant
-//! process ever runs in it to stop.
+//! A workspace checkpoint names the sandbox's verified toolbox and needs no
+//! tenant process left. An unconfined sandbox verifies no toolbox and cannot
+//! count its processes, so a drill on it would skip every checkpoint. This
+//! wrapper names one toolbox from every engine, so a replacement process
+//! accepts the first one's checkpoint, and reports itself quiet: the drill's
+//! turn calls only file tools, which the executor serves itself, so no
+//! tenant process ever runs in it.
 
 use std::path::PathBuf;
 
+use af_core::id::Uuid7;
 use afr_executor::Executor;
 
 use super::UnsandboxedEngine;
-use crate::engine::{Engine, HostWorkspace, Killed, Sandbox, SandboxRequest};
+use crate::engine::{
+    Capabilities, Engine, Environment, Granted, HostWorkspace, Killed, Limits, ParkMode, Parked,
+    Quiescence, Root, Sandbox, SandboxSpec, SandboxState, Sweep, Swept,
+};
 use crate::error::Result;
 use crate::network::Allowlist;
 
@@ -23,11 +26,12 @@ use crate::network::Allowlist;
 /// bytes, so two processes agree on it without sharing a file.
 const TOOLBOX_LABEL: &[u8] = b"agentsfleet.recovery-drill-toolbox.v1";
 
-/// Builds unconfined sandboxes that report one toolbox and freeze at once.
+/// Builds unconfined sandboxes that name one toolbox and report no tenant
+/// process.
 #[derive(Debug)]
 pub struct RecoveryDrillEngine {
     unconfined: UnsandboxedEngine,
-    toolbox: String,
+    toolbox: Box<str>,
 }
 
 impl RecoveryDrillEngine {
@@ -39,19 +43,37 @@ impl RecoveryDrillEngine {
     pub fn new(base: PathBuf) -> Result<Self> {
         Ok(Self {
             unconfined: UnsandboxedEngine::new(base)?,
-            toolbox: af_core::etag::sha256_hex(TOOLBOX_LABEL),
+            toolbox: af_core::etag::sha256_hex(TOOLBOX_LABEL).into(),
         })
     }
 }
 
 #[async_trait::async_trait]
 impl Engine for RecoveryDrillEngine {
-    async fn prepare(&self, request: SandboxRequest<'_>) -> Result<Box<dyn Sandbox>> {
-        let unconfined = self.unconfined.prepare(request).await?;
+    fn capabilities(&self) -> Capabilities {
+        self.unconfined.capabilities()
+    }
+
+    fn grant(&self, limits: Limits) -> Result<Granted> {
+        self.unconfined.grant(limits)
+    }
+
+    async fn prepare(&self, spec: SandboxSpec<'_>) -> Result<Box<dyn Sandbox>> {
+        let unconfined = self.unconfined.prepare(spec).await?;
+        let environment = Environment {
+            root: Root::Toolbox {
+                digest: self.toolbox.clone(),
+            },
+            ..unconfined.environment().clone()
+        };
         Ok(Box::new(Drilled {
             unconfined,
-            toolbox: self.toolbox.clone(),
+            environment,
         }))
+    }
+
+    async fn sweep(&self, scope: Sweep<'_>) -> Result<Swept> {
+        self.unconfined.sweep(scope).await
     }
 }
 
@@ -59,13 +81,21 @@ impl Engine for RecoveryDrillEngine {
 #[derive(Debug)]
 struct Drilled {
     unconfined: Box<dyn Sandbox>,
-    toolbox: String,
+    environment: Environment,
 }
 
 #[async_trait::async_trait]
 impl Sandbox for Drilled {
-    fn toolbox_digest(&self) -> Option<&str> {
-        Some(&self.toolbox)
+    fn id(&self) -> &Uuid7 {
+        self.unconfined.id()
+    }
+
+    fn environment(&self) -> &Environment {
+        &self.environment
+    }
+
+    fn granted(&self) -> &Granted {
+        self.unconfined.granted()
     }
 
     fn executor(&self) -> &dyn Executor {
@@ -76,23 +106,18 @@ impl Sandbox for Drilled {
         self.unconfined.workspace()
     }
 
-    fn is_running(&mut self) -> bool {
-        self.unconfined.is_running()
+    fn state(&mut self) -> SandboxState {
+        self.unconfined.state()
     }
 
-    /// Nothing to stop: the drill's turn starts no tenant process, and the
-    /// executor's own file jobs are proved idle before any freeze.
-    async fn freeze(&self) -> Result<()> {
-        Ok(())
+    /// Quiet: the drill's turn starts no tenant process, and the executor's
+    /// own file jobs are proved idle before any capture.
+    async fn quiesce(&self) -> Result<Quiescence> {
+        Ok(Quiescence::Quiet)
     }
 
-    /// Holds for the same reason the freeze answers at once.
-    async fn recovery_quiescent(&self) -> Result<bool> {
-        Ok(true)
-    }
-
-    async fn thaw(&self) -> Result<()> {
-        Ok(())
+    async fn park(self: Box<Self>, mode: ParkMode) -> Result<Box<dyn Parked>> {
+        self.unconfined.park(mode).await
     }
 
     async fn reallow(&mut self, allowlist: &Allowlist) -> Result<()> {

@@ -97,7 +97,7 @@ async fn a_ready_sandbox_names_its_toolbox_and_one_without_one_is_unavailable() 
             ..FakeEngine::default()
         };
         let sandbox = engine
-            .prepare(SandboxRequest::new(test_support::RUN_ID, Limits::default()))
+            .sandbox()
             .await
             .map_err(|source| error::boundary("fixture sandbox", source))?;
         let cell = OnceLock::from(sandbox);

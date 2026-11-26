@@ -7,9 +7,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-use self::fakes::{Counting, name_of, settle};
+use self::fakes::{Counting, settle};
 use super::WarmSlots;
-use crate::engine::{Engine, Limits, SandboxRequest};
+use crate::engine::{Engine, Limits, SandboxSpec, fresh_sandbox_id};
 use crate::network::{Allowlist, Network};
 
 mod fakes;
@@ -19,23 +19,23 @@ async fn test_warm_slot_single_use() {
     let inner = Arc::new(Counting::default());
     let slots = WarmSlots::start(Arc::clone(&inner) as Arc<dyn Engine>, 1, Limits::default());
     settle().await;
-    let request = SandboxRequest::new("run-a", Limits::default());
+    let (run_a, run_b) = (fresh_sandbox_id(), fresh_sandbox_id());
 
-    let first = slots.prepare(request).await.unwrap();
+    let first = slots
+        .prepare(SandboxSpec::granted_by(&slots, &run_a, Limits::DEFAULT).unwrap())
+        .await
+        .unwrap();
     settle().await;
     let second = slots
-        .prepare(SandboxRequest {
-            run_id: "run-b",
-            ..request
-        })
+        .prepare(SandboxSpec::granted_by(&slots, &run_b, Limits::DEFAULT).unwrap())
         .await
         .unwrap();
 
-    let (first_name, second_name) = (name_of(first.as_ref()), name_of(second.as_ref()));
-    assert!(first_name.contains("\"warm-"), "{first_name}");
-    assert!(second_name.contains("\"warm-"), "{second_name}");
+    assert_ne!(first.id(), &run_a, "warm: the slot's own identifier");
+    assert_ne!(second.id(), &run_b, "warm: the slot's own identifier");
     assert_ne!(
-        first_name, second_name,
+        first.id(),
+        second.id(),
         "a replacement, never the first again"
     );
     first.destroy().await.unwrap();
@@ -60,19 +60,18 @@ async fn test_a_request_with_other_limits_starts_cold() {
     let capture = af_core::test_util::trace::Capture::install();
     let slots = WarmSlots::start(Arc::clone(&inner) as Arc<dyn Engine>, 1, Limits::default());
     settle().await;
+    let run_c = fresh_sandbox_id();
+    let other = Limits {
+        pids: 7,
+        ..Limits::default()
+    };
 
     let cold = slots
-        .prepare(SandboxRequest::new(
-            "run-c",
-            Limits {
-                pids: 7,
-                ..Limits::default()
-            },
-        ))
+        .prepare(SandboxSpec::granted_by(&slots, &run_c, other).unwrap())
         .await
         .unwrap();
 
-    assert!(name_of(cold.as_ref()).contains("run-c"));
+    assert_eq!(cold.id(), &run_c, "cold: built under the asked identifier");
     assert_eq!(
         capture.only("sandbox_start_completed").field("start"),
         Some("cold")
@@ -86,12 +85,13 @@ async fn test_zero_slots_makes_every_start_cold() {
     let inner = Arc::new(Counting::default());
     let slots = WarmSlots::start(Arc::clone(&inner) as Arc<dyn Engine>, 0, Limits::default());
 
+    let run_d = fresh_sandbox_id();
     let cold = slots
-        .prepare(SandboxRequest::new("run-d", Limits::default()))
+        .prepare(SandboxSpec::granted_by(&slots, &run_d, Limits::DEFAULT).unwrap())
         .await
         .unwrap();
 
-    assert!(name_of(cold.as_ref()).contains("run-d"));
+    assert_eq!(cold.id(), &run_d);
     cold.destroy().await.unwrap();
     slots.shutdown().await;
 }
@@ -108,8 +108,9 @@ async fn test_a_slot_that_keeps_failing_is_retried_until_shutdown() {
     let slots = WarmSlots::start(Arc::clone(&inner) as Arc<dyn Engine>, 1, Limits::default());
     tokio::time::sleep(Duration::from_secs(5)).await;
 
+    let run_e = fresh_sandbox_id();
     let refused = slots
-        .prepare(SandboxRequest::new("run-e", Limits::default()))
+        .prepare(SandboxSpec::granted_by(&slots, &run_e, Limits::DEFAULT).unwrap())
         .await;
     slots.shutdown().await;
 
@@ -137,12 +138,13 @@ async fn test_a_slot_that_failed_a_few_times_is_started_after_all() {
     let slots = WarmSlots::start(Arc::clone(&inner) as Arc<dyn Engine>, 1, Limits::default());
     tokio::time::sleep(Duration::from_secs(5)).await;
 
+    let run_g = fresh_sandbox_id();
     let warm = slots
-        .prepare(SandboxRequest::new("run-g", Limits::default()))
+        .prepare(SandboxSpec::granted_by(&slots, &run_g, Limits::DEFAULT).unwrap())
         .await
         .unwrap();
 
-    assert!(name_of(warm.as_ref()).contains("\"warm-"), "{warm:?}");
+    assert_ne!(warm.id(), &run_g, "warm: the slot's own identifier");
     warm.destroy().await.unwrap();
     slots.shutdown().await;
 }
@@ -158,16 +160,14 @@ async fn test_a_slot_that_died_is_never_handed_to_a_run() {
     let slots = WarmSlots::start(Arc::clone(&inner) as Arc<dyn Engine>, 1, Limits::default());
     settle().await;
 
+    let run_h = fresh_sandbox_id();
     let cold = slots
-        .prepare(SandboxRequest::new("run-h", Limits::default()))
+        .prepare(SandboxSpec::granted_by(&slots, &run_h, Limits::DEFAULT).unwrap())
         .await
         .unwrap();
     settle().await;
 
-    assert!(
-        name_of(cold.as_ref()).contains("run-h"),
-        "started cold instead"
-    );
+    assert_eq!(cold.id(), &run_h, "started cold instead");
     assert!(
         capture
             .only("sandbox_warm_slot_died")
@@ -217,8 +217,9 @@ async fn test_a_slot_whose_run_stopped_waiting_is_retired() {
     let slots = WarmSlots::start(Arc::clone(&inner) as Arc<dyn Engine>, 1, Limits::default());
     settle().await;
 
+    let run_f = fresh_sandbox_id();
     let abandoned = slots
-        .prepare(SandboxRequest::new("run-f", Limits::default()))
+        .prepare(SandboxSpec::granted_by(&slots, &run_f, Limits::DEFAULT).unwrap())
         .now_or_never();
     settle().await;
 
@@ -231,7 +232,7 @@ async fn test_a_slot_whose_run_stopped_waiting_is_retired() {
 }
 
 /// A waiting slot whose teardown is refused at shutdown is logged with its
-/// code and name, and the keeper still stops.
+/// code and sandbox identifier, and the keeper still stops.
 #[tokio::test]
 async fn test_a_slot_whose_teardown_is_refused_is_logged_as_left() {
     let inner = Arc::new(Counting {
@@ -246,10 +247,7 @@ async fn test_a_slot_whose_teardown_is_refused_is_logged_as_left() {
 
     let left = capture.only("sandbox_warm_slot_left");
     assert!(left.field("error_code").is_some());
-    assert!(
-        left.field("slot")
-            .is_some_and(|slot| slot.contains("warm-"))
-    );
+    assert!(left.field("sandbox_id").is_some());
     assert_eq!(inner.destroyed.load(Ordering::SeqCst), 1);
 }
 
@@ -285,23 +283,22 @@ async fn test_warm_slot_serves_only_its_own_network() {
     settle().await;
     let allowlist = Allowlist::new(Vec::new()).unwrap();
 
-    for (run_id, network) in [
-        ("run-h", Network::Host),
-        ("run-a", Network::Allowed(&allowlist)),
-    ] {
-        let cold = slots
-            .prepare(SandboxRequest::new(run_id, Limits::default()).with_network(network))
-            .await
-            .unwrap();
-        assert!(name_of(cold.as_ref()).contains(run_id));
+    for network in [Network::Host, Network::Allowed(&allowlist)] {
+        let asked = fresh_sandbox_id();
+        let spec = SandboxSpec::granted_by(&slots, &asked, Limits::DEFAULT)
+            .unwrap()
+            .with_network(network);
+        let cold = slots.prepare(spec).await.unwrap();
+        assert_eq!(cold.id(), &asked);
         cold.destroy().await.unwrap();
     }
+    let run_i = fresh_sandbox_id();
     let warm = slots
-        .prepare(SandboxRequest::new("run-i", Limits::default()))
+        .prepare(SandboxSpec::granted_by(&slots, &run_i, Limits::DEFAULT).unwrap())
         .await
         .unwrap();
 
-    assert!(name_of(warm.as_ref()).contains("\"warm-"));
+    assert_ne!(warm.id(), &run_i, "warm: the slot's own identifier");
     let starts: Vec<_> = capture
         .events()
         .iter()
@@ -314,19 +311,4 @@ async fn test_warm_slot_serves_only_its_own_network() {
     );
     warm.destroy().await.unwrap();
     slots.shutdown().await;
-}
-
-/// A sandbox whose engine names no host workspace keeps the trait's answer:
-/// none, so the supervisor fills nothing before the turn.
-#[tokio::test]
-async fn test_a_sandbox_names_no_host_workspace_by_default() {
-    let engine = Counting::default();
-
-    let sandbox = engine
-        .prepare(SandboxRequest::new("run-w", Limits::default()))
-        .await
-        .unwrap();
-
-    assert!(sandbox.workspace().is_none());
-    sandbox.destroy().await.unwrap();
 }

@@ -14,7 +14,8 @@ import { CLI_ERROR_TAG, ServerError } from "../../errors/index.ts";
 export type RunnerPaging = {readonly limit?: number | undefined; readonly startingAfter?: string | undefined};
 type RunnerRead = RunnerPaging & {readonly workspace?: string | undefined; readonly fleet?: string | undefined; readonly eventType?: string | undefined; readonly since?: string | undefined; readonly until?: string | undefined};
 type RunnerEdit = {readonly policy?: string | undefined; readonly labels?: string | undefined};
-const DEFAULT_ENGINE = "Bubblewrap";
+/** What a runner that has never reported its engine prints as. */
+const UNKNOWN_ENGINE = "unknown";
 /** Who owns a host, as the operator's views name it. */
 const owner = (tenant: string | null | undefined): string => tenant ?? "Platform";
 const isOperator = (kind: RunnerKind): boolean => kind.path === ADMIN_RUNNERS_PATH;
@@ -33,10 +34,11 @@ export const runnersList = Effect.fn("runners.list")(function* (kind: RunnerKind
   yield* output.printEntityTable({id: {key: "id"}, name: {key: "host_id", label: "HOST"}, domain: [
     ...(isOperator(kind) ? [{key: "owner", label: "OWNER"}] : []),
     {key: "status", label: "STATE", tones: STATUS_TONES}, {key: "liveness", label: "CONNECTION", tones: STATUS_TONES},
-    {key: "cordon", label: "AUTO CORDON"}, {key: "default_engine", label: "DEFAULT ENGINE"},
+    {key: "cordon", label: "AUTO CORDON"}, {key: "engine", label: "ENGINE"},
     {key: "cpus", label: "CPUS"}, {key: "memory", label: "MEMORY"}, {key: "free_disk", label: "FREE DISK"},
-  ], ageKey: null}, page.items.map(({id, host_id, status, liveness, tenant_id, cordon, host}) =>
-    ({id, host_id, owner: owner(tenant_id), status, liveness, cordon: cordon?.reason ?? "None", default_engine: DEFAULT_ENGINE,
+  ], ageKey: null}, page.items.map(({id, host_id, status, liveness, tenant_id, cordon, host, achievable}) =>
+    ({id, host_id, owner: owner(tenant_id), status, liveness, cordon: cordon?.reason ?? "None",
+      engine: achievable?.engine ?? UNKNOWN_ENGINE,
       cpus: processors(host.cpu_count), memory: gigabytes(host.memory_bytes), free_disk: gigabytes(host.free_disk_bytes)})));
   if (page.next_cursor) yield* output.info(`Next page: --starting-after ${page.next_cursor}`);
 });
@@ -45,7 +47,7 @@ export const runnerShow = Effect.fn("runners.show")(function* (kind: RunnerKind,
   const runner = yield* decodePlatform(RunnerDetailSchema, yield* platformRequest({path: platformPath(kind.path, id)}));
   yield* platformResult(runner, runner.host_id, {
     ID: runner.id, ...(isOperator(kind) ? {Owner: owner(runner.tenant_id)} : {}),
-    State: runner.status, Connection: runner.liveness, "Default engine": DEFAULT_ENGINE,
+    State: runner.status, Connection: runner.liveness, Engine: runner.achievable?.engine ?? UNKNOWN_ENGINE,
     "Isolation tier": runner.assigned_policy.sandbox_tier,
     "Network policy": runner.assigned_policy.network_policy, Workers: String(runner.assigned_policy.worker_count),
     CPUs: processors(runner.host.cpu_count), Memory: gigabytes(runner.host.memory_bytes),

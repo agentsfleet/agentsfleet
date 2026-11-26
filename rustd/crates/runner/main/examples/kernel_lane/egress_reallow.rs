@@ -3,10 +3,11 @@
 //! the set, an address the set left is closed, and one both sets hold stays
 //! open through the refill.
 
+use crate::lane::{id_of, spec};
 use afr_sandbox::egress_testing::{
     FAR_GREETING, FAR_LISTED, FAR_PORT, FAR_SPARE, FAR_UNLISTED, Far,
 };
-use afr_sandbox::{Allowlist, Engine, Limits, Network, SandboxRequest};
+use afr_sandbox::{Allowlist, Engine, Limits, Network, ParkMode};
 use libtest_mimic::Failed;
 
 use crate::egress::{ERRNO, FAR_NAME, connect};
@@ -68,7 +69,7 @@ pub(crate) fn reallow_keeps_an_address_both_sets_hold(lane: &Lane) -> Result<(),
 }
 
 /// What each of `scripts` printed in a sandbox built for `run_name` to reach
-/// `first`, then again after it was frozen, refilled to `moved` and thawed.
+/// `first`, then again after it was parked, resumed and refilled to `moved`.
 fn across_a_refill(
     lane: &Lane,
     run_name: &str,
@@ -77,16 +78,16 @@ fn across_a_refill(
     scripts: &[String],
 ) -> Result<(Vec<String>, Vec<String>), Failed> {
     runtime().block_on(async {
-        let request =
-            SandboxRequest::new(run_name, Limits::default()).with_network(Network::Allowed(first));
+        let sandbox_id = id_of(run_name);
+        let request = spec(&sandbox_id, Limits::default()).with_network(Network::Allowed(first));
         let mut sandbox = lane.engine().prepare(request).await?;
         let mut said = Vec::with_capacity(2 * scripts.len());
         for script in scripts {
             said.push(run(sandbox.executor(), shell(script)).await);
         }
-        sandbox.freeze().await?;
+        let parked = sandbox.park(ParkMode::Pause).await?;
+        sandbox = parked.resume().await?;
         let refilled = sandbox.reallow(moved).await;
-        sandbox.thaw().await?;
         for script in scripts {
             said.push(run(sandbox.executor(), shell(script)).await);
         }

@@ -5,7 +5,8 @@
 use std::fs;
 use std::path::Path;
 
-use afr_sandbox::{Engine as _, Killed, Limits, SandboxRequest, TENANT_LEAF};
+use crate::lane::{id_of, spec};
+use afr_sandbox::{Engine as _, Killed, Limits, TENANT_LEAF};
 use libtest_mimic::Failed;
 
 use crate::lane::Lane;
@@ -51,9 +52,10 @@ struct Seen {
 /// disk is still mounted for the release, and the release then removes the
 /// run's directory.
 pub(crate) fn no_sandbox_process_outlives_the_report(lane: &Lane) -> Result<(), Failed> {
-    let cgroup = lane.config.cgroup_root.join(RUN);
+    let cgroup = lane.config.cgroup_root.join(id_of(RUN).as_str());
     let seen = runtime().block_on(async {
-        let request = SandboxRequest::new(RUN, Limits::default());
+        let sandbox_id = id_of(RUN);
+        let request = spec(&sandbox_id, Limits::default());
         let sandbox = lane.engine().prepare(request).await?;
         let said = run_in(sandbox.executor(), shell(SLEEPER)).await?;
         let leaf = cgroup.join(TENANT_LEAF);

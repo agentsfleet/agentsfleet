@@ -19,11 +19,10 @@
 //! Landlock does, and nothing above the evidence table has to learn a second
 //! vocabulary to say so.
 //!
-//! The wire is not there yet — `CapabilityReport` is still five Linux booleans,
-//! frozen by M175 — so the evidence table is where the coupling now lives,
-//! localised, in one place, with the mapping written down. When the report
-//! grows a guarantee set of its own, that table is what gets deleted; nothing
-//! else in this file changes.
+//! The report names its engine's isolation beside five Linux booleans, so the
+//! evidence table reads a virtual machine's wall as proof and a shared-kernel
+//! engine's mechanisms one by one. The coupling lives in that one table, with
+//! the mapping written down.
 //!
 //! # A verdict is one value, not two fields that must agree
 //!
@@ -39,7 +38,7 @@
 //! step in the runner bootstrap playbook. Change their bytes only on purpose:
 //! an operator greps for them.
 
-use af_wire::runner::{AssignedPolicy, CapabilityReport, NetworkPolicy, SandboxTier};
+use af_wire::runner::{AssignedPolicy, CapabilityReport, Isolation, NetworkPolicy, SandboxTier};
 
 /// The host has never reported what it can enforce.
 pub const REASON_NO_CAPABILITY_REPORT: &str = "no capability report";
@@ -55,6 +54,8 @@ pub const REASON_BUBBLEWRAP_MISSING: &str = "bubblewrap missing";
 pub const REASON_EGRESS_ENFORCEMENT_UNAVAILABLE: &str = "egress enforcement unavailable";
 /// An isolating network posture was assigned to a tier that builds no cage.
 pub const REASON_NETWORK_NEEDS_CAGE: &str = "network isolation needs a sandbox tier";
+/// The runner's engine confines nothing, so no assigned guarantee can hold.
+pub const REASON_ENGINE_UNCONFINED: &str = "the runner's engine confines nothing";
 
 /// Controllers a cage-building tier needs in the delegated subtree.
 ///
@@ -105,13 +106,16 @@ impl Guarantee {
 
     /// Whether `report` is evidence that this host delivers this guarantee.
     ///
-    /// **The one substrate-aware function in this crate.** Every field it reads
-    /// is a Linux mechanism, because the wire report is a Linux report; a
-    /// Firecracker or managed-platform runner would prove the same guarantees
-    /// through different fields, and this is where that mapping would go until
-    /// the report carries guarantees directly.
+    /// **The one substrate-aware function in this crate.** A virtual machine
+    /// proves the cage itself: its own kernel confines files, system calls
+    /// and processes, and its size caps the resources. Egress is enforced on
+    /// the host either way, so it is always read from the host's report. A
+    /// shared-kernel engine proves each guarantee by its Linux mechanism.
     #[must_use]
     pub fn proven_by(self, report: &CapabilityReport<'_>) -> bool {
+        if report.isolation == Isolation::HardwareVm && self != Self::EgressControl {
+            return true;
+        }
         match self {
             Self::FilesystemIsolation => report.landlock,
             Self::SyscallFiltering => report.seccomp,
@@ -268,6 +272,11 @@ pub fn reconcile(
     let Some(report) = achievable else {
         return Verdict::degraded(REASON_NO_CAPABILITY_REPORT);
     };
+    // Whatever mechanisms the host has, an engine that confines nothing
+    // delivers none of them to a run.
+    if report.isolation == Isolation::Unconfined {
+        return Verdict::degraded(REASON_ENGINE_UNCONFINED);
+    }
     demanded
         .find(|guarantee| !guarantee.proven_by(report))
         .map_or(Verdict::Healthy, |unmet| Verdict::degraded(unmet.reason()))
@@ -279,3 +288,7 @@ fn has_required_controllers(present: &[std::borrow::Cow<'_, str>]) -> bool {
         .iter()
         .all(|required| present.iter().any(|found| found == required))
 }
+
+#[cfg(test)]
+#[path = "reconcile_tests.rs"]
+mod tests;

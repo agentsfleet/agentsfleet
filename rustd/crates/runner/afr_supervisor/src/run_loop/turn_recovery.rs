@@ -7,6 +7,8 @@ use afr_sandbox::Sandbox;
 use futures_util::FutureExt as _;
 use std::panic::AssertUnwindSafe;
 
+use super::recovery::prove_quiescent;
+
 impl Run<'_> {
     pub(super) async fn prepare_turn_recovery(
         &self,
@@ -17,21 +19,16 @@ impl Run<'_> {
             .workspace()
             .ok_or_else(|| error::config("ordinary restore has no trusted workspace"))?;
         let toolbox = sandbox
-            .toolbox_digest()
+            .environment()
+            .root
+            .toolbox()
             .ok_or_else(|| error::config("ordinary restore has no verified toolbox"))?;
         let actual = TurnWorkspace::Files {
             toolbox_digest: toolbox.to_owned(),
         };
         let permit = self.lessee.recovery.file(build.stop).await?;
         let restoring = async {
-            sandbox.freeze().await.map_err(|source| {
-                error::boundary("ordinary restore could not freeze its sandbox", source)
-            })?;
-            if !sandbox.recovery_quiescent().await.map_err(|source| {
-                error::boundary("ordinary restore could not prove tenant quiescence", source)
-            })? {
-                return Err(error::config("ordinary restore has a live tenant process"));
-            }
+            prove_quiescent(sandbox).await?;
             NativeTurn::new(
                 &self.lessee.plane,
                 &self.ids.run,
@@ -47,19 +44,10 @@ impl Run<'_> {
             )
             .await
         };
-        let restored = AssertUnwindSafe(restoring)
+        let turn = AssertUnwindSafe(restoring)
             .catch_unwind()
             .await
-            .map_err(|_panic| error::config("ordinary restore panicked"));
-        let thawed = AssertUnwindSafe(sandbox.thaw())
-            .catch_unwind()
-            .await
-            .map_err(|_panic| error::config("ordinary restore thaw panicked"))?
-            .map_err(|source| {
-                error::boundary("ordinary restore could not thaw its sandbox", source)
-            });
-        let turn = restored??;
-        thawed?;
+            .map_err(|_panic| error::config("ordinary restore panicked"))??;
         if turn.is_none() {
             return Err(error::config(
                 "ordinary restore lost its assigned checkpoint",

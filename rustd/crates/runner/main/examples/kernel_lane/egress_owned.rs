@@ -5,11 +5,12 @@
 
 use std::io;
 
+use crate::lane::{id_of, spec};
 use afr_sandbox::egress_testing::{
     FAR_GREETING, FAR_PORT, FAR_UNLISTED, Far, delete_from_elsewhere, objects,
     probe_beside_a_dropping_forward_chain,
 };
-use afr_sandbox::{Engine, Limits, Network, SandboxRequest};
+use afr_sandbox::{Engine, Limits, Network};
 use libtest_mimic::Failed;
 
 use crate::egress::{ERRNO, FAR_NAME, connect};
@@ -35,8 +36,9 @@ pub(crate) fn host_cannot_delete_a_live_table(lane: &Lane) -> Result<(), Failed>
 
     let (answers, survived, said) = runtime().block_on(async {
         let engine = lane.engine();
-        let request = SandboxRequest::new("egress-owned", Limits::default())
-            .with_network(Network::Allowed(&allowlist));
+        let sandbox_id = id_of("egress-owned");
+        let request =
+            spec(&sandbox_id, Limits::default()).with_network(Network::Allowed(&allowlist));
         let sandbox = engine.prepare(request).await?;
         let table = objects()?
             .into_iter()

@@ -12,7 +12,10 @@ use af_core::spelling::to_spelling;
 use af_wire::runner::{
     CapabilityReport, NetworkPolicy, SandboxTier, SelftestCheck, SelftestReport,
 };
-use afr_sandbox::{HostProbe, Kvm, MECHANISM_BUBBLEWRAP, MECHANISM_LANDLOCK, MECHANISM_SECCOMP};
+use af_wire::runner::{Isolation, SandboxEngine};
+use afr_sandbox::{
+    Capabilities, HostProbe, Kvm, MECHANISM_BUBBLEWRAP, MECHANISM_LANDLOCK, MECHANISM_SECCOMP,
+};
 use serde::Serialize;
 
 const CHECK_CGROUP: &str = "cgroup_controllers";
@@ -33,7 +36,7 @@ const CGROUP_ON: &str = "The cpu, io, memory and pids controllers are delegated 
 const CGROUP_OFF: &str = "The cpu, io, memory or pids controller is not delegated to this runner.";
 const KVM_USABLE: &str = "The KVM device opens, so a microVM engine can run here.";
 const KVM_DENIED: &str = "The KVM device exists but this runner cannot open it.";
-const KVM_ABSENT: &str = "There is no KVM device, so only the bubblewrap engine can run here.";
+const KVM_ABSENT: &str = "There is no KVM device, so no microVM engine can run here.";
 const TOOLBOX_ON: &str = "The kernel can mount the toolbox's EROFS image.";
 const TOOLBOX_OFF: &str = "The kernel cannot mount EROFS, so no sandbox can be built here.";
 const DIRECT_IO_ON: &str =
@@ -47,7 +50,7 @@ const DIRECT_IO_OFF: &str = "The state file system refuses direct I/O, so a work
 /// removed an egress scope can hold a sandbox to its allowlist, and the
 /// daemon reads an `allow_list_egress` runner degraded on any other.
 #[must_use]
-pub fn capability_report(probe: &HostProbe) -> CapabilityReport<'_> {
+pub fn capability_report<'a>(probe: &'a HostProbe, engine: &Capabilities) -> CapabilityReport<'a> {
     CapabilityReport {
         durable_tasks_v1: true,
         build_id: af_core::build::SOURCE_ID.map(Cow::Borrowed),
@@ -60,6 +63,10 @@ pub fn capability_report(probe: &HostProbe) -> CapabilityReport<'_> {
             .collect(),
         bubblewrap: probe.bubblewrap,
         egress_enforcement: probe.egress,
+        engine: engine.engine,
+        isolation: engine.isolation,
+        kvm: probe.kvm,
+        sandboxes_max: None,
     }
 }
 
@@ -67,10 +74,11 @@ pub fn capability_report(probe: &HostProbe) -> CapabilityReport<'_> {
 #[must_use]
 pub fn selftest<'a>(
     probe: &HostProbe,
+    engine: &Capabilities,
     tier: SandboxTier,
     network: NetworkPolicy,
 ) -> SelftestReport<'a> {
-    let checks = checks(probe);
+    let checks = checks(probe, engine);
     SelftestReport {
         all_ok: checks.iter().all(|check| check.ok),
         checks,
@@ -91,16 +99,19 @@ pub struct ProbeAnswer<'a> {
 
 /// The probe command's answer for this host.
 #[must_use]
-pub fn probe_answer(probe: &HostProbe) -> ProbeAnswer<'_> {
+pub fn probe_answer<'a>(probe: &'a HostProbe, engine: &Capabilities) -> ProbeAnswer<'a> {
     ProbeAnswer {
-        capability_report: capability_report(probe),
-        checks: checks(probe),
+        capability_report: capability_report(probe, engine),
+        checks: checks(probe, engine),
     }
 }
 
-/// Every fact the probe found, as a named check; direct I/O only when the
-/// probe was given a state directory to try it on.
-fn checks<'a>(probe: &HostProbe) -> Vec<SelftestCheck<'a>> {
+/// Every fact the probe found that `engine` relies on, as a named check: the
+/// launcher only for bubblewrap and the KVM device only for an engine behind
+/// a virtual machine, so a host is never judged on what its engine does not
+/// use. Direct I/O only when the probe was given a state directory to try it
+/// on.
+fn checks<'a>(probe: &HostProbe, engine: &Capabilities) -> Vec<SelftestCheck<'a>> {
     let kvm = match probe.kvm {
         Kvm::Usable => (true, KVM_USABLE),
         Kvm::Denied => (false, KVM_DENIED),
@@ -115,20 +126,22 @@ fn checks<'a>(probe: &HostProbe) -> Vec<SelftestCheck<'a>> {
             MECHANISM_SECCOMP,
             verdict(probe.seccomp, SECCOMP_ON, SECCOMP_OFF),
         ),
+    ];
+    checks.extend((engine.engine == SandboxEngine::Bubblewrap).then(|| {
         check(
             MECHANISM_BUBBLEWRAP,
             verdict(probe.bubblewrap, BUBBLEWRAP_ON, BUBBLEWRAP_OFF),
-        ),
-        check(
-            CHECK_CGROUP,
-            verdict(probe.has_required_controllers(), CGROUP_ON, CGROUP_OFF),
-        ),
-        check(CHECK_KVM, kvm),
-        check(
-            CHECK_TOOLBOX,
-            verdict(probe.toolbox_filesystem, TOOLBOX_ON, TOOLBOX_OFF),
-        ),
-    ];
+        )
+    }));
+    checks.push(check(
+        CHECK_CGROUP,
+        verdict(probe.has_required_controllers(), CGROUP_ON, CGROUP_OFF),
+    ));
+    checks.extend((engine.isolation == Isolation::HardwareVm).then(|| check(CHECK_KVM, kvm)));
+    checks.push(check(
+        CHECK_TOOLBOX,
+        verdict(probe.toolbox_filesystem, TOOLBOX_ON, TOOLBOX_OFF),
+    ));
     checks.extend(
         probe
             .workspace_direct_io

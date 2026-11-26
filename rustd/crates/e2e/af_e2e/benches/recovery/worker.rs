@@ -2,7 +2,10 @@
 
 use super::Checked;
 use af_core::env::ProcessEnv;
-use afr_sandbox::{Engine, Sandbox, SandboxRequest};
+use af_wire::runner::{Isolation, SandboxEngine};
+use afr_sandbox::{
+    Cap, Capabilities, Engine, Granted, Limits, ResourceFacts, Sandbox, SandboxSpec, Sweep, Swept,
+};
 use std::{io, net::SocketAddr, path::Path};
 use tokio_util::sync::CancellationToken;
 
@@ -11,8 +14,30 @@ struct ApiOnly;
 
 #[async_trait::async_trait]
 impl Engine for ApiOnly {
-    async fn prepare(&self, _request: SandboxRequest<'_>) -> afr_sandbox::Result<Box<dyn Sandbox>> {
+    fn capabilities(&self) -> Capabilities {
+        Capabilities {
+            engine: SandboxEngine::Unsandboxed,
+            isolation: Isolation::Unconfined,
+            parks: &[],
+            resources: ResourceFacts {
+                memory: Cap::Absent,
+                cpu: Cap::Absent,
+                pids: Cap::Absent,
+                disk: Cap::Absent,
+            },
+        }
+    }
+
+    fn grant(&self, _limits: Limits) -> afr_sandbox::Result<Granted> {
         Err(io::Error::other("API-only benchmark received a sandbox operation").into())
+    }
+
+    async fn prepare(&self, _spec: SandboxSpec<'_>) -> afr_sandbox::Result<Box<dyn Sandbox>> {
+        Err(io::Error::other("API-only benchmark received a sandbox operation").into())
+    }
+
+    async fn sweep(&self, _scope: Sweep<'_>) -> afr_sandbox::Result<Swept> {
+        Ok(Swept::default())
     }
 }
 

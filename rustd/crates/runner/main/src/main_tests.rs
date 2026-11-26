@@ -268,7 +268,11 @@ fn the_probe_answer_succeeds_only_where_a_sandbox_can_be_built() {
     ] {
         let mut out = Vec::new();
 
-        let answered = answer(&host(capable), &mut out);
+        let answered = answer(
+            &host(capable),
+            &afr_sandbox::BUBBLEWRAP_CAPABILITIES,
+            &mut out,
+        );
 
         assert_eq!(answered, status, "capable: {capable}");
         let text = String::from_utf8(out).unwrap();
@@ -300,7 +304,11 @@ impl io::Write for Full {
 #[test]
 fn a_probe_answer_that_cannot_be_written_fails() {
     assert_eq!(
-        answer(&host(true), &mut Full),
+        answer(
+            &host(true),
+            &afr_sandbox::BUBBLEWRAP_CAPABILITIES,
+            &mut Full
+        ),
         std::process::ExitCode::FAILURE
     );
 }

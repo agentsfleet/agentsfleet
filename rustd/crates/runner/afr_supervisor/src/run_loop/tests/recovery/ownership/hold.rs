@@ -56,15 +56,15 @@ fn kept(fixture: &Fixture, sandbox: Box<dyn Sandbox>) -> Result<Kept> {
 #[tokio::test]
 async fn a_durable_sandbox_that_cannot_save_its_history_is_killed_and_blocks_the_durable_task()
 -> Result<()> {
-    for fault in ["interrupted", "busy executor", "refused freeze"] {
+    for fault in ["interrupted", "busy executor", "busy tenant"] {
         let mut fixture = Fixture::new(|_| None)?;
         let root = tempfile::tempdir()?;
-        let freezer = match fault {
-            "busy executor" => Freezer::BusyExecutor,
-            "refused freeze" => Freezer::RefusesFreeze,
-            _ => Freezer::Works,
+        let parking = match fault {
+            "busy executor" => Parking::BusyExecutor,
+            "busy tenant" => Parking::BusyTenant,
+            _ => Parking::Works,
         };
-        let (engine, sandbox) = sandbox(root.path(), freezer).await?;
+        let (engine, sandbox) = sandbox(root.path(), parking).await?;
         let mut ending = ending(&fixture)?;
         let kept = kept(&fixture, sandbox)?;
         let run = fixture.run()?;
@@ -86,11 +86,10 @@ async fn a_durable_sandbox_that_cannot_save_its_history_is_killed_and_blocks_the
         assert_eq!(task.disposition, DurableTaskDisposition::Blocked, "{fault}");
         assert_eq!(task.checkpoint_id, None, "{fault}");
         assert_eq!(
-            engine.frozen.load(Ordering::SeqCst),
+            engine.parked.load(Ordering::SeqCst),
             0,
-            "{fault}: nothing stays frozen"
+            "{fault}: nothing is parked"
         );
-        assert_eq!(engine.thaw_attempts.load(Ordering::SeqCst), 0, "{fault}");
         drop(run);
         assert_eq!(fixture.rig.calls().len(), 0, "{fault}: nothing is saved");
     }

@@ -28,8 +28,8 @@ use crate::identity::Whoami;
 use crate::run_loop::Lessee;
 use crate::storage_home::StorageHome;
 use crate::test_support::{
-    Behaviour, FLEET_ID, FakeAgent, FakeEngine, FakeResolver, RUN_ID, Rig, clock, daemon, payload,
-    plane,
+    Behaviour, Builds, FLEET_ID, FakeAgent, FakeEngine, FakeResolver, RUN_ID, Rig, clock, daemon,
+    payload, plane,
 };
 use crate::turns::FleetTurns;
 use crate::workspace_clone::{GITHUB_ORIGIN, Mirrors};
@@ -59,9 +59,12 @@ const FED: [&str; 3] = [
 /// failed, each with how long the attempt took.
 #[tokio::test(start_paused = true)]
 async fn a_sandbox_start_is_counted_by_how_it_ended() {
-    for (refuse, outcome) in [(false, SandboxStart::Ready), (true, SandboxStart::Failed)] {
+    for (build, outcome) in [
+        (Builds::Ready, SandboxStart::Ready),
+        (Builds::Refused, SandboxStart::Failed),
+    ] {
         let engine = FakeEngine {
-            refuse,
+            build,
             ..FakeEngine::default()
         };
         let rig = Rig::new(
@@ -82,7 +85,7 @@ async fn a_sandbox_start_is_counted_by_how_it_ended() {
                 _other => None,
             })
             .collect();
-        assert_eq!(started, vec![outcome], "refuse={refuse}");
+        assert_eq!(started, vec![outcome], "{build:?}");
     }
 }
 

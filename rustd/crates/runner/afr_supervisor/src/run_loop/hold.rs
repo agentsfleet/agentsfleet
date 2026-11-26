@@ -13,27 +13,27 @@ use std::time::{Duration, Instant};
 use af_core::clock::saturating_millis;
 use af_core::error_code::{Coded as _, ErrorCode, Logged};
 use af_observability::semconv::ATTR_SANDBOX_REUSED;
-use afr_sandbox::{Killed, Limits, Sandbox};
+use afr_sandbox::{Killed, Limits, Parked, Sandbox, SandboxState};
 use afr_telemetry::labels::{SandboxHold, SandboxRelease};
 use afr_telemetry::record;
 use jiff::Timestamp;
 
 use super::Run;
 use crate::egress::Bound;
-use crate::holds::{BuiltUnder, HoldKey, Parked, Release, Taken};
+use crate::holds::{BuiltUnder, HoldKey, Holds, Release, Stowed, Taken};
 use crate::report::Ending;
 
-/// How long a thawed sandbox's executor has to answer before the hold is
+/// How long a resumed sandbox's executor has to answer before the hold is
 /// given up for a fresh sandbox.
-const THAW_ANSWER_WAIT: Duration = Duration::from_secs(2);
+const RESUME_ANSWER_WAIT: Duration = Duration::from_secs(2);
 const EVENT_REUSED: &str = "sandbox_reused";
-const EVENT_THAW_STARTED: &str = "sandbox_thaw_started";
-const EVENT_THAW_COMPLETED: &str = "sandbox_thaw_completed";
-const EVENT_THAW_FAILED: &str = "sandbox_thaw_failed";
+const EVENT_RESUME_STARTED: &str = "sandbox_resume_started";
+const EVENT_RESUME_COMPLETED: &str = "sandbox_resume_completed";
+const EVENT_RESUME_FAILED: &str = "sandbox_resume_failed";
 const EVENT_REFILL_FAILED: &str = "sandbox_refill_failed";
-const EVENT_FREEZE_STARTED: &str = "sandbox_freeze_started";
-const EVENT_FREEZE_COMPLETED: &str = "sandbox_freeze_completed";
-const EVENT_FREEZE_FAILED: &str = "sandbox_freeze_failed";
+const EVENT_PARK_STARTED: &str = "sandbox_park_started";
+const EVENT_PARK_COMPLETED: &str = "sandbox_park_completed";
+const EVENT_PARK_FAILED: &str = "sandbox_park_failed";
 const EVENT_DESTROY_FAILED: &str = "sandbox_destroy_failed";
 const EVENT_KILL_STARTED: &str = "sandbox_kill_started";
 const EVENT_KILL_COMPLETED: &str = "sandbox_kill_completed";
@@ -41,8 +41,8 @@ const EVENT_KILL_UNSETTLED: &str = "sandbox_kill_unsettled";
 /// The workspace's own top, as the executor reads a relative path whatever
 /// its root is mounted at.
 const WORKSPACE_TOP: &str = ".";
-/// Why a thawed sandbox is given up when its executor does not answer.
-const DETAIL_SILENT: &str = "the thawed sandbox's executor did not answer";
+/// Why a resumed sandbox is given up when its executor does not answer.
+const DETAIL_SILENT: &str = "the resumed sandbox's executor did not answer";
 
 /// The sandbox a run ran in, and the key it would be held under.
 #[derive(Debug)]
@@ -60,18 +60,20 @@ pub(super) struct Worked {
     pub(super) kept: Option<Kept>,
 }
 
-/// What becomes of a run's sandbox at its report: held frozen until a time,
-/// or killed now and released once the report is in. Only `keep` makes one,
-/// so the report cannot be settled before the kill.
+/// What becomes of a run's sandbox at its report: parked until a time, or
+/// killed now and released once the report is in. Only `keep` makes one, so
+/// the report cannot be settled before the kill.
 #[derive(Debug)]
 #[must_use]
 pub(super) enum Fate {
     /// No sandbox to hold or release.
     Gone,
-    /// Frozen and held for the fleet's next run, until then.
+    /// Parked for the fleet's next run, until then.
     Held(Timestamp),
     /// Killed, its disk, cgroup and egress waiting for the release.
     Killed(Box<dyn Sandbox>),
+    /// Parked, but the keeper had no room for it; destroyed at the release.
+    Unfiled(Box<dyn Parked>),
 }
 
 impl Fate {
@@ -79,7 +81,7 @@ impl Fate {
     pub(super) const fn held_until(&self) -> Option<Timestamp> {
         match self {
             Self::Held(until) => Some(*until),
-            Self::Gone | Self::Killed(_) => None,
+            Self::Gone | Self::Killed(_) | Self::Unfiled(_) => None,
         }
     }
 }
@@ -102,10 +104,10 @@ impl Run<'_> {
         }
     }
 
-    /// The fleet's held sandbox, holding to what `bound` admits, thawed and
-    /// answering, or none. A hold the run was not told to resume is ended,
-    /// and so is one that will not take `bound`'s addresses, will not thaw,
-    /// or whose executor stays silent; the run builds a fresh one.
+    /// The fleet's parked sandbox, resumed, confined to what `bound` admits
+    /// and answering, or none. A hold the run was not told to resume is
+    /// ended, and so is one that will not resume, will not take `bound`'s
+    /// addresses, or whose executor stays silent; the run builds a fresh one.
     pub(super) async fn revive(&self, key: &HoldKey, bound: &Bound) -> Option<Box<dyn Sandbox>> {
         let holds = &self.lessee.holds;
         if !self.payload.resume_hold {
@@ -115,40 +117,47 @@ impl Run<'_> {
             holds.release(key.fleet.clone(), Release::Superseded);
             return None;
         }
-        let Taken { mut sandbox, held } = holds.take(key).await?;
+        let Taken { sandbox, held } = holds.take(key).await?;
         let held_ms = saturating_millis(held);
         let run_id = self.ids.run.as_str();
-        let given_up = resume(sandbox.as_mut(), bound, run_id).await.err();
-        let Some(GivenUp {
-            event,
-            code,
-            reason,
-        }) = given_up
-        else {
-            let event = EVENT_THAW_COMPLETED;
-            tracing::debug!(run_id, event);
-            let fleet_id = key.fleet.as_str();
-            let event = EVENT_REUSED;
-            tracing::info!(run_id, fleet_id, held_ms, event);
-            record::sandbox_hold(SandboxHold::Reused);
-            return Some(sandbox);
+        let (
+            GivenUp {
+                event,
+                code,
+                reason,
+            },
+            resumed,
+        ) = match resume(sandbox, bound, run_id).await {
+            Ok(sandbox) => {
+                let event = EVENT_RESUME_COMPLETED;
+                tracing::debug!(run_id, event);
+                let fleet_id = key.fleet.as_str();
+                let event = EVENT_REUSED;
+                tracing::info!(run_id, fleet_id, held_ms, event);
+                record::sandbox_hold(SandboxHold::Reused);
+                return Some(sandbox);
+            }
+            Err(given_up) => given_up,
         };
         let error_code = code.as_str();
         {
             let (message,) = (format_args!(
-                "a held sandbox would not resume; the run gets a fresh one"
+                "a parked sandbox would not resume; the run gets a fresh one"
             ),);
             tracing::warn!(message, error_code, run_id, reason, event);
         };
-        let fleet = key.fleet.clone();
-        holds.discard(fleet, sandbox, Release::ThawFailed).await;
+        Holds::count_release(&key.fleet, Release::ThawFailed);
+        if let Some(sandbox) = resumed {
+            let _logged = self.destroy(sandbox).await;
+        }
         None
     }
 
-    /// Holds the run's sandbox, frozen, for the fleet's next run when the
-    /// run ended processed and ran to its own end, the runner still takes
-    /// runs and the sandbox still runs; kills it otherwise, for its release
-    /// after the report.
+    /// Parks the run's sandbox for the fleet's next run when the run ended
+    /// processed and ran to its own end, the runner still takes runs, the
+    /// sandbox still runs and its engine parks; kills it otherwise, for its
+    /// release after the report. A task's final capture runs first, while
+    /// the sandbox still serves.
     pub(super) async fn keep(&self, kept: Option<Kept>, ending: &mut Ending) -> Fate {
         let Some(Kept {
             mut sandbox,
@@ -165,7 +174,7 @@ impl Run<'_> {
         let durable = recovery.is_some();
         let recoverable = matches!(ending, Ending::Ran { output, .. } if output.recovery.is_some());
         let ran_out = (ending.processed() || recoverable) && !self.interrupt.is_cancelled();
-        if !(ran_out && taking_runs && sandbox.is_running()) {
+        if !(ran_out && taking_runs && sandbox.state() == SandboxState::Running) {
             if durable {
                 super::recovery::capture_unavailable(ending);
             }
@@ -178,36 +187,39 @@ impl Run<'_> {
             super::recovery::capture_unavailable(ending);
             return self.kill(sandbox).await;
         };
-        let run_id = self.ids.run.as_str();
-        let event = EVENT_FREEZE_STARTED;
-        tracing::debug!(run_id, event);
-        if let Err(failure) = sandbox.freeze().await {
-            let error_code = failure.code().as_str();
-            let event = EVENT_FREEZE_FAILED;
-            {
-                let (message,) = (format_args!(
-                    "a sandbox would not freeze, so it is destroyed rather than held"
-                ),);
-                tracing::warn!(message, error_code, run_id, event);
-            };
-            if durable {
-                super::recovery::capture_unavailable(ending);
-            }
-            return self.kill(sandbox).await;
-        }
-        let event = EVENT_FREEZE_COMPLETED;
-        tracing::debug!(run_id, event);
-        self.capture_frozen(sandbox.as_ref(), recovery.as_ref(), ending)
+        self.capture_final(sandbox.as_ref(), recovery.as_ref(), ending)
             .await;
         // Durable tasks restore a fresh workspace under their native checkpoint.
         if durable || !ending.processed() {
             return self.kill(sandbox).await;
         }
+        let Some(&mode) = self.lessee.engine.capabilities().parks.first() else {
+            return self.kill(sandbox).await;
+        };
+        let run_id = self.ids.run.as_str();
+        let event = EVENT_PARK_STARTED;
+        tracing::debug!(run_id, event);
+        let parked = match sandbox.park(mode).await {
+            Ok(parked) => parked,
+            Err(failure) => {
+                let error_code = failure.code().as_str();
+                let event = EVENT_PARK_FAILED;
+                {
+                    let (message,) = (format_args!(
+                        "a sandbox would not park, so its engine destroyed it"
+                    ),);
+                    tracing::warn!(message, error_code, run_id, event);
+                };
+                return Fate::Gone;
+            }
+        };
+        let event = EVENT_PARK_COMPLETED;
+        tracing::debug!(run_id, event);
         let run = self.ids.run.clone();
-        match self.lessee.holds.park(key, run, sandbox).await {
-            Parked::Held(until) => Fate::Held(until),
-            Parked::Refused(sandbox) => self.kill(sandbox).await,
-            Parked::Gone => Fate::Gone,
+        match self.lessee.holds.park(key, run, parked).await {
+            Stowed::Held(until) => Fate::Held(until),
+            Stowed::Refused(parked) => Fate::Unfiled(parked),
+            Stowed::Gone => Fate::Gone,
         }
     }
 
@@ -240,11 +252,13 @@ impl Run<'_> {
     /// rules, cgroup, mount, image and directory. Timed; a failure leaves its
     /// directory for the boot sweep.
     pub(super) async fn release(&self, fate: Fate) {
-        let Fate::Killed(sandbox) = fate else {
-            return;
-        };
         let started = Instant::now();
-        let outcome = match self.destroy(sandbox).await {
+        let destroyed = match fate {
+            Fate::Gone | Fate::Held(_) => return,
+            Fate::Killed(sandbox) => self.destroy(sandbox).await,
+            Fate::Unfiled(parked) => self.logged_destroy(parked.destroy().await),
+        };
+        let outcome = match destroyed {
             Ok(()) => SandboxRelease::Released,
             Err(_logged) => SandboxRelease::Failed,
         };
@@ -257,7 +271,11 @@ impl Run<'_> {
     /// # Errors
     /// The engine's own, once logged: what is left is the boot sweep's.
     pub(super) async fn destroy(&self, sandbox: Box<dyn Sandbox>) -> afr_sandbox::Result<()> {
-        let destroyed = sandbox.destroy().await;
+        self.logged_destroy(sandbox.destroy().await)
+    }
+
+    /// `destroyed`, logged when its teardown left something behind.
+    fn logged_destroy(&self, destroyed: afr_sandbox::Result<()>) -> afr_sandbox::Result<()> {
         if let Err(failure) = &destroyed {
             let code = failure.code().as_str();
             let run_id = self.ids.run.as_str();
@@ -280,45 +298,55 @@ struct GivenUp {
     reason: String,
 }
 
-/// Holds a frozen sandbox to what `bound` admits, when that is an allowlist,
-/// then thaws it and waits for its executor to answer. The addresses change
-/// while it is frozen, so no process in it runs against the old set once its
-/// names name the new one.
-async fn resume(sandbox: &mut dyn Sandbox, bound: &Bound, run_id: &str) -> Result<(), GivenUp> {
+/// Resumes a parked sandbox, confines it to what `bound` admits when that is
+/// an allowlist, and waits for its executor to answer. The addresses change
+/// before the run's first command, so nothing runs against the old set once
+/// its names name the new one. A failure answers why, with the sandbox when
+/// it resumed and still needs destroying.
+async fn resume(
+    parked: Box<dyn Parked>,
+    bound: &Bound,
+    run_id: &str,
+) -> Result<Box<dyn Sandbox>, (GivenUp, Option<Box<dyn Sandbox>>)> {
     let refused = |event, failure: afr_sandbox::Error| GivenUp {
         event,
         code: failure.code(),
         reason: failure.told(),
     };
-    if let Bound::Allowed(allowlist) = bound {
-        sandbox
-            .reallow(allowlist)
-            .await
-            .map_err(|failure| refused(EVENT_REFILL_FAILED, failure))?;
-    }
-    let event = EVENT_THAW_STARTED;
+    let event = EVENT_RESUME_STARTED;
     tracing::debug!(run_id, event);
-    sandbox
-        .thaw()
+    let mut sandbox = parked
+        .resume()
         .await
-        .map_err(|failure| refused(EVENT_THAW_FAILED, failure))?;
-    answered(sandbox).await.map_err(|silent| GivenUp {
-        event: EVENT_THAW_FAILED,
-        code: silent.code(),
-        reason: silent.wire_message(),
-    })
+        .map_err(|failure| (refused(EVENT_RESUME_FAILED, failure), None))?;
+    if let Bound::Allowed(allowlist) = bound
+        && let Err(failure) = sandbox.reallow(allowlist).await
+    {
+        return Err((refused(EVENT_REFILL_FAILED, failure), Some(sandbox)));
+    }
+    match answered(sandbox.as_ref()).await {
+        Ok(()) => Ok(sandbox),
+        Err(silent) => Err((
+            GivenUp {
+                event: EVENT_RESUME_FAILED,
+                code: silent.code(),
+                reason: silent.wire_message(),
+            },
+            Some(sandbox),
+        )),
+    }
 }
 
-/// Waits for a thawed sandbox's executor to answer.
+/// Waits for a resumed sandbox's executor to answer.
 async fn answered(sandbox: &dyn Sandbox) -> afr_executor::Result<()> {
     let answer = sandbox.executor().list_dir(WORKSPACE_TOP);
-    tokio::time::timeout(THAW_ANSWER_WAIT, answer)
+    tokio::time::timeout(RESUME_ANSWER_WAIT, answer)
         .await
         .unwrap_or_else(|_late| Err(silent()))
         .map(drop)
 }
 
-/// The failure a thawed executor that never answered is logged as.
+/// The failure a resumed executor that never answered is logged as.
 fn silent() -> afr_executor::Error {
     std::io::Error::new(std::io::ErrorKind::TimedOut, DETAIL_SILENT).into()
 }

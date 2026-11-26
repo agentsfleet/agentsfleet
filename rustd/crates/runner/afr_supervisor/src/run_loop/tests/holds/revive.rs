@@ -18,63 +18,67 @@ use afr_telemetry::labels::SandboxHold;
 use afr_telemetry::testing::{Recorded, Tally, scoped};
 
 use super::tests::{NEXT_RUN_ID, healthy, holding, released, releases, resumed, settled};
-use super::{DETAIL_SILENT, EVENT_REUSED, EVENT_THAW_FAILED};
+use super::{DETAIL_SILENT, EVENT_RESUME_FAILED, EVENT_REUSED};
 use crate::client::{Call, Verb};
 use crate::holds::{Holds, Release};
 use crate::test_support::{
-    Answer, Behaviour, EXECUTOR_GONE, FAILURE_REASON, FLEET_ID, FakeAgent, FakeEngine, Freezer,
-    NO_FREEZER, OUTCOME, PROCESSED, RENEWAL_TERMINATE, RUN_ID, Rig, clock, daemon, payload,
-    reported,
+    Answer, Behaviour, EXECUTOR_GONE, FAILURE_REASON, FLEET_ID, FakeAgent, FakeEngine, NO_PARK,
+    OUTCOME, PROCESSED, Parking, RENEWAL_TERMINATE, RUN_ID, Rig, clock, daemon, payload, reported,
 };
 
-/// Long past the wait for a thawed executor's answer, on the paused clock: a
+/// Long past the wait for a resumed executor's answer, on the paused clock: a
 /// run still running then is stuck on a sandbox it should have given up.
 const RUN_BOUND: Duration = Duration::from_secs(60);
 /// The field a run's own log lines name it by.
 const RUN_FIELD: &str = "run_id";
-/// What the engine counts when a thawed hold is given up, as (prepared,
-/// frozen, thawed, destroyed): thawed once, then built fresh and held in turn.
-const THAWED_THEN_FRESH: (usize, usize, usize, usize) = (2, 2, 1, 2);
+/// What the engine counts when a resumed hold is given up, as (prepared,
+/// parked, resumed, destroyed): resumed once, then built fresh and held in turn.
+const RESUMED_THEN_FRESH: (usize, usize, usize, usize) = (2, 2, 1, 2);
 
-/// The held sandbox will not thaw: the hold is released as `thaw_failed`, the
-/// log carries the kernel's reason, and the run runs in a fresh sandbox.
+/// The held sandbox will not resume, and its engine destroys it: the hold is
+/// released as `thaw_failed`, the log carries the engine's reason, and the
+/// run runs in a fresh sandbox.
 #[tokio::test(start_paused = true)]
-async fn test_thaw_failure_falls_back_fresh() {
-    let counted = gives_up_the_thawed_hold(Freezer::RefusesThaw, NO_FREEZER).await;
+async fn test_resume_failure_falls_back_fresh() {
+    let counted = gives_up_the_resumed_hold(Parking::RefusesResume, NO_PARK).await;
 
-    assert_eq!(counted, (2, 2, 0, 2), "never thawed, then built fresh");
+    assert_eq!(
+        counted,
+        (2, 2, 0, 2),
+        "never resumed, destroyed by its engine, then built fresh"
+    );
 }
 
-/// The executor a held sandbox thaws into died while it was frozen: it never
-/// answers, so the hold is given up and the run runs in a fresh sandbox.
+/// The executor a held sandbox resumes into died while it was parked: it
+/// never answers, so the hold is given up and the run runs in a fresh sandbox.
 #[tokio::test(start_paused = true)]
-async fn test_an_executor_silent_after_thaw_falls_back_fresh() {
-    let counted = gives_up_the_thawed_hold(Freezer::ThawsSilent, DETAIL_SILENT).await;
+async fn test_an_executor_silent_after_resume_falls_back_fresh() {
+    let counted = gives_up_the_resumed_hold(Parking::ResumesSilent, DETAIL_SILENT).await;
 
-    assert_eq!(counted, THAWED_THEN_FRESH);
+    assert_eq!(counted, RESUMED_THEN_FRESH);
 }
 
-/// The executor a held sandbox thaws into fails once it is back: the hold is
-/// given up and the run runs in a fresh sandbox.
+/// The executor a held sandbox resumes into fails once it is back: the hold
+/// is given up and the run runs in a fresh sandbox.
 #[tokio::test(start_paused = true)]
-async fn test_an_executor_failing_after_thaw_falls_back_fresh() {
-    let counted = gives_up_the_thawed_hold(Freezer::ThawsBroken, EXECUTOR_GONE).await;
+async fn test_an_executor_failing_after_resume_falls_back_fresh() {
+    let counted = gives_up_the_resumed_hold(Parking::ResumesBroken, EXECUTOR_GONE).await;
 
-    assert_eq!(counted, THAWED_THEN_FRESH);
+    assert_eq!(counted, RESUMED_THEN_FRESH);
 }
 
 /// Runs a run that parks, then the fleet's next run over a sandbox that
-/// thaws as `freezer` says: the hold is released as `thaw_failed`, the log
+/// resumes as `parking` says: the hold is released as `thaw_failed`, the log
 /// names the failure's code once and a reason carrying `cause`, and the run
 /// runs fresh to `processed`. Answers what the engine counted.
 #[expect(
     clippy::future_not_send,
     reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
 )]
-async fn gives_up_the_thawed_hold(freezer: Freezer, cause: &str) -> (usize, usize, usize, usize) {
+async fn gives_up_the_resumed_hold(parking: Parking, cause: &str) -> (usize, usize, usize, usize) {
     let capture = Capture::install();
     let engine = FakeEngine {
-        freezer,
+        parking,
         ..FakeEngine::default()
     };
     let (mut rig, counted) = holding(healthy, engine, Behaviour::Answer);
@@ -88,7 +92,7 @@ async fn gives_up_the_thawed_hold(freezer: Freezer, cause: &str) -> (usize, usiz
     settled(&rig).await;
 
     assert_eq!(reported(&rig.calls())[OUTCOME], PROCESSED);
-    let failed = capture.only(EVENT_THAW_FAILED);
+    let failed = capture.only(EVENT_RESUME_FAILED);
     let code = failed.field("error_code");
     let reason = failed.field("reason");
     assert_eq!(failed.field(RUN_FIELD), Some(NEXT_RUN_ID));
@@ -107,11 +111,11 @@ async fn gives_up_the_thawed_hold(freezer: Freezer, cause: &str) -> (usize, usiz
     counted.read()
 }
 
-/// A park and the reuse that follows are each counted, reuse once the thawed
+/// A park and the reuse that follows are each counted, reuse once the resumed
 /// executor answered.
 #[tokio::test(start_paused = true)]
 async fn test_a_park_and_its_reuse_are_counted() {
-    let counted = holds_counted(Freezer::Works, resumed(NEXT_RUN_ID, FLEET_ID)).await;
+    let counted = holds_counted(Parking::Works, resumed(NEXT_RUN_ID, FLEET_ID)).await;
 
     assert_eq!(
         counted,
@@ -124,10 +128,10 @@ async fn test_a_park_and_its_reuse_are_counted() {
     );
 }
 
-/// A hold that will not thaw was never reused: it counts as given up alone.
+/// A hold that will not resume was never reused: it counts as given up alone.
 #[tokio::test(start_paused = true)]
-async fn test_a_failed_thaw_counts_no_reuse() {
-    let counted = holds_counted(Freezer::RefusesThaw, resumed(NEXT_RUN_ID, FLEET_ID)).await;
+async fn test_a_failed_resume_counts_no_reuse() {
+    let counted = holds_counted(Parking::RefusesResume, resumed(NEXT_RUN_ID, FLEET_ID)).await;
 
     assert_eq!(
         counted,
@@ -140,13 +144,13 @@ async fn test_a_failed_thaw_counts_no_reuse() {
     );
 }
 
-/// Runs a run that parks, then `next`, over sandboxes that thaw as `freezer`
+/// Runs a run that parks, then `next`, over sandboxes that resume as `parking`
 /// says, and reads back every hold the runner counted through to shutdown:
 /// the runs' own counts and the task's.
-pub(super) async fn holds_counted(freezer: Freezer, next: RunPayload<'static>) -> Vec<SandboxHold> {
+pub(super) async fn holds_counted(parking: Parking, next: RunPayload<'static>) -> Vec<SandboxHold> {
     let (tally, recorded) = Tally::new();
     let engine = FakeEngine {
-        freezer,
+        parking,
         ..FakeEngine::default()
     };
     let holds = Holds::recording(clock(), Arc::<Tally>::clone(&tally));
@@ -250,16 +254,16 @@ async fn test_a_cut_before_the_build_releases_the_hold() {
         [released(FLEET_ID, Release::Superseded)],
         "released by the cut run, not by the shutdown"
     );
-    assert_eq!(counted.read(), (1, 1, 0, 1), "held once, never thawed");
+    assert_eq!(counted.read(), (1, 1, 0, 1), "held once, never resumed");
 }
 
-/// A renewal refused while the fleet's next run thaws its hold: the thaw
-/// finishes before the build reads its stop, and the thawed sandbox is then
+/// A renewal refused while the fleet's next run resumes its hold: the resume
+/// finishes before the build reads its stop, and the resumed sandbox is then
 /// destroyed once and held by nobody.
 #[tokio::test(start_paused = true)]
-async fn test_cut_during_thaw_settles_the_hold() {
+async fn test_cut_during_resume_settles_the_hold() {
     let engine = FakeEngine {
-        thaw_takes: crate::test_support::ROUND.saturating_mul(2),
+        resume_takes: crate::test_support::ROUND.saturating_mul(2),
         ..FakeEngine::default()
     };
     let (mut rig, counted) = holding(next_run_cut, engine, Behaviour::Answer);
@@ -270,7 +274,7 @@ async fn test_cut_during_thaw_settles_the_hold() {
     assert_eq!(
         counted.read(),
         (1, 1, 1, 1),
-        "built and held once, thawed to the end, then destroyed once"
+        "built and held once, resumed to the end, then destroyed once"
     );
     let report = reported(&rig.calls());
     assert_eq!(report[FAILURE_REASON], RENEWAL_TERMINATE, "{report}");

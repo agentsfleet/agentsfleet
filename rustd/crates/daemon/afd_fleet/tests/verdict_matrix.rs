@@ -49,6 +49,14 @@ fn capable() -> CapabilityReport<'static> {
         ],
         bubblewrap: true,
         egress_enforcement: true,
+
+        engine: af_wire::runner::SandboxEngine::Bubblewrap,
+
+        isolation: af_wire::runner::Isolation::SharedKernel,
+
+        kvm: af_wire::runner::Kvm::Absent,
+
+        sandboxes_max: None,
     }
 }
 
@@ -170,6 +178,14 @@ fn test_the_first_unmet_guarantee_wins() {
         cgroup_controllers: Vec::new(),
         bubblewrap: false,
         egress_enforcement: false,
+
+        engine: af_wire::runner::SandboxEngine::Bubblewrap,
+
+        isolation: af_wire::runner::Isolation::SharedKernel,
+
+        kvm: af_wire::runner::Kvm::Absent,
+
+        sandboxes_max: None,
     };
 
     assert_eq!(

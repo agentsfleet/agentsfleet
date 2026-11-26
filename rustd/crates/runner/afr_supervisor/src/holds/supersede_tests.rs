@@ -26,7 +26,7 @@ async fn test_a_late_superseded_answer_spares_the_next_runs_hold() {
     let (holds, _clock) = holds(2);
     let first = holds.park(key(FLEET_A), id(RUN), sandbox(&engine).await);
     let first = bounded("the first run's park", first).await;
-    assert!(matches!(first, crate::holds::Parked::Held(_)), "{first:?}");
+    assert!(matches!(first, crate::holds::Stowed::Held(_)), "{first:?}");
     let taken = bounded("the next run's take", holds.take(&key(FLEET_A)))
         .await
         .unwrap();
@@ -34,7 +34,7 @@ async fn test_a_late_superseded_answer_spares_the_next_runs_hold() {
     let parked = holds.park(key(FLEET_A), next, taken.sandbox);
     let parked = bounded("the next run's park", parked).await;
     assert!(
-        matches!(parked, crate::holds::Parked::Held(_)),
+        matches!(parked, crate::holds::Stowed::Held(_)),
         "{parked:?}"
     );
 

@@ -12,7 +12,7 @@ use af_core::test_util::trace::Capture;
 use super::super::{EVENT_COMPLETED, EVENT_FAILED};
 use crate::client::{Call, Verb};
 use crate::test_support::{
-    Answer, Behaviour, FLEET_ID, FakeAgent, FakeEngine, RUN_ID, Rig, daemon, payload,
+    Answer, Behaviour, Builds, FLEET_ID, FakeAgent, FakeEngine, RUN_ID, Rig, daemon, payload,
 };
 
 const MEMORY_MS: &str = "memory_ms";
@@ -164,7 +164,7 @@ async fn test_a_refused_sandbox_still_logs_its_segment() {
     let rig = Rig::new(
         daemon(|_call| None),
         FakeEngine {
-            refuse: true,
+            build: Builds::Refused,
             ..FakeEngine::default()
         },
         FakeAgent::new(Behaviour::Answer),

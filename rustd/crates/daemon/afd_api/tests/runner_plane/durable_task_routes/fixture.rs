@@ -277,6 +277,14 @@ async fn heartbeat(store: &Runners, runner: &Uuid7) {
         cgroup_controllers: Vec::new(),
         bubblewrap: false,
         egress_enforcement: false,
+
+        engine: af_wire::runner::SandboxEngine::Bubblewrap,
+
+        isolation: af_wire::runner::Isolation::SharedKernel,
+
+        kvm: af_wire::runner::Kvm::Absent,
+
+        sandboxes_max: None,
     };
     let beat = store
         .heartbeat(

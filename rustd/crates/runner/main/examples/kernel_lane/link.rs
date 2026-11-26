@@ -7,9 +7,8 @@ use std::fs;
 use std::os::unix::fs::FileTypeExt as _;
 use std::path::{Path, PathBuf};
 
-use afr_sandbox::{
-    BubblewrapEngine, EXECUTOR_FLAG, Engine as _, Limits, SANDBOX_LEAF, SandboxRequest, probe,
-};
+use crate::lane::{id_of, spec};
+use afr_sandbox::{BubblewrapEngine, EXECUTOR_FLAG, Engine as _, Limits, SANDBOX_LEAF, probe};
 use libtest_mimic::Failed;
 
 use crate::lane::{Lane, NOT_TOLD};
@@ -70,7 +69,7 @@ pub(crate) fn answers_over_the_inherited_pair(lane: &Lane) -> Result<(), Failed>
     runtime().block_on(async {
         let sandbox = lane
             .engine()
-            .prepare(SandboxRequest::new(run_id, Limits::default()))
+            .prepare(spec(&id_of(run_id), Limits::default()))
             .await?;
         let inside = run(sandbox.executor(), shell(FIND_SOCKETS)).await;
         let on_host = sockets_under(&lane.run_dir(run_id));
@@ -93,7 +92,7 @@ pub(crate) fn tenant_holds_no_executor_socket(lane: &Lane) -> Result<(), Failed>
     runtime().block_on(async {
         let sandbox = lane
             .engine()
-            .prepare(SandboxRequest::new("link-tenant", Limits::default()))
+            .prepare(spec(&id_of("link-tenant"), Limits::default()))
             .await?;
         let listed = run(sandbox.executor(), shell(LIST_DESCRIPTORS)).await;
         sandbox.destroy().await?;
@@ -126,7 +125,7 @@ pub(crate) fn concurrent_spawn_inherits_no_other_socket(lane: &Lane) -> Result<(
             tokio::spawn(async move {
                 together.wait().await;
                 engine
-                    .prepare(SandboxRequest::new(run_id, Limits::default()))
+                    .prepare(spec(&id_of(run_id), Limits::default()))
                     .await
             })
         });
@@ -161,7 +160,7 @@ pub(crate) fn dead_entry_is_refused_with_its_reason(lane: &Lane) -> Result<(), F
     let engine = BubblewrapEngine::new(config, &probe(&lane.config.probe_paths()))?;
 
     let refused = runtime()
-        .block_on(engine.prepare(SandboxRequest::new("link-dead", Limits::default())))
+        .block_on(engine.prepare(spec(&id_of("link-dead"), Limits::default())))
         .err()
         .map(|error| error.to_string());
 
@@ -179,7 +178,7 @@ pub(crate) fn has_no_socket_directory_bind(lane: &Lane) -> Result<(), Failed> {
     runtime().block_on(async {
         let sandbox = lane
             .engine()
-            .prepare(SandboxRequest::new("link-binds", Limits::default()))
+            .prepare(spec(&id_of("link-binds"), Limits::default()))
             .await?;
         let mounts = run(sandbox.executor(), shell(MOUNTS)).await;
         sandbox.destroy().await?;
@@ -234,7 +233,7 @@ fn held_by(lane: &Lane, run_id: &str) -> Result<Held, Failed> {
     let procs = lane
         .config
         .cgroup_root
-        .join(run_id)
+        .join(id_of(run_id).as_str())
         .join(SANDBOX_LEAF)
         .join("cgroup.procs");
     let mut link = None;

@@ -13,17 +13,19 @@ use std::time::{Duration, Instant};
 
 use af_core::clock::saturating_millis;
 use af_core::error_code::{self, Coded as _, ErrorCode, Logged};
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
 use backon::{ExponentialBuilder, Retryable as _, Sleeper};
 
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::{JoinHandle, JoinSet};
 
-use crate::engine::{Engine, Limits, Sandbox, SandboxRequest};
+use crate::engine::{
+    Capabilities, Engine, Granted, Limits, Sandbox, SandboxSpec, SandboxState, Sweep, Swept,
+};
 use crate::error::Result;
 use crate::network::Network;
 
-/// What every warm sandbox is named, before its run is known.
-const SLOT_PREFIX: &str = "warm-";
 /// The event every run start is logged under, warm or cold.
 const EVENT_START: &str = "sandbox_start_completed";
 /// The event a slot that failed to start is logged under.
@@ -45,17 +47,16 @@ const RETRY_MAX_DELAY: Duration = Duration::from_secs(30);
 /// How a start built on demand is labelled.
 const COLD: &str = "cold";
 
-/// A failed start: the slot's name, and why.
-type Failed = (String, crate::Error);
+/// A failed start: the slot's sandbox identifier, when one was minted, and
+/// why.
+type Failed = (Option<Uuid7>, crate::Error);
 
 /// A run's request for a ready slot; `None` when none is ready.
 type Claim = oneshot::Sender<Option<Slot>>;
 
-/// A sandbox started ahead of its run, and the name it was started under:
-/// its cgroup and its directory carry that name, so a run served from it
-/// logs it.
+/// A sandbox started ahead of its run, under an identifier of its own that
+/// its cgroup and its directory carry, so a run served from it logs it.
 struct Slot {
-    name: String,
     sandbox: Box<dyn Sandbox>,
 }
 
@@ -106,24 +107,36 @@ impl WarmSlots {
 
 #[async_trait::async_trait]
 impl Engine for WarmSlots {
-    async fn prepare(&self, request: SandboxRequest<'_>) -> Result<Box<dyn Sandbox>> {
+    fn capabilities(&self) -> Capabilities {
+        self.inner.capabilities()
+    }
+
+    fn grant(&self, limits: Limits) -> Result<Granted> {
+        self.inner.grant(limits)
+    }
+
+    async fn prepare(&self, spec: SandboxSpec<'_>) -> Result<Box<dyn Sandbox>> {
         let started = Instant::now();
         // Every slot is built isolated: a request for another network, which
         // the namespace is chosen for at start, starts cold.
-        let warm = if request.limits == self.limits && request.network == Network::Isolated {
+        let warm = if *spec.granted.limits() == self.limits && spec.network == Network::Isolated {
             self.claim().await
         } else {
             None
         };
-        let (sandbox, start, slot) = match warm {
-            Some(Slot { name, sandbox }) => (sandbox, WARM, Some(name)),
-            None => (self.inner.prepare(request).await?, COLD, None),
+        let (sandbox, start) = match warm {
+            Some(Slot { sandbox }) => (sandbox, WARM),
+            None => (self.inner.prepare(spec).await?, COLD),
         };
-        let run_id = request.run_id;
+        let sandbox_id = sandbox.id().as_str();
         let duration_ms = saturating_millis(started.elapsed());
         let event = EVENT_START;
-        tracing::info!(run_id, slot, start, duration_ms, event);
+        tracing::info!(sandbox_id, start, duration_ms, event);
         Ok(sandbox)
+    }
+
+    async fn sweep(&self, scope: Sweep<'_>) -> Result<Swept> {
+        self.inner.sweep(scope).await
     }
 }
 
@@ -173,18 +186,15 @@ fn live_slot(
     loop {
         let mut slot = waiting.try_recv().ok()?;
         refill(work);
-        if slot.sandbox.is_running() {
+        if slot.sandbox.state() == SandboxState::Running {
             return Some(slot);
         }
         let event = EVENT_SLOT_DIED;
         let error_code = DIED_CODE.as_str();
-        let name = slot.name.as_str();
+        let sandbox_id = slot.sandbox.id().as_str();
         {
-            let (slot, message) = (
-                &name,
-                format_args!("a warm slot's sandbox died while it waited"),
-            );
-            tracing::warn!(message, error_code, slot, event);
+            let message = format_args!("a warm slot's sandbox died while it waited");
+            tracing::warn!(message, error_code, sandbox_id, event);
         };
         work.spawn(retire(slot));
     }
@@ -197,12 +207,17 @@ async fn fill(inner: Arc<dyn Engine>, ready: mpsc::Sender<Slot>, limits: Limits)
     let attempt = || {
         let inner = Arc::clone(&inner);
         async move {
-            // Named like a run, so a slot never meets a leftover of a
-            // previous run under the same name.
-            let name = format!("{SLOT_PREFIX}{}", uuid::Uuid::now_v7());
-            match inner.prepare(SandboxRequest::new(&name, limits)).await {
-                Ok(sandbox) => Ok(Slot { name, sandbox }),
-                Err(error) => Err((name, error)),
+            // A fresh identifier per start, so a slot never meets a leftover
+            // of a previous one.
+            let id = Entropy::new()
+                .uuid7(af_core::clock::now())
+                .map_err(|error| (None, error.into()))?;
+            let granted = inner
+                .grant(limits)
+                .map_err(|error| (Some(id.clone()), error))?;
+            match inner.prepare(SandboxSpec::new(&id, granted)).await {
+                Ok(sandbox) => Ok(Slot { sandbox }),
+                Err(error) => Err((Some(id), error)),
             }
         }
     };
@@ -215,11 +230,12 @@ async fn fill(inner: Arc<dyn Engine>, ready: mpsc::Sender<Slot>, limits: Limits)
         )
         .sleep(UntilClosed(ready.clone()))
         .when(|_failed: &Failed| !ready.is_closed())
-        .notify(|(slot, error): &Failed, delay: Duration| {
+        .notify(|(id, error): &Failed, delay: Duration| {
             let Logged { error_code, reason } = error.logged();
+            let sandbox_id = id.as_ref().map(Uuid7::as_str);
             let retry_ms = saturating_millis(delay);
             let event = EVENT_SLOT_FAILED;
-            tracing::warn!(slot, error_code, reason, retry_ms, event);
+            tracing::warn!(sandbox_id, error_code, reason, retry_ms, event);
         })
         .await;
     if let Ok(sandbox) = started
@@ -248,16 +264,15 @@ impl Sleeper for UntilClosed {
 }
 
 /// Destroys a slot no run will use.
-async fn retire(Slot { name, sandbox }: Slot) {
+async fn retire(Slot { sandbox }: Slot) {
+    let id = sandbox.id().clone();
     if let Err(error) = sandbox.destroy().await {
         let Logged { error_code, reason } = error.logged();
+        let sandbox_id = id.as_str();
         let event = EVENT_SLOT_LEFT;
         {
-            let (slot, message) = (
-                &name,
-                format_args!("an unused warm slot failed to tear down"),
-            );
-            tracing::warn!(message, error_code, slot, reason, event);
+            let message = format_args!("an unused warm slot failed to tear down");
+            tracing::warn!(message, error_code, sandbox_id, reason, event);
         };
     }
 }

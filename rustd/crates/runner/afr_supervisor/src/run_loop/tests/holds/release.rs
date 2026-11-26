@@ -25,13 +25,13 @@ use super::tests::{
 use crate::client::{Call, Verb};
 use crate::holds::Release;
 use crate::test_support::{
-    Answer, Behaviour, FIXTURE_BRANCH, FLEET_ID, FakeEngine, Freezer, GRANTED_UNTIL, OUTCOME,
-    PROCESSED, RUN_ID, Rig, json, payload, reported, repository,
+    Answer, Behaviour, FIXTURE_BRANCH, FLEET_ID, FakeEngine, GRANTED_UNTIL, OUTCOME, PROCESSED,
+    Parking, RUN_ID, Rig, json, payload, reported, repository,
 };
 
 /// What the engine counts for a sandbox destroyed rather than held, as
-/// (prepared, frozen, thawed, destroyed).
-const DESTROYED_UNFROZEN: (usize, usize, usize, usize) = (1, 0, 0, 1);
+/// (prepared, parked, resumed, destroyed).
+const DESTROYED_UNPARKED: (usize, usize, usize, usize) = (1, 0, 0, 1);
 /// A host the first run's sandbox was not built to reach.
 const CHANGED_HOST: &str = "api.github.com";
 /// The run line's sandbox parts a held sandbox does and does not reach.
@@ -78,7 +78,7 @@ async fn test_a_run_not_resuming_builds_fresh_and_ends_the_hold() {
     assert_eq!(
         counted.read(),
         (2, 2, 0, 2),
-        "built fresh, never thawed; the stale hold, then shutdown's"
+        "built fresh, never resumed; the stale hold, then shutdown's"
     );
     assert_eq!(
         releases(&capture),
@@ -94,7 +94,7 @@ async fn test_a_run_not_resuming_builds_fresh_and_ends_the_hold() {
 async fn test_a_hold_not_resumed_is_counted_superseded() {
     let next = payload(NEXT_RUN_ID, FLEET_ID);
 
-    let counted = holds_counted(Freezer::Works, next).await;
+    let counted = holds_counted(Parking::Works, next).await;
 
     assert_eq!(
         counted,
@@ -115,11 +115,15 @@ async fn test_a_run_resuming_takes_the_hold() {
     rig.run(&payload(RUN_ID, FLEET_ID)).await.unwrap();
     rig.run(&resumed(NEXT_RUN_ID, FLEET_ID)).await.unwrap();
 
-    assert_eq!(counted.read(), (1, 2, 1, 0), "one sandbox, thawed and held");
+    assert_eq!(
+        counted.read(),
+        (1, 2, 1, 0),
+        "one sandbox, resumed and held"
+    );
 }
 
-/// A run that takes the fleet's hold thaws it and checks nothing out: its
-/// line carries the thaw as the prepare part and no checkout part, while the
+/// A run that takes the fleet's hold resumes it and checks nothing out: its
+/// line carries the resume as the prepare part and no checkout part, while the
 /// run that built the sandbox carries both. Both are bound to a repository,
 /// so the held one skips a checkout it would otherwise make.
 #[tokio::test(start_paused = true)]
@@ -151,9 +155,9 @@ async fn test_a_resumed_run_logs_no_checkout() {
     let built = completed(RUN_ID);
     assert!(built.field(PREPARE_MS).is_some(), "{:?}", built.fields);
     assert!(built.field(CHECKOUT_MS).is_some(), "{:?}", built.fields);
-    let thawed = completed(NEXT_RUN_ID);
-    assert!(thawed.field(PREPARE_MS).is_some(), "{:?}", thawed.fields);
-    assert_eq!(thawed.field(CHECKOUT_MS), None, "{:?}", thawed.fields);
+    let reused = completed(NEXT_RUN_ID);
+    assert!(reused.field(PREPARE_MS).is_some(), "{:?}", reused.fields);
+    assert_eq!(reused.field(CHECKOUT_MS), None, "{:?}", reused.fields);
 }
 
 /// The fleet's next run is told to resume, but its policy reaches a host
@@ -174,7 +178,7 @@ async fn test_a_run_under_a_changed_policy_builds_fresh_and_ends_the_hold() {
     assert_eq!(
         counted.read(),
         (2, 2, 0, 2),
-        "built fresh, never thawed; the mismatched hold, then shutdown's"
+        "built fresh, never resumed; the mismatched hold, then shutdown's"
     );
     assert_eq!(
         releases(&capture),
@@ -207,13 +211,13 @@ async fn test_a_runner_taking_no_new_run_holds_nothing() {
         let report = reported(&rig.calls());
         assert_eq!(report[OUTCOME], PROCESSED);
         holds_nothing(&report);
-        assert_eq!(counted.read(), DESTROYED_UNFROZEN);
+        assert_eq!(counted.read(), DESTROYED_UNPARKED);
     }
 }
 
 /// A keeper that refuses the park, here one already shut down, hands the
-/// frozen sandbox back: the run destroys it and reports nothing held,
-/// rather than leave it running with no owner.
+/// parked sandbox back unfiled: the run destroys it at the release and
+/// reports nothing held, rather than leave it with no owner.
 #[tokio::test(start_paused = true)]
 async fn test_a_park_the_keeper_refuses_is_destroyed_not_held() {
     let capture = Capture::install();
@@ -228,7 +232,7 @@ async fn test_a_park_the_keeper_refuses_is_destroyed_not_held() {
     assert_eq!(
         counted.read(),
         (1, 1, 0, 1),
-        "frozen for the park, then destroyed"
+        "parked, then destroyed at the release"
     );
     assert_eq!(releases(&capture), [released(FLEET_ID, Release::Shutdown)]);
 }
@@ -238,7 +242,7 @@ async fn test_a_park_the_keeper_refuses_is_destroyed_not_held() {
 #[tokio::test(start_paused = true)]
 async fn test_a_sandbox_no_longer_running_is_destroyed_not_held() {
     let engine = FakeEngine {
-        freezer: Freezer::Dead,
+        parking: Parking::Dead,
         ..FakeEngine::default()
     };
     let (mut rig, counted) = holding(healthy, engine, Behaviour::Answer);
@@ -248,5 +252,5 @@ async fn test_a_sandbox_no_longer_running_is_destroyed_not_held() {
     let report = reported(&rig.calls());
     assert_eq!(report[OUTCOME], PROCESSED);
     holds_nothing(&report);
-    assert_eq!(counted.read(), DESTROYED_UNFROZEN);
+    assert_eq!(counted.read(), DESTROYED_UNPARKED);
 }

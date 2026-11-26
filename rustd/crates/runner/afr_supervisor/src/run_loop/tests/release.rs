@@ -22,8 +22,8 @@ use super::super::EVENT_COMPLETED;
 use super::{EVENT_DESTROY_FAILED, EVENT_KILL_UNSETTLED};
 use crate::client::Verb;
 use crate::test_support::{
-    Behaviour, DESTROY, FLEET_ID, FakeAgent, FakeEngine, KILL, OUTCOME, PROCESSED, RUN_ID, Rig,
-    daemon, payload, reported,
+    Behaviour, DESTROY, FLEET_ID, FakeAgent, FakeEngine, KILL, OUTCOME, PROCESSED, Parking, RUN_ID,
+    Rig, daemon, payload, reported,
 };
 
 /// The step the fake daemon records when the report arrives.
@@ -33,7 +33,16 @@ const RELEASE_TAKES: Duration = Duration::from_secs(3);
 
 /// A rig whose daemon reports each report into the channel `engine`'s
 /// sandboxes report their kill and destroy into, and that channel's reader.
+/// Its engine offers no park mode, so every run ends on the kill path.
 fn recording(engine: FakeEngine) -> (Rig, mpsc::UnboundedReceiver<&'static str>) {
+    recording_parked(FakeEngine {
+        parking: Parking::Unoffered,
+        ..engine
+    })
+}
+
+/// [`recording`], over `engine` as it is, parking included.
+fn recording_parked(engine: FakeEngine) -> (Rig, mpsc::UnboundedReceiver<&'static str>) {
     let (steps, recorded) = mpsc::unbounded_channel();
     let reported = steps.clone();
     let engine = FakeEngine {
@@ -78,6 +87,24 @@ async fn test_report_posts_between_kill_and_release() {
         .unwrap();
 
     assert_eq!(in_order(&mut steps), [KILL, REPORT, DESTROY]);
+    assert_eq!(releases(&recorded), [SandboxRelease::Released]);
+}
+
+/// A sandbox parked for a keeper with no room is filed nowhere: it runs
+/// nothing, so it is never killed, and it is destroyed once the report is in.
+#[tokio::test(start_paused = true)]
+async fn test_an_unfiled_park_is_destroyed_after_the_report_without_a_kill() {
+    let engine = FakeEngine::default();
+    let parked = Arc::clone(&engine.parked);
+    let (rig, mut steps) = recording_parked(engine);
+    let (tally, recorded) = Tally::new();
+
+    scoped(tally, rig.run(&payload(RUN_ID, FLEET_ID)))
+        .await
+        .unwrap();
+
+    assert_eq!(parked.load(Ordering::SeqCst), 1);
+    assert_eq!(in_order(&mut steps), [REPORT, DESTROY]);
     assert_eq!(releases(&recorded), [SandboxRelease::Released]);
 }
 

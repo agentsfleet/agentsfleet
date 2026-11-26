@@ -4,11 +4,24 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
+use af_core::id::Uuid7;
+use af_wire::runner::{Isolation, SandboxEngine};
 use afr_executor::{Executor, Process, ProcessId, Spawn};
 use bytes::Bytes;
 
-use crate::engine::{Engine, Killed, Sandbox, SandboxRequest};
+use crate::engine::{
+    Capabilities, Engine, Environment, Granted, Killed, Limits, ParkMode, Parked, Quiescence,
+    ResourceFacts, Root, Sandbox, SandboxSpec, SandboxState, Sweep, Swept,
+};
 use crate::error::Result;
+
+/// What the counting engine states: every cap enforced, nothing parked.
+const CAPABILITIES: Capabilities = Capabilities {
+    engine: SandboxEngine::Bubblewrap,
+    isolation: Isolation::SharedKernel,
+    parks: &[],
+    resources: ResourceFacts::ENFORCED,
+};
 
 /// An executor nothing calls; a warm slot is only handed out, never driven.
 #[derive(Debug)]
@@ -31,18 +44,16 @@ impl Executor for Idle {
     }
 }
 
-/// A sandbox that remembers its name and counts its own destruction.
+/// A sandbox that keeps its identifier and counts its own destruction.
 #[derive(Debug)]
 pub(super) struct Named {
     pub(super) panics: bool,
     /// Whether its teardown is refused, leaving it behind.
     pub(super) leaks: bool,
     pub(super) dead: bool,
-    #[expect(
-        dead_code,
-        reason = "read through the derived Debug rendering the tests inspect"
-    )]
-    name: String,
+    id: Uuid7,
+    granted: Granted,
+    environment: Environment,
     pub(super) destroyed: Arc<AtomicU64>,
     executor: Idle,
 }
@@ -53,17 +64,33 @@ impl Sandbox for Named {
         unreachable!("a warm slot is handed out or destroyed, never killed")
     }
 
+    fn id(&self) -> &Uuid7 {
+        &self.id
+    }
+    fn environment(&self) -> &Environment {
+        &self.environment
+    }
+    fn granted(&self) -> &Granted {
+        &self.granted
+    }
     fn executor(&self) -> &dyn Executor {
         &self.executor
     }
-    fn is_running(&mut self) -> bool {
-        !self.dead
+    fn workspace(&self) -> Option<crate::engine::HostWorkspace<'_>> {
+        None
     }
-    async fn freeze(&self) -> Result<()> {
-        Ok(())
+    fn state(&mut self) -> SandboxState {
+        if self.dead {
+            SandboxState::Ended
+        } else {
+            SandboxState::Running
+        }
     }
-    async fn thaw(&self) -> Result<()> {
-        Ok(())
+    async fn quiesce(&self) -> Result<Quiescence> {
+        unreachable!("a warm slot is handed out or destroyed, never captured")
+    }
+    async fn park(self: Box<Self>, _mode: ParkMode) -> Result<Box<dyn Parked>> {
+        unreachable!("a warm slot is handed out or destroyed, never parked")
     }
     async fn reallow(&mut self, _allowlist: &crate::Allowlist) -> Result<()> {
         Ok(())
@@ -78,7 +105,8 @@ impl Sandbox for Named {
     }
 }
 
-/// An engine that names each sandbox after its request and counts them.
+/// An engine that builds each sandbox under its spec's identifier and counts
+/// them.
 #[derive(Debug, Default)]
 pub(super) struct Counting {
     pub(super) started: AtomicU64,
@@ -97,7 +125,19 @@ pub(super) struct Counting {
 
 #[async_trait::async_trait]
 impl Engine for Counting {
-    async fn prepare(&self, request: SandboxRequest<'_>) -> Result<Box<dyn Sandbox>> {
+    fn capabilities(&self) -> Capabilities {
+        CAPABILITIES
+    }
+
+    fn grant(&self, limits: Limits) -> Result<Granted> {
+        CAPABILITIES.grant(limits)
+    }
+
+    async fn sweep(&self, _scope: Sweep<'_>) -> Result<Swept> {
+        unreachable!("warm slots never sweep")
+    }
+
+    async fn prepare(&self, spec: SandboxSpec<'_>) -> Result<Box<dyn Sandbox>> {
         let refused = self
             .refusals
             .try_update(Ordering::SeqCst, Ordering::SeqCst, |left| {
@@ -113,7 +153,12 @@ impl Engine for Counting {
             tokio::time::sleep(self.delay).await;
         }
         Ok(Box::new(Named {
-            name: request.run_id.to_owned(),
+            id: spec.id.clone(),
+            granted: spec.granted,
+            environment: Environment {
+                engine: SandboxEngine::Bubblewrap,
+                root: Root::Host,
+            },
             destroyed: Arc::clone(&self.destroyed),
             panics: self.panics,
             leaks: self.leaks,
@@ -121,11 +166,6 @@ impl Engine for Counting {
             executor: Idle,
         }))
     }
-}
-
-/// What a sandbox handed out was named, read through its debug rendering.
-pub(super) fn name_of(sandbox: &dyn Sandbox) -> String {
-    format!("{sandbox:?}")
 }
 
 pub(super) async fn settle() {

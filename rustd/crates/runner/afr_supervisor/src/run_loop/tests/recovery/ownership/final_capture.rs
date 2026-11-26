@@ -1,5 +1,6 @@
-//! A held sandbox's frozen files and history commit as one checkpoint, and a
-//! capture that cannot prove its owner, workspace or tenant blocks the task.
+//! A finished run's files and history commit as one checkpoint before its
+//! sandbox parks, and a capture that cannot prove its owner, workspace or
+//! tenant blocks the task.
 
 use super::*;
 use crate::run_loop::tests::recovery::{CHECKPOINT, archive::Refusal, server::Server};
@@ -52,7 +53,7 @@ const fn owner() -> State {
 }
 
 #[tokio::test]
-async fn a_frozen_capture_commits_history_and_names_its_checkpoint_in_the_report() -> Result<()> {
+async fn a_final_capture_commits_history_and_names_its_checkpoint_in_the_report() -> Result<()> {
     let mut fixture = Fixture::new(|_| None)?;
     let mut server = Server::start(Refusal::None).await;
     let plane = server
@@ -63,12 +64,12 @@ async fn a_frozen_capture_commits_history_and_names_its_checkpoint_in_the_report
         .ok_or_else(|| error::config("fixture lessee is shared"))?
         .plane = plane;
     let root = tempfile::tempdir()?;
-    let (engine, sandbox) = sandbox(root.path(), Freezer::Works).await?;
+    let (engine, sandbox) = sandbox(root.path(), Parking::Works).await?;
     let mut ending = ending(&fixture)?;
 
     fixture
         .run()?
-        .capture_frozen(sandbox.as_ref(), Some(&owner()), &mut ending)
+        .capture_final(sandbox.as_ref(), Some(&owner()), &mut ending)
         .await;
 
     let output = report(&ending)?;
@@ -82,9 +83,9 @@ async fn a_frozen_capture_commits_history_and_names_its_checkpoint_in_the_report
     assert_eq!(task.decision_call_id.as_deref(), Some(ID));
     assert_eq!(output.result.content, "done");
     assert_eq!(
-        engine.frozen.load(Ordering::SeqCst),
+        engine.parked.load(Ordering::SeqCst),
         0,
-        "capture reads the sandbox its holder froze"
+        "the capture reads a serving sandbox and parks nothing"
     );
     let archive = server
         .archive
@@ -109,23 +110,22 @@ async fn a_frozen_capture_commits_history_and_names_its_checkpoint_in_the_report
 }
 
 #[tokio::test]
-async fn a_frozen_capture_it_cannot_prove_blocks_the_durable_task_without_native_io() -> Result<()>
-{
+async fn a_final_capture_it_cannot_prove_blocks_the_durable_task_without_native_io() -> Result<()> {
     for fault in ["owner", "workspace", "toolbox", "unproved", "busy"] {
         let mut fixture = Fixture::new(|_| None)?;
         let root = tempfile::tempdir()?;
         let engine = FakeEngine {
             workspace: (fault != "workspace").then(|| root.path().to_owned()),
             toolbox: (fault != "toolbox").then(api_toolbox),
-            freezer: match fault {
-                "unproved" => Freezer::QuiescenceUnproved,
-                "busy" => Freezer::BusyTenant,
-                _ => Freezer::Works,
+            parking: match fault {
+                "unproved" => Parking::QuiescenceUnproved,
+                "busy" => Parking::BusyTenant,
+                _ => Parking::Works,
             },
             ..FakeEngine::default()
         };
         let sandbox = engine
-            .prepare(SandboxRequest::new(test_support::RUN_ID, Limits::default()))
+            .sandbox()
             .await
             .map_err(|source| error::boundary("fixture sandbox", source))?;
         let state = owner();
@@ -133,7 +133,7 @@ async fn a_frozen_capture_it_cannot_prove_blocks_the_durable_task_without_native
 
         fixture
             .run()?
-            .capture_frozen(
+            .capture_final(
                 sandbox.as_ref(),
                 (fault != "owner").then_some(&state),
                 &mut ending,
@@ -160,16 +160,16 @@ async fn a_frozen_capture_it_cannot_prove_blocks_the_durable_task_without_native
 }
 
 #[tokio::test]
-async fn a_frozen_capture_saves_nothing_for_an_ending_without_history() -> Result<()> {
+async fn a_final_capture_saves_nothing_for_an_ending_without_history() -> Result<()> {
     let mut fixture = Fixture::new(|_| None)?;
     let root = tempfile::tempdir()?;
-    let (_, sandbox) = sandbox(root.path(), Freezer::QuiescenceUnproved).await?;
+    let (_, sandbox) = sandbox(root.path(), Parking::QuiescenceUnproved).await?;
     let mut failed =
         crate::run_loop::failed(af_wire::report::FailureClass::RunnerCrash, "the turn broke");
 
     fixture
         .run()?
-        .capture_frozen(sandbox.as_ref(), Some(&owner()), &mut failed)
+        .capture_final(sandbox.as_ref(), Some(&owner()), &mut failed)
         .await;
 
     assert!(matches!(
@@ -195,7 +195,7 @@ async fn a_fresh_api_durable_task_takes_no_file_permit_and_restores_nothing() ->
     task.checkpoint_id = None;
     task.checkpoint_generation = None;
     let root = tempfile::tempdir()?;
-    let (engine, sandbox) = sandbox(root.path(), Freezer::Works).await?;
+    let (engine, sandbox) = sandbox(root.path(), Parking::Works).await?;
     let owner = OnceLock::new();
     let run = fixture.run()?;
     let build = fixture.build(&owner);
@@ -208,29 +208,27 @@ async fn a_fresh_api_durable_task_takes_no_file_permit_and_restores_nothing() ->
     assert!(state.history.is_none());
     assert!(state.base.is_none());
     assert_eq!(state.base_paths, Vec::<String>::new());
-    assert_eq!(engine.frozen.load(Ordering::SeqCst), 1);
-    assert_eq!(engine.thawed.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        engine.parked.load(Ordering::SeqCst),
+        0,
+        "a restore parks nothing"
+    );
     let again = run.prepare_recovery(sandbox.as_ref(), &build).await;
     assert!(matches!(
         again.as_ref().map_err(crate::Error::kind),
         Err(error::ErrorKind::Config { detail }) if *detail == "sandbox recovery was prepared twice"
     ));
-    assert_eq!(
-        engine.thawed.load(Ordering::SeqCst),
-        2,
-        "a refusal still thaws"
-    );
     drop(run);
     assert_eq!(fixture.rig.calls().len(), 0, "a fresh task reads nothing");
     Ok(())
 }
 
 #[tokio::test]
-async fn a_durable_workspace_without_a_native_durable_task_never_freezes() -> Result<()> {
+async fn a_durable_workspace_without_a_native_durable_task_never_parks() -> Result<()> {
     let mut fixture = Fixture::new(|_| None)?;
     fixture.prepared.inputs.current_durable_task = None;
     let root = tempfile::tempdir()?;
-    let (engine, sandbox) = sandbox(root.path(), Freezer::Works).await?;
+    let (engine, sandbox) = sandbox(root.path(), Parking::Works).await?;
     let owner = OnceLock::new();
 
     let result = fixture
@@ -243,7 +241,7 @@ async fn a_durable_workspace_without_a_native_durable_task_never_freezes() -> Re
         Err(error::ErrorKind::Config { detail }) if *detail == "durable workspace has no native task"
     ));
     assert!(owner.get().is_none());
-    assert_eq!(engine.frozen.load(Ordering::SeqCst), 0);
+    assert_eq!(engine.parked.load(Ordering::SeqCst), 0);
     assert_eq!(fixture.rig.calls().len(), 0);
     Ok(())
 }
@@ -306,7 +304,7 @@ async fn a_fresh_pull_request_retains_its_checkout_as_the_base_before_the_model_
     let head = test_support::head(&repository, "HEAD");
     let mut fixture = Fixture::new(retained)?;
     pull_request(&mut fixture, &head)?;
-    let (engine, sandbox) = sandbox(root.path(), Freezer::Works).await?;
+    let (engine, sandbox) = sandbox(root.path(), Parking::Works).await?;
     let owner = OnceLock::new();
 
     fixture
@@ -325,7 +323,11 @@ async fn a_fresh_pull_request_retains_its_checkout_as_the_base_before_the_model_
     assert_eq!(base.checkpoint_id, ID);
     assert_eq!(base.mode, CheckpointMode::RetainBase);
     assert!(state.base_paths.is_empty(), "the retained page is empty");
-    assert_eq!(engine.thawed.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        engine.parked.load(Ordering::SeqCst),
+        0,
+        "a restore parks nothing"
+    );
     let calls = fixture.rig.calls();
     let planned = calls
         .iter()
@@ -352,7 +354,7 @@ async fn a_pull_request_checkout_that_moved_is_refused_before_any_capture() -> R
     test_support::repository(&repository);
     let mut fixture = Fixture::new(retained)?;
     pull_request(&mut fixture, &"c".repeat(40))?;
-    let (engine, sandbox) = sandbox(root.path(), Freezer::Works).await?;
+    let (_, sandbox) = sandbox(root.path(), Parking::Works).await?;
     let owner = OnceLock::new();
 
     let result = fixture
@@ -365,11 +367,6 @@ async fn a_pull_request_checkout_that_moved_is_refused_before_any_capture() -> R
         Err(error::ErrorKind::Config { detail }) if *detail == "task branch moved before initial capture"
     ));
     assert!(owner.get().is_none());
-    assert_eq!(
-        engine.thawed.load(Ordering::SeqCst),
-        1,
-        "a refusal still thaws"
-    );
     assert_eq!(fixture.rig.calls().len(), 0, "nothing was planned");
     Ok(())
 }

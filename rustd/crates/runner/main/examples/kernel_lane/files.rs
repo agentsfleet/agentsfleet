@@ -2,7 +2,8 @@
 //! executor bubblewrap serves, what it writes is the sandbox user's, and a
 //! link out of the workspace is refused by the executor's handle inside it.
 
-use afr_sandbox::{Engine, Limits, SandboxRequest};
+use crate::lane::{id_of, spec};
+use afr_sandbox::{Engine, Limits};
 use afr_tools::catalog::{APPLY_PATCH, FILE_EDIT, FILE_READ, FILE_WRITE, IMAGE, SHELL};
 use afr_tools::{Run, ToolErrorCode};
 use guffbolt::ToolOutput;
@@ -71,7 +72,8 @@ const NAMES: [&str; 6] = [
 fn in_fresh_sandbox(lane: &Lane, run_id: &str, steps: &[Step]) -> Result<Vec<ToolOutput>, Failed> {
     runtime().block_on(async {
         let engine = lane.engine();
-        let request = SandboxRequest::new(run_id, Limits::default());
+        let sandbox_id = id_of(run_id);
+        let request = spec(&sandbox_id, Limits::default());
         let sandbox = engine.prepare(request).await?;
         let run = Run::default().with_image_input(true);
         let mut outputs = Vec::with_capacity(steps.len());

@@ -14,7 +14,7 @@ use afr_telemetry::testing::{Recorded, Tally, scoped};
 use super::super::workspace::{BUILD_AFTER_ANSWER, EVENT_BUILD_OUTLASTED};
 use super::build::{HELD_UNTIL, bound, build_failures, checking_out, served, stalled};
 use super::*;
-use crate::test_support::GRANTED_UNTIL;
+use crate::test_support::{Builds, GRANTED_UNTIL};
 
 /// Holds up the run's memory past the first renewal, and refuses every
 /// renewal: the run is cut before its build starts.
@@ -47,7 +47,7 @@ async fn builds_counted(rig: &Rig, payload: &RunPayload<'_>) -> Vec<SandboxBuild
 #[tokio::test(start_paused = true)]
 async fn test_every_build_is_counted_by_how_it_ended() {
     let refusing = FakeEngine {
-        refuse: true,
+        build: Builds::Refused,
         ..FakeEngine::default()
     };
     let cases = [
@@ -98,7 +98,7 @@ async fn test_a_build_stopped_before_it_starts_prepares_nothing() {
 async fn test_late_build_failure_keeps_the_run_ending() {
     let capture = Capture::install();
     let engine = FakeEngine {
-        refuse: true,
+        build: Builds::Refused,
         ..stalled()
     };
     let mut rig = rig(healthy, engine, Behaviour::Talks);
@@ -117,7 +117,7 @@ async fn test_late_build_failure_keeps_the_run_ending() {
 #[tokio::test(start_paused = true)]
 async fn test_a_failed_turn_stops_its_build_and_holds_nothing() {
     let engine = stalled();
-    let frozen = Arc::clone(&engine.frozen);
+    let parked = Arc::clone(&engine.parked);
     let mut rig = rig(healthy, engine, Behaviour::Break);
 
     rig.run(&payload(RUN_ID, FLEET_ID)).await.unwrap();
@@ -127,7 +127,7 @@ async fn test_a_failed_turn_stops_its_build_and_holds_nothing() {
     assert!(report.get(HELD_UNTIL).is_none(), "{report}");
     assert_eq!(rig.prepared.load(Ordering::SeqCst), 1);
     assert_eq!(rig.destroyed.load(Ordering::SeqCst), 1, "destroyed once");
-    assert_eq!(frozen.load(Ordering::SeqCst), 0, "never held");
+    assert_eq!(parked.load(Ordering::SeqCst), 0, "never held");
 }
 
 /// The daemon mints a token only long after the turn could wait for it.

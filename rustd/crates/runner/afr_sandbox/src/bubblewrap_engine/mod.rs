@@ -10,13 +10,18 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use af_core::error_code::{Coded as _, Logged};
+use af_core::id::Uuid7;
+use af_wire::runner::SandboxEngine;
 use afr_executor::{Client, Executor};
 
-use crate::bubblewrap::{self, Layout, NetworkLayout};
+use crate::bubblewrap::{self, CAPABILITIES, Layout, NetworkLayout};
 use crate::cgroup::{Freezer, RunCgroup};
 use crate::egress::{self, Kernel};
-use crate::engine::{Engine, HostWorkspace, Killed, Limits, RunName, Sandbox, SandboxRequest};
-use crate::error::{Result, not_ready, unconfined};
+use crate::engine::{
+    Capabilities, Engine, Environment, Granted, HostWorkspace, Killed, Limits, ParkMode, Parked,
+    Quiescence, Root, Sandbox, SandboxSpec, SandboxState, Sweep, Swept,
+};
+use crate::error::{Result, not_ready, sandbox_exists, unconfined};
 use crate::network::{Allowlist, Network};
 use crate::probe::HostProbe;
 use crate::tenant::{Handover, Inherited, TenantFiles};
@@ -74,6 +79,9 @@ pub struct BubblewrapEngine {
     /// Who bubblewrap is started as; `None` when the runner already is not
     /// root, and starts it as itself.
     run_as: Option<(u32, u32)>,
+    /// Whether this host holds sandboxes to allowlists, so its egress tables
+    /// and links are this engine's to sweep.
+    owns_egress: bool,
 }
 
 impl BubblewrapEngine {
@@ -122,8 +130,9 @@ impl BubblewrapEngine {
             config,
             owner,
             run_as,
+            owns_egress: host.egress,
         };
-        engine.sweep(host.egress.then_some(kernel));
+        engine.sweep_leftovers(host.egress.then_some(kernel));
         Ok(engine)
     }
 
@@ -133,23 +142,36 @@ impl BubblewrapEngine {
         &self.config
     }
 
-    async fn start(&self, request: SandboxRequest<'_>) -> Result<Bubblewrapped> {
-        let name = request.name()?;
-        let dir = name.dir_in(&self.config.state_dir);
+    async fn start(&self, spec: SandboxSpec<'_>) -> Result<Bubblewrapped> {
+        let dir = self.config.state_dir.join(spec.id.as_str());
         fs::create_dir_all(&self.config.state_dir)?;
-        // Fresh, never reused: a directory already there belongs to a run
-        // this one must not inherit, and the boot sweep is what removes it.
-        DirBuilder::new().mode(RUN_DIR_MODE).create(&dir)?;
-        let mut parts = Parts::new(name.as_str(), dir);
+        // Fresh, never reused: a directory already there belongs to a live
+        // sandbox or to a leftover only a sweep may remove.
+        DirBuilder::new()
+            .mode(RUN_DIR_MODE)
+            .create(&dir)
+            .map_err(|error| match error.kind() {
+                io::ErrorKind::AlreadyExists => sandbox_exists(spec.id),
+                _other => error.into(),
+            })?;
+        let mut parts = Parts::new(spec.id.as_str(), dir);
         match self
-            .build(&mut parts, name, request.limits, request.network)
+            .build(&mut parts, spec.id, *spec.granted.limits(), spec.network)
             .await
         {
             Ok(client) => Ok(Bubblewrapped {
+                id: spec.id.clone(),
+                granted: spec.granted,
+                environment: Environment {
+                    engine: SandboxEngine::Bubblewrap,
+                    root: Root::Toolbox {
+                        digest: self.config.toolbox.digest().into(),
+                    },
+                },
                 client,
                 parts,
                 owner: self.owner,
-                toolbox: Arc::clone(&self.config.toolbox),
+                _toolbox: Arc::clone(&self.config.toolbox),
             }),
             Err(error) => {
                 // Released off the runtime; what it could not remove it logs.
@@ -162,7 +184,7 @@ impl BubblewrapEngine {
     async fn build(
         &self,
         parts: &mut Parts,
-        name: RunName<'_>,
+        id: &Uuid7,
         limits: Limits,
         network: Network<'_>,
     ) -> Result<Client> {
@@ -174,14 +196,14 @@ impl BubblewrapEngine {
         )
         .await?;
         if caching == Caching::Buffered {
-            let run_id = name.as_str();
+            let sandbox_id = id.as_str();
             let event = EVENT_DISK_BUFFERED;
-            tracing::debug!(run_id, event);
+            tracing::debug!(sandbox_id, event);
         }
         let device = parts.adopt_disk(disk).device()?;
         let cgroup = parts.adopt_cgroup(RunCgroup::create(
             &self.config.cgroup_root,
-            name.as_str(),
+            id.as_str(),
             &limits,
         )?);
         cgroup.limit_io(device, self.config.io_bytes_per_second)?;
@@ -253,42 +275,68 @@ impl BubblewrapEngine {
 
 #[async_trait::async_trait]
 impl Engine for BubblewrapEngine {
-    async fn prepare(&self, request: SandboxRequest<'_>) -> Result<Box<dyn Sandbox>> {
-        let run_id = request.run_id;
+    fn capabilities(&self) -> Capabilities {
+        CAPABILITIES
+    }
+
+    fn grant(&self, limits: Limits) -> Result<Granted> {
+        CAPABILITIES.grant(limits)
+    }
+
+    async fn prepare(&self, spec: SandboxSpec<'_>) -> Result<Box<dyn Sandbox>> {
+        let sandbox_id = spec.id.as_str();
         let event = EVENT_PREPARE_STARTED;
-        tracing::info!(run_id, event);
-        match self.start(request).await {
+        tracing::info!(sandbox_id, event);
+        match self.start(spec).await {
             Ok(sandbox) => {
                 let event = EVENT_PREPARE_COMPLETED;
-                tracing::info!(run_id, event);
+                tracing::info!(sandbox_id, event);
                 Ok(Box::new(sandbox))
             }
             Err(error) => {
                 let Logged { error_code, reason } = error.logged();
                 let event = EVENT_PREPARE_FAILED;
-                tracing::warn!(run_id, error_code, reason, event);
+                tracing::warn!(sandbox_id, error_code, reason, event);
                 Err(error)
             }
         }
+    }
+
+    async fn sweep(&self, scope: Sweep<'_>) -> Result<Swept> {
+        Ok(match scope {
+            Sweep::Leftovers => self.sweep_leftovers(self.owns_egress.then_some(&egress::Host)),
+            Sweep::Sandbox(id) => self.sweep_sandbox(id),
+        })
     }
 }
 
 /// A running sandbox and the connection to its executor.
 #[derive(Debug)]
 struct Bubblewrapped {
+    id: Uuid7,
+    granted: Granted,
+    environment: Environment,
     client: Client,
     parts: Parts,
     /// Who owns the workspace disk's files, as the host names them.
     owner: (u32, u32),
-    /// The toolbox it runs on, held until it is destroyed so retention never
-    /// unmounts it from under a run or a warm slot.
-    toolbox: Arc<Toolbox>,
+    /// The toolbox it runs on, kept only for its lifetime: retention never
+    /// unmounts an image a live sandbox still owns.
+    _toolbox: Arc<Toolbox>,
 }
 
 #[async_trait::async_trait]
 impl Sandbox for Bubblewrapped {
-    fn toolbox_digest(&self) -> Option<&str> {
-        Some(self.toolbox.digest())
+    fn id(&self) -> &Uuid7 {
+        &self.id
+    }
+
+    fn environment(&self) -> &Environment {
+        &self.environment
+    }
+
+    fn granted(&self) -> &Granted {
+        &self.granted
     }
 
     fn executor(&self) -> &dyn Executor {
@@ -302,20 +350,35 @@ impl Sandbox for Bubblewrapped {
         })
     }
 
-    fn is_running(&mut self) -> bool {
-        self.parts.is_running()
+    fn state(&mut self) -> SandboxState {
+        if self.parts.is_running() {
+            SandboxState::Running
+        } else {
+            SandboxState::Ended
+        }
     }
 
-    async fn freeze(&self) -> Result<()> {
-        settle(self.parts.freezer(), Freezer::freeze).await
+    async fn quiesce(&self) -> Result<Quiescence> {
+        Ok(if self.parts.tenant_empty()? {
+            Quiescence::Quiet
+        } else {
+            Quiescence::Busy
+        })
     }
 
-    async fn recovery_quiescent(&self) -> Result<bool> {
-        self.parts.tenant_empty()
-    }
-
-    async fn thaw(&self) -> Result<()> {
-        settle(self.parts.freezer(), Freezer::thaw).await
+    async fn park(self: Box<Self>, mode: ParkMode) -> Result<Box<dyn Parked>> {
+        let frozen = match CAPABILITIES.require_park(mode) {
+            Ok(()) => settle(self.parts.freezer(), Freezer::freeze).await,
+            Err(refused) => Err(refused),
+        };
+        match frozen {
+            Ok(()) => Ok(Box::new(Paused { sandbox: self })),
+            Err(error) => {
+                // Released off the runtime; what it could not remove it logs.
+                let _logged = self.destroy().await;
+                Err(error)
+            }
+        }
     }
 
     async fn reallow(&mut self, allowlist: &Allowlist) -> Result<()> {
@@ -330,6 +393,38 @@ impl Sandbox for Bubblewrapped {
         let Self { client, parts, .. } = *self;
         drop(client);
         parts.teardown().await
+    }
+}
+
+/// A sandbox whose every process the cgroup freezer stopped, memory kept.
+#[derive(Debug)]
+struct Paused {
+    sandbox: Box<Bubblewrapped>,
+}
+
+#[async_trait::async_trait]
+impl Parked for Paused {
+    fn id(&self) -> &Uuid7 {
+        &self.sandbox.id
+    }
+
+    fn mode(&self) -> ParkMode {
+        ParkMode::Pause
+    }
+
+    async fn resume(self: Box<Self>) -> Result<Box<dyn Sandbox>> {
+        let Self { sandbox } = *self;
+        match settle(sandbox.parts.freezer(), Freezer::thaw).await {
+            Ok(()) => Ok(sandbox),
+            Err(error) => {
+                let _logged = sandbox.destroy().await;
+                Err(error)
+            }
+        }
+    }
+
+    async fn destroy(self: Box<Self>) -> Result<()> {
+        self.sandbox.destroy().await
     }
 }
 

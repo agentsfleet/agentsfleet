@@ -6,9 +6,10 @@ use std::process::Command;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use crate::lane::{id_of, spec};
 use afr_sandbox::{
-    BubblewrapEngine, Engine, Limits, MECHANISM_LANDLOCK as LANDLOCK, ProbePaths, SandboxRequest,
-    Toolbox, WarmSlots, probe,
+    BubblewrapEngine, Engine, Limits, MECHANISM_LANDLOCK as LANDLOCK, ProbePaths, Toolbox,
+    WarmSlots, probe,
 };
 use libtest_mimic::{Arguments, Conclusion, Failed, Trial};
 
@@ -286,7 +287,8 @@ fn toolbox_read_only(lane: &Lane) -> Result<(), Failed> {
     let (said, unheld, held) = runtime().block_on(async {
         let engine = BubblewrapEngine::new(config, &probe(&lane.config.probe_paths()))?;
         let unheld = Arc::strong_count(&toolbox);
-        let request = SandboxRequest::new("toolbox", Limits::default());
+        let sandbox_id = id_of("toolbox");
+        let request = spec(&sandbox_id, Limits::default());
         let sandbox = engine.prepare(request).await?;
         let held = Arc::strong_count(&toolbox);
         let script =
@@ -334,7 +336,7 @@ async fn starts(engine: &dyn Engine, kind: &str) -> Result<Duration, Failed> {
         let run_id = format!("{kind}-{number}");
         let started = Instant::now();
         let sandbox = engine
-            .prepare(SandboxRequest::new(&run_id, Limits::default()))
+            .prepare(spec(&id_of(&run_id), Limits::default()))
             .await?;
         taken.push(started.elapsed());
         sandbox.destroy().await?;

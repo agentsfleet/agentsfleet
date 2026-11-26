@@ -20,7 +20,7 @@ use std::time::Duration;
 
 use af_core::clock::Clock;
 use af_core::id::Uuid7;
-use afr_sandbox::{Limits, Sandbox};
+use afr_sandbox::{Limits, Parked};
 use afr_telemetry::labels::SandboxHold;
 use jiff::Timestamp;
 use tokio::sync::{Notify, mpsc, oneshot};
@@ -99,7 +99,7 @@ impl Release {
 #[derive(Debug)]
 pub(crate) struct Taken {
     /// The sandbox, for the taker to thaw.
-    pub(crate) sandbox: Box<dyn Sandbox>,
+    pub(crate) sandbox: Box<dyn Parked>,
     /// How long it waited.
     pub(crate) held: Duration,
 }
@@ -114,8 +114,8 @@ enum Request {
     Park {
         key: HoldKey,
         run: Uuid7,
-        sandbox: Box<dyn Sandbox>,
-        reply: oneshot::Sender<Parked>,
+        sandbox: Box<dyn Parked>,
+        reply: oneshot::Sender<Stowed>,
     },
     Release {
         fleet: Uuid7,
@@ -127,11 +127,6 @@ enum Request {
     Accepted {
         run: Uuid7,
         until: Timestamp,
-    },
-    Discard {
-        fleet: Uuid7,
-        sandbox: Box<dyn Sandbox>,
-        reason: Release,
     },
     Occupy {
         occupant: Occupant,
@@ -161,12 +156,12 @@ pub(crate) struct Holds {
 /// What a park answers: the hold's lapse, or the sandbox back.
 #[derive(Debug)]
 #[must_use]
-pub(crate) enum Parked {
+pub(crate) enum Stowed {
     /// Held for the fleet's next run until then.
     Held(Timestamp),
     /// Not held: the keeper is closed or has no room. The release is
-    /// already counted; the sandbox, still frozen, is the run's to end.
-    Refused(Box<dyn Sandbox>),
+    /// already counted; the sandbox, still parked, is the run's to end.
+    Refused(Box<dyn Parked>),
     /// The keeper stopped with the request, and the sandbox went with it.
     Gone,
 }
@@ -222,7 +217,7 @@ impl Holds {
     /// the hold lapses. A sandbox the keeper will not hold comes back, its
     /// release logged and counted, for the run to kill now and release
     /// after its report.
-    pub(crate) async fn park(&self, key: HoldKey, run: Uuid7, sandbox: Box<dyn Sandbox>) -> Parked {
+    pub(crate) async fn park(&self, key: HoldKey, run: Uuid7, sandbox: Box<dyn Parked>) -> Stowed {
         let (reply, answer) = oneshot::channel();
         let parked = Request::Park {
             key,
@@ -236,9 +231,9 @@ impl Holds {
             && let Request::Park { key, sandbox, .. } = closed.0
         {
             keeper::released(&key.fleet, Release::Shutdown);
-            return Parked::Refused(sandbox);
+            return Stowed::Refused(sandbox);
         }
-        answer.await.unwrap_or(Parked::Gone)
+        answer.await.unwrap_or(Stowed::Gone)
     }
 
     /// Ends `fleet`'s hold, if the runner has one, for `reason`.
@@ -258,19 +253,10 @@ impl Holds {
         let _stopped = self.requests.send(Request::Accepted { run, until });
     }
 
-    /// Destroys `sandbox`, which was `fleet`'s hold, for `reason`: logged and
-    /// counted as every release is.
-    pub(crate) async fn discard(&self, fleet: Uuid7, sandbox: Box<dyn Sandbox>, reason: Release) {
-        let discarded = Request::Discard {
-            fleet,
-            sandbox,
-            reason,
-        };
-        if let Err(closed) = self.requests.send(discarded)
-            && let Request::Discard { fleet, sandbox, .. } = closed.0
-        {
-            keeper::destroy_now(&fleet, sandbox, reason).await;
-        }
+    /// Counts `fleet`'s hold released for `reason` when its sandbox went some
+    /// other way: it would not resume, and its engine destroyed it.
+    pub(crate) fn count_release(fleet: &Uuid7, reason: Release) {
+        keeper::released(fleet, reason);
     }
 
     /// Sets how many workers the runner has, preserving one free worker

@@ -11,8 +11,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus};
 use std::time::{Duration, Instant};
 
+use crate::lane::{id_of, spec};
 use afr_executor::WORKSPACE_ROOT;
-use afr_sandbox::{Engine as _, Limits, RunCgroup, SANDBOX_LEAF, Sandbox, SandboxRequest};
+use afr_sandbox::{Engine as _, Limits, ParkMode, RunCgroup, SANDBOX_LEAF, Sandbox};
 use libtest_mimic::Failed;
 use rustix::process::Signal;
 
@@ -64,11 +65,12 @@ struct Seen {
 pub(crate) fn held_sandbox_resumes_where_it_stopped(lane: &Lane) -> Result<(), Failed> {
     let seen = runtime().block_on(async {
         let engine = lane.engine();
-        let request = SandboxRequest::new(RUN, Limits::default());
+        let sandbox_id = id_of(RUN);
+        let request = spec(&sandbox_id, Limits::default());
         let sandbox = engine.prepare(request).await?;
-        let seen = hold_and_resume(lane, sandbox.as_ref()).await;
+        let (seen, sandbox) = park_and_resume(lane, sandbox).await?;
         sandbox.destroy().await?;
-        seen
+        Ok::<_, Failed>(seen)
     })?;
     expect(
         seen.frozen_events.lines().any(|line| line == FROZEN),
@@ -114,9 +116,12 @@ fn start_ticker() -> String {
     )
 }
 
-/// Starts the ticker, freezes, watches, thaws, and asks the executor what the
-/// first run left.
-async fn hold_and_resume(lane: &Lane, sandbox: &dyn Sandbox) -> Result<Seen, Failed> {
+/// Starts the ticker, parks, watches, resumes, and asks the executor what the
+/// first run left; the resumed sandbox comes back for the caller to destroy.
+async fn park_and_resume(
+    lane: &Lane,
+    sandbox: Box<dyn Sandbox>,
+) -> Result<(Seen, Box<dyn Sandbox>), Failed> {
     let started = run_in(sandbox.executor(), shell(&start_ticker())).await?;
     let pid = started.output.trim().to_owned();
     let workspace = sandbox
@@ -125,46 +130,51 @@ async fn hold_and_resume(lane: &Lane, sandbox: &dyn Sandbox) -> Result<Seen, Fai
     let tick = workspace.root.join(TICK_FILE);
     tokio::time::sleep(WATCH).await;
 
-    sandbox.freeze().await?;
+    let parked = sandbox.park(ParkMode::Pause).await?;
     let frozen_events = fs::read_to_string(events(lane, RUN)).unwrap_or_default();
     let frozen_at = size(&tick);
     tokio::time::sleep(WATCH).await;
     let ticks_while_frozen = (frozen_at, size(&tick));
-    sandbox.thaw().await?;
+    let sandbox = parked.resume().await?;
 
     let check = format!("cat {WORKSPACE_ROOT}/{NOTE_FILE}; kill -0 {pid} && echo {ALIVE}");
     let after = run_in(sandbox.executor(), shell(&check)).await?;
     let thawed = size(&tick);
     tokio::time::sleep(WATCH).await;
-    Ok(Seen {
+    let seen = Seen {
         pid,
         frozen_events,
         ticks_while_frozen,
         after,
         ticks_after_thaw: (thawed, size(&tick)),
-    })
+    };
+    Ok((seen, sandbox))
 }
 
 /// The run cgroup's own state, its `frozen` key among it.
 fn events(lane: &Lane, run_id: &str) -> PathBuf {
-    lane.config.cgroup_root.join(run_id).join(CGROUP_EVENTS)
+    lane.config
+        .cgroup_root
+        .join(id_of(run_id).as_str())
+        .join(CGROUP_EVENTS)
 }
 
 fn size(path: &Path) -> u64 {
     fs::metadata(path).map_or(0, |metadata| metadata.len())
 }
 
-/// A held sandbox its fleet never comes back for is destroyed as it stands,
+/// A parked sandbox its fleet never comes back for is destroyed as it stands,
 /// frozen: every process is killed where it stopped, and its cgroup and its
 /// directory go, with no thaw first.
 pub(crate) fn destroy_frozen(lane: &Lane) -> Result<(), Failed> {
     let (frozen_events, destroyed) = runtime().block_on(async {
-        let request = SandboxRequest::new(DESTROYED_FROZEN, Limits::default());
+        let sandbox_id = id_of(DESTROYED_FROZEN);
+        let request = spec(&sandbox_id, Limits::default());
         let sandbox = lane.engine().prepare(request).await?;
         run_in(sandbox.executor(), shell(&start_ticker())).await?;
-        sandbox.freeze().await?;
+        let parked = sandbox.park(ParkMode::Pause).await?;
         let frozen_events = fs::read_to_string(events(lane, DESTROYED_FROZEN));
-        Ok::<_, Failed>((frozen_events.unwrap_or_default(), sandbox.destroy().await))
+        Ok::<_, Failed>((frozen_events.unwrap_or_default(), parked.destroy().await))
     })?;
     expect(
         frozen_events.lines().any(|line| line == FROZEN),
@@ -175,7 +185,11 @@ pub(crate) fn destroy_frozen(lane: &Lane) -> Result<(), Failed> {
         format!("destroyed without a thaw, got {destroyed:?}"),
     )?;
     expect(
-        !lane.config.cgroup_root.join(DESTROYED_FROZEN).exists(),
+        !lane
+            .config
+            .cgroup_root
+            .join(id_of(DESTROYED_FROZEN).as_str())
+            .exists(),
         "its cgroup is gone",
     )?;
     expect(

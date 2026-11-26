@@ -25,11 +25,23 @@ async fn a_beat_carries_the_hosts_processors_memory_and_free_disk() {
     let sandboxes = tempfile::tempdir().unwrap();
     let missing = sandboxes.path().join("missing");
 
-    let read = Heartbeat::new(&plane, &probe, &held, sandboxes.path())
-        .beat()
-        .await;
+    let read = Heartbeat::new(
+        &plane,
+        &probe,
+        afr_sandbox::BUBBLEWRAP_CAPABILITIES,
+        &held,
+        sandboxes.path(),
+    )
+    .beat()
+    .await;
     let log = Capture::install();
-    let mut unreadable = Heartbeat::new(&plane, &probe, &held, &missing);
+    let mut unreadable = Heartbeat::new(
+        &plane,
+        &probe,
+        afr_sandbox::BUBBLEWRAP_CAPABILITIES,
+        &held,
+        &missing,
+    );
     let unread = unreadable.beat().await;
     let again = unreadable.beat().await;
     let unread_line = log.only("runner_host_fact_unread");

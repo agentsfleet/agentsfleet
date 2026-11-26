@@ -41,7 +41,11 @@ impl RecoveryBoundarySink for Sink<'_> {
             Workspace::ApiOnly => Ok(af_wire::run::TurnWorkspace::ApiOnly),
             Workspace::Building { cell, .. } => {
                 let sandbox = cell.get().ok_or(RecoverySkip::WorkspaceBuilding)?;
-                let toolbox = sandbox.toolbox_digest().ok_or(RecoverySkip::Unavailable)?;
+                let toolbox = sandbox
+                    .environment()
+                    .root
+                    .toolbox()
+                    .ok_or(RecoverySkip::Unavailable)?;
                 Ok(af_wire::run::TurnWorkspace::Files {
                     toolbox_digest: toolbox.to_owned(),
                 })

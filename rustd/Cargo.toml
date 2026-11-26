@@ -337,6 +337,9 @@ toml = { version = "1.2.2", default-features = false, features = ["parse", "serd
 serde_path_to_error = { version = "0.1.20", default-features = false }
 # Tagged answer enums retain numeric JSON map keys through Serde's buffered data.
 serde_with = { version = "3.25.0", default-features = false, features = ["std"] }
+# An enum's log spelling derived from the same snake_case serde writes, in
+# place of a hand-written match per enum.
+strum = { version = "0.28.0", default-features = false, features = ["derive"] }
 # The metric census is a tab-separated contract, and this is the crate that
 # reads one: delimiter, `#` comment lines, header-to-field mapping, unequal-row
 # detection and serde-typed deserialization are all its job rather than ours,

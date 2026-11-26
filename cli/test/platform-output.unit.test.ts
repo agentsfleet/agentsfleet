@@ -6,7 +6,7 @@ let fixture: PlatformFixture;
 beforeEach(() => {fixture = new PlatformFixture();});
 afterEach(() => fixture.dispose());
 
-test("shows the default engine in the runner table while preserving the API JSON", async () => {
+test("shows each runner's reported engine in the table while preserving the API JSON", async () => {
   const page = {items: [RUNNER, {...RUNNER, liveness: "offline"}], total: 2, next_cursor: null};
   fixture.respond = () => Response.json(page);
   const terminal = await fixture.run(["runners", "list"], "", true, false, {TERM: "xterm-256color", FORCE_COLOR: "2"});
@@ -15,8 +15,9 @@ test("shows the default engine in the runner table while preserving the API JSON
   expect(terminal.stdout).toContain("\x1b[38;5;220mactive\x1b[0m");
   expect(terminal.stdout).toContain("\x1b[38;5;78monline\x1b[0m");
   expect(terminal.stdout).toContain("\x1b[38;5;210moffline\x1b[0m");
-  expect(terminal.stdout).toContain("DEFAULT ENGINE");
-  expect(terminal.stdout).toContain("Bubblewrap");
+  expect(terminal.stdout).toContain("ENGINE");
+  expect(terminal.stdout).toContain("unknown");
+  expect(terminal.stdout).not.toContain("Bubblewrap");
   const json = await fixture.run(["runners", "list", "--json"]);
   expect(json.code).toBe(0);
   expect(JSON.parse(json.stdout)).toEqual(page);
@@ -30,8 +31,23 @@ test("renders a runner's identity, policy and checks for an interactive terminal
   const result = await fixture.run(["runners", "show", RUNNER_ID], "", true);
   expect(result.code).toBe(0); expect(result.stdout).toContain("build-host");
   expect(result.stdout).toContain("Isolation tier"); expect(result.stdout).toContain("landlock_full");
-  expect(result.stdout).toContain("Default engine"); expect(result.stdout).toContain("Bubblewrap");
+  expect(result.stdout).toContain("Engine"); expect(result.stdout).toContain("unknown");
   expect(result.stdout).toContain("bubblewrap: Available"); expect(result.stderr).toBe("");
+});
+
+test("platform runners show prints the reported engine", async () => {
+  const achievable = {
+    landlock: false, seccomp: false, bubblewrap: false, cgroup_controllers: ["cpu"], egress_enforcement: true,
+    engine: "firecracker", isolation: "hardware_vm", kvm: "usable", sandboxes_max: 55,
+  };
+  fixture.respond = () => Response.json({...RUNNER_DETAIL, achievable});
+  const reported = await fixture.run(["runners", "show", RUNNER_ID], "", true);
+  fixture.respond = () => Response.json(RUNNER_DETAIL);
+  const silent = await fixture.run(["runners", "show", RUNNER_ID], "", true);
+  expect(reported.code).toBe(0); expect(silent.code).toBe(0);
+  expect(stripVTControlCharacters(reported.stdout)).toMatch(/Engine\s+·\s+firecracker/u);
+  expect(stripVTControlCharacters(silent.stdout)).toMatch(/Engine\s+·\s+unknown/u);
+  expect(`${reported.stdout}${silent.stdout}`).not.toContain("Bubblewrap");
 });
 
 test("renders each runner's processors, memory and free disk", async () => {

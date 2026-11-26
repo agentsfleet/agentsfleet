@@ -13,6 +13,7 @@ af_core::error_lifts!(Error, ErrorKind:
     std::io::Error => Io,
     afr_executor::Error => Executor,
     tokio::task::JoinError => Task,
+    af_crypto::error::Error => Entropy,
 );
 
 #[cfg(target_os = "linux")]
@@ -114,10 +115,34 @@ pub(crate) fn netlink(step: Step) -> impl Fn(std::io::Error) -> Error {
     move |source| ErrorKind::Netlink { step, source }.into()
 }
 
-/// Refuses a run whose identifier could name a directory not its own.
-pub(crate) fn run_id_unsafe(run_id: &str) -> Error {
-    ErrorKind::RunIdUnsafe {
-        run_id: run_id.to_owned(),
+/// Refuses what `engine` has no mechanism for, naming the operation.
+pub(crate) fn unsupported(
+    engine: af_wire::runner::SandboxEngine,
+    operation: &'static str,
+) -> Error {
+    ErrorKind::Unsupported {
+        engine: engine.into(),
+        operation,
+    }
+    .into()
+}
+
+/// A build or teardown of `sandbox` whose outcome is unknown, for a test's
+/// engine to answer; an engine that can lose track of a build raises it too.
+#[cfg(feature = "test-util")]
+#[must_use]
+pub fn ambiguous(sandbox: &af_core::id::Uuid7, operation: &'static str) -> Error {
+    ErrorKind::Ambiguous {
+        sandbox: sandbox.to_string(),
+        operation,
+    }
+    .into()
+}
+
+/// Refuses a build for a sandbox that is already live.
+pub(crate) fn sandbox_exists(sandbox: &af_core::id::Uuid7) -> Error {
+    ErrorKind::SandboxExists {
+        sandbox: sandbox.to_string(),
     }
     .into()
 }

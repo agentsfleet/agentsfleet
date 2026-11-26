@@ -90,46 +90,11 @@ async fn a_foreign_snapshot_cancels_before_native_io() -> Result<()> {
 }
 
 #[tokio::test]
-async fn a_refused_or_busy_freeze_still_thaws_without_a_native_save() -> Result<()> {
-    for (freezer, reason) in [
-        (Freezer::RefusesFreeze, RecoverySkip::Unavailable),
-        (Freezer::BusyTenant, RecoverySkip::BusyProcesses),
-    ] {
-        let mut fixture = Fixture::new(unavailable)?;
-        let run = fixture.run()?;
-        let root = tempfile::tempdir()?;
-        let (engine, sandbox) = sandbox(root.path(), freezer).await?;
-        let cell = OnceLock::from(sandbox);
-        let state = OnceLock::new();
-        let (_, mut owner) = BoundaryOwner::new(
-            &run,
-            Workspace::Building {
-                cell: &cell,
-                recovery: &state,
-            },
-        );
-        assert!(matches!(owner.capture(snapshot(&fixture)?).await,
-            Ok(RecoverySave::Skipped(found)) if found == reason));
-        assert_eq!(engine.thaw_attempts.load(Ordering::SeqCst), 1);
-        assert_eq!(engine.thawed.load(Ordering::SeqCst), 1);
-        assert!(!run.interrupt.is_cancelled());
-        drop(owner);
-        drop(run);
-        assert_eq!(
-            fixture.rig.calls().len(),
-            0,
-            "no native I/O precedes this boundary"
-        );
-    }
-    Ok(())
-}
-
-#[tokio::test]
-async fn failed_thaw_cancels_the_run_even_when_storage_was_only_unavailable() -> Result<()> {
-    let fixture = Fixture::new(unavailable)?;
+async fn a_busy_tenant_skips_the_boundary_without_a_native_save() -> Result<()> {
+    let mut fixture = Fixture::new(unavailable)?;
     let run = fixture.run()?;
     let root = tempfile::tempdir()?;
-    let (engine, sandbox) = sandbox(root.path(), Freezer::RefusesThaw).await?;
+    let (engine, sandbox) = sandbox(root.path(), Parking::BusyTenant).await?;
     let cell = OnceLock::from(sandbox);
     let state = OnceLock::new();
     let (_, mut owner) = BoundaryOwner::new(
@@ -139,25 +104,32 @@ async fn failed_thaw_cancels_the_run_even_when_storage_was_only_unavailable() ->
             recovery: &state,
         },
     );
-    assert!(
-        owner
-            .capture(snapshot(&fixture)?)
-            .await
-            .is_err_and(|failure| failure.code() == af_core::error_code::INTERNAL_OPERATION_FAILED)
+    assert!(matches!(
+        owner.capture(snapshot(&fixture)?).await,
+        Ok(RecoverySave::Skipped(RecoverySkip::BusyProcesses))
+    ));
+    assert_eq!(
+        engine.parked.load(Ordering::SeqCst),
+        0,
+        "a capture parks nothing"
     );
-    assert!(run.interrupt.is_cancelled());
-    assert_eq!(engine.frozen.load(Ordering::SeqCst), 1);
-    assert_eq!(engine.thaw_attempts.load(Ordering::SeqCst), 1);
-    assert_eq!(engine.thawed.load(Ordering::SeqCst), 0);
+    assert!(!run.interrupt.is_cancelled());
+    drop(owner);
+    drop(run);
+    assert_eq!(
+        fixture.rig.calls().len(),
+        0,
+        "no native I/O precedes this boundary"
+    );
     Ok(())
 }
 
 #[tokio::test]
-async fn an_abandoned_executor_file_job_prevents_freeze_and_publication() -> Result<()> {
+async fn an_abandoned_executor_file_job_prevents_publication() -> Result<()> {
     let mut fixture = Fixture::new(unavailable)?;
     let run = fixture.run()?;
     let root = tempfile::tempdir()?;
-    let (engine, sandbox) = sandbox(root.path(), Freezer::BusyExecutor).await?;
+    let (engine, sandbox) = sandbox(root.path(), Parking::BusyExecutor).await?;
     let cell = OnceLock::from(sandbox);
     let state = OnceLock::new();
     let (_, mut owner) = BoundaryOwner::new(
@@ -171,8 +143,12 @@ async fn an_abandoned_executor_file_job_prevents_freeze_and_publication() -> Res
         owner.capture(snapshot(&fixture)?).await,
         Ok(RecoverySave::Skipped(RecoverySkip::BusyExecutor))
     ));
-    assert_eq!(engine.frozen.load(Ordering::SeqCst), 0);
-    assert_eq!(engine.thaw_attempts.load(Ordering::SeqCst), 0);
+    assert_eq!(engine.parked.load(Ordering::SeqCst), 0);
+    assert_eq!(
+        engine.quiesced.load(Ordering::SeqCst),
+        0,
+        "busy file work is refused before the tenant is read"
+    );
     drop(owner);
     drop(run);
     assert_eq!(
@@ -184,18 +160,18 @@ async fn an_abandoned_executor_file_job_prevents_freeze_and_publication() -> Res
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_vanished_agent_cannot_release_the_owner_before_thaw_finishes() -> Result<()> {
+async fn a_vanished_agent_cannot_release_the_owner_before_quiescence_is_read() -> Result<()> {
     let fixture = Fixture::new(unavailable)?;
     let run = fixture.run()?;
     let root = tempfile::tempdir()?;
     let engine = FakeEngine {
         workspace: Some(root.path().to_owned()),
         toolbox: Some(api_toolbox()),
-        thaw_takes: Duration::from_secs(10),
+        quiesce_takes: Duration::from_secs(10),
         ..FakeEngine::default()
     };
     let sandbox = engine
-        .prepare(SandboxRequest::new(test_support::RUN_ID, Limits::default()))
+        .sandbox()
         .await
         .map_err(|source| error::boundary("fixture sandbox", source))?;
     let cell = OnceLock::from(sandbox);
@@ -212,9 +188,9 @@ async fn a_vanished_agent_cannot_release_the_owner_before_thaw_finishes() -> Res
         let saving = sink.save(snapshot);
         tokio::pin!(saving);
         tokio::select! {
-            _result = &mut saving => panic!("the caller must disappear during thaw"),
+            _result = &mut saving => panic!("the caller must disappear while quiescence is read"),
             () = async {
-                while engine.thaw_attempts.load(Ordering::SeqCst) == 0 {
+                while engine.quiesced.load(Ordering::SeqCst) == 0 {
                     tokio::task::yield_now().await;
                 }
             } => {}
@@ -226,8 +202,12 @@ async fn a_vanished_agent_cannot_release_the_owner_before_thaw_finishes() -> Res
     };
     let started = tokio::time::Instant::now();
     let _ending = owner.beside(work).await;
-    assert!(started.elapsed() >= engine.thaw_takes);
-    assert_eq!(engine.thawed.load(Ordering::SeqCst), 1);
+    assert!(started.elapsed() >= engine.quiesce_takes);
+    assert_eq!(
+        engine.parked.load(Ordering::SeqCst),
+        0,
+        "a capture parks nothing"
+    );
     Ok(())
 }
 

@@ -3,7 +3,7 @@
 //! builds anything.
 //!
 //! A runner killed mid-run leaves its sandboxes' cgroups, mounted workspace
-//! disks and directories behind. Each run directory's name is its cgroup's,
+//! disks and directories behind. Each sandbox directory's name is its cgroup's,
 //! so one walk finds all three. What cannot be removed is logged and kept: a
 //! disk that will not unmount keeps its image, and its directory, so a loop
 //! device is never left on a file nobody can name.
@@ -12,10 +12,12 @@ use std::fs;
 use std::path::Path;
 
 use af_core::error_code::{Coded as _, Logged};
+use af_core::id::Uuid7;
 
 use super::BubblewrapEngine;
 use crate::cgroup::RunCgroup;
 use crate::egress::{self, Kernel};
+use crate::engine::Swept;
 use crate::error::Result;
 use crate::workspace_disk::WorkspaceDisk;
 
@@ -25,10 +27,10 @@ const EVENT_SWEPT: &str = "sandbox_swept";
 const EVENT_SWEEP_FAILED: &str = "sandbox_sweep_failed";
 
 impl BubblewrapEngine {
-    /// Removes every run a previous run left, logging each one, and, on a
-    /// host that holds sandboxes to allowlists, every egress table and link
-    /// `kernel` lists.
-    pub(super) fn sweep(&self, kernel: Option<&impl Kernel>) {
+    /// Removes every sandbox a previous runner left, logging each one, and,
+    /// on a host that holds sandboxes to allowlists, every egress table and
+    /// link `kernel` lists.
+    pub(super) fn sweep_leftovers(&self, kernel: Option<&impl Kernel>) -> Swept {
         if let Some(kernel) = kernel
             && let Err(error) = egress::sweep(kernel)
         {
@@ -42,25 +44,42 @@ impl BubblewrapEngine {
             };
         }
         let Ok(entries) = fs::read_dir(&self.config.state_dir) else {
-            return;
+            return Swept::default();
         };
+        let mut swept = Swept::default();
         for entry in entries.flatten() {
             let dir = entry.path();
-            if !dir.is_dir() {
-                continue;
+            if dir.is_dir() {
+                self.count(&mut swept, &entry.file_name().to_string_lossy());
             }
-            let name = entry.file_name();
-            let run_id = name.to_string_lossy();
-            match sweep_one(&dir, &self.config.cgroup_root.join(&name)) {
-                Ok(()) => {
-                    let event = EVENT_SWEPT;
-                    tracing::info!(%run_id, event);
-                }
-                Err(error) => {
-                    let Logged { error_code, reason } = error.logged();
-                    let event = EVENT_SWEEP_FAILED;
-                    tracing::warn!(%run_id, error_code, reason, event);
-                }
+        }
+        swept
+    }
+
+    /// Removes what a build of unknown outcome may have left of `id`.
+    pub(super) fn sweep_sandbox(&self, id: &Uuid7) -> Swept {
+        let mut swept = Swept::default();
+        if self.config.state_dir.join(id.as_str()).is_dir() {
+            self.count(&mut swept, id.as_str());
+        }
+        swept
+    }
+
+    /// Sweeps the sandbox named `name`, logging and counting the outcome.
+    fn count(&self, swept: &mut Swept, name: &str) {
+        let dir = self.config.state_dir.join(name);
+        let sandbox_id = name;
+        match sweep_one(&dir, &self.config.cgroup_root.join(name)) {
+            Ok(()) => {
+                swept.destroyed += 1;
+                let event = EVENT_SWEPT;
+                tracing::info!(sandbox_id, event);
+            }
+            Err(error) => {
+                swept.left += 1;
+                let Logged { error_code, reason } = error.logged();
+                let event = EVENT_SWEEP_FAILED;
+                tracing::warn!(sandbox_id, error_code, reason, event);
             }
         }
     }

@@ -51,8 +51,14 @@ async fn beats_and_workers_until(
     let (published, watching) = watch::channel(Assignment::initial());
     let shutdown = CancellationToken::new();
     let halt = Halt::new(shutdown.clone());
-    let beating = Heartbeat::new(&plane, &probe, &holds, std::path::Path::new("."))
-        .keep_beating(&published, &halt);
+    let beating = Heartbeat::new(
+        &plane,
+        &probe,
+        afr_sandbox::BUBBLEWRAP_CAPABILITIES,
+        &holds,
+        std::path::Path::new("."),
+    )
+    .keep_beating(&published, &halt);
     let driving = async {
         during(&calls).await;
         tokio::time::sleep_until(started + until).await;

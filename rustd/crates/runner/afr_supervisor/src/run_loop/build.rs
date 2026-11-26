@@ -16,8 +16,9 @@ use std::sync::OnceLock;
 use std::time::Instant;
 
 use af_core::error_code::{Coded as _, Logged};
+use af_core::id::Uuid7;
 use afr_executor::{ExecutorSlot, Unavailable};
-use afr_sandbox::{Limits, Sandbox, SandboxRequest};
+use afr_sandbox::{Limits, Sandbox, SandboxSpec, Sweep};
 use afr_telemetry::labels::{SandboxBuild, SandboxStart};
 use afr_telemetry::record;
 use tokio_util::sync::CancellationToken;
@@ -30,6 +31,10 @@ use crate::egress::Bound;
 use crate::holds::{HoldKey, Release};
 
 pub(super) const EVENT_BUILD_FAILED: &str = "sandbox_build_failed";
+/// The event a sweep after a build of unknown outcome is logged under.
+const EVENT_SWEPT: &str = "sandbox_swept";
+/// The event a sweep that could not run is logged under.
+const EVENT_SWEEP_FAILED: &str = "sandbox_sweep_failed";
 
 /// What one run's build works from, every check before the turn passed.
 pub(super) struct Build<'b> {
@@ -209,20 +214,35 @@ impl Run<'_> {
         }
     }
 
-    /// Builds a fresh sandbox enforcing `limits` and reaching what `bound`
-    /// admits.
+    /// Builds a fresh sandbox, named by the run, enforcing `limits` as the
+    /// engine grants them and reaching what `bound` admits. A build of unknown
+    /// outcome is swept once and never built again: the run goes on without a
+    /// sandbox.
     async fn prepare(&self, limits: Limits, bound: &Bound) -> Result<Box<dyn Sandbox>, Ended> {
-        let request =
-            SandboxRequest::new(self.ids.run.as_str(), limits).with_network(bound.network());
+        let engine = self.lessee.engine.as_ref();
+        let id = &self.ids.run;
+        let refused =
+            |failure: afr_sandbox::Error| Ended::Failed(Unavailable::Prepare, failure.logged());
+        let spec = SandboxSpec::granted_by(engine, id, limits)
+            .map_err(refused)?
+            .with_network(bound.network());
         let started = Instant::now();
-        let prepared = self.lessee.engine.prepare(request).await;
+        let prepared = engine.prepare(spec).await;
         let outcome = if prepared.is_ok() {
             SandboxStart::Ready
         } else {
             SandboxStart::Failed
         };
         record::sandbox_start(outcome, started.elapsed());
-        prepared.map_err(|failure| Ended::Failed(Unavailable::Prepare, failure.logged()))
+        match prepared {
+            Ok(sandbox) => Ok(sandbox),
+            Err(failure) => {
+                if failure.is_ambiguous() {
+                    sweep_unknown(engine, id).await;
+                }
+                Err(refused(failure))
+            }
+        }
     }
 
     /// Logs a build that failed. The turn goes on without a sandbox, and its
@@ -238,5 +258,23 @@ impl Run<'_> {
             ),);
             tracing::warn!(message, error_code, run_id, class, reason, event);
         };
+    }
+}
+
+/// Destroys what a build of unknown outcome may have left of `id`, once,
+/// logging what it removed and what it left.
+async fn sweep_unknown(engine: &dyn afr_sandbox::Engine, id: &Uuid7) {
+    let engine_name: &'static str = engine.capabilities().engine.into();
+    match engine.sweep(Sweep::Sandbox(id)).await {
+        Ok(swept) => {
+            let (destroyed, left) = (swept.destroyed, swept.left);
+            let event = EVENT_SWEPT;
+            tracing::info!(engine = engine_name, destroyed, left, event);
+        }
+        Err(failure) => {
+            let Logged { error_code, reason } = failure.logged();
+            let event = EVENT_SWEEP_FAILED;
+            tracing::warn!(engine = engine_name, error_code, reason, event);
+        }
     }
 }

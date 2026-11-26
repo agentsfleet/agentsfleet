@@ -7,9 +7,13 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
 
+use af_core::id::Uuid7;
+use af_wire::runner::{Isolation, SandboxEngine};
 use afr_executor::Executor;
 use afr_sandbox::{
-    Allowlist, Engine, HostWorkspace, Killed, Limits, Network, Sandbox, SandboxRequest,
+    Allowlist, Capabilities, Engine, Environment, Granted, HostWorkspace, Killed, Limits, Network,
+    ParkMode, Parked, Quiescence, ResourceFacts, Root, Sandbox, SandboxSpec, SandboxState, Sweep,
+    Swept,
 };
 use bytes::Bytes;
 use tokio::sync::mpsc;
@@ -18,22 +22,31 @@ use crate::egress::Bound;
 mod executor;
 use executor::FakeExecutor;
 
-/// What a fake sandbox does when it is frozen and when it is thawed.
+/// What the fake engine states: every cap enforced, parking by pause.
+const CAPABILITIES: Capabilities = Capabilities {
+    engine: SandboxEngine::Bubblewrap,
+    isolation: Isolation::SharedKernel,
+    parks: &[ParkMode::Pause],
+    resources: ResourceFacts::ENFORCED,
+};
+
+/// What a fake sandbox does when it is parked and when it is resumed.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) enum Freezer {
-    /// Freezes and thaws.
+pub(crate) enum Parking {
+    /// Parks and resumes.
     #[default]
     Works,
-    /// Refuses the freeze, as a host without the cgroup freezer would.
-    RefusesFreeze,
-    /// Freezes, then refuses the thaw.
-    RefusesThaw,
-    /// Freezes and thaws, but its executor never answers again, as one that
-    /// died while frozen would.
-    ThawsSilent,
-    /// Freezes and thaws, but its executor fails every listing after.
-    ThawsBroken,
-    /// Freezes, then refuses the addresses its next run's hosts resolved
+    /// Refuses the park, as a host without the cgroup freezer would; the
+    /// engine destroys the sandbox.
+    RefusesPark,
+    /// Parks, then refuses the resume; the engine destroys the sandbox.
+    RefusesResume,
+    /// Parks and resumes, but its executor never answers again, as one that
+    /// died while parked would.
+    ResumesSilent,
+    /// Parks and resumes, but its executor fails every listing after.
+    ResumesBroken,
+    /// Parks, then refuses the addresses its next run's hosts resolved
     /// to, as a kernel refusing the swap would.
     RefusesReallow,
     /// A detached tenant process prevents a live workspace snapshot.
@@ -46,6 +59,20 @@ pub(crate) enum Freezer {
     QuiescenceUnproved,
     /// Its processes ended after the run, so it no longer reports running.
     Dead,
+    /// Its engine offers no park mode, so a finished run's sandbox is killed.
+    Unoffered,
+}
+
+/// How the fake engine's every build ends.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum Builds {
+    /// It builds.
+    #[default]
+    Ready,
+    /// It refuses, knowing it built nothing.
+    Refused,
+    /// It cannot tell what it built.
+    Ambiguous,
 }
 
 /// How a fake sandbox's kill ends.
@@ -61,7 +88,8 @@ pub(crate) enum Kill {
 /// An engine whose sandboxes count their teardowns.
 #[derive(Debug, Default)]
 pub(crate) struct FakeEngine {
-    pub(crate) refuse: bool,
+    /// How every build ends.
+    pub(crate) build: Builds,
     /// Panics on the first prepare only, the way a bug in the supervisor
     /// would take its worker down.
     pub(crate) panic_once: bool,
@@ -78,50 +106,102 @@ pub(crate) struct FakeEngine {
     pub(crate) teardown_takes: Duration,
     /// How long each prepare takes before it answers, refused or not.
     pub(crate) prepare_takes: Duration,
-    /// How long each thaw takes before it answers.
-    pub(crate) thaw_takes: Duration,
+    /// How long each resume takes before it answers.
+    pub(crate) resume_takes: Duration,
+    /// How long each quiescence read takes before it answers.
+    pub(crate) quiesce_takes: Duration,
+    /// How many quiescence reads its sandboxes started.
+    pub(crate) quiesced: Arc<AtomicUsize>,
     /// Where each prepare reports when it answered with a sandbox.
     pub(crate) ready: Option<mpsc::UnboundedSender<tokio::time::Instant>>,
     pub(crate) prepared: Arc<AtomicUsize>,
     pub(crate) destroyed: Arc<AtomicUsize>,
+    /// Where each sweep reports the scope it was asked for: the sandbox's
+    /// identifier, or none for leftovers.
+    pub(crate) swept: Option<mpsc::UnboundedSender<Option<Uuid7>>>,
     /// Where each sandbox's executor reports the files written into it.
     pub(crate) written: Option<mpsc::UnboundedSender<(String, Bytes)>>,
     /// The host directory each sandbox offers as its workspace, owned by
     /// whoever owns it; none keeps the workspace out of the host's reach.
     pub(crate) workspace: Option<PathBuf>,
-    /// The verified toolbox identity offered by a durable-recovery sandbox.
+    /// The verified toolbox digest a durable-recovery sandbox's root is;
+    /// none roots it on the host.
     pub(crate) toolbox: Option<String>,
-    /// Where each prepare reports the limits it was asked to enforce.
+    /// Where each prepare reports the limits it was granted.
     pub(crate) asked: Option<mpsc::UnboundedSender<Limits>>,
+    /// Where each prepare reports the identifier it was asked to build.
+    pub(crate) named: Option<mpsc::UnboundedSender<Uuid7>>,
     /// Where each prepare reports the network it was asked to reach.
     pub(crate) reached: Option<mpsc::UnboundedSender<Bound>>,
-    /// How many times its sandboxes were frozen, and thawed.
-    pub(crate) frozen: Arc<AtomicUsize>,
-    pub(crate) thawed: Arc<AtomicUsize>,
-    /// Attempts include a thaw that reports failure before it can succeed.
-    pub(crate) thaw_attempts: Arc<AtomicUsize>,
+    /// How many times its sandboxes were parked, and resumed.
+    pub(crate) parked: Arc<AtomicUsize>,
+    pub(crate) resumed: Arc<AtomicUsize>,
+    /// Attempts include a resume that reports failure before it can succeed.
+    pub(crate) resume_attempts: Arc<AtomicUsize>,
     /// Where each sandbox reports the allowlist it was told to take, and
-    /// whether it had been thawed by then.
+    /// whether it had been resumed by then.
     pub(crate) reallowed: Option<mpsc::UnboundedSender<(Allowlist, bool)>>,
-    /// What its sandboxes do when frozen and thawed.
-    pub(crate) freezer: Freezer,
+    /// What its sandboxes do when parked and resumed.
+    pub(crate) parking: Parking,
+}
+
+impl FakeEngine {
+    /// A sandbox built for the fixture run with the default limits, named by
+    /// the run as a run's own build names it.
+    pub(crate) async fn sandbox(&self) -> afr_sandbox::Result<Box<dyn Sandbox>> {
+        let run = Uuid7::parse(crate::test_util::RUN_ID).unwrap();
+        let spec = SandboxSpec::granted_by(self, &run, Limits::default())?;
+        self.prepare(spec).await
+    }
 }
 
 #[async_trait::async_trait]
 impl Engine for FakeEngine {
-    async fn prepare(&self, request: SandboxRequest<'_>) -> afr_sandbox::Result<Box<dyn Sandbox>> {
+    fn capabilities(&self) -> Capabilities {
+        if self.parking == Parking::Unoffered {
+            Capabilities {
+                parks: &[],
+                ..CAPABILITIES
+            }
+        } else {
+            CAPABILITIES
+        }
+    }
+
+    fn grant(&self, limits: Limits) -> afr_sandbox::Result<Granted> {
+        CAPABILITIES.grant(limits)
+    }
+
+    async fn sweep(&self, scope: Sweep<'_>) -> afr_sandbox::Result<Swept> {
+        if let Some(swept) = &self.swept {
+            let named = match scope {
+                Sweep::Leftovers => None,
+                Sweep::Sandbox(id) => Some(id.clone()),
+            };
+            // A test that dropped its receiver is not watching sweeps.
+            drop(swept.send(named));
+        }
+        Ok(Swept::default())
+    }
+
+    async fn prepare(&self, spec: SandboxSpec<'_>) -> afr_sandbox::Result<Box<dyn Sandbox>> {
         // A test that dropped its receiver is not watching these.
         if let Some(asked) = &self.asked {
-            _ = asked.send(request.limits);
+            _ = asked.send(*spec.granted.limits());
+        }
+        if let Some(named) = &self.named {
+            drop(named.send(spec.id.clone()));
         }
         if let Some(reached) = &self.reached {
-            drop(reached.send(bound(request.network)));
+            drop(reached.send(bound(spec.network)));
         }
         if !self.prepare_takes.is_zero() {
             tokio::time::sleep(self.prepare_takes).await;
         }
-        if self.refuse {
-            return Err(std::io::Error::other("no landlock").into());
+        match self.build {
+            Builds::Ready => {}
+            Builds::Refused => return Err(std::io::Error::other("no landlock").into()),
+            Builds::Ambiguous => return Err(afr_sandbox::ambiguous(spec.id, "prepare")),
         }
         let prepared = self.prepared.fetch_add(1, Ordering::SeqCst);
         if self.panic_once
@@ -141,24 +221,37 @@ impl Engine for FakeEngine {
             let metadata = std::fs::metadata(&root).unwrap();
             (root, (metadata.uid(), metadata.gid()))
         });
+        let root = self
+            .toolbox
+            .clone()
+            .map_or(Root::Host, |digest| Root::Toolbox {
+                digest: digest.into_boxed_str(),
+            });
         Ok(Box::new(FakeSandbox {
+            id: spec.id.clone(),
+            granted: spec.granted,
+            environment: Environment {
+                engine: CAPABILITIES.engine,
+                root,
+            },
             fail_teardown: self.fail_teardown,
             kill: self.kill,
             steps: self.steps.clone(),
             teardown_takes: self.teardown_takes,
-            thaw_takes: self.thaw_takes,
+            resume_takes: self.resume_takes,
+            quiesce_takes: self.quiesce_takes,
+            quiesced: Arc::clone(&self.quiesced),
             workspace,
-            toolbox: self.toolbox.clone(),
             destroyed: Arc::clone(&self.destroyed),
-            frozen: Arc::clone(&self.frozen),
-            thawed: Arc::clone(&self.thawed),
-            thaw_attempts: Arc::clone(&self.thaw_attempts),
+            parked: Arc::clone(&self.parked),
+            resumed: Arc::clone(&self.resumed),
+            resume_attempts: Arc::clone(&self.resume_attempts),
             reallowed: self.reallowed.clone(),
-            freezer: self.freezer,
+            parking: self.parking,
             executor: FakeExecutor {
                 written: self.written.clone(),
-                freezer: self.freezer,
-                thawed: AtomicBool::default(),
+                parking: self.parking,
+                resumed: AtomicBool::default(),
             },
         }))
     }
@@ -166,19 +259,23 @@ impl Engine for FakeEngine {
 
 #[derive(Debug)]
 struct FakeSandbox {
+    id: Uuid7,
+    granted: Granted,
+    environment: Environment,
     fail_teardown: bool,
     kill: Kill,
     steps: Option<mpsc::UnboundedSender<&'static str>>,
     teardown_takes: Duration,
-    thaw_takes: Duration,
+    resume_takes: Duration,
+    quiesce_takes: Duration,
+    quiesced: Arc<AtomicUsize>,
     workspace: Option<(PathBuf, (u32, u32))>,
-    toolbox: Option<String>,
     destroyed: Arc<AtomicUsize>,
-    frozen: Arc<AtomicUsize>,
-    thawed: Arc<AtomicUsize>,
-    thaw_attempts: Arc<AtomicUsize>,
+    parked: Arc<AtomicUsize>,
+    resumed: Arc<AtomicUsize>,
+    resume_attempts: Arc<AtomicUsize>,
     reallowed: Option<mpsc::UnboundedSender<(Allowlist, bool)>>,
-    freezer: Freezer,
+    parking: Parking,
     executor: FakeExecutor,
 }
 
@@ -189,10 +286,42 @@ impl FakeSandbox {
             let _reader_gone = steps.send(step);
         }
     }
+
+    /// Removes what it held, counted.
+    async fn teardown(&self) -> afr_sandbox::Result<()> {
+        self.step(DESTROY);
+        if !self.teardown_takes.is_zero() {
+            tokio::time::sleep(self.teardown_takes).await;
+        }
+        self.destroyed.fetch_add(1, Ordering::SeqCst);
+        if self.fail_teardown {
+            return Err(std::io::Error::other("busy mount").into());
+        }
+        Ok(())
+    }
+
+    /// Fails `detail` after the engine destroyed the sandbox, as a park or
+    /// resume that would not finish does.
+    async fn destroyed_on(&self, detail: &'static str) -> afr_sandbox::Error {
+        let _left_for_the_sweep = self.teardown().await;
+        std::io::Error::other(detail).into()
+    }
 }
 
 #[async_trait::async_trait]
 impl Sandbox for FakeSandbox {
+    fn id(&self) -> &Uuid7 {
+        &self.id
+    }
+
+    fn environment(&self) -> &Environment {
+        &self.environment
+    }
+
+    fn granted(&self) -> &Granted {
+        &self.granted
+    }
+
     fn executor(&self) -> &dyn Executor {
         &self.executor
     }
@@ -204,50 +333,47 @@ impl Sandbox for FakeSandbox {
         })
     }
 
-    fn toolbox_digest(&self) -> Option<&str> {
-        self.toolbox.as_deref()
+    fn state(&mut self) -> SandboxState {
+        if self.parking == Parking::Dead {
+            SandboxState::Ended
+        } else {
+            SandboxState::Running
+        }
     }
 
-    fn is_running(&mut self) -> bool {
-        self.freezer != Freezer::Dead
+    async fn quiesce(&self) -> afr_sandbox::Result<Quiescence> {
+        self.quiesced.fetch_add(1, Ordering::SeqCst);
+        if !self.quiesce_takes.is_zero() {
+            tokio::time::sleep(self.quiesce_takes).await;
+        }
+        if self.parking == Parking::QuiescenceUnproved {
+            return Err(std::io::Error::other(NO_QUIESCENCE).into());
+        }
+        if self.parking == Parking::BusyTenant {
+            return Ok(Quiescence::Busy);
+        }
+        Ok(Quiescence::Quiet)
     }
 
-    async fn freeze(&self) -> afr_sandbox::Result<()> {
-        if self.freezer == Freezer::RefusesFreeze {
-            return Err(std::io::Error::other(NO_FREEZER).into());
+    async fn park(self: Box<Self>, mode: ParkMode) -> afr_sandbox::Result<Box<dyn Parked>> {
+        if self.parking == Parking::RefusesPark {
+            return Err(self.destroyed_on(NO_PARK).await);
         }
-        self.frozen.fetch_add(1, Ordering::SeqCst);
-        Ok(())
-    }
-
-    async fn recovery_quiescent(&self) -> afr_sandbox::Result<bool> {
-        if self.freezer == Freezer::QuiescenceUnproved {
-            return Err(std::io::Error::other(NO_FREEZER).into());
-        }
-        Ok(self.freezer != Freezer::BusyTenant)
-    }
-
-    async fn thaw(&self) -> afr_sandbox::Result<()> {
-        self.thaw_attempts.fetch_add(1, Ordering::SeqCst);
-        if !self.thaw_takes.is_zero() {
-            tokio::time::sleep(self.thaw_takes).await;
-        }
-        if self.freezer == Freezer::RefusesThaw {
-            return Err(std::io::Error::other(NO_FREEZER).into());
-        }
-        self.thawed.fetch_add(1, Ordering::SeqCst);
-        self.executor.thawed.store(true, Ordering::SeqCst);
-        Ok(())
+        self.parked.fetch_add(1, Ordering::SeqCst);
+        Ok(Box::new(FakeParked {
+            sandbox: self,
+            mode,
+        }))
     }
 
     async fn reallow(&mut self, allowlist: &Allowlist) -> afr_sandbox::Result<()> {
-        if self.freezer == Freezer::RefusesReallow {
+        if self.parking == Parking::RefusesReallow {
             return Err(std::io::Error::other(NO_REFILL).into());
         }
         if let Some(reallowed) = &self.reallowed {
-            let thawed = self.executor.thawed.load(Ordering::SeqCst);
+            let resumed = self.executor.resumed.load(Ordering::SeqCst);
             // A test that dropped its receiver is not watching reallows.
-            drop(reallowed.send((allowlist.clone(), thawed)));
+            drop(reallowed.send((allowlist.clone(), resumed)));
         }
         Ok(())
     }
@@ -261,15 +387,43 @@ impl Sandbox for FakeSandbox {
     }
 
     async fn destroy(self: Box<Self>) -> afr_sandbox::Result<()> {
-        self.step(DESTROY);
-        if !self.teardown_takes.is_zero() {
-            tokio::time::sleep(self.teardown_takes).await;
+        self.teardown().await
+    }
+}
+
+/// A fake sandbox, parked.
+#[derive(Debug)]
+struct FakeParked {
+    sandbox: Box<FakeSandbox>,
+    mode: ParkMode,
+}
+
+#[async_trait::async_trait]
+impl Parked for FakeParked {
+    fn id(&self) -> &Uuid7 {
+        &self.sandbox.id
+    }
+
+    fn mode(&self) -> ParkMode {
+        self.mode
+    }
+
+    async fn resume(self: Box<Self>) -> afr_sandbox::Result<Box<dyn Sandbox>> {
+        let sandbox = self.sandbox;
+        sandbox.resume_attempts.fetch_add(1, Ordering::SeqCst);
+        if !sandbox.resume_takes.is_zero() {
+            tokio::time::sleep(sandbox.resume_takes).await;
         }
-        self.destroyed.fetch_add(1, Ordering::SeqCst);
-        if self.fail_teardown {
-            return Err(std::io::Error::other("busy mount").into());
+        if sandbox.parking == Parking::RefusesResume {
+            return Err(sandbox.destroyed_on(NO_PARK).await);
         }
-        Ok(())
+        sandbox.resumed.fetch_add(1, Ordering::SeqCst);
+        sandbox.executor.resumed.store(true, Ordering::SeqCst);
+        Ok(sandbox)
+    }
+
+    async fn destroy(self: Box<Self>) -> afr_sandbox::Result<()> {
+        self.sandbox.teardown().await
     }
 }
 
@@ -279,12 +433,14 @@ pub(crate) const DESTROY: &str = "destroy";
 /// What a kill that cannot prove the tree empty says.
 pub(crate) const STILL_RUNNING: &str = "a process is stuck in the kernel";
 
-/// What a refused freeze or thaw says.
-pub(crate) const NO_FREEZER: &str = "cgroup.freeze refused";
+/// What a refused park or resume says.
+pub(crate) const NO_PARK: &str = "cgroup.freeze refused";
+/// What a sandbox that cannot tell whether a tenant process runs says.
+const NO_QUIESCENCE: &str = "cgroup.events unreadable";
 /// What a refused swap of a held sandbox's addresses says.
 pub(crate) const NO_REFILL: &str = "the egress set refused its new addresses";
-/// What a broken executor says once its sandbox is thawed.
-pub(crate) const EXECUTOR_GONE: &str = "the executor died while frozen";
+/// What a broken executor says once its sandbox is resumed.
+pub(crate) const EXECUTOR_GONE: &str = "the executor died while parked";
 
 /// The network a sandbox was asked for, owned, so a test reads it back after
 /// the request is gone.

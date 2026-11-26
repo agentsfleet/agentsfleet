@@ -5,8 +5,9 @@
 //! memory limit, one full `/dev/shm` would get every later command in the
 //! run killed for memory at its first allocation.
 
+use crate::lane::{id_of, spec};
 use afr_executor::Ending;
-use afr_sandbox::{Limits, SandboxRequest};
+use afr_sandbox::Limits;
 use libtest_mimic::Failed;
 
 use crate::exhaustion::{OK, SMALL_MEMORY};
@@ -31,7 +32,7 @@ pub(crate) fn full_shared_memory_spares_the_tenant(lane: &Lane) -> Result<(), Fa
     };
     let outcomes = in_sandbox_each(
         lane,
-        SandboxRequest::new("shmfill", limits),
+        spec(&id_of("shmfill"), limits),
         &[FILL_SHARED_MEMORY, ALLOCATE_BESIDE_IT],
     )?;
     let [filled, after] = outcomes.as_slice() else {

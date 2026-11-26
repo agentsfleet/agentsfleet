@@ -43,7 +43,7 @@ const EVENT_TEARDOWN_FAILED: &str = "sandbox_teardown_failed";
 /// Everything one run's sandbox owns; built a piece at a time, released once.
 #[derive(Debug)]
 pub(super) struct Parts {
-    run_id: String,
+    sandbox_id: String,
     dir: Option<PathBuf>,
     disk: Option<WorkspaceDisk>,
     cgroup: Option<RunCgroup>,
@@ -54,9 +54,9 @@ pub(super) struct Parts {
 
 impl Parts {
     /// Nothing built yet, in the run's own directory.
-    pub(super) fn new(run_id: &str, dir: PathBuf) -> Self {
+    pub(super) fn new(sandbox_id: &str, dir: PathBuf) -> Self {
         Self {
-            run_id: run_id.to_owned(),
+            sandbox_id: sandbox_id.to_owned(),
             dir: Some(dir),
             disk: None,
             cgroup: None,

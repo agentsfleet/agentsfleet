@@ -1,4 +1,4 @@
-//! Sandbox build and freeze own recovery; the model sees only authenticated history.
+//! Sandbox build and quiescence own recovery; the model sees only authenticated history.
 
 use super::{Run, build::Build};
 use crate::{
@@ -11,7 +11,7 @@ use af_wire::durable_task::{
     CheckpointMode, CheckpointPlan, DurableTaskDisposition, DurableTaskTarget,
 };
 use afr_agent::{DurableTaskRecovery, PreparedDurableTask};
-use afr_sandbox::Sandbox;
+use afr_sandbox::{Quiescence, Sandbox};
 use zeroize::Zeroizing;
 
 #[derive(Debug)]
@@ -47,7 +47,9 @@ impl Run<'_> {
             .workspace()
             .ok_or_else(|| error::config("sandbox has no trusted snapshot workspace"))?;
         let toolbox = sandbox
-            .toolbox_digest()
+            .environment()
+            .root
+            .toolbox()
             .ok_or_else(|| error::config("sandbox has no verified recovery toolbox"))?;
         let scope = Uuid7::parse(&self.payload.event.workspace_id)?;
         let permit = if task.checkpoint_id.is_some()
@@ -57,30 +59,18 @@ impl Run<'_> {
         } else {
             None
         };
-        sandbox
-            .freeze()
-            .await
-            .map_err(|source| error::boundary("sandbox could not freeze for recovery", source))?;
-        let restored = async {
-            prove_quiescent(sandbox).await?;
-            self.native_workspace(
+        // A failure is a failed build; teardown owns the entire sandbox, so
+        // no partially restored executor enters the slot.
+        prove_quiescent(sandbox).await?;
+        let state: State = self
+            .native_workspace(
                 task,
                 (workspace.root.to_owned(), workspace.owner),
                 &scope,
                 toolbox,
                 permit.as_ref(),
             )
-            .await
-        }
-        .await;
-        // Failure remains a failed build even when thaw also fails; teardown owns
-        // the entire sandbox. No partially restored executor enters the slot.
-        let thawed = sandbox
-            .thaw()
-            .await
-            .map_err(|source| error::boundary("sandbox could not thaw after recovery", source));
-        let state: State = restored?;
-        thawed?;
+            .await?;
         if build.recovery.set(state).is_err() {
             return Err(error::config("sandbox recovery was prepared twice"));
         }
@@ -125,7 +115,7 @@ impl Run<'_> {
         )))
     }
 
-    pub(super) async fn capture_frozen(
+    pub(super) async fn capture_final(
         &self,
         sandbox: &dyn Sandbox,
         state: Option<&State>,
@@ -145,7 +135,9 @@ impl Run<'_> {
                 .workspace()
                 .ok_or_else(|| error::config("task workspace is unavailable for capture"))?;
             let toolbox = sandbox
-                .toolbox_digest()
+                .environment()
+                .root
+                .toolbox()
                 .ok_or_else(|| error::config("task toolbox is unavailable for capture"))?;
             let scope = Uuid7::parse(&self.payload.event.workspace_id)?;
             let saved = Capture {
@@ -292,16 +284,18 @@ pub(super) fn recovered_history(
 #[path = "tests/recovery/ownership.rs"]
 mod ownership_tests;
 
-/// The owner has confirmed freeze before asking for this separate tenant proof.
-async fn prove_quiescent(sandbox: &dyn Sandbox) -> Result<()> {
-    if !sandbox
-        .recovery_quiescent()
+/// Refuses a capture or restore while a tenant process remains: only the
+/// supervisor starts processes, and it is busy with this one, so a quiet
+/// sandbox stays quiet until the work is done.
+pub(super) async fn prove_quiescent(sandbox: &dyn Sandbox) -> Result<()> {
+    match sandbox
+        .quiesce()
         .await
-        .map_err(|source| error::boundary("cannot prove frozen tenant quiescence", source))?
+        .map_err(|source| error::boundary("cannot prove tenant quiescence", source))?
     {
-        return Err(error::config(
+        Quiescence::Quiet => Ok(()),
+        Quiescence::Busy => Err(error::config(
             "a tenant process still owns the recovery workspace",
-        ));
+        )),
     }
-    Ok(())
 }

@@ -16,7 +16,7 @@ use super::super::parts::Parts;
 const PATIENCE: Duration = Duration::from_secs(10);
 /// How often it looks.
 const POLL: Duration = Duration::from_millis(10);
-use super::support::{FakeHost, IMAGE, SLEEPER, request};
+use super::support::{FakeHost, IMAGE, SLEEPER, id_of, spec};
 use crate::egress::testing::{Fake, Protocol};
 use crate::engine::Engine;
 use crate::error::{EgressRefusal, egress_refused};
@@ -97,8 +97,11 @@ async fn test_a_cancelled_start_releases_its_sandbox() {
     let engine = host.engine();
     let capture = Capture::install();
 
-    let abandoned =
-        tokio::time::timeout(Duration::from_millis(100), engine.prepare(request("run-3"))).await;
+    let abandoned = tokio::time::timeout(
+        Duration::from_millis(100),
+        engine.prepare(spec(&id_of("run-3"))),
+    )
+    .await;
 
     abandoned.unwrap_err();
     // Released on the blocking pool, logging where this test listens.
@@ -114,8 +117,8 @@ async fn test_a_cancelled_start_releases_its_sandbox() {
     .await
     .unwrap();
     assert_eq!(
-        capture.only("sandbox_teardown_failed").field("run_id"),
-        Some("run-3")
+        capture.only("sandbox_teardown_failed").field("sandbox_id"),
+        Some(id_of("run-3").as_str())
     );
     assert!(
         host.run_dir("run-3").join(IMAGE).exists(),
@@ -131,21 +134,30 @@ fn test_the_boot_sweep_removes_what_a_previous_run_left() {
     fs::write(clean.join(IMAGE), "").unwrap();
     let busy = host.run_dir("run-5");
     fs::create_dir_all(&busy).unwrap();
-    fs::create_dir_all(host.config.cgroup_root.join("run-5").join("child")).unwrap();
+    fs::create_dir_all(
+        host.config
+            .cgroup_root
+            .join(id_of("run-5").as_str())
+            .join("child"),
+    )
+    .unwrap();
     fs::write(host.dir.path().join("runs").join("stray-file"), "").unwrap();
     let capture = Capture::install();
 
     let _engine = host.engine();
 
     assert!(!clean.exists());
-    assert_eq!(capture.only("sandbox_swept").field("run_id"), Some("run-4"));
+    assert_eq!(
+        capture.only("sandbox_swept").field("sandbox_id"),
+        Some(id_of("run-4").as_str())
+    );
     assert!(
         busy.exists(),
         "a cgroup that will not go keeps its run for later"
     );
     assert_eq!(
-        capture.only("sandbox_sweep_failed").field("run_id"),
-        Some("run-5")
+        capture.only("sandbox_sweep_failed").field("sandbox_id"),
+        Some(id_of("run-5").as_str())
     );
 }
 
@@ -199,7 +211,7 @@ fn test_an_egress_sweep_that_cannot_list_still_sweeps_the_runs() {
 
     let failed = capture.only("sandbox_sweep_failed");
     assert!(!left.exists(), "the run was swept");
-    assert_eq!(failed.field("run_id"), None, "the egress sweep failed");
+    assert_eq!(failed.field("sandbox_id"), None, "the egress sweep failed");
     assert!(
         failed
             .field("reason")

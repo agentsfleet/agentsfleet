@@ -25,6 +25,27 @@ export enum RunnerLiveness {
   Offline = "offline",
 }
 
+/** The engine that builds a runner's sandboxes, as its heartbeat reports it. */
+export enum SandboxEngine {
+  Bubblewrap = "bubblewrap",
+  Firecracker = "firecracker",
+  Unsandboxed = "unsandboxed",
+}
+
+/** The wall a runner's engine puts between a sandbox's code and the host. */
+export enum Isolation {
+  Unconfined = "unconfined",
+  SharedKernel = "shared_kernel",
+  HardwareVm = "hardware_vm",
+}
+
+/** What a runner host's virtualization device offers. */
+export enum Kvm {
+  Usable = "usable",
+  Denied = "denied",
+  Absent = "absent",
+}
+
 export enum SandboxTier {
   LandlockFull = "landlock_full",
   ContainerNested = "container_nested",

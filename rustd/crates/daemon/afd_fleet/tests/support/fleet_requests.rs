@@ -84,6 +84,14 @@ pub(crate) fn capable() -> CapabilityReport<'static> {
         ],
         bubblewrap: true,
         egress_enforcement: true,
+
+        engine: af_wire::runner::SandboxEngine::Bubblewrap,
+
+        isolation: af_wire::runner::Isolation::SharedKernel,
+
+        kvm: af_wire::runner::Kvm::Absent,
+
+        sandboxes_max: None,
     }
 }
 

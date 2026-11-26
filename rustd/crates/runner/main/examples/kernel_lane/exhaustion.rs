@@ -4,8 +4,9 @@
 use std::fs;
 use std::os::unix::fs::MetadataExt as _;
 
+use crate::lane::{id_of, spec};
 use afr_executor::Ending;
-use afr_sandbox::{Engine as _, Limits, RunCgroup, SANDBOX_LEAF, SandboxRequest, TENANT_LEAF};
+use afr_sandbox::{Engine as _, Limits, RunCgroup, SANDBOX_LEAF, TENANT_LEAF};
 use libtest_mimic::Failed;
 
 use crate::lane::Lane;
@@ -63,7 +64,7 @@ pub(crate) fn full_tmp_answers_enospc(lane: &Lane) -> Result<(), Failed> {
     };
     let outcomes = in_sandbox_each(
         lane,
-        SandboxRequest::new("tmpfill", limits),
+        spec(&id_of("tmpfill"), limits),
         &[
             "dd if=/dev/zero of=/tmp/fill bs=1M count=80 2>&1",
             "echo ok",
@@ -91,7 +92,7 @@ pub(crate) fn workspace_and_tmp_share_the_disk(lane: &Lane) -> Result<(), Failed
     };
     let outcomes = in_sandbox_each(
         lane,
-        SandboxRequest::new("shared", limits),
+        spec(&id_of("shared"), limits),
         &[
             "dd if=/dev/zero of=/workspace/fill bs=1M count=40 2>&1; ls -a /workspace",
             "dd if=/dev/zero of=/tmp/fill bs=1M count=40 2>&1",
@@ -157,14 +158,11 @@ pub(crate) fn oom_kills_only_the_tenant(lane: &Lane) -> Result<(), Failed> {
     let sandbox_events = lane
         .config
         .cgroup_root
-        .join(run_id)
+        .join(id_of(run_id).as_str())
         .join(SANDBOX_LEAF)
         .join(MEMORY_EVENTS);
     let (hog, after, events) = runtime().block_on(async {
-        let sandbox = lane
-            .engine()
-            .prepare(SandboxRequest::new(run_id, limits))
-            .await?;
+        let sandbox = lane.engine().prepare(spec(&id_of(run_id), limits)).await?;
         let hog = run_in(sandbox.executor(), shell(HOG)).await;
         let after = run_in(sandbox.executor(), shell(&format!("echo {OK}"))).await;
         let events = fs::read_to_string(&sandbox_events).unwrap_or_default();
@@ -210,7 +208,7 @@ pub(crate) fn tenant_holds_no_cgroup_descriptor(lane: &Lane) -> Result<(), Faile
 /// the next engine's boot sweep removes them, then the run's cgroup.
 pub(crate) fn sweep_removes_both_leaves(lane: &Lane) -> Result<(), Failed> {
     let run_id = "leftover";
-    let cgroup = lane.config.cgroup_root.join(run_id);
+    let cgroup = lane.config.cgroup_root.join(id_of(run_id).as_str());
     // What a runner killed here leaves: a split cgroup and the run's
     // directory, with no sandbox to destroy either.
     drop(RunCgroup::create(
@@ -243,7 +241,7 @@ pub(crate) fn workspace_disk_uses_direct_io(lane: &Lane) -> Result<(), Failed> {
     let dio = runtime().block_on(async {
         let sandbox = lane
             .engine()
-            .prepare(SandboxRequest::new(run_id, Limits::default()))
+            .prepare(spec(&id_of(run_id), Limits::default()))
             .await?;
         // Read while the sandbox holds the device: destroy detaches it.
         let dio = loop_dio(&lane.run_dir(run_id).join(DISK_MOUNT));
@@ -279,13 +277,13 @@ pub(crate) fn disk_fill_under_memory_limit_ends_in_enospc(lane: &Lane) -> Result
     let tenant_events = lane
         .config
         .cgroup_root
-        .join(run_id)
+        .join(id_of(run_id).as_str())
         .join(TENANT_LEAF)
         .join(MEMORY_EVENTS);
     let (filled, events) = runtime().block_on(async {
         let sandbox = lane
             .engine()
-            .prepare(SandboxRequest::new(run_id, Limits::default()))
+            .prepare(spec(&id_of(run_id), Limits::default()))
             .await?;
         let filled = run_in(sandbox.executor(), shell(FILL_PAST_THE_DISK)).await;
         let events = fs::read_to_string(&tenant_events).unwrap_or_default();

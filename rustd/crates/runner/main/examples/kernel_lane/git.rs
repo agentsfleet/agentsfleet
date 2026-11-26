@@ -6,7 +6,8 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-use afr_sandbox::{Engine, Limits, Sandbox, SandboxRequest};
+use crate::lane::{id_of, spec};
+use afr_sandbox::{Engine, Limits, Sandbox};
 use afr_supervisor::workspace_clone::{Mirrors, Request};
 use afr_tools::Run;
 use afr_tools::catalog::{GIT, SHELL};
@@ -96,7 +97,8 @@ fn checked_out(
     serve(root.path())?;
     runtime().block_on(async {
         let engine = lane.engine();
-        let request = SandboxRequest::new(run_id, Limits::default());
+        let sandbox_id = id_of(run_id);
+        let request = spec(&sandbox_id, Limits::default());
         let sandbox = engine.prepare(request).await?;
         let outputs = work(root.path(), sandbox.as_ref(), calls).await;
         sandbox.destroy().await?;

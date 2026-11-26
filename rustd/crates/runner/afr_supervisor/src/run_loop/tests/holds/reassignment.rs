@@ -74,7 +74,7 @@ async fn test_reassignment_retires_held_sandboxes() {
         assert_eq!(
             counted.read(),
             (2, 2, 0, 2),
-            "built fresh, never thawed: {before:?} then {after:?}"
+            "built fresh, never resumed: {before:?} then {after:?}"
         );
         assert_eq!(
             releases(&capture),
@@ -86,7 +86,7 @@ async fn test_reassignment_retires_held_sandboxes() {
     }
 }
 
-/// The same egress at the next run keeps the hold: it is thawed and serves.
+/// The same egress at the next run keeps the hold: it is resumed and serves.
 #[tokio::test(start_paused = true)]
 async fn an_unchanged_egress_keeps_the_hold() {
     let (rig, counted) = holding();
@@ -99,5 +99,9 @@ async fn an_unchanged_egress_keeps_the_hold() {
         .await
         .unwrap();
 
-    assert_eq!(counted.read(), (1, 2, 1, 0), "one sandbox, thawed and held");
+    assert_eq!(
+        counted.read(),
+        (1, 2, 1, 0),
+        "one sandbox, resumed and held"
+    );
 }

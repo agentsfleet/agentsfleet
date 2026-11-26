@@ -21,9 +21,9 @@ use crate::error;
 use crate::holds::Release;
 use crate::test_support::ROUND;
 use crate::test_support::{
-    Answer, Behaviour, FAILURE_REASON, FLEET_ID, FakeAgent, FakeEngine, Freezer, OUTCOME,
-    PROCESSED, RENEWAL_TERMINATE, RUN_ID, Rig, assigned, bounded, daemon, payload, position,
-    reported,
+    Answer, Behaviour, DESTROY, FAILURE_REASON, FLEET_ID, FakeAgent, FakeEngine, KILL, OUTCOME,
+    PROCESSED, Parking, RENEWAL_TERMINATE, RUN_ID, Rig, assigned, bounded, daemon, payload,
+    position, reported,
 };
 
 /// The fleet's second run, after the one that left its sandbox held.
@@ -41,8 +41,8 @@ const HELD_UNTIL: &str = "held_until";
 pub(super) struct Counted {
     prepared: Arc<AtomicUsize>,
     destroyed: Arc<AtomicUsize>,
-    frozen: Arc<AtomicUsize>,
-    thawed: Arc<AtomicUsize>,
+    parked: Arc<AtomicUsize>,
+    resumed: Arc<AtomicUsize>,
 }
 
 impl Counted {
@@ -50,18 +50,18 @@ impl Counted {
         Self {
             prepared: Arc::clone(&engine.prepared),
             destroyed: Arc::clone(&engine.destroyed),
-            frozen: Arc::clone(&engine.frozen),
-            thawed: Arc::clone(&engine.thawed),
+            parked: Arc::clone(&engine.parked),
+            resumed: Arc::clone(&engine.resumed),
         }
     }
 
-    /// The counts so far, as (prepared, frozen, thawed, destroyed).
+    /// The counts so far, as (prepared, parked, resumed, destroyed).
     pub(super) fn read(&self) -> (usize, usize, usize, usize) {
         let load = |count: &AtomicUsize| count.load(Ordering::SeqCst);
         (
             load(&self.prepared),
-            load(&self.frozen),
-            load(&self.thawed),
+            load(&self.parked),
+            load(&self.resumed),
             load(&self.destroyed),
         )
     }
@@ -120,7 +120,7 @@ pub(super) fn released(fleet: &str, reason: Release) -> (String, String) {
 /// memory, so renewal is proved running while the sandbox is held; time then
 /// runs past more ticks, and no renewal follows the report.
 #[tokio::test(start_paused = true)]
-async fn test_processed_run_parks_its_sandbox_frozen() {
+async fn test_processed_run_parks_its_sandbox() {
     let reports = Arc::new(AtomicUsize::new(0));
     let attempts = Arc::clone(&reports);
     let slow_report = move |call: &Call| {
@@ -149,7 +149,7 @@ async fn test_processed_run_parks_its_sandbox_frozen() {
     assert_eq!(
         counted.read(),
         (1, 1, 0, 0),
-        "frozen and held, not destroyed"
+        "parked and held, not destroyed"
     );
     let renewals: Vec<usize> = calls
         .iter()
@@ -177,7 +177,7 @@ async fn test_a_run_refused_at_startup_releases_the_fleets_hold() {
     settled(&rig).await;
 
     assert_eq!(releases(&capture), [released(FLEET_ID, Release::Mismatch)]);
-    let (_prepared, _frozen, _thawed, destroyed) = counted.read();
+    let (_prepared, _parked, _resumed, destroyed) = counted.read();
     assert_eq!(destroyed, 1, "the held sandbox is torn down");
 }
 
@@ -192,7 +192,7 @@ async fn test_next_run_reuses_the_held_sandbox() {
     assert_eq!(
         counted.read(),
         (1, 2, 1, 0),
-        "one sandbox: built once, thawed for the second run and held again"
+        "one sandbox: built once, resumed for the second run and held again"
     );
 }
 
@@ -251,10 +251,12 @@ async fn test_a_superseded_report_destroys_what_it_parked() {
     assert_eq!(counted.read(), (1, 1, 0, 1));
 }
 
+/// A sandbox that will not park is destroyed by its engine; the run holds
+/// nothing and destroys nothing more.
 #[tokio::test(start_paused = true)]
-async fn test_a_sandbox_that_will_not_freeze_is_destroyed() {
+async fn test_a_sandbox_that_will_not_park_is_destroyed_by_its_engine() {
     let engine = FakeEngine {
-        freezer: Freezer::RefusesFreeze,
+        parking: Parking::RefusesPark,
         ..FakeEngine::default()
     };
     let (mut rig, counted) = holding(healthy, engine, Behaviour::Answer);
@@ -265,6 +267,28 @@ async fn test_a_sandbox_that_will_not_freeze_is_destroyed() {
     assert_eq!(report[OUTCOME], PROCESSED);
     holds_nothing(&report);
     assert_eq!(counted.read(), (1, 0, 0, 1));
+}
+
+/// An engine that offers no park mode kills a processed run's sandbox and
+/// releases it after the report, holding nothing.
+#[tokio::test(start_paused = true)]
+async fn test_an_engine_that_cannot_park_kills_the_sandbox() {
+    let (steps, mut taken) = tokio::sync::mpsc::unbounded_channel();
+    let engine = FakeEngine {
+        parking: Parking::Unoffered,
+        steps: Some(steps),
+        ..FakeEngine::default()
+    };
+    let (mut rig, counted) = holding(healthy, engine, Behaviour::Answer);
+
+    rig.run(&payload(RUN_ID, FLEET_ID)).await.unwrap();
+
+    let report = reported(&rig.calls());
+    assert_eq!(report[OUTCOME], PROCESSED);
+    holds_nothing(&report);
+    assert_eq!(counted.read(), (1, 0, 0, 1));
+    assert_eq!(taken.try_recv().unwrap(), KILL);
+    assert_eq!(taken.try_recv().unwrap(), DESTROY);
 }
 
 #[tokio::test(start_paused = true)]

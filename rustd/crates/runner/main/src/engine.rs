@@ -14,6 +14,13 @@ pub(crate) enum EngineChoice {
 }
 
 impl EngineChoice {
+    /// What the selected engine states, before it is built.
+    pub(crate) const fn capabilities(self) -> afr_sandbox::Capabilities {
+        match self {
+            Self::Bubblewrap => afr_sandbox::BUBBLEWRAP_CAPABILITIES,
+        }
+    }
+
     /// Starts the selected backend; a refusal never selects another engine.
     pub(crate) fn boot(
         self,

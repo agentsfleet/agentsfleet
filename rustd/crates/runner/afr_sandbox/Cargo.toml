@@ -16,6 +16,11 @@ workspace = true
 
 [dependencies]
 af_core.workspace = true
+# A warm slot's sandbox identifier, minted the one way identifiers are.
+af_crypto.workspace = true
+# The engine, isolation and KVM names the seam states and the heartbeat
+# carries: one type in both places.
+af_wire.workspace = true
 # Every sandbox serves the same executor, which is what makes a second engine
 # an addition rather than a rewrite.
 afr_executor.workspace = true
@@ -45,6 +50,8 @@ rustls-pki-types.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
+# The park mode's log spelling, from one attribute rather than a match.
+strum.workspace = true
 # The process status a sandbox reads before it serves.
 procfs-core.workspace = true
 # The system calls the engine makes directly: whether the probe may execute

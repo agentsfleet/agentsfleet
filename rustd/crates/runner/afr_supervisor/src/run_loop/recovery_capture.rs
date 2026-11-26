@@ -1,4 +1,5 @@
-//! A committed receipt leaves the owner only after the sandbox has thawed.
+//! A boundary's capture runs only when the executor is idle and no tenant
+//! process remains, so nothing writes the workspace while it is read.
 
 use std::panic::AssertUnwindSafe;
 
@@ -8,7 +9,7 @@ use afr_agent::{
     CommittedRecovery, DurableTaskRecovery, FileRecoveryPermit, RecoveryReceipt, RecoverySave,
     RecoverySkip, RecoverySnapshot, RecoveryState, TurnSnapshot,
 };
-use afr_sandbox::Sandbox;
+use afr_sandbox::{Quiescence, Sandbox};
 use futures_util::FutureExt as _;
 
 use super::{
@@ -61,41 +62,23 @@ impl BoundaryOwner<'_, '_> {
             Ready::ApiOnly => None,
             Ready::Sandbox(sandbox, _) => Some(sandbox),
         };
-        let mut attempted_freeze = false;
-        let capturing = async {
-            if let Some(sandbox) = sandbox {
-                match executor_idle(sandbox).await {
-                    Ok(true) => {}
-                    Ok(false) => return Ok(RecoverySave::Skipped(RecoverySkip::BusyExecutor)),
-                    Err(failure) => {
-                        tracing::debug!(event = "run_checkpoint_executor_unproved", error_code = %failure.code());
-                        return Ok(RecoverySave::Skipped(RecoverySkip::Unavailable));
-                    }
-                }
-                attempted_freeze = true;
-                if let Err(failure) = sandbox.freeze().await {
-                    tracing::warn!(event = "run_checkpoint_freeze_failed", error_code = %failure.code());
+        if let Some(sandbox) = sandbox {
+            match executor_idle(sandbox).await {
+                Ok(true) => {}
+                Ok(false) => return Ok(RecoverySave::Skipped(RecoverySkip::BusyExecutor)),
+                Err(failure) => {
+                    tracing::debug!(event = "run_checkpoint_executor_unproved", error_code = %failure.code());
                     return Ok(RecoverySave::Skipped(RecoverySkip::Unavailable));
                 }
             }
-            self.publish(snapshot, &ready).await
-        };
-        let captured = match AssertUnwindSafe(capturing).catch_unwind().await {
-            Ok(captured) => captured,
-            Err(_panic) => Err(error::config("live capture panicked before cleanup")),
-        };
-        // Even a refused freeze can have changed kernel state. Neither a lost
-        // caller nor a refused publication may bypass the cleanup attempt.
-        if let Some(sandbox) = sandbox.filter(|_sandbox| attempted_freeze) {
-            AssertUnwindSafe(sandbox.thaw())
-                .catch_unwind()
-                .await
-                .map_err(|_panic| error::config("sandbox thaw panicked after live capture"))?
-                .map_err(|source| {
-                    error::boundary("sandbox could not thaw after live capture", source)
-                })?;
         }
-        captured
+        match AssertUnwindSafe(self.publish(snapshot, &ready))
+            .catch_unwind()
+            .await
+        {
+            Ok(captured) => captured,
+            Err(_panic) => Err(error::config("live capture panicked")),
+        }
     }
 
     async fn publish(
@@ -113,15 +96,16 @@ impl BoundaryOwner<'_, '_> {
                 (None, api_toolbox(), None)
             }
             Ready::Sandbox(sandbox, state) => {
-                if !sandbox.recovery_quiescent().await.map_err(|source| {
+                let quiescence = sandbox.quiesce().await.map_err(|source| {
                     error::boundary("cannot prove live capture tenant quiescence", source)
-                })? {
+                })?;
+                if quiescence == Quiescence::Busy {
                     return Ok(RecoverySave::Skipped(RecoverySkip::BusyProcesses));
                 }
                 let Some(workspace) = sandbox.workspace() else {
                     return Ok(RecoverySave::Skipped(RecoverySkip::Unavailable));
                 };
-                let Some(toolbox) = sandbox.toolbox_digest() else {
+                let Some(toolbox) = sandbox.environment().root.toolbox() else {
                     return Ok(RecoverySave::Skipped(RecoverySkip::Unavailable));
                 };
                 (Some(workspace.root.to_owned()), toolbox.to_owned(), *state)
@@ -259,7 +243,7 @@ impl super::Run<'_> {
     }
 }
 
-/// The executor must answer before freeze because its resident threads freeze too.
+/// The executor's own file jobs must be idle before a capture reads the workspace.
 async fn executor_idle(sandbox: &dyn Sandbox) -> Result<bool> {
     sandbox
         .executor()

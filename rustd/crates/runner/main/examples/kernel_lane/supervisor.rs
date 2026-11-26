@@ -8,7 +8,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use af_core::env::MapEnv;
-use afr_sandbox::{BubblewrapEngine, Engine, Sandbox, SandboxRequest, probe};
+use afr_sandbox::{
+    BubblewrapEngine, Capabilities, Engine, Granted, Limits, Sandbox, SandboxSpec, Sweep, Swept,
+    probe,
+};
 use afr_supervisor::config::{ENV_API_URL, ENV_RUNNER_TOKEN, ENV_STORAGE_HOME};
 use afr_supervisor::config::{ENV_STREAM_CA, ENV_STREAM_URL};
 use afr_supervisor::test_util::RUN_ID;
@@ -35,9 +38,21 @@ struct Counted {
 
 #[async_trait::async_trait]
 impl Engine for Counted {
-    async fn prepare(&self, request: SandboxRequest<'_>) -> afr_sandbox::Result<Box<dyn Sandbox>> {
+    fn capabilities(&self) -> Capabilities {
+        self.engine.capabilities()
+    }
+
+    fn grant(&self, limits: Limits) -> afr_sandbox::Result<Granted> {
+        self.engine.grant(limits)
+    }
+
+    async fn prepare(&self, spec: SandboxSpec<'_>) -> afr_sandbox::Result<Box<dyn Sandbox>> {
         self.prepared.fetch_add(1, Ordering::Relaxed);
-        self.engine.prepare(request).await
+        self.engine.prepare(spec).await
+    }
+
+    async fn sweep(&self, scope: Sweep<'_>) -> afr_sandbox::Result<Swept> {
+        self.engine.sweep(scope).await
     }
 }
 

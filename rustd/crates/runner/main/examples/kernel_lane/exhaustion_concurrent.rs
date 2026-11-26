@@ -11,8 +11,9 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use crate::lane::{id_of, spec};
 use afr_executor::Ending;
-use afr_sandbox::{BubblewrapEngine, Engine as _, Limits, SANDBOX_LEAF, SandboxRequest};
+use afr_sandbox::{BubblewrapEngine, Engine as _, Limits, SANDBOX_LEAF};
 use libtest_mimic::Failed;
 
 use crate::exhaustion::{MEMORY_EVENTS, NO_OOM_KILLS, OK};
@@ -80,7 +81,7 @@ async fn fill(engine: &BubblewrapEngine, lane: &Lane, run_id: &str) -> Result<Se
         ..Limits::default()
     };
     let sandbox = engine
-        .prepare(SandboxRequest::new(run_id, limits))
+        .prepare(spec(&id_of(run_id), limits))
         .await
         .map_err(|error| step(run_id, "prepare", &error))?;
     let executor = sandbox.executor();
@@ -115,7 +116,7 @@ fn step(run_id: &str, name: &str, error: &afr_sandbox::Error) -> Failed {
 fn sandbox_events(lane: &Lane, run_id: &str) -> PathBuf {
     lane.config
         .cgroup_root
-        .join(run_id)
+        .join(id_of(run_id).as_str())
         .join(SANDBOX_LEAF)
         .join(MEMORY_EVENTS)
 }

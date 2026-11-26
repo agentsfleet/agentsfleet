@@ -2,8 +2,9 @@
 //! run's model calls, built as the runner builds a run's tools, over the
 //! executor bubblewrap serves.
 
+use crate::lane::{id_of, spec};
 use afr_executor::{Executor, ExecutorSlot};
-use afr_sandbox::{Engine, Limits, SandboxRequest};
+use afr_sandbox::{Engine, Limits};
 use afr_tools::catalog::SHELL;
 use afr_tools::{Backends, Run, ToolContext, ToolErrorCode};
 use guffbolt::{CallRef, ToolOutput};
@@ -79,7 +80,8 @@ pub(crate) fn shell_calls(
 ) -> Result<Vec<ToolOutput>, Failed> {
     runtime().block_on(async {
         let engine = lane.engine();
-        let request = SandboxRequest::new(run_id, Limits::default());
+        let sandbox_id = id_of(run_id);
+        let request = spec(&sandbox_id, Limits::default());
         let sandbox = engine.prepare(request).await?;
         let run = Run::default();
         let mut outputs = Vec::with_capacity(calls.len());
