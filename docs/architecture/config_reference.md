@@ -388,6 +388,20 @@ Unset, the daemon stores no task checkpoints in R2, Cloudflare's object storage.
 | `io_mib_per_second` | 200 | Disk-heavy runs are slow, or one run starves the others |
 | `ready_timeout_seconds` | 10 | New sandboxes fail to start in time on a slow host |
 
+#### `[firecracker]`
+
+Read only when the runner starts with `--engine firecracker` (`main/src/config/firecracker.rs`).
+
+| Key | Default | Change it when… |
+|---|---|---|
+| `firecracker` | `/usr/local/bin/firecracker` | The host installs the virtual machine monitor elsewhere |
+| `jailer` | `/usr/local/bin/jailer` | The host installs the jailer elsewhere |
+| `kernel` | `/usr/local/lib/agentsfleet/vmlinux` | The host keeps the guest kernel elsewhere |
+| `initrd` | `/usr/local/lib/agentsfleet/guest.cpio` | The host keeps the guest's initial file system elsewhere |
+| `first_jail_id` | 600,100,001 | Another range on the host owns these user and group IDs; one per running microVM follows it |
+| `memory_overcommit` | 4 | Hosts run out of memory under load (lower), or sit idle with runs refused (raise) |
+| `warm_pool` | 4 | First tool calls wait on a microVM boot (raise), or idle microVMs hold too much of the memory bound (lower) |
+
 #### `[tools]`
 
 | Key | Default | Change it when… |
