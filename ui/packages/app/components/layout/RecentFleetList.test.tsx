@@ -133,7 +133,6 @@ it("switches among twelve loaded fleets without refetching or losing the next pa
   const view = render(<RecentFleetList workspace={WORKSPACE} onNavigate={() => {}} />);
   fireEvent.click(await screen.findByRole("button", {name: "Load more fleets"}));
   const second = await screen.findByRole("link", {name: `${archived.name} Archived`});
-  expect(fetcher.mock.calls.some(([input]) => (typeof input === "string" ? input : input instanceof URL ? input.href : input.url).includes("starting_after=next"))).toBe(true);
   expect(screen.getAllByRole("link")).toHaveLength(12);
   navigation.path = `/w/${WORKSPACE}/fleets/${SECOND_ID}`;
   view.rerender(<RecentFleetList workspace={WORKSPACE} onNavigate={() => {}} />);
@@ -147,8 +146,9 @@ it("switches among twelve loaded fleets without refetching or losing the next pa
   view.rerender(<RecentFleetList workspace={WORKSPACE} onNavigate={() => {}} />);
   expect(await screen.findByRole("link", {name: "archived-review Archived"})).toBeTruthy();
   expect(screen.getAllByRole("link")).toHaveLength(12);
-  expect(fetcher.mock.calls.map(([input]) => String(input).split("?")[1])).toEqual([
-    "limit=50", "limit=50&starting_after=next", "limit=50", "limit=50&starting_after=fresh-next",
+  const list = `/live/v1/workspaces/${WORKSPACE}/fleets?limit=50`;
+  expect(fetcher.mock.calls.map(([input]) => input)).toEqual([
+    list, `${list}&starting_after=next`, list, `${list}&starting_after=fresh-next`,
   ]);
 });
 
