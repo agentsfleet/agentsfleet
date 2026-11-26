@@ -167,11 +167,13 @@ Build order: §1 to §6, one commit each. §4's acceptance run needs §1's fixtu
 
 ### §1 — Finish lines decide done
 
-The runner and the daemon read a goal check by one rule. A task whose every statement scores a finite Noul at or above `statement_min_bps` completes, whatever `next_action` says. A task bound to a pull request still needs its native checks.
+The runner and the daemon read a goal check by one rule. A task whose every statement scores a finite Noul at or above `statement_min_bps` completes, whatever `next_action` says. A task bound to a pull request still needs its native checks: while they are pending the task waits, and a red check blocks it.
 
 Otherwise the next action decides: `CONTINUE` or `WAIT` at its own probability and confidence thresholds. `DONE` without its statements, `BLOCKED` or anything else reports nothing, and the task blocks as `completion_unverified`.
 
-`GoalDecisionPolicy.done` is deleted; the type still denies unknown fields, so a stored profile that carries `done` fails the read. The playbook's "Replace the decision model" replaces it without a reset.
+`GoalDecisionPolicy.done` is deleted; the type still denies unknown fields, so a stored profile that carries `done` fails the read.
+
+This Pull Request also edits schema slot `20261108123100` in place, so `agentsfleetd migrate` refuses an existing database. Dev's database is torn down before merge, and the decision model is seeded again after the reset. The playbook's "Replace the decision model" serves a later change that edits no applied slot.
 
 `stubborn-mule`'s follow-up asks for a task that stores and recalls `count-to-three` with one statement. `careful-squirrel`'s first message opens "Acknowledge this instruction in one line." and asks for nothing until a later message names a secret.
 
@@ -377,4 +379,5 @@ Read from the crates.io index on Nov 26, 2026, over all 162 workspace dependenci
 - **Model reviews** — none.
 - **Open blockers** — none.
 - **Deferrals and transfers** — Dimensions 3.5, 4.3 and 4.4 are proven after this Pull Request deploys, because each needs the deployed runner or dev's live data.
+  - > Owner (Indy, Nov 26, 2026): "Okay yes i approve that" — context: a pull-request task whose completion statements hold while its checks are pending waits for them rather than being blocked.
   - > Owner (Indy, Nov 26, 2026): "Close now, prove after deploy" — context: his answer when asked whether to close this spec now and prove the three post-deploy Dimensions after deploy.
