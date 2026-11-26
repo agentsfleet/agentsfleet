@@ -78,7 +78,7 @@ function WorkReadStatus({resource, retry}: {resource: DurableTaskResource<Durabl
 
 function DurableTaskRows({workspaceId, fleetId, tasks, details, retry, retryDetails}: RowsProps) {
   const ordered = tasks.toSorted((a, b) => Number(Boolean(TASK_STATUS[b.status].attention)) - Number(Boolean(TASK_STATUS[a.status].attention)));
-  const first = ordered[0]?.id ?? "";
+  const first = ordered[0]?.id;
   const [selected, setSelected] = useState(first);
   const openTask = selected && !ordered.some(task => task.id === selected) ? first : selected;
   if (openTask !== selected) setSelected(openTask);

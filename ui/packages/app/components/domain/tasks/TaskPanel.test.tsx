@@ -67,6 +67,22 @@ it("keeps work keyboard-expandable and rereads the shared evidence on native cha
   expect(screen.getAllByRole("button", {expanded: false})).toHaveLength(2);
 });
 
+it("opens the next task when the open task leaves current work", async () => {
+  const next = summary(DURABLE_TASK_IDS[1], "running");
+  let tasks = [summary(), next];
+  vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockImplementation(async input => {
+    const task = tasks.find(item => requestPath(input).endsWith(item.id));
+    return task ? Response.json(detail(task)) : page(tasks);
+  }));
+  const view = render(<DurableTaskPanel {...SCOPE} />);
+  await screen.findByRole("button", {name: /PR #123 repair/, expanded: true});
+  expect(screen.getByRole("button", {name: /PR #124 repair/, expanded: false})).toBeTruthy();
+  tasks = [next];
+  view.rerender(<DurableTaskPanel {...SCOPE} revision={1} />);
+  expect(await screen.findByRole("button", {name: /PR #124 repair/, expanded: true})).toBeTruthy();
+  expect(screen.queryByRole("button", {name: /PR #123 repair/})).toBeNull();
+});
+
 it("retains confirmed work during a failed read, then clears it on access loss", async () => {
   let list: Response = page([summary()]);
   const network = vi.fn<typeof fetch>().mockImplementation(async input => requestPath(input).includes("?limit=") ? list.clone() : Response.json(detail()));

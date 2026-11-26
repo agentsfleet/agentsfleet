@@ -99,4 +99,21 @@ describe("FleetConnectionNotice", () => {
     expect(input.current?.value).toBe("Keep my draft");
     expect(screen.getByRole("status").textContent).toBe("Live updates restored.");
   });
+
+  it("leaves the draft alone after focus moves away from Reconnect", async () => {
+    const input = createRef<HTMLTextAreaElement>();
+    const onRetry = vi.fn();
+    const renderState = (status: typeof CONNECTION_STATUS.OFFLINE | typeof CONNECTION_STATUS.LIVE) => <>
+      <FleetConnectionNotice status={status} onRetry={onRetry} focusTarget={input} />
+      {status === CONNECTION_STATUS.OFFLINE ? <button type="button">Dismiss notice</button> : null}
+      <textarea aria-label="Draft" ref={input} defaultValue="Keep my draft" />
+    </>;
+    const view = render(renderState(CONNECTION_STATUS.OFFLINE));
+    await userEvent.click(screen.getByRole("button", {name: RECONNECT_LABEL}));
+    await userEvent.tab();
+    expect(document.activeElement).toBe(screen.getByRole("button", {name: "Dismiss notice"}));
+    view.rerender(renderState(CONNECTION_STATUS.LIVE));
+    expect(document.activeElement).toBe(document.body);
+    expect(input.current?.value).toBe("Keep my draft");
+  });
 });
