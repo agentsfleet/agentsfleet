@@ -64,8 +64,7 @@ it("reconciles a new fleet once after a navigation refresh overlaps an older pag
   expect(fetcher).toHaveBeenCalledTimes(4);
   secondPage.resolve(request([row("older")], null));
   await refreshing;
-  await current.load();
-  expect(current.getSnapshot().items).toEqual([row("new-fleet"), row("first"), row("older")]);
+  await vi.waitFor(() => expect(current.getSnapshot().items).toEqual([row("new-fleet"), row("first"), row("older")]));
   expect(fetcher).toHaveBeenCalledTimes(6);
 });
 
