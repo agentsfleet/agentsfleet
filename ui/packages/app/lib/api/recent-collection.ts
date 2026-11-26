@@ -16,15 +16,18 @@ export class RecentCollection<T extends {id: string}> {
   #loading: Promise<void> | null = null;
   #readAt = -Infinity;
   #pageCount = 0;
+  #refreshPending = false;
 
   constructor(readonly path: string, readonly schema: z.ZodType<Page<T>>) {}
   readonly getSnapshot = (): Snapshot<T> => this.#snapshot;
   readonly subscribe = (listener: () => void): (() => void) => {this.#listeners.add(listener); return () => this.#listeners.delete(listener);};
   dispose(): void {this.#owner.abort(); this.#listeners.clear(); this.#removed.clear(); this.#snapshot = {items: [], more: false, loading: false, error: null};}
   remove(id: string): void {this.#removed.add(id); this.#update({items: this.#snapshot.items.filter(item => item.id !== id)});}
-  refresh(maxAgeMs: number): Promise<void> {
-    if (!this.#snapshot.error && performance.now() - this.#readAt < maxAgeMs) return Promise.resolve();
-    return this.load();
+  refresh(maxAgeMs: number): void {
+    if (!this.#snapshot.error && performance.now() - this.#readAt < maxAgeMs) return;
+    // A fleet created during a page read must appear in the next first page.
+    if (maxAgeMs === 0 && this.#loading) this.#refreshPending = true;
+    else void this.load();
   }
 
   load(append = false): Promise<void> {
@@ -33,7 +36,12 @@ export class RecentCollection<T extends {id: string}> {
     if (append && !cursor) return Promise.resolve();
     const pending = this.#read(cursor, append);
     this.#loading = pending;
-    const release = (): void => {this.#loading = null;};
+    const release = (): void => {
+      this.#loading = null;
+      const refresh = this.#refreshPending;
+      this.#refreshPending = false;
+      if (refresh && !this.#owner.signal.aborted) void this.load();
+    };
     pending.then(release, release);
     return pending;
   }

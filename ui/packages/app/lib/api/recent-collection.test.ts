@@ -42,6 +42,33 @@ it("does not resurrect a deleted row when an older page arrives later", async ()
   expect(current.getSnapshot().items).toEqual([row("kept")]);
 });
 
+it("reconciles a new fleet once after a navigation refresh overlaps an older paged read", async () => {
+  const secondPage = Promise.withResolvers<Response>();
+  const request = (items: ReturnType<typeof row>[], next_cursor: string | null) =>
+    Response.json({items, next_cursor});
+  const fetcher = vi.fn()
+    .mockResolvedValueOnce(request([row("first")], "next"))
+    .mockResolvedValueOnce(request([row("older")], null))
+    .mockResolvedValueOnce(request([row("first")], "next"))
+    .mockReturnValueOnce(secondPage.promise)
+    .mockResolvedValueOnce(request([row("new-fleet"), row("first")], "new-next"))
+    .mockResolvedValueOnce(request([row("older")], null));
+  vi.stubGlobal("fetch", fetcher);
+  const current = collection();
+  await current.load();
+  await current.load(true);
+  const refreshing = current.load();
+  await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(4));
+  current.refresh(0);
+  current.refresh(0);
+  expect(fetcher).toHaveBeenCalledTimes(4);
+  secondPage.resolve(request([row("older")], null));
+  await refreshing;
+  await current.load();
+  expect(current.getSnapshot().items).toEqual([row("new-fleet"), row("first"), row("older")]);
+  expect(fetcher).toHaveBeenCalledTimes(6);
+});
+
 it.each([401, 403, 404, 410])("clears every private row and cursor when access ends (%s)", async status => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(Response.json({items: [row("old")], next_cursor: "next"}))
     .mockResolvedValueOnce(Response.json({user_message: "private refusal"}, {status})));

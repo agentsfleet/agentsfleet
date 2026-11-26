@@ -34,7 +34,7 @@ function FleetItems({collection, workspace, onNavigate}: {collection: RecentColl
     // A first message lands on a new fleet's page. Moving between loaded
     // fleets can keep the existing pages and update only the selection.
     const known = (path: string) => items.some(fleet => path === `${fleetPath}${fleet.id}`);
-    void collection.refresh(known(previous) && known(pathname) ? FLEET_LIST_FRESH_MS : 0);
+    collection.refresh(known(previous) && known(pathname) ? FLEET_LIST_FRESH_MS : 0);
   }, [collection, pathname, workspace]);
   const removed = (id: string): void => {
     collection.remove(id); setSelected(null);
