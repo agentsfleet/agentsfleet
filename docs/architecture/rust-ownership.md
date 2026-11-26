@@ -1,7 +1,7 @@
 ---
 type: explanation
 audience: contributor
-verified: 2026-11-25
+verified: 2026-11-27
 product_version: 0.90.0
 executable: false
 ---
@@ -33,7 +33,14 @@ New code calls the owner; it never writes a second copy.
 | HTTP clients that ignore a proxy | `afd_identity::direct(timeout)` | redirect bounds, set by each caller |
 | Hex and entity tags | `hex::encode`; `af_core::lower_hex`; `af_core::etag::compute` | constant-time tag comparison in `af_crypto` |
 | A coded failure's log fields | `Coded::logged()` and `Coded::told()` in `af_core` | which code a line names |
-| Egress slots | `afr_sandbox`'s `Kernel::slots()` | one pool per running kernel; a fake per test |
+| Egress slots | `afr_firewall`'s `Kernel::slots()` | one pool per running kernel; a fake per test |
+| Sandbox engines | `afr_engine`'s `Engine`, `Sandbox` and `Parked` traits | one `afr_engine_*` crate per engine; only the runner binary and `af_e2e` name one |
+| Egress plan read-back | `afr_engine::enforce`, retried through `backon` | each engine's `Enforcer` and the stale-plan refusal |
+| Trees into and out of a sandbox | `afr_executor::tree`, over `tar` and `cap-std` | the confinement checks, run by both the executor and the host stage |
+| Toolbox and workspace images | `afr_image` | verify, stage, adopt and holds; loop devices and mounts |
+| Cgroup limits and the freezer | `afr_cgroup` | tenant attribution |
+| Sandbox-side hardening | `afr_guest`, over `landlock` and `seccompiler` | the refused system calls and the inner environment |
+| Available memory | `procfs-core`'s `Meminfo` | the overcommit ratio and the per-microVM reservation |
 | Path-segment and `LIKE` escaping | `af_validate::rules`; `afd_db` | nothing |
 | Approval status words | `afd_api_wire::approval` | nothing |
 | `If-None-Match` | `headers::IfNoneMatch`, through `precondition_passes` | the task read and the model list |

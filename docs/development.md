@@ -401,8 +401,11 @@ OrbStack supplies the kernel; choosing Debian changes the machine's userland.
 The lane needs root, bubblewrap, Landlock, the Enhanced Read-Only File System (EROFS), control groups (cgroup) v2 and IPv4 forwarding.
 It fails when a required mechanism is missing.
 
-The lane starts the production `afr_sandbox::BubblewrapEngine` with the built toolbox image.
-It exercises confinement, filesystem and resource limits, network policies, tool execution, warm starts, freeze/resume and cleanup.
+`ENGINE` names the engine the lane builds, `bubblewrap` by default, and an unknown name fails the lane.
+The lane holds that engine to the conformance suite in `afr_engine::conformance`, then runs the engine's own trials.
+
+With the default, the lane starts the production `afr_engine_bubblewrap::BubblewrapEngine` with the built toolbox image.
+It exercises confinement, filesystem and resource limits, network policies, tool runs, warm starts, park and resume, and cleanup.
 Unit and service integration tests cover additional runner logic.
 
 Caller tests start with a run carrying a steer and instructions, then drive the real supervisor, agent loop and tool catalog.
@@ -497,6 +500,33 @@ The reported trimmed size varies; use `df -h /System/Volumes/Data` on the Mac to
 To rebuild an existing machine, save any Linux-only files first. **`orb delete "$kernel_machine"` erases that machine's Linux disk**, including its build cache and toolbox images.
 
 The shared Mac checkout survives. Delete only your disposable machine, then repeat the steps above.
+
+### Runner kernel lane on Firecracker
+
+`make test-runner-kernel ENGINE=firecracker` holds our Firecracker engine to the same suite, then runs its microVM trials ([lane](../rustd/crates/runner/main/examples/kernel_lane/firecracker.rs)).
+Firecracker needs the Kernel-based Virtual Machine (KVM) device, so the lane fails unless `/dev/kvm` opens for reading and writing.
+Run it on a Linux host that exposes KVM, such as the dev runner host; an OrbStack machine serves only if its `/dev/kvm` opens.
+
+Beyond bubblewrap's needs, the host needs:
+
+- The `firecracker` and `jailer` binaries at `/usr/local/bin/`.
+- `AFR_GUEST_KERNEL` and `AFR_GUEST_INITRD`, naming the guest kernel and the guest's initial file system. No repository script builds either yet.
+- Kernel same-page merging off, so `/sys/kernel/mm/ksm/run` reads `0`.
+
+```bash
+AFR_GUEST_KERNEL=<GUEST_KERNEL> AFR_GUEST_INITRD=<GUEST_INITRD> \
+  make test-runner-kernel ENGINE=firecracker TOOLBOX_DIR="$HOME/.cache/agentsfleet/toolbox"
+```
+
+`<GUEST_KERNEL>` is the guest kernel's path and `<GUEST_INITRD>` the guest's initial file system's path.
+The lane runs as root through `sudo -E`, which keeps both variables.
+
+Expected: every suite trial and microVM trial passes; the command exits 0. A host without usable KVM fails before any trial:
+
+```text
+the kernel lane refuses to run, rather than skip; this host lacks:
+  - kvm: /dev/kvm is absent
+```
 
 ## agentsfleet CLI conventions
 

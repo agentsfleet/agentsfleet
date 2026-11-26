@@ -1,7 +1,7 @@
 ---
 type: explanation
 audience: contributor
-verified: 2026-11-25
+verified: 2026-11-27
 product_version: 0.90.0
 executable: false
 ---
@@ -39,11 +39,14 @@ A file save needs a verified toolbox and a free transfer slot on the runner. An 
 Harness::save_boundary                         afr_agent loop/recovery_boundary.rs
   |-- file slot busy -> skip -> keep the previous ready checkpoint
   `-- admitted -> BoundaryOwner::capture       afr_supervisor run_loop/recovery_capture.rs
-         -> freeze the sandbox and prove it is quiet
-         -> scan, encrypt, authorize, upload, read back and verify
+         -> quiesce: a tenant process still runs -> skip this save
+         -> export the workspace through the executor into a host stage
+         -> scan the stage, encrypt, authorize, upload, read back and verify
          -> publish the exact root and manifest under the run's fence
-         -> thaw -> acknowledge the saved generation
+         -> remove the stage -> acknowledge the saved generation
 ```
+
+The sandbox's engine answers `quiesce` from its own mechanism: bubblewrap reads its tenant cgroup, and Firecracker reads its executor's idleness. A workspace that will not export skips the save, and the run goes on ([capture](../../rustd/crates/runner/afr_supervisor/src/run_loop/recovery_capture.rs)).
 
 A checkpoint names its turn and owner, never a version of the fleet. A restore under a different model keeps the conversation and tool results. It drops only reasoning the old provider signed, because another provider cannot read it.
 
@@ -98,7 +101,9 @@ B runs                 the first resumed model call; one fenced settlement at th
 | Absent | Starts from the original message and any unsettled folded messages |
 | Invalid root or file | Stops before any model call or tool |
 
-A required file restore waits for a transfer slot while renewal continues. The supervisor writes files through checked directory descriptors and sets modes before it thaws the sandbox ([restore](../../rustd/crates/runner/afr_supervisor/src/recovery/turn/restore.rs)).
+A required file restore waits for a transfer slot while renewal continues. The supervisor writes the files into a host stage through checked directory descriptors ([restore](../../rustd/crates/runner/afr_supervisor/src/recovery/turn/restore.rs)).
+
+It then imports the stage through the executor into the sandbox's workspace, which must be empty ([staging](../../rustd/crates/runner/afr_supervisor/src/staging/mod.rs)). No engine offers a host path into a sandbox, so capture and restore cross the same way on bubblewrap and Firecracker.
 
 Frames from the dead run carry the old fence and cannot change the new attempt. With resume off, a turn holding a committed checkpoint waits at its fleet's head after its run expires; saving still happens.
 
@@ -161,7 +166,9 @@ Latency runs from the later of the old run's and thread's expiry to the first re
 
 ## Limits
 
-- Resume is off in both deployments, and neither deployment sets `[checkpoint.storage]`. Without storage the daemon refuses file checkpoints; history-only checkpoints still save.
+- Resume is off in both deployments (`[runner.recovery] resume_from_checkpoint = false`). Both set `[checkpoint.storage]` to their own R2 bucket, so file checkpoints save ([prod](../../deploy/fly/agentsfleetd-prod/agentsfleetd.toml), [dev](../../deploy/fly/agentsfleetd-dev/agentsfleetd.toml)).
+- Without `[checkpoint.storage]`, the daemon refuses file checkpoints; history-only checkpoints still save.
+- No engine offers snapshots. M258_002 replaces this file checkpoint path with a chunk map behind the seam's snapshot interface.
 - No production code calls checkpoint maintenance (`Tasks::maintain_checkpoints`). A running daemon deletes no settled checkpoint and collects no orphaned upload; the retention keys change nothing.
 - No quota caps a workspace's total stored bytes. The per-save upload bounds above are the only size limits.
 - A signed link cannot be revoked before it expires. A stopped run cannot publish, and no sandbox receives a link or key.

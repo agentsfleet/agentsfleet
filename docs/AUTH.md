@@ -1006,9 +1006,11 @@ The [decision architecture](architecture/durable_tasks.md#goal-evaluation) owns 
 
 ### The token never enters the sandboxed child
 
-`AGENTSFLEET_RUNNER_TOKEN` lives in the **supervisor's** environment: the trusted `agentsfleet-runner` process that speaks the control protocol and runs outside every sandbox ([`architecture/runner_execution.md`](./architecture/runner_execution.md) §"Process model"). A run's tool calls run in a bubblewrap sandbox that starts with an empty environment.
+`AGENTSFLEET_RUNNER_TOKEN` lives in the **supervisor's** environment: the trusted `agentsfleet-runner` process that speaks the control protocol and runs outside every sandbox ([`architecture/runner_execution.md`](./architecture/runner_execution.md) §"Process model"). A run's tool calls run in a sandbox that starts with an empty environment, on either engine.
 
-The `bwrap` command itself is spawned with `env_clear()` (`rustd/crates/runner/afr_sandbox/src/bubblewrap_engine/parts/mod.rs`). The entry inside gets `--clearenv` plus only the variables set by `--setenv` (`rustd/crates/runner/afr_sandbox/src/bubblewrap/mod.rs`). Every process the in-sandbox process runner starts gets `env_clear()` plus its plan's own variables (`rustd/crates/runner/afr_executor/src/server/launch/mod.rs`).
+The `bwrap` command itself is spawned with `env_clear()` (`rustd/crates/runner/afr_engine_bubblewrap/src/bubblewrap_engine/parts/mod.rs`). The entry inside gets `--clearenv` plus only the variables set by `--setenv` (`rustd/crates/runner/afr_engine_bubblewrap/src/bubblewrap/mod.rs`). Firecracker's jailer is spawned with `env_clear()` too (`rustd/crates/runner/afr_engine_firecracker/src/engine/build.rs`), and the guest boots its own kernel.
+
+Every process the in-sandbox process runner starts gets `env_clear()` plus its plan's own variables (`rustd/crates/runner/afr_executor/src/server/launch/mod.rs`).
 
 A prompt-injected fleet that reads `AGENTSFLEET_RUNNER_TOKEN` or its own `/proc/self/environ` finds nothing. Model keys and minted tokens stay in the supervisor too ([`architecture/runner_execution.md`](./architecture/runner_execution.md) §"Credentials").
 

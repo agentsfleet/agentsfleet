@@ -1,7 +1,7 @@
 ---
 type: explanation
 audience: contributor
-verified: 2026-11-25
+verified: 2026-11-27
 product_version: 0.90.0
 executable: false
 ---
@@ -10,20 +10,23 @@ executable: false
 
 ## What it is
 
-`agentsfleet-runner` is one binary with three entries: `run`, `probe` and `sandbox` ([main](../../rustd/crates/runner/main/src/main.rs)). This page follows a run from the moment the daemon pushes it to the moment its report is acknowledged.
+`agentsfleet-runner` is one binary with four entries: `run`, `probe`, `sandbox` and `guest` ([main](../../rustd/crates/runner/main/src/main.rs)). This page follows a run from the moment the daemon pushes it to the moment its report is acknowledged.
 
 | Part | What it is |
 |---|---|
 | Supervisor | The trusted `run` process. It holds the stream, the agent loop, model keys and minted tokens |
-| Sandbox | One per run, built with bubblewrap. It runs tool calls and nothing else |
-| Toolbox | A signed, read-only Debian filesystem image every sandbox mounts as `/` |
+| Engine | What builds each sandbox: bubblewrap on the host kernel, or a Firecracker microVM with its own kernel |
+| Sandbox | One per run, built by the runner's engine. It runs tool calls and nothing else |
+| Toolbox | A signed, read-only Debian filesystem image every sandbox runs on |
 | Workspace disk | A per-run writable disk holding `/workspace` and `/tmp` |
-| Held sandbox | A finished run's sandbox, frozen and kept for its fleet's next run |
-| Network | The runner's assigned policy: the host's network, none, or an allowlist |
+| Held sandbox | A finished run's sandbox, parked and kept for its fleet's next run |
+| Network | The runner's assigned policy: the public network, none, or an allowlist |
 
 ## Why it exists
 
-Fleets run tenant programs: build scripts, test suites, package installs and Python the model writes. The sandbox is the only wall between two tenants' processes on one kernel.
+Fleets run tenant programs: build scripts, test suites, package installs and Python the model writes. The sandbox is the only wall between two tenants' processes on one host.
+
+Under bubblewrap, every sandbox shares the host's kernel. Under Firecracker, each sandbox is a virtual machine (VM) with a kernel of its own.
 
 The agent loop runs outside that wall. A prompt-injected command therefore cannot read a model key, a runner token or a minted credential, because none enters a sandbox.
 
@@ -40,7 +43,7 @@ agentsfleet-runner (one binary on a VM or a bare-metal host)
  │ agent loop and model providers         (model keys live only here)   │
  │ tool router · secret scrub · activity frames · git clone · minting   │
  └───────────────┬──────────────────────────────────────────────────────┘
-                 │ one executor connection per run (a socket pair)
+                 │ one executor link per run: a socket pair, or vsock to a VM
  ┌ sandbox: one per run ────────────────────────────────────────────────┐
  │ /            toolbox, read-only                                      │
  │ /workspace   the run's disk, writable                                │
@@ -49,7 +52,9 @@ agentsfleet-runner (one binary on a VM or a bare-metal host)
  └──────────────────────────────────────────────────────────────────────┘
 ```
 
-The executor is a small in-sandbox server: the same binary's `sandbox` entry, bound read-only into the sandbox. It spawns, writes to, reads and kills processes, and it serves the file calls the file tools use.
+The executor is a small in-sandbox server. It spawns, writes to, reads and kills processes, and it serves the file calls the file tools use.
+
+Under bubblewrap, the executor is the same binary's `sandbox` entry, bound read-only into the sandbox. In a microVM, the binary's `guest` entry is the guest kernel's first process and serves the executor on vsock.
 
 Every tool call ends exactly once. When a run ends for any reason, the supervisor closes each open call as `interrupted` and kills every command session still open.
 
@@ -63,7 +68,7 @@ Down::Run
   ├─ admitted   size, egress and checkout plan, before any model call
   ├─ run        the agent loop in the supervisor; sandbox tool calls cross the socket
   │  └─ build   beside it: the fleet's held sandbox, or a fresh one with repositories checked out
-  ├─ keep       a processed run's sandbox is frozen and held; any other is killed
+  ├─ keep       a processed run's sandbox is parked and held; any other is killed
   ├─ settle     tool records, then the report with memory changes and timing
   └─ release    a killed sandbox's disk, beside at most 5 s of live-activity drain
        renewal runs alongside from the start until the report is acknowledged
@@ -90,9 +95,14 @@ The runner's crates sit in `rustd/crates/runner/` and import nothing from `daemo
 | `af_providers` | Runs a model wire for one run, with its error codes and logs |
 | `afr_agent` | Embeds `guffbolt` for a run: prompt, context window, checkpoints, frames and the tool router |
 | `afr_tools` | The tool catalog and the verbs that reach `agentsfleetd` |
-| `afr_supervisor` | The stream, worker pool, renewals, reports, holds, clones and checkpoint transfer |
-| `afr_sandbox`, `afr_executor` | The bubblewrap engine and the in-sandbox server |
+| `afr_supervisor` | The stream, worker pool, renewals, reports, holds, clones, host stages and checkpoint transfer |
+| `afr_engine` | The seam every engine meets: its traits and facts, egress plans, boot admission, warm slots and the conformance suite |
+| `afr_engine_bubblewrap`, `afr_engine_firecracker`, `afr_engine_unsandboxed` | One crate per engine; the last is the debug and recovery-drill engine |
+| `afr_image`, `afr_firewall`, `afr_cgroup` | Building blocks: toolbox and workspace images, the host egress tables, cgroup limits and the freezer |
+| `afr_guest`, `afr_executor` | The sandbox-side entry and its hardening, and the in-sandbox server |
 | `af_wire` | The one wire format the daemon and runner share |
+
+`afr_supervisor` reaches every engine through `afr_engine` and names no engine or building-block crate. Only the runner binary, `agentsfleet_runner`, and the `af_e2e` crate name an engine crate, and no engine crate names another ([layer rules](../../rustd/crates/e2e/af_e2e/tests/layers.rs)).
 
 Model routing and saved model settings belong to [models](models.md#routing-from-saved-settings). The prompt belongs to [capabilities](capabilities.md), pinned memory to [memory](memory.md), and the context window to [context lifecycle](context_lifecycle.md).
 
@@ -130,11 +140,75 @@ A tool that changes the fleet runs only when the person's newest message asks fo
 
 ### Sandbox engines
 
-bubblewrap is the one engine built (`BubblewrapEngine`). Its layers are:
+The operator picks one engine per runner with `agentsfleet-runner run --engine bubblewrap|firecracker`, and bubblewrap is the default ([engine choice](../../rustd/crates/runner/main/src/engine.rs)). The deployed unit passes no flag, so every runner host runs bubblewrap ([unit](../../deploy/baremetal/agentsfleet-runner.service)). A refused engine never starts another in its place.
+
+| Engine | Wall, as `isolation` | Park mode | How it meets the caps |
+|---|---|---|---|
+| `bubblewrap` | Namespaces, Landlock and seccomp on the host kernel, `shared_kernel` | `Pause` | Memory, processor, processes and disk, each enforced |
+| `firecracker` | A microVM with its own guest kernel, `hardware_vm` | `Stop` | Memory, processor and disk enforced; the guest kernel walls the process count |
+| `unsandboxed` | None, `unconfined`; a release build refuses it | None | None |
+
+bubblewrap is retiring. M258_003 moves production to Firecracker and deletes `afr_engine_bubblewrap`.
+
+#### The seam
+
+The supervisor sees an engine only through `afr_engine`'s `Engine`, `Sandbox` and `Parked` traits ([seam](../../rustd/crates/runner/afr_engine/src/engine/mod.rs)). No method has a default, so an engine that leaves a fact out does not compile.
+
+- `capabilities()` names the engine, its isolation, its park modes, whether it offers snapshots, and how it meets each cap.
+- `grant(limits)` states what the engine will enforce before anything is built. It never grants less than asked, and it refuses a cap it has no mechanism for by name.
+- `prepare(spec)` builds a sandbox under a `Uuid7` the caller mints. A second `prepare` for a live identifier is refused naming that sandbox.
+- A build whose outcome the engine cannot tell answers `Ambiguous`. The supervisor sweeps that identifier once and never builds it again ([build](../../rustd/crates/runner/afr_supervisor/src/run_loop/build.rs)).
+- `environment()` names the engine and the root: the toolbox by its SHA-256 digest, or the host's own files for the debug engine. A checkpoint restore compares that digest.
+- `quiesce()` reads from the engine's own mechanism whether a tenant process remains. A checkpoint is captured only when it reads quiet.
+
+Each engine sweeps what a crashed runner left when the engine is built.
+
+#### Parking between runs
+
+A processed run's sandbox parks in the first mode its engine offers, and a sandbox whose engine offers none is killed ([hold](../../rustd/crates/runner/afr_supervisor/src/run_loop/hold.rs)). A parked sandbox is its own type, `Parked`, which runs nothing until it resumes.
+
+- `Pause` is bubblewrap's. The cgroup freezer stops every process, and memory and disk stay.
+- `Stop` is Firecracker's. The guest syncs, its monitor stops, and only the disk stays. Resume boots a fresh microVM on that disk.
+
+#### Egress plans
+
+The supervisor gives every sandbox a numbered egress plan: no network, an allowlist, or the public network ([plans](../../rustd/crates/runner/afr_engine/src/engine/egress/mod.rs)). Plan numbers rise across the runner process.
+
+`afr_engine::enforce` applies a plan for every engine. It refuses a plan older than the one in force, applies the new one, then reads the mechanism back until it holds the new number.
+
+`prepare` returns only once the plan reads back in force, so no command runs before it. A held sandbox takes its next run's plan the same way. Both engines read an allowlist back by dumping the kernel's address set and comparing it with the plan's.
+
+#### Files in and out
+
+No engine offers a host path into its sandbox. Files cross only through the executor's `import` and `export`: a tar stream confined to `/workspace`, sent in chunks under the 64 MiB frame ([tree](../../rustd/crates/runner/afr_executor/src/tree.rs)).
+
+An import is spooled on the workspace disk and checked whole before its first write. One entry leaving its root refuses the whole stream, and set-id bits are dropped. An export streams as it is packed.
+
+On the host, each step's files wait in a stage, `<storage home>/staging/<sandbox id>-<random>/`, mode `0700` and owned by the runner ([staging](../../rustd/crates/runner/afr_supervisor/src/staging/mod.rs)). A stage is removed when its step ends, and the runner empties `staging/` at boot.
+
+- Checkout fetches into the host mirror with the run's token, checks the tree out into a stage, and imports the stage.
+- Checkpoint capture exports the workspace into a stage, which the checkpoint reads ([checkpoints](checkpoints.md#when-the-runner-saves)).
+- Restore writes the checkpoint into a stage and imports it into an empty workspace.
+
+The host unpacks an export with the same `afr_executor::tree` checks the executor applies to an import.
+
+#### The conformance suite
+
+`afr_engine::conformance`, behind the `test-util` feature, is one list of 16 named trials over `&dyn Engine` ([suite](../../rustd/crates/runner/afr_engine/src/conformance/mod.rs)). `make test-runner-kernel ENGINE=bubblewrap|firecracker` holds one engine to the suite on a real Linux kernel, then runs that engine's own trials.
+
+The trials cover the grant, command streams, file transfer, write walls, a full `/tmp` and `/dev/shm`, no network, and the verdict matrix. They also cover the planted-token search, kill, each park mode and four snapshot trials.
+
+A trial for a mechanism the engine does not declare asserts `Unsupported`, so the lane passes or fails and never skips. No engine declares snapshots, so the snapshot trials assert `Unsupported` until M258_002 builds them.
+
+The lane prints what may differ between engines beside each run: the root image, tool versions, start time and declared park modes.
+
+#### bubblewrap
+
+`afr_engine_bubblewrap` builds a hardened process tree on the host kernel. Its layers are:
 
 - A fresh user, process, inter-process communication, hostname and mount namespace per run. It adds a network namespace unless the policy is `allow_all`.
 - The flags `--cap-drop ALL`, `--disable-userns`, `--clearenv`, `--die-with-parent` and `--new-session`. The last one blocks terminal-input injection.
-- `no_new_privs`, then Landlock, then a seccomp filter refusing 12 system calls, including `io_uring`, `ptrace`, `unshare`, `bpf` and `keyctl` ([hardening](../../rustd/crates/runner/afr_sandbox/src/harden/linux.rs)).
+- `no_new_privs`, then Landlock, then a seccomp filter refusing 12 system calls, including `io_uring`, `ptrace`, `unshare`, `bpf` and `keyctl` ([hardening](../../rustd/crates/runner/afr_guest/src/harden/linux.rs)).
 - Control group (cgroup) v2 limits on memory, processor, process count and disk I/O, with whole-tree kill.
 - A workspace disk that answers `ENOSPC` when full, so `/tmp` never fills the run's memory.
 
@@ -144,11 +218,76 @@ The tenant leaf's memory limit sits below the run's, so the out-of-memory killer
 
 The executor runs as uid and gid 1000 in `/workspace`, started by its fixed path, never through `$PATH`. The supervisor keeps only the capabilities sandbox setup needs.
 
+#### Firecracker
+
+`afr_engine_firecracker` builds one microVM per run through the stock jailer ([engine](../../rustd/crates/runner/afr_engine_firecracker/src/lib.rs)). Its boot admits the host only when `/dev/kvm`, the Kernel-based Virtual Machine (KVM) device, opens for reading and writing. Otherwise the runner exits naming `kvm` ([device check](../../rustd/crates/runner/afr_engine_firecracker/src/kvm.rs)).
+
+Each boot first makes a jail user, the image lock, and a network namespace with its tap and host table. It then makes the chroot and a cgroup leaf, and the jailer starts Firecracker from one `--config-file`, with no API socket ([boot](../../rustd/crates/runner/afr_engine_firecracker/src/engine/build.rs)).
+
+| Device | What it carries |
+|---|---|
+| `vda` | The toolbox: the verified loop device, read-only |
+| `vdb` | The workspace: the run's ext4 image, read-write, `cache_type` `Writeback`, capped at `[sandbox] io_mib_per_second` |
+| `vdc` | The plan's `/etc/hosts` and `/etc/resolv.conf`, read-only; absent under a public plan |
+| `eth0` | The tap, only when the plan reaches a network |
+| vsock | Guest context identifier 3; the host's end is a Unix socket in the jail |
+
+The guest's memory is the grant rounded up to whole mebibytes. Its processors are the grant rounded up to whole virtual CPUs, at most 32 ([grant](../../rustd/crates/runner/afr_engine_firecracker/src/capabilities.rs)). The monitor's cgroup holds the guest memory plus the 64 MiB `SANDBOX_MEMORY_RESERVE_BYTES`.
+
+`[firecracker]` in the runner's file names `firecracker`, `jailer`, `kernel`, `initrd`, `first_jail_id`, `memory_overcommit` and `warm_pool` ([section](../../rustd/crates/runner/main/src/config/firecracker.rs)). The program defaults are `/usr/local/bin/firecracker` and `/usr/local/bin/jailer`. The guest defaults are `/usr/local/lib/agentsfleet/vmlinux` and `/usr/local/lib/agentsfleet/guest.cpio`.
+
+#### Inside a microVM
+
+The guest kernel starts the runner binary's `guest` entry as its first process ([guest](../../rustd/crates/runner/afr_engine_firecracker/src/guest/mod.rs)). The entry mounts the toolbox drive's `/usr` and `/etc`, and the workspace drive at `/workspace` and `/tmp`. Then it serves the executor on vsock port 1024.
+
+The executor is the VM's root service. Tenant code runs in an inner environment the executor builds: a new process namespace and a new mount namespace, whose init reaps orphans ([inner environment](../../rustd/crates/runner/afr_guest/src/inner/mod.rs)).
+
+Each tenant process enters it as uid and gid 1000, under `no_new_privs`, Landlock and seccomp with `unshare` refused. The executor stands outside that confinement, and the VM is the wall around both.
+
+The executor's `renew` ends the inner environment, empties `/workspace` and builds it again while the VM runs on. Ending the namespace's init ends every process in it, so no tenant process outlives a renewal.
+
+The host reaches the executor through the monitor's socket with a `CONNECT 1024` line ([vsock](../../rustd/crates/runner/afr_engine_firecracker/src/vsock.rs)). The executor client dials again after every boot, and a process the old link carried reads `Interrupted`.
+
+#### Only the host reaches the executor
+
+- The executor drops a vsock peer whose context identifier is not the host's, 2, before it reads a byte.
+- The guest kernel has no vsock loopback, so no guest process can dial its own executor.
+- The host's end of the vsock is a socket inside the jail, owned by that jail's user.
+
+#### Walls between microVMs
+
+Each microVM has its own kernel. Between two microVMs on one host, these walls also hold:
+
+- Each jail has its own user and group, counted up from `[firecracker] first_jail_id`. Every jail file is mode `0600` for that user, so one monitor cannot open another jail's image, socket or chroot ([jail](../../rustd/crates/runner/afr_engine_firecracker/src/jail.rs)).
+- An exclusive `flock` on each workspace image refuses a second attach before a second monitor starts ([lock](../../rustd/crates/runner/afr_engine_firecracker/src/lock.rs)).
+- Each tap's host table admits only its plan. A public plan drops every private, link-local and carrier-grade range before its accept, so a guest cannot dial another guest's address.
+- Each microVM has its own vsock device, which reaches only its own host socket.
+- The toolbox drive is shared read-only, and workspace drives are never shared.
+- Kernel same-page merging (KSM) stays off, so no page is merged between guests. The kernel lane fails when `/sys/kernel/mm/ksm/run` reads on.
+- A pooled microVM, once claimed, belongs to that run and never returns to the pool.
+- Simultaneous multithreading (SMT) stays on, so two microVMs may share a physical core. [`SECURITY.md`](../../SECURITY.md) records that risk as accepted.
+
+#### Memory admission and the pool
+
+A microVM reserves its guest memory, and the host backs it only as the guest touches it. A Firecracker host therefore admits more guests than its memory holds at full size ([bound](../../rustd/crates/runner/afr_engine/src/engine/bound.rs)).
+
+At boot the engine reads `MemAvailable` from `/proc/meminfo`. `sandboxes_max` is `[firecracker] memory_overcommit`, 4 by default, times that, divided by one microVM's cgroup reservation.
+
+A build past the bound is refused naming memory before any monitor starts ([admission](../../rustd/crates/runner/afr_engine_firecracker/src/admission.rs)). A `Stop` park or a destroy frees its reservation, so a parked sandbox holds none.
+
+The runner offers the daemon the least of `worker_count`, `sandboxes_max` and the frame's run limit as credits ([credits](../../rustd/crates/runner/afr_supervisor/src/downlink/running.rs)). When the bound is the smallest, the runner logs `runner_capacity_bounded`.
+
+If guests touch more memory than the host has, the host kernel ends one monitor. The engine logs `sandbox_lost`, and that sandbox answers `lost` to every call. Its run ends as a transport loss, and the other sandboxes run on.
+
+A Firecracker runner keeps `[firecracker] warm_pool` microVMs booted ahead, 4 by default, through `WarmSlots` ([warm slots](../../rustd/crates/runner/afr_engine/src/warm_slots/mod.rs)). Each pooled microVM holds a reservation, so the heartbeat's `sandboxes_max` is the engine's bound less the pool. A slot serves only a run with no network and the default limits; every other run builds cold.
+
+#### Sizes
+
 Every sandbox gets the runner's defaults, and the wire carries no per-run size. The defaults are 2 GiB of memory with no swap, 2 cores and 512 processes. Disk I/O is capped at 200 MiB/s, and the disk holds 4 GiB.
 
 ### Sandbox filesystem
 
-bubblewrap builds the sandbox's mounts from a fixed set, in one order ([bubblewrap](../../rustd/crates/runner/afr_sandbox/src/bubblewrap/mod.rs)):
+bubblewrap builds the sandbox's mounts from a fixed set, in one order ([bubblewrap](../../rustd/crates/runner/afr_engine_bubblewrap/src/bubblewrap/mod.rs)). A microVM's mounts are its drives, listed under [Firecracker](#firecracker).
 
 | Inside | From | Mode |
 |---|---|---|
@@ -168,11 +307,13 @@ Each runner is assigned one of three network policies:
 
 | Policy | What a sandbox can reach |
 |---|---|
-| `allow_all` | Everything the host reaches; the sandbox shares the host's network namespace |
-| `deny_all_egress` | Nothing; its own namespace holds only loopback. A missing assignment gets this too |
+| `allow_all` | bubblewrap: everything the host reaches, in the host's network namespace. Firecracker: every public IPv4 address through its tap, with reserved ranges dropped |
+| `deny_all_egress` | Nothing; its own namespace holds only loopback, and a microVM gets no network device. A missing assignment gets this too |
 | `allow_list_egress` | Only the run's allowlist, through one virtual ethernet pair `afv<slot>` on `10.69.<slot>.0/30` |
 
 Under `allow_list_egress`, the runner builds one nf_tables table, `inet afegress<slot>`, in the host namespace, over netlink. Its forward chain drops port 53, accepts the allowed IPv4 set and drops the rest.
+
+A microVM reaches that pair through a tap in its own namespace, `tap0` on `172.16.0.0/30`, which has no IPv6 ([guest network](../../rustd/crates/runner/afr_firewall/src/egress/guest.rs)). The namespace's table only translates addresses, so every verdict is the host table's, which no guest reaches.
 
 The table lives outside the sandbox, so the sandbox cannot flush it. Each table matches only its own link, so one sandbox's rules never touch another's traffic.
 
@@ -227,7 +368,9 @@ When a provider response omits usage, the runner decodes its raw document for th
 
 Model keys stay in the supervisor. The run carries them and the fleet's approved secret references; nothing is written to the runner's disk.
 
-The supervisor clones repositories with the run's one-hour, repository-scoped token. The fetch sends it in an in-memory header, and the clone's configuration names the plain URL ([clone](../../rustd/crates/runner/afr_supervisor/src/workspace_clone/mod.rs)).
+The supervisor fetches repositories with the run's one-hour, repository-scoped token. The fetch sends it in an in-memory header, and the clone's configuration names the plain URL ([clone](../../rustd/crates/runner/afr_supervisor/src/workspace_clone/mod.rs)).
+
+The token stays with the host mirror. The checkout lands in a host stage and crosses into the sandbox by `import`, so no byte of the imported stream carries the token ([checkout](../../rustd/crates/runner/afr_supervisor/src/run_loop/checkout.rs)).
 
 A `${secrets.github.token}` placeholder resolves through `POST /v1/runners/me/credentials/mint`, which reads the fleet's current grants. The egress guard puts the token only into a request's `Authorization` header and masks it in the response.
 
@@ -237,21 +380,23 @@ A revoked grant leaves a live run the token it already has. The next run and the
 
 ### Workspace between runs
 
-A run that ends processed leaves its sandbox held ([holds](../../rustd/crates/runner/afr_supervisor/src/holds/mod.rs)). The supervisor freezes its cgroup through `cgroup.freeze`.
+A run that ends processed leaves its sandbox held ([holds](../../rustd/crates/runner/afr_supervisor/src/holds/mod.rs)). The supervisor parks it in its engine's mode: bubblewrap freezes its cgroup through `cgroup.freeze`, and Firecracker stops the microVM and keeps its disk.
 
-The hold is keyed by fleet, workspace, limits, network policy and repository binding. The fleet's next run within the hold window thaws it and continues with the files the last run left.
+The hold is keyed by fleet, workspace, limits, network policy and repository binding. The fleet's next run within the hold window resumes it and continues with the files the last run left.
 
 ```text
-run ends processed ──► freeze ──► held (≤ 10 min, ≤ 1 per worker)
+run ends processed ──► park ──► held (≤ 10 min, ≤ 1 per worker)
                                       │
-   next run, same fleet and key ──────┼──► thaw ──► runs in the same sandbox
-   other key or a failed thaw ────────┼──► destroy ──► fresh sandbox
+   next run, same fleet and key ──────┼──► resume ──► runs in the same sandbox
+   other key or a failed resume ──────┼──► destroy ──► fresh sandbox
    deadline · worker needed ·         │
    shutdown · refused report ·        └──► destroy
    fleet archived, deleted or held elsewhere
 ```
 
 Processes do not survive a hold, because the run's end closes every command session. The host never writes into a held clone, because a tenant-written `.git` could redirect a privileged write.
+
+A durable task's sandbox is never held, because a durable task restores a fresh workspace from its own checkpoint.
 
 A turn that moves to another runner restores its files from a [checkpoint](checkpoints.md), not from a hold. The daemon's hold rules are in [runner fleet](runner_fleet.md#capacity-and-sandbox-holds).
 
@@ -269,7 +414,11 @@ A host downloads the image at install, never at run time, and keeps the current 
 
 Before a host reports ready, it authenticates the manifest and opens the image once without following links. It hashes that open file and mounts the same file read-only, so a swapped path never reaches the kernel.
 
+A microVM's toolbox drive is the loop device behind that verified mount, so Firecracker never reopens the image by path either.
+
 ### Sandbox lifecycle
+
+bubblewrap:
 
 ```text
 run start
@@ -283,9 +432,25 @@ run start
      after the report: egress removed → cgroup removed → unmount → image and directory removed
 ```
 
+Firecracker:
+
+```text
+run start
+  ├─ admit      one reservation under sandboxes_max, or refused naming memory
+  ├─ mkdir <state>/<sandbox id>         mode 0700, never reused
+  ├─ workspace.img 4 GiB → ext4, owned by the guest user, never host-mounted
+  ├─ jail user · image lock · netns, tap and host table · chroot · cgroup leaf
+  ├─ jailer → firecracker --config-file --no-api
+  └─ ready once the executor answers over vsock and the plan reads back in force
+            … the turn runs …
+  processed: guest sync → monitor stopped → disk kept; otherwise killed
+  release: monitor → cgroup → host table and pair → namespace → chroot → lock, jail user
+  destroy: release, then the directory and its image
+```
+
 The supervisor waits at most 10 seconds for the executor to answer before refusing the run. Building the engine sweeps every leftover run directory, egress table and virtual link a crashed runner left.
 
-The storage home is `/var/lib/agentsfleet-runner` unless `RUNNER_STORAGE_HOME` names another root. It holds the toolbox images, per-run sandboxes and one git mirror per workspace and repository.
+The storage home is `/var/lib/agentsfleet-runner` unless `RUNNER_STORAGE_HOME` names another root. It holds the toolbox images, per-run sandboxes, one git mirror per workspace and repository, and `staging/`.
 
 | Question | Signal |
 |---|---|
@@ -309,12 +474,17 @@ Deleting a fleet stops its live runs and purges its rows ([data flow](data_flow.
 
 ## Limits
 
-- bubblewrap is the only engine. The Firecracker microVM engine is not built, and its review lives in [the sandbox evaluation](../reviews/space-sandbox/sandbox_evaluation.md).
-- The browser tools (`browser`, `browser_open`, `screenshot`) answer with a code. Chromium's own sandbox cannot start inside bubblewrap.
-- Tenants share the host kernel. A kernel privilege-escalation bug escapes every namespace sandbox on the host.
-- Nothing checks the sum of sandbox limits against the host. At 64 workers the default limits reach 128 GiB of memory, and no host disk is reserved for holds.
+- Every deployed runner runs bubblewrap. Firecracker is built and held to the conformance suite, and M258_003 moves production to it.
+- The browser tools (`browser`, `browser_open`, `screenshot`) answer with a code. Chromium's own sandbox needs `unshare`, which seccomp refuses on both engines.
+- Under bubblewrap, tenants share the host kernel. A kernel privilege-escalation bug escapes every namespace sandbox on the host.
+- Under bubblewrap, nothing checks the sum of sandbox limits against the host. At 64 workers the default limits reach 128 GiB of memory, and no host disk is reserved for holds.
+- Under bubblewrap, `allow_all` shares the host's network unenforced, so a sandbox can reach private and reserved addresses.
+- No repository script builds the guest kernel or the guest's `guest.cpio`. The guest kernel must be built without vsock loopback.
+- On Firecracker, a new plan on a running microVM refills the tap's set but leaves the guest's `/etc/hosts` as booted. Under a public plan, the guest keeps the toolbox's own `/etc/resolv.conf`.
+- On Firecracker, `quiesce` reads only the executor's idleness, and `kill` returns once the monitor is signalled, without waiting for it to exit.
+- No engine offers snapshots; M258_002 builds them.
 - The operator's extra binds on the assigned policy are stored and shown, but no runner binds them.
-- Warm slots, sandboxes started before a run arrives, are built but used only by tests.
+- Only a Firecracker runner keeps warm slots. A slot serves only a run with no network and the default limits.
 - An ordinary run cannot push to a repository; only a durable task's `propose_change` publishes.
 - The address set matches destinations only. The default registries share front ends with other sites, so a hard boundary needs a mirror the operator owns.
 

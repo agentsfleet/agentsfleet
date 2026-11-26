@@ -1,7 +1,7 @@
 ---
 type: explanation
 audience: contributor
-verified: 2026-11-25
+verified: 2026-11-27
 product_version: 0.90.0
 executable: false
 ---
@@ -97,6 +97,21 @@ Capability flows up. At boot the runner probes Landlock, seccomp, its delegated 
 
 Every heartbeat carries that probe report. The daemon compares assigned against achievable and writes `degraded_reason` when the host falls short ([reconcile](../../rustd/crates/daemon/afd_runner/src/reconcile.rs)).
 
+The report also names what builds the host's sandboxes ([report](../../rustd/crates/protocol/af_wire/src/runner/capability.rs)):
+
+| Field | Values |
+|---|---|
+| `engine` | `bubblewrap`, `firecracker` or `unsandboxed` |
+| `isolation` | `shared_kernel`, `hardware_vm` or `unconfined` |
+| `kvm` | `usable`, `denied` or `absent`: whether `/dev/kvm` opens for reading and writing |
+| `sandboxes_max` | How many sandboxes the host's memory holds at once; absent when the engine reserves no memory per sandbox |
+
+A `hardware_vm` report proves file system isolation, system-call filtering, resource limits and process containment, because the guest kernel is the wall. Egress control still needs `egress_enforcement`, and an `unconfined` report reads degraded under any demand.
+
+The runner's self-test judges only what its engine uses ([self-test](../../rustd/crates/runner/afr_supervisor/src/capability/mod.rs)). The `bubblewrap` check runs only for bubblewrap, and the `kvm` check only for a `hardware_vm` engine. A bubblewrap host without the Kernel-based Virtual Machine (KVM) device therefore passes.
+
+`agentsfleet platform runners list` and `show` print the reported engine, and `unknown` for a runner that never reported one.
+
 Every heartbeat also carries `host`: the processors the runner may use, its total memory, and its free disk. The free disk is on the file system that holds its sandboxes ([host facts](../../rustd/crates/runner/afr_supervisor/src/capability/host.rs)).
 
 The daemon keeps the latest value of each on the runner row, and `agentsfleet platform runners list` and `show` print them. Memory comes from Linux's `sysinfo(2)`, so a runner built for another system reports none.
@@ -115,11 +130,11 @@ The tier is an assigned attribute that sets what the daemon demands of the probe
 
 | `sandbox_tier` | Where | What the daemon demands |
 |---|---|---|
-| `landlock_full` | A Linux host | Landlock, seccomp, bubblewrap and every required cgroup controller |
+| `landlock_full` | A Linux host | Landlock, seccomp, bubblewrap and every required cgroup controller, or a `hardware_vm` engine |
 | `container_nested` | A runner inside a container on Linux | The same set; the sandbox applies Landlock on every tier |
 | `dev_none` | Development | Nothing; any network policy except `allow_all` reads degraded, because only a sandbox enforces one |
 
-The runner builds the same bubblewrap sandbox under every tier ([runner runtime](runner_execution.md#sandbox-engines)). The tier sets isolation strength only; network reach is the separate [egress policy](runner_execution.md#network-egress). On a Mac the runner runs inside a Linux virtual machine.
+The tier never picks the engine; the operator's `--engine` flag does ([runner runtime](runner_execution.md#sandbox-engines)). The tier sets the isolation the daemon demands, and network reach is the separate [egress policy](runner_execution.md#network-egress). On a Mac the runner runs inside a Linux virtual machine.
 
 ### Runner state
 
@@ -153,6 +168,8 @@ agentsfleet platform runners show <RUNNER_ID>
 ### Capacity and sandbox holds
 
 An assignment locks the runner row, counts live runs, and inserts the run in that transaction. A sandbox hold takes no worker, so the issue admits the free workers the runner's credits offer. The daemon owns `worker_count`, from 1 to 64 (`af_core::limits::MAX_WORKERS`).
+
+A runner's credits are the least of `worker_count`, its engine's `sandboxes_max` and the frame's run limit ([credits](../../rustd/crates/runner/afr_supervisor/src/downlink/running.rs)). A Firecracker host thus stops taking runs at its memory bound, even with workers free.
 
 Lowering the count below current occupancy stops new assignments and refuses renewals until occupancy fits. [Concurrency](concurrency.md) owns the lock order.
 

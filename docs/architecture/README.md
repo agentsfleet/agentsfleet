@@ -1,7 +1,7 @@
 ---
 type: reference
 audience: contributor
-verified: 2026-11-25
+verified: 2026-11-27
 product_version: 0.90.0
 executable: false
 ---
@@ -42,6 +42,7 @@ Each row answers one question, and no two rows share a section.
 | Which tools can a run call? | [runner_execution.md#tool-catalog](./runner_execution.md#tool-catalog) |
 | Which files does a sandbox see? | [runner_execution.md#sandbox-filesystem](./runner_execution.md#sandbox-filesystem) |
 | What can a sandbox reach on the network? | [runner_execution.md#network-egress](./runner_execution.md#network-egress) |
+| Which engine builds a sandbox, and what walls one microVM off from another? | [runner_execution.md#sandbox-engines](./runner_execution.md#sandbox-engines) |
 | Which memory reaches the model? | [memory.md#what-reaches-the-model](./memory.md#what-reaches-the-model) |
 | How does a long conversation stay inside the model's window? | [context_lifecycle.md#deciding-to-compact](./context_lifecycle.md#deciding-to-compact) |
 | How does a fleet keep one objective across runs? | [durable_tasks.md#how-a-task-starts](./durable_tasks.md#how-a-task-starts) |
@@ -96,7 +97,7 @@ Each row answers one question, and no two rows share a section.
 | [`api_resources.md`](./api_resources.md) | Fleet routes, access and run verbs |
 | [`runner_fleet.md`](./runner_fleet.md) | Registering runners, their state, placement and recovery |
 | [`runner_protocol.md`](./runner_protocol.md) | The runner stream, leases and refusals |
-| [`runner_execution.md`](./runner_execution.md) | The runner runtime, tools, sandbox and egress |
+| [`runner_execution.md`](./runner_execution.md) | The runner runtime, tools, sandbox engines and egress |
 | [`checkpoints.md`](./checkpoints.md) | Saving and restoring a run |
 | [`thread_model.md`](./thread_model.md) | The thread tables |
 | [`postgres_schemas.md`](./postgres_schemas.md) | Schemas, rules and deletion |
@@ -133,7 +134,8 @@ Each row is a one-line pointer; the linked section owns the definition.
 | **Delivery** (`thread.deliveries`) | An answer the fleet owes to a destination such as a Slack thread. [(more)](./data_flow.md#outbound-deliveries) |
 | **Wake** | A NATS hint that starts an assignment pass; losing one costs latency, never work. [(more)](./datastore_scaling.md#the-turns-ledger-is-the-queue) |
 | **Supervisor** (`afr_supervisor`) | The trusted half of the runner, outside every sandbox; it holds model keys. [(more)](./runner_execution.md#crates) |
-| **Sandbox** (`afr_sandbox`) | The confined Linux environment where one run's tool calls run. [(more)](./runner_execution.md#sandbox-engines) |
+| **Sandbox** (`afr_engine`) | The confined environment where one run's tool calls run: a bubblewrap process tree or a Firecracker microVM. [(more)](./runner_execution.md#sandbox-engines) |
+| **Engine** (`afr_engine_*`) | What builds a runner's sandboxes, chosen by `agentsfleet-runner run --engine`. [(more)](./runner_execution.md#sandbox-engines) |
 | **Egress guard** (`af_egress`) | The supervisor's outbound check, which also puts secrets in at send time. [(more)](./runner_execution.md#credentials) |
 | **Grant** (`connector.integration_grants`) | One fleet's approved credential: a workspace secret or an integration. [(more)](./user_flow.md#access) |
 | **Trigger** (`fleet.triggers`) | A row that lets a webhook, a GitHub App event or a Slack mention wake a fleet. [(more)](./user_flow.md#wakes-on) |

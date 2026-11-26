@@ -1,7 +1,7 @@
 ---
 type: reference
 audience: contributor
-verified: 2026-11-25
+verified: 2026-11-27
 product_version: 0.90.0
 executable: false
 ---
@@ -77,8 +77,9 @@ No runner crate links a datastore crate ([runner crates](./runner_execution.md#c
 | Native connection | `afr_supervisor::run` | Four streams and request correlation, behind bounded channels and permits | Stays up while accepted workers settle; then joined |
 | Heartbeat policy | `afr_supervisor::run` | The current assignment, in a `watch` channel | Halt, then joined |
 | Workers (N) | `worker_pool::serve`, one `JoinSet` | Each owns its run and sandbox (C5); one coordinator task tracks busy fleets | New runs stop; accepted work gets 30 s, cleanup 5 s, then abort and join |
-| Hold keeper | `Holds::start` | Frozen sandboxes kept for a fleet's next run, owned by the task | `holds.shutdown()` after the join destroys every hold |
-| Executor link, one per sandbox | `afr_executor`'s client | One sandbox's executor connection | Ends with its sandbox |
+| Hold keeper | `Holds::start` | Parked sandboxes kept for a fleet's next run, owned by the task | `holds.shutdown()` after the join destroys every hold |
+| Warm-slot keeper | `afr_engine`'s `WarmSlots::start`, on a Firecracker runner | The microVMs booted ahead of their runs, owned by the task; a run claims one over a channel | `WarmSlots::shutdown` stops refilling, waits for starts in flight and destroys every unclaimed slot |
+| Executor link, one per sandbox | `afr_executor`'s client, over a socket pair or vsock | One sandbox's executor connection; it dials again when a call finds the link closed | Ends with its sandbox |
 
 Workers keep unacknowledged reports in memory; no report is written to disk.
 
@@ -114,13 +115,15 @@ Each lock is documented where it is declared (C4).
 | Run ledger | `afr_agent`'s `Ledger` | One run's open calls | Taken to open and to end a call, never across its handler |
 | Child registry | `guffbolt`'s `agents::registry` `Shared::book` | One run's child agents and their counts | Leaf |
 | Process events | `afr_executor`'s events `Shared` | One process's output state | Leaf |
-| Verified toolboxes | `afr_sandbox`'s `Toolboxes` | Images one host has verified | Leaf |
+| Verified toolboxes | `afr_image`'s `Toolboxes` | Images one host has verified | Leaf |
 | Run memory | `afr_tools`'s `RunMemory`, tokio `RwLock` | The fleet's memory for one run | Held for one read or write |
 | Run egress | `afr_tools`'s `Run::egress`, tokio mutex | The run's network policy and minted credentials | Held to admit or mask, never across a send |
 | Exec sessions | `guffbolt`'s `tools::process::Sessions` | One run's open shell sessions | Leaf; each session's process has its own lock |
 | Mirror locks | `afr_supervisor`'s `Mirrors` | One lock per repository mirror | The map lock fetches the mirror's lock, which spans fetch and checkout |
 | Run clock, run timeline | `afr_supervisor`'s `RunClock`, `Timeline` | One run's frame clock and segment timings | Leaf |
-| Egress host lock | `afr_sandbox`'s egress `HELD` | The host egress lock file | Leaf |
+| Egress host lock | `afr_firewall`'s egress `HELD` | The host egress lock file | Leaf |
+| Memory admission | `afr_engine_firecracker`'s `Admission`, a tokio `Semaphore` | One permit per microVM under `sandboxes_max` | `try_acquire_owned`, never awaited; a `Stop` park or a destroy drops the permit |
+| Workspace image lock | `afr_engine_firecracker`'s `ImageLock`, the kernel's `flock` | One workspace image while its monitor runs | Taken without waiting before the drive is attached; a second attach is refused |
 
 C3's load-bearing case is the hub.
 A subject's first reader subscribes only after the map lock is released.
