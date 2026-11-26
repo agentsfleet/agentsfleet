@@ -166,6 +166,10 @@ pub fn remove_namespace(path: &Path) -> Result<()> {
 
 /// Makes [`TAP`] in the calling thread's namespace, persistent and owned by
 /// `owner`, so it outlives this call and the monitor's user may attach it.
+///
+/// The calls are made here: the kernel reads `TUNSETOWNER`, `TUNSETGROUP` and
+/// `TUNSETPERSIST`'s argument as the value itself (`drivers/net/tun.c`), and
+/// `tun-rs` 2.8 passes a pointer to it, which would own the tap by an address.
 fn make_tap((uid, gid): (u32, u32)) -> io::Result<()> {
     let tun = fs::OpenOptions::new()
         .read(true)
