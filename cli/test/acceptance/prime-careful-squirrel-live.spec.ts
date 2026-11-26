@@ -16,9 +16,9 @@ import {
   GRANT_KIND,
   GRANT_STATUS,
   accessCards,
-  askForAccess,
   decide,
   grantFor,
+  raisedCard,
   resumedTurn,
   showCard,
   type Asked,
@@ -27,7 +27,6 @@ import { getStatus } from "./fixtures/lifecycle.ts";
 import { refusalCode } from "./fixtures/negatives.ts";
 import { entry, primeFleet as primeFixture, said } from "./fixtures/prime-fleets.ts";
 import { isLive, ownWorkspace, primeFleet, primeSession, storeSecret } from "./fixtures/prime-session.ts";
-import { awaitTurn, processed } from "./fixtures/prime-turns.ts";
 import { randomUuidv7 } from "./helpers-lifecycle-with-token.ts";
 import { GATE_STATUS } from "../../src/constants/approvals.ts";
 import { EXIT_CODE } from "../../src/errors/index.ts";
@@ -37,7 +36,7 @@ const followUp = entry(fixture.follow_ups, 0, "follow-up");
 const secret = entry(fixture.asks_for, 0, "access request");
 const WORKSPACE = `fixture-cli-${fixture.journey}`;
 
-// A create, the first turn's run, the asking run and the run the answer resumes.
+// A create, the asking run and the run the answer resumes.
 const JOURNEY_TIMEOUT_MS = 720_000;
 const SECRET_BYTES = 24;
 // af_core/src/error_code/request.rs: a second, different answer, and a card nobody holds.
@@ -55,12 +54,11 @@ if (!isLive) {
 
     /** A new careful-squirrel that has asked for the fixture's secret and is waiting on its card. */
     async function squirrelThatAsked(): Promise<{ readonly fleetId: string; readonly asked: Asked }> {
-      const created = await primeFleet(session, fixture);
-      await awaitTurn(session, created.fleet_id,
-        processed((turn) => turn.turn_id === created.turn_id), "answered first turn");
       const prompt = said(followUp, `The secret is named ${secret.name}. Call request_access and no other tool. ` +
         "Once the person answers, call no tool and reply in one line saying whether you hold the secret. Never print its value.");
-      const asked = await askForAccess(session, created.fleet_id, prompt);
+      const created = await primeFleet(session, fixture, prompt);
+      const asked = await raisedCard(session, created.fleet_id, Promise.resolve("the first message asked for the fixture secret"));
+      assert.equal(asked.waiting.turn_id, created.turn_id);
       return { fleetId: created.fleet_id, asked };
     }
 

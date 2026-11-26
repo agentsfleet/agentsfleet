@@ -55,6 +55,8 @@ export function RefreshVisualFixture() {
   const grouped = useFleetThreadEntries(turns, convertTurn);
   const fleetName = phase === "wake-up" ? "Merge watch" : phase === "activity" ? "Launch review" : phase === "error" ? "Deploy monitor" : "Release watch";
   const schedules = phase === "wake-up" ? [visualWakeup(started)] : [];
+  const fleet = FleetDetailSchema.parse({...FLEET_DETAIL, name: fleetName, status: archived ? "archived" : "active", schedules,
+    pending_approvals: !archived && phase === "completed" ? 1 : 0});
   const [sent, setSent] = useState<ThreadMessageLike[]>([]);
   const onNew = useCallback(async (message: AppendMessage) => {
     setSent(previous => [...previous, {id: `local-${previous.length}`, role: "user", content: [{type: "text", text: fleetMessageText(message)}], metadata: {custom: {[RENDER_KIND_KEY]: RENDER_KIND.TRIGGER, actor: `${ACTOR.STEER_PREFIX}fixture-owner`}}}]);
@@ -73,9 +75,9 @@ export function RefreshVisualFixture() {
         {VISUAL_SCENARIOS.map(value => <Button key={value} size="sm" variant={phase === value ? "secondary" : "ghost"} aria-pressed={phase === value} onClick={() => showScenario(value)}>{value === "empty" ? "Empty" : value === "running" ? "Working" : value === "completed" ? "Completed" : value === "activity" ? "Activity" : value === "wake-up" ? "Wake-up" : "Error"}</Button>)}
         <Button size="sm" variant="ghost" onClick={() => { document.documentElement.dataset.theme = document.documentElement.dataset.theme === "light" ? "dark" : "light"; }}>Theme</Button>
       </div>
-      <FleetWorkspace account={OWN_ACCOUNT.account.tenant_id} workspace={WORKSPACE} fleet={FLEET_DETAIL} models={[{...MODEL, label: "MiniMax M3"}]} viewer="fixture-owner">
+      <FleetWorkspace account={OWN_ACCOUNT.account.tenant_id} workspace={WORKSPACE} fleet={fleet} models={[{...MODEL, label: "MiniMax M3"}]} viewer="fixture-owner">
       {archived ? <VisualLifecycleNotice outcome="archived" /> : null}
-      <FleetHeader latestRun={latestFigures(turns)} workspaceId={WORKSPACE} fleet={FleetDetailSchema.parse({ ...FLEET_DETAIL, name: fleetName, status: archived ? "archived" : "active", schedules, pending_approvals: !archived && phase === "completed" ? 1 : 0 })} />
+      <FleetHeader latestRun={latestFigures(turns)} workspaceId={WORKSPACE} fleet={fleet} />
       <AssistantRuntimeProvider runtime={runtime} config={FLEET_CHAT_CONFIG}><FleetScopeProvider workspaceId={WORKSPACE} fleetId={FLEET_ID}><SenderLabelProvider senderLabel={fleetName}><SenderNamesProvider names={senderNamesFrom("fixture-owner", [])}>
         <FleetDurableTaskProvider changeRepositories={phase === "activity" ? launchChangeRepositories(LAUNCH_REVIEW_ID, repositoryLabel) : undefined} files={phase === "activity" ? [{id: "brief", name: "launch-brief.md"}, {id: "reference", name: "mobile-reference.png"}] : previews.files} readOnly={archived} workspaceId={WORKSPACE} fleetId={FLEET_ID} subject="fixture-owner" revision={VISUAL_SCENARIOS.indexOf(phase)} turns={turns} schedules={schedules} sources={{repositories: phase === "empty" || phase === "activity" || phase === "error" ? [] : ["agentsfleet/platform-images"], access: "write", publication: "existing_pr"}}
           approvals={{count: phase === "completed" ? 1 : 0, href: `/w/${WORKSPACE}/fleets/${FLEET_ID}#fleet-approvals`}}>

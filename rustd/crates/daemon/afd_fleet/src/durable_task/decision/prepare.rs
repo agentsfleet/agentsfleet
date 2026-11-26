@@ -114,7 +114,7 @@ pub(super) async fn enabled(
         .ok_or_else(|| DurableTaskRefusal::DecisionUnavailable.into())
 }
 
-/// What a goal check asks: the task's own statements, then the constant
+/// What a goal check asks: the task's own statements, then the native
 /// next-action question.
 fn questions(
     task: Option<&DurableTaskSnapshot>,
@@ -125,7 +125,7 @@ fn questions(
         return Err(DurableTaskRefusal::StaleState.into());
     }
     let mut questions = task.questions.clone();
-    questions.push(compile::next_action());
+    questions.push(compile::next_action(&task.target));
     Ok(questions)
 }
 

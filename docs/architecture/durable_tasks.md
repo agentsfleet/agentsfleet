@@ -140,7 +140,7 @@ Its answers are typed probabilities, so the daemon compares numbers against thre
 | Choice | The picked option with per-option probabilities and a confidence | The next action: `CONTINUE`, `WAIT`, `DONE` or `BLOCKED` |
 
 A Noul near 0.5 means uncertain, not missing.
-The daemon compiles each request from the task's statements, one fixed `next_action` question and the task state (`durable_task/decision/compile.rs`).
+The daemon compiles each request from the task's statements, a `next_action` question for its native target, and the task state (`durable_task/decision/compile.rs`).
 The objective, a span of the person's message, gives the business context.
 
 The runner sends the completed action group whole first.

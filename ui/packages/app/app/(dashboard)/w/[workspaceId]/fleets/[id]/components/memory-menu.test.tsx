@@ -1,21 +1,19 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, renderHook, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@agentsfleet/design-system";
-import { MemoryMenu } from "./MemoryMenu";
+import { FleetActions } from "./FleetActions";
+import { useMemorySharing } from "./MemoryMenu";
 
 const {save, list, refresh} = vi.hoisted(() => ({save: vi.fn(), list: vi.fn(), refresh: vi.fn()}));
 vi.mock("../../actions", () => ({setMemoryAccessAction: save, listFleetMemoriesAction: list, forgetMemoryAction: vi.fn()}));
 vi.mock("next/navigation", () => ({useRouter: () => ({refresh})}));
 beforeEach(() => {save.mockReset(); list.mockReset(); refresh.mockReset();});
 afterEach(cleanup);
-const READ = "Learn from this workspace";
-const SHARE = "Share what this fleet learns";
+const READ = "Read shared memories";
+const SHARE = "Share memories";
 
 function menu(canGrant = true, access = {read: false, publish: false}) {
-  return <DropdownMenu><DropdownMenuTrigger asChild><Button>Fleet actions</Button></DropdownMenuTrigger><DropdownMenuContent>
-    <MemoryMenu workspaceId="workspace" fleetId="fleet" access={access} canGrant={canGrant} />
-  </DropdownMenuContent></DropdownMenu>;
+  return <FleetActions workspaceId="workspace" canGrant={canGrant} fleet={{id: "fleet", name: "release-watch", status: "active", memory_access: access}} />;
 }
 
 it("places the workspace memory controls in the menu with plain descriptions", async () => {
@@ -24,7 +22,7 @@ it("places the workspace memory controls in the menu with plain descriptions", a
   const read = screen.getByRole("menuitemcheckbox", {name: READ});
   expect(read.getAttribute("aria-checked")).toBe("false");
   expect(read.querySelector('[aria-hidden="true"][data-state="unchecked"]')).toBeTruthy();
-  expect(document.getElementById(read.getAttribute("aria-describedby") ?? "")?.textContent).toBe("Use memories shared by other fleets here.");
+  expect(document.getElementById(read.getAttribute("aria-describedby") ?? "")?.textContent).toBe("Use memories from other fleets.");
   expect(screen.getByRole("separator")).toBeTruthy();
   expect(list.mock.calls).toEqual([]);
 });
@@ -38,6 +36,9 @@ it("saves only the selected permission and updates it without refreshing the rou
   expect(screen.getByRole("menuitemcheckbox", {name: READ}).querySelector('[aria-hidden="true"][data-state="checked"]')).toBeTruthy();
   expect(screen.getByRole("menuitemcheckbox", {name: SHARE}).getAttribute("aria-checked")).toBe("false");
   expect(save).toHaveBeenCalledExactlyOnceWith("workspace", "fleet", {read: true});
+  await user.keyboard("{Escape}");
+  await user.click(screen.getByRole("button", {name: "Fleet actions"}));
+  expect(screen.getByRole("menuitemcheckbox", {name: READ}).getAttribute("aria-checked")).toBe("true");
   expect(refresh).not.toHaveBeenCalled();
 });
 
@@ -106,6 +107,17 @@ it("keeps the observed permission until its single pending change is confirmed",
   expect(refresh).not.toHaveBeenCalled();
 });
 
+it("issues at most one change before React can disable the memory controls", async () => {
+  const pending = Promise.withResolvers<unknown>();
+  const access = {read: false, publish: false};
+  save.mockReturnValueOnce(pending.promise);
+  const {result} = renderHook(() => useMemorySharing("workspace", "fleet", access));
+  act(() => {void result.current.flip("read"); void result.current.flip("publish");});
+  expect(save).toHaveBeenCalledExactlyOnceWith("workspace", "fleet", {read: true});
+  await act(async () => pending.resolve({ok: true, data: {read: true, publish: false}}));
+  expect(result.current.access).toEqual({read: true, publish: false});
+});
+
 it("lets a viewer open saved memories without exposing permission changes", async () => {
   list.mockResolvedValue({ok: true, data: {items: [], next_cursor: null}});
   const user = userEvent.setup({delay: null});
@@ -113,8 +125,8 @@ it("lets a viewer open saved memories without exposing permission changes", asyn
   expect(screen.queryByRole("menuitemcheckbox")).toBeNull();
   await user.click(screen.getByRole("menuitem", {name: "Saved memories"}));
   expect(await screen.findByRole("dialog", {name: "Saved memories"})).toBeTruthy();
-  expect(await screen.findByText("Nothing learned yet")).toBeTruthy();
-  expect(screen.queryByRole("heading", {name: /^Memory$/})).toBeNull();
+  expect(await screen.findByText("No saved memories yet")).toBeTruthy();
+  expect(screen.queryByRole("menu")).toBeNull();
   expect(save.mock.calls).toEqual([]);
 });
 
@@ -125,7 +137,7 @@ it("keeps memory loading failure visible and retries without closing the convers
   await user.click(screen.getByRole("menuitem", {name: "Saved memories"}));
   expect((await screen.findByRole("alert")).textContent).toContain("Memories unavailable");
   await user.click(screen.getByRole("button", {name: "Try again"}));
-  expect(await screen.findByText("Nothing learned yet")).toBeTruthy();
+  expect(await screen.findByText("No saved memories yet")).toBeTruthy();
 });
 
 // Value: protects=retry after a rejected memories request; fails_when=transport loss becomes an empty-memory claim;
@@ -137,10 +149,10 @@ it("shows transport loss as a loading error and permits retry in the same dialog
   render(menu()); await user.click(screen.getByRole("button", {name: "Fleet actions"}));
   await user.click(screen.getByRole("menuitem", {name: "Saved memories"}));
   expect((await screen.findByRole("alert")).textContent).toContain("Saved memories could not be loaded.");
-  expect(screen.queryByText("Nothing learned yet")).toBeNull();
+  expect(screen.queryByText("No saved memories yet")).toBeNull();
   const dialog = screen.getByRole("dialog");
   await user.click(screen.getByRole("button", {name: "Try again"}));
-  expect(await screen.findByText("Nothing learned yet")).toBeTruthy();
+  expect(await screen.findByText("No saved memories yet")).toBeTruthy();
   expect(screen.getByRole("dialog")).toBe(dialog);
   expect(screen.queryByRole("alert")).toBeNull();
 });
@@ -153,15 +165,20 @@ it.each(["resolve", "reject"])("ignores a previous memories request after closin
   const user = userEvent.setup({delay: null});
   render(menu()); await user.click(screen.getByRole("button", {name: "Fleet actions"}));
   await user.click(screen.getByRole("menuitem", {name: "Saved memories"}));
-  expect(await screen.findByText("Loading memories…")).toBeTruthy();
+  const loading = (await screen.findByText("Loading saved memories")).closest('[role="status"]');
+  expect(loading?.getAttribute("aria-busy")).toBe("true");
+  expect(loading?.querySelector("svg")).toBeTruthy();
   await user.click(screen.getByRole("button", {name: "Close"}));
+  const trigger = screen.getByRole("button", {name: "Fleet actions"});
+  await waitFor(() => expect(document.activeElement).toBe(trigger));
+  await user.click(trigger);
   await user.click(screen.getByRole("menuitem", {name: "Saved memories"}));
-  expect(await screen.findByText("Nothing learned yet")).toBeTruthy();
+  expect(await screen.findByText("No saved memories yet")).toBeTruthy();
   await act(async () => {
     if (completion === "reject") pending.reject(new TypeError("Old connection failed"));
     else pending.resolve({ok: false, error: "Old memories unavailable"});
   });
-  expect(screen.getByText("Nothing learned yet")).toBeTruthy();
+  expect(screen.getByText("No saved memories yet")).toBeTruthy();
   expect(screen.queryByRole("alert")).toBeNull();
-  expect(screen.queryByText("Loading memories…")).toBeNull();
+  expect(screen.queryByText("Loading saved memories")).toBeNull();
 });

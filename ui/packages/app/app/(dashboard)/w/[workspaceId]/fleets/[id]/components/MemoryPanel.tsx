@@ -3,9 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Alert,
-  Badge,
   Button,
-  Card,
   ConfirmDialog,
   EmptyState,
   List,
@@ -13,7 +11,8 @@ import {
   Section,
   Time,
 } from "@agentsfleet/design-system";
-import { BrainIcon } from "@phosphor-icons/react/ssr";
+import { FileTextIcon } from "@phosphor-icons/react/ssr";
+import { useFleetLists } from "@/components/domain/fleet/FleetListsProvider";
 import { byInstant } from "@/lib/api/decode";
 import type { MemoryEntry } from "@/lib/types";
 import { forgetMemoryAction } from "../../actions";
@@ -23,13 +22,10 @@ import { presentErrorString } from "@/lib/errors";
 import {
   MEMORY_EMPTY_DESCRIPTION,
   MEMORY_EMPTY_TITLE,
-  MEMORY_FETCH_UNAVAILABLE,
   MEMORY_FORGET_CONFIRM_LABEL,
-  MEMORY_FORGET_DIALOG_DESCRIPTION,
   MEMORY_FORGET_DIALOG_TITLE,
   MEMORY_FORGET_LABEL,
   MEMORY_FORGET_MISSING,
-  MEMORY_PANEL_TITLE,
   OUTCOME,
 } from "./console-copy";
 
@@ -37,8 +33,6 @@ import {
 // leaves its list unchanged rather than treating it as a hard failure (§5).
 const NOT_FOUND = 404;
 
-export const MEMORY_SHARED_LABEL = "shared";
-export const MEMORY_SHARED_BY_OTHER = "from another fleet";
 const VISIBILITY_WORKSPACE = "workspace";
 
 function writtenBy(entry: MemoryEntry, fleetId: string): boolean {
@@ -48,17 +42,17 @@ function writtenBy(entry: MemoryEntry, fleetId: string): boolean {
 type Props = {
   workspaceId: string;
   fleetId: string;
-  entries: MemoryEntry[] | null;
+  entries: MemoryEntry[];
 };
 
 export default function MemoryPanel({ workspaceId, fleetId, entries: initial }: Props) {
   const hiddenVersions = useRef(new Map<string, string>());
-  const [entries, setEntries] = useState<MemoryEntry[]>(initial ?? []);
+  const [entries, setEntries] = useState(initial);
   const [pendingEntry, setPendingEntry] = useState<MemoryEntry | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const reloadLists = useFleetLists()?.reload;
 
   useEffect(() => {
-    if (initial === null) return;
     for (const [key, hiddenAt] of hiddenVersions.current) {
       const current = initial.find((entry) => entry.key === key && writtenBy(entry, fleetId));
       if (!current || byInstant(current.updated_at, hiddenAt) > 0) hiddenVersions.current.delete(key);
@@ -74,6 +68,7 @@ export default function MemoryPanel({ workspaceId, fleetId, entries: initial }: 
     if (result.ok) {
       hiddenVersions.current.set(key, entry.updated_at);
       setEntries((prev) => prev.filter((e) => e.key !== key || !writtenBy(e, fleetId)));
+      reloadLists?.();
       captureProductEvent(EVENTS.fleet_memory_forgotten, { fleet_id: fleetId, outcome: OUTCOME.success });
       return;
     }
@@ -88,26 +83,22 @@ export default function MemoryPanel({ workspaceId, fleetId, entries: initial }: 
   }
 
   return (
-    <Section className="gap-xl" aria-label={MEMORY_PANEL_TITLE}>
-      {initial === null ? <Alert variant="warning">{MEMORY_FETCH_UNAVAILABLE}</Alert> : null}
+    <Section className="gap-xl">
       {notice ? <Alert variant="warning">{notice}</Alert> : null}
-      {initial === null ? null : entries.length === 0 ? (
-        <EmptyState icon={<BrainIcon size={28} />} title={MEMORY_EMPTY_TITLE} description={MEMORY_EMPTY_DESCRIPTION} />
-      ) : (
-        <List variant="ordered" className="flex list-none flex-col gap-2 space-y-0 pl-0">
-          {entries.map((entry) => (
-            <ListItem key={`${entry.writer_fleet_id}:${entry.key}`}>
-              <MemoryRow entry={entry} fleetId={fleetId} onForget={() => setPendingEntry(entry)} />
-            </ListItem>
-          ))}
-        </List>
-      )}
+      {entries.length === 0 ? <EmptyState icon={<FileTextIcon size={20} />} title={MEMORY_EMPTY_TITLE} description={MEMORY_EMPTY_DESCRIPTION}
+        className="border-0 bg-background" /> : <>
+        <MemoryGroup title="Saved by this fleet" entries={entries.filter(entry => writtenBy(entry, fleetId))} forget={setPendingEntry} />
+        <MemoryGroup title="Shared by other fleets" entries={entries.filter(entry => !writtenBy(entry, fleetId))} />
+      </>}
       <ConfirmDialog
         open={pendingEntry !== null}
         onOpenChange={() => setPendingEntry(null)}
         intent="destructive"
         title={MEMORY_FORGET_DIALOG_TITLE}
-        description={MEMORY_FORGET_DIALOG_DESCRIPTION}
+        description={pendingEntry ? <>
+          <span>{pendingEntry.visibility === VISIBILITY_WORKSPACE ? "Fleets in this workspace will lose access to this memory." : "This fleet will stop using this memory."}</span>
+          <span className="mt-lg block wrap-anywhere rounded-control bg-background p-lg text-foreground">{pendingEntry.content}</span>
+        </> : undefined}
         confirmLabel={MEMORY_FORGET_CONFIRM_LABEL}
         onConfirm={pendingEntry ? () => forget(pendingEntry) : undefined}
       />
@@ -115,31 +106,21 @@ export default function MemoryPanel({ workspaceId, fleetId, entries: initial }: 
   );
 }
 
-function MemoryRow({ entry, fleetId, onForget }: { entry: MemoryEntry; fleetId: string; onForget: () => void }) {
-  const shared = entry.visibility === VISIBILITY_WORKSPACE;
-  // Another fleet's entry is read here and forgotten only by its writer.
-  const othersEntry = !writtenBy(entry, fleetId);
-  return (
-    <Card className="flex items-start justify-between gap-md p-3">
-      <div className="flex min-w-0 flex-col gap-xs">
-        <p className="break-words text-sm text-foreground">{entry.content}</p>
-        <div className="flex flex-wrap items-center gap-md">
-          <Badge variant="default">{entry.category}</Badge>
-          {shared ? <Badge variant="cyan">{MEMORY_SHARED_LABEL}</Badge> : null}
-          {othersEntry ? <span className="text-sm text-muted-foreground">{MEMORY_SHARED_BY_OTHER}</span> : null}
-          <Time
-            value={new Date(entry.updated_at)}
-            format="relative"
-            tooltip={false}
-            className="font-mono text-mono leading-mono text-muted-foreground tabular-nums"
-          />
+function MemoryGroup({title, entries, forget}: {title: string; entries: MemoryEntry[]; forget?: (entry: MemoryEntry) => void}) {
+  if (!entries.length) return null;
+  return <Section aria-label={title} className="gap-sm">
+    <h3 className="text-body-sm font-semibold text-muted-foreground">{title}</h3>
+    <List variant="plain" className="space-y-0 divide-y divide-border-subtle rounded-control border border-border-subtle bg-background">
+      {entries.map(entry => <ListItem key={`${entry.writer_fleet_id}:${entry.key}`}
+        className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-lg gap-y-xs px-lg py-md">
+        <p className="col-span-full min-w-0 wrap-anywhere text-body-sm leading-body-sm text-foreground sm:col-span-1">{entry.content}</p>
+        <div className="col-start-1 flex flex-wrap items-center gap-x-sm text-eyebrow leading-eyebrow text-muted-foreground">
+          {forget ? <><span>{entry.visibility === VISIBILITY_WORKSPACE ? "Shared" : "Private"}</span><span aria-hidden="true">·</span></> : null}
+          <span>Updated <Time value={entry.updated_at} format="date" /></span>
         </div>
-      </div>
-      {othersEntry ? null : (
-        <Button type="button" variant="ghost" size="sm" onClick={onForget} aria-label={`${MEMORY_FORGET_LABEL} ${entry.key}`}>
-          {MEMORY_FORGET_LABEL}
-        </Button>
-      )}
-    </Card>
-  );
+        {forget ? <Button variant="ghost" size="compact" onClick={() => forget(entry)} aria-label={`${MEMORY_FORGET_LABEL} ${entry.key}`}
+          className="col-start-2 row-start-2 px-sm hover:text-destructive sm:row-span-2 sm:row-start-1">{MEMORY_FORGET_LABEL}</Button> : null}
+      </ListItem>)}
+    </List>
+  </Section>;
 }

@@ -7,6 +7,7 @@ import type { ReactNode } from "react";
 import type { FleetRunSummary } from "@/lib/turns/run-summary";
 import FleetThreadDynamic from "@/components/domain/conversation/thread/FleetThreadDynamic";
 import { useFleetRunSummary } from "@/components/domain/conversation/chrome/useFleetRunSummary";
+import { useFleetSettings } from "@/components/domain/fleet/FleetSettings";
 import type { SenderName } from "@/lib/turns/sender-names";
 import FleetStatusLine from "./FleetStatusLine";
 
@@ -43,6 +44,7 @@ export function ChatView({
   senderNames, modelLabel, lists, sources, schedules,
 }: Props) {
   const summary = useFleetRunSummary(workspaceId, fleetId, initial, initialSummary);
+  const name = useFleetSettings()?.value.name ?? senderLabel;
   const archived = summary.status === "archived";
 
   return (
@@ -55,7 +57,7 @@ export function ChatView({
         archived={archived}
         workspaceId={workspaceId}
         fleetId={fleetId}
-        senderLabel={senderLabel}
+        senderLabel={name}
         initial={initial}
         viewer={viewer}
         senderNames={senderNames}
