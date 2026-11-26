@@ -11,6 +11,12 @@ use guffbolt_ai::ToolSpec;
 /// The key a generated schema names its type under, which no provider reads.
 const TITLE: &str = "title";
 
+/// The key a schema states what it describes under, and what a call's
+/// arguments always are: every wire sends them as one JSON object, and
+/// Anthropic's Messages API refuses a tool whose `input_schema` has no type.
+const TYPE: &str = "type";
+const OBJECT: &str = "object";
+
 /// A tool's description and its parameters' JSON Schema.
 ///
 /// Provider-neutral: each provider wraps it in its own function-calling wire.
@@ -63,6 +69,11 @@ impl Schema {
             .into_generator()
             .into_root_schema_for::<T>();
         parameters.remove(TITLE);
+        // A type that takes any value, `serde_json::Value` among them,
+        // generates the empty schema `{}`, which names no type.
+        if parameters.get(TYPE).is_none() {
+            parameters.insert(TYPE.to_owned(), OBJECT.into());
+        }
         Self {
             description: Cow::Borrowed(description),
             parameters: parameters.to_value(),
