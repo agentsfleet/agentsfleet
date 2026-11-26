@@ -20,13 +20,17 @@ const capability = Schema.Struct({
   landlock: Schema.Boolean, seccomp: Schema.Boolean, bubblewrap: Schema.Boolean,
   cgroup_controllers: Schema.Array(Schema.String), egress_enforcement: Schema.Boolean,
 });
+/** The host's processors, memory and free sandbox disk; a fact no beat has read is absent. */
+const host = Schema.Struct({
+  cpu_count: Schema.optionalKey(count), memory_bytes: Schema.optionalKey(count), disk_free_bytes: Schema.optionalKey(count),
+});
 const runner = Schema.Struct({
   id: text, host_id: text, sandbox_tier: Schema.Enum(SandboxTier), status,
   liveness: Schema.Enum(RunnerLiveness),
   cordon: Schema.optionalKey(Schema.Struct({reason: Schema.Enum(CordonReason), cordoned_at: instant})),
   labels: Schema.Array(Schema.String), last_seen_at: instant, created_at: instant,
   assigned_policy: RunnerPolicySchema, achievable: Schema.NullOr(capability),
-  degraded: Schema.Boolean, degraded_reason: Schema.NullOr(Schema.String),
+  degraded: Schema.Boolean, degraded_reason: Schema.NullOr(Schema.String), host,
   /** The tenant that registered the runner; absent for a platform runner. */
   tenant_id: Schema.optionalKey(Schema.NullOr(text)),
 });

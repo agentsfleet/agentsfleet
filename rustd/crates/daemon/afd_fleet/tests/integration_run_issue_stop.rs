@@ -98,7 +98,7 @@ async fn a_head_nothing_stopped_is_issued() {
         .await
         .expect("the issue answers");
 
-    assert!(issued.is_some(), "an unstopped head is issued");
+    assert!(issued.is_ok(), "an unstopped head is issued");
     assert_eq!(runs_for_turn(&fixtures.database, &held.turn_id).await, 1);
     fixtures.cleanup().await;
 }
@@ -132,7 +132,7 @@ async fn a_fleet_head_stopped_after_its_assignment_is_not_issued() {
         .issue(&first, &held, billed(&tenant), fixtures.enrolled_at())
         .await
         .expect("the issue answers");
-    assert!(issued.is_none(), "a stopped head is not issued");
+    assert!(issued.is_err(), "a stopped head is not issued");
     assert_eq!(runs_for_turn(&fixtures.database, &held.turn_id).await, 0);
     fixtures.cleanup().await;
 }
@@ -183,7 +183,7 @@ async fn a_stop_committed_while_the_issue_waits_issues_no_run() {
         Stop::Cancelled { running: false, .. }
     ));
     let issued = issued.expect("the issue answers");
-    assert!(issued.is_none(), "the issue re-read the turn Stop settled");
+    assert!(issued.is_err(), "the issue re-read the turn Stop settled");
     assert_eq!(runs_for_turn(&fixtures.database, &held.turn_id).await, 0);
     fixtures.cleanup().await;
 }

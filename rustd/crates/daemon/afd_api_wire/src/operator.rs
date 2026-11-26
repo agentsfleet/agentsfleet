@@ -5,7 +5,9 @@ use std::borrow::Cow;
 use serde::{Deserialize, Serialize};
 
 use crate::admin::AdminState;
-use af_wire::runner::{AssignedPolicy, CapabilityReport, RunnerLiveness, SelftestReport};
+use af_wire::runner::{
+    AssignedPolicy, CapabilityReport, HostFacts, RunnerLiveness, SelftestReport,
+};
 
 /// Why the daemon has stopped assigning new work to an operator-active host.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -81,6 +83,10 @@ pub struct RunnerItem<'a> {
     /// Stored explanation for a degraded verdict.
     #[serde(borrow)]
     pub degraded_reason: Option<Cow<'a, str>>,
+    /// The host's processors, memory and free sandbox disk, as its beats last
+    /// read them; a fact no beat has read is absent.
+    #[serde(default)]
+    pub host: HostFacts,
 }
 
 /// One page of runners.

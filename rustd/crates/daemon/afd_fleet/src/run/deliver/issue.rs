@@ -31,7 +31,7 @@ impl RunService {
         T: Send,
         F: for<'a> FnMut(RunPayload<'a>, AssignedRun) -> T + Send,
     {
-        let Some(issued) = self
+        let issued = match self
             .runs
             .issue(
                 runner,
@@ -45,8 +45,9 @@ impl RunService {
                 now,
             )
             .await?
-        else {
-            return Ok(assignment_lost(runner, &checked.acquired));
+        {
+            Ok(issued) => issued,
+            Err(refused) => return Ok(assignment_lost(runner, &checked.acquired, refused)),
         };
         if checked.acquired.kind == crate::run::Kind::Reassigned {
             self.runs

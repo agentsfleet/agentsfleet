@@ -109,7 +109,8 @@ async fn test_leasing_stopped_ends_every_hold_and_beats_at_once() {
     let halt = Halt::new(CancellationToken::new());
     let started = tokio::time::Instant::now();
 
-    let beating = Heartbeat::new(&plane, &probe, &holds).keep_beating(&published, &halt);
+    let beating = Heartbeat::new(&plane, &probe, &holds, std::path::Path::new("."))
+        .keep_beating(&published, &halt);
     let stopping = async {
         watching.changed().await.unwrap();
         halt.taking_runs().cancel();
@@ -149,7 +150,8 @@ async fn test_a_shutdown_ends_every_hold_and_says_so_in_a_last_beat() {
     let shutdown = CancellationToken::new();
     let halt = Halt::new(shutdown.clone());
 
-    let beating = Heartbeat::new(&plane, &probe, &holds).keep_beating(&published, &halt);
+    let beating = Heartbeat::new(&plane, &probe, &holds, std::path::Path::new("."))
+        .keep_beating(&published, &halt);
     let stopping = async {
         watching.changed().await.unwrap();
         shutdown.cancel();
@@ -187,7 +189,7 @@ async fn test_a_refused_runner_ends_its_holds_and_sends_no_last_beat() {
     let (published, _watching) = watch::channel(Assignment::initial());
     let halt = Halt::new(CancellationToken::new());
 
-    Heartbeat::new(&plane, &probe, &holds)
+    Heartbeat::new(&plane, &probe, &holds, std::path::Path::new("."))
         .keep_beating(&published, &halt)
         .await;
 
@@ -220,7 +222,8 @@ async fn test_leasing_stopped_brings_one_beat_forward_and_no_more() {
     let halt = Halt::new(CancellationToken::new());
     let started = tokio::time::Instant::now();
 
-    let beating = Heartbeat::new(&plane, &probe, &holds).keep_beating(&published, &halt);
+    let beating = Heartbeat::new(&plane, &probe, &holds, std::path::Path::new("."))
+        .keep_beating(&published, &halt);
     let stopping = async {
         watching.changed().await.unwrap();
         halt.taking_runs().cancel();
@@ -251,7 +254,8 @@ async fn test_a_token_refused_elsewhere_ends_every_hold_without_a_last_beat() {
     let (published, mut watching) = watch::channel(Assignment::initial());
     let halt = Halt::new(CancellationToken::new());
 
-    let beating = Heartbeat::new(&plane, &probe, &holds).keep_beating(&published, &halt);
+    let beating = Heartbeat::new(&plane, &probe, &holds, std::path::Path::new("."))
+        .keep_beating(&published, &halt);
     let refusing = async {
         watching.changed().await.unwrap();
         assert!(halt.stops_on(&token_refusal()), "a refused token stops");
@@ -279,7 +283,8 @@ async fn last_beat_answered(failure: fn() -> crate::Error) -> Vec<af_core::id::U
     let shutdown = CancellationToken::new();
     let halt = Halt::new(shutdown.clone());
 
-    let beating = Heartbeat::new(&plane, &probe, &holds).keep_beating(&published, &halt);
+    let beating = Heartbeat::new(&plane, &probe, &holds, std::path::Path::new("."))
+        .keep_beating(&published, &halt);
     let stopping = async {
         watching.changed().await.unwrap();
         shutdown.cancel();

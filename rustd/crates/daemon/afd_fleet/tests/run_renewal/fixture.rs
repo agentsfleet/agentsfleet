@@ -44,6 +44,7 @@ impl Running {
                     selftest: None,
                     holds: HeldFleets::default(),
                     closing: false,
+                    host: af_wire::runner::HostFacts::default(),
                 },
                 None,
                 now,

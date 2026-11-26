@@ -165,7 +165,7 @@ After that, the next claim deletes the expired receipt and files its own (`afd_s
 
 | Table | Purpose | Notes |
 |---|---|---|
-| `runners` | An enrolled host: policy, health, self-test and owner | `ck_runners_owner`: `tenant_id` is set exactly when `platform_owned` is false; `uq_runners_tenant_id_host_id` registers a host once per owner |
+| `runners` | An enrolled host: policy, health, self-test, the facts its latest beats read, and owner | `ck_runners_owner`: `tenant_id` is set exactly when `platform_owned` is false; `uq_runners_tenant_id_host_id` registers a host once per owner |
 | `history` | Append-only runner events | One row per offline episode, keyed by the heartbeat it observed |
 | `decision_calls` | A decision call's identity, frozen prices, reservation and usage | Survives deletion of its run and turn |
 | `decision_payloads` | Private evidence and answers for a call | Fleet deletion removes them; accounting stays |

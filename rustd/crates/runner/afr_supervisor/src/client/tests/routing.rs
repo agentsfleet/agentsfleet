@@ -64,6 +64,7 @@ async fn send_every_verb(plane: &super::super::ControlPlane) {
         selftest: None,
         holds: af_wire::runner::HeldFleets::default(),
         closing: false,
+        host: af_wire::runner::HostFacts::default(),
     };
     let push = MemoryPushRequest {
         run_id: RUN_ID.into(),

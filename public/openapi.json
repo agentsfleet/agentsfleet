@@ -24292,6 +24292,40 @@
           }
         }
       },
+      "HostFacts": {
+        "type": "object",
+        "description": "What the host offers its runs, as one beat read it. A fact the host could\nnot read is absent.",
+        "properties": {
+          "cpu_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Processors the runner may use. Bounded by its Postgres `INTEGER` column.",
+            "minimum": 0
+          },
+          "disk_free_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Free bytes on the file system that holds the runs' sandboxes. Bounded by\nits Postgres `BIGINT` column.",
+            "minimum": 0
+          },
+          "memory_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The host's total memory, in bytes. Bounded by its Postgres `BIGINT` column.",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
       "HttpEgress": {
         "type": "string",
         "description": "Which public HTTPS destinations HTTP tools may reach.",
@@ -26943,6 +26977,10 @@
               "null"
             ],
             "description": "Stored explanation for a degraded verdict."
+          },
+          "host": {
+            "$ref": "#/components/schemas/HostFacts",
+            "description": "The host's processors, memory and free sandbox disk, as its beats last\nread them; a fact no beat has read is absent."
           },
           "host_id": {
             "type": "string",

@@ -154,5 +154,8 @@ fn spelling<'a, T: Serialize>(value: &T) -> Cow<'a, str> {
     to_spelling(value).map_or(Cow::Borrowed(""), Cow::Owned)
 }
 
+mod host;
+pub(crate) use self::host::host_facts;
+
 #[cfg(test)]
 mod tests;

@@ -19,7 +19,7 @@
 use af_core::error_code::{self, Coded as _, Logged};
 use af_core::id::Uuid7;
 use af_observability::producers;
-use af_wire::runner::{CapabilityReport, HeartbeatRequest, HeldFleets, SelftestReport};
+use af_wire::runner::{CapabilityReport, HeartbeatRequest, HeldFleets, HostFacts, SelftestReport};
 use garde::{Valid, Validate as _};
 use jiff::Timestamp;
 use sqlx::{Executor as _, PgConnection};
@@ -48,6 +48,11 @@ pub const NO_REPORT: HeartbeatRequest<'static> = HeartbeatRequest {
     selftest: None,
     holds: HeldFleets(Vec::new()),
     closing: false,
+    host: HostFacts {
+        cpu_count: None,
+        memory_bytes: None,
+        disk_free_bytes: None,
+    },
 };
 
 /// What one beat resolved to, for the reply the host reads.
@@ -166,6 +171,8 @@ impl Runners {
     ) -> Result<Decision<Beat>> {
         let authority = row.authority.as_ref();
         let incoming = bounded_report(beat);
+        // Facts past their bounds are not facts: the row keeps the last ones.
+        let host = garde::Unvalidated::new(beat.host).validate().ok();
         let stored = capability(row.capability_report_json.as_deref());
         let assigned = row.assignment.decode()?;
         let verdict = reconcile(&assigned, incoming.or(stored.as_ref()));
@@ -199,6 +206,7 @@ impl Runners {
                     authority,
                     valid,
                     policy: &row.witness,
+                    host: host.as_ref(),
                 },
             )
             .await

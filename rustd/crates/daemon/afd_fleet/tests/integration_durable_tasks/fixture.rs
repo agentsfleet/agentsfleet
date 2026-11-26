@@ -266,6 +266,7 @@ pub(super) async fn durable_task_capability(held: &Held, enabled: bool) {
             selftest: None,
             holds,
             closing: false,
+            host: af_wire::runner::HostFacts::default(),
         };
         let held_fleets = afd_runner::heartbeat::holds::prove(request.holds.clone());
         held.fixtures

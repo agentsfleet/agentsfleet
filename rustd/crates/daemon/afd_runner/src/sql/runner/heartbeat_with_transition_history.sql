@@ -21,7 +21,11 @@ WITH locked AS MATERIALIZED (
     cordoned_at = CASE WHEN p.lift THEN NULL ELSE r.cordoned_at END,
     cordon_healthy_since_at = CASE WHEN p.lift OR NOT COALESCE(p.healthy, false) THEN NULL
       WHEN p.cordon_healthy_since_at IS NULL OR p.last_seen_at <= p.checked_at - $10::interval THEN p.checked_at
-      ELSE p.cordon_healthy_since_at END
+      ELSE p.cordon_healthy_since_at END,
+    -- The host facts this beat read; one it could not read keeps the last.
+    host_cpu_count = COALESCE($18::integer, r.host_cpu_count),
+    host_memory_bytes = COALESCE($19::bigint, r.host_memory_bytes),
+    host_disk_free_bytes = COALESCE($20::bigint, r.host_disk_free_bytes)
   FROM lifting p WHERE r.id = p.id
   RETURNING r.id, p.last_seen_at AS previous, p.checked_at, p.lift
 ), online AS (

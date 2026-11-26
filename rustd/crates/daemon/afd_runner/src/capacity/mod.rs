@@ -16,12 +16,13 @@ mod guard;
 pub use guard::{Guard, proof};
 mod sql;
 
-/// Which work consumes a worker; this never grants connection authority.
+/// Which work the census is read for, and so which idle holds it reports;
+/// this never grants connection authority.
 #[derive(Debug, Clone, Copy)]
 pub enum Work<'a> {
-    /// Reusing this fleet's hold replaces it without taking another worker.
+    /// New work for this fleet: the census reports every other fleet's hold.
     Fleet(&'a Uuid7),
-    /// Current work renews its live run without charging idle holds.
+    /// Current work renewing its live run: the census reports no hold.
     Existing,
 }
 
@@ -53,9 +54,30 @@ impl Capacity {
     }
 
     /// Whether one additional run fits the currently assigned worker limit.
+    ///
+    /// Live runs alone fill a worker, as in the fleet issue's census
+    /// (`afd_fleet`'s `insert_run_with_turn.sql`): an idle hold takes none.
     #[must_use]
     pub fn can_assign(self) -> bool {
-        self.assignments_allowed && self.occupied + self.held < i64::from(self.workers)
+        self.assignments_allowed && self.occupied < i64::from(self.workers)
+    }
+
+    /// Live runs on the host.
+    #[must_use]
+    pub const fn occupied(self) -> i64 {
+        self.occupied
+    }
+
+    /// Idle holds on the host the census was asked to report ([`Work`]).
+    #[must_use]
+    pub const fn held(self) -> i64 {
+        self.held
+    }
+
+    /// The host's assigned worker limit.
+    #[must_use]
+    pub const fn workers(self) -> i32 {
+        self.workers
     }
 
     /// A renewal retains an already counted, unexpired run.

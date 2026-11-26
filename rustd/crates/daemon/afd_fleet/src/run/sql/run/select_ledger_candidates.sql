@@ -52,10 +52,15 @@ WHERE ($12::timestamptz IS NULL OR (head.created_at, head.id)>($12, $13::uuid))
   -- A tenant runner skips a fleet that runs on the platform model.
   AND (z.host_platform OR z.model_ref <> $15::text)
 -- Recovery pages keep the oldest eligible head per fleet and ignore locality.
+-- Ordinary passes take held fleets, the wake hint and this runner's last fleets
+-- first, then the oldest head. Runners reading the same order skip each other
+-- at the assignment (`assign_turn_head.sql`), which takes the thread and the
+-- head SKIP LOCKED.
 ORDER BY CASE WHEN $11 THEN head.created_at END,
          CASE WHEN $11 THEN head.id END,
          CASE WHEN NOT $11 THEN z.id = ANY($6) END DESC,
          CASE WHEN NOT $11 THEN z.id = $7 END DESC NULLS LAST,
          CASE WHEN NOT $11 THEN z.last_runner_id = $2 END DESC NULLS LAST,
-         CASE WHEN NOT $11 THEN random() END
+         CASE WHEN NOT $11 THEN head.created_at END,
+         CASE WHEN NOT $11 THEN head.id END
 LIMIT $3

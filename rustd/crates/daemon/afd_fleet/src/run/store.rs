@@ -172,6 +172,25 @@ impl Runs {
         })
     }
 
+    /// The host's census for `fleet`'s new work, read in the issue's own
+    /// transaction, which already holds the host row.
+    pub(crate) async fn fleet_census(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        runner: &af_core::id::Uuid7,
+        fleet: &af_core::id::Uuid7,
+        work_tenant: &af_core::id::Uuid7,
+    ) -> crate::Result<Option<afd_runner::capacity::Capacity>> {
+        let work = afd_runner::capacity::Work::Fleet(fleet);
+        let tenant = Some(work_tenant);
+        Ok(match &self.authority {
+            Some(authority) => {
+                afd_runner::capacity::lock(tx, (runner, authority), work, tenant).await?
+            }
+            None => afd_runner::capacity::lock(tx, runner, work, tenant).await?,
+        })
+    }
+
     /// Continue current work under a shared proof of the exact session.
     pub(crate) async fn share_host(
         &self,

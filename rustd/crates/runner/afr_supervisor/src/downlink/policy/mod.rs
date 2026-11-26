@@ -1,6 +1,6 @@
 //! Host liveness, pushed assignments and held-sandbox releases share one policy owner.
 
-use std::{borrow::Cow, sync::Arc, time::Duration};
+use std::{borrow::Cow, path::Path, sync::Arc, time::Duration};
 
 use af_core::{id::Uuid7, limits::WorkerCount};
 use af_stream::OwnedFrame;
@@ -15,7 +15,7 @@ use afr_sandbox::HostProbe;
 use tokio::sync::watch;
 
 use crate::{
-    capability::{capability_report, selftest},
+    capability::{capability_report, host_facts, selftest},
     client::ControlPlane,
     egress::Egress,
     error::{ErrorKind, Result},
@@ -51,6 +51,8 @@ pub(crate) struct Heartbeat<'a> {
     plane: &'a ControlPlane,
     probe: &'a HostProbe,
     holds: &'a Holds,
+    /// Where run sandboxes live, whose file system's free bytes each beat reports.
+    sandboxes: &'a Path,
     label: Option<(SandboxTier, NetworkPolicy)>,
     selftest_due: bool,
     last: Assignment,
@@ -58,11 +60,17 @@ pub(crate) struct Heartbeat<'a> {
 }
 
 impl<'a> Heartbeat<'a> {
-    pub(crate) fn new(plane: &'a ControlPlane, probe: &'a HostProbe, holds: &'a Holds) -> Self {
+    pub(crate) fn new(
+        plane: &'a ControlPlane,
+        probe: &'a HostProbe,
+        holds: &'a Holds,
+        sandboxes: &'a Path,
+    ) -> Self {
         Self {
             plane,
             probe,
             holds,
+            sandboxes,
             label: None,
             selftest_due: false,
             last: Assignment::initial(),
@@ -85,6 +93,7 @@ impl<'a> Heartbeat<'a> {
                     .collect(),
             ),
             closing: self.closed,
+            host: host_facts(self.sandboxes),
         };
         let body = self.plane.heartbeat(&request).await?;
         self.apply(&body.decode::<HeartbeatResponse<'_>>()?)

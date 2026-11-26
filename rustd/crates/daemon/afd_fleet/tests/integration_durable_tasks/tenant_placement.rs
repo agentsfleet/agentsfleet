@@ -38,6 +38,7 @@ async fn tenant_runner(case: &Case) -> Uuid7 {
         selftest: None,
         holds: HeldFleets::default(),
         closing: false,
+        host: af_wire::runner::HostFacts::default(),
     };
     let held = afd_runner::heartbeat::holds::prove(beat.holds.clone());
     fixtures
@@ -176,7 +177,7 @@ async fn a_platform_model_task_never_runs_on_a_tenant_runner() {
             )
             .await
             .expect("the issue answers");
-        assert!(issued.is_none(), "issue refuses the tenant runner too");
+        assert!(issued.is_err(), "issue refuses the tenant runner too");
         let runs: i64 = sqlx::query_scalar("SELECT count(*) FROM thread.runs WHERE runner_id = $1")
             .bind(&tenant)
             .fetch_one(

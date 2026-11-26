@@ -1,6 +1,8 @@
 //! Mutation-time connection proof and uninterrupted healthy return.
 
 use af_core::id::Uuid7;
+use af_wire::runner::HostFacts;
+use garde::Valid;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 use sqlx::PgConnection;
@@ -12,6 +14,8 @@ pub(super) struct Health<'a> {
     pub(super) authority: Option<&'a Authority>,
     pub(super) valid: bool,
     pub(super) policy: &'a serde_json::Value,
+    /// The host facts the beat proved inside their wire bounds.
+    pub(super) host: Option<&'a Valid<HostFacts>>,
 }
 
 impl Runners {
@@ -24,6 +28,15 @@ impl Runners {
         now: Timestamp,
         health: Health<'_>,
     ) -> Option<bool> {
+        // Proved inside the columns' types, so a conversion never drops a fact.
+        let facts = health.host.map_or_default(|host| **host);
+        let cpus = facts.cpu_count.and_then(|cpus| i32::try_from(cpus).ok());
+        let memory = facts
+            .memory_bytes
+            .and_then(|bytes| i64::try_from(bytes).ok());
+        let disk = facts
+            .disk_free_bytes
+            .and_then(|bytes| i64::try_from(bytes).ok());
         match (self.event_id(now), self.event_id(now)) {
             (Ok(online), Ok(lift)) => {
                 let result: Result<(bool, bool), sqlx::Error> =
@@ -45,6 +58,9 @@ impl Runners {
                         .bind(crate::cordon::REASON)
                         .bind(sql::RUNNER_STATUS_ACTIVE)
                         .bind(sqlx::types::Json(health.policy))
+                        .bind(cpus)
+                        .bind(memory)
+                        .bind(disk)
                         .fetch_one(&mut *connection)
                         .await;
                 match result {

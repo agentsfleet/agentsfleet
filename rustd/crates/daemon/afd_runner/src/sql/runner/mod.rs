@@ -179,6 +179,8 @@ pub const UPDATE_RUNNER_VERDICT: &str = include_str!("update_runner_verdict.sql"
 /// zeros trimmed — the form `jiff` writes, so the operator API serves one
 /// spelling of an instant. `$1` runner, `$2` event id, `$3` event type, `$4`
 /// the metadata key, `$5` the never-seen sentinel, `$6` the offline threshold.
+/// The bump also stores the beat's host facts, `$18` processors, `$19` memory
+/// and `$20` free sandbox disk, keeping the last value of any the beat lacks.
 pub const HEARTBEAT_WITH_TRANSITION_HISTORY: &str =
     include_str!("heartbeat_with_transition_history.sql");
 

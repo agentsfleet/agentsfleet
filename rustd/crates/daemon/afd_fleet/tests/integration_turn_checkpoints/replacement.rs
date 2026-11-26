@@ -34,7 +34,8 @@ impl Case {
                     },
                     self.fixtures.enrolled_at(),
                 )
-                .await?,
+                .await?
+                .ok(),
         )?;
         std::mem::swap(&mut self.runner, &mut self.foreign);
         self.acquired = acquired;

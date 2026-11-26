@@ -1,9 +1,11 @@
-//! The real fleet issuer counts parked holds and rolls their transfer back on refusal.
+//! The real fleet issuer counts live runs, never idle holds, and rolls a hold's
+//! transfer back on refusal.
 
 use crate::{queue, requests::placement_tag, seed, support::Fixtures};
 use af_core::id::Uuid7;
 use afd_fleet::run::envelope::HeadKind;
-use afd_fleet::run::{Acquired, Billed, Issued, Runs};
+use afd_fleet::run::issue::Census;
+use afd_fleet::run::{Acquired, Billed, Issued, Refused, Runs};
 
 type Checked<T = ()> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
@@ -36,7 +38,8 @@ impl Case {
         };
         required(
             runs.issue(&runner, &active, billed, fixtures.enrolled_at())
-                .await?,
+                .await?
+                .ok(),
         )?;
         let warm = extra_fleet(&fixtures, &active, &seeded.tenant).await;
         let cold_fleet = extra_fleet(&fixtures, &active, &seeded.tenant).await;
@@ -59,7 +62,7 @@ impl Case {
         })
     }
 
-    async fn issue(&self, acquired: &Acquired) -> Checked<Option<Issued>> {
+    async fn issue(&self, acquired: &Acquired) -> Checked<Result<Issued, Refused>> {
         Ok(self
             .runs
             .issue(
@@ -129,17 +132,22 @@ async fn the_fleet_issuer_refuses_a_third_worker_and_transfers_its_own_hold_once
     let before = case.stamp().await?;
     assert_eq!(before.active, 1);
     assert!(before.hold_expires_at.is_some());
-    assert!(case.issue(&case.cold).await?.is_none());
-    assert_eq!(case.stamp().await?, before);
     let warm = required(seed::select_fleet(&case.runs, &case.runner, &case.warm).await)?;
     assert!(warm.resume_hold);
-    required(case.issue(&warm).await?)?;
+    required(case.issue(&warm).await?.ok())?;
     let after = case.stamp().await?;
     assert!(after.hold_expires_at.is_none());
     assert_eq!(after.active, 2);
     assert_eq!(after.events, before.events + 1);
     assert_eq!(after.choice, before.choice + 1);
-    assert!(case.issue(&case.cold).await?.is_none());
+    assert_eq!(
+        case.issue(&case.cold).await?.err(),
+        Some(Refused::CensusFull(Census {
+            occupied: 2,
+            held: 0,
+            worker_count: 2,
+        }))
+    );
     assert_eq!(case.stamp().await?, after);
     case.fixtures.cleanup().await;
     Ok(())
@@ -161,7 +169,7 @@ async fn a_failed_durable_task_source_attach_restores_the_exact_idle_hold_and_is
         .bind(&warm.turn_id)
         .execute(&mut *connection)
         .await?;
-    assert!(case.issue(&warm).await?.is_none());
+    assert_eq!(case.issue(&warm).await?.err(), Some(Refused::Task));
     assert_eq!(
         case.stamp().await?,
         before,
@@ -171,12 +179,34 @@ async fn a_failed_durable_task_source_attach_restores_the_exact_idle_hold_and_is
         .bind(&warm.turn_id)
         .execute(&mut *connection)
         .await?;
-    required(case.issue(&warm).await?)?;
+    required(case.issue(&warm).await?.ok())?;
     let after = case.stamp().await?;
     assert!(after.hold_expires_at.is_none());
     assert_eq!(after.active, 2);
     assert_eq!(after.events, before.events + 1, "the issue's own audit row");
     drop(connection);
+    case.fixtures.cleanup().await;
+    Ok(())
+}
+
+// Value: protects=a hold the runner dropped when a run started, which the
+// daemon still records for one beat, refuses no free worker; fails_when=the
+// issue's census counts idle holds again; seam=the fenced insert's census over
+// live Postgres, after a beat that leaves the dropped hold recorded.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_hold_the_runner_evicted_does_not_refuse_its_free_worker() -> Checked {
+    let case = Case::new().await?;
+    // The beat lists no hold, and the reconcile keeps the warm fleet's hold a
+    // beat longer, as it keeps any hold written inside the heartbeat interval.
+    seed::reports_capable(&case.fixtures, &case.runner).await;
+    let before = case.stamp().await?;
+    assert_eq!((before.active, before.hold_expires_at.is_some()), (1, true));
+
+    let issued = case.issue(&case.cold).await?;
+
+    assert!(issued.is_ok(), "the free worker was refused: {issued:?}");
+    assert_eq!(case.stamp().await?.active, 2);
     case.fixtures.cleanup().await;
     Ok(())
 }

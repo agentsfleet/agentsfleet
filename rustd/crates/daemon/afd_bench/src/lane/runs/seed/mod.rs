@@ -298,6 +298,7 @@ pub(in crate::lane::runs) async fn runner_identity(
         selftest: None,
         holds: HeldFleets(Vec::new()),
         closing: false,
+        host: af_wire::runner::HostFacts::default(),
     };
     let held = prove(beat.holds.clone());
     runners

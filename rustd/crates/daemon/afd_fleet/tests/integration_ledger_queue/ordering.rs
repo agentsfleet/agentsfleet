@@ -1,11 +1,17 @@
 //! Transaction start order must not move new work ahead of an unfinished run.
 
 use af_core::id::Uuid7;
-use afd_fleet::run::{Acquired, Kind, Runs};
+use af_crypto::entropy::Entropy;
+use afd_bus::wake::Wake;
+use afd_fleet::run::{Acquired, Kind, RunService, Runs};
 use afd_turns::{IncomingTurn, Key, Producer, Reply, Turns};
 use sqlx::Connection as _;
+use tokio_util::sync::CancellationToken;
 
-use super::{next, reassignment::issue};
+use super::{WITHIN, enqueue, next, reassignment::issue};
+use crate::integration_run_gates::seed::seed_provider_resolution;
+use crate::requests::placement_tag;
+use crate::seed::select_fleet;
 use crate::{rows::Row, seed::seeded_parts, support::Fixtures};
 
 const ORDER: &str = "SELECT assigned.sequence < delayed.sequence \
@@ -79,6 +85,100 @@ async fn assert_reassigned(
         fixtures.text(Row::Run(issued), "status").await.as_deref(),
         Some(afd_state::sql::RUN_STATUS_EXPIRED)
     );
+}
+
+// Value: protects=a turn whose issue was refused is the next pass's hint, ahead
+// of a newer turn from the fleet the runner last ran; fails_when=a lost
+// assignment rings no wake, so the released fleet sorts behind every fleet the
+// runner ran; seam=the gate chain's refused issue, the wake over the lane's
+// NATS and the ledger selection, on live Postgres.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn a_turn_whose_assignment_was_lost_is_offered_before_newer_sticky_work() {
+    let fixtures = Fixtures::create().await;
+    let (sticky, workspace, tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
+    let lost = afd_db::test_util::mint_id();
+    fixtures
+        .seed_fleet(&lost, &workspace, &tenant, &placement_tag(&sticky))
+        .await;
+    let first = enqueue(&fixtures, &sticky, &workspace).await;
+    let refused = enqueue(&fixtures, &lost, &workspace).await;
+    let _default = seed_provider_resolution(&fixtures, &lost).await;
+    // A namespace of its own, so this test's wake reaches no other test.
+    let namespace = format!("lost-{}", afd_db::test_util::mint_id());
+    let bus = afd_bus::test_util::lane_in(&namespace)
+        .await
+        .expect("the lane's NATS: run through make test-integration-rustd");
+    let wake = Wake::default();
+    let stop = CancellationToken::new();
+    let listening = wake
+        .listen(&bus, &stop)
+        .await
+        .expect("the wake subscription opens");
+    let runs = Runs::new(fixtures.database.clone(), bus, Entropy::new()).with_wake(wake.clone());
+    let plane = RunService {
+        runs: runs.clone(),
+        ..fixtures.plane()
+    };
+    // The sticky fleet's run fills the one worker, so the issue refuses the other.
+    let filling = select_fleet(&runs, &runner, &sticky)
+        .await
+        .expect("the sticky fleet is leasable");
+    issue(&fixtures, &runs, &filling, &runner, &tenant).await;
+    let assigned = select_fleet(&runs, &runner, &lost)
+        .await
+        .expect("the lost fleet is leasable");
+    let mut rings = wake.generations();
+    let answer = plane
+        .assign_selected(assigned, &runner, fixtures.enrolled_at())
+        .await
+        .expect("a refused issue is a decision");
+    let notified = tokio::time::timeout(WITHIN, rings.wait_for(|seen| seen.rings() > 0))
+        .await
+        .is_ok();
+    end_run(&fixtures, &sticky, &first).await;
+    let newer = enqueue(&fixtures, &sticky, &workspace).await;
+
+    let offered = next(&runs, &runner).await.expect("both fleets wait");
+
+    assert_eq!(
+        (answer, notified, offered.turn_id),
+        (None, true, refused),
+        "the lost turn goes before the sticky fleet's newer turn {newer}"
+    );
+    stop.cancel();
+    drop((listening, runs, plane));
+    fixtures.cleanup().await;
+}
+
+/// Ends `fleet`'s run on `turn` and frees its worker and thread, leaving the
+/// runner as the thread's last, as a processed report leaves it.
+async fn end_run(fixtures: &Fixtures, fleet: &Uuid7, turn: &Uuid7) {
+    let mut connection = fixtures
+        .database
+        .acquire()
+        .await
+        .expect("runtime connection");
+    sqlx::query("UPDATE thread.turns SET settled_at = clock_timestamp() WHERE id = $1")
+        .bind(turn)
+        .execute(&mut *connection)
+        .await
+        .expect("the turn settles");
+    sqlx::query("UPDATE thread.runs SET status = $2 WHERE turn_id = $1 AND status = $3")
+        .bind(turn)
+        .bind(afd_state::sql::RUN_STATUS_EXPIRED)
+        .bind(afd_state::sql::RUN_STATUS_ACTIVE)
+        .execute(&mut *connection)
+        .await
+        .expect("the run ends");
+    sqlx::query(
+        "UPDATE thread.threads SET run_expires_at = clock_timestamp() - interval '1 second' \
+         WHERE fleet_id = $1",
+    )
+    .bind(fleet)
+    .execute(&mut *connection)
+    .await
+    .expect("the thread is free");
 }
 
 const fn input<'a>(fleet: &'a Uuid7, workspace: &'a Uuid7) -> IncomingTurn<'a> {

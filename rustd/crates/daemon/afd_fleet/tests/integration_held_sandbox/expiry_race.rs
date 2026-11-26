@@ -33,7 +33,7 @@ EXECUTE FUNCTION runner.pause_hold_fixture()";
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_hold_decided_before_expiry_keeps_the_worker_until_the_report_commits() -> Checked {
+async fn a_hold_decided_before_expiry_frees_the_worker_once_the_report_commits() -> Checked {
     let held = held_in(Fixtures::create_isolated().await).await;
     let next = next_turn(&held).await?;
     let migrator = held.fixtures.open(DbRole::Migrator).await;
@@ -70,8 +70,8 @@ async fn a_hold_decided_before_expiry_keeps_the_worker_until_the_report_commits(
         "issue must wait for the host lock before counting capacity"
     );
     assert!(
-        issued.is_none(),
-        "one worker cannot take a second fleet alongside the hold"
+        issued.is_some(),
+        "a hold takes no worker, so the second fleet runs once the report commits"
     );
     let receipt = report.hold.ok_or("the live report must retain its hold")?;
     assert_eq!(recorded, Some(receipt.expires_at));
@@ -197,7 +197,8 @@ async fn issue(held: &Held, next: &Next) -> Checked<Option<Issued>> {
             },
             af_core::clock::now(),
         )
-        .await?)
+        .await?
+        .ok())
 }
 
 async fn wait_for_expiry(held: &Held, expires: jiff_sqlx::Timestamp) -> Checked {

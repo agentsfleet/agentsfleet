@@ -9,6 +9,8 @@ use crate::harness;
 use af_core::id::Uuid7;
 
 use af_core::paging::DEFAULT_LIMIT;
+use af_crypto::entropy::Entropy;
+use af_wire::runner::{HeartbeatRequest, HostFacts};
 use afd_auth::credential::Presented;
 use afd_auth::directory::Digest;
 use afd_auth::scope::{Scope, ScopeSet};
@@ -97,6 +99,56 @@ async fn a_platform_hosts_second_registration_answers_409_naming_the_runner() {
     .expect("the host count reads");
     assert_eq!(hosts, 1, "a refused registration writes no second runner");
     fixture.cleanup(&runner).await;
+}
+
+// Value: protects=the host facts a beat carries reach the runner row and the
+// operator's runner view; fails_when=the beat's bump stops storing them or the
+// view stops reading them; seam=the heartbeat statement and the operator router
+// over live Postgres.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_beats_host_facts_reach_the_operator_runner_view() {
+    let fixture = Fixture::create().await;
+    fixture.seed().await;
+    let host = HostFacts {
+        cpu_count: Some(8),
+        memory_bytes: Some(17_179_869_184),
+        disk_free_bytes: Some(34_359_738_368),
+    };
+    afd_runner::Runners::new(fixture.database.clone(), Entropy::new())
+        .heartbeat(
+            &fixture.runner,
+            &HeartbeatRequest {
+                host,
+                ..afd_runner::NO_REPORT
+            },
+            None,
+            NOW,
+        )
+        .await
+        .expect("the beat lands");
+    let router = Fleet::live(
+        fixture.database.clone(),
+        SUBJECT,
+        ScopeSet::from_scopes(&Scope::ALL),
+    )
+    .router();
+    let path = format!("/v1/admin/runners/{}", fixture.runner);
+
+    let detail = send(&router, Method::GET, &path, Some(&fixture.token), "").await;
+
+    assert_eq!(detail.status(), StatusCode::OK);
+    let detail = json_body(detail).await;
+    assert_eq!(
+        detail.get("host"),
+        Some(&serde_json::json!({
+            "cpu_count": 8,
+            "memory_bytes": 17_179_869_184_u64,
+            "disk_free_bytes": 34_359_738_368_u64,
+        })),
+        "{detail}"
+    );
+    fixture.cleanup(&mint_id()).await;
 }
 
 async fn assert_runner_reads(router: &axum::Router, fixture: &Fixture, runner_path: &str) {

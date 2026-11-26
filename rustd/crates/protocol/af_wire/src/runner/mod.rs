@@ -22,7 +22,7 @@ mod holds;
 mod rules;
 mod selftest;
 
-pub use self::capability::CapabilityReport;
+pub use self::capability::{CapabilityReport, HostFacts};
 pub use self::holds::{FLEET_ID_TEXT_BYTES, HOLDS_MAX, HeldFleets};
 pub use self::rules::{
     BIND_PATH_MAX_BYTES, BIND_PATH_MIN_BYTES, HOST_ID_MAX_BYTES, REGISTRY_ENTRY_MAX_BYTES,
@@ -212,7 +212,7 @@ pub struct RegisterResponse<'a> {
 /// Host liveness carried by the control stream.
 ///
 /// The capability report rides the first beat and any beat where the probe
-/// result changed. `holds` and `closing` ride every beat.
+/// result changed. `holds`, `closing` and `host` ride every beat.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -235,6 +235,9 @@ pub struct HeartbeatRequest<'a> {
     /// True when the runner's held-sandbox list is final. Any previously held sandbox missing
     /// from `holds` is released immediately.
     pub closing: bool,
+    /// The host's processors, memory and free sandbox disk, read for this beat.
+    #[serde(default)]
+    pub host: HostFacts,
 }
 
 /// Current policy carried by heartbeat answers and pushed assignments.

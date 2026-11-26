@@ -66,6 +66,76 @@ pub struct Issued {
     pub expires_at: Timestamp,
 }
 
+/// Why the issue wrote no run: the guard that refused it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Refused {
+    /// The fleet is no longer active in its workspace.
+    Scope,
+    /// The host row is gone, or this connection no longer proves it.
+    HostUnproven,
+    /// The host is cordoned, draining, revoked or degraded.
+    HostClosed,
+    /// The placement choice moved since the assignment read it.
+    ChoiceStale,
+    /// The host may not take this tenant's work or this model key.
+    Placement,
+    /// Live runs fill every worker.
+    CensusFull(Census),
+    /// A worker was free, so the assignment no longer held: its thread
+    /// fence, its deadline or the head turn moved under the issue.
+    Fenced(Census),
+    /// The turn's durable task could not be attached.
+    Task,
+}
+
+impl Refused {
+    /// The log's `reason` value.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Scope => "scope",
+            Self::HostUnproven => "host_unproven",
+            Self::HostClosed => "host_closed",
+            Self::ChoiceStale => "choice_stale",
+            Self::Placement => "placement",
+            Self::CensusFull(_) => "census_full",
+            Self::Fenced(_) => "fenced",
+            Self::Task => "task",
+        }
+    }
+
+    /// Whether another pass can run the turn: this one lost only for room,
+    /// time or the placement choice it read. A refusal of this host, or of the
+    /// work itself, would meet the same pass again.
+    #[must_use]
+    pub const fn rerings(self) -> bool {
+        matches!(
+            self,
+            Self::CensusFull(_) | Self::Fenced(_) | Self::ChoiceStale
+        )
+    }
+
+    /// The host's census, read when the guarded insert wrote nothing.
+    #[must_use]
+    pub const fn census(self) -> Option<Census> {
+        match self {
+            Self::CensusFull(census) | Self::Fenced(census) => Some(census),
+            _ => None,
+        }
+    }
+}
+
+/// The host's census beside a refused insert, under the same host lock.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Census {
+    /// Live runs on the host.
+    pub occupied: i64,
+    /// Other fleets' idle holds on the host, which take no worker.
+    pub held: i64,
+    /// The host's assigned worker limit.
+    pub worker_count: i32,
+}
+
 impl Runs {
     /// Write the run row for `acquired`, and the audit row that explains it.
     ///
@@ -73,10 +143,9 @@ impl Runs {
     /// meter reset, so an observer can never see a run with no audit row, or a
     /// fresh run metering from a previous run's cursor.
     ///
-    /// `None` when the assignment that earned `acquired` is no longer this pass's:
-    /// its fence was superseded or it lapsed, so another runner may already
-    /// hold the same entry. Nothing is written, and the assignment is not this
-    /// pass's to release.
+    /// [`Refused`] when a guard wrote no run, such as an assignment that is no
+    /// longer this pass's: its fence was superseded or it lapsed, so another
+    /// runner may already hold the same entry. Nothing is written.
     ///
     /// A plain turn reads no task source; a task's turn attaches its task
     /// under the same transaction.
@@ -91,20 +160,20 @@ impl Runs {
         acquired: &Acquired,
         billed: Billed<'_>,
         now: Timestamp,
-    ) -> Result<Option<Issued>> {
+    ) -> Result<core::result::Result<Issued, Refused>> {
         let mut connection = self.pool().acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_ISSUE))?;
         if !crate::durable_task::run::parents(&mut transaction, acquired).await? {
-            return Ok(None);
+            return Ok(Err(Refused::Scope));
         }
         let Some(host) = self
             .lock_host(&mut transaction, runner_id, billed.tenant_id)
             .await?
         else {
-            return Ok(None);
+            return Ok(Err(Refused::HostUnproven));
         };
-        if !self.permits_issue(host, runner_id, &billed) {
-            return Ok(None);
+        if let Err(refused) = self.permits_issue(host, runner_id, &billed) {
+            return Ok(Err(refused));
         }
         let (run_id, event_row_id) = self.mint(now)?;
         let decision =
@@ -131,7 +200,10 @@ impl Runs {
         .insert(&mut transaction)
         .await?
         else {
-            return Ok(None);
+            let refused = self
+                .refused_insert(&mut transaction, runner_id, acquired, billed.tenant_id)
+                .await?;
+            return Ok(Err(refused));
         };
         let Some((task, expires_at)) = crate::durable_task::run::attach(
             &mut transaction,
@@ -141,13 +213,13 @@ impl Runs {
         )
         .await?
         else {
-            return Ok(None);
+            return Ok(Err(Refused::Task));
         };
         transaction.commit().await.map_err(query(CONTEXT_ISSUE))?;
         runner_runs::acquired(runner_id);
 
         record_issued(&run_id, runner_id, acquired, decision.as_deref());
-        Ok(Some(Issued {
+        Ok(Ok(Issued {
             run_id,
             created_at,
             decision,
@@ -163,19 +235,51 @@ impl Runs {
         host: afd_runner::capacity::Held,
         runner_id: &Uuid7,
         billed: &Billed<'_>,
-    ) -> bool {
-        if !host.can_assign()
-            || !self
-                .ticket()
-                .is_none_or(|ticket| ticket.permits_revision(host.run_version()))
+    ) -> core::result::Result<(), Refused> {
+        if !host.can_assign() {
+            return Err(Refused::HostClosed);
+        }
+        if !self
+            .ticket()
+            .is_none_or(|ticket| ticket.permits_revision(host.run_version()))
         {
-            return false;
+            return Err(Refused::ChoiceStale);
         }
         if let Some(refusal) = placement_refusal(host, billed) {
             afd_runner::capacity::refused_placement(runner_id, refusal);
-            return false;
+            return Err(Refused::Placement);
         }
-        true
+        Ok(())
+    }
+
+    /// Which guard the insert met, from the host's census in the same
+    /// transaction: a full host, or an assignment that no longer held.
+    ///
+    /// The host row stays locked, so no other issue can fill a worker between
+    /// the insert and this read; a run that ended in between can only turn a
+    /// full census into [`Refused::Fenced`], never the reverse.
+    async fn refused_insert(
+        &self,
+        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        runner_id: &Uuid7,
+        acquired: &Acquired,
+        tenant_id: &Uuid7,
+    ) -> Result<Refused> {
+        let census = self
+            .fleet_census(transaction, runner_id, &acquired.fleet_id, tenant_id)
+            .await?;
+        Ok(census.map_or(Refused::HostUnproven, |capacity| {
+            let counted = Census {
+                occupied: capacity.occupied(),
+                held: capacity.held(),
+                worker_count: capacity.workers(),
+            };
+            if capacity.can_assign() {
+                Refused::Fenced(counted)
+            } else {
+                Refused::CensusFull(counted)
+            }
+        }))
     }
 
     /// Draw the independent run and audit identities.

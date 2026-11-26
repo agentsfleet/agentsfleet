@@ -34,6 +34,21 @@ test("renders a runner's identity, policy and checks for an interactive terminal
   expect(result.stdout).toContain("bubblewrap: Available"); expect(result.stderr).toBe("");
 });
 
+test("renders each runner's processors, memory and free disk", async () => {
+  const host = {cpu_count: 8, memory_bytes: 17_179_869_184, disk_free_bytes: 34_359_738_368};
+  fixture.respond = () => Response.json({items: [{...RUNNER, host}, RUNNER], total: 2, next_cursor: null});
+  const table = await fixture.run(["runners", "list"], "", true);
+  expect(table.code).toBe(0);
+  expect(stripVTControlCharacters(table.stdout)).toMatch(/CPUS\s+MEMORY\s+FREE DISK/u);
+  expect(table.stdout).toContain("17.2 GB"); expect(table.stdout).toContain("34.4 GB");
+  expect(table.stdout).toContain("Not reported");
+  fixture.respond = () => Response.json({...RUNNER_DETAIL, host});
+  const detail = await fixture.run(["runners", "show", RUNNER_ID], "", true);
+  expect(detail.code).toBe(0);
+  expect(stripVTControlCharacters(detail.stdout)).toMatch(/CPUs\s+·\s+8\n/u);
+  expect(detail.stdout).toContain("17.2 GB"); expect(detail.stdout).toContain("34.4 GB");
+});
+
 test.each([[true, true], [true, false], [false, false]] as const)("keeps JSON and pipe output free of animation (json: %s, terminal: %s)", async (json, tty) => {
   fixture.respond = async () => {
     await Bun.sleep(460);

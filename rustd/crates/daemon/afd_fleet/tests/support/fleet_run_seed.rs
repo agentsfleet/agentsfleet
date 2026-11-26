@@ -100,6 +100,7 @@ pub(crate) async fn reports_capable(fixtures: &Fixtures, runner: &Uuid7) {
         selftest: None,
         holds: HeldFleets(Vec::new()),
         closing: false,
+        host: af_wire::runner::HostFacts::default(),
     };
     let held = prove(request.holds.clone());
     fixtures

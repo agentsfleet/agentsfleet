@@ -49,6 +49,7 @@ async fn test_each_route_answers_as_its_verb() {
         selftest: None,
         holds: af_wire::runner::HeldFleets::default(),
         closing: false,
+        host: af_wire::runner::HostFacts::default(),
     };
     let push = MemoryPushRequest {
         run_id: RUN_ID.into(),

@@ -39,7 +39,8 @@ af_validate.workspace = true
 # Provider credentials and encrypted recovery objects use the shared crypto types.
 af_crypto.workspace = true
 cap-std.workspace = true
-rustix.workspace = true
+# `system` for `sysinfo(2)`, the host memory a heartbeat reports.
+rustix = { workspace = true, features = ["system"] }
 # The one wire: every verb's request and reply, spelled once.
 af_wire.workspace = true
 # The instants a run, a renewal and a held sandbox carry; the runner reads

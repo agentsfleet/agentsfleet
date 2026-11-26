@@ -50,3 +50,24 @@ pub struct CapabilityReport<'a> {
     #[garde(skip)]
     pub egress_enforcement: bool,
 }
+
+/// What the host offers its runs, as one beat read it. A fact the host could
+/// not read is absent.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct HostFacts {
+    /// Processors the runner may use. Bounded by its Postgres `INTEGER` column.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(inner(range(min = 1, max = i32::MAX.unsigned_abs())))]
+    pub cpu_count: Option<u32>,
+    /// The host's total memory, in bytes. Bounded by its Postgres `BIGINT` column.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(inner(range(max = i64::MAX.unsigned_abs())))]
+    pub memory_bytes: Option<u64>,
+    /// Free bytes on the file system that holds the runs' sandboxes. Bounded by
+    /// its Postgres `BIGINT` column.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(inner(range(max = i64::MAX.unsigned_abs())))]
+    pub disk_free_bytes: Option<u64>,
+}
