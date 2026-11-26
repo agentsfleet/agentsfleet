@@ -98,7 +98,7 @@ pub(super) async fn create(
         .execute(&mut *owner.tx)
         .await
         .map_err(query("retain immutable turn allocation identity"))?;
-    sqlx::query(include_str!("sql/pages_allocate.sql"))
+    sqlx::query(crate::durable_task::sql::PAGES_ALLOCATE)
         .bind(&id)
         .bind(&pages)
         .execute(&mut *owner.tx)

@@ -55,6 +55,13 @@ const SUBJECT_RETIRING: &str = "user_live_fleet_schedules_ownership_retiring";
 /// The workspace whose schedule the retirement suite reaches for.
 const SUBJECT_RETIRED_OWNER: &str = "user_live_fleet_schedules_ownership_retired_owner";
 
+/// The caller of the fleet-release suite, apart from the others so all seed
+/// side by side.
+const SUBJECT_RELEASING: &str = "user_live_fleet_schedules_ownership_releasing";
+
+/// The workspace whose fleet the release suite reaches for.
+const SUBJECT_RELEASED_OWNER: &str = "user_live_fleet_schedules_ownership_released_owner";
+
 /// What the foreign schedule asks its fleet to do, and must go on asking.
 const OWNED_MESSAGE: &str = "summarise the overnight incidents";
 
@@ -137,6 +144,77 @@ async fn retiring_another_workspaces_schedule_answers_as_for_one_already_gone() 
     caller.cleanup(&database).await;
     owner.cleanup(&database).await;
     let _ = lane;
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn releasing_another_workspaces_fleet_removes_none_of_its_schedules() {
+    let lane = TestDatabase::shared();
+    let database = lane.open(DbRole::Api, &[]).await;
+    let caller = Holder::seed(&database, SUBJECT_RELEASING).await;
+    let owner = Holder::seed(&database, SUBJECT_RELEASED_OWNER).await;
+    let schedule = owner.schedule(&database).await;
+    let plane = caller.services(&database);
+
+    let mut transaction = begin(&database).await;
+    let foreign = plane
+        .schedules()
+        .release_on(
+            &mut transaction,
+            &caller.workspace,
+            &owner.fleet,
+            plane.now(),
+        )
+        .await
+        .expect("the release reads the fleet's tenancy");
+    foreign
+        .registered()
+        .expect("a fleet the workspace does not hold has nothing to release");
+    transaction.commit().await.expect("the release commits");
+
+    assert_eq!(
+        owner.read_back(&database, &schedule).await,
+        untouched(),
+        "the foreign schedule is not marked for deletion"
+    );
+
+    // The same fleet, under the workspace that holds it, does reach the row:
+    // the answer above was the tenancy check, not a fleet with no schedules.
+    let owners = owner.services(&database);
+    let mut transaction = begin(&database).await;
+    let held = owners
+        .schedules()
+        .release_on(
+            &mut transaction,
+            &owner.workspace,
+            &owner.fleet,
+            owners.now(),
+        )
+        .await
+        .expect("the release reads the owner's schedules");
+    held.registered()
+        .expect_err("the fixture's scheduler is unreachable, so the row stays registered");
+    transaction.commit().await.expect("the release commits");
+    assert_eq!(
+        owner.read_back(&database, &schedule).await.1,
+        "deleting",
+        "the owner's release marks the row for deletion"
+    );
+
+    caller.cleanup(&database).await;
+    owner.cleanup(&database).await;
+    let _ = lane;
+}
+
+/// A transaction on `database`, as the fleet's delete holds one.
+async fn begin(database: &Db) -> sqlx::Transaction<'static, sqlx::Postgres> {
+    let connection = database
+        .acquire()
+        .await
+        .expect("the lane's Postgres answers");
+    sqlx::Transaction::begin(connection, None)
+        .await
+        .expect("a transaction opens")
 }
 
 /// The owner's own router lists the one schedule it seeded, so the empty page

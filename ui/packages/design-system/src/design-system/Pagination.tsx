@@ -164,5 +164,3 @@ function PageNavigation({ page, total, totalPages, totalLabel, canAdvance, onPag
     </div>
   );
 }
-
-export default Pagination;

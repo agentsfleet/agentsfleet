@@ -24,5 +24,5 @@ pub mod tuning;
 pub mod types;
 
 pub use self::access::Access;
-pub use self::creation::Creations;
+pub use self::creation::{Creations, HeldDelete};
 pub use self::error::{Error, Result};

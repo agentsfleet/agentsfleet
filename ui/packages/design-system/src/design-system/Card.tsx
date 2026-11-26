@@ -101,4 +101,3 @@ export function CardFooter({ className, ref, ...props }: ComponentProps<"div">) 
 }
 
 export { cardVariants };
-export default Card;

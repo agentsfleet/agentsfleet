@@ -210,13 +210,6 @@ impl ActivityFrame<'_> {
         }
     }
 
-    /// Whether the call this frame names, if any, is 1 to
-    /// [`TEXT_MAX_CHARS`] characters: the one bound the frame types declare.
-    #[must_use]
-    pub fn call_id_usable(&self) -> bool {
-        self.validate().is_ok()
-    }
-
     /// Whether a completion's output edges and changes, if any, fit the
     /// bounds a stored trace holds them to. Every other frame carries
     /// neither.

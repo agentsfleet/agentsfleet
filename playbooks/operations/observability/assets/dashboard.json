@@ -173,49 +173,6 @@
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"
       },
-      "description": "Age of the oldest accepted request still waiting, running or parked.",
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 8,
-        "w": 12,
-        "h": 8
-      },
-      "id": 28,
-      "options": {
-        "legend": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "expr": "max(agentsfleet_turn_backlog_oldest_age_seconds)",
-          "legendFormat": "oldest unfinished request",
-          "refId": "A"
-        }
-      ],
-      "title": "Oldest unfinished request",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "__PROMETHEUS_UID__"
-      },
       "fieldConfig": {
         "defaults": {
           "unit": "ops"
@@ -313,49 +270,6 @@
           "sort": "desc"
         }
       }
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "__PROMETHEUS_UID__"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "x": 12,
-        "y": 16,
-        "w": 12,
-        "h": 8
-      },
-      "id": 3,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "targets": [
-        {
-          "expr": "max(agentsfleet_turn_backlog)",
-          "legendFormat": "unfinished requests",
-          "refId": "A"
-        }
-      ],
-      "title": "Unfinished requests",
-      "type": "stat",
-      "description": "Accepted requests still waiting, running or parked."
     },
     {
       "datasource": {

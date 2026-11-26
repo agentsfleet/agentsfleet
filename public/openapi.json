@@ -13550,7 +13550,7 @@
           "Fleets"
         ],
         "summary": "Permanently delete a fleet",
-        "description": "Permanently deletes the fleet, events, runs, approvals, grants, keys, and memory, in any status. A running fleet's live work ends first. This cannot be undone. Archive is a separate operation: set the status to `archived` to keep the history instead. ",
+        "description": "Permanently deletes the fleet, events, runs, approvals, grants, keys, and memory, in any status. A running fleet's live work ends first, and its schedules are removed from Upstash QStash before the fleet goes. This cannot be undone. Archive is a separate operation: set the status to `archived` to keep the history instead. ",
         "operationId": "delete_fleet",
         "parameters": [
           {
@@ -13617,6 +13617,16 @@
           },
           "404": {
             "description": "The resource was not found or is not accessible to you",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A schedule is still registered with the scheduler; repeat the delete",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -14008,7 +14018,7 @@
           "Fleets"
         ],
         "summary": "Read confirmed durable task progress and success criteria",
-        "description": "Returns the accepted objective, immutable success criteria, generation and cumulative limits. The strong ETag identifies the current native resource version.",
+        "description": "Returns the accepted objective, success criteria, generation and cumulative limits. The strong ETag identifies the current native resource version.",
         "operationId": "get_fleet_durable_task",
         "parameters": [
           {
@@ -16480,7 +16490,7 @@
           "Fleets"
         ],
         "summary": "Stream live fleet activity",
-        "description": "Streams fleet activity using Server-Sent Events (SSE). Each message has `id`, `event`, and JSON `data`; `event` matches `data.kind`.\n\nThe first message is `hello`, with `fleet_ids` containing this fleet and empty `counters`. It confirms subscription readiness. No `hello` means the live subscription is unavailable.\n\nActivity includes:\n- `durable_task_changed`: committed `durable_task_id` and `resource_version`. Read the task collection or detail for confirmed progress; also reconcile tasks on `hello` and gap recovery.\n- `turn_admitted`: accepted chat message, with `turn_id`, `actor`, `event_type`, `message`, and `created_at`.\n- `turn_received`: run started, with the same fields; `message` appears for user messages.\n- `run_restarted`: a replacement attempt committed, with `turn_id`, decimal-string `fencing_token`, and `restarted_at`. It is best-effort and may be lost.\n- `turn_complete`: the saved turn without fleet or workspace identifiers, plus `fleet_status` and `pending_approvals`. `final_reply` appears up to 64 KiB; otherwise fetch turn details.\n- `gate_opened` and `gate_resolved`: `gate_id`, `turn_id`, and `pending_approvals`. Requests outside a run use null `turn_id`. Resolutions add `status` and `resolved_by`.\n- `chunk`, `tool_call_started`, `tool_call_progress`, `tool_call_completed`, and `context_progress`: live reply and tool activity. Every attempt output includes a decimal-string `fencing_token`; discard lower attempts and reset provisional output once on a greater attempt. Tool messages include `turn_id` and `name`. Newer runners add a unique `call_id` per call, shared across its messages.\n- `durable_task_decision_started`, `durable_task_decision_completed`, and `durable_task_transfer_progress`: `turn_id` and a `progress` object with operation identity, phase, selected model and bounded object counts. Turn details retain up to 128 steps in `durable_task_activity`; `truncated` marks an incomplete history. These observations never establish task completion or expose private recovery contents.\n- Completed tools from newer runners add `status` (`succeeded`, `failed`, or `interrupted`), the first and last five output lines, and `output_line_count`. These lines are `output_head` and `output_tail`; process calls also include `exit_code`.\n\n`catching_up` reports missed messages through `dropped`; zero means the count is unknown. Reload saved turns after this signal. Identifiers restart at zero per connection; `Last-Event-ID` is ignored. `hello` and `catching_up` use zero without advancing activity identifiers. Heartbeats arrive after 15 idle seconds, with `kind: heartbeat` and no identifier.\n\nAccess is checked again when the account's members change. `access_revoked` sends `data: {\"kind\":\"access_revoked\",\"error_code\":\"UZ-AUTH-001\"}` and closes; do not reconnect. An access check that cannot be answered closes the stream with no frame; recover as after a disconnect. At capacity, 503 `UZ-API-002` includes `Retry-After`. Fetch missed turns before reconnecting.",
+        "description": "Streams fleet activity using Server-Sent Events (SSE). Each message has `id`, `event`, and JSON `data`; `event` matches `data.kind`.\n\nThe first message is `hello`, with `fleet_ids` containing this fleet and empty `counters`. It confirms subscription readiness. No `hello` means the live subscription is unavailable.\n\nActivity includes:\n- `durable_task_changed`: committed `durable_task_id` and `resource_version`. Read the task collection or detail for confirmed progress; also reconcile tasks on `hello` and gap recovery.\n- `turn_admitted`: accepted chat message, with `turn_id`, `actor`, `event_type`, `message`, and `created_at`.\n- `turn_received`: run started, with the same fields; `message` appears for user messages.\n- `run_restarted`: a replacement attempt committed, with `turn_id`, decimal-string `fencing_token`, and `restarted_at`. It is best-effort and may be lost.\n- `turn_complete`: the saved turn without fleet or workspace identifiers, plus `fleet_status` and `pending_approvals`. `final_reply` appears up to 64 KiB; otherwise fetch turn details.\n- `gate_opened` and `gate_resolved`: `gate_id`, `turn_id`, and `pending_approvals`. Requests outside a run use null `turn_id`. Resolutions add `status` and `resolved_by`.\n- `chunk`, `tool_call_started`, `tool_call_progress`, `tool_call_completed`, and `context_progress`: live reply and tool activity. Every attempt output includes a decimal-string `fencing_token`; discard lower attempts and reset provisional output once on a greater attempt. Tool messages include `turn_id` and `name`. Newer runners add a unique `call_id` per call, shared across its messages.\n- `durable_task_decision_started`, `durable_task_decision_completed`, and `durable_task_transfer_progress`: `turn_id` and a `progress` object with operation identity, phase, selected model and bounded object counts. Turn details keep the latest step of each activity, operation and phase in `durable_task_activity`. These observations never establish task completion or expose private recovery contents.\n- Completed tools from newer runners add `status` (`succeeded`, `failed`, or `interrupted`), the first and last five output lines, and `output_line_count`. These lines are `output_head` and `output_tail`; process calls also include `exit_code`.\n\n`catching_up` reports missed messages through `dropped`; zero means the count is unknown. Reload saved turns after this signal. Identifiers restart at zero per connection; `Last-Event-ID` is ignored. `hello` and `catching_up` use zero without advancing activity identifiers. Heartbeats arrive after 15 idle seconds, with `kind: heartbeat` and no identifier.\n\nAccess is checked again when the account's members change. `access_revoked` sends `data: {\"kind\":\"access_revoked\",\"error_code\":\"UZ-AUTH-001\"}` and closes; do not reconnect. An access check that cannot be answered closes the stream with no frame; recover as after a disconnect. At capacity, 503 `UZ-API-002` includes `Retry-After`. Fetch missed turns before reconnecting.",
         "operationId": "stream_fleet_turns",
         "parameters": [
           {
@@ -20777,17 +20787,12 @@
         "required": [
           "revision_id",
           "profile",
-          "intent",
           "goal"
         ],
         "properties": {
           "goal": {
             "$ref": "#/components/schemas/GoalDecisionPolicy",
             "description": "Goal acceptance thresholds reviewed with the profile."
-          },
-          "intent": {
-            "$ref": "#/components/schemas/IntentDecisionPolicy",
-            "description": "Routing acceptance thresholds reviewed with the profile."
           },
           "profile": {
             "$ref": "#/components/schemas/DecisionProfile",
@@ -20916,7 +20921,6 @@
           "accepted_models",
           "capabilities",
           "input_max_bytes",
-          "intent",
           "goal",
           "evaluation_digest",
           "evaluation_source_url",
@@ -20972,10 +20976,6 @@
             "format": "int32",
             "description": "Complete encoded-request ceiling established for the provider.",
             "minimum": 1
-          },
-          "intent": {
-            "$ref": "#/components/schemas/IntentDecisionPolicy",
-            "description": "Intent question and threshold policy."
           },
           "revision": {
             "type": "string",
@@ -21121,7 +21121,6 @@
         "type": "string",
         "description": "Why the native runtime reserved a physical decision call.",
         "enum": [
-          "intent",
           "goal"
         ]
       },
@@ -21971,8 +21970,7 @@
         "type": "object",
         "description": "Retained activity, kept apart from the task's private history.",
         "required": [
-          "items",
-          "truncated"
+          "items"
         ],
         "properties": {
           "items": {
@@ -21981,10 +21979,6 @@
               "$ref": "#/components/schemas/DurableTaskActivityRecord"
             },
             "description": "The newest fact of each operation and stage, in observed order."
-          },
-          "truncated": {
-            "type": "boolean",
-            "description": "Whether earlier stages were omitted when the history was bounded."
           }
         }
       },
@@ -21992,7 +21986,6 @@
         "type": "string",
         "description": "The operation whose progress is being shown.",
         "enum": [
-          "intent",
           "goal",
           "capture",
           "restore"
@@ -24463,47 +24456,6 @@
           "gemini",
           "ollama"
         ]
-      },
-      "IntentDecisionPolicy": {
-        "type": "object",
-        "description": "Reviewed routing-template revision and acceptance thresholds.",
-        "required": [
-          "questions_revision",
-          "intent",
-          "association",
-          "single_request_max_bps",
-          "multiple_request_min_bps"
-        ],
-        "properties": {
-          "association": {
-            "$ref": "#/components/schemas/DecisionThreshold",
-            "description": "Association acceptance before input can change work."
-          },
-          "intent": {
-            "$ref": "#/components/schemas/DecisionThreshold",
-            "description": "Winning route acceptance."
-          },
-          "multiple_request_min_bps": {
-            "type": "integer",
-            "format": "int32",
-            "description": "At or above this Noul value, bounded decomposition is required.",
-            "maximum": 10000,
-            "minimum": 0
-          },
-          "questions_revision": {
-            "type": "string",
-            "description": "Exact native question revision implemented by this runner generation.",
-            "pattern": "^dt-routing-v1$"
-          },
-          "single_request_max_bps": {
-            "type": "integer",
-            "format": "int32",
-            "description": "At or below this Noul value, one request can be handled.",
-            "maximum": 10000,
-            "minimum": 0
-          }
-        },
-        "additionalProperties": false
       },
       "InviteEmailResponse": {
         "type": "object",

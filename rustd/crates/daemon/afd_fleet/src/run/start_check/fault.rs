@@ -122,7 +122,7 @@ mod tests {
     /// total: the billing kinds are private to their crate, and a sample picked
     /// out of a list would need an arm for the list being empty.
     fn fault() -> afd_billing::Error {
-        afd_db::error::invalid_bool_knob("MIGRATE_ON_START").into()
+        afd_db::error::missing_url(afd_db::DbRole::Default).into()
     }
 
     #[test]

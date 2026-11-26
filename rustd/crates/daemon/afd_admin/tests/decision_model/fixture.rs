@@ -69,12 +69,6 @@ pub(super) fn configuration(revision: &str) -> DecisionConfiguration {
             "accepted_models": ["evaluated-fixture-model"],
             "capabilities": {"noul":true,"choice":true,"score":true},
             "input_max_bytes": 24576,
-            "intent": {
-                "questions_revision":"dt-routing-v1",
-                "intent":{"probability_bps":8500,"confidence_bps":7000},
-                "association":{"probability_bps":9500,"confidence_bps":8500},
-                "single_request_max_bps":3000,"multiple_request_min_bps":7000
-            },
             "goal": {
                 "questions_revision":"dt-goal-v1","statement_min_bps":9500,
                 "continue_action":{"probability_bps":8000,"confidence_bps":7000},

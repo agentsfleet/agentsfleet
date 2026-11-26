@@ -128,10 +128,10 @@ jobs:
       - name: Install the seeder's dependencies
         run: bun install --frozen-lockfile
       # The recovery drill checkpoints its workspace into the CI R2 bucket, so
-      # only the e2e shard reads it. After every install, so no install script
-      # runs with the access pair in its environment.
+      # only e2e-a, the shard that runs it, reads it. After every install, so
+      # no install script runs with the access pair in its environment.
       - name: Load the CI R2 bucket from 1Password
-        if: matrix.shard == 'e2e'
+        if: matrix.shard == 'e2e-a'
         uses: 1password/load-secrets-action@70062d7a876d3eb6334754fa26efd2fbd90c32f2 # v5.0.1
         with:
           export-env: true

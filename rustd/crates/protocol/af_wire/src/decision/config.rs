@@ -21,32 +21,6 @@ pub struct DecisionThreshold {
     pub confidence_bps: u16,
 }
 
-/// Reviewed routing-template revision and acceptance thresholds.
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
-#[serde(deny_unknown_fields)]
-#[garde(custom(multiplicity_order))]
-pub struct IntentDecisionPolicy {
-    /// Exact native question revision implemented by this runner generation.
-    #[cfg_attr(feature = "openapi", schema(pattern = "^dt-routing-v1$"))]
-    #[garde(custom(af_validate::exactly("dt-routing-v1")))]
-    pub questions_revision: String,
-    /// Winning route acceptance.
-    #[garde(dive)]
-    pub intent: DecisionThreshold,
-    /// Association acceptance before input can change work.
-    #[garde(dive)]
-    pub association: DecisionThreshold,
-    /// At or below this Noul value, one request can be handled.
-    #[cfg_attr(feature = "openapi", schema(maximum = 10000))]
-    #[garde(range(max = 10000))]
-    pub single_request_max_bps: u16,
-    /// At or above this Noul value, bounded decomposition is required.
-    #[cfg_attr(feature = "openapi", schema(maximum = 10000))]
-    #[garde(range(max = 10000))]
-    pub multiple_request_min_bps: u16,
-}
-
 /// Reviewed goal-template revision and acceptance thresholds.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
@@ -119,9 +93,6 @@ pub struct DecisionModelSettings {
     #[cfg_attr(feature = "openapi", schema(minimum = 1))]
     #[garde(range(min = 1))]
     pub input_max_bytes: u32,
-    /// Intent question and threshold policy.
-    #[garde(dive)]
-    pub intent: IntentDecisionPolicy,
     /// Goal question and threshold policy.
     #[garde(dive)]
     pub goal: GoalDecisionPolicy,
@@ -153,14 +124,4 @@ pub struct DecisionConfiguration {
     /// Immutable reviewed definition, separate from the lifecycle switch.
     #[garde(dive)]
     pub profile: DecisionModelSettings,
-}
-
-fn multiplicity_order<C: ?Sized>(policy: &IntentDecisionPolicy, _context: &C) -> garde::Result {
-    if policy.single_request_max_bps < policy.multiple_request_min_bps {
-        Ok(())
-    } else {
-        Err(garde::Error::new(
-            "single and multiple request thresholds must leave an uncertainty interval",
-        ))
-    }
 }

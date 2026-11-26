@@ -4,8 +4,8 @@ import type { BillingReport } from "@/lib/api/billing_report";
 import { useSearchParams } from "next/navigation";
 import { DashboardPanel, List, ListItem, Time } from "@agentsfleet/design-system";
 import { formatBalance } from "@/lib/money";
-import { BILLING_ALL, BILLING_QUERY, BILLING_SETUP } from "../lib/report-query";
-import { ALL_FLEETS_LABEL, SETUP_LABEL } from "../lib/report-format";
+import { BILLING_ALL, BILLING_QUERY } from "../lib/report-query";
+import { ALL_FLEETS_LABEL } from "../lib/report-format";
 
 const PERCENT_SCALE = 10_000n;
 const PERCENT_DECIMALS = 100;
@@ -13,7 +13,6 @@ const PERCENT_DECIMALS = 100;
 export function BillingDailySpend({ report }: { report: BillingReport }) {
   const selected = useSearchParams().get(BILLING_QUERY.fleet);
   const fleet = !selected || selected === BILLING_ALL ? ALL_FLEETS_LABEL
-    : selected === BILLING_SETUP ? SETUP_LABEL
     : report.filters.fleets.find(item => item.id === selected)?.name ?? selected;
   const largest = report.daily.reduce((maximum, item) => {
     const amount = BigInt(item.totals.charged_nanos);

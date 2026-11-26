@@ -90,8 +90,6 @@ af_observability::closed_set! {
 af_observability::closed_set! {
     /// The native runtime's reason for evaluating evidence.
     DecisionPurpose {
-        /// Interpret the newest input.
-        Intent => "intent",
         /// Assess progress against the accepted objective.
         Goal => "goal",
     }

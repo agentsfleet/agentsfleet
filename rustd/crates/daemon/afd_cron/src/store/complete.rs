@@ -1,6 +1,8 @@
 //! A fenced synchronization result and its history commit together.
 
 use af_core::id::Uuid7;
+use afd_turns::view::activity::Announcement;
+use sqlx::PgConnection;
 
 use super::history::{Fact, Receipt};
 use super::{CONTEXT_WRITE, Schedules};
@@ -75,29 +77,34 @@ impl Schedules {
         outcome: Outcome<'_>,
     ) -> Result<Option<Schedule>> {
         let mut scope = self.history_transaction(&held.fleet_id).await?;
-        let Some(workspace) = scope.workspace.as_ref() else {
+        let Some(workspace) = scope.workspace.clone() else {
             return Ok(None);
         };
-        let update = outcome.update();
-        let row = sqlx::query_as::<_, Schedule>(update.statement)
-            .bind(&held.schedule_id)
-            .bind(held.resource_version)
-            .bind(token)
-            .bind(update.status.as_str())
-            .bind(update.value)
-            .fetch_optional(&mut *scope.transaction)
-            .await
-            .map_err(error::query(CONTEXT_WRITE))?;
-        let Some(row) = row else { return Ok(None) };
-        let announcement = Receipt {
-            schedule: &row,
-            fact: update.fact,
-        }
-        .record_on(&mut scope.transaction, workspace)
-        .await?;
+        let Some((row, announcement)) =
+            complete_on(&mut scope.transaction, &workspace, held, token, outcome).await?
+        else {
+            return Ok(None);
+        };
         self.commit_activity(scope.transaction, announcement)
             .await?;
         Ok(Some(row))
+    }
+
+    /// [`Self::finalize_failed`] on the caller's connection, with the receipt
+    /// that records it; `None` when the fence was lost.
+    ///
+    /// The caller holds the fleet's row and commits, then announces.
+    pub(crate) async fn finalize_failed_on(
+        &self,
+        connection: &mut PgConnection,
+        workspace: &Uuid7,
+        held: &Schedule,
+        token: &Uuid7,
+        reason: &str,
+    ) -> Result<Option<Announcement>> {
+        let completed =
+            complete_on(connection, workspace, held, token, Outcome::Failed(reason)).await?;
+        Ok(completed.map(|(_, announcement)| announcement))
     }
 
     /// Deletes a confirmed removal with its held display snapshot in history.
@@ -107,27 +114,76 @@ impl Schedules {
     /// As [`Self::finalize_synced`].
     pub async fn delete_claimed(&self, held: &Schedule, token: &Uuid7) -> Result<bool> {
         let mut scope = self.history_transaction(&held.fleet_id).await?;
-        let Some(workspace) = scope.workspace.as_ref() else {
+        let Some(workspace) = scope.workspace.clone() else {
             return Ok(false);
         };
+        let Some(announcement) = self
+            .delete_claimed_on(&mut scope.transaction, &workspace, held, token)
+            .await?
+        else {
+            return Ok(false);
+        };
+        self.commit_activity(scope.transaction, announcement)
+            .await?;
+        Ok(true)
+    }
+
+    /// [`Self::delete_claimed`] on the caller's connection, with the receipt
+    /// that records it; `None` when the fence was lost.
+    ///
+    /// The caller holds the fleet's row and commits, then announces.
+    pub(crate) async fn delete_claimed_on(
+        &self,
+        connection: &mut PgConnection,
+        workspace: &Uuid7,
+        held: &Schedule,
+        token: &Uuid7,
+    ) -> Result<Option<Announcement>> {
         let deleted = sqlx::query(sql::DELETE_CLAIMED)
             .bind(&held.schedule_id)
             .bind(held.resource_version)
             .bind(token)
-            .fetch_optional(&mut *scope.transaction)
+            .fetch_optional(&mut *connection)
             .await
             .map_err(error::query(CONTEXT_WRITE))?;
         if deleted.is_none() {
-            return Ok(false);
+            return Ok(None);
         }
         let announcement = Receipt {
             schedule: held,
             fact: Fact::Removed,
         }
-        .record_on(&mut scope.transaction, workspace)
+        .record_on(connection, workspace)
         .await?;
-        self.commit_activity(scope.transaction, announcement)
-            .await?;
-        Ok(true)
+        Ok(Some(announcement))
     }
+}
+
+/// Releases the fence with `outcome` on `connection`, and records the receipt;
+/// `None` when the version or token no longer holds.
+async fn complete_on(
+    connection: &mut PgConnection,
+    workspace: &Uuid7,
+    held: &Schedule,
+    token: &Uuid7,
+    outcome: Outcome<'_>,
+) -> Result<Option<(Schedule, Announcement)>> {
+    let update = outcome.update();
+    let row = sqlx::query_as::<_, Schedule>(update.statement)
+        .bind(&held.schedule_id)
+        .bind(held.resource_version)
+        .bind(token)
+        .bind(update.status.as_str())
+        .bind(update.value)
+        .fetch_optional(&mut *connection)
+        .await
+        .map_err(error::query(CONTEXT_WRITE))?;
+    let Some(row) = row else { return Ok(None) };
+    let announcement = Receipt {
+        schedule: &row,
+        fact: update.fact,
+    }
+    .record_on(connection, workspace)
+    .await?;
+    Ok(Some((row, announcement)))
 }

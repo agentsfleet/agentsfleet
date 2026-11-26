@@ -62,7 +62,7 @@ fn constructors_preserve_each_refusal_status_and_header() {
             StatusCode::UNAUTHORIZED,
         ),
         (
-            Refusal::preconditioned(error_code::AGENTSFLEET_SOURCE_STALE, "stale", "tag"),
+            Refusal::preconditioned(error_code::DURABLE_TASK_PRECONDITION_FAILED, "stale", "tag"),
             StatusCode::PRECONDITION_FAILED,
         ),
         (

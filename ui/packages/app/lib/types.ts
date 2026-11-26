@@ -6,12 +6,6 @@ import type { z } from "zod";
 import type { tenantModelEntrySchema, tenantPlatformDefaultSchema } from "./api/tenant-model-schemas";
 import type { NativeFleetDetail, NativeFleetSummary } from "./api/fleet-detail";
 
-export type ApiError = {
-  error: string;
-  code: string;
-  status: number;
-};
-
 // ── Fleets ──
 
 export type Fleet = NativeFleetSummary;

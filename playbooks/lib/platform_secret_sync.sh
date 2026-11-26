@@ -91,6 +91,15 @@ case "$secret_name" in
       "api_key|typesafe/credential"
     )
     ;;
+  cloudflare-r2)
+    # The task checkpoint bucket's scoped keys. `[checkpoint.storage]` names
+    # this row as its `credential_name`; the reader takes exactly these two
+    # fields (`afd_fleet::durable_task::storage::backend`).
+    field_refs=(
+      "access_key_id|cloudflare-r2/access-key-id"
+      "secret_access_key|cloudflare-r2/secret-access-key"
+    )
+    ;;
   qstash)
     field_refs=(
       "token|qstash/token"

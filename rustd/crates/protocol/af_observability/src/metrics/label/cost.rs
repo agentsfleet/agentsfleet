@@ -23,19 +23,6 @@ closed_set! {
 }
 
 closed_set! {
-    /// Which class of debit a charge was.
-    ///
-    /// One class since every charge became a settlement of usage lines
-    /// through the biller: a renewal's slice and a report's final
-    /// slice settle the same way, and the biller that records the spend cannot
-    /// tell them apart. Kept as a set so a second class has one place to land.
-    ChargeClass {
-        /// Charged when usage lines settled.
-        Settle => "settle",
-    }
-}
-
-closed_set! {
     /// The coarse verdict on the agent-duration histogram.
     ///
     /// Absent on a clean run, and one member otherwise. The granular failure

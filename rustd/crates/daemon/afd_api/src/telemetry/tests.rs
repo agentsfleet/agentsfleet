@@ -69,18 +69,6 @@ fn should_report_the_code_and_not_the_sentence_as_the_reason() {
     );
 }
 
-/// A refusal a plan or a policy raised is `entitlement_rejected`.
-#[test]
-fn should_report_a_boundary_refusal_as_an_entitlement() {
-    for code in [
-        error_code::REPAIR_SPEND_EXHAUSTED,
-        error_code::REPAIR_WRITE_UNAPPROVED,
-    ] {
-        let event = telemetry_of(&refused(code), ACTOR.to_owned(), Some(WORKSPACE.to_owned()));
-        assert_eq!(event.name(), "entitlement_rejected", "{}", code.as_str());
-    }
-}
-
 /// Everything else is `api_error`, carrying the sentence a client was given.
 #[test]
 fn should_report_every_other_refusal_as_an_api_error() {

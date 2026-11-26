@@ -91,8 +91,6 @@ export function Button({
   );
 }
 
-export default Button;
-
 export function buttonClassName(
   variant: ButtonVariant = "default",
   size: ButtonSize = "default",

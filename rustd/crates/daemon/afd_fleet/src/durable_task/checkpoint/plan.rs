@@ -225,7 +225,7 @@ async fn allocate(
         .await
         .map_err(query("persist native checkpoint plan"))?;
     if input.mode == CheckpointMode::Incremental {
-        sqlx::query(include_str!("sql/pages_allocate.sql"))
+        sqlx::query(crate::durable_task::sql::PAGES_ALLOCATE)
             .bind(&id)
             .bind(&pages)
             .execute(&mut *connection)

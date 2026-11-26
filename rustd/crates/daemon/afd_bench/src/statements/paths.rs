@@ -111,10 +111,7 @@ const FRAGMENTS: &[(&str, Path)] = &[
         "WITH event AS ( UPDATE thread.turns SET answer_text",
         Path::Report,
     ),
-    (
-        "SET settled_at = clock_timestamp(), parked_at = NULL",
-        Path::Report,
-    ),
+    ("SET settled_at = clock_timestamp()", Path::Report),
     // The renewal: the host's pre-read and the batch itself.
     (
         "l.cancel_requested_at IS NOT NULL AS cancelled",
@@ -184,10 +181,7 @@ const FRAGMENTS: &[(&str, Path)] = &[
     ),
     ("UPDATE runner.runners SET run_version", Path::Host),
     // The placement choice an assignment reads before it assigns (`choice.sql`).
-    (
-        "SELECT run_version, last_run_type FROM runner.runners",
-        Path::Host,
-    ),
+    ("SELECT run_version FROM runner.runners", Path::Host),
     // Meter.
     (
         "s.fencing_token, s.run_expires_at FROM thread.threads s JOIN thread.runs",

@@ -167,29 +167,13 @@ fn test_a_fixed_clock_floors_what_it_is_given() {
     assert_eq!(clock.now(), at(1));
 }
 
-/// The test clock can step BACKWARD, because a wall clock does.
-///
-/// An operator correcting drift, or an NTP step, moves the wall clock back.
-/// Code that assumes time only increases breaks exactly there, and it can only
-/// be tested if the seam allows the step.
+/// The test clock saturates at the end of the range rather than wrapping.
 #[test]
 #[cfg(feature = "test-util")]
-fn test_a_fixed_clock_can_step_backward() {
+fn test_a_fixed_clock_saturates_stepping_forward() {
     use af_core::clock::FixedClock;
 
-    let clock = FixedClock::at(at(2_000));
-    clock.rewind(Duration::from_millis(1_500));
-    assert_eq!(clock.now(), at(500));
-
-    clock.set(Timestamp::MIN);
-    clock.rewind(Duration::from_millis(1));
-    assert_eq!(
-        clock.now(),
-        whole_millis(Timestamp::MIN),
-        "stepping back past the bound saturates rather than wrapping to the future"
-    );
-
-    clock.set(Timestamp::MAX);
+    let clock = FixedClock::at(Timestamp::MAX);
     clock.advance(Duration::MAX);
     assert_eq!(
         clock.now(),

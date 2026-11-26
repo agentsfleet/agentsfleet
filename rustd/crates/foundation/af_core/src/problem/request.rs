@@ -211,6 +211,13 @@ pub(super) const REQUEST: &[Problem] = &[
         user_message: None,
     },
     Problem {
+        code: error_code::SCHEDULE_STILL_REGISTERED,
+        status: 409,
+        title: "Fleet schedules still registered",
+        hint: "The delete removed what the scheduler let go and kept the fleet. Repeat the delete with the same If-Match tag to finish.",
+        user_message: None,
+    },
+    Problem {
         code: error_code::APPROVAL_NOT_FOUND,
         status: 404,
         title: "Approval not found",

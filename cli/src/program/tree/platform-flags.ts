@@ -26,4 +26,3 @@ export const platformFileFlag = requiredTextFlag("file", "JSON file to read (- r
 export const platformPolicyFlag = requiredTextFlag("policy", "The runner's full settings as a JSON file (- reads stdin)", METAVAR.path);
 export const platformLabelsFlag = requiredTextFlag("labels", "Labels, separated by commas; an empty value clears them", METAVAR.text).pipe(Flag.optional);
 export const platformTokenFlag = requiredTextFlag("token-out", "A new file, readable only by you, to save the runner's token in (shown once)", METAVAR.path);
-export const platformEtagFlag = requiredTextFlag("if-match", "The version tag list or show printed, so you never overwrite a newer change", METAVAR.etag);

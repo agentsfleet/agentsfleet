@@ -24,13 +24,6 @@ pub(in crate::run_loop) fn assignment() -> DecisionAssignment {
             },
             input_max_bytes: 24576,
         },
-        intent: IntentDecisionPolicy {
-            questions_revision: "dt-routing-v1".to_owned(),
-            intent: threshold,
-            association: threshold,
-            single_request_max_bps: 1000,
-            multiple_request_min_bps: 9000,
-        },
         goal: GoalDecisionPolicy {
             questions_revision: "dt-goal-v1".to_owned(),
             statement_min_bps: 9000,

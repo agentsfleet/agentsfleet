@@ -1,4 +1,4 @@
-import { isString } from "../../lib/guards.ts";
+import { isRecord, isString } from "../../lib/guards.ts";
 import { isInstant } from "../../lib/instant.ts";
 
 export interface WorkspaceWireItem {
@@ -20,10 +20,6 @@ export interface WorkspaceCreateResponse {
   readonly tenant_id: string;
   readonly request_id: string;
 }
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === "object" && !Array.isArray(value);
-
 
 const isNonEmptyString = (value: unknown): value is string =>
   isString(value) && value.trim().length > 0;

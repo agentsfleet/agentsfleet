@@ -49,5 +49,3 @@ export function IconAction({
     </TooltipButton>
   );
 }
-
-export default IconAction;

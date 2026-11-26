@@ -55,17 +55,6 @@ pub const RUN_LOST: ErrorCode = ErrorCode::declare("UZ-RUN-011");
 /// has, so an operator tops it up and the next run proceeds.
 pub const RUN_RENEWAL_NO_CREDITS: ErrorCode = ErrorCode::declare("UZ-RUN-012");
 
-/// A renewal sent a body this daemon cannot read.
-///
-/// ANSWERED only for the cumulative totals a runner sent before usage moved to
-/// one line per provider request: a 400 naming the field, and the run does not
-/// renew. A runner speaking that shape can never have its usage recorded, and
-/// its report is refused for the same field, so renewing would only run it
-/// unbilled to a result nobody keeps. Every other unreadable body is LOGGED
-/// under this code rather than answered: the run renews, no line is recorded,
-/// and the runner sends its lines again.
-pub const RUN_RENEW_BODY_MALFORMED: ErrorCode = ErrorCode::declare("UZ-RUN-013");
-
 /// No runner row matches an operator-supplied runner id.
 ///
 /// Unlike [`RUN_INVALID_RUNNER_TOKEN`], the caller has already authenticated on
@@ -179,15 +168,6 @@ pub const AGENTSFLEET_INVALID_CONFIG: ErrorCode = ErrorCode::declare("UZ-AGT-008
 /// layer's 403, which is about the WORKSPACE in the path — see
 /// [`AUTH_FORBIDDEN`]; the two axes are separate and both are checked.
 pub const AGENTSFLEET_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-AGT-009");
-
-/// The fleet's source moved on since the editor read it.
-///
-/// A 412 whose response carries the CURRENT `ETag`, so an editor holding a
-/// stale one can re-read, re-apply and retry without a second round trip to
-/// discover what it should have sent. Raised only when the caller supplied an
-/// `If-Match`: an unconditional write is last-writer-wins by the caller's own
-/// choice, and this code would be answering a question they did not ask.
-pub const AGENTSFLEET_SOURCE_STALE: ErrorCode = ErrorCode::declare("UZ-AGT-014");
 
 /// The fleet will not take new work, so a steer was refused rather than taken.
 ///

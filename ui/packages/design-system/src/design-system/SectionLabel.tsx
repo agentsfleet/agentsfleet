@@ -39,5 +39,3 @@ export function SectionLabel({ className, ref, as: Tag = "h2", variant = "eyebro
     />
   );
 }
-
-export default SectionLabel;

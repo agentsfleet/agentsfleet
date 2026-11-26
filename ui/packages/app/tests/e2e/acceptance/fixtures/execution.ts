@@ -90,7 +90,6 @@ export const VERDICT_KIND = {
   product: "product",
   environment: "environment",
 } as const;
-export type VerdictKind = (typeof VERDICT_KIND)[keyof typeof VERDICT_KIND];
 
 // The legs of the walk, so a failure line names WHERE it broke.
 export const JOURNEY_LEG = {

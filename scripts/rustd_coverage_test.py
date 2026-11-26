@@ -31,7 +31,9 @@ def isolated_env():
     point every git call here at the hook's repository instead of the
     scratch one, and the scratch commits overwrite that repository's index.
     """
-    return {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
+    # GITHUB_STEP_SUMMARY too: run inside Actions, a fixture's table would land on the real run page.
+    return {name: value for name, value in os.environ.items()
+            if not name.startswith("GIT_") and name != "GITHUB_STEP_SUMMARY"}
 
 
 def lcov(records):
@@ -221,6 +223,28 @@ class CommandLine(unittest.TestCase):
         result = self.judge({other: {1: 1}}, "--crate-floor", "guffbolt=most")
         self.assertEqual(result.returncode, judge.EXIT_UNUSABLE)
         self.assertIn("--crate-floor ['guffbolt=most']", result.stderr)
+
+    def test_every_run_prints_coverage_by_folder_in_layer_order(self):
+        daemon = str(self.root / "rustd/crates/daemon/afd_x/src/lib.rs")
+        foundation = str(self.root / "rustd/crates/foundation/af_core/src/lib.rs")
+        harness = str(self.root / "rustd/guffbolt/src/drive/mod.rs")
+        result = self.judge({daemon: {1: 1, 2: 0}, foundation: {1: 1}, harness: {1: 1, 2: 1, 3: 0, 4: 1}})
+        self.assertEqual(result.returncode, 0, result.stdout)
+        rows = [line.split()[-1] for line in result.stdout.splitlines() if line.startswith("    ") and " lines " in line]
+        self.assertEqual(rows, ["foundation", "daemon", "guffbolt"])
+        self.assertIn(" 50.0000%       1 of      2 lines      1 missed  daemon", result.stdout)
+        self.assertIn(" 75.0000%       3 of      4 lines      1 missed  guffbolt", result.stdout)
+
+    def test_the_folder_table_reaches_the_actions_run_summary(self):
+        summary = self.root / "summary.md"
+        daemon = str(self.root / "rustd/crates/daemon/afd_x/src/lib.rs")
+        report = self.root / "lcov-all.info"
+        report.write_text(lcov({daemon: {1: 1, 2: 0}}))
+        command = [sys.executable, str(SCRIPT), "--floor", "0", "--out", str(self.root / "lcov.info"), str(report)]
+        env = dict(isolated_env(), GITHUB_STEP_SUMMARY=str(summary))
+        result = subprocess.run(command, cwd=self.root, capture_output=True, text=True, env=env)
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn("| daemon | 50.0000% | 1 | 2 | 1 |", summary.read_text())
 
     def test_an_e2e_crate_is_named_past_its_layer(self):
         self.assertEqual(judge.crate_of("/w/rustd/crates/e2e/af_e2e/src/lib.rs"), "af_e2e")

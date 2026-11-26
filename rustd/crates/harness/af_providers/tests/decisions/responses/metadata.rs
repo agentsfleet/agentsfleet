@@ -38,7 +38,7 @@ async fn every_protocol_keeps_model_identity_and_unknown_accounting_in_intent_re
                 api,
                 fault,
                 known.then(|| usage(api)),
-                DecisionPurpose::Intent,
+                DecisionPurpose::Goal,
                 reported_model,
             )
             .await;

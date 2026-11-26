@@ -89,9 +89,9 @@ describe("Billing report filters preserve period totals", () => {
     });
 
   it("labels an explicitly scoped report without silently widening it", () => {
-    current.params = new URLSearchParams("fleet=setup&period=today");
+    current.params = new URLSearchParams(`fleet=${BILLING_FLEET}&period=today`);
     view(billingReport({period: "today"}));
-    expect(screen.getByRole("combobox", {name: "Fleet"}).textContent).toBe("Setup chat");
+    expect(screen.getByRole("combobox", {name: "Fleet"}).textContent).toBe("Payment alerts");
     expect(screen.getByRole("combobox", {name: "Period"}).textContent).toBe("Today");
     expect(push).not.toHaveBeenCalled();
   });
@@ -107,13 +107,12 @@ describe("Billing report filters preserve period totals", () => {
     },
   );
 
-  it("filter choices keep a deleted fleet selectable without duplicating private setup", async () => {
+  it("filter choices keep a deleted fleet selectable and skip an unnamed choice", async () => {
     const retained = "01924f4e-0000-7000-8000-00000000c4a9";
     view(billingReport({ filters: { fleets: [{ id: null, name: null }, { id: retained, name: null }] } }));
     const trigger = screen.getByRole("combobox", { name: "Fleet" });
     fireEvent.click(trigger);
     fireEvent.keyDown(trigger, { key: "Enter" });
-    expect(screen.queryByRole("option", { name: "Setup chat" })).toBeNull();
     expect(screen.getAllByRole("option")[0]?.textContent).toBe("All Fleets");
     fireEvent.click(screen.getByRole("option", { name: retained }));
     await waitFor(() => expect(pushedParams().get("fleet")).toBe(retained));

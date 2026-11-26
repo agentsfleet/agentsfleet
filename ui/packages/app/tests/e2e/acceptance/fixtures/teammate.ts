@@ -49,12 +49,6 @@ export function inviteeHandle(invitee: Invitee): ClientHandle {
   return { sessionJwt: invitee.sessionJwt, sessionId: invitee.sessionId };
 }
 
-/** The admin fixture invites `invitee`, who accepts from their own session. */
-export async function joinAdminAccount(invitee: Invitee): Promise<void> {
-  const invite = await clientFor(FIXTURE_KEY.admin).post<InviteRow>(OWNER_INVITES, { email: invitee.email });
-  await clientFor(inviteeHandle(invitee)).post(`${WAITING_INVITES}/${invite.id}/accept`, undefined);
-}
-
 /** The admin fixture removes `email` from its account; the person keeps their own sign-in. */
 export async function revokeMembership(email: string): Promise<void> {
   const owner = clientFor(FIXTURE_KEY.admin);

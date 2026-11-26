@@ -67,6 +67,12 @@ pub fn retire_held() -> Error {
     ErrorKind::RetireHeld.into()
 }
 
+/// Reports a fleet's delete that found a schedule still registered upstream.
+#[must_use]
+pub(crate) fn release_held() -> Error {
+    ErrorKind::ReleaseHeld.into()
+}
+
 /// Refuses a fire on a deployment that holds no signing key.
 pub(crate) fn keys_missing() -> Error {
     ErrorKind::KeysMissing.into()
@@ -131,7 +137,7 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
     reason = "a sample builder whose own preconditions fail should stop the suite"
 )]
 fn wrapping_kinds() -> Vec<(&'static str, Error)> {
-    let datastore = afd_db::error::invalid_bool_knob("MIGRATE_ON_START");
+    let datastore = afd_db::error::missing_url(afd_db::DbRole::Default);
     // By label, not by position — see `turn_sample`. Taking `.next()`
     // here would tie this sample set to the order a different crate lists its
     // kinds in, and the two needed sit on opposite sides of
@@ -168,9 +174,7 @@ fn wrapping_kinds() -> Vec<(&'static str, Error)> {
         (
             "bag unreadable",
             ErrorKind::BagUnreadable {
-                source: afd_vault::Error::from(afd_db::error::invalid_bool_knob(
-                    "MIGRATE_ON_START",
-                )),
+                source: afd_vault::Error::from(afd_db::error::missing_url(afd_db::DbRole::Default)),
             }
             .into(),
         ),
@@ -250,6 +254,7 @@ fn raised_kinds() -> Vec<(&'static str, Error)> {
             row_unreadable(super::COLUMN_DESIRED_STATUS),
         ),
         ("retire held", retire_held()),
+        ("release held", release_held()),
         ("keys missing", keys_missing()),
         ("token malformed", token_malformed()),
         (

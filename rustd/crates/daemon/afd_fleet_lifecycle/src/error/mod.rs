@@ -66,7 +66,20 @@ pub(crate) enum ErrorKind {
 
     #[error("no fleet with that id lives in this workspace")]
     NotFound,
+
+    /// The purge found a schedule still on the fleet, so the scheduler may
+    /// still hold its registration.
+    ///
+    /// Refused rather than cascaded: a registration whose row is gone keeps
+    /// firing at a fleet nobody can find. The caller removes the fleet's
+    /// schedules upstream first; a row here is one it could not remove, or
+    /// one written since, and a repeated delete removes it.
+    #[error("the fleet still holds a schedule the scheduler may have registered")]
+    SchedulesRegistered,
 }
+
+/// The state a refused purge names: the fleet's delete stopped part way.
+const STATE_DELETING: &str = "deleting";
 
 impl Error {
     /// The code and the sentence, decided together — see the module note.
@@ -83,6 +96,10 @@ impl Error {
                 (error_code::INTERNAL_DB_QUERY, detail::DATABASE_ERROR)
             }
             ErrorKind::NotFound => (error_code::AGENTSFLEET_NOT_FOUND, detail::NOT_FOUND),
+            ErrorKind::SchedulesRegistered => (
+                error_code::SCHEDULE_STILL_REGISTERED,
+                detail::SCHEDULES_REGISTERED,
+            ),
         }
     }
 
@@ -111,7 +128,22 @@ impl Error {
         // decides. `answer()` above is exhaustive for the same reason.
         match &self.inner.kind {
             ErrorKind::Datastore { .. } => true,
-            ErrorKind::Query { .. } | ErrorKind::RowMalformed { .. } | ErrorKind::NotFound => false,
+            ErrorKind::Query { .. }
+            | ErrorKind::RowMalformed { .. }
+            | ErrorKind::NotFound
+            | ErrorKind::SchedulesRegistered => false,
+        }
+    }
+
+    /// The bounded state a conflict names, for the refusals that are one.
+    #[must_use]
+    pub const fn current_state(&self) -> Option<&'static str> {
+        match self.kind() {
+            ErrorKind::SchedulesRegistered => Some(STATE_DELETING),
+            ErrorKind::Datastore { .. }
+            | ErrorKind::Query { .. }
+            | ErrorKind::RowMalformed { .. }
+            | ErrorKind::NotFound => None,
         }
     }
 }

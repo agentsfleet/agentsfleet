@@ -2,8 +2,8 @@
 #![expect(clippy::expect_used, reason = "integration preconditions fail loudly")]
 
 use crate::e2e::Scenario;
+use crate::e2e_clock::RUN_TTL;
 use af_core::timing::STREAM_ANSWER_TIMEOUT;
-use afd_runner::timing::RUN_TTL;
 use afr_agent::scripted::{ScriptedEngine, Step};
 use afr_tools::ENGINE_STOP_GRACE;
 use guffbolt::Usage;

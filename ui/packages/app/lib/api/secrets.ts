@@ -48,29 +48,6 @@ export type Secret =
     } & SecretBase)
   | ({ kind: typeof SECRET_KIND.custom_secret } & SecretBase);
 
-export type ProviderKeySecret = Extract<Secret, { kind: typeof SECRET_KIND.provider_key }>;
-export type CustomEndpointSecret = Extract<
-  Secret,
-  { kind: typeof SECRET_KIND.custom_endpoint }
->;
-export type CustomSecret = Extract<Secret, { kind: typeof SECRET_KIND.custom_secret }>;
-
-/**
- * The decrypted secret body the vault stores (never returned on read). The
- * shape is open (`[key: string]: unknown`) because fleet tools reference
- * arbitrary fields by name, but the self-managed model-provider fields are
- * typed so the own-key + custom-endpoint write paths can't drift: `provider` +
- * optional `base_url` (required iff `provider === OPENAI_COMPATIBLE_PROVIDER`,
- * https + SSRF-validated server-side) alongside `api_key` / `model`.
- */
-export interface SecretData {
-  provider?: string;
-  api_key?: string;
-  model?: string;
-  base_url?: string;
-  [key: string]: unknown;
-}
-
 export interface SecretListResponse {
   secrets: Secret[];
 }

@@ -22,12 +22,9 @@ export const isNumber = (value: unknown): value is number =>
   typeof value === TYPEOF.number;
 
 /**
- * A non-null object, which is what every caller that wrote
- * `value !== null && typeof value === "object"` meant.
- *
- * An array satisfies this, exactly as the hand-written checks did — callers
- * that need to exclude one reach for `Array.isArray` alongside it rather than
- * inheriting a narrower guard they did not ask for.
+ * A non-null object that is not an array: a JSON object whose fields a
+ * caller reads by name. An array would pass a bare `typeof` check and then
+ * answer every named field with `undefined`.
  */
 export const isRecord = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === TYPEOF.object;
+  value !== null && typeof value === TYPEOF.object && !Array.isArray(value);

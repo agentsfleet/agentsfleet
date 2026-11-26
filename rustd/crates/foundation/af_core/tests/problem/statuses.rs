@@ -42,21 +42,6 @@ fn test_operation_conflict_code_registered() {
     assert!(REGISTRY.contains(&error_code::AGENTSFLEET_OPERATION_CONFLICT));
 }
 
-/// A renewal refused for the retired cumulative shape answers 400, and its
-/// hint names the field the runner should send instead.
-///
-/// The status is the claim: the runner ends a run on any 4xx, and this code
-/// is answered only for a body whose usage can never be recorded.
-#[test]
-fn test_renew_body_malformed_code_registered() {
-    let problem = Problem::of(error_code::RUN_RENEW_BODY_MALFORMED);
-    // pin test: literal is the contract
-    assert_eq!(problem.code().as_str(), "UZ-RUN-013");
-    assert_eq!(problem.status(), 400);
-    assert_eq!(problem.title(), "Renew body malformed");
-    assert!(problem.hint().contains("`requests`"), "{}", problem.hint());
-}
-
 #[test]
 fn durable_task_preconditions_are_distinct_from_lifecycle_and_allowance_refusals() {
     for (code, status) in [
@@ -68,4 +53,20 @@ fn durable_task_preconditions_are_distinct_from_lifecycle_and_allowance_refusals
         assert_eq!(Problem::of(code).status(), status);
         assert!(REGISTRY.contains(&code));
     }
+}
+
+/// A fleet's delete that kept a registered schedule is a conflict to repeat,
+/// with its own code: a client told `UZ-SCHED-006` would retry one schedule's
+/// edit, where this one repeats the whole delete.
+#[test]
+fn a_delete_kept_by_a_registered_schedule_is_its_own_conflict() {
+    let problem = Problem::of(error_code::SCHEDULE_STILL_REGISTERED);
+
+    assert_eq!(problem.status(), 409);
+    assert_eq!(problem.title(), "Fleet schedules still registered");
+    assert_ne!(
+        error_code::SCHEDULE_STILL_REGISTERED,
+        error_code::SCHEDULE_SYNCING
+    );
+    assert!(REGISTRY.contains(&error_code::SCHEDULE_STILL_REGISTERED));
 }

@@ -14,7 +14,6 @@ fn a_caller_refusal_preserves_its_sentence_and_is_not_an_outage() {
     assert_eq!(failure.detail(), "approval mode is not supported");
     assert!(failure.is_rejected());
     assert!(!failure.is_datastore_unavailable());
-    assert!(!failure.is_config_permanent());
     assert!(failure.source().is_none());
 }
 
@@ -80,6 +79,6 @@ fn a_credential_failure_is_classed_by_the_credential_plane() -> Result<(), &'sta
         .ok_or("database test utility has no outage kind")?;
     let failure = Error::from(afd_credential::Error::from(outage));
 
-    assert!(!failure.is_config_permanent());
+    assert!(failure.is_datastore_unavailable());
     Ok(())
 }

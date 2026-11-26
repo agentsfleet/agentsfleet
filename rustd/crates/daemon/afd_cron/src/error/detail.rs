@@ -43,6 +43,11 @@ pub const UPSTREAM_UNAVAILABLE: &str =
 pub const RETIRE_HELD: &str = "The schedule ran, and is being synchronised, so it is not yet \
      removed. Repeat the request in a moment to finish removing it.";
 
+/// What a caller is told when a fleet's delete stopped because one of its
+/// schedules is still registered with the external scheduler: the one
+/// sentence the purge answers too.
+pub const RELEASE_HELD: &str = af_core::error::DETAIL_SCHEDULES_REGISTERED;
+
 /// What a caller is told when a schedule fire did not prove it came from the
 /// external scheduler.
 ///

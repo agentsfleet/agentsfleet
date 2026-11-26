@@ -73,22 +73,6 @@ export const exhaustedBilling: BillingSnapshot = {
   is_exhausted: true,
   exhausted_at: "1970-01-01T00:00:00.001Z",
 };
-export const SAMPLE_TEMPLATES = [
-  {
-    id: "github-pr-reviewer",
-    name: "GitHub PR reviewer",
-    description: "Reviews pull requests.",
-    visibility: "platform",
-    source_ref: "platform/github-pr-reviewer",
-    requirements: {
-      credentials: ["github"],
-      tools: [],
-      network_hosts: [],
-      trigger_present: true,
-    },
-    required_credentials_reasons: { github: "review your pull requests" },
-  },
-];
 
 // Detail routes share the native saved-fleet shape, with per-test overrides.
 export function detailBody(over: Record<string, unknown> = {}) {

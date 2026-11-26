@@ -106,7 +106,9 @@ ISO-3 costs wall time, so prefer a private database or scoped labels where a tes
 | Rust | `rustd/crates/`, `rustd/guffbolt/`, `rustd/guffbolt-ai/` | 98 percent, project and patch | `scripts/rustd_coverage.py`, with `RUSTD_COVERAGE_FLOOR` in `make/test-integration-rustd.mk` |
 | TypeScript | `app`, `website`, `cli` | 100 percent, project and patch | Codecov, threshold 0 |
 
-The Rust lane measures the unit and live-datastore tiers together, in seven shards: `foundation`, `harness`, `runner`, `daemon-api`, `daemon`, `e2e` and `guffbolt`.
+The Rust lane measures the unit and live-datastore tiers together, in eight shards: `foundation`, `harness`, `runner`, `daemon-api`, `daemon`, `e2e-a`, `e2e-b` and `guffbolt`.
+`e2e-a` and `e2e-b` split `af_e2e` by test name: `e2e-a` runs the outage and recovery drills, and `e2e-b` skips them and runs the rest.
+
 Each shard resets its lane, runs with `--include-ignored` and writes `rustd/lcov-<shard>.info`; CI runs them in parallel.
 `make test-coverage-rustd-merge` merges the shards and the kernel lane's report, then grades the floor once over the union.
 

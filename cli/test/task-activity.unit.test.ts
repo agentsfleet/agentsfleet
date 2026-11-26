@@ -60,12 +60,12 @@ test("replayed decisions and recovery steps remain bounded public observations",
   const item = {kind: "durable_task_decision_completed", progress: {activity_id: "019f0000-0000-7000-8000-000000000001",
     operation: "goal", phase: "unavailable", provider: "openai", model: "selected-model", completed: 0, total: null}};
   expect(printer.frame(item.kind, item)).toBe(true);
-  printer.history({items: [item], truncated: true});
-  printer.history({items: [item], truncated: true});
-  expect(lines).toEqual(["Assessment unavailable · goal · openai / selected-model", "Earlier progress stages are outside the retained activity window."]);
+  printer.history({items: [item]});
+  printer.history({items: [item]});
+  expect(lines).toEqual(["Assessment unavailable · goal · openai / selected-model"]);
   expect(printer.frame("unknown", {})).toBe(false);
   expect(printer.frame(item.kind, {progress: {...item.progress, completed: -1}})).toBe(true);
-  expect(lines).toHaveLength(2);
+  expect(lines).toHaveLength(1);
 });
 
 test("command output preserves failures, exit codes and bounded terminal-safe previews", () => {

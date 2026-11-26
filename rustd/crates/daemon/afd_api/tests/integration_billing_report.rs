@@ -39,7 +39,7 @@ SELECT id, $5, id, 0, 'model', $2, $3, $9, $10, message, id, $4, $11, $6,
 #[ignore = "requires live Postgres: make test-integration-rustd"]
 async fn report_returns_exact_full_totals_without_private_content() {
     let members = Members::create().await;
-    seed(&members, &members.john, 4, 17).await;
+    let seeded = seed(&members, &members.john, 4, 17).await;
     seed(&members, &members.stranger, 3, 999).await;
     let response = get(&members, &members.john, REPORT).await;
     assert_eq!(response.status(), StatusCode::OK);
@@ -64,15 +64,13 @@ async fn report_returns_exact_full_totals_without_private_content() {
     // No line here is a runtime slice, so no run is counted.
     assert_eq!(totals.get("activity_count"), Some(&json!(0)));
     assert!(report.get("activities").is_none(), "{report}");
-    let unattributed = report
+    let fleet = report
         .pointer("/spending/by_fleet/0")
-        .expect("the group of lines no fleet is named on");
-    assert_eq!(unattributed.get("key"), Some(&Value::Null));
-    assert_eq!(unattributed.get("models"), Some(&json!([MODEL])));
-    assert_eq!(
-        unattributed.pointer("/totals/activity_count"),
-        Some(&json!(0))
-    );
+        .expect("the group of the seeded fleet's lines");
+    assert_eq!(fleet.get("key"), Some(&json!(seeded.as_str())));
+    assert_eq!(fleet.get("label"), Some(&json!(SEEDED_FLEET)));
+    assert_eq!(fleet.get("models"), Some(&json!([MODEL])));
+    assert_eq!(fleet.pointer("/totals/activity_count"), Some(&json!(0)));
     let model = report
         .pointer("/spending/by_model/0")
         .expect("the model group");
@@ -114,7 +112,7 @@ async fn an_empty_report_has_exact_zero_totals() {
 #[ignore = "requires live Postgres: make test-integration-rustd"]
 async fn equal_spending_uses_stable_fleet_and_model_ordering() {
     let members = Members::create().await;
-    seed(&members, &members.john, 2, 17).await;
+    let seeded = seed(&members, &members.john, 2, 17).await;
     // The second attribution bucket is written as such: a line joins its
     // rollup row as it is logged, so its attribution is fixed then.
     seed_as(
@@ -123,7 +121,7 @@ async fn equal_spending_uses_stable_fleet_and_model_ordering() {
         Lines {
             count: 2,
             money: 17,
-            fleet: Some((&members.fleet, "Fleet")),
+            fleet: (&members.fleet, "Fleet"),
             model: "second-report-model",
         },
     )
@@ -141,15 +139,20 @@ async fn equal_spending_uses_stable_fleet_and_model_ordering() {
             assert_eq!(bucket.pointer("/totals/charged_nanos"), Some(&json!("34")));
         }
     }
-    assert_eq!(body.pointer("/spending/by_fleet/0/key"), Some(&Value::Null));
-    assert_eq!(
-        body.pointer("/spending/by_fleet/1/key"),
-        Some(&json!(members.fleet.as_str()))
-    );
-    assert_eq!(
-        body.pointer("/spending/by_fleet/1/label"),
-        Some(&json!("Fleet"))
-    );
+    let mut fleets: Vec<(Value, Value)> = body
+        .pointer("/spending/by_fleet")
+        .and_then(Value::as_array)
+        .expect("fleet buckets")
+        .iter()
+        .map(|bucket| (bucket["key"].clone(), bucket["label"].clone()))
+        .collect();
+    fleets.sort_by_key(|(key, _)| key.to_string());
+    let mut expected = vec![
+        (json!(seeded.as_str()), json!(SEEDED_FLEET)),
+        (json!(members.fleet.as_str()), json!("Fleet")),
+    ];
+    expected.sort_by_key(|(key, _)| key.to_string());
+    assert_eq!(fleets, expected);
     assert_eq!(
         body.pointer("/spending/by_model/0/key"),
         Some(&json!(MODEL))
@@ -159,7 +162,17 @@ async fn equal_spending_uses_stable_fleet_and_model_ordering() {
         Some(&json!("second-report-model"))
     );
     assert_eq!(body.pointer("/filters/models"), None);
-    assert_eq!(body.pointer("/filters/fleets/0/id"), Some(&Value::Null));
+    let choices: Vec<&Value> = body
+        .pointer("/filters/fleets")
+        .and_then(Value::as_array)
+        .expect("fleet choices")
+        .iter()
+        .map(|choice| &choice["id"])
+        .collect();
+    assert!(
+        choices.contains(&&json!(seeded.as_str())),
+        "the seeded fleet is a choice: {choices:?}"
+    );
     assert_ledger(&members, &members.john, (4, 68)).await;
     members.cleanup().await;
 }
@@ -168,7 +181,7 @@ async fn equal_spending_uses_stable_fleet_and_model_ordering() {
 #[ignore = "requires live Postgres: make test-integration-rustd"]
 async fn served_daily_report_includes_zero_days_and_complete_models() {
     let members = Members::create().await;
-    seed(&members, &members.john, 3, 17).await;
+    let _seeded = seed(&members, &members.john, 3, 17).await;
     let path = format!("{REPORT}?period=week");
     let body = harness::json_body(get(&members, &members.john, &path).await).await;
     assert_week_projection(&body);
@@ -252,20 +265,26 @@ fn now() -> Timestamp {
 struct Lines<'a> {
     count: usize,
     money: i64,
-    fleet: Option<(&'a Uuid7, &'a str)>,
+    fleet: (&'a Uuid7, &'a str),
     model: &'a str,
 }
 
-/// Logs `count` one-line runs for `person`, each answering a
-/// message of its own and naming no fleet; logging charges them.
-async fn seed(members: &Members, person: &Person, count: usize, money: i64) {
+/// The name the lines [`seed`] logs carry for their fleet.
+const SEEDED_FLEET: &str = "Support triage";
+
+/// Logs `count` one-line runs for `person`, each answering a message of its
+/// own, attributed to a fleet of their own, whose id it answers; logging
+/// charges them. A line's fleet is opaque, so the fleet needs no row.
+async fn seed(members: &Members, person: &Person, count: usize, money: i64) -> Uuid7 {
+    let fleet = mint_id();
     let lines = Lines {
         count,
         money,
-        fleet: None,
+        fleet: (&fleet, SEEDED_FLEET),
         model: MODEL,
     };
     seed_as(members, person, lines).await;
+    fleet
 }
 
 /// Logs `lines` for `person`, as [`seed`] does with their attribution.
@@ -281,8 +300,8 @@ async fn seed_as(members: &Members, person: &Person, lines: Lines<'_>) {
         .bind(posture::PLATFORM)
         .bind(lines.money)
         .bind(&messages)
-        .bind(lines.fleet.map(|(fleet, _)| fleet))
-        .bind(lines.fleet.map(|(_, name)| name))
+        .bind(lines.fleet.0)
+        .bind(lines.fleet.1)
         .bind(lines.model)
         .execute(&mut *members.database.acquire().await.expect("a connection"))
         .await

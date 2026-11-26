@@ -6,16 +6,25 @@
 
 use std::time::Duration;
 
-use super::{
-    Error, ErrorKind, acquire_stalled, classify_acquire, invalid_bool_knob, query,
-    unreachable_datastore,
-};
+use super::{Error, ErrorKind, acquire_stalled, classify_acquire, query, unreachable_datastore};
 use crate::config::{DbRole, PoolOverrides};
 
 /// A slot the samples name: the first schema slot.
 const SAMPLE_SLOT: i64 = 1000;
 /// A slot no binary knows, for the schema-ahead sample.
 const SAMPLE_UNKNOWN_SLOT: i64 = 9999;
+
+/// A configuration refusal: `role`'s URL knob is unset.
+///
+/// The one door another crate's error samples wrap an `afd_db` failure
+/// through, since every kind here is private: a refusal with no cause, whose
+/// code is the datastore's.
+#[must_use]
+pub fn missing_url(role: DbRole) -> Error {
+    Error::new(ErrorKind::MissingDatabaseUrl {
+        knob: role.url_knob(),
+    })
+}
 
 /// One error of every kind, for tests that walk the whole surface.
 ///
@@ -66,7 +75,6 @@ fn configuration() -> Vec<(&'static str, Error)> {
                 source: std::io::Error::from(std::io::ErrorKind::NotFound),
             }),
         ),
-        ("invalid bool knob", invalid_bool_knob("MIGRATE_ON_START")),
     ]
 }
 

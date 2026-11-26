@@ -103,7 +103,7 @@ async fn clear_durable_task_binding(case: &Case) {
 async fn waiting_durable_task_bound(case: &Case) -> i64 {
     sqlx::query_scalar(
         "SELECT count(*) FROM thread.turns a WHERE a.thread_id = $1 \
-         AND a.durable_task_id IS NOT NULL AND a.parked_at IS NULL AND a.settled_at IS NULL \
+         AND a.durable_task_id IS NOT NULL AND a.settled_at IS NULL \
          AND a.sequence > (SELECT sequence FROM thread.turns WHERE id = $2)",
     )
     .bind(&case.scope.fleet_id)

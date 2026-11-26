@@ -2,7 +2,7 @@
 //! retained overage. The payer's balance is the only other ceiling, and the
 //! funding check reads it (`fund.rs`).
 
-use af_wire::{decision::DecisionPurpose, durable_task::DurableTaskContext};
+use af_wire::durable_task::DurableTaskContext;
 use sqlx::PgConnection;
 
 use super::{context::AssessedContext, sql};
@@ -22,11 +22,8 @@ pub(super) async fn check_on(
     task: Option<&DurableTaskSnapshot>,
 ) -> Result<()> {
     paid_ready(connection, current, context).await?;
-    if context.assessment.purpose() == DecisionPurpose::Goal {
-        let task = &task.ok_or(DurableTaskRefusal::InvalidTarget)?.context;
-        goal(task)?;
-    }
-    Ok(())
+    let task = &task.ok_or(DurableTaskRefusal::InvalidTarget)?.context;
+    goal(task)
 }
 
 fn goal(task: &DurableTaskContext<'_>) -> Result<()> {
@@ -44,10 +41,7 @@ async fn paid_ready(
     current: &RunRow,
     context: &AssessedContext,
 ) -> Result<()> {
-    let task = context
-        .execution
-        .as_ref()
-        .filter(|_task| context.assessment.purpose() == DecisionPurpose::Goal);
+    let task = context.execution.as_ref();
     let overage: bool = sqlx::query_scalar(sql::OVERAGE)
         .bind(&current.run_id)
         .bind(&context.source_turn_id)

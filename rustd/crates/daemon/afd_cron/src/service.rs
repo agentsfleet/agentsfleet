@@ -33,14 +33,16 @@
 //! races; per-revision upstream ids are what close it.
 
 use af_core::id::Uuid7;
+use afd_turns::view::activity::Announcement;
+use jiff::Timestamp;
 
-use crate::error::Result;
+use crate::error::{self, Result};
 use crate::model::{DesiredStatus, Schedule};
 use std::sync::Arc;
 
 use crate::qstash::Attempts;
 use crate::scheduler::Scheduler;
-use crate::store::Schedules as Store;
+use crate::store::{Change, Schedules as Store};
 use crate::upstream::upstream_id;
 
 /// What one reconcile did.
@@ -59,6 +61,41 @@ pub enum Reconciled {
     Superseded,
     /// The schedule was `deleting`, the scheduler agreed, and the row is gone.
     Removed,
+}
+
+/// What a fleet's release wrote on its caller's transaction.
+///
+/// The receipts are announced only after the caller commits, and the caller
+/// commits whether or not a schedule is still registered: each removal that
+/// landed upstream must lose its row, or the row would claim a registration
+/// the scheduler no longer holds.
+#[derive(Debug, Default)]
+#[must_use = "a release that left a schedule registered stops the fleet's delete"]
+pub struct Released {
+    /// The schedule receipts written on the caller's transaction.
+    announcement: Announcement,
+    /// Whether any schedule is still registered upstream.
+    held: bool,
+}
+
+impl Released {
+    /// Refuses a fleet's delete while any of its schedules is still
+    /// registered.
+    ///
+    /// # Errors
+    /// `UZ-SCHED-012` when a schedule is still registered, so the fleet stays
+    /// and the delete is repeated.
+    pub fn registered(&self) -> Result<()> {
+        if self.held {
+            return Err(error::release_held());
+        }
+        Ok(())
+    }
+
+    /// The receipts to announce once the caller's transaction commits.
+    pub fn into_announcement(self) -> Announcement {
+        self.announcement
+    }
 }
 
 /// The store and the scheduler, reconciled against each other.
@@ -201,6 +238,130 @@ impl Schedules {
                 Ok(recorded.map_or(Reconciled::Superseded, Reconciled::Failed))
             }
         }
+    }
+
+    /// Removes every schedule of `fleet` upstream, then its row, on the
+    /// caller's transaction, ahead of the fleet's own delete.
+    ///
+    /// The caller holds the fleet's row `FOR UPDATE` on `connection`, so no
+    /// schedule is written, claimed or finalized beside this one, and a fleet
+    /// change waits until the caller commits. Each schedule takes the path a
+    /// single delete takes: claimed as `deleting`, removed upstream, and its
+    /// row deleted only once the scheduler agrees.
+    ///
+    /// Every scheduler call is sent once ([`Attempts::Once`]), and none starts
+    /// or runs past `deadline`: the fleet's row stays held while they run, and
+    /// the repeated delete is the retry. A schedule a syncer claimed before the
+    /// lock, one the scheduler would not remove, and one the deadline cut off
+    /// stay registered, and the rest are still removed. The caller commits
+    /// what was removed either way, and announces [`Released`]'s receipts.
+    /// A fleet outside `workspace` releases nothing.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer and a row this build cannot
+    /// read; the caller's transaction must roll back with it.
+    pub async fn release_fleet_on(
+        &self,
+        connection: &mut sqlx::PgConnection,
+        workspace: &Uuid7,
+        fleet: &Uuid7,
+        now: Timestamp,
+        deadline: tokio::time::Instant,
+    ) -> Result<Released> {
+        let mut released = Released::default();
+        // A fleet outside `workspace` has nothing this caller may release.
+        if !Store::holds_fleet_on(connection, workspace, fleet).await? {
+            return Ok(released);
+        }
+        for schedule in Store::list_on(connection, fleet).await? {
+            let removed = self
+                .release_one(
+                    connection,
+                    workspace,
+                    &schedule,
+                    now,
+                    deadline,
+                    &mut released,
+                )
+                .await?;
+            released.held |= !removed;
+        }
+        Ok(released)
+    }
+
+    /// Removes one schedule of a fleet being deleted, adding the receipts it
+    /// writes on `connection` to `released`; whether it is gone.
+    async fn release_one(
+        &self,
+        connection: &mut sqlx::PgConnection,
+        workspace: &Uuid7,
+        schedule: &Schedule,
+        now: Timestamp,
+        deadline: tokio::time::Instant,
+        released: &mut Released,
+    ) -> Result<bool> {
+        use af_observability::metrics::label::scheduler::SyncOutcome;
+        if tokio::time::Instant::now() >= deadline {
+            return Ok(false);
+        }
+        let token = self.store.mint(now)?;
+        let deleting = Change {
+            desired_status: Some(DesiredStatus::Deleting),
+            ..Change::default()
+        };
+        // Not claimed: a syncer that claimed it before the fleet was locked
+        // still holds its fence.
+        let Some((claimed, announcement)) = self
+            .store
+            .claim_on(
+                connection,
+                workspace,
+                &schedule.fleet_id,
+                &schedule.schedule_id,
+                deleting,
+                &token,
+            )
+            .await?
+        else {
+            return Ok(false);
+        };
+        released.announcement.append(announcement);
+        let removal = self.unregister(&claimed, Attempts::Once);
+        // The fence was taken on this transaction under the fleet's lock, so
+        // neither write below can find it lost; `None` would record nothing.
+        let receipt = match tokio::time::timeout_at(deadline, removal).await {
+            Ok(Ok(())) => {
+                let removed = self
+                    .store
+                    .delete_claimed_on(connection, workspace, &claimed, &token)
+                    .await?;
+                af_observability::producers::scheduler::synced(SyncOutcome::Removed);
+                released.announcement.append(removed.unwrap_or_default());
+                return Ok(true);
+            }
+            Ok(Err(refused)) => {
+                self.store
+                    .finalize_failed_on(connection, workspace, &claimed, &token, refused.detail())
+                    .await?
+            }
+            // Cut off at the deadline, the removal may or may not have
+            // landed; the repeated delete removes it again, and a schedule
+            // already gone answers success.
+            Err(_elapsed) => {
+                self.store
+                    .finalize_failed_on(
+                        connection,
+                        workspace,
+                        &claimed,
+                        &token,
+                        error::detail::UPSTREAM_UNAVAILABLE,
+                    )
+                    .await?
+            }
+        };
+        af_observability::producers::scheduler::synced(SyncOutcome::Failed);
+        released.announcement.append(receipt.unwrap_or_default());
+        Ok(false)
     }
 
     /// Removes `held`'s registration upstream, under the id derived from it.

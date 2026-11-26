@@ -70,10 +70,6 @@ export type ToolBody =
   | { kind: typeof TOOL_BODY.CHANGES; changes: readonly FileChange[] }
   | { kind: typeof TOOL_BODY.PLAN; explanation: string | null; steps: readonly PlanStep[] };
 
-/** The member of `ToolBody` each kind names, so a table keyed by kind can
- * type its rows by the body they draw. */
-export type ToolBodyOf<K extends ToolBodyKind> = { [B in ToolBody as B["kind"]]: B }[K];
-
 export type Verbs = { readonly running: string; readonly done: string };
 
 export type ToolCopy = {

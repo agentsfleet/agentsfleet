@@ -11,6 +11,8 @@ mod patch;
 mod read;
 mod sql;
 
+pub use delete::HeldDelete;
+
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use afd_approval::IntegrationGrants;

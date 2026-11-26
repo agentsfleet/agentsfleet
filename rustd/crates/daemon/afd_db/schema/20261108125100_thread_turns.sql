@@ -37,7 +37,6 @@ CREATE TABLE thread.turns (
     input_fence         BIGINT,
     -- When the fleet's event opened: the history and the activity counter read only opened turns.
     opened_at         TIMESTAMPTZ(3),
-    parked_at         TIMESTAMPTZ(3),
     interpreted_at    TIMESTAMPTZ(3),
     -- A durable task source's accepted plan and its digest, written once with the plan's items;
     -- the message and the sender it was read from stay this turn's own `request_json`, `actor`
@@ -52,7 +51,6 @@ CREATE TABLE thread.turns (
     -- Public task progress, kept apart from private recovery so it survives reconnects.
     durable_task_activity            JSONB   NOT NULL DEFAULT jsonb_build_array(),
     durable_task_activity_sequence   BIGINT  NOT NULL DEFAULT 0,
-    durable_task_activity_truncated  BOOLEAN NOT NULL DEFAULT false,
     -- Private recovery: the ready checkpoint a replacement run restores, and the generation the
     -- next checkpoint takes. NULL `next_checkpoint_generation` means the turn never checkpointed.
     -- Replacement runs share the turn, so they share this head.

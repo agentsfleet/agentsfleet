@@ -65,7 +65,3 @@ export const outputDouble = (
   printTable: () => Effect.void,
   printEntityTable: () => Effect.void,
 });
-
-/** The register a double was built with, for a test that branches on it. */
-export const formatFor = (jsonMode: boolean): OutputFormat =>
-  jsonMode ? OUTPUT_FORMAT.json : OUTPUT_FORMAT.text;

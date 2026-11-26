@@ -2,7 +2,6 @@ import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { TooltipProvider } from "@agentsfleet/design-system";
 import { BillingDailySpend } from "@/app/(dashboard)/settings/billing/components/BillingDailySpend";
-import { BILLING_QUERY, BILLING_SETUP } from "@/app/(dashboard)/settings/billing/lib/report-query";
 import { billingReport, billingRowTotals, billingTotals } from "./helpers/billing-report";
 
 const { selected } = vi.hoisted(() => ({ selected: { params: new URLSearchParams() } }));
@@ -31,11 +30,10 @@ it("keeps a true zero distinct from missing usage and names the selected deleted
   expect(screen.getByText("Daily high $0.00")).toBeTruthy();
 });
 
-it("labels setup-only charges without attributing them to a fleet", () => {
-  selected.params = new URLSearchParams({ [BILLING_QUERY.fleet]: BILLING_SETUP });
+it("draws the period's charges for every fleet when none is selected", () => {
   const totals = billingTotals({charged_nanos: "7000000000"});
   render(<BillingDailySpend report={billingReport({from_at: "2026-10-25T00:00:00Z", totals})} />, {wrapper: TooltipProvider});
-  expect(screen.getByText("Daily spend · Setup chat")).toBeTruthy();
+  expect(screen.getByText("Daily spend · All Fleets")).toBeTruthy();
   const chart = screen.getByRole("list", {name: "Daily settled charges"});
   expect(within(chart).getByText("2026-10-25: $7.00")).toBeTruthy();
   expect(screen.getByText("Daily high $7.00")).toBeTruthy();

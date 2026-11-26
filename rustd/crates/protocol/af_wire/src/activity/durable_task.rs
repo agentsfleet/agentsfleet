@@ -8,8 +8,6 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DurableTaskActivityOperation {
-    /// Interpret an authorized person's current message.
-    Intent,
     /// Assess the accepted task goal after a complete action group.
     Goal,
     /// Save frozen files and private conversation.
@@ -148,6 +146,4 @@ impl DurableTaskActivityRecord {
 pub struct DurableTaskActivityHistory {
     /// The newest fact of each operation and stage, in observed order.
     pub items: Vec<DurableTaskActivityRecord>,
-    /// Whether earlier stages were omitted when the history was bounded.
-    pub truncated: bool,
 }

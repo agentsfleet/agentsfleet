@@ -10,6 +10,16 @@
 //! commits or none does. A live run that survives is deleted here, and its
 //! runner learns at its next renewal, which answers `RUN_NOT_FOUND`.
 //!
+//! # Schedules go first, and upstream
+//!
+//! A schedule row cascades with the fleet, but the external scheduler holds a
+//! registration for it that no cascade reaches. The caller removes every
+//! schedule upstream, and its row, before the purge and on its transaction
+//! (`afd_cron`'s `release_fleet_on`); [`delete_locked`] refuses a fleet that
+//! still holds one, read under the row lock a schedule insert waits on, so a
+//! schedule the release did not remove stops the purge instead of cascading
+//! away registered.
+//!
 //! # What goes, and what stays
 //!
 //! Every other child row cascades from the fleet row (deletion matrix: Fleet), so
@@ -46,6 +56,7 @@ use crate::sql;
 /// The contexts a failed statement on this path reports under.
 const CONTEXT_PARENT: &str = "purge fleet row";
 const CONTEXT_RUNS: &str = "purge fleet live runs";
+const CONTEXT_SCHEDULES: &str = "purge fleet schedule check";
 
 /// Deletes `fleet`'s live runs, then its row, inside the caller's
 /// transaction.
@@ -55,13 +66,27 @@ const CONTEXT_RUNS: &str = "purge fleet live runs";
 /// commits all of it or none of it. It commits nothing itself; after the
 /// caller commits, it owes the workspace's fleet-set notice.
 ///
+/// A fleet still holding a schedule is refused: the caller removes the
+/// fleet's schedules from the external scheduler first, and the cascade must
+/// not take a row whose registration may still stand.
+///
 /// # Errors
-/// Reports a fleet that is not in `workspace` and datastore failures.
+/// Reports a fleet that is not in `workspace`, a fleet that still holds a
+/// schedule (`UZ-SCHED-012`), and datastore failures.
 pub async fn delete_locked(
     connection: &mut sqlx::PgConnection,
     workspace: &Uuid7,
     fleet: &Uuid7,
 ) -> Result<()> {
+    let scheduled: bool = sqlx::query_scalar(sql::SELECT_FLEET_HAS_SCHEDULES)
+        .bind(fleet)
+        .bind(workspace)
+        .fetch_one(&mut *connection)
+        .await
+        .map_err(error::query(CONTEXT_SCHEDULES))?;
+    if scheduled {
+        return Err(ErrorKind::SchedulesRegistered.into());
+    }
     sqlx::query(sql::DELETE_ACTIVE_RUNS)
         .bind(fleet)
         .bind(RUN_STATUS_ACTIVE)

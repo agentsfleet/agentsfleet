@@ -74,7 +74,7 @@ fn one_of_each() -> [ActivityFrame<'static>; ACTIVITY_VARIANTS] {
         activity_id: "019a42b0-0000-7000-8000-000000000123".to_owned(),
         durable_task_id: None,
         source_turn_id: None,
-        operation: af_wire::activity::DurableTaskActivityOperation::Intent,
+        operation: af_wire::activity::DurableTaskActivityOperation::Goal,
         phase: af_wire::activity::DurableTaskActivityPhase::Starting,
         provider: Some("typesafe".to_owned()),
         model: Some("jev-latest".to_owned()),

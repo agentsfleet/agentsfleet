@@ -65,7 +65,7 @@ pub(crate) fn charges_cursor_invalid() -> Error {
 #[cfg(feature = "test-util")]
 #[must_use]
 pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
-    let datastore = afd_db::error::invalid_bool_knob("MIGRATE_ON_START");
+    let datastore = afd_db::error::missing_url(afd_db::DbRole::Default);
 
     vec![
         ("query", query("settle usage")(sqlx::Error::RowNotFound)),

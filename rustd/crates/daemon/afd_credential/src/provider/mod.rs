@@ -21,7 +21,7 @@
 //! A read of shared tenant state like this one would normally sit in `afd_state`.
 //! It is in this crate instead because its only caller today is the run
 //! verb, and because the rich refusal classification it produces
-//! ([`crate::Error::is_config_permanent`]) is this crate's error type. The
+//! ([`crate::Error::is_retryable`]) is this crate's error type. The
 //! tenant plane resolves the same credentials for `PUT /v1/tenants/me/provider`
 //! and must NOT reach them by depending on the runner-plane crate: when that
 //! lands, this module moves down to `afd_state` and both callers import it.

@@ -120,5 +120,3 @@ export function AlertDescription({ className, ref, ...props }: ComponentProps<"d
     />
   );
 }
-
-export default Alert;

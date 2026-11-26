@@ -49,7 +49,7 @@ async fn assert_missing(reader: &Providers, fixture: &Fixture, api: DecisionApi)
         .await
         .expect_err("no usable admin key");
     assert_eq!(refused.code(), error_code::INTERNAL_OPERATION_FAILED);
-    assert!(refused.is_config_permanent());
+    assert!(!refused.is_retryable());
     assert!(!refused.is_datastore_unavailable());
     assert!(refused.source().is_none());
 }
@@ -143,7 +143,7 @@ async fn decision_apis_resolve_distinct_fixed_bags_and_refuse_unusable_bodies() 
             .await
             .expect_err("unusable credential");
         assert_eq!(refused.code(), error_code::INTERNAL_OPERATION_FAILED);
-        assert!(refused.is_config_permanent());
+        assert!(!refused.is_retryable());
         let cause = refused.source().expect("a typed, value-free cause");
         assert_eq!(cause.downcast_ref::<BagFault>(), Some(&BagFault::Malformed));
         assert!(!format!("{refused:?} {cause}").contains("must-not-appear"));
@@ -171,7 +171,6 @@ async fn unreadable_envelopes_and_closed_storage_preserve_failures_without_anoth
         .await
         .expect_err("no fallback after failed authentication");
     assert_eq!(refused.code(), error_code::INTERNAL_OPERATION_FAILED);
-    assert!(!refused.is_config_permanent());
     assert!(refused.source().is_some());
     assert!(!format!("{refused:?}").contains("never-return-this"));
 
@@ -185,7 +184,6 @@ async fn unreadable_envelopes_and_closed_storage_preserve_failures_without_anoth
         .expect_err("closed storage must remain unavailable");
     assert_eq!(refused.code(), error_code::INTERNAL_DB_UNAVAILABLE);
     assert!(refused.is_datastore_unavailable());
-    assert!(!refused.is_config_permanent());
     assert!(refused.source().is_some());
     lane.cleanup().await;
     admin.cleanup().await;

@@ -34,7 +34,7 @@ fn duplicate_question_and_choice_identities_are_rejected_at_their_fields() -> se
     let question = json!({"name":"route","question":{"type":"choice","instructions":"Choose route",
         "options":[{"value":"WAIT","description":"Wait"},{"value":"DONE","description":"Finish"}]}});
     let mut request: DecisionRequest = serde_json::from_value(json!({"call_id":ID,
-        "purpose":"intent","state":{},"questions":[question]}))?;
+        "purpose":"goal","state":{},"questions":[question]}))?;
     assert_eq!(errors(request.validate()), vec![]);
     request
         .questions

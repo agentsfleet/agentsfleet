@@ -89,18 +89,6 @@ pub mod label {
     /// The workspace resolves to no tenant — a broken foreign key, not a blip.
     pub const TENANT_RESOLVE_FAILED: &str = "tenant_resolve_failed";
 
-    /// A human refused the action.
-    pub const APPROVAL_DENIED: &str = "approval_denied";
-
-    /// A human refused the fleet's standing permission to mint an integration.
-    ///
-    /// Distinct from [`APPROVAL_DENIED`], which is one action refused: this is
-    /// the fleet's whole relationship with a third party answered no, so the
-    /// remedy is a new grant rather than a re-run. Spelling them the same would
-    /// send an operator looking at the event when the answer is on the
-    /// integration.
-    pub const GRANT_DENIED: &str = "grant_denied";
-
     /// Every run the event was issued lapsed, and the daemon stopped
     /// re-running it.
     ///

@@ -8,19 +8,18 @@ it("renders expandable public progress and labels an interrupted ending honestly
   const progress = {activity_id: "019f0000-0000-7000-8000-000000000001", durable_task_id: null, source_turn_id: null,
     operation: "goal", phase: "starting", provider: "openai", model: "selected-model", completed: 0, total: null};
   const {container, rerender} = render(<DurableTaskActivityTimeline running={false}
-    value={{items: [{kind: "durable_task_decision_started", progress}], truncated: true}} />);
+    value={{items: [{kind: "durable_task_decision_started", progress}]}} />);
   expect(container.querySelector("summary")?.textContent).toContain("no confirmed completion recorded");
   expect(screen.getAllByText(/selected-model/u).length).toBeGreaterThan(0);
-  expect(screen.getByText(/Earlier progress/u)).toBeTruthy();
   expect(container.querySelector("details")?.open).toBe(false);
-  rerender(<DurableTaskActivityTimeline running value={{items: [], truncated: false}} />);
+  rerender(<DurableTaskActivityTimeline running value={{items: []}} />);
   expect(container.textContent).toBe("");
 });
 
 it("keeps pending, failed and uncertain assessment visible while routine completion moves into details", () => {
   const progress = {activity_id: "019f0000-0000-7000-8000-000000000001", durable_task_id: null, source_turn_id: null,
     operation: "goal", phase: "recorded", provider: null, model: null, completed: 1, total: 1};
-  const history = (phase: string) => ({items: [{kind: "durable_task_decision_completed", progress: {...progress, phase}}], truncated: false});
+  const history = (phase: string) => ({items: [{kind: "durable_task_decision_completed", progress: {...progress, phase}}]});
   const view = render(<DurableTaskActivityTimeline value={history("recorded")} running={false} attentionOnly />);
   expect(view.container.textContent).toBe("");
   for (const phase of ["starting", "failed", "unavailable"]) {

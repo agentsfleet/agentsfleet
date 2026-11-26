@@ -95,5 +95,3 @@ export function DescriptionDetails({
     />
   );
 }
-
-export default DescriptionList;

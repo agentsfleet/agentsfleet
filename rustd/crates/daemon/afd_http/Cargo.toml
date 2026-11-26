@@ -57,8 +57,12 @@ garde.workspace = true
 jiff.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-# `rt` for the task-local a request's id is read back through.
-tokio = { workspace = true, features = ["rt", "sync"] }
+# The connection a fleet's delete holds its row on, which its schedule
+# release runs on too.
+sqlx.workspace = true
+# `rt` for the task-local a request's id is read back through; `time` for the
+# deadline a fleet's schedule release runs under.
+tokio = { workspace = true, features = ["rt", "sync", "time"] }
 tracing.workspace = true
 # The caller's address, which `client::Origin` falls back across.
 axum-client-ip.workspace = true

@@ -44,7 +44,6 @@ fn live_durable_task_frames_use_the_saved_counter_and_sequence() {
         items: vec![DurableTaskActivityRecord::DurableTaskTransferProgress(
             saved.clone(),
         )],
-        truncated: false,
     };
     let mut absent = incoming.clone();
     absent.phase = DurableTaskActivityPhase::Verifying;
@@ -107,7 +106,6 @@ fn decision_frames_republish_as_their_saved_kind_and_other_frames_pass_through()
                 5,
             )),
         ],
-        truncated: false,
     };
     let [tool, ..] = every_frame(RUNNER_CALL);
     let frames = [

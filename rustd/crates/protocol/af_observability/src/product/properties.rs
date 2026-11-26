@@ -61,10 +61,6 @@ const HASH_SEPARATOR: &[u8] = &[0];
 
 impl Telemetry {
     /// Every property this event carries, in the order they are written.
-    #[expect(
-        clippy::too_many_lines,
-        reason = "one arm per event, each a flat list of keys: splitting it would put half an event's contract in another file, which is exactly the drift the property-key constants above exist to prevent"
-    )]
     pub(super) fn describe(&self, event: &mut Event) {
         // `insert_prop` fails only on a value that will not serialize, and
         // every value below is a string, an integer or a bool. Dropping the
@@ -74,18 +70,6 @@ impl Telemetry {
             let _unserializable = event.insert_prop(key, value);
         };
         match self {
-            Self::EntitlementRejected {
-                workspace_id,
-                boundary,
-                reason_code,
-                request_id,
-                ..
-            } => {
-                put(KEY_WORKSPACE_ID, workspace_id.as_str().into());
-                put("boundary", boundary.as_str().into());
-                put("reason_code", reason_code.as_str().into());
-                put(KEY_REQUEST_ID, request_id.as_str().into());
-            }
             Self::ServerStarted { port } => put("port", (*port).into()),
             Self::WorkerStarted { concurrency } => put("concurrency", (*concurrency).into()),
             Self::StartupFailed {

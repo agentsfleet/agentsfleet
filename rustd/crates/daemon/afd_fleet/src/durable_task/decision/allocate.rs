@@ -4,7 +4,7 @@
 
 use af_core::clock;
 use af_core::id::Uuid7;
-use af_wire::{decision::DecisionPurpose, durable_task::DecisionReservationInput};
+use af_wire::durable_task::DecisionReservationInput;
 use sqlx::PgConnection;
 
 use super::{
@@ -239,14 +239,7 @@ pub(super) fn replay_matches(
 }
 
 fn digest(input: &DecisionReservationInput) -> Result<String> {
-    let source =
-        (input.assessment.purpose() == DecisionPurpose::Intent).then_some(&input.source_turn_id);
-    let bytes = serde_json::to_vec(&(
-        source,
-        &input.assessment,
-        &input.durable_task,
-        &input.evidence,
-    ))
-    .map_err(af_core::json::Unreadable::from)?;
+    let bytes = serde_json::to_vec(&(&input.assessment, &input.durable_task, &input.evidence))
+        .map_err(af_core::json::Unreadable::from)?;
     Ok(af_core::etag::sha256_hex(&bytes))
 }

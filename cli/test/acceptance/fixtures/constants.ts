@@ -16,11 +16,6 @@ export const JWT_TEMPLATE = "api";
 
 export const IS_TEST_FIXTURE_METADATA_KEY = "is_test_fixture";
 
-export const FIXTURE_EMAIL_VAULT_PATHS = {
-  regular: "op://VAULT/e2e-fixtures-email/regular",
-  admin: "op://VAULT/e2e-fixtures-email/admin",
-} as const;
-
 export const AGENTSFLEET_STATUS = {
   active: "active",
   archived: "archived",
@@ -30,13 +25,7 @@ export const AGENTSFLEET_STATUS = {
 // the row instead of leaving one.
 export const TERMINAL_STATUSES: ReadonlyArray<string> = [AGENTSFLEET_STATUS.archived];
 
-export const LOGIN_POLL_MS = 500;
-
-export const LOGIN_TIMEOUT_SEC = 60;
-
 export const SESSION_TOKEN_TTL_SECONDS = 900;
-
-export const FIXTURE_JWT_FILE = "test/acceptance/.fixture-jwt";
 
 export const ACCEPTANCE_BINARY = {
   worktree: "worktree",

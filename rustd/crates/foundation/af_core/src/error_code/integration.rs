@@ -204,21 +204,3 @@ pub const CONNECTOR_INSTALLATION_OWNERSHIP: ErrorCode = ErrorCode::declare("UZ-C
 /// vendor answering, and the answer being none or several. This is the vendor
 /// declining to answer at all.
 pub const CONNECTOR_INSTALLATION_LISTING_FAILED: ErrorCode = ErrorCode::declare("UZ-CONN-009");
-
-/// No human approved a repository-write gate for this event.
-///
-/// The run is not refused — it continues read-only — so this is a refusal of
-/// the TOKEN and not of the work.
-pub const REPAIR_WRITE_UNAPPROVED: ErrorCode = ErrorCode::declare("UZ-REPAIR-010");
-
-/// The fleet's declared reach no longer matches the approved card.
-///
-/// Its own code rather than an unapproved gate, because the remedy differs: an
-/// approval exists and a human must be shown the reach the fleet declares NOW.
-pub const REPAIR_BINDING_DRIFT: ErrorCode = ErrorCode::declare("UZ-REPAIR-011");
-
-/// The approved write allowance is spent.
-///
-/// The one refusal in this group that says the approval was real and was
-/// HONOURED — as far as it went.
-pub const REPAIR_SPEND_EXHAUSTED: ErrorCode = ErrorCode::declare("UZ-REPAIR-013");

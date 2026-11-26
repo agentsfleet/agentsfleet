@@ -117,14 +117,14 @@ impl<'a> TurnRunGuard<'a> {
 }
 
 async fn parents(connection: &mut PgConnection, presented: TurnRun<'_>) -> Result<()> {
-    let (fleet, workspace): (Uuid7, Uuid7) = sqlx::query_as(include_str!("sql/scope.sql"))
+    let (fleet, workspace): (Uuid7, Uuid7) = sqlx::query_as(crate::durable_task::sql::RUN_SCOPE)
         .bind(presented.run_id)
         .bind(presented.runner_id)
         .fetch_optional(&mut *connection)
         .await
         .map_err(query("read turn run scope"))?
         .ok_or_else(run_not_found)?;
-    sqlx::query_scalar::<_, Uuid7>(include_str!("sql/lock_scope.sql"))
+    sqlx::query_scalar::<_, Uuid7>(crate::durable_task::sql::LOCK_SCOPE)
         .bind(fleet)
         .bind(workspace)
         .fetch_optional(connection)
@@ -135,7 +135,7 @@ async fn parents(connection: &mut PgConnection, presented: TurnRun<'_>) -> Resul
 }
 
 async fn current(connection: &mut PgConnection, presented: TurnRun<'_>) -> Result<Current> {
-    sqlx::query_scalar::<_, Uuid7>(include_str!("sql/lock_thread.sql"))
+    sqlx::query_scalar::<_, Uuid7>(crate::durable_task::sql::LOCK_THREAD)
         .bind(presented.run_id)
         .bind(presented.runner_id)
         .fetch_optional(&mut *connection)

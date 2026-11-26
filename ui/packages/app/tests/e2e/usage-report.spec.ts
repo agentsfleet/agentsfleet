@@ -90,7 +90,6 @@ test("Usage renders recorded daily bars and model sets while filters request com
     await page.getByRole("option", {name: "Last 7 days", exact: true}).click();
     await expect(chart.getByRole("listitem")).toHaveCount(7);
     await page.getByRole("combobox", {name: "Fleet", exact: true}).click();
-    await expect(page.getByRole("option", {name: "Setup chat", exact: true})).toHaveCount(0);
     await expect(page.getByRole("option").first()).toHaveText("All Fleets");
     await page.getByRole("option", {name: "Payment alerts", exact: true}).click();
     await expect(page.getByText("Daily high $5.50", {exact: true})).toBeVisible();

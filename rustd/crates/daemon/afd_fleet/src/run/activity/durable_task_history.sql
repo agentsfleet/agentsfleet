@@ -12,7 +12,7 @@ WITH held_thread AS MATERIALIZED (
       AND l.status = $7 AND l.run_expires_at > statement_timestamp()
     FOR UPDATE OF l SKIP LOCKED
 ), held AS MATERIALIZED (
-    SELECT e.id, e.durable_task_activity, e.durable_task_activity_sequence, e.durable_task_activity_truncated
+    SELECT e.id, e.durable_task_activity, e.durable_task_activity_sequence
     FROM thread.turns e JOIN run l ON l.turn_id = e.id
     WHERE e.thread_id = $1 AND e.id = $2 AND e.opened_at IS NOT NULL
     FOR UPDATE OF e SKIP LOCKED
@@ -34,7 +34,6 @@ WITH held_thread AS MATERIALIZED (
 )
 UPDATE thread.turns e SET
     durable_task_activity = COALESCE((SELECT jsonb_agg(item ORDER BY position) FROM newest), jsonb_build_array()),
-    durable_task_activity_sequence = held.durable_task_activity_sequence + jsonb_array_length($3::jsonb),
-    durable_task_activity_truncated = held.durable_task_activity_truncated
+    durable_task_activity_sequence = held.durable_task_activity_sequence + jsonb_array_length($3::jsonb)
 FROM held WHERE e.id = held.id
-RETURNING jsonb_build_object('items', e.durable_task_activity, 'truncated', e.durable_task_activity_truncated)
+RETURNING jsonb_build_object('items', e.durable_task_activity)

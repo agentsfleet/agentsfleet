@@ -329,7 +329,6 @@ async fn assignment(case: &Case, model: &DecisionModelFixture) -> DecisionAssign
             capabilities: settings.capabilities,
             input_max_bytes: settings.input_max_bytes,
         },
-        intent: settings.intent,
         goal: settings.goal,
     }
 }

@@ -1,11 +1,10 @@
 // Public entry for agentsfleet rendering. Commands import from here;
 // the modules below this directory are implementation detail.
 
-import { palette, type StyleOpts } from "./palette.ts";
+import { palette } from "./palette.ts";
 import { glyph, withGlyph } from "./glyph.ts";
 import {
   EMPTY_CELL,
-  cell,
   instantCell,
   ago,
   entityColumns,
@@ -14,16 +13,13 @@ import {
   formatTable,
   formatKeyValue,
   formatSection,
-  formatEvidence,
   type FormatOpts,
   type FieldTones,
-  type ValueTones,
   type TableColumn,
   type TableRow,
   type KeyValueRows,
   type EntityTableSpec,
 } from "./format.ts";
-import { detectColorMode, isTty, resetCapabilityWarning, ColorMode } from "./capability.ts";
 
 export interface UiTheme {
   readonly ok: (s: string) => string;
@@ -69,25 +65,12 @@ export {
   palette,
   glyph,
   EMPTY_CELL,
-  cell,
   instantCell,
   ago,
-  withGlyph,
-  formatTable,
   entityColumns,
-  entityTable,
   AGE_KEY,
-  formatKeyValue,
-  formatSection,
-  formatEvidence,
-  detectColorMode,
-  isTty,
-  resetCapabilityWarning,
-  ColorMode,
-  type StyleOpts,
   type FormatOpts,
   type FieldTones,
-  type ValueTones,
   type TableColumn,
   type TableRow,
   type KeyValueRows,

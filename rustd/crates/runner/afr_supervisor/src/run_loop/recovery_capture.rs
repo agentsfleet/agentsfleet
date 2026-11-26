@@ -211,13 +211,24 @@ impl BoundaryOwner<'_, '_> {
             {
                 Ok(RecoverySave::Skipped(RecoverySkip::Limit))
             }
+            // An outage skips this boundary; the next one saves again, and the
+            // run's final checkpoint still decides whether the task blocks.
             Err(failure)
-                if matches!(
-                    failure.code(),
-                    error_code::DURABLE_TASK_STORAGE_UNAVAILABLE
-                        | error_code::RUN_CHECKPOINT_UNAVAILABLE
-                ) =>
+                if failure.is_retryable()
+                    || matches!(
+                        failure.code(),
+                        error_code::DURABLE_TASK_STORAGE_UNAVAILABLE
+                            | error_code::RUN_CHECKPOINT_UNAVAILABLE
+                    ) =>
             {
+                // The record is the skip; the outage that caused it is its cause.
+                let error_code = error_code::RUN_CHECKPOINT_UNAVAILABLE;
+                let cause_error_code = failure.code();
+                tracing::warn!(
+                    event = "task_checkpoint_skipped",
+                    %error_code,
+                    %cause_error_code
+                );
                 Ok(RecoverySave::Skipped(RecoverySkip::Unavailable))
             }
             Err(failure) => Err(failure),

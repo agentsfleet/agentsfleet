@@ -93,7 +93,6 @@ pub(super) async fn evaluate(
         DecisionApi::Cloudflare => DecisionProvider::Cloudflare,
     };
     let purpose = match request.purpose {
-        Purpose::Intent => DecisionPurpose::Intent,
         Purpose::Goal => DecisionPurpose::Goal,
     };
     let span = decision_span(

@@ -20,11 +20,8 @@ export const EVT_LOGOUT_COMPLETED = "logout_completed";
 //
 // Error attribution lives on the span (Effect.withSpan) — the NDJSON
 // exporter extracts status.exit._tag into the `error_code` field on
-// the span line. No separate cli_error event.
-//
-// Re-exported from command-instrumentation.ts so this file stays the
-// single source of truth for event names.
-export { EVT_CLI_COMMAND_EXECUTED } from "../services/telemetry/command-instrumentation.ts";
+// the span line. No separate cli_error event. The constant,
+// `EVT_CLI_COMMAND_EXECUTED`, is declared in command-instrumentation.ts.
 
 // Auth-flow milestones. `login_completed` is the established wire
 // contract — PostHog dashboards key off the bare name. New CLI events

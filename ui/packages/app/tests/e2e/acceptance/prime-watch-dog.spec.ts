@@ -14,14 +14,16 @@
  * request as a test account, with that account's fine-grained token for the
  * repository in `ACCEPTANCE_GITHUB_TOKEN`, and closes it and deletes its
  * branch with the same token once the wake is counted. The fleet only reads.
+ * It runs in the fixture person's workspace that connected GitHub, and deletes
+ * only its fleet.
  */
 import { expect, test } from "@playwright/test";
 import { z } from "zod";
-import type { ConnectorCatalogEntry } from "@/lib/api/connectors";
 import type { TurnDetail } from "@/lib/api/turns";
 import { GITHUB_GRANT, githubScope, TRIGGER_KIND, TriggerSchema } from "@/lib/api/fleet-detail";
 import { signInAs } from "./fixtures/auth";
 import { clientFor } from "./fixtures/api-client";
+import { connectedWorkspaceId } from "./fixtures/connected-workspace";
 import { awaitTerminalTurn } from "./fixtures/chat-walk";
 import { POST_DEPLOY_TAG } from "./fixtures/constants";
 import { assertPassed, classifyTerminalTurn, JOURNEY_LEG, threadTurnIds, TURN_KIND_CONTINUATION, TURN_STATUS } from "./fixtures/execution";
@@ -31,7 +33,6 @@ import { callGithub, requiredVariable } from "./fixtures/live-services";
 import { observed, POLL_INTERVAL_MS, uniqueTag } from "./fixtures/observation";
 import { createPrimeFleet, entry, PRIME_FLEET, primeFleet, proofs, wake, type PrimedFleet } from "./fixtures/prime-fleets";
 import { callTo, PRIME_PERSON, settledTurn, threadOf } from "./fixtures/prime-walk";
-import { getDefaultWorkspaceId } from "./fixtures/seed";
 import { purgeFixtureFleet } from "./fixtures/teardown";
 
 const fixture = primeFleet(PRIME_FLEET.watchDog);
@@ -99,12 +100,8 @@ test.describe.serial(`prime fleet ${fixture.name}`, {tag: POST_DEPLOY_TAG}, () =
     test.setTimeout(STEP_TIMEOUT_MS);
     if (!repository) throw new Error(`${fixture.name}.json names no repository`);
     token = requiredVariable(TOKEN_VARIABLE);
-    workspaceId = await getDefaultWorkspaceId(PRIME_PERSON);
-    const catalogue = await clientFor(PRIME_PERSON).get<ConnectorCatalogEntry[]>(`/v1/workspaces/${workspaceId}/connectors`);
-    // Connecting is a person's consent on GitHub, done once for the fixture workspace; no journey can give it.
-    if (!catalogue.some((row) => row.id === GITHUB_GRANT && row.connected)) {
-      throw new Error(`the fixture workspace has not connected GitHub; connect the platform's GitHub App to ${repository} in Connected apps`);
-    }
+    // Connecting is a person's consent on GitHub, done once in a workspace the fixture person belongs to.
+    workspaceId = await connectedWorkspaceId(PRIME_PERSON, {id: GITHUB_GRANT, provider: "GitHub"});
     base = (await callGithub(token, "GET", repo, RepositorySchema)).default_branch;
     fleet = await observed(JOURNEY_LEG.install, () => createPrimeFleet(PRIME_PERSON, workspaceId, fixture,
       `${fixture.first_message} The repository is ${repository}, and pull requests open against its branch ${base}.`));

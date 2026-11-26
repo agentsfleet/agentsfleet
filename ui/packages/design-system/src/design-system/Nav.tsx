@@ -12,5 +12,3 @@ export type NavProps = ComponentProps<"nav"> & { "aria-label": string };
 export function Nav({ className, ref, ...props }: NavProps) {
   return <nav ref={ref} className={cn(className)} {...props} />;
 }
-
-export default Nav;

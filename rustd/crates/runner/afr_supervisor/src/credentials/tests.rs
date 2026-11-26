@@ -54,7 +54,7 @@ async fn a_refused_mint_is_not_retried() {
 #[tokio::test]
 async fn a_run_mint_hands_the_model_the_daemons_code_first() {
     let run_id = Uuid7::parse(RUN_ID).unwrap();
-    let drift = af_core::error_code::REPAIR_BINDING_DRIFT;
+    let drift = af_core::error_code::GRANT_NOT_FOUND;
     let (plane, _calls) =
         plane(move |_call| Answer::Fail(error::refused(Verb::Mint, 403, Some(drift))));
 
@@ -65,7 +65,7 @@ async fn a_run_mint_hands_the_model_the_daemons_code_first() {
 
     assert_eq!(
         refused.detail(),
-        "the credential could not be minted: UZ-REPAIR-011: the daemon refused the mint (403)"
+        "the credential could not be minted: UZ-GRANT-001: the daemon refused the mint (403)"
     );
     assert_eq!(refused.code(), drift, "the daemon's code, kept");
 }

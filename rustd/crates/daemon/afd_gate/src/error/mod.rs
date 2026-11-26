@@ -106,24 +106,6 @@ impl Error {
     pub const fn is_rejected(&self) -> bool {
         matches!(self.kind(), ErrorKind::Rejected { .. })
     }
-
-    /// Whether this failure is a stored-configuration fault a human must fix.
-    ///
-    /// Delegated to the credential plane where it owns the answer: a stored
-    /// endpoint the guard refused does not become safe by being retried, while
-    /// a datastore that would not answer recovers on its own. An approved
-    /// scope that will not read back stays unreadable until a person asks for
-    /// the access again.
-    #[must_use]
-    pub const fn is_config_permanent(&self) -> bool {
-        match self.kind() {
-            ErrorKind::Credential { source } => source.is_config_permanent(),
-            ErrorKind::Scope { .. } => true,
-            _transient @ (ErrorKind::Datastore { .. }
-            | ErrorKind::Query { .. }
-            | ErrorKind::Rejected { .. }) => false,
-        }
-    }
 }
 
 /// The sentence an unreachable datastore or queue earns.

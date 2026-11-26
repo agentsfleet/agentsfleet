@@ -13,8 +13,6 @@ export const SECRET_KIND = {
   custom_secret: "custom_secret",
 } as const;
 
-export type SecretKind = (typeof SECRET_KIND)[keyof typeof SECRET_KIND];
-
 /** The recorded fleets, or `null` when access was not served or is not the served shape. */
 export function fleetAccessOf(secret: Secret): SecretFleet[] | null {
   const served: unknown = secret.available_to;

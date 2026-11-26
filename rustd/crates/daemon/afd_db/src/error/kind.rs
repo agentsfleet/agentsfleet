@@ -42,9 +42,6 @@ pub(crate) enum ErrorKind {
         source: std::io::Error,
     },
 
-    #[error("{knob} must be true, false, 1 or 0")]
-    InvalidBoolKnob { knob: &'static str },
-
     #[error("waited {waited:?} for a {role} connection and the pool had none")]
     PoolCapacity {
         role: &'static str,

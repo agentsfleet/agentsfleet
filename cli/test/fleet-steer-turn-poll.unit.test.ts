@@ -26,7 +26,7 @@ describe("steer recovery reads the admitted event directly", () => {
     presentation.tools.frame("tool_call_completed", call);
     const http = Layer.succeed(HttpClient, {request: <T>() => Effect.succeed({turn_id: TURN,
       status: TURN_STATUS.PROCESSED, durable_task_activity: {items: [{kind: "durable_task_transfer_progress",
-        progress: {...progress, sequence: 9, completed: 1}}], truncated: false}, tool_calls: {calls: [call]},
+        progress: {...progress, sequence: 9, completed: 1}}]}, tool_calls: {calls: [call]},
     } as T)});
     await Effect.runPromise(pollTurnTerminal(WORKSPACE, FLEET, TURN, TOKEN, undefined, presentation)
       .pipe(Effect.provide(Layer.merge(http, Layer.succeed(Output, outputDouble())))));
@@ -41,7 +41,7 @@ describe("steer recovery reads the admitted event directly", () => {
       request: <T>() => Effect.succeed({turn_id: TURN, status: TURN_STATUS.PROCESSED, response_text: "repair complete",
         durable_task_activity: {items: [{kind: "durable_task_transfer_progress", progress: {activity_id: TURN,
           operation: "capture", phase: "saved", provider: null, model: null, completed: 1, total: 1,
-          bytes: {acknowledged: 128, missing: 0, reused: 64}}}], truncated: false},
+          bytes: {acknowledged: 128, missing: 0, reused: 64}}}]},
         tool_calls: {calls: [{name: "shell", call_id: "one", status: "succeeded", output_head: "checked"}]},
       } as T),
     });

@@ -46,16 +46,6 @@ fn text(event: &Event, key: &str) -> String {
 #[test]
 fn should_report_each_event_under_its_published_name() {
     let named = [
-        (
-            "entitlement_rejected",
-            Telemetry::EntitlementRejected {
-                actor: ACTOR.to_owned(),
-                workspace_id: WORKSPACE.to_owned(),
-                boundary: "fleet_count".to_owned(),
-                reason_code: "plan_limit".to_owned(),
-                request_id: REQUEST.to_owned(),
-            },
-        ),
         ("server_started", Telemetry::ServerStarted { port: 8080 }),
         (
             "worker_started",
@@ -106,7 +96,7 @@ fn should_report_each_event_under_its_published_name() {
         ),
         ("fleet_completed", completed()),
     ];
-    assert_eq!(named.len(), 9, "the event set is nine events");
+    assert_eq!(named.len(), 8, "the event set is eight events");
     for (name, telemetry) in named {
         assert_eq!(telemetry.name(), name);
         assert_eq!(telemetry.event().event_name(), name);

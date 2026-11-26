@@ -7,20 +7,19 @@ mod runner;
 
 use af_core::timing::{STREAM_ANSWER_TIMEOUT, STREAM_RECOVERY_BUDGET};
 use af_stream::Transport;
-use afd_runner::timing::HEARTBEAT_INTERVAL;
 use agentsfleetd::supervisor::Supervisor;
 use std::time::Duration;
 use tokio::time::Instant;
 
 use super::RECOVERY_SLACK;
-use crate::e2e::scenario;
+use crate::e2e_clock::{HEARTBEAT, scenario};
 use proxy::FaultProxy;
 use runner::Runner;
 
 /// How long the carrier is cut: one round and a second. Between rounds an idle session
 /// sends nothing, so a shorter cut can fall between two rounds and swallow no bytes; one
-/// this long always holds the round the scenario's daemon, at its default interval, asks for.
-const CUT: Duration = HEARTBEAT_INTERVAL.saturating_add(Duration::from_secs(1));
+/// this long always holds the round the scenario's daemon asks for.
+const CUT: Duration = HEARTBEAT.saturating_add(Duration::from_secs(1));
 
 // Value: protects=recovery confirms a new grant before the running run expires;
 // fails_when=the database renews but the runner loses its answer or ends at the old deadline;

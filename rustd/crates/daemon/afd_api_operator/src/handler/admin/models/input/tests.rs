@@ -219,12 +219,6 @@ fn reviewed_decision() -> serde_json::Value {
             "accepted_models":["evaluated-fixture-model"],
             "capabilities":{"noul":true,"choice":true,"score":true},
             "input_max_bytes":24576,
-            "intent":{
-                "questions_revision":"dt-routing-v1",
-                "intent":{"probability_bps":8500,"confidence_bps":7000},
-                "association":{"probability_bps":9500,"confidence_bps":8500},
-                "single_request_max_bps":3000,"multiple_request_min_bps":7000
-            },
             "goal":{
                 "questions_revision":"dt-goal-v1", "statement_min_bps":9500,
                 "continue_action":{"probability_bps":8000,"confidence_bps":7000},
@@ -266,10 +260,6 @@ fn decision_configuration_bounds_name_the_decision_without_echoing_inputs() {
         (
             "/decision/profile/goal/done/probability_bps",
             serde_json::json!(10001),
-        ),
-        (
-            "/decision/profile/intent/single_request_max_bps",
-            serde_json::json!(7000),
         ),
         ("/decision/prices", serde_json::json!([])),
     ] {

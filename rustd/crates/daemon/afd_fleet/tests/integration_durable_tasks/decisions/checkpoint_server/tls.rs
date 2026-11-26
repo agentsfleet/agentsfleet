@@ -1,19 +1,19 @@
-//! Ephemeral certificate authority for the exact configured storage host.
+//! Ephemeral certificate authority for one exact host: the configured storage
+//! host, or the fixed GitHub origin.
 
-use super::HOST;
 use rcgen::{BasicConstraints, CertificateParams, CertifiedIssuer, IsCa, KeyPair, KeyUsagePurpose};
 use rustls::pki_types::{PrivateKeyDer, PrivatePkcs8KeyDer};
 use std::sync::Arc;
 use tokio_rustls::TlsAcceptor;
 
-pub(super) fn server() -> (reqwest::Certificate, TlsAcceptor) {
+pub(crate) fn server(host: &str) -> (reqwest::Certificate, TlsAcceptor) {
     let mut authority = CertificateParams::new(Vec::<String>::new()).expect("CA parameters");
     authority.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
     authority.key_usages = vec![KeyUsagePurpose::KeyCertSign, KeyUsagePurpose::CrlSign];
     let issuer = CertifiedIssuer::self_signed(authority, KeyPair::generate().expect("CA key"))
         .expect("CA certificate");
     let leaf_key = KeyPair::generate().expect("leaf key");
-    let leaf = CertificateParams::new(vec![HOST.to_owned()])
+    let leaf = CertificateParams::new(vec![host.to_owned()])
         .expect("host parameters")
         .signed_by(&leaf_key, &issuer)
         .expect("leaf certificate");

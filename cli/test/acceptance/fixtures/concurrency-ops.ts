@@ -26,11 +26,6 @@ import type { RunResult } from "./cli.js";
 // fallback). A drift here surfaces as a failed round-trip assertion.
 export const CREDENTIALS_FILE = "credentials.json";
 export const CREDENTIALS_FILE_MODE = 0o600;
-export const CREDENTIALS_KEY_TOKEN = "token";
-export const CREDENTIALS_KEY_SAVED_AT = "saved_at";
-export const CREDENTIALS_KEY_SESSION_ID = "session_id";
-export const CREDENTIALS_KEY_API_URL = "api_url";
-export const CREDENTIALS_KEY_CREDENTIAL_ID = "credential_id";
 
 // `agent list --json` envelope key carrying the row array.
 export const LIST_ITEMS_KEY = "items";

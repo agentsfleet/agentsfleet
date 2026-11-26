@@ -191,16 +191,6 @@ impl FixedClock {
         *reading = whole_millis(after(*reading, span));
     }
 
-    /// Moves every clone BACK by `span`, saturating at the start of the range.
-    ///
-    /// A wall clock that goes back is a real event (an operator correcting
-    /// drift, an NTP step), and code that treats time as monotonic breaks
-    /// exactly there.
-    pub fn rewind(&self, span: Duration) {
-        let mut reading = self.reading();
-        *reading = whole_millis(before(*reading, span));
-    }
-
     /// The shared reading. A poisoned lock still holds a valid instant, so a
     /// test that panicked mid-update does not take every clone down with it.
     fn reading(&self) -> std::sync::MutexGuard<'_, Timestamp> {

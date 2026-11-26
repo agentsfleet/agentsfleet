@@ -22,7 +22,7 @@ SELECT thread_id AS fleet_id, id AS turn_id, workspace_id,
 
 /// The bodies the detail and thread reads append after the row.
 const BODY_COLUMNS: &str = ",
-       request_json::text AS request_json, answer_text AS response_text, tool_calls::text AS tool_calls, durable_task_activity, durable_task_activity_truncated
+       request_json::text AS request_json, answer_text AS response_text, tool_calls::text AS tool_calls, durable_task_activity
 FROM thread.turns";
 
 /// The texts outside the listing grid.

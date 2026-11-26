@@ -125,5 +125,3 @@ export function ListItem({
     </li>
   );
 }
-
-export default List;

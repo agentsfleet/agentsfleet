@@ -164,33 +164,6 @@ impl Error {
         }
     }
 
-    /// Whether this failure is a stored-configuration fault a human must fix.
-    ///
-    /// The question the run's block path turns on: a permanent fault earns a
-    /// terminal row that puts the fleet in front of a person, where a transient
-    /// one leaves the delivery leasable for the next poll.
-    ///
-    /// A stored endpoint the SSRF guard refused, a selection naming a vault row
-    /// nobody holds, a body that is not an addressable object — none of those
-    /// becomes correct by being read again. An envelope that will not OPEN is
-    /// deliberately not among them: it is usually permanent too, but it is also
-    /// what a truncated read or a half-written row looks like, and those
-    /// recover. A stored URL is data this daemon parsed and rejected; an
-    /// unopened envelope is data it never got to see.
-    #[must_use]
-    pub const fn is_config_permanent(&self) -> bool {
-        matches!(
-            self.kind(),
-            ErrorKind::ProviderMalformed { .. }
-                | ErrorKind::ProviderSecretMissing
-                | ErrorKind::ProviderEndpoint { .. }
-                | ErrorKind::VaultDataInvalid
-                | ErrorKind::CredentialMissing
-                | ErrorKind::DecisionCredentialMissing { .. }
-                | ErrorKind::DecisionCredentialInvalid { .. }
-        )
-    }
-
     /// Whether reading again could pass: the datastore would not answer, a
     /// statement failed in flight, or this host could not draw entropy.
     ///

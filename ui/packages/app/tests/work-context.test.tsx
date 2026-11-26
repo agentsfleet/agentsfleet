@@ -28,13 +28,12 @@ it("mounts one desktop sidebar, and no work surface when no child exists", () =>
 it("attributes actions only to explicit task identities and retains recorded provenance", () => {
   const item: DurableTaskActivity = {kind: "durable_task_transfer_progress", progress: {activity_id: DURABLE_TASK_IDS[0], durable_task_id: DURABLE_TASK_IDS[0],
     source_turn_id: null, operation: "capture", phase: "uploading", provider: null, model: null, completed: 1, total: 2}};
-  const turns = [evt(), evt({durableTaskActivity: {items: [item, {...item, progress: {...item.progress, durable_task_id: null}}], truncated: true}})];
+  const turns = [evt(), evt({durableTaskActivity: {items: [item, {...item, progress: {...item.progress, durable_task_id: null}}]}})];
   const history = workActivity(turns, DURABLE_TASK_IDS[0]);
   expect(history.items).toEqual([item]);
-  expect(history.truncated).toBe(true);
   const recent = {...item, progress: {...item.progress, sequence: 1, phase: "saved" as const}};
-  expect(workActivity([...turns, evt({durableTaskActivity: {items: [recent], truncated: false}})], DURABLE_TASK_IDS[0]).items).toEqual([recent]);
-  expect(workActivity(turns, DURABLE_TASK_IDS[1])).toEqual({items: [], truncated: false});
+  expect(workActivity([...turns, evt({durableTaskActivity: {items: [recent]}})], DURABLE_TASK_IDS[0]).items).toEqual([recent]);
+  expect(workActivity(turns, DURABLE_TASK_IDS[1])).toEqual({items: []});
 
 });
 

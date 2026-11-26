@@ -71,6 +71,9 @@ impl Error {
         match self.kind() {
             ErrorKind::Invalid { detail } => detail,
             ErrorKind::Archived => DETAIL_ARCHIVED,
+            // The lifecycle's own sentence, so a purge refusal reads as the
+            // schedule release's does.
+            ErrorKind::Lifecycle { source } => source.detail(),
             ErrorKind::Validation { .. } | ErrorKind::Name { .. } => {
                 "The request violates the supported shape or bounds"
             }
@@ -84,7 +87,6 @@ impl Error {
             | ErrorKind::Model
             | ErrorKind::TurnWrite { .. }
             | ErrorKind::Approval { .. }
-            | ErrorKind::Lifecycle { .. }
             | ErrorKind::Cursor
             | ErrorKind::Query { .. }
             | ErrorKind::Stored { .. }
@@ -112,6 +114,7 @@ impl Error {
             ErrorKind::Replay => Some("accepted"),
             ErrorKind::NameExists => Some("name_exists"),
             ErrorKind::Model => Some("unavailable"),
+            ErrorKind::Lifecycle { source } => source.current_state(),
             _ => None,
         }
     }

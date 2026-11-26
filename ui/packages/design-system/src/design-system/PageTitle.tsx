@@ -21,4 +21,3 @@ export function PageTitle({ as: Title = "h1", className, size = "default", ref, 
 }
 
 export type { PageTitleProps };
-export default PageTitle;

@@ -70,7 +70,6 @@
     "oxlint-tsgolint": "7.0.2008",
     "postcss": "8.5.33",
     "size-limit": "14.3.0",
-    "svix": "^2.11.1",
     "tailwindcss": "^4.3.5",
     "tsrs": "7.1.0-beta.tsrs5",
     "typescript": "7.0.2",

@@ -54,7 +54,6 @@ With a key, `posthog-rs` flushes every 100 events or 5 s, and a full 10,000-even
 | `startup_failed` | boot fails | `command`, `reason`, `error_code` |
 | `workspace_created` | a workspace is created | `workspace_id`, `tenant_id`, `request_id` |
 | `auth_login_completed`, `auth_rejected` | sign-in succeeds, or a token is refused | `session_id` or `reason`, and `request_id` |
-| `entitlement_rejected` | a request is refused at an entitlement boundary | `workspace_id`, `boundary`, `reason_code`, `request_id` |
 | `api_error` | a request fails | `error_code`, `message`, `workspace_id`, `request_id` |
 | `invite_email_sent`, `invite_email_failed`, `invite_email_unconfigured` | an invite email is sent, fails, or has no mail service | `tenant_id`, `invite_id`, `attempt` |
 The daemon reports each event after the commit that made it true, attributed to the person's identity-provider subject.

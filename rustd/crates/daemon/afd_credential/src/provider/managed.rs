@@ -127,7 +127,7 @@ mod tests {
             br#"{"provider":"openai","api_key":""}"#.as_slice(),
         ] {
             let refused = resolve(keyless).err().expect("every provider needs a key");
-            assert!(refused.is_config_permanent(), "{keyless:?}");
+            assert!(!refused.is_retryable(), "{keyless:?}");
         }
     }
 
@@ -143,7 +143,7 @@ mod tests {
                 .expect("the metadata service is not a gateway");
 
         assert!(
-            refused.is_config_permanent(),
+            !refused.is_retryable(),
             "an SSRF-refused endpoint is a stored configuration a human must fix"
         );
     }
@@ -156,7 +156,7 @@ mod tests {
                 .expect("a named provider carries no endpoint");
 
         assert!(
-            refused.is_config_permanent(),
+            !refused.is_retryable(),
             "a smuggled endpoint is the same stored-configuration fault"
         );
     }
@@ -172,7 +172,7 @@ mod tests {
             let refused = resolve(body)
                 .err()
                 .expect("a providerless credential cannot resolve");
-            assert!(refused.is_config_permanent(), "{body:?}");
+            assert!(!refused.is_retryable(), "{body:?}");
         }
     }
 }

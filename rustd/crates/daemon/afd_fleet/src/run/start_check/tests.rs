@@ -74,7 +74,7 @@ fn an_unowned_payer_is_declined_as_a_refusal() {
 /// than ending an event a later read would bill or starting one nobody pays.
 #[test]
 fn an_unread_payer_retries_under_the_payer_gate() {
-    let fault: afd_billing::Error = afd_db::error::invalid_bool_knob("MIGRATE_ON_START").into();
+    let fault: afd_billing::Error = afd_db::error::missing_url(afd_db::DbRole::Default).into();
     let judged = payer_gate(Err(fault), &workspace()).expect("the payer gate absorbs its fault");
     assert_eq!(
         judged,

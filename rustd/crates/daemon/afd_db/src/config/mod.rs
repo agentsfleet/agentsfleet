@@ -208,33 +208,5 @@ impl PoolConfig {
     }
 }
 
-/// How a boolean knob reads.
-///
-/// Three answers, not two: `MIGRATE_ON_START=maybe` is a misconfiguration an
-/// operator has to see, and folding it into `No` is how a deploy silently
-/// stops migrating.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EnvBool {
-    /// `true` in any case, or `1`.
-    Yes,
-    /// `false` in any case, or `0`.
-    No,
-    /// Anything else.
-    Invalid,
-}
-
-/// Parses the boolean grammar every env knob in this product shares.
-#[must_use]
-pub fn parse_env_bool(raw: &str) -> EnvBool {
-    let trimmed = raw.trim();
-    if trimmed.eq_ignore_ascii_case("true") || trimmed == "1" {
-        EnvBool::Yes
-    } else if trimmed.eq_ignore_ascii_case("false") || trimmed == "0" {
-        EnvBool::No
-    } else {
-        EnvBool::Invalid
-    }
-}
-
 #[cfg(test)]
 mod pool_sizing_tests;

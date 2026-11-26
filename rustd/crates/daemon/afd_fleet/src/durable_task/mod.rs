@@ -28,7 +28,7 @@ mod refusal;
 mod report;
 mod row;
 pub(crate) mod run;
-mod sql;
+pub(crate) mod sql;
 mod statements;
 pub mod storage;
 #[cfg(feature = "test-util")]

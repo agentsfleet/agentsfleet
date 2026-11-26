@@ -6,15 +6,6 @@ import { TooltipProvider } from "@agentsfleet/design-system";
 import type { TenantModelEntry, TenantModelEntryList, TenantPlatformDefault } from "@/lib/types";
 import type { ModelLibrary } from "@/lib/api/model-library-types";
 
-export const MODEL_REGISTRY_HEADER_ORDER = [
-  "Provider",
-  "Model",
-  "Context",
-  "Rates $/1M (in / cached / out)",
-  "Status",
-  "Actions",
-] as const;
-
 /** The details dialog renders a relative <Time> → a Radix Tooltip, which needs a
  *  TooltipProvider ancestor (the dashboard layout supplies it in production). */
 export function withTooltipProvider(node: React.ReactElement): React.ReactElement {
@@ -177,8 +168,3 @@ beforeEach(() => {
   listSecretsActionMock.mockResolvedValue({ ok: true, data: { secrets: [] } });
 });
 afterEach(() => cleanup());
-
-// The platform-default row is marked by its lock, not by a word: the cell
-// dropped "Default" because the lock beside it already said the same thing.
-export const PLATFORM_LOCK = "Managed by a platform admin";
-

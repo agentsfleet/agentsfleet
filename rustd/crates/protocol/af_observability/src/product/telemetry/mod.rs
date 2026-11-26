@@ -1,4 +1,4 @@
-//! The product events, as one closed set: the nine ported ones something
+//! The product events, as one closed set: the eight ported ones something
 //! sends, then the invite email's, then the first-message-to-fleet funnel's.
 //!
 //! # Why an enum where the daemon this ports has eleven structs
@@ -25,19 +25,6 @@ pub use self::fleet::{AccessChange, FleetOrigin, FleetStep};
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Telemetry {
-    /// A request refused by an entitlement boundary rather than by its input.
-    EntitlementRejected {
-        /// The person it was refused for.
-        actor: String,
-        /// The workspace they were acting in.
-        workspace_id: String,
-        /// Which boundary refused.
-        boundary: String,
-        /// Why, in the boundary's own vocabulary.
-        reason_code: String,
-        /// The request this daemon answered.
-        request_id: String,
-    },
     /// The API came up and is listening.
     ServerStarted {
         /// The port it bound.
@@ -176,7 +163,6 @@ impl Telemetry {
     #[must_use]
     pub const fn name(&self) -> &'static str {
         match *self {
-            Self::EntitlementRejected { .. } => "entitlement_rejected",
             Self::ServerStarted { .. } => "server_started",
             Self::WorkerStarted { .. } => "worker_started",
             Self::StartupFailed { .. } => "startup_failed",
@@ -202,8 +188,7 @@ impl Telemetry {
     #[must_use]
     pub fn actor(&self) -> Option<&str> {
         match self {
-            Self::EntitlementRejected { actor, .. }
-            | Self::ApiError { actor, .. }
+            Self::ApiError { actor, .. }
             | Self::WorkspaceCreated { actor, .. }
             | Self::AuthLoginCompleted { actor, .. }
             | Self::FleetCompleted { actor, .. }

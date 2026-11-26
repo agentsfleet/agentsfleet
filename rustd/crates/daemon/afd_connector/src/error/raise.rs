@@ -86,7 +86,7 @@ pub(crate) fn installation_held_elsewhere() -> Error {
     reason = "a sample builder whose own preconditions fail should stop the suite"
 )]
 pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
-    let datastore = afd_db::error::invalid_bool_knob("MIGRATE_ON_START");
+    let datastore = afd_db::error::missing_url(afd_db::DbRole::Default);
     let vault = afd_vault::SecretName::parse("").expect_err("an empty vault name is refused");
     let entropy =
         af_crypto::secret::Kek::from_hex("not-hex").expect_err("a non-hex key is refused");

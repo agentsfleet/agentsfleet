@@ -15,7 +15,7 @@ it("ignores unknown owners and malformed frames, deduplicates decisions and rest
   const completed = {kind: "durable_task_decision_completed" as const, progress: {...progress, phase: "recorded"}};
   const live = applyLiveFrame(started, {...completed, turn_id: "e1"});
   expect(live[0]?.durableTaskActivity?.items).toHaveLength(2);
-  const restored = applyFinalReply(turns, row({turn_id: "e1", response_text: "done", durable_task_activity: {items: [completed], truncated: false}}));
+  const restored = applyFinalReply(turns, row({turn_id: "e1", response_text: "done", durable_task_activity: {items: [completed]}}));
   expect(restored[0]?.durableTaskActivity?.items).toHaveLength(1);
   expect(restored[1]).toBe(turns[1]);
 });

@@ -12,7 +12,7 @@ use std::sync::mpsc;
 use af_wire::activity::ActivityFrame;
 use af_wire::decision::{
     DecisionApi, DecisionAssignment, DecisionCapabilities, DecisionProfile, DecisionThreshold,
-    GoalDecisionPolicy, IntentDecisionPolicy,
+    GoalDecisionPolicy,
 };
 use af_wire::run::RunPayload;
 use afr_tools::{CatalogTool, Entry, ToolContext};
@@ -84,13 +84,6 @@ pub(crate) fn decision_assignment() -> DecisionAssignment {
                 score: false,
             },
             input_max_bytes: 24576,
-        },
-        intent: IntentDecisionPolicy {
-            questions_revision: "dt-routing-v1".to_owned(),
-            intent: threshold,
-            association: threshold,
-            single_request_max_bps: 1000,
-            multiple_request_min_bps: 9000,
         },
         goal: GoalDecisionPolicy {
             questions_revision: "dt-goal-v1".to_owned(),

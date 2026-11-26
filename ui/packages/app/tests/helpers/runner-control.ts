@@ -1,6 +1,6 @@
 import type {RunnerLiveness, RunnerState} from "./runner-control-types";
 
-export type {RunnerRun, RunnerRunResponse} from "./runner-control-runs";
+export type {RunnerRunResponse} from "./runner-control-runs";
 export type {RunnerLiveness} from "./runner-control-types";
 
 /** Fields the execution and preflight journeys observe from the operator list. */

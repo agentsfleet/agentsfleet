@@ -3,4 +3,3 @@
 export const BILLING_PERIOD_MONTH = "month";
 export const BILLING_PERIOD_TODAY = "today";
 export const BILLING_PERIOD_WEEK = "week";
-export const BILLING_ACTIVITY_SETUP = "setup";

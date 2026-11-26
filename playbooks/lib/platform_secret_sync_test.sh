@@ -105,6 +105,7 @@ case "$EXPECTED_NAME" in
   zoho-app | jira-app | linear-app) expected='["client_id","client_secret"]' ;;
   approval-signing) expected='["webhook_secret"]' ;;
   typesafe) expected='["api_key"]' ;;
+  cloudflare-r2) expected='["access_key_id","secret_access_key"]' ;;
   *) expected="" ;;
 esac
 if [ -n "$expected" ]; then
@@ -190,7 +191,7 @@ test_replaces_existing_bag_in_one_put() {
 test_maps_every_provider_field_name() {
   local name="maps every provider field name"
   local secret_name output status
-  local -a secret_names=(slack-app zoho-app jira-app linear-app qstash approval-signing typesafe)
+  local -a secret_names=(slack-app zoho-app jira-app linear-app qstash approval-signing typesafe cloudflare-r2)
   for secret_name in "${secret_names[@]}"; do
     : >"$work_dir/calls"
     status=0

@@ -26,12 +26,11 @@ const Report = z.object({
 });
 
 export type BillingReport = z.infer<typeof Report>;
-export type BillingBreakdown = z.infer<typeof Breakdown>;
 export type BillingFleetBreakdown = z.infer<typeof FleetBreakdown>;
 export type BillingTotals = z.infer<typeof Totals>;
 export type BillingCountedTotals = z.infer<typeof CountedTotals>;
 export type BillingReportOptions = {
-  period?: string; fleet_id?: string; activity_type?: string; through_at?: string;
+  period?: string; fleet_id?: string; through_at?: string;
 };
 
 /** Settled totals are supplied by the server across the entire filtered period. */

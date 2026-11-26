@@ -12,10 +12,8 @@
 //! # The event a refusal becomes is decided by its CODE
 //!
 //! `UZ-AUTH-*` is a credential this daemon would not take, and the funnel that
-//! asks "how many people could not sign in" reads `auth_rejected`. A spend or
-//! policy refusal is an entitlement boundary, and the funnel that asks "who is
-//! hitting their plan" reads `entitlement_rejected`. Everything else is
-//! `api_error`. Reading the code rather than the status is what keeps a 403
+//! asks "how many people could not sign in" reads `auth_rejected`. Everything
+//! else is `api_error`. Reading the code rather than the status is what keeps a 403
 //! from the scope rung apart from a 403 the gate raised.
 //!
 //! # The names are the funnels' names
@@ -47,14 +45,6 @@ const ACTOR_SYSTEM: &str = "system";
 
 /// The family a credential refusal carries.
 const FAMILY_AUTH: &str = "AUTH";
-
-/// The families an entitlement boundary refuses under.
-///
-/// The gate's own codes: a run refused for money, for policy, or for an
-/// approval it does not hold. Grouped because the funnel asks one question of
-/// all three — "who is hitting a limit" — and splitting them would make that
-/// question three charts nobody adds up.
-const ENTITLEMENT_FAMILIES: &[&str] = &["BILLING", "GATE", "REPAIR"];
 
 /// Reports the refusal a response carries, if it carries one.
 ///
@@ -103,13 +93,6 @@ fn telemetry_of(refused: &Refused, actor: String, workspace: Option<String>) -> 
             // or a subject, and this record is read by everyone with dashboard
             // access. The code says which wall refused and nothing else.
             reason: refused.code.as_str().to_owned(),
-            request_id: refused.request_id.clone(),
-        },
-        family if ENTITLEMENT_FAMILIES.contains(&family) => Telemetry::EntitlementRejected {
-            actor,
-            workspace_id: workspace.unwrap_or_default(),
-            boundary: family.to_owned(),
-            reason_code: refused.code.as_str().to_owned(),
             request_id: refused.request_id.clone(),
         },
         _other => Telemetry::ApiError {

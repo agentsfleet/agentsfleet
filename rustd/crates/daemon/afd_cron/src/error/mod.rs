@@ -33,7 +33,7 @@ pub use self::raise::one_of_each_kind;
 pub use self::raise::retire_held;
 pub(crate) use self::raise::{
     bag_unusable, body_mismatch, destination_not_plain_origin, destination_unusable, keys_missing,
-    query, row_unreadable, signature_invalid, token_malformed, upstream_refused,
+    query, release_held, row_unreadable, signature_invalid, token_malformed, upstream_refused,
     upstream_unreadable,
 };
 
@@ -150,6 +150,16 @@ pub(crate) enum ErrorKind {
     /// event, and the retirement is tried again once the holder lets go.
     #[error("the fired once-schedule is held by another syncer and is not yet retired")]
     RetireHeld,
+
+    /// A fleet's delete found one of its schedules still registered upstream:
+    /// the scheduler refused the removal, or another syncer held the row.
+    ///
+    /// The fleet's delete stops here rather than cascading the row away,
+    /// because a row gone while its registration stands is a schedule firing
+    /// at a fleet nobody can find. The row keeps `deleting`, and a repeated
+    /// delete removes it again.
+    #[error("a schedule of the fleet being deleted is still registered with the scheduler")]
+    ReleaseHeld,
 
     /// This deployment holds no signing key to check a fire against.
     ///
@@ -341,6 +351,7 @@ impl Error {
             | ErrorKind::UpstreamRefused { .. }
             | ErrorKind::RowUnreadable { .. }
             | ErrorKind::RetireHeld
+            | ErrorKind::ReleaseHeld
             | ErrorKind::DestinationUnusable
             | ErrorKind::DestinationNotPlainOrigin
             | ErrorKind::BagUnreadable { .. } => REASON_OPERATIONAL,

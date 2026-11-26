@@ -63,7 +63,6 @@
         "oxlint-tsgolint": "7.0.2008",
         "postcss": "8.5.33",
         "size-limit": "14.3.0",
-        "svix": "^2.11.1",
         "tailwindcss": "^4.3.5",
         "tsrs": "7.1.0-beta.tsrs5",
         "typescript": "7.0.2",
@@ -1865,8 +1864,6 @@
     "stylis": ["stylis@4.2.0", "", {}, "sha512-Orov6g6BB1sDfYgzWfTHDOxamtX1bE/zo104Dh9e6fqJ3PooipYyfJ0pUmrZO2wAvO8YbEyeFrkV91XTsGMSrw=="],
 
     "supports-preserve-symlinks-flag": ["supports-preserve-symlinks-flag@1.0.0", "", {}, "sha512-ot0WnXS9fgdkgIcePe6RHNk1WA8+muPa6cSjeR3V8K27q9BB1rTE3R1p7Hv0z1ZyAc8s6Vvv8DIyWf681MAt0w=="],
-
-    "svix": ["svix@2.11.1", "", { "dependencies": { "standardwebhooks": "^1.1.1" } }, "sha512-Zm8jaHK51pM9X/SN7CQ9aNc/0Egg+37wrbbhC1fpcn4EjADLZL5vkTniAAqjQIdXov3YciZSTKsa0K5ouNtnDw=="],
 
     "tabbable": ["tabbable@6.5.2", "", {}, "sha512-XgdnB1nGU6KU4VgMnZPaZCx7M1hBrLyEiZYau2G2gq9UT0d7d4FUBlNX7vvPlm/B1vk1PjrzJBx9Lbv4fsqS9g=="],
 

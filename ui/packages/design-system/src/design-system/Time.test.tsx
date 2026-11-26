@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { renderToString } from "react-dom/server";
 import { TooltipProvider } from "./Tooltip";
-import { Time, TimeRange, formatTimeAbsolute } from "./Time";
-import { TIME_DEFAULT_LOCALE } from "./time-utils";
+import { Time, TimeRange } from "./Time";
+import { TIME_DEFAULT_LOCALE, formatTimeAbsolute } from "./time-utils";
 
 const ISO = "2026-05-03T10:00:00.000Z";
 

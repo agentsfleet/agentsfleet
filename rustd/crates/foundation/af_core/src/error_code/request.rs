@@ -157,6 +157,14 @@ pub const SCHEDULE_NOT_FLEET_OWNED: ErrorCode = ErrorCode::declare("UZ-SCHED-010
 /// loop. A run-now overrides neither a person's pause nor a retirement.
 pub const SCHEDULE_NOT_RUNNABLE: ErrorCode = ErrorCode::declare("UZ-SCHED-011");
 
+/// A fleet's delete stopped because one of its schedules is still registered
+/// with the external scheduler.
+///
+/// A 409 naming `current_state` `deleting`: the delete removed what the
+/// scheduler would let go and kept the fleet, so the remedy is to repeat the
+/// delete, where [`SCHEDULE_SYNCING`] asks for a retry of one schedule's edit.
+pub const SCHEDULE_STILL_REGISTERED: ErrorCode = ErrorCode::declare("UZ-SCHED-012");
+
 /// A workspace in this tenant already uses the requested name.
 pub const WORKSPACE_NAME_EXISTS: ErrorCode = ErrorCode::declare("UZ-WORKSPACE-001");
 

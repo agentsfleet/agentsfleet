@@ -11,7 +11,7 @@
 //! than owning a series ceiling of their own, which is what the census's
 //! `shared:cost` policy says.
 
-use crate::metrics::family::{CounterKind, Declared, HistogramKind};
+use crate::metrics::family::{Declared, HistogramKind};
 
 /// Runner wall time per invocation.
 ///
@@ -30,9 +30,3 @@ pub const INVOKE_AGENT_TOKEN_USAGE: Declared<HistogramKind> =
 /// Labels: `gen_ai.request.model`.
 pub const INVOKE_AGENT_CACHE_READ_TOKEN_USAGE: Declared<HistogramKind> =
     Declared::new("agentsfleet.invoke_agent.cache_read.token.usage");
-
-/// Nanocredit spend by charge class.
-///
-/// Labels: `gen_ai.request.model`.
-pub const BILLING_CREDIT_CONSUMED: Declared<CounterKind> =
-    Declared::new("agentsfleet.billing.credit.consumed");

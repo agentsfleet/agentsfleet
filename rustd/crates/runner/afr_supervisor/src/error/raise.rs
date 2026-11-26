@@ -67,7 +67,8 @@ pub(crate) fn transport(verb: Verb) -> impl Fn(reqwest::Error) -> Error {
     move |source| ErrorKind::Transport { verb, source }.into()
 }
 
-/// Reports a 5xx or a 429.
+/// Reports a 5xx or a 429 with no body: the tests' stand-in for a daemon that is down.
+#[cfg(test)]
 pub(crate) fn unavailable(verb: Verb, status: u16) -> Error {
     unavailable_with_body(verb, status, &[])
 }

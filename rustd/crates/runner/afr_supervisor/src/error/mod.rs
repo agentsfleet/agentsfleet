@@ -30,11 +30,12 @@ mod raise;
 
 #[cfg(test)]
 pub(crate) use self::raise::refused;
+#[cfg(test)]
+pub(crate) use self::raise::unavailable;
 pub(crate) use self::raise::{
     boundary, capture_limit, capture_unavailable, checkpoint_transfer, client, config, egress,
     egress_blocked, egress_no_ipv4, egress_unresolved, encode, git, malformed, refused_with_body,
-    stream_disconnected, stream_protocol, token_refused, transport, unavailable,
-    unavailable_with_body,
+    stream_disconnected, stream_protocol, token_refused, transport, unavailable_with_body,
 };
 
 /// The daemon refused the runner's token.

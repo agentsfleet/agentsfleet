@@ -16,7 +16,7 @@ fn a_query_failure_keeps_its_cause_behind_a_safe_detail() {
 
 #[test]
 fn an_unreachable_datastore_is_the_one_unavailable_failure() {
-    let unreachable = Error::from(afd_db::error::invalid_bool_knob("FIXTURE_KNOB"));
+    let unreachable = Error::from(afd_db::error::missing_url(afd_db::DbRole::Default));
     assert_eq!(unreachable.code(), error_code::INTERNAL_DB_UNAVAILABLE);
     assert_eq!(
         unreachable.detail(),

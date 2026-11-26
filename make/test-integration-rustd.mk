@@ -103,13 +103,16 @@ _RUSTD_COVERAGE_JUDGE = PYTHONDONTWRITEBYTECODE=1 python3 scripts/rustd_coverage
 #   daemon-api  the daemon/ layer's two heaviest suites: afd_api* and afd_fleet*
 #   daemon      the rest of the daemon/ layer, then the suites that need the
 #               cluster alone (afd_bus holds them)
-#   e2e         the daemon-and-runner suites (af_e2e)
+#   e2e         the daemon-and-runner suites (af_e2e), run as two shards
+#               split by test name: e2e-a the outage and recovery drills,
+#               e2e-b the rest
 #   guffbolt    the published harness and its providers, guffbolt-ai, each
 #               graded at RUSTD_GUFFBOLT_FLOOR too
 # afd_bench is measured by no shard: its sampled counters are measurements,
 # not assertions, and RUSTD_COVERAGE_IGNORE keeps its lines out of the floor.
-# af_e2e's tests/layers.rs proves every member lands in exactly one shard or in
-# RUSTD_COVER_SKIP, and a filter matching nothing fails the lane.
+# af_e2e's tests/layers.rs proves every member lands in exactly one layer group
+# or in RUSTD_COVER_SKIP, and that RUSTD_SHARDS names each group once or as its
+# parts; a filter matching nothing fails the lane.
 # RUSTD_SHARD names one shard, which writes lcov-<shard>.info and grades
 # nothing; unset runs every shard and grades. Any other subset is refused.
 RUSTD_COVER_FOUNDATION_DIRS := crates/foundation/* crates/protocol/*
@@ -120,7 +123,15 @@ RUSTD_COVER_DAEMON_DIRS := crates/daemon/afd_ad* crates/daemon/afd_app* crates/d
 RUSTD_COVER_E2E_DIRS := crates/e2e/*
 RUSTD_COVER_GUFFBOLT_DIRS := guffbolt guffbolt-ai
 RUSTD_COVER_SKIP := afd_bench
-RUSTD_SHARDS := foundation harness runner daemon-api daemon e2e guffbolt
+# The e2e group's suites wait on one shared scenario lock, so they run one at a
+# time and one runner cannot finish them quickly. Its parts split it by test
+# name, as the exclusive suites are split: E2E_A_FILTER selects e2e-a's tests
+# and e2e-b skips the same list, so every test runs once. The drills wait out
+# real outages and run lifetimes, the group's longest waits, so they get e2e-a.
+RUSTD_COVER_E2E_PARTS := e2e-a e2e-b
+E2E_A_FILTER := integration_runner_stream::recovery recovery_process
+E2E_B_SKIP := $(addprefix --skip ,$(E2E_A_FILTER))
+RUSTD_SHARDS := foundation harness runner daemon-api daemon e2e-a e2e-b guffbolt
 RUSTD_SHARD ?= $(RUSTD_SHARDS)
 # Plus the kernel lane's report (test-coverage-runner-kernel): not a shard,
 # because it needs root and a real kernel.
@@ -176,11 +187,15 @@ ifneq ($(filter daemon,$(RUSTD_SHARD)),)
 	$(call _rustd_shard_lane,DAEMON,daemon,daemon,$(EXCLUSIVE_SKIP)); \
 	$(call _rust_lane,rustd-coverage-daemon-exclusive.log,[rustd] coverage: daemon (exclusive),$(_RUSTD_COVER) $(call _rustd_packages,$(call _rustd_shard,DAEMON)) -- --include-ignored --test-threads=1 $(EXCLUSIVE_FILTER))
 endif
-ifneq ($(filter e2e,$(RUSTD_SHARD)),)
+ifneq ($(filter e2e-a,$(RUSTD_SHARD)),)
 	@cd $(RUSTD_DIR) && cargo llvm-cov run --locked --all-features --no-report \
 	  -p agentsfleet_runner --bin agentsfleet-recovery-fixture -- --help
-	@echo "→ [rustd] Shard e2e: the runner driven against the daemon..."; \
-	$(call _rustd_shard_lane,E2E,e2e,daemon and runner)
+	@echo "→ [rustd] Shard e2e-a: the outage and recovery drills against the daemon..."; \
+	$(call _rustd_shard_lane,E2E,e2e-a,daemon and runner (drills),$(E2E_A_FILTER))
+endif
+ifneq ($(filter e2e-b,$(RUSTD_SHARD)),)
+	@echo "→ [rustd] Shard e2e-b: the other daemon-and-runner suites..."; \
+	$(call _rustd_shard_lane,E2E,e2e-b,daemon and runner (rest),$(E2E_B_SKIP))
 endif
 ifneq ($(filter guffbolt,$(RUSTD_SHARD)),)
 	@# llvm-cov runs `cargo test --tests`, which builds no example, so the suite

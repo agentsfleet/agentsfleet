@@ -1,6 +1,7 @@
 //! Daemon frames carry source-owned totals before any collector routes them.
 
-use af_observability::metrics::declared::cost::{BILLING_CREDIT_CONSUMED, INVOKE_AGENT_DURATION};
+use af_observability::metrics::declared::cost::INVOKE_AGENT_DURATION;
+use af_observability::metrics::declared::http::API_BACKPRESSURE_REJECTIONS_TOTAL;
 use af_observability::metrics::registry::{Kind, Temporality};
 use axum::extract::State;
 use axum::routing::post;
@@ -90,15 +91,11 @@ fn integer(value: &Value) -> u64 {
     })
 }
 
-async fn snapshot(
-    received: &mut mpsc::UnboundedReceiver<Value>,
-    credits: u64,
-    count: u64,
-) -> Value {
+async fn snapshot(received: &mut mpsc::UnboundedReceiver<Value>, total: u64, count: u64) -> Value {
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             let body = received.recv().await.expect("collector stays open");
-            let Some(counter) = metric(&body, BILLING_CREDIT_CONSUMED.wire_name()) else {
+            let Some(counter) = metric(&body, API_BACKPRESSURE_REJECTIONS_TOTAL.wire_name()) else {
                 continue;
             };
             let Some(histogram) = metric(&body, INVOKE_AGENT_DURATION.wire_name()) else {
@@ -106,7 +103,7 @@ async fn snapshot(
             };
             assert_eq!(*required(counter, "/sum/aggregationTemporality"), 2);
             assert_eq!(*required(histogram, "/histogram/aggregationTemporality"), 2);
-            if integer(required(counter, "/sum/dataPoints/0/asInt")) == credits
+            if integer(required(counter, "/sum/dataPoints/0/asInt")) == total
                 && integer(required(histogram, "/histogram/dataPoints/0/count")) == count
             {
                 return body;
@@ -119,7 +116,7 @@ async fn snapshot(
 
 fn inspect(body: &Value, sum: f64) -> (Value, Value) {
     let counter = required(
-        metric(body, BILLING_CREDIT_CONSUMED.wire_name()).expect("credit metric"),
+        metric(body, API_BACKPRESSURE_REJECTIONS_TOTAL.wire_name()).expect("rejection metric"),
         "/sum",
     );
     let histogram = required(
@@ -162,22 +159,22 @@ async fn daemon_frames_carry_source_totals_before_any_collector() {
         Builder::new(&config, service(), Registry::declared().expect("census"))
             .install()
             .expect("real pipelines");
-    let credit = instruments
-        .counter_u64(&BILLING_CREDIT_CONSUMED)
-        .expect("credit counter");
+    let rejections = instruments
+        .counter_u64(&API_BACKPRESSURE_REJECTIONS_TOTAL)
+        .expect("rejection counter");
     let duration = instruments
         .histogram_f64(&INVOKE_AGENT_DURATION)
         .expect("duration histogram");
     let mut starts = None;
-    for (added, elapsed, credits, count, sum) in [
+    for (added, elapsed, total, count, sum) in [
         (2, 0.25, 2, 1, 0.25),
         (3, 0.50, 5, 2, 0.75),
         (4, 0.75, 9, 3, 1.50),
     ] {
-        credit.add(added, &[]);
+        rejections.add(added, &[]);
         duration.record(elapsed, &[]);
         exports = flush(exports).await;
-        let body = snapshot(&mut receiver.frames, credits, count).await;
+        let body = snapshot(&mut receiver.frames, total, count).await;
         let observed = inspect(&body, sum);
         if let Some(ref previous) = starts {
             assert_eq!(&observed, previous);

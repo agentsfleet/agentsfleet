@@ -20,7 +20,6 @@ struct Expected {
     error: Error,
     code: ErrorCode,
     detail: &'static str,
-    permanent: bool,
     rejected: bool,
     has_source: bool,
 }
@@ -157,14 +156,12 @@ fn contextual_errors_retain_context_and_sources() -> Result<(), &'static str> {
 }
 
 #[test]
-fn invalid_vault_data_is_the_only_payload_free_permanent_failure() {
-    let mut invalid = expected(
+fn invalid_vault_data_answers_its_own_code() {
+    assert_error(&expected(
         super::vault_data_invalid(),
         error_code::VAULT_DATA_INVALID,
         DETAIL_VAULT_DATA_INVALID,
-    );
-    invalid.permanent = true;
-    assert_error(&invalid);
+    ));
 }
 
 // Value: checkpoint refusals retain their shared code rather than becoming bad requests.
@@ -190,7 +187,6 @@ fn expected(error: Error, code: ErrorCode, detail: &'static str) -> Expected {
         error,
         code,
         detail,
-        permanent: false,
         rejected: false,
         has_source: false,
     }
@@ -199,7 +195,6 @@ fn expected(error: Error, code: ErrorCode, detail: &'static str) -> Expected {
 fn assert_error(expected: &Expected) {
     assert_eq!(expected.error.code(), expected.code);
     assert_eq!(expected.error.detail(), expected.detail);
-    assert_eq!(expected.error.is_config_permanent(), expected.permanent);
     assert_eq!(expected.error.is_rejected(), expected.rejected);
     assert!(!expected.error.is_datastore_unavailable());
     assert_eq!(expected.error.source().is_some(), expected.has_source);
@@ -218,7 +213,6 @@ fn a_fleet_row_no_daemon_wrote_is_refused_for_good() {
         missing.detail(),
         "The fleet's stored network setting cannot be read"
     );
-    assert!(missing.is_config_permanent());
     assert!(!missing.is_datastore_unavailable());
 }
 

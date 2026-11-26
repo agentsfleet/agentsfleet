@@ -10,7 +10,7 @@ use garde::Validate;
 use serde::Deserialize;
 
 /// The shortest heartbeat interval a deployment may set, and so the shortest round.
-const MIN_HEARTBEAT_SECONDS: u64 = 1;
+pub const MIN_HEARTBEAT_SECONDS: u64 = 1;
 
 /// What a run's expiry must leave beyond one round: the answer bound, the reconnect
 /// budget and the renewal window, plus the strict second.

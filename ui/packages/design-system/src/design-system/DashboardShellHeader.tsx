@@ -18,5 +18,3 @@ export function DashboardShellHeader({ className, ref, ...props }: DashboardShel
     />
   );
 }
-
-export default DashboardShellHeader;

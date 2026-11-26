@@ -16,6 +16,7 @@
 use af_core::id::Uuid7;
 
 use afd_db::Precondition;
+use afd_turns::view::activity::Announcement;
 
 use super::history::{Fact, Receipt};
 use super::{Change, Refused, SYNC_RUN, Schedules, fire_at};
@@ -67,9 +68,33 @@ impl Schedules {
         {
             return Ok(Err(Refused::Unheld));
         }
-        let Some(workspace) = scope.workspace.as_ref() else {
+        let Some(workspace) = scope.workspace.clone() else {
             return Ok(Ok(None));
         };
+        let Some((claimed, announcement)) = self
+            .claim_on(transaction, &workspace, fleet, schedule, change, token)
+            .await?
+        else {
+            return Ok(Ok(None));
+        };
+        self.commit_activity(scope.transaction, announcement)
+            .await?;
+        Ok(Ok(Some(claimed)))
+    }
+
+    /// Applies `change` and takes the fence on the caller's connection, with
+    /// the receipt that records it; `None` when the row is absent or held.
+    ///
+    /// The caller holds the fleet's row and commits, then announces.
+    pub(crate) async fn claim_on(
+        &self,
+        connection: &mut sqlx::PgConnection,
+        workspace: &Uuid7,
+        fleet: &Uuid7,
+        schedule: &Uuid7,
+        change: Change<'_>,
+        token: &Uuid7,
+    ) -> Result<Option<(Schedule, Announcement)>> {
         let claimed = sqlx::query_as::<_, Schedule>(sql::CLAIM_MUTATION)
             .bind(schedule)
             .bind(fleet)
@@ -80,29 +105,27 @@ impl Schedules {
             .bind(SyncStatus::Syncing.as_str())
             .bind(token)
             .bind(SYNC_RUN)
-            .fetch_optional(transaction.as_mut())
+            .fetch_optional(&mut *connection)
             .await
             .map_err(error::query(CONTEXT_CLAIM))?;
         // Counted from the claim's own stamp; see `fire_at`.
         let claimed = match claimed {
             Some(claimed) if claimed.once && moved(&change) => {
                 let from = claimed.updated_at;
-                Some(fire_at::stamp(transaction, &claimed, token, from).await?)
+                Some(fire_at::stamp(connection, &claimed, token, from).await?)
             }
             claimed => claimed,
         };
         let Some(claimed) = claimed else {
-            return Ok(Ok(None));
+            return Ok(None);
         };
         let announcement = Receipt {
             schedule: &claimed,
             fact: Fact::mutation(change.desired_status),
         }
-        .record_on(transaction, workspace)
+        .record_on(connection, workspace)
         .await?;
-        self.commit_activity(scope.transaction, announcement)
-            .await?;
-        Ok(Ok(Some(claimed)))
+        Ok(Some((claimed, announcement)))
     }
 
     /// Takes the fence over the row's current state, changing nothing.

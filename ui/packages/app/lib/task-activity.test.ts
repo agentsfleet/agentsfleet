@@ -17,7 +17,7 @@ describe("task progress across stream loss", () => {
       const item = stage("uploading");
       item.progress.activity_id = `019f0000-0000-7000-8000-${(start + offset).toString(16).padStart(12, "0")}`;
       return item;
-    }), truncated: true});
+    })});
     const saved = window(128);
     expect(mergeDurableTaskActivity(window(0), saved)).toEqual(saved);
   });
@@ -28,18 +28,18 @@ describe("task progress across stream loss", () => {
     const earlier = stage("saved", 10);
     earlier.progress.activity_id = "019f0000-0000-7000-8000-ffffffffffff";
     earlier.progress.sequence = 10;
-    const merged = mergeDurableTaskActivity({items: [later], truncated: false}, {items: [earlier], truncated: false});
+    const merged = mergeDurableTaskActivity({items: [later]}, {items: [earlier]});
     expect(merged?.items.map(item => item.progress.sequence)).toEqual([10, 20]);
     const stale = {...later, progress: {...later.progress, sequence: 19}};
     expect(addDurableTaskActivity(merged, stale)).toBe(merged);
-    expect(readDurableTaskActivityHistory({items: [{...later, progress: {...later.progress, sequence: -1}}], truncated: false})).toBeUndefined();
+    expect(readDurableTaskActivityHistory({items: [{...later, progress: {...later.progress, sequence: -1}}]})).toBeUndefined();
   });
 
   it("retains a historical live tail only after a shared saved anchor", () => {
     const preparing = stage("preparing");
     const uploading = stage("uploading", 3);
     const saved = stage("saved", 10);
-    const merged = mergeDurableTaskActivity({items: [uploading, saved], truncated: false}, {items: [preparing, uploading], truncated: false});
+    const merged = mergeDurableTaskActivity({items: [uploading, saved]}, {items: [preparing, uploading]});
     expect(merged?.items.map(item => item.progress.phase)).toEqual(["preparing", "uploading", "saved"]);
   });
 
@@ -48,14 +48,14 @@ describe("task progress across stream loss", () => {
     latest.progress.bytes = {acknowledged: 4096, missing: 2048, reused: 1024};
     const earlier = stage("uploading", 1);
     earlier.progress.bytes = {acknowledged: 1024, missing: 5120, reused: 1024};
-    const history = {items: [latest], truncated: false};
+    const history = {items: [latest]};
     expect(addDurableTaskActivity(history, earlier)).toBe(history);
     expect(readDurableTaskActivityHistory({items: [{...latest, progress: {...latest.progress,
-      bytes: {acknowledged: -1, missing: 0, reused: 0}}}], truncated: false})).toBeUndefined();
+      bytes: {acknowledged: -1, missing: 0, reused: 0}}}]})).toBeUndefined();
   });
   it("restores progress on a running turn without replacing its streamed answer", () => {
-    const live = evt({id: "e1", reply: "Working on the repair", durableTaskActivity: {items: [stage("uploading", 8)], truncated: false}});
-    const detail = row({status: "received", durable_task_activity: {items: [stage("preparing"), stage("uploading", 3)], truncated: false}});
+    const live = evt({id: "e1", reply: "Working on the repair", durableTaskActivity: {items: [stage("uploading", 8)]}});
+    const detail = row({status: "received", durable_task_activity: {items: [stage("preparing"), stage("uploading", 3)]}});
     const merged = mergeBackfill([live], [detail]);
     expect(merged[0]?.reply).toBe("Working on the repair");
     expect(merged[0]?.durableTaskActivity?.items.map(item => item.progress.completed)).toEqual([0, 8]);
@@ -63,7 +63,7 @@ describe("task progress across stream loss", () => {
   });
 
   it("keeps a saved completion above delayed progress and preserves native task status", () => {
-    const history: DurableTaskActivityHistory = {items: [stage("saved", 10)], truncated: false};
+    const history: DurableTaskActivityHistory = {items: [stage("saved", 10)]};
     const delayed = addDurableTaskActivity(history, stage("uploading", 4));
     expect(latestDurableTaskActivity(delayed).map(item => item.progress.phase)).toEqual(["saved"]);
     const live = evt({id: "e1", durableTaskActivity: history});
@@ -73,8 +73,8 @@ describe("task progress across stream loss", () => {
   });
 
   it("rejects malformed progress and keeps every live stage past the retired 128 window", () => {
-    expect(readDurableTaskActivityHistory({items: [stage("saved", -1)], truncated: false})).toBeUndefined();
-    expect(readDurableTaskActivityHistory({items: [{...stage("saved"), progress: {...stage("saved").progress, activity_id: "-".repeat(36)}}], truncated: false})).toBeUndefined();
+    expect(readDurableTaskActivityHistory({items: [stage("saved", -1)]})).toBeUndefined();
+    expect(readDurableTaskActivityHistory({items: [{...stage("saved"), progress: {...stage("saved").progress, activity_id: "-".repeat(36)}}]})).toBeUndefined();
     let history: DurableTaskActivityHistory | undefined;
     for (let i = 0; i < 130; i++) {
       const next = stage("preparing");
@@ -82,9 +82,8 @@ describe("task progress across stream loss", () => {
       history = addDurableTaskActivity(history, next);
     }
     expect(history?.items).toHaveLength(130);
-    expect(history?.truncated).toBe(false);
     expect(readDurableTaskActivityHistory(history)).toEqual(history);
-    expect(mergeDurableTaskActivity(history, {items: [], truncated: false})).toBe(history);
+    expect(mergeDurableTaskActivity(history, {items: []})).toBe(history);
     expect(mergeDurableTaskActivity(history, undefined)).toBe(history);
   });
 
@@ -92,23 +91,22 @@ describe("task progress across stream loss", () => {
     const past = stage("uploading", 200_001);
     past.progress = {...past.progress, total: 200_002, provider: "p".repeat(257), model: "m".repeat(257),
       bytes: {acknowledged: 68_719_476_737, missing: 0, reused: 0}};
-    expect(readDurableTaskActivityHistory({items: [past], truncated: false})?.items).toEqual([past]);
-    expect(readDurableTaskActivityHistory({items: [stage("uploading", 2 ** 53)], truncated: false})).toBeUndefined();
+    expect(readDurableTaskActivityHistory({items: [past]})?.items).toEqual([past]);
+    expect(readDurableTaskActivityHistory({items: [stage("uploading", 2 ** 53)]})).toBeUndefined();
   });
 });
 
-it("keeps authoritative observations above legacy arrivals and carries truncation across a reconnect", () => {
+it("keeps authoritative observations above legacy arrivals across a reconnect", () => {
   const legacy = stage("preparing");
   const newer = stage("uploading", 2);
   newer.progress.sequence = 2;
-  const withSequence = addDurableTaskActivity({items: [newer], truncated: false}, legacy);
-  expect(addDurableTaskActivity({items: [legacy], truncated: false}, newer)).toEqual(withSequence);
+  const withSequence = addDurableTaskActivity({items: [newer]}, legacy);
+  expect(addDurableTaskActivity({items: [legacy]}, newer)).toEqual(withSequence);
   expect(withSequence.items.map(item => item.progress.phase)).toEqual(["preparing", "uploading"]);
   expect(addDurableTaskActivity(withSequence, {...newer, progress: {...newer.progress, sequence: undefined}})).toBe(withSequence);
-  const saved = {items: [legacy], truncated: false};
+  const saved = {items: [legacy]};
   expect(mergeDurableTaskActivity(undefined, saved)).toBe(saved);
-  expect(mergeDurableTaskActivity({items: [legacy], truncated: true}, saved)?.truncated).toBe(true);
   const goal = {...legacy, progress: {...legacy.progress, operation: "goal" as const, phase: "recorded" as const, provider: "openai", model: "selected"}};
   expect(durableTaskActivityLabel(goal)).toBe("Assessment recorded · goal progress · openai / selected");
-  expect(durableTaskActivityLabel({...goal, progress: {...goal.progress, operation: "intent", provider: null}})).toBe("Assessment recorded · request intent ·  / selected");
+  expect(durableTaskActivityLabel({...goal, progress: {...goal.progress, operation: "capture", provider: null}})).toBe("Assessment recorded ·  / selected");
 });

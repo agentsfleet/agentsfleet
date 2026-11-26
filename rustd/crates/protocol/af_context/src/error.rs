@@ -35,12 +35,6 @@ pub(crate) enum ErrorKind {
 af_core::error_lifts!(Error, ErrorKind: serde_json::Error => Document);
 
 impl Error {
-    /// Whether the complete pinned request cannot fit this model's usable window.
-    #[must_use]
-    pub const fn is_window(&self) -> bool {
-        matches!(self.kind(), ErrorKind::Window)
-    }
-
     /// Whether conditional publication lost its source or generation guard.
     #[must_use]
     pub const fn is_stale(&self) -> bool {
