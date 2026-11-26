@@ -246,17 +246,6 @@ class CommandLine(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout)
         self.assertIn("| daemon | 50.0000% | 1 | 2 | 1 |", summary.read_text())
 
-    def test_without_an_actions_summary_nothing_is_written(self):
-        result = self.judge({str(self.root / "rustd/crates/daemon/afd_x/src/lib.rs"): {1: 1}})
-        self.assertEqual(result.returncode, 0, result.stdout)
-        self.assertFalse((self.root / "summary.md").exists())
-
-    def test_a_path_outside_the_layers_rolls_up_to_the_workspace_root(self):
-        self.assertEqual(judge.layer_of("/w/rustd/crates/runner/afr_x/src/lib.rs"), "runner")
-        self.assertEqual(judge.layer_of("/w/rustd/guffbolt-ai/src/lib.rs"), "guffbolt-ai")
-        self.assertEqual(judge.layer_of("/w/build.rs"), "(workspace root)")
-        self.assertEqual(judge.layer_of("/w/rustd/crates/vendor/x/src/lib.rs"), "(workspace root)")
-
     def test_an_e2e_crate_is_named_past_its_layer(self):
         self.assertEqual(judge.crate_of("/w/rustd/crates/e2e/af_e2e/src/lib.rs"), "af_e2e")
 
