@@ -218,7 +218,7 @@
       "CLERK_WEBHOOK_SECRET": "op://ZMB_CD_DEV/clerk-dev/webhook-secret",
       "OIDC_ISSUER": "op://ZMB_CD_DEV/clerk-dev/issuer",
       "AUTH_SESSION_CODE_PEPPER": "op://ZMB_CD_DEV/auth-session-code-pepper/credential",
-      "FIREWORKS_API_KEY": "op://ZMB_CD_DEV/agentsfleet-fireworks-api-token/credential",
+      "ANTHROPIC_API_KEY": "op://ZMB_CD_DEV/agentsfleet-anthropic-api-token/credential",
       "TYPESAFE_API_KEY": "op://ZMB_CD_DEV/typesafe/credential",
       "LOCAL_GITHUB_APP_ID": "op://ZMB_CD_DEV/github-app/app_id",
       "LOCAL_GITHUB_APP_SLUG": "op://ZMB_CD_DEV/github-app/app_slug",

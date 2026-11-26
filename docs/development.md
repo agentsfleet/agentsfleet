@@ -143,7 +143,7 @@ When deliberately recreating this worktree’s acceptance database:
 This recovery applies only after a database reset you deliberately initiated. An unexpected `401`, `403`, missing registration file or unfinished enrollment is not proof of a reset. Keep the existing refusal and credential-recovery checks; do not automatically enroll another runner or replace an existing platform workspace.
 
 The machine environment and `AGENTSFLEET_UI_ENV_FILE` supply development Clerk credentials.
-Initial setup uses the machine's `FIREWORKS_API_KEY` and the development GitHub App to populate the local encrypted vault.
+Initial setup uses the machine's `ANTHROPIC_API_KEY` and the development GitHub App to populate the local encrypted vault.
 
 On a fresh acceptance database, bootstrap takes the app's six fields from `LOCAL_GITHUB_*` when all are set, and otherwise reads them with `op`.
 It takes the Slack app's `client_id`, `client_secret` and `signing_secret` from `LOCAL_SLACK_*` the same way.
