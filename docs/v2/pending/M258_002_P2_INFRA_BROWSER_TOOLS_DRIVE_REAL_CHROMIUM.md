@@ -6,13 +6,13 @@ SPEC AUTHORING RULES (the one comment that survives):
 - No time or effort estimates, owners or implementation dates (SPEC-ESTIMATE).
 -->
 
-# M254_001: The browser tools open, act on and photograph real pages on Chromium in a Fly.io Sprite, and every request passes the fleet's network policy
+# M258_002: The browser tools open, act on and photograph real pages on Chromium in a Fly.io Sprite, and every request passes the fleet's network policy
 
 **Prototype:** v2.0.0
 
-**Milestone:** M254
+**Milestone:** M258
 
-**Workstream:** 001
+**Workstream:** 002
 
 **Date:** Nov 22, 2026; amended Nov 26, 2026
 
@@ -22,11 +22,11 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Categories:** INFRA
 
-**Batch:** B2, after M254_002 merges
+**Batch:** B2, after M258_001 merges
 
-**Depends on:** M254_002, whose `request_access` host grant puts a host on a private fleet's allowlist, which the browser's check reads
+**Depends on:** M258_001, whose `request_access` host grant puts a host on a private fleet's allowlist, which the browser's check reads
 
-**Provenance:** LLM-drafted (Claude Opus 5.5, Nov 22, 2026); amended (Claude Opus 5.5, Nov 26, 2026) from the M254 harness gap matrix §5 and §6 and Indy's rulings of Nov 26, 2026, each reference re-read at `576d0b462`
+**Provenance:** LLM-drafted (Claude Opus 5.5, Nov 22, 2026); amended (Claude Opus 5.5, Nov 26, 2026) from the harness gap matrix §5 and §6 and Indy's rulings of Nov 26, 2026, each reference re-read at `576d0b462`
 
 **Canonical architecture:** `docs/architecture/runner_execution.md` §Tool catalog and §Limits; this spec adds the browser there
 
@@ -54,7 +54,7 @@ The supervisor drives Chromium over the Chrome DevTools Protocol (CDP). A **Spri
 - **CDP interception is the network check.** Every request pauses at the request stage, the supervisor applies the fleet's host rule and the private-address rule, and only then does the request continue.
 - **Screenshots come with Chromium,** shown to the model through the existing `image` path.
 - **Typed actions,** and the three refusal texts retire.
-- **Later backend.** Our own Firecracker engine on the runner host is a second backend in a later milestone, outside M254.
+- **Later backend.** Our own Firecracker engine on the runner host is a second backend in a later milestone, outside M258.
 
 **Design flow:**
 
@@ -77,8 +77,9 @@ run ends, held sandbox included ─► daemon deletes the run's Sprite
 
 | # | Ruling |
 |---|---|
+| Owned tool | The browser is our own tool, built the way the memory tool is: typed verbs we define, state we keep and the fleet's policy we enforce. A backend only runs the page. The ways to act on a site without a full browser are weighed first (research, `[?]` until recorded). |
 | Backend | Real Chromium behind a `BrowserBackend` trait. The first backend is Chromium in a Fly.io Sprite. |
-| Later | Our own Firecracker engine on the runner host is a second backend in a later milestone. Sprite cost or latency, or a need for a VM per run, triggers it. |
+| Sandbox | Bubblewrap retires once a VM engine runs fleets: a Fly.io Sprite in the cloud, our own Firecracker on bare metal, or both behind one engine trait. What each is for and how they coexist is `[?]` until the engine research is recorded. |
 | Lightpanda | Dropped, so no AGPL-3.0 binary enters the toolbox. |
 | Network | Every request passes a check that enforces the fleet's `NetworkPolicy` and refuses private and metadata addresses. |
 | Pixels | Screenshots come with Chromium. |
@@ -87,7 +88,7 @@ run ends, held sandbox included ─► daemon deletes the run's Sprite
 
 - **PR title (eventual):** feat(browser): the browser tools work on Chromium in a Sprite behind the fleet's network policy
 - **Intent (one sentence):** A fleet can open a page that needs JavaScript, click, type and photograph it, and reach only what its network policy allows.
-- **Authoring handshake:** Indy wants the browser on a real Chromium, starting with Fly.io Sprites, with no hole in the network policy. ASSUMPTIONS I'M MAKING: 1. M254_002 merges first. 2. §1's spike passes before §2 starts, and its record amends this spec where it disagrees. 3. The platform token stays in the daemon, as M254_002's search key does. 4. Nothing is backward compatible.
+- **Authoring handshake:** Indy wants the browser on a real Chromium, starting with Fly.io Sprites, with no hole in the network policy. ASSUMPTIONS I'M MAKING: 1. M258_001 merges first. 2. §1's spike passes before §2 starts, and its record amends this spec where it disagrees. 3. The platform token stays in the daemon, as M258_001's search key does. 4. Nothing is backward compatible.
 - **Implementer handshake:** recorded in the Pull Request Session Notes at PLAN, before any edit (SPEC-HANDSHAKE).
 
 ## Implementing agent — read these first
@@ -102,7 +103,7 @@ run ends, held sandbox included ─► daemon deletes the run's Sprite
 
 | File | Action | Why |
 |------|--------|-----|
-| `docs/v2/pending/M254_001_P2_INFRA_BROWSER_TOOLS_THAT_WORK_ON_LIGHTPANDA.md` | EDIT | this spec; moves to `active/`, then `done/` at close; the file name predates the Sprite ruling |
+| `docs/v2/pending/M258_002_P2_INFRA_BROWSER_TOOLS_DRIVE_REAL_CHROMIUM.md` | EDIT | this spec; moves to `active/`, then `done/` at close; the file name predates the Sprite ruling |
 | `rustd/crates/harness/af_egress/src/{policy,resolve}/**` | EDIT | the host rule and the address rule exposed to the check, one rule each |
 | `rustd/crates/runner/afr_supervisor/src/browser/**` | CREATE | `BrowserBackend`, the Sprite backend's CDP session and the check; the module name is set at build |
 | `rustd/crates/daemon/afd_fleet/src/run/browser/**`, `afd_api_runner/src/handler/runner/browser.rs`, `afd_http/src/route/*.rs`, `route_inventory.rs`, `route_meta_total.rs` | CREATE/EDIT | the fenced verbs that create and delete a run's Sprite with the platform token; `INVENTORY` and the counts |
@@ -136,7 +137,7 @@ run ends, held sandbox included ─► daemon deletes the run's Sprite
 ## Prior-Art / Reference Implementations
 
 - **Reference:** `afr_tools/src/egress/mod.rs:195-230`, a chain that re-admits every redirect target through the run's guard; the check admits each paused request the same way.
-- **Reference:** M254_002 §1, a fenced verb whose platform key never leaves the daemon; the Sprite verbs keep the token the same way.
+- **Reference:** M258_001 §1, a fenced verb whose platform key never leaves the daemon; the Sprite verbs keep the token the same way.
 - **Divergence:** none from the HTTP standard.
 
 ## Sections (implementation slices)
@@ -256,7 +257,7 @@ refusals  [browser_unavailable] <sentence>      no page is open · the page clos
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | The spike is recorded before the build (§1) | `git grep -n -e "^- \*\*Dimension 1\.1\*\* — DONE" -- "docs/v2/*/M254_001_*"` | one line | P0 | |
+| R1 | The spike is recorded before the build (§1) | `git grep -n -e "^- \*\*Dimension 1\.1\*\* — DONE" -- "docs/v2/*/M258_002_*"` | one line | P0 | |
 | R2 | The check refuses private, metadata and unlisted hosts (§2) | `make test-unit-all` | exit 0; `the_browser_refuses_a_private_address ... ok`, `the_browser_refuses_the_metadata_address ... ok`, `the_browser_refuses_a_host_a_private_fleet_lacks ... ok` | P0 | |
 | R3 | A run's Sprite is created on first use and gone after the run, and its token stays in the daemon (§3) | `make test-integration-rustd` | exit 0; `a_runs_sprite_is_deleted_when_the_run_ends ... ok`, `a_sprite_left_by_an_ended_run_is_swept_at_boot ... ok`, `the_sprite_token_never_reaches_a_runner ... ok` | P0 | |
 | R4 | Actions are typed, and a screenshot is a bounded PNG (§4) | `make test-unit-all` | exit 0; `an_unknown_browser_action_is_refused_with_its_name ... ok`, `a_screenshot_is_a_png_within_the_image_bounds ... ok` | P1 | |
@@ -283,7 +284,7 @@ Same spelling, other meaning, kept: the engine's review (`concepts_brief.md`, `d
 
 - The second backend, our own Firecracker engine on the runner host, is a later milestone. Sprite cost or latency, or a need for a VM per run, triggers it.
 - Lightpanda: dropped.
-- Web search, page reading through a search vendor and the host grant: M254_002.
+- Web search, page reading through a search vendor and the host grant: M258_001.
 - Decrypting HTTPS, and keeping a browser's cookies across runs.
 - Renaming or merging the browser tools (Indy: "on the browser side keep it in the current form").
 
@@ -301,16 +302,19 @@ N/A: no user surface. The Categories are INFRA only; the tools are model-facing.
 
 ## Discovery (consult log)
 
+- > Owner (Indy, Nov 26, 2026): "bubblewrap must be retired if we do 3rd party sprites based firecraker or any sandbox or firecracker engine our own. the sprite on cloud or firecracker our own (runs in our bare metal) so we could set this up for what? how can we co exists?" — context: a VM engine (a Fly.io Sprite, or our own Firecracker on bare metal) replaces bubblewrap rather than running beside it; what each engine is for and how the two coexist is under research (`[?]` until recorded), and may move the engine work into its own milestone ahead of this browser workstream.
+- > Owner (Indy, Nov 26, 2026): "I want to know how to improve ourselves for the Browser? is there any way else than the browser, the tool must be more like we do in sprites or our own.. just like our memory tool? Also for search Parallel is one, you should be able to do with others like opencode does? we could borrow from there So record the above two." — context: the browser becomes an owned tool like memory, with Sprites or our own engine as backends; the second half is M258_001's.
+
 - > Owner (Indy, Nov 22, 2026): "now i assume the browser isnt working today? how do we make it work? i want the tool perfection to be its own milestone maybe since this PR is huge cleanup" — context: the browser tools answer "no browser" in every real environment.
 - > Owner (Indy, Nov 22, 2026): "Keep in this PR" with "the tool can be cut on the browser side keep it in the current form, to get the browser working what do we need to do" — context: the browser tools keep their form; making them work is this milestone.
 - > Owner (Indy, Nov 22, 2026): "could we use the light* (slim headless browser is there?) ... a zig based i think ... or any others" and then "lets use lightpanda" — context: the Nov 22 engine, dropped on Nov 26.
 - > Owner (Indy, Nov 22, 2026): "write it and push it in this PR" — context: this spec landed, pending, in PR #855.
-- > Owner (Indy, Nov 26, 2026): "Essentially add missing features for guffbolt agent harness", "max 2 in 1 milestone for the guffbolt tool updates" and "I need the final scope to fix" — context: M254 holds two Workstreams, this browser spec and M254_002.
+- > Owner (Indy, Nov 26, 2026): "Essentially add missing features for guffbolt agent harness", "max 2 in 1 milestone for the guffbolt tool updates" and "I need the final scope to fix" — context: M258 holds two Workstreams, this browser spec and M258_001.
 - > Owner (Indy, Nov 26, 2026): "Allow it now", "look for the updated lightpanda", "i am thinking to move to the firecracker spec as well" and "Why do you need screenshot" — context: the Lightpanda licence and version, then the engine, then pixels. Lightpanda 1.0.5 (Nov 20, 2026) was the latest stable release and is AGPL-3.0 (`gh api repos/lightpanda-io/browser`).
 - > Owner (Indy, Nov 26, 2026): "when will you have this usecase? i am leaning towards a and b" — context: the engines put to him were (a) Chromium in a Fly.io Sprite, (b) our own Firecracker engine and (c) Lightpanda as a bridge. Ruled: a `BrowserBackend` trait, the Sprite first, our engine as a later second backend, Lightpanda dropped, screenshots with Chromium.
 - **The first real use case, stated plainly.** No fixture fleet needs a browser today: a `git grep` of `tests/fixtures/fleets/` for browser, click and screenshot finds only `morning-rooster.json:16`, prose about the web app. The likely first case is a coding fleet checking its own preview deploy, a rendered page and a screenshot. Forms and bookings, with a person's approval, come after.
-- **Owner decisions on the gap matrix's recommendations** — accepted: every request passes a check that enforces the fleet's `NetworkPolicy` and refuses private and metadata addresses. M254_002 records the search, image and billing rulings; M257_001 records the scheduling, task, model and crate rulings.
-- **Consults** — the M254 harness gap matrix (Nov 26, 2026, `576d0b462`) found five contradictions in the Nov 22 text. Three were network gaps: no proxy, no route to the host, and a sandbox that ignores the fleet's toggle.
+- **Owner decisions on the gap matrix's recommendations** — accepted: every request passes a check that enforces the fleet's `NetworkPolicy` and refuses private and metadata addresses. M258_001 records the search, image and billing rulings; M257_001 records the scheduling, task, model and crate rulings.
+- **Consults** — the harness gap matrix (Nov 26, 2026, `576d0b462`) found five contradictions in the Nov 22 text. Three were network gaps: no proxy, no route to the host, and a sandbox that ignores the fleet's toggle.
 - **How each contradiction resolves** — a Sprite leaves bubblewrap, and the check reads the fleet's policy. Chromium could not start in bubblewrap, and a Sprite gives it a kernel. The licence question went with Lightpanda.
 - **Stale references fixed** — the catalog lines are `:131,133,135`; `SandboxEnv` and `LazySandboxEnv` override `browser()`; every run is offered every tool; `act` is `browser.rs:83`. The matrix's Firecracker list also missed `generic/env/mod.rs:304`, `lazy.rs:12,95` and `generic/env/tests.rs:17,135`.
 - **Unverified (`[?]`), each settled by §1** — Sprite pricing, limits, cold start and checkpoint time. Whether the Sprite API issues a credential scoped to one Sprite, and the token's vault name. Which request kinds CDP interception pauses, and the rebinding mechanism with its test name.

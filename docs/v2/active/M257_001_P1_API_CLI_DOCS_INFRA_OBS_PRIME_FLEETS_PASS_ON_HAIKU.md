@@ -103,7 +103,7 @@ pass ─► Runs::issue ─► census: live runs < worker_count ─no─► lost
 | File | Action | Why |
 |------|--------|-----|
 | `docs/v2/done/M257_001_P1_API_CLI_DOCS_INFRA_OBS_PRIME_FLEETS_PASS_ON_HAIKU.md` | CREATE | this spec; Status reads DONE at close |
-| `docs/v2/pending/M254_001_P2_INFRA_BROWSER_TOOLS_THAT_WORK_ON_LIGHTPANDA.md`, `docs/v2/pending/M254_002_P1_API_CLI_DOCS_INFRA_OBS_UI_WEB_SEARCH_AND_FETCH_ON_EVERY_MODEL.md` | EDIT/CREATE | M254's two specs, pending, in this Pull Request ("everything you do must go in 1 PR") |
+| `docs/v2/pending/M258_002_P2_INFRA_BROWSER_TOOLS_DRIVE_REAL_CHROMIUM.md`, `docs/v2/pending/M258_001_P1_API_CLI_DOCS_INFRA_OBS_UI_WEB_SEARCH_AND_FETCH_ON_EVERY_MODEL.md` | EDIT/CREATE | M258's two specs, pending, in this Pull Request ("everything you do must go in 1 PR") |
 | `rustd/crates/protocol/af_wire/src/decision/config.rs`, `public/openapi.json` | EDIT | §1: `GoalDecisionPolicy` loses `done` |
 | `rustd/crates/runner/afr_agent/src/decision/goal.rs`, `afd_fleet/src/durable_task/decision/authorize.rs` | EDIT | §1: statements decide done, by the same rule on both sides |
 | `rustd/crates/runner/afr_agent/src/loop/durable_task_tests/behavior/{mod,goal_results}.rs`, `afd_fleet/tests/integration_durable_tasks/decisions/goal_evidence.rs` | EDIT/CREATE | §1's tests |
@@ -165,7 +165,7 @@ Otherwise the next action decides: `CONTINUE` or `WAIT` at its own probability a
 - **Dimension 1.4** — the daemon agrees → Test `a_completion_is_prepared_by_its_statements_alone` (integration, `afd_fleet`): a next action of `BLOCKED` 0.49 and `DONE` 0.38 with every statement at 1.0 → the completion prepares; a statement below its floor → `UZ-DT-007`.
 - **Dimension 1.5** — no tool writes `done` → Test `refuses malformed decision definitions before HTTP` (unit, CLI, `cli/test/platform-decision.unit.test.ts`): a goal carrying `done` → refused before any request.
 - **Dimension 1.6** — the bootstrap writes no `done` → Test `the decision model is created once and its key saved once in the platform workspace` (unit, `deploy/local/bootstrap.test.ts`): the created profile's goal is exactly `questions_revision`, `statement_min_bps`, `continue_action` and `wait`.
-- **Dimension 1.7** — a stored `done` fails loud → Test `[?]` (unit, `af_wire`): a profile with `goal.done` → the decode names the unknown field.
+- **Dimension 1.7** — a stored `done` fails loud → Test `a_goal_policy_that_still_names_done_is_refused_by_name` (unit, `af_wire/tests/durable_task_validation.rs`): a profile with `goal.done` → the decode names the unknown field.
 - **Dimension 1.8** — the live path → Test `prime-stubborn-mule.spec.ts` (e2e, `make acceptance`, fixture `stubborn-mule`): the task stores and recalls `count-to-three` and ends `done`.
 
 ### §2 — No turn waits behind a dropped hold
@@ -223,16 +223,28 @@ The allowlist moves to the rows verified on Nov 26, 2026. Fable 5.2, GPT-6.2 Sol
 Both Gemini Argon rows, native and routed, and the new Carbon row cap output at 65,536, Google's per-request limit. guffbolt-ai's Gemini list adds `gemini-4-neon`, raises Argon and Carbon to 65,536, and drops the agent, Live, image and shut-down models.
 
 - **Dimension 5.1** — 21 curated rows → Test `membership and safe diagnostic names come from the allowlist` (unit, `scripts/model-catalogue/curated.test.ts`): the document holds 21 models.
-- **Dimension 5.2** — Gemini output is capped → Test `[?]` (unit): every row whose model is Gemini 4 has `max_output_tokens` 65,536.
-- **Dimension 5.3** — guffbolt-ai's list is Google's → Test `[?]` (unit, guffbolt-ai): `gemini-4-neon` resolves; `gemini-2.5-computer-use-preview-10-2025` and `gemini-3.1-flash-live-preview` do not; Argon's output is 65,536.
+- **Dimension 5.2** — Gemini output is capped → Test `every Gemini 4 row states Google's 65,536-token output limit, not its context window` (unit, `scripts/model-catalogue/curated.test.ts`; against the old allowlist it reads 943,718): every row whose model is Gemini 4 has `max_output_tokens` 65,536.
+- **Dimension 5.3** — guffbolt-ai's list is Google's → Test `the_gemini_list_serves_neon_and_caps_gemini_4_output` (unit, `guffbolt-ai/src/models/tests.rs`): `gemini-4-neon` resolves; `gemini-2.5-computer-use-preview-10-2025` and `gemini-3.1-flash-live-preview` do not; Argon's output is 65,536.
 - **Dimension 5.4** — dev reads the new rows → Test `dev_catalogue_applied` (manual): the playbook's diff and apply on dev, then `agentsfleet platform models update` for the Argon rows, because the apply keeps saved inference (`scripts/model-catalogue/sql/upsert_models.sql:17`). Evidence: the diff, the apply and the update in the Session Notes.
 
 ### §6 — Every crate is current
 
 Every workspace dependency moves to its newest release that the lanes pass on. Compatible releases come from `cargo update`; a major release and each exact pin is checked against its changelog. The pins are `aws-sigv4`, `aws-credential-types`, `image`, `rig-core`, `tokio-quiche`, `async-nats` and `libc` (`rustd/Cargo.toml:507-508,619,635,759,762,1011`), and the patched `datagram-socket` (`:1369-1370`).
 
-- **Dimension 6.1** — every pin is checked → Test `crate_pins_checked` (manual): Discovery lists each pin and major release, its newest version and the decision, with the reason a pin stays. The full table is `[?]` until the update runs.
+- **Dimension 6.1** — every pin is checked → Test `crate_pins_checked` (manual): the table below lists each pin and breaking release, its newest version and the decision, with the reason a pin stays.
 - **Dimension 6.2** — the new lockfile passes → Test: the S rows (`make lint-all`, `make test-unit-all`, `make test-integration-rustd`) on the final tree.
+
+Read from the crates.io index on Nov 26, 2026, over all 162 workspace dependencies:
+
+| Crate | Ours | Newest | Decision |
+|---|---|---|---|
+| `rig-core` | `=0.47.0` | 0.47.1 | Moves to `=0.47.1`. Its only `rig-core` entry is the model catalog refresh (Gemini 4 Neon, GPT-6.2); every other entry in the release is another rig crate (release notes, `v0.47.1`). |
+| `libc` | `=0.2.189` | 0.2.191 | Stays: `quiche` 0.30.1 and `tokio-quiche` 0.23.0, both newest, require `libc` below 0.2.190. |
+| `parking_lot` | 0.12.5 | 0.13.0 | Stays: its `parking_lot_core` 0.10 needs `libc` 0.2.191. |
+| `gix` | 0.90.0 | 0.91.0 | Stays: its `gix-hashtable` 0.19 takes `parking_lot` 0.13. |
+| `aws-sigv4`, `aws-credential-types`, `image`, `tokio-quiche`, `async-nats` | exact pins | the same | Stay: each pin is the newest release. |
+| `datagram-socket` (patched) | 0.8.1 | 0.8.1 | The patch stays. |
+| 24 others | compatible | newer | `cargo update`. |
 
 ## Interfaces
 
@@ -250,7 +262,7 @@ Every workspace dependency moves to its newest release that the lanes pass on. C
 |------|------|-------|--------------------------------------------------|------|
 | Untrusted goal result | security | a stale, unknown or refused record claims completion | no report; the run stops with recovery | `untrusted_goal_results_authorize_no_report` |
 | Statement short | failure | one statement under the floor while `DONE` is claimed | refused `UZ-DT-007` | `a_completion_is_prepared_by_its_statements_alone` |
-| Stored `done` | failure | a profile written before this change | the read fails loud; the playbook replaces the profile | `[?]` (Dimension 1.7) |
+| Stored `done` | failure | a profile written before this change | the read fails loud; the playbook replaces the profile | the Dimension 1.7 test |
 | Stale hold | capacity | the daemon counts a hold the runner dropped | the census no longer counts holds | `a_hold_the_runner_evicted_does_not_refuse_its_free_worker` |
 | Lost turn starves | capacity | a refused turn sorts last with no pass owed | its wake is re-rung; it returns as a hint | `a_turn_whose_assignment_was_lost_is_offered_before_newer_sticky_work` |
 | Loss loop | capacity | the census and the runner's credits disagree until the next heartbeat | each loss rings once; the heartbeat's reconcile ends the loop | `[?]` |
@@ -301,7 +313,7 @@ Every workspace dependency moves to its newest release that the lanes pass on. C
 
 ## Out of Scope
 
-- M254's web search, page reading, images and browser: their own specs, pending in this Pull Request.
+- M258's web search, page reading, images and browser: their own specs, pending in this Pull Request.
 - The five other catalogue rows that reserve 943,718 output tokens (four Fireworks rows and `meta/muse-wonder`): they need their providers' limits read first.
 - Gemini's `store` and `retryDelay` fixes, and a real stop reason in place of `cut` (Gemini review §6).
 - Sequencing holds on the wire so the reconcile can trust the runner's immediate beat.
@@ -333,14 +345,14 @@ Every workspace dependency moves to its newest release that the lanes pass on. C
 - > Owner (Indy, Nov 26, 2026): "I agree on those 3" — context: the census counts live runs only, a lost assignment re-rings the wake, and an age term joins ordinary ordering; logging the census on `run_assignment_lost` was added with them.
 - > Owner (Indy, Nov 26, 2026): "4 is very less availability" — context: the runner reports host CPU, memory and free disk on its heartbeat, `platform runners list` shows them, and dev's `worker_count` is set from them.
 - > Owner (Indy, Nov 26, 2026): "make haiku as the default model" — context: Claude Haiku 5.5, blocked by Anthropic's 400 on the runner's Messages request; the fix is in this Pull Request.
-- > Owner (Indy, Nov 26, 2026): "update and check all the crates and push in this PR" and "everything you do must go in 1 PR" — context: §6, and M254's two specs travel in this Pull Request.
-- > Owner (Indy, Nov 26, 2026), recorded in M254's specs: "Essentially add missing features for guffbolt agent harness", "max 2 in 1 milestone for the guffbolt tool updates", "I need the final scope to fix", "Hybrid", "Does parallels offer search too", "I think i wanna take the call to use like amp for websearch and avoid hybrid?", "Allow it now", "look for the updated lightpanda", "i am thinking to move to the firecracker spec as well", "Why do you need screenshot", "In web and the cli, since if its api then allow both", "i think though this is billable, it must be convered to the platform runtime cost?" and "when will you have this usecase? i am leaning towards a and b".
+- > Owner (Indy, Nov 26, 2026): "update and check all the crates and push in this PR" and "everything you do must go in 1 PR" — context: §6, and M258's two specs travel in this Pull Request.
+- > Owner (Indy, Nov 26, 2026), recorded in M258's specs: "Essentially add missing features for guffbolt agent harness", "max 2 in 1 milestone for the guffbolt tool updates", "I need the final scope to fix", "Hybrid", "Does parallels offer search too", "I think i wanna take the call to use like amp for websearch and avoid hybrid?", "Allow it now", "look for the updated lightpanda", "i am thinking to move to the firecracker spec as well", "Why do you need screenshot", "In web and the cli, since if its api then allow both", "i think though this is billable, it must be convered to the platform runtime cost?" and "when will you have this usecase? i am leaning towards a and b".
 - **Consults** — the dev incident report (Nov 26, 2026) traced fleet `…17ab`'s second message. It found 17 `run_assignment_lost` events, 15 of them at 3 live runs, and 66 assign passes in the wait. The census had counted holds the runner evicted.
 - **The report's tests and gaps** — it names the three regression tests §2 carries. It left `worker_count` 4 unverified; `deploy/local/bootstrap.ts:300` assigns 4 locally, and dev's row is gone.
 - **Evidence for §1** — the dev goal check in `statements_that_hold_complete_the_task_whatever_the_next_action_says` (this branch, `goal_results.rs`) and the muddled next action in `goal_evidence.rs` (`BLOCKED` 0.49, `DONE` 0.38) are the shapes dev produced.
 - **Evidence for §4** — the dev turn `01a2168e-8d7f-7295-9cdc-bb19572547ed` (Nov 26, 2026, 06:32:50 UTC): status `fleet_error`, `wall_ms` 140, "the model provider refused the turn with status 400 (invalid_request_error)".
 - **Corrections** — the local default model today is Fireworks's MiniMax M3.1 Flash (`deploy/local/bootstrap.ts:11-12`), not a Claude model; CI acceptance supplies only `FIREWORKS_API_KEY` (`acceptance-on-demand.yml:111`). The catalogue patch caps the Gemini rows only; five other rows keep 943,718 (Out of Scope).
-- **Unverified (`[?]`), each filled when the code lands** — §6's pin table. The test names of Dimensions 1.7, 2.2, 2.4, 2.6, 3.1 to 3.4, 5.2 and 5.3, and the loss-loop test.
+- **Unverified (`[?]`), each filled when the code lands** — the test names of Dimensions 2.2, 2.4, 2.6 and 3.1 to 3.4, and the loss-loop test.
 - **Model reviews** — none.
 - **Open blockers** — the 400's cause (§4).
 - **Deferrals and transfers** — none. Each one needs an owner quote below, as `> Owner (<name>, <MMM DD, YYYY HH:MM>): "<quote>" — context: <item, why>`.

@@ -6,13 +6,13 @@ SPEC AUTHORING RULES (the one comment that survives):
 - No time or effort estimates, owners or implementation dates (SPEC-ESTIMATE).
 -->
 
-# M254_002: Every model searches the web, reads pages and sees a person's images, inside the fleet's network policy
+# M258_001: Every model searches the web, reads pages and sees a person's images, inside the fleet's network policy
 
 **Prototype:** v2.0.0
 
-**Milestone:** M254
+**Milestone:** M258
 
-**Workstream:** 002
+**Workstream:** 001
 
 **Date:** Nov 26, 2026
 
@@ -22,11 +22,11 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Categories:** API, CLI, DOCS, INFRA, OBS, UI
 
-**Batch:** B1, alone; M254_001's browser follows it
+**Batch:** B1, alone; M258_002's browser follows it
 
 **Depends on:** none
 
-**Provenance:** LLM-drafted (Claude Opus 5.5, Nov 26, 2026) from the M254 harness gap matrix, the Gemini review and Indy's rulings of Nov 26, 2026, each reference re-read at `576d0b462`
+**Provenance:** LLM-drafted (Claude Opus 5.5, Nov 26, 2026) from the harness gap matrix, the Gemini review and Indy's rulings of Nov 26, 2026, each reference re-read at `576d0b462`
 
 **Canonical architecture:** `docs/architecture/runner_execution.md` §Tool catalog and `docs/architecture/billing.md`; this spec rewrites the `web_search` and `web_fetch` rows and names the search cost the runtime fee covers
 
@@ -73,7 +73,7 @@ web_fetch {url} ─► runner SearchBackend: host on the fleet's allow list? ─
                                          │no
                                          ├─ public fleet ─► POST L/extracts ─► daemon ─► Parallel Extract (renders JavaScript)
                                          └─ private fleet ─► [network_restricted] names request_access {host} and "Allow all"
-request_access {host} ─► card ─► Approve ─► NetworkPolicy.allow gains the host ─► local reads, the sandbox, M254_001's browser check
+request_access {host} ─► card ─► Approve ─► NetworkPolicy.allow gains the host ─► local reads, the sandbox, M258_002's browser check
 ```
 
 ## Rulings
@@ -83,7 +83,7 @@ request_access {host} ─► card ─► Approve ─► NetworkPolicy.allow gain
 | # | Ruling |
 |---|---|
 | Search | Our own function-tool `web_search` on every wire, Messages and Responses included. Provider-hosted search is no longer sent. |
-| Vendor | Parallel Search first, behind a `SearchBackend` trait, so Exa or Tavily can be added. |
+| Vendor | Several search vendors behind one `SearchBackend` trait, as opencode does; Parallel is one of them. The vendor set, the selection and fallover order, the cooldown on a refusal and the counting per vendor are borrowed from opencode's design (research, `[?]` until recorded). |
 | Pages | `web_fetch` reads a public page through Parallel Extract, which renders JavaScript on Parallel's servers. |
 | Private fleets | A `restricted` fleet can neither search nor use Extract. |
 | Gemini | Google Search grounding stays off; Gemini uses our `web_search`. |
@@ -109,7 +109,7 @@ request_access {host} ─► card ─► Approve ─► NetworkPolicy.allow gain
 
 | File | Action | Why |
 |------|--------|-----|
-| `docs/v2/pending/M254_002_P1_API_CLI_DOCS_INFRA_OBS_UI_WEB_SEARCH_AND_FETCH_ON_EVERY_MODEL.md` | CREATE | this spec; moves to `active/`, then `done/` at close |
+| `docs/v2/pending/M258_001_P1_API_CLI_DOCS_INFRA_OBS_UI_WEB_SEARCH_AND_FETCH_ON_EVERY_MODEL.md` | CREATE | this spec; moves to `active/`, then `done/` at close |
 | `rustd/guffbolt-ai/src/{types/model.rs,types/mod.rs,lib.rs,wire/request/mod.rs,wire/request/tests.rs,wire/route/tests/counting/unsupported.rs}`, `rustd/guffbolt-ai/README.md` | EDIT | §2: `Hosted`, `Request.hosted`, `WEB_SEARCH_MESSAGES` and `fn hosted` deleted |
 | `rustd/guffbolt/src/{lib.rs,tools/mod.rs,tools/web/**,tools/builder/**,tools/search.rs,tools/files/listing/grep.rs}`, `rustd/guffbolt/README.md`, `rustd/guffbolt/examples/fireworks_live.rs`, `rustd/guffbolt/tests/public_api/**` | EDIT/CREATE | §2 and §3: `SearchBackend`, `web_search` and routed `web_fetch`; §7: `tool_search` and `grep` |
 | `rustd/crates/harness/af_providers/src/web/**` | CREATE | §1: the Parallel implementation of `SearchBackend` |
@@ -224,7 +224,7 @@ With no `max_chars`, a page stops at the command output budget, 40,000 bytes (M2
 
 The grant row has `grant_type` `host` (`afd_api_wire/src/grant.rs:45-49` gains it) and the host as its `service`.
 
-On Approve, the policy build adds the host to `NetworkPolicy.allow` (`afd_gate/src/policy/shape/mod.rs:36-59`). `listed()` then admits it, the sandbox's allowlist names it (`afr_supervisor/src/egress/mod.rs:71-85`), and M254_001's browser check reads the same list.
+On Approve, the policy build adds the host to `NetworkPolicy.allow` (`afd_gate/src/policy/shape/mod.rs:36-59`). `listed()` then admits it, the sandbox's allowlist names it (`afr_supervisor/src/egress/mod.rs:71-85`), and M258_002's browser check reads the same list.
 
 A host grant opens that host only; search stays off on a private fleet. `host_not_allowed` names `request_access` (`af_egress/src/error/mod.rs:69-74`).
 
@@ -392,10 +392,9 @@ POST L/access    {fencing_token, name, scope?} | {fencing_token, host}     201 {
 
 ## Out of Scope
 
-- Code mode, skills, structured output, and Model Context Protocol (MCP) servers for fleets: not planned in M254.
+- Code mode, skills, structured output, and Model Context Protocol (MCP) servers for fleets: not planned in M258.
 - Files other than images in a message, and audio or video.
-- The browser: M254_001. The Firecracker engine: its own later milestone.
-- A second vendor: one more `SearchBackend` implementation when Indy names it.
+- The browser: M258_002. The Firecracker engine: its own later milestone.
 - A per-fleet search setting beyond "Allow all".
 
 ---
@@ -408,7 +407,7 @@ POST L/access    {fencing_token, name, scope?} | {fencing_token, host}     201 {
 4. **Rebuild-vs-iterate** — rebuild how search reaches a model; iterate on `web_fetch`, `request_access` and the prompt.
 5. **What we build** — two daemon verbs over Parallel with a per-run count; the `SearchBackend` trait, `web_search` and a routed `web_fetch`. Also a host grant, sources on a completed call, a prompt from the offered tools, and images in a message.
 6. **What we do NOT build** — a per-fleet vendor choice (one platform vendor); a vendor fallback chain (one vendor first); a search on private fleets (ruled out); provider-hosted search as an option (ruled out, no alias).
-7. **Fit with existing features** — it compounds with "Allow all", the access card and the `image` tool's path. It must not destabilize the network policy's host rule, which `http_request` and M254_001's browser check share.
+7. **Fit with existing features** — it compounds with "Allow all", the access card and the `image` tool's path. It must not destabilize the network policy's host rule, which `http_request` and M258_002's browser check share.
 8. **Surface order** — API and runner first, then the app's card and Sources, then the CLI's lists, because both read the daemon's new shapes.
 9. **Dashboard restraint** — "Sources" shows only when a run called a web tool; no search settings page exists.
 10. **Confused-user next step** — a refused search names "Allow all" and `agentsfleet fleet network use <fleet> allow-all`; a refused page names `request_access`, and the card asks the person.
@@ -425,16 +424,18 @@ POST L/access    {fencing_token, name, scope?} | {fencing_token, host}     201 {
 
 ## Discovery (consult log)
 
-- > Owner (Indy, Nov 26, 2026): "Essentially add missing features for guffbolt agent harness", "max 2 in 1 milestone for the guffbolt tool updates" and "I need the final scope to fix" — context: M254 holds two Workstreams, M254_001's browser and this spec.
+- > Owner (Indy, Nov 26, 2026): "I want to know how to improve ourselves for the Browser? is there any way else than the browser, the tool must be more like we do in sprites or our own.. just like our memory tool? Also for search Parallel is one, you should be able to do with others like opencode does? we could borrow from there So record the above two." — context: search runs on several vendors like opencode, replacing "Parallel first" and the out-of-scope second vendor; the first half is M258_002's.
+
+- > Owner (Indy, Nov 26, 2026): "Essentially add missing features for guffbolt agent harness", "max 2 in 1 milestone for the guffbolt tool updates" and "I need the final scope to fix" — context: M258 holds two Workstreams, M258_002's browser and this spec.
 - > Owner (Indy, Nov 26, 2026): "Hybrid", then "Does parallels offer search too", then "I think i wanna take the call to use like amp for websearch and avoid hybrid?" — context: the last replaces "Hybrid". Our function-tool `web_search` runs on every wire, hosted search is deleted, and Parallel is the first vendor behind a `SearchBackend` trait.
 - **Owner decisions, Nov 26, 2026, on the gap matrix's recommendations** — accepted: Gemini grounding off, Gemini using our `web_search`; a `restricted` fleet cannot search; page reading through Parallel Extract on public fleets.
-- > Owner (Indy, Nov 26, 2026), recorded in the sibling specs: "Allow it now", "look for the updated lightpanda", "i am thinking to move to the firecracker spec as well", "Why do you need screenshot", "when will you have this usecase? i am leaning towards a and b" (M254_001); "I agree on those 3", "4 is very less availability", "Finish lines decide done", "make haiku as the default model", "update and check all the crates and push in this PR", "everything you do must go in 1 PR" (M257_001).
+- > Owner (Indy, Nov 26, 2026), recorded in the sibling specs: "Allow it now", "look for the updated lightpanda", "i am thinking to move to the firecracker spec as well", "Why do you need screenshot", "when will you have this usecase? i am leaning towards a and b" (M258_002); "I agree on those 3", "4 is very less availability", "Finish lines decide done", "make haiku as the default model", "update and check all the crates and push in this PR", "everything you do must go in 1 PR" (M257_001).
 - **Agent default, open to Indy** — the daemon makes every Parallel call, for platform and tenant runners alike. The matrix proposed a runner call with a platform key, plus a daemon proxy for tenant runners (`docs/v2/pending/M251_001_…:202-214`). One daemon path keeps the key off every runner and makes the count the daemon's own.
 - **Agent default, open to Indy** — no `mode` is sent, so Parallel's default `advanced` applies at USD 5 per 1,000; `turbo` or `fast` cost USD 1 per 1,000 (pricing page, read Nov 26, 2026).
 - > Owner (Indy, Nov 26, 2026): "i think though this is billable, it must be convered to the platform runtime cost?" — context: Parallel runs on one platform key and writes no usage line; the runtime fee covers it, and calls are counted per run for our own cost tracking.
 - **Named risk, the fee against the search.** The runtime fee is USD 0.0001 a second (`afd_billing/src/nanos.rs:25`). One `advanced` search at USD 0.005 equals 50 seconds of fee, and one extract at USD 0.001 equals 10 seconds. A run that searches more often than once per 50 seconds costs the platform more than it earns; `search_calls` against the run's seconds shows where.
 - > Owner (Indy, Nov 26, 2026): "In web and the cli, since if its api then allow both" — context: a person attaches images to a message through the API, and both the web app and the CLI send them (§9).
-- **Consults** — the M254 harness gap matrix (Nov 26, 2026, `576d0b462`), §0, §1.1, §4 and §6. References cited here only: Amp uses Parallel for `web_search` and `read_web_page`; opencode's `webfetch` follows 10 redirects, re-checking each; Codex sends hosted search on Responses. The Gemini review (Nov 26, 2026) sets grounding aside for its display terms.
+- **Consults** — the harness gap matrix (Nov 26, 2026, `576d0b462`), §0, §1.1, §4 and §6. References cited here only: Amp uses Parallel for `web_search` and `read_web_page`; opencode's `webfetch` follows 10 redirects, re-checking each; Codex sends hosted search on Responses. The Gemini review (Nov 26, 2026) sets grounding aside for its display terms.
 - **Parallel, read Nov 26, 2026** — `POST /v1/search` takes `search_queries` (required), `objective` and `mode` (`turbo`, `fast`, `basic`, `advanced`; default `advanced`), with `x-api-key`; it documents no query length maximum. `POST /v1/extract` takes `urls` and returns Markdown, "including JavaScript-heavy pages and PDFs".
 - **Parallel's prices, read Nov 26, 2026 (`docs.parallel.ai/resources/pricing`)** — per 1,000 requests, `turbo` or `fast` cost USD 1 and `basic` or `advanced` USD 5. Results past 10 cost USD 1 per 1,000, and Extract USD 1 per 1,000 URLs.
 - **Corrections to the matrix** — the grant type constants live in `afd_api_wire/src/grant.rs:45-49`; `afd_gate/src/policy/build/mod.rs:76,110` uses them. The 500-character `grep` cap is in the M253_004 brainstorm (`:20,236`), while `grep.rs:13` is the default of 100 matches. `web_fetch` already renders Markdown through `html2text`'s plain config, so §3 changes the description and adds a test, not a converter.
