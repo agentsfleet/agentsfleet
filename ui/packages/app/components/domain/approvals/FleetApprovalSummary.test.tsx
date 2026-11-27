@@ -326,3 +326,35 @@ it("keeps the typed answer and shows the refusal when the fleet was archived", a
   expect(screen.getByRole("button", {name: "Send answer"})).toHaveProperty("disabled", false);
   expect(mocks.capture).not.toHaveBeenCalled();
 });
+
+it("an access card for a host names it and shows only the redirect hostnames", async () => {
+  const from = "docs.vendor.example";
+  const to = "support.vendor.example";
+  const signed = "/private/guide?signature=sensitive";
+  mocks.list.mockResolvedValue(page([{...ACCESS, proposed_action: signed, detail: signed, blast_radius: signed,
+    evidence: {kind: "host", service: to, scope: null, redirect: {tool: "web_fetch", from_host: from, to_host: to, url: signed}},
+    expires_at: "2026-11-12T12:00:00Z"}]));
+  render(<FleetApprovalSummary {...PROPS} />);
+  expect(await screen.findByText(`Allow this fleet to reach ${to}?`)).toBeTruthy();
+  expect(screen.getByText(`received a redirect from ${from} to ${to}.`, {exact: false})).toBeTruthy();
+  expect(screen.getByText(/web tools reach .* on future runs until you revoke access/)).toBeTruthy();
+  expect(screen.getByText("Respond by", {exact: false})).toBeTruthy();
+  expect(screen.getByRole("button", {name: "Deny"})).toBeTruthy();
+  expect(document.body.textContent).not.toContain(signed);
+  fireEvent.click(screen.getByRole("button", {name: "View exact action"}));
+  expect(screen.getByRole("dialog", {name: "Exact action"})).toBeTruthy();
+  expect(document.body.textContent).not.toContain(signed);
+  expect(screen.queryByText("Expires", {exact: false})).toBeNull();
+});
+
+it.each([
+  {from_host: "docs.vendor.example/secret?sig=private", to_host: "support.vendor.example"},
+  {from_host: "docs.vendor.example", to_host: "other.example"},
+])("withholds approval when redirect evidence cannot be shown safely", async redirect => {
+  mocks.list.mockResolvedValue(page([{...ACCESS, evidence: {kind: "host", service: "support.vendor.example",
+    redirect: {tool: "web_fetch", ...redirect}}}]));
+  render(<FleetApprovalSummary {...PROPS} />);
+  expect(await screen.findByText("Request details unavailable.")).toBeTruthy();
+  expect(screen.queryByRole("button", {name: "Approve"})).toBeNull();
+  expect(document.body.textContent).not.toContain("sig=private");
+});

@@ -29,7 +29,7 @@ import { outputDouble } from "./helpers-output-double.ts";
 const WS_ID = "01900000-0000-7000-8000-00000067e210";
 const FLEET_ID = "01900000-0000-7000-8000-0000007670f7";
 const BEARER = "pat_grant_test";
-const NO_GRANTS_LINE = "no integration grants found";
+const NO_GRANTS_LINE = "no access grants found";
 
 interface PrintCapture {
   json: unknown[];

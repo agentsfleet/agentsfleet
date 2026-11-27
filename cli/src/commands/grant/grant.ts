@@ -18,7 +18,7 @@ import { wsGrantsListPath, wsGrantPath } from "../../lib/api-paths.ts";
 
 const GRANT_ID_FIELD = "id";
 
-// `Grant` in `GET F/integration-grants`: one secret or integration the fleet
+// `Grant` in `GET F/integration-grants`: one host, secret or integration the fleet
 // asked for, and whether a person approved it.
 interface GrantRow {
   readonly id?: string | null;
@@ -44,8 +44,8 @@ const GRANT_SPEC = {
   ageKey: null,
 } as const;
 
-const NO_GRANTS = "no integration grants found" as const;
-const GRANTS_LISTED = "Integration grants" as const;
+const NO_GRANTS = "no access grants found" as const;
+const GRANTS_LISTED = "Access grants" as const;
 
 export const grantListEffectFromArgs = Effect.fn("grant.list")(function* (
   fleetIdPositional: string | undefined,
@@ -95,7 +95,7 @@ const FIELD_FLEET_ID = "fleet_id" as const;
 
 /** What a revoked grant means for the fleet, said once. */
 const deletedNotice = (grantId: string): string =>
-  `Grant ${grantId} deleted. The fleet can no longer use this integration; further attempts will be denied.`;
+  `Grant ${grantId} revoked. Future runs lose the access provided by this grant.`;
 
 export const grantDeleteEffectFromArgs = Effect.fn("grant.delete")(function* (
   fleetIdFlag: string | undefined,

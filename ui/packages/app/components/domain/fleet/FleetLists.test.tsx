@@ -82,6 +82,22 @@ describe("the fleet page's lists", () => {
     expect(screen.getByRole("button", {name: "Remove pinned memory: evidence"})).toBeTruthy();
   });
 
+  it("revokes an approved web host independently of a credential with the same name", async () => {
+    const name = "support.vendor.example";
+    const host = {...GITHUB, kind: "host", name};
+    lists({grants: [host, {...SENTRY, name}, {...PENDING, kind: "host", name: "denied.vendor.example", status: "revoked"}]});
+    serve("DELETE", `${BASE}/integration-grants/${host.id}`, () => new Response(null, {status: 204}));
+    page();
+    const access = await screen.findByRole("list", {name: "Can access"});
+    expect(within(access).getAllByText(name)).toHaveLength(2);
+    expect(within(access).getByText("Web host for future runs")).toBeTruthy();
+    expect(within(access).queryByText("denied.vendor.example")).toBeNull();
+    fireEvent.click(within(access).getByRole("button", {name: `Revoke web access: ${name}`}));
+    fireEvent.click(screen.getByRole("button", {name: "Revoke access"}));
+    await waitFor(() => expect(within(access).getAllByText(name)).toHaveLength(1));
+    expect(within(access).getByRole("button", {name: `Revoke access: ${name}`})).toBeTruthy();
+  });
+
   it("says what each empty list means", async () => {
     lists({schedules: [], triggers: [], grants: [PENDING], pinned: []});
     page();

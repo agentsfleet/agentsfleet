@@ -46,6 +46,31 @@ describe("grant (integration grant) commands", () => {
     });
   });
 
+  test("grant list shows a host grant in the table and in JSON", async () => {
+    await authedScope(async () => {
+      const host = {id: "grant_host", kind: "host", name: "docs.vendor.example", status: "approved"};
+      const secret = {...host, id: "grant_secret", kind: "secret"};
+      const path = `GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/integration-grants`;
+      await withMockApi({[path]: () => jsonResponse(200, {items: [host, secret]})}, async apiUrl => {
+        for (const flags of [[], ["--json"]]) {
+          const out = bufferStream();
+          const code = await runCli(["fleet", "grants", "list", "--fleet", FLEET_ID, ...flags], {
+            stdout: out.stream, stderr: bufferStream().stream, env: cliEnv({AGENTSFLEET_API_URL: apiUrl}),
+          });
+          expect(code).toBe(0);
+          if (flags.length) {
+            expect(JSON.parse(out.read()).items).toEqual([host, secret]);
+          } else {
+            const rows = out.read().split("\n").filter(row => row.includes(host.name));
+            expect(rows).toHaveLength(2);
+            expect(rows[0]).toContain("host");
+            expect(rows[1]).toContain("secret");
+          }
+        }
+      });
+    });
+  });
+
   test("`grant list` prints a malformed approval instant as the empty cell instead of crashing", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
@@ -89,11 +114,7 @@ describe("grant (integration grant) commands", () => {
         expect(code).toBe(0);
         const text = out.read();
         expect(text).toContain("01900000-0000-7000-8000-000000067a01");
-        // The CLI's success line tells the operator the fleet can no
-        // longer use this integration. Server UZ-* codes are deliberately
-        // not leaked into operator-facing output — UZ-GRANT-003 is what
-        // the fleet sees on retry, not what the operator gets here.
-        expect(text).toContain("can no longer use this integration");
+        expect(text).toContain("Future runs lose the access provided by this grant");
         expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual([
           `DELETE /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/integration-grants/01900000-0000-7000-8000-000000067a01`,
         ]);

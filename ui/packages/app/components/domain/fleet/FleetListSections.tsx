@@ -5,7 +5,7 @@ import type { FleetGrant, FleetTrigger } from "@/lib/api/fleet-detail";
 import type { ListResource, Removal } from "./FleetListsProvider";
 import { useState } from "react";
 import { Alert, Button, ConfirmDialog, IconAction, List, ListItem, Spinner } from "@agentsfleet/design-system";
-import { BrainIcon, ClockIcon, KeyIcon, LightningIcon, LockKeyIcon, TrashIcon, XIcon } from "@phosphor-icons/react/ssr";
+import { BrainIcon, ClockIcon, GlobeIcon, KeyIcon, LightningIcon, LockKeyIcon, TrashIcon, XIcon } from "@phosphor-icons/react/ssr";
 import { GRANT_STATUS, GITHUB_GRANT, TRIGGER_KIND, githubScope } from "@/lib/api/fleet-detail";
 import { SCHEDULE_SYNC, type Schedule } from "@/lib/api/schedule-types";
 import { scheduleStateText } from "@/lib/api/schedule-status";
@@ -100,7 +100,11 @@ function triggerRow(trigger: FleetTrigger): Row {
 }
 
 function grantRow(grant: FleetGrant): Row {
-  const scope = grant.name === GITHUB_GRANT ? githubScope(grant.scope) : null;
+  if (grant.kind === "host") {
+    return {key: grant.id, icon: <GlobeIcon className={SUMMARY_ICON} aria-hidden="true" />, label: grant.name,
+      detail: "Web host for future runs", removal: {kind: "grant", grant}, removeLabel: `Revoke web access: ${grant.name}`};
+  }
+  const scope = grant.name === GITHUB_GRANT && (grant.kind === "integration" || grant.kind === undefined) ? githubScope(grant.scope) : null;
   return {key: grant.id, icon: <KeyIcon className={SUMMARY_ICON} aria-hidden="true" />, label: grant.name,
     detail: scope ? `${scope.repositories.join(", ")} · ${scope.access === "write" ? "Read and write" : "Read only"}` : undefined,
     removal: {kind: "grant", grant}, removeLabel: `Revoke access: ${grant.name}`};

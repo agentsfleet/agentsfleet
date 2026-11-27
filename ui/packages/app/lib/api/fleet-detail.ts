@@ -7,6 +7,9 @@ import { ScheduleSchema } from "./schedule-types";
 export const HTTP_EGRESS = {restricted: "restricted", public: "public"} as const;
 /** `afd_api_wire::grant::status`: a deny is stored as revoked. */
 export const GRANT_STATUS = {pending: "pending", approved: "approved", revoked: "revoked"} as const;
+/** Canonical ASCII DNS hostname returned by the host grant API. */
+export const Hostname = z.hostname().refine(name => name.includes(".") && name === name.toLowerCase() &&
+  !name.endsWith(".") && !name.endsWith(".localhost") && !z.ipv4().safeParse(name).success);
 /** The grant name a GitHub request carries; its scope names repositories and a reach. */
 export const GITHUB_GRANT = "github";
 export const TRIGGER_KIND = {webhook: "webhook", appEvent: "app_event", mention: "mention"} as const;
@@ -22,11 +25,11 @@ export const TriggerSchema = z.object({
   events: z.array(z.string()).nullish(), repositories: z.array(z.string()).nullish(),
   channel: z.string().nullish(), url: z.url().nullish(), created_at: Instant,
 });
-/** One credential a person approved, or was asked for (`GET F/integration-grants`). */
+/** One credential or host a person approved, or was asked for (`GET F/integration-grants`). */
 export const GrantSchema = z.object({
-  id: z.uuidv7(), kind: z.string(), name: z.string().min(1), status: z.string(),
+  id: z.uuidv7(), kind: z.string().optional(), name: z.string().min(1), status: z.string(),
   scope: z.unknown().optional(), requested_scope: z.unknown().optional(), approved_at: Instant.nullish(),
-});
+}).refine(grant => grant.kind !== "host" || Hostname.safeParse(grant.name).success);
 /** The GitHub scope a grant carries: which repositories, and how far. */
 const GithubScopeSchema = z.object({repositories: z.array(z.string().min(1)).min(1), access: z.enum(["read", "write"])});
 

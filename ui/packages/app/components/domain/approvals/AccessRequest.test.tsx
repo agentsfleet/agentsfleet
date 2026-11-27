@@ -55,3 +55,17 @@ it("reads the lists once more for a card raised after they were read, and no fur
   expect(screen.queryByText("Repositories")).toBeNull();
   expect(field("Access")).toBe("github");
 });
+
+it("a secret card never reads the scope of an integration with the same name", async () => {
+  grants = [GITHUB, {...GITHUB, id: "0199a801-1000-7000-8000-0000000000d2", kind: "secret", requested_scope: null}];
+  card({kind: "secret", service: "github"});
+  await waitFor(() => expect(reads).toBe(1));
+  expect(field("Access")).toBe("github");
+  expect(screen.queryByText("Repositories")).toBeNull();
+});
+
+it("retains the scope of a credential whose saved row has no kind", async () => {
+  grants = [{id: GRANT_ID, name: "github", status: "pending", requested_scope: GITHUB.requested_scope}];
+  card({service: "github"});
+  expect(await screen.findByText("Read and write")).toBeTruthy();
+});

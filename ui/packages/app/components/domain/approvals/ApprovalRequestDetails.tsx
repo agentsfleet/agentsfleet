@@ -27,7 +27,7 @@ export function ApprovalRequestDetails({gate, title, pending, decided, reason, o
         {gate.blast_radius ? <p className="break-words text-muted-foreground">{gate.blast_radius}</p> : null}
         {gate.detail ? <p className="break-words">{gate.detail}</p> : null}
         {gate.evidence ? <FleetPayloadDisclosure json={JSON.stringify(gate.evidence, null, 2)} inline /> : null}
-        {gate.expires_at ? <p>Expires <Time value={gate.expires_at} /></p> : null}
+        {gate.expires_at ? <p>{gate.hostAccess ? "Respond by" : "Expires"} <Time value={gate.expires_at} /></p> : null}
         {!decided ? <div className="space-y-md"><Label htmlFor={reasonId}>Reason (optional)</Label>
           <Textarea id={reasonId} value={reason} onChange={event => onReasonChange(event.currentTarget.value)} rows={2} disabled={pending} /></div> : null}
       </div>
