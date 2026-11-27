@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Date:** Nov 27, 2026
 
-**Status:** PENDING
+**Status:** IN_PROGRESS
 
 **Priority:** P1, every save holds a fleet's run while the runner exports, uploads and the daemon reads back its whole workspace
 
@@ -39,13 +39,11 @@ SPEC AUTHORING RULES (the one comment that survives):
 **The compute layer.** M258 is the compute layer, in one Pull Request built M258_001, M258_003, M258_002 (O1). M258_001 built the seam and our Firecracker engine, and M258_003 deleted bubblewrap, so Firecracker is the one engine here. The Sprites engine moved to M260_001.
 
 **Terms.**
-
 - R2 is Cloudflare's object store, where checkpoint chunks live. A generation is one published checkpoint: manifest pages and a current head in Postgres, encrypted chunks in R2.
 - The pause is the window in which a save holds the run: no model call or tool runs, and from §2 tenant code is frozen. The pin is the instant that fixes what the save reads.
 - A userspace block device (ublk) is a Linux block device whose reads and writes a process of ours answers. Rust paths that start with a crate name are under `rustd/crates/<layer>/`, at `b5c0f99c7`.
 
 **Problem.** Read from source.
-
 - **The run waits for the whole save.** The agent loop awaits the boundary's save (`afr_agent/src/loop/recovery_boundary.rs:215`). The boundary exports the workspace into a host stage, then scans, hashes, registers, seals, uploads and commits before it answers (`afr_supervisor/src/run_loop/recovery_capture.rs:99-128`).
 - **Every save reads every byte.** The export streams the whole workspace (`recovery_capture.rs:109-110`), and the catalog hashes each file in 8 MiB chunks (`recovery/catalog.rs:168`; `recovery/files.rs:14`). It registers unchanged chunks too, 256 per request (`af_wire/src/durable_task/checkpoint/mod.rs:25`).
 - **Turn manifests relist everything.** A turn save passes no base (`recovery/turn/capture.rs:210-215`), so its pages list every entry. A task increment lists every entry too, adding base paths only as `Remove` (`recovery/catalog.rs:122-128`).
@@ -58,7 +56,7 @@ wait today ≈ export(E, B) + read and SHA-256(B) + ⌈C/256⌉·RTT + N·(seal 
 E entries · B bytes · C chunks · N new chunks · P manifest pages · RTT one runner-to-daemon round trip
 ```
 
-**Solution summary.** §1 derives every checkpoint key from one vault secret per workspace, so no key is stored. §2 splits a save at the pin: under the pause the executor copies only changed bytes, then the run resumes and publication follows, with no read-back. §3 makes the walk read only what changed.
+**Solution summary.** §1 seals every checkpoint with one vault key per workspace, behind a cipher the daemon's file selects, so no table stores a key. §2 splits a save at the pin: under the pause the executor copies only changed bytes, then the run resumes and publication follows, with no read-back. §3 makes the walk read only what changed.
 
 §4 serves M258_001's `Snapshots` on Firecracker. §5 and §6 put the workspace on a host ublk device over a block-level chunk map in Postgres: §5 restores lazily, and §6 uploads dirty chunks continuously, so the host disk is only a cache.
 
@@ -66,7 +64,7 @@ E entries · B bytes · C chunks · N new chunks · P manifest pages · RTT one 
 
 ```text
 keys (daemon only)
-  vault.secrets row ─► afd_vault load() ─► HKDF-SHA256(secret, sealing checkpoint id) ─► data_key per authorized object
+  vault.secrets row ─► afd_vault load() ─► the workspace's key, handed with each authorization ─► ChunkCipher (aes_256_gcm | plain)
 boundary
   quiesce               the executor has a call in flight ─► the save skips
   pause                 the executor freezes the guest's tenant leaf (D22)
@@ -115,7 +113,7 @@ restore
 - **Intent (one sentence):** A save stops a fleet's tools only while changed bytes are copied, and a restored run starts before its workspace arrives.
 - **Authoring handshake:** Indy wants the Sprites design applied to our checkpoint and restore "to make them faster". He ruled the map into Postgres, keys derived from one vault secret, R2's checksum in place of the read-back, and bubblewrap deleted first. ASSUMPTIONS I'M MAKING:
   1. M258_001 and M258_003 land first on the branch. This spec builds on `import`, `export`, `Snapshots` and its trials, the inner environment and `Executor::renew`, and adds only the pin pause (D22).
-  2. Every ruling in Discovery holds; D23, D24 and D25 stay open, and the Sections name what each blocks.
+  2. Every ruling in Discovery holds; D23 stays open until Dimension 3.4 settles it.
   3. Nothing is backward compatible. The manifest format, the checkpoint tables and the runner protocol edit in place, with one `VERSION` move, and the dev database is torn down.
   4. One commit per Section. §5 and §6 build only after their spikes pass.
 - **Implementer handshake:** recorded in the Pull Request Session Notes at PLAN, before any edit (SPEC-HANDSHAKE).
@@ -135,7 +133,7 @@ restore
 |------|--------|-----|
 | `docs/v2/pending/M258_002_P1_API_DOCS_INFRA_OBS_SAVES_PAUSE_ONLY_FOR_WHAT_CHANGED.md` | EDIT | this spec; moves to `active/`, then `done/` |
 | `docs/v2/reviews/m258-block-layer-spike.md`, `docs/v2/reviews/m258-writeback-spike.md` | CREATE | §5's and §6's spike records; helpers stay outside the repository |
-| `rustd/crates/foundation/af_crypto/{Cargo.toml,src/checkpoint.rs,src/aad.rs}` | EDIT | §1: HKDF derivation; `PreparedCheckpointKey`, `WrappedCheckpointKey` and `Aad::checkpoint_identity` go |
+| `rustd/crates/foundation/af_crypto/{Cargo.toml,src/checkpoint.rs,src/aad.rs}` | EDIT | §1: `ChunkCipher` with `Aes256Gcm` and `Plain`; `PreparedCheckpointKey`, `WrappedCheckpointKey` and `Aad::checkpoint_identity` go |
 | `rustd/crates/daemon/afd_db/schema/20261122090000_runner_checkpoint_identity_keys.sql` | DELETE | §1 |
 | `rustd/crates/daemon/afd_db/schema/{20261122090200_runner_checkpoints,20261122090400_runner_checkpoint_purges,20261122090500_runner_checkpoint_objects}.sql` | EDIT | edited in place: §1 drops the identity-key and envelope columns; §3 adds `parent_checkpoint_id` |
 | `rustd/crates/daemon/afd_db/{src/migration.rs,tests/integration_migrate/**}` | EDIT | §1: the identity table's entry, grant and immutability rows go; Dimension 1.2 |
@@ -149,7 +147,7 @@ restore
 | `rustd/crates/runner/afr_volume/**` | CREATE | §5, §6: the ublk server, its chunk cache, fetch, dirty bitmap and writeback |
 | `rustd/crates/daemon/afd_fleet/tests/**`, `rustd/crates/e2e/af_e2e/{tests/recovery_process/**,benches/recovery/**}`, `rustd/crates/runner/main/examples/kernel_lane/**` | EDIT | keys, pins, chains, ancestors and collection against live Postgres, `identity_retention.rs` deleted; §3's chain restore and bench shape; the kernel trials of §2 to §5 |
 | `rustd/crates/daemon/main/src/**` | EDIT | §6: the production caller of checkpoint maintenance (`checkpoints.md:172`) |
-| `rustd/Cargo.toml`, `rustd/Cargo.lock` | EDIT | `hkdf` for §1, `libublk` for §5 |
+| `rustd/Cargo.toml`, `rustd/Cargo.lock` | EDIT | `libublk` for §5; `aws-lc-rs` in `af_crypto` only if Dimension 1.8 picks it |
 | `deploy/baremetal/agentsfleet-runner.service`, `playbooks/lib/runner/prepare.sh` | EDIT | §5: `ublk_drv` loads beside `erofs` (`agentsfleet-runner.service:23`) |
 | `docs/architecture/{checkpoints,runner_execution}.md` | EDIT | keys, no read-back, the pause, the chain, the block layer, what a snapshot never crosses |
 | `~/Projects/docs` `changelog.mdx` | EDIT, on that repository's own branch after merge | saves pause only for changed bytes |
@@ -166,7 +164,7 @@ restore
 
 | Gate | Fires? | Satisfaction strategy |
 |------|--------|-----------------------|
-| `make lint-all` with `cargo shear` | yes | `hkdf` enters only `af_crypto`, `libublk` only `afr_volume`; moved code drops what it leaves behind |
+| `make lint-all` with `cargo shear` | yes | `libublk` enters only `afr_volume`; moved code drops what it leaves behind |
 | `make test-unit-all` | yes | `af_chunk_store` joins the `crates/protocol/*` shard and `afr_volume` the `crates/runner/*` shard (`make/test-unit.mk:9,11`) |
 | `make test-integration-rustd` | yes | keys, chains, ancestors, pins and collection run against live Postgres |
 | `af_e2e/tests/layers.rs` | yes | `af_chunk_store` is `af_` in `protocol/`, `afr_volume` is `afr_` in `runner/`, and neither names a datastore client (`layers/rules.rs:12`) |
@@ -176,7 +174,7 @@ restore
 
 ## Prior-Art / Reference Implementations
 
-- **Reference:** RFC 5869 HKDF through RustCrypto's `hkdf`, in `rustd/Cargo.lock` at 0.13.0 beside the workspace's `hmac` and `sha2` (`rustd/Cargo.toml:416-418`). The platform bag is `afd_vault/src/bag/mod.rs`, and §2's checksum probe mirrors the write-once probe (`storage/transfer.rs:41-95`).
+- **Reference:** the vault's own AES-256-GCM construction, RustCrypto's `aes-gcm` beside `hmac` and `sha2` (`rustd/Cargo.toml:414-418`). The platform bag is `afd_vault/src/bag/mod.rs`, and §2's checksum probe mirrors the write-once probe (`storage/transfer.rs:41-95`).
 - **Reference:** today's task overlay (`recovery/restore_manifest.rs:115-134`): turns gain the same parent chain, with `Remove` entries applied over a base.
 - **Reference:** Fly's block device (https://fly.io/blog/sprites-block-device.md, L50-64): one ledger, a checkpoint as a version, a rewind in place. Divergence: the map lives in Postgres, and the server runs on the host, so the guest never reaches the bucket.
 - **Reference:** `libublk` (https://github.com/ublk-org/libublk-rs, MIT OR Apache-2.0) and its `loop.rs` example, the shape of `afr_volume`; §5's spike pins the version. No block protocol is hand-written.
@@ -187,25 +185,30 @@ restore
 
 Build order: §1 lands first, because every later Section seals under its keys. Stage 1 is §2 and §3, which need no new block layer, and §4's snapshots build on them. Stages 2 and 3 are §5 and §6, and each opens with a spike that commits only its record.
 
-### §1 — One vault secret per workspace derives every checkpoint key
+### §1 — One vault key per workspace seals every checkpoint, behind a cipher the daemon's file selects
 
 **How keys move today.** The daemon opens an object's wrapped key at each authorization and returns it as `data_key`, beside the registered `nonce` (`afd_fleet/src/durable_task/checkpoint/transfer/signing.rs:88-110`; `af_wire/src/durable_task/checkpoint/objects.rs:165-168`). The supervisor zeroes it on drop (`afr_supervisor/src/recovery/mod.rs:79-87`). The identity key never leaves the daemon, which computes each content identity itself (`checkpoint/identity.rs:24-35`).
 
 **The secret.** Each workspace holds one checkpoint secret: 32 bytes from `af_crypto::entropy` in a `vault.secrets` row, read as a platform bag through `afd_vault` `load()` (`afd_vault/src/load.rs:51-66`). `R2CheckpointStore` already holds the `Vault` it needs (`durable_task/storage/mod.rs:69-91`). The first save creates the row with `Vault::create`, which refuses a name the workspace holds, so a racing save loads the winner's row (`afd_vault/src/write.rs:40-45,89`).
 
-**Derivation.** A chunk key is HKDF-SHA256 of the secret, with the chunk label and the sealing checkpoint's id as its info. The sealing checkpoint is the object's `owner_checkpoint_id`, so a reused object opens under the key it was sealed with (`…090500_runner_checkpoint_objects.sql:17`). The identity key is HKDF of the secret under its own label, with the repository in its info, keeping today's scope (`checkpoints.md:124`).
+**One key, three uses.** The workspace's key is used as it is stored (Indy: "I want to go with one raw key"): it seals every file chunk, it seals the turn history root, and it keys each chunk's content identity. Nothing is derived and no other key is stored. `object_nonce` stays, a random 96-bit nonce per object from `af_crypto::entropy`, because every object of a workspace now shares one key (`af_crypto/src/checkpoint.rs:62-65`). NIST SP 800-38D allows 2^32 random nonces under one key; at 8 MiB a chunk that is 32 exbibytes sealed per workspace, and a rotation resets the count. The turn history root is sealed under the same key with its own random nonce, and its per-checkpoint envelope columns go (`…090200_runner_checkpoints.sql:28-30`).
 
-**Who holds what.** The daemon alone loads the secret and derives keys. The runner still receives only each authorized object's derived `data_key` and `nonce`, for one publication or restore, so it never holds a long-lived key. A restore on another runner gets the same keys, because the daemon derives them from Postgres facts.
+**The cipher is a trait with two implementations.** `af_crypto::ChunkCipher` has `seal` and `open`; `Aes256Gcm` is today's construction and `Plain` passes bytes through. The daemon's `[checkpoint] cipher` names one, `aes_256_gcm` by default; `plain` exists so a deployment can measure a save and a restore without encryption before turning it on, and boot logs `checkpoint_cipher_plain` once while it is set. The key is minted, loaded and handed over the same under both, and every digest and identity check runs under both. Each checkpoint row records the cipher that sealed it, bound from a named constant, so a restore opens it as it was sealed and a later change of the setting strands nothing. `make bench-recovery` measures a chunk and a full checkpoint, saved and restored, under `plain`, under RustCrypto's `aes-gcm` and under `aws-lc-rs`'s AES-256-GCM, whose bytes are interchangeable. The faster one ships; within noise RustCrypto stays, so `af_crypto` links no C.
 
-**Nonces and the history root.** `object_nonce` stays, a random 96-bit nonce per object from `af_crypto::entropy`, because a checkpoint's objects now share one key (`af_crypto/src/checkpoint.rs:62-65`). A save uploads at most 16 GiB in 8 MiB chunks (`checkpoints.md:134,139`), 2,048 objects, under the 2^32 random nonces NIST SP 800-38D allows per key. The turn history root keeps its vault envelope (`…090200_runner_checkpoints.sql:28-30`) until D25 is ruled.
+**Who holds what.** The daemon loads the key and hands it to the runner with each save's and restore's authorization; the supervisor zeroes it on drop, as it does today's (`afr_supervisor/src/recovery/mod.rs:79-87`). The runner therefore holds the workspace's long-lived key in memory during a save or a restore, where today it holds one object's. Indy accepted that (Discovery): a compromised runner host that also reads the bucket reads every checkpoint of that workspace.
+
+**Rotation and a lost key.** A master-key rotation re-wraps the row and leaves the key's bytes alone (`afd_vault/src/stored_envelope.rs:14`), so checkpoints keep opening. Rotating a workspace's key retires its checkpoints: the daemon writes the new key with `Vault::replace` (`afd_vault/src/write.rs:139`), marks the workspace's generations for purge, and the next save is a full one. A run interrupted across a rotation starts from its original message, as a turn with no checkpoint does (`checkpoints.md:100`). A key row that is missing or will not open ends the same way, and never serves a byte.
 
 **Deleted, edited in place.** `runner.checkpoint_identity_keys` goes with its migration entry (`afd_db/src/migration.rs:169`), statements and retention pass (`checkpoint/maintenance/mod.rs:28-30`). `runner.checkpoint_objects` loses `checkpoint_identity_key_id` and its seven envelope columns (`…090500_runner_checkpoint_objects.sql:8,20-26`), and `runner.checkpoint_purges` loses `checkpoint_identity_key_id`. The bucket path drops the identity key's segment (`storage/transfer.rs:239-246`).
 
-- **Dimension 1.1** — a key derives the same from the same inputs and differently otherwise → Test `a_chunk_key_derives_from_its_secret_and_checkpoint_alone` (unit, `af_crypto`). One secret and checkpoint id give equal keys twice; another id, another secret or the identity label gives a different key. RFC 5869's SHA-256 test case 1 passes through the same HKDF step, so a hand-rolled derivation fails it.
-- **Dimension 1.2** — no table holds a checkpoint key → Test `no_checkpoint_table_holds_key_material` (integration, `afd_db`, live Postgres). After migration, `runner.checkpoint_identity_keys` does not exist, and no `runner` column outside the history root's (D25) is named `dek_%`, `secret_%`, `kek_version` or `%identity_key%`. A schema keeping one envelope column on objects fails it.
-- **Dimension 1.3** — a restore on another runner derives its keys through the daemon → Test `a_restore_on_another_runner_opens_chunks_under_daemon_derived_keys` (integration, `afd_fleet`, live Postgres and the S3 fixture). Runner A seals two generations and is dropped, and runner B's restore authorizations open every chunk. Objects of different sealing checkpoints carry different keys, and no frame carries the secret's bytes, so a daemon handing out the secret fails.
-- **Dimension 1.4** — the vault row is created once per workspace → Test `concurrent_first_saves_create_one_checkpoint_secret` (integration, live Postgres). Fifty first saves of one workspace, released from a barrier, leave one `vault.secrets` row under the bag's name, and every chunk they sealed opens. A second workspace gets its own row with different bytes.
-- **Dimension 1.5** — a replaced secret fails closed → Test `a_restore_after_the_secret_is_replaced_fails_closed` (integration, live Postgres). With the row's bytes replaced, a restore of an earlier generation stops on the tag before any file is written. `checkpoint_chunk_refused` is logged, and the run ends closed.
+- **Dimension 1.1** — one key does all three uses, under either cipher → Test `one_workspace_key_seals_chunks_and_history_and_keys_identity` (unit, `af_crypto`). Under `Aes256Gcm`, a chunk and a history root sealed with one key open with it and fail their tag under another; the same content gives the same identity under one key and another under a second. Under `Plain`, `seal` returns its input and `open` returns it back, and the identity is unchanged.
+- **Dimension 1.2** — no table holds a checkpoint key → Test `no_checkpoint_table_holds_key_material` (integration, `afd_db`, live Postgres). After migration, `runner.checkpoint_identity_keys` does not exist, and no `runner` column is named `dek_%`, `secret_%`, `kek_version` or `%identity_key%`. A schema keeping one envelope column fails it.
+- **Dimension 1.3** — a restore on another runner opens under the daemon's key → Test `a_restore_on_another_runner_opens_chunks_under_the_workspace_key` (integration, `afd_fleet`, live Postgres and the S3 fixture). Runner A seals two generations and is dropped, and runner B's restore authorizations open every chunk. The key reaches B only in an authorization frame for that workspace, and a frame for another workspace carries another key.
+- **Dimension 1.4** — the vault row is created once per workspace → Test `concurrent_first_saves_create_one_checkpoint_secret` (integration, live Postgres). Fifty first saves of one workspace, released from a barrier, leave one `vault.secrets` row under the key's name, and every chunk they sealed opens. A second workspace gets its own row with different bytes.
+- **Dimension 1.5** — a rotated or lost key retires the checkpoints it sealed → Test `a_rotated_or_lost_key_starts_the_run_from_its_message` (integration, live Postgres). After a rotation, the workspace's earlier generations are marked for purge and the next save is full. A restore finding the row replaced or missing reads no checkpoint, writes no file, logs `checkpoint_key_unusable`, and the run starts from its original message.
+- **Dimension 1.6** — the tenant sees the key's row and cannot change it → Test `the_checkpoint_secret_is_listed_and_refuses_a_tenant_write` (integration, `afd_api_tenant`, live Postgres). The secret list names the row; a replace or a delete of its name through the secret routes is refused, and the stored bytes are unchanged (D24).
+- **Dimension 1.7** — a checkpoint opens as it was sealed → Test `a_checkpoint_opens_under_the_cipher_that_sealed_it` (integration, `afd_fleet`, live Postgres). A generation saved under `plain` restores after the setting moves to `aes_256_gcm`, and one saved under `aes_256_gcm` restores after it moves back; boot under `plain` logs `checkpoint_cipher_plain` once.
+- **Dimension 1.8** — both ciphers are measured → Test `make bench-recovery` (manual, the dev host). The Session Notes hold a chunk's and a full checkpoint's save and restore times under `plain`, RustCrypto AES and `aws-lc-rs` AES, with the command that produced each.
 
 ### §2 — The pause ends at the pin, and publication runs after it with no read-back
 
@@ -336,10 +339,9 @@ Stage 3 makes R2 the workspace's home. **Gate:** §5 passes, Indy approves the s
 
 ```text
 Keys (af_crypto::checkpoint, daemon only)
-  chunk_key(secret, sealing checkpoint id) -> SecretBytes        HKDF-SHA256, chunk label
-  identity_key(secret, repository) -> SecretBytes                HKDF-SHA256, identity label
+  trait ChunkCipher { seal, open }: Aes256Gcm | Plain, by `[checkpoint] cipher` (default aes_256_gcm); one key per workspace for chunks, history and identity
 Vault        one platform bag per workspace: Vault::create once, then load()
-Wire         CheckpointObject { data_key: chunk_key of owner_checkpoint_id, nonce: the object's registered nonce }
+Wire         CheckpointObject { data_key: the workspace's key, cipher, nonce: the object's registered nonce }
              both checkpoint plans gain parent: Option<checkpoint id>; a block manifest under the next format value
              TurnCheckpointAction::VERIFY_ANSWER_TIMEOUT and verifies_uploads() go
 WorkspaceVolume (afr_engine)
@@ -480,7 +482,7 @@ The runner protocol `VERSION` (`af_wire/src/protocol/mod.rs:15`) moves once, for
 - > Owner (Indy, Nov 26, 2026): "I prefer the milestone where ever we do the firecracker and sprites engine abstractions move (to me this is a compute layer) must  fix the checkpoint and snapshot, this must be the first milestone so we sunset bubblewrap and move on to firecracker and sprites" — context: M258 is the compute layer and fixes checkpoint and snapshot; O1 packs it into one Pull Request.
 - > Owner (Indy, Nov 26, 2026): "bubblewrap must be retired if we do 3rd party sprites based firecraker or any sandbox or firecracker engine our own." — context: M258_003 deleted bubblewrap before this Workstream (D22), so every Section here is Firecracker's.
 - **Owner rulings, Nov 26, 2026** (verbatim in AskUserQuestion dialogs and messages; these govern this spec).
-  - **Keys** supersede D20. > Owner (Indy, Nov 26, 2026): "On encryption keep things simpler, and less call", "I dont want the humoungous set of encryption keys to maintain", chose "Derive keys, store none (Recommended)", then "follow our standard practice of using vault, you have crap invented another identity later for checkpoint with separate tables that is insane" — context: §1. Each workspace's one checkpoint secret is a standard `vault.secrets` row read through `afd_vault` `load()`. Chunk keys and the identity key derive from it by HKDF-SHA256, and the identity table and per-object key columns go.
+  - **Keys** supersede D20. > Owner (Indy, Nov 26, 2026): "On encryption keep things simpler, and less call", "I dont want the humoungous set of encryption keys to maintain", chose "Derive keys, store none (Recommended)", then "follow our standard practice of using vault, you have crap invented another identity later for checkpoint with separate tables that is insane" — context: §1. Each workspace's one checkpoint secret is a standard `vault.secrets` row read through `afd_vault` `load()`. Chunk keys and the identity key derive from it by HKDF-SHA256, and the identity table and per-object key columns go. D25 below supersedes the derivation: the key is used as stored.
   - **D16** > Owner (Indy, Nov 26, 2026): "the chunk map in Postgres. No SQLite, no Litestream, no JuiceFS." — context: the start message; §5's `BlockMap`.
   - **D17** > Owner (Indy, Nov 26, 2026): chose "ublk on the host (Recommended)" — "i want to do a spike vm test using the available options here ublks vs firecracker vhost-user-blk, are there other options? that SPACE uses or any other recommended by AWS?" — context: §5's spike compares ublk, vhost-user-blk and a FUSE-backed drive file (AWS Lambda's design, USENIX ATC 2023).
   - **D18** > Owner (Indy, Nov 26, 2026): chose "Measure 3 sizes, pick by data (Recommended)" — context: Dimension 5.1.
@@ -492,8 +494,8 @@ The runner protocol `VERSION` (`af_wire/src/protocol/mod.rs:15`) moves once, for
 - **Open owner decisions.** Each stays open until Indy rules; each recommendation is Aiwa's.
   - **D23** `[?]` whether a write through a shared mapping always moves a file's change time. Dimension 3.4 settles it on the kernel lane. If it does not, recommend re-reading every file a tenant mapped writable since the last pin.
   - **D24** ruled. > Owner (Indy, Nov 27, 2026): chose "Tenant vault, read-only" — "Daemon only must write it, the name can be the <short form workspace id>checkpoint just like short git commit ids, Ideally leave it visible, but not manageble by an enduser" and "These are system artifacts so how do we manage it in the vault? if a naming convention is followed there is no reason for refusal and dups." — context: the checkpoint secret is a row in the tenant's own `vault.secrets`, listed to the tenant, written by the daemon alone; the secret routes refuse a replace or delete of its name beside the connector-grant check (`afd_api_tenant/src/handler/secret/support.rs:77-79`). The row is one per workspace under the table's unique `(workspace_id, key_name)`, so its name is one fixed constant and needs no workspace id in it.
-  - **D25** `[?]` the turn history root's envelope, one wrapped key per checkpoint (`…090200_runner_checkpoints.sql:28-30`). The Keys ruling named chunk and identity keys only. Recommend deriving the root's key from the same secret under its own label, so no checkpoint table holds a wrapped key.
+  - **D25** ruled. > Owner (Indy, Nov 27, 2026): "What is HKDF? I would say just use the same key for chunks and checkpoint that we coined in D24. So we know per workspace this is the key used.", then "i want to go with one raw key. But first i need to test hence what i would suggest is the implementation on minting keys and such can be build. But have noop trait or whatever or unsecure trait for now which passes thru the encrypt and decrypt. have your encrypt decrypt built too. But in the toml have a flag that uses no op. So essentially everything happens but its just we turn in on after measuring how the unencrypted plan chunk, full checkpoint or whatever take time. And what will be the secure one take?" — context: §1 uses the workspace key as stored for chunks, the history root and identities, behind `ChunkCipher` with `Aes256Gcm` and `Plain`, chosen by `[checkpoint] cipher`. Then: chose "Raw key to the runner, accepted"; "can you use tnay other crate since we use aws-lc-sys?"; "but we will have to think on the case where keys are compromised or invalid. but i know our vault inherently offers way to rotate" — context: the runner holds the workspace's key in memory during a save or restore, so a compromised runner host that also reads the bucket reads that workspace's checkpoints; Dimension 1.8 measures both AES libraries; §1's rotation paragraph and Dimension 1.5.
 - **Consults** — the research reports named in Provenance; Fly's design post (L76-84) and block-device post (L22-64) are cited sources, not mechanisms to copy. The report's bubblewrap halves lapsed when M258_003 deleted the engine.
 - **Model reviews** — none yet. The Elephant-Goldfish Model (EGM) review runs at `orly-spec` before the docs Pull Request.
-- **Open blockers** — the spikes in Dimensions 5.1 and 6.1 need Indy's approval to run on the dev host.
+- **Open blockers** — none; Indy approved dev host access on Nov 27, 2026 ("Dev host access: yes go ahead"), which the spikes in Dimensions 5.1 and 6.1 use.
 - **Deferrals and transfers** — none. Each one needs an owner quote below, as `> Owner (<name>, <MMM DD, YYYY HH:MM>): "<quote>" — context: <item, why>`.
