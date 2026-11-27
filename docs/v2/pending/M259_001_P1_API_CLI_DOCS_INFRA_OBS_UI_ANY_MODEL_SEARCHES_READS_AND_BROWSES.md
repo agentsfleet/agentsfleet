@@ -160,6 +160,8 @@ browser_open · browser · screenshot ─► afr_tools RunBrowser ─► CDP ove
 
 ## Prior-Art / Reference Implementations
 
+- OpenCode’s search loop records attempted vendors in memory for one query. In random mode it tries another vendor on HTTP 429. Its hosted Console documents a $0.01 customer charge after a valid result set. Neither source establishes how Console accounts for physical upstream attempts. [Search loop](https://github.com/anomalyco/opencode/blob/2b8f912c8623a79688e236aa94d1e384fac3a325/packages/core/src/websearch.ts#L201-L220) · [Console billing](https://github.com/anomalyco/opencode/blob/2b8f912c8623a79688e236aa94d1e384fac3a325/services/site/src/docs/content/console/websearch.mdx#L36-L40)
+- M259 uses the per-query attempted set for fallback. The committed reservation follows the existing decision evaluator: reserve once per physical attempt before calling the vendor. The runtime fee covers the search for the customer. [Decision evaluator](../../../rustd/crates/harness/af_providers/src/decision/mod.rs#L19-L21)
 - **Reference:** the decision call reads its vendor key from the platform-admin vault on every call (`af_providers/src/decision/**`; `afd_credential/src/provider/decision.rs`). §1 keeps that inside the daemon, so no runner holds a key.
 - **Reference:** `MemoryStore` and `RunMemory` (`afr_tools/src/generic/memory.rs`), a guffbolt trait the runner serves with no credential. §7 gives the browser the same split.
 - **Reference:** use the redirect chain for local reads. Browser admission must supply the actual request to the same origin-policy rules.
@@ -228,6 +230,18 @@ Key grants by `(fleet_id, grant_type, service)`. Include kind in upsert, lookup,
 
 An approval adds the exact host to the next run’s allowlist. A denial records revoked. Resolve both through the access continuation, with the host and outcome. On approval instruct the resumed agent to retry the original read under fresh policy. On denial explain the refusal and finish without re-asking. Revoking later affects newly built run policies. Search and extraction stay disabled on restricted fleets.
 
+Example dashboard card after a restricted fleet follows a migration guide link:
+
+> **Allow release-assistant to reach support.vendor.example?**
+>
+> While reading the migration guide, `web_fetch` received a redirect from `docs.vendor.example` to `support.vendor.example`.
+>
+> Approval lets every run of this fleet reach `support.vendor.example` through its tools and commands until the grant is revoked. Credentials require a separate grant.
+>
+> **Approve** · **Deny**
+
+Approve resumes the original read with the new host in policy. Deny resumes the turn with the refusal so the agent can explain why the guide could not be read. The pending card displays its decision deadline under **Card expires**.
+
 - **Dimension 4.1** — a host request raises one card → Test `a_host_request_raises_one_card_and_waits` (integration): `{host:"www.booking.com"}` → a `pending` `host` grant and one card. The turn settles waiting.
 - **Dimension 4.2** — an approved host opens no search → Test `an_approved_host_joins_the_allowlist_and_opens_no_search` (integration): Approve → the resumed run's `allow` holds the host. `POST L/searches` still answers 403.
 - **Dimension 4.3** — an address is refused → Test `a_host_request_for_an_address_is_refused` (integration): `10.0.0.5`, `localhost` and `169.254.169.254` → the refusal, no row and no card.
@@ -250,7 +264,7 @@ Store bounded `sources: [{url,title}]` on the completed call in `thread.items`. 
 After M258 merges, run the spike on our Firecracker guest before building browser actions. Record the kernel, guest image and client revisions with the seven observations.
 
 1. Record the confinement and effective renderer sandbox from the chosen configuration. M258 supplies tenant confinement. The reviewed guest disables user namespaces. A browser-specific confinement requires a decision and a real launch test.
-2. Package the pinned shell, shared libraries and fonts. Measure the complete toolbox against its cap. Report the delta before proposing a cap change.
+2. Inspect the merged M258 toolbox manifest, builder and build-candidate action. Use that same image pipeline for the headless shell, libraries and fonts. At `46723c018` the manifest pins the Debian snapshot, the builder assembles the root with mmdebstrap and packs and checks the EROFS image, and the candidate action inventories and scans it. Build a baseline and browser candidate through the merged pipeline, compare their compressed sizes against its actual cap, and record the image digests and scan result. [M258 builder](https://github.com/agentsfleet/agentsfleet/blob/46723c018/scripts/toolbox/build.sh#L205-L222) · [M258 candidate action](https://github.com/agentsfleet/agentsfleet/blob/46723c018/.github/actions/build-toolbox/action.yml)
 3. `chromiumoxide` 0.9.1 against the pinned build: connect, navigate, `Accessibility.getFullAXTree`, click by `backendDOMNodeId`, `Page.captureScreenshot`. Record every deserialize failure, and which request kinds pause at the `Fetch` stage.
 4. Prove a lossless bidirectional CDP transport, including an intact 5 MiB screenshot. The existing executor route serves its own protocol. Probe supported client pipe or guest stream options before choosing an interface.
 5. The snapshot's size on three real pages, against the tool output budget.
@@ -466,7 +480,7 @@ Same spelling, other meaning, kept: `afd_http/src/openapi/mod.rs` ("Hosted sched
 - > Owner (Indy, Nov 26, 2026): "Essentially add missing features for guffbolt agent harness", "max 2 in 1 milestone for the guffbolt tool updates" and "I need the final scope to fix" — context: two Workstreams in this milestone.
 - **Owner decisions, Nov 26, 2026, on the gap matrix** — accepted: Gemini grounding off, and no search on a `restricted` fleet. Page reading goes through a vendor on public fleets only.
 - **Nov 27 owner decisions.** Firecracker only. Parallel Fast, Exa search fallback and platform-owned vendor keys. All implementation waits for M258 to merge.
-- **Open browser and privacy decisions:**
+- **Nov 27 owner direction.** The implementer decides the browser design after M258 merges, using the toolbox pipeline that lands and the Firecracker spike evidence. D1, D2 and D4 are post-merge implementation decisions. D3 concerns what the thread can disclose.
   - D1: choose browser confinement after reviewing the isolation trade-off. A disabled renderer sandbox is a proposal, not an accepted launch configuration.
   - D2: should an open browser permit workspace saves? At `46723c018`, `pin_sandbox` checks executor idle before freezing. Test real behavior on merged M258. Recommendation: preserve workspace saves and restart browser state on restore. Skipping saves could replay earlier external actions.
   - D3: which redirect destinations may a thread retain? Query stripping alone can expose a signed path. Recommendation: retain origin only for protected redirects and expose a deeper final URL only where the existing privacy rules permit it.
