@@ -144,6 +144,7 @@ pub const TRIALS: &[Trial] = trials![
     "test_a_paused_sandbox_resumes_with_its_files_and_processes" => lifecycle::paused,
     "test_a_stopped_sandbox_resumes_on_its_disk_alone" => lifecycle::stopped,
     "test_a_restored_snapshot_holds_the_saved_files" => snapshots::restores_the_files,
+    "test_a_publication_saves_the_workspace_as_quiesced" => snapshots::publishes_what_it_quiesced,
     "test_no_process_survives_a_restore" => snapshots::no_process_survives,
     "test_a_forgotten_snapshot_cannot_be_restored" => snapshots::forgotten,
     "test_a_restore_of_an_unknown_snapshot_is_refused" => snapshots::unknown,

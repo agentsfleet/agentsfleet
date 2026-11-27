@@ -3,15 +3,16 @@
 //! taken, and a call in flight skips the save before anything is frozen.
 
 use super::{Pinning, pin_sandbox, release};
-use crate::staging::{Staging, WalkPin, WalkVolume};
+use crate::staging::Staging;
 use crate::test_support::{FakeEngine, Parking};
 use af_chunk_store::Change;
 use af_core::id::Uuid7;
 use afr_agent::RecoverySkip;
-use afr_engine::{Paused, PausedWork, Resumed, Sandbox, WorkspaceVolume};
+use afr_engine::{
+    GuestPin, GuestVolume, Paused, PausedWork, Quiesced, Resumed, Sandbox, WorkspaceVolume, quiesce,
+};
 use futures_util::stream::BoxStream;
 use tokio::sync::mpsc;
-use tokio_util::sync::CancellationToken;
 
 type Checked<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
@@ -28,19 +29,19 @@ struct Saved {
 /// The workspace's own volume, reporting its pin on the channel the fake
 /// sandbox reports its quiescence, freeze and thaw on.
 struct Ordered<'a> {
-    inner: WalkVolume<'a>,
+    inner: GuestVolume<'a>,
     steps: mpsc::UnboundedSender<&'static str>,
 }
 
 #[async_trait::async_trait]
 impl WorkspaceVolume for Ordered<'_> {
-    type Pin = WalkPin;
+    type Pin = GuestPin;
 
     async fn pause(&self) -> afr_engine::Result<()> {
         self.inner.pause().await
     }
 
-    async fn pin(&self, paused: &Paused, parent: Option<&Uuid7>) -> afr_engine::Result<WalkPin> {
+    async fn pin(&self, paused: &Paused, parent: Option<&Uuid7>) -> afr_engine::Result<GuestPin> {
         let pin = self.inner.pin(paused, parent).await;
         let _reader_gone = self
             .steps
@@ -54,22 +55,22 @@ impl WorkspaceVolume for Ordered<'_> {
 
     fn changes<'a>(
         &'a self,
-        pin: &'a Resumed<WalkPin>,
+        pin: &'a Resumed<GuestPin>,
     ) -> BoxStream<'a, afr_engine::Result<Change>> {
         self.inner.changes(pin)
     }
 
-    fn paused_work(&self, pin: &Resumed<WalkPin>) -> PausedWork {
+    fn paused_work(&self, pin: &Resumed<GuestPin>) -> PausedWork {
         self.inner.paused_work(pin)
     }
 
-    fn parent<'a>(&self, pin: &'a Resumed<WalkPin>) -> Option<&'a Uuid7> {
+    fn parent<'a>(&self, pin: &'a Resumed<GuestPin>) -> Option<&'a Uuid7> {
         self.inner.parent(pin)
     }
 
     async fn release(
         &self,
-        pin: Resumed<WalkPin>,
+        pin: Resumed<GuestPin>,
         committed: Option<&Uuid7>,
     ) -> afr_engine::Result<()> {
         self.inner.release(pin, committed).await
@@ -95,14 +96,17 @@ async fn paused(
     let sandbox = engine.sandbox().await?;
     let staged = tempfile::tempdir()?;
     let staging = Staging::new(staged.path().to_owned());
-    let inner = WalkVolume::new(sandbox.as_ref(), &staging, CancellationToken::new());
+    let inner = GuestVolume::new(sandbox.as_ref(), staging.root());
     let volume = Ordered { inner, steps };
-    let (skipped, held) = match pin_sandbox(sandbox.as_ref() as &dyn Sandbox, &volume, None).await?
-    {
+    let quiesced = async {
+        let held = quiesce(&volume, None).await?;
+        Ok(Box::new(held) as Box<dyn Quiesced + '_>)
+    };
+    let (skipped, held) = match pin_sandbox(sandbox.as_ref() as &dyn Sandbox, quiesced).await? {
         Pinning::Skipped(reason) => (Some(reason), pinned(staged.path())?),
         Pinning::Pinned(pin) => {
             let held = pinned(staged.path())?;
-            release(&volume, pin, None).await;
+            release(pin, None).await;
             (None, held)
         }
     };

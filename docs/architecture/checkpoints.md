@@ -40,17 +40,19 @@ A file save needs a verified toolbox and a free transfer slot on the runner. An 
 Harness::save_boundary                         afr_agent loop/recovery_boundary.rs
   |-- file slot busy -> skip -> keep the previous ready checkpoint
   `-- admitted -> BoundaryOwner::capture       afr_supervisor run_loop/recovery_capture.rs
-         -> quiesce: a guest agent call in flight -> skip this save
-         -> pause: freeze the tenant leaf
-         -> pin: the guest agent walks the workspace, copying into a host
-            stage only what changed since the parent generation
-         -> resume: the run goes on
+         -> a guest agent call in flight -> skip this save
+         -> quiesce_workspace                  afr_engine file_snapshots/mod.rs
+              Firecracker: Snapshots::quiesce; the debug engine: the same walk
+              -> pause: freeze the tenant leaf
+              -> pin: the guest agent walks the workspace, copying into a host
+                 spool only what changed since the parent generation
+              -> resume: the run goes on
          -> register the changed chunks, seal, upload, write the delta's pages
          -> commit the exact root and manifest under the run's fence
          -> release the pin, naming the committed generation
 ```
 
-A save pauses for one identity read per entry and a copy of the changed bytes. The guest agent keeps each path's device, inode, size, mode and nanosecond modification and change times at the last committed pin; an entry whose identity is unchanged is skipped unless its change time falls at or after that pin's coarse clock tick, which re-reads it. The record is a hint a restore never trusts. A guest agent without it (a new connection or host) copies everything once, and that save writes a full manifest ([walk](../../rustd/crates/protocol/af_guest_wire/src/tree/pins.rs), [volume](../../rustd/crates/runner/afr_supervisor/src/staging/volume.rs)).
+A save pauses for one identity read per entry and a copy of the changed bytes. The guest agent keeps each path's device, inode, size, mode and nanosecond modification and change times at the last committed pin; an entry whose identity is unchanged is skipped unless its change time falls at or after that pin's coarse clock tick, which re-reads it. The record is a hint a restore never trusts. A guest agent without it (a new connection or host) copies everything once, and that save writes a full manifest ([walk](../../rustd/crates/protocol/af_guest_wire/src/tree/pins.rs), [volume](../../rustd/crates/runner/afr_engine/src/file_snapshots/volume.rs)). The spool is held to the disk the run was granted, and so is the content its files claim, holes included.
 
 A save over its parent writes a delta: the changed entries and a `Remove` for each path gone, with `parent_checkpoint_id` naming the parent. A restore applies the chain's full manifest, then each delta in order ([chain](../../rustd/crates/protocol/af_chunk_store/src/chain.rs)). A save writes a full manifest, with no parent, once the chain's delta pages with its own would outnumber a full manifest's pages; both counts come from the save's own layout ([lineage](../../rustd/crates/runner/afr_supervisor/src/recovery/lineage.rs)). The foreign key has no cascade, so Postgres refuses to delete an ancestor a delta names, and purge skips it; a superseded chain goes newest first.
 
@@ -89,6 +91,25 @@ It takes `FOR NO KEY UPDATE` on the workspace row, so the key-share locks of `id
 A new generation becomes usable only when its root and every object are verified and its head advances in Postgres. An uncertain publication is reconciled against the original operation and generation.
 
 If a refused replay leaves a pending generation, the owner must prove it was abandoned before another save ([publication](../../rustd/crates/runner/afr_supervisor/src/recovery/turn/publication.rs)).
+
+### Snapshots
+
+A Firecracker sandbox serves `Snapshots`: `quiesce` holds the workspace for one pin and returns once the fleet runs on, and `publish` reads that pin's changes after it ([seam](../../rustd/crates/runner/afr_engine/src/engine/snapshots/mod.rs), [Firecracker](../../rustd/crates/runner/afr_engine_firecracker/src/engine/snapshot.rs)). A recovery save is a `quiesce` followed by the daemon's own publication above, so the daemon still mints the checkpoint at begin, the history root still rides the commit, and the pin is released naming the committed generation. `take` is a `quiesce` against the last take, then a `publish` into the chunk store the supervisor handed the build; `restore` and `forget` read and drop from that store.
+
+```text
+take(id)       quiesce(last take) -> publish into the store -> release(id)
+restore(ref)   environment? -> tree -> read every chunk -> renew -> import
+               -> the run's hosts file again -> the run's egress plan read back
+```
+
+A snapshot names the environment it was taken on: the engine, the toolbox digest and the guest agent's digest, the SHA-256 of the initial file system the guest boots from. A restore compares it with the sandbox's before it reads the store, and refuses a mismatch naming `environment`. It reads every chunk before the guest agent renews, so a read that fails leaves the workspace as it was. The VM monitor keeps running through it.
+
+| Saved state | Restores on | Never on, and why |
+|---|---|---|
+| A file-format generation | a Firecracker sandbox with the same toolbox and guest agent digests | the debug engine, whose root is the host's own files, so the environment check refuses |
+| Memory | nowhere | no engine snapshots memory; Firecracker runs `--no-api` |
+
+A restore returns only once the run's egress plan reads back in force, so a snapshot taken under an older plan never brings it back. The store lives in the supervisor; no key, nonce or link reaches the guest across a take and a restore, which the kernel lane's planted-token search checks ([trial](../../rustd/crates/runner/main/examples/kernel_lane/snapshot_keys.rs)). The debug engine offers no snapshots and quiesces through the same guest agent walk.
 
 ### Restore on a replacement runner
 
@@ -198,7 +219,7 @@ The bench first prints what sealing and opening cost, with no datastore: one 8 M
 
 - Resume is off in both deployments (`[runner.recovery] resume_from_checkpoint = false`). Both set `[checkpoint.storage]` to their own R2 bucket, so file checkpoints save ([prod](../../deploy/fly/agentsfleetd-prod/agentsfleetd.toml), [dev](../../deploy/fly/agentsfleetd-dev/agentsfleetd.toml)).
 - Without `[checkpoint.storage]`, the daemon refuses file checkpoints; history-only checkpoints still save.
-- No engine offers snapshots. M258_002 replaces this file checkpoint path with a chunk map behind the seam's snapshot interface.
+- A replacement runner restores through the host stage, as above, not through `Snapshots::restore`: no chunk store reads a daemon checkpoint back yet.
 - No production code calls checkpoint maintenance (`Tasks::maintain_checkpoints`). A running daemon deletes no settled checkpoint and collects no orphaned upload; the retention keys change nothing.
 - No quota caps a workspace's total stored bytes. The per-save upload bounds above are the only size limits.
 - A signed link cannot be revoked before it expires. A stopped run cannot publish, and no sandbox receives a link or key.

@@ -14,6 +14,7 @@
 use af_core::id::Uuid7;
 
 use super::Environment;
+use super::volume::Quiesced;
 use crate::error::{Result, SnapshotRefusal, snapshot_refused};
 
 /// How a snapshot's generation holds the workspace.
@@ -90,9 +91,36 @@ impl SnapshotRef {
 }
 
 /// What a sandbox whose engine offers snapshots does with them.
+///
+/// ```text
+///   quiesce(parent) ─► the fleet runs on ─► publish(quiesced, id)   the store's
+///                                       └─► the daemon's publication, then release
+///   take(id) = quiesce(the last take) + publish
+/// ```
 #[async_trait::async_trait]
 pub trait Snapshots: Send + Sync {
-    /// Saves the sandbox's files under `id`, and returns once the save holds.
+    /// Holds tenant code still, fixes what changed since `parent`, or
+    /// everything when it names none, and returns once tenant code runs on:
+    /// what a publication reads, after it.
+    ///
+    /// # Errors
+    /// The hold could not be taken; nothing is held.
+    async fn quiesce(&self, parent: Option<&Uuid7>) -> Result<Box<dyn Quiesced + '_>>;
+
+    /// Publishes what `quiesced` fixed under `id` into the store the
+    /// sandbox's build was handed, then releases it.
+    ///
+    /// # Errors
+    /// The build was handed no store, or the publication failed; nothing is
+    /// kept under `id`.
+    async fn publish<'a>(
+        &'a self,
+        quiesced: Box<dyn Quiesced + 'a>,
+        id: Uuid7,
+    ) -> Result<SnapshotRef>;
+
+    /// Saves the sandbox's files under `id`, a delta on the last take, and
+    /// returns once the save holds.
     ///
     /// # Errors
     /// The save could not be made; nothing is kept under `id`.

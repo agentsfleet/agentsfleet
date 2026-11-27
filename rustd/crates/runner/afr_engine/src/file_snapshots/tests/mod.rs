@@ -8,12 +8,14 @@ use std::sync::Arc;
 use af_chunk_store::{ChunkStore, MemoryStore};
 use af_wire::runner::SandboxEngine;
 
-use self::guest::{Guest, Node};
-use super::FileSnapshots;
+use self::guest::{Fault, Guest, Node};
 use super::volume::GuestVolume;
-use crate::engine::volume::{WorkspaceVolume as _, pin_paused};
+use super::{FREEZE_TENANT, FileSnapshots, quiesce_workspace};
+use crate::engine::volume::{Quiesced as _, WorkspaceVolume as _, pin_paused};
+use crate::engine::{EgressPlan, Generation, Limits, ParkMode, Sandbox, SandboxState};
 use crate::engine::{Environment, Root, SnapshotFormat, SnapshotRef, fresh_sandbox_id};
 use crate::error::SnapshotRefusal;
+use crate::network::Network;
 
 mod guest;
 
@@ -38,11 +40,11 @@ fn file(bytes: &[u8], executable: bool) -> Node {
     }
 }
 
-/// Snapshots over `store`, spooled under a fresh directory, held to `disk`.
-fn snapshots(store: &Arc<MemoryStore>, disk: u64) -> (FileSnapshots, tempfile::TempDir) {
+/// Snapshots over `store`, spooled under a fresh directory.
+fn snapshots(store: &Arc<MemoryStore>) -> (FileSnapshots, tempfile::TempDir) {
     let spools = tempfile::tempdir().unwrap();
     let store: Arc<dyn ChunkStore> = Arc::<MemoryStore>::clone(store);
-    let snapshots = FileSnapshots::new(store, spools.path().to_owned(), disk);
+    let snapshots = FileSnapshots::new(Some(store), spools.path().to_owned());
     (snapshots, spools)
 }
 
@@ -52,7 +54,7 @@ fn snapshots(store: &Arc<MemoryStore>, disk: u64) -> (FileSnapshots, tempfile::T
 #[tokio::test]
 async fn test_a_restore_lands_what_the_take_saved_and_nothing_after() {
     let store = Arc::new(MemoryStore::default());
-    let (snapshots, _spools) = snapshots(&store, DISK);
+    let (snapshots, _spools) = snapshots(&store);
     let guest = Guest::default();
     guest.put("src", Node::Directory);
     guest.put("src/run.sh", file(b"#!/bin/sh\n", true));
@@ -61,13 +63,10 @@ async fn test_a_restore_lands_what_the_take_saved_and_nothing_after() {
     guest.put("latest", Node::Symlink("src/notes".to_owned()));
     let saved = guest.held().nodes.clone();
 
-    let snapshot = snapshots
-        .take(&guest, &ours(), fresh_sandbox_id())
-        .await
-        .unwrap();
+    let snapshot = snapshots.take(&guest, fresh_sandbox_id()).await.unwrap();
     guest.put("src/notes", file(b"changed", false));
     guest.put("after", file(b"later", false));
-    snapshots.restore(&guest, &ours(), &snapshot).await.unwrap();
+    snapshots.restore(&guest, &snapshot).await.unwrap();
 
     let held = guest.held();
     let mut expected = saved;
@@ -85,22 +84,16 @@ async fn test_a_restore_lands_what_the_take_saved_and_nothing_after() {
 #[tokio::test]
 async fn test_a_second_take_is_a_delta_on_the_first() {
     let store = Arc::new(MemoryStore::default());
-    let (snapshots, _spools) = snapshots(&store, DISK);
+    let (snapshots, _spools) = snapshots(&store);
     let guest = Guest::default();
     guest.put("kept", file(b"kept", false));
     guest.put("gone", file(b"gone", false));
-    let first = snapshots
-        .take(&guest, &ours(), fresh_sandbox_id())
-        .await
-        .unwrap();
+    let first = snapshots.take(&guest, fresh_sandbox_id()).await.unwrap();
     guest.held().nodes.remove("gone");
     guest.put("new", file(b"new", false));
 
-    let second = snapshots
-        .take(&guest, &ours(), fresh_sandbox_id())
-        .await
-        .unwrap();
-    snapshots.restore(&guest, &ours(), &second).await.unwrap();
+    let second = snapshots.take(&guest, fresh_sandbox_id()).await.unwrap();
+    snapshots.restore(&guest, &second).await.unwrap();
 
     let held = guest.held();
     assert_eq!(held.walked, [None, Some(first.id().to_string())]);
@@ -115,13 +108,10 @@ async fn test_a_second_take_is_a_delta_on_the_first() {
 #[tokio::test]
 async fn test_a_crossed_ref_is_refused_before_any_chunk_is_read() {
     let store = Arc::new(MemoryStore::default());
-    let (snapshots, _spools) = snapshots(&store, DISK);
+    let (snapshots, _spools) = snapshots(&store);
     let guest = Guest::default();
     guest.put("a", file(b"a", false));
-    let taken = snapshots
-        .take(&guest, &ours(), fresh_sandbox_id())
-        .await
-        .unwrap();
+    let taken = snapshots.take(&guest, fresh_sandbox_id()).await.unwrap();
     let elsewhere = Environment {
         guest_agent: Some("sha256-another".into()),
         ..ours()
@@ -132,10 +122,7 @@ async fn test_a_crossed_ref_is_refused_before_any_chunk_is_read() {
 
     let mut refusals = Vec::new();
     for snapshot in [&crossed, &other_generation, &never] {
-        let refused = snapshots
-            .restore(&guest, &ours(), snapshot)
-            .await
-            .unwrap_err();
+        let refused = snapshots.restore(&guest, snapshot).await.unwrap_err();
         refusals.push(refused.snapshot_refusal());
     }
 
@@ -156,25 +143,16 @@ async fn test_a_crossed_ref_is_refused_before_any_chunk_is_read() {
 #[tokio::test]
 async fn test_a_forgotten_snapshot_is_refused_and_the_next_take_is_whole() {
     let store = Arc::new(MemoryStore::default());
-    let (snapshots, _spools) = snapshots(&store, DISK);
+    let (snapshots, _spools) = snapshots(&store);
     let guest = Guest::default();
-    let taken = snapshots
-        .take(&guest, &ours(), fresh_sandbox_id())
-        .await
-        .unwrap();
-    let kept = snapshots
-        .take(&guest, &ours(), fresh_sandbox_id())
-        .await
-        .unwrap();
+    let taken = snapshots.take(&guest, fresh_sandbox_id()).await.unwrap();
+    let kept = snapshots.take(&guest, fresh_sandbox_id()).await.unwrap();
     snapshots.forget(&taken).await.unwrap();
     snapshots.forget(&kept).await.unwrap();
 
-    let restored = snapshots.restore(&guest, &ours(), &kept).await;
+    let restored = snapshots.restore(&guest, &kept).await;
     let again = snapshots.forget(&kept).await;
-    snapshots
-        .take(&guest, &ours(), fresh_sandbox_id())
-        .await
-        .unwrap();
+    snapshots.take(&guest, fresh_sandbox_id()).await.unwrap();
 
     assert!(restored.is_err() && again.is_err());
     assert_eq!(guest.held().walked.last(), Some(&None));
@@ -186,35 +164,33 @@ async fn test_a_forgotten_snapshot_is_refused_and_the_next_take_is_whole() {
 #[tokio::test]
 async fn test_a_take_that_fails_names_nothing() {
     let store = Arc::new(MemoryStore::default());
-    let (snapshots, _spools) = snapshots(&store, DISK);
+    let (snapshots, _spools) = snapshots(&store);
     let frozen_out = Guest {
-        freeze_fails: true,
+        fault: Fault::FreezeFails,
         ..Guest::default()
     };
     snapshots
-        .take(&frozen_out, &ours(), fresh_sandbox_id())
+        .take(&frozen_out, fresh_sandbox_id())
         .await
         .unwrap_err();
 
-    let (small, _small_spools) = self::snapshots(&store, 16);
-    let guest = Guest::default();
+    let (small, _small_spools) = self::snapshots(&store);
+    let guest = Guest::on_disk(16);
     guest.put("big", file(&[7; 4096], false));
-    small
-        .take(&guest, &ours(), fresh_sandbox_id())
-        .await
-        .unwrap_err();
+    small.take(&guest, fresh_sandbox_id()).await.unwrap_err();
 
+    let guest = Guest::default();
     let id = fresh_sandbox_id();
-    snapshots.take(&guest, &ours(), id.clone()).await.unwrap();
-    snapshots.take(&guest, &ours(), id).await.unwrap_err();
+    snapshots.take(&guest, id.clone()).await.unwrap();
+    snapshots.take(&guest, id).await.unwrap_err();
     assert_eq!(guest.held().released.last(), Some(&None));
 
     let unreleased = Guest {
-        release_fails: true,
+        fault: Fault::ReleaseFails,
         ..Guest::default()
     };
-    let (fresh, _fresh_spools) = self::snapshots(&store, DISK);
-    let held = fresh.take(&unreleased, &ours(), fresh_sandbox_id()).await;
+    let (fresh, _fresh_spools) = self::snapshots(&store);
+    let held = fresh.take(&unreleased, fresh_sandbox_id()).await;
     assert!(held.is_ok(), "{held:?}");
 }
 
@@ -225,15 +201,117 @@ async fn test_a_pin_states_the_work_its_pause_did() {
     guest.put("a", file(b"a", false));
     guest.put("b", Node::Directory);
     let spools = tempfile::tempdir().unwrap();
-    let volume = GuestVolume {
-        agent: &guest,
-        spools: spools.path(),
-        disk_bytes: DISK,
-    };
+    let volume = GuestVolume::new(&guest, spools.path());
 
     let pin = pin_paused(&volume, None).await.unwrap();
     let work = volume.paused_work(&pin);
     volume.release(pin, None).await.unwrap();
+    let held = crate::engine::volume::quiesce(&volume, None).await.unwrap();
+    let told = format!("{held:?}");
+    Box::new(held).release(None).await.unwrap();
 
     assert_eq!(work.entries, 2);
+    assert_eq!(
+        told, "QuiescedVolume { .. }",
+        "a pin tells no tenant content"
+    );
+}
+
+/// A sandbox whose engine offers snapshots is quiesced through them, and a
+/// publication after tenant code ran on saves the workspace as it stood.
+#[tokio::test]
+async fn test_a_sandbox_with_snapshots_is_quiesced_through_them() {
+    let store = Arc::new(MemoryStore::default());
+    let (files, spools) = snapshots(&store);
+    let guest = Guest {
+        files: Some(files),
+        ..Guest::default()
+    };
+    guest.put("a", file(b"as quiesced", false));
+    let snapshots = guest.snapshots().unwrap();
+
+    let quiesced = quiesce_workspace(&guest, spools.path(), None)
+        .await
+        .unwrap();
+    guest.put("a", file(b"written after", false));
+    let published = snapshots
+        .publish(quiesced, fresh_sandbox_id())
+        .await
+        .unwrap();
+    let taken = snapshots.take(fresh_sandbox_id()).await.unwrap();
+    snapshots.restore(&published).await.unwrap();
+
+    assert_eq!(
+        guest.held().nodes.get("a"),
+        Some(&file(b"as quiesced", false))
+    );
+    snapshots.forget(&taken).await.unwrap();
+    assert_eq!(guest.held().frozen, 2);
+}
+
+/// With no tenant leaf, a quiet sandbox quiesces through its guest agent's
+/// walk and a busy one is refused naming the freeze; a freeze that fails is
+/// refused after a thaw is tried; and snapshots built with no store take,
+/// restore and forget nothing.
+#[tokio::test]
+async fn test_a_quiesce_with_no_leaf_or_no_store_is_refused_by_name() {
+    let spools = tempfile::tempdir().unwrap();
+    let quiet = Guest {
+        fault: Fault::NoLeaf,
+        ..Guest::default()
+    };
+    let held = quiesce_workspace(&quiet, spools.path(), None)
+        .await
+        .unwrap();
+    held.release(None).await.unwrap();
+    let busy = Guest {
+        fault: Fault::NoLeafBusy,
+        ..Guest::default()
+    };
+    let refused = quiesce_workspace(&busy, spools.path(), None).await.err();
+    assert_eq!(
+        refused.and_then(|error| error.unsupported_operation()),
+        Some(FREEZE_TENANT)
+    );
+    let stuck = Guest {
+        fault: Fault::Stuck,
+        ..Guest::default()
+    };
+    quiesce_workspace(&stuck, spools.path(), None)
+        .await
+        .err()
+        .unwrap();
+
+    let storeless = FileSnapshots::new(None, spools.path().to_owned());
+    let guest = Guest::default();
+    let taken = storeless.take(&guest, fresh_sandbox_id()).await.err();
+    let never = SnapshotRef::new(fresh_sandbox_id(), ours(), 1, SnapshotFormat::Files);
+    let restored = storeless.restore(&guest, &never).await.err();
+    let forgotten = storeless.forget(&never).await.err();
+    for refused in [taken, restored, forgotten] {
+        assert_eq!(
+            refused.and_then(|error| error.snapshot_refusal()),
+            Some(SnapshotRefusal::Store)
+        );
+    }
+}
+
+/// The test's sandbox answers the calls no snapshot makes as a sandbox does.
+#[tokio::test]
+async fn test_the_stand_in_sandbox_answers_as_a_sandbox() {
+    let mut guest = Box::new(Guest::default());
+    let plan = EgressPlan {
+        generation: Generation(1),
+        network: Network::Isolated,
+    };
+    guest.egress(plan).await.unwrap();
+    assert_eq!(guest.state(), SandboxState::Running);
+    assert_eq!(Sandbox::id(&*guest), &guest.id);
+    assert_eq!(guest.granted().limits().disk_bytes, DISK);
+    assert!(guest.snapshots().is_none());
+    assert!(matches!(guest.kill().await, crate::engine::Killed::Settled));
+    assert_ne!(Limits::DEFAULT.disk_bytes, 0);
+    let parked = Box::new(Guest::default()).park(ParkMode::Stop).await;
+    parked.unwrap_err();
+    guest.destroy().await.unwrap();
 }

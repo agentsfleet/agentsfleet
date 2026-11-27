@@ -104,6 +104,36 @@ pub(super) async fn restores_the_files(
     .await
 }
 
+/// What a quiesce fixed is what its publication saves, though tenant code
+/// wrote on between them.
+pub(super) async fn publishes_what_it_quiesced(
+    engine: &dyn Engine,
+    context: &Context<'_>,
+) -> Result<(), Failed> {
+    offered(engine, context, async |sandbox| {
+        let (agent, snapshots) = (sandbox.agent(), held(sandbox)?);
+        agent
+            .write_file(SAVED_FILE, Bytes::from_static(SAVED))
+            .await?;
+        let quiesced = snapshots.quiesce(None).await?;
+        agent
+            .write_file(SAVED_FILE, Bytes::from_static(CHANGED))
+            .await?;
+        let snapshot = snapshots.publish(quiesced, fresh_sandbox_id()).await?;
+        snapshots.restore(&snapshot).await?;
+        let saved = agent.read_file(SAVED_FILE, FILE_BYTES).await?;
+        snapshots.forget(&snapshot).await?;
+        expect(
+            saved.data == SAVED,
+            format!(
+                "the publication saves the file as quiesced, got {:?}",
+                saved.data
+            ),
+        )
+    })
+    .await
+}
+
 /// No process of the environment a restore replaced still runs.
 pub(super) async fn no_process_survives(
     engine: &dyn Engine,

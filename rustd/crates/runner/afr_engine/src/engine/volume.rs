@@ -10,7 +10,8 @@
 //! [`pin_paused`] is the only way to a [`Resumed`] pin, and it resumes before
 //! it returns, so whatever reads a pin's changes, registers or uploads them
 //! runs after tenant code is free again: publishing under the pause does not
-//! compile.
+//! compile. [`quiesce`] holds the pin and its volume together as
+//! [`Quiesced`], which is what a sandbox's snapshots hand a publication.
 
 use af_chunk_store::Change;
 use af_core::id::Uuid7;
@@ -113,4 +114,106 @@ pub async fn pin_paused<V: WorkspaceVolume + ?Sized>(
     let pinned = volume.pin(&Paused(()), parent).await;
     volume.resume().await?;
     pinned.map(Resumed)
+}
+
+/// A workspace held still once, then let run on: what a publication reads,
+/// after the fleet resumed, and releases once the daemon or the store
+/// answered its commit.
+#[async_trait::async_trait]
+pub trait Quiesced: Send + Sync {
+    /// What the hold fixed, as [`WorkspaceVolume::changes`] reads it.
+    fn changes(&self) -> BoxStream<'_, Result<Change>>;
+
+    /// The generation the changes are the difference from, when they are.
+    fn parent(&self) -> Option<&Uuid7>;
+
+    /// What the pause did.
+    fn paused_work(&self) -> PausedWork;
+
+    /// Ends the hold, naming the generation its publication committed.
+    ///
+    /// # Errors
+    /// What it held could not be removed.
+    async fn release(self: Box<Self>, committed: Option<&Uuid7>) -> Result<()>;
+}
+
+/// A pin of `V`, taken under a pause that has ended, read as [`Quiesced`].
+pub struct QuiescedVolume<V: WorkspaceVolume> {
+    volume: V,
+    pin: Resumed<V::Pin>,
+}
+
+impl<V: WorkspaceVolume> std::fmt::Debug for QuiescedVolume<V> {
+    /// A pin holds tenant content, so only that it is one is told.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("QuiescedVolume").finish_non_exhaustive()
+    }
+}
+
+#[async_trait::async_trait]
+impl<V: WorkspaceVolume> Quiesced for QuiescedVolume<V> {
+    fn changes(&self) -> BoxStream<'_, Result<Change>> {
+        self.volume.changes(&self.pin)
+    }
+
+    fn parent(&self) -> Option<&Uuid7> {
+        self.volume.parent(&self.pin)
+    }
+
+    fn paused_work(&self) -> PausedWork {
+        self.volume.paused_work(&self.pin)
+    }
+
+    async fn release(self: Box<Self>, committed: Option<&Uuid7>) -> Result<()> {
+        let Self { volume, pin } = *self;
+        volume.release(pin, committed).await
+    }
+}
+
+/// Pauses `volume`, pins it against `parent` and resumes it, as
+/// [`pin_paused`] does, and hands it back held for its publication.
+///
+/// # Errors
+/// As [`pin_paused`].
+pub async fn quiesce<V: WorkspaceVolume>(
+    volume: V,
+    parent: Option<&Uuid7>,
+) -> Result<QuiescedVolume<V>> {
+    let pin = pin_paused(&volume, parent).await?;
+    Ok(QuiescedVolume { volume, pin })
+}
+
+/// A borrowed volume is that volume, so one owner can hold a workspace still
+/// for each of several saves.
+#[async_trait::async_trait]
+impl<V: WorkspaceVolume + ?Sized> WorkspaceVolume for &V {
+    type Pin = V::Pin;
+
+    async fn pause(&self) -> Result<()> {
+        (**self).pause().await
+    }
+
+    async fn pin(&self, paused: &Paused, parent: Option<&Uuid7>) -> Result<Self::Pin> {
+        (**self).pin(paused, parent).await
+    }
+
+    async fn resume(&self) -> Result<()> {
+        (**self).resume().await
+    }
+
+    fn changes<'a>(&'a self, pin: &'a Resumed<Self::Pin>) -> BoxStream<'a, Result<Change>> {
+        (**self).changes(pin)
+    }
+
+    fn paused_work(&self, pin: &Resumed<Self::Pin>) -> PausedWork {
+        (**self).paused_work(pin)
+    }
+
+    fn parent<'a>(&self, pin: &'a Resumed<Self::Pin>) -> Option<&'a Uuid7> {
+        (**self).parent(pin)
+    }
+
+    async fn release(&self, pin: Resumed<Self::Pin>, committed: Option<&Uuid7>) -> Result<()> {
+        (**self).release(pin, committed).await
+    }
 }

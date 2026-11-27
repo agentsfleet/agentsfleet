@@ -6,7 +6,9 @@ use std::time::Duration;
 use af_core::id::Uuid7;
 use afr_guest_client::GuestAgent;
 
+use super::quiesce::{FakeQuiesced, files};
 use super::{ENGINE, FakeGuest, Flaw};
+use crate::engine::volume::Quiesced;
 use crate::engine::{
     EgressEnforcer, EgressPlan, Environment, Generation, Granted, Killed, ParkMode, Parked,
     Quiescence, Sandbox, SandboxState, SnapshotFormat, SnapshotRef, Snapshots, enforce,
@@ -84,6 +86,18 @@ impl Sandbox for FakeSandbox {
     }
 }
 
+impl FakeSandbox {
+    /// Keeps `disk` under `id`, numbered after every snapshot before it.
+    fn saved(&self, id: Uuid7, disk: super::Disk) -> SnapshotRef {
+        let state = &mut *self.agent.state();
+        let generation = u64::try_from(state.saved.len()).unwrap_or(u64::MAX) + 1;
+        let environment = self.environment.clone();
+        let snapshot = SnapshotRef::new(id, environment, generation, SnapshotFormat::Files);
+        state.saved.push((snapshot.clone(), disk));
+        snapshot
+    }
+}
+
 #[async_trait::async_trait]
 impl EgressEnforcer for FakeSandbox {
     async fn apply(&mut self, plan: EgressPlan<'_>) -> Result<()> {
@@ -98,13 +112,28 @@ impl EgressEnforcer for FakeSandbox {
 
 #[async_trait::async_trait]
 impl Snapshots for FakeSandbox {
+    async fn quiesce(&self, _parent: Option<&Uuid7>) -> Result<Box<dyn Quiesced + '_>> {
+        Ok(Box::new(FakeQuiesced(
+            self.agent.state().disk.files.clone(),
+        )))
+    }
+
+    /// Saves the files the quiesce fixed, beside the tree and plan of now.
+    async fn publish<'a>(
+        &'a self,
+        quiesced: Box<dyn Quiesced + 'a>,
+        id: Uuid7,
+    ) -> Result<SnapshotRef> {
+        let files = files(quiesced.changes()).await?;
+        quiesced.release(Some(&id)).await?;
+        let mut disk = self.agent.state().disk.clone();
+        disk.files = files;
+        Ok(self.saved(id, disk))
+    }
+
     async fn take(&self, id: Uuid7) -> Result<SnapshotRef> {
-        let state = &mut *self.agent.state();
-        let generation = u64::try_from(state.saved.len()).unwrap_or(u64::MAX) + 1;
-        let environment = self.environment.clone();
-        let snapshot = SnapshotRef::new(id, environment, generation, SnapshotFormat::Files);
-        state.saved.push((snapshot.clone(), state.disk.clone()));
-        Ok(snapshot)
+        let disk = self.agent.state().disk.clone();
+        Ok(self.saved(id, disk))
     }
 
     async fn restore(&self, snapshot: &SnapshotRef) -> Result<()> {

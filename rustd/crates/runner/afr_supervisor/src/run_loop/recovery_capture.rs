@@ -10,7 +10,7 @@ use afr_agent::{
     CommittedRecovery, DurableTaskRecovery, FileRecoveryPermit, RecoveryReceipt, RecoverySave,
     RecoverySkip, RecoverySnapshot, RecoveryState, TurnSnapshot,
 };
-use afr_engine::{Resumed, Sandbox};
+use afr_engine::{Quiesced, Sandbox};
 use futures_util::FutureExt as _;
 
 use super::{
@@ -21,7 +21,6 @@ use super::{
 use crate::{
     Result, error,
     recovery::{Capture, ChangeSource},
-    staging::{WalkPin, WalkVolume},
 };
 
 /// How a boundary's pause ended.
@@ -37,7 +36,7 @@ pub(super) struct Publish<'a> {
     /// The runner's file capacity, held until the publication ends.
     _reservation: Option<FileRecoveryPermit>,
     state: RecoveryState,
-    files: Option<(WalkVolume<'a>, Resumed<WalkPin>)>,
+    files: Option<Box<dyn Quiesced + 'a>>,
     toolbox: String,
     recovery: Option<&'a State>,
 }
@@ -91,9 +90,10 @@ impl<'a> BoundaryOwner<'a, '_> {
         let Workspace::Building { recovery, .. } = self.workspace else {
             return Ok(skipped(RecoverySkip::Unavailable));
         };
-        let volume = WalkVolume::new(sandbox, &self.run.lessee.staging, self.stop.clone());
         let parent = self.parent(&snapshot.state)?;
-        let pinning = pin_sandbox(sandbox, &volume, parent.as_ref()).await?;
+        let spools = self.run.lessee.staging.root();
+        let quiesce = afr_engine::quiesce_workspace(sandbox, spools, parent.as_ref());
+        let pinning = pin_sandbox(sandbox, quiesce).await?;
         let pin = match pinning {
             Pinning::Skipped(reason) => return Ok(skipped(reason)),
             Pinning::Pinned(pin) => pin,
@@ -103,7 +103,7 @@ impl<'a> BoundaryOwner<'a, '_> {
             _reservation: reservation,
             state: snapshot.state,
             toolbox: toolbox.to_owned(),
-            files: Some((volume, pin)),
+            files: Some(pin),
             recovery: recovery.get(),
         })))
     }
@@ -161,17 +161,13 @@ impl<'a> BoundaryOwner<'a, '_> {
             toolbox,
             recovery,
         } = *publish;
-        let Some((volume, pin)) = files else {
+        let Some(pin) = files else {
             return self.publish_state(state, None, &toolbox, recovery).await;
         };
-        let source = PinSource {
-            volume: &volume,
-            pin: &pin,
-        };
         let saved = self
-            .publish_state(state, Some(&source), &toolbox, recovery)
+            .publish_state(state, Some(&PinSource(&*pin)), &toolbox, recovery)
             .await;
-        release(&volume, pin, committed(&saved).as_ref()).await;
+        release(pin, committed(&saved).as_ref()).await;
         saved
     }
 

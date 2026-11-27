@@ -6,12 +6,16 @@ use std::collections::BTreeMap;
 use std::io::Read as _;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
+use af_core::id::Uuid7;
 use af_guest_wire::Imported;
 use af_guest_wire::protocol::PinWalked;
 use afr_guest_client::{GuestAgent, Process, ProcessId, Spawn};
 use bytes::Bytes;
 use tar::{Archive, Builder, EntryType, Header};
 use tokio::io::{AsyncRead, AsyncReadExt as _, AsyncWrite, AsyncWriteExt as _};
+
+use crate::engine::{Granted, Limits, fresh_sandbox_id};
+use crate::file_snapshots::FileSnapshots;
 
 /// One entry of the fake's workspace.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,15 +46,56 @@ pub(super) struct Held {
     committed: Option<(String, BTreeMap<String, Node>)>,
 }
 
-/// The fake guest agent, with the failures a test switches on.
-#[derive(Debug, Default)]
+/// The one way a fake departs from a faithful guest agent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Fault {
+    None,
+    /// The freeze fails; the thaw after it works.
+    FreezeFails,
+    /// The freeze fails, and so does the thaw after it.
+    Stuck,
+    /// The release fails after the guest agent recorded it.
+    ReleaseFails,
+    /// It has no tenant leaf, and no tenant runs.
+    NoLeaf,
+    /// It has no tenant leaf, and a tenant runs.
+    NoLeafBusy,
+}
+
+/// The fake guest agent and the sandbox around it, with the failures a test
+/// switches on.
+#[derive(Debug)]
 pub(super) struct Guest {
     pub(super) held: Mutex<Held>,
-    pub(super) freeze_fails: bool,
-    pub(super) release_fails: bool,
+    pub(super) fault: Fault,
+    pub(super) id: Uuid7,
+    pub(super) granted: Granted,
+    /// Its snapshots, as a sandbox whose engine offers them serves them.
+    pub(super) files: Option<FileSnapshots>,
+}
+
+impl Default for Guest {
+    fn default() -> Self {
+        Self::on_disk(super::DISK)
+    }
 }
 
 impl Guest {
+    /// A fake granted `disk_bytes` of workspace disk.
+    pub(super) fn on_disk(disk_bytes: u64) -> Self {
+        let limits = Limits {
+            disk_bytes,
+            ..Limits::DEFAULT
+        };
+        Self {
+            held: Mutex::default(),
+            fault: Fault::None,
+            id: fresh_sandbox_id(),
+            granted: Granted::unenforced(limits),
+            files: None,
+        }
+    }
+
     pub(super) fn held(&self) -> MutexGuard<'_, Held> {
         self.held.lock().unwrap_or_else(PoisonError::into_inner)
     }
@@ -111,14 +156,19 @@ impl GuestAgent for Guest {
     }
 
     async fn freeze_tenant(&self) -> af_guest_wire::Result<()> {
-        if self.freeze_fails {
-            return Err(refused());
+        match self.fault {
+            Fault::NoLeaf | Fault::NoLeafBusy => return Err(af_guest_wire::error::no_tenant_leaf()),
+            Fault::FreezeFails | Fault::Stuck => return Err(refused()),
+            Fault::None | Fault::ReleaseFails => {}
         }
         self.held().frozen += 1;
         Ok(())
     }
 
     async fn thaw_tenant(&self) -> af_guest_wire::Result<()> {
+        if self.fault == Fault::Stuck {
+            return Err(refused());
+        }
         self.held().thawed += 1;
         Ok(())
     }
@@ -171,7 +221,7 @@ impl GuestAgent for Guest {
         if let (Some(generation), Some(pinned)) = (generation, pinned) {
             held.committed = Some((generation.to_owned(), pinned));
         }
-        if self.release_fails {
+        if self.fault == Fault::ReleaseFails {
             return Err(refused());
         }
         Ok(())
@@ -218,3 +268,6 @@ impl GuestAgent for Guest {
         Ok(Imported::default())
     }
 }
+
+#[path = "guest_sandbox.rs"]
+mod sandbox;

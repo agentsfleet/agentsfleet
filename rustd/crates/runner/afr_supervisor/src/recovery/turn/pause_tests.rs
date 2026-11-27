@@ -28,7 +28,7 @@ async fn a_save_resumes_before_it_registers_or_uploads() -> Checked {
     let (sandbox, steps) = sandbox(root.path()).await?;
     let (log, stop) = (Log::default(), CancellationToken::new());
     let staging = Staging::new(staged.path().to_owned());
-    let volume = Recording::over(sandbox.as_ref(), &staging, steps, &log, &stop);
+    let volume = Recording::over(sandbox.as_ref(), &staging, steps, &log);
     let remote = Arc::new(Mutex::new(Remote::new(objects, &server.url, None)?));
     let (plane, _calls) = recorded_plane(remote, log.clone());
     let (run, transfers) = (Uuid7::parse(ID)?, server.transfers());
@@ -60,7 +60,7 @@ async fn a_publication_failing_after_resume_keeps_the_previous_generation() -> C
     let (sandbox, steps) = sandbox(root.path()).await?;
     let (log, stop) = (Log::default(), CancellationToken::new());
     let staging = Staging::new(staged.path().to_owned());
-    let volume = Recording::over(sandbox.as_ref(), &staging, steps, &log, &stop);
+    let volume = Recording::over(sandbox.as_ref(), &staging, steps, &log);
     let remote = Arc::new(Mutex::new(Remote::new(objects, &server.url, None)?));
     let (plane, _calls) = recorded_plane(Arc::clone(&remote), log.clone());
     let (run, transfers) = (Uuid7::parse(ID)?, server.transfers());
@@ -118,7 +118,7 @@ async fn a_runner_killed_between_resume_and_commit_keeps_the_previous_generation
     let (sandbox, steps) = sandbox(root.path()).await?;
     let (log, stop) = (Log::default(), CancellationToken::new());
     let staging = Staging::new(staged.path().to_owned());
-    let volume = Recording::over(sandbox.as_ref(), &staging, steps, &log, &stop);
+    let volume = Recording::over(sandbox.as_ref(), &staging, steps, &log);
     let remote = Arc::new(Mutex::new(Remote::new(
         objects.clone(),
         &committed.url,
@@ -166,7 +166,7 @@ async fn killed_mid_publication(
 ) -> Checked {
     let pin = pinned(sandbox, volume, None).await?;
     {
-        let source = PinSource { volume, pin: &pin };
+        let source = PinSource(&*pin);
         let publication = native.capture(snapshot(scope()), Some(&source), stop);
         tokio::pin!(publication);
         while !log.steps().contains(&"seal") {

@@ -16,6 +16,7 @@ const PAUSED: &str = "test_a_paused_sandbox_resumes_with_its_files_and_processes
 const MATRIX: &str = "test_the_verdict_matrix_refuses_every_unlisted_destination";
 const SAVED_FILES: &str = "test_a_restored_snapshot_holds_the_saved_files";
 const NO_PROCESS: &str = "test_no_process_survives_a_restore";
+const QUIESCED: &str = "test_a_publication_saves_the_workspace_as_quiesced";
 const CROSSES: &str = "test_a_snapshot_never_crosses_environments";
 const OLDER_PLAN: &str = "test_a_restore_never_brings_back_an_older_plan";
 
@@ -77,7 +78,7 @@ async fn test_the_snapshot_trials_hold_every_engine_to_one_behaviour() {
     let cases = [
         (Flaw::Faithful, Vec::<&str>::new()),
         (Flaw::RestoreKeepsAProcess, vec![NO_PROCESS]),
-        (Flaw::RestoreChangesAByte, vec![SAVED_FILES]),
+        (Flaw::RestoreChangesAByte, vec![SAVED_FILES, QUIESCED]),
     ];
     for (flaw, expected) in cases {
         let failed = failures(&Fake::snapshotting(flaw)).await;
@@ -87,13 +88,17 @@ async fn test_the_snapshot_trials_hold_every_engine_to_one_behaviour() {
     let every: Vec<&str> = TRIALS
         .iter()
         .map(super::Trial::name)
-        .filter(|name| name.contains("snapshot") || name.contains("restore"))
+        .filter(|name| {
+            ["snapshot", "restore", "quiesce"]
+                .iter()
+                .any(|kind| name.contains(kind))
+        })
         .collect();
     let missing = failures(&Fake::snapshotting(Flaw::SnapshotsNotOffered)).await;
     assert_eq!(names(&missing), every, "{missing:?}");
     let undeclared = failures(&Fake::flawed(Flaw::SnapshotsNotDeclared)).await;
     assert_eq!(names(&undeclared), every, "{undeclared:?}");
-    assert_eq!(every.len(), 6);
+    assert_eq!(every.len(), 7);
 }
 
 /// A snapshot never crosses environments: a faithful engine refuses a ref

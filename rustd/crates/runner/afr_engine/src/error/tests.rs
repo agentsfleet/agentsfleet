@@ -141,7 +141,7 @@ async fn test_a_chunk_store_failure_keeps_its_code() {
         af_core::error_code::INTERNAL_OPERATION_FAILED
     );
     assert!(
-        refused.detail().contains("another environment"),
+        refused.detail().contains("no such environment"),
         "{}",
         refused.detail()
     );

@@ -7,8 +7,9 @@
 //! ```text
 //!   <home>/staging/<sandbox>-<random>/      one step's tree: 0700, the runner's,
 //!                                           removed when the step ends
-//!   <home>/staging/<sandbox>-<random>.pin   one save's pinned bytes: 0600, the
-//!                                           runner's, removed when it is released
+//!   <home>/staging/<sandbox>-<random>.pin   one save's pinned bytes on an engine
+//!                                           with no snapshots: 0600, the runner's,
+//!                                           removed when it is released
 //!   <home>/staging/                         emptied at boot of what a crash left
 //! ```
 //!
@@ -25,7 +26,6 @@ use std::path::{Path, PathBuf};
 
 use af_core::id::Uuid7;
 use af_guest_wire::Imported;
-use af_guest_wire::protocol::PinWalked;
 use afr_engine::Bounded;
 use afr_guest_client::GuestAgent;
 use cap_std::ambient_authority;
@@ -33,14 +33,8 @@ use cap_std::fs::Dir;
 
 use crate::error::{self, Result};
 
-mod volume;
-
-pub(crate) use self::volume::{FREEZE_TENANT, WalkPin, WalkVolume};
-
 /// Only the runner reads or writes a stage: a tenant's files pass through it.
 const STAGE_MODE: u32 = 0o700;
-/// Only the runner reads or writes a pin's bytes: every file the run wrote.
-const PIN_MODE: u32 = 0o600;
 /// The event a stage the boot sweep could not remove is logged under.
 const EVENT_SWEEP_LEFT: &str = "staging_sweep_left";
 /// The workspace, and a stage, named relative to itself.
@@ -104,17 +98,10 @@ impl Staging {
         })
     }
 
-    /// A fresh, empty file for one save's pinned bytes of `sandbox`, removed
-    /// when dropped.
-    ///
-    /// # Errors
-    /// The file could not be made.
-    pub(crate) fn pin_file(&self, sandbox: &Uuid7) -> Result<tempfile::NamedTempFile> {
-        Ok(tempfile::Builder::new()
-            .prefix(&format!("{sandbox}-"))
-            .suffix(".pin")
-            .permissions(fs::Permissions::from_mode(PIN_MODE))
-            .tempfile_in(&self.root)?)
+    /// Where every stage, and every save's pin spool, is made.
+    #[must_use]
+    pub(crate) fn root(&self) -> &Path {
+        &self.root
     }
 }
 
@@ -243,26 +230,6 @@ async fn spool_export(agent: &dyn GuestAgent, disk_bytes: u64, spool: File) -> R
     }
     exported.map_err(|source| error::boundary(DETAIL_EXPORT, source))?;
     Ok(stream.into_spool().into_std().await)
-}
-
-/// Walks the workspace `agent` serves for a save's pin against `parent`,
-/// copying what changed into `spool`, held to `disk_bytes` as
-/// [`Staged::export`] says.
-///
-/// # Errors
-/// The guest agent would not walk, or the stream outgrew `disk_bytes`.
-pub(crate) async fn spool_pin(
-    agent: &dyn GuestAgent,
-    parent: Option<&str>,
-    disk_bytes: u64,
-    spool: File,
-) -> Result<PinWalked> {
-    let mut stream = Bounded::new(tokio::fs::File::from_std(spool), disk_bytes);
-    let walked = agent.pin_walk(parent, &mut stream).await;
-    if stream.outgrown() {
-        return Err(error::capture_limit(DETAIL_OUTGROWN));
-    }
-    walked.map_err(|source| error::boundary(DETAIL_EXPORT, source))
 }
 
 #[cfg(test)]

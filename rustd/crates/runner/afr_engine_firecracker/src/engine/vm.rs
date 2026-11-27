@@ -152,12 +152,10 @@ impl Sandbox for Vm {
         enforce(self, plan, within).await
     }
 
-    /// Its snapshots, when its build was handed a chunk store.
+    /// Its snapshots: a save quiesces through them, and a take, restore or
+    /// forget reaches the chunk store its build was handed.
     fn snapshots(&self) -> Option<&dyn Snapshots> {
-        self.kept
-            .snapshots
-            .is_some()
-            .then_some(self as &dyn Snapshots)
+        Some(self)
     }
 
     /// Ends the monitor and waits until it has: nothing of the guest runs

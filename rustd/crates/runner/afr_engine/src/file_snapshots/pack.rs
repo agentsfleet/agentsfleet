@@ -43,12 +43,15 @@ const SHORT_FILE: &str = "a file's bytes do not add up to its size";
 /// The stream's reader, and the thread reading it.
 type Reading = (mpsc::Receiver<Change>, JoinHandle<Result<()>>);
 
-/// Every change the tar stream at `spool` holds, from the first; the stream
-/// ends with the read's failure, if it had one.
-pub(super) fn changes(spool: PathBuf) -> BoxStream<'static, Result<Change>> {
+/// Every change the tar stream at `spool` holds, from the first, the content
+/// its files claim held to `room`; the stream ends with the read's failure,
+/// if it had one.
+pub(super) fn changes(spool: PathBuf, room: u64) -> BoxStream<'static, Result<Change>> {
     let (send, receive) = mpsc::channel(1);
     let reading = tokio::task::spawn_blocking(move || {
-        read(&spool, &mut |change| send.blocking_send(change).is_ok())
+        read(&spool, room, &mut |change| {
+            send.blocking_send(change).is_ok()
+        })
     });
     futures_util::stream::unfold(Some((receive, reading)), next).boxed()
 }
@@ -66,10 +69,17 @@ async fn next(state: Option<Reading>) -> Option<(Result<Change>, Option<Reading>
 
 /// Hands `emit` each entry of the stream at `spool`, each file's chunks
 /// after it; stops, with no error, once `emit` answers that nothing reads on.
-fn read(spool: &Path, emit: &mut dyn FnMut(Change) -> bool) -> Result<()> {
+/// A stream whose files claim more than `room`, holes included, is refused:
+/// every byte read is a chunk a store takes.
+fn read(spool: &Path, room: u64, emit: &mut dyn FnMut(Change) -> bool) -> Result<()> {
     let mut archive = Archive::new(File::open(spool)?);
+    let mut claimed = 0_u64;
     for entry in archive.entries()? {
         let mut entry = entry?;
+        claimed = claimed.saturating_add(entry.size());
+        if claimed > room {
+            return Err(io::Error::from(io::ErrorKind::FileTooLarge).into());
+        }
         let path = relative(&entry.path()?)?;
         let kind = entry.header().entry_type();
         let reads_on = match kind {

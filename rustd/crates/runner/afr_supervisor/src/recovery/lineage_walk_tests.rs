@@ -5,12 +5,12 @@
 use super::tests::{Checked, catalog, files, id, objects, resolve};
 use crate::recovery::tree::Tree;
 use crate::run_loop::pin::{Pinned, Pinning, pin_sandbox, release};
-use crate::staging::{Staging, WalkPin, WalkVolume};
+use crate::staging::Staging;
 use crate::test_support::FakeEngine;
 use af_core::id::Uuid7;
 use af_guest_wire::protocol::MAX_FRAME_BYTES;
 use af_guest_wire::tree::Pins;
-use afr_engine::{PausedWork, Resumed, Sandbox, WorkspaceVolume as _};
+use afr_engine::{GuestVolume, PausedWork, Quiesced, Sandbox, quiesce};
 use cap_std::{ambient_authority, fs::Dir};
 use std::fs;
 use std::path::Path;
@@ -32,12 +32,16 @@ async fn sandbox(root: &Path) -> Checked<(Box<dyn Sandbox>, Arc<Mutex<Pins>>)> {
     Ok((engine.sandbox().await?, Arc::clone(&engine.pins)))
 }
 
-async fn pinned(
+async fn pinned<'a>(
     sandbox: &dyn Sandbox,
-    volume: &WalkVolume<'_>,
+    volume: &'a GuestVolume<'_>,
     parent: Option<&Uuid7>,
-) -> Checked<Resumed<WalkPin>> {
-    match pin_sandbox(sandbox, volume, parent).await? {
+) -> Checked<Box<dyn Quiesced + 'a>> {
+    let quiesced = async {
+        let held = quiesce(volume, parent).await?;
+        Ok(Box::new(held) as Box<dyn Quiesced + 'a>)
+    };
+    match pin_sandbox(sandbox, quiesced).await? {
         Pinning::Pinned(pin) => Ok(pin),
         Pinning::Skipped(reason) => Err(format!("the save skipped as {reason:?}").into()),
     }
@@ -58,36 +62,20 @@ async fn a_save_reads_and_registers_only_the_changed_files() -> Checked {
     files(root.path(), 1_000, 32)?;
     let (sandbox, _pins) = sandbox(root.path()).await?;
     let staging = Staging::new(staged.path().to_owned());
-    let volume = WalkVolume::new(sandbox.as_ref(), &staging, CancellationToken::new());
+    let volume = GuestVolume::new(sandbox.as_ref(), staging.root());
     let ceiling = af_wire::run::TURN_CHECKPOINT_PAGE_BYTES;
     let first = pinned(sandbox.as_ref(), &volume, None).await?;
-    let base = catalog(
-        &Pinned {
-            volume: &volume,
-            pin: &first,
-        },
-        None,
-        ceiling,
-    )
-    .await?;
+    let base = catalog(&Pinned(&*first), None, ceiling).await?;
     let head = id()?;
     let lineage = base.lineage(head.clone());
-    release(&volume, first, Some(&head)).await;
+    release(first, Some(&head)).await;
     let changed = rewrite(root.path())?;
 
     let second = pinned(sandbox.as_ref(), &volume, Some(&head)).await?;
-    let delta = catalog(
-        &Pinned {
-            volume: &volume,
-            pin: &second,
-        },
-        Some(&lineage),
-        ceiling,
-    )
-    .await?;
+    let delta = catalog(&Pinned(&*second), Some(&lineage), ceiling).await?;
 
     assert_eq!(
-        volume.paused_work(&second).changed_bytes,
+        second.paused_work().changed_bytes,
         changed,
         "only the 3 files were read"
     );
@@ -115,7 +103,7 @@ async fn a_save_reads_and_registers_only_the_changed_files() -> Checked {
         resolve(&[&scan], &ids)?,
         "the restore is the source tree"
     );
-    release(&volume, second, None).await;
+    release(second, None).await;
     Ok(())
 }
 
@@ -145,10 +133,10 @@ async fn paused_work(untouched: u64) -> Checked<(PausedWork, u64)> {
     committed(&pins, root.path(), &head)?;
     let changed = rewrite(root.path())?;
     let staging = Staging::new(staged.path().to_owned());
-    let volume = WalkVolume::new(sandbox.as_ref(), &staging, CancellationToken::new());
+    let volume = GuestVolume::new(sandbox.as_ref(), staging.root());
     let pin = pinned(sandbox.as_ref(), &volume, Some(&head)).await?;
-    let work = volume.paused_work(&pin);
-    release(&volume, pin, None).await;
+    let work = pin.paused_work();
+    release(pin, None).await;
     Ok((work, changed))
 }
 

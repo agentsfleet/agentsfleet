@@ -20,6 +20,8 @@ use crate::engine::{
 };
 use crate::error::Result;
 
+#[path = "fake_quiesce.rs"]
+mod quiesce;
 #[path = "fake_sandbox.rs"]
 mod sandbox;
 
@@ -162,7 +164,7 @@ struct State {
 /// What a snapshot saves, beside the plan in force when it was taken, which
 /// only a flawed restore brings back.
 #[derive(Debug, Default, Clone)]
-struct Disk {
+pub(super) struct Disk {
     files: BTreeMap<String, Vec<u8>>,
     tree: Vec<u8>,
     plan: Generation,

@@ -175,10 +175,7 @@ impl FirecrackerEngine {
 
     /// What sandbox `spec.id` keeps across a park, its pieces under `layout`.
     async fn kept(&self, spec: SandboxSpec<'_>, layout: &Layout) -> Result<Kept> {
-        let disk_bytes = spec.granted.limits().disk_bytes;
-        let snapshots = spec.store.map(|store| {
-            FileSnapshots::new(Arc::clone(store), layout.dir().to_owned(), disk_bytes)
-        });
+        let snapshots = FileSnapshots::new(spec.store.map(Arc::clone), layout.dir().to_owned());
         Ok(Kept {
             id: spec.id.clone(),
             granted: spec.granted,
@@ -289,9 +286,10 @@ pub(crate) struct Kept {
     pub(crate) environment: Environment,
     pub(crate) plan: Plan,
     pub(crate) layout: Layout,
-    /// Its snapshots, when its build was handed a chunk store; their spools
-    /// live in its directory, which only the runner reaches.
-    pub(crate) snapshots: Option<FileSnapshots>,
+    /// Its snapshots, published into the chunk store its build was handed,
+    /// if any; their spools live in its directory, which only the runner
+    /// reaches.
+    pub(crate) snapshots: FileSnapshots,
 }
 
 /// The plan a sandbox was last held to, owned, so a resumed sandbox boots

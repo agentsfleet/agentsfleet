@@ -53,7 +53,7 @@ fn spooled(bytes: &[u8]) -> tempfile::NamedTempFile {
 /// What reading `spool` hands on, until `stop_after` changes when given.
 fn read_all(spool: &Path, stop_after: Option<usize>) -> crate::Result<Vec<Change>> {
     let mut seen = Vec::new();
-    read(spool, &mut |change| {
+    read(spool, u64::MAX, &mut |change| {
         seen.push(change);
         stop_after.is_none_or(|stop| seen.len() < stop)
     })?;
@@ -81,7 +81,7 @@ async fn test_a_pin_reads_as_entries_with_each_files_chunks_after_it() {
         ("pipe", EntryType::Fifo, b""),
     ]));
 
-    let streamed: Vec<Change> = changes(spool.path().to_owned())
+    let streamed: Vec<Change> = changes(spool.path().to_owned(), u64::MAX)
         .map(Result::unwrap)
         .collect()
         .await;
@@ -121,8 +121,12 @@ async fn test_a_pin_no_walk_packs_is_refused() {
     let mut short = stream(&[("cut", EntryType::Regular, &[3; 600])]);
     short.truncate(512 + 100);
     let cut = spooled(&short);
-    let read = changes(cut.path().to_owned()).collect::<Vec<_>>().await;
-    assert!(read.last().unwrap().is_err());
+    let cut_read = changes(cut.path().to_owned(), u64::MAX)
+        .collect::<Vec<_>>()
+        .await;
+    assert!(cut_read.last().unwrap().is_err());
+    let claimed = spooled(&stream(&[("big", EntryType::Regular, &[1; 9])]));
+    read(claimed.path(), 8, &mut |_change| true).unwrap_err();
     relative(Path::new(".")).unwrap_err();
     named(None).unwrap_err();
 }

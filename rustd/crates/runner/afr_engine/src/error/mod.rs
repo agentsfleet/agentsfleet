@@ -131,7 +131,7 @@ pub(crate) enum ErrorKind {
     },
 
     /// A snapshot was offered to a sandbox it does not belong to.
-    #[error("the snapshot names another {refusal} than the sandbox's")]
+    #[error("the snapshot was refused: the sandbox holds no such {refusal}")]
     SnapshotRefused {
         /// What differs.
         refusal: SnapshotRefusal,
@@ -165,6 +165,8 @@ pub enum SnapshotRefusal {
     Environment,
     /// Another generation than the store names under its identifier.
     Generation,
+    /// A store, when the sandbox's build was handed none.
+    Store,
 }
 
 impl Error {

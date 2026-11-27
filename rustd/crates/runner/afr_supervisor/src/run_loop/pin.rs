@@ -6,15 +6,16 @@
 //! ```
 //!
 //! A live tenant process no longer skips the save: the pause freezes it
-//! (`WalkVolume`). A call still in flight does, before any freeze or pin.
+//! (`afr_engine::quiesce_workspace`, through the sandbox's snapshots where
+//! its engine offers them). A call still in flight does, before any freeze
+//! or pin.
 
 use af_chunk_store::Change;
 use af_core::id::Uuid7;
 use afr_agent::RecoverySkip;
-use afr_engine::{PausedWork, Resumed, Sandbox, WorkspaceVolume};
+use afr_engine::{FREEZE_TENANT, PausedWork, Quiesced, Sandbox};
 use futures_util::{StreamExt as _, TryStreamExt as _, stream::BoxStream};
 
-use crate::staging::FREEZE_TENANT;
 use crate::{Result, error, recovery::ChangeSource};
 
 /// The stage a file walk pins at: the workspace read as files, each changed
@@ -22,24 +23,23 @@ use crate::{Result, error, recovery::ChangeSource};
 const STAGE: u8 = 1;
 
 /// How a boundary's pause ended.
-pub(crate) enum Pinning<P> {
+pub(crate) enum Pinning<'a> {
     /// No pause was taken, for this reason.
     Skipped(RecoverySkip),
-    /// The pin, taken under a pause that has ended.
-    Pinned(Resumed<P>),
+    /// The workspace, held under a pause that has ended.
+    Pinned(Box<dyn Quiesced + 'a>),
 }
 
-/// Proves no call of `sandbox`'s guest agent in flight, then pauses `volume`,
-/// pins it against `parent` and resumes it, the resume running whether or
-/// not the pin was taken. Nothing here calls the daemon.
+/// Proves no call of `sandbox`'s guest agent in flight, then runs
+/// `quiesce`, which pauses the workspace, pins it and resumes it, the resume
+/// running whether or not the pin was taken. Nothing here calls the daemon.
 ///
 /// # Errors
 /// The engine could not tell whether a tenant process runs.
-pub(crate) async fn pin_sandbox<V: WorkspaceVolume>(
+pub(crate) async fn pin_sandbox<'a>(
     sandbox: &dyn Sandbox,
-    volume: &V,
-    parent: Option<&Uuid7>,
-) -> Result<Pinning<V::Pin>> {
+    quiesce: impl Future<Output = afr_engine::Result<Box<dyn Quiesced + 'a>>>,
+) -> Result<Pinning<'a>> {
     match sandbox.agent().calls_idle().await {
         Ok(true) => {}
         Ok(false) => return Ok(Pinning::Skipped(RecoverySkip::BusyAgent)),
@@ -58,14 +58,14 @@ pub(crate) async fn pin_sandbox<V: WorkspaceVolume>(
         return Ok(Pinning::Skipped(RecoverySkip::Unavailable));
     }
     let paused = tokio::time::Instant::now();
-    match afr_engine::pin_paused(volume, parent).await {
+    match quiesce.await {
         Ok(pin) => {
             let engine: &str = sandbox.environment().engine.into();
             let paused_ms = u64::try_from(paused.elapsed().as_millis()).unwrap_or(u64::MAX);
             let PausedWork {
                 entries,
                 changed_bytes,
-            } = volume.paused_work(&pin);
+            } = pin.paused_work();
             tracing::info!(
                 event = "checkpoint_paused",
                 engine,
@@ -91,12 +91,8 @@ pub(crate) async fn pin_sandbox<V: WorkspaceVolume>(
 
 /// Releases `pin`, naming the generation its publication committed, once
 /// the daemon answered that commit.
-pub(crate) async fn release<V: WorkspaceVolume>(
-    volume: &V,
-    pin: Resumed<V::Pin>,
-    committed: Option<&Uuid7>,
-) {
-    if let Err(failure) = volume.release(pin, committed).await {
+pub(crate) async fn release(pin: Box<dyn Quiesced + '_>, committed: Option<&Uuid7>) {
+    if let Err(failure) = pin.release(committed).await {
         let error_code = failure.code();
         tracing::warn!(event = "checkpoint_pin_release_failed", %error_code);
     }
@@ -113,21 +109,18 @@ pub(super) async fn agent_idle(sandbox: &dyn Sandbox) -> Result<bool> {
 }
 
 /// A pin read as the changes a publication consumes.
-pub(crate) struct Pinned<'a, V: WorkspaceVolume> {
-    pub(crate) volume: &'a V,
-    pub(crate) pin: &'a Resumed<V::Pin>,
-}
+pub(crate) struct Pinned<'a>(pub(crate) &'a dyn Quiesced);
 
-impl<V: WorkspaceVolume> ChangeSource for Pinned<'_, V> {
+impl ChangeSource for Pinned<'_> {
     fn changes(&self) -> BoxStream<'_, Result<Change>> {
-        self.volume
-            .changes(self.pin)
+        self.0
+            .changes()
             .map_err(|source| error::boundary("a pin's changes could not be read", source))
             .boxed()
     }
 
     fn parent(&self) -> Option<&Uuid7> {
-        self.volume.parent(self.pin)
+        self.0.parent()
     }
 }
 

@@ -33,7 +33,9 @@ mod warm_slots;
 pub use self::boot::{Backend, Booted, HostPaths, Resources, Started, boot};
 #[cfg(any(test, feature = "test-util"))]
 pub use self::engine::fresh_sandbox_id;
-pub use self::engine::volume::{Paused, PausedWork, Resumed, WorkspaceVolume, pin_paused};
+pub use self::engine::volume::{
+    Paused, PausedWork, Quiesced, QuiescedVolume, Resumed, WorkspaceVolume, pin_paused, quiesce,
+};
 pub use self::engine::{
     AdmissionBound, Cap, Capabilities, DEFAULT_CPU_MILLIS, DEFAULT_DISK_BYTES,
     DEFAULT_MEMORY_BYTES, DEFAULT_PIDS, DEFAULT_READY_TIMEOUT, EgressEnforcer, EgressPlan, Engine,
@@ -44,7 +46,9 @@ pub use self::engine::{
 #[cfg(feature = "test-util")]
 pub use self::error::ambiguous;
 pub use self::error::{EgressRefusal, EngineFailure, Error, Result, SnapshotRefusal};
-pub use self::file_snapshots::{Bounded, FileSnapshots};
+pub use self::file_snapshots::{
+    Bounded, FREEZE_TENANT, FileSnapshots, GuestPin, GuestVolume, quiesce_workspace,
+};
 pub use self::network::{
     Allowlist, Network, NetworkKind, RESOLV_CONF, SANDBOX_HOSTS, SANDBOX_RESOLV_CONF,
 };
