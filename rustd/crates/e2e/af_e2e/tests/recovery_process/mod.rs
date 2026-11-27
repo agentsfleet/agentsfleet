@@ -2,6 +2,7 @@
 //! workspace, checkpointed through real R2, on another host.
 #![cfg(all(target_os = "linux", debug_assertions))]
 
+mod chain;
 mod custody;
 mod handoff;
 mod model;
