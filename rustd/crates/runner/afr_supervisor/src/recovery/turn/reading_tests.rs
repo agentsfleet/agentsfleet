@@ -1,5 +1,6 @@
-//! An ordinary file restore reads authenticated chunks in manifest order and
-//! lands them through the sandbox's engine.
+//! An ordinary file restore reads authenticated chunks a window at a time,
+//! fetched together under one authorization, and lands them in manifest
+//! order through the sandbox's engine.
 
 use super::{NativeTurn, reading::TurnReading, session::TurnSession};
 use crate::recovery::source::land;
@@ -22,6 +23,7 @@ use af_wire::{
     },
 };
 use base64::{Engine as _, prelude::BASE64_STANDARD};
+use std::sync::PoisonError;
 use std::{collections::BTreeMap, os::unix::fs::MetadataExt as _, path::Path, time::Duration};
 use tokio_util::sync::CancellationToken;
 use zeroize::Zeroizing;
@@ -29,15 +31,12 @@ use zeroize::Zeroizing;
 const ID: &str = "019f0000-0000-7000-8000-000000000001";
 const PAGE: &str = "019f0000-0000-7000-8000-000000000002";
 
-#[tokio::test]
-async fn ordinary_chunks_from_separate_files_land_in_manifest_order()
--> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let Encrypted {
-        mut objects,
-        payloads,
-    } = encrypted()?;
-    let server = Server::serving(payloads).await?;
-    for object in &mut objects {
+/// How many objects each authorization named, in the order they were asked.
+type Authorized = std::sync::Arc<std::sync::Mutex<Vec<usize>>>;
+
+/// `objects`, each signed for a GET of its own path on `server`.
+fn signed(server: &Server, objects: &mut [CheckpointObject]) -> Result<()> {
+    for object in objects {
         let mut url = url::Url::parse(&server.url)?;
         url.set_path(&format!("/{}", object.object_id));
         object.transfer = Some(CheckpointTransfer {
@@ -46,6 +45,21 @@ async fn ordinary_chunks_from_separate_files_land_in_manifest_order()
             expires_at: clock::after(clock::now(), Duration::from_secs(30)),
         });
     }
+    Ok(())
+}
+
+/// The bucket answers no GET until all four are in flight, so a restore
+/// that fetched fewer together would never land; the four are named by one
+/// authorization, across two files.
+#[tokio::test]
+async fn four_chunks_of_separate_files_are_fetched_together_and_land_in_manifest_order()
+-> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let Encrypted {
+        mut objects,
+        payloads,
+    } = encrypted()?;
+    let server = Server::simultaneous(payloads).await?;
+    signed(&server, &mut objects)?;
     let [first, second, third, fourth] = objects.as_slice() else {
         return Err(error::config("ordinary fixture requires four objects").into());
     };
@@ -71,8 +85,51 @@ async fn ordinary_chunks_from_separate_files_land_in_manifest_order()
         },
     ]);
     let lander = Lander::on(&"a".repeat(64)).await;
-    restore(&lander, page, objects, Some(server.transfers()), None).await?;
+    let authorized = restore(&lander, page, objects, Some(server.transfers()), None).await?;
+    assert_eq!(authorized, [4], "one authorization names the window");
     assert_files(lander.workspace())?;
+    server.finish().await?;
+    Ok(())
+}
+
+/// A chunk two places of one window name is authorized and fetched once, and
+/// lands in each place.
+#[tokio::test]
+async fn a_chunk_named_twice_in_a_window_is_fetched_once_and_lands_in_each_place()
+-> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let Encrypted {
+        mut objects,
+        mut payloads,
+    } = encrypted()?;
+    objects.truncate(2);
+    payloads.retain(|path, _| {
+        objects
+            .iter()
+            .any(|object| path.ends_with(&object.object_id))
+    });
+    let server = Server::serving(payloads).await?;
+    signed(&server, &mut objects)?;
+    let ids: Vec<String> = objects
+        .iter()
+        .map(|object| object.object_id.clone())
+        .collect();
+    let first = ids.first().ok_or("the fixture's first object")?;
+    let second = ids.last().ok_or("the fixture's second object")?;
+    let page = page(vec![CheckpointEntry::File(CheckpointFile {
+        path: "twice".to_owned(),
+        executable: false,
+        size: 21,
+        objects: vec![second.clone(), first.clone(), second.clone()],
+    })]);
+    let lander = Lander::on(&"a".repeat(64)).await;
+
+    let authorized = restore(&lander, page, objects, Some(server.transfers()), None).await?;
+
+    assert_eq!(authorized, [2]);
+    assert_eq!(
+        std::fs::read(lander.workspace().join("twice"))?,
+        b"part-1\npart-0\npart-1\n"
+    );
     server.finish().await?;
     Ok(())
 }
@@ -137,11 +194,17 @@ async fn restore(
     objects: Vec<CheckpointObject>,
     transfers: Option<Transfers>,
     cancel_after_read: Option<CancellationToken>,
-) -> Result<()> {
+) -> Result<Vec<usize>> {
     let digest = af_core::etag::sha256_hex(&serde_json::to_vec(&page).map_err(error::encode)?);
     let manifest = af_crypto::checkpoint_digest::manifest_root([(PAGE, digest.as_str())]);
     let stop = cancel_after_read.clone().unwrap_or_default();
-    let (plane, _calls) = fixture_plane(page, objects, cancel_after_read);
+    let authorized = Authorized::default();
+    let (plane, _calls) = fixture_plane(
+        page,
+        objects,
+        cancel_after_read,
+        std::sync::Arc::clone(&authorized),
+    );
 
     let run = Uuid7::parse(ID)?;
     let default_transfers = Transfers::new()?;
@@ -168,14 +231,16 @@ async fn restore(
         lander.environment(),
         lander.landing(),
     )
-    .await
-    .map(drop)
+    .await?;
+    let authorized = authorized.lock().unwrap_or_else(PoisonError::into_inner);
+    Ok(authorized.clone())
 }
 
 fn fixture_plane(
     page: CheckpointPage,
     objects: Vec<CheckpointObject>,
     cancel_after_read: Option<CancellationToken>,
+    authorized: Authorized,
 ) -> (crate::client::ControlPlane, test_support::Calls) {
     test_support::plane(move |call| {
         let result = (|| -> Result<Response> {
@@ -192,13 +257,19 @@ fn fixture_plane(
                     }
                     Ok(Response::PageRead(page.clone()))
                 }
-                Action::Authorize(asked) => Ok(Response::Authorized(
-                    objects
-                        .iter()
-                        .filter(|object| asked.object_ids.iter().any(|id| id.0 == object.object_id))
-                        .cloned()
-                        .collect(),
-                )),
+                Action::Authorize(asked) => {
+                    let mut authorized = authorized.lock().unwrap_or_else(PoisonError::into_inner);
+                    authorized.push(asked.object_ids.len());
+                    Ok(Response::Authorized(
+                        objects
+                            .iter()
+                            .filter(|object| {
+                                asked.object_ids.iter().any(|id| id.0 == object.object_id)
+                            })
+                            .cloned()
+                            .collect(),
+                    ))
+                }
                 _ => Err(error::config("unexpected ordinary file request")),
             }
         })();

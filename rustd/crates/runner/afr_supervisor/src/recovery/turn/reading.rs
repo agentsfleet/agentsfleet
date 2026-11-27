@@ -5,13 +5,18 @@
 use super::session::TurnSession;
 use crate::recovery::source::{Custody, links_inside};
 use crate::{Result, error};
-use af_chunk_store::Resolved;
+use af_chunk_store::{READ_WINDOW, Resolved};
 use af_wire::{
     durable_task::{CheckpointEntry, CheckpointLink, CheckpointTransferPurpose},
     run::{CheckpointOperationId, TurnCheckpointPageRead},
 };
+use futures_util::{StreamExt as _, TryStreamExt as _, stream};
 use garde::Validate as _;
+use std::collections::{BTreeMap, BTreeSet};
 use zeroize::Zeroizing;
+
+/// Why a window whose authorization answered no object for a chunk is refused.
+const OMITTED: &str = "turn download omitted a file chunk";
 
 /// A turn's restore custody over the manifests its saved descriptor names.
 pub(super) struct TurnReading<'s, 'a, 'native> {
@@ -56,20 +61,47 @@ impl Custody for TurnReading<'_, '_, '_> {
         Ok(tree)
     }
 
-    async fn read(&mut self, object: &str) -> Result<Zeroizing<Vec<u8>>> {
-        self.session.renew().await?;
-        let mut objects = self
+    /// Every GET of the window starts under the one freshly proved pin its
+    /// authorization renewed, and custody is proved once more after. A
+    /// repeated object is authorized and fetched once.
+    async fn read(&mut self, objects: &[String]) -> Result<Vec<Zeroizing<Vec<u8>>>> {
+        let unique: BTreeSet<&String> = objects.iter().collect();
+        let unique: Vec<String> = unique.into_iter().cloned().collect();
+        let frames = self
             .session
-            .authorize(&[object.to_owned()], CheckpointTransferPurpose::Restore)
+            .authorize(&unique, CheckpointTransferPurpose::Restore)
             .await?;
-        let mut object = objects
-            .pop()
-            .ok_or_else(|| error::config("turn download omitted a file chunk"))?;
-        let bytes = self.session.transfers.download(&object).await?;
-        let plaintext = af_chunk_store::open(&self.session.workspace, &mut object, bytes)?;
+        let (transfers, workspace) = (&self.session.transfers, &self.session.workspace);
+        let chunks: BTreeMap<String, Zeroizing<Vec<u8>>> = stream::iter(frames)
+            .map(async |mut object| {
+                let bytes = transfers.download(&object).await?;
+                let plaintext = af_chunk_store::open(workspace, &mut object, bytes)?;
+                let plaintext = Zeroizing::new(plaintext.expose().to_vec());
+                Ok::<_, crate::Error>((object.object_id.clone(), plaintext))
+            })
+            .buffered(READ_WINDOW)
+            .try_collect()
+            .await?;
         self.session.renew().await?;
-        Ok(Zeroizing::new(plaintext.expose().to_vec()))
+        placed(objects, chunks)
     }
+}
+
+/// Each of `ids`' chunks in their order. A chunk is moved to the last place
+/// that names it and copied only to an earlier one, so a window is never
+/// held twice.
+fn placed(
+    ids: &[String],
+    mut chunks: BTreeMap<String, Zeroizing<Vec<u8>>>,
+) -> Result<Vec<Zeroizing<Vec<u8>>>> {
+    let mut read = Vec::with_capacity(ids.len());
+    for (position, id) in ids.iter().enumerate() {
+        let again = ids.iter().skip(position + 1).any(|later| later == id);
+        let chunk = chunks.get(id).filter(|_| again).cloned();
+        let chunk = chunk.or_else(|| chunks.remove(id));
+        read.push(chunk.ok_or_else(|| error::config(OMITTED))?);
+    }
+    Ok(read)
 }
 
 impl TurnSession<'_, '_> {

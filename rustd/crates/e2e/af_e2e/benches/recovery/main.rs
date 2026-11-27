@@ -30,6 +30,7 @@ mod pause;
 mod process;
 #[path = "../../tests/recovery_process/population.rs"]
 mod seed;
+mod tracked;
 mod worker;
 
 /// The `BENCH_SHAPE` that times a save's pause over a large workspace with a

@@ -26,6 +26,8 @@ pub(crate) struct Server {
     pub objects: Arc<Mutex<BTreeMap<String, Vec<u8>>>>,
     /// Every request served, as its method and path, in order.
     pub requests: Arc<Mutex<Vec<(String, String)>>>,
+    /// How many PUTs from now the refused one is; none is refused when unset.
+    refused: Arc<Mutex<Option<usize>>>,
     stop: Option<oneshot::Sender<()>>,
     worker: Option<JoinHandle<()>>,
 }
@@ -56,6 +58,12 @@ impl Server {
             checksum: false,
         })
         .await
+    }
+
+    /// Answers the `ordinal`th PUT from now, counted from one, with `503` and
+    /// stores nothing of it: a bucket that fails one upload of a save.
+    pub(crate) fn refuse_put(&self, ordinal: usize) {
+        *self.refused.lock().expect("refusal countdown") = Some(ordinal);
     }
 
     /// How many requests of `method` named an object under `prefix`.
@@ -89,9 +97,11 @@ impl Server {
             .expect("pinned HTTPS client");
         let objects = Arc::new(Mutex::new(BTreeMap::new()));
         let requests = Arc::new(Mutex::new(Vec::new()));
+        let refused = Arc::new(Mutex::new(None));
         let state = State {
             objects: Arc::clone(&objects),
             requests: Arc::clone(&requests),
+            refused: Arc::clone(&refused),
             honours,
         };
         let (stop, stopped) = oneshot::channel();
@@ -100,6 +110,7 @@ impl Server {
             client,
             objects,
             requests,
+            refused,
             stop: Some(stop),
             worker: Some(worker),
         }
@@ -130,6 +141,7 @@ impl Drop for Server {
 struct State {
     objects: Arc<Mutex<BTreeMap<String, Vec<u8>>>>,
     requests: Arc<Mutex<Vec<(String, String)>>>,
+    refused: Arc<Mutex<Option<usize>>>,
     honours: Honours,
 }
 
@@ -152,7 +164,11 @@ async fn serve(
             .lock()
             .expect("request log")
             .push((request.method.clone(), request.path.clone()));
-        let (status, body) = respond(request, &state.objects, state.honours);
+        let (status, body) = if request.method == "PUT" && refused(&state.refused) {
+            (503, vec![])
+        } else {
+            respond(request, &state.objects, state.honours)
+        };
         let header = format!(
             "HTTP/1.1 {status} Result\r\nContent-Length: {}\r\nETag: \"fixture-etag\"\r\nLast-Modified: Wed, 04 Nov 2026 00:00:00 GMT\r\nConnection: close\r\n\r\n",
             body.len()
@@ -164,6 +180,16 @@ async fn serve(
         stream.write_all(&body).await.expect("response body");
         stream.shutdown().await.expect("TLS close");
     }
+}
+
+/// Whether this PUT is the one a test asked refused, counting down to it.
+fn refused(countdown: &Mutex<Option<usize>>) -> bool {
+    let mut left = countdown.lock().expect("refusal countdown");
+    let now = *left == Some(1);
+    *left = left
+        .and_then(|left| left.checked_sub(1))
+        .filter(|left| *left > 0);
+    now
 }
 
 fn respond(

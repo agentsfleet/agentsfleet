@@ -5,6 +5,7 @@ use super::{
     uploads::{self, UploadBatch},
 };
 use crate::{Result, error};
+use af_chunk_store::READ_WINDOW;
 use af_core::{clock, id::Uuid7};
 use af_wire::durable_task::{
     CheckpointAuthorizationInput, CheckpointObjectsInput, CheckpointPinInput, CheckpointPlaintext,
@@ -135,7 +136,7 @@ impl Session<'_> {
     }
 
     async fn restore_objects(&mut self, ids: &[String]) -> Result<Vec<Object>> {
-        if ids.is_empty() || ids.len() > 4 {
+        if ids.is_empty() || ids.len() > READ_WINDOW {
             return Err(error::config("checkpoint restore batch exceeds its bound"));
         }
         self.renew().await?;
@@ -177,7 +178,7 @@ impl Session<'_> {
         Ok(objects)
     }
 
-    /// Authorize at most four unique objects once, then restore concurrently.
+    /// Authorizes one window of objects once, then fetches them together.
     /// The result preserves manifest order, including repeated content chunks.
     pub(super) async fn download_batch(&mut self, ids: &[String]) -> Result<Vec<Chunk>> {
         let objects = self.restore_objects(ids).await?;
@@ -194,7 +195,7 @@ impl Session<'_> {
             let bytes = af_chunk_store::open(workspace, &mut object, bytes)?;
             Ok::<_, crate::Error>((object.object_id.clone(), bytes))
         }))
-        .buffer_unordered(4)
+        .buffer_unordered(READ_WINDOW)
         .collect::<Vec<_>>()
         .await;
         let mut restored = BTreeMap::new();

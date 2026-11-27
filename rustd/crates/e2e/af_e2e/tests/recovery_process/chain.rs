@@ -88,17 +88,17 @@ async fn a_killed_runner_restores_a_delta_chain_on_another_host() -> Checked {
 }
 
 /// The `file_write` arguments of the note's `round`th version.
-fn note(round: usize) -> serde_json::Value {
+pub(super) fn note(round: usize) -> serde_json::Value {
     json!({"path": NOTE_PATH, "content": content(round)})
 }
 
 /// What the note's `round`th version holds.
-fn content(round: usize) -> String {
+pub(super) fn content(round: usize) -> String {
     format!("{NOTE}round {round}\n")
 }
 
 /// The one sandbox workspace a runner's storage home holds.
-fn workspace(home: &Path) -> Checked<PathBuf> {
+pub(super) fn workspace(home: &Path) -> Checked<PathBuf> {
     let sandboxes = afr_supervisor::StorageHome::open(home)?.sandboxes();
     let mut found = std::fs::read_dir(sandboxes)?
         .map(|sandbox| Ok::<_, std::io::Error>(sandbox?.path().join("workspace")))
@@ -123,7 +123,7 @@ fn seed_entries(workspace: &Path) -> Checked<usize> {
 }
 
 /// The turn's head generation, when it has one.
-async fn head(scene: &Scenario) -> Checked<Option<Uuid7>> {
+pub(super) async fn head(scene: &Scenario) -> Checked<Option<Uuid7>> {
     let mut connection = scene.booted.database.acquire().await?;
     Ok(
         sqlx::query_scalar("SELECT head_checkpoint_id FROM thread.turns WHERE id=$1")
@@ -136,7 +136,7 @@ async fn head(scene: &Scenario) -> Checked<Option<Uuid7>> {
 /// Waits for the head to move off `before`, as the round's publication
 /// commits after the run resumed; a save that skipped leaves it, and the
 /// drill goes on.
-async fn moved(scene: &Scenario, before: Option<&Uuid7>) -> Checked {
+pub(super) async fn moved(scene: &Scenario, before: Option<&Uuid7>) -> Checked {
     let wait = async {
         while head(scene).await?.as_ref() == before {
             tokio::time::sleep(Duration::from_millis(50)).await;

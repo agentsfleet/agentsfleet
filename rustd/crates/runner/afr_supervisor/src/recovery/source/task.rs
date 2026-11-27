@@ -46,12 +46,16 @@ impl Custody for TaskReading<'_, '_> {
         Ok(tree)
     }
 
-    async fn read(&mut self, object: &str) -> Result<Zeroizing<Vec<u8>>> {
-        let chunks = self.session.download_batch(&[object.to_owned()]).await?;
-        chunks
-            .first()
+    /// Custody is proved once more after the window lands in memory, so the
+    /// next step starts under a live pin. Each chunk is dropped as it is
+    /// copied out, so the window is never held twice.
+    async fn read(&mut self, objects: &[String]) -> Result<Vec<Zeroizing<Vec<u8>>>> {
+        let chunks = self.session.download_batch(objects).await?;
+        self.session.renew().await?;
+        Ok(chunks
+            .into_iter()
             .map(|chunk| Zeroizing::new(chunk.expose().to_vec()))
-            .ok_or_else(|| error::config("checkpoint restore object is absent"))
+            .collect())
     }
 }
 

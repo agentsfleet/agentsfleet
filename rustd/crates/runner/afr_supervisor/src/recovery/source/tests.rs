@@ -9,7 +9,7 @@ use af_core::id::Uuid7;
 use af_wire::durable_task::{CheckpointEntry, CheckpointFile};
 use zeroize::Zeroizing;
 
-use super::{Custody, DETAIL_OTHER, DaemonSource, land};
+use super::{Custody, DETAIL_ABSENT, DETAIL_OTHER, DaemonSource, land};
 use crate::test_support::{self, Lander};
 use crate::{Result, error};
 
@@ -32,8 +32,35 @@ impl Custody for Failing {
         )
     }
 
-    fn read(&mut self, _object: &str) -> impl Future<Output = Result<Zeroizing<Vec<u8>>>> + Send {
+    fn read(
+        &mut self,
+        _objects: &[String],
+    ) -> impl Future<Output = Result<Vec<Zeroizing<Vec<u8>>>>> + Send {
         std::future::ready(Err(error::config(self.read)))
+    }
+}
+
+/// A custody that answers each object its own name, or nothing at all, and
+/// keeps every window it was asked for.
+#[derive(Debug, Default)]
+struct Answering {
+    nothing: bool,
+    windows: Vec<Vec<String>>,
+}
+
+impl Custody for Answering {
+    fn tree(&mut self) -> impl Future<Output = Result<Resolved>> + Send {
+        std::future::ready(named())
+    }
+
+    fn read(
+        &mut self,
+        objects: &[String],
+    ) -> impl Future<Output = Result<Vec<Zeroizing<Vec<u8>>>>> + Send {
+        self.windows.push(objects.to_vec());
+        let named = objects.iter().filter(|_| !self.nothing);
+        let read = named.map(|object| Zeroizing::new(object.as_bytes().to_vec()));
+        std::future::ready(Ok(read.collect()))
     }
 }
 
@@ -50,7 +77,7 @@ fn named() -> Result<Resolved> {
 }
 
 /// A source over `custody`, reading the fixture checkpoint.
-fn source(custody: Failing) -> DaemonSource<Failing> {
+fn source<C: Custody>(custody: C) -> DaemonSource<C> {
     DaemonSource {
         checkpoint: Uuid7::parse(CHECKPOINT).unwrap_or_else(|_| unreachable!("a fixed identifier")),
         generation: 1,
@@ -60,7 +87,7 @@ fn source(custody: Failing) -> DaemonSource<Failing> {
 }
 
 /// What `source` kept as its first failure.
-fn kept(source: DaemonSource<Failing>) -> Option<&'static str> {
+fn kept<C>(source: DaemonSource<C>) -> Option<&'static str> {
     let kept = source
         .failure
         .into_inner()
@@ -105,6 +132,47 @@ async fn the_first_custody_failure_is_kept() -> Result<()> {
     assert_eq!(told.map(|told| told.code()), Some(code));
     assert!(later.is_some());
     assert_eq!(kept(failing), Some("the manifest would not read"));
+    Ok(())
+}
+
+/// After its tree, a window reaches the custody whole, as one read, and
+/// answers each object in the order asked; a single object is a window of
+/// one.
+#[tokio::test]
+async fn a_window_is_one_read_of_the_custody() -> Result<()> {
+    let reading = source(Answering::default());
+    let window = ["b", "a", "b", "c"].map(str::to_owned);
+
+    let stored = reading.tree(&Uuid7::parse(CHECKPOINT)?).await.ok();
+    let read = reading.read_window(&window).await.ok();
+    let one = reading.read("d").await.ok();
+
+    let read: Option<Vec<Vec<u8>>> =
+        read.map(|read| read.iter().map(|chunk| chunk.to_vec()).collect());
+    let expected = [b"b", b"a", b"b", b"c"].map(|chunk| chunk.to_vec());
+    assert_eq!(read, Some(expected.to_vec()));
+    assert_eq!(one.map(|chunk| chunk.to_vec()), Some(b"d".to_vec()));
+    let paths = stored.map(|stored| stored.tree.into_entries().into_keys().collect());
+    assert_eq!(paths, Some(vec!["notes".to_owned()]));
+    let windows = reading.custody.into_inner().windows;
+    assert_eq!(windows, [window.to_vec(), vec!["d".to_owned()]]);
+    Ok(())
+}
+
+/// A single read the custody answers with no plaintext is refused, and kept
+/// as the restore's failure.
+#[tokio::test]
+async fn a_read_the_custody_answers_with_nothing_is_refused() -> Result<()> {
+    let reading = source(Answering {
+        nothing: true,
+        ..Answering::default()
+    });
+
+    let refused = reading.read(OTHER).await.err();
+
+    let code = error::config(DETAIL_ABSENT).code();
+    assert_eq!(refused.map(|refused| refused.code()), Some(code));
+    assert_eq!(kept(reading), Some(DETAIL_ABSENT));
     Ok(())
 }
 

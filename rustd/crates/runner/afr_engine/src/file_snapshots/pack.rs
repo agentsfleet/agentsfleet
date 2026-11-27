@@ -6,6 +6,9 @@
 //!   saved tree ─► directory · link · file (its objects read in order) ─► spool
 //! ```
 //!
+//! A saved tree's objects are read a window ahead ([`Ahead`]), so a restore
+//! has as many reads in flight as a window names and holds no more plaintext.
+//!
 //! The stream is read on a blocking thread and handed across a one-slot
 //! channel, so a reader holds at most a chunk or two of plaintext. A second
 //! name of a file, packed as a link to its first, is read again from the
@@ -24,6 +27,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use zeroize::Zeroizing;
 
+use super::ahead::Ahead;
 use super::byte_count;
 use crate::error::Result;
 
@@ -163,13 +167,15 @@ fn file<R: Read>(
 }
 
 /// Packs `tree` into a fresh spool under `spools`, each file's objects read
-/// from `source` in order, and hands the spool back from its start.
+/// from `source` a window ahead and written in order, and hands the spool
+/// back from its start.
 ///
 /// # Errors
 /// An object would not read, a file's objects do not add up to its size, or
 /// the spool would not write.
 pub(super) async fn pack(tree: &Resolved, source: &dyn ChunkSource, spools: &Path) -> Result<File> {
     let mut builder = Builder::new(tempfile::tempfile_in(spools)?);
+    let mut ahead = Ahead::new(tree, source);
     for (path, entry) in tree.entries() {
         let mut header = Header::new_gnu();
         header.set_size(0);
@@ -185,7 +191,7 @@ pub(super) async fn pack(tree: &Resolved, source: &dyn ChunkSource, spools: &Pat
                 builder.append_link(&mut header, path, target)?;
             }
             CheckpointEntry::File(file) => {
-                let mut content = gather(file, source, spools).await?;
+                let mut content = gather(file, &mut ahead, spools).await?;
                 header.set_entry_type(EntryType::Regular);
                 header.set_mode(if file.executable {
                     EXECUTABLE_MODE
@@ -204,13 +210,13 @@ pub(super) async fn pack(tree: &Resolved, source: &dyn ChunkSource, spools: &Pat
     Ok(spool)
 }
 
-/// `file`'s content, its objects read from `source` in order into a spool
+/// `file`'s content, its objects taken from `ahead` in order into a spool
 /// under `spools`, handed back from its start.
-async fn gather(file: &CheckpointFile, source: &dyn ChunkSource, spools: &Path) -> Result<File> {
+async fn gather(file: &CheckpointFile, ahead: &mut Ahead<'_>, spools: &Path) -> Result<File> {
     let mut content = tempfile::tempfile_in(spools)?;
     let mut gathered = 0;
-    for object in &file.objects {
-        let bytes = source.read(object).await?;
+    for _object in &file.objects {
+        let bytes = ahead.next().await?;
         content.write_all(&bytes)?;
         gathered += byte_count(bytes.len());
     }

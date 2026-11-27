@@ -5,8 +5,11 @@
 //! ```text
 //!   restore_workspace(sandbox, spools, ref, source)   environment? first
 //!     tree(id)      the custody's manifests, each checked against its root
-//!     read(object)  renew ─► authorize ─► GET ─► open ─► plaintext
+//!     read_window(objects)  renew ─► authorize once ─► GET each ─► open ─► plaintext
 //! ```
+//!
+//! The engine names at most [`af_chunk_store::READ_WINDOW`] objects to a
+//! window, so that many GETs are in flight under one authorization.
 //!
 //! A durable task's custody and a turn's read the same way under their own
 //! commands. The engine sees only that the source could not answer; the
@@ -32,6 +35,8 @@ pub(super) use self::task::TaskReading;
 const DETAIL_LANDED: &str = "the checkpoint would not restore into the sandbox";
 /// Why a tree under another identifier than the checkpoint's was refused.
 const DETAIL_OTHER: &str = "checkpoint restore asked for another checkpoint";
+/// Why a read the custody answered with no plaintext was refused.
+const DETAIL_ABSENT: &str = "checkpoint restore object is absent";
 
 /// Where a restore lands: a sandbox, and where its spools go on the host.
 #[derive(Debug, Clone, Copy)]
@@ -48,9 +53,13 @@ pub(super) trait Custody: Send {
     /// root and every link inside the workspace.
     fn tree(&mut self) -> impl Future<Output = Result<Resolved>> + Send;
 
-    /// One object's plaintext, authorized under the restore pin, fetched and
-    /// opened against its registration.
-    fn read(&mut self, object: &str) -> impl Future<Output = Result<Zeroizing<Vec<u8>>>> + Send;
+    /// Each of `objects`' plaintext in their order, a repeated object
+    /// included: authorized once under the restore pin, fetched together and
+    /// each opened against its registration.
+    fn read(
+        &mut self,
+        objects: &[String],
+    ) -> impl Future<Output = Result<Vec<Zeroizing<Vec<u8>>>>> + Send;
 }
 
 /// A checkpoint's custody as the engine reads it, and the first failure the
@@ -85,7 +94,16 @@ impl<C: Custody> ChunkSource for DaemonSource<C> {
     }
 
     async fn read(&self, object: &str) -> af_chunk_store::Result<Zeroizing<Vec<u8>>> {
-        let read = self.custody.lock().await.read(object).await;
+        let mut read = self.read_window(&[object.to_owned()]).await?;
+        let absent = || self.failed(error::config(DETAIL_ABSENT));
+        read.pop().ok_or_else(absent)
+    }
+
+    async fn read_window(
+        &self,
+        objects: &[String],
+    ) -> af_chunk_store::Result<Vec<Zeroizing<Vec<u8>>>> {
+        let read = self.custody.lock().await.read(objects).await;
         read.map_err(|failure| self.failed(failure))
     }
 }

@@ -246,7 +246,7 @@ impl Session<'_> {
     async fn history(&mut self, ids: Vec<String>) -> Result<SecretBytes> {
         let mut history = Zeroizing::new(Vec::new());
         let mut digests = Vec::new();
-        for batch in ids.chunks(4) {
+        for batch in ids.chunks(af_chunk_store::READ_WINDOW) {
             let chunks = self.download_batch(batch).await?;
             for (id, bytes) in batch.iter().zip(chunks) {
                 digests.push((

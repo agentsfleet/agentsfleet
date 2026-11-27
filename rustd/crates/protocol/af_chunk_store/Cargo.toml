@@ -21,6 +21,8 @@ af_wire.workspace = true
 async-trait.workspace = true
 # The key and nonce the daemon hands over ride the registration as base64.
 base64.workspace = true
+# A window of reads is awaited together.
+futures-util.workspace = true
 thiserror.workspace = true
 zeroize.workspace = true
 

@@ -41,6 +41,8 @@ pub(super) struct Held {
     pub(super) walked: Vec<Option<String>>,
     /// The generation each release named.
     pub(super) released: Vec<Option<String>>,
+    /// Each path an import landed, in the order its stream held them.
+    pub(super) imported: Vec<String>,
     pins: u64,
     pending: BTreeMap<u64, BTreeMap<String, Node>>,
     committed: Option<(String, BTreeMap<String, Node>)>,
@@ -284,6 +286,7 @@ impl GuestAgent for Guest {
                     Node::File { bytes, executable }
                 }
             };
+            held.imported.push(path.clone());
             held.nodes.insert(path, node);
         }
         Ok(Imported::default())

@@ -225,48 +225,59 @@ async fn nonempty_history_is_decrypted_and_checked_against_its_manifest_root() -
     Ok(())
 }
 
-#[tokio::test]
-async fn nonempty_file_restore_preserves_exact_bytes_and_executable_mode() -> TestResult {
-    let (server, object) = server_object("file", true).await?;
+/// `path` as a file of `places` chunks, each the fixture's one object.
+fn listed(path: &str, executable: bool, places: usize) -> CheckpointEntry {
+    CheckpointEntry::File(CheckpointFile {
+        path: path.to_owned(),
+        executable,
+        size: crate::byte_count(CONTENT.len() * places),
+        objects: vec![OBJECT.to_owned(); places],
+    })
+}
+
+/// `object`'s plan with one manifest page of `entries`, and that page.
+fn paged(
+    object: &CheckpointObject,
+    entries: Vec<CheckpointEntry>,
+) -> TestResult<(CheckpointPlan, CheckpointPage)> {
     let page = CheckpointPage {
         page_number: 0,
-        entries: vec![
-            CheckpointEntry::Directory {
-                path: "repo".to_owned(),
-            },
-            CheckpointEntry::File(CheckpointFile {
-                path: "repo/run.sh".to_owned(),
-                executable: true,
-                size: crate::byte_count(CONTENT.len()),
-                objects: vec![OBJECT.to_owned()],
-            }),
-        ],
+        entries,
         history_objects: Vec::new(),
     };
     let digest = af_core::etag::sha256_hex(&serde_json::to_vec(&page)?);
-    let mut plan = plan(&object);
+    let mut plan = plan(object);
     plan.page_ids = vec![PAGE.to_owned()];
     plan.manifest_root = Some(af_crypto::checkpoint_digest::manifest_root([(
         PAGE,
         digest.as_str(),
     )]));
-    let (plane, _calls) = native(object, plan.clone(), Some(page))?;
+    Ok((plan, page))
+}
+
+/// Two files name the one chunk three times between them: the window is
+/// authorized once and fetched once, and lands in each place.
+#[tokio::test]
+async fn nonempty_file_restore_preserves_exact_bytes_and_executable_mode() -> TestResult {
+    let (server, object) = server_object("file", true).await?;
+    let directory = CheckpointEntry::Directory {
+        path: "repo".to_owned(),
+    };
+    let files = [
+        listed("repo/run.sh", true, 1),
+        listed("repo/twice", false, 2),
+    ];
+    let (plan, page) = paged(&object, [vec![directory], files.to_vec()].concat())?;
+    let (plane, mut calls) = native(object, plan.clone(), Some(page))?;
     let identity = Uuid7::parse(ID)?;
-    let mut progress = Progress::default();
-    let stop = CancellationToken::new();
-    let mut session = session(
-        &plane,
-        &identity,
-        plan.clone(),
-        &mut progress,
-        &stop,
-        &server,
-    );
+    let (mut progress, stop) = (Progress::default(), CancellationToken::new());
     let lander = Lander::on(&plan.toolbox_digest).await;
+    let generation = plan.generation;
+    let mut session = session(&plane, &identity, plan, &mut progress, &stop, &server);
     let reading = TaskReading::new(&mut session);
     land(
         reading,
-        (identity.clone(), plan.generation),
+        (identity.clone(), generation),
         lander.environment(),
         lander.landing(),
     )
@@ -277,8 +288,15 @@ async fn nonempty_file_restore_preserves_exact_bytes_and_executable_mode() -> Te
         std::fs::metadata(&restored)?.permissions().mode() & 0o111,
         0o111
     );
+    let twice = std::fs::read(lander.workspace().join("repo/twice"))?;
+    assert_eq!(twice, [CONTENT, CONTENT].concat());
     assert_eq!(session.progress.completed, 1);
     server.finish().await?;
+    let authorizations = test_support::drain(&mut calls)
+        .iter()
+        .filter(|call| call.verb == Verb::DurableTaskCheckpointAuthorizations)
+        .count();
+    assert_eq!(authorizations, 1);
     Ok(())
 }
 

@@ -17,9 +17,10 @@
 //! calls otherwise.
 //!
 //! A restore refuses a ref from another environment before it reads the
-//! source, and reads every chunk before the guest agent renews: a restore
-//! that cannot read its tree leaves the workspace as it was. The engine reads
-//! its egress plan back after, since only it holds the plan.
+//! source, and reads every chunk, a window of them in flight at once, before
+//! the guest agent renews: a restore that cannot read its tree leaves the
+//! workspace as it was. The engine reads its egress plan back after, since
+//! only it holds the plan.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -32,6 +33,7 @@ use crate::engine::volume::{Quiesced, quiesce};
 use crate::engine::{Sandbox, SnapshotFormat, SnapshotRef};
 use crate::error::{Result, SnapshotRefusal, snapshot_refused};
 
+mod ahead;
 mod bounded;
 mod pack;
 mod restore;

@@ -3,6 +3,7 @@
 //! ```text
 //!   publish(id, parent) ─► add(change) … ─► commit ─► generation
 //!   tree(id) ─► Stored { generation, tree }     read(object) ─► plaintext
+//!   read_window(objects) ─► each object's plaintext, read together
 //! ```
 //!
 //! The supervisor's store publishes over signed links and reads through
@@ -13,9 +14,20 @@
 use std::fmt;
 
 use af_core::id::Uuid7;
+use futures_util::future::try_join_all;
 use zeroize::Zeroizing;
 
 use crate::{Change, Resolved, Result};
+
+/// How many objects one restore read names, so how many are in flight and
+/// held in memory together.
+///
+/// Four is the runner's own bound of transfers to one file operation, the
+/// count a save's upload batch PUTs at once: a restore holds at most four
+/// chunks of [`af_wire::durable_task::CHECKPOINT_OBJECT_BYTES`], 32 MiB of
+/// plaintext, for each file operation the runner admits
+/// (`docs/architecture/checkpoints.md`, Sizes and transfer limits).
+pub const READ_WINDOW: usize = 4;
 
 /// One saved tree, as the store that holds it names it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,6 +52,17 @@ pub trait ChunkSource: Send + Sync + fmt::Debug {
     /// # Errors
     /// The object is not stored, or failed its check.
     async fn read(&self, object: &str) -> Result<Zeroizing<Vec<u8>>>;
+
+    /// The plaintext of each of `objects`, in their order, read together: a
+    /// caller names at most [`READ_WINDOW`], so that many reads are in
+    /// flight at once and no more. A source that authorizes its reads
+    /// answers a window under one authorization.
+    ///
+    /// # Errors
+    /// The first read to fail; the others are dropped unread.
+    async fn read_window(&self, objects: &[String]) -> Result<Vec<Zeroizing<Vec<u8>>>> {
+        try_join_all(objects.iter().map(|object| self.read(object))).await
+    }
 }
 
 /// A [`ChunkSource`] a save publishes into.
@@ -79,3 +102,7 @@ pub trait Publication: Send {
     /// The commit was refused; nothing is named.
     async fn commit(self: Box<Self>) -> Result<u64>;
 }
+
+#[cfg(test)]
+#[path = "store_tests.rs"]
+mod tests;

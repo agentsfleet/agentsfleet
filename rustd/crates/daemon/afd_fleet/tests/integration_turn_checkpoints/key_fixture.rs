@@ -243,7 +243,11 @@ pub(super) fn frame_key(frame: &CheckpointObject) -> Checked<Vec<u8>> {
 }
 
 /// Opens stored bytes as the supervisor does: the frame's key, nonce and cipher.
-fn open(workspace: &Uuid7, frame: &CheckpointObject, stored: Vec<u8>) -> Checked<Vec<u8>> {
+pub(super) fn open(
+    workspace: &Uuid7,
+    frame: &CheckpointObject,
+    stored: Vec<u8>,
+) -> Checked<Vec<u8>> {
     let nonce = BASE64_STANDARD.decode(frame.nonce.as_deref().ok_or("nonce")?)?;
     let nonce: [u8; af_crypto::NONCE_LEN] = nonce.as_slice().try_into()?;
     let id = Uuid7::parse(&frame.object_id)?;

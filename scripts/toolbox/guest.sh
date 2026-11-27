@@ -57,6 +57,10 @@ readonly REQUIRED_CONFIG=(
   'CONFIG_PID_NS=y'
   'CONFIG_SECCOMP_FILTER=y'
   'CONFIG_SECURITY_LANDLOCK=y'
+  # What a save reads its changes from: the kernel's record of what was
+  # touched on the workspace's disk, and the file handles its events carry.
+  'CONFIG_FANOTIFY=y'
+  'CONFIG_FHANDLE=y'
   # No capabilities in a new user namespace, and no code loaded into the kernel.
   '# CONFIG_USER_NS is not set'
   '# CONFIG_MODULES is not set'

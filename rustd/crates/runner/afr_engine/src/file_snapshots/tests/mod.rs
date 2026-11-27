@@ -17,6 +17,7 @@ use crate::engine::{Environment, Root, SnapshotFormat, SnapshotRef, fresh_sandbo
 use crate::error::SnapshotRefusal;
 use crate::network::Network;
 
+mod ahead;
 mod guest;
 mod restore;
 

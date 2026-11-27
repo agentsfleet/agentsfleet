@@ -181,7 +181,7 @@ async fn verified(files: &Files, object: &CheckpointObject) -> Checked<bool> {
 }
 
 /// Every writer pin of the turn ends, as a writer that died after its PUTs.
-async fn expire_writers(files: &Files) -> Checked {
+pub(super) async fn expire_writers(files: &Files) -> Checked {
     let mut connection = files.case.fixtures.database.acquire().await?;
     sqlx::query(
         "UPDATE runner.checkpoint_pins p SET expires_at = now() - interval '1 minute'

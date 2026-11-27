@@ -4,10 +4,12 @@
 //! 100,000 files walked warm and cold, each beside one rewritten 1 MiB file.
 //!
 //! Each workspace is walked once to record its identities, as the first
-//! committed pin does, then ten times after rewriting the one file. A cold
-//! run first evicts the workspace's cached inodes, directory entries and
-//! pages, as a guest under memory pressure loses them. The pause is flat
-//! when the 10 GiB median falls within the spread of the 100 MiB runs.
+//! committed pin does, then ten times after rewriting the one file: first
+//! reading every entry, then reading only what the guest's watch says was
+//! touched, which a microVM's guest agent does. A cold run first evicts the
+//! workspace's cached inodes, directory entries and pages, as a guest under
+//! memory pressure loses them. The pause is flat when the 10 GiB median
+//! falls within the spread of the 100 MiB runs.
 
 use std::fs;
 use std::io::Write as _;
@@ -15,10 +17,11 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use af_guest_wire::protocol::MAX_FRAME_BYTES;
-use af_guest_wire::tree::{Pins, pack};
+use af_guest_wire::tree::{Pins, Tracker, Whole, pack};
 use cap_std::{ambient_authority, fs::Dir};
 
 use crate::Checked;
+use crate::tracked;
 
 /// One workspace the spec's shape names.
 struct Shape {
@@ -77,39 +80,71 @@ const BUFFER_BYTES: usize = 8 << 20;
 /// # Errors
 /// A workspace could not be written, walked or packed.
 pub(crate) fn report() -> Checked {
-    let mut flat_pair = Vec::new();
+    let mut flat_pairs = [Vec::new(), Vec::new()];
     for shape in &SHAPES {
-        let Some(runs) = workspace_runs(shape)? else {
-            continue;
-        };
-        let pause = Spread::of(runs.iter().map(|run| run.pause).collect())?;
-        let walk = Spread::of(runs.iter().map(|run| run.walk).collect())?;
-        writeln!(
-            std::io::stdout(),
-            "pause untouched={} cache={} changed=1MiB runs={RUNS} median_ms={:.3} min_ms={:.3} \
-             max_ms={:.3} walk_median_ms={:.3} walk_share={:.2}",
-            shape.label,
-            if shape.cold { "cold" } else { "warm" },
-            millis(pause.median),
-            millis(pause.min),
-            millis(pause.max),
-            millis(walk.median),
-            walk.median.as_secs_f64() / pause.median.as_secs_f64(),
-        )?;
-        if shape.files == FEW_FILES {
-            flat_pair.push(pause);
+        let root = tempfile::tempdir()?;
+        // Before the first file, so nothing written goes unrecorded.
+        let watch = tracked::watch(root.path());
+        write_untouched(root.path(), shape)?;
+        let readings = [(READ_EVERY, None), (READ_TOUCHED, Some(watch))];
+        for ((read, tracker), flat_pair) in readings.into_iter().zip(&mut flat_pairs) {
+            let tracker = match tracker.transpose() {
+                Ok(tracker) => tracker,
+                Err(why) => {
+                    let label = shape.label;
+                    writeln!(
+                        std::io::stdout(),
+                        "pause untouched={label} read={read} skipped: {why}"
+                    )?;
+                    continue;
+                }
+            };
+            let Some(runs) = workspace_runs(shape, root.path(), tracker.as_deref())? else {
+                continue;
+            };
+            let pause = said(shape, read, &runs)?;
+            if shape.files == FEW_FILES {
+                flat_pair.push(pause);
+            }
         }
     }
-    let [small, large] = flat_pair.as_slice() else {
-        return Err("the pause bench times two byte sizes".into());
-    };
-    let flat = large.median >= small.min && large.median <= small.max;
-    writeln!(
-        std::io::stdout(),
-        "pause flat={flat}: the 10 GiB median within the 100 MiB spread"
-    )?;
+    for (read, flat_pair) in [READ_EVERY, READ_TOUCHED].into_iter().zip(&flat_pairs) {
+        let [small, large] = flat_pair.as_slice() else {
+            continue;
+        };
+        let flat = large.median >= small.min && large.median <= small.max;
+        writeln!(
+            std::io::stdout(),
+            "pause flat={flat} read={read}: the 10 GiB median within the 100 MiB spread"
+        )?;
+    }
     Ok(())
 }
+
+/// Prints `runs` of `shape`'s workspace read as `read`: the pause's median
+/// and spread, and the walk's share of it; the pause's spread.
+fn said(shape: &Shape, read: &str, runs: &[Run]) -> Checked<Spread> {
+    let pause = Spread::of(runs.iter().map(|run| run.pause).collect())?;
+    let walk = Spread::of(runs.iter().map(|run| run.walk).collect())?;
+    writeln!(
+        std::io::stdout(),
+        "pause untouched={} cache={} read={read} changed=1MiB runs={RUNS} median_ms={:.3} \
+         min_ms={:.3} max_ms={:.3} walk_median_ms={:.3} walk_share={:.2}",
+        shape.label,
+        if shape.cold { "cold" } else { "warm" },
+        millis(pause.median),
+        millis(pause.min),
+        millis(pause.max),
+        millis(walk.median),
+        walk.median.as_secs_f64() / pause.median.as_secs_f64(),
+    )?;
+    Ok(pause)
+}
+
+/// How a run's walk reads the workspace, as its line names it: every entry,
+/// or only what the watch says was touched.
+const READ_EVERY: &str = "every";
+const READ_TOUCHED: &str = "touched";
 
 /// One timed run: the whole pause and the walk inside it.
 struct Run {
@@ -141,17 +176,19 @@ impl Spread {
     }
 }
 
-/// The runs of `shape`'s workspace, or none when it is cold and this host
-/// cannot evict it.
-fn workspace_runs(shape: &Shape) -> Checked<Option<Vec<Run>>> {
-    let root = tempfile::tempdir()?;
-    write_untouched(root.path(), shape)?;
-    let changed = root.path().join("changed");
+/// The runs of `shape`'s workspace at `root`, read through `tracker` when
+/// there is one, or none when it is cold and this host cannot evict it.
+fn workspace_runs(
+    shape: &Shape,
+    root: &Path,
+    tracker: Option<&dyn Tracker>,
+) -> Checked<Option<Vec<Run>>> {
+    let changed = root.join("changed");
     fs::write(&changed, vec![0_u8; CHANGED_BYTES])?;
-    let dir = Dir::open_ambient_dir(root.path(), ambient_authority())?;
+    let dir = Dir::open_ambient_dir(root, ambient_authority())?;
     let mut pins = Pins::default();
     let mut generation = 0_u32;
-    let (mut parent, _) = committed(&mut pins, &dir, None, &mut generation)?;
+    let (mut parent, _) = committed(&mut pins, &dir, None, &mut generation, tracker)?;
     let mut runs = Vec::with_capacity(RUNS);
     for run in 0..RUNS {
         fs::write(&changed, vec![u8::try_from(run % 255)? + 1; CHANGED_BYTES])?;
@@ -166,7 +203,7 @@ fn workspace_runs(shape: &Shape) -> Checked<Option<Vec<Run>>> {
             return Ok(None);
         }
         let started = Instant::now();
-        let (label, walk) = committed(&mut pins, &dir, Some(&parent), &mut generation)?;
+        let (label, walk) = committed(&mut pins, &dir, Some(&parent), &mut generation, tracker)?;
         runs.push(Run {
             pause: started.elapsed(),
             walk,
@@ -180,16 +217,26 @@ fn workspace_runs(shape: &Shape) -> Checked<Option<Vec<Run>>> {
 }
 
 /// One pin's walk and copy, released as committed under a fresh label, and
-/// how long the walk took.
+/// how long the walk took. With a `tracker`, a walk against a `parent` must
+/// read only what was touched: one that fell back to every entry is not
+/// what is timed. The first walk has no parent, reads every entry, and
+/// empties the tracker of what writing the workspace queued.
 fn committed(
     pins: &mut Pins,
     dir: &Dir,
     parent: Option<&str>,
     generation: &mut u32,
+    tracker: Option<&dyn Tracker>,
 ) -> Checked<(String, Duration)> {
     let started = Instant::now();
-    let walked = pins.walk(dir, parent, MAX_FRAME_BYTES)?;
+    let walked = match tracker {
+        Some(tracker) => pins.walk_tracked(dir, parent, MAX_FRAME_BYTES, tracker)?,
+        None => pins.walk(dir, parent, MAX_FRAME_BYTES)?,
+    };
     let walk = started.elapsed();
+    if let (Some(_), Some(_), Some(why)) = (tracker, parent, walked.whole.map(Whole::as_str)) {
+        return Err(format!("a tracked walk read every entry: {why}").into());
+    }
     let roots: Vec<_> = walked
         .roots
         .iter()

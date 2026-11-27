@@ -10,6 +10,7 @@ mod population;
 mod process;
 mod proof;
 mod seed;
+mod uncommitted;
 mod worker;
 
 use afr_tools::catalog::FILE_WRITE;

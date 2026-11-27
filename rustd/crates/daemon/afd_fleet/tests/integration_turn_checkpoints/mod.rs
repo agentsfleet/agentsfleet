@@ -17,6 +17,7 @@ mod no_read_back;
 mod objects;
 mod page_writes;
 mod publication;
+mod publication_failure;
 mod replacement;
 mod retirement;
 mod rollout;

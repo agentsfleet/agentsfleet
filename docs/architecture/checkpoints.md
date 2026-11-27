@@ -186,12 +186,12 @@ Restore checks the ciphertext digest, the authentication tag and the plaintext i
 | Conversation history | 64 MiB serialized | `afr_agent` `engine/recovery.rs` |
 | Turn checkpoint message | One 32 MiB runner frame | `af_wire` `MESSAGE_BYTES_MAX` |
 | New upload per save | Turn 16 GiB; task base 16 GiB; task increment 1 GiB | `afr_supervisor` `recovery/turn/capture.rs`, `recovery/capture.rs` |
-| Runner concurrency | Two file operations at once, four transfers each | `afr_supervisor` `recovery/admission.rs`, `recovery/uploads.rs` |
+| Runner concurrency | Two file operations at once, four transfers each | `afr_supervisor` `recovery/admission.rs`, `recovery/uploads.rs`; `af_chunk_store` `READ_WINDOW` |
 | One object request | 60 seconds | `afr_supervisor` `recovery/transfer.rs` |
 | Upload readback answer | 35 seconds; two checks per session, eight per daemon replica | `af_wire` `turn_checkpoint/command.rs`; `afd_gateway` |
 | Transfer window and restore pin | 15 minutes; pin 2 minutes for turns, 30 for tasks | [configuration reference](config_reference.md) |
 
-A restore window holds up to four 8 MiB chunks and can span files. Two windows hold at most 64 MiB of plaintext before transport overhead ([window](../../rustd/crates/runner/afr_supervisor/src/recovery/window.rs)).
+A restore window holds up to four 8 MiB chunks and can span files. Two windows hold at most 64 MiB of plaintext before transport overhead ([window](../../rustd/crates/runner/afr_engine/src/file_snapshots/ahead.rs)).
 
 Remote object reads and writes run outside the database transaction. The daemon rechecks the pin deadline and custody before recording a verified upload.
 

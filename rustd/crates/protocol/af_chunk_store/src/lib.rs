@@ -22,4 +22,4 @@ pub use self::error::{Error, Result, unavailable};
 #[cfg(any(test, feature = "test-util"))]
 pub use self::memory::MemoryStore;
 pub use self::sealed::{MAX_OBJECT_BYTES, cipher, open, seal, stored_length};
-pub use self::store::{ChunkSource, ChunkStore, Publication, Stored};
+pub use self::store::{ChunkSource, ChunkStore, Publication, READ_WINDOW, Stored};

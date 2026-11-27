@@ -37,6 +37,9 @@ af_guest_wire.workspace = true
 # one interface version: the runner links no guest crate, so only here do the
 # two meet.
 afg_confine.workspace = true
+# The pause bench times a save that reads only what the guest's watch says
+# was touched, beside one that reads every entry.
+afg_entry.workspace = true
 afr_engine_firecracker.workspace = true
 afr_supervisor = { workspace = true, features = ["test-util"] }
 afr_telemetry.workspace = true
