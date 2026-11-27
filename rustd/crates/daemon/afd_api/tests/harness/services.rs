@@ -283,6 +283,10 @@ impl OperatorPlane for Fleet {
     fn platform_keys(&self) -> &afd_admin::PlatformKeys {
         &self.platform_keys
     }
+
+    fn checkpoint_keys(&self) -> &afd_fleet::durable_task::storage::CheckpointKeys {
+        &self.checkpoint_keys
+    }
 }
 
 impl IngressPlane for Fleet {

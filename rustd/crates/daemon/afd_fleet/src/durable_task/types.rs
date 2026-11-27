@@ -8,13 +8,11 @@ use af_wire::durable_task::{DurableTaskContext, DurableTaskLimits, DurableTaskSt
 /// Bounded private retention and acknowledged storage cleanup.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct CheckpointMaintenance {
-    /// Unused event identity secrets erased after object and purge custody ended.
-    pub identity_keys: u64,
     /// Obsolete private checkpoint generations removed.
     pub owners: u64,
     /// Unreferenced retained bases removed.
     pub bases: u64,
-    /// Unreferenced object keys erased into durable purge custody.
+    /// Unreferenced object rows erased into durable purge custody.
     pub objects: u64,
     /// Remote deletions acknowledged once.
     pub purged: u64,
@@ -26,7 +24,6 @@ pub struct CheckpointMaintenance {
 #[derive(Debug, Default)]
 pub struct CheckpointMaintenanceCursor {
     pub(crate) turn_after: Option<Uuid7>,
-    pub(super) identity_after: Option<(jiff::Timestamp, Uuid7)>,
     pub(super) after: Option<(jiff::Timestamp, Uuid7)>,
     pub(super) cutoff: Option<jiff::Timestamp>,
 }

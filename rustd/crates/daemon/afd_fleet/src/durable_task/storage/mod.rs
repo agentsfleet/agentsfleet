@@ -2,15 +2,16 @@
 
 mod backend;
 mod bounded;
+mod keys;
 pub(crate) mod registration;
 mod signing;
 mod transfer;
 
+pub use keys::{CheckpointKeys, RetiredCheckpoints, chunk_cipher};
+pub(crate) use keys::{Held, WorkspaceKey, recorded};
 pub(crate) use transfer::StorageSession;
 
 use af_core::id::Uuid7;
-use af_crypto::secret::Kek;
-use afd_vault::Vault;
 use garde::Validate;
 use std::sync::Arc;
 
@@ -35,14 +36,13 @@ pub struct CheckpointStorageConfig {
     pub credential_name: String,
 }
 
-/// Existing SDK transport and vault envelope, shared across task operations.
+/// Existing SDK transport and the workspaces' checkpoint keys, shared across task operations.
 #[derive(Clone)]
 pub struct R2CheckpointStore {
     config: garde::Valid<CheckpointStorageConfig>,
     bucket_reference: String,
     admin_workspace: Uuid7,
-    vault: Vault,
-    pub(crate) master: Arc<Kek>,
+    keys: CheckpointKeys,
     client: reqwest::Client,
     verified: Arc<tokio::sync::OnceCell<()>>,
 }
@@ -66,13 +66,17 @@ impl R2CheckpointStore {
         })
     }
 
-    /// Uses the existing master key, admin Secret custody and guarded HTTPS client.
+    /// The deployment's cipher and every workspace's checkpoint key.
+    pub(crate) const fn keys(&self) -> &CheckpointKeys {
+        &self.keys
+    }
+
+    /// Uses the workspaces' checkpoint keys, admin Secret custody and guarded HTTPS client.
     #[must_use]
     pub fn new(
         config: garde::Valid<CheckpointStorageConfig>,
         admin_workspace: Uuid7,
-        vault: Vault,
-        master: Arc<Kek>,
+        keys: CheckpointKeys,
         client: reqwest::Client,
     ) -> Self {
         let bucket_reference = af_core::etag::sha256_hex(
@@ -87,8 +91,7 @@ impl R2CheckpointStore {
             config,
             bucket_reference,
             admin_workspace,
-            vault,
-            master,
+            keys,
             client,
             verified: Arc::new(tokio::sync::OnceCell::new()),
         }

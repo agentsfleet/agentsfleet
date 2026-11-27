@@ -166,7 +166,6 @@ pub static MIGRATIONS: &[Migration] = &[
     migration!("20261108131900_connector_person_links.sql"),
     migration!("20261108193000_connector_oauth_nonces.sql"),
     migration!("20261108193100_identity_device_sessions.sql"),
-    migration!("20261122090000_runner_checkpoint_identity_keys.sql"),
     migration!("20261122090100_runner_checkpoint_bases.sql"),
     migration!("20261122090200_runner_checkpoints.sql"),
     migration!("20261122090300_runner_checkpoint_pages.sql"),

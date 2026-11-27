@@ -171,6 +171,7 @@ impl Archive {
                 repository: self.plan.repository.clone(),
                 plaintext,
                 status: CheckpointObjectStatus::Reused,
+                cipher: af_wire::durable_task::CheckpointCipher::default(),
                 nonce: None,
                 data_key: None,
                 ciphertext_sha256: None,

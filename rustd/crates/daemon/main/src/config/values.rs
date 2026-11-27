@@ -12,6 +12,11 @@ pub(super) fn collect(settings: &garde::Valid<ConfigToml>) -> Values {
     runner(&mut values, settings);
     identity(&mut values, settings);
     telemetry(&mut values, settings);
+    insert(
+        &mut values,
+        crate::preflight::runtime::CHECKPOINT_CIPHER_KNOB,
+        settings.checkpoint.cipher.map(<&str>::from),
+    );
     if let Some(storage) = &settings.checkpoint.storage {
         let storage = serde_json::json!({
             "endpoint": storage.endpoint,

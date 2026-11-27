@@ -112,11 +112,10 @@ async fn purges(case: &Case) {
 /// Seeds one due purge, as an object's deletion records it.
 async fn seed(case: &Case, object: &Uuid7, workspace: &Uuid7, bucket: &str) {
     sqlx::query(
-        "INSERT INTO runner.checkpoint_purges (checkpoint_object_id, workspace_id, checkpoint_identity_key_id, bucket_reference, next_attempt_at, created_at, updated_at) VALUES ($1, $2, $3, $4, now() - interval '1 minute', now(), now())",
+        "INSERT INTO runner.checkpoint_purges (checkpoint_object_id, workspace_id, bucket_reference, next_attempt_at, created_at, updated_at) VALUES ($1, $2, $3, now() - interval '1 minute', now(), now())",
     )
     .bind(object)
     .bind(workspace)
-    .bind(mint_id())
     .bind(bucket)
     .execute(&mut *connection(case).await)
     .await

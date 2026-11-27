@@ -1,7 +1,6 @@
 //! Encrypted root, exact folded prefix and the event head publish atomically.
 
 use af_core::id::Uuid7;
-use af_crypto::envelope::Envelope;
 use af_wire::protocol::MESSAGE_BYTES_MAX;
 use af_wire::run::{
     FoldRef, TurnCheckpointRef, TurnCheckpointResponse, TurnCheckpointSaved, TurnPrivateRoot,
@@ -96,7 +95,7 @@ fn readable(
 async fn write(
     owner: &mut TurnRunGuard<'_>,
     id: &Uuid7,
-    sealed: &Envelope,
+    sealed: &root::Sealed,
     manifest: &str,
     covered: (&[Uuid7], &[FoldRef]),
 ) -> Result<()> {
@@ -108,13 +107,8 @@ async fn write(
         .bind(manifest)
         .bind(covered.0)
         .bind(sequences)
-        .bind(sealed.wrapped_dek())
-        .bind(sealed.dek_nonce().as_slice())
-        .bind(sealed.dek_tag().as_slice())
-        .bind(sealed.payload_nonce().as_slice())
-        .bind(sealed.payload_ciphertext())
-        .bind(sealed.payload_tag().as_slice())
-        .bind(sealed.kek_version())
+        .bind(sealed.nonce.as_slice())
+        .bind(&sealed.bytes)
         .execute(&mut *owner.tx)
         .await
         .map_err(query("seal complete private turn root and folded prefix"))?;
@@ -186,7 +180,7 @@ async fn pending(
     let writer = owner.current.id.clone();
     let fence = owner.current.fence;
     let ids = folds::validate(owner, body.folds, Some((&writer, fence))).await?;
-    let sealed = root::seal(store, owner, plan, body.root)?;
+    let sealed = root::seal(store, owner, plan, body.root).await?;
     readable(owner, plan, pin, body.root, body.manifest, body.folds)?;
     custody(owner, plan, pin).await?;
     write(owner, &plan.id, &sealed, body.manifest, (&ids, body.folds)).await?;

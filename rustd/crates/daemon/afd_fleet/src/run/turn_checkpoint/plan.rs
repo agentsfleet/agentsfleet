@@ -17,6 +17,7 @@ use crate::{Result, error::query, run::Runs};
 
 impl Runs {
     /// Allocate one event-owned plan after proving the live ordinary attempt.
+    /// The plan records `cipher`: its new objects and its root are sealed under it.
     ///
     /// # Errors
     /// Refuses foreign or expired authority, incompatible captures, changed
@@ -25,6 +26,7 @@ impl Runs {
         &self,
         run: TurnRun<'_>,
         request: &garde::Valid<TurnCheckpointCommand>,
+        cipher: af_wire::durable_task::CheckpointCipher,
     ) -> Result<TurnCheckpointPlan> {
         if request.fencing_token != run.fencing_token {
             return Err(crate::error::stale_fence());
@@ -47,7 +49,8 @@ impl Runs {
                 return Err(TurnCheckpointRefusal::Conflict.into());
             }
             allocation::room(&mut owner, head.as_ref()).await?;
-            let id = allocation::create(self, &mut owner, begin, &operation, &digest).await?;
+            let receipt = (&operation, digest.as_str());
+            let id = allocation::create(self, &mut owner, begin, receipt, cipher).await?;
             let plan = Plan::load(&mut owner, &id).await?;
             let pin = pins::insert(self, &mut owner, &id, plan.expires_at, &operation).await?;
             plan.wire(&owner, &pin, false)?

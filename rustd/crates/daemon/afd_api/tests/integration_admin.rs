@@ -18,6 +18,8 @@ const MODEL_UPDATE: &str = r#"{"metadata":{"display_name":"Fixture model","conte
 #[path = "integration_admin/fixture.rs"]
 mod fixture;
 use fixture::Fixture;
+#[path = "integration_admin/checkpoint_key.rs"]
+mod checkpoint_key;
 #[path = "integration_admin/decision_models.rs"]
 mod decision_models;
 #[path = "integration_admin/model_pages.rs"]

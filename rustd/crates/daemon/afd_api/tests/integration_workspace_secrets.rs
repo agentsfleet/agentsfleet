@@ -21,6 +21,8 @@ use self::harness::{Fleet, json_body, send};
 
 const SUBJECT: &str = "user_live_secrets";
 const SECRET: &str = "anthropic-live";
+/// The person the checkpoint-key case signs in as.
+const KEY_SUBJECT: &str = "user_live_checkpoint_key";
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -37,6 +39,92 @@ async fn secrets_and_onboarding_round_trip_through_http() {
     let workspace = format!("/v1/workspaces/{}", fixture.workspace.as_str());
 
     exercise_secrets(&router, &fixture.token, &workspace).await;
+
+    fixture.cleanup().await;
+}
+
+/// The workspace's checkpoint key as the vault stores it: its sealed payload.
+async fn stored_checkpoint_key(database: &Db, workspace: &Uuid7) -> Option<Vec<u8>> {
+    let mut connection = database.acquire().await.expect("an API connection");
+    sqlx::query_scalar(
+        "SELECT secret_ciphertext FROM vault.secrets WHERE workspace_id = $1 AND key_name = $2",
+    )
+    .bind(workspace)
+    .bind(afd_vault::CHECKPOINT_KEY_NAME)
+    .fetch_optional(&mut *connection)
+    .await
+    .expect("the vault answers")
+}
+
+/// One tenant write to the checkpoint key's name, and what it must answer.
+async fn refused_as_reserved(router: &axum::Router, method: Method, uri: &str, token: &str) {
+    let body = if method == Method::POST {
+        r#"{"name":"checkpoint_key","data":{"key":"tenant-chosen"}}"#
+    } else if method == Method::PUT {
+        r#"{"data":{"key":"tenant-chosen"}}"#
+    } else {
+        ""
+    };
+    let refused = send(router, method.clone(), uri, Some(token), body).await;
+    assert_eq!(refused.status(), StatusCode::FORBIDDEN, "{method}");
+    let problem = json_body(refused).await;
+    assert_eq!(
+        problem.get("error_code").and_then(Value::as_str),
+        Some("UZ-VAULT-006"),
+        "{method}"
+    );
+}
+
+// The tenant sees the row the daemon wrote in its own vault and cannot change
+// it: a create before the row exists plants nothing, and a create, replace or
+// delete after it leaves the stored bytes as they were.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn the_checkpoint_secret_is_listed_and_refuses_a_tenant_write() {
+    let fixture = Fixture::signed_in_as(KEY_SUBJECT, "checkpoint-key-live@example.test").await;
+    fixture.seed().await;
+    let fleet = Fleet::live(
+        fixture.database.clone(),
+        KEY_SUBJECT,
+        ScopeSet::from_scopes(&Scope::ALL),
+    )
+    .with_owned_workspace(fixture.workspace.clone());
+    let keys = afd_api_operator::OperatorPlane::checkpoint_keys(&fleet).clone();
+    let router = fleet.router();
+    let collection = format!("/v1/workspaces/{}/secrets", fixture.workspace.as_str());
+    let item = format!("{collection}/{}", afd_vault::CHECKPOINT_KEY_NAME);
+
+    refused_as_reserved(&router, Method::POST, &collection, &fixture.token).await;
+    assert_eq!(
+        stored_checkpoint_key(&fixture.database, &fixture.workspace).await,
+        None,
+        "a tenant cannot plant the key before the daemon writes it"
+    );
+
+    keys.save_key(&fixture.workspace)
+        .await
+        .expect("the daemon writes the workspace's key");
+    let written = stored_checkpoint_key(&fixture.database, &fixture.workspace).await;
+    assert!(written.is_some());
+    let listed =
+        json_body(send(&router, Method::GET, &collection, Some(&fixture.token), "").await).await;
+    let names: Vec<&str> = listed
+        .get("secrets")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|secret| secret.get("name").and_then(Value::as_str))
+        .collect();
+    assert_eq!(names, [afd_vault::CHECKPOINT_KEY_NAME]);
+
+    refused_as_reserved(&router, Method::POST, &collection, &fixture.token).await;
+    refused_as_reserved(&router, Method::PUT, &item, &fixture.token).await;
+    refused_as_reserved(&router, Method::DELETE, &item, &fixture.token).await;
+    assert_eq!(
+        stored_checkpoint_key(&fixture.database, &fixture.workspace).await,
+        written,
+        "the stored bytes are unchanged"
+    );
 
     fixture.cleanup().await;
 }
@@ -144,10 +232,18 @@ struct Fixture {
     user: Uuid7,
     key: Uuid7,
     token: String,
+    /// Who the fixture signs in as; unique per test, as the shared lane's
+    /// person rows are.
+    subject: &'static str,
+    email: &'static str,
 }
 
 impl Fixture {
     async fn create() -> Self {
+        Self::signed_in_as(SUBJECT, "secrets-live@example.test").await
+    }
+
+    async fn signed_in_as(subject: &'static str, email: &'static str) -> Self {
         let lane = TestDatabase::shared();
         let token_bits = format!("{}{}", mint_id(), mint_id()).replace('-', "");
         Self {
@@ -157,6 +253,8 @@ impl Fixture {
             user: mint_id(),
             key: mint_id(),
             token: format!("agt_t{token_bits}"),
+            subject,
+            email,
             lane,
         }
     }
@@ -174,16 +272,11 @@ impl Fixture {
             .insert(&mut *connection)
             .await
             .expect("its workspace seeds");
-        UserSeed::new(
-            &self.user,
-            &self.tenant,
-            SUBJECT,
-            "secrets-live@example.test",
-        )
-        .insert(&mut *connection)
-        .await
-        .expect("its person seeds");
-        ApiKeySeed::new(&self.key, &self.tenant, digest.as_str(), SUBJECT)
+        UserSeed::new(&self.user, &self.tenant, self.subject, self.email)
+            .insert(&mut *connection)
+            .await
+            .expect("its person seeds");
+        ApiKeySeed::new(&self.key, &self.tenant, digest.as_str(), self.subject)
             .insert(&mut *connection)
             .await
             .expect("its API key seeds");

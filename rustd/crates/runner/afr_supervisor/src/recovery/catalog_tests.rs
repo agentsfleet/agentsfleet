@@ -1,6 +1,10 @@
 //! Complete page boundaries retain paths, content deduplication and private history.
 
-use super::{catalog::Catalog, files::Workspace};
+use super::{
+    catalog::Catalog,
+    files::{Identity, Workspace},
+    names::{Naming, SecondNames},
+};
 use af_wire::durable_task::CheckpointEntry;
 use std::{collections::BTreeMap, fs, os::unix::ffi::OsStrExt as _, sync::Arc};
 use zeroize::Zeroizing;
@@ -253,4 +257,59 @@ fn a_retained_base_path_is_not_removed_and_an_unreadable_workspace_builds_no_cat
         &tokio_util::sync::CancellationToken::new(),
     );
     refused_as(refused, "checkpoint link is not UTF-8")
+}
+
+/// Records each question the scan asks, and answers as today's scan does.
+#[derive(Default)]
+struct Asked(Vec<String>);
+
+impl SecondNames for Asked {
+    fn naming(&mut self, path: &str, _identity: &Identity) -> Naming {
+        self.0.push(path.to_owned());
+        Naming::OwnFile
+    }
+}
+
+// The scan asks once per file name, hard-linked names included, and never for
+// a directory or a link; each name is still read and saved as its own file.
+#[test]
+fn the_scan_asks_once_per_file_how_its_name_is_saved() -> crate::Result<()> {
+    let root = tempfile::tempdir()?;
+    fs::create_dir(root.path().join("store"))?;
+    fs::write(root.path().join("store/package"), b"one inode, two names")?;
+    fs::hard_link(
+        root.path().join("store/package"),
+        root.path().join("linked"),
+    )?;
+    fs::write(root.path().join("empty"), b"")?;
+    std::os::unix::fs::symlink("store/package", root.path().join("pointer"))?;
+    let mut asked = Asked::default();
+    let catalog = Catalog::build_naming(
+        Some(&Arc::new(Workspace::open(root.path())?)),
+        Zeroizing::new(Vec::new()),
+        Vec::new(),
+        &tokio_util::sync::CancellationToken::new(),
+        &mut asked,
+    )?;
+    assert_eq!(asked.0, ["empty", "linked", "store/package"]);
+    let files: Vec<_> = catalog
+        .pages(None, af_wire::durable_task::CHECKPOINT_PAGE_BYTES)?
+        .into_iter()
+        .flat_map(|page| page.entries)
+        .filter_map(|entry| match entry {
+            CheckpointEntry::File(file) => Some((file.path, file.size)),
+            _other => None,
+        })
+        .collect();
+    assert_eq!(
+        files,
+        [
+            ("empty".to_owned(), 0),
+            ("linked".to_owned(), 20),
+            ("store/package".to_owned(), 20)
+        ],
+        "each name is saved as a file of its own"
+    );
+    assert_eq!(catalog.chunks.len(), 1, "equal bytes are one chunk");
+    Ok(())
 }

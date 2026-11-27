@@ -159,7 +159,7 @@ After that, the next claim deletes the expired receipt and files its own (`afd_s
  runners ──▶ identity.tenants (NULL for a platform runner)
  checkpoints ──▶ thread.turns XOR fleet.durable_tasks;  checkpoints ──▶ checkpoint_bases
  checkpoints, checkpoint_bases ◀── checkpoint_pages, checkpoint_object_refs ──▶ checkpoint_objects
- checkpoints ◀── checkpoint_pins;  checkpoint_objects ──▶ checkpoint_identity_keys
+ checkpoints ◀── checkpoint_pins
  checkpoint_purges: no foreign key, written by the object delete trigger
 ```
 
@@ -172,8 +172,7 @@ After that, the next claim deletes the expired receipt and files its own (`afd_s
 | `checkpoints` | A turn's or a durable task's capture plan and recoverable generation | `ck_checkpoints_one_owner`: exactly one of `turn_id`, `durable_task_id` |
 | `checkpoint_pages` | Immutable manifest pages | Owned by a checkpoint or a base |
 | `checkpoint_bases` | A verified repository base kept on its own | Outlives its first task |
-| `checkpoint_objects` | Encrypted object custody for every checkpoint | Erasure records a purge |
-| `checkpoint_identity_keys` | Wrapped content-identity keys per workspace and repository | Immutable; written under `identity.lock_workspace_storage` |
+| `checkpoint_objects` | Sealed object custody for every checkpoint; each row records its cipher and nonce, never a key | Erasure records a purge |
 | `checkpoint_object_refs` | Checkpoint-to-object and base-to-object edges | Immutable; a referenced object is never collected |
 | `checkpoint_pins` | A capture's or restore's hold on one checkpoint | `ck_checkpoint_pins_shape` |
 | `checkpoint_purges` | Remote-delete custody for a removed object | No owner foreign key |

@@ -230,6 +230,7 @@ fn encrypted() -> Result<Encrypted> {
                 size: 7,
                 kind: "file".to_owned(),
             },
+            cipher: af_wire::durable_task::CheckpointCipher::default(),
             nonce: Some(BASE64_STANDARD.encode([7_u8; af_crypto::NONCE_LEN])),
             data_key: Some(BASE64_STANDARD.encode([17_u8; af_crypto::KEY_LEN])),
             ciphertext_sha256: None,

@@ -15,6 +15,10 @@ const EXPECTED: &[Endpoint] = &[
     ("/v1/admin/models", Verb::Post),
     ("/v1/admin/models/{id}", Verb::Patch),
     ("/v1/admin/models/{id}", Verb::Delete),
+    (
+        "/v1/admin/workspaces/{workspace_id}/checkpoint-key/rotate",
+        Verb::Post,
+    ),
     ("/v1/admin/runners", Verb::Get),
     ("/v1/admin/runners", Verb::Post),
     ("/v1/admin/runners/{runner_id}", Verb::Get),

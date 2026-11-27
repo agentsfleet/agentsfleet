@@ -6,9 +6,10 @@ mod plan;
 
 pub use manifest::{CheckpointEntry, CheckpointFile, CheckpointPage, CheckpointPageInput};
 pub use objects::{
-    CheckpointAuthorizationInput, CheckpointAuthorizations, CheckpointObject,
-    CheckpointObjectStatus, CheckpointObjectsInput, CheckpointObjectsPage, CheckpointPlaintext,
-    CheckpointTransfer, CheckpointUpload, CheckpointUploadsInput,
+    CheckpointAuthorizationInput, CheckpointAuthorizations, CheckpointCipher,
+    CheckpointKeyRotation, CheckpointObject, CheckpointObjectStatus, CheckpointObjectsInput,
+    CheckpointObjectsPage, CheckpointPlaintext, CheckpointTransfer, CheckpointUpload,
+    CheckpointUploadsInput,
 };
 pub use plan::{
     CheckpointCommitInput, CheckpointMode, CheckpointPin, CheckpointPinInput, CheckpointPlan,

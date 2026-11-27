@@ -67,5 +67,6 @@ pub fn admin_handler_for<D: OperatorPlane>(verb: AdminRoute) -> MethodRouter<Arc
         }
         AdminRoute::Model => patch(handler::admin::models::update::<D>)
             .merge(delete(handler::admin::models::delete::<D>)),
+        AdminRoute::CheckpointKeyRotate => post(handler::admin::checkpoint_key::rotate::<D>),
     }
 }

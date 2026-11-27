@@ -1,9 +1,11 @@
-//! Owned-rig API-only recovery burst through the production daemon and separate runner processes.
+//! Owned-rig API-only recovery burst through the production daemon and separate runner processes,
+//! after the cost of sealing and opening a chunk and a full checkpoint under each cipher.
 
 use af_core::env::{EnvSource as _, ProcessEnv};
 use clap::Parser;
 use std::{net::SocketAddr, path::PathBuf};
 
+mod cipher;
 mod cohort;
 #[path = "../../tests/support/e2e.rs"]
 mod e2e;
@@ -36,6 +38,9 @@ struct Arguments {
     model_address: Option<SocketAddr>,
     #[arg(long, requires = "model_address")]
     model_root: Option<PathBuf>,
+    /// Report only the seal and open cost of each cipher, which needs no rig.
+    #[arg(long)]
+    cipher_only: bool,
     /// Cargo supplies this argument to harness-free benches.
     #[arg(long)]
     bench: bool,
@@ -46,6 +51,10 @@ async fn main() -> Checked {
     let args = Arguments::parse();
     if let (Some(address), Some(root)) = (args.model_address, args.model_root) {
         return Box::pin(worker::run(address, &root)).await;
+    }
+    cipher::report()?;
+    if args.cipher_only {
+        return Ok(());
     }
     if ProcessEnv.get("BENCH_PROFILE").as_deref() != Some("rig")
         || ProcessEnv.get("BENCH_TARGET_OWNED").as_deref() != Some("owned")

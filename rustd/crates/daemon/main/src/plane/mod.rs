@@ -167,7 +167,6 @@ impl ServingPlane {
             turns: durable_task_turns,
             admin_workspace: parts.platform_admin_workspace.clone(),
             storage_config: parts.checkpoint_storage,
-            master: common.durable_task_master,
             client: common.github_client,
             stream_limit: parts.live.stream_limit().clone(),
             frame_memory: parts.frame_memory,
@@ -222,16 +221,24 @@ pub use self::config::{LoginConfig, PlaneParts, ScheduleConfig};
 /// builds it after every other group has cloned what it needs.
 fn run_plane(
     database: afd_db::Db,
-    kek: Arc<af_crypto::secret::Kek>,
+    Sealing { kek, cipher }: Sealing,
     providers: Providers,
     bus: afd_bus::Handle,
     broker: Arc<afd_credential::credential::Broker>,
     biller: Arc<dyn afd_billing::biller::Biller>,
     notices: afd_turns::view::activity::Notices,
 ) -> RunService {
+    let vault = Vault::new(database.clone(), kek, Entropy::new());
+    // Built once: every checkpoint path shares these keys, and this is where a
+    // deployment that seals nothing says so.
+    let keys = afd_fleet::durable_task::storage::CheckpointKeys::new(
+        database.clone(),
+        vault.clone(),
+        cipher,
+    );
     RunService {
         durable_task_reports: None,
-        turn_checkpoints: afd_fleet::run::turn_checkpoint::TurnCheckpoints::new(Arc::clone(&kek)),
+        turn_checkpoints: afd_fleet::run::turn_checkpoint::TurnCheckpoints::new(keys),
         runs: Runs::new(database.clone(), bus, Entropy::new()),
         // The same surface the activity group's `grants` holds, over the
         // same table: a delivery that finds no grant asks through the crate
@@ -243,10 +250,17 @@ fn run_plane(
         providers,
         // The thread a chat run reads its earlier turns and their tool
         // calls from.
-        thread: Arc::new(Conversations::new(database.clone())),
-        vault: Vault::new(database, kek, Entropy::new()),
+        thread: Arc::new(Conversations::new(database)),
+        vault,
         broker,
     }
+}
+
+/// What seals stored state: the vault's master key, and the checkpoint cipher
+/// `[checkpoint] cipher` names.
+struct Sealing {
+    kek: Arc<af_crypto::secret::Kek>,
+    cipher: af_wire::durable_task::CheckpointCipher,
 }
 
 impl Dependencies for ServingPlane {
@@ -271,7 +285,6 @@ fn durable_task_plane(
     turns: Turns,
     admin_workspace: Option<Uuid7>,
     storage_config: Option<garde::Valid<afd_fleet::durable_task::storage::CheckpointStorageConfig>>,
-    master: Arc<af_crypto::secret::Kek>,
     client: reqwest::Client,
     policy: afd_fleet::durable_task::policy::DurableTaskPolicy,
 ) -> afd_fleet::durable_task::DurableTasks {
@@ -281,8 +294,7 @@ fn durable_task_plane(
             afd_fleet::durable_task::storage::R2CheckpointStore::new(
                 config,
                 admin,
-                runs.vault.clone(),
-                master,
+                runs.turn_checkpoints.keys().clone(),
                 client.clone(),
             )
         });

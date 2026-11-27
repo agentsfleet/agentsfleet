@@ -129,6 +129,9 @@ const RETIRED_SETUP_ROUTES: usize = 7;
 /// removes; and the run's request for a secret or an integration.
 const FLEET_SELF_SERVICE_ADDITIONS: usize = 5;
 
+/// A platform operator's rotation of one workspace's checkpoint key.
+const CHECKPOINT_KEY_ADDITIONS: usize = 1;
+
 /// What this daemon's union must carry.
 const RUST_ROUTE_COUNT: usize = PINNED_ROUTE_COUNT - DECLARED_DIVERGENCES
     + VERB_SPLITS
@@ -143,6 +146,7 @@ const RUST_ROUTE_COUNT: usize = PINNED_ROUTE_COUNT - DECLARED_DIVERGENCES
     + FLEET_TO_FLEET_ADDITIONS
     + STOP_ADDITIONS
     + FLEET_SELF_SERVICE_ADDITIONS
+    + CHECKPOINT_KEY_ADDITIONS
     - RETIRED_WEBHOOK_ROUTES
     - RETIRED_RUNNER_HTTP_ROUTES
     - RETIRED_CATALOGUE_ROUTES

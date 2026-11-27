@@ -64,6 +64,15 @@ impl Fleet {
             runner_run_history: RunnerRunHistory::new(database.clone()),
             admin_models: AdminModels::new(database.clone(), Entropy::new()),
             platform_keys: PlatformKeys::new(database.clone()),
+            checkpoint_keys: afd_fleet::durable_task::storage::CheckpointKeys::new(
+                database.clone(),
+                afd_vault::Vault::new(
+                    database.clone(),
+                    Arc::new(Kek::from_bytes(FIXTURE_KEK)),
+                    Entropy::new(),
+                ),
+                af_wire::durable_task::CheckpointCipher::default(),
+            ),
             runs: NoWork::default(),
             tasks: tasks(&database, &bus, &ledger),
             creations: setup::creations(&database, &ledger),

@@ -39,7 +39,6 @@ impl Aad {
         event: &af_core::id::Uuid7,
         generation: u64,
         format: u32,
-        wrapping_version: i32,
     ) -> Self {
         let mut bytes = b"\0agentsfleet.turn-recovery.v1\0".to_vec();
         for field in [
@@ -48,30 +47,6 @@ impl Aad {
             event.as_str().to_owned(),
             generation.to_string(),
             format.to_string(),
-            wrapping_version.to_string(),
-        ] {
-            bytes.extend_from_slice(field.as_bytes());
-            bytes.push(0);
-        }
-        Self(bytes)
-    }
-
-    /// Separately wrapped content-identity key; repository bytes are length-safe hex.
-    #[must_use]
-    pub fn checkpoint_identity(
-        workspace: &af_core::id::Uuid7,
-        identity: &af_core::id::Uuid7,
-        repository: &str,
-        identity_version: i32,
-        wrapping_version: i32,
-    ) -> Self {
-        let mut bytes = b"\0agentsfleet.checkpoint-identity.v1\0".to_vec();
-        for field in [
-            workspace.as_str().to_owned(),
-            identity.as_str().to_owned(),
-            hex::encode(repository),
-            identity_version.to_string(),
-            wrapping_version.to_string(),
         ] {
             bytes.extend_from_slice(field.as_bytes());
             bytes.push(0);

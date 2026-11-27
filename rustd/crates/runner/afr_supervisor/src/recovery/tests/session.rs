@@ -250,6 +250,7 @@ fn history_reply(call: &Call, archive: &Archive, fault: &str, object_id: &str) -
                 kind: "history".to_owned(),
             },
             status: CheckpointObjectStatus::Reused,
+            cipher: af_wire::durable_task::CheckpointCipher::default(),
             nonce: None,
             data_key: None,
             ciphertext_sha256: Some("b".repeat(64)),

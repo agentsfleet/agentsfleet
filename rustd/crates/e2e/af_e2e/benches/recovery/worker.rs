@@ -35,7 +35,7 @@ impl Engine for ApiOnly {
         Err(io::Error::other("API-only benchmark received a sandbox operation").into())
     }
 
-    fn memory_bound(&self) -> Option<afr_engine::MemoryBound> {
+    fn admission_bound(&self) -> Option<afr_engine::AdmissionBound> {
         None
     }
 

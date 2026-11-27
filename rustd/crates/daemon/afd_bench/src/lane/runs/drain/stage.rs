@@ -134,7 +134,13 @@ pub(in crate::lane::runs) fn plane(stores: &Datastores, kek: &Arc<Kek>) -> RunSe
     let database = stores.database.clone();
     RunService {
         durable_task_reports: None,
-        turn_checkpoints: afd_fleet::run::turn_checkpoint::TurnCheckpoints::new(Arc::clone(kek)),
+        turn_checkpoints: afd_fleet::run::turn_checkpoint::TurnCheckpoints::new(
+            afd_fleet::durable_task::storage::CheckpointKeys::new(
+                database.clone(),
+                Vault::new(database.clone(), Arc::clone(kek), Entropy::new()),
+                af_wire::durable_task::CheckpointCipher::default(),
+            ),
+        ),
         runs: Runs::new(database.clone(), stores.bus.clone(), Entropy::new()),
         accounts: Accounts::new(database.clone()),
         // The daemon wraps this in its outage policy and metrics; a bench

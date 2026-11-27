@@ -43,6 +43,9 @@ pub const SECRET_REFERENCED_BY_MODEL_ENTRIES: ErrorCode = ErrorCode::declare("UZ
 /// A secret with the requested name already exists in this workspace.
 pub const SECRET_NAME_TAKEN: ErrorCode = ErrorCode::declare("UZ-VAULT-005");
 
+/// The name is one the daemon alone writes, such as a workspace's checkpoint key.
+pub const SECRET_NAME_RESERVED: ErrorCode = ErrorCode::declare("UZ-VAULT-006");
+
 /// The path named a fleet this daemon has no row for.
 ///
 /// Answered before any secret is resolved, and it is the ONE refusal on this

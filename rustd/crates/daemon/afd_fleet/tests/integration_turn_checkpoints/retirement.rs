@@ -16,9 +16,8 @@ async fn reading_an_uncaptured_assignment_does_not_allocate_recovery_state() -> 
     let files = isolated().await?;
     assert!(
         files
-            .case
-            .runs
-            .turn_resume(files.case.run())
+            .store
+            .resume(&files.case.runs, files.case.run())
             .await?
             .is_none()
     );

@@ -97,6 +97,13 @@ pub use self::projection::Kind;
 pub use self::read::SecretSummary;
 pub use self::secret::{MAX_DATA_BYTES, SecretBody, SecretName};
 
+/// The name of a workspace's checkpoint key.
+///
+/// One row per workspace, in the workspace's own vault. The daemon alone
+/// writes it. The secret list shows it, and the tenant's secret routes refuse
+/// to create, replace or delete it.
+pub const CHECKPOINT_KEY_NAME: &str = "checkpoint_key";
+
 /// The key-less half of the vault: what a workspace holds, and removing one.
 ///
 /// Constructible on its own, and that is the point rather than a convenience.

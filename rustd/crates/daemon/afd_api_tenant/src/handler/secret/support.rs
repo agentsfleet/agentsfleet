@@ -78,6 +78,25 @@ pub(super) fn connection_named(name: &SecretName) -> Option<Provider> {
     Provider::parse(name.as_str()).filter(|provider| provider.grant_key() == name.as_str())
 }
 
+/// The sentence a write to a name the daemon alone writes is refused with.
+pub(super) const DETAIL_NAME_RESERVED: &str =
+    "this secret is managed by the platform; it cannot be created, replaced or deleted";
+
+/// Refuses a tenant write to the workspace's checkpoint key.
+///
+/// The row lives in the tenant's own vault and the list shows it, but its
+/// bytes seal every checkpoint the workspace holds: a tenant write would leave
+/// those checkpoints unreadable, or put the key in a tenant's hands.
+pub(super) fn writable(name: &SecretName) -> Result<(), Refusal> {
+    if name.as_str() == afd_vault::CHECKPOINT_KEY_NAME {
+        return Err(Refusal::coded(
+            af_core::error_code::SECRET_NAME_RESERVED,
+            DETAIL_NAME_RESERVED,
+        ));
+    }
+    Ok(())
+}
+
 /// What deleting a connection by its secret name needs beside `secret:write`.
 ///
 /// That delete IS the connector's Disconnect, so it asks what Disconnect's own
@@ -112,7 +131,23 @@ pub(super) fn delete_refusal<E: Refusable>(referenced: Option<u32>, refused: E) 
 
 #[cfg(test)]
 mod tests {
-    use super::referenced_detail;
+    use super::{referenced_detail, writable};
+    use afd_vault::SecretName;
+    use axum::response::IntoResponse as _;
+
+    /// The checkpoint key's name is refused as reserved, and any other name,
+    /// a near-miss among them, passes.
+    #[test]
+    fn only_the_checkpoint_key_name_is_refused_as_reserved() {
+        let reserved = SecretName::parse(afd_vault::CHECKPOINT_KEY_NAME);
+        let refused = reserved
+            .map(|name| writable(&name).map_err(|refusal| refusal.into_response().status()));
+        assert!(matches!(refused, Ok(Err(http::StatusCode::FORBIDDEN))));
+        for free in ["checkpoint_key2", "Checkpoint_key", "github", "checkpoint"] {
+            let passed = SecretName::parse(free).map(|name| writable(&name).is_ok());
+            assert!(matches!(passed, Ok(true)), "{free}");
+        }
+    }
 
     /// The refusal sentence agrees with itself about how many entries there are.
     ///

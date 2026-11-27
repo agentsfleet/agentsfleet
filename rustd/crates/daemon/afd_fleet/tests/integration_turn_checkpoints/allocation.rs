@@ -2,16 +2,12 @@
 //! time, and a replayed Begin returns its plan only while that plan and its
 //! writer pin are still live.
 
-use std::sync::Arc;
-
 use af_core::{error_code, id::Uuid7};
-use af_crypto::secret::Kek;
 use af_wire::run::{
     CheckpointOperationId, TurnCheckpointAction, TurnCheckpointPinRelease, TurnCheckpointRef,
     TurnCheckpointResponse, TurnWorkspace,
 };
 use afd_db::test_util::mint_id;
-use afd_fleet::run::turn_checkpoint::TurnCheckpoints;
 
 use super::{
     Case, Checked,
@@ -19,12 +15,6 @@ use super::{
     publication::{command, publish, root},
     valid,
 };
-
-fn store() -> Checked<TurnCheckpoints> {
-    Ok(TurnCheckpoints::new(Arc::new(Kek::from_hex(
-        &hex::encode([23_u8; 32]),
-    )?)))
-}
 
 async fn plans(case: &Case) -> Checked<i64> {
     let mut connection = case.fixtures.database.acquire().await?;
@@ -98,7 +88,7 @@ async fn a_replayed_begin_whose_plan_expired_conflicts() -> Checked {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_replayed_begin_after_its_writer_pin_was_released_conflicts() -> Checked {
     let case = Case::new().await?;
-    let store = store()?;
+    let store = super::turn_store(&case)?;
     let input = case.command();
     let plan = case.begin(input.clone()).await?;
     let release = valid(command(
@@ -124,22 +114,34 @@ async fn a_replayed_begin_after_its_writer_pin_was_released_conflicts() -> Check
 
 // Value: protects=a run that paused to ask is resumed from its committed head
 // after a person moves the fleet to another model, with no checkpoint refusal;
-// fails_when=turn_resume compares the head against the fleet's setup or model
-// again; seam=Runs::turn_resume over live Postgres, the fleet's model patched
+// fails_when=resume compares the head against the fleet's setup or model
+// again; seam=TurnCheckpoints::resume over live Postgres, the fleet's model patched
 // between the checkpoint and the resume.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_questions_answer_resumes_after_the_model_changes() -> Checked {
     let case = Case::new().await?;
-    assert_eq!(case.runs.turn_resume(case.run()).await?, None);
-    let descriptor = publish(&case, &store()?, &root(&case, TurnWorkspace::ApiOnly)).await?;
+    assert_eq!(
+        super::turn_store(&case)?
+            .resume(&case.runs, case.run())
+            .await?,
+        None
+    );
+    let descriptor = publish(
+        &case,
+        &super::turn_store(&case)?,
+        &root(&case, TurnWorkspace::ApiOnly),
+    )
+    .await?;
 
     case.fixtures
         .set_model(&case.acquired.fleet_id, "fixture-other-model")
         .await;
 
     assert_eq!(
-        case.runs.turn_resume(case.run()).await?,
+        super::turn_store(&case)?
+            .resume(&case.runs, case.run())
+            .await?,
         Some(*descriptor),
         "the committed head resumes under the fleet's new model"
     );

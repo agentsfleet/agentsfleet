@@ -34,6 +34,7 @@ fn plan(mode: &str, page_count: i32, page_ids: Vec<Uuid7>) -> Plan {
         repository: "github:101".to_owned(),
         base_id: None,
         format_version: 1,
+        cipher: "aes_256_gcm".to_owned(),
         toolbox_digest: "3".repeat(64),
         page_count,
         page_ids,

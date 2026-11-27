@@ -14,6 +14,8 @@ pub struct RuntimeSettings {
     pub(crate) operations: Arc<OperationalSettings>,
     pub(crate) clock: RunClock,
     pub(crate) resume_from_checkpoint: bool,
+    /// `[checkpoint] cipher`: what seals a new checkpoint.
+    pub(crate) checkpoint_cipher: af_wire::durable_task::CheckpointCipher,
     pub(crate) assignments: NonZeroUsize,
     pub(crate) requests: NonZeroUsize,
 }
@@ -44,6 +46,9 @@ impl RuntimeSettings {
         );
     }
 }
+
+/// The checkpoint cipher's spelling, as `[checkpoint] cipher` wrote it.
+pub(crate) const CHECKPOINT_CIPHER_KNOB: &str = "AGENTSFLEET_CHECKPOINT_CIPHER";
 
 #[derive(Validate)]
 struct Readings {
@@ -104,6 +109,11 @@ pub(crate) fn configured(
         operations: Arc::new(operations),
         clock: readings.clock,
         resume_from_checkpoint: value(env, "AGENTSFLEET_RESUME_FROM_CHECKPOINT", false)?,
+        checkpoint_cipher: value(
+            env,
+            CHECKPOINT_CIPHER_KNOB,
+            af_wire::durable_task::CheckpointCipher::default(),
+        )?,
         assignments: readings.assignments,
         requests: readings.requests,
     })

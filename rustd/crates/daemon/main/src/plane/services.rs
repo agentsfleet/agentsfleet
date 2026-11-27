@@ -279,6 +279,10 @@ impl afd_api_operator::OperatorPlane for ServingPlane {
     fn platform_keys(&self) -> &afd_admin::PlatformKeys {
         &self.admin.platform_keys
     }
+
+    fn checkpoint_keys(&self) -> &afd_fleet::durable_task::storage::CheckpointKeys {
+        self.runs.turn_checkpoints.keys()
+    }
 }
 
 impl afd_api_ingress::services::IngressPlane for ServingPlane {

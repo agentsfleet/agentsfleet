@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use af_crypto::{envelope::Sealer, secret::Kek};
+use crate::durable_task::storage::CheckpointKeys;
 use af_wire::run::{
     TurnCheckpointAbandon, TurnCheckpointAction, TurnCheckpointAdopt, TurnCheckpointAuthorize,
     TurnCheckpointCommand, TurnCheckpointCommit, TurnCheckpointObjects, TurnCheckpointPageRead,
@@ -13,11 +13,10 @@ use af_wire::run::{
 use super::{TurnCheckpointRefusal, TurnRun, commit, objects, pages, pins, restore, transfer};
 use crate::{Result, run::Runs};
 
-/// Event-owned recovery keeps its master key on the daemon, including API-only saves.
+/// Event-owned recovery seals under each workspace's checkpoint key, API-only saves included.
 #[derive(Clone)]
 pub struct TurnCheckpoints {
-    pub(super) master: Arc<Kek>,
-    pub(super) sealer: Sealer,
+    pub(super) keys: CheckpointKeys,
     pub(super) storage: Option<Arc<crate::durable_task::storage::R2CheckpointStore>>,
 }
 
@@ -28,14 +27,19 @@ impl std::fmt::Debug for TurnCheckpoints {
 }
 
 impl TurnCheckpoints {
-    /// Share the deployment's existing encryption key without exposing it to runners.
+    /// Share the deployment's checkpoint keys and cipher with the file backend.
     #[must_use]
-    pub const fn new(master: Arc<Kek>) -> Self {
+    pub const fn new(keys: CheckpointKeys) -> Self {
         Self {
-            master,
-            sealer: Sealer::new(),
+            keys,
             storage: None,
         }
+    }
+
+    /// The deployment's checkpoint keys, shared with the file backend.
+    #[must_use]
+    pub const fn keys(&self) -> &CheckpointKeys {
+        &self.keys
     }
 
     /// Share the existing private file backend; API-only state does not require it.
@@ -85,7 +89,8 @@ impl TurnCheckpoints {
                     self.files()?;
                 }
                 Ok(TurnCheckpointResponse::Begun(Box::new(
-                    runs.begin_turn_checkpoint(presented, request).await?,
+                    runs.begin_turn_checkpoint(presented, request, self.keys.cipher())
+                        .await?,
                 )))
             }
             TurnCheckpointAction::Commit(TurnCheckpointCommit {

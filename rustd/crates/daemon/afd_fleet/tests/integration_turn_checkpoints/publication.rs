@@ -1,9 +1,6 @@
 //! API-only publication needs encrypted PostgreSQL state and no file-storage backend.
 
-use std::sync::Arc;
-
 use af_core::id::Uuid7;
-use af_crypto::secret::Kek;
 use af_wire::run::{
     CheckpointOperationId, TurnCheckpointAction, TurnCheckpointAdopt, TurnCheckpointCommand,
     TurnCheckpointCommit, TurnCheckpointPinRelease, TurnCheckpointRead, TurnCheckpointRef,
@@ -81,7 +78,7 @@ pub(super) async fn publish(
 async fn assert_sealed(case: &Case, root: &TurnPrivateRoot, descriptor: &TurnResume) -> Checked {
     let mut connection = case.fixtures.database.acquire().await?;
     let (head, ready, sealed): (Uuid7, bool, Vec<u8>) = sqlx::query_as(
-        "SELECT h.head_checkpoint_id,p.ready_at IS NOT NULL,p.root_secret_ciphertext
+        "SELECT h.head_checkpoint_id,p.ready_at IS NOT NULL,p.root_sealed
         FROM thread.turns h JOIN runner.checkpoints p ON p.id=h.head_checkpoint_id WHERE h.id=$1",
     )
     .bind(&case.acquired.turn_id)
@@ -159,7 +156,7 @@ async fn api_only_publication_is_sealed_atomic_replayable_and_readable_without_f
 -> Checked {
     let case = Case::new().await?;
     let root = root(&case, TurnWorkspace::ApiOnly);
-    let store = TurnCheckpoints::new(Arc::new(Kek::from_hex(&hex::encode([17_u8; 32]))?));
+    let store = super::turn_store(&case)?;
     let descriptor = publish(&case, &store, &root).await?;
     assert_sealed(&case, &root, &descriptor).await?;
     read_and_adopt(&case, &store, &root, &descriptor).await

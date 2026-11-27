@@ -1,7 +1,7 @@
 //! Real encrypted file and root fixtures for the production supervisor entry path.
 use af_core::{etag::sha256_hex, id::Uuid7};
 use af_crypto::{
-    checkpoint::{CheckpointScope, EncryptedCheckpointObject},
+    checkpoint::{Aes256Gcm, CheckpointScope, ChunkCipher as _},
     checkpoint_digest,
     secret::SecretBytes,
 };
@@ -113,19 +113,18 @@ pub(super) fn encrypted(scope: &TurnScope) -> Checked<(CheckpointObject, Vec<u8>
     let namespace = format!("turn:{}", scope.turn_id.0);
     let nonce = [7; af_crypto::NONCE_LEN];
     let key = [17; af_crypto::KEY_LEN];
-    let encrypted = EncryptedCheckpointObject::seal(
-        SecretBytes::new(key.to_vec()),
+    let scope = CheckpointScope {
+        workspace_id: &Uuid7::parse(&scope.workspace_id.0)?,
+        repository: &namespace,
+        object_id: &Uuid7::parse(OBJECT)?,
+        format_version: 1,
+    };
+    let bytes = Aes256Gcm.seal(
+        &SecretBytes::new(key.to_vec()),
         &nonce,
-        CheckpointScope {
-            workspace_id: &Uuid7::parse(&scope.workspace_id.0)?,
-            repository: &namespace,
-            object_id: &Uuid7::parse(OBJECT)?,
-            format_version: 1,
-        },
+        &scope.binding(),
         Zeroizing::new(CONTENT.to_vec()),
     )?;
-    let (mut bytes, tag) = encrypted.into_parts();
-    bytes.extend(tag);
     Ok((
         CheckpointObject {
             object_id: OBJECT.to_owned(),
@@ -137,6 +136,7 @@ pub(super) fn encrypted(scope: &TurnScope) -> Checked<(CheckpointObject, Vec<u8>
                 kind: "file".to_owned(),
             },
             data_key: Some(BASE64_STANDARD.encode(key)),
+            cipher: af_wire::durable_task::CheckpointCipher::default(),
             nonce: Some(BASE64_STANDARD.encode(nonce)),
             ciphertext_sha256: Some(sha256_hex(&bytes)),
             ciphertext_length: Some(crate::byte_count(bytes.len())),

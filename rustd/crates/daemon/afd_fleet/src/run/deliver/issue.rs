@@ -95,13 +95,12 @@ impl RunService {
                 Vec::new()
             };
         let turn_resume = if issued.task.is_none() {
-            self.runs
-                .turn_resume(super::super::turn_checkpoint::TurnRun {
-                    runner_id: runner,
-                    run_id: &issued.run_id,
-                    fencing_token: checked.acquired.fence.as_u64(),
-                })
-                .await?
+            let run = super::super::turn_checkpoint::TurnRun {
+                runner_id: runner,
+                run_id: &issued.run_id,
+                fencing_token: checked.acquired.fence.as_u64(),
+            };
+            self.turn_checkpoints.resume(&self.runs, run).await?
         } else {
             None
         };

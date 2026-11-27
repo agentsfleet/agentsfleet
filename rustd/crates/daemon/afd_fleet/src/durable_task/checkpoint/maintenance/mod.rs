@@ -1,6 +1,5 @@
 //! Owner retention precedes orphan collection; remote deletion keeps durable custody.
 
-mod identities;
 mod owners;
 mod purge;
 
@@ -25,9 +24,6 @@ pub(in crate::durable_task) async fn maintain(
         .await?;
     result.owners = removed;
     result.deferred = deferred;
-    let (keys, deferred) = identities::retain(tasks, cursor).await?;
-    result.identity_keys = keys;
-    result.deferred += deferred;
     let Some(storage) = tasks.dependencies.storage.as_ref() else {
         return Ok(result);
     };
@@ -90,7 +86,7 @@ async fn erase_orphans(tasks: &DurableTasks, workspace: &Uuid7, ids: &[Uuid7]) -
             .execute(&mut *tx)
             .await
             .map_err(query(
-                "erase wrapped keys while retaining opaque purge custody",
+                "erase object rows while retaining opaque purge custody",
             ))?
             .rows_affected();
     }
@@ -116,6 +112,6 @@ async fn lock(connection: &mut PgConnection, workspace: &Uuid7) -> Result<bool> 
     if parent.is_none() {
         return Ok(false);
     }
-    super::identity::lock_storage(connection, workspace).await?;
+    super::lock_storage(connection, workspace).await?;
     Ok(true)
 }

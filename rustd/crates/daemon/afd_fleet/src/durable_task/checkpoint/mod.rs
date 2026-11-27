@@ -3,24 +3,24 @@
 mod commit;
 mod effective;
 mod guard;
-mod identity;
 mod maintenance;
 mod object_row;
 mod objects;
 mod page;
 mod pins;
 mod plan;
+mod retire;
 mod row;
 mod transfer;
 
 pub(super) use commit::publish;
-pub(crate) use identity::{load as content_identity, lock_storage};
 pub(super) use maintenance::maintain;
 pub(crate) use object_row::Object as StoredObject;
 pub(super) use objects::register;
 pub(super) use page::{read, write};
 pub(super) use pins::renew;
 pub(super) use plan::create;
+pub(crate) use retire::{retire, rotate};
 pub(crate) use transfer::{Verification, verify_object};
 pub(super) use transfer::{authorize, list, uploads};
 
@@ -31,8 +31,22 @@ pub(crate) const DESCRIPTORS: &str = include_str!("sql/descriptors.sql");
 pub(crate) const VERIFY: &str = include_str!("sql/verify.sql");
 pub(crate) const PLAN_BYTES: &str = include_str!("sql/plan_bytes.sql");
 
+use crate::{Result, error::query};
 use af_core::id::Uuid7;
 use std::time::Duration;
+
+/// Serializes one workspace's checkpoint storage writes until the transaction ends.
+pub(crate) async fn lock_storage(
+    connection: &mut sqlx::PgConnection,
+    workspace: &Uuid7,
+) -> Result<()> {
+    sqlx::query_scalar::<_, Uuid7>(include_str!("sql/lock_storage.sql"))
+        .bind(workspace)
+        .fetch_one(connection)
+        .await
+        .map_err(query("lock workspace checkpoint storage"))?;
+    Ok(())
+}
 
 /// The `thread.replay_receipts` scope of a task's checkpoint allocations: one
 /// retry key per operation for as long as the receipt stays.

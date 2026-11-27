@@ -103,7 +103,6 @@ impl StorageSession<'_> {
     pub(crate) async fn upload(
         &self,
         workspace: &Uuid7,
-        repository: &Uuid7,
         object: &Uuid7,
         ciphertext_digest: &str,
         ciphertext_length: u64,
@@ -121,13 +120,9 @@ impl StorageSession<'_> {
                     BASE64_STANDARD.encode(digest),
                 ),
             ]);
-            let url = super::signing::upload(
-                self,
-                &object_path(workspace, repository, object),
-                &headers,
-                lifetime,
-            )
-            .await?;
+            let url =
+                super::signing::upload(self, &object_path(workspace, object), &headers, lifetime)
+                    .await?;
             Ok(Authorization { url, headers })
         })
         .await
@@ -136,18 +131,13 @@ impl StorageSession<'_> {
     pub(crate) async fn download(
         &self,
         workspace: &Uuid7,
-        repository: &Uuid7,
         object: &Uuid7,
         lifetime: Duration,
     ) -> Result<Authorization> {
         bounded::operation("authorize_download", async {
             let url = self
                 .backend
-                .signed_url(
-                    Method::GET,
-                    &object_path(workspace, repository, object),
-                    lifetime,
-                )
+                .signed_url(Method::GET, &object_path(workspace, object), lifetime)
                 .await?;
             Ok(Authorization {
                 url: url.to_string(),
@@ -160,18 +150,13 @@ impl StorageSession<'_> {
     pub(crate) async fn read_object(
         &self,
         workspace: &Uuid7,
-        repository: &Uuid7,
         object: &Uuid7,
         digest: &str,
         length: u64,
     ) -> Result<Option<Vec<u8>>> {
         bounded::operation("verify_object", async {
-            let bytes = read_bounded(
-                &self.backend,
-                &object_path(workspace, repository, object),
-                length,
-            )
-            .await?;
+            let bytes =
+                read_bounded(&self.backend, &object_path(workspace, object), length).await?;
             if bytes
                 .as_ref()
                 .is_some_and(|bytes| af_core::etag::sha256_hex(bytes) != digest)
@@ -183,18 +168,9 @@ impl StorageSession<'_> {
         .await
     }
 
-    pub(crate) async fn delete(
-        &self,
-        workspace: &Uuid7,
-        repository: &Uuid7,
-        object: &Uuid7,
-    ) -> Result<()> {
+    pub(crate) async fn delete(&self, workspace: &Uuid7, object: &Uuid7) -> Result<()> {
         bounded::operation("delete_object", async {
-            match self
-                .backend
-                .delete(&object_path(workspace, repository, object))
-                .await
-            {
+            match self.backend.delete(&object_path(workspace, object)).await {
                 Ok(()) | Err(object_store::Error::NotFound { .. }) => Ok(()),
                 Err(error) => Err(error.into()),
             }
@@ -236,11 +212,10 @@ async fn read_bounded(backend: &AmazonS3, path: &Path, length: u64) -> Result<Op
     Ok(Some(bytes))
 }
 
-fn object_path(workspace: &Uuid7, repository: &Uuid7, object: &Uuid7) -> Path {
+fn object_path(workspace: &Uuid7, object: &Uuid7) -> Path {
     Path::from(format!(
-        "workspaces/{}/repositories/{}/objects/{}",
+        "workspaces/{}/objects/{}",
         workspace.as_str(),
-        repository.as_str(),
         object.as_str()
     ))
 }

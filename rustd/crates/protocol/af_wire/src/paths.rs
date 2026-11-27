@@ -16,6 +16,10 @@ pub const RUNNERS: &str = "/v1/runners";
 /// Platform operator runner administration.
 pub const ADMIN_RUNNERS: &str = "/v1/admin/runners";
 
+/// `POST`: a platform operator rotates one workspace's checkpoint key.
+pub const ADMIN_CHECKPOINT_KEY_ROTATE: &str =
+    "/v1/admin/workspaces/{workspace_id}/checkpoint-key/rotate";
+
 /// A tenant's own runners.
 pub const TENANT_RUNNERS: &str = "/v1/tenants/me/runners";
 

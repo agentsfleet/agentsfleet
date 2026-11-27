@@ -1,18 +1,19 @@
-//! The daemon authenticates the envelope and exact fold proof; the runner owns its engine codec.
+//! The daemon seals the root and checks the exact fold proof; the runner owns its engine codec.
 
 use std::collections::BTreeSet;
 
 use af_core::id::Uuid7;
-use af_crypto::{aad::Aad, envelope::Envelope};
+use af_crypto::aad::Aad;
 use af_wire::run::{FoldRef, TURN_CHECKPOINT_FORMAT, TurnPrivateRoot, TurnScope};
-use afd_vault::StoredEnvelope;
 use garde::Validate;
 use serde::Deserialize;
 use serde_json::value::RawValue;
+use zeroize::Zeroizing;
 
 use super::{TurnCheckpointRefusal, TurnCheckpoints, guard::TurnRunGuard, row::Plan};
 use crate::{
     Result,
+    durable_task::storage::{CheckpointKeys, Held, chunk_cipher, recorded},
     error::{ErrorKind, query},
 };
 
@@ -98,25 +99,40 @@ fn history(root: &garde::Valid<RootInput<'_>>) -> Result<garde::Valid<History>> 
         .map_err(invalid("root header and fold bounds"))
 }
 
-pub(super) fn seal(
+/// A history root as its checkpoint row stores it.
+pub(super) struct Sealed {
+    pub nonce: [u8; af_crypto::NONCE_LEN],
+    pub bytes: Vec<u8>,
+}
+
+/// Seals the root under the workspace's key, with a nonce of its own and the
+/// cipher its plan recorded. An API-only first save creates the key here.
+pub(super) async fn seal(
     store: &TurnCheckpoints,
-    owner: &TurnRunGuard<'_>,
+    owner: &mut TurnRunGuard<'_>,
     plan: &Plan,
     root: &TurnPrivateRoot,
-) -> Result<Envelope> {
-    Ok(store.sealer.seal(
-        &store.master,
-        &aad(owner, plan, af_crypto::KEK_VERSION),
-        root.history.as_bytes(),
-    )?)
+) -> Result<Sealed> {
+    let workspace = owner.current.workspace_id.clone();
+    let key = store.keys.for_save(&mut owner.tx, &workspace).await?;
+    let nonce = store.keys.nonce()?;
+    let bytes = chunk_cipher(recorded(&plan.cipher)?).seal(
+        key.bytes(),
+        &nonce,
+        &aad(owner, plan),
+        Zeroizing::new(root.history.as_bytes().to_vec()),
+    )?;
+    Ok(Sealed { nonce, bytes })
 }
 
 #[derive(sqlx::FromRow)]
 struct Stored {
-    #[sqlx(flatten)]
-    envelope: StoredEnvelope,
+    root_nonce: Vec<u8>,
+    root_sealed: Vec<u8>,
 }
 
+/// Opens a ready root under the cipher that sealed it. A key that is missing,
+/// will not open or did not seal this root reads nothing.
 pub(super) async fn open(
     store: &TurnCheckpoints,
     owner: &mut TurnRunGuard<'_>,
@@ -128,13 +144,21 @@ pub(super) async fn open(
         .await
         .map_err(query("read sealed ready turn root"))?
         .ok_or(TurnCheckpointRefusal::Incompatible)?;
-    let envelope = stored
-        .envelope
-        .into_envelope()
-        .map_err(invalid("stored root envelope"))?;
-    let decrypted = envelope
-        .open(&store.master, &aad(owner, plan, envelope.kek_version()))
-        .map_err(invalid("stored root authentication"))?;
+    let nonce: [u8; af_crypto::NONCE_LEN] = stored
+        .root_nonce
+        .as_slice()
+        .try_into()
+        .map_err(invalid("stored root nonce"))?;
+    let workspace = owner.current.workspace_id.clone();
+    let Held::Usable(key) = store.keys.for_restore(&mut owner.tx, &workspace).await? else {
+        return Err(TurnCheckpointRefusal::Incompatible.into());
+    };
+    let decrypted = chunk_cipher(recorded(&plan.cipher)?)
+        .open(key.bytes(), &nonce, &aad(owner, plan), stored.root_sealed)
+        .map_err(|unopened| {
+            CheckpointKeys::mismatched(&workspace);
+            invalid("stored root authentication")(unopened)
+        })?;
     if plan.history_digest.as_deref()
         != Some(af_core::etag::sha256_hex(decrypted.expose()).as_str())
     {
@@ -146,14 +170,13 @@ pub(super) async fn open(
     })
 }
 
-fn aad(owner: &TurnRunGuard<'_>, plan: &Plan, wrapping: i32) -> Aad {
+fn aad(owner: &TurnRunGuard<'_>, plan: &Plan) -> Aad {
     Aad::turn_recovery(
         &owner.current.workspace_id,
         &owner.current.fleet_id,
         &owner.current.turn_id,
         plan.generation,
         plan.format_version,
-        wrapping,
     )
 }
 

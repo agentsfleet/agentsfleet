@@ -42,7 +42,7 @@ use crate::services::{
 
 mod support;
 
-use support::{connection_named, delete_refusal, may_disconnect, read_body, summary};
+use support::{connection_named, delete_refusal, may_disconnect, read_body, summary, writable};
 
 /// The scoped events each verb's failures are logged under.
 const EVENT_STORE: &str = "secret_store_failed";
@@ -102,7 +102,8 @@ pub(crate) type StoredSecret = StoredSecretResponse<'static>;
         "values return `UZ-VAULT-002`.\n\n",
         "An existing name returns 409 `UZ-VAULT-005` without changing it. Concurrent ",
         "creates produce one 201 and one 409. Use the secret's `PUT` endpoint to replace ",
-        "it.",
+        "it. The name `checkpoint_key` is the workspace's checkpoint key, which the ",
+        "platform writes; it returns 403 `UZ-VAULT-006`.",
     ),
     request_body = StoreSecretRequest<'_>,
     params(
@@ -126,6 +127,7 @@ pub(crate) async fn store<D: TenantPlane>(
     // Parsed before the pool is touched, so a malformed request never draws a
     // connection and the refusal is the same whichever verb reached it.
     let name = SecretName::parse(&request.name).map_err(Refusal::at(EVENT_STORE))?;
+    writable(&name)?;
     let secret = SecretBody::parse(request.data).map_err(Refusal::at(EVENT_STORE))?;
 
     services
@@ -234,7 +236,8 @@ pub(crate) async fn list<D: TenantPlane>(
         "Replaces the entire secret with the JSON object in `data`. Omitted fields are ",
         "removed. Send every required field; stored secret values cannot be read back. A ",
         "missing name returns `UZ-VAULT-003` without creating it; use `POST` to create a ",
-        "secret.",
+        "secret. The workspace's `checkpoint_key` returns 403 `UZ-VAULT-006` and keeps ",
+        "its value.",
     ),
     request_body = ReplaceSecretRequest<'_>,
     params(
@@ -255,6 +258,7 @@ pub(crate) async fn replace<D: TenantPlane>(
     body: Bytes,
 ) -> Result<Response, Refusal> {
     let name = SecretName::parse(&name).map_err(Refusal::at(EVENT_REPLACE))?;
+    writable(&name)?;
     let request = read_body::<ReplaceSecretRequest<'_>>(&body)?;
     // The same shape gate the create applies, because it is the same
     // constructor. A replace that accepted a shape create rejects would let the
@@ -297,7 +301,8 @@ pub(crate) async fn replace<D: TenantPlane>(
     description = concat!(
         "Deletes a secret; missing secrets also return 204. Models still using it cause 409 ",
         "`UZ-VAULT-004`, with the number of references. Deleting a connector's `{provider}` ",
-        "secret also removes its event routing and requires `connector:write`.",
+        "secret also removes its event routing and requires `connector:write`. The ",
+        "workspace's `checkpoint_key` returns 403 `UZ-VAULT-006` and stays.",
     ),
     params(
         afd_http::openapi::path::Secret,
@@ -317,6 +322,7 @@ pub(crate) async fn remove<D: TenantPlane>(
     Path(SecretPath { name }): Path<SecretPath>,
 ) -> Result<Response, Refusal> {
     let name = SecretName::parse(&name).map_err(Refusal::at(EVENT_DELETE))?;
+    writable(&name)?;
     if let Some(provider) = connection_named(&name) {
         may_disconnect(&principal)?;
         // The connector's own Disconnect, answered as this route answers.

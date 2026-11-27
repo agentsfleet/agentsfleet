@@ -15,8 +15,11 @@ use super::{
 use crate::{
     Result,
     durable_task::{
-        checkpoint::{self, StoredObject, content_identity, lock_storage},
-        storage::registration::{self, NewObject, Registration},
+        checkpoint::{self, StoredObject, lock_storage},
+        storage::{
+            WorkspaceKey, recorded,
+            registration::{self, NewObject, Registration},
+        },
     },
     error::query,
     run::Runs,
@@ -57,49 +60,37 @@ async fn register_content(
         .map_err(|_overflow| TurnCheckpointRefusal::Incompatible)?;
     let workspace = custody.owner.current.workspace_id.clone();
     lock_storage(&mut custody.owner.tx, &workspace).await?;
-    let identity = content_identity(
-        runs,
-        storage,
-        &mut custody.owner.tx,
-        &workspace,
-        &custody.namespace,
-    )
-    .await?;
+    let key = storage
+        .keys()
+        .for_save(&mut custody.owner.tx, &workspace)
+        .await?;
     let content: Vec<_> = objects
         .iter()
-        .map(|object| identity.content(object, format))
+        .map(|object| key.content(object, format))
         .collect();
     if content.iter().collect::<BTreeSet<_>>().len() != content.len()
         || objects.iter().any(|object| object.kind != FILE)
     {
         return Err(TurnCheckpointRefusal::Incompatible.into());
     }
-    let existing = matching(custody, &identity.id, &content).await?;
-    let new = missing(
-        runs,
-        storage,
-        Registration {
-            workspace: &workspace,
-            namespace: &custody.namespace,
-            identity: &identity.id,
-            format,
-        },
-        objects,
-        &content,
-        &existing,
-    )?;
+    let existing = matching(custody, &content).await?;
+    let scope = Registration {
+        namespace: &custody.namespace,
+        format,
+        cipher: recorded(&custody.plan.cipher)?,
+    };
+    let new = missing(runs, storage, scope, (objects, &content), &existing)?;
     reserve(custody, &new, storage.bucket_reference()).await?;
-    let registered = matching(custody, &identity.id, &content).await?;
+    let registered = matching(custody, &content).await?;
     protect_registered(custody, &registered).await?;
-    ordered(custody, storage, registered, &content)
+    ordered(custody, storage, registered, &content, &key)
 }
 
 fn missing(
     runs: &Runs,
     storage: &crate::durable_task::storage::R2CheckpointStore,
     scope: Registration<'_>,
-    objects: &[CheckpointPlaintext],
-    content: &[String],
+    (objects, content): (&[CheckpointPlaintext], &[String]),
     existing: &[StoredObject],
 ) -> Result<Vec<NewObject>> {
     let found: BTreeSet<_> = existing
@@ -110,7 +101,9 @@ fn missing(
         .iter()
         .zip(content)
         .filter(|(_, content)| !found.contains(content.as_str()))
-        .map(|(object, content)| registration::prepare(runs, storage, scope, object, content))
+        .map(|(object, content)| {
+            registration::prepare(runs, storage.keys(), scope, object, content)
+        })
         .collect()
 }
 
@@ -119,6 +112,7 @@ fn ordered(
     storage: &crate::durable_task::storage::R2CheckpointStore,
     registered: Vec<StoredObject>,
     content: &[String],
+    key: &WorkspaceKey,
 ) -> Result<Vec<af_wire::durable_task::CheckpointObject>> {
     let mut by_content: BTreeMap<_, _> = registered
         .into_iter()
@@ -132,29 +126,25 @@ fn ordered(
                 .ok_or(TurnCheckpointRefusal::Incompatible)?
                 .wire_scoped(
                     storage,
-                    &custody.owner.current.workspace_id,
                     &custody.namespace,
                     (
                         &custody.plan.id,
                         &custody.owner.current.id,
                         custody.owner.current.fence,
                     ),
+                    key,
                 )
         })
         .collect::<Result<_>>()?;
     Ok(items)
 }
 
-async fn matching(
-    custody: &mut FileOwner<'_>,
-    identity: &Uuid7,
-    content: &[String],
-) -> Result<Vec<StoredObject>> {
+async fn matching(custody: &mut FileOwner<'_>, content: &[String]) -> Result<Vec<StoredObject>> {
     sqlx::query_as(include_str!(
         "../../durable_task/checkpoint/sql/objects_content.sql"
     ))
     .bind(&custody.owner.current.workspace_id)
-    .bind(identity)
+    .bind(&custody.namespace)
     .bind(content)
     .fetch_all(&mut *custody.owner.tx)
     .await

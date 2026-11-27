@@ -5,11 +5,9 @@ use super::super::{
     fixture::Decisions,
 };
 use af_core::clock;
-use af_crypto::secret::Kek;
 use afd_fleet::durable_task::storage::{CheckpointStorageConfig, R2CheckpointStore};
 use afd_vault::{SecretBody, SecretName};
 use serde_json::{json, value::RawValue};
-use std::sync::Arc;
 
 pub(super) async fn configure(fixture: &mut Decisions<'_>, server: &Server) {
     let case = fixture.case;
@@ -31,8 +29,7 @@ pub(super) async fn configure(fixture: &mut Decisions<'_>, server: &Server) {
             credential_name: "preflight-checkpoint".into(),
         }),
         case.scope.workspace_id.clone(),
-        fixture.vault.clone(),
-        Arc::new(Kek::from_hex(crate::report_seed::FIXTURE_KEK_HEX).expect("fixture key")),
+        fixture.keys(),
         server.client.clone(),
     ));
 }

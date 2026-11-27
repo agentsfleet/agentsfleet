@@ -100,6 +100,15 @@ pub(super) const REQUEST: &[Problem] = &[
             "A secret with that name already exists. Rename this one, or open the existing secret and replace its value.",
         ),
     },
+    Problem {
+        code: error_code::SECRET_NAME_RESERVED,
+        status: 403,
+        title: "Secret name reserved",
+        hint: "The platform writes this secret itself. The list shows it, and no request can create, replace or delete it. Choose another name.",
+        user_message: Some(
+            "That name belongs to a secret the platform manages for this workspace. Choose another name.",
+        ),
+    },
     // The webhook family carries no dashboard sentence, and that is a fact
     // about who reads it rather than an omission: every one of these is
     // rendered in a PROVIDER's delivery log — GitHub's, Slack's, Svix's — to an

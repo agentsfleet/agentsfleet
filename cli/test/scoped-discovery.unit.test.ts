@@ -13,7 +13,7 @@ import {
 const MATRIX: ReadonlyArray<{ readonly scopes: ReadonlyArray<string>; readonly families: Readonly<Record<string, ReadonlyArray<string>>>; readonly defaults?: ReadonlyArray<string> }> = [
   { scopes: [], families: {} },
   { scopes: ["platform-key:read"], families: { models: ["default"] }, defaults: ["list"] },
-  { scopes: ["platform-key:admin", "platform-key:read"], families: { models: ["default"] }, defaults: ["list", "use", "delete"] },
+  { scopes: ["platform-key:admin", "platform-key:read"], families: { models: ["default"], "checkpoint-key": ["rotate"] }, defaults: ["list", "use", "delete"] },
   { scopes: ["model:read", "platform-key:read"], families: { models: ["list", "show", "default"] }, defaults: ["list"] },
   { scopes: ["model:read"], families: { models: ["list", "show"] } },
   { scopes: ["model:admin", "model:read"], families: { models: ["list", "show", "create", "update", "delete"] } },

@@ -9,7 +9,7 @@ mod expiry;
 mod files;
 mod folded;
 mod garbage;
-mod identity_retention;
+mod key_fixture;
 mod lifecycle;
 mod manifest;
 mod objects;
@@ -20,14 +20,17 @@ mod retirement;
 mod rollout;
 mod storage;
 mod storage_refusals;
+mod workspace_keys;
 use crate::integration_durable_tasks::decisions::checkpoint_server as storage_server;
 
 use af_core::{error_code, id::Uuid7};
+use af_wire::durable_task::CheckpointCipher;
 use af_wire::run::{
     CheckpointOperationId, TurnCheckpointAction, TurnCheckpointBegin, TurnCheckpointCommand,
     TurnCheckpointPlan, TurnWorkspace,
 };
 use afd_fleet::run::{Acquired, Billed, Issued, Runs, turn_checkpoint::TurnRun};
+use key_fixture::{keys_under, turn_store};
 
 use crate::{seed, support::Fixtures};
 
@@ -108,7 +111,7 @@ impl Case {
     async fn begin(&self, input: TurnCheckpointCommand) -> Checked<TurnCheckpointPlan> {
         Ok(self
             .runs
-            .begin_turn_checkpoint(self.run(), &valid(input)?)
+            .begin_turn_checkpoint(self.run(), &valid(input)?, CheckpointCipher::default())
             .await?)
     }
 
@@ -196,7 +199,7 @@ async fn a_changed_begin_or_a_retired_plan_cannot_reallocate_its_operation() -> 
     }
     assert!(
         case.runs
-            .begin_turn_checkpoint(case.run(), &valid(changed)?)
+            .begin_turn_checkpoint(case.run(), &valid(changed)?, CheckpointCipher::default())
             .await
             .is_err_and(|fault| fault.code() == error_code::RUN_CHECKPOINT_CONFLICT)
     );
@@ -210,7 +213,7 @@ async fn a_changed_begin_or_a_retired_plan_cannot_reallocate_its_operation() -> 
     drop(connection);
     assert!(
         case.runs
-            .begin_turn_checkpoint(case.run(), &valid(original)?)
+            .begin_turn_checkpoint(case.run(), &valid(original)?, CheckpointCipher::default())
             .await
             .is_err_and(|fault| fault.code() == error_code::RUN_CHECKPOINT_CONFLICT)
     );
@@ -229,7 +232,7 @@ async fn a_foreign_runner_or_wrong_fence_allocates_no_checkpoint() -> Checked {
     };
     assert!(
         case.runs
-            .begin_turn_checkpoint(foreign, &input)
+            .begin_turn_checkpoint(foreign, &input, CheckpointCipher::default())
             .await
             .is_err_and(|fault| fault.code() == error_code::RUN_NOT_FOUND)
     );
@@ -241,7 +244,7 @@ async fn a_foreign_runner_or_wrong_fence_allocates_no_checkpoint() -> Checked {
     };
     assert!(
         case.runs
-            .begin_turn_checkpoint(wrong, &valid(input)?)
+            .begin_turn_checkpoint(wrong, &valid(input)?, CheckpointCipher::default())
             .await
             .is_err_and(|fault| fault.code() == error_code::RUN_STALE_FENCING_TOKEN)
     );
@@ -268,7 +271,11 @@ async fn a_settled_source_cannot_begin_recovery() -> Checked {
     drop(connection);
     assert!(
         case.runs
-            .begin_turn_checkpoint(case.run(), &valid(case.command())?)
+            .begin_turn_checkpoint(
+                case.run(),
+                &valid(case.command())?,
+                CheckpointCipher::default()
+            )
             .await
             .is_err_and(|fault| fault.code() == error_code::RUN_LOST)
     );
@@ -299,7 +306,11 @@ async fn a_revoked_drained_or_degraded_host_cannot_allocate_a_checkpoint() -> Ch
         drop(connection);
         assert!(
             case.runs
-                .begin_turn_checkpoint(case.run(), &valid(case.command())?)
+                .begin_turn_checkpoint(
+                    case.run(),
+                    &valid(case.command())?,
+                    CheckpointCipher::default()
+                )
                 .await
                 .is_err_and(|fault| fault.code() == error_code::RUN_LOST)
         );

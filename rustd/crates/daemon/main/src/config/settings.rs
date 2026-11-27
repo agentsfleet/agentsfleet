@@ -419,6 +419,9 @@ impl std::fmt::Display for LogLevel {
 #[derive(Default, Deserialize, Validate)]
 #[serde(default, deny_unknown_fields)]
 pub(super) struct Checkpoint {
+    /// `aes_256_gcm` or `plain`; unset, new checkpoints are encrypted.
+    #[garde(skip)]
+    pub cipher: Option<af_wire::durable_task::CheckpointCipher>,
     #[garde(dive)]
     pub storage: Option<afd_fleet::durable_task::storage::CheckpointStorageConfig>,
 }

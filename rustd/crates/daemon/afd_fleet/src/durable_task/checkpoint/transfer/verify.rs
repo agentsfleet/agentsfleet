@@ -6,16 +6,13 @@ use crate::{
     durable_task::{
         DurableTaskRefusal, DurableTasks,
         row::{small_counter, sql_counter},
-        storage::StorageSession,
+        storage::{StorageSession, WorkspaceKey, chunk_cipher},
         transaction,
     },
     error::query,
 };
 use af_core::id::Uuid7;
-use af_crypto::{
-    checkpoint::{CheckpointScope, EncryptedCheckpointObject},
-    secret::SecretBytes,
-};
+use af_crypto::{checkpoint::CheckpointScope, secret::SecretBytes};
 use af_wire::durable_task::CheckpointObject;
 use serde::Serialize;
 use sqlx::types::Json;
@@ -29,18 +26,15 @@ pub(crate) struct Receipt {
 
 pub(super) async fn remote(
     session: &StorageSession<'_>,
-    workspace: &Uuid7,
-    identity: &Uuid7,
     id: &Uuid7,
     plan: &Plan,
     object: &CheckpointObject,
-    key: &SecretBytes,
+    key: &WorkspaceKey,
 ) -> Result<Option<Receipt>> {
     remote_scope(
         session,
-        identity,
         CheckpointScope {
-            workspace_id: workspace,
+            workspace_id: &plan.workspace_id,
             repository: &plan.repository,
             object_id: id,
             format_version: small_counter(plan.format_version, "checkpoint format_version")?,
@@ -53,10 +47,9 @@ pub(super) async fn remote(
 
 pub(crate) async fn remote_scope(
     session: &StorageSession<'_>,
-    identity: &Uuid7,
     scope: CheckpointScope<'_>,
     object: &CheckpointObject,
-    key: &SecretBytes,
+    key: &WorkspaceKey,
 ) -> Result<Option<Receipt>> {
     let workspace = scope.workspace_id;
     let id = scope.object_id;
@@ -67,10 +60,7 @@ pub(crate) async fn remote_scope(
     let length = object
         .ciphertext_length
         .ok_or(DurableTaskRefusal::CheckpointIncompatible)?;
-    let Some(bytes) = session
-        .read_object(workspace, identity, id, digest, length)
-        .await?
-    else {
+    let Some(bytes) = session.read_object(workspace, id, digest, length).await? else {
         return Ok(None);
     };
     let plaintext = open(scope, object, key, bytes)?;
@@ -86,20 +76,13 @@ pub(crate) async fn remote_scope(
     }))
 }
 
+/// Opens stored bytes under the cipher the object was registered with.
 fn open(
     scope: CheckpointScope<'_>,
     object: &CheckpointObject,
-    key: &SecretBytes,
-    mut bytes: Vec<u8>,
+    key: &WorkspaceKey,
+    bytes: Vec<u8>,
 ) -> Result<SecretBytes> {
-    let split = bytes
-        .len()
-        .checked_sub(af_crypto::TAG_LEN)
-        .ok_or(DurableTaskRefusal::CheckpointIncompatible)?;
-    let tag: [u8; af_crypto::TAG_LEN] = bytes
-        .split_off(split)
-        .try_into()
-        .map_err(|_invalid| DurableTaskRefusal::CheckpointIncompatible)?;
     let nonce = base64::Engine::decode(
         &base64::prelude::BASE64_STANDARD,
         object
@@ -111,11 +94,7 @@ fn open(
     let nonce: [u8; af_crypto::NONCE_LEN] = nonce
         .try_into()
         .map_err(|_invalid| DurableTaskRefusal::CheckpointIncompatible)?;
-    Ok(EncryptedCheckpointObject::from_parts(bytes, tag).open(
-        SecretBytes::new(key.expose().to_vec()),
-        &nonce,
-        scope,
-    )?)
+    Ok(chunk_cipher(object.cipher).open(key.bytes(), &nonce, &scope.binding(), bytes)?)
 }
 
 pub(super) async fn record(
@@ -134,7 +113,7 @@ pub(super) async fn record(
         .await
         .map_err(query("hold workspace while accounting verified storage"))?;
     if parent.is_some() {
-        super::super::identity::lock_storage(&mut tx, workspace).await?;
+        super::super::lock_storage(&mut tx, workspace).await?;
         sqlx::query(super::super::VERIFY)
             .bind(workspace)
             .bind(Json(receipts))

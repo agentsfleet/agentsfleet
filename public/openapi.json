@@ -1647,6 +1647,104 @@
         ]
       }
     },
+    "/v1/admin/workspaces/{workspace_id}/checkpoint-key/rotate": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Rotate a workspace's checkpoint key",
+        "description": "A side-effecting operation with no undo: writes a new checkpoint key for the workspace and deletes every checkpoint the old key sealed. Their stored objects are removed from object storage afterwards. A run interrupted across the rotation starts from its original message, and the workspace's next save is a full one. Use it when a key may be compromised. Sends no body and honors no `Idempotency-Key`: a repeat rotates again and retires what was saved in between. A workspace the caller cannot reach, an unknown one among them, returns 403 `UZ-AUTH-001`.",
+        "operationId": "rotate_workspace_checkpoint_key",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "The workspace whose key rotates.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckpointKeyRotation"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not have permission for this action",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A request or capacity limit has been reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An internal server error occurred",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
     "/v1/api-keys": {
       "get": {
         "tags": [
@@ -17441,7 +17539,7 @@
           "Secrets"
         ],
         "summary": "Store a workspace secret",
-        "description": "Creates an encrypted secret; values are never returned. Send a nonempty JSON object in `data`, up to 4 KiB. Invalid shapes return `UZ-VAULT-001`; oversized values return `UZ-VAULT-002`.\n\nAn existing name returns 409 `UZ-VAULT-005` without changing it. Concurrent creates produce one 201 and one 409. Use the secret's `PUT` endpoint to replace it.",
+        "description": "Creates an encrypted secret; values are never returned. Send a nonempty JSON object in `data`, up to 4 KiB. Invalid shapes return `UZ-VAULT-001`; oversized values return `UZ-VAULT-002`.\n\nAn existing name returns 409 `UZ-VAULT-005` without changing it. Concurrent creates produce one 201 and one 409. Use the secret's `PUT` endpoint to replace it. The name `checkpoint_key` is the workspace's checkpoint key, which the platform writes; it returns 403 `UZ-VAULT-006`.",
         "operationId": "store_workspace_secret",
         "parameters": [
           {
@@ -17579,7 +17677,7 @@
           "Secrets"
         ],
         "summary": "Replace a secret's stored body",
-        "description": "Replaces the entire secret with the JSON object in `data`. Omitted fields are removed. Send every required field; stored secret values cannot be read back. A missing name returns `UZ-VAULT-003` without creating it; use `POST` to create a secret.",
+        "description": "Replaces the entire secret with the JSON object in `data`. Omitted fields are removed. Send every required field; stored secret values cannot be read back. A missing name returns `UZ-VAULT-003` without creating it; use `POST` to create a secret. The workspace's `checkpoint_key` returns 403 `UZ-VAULT-006` and keeps its value.",
         "operationId": "replace_workspace_secret",
         "parameters": [
           {
@@ -17714,7 +17812,7 @@
           "Secrets"
         ],
         "summary": "Delete a secret from the workspace vault",
-        "description": "Deletes a secret; missing secrets also return 204. Models still using it cause 409 `UZ-VAULT-004`, with the number of references. Deleting a connector's `{provider}` secret also removes its event routing and requires `connector:write`.",
+        "description": "Deletes a secret; missing secrets also return 204. Models still using it cause 409 `UZ-VAULT-004`, with the number of references. Deleting a connector's `{provider}` secret also removes its event routing and requires `connector:write`. The workspace's `checkpoint_key` returns 403 `UZ-VAULT-006` and stays.",
         "operationId": "delete_workspace_secret",
         "parameters": [
           {
@@ -19502,6 +19600,14 @@
           }
         }
       },
+      "CheckpointCipher": {
+        "type": "string",
+        "description": "What seals a checkpoint's objects and history root under its workspace's key.",
+        "enum": [
+          "aes_256_gcm",
+          "plain"
+        ]
+      },
       "CheckpointCommitInput": {
         "type": "object",
         "description": "Commit only after complete pages and registered objects verify.",
@@ -19645,6 +19751,28 @@
         ],
         "description": "Complete logical entry or explicit deletion relative to the retained base."
       },
+      "CheckpointKeyRotation": {
+        "type": "object",
+        "description": "What rotating a workspace's checkpoint key retired. The old key sealed all\nof it, so none of it can be restored.",
+        "required": [
+          "retired_generations",
+          "retired_objects"
+        ],
+        "properties": {
+          "retired_generations": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Checkpoint generations deleted, unfinished saves among them.",
+            "minimum": 0
+          },
+          "retired_objects": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Stored objects whose deletion from the bucket is now owed.",
+            "minimum": 0
+          }
+        }
+      },
       "CheckpointMode": {
         "type": "string",
         "description": "A verified base is retained separately from task recovery pointers.",
@@ -19655,14 +19783,19 @@
       },
       "CheckpointObject": {
         "type": "object",
-        "description": "Registration projection; temporary keys remain outside model/sandbox state.",
+        "description": "Registration projection; the key remains outside model/sandbox state.",
         "required": [
           "object_id",
           "repository",
           "plaintext",
-          "status"
+          "status",
+          "cipher"
         ],
         "properties": {
+          "cipher": {
+            "$ref": "#/components/schemas/CheckpointCipher",
+            "description": "The cipher this object was registered under; a restore opens with it."
+          },
           "ciphertext_length": {
             "type": [
               "integer",
@@ -19684,14 +19817,14 @@
               "string",
               "null"
             ],
-            "description": "Temporary data key, returned only to this native owner/reader."
+            "description": "The workspace's checkpoint key, returned only to this native owner/reader."
           },
           "nonce": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Exact fixed nonce, base64 encoded."
+            "description": "The object's registered random nonce, base64 encoded."
           },
           "object_id": {
             "type": "string",
@@ -20204,12 +20337,12 @@
           "ciphertext_length": {
             "type": "integer",
             "format": "int64",
-            "description": "Plaintext length plus the fixed 16-byte authentication tag, so at least\n17. Bounded by its Postgres `BIGINT` column.",
+            "description": "Stored length: the plaintext, plus the 16-byte authentication tag under\n`aes_256_gcm`. Bounded by its Postgres `BIGINT` column.",
             "minimum": 0
           },
           "ciphertext_sha256": {
             "type": "string",
-            "description": "Exact ciphertext and authentication tag SHA-256."
+            "description": "SHA-256 of the object as stored."
           },
           "object_id": {
             "type": "string",

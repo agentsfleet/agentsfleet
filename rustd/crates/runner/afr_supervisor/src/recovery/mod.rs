@@ -12,6 +12,7 @@ mod files_tests;
 mod inventory;
 mod layout;
 mod links;
+mod names;
 mod progress;
 #[cfg(test)]
 mod progress_tests;
@@ -57,7 +58,8 @@ pub(super) struct Session<'a> {
     stop: &'a tokio_util::sync::CancellationToken,
 }
 
-/// Native temporary keys are wiped on every early return as well as successful use.
+/// The workspace's checkpoint key rides each object; it is wiped on every early
+/// return as well as after successful use.
 #[derive(Debug)]
 pub(super) struct Object(af_wire::durable_task::CheckpointObject);
 

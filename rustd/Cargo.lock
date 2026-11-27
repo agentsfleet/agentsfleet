@@ -162,6 +162,7 @@ dependencies = [
  "afr_tools",
  "agentsfleetd",
  "async-trait",
+ "aws-lc-rs",
  "axum",
  "clap",
  "futures-util",
@@ -185,6 +186,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
+ "zeroize",
 ]
 
 [[package]]
@@ -519,6 +521,7 @@ dependencies = [
  "afd_api_wire",
  "afd_bus",
  "afd_credential",
+ "afd_fleet",
  "afd_fleet_ops",
  "afd_http",
  "afd_runner",

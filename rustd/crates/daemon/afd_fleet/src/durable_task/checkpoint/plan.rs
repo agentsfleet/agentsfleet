@@ -1,7 +1,7 @@
 //! Allocate a complete immutable capture plan before any transfer authorization.
 
 use super::{
-    guard, identity,
+    guard,
     row::{Pin, Plan},
 };
 use crate::{
@@ -92,7 +92,7 @@ pub(in crate::durable_task) async fn create(
     if input.mode == CheckpointMode::RetainBase && input.base_id.is_some() {
         return Err(DurableTaskRefusal::CheckpointIncompatible.into());
     }
-    identity::lock_storage(&mut tx, &owned.current.workspace_id).await?;
+    super::lock_storage(&mut tx, &owned.current.workspace_id).await?;
     sqlx::query(include_str!("sql/abandon_capture.sql"))
         .bind(&task)
         .bind(run.run_id)
@@ -221,6 +221,7 @@ async fn allocate(
         .bind(tasks.times().transfer_seconds())
         .bind(ready_base.and_then(|base| base.manifest_root.as_deref()))
         .bind(scope)
+        .bind(<&str>::from(guard::storage(tasks)?.keys().cipher()))
         .execute(&mut *connection)
         .await
         .map_err(query("persist native checkpoint plan"))?;

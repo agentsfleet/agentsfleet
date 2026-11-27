@@ -18,6 +18,8 @@ pub(super) struct Plan {
     pub generation: u64,
     #[sqlx(try_from = "i32")]
     pub format_version: u32,
+    /// The cipher this plan's new objects and its root are sealed under, as recorded.
+    pub cipher: String,
     pub expected_head_id: Option<Uuid7>,
     pub has_workspace: bool,
     pub toolbox_digest: Option<String>,

@@ -6,17 +6,20 @@
 import { Command } from "effect/cli";
 import { platformRunnersCommand } from "./platform-runners.command.ts";
 import { platformModelsCommand } from "./platform-models.command.ts";
+import { platformCheckpointKeyCommand } from "./platform-checkpoint-key.command.ts";
 import { listedWhen, type Visibility } from "./visibility.ts";
 
 export const platformCommand = (visibility: Visibility) => {
   const runners = platformRunnersCommand(visibility);
   const models = platformModelsCommand(visibility);
-  const families = [runners, models];
+  const checkpointKey = platformCheckpointKeyCommand(visibility);
+  const families = [runners, models, checkpointKey];
   return Command.make("platform").pipe(
     Command.withDescription("Run the platform itself (for operators)"),
     Command.withSubcommands([
       listedWhen(runners.listed)(runners.command),
       listedWhen(models.listed)(models.command),
+      listedWhen(checkpointKey.listed)(checkpointKey.command),
     ]),
     listedWhen(families.some((family) => family.listed)),
   );

@@ -209,13 +209,7 @@ impl Session<'_> {
             ));
         }
         for object in &objects {
-            let length = object
-                .ciphertext_length
-                .filter(|length| {
-                    (17..=super::files::CHUNK + crate::byte_count(af_crypto::TAG_LEN))
-                        .contains(length)
-                })
-                .ok_or_else(|| error::config("checkpoint ciphertext length is invalid"))?;
+            let length = transfer::stored_length(object)?;
             self.progress.discover(&object.object_id, length, false);
         }
         Ok(objects)

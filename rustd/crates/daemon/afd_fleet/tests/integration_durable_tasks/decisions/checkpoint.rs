@@ -1,9 +1,9 @@
 //! Publication advances a capture's head without replacing its verified base.
 
-use std::{sync::Arc, time::Duration};
+use std::time::Duration;
 
 use af_core::{error_code, etag::sha256_hex};
-use af_crypto::{checkpoint_digest, secret::Kek};
+use af_crypto::checkpoint_digest;
 use af_wire::durable_task::{
     CheckpointCommitInput, CheckpointMode, CheckpointPage, CheckpointPageInput, CheckpointPlan,
     CheckpointPlanInput, DecisionDurableTaskVersion,
@@ -18,7 +18,6 @@ use super::{
     super::fixture::{Case, exercise, id},
     fixture::Decisions,
 };
-use crate::report_seed::FIXTURE_KEK_HEX;
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -98,8 +97,7 @@ pub(super) fn storage(fixture: &Decisions<'_>) -> DurableTasks {
     dependencies.storage = Some(R2CheckpointStore::new(
         config,
         case.scope.workspace_id.clone(),
-        fixture.vault.clone(),
-        Arc::new(Kek::from_hex(FIXTURE_KEK_HEX).expect("fixture key")),
+        fixture.keys(),
         client,
     ));
     DurableTasks::new(case.held.runs.clone(), case.turns.clone(), dependencies)

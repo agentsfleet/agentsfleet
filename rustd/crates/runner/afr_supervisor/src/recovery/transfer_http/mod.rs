@@ -32,6 +32,7 @@ fn object(url: &str) -> CheckpointObject {
             kind: "history".to_owned(),
         },
         status: CheckpointObjectStatus::Reused,
+        cipher: af_wire::durable_task::CheckpointCipher::default(),
         nonce: None,
         data_key: None,
         ciphertext_sha256: Some(af_core::etag::sha256_hex(CONTENT)),

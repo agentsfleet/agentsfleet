@@ -15,8 +15,6 @@ struct Purge {
     #[sqlx(rename = "checkpoint_object_id")]
     object_id: Uuid7,
     workspace_id: Uuid7,
-    #[sqlx(rename = "checkpoint_identity_key_id")]
-    identity_key_id: Uuid7,
     bucket_reference: String,
 }
 
@@ -38,11 +36,7 @@ pub(super) async fn run(tasks: &DurableTasks, storage: &R2CheckpointStore) -> Re
                     return Err(DurableTaskRefusal::StorageUnavailable.into());
                 }
                 session
-                    .delete(
-                        &purge.workspace_id,
-                        &purge.identity_key_id,
-                        &purge.object_id,
-                    )
+                    .delete(&purge.workspace_id, &purge.object_id)
                     .await?;
                 acknowledge(tasks, &purge).await
             }

@@ -42,8 +42,11 @@ pub(super) async fn build(
     afd_fleet::durable_task::storage::R2CheckpointStore::new(
         config,
         owner.workspace.clone(),
-        vault(),
-        std::sync::Arc::clone(&storage_key),
+        afd_fleet::durable_task::storage::CheckpointKeys::new(
+            database.clone(),
+            vault(),
+            af_wire::durable_task::CheckpointCipher::default(),
+        ),
         afd_identity::direct::direct(std::time::Duration::from_secs(1))
             .build()
             .expect("bounded storage client"),

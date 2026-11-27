@@ -2,27 +2,20 @@
 //! descriptors refuse a second spelling, and a commit verifies every object it names.
 
 use af_core::{error_code, etag::sha256_hex};
-use af_crypto::secret::Kek;
-use af_crypto::{
-    checkpoint::{CheckpointScope, EncryptedCheckpointObject},
-    checkpoint_digest,
-    secret::SecretBytes,
-};
+use af_crypto::{checkpoint::CheckpointScope, checkpoint_digest, secret::SecretBytes};
 use af_wire::durable_task::{
     CheckpointAuthorizationInput, CheckpointCommitInput, CheckpointEntry, CheckpointFile,
     CheckpointObject, CheckpointObjectStatus, CheckpointObjectsInput, CheckpointPlaintext,
     CheckpointPlan, CheckpointTransferPurpose, CheckpointUpload, CheckpointUploadsInput,
     DecisionDurableTaskVersion,
 };
+use afd_fleet::durable_task::storage::chunk_cipher;
 use afd_fleet::durable_task::{
     DurableTaskLifecycle as _, DurableTasks,
     storage::{CheckpointStorageConfig, R2CheckpointStore},
 };
 use base64::{Engine as _, prelude::BASE64_STANDARD};
-use std::sync::Arc;
 use zeroize::Zeroizing;
-
-use crate::report_seed::FIXTURE_KEK_HEX;
 
 use super::{
     super::{
@@ -157,21 +150,20 @@ fn encrypt(case: &Case, object: &CheckpointObject, plaintext: &[u8]) -> Vec<u8> 
             .decode(object.data_key.as_ref().expect("key"))
             .expect("key encoding"),
     );
-    let (mut ciphertext, tag) = EncryptedCheckpointObject::seal(
-        key,
-        &nonce,
-        CheckpointScope {
-            workspace_id: &case.scope.workspace_id,
-            repository: &object.repository,
-            object_id: &id(&object.object_id),
-            format_version: 1,
-        },
-        Zeroizing::new(plaintext.to_vec()),
-    )
-    .expect("capture encryption")
-    .into_parts();
-    ciphertext.extend_from_slice(&tag);
-    ciphertext
+    let scope = CheckpointScope {
+        workspace_id: &case.scope.workspace_id,
+        repository: &object.repository,
+        object_id: &id(&object.object_id),
+        format_version: 1,
+    };
+    chunk_cipher(object.cipher)
+        .seal(
+            &key,
+            &nonce,
+            &scope.binding(),
+            Zeroizing::new(plaintext.to_vec()),
+        )
+        .expect("capture encryption")
 }
 
 fn uploads(
@@ -492,8 +484,7 @@ async fn moved(
             credential_name: "checkpoint-test".into(),
         }),
         case.scope.workspace_id.clone(),
-        fixture.vault.clone(),
-        Arc::new(Kek::from_hex(FIXTURE_KEK_HEX).expect("fixture key")),
+        fixture.keys(),
         server.client.clone(),
     ));
     let elsewhere = DurableTasks::new(case.held.runs.clone(), case.turns.clone(), dependencies);

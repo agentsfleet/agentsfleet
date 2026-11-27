@@ -68,8 +68,8 @@ pub(super) async fn create(
     runs: &Runs,
     owner: &mut TurnRunGuard<'_>,
     input: &TurnCheckpointBegin,
-    operation: &Uuid7,
-    digest: &str,
+    (operation, digest): (&Uuid7, &str),
+    cipher: af_wire::durable_task::CheckpointCipher,
 ) -> Result<Uuid7> {
     let expected = input.expected_head.as_ref().map(guard::id).transpose()?;
     let (_head, generation): (Option<Uuid7>, i64) =
@@ -86,7 +86,8 @@ pub(super) async fn create(
     let pages = std::iter::repeat_with(|| runs.entropy().uuid7(now))
         .take(usize::try_from(input.page_count).map_err(|_overflow| TurnCheckpointRefusal::Limit)?)
         .collect::<std::result::Result<Vec<_>, _>>()?;
-    insert(owner, input, &id, generation, expected.as_ref(), &pages).await?;
+    let head = (generation, expected.as_ref());
+    insert(owner, input, &id, head, &pages, cipher.into()).await?;
     sqlx::query(super::RECEIPT_INSERT)
         .bind(super::receipt_scope(
             &owner.current.workspace_id,
@@ -111,9 +112,9 @@ async fn insert(
     owner: &mut TurnRunGuard<'_>,
     input: &TurnCheckpointBegin,
     id: &Uuid7,
-    generation: i64,
-    expected: Option<&Uuid7>,
+    (generation, expected): (i64, Option<&Uuid7>),
     pages: &[Uuid7],
+    cipher: &'static str,
 ) -> Result<()> {
     let toolbox = match &input.workspace {
         TurnWorkspace::ApiOnly => None,
@@ -142,6 +143,7 @@ async fn insert(
         .bind(i32::try_from(input.entry_count).map_err(|_overflow| TurnCheckpointRefusal::Limit)?)
         .bind(&input.history_digest)
         .bind(owner.limits.transfer_seconds())
+        .bind(cipher)
         .execute(&mut *owner.tx)
         .await
         .map_err(query("persist complete turn capture plan"))?;

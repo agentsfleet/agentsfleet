@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use af_core::{clock, etag::sha256_hex, id::Uuid7};
 use af_crypto::{entropy::Entropy, secret::Kek};
+use af_wire::durable_task::CheckpointCipher;
 use af_wire::{
     decision::{DecisionAssignment, DecisionProfile, DecisionRequest},
     durable_task::{
@@ -13,6 +14,7 @@ use af_wire::{
     },
 };
 use afd_db::test_util::mint_id;
+use afd_fleet::durable_task::storage::CheckpointKeys;
 use afd_fleet::durable_task::{
     DurableTaskDependencies, DurableTaskLifecycle as _, DurableTasks, PreparedDurableTask,
     PreparedPlan,
@@ -36,6 +38,11 @@ pub(super) struct Decisions<'a> {
 }
 
 impl<'a> Decisions<'a> {
+    pub(super) fn keys(&self) -> CheckpointKeys {
+        let database = self.case.held.fixtures.database.clone();
+        CheckpointKeys::new(database, self.vault.clone(), CheckpointCipher::default())
+    }
+
     pub(super) async fn create(case: &'a Case) -> Self {
         case.held.fixtures.seed_model_rate(PROVIDER, MODEL).await;
         let model = DecisionModelFixture::create(&case.held.fixtures.database)

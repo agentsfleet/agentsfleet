@@ -15,8 +15,8 @@ const CONCURRENT_PUTS: usize = 4;
 pub(super) const BATCH_BYTES: u64 =
     CONCURRENT_PUTS as u64 * (super::files::CHUNK + af_crypto::TAG_LEN as u64);
 
-pub(super) fn ciphertext_size(object: &Object) -> u64 {
-    object.plaintext.size + crate::byte_count(af_crypto::TAG_LEN)
+pub(super) fn ciphertext_size(object: &af_wire::durable_task::CheckpointObject) -> u64 {
+    object.plaintext.size + crate::byte_count(transfer::cipher(object.cipher).overhead())
 }
 
 pub(super) struct UploadBatch {

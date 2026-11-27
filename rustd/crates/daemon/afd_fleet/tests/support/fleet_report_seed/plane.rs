@@ -84,9 +84,13 @@ impl Fixtures {
         let kek = Arc::new(Kek::from_hex(FIXTURE_KEK_HEX).expect("the fixture key is well formed"));
         RunService {
             durable_task_reports: None,
-            turn_checkpoints: afd_fleet::run::turn_checkpoint::TurnCheckpoints::new(Arc::clone(
-                &kek,
-            )),
+            turn_checkpoints: afd_fleet::run::turn_checkpoint::TurnCheckpoints::new(
+                afd_fleet::durable_task::storage::CheckpointKeys::over(
+                    self.database.clone(),
+                    Arc::clone(&kek),
+                    af_wire::durable_task::CheckpointCipher::default(),
+                ),
+            ),
             grants: afd_approval::IntegrationGrants::new(self.database.clone(), Entropy::new()),
             runs: self.runs(),
             accounts: Accounts::new(self.database.clone()),

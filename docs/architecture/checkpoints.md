@@ -16,8 +16,9 @@ A checkpoint is a saved copy of a run's progress. A replacement runner restores 
 |---|---|
 | What it holds | The conversation, accepted answers, finished child-agent results, memory changes and the folded messages it covers; workspace files when the run has a sandbox |
 | Who owns it | One ordinary turn (`thread.turns.head_checkpoint_id`) or one durable task (`fleet.durable_tasks.checkpoint_id`), never both |
-| Where history lives | Encrypted, in Postgres |
-| Where files live | Encrypted objects in Cloudflare R2 object storage, configured by `[checkpoint.storage]` |
+| Where history lives | Sealed under the workspace's checkpoint key, in Postgres |
+| Where files live | Sealed objects in Cloudflare R2 object storage, configured by `[checkpoint.storage]` |
+| What seals them | One key per workspace, in that workspace's vault; `[checkpoint] cipher` names the cipher |
 | Who moves the bytes | The runner's supervisor, through short-lived signed links the daemon issues |
 | What turns resume on | `[runner.recovery] resume_from_checkpoint`, `false` in both deployments |
 
@@ -64,7 +65,7 @@ thread.turns.head_checkpoint_id ──┐        ┌── fleet.durable_tasks.c
                          runner.checkpoints (turn_id XOR durable_task_id)
                            │ pages · pins · object_refs
                            ▼
-                         runner.checkpoint_objects ──▶ runner.checkpoint_identity_keys
+                         runner.checkpoint_objects        vault.secrets (checkpoint_key, one per workspace)
                            │ delete trigger
                            ▼
                          runner.checkpoint_purges
@@ -75,7 +76,7 @@ thread.replay_receipts:  scope <workspace>:turn:<turn>:checkpoint, (scope, opera
 
 The [checkpoint schema](../../rustd/crates/daemon/afd_db/schema/20261122090200_runner_checkpoints.sql) enforces one owner per row. A base outlives the task that first captured it ([bases](../../rustd/crates/daemon/afd_db/schema/20261122090100_runner_checkpoint_bases.sql)).
 
-Storage writes for one workspace run one at a time. Object registration, verification, purge acknowledgement and base or identity removal first call `identity.lock_workspace_storage`.
+Storage writes for one workspace run one at a time. Object registration, verification, purge acknowledgement, base removal and a key rotation's object removal first call `identity.lock_workspace_storage`.
 It takes `FOR NO KEY UPDATE` on the workspace row, so the key-share locks of `identity.lock_workspace` and foreign keys stay free ([function](../../rustd/crates/daemon/afd_db/schema/20261108120300_identity_workspaces.sql)).
 
 ### Publication
@@ -99,6 +100,7 @@ B runs                 the first resumed model call; one fenced settlement at th
 |---|---|
 | Ready | Restores the root and its matching files |
 | Absent | Starts from the original message and any unsettled folded messages |
+| Ready, but its workspace key is missing, will not open or did not seal it | Logs `checkpoint_key_unusable`, retires the workspace's checkpoints and starts from the original message |
 | Invalid root or file | Stops before any model call or tool |
 
 A required file restore waits for a transfer slot while renewal continues. The supervisor writes the files into a host stage through checked directory descriptors ([restore](../../rustd/crates/runner/afr_supervisor/src/recovery/turn/restore.rs)).
@@ -117,13 +119,34 @@ The daemon signs each upload or download link for one object, valid five minutes
 
 Before a task that targets a pull request starts, the daemon proves the bucket refuses a second write to one key. A bucket that accepts it blocks the task.
 
-Each object gets a fresh 256-bit data key from `af_crypto::entropy`. The daemon wraps that key with its master key through the vault envelope.
+Each workspace holds one checkpoint key: 32 bytes from `af_crypto::entropy`, in a `vault.secrets` row named `checkpoint_key` in the workspace's own vault ([keys](../../rustd/crates/daemon/afd_fleet/src/durable_task/storage/keys.rs)). The workspace's first save creates the row, and of two racing first saves one creates it and the other loads it.
 
-The supervisor receives only the temporary data key and the object's registered nonce. It encrypts with AES-256-GCM (Advanced Encryption Standard, Galois/Counter Mode), bound to workspace, repository, object and format ([checkpoint cipher](../../rustd/crates/foundation/af_crypto/src/checkpoint.rs)).
+The key is used as stored. It seals every file chunk and the turn's history root, and it keys each chunk's content identity. No checkpoint table holds a key, and no other key is derived from it.
 
-Content identity is a keyed hash-based message authentication code (HMAC) over the plaintext's SHA-256 digest and size. Its key belongs to one workspace and repository and never leaves the daemon.
+The secret list shows the row to the tenant. The tenant's secret routes refuse to create, replace or delete that name with 403 `UZ-VAULT-006`.
 
-Equal content within that scope reuses one stored object. Nothing is shared across workspaces, so one tenant cannot learn what another stores.
+`[checkpoint] cipher` names what seals a new checkpoint: `aes_256_gcm` by default, or `plain`, which stores bytes as they are so a deployment can measure a save and a restore without encryption. Boot logs `checkpoint_cipher_plain` while `plain` is set. Each checkpoint and each object records its cipher, and a restore opens with the recorded one ([checkpoint cipher](../../rustd/crates/foundation/af_crypto/src/checkpoint.rs)).
+
+The daemon hands the key, the cipher and the object's registered nonce to the supervisor with each save's and restore's authorization. The supervisor seals with AES-256-GCM (Advanced Encryption Standard, Galois/Counter Mode), bound to workspace, repository, object and format, and wipes the key when it drops it. A compromised runner host that also reads the bucket reads that workspace's checkpoints.
+
+Every object carries its own random 96-bit nonce, because all of a workspace's objects share one key.
+
+Content identity is a keyed hash-based message authentication code (HMAC) over the plaintext's SHA-256 digest and size, under the workspace's key. Equal content within one workspace and repository reuses one stored object. Nothing is shared across workspaces, so one tenant cannot learn what another stores.
+
+### Rotating a workspace's key
+
+A platform operator rotates one workspace's key with `agentsfleet platform checkpoint-key rotate <workspace_id>`, which calls `POST /v1/admin/workspaces/{workspace_id}/checkpoint-key/rotate` and needs `platform-key:admin`.
+
+```text
+one transaction
+  delete the workspace's checkpoint generations   heads clear; an interrupted run starts from its message
+  delete its repository bases
+  delete its object rows                          each records a bucket delete in runner.checkpoint_purges
+  write a new key with the vault
+answer: retired_generations, retired_objects      the next save uploads everything again
+```
+
+A key row that is missing, will not open or did not seal the head ends the same way. The daemon finds it when it assigns the replacement run, and no byte of the old checkpoint is served ([resume](../../rustd/crates/daemon/afd_fleet/src/run/turn_checkpoint/head.rs)).
 
 Restore checks the ciphertext digest, the authentication tag and the plaintext identity before writing any file. A mismatch keeps the previous checkpoint and blocks that restore.
 
@@ -164,6 +187,8 @@ make bench-recovery PROFILE=rig BENCH_FLEETS=1 BENCH_WORKSPACES=shared
 
 Latency runs from the later of the old run's and thread's expiry to the first restored model request ([bench](../../rustd/crates/e2e/af_e2e/benches/recovery/measure.rs)).
 
+The bench first prints what sealing and opening cost, with no datastore: one 8 MiB chunk and a 1 GiB checkpoint, stored plain, under RustCrypto's AES-256-GCM and under `aws-lc-rs`'s ([cipher bench](../../rustd/crates/e2e/af_e2e/benches/recovery/cipher.rs)). `--cipher-only` stops after those lines.
+
 ## Limits
 
 - Resume is off in both deployments (`[runner.recovery] resume_from_checkpoint = false`). Both set `[checkpoint.storage]` to their own R2 bucket, so file checkpoints save ([prod](../../deploy/fly/agentsfleetd-prod/agentsfleetd.toml), [dev](../../deploy/fly/agentsfleetd-dev/agentsfleetd.toml)).
@@ -172,6 +197,7 @@ Latency runs from the later of the old run's and thread's expiry to the first re
 - No production code calls checkpoint maintenance (`Tasks::maintain_checkpoints`). A running daemon deletes no settled checkpoint and collects no orphaned upload; the retention keys change nothing.
 - No quota caps a workspace's total stored bytes. The per-save upload bounds above are the only size limits.
 - A signed link cannot be revoked before it expires. A stopped run cannot publish, and no sandbox receives a link or key.
+- A master-key rotation is not built. Rotating a workspace's checkpoint key deletes its checkpoints instead of sealing them again.
 - Work after the last save can repeat, external effects included.
 
 ## Related pages
@@ -179,5 +205,5 @@ Latency runs from the later of the old run's and thread's expiry to the first re
 - [Runner fleet](runner_fleet.md): how a dead runner's turn is reassigned
 - [Durable tasks](durable_tasks.md): task lifecycle and guarded publication
 - [Runner runtime](runner_execution.md): the sandbox and the held workspace between runs
-- [Configuration reference](config_reference.md): `[checkpoint.storage]`, `[turns.checkpoints]` and `[durable_tasks.checkpoints]`
+- [Configuration reference](config_reference.md): `[checkpoint] cipher`, `[checkpoint.storage]`, `[turns.checkpoints]` and `[durable_tasks.checkpoints]`
 - [Sandbox evaluation](../reviews/space-sandbox/sandbox_evaluation.md): the design study that proposed this storage

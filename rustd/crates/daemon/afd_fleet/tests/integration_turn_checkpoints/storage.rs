@@ -7,22 +7,18 @@ use super::{
     valid,
 };
 use af_core::id::Uuid7;
-use af_crypto::{
-    checkpoint::{CheckpointScope, EncryptedCheckpointObject},
-    secret::{Kek, SecretBytes},
-};
+use af_crypto::{checkpoint::CheckpointScope, secret::SecretBytes};
 use af_wire::{
     durable_task::CheckpointObject,
     run::{TurnCheckpointAction, TurnCheckpointResponse},
 };
 use afd_fleet::{
-    durable_task::storage::{CheckpointStorageConfig, R2CheckpointStore},
+    durable_task::storage::{CheckpointStorageConfig, R2CheckpointStore, chunk_cipher},
     run::turn_checkpoint::TurnCheckpoints,
 };
 use afd_vault::{SecretBody, SecretName};
 use base64::{Engine as _, prelude::BASE64_STANDARD};
 use serde_json::value::RawValue;
-use std::sync::Arc;
 use zeroize::Zeroizing;
 
 pub(super) struct Files {
@@ -38,8 +34,15 @@ impl Files {
     }
 
     pub(super) async fn for_case(case: Case) -> Checked<Self> {
+        Self::sealing(case, af_wire::durable_task::CheckpointCipher::default()).await
+    }
+
+    /// As [`Self::for_case`], with the deployment's `[checkpoint] cipher` named.
+    pub(super) async fn sealing(
+        case: Case,
+        cipher: af_wire::durable_task::CheckpointCipher,
+    ) -> Checked<Self> {
         let server = Server::start().await;
-        let master = Arc::new(Kek::from_hex(crate::report_seed::FIXTURE_KEK_HEX)?);
         let vault = case.fixtures.plane().vault;
         let secret=RawValue::from_string(serde_json::json!({"access_key_id":"synthetic-checkpoint-key","secret_access_key":"synthetic-checkpoint-secret"}).to_string())?;
         vault
@@ -50,27 +53,26 @@ impl Files {
                 af_core::clock::now(),
             )
             .await?;
-        let config = garde::Unvalidated::new(CheckpointStorageConfig {
-            endpoint: format!("https://{HOST}"),
-            bucket: "checkpoint-test".into(),
-            credential_name: "checkpoint-test".into(),
-        })
-        .validate()?;
-        let storage = R2CheckpointStore::new(
-            config,
-            case.acquired.workspace_id.clone(),
-            vault,
-            Arc::clone(&master),
-            server.client.clone(),
-        );
+        let (store, storage) = stores(&case, &server, cipher)?;
         storage.verify_create_only().await?;
-        let store = TurnCheckpoints::new(master).with_storage(Some(storage.clone()));
         Ok(Self {
             case,
             server,
             store,
             storage,
         })
+    }
+
+    /// The daemon restarted with another `[checkpoint] cipher`: the same
+    /// bucket, vault and rows, and new keys built under the new setting.
+    pub(super) fn restart_sealing(
+        &mut self,
+        cipher: af_wire::durable_task::CheckpointCipher,
+    ) -> Checked {
+        let (store, storage) = stores(&self.case, &self.server, cipher)?;
+        self.store = store;
+        self.storage = storage;
+        Ok(())
     }
 
     pub(super) async fn execute(
@@ -93,6 +95,28 @@ impl Files {
     }
 }
 
+fn stores(
+    case: &Case,
+    server: &Server,
+    cipher: af_wire::durable_task::CheckpointCipher,
+) -> Checked<(TurnCheckpoints, R2CheckpointStore)> {
+    let config = garde::Unvalidated::new(CheckpointStorageConfig {
+        endpoint: format!("https://{HOST}"),
+        bucket: "checkpoint-test".into(),
+        credential_name: "checkpoint-test".into(),
+    })
+    .validate()?;
+    let keys = super::keys_under(&case.fixtures, cipher)?;
+    let storage = R2CheckpointStore::new(
+        config,
+        case.acquired.workspace_id.clone(),
+        keys.clone(),
+        server.client.clone(),
+    );
+    let store = TurnCheckpoints::new(keys).with_storage(Some(storage.clone()));
+    Ok((store, storage))
+}
+
 pub(super) fn encrypt(
     workspace: &Uuid7,
     object: &CheckpointObject,
@@ -102,20 +126,18 @@ pub(super) fn encrypt(
     let nonce: [u8; af_crypto::NONCE_LEN] = nonce.as_slice().try_into()?;
     let key = SecretBytes::new(BASE64_STANDARD.decode(object.data_key.as_deref().ok_or("key")?)?);
     let id = Uuid7::parse(&object.object_id)?;
-    let encrypted = EncryptedCheckpointObject::seal(
-        key,
+    let scope = CheckpointScope {
+        workspace_id: workspace,
+        repository: &object.repository,
+        object_id: &id,
+        format_version: 1,
+    };
+    Ok(chunk_cipher(object.cipher).seal(
+        &key,
         &nonce,
-        CheckpointScope {
-            workspace_id: workspace,
-            repository: &object.repository,
-            object_id: &id,
-            format_version: 1,
-        },
+        &scope.binding(),
         Zeroizing::new(plaintext.to_vec()),
-    )?;
-    let (mut bytes, tag) = encrypted.into_parts();
-    bytes.extend_from_slice(&tag);
-    Ok(bytes)
+    )?)
 }
 
 pub(super) async fn upload(files: &Files, object: &CheckpointObject, bytes: Vec<u8>) -> Checked {

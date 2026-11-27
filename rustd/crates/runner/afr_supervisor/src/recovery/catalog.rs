@@ -1,6 +1,7 @@
 //! Two bounded passes hash frozen files, then upload only missing native chunks.
 
 use super::files::{self, Entry, Identity, Workspace};
+use super::names::{EveryNameItsOwnFile, Naming, SecondNames};
 use crate::{Result, error};
 use af_wire::durable_task::{CheckpointEntry, CheckpointFile, CheckpointPage, CheckpointPlaintext};
 use std::{collections::BTreeMap, sync::Arc};
@@ -73,6 +74,17 @@ impl Catalog {
         base_paths: Vec<String>,
         stop: &tokio_util::sync::CancellationToken,
     ) -> Result<Self> {
+        Self::build_naming(root, history, base_paths, stop, &mut EveryNameItsOwnFile)
+    }
+
+    /// As [`Self::build`], asking `names` once per file how its name is saved.
+    pub(super) fn build_naming(
+        root: Option<&Arc<Workspace>>,
+        history: Zeroizing<Vec<u8>>,
+        base_paths: Vec<String>,
+        stop: &tokio_util::sync::CancellationToken,
+        names: &mut dyn SecondNames,
+    ) -> Result<Self> {
         let inventory = root
             .map(|root| root.inventory(stop))
             .transpose()?
@@ -106,6 +118,7 @@ impl Catalog {
                 } => {
                     let root =
                         root.ok_or_else(|| error::config("checkpoint file has no workspace"))?;
+                    let Naming::OwnFile = names.naming(path, identity);
                     let keys = catalog.file(root, path, identity, files::size(entry), stop)?;
                     let file = CheckpointEntry::File(CheckpointFile {
                         path: path.clone(),

@@ -24,6 +24,8 @@ pub enum AdminRoute {
     Models,
     /// One catalogue row.
     Model,
+    /// Rotate one workspace's checkpoint key, retiring what the old key sealed.
+    CheckpointKeyRotate,
 }
 
 impl AdminRoute {
@@ -33,6 +35,7 @@ impl AdminRoute {
         Self::PlatformKey,
         Self::Models,
         Self::Model,
+        Self::CheckpointKeyRotate,
     ];
 
     /// The verbs this route identity serves.
@@ -47,6 +50,7 @@ impl AdminRoute {
             Self::Model => &[Verb::Patch, Verb::Delete],
             Self::PlatformKeys => &[Verb::Get, Verb::Put],
             Self::PlatformKey => &[Verb::Delete],
+            Self::CheckpointKeyRotate => &[Verb::Post],
         }
     }
 
@@ -66,6 +70,11 @@ impl AdminRoute {
             ),
             Self::Models => ("/v1/admin/models", Scopes::rw(MODEL_READ, MODEL_ADMIN)),
             Self::Model => ("/v1/admin/models/{id}", Scopes::Always(MODEL_ADMIN)),
+            // A side-effecting call no field edit undoes, so a trailing `rotate`.
+            Self::CheckpointKeyRotate => (
+                af_wire::paths::ADMIN_CHECKPOINT_KEY_ROTATE,
+                Scopes::Always(PLATFORM_KEY_ADMIN),
+            ),
         };
         RouteMeta::new(Guard::Bearer, RouteClass::Api, template, scopes)
     }

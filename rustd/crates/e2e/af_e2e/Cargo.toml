@@ -46,6 +46,9 @@ guffbolt-ai = { workspace = true, features = ["test-util"] }
 af_context.workspace = true
 af_core = { workspace = true, features = ["test-util"] }
 af_crypto.workspace = true
+# The recovery bench measures RustCrypto's AES-256-GCM, which the daemon
+# ships, beside this one. No shipped crate seals with it.
+aws-lc-rs.workspace = true
 af_observability.workspace = true
 af_otlp.workspace = true
 af_stream = { workspace = true, features = ["test-util"] }
@@ -86,6 +89,8 @@ jiff-sqlx.workspace = true
 reqwest.workspace = true
 rustls.workspace = true
 serde_json.workspace = true
+# The bench hands each cipher a plaintext buffer that wipes itself.
+zeroize.workspace = true
 sqlx.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = [

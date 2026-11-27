@@ -211,7 +211,7 @@ impl Session<'_> {
                 if !matches!(object.status, CheckpointObjectStatus::Busy) {
                     self.progress.discover(
                         &object.object_id,
-                        object.plaintext.size + crate::byte_count(af_crypto::TAG_LEN),
+                        super::uploads::ciphertext_size(object),
                         matches!(object.status, CheckpointObjectStatus::Reused),
                     );
                 }

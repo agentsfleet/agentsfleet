@@ -1,111 +1,74 @@
-//! Shared immutable-object key custody; ownership is supplied by the task or event transaction.
+//! Shared immutable-object registration; ownership is supplied by the task or event transaction.
 
 use crate::{
     Result,
-    durable_task::{DurableTaskRefusal, storage::R2CheckpointStore},
+    durable_task::{
+        DurableTaskRefusal,
+        storage::{CheckpointKeys, chunk_cipher},
+    },
     run::Runs,
 };
-use af_core::{clock, id::Uuid7};
-use af_crypto::{
-    checkpoint::{CheckpointScope, PreparedCheckpointKey},
-    envelope::Sealer,
-};
-use af_wire::durable_task::CheckpointPlaintext;
+use af_core::clock;
+use af_wire::durable_task::{CheckpointCipher, CheckpointPlaintext};
 use serde::Serialize;
 
 #[derive(Clone, Copy)]
 pub(crate) struct Registration<'a> {
-    pub(crate) workspace: &'a Uuid7,
     pub(crate) namespace: &'a str,
-    pub(crate) identity: &'a Uuid7,
     pub(crate) format: i32,
+    /// The cipher the owning plan recorded: its objects are sealed under it.
+    pub(crate) cipher: CheckpointCipher,
 }
 
 #[derive(Serialize)]
 pub(crate) struct NewObject {
-    id: Uuid7,
-    #[serde(rename = "checkpoint_identity_key_id")]
-    identity_key_id: Uuid7,
+    id: af_core::id::Uuid7,
+    repository: String,
     content_identity: String,
     plaintext_digest: String,
     plaintext_size: i64,
     kind: String,
     format_version: i32,
+    cipher: &'static str,
     pub(crate) accounted_bytes: i64,
-    dek_ciphertext: String,
-    dek_nonce: String,
-    dek_tag: String,
-    secret_nonce: String,
-    secret_ciphertext: String,
-    secret_tag: String,
-    kek_version: i32,
     object_nonce: String,
 }
 
+/// One object row: its identity under the workspace's key, and a random nonce
+/// of its own, because every object of the workspace is sealed under that key.
 pub(crate) fn prepare(
     runs: &Runs,
-    storage: &R2CheckpointStore,
+    keys: &CheckpointKeys,
     scope: Registration<'_>,
     descriptor: &CheckpointPlaintext,
     content: &str,
 ) -> Result<NewObject> {
-    let Registration {
-        workspace,
-        namespace,
-        identity,
-        format,
-    } = scope;
-    let id = runs.entropy().uuid7(clock::now())?;
-    let prepared = PreparedCheckpointKey::create(
-        runs.entropy(),
-        &Sealer::new(),
-        &storage.master,
-        CheckpointScope {
-            workspace_id: workspace,
-            repository: namespace,
-            object_id: &id,
-            format_version: u32::try_from(format)
-                .map_err(|_overflow| DurableTaskRefusal::CheckpointIncompatible)?,
-        },
-    )?;
-    let (wrapped, key) = prepared.into_parts();
-    drop(key);
-    let envelope = wrapped.envelope();
-    let (plaintext_size, accounted_bytes) = sizes(descriptor.size)?;
+    let nonce = keys.nonce()?;
+    let (plaintext_size, accounted_bytes) = sizes(descriptor.size, scope.cipher)?;
     Ok(NewObject {
-        id,
-        identity_key_id: identity.clone(),
+        id: runs.entropy().uuid7(clock::now())?,
+        repository: scope.namespace.to_owned(),
         content_identity: content.to_owned(),
         plaintext_digest: descriptor.sha256.clone(),
         plaintext_size,
         kind: descriptor.kind.clone(),
-        format_version: format,
+        format_version: scope.format,
+        cipher: scope.cipher.into(),
         accounted_bytes,
-        dek_ciphertext: pg_bytes(envelope.wrapped_dek()),
-        dek_nonce: pg_bytes(envelope.dek_nonce()),
-        dek_tag: pg_bytes(envelope.dek_tag()),
-        secret_nonce: pg_bytes(envelope.payload_nonce()),
-        secret_ciphertext: pg_bytes(envelope.payload_ciphertext()),
-        secret_tag: pg_bytes(envelope.payload_tag()),
-        kek_version: envelope.kek_version(),
-        object_nonce: pg_bytes(wrapped.nonce()),
+        object_nonce: format!("\\x{}", hex::encode(nonce)),
     })
 }
 
 /// A plaintext of `size` bytes as stored, and the sealed bytes its upload
-/// allowance is charged: the plaintext and its authentication tag. Either past
-/// a `BIGINT` exhausts the limit.
-fn sizes(size: u64) -> Result<(i64, i64)> {
+/// allowance is charged: the plaintext and whatever its cipher adds. Either
+/// past a `BIGINT` exhausts the limit.
+fn sizes(size: u64, cipher: CheckpointCipher) -> Result<(i64, i64)> {
     let plaintext = i64::try_from(size).map_err(|_overflow| DurableTaskRefusal::LimitExhausted)?;
-    let accounted = i64::try_from(af_crypto::TAG_LEN)
+    let accounted = i64::try_from(chunk_cipher(cipher).overhead())
         .ok()
-        .and_then(|tag| plaintext.checked_add(tag))
+        .and_then(|added| plaintext.checked_add(added))
         .ok_or(DurableTaskRefusal::LimitExhausted)?;
     Ok((plaintext, accounted))
-}
-
-fn pg_bytes(bytes: &[u8]) -> String {
-    format!("\\x{}", hex::encode(bytes))
 }
 
 #[cfg(test)]
@@ -115,21 +78,22 @@ fn pg_bytes(bytes: &[u8]) -> String {
 )]
 mod tests {
     use af_core::error_code;
+    use af_wire::durable_task::CheckpointCipher;
 
     use super::sizes;
 
     // Value: protects=an object's stored and charged sizes are the plaintext and
-    // the plaintext plus its tag; fails_when=the tag is dropped from the charge or
-    // added to the stored size; why_new=the size pair had no direct case;
-    // seam=the private size helper registration calls; no_claim=key sealing.
+    // the plaintext plus what its cipher adds; fails_when=the tag is dropped from
+    // an encrypted charge, charged to a plain object, or added to the stored
+    // size; why_new=the size pair had no direct case; seam=the private size
+    // helper registration calls; no_claim=sealing.
     #[test]
-    fn an_object_is_charged_its_plaintext_and_its_tag() {
-        let (plaintext, accounted) = sizes(5).expect("a small object fits");
-        assert_eq!(plaintext, 5);
-        assert_eq!(
-            accounted,
-            5 + i64::try_from(af_crypto::TAG_LEN).expect("the tag is sixteen bytes")
-        );
+    fn an_object_is_charged_its_plaintext_and_what_its_cipher_adds() {
+        let tag = i64::try_from(af_crypto::TAG_LEN).expect("the tag is sixteen bytes");
+        let sealed = sizes(5, CheckpointCipher::Aes256Gcm).expect("a small object fits");
+        assert_eq!(sealed, (5, 5 + tag));
+        let plain = sizes(5, CheckpointCipher::Plain).expect("a small object fits");
+        assert_eq!(plain, (5, 5));
     }
 
     // Value: protects=a size the ledger cannot hold exhausts the limit instead of
@@ -140,12 +104,14 @@ mod tests {
     fn a_size_past_a_bigint_exhausts_the_limit() {
         let largest = i64::MAX.unsigned_abs();
         for size in [u64::MAX, largest + 1, largest] {
-            let refused = sizes(size).expect_err("no BIGINT holds the sealed size");
+            let refused = sizes(size, CheckpointCipher::Aes256Gcm)
+                .expect_err("no BIGINT holds the sealed size");
             assert_eq!(
                 refused.code(),
                 error_code::DURABLE_TASK_LIMIT_EXHAUSTED,
                 "{size}"
             );
         }
+        sizes(largest, CheckpointCipher::Plain).expect("a plain object adds nothing");
     }
 }

@@ -27,6 +27,8 @@ pub(super) struct Plan {
     #[sqlx(rename = "checkpoint_base_id")]
     pub base_id: Option<Uuid7>,
     pub format_version: i32,
+    /// The cipher this plan's new objects are sealed under, as recorded.
+    pub cipher: String,
     pub toolbox_digest: String,
     pub page_count: i32,
     pub page_ids: Vec<Uuid7>,

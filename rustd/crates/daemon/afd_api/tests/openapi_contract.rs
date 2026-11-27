@@ -45,7 +45,7 @@ const WRITES: [&str; 3] = ["post", "put", "patch"];
 /// The writes that read no body, and why each is honest about it.
 ///
 /// Every other write names what it reads, so a client can send it.
-const BODILESS_WRITES: [(&str, &str, &str); 5] = [
+const BODILESS_WRITES: [(&str, &str, &str); 6] = [
     (
         "post",
         "/v1/connectors/{provider}/callback",
@@ -70,6 +70,11 @@ const BODILESS_WRITES: [(&str, &str, &str); 5] = [
         "post",
         "/v1/tenants/me/invites/{invite_id}/send",
         "the invite is the whole request",
+    ),
+    (
+        "post",
+        "/v1/admin/workspaces/{workspace_id}/checkpoint-key/rotate",
+        "the workspace in the path is the whole request",
     ),
 ];
 
@@ -188,8 +193,8 @@ fn test_every_reference_resolves() {
 ///
 /// A POST, PUT or PATCH with no `requestBody` is typed by every generated
 /// client as taking nothing, so the caller has no way to send the document the
-/// handler parses. The four that genuinely take nothing are listed with their
-/// reason, so a fifth cannot join them by omission.
+/// handler parses. Those that genuinely take nothing are listed with their
+/// reason, so another cannot join them by omission.
 #[test]
 fn test_every_write_names_the_body_it_reads() {
     let document = document();

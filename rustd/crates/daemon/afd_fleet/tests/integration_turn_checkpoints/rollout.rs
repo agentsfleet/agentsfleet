@@ -1,11 +1,9 @@
 //! Disabling restore admission preserves checkpointed heads on ordinary and recovery assignments.
 
 use afd_runner::timing::{RunClock, RunSettings};
-use std::sync::Arc;
 
-use af_crypto::secret::Kek;
 use af_wire::run::TurnWorkspace;
-use afd_fleet::run::{RecoveryScan, turn_checkpoint::TurnCheckpoints};
+use afd_fleet::run::RecoveryScan;
 
 use super::{Case, Checked, publication};
 use crate::support::Fixtures;
@@ -14,7 +12,7 @@ use crate::support::Fixtures;
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn disabled_resume_preserves_the_head_and_fence_until_enabled() -> Checked {
     let mut case = Case::with_fixtures(Fixtures::create_isolated().await).await?;
-    let store = TurnCheckpoints::new(Arc::new(Kek::from_hex(&hex::encode([17_u8; 32]))?));
+    let store = super::turn_store(&case)?;
     let root = publication::root(&case, TurnWorkspace::ApiOnly);
     let saved = publication::publish(&case, &store, &root).await?;
     expire(&case).await?;

@@ -56,7 +56,13 @@ pub(crate) fn plane() -> RunService {
     let kek = Arc::new(Kek::from_bytes([7; af_crypto::KEY_LEN]));
     RunService {
         durable_task_reports: None,
-        turn_checkpoints: crate::run::turn_checkpoint::TurnCheckpoints::new(Arc::clone(&kek)),
+        turn_checkpoints: crate::run::turn_checkpoint::TurnCheckpoints::new(
+            crate::durable_task::storage::CheckpointKeys::over(
+                database(),
+                Arc::clone(&kek),
+                af_wire::durable_task::CheckpointCipher::default(),
+            ),
+        ),
         runs: runs(),
         accounts: Accounts::new(database()),
         biller: Arc::new(biller()),

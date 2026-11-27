@@ -29,6 +29,7 @@ fn encrypted(kind: &str) -> TestResult<(CheckpointObject, Vec<u8>)> {
             kind: kind.to_owned(),
         },
         status: CheckpointObjectStatus::Reused,
+        cipher: af_wire::durable_task::CheckpointCipher::default(),
         nonce: None,
         data_key: None,
         ciphertext_sha256: None,

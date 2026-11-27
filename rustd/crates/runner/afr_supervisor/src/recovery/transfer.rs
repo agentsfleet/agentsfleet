@@ -1,16 +1,28 @@
 //! Exact native presigned transfers carry neither runner tokens nor provider keys.
+//! Each object is sealed and opened under the workspace's key the daemon hands over
+//! with its authorization, by the cipher the daemon recorded for it.
 
 use crate::{Result, error};
 use af_core::id::Uuid7;
 use af_crypto::{
-    checkpoint::{CheckpointScope, EncryptedCheckpointObject},
+    checkpoint::{Aes256Gcm, CheckpointScope, ChunkCipher, Plain},
     secret::SecretBytes,
 };
-use af_wire::durable_task::{CheckpointObject, CheckpointTransfer};
+use af_wire::durable_task::{CheckpointCipher, CheckpointObject, CheckpointTransfer};
 use base64::Engine as _;
 use zeroize::Zeroizing;
 
+/// The largest stored object: a full chunk and the tag the encrypting cipher adds.
 const MAX_BYTES: u64 = super::files::CHUNK + af_crypto::TAG_LEN as u64;
+
+/// The implementation the daemon recorded for an object: a save seals with it
+/// and a restore opens with it, whatever the deployment's setting is now.
+pub(super) fn cipher(named: CheckpointCipher) -> &'static dyn ChunkCipher {
+    match named {
+        CheckpointCipher::Aes256Gcm => &Aes256Gcm,
+        CheckpointCipher::Plain => &Plain,
+    }
+}
 
 #[derive(Debug, Clone)]
 pub(crate) struct Transfers {
@@ -63,10 +75,7 @@ impl Transfers {
     }
 
     pub(super) async fn download(&self, object: &CheckpointObject) -> Result<Vec<u8>> {
-        let expected = object
-            .ciphertext_length
-            .filter(|length| (17..=MAX_BYTES).contains(length))
-            .ok_or_else(|| error::config("checkpoint ciphertext length is invalid"))?;
+        let expected = stored_length(object)?;
         let transfer = object
             .transfer
             .as_ref()
@@ -138,6 +147,16 @@ impl Transfers {
     }
 }
 
+/// An object's stored length, when it is one its cipher can have produced
+/// from a chunk of at least one byte.
+pub(super) fn stored_length(object: &CheckpointObject) -> Result<u64> {
+    let smallest = 1 + crate::byte_count(cipher(object.cipher).overhead());
+    object
+        .ciphertext_length
+        .filter(|length| (smallest..=MAX_BYTES).contains(length))
+        .ok_or_else(|| error::config("checkpoint ciphertext length is invalid"))
+}
+
 pub(super) fn seal(
     workspace: &Uuid7,
     object: &mut CheckpointObject,
@@ -152,26 +171,19 @@ pub(super) fn seal(
     }
     let id = Uuid7::parse(&object.object_id)?;
     let (key, nonce) = material(object)?;
-    let encrypted = EncryptedCheckpointObject::seal(
-        key,
-        &nonce,
-        CheckpointScope {
-            workspace_id: workspace,
-            repository: &object.repository,
-            object_id: &id,
-            format_version: 1,
-        },
-        plaintext,
-    )?;
-    let (mut bytes, tag) = encrypted.into_parts();
-    bytes.extend_from_slice(&tag);
-    Ok(bytes)
+    let scope = CheckpointScope {
+        workspace_id: workspace,
+        repository: &object.repository,
+        object_id: &id,
+        format_version: 1,
+    };
+    Ok(cipher(object.cipher).seal(&key, &nonce, &scope.binding(), plaintext)?)
 }
 
 pub(super) fn open(
     workspace: &Uuid7,
     object: &mut CheckpointObject,
-    mut ciphertext: Vec<u8>,
+    ciphertext: Vec<u8>,
 ) -> Result<SecretBytes> {
     if object.ciphertext_length != Some(crate::byte_count(ciphertext.len()))
         || crate::byte_count(ciphertext.len()) > MAX_BYTES
@@ -182,28 +194,15 @@ pub(super) fn open(
             "checkpoint ciphertext differs from native registration",
         ));
     }
-    let tag_at = ciphertext
-        .len()
-        .checked_sub(af_crypto::TAG_LEN)
-        .ok_or_else(|| error::config("checkpoint authentication tag is absent"))?;
-    let tag: [u8; af_crypto::TAG_LEN] = ciphertext
-        .get(tag_at..)
-        .ok_or_else(|| error::config("checkpoint authentication tag is absent"))?
-        .try_into()
-        .map_err(|source| error::boundary("checkpoint authentication tag is invalid", source))?;
-    ciphertext.truncate(tag_at);
     let id = Uuid7::parse(&object.object_id)?;
     let (key, nonce) = material(object)?;
-    let plaintext = EncryptedCheckpointObject::from_parts(ciphertext, tag).open(
-        key,
-        &nonce,
-        CheckpointScope {
-            workspace_id: workspace,
-            repository: &object.repository,
-            object_id: &id,
-            format_version: 1,
-        },
-    )?;
+    let scope = CheckpointScope {
+        workspace_id: workspace,
+        repository: &object.repository,
+        object_id: &id,
+        format_version: 1,
+    };
+    let plaintext = cipher(object.cipher).open(&key, &nonce, &scope.binding(), ciphertext)?;
     if crate::byte_count(plaintext.expose().len()) != object.plaintext.size
         || af_core::etag::sha256_hex(plaintext.expose()) != object.plaintext.sha256
     {
@@ -219,12 +218,12 @@ fn material(object: &mut CheckpointObject) -> Result<(SecretBytes, [u8; af_crypt
         object
             .data_key
             .take()
-            .ok_or_else(|| error::config("checkpoint data key is absent"))?,
+            .ok_or_else(|| error::config("checkpoint key is absent"))?,
     );
     let key = SecretBytes::new(
         base64::prelude::BASE64_STANDARD
             .decode(key.as_bytes())
-            .map_err(|source| error::boundary("checkpoint data key encoding is invalid", source))?,
+            .map_err(|source| error::boundary("checkpoint key encoding is invalid", source))?,
     );
     let nonce = base64::prelude::BASE64_STANDARD
         .decode(

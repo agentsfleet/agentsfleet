@@ -12,6 +12,8 @@ CREATE TABLE runner.checkpoints (
     owner_run_id UUID NOT NULL,
     owner_fence BIGINT NOT NULL CHECK (owner_fence > 0),
     format_version INTEGER NOT NULL CHECK (format_version > 0),
+    -- What sealed this generation's new objects and its root; a restore opens with it.
+    cipher TEXT NOT NULL,
     -- NULL for an API-only turn: it saves no files.
     toolbox_digest TEXT,
     page_ids UUID[] NOT NULL,
@@ -21,13 +23,13 @@ CREATE TABLE runner.checkpoints (
     entry_count INTEGER NOT NULL CHECK (entry_count >= 0),
     manifest_root TEXT,
     history_digest TEXT,
-    -- Turn only: the head this plan expected, the folded inputs it covers and its sealed root.
+    -- Turn only: the head this plan expected, the folded inputs it covers, and its history
+    -- root sealed under the workspace's checkpoint key with its own random nonce.
     expected_head_checkpoint_id UUID,
     covered_fold_ids UUID[],
     covered_fold_sequences BIGINT[],
-    root_dek_ciphertext BYTEA, root_dek_nonce BYTEA, root_dek_tag BYTEA,
-    root_secret_nonce BYTEA, root_secret_ciphertext BYTEA, root_secret_tag BYTEA,
-    root_kek_version INTEGER,
+    root_nonce BYTEA,
+    root_sealed BYTEA,
     -- Task only, all or none: the generations it was planned under, its mode and repository,
     -- the input and effect cursors it covers; and its optional base and commit.
     durable_task_generation BIGINT CHECK (durable_task_generation > 0),
@@ -67,9 +69,7 @@ CREATE TABLE runner.checkpoints (
     CONSTRAINT ck_checkpoints_ready_root CHECK (ready_at IS NULL OR manifest_root IS NOT NULL),
     CONSTRAINT ck_checkpoints_turn_ready CHECK (turn_id IS NULL OR ready_at IS NULL OR (
         history_digest IS NOT NULL AND covered_fold_ids IS NOT NULL
-        AND root_dek_ciphertext IS NOT NULL AND root_dek_nonce IS NOT NULL AND root_dek_tag IS NOT NULL
-        AND root_secret_nonce IS NOT NULL AND root_secret_ciphertext IS NOT NULL
-        AND root_secret_tag IS NOT NULL AND root_kek_version IS NOT NULL)),
+        AND root_nonce IS NOT NULL AND root_sealed IS NOT NULL)),
     CONSTRAINT ck_checkpoints_disposition CHECK (ready_at IS NULL OR abandoned_at IS NULL)
 );
 

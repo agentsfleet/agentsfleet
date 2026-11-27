@@ -108,6 +108,7 @@ fn malformed_unknown_and_unsafe_settings_refuse_without_echoing_values() -> Test
         "[runner.stream.data]\nmax_buffered_bytes = 67_108_863",
         "[runner.listener]\nmax_udp_payload_bytes = 1199",
         "[telemetry]\nlog_level = 'private-invalid-value'",
+        "[checkpoint]\ncipher = 'private-invalid-value'",
         "[server",
     ] {
         let mut file = tempfile::NamedTempFile::new()?;
@@ -167,6 +168,11 @@ fn every_supported_file_section_reuses_its_existing_startup_input() -> TestResul
             .get("credential_name")
             .and_then(serde_json::Value::as_str),
         Some("checkpoint-fixture")
+    );
+    assert_eq!(
+        source.runtime.checkpoint_cipher,
+        af_wire::durable_task::CheckpointCipher::Plain,
+        "`[checkpoint] cipher` reaches the runtime settings"
     );
     assert!(!format!("{source:?}").contains("private-env-value"));
     Ok(())
@@ -233,6 +239,8 @@ otlp_endpoint = "http://collector.example.com:4318"
 otlp_protocol = "http/protobuf"
 [telemetry.otlp]
 export_timeout_seconds = 3
+[checkpoint]
+cipher = "plain"
 [checkpoint.storage]
 endpoint = "{endpoint}"
 bucket = "fixture-checkpoints"

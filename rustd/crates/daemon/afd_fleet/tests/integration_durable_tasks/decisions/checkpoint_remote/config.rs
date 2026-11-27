@@ -6,14 +6,12 @@ use super::super::{
     fixture::Decisions,
 };
 use af_core::clock;
-use af_crypto::secret::Kek;
 use afd_fleet::durable_task::{
     DurableTasks,
     storage::{CheckpointStorageConfig, R2CheckpointStore},
 };
 use afd_vault::{SecretBody, SecretName};
 use serde_json::value::RawValue;
-use std::sync::Arc;
 
 pub(super) const ACCESS_KEY: &str = "synthetic-checkpoint-key";
 pub(super) const SECRET_KEY: &str = "synthetic-checkpoint-secret";
@@ -43,8 +41,7 @@ pub(crate) async fn configured(fixture: &Decisions<'_>, server: &Server) -> Dura
             credential_name: "checkpoint-test".into(),
         }),
         case.scope.workspace_id.clone(),
-        fixture.vault.clone(),
-        Arc::new(Kek::from_hex(crate::report_seed::FIXTURE_KEK_HEX).expect("fixture key")),
+        fixture.keys(),
         server.client.clone(),
     ));
     DurableTasks::new(case.held.runs.clone(), case.turns.clone(), dependencies)

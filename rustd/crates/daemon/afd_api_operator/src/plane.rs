@@ -28,4 +28,8 @@ pub trait OperatorPlane: Shared {
 
     /// Reveal-free platform-default administration.
     fn platform_keys(&self) -> &PlatformKeys;
+
+    /// Every workspace's checkpoint key: a rotation writes a new one and
+    /// retires what the old one sealed.
+    fn checkpoint_keys(&self) -> &afd_fleet::durable_task::storage::CheckpointKeys;
 }

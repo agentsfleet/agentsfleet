@@ -89,7 +89,8 @@ impl R2CheckpointStore {
 
     pub(super) async fn backend(&self) -> Result<AmazonS3> {
         let credentials = self
-            .vault
+            .keys
+            .vault()
             .bag::<R2Keys>(Some(&self.admin_workspace), &self.config.credential_name)
             .await?
             .map_err(|fault| self.refuse(fault))?;

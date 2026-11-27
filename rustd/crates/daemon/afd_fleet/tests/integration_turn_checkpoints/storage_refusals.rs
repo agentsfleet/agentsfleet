@@ -7,11 +7,9 @@ use super::{
     storage_server::{HOST, Server},
 };
 use af_core::{error_code, test_util::trace::Capture};
-use af_crypto::secret::Kek;
 use afd_fleet::durable_task::storage::{CheckpointStorageConfig, R2CheckpointStore};
 use afd_vault::{SecretBody, SecretName};
 use serde_json::{Value, json, value::RawValue};
-use std::sync::Arc;
 
 /// The event an existing bag that cannot be used is reported under.
 const BAG_UNUSABLE: &str = "checkpoint_storage_bag_unusable";
@@ -38,8 +36,10 @@ async fn store(case: &Case, server: &Server, bag: Option<Value>) -> Checked<R2Ch
     Ok(R2CheckpointStore::new(
         config,
         case.acquired.workspace_id.clone(),
-        vault,
-        Arc::new(Kek::from_hex(crate::report_seed::FIXTURE_KEK_HEX)?),
+        super::keys_under(
+            &case.fixtures,
+            af_wire::durable_task::CheckpointCipher::default(),
+        )?,
         server.client.clone(),
     ))
 }

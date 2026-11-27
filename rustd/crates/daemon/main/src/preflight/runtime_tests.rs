@@ -34,6 +34,37 @@ fn configured_clock_and_budget_reach_the_typed_settings() -> TestResult {
     Ok(())
 }
 
+// `[checkpoint] cipher` reaches the plane as the cipher it names: encrypting
+// when unset, plain when asked, and refused in any other spelling.
+#[test]
+fn the_checkpoint_cipher_defaults_to_encryption_and_refuses_an_unknown_spelling() -> TestResult {
+    use af_wire::durable_task::CheckpointCipher;
+    let unset = read(&MapEnv::default())?;
+    assert_eq!(unset.checkpoint_cipher, CheckpointCipher::Aes256Gcm);
+    for (spelling, cipher) in [
+        ("aes_256_gcm", CheckpointCipher::Aes256Gcm),
+        ("plain", CheckpointCipher::Plain),
+    ] {
+        let named = read(&MapEnv::from_pairs([(
+            "AGENTSFLEET_CHECKPOINT_CIPHER",
+            spelling,
+        )]))?;
+        assert_eq!(named.checkpoint_cipher, cipher, "{spelling}");
+    }
+    for unknown in ["none", "AES_256_GCM", "aes256_gcm", ""] {
+        let refused = read(&MapEnv::from_pairs([(
+            "AGENTSFLEET_CHECKPOINT_CIPHER",
+            unknown,
+        )]));
+        assert_eq!(
+            refused.map(|settings| settings.checkpoint_cipher).ok(),
+            None,
+            "{unknown}"
+        );
+    }
+    Ok(())
+}
+
 #[test]
 fn unsafe_clock_and_zero_or_malformed_budgets_refuse_startup() {
     for pair in [

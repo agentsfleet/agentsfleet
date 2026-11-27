@@ -291,6 +291,7 @@ pub(crate) struct Fleet {
     runner_run_history: RunnerRunHistory,
     admin_models: AdminModels,
     platform_keys: PlatformKeys,
+    checkpoint_keys: afd_fleet::durable_task::storage::CheckpointKeys,
     now: Timestamp,
 }
 

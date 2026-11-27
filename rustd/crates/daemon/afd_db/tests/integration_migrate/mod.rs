@@ -87,6 +87,7 @@ async fn test_migrate_parity_fresh_db() {
     database.cleanup().await;
 }
 
+mod checkpoint_keys;
 mod edited;
 mod immutable;
 mod instants;

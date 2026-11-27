@@ -2,7 +2,8 @@
 use af_wire::{
     activity::{ActivityFrame, DurableTaskActivityRecord},
     durable_task::{
-        CheckpointObject, CheckpointTransfer, DurableTaskEffectState, DurableTaskInputAction,
+        CheckpointCipher, CheckpointObject, CheckpointTransfer, DurableTaskEffectState,
+        DurableTaskInputAction,
     },
 };
 use serde_json::json;
@@ -48,7 +49,7 @@ fn checkpoint_debug_omits_keys_and_signed_transport_while_wire_retains_them()
     assert_eq!(serde_json::to_value(decoded)?, transfer);
     let expected = json!({"object_id":"public-object","repository":"private-repository",
         "plaintext":{"sha256":"private-plaintext-digest","size":10,"kind":"file"},
-        "status":"missing","nonce":"secret-nonce","data_key":"secret-key",
+        "status":"missing","cipher":"aes_256_gcm","nonce":"secret-nonce","data_key":"secret-key",
         "ciphertext_sha256":"private-ciphertext-digest","ciphertext_length":26,"transfer":transfer});
     let object: CheckpointObject = serde_json::from_value(expected.clone())?;
     assert_eq!(
@@ -56,6 +57,32 @@ fn checkpoint_debug_omits_keys_and_signed_transport_while_wire_retains_them()
         "CheckpointObject { object_id: \"public-object\", status: Missing, .. }"
     );
     assert_eq!(serde_json::to_value(object)?, expected);
+    Ok(())
+}
+
+// The cipher's spelling is what the daemon's file, each checkpoint row and each
+// authorization frame carry, so one enum writes and reads all three.
+#[test]
+fn a_checkpoint_cipher_has_one_spelling_for_the_file_the_row_and_the_frame()
+-> Result<(), Box<dyn std::error::Error>> {
+    for (cipher, spelling) in [
+        (CheckpointCipher::Aes256Gcm, "aes_256_gcm"),
+        (CheckpointCipher::Plain, "plain"),
+    ] {
+        assert_eq!(<&str>::from(cipher), spelling);
+        assert_eq!(spelling.parse::<CheckpointCipher>().ok(), Some(cipher));
+        assert_eq!(serde_json::to_value(cipher)?, json!(spelling));
+        assert_eq!(
+            serde_json::from_value::<CheckpointCipher>(json!(spelling))?,
+            cipher
+        );
+    }
+    assert_eq!(CheckpointCipher::default(), CheckpointCipher::Aes256Gcm);
+    for unknown in ["aes256_gcm", "AES_256_GCM", "none", ""] {
+        assert_eq!(unknown.parse::<CheckpointCipher>().ok(), None, "{unknown}");
+        let decoded = serde_json::from_value::<CheckpointCipher>(json!(unknown)).ok();
+        assert_eq!(decoded, None, "{unknown}");
+    }
     Ok(())
 }
 

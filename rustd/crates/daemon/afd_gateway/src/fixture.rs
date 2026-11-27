@@ -32,7 +32,13 @@ pub(crate) fn clocked(
     let vendors = afd_identity::direct(af_core::timing::STREAM_ANSWER_TIMEOUT).build()?;
     let runs = RunService {
         durable_task_reports: None,
-        turn_checkpoints: afd_fleet::run::turn_checkpoint::TurnCheckpoints::new(Arc::clone(&key)),
+        turn_checkpoints: afd_fleet::run::turn_checkpoint::TurnCheckpoints::new(
+            afd_fleet::durable_task::storage::CheckpointKeys::new(
+                database.clone(),
+                afd_vault::Vault::new(database.clone(), Arc::clone(&key), Entropy::new()),
+                af_wire::durable_task::CheckpointCipher::default(),
+            ),
+        ),
         runs: Runs::new(database.clone(), bus.clone(), Entropy::new()),
         accounts: afd_billing::Accounts::new(database.clone()),
         biller: Arc::new(afd_billing::ledger::LedgerBiller::new(database.clone())),

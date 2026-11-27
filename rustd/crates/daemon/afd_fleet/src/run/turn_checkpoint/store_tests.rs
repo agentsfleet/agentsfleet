@@ -55,14 +55,19 @@ fn valid(
 }
 
 fn store() -> TurnCheckpoints {
-    TurnCheckpoints::new(Arc::new(Kek::from_bytes([7; af_crypto::KEY_LEN])))
+    TurnCheckpoints::new(crate::durable_task::storage::CheckpointKeys::over(
+        test_dead::database(),
+        Arc::new(Kek::from_bytes([7; af_crypto::KEY_LEN])),
+        af_wire::durable_task::CheckpointCipher::default(),
+    ))
 }
 
 // Value: protects=the daemon's checkpoint key never reaches a log line;
 // fails_when=Debug is derived and prints the key or the storage handle;
 // why_new=the redacted Debug had no case; seam=Debug of the public store.
-#[test]
-fn the_store_debugs_without_its_key() {
+// A runtime, because the store's keys hold a pool handle.
+#[tokio::test]
+async fn the_store_debugs_without_its_key() {
     let rendered = format!("{:?}", store());
     assert_eq!(rendered, "TurnCheckpoints(private)");
 }
@@ -132,7 +137,11 @@ async fn allocation_refuses_another_fence_and_any_other_verb() -> Checked {
     };
     let runs = test_dead::runs();
     let stale = runs
-        .begin_turn_checkpoint(presented, &valid(FENCE + 1, begin(TurnWorkspace::ApiOnly))?)
+        .begin_turn_checkpoint(
+            presented,
+            &valid(FENCE + 1, begin(TurnWorkspace::ApiOnly))?,
+            af_wire::durable_task::CheckpointCipher::default(),
+        )
         .await
         .err()
         .map(|fault| fault.code());
@@ -144,7 +153,11 @@ async fn allocation_refuses_another_fence_and_any_other_verb() -> Checked {
         },
     });
     let other = runs
-        .begin_turn_checkpoint(presented, &valid(FENCE, release)?)
+        .begin_turn_checkpoint(
+            presented,
+            &valid(FENCE, release)?,
+            af_wire::durable_task::CheckpointCipher::default(),
+        )
         .await
         .err()
         .map(|fault| fault.code());

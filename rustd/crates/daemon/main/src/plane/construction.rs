@@ -1,6 +1,6 @@
 //! Construction groups retain each shared owner while the serving plane is assembled.
 
-use super::{PlaneParts, durable_task_plane, run_plane};
+use super::{PlaneParts, Sealing, durable_task_plane, run_plane};
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use af_crypto::secret::Kek;
@@ -19,7 +19,6 @@ type StorageConfig =
 pub(super) struct Common {
     pub(super) providers: Providers,
     pub(super) github_client: reqwest::Client,
-    pub(super) durable_task_master: Arc<Kek>,
     pub(super) turns: Turns,
     pub(super) biller: Arc<dyn Biller>,
     pub(super) creations: afd_setup::Creations,
@@ -41,7 +40,6 @@ impl Common {
                 .platform_key_cache_minutes,
         ));
         let github_client = parts.storage_client.clone();
-        let durable_task_master = Arc::clone(&parts.kek);
         let tuning = parts.runtime.operations.tuning;
         let turns = Turns::new(parts.database.clone(), parts.bus.clone(), Entropy::new())
             .with_budgets(afd_turns::budget::Budgets {
@@ -56,7 +54,6 @@ impl Common {
         Self {
             providers,
             github_client,
-            durable_task_master,
             turns,
             biller,
             creations,
@@ -76,7 +73,6 @@ pub(super) struct NativeInputs<'a> {
     pub(super) turns: Turns,
     pub(super) admin_workspace: Option<Uuid7>,
     pub(super) storage_config: StorageConfig,
-    pub(super) master: Arc<Kek>,
     pub(super) client: reqwest::Client,
     pub(super) stream_limit: afd_sse::StreamLimit,
     pub(super) frame_memory: af_stream::MemoryLimits,
@@ -94,7 +90,10 @@ impl NativeInputs<'_> {
     pub(super) fn build(self) -> Native {
         let mut runs = run_plane(
             self.database.clone(),
-            self.kek,
+            Sealing {
+                kek: self.kek,
+                cipher: self.runtime.checkpoint_cipher,
+            },
             self.providers,
             self.bus.clone(),
             self.broker,
@@ -117,7 +116,6 @@ impl NativeInputs<'_> {
             self.turns,
             self.admin_workspace,
             self.storage_config,
-            self.master,
             self.client,
             self.runtime.operations.tasks,
         );

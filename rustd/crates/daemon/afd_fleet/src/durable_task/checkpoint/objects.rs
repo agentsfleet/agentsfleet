@@ -1,8 +1,8 @@
 //! One workspace storage lock and bounded set operations arbitrate upload owners.
 
-use super::{guard, identity, object_row::Object, row::Plan};
-use crate::durable_task::storage::R2CheckpointStore;
-use crate::durable_task::storage::registration::NewObject;
+use super::{guard, lock_storage, object_row::Object, row::Plan};
+use crate::durable_task::storage::registration::{self, NewObject, Registration};
+use crate::durable_task::storage::{R2CheckpointStore, WorkspaceKey, recorded};
 use crate::{
     Result,
     durable_task::{
@@ -12,9 +12,9 @@ use crate::{
 };
 use af_core::id::Uuid7;
 use af_wire::durable_task::{
-    CheckpointObjectsInput, CheckpointObjectsPage, CheckpointPlaintext, CheckpointTransferPurpose,
+    CheckpointObjectsInput, CheckpointObjectsPage, CheckpointTransferPurpose,
 };
-use sqlx::{PgConnection, types::Json};
+use sqlx::{PgConnection, Postgres, Transaction, types::Json};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub(in crate::durable_task) async fn register(
@@ -50,13 +50,13 @@ pub(in crate::durable_task) async fn register(
 async fn registered(
     tasks: &DurableTasks,
     storage: &R2CheckpointStore,
-    connection: &mut PgConnection,
+    connection: &mut Transaction<'_, Postgres>,
     plan: &Plan,
     pin: &super::row::Pin,
     input: &CheckpointObjectsInput,
 ) -> Result<Vec<af_wire::durable_task::CheckpointObject>> {
-    let (identity, content) = allocate(tasks, storage, connection, plan, input).await?;
-    let objects = matching(connection, plan, &identity, &content).await?;
+    let (key, content) = allocate(tasks, storage, connection, plan, input).await?;
+    let objects = matching(connection, plan, &content).await?;
     let eligible: Vec<_> = objects
         .iter()
         .filter(|object| object.verified || object.own(plan))
@@ -74,7 +74,7 @@ async fn registered(
             by_content
                 .remove(content)
                 .ok_or(DurableTaskRefusal::CheckpointIncompatible)?
-                .wire(storage, plan)
+                .wire(storage, plan, &key)
         })
         .collect()
 }
@@ -82,28 +82,24 @@ async fn registered(
 async fn allocate(
     tasks: &DurableTasks,
     storage: &R2CheckpointStore,
-    connection: &mut PgConnection,
+    connection: &mut Transaction<'_, Postgres>,
     plan: &Plan,
     input: &CheckpointObjectsInput,
-) -> Result<(Uuid7, Vec<String>)> {
-    identity::lock_storage(connection, &plan.workspace_id).await?;
-    let identity = identity::load(
-        &tasks.runs,
-        storage,
-        connection,
-        &plan.workspace_id,
-        &plan.repository,
-    )
-    .await?;
+) -> Result<(WorkspaceKey, Vec<String>)> {
+    lock_storage(connection, &plan.workspace_id).await?;
+    let key = storage
+        .keys()
+        .for_save(connection, &plan.workspace_id)
+        .await?;
     let content: Vec<_> = input
         .objects
         .iter()
-        .map(|object| identity.content(object, plan.format_version))
+        .map(|object| key.content(object, plan.format_version))
         .collect();
     if content.iter().collect::<BTreeSet<_>>().len() != content.len() {
         return Err(DurableTaskRefusal::ReplayConflict.into());
     }
-    let existing = matching(connection, plan, &identity.id, &content).await?;
+    let existing = matching(connection, plan, &content).await?;
     let found: BTreeSet<_> = existing
         .iter()
         .map(|object| object.content_identity.as_str())
@@ -114,12 +110,14 @@ async fn allocate(
         .zip(&content)
         .filter(|(_, content)| !found.contains(content.as_str()))
         .map(|(descriptor, content)| {
-            prepare(
-                tasks,
-                storage,
-                plan,
-                &plan.workspace_id,
-                &identity.id,
+            registration::prepare(
+                &tasks.runs,
+                storage.keys(),
+                Registration {
+                    namespace: &plan.repository,
+                    format: plan.format_version,
+                    cipher: recorded(&plan.cipher)?,
+                },
                 descriptor,
                 content,
             )
@@ -132,18 +130,17 @@ async fn allocate(
         (storage, tasks.times().orphan_seconds()),
     )
     .await?;
-    Ok((identity.id, content))
+    Ok((key, content))
 }
 
 async fn matching(
     connection: &mut PgConnection,
     plan: &Plan,
-    identity: &Uuid7,
     content: &[String],
 ) -> Result<Vec<Object>> {
     sqlx::query_as(include_str!("sql/objects_content.sql"))
         .bind(&plan.workspace_id)
-        .bind(identity)
+        .bind(&plan.repository)
         .bind(content)
         .fetch_all(connection)
         .await
@@ -178,9 +175,7 @@ async fn reserve(
             .bind(orphan_seconds)
             .execute(&mut *connection)
             .await
-            .map_err(query(
-                "allocate one wrapped key and nonce per missing object",
-            ))?;
+            .map_err(query("allocate one nonce per missing object"))?;
         sqlx::query(super::PLAN_BYTES)
             .bind(&plan.id)
             .bind(new_bytes)
@@ -189,29 +184,6 @@ async fn reserve(
             .map_err(query("account checkpoint's unique upload allowance"))?;
     }
     Ok(())
-}
-
-fn prepare(
-    tasks: &DurableTasks,
-    storage: &R2CheckpointStore,
-    plan: &Plan,
-    workspace: &Uuid7,
-    identity: &Uuid7,
-    descriptor: &CheckpointPlaintext,
-    content: &str,
-) -> Result<NewObject> {
-    crate::durable_task::storage::registration::prepare(
-        &tasks.runs,
-        storage,
-        crate::durable_task::storage::registration::Registration {
-            workspace,
-            namespace: &plan.repository,
-            identity,
-            format: plan.format_version,
-        },
-        descriptor,
-        content,
-    )
 }
 
 pub(super) async fn attach(

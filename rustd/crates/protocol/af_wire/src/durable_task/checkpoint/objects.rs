@@ -58,12 +58,12 @@ pub struct CheckpointUpload {
         pattern(r"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
     )]
     pub object_id: String,
-    /// Exact ciphertext and authentication tag SHA-256.
+    /// SHA-256 of the object as stored.
     #[garde(custom(super::digest))]
     pub ciphertext_sha256: String,
-    /// Plaintext length plus the fixed 16-byte authentication tag, so at least
-    /// 17. Bounded by its Postgres `BIGINT` column.
-    #[garde(range(min = 17, max = i64::MAX.unsigned_abs()))]
+    /// Stored length: the plaintext, plus the 16-byte authentication tag under
+    /// `aes_256_gcm`. Bounded by its Postgres `BIGINT` column.
+    #[garde(range(min = 1, max = i64::MAX.unsigned_abs()))]
     pub ciphertext_length: u64,
 }
 
@@ -118,6 +118,34 @@ pub struct CheckpointAuthorizationInput {
     pub object_ids: Vec<String>,
 }
 
+/// What seals a checkpoint's objects and history root under its workspace's key.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    Hash,
+    Serialize,
+    Deserialize,
+    strum::IntoStaticStr,
+    strum::EnumString,
+)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum CheckpointCipher {
+    /// AES-256-GCM: the ciphertext, then its 16-byte authentication tag.
+    #[default]
+    #[serde(rename = "aes_256_gcm")]
+    #[strum(serialize = "aes_256_gcm")]
+    Aes256Gcm,
+    /// The bytes as they are, with no tag: for measuring a save and a restore
+    /// before encryption is turned on.
+    Plain,
+}
+
 /// Native registration disposition.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -150,7 +178,7 @@ impl std::fmt::Debug for CheckpointTransfer {
     }
 }
 
-/// Registration projection; temporary keys remain outside model/sandbox state.
+/// Registration projection; the key remains outside model/sandbox state.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Clone, Serialize, Deserialize)]
 pub struct CheckpointObject {
@@ -162,9 +190,11 @@ pub struct CheckpointObject {
     pub plaintext: CheckpointPlaintext,
     /// Current ownership disposition.
     pub status: CheckpointObjectStatus,
-    /// Exact fixed nonce, base64 encoded.
+    /// The cipher this object was registered under; a restore opens with it.
+    pub cipher: CheckpointCipher,
+    /// The object's registered random nonce, base64 encoded.
     pub nonce: Option<String>,
-    /// Temporary data key, returned only to this native owner/reader.
+    /// The workspace's checkpoint key, returned only to this native owner/reader.
     pub data_key: Option<String>,
     /// Frozen ciphertext digest when already known.
     pub ciphertext_sha256: Option<String>,
@@ -201,4 +231,15 @@ pub struct CheckpointAuthorizations {
     pub plan: super::CheckpointPlan,
     /// Requested scoped transfers; empty at restore bootstrap.
     pub objects: Vec<CheckpointObject>,
+}
+
+/// What rotating a workspace's checkpoint key retired. The old key sealed all
+/// of it, so none of it can be restored.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CheckpointKeyRotation {
+    /// Checkpoint generations deleted, unfinished saves among them.
+    pub retired_generations: u64,
+    /// Stored objects whose deletion from the bucket is now owed.
+    pub retired_objects: u64,
 }

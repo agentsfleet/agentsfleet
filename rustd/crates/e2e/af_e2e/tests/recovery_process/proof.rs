@@ -70,7 +70,7 @@ pub(super) fn restored(home: &Path) -> Checked {
 pub(super) async fn checkpoint(scene: &Scenario, covered: &Uuid7) -> Checked<Uuid7> {
     let mut connection = scene.booted.database.acquire().await?;
     let (id, ready, sealed, folds): (Uuid7, bool, bool, Vec<Uuid7>) = sqlx::query_as(
-        "SELECT p.id,p.ready_at IS NOT NULL,p.root_secret_ciphertext IS NOT NULL,p.covered_fold_ids
+        "SELECT p.id,p.ready_at IS NOT NULL,p.root_sealed IS NOT NULL,p.covered_fold_ids
         FROM thread.turns h JOIN runner.checkpoints p ON p.id=h.head_checkpoint_id WHERE h.id=$1",
     )
     .bind(&scene.turn_id)
