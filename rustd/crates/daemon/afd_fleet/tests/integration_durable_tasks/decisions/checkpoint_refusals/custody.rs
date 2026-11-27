@@ -169,7 +169,7 @@ async fn unpinned(
             )
             .await,
         error_code::DURABLE_TASK_CHECKPOINT_INCOMPATIBLE,
-        "only a restore bootstraps without a pin",
+        "an upload authorization is refused: only a restore authorizes",
     );
     let twice = String::from(mint_id());
     refused(

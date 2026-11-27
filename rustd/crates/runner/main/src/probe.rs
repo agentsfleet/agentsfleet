@@ -37,8 +37,9 @@ pub(crate) fn host() -> HostProbe {
 /// `out` as JSON.
 ///
 /// Succeeds only when the whole answer was written and Firecracker's boot
-/// would admit `host`: a usable KVM device, the toolbox's file system and
-/// every controller a microVM's leaf is limited through.
+/// would admit `host`: a usable KVM device, the toolbox's file system,
+/// every controller a microVM's leaf is limited through, and a packet filter
+/// that holds a guest to its egress.
 pub(crate) fn answer(
     host: &HostProbe,
     engine: &afr_engine::Capabilities,
@@ -57,5 +58,8 @@ pub(crate) fn answer(
 
 /// Whether Firecracker's boot admission would take `host`.
 fn admitted(host: &HostProbe) -> bool {
-    host.kvm == Kvm::Usable && host.toolbox_filesystem && host.has_required_controllers()
+    host.kvm == Kvm::Usable
+        && host.toolbox_filesystem
+        && host.has_required_controllers()
+        && host.egress
 }

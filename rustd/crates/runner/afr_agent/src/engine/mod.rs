@@ -2,8 +2,8 @@
 
 mod boundary;
 pub use boundary::{
-    CommittedRecovery, FileRecoveryPermit, RecoveryBoundarySink, RecoveryReceipt, RecoverySave,
-    RecoverySkip, RecoverySnapshot, RecoveryState,
+    CommittedRecovery, FileRecoveryPermit, Publication, Published, RecoveryBoundarySink,
+    RecoveryReceipt, RecoverySave, RecoverySkip, RecoverySnapshot, RecoveryState,
 };
 mod meter;
 pub(crate) use boundary::RecoveryWitness;

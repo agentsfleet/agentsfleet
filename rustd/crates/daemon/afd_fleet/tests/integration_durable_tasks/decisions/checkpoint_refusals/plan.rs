@@ -131,6 +131,7 @@ async fn repository(case: &Case) {
                     history_digest: "e".repeat(64),
                     covered_input_sequence: 0,
                     effect_watermark: 0,
+                    uploaded: Vec::new(),
                 }),
             )
             .await,
@@ -237,6 +238,7 @@ async fn altered_base(
                     history_digest: checkpoint_digest::history_root([]),
                     covered_input_sequence: 0,
                     effect_watermark: 0,
+                    uploaded: Vec::new(),
                 }),
             )
             .await,

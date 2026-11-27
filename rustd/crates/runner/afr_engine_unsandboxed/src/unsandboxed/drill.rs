@@ -57,8 +57,8 @@ impl Engine for RecoveryDrillEngine {
         self.unconfined.grant(limits)
     }
 
-    fn memory_bound(&self) -> Option<afr_engine::MemoryBound> {
-        self.unconfined.memory_bound()
+    fn admission_bound(&self) -> Option<afr_engine::AdmissionBound> {
+        self.unconfined.admission_bound()
     }
 
     async fn prepare(&self, spec: SandboxSpec<'_>) -> Result<Box<dyn Sandbox>> {

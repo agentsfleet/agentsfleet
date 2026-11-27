@@ -38,6 +38,7 @@ members = [
     "crates/foundation/af_crypto",
     "crates/foundation/af_validate",
     # protocol: the types both binaries speak
+    "crates/protocol/af_chunk_store",
     "crates/protocol/af_context",
     "crates/protocol/af_fleet_runtime",
     "crates/protocol/af_observability",
@@ -149,6 +150,9 @@ af_crypto = { path = "crates/foundation/af_crypto" }
 af_validate = { path = "crates/foundation/af_validate" }
 
 # --- protocol: the types both binaries speak
+# Checkpoint storage both binaries share: what a save reads out of a
+# workspace, and how a chunk is sealed and checked.
+af_chunk_store = { path = "crates/protocol/af_chunk_store" }
 # Model-window planning, compaction and checkpoints, over a store trait its
 # embedders implement; it holds no store.
 af_context = { path = "crates/protocol/af_context" }

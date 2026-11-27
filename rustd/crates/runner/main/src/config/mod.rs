@@ -50,8 +50,10 @@ pub(super) struct Settings {
     pub(super) supervisor: afr_supervisor::config::RuntimePolicy,
     /// The supervisor's daemon link, decision calls and sandbox limits.
     pub(super) tuning: afr_supervisor::config::Tuning,
-    /// What every sandbox's executor serves with and its client keeps the
-    /// link to.
+    /// What the debug engine's executor serves with and its client keeps
+    /// the link to; our Firecracker engine reads the same sizes from its
+    /// own tuning. A release build has no debug engine, so no reader.
+    #[cfg(all(debug_assertions, feature = "unsandboxed"))]
     pub(super) sizes: afr_executor::Sizes,
     /// What our Firecracker engine boots every microVM with.
     pub(super) firecracker: afr_engine_firecracker::FirecrackerTuning,
@@ -76,6 +78,7 @@ pub(super) fn read(env: &impl EnvSource) -> Result<Settings, ExitCode> {
         )?),
         supervisor: afr_supervisor::config::RuntimePolicy::new(&checked(profile.supervisor)?),
         tuning: tuning::supervisor(&profile.sandbox, &profile.provider, &profile.daemon),
+        #[cfg(all(debug_assertions, feature = "unsandboxed"))]
         sizes,
         firecracker: profile.firecracker.tuning(&profile.sandbox, sizes),
         warm_pool: profile.firecracker.warm_pool(),

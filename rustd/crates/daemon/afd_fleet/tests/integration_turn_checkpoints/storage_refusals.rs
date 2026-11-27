@@ -1,6 +1,7 @@
 //! A store proves its custody before any transfer: a credential bag it cannot
-//! use, or a backend that replaces what a create-only write names, leaves
-//! checkpoint storage unavailable.
+//! use, a backend that replaces what a create-only write names, or one that
+//! stores a body unlike its bound checksum, leaves checkpoint storage
+//! unavailable.
 
 use super::{
     Case, Checked,
@@ -46,7 +47,7 @@ async fn store(case: &Case, server: &Server, bag: Option<Value>) -> Checked<R2Ch
 
 /// The refusal `storage` answers its create-only probe with.
 async fn refusal(storage: &R2CheckpointStore) -> Checked<afd_fleet::Error> {
-    match storage.verify_create_only().await {
+    match storage.verify_bucket().await {
         Ok(()) => Err("the store proved custody it cannot hold".into()),
         Err(refused) => Ok(refused),
     }
@@ -132,6 +133,51 @@ async fn a_backend_that_replaces_create_only_objects_is_unavailable() -> Checked
     let refused = refusal(&storage).await?;
     assert_eq!(refused.code(), error_code::DURABLE_TASK_STORAGE_UNAVAILABLE);
     assert_eq!(stored(&server)?, 0, "the probe removes its own object");
+    server.finish().await;
+    case.fixtures.cleanup().await;
+    Ok(())
+}
+
+/// The event a bucket that stores a body unlike its bound checksum is named under.
+const CHECKSUM_IGNORED: &str = "checkpoint_bucket_ignores_checksum";
+
+// Value: protects=Dimension 2.8, a bucket that stores a body unlike the
+// SHA-256 its link binds never holds checkpoint custody, and one that refuses
+// it does; fails_when=the probe checks only the write-once answer, accepts the
+// ignoring bucket, or refuses the honest one; why_new=the checksum stands in
+// for the removed read-back and had no probe; seam=the production probe's
+// signed PUT against a private fixture that honours If-None-Match and ignores
+// x-amz-checksum-sha256, and one that honours both.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_bucket_that_accepts_a_wrong_checksum_blocks_checkpoints() -> Checked {
+    let case = Case::new().await?;
+    let server = Server::ignoring_checksum().await;
+    let storage = store(&case, &server, Some(pair())).await?;
+    let captured = Capture::install();
+    let refused = refusal(&storage).await?;
+    let named = captured
+        .events()
+        .into_iter()
+        .filter(|event| event.field("event") == Some(CHECKSUM_IGNORED))
+        .count();
+    drop(captured);
+    assert_eq!(refused.code(), error_code::DURABLE_TASK_STORAGE_UNAVAILABLE);
+    assert_eq!(named, 1, "the refusal names the checksum");
+    assert_eq!(stored(&server)?, 0, "the probe removes what it stored");
+    server.finish().await;
+    case.fixtures.cleanup().await;
+
+    let case = Case::new().await?;
+    let server = Server::start().await;
+    let storage = store(&case, &server, Some(pair())).await?;
+    storage.verify_bucket().await?;
+    assert_eq!(
+        server.count("PUT", "/checkpoint-test/capability-probes/"),
+        3,
+        "two creates of one name and one body unlike its checksum"
+    );
+    assert_eq!(stored(&server)?, 0, "nothing the probes sent stays");
     server.finish().await;
     case.fixtures.cleanup().await;
     Ok(())

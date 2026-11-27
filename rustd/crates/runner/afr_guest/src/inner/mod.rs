@@ -1,19 +1,24 @@
 //! The inner environment a microVM's tenant processes run in: a process
-//! namespace and a mount namespace of their own, which the executor builds
-//! and stands outside as the guest's root service.
+//! namespace, a mount namespace and an inter-process communication (IPC)
+//! namespace of their own, which the executor builds and stands outside as
+//! the guest's root service.
 //!
 //! ```text
 //!   build  ─► the executor is never the out-of-memory killer's pick, and
 //!             acts on files as the guest user from now on
 //!          ─► init: PID 1 of a new process namespace, in a new mount
-//!             namespace whose /proc shows that namespace alone; reaps orphans
+//!             namespace whose /proc shows that namespace alone and a new
+//!             IPC namespace holding nothing; reaps orphans
 //!   entry  ─► the forking thread's next child joins init's process namespace
-//!          ─► child: init's mount namespace, cd, pickable again, the guest
-//!             user, no_new_privs, Landlock, seccomp (no namespace made or
-//!             joined) ─► exec
+//!   leave  ─► the forking thread's next children are born in the executor's
+//!             own process namespace again, where alone it may start a thread
+//!          ─► child: init's mount and IPC namespaces, cd, pickable again,
+//!             the guest user, no_new_privs, Landlock, seccomp (no namespace
+//!             made or joined) ─► exec
 //!   renew  ─► SIGKILL init: the kernel ends every process inside, and init
-//!             is reaped only once they all are ─► /workspace, /tmp and
-//!             /dev/shm emptied ─► build
+//!             is reaped only once they all are; its IPC namespace goes with
+//!             its last process, and every System V object and POSIX queue
+//!             in it ─► /workspace, /tmp and /dev/shm emptied ─► build
 //!   hosts  ─► as user 0: a new hosts file staged, its bind swapped in beneath
 //!             the old one, which goes; the swap reaches init's namespace
 //! ```
@@ -27,18 +32,15 @@ use std::fs;
 use std::io;
 use std::os::fd::{AsFd as _, OwnedFd};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use afr_executor::{Entry, InnerEnvironment};
 use rustix::fs::{Gid, Uid};
-use rustix::process::{Signal, WaitId, WaitIdOptions};
+use rustix::process::{PidfdFlags, Signal, WaitId, WaitIdOptions};
 use rustix::thread::ThreadNameSpaceType;
-use seccompiler::BpfProgram;
 
 use crate::error::{Result, unconfined};
-use crate::harden::{
-    DEV_SHM, PROC_SELF_STATUS, SANDBOX_TMP, file_system_rules, programs, single_threaded,
-};
+use crate::harden::{Confinement, DEV_SHM, PROC_SELF_STATUS, SANDBOX_TMP, single_threaded};
 
 mod enter;
 mod files;
@@ -57,8 +59,9 @@ const DETAIL_RENEWING: &str = "the inner environment is being built again";
 /// pseudo-terminal goes with the process that held it.
 const SCRATCH: [&str; 2] = [SANDBOX_TMP, DEV_SHM];
 
-/// A process namespace and a mount namespace of their own, which every
-/// tenant process runs in as the guest user, confined as a sandbox is.
+/// A process namespace, a mount namespace and an IPC namespace of their own,
+/// which every tenant process runs in as the guest user, confined as a
+/// sandbox is.
 #[derive(Debug)]
 pub struct Namespaced {
     user: (Uid, Gid),
@@ -67,11 +70,15 @@ pub struct Namespaced {
     /// one is staged in.
     hosts: PathBuf,
     staging: PathBuf,
-    /// The seccomp programs every tenant process installs, compiled once.
-    seccomp: Arc<[BpfProgram; 2]>,
+    /// What every process started inside puts on itself, which the executor
+    /// chose when it built the environment.
+    confinement: Box<dyn Confinement>,
     /// The environment's init, by its process descriptor; none while a
     /// renewal builds the next one.
     init: Mutex<Option<OwnedFd>>,
+    /// The executor itself, by its process descriptor: whose process
+    /// namespace a forking thread's next children go back to.
+    ours: OwnedFd,
 }
 
 impl Namespaced {
@@ -79,14 +86,23 @@ impl Namespaced {
     /// `user`, a user and group identifier, over `workspace`, and has this
     /// process act on files as `user` from now on: every thread made after
     /// inherits that. This process is never the out-of-memory killer's pick
-    /// from now on, and each tenant process is pickable again as it enters. Its hosts file is the mount on `hosts`, and each new
-    /// one is staged in `staging`, which no tenant process writes.
+    /// from now on, and each tenant process is pickable again as it enters.
+    /// Its hosts file is the mount on `hosts`, and each new one is staged in
+    /// `staging`, which no tenant process writes. Every process started
+    /// inside applies `confinement` to itself: the executor's choice, which
+    /// no request reaches.
     ///
     /// # Errors
     /// A second thread already exists, so the file identity would miss it;
     /// the standing or the identity would not change; or the environment
     /// would not build.
-    pub fn build(user: (u32, u32), workspace: &Path, hosts: &Path, staging: &Path) -> Result<Self> {
+    pub fn build(
+        user: (u32, u32),
+        workspace: &Path,
+        hosts: &Path,
+        staging: &Path,
+        confinement: Box<dyn Confinement>,
+    ) -> Result<Self> {
         single_threaded(&fs::read_to_string(PROC_SELF_STATUS)?)?;
         oom::spare(oom::OOM_SCORE_ADJ)?;
         let user = (Uid::from_raw(user.0), Gid::from_raw(user.1));
@@ -97,8 +113,9 @@ impl Namespaced {
             workspace: workspace.to_owned(),
             hosts: hosts.to_owned(),
             staging: staging.to_owned(),
-            seccomp: Arc::new(programs()?),
+            confinement,
             init: Mutex::new(None),
+            ours: rustix::process::pidfd_open(rustix::process::getpid(), PidfdFlags::empty())?,
         };
         *built.held() = Some(init::start()?);
         Ok(built)
@@ -118,15 +135,26 @@ impl InnerEnvironment for Namespaced {
             .as_ref()
             .ok_or_else(|| io::Error::other(unconfined(DETAIL_RENEWING)))?
             .try_clone()?;
-        // The calling thread's next child is born inside: a process cannot
-        // move itself into another process namespace, only its children.
+        let confine = self.confinement.prepare().map_err(io::Error::other)?;
+        let joined = init.try_clone()?;
+        let mut entering = Entering::new(init, cwd, self.user, confine)?;
+        // Last, so a refusal above leaves the thread as it was. The calling
+        // thread's next child is born inside: a process cannot move itself
+        // into another process namespace, only its children.
         rustix::thread::move_into_thread_name_spaces(
-            init.as_fd(),
+            joined.as_fd(),
             ThreadNameSpaceType::PROCESS_ID,
         )?;
-        let rules = file_system_rules().map_err(io::Error::other)?;
-        let mut entering = Entering::new(init, cwd, self.user, rules, &self.seccomp)?;
         Ok(Box::new(move || entering.enter()))
+    }
+
+    fn leave(&self) -> io::Result<()> {
+        // While its children would be born inside, the kernel refuses this
+        // thread a thread of its own process: an export's, or the runtime's.
+        Ok(rustix::thread::move_into_thread_name_spaces(
+            self.ours.as_fd(),
+            ThreadNameSpaceType::PROCESS_ID,
+        )?)
     }
 
     fn renew(&self) -> io::Result<()> {

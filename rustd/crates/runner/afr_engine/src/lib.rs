@@ -31,11 +31,13 @@ mod warm_slots;
 pub use self::boot::{Backend, Booted, HostPaths, Resources, Started, boot};
 #[cfg(any(test, feature = "test-util"))]
 pub use self::engine::fresh_sandbox_id;
+pub use self::engine::volume::{Paused, Resumed, WorkspaceVolume, pin_paused};
 pub use self::engine::{
-    Cap, Capabilities, DEFAULT_CPU_MILLIS, DEFAULT_DISK_BYTES, DEFAULT_MEMORY_BYTES, DEFAULT_PIDS,
-    DEFAULT_READY_TIMEOUT, EgressPlan, Enforcer, Engine, Environment, Generation, Granted, Killed,
-    Limits, MemoryBound, ParkMode, Parked, Quiescence, ResourceFacts, Root, Sandbox, SandboxSpec,
-    SandboxState, SnapshotRef, Snapshots, Sweep, Swept, enforce, until_in_force,
+    AdmissionBound, Cap, Capabilities, DEFAULT_CPU_MILLIS, DEFAULT_DISK_BYTES,
+    DEFAULT_MEMORY_BYTES, DEFAULT_PIDS, DEFAULT_READY_TIMEOUT, EgressPlan, Enforcer, Engine,
+    Environment, Generation, Granted, Killed, Limits, Overcommitted, ParkMode, Parked, Quiescence,
+    Resource, ResourceFacts, Root, Sandbox, SandboxSpec, SandboxState, SnapshotRef, Snapshots,
+    Sweep, Swept, enforce, until_in_force,
 };
 #[cfg(feature = "test-util")]
 pub use self::error::ambiguous;
@@ -44,7 +46,7 @@ pub use self::network::{
     Allowlist, Network, NetworkKind, RESOLV_CONF, SANDBOX_HOSTS, SANDBOX_RESOLV_CONF,
 };
 pub use self::probe::{
-    HostProbe, MECHANISM_LANDLOCK, MECHANISM_SECCOMP, MECHANISM_TOOLBOX_FILESYSTEM,
-    REQUIRED_CONTROLLERS,
+    HostProbe, MECHANISM_LANDLOCK, MECHANISM_NFTABLES, MECHANISM_SECCOMP,
+    MECHANISM_TOOLBOX_FILESYSTEM, REQUIRED_CONTROLLERS,
 };
 pub use self::warm_slots::WarmSlots;

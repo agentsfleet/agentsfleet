@@ -2,10 +2,11 @@
 use super::{Config, TASK, wire};
 use crate::run::expect;
 use af_wire::durable_task::{
-    CheckpointAuthorizationInput, CheckpointAuthorizations, CheckpointCommitInput, CheckpointMode,
-    CheckpointObject, CheckpointObjectStatus, CheckpointObjectsInput, CheckpointObjectsPage,
-    CheckpointPage, CheckpointPageInput, CheckpointPin, CheckpointPlaintext, CheckpointPlan,
-    CheckpointPlanInput, CheckpointTransferPurpose,
+    CheckpointAuthorizationInput, CheckpointAuthorizations, CheckpointCipher,
+    CheckpointCommitInput, CheckpointMode, CheckpointObject, CheckpointObjectStatus,
+    CheckpointObjectsInput, CheckpointObjectsPage, CheckpointPage, CheckpointPageInput,
+    CheckpointPin, CheckpointPlaintext, CheckpointPlan, CheckpointPlanInput,
+    CheckpointTransferPurpose,
 };
 use afr_supervisor::test_util::FENCING;
 use axum::http::{Method, Uri};
@@ -128,6 +129,7 @@ impl Archive {
                 repository: repository.clone(),
                 plaintext,
                 status: CheckpointObjectStatus::Reused,
+                cipher: CheckpointCipher::default(),
                 nonce: None,
                 data_key: None,
                 ciphertext_sha256: None,

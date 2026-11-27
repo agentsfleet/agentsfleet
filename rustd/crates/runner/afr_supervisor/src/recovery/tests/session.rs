@@ -1,4 +1,5 @@
-//! Native ciphertext readback, rather than a physical response, owns publication.
+//! The daemon's own record of each upload, never a read of the bucket, owns
+//! publication.
 
 use super::*;
 use crate::recovery::{Capture, Restore};
@@ -24,7 +25,7 @@ fn missing_registration(call: &Call, archive: &mut Archive) -> Answer {
 }
 
 #[tokio::test]
-async fn already_received_ciphertext_is_verified_without_a_second_physical_upload()
+async fn already_received_ciphertext_is_committed_without_a_second_physical_upload()
 -> crate::Result<()> {
     let (plane, mut calls, state) = remote(Archive::empty(), |call, archive| {
         (call.verb == Verb::DurableTaskCheckpointObjectsRegister)
@@ -48,23 +49,18 @@ async fn already_received_ciphertext_is_verified_without_a_second_physical_uploa
     .await?;
     assert!(saved.manifest_root.is_some());
     let requests = drain(&mut calls).await;
-    assert_verified_upload(&requests, &state);
+    assert_uploaded_once(&requests, &state);
     Ok(())
 }
 
 #[tokio::test]
-async fn upload_response_cannot_replace_registered_ciphertext_or_skip_readback() -> crate::Result<()>
-{
+async fn upload_response_cannot_replace_registered_ciphertext() -> crate::Result<()> {
     for (fault, expected) in [
         ("missing", "checkpoint upload batch is incomplete"),
         ("identity", "checkpoint upload names another object"),
         ("repository", "checkpoint ciphertext authorization differs"),
         ("digest", "checkpoint ciphertext authorization differs"),
         ("length", "checkpoint ciphertext authorization differs"),
-        (
-            "unverified",
-            "checkpoint upload batch was not fully verified",
-        ),
         ("transfer", "checkpoint upload transfer is absent"),
     ] {
         let (plane, mut calls, state) = remote(Archive::empty(), move |call, archive| {
@@ -124,14 +120,6 @@ fn upload_reply(call: &Call, archive: &mut Archive, fault: &str) -> Option<Answe
         }
         return Some(json(&page));
     }
-    if call.verb == Verb::DurableTaskCheckpointAuthorizations
-        && matches!(fault, "unverified" | "transfer")
-    {
-        return Some(json(&CheckpointAuthorizations {
-            plan: archive.plan.clone(),
-            objects: vec![],
-        }));
-    }
     None
 }
 
@@ -169,7 +157,17 @@ async fn history_download_requires_exact_object_scope_length_and_read_authority(
         .run(None, std::future::ready(Ok(())))
         .await
         .unwrap_err();
-        config_failure(&error, expected);
+        if fault == "length" {
+            // The chunk store's own check refuses a length no sealed chunk has.
+            let refusal = std::error::Error::source(&error).map(ToString::to_string);
+            assert!(
+                matches!(error.kind(), crate::error::ErrorKind::ChunkStore { .. })
+                    && refusal.is_some_and(|refusal| refusal.contains(expected)),
+                "{error}"
+            );
+        } else {
+            config_failure(&error, expected);
+        }
         let requests = drain(&mut calls).await;
         assert_eq!(
             requests
@@ -183,7 +181,7 @@ async fn history_download_requires_exact_object_scope_length_and_read_authority(
     Ok(())
 }
 
-fn assert_verified_upload(requests: &[Call], state: &Arc<Mutex<Archive>>) {
+fn assert_uploaded_once(requests: &[Call], state: &Arc<Mutex<Archive>>) {
     let upload: CheckpointUploadsInput = body(
         requests
             .iter()
@@ -196,15 +194,21 @@ fn assert_verified_upload(requests: &[Call], state: &Arc<Mutex<Archive>>) {
         15 + af_crypto::TAG_LEN as u64
     );
     assert_eq!(upload.objects.first().unwrap().ciphertext_sha256.len(), 64);
-    let verified: CheckpointAuthorizationInput = body(
+    assert!(
+        !requests
+            .iter()
+            .any(|call| call.verb == Verb::DurableTaskCheckpointAuthorizations),
+        "nothing is read back"
+    );
+    let commit: CheckpointCommitInput = body(
         requests
             .iter()
-            .find(|call| call.verb == Verb::DurableTaskCheckpointAuthorizations)
+            .find(|call| call.verb == Verb::DurableTaskCheckpointCommit)
             .unwrap(),
     );
-    assert_eq!(
-        verified.object_ids,
-        [upload.objects.first().unwrap().object_id.clone()]
+    assert!(
+        commit.uploaded.is_empty(),
+        "an object the daemon already holds is not PUT, so not reported"
     );
     let object = state
         .lock()

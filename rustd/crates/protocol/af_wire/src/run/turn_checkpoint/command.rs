@@ -99,9 +99,9 @@ pub enum TurnCheckpointAction {
     Begin(TurnCheckpointBegin),
     /// Register one quota-bounded batch.
     Objects(TurnCheckpointObjects),
-    /// Commit exact ciphertext representations before transfer verification.
+    /// Freeze exact ciphertext representations and sign their create-only PUTs.
     Uploads(TurnCheckpointUploads),
-    /// Authorize only referenced objects within the current pin deadline.
+    /// Authorize a restore's reads of referenced objects within the pin deadline.
     Authorize(TurnCheckpointAuthorize),
     /// Publish one bounded immutable page.
     PageWrite(TurnCheckpointPageWrite),
@@ -133,7 +133,7 @@ pub struct TurnCheckpointObjects {
     pub objects: Vec<CheckpointPlaintext>,
 }
 
-/// Commit exact ciphertext representations before transfer verification.
+/// Freeze exact ciphertext representations and sign their create-only PUTs.
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct TurnCheckpointUploads {
@@ -227,6 +227,11 @@ pub struct TurnCheckpointCommit {
     /// Exact input membership incorporated by the saved root.
     #[garde(dive)]
     pub folds: Vec<FoldRef>,
+    /// Objects of this plan whose bound PUT the runner saw accepted. The
+    /// commit records `verified_at` for these. It refuses any object the
+    /// generation names that has none.
+    #[garde(dive)]
+    pub uploaded: Vec<CheckpointOperationId>,
 }
 
 /// An assignment is a descriptor, never inline private history.
@@ -285,22 +290,6 @@ impl Validate for TurnCheckpointAction {
 }
 
 impl TurnCheckpointAction {
-    /// Native answer budget for readback, including frame delivery.
-    /// Kept: both ends size the readback's wait from it, so neither reads a slow one as lost.
-    pub const VERIFY_ANSWER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(35);
-
-    /// Upload authorization in verification mode reads the stored ciphertext back.
-    #[must_use]
-    pub const fn verifies_uploads(&self) -> bool {
-        matches!(
-            self,
-            Self::Authorize(TurnCheckpointAuthorize {
-                purpose: CheckpointTransferPurpose::Upload,
-                ..
-            })
-        )
-    }
-
     /// Correlation never infers a successful action from an optional field.
     #[must_use]
     pub const fn kind(&self) -> TurnCheckpointKind {

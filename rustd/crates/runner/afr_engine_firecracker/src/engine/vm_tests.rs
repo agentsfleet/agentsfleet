@@ -24,6 +24,10 @@ impl InnerEnvironment for Guest {
         Ok(Box::new(|| Ok(())))
     }
 
+    fn leave(&self) -> io::Result<()> {
+        Ok(())
+    }
+
     fn renew(&self) -> io::Result<()> {
         Ok(())
     }

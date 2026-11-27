@@ -19,6 +19,29 @@ af_core::error_lifts!(Error, ErrorKind:
     seccompiler::Error => Seccomp,
 );
 
+/// A confinement's refused step is the failure the refusing call always
+/// was: the kernel's reason, Landlock's or seccomp's, or the seam's refusal
+/// of a process that still holds what it must not. Written out because one
+/// source lifts into four kinds.
+#[cfg(target_os = "linux")]
+impl From<crate::harden::Refused> for Error {
+    fn from(refused: crate::harden::Refused) -> Self {
+        use crate::harden::{CAPABILITY_SURVIVED, Refused};
+
+        match refused {
+            Refused::System(source) => source.into(),
+            Refused::Landlock(source) => source.into(),
+            Refused::Seccomp(source) => source.into(),
+            Refused::Capability => unconfined(CAPABILITY_SURVIVED),
+            Refused::Spent => unconfined(CONFINEMENT_SPENT),
+        }
+    }
+}
+
+/// Why a confinement asked to apply a second time is refused.
+#[cfg(target_os = "linux")]
+const CONFINEMENT_SPENT: &str = "the confinement was applied already";
+
 /// Refuses every run on this host, in the seam's words: `missing` is what it
 /// lacks.
 #[cfg(not(target_os = "linux"))]

@@ -14,8 +14,8 @@ mod bound;
 mod egress;
 mod facts;
 mod snapshots;
-
-pub use self::bound::MemoryBound;
+pub(crate) mod volume;
+pub use self::bound::{AdmissionBound, Overcommitted, Resource};
 pub use self::egress::{EgressPlan, Enforcer, Generation, enforce, until_in_force};
 pub use self::facts::{Cap, Capabilities, Environment, Granted, ParkMode, ResourceFacts, Root};
 pub use self::snapshots::{SnapshotRef, Snapshots};
@@ -201,10 +201,10 @@ pub trait Engine: Send + Sync + fmt::Debug {
     /// A cap this engine has no mechanism for.
     fn grant(&self, limits: Limits) -> Result<Granted>;
 
-    /// The most sandboxes it builds at once under the host's memory, when it
-    /// reserves memory for each; `None` when only the worker count bounds
-    /// it. A build past the bound is refused, and no sandbox starts.
-    fn memory_bound(&self) -> Option<MemoryBound>;
+    /// The most sandboxes it builds at once under the host's memory and disk,
+    /// when it reserves both for each; `None` when only the worker count
+    /// bounds it. A build past the bound is refused, and no sandbox starts.
+    fn admission_bound(&self) -> Option<AdmissionBound>;
 
     /// The kind of network the daemon assigned this runner, told on each
     /// assignment that takes work: what an engine building sandboxes ahead
@@ -244,8 +244,8 @@ impl<E: Engine + ?Sized> Engine for Arc<E> {
         (**self).grant(limits)
     }
 
-    fn memory_bound(&self) -> Option<MemoryBound> {
-        (**self).memory_bound()
+    fn admission_bound(&self) -> Option<AdmissionBound> {
+        (**self).admission_bound()
     }
 
     fn network_assigned(&self, kind: NetworkKind) {

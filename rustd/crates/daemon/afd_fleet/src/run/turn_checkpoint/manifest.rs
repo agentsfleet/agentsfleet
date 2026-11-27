@@ -17,7 +17,7 @@ pub(super) async fn validate(
         // `decode` holds the page number to its stored ordinal, which
         // `pages_allocate.sql` numbers from the plan's page order.
         let page = pages::decode(&saved)?;
-        pages::validate(owner, plan, &page).await?;
+        pages::validate(owner, plan, &page, pages::Stored::Verified).await?;
         digests.push((
             id.to_string(),
             saved.digest.ok_or(TurnCheckpointRefusal::Incompatible)?,

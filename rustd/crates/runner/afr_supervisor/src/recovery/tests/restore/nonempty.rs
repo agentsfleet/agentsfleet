@@ -3,7 +3,7 @@
 use super::*;
 use crate::{
     client::Verb,
-    recovery::{progress::Progress, transfer, transfer::http_tests::server::Server},
+    recovery::{progress::Progress, transfer::http_tests::server::Server},
     test_support::{self, Answer},
 };
 use af_wire::durable_task::{
@@ -37,7 +37,7 @@ fn encrypted(kind: &str) -> TestResult<(CheckpointObject, Vec<u8>)> {
         transfer: None,
     };
     material(&mut object, 7);
-    let bytes = transfer::seal(
+    let bytes = af_chunk_store::seal(
         &Uuid7::parse(ID)?,
         &mut object,
         Zeroizing::new(CONTENT.to_vec()),
@@ -277,7 +277,10 @@ async fn matching_ciphertext_descriptor_does_not_bypass_a_failed_authentication_
     let Err(failure) = result else {
         return Err("unauthenticated ciphertext was accepted".into());
     };
-    assert!(matches!(failure.kind(), error::ErrorKind::Crypto { .. }));
+    assert!(matches!(
+        failure.kind(),
+        error::ErrorKind::ChunkStore { .. }
+    ));
     assert_eq!(session.progress.completed, 0);
     assert_eq!(session.progress.bytes.acknowledged, 0);
     assert_eq!(

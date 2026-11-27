@@ -129,8 +129,8 @@ pub(super) struct Counting {
     pub(super) panics: bool,
     /// Whether each sandbox it starts refuses its teardown.
     pub(super) leaks: bool,
-    /// The memory bound it reports, if any.
-    pub(super) bound: Option<crate::MemoryBound>,
+    /// The admission bound it reports, if any.
+    pub(super) bound: Option<crate::AdmissionBound>,
     /// The kind of network each start was built for, in order.
     pub(super) built: Mutex<Vec<NetworkKind>>,
     /// The plans each sandbox it starts is held to after its build.
@@ -156,7 +156,7 @@ impl Engine for Counting {
         CAPABILITIES.grant(limits)
     }
 
-    fn memory_bound(&self) -> Option<crate::MemoryBound> {
+    fn admission_bound(&self) -> Option<crate::AdmissionBound> {
         self.bound
     }
 

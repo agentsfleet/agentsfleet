@@ -1,10 +1,11 @@
-//! The boundary owner holds freeze until every scan, upload, publication and cleanup finishes.
+//! A turn's save, published after its run resumed: register, seal, PUT,
+//! pages, then the commit that moves the turn's head.
 
-use super::super::{catalog::Catalog, files::Workspace, uploads};
+use super::super::{catalog::Catalog, tree::ChangeSource, uploads};
 use super::{NativeTurn, session::TurnSession};
 use crate::{Result, error};
 use af_wire::{
-    durable_task::{CheckpointObjectStatus, CheckpointPage},
+    durable_task::CheckpointPage,
     run::{
         CheckpointOperationId, TurnCheckpointAbandon, TurnCheckpointBegin, TurnCheckpointCommit,
         TurnCheckpointPageWrite, TurnCheckpointRef, TurnPrivateRoot, TurnResume, TurnWorkspace,
@@ -12,15 +13,26 @@ use af_wire::{
 };
 use afr_agent::TurnSnapshot;
 use garde::Validate as _;
-use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 use tokio_util::sync::CancellationToken;
 use zeroize::Zeroizing;
 
 impl NativeTurn<'_> {
     pub(crate) async fn capture(
         &mut self,
+        snapshot: TurnSnapshot,
+        source: Option<&dyn ChangeSource>,
+        stop: &CancellationToken,
+    ) -> Result<TurnResume> {
+        let started = tokio::time::Instant::now();
+        let published = self.publish_snapshot(snapshot, source, stop).await;
+        uploads::logged("turn", started, &published, |saved| saved.generation);
+        published
+    }
+
+    async fn publish_snapshot(
+        &mut self,
         mut snapshot: TurnSnapshot,
-        root: Option<PathBuf>,
+        source: Option<&dyn ChangeSource>,
         stop: &CancellationToken,
     ) -> Result<TurnResume> {
         self.reconcile().await?;
@@ -30,7 +42,7 @@ impl NativeTurn<'_> {
             }
             snapshot.previous = Some(head.clone());
         }
-        let catalog = catalog(&snapshot, root, stop).await?;
+        let catalog = catalog(&snapshot, source, stop).await?;
         let begin = intent(&snapshot, catalog.as_ref())?;
         let plan = self.command(begin.clone()).await?;
         plan.validate()?;
@@ -48,7 +60,13 @@ impl NativeTurn<'_> {
                     "turn allocation differs from its capture witness",
                 ));
             }
-            self.publish(snapshot, catalog, &plan, stop).await
+            self.publish(
+                snapshot,
+                catalog.map(|catalog| (catalog, source)),
+                &plan,
+                stop,
+            )
+            .await
         }
         .await;
         if result.is_err() && self.publication.pending.is_none() {
@@ -63,7 +81,7 @@ impl NativeTurn<'_> {
     async fn publish(
         &mut self,
         snapshot: TurnSnapshot,
-        catalog: Option<Catalog>,
+        catalog: Option<(Catalog, Option<&dyn ChangeSource>)>,
         plan: &af_wire::run::TurnCheckpointPlan,
         stop: &CancellationToken,
     ) -> Result<TurnResume> {
@@ -78,10 +96,12 @@ impl NativeTurn<'_> {
             plan.pin.clone(),
             stop,
         )?;
-        let digests = if let Some(catalog) = catalog {
-            session.capture_files(catalog, &plan.page_ids).await?
+        let (digests, uploaded) = if let Some((catalog, source)) = catalog {
+            session
+                .capture_files(&catalog, source, &plan.page_ids)
+                .await?
         } else {
-            Vec::new()
+            (Vec::new(), Vec::new())
         };
         let manifest = af_crypto::checkpoint_digest::manifest_root(
             digests
@@ -106,6 +126,7 @@ impl NativeTurn<'_> {
                 root: TurnPrivateRoot { history: root },
                 manifest_root: manifest,
                 folds: snapshot.folds,
+                uploaded: uploaded.into_iter().map(CheckpointOperationId).collect(),
             },
             expected,
         )
@@ -114,50 +135,21 @@ impl NativeTurn<'_> {
 }
 
 impl TurnSession<'_, '_> {
+    /// Registers and uploads the catalog's chunks, then writes its pages;
+    /// each page's digest, and the objects whose PUT was accepted.
     async fn capture_files(
         &mut self,
-        catalog: Catalog,
+        catalog: &Catalog,
+        source: Option<&dyn ChangeSource>,
         page_ids: &[CheckpointOperationId],
-    ) -> Result<Vec<(String, String)>> {
-        let mut ids = BTreeMap::new();
-        let chunks: Vec<_> = catalog.chunks.iter().collect();
-        for batch in chunks.chunks(af_wire::durable_task::CHECKPOINT_BATCH) {
-            let objects = self
-                .register(
-                    batch
-                        .iter()
-                        .map(|(_, chunk)| chunk.descriptor.clone())
-                        .collect(),
-                )
-                .await?;
-            let mut pending = Vec::new();
-            let mut pending_bytes = 0;
-            for ((key, chunk), object) in batch.iter().zip(objects) {
-                ids.insert((*key).clone(), object.object_id.clone());
-                match object.status {
-                    CheckpointObjectStatus::Busy => {
-                        return Err(error::capture_unavailable(
-                            "turn chunk has another live writer",
-                        ));
-                    }
-                    CheckpointObjectStatus::Reused => {}
-                    CheckpointObjectStatus::Missing => {
-                        let bytes = uploads::ciphertext_size(&object);
-                        if !pending.is_empty() && pending_bytes + bytes > uploads::BATCH_BYTES {
-                            self.upload_batch(std::mem::take(&mut pending)).await?;
-                            pending_bytes = 0;
-                        }
-                        pending.push((object, (**chunk).clone()));
-                        pending_bytes += bytes;
-                    }
-                }
-            }
-            if !pending.is_empty() {
-                self.upload_batch(pending).await?;
-            }
-        }
-        let pages = catalog.pages(Some(&ids), af_wire::run::TURN_CHECKPOINT_PAGE_BYTES)?;
-        self.write_file_pages(page_ids, pages).await
+    ) -> Result<(Vec<(String, String)>, Vec<String>)> {
+        let published = uploads::publish(self, catalog, source).await?;
+        let pages = catalog.pages(
+            Some(&published.ids),
+            af_wire::run::TURN_CHECKPOINT_PAGE_BYTES,
+        )?;
+        let digests = self.write_file_pages(page_ids, pages).await?;
+        Ok((digests, published.uploaded))
     }
 
     async fn write_file_pages(
@@ -197,26 +189,14 @@ impl TurnSession<'_, '_> {
 
 async fn catalog(
     snapshot: &TurnSnapshot,
-    root: Option<PathBuf>,
+    source: Option<&dyn ChangeSource>,
     stop: &CancellationToken,
 ) -> Result<Option<Catalog>> {
-    match (&snapshot.scope.workspace, root) {
+    match (&snapshot.scope.workspace, source) {
         (TurnWorkspace::ApiOnly, None) => Ok(None),
-        (TurnWorkspace::Files { .. }, Some(root)) => {
-            let stop = stop.clone();
-            Ok(Some(
-                tokio::task::spawn_blocking(move || {
-                    let workspace = Arc::new(Workspace::open(&root)?);
-                    Catalog::build(
-                        Some(&workspace),
-                        Zeroizing::new(Vec::new()),
-                        Vec::new(),
-                        &stop,
-                    )
-                })
-                .await??,
-            ))
-        }
+        (TurnWorkspace::Files { .. }, Some(source)) => Ok(Some(
+            Catalog::read(Some(source), Zeroizing::new(Vec::new()), Vec::new(), stop).await?,
+        )),
         _ => Err(error::config("ordinary root and actual workspace differ")),
     }
 }

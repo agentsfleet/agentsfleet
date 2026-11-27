@@ -38,8 +38,9 @@ mod trace;
 
 pub use self::engine::{
     AgentEngine, AgentRun, Checkpoint, CommittedRecovery, EventSink, FileRecoveryPermit, Folded,
-    Inbox, Meter, Needs, RecoveryBoundarySink, RecoveryReceipt, RecoverySave, RecoverySkip,
-    RecoverySnapshot, RecoveryState, RunOutput, TurnRecovery, TurnSnapshot,
+    Inbox, Meter, Needs, Publication, Published, RecoveryBoundarySink, RecoveryReceipt,
+    RecoverySave, RecoverySkip, RecoverySnapshot, RecoveryState, RunOutput, TurnRecovery,
+    TurnSnapshot,
 };
 pub use self::error::{Error, Result, Unhosted};
 pub use self::harness::{Loop, RunLimits};

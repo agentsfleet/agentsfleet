@@ -99,6 +99,13 @@ async fn allocate(
     if content.iter().collect::<BTreeSet<_>>().len() != content.len() {
         return Err(DurableTaskRefusal::ReplayConflict.into());
     }
+    super::supersede(
+        connection,
+        (&plan.workspace_id, &plan.repository),
+        &content,
+        (&plan.id, &plan.owner_run_id, plan.owner_fence),
+    )
+    .await?;
     let existing = matching(connection, plan, &content).await?;
     let found: BTreeSet<_> = existing
         .iter()

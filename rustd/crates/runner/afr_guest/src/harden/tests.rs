@@ -98,3 +98,46 @@ fn test_a_filter_instruction_preserves_its_opcode_jumps_and_operand() {
 fn test_a_filter_instruction_refuses_an_opcode_wider_than_sixteen_bits() {
     super::linux::step(std::hint::black_box(u32::from(u16::MAX) + 1), 0, 0, 0);
 }
+
+/// A refused step reaches a process between fork and exec as the kernel's
+/// own answer, or a denied permission where no system call gave one, and
+/// reaches every other caller as the failure the step always was.
+#[cfg(target_os = "linux")]
+#[test]
+fn test_a_refused_step_keeps_its_answer_for_a_fork_and_its_sentence_for_a_caller() {
+    use std::io;
+
+    use super::Refused;
+    use crate::Error;
+
+    let steps = || {
+        let missing = landlock::CreateRulesetError::MissingHandledAccess;
+        [
+            Refused::System(rustix::io::Errno::NOSYS),
+            Refused::Landlock(landlock::RulesetError::CreateRuleset(missing)),
+            Refused::Seccomp(seccompiler::Error::EmptyFilter),
+            Refused::Capability,
+            Refused::Spent,
+        ]
+    };
+
+    let answers = steps().map(|step| {
+        let answer = io::Error::from(step);
+        (answer.raw_os_error(), answer.kind())
+    });
+    let sentences = steps().map(|step| Error::from(step).detail());
+
+    let denied = (None, io::ErrorKind::PermissionDenied);
+    assert_eq!(answers[0].0, Some(libc::ENOSYS));
+    assert_eq!(answers[1..], [denied; 4]);
+    let told = [
+        "a system call was refused",
+        "Landlock refused the file-system ruleset",
+        "the kernel refused the seccomp program",
+        "a capability survived",
+        "the confinement was applied already",
+    ];
+    for (sentence, told) in sentences.iter().zip(told) {
+        assert!(sentence.contains(told), "{sentence}");
+    }
+}

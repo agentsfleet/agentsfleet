@@ -1,6 +1,6 @@
-//! Sign only committed custody; account successful verification even in a partial batch.
+//! Sign only committed custody.
 
-use super::{Batch, verify};
+use super::Batch;
 use crate::{
     Result,
     durable_task::{
@@ -20,7 +20,6 @@ pub(super) async fn issue(
     tasks: &DurableTasks,
     batch: Batch,
     purpose: CheckpointTransferPurpose,
-    verifying: bool,
 ) -> Result<Vec<CheckpointObject>> {
     let storage = super::super::guard::storage(tasks)?;
     if batch.objects.is_empty() {
@@ -41,9 +40,8 @@ pub(super) async fn issue(
             CheckpointTransferPurpose::Restore => tasks.times().download_link_ttl,
         },
         purpose,
-        verifying,
     };
-    let outcomes = stream::iter(
+    stream::iter(
         batch
             .objects
             .into_iter()
@@ -51,19 +49,9 @@ pub(super) async fn issue(
     )
     .buffer_unordered(4)
     .collect::<Vec<_>>()
-    .await;
-    let mut receipts = Vec::new();
-    let mut objects = Vec::with_capacity(outcomes.len());
-    for outcome in outcomes {
-        objects.push(outcome.map(|(object, receipt)| {
-            if let Some(receipt) = receipt {
-                receipts.push(receipt);
-            }
-            object
-        }));
-    }
-    verify::record(tasks, &batch.plan.workspace_id, &receipts).await?;
-    objects.into_iter().collect()
+    .await
+    .into_iter()
+    .collect()
 }
 
 /// The key the batch's frames carry. A restore whose key is missing, will not
@@ -94,14 +82,10 @@ struct Signing<'a, 'store> {
     deadline: jiff::Timestamp,
     url_lifetime: Duration,
     purpose: CheckpointTransferPurpose,
-    verifying: bool,
 }
 
 impl Signing<'_, '_> {
-    async fn object(
-        &self,
-        object: super::super::object_row::Object,
-    ) -> Result<(CheckpointObject, Option<verify::Receipt>)> {
+    async fn object(&self, object: super::super::object_row::Object) -> Result<CheckpointObject> {
         let id = object.id.clone();
         if object.tombstoned
             || self.purpose == CheckpointTransferPurpose::Upload
@@ -110,24 +94,14 @@ impl Signing<'_, '_> {
         {
             return Err(DurableTaskRefusal::CheckpointIncompatible.into());
         }
-        let native_verified =
-            self.verifying && self.purpose == CheckpointTransferPurpose::Upload && !object.verified;
         if self.purpose == CheckpointTransferPurpose::Restore && !object.sealed_under(self.key) {
             crate::durable_task::storage::CheckpointKeys::mismatched(&self.plan.workspace_id);
             return Err(DurableTaskRefusal::CheckpointIncompatible.into());
         }
         let mut wire = object.described(self.storage, &self.plan.repository)?;
-        let receipt = if native_verified {
-            verify::remote(self.session, &id, self.plan, &wire, self.key).await?
-        } else {
-            None
-        };
-        if receipt.is_some() {
-            wire.status = CheckpointObjectStatus::Reused;
-        }
         wire.transfer = self.transfer(&id, &wire).await?;
         wire.data_key = Some(self.key.wire());
-        Ok((wire, receipt))
+        Ok(wire)
     }
 
     async fn transfer(

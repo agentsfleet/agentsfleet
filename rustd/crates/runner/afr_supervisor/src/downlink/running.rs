@@ -5,9 +5,9 @@
 //! `stopped` rather than a failure. Every other cancellation (a refused
 //! session, a halt) trips the token alone.
 //!
-//! Credits never pass the engine's memory bound: a host whose memory admits
-//! fewer sandboxes than it has workers offers only as many credits as it
-//! admits.
+//! Credits never pass the engine's admission bound: a host whose memory or
+//! disk admits fewer sandboxes than it has workers offers only as many
+//! credits as it admits.
 
 use std::{
     collections::{HashMap, HashSet},
@@ -17,14 +17,14 @@ use std::{
 
 use af_core::id::Uuid7;
 use af_wire::protocol::{RUNS_MAX, Up};
-use afr_engine::MemoryBound;
+use afr_engine::AdmissionBound;
 use parking_lot::Mutex;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
 use crate::{Result, error::ErrorKind};
 
-/// The event a capacity the memory bound holds below the worker count is
+/// The event a capacity the admission bound holds below the worker count is
 /// logged under.
 const EVENT_CAPACITY_BOUNDED: &str = "runner_capacity_bounded";
 
@@ -61,7 +61,7 @@ impl Running {
     /// Offers `workers` credits, or fewer: no more than the frame carries,
     /// and no more than `bound` admits sandboxes. A bound below the worker
     /// count is logged each time it changes what is offered.
-    pub(crate) fn capacity(&self, workers: usize, bound: Option<MemoryBound>) {
+    pub(crate) fn capacity(&self, workers: usize, bound: Option<AdmissionBound>) {
         let admitted = bound.map_or(usize::MAX, |bound| {
             usize::try_from(bound.sandboxes_max).unwrap_or(usize::MAX)
         });
@@ -148,19 +148,26 @@ impl Running {
     }
 }
 
-/// Logs the host's memory bound holding its credits below `worker_count`.
-fn bounded(worker_count: usize, bound: MemoryBound) {
-    let MemoryBound {
+/// Logs the host's bound holding its credits below `worker_count`: the
+/// resource that made it, and what memory and disk each had and admit.
+fn bounded(worker_count: usize, bound: AdmissionBound) {
+    let AdmissionBound {
         sandboxes_max,
-        mem_available_bytes,
-        memory_overcommit,
+        memory,
+        disk,
     } = bound;
+    let bound_by: &str = bound.bound_by().into();
+    let (mem_available_bytes, memory_overcommit) = (memory.available_bytes, memory.overcommit);
+    let (disk_free_bytes, disk_overcommit) = (disk.available_bytes, disk.overcommit);
     let event = EVENT_CAPACITY_BOUNDED;
     tracing::info!(
         worker_count,
         sandboxes_max,
+        bound_by,
         mem_available_bytes,
         memory_overcommit,
+        disk_free_bytes,
+        disk_overcommit,
         event
     );
 }
@@ -194,7 +201,7 @@ mod tests {
 
     use af_core::id::Uuid7;
     use af_wire::protocol::Up;
-    use afr_engine::MemoryBound;
+    use afr_engine::{AdmissionBound, Overcommitted};
 
     use super::Running;
     use crate::test_support::RUN_ID;
@@ -212,17 +219,28 @@ mod tests {
     #[test]
     fn test_credits_stop_at_the_overcommitted_memory_bound() {
         let sandbox = NonZeroU64::new(2 * GIB + 16 * MIB).unwrap();
+        let image = NonZeroU64::new(10 * GIB).unwrap();
+        // 400 GiB free at 8 to 1 admits 320 workspaces of 10 GiB; 40 GiB, 32.
+        let bound = |ratio, disk_free| {
+            AdmissionBound::lesser(
+                Overcommitted::of(28 * GIB, ratio, sandbox),
+                Overcommitted::of(disk_free, 8, image),
+            )
+        };
         let running = Running::default();
 
-        let overcommitted = MemoryBound::overcommitted(28 * GIB, 4, sandbox);
+        let overcommitted = bound(4, 400 * GIB);
         running.capacity(64, Some(overcommitted));
         assert_eq!(overcommitted.sandboxes_max, 55);
         assert_eq!(credits(&running), Some(55));
 
-        let exact = MemoryBound::overcommitted(28 * GIB, 1, sandbox);
+        let exact = bound(1, 400 * GIB);
         running.capacity(64, Some(exact));
         assert_eq!(exact.sandboxes_max, 13);
         assert_eq!(credits(&running), Some(13));
+
+        running.capacity(64, Some(bound(4, 40 * GIB)));
+        assert_eq!(credits(&running), Some(32), "disk admits fewer than memory");
 
         running.capacity(8, Some(overcommitted));
         assert_eq!(credits(&running), Some(8), "fewer workers than the bound");

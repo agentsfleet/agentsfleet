@@ -231,7 +231,7 @@ fn host(capable: bool) -> HostProbe {
         kvm: if capable { Kvm::Usable } else { Kvm::Absent },
         toolbox_filesystem: capable,
         workspace_direct_io: None,
-        egress: false,
+        egress: capable,
     }
 }
 

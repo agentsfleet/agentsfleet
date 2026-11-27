@@ -1,12 +1,12 @@
-//! Real S3 SDK requests authenticate ciphertext before restoring a manifest.
+//! Real S3 SDK requests bind create-only ciphertext before restoring a manifest.
 
 use af_core::etag::sha256_hex;
 use af_crypto::checkpoint_digest;
 use af_wire::durable_task::{
     CheckpointAuthorizationInput, CheckpointCommitInput, CheckpointEntry, CheckpointFile,
-    CheckpointMode, CheckpointObject, CheckpointObjectStatus, CheckpointObjectsInput,
-    CheckpointPage, CheckpointPageInput, CheckpointPlaintext, CheckpointPlan, CheckpointReadQuery,
-    CheckpointTransfer, CheckpointTransferPurpose, CheckpointUpload, CheckpointUploadsInput,
+    CheckpointMode, CheckpointObject, CheckpointObjectsInput, CheckpointPage, CheckpointPageInput,
+    CheckpointPlaintext, CheckpointPlan, CheckpointReadQuery, CheckpointTransfer,
+    CheckpointTransferPurpose, CheckpointUpload, CheckpointUploadsInput,
     DecisionDurableTaskVersion,
 };
 use afd_fleet::durable_task::{DurableTaskLifecycle as _, DurableTasks};
@@ -23,13 +23,12 @@ mod encryption;
 mod incremental;
 mod reuse;
 mod signature;
-mod tamper;
 pub(super) use config::configured;
 use encryption::encrypt;
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn checkpoint_real_sdk_verifies_create_only_ciphertext_and_restore_custody() {
+async fn checkpoint_real_sdk_binds_create_only_ciphertext_and_restore_custody() {
     exercise(roundtrip).await;
 }
 
@@ -46,8 +45,6 @@ async fn roundtrip(case: &Case) {
     let (plan, object) = allocate(case, &tasks, &task, plaintext).await;
     let ciphertext = encrypt(case, &object, plaintext);
     upload(case, &tasks, &task, &plan, &object, &ciphertext, &server).await;
-    tamper::refuse(case, &tasks, &task, &plan, &object, &server).await;
-    confirm(case, &tasks, &task, &plan, &object).await;
     publish(
         case,
         &tasks,
@@ -190,43 +187,6 @@ async fn send_upload(
     );
 }
 
-async fn confirm(
-    case: &Case,
-    tasks: &DurableTasks,
-    task: &DecisionDurableTaskVersion,
-    plan: &CheckpointPlan,
-    object: &CheckpointObject,
-) {
-    let checkpoint = id(&plan.checkpoint_id);
-    let confirmed = tasks
-        .checkpoint_authorizations(
-            case.run(),
-            &checkpoint,
-            &valid(CheckpointAuthorizationInput {
-                fencing_token: case.run().fencing_token,
-                durable_task: task.clone(),
-                purpose: CheckpointTransferPurpose::Upload,
-                pin_id: Some(plan.pin.id.clone()),
-                object_ids: vec![object.object_id.clone()],
-            }),
-        )
-        .await
-        .expect("native authenticated remote readback");
-    assert!(matches!(
-        confirmed.objects.first().expect("confirmed object").status,
-        CheckpointObjectStatus::Reused
-    ));
-    assert!(
-        confirmed
-            .objects
-            .first()
-            .expect("confirmed object")
-            .transfer
-            .is_none(),
-        "verified ciphertext needs no second PUT"
-    );
-}
-
 async fn restore(
     case: &Case,
     tasks: &DurableTasks,
@@ -313,10 +273,11 @@ async fn publish(
                 history_digest: checkpoint_digest::history_root([]),
                 covered_input_sequence: 0,
                 effect_watermark: 0,
+                uploaded: vec![object.to_owned()],
             }),
         )
         .await
-        .expect("verified manifest commit");
+        .expect("accepted upload commits");
 }
 
 async fn write_page(

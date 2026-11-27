@@ -29,7 +29,10 @@ async fn capture_deduplicates_content_and_commits_only_the_acknowledged_boundary
         stop: &stop,
     }
     .run(
-        Some(workspace.path().to_owned()),
+        Some(&crate::recovery::Tree::new(
+            workspace.path().to_owned(),
+            stop.clone(),
+        )),
         Zeroizing::new(b"private history".to_vec()),
         vec!["removed".to_owned()],
     )

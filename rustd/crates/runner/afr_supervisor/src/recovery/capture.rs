@@ -1,17 +1,16 @@
-//! Capture commits only after every immutable object and ordered page verifies.
+//! Capture commits once every new object's PUT is accepted and every ordered
+//! page is written.
 
-use super::{Session, catalog::Catalog, files::Workspace, transfer::Transfers};
+use super::{Session, catalog::Catalog, transfer::Transfers, tree::ChangeSource, uploads};
 use crate::{Result, client::ControlPlane, error};
 use af_core::id::Uuid7;
 use af_wire::activity::{
     DurableTaskActivityOperation as Operation, DurableTaskActivityPhase as Phase,
 };
 use af_wire::durable_task::{
-    CHECKPOINT_BATCH, CHECKPOINT_FORMAT, CheckpointCommitInput, CheckpointMode,
-    CheckpointObjectStatus, CheckpointPageInput, CheckpointPlan, CheckpointPlanInput,
-    DecisionDurableTaskVersion, DurableTaskContext, DurableTaskTarget,
+    CHECKPOINT_FORMAT, CheckpointCommitInput, CheckpointMode, CheckpointPageInput, CheckpointPlan,
+    CheckpointPlanInput, DecisionDurableTaskVersion, DurableTaskContext, DurableTaskTarget,
 };
-use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 use zeroize::Zeroizing;
 
 #[derive(Debug)]
@@ -29,11 +28,11 @@ pub(crate) struct Capture<'a> {
 }
 
 impl Capture<'_> {
-    /// The caller owns a frozen sandbox for this entire future. Cancellation
-    /// leaves an unfinished native plan, never a usable recovery pointer.
+    /// Publishes what `source` yields beside `history`. Cancellation leaves
+    /// an unfinished native plan, never a usable recovery pointer.
     pub(crate) async fn run(
         &self,
-        root: Option<PathBuf>,
+        source: Option<&dyn ChangeSource>,
         history: Zeroizing<Vec<u8>>,
         base_paths: Vec<String>,
     ) -> Result<CheckpointPlan> {
@@ -51,9 +50,11 @@ impl Capture<'_> {
         )
         .await;
         let mut progress = super::progress::Progress::default();
+        let started = tokio::time::Instant::now();
         let saved = self
-            .capture(&activity, &mut progress, root, history, base_paths)
+            .capture(&activity, &mut progress, source, history, base_paths)
             .await;
+        uploads::logged("durable_task", started, &saved, |plan| plan.generation);
         let phase = if saved.is_ok() {
             Phase::Saved
         } else {
@@ -76,14 +77,13 @@ impl Capture<'_> {
         &self,
         activity: &str,
         progress: &mut super::progress::Progress,
-        root: Option<PathBuf>,
+        source: Option<&dyn ChangeSource>,
         history: Zeroizing<Vec<u8>>,
         base_paths: Vec<String>,
     ) -> Result<CheckpointPlan> {
         if self.stop.is_cancelled() {
             return Err(error::config("checkpoint capture was cancelled"));
         }
-        let stop = self.stop.clone();
         super::activity::emit(
             self.plane,
             self.run,
@@ -94,13 +94,7 @@ impl Capture<'_> {
             None,
         )
         .await;
-        let catalog = tokio::task::spawn_blocking(move || {
-            let root = root
-                .map(|path| Workspace::open(&path).map(Arc::new))
-                .transpose()?;
-            Catalog::build(root.as_ref(), history, base_paths, &stop)
-        })
-        .await??;
+        let catalog = Catalog::read(source, history, base_paths, self.stop).await?;
         if self.stop.is_cancelled() {
             return Err(error::config("checkpoint capture was cancelled"));
         }
@@ -128,7 +122,7 @@ impl Capture<'_> {
             transfers: self.transfers.clone(),
             stop: self.stop,
         };
-        let ids = session.capture_chunks(&catalog).await?;
+        let published = uploads::publish(&mut session, &catalog, source).await?;
         session
             .progress(
                 Operation::Capture,
@@ -139,7 +133,9 @@ impl Capture<'_> {
                 ),
             )
             .await;
-        session.commit_catalog(&catalog, &ids, self.task).await
+        session
+            .commit_catalog(&catalog, &published, self.task)
+            .await
     }
 
     async fn plan(
@@ -195,68 +191,13 @@ impl Capture<'_> {
 }
 
 impl Session<'_> {
-    async fn capture_chunks(&mut self, catalog: &Catalog) -> Result<BTreeMap<String, String>> {
-        let chunks: Vec<_> = catalog.chunks.iter().collect();
-        let mut ids = BTreeMap::new();
-        for batch in chunks.chunks(CHECKPOINT_BATCH) {
-            let objects = self
-                .register(
-                    batch
-                        .iter()
-                        .map(|(_, chunk)| chunk.descriptor.clone())
-                        .collect(),
-                )
-                .await?;
-            for object in &objects {
-                if !matches!(object.status, CheckpointObjectStatus::Busy) {
-                    self.progress.discover(
-                        &object.object_id,
-                        super::uploads::ciphertext_size(object),
-                        matches!(object.status, CheckpointObjectStatus::Reused),
-                    );
-                }
-            }
-            self.progress(
-                Operation::Capture,
-                Phase::Uploading,
-                Some(
-                    u32::try_from(chunks.len())
-                        .map_err(|source| error::boundary("checkpoint count overflow", source))?,
-                ),
-            )
-            .await;
-            let mut pending = Vec::new();
-            let mut pending_bytes = 0_u64;
-            for ((key, chunk), object) in batch.iter().zip(objects) {
-                ids.insert((*key).clone(), object.object_id.clone());
-                if matches!(object.status, CheckpointObjectStatus::Busy) {
-                    return Err(error::capture_unavailable(
-                        "checkpoint chunk has another live writer",
-                    ));
-                }
-                if !matches!(object.status, CheckpointObjectStatus::Reused) {
-                    let bytes = super::uploads::ciphertext_size(&object);
-                    if !pending.is_empty() && pending_bytes + bytes > super::uploads::BATCH_BYTES {
-                        self.upload_batch(std::mem::take(&mut pending)).await?;
-                        pending_bytes = 0;
-                    }
-                    pending.push((object, (**chunk).clone()));
-                    pending_bytes += bytes;
-                }
-            }
-            if !pending.is_empty() {
-                self.upload_batch(pending).await?;
-            }
-        }
-        Ok(ids)
-    }
-
     async fn commit_catalog(
         &mut self,
         catalog: &Catalog,
-        ids: &BTreeMap<String, String>,
+        published: &uploads::Published,
         task: &DurableTaskContext<'_>,
     ) -> Result<CheckpointPlan> {
+        let ids = &published.ids;
         let pages = catalog.pages(Some(ids), af_wire::durable_task::CHECKPOINT_PAGE_BYTES)?;
         if pages.len() != self.plan.page_ids.len() {
             return Err(error::config(
@@ -278,6 +219,7 @@ impl Session<'_> {
             history_digest: catalog.history_root(ids)?,
             covered_input_sequence: task.covered_input_sequence,
             effect_watermark: task.confirmed_effect_watermark,
+            uploaded: published.uploaded.clone(),
         };
         let saved = self
             .plane

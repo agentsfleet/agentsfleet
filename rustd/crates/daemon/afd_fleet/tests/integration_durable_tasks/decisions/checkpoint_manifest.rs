@@ -168,6 +168,7 @@ impl Manifest<'_> {
             history_digest: checkpoint_digest::history_root([]),
             covered_input_sequence: 0,
             effect_watermark: 0,
+            uploaded: Vec::new(),
         };
         let mut wrong = commit.clone();
         wrong.manifest_root = "e".repeat(64);

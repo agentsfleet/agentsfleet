@@ -12,6 +12,9 @@ pub const MECHANISM_LANDLOCK: &str = "landlock";
 pub const MECHANISM_SECCOMP: &str = "seccomp";
 /// See [`MECHANISM_LANDLOCK`]; the toolbox's file system is EROFS.
 pub const MECHANISM_TOOLBOX_FILESYSTEM: &str = "erofs";
+/// See [`MECHANISM_LANDLOCK`]; the packet filter every guest's egress is
+/// held by is an `nf_tables` table.
+pub const MECHANISM_NFTABLES: &str = "nftables";
 /// The cgroup controllers every run's limits are written through.
 ///
 /// `io` is among them: a host that cannot cap a run's disk throughput cannot

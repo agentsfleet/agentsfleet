@@ -116,7 +116,6 @@ pub(crate) struct Inner {
     output_budget: Budget,
     registry: Arc<registry::Registry>,
     tasks: TaskTracker,
-    checkpoint_verifications: tokio::sync::Semaphore,
     accounting_stop: CancellationToken,
 }
 
@@ -150,7 +149,6 @@ impl Gateway {
                 output_budget,
                 registry: Arc::new(registry::Registry::default()),
                 tasks: TaskTracker::new(),
-                checkpoint_verifications: tokio::sync::Semaphore::new(8),
                 accounting_stop: CancellationToken::new(),
             }),
         }

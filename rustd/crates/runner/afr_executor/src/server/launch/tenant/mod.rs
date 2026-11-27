@@ -49,6 +49,13 @@ pub(crate) trait Placement: Send + Sync + fmt::Debug {
 
     /// `ending` as the caller reads it.
     fn judge(&self, ending: Ending) -> Ending;
+
+    /// Whether no process placed here still runs. One a call started and
+    /// left behind is still the tenant's, and the disk may change under it.
+    ///
+    /// # Errors
+    /// What is placed here could not be read.
+    fn idle(&self) -> io::Result<bool>;
 }
 
 /// Processes stay where the executor runs: an engine with no tenant leaf.
@@ -67,6 +74,12 @@ impl Placement for Inherit {
     fn judge(&self, ending: Ending) -> Ending {
         ending
     }
+
+    /// It places nothing, so it holds nothing: a session's own calls are all
+    /// that is known to run.
+    fn idle(&self) -> io::Result<bool> {
+        Ok(true)
+    }
 }
 
 /// The tenant leaf, reached through two descriptors the engine opened.
@@ -79,12 +92,12 @@ pub struct Tenant {
 }
 
 impl Tenant {
-    /// The leaf whose `cgroup.procs` is open for writing as `procs` and whose
-    /// `memory.events` is open for reading as `events`. Both become
-    /// close-on-exec here, so no process started inherits either.
+    /// The leaf whose `cgroup.procs` is open for reading and writing as
+    /// `procs` and whose `memory.events` is open for reading as `events`.
+    /// Both become close-on-exec here, so no process started inherits either.
     ///
     /// # Errors
-    /// A descriptor refuses close-on-exec, `procs` is not open for writing, or
+    /// A descriptor refuses close-on-exec, `procs` is not open for both, or
     /// `events` does not read as `memory.events`.
     pub fn new(procs: OwnedFd, events: OwnedFd) -> Result<Self> {
         let (procs, events) = (File::from(procs), File::from(events));
@@ -93,7 +106,8 @@ impl Tenant {
             .try_for_each(|held| rustix::io::fcntl_setfd(held, FdFlags::CLOEXEC))
             .map_err(io::Error::from)
             .and_then(|()| writable(&procs))
-            .and_then(|()| oom_kills(&events))
+            .and_then(|()| emptied(&procs))
+            .and_then(|_idle| oom_kills(&events))
             .map_err(error::tenant_unavailable)?;
         Ok(Self {
             procs,
@@ -130,6 +144,10 @@ impl Placement for Tenant {
             _unchanged => ending,
         }
     }
+
+    fn idle(&self) -> io::Result<bool> {
+        emptied(&self.procs)
+    }
 }
 
 /// Logs a `memory.events` read that failed: the kill it might have named
@@ -159,6 +177,14 @@ pub(super) fn place(
     // alone.
     unsafe { command.pre_exec(move || placed.enter()) };
     Ok(())
+}
+
+/// Whether the leaf whose `cgroup.procs` is `procs` holds no process. The
+/// kernel lists a leaf's live processes from the start of the file, so one
+/// byte tells an empty list from any other.
+fn emptied(procs: &File) -> io::Result<bool> {
+    let mut first = [0; 1];
+    Ok(procs.read_at(&mut first, 0)? == 0)
 }
 
 /// Whether `fd` is open, and open for writing.

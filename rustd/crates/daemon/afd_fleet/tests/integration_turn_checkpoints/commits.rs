@@ -40,6 +40,7 @@ async fn a_committed_generation_replays_only_its_own_manifest() -> Checked {
                     root: pending.root,
                     manifest_root: other_manifest(),
                     folds: Vec::new(),
+                    uploaded: Vec::new(),
                 }))
                 .await
         ),
@@ -70,6 +71,7 @@ async fn an_api_only_capture_commits_only_the_empty_manifest() -> Checked {
                     root: pending.root.clone(),
                     manifest_root: other_manifest(),
                     folds: Vec::new(),
+                    uploaded: Vec::new(),
                 }))
                 .await
         ),
@@ -103,6 +105,7 @@ async fn a_file_manifest_must_digest_its_pages() -> Checked {
                     root: pending.root,
                     manifest_root: other_manifest(),
                     folds: Vec::new(),
+                    uploaded: Vec::new(),
                 }))
                 .await
         ),
@@ -139,6 +142,7 @@ async fn a_commit_must_carry_the_root_its_capture_began_with() -> Checked {
                         std::iter::empty::<(&str, &str)>()
                     ),
                     folds: Vec::new(),
+                    uploaded: Vec::new(),
                 }))
                 .await
         ),
@@ -166,6 +170,7 @@ async fn a_reader_pin_cannot_commit() -> Checked {
                     root: pending.root,
                     manifest_root: saved.manifest_root.clone(),
                     folds: Vec::new(),
+                    uploaded: Vec::new(),
                 }))
                 .await
         ),
@@ -222,6 +227,7 @@ async fn a_root_too_large_to_read_back_is_a_limit() -> Checked {
                         std::iter::empty::<(&str, &str)>()
                     ),
                     folds: Vec::new(),
+                    uploaded: Vec::new(),
                 }))
                 .await
         ),

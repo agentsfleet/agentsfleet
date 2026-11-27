@@ -2,6 +2,7 @@
 //!
 //! ```text
 //!   init (root) ─► /proc /sys /sys/fs/cgroup /dev /dev/pts /dev/shm
+//!               ─► memory always overcommitted; loopback up
 //!               ─► vda erofs at /toolbox; its /usr and /etc bound in place
 //!               ─► vdb ext4 at /disk; its workspace/ and tmp/ at /workspace, /tmp
 //!               ─► vdc, when attached: /etc/hosts and /etc/resolv.conf
@@ -16,8 +17,8 @@
 //! ```
 //!
 //! The executor is the guest's root service and stays outside the inner
-//! environment it builds: a process namespace and a mount namespace of
-//! their own, where each tenant process becomes the toolbox's sandbox user
+//! environment it builds: process, mount and inter-process communication
+//! namespaces of their own, where each tenant process becomes the toolbox's sandbox user
 //! and puts today's confinement on itself — `no_new_privs`, Landlock and
 //! seccomp — before it execs. The executor can end that environment and
 //! build it again while the guest runs on, so a restore needs no reboot.
@@ -37,7 +38,7 @@ use std::sync::Arc;
 use afr_cgroup::{CGROUP_PROCS, CGROUP_ROOT, MEMORY_EVENTS, SUBTREE_CONTROL, TENANT_LEAF};
 use afr_engine::Result;
 use afr_executor::{InnerEnvironment, Tenant};
-use afr_guest::Namespaced;
+use afr_guest::{Hardened, Namespaced};
 use rustix::fs::{Gid, Uid};
 use rustix::mount::{MountFlags, MountPropagationFlags, mount, mount_bind, mount_change};
 use tokio_vsock::{VMADDR_CID_ANY, VsockAddr, VsockListener, VsockStream};
@@ -75,6 +76,16 @@ const NAMED: [(&str, &str); 2] = [
     ("/run/hosts", HOSTS),
     ("/run/resolv.conf", "/etc/resolv.conf"),
 ];
+/// Where the guest kernel's overcommit policy is set.
+const OVERCOMMIT_MEMORY: &str = "/proc/sys/vm/overcommit_memory";
+/// The policy that never refuses an allocation.
+///
+/// The guest's memory is the run's whole limit, so under the kernel's
+/// default a process asking for more than the guest holds is refused the
+/// address space and fails on its own. With this it is given the space and
+/// ended by the out-of-memory killer as it fills it, which is what the
+/// tenant leaf counts and a run reports as out of memory.
+const ALWAYS: &str = "1";
 /// The one controller the tenant leaf needs: memory, for its `oom_kill`
 /// count. The guest's root cgroup may hold the executor beside it, as the
 /// root is exempt from cgroup v2's rule that an inner node holds no process.
@@ -88,6 +99,10 @@ const MEMORY_CONTROLLER: &str = "+memory";
 /// then ends the guest, since its `init` returned.
 pub fn serve_vm(entry: GuestEntry) -> Result<()> {
     mount_all(entry)?;
+    fs::write(OVERCOMMIT_MEMORY, ALWAYS)?;
+    // A guest with no network device still serves its own processes on
+    // `127.0.0.1`, as a package index or a test server does.
+    afr_firewall::raise_loopback()?;
     // Shared, so a hosts file the executor swaps in later reaches the inner
     // environment's namespace, downstream of this one.
     mount_change(
@@ -231,6 +246,7 @@ fn leaf(root: &Path) -> Result<PathBuf> {
 /// open-time credentials.
 fn tenant(leaf: &Path) -> Result<Tenant> {
     let procs = fs::OpenOptions::new()
+        .read(true)
         .write(true)
         .open(leaf.join(CGROUP_PROCS))?;
     let events = fs::File::open(leaf.join(MEMORY_EVENTS))?;
@@ -243,11 +259,14 @@ fn tenant(leaf: &Path) -> Result<Tenant> {
 fn executor(entry: GuestEntry) -> Result<()> {
     let workspace = Path::new(afr_executor::WORKSPACE_ROOT);
     let tenant = Arc::new(tenant(&leaf(Path::new(CGROUP_ROOT))?)?);
+    // The executor's choice, made here once: every tenant process is
+    // hardened, and no request names another confinement.
     let inner: Arc<dyn InnerEnvironment> = Arc::new(Namespaced::build(
         GUEST_USER,
         workspace,
         Path::new(HOSTS),
         Path::new(RUN),
+        Box::new(Hardened::new()?),
     )?);
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()

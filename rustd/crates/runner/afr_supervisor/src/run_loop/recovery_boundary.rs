@@ -1,19 +1,25 @@
 //! The capture future outlives a cancelled, panicking or vanished agent caller.
+//!
+//! One publication runs per owner: a save holds the owner's one permit from
+//! its pause until its commit answers, and a boundary that finds the permit
+//! taken skips without pausing.
 
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
-use afr_agent::{RecoveryBoundarySink, RecoverySave, RecoverySkip, RecoverySnapshot};
+use afr_agent::{Publication, RecoveryBoundarySink, RecoverySave, RecoverySkip, RecoverySnapshot};
 use afr_engine::Sandbox;
-use tokio::sync::{Mutex, mpsc, oneshot};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
-use super::{Run, recovery::State};
+use super::{Run, recovery::State, recovery_capture::Pinned};
 use crate::{error, recovery::RecoveryResources, report::Ending};
 
 #[derive(Debug)]
 struct Job {
     snapshot: RecoverySnapshot,
     reply: oneshot::Sender<afr_agent::Result<RecoverySave>>,
+    /// The owner's one publication, held until this save's commit answers.
+    publishing: OwnedSemaphorePermit,
 }
 
 /// A file run cannot claim API-only state while its workspace is building.
@@ -29,7 +35,7 @@ pub(super) enum Workspace<'a> {
 #[derive(Debug)]
 pub(super) struct Sink<'a> {
     jobs: mpsc::Sender<Job>,
-    active: Mutex<()>,
+    publishing: Arc<Semaphore>,
     workspace: Workspace<'a>,
     resources: &'a RecoveryResources,
 }
@@ -71,12 +77,16 @@ impl RecoveryBoundarySink for Sink<'_> {
     }
 
     async fn save(&self, snapshot: RecoverySnapshot) -> afr_agent::Result<RecoverySave> {
-        let Ok(_active) = self.active.try_lock() else {
-            return Ok(RecoverySave::Skipped(RecoverySkip::Unavailable));
+        let Ok(publishing) = Arc::clone(&self.publishing).try_acquire_owned() else {
+            return Ok(RecoverySave::Skipped(RecoverySkip::BusyPublication));
         };
         let (reply, receive) = oneshot::channel();
         self.jobs
-            .send(Job { snapshot, reply })
+            .send(Job {
+                snapshot,
+                reply,
+                publishing,
+            })
             .await
             .map_err(|source| {
                 afr_agent::Error::checkpoint(error::boundary("capture owner closed", source))
@@ -101,7 +111,7 @@ impl<'a, 'run> BoundaryOwner<'a, 'run> {
         (
             Sink {
                 jobs: send,
-                active: Mutex::new(()),
+                publishing: Arc::new(Semaphore::new(1)),
                 workspace,
                 resources: &run.lessee.recovery,
             },
@@ -120,7 +130,7 @@ impl<'a, 'run> BoundaryOwner<'a, 'run> {
         )
     }
 
-    pub(super) async fn beside(mut self, work: impl Future<Output = Ending>) -> Ending {
+    pub(super) async fn beside(mut self, work: impl Future<Output = Ending> + Send) -> Ending {
         tokio::pin!(work);
         let ending = loop {
             tokio::select! {
@@ -128,22 +138,12 @@ impl<'a, 'run> BoundaryOwner<'a, 'run> {
                 ending = &mut work => break ending,
                 job = self.jobs.recv() => {
                     let Some(job) = job else { break work.await };
-                    // Dropping the reply receiver never drops this operation.
-                    // Poll work too: its stop grace can end while upload waits.
-                    let stop = self.stop.clone();
-                    let capture = Box::pin(self.capture(job.snapshot));
-                    tokio::pin!(capture);
-                    let completed = tokio::select! {
-                        biased;
-                        result = &mut capture => { let _gone = job.reply.send(result); None }
-                        ending = &mut work => {
-                            stop.cancel();
-                            let result = capture.await;
-                            let _gone = job.reply.send(result);
-                            Some(ending)
-                        }
-                    };
-                    if let Some(ending) = completed { break ending; }
+                    // Erased, so the run's future names no save's type.
+                    let served: std::pin::Pin<Box<dyn Future<Output = Option<Ending>> + Send + '_>> =
+                        Box::pin(self.serve(job, &mut work));
+                    if let Some(ending) = served.await {
+                        break ending;
+                    }
                 }
             }
         };
@@ -156,4 +156,62 @@ impl<'a, 'run> BoundaryOwner<'a, 'run> {
         }
         ending
     }
+
+    /// Pins under the pause and answers the run, then publishes beside it;
+    /// the run's ending, when it ended meanwhile. Dropping the reply's
+    /// receiver never drops the save, and the run's end waits for the
+    /// publication rather than cancelling it.
+    async fn serve(
+        &mut self,
+        job: Job,
+        work: &mut std::pin::Pin<&mut (impl Future<Output = Ending> + Send)>,
+    ) -> Option<Ending> {
+        let Job {
+            snapshot,
+            reply,
+            publishing,
+        } = job;
+        let stop = self.stop.clone();
+        // Poll work too: its stop grace can end while the pin waits.
+        let (pinned, mut ended) = {
+            let mut pin = Box::pin(self.pin(snapshot));
+            tokio::select! {
+                biased;
+                pinned = &mut pin => (pinned, None),
+                ending = work.as_mut() => {
+                    stop.cancel();
+                    (pin.await, Some(ending))
+                }
+            }
+        };
+        let publish = match pinned {
+            Pinned::Answered(saved) => {
+                let _gone = reply.send(saved);
+                return ended;
+            }
+            Pinned::Publish(publish) => publish,
+        };
+        let (receipt, publication) = Publication::channel();
+        let _gone = reply.send(Ok(RecoverySave::Publishing(publication)));
+        let mut published = Box::pin(self.publish(publish));
+        let published = if ended.is_some() {
+            published.await
+        } else {
+            tokio::select! {
+                biased;
+                published = &mut published => published,
+                ending = work.as_mut() => {
+                    ended = Some(ending);
+                    published.await
+                }
+            }
+        };
+        let _gone = receipt.send(published);
+        drop(publishing);
+        ended
+    }
 }
+
+#[cfg(test)]
+#[path = "recovery_boundary_tests.rs"]
+mod tests;

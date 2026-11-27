@@ -26,6 +26,10 @@ pub const FIRST_JAIL_ID: u32 = 600_100_001;
 /// default: 4 is Indy's number (Indy, Nov 26, 2026: "Ratio 4"). A guest's
 /// memory is backed only as it is touched.
 pub const MEMORY_OVERCOMMIT: u32 = 4;
+/// How many times its state directory's free space a host admits in
+/// workspace disks, by default: 8 is Indy's number (Indy, Nov 27, 2026:
+/// "8"). A workspace image is sparse, backed only as it is written.
+pub const DISK_OVERCOMMIT: u32 = 8;
 
 /// The programs and guest artifacts every boot uses.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -72,4 +76,7 @@ pub struct FirecrackerTuning {
     pub limits: Limits,
     /// How many times its available memory the host admits in guest memory.
     pub memory_overcommit: u32,
+    /// How many times the free space under its state directory the host
+    /// admits in workspace disks.
+    pub disk_overcommit: u32,
 }

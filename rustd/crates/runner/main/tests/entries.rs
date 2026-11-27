@@ -23,11 +23,16 @@ fn entry(word: &str) -> Output {
 }
 
 /// The checks Firecracker's boot admission refuses a host on.
-const ADMITTING: [&str; 3] = ["cgroup_controllers", "kvm", "toolbox_filesystem"];
+const ADMITTING: [&str; 4] = [
+    "cgroup_controllers",
+    "kvm",
+    "nftables",
+    "toolbox_filesystem",
+];
 
 /// `probe` prints the capability report and every check Firecracker relies
-/// on, the KVM device among them, and succeeds only where its boot would
-/// admit the host.
+/// on, the KVM device and the packet filter among them, and succeeds only
+/// where its boot would admit the host.
 #[test]
 fn probe_answers_with_the_report_and_every_check() {
     let probed = entry("probe");
@@ -35,11 +40,13 @@ fn probe_answers_with_the_report_and_every_check() {
     let answer: serde_json::Value =
         serde_json::from_slice(&probed.stdout).expect("probe prints JSON");
     let checks = answer["checks"].as_array().expect("probe names its checks");
-    assert_eq!(checks.len(), 5, "{answer}");
-    assert!(
-        checks.iter().any(|check| check["name"] == "kvm"),
-        "{answer}"
-    );
+    assert_eq!(checks.len(), 6, "{answer}");
+    for relied_on in ["kvm", "nftables"] {
+        assert!(
+            checks.iter().any(|check| check["name"] == relied_on),
+            "{answer}"
+        );
+    }
     assert_eq!(
         answer["capability_report"]["engine"], "firecracker",
         "{answer}"

@@ -88,7 +88,8 @@ async fn a_registration_that_changes_a_requested_chunk_is_refused() -> Checked {
         let stop = CancellationToken::new();
         let mut session = TurnSession::new(&native, &scope(), reference(), pin(), &stop)?;
 
-        let registered = session.register(descriptors).await;
+        let registered =
+            crate::recovery::uploads::Publisher::register(&mut session, descriptors).await;
 
         if case == "unchanged" {
             assert_eq!(registered?.len(), 4, "{case}");
@@ -371,6 +372,7 @@ async fn a_command_larger_than_one_native_message_is_never_sent() -> Checked {
                 &str,
             )>()),
             folds: Vec::new(),
+            uploaded: Vec::new(),
         })
         .await;
 

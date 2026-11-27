@@ -48,6 +48,7 @@ impl Leaf {
 
     fn procs(&self) -> OwnedFd {
         let file = OpenOptions::new()
+            .read(true)
             .write(true)
             .open(self.dir.path().join(Self::PROCS))
             .unwrap();
@@ -97,6 +98,10 @@ impl Placement for Refusing {
 
     fn judge(&self, ending: Ending) -> Ending {
         ending
+    }
+
+    fn idle(&self) -> io::Result<bool> {
+        Ok(true)
     }
 }
 
@@ -148,6 +153,28 @@ fn a_procs_descriptor_not_open_for_writing_is_refused_with_its_cause() {
         let cause = io::Error::from(rustix::io::Errno::BADF);
         format!("the tenant leaf cannot be entered: {cause}")
     });
+}
+
+/// A leaf is idle only while it lists no process: one a call started and
+/// left behind keeps it busy though no call runs. A leaf that cannot be
+/// read proves nothing, so it is no tenant at all; with no leaf, nothing is
+/// placed and nothing is held.
+#[test]
+fn a_leaf_is_idle_only_while_it_lists_no_process() {
+    let leaf = Leaf::new(0);
+    let tenant = leaf.tenant();
+    let listed = leaf.dir.path().join(Leaf::PROCS);
+
+    let empty = tenant.idle().unwrap();
+    fs::write(&listed, "4242\n").unwrap();
+    let holding = tenant.idle().unwrap();
+    let unread = OpenOptions::new().write(true).open(&listed).unwrap();
+    let refused = Tenant::new(unread.into(), leaf.events());
+
+    assert!(empty, "no process listed");
+    assert!(!holding, "a process a call left behind");
+    assert!(refused.is_err(), "a leaf that cannot be listed");
+    assert!(Inherit.idle().unwrap());
 }
 
 #[test]

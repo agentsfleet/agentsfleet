@@ -154,7 +154,6 @@ impl ConnectionServices {
             authority,
             cache,
             output,
-            checkpoint_verifications: tokio::sync::Semaphore::new(2),
             renewal_ticks: std::sync::atomic::AtomicU64::new(0),
             handle,
             gateway,

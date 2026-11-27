@@ -1,5 +1,5 @@
 //! The Firecracker lane's capacity trials: a pool of pre-booted microVMs
-//! serves each run once and refills within the memory bound, and a monitor
+//! serves each run once and refills within the admission bound, and a monitor
 //! the host ends takes only its own run.
 
 use std::fs;
@@ -51,13 +51,13 @@ pub(crate) const TRIALS: &[(&str, Body)] = &[
 
 /// A pool of four serves a run its plan and files reach, refills to four,
 /// and hands the next claimant a guest holding none of the first run's
-/// files or processes; built microVMs never pass the memory bound.
+/// files or processes; built microVMs never pass the admission bound.
 fn pool_serves_once(lane: &Lane) -> Result<(), Failed> {
     runtime().block_on(async {
         let engine = Arc::new(lane.microvms()?);
         let bound = engine
-            .memory_bound()
-            .ok_or("a Firecracker engine states its memory bound")?;
+            .admission_bound()
+            .ok_or("a Firecracker engine states its admission bound")?;
         let state = engine.config().state_dir.clone();
         let pool = WarmSlots::start(
             Arc::clone(&engine) as Arc<dyn Engine>,

@@ -90,6 +90,10 @@ impl Placement for AlwaysOutOfMemory {
     fn judge(&self, _ending: Ending) -> Ending {
         Ending::OutOfMemory
     }
+
+    fn idle(&self) -> std::io::Result<bool> {
+        Ok(true)
+    }
 }
 
 /// Drives `run` until it ends, `stop` as its stop token, and answers with

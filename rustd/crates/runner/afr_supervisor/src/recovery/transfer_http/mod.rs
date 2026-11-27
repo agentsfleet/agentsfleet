@@ -85,7 +85,7 @@ async fn verified_https_upload_and_download_preserve_native_ciphertext_authority
     Ok(())
 }
 #[tokio::test]
-async fn upload_failure_and_redirect_require_native_reconciliation_without_retry() -> Result<()> {
+async fn an_upload_refused_or_redirected_is_not_accepted_and_never_retried() -> Result<()> {
     for status in [
         StatusCode::PRECONDITION_FAILED,
         StatusCode::TEMPORARY_REDIRECT,
@@ -98,9 +98,10 @@ async fn upload_failure_and_redirect_require_native_reconciliation_without_retry
             .await
             .err()
             .ok_or("unsafe upload accepted")?;
+        // The save gives way to the next one; nothing reads the object back.
         assert_eq!(
             failure.code(),
-            af_core::error_code::INTERNAL_OPERATION_FAILED
+            af_core::error_code::RUN_CHECKPOINT_UNAVAILABLE
         );
         assert_request(
             &server.seen.recv().await.ok_or("missing PUT")?,
@@ -177,10 +178,17 @@ async fn absent_or_expired_authority_is_rejected_before_transport() -> Result<()
 
 fn refused<T>(result: crate::Result<T>) -> Result<()> {
     let failure = result.err().ok_or("invalid authority accepted")?;
-    assert_eq!(
-        failure.code(),
-        af_core::error_code::INTERNAL_OPERATION_FAILED
+    // A malformed link is the runner's refusal; a length no sealed chunk has
+    // is the chunk store's.
+    assert!(
+        [
+            af_core::error_code::INTERNAL_OPERATION_FAILED,
+            af_core::error_code::RUN_CHECKPOINT_INCOMPATIBLE
+        ]
+        .contains(&failure.code()),
+        "{failure}"
     );
+    assert!(!failure.is_retryable());
     Ok(())
 }
 
@@ -192,7 +200,7 @@ async fn upload_bounds_and_malformed_signed_headers_fail_before_any_socket() -> 
         transfers
             .upload(
                 &authority(target),
-                vec![0; usize::try_from(super::MAX_BYTES)? + 1],
+                vec![0; usize::try_from(af_chunk_store::MAX_OBJECT_BYTES)? + 1],
             )
             .await,
     )?;

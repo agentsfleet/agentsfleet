@@ -1,10 +1,13 @@
 //! The `[firecracker]` section: where our Firecracker engine's programs and
 //! guest artifacts live on this host, where its jail users start, how far it
-//! overcommits memory and how many microVMs it boots ahead of their runs.
+//! overcommits memory and disk and how many microVMs it boots ahead of their
+//! runs.
 
 use std::path::PathBuf;
 
-use afr_engine_firecracker::{Binaries, FIRST_JAIL_ID, FirecrackerTuning, MEMORY_OVERCOMMIT};
+use afr_engine_firecracker::{
+    Binaries, DISK_OVERCOMMIT, FIRST_JAIL_ID, FirecrackerTuning, MEMORY_OVERCOMMIT,
+};
 use garde::Validate;
 use serde::Deserialize;
 
@@ -41,8 +44,12 @@ pub(super) struct FirecrackerSection {
     /// How many times its available memory the host admits in guest memory.
     #[garde(range(min = 1))]
     pub memory_overcommit: u32,
+    /// How many times the free space under its state directory the host
+    /// admits in workspace disks.
+    #[garde(range(min = 1))]
+    pub disk_overcommit: u32,
     /// The microVMs booted ahead of their runs; each holds its share of the
-    /// memory bound while it waits.
+    /// admission bound while it waits.
     #[garde(range(min = 1))]
     pub warm_pool: u32,
 }
@@ -62,6 +69,7 @@ impl Default for FirecrackerSection {
             initrd,
             first_jail_id: FIRST_JAIL_ID,
             memory_overcommit: MEMORY_OVERCOMMIT,
+            disk_overcommit: DISK_OVERCOMMIT,
             warm_pool: WARM_POOL,
         }
     }
@@ -88,6 +96,7 @@ impl FirecrackerSection {
             sizes,
             limits: sandbox.limits(),
             memory_overcommit: self.memory_overcommit,
+            disk_overcommit: self.disk_overcommit,
         }
     }
 

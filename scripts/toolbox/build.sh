@@ -45,7 +45,11 @@ fetch_vendors() {
     read -r -a pairs <<<"$members"
     for pair in "${pairs[@]}"; do
       member="${pair%%=*}" name="${pair#*=}"
-      tar -xzf "$archive" -O "$member" >"$work/vendor-bin/$name"
+      case "$archive" in
+        *.tar.gz) tar -xzf "$archive" -O "$member" ;;
+        *.zip) python3 -I -c 'import sys, zipfile; sys.stdout.buffer.write(zipfile.ZipFile(sys.argv[1]).read(sys.argv[2]))' "$archive" "$member" ;;
+        *) echo "build.sh: unknown vendor archive kind: $url" >&2; exit 2 ;;
+      esac >"$work/vendor-bin/$name"
       chmod 0755 "$work/vendor-bin/$name"
       hooks+=("--customize-hook=copy-in $work/vendor-bin/$name /usr/local/bin")
     done
@@ -95,7 +99,7 @@ capture_payload() {
     case "$path" in /usr/share/doc/*) continue ;; esac
     if [ -f "$root$path" ] || [ -L "$root$path" ]; then printf '%s\0' "${path#/}"; fi
   done <"$audit/owned" >"$audit/payload.paths"
-  printf '%s\0' etc/passwd etc/group etc/shadow etc/gshadow usr/local/bin/uv usr/local/bin/uvx >>"$audit/payload.paths"
+  printf '%s\0' etc/passwd etc/group etc/shadow etc/gshadow usr/local/bin/uv usr/local/bin/uvx usr/local/bin/bun usr/local/bin/bunx usr/local/bin/node >>"$audit/payload.paths"
   find "$root/etc/alternatives" -type l -printf 'etc/alternatives/%f\0' >>"$audit/payload.paths"
   tar -C "$root" --no-recursion --null -T "$audit/payload.paths" -cf "$audit/payload.tar"
 }
@@ -138,7 +142,9 @@ capture_inventory() {
 
 check_runtime() {
   local root="$1" tool
-  for tool in git python3 node rg jq curl uv uvx; do chroot "$root" "$tool" --version >&2; done
+  for tool in git python3 rg jq curl uv uvx bun bunx; do chroot "$root" "$tool" --version >&2; done
+  # `node` is Bun under that name, which answers no `--version` there.
+  chroot "$root" node -p process.versions.bun >&2
   chroot "$root" sh -eu -c 'for tool in perl apt apt-get dpkg dpkg-query passwd useradd chpasswd; do if command -v "$tool"; then exit 1; fi; done'
 }
 

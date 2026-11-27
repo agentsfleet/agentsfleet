@@ -1,6 +1,6 @@
-//! A boundary's capture runs only when the executor is idle and no tenant
-//! process remains, so nothing writes the workspace while it is exported into
-//! the stage the checkpoint reads.
+//! A boundary's save in two steps. Under the pause, the executor and tenant
+//! are proved idle and the workspace is pinned; the run then resumes, and the
+//! publication registers, seals, uploads, writes pages and commits after it.
 
 use std::panic::AssertUnwindSafe;
 
@@ -10,131 +10,190 @@ use afr_agent::{
     CommittedRecovery, DurableTaskRecovery, FileRecoveryPermit, RecoveryReceipt, RecoverySave,
     RecoverySkip, RecoverySnapshot, RecoveryState, TurnSnapshot,
 };
-use afr_engine::{Quiescence, Sandbox};
+use afr_engine::{Resumed, Sandbox};
 use futures_util::FutureExt as _;
 
 use super::{
+    pin::{Pinned as PinSource, Pinning, executor_idle, pin_sandbox, release},
     recovery::{State, api_toolbox},
     recovery_boundary::{BoundaryOwner, Workspace},
 };
-use crate::{Result, error, recovery::Capture};
+use crate::{
+    Result, error,
+    recovery::{Capture, ChangeSource},
+    staging::{ExportPin, ExportVolume},
+};
 
-enum Ready<'a> {
-    ApiOnly,
-    Sandbox(&'a dyn Sandbox, Option<&'a State>),
+/// How a boundary's pause ended.
+pub(super) enum Pinned<'a> {
+    /// The save is answered already: it skipped, or failed.
+    Answered(afr_agent::Result<RecoverySave>),
+    /// The run may resume; this publishes after it.
+    Publish(Box<Publish<'a>>),
 }
 
-impl BoundaryOwner<'_, '_> {
-    pub(super) async fn capture(
-        &mut self,
-        mut snapshot: RecoverySnapshot,
-    ) -> afr_agent::Result<RecoverySave> {
+/// A save whose run resumed, waiting to publish.
+pub(super) struct Publish<'a> {
+    /// The runner's file capacity, held until the publication ends.
+    _reservation: Option<FileRecoveryPermit>,
+    state: RecoveryState,
+    files: Option<(ExportVolume<'a>, Resumed<ExportPin>)>,
+    toolbox: String,
+    recovery: Option<&'a State>,
+}
+
+impl<'a> BoundaryOwner<'a, '_> {
+    /// Everything a save does under the pause; no daemon call runs here.
+    pub(super) async fn pin(&self, snapshot: RecoverySnapshot) -> Pinned<'a> {
         if snapshot.run_id != self.run.ids.run.as_str()
             || snapshot.turn_id != self.run.payload.event.turn_id
             || snapshot.fencing_token != self.run.payload.fencing_token
         {
             self.run.interrupt.cancel();
-            return Err(afr_agent::Error::checkpoint(error::config(
+            return Pinned::Answered(Err(afr_agent::Error::checkpoint(error::config(
                 "capture belongs to a different run, event or fence",
-            )));
+            ))));
         }
-        let ready = match self.workspace {
-            Workspace::ApiOnly => Ready::ApiOnly,
-            Workspace::Building { cell, recovery } => match cell.get() {
-                Some(sandbox) => Ready::Sandbox(sandbox.as_ref(), recovery.get()),
-                None => return Ok(RecoverySave::Skipped(RecoverySkip::WorkspaceBuilding)),
-            },
-        };
-        let _reservation = snapshot.file_permit.take();
-        let result = self.capture_ready(snapshot, ready).await;
-        if let Err(failure) = &result {
-            self.run.interrupt.cancel();
-            tracing::warn!(event = "run_checkpoint_owner_failed", error_code = %failure.code());
-        }
-        result.map_err(afr_agent::Error::checkpoint)
-    }
-
-    async fn capture_ready(
-        &mut self,
-        snapshot: RecoverySnapshot,
-        ready: Ready<'_>,
-    ) -> Result<RecoverySave> {
-        let sandbox = match ready {
-            Ready::ApiOnly => None,
-            Ready::Sandbox(sandbox, _) => Some(sandbox),
-        };
-        if let Some(sandbox) = sandbox {
-            match executor_idle(sandbox).await {
-                Ok(true) => {}
-                Ok(false) => return Ok(RecoverySave::Skipped(RecoverySkip::BusyExecutor)),
-                Err(failure) => {
-                    tracing::debug!(event = "run_checkpoint_executor_unproved", error_code = %failure.code());
-                    return Ok(RecoverySave::Skipped(RecoverySkip::Unavailable));
-                }
-            }
-        }
-        match AssertUnwindSafe(self.publish(snapshot, &ready))
+        match AssertUnwindSafe(Box::pin(self.pin_ready(snapshot)))
             .catch_unwind()
             .await
         {
-            Ok(captured) => captured,
-            Err(_panic) => Err(error::config("live capture panicked")),
+            Ok(Ok(pinned)) => pinned,
+            Ok(Err(failure)) => Pinned::Answered(Err(self.failed(failure))),
+            Err(_panic) => {
+                Pinned::Answered(Err(self.failed(error::config("live capture panicked"))))
+            }
         }
     }
 
-    async fn publish(
-        &mut self,
-        snapshot: RecoverySnapshot,
-        ready: &Ready<'_>,
-    ) -> Result<RecoverySave> {
-        let (staged, toolbox, state) = match ready {
-            Ready::ApiOnly => {
+    async fn pin_ready(&self, mut snapshot: RecoverySnapshot) -> Result<Pinned<'a>> {
+        let reservation = snapshot.file_permit.take();
+        let sandbox: &'a dyn Sandbox = match self.workspace {
+            Workspace::ApiOnly => {
                 if matches!(&snapshot.state, RecoveryState::DurableTask(task)
                     if !matches!(task.task.target, DurableTaskTarget::ApiOnly))
                 {
                     return Err(error::config("file capture requires a ready sandbox"));
                 }
-                (None, api_toolbox(), None)
+                return Ok(Pinned::Publish(Box::new(Publish {
+                    _reservation: reservation,
+                    state: snapshot.state,
+                    files: None,
+                    toolbox: api_toolbox(),
+                    recovery: None,
+                })));
             }
-            Ready::Sandbox(sandbox, state) => {
-                let quiescence = sandbox.quiesce().await.map_err(|source| {
-                    error::boundary("cannot prove live capture tenant quiescence", source)
-                })?;
-                if quiescence == Quiescence::Busy {
-                    return Ok(RecoverySave::Skipped(RecoverySkip::BusyProcesses));
-                }
-                let Some(toolbox) = sandbox.environment().root.toolbox() else {
-                    return Ok(RecoverySave::Skipped(RecoverySkip::Unavailable));
-                };
-                let staged = self.run.lessee.staging.stage(sandbox.id())?;
-                let disk_bytes = sandbox.granted().limits().disk_bytes;
-                if let Err(failure) = staged.export(sandbox.executor(), disk_bytes).await {
-                    // A workspace that cannot be read out skips this save, as
-                    // one the host could not scan did: the run goes on.
-                    let error_code = failure.code();
-                    tracing::warn!(event = "run_checkpoint_export_failed", %error_code);
-                    return Ok(RecoverySave::Skipped(RecoverySkip::Unavailable));
-                }
-                (Some(staged), toolbox.to_owned(), *state)
-            }
+            Workspace::Building { cell, .. } => match cell.get() {
+                Some(sandbox) => sandbox.as_ref(),
+                None => return Ok(skipped(RecoverySkip::WorkspaceBuilding)),
+            },
         };
-        // The stage is the capture's byte source until it returns, uploads
-        // included, and goes with it.
-        let root = staged.as_ref().map(|staged| staged.path().to_owned());
-        match snapshot.state {
-            RecoveryState::DurableTask(task) => {
-                self.publish_durable_task(task, root, &toolbox, state).await
-            }
-            RecoveryState::Turn(turn) => self.publish_turn(turn, root).await,
+        let Workspace::Building { recovery, .. } = self.workspace else {
+            return Ok(skipped(RecoverySkip::Unavailable));
+        };
+        let volume = ExportVolume::new(sandbox, &self.run.lessee.staging, self.stop.clone());
+        let parent = self.parent(&snapshot.state)?;
+        let pinning = pin_sandbox(sandbox, &volume, parent.as_ref()).await?;
+        let pin = match pinning {
+            Pinning::Skipped(reason) => return Ok(skipped(reason)),
+            Pinning::Pinned(pin) => pin,
+        };
+        let toolbox = sandbox.environment().root.toolbox().unwrap_or_default();
+        Ok(Pinned::Publish(Box::new(Publish {
+            _reservation: reservation,
+            state: snapshot.state,
+            toolbox: toolbox.to_owned(),
+            files: Some((volume, pin)),
+            recovery: recovery.get(),
+        })))
+    }
+
+    /// The generation the owner's last save committed: what the pin reads
+    /// against.
+    fn parent(&self, state: &RecoveryState) -> Result<Option<Uuid7>> {
+        let committed = match state {
+            RecoveryState::DurableTask(task) => task.task.checkpoint_id.as_deref(),
+            RecoveryState::Turn(_) => self.turn.head().map(|head| head.checkpoint_id.0.as_str()),
+        };
+        Ok(committed.map(Uuid7::parse).transpose()?)
+    }
+
+    /// The whole save at once, pin then publication, as a test drives it.
+    #[cfg(test)]
+    pub(super) async fn capture(
+        &mut self,
+        snapshot: RecoverySnapshot,
+    ) -> afr_agent::Result<RecoverySave> {
+        match self.pin(snapshot).await {
+            Pinned::Answered(saved) => saved,
+            Pinned::Publish(publish) => self.publish(publish).await,
         }
+    }
+
+    /// Everything a save does after the run resumed.
+    pub(super) async fn publish(
+        &mut self,
+        publish: Box<Publish<'a>>,
+    ) -> afr_agent::Result<RecoverySave> {
+        let published = Box::pin(self.publish_files(publish));
+        let saved = match AssertUnwindSafe(published).catch_unwind().await {
+            Ok(saved) => saved,
+            Err(_panic) => Err(error::config("checkpoint publication panicked")),
+        };
+        saved.map_err(|failure| self.failed(failure))
+    }
+
+    async fn publish_files(&mut self, publish: Box<Publish<'a>>) -> Result<RecoverySave> {
+        let Publish {
+            _reservation,
+            state,
+            files,
+            toolbox,
+            recovery,
+        } = *publish;
+        let Some((volume, pin)) = files else {
+            return self.publish_state(state, None, &toolbox, recovery).await;
+        };
+        let source = PinSource {
+            volume: &volume,
+            pin: &pin,
+        };
+        let saved = self
+            .publish_state(state, Some(&source), &toolbox, recovery)
+            .await;
+        release(&volume, pin, saved.is_ok()).await;
+        saved
+    }
+
+    async fn publish_state(
+        &mut self,
+        state: RecoveryState,
+        source: Option<&dyn ChangeSource>,
+        toolbox: &str,
+        recovery: Option<&State>,
+    ) -> Result<RecoverySave> {
+        match state {
+            RecoveryState::DurableTask(task) => {
+                self.publish_durable_task(task, source, toolbox, recovery)
+                    .await
+            }
+            RecoveryState::Turn(turn) => self.publish_turn(turn, source).await,
+        }
+    }
+
+    /// Stops the run on a failure no skip covers, and says so.
+    fn failed(&self, failure: crate::Error) -> afr_agent::Error {
+        self.run.interrupt.cancel();
+        tracing::warn!(event = "run_checkpoint_owner_failed", error_code = %failure.code());
+        afr_agent::Error::checkpoint(failure)
     }
 
     async fn publish_turn(
         &mut self,
         turn: TurnSnapshot,
-        root: Option<std::path::PathBuf>,
+        source: Option<&dyn ChangeSource>,
     ) -> Result<RecoverySave> {
-        let result = self.turn.capture(turn, root, &self.stop).await;
+        let result = self.turn.capture(turn, source, &self.stop).await;
         match result {
             Ok(descriptor) => Ok(RecoverySave::Committed(Box::new(RecoveryReceipt {
                 run_id: self.run.ids.run.to_string(),
@@ -162,7 +221,7 @@ impl BoundaryOwner<'_, '_> {
     async fn publish_durable_task(
         &self,
         task: DurableTaskRecovery,
-        root: Option<std::path::PathBuf>,
+        source: Option<&dyn ChangeSource>,
         toolbox: &str,
         state: Option<&State>,
     ) -> Result<RecoverySave> {
@@ -181,7 +240,7 @@ impl BoundaryOwner<'_, '_> {
             stop: &self.stop,
         }
         .run(
-            root,
+            source,
             task.history,
             state.map_or_else(Vec::new, |state| state.base_paths.clone()),
         )
@@ -197,37 +256,42 @@ impl BoundaryOwner<'_, '_> {
                     history_digest: digest,
                 },
             }))),
-            Err(failure)
-                if matches!(
-                    failure.code(),
-                    error_code::DURABLE_TASK_LIMIT_EXHAUSTED | error_code::RUN_CHECKPOINT_LIMIT
-                ) =>
-            {
-                Ok(RecoverySave::Skipped(RecoverySkip::Limit))
-            }
-            // An outage skips this boundary; the next one saves again, and the
-            // run's final checkpoint still decides whether the task blocks.
-            Err(failure)
-                if failure.is_retryable()
-                    || matches!(
-                        failure.code(),
-                        error_code::DURABLE_TASK_STORAGE_UNAVAILABLE
-                            | error_code::RUN_CHECKPOINT_UNAVAILABLE
-                    ) =>
-            {
-                // The record is the skip; the outage that caused it is its cause.
-                let error_code = error_code::RUN_CHECKPOINT_UNAVAILABLE;
-                let cause_error_code = failure.code();
-                tracing::warn!(
-                    event = "task_checkpoint_skipped",
-                    %error_code,
-                    %cause_error_code
-                );
-                Ok(RecoverySave::Skipped(RecoverySkip::Unavailable))
-            }
-            Err(failure) => Err(failure),
+            Err(failure) => skip_durable_task(failure),
         }
     }
+}
+
+/// A task save that failed: a limit or an outage skips this boundary, and the
+/// next one saves again; the run's final checkpoint still decides whether the
+/// task blocks. Anything else stops the run.
+fn skip_durable_task(failure: crate::Error) -> Result<RecoverySave> {
+    if matches!(
+        failure.code(),
+        error_code::DURABLE_TASK_LIMIT_EXHAUSTED | error_code::RUN_CHECKPOINT_LIMIT
+    ) {
+        return Ok(RecoverySave::Skipped(RecoverySkip::Limit));
+    }
+    if failure.is_retryable()
+        || matches!(
+            failure.code(),
+            error_code::DURABLE_TASK_STORAGE_UNAVAILABLE | error_code::RUN_CHECKPOINT_UNAVAILABLE
+        )
+    {
+        // The record is the skip; the outage that caused it is its cause.
+        let error_code = error_code::RUN_CHECKPOINT_UNAVAILABLE;
+        let cause_error_code = failure.code();
+        tracing::warn!(
+            event = "task_checkpoint_skipped",
+            %error_code,
+            %cause_error_code
+        );
+        return Ok(RecoverySave::Skipped(RecoverySkip::Unavailable));
+    }
+    Err(failure)
+}
+
+const fn skipped(reason: RecoverySkip) -> Pinned<'static> {
+    Pinned::Answered(Ok(RecoverySave::Skipped(reason)))
 }
 
 impl super::Run<'_> {
@@ -251,13 +315,4 @@ impl super::Run<'_> {
             }
         }
     }
-}
-
-/// The executor's own file jobs must be idle before a capture reads the workspace.
-async fn executor_idle(sandbox: &dyn Sandbox) -> Result<bool> {
-    sandbox
-        .executor()
-        .recovery_idle()
-        .await
-        .map_err(|source| error::boundary("cannot prove executor file jobs idle", source))
 }

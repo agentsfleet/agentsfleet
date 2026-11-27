@@ -9,7 +9,9 @@ use afr_engine::{
 };
 use afr_executor::Executor;
 
-use super::{FakeSandbox, KILL, Kill, NO_PARK, NO_QUIESCENCE, NO_REFILL, Parking, STILL_RUNNING};
+use super::{
+    FakeSandbox, KILL, Kill, NO_PARK, NO_QUIESCENCE, NO_REFILL, Parking, QUIESCE, STILL_RUNNING,
+};
 
 #[async_trait::async_trait]
 impl Sandbox for FakeSandbox {
@@ -38,6 +40,7 @@ impl Sandbox for FakeSandbox {
     }
 
     async fn quiesce(&self) -> afr_engine::Result<Quiescence> {
+        self.step(QUIESCE);
         self.quiesced.fetch_add(1, Ordering::SeqCst);
         if !self.quiesce_takes.is_zero() {
             tokio::time::sleep(self.quiesce_takes).await;

@@ -5,9 +5,11 @@
 //! here before it is imported.
 //!
 //! ```text
-//!   <home>/staging/<sandbox>-<random>/  one step's tree: 0700, the runner's,
-//!                                       removed when the step ends
-//!   <home>/staging/                     emptied at boot of what a crash left
+//!   <home>/staging/<sandbox>-<random>/      one step's tree: 0700, the runner's,
+//!                                           removed when the step ends
+//!   <home>/staging/<sandbox>-<random>.pin   one save's pinned bytes: 0600, the
+//!                                           runner's, removed when it is released
+//!   <home>/staging/                         emptied at boot of what a crash left
 //! ```
 //!
 //! The workspace itself stays the engine's: files cross only through the
@@ -30,9 +32,14 @@ use self::bounded::Bounded;
 use crate::error::{self, Result};
 
 mod bounded;
+mod volume;
+
+pub(crate) use self::volume::{ExportPin, ExportVolume};
 
 /// Only the runner reads or writes a stage: a tenant's files pass through it.
 const STAGE_MODE: u32 = 0o700;
+/// Only the runner reads or writes a pin's bytes: every file the run wrote.
+const PIN_MODE: u32 = 0o600;
 /// The event a stage the boot sweep could not remove is logged under.
 const EVENT_SWEEP_LEFT: &str = "staging_sweep_left";
 /// The workspace, and a stage, named relative to itself.
@@ -94,6 +101,19 @@ impl Staging {
             spools: self.root.clone(),
             dir,
         })
+    }
+
+    /// A fresh, empty file for one save's pinned bytes of `sandbox`, removed
+    /// when dropped.
+    ///
+    /// # Errors
+    /// The file could not be made.
+    pub(crate) fn pin_file(&self, sandbox: &Uuid7) -> Result<tempfile::NamedTempFile> {
+        Ok(tempfile::Builder::new()
+            .prefix(&format!("{sandbox}-"))
+            .suffix(".pin")
+            .permissions(fs::Permissions::from_mode(PIN_MODE))
+            .tempfile_in(&self.root)?)
     }
 }
 
@@ -164,13 +184,17 @@ impl Staged {
     /// outgrew `disk_bytes`, which is the checkpoint-limit class; or an entry
     /// would leave the stage. The spool goes with the call either way.
     pub async fn export(&self, executor: &dyn Executor, disk_bytes: u64) -> Result<()> {
-        let mut stream = Bounded::new(tokio::fs::File::from_std(self.spool()?), disk_bytes);
-        let exported = executor.export(&[WHOLE], &mut stream).await;
-        if stream.outgrown() {
-            return Err(error::capture_limit(DETAIL_OUTGROWN));
-        }
-        exported.map_err(|source| error::boundary(DETAIL_EXPORT, source))?;
-        let (spool, into) = (stream.into_spool().into_std().await, self.path().to_owned());
+        let spool = spool_export(executor, disk_bytes, self.spool()?).await?;
+        self.unpack(spool, disk_bytes).await
+    }
+
+    /// Unpacks the export `spool` holds into the stage, every entry checked
+    /// as an import checks it, and holds what its files claim to `disk_bytes`.
+    ///
+    /// # Errors
+    /// As [`Staged::export`], past the executor's own refusal.
+    pub(crate) async fn unpack(&self, spool: File, disk_bytes: u64) -> Result<()> {
+        let into = self.path().to_owned();
         let unpacked = tokio::task::spawn_blocking(move || {
             let dir = Dir::open_ambient_dir(&into, ambient_authority())?;
             afr_executor::tree::unpack(&dir, Path::new(WHOLE), &spool)
@@ -203,6 +227,25 @@ impl Staged {
     fn spool(&self) -> Result<File> {
         Ok(tempfile::tempfile_in(&self.spools)?)
     }
+}
+
+/// Exports the whole workspace `executor` serves into `spool`, held to
+/// `disk_bytes` as [`Staged::export`] says, and hands the spool back.
+///
+/// # Errors
+/// The executor would not export, or the stream outgrew `disk_bytes`.
+pub(crate) async fn spool_export(
+    executor: &dyn Executor,
+    disk_bytes: u64,
+    spool: File,
+) -> Result<File> {
+    let mut stream = Bounded::new(tokio::fs::File::from_std(spool), disk_bytes);
+    let exported = executor.export(&[WHOLE], &mut stream).await;
+    if stream.outgrown() {
+        return Err(error::capture_limit(DETAIL_OUTGROWN));
+    }
+    exported.map_err(|source| error::boundary(DETAIL_EXPORT, source))?;
+    Ok(stream.into_spool().into_std().await)
 }
 
 #[cfg(test)]

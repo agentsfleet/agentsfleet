@@ -167,6 +167,7 @@ impl Ledger {
                 root,
                 manifest_root,
                 folds,
+                ..
             }) => {
                 assert_eq!(folds, Vec::<af_wire::run::FoldRef>::new());
                 assert_eq!(checkpoint, self.pending_ref());

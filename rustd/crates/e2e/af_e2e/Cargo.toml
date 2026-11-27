@@ -47,8 +47,9 @@ af_context.workspace = true
 af_core = { workspace = true, features = ["test-util"] }
 af_crypto.workspace = true
 # The recovery bench measures RustCrypto's AES-256-GCM, which the daemon
-# ships, beside this one. No shipped crate seals with it.
+# ships, beside these two. No shipped crate seals with either.
 aws-lc-rs.workspace = true
+boring.workspace = true
 af_observability.workspace = true
 af_otlp.workspace = true
 af_stream = { workspace = true, features = ["test-util"] }

@@ -272,6 +272,7 @@ async fn commit_read_and_adopt_refuse_foreign_fences_and_expired_runs() -> Check
                 root: pending.root,
                 manifest_root: saved.manifest_root.clone(),
                 folds: Vec::new(),
+                uploaded: Vec::new(),
             }),
             Action::Read(TurnCheckpointRead {
                 descriptor: saved.clone(),

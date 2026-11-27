@@ -8,7 +8,7 @@ use super::{
     row::Plan,
     transaction,
 };
-use crate::{Result, error::query, run::Runs};
+use crate::{Result, durable_task::checkpoint::StoredObject, error::query, run::Runs};
 use af_core::id::Uuid7;
 use af_wire::{
     durable_task::{CheckpointEntry, CheckpointPage, CheckpointTransferPurpose},
@@ -55,7 +55,13 @@ pub(super) async fn write(
         CheckpointTransferPurpose::Upload,
     )
     .await?;
-    validate(&mut custody.owner, &custody.plan, contents).await?;
+    validate(
+        &mut custody.owner,
+        &custody.plan,
+        contents,
+        Stored::Uploaded,
+    )
+    .await?;
     let saved = selected(&mut custody.owner, &custody.plan, &id).await?;
     if u32::try_from(saved.ordinal).ok() != Some(contents.page_number) {
         return Err(TurnCheckpointRefusal::Incompatible.into());
@@ -154,10 +160,21 @@ pub(super) fn decode(page: &Page) -> Result<CheckpointPage> {
     Ok(contents)
 }
 
+/// What a page's objects must already be when it is checked.
+#[derive(Debug, Clone, Copy)]
+pub(super) enum Stored {
+    /// Verified, or frozen and uploaded by this plan: a page is written after
+    /// its PUTs and before the commit records them accepted.
+    Uploaded,
+    /// Verified: the commit has recorded every upload it accepted.
+    Verified,
+}
+
 pub(super) async fn validate(
     owner: &mut TurnRunGuard<'_>,
     plan: &Plan,
     page: &CheckpointPage,
+    stored: Stored,
 ) -> Result<()> {
     if !page.history_objects.is_empty()
         || page.entries.windows(2).any(|pair| {
@@ -185,15 +202,23 @@ pub(super) async fn validate(
     }
     let ids: Vec<_> = ids.into_iter().collect();
     let namespace = format!("turn:{}", owner.current.turn_id);
-    let stored = objects::scoped_held(owner, plan, &namespace, &ids).await?;
-    if stored.iter().any(|object| {
-        !object.verified
+    let objects = objects::scoped_held(owner, plan, &namespace, &ids).await?;
+    let kept = |object: &StoredObject| match stored {
+        Stored::Verified => object.verified,
+        Stored::Uploaded => {
+            object.verified
+                || object.ciphertext_digest.is_some()
+                    && object.belongs(&plan.id, &plan.owner_run_id, plan.owner_fence)
+        }
+    };
+    if objects.iter().any(|object| {
+        !kept(object)
             || object.kind != "file"
             || u32::try_from(object.format_version).ok() != Some(plan.format_version)
     }) {
         return Err(TurnCheckpointRefusal::Incompatible.into());
     }
-    let sizes: BTreeMap<_, _> = stored
+    let sizes: BTreeMap<_, _> = objects
         .into_iter()
         .map(|object| (object.id.to_string(), object.plaintext_size))
         .collect();

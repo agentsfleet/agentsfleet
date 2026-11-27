@@ -100,8 +100,9 @@ impl Plan {
     }
 
     /// Has the process `command` starts enter this plan's inner environment
-    /// before it execs, when it has one.
-    fn enter(&self, command: &mut std::process::Command) -> Result<()> {
+    /// before it execs, when it has one; the readied thread is held until
+    /// the fork is done.
+    fn enter(&self, command: &mut std::process::Command) -> Result<inner::Readied<'_>> {
         inner::enter(command, self.inner.as_deref(), &self.cwd)
     }
 
@@ -181,8 +182,10 @@ impl Launcher for Pipes {
             // their leaders; a stop reaches the rest of the group.
             .kill_on_drop(true);
         tenant::place(command.as_std_mut(), placement)?;
-        plan.enter(command.as_std_mut())?;
-        let mut child = command.spawn()?;
+        let readied = plan.enter(command.as_std_mut())?;
+        let spawned = command.spawn();
+        drop(readied);
+        let mut child = spawned?;
         let pid = leader(child.id())?;
         let (sender, output) = mpsc::channel(OUTPUT_BACKLOG);
         let (stdin, stdout, stderr) =

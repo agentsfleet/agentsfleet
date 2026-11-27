@@ -189,14 +189,18 @@ fn missing_profile_retains_the_read_failure_and_selected_path() -> Checked {
 fn test_the_firecracker_section_overcommits_four_to_one_with_a_pool_of_four() -> Checked {
     let selected = profile("")?;
     assert_eq!(selected.firecracker.memory_overcommit, 4);
+    assert_eq!(selected.firecracker.disk_overcommit, 8);
     assert_eq!(selected.warm_pool, 4);
     assert_eq!(selected.firecracker.limits, selected.tuning.limits);
-    let chosen = profile("[firecracker]\nmemory_overcommit = 2\nwarm_pool = 1\n")?;
+    let chosen =
+        profile("[firecracker]\nmemory_overcommit = 2\ndisk_overcommit = 3\nwarm_pool = 1\n")?;
     assert_eq!(chosen.firecracker.memory_overcommit, 2);
+    assert_eq!(chosen.firecracker.disk_overcommit, 3);
     assert_eq!(chosen.warm_pool, 1);
     // A first jail user of 0 would run a monitor as root.
     for zero in [
         "memory_overcommit = 0",
+        "disk_overcommit = 0",
         "warm_pool = 0",
         "first_jail_id = 0",
     ] {

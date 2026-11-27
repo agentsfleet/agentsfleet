@@ -132,14 +132,14 @@ fn test_an_io_failure_is_logged_as_the_system_tells_it() {
 }
 
 /// The engine a host admitted is logged once, by its name, what `/dev/kvm`
-/// allows, the sandboxes its memory admits and the most workers a daemon may
-/// assign; an engine that reserves no memory names no bound.
+/// allows and the sandboxes its memory and disk admit, never a worker count,
+/// which is the daemon's; an engine that reserves no memory names no bound.
 #[test]
 fn test_the_admitted_engine_is_logged_with_its_bound() {
     use std::num::NonZeroU64;
 
     use af_wire::runner::{Isolation, Kvm, SandboxEngine};
-    use afr_engine::{Capabilities, MemoryBound};
+    use afr_engine::{AdmissionBound, Capabilities, Overcommitted};
     use afr_engine_firecracker::FIRECRACKER_CAPABILITIES;
 
     const GIB: u64 = 1024 * 1024 * 1024;
@@ -148,7 +148,8 @@ fn test_the_admitted_engine_is_logged_with_its_bound() {
     let Some(sandbox_bytes) = NonZeroU64::new(2 * GIB + 16 * 1024 * 1024) else {
         unreachable!("a non-zero reservation")
     };
-    let bound = MemoryBound::overcommitted(28 * GIB, 4, sandbox_bytes);
+    let memory = Overcommitted::of(28 * GIB, 4, sandbox_bytes);
+    let bound = AdmissionBound::lesser(memory, Overcommitted::of(u64::MAX, 1, sandbox_bytes));
     let microvms = Lines::default();
     let journal = tracing_subscriber::registry().with(microvms.clone());
     tracing::subscriber::with_default(journal, || {
@@ -166,14 +167,17 @@ fn test_the_admitted_engine_is_logged_with_its_bound() {
     });
 
     let line = microvms.only(EVENT_ENGINE_BOOTED);
-    let workers = af_core::limits::MAX_WORKERS.to_string();
     assert_eq!(line.get("engine").map(String::as_str), Some("firecracker"));
     assert_eq!(line.get("kvm").map(String::as_str), Some("usable"));
     assert_eq!(line.get("sandboxes_max").map(String::as_str), Some("55"));
-    assert_eq!(line.get("worker_count"), Some(&workers));
+    assert_eq!(line.get("worker_count"), None, "the daemon's, after boot");
     let line = processes.only(EVENT_ENGINE_BOOTED);
     assert_eq!(line.get("engine").map(String::as_str), Some("unsandboxed"));
-    assert_eq!(line.get("sandboxes_max"), None, "no memory bound, no field");
+    assert_eq!(
+        line.get("sandboxes_max"),
+        None,
+        "no admission bound, no field"
+    );
 }
 
 /// Every line logged while it is the scoped subscriber, each field by name.

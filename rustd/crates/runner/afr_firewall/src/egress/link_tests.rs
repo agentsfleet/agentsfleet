@@ -15,7 +15,9 @@ use netlink_packet_route::link::{
 };
 use netlink_packet_route::route::{RouteAddress, RouteAttribute};
 
-use super::{address, configure_peer, default_route, join, name_of, names, pair, remove, up};
+use super::{
+    address, configure_peer, default_route, join, name_of, names, pair, raise_loopback, remove, up,
+};
 use crate::egress::slot::Slot;
 use crate::egress::testing::{
     DELLINK, Fake, GETLINK, NEWADDR, NEWLINK, NEWROUTE, Protocol, SETLINK, round_trip,
@@ -120,6 +122,20 @@ fn test_both_ends_are_configured_in_order() {
             NEWLINK, GETLINK, NEWADDR, SETLINK, GETLINK, NEWADDR, SETLINK, NEWROUTE
         ]
     );
+}
+
+/// Loopback is looked up by its name and raised; a kernel that refuses the
+/// change is the caller's answer.
+#[test]
+fn test_loopback_is_looked_up_then_raised() {
+    let kernel = Fake::default();
+    let refusing = Fake::default().refusing(Protocol::Route, SETLINK, libc::EPERM);
+
+    raise_loopback(&mut kernel.open_route()).unwrap();
+    let refused = raise_loopback(&mut refusing.open_route()).unwrap_err();
+
+    assert_eq!(kernel.seen_on(Protocol::Route), [GETLINK, SETLINK]);
+    assert_eq!(refused.raw_os_error(), Some(libc::EPERM));
 }
 
 /// A link already gone is removed; any other refusal is the kernel's answer.

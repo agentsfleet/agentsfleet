@@ -1,9 +1,9 @@
-//! New overlay objects authenticate, restore exactly and retire without erasing a live base.
+//! New overlay objects upload, restore exactly and retire without erasing a live base.
 
 use super::{
     Case, CheckpointMode, CheckpointObject, CheckpointObjectsInput, CheckpointPlaintext,
     CheckpointPlan, DecisionDurableTaskVersion, Decisions, DurableTasks, Server, allocate,
-    configured, confirm, encrypt, exercise, id, input, publish, sha256_hex, upload, valid,
+    configured, encrypt, exercise, id, input, publish, sha256_hex, upload, valid,
 };
 use af_wire::durable_task::CheckpointPlanInput;
 use afd_fleet::durable_task::DurableTaskLifecycle as _;
@@ -43,7 +43,7 @@ async fn roundtrip(case: &Case) {
         plan,
         object,
     };
-    verified(case, &tasks, &task, &base, &server).await;
+    uploaded(case, &tasks, &task, &base, &server).await;
     publish(
         case,
         &tasks,
@@ -56,7 +56,7 @@ async fn roundtrip(case: &Case) {
     let delta = incremental(case, &tasks, &task, &base.plan, DELTA).await;
     assert_eq!(delta.plan.mode, CheckpointMode::Incremental);
     assert_eq!(delta.plan.base_id, base.plan.base_id);
-    verified(case, &tasks, &task, &delta, &server).await;
+    uploaded(case, &tasks, &task, &delta, &server).await;
     publish(
         case,
         &tasks,
@@ -68,7 +68,7 @@ async fn roundtrip(case: &Case) {
     .await;
     restore(case, &tasks, &task, &base, &delta, &server).await;
     let orphan = incremental(case, &tasks, &task, &base.plan, ORPHAN).await;
-    verified(case, &tasks, &task, &orphan, &server).await;
+    uploaded(case, &tasks, &task, &orphan, &server).await;
     collect(case, &tasks, &task, &orphan).await;
     restore(case, &tasks, &task, &base, &delta, &server).await;
     assert_eq!(server.objects.lock().expect("remote state").len(), 2);
@@ -146,7 +146,7 @@ fn object_input(
     clippy::future_not_send,
     reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
 )]
-async fn verified(
+async fn uploaded(
     case: &Case,
     tasks: &DurableTasks,
     task: &DecisionDurableTaskVersion,
@@ -163,7 +163,4 @@ async fn verified(
         server,
     )
     .await;
-    confirm(case, tasks, task, &saved.plan, &saved.object).await;
-    // A repeated physical verification cannot account the object twice.
-    confirm(case, tasks, task, &saved.plan, &saved.object).await;
 }

@@ -1,4 +1,4 @@
-//! Exact immutable objects, signed descriptor headers and bounded native readback.
+//! Exact immutable objects, signed descriptor headers and the bucket's probes.
 
 use super::{R2CheckpointStore, bounded};
 use crate::{Result, durable_task::DurableTaskRefusal};
@@ -34,70 +34,93 @@ pub(crate) struct StorageSession<'a> {
 }
 
 impl R2CheckpointStore {
-    /// Verifies conditional creation in the configured private bucket before activation.
+    /// Proves, once, before checkpoints activate, that the configured private
+    /// bucket refuses a second create of one name and a body unlike the
+    /// checksum its link binds. Nothing reads an object back, so those two
+    /// answers are what stand behind every accepted upload.
     ///
     /// # Errors
-    /// A backend that accepts replacement stays unavailable for checkpoints.
-    pub async fn verify_create_only(&self) -> Result<()> {
-        self.session().await?.verify_create_only().await
+    /// A backend that accepts a replacement or ignores a bound checksum stays
+    /// unavailable for checkpoints.
+    pub async fn verify_bucket(&self) -> Result<()> {
+        self.session().await?.verify_bucket().await
     }
 }
 
 impl StorageSession<'_> {
-    async fn verify_create_only(&self) -> Result<()> {
-        bounded::operation("verify_create_only", async {
+    async fn verify_bucket(&self) -> Result<()> {
+        bounded::operation("verify_bucket", async {
             self.store
                 .verified
                 .get_or_try_init(async || {
-                    let id = af_crypto::entropy::Entropy::new().uuid7(clock::now())?;
-                    let path = Path::from(format!("capability-probes/{}", id.as_str()));
-                    let initial = Bytes::from_static(b"create-only-one");
-                    let first = self
-                        .backend
-                        .put_opts(
-                            &path,
-                            initial.clone().into(),
-                            PutOptions {
-                                mode: PutMode::Create,
-                                ..PutOptions::default()
-                            },
-                        )
-                        .await?;
-                    let second = self
-                        .backend
-                        .put_opts(
-                            &path,
-                            Bytes::from_static(b"replacement-two").into(),
-                            PutOptions {
-                                mode: PutMode::Create,
-                                ..PutOptions::default()
-                            },
-                        )
-                        .await;
-                    let rejected = matches!(
-                        second,
-                        Err(object_store::Error::AlreadyExists { .. }
-                            | object_store::Error::Precondition { .. })
-                    );
-                    let bytes = read_bounded(
-                        &self.backend,
-                        &path,
-                        u64::try_from(initial.len()).unwrap_or(u64::MAX),
-                    )
-                    .await?;
-                    self.backend.delete(&path).await?;
-                    if !rejected
-                        || bytes.as_deref() != Some(initial.as_ref())
-                        || first.e_tag.is_none()
-                    {
-                        return Err(DurableTaskRefusal::StorageUnavailable.into());
-                    }
-                    Ok(())
+                    self.verify_create_only().await?;
+                    self.verify_checksum().await
                 })
                 .await
                 .copied()
         })
         .await
+    }
+
+    async fn verify_create_only(&self) -> Result<()> {
+        let path = probe_path()?;
+        let initial = Bytes::from_static(b"create-only-one");
+        let create = || PutOptions {
+            mode: PutMode::Create,
+            ..PutOptions::default()
+        };
+        let first = self
+            .backend
+            .put_opts(&path, initial.clone().into(), create())
+            .await?;
+        let second = self
+            .backend
+            .put_opts(
+                &path,
+                Bytes::from_static(b"replacement-two").into(),
+                create(),
+            )
+            .await;
+        let rejected = matches!(
+            second,
+            Err(object_store::Error::AlreadyExists { .. }
+                | object_store::Error::Precondition { .. })
+        );
+        let bytes = read_bounded(
+            &self.backend,
+            &path,
+            u64::try_from(initial.len()).unwrap_or(u64::MAX),
+        )
+        .await?;
+        self.backend.delete(&path).await?;
+        if !rejected || bytes.as_deref() != Some(initial.as_ref()) || first.e_tag.is_none() {
+            return Err(DurableTaskRefusal::StorageUnavailable.into());
+        }
+        Ok(())
+    }
+
+    /// Sends, through a link signed as every upload's is, a body whose
+    /// SHA-256 is not the one the link binds. A bucket that stores it would
+    /// store whatever a runner sent, so checkpoints stay unavailable.
+    async fn verify_checksum(&self) -> Result<()> {
+        let path = probe_path()?;
+        let (bound, sent) = (b"checksum-bound-one", b"checksum-other-two");
+        let length = u64::try_from(sent.len()).unwrap_or(u64::MAX);
+        let headers = upload_headers(&af_core::etag::sha256_hex(bound), length)?;
+        let url =
+            super::signing::upload(self, &path, &headers, crate::durable_task::checkpoint::LINK)
+                .await?;
+        let mut put = self.store.client.put(url).body(sent.as_slice());
+        for (name, value) in &headers {
+            put = put.header(name, value);
+        }
+        if put.send().await?.status().is_success() {
+            self.backend.delete(&path).await?;
+            let error_code = af_core::error_code::DURABLE_TASK_STORAGE_UNAVAILABLE;
+            tracing::error!(event = "checkpoint_bucket_ignores_checksum", %error_code);
+            return Err(DurableTaskRefusal::StorageUnavailable.into());
+        }
+        Ok(())
     }
 
     pub(crate) async fn upload(
@@ -109,17 +132,8 @@ impl StorageSession<'_> {
         lifetime: Duration,
     ) -> Result<Authorization> {
         bounded::operation("authorize_upload", async {
-            self.verify_create_only().await?;
-            let digest = hex::decode(ciphertext_digest)
-                .map_err(|_invalid| DurableTaskRefusal::CheckpointIncompatible)?;
-            let headers = BTreeMap::from([
-                ("if-none-match".to_owned(), "*".to_owned()),
-                ("content-length".to_owned(), ciphertext_length.to_string()),
-                (
-                    "x-amz-checksum-sha256".to_owned(),
-                    BASE64_STANDARD.encode(digest),
-                ),
-            ]);
+            self.verify_bucket().await?;
+            let headers = upload_headers(ciphertext_digest, ciphertext_length)?;
             let url =
                 super::signing::upload(self, &object_path(workspace, object), &headers, lifetime)
                     .await?;
@@ -143,27 +157,6 @@ impl StorageSession<'_> {
                 url: url.to_string(),
                 headers: BTreeMap::new(),
             })
-        })
-        .await
-    }
-
-    pub(crate) async fn read_object(
-        &self,
-        workspace: &Uuid7,
-        object: &Uuid7,
-        digest: &str,
-        length: u64,
-    ) -> Result<Option<Vec<u8>>> {
-        bounded::operation("verify_object", async {
-            let bytes =
-                read_bounded(&self.backend, &object_path(workspace, object), length).await?;
-            if bytes
-                .as_ref()
-                .is_some_and(|bytes| af_core::etag::sha256_hex(bytes) != digest)
-            {
-                return Err(DurableTaskRefusal::CheckpointIncompatible.into());
-            }
-            Ok(bytes)
         })
         .await
     }
@@ -210,6 +203,27 @@ async fn read_bounded(backend: &AmazonS3, path: &Path, length: u64) -> Result<Op
         return Err(DurableTaskRefusal::CheckpointIncompatible.into());
     }
     Ok(Some(bytes))
+}
+
+/// What every upload link binds: a create-only write of exactly
+/// `length` bytes whose SHA-256 is `digest`, given in hexadecimal.
+fn upload_headers(digest: &str, length: u64) -> Result<BTreeMap<String, String>> {
+    let digest =
+        hex::decode(digest).map_err(|_invalid| DurableTaskRefusal::CheckpointIncompatible)?;
+    Ok(BTreeMap::from([
+        ("if-none-match".to_owned(), "*".to_owned()),
+        ("content-length".to_owned(), length.to_string()),
+        (
+            "x-amz-checksum-sha256".to_owned(),
+            BASE64_STANDARD.encode(digest),
+        ),
+    ]))
+}
+
+/// A fresh name under which a probe writes, and then removes, its bytes.
+fn probe_path() -> Result<Path> {
+    let id = af_crypto::entropy::Entropy::new().uuid7(clock::now())?;
+    Ok(Path::from(format!("capability-probes/{}", id.as_str())))
 }
 
 fn object_path(workspace: &Uuid7, object: &Uuid7) -> Path {

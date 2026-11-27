@@ -18,6 +18,7 @@ af_core::error_lifts!(Error, ErrorKind:
     tokio::time::error::Elapsed => StreamTimeout,
     std::io::Error => Io,
     af_crypto::error::Error => Crypto,
+    af_chunk_store::Error => ChunkStore,
     af_core::error::Error => Identifier,
     tokio::task::JoinError => Task,
     url::ParseError => Address,

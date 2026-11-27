@@ -4,6 +4,7 @@
 //! ```text
 //!   executor (outside) ─► entry(cwd), on the forking thread ─► fork
 //!                          child: the entry's steps ─► exec, inside
+//!                       ─► leave(), on the forking thread, fork done or not
 //!   renew ─► every process inside ends ─► workspace emptied ─► built again
 //!   hosts ─► the hosts file every process inside reads, replaced whole
 //! ```
@@ -33,6 +34,15 @@ pub trait InnerEnvironment: Send + Sync + fmt::Debug {
     /// The environment is being built again, or cannot be entered.
     fn entry(&self, cwd: &Path) -> io::Result<Entry>;
 
+    /// Puts the calling thread back as it was before [`Self::entry`] readied
+    /// it, so what it starts next is born outside again. Called on the
+    /// forking thread once the fork is done, whether or not it succeeded:
+    /// a thread left readied starts no thread of its own process.
+    ///
+    /// # Errors
+    /// The thread could not be put back.
+    fn leave(&self) -> io::Result<()>;
+
     /// Ends every process inside, empties the workspace and builds the
     /// environment again; returns once no process of the old one remains.
     /// Blocks, so it runs off the runtime's own threads.
@@ -51,18 +61,38 @@ pub trait InnerEnvironment: Send + Sync + fmt::Debug {
     fn hosts(&self, file: &str) -> io::Result<()>;
 }
 
+/// The event a forking thread that could not be put back is logged under.
+const EVENT_NOT_LEFT: &str = "inner_environment_not_left";
+
+/// The forking thread, readied to start one process inside an inner
+/// environment: dropped once the fork is done, it puts the thread back.
+#[derive(Debug)]
+pub(super) struct Readied<'a>(Option<&'a dyn InnerEnvironment>);
+
+impl Drop for Readied<'_> {
+    fn drop(&mut self) {
+        if let Some(inner) = self.0
+            && let Err(error) = inner.leave()
+        {
+            let (reason, event) = (error.to_string(), EVENT_NOT_LEFT);
+            tracing::error!(reason, event);
+        }
+    }
+}
+
 /// Has the process `command` starts enter `inner`, when there is one, before
-/// it execs. A process that cannot enter fails its spawn, so nothing runs
-/// outside the environment it was meant for.
-pub(super) fn enter(
+/// it execs, and hands back the readied thread, held until the fork is done.
+/// A process that cannot enter fails its spawn, so nothing runs outside the
+/// environment it was meant for.
+pub(super) fn enter<'a>(
     command: &mut std::process::Command,
-    inner: Option<&dyn InnerEnvironment>,
+    inner: Option<&'a dyn InnerEnvironment>,
     cwd: &Path,
-) -> Result<()> {
+) -> Result<Readied<'a>> {
     use std::os::unix::process::CommandExt as _;
 
     let Some(inner) = inner else {
-        return Ok(());
+        return Ok(Readied(None));
     };
     let entry = inner.entry(cwd).map_err(error::inner_unavailable)?;
     // SAFETY: the hook runs in the child between fork and exec, where only
@@ -70,5 +100,5 @@ pub(super) fn enter(
     // what `InnerEnvironment::entry` opened before the fork and allocates
     // nothing.
     unsafe { command.pre_exec(entry) };
-    Ok(())
+    Ok(Readied(Some(inner)))
 }

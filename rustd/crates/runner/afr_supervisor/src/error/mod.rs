@@ -112,6 +112,13 @@ pub(crate) enum ErrorKind {
         source: af_crypto::error::Error,
     },
 
+    /// A checkpoint chunk failed its seal or its read check.
+    #[error("a checkpoint chunk was refused")]
+    ChunkStore {
+        #[source]
+        source: af_chunk_store::Error,
+    },
+
     /// The runner's configuration is missing or unusable.
     #[error("{detail}")]
     Config {
@@ -285,6 +292,17 @@ pub(crate) enum ErrorKind {
 
 /// The one alias every signature in this crate spells.
 pub type Result<T, E = Error> = std::result::Result<T, E>;
+
+/// A supervisor failure crosses the engine seam whole when a volume the
+/// supervisor implements raises it.
+impl afr_engine::Failure for Error {
+    fn seam(&self) -> Option<&afr_engine::Error> {
+        match self.kind() {
+            ErrorKind::Egress { source } => Some(source),
+            _other => None,
+        }
+    }
+}
 
 mod classify;
 

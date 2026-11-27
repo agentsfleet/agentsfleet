@@ -1,13 +1,12 @@
 //! An object another capture is uploading is reported busy without its key, frozen
-//! descriptors refuse a second spelling, and a commit verifies every object it names.
+//! descriptors refuse a second spelling, and a commit names only accepted objects.
 
 use af_core::{error_code, etag::sha256_hex};
 use af_crypto::{checkpoint::CheckpointScope, checkpoint_digest, secret::SecretBytes};
 use af_wire::durable_task::{
-    CheckpointAuthorizationInput, CheckpointCommitInput, CheckpointEntry, CheckpointFile,
-    CheckpointObject, CheckpointObjectStatus, CheckpointObjectsInput, CheckpointPlaintext,
-    CheckpointPlan, CheckpointTransferPurpose, CheckpointUpload, CheckpointUploadsInput,
-    DecisionDurableTaskVersion,
+    CheckpointCommitInput, CheckpointEntry, CheckpointFile, CheckpointObject,
+    CheckpointObjectStatus, CheckpointObjectsInput, CheckpointPlaintext, CheckpointPlan,
+    CheckpointUpload, CheckpointUploadsInput, DecisionDurableTaskVersion,
 };
 use afd_fleet::durable_task::storage::chunk_cipher;
 use afd_fleet::durable_task::{
@@ -33,22 +32,19 @@ const HISTORY: &[u8] = b"conversation history chunk";
 const UNSENT: &[u8] = b"history never uploaded";
 const FILE: &[u8] = b"a file never uploaded";
 const DECLARED: &[u8] = b"declared plaintext";
-const REPLACED: &[u8] = b"replaced plaintext";
 
 // Value: protects=a capture never receives the key of an object another capture
-// reserved and never uploaded,
-// frozen ciphertext descriptors accept only their own spelling, and a commit publishes
-// history only when every chunk it names is verified and digested as claimed;
-// fails_when=the busy projection leaks key material, the descriptor digest check is
-// dropped, a remote miss stops leaving the object missing, storage moved to another
-// bucket opens an old object, a decrypted plaintext is not compared with its
-// registration, a stored nonce of the wrong width is used, or the history-root,
-// verified-history or complete-object refusal is dropped;
+// reserved and never uploaded, frozen ciphertext descriptors accept only their own
+// spelling, and a commit publishes history only when every chunk it names was
+// reported accepted and is digested as claimed; fails_when=the busy projection leaks
+// key material, the descriptor digest check is dropped, storage moved to another
+// bucket signs an old object, a stored nonce of the wrong width is used, or the
+// history-root, accepted-history or complete-object refusal is dropped;
 // why_new=these object arms had no case; seam=the production task verbs over live
 // Postgres and real SDK requests to the private HTTPS fixture.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_busy_object_carries_no_key_and_a_commit_names_only_verified_objects() {
+async fn a_busy_object_carries_no_key_and_a_commit_names_only_accepted_objects() {
     exercise(objects).await;
 }
 
@@ -88,11 +84,11 @@ async fn objects(case: &Case) {
     assert!(matches!(chunk.status, CheckpointObjectStatus::Missing));
 
     let ciphertext = encrypt(case, &chunk, HISTORY);
-    descriptors(&tasks, case, &task, &owner, &chunk, &ciphertext, &server).await;
-    moved(&fixture, &server, case, &task, &owner, &chunk).await;
+    let frozen = descriptors(&tasks, case, &task, &owner, &chunk, &ciphertext, &server).await;
+    moved(&fixture, &server, case, &task, &owner, &frozen).await;
     history(&tasks, case, &task, &owner, &chunk).await;
     unverified(&tasks, case, &task).await;
-    substituted(&tasks, case, &task, &server).await;
+    narrowed(&tasks, case, &task).await;
     fixture.model.finish().await.expect("fixture cleanup");
     server.finish().await;
 }
@@ -194,7 +190,7 @@ async fn descriptors(
     object: &CheckpointObject,
     ciphertext: &[u8],
     server: &Server,
-) {
+) -> CheckpointObject {
     let checkpoint = id(&plan.checkpoint_id);
     let digest = sha256_hex(ciphertext);
     let length = ciphertext.len() as u64;
@@ -230,84 +226,13 @@ async fn descriptors(
         "a frozen descriptor refuses another ciphertext digest",
     );
 
-    let missing = tasks
-        .checkpoint_authorizations(case.run(), &checkpoint, &confirm(case, task, plan, object))
-        .await
-        .expect("an object not yet uploaded stays missing");
-    let missing = missing.objects.first().expect("one object");
-    assert!(matches!(missing.status, CheckpointObjectStatus::Missing));
-    assert!(
-        missing.transfer.is_some(),
-        "and is offered its upload again"
-    );
-
-    let transfer = first.transfer.expect("an upload URL");
+    let transfer = first.transfer.clone().expect("an upload URL");
     let mut put = server.client.put(&transfer.url).body(ciphertext.to_vec());
     for (name, value) in &transfer.headers {
         put = put.header(name, value);
     }
     assert_eq!(put.send().await.expect("authorized PUT").status(), 200);
-    let confirmed = tasks
-        .checkpoint_authorizations(case.run(), &checkpoint, &confirm(case, task, plan, object))
-        .await
-        .expect("the uploaded ciphertext verifies");
-    assert!(matches!(
-        confirmed.objects.first().expect("one object").status,
-        CheckpointObjectStatus::Reused
-    ));
-}
-
-/// The writer's authorization of `object`, which verifies an uploaded ciphertext.
-fn confirm(
-    case: &Case,
-    task: &DecisionDurableTaskVersion,
-    plan: &CheckpointPlan,
-    object: &CheckpointObject,
-) -> garde::Valid<CheckpointAuthorizationInput> {
-    valid(CheckpointAuthorizationInput {
-        fencing_token: case.run().fencing_token,
-        durable_task: task.clone(),
-        purpose: CheckpointTransferPurpose::Upload,
-        pin_id: Some(plan.pin.id.clone()),
-        object_ids: vec![object.object_id.clone()],
-    })
-}
-
-/// Uploads `ciphertext` for `object` through its own signed URL.
-async fn put(
-    tasks: &DurableTasks,
-    case: &Case,
-    task: &DecisionDurableTaskVersion,
-    plan: &CheckpointPlan,
-    object: &CheckpointObject,
-    ciphertext: &[u8],
-    server: &Server,
-) {
-    let signed = tasks
-        .checkpoint_uploads(
-            case.run(),
-            &id(&plan.checkpoint_id),
-            &uploads(
-                case,
-                task,
-                plan,
-                object,
-                sha256_hex(ciphertext),
-                ciphertext.len() as u64,
-            ),
-        )
-        .await
-        .expect("the descriptor freezes");
-    let transfer = signed
-        .items
-        .first()
-        .and_then(|item| item.transfer.clone())
-        .expect("an upload URL");
-    let mut put = server.client.put(&transfer.url).body(ciphertext.to_vec());
-    for (name, value) in &transfer.headers {
-        put = put.header(name, value);
-    }
-    assert_eq!(put.send().await.expect("authorized PUT").status(), 200);
+    first
 }
 
 fn commit(
@@ -315,7 +240,7 @@ fn commit(
     task: &DecisionDurableTaskVersion,
     plan: &CheckpointPlan,
     pages: &[(String, String)],
-    history: String,
+    (history, uploaded): (String, &[&CheckpointObject]),
 ) -> garde::Valid<CheckpointCommitInput> {
     valid(CheckpointCommitInput {
         fencing_token: case.run().fencing_token,
@@ -329,6 +254,10 @@ fn commit(
         history_digest: history,
         covered_input_sequence: 0,
         effect_watermark: 0,
+        uploaded: uploaded
+            .iter()
+            .map(|object| object.object_id.clone())
+            .collect(),
     })
 }
 
@@ -364,7 +293,7 @@ async fn history(
                     task,
                     plan,
                     std::slice::from_ref(&written),
-                    checkpoint_digest::history_root([]),
+                    (checkpoint_digest::history_root([]), &[object]),
                 ),
             )
             .await,
@@ -380,11 +309,11 @@ async fn history(
                 task,
                 plan,
                 std::slice::from_ref(&written),
-                root.clone(),
+                (root.clone(), &[object]),
             ),
         )
         .await
-        .expect("verified history publishes");
+        .expect("accepted history publishes");
     assert_eq!(saved.history_digest.as_deref(), Some(root.as_str()));
     assert!(!saved.replayed);
 }
@@ -411,11 +340,14 @@ async fn unverified(tasks: &DurableTasks, case: &Case, task: &DecisionDurableTas
                     task,
                     &history_plan,
                     std::slice::from_ref(&written),
-                    checkpoint_digest::history_root([(
-                        chunk.object_id.as_str(),
-                        plaintext.as_str(),
-                        UNSENT.len() as u64,
-                    )]),
+                    (
+                        checkpoint_digest::history_root([(
+                            chunk.object_id.as_str(),
+                            plaintext.as_str(),
+                            UNSENT.len() as u64,
+                        )]),
+                        &[],
+                    ),
                 ),
             )
             .await,
@@ -457,7 +389,7 @@ async fn unverified(tasks: &DurableTasks, case: &Case, task: &DecisionDurableTas
                     task,
                     &file_plan,
                     std::slice::from_ref(&written),
-                    checkpoint_digest::history_root([]),
+                    (checkpoint_digest::history_root([]), &[]),
                 ),
             )
             .await,
@@ -488,12 +420,14 @@ async fn moved(
         server.client.clone(),
     ));
     let elsewhere = DurableTasks::new(case.held.runs.clone(), case.turns.clone(), dependencies);
+    let frozen = object.ciphertext_sha256.clone().expect("a frozen digest");
+    let length = object.ciphertext_length.expect("a frozen length");
     refused(
         elsewhere
-            .checkpoint_authorizations(
+            .checkpoint_uploads(
                 case.run(),
                 &id(&plan.checkpoint_id),
-                &confirm(case, task, plan, object),
+                &uploads(case, task, plan, object, frozen, length),
             )
             .await,
         error_code::DURABLE_TASK_CHECKPOINT_INCOMPATIBLE,
@@ -501,37 +435,11 @@ async fn moved(
     );
 }
 
-/// A ciphertext that authenticates but decrypts to bytes other than those registered.
-async fn substituted(
-    tasks: &DurableTasks,
-    case: &Case,
-    task: &DecisionDurableTaskVersion,
-    server: &Server,
-) {
+/// A stored nonce of the wrong width never reaches a signed upload.
+async fn narrowed(tasks: &DurableTasks, case: &Case, task: &DecisionDurableTaskVersion) {
     let plan = capture(tasks, case, task).await;
     let object = register(tasks, case, task, &plan, DECLARED).await;
-    let ciphertext = encrypt(case, &object, REPLACED);
-    put(tasks, case, task, &plan, &object, &ciphertext, server).await;
-    refused(
-        tasks
-            .checkpoint_authorizations(
-                case.run(),
-                &id(&plan.checkpoint_id),
-                &confirm(case, task, &plan, &object),
-            )
-            .await,
-        error_code::DURABLE_TASK_CHECKPOINT_INCOMPATIBLE,
-        "plaintext other than the registered bytes never verifies",
-    );
-    let verified: bool = sqlx::query_scalar(
-        "SELECT verified_at IS NOT NULL FROM runner.checkpoint_objects WHERE id = $1",
-    )
-    .bind(id(&object.object_id))
-    .fetch_one(&mut *super::connection(case).await)
-    .await
-    .expect("the substituted object");
-    assert!(!verified, "the substituted object stays unverified");
-
+    let ciphertext = encrypt(case, &object, DECLARED);
     let narrowed =
         sqlx::query("UPDATE runner.checkpoint_objects SET object_nonce = $2 WHERE id = $1")
             .bind(id(&object.object_id))
@@ -542,10 +450,17 @@ async fn substituted(
     assert_eq!(narrowed.rows_affected(), 1);
     refused(
         tasks
-            .checkpoint_authorizations(
+            .checkpoint_uploads(
                 case.run(),
                 &id(&plan.checkpoint_id),
-                &confirm(case, task, &plan, &object),
+                &uploads(
+                    case,
+                    task,
+                    &plan,
+                    &object,
+                    sha256_hex(&ciphertext),
+                    ciphertext.len() as u64,
+                ),
             )
             .await,
         error_code::DURABLE_TASK_CHECKPOINT_INCOMPATIBLE,

@@ -18,13 +18,12 @@ use afd_db::{
 };
 use serde_json::{Value, json};
 
-use crate::{Gateway, error::ErrorKind, test_util::RunnerConnection};
+use crate::{error::ErrorKind, test_util::RunnerConnection};
 
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 /// One enrolled runner connected to a gateway over the shared lane.
 struct Live {
-    gateway: Gateway,
     connection: RunnerConnection,
     runner: Uuid7,
     database: Db,
@@ -62,7 +61,6 @@ impl Live {
         )
         .await?;
         Ok(Self {
-            gateway,
             connection,
             runner: enrolled.runner_id,
             database,
@@ -162,41 +160,6 @@ async fn a_renewal_answers_each_run_it_names_on_its_own() -> TestResult {
         malformed_only["runs"],
         json!([{"run_id":"yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy","answer":renewed["runs"][0]["answer"]}])
     );
-    live.close().await
-}
-
-/// An upload verification for `run`, the bulk action that holds a permit.
-fn verification(request_id: u64, run: &Uuid7) -> Value {
-    json!({"type":"turn_checkpoint","request_id":request_id,"run_id":run,"request":{
-        "fencing_token":1,"operation_id":mint_id(),"action":{"kind":"authorize",
-        "checkpoint":{"checkpoint_id":mint_id(),"pin_id":mint_id()},
-        "purpose":"upload","object_ids":[mint_id()]}}})
-}
-
-#[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn an_upload_verification_with_no_replica_permit_left_is_refused_unavailable() -> TestResult {
-    let mut live = Live::connect().await?;
-    let run = mint_id();
-    let free = live.ask(&verification(6, &run)).await?;
-    assert_eq!(free["answer"]["status"], "refused");
-    assert_ne!(
-        free["answer"]["error_code"],
-        error_code::RUN_CHECKPOINT_UNAVAILABLE.as_str(),
-        "with permits free the verification reached the run"
-    );
-    let gateway = live.gateway.clone();
-    let held = gateway.inner.checkpoint_verifications.try_acquire_many(8)?;
-    let busy = live.ask(&verification(7, &run)).await?;
-    assert_eq!(busy["type"], "turn_checkpoint");
-    assert_eq!(busy["answer"]["status"], "refused");
-    assert_eq!(
-        busy["answer"]["error_code"],
-        error_code::RUN_CHECKPOINT_UNAVAILABLE.as_str()
-    );
-    drop(held);
-    let again = live.ask(&verification(8, &run)).await?;
-    assert_eq!(again["answer"]["error_code"], free["answer"]["error_code"]);
     live.close().await
 }
 

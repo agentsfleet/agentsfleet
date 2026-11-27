@@ -1,6 +1,7 @@
 //! Fenced plans, immutable object custody and bounded recovery on existing runs.
 
 mod commit;
+mod custody;
 mod effective;
 mod guard;
 mod maintenance;
@@ -14,6 +15,7 @@ mod row;
 mod transfer;
 
 pub(super) use commit::publish;
+pub(crate) use custody::{accept, supersede};
 pub(super) use maintenance::maintain;
 pub(crate) use object_row::Object as StoredObject;
 pub(super) use objects::register;
@@ -21,14 +23,12 @@ pub(super) use page::{read, write};
 pub(super) use pins::renew;
 pub(super) use plan::create;
 pub(crate) use retire::{retire, rotate};
-pub(crate) use transfer::{Verification, verify_object};
 pub(super) use transfer::{authorize, list, uploads};
 
 /// The statements a run's turn checkpoints share with task checkpoints,
 /// included once so the two custody paths cannot drift apart.
 pub(crate) const OBJECTS_INSERT: &str = include_str!("sql/objects_insert.sql");
 pub(crate) const DESCRIPTORS: &str = include_str!("sql/descriptors.sql");
-pub(crate) const VERIFY: &str = include_str!("sql/verify.sql");
 pub(crate) const PLAN_BYTES: &str = include_str!("sql/plan_bytes.sql");
 
 use crate::{Result, error::query};

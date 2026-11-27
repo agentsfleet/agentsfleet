@@ -177,7 +177,7 @@ impl Engine for FakeEngine {
         CAPABILITIES.grant(limits)
     }
 
-    fn memory_bound(&self) -> Option<afr_engine::MemoryBound> {
+    fn admission_bound(&self) -> Option<afr_engine::AdmissionBound> {
         None
     }
 
@@ -316,6 +316,7 @@ impl FakeSandbox {
 /// The steps a fake sandbox records, by name.
 pub(crate) const KILL: &str = "kill";
 pub(crate) const DESTROY: &str = "destroy";
+pub(crate) const QUIESCE: &str = "quiesce";
 /// What a kill that cannot prove the tree empty says.
 pub(crate) const STILL_RUNNING: &str = "a process is stuck in the kernel";
 

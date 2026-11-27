@@ -1,5 +1,5 @@
 //! What sealing costs a save and opening costs a restore, with no datastore:
-//! one chunk and a full checkpoint, stored plain and under two AES-256-GCM
+//! one chunk and a full checkpoint, stored plain and under three AES-256-GCM
 //! implementations whose bytes are interchangeable.
 
 use super::Checked;
@@ -8,6 +8,7 @@ use af_crypto::aad::Aad as Binding;
 use af_crypto::checkpoint::{Aes256Gcm, CheckpointScope, ChunkCipher, Plain};
 use af_crypto::secret::SecretBytes;
 use aws_lc_rs::aead::{AES_256_GCM, Aad, LessSafeKey, Nonce, UnboundKey};
+use boring::aead::{AeadCtx, Algorithm};
 use std::io::Write as _;
 use std::time::{Duration, Instant};
 use zeroize::Zeroizing;
@@ -110,6 +111,49 @@ impl Sealing for AwsLc {
     }
 }
 
+/// AES-256-GCM from `BoringSSL`, the library the runner channel's QUIC and TLS
+/// already link, writing the same ciphertext and tag.
+struct BoringSsl;
+
+impl BoringSsl {
+    fn context() -> Checked<AeadCtx> {
+        Ok(AeadCtx::new_default_tag(&Algorithm::aes_256_gcm(), &KEY)
+            .map_err(|_key| "boring key")?)
+    }
+}
+
+impl Sealing for BoringSsl {
+    fn name(&self) -> &'static str {
+        "aes_256_gcm_boringssl"
+    }
+
+    fn seal(
+        &self,
+        nonce: &[u8; 12],
+        binding: &Binding,
+        mut plaintext: Vec<u8>,
+    ) -> Checked<Vec<u8>> {
+        let mut tag = [0_u8; af_crypto::TAG_LEN];
+        Self::context()?
+            .seal_in_place_mut(nonce, &mut plaintext, &mut tag, binding.as_bytes())
+            .map_err(|_seal| "boring seal")?;
+        plaintext.extend_from_slice(&tag);
+        Ok(plaintext)
+    }
+
+    fn open(&self, nonce: &[u8; 12], binding: &Binding, mut sealed: Vec<u8>) -> Checked<Opened> {
+        let at = sealed
+            .len()
+            .checked_sub(af_crypto::TAG_LEN)
+            .ok_or("boring open: shorter than a tag")?;
+        let tag = sealed.split_off(at);
+        Self::context()?
+            .open_in_place_mut(nonce, &mut sealed, &tag, binding.as_bytes())
+            .map_err(|_open| "boring open")?;
+        Ok(Opened::Bytes(sealed))
+    }
+}
+
 /// Prints one line per cipher and object: the median time to seal it and to
 /// open it, and the rate each is.
 pub(super) fn report() -> Checked {
@@ -123,10 +167,11 @@ pub(super) fn report() -> Checked {
     };
     let binding = &scope.binding();
     interchangeable(binding)?;
-    let ciphers: [&dyn Sealing; 3] = [
+    let ciphers: [&dyn Sealing; 4] = [
         &Shipped("plain", &Plain),
         &Shipped("aes_256_gcm_rustcrypto", &Aes256Gcm),
         &AwsLc,
+        &BoringSsl,
     ];
     for cipher in ciphers {
         line(cipher, "chunk", 1, CHUNK_RUNS, binding)?;
@@ -141,18 +186,23 @@ pub(super) fn report() -> Checked {
     Ok(())
 }
 
-/// The two AES implementations write one stored form: either opens the other's.
+/// The three AES implementations write one stored form: each opens every
+/// other's.
 fn interchangeable(binding: &Binding) -> Checked {
     let plaintext = content(0, 4096);
     let nonce = [9; 12];
     let rust = Shipped("aes_256_gcm_rustcrypto", &Aes256Gcm);
-    let ours = rust.seal(&nonce, binding, plaintext.clone())?;
-    let theirs = AwsLc.seal(&nonce, binding, plaintext.clone())?;
-    if ours != theirs
-        || AwsLc.open(&nonce, binding, ours)?.bytes() != plaintext
-        || rust.open(&nonce, binding, theirs)?.bytes() != plaintext
-    {
-        return Err("the two AES-256-GCM implementations disagree".into());
+    let all: [&dyn Sealing; 3] = [&rust, &AwsLc, &BoringSsl];
+    for sealer in all {
+        let sealed = sealer.seal(&nonce, binding, plaintext.clone())?;
+        if sealed != rust.seal(&nonce, binding, plaintext.clone())? {
+            return Err(format!("{} writes other bytes", sealer.name()).into());
+        }
+        for opener in all {
+            if opener.open(&nonce, binding, sealed.clone())?.bytes() != plaintext {
+                return Err(format!("{} cannot open {}", opener.name(), sealer.name()).into());
+            }
+        }
     }
     Ok(())
 }

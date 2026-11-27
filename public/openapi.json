@@ -19618,7 +19618,8 @@
           "manifest_root",
           "history_digest",
           "covered_input_sequence",
-          "effect_watermark"
+          "effect_watermark",
+          "uploaded"
         ],
         "properties": {
           "covered_input_sequence": {
@@ -19654,6 +19655,13 @@
           "pin_id": {
             "type": "string",
             "description": "Current writer pin."
+          },
+          "uploaded": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Objects of this plan whose bound PUT the runner saw accepted. The\ncommit records `verified_at` for these. It refuses any object the\ngeneration names that has none."
           }
         },
         "additionalProperties": false

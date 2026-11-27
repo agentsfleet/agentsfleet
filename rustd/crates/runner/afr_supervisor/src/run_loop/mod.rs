@@ -46,6 +46,7 @@ mod durable_task_workspace;
 mod hold;
 mod lessee;
 mod lost;
+pub(crate) mod pin;
 mod recovery;
 mod recovery_boundary;
 mod recovery_capture;

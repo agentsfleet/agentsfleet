@@ -1,4 +1,4 @@
-//! Matching event-owned files and root publish only after the SDK authenticates every chunk.
+//! Matching event-owned files and root publish once every chunk's bound PUT is accepted.
 
 use super::{
     Checked,
@@ -32,12 +32,12 @@ async fn ordinary_files_and_root_publish_under_real_private_sdk_custody() -> Che
         checkpoint_id: plan.checkpoint_id.clone(),
         pin_id: CheckpointOperationId(plan.pin.id.clone()),
     };
-    let object = authenticated_chunk(&files, &reference).await?;
+    let object = uploaded_chunk(&files, &reference).await?;
     let descriptor = publish(&files, plan, history, reference, &object.object_id).await?;
     read(
         &files,
         descriptor,
-        &object.ciphertext_sha256.ok_or("verified digest")?,
+        &object.ciphertext_sha256.ok_or("frozen digest")?,
     )
     .await?;
     files.finish().await;
@@ -65,7 +65,8 @@ pub(super) async fn begin(files: &Files) -> Checked<(TurnCheckpointPlan, TurnPri
     Ok((*plan, history))
 }
 
-pub(super) async fn authenticated_chunk(
+/// One registered chunk, its ciphertext frozen and PUT through its bound link.
+pub(super) async fn uploaded_chunk(
     files: &Files,
     reference: &TurnCheckpointRef,
 ) -> Checked<af_wire::durable_task::CheckpointObject> {
@@ -89,23 +90,7 @@ pub(super) async fn authenticated_chunk(
         format!("turn:{}", files.case.acquired.turn_id)
     );
     let bytes = storage::encrypt(&files.case.acquired.workspace_id, &object, CONTENT)?;
-    upload_bytes(files, reference, &object, bytes).await?;
-    let Response::Authorized(mut verified) = files
-        .execute(Action::Authorize(TurnCheckpointAuthorize {
-            checkpoint: reference.clone(),
-            purpose: CheckpointTransferPurpose::Upload,
-            object_ids: vec![CheckpointOperationId(object.object_id)],
-        }))
-        .await?
-    else {
-        return Err("verified upload".into());
-    };
-    let object = verified.pop().ok_or("verified object")?;
-    assert!(matches!(
-        object.status,
-        af_wire::durable_task::CheckpointObjectStatus::Reused
-    ));
-    Ok(object)
+    upload_bytes(files, reference, &object, bytes).await
 }
 
 pub(super) async fn publish(
@@ -146,6 +131,7 @@ pub(super) async fn publish(
             root: history,
             manifest_root: manifest,
             folds: Vec::new(),
+            uploaded: vec![CheckpointOperationId(object.into())],
         }))
         .await?
     else {
@@ -241,7 +227,7 @@ pub(super) async fn upload_bytes(
     reference: &TurnCheckpointRef,
     object: &af_wire::durable_task::CheckpointObject,
     bytes: Vec<u8>,
-) -> Checked {
+) -> Checked<af_wire::durable_task::CheckpointObject> {
     let upload = CheckpointUpload {
         object_id: object.object_id.clone(),
         ciphertext_sha256: af_core::etag::sha256_hex(&bytes),
@@ -256,8 +242,9 @@ pub(super) async fn upload_bytes(
     else {
         return Err("upload authorization".into());
     };
-    storage::upload(files, &authorized.pop().ok_or("upload object")?, bytes).await?;
-    Ok(())
+    let authorized = authorized.pop().ok_or("upload object")?;
+    storage::upload(files, &authorized, bytes).await?;
+    Ok(authorized)
 }
 
 async fn release(files: &Files, reference: TurnCheckpointRef) -> Checked {
@@ -269,68 +256,5 @@ async fn release(files: &Files, reference: TurnCheckpointRef) -> Checked {
             .await?,
         Response::PinReleased
     ));
-    Ok(())
-}
-
-#[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn corrupt_uploaded_ciphertext_never_becomes_verified_or_a_recovery_head() -> Checked {
-    let files = Files::new().await?;
-    let (plan, _history) = begin(&files).await?;
-    let reference = TurnCheckpointRef {
-        checkpoint_id: plan.checkpoint_id,
-        pin_id: CheckpointOperationId(plan.pin.id),
-    };
-    let Response::Objects(mut objects) = files
-        .execute(Action::Objects(TurnCheckpointObjects {
-            checkpoint: reference.clone(),
-            objects: vec![CheckpointPlaintext {
-                sha256: af_core::etag::sha256_hex(CONTENT),
-                size: u64::try_from(CONTENT.len())?,
-                kind: "file".into(),
-            }],
-        }))
-        .await?
-    else {
-        return Err("registered object".into());
-    };
-    let object = objects.pop().ok_or("registered object")?;
-    let mut bytes = storage::encrypt(&files.case.acquired.workspace_id, &object, CONTENT)?;
-    *bytes.first_mut().ok_or("nonempty ciphertext")? ^= 1;
-    upload_bytes(&files, &reference, &object, bytes).await?;
-    let command = super::valid(super::publication::command(
-        &files.case,
-        Action::Authorize(TurnCheckpointAuthorize {
-            checkpoint: reference,
-            purpose: CheckpointTransferPurpose::Upload,
-            object_ids: vec![CheckpointOperationId(object.object_id.clone())],
-        }),
-    ))?;
-    let failure = files
-        .store
-        .execute(&files.case.runs, files.case.run(), &command)
-        .await
-        .err()
-        .ok_or("corrupt ciphertext must refuse authorization")?;
-    assert_eq!(
-        failure.code(),
-        af_core::error_code::RUN_CHECKPOINT_INCOMPATIBLE
-    );
-    unverified(&files, &object).await?;
-    files.finish().await;
-    Ok(())
-}
-
-async fn unverified(files: &Files, object: &af_wire::durable_task::CheckpointObject) -> Checked {
-    let mut connection = files.case.fixtures.database.acquire().await?;
-    let verified: bool = sqlx::query_scalar(
-        "SELECT verified_at IS NOT NULL FROM runner.checkpoint_objects WHERE id=$1",
-    )
-    .bind(af_core::id::Uuid7::parse(&object.object_id)?)
-    .fetch_one(&mut *connection)
-    .await?;
-    assert!(!verified);
-    drop(connection);
-    assert_eq!(files.case.counts().await?.3, None);
     Ok(())
 }

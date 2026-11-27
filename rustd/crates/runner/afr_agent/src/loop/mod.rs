@@ -223,6 +223,8 @@ pub(crate) struct Harness<'s, 'run> {
     folded_through: i64,
     folded_inputs: Vec<crate::engine::FoldRef>,
     turn_checkpoint: Option<af_wire::run::TurnResume>,
+    /// The last save, while it publishes after the run resumed.
+    publication: Option<(crate::Publication, crate::engine::RecoveryWitness)>,
     /// Whether the daemon's assignment already answered this loop's next fold ask:
     /// its run said no later message waited, so the ask before the first
     /// model call would be assigned nothing. Spent by that ask.
@@ -270,6 +272,7 @@ mod finish;
 mod observe;
 mod publication;
 mod recovery_boundary;
+mod recovery_receipt;
 pub(crate) mod shared;
 
 #[cfg(test)]
@@ -324,6 +327,9 @@ mod saved_tests;
 
 #[cfg(test)]
 mod recovery_boundary_tests;
+
+#[cfg(test)]
+mod publication_wait_tests;
 
 #[cfg(test)]
 mod finished_tests;

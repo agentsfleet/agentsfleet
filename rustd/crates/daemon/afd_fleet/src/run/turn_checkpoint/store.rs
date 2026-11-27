@@ -98,11 +98,13 @@ impl TurnCheckpoints {
                 root,
                 manifest_root,
                 folds,
+                uploaded,
             }) => {
                 let body = commit::Publication {
                     root,
                     manifest: manifest_root,
                     folds,
+                    uploaded,
                 };
                 commit::publish(self, runs, presented, checkpoint, &body).await
             }

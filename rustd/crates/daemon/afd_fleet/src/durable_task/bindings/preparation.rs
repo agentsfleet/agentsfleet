@@ -107,7 +107,7 @@ async fn target(
                 .storage
                 .as_ref()
                 .ok_or(DurableTaskRefusal::StorageUnavailable)?
-                .verify_create_only()
+                .verify_bucket()
                 .await?;
             let github = tasks
                 .dependencies

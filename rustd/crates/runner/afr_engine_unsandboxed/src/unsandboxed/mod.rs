@@ -107,7 +107,7 @@ impl Engine for UnsandboxedEngine {
     }
 
     /// It confines nothing, memory included.
-    fn memory_bound(&self) -> Option<afr_engine::MemoryBound> {
+    fn admission_bound(&self) -> Option<afr_engine::AdmissionBound> {
         None
     }
 

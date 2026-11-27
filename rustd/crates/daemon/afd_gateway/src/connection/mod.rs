@@ -199,7 +199,6 @@ pub(crate) struct ConnectionServices {
     runs: afd_fleet::run::RunService,
     cache: cache::RunCache,
     output: StreamWriters,
-    checkpoint_verifications: tokio::sync::Semaphore,
     /// Renewal frames this connection has answered, for
     /// [`afd_fleet::run::renew::funds_due`]'s cadence.
     renewal_ticks: std::sync::atomic::AtomicU64,

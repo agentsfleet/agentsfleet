@@ -1,9 +1,11 @@
-//! Encrypted root, exact folded prefix and the event head publish atomically.
+//! Accepted uploads, encrypted root, exact folded prefix and the event head
+//! publish atomically.
 
 use af_core::id::Uuid7;
 use af_wire::protocol::MESSAGE_BYTES_MAX;
 use af_wire::run::{
-    FoldRef, TurnCheckpointRef, TurnCheckpointResponse, TurnCheckpointSaved, TurnPrivateRoot,
+    CheckpointOperationId, FoldRef, TurnCheckpointRef, TurnCheckpointResponse, TurnCheckpointSaved,
+    TurnPrivateRoot,
 };
 
 use super::{
@@ -13,7 +15,7 @@ use super::{
     row::Plan,
     transaction,
 };
-use crate::{Result, error::query, run::Runs};
+use crate::{Result, durable_task::checkpoint, error::query, run::Runs};
 
 // Correlation IDs, tagged answer and run metadata have a fixed bounded envelope.
 const READ_ENVELOPE_BYTES: usize = 2048;
@@ -45,15 +47,36 @@ pub(super) async fn publish(
     Ok(response)
 }
 
-async fn manifest(owner: &mut TurnRunGuard<'_>, plan: &Plan, digest: &str) -> Result<()> {
+async fn manifest(owner: &mut TurnRunGuard<'_>, plan: &Plan, body: &Publication<'_>) -> Result<()> {
     if plan.has_workspace {
-        return super::manifest::validate(owner, plan, digest).await;
+        accept(owner, plan, body.uploaded).await?;
+        return super::manifest::validate(owner, plan, body.manifest).await;
     }
+    let digest = body.manifest;
     let empty = af_crypto::checkpoint_digest::manifest_root(std::iter::empty::<(&str, &str)>());
-    if !plan.page_ids.is_empty() || digest != empty {
+    if !plan.page_ids.is_empty() || digest != empty || !body.uploaded.is_empty() {
         return Err(TurnCheckpointRefusal::Incompatible.into());
     }
     Ok(())
+}
+
+/// Records the uploads the runner saw accepted, under the workspace's storage
+/// lock, before the manifest proves every object it names verified.
+async fn accept(
+    owner: &mut TurnRunGuard<'_>,
+    plan: &Plan,
+    uploaded: &[CheckpointOperationId],
+) -> Result<()> {
+    let uploaded = super::objects::ids(uploaded)?;
+    let workspace = owner.current.workspace_id.clone();
+    checkpoint::lock_storage(&mut owner.tx, &workspace).await?;
+    checkpoint::accept(
+        &mut owner.tx,
+        &workspace,
+        (&plan.id, &plan.owner_run_id, plan.owner_fence),
+        &uploaded,
+    )
+    .await
 }
 
 fn readable(
@@ -65,7 +88,7 @@ fn readable(
     folds: &[FoldRef],
 ) -> Result<()> {
     let descriptor = af_wire::run::TurnResume {
-        checkpoint_id: af_wire::run::CheckpointOperationId(plan.id.as_str().to_owned()),
+        checkpoint_id: CheckpointOperationId(plan.id.as_str().to_owned()),
         generation: plan.generation,
         format_version: plan.format_version,
         scope: plan.scope(owner),
@@ -81,7 +104,7 @@ fn readable(
         page_ids: plan
             .page_ids
             .iter()
-            .map(|id| af_wire::run::CheckpointOperationId(id.as_str().to_owned()))
+            .map(|id| CheckpointOperationId(id.as_str().to_owned()))
             .collect(),
         root: root.clone(),
         folds: folds.to_vec(),
@@ -134,6 +157,7 @@ pub(super) struct Publication<'a> {
     pub root: &'a TurnPrivateRoot,
     pub manifest: &'a str,
     pub folds: &'a [FoldRef],
+    pub uploaded: &'a [CheckpointOperationId],
 }
 
 fn validate(
@@ -176,7 +200,7 @@ async fn pending(
         return Err(TurnCheckpointRefusal::Conflict.into());
     }
     custody(owner, plan, pin).await?;
-    manifest(owner, plan, body.manifest).await?;
+    manifest(owner, plan, body).await?;
     let writer = owner.current.id.clone();
     let fence = owner.current.fence;
     let ids = folds::validate(owner, body.folds, Some((&writer, fence))).await?;

@@ -1,0 +1,26 @@
+[package]
+name = "af_chunk_store"
+description = "Checkpoint storage both binaries share: what a save reads out of a workspace, and how a chunk is sealed and checked."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+af_core.workspace = true
+# The one chunk cipher a save seals with and a restore opens with.
+af_crypto.workspace = true
+# The manifest entry a change carries and the registration a check compares.
+af_wire.workspace = true
+# The key and nonce the daemon hands over ride the registration as base64.
+base64.workspace = true
+thiserror.workspace = true
+zeroize.workspace = true
+
+[lints]
+workspace = true

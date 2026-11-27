@@ -59,6 +59,7 @@ pub(super) async fn publish(
                 &str,
             )>()),
             folds: Vec::new(),
+            uploaded: Vec::new(),
         }),
     ))?;
     let TurnCheckpointResponse::Committed(descriptor) =

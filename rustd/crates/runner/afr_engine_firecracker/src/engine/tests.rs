@@ -12,7 +12,9 @@ use afr_executor::Sizes;
 use afr_image::{HostTools, Toolbox};
 
 use super::{FirecrackerConfig, FirecrackerEngine};
-use crate::config::{Binaries, FIRST_JAIL_ID, FirecrackerTuning, MEMORY_OVERCOMMIT};
+use crate::config::{
+    Binaries, DISK_OVERCOMMIT, FIRST_JAIL_ID, FirecrackerTuning, MEMORY_OVERCOMMIT,
+};
 
 /// A sandbox the first engine would be running: a directory its identifier names.
 const LIVE: &str = "0198f0c2-7a3e-7c1d-9b2e-000000000001";
@@ -34,6 +36,7 @@ fn a_second_engine_over_a_held_state_directory_is_refused_and_sweeps_nothing() {
             sizes: Sizes::DEFAULT,
             limits: Limits::DEFAULT,
             memory_overcommit: MEMORY_OVERCOMMIT,
+            disk_overcommit: DISK_OVERCOMMIT,
         },
         toolbox: Arc::new(Toolbox::at(
             root.path().join("toolbox"),

@@ -44,8 +44,8 @@ mod vsock;
 pub use self::admission::{Admission, Reservation};
 pub use self::capabilities::{CAPABILITIES as FIRECRACKER_CAPABILITIES, grant};
 pub use self::config::{
-    Binaries, FIRECRACKER_PATH, FIRST_JAIL_ID, FirecrackerTuning, INITRD_PATH, JAILER_PATH,
-    KERNEL_PATH, MEMORY_OVERCOMMIT,
+    Binaries, DISK_OVERCOMMIT, FIRECRACKER_PATH, FIRST_JAIL_ID, FirecrackerTuning, INITRD_PATH,
+    JAILER_PATH, KERNEL_PATH, MEMORY_OVERCOMMIT,
 };
 #[cfg(target_os = "linux")]
 pub use self::engine::{FirecrackerBackend, FirecrackerConfig, FirecrackerEngine};

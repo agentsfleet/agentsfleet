@@ -19,17 +19,10 @@ const RIPGREP: &str = "ripgrep";
 const SHA256: &str = "sha256";
 /// The Debian packages the run's tools come from, each pinned with the hash
 /// apt checked it by.
-const PINNED: [&str; 7] = [
-    "ca-certificates",
-    GIT,
-    "python3",
-    "nodejs",
-    RIPGREP,
-    "jq",
-    "curl",
-];
-/// The binary Debian does not ship, vendored by URL and SHA-256.
+const PINNED: [&str; 6] = ["ca-certificates", GIT, "python3", RIPGREP, "jq", "curl"];
+/// The binaries Debian does not ship, each vendored by URL and SHA-256.
 const UV_RELEASE: &str = "astral-sh/uv/releases/download/";
+const BUN_RELEASE: &str = "oven-sh/bun/releases/download/";
 /// The source manifest the lane's image was built from, in the toolbox source.
 const SOURCE_MANIFEST: &str = "manifest.txt";
 /// The source manifest's keys for the snapshot and each archive at it.
@@ -40,7 +33,7 @@ const BUILDER: [&str; 5] = ["mmdebstrap", "apt", "dpkg", "erofs-utils", "liblz4-
 
 /// How long uv may take to lock and install from the loopback index.
 const UV_TIMEOUT_MS: u64 = 120_000;
-/// How long `node --test` may take.
+/// How long a JavaScript step or the git workflows may take.
 const NODE_TIMEOUT_MS: u64 = 30_000;
 /// The exit status of a command that succeeded.
 const SUCCESS: i32 = 0;
@@ -98,19 +91,38 @@ exit "$status"
 const IMPORTED: &str = "hi from a loopback index";
 /// uv's line for the package it installed.
 const INSTALLED: &str = "hello-spike==1.0";
-/// Writes one Node test and runs the runner over it.
-const NODE_TEST: &str = r"
+/// Asks the name `node` its version, then runs one script through that name
+/// and through its `#!/usr/bin/env node` line. The name is Bun's: no Node.js
+/// is installed, and under it Bun answers `-p process.version`, never
+/// `--version`.
+const NODE_NAME: &str = r"
 mkdir -p /workspace/node && cd /workspace/node || exit 1
-cat >sum.test.js <<'JS'
-const test = require('node:test');
+cat >sum.js <<'JS'
+#!/usr/bin/env node
 const assert = require('node:assert');
-test('adds', () => { assert.strictEqual(1 + 1, 2); });
+assert.strictEqual(1 + 1, 2);
+console.log('ran under bun', process.versions.bun);
 JS
-node --test 2>&1
+chmod +x sum.js
+node -p process.version && node sum.js && ./sum.js 2>&1
 ";
-/// The runner's summary lines when its one test passes.
-const NODE_PASSED: &str = "# pass 1";
-const NODE_NONE_FAILED: &str = "# fail 0";
+/// What the name answers its version with, and each run of the script says.
+const NODE_VERSION: &str = "v";
+const NODE_RAN: &str = "ran under bun 1.";
+/// Has Bun, under both its names, answer its version, then writes one
+/// TypeScript test and runs Bun's own runner over it: nothing is fetched.
+const BUN_TEST: &str = r#"
+export HOME=/workspace
+mkdir -p /workspace/bun && cd /workspace/bun || exit 1
+cat >sum.test.ts <<'TS'
+import { expect, test } from "bun:test";
+test("adds", () => { expect(1 + 1).toBe(2); });
+TS
+bun --version && bunx --version && bun test 2>&1
+"#;
+/// Bun's summary lines when its one test passes.
+const BUN_PASSED: &str = " 1 pass";
+const BUN_NONE_FAILED: &str = " 0 fail";
 /// The other pinned tools answer their versions.
 const VERSIONS: &str = "rg --version | head -n1 && jq --version && curl --version | head -n1";
 /// A word from each tool's version line.
@@ -126,22 +138,25 @@ done
 "#;
 
 /// Under the production policy, uv installs a locked project from a loopback
-/// index, `node --test` passes, git commits, and the other pinned tools run;
-/// the release manifest beside the image accounts for all of them.
+/// index, a script runs under the name `node` and by its interpreter line,
+/// `bun test` passes, git commits, and the other pinned tools run; the
+/// release manifest beside the image accounts for all of them.
 pub(crate) fn toolbox_carries_the_tools(lane: &Lane) -> Result<(), Failed> {
     release_manifest_names_the_image(lane)?;
     let calls = [
         shell(UV_FROM_LOOPBACK, Some(UV_TIMEOUT_MS)),
-        shell(NODE_TEST, Some(NODE_TIMEOUT_MS)),
+        shell(NODE_NAME, Some(NODE_TIMEOUT_MS)),
+        shell(BUN_TEST, Some(NODE_TIMEOUT_MS)),
         shell(GIT_WORKFLOWS, Some(NODE_TIMEOUT_MS)),
         shell(VERSIONS, None),
         shell(EXCLUDED_TOOLS, None),
     ];
     let outputs = shell_calls(lane, "toolbox-tools", &calls)?;
-    let [uv, node, git, versions, excluded] = answers(&outputs)?;
+    let [uv, node, bun, git, versions, excluded] = answers(&outputs)?;
     for (step, output) in [
         ("uv", uv),
         ("node", node),
+        ("bun", bun),
         (GIT, git),
         ("versions", versions),
         ("excluded tools", excluded),
@@ -155,10 +170,7 @@ pub(crate) fn toolbox_carries_the_tools(lane: &Lane) -> Result<(), Failed> {
         uv.text.contains(INSTALLED) && uv.text.contains(IMPORTED),
         format!("uv installed and the module imported, got {:?}", uv.text),
     )?;
-    expect(
-        node.text.contains(NODE_PASSED) && node.text.contains(NODE_NONE_FAILED),
-        format!("node's one test passed, got {:?}", node.text),
-    )?;
+    javascript_ran(&node.text, &bun.text)?;
     expect(
         git.text.contains("\"perl\": null") && git.text.contains("\"interactive staging\""),
         format!("core Git workflows passed without Perl, got {:?}", git.text),
@@ -168,6 +180,21 @@ pub(crate) fn toolbox_carries_the_tools(lane: &Lane) -> Result<(), Failed> {
             .iter()
             .all(|word| versions.text.contains(word)),
         format!("each tool names its version, got {:?}", versions.text),
+    )
+}
+
+/// The script ran under the name `node` and by its interpreter line, both
+/// times as Bun, and Bun's own runner passed its one test.
+fn javascript_ran(node: &str, bun: &str) -> Result<(), Failed> {
+    expect(
+        node.starts_with(NODE_VERSION) && node.matches(NODE_RAN).count() == 2,
+        format!("the script ran twice under Bun's `node`, got {node:?}"),
+    )?;
+    expect(
+        [BUN_PASSED, BUN_NONE_FAILED]
+            .iter()
+            .all(|line| bun.contains(line)),
+        format!("bun's one test passed, got {bun:?}"),
     )
 }
 
@@ -186,8 +213,8 @@ fn list<'a>(record: &'a Value, key: &str) -> &'a [Value] {
 
 /// The manifest beside the lane's image names that image's digest and
 /// length, every pinned package with the hash apt checked, the vendored uv
-/// for this architecture, the EROFS features it was made with, and this
-/// runner's version.
+/// and Bun for this architecture, the EROFS features it was made with, and
+/// this runner's version.
 fn release_manifest_names_the_image(lane: &Lane) -> Result<(), Failed> {
     let image = lane.image.path();
     let manifest: Value = serde_json::from_slice(&fs::read(image.with_extension(JSON))?)?;
@@ -210,12 +237,16 @@ fn release_manifest_names_the_image(lane: &Lane) -> Result<(), Failed> {
     }
     let arch = std::env::consts::ARCH;
     let vendored = list(&manifest, "vendored");
-    expect(
-        vendored.iter().any(|binary| {
-            text(binary, "url").is_some_and(|url| url.contains(UV_RELEASE) && url.contains(arch))
-        }),
-        format!("uv for {arch} is vendored, got {vendored:?}"),
-    )?;
+    // Bun names x86-64 `x64`, so its release alone is looked for: the build
+    // records only the lines of the architecture it built for.
+    for (release, named) in [(UV_RELEASE, arch), (BUN_RELEASE, "")] {
+        expect(
+            vendored.iter().any(|binary| {
+                text(binary, "url").is_some_and(|url| url.contains(release) && url.contains(named))
+            }),
+            format!("{release} for {arch} is vendored, got {vendored:?}"),
+        )?;
+    }
     expect(
         !list(&manifest, "erofs_features").is_empty(),
         format!("the EROFS features are recorded, got {manifest}"),

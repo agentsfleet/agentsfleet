@@ -183,7 +183,7 @@ fn checkpoint_debug_output_does_not_quote_root_history() -> Checked {
     let request: TurnCheckpointCommand = serde_json::from_value(json!({
         "fencing_token":7,"operation_id":ID,"action":{
             "kind":"commit","checkpoint":{"checkpoint_id":ID,"pin_id":ID},
-            "root":{"history":private},"manifest_root":"a".repeat(64),"folds":[]
+            "root":{"history":private},"manifest_root":"a".repeat(64),"folds":[],"uploaded":[]
         }
     }))?;
     request.validate()?;

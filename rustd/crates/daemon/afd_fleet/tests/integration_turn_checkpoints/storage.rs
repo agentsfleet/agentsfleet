@@ -54,7 +54,7 @@ impl Files {
             )
             .await?;
         let (store, storage) = stores(&case, &server, cipher)?;
-        storage.verify_create_only().await?;
+        storage.verify_bucket().await?;
         Ok(Self {
             case,
             server,

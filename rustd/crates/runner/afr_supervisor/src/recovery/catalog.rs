@@ -1,33 +1,33 @@
-//! Two bounded passes hash frozen files, then upload only missing native chunks.
+//! A save's manifest, built from the changes a pin yields: each entry listed,
+//! each chunk hashed once, then only the missing chunks uploaded.
 
-use super::files::{self, Entry, Identity, Workspace};
-use super::names::{EveryNameItsOwnFile, Naming, SecondNames};
+use super::files;
+use super::tree::ChangeSource;
+#[cfg(test)]
+use super::{
+    files::Workspace,
+    names::{EveryNameItsOwnFile, SecondNames},
+    tree::walk,
+};
 use crate::{Result, error};
-use af_wire::durable_task::{CheckpointEntry, CheckpointFile, CheckpointPage, CheckpointPlaintext};
+use af_chunk_store::{Change, ChunkKey};
+use af_wire::durable_task::{CheckpointEntry, CheckpointPage, CheckpointPlaintext};
+use futures_util::StreamExt as _;
 use std::{collections::BTreeMap, sync::Arc};
+use tokio_util::sync::CancellationToken;
 use zeroize::Zeroizing;
+
+/// One history chunk's key and its bytes.
+pub(super) type HistoryChunk<'a> = (&'a str, Zeroizing<Vec<u8>>);
 
 const PLACEHOLDER: &str = "00000000-0000-7000-8000-000000000000";
 
-#[derive(Clone)]
-enum Source {
-    File {
-        root: Arc<Workspace>,
-        path: String,
-        identity: Identity,
-        offset: u64,
-    },
-    History {
-        bytes: Arc<Zeroizing<Vec<u8>>>,
-        start: usize,
-        end: usize,
-    },
-}
-
+/// One distinct chunk: what is registered for it, and where history's bytes
+/// sit when it is history. A file chunk's bytes are read again from the pin.
 #[derive(Clone)]
 pub(super) struct Chunk {
     pub(super) descriptor: CheckpointPlaintext,
-    source: Source,
+    history: Option<(usize, usize)>,
 }
 
 impl std::fmt::Debug for Chunk {
@@ -38,182 +38,209 @@ impl std::fmt::Debug for Chunk {
     }
 }
 
-impl Chunk {
-    pub(super) fn read(&self) -> Result<Zeroizing<Vec<u8>>> {
-        match &self.source {
-            Source::File {
-                root,
-                path,
-                identity,
-                offset,
-            } => root.chunk(path, identity, *offset),
-            Source::History { bytes, start, end } => Ok(Zeroizing::new(
-                bytes
-                    .get(*start..*end)
-                    .ok_or_else(|| error::config("checkpoint history chunk range is invalid"))?
-                    .to_vec(),
-            )),
-        }
-    }
-}
-
 #[derive(Debug)]
 pub(super) struct Catalog {
     pub(super) chunks: BTreeMap<String, Chunk>,
     entries: BTreeMap<String, CheckpointEntry>,
     file_chunks: BTreeMap<String, Vec<String>>,
     history_chunks: Vec<String>,
+    history: Arc<Zeroizing<Vec<u8>>>,
+    /// The file whose chunks the changes are on, and its size.
+    open_file: Option<(String, u64)>,
     pub(super) logical_bytes: u64,
     pub(super) entry_count: u32,
 }
 
 impl Catalog {
+    /// The catalog of everything `source` yields, `history` beside it, and a
+    /// removal for each of `base_paths` the source no longer lists.
+    ///
+    /// # Errors
+    /// A change could not be read, the changes are not a whole tree, or the
+    /// pages it lays out exceed their bounds.
+    pub(super) async fn read(
+        source: Option<&dyn ChangeSource>,
+        history: Zeroizing<Vec<u8>>,
+        base_paths: Vec<String>,
+        stop: &CancellationToken,
+    ) -> Result<Self> {
+        let mut catalog = Self::empty();
+        if let Some(source) = source {
+            let mut changes = source.changes();
+            while let Some(change) = changes.next().await {
+                if stop.is_cancelled() {
+                    return Err(error::config("checkpoint inventory cancelled"));
+                }
+                match change? {
+                    Change::Entry(entry) => catalog.add_entry(entry)?,
+                    Change::Chunk { key, bytes } => {
+                        let descriptor =
+                            tokio::task::spawn_blocking(move || descriptor(&bytes, "file")).await?;
+                        catalog.add_chunk(&key, descriptor)?;
+                    }
+                }
+            }
+        }
+        catalog.finish(history, base_paths)
+    }
+
+    /// The catalog of the tree `root` holds, walked in place.
+    #[cfg(test)]
     pub(super) fn build(
         root: Option<&Arc<Workspace>>,
         history: Zeroizing<Vec<u8>>,
         base_paths: Vec<String>,
-        stop: &tokio_util::sync::CancellationToken,
+        stop: &CancellationToken,
     ) -> Result<Self> {
         Self::build_naming(root, history, base_paths, stop, &mut EveryNameItsOwnFile)
     }
 
     /// As [`Self::build`], asking `names` once per file how its name is saved.
+    #[cfg(test)]
     pub(super) fn build_naming(
         root: Option<&Arc<Workspace>>,
         history: Zeroizing<Vec<u8>>,
         base_paths: Vec<String>,
-        stop: &tokio_util::sync::CancellationToken,
+        stop: &CancellationToken,
         names: &mut dyn SecondNames,
     ) -> Result<Self> {
-        let inventory = root
-            .map(|root| root.inventory(stop))
-            .transpose()?
-            .unwrap_or_default();
-        let mut catalog = Self {
+        let mut catalog = Self::empty();
+        if let Some(root) = root {
+            walk(root, stop, names, &mut |change| {
+                match change {
+                    Change::Entry(entry) => catalog.add_entry(entry)?,
+                    Change::Chunk { key, bytes } => {
+                        catalog.add_chunk(&key, descriptor(&bytes, "file"))?;
+                    }
+                }
+                Ok(true)
+            })?;
+        }
+        catalog.finish(history, base_paths)
+    }
+
+    fn empty() -> Self {
+        Self {
             chunks: BTreeMap::new(),
             entries: BTreeMap::new(),
             file_chunks: BTreeMap::new(),
             history_chunks: Vec::new(),
+            history: Arc::new(Zeroizing::new(Vec::new())),
+            open_file: None,
             logical_bytes: 0,
-            entry_count: u32::try_from(inventory.len())
-                .map_err(|source| error::boundary("checkpoint entry count overflow", source))?,
-        };
-        for (path, entry) in &inventory {
-            if stop.is_cancelled() {
-                return Err(error::config("checkpoint inventory cancelled"));
-            }
-            catalog.logical_bytes = catalog
-                .logical_bytes
-                .checked_add(files::size(entry))
-                .ok_or_else(|| error::capture_limit("checkpoint size overflow"))?;
-            let wire = catalog.entry(root, path, entry, stop, names)?;
-            catalog.entries.insert(path.clone(), wire);
+            entry_count: 0,
         }
+    }
+
+    fn add_entry(&mut self, entry: CheckpointEntry) -> Result<()> {
+        self.close_file()?;
+        let path = entry.path().to_owned();
+        files::valid_path(&path)?;
+        if let CheckpointEntry::File(file) = &entry {
+            self.logical_bytes = self
+                .logical_bytes
+                .checked_add(file.size)
+                .ok_or_else(|| error::capture_limit("checkpoint size overflow"))?;
+            self.file_chunks.insert(path.clone(), Vec::new());
+            self.open_file = Some((path.clone(), file.size));
+        }
+        self.entry_count = self
+            .entry_count
+            .checked_add(1)
+            .ok_or_else(|| error::capture_limit("checkpoint entry count overflow"))?;
+        if self.entries.insert(path, entry).is_some() {
+            return Err(error::config("checkpoint path repeated"));
+        }
+        Ok(())
+    }
+
+    fn add_chunk(&mut self, at: &ChunkKey, descriptor: CheckpointPlaintext) -> Result<()> {
+        let ChunkKey::File { path, index } = at;
+        let keys = self
+            .open_file
+            .as_ref()
+            .filter(|(open, _)| open == path)
+            .and_then(|(open, _)| self.file_chunks.get_mut(open))
+            .ok_or_else(|| error::config("checkpoint chunk names no file being read"))?;
+        if crate::byte_count(keys.len()) != *index {
+            return Err(error::config("checkpoint chunks arrived out of order"));
+        }
+        let key = key(&descriptor);
+        keys.push(key.clone());
+        self.chunks.entry(key).or_insert(Chunk {
+            descriptor,
+            history: None,
+        });
+        Ok(())
+    }
+
+    /// Ends the file whose chunks were being read: it holds every chunk its
+    /// size says it does.
+    fn close_file(&mut self) -> Result<()> {
+        let Some((path, size)) = self.open_file.take() else {
+            return Ok(());
+        };
+        let read = self.file_chunks.get(&path).map_or(0, Vec::len);
+        if crate::byte_count(read) != size.div_ceil(files::CHUNK) {
+            return Err(error::config("checkpoint file is incomplete"));
+        }
+        Ok(())
+    }
+
+    fn finish(mut self, history: Zeroizing<Vec<u8>>, base_paths: Vec<String>) -> Result<Self> {
+        self.close_file()?;
         for path in base_paths {
-            if !inventory.contains_key(&path) {
-                catalog
-                    .entries
+            if !self.entries.contains_key(&path) {
+                self.entries
                     .insert(path.clone(), CheckpointEntry::Remove { path });
             }
         }
-        catalog.add_history(history)?;
+        self.add_history(history)?;
         // Validate the complete page layout before allocating any native plan.
-        catalog.pages(None, af_wire::durable_task::CHECKPOINT_PAGE_BYTES)?;
-        Ok(catalog)
-    }
-
-    /// The page entry for one inventory entry; a file is hashed into chunks.
-    fn entry(
-        &mut self,
-        root: Option<&Arc<Workspace>>,
-        path: &str,
-        entry: &Entry,
-        stop: &tokio_util::sync::CancellationToken,
-        names: &mut dyn SecondNames,
-    ) -> Result<CheckpointEntry> {
-        let (identity, executable) = match entry {
-            Entry::Directory => {
-                return Ok(CheckpointEntry::Directory {
-                    path: path.to_owned(),
-                });
-            }
-            Entry::Symlink { target } => {
-                return Ok(CheckpointEntry::Symlink {
-                    path: path.to_owned(),
-                    target: target.clone(),
-                });
-            }
-            Entry::File {
-                identity,
-                executable,
-            } => (identity, *executable),
-        };
-        let root = root.ok_or_else(|| error::config("checkpoint file has no workspace"))?;
-        let Naming::OwnFile = names.naming(path, identity);
-        let size = files::size(entry);
-        let keys = self.file(root, path, identity, size, stop)?;
-        let file = CheckpointEntry::File(CheckpointFile {
-            path: path.to_owned(),
-            executable,
-            size,
-            objects: vec![PLACEHOLDER.to_owned(); keys.len()],
-        });
-        self.file_chunks.insert(path.to_owned(), keys);
-        Ok(file)
+        self.pages(None, af_wire::durable_task::CHECKPOINT_PAGE_BYTES)?;
+        Ok(self)
     }
 
     fn add_history(&mut self, history: Zeroizing<Vec<u8>>) -> Result<()> {
-        let history = Arc::new(history);
+        self.history = Arc::new(history);
         let chunk_bytes = usize::try_from(files::CHUNK)
             .map_err(|source| error::boundary("checkpoint chunk size overflow", source))?;
-        for (index, chunk) in history.chunks(chunk_bytes).enumerate() {
+        for (index, chunk) in self.history.chunks(chunk_bytes).enumerate() {
             let start = index * chunk_bytes;
-            let end = start + chunk.len();
             let descriptor = descriptor(chunk, "history");
             let key = key(&descriptor);
-            self.chunks.entry(key.clone()).or_insert_with(|| Chunk {
+            self.chunks.entry(key.clone()).or_insert(Chunk {
                 descriptor,
-                source: Source::History {
-                    bytes: Arc::clone(&history),
-                    start,
-                    end,
-                },
+                history: Some((start, start + chunk.len())),
             });
             self.history_chunks.push(key);
         }
         Ok(())
     }
 
-    fn file(
-        &mut self,
-        root: &Arc<Workspace>,
-        path: &str,
-        identity: &Identity,
-        size: u64,
-        stop: &tokio_util::sync::CancellationToken,
-    ) -> Result<Vec<String>> {
-        let mut keys = Vec::new();
-        let chunk_bytes = usize::try_from(files::CHUNK)
-            .map_err(|source| error::boundary("checkpoint chunk size overflow", source))?;
-        for offset in (0..size).step_by(chunk_bytes) {
-            if stop.is_cancelled() {
-                return Err(error::config("checkpoint hashing cancelled"));
-            }
-            let bytes = root.chunk(path, identity, offset)?;
-            let descriptor = descriptor(&bytes, "file");
-            let key = key(&descriptor);
-            self.chunks.entry(key.clone()).or_insert_with(|| Chunk {
-                descriptor,
-                source: Source::File {
-                    root: Arc::clone(root),
-                    path: path.to_owned(),
-                    identity: identity.clone(),
-                    offset,
-                },
-            });
-            keys.push(key);
-        }
-        Ok(keys)
+    /// The distinct chunk the `index`th chunk of `path` is.
+    pub(super) fn file_chunk(&self, path: &str, index: u64) -> Option<&str> {
+        let index = usize::try_from(index).ok()?;
+        self.file_chunks.get(path)?.get(index).map(String::as_str)
+    }
+
+    /// The history chunks, by key, with their bytes.
+    pub(super) fn history(&self) -> Result<Vec<HistoryChunk<'_>>> {
+        self.history_chunks
+            .iter()
+            .map(|key| {
+                let (start, end) = self
+                    .chunks
+                    .get(key)
+                    .and_then(|chunk| chunk.history)
+                    .ok_or_else(|| error::config("checkpoint history source is absent"))?;
+                let bytes = self
+                    .history
+                    .get(start..end)
+                    .ok_or_else(|| error::config("checkpoint history chunk range is invalid"))?;
+                Ok((key.as_str(), Zeroizing::new(bytes.to_vec())))
+            })
+            .collect()
     }
 
     pub(super) fn history_root(&self, ids: &BTreeMap<String, String>) -> Result<String> {
@@ -268,18 +295,22 @@ impl Catalog {
         ids: Option<&BTreeMap<String, String>>,
     ) -> Result<CheckpointEntry> {
         let mut entry = original.clone();
-        if let (Some(ids), CheckpointEntry::File(file)) = (ids, &mut entry) {
-            file.objects = self
+        if let CheckpointEntry::File(file) = &mut entry {
+            let keys = self
                 .file_chunks
                 .get(path)
-                .ok_or_else(|| error::config("checkpoint file mapping is absent"))?
-                .iter()
-                .map(|key| {
-                    ids.get(key)
-                        .cloned()
-                        .ok_or_else(|| error::config("checkpoint file registration is incomplete"))
-                })
-                .collect::<Result<_>>()?;
+                .ok_or_else(|| error::config("checkpoint file mapping is absent"))?;
+            file.objects = match ids {
+                None => vec![PLACEHOLDER.to_owned(); keys.len()],
+                Some(ids) => keys
+                    .iter()
+                    .map(|key| {
+                        ids.get(key).cloned().ok_or_else(|| {
+                            error::config("checkpoint file registration is incomplete")
+                        })
+                    })
+                    .collect::<Result<_>>()?,
+            };
         }
         Ok(entry)
     }

@@ -38,6 +38,7 @@ impl Error {
             | ErrorKind::StreamTimeout { .. }
             | ErrorKind::Io { .. }
             | ErrorKind::Crypto { .. }
+            | ErrorKind::ChunkStore { .. }
             | ErrorKind::CaptureLimit { .. }
             | ErrorKind::CaptureUnavailable { .. }
             | ErrorKind::Config { .. }
@@ -75,6 +76,7 @@ impl Error {
             | ErrorKind::StreamTimeout { .. }
             | ErrorKind::Io { .. }
             | ErrorKind::Crypto { .. }
+            | ErrorKind::ChunkStore { .. }
             | ErrorKind::CaptureLimit { .. }
             | ErrorKind::CaptureUnavailable { .. }
             | ErrorKind::Config { .. }
@@ -132,6 +134,7 @@ impl Error {
             | ErrorKind::StreamProtocolSource { .. }
             | ErrorKind::Io { .. }
             | ErrorKind::Crypto { .. }
+            | ErrorKind::ChunkStore { .. }
             | ErrorKind::CaptureLimit { .. }
             | ErrorKind::CaptureUnavailable { .. }
             | ErrorKind::Config { .. }
@@ -192,6 +195,7 @@ impl Error {
             | ErrorKind::Refused { verb, .. }
             | ErrorKind::Malformed { verb, .. } => verb.code(),
             ErrorKind::Egress { source } => source.code(),
+            ErrorKind::ChunkStore { source } => source.code(),
             ErrorKind::Io { .. }
             | ErrorKind::Crypto { .. }
             | ErrorKind::Config { .. }

@@ -48,6 +48,22 @@ const SURVIVOR: &str = "if cat /proc/[0-9]*/cmdline 2>/dev/null | tr '\\0' ' ' |
 /// Every tree a tenant process writes that outlives it, which a restore
 /// leaves holding the checkpoint and nothing else.
 const WRITTEN: &str = "/workspace /tmp /dev/shm";
+/// How many of the objects a tenant talks between its processes through it
+/// holds: of a System V segment, semaphore set and queue under one key, then
+/// of one POSIX queue. Told `make` at `$1` it makes each first; told `find`,
+/// it only looks each up. Landlock refuses a tenant the queue, which no path
+/// it may write names, so only a kernel that lets one be made counts it.
+const IPC_HELD: &str = "python3 -c 'import ctypes, os, sys\n\
+make = sys.argv[1] == \"make\"\n\
+libc, key, flags = ctypes.CDLL(None), 0x41465201, 0o1600 if make else 0\n\
+opened = os.O_CREAT | os.O_RDWR if make else os.O_RDONLY\n\
+held = [libc.shmget(key, 4096 if make else 0, flags), libc.semget(key, int(make), flags),\n\
+        libc.msgget(key, flags), libc.mq_open(b\"/left\", opened, 0o600, None)]\n\
+print(sum(one >= 0 for one in held[:3]), int(held[3] >= 0))' ";
+/// What [`IPC_HELD`] says of an environment holding every System V object,
+/// before the POSIX queue's count, and of one holding nothing at all.
+const SYSTEM_V_HELD: &str = "3 ";
+const NO_IPC_HELD: &str = "0 0";
 /// The names a stopped sandbox is built to reach, then re-planned to; the
 /// guest resolves each through its hosts file alone.
 const FIRST_NAME: &str = "first.far.test";
@@ -111,6 +127,7 @@ pub(crate) fn tuning() -> FirecrackerTuning {
         sizes: afr_executor::Sizes::DEFAULT,
         limits: Limits::default(),
         memory_overcommit: afr_engine_firecracker::MEMORY_OVERCOMMIT,
+        disk_overcommit: afr_engine_firecracker::DISK_OVERCOMMIT,
     }
 }
 
@@ -195,8 +212,9 @@ fn stopped_resumes(lane: &Lane) -> Result<(), Failed> {
 
 /// A checkpoint restored into a running guest replaces its workspace, leaves
 /// nothing the old inner environment wrote in the scratch space or the
-/// shared memory, and ends every process it ran, and the monitor is the one
-/// that ran before: the guest never rebooted.
+/// shared memory, none of the System V objects or POSIX queues it made, and
+/// ends every process it ran, and the monitor is the one that ran before:
+/// the guest never rebooted.
 fn restored_in_place(lane: &Lane) -> Result<(), Failed> {
     let id = id_of("restored");
     runtime().block_on(async {
@@ -216,19 +234,25 @@ fn restored_in_place(lane: &Lane) -> Result<(), Failed> {
         let mut checkpoint = Vec::new();
         executor.export(&["."], &mut checkpoint).await?;
         let script = format!(
-            "for tree in {WRITTEN}; do echo before > $tree/before; done; {START_BACKGROUND}"
+            "for tree in {WRITTEN}; do echo before > $tree/before; done; {START_BACKGROUND}; \
+             {IPC_HELD}make"
         );
-        run(executor, shell(&script)).await?;
+        let made = run(executor, shell(&script)).await?.output;
         executor.renew().await?;
         executor.import(".", &mut checkpoint.as_slice()).await?;
-        let script = format!("for tree in {WRITTEN}; do ls -A $tree; done; {SURVIVOR}");
+        let script =
+            format!("for tree in {WRITTEN}; do ls -A $tree; done; {SURVIVOR}; {IPC_HELD}find");
         let said = run(executor, shell(&script)).await?.output;
         let after = fs::read_to_string(&procs)?;
         sandbox.destroy().await?;
         expect(after == monitor, "the same monitor runs: no reboot")?;
         expect(
-            said == "restored\ngone\n",
-            format!("the checkpoint's tree alone, no old process, got {said:?}"),
+            made.starts_with(SYSTEM_V_HELD),
+            format!("the old environment made its System V objects, got {made:?}"),
+        )?;
+        expect(
+            said == format!("restored\ngone\n{NO_IPC_HELD}\n"),
+            format!("the checkpoint's tree alone, no old process or object, got {said:?}"),
         )
     })
 }

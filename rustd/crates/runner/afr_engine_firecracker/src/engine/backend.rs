@@ -2,14 +2,17 @@
 //! and the resources it holds until every microVM is gone.
 //!
 //! A host whose KVM device a monitor cannot open is refused naming `kvm`, and
-//! the runner starts no engine at all: there is no fallback to another.
+//! one whose packet filter cannot hold a guest to its egress naming
+//! `nftables`. The runner then starts no engine at all: there is no fallback
+//! to another, and no guest runs behind a filter that is not there.
 
 use std::path::Path;
 
 use af_core::error_code::{Coded as _, Logged};
 use afr_engine::error::refused;
 use afr_engine::{
-    Backend, HostPaths, HostProbe, MECHANISM_TOOLBOX_FILESYSTEM, Resources, Result, Started,
+    Backend, HostPaths, HostProbe, MECHANISM_NFTABLES, MECHANISM_TOOLBOX_FILESYSTEM, Resources,
+    Result, Started,
 };
 use afr_image::{HostTools, KernelMounter, MountedToolboxes, Release, ToolboxHome, Toolboxes};
 
@@ -50,29 +53,20 @@ impl Backend for FirecrackerBackend<'_> {
         })
     }
 
-    /// A usable KVM device first, then the toolbox's file system and every
-    /// controller a monitor's leaf is limited through.
     fn validate(&self, host: &HostProbe) -> Result<()> {
-        crate::admit(host.kvm)?;
-        if !host.toolbox_filesystem {
-            return Err(refused(MECHANISM_TOOLBOX_FILESYSTEM));
-        }
-        host.missing_controller()
-            .map_or(Ok(()), |missing| Err(refused(missing)))
+        admitted(host)
     }
 
-    fn start(self, paths: &HostPaths, host: &HostProbe) -> Result<Started<Self::Engine>> {
+    fn start(self, paths: &HostPaths, _admitted: &HostProbe) -> Result<Started<Self::Engine>> {
         let toolboxes =
             Toolboxes::open(self.home.images(), KernelMounter::new(self.home.mounts()))?;
         let toolbox = toolboxes.verify_incoming(self.release, &self.home.incoming())?;
         let resources = Mounted(MountedToolboxes::from(toolboxes));
-        // Always, and before either sweep: a second runner on this host is
-        // refused here, whether or not the host enforces egress, before it
-        // removes the first one's links or hands out its jail users.
+        // Before either sweep: a second runner on this host is refused
+        // here, before it removes the first one's links or hands out its
+        // jail users.
         afr_firewall::own_host()?;
-        if host.egress
-            && let Err(error) = afr_firewall::sweep()
-        {
+        if let Err(error) = afr_firewall::sweep() {
             let Logged { error_code, reason } = error.logged();
             let event = EVENT_SWEEP_FAILED;
             tracing::warn!(error_code, reason, event);
@@ -91,6 +85,27 @@ impl Backend for FirecrackerBackend<'_> {
     }
 }
 
+/// Whether Firecracker boots on `host`: a usable KVM device first, then the
+/// toolbox's file system, every controller a monitor's leaf is limited
+/// through, and a packet filter that built and removed an egress scope, so
+/// no guest runs on a host that cannot hold it to its plan.
+///
+/// # Errors
+/// The first of those the host lacks, named.
+fn admitted(host: &HostProbe) -> Result<()> {
+    crate::admit(host.kvm)?;
+    if !host.toolbox_filesystem {
+        return Err(refused(MECHANISM_TOOLBOX_FILESYSTEM));
+    }
+    if let Some(missing) = host.missing_controller() {
+        return Err(refused(missing));
+    }
+    if !host.egress {
+        return Err(refused(MECHANISM_NFTABLES));
+    }
+    Ok(())
+}
+
 /// The verified toolboxes every guest's drive is, mounted until the host's
 /// engine and microVMs are gone.
 #[derive(Debug)]
@@ -99,5 +114,67 @@ struct Mounted(MountedToolboxes<KernelMounter>);
 impl Resources for Mounted {
     fn close(self: Box<Self>) -> Result<()> {
         Ok(self.0.close()?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![expect(
+        clippy::unwrap_used,
+        reason = "a test asserts by panicking; the manifest's restriction set is for the runner"
+    )]
+
+    use af_wire::runner::Kvm;
+    use afr_engine::{HostProbe, REQUIRED_CONTROLLERS};
+
+    use super::admitted;
+
+    /// A host with everything a microVM needs.
+    fn host() -> HostProbe {
+        HostProbe {
+            landlock: true,
+            seccomp: true,
+            cgroup_controllers: REQUIRED_CONTROLLERS.map(str::to_owned).into(),
+            kvm: Kvm::Usable,
+            toolbox_filesystem: true,
+            workspace_direct_io: None,
+            egress: true,
+        }
+    }
+
+    /// A host that cannot hold a guest to its egress does not come up: boot
+    /// refuses naming `nftables`, as it names each other mechanism a host
+    /// lacks, and admits the host that has them all.
+    #[test]
+    fn test_firecracker_refuses_a_host_whose_packet_filter_cannot_hold_egress() {
+        let lacking = [
+            (
+                "nftables",
+                HostProbe {
+                    egress: false,
+                    ..host()
+                },
+            ),
+            (
+                "erofs",
+                HostProbe {
+                    toolbox_filesystem: false,
+                    ..host()
+                },
+            ),
+            (
+                "io",
+                HostProbe {
+                    cgroup_controllers: vec!["cpu".into(), "memory".into(), "pids".into()],
+                    ..host()
+                },
+            ),
+        ];
+
+        for (missing, host) in lacking {
+            let refused = admitted(&host).unwrap_err();
+            assert_eq!(refused.missing_mechanism(), Some(missing));
+        }
+        admitted(&host()).unwrap();
     }
 }

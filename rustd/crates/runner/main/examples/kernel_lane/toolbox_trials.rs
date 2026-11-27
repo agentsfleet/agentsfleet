@@ -13,15 +13,10 @@ use crate::run::expect;
 use crate::tools::{answers, shell, shell_calls};
 use crate::trials::Body;
 
-/// ARM64 retains its previously qualified limit until this change is measured there.
-/// AMD64 is bounded by the fresh 162,004,992-byte package-manager baseline.
-#[cfg(target_arch = "aarch64")]
-const IMAGE_CAP_BYTES: u64 = 195_624_960;
-#[cfg(target_arch = "x86_64")]
-const IMAGE_CAP_BYTES: u64 = 162_004_991;
-/// An architecture without a measured baseline cannot pass this proof.
-#[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
-const IMAGE_CAP_BYTES: u64 = 0;
+/// The most bytes the image may be: under 195 MB, decimal, which is Indy's
+/// number (Indy, Nov 27, 2026: "raise to 195MB"), ruled when Bun joined the
+/// toolbox and put the amd64 image at 192,294,912 bytes.
+const IMAGE_CAP_BYTES: u64 = 194_999_999;
 /// The installed tree must retain licences while excluding the other payloads.
 const LICENCES: &str = r"
 python3 -I - EXPECTED_PACKAGES <<'PY'

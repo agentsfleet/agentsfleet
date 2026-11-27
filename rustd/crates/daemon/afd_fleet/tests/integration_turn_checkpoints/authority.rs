@@ -129,6 +129,7 @@ async fn prepare(files: &Files, operation: Operation) -> Checked<Action> {
             root: pending.root,
             manifest_root: af_crypto::checkpoint_digest::manifest_root([]),
             folds: Vec::new(),
+            uploaded: Vec::new(),
         }));
     }
     let Response::Committed(saved) = pending.commit(files, &[]).await? else {

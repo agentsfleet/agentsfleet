@@ -75,6 +75,9 @@ pub enum RecoverySkip {
     BusyProcesses,
     /// Other checkpoint or restore work is using the runner's file capacity.
     BusyStorage,
+    /// The run's previous save is still publishing: one publication runs
+    /// per owner, and this boundary never paused.
+    BusyPublication,
     /// The matching workspace is not ready.
     WorkspaceBuilding,
     /// No capture owner or storage is available.
@@ -88,8 +91,53 @@ pub enum RecoverySkip {
 pub enum RecoverySave {
     /// Native publication and cleanup both completed.
     Committed(Box<RecoveryReceipt>),
+    /// The run resumed at the pin; the save publishes on, and its receipt
+    /// follows.
+    Publishing(Publication),
     /// No new generation was acknowledged.
     Skipped(RecoverySkip),
+}
+
+/// What a save that resumed its run sends once its publication ends: a
+/// committed receipt, a skip, or the failure that ended it.
+pub type Published = Result<RecoverySave>;
+
+/// A save publishing after its run resumed. The run reads the receipt at its
+/// next boundary or its end, never sooner, so no model call waits on it.
+#[derive(Debug)]
+pub struct Publication {
+    receipt: tokio::sync::oneshot::Receiver<Published>,
+}
+
+impl Publication {
+    /// A publication, and the sender its owner delivers the receipt through.
+    #[must_use]
+    pub fn channel() -> (tokio::sync::oneshot::Sender<Published>, Self) {
+        let (send, receipt) = tokio::sync::oneshot::channel();
+        (send, Self { receipt })
+    }
+
+    /// The receipt once publication has ended, or `None` while it runs.
+    pub(crate) fn try_settled(&mut self) -> Option<Published> {
+        match self.receipt.try_recv() {
+            Ok(published) => Some(published),
+            Err(tokio::sync::oneshot::error::TryRecvError::Empty) => None,
+            Err(tokio::sync::oneshot::error::TryRecvError::Closed) => Some(Err(lost())),
+        }
+    }
+
+    /// The receipt, waiting for publication to end.
+    ///
+    /// # Errors
+    /// The publication failed, or its owner went before it answered.
+    pub async fn settled(self) -> Published {
+        self.receipt.await.unwrap_or_else(|_closed| Err(lost()))
+    }
+}
+
+/// The owner went before it said how its publication ended.
+fn lost() -> crate::Error {
+    crate::error::recovery_invalid("the checkpoint publication ended without a receipt")
 }
 
 /// Owned by the supervisor outside the lifetime of the agent future.

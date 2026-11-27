@@ -15,6 +15,8 @@ categories.workspace = true
 workspace = true
 
 [dependencies]
+# What a pinned workspace yields to the save that reads it.
+af_chunk_store.workspace = true
 af_core.workspace = true
 # A warm slot's sandbox identifier, minted the one way identifiers are.
 af_crypto.workspace = true
@@ -31,6 +33,9 @@ tar = { workspace = true, optional = true }
 # an addition rather than a rewrite.
 afr_executor.workspace = true
 async-trait.workspace = true
+# A pin's changes are read as a stream, and the warm-slot suite polls a
+# claim once.
+futures-util.workspace = true
 # A warm slot's refill and an egress plan's read-back wait without a
 # hand-written loop.
 backon.workspace = true
@@ -49,8 +54,6 @@ test-util = ["dep:bytes", "dep:libtest-mimic", "dep:tar"]
 af_core = { workspace = true, features = ["test-util"] }
 # The warm-slot suite's fake executor takes the bytes a write carries.
 bytes.workspace = true
-# The warm-slot suite polls a claim once.
-futures-util.workspace = true
 # The conformance suite, which its own tests run over fakes.
 libtest-mimic.workspace = true
 tar.workspace = true

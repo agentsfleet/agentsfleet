@@ -39,7 +39,7 @@ pub(super) async fn save(
         checkpoint_id: plan.checkpoint_id.clone(),
         pin_id: CheckpointOperationId(plan.pin.id.clone()),
     };
-    let objects = registered(files, &reference, contents).await?;
+    let (objects, uploaded) = registered(files, &reference, contents).await?;
     let page_id = plan.page_ids.first().ok_or("page")?.clone();
     let page = page_of(contents, &objects)?;
     let digest = af_core::etag::sha256_hex(&serde_json::to_vec(&page)?);
@@ -61,6 +61,7 @@ pub(super) async fn save(
             root: history,
             manifest_root: manifest,
             folds: Vec::new(),
+            uploaded,
         }))
         .await?
     else {
@@ -70,7 +71,7 @@ pub(super) async fn save(
 }
 
 /// A file plan for `contents` over `head`, and the history root it commits.
-async fn begun(
+pub(super) async fn begun(
     files: &Files,
     contents: &[&[u8]],
     head: Option<&TurnResume>,
@@ -101,7 +102,7 @@ async fn begun(
 }
 
 /// One manifest page listing a file per content, each held by its object.
-fn page_of(contents: &[&[u8]], objects: &[CheckpointObject]) -> Checked<CheckpointPage> {
+pub(super) fn page_of(contents: &[&[u8]], objects: &[CheckpointObject]) -> Checked<CheckpointPage> {
     let mut entries = Vec::new();
     for (index, (content, object)) in contents.iter().zip(objects).enumerate() {
         entries.push(CheckpointEntry::File(CheckpointFile {
@@ -119,12 +120,13 @@ fn page_of(contents: &[&[u8]], objects: &[CheckpointObject]) -> Checked<Checkpoi
 }
 
 /// Registers `contents` and uploads whichever the turn does not store yet.
-/// Each returned frame is the registration's, with its key and cipher.
-async fn registered(
+/// Each returned frame is the registration's, with its key and cipher,
+/// beside the objects whose PUT was accepted.
+pub(super) async fn registered(
     files: &Files,
     reference: &TurnCheckpointRef,
     contents: &[&[u8]],
-) -> Checked<Vec<CheckpointObject>> {
+) -> Checked<(Vec<CheckpointObject>, Vec<CheckpointOperationId>)> {
     let descriptors = contents
         .iter()
         .map(|content| {
@@ -144,23 +146,15 @@ async fn registered(
     else {
         return Err("registered objects".into());
     };
+    let mut uploaded = Vec::new();
     for (content, object) in contents.iter().zip(&objects) {
         if matches!(object.status, CheckpointObjectStatus::Missing) {
             let sealed = storage::encrypt(&files.case.acquired.workspace_id, object, content)?;
             files::upload_bytes(files, reference, object, sealed).await?;
-            let Response::Authorized(_verified) = files
-                .execute(Action::Authorize(TurnCheckpointAuthorize {
-                    checkpoint: reference.clone(),
-                    purpose: CheckpointTransferPurpose::Upload,
-                    object_ids: vec![CheckpointOperationId(object.object_id.clone())],
-                }))
-                .await?
-            else {
-                return Err("verified upload".into());
-            };
+            uploaded.push(CheckpointOperationId(object.object_id.clone()));
         }
     }
-    Ok(objects)
+    Ok((objects, uploaded))
 }
 
 /// What the current run restores: nothing when it is offered no checkpoint,

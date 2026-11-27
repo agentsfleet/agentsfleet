@@ -23,7 +23,7 @@ use tokio::task::JoinHandle;
 
 use self::keeper::{keep, retire};
 use crate::engine::{
-    Capabilities, EgressPlan, Engine, Granted, Limits, MemoryBound, Sandbox, SandboxSpec, Sweep,
+    AdmissionBound, Capabilities, EgressPlan, Engine, Granted, Limits, Sandbox, SandboxSpec, Sweep,
     Swept,
 };
 use crate::error::Result;
@@ -127,8 +127,8 @@ impl Engine for WarmSlots {
     /// The inner engine's bound less the slots kept ready: each holds a
     /// reservation, so the runs offered beside them always fit a cold build,
     /// and the slots plus live runs never pass the bound.
-    fn memory_bound(&self) -> Option<MemoryBound> {
-        self.inner.memory_bound().map(|bound| MemoryBound {
+    fn admission_bound(&self) -> Option<AdmissionBound> {
+        self.inner.admission_bound().map(|bound| AdmissionBound {
             sandboxes_max: bound
                 .sandboxes_max
                 .saturating_sub(u32::try_from(self.slots).unwrap_or(u32::MAX)),

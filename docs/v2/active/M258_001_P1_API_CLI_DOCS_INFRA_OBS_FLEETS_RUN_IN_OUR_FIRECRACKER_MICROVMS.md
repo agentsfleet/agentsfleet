@@ -407,7 +407,7 @@ Error kinds added: Unsupported{engine, operation} · Ambiguous{sandbox, operatio
 
 | Metric / event | Audience | Fires when | Properties allowed | Privacy guard | Test |
 |----------------|----------|------------|--------------------|---------------|------|
-| `sandbox_engine_booted` (log) | operator | the engine admits the host at boot | `engine`, `kvm`, `sandboxes_max`, `worker_count` | no path, token or tenant identifier | `firecracker_refuses_a_host_without_usable_kvm` |
+| `sandbox_engine_booted` (log) | operator | the engine admits the host at boot | `engine`, `kvm`, `sandboxes_max` | no path, token or tenant identifier | `firecracker_refuses_a_host_without_usable_kvm` |
 | `runner_capacity_bounded` (log) | operator | `sandboxes_max` is below `worker_count` | `worker_count`, `sandboxes_max`, `mem_available_bytes`, `memory_overcommit` | host facts only | `credits_stop_at_the_overcommitted_memory_bound` |
 | `sandbox_lost` (log) | operator | the host ends a VMM the engine did not stop | `engine`, `reason` | no tenant identifier | `a_vmm_ended_by_the_host_ends_only_its_own_run` |
 | `sandbox_swept` (log) | operator | a sweep destroys leftovers | `engine`, `destroyed`, `left` | no tenant identifier | `a_runner_killed_mid_build_leaves_no_jail_tap_or_table` |

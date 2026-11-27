@@ -14,12 +14,12 @@ use af_core::id::Uuid7;
 use af_wire::runner::SandboxEngine;
 use afr_engine::error::sandbox_exists;
 use afr_engine::{
-    Allowlist, Capabilities, EgressPlan, Engine, Environment, Generation, Granted, Limits,
-    MemoryBound, Network, Result, Root, Sandbox, SandboxSpec, Sweep, Swept,
+    AdmissionBound, Allowlist, Capabilities, EgressPlan, Engine, Environment, Generation, Granted,
+    Limits, Network, Overcommitted, Result, Root, Sandbox, SandboxSpec, Sweep, Swept,
 };
 use afr_image::{HostTools, Toolbox};
 
-use crate::admission::{Admission, MEMINFO_PATH, mem_available};
+use crate::admission::{Admission, MEMINFO_PATH, disk_free, mem_available};
 use crate::capabilities::CAPABILITIES;
 use crate::config::FirecrackerTuning;
 use crate::jail::{DIR_MODE, JailIds, Layout};
@@ -88,32 +88,38 @@ pub struct FirecrackerEngine {
 }
 
 impl FirecrackerEngine {
-    /// An engine building from `config`, holding the host to the memory
-    /// bound its `MemAvailable` makes now, once it holds its state
-    /// directory's lock and has swept what a previous runner left there.
+    /// An engine building from `config`, once it holds its state directory's
+    /// lock and has swept what a previous runner left there, holding the
+    /// host to the bound its `MemAvailable` and the free space under that
+    /// directory make then.
     ///
     /// # Errors
     /// Another engine holds the state directory, which is refused naming its
     /// lock before anything is swept; `/proc/meminfo` would not read or
-    /// states no `MemAvailable`; or the tuning's limits are not ones a
-    /// microVM is granted.
+    /// states no `MemAvailable`; the state directory's file system would not
+    /// state its free space; or the tuning's limits are not ones a microVM
+    /// is granted.
     pub fn new(config: FirecrackerConfig) -> Result<Self> {
-        let available = mem_available(Path::new(MEMINFO_PATH))?;
-        let admission = Admission::new(memory_bound(&config.tuning, available)?);
         let jails = JailIds::new(config.tuning.first_jail_id);
         // Before the sweep: a directory another engine holds is its live
         // sandboxes', never leftovers.
         let state = StateLock::take(&config.state_dir)?;
-        let engine = Self {
+        // Before the bound: a leftover's monitor and image hold memory and
+        // disk no sandbox of this engine will.
+        let _logged = crate::sweep::sweep(Sweep::Leftovers, &config.state_dir, &config.cgroup_root);
+        let available = Available {
+            memory: mem_available(Path::new(MEMINFO_PATH))?,
+            disk: disk_free(&config.state_dir)?,
+        };
+        let admission = Admission::new(bound(&config.tuning, available)?);
+        Ok(Self {
             shared: Arc::new(Shared {
                 config,
                 jails,
                 admission,
                 _state: state,
             }),
-        };
-        let _logged = engine.swept(Sweep::Leftovers);
-        Ok(engine)
+        })
     }
 
     /// What it builds microVMs from.
@@ -191,7 +197,7 @@ impl Engine for FirecrackerEngine {
         crate::grant(limits)
     }
 
-    fn memory_bound(&self) -> Option<MemoryBound> {
+    fn admission_bound(&self) -> Option<AdmissionBound> {
         Some(self.shared.admission.bound())
     }
 
@@ -211,21 +217,33 @@ impl Engine for FirecrackerEngine {
     }
 }
 
-/// The bound `available` bytes make under `tuning`: one microVM reserves what
-/// its monitor's cgroup holds, its guest's granted memory and
-/// `SANDBOX_MEMORY_RESERVE_BYTES` (64 MiB) beside it, which the kernel holds
-/// the monitor to. The spike measured a 2 GiB guest's idle monitor at
-/// 110.9 MiB resident with 46.2 MiB used inside the guest
-/// (`docs/v2/reviews/m258-firecracker-spike.md`), about 64.7 MiB its own.
-fn memory_bound(tuning: &FirecrackerTuning, available: u64) -> Result<MemoryBound> {
+/// What the host has to back microVMs with, in bytes, read at boot.
+#[derive(Debug, Clone, Copy)]
+struct Available {
+    /// The host's `MemAvailable`.
+    memory: u64,
+    /// The free space of the file system holding the state directory.
+    disk: u64,
+}
+
+/// The bound `available` makes under `tuning`, the lesser of what memory and
+/// disk admit. In memory, one microVM reserves what its monitor's cgroup
+/// holds: its guest's granted memory and `SANDBOX_MEMORY_RESERVE_BYTES`
+/// (64 MiB) beside it, which the kernel holds the monitor to. The spike
+/// measured a 2 GiB guest's idle monitor at 110.9 MiB resident with 46.2 MiB
+/// used inside the guest (`docs/v2/reviews/m258-firecracker-spike.md`), about
+/// 64.7 MiB its own. On disk, it reserves its workspace image's granted size.
+fn bound(tuning: &FirecrackerTuning, available: Available) -> Result<AdmissionBound> {
     let granted = crate::grant(tuning.limits)?;
-    let reserved = build::monitor_limits(granted.limits()).memory_bytes;
+    let limits = granted.limits();
     // Never zero: the reserve alone is 64 MiB.
+    let reserved = build::monitor_limits(limits).memory_bytes;
     let reserved = NonZeroU64::new(reserved).unwrap_or(NonZeroU64::MAX);
-    Ok(MemoryBound::overcommitted(
-        available,
-        tuning.memory_overcommit,
-        reserved,
+    // A granted disk of no bytes holds none, so it never bounds the host.
+    let image = NonZeroU64::new(limits.disk_bytes).unwrap_or(NonZeroU64::MIN);
+    Ok(AdmissionBound::lesser(
+        Overcommitted::of(available.memory, tuning.memory_overcommit, reserved),
+        Overcommitted::of(available.disk, tuning.disk_overcommit, image),
     ))
 }
 

@@ -1,9 +1,10 @@
 //! What the process inside a sandbox does to itself before it reads anything.
 //!
 //! In order: `no_new_privs`, then Landlock, then seccomp, then a check that no
-//! capability survived. Each step binds only the calling thread and its future
-//! children, so [`harden`] refuses to run once a second thread exists — the
-//! executor's runtime starts after it, never before.
+//! capability survived, which [`Hardened`] owns behind [`Confinement`]. Each
+//! step binds only the calling thread and its future children, so [`harden`]
+//! refuses to run once a second thread exists — the executor's runtime starts
+//! after it, never before.
 
 #[cfg(target_os = "linux")]
 use std::fs;
@@ -30,6 +31,8 @@ pub const SANDBOX_TMP: &str = "/tmp";
 pub(crate) const PROC_SELF_STATUS: &str = "/proc/self/status";
 /// Pseudo-terminals, which `--dev` mounts and an interactive process writes.
 const DEV_PTS: &str = "/dev/pts";
+/// Why a process that still holds a capability is refused.
+pub(crate) const CAPABILITY_SURVIVED: &str = "a capability survived";
 
 /// Trees a sandboxed process may write beneath; everything else is read-only.
 ///
@@ -53,10 +56,8 @@ pub const WRITABLE_DEVICES: [&str; 5] = [
 #[cfg(target_os = "linux")]
 pub fn harden() -> Result<()> {
     single_threaded(&fs::read_to_string(PROC_SELF_STATUS)?)?;
-    rustix::thread::set_no_new_privs(true)?;
-    linux::restrict_file_system()?;
-    linux::refuse_system_calls()?;
-    capabilities_dropped(&fs::read_to_string(PROC_SELF_STATUS)?)
+    let mut apply = Hardened::new()?.prepare()?;
+    Ok(apply()?)
 }
 
 /// A host without Landlock cannot confine a sandbox, so it never serves one.
@@ -113,15 +114,17 @@ pub fn capabilities_dropped(status: &str) -> Result<()> {
     if status.capeff == 0 && status.capprm == 0 {
         Ok(())
     } else {
-        Err(unconfined("a capability survived"))
+        Err(unconfined(CAPABILITY_SURVIVED))
     }
 }
 
 #[cfg(target_os = "linux")]
+mod confinement;
+#[cfg(target_os = "linux")]
 mod linux;
 
 #[cfg(target_os = "linux")]
-pub(crate) use self::linux::{HIGH_NUMBERS, file_system_rules, programs};
+pub use self::confinement::{Applying, Confinement, Hardened, Refused};
 #[cfg(target_os = "linux")]
 pub use self::linux::{REFUSED as REFUSED_SYSCALLS, X32_SYSCALL_BIT};
 

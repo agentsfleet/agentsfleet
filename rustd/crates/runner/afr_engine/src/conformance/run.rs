@@ -40,7 +40,7 @@ pub(super) const STARTED: &str = "started";
 /// by its command line, so a fresh environment reusing its number reads
 /// `gone`; otherwise `gone`.
 pub(super) const BACKGROUND_ALIVE: &str = "pid=$(cat .background); \
-     tr '\\0' ' ' < /proc/$pid/cmdline 2>/dev/null | grep -q '^sleep 600' && echo alive || echo gone";
+     { tr '\\0' ' ' < /proc/$pid/cmdline; } 2>/dev/null | grep -q '^sleep 600' && echo alive || echo gone";
 /// What [`BACKGROUND_ALIVE`] prints for a process still running.
 pub(super) const ALIVE: &str = "alive";
 /// What it prints for one that is not.

@@ -60,6 +60,7 @@ impl<'s, 'run> Harness<'s, 'run> {
             folded_through: 0,
             folded_inputs: Vec::new(),
             turn_checkpoint: shared.payload.turn_resume.clone(),
+            publication: None,
             assignment_answered: !shared.payload.inputs_waiting,
         };
         root.context.saved = saved;
@@ -113,6 +114,7 @@ impl<'s, 'run> Harness<'s, 'run> {
             folded_through: 0,
             folded_inputs: Vec::new(),
             turn_checkpoint: None,
+            publication: None,
             assignment_answered: false,
         };
         child.router.hold(Box::new(publication::Propose));

@@ -190,6 +190,14 @@ pub struct CheckpointCommitInput {
     /// Confirmed effects incorporated locally, never merely observed remotely.
     #[garde(skip)]
     pub effect_watermark: u64,
+    /// Objects of this plan whose bound PUT the runner saw accepted. The
+    /// commit records `verified_at` for these. It refuses any object the
+    /// generation names that has none.
+    #[garde(inner(
+        length(bytes, min = 36, max = 36),
+        pattern(r"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+    ))]
+    pub uploaded: Vec<String>,
 }
 
 /// Supervisor-only read purpose.
@@ -197,7 +205,7 @@ pub struct CheckpointCommitInput {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CheckpointTransferPurpose {
-    /// Authorize and verify objects under the current checkpoint writer pin.
+    /// Register and upload objects under the current checkpoint writer pin.
     Upload,
     /// Read a committed checkpoint under renewable restoration custody.
     Restore,

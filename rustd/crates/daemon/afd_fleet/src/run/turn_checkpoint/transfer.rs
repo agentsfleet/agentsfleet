@@ -1,4 +1,4 @@
-//! Freeze transfer authority under SQL locks; remote verification owns no transaction.
+//! Freeze transfer authority under SQL locks, then sign outside them.
 
 use super::{
     TurnCheckpointRefusal, TurnCheckpoints, TurnRun,
@@ -9,7 +9,7 @@ use super::{
 };
 use crate::{
     Result,
-    durable_task::checkpoint::{self, StoredObject, Verification, lock_storage},
+    durable_task::checkpoint::{self, StoredObject},
     error::query,
     run::Runs,
 };
@@ -30,7 +30,7 @@ struct Descriptor<'a> {
 }
 
 /// The two transfer verbs: uploads freeze the ciphertext the runner will send,
-/// and an authorization reads back or restores what is already stored.
+/// and an authorization restores what is already stored.
 pub(super) enum Transfer<'a> {
     Uploads(&'a [CheckpointUpload]),
     Authorize(CheckpointTransferPurpose, &'a [CheckpointOperationId]),
@@ -43,9 +43,16 @@ pub(super) async fn execute(
     reference: &TurnCheckpointRef,
     transfer: Transfer<'_>,
 ) -> Result<TurnCheckpointResponse> {
-    let (purpose, ids, verifying) = match transfer {
-        Transfer::Uploads(input) => (CheckpointTransferPurpose::Upload, upload_ids(input)?, false),
-        Transfer::Authorize(purpose, object_ids) => (purpose, objects::ids(object_ids)?, true),
+    let (purpose, ids) = match transfer {
+        Transfer::Uploads(input) => (CheckpointTransferPurpose::Upload, upload_ids(input)?),
+        // Nothing is read back: an authorization only ever restores.
+        Transfer::Authorize(CheckpointTransferPurpose::Restore, object_ids) => (
+            CheckpointTransferPurpose::Restore,
+            objects::ids(object_ids)?,
+        ),
+        Transfer::Authorize(CheckpointTransferPurpose::Upload, _) => {
+            return Err(TurnCheckpointRefusal::Incompatible.into());
+        }
     };
     let mut connection = transaction::acquire(runs.pool()).await?;
     let mut custody = FileOwner::lock(runs, &mut connection, presented, reference, purpose).await?;
@@ -65,12 +72,10 @@ pub(super) async fn execute(
     };
     custody.commit().await?;
     transaction::recycle(connection);
-    let (items, receipts) = signing::issue(store.files()?, batch, purpose, verifying).await?;
-    confirm(runs, presented, reference, purpose, &ids, &receipts).await?;
-    Ok(if verifying {
-        TurnCheckpointResponse::Authorized(items)
-    } else {
-        TurnCheckpointResponse::Uploads(items)
+    let items = signing::issue(store.files()?, batch, purpose).await?;
+    Ok(match purpose {
+        CheckpointTransferPurpose::Upload => TurnCheckpointResponse::Uploads(items),
+        CheckpointTransferPurpose::Restore => TurnCheckpointResponse::Authorized(items),
     })
 }
 
@@ -136,32 +141,5 @@ async fn freeze(
         .execute(&mut *custody.owner.tx)
         .await
         .map_err(query("freeze immutable turn ciphertext descriptors"))?;
-    Ok(())
-}
-
-async fn confirm(
-    runs: &Runs,
-    presented: TurnRun<'_>,
-    reference: &TurnCheckpointRef,
-    purpose: CheckpointTransferPurpose,
-    ids: &[Uuid7],
-    receipts: &[Verification],
-) -> Result<()> {
-    let mut connection = transaction::acquire(runs.pool()).await?;
-    let mut custody = FileOwner::lock(runs, &mut connection, presented, reference, purpose).await?;
-    if !receipts.is_empty() {
-        lock_storage(&mut custody.owner.tx, &custody.owner.current.workspace_id).await?;
-    }
-    objects::scoped(&mut custody, ids).await?;
-    if !receipts.is_empty() {
-        sqlx::query(checkpoint::VERIFY)
-            .bind(&custody.owner.current.workspace_id)
-            .bind(Json(receipts))
-            .execute(&mut *custody.owner.tx)
-            .await
-            .map_err(query("account authenticated turn objects once"))?;
-    }
-    custody.commit().await?;
-    transaction::recycle(connection);
     Ok(())
 }

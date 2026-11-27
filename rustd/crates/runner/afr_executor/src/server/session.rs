@@ -165,11 +165,13 @@ impl Session {
         let id = request.id.clone().into_owned();
         match request.method.as_ref() {
             METHOD_RECOVERY_IDLE => {
-                let idle = params::<RecoveryParams>(request).map(|_params| {
+                let idle = params::<RecoveryParams>(request).and_then(|_params| {
                     while let Some(served) = self.calls.try_join_next() {
                         self.forget(served.ok().flatten());
                     }
-                    self.calls.is_empty()
+                    // A process a call started and left behind is the
+                    // tenant's still, though no call of this session runs.
+                    Ok(self.calls.is_empty() && self.placement.idle()?)
                 });
                 self.answer(id, idle);
             }

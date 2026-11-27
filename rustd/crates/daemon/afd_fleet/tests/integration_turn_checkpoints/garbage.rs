@@ -72,7 +72,7 @@ async fn orphan(files: &Files) -> Checked<Uuid7> {
         checkpoint_id: plan.checkpoint_id,
         pin_id: CheckpointOperationId(plan.pin.id),
     };
-    let object = files::authenticated_chunk(files, &reference).await?;
+    let object = files::uploaded_chunk(files, &reference).await?;
     files
         .execute(Action::Abandon(TurnCheckpointAbandon {
             checkpoint: reference,
@@ -84,6 +84,7 @@ async fn orphan(files: &Files) -> Checked<Uuid7> {
         .maintain_checkpoints(&mut CheckpointMaintenanceCursor::default())
         .await?;
     let id = Uuid7::parse(&object.object_id)?;
+    once_committed(files, &id).await?;
     age_object(files, &id).await?;
     Ok(id)
 }
@@ -92,6 +93,18 @@ async fn age_object(files: &Files, object: &Uuid7) -> Checked {
     let mut connection = files.case.fixtures.database.acquire().await?;
     sqlx::query("UPDATE runner.checkpoint_objects SET updated_at=clock_timestamp()-interval '2 hours',reclaim_after_at=clock_timestamp()-interval '2 hours' WHERE id=$1")
         .bind(object).execute(&mut *connection).await?;
+    Ok(())
+}
+
+/// Marks `object` stored, as the generation that committed it left it before
+/// retention dropped that generation's references: the orphan is content a
+/// new capture may reuse.
+async fn once_committed(files: &Files, object: &Uuid7) -> Checked {
+    let mut connection = files.case.fixtures.database.acquire().await?;
+    sqlx::query("UPDATE runner.checkpoint_objects SET verified_at=clock_timestamp() WHERE id=$1")
+        .bind(object)
+        .execute(&mut *connection)
+        .await?;
     Ok(())
 }
 

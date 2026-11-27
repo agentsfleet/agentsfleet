@@ -48,6 +48,11 @@ impl<'a> NativeTurn<'a> {
         }
     }
 
+    /// The generation this run's last turn save committed, when one has.
+    pub(crate) fn head(&self) -> Option<&af_wire::run::TurnResume> {
+        self.publication.head.as_ref()
+    }
+
     fn request<R: TurnCheckpointRequest>(&self, request: R) -> Result<TurnCommand<R>> {
         Ok(TurnCommand::new(
             self.fence,

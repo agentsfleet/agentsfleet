@@ -12,7 +12,6 @@ use af_wire::{
         TurnCheckpointUploads, TurnWorkspace,
     },
 };
-use afd_db::test_util::mint_id;
 
 use super::{
     Checked,
@@ -110,13 +109,15 @@ async fn registration_past_the_upload_budget_is_a_limit() -> Checked {
     Ok(())
 }
 
-// Value: protects=a transfer signs only chunks registered to this capture, each
-// once; fails_when=scope stops counting the chunks it found against the ones
-// named; why_new=a repeated and an unregistered chunk had no case; seam=the
-// production Uploads and Authorize over live Postgres.
+// Value: protects=an upload signs only chunks registered to this capture, each
+// once, and no authorization reads an upload back; fails_when=scope stops
+// counting the chunks it found against the ones named, or an upload
+// authorization is served again; why_new=a repeated chunk and the removed
+// read-back had no case; seam=the production Uploads and Authorize over live
+// Postgres.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_transfer_naming_a_chunk_twice_or_an_unregistered_chunk_conflicts() -> Checked {
+async fn an_upload_naming_a_chunk_twice_conflicts_and_nothing_reads_one_back() -> Checked {
     let files = Files::new().await?;
     let (_, reference) = writer(&files).await?;
     let object = register(&files, &reference, vec![plaintext(CONTENT, "file")?])
@@ -145,11 +146,11 @@ async fn a_transfer_naming_a_chunk_twice_or_an_unregistered_chunk_conflicts() ->
                 .execute(Action::Authorize(TurnCheckpointAuthorize {
                     checkpoint: reference,
                     purpose: CheckpointTransferPurpose::Upload,
-                    object_ids: vec![CheckpointOperationId(mint_id().as_str().to_owned())],
+                    object_ids: vec![CheckpointOperationId(object.object_id)],
                 }))
                 .await
         ),
-        Some(error_code::RUN_CHECKPOINT_CONFLICT)
+        Some(error_code::RUN_CHECKPOINT_INCOMPATIBLE)
     );
     files.finish().await;
     Ok(())
@@ -237,16 +238,6 @@ async fn a_restore_never_signs_an_unverified_chunk() -> Checked {
     };
     let bytes = storage::encrypt(&files.case.acquired.workspace_id, kept, CONTENT)?;
     upload_bytes(&files, &reference, kept, bytes).await?;
-    assert!(matches!(
-        files
-            .execute(Action::Authorize(TurnCheckpointAuthorize {
-                checkpoint: reference.clone(),
-                purpose: CheckpointTransferPurpose::Upload,
-                object_ids: vec![CheckpointOperationId(kept.object_id.clone())],
-            }))
-            .await?,
-        Response::Authorized(_)
-    ));
     let saved = super::files::publish(&files, *plan, history, reference, &kept.object_id).await?;
     let held = reader(&files, &saved).await?;
     assert_eq!(

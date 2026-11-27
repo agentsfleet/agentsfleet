@@ -78,7 +78,7 @@ fn offer(lessee: &Lessee, policy: &Assignment) -> Option<u32> {
         .plane
         .stream
         .running
-        .capacity(wanted, lessee.engine.memory_bound());
+        .capacity(wanted, lessee.engine.admission_bound());
     Some(workers_wanted)
 }
 

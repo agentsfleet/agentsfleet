@@ -10,11 +10,11 @@ use guffbolt::agents::Pause;
 
 use super::Ending;
 use super::Harness;
-use crate::engine::{AgentRun, RecoveryWitness, RootRecovery};
+use super::recovery_receipt::Owner;
+use crate::engine::{AgentRun, RootRecovery};
 use crate::error::recovery_invalid;
 use crate::{
-    CommittedRecovery, DurableTaskRecovery, RecoverySave, RecoverySkip, RecoverySnapshot,
-    RecoveryState, Result, TurnSnapshot,
+    DurableTaskRecovery, RecoverySkip, RecoverySnapshot, RecoveryState, Result, TurnSnapshot,
 };
 use guffbolt::DriveState;
 
@@ -136,6 +136,14 @@ impl<'run> Harness<'_, 'run> {
 
     pub(super) async fn save_boundary(&mut self, driver: &DriveState) -> Option<Ending> {
         let (sink, workspace) = self.boundary(driver)?;
+        match self.save_owner() {
+            Owner::Free => {}
+            Owner::Publishing => {
+                skipped(RecoverySkip::BusyPublication);
+                return None;
+            }
+            Owner::Ended(ending) => return Some(ending),
+        }
         let Some(pause) = self.shared.registry.pause().await else {
             skipped(RecoverySkip::BusyChildren);
             return None;
@@ -212,42 +220,7 @@ impl<'run> Harness<'_, 'run> {
             }
         };
         let expected = snapshot.witness();
-        self.accept_snapshot(sink.save(snapshot).await, &expected)
-    }
-
-    fn accept_snapshot(
-        &mut self,
-        saved: Result<RecoverySave>,
-        expected: &RecoveryWitness,
-    ) -> Option<Ending> {
-        match saved {
-            Ok(RecoverySave::Skipped(reason)) => skipped(reason),
-            Ok(RecoverySave::Committed(receipt)) if receipt.matches(expected) => {
-                committed(&receipt);
-                if let Some(current) = self
-                    .task
-                    .as_mut()
-                    .and_then(|task| task.inputs.current_durable_task.as_mut())
-                {
-                    current.checkpoint_id = Some(receipt.checkpoint.id().to_owned().into());
-                    current.checkpoint_generation = Some(receipt.checkpoint.generation());
-                }
-                if let CommittedRecovery::Turn(descriptor) = receipt.checkpoint {
-                    self.turn_checkpoint = Some(descriptor);
-                }
-            }
-            Ok(RecoverySave::Committed(_)) => {
-                self.durable_task_report = None;
-                tracing::warn!(event = "run_checkpoint_receipt_mismatch", error_code = %af_core::error_code::RUN_CHECKPOINT_INCOMPATIBLE);
-                return Some(Ending::Stopped);
-            }
-            Err(failure) => {
-                self.durable_task_report = None;
-                tracing::warn!(event = "run_checkpoint_cleanup_failed", error_code = %failure.code());
-                return Some(Ending::Stopped);
-            }
-        }
-        None
+        self.accept(sink.save(snapshot).await, expected)
     }
 
     async fn snapshot_state(
@@ -282,22 +255,6 @@ impl<'run> Harness<'_, 'run> {
         )
         .map(RecoveryState::Turn)
     }
-}
-
-fn committed(receipt: &crate::RecoveryReceipt) {
-    let run_id = receipt.run_id.as_str();
-    let turn_id = receipt.turn_id.as_str();
-    let fencing_token = receipt.fencing_token;
-    let checkpoint_id = receipt.checkpoint.id();
-    let generation = receipt.checkpoint.generation();
-    tracing::debug!(
-        event = "respawn_checkpoint_committed",
-        run_id,
-        turn_id,
-        fencing_token,
-        checkpoint_id,
-        generation
-    );
 }
 
 pub(super) fn restored(run: &AgentRun<'_>) {
@@ -344,6 +301,6 @@ impl<'s, 'run> guffbolt::Extension<Harness<'s, 'run>> for Root {
     }
 }
 
-fn skipped(reason: RecoverySkip) {
+pub(super) fn skipped(reason: RecoverySkip) {
     tracing::debug!(event = "run_checkpoint_skipped", reason = ?reason);
 }

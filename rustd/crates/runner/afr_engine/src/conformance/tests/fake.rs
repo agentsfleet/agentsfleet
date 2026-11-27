@@ -113,7 +113,7 @@ impl Engine for Fake {
         self.capabilities().grant(limits)
     }
 
-    fn memory_bound(&self) -> Option<crate::MemoryBound> {
+    fn admission_bound(&self) -> Option<crate::AdmissionBound> {
         None
     }
 

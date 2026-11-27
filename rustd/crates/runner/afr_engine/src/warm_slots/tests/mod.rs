@@ -3,12 +3,13 @@
     reason = "a test fails loudly on a fake it cannot build"
 )]
 
+use std::num::NonZeroU64;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use self::fakes::{Counting, isolated, settle};
-use crate::engine::{Engine, Limits, SandboxSpec, fresh_sandbox_id};
+use crate::engine::{AdmissionBound, Engine, Limits, Overcommitted, SandboxSpec, fresh_sandbox_id};
 
 mod fakes;
 mod network;
@@ -274,19 +275,18 @@ async fn test_a_keeper_that_dies_is_reported_at_shutdown() {
 /// Slots kept ready each hold a reservation, so the bound offered beside
 /// them is the inner engine's less the slots: a cold build always fits.
 #[tokio::test]
-async fn test_the_pool_plus_live_runs_never_pass_the_memory_bound() {
-    let bound = crate::MemoryBound {
-        sandboxes_max: 55,
-        mem_available_bytes: 28 << 30,
-        memory_overcommit: 4,
-    };
+async fn test_the_pool_plus_live_runs_never_pass_the_admission_bound() {
+    let sandbox = NonZeroU64::new((2 << 30) + (16 << 20)).unwrap();
+    let memory = Overcommitted::of(28 << 30, 4, sandbox);
+    let bound = AdmissionBound::lesser(memory, Overcommitted::of(u64::MAX, 1, sandbox));
+    assert_eq!(bound.sandboxes_max, 55);
     let inner = Arc::new(Counting {
         bound: Some(bound),
         ..Counting::default()
     });
     let slots = isolated(&inner, 4);
 
-    let offered = slots.memory_bound().map(|bound| bound.sandboxes_max);
+    let offered = slots.admission_bound().map(|bound| bound.sandboxes_max);
     slots.shutdown().await;
 
     assert_eq!(offered, Some(51));

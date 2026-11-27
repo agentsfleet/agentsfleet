@@ -1,7 +1,7 @@
 //! Ordinary file restore authenticates concurrent chunks and preserves their manifest order.
 
 use super::{NativeTurn, session::TurnSession};
-use crate::recovery::{transfer, transfer::Transfers, transfer::http_tests::server::Server};
+use crate::recovery::{transfer::Transfers, transfer::http_tests::server::Server};
 use crate::{
     Result, error,
     test_support::{self, Answer},
@@ -13,8 +13,8 @@ use af_wire::{
         CheckpointPin, CheckpointPlaintext, CheckpointTransfer,
     },
     run::{
-        CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointAuthorize,
-        TurnCheckpointCommand, TurnCheckpointCommit, TurnCheckpointObjects, TurnCheckpointPageRead,
+        CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointCommand,
+        TurnCheckpointCommit, TurnCheckpointObjects, TurnCheckpointPageRead,
         TurnCheckpointPageWrite, TurnCheckpointPinRenew, TurnCheckpointRef,
         TurnCheckpointResponse as Response, TurnCheckpointUploads, TurnScope, TurnWorkspace,
     },
@@ -237,7 +237,8 @@ fn encrypted() -> Result<Encrypted> {
             ciphertext_length: None,
             transfer: None,
         };
-        let bytes = transfer::seal(&workspace, &mut object.clone(), Zeroizing::new(plaintext))?;
+        let bytes =
+            af_chunk_store::seal(&workspace, &mut object.clone(), Zeroizing::new(plaintext))?;
         object.ciphertext_sha256 = Some(af_core::etag::sha256_hex(&bytes));
         object.ciphertext_length = Some(crate::byte_count(bytes.len()));
         payloads.insert(format!("/{}", object.object_id), bytes);
@@ -251,6 +252,9 @@ mod upload_tests;
 
 #[path = "capture_tests.rs"]
 mod capture_tests;
+
+#[path = "pause_tests.rs"]
+mod pause_tests;
 
 #[path = "session_tests.rs"]
 mod session_tests;

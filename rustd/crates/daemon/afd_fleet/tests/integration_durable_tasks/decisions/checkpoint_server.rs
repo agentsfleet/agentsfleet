@@ -14,24 +14,61 @@ pub(crate) mod tls;
 
 pub(crate) const HOST: &str = "00000000000000000000000000000000.r2.cloudflarestorage.com";
 
+/// What a fixture bucket honours of what a request binds.
+#[derive(Clone, Copy)]
+struct Honours {
+    create_only: bool,
+    checksum: bool,
+}
+
 pub(crate) struct Server {
     pub client: reqwest::Client,
     pub objects: Arc<Mutex<BTreeMap<String, Vec<u8>>>>,
+    /// Every request served, as its method and path, in order.
+    pub requests: Arc<Mutex<Vec<(String, String)>>>,
     stop: Option<oneshot::Sender<()>>,
     worker: Option<JoinHandle<()>>,
 }
 
 impl Server {
     pub(crate) async fn start() -> Self {
-        Self::serving(true).await
+        Self::serving(Honours {
+            create_only: true,
+            checksum: true,
+        })
+        .await
     }
 
     /// A backend that silently replaces an object a create-only write names.
     pub(crate) async fn replacing() -> Self {
-        Self::serving(false).await
+        Self::serving(Honours {
+            create_only: false,
+            checksum: true,
+        })
+        .await
     }
 
-    async fn serving(create_only: bool) -> Self {
+    /// A backend that refuses a second create but stores a body unlike the
+    /// checksum its request binds.
+    pub(crate) async fn ignoring_checksum() -> Self {
+        Self::serving(Honours {
+            create_only: true,
+            checksum: false,
+        })
+        .await
+    }
+
+    /// How many requests of `method` named an object under `prefix`.
+    pub(crate) fn count(&self, method: &str, prefix: &str) -> usize {
+        self.requests
+            .lock()
+            .expect("request log")
+            .iter()
+            .filter(|(seen, path)| seen == method && path.starts_with(prefix))
+            .count()
+    }
+
+    async fn serving(honours: Honours) -> Self {
         let socket = TcpListener::bind("127.0.0.1:0")
             .await
             .expect("private object listener");
@@ -51,12 +88,18 @@ impl Server {
             .build()
             .expect("pinned HTTPS client");
         let objects = Arc::new(Mutex::new(BTreeMap::new()));
-        let owned = Arc::clone(&objects);
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let state = State {
+            objects: Arc::clone(&objects),
+            requests: Arc::clone(&requests),
+            honours,
+        };
         let (stop, stopped) = oneshot::channel();
-        let worker = tokio::spawn(serve(socket, tls, owned, stopped, create_only));
+        let worker = tokio::spawn(serve(socket, tls, state, stopped));
         Self {
             client,
             objects,
+            requests,
             stop: Some(stop),
             worker: Some(worker),
         }
@@ -83,12 +126,18 @@ impl Drop for Server {
     }
 }
 
+/// What the serving task owns: the bucket, its request log and what it honours.
+struct State {
+    objects: Arc<Mutex<BTreeMap<String, Vec<u8>>>>,
+    requests: Arc<Mutex<Vec<(String, String)>>>,
+    honours: Honours,
+}
+
 async fn serve(
     socket: TcpListener,
     tls: TlsAcceptor,
-    owned: Arc<Mutex<BTreeMap<String, Vec<u8>>>>,
+    state: State,
     mut stopped: oneshot::Receiver<()>,
-    honours_create_only: bool,
 ) {
     loop {
         let accepted = tokio::select! {
@@ -98,7 +147,12 @@ async fn serve(
         let (socket, _) = accepted.expect("SDK connects");
         let mut stream = tls.accept(socket).await.expect("verified TLS handshake");
         let request = protocol::read(&mut stream).await;
-        let (status, body) = respond(request, &owned, honours_create_only);
+        state
+            .requests
+            .lock()
+            .expect("request log")
+            .push((request.method.clone(), request.path.clone()));
+        let (status, body) = respond(request, &state.objects, state.honours);
         let header = format!(
             "HTTP/1.1 {status} Result\r\nContent-Length: {}\r\nETag: \"fixture-etag\"\r\nLast-Modified: Wed, 04 Nov 2026 00:00:00 GMT\r\nConnection: close\r\n\r\n",
             body.len()
@@ -115,16 +169,19 @@ async fn serve(
 fn respond(
     request: protocol::Request,
     owned: &Mutex<BTreeMap<String, Vec<u8>>>,
-    honours_create_only: bool,
+    honours: Honours,
 ) -> (u16, Vec<u8>) {
     let mut objects = owned.lock().expect("object state");
     let response = match request.method.as_str() {
         "PUT"
-            if honours_create_only
+            if honours.create_only
                 && request.create_only
                 && objects.contains_key(&request.path) =>
         {
             Some((412, vec![]))
+        }
+        "PUT" if honours.checksum && !checksum_matches(&request) => {
+            Some((400, b"BadDigest".to_vec()))
         }
         "PUT" => {
             objects.insert(request.path, request.body);
@@ -143,4 +200,13 @@ fn respond(
         _ => None,
     };
     response.expect("unexpected SDK method")
+}
+
+/// Whether a PUT's body is the one its bound checksum names; a PUT binding
+/// none binds nothing.
+fn checksum_matches(request: &protocol::Request) -> bool {
+    request.checksum.as_ref().is_none_or(|bound| {
+        let digest = hex::decode(af_core::etag::sha256_hex(&request.body)).expect("hex digest");
+        *bound == base64::Engine::encode(&base64::prelude::BASE64_STANDARD, digest)
+    })
 }

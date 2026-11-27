@@ -1,7 +1,7 @@
 //! Reuse descriptor-relative file restoration, normalized ownership and authenticated chunks.
 
 use super::super::{
-    links, transfer,
+    links,
     window::{self, Chunk},
 };
 use super::session::TurnSession;
@@ -110,7 +110,7 @@ impl TurnSession<'_, '_> {
         let chunks: BTreeMap<_, _> = stream::iter(objects)
             .map(async |mut object| {
                 let bytes = transfers.download(&object).await?;
-                let plaintext = transfer::open(workspace, &mut object, bytes)?;
+                let plaintext = af_chunk_store::open(workspace, &mut object, bytes)?;
                 Ok::<_, crate::Error>((object.object_id.clone(), Arc::new(plaintext)))
             })
             .buffered(4)

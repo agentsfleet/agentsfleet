@@ -37,7 +37,7 @@ impl Engine for TestEngine {
         Err(crate::error::refused("test engine grants nothing"))
     }
 
-    fn memory_bound(&self) -> Option<crate::MemoryBound> {
+    fn admission_bound(&self) -> Option<crate::AdmissionBound> {
         None
     }
 

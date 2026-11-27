@@ -18,12 +18,14 @@ use super::{Entry, InnerEnvironment, Server, streamed};
 use crate::api::{Ending, Executor as _, Spawn};
 use crate::{Client, Sizes};
 
-/// An inner environment that counts its renewals, remembers where each
-/// process was to work, lets each in or refuses it, and holds the hosts file
-/// it was given last in place of its own.
+/// An inner environment that counts its renewals and each time a forking
+/// thread was put back, remembers where each process was to work, lets each
+/// in or refuses it, and holds the hosts file it was given last in place of
+/// its own.
 #[derive(Debug, Default)]
 struct Fake {
     renewed: AtomicUsize,
+    left: AtomicUsize,
     entered: Mutex<Vec<PathBuf>>,
     refuses: bool,
     hosts: Mutex<String>,
@@ -44,6 +46,11 @@ impl InnerEnvironment for Fake {
                 Ok(())
             }
         }))
+    }
+
+    fn leave(&self) -> io::Result<()> {
+        self.left.fetch_add(1, Ordering::SeqCst);
+        Ok(())
     }
 
     fn renew(&self) -> io::Result<()> {
@@ -87,6 +94,8 @@ async fn a_process_enters_the_inner_environment_in_its_working_directory() {
     let sub = dir.path().join("sub").canonicalize().unwrap();
     assert_eq!(entered.len(), 1, "{entered:?}");
     assert_eq!(entered.first().unwrap().canonicalize().unwrap(), sub);
+    let left = inner.left.load(Ordering::SeqCst);
+    assert_eq!(left, 1, "the forking thread is put back after its fork");
 }
 
 #[tokio::test]
@@ -96,7 +105,8 @@ async fn a_process_that_cannot_enter_the_inner_environment_never_runs() {
         refuses: true,
         ..Fake::default()
     });
-    let client = serving(|stream| streamed(stream).with_inner(inner), dir.path());
+    let held = Arc::clone(&inner) as Arc<dyn InnerEnvironment>;
+    let client = serving(|stream| streamed(stream).with_inner(held), dir.path());
 
     let refused = client
         .spawn(&Spawn::program("touch").arg("ran"))
@@ -110,6 +120,8 @@ async fn a_process_that_cannot_enter_the_inner_environment_never_runs() {
         refused.wire_message()
     );
     assert!(!dir.path().join("ran").exists(), "nothing ran outside it");
+    let left = inner.left.load(Ordering::SeqCst);
+    assert_eq!(left, 1, "a fork that failed still puts its thread back");
 }
 
 #[tokio::test]

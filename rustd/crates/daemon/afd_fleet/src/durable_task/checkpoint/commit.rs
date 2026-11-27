@@ -1,4 +1,4 @@
-//! Complete page verification precedes the single recovery-pointer transition.
+//! Accepted uploads and complete pages precede the single recovery-pointer transition.
 
 use super::{
     guard,
@@ -86,6 +86,7 @@ pub(in crate::durable_task) async fn publish(
     {
         return Err(DurableTaskRefusal::StaleState.into());
     }
+    accept(&mut tx, &plan, &input.uploaded).await?;
     verify_manifest(&mut tx, &plan, input).await?;
     sqlx::query(include_str!("sql/plan_ready.sql"))
         .bind(&plan.id)
@@ -134,6 +135,23 @@ pub(in crate::durable_task) async fn publish(
             .await;
     }
     Ok(response)
+}
+
+/// Records the uploads the runner saw accepted, under the workspace's storage
+/// lock, before the manifest's completeness is proved.
+async fn accept(connection: &mut PgConnection, plan: &Plan, uploaded: &[String]) -> Result<()> {
+    let uploaded = uploaded
+        .iter()
+        .map(|id| durable_task_guard::id(id, "uploaded"))
+        .collect::<Result<Vec<_>>>()?;
+    super::lock_storage(connection, &plan.workspace_id).await?;
+    super::accept(
+        connection,
+        &plan.workspace_id,
+        (&plan.id, &plan.owner_run_id, plan.owner_fence),
+        &uploaded,
+    )
+    .await
 }
 
 async fn verify_manifest(

@@ -33,6 +33,8 @@ struct Reply {
     headers: HeaderMap,
     payloads: BTreeMap<String, Vec<u8>>,
     barrier: Option<Arc<Barrier>>,
+    /// The request, counted from one, answered `503` whatever else is set.
+    refuse: Option<usize>,
 }
 pub(in crate::recovery) struct Seen {
     pub(in crate::recovery) method: Method,
@@ -72,6 +74,7 @@ impl Server {
                 headers,
                 payloads: BTreeMap::new(),
                 barrier: None,
+                refuse: None,
             },
             1,
         )
@@ -80,6 +83,15 @@ impl Server {
 
     pub(in crate::recovery) async fn simultaneous(
         payloads: BTreeMap<String, Vec<u8>>,
+    ) -> Result<Self> {
+        Self::refusing(payloads, None).await
+    }
+
+    /// As [`Server::simultaneous`], answering the `refuse`th request, counted
+    /// from one, with `503`.
+    pub(in crate::recovery) async fn refusing(
+        payloads: BTreeMap<String, Vec<u8>>,
+        refuse: Option<usize>,
     ) -> Result<Self> {
         let expected = payloads.len();
         Self::configured(
@@ -90,6 +102,7 @@ impl Server {
                 headers: HeaderMap::new(),
                 payloads,
                 barrier: Some(Arc::new(Barrier::new(expected))),
+                refuse,
             },
             expected,
         )
@@ -175,10 +188,12 @@ async fn serve(
         let (sender, requests, reply) = (sender.clone(), Arc::clone(&requests), reply.clone());
         workers.spawn(async move {
             let service = service_fn(move |request: hyper::Request<Incoming>| {
-                requests.fetch_add(1, Ordering::SeqCst);
+                let number = requests.fetch_add(1, Ordering::SeqCst) + 1;
                 let (reply, sender) = (reply.clone(), sender.clone());
                 async move {
-                    let status = if request.uri().path() == "/must-not-follow" {
+                    let status = if reply.refuse == Some(number) {
+                        StatusCode::SERVICE_UNAVAILABLE
+                    } else if request.uri().path() == "/must-not-follow" {
                         StatusCode::OK
                     } else {
                         reply.status

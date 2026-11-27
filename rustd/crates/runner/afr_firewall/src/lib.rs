@@ -23,7 +23,7 @@ pub use self::egress::far;
 #[cfg(target_os = "linux")]
 pub use self::egress::{
     Destinations, GUEST_ADDRESS, GUEST_PREFIX_LEN, GuestNamespace, HostScope, TAP, TAP_ADDRESS,
-    enforceable, namespace_of, own_host, remove_namespace, sweep,
+    enforceable, namespace_of, own_host, raise_loopback, remove_namespace, sweep,
 };
 pub use self::error::{Error, Result};
 

@@ -14,8 +14,12 @@
 # packages   — installed on top of the minimal base
 # purge      — exact packages removed after installation and provenance capture
 # vendor     — `<dpkg-arch> <url> <sha256> <member>=<name>...`: a binary
-#              Debian does not ship, fetched by URL, refused unless its
-#              SHA-256 matches, each member installed as /usr/local/bin/<name>
+#              Debian does not ship, fetched by URL as a `.tar.gz` or a `.zip`,
+#              refused unless its SHA-256 matches, each member installed as
+#              /usr/local/bin/<name>; a member named more than once is
+#              installed under each name. Bun is the toolbox's only JavaScript
+#              runtime and package manager: `bunx` and `node` are Bun under
+#              those names, and no Node.js is installed
 suite trixie
 snapshot 20261031T000000Z
 archive debian trixie
@@ -23,7 +27,9 @@ archive debian trixie-updates
 archive debian-security trixie-security
 uuid 6d2b1f0e-6a1c-4b8e-9f3a-2c7d5e8a9b10
 erofs -zlz4hc,9 -b4096 -C65536 -Eztailpacking,dedupe
-packages ca-certificates coreutils git python3 nodejs ripgrep jq curl
+packages ca-certificates coreutils git python3 ripgrep jq curl
 purge apt dpkg passwd libapt-pkg7.0 sqv debian-archive-keyring perl libperl5.40 perl-base perl-modules-5.40 liberror-perl
 vendor arm64 https://github.com/astral-sh/uv/releases/download/0.12.21/uv-aarch64-unknown-linux-gnu.tar.gz 030b69227b40af8c1981b7301793dc66e71ed3c796ea8688209dd268bd91ec51 uv-aarch64-unknown-linux-gnu/uv=uv uv-aarch64-unknown-linux-gnu/uvx=uvx
 vendor amd64 https://github.com/astral-sh/uv/releases/download/0.12.21/uv-x86_64-unknown-linux-gnu.tar.gz 23f02075b652bb1df64178cfae41b5caf160822e720e2663568f3f5d63bc52c0 uv-x86_64-unknown-linux-gnu/uv=uv uv-x86_64-unknown-linux-gnu/uvx=uvx
+vendor arm64 https://github.com/oven-sh/bun/releases/download/bun-v1.4.5/bun-linux-aarch64.zip 18656a3bf0ea5641f5796ae4213b75255579a70a0fded2f337933785568cdf84 bun-linux-aarch64/bun=bun bun-linux-aarch64/bun=bunx bun-linux-aarch64/bun=node
+vendor amd64 https://github.com/oven-sh/bun/releases/download/bun-v1.4.5/bun-linux-x64-baseline.zip dcb23a18a1c2fff12d57bcef696dbbb42eb67fde29f43816ecb595459a24c463 bun-linux-x64-baseline/bun=bun bun-linux-x64-baseline/bun=bunx bun-linux-x64-baseline/bun=node

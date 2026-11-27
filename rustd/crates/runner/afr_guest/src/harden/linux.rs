@@ -79,16 +79,12 @@ const UNSUPPORTED: [libc::c_long; 1] = [libc::SYS_clone3];
 /// bit is refused, on every architecture.
 pub const X32_SYSCALL_BIT: u32 = 0x4000_0000;
 
-/// Reads everywhere; writes only beneath [`WRITABLE`] and to [`WRITABLE_DEVICES`].
-pub(super) fn restrict_file_system() -> Result<()> {
-    file_system_rules()?.restrict_self()?;
-    Ok(())
-}
-
-/// The ruleset [`restrict_file_system`] enforces, built and not yet
-/// enforced: a process that confines itself between fork and exec, where
-/// nothing may be allocated, enforces one built for it before the fork.
-pub(crate) fn file_system_rules() -> Result<RulesetCreated> {
+/// The ruleset a tenant process enforces on itself, built and not yet
+/// enforced: reads everywhere; writes only beneath [`WRITABLE`] and to
+/// [`WRITABLE_DEVICES`]. A process that confines itself between fork and
+/// exec, where nothing may be allocated, enforces one built for it before
+/// the fork.
+pub(super) fn file_system_rules() -> Result<RulesetCreated> {
     let read = AccessFs::from_read(LANDLOCK_ABI);
     let write = AccessFs::from_all(LANDLOCK_ABI);
     let rules = path_beneath_rules([ROOT], read)
@@ -114,23 +110,14 @@ fn ruleset() -> Result<Ruleset> {
         .handle_access(AccessFs::from_all(LANDLOCK_ABI))?)
 }
 
-/// Installs [`programs`], then the program that answers every call numbered
-/// at or past [`X32_SYSCALL_BIT`] with `EPERM`. Stacked: the kernel runs
-/// them all and a refusal wins.
-pub(super) fn refuse_system_calls() -> Result<()> {
-    for program in &programs()? {
-        seccompiler::apply_filter(program)?;
-    }
-    seccompiler::apply_filter(&HIGH_NUMBERS)?;
-    Ok(())
-}
-
-/// The program refusing every call numbered at or past [`X32_SYSCALL_BIT`].
+/// The program refusing every call numbered at or past [`X32_SYSCALL_BIT`],
+/// installed after [`programs`]. Stacked: the kernel runs them all and a
+/// refusal wins.
 ///
 /// Four classic BPF instructions, because `seccompiler` can match a call only
 /// by its exact number and has no way to say "this number or higher". Built
 /// at compile time, so an opcode that did not fit is a build failure.
-pub(crate) const HIGH_NUMBERS: [sock_filter; 4] = {
+pub(super) const HIGH_NUMBERS: [sock_filter; 4] = {
     // `seccomp_data.nr`, the first field of what the program reads.
     const NUMBER_OFFSET: u32 = 0;
     let refuse = libc::SECCOMP_RET_ERRNO | libc::EPERM.unsigned_abs();
@@ -173,7 +160,7 @@ pub(super) const fn step(code: u32, jt: u8, jf: u8, k: u32) -> sock_filter {
 /// answering [`REFUSED`], and a `clone` that makes a namespace, with `EPERM`;
 /// one answering [`UNSUPPORTED`] with `ENOSYS`. Two, because a `seccompiler`
 /// filter gives every call it matches one answer.
-pub(crate) fn programs() -> Result<[BpfProgram; 2]> {
+pub(super) fn programs() -> Result<[BpfProgram; 2]> {
     let namespaces = NEW_NAMESPACES
         .into_iter()
         .map(|flag| {

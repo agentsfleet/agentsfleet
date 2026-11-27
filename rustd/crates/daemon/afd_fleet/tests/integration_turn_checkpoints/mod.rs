@@ -12,6 +12,7 @@ mod garbage;
 mod key_fixture;
 mod lifecycle;
 mod manifest;
+mod no_read_back;
 mod objects;
 mod page_writes;
 mod publication;

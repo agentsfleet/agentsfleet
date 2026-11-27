@@ -2,6 +2,7 @@
 //! only its disk kept.
 
 use std::fs;
+use std::io;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -12,6 +13,10 @@ use afr_engine::{
     Network, ParkMode, Parked, Quiescence, Result, Sandbox, SandboxState, Snapshots, enforce,
 };
 use afr_executor::{Client, Ending, Executor, Spawn};
+use rustix::io::Errno;
+use rustix::process::{Pid, PidfdFlags, Signal};
+use tokio::io::Interest;
+use tokio::io::unix::AsyncFd;
 
 use super::build::{Parts, boot};
 use super::{Kept, Plan, Reach, Shared, lost};
@@ -111,8 +116,13 @@ impl Sandbox for Vm {
         self.monitor()
     }
 
-    /// The executor's own proof that nothing it accepted still runs.
+    /// The executor's own proof that nothing it accepted still runs; of a
+    /// guest whose monitor has ended, that nothing runs at all, with no
+    /// executor left to ask.
     async fn quiesce(&self) -> Result<Quiescence> {
+        if self.monitor() == SandboxState::Ended {
+            return Ok(Quiescence::Quiet);
+        }
         Ok(if self.client.recovery_idle().await? {
             Quiescence::Quiet
         } else {
@@ -145,19 +155,21 @@ impl Sandbox for Vm {
         None
     }
 
-    /// Ends the monitor: nothing of the guest runs after it, so nothing
-    /// writes to its disk.
+    /// Ends the monitor and waits until it has: nothing of the guest runs
+    /// after it, so nothing writes to its disk.
     async fn kill(&self) -> Killed {
-        let Some(pid) = self.parts.monitor_pid() else {
+        let held = self.parts.monitor_pid().map(i32::try_from);
+        let Some(Ok(pid)) = held.map(|pid| pid.map(Pid::from_raw)) else {
             return Killed::Settled;
         };
-        let pid = rustix::process::Pid::from_raw(i32::try_from(pid).unwrap_or(i32::MAX));
         self.killed.store(true, Ordering::Release);
-        match pid.map(|pid| rustix::process::kill_process(pid, rustix::process::Signal::KILL)) {
-            Some(Err(refused)) if refused != rustix::io::Errno::SRCH => {
-                Killed::Unsettled(std::io::Error::from(refused).into())
+        match ended(pid).await {
+            Ok(()) => {
+                // Reaped here, so the next look finds no monitor to ask.
+                let _ended = self.monitor();
+                Killed::Settled
             }
-            _gone => Killed::Settled,
+            Err(unproved) => Killed::Unsettled(unproved.into()),
         }
     }
 
@@ -166,6 +178,31 @@ impl Sandbox for Vm {
         fs::remove_dir_all(kept.layout.dir())?;
         Ok(())
     }
+}
+
+/// Kills the process `pid` names, when one still runs, and returns once it
+/// has ended. The process is held by a descriptor from the first step, so
+/// the signal and the wait are for it and never for a later process given
+/// its number.
+async fn ended(pid: Option<Pid>) -> io::Result<()> {
+    let Some(pid) = pid else {
+        return Ok(());
+    };
+    let held = match rustix::process::pidfd_open(pid, PidfdFlags::NONBLOCK) {
+        Ok(held) => held,
+        Err(Errno::SRCH) => return Ok(()),
+        Err(refused) => return Err(refused.into()),
+    };
+    match rustix::process::pidfd_send_signal(&held, Signal::KILL) {
+        Ok(()) | Err(Errno::SRCH) => {}
+        Err(refused) => return Err(refused.into()),
+    }
+    // A process descriptor reads ready once its process has ended.
+    // SAFETY: `held` owns its open descriptor, which moves into the
+    // registration and stays open and the same until that is dropped.
+    let ending = unsafe { AsyncFd::register_with_interest(held, Interest::READABLE) }?;
+    ending.readable().await?.retain_ready();
+    Ok(())
 }
 
 #[async_trait::async_trait]
@@ -223,7 +260,7 @@ impl Parked for Stopped {
     }
 
     /// Boots a fresh guest on the kept disk, held to the plan given last,
-    /// and dials its executor again. A host at its memory bound refuses
+    /// and dials its executor again. A host at its admission bound refuses
     /// before any monitor starts, and the disk goes, as any refused resume's
     /// does.
     async fn resume(self: Box<Self>) -> Result<Box<dyn Sandbox>> {

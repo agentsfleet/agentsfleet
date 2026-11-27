@@ -55,6 +55,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "af_chunk_store"
+version = "0.90.0"
+dependencies = [
+ "af_core",
+ "af_crypto",
+ "af_wire",
+ "base64 0.23.1",
+ "thiserror 2.0.21",
+ "zeroize",
+]
+
+[[package]]
 name = "af_config"
 version = "0.90.0"
 dependencies = [
@@ -164,6 +176,7 @@ dependencies = [
  "async-trait",
  "aws-lc-rs",
  "axum",
+ "boring",
  "clap",
  "futures-util",
  "garde",
@@ -1416,6 +1429,7 @@ dependencies = [
 name = "afr_engine"
 version = "0.90.0"
 dependencies = [
+ "af_chunk_store",
  "af_core",
  "af_crypto",
  "af_wire",
@@ -1589,6 +1603,7 @@ dependencies = [
 name = "afr_supervisor"
 version = "0.90.0"
 dependencies = [
+ "af_chunk_store",
  "af_core",
  "af_crypto",
  "af_egress",

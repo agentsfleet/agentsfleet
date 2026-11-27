@@ -174,13 +174,13 @@ impl<E: Engine + 'static> From<afr_engine::Booted<E>> for Host {
 
 impl Host {
     /// Logs the engine this host admitted, once, before any run: what it is,
-    /// what `/dev/kvm` allows, the most sandboxes its memory admits when it
-    /// reserves memory for each, and the most workers a daemon may assign,
-    /// which the credits it offers never pass either.
+    /// what `/dev/kvm` allows, and the most sandboxes its memory and disk
+    /// admit when it reserves both for each. The worker count is the
+    /// daemon's, and arrives with its policy after boot.
     pub(crate) fn announce(&self) {
         booted(
             self.engine.capabilities(),
-            self.engine.memory_bound(),
+            self.engine.admission_bound(),
             &self.probe,
         );
     }
@@ -191,21 +191,20 @@ impl Host {
 /// token or tenant identifier.
 fn booted(
     capabilities: afr_engine::Capabilities,
-    bound: Option<afr_engine::MemoryBound>,
+    bound: Option<afr_engine::AdmissionBound>,
     probe: &HostProbe,
 ) {
     let engine: &str = capabilities.engine.into();
     let kvm: &str = probe.kvm.into();
     let sandboxes_max = bound.map(|bound| bound.sandboxes_max);
-    let worker_count = af_core::limits::MAX_WORKERS;
     let event = EVENT_ENGINE_BOOTED;
-    tracing::info!(engine, kvm, sandboxes_max, worker_count, event);
+    tracing::info!(engine, kvm, sandboxes_max, event);
 }
 
 /// `engine` with `slots` sandboxes granted `limits` started ahead of their
 /// runs, and the pool's own handle for [`retire`]; `engine` alone when
 /// `slots` is zero. Each pooled sandbox is one `engine` built, so it counts
-/// against the engine's memory bound. Called inside the runtime, where the
+/// against the engine's admission bound. Called inside the runtime, where the
 /// pool's keeper runs.
 pub(crate) fn pooled(
     engine: Box<dyn Engine>,

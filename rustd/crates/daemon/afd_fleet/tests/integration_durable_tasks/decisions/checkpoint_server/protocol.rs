@@ -9,21 +9,22 @@ pub(super) struct Request {
     pub path: String,
     pub bulk_delete: bool,
     pub create_only: bool,
+    /// The SHA-256 a PUT binds, base64 as S3 spells it.
+    pub checksum: Option<String>,
     pub body: Vec<u8>,
 }
 
 pub(super) async fn read(stream: &mut TlsStream<tokio::net::TcpStream>) -> Request {
     let mut bytes = Vec::new();
-    let (end, length, method, path, create_only) = loop {
+    let (end, length, method, path, create_only, checksum) = loop {
         let mut chunk = [0; 4096];
         let count = stream.read(&mut chunk).await.expect("request bytes");
         assert!(count > 0, "complete request headers");
         bytes.extend_from_slice(chunk.get(..count).expect("read fits buffer"));
         assert!(bytes.len() < 32 * 1024, "fixture request bounded");
         if let Some(end) = bytes.windows(4).position(|part| part == b"\r\n\r\n") {
-            let (length, method, path, create_only) =
-                headers(bytes.get(..end).expect("header boundary"));
-            break (end + 4, length, method, path, create_only);
+            let parsed = headers(bytes.get(..end).expect("header boundary"));
+            break (end + 4, parsed.0, parsed.1, parsed.2, parsed.3, parsed.4);
         }
     };
     while bytes.len() - end < length {
@@ -38,6 +39,7 @@ pub(super) async fn read(stream: &mut TlsStream<tokio::net::TcpStream>) -> Reque
         path: path.to_owned(),
         bulk_delete: query == "delete",
         create_only,
+        checksum,
         body: bytes
             .get(end..end + length)
             .expect("complete bounded body")
@@ -45,7 +47,7 @@ pub(super) async fn read(stream: &mut TlsStream<tokio::net::TcpStream>) -> Reque
     }
 }
 
-fn headers(bytes: &[u8]) -> (usize, String, String, bool) {
+fn headers(bytes: &[u8]) -> (usize, String, String, bool, Option<String>) {
     let header = std::str::from_utf8(bytes).expect("HTTP header");
     let mut lines = header.lines();
     let first = lines
@@ -68,5 +70,6 @@ fn headers(bytes: &[u8]) -> (usize, String, String, bool) {
         headers
             .get("if-none-match")
             .is_some_and(|value| value == "*"),
+        headers.get("x-amz-checksum-sha256").cloned(),
     )
 }

@@ -1,15 +1,14 @@
-//! Bounded remote transfers use only committed custody and an absolute pin deadline.
+//! Signed transfers use only committed custody and an absolute pin deadline.
 
 use super::TurnCheckpointRefusal;
 use crate::{
     Result,
     durable_task::{
-        checkpoint::{StoredObject, Verification, verify_object},
+        checkpoint::StoredObject,
         storage::{CheckpointKeys, Held, R2CheckpointStore, StorageSession, WorkspaceKey},
     },
 };
 use af_core::{clock, id::Uuid7};
-use af_crypto::checkpoint::CheckpointScope;
 use af_wire::durable_task::{
     CheckpointObject, CheckpointObjectStatus, CheckpointTransfer, CheckpointTransferPurpose,
 };
@@ -33,10 +32,9 @@ pub(super) async fn issue(
     storage: &R2CheckpointStore,
     mut batch: Batch,
     purpose: CheckpointTransferPurpose,
-    verifying: bool,
-) -> Result<(Vec<CheckpointObject>, Vec<Verification>)> {
+) -> Result<Vec<CheckpointObject>> {
     if batch.objects.is_empty() {
-        return Ok((Vec::new(), Vec::new()));
+        return Ok(Vec::new());
     }
     let Held::Usable(key) = storage.keys().held(&batch.workspace).await? else {
         return Err(TurnCheckpointRefusal::Incompatible.into());
@@ -49,22 +47,13 @@ pub(super) async fn issue(
         batch: &batch,
         key: &key,
         purpose,
-        verifying,
     };
-    let outcomes = stream::iter(objects.into_iter().map(|object| signing.object(object)))
+    stream::iter(objects.into_iter().map(|object| signing.object(object)))
         .buffered(4)
-        .collect::<Vec<Result<(CheckpointObject, Option<Verification>)>>>()
-        .await;
-    let mut items = Vec::with_capacity(outcomes.len());
-    let mut receipts = Vec::new();
-    for outcome in outcomes {
-        let (object, receipt) = outcome?;
-        items.push(object);
-        if let Some(receipt) = receipt {
-            receipts.push(receipt);
-        }
-    }
-    Ok((items, receipts))
+        .collect::<Vec<Result<CheckpointObject>>>()
+        .await
+        .into_iter()
+        .collect()
 }
 
 struct Signing<'a, 'store> {
@@ -73,14 +62,10 @@ struct Signing<'a, 'store> {
     batch: &'a Batch,
     key: &'a WorkspaceKey,
     purpose: CheckpointTransferPurpose,
-    verifying: bool,
 }
 
 impl Signing<'_, '_> {
-    async fn object(
-        &self,
-        object: StoredObject,
-    ) -> Result<(CheckpointObject, Option<Verification>)> {
+    async fn object(&self, object: StoredObject) -> Result<CheckpointObject> {
         let (batch, purpose) = (self.batch, self.purpose);
         admitted(batch, &object, purpose)?;
         if purpose == CheckpointTransferPurpose::Restore && !object.sealed_under(self.key) {
@@ -88,35 +73,10 @@ impl Signing<'_, '_> {
             return Err(TurnCheckpointRefusal::Incompatible.into());
         }
         let id = object.id.clone();
-        let verify =
-            self.verifying && purpose == CheckpointTransferPurpose::Upload && !object.verified;
         let mut wire = object.described(self.storage, &batch.namespace)?;
-        let receipt = if verify {
-            tokio::time::timeout(
-                clock::elapsed(clock::now(), batch.deadline),
-                verify_object(
-                    self.session,
-                    CheckpointScope {
-                        workspace_id: &batch.workspace,
-                        repository: &batch.namespace,
-                        object_id: &id,
-                        format_version: batch.format,
-                    },
-                    &wire,
-                    self.key,
-                ),
-            )
-            .await
-            .map_err(|_elapsed| TurnCheckpointRefusal::Conflict)??
-        } else {
-            None
-        };
-        if receipt.is_some() {
-            wire.status = CheckpointObjectStatus::Reused;
-        }
         wire.transfer = transfer(self.session, batch, &id, &wire, purpose).await?;
         wire.data_key = Some(self.key.wire());
-        Ok((wire, receipt))
+        Ok(wire)
     }
 }
 

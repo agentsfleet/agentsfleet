@@ -73,6 +73,17 @@ async fn register_content(
     {
         return Err(TurnCheckpointRefusal::Incompatible.into());
     }
+    checkpoint::supersede(
+        &mut custody.owner.tx,
+        (&workspace, &custody.namespace),
+        &content,
+        (
+            &custody.plan.id,
+            &custody.owner.current.id,
+            custody.owner.current.fence,
+        ),
+    )
+    .await?;
     let existing = matching(custody, &content).await?;
     let scope = Registration {
         namespace: &custody.namespace,

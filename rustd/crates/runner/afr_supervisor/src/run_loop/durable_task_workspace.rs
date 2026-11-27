@@ -13,7 +13,7 @@ use super::{
 };
 use crate::{
     Result,
-    recovery::{Capture, Restore},
+    recovery::{Capture, Restore, Tree},
     staging::Staged,
 };
 
@@ -91,7 +91,11 @@ impl Run<'_> {
             base: None,
             stop: &self.interrupt,
         }
-        .run(Some(root), Zeroizing::new(Vec::new()), Vec::new())
+        .run(
+            Some(&Tree::new(root, self.interrupt.clone())),
+            Zeroizing::new(Vec::new()),
+            Vec::new(),
+        )
         .await?;
         let base_paths = Restore {
             plane: &self.lessee.plane,

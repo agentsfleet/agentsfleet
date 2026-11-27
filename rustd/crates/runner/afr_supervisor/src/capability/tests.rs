@@ -39,7 +39,7 @@ fn probe(kvm: Kvm, toolbox_filesystem: bool) -> HostProbe {
         kvm,
         toolbox_filesystem,
         workspace_direct_io: None,
-        egress: false,
+        egress: toolbox_filesystem,
     }
 }
 
@@ -161,6 +161,7 @@ fn the_probe_answer_is_the_report_plus_every_check() {
             "seccomp",
             "cgroup_controllers",
             "kvm",
+            "nftables",
             "toolbox_filesystem"
         ]
     );
@@ -170,7 +171,7 @@ fn the_probe_answer_is_the_report_plus_every_check() {
         .filter(|check| !check.ok)
         .map(|check| check.name.as_ref())
         .collect();
-    assert_eq!(refused, ["kvm", "toolbox_filesystem"]);
+    assert_eq!(refused, ["kvm", "nftables", "toolbox_filesystem"]);
 }
 
 /// A host is judged only on what its engine relies on: the KVM device for an

@@ -340,9 +340,15 @@ OpenTelemetry Protocol (OTLP) is the export format for traces, logs and metrics.
 | `otlp.log_queue_capacity` | 2,048 | Log records are dropped under load |
 | `otlp.log_batch_size` | 512 | The collector refuses large batches |
 
-#### `[checkpoint.storage]`
+#### `[checkpoint]` and `[checkpoint.storage]`
 
-Unset, the daemon stores no task checkpoints in R2, Cloudflare's object storage.
+`cipher` names what seals a new checkpoint under its workspace's key. Each checkpoint records the cipher that sealed it, so a restore opens it after the setting changes.
+
+| Key | Default | Change it when… |
+|---|---|---|
+| `cipher` | `aes_256_gcm` | You measure a save and a restore without encryption: `plain` stores bytes as they are, and boot logs `checkpoint_cipher_plain` |
+
+Without `[checkpoint.storage]`, the daemon stores no task checkpoints in R2, Cloudflare's object storage.
 
 | Key | Default | Change it when… |
 |---|---|---|
@@ -400,7 +406,8 @@ Every build parses it, and only the Firecracker engine uses it (`main/src/config
 | `initrd` | `/usr/local/lib/agentsfleet/guest.cpio` | The host keeps the guest's initial file system elsewhere |
 | `first_jail_id` | 600,100,001 | Another range on the host owns these user and group IDs; one per running microVM follows it |
 | `memory_overcommit` | 4 | Hosts run out of memory under load (lower), or sit idle with runs refused (raise) |
-| `warm_pool` | 4 | First tool calls wait on a microVM boot (raise), or idle microVMs hold too much of the memory bound (lower) |
+| `disk_overcommit` | 8 | Hosts run out of disk under load (lower), or refuse runs with disk to spare (raise) |
+| `warm_pool` | 4 | First tool calls wait on a microVM boot (raise), or idle microVMs hold too much of the admission bound (lower) |
 
 #### `[tools]`
 

@@ -26,6 +26,8 @@ use crate::supervisor_model::{Asked, model};
 use crate::supervisor_plane::{GRAFANA, RUNNER_TOKEN, Received, Server};
 
 const DEADLINE: Duration = Duration::from_secs(60);
+/// How often a started call's microVM is looked for while it boots.
+const MONITOR_POLL: Duration = Duration::from_millis(10);
 
 /// Counts actual preparations without replacing any engine operation.
 #[derive(Debug)]
@@ -44,8 +46,8 @@ impl Engine for Counted {
         self.engine.grant(limits)
     }
 
-    fn memory_bound(&self) -> Option<afr_engine::MemoryBound> {
-        self.engine.memory_bound()
+    fn admission_bound(&self) -> Option<afr_engine::AdmissionBound> {
+        self.engine.admission_bound()
     }
 
     async fn prepare(&self, spec: SandboxSpec<'_>) -> afr_engine::Result<Box<dyn Sandbox>> {
@@ -258,15 +260,20 @@ async fn until_done(
         .join(RUN_ID)
         .join(SANDBOX_LEAF)
         .join(CGROUP_PROCS);
-    let pids = fs::read_to_string(procs)?
+    // The call is started before its microVM is built, so its monitor's
+    // leaf is read once the boot has filled it; the caller's deadline bounds
+    // the wait for a microVM that never comes up.
+    let listed = loop {
+        let listed = fs::read_to_string(&procs).unwrap_or_default();
+        if !listed.trim().is_empty() {
+            break listed;
+        }
+        tokio::time::sleep(MONITOR_POLL).await;
+    };
+    Ok(listed
         .lines()
         .map(str::parse)
-        .collect::<Result<Vec<u32>, _>>()?;
-    expect(
-        !pids.is_empty(),
-        "the started call runs in a microVM whose monitor is up",
-    )?;
-    Ok(pids)
+        .collect::<Result<Vec<u32>, _>>()?)
 }
 
 fn removed(lane: &Lane) -> Result<(), Failed> {

@@ -24,8 +24,7 @@ mod supervisor_tests;
 #[cfg(test)]
 mod tests;
 mod transfer;
-#[cfg(test)]
-mod transfer_tests;
+mod tree;
 mod turn;
 mod uploads;
 mod window;
@@ -34,6 +33,7 @@ pub(crate) use admission::RecoveryResources;
 pub(super) use capture::Capture;
 pub(super) use restore::Restore;
 pub(crate) use transfer::Transfers;
+pub(crate) use tree::{ChangeSource, Tree};
 pub(super) use turn::NativeTurn;
 
 #[cfg(test)]

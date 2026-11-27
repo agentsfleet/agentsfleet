@@ -5,8 +5,9 @@
 //! whose engine is not its tier's. A self-test carries the host's mechanisms
 //! as named checks: whether the kernel confines files and system calls,
 //! whether the cgroup controllers are delegated, whether `/dev/kvm` lets a
-//! microVM engine run here, and whether the kernel can mount the toolbox,
-//! without which no sandbox builds.
+//! microVM engine run here, whether its packet filter can hold a guest to
+//! its egress, and whether the kernel can mount the toolbox, without which
+//! no sandbox builds.
 
 use std::borrow::Cow;
 
@@ -15,7 +16,9 @@ use af_wire::runner::{
     CapabilityReport, NetworkPolicy, SandboxTier, SelftestCheck, SelftestReport,
 };
 use af_wire::runner::{Isolation, Kvm};
-use afr_engine::{Capabilities, HostProbe, MECHANISM_LANDLOCK, MECHANISM_SECCOMP};
+use afr_engine::{
+    Capabilities, HostProbe, MECHANISM_LANDLOCK, MECHANISM_NFTABLES, MECHANISM_SECCOMP,
+};
 use serde::Serialize;
 
 const CHECK_CGROUP: &str = "cgroup_controllers";
@@ -35,6 +38,10 @@ const CGROUP_OFF: &str = "The cpu, io, memory or pids controller is not delegate
 const KVM_USABLE: &str = "The KVM device opens, so a microVM engine can run here.";
 const KVM_DENIED: &str = "The KVM device exists but this runner cannot open it.";
 const KVM_ABSENT: &str = "There is no KVM device, so no microVM engine can run here.";
+const NFTABLES_ON: &str =
+    "The kernel built and removed an nftables egress table with forwarding on, so egress is held.";
+const NFTABLES_OFF: &str = "The kernel would not build an nftables egress table, or does not \
+     forward IPv4, so no microVM engine starts here.";
 const TOOLBOX_ON: &str = "The kernel can mount the toolbox's EROFS image.";
 const TOOLBOX_OFF: &str = "The kernel cannot mount EROFS, so no sandbox can be built here.";
 const DIRECT_IO_ON: &str =
@@ -43,7 +50,7 @@ const DIRECT_IO_OFF: &str = "The state file system refuses direct I/O, so a work
      back to buffered and is cached twice.";
 
 /// The capability report a heartbeat carries: the engine, its wall and what
-/// `/dev/kvm` allows. `sandboxes_max` is the engine's memory bound, absent
+/// `/dev/kvm` allows. `sandboxes_max` is the engine's admission bound, absent
 /// when it reserves no memory.
 #[must_use]
 pub fn capability_report<'a>(
@@ -89,7 +96,7 @@ pub struct ProbeAnswer<'a> {
 }
 
 /// The probe command's answer for this host. No engine is built to probe,
-/// so no memory bound is stated.
+/// so no admission bound is stated.
 #[must_use]
 pub fn probe_answer<'a>(probe: &'a HostProbe, engine: &Capabilities) -> ProbeAnswer<'a> {
     ProbeAnswer {
@@ -99,9 +106,9 @@ pub fn probe_answer<'a>(probe: &'a HostProbe, engine: &Capabilities) -> ProbeAns
 }
 
 /// Every fact the probe found that `engine` relies on, as a named check: the
-/// KVM device only for an engine behind a virtual machine, so a host is never judged on what its engine does not
-/// use. Direct I/O only when the probe was given a state directory to try it
-/// on.
+/// KVM device and the packet filter only for an engine behind a virtual
+/// machine, so a host is never judged on what its engine does not use.
+/// Direct I/O only when the probe was given a state directory to try it on.
 fn checks<'a>(probe: &HostProbe, engine: &Capabilities) -> Vec<SelftestCheck<'a>> {
     let kvm = match probe.kvm {
         Kvm::Usable => (true, KVM_USABLE),
@@ -122,7 +129,10 @@ fn checks<'a>(probe: &HostProbe, engine: &Capabilities) -> Vec<SelftestCheck<'a>
         CHECK_CGROUP,
         verdict(probe.has_required_controllers(), CGROUP_ON, CGROUP_OFF),
     ));
-    checks.extend((engine.isolation == Isolation::HardwareVm).then(|| check(CHECK_KVM, kvm)));
+    if engine.isolation == Isolation::HardwareVm {
+        let nftables = verdict(probe.egress, NFTABLES_ON, NFTABLES_OFF);
+        checks.extend([check(CHECK_KVM, kvm), check(MECHANISM_NFTABLES, nftables)]);
+    }
     checks.push(check(
         CHECK_TOOLBOX,
         verdict(probe.toolbox_filesystem, TOOLBOX_ON, TOOLBOX_OFF),

@@ -1,10 +1,8 @@
-//! Persist exact transfer authority, release SQL locks, then sign or verify in parallel.
+//! Persist exact transfer authority, release SQL locks, then sign in parallel.
 
 mod signing;
-mod verify;
 
 use signing::issue;
-pub(crate) use verify::{Receipt as Verification, remote_scope as verify_object};
 
 use super::{
     guard,
@@ -111,7 +109,6 @@ pub(in crate::durable_task) async fn uploads(
         tasks,
         Batch { plan, pin, objects },
         CheckpointTransferPurpose::Upload,
-        false,
     )
     .await?;
     Ok(CheckpointObjectsPage {
@@ -132,6 +129,11 @@ pub(in crate::durable_task) async fn authorize(
         .map(|id| durable_task_guard::wire(id))
         .collect::<Result<Vec<_>>>()?;
     unique(&object_ids)?;
+    // An upload's links come from `uploads` alone, and nothing is read back:
+    // an authorization only ever restores.
+    if input.purpose != CheckpointTransferPurpose::Restore {
+        return Err(DurableTaskRefusal::CheckpointIncompatible.into());
+    }
     let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     let (plan, pin) = if let Some(pin) = &input.pin_id {
@@ -146,7 +148,7 @@ pub(in crate::durable_task) async fn authorize(
         .await?;
         (plan, pin)
     } else {
-        if input.purpose != CheckpointTransferPurpose::Restore || !input.object_ids.is_empty() {
+        if !input.object_ids.is_empty() {
             return Err(DurableTaskRefusal::CheckpointIncompatible.into());
         }
         let owned = execution::load(&mut tx, run, &input.durable_task).await?;
@@ -165,9 +167,7 @@ pub(in crate::durable_task) async fn authorize(
         (plan, pin)
     };
     let objects = scoped(&mut tx, &plan, &object_ids).await?;
-    if input.purpose == CheckpointTransferPurpose::Restore
-        && objects.iter().any(|object| !object.verified)
-    {
+    if objects.iter().any(|object| !object.verified) {
         return Err(DurableTaskRefusal::CheckpointIncompatible.into());
     }
     protect(&mut tx, &object_ids, &pin, tasks.times().orphan_seconds()).await?;
@@ -176,7 +176,7 @@ pub(in crate::durable_task) async fn authorize(
         .await
         .map_err(query("commit scoped transfer refresh or restore bootstrap"))?;
     transaction::recycle(connection);
-    let objects = issue(tasks, Batch { plan, pin, objects }, input.purpose, true).await?;
+    let objects = issue(tasks, Batch { plan, pin, objects }, input.purpose).await?;
     Ok(CheckpointAuthorizations {
         plan: response,
         objects,
@@ -225,7 +225,6 @@ pub(in crate::durable_task) async fn list(
         tasks,
         Batch { plan, pin, objects },
         CheckpointTransferPurpose::Restore,
-        false,
     )
     .await?;
     Ok(CheckpointObjectsPage {

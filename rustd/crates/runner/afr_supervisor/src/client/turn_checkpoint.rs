@@ -91,14 +91,6 @@ impl<R: TurnCheckpointRequest> Command for Turn<'_, R> {
     const VERB: Option<Verb> = Some(Verb::TurnCheckpoint);
     type Output = R::Response;
 
-    fn timeout(&self) -> std::time::Duration {
-        if self.command.command.action.verifies_uploads() {
-            TurnCheckpointAction::VERIFY_ANSWER_TIMEOUT
-        } else {
-            af_core::timing::STREAM_ANSWER_TIMEOUT
-        }
-    }
-
     fn expected(&self) -> Expected {
         Expected::TurnCheckpoint {
             run: self.run.clone(),

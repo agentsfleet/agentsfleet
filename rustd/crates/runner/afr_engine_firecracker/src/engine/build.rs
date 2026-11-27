@@ -55,7 +55,7 @@ pub(crate) struct Parts {
 
 /// Boots the sandbox `kept` describes on its kept disk, held to its plan,
 /// and returns once its executor answers and the plan reads back in force.
-/// It holds `reservation`, its share of the host's memory bound, until it is
+/// It holds `reservation`, its share of the host's admission bound, until it is
 /// released.
 ///
 /// # Errors

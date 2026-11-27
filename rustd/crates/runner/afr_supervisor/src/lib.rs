@@ -249,7 +249,7 @@ async fn serve_composed(
     .with_sandboxes_max(
         lessee
             .engine
-            .memory_bound()
+            .admission_bound()
             .map(|bound| bound.sandboxes_max),
     )
     .keep_beating(&assignment, &lessee.halt);

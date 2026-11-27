@@ -80,9 +80,7 @@ impl Harness<'_, '_> {
             ending = Ending::Answered(self.combined_durable_task_answer(text));
         }
         self.record_answer(&ending);
-        if matches!(ending, Ending::Waiting(_)) {
-            self.save_waiting(pause).await;
-        }
+        self.settle_saves(&mut ending, pause).await;
         let recovery = self.final_recovery(&mut ending, pause).await;
         let folded_through_sequence = self
             .folded_through()
@@ -131,6 +129,16 @@ impl Harness<'_, '_> {
             trace: Some(trace),
             records,
             folded_through_sequence,
+        }
+    }
+
+    /// Saves a waiting run's question, and settles only after the last save's
+    /// commit, so nothing the run reports names a generation still publishing.
+    async fn settle_saves(&mut self, ending: &mut Ending, pause: Option<&Pause>) {
+        self.settle_publication(ending).await;
+        if matches!(ending, Ending::Waiting(_)) {
+            self.save_waiting(pause).await;
+            self.settle_publication(ending).await;
         }
     }
 

@@ -93,6 +93,7 @@ impl Pending {
                         .map(|(id, digest)| (id.as_str(), digest.as_str())),
                 ),
                 folds: Vec::new(),
+                uploaded: Vec::new(),
             }))
             .await
     }

@@ -52,7 +52,7 @@ pub(crate) struct Heartbeat<'a> {
     probe: &'a HostProbe,
     /// What the runner's engine states, which the report and self-test name.
     engine: Capabilities,
-    /// The engine's memory bound, which the report states.
+    /// The engine's admission bound, which the report states.
     sandboxes_max: Option<u32>,
     holds: &'a Holds,
     /// Where run sandboxes live, whose file system's free bytes each beat reports.

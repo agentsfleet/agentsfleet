@@ -18,6 +18,9 @@ use netlink_packet_route::{AddressFamily, RouteNetlinkMessage};
 use super::netlink::{Netlink, Wire};
 use super::slot::{PREFIX_LEN, Slot};
 
+/// Loopback's name, in every network namespace.
+const LOOPBACK: &str = "lo";
+
 /// One route-netlink message.
 pub(super) type Message = NetlinkMessage<RouteNetlinkMessage>;
 
@@ -72,6 +75,12 @@ pub(super) fn address_within(index: u32, address: Ipv4Addr, prefix_len: u8) -> M
         RouteNetlinkMessage::NewAddress(message),
         NLM_F_CREATE | NLM_F_EXCL,
     )
+}
+
+/// Brings loopback up over `route`, in the namespace `route` was opened in.
+pub(super) fn raise_loopback<W: Wire>(route: &mut Netlink<W>) -> io::Result<()> {
+    let index = index_named(route, LOOPBACK)?;
+    route.acknowledged(vec![up(index)])
 }
 
 /// Brings the link numbered `index` up.

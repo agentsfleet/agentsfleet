@@ -58,6 +58,8 @@ afr_memory.workspace = true
 # The seam every sandbox engine meets: the supervisor names no engine and no
 # building block, only the traits and facts every engine states.
 afr_engine.workspace = true
+# A pinned workspace's changes, and the seal and read check every chunk passes.
+af_chunk_store.workspace = true
 # Which bound repositories a run checks out, read from its tool policy.
 afr_tools.workspace = true
 # The runner token and every minted credential are held as one `Secret`.

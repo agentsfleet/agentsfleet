@@ -2,18 +2,17 @@
 
 use super::{
     Object, Session,
-    catalog::Chunk,
-    transfer,
     uploads::{self, UploadBatch},
 };
 use crate::{Result, error};
 use af_core::{clock, id::Uuid7};
 use af_wire::durable_task::{
     CheckpointAuthorizationInput, CheckpointObjectsInput, CheckpointPinInput, CheckpointPlaintext,
-    CheckpointTransferPurpose, CheckpointUpload, CheckpointUploadsInput,
+    CheckpointTransferPurpose, CheckpointUploadsInput,
 };
 use futures_util::{StreamExt as _, stream};
 use std::collections::BTreeMap;
+use zeroize::Zeroizing;
 
 impl Session<'_> {
     pub(super) async fn renew(&mut self) -> Result<()> {
@@ -49,7 +48,7 @@ impl Session<'_> {
         Ok(())
     }
 
-    pub(super) async fn register(
+    async fn register_plaintext(
         &mut self,
         descriptors: Vec<CheckpointPlaintext>,
     ) -> Result<Vec<Object>> {
@@ -91,9 +90,13 @@ impl Session<'_> {
         Ok(objects)
     }
 
-    /// A native page of immutable ciphertexts shares authorization and readback.
-    /// Memory is bounded separately; at most four physical requests run at once.
-    pub(super) async fn upload_batch(&mut self, pending: Vec<(Object, Chunk)>) -> Result<()> {
+    /// Seals a batch, freezes its ciphertext descriptors with the daemon, and
+    /// PUTs it; the objects the bucket accepted. Memory is bounded separately;
+    /// at most four physical requests run at once.
+    async fn upload_sealed(
+        &mut self,
+        pending: Vec<(Object, Zeroizing<Vec<u8>>)>,
+    ) -> Result<Vec<String>> {
         self.renew().await?;
         let workspace = self.workspace.clone();
         let mut batch =
@@ -113,47 +116,11 @@ impl Session<'_> {
                 },
             )
             .await?;
-        let outcomes = batch
+        let accepted = batch
             .put(response.items, &self.plan.repository, &self.transfers)
             .await?;
-        self.verify_uploads(&batch.descriptors, outcomes).await
-    }
-
-    /// Reconcile physical outcomes with native immutable ciphertext receipts.
-    async fn verify_uploads(
-        &mut self,
-        descriptors: &[CheckpointUpload],
-        outcomes: Vec<Result<()>>,
-    ) -> Result<()> {
-        let checkpoint = Uuid7::parse(&self.plan.checkpoint_id)?;
-        // Even an unknown PUT is read back once. It is never resent blindly.
-        let verified = self
-            .plane
-            .durable_task_checkpoint_authorizations(
-                self.run,
-                &checkpoint,
-                &CheckpointAuthorizationInput {
-                    fencing_token: self.fence,
-                    durable_task: self.task.clone(),
-                    purpose: CheckpointTransferPurpose::Upload,
-                    pin_id: Some(self.plan.pin.id.clone()),
-                    object_ids: descriptors
-                        .iter()
-                        .map(|object| object.object_id.clone())
-                        .collect(),
-                },
-            )
-            .await?;
-        let objects: Vec<Object> = verified.objects.into_iter().map(Object::from).collect();
-        let mut complete = true;
-        for descriptor in descriptors {
-            let confirmed = objects
-                .iter()
-                .any(|object| uploads::verified(object, descriptor, &self.plan.repository));
-            if confirmed {
-                self.progress.acknowledge(&descriptor.object_id);
-            }
-            complete &= confirmed;
+        for id in &accepted {
+            self.progress.acknowledge(id);
         }
         self.progress(
             af_wire::activity::DurableTaskActivityOperation::Capture,
@@ -161,15 +128,7 @@ impl Session<'_> {
             None,
         )
         .await;
-        if !complete {
-            for outcome in outcomes {
-                outcome?;
-            }
-            return Err(error::config(
-                "checkpoint upload batch was not fully verified",
-            ));
-        }
-        Ok(())
+        Ok(accepted)
     }
 
     async fn restore_objects(&mut self, ids: &[String]) -> Result<Vec<Object>> {
@@ -209,7 +168,7 @@ impl Session<'_> {
             ));
         }
         for object in &objects {
-            let length = transfer::stored_length(object)?;
+            let length = af_chunk_store::stored_length(object)?;
             self.progress.discover(&object.object_id, length, false);
         }
         Ok(objects)
@@ -232,7 +191,7 @@ impl Session<'_> {
         let workspace = self.workspace;
         let outcomes = stream::iter(objects.into_iter().map(async move |mut object| {
             let bytes = transfers.download(&object).await?;
-            let bytes = transfer::open(workspace, &mut object, bytes)?;
+            let bytes = af_chunk_store::open(workspace, &mut object, bytes)?;
             Ok::<_, crate::Error>((object.object_id.clone(), bytes))
         }))
         .buffer_unordered(4)
@@ -270,5 +229,43 @@ impl Session<'_> {
                     .ok_or_else(|| error::config("checkpoint restore object is absent"))
             })
             .collect()
+    }
+}
+
+impl uploads::Publisher for Session<'_> {
+    async fn register(&mut self, descriptors: Vec<CheckpointPlaintext>) -> Result<Vec<Object>> {
+        self.register_plaintext(descriptors).await
+    }
+
+    async fn registered(&mut self, objects: &[Object], total: usize) {
+        for object in objects {
+            if !matches!(
+                object.status,
+                af_wire::durable_task::CheckpointObjectStatus::Busy
+            ) {
+                self.progress.discover(
+                    &object.object_id,
+                    uploads::ciphertext_size(object),
+                    matches!(
+                        object.status,
+                        af_wire::durable_task::CheckpointObjectStatus::Reused
+                    ),
+                );
+            }
+        }
+        let total = u32::try_from(total).ok();
+        self.progress(
+            af_wire::activity::DurableTaskActivityOperation::Capture,
+            af_wire::activity::DurableTaskActivityPhase::Uploading,
+            total,
+        )
+        .await;
+    }
+
+    async fn upload_batch(
+        &mut self,
+        pending: Vec<(Object, Zeroizing<Vec<u8>>)>,
+    ) -> Result<Vec<String>> {
+        self.upload_sealed(pending).await
     }
 }

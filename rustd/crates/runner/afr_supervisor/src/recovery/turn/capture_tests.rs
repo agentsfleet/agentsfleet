@@ -2,21 +2,19 @@
 //! ones, writes its pages and commits; every refusal leaves no committed head.
 
 use super::*;
-use af_wire::{
-    durable_task::CheckpointTransferPurpose,
-    run::{TurnCheckpointPlan, TurnResume},
-};
+use crate::recovery::ChangeSource;
+use af_wire::run::{TurnCheckpointPlan, TurnResume};
 use afr_agent::TurnSnapshot;
 use std::sync::{Arc, Mutex};
 
-type Checked<T = ()> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
+pub(super) type Checked<T = ()> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 /// The private root every capture here carries.
 const HISTORY: &[u8] = b"private root";
 
 /// How the native owner is told to misbehave for one capture.
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Fault {
+pub(super) enum Fault {
     /// Another writer holds the first chunk.
     BusyChunk,
     /// The allocation names one page fewer than the capture asked for.
@@ -36,13 +34,13 @@ enum Fault {
 }
 
 /// What the native owner saw of the captures it served.
-struct Remote {
+pub(super) struct Remote {
     objects: Vec<CheckpointObject>,
     fault: Option<Fault>,
     plan: Option<TurnCheckpointPlan>,
     pages: Vec<CheckpointPage>,
-    head: Option<TurnResume>,
-    uploaded: bool,
+    pub(super) head: Option<TurnResume>,
+    pub(super) uploaded: bool,
     upload_requests: usize,
     abandoned: usize,
     /// How long the allocation's pin lasts, and how long the whole capture may.
@@ -54,7 +52,11 @@ struct Remote {
 
 impl Remote {
     /// An owner holding `objects`, each uploaded to its own path under `url`.
-    fn new(objects: Vec<CheckpointObject>, url: &str, fault: Option<Fault>) -> Checked<Self> {
+    pub(super) fn new(
+        objects: Vec<CheckpointObject>,
+        url: &str,
+        fault: Option<Fault>,
+    ) -> Checked<Self> {
         let mut placed = Vec::with_capacity(objects.len());
         for mut object in objects {
             let mut target = url::Url::parse(url)?;
@@ -101,7 +103,7 @@ impl Remote {
         Ok(Response::PinRenewed(answered))
     }
 
-    fn respond(&mut self, request: TurnCheckpointCommand) -> Result<Response> {
+    pub(super) fn respond(&mut self, request: TurnCheckpointCommand) -> Result<Response> {
         match request.action {
             Action::Begin(begin) => Ok(self.begin(begin)),
             Action::Objects(TurnCheckpointObjects { objects, .. }) => objects
@@ -132,23 +134,6 @@ impl Remote {
                     })
                     .collect::<Result<_>>()
                     .map(Response::Uploads)
-            }
-            Action::Authorize(TurnCheckpointAuthorize {
-                purpose: CheckpointTransferPurpose::Upload,
-                object_ids,
-                ..
-            }) => {
-                self.uploaded = true;
-                object_ids
-                    .iter()
-                    .map(|wanted| {
-                        let mut object = self.holding(|held| held.object_id == wanted.0)?;
-                        object.status = CheckpointObjectStatus::Reused;
-                        object.transfer = None;
-                        Ok(object)
-                    })
-                    .collect::<Result<_>>()
-                    .map(Response::Authorized)
             }
             Action::PageWrite(_) if self.fault == Some(Fault::WrongPageWrite) => {
                 Ok(Response::PinReleased)
@@ -185,6 +170,9 @@ impl Remote {
                         ..saved
                     })));
                 }
+                // The commit records each accepted object as verified, so
+                // a later save of the same bytes reuses it.
+                self.uploaded = true;
                 self.head = Some(saved.clone());
                 Ok(Response::Committed(Box::new(saved)))
             }
@@ -268,7 +256,7 @@ fn capture_plane(remote: Arc<Mutex<Remote>>) -> (crate::client::ControlPlane, te
     })
 }
 
-fn snapshot(scope: TurnScope) -> TurnSnapshot {
+pub(super) fn snapshot(scope: TurnScope) -> TurnSnapshot {
     TurnSnapshot {
         scope,
         previous: None,
@@ -278,7 +266,7 @@ fn snapshot(scope: TurnScope) -> TurnSnapshot {
 }
 
 /// A workspace of four one-chunk files, one per fixture object.
-fn workspace() -> Checked<tempfile::TempDir> {
+pub(super) fn workspace() -> Checked<tempfile::TempDir> {
     let root = tempfile::tempdir()?;
     for index in 0..4 {
         std::fs::write(
@@ -318,7 +306,7 @@ async fn a_file_backed_capture_uploads_each_missing_chunk_and_commits_its_pages(
     let stop = CancellationToken::new();
 
     let saved = native
-        .capture(snapshot(scope()), Some(root.path().to_owned()), &stop)
+        .capture(snapshot(scope()), Some(&tree(&root, &stop)), &stop)
         .await?;
 
     for _ in 0..4 {
@@ -355,7 +343,7 @@ async fn a_file_backed_capture_uploads_each_missing_chunk_and_commits_its_pages(
     // The next capture finds every chunk stored: it uploads nothing and
     // advances the generation from the acknowledged head.
     let again = native
-        .capture(snapshot(scope()), Some(root.path().to_owned()), &stop)
+        .capture(snapshot(scope()), Some(&tree(&root, &stop)), &stop)
         .await?;
     assert_eq!(again.generation, 2);
     assert!(
@@ -375,7 +363,7 @@ async fn a_file_backed_capture_uploads_each_missing_chunk_and_commits_its_pages(
     let mut foreign = scope();
     foreign.fleet_id = CheckpointOperationId(PAGE.to_owned());
     let refused = native
-        .capture(snapshot(foreign), Some(root.path().to_owned()), &stop)
+        .capture(snapshot(foreign), Some(&tree(&root, &stop)), &stop)
         .await;
     assert!(refused.is_err(), "a changed scope must not capture");
     assert_eq!(
@@ -406,7 +394,7 @@ async fn a_capture_the_owner_cannot_honour_is_abandoned_without_a_head() -> Chec
         let stop = CancellationToken::new();
 
         let refused = native
-            .capture(snapshot(scope()), Some(root.path().to_owned()), &stop)
+            .capture(snapshot(scope()), Some(&tree(&root, &stop)), &stop)
             .await;
 
         assert!(refused.is_err(), "the capture must fail");
@@ -435,7 +423,7 @@ async fn a_page_acknowledged_with_other_bytes_ends_the_capture() -> Checked {
     let stop = CancellationToken::new();
 
     let refused = native
-        .capture(snapshot(scope()), Some(root.path().to_owned()), &stop)
+        .capture(snapshot(scope()), Some(&tree(&root, &stop)), &stop)
         .await;
 
     assert!(refused.is_err(), "changed page bytes must not commit");
@@ -466,7 +454,7 @@ async fn a_capture_refuses_a_wrong_reply_or_a_root_its_scope_does_not_name() -> 
 
     // An allocation answered with another command's response.
     let Err(_refused) = native
-        .capture(snapshot(scope()), Some(root.path().to_owned()), &stop)
+        .capture(snapshot(scope()), Some(&tree(&root, &stop)), &stop)
         .await
     else {
         return Err("a wrong allocation reply was accepted".into());
@@ -480,7 +468,11 @@ async fn a_capture_refuses_a_wrong_reply_or_a_root_its_scope_does_not_name() -> 
     // A files scope with no root, and an API-only scope handed one.
     let mut api_only = scope();
     api_only.workspace = TurnWorkspace::ApiOnly;
-    for (scope, root) in [(scope(), None), (api_only, Some(root.path().to_owned()))] {
+    let tree = tree(&root, &stop);
+    for (scope, root) in [
+        (scope(), None),
+        (api_only, Some(&tree as &dyn ChangeSource)),
+    ] {
         let Err(_refused) = native.capture(snapshot(scope), root, &stop).await else {
             return Err("a root its scope does not name was captured".into());
         };
@@ -514,7 +506,7 @@ async fn a_capture_whose_pin_is_about_to_lapse_renews_custody_as_it_works() -> C
     let stop = CancellationToken::new();
 
     let saved = native
-        .capture(snapshot(scope()), Some(root.path().to_owned()), &stop)
+        .capture(snapshot(scope()), Some(&tree(&root, &stop)), &stop)
         .await?;
 
     let (head, renewals, version) = {
@@ -560,7 +552,7 @@ async fn a_capture_stops_when_custody_changes_hands_or_has_ended() -> Checked {
         let stop = CancellationToken::new();
 
         let refused = native
-            .capture(snapshot(scope()), Some(root.path().to_owned()), &stop)
+            .capture(snapshot(scope()), Some(&tree(&root, &stop)), &stop)
             .await;
 
         assert!(
@@ -595,7 +587,7 @@ async fn a_root_that_is_not_utf8_is_abandoned_before_its_commit() -> Checked {
     binary.history = Zeroizing::new(vec![0xff, 0xfe]);
 
     let refused = native
-        .capture(binary, Some(root.path().to_owned()), &stop)
+        .capture(binary, Some(&tree(&root, &stop)), &stop)
         .await;
 
     assert_eq!(
@@ -628,7 +620,7 @@ async fn a_commit_receipt_naming_another_generation_commits_no_head() -> Checked
     let stop = CancellationToken::new();
 
     let refused = native
-        .capture(snapshot(scope()), Some(root.path().to_owned()), &stop)
+        .capture(snapshot(scope()), Some(&tree(&root, &stop)), &stop)
         .await;
 
     assert_eq!(
@@ -647,4 +639,9 @@ async fn a_commit_receipt_naming_another_generation_commits_no_head() -> Checked
         "a refused receipt leaves no uncertain commit to reconcile"
     );
     Ok(())
+}
+
+/// The tree `root` holds, read as a save reads its pin.
+fn tree(root: &tempfile::TempDir, stop: &CancellationToken) -> crate::recovery::Tree {
+    crate::recovery::Tree::new(root.path().to_owned(), stop.clone())
 }

@@ -128,6 +128,7 @@ async fn commit_covering(files: &Files, fold: &FoldRef) -> Checked<Response> {
             root: history,
             manifest_root: manifest,
             folds: vec![fold.clone()],
+            uploaded: Vec::new(),
         }))
         .await
 }

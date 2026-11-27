@@ -5,7 +5,7 @@
 //! which every building block's failure lifts; this type holds what no
 //! building block raises: a host whose KVM device a microVM cannot open, a
 //! workspace image another monitor holds, a state directory another runner
-//! serves, a host whose memory bound is reached, a monitor that exited or never answered, a host whose every jail
+//! serves, a host whose memory or disk bound is reached, a monitor that exited or never answered, a host whose every jail
 //! user is held. It crosses the seam as
 //! itself, and a refused KVM device still reads as the seam's missing
 //! mechanism. The code is the registry's existing one, as every runner
@@ -17,6 +17,7 @@ use std::time::Duration;
 
 use af_core::error_code::{self, ErrorCode};
 use af_wire::runner::Kvm;
+use afr_engine::Resource;
 
 /// The mechanism a host without a usable KVM device lacks, as the seam's
 /// refusal and the capability report's check both name it.
@@ -55,10 +56,14 @@ pub(crate) enum ErrorKind {
         lock: PathBuf,
     },
 
-    /// The host's overcommitted memory bound is reached: that many microVMs
-    /// are built, and a parked one with only its disk kept holds none.
-    #[error("this host's memory admits {sandboxes_max} microVMs at once, and that many are built")]
-    MemoryBound {
+    /// The host's overcommitted bound is reached: that many microVMs are
+    /// built, and a parked one with only its disk kept holds none.
+    #[error(
+        "this host's {resource} admits {sandboxes_max} microVMs at once, and that many are built"
+    )]
+    BoundReached {
+        /// The resource that admits fewest, `memory` or `disk`.
+        resource: &'static str,
         /// The bound.
         sandboxes_max: u32,
     },
@@ -168,9 +173,15 @@ pub(crate) fn state_held(lock: PathBuf) -> afr_engine::Error {
     Error::from(ErrorKind::StateHeld { lock }).into()
 }
 
-/// Refuses a microVM past the host's memory bound of `sandboxes_max`.
-pub(crate) fn memory_bound_reached(sandboxes_max: u32) -> afr_engine::Error {
-    Error::from(ErrorKind::MemoryBound { sandboxes_max }).into()
+/// Refuses a microVM past the host's bound of `sandboxes_max`, which
+/// `resource` made.
+pub(crate) fn bound_reached(resource: Resource, sandboxes_max: u32) -> afr_engine::Error {
+    let resource = resource.into();
+    Error::from(ErrorKind::BoundReached {
+        resource,
+        sandboxes_max,
+    })
+    .into()
 }
 
 /// Refuses a microVM when every jail user is held.

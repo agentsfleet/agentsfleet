@@ -2,7 +2,6 @@
 
 use super::super::{
     Object,
-    catalog::Chunk,
     transfer::Transfers,
     uploads::{self, UploadBatch},
 };
@@ -18,6 +17,7 @@ use af_wire::{
 };
 use garde::Validate as _;
 use tokio_util::sync::CancellationToken;
+use zeroize::Zeroizing;
 
 pub(super) struct TurnSession<'a, 'native> {
     pub native: &'a NativeTurn<'native>,
@@ -76,7 +76,7 @@ impl<'a, 'native> TurnSession<'a, 'native> {
         Ok(())
     }
 
-    pub(super) async fn register(
+    async fn register_plaintext(
         &mut self,
         descriptors: Vec<CheckpointPlaintext>,
     ) -> Result<Vec<Object>> {
@@ -135,7 +135,12 @@ impl<'a, 'native> TurnSession<'a, 'native> {
         Ok(objects)
     }
 
-    pub(super) async fn upload_batch(&mut self, pending: Vec<(Object, Chunk)>) -> Result<()> {
+    /// Seals a batch, freezes its ciphertext descriptors with the owner, and
+    /// PUTs it; the objects the bucket accepted.
+    async fn upload_sealed(
+        &mut self,
+        pending: Vec<(Object, Zeroizing<Vec<u8>>)>,
+    ) -> Result<Vec<String>> {
         self.renew().await?;
         let workspace = self.workspace.clone();
         let mut batch =
@@ -148,28 +153,21 @@ impl<'a, 'native> TurnSession<'a, 'native> {
                 objects: batch.descriptors.clone(),
             })
             .await?;
-        let outcomes = batch.put(objects, &self.namespace, &self.transfers).await?;
-        let ids: Vec<_> = batch
-            .descriptors
-            .iter()
-            .map(|item| item.object_id.clone())
-            .collect();
-        // Even an uncertain PUT can reconcile against an exact native receipt.
-        let verified = self
-            .authorize(&ids, CheckpointTransferPurpose::Upload)
-            .await?;
-        if batch.descriptors.iter().all(|descriptor| {
-            verified
-                .iter()
-                .any(|object| uploads::verified(object, descriptor, &self.namespace))
-        }) {
-            return Ok(());
-        }
-        for outcome in outcomes {
-            outcome?;
-        }
-        Err(error::config(
-            "turn upload was not authenticated by its durable owner",
-        ))
+        batch.put(objects, &self.namespace, &self.transfers).await
+    }
+}
+
+impl uploads::Publisher for TurnSession<'_, '_> {
+    async fn register(&mut self, descriptors: Vec<CheckpointPlaintext>) -> Result<Vec<Object>> {
+        self.register_plaintext(descriptors).await
+    }
+
+    async fn registered(&mut self, _objects: &[Object], _total: usize) {}
+
+    async fn upload_batch(
+        &mut self,
+        pending: Vec<(Object, Zeroizing<Vec<u8>>)>,
+    ) -> Result<Vec<String>> {
+        self.upload_sealed(pending).await
     }
 }

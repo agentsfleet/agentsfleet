@@ -91,7 +91,12 @@ fn a_listener_with_a_tenant_places_its_processes_in_the_leaf() {
     fs::write(&procs, "").unwrap();
     fs::write(&events, NO_KILLS).unwrap();
     let tenant = Tenant::new(
-        OpenOptions::new().write(true).open(&procs).unwrap().into(),
+        OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&procs)
+            .unwrap()
+            .into(),
         File::open(&events).unwrap().into(),
     )
     .unwrap();

@@ -103,6 +103,7 @@ impl Archive {
                 repository: self.plan.as_ref().unwrap().repository.clone(),
                 plaintext,
                 status: CheckpointObjectStatus::Reused,
+                cipher: CheckpointCipher::default(),
                 nonce: None,
                 data_key: None,
                 ciphertext_sha256: None,

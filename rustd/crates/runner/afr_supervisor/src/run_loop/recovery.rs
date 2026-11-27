@@ -11,7 +11,7 @@ use zeroize::Zeroizing;
 use super::{Run, build::Build};
 use crate::{
     Result, error,
-    recovery::{Capture, Restore},
+    recovery::{Capture, Restore, Tree},
     report::Ending,
 };
 
@@ -145,7 +145,7 @@ impl Run<'_> {
                 stop: &self.interrupt,
             }
             .run(
-                Some(staged.path().to_owned()),
+                Some(&Tree::new(staged.path().to_owned(), self.interrupt.clone())),
                 recovery.history.clone(),
                 state.base_paths.clone(),
             )

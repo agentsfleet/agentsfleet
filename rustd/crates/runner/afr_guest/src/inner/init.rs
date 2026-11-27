@@ -1,16 +1,24 @@
 //! An inner environment's init: PID 1 of a process namespace of its own, in
-//! a mount namespace of its own, reaping every orphan inside until it is
-//! killed.
+//! a mount namespace and an inter-process communication (IPC) namespace of
+//! its own, reaping every orphan inside until it is killed.
 //!
 //! ```text
 //!   this thread: unshare(PID) ─► fork ─► restore its next children to ours
-//!   init:        unshare(MOUNT) ─► / downstream ─► /proc of the new namespace
-//!                ─► ready ─► close every descriptor it inherited ─► reap forever
+//!   init:        unshare(MOUNT, IPC) ─► / downstream ─► /proc of the new
+//!                process namespace ─► /dev/mqueue of the new IPC namespace,
+//!                where one is mounted ─► ready ─► close every descriptor it
+//!                inherited ─► reap forever
 //! ```
+//!
+//! The kernel frees an IPC namespace with its last process, and every
+//! System V segment, semaphore and queue and every POSIX queue made in it
+//! goes then: what a tenant made dies with its environment's init.
 
+use std::ffi::CStr;
 use std::io::{self, Read as _};
 use std::os::fd::{AsFd as _, OwnedFd};
 
+use rustix::fs::{AtFlags, CWD, StatxAttributes, StatxFlags, statx};
 use rustix::mount::{MountFlags, MountPropagationFlags, mount, mount_change};
 use rustix::process::{Pid, PidfdFlags, WaitId, WaitIdOptions, WaitOptions};
 use rustix::thread::{ThreadNameSpaceType, UnshareFlags};
@@ -21,6 +29,8 @@ use crate::error::{Result, unconfined};
 const DETAIL_UNBUILT: &str = "the inner environment's init ended before it was ready";
 /// What the init writes once its namespaces stand.
 const READY: [u8; 1] = [1];
+/// Where a system that mounts the POSIX message queues' file system keeps it.
+pub(super) const MQUEUE: &CStr = c"/dev/mqueue";
 
 /// Starts an init and answers its process descriptor once its namespaces
 /// stand. The calling thread's next children are born where they were
@@ -75,20 +85,36 @@ fn run(ready: &io::PipeWriter) -> ! {
     reap()
 }
 
-/// A mount namespace of its own whose `/proc` shows the new process
-/// namespace alone, nothing it mounts reaching the executor's: downstream of
-/// the executor's, so a mount the executor swaps in, a new hosts file,
-/// reaches it.
+/// An IPC namespace of its own, holding no object yet, and a mount namespace
+/// of its own whose `/proc` shows the new process namespace alone, nothing
+/// it mounts reaching the executor's: downstream of the executor's, so a
+/// mount the executor swaps in, a new hosts file, reaches it. A queue file
+/// system shows the IPC namespace of whoever mounted it, so one already at
+/// [`MQUEUE`] would show, and take, the executor's queues: a new one covers
+/// it.
 fn isolate() -> rustix::io::Result<()> {
     // SAFETY: this process has one thread, so it shares its file-system
     // state with no other.
-    unsafe { rustix::thread::unshare_unsafe(UnshareFlags::NEWNS) }?;
+    unsafe { rustix::thread::unshare_unsafe(UnshareFlags::NEWNS | UnshareFlags::NEWIPC) }?;
     mount_change(
         c"/",
         MountPropagationFlags::REC | MountPropagationFlags::DOWNSTREAM,
     )?;
     let quiet = MountFlags::NOSUID | MountFlags::NODEV | MountFlags::NOEXEC;
-    mount(c"proc", c"/proc", c"proc", quiet, None)
+    mount(c"proc", c"/proc", c"proc", quiet, None)?;
+    if mounted(MQUEUE)? {
+        mount(c"mqueue", MQUEUE, c"mqueue", quiet, None)?;
+    }
+    Ok(())
+}
+
+/// Whether a file system is mounted at `path`: none is where nothing is.
+fn mounted(path: &CStr) -> rustix::io::Result<bool> {
+    match statx(CWD, path, AtFlags::empty(), StatxFlags::empty()) {
+        Ok(found) => Ok(found.stx_attributes.contains(StatxAttributes::MOUNT_ROOT)),
+        Err(rustix::io::Errno::NOENT) => Ok(false),
+        Err(refused) => Err(refused),
+    }
 }
 
 /// Reaps every child the kernel hands the namespace's init, forever.
