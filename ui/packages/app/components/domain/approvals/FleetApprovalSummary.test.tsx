@@ -14,7 +14,7 @@ const GATE = {gate_id: "gate-one", workspace_id: PROPS.workspaceId, fleet_id: PR
   proposed_action: "Publish runner image", tool_name: "registry", action_name: "publish", blast_radius: "Production registry · Release tag"};
 // An access card: the fleet asked for a credential, named by the evidence's service.
 const ACCESS = {...GATE, gate_type: "integration_grant", proposed_action: "mint short-lived credentials for sentry", evidence: {service: "sentry"}};
-const page = (items: Array<typeof GATE & {detail?: string; evidence?: Record<string, unknown>; expires_at?: string}> = [GATE]) => ({ok: true, data: {items, next_cursor: null}});
+const page = (items: Array<typeof GATE & {fleet_name?: string; detail?: string; evidence?: Record<string, unknown>; expires_at?: string}> = [GATE]) => ({ok: true, data: {items, next_cursor: null}});
 beforeEach(() => {vi.clearAllMocks(); mocks.list.mockReset(); mocks.deny.mockReset(); mocks.approve.mockReset(); mocks.answer.mockReset(); mocks.list.mockResolvedValue(page());});
 afterEach(cleanup);
 
@@ -357,4 +357,19 @@ it.each([
   expect(await screen.findByText("Request details unavailable.")).toBeTruthy();
   expect(screen.queryByRole("button", {name: "Approve"})).toBeNull();
   expect(document.body.textContent).not.toContain("sig=private");
+});
+
+
+it("a direct host request can still be approved after its response date", async () => {
+  const host = "support.vendor.example";
+  mocks.list.mockResolvedValue(page([{...ACCESS, fleet_name: "release-assistant", status: "timed_out",
+    evidence: {kind: "host", service: host}, expires_at: "2026-11-12T12:00:00Z"}]));
+  mocks.approve.mockResolvedValue(receipt("gate-one", "approved"));
+  render(<FleetApprovalSummary {...PROPS} />);
+  expect(await screen.findByText(`Allow release-assistant to reach ${host}?`)).toBeTruthy();
+  expect(screen.queryByText(/received a redirect/)).toBeNull();
+  expect(screen.getByText("Respond by", {exact: false})).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", {name: "Approve"}));
+  expect(await screen.findByText("Request approved.")).toBeTruthy();
+  expect(mocks.approve).toHaveBeenCalledExactlyOnceWith("workspace", "gate-one", undefined);
 });

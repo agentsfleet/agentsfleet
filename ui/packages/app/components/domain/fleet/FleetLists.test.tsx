@@ -23,7 +23,7 @@ const MENTION_ANY = {...MENTION, id: "0199a801-1000-7000-8000-0000000000c4", cha
 const FUTURE = {id: "0199a801-1000-7000-8000-0000000000c5", kind: "email", source: "inbox", created_at: "2026-11-24T10:00:00Z"};
 const GITHUB = {id: GRANT_ID, kind: "integration", name: "github", status: "approved", scope: {repositories: ["org/app", "org/web"], access: "write"}};
 const SENTRY = {id: "0199a801-1000-7000-8000-0000000000d1", kind: "secret", name: "sentry", status: "approved"};
-const READ_ONLY = {...GITHUB, id: "0199a801-1000-7000-8000-0000000000d2", name: "github", scope: {repositories: ["org/docs"], access: "read"}};
+const READ_ONLY = {...GITHUB, kind: undefined, id: "0199a801-1000-7000-8000-0000000000d2", name: "github", scope: {repositories: ["org/docs"], access: "read"}};
 const PENDING = {id: "0199a801-1000-7000-8000-0000000000d3", kind: "secret", name: "grafana", status: "pending"};
 const PIN = {key: "evidence", content: "Always link the evidence.", category: "core", updated_at: "2026-11-24T10:00:00Z", visibility: "fleet", writer_fleet_id: FLEET_ID};
 type Route = (init: RequestInit) => Response | Promise<Response>;
